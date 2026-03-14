@@ -1,0 +1,9 @@
+# Additional Python packages beyond what the RSP stack provides
+# Uncomment or add packages as needed
+#
+# nbstripout is installed by setup_env.sh, not listed here
+#
+# astroquery
+# healpy
+# dustmaps
+# galsim

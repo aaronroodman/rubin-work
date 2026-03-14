@@ -1,0 +1,48 @@
+# ===== Jupyter =====
+.ipynb_checkpoints/
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.so
+
+# ===== Virtual environments =====
+.venv/
+venv/
+env/
+
+# ===== Large data files =====
+*.fits
+*.fits.gz
+*.fits.fz
+*.fz
+*.parquet
+*.hdf5
+*.h5
+*.csv.gz
+*.pkl
+*.pickle
+
+# ===== OS clutter =====
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# ===== Editor/IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== Misc =====
+.env
+*.log
