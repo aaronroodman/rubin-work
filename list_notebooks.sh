@@ -60,7 +60,7 @@ fi
 echo ""
 echo "============================================================"
 echo "Suggested next steps:"
-echo "  1. Move relevant notebooks into rubin-work/<topic>/notebooks/"
+echo "  1. Move relevant notebooks into rubin-work/<topic>/"
 echo "  2. Move large data files into ~/notebooks/rubin-data/<topic>/"
 echo "  3. Delete obsolete notebooks and checkpoints"
 echo "  4. Run: ./sync.sh push 'organized notebooks from $HOSTNAME'"

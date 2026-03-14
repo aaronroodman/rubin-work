@@ -5,7 +5,7 @@ This repository contains Jupyter notebooks and Python scripts for Vera C. Rubin 
 
 ## Repository Structure
 - Topic directories: `aos/`, `camera/`, `psf/`, `guider/`, `starcolor/`, `des/`, `survey/`, `wcs/`, `blocks/`
-- Each topic has `notebooks/`, `scripts/`, and `output/` subdirectories
+- Each topic has `code/` and `output/` subdirectories; notebooks (`.ipynb`) live directly in the topic directory
 - `common/` — shared utility functions used across topics
 - `scratch/` — work-in-progress, not yet organized
 

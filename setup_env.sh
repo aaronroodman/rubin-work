@@ -29,8 +29,8 @@ for topic in aos camera psf guider starcolor des survey wcs blocks common scratc
     if [ "$topic" = "common" ] || [ "$topic" = "scratch" ]; then
         mkdir -p "$topic"
     else
-        mkdir -p "$topic/notebooks"
-        mkdir -p "$topic/scripts"
+        mkdir -p "$topic/code"
+        mkdir -p "$topic/output"
     fi
 done
 echo "✓ Directory structure verified"
@@ -39,6 +39,6 @@ echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. Copy the notebook template:  cp common/notebook_template.ipynb aos/notebooks/my_notebook.ipynb"
+echo "  1. Copy the notebook template:  cp common/notebook_template.ipynb aos/my_notebook.ipynb"
 echo "  2. Start working:               jupyter lab"
 echo "  3. When done:                    ./sync.sh push 'my changes'"

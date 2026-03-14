@@ -15,48 +15,40 @@ rubin-work/
 ├── CLAUDE.md             # Instructions for Claude Code
 │
 ├── aos/                  # Active Optics System
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── *.ipynb           # Notebooks live directly in topic dir
+│   ├── code/             # Saved Python code
 │   └── output/           # Small curated outputs (git-tracked)
 │
 ├── camera/               # Camera analysis
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── psf/                  # Point Spread Function
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── guider/               # Guider
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── starcolor/            # Star color / photometry
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── des/                  # Dark Energy Survey related
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── survey/               # Survey strategy / operations
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── wcs/                  # World Coordinate System
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── blocks/               # Observing blocks
-│   ├── notebooks/
-│   ├── scripts/
+│   ├── code/
 │   └── output/
 │
 ├── common/               # Shared utilities across all topics
