@@ -63,7 +63,7 @@ rubin-work/
 ### First time setup (laptop or RSP)
 
 ```bash
-git clone https://github.com/aaronroodman/rubin-work.git
+git clone git@github.com:aaronroodman/rubin-work.git
 cd rubin-work
 ./setup_env.sh
 ```
