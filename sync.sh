@@ -5,8 +5,12 @@ cd "$(dirname "$0")"
 case "$1" in
     pull)
         echo "Pulling latest from GitHub..."
-        git pull --rebase origin main
-        echo "✓ Up to date"
+        if git pull --rebase origin main; then
+            echo "✓ Up to date"
+        else
+            echo "✗ Pull failed" >&2
+            exit 1
+        fi
         ;;
     push)
         MSG="${2:-Update from RSP $(hostname) $(date +%Y-%m-%d)}"
@@ -16,9 +20,13 @@ case "$1" in
         git status --short
         echo ""
         echo "Committing: $MSG"
-        git commit -m "$MSG"
-        git push origin main
-        echo "✓ Pushed to GitHub"
+        git commit -m "$MSG" || { echo "✗ Nothing to commit"; exit 1; }
+        if git push origin main; then
+            echo "✓ Pushed to GitHub"
+        else
+            echo "✗ Push failed — commit is local only" >&2
+            exit 1
+        fi
         ;;
     status)
         git status
