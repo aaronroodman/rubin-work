@@ -16,39 +16,48 @@ rubin-work/
 │
 ├── aos/                  # Active Optics System
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/           # Small curated outputs (git-tracked)
 │
 ├── camera/               # Camera analysis
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── psf/                  # Point Spread Function
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── guider/               # Guider
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── starcolor/            # Star color / photometry
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── des/                  # Dark Energy Survey related
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── survey/               # Survey strategy / operations
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── wcs/                  # World Coordinate System
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── blocks/               # Observing blocks
 │   ├── notebooks/
-│   └── scripts/
+│   ├── scripts/
+│   └── output/
 │
 ├── common/               # Shared utilities across all topics
 │   ├── __init__.py
@@ -99,6 +108,16 @@ All notebooks should follow the standard template in `common/notebook_template.i
 * Parameters section (all configurable values at the top)
 * Helper Functions section
 * Standard sections for Data Access, Analysis, Results
+
+### Output conventions
+
+There are two places for notebook outputs:
+
+* **`<topic>/output/` (in git)** — Small, curated outputs worth preserving: summary CSV tables, key plots for papers/presentations. These are git-tracked but large binary formats are still excluded by `.gitignore`.
+
+* **`~/notebooks/rubin-data/<topic>/` (on RSP, NOT in git)** — Large or ephemeral outputs: FITS files, big parquet tables, intermediate results. Create this directory structure on each RSP instance. Notebooks should write large outputs here. Run `./list_notebooks.sh` on each RSP to see what you have.
+
+The `list_notebooks.sh` script inventories all `.ipynb` files in your RSP home directory to help with triage and organization.
 
 ### Notes
 

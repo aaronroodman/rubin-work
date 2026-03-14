@@ -5,7 +5,7 @@ This repository contains Jupyter notebooks and Python scripts for Vera C. Rubin 
 
 ## Repository Structure
 - Topic directories: `aos/`, `camera/`, `psf/`, `guider/`, `starcolor/`, `des/`, `survey/`, `wcs/`, `blocks/`
-- Each topic has `notebooks/` and `scripts/` subdirectories
+- Each topic has `notebooks/`, `scripts/`, and `output/` subdirectories
 - `common/` — shared utility functions used across topics
 - `scratch/` — work-in-progress, not yet organized
 
@@ -37,6 +37,12 @@ All new notebooks should follow the template in `common/notebook_template.ipynb`
 - nbstripout is configured — outputs are stripped automatically, no manual step needed
 - Do NOT commit large data files (FITS, Parquet, HDF5)
 - When creating new notebooks, always start from the template
+
+### Output conventions
+- Small curated outputs (summary tables, key plots) go in `<topic>/output/` — these are git-tracked
+- Large/ephemeral outputs (FITS, parquet, intermediate results) go in `~/notebooks/rubin-data/<topic>/` on RSP — NOT in git
+- Notebooks should use a variable like `output_dir` in the Parameters cell to set the output path
+- Name output files as `{topic}_{description}_{date_or_dayobs}.{ext}`
 
 ### RSP environment
 - Code should work on the Rubin Science Platform (both Summit and USDF)

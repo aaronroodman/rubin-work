@@ -17,6 +17,11 @@ build/
 venv/
 env/
 
+# ===== Output directories (large/ephemeral outputs) =====
+# Keep .gitkeep files but ignore everything else in output/
+*/output/*
+!*/output/.gitkeep
+
 # ===== Large data files =====
 *.fits
 *.fits.gz
