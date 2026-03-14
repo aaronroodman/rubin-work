@@ -34,7 +34,7 @@ All new notebooks should follow the template in `common/notebook_template.ipynb`
 
 ### Git workflow
 - Commit messages should be descriptive: "Added M1M3 force analysis notebook" not "update"
-- nbstripout is configured — outputs are stripped automatically, no manual step needed
+- Notebook outputs are committed to git (no stripping) so plots and commentary are preserved
 - Do NOT commit large data files (FITS, Parquet, HDF5)
 - When creating new notebooks, always start from the template
 

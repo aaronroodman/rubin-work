@@ -113,6 +113,6 @@ The `list_notebooks.sh` script inventories all `.ipynb` files in your RSP home d
 
 ### Notes
 
-* `nbstripout` is configured to automatically strip notebook outputs on commit
+* Notebook outputs are committed to git (no stripping) so plots and commentary are preserved across machines
 * Large data files (FITS, Parquet, HDF5) are excluded via `.gitignore`
 * The `scratch/` directory is for work-in-progress

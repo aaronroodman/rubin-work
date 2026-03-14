@@ -6,12 +6,6 @@ cd "$(dirname "$0")"
 echo "=== Setting up rubin-work environment ==="
 
 echo ""
-echo "--- Installing nbstripout ---"
-pip install --user nbstripout 2>/dev/null || pip install nbstripout
-nbstripout --install
-echo "✓ nbstripout installed and configured as git filter"
-
-echo ""
 echo "--- Configuring git credential cache ---"
 git config credential.helper 'cache --timeout=86400'
 echo "✓ Git credentials will be cached for 24 hours"

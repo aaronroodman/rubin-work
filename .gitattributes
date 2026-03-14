@@ -1,2 +1,1 @@
-# Auto-strip notebook outputs on commit via nbstripout
-*.ipynb filter=nbstripout
+# No output stripping — notebooks are committed with outputs intact
