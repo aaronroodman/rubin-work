@@ -23,6 +23,7 @@ env/
 !*/output/.gitkeep
 !blocks/output/*.txt
 !blocks/output/*.csv
+!blocks/output/*.csv.gz
 
 # ===== Large data files =====
 *.fits
@@ -32,7 +33,6 @@ env/
 *.parquet
 *.hdf5
 *.h5
-*.csv.gz
 *.pkl
 *.pickle
 
