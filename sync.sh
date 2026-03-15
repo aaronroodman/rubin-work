@@ -14,10 +14,20 @@ case "$1" in
         if git pull --rebase origin main; then
             echo "✓ Up to date"
         else
-            echo "✗ Pull failed" >&2
+            echo "✗ Rebase conflict — these files need manual resolution:" >&2
+            git diff --name-only --diff-filter=U 2>/dev/null
+            echo ""
+            echo "To resolve:"
+            echo "  1. Edit the conflicted files (look for <<<<<<< markers)"
+            echo "  2. git add <resolved-files>"
+            echo "  3. git rebase --continue"
+            echo ""
+            echo "Or to abort and return to your previous state:"
+            echo "  git rebase --abort"
             if $STASHED; then
-                echo "Restoring stashed changes..."
-                git stash pop
+                echo ""
+                echo "Note: your unstaged changes are saved in git stash."
+                echo "After resolving, run: git stash pop"
             fi
             exit 1
         fi
