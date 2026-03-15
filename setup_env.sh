@@ -30,21 +30,23 @@ done
 echo "✓ Directory structure verified"
 
 echo ""
-echo "--- Adding shell aliases ---"
-REPO_DIR="$(pwd)"
-ALIAS_BLOCK="# rubin-work shortcuts
-alias gitpull='${REPO_DIR}/sync.sh pull'
-alias gitpush='${REPO_DIR}/sync.sh push'"
+echo "--- Adding shell functions ---"
+# Use ~/notebooks/... so it works regardless of whether $HOME is
+# /home/r/roodman (JupyterHub) or /sdf/home/r/roodman (SSH)
+FUNC_BLOCK='# rubin-work shortcuts
+gitpull() { ~/notebooks/rubin-work/sync.sh pull; }
+gitpush() { ~/notebooks/rubin-work/sync.sh push "$@"; }'
 
 for rcfile in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rcfile" ] || [ "$(basename "$rcfile")" = ".$(basename "$SHELL")rc" ]; then
-        if ! grep -q "rubin-work shortcuts" "$rcfile" 2>/dev/null; then
-            echo "" >> "$rcfile"
-            echo "$ALIAS_BLOCK" >> "$rcfile"
-            echo "✓ Added gitpull/gitpush aliases to $rcfile"
-        else
-            echo "✓ Aliases already in $rcfile"
+        if grep -q "rubin-work shortcuts" "$rcfile" 2>/dev/null; then
+            # Remove old alias-based block and replace with functions
+            sed -i.bak '/# rubin-work shortcuts/,+2d' "$rcfile"
+            rm -f "${rcfile}.bak"
         fi
+        echo "" >> "$rcfile"
+        echo "$FUNC_BLOCK" >> "$rcfile"
+        echo "✓ Added gitpull/gitpush functions to $rcfile"
     fi
 done
 
