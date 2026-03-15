@@ -49,9 +49,13 @@ case "$1" in
         git status --short
         echo ""
         echo "Committing: $MSG"
-        git commit -m "$MSG" || { echo "✗ Nothing to commit"; exit 1; }
-        if git push origin main; then
-            echo "✓ Pushed to GitHub"
+        git commit -m "$MSG"
+        # Push even if commit had nothing new — there may be unpushed commits
+        AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+        if [ "$AHEAD" -eq 0 ]; then
+            echo "✓ Nothing to push — already in sync with GitHub"
+        elif git push origin main; then
+            echo "✓ Pushed $AHEAD commit(s) to GitHub"
         else
             echo "✗ Push failed — commit is local only" >&2
             exit 1

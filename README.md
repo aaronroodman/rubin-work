@@ -9,8 +9,8 @@ rubin-work/
 ├── README.md
 ├── .gitignore
 ├── .gitattributes
-├── setup_env.sh          # Run once after cloning on a new RSP instance
-├── sync.sh               # Quick pull/push helper
+├── setup_env.sh          # Run once after cloning (adds gitpull/gitpush aliases)
+├── sync.sh               # Pull/push helper (auto-stash, conflict guidance)
 ├── requirements.txt      # Python deps beyond what RSP provides
 ├── CLAUDE.md             # Instructions for Claude Code
 │
@@ -72,10 +72,16 @@ cd rubin-work
 
 ```bash
 cd ~/notebooks/rubin-work
-./sync.sh pull                          # Get latest changes
+gitpull                                 # Get latest changes
 # ... do your work ...
-./sync.sh push "description of changes" # Commit and push
+gitpush "description of changes"        # Commit and push
 ```
+
+The `gitpull` and `gitpush` aliases are set up by `setup_env.sh` (see below). You can also use `./sync.sh pull` and `./sync.sh push` directly.
+
+`gitpull` automatically stashes any local changes, rebases on the remote, and restores the stash. If there are merge conflicts, it shows the affected files and resolution steps.
+
+`gitpush` stages all changes, commits, and pushes. It also pushes any previously committed but unpushed commits.
 
 ### Working with Claude Code (laptop)
 
