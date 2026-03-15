@@ -1,21 +1,63 @@
 """
-Utility functions for WCS and rotator angle calculations.
+Utility functions for WCS, coordinate transforms, and rotator angle calculations.
 
-Provides functions to calculate:
-- Local Sidereal Time (LST) from MJD
-- Parallactic angle from LST, RA, DEC
-- Physical rotator angle from MJD, RA, DEC, and sky angle
+Provides functions to:
+- Convert between pixel and focal plane coordinates
+- Calculate Local Sidereal Time (LST) from MJD
+- Calculate parallactic angle from LST, RA, DEC
+- Calculate physical rotator angle from MJD, RA, DEC, and sky angle
 
-The Rubin Observatory location is used for all calculations.
+The Rubin Observatory location is used for all sky-related calculations.
 """
 
 import numpy as np
 import astropy.units as u
 from astropy.coordinates import EarthLocation
 from astropy.time import Time
+from lsst.afw import cameraGeom
 
 # Rubin Observatory location (Cerro Pachon)
 RUBIN_LOCATION = EarthLocation.of_site('Rubin:Simonyi')
+
+
+def pixel_to_focal(x, y, det):
+    """Convert pixel coordinates to focal plane coordinates.
+
+    Parameters
+    ----------
+    x, y : array-like
+        Pixel coordinates.
+    det : `lsst.afw.cameraGeom.Detector`
+        Detector of interest.
+
+    Returns
+    -------
+    fpx, fpy : `numpy.ndarray`
+        Focal plane position in millimeters in DVCS (see LSE-349).
+    """
+    tx = det.getTransform(cameraGeom.PIXELS, cameraGeom.FOCAL_PLANE)
+    fpx, fpy = tx.getMapping().applyForward(np.vstack((x, y)))
+    return fpx.ravel(), fpy.ravel()
+
+
+def focal_to_pixel(fpx, fpy, det):
+    """Convert focal plane coordinates to pixel coordinates.
+
+    Parameters
+    ----------
+    fpx, fpy : array-like
+        Focal plane position in millimeters in DVCS (see LSE-349).
+    det : `lsst.afw.cameraGeom.Detector`
+        Detector of interest.
+
+    Returns
+    -------
+    x, y : `numpy.ndarray`
+        Pixel coordinates.
+    """
+    tx = det.getTransform(cameraGeom.FOCAL_PLANE, cameraGeom.PIXELS)
+    x, y = tx.getMapping().applyForward(np.vstack((fpx, fpy)))
+    return x.ravel(), y.ravel()
 
 
 def calculate_lst(mjd):
