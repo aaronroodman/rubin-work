@@ -71,9 +71,9 @@ def calc_rotator_angle(mjd, ra_deg, dec_deg, sky_angle_deg):
     """Calculate the physical rotator angle from sky coordinates and time.
 
     The physical rotator angle is derived from the sky angle and the
-    parallactic angle::
+    parallactic angle, with a sign flip and 90-degree offset::
 
-        physical_rotator_angle = sky_angle - parallactic_angle
+        physical_rotator_angle = -(sky_angle - parallactic_angle) - 90
 
     Parameters
     ----------
@@ -97,7 +97,8 @@ def calc_rotator_angle(mjd, ra_deg, dec_deg, sky_angle_deg):
 
     q = calculate_parallactic_angle(lst, ra, dec)
 
-    rotator_angle = np.atleast_1d(np.asarray(sky_angle_deg, dtype=float)) - q.value
+    # Sign flip and 90-degree offset to match physical_rotator_angle convention
+    rotator_angle = -(np.atleast_1d(np.asarray(sky_angle_deg, dtype=float)) - q.value) - 90.0
 
     # Wrap to [-180, 180]
     rotator_angle = (rotator_angle + 180.0) % 360.0 - 180.0
