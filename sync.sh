@@ -49,7 +49,11 @@ case "$1" in
         git status --short
         echo ""
         echo "Committing: $MSG"
-        git commit -m "$MSG"
+        if git commit -m "$MSG"; then
+            echo "✓ Committed"
+        else
+            echo "(No new changes to commit)"
+        fi
         # Push even if commit had nothing new — there may be unpushed commits
         AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
         if [ "$AHEAD" -eq 0 ]; then
