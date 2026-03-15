@@ -34,8 +34,8 @@ echo "--- Adding shell functions ---"
 # Use ~/notebooks/... so it works regardless of whether $HOME is
 # /home/r/roodman (JupyterHub) or /sdf/home/r/roodman (SSH)
 FUNC_BLOCK='# rubin-work shortcuts
-gitpull() { ~/notebooks/rubin-work/sync.sh pull; }
-gitpush() { ~/notebooks/rubin-work/sync.sh push "$@"; }'
+function gitpull { ~/notebooks/rubin-work/sync.sh pull; }
+function gitpush { ~/notebooks/rubin-work/sync.sh push "$@"; }'
 
 for rcfile in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rcfile" ] || [ "$(basename "$rcfile")" = ".$(basename "$SHELL")rc" ]; then
