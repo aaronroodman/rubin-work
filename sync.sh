@@ -43,11 +43,19 @@ case "$1" in
         ;;
     push)
         MSG="${2:-Update from RSP $(hostname) $(date +%Y-%m-%d)}"
-        echo "Staging all changes..."
-        git add -A
-        echo ""
-        git status --short
-        echo ""
+        # Collect changed/untracked files
+        FILES=$(git status --porcelain | awk '{print $NF}')
+        if [ -n "$FILES" ]; then
+            echo "Files to stage:"
+            for f in $FILES; do
+                read -p "  $f [Y/n] " ans < /dev/tty
+                case "$ans" in
+                    n|N) echo "    skipped" ;;
+                    *)   git add "$f" ;;
+                esac
+            done
+            echo ""
+        fi
         echo "Committing: $MSG"
         if git commit -m "$MSG"; then
             echo "✓ Committed"
