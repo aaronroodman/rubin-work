@@ -109,40 +109,37 @@ def calculate_parallactic_angle(lst, ra, dec):
     return q.to(u.deg)
 
 
-def calc_rotator_angle(mjd, ra_deg, dec_deg, sky_angle_deg):
-    """Calculate the physical rotator angle from sky coordinates and time.
+def calc_rotator_from_visitinfo(par_angle_deg, rotpa_deg):
+    """Calculate the physical rotator angle from visitInfo angles.
 
-    The physical rotator angle is derived from the sky angle and the
-    parallactic angle, with a sign flip and 90-degree offset::
+    The physical rotator angle is derived from the parallactic angle
+    and the boresight rotation angle (ROTPA) from the Butler visitInfo::
 
-        physical_rotator_angle = -(sky_angle - parallactic_angle) - 90
+        rotator_angle = par_angle - rotpa - 90
+
+    Values near +/-360 are wrapped to [-180, 180].  The physical rotator
+    has an allowed range of approximately [-90, 90] degrees.
 
     Parameters
     ----------
-    mjd : float or array-like
-        Modified Julian Date(s) of the observation midpoint.
-    ra_deg : float or array-like
-        Right ascension in degrees.
-    dec_deg : float or array-like
-        Declination in degrees.
-    sky_angle_deg : float or array-like
-        Sky rotation angle in degrees (``sky_rotation`` from ConsDB).
+    par_angle_deg : float or array-like
+        Boresight parallactic angle in degrees
+        (from ``visitInfo.getBoresightParAngle()``).
+    rotpa_deg : float or array-like
+        Boresight rotation angle in degrees
+        (from ``visitInfo.getBoresightRotAngle()``).
 
     Returns
     -------
     rotator_angle : float or `numpy.ndarray`
         Physical rotator angle in degrees, wrapped to [-180, 180].
     """
-    lst = calculate_lst(mjd)
-    ra = np.atleast_1d(np.asarray(ra_deg, dtype=float)) * u.deg
-    dec = np.atleast_1d(np.asarray(dec_deg, dtype=float)) * u.deg
+    par = np.atleast_1d(np.asarray(par_angle_deg, dtype=float))
+    rotpa = np.atleast_1d(np.asarray(rotpa_deg, dtype=float))
 
-    q = calculate_parallactic_angle(lst, ra, dec)
+    rotator_angle = par - rotpa - 90.0
 
-    # Sign flip and 90-degree offset to match physical_rotator_angle convention
-    rotator_angle = -(np.atleast_1d(np.asarray(sky_angle_deg, dtype=float)) - q.value) - 90.0
-
-    # Wrap to [-180, 180]
+    # Wrap to [-180, 180] to handle values near +/-360
     rotator_angle = (rotator_angle + 180.0) % 360.0 - 180.0
 
     if rotator_angle.size == 1:
