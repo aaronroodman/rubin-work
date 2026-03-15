@@ -5,11 +5,30 @@ cd "$(dirname "$0")"
 case "$1" in
     pull)
         echo "Pulling latest from GitHub..."
+        STASHED=false
+        if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            echo "Stashing local changes..."
+            git stash push -m "sync.sh auto-stash"
+            STASHED=true
+        fi
         if git pull --rebase origin main; then
             echo "✓ Up to date"
         else
             echo "✗ Pull failed" >&2
+            if $STASHED; then
+                echo "Restoring stashed changes..."
+                git stash pop
+            fi
             exit 1
+        fi
+        if $STASHED; then
+            echo "Restoring stashed changes..."
+            if git stash pop; then
+                echo "✓ Local changes restored"
+            else
+                echo "✗ Conflict restoring stash — resolve manually, then: git stash drop" >&2
+                exit 1
+            fi
         fi
         ;;
     push)
