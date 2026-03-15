@@ -22,6 +22,7 @@ env/
 */output/*
 !*/output/.gitkeep
 !blocks/output/*.txt
+!blocks/output/*.csv
 
 # ===== Large data files =====
 *.fits
