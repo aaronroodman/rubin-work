@@ -5,34 +5,86 @@ cd "$(dirname "$0")"
 case "$1" in
     pull)
         echo "Pulling latest from GitHub..."
+
+        # Step 1: Fetch remote state
+        git fetch origin main
+
+        # Step 2: Find files changed locally (staged + unstaged)
+        LOCAL_CHANGED=$(git diff --name-only 2>/dev/null; git diff --name-only --cached 2>/dev/null)
+        LOCAL_CHANGED=$(echo "$LOCAL_CHANGED" | sort -u | grep -v '^$')
+
+        # Step 3: Find files changed on remote
+        REMOTE_CHANGED=$(git diff --name-only HEAD origin/main 2>/dev/null)
+
+        # Step 4: Find conflicts (files changed in both places)
+        CONFLICTS=""
+        if [ -n "$LOCAL_CHANGED" ] && [ -n "$REMOTE_CHANGED" ]; then
+            CONFLICTS=$(comm -12 <(echo "$LOCAL_CHANGED") <(echo "$REMOTE_CHANGED"))
+        fi
+
+        # Step 5: If conflicts, prompt per-file
+        OVERWRITE_FILES=""
+        KEEP_FILES=""
+        if [ -n "$CONFLICTS" ]; then
+            echo ""
+            echo "⚠ These files have been changed both locally and on GitHub:"
+            echo "$CONFLICTS" | while read -r f; do echo "  $f"; done
+            echo ""
+            for f in $CONFLICTS; do
+                while true; do
+                    read -p "  $f — (o)verwrite with remote, (k)eep local, (a)bort? " ans < /dev/tty
+                    case "$ans" in
+                        o|O)
+                            OVERWRITE_FILES="$OVERWRITE_FILES $f"
+                            break
+                            ;;
+                        k|K)
+                            KEEP_FILES="$KEEP_FILES $f"
+                            break
+                            ;;
+                        a|A)
+                            echo "Aborted — no changes made."
+                            exit 0
+                            ;;
+                        *)
+                            echo "    Please enter o, k, or a"
+                            ;;
+                    esac
+                done
+            done
+            echo ""
+        fi
+
+        # Step 6: Overwrite chosen files (discard local changes)
+        for f in $OVERWRITE_FILES; do
+            echo "  Overwriting $f with remote version..."
+            git checkout origin/main -- "$f"
+        done
+
+        # Step 7: Stash remaining local changes, pull, restore
         STASHED=false
         if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-            echo "Stashing local changes..."
+            echo "Stashing remaining local changes..."
             git stash push -m "sync.sh auto-stash"
             STASHED=true
         fi
+
         if git pull --rebase origin main; then
-            echo "✓ Up to date"
+            echo "✓ Up to date with GitHub"
         else
             echo "✗ Rebase conflict — these files need manual resolution:" >&2
             git diff --name-only --diff-filter=U 2>/dev/null
             echo ""
-            echo "To resolve:"
-            echo "  1. Edit the conflicted files (look for <<<<<<< markers)"
-            echo "  2. git add <resolved-files>"
-            echo "  3. git rebase --continue"
-            echo ""
-            echo "Or to abort and return to your previous state:"
+            echo "To abort and return to your previous state:"
             echo "  git rebase --abort"
             if $STASHED; then
-                echo ""
-                echo "Note: your unstaged changes are saved in git stash."
-                echo "After resolving, run: git stash pop"
+                echo "  git stash pop"
             fi
             exit 1
         fi
+
         if $STASHED; then
-            echo "Restoring stashed changes..."
+            echo "Restoring local changes..."
             if git stash pop; then
                 echo "✓ Local changes restored"
             else
