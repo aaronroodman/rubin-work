@@ -1,10 +1,12 @@
 """
-PointMesh: A 2D scattered-data interpolation and visualization toolkit.
+FocalPlaneInterpolator: A 2D scattered-data interpolation and visualization toolkit.
 
-This module provides the ``PointMesh`` class, which encapsulates a cloud of
-(x, y, z) points on a focal-plane-like domain, builds gridded interpolations
-with several selectable methods, and supports mesh arithmetic (differencing,
-merging, fitting tip/tilt/piston offsets, etc.).
+This module provides the ``FocalPlaneInterpolator`` class, which encapsulates a
+cloud of (x, y, z) points on a focal-plane domain (typically in field-angle
+coordinates), builds gridded interpolations with several selectable methods,
+and supports mesh arithmetic (differencing, merging, fitting tip/tilt/piston
+offsets, etc.).  Modernised from the original ``FocalPlaneInterpolator`` class in
+``donutlib``.
 
 Supported interpolation methods
 -------------------------------
@@ -124,7 +126,7 @@ class IDWInterp:
 _VALID_METHODS = {"sbs", "rbf", "grid", "idw", "tmean", "bmedian"}
 
 
-class PointMesh:
+class FocalPlaneInterpolator:
     """A 2-D scattered-data mesh with gridded interpolation.
 
     The mesh holds a point cloud ``(x, y, z)`` with optional per-point
@@ -244,8 +246,8 @@ class PointMesh:
         z_col: str,
         w_col: Optional[str] = None,
         **kwargs,
-    ) -> "PointMesh":
-        """Create a PointMesh from an astropy QTable (or any column-indexable table).
+    ) -> "FocalPlaneInterpolator":
+        """Create a FocalPlaneInterpolator from an astropy QTable (or any column-indexable table).
 
         Parameters
         ----------
@@ -256,12 +258,12 @@ class PointMesh:
         w_col : str or None, optional
             Column name for weights.  If ``None``, unit weights are used.
         **kwargs
-            Forwarded to the ``PointMesh`` constructor (e.g. ``radius``,
+            Forwarded to the ``FocalPlaneInterpolator`` constructor (e.g. ``radius``,
             ``n_bins``, ``method``).
 
         Returns
         -------
-        PointMesh
+        FocalPlaneInterpolator
         """
         x = np.asarray(table[x_col])
         y = np.asarray(table[y_col])
@@ -530,7 +532,7 @@ class PointMesh:
     # ------------------------------------------------------------------
 
     def fit_mesh(
-        self, other: "PointMesh", method: str = "OLS"
+        self, other: "FocalPlaneInterpolator", method: str = "OLS"
     ):
         """Fit offset + tip + tilt between this mesh and another.
 
@@ -540,7 +542,7 @@ class PointMesh:
 
         Parameters
         ----------
-        other : PointMesh
+        other : FocalPlaneInterpolator
             The other mesh whose discrete points are compared against this
             mesh's interpolation.
         method : str, optional
@@ -594,12 +596,12 @@ class PointMesh:
 
         return results, z_diff, x_col, y_col
 
-    def diff_mesh(self, other: "PointMesh"):
+    def diff_mesh(self, other: "FocalPlaneInterpolator"):
         """Compute the difference between another mesh's points and this interpolation.
 
         Parameters
         ----------
-        other : PointMesh
+        other : FocalPlaneInterpolator
             The other mesh.
 
         Returns
@@ -655,12 +657,12 @@ class PointMesh:
         if self.interp_present:
             self.make_interpolation(self.method, self.method_val)
 
-    def merge_mesh(self, other: "PointMesh") -> None:
+    def merge_mesh(self, other: "FocalPlaneInterpolator") -> None:
         """Merge another mesh's points into this one and rebuild interpolation.
 
         Parameters
         ----------
-        other : PointMesh
+        other : FocalPlaneInterpolator
             The mesh whose points will be appended.
         """
         self.x = np.concatenate([self.x, other.x])
@@ -670,21 +672,21 @@ class PointMesh:
         if self.interp_present:
             self.make_interpolation(self.method, self.method_val)
 
-    def subtract_mesh(self, other: "PointMesh") -> "PointMesh":
+    def subtract_mesh(self, other: "FocalPlaneInterpolator") -> "FocalPlaneInterpolator":
         """Create a new mesh equal to ``self - other`` evaluated on this grid.
 
         Both meshes are evaluated on ``self``'s interpolation grid and the
-        difference is stored as the point cloud of a new ``PointMesh``
+        difference is stored as the point cloud of a new ``FocalPlaneInterpolator``
         (using ``method='grid'``).
 
         Parameters
         ----------
-        other : PointMesh
+        other : FocalPlaneInterpolator
             The mesh to subtract.
 
         Returns
         -------
-        PointMesh
+        FocalPlaneInterpolator
             New mesh with the difference values.
         """
         if self.x_grid is None:
@@ -694,7 +696,7 @@ class PointMesh:
         z_self = self.do_interp(xx, yy)
         z_other = other.do_interp(xx, yy)
         z_diff = z_self - z_other
-        return PointMesh(
+        return FocalPlaneInterpolator(
             xx, yy, z_diff,
             radius=self.radius,
             n_bins=self.n_bins,
@@ -909,6 +911,6 @@ class PointMesh:
 
     def __repr__(self) -> str:
         return (
-            f"PointMesh(npoints={self.npoints}, method='{self.method}', "
+            f"FocalPlaneInterpolator(npoints={self.npoints}, method='{self.method}', "
             f"radius={self.radius}, n_bins={self.n_bins})"
         )
