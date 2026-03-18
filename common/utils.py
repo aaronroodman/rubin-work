@@ -4,6 +4,9 @@ common/utils.py — Shared utility functions for rubin-work notebooks.
 Add reusable functions here to avoid duplicating code across notebooks.
 """
 
+import os
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -24,6 +27,61 @@ def setup_plotting(figsize=(10, 6), dpi=100, style='default'):
         'ytick.labelsize': 11,
         'figure.constrained_layout.use': True,
     })
+
+
+def detect_rsp_location():
+    """Detect which Rubin Science Platform we are running on.
+
+    Returns
+    -------
+    str
+        'summit' if on the Summit RSP (/home/aroodman/),
+        'usdf' if on the USDF RSP (/home/r/roodman/),
+        'local' otherwise.
+    """
+    home = str(Path.home())
+    if home.startswith('/home/aroodman'):
+        return 'summit'
+    elif '/roodman' in home and '/home/r/' in home:
+        return 'usdf'
+    else:
+        return 'local'
+
+
+def get_packages_dir(location=None):
+    """Return the path to the user packages directory for the given RSP location.
+
+    Parameters
+    ----------
+    location : str, optional
+        'summit', 'usdf', or 'local'. If None, auto-detected via
+        detect_rsp_location().
+
+    Returns
+    -------
+    str
+        Absolute path to the packages directory.
+
+    Raises
+    ------
+    ValueError
+        If location is 'local' (no RSP packages directory available).
+    """
+    if location is None:
+        location = detect_rsp_location()
+
+    packages_dirs = {
+        'summit': '/home/aroodman/packages',
+        'usdf': '/home/r/roodman/u/LSST/packages',
+    }
+
+    if location in packages_dirs:
+        return packages_dirs[location]
+    else:
+        raise ValueError(
+            f"No packages directory for location='{location}'. "
+            f"Set ofc_config_dir manually. Known locations: {list(packages_dirs.keys())}"
+        )
 
 
 def add_repo_root_to_path():
