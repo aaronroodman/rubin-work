@@ -14,7 +14,10 @@ BLOCK-T373: Simonyi LSSTCam FBS Field Survey: Low Ecliptic Latitude Field at Opp
 BLOCK-T375: Camera Verification: Dark Exposure Testing Stage 1
 BLOCK-T377: ASCT-004 Sensitivity Camera Hexapod
 BLOCK-T378: ASCT-004 Sensitivity M1M3 Bending
+BLOCK-T378_M1M3B12: ASCT-004 Sensitivity M1M3 Bending
+BLOCK-T378_M1M3B20: ASCT-004 Sensitivity M1M3 Bending
 BLOCK-T379: ASCT-004 Sensitivity M2 Bending
+BLOCK-T379_M2B18: ASCT-004 Sensitivity M2 Bending
 BLOCK-T380: ASCT-004 Sensitivity M2 Hexapod
 BLOCK-T381: WET-010 Reference Wavefront Generation
 BLOCK-T382: LSSTCam Super bias, 30s delay
@@ -166,3 +169,5 @@ BLOCK-T682: PTC/Electrometer Stability Test
 BLOCK-T693: Exposure Timing with Guiders roi spec disabled
 BLOCK-T694: LSSTCam stray light off-axis angular extent of brush stroke feature
 BLOCK-T698: FBS-driven closed loop stability test using MTAOS
+BLOCK-T703: FBS-driven closed loop stability test using MTAOS - Into and Out of Wind Pointings
+BLOCK-T706: FBS-driven closed loop stability test using MTAOS - Rotator Positions
