@@ -171,3 +171,7 @@ BLOCK-T694: LSSTCam stray light off-axis angular extent of brush stroke feature
 BLOCK-T698: FBS-driven closed loop stability test using MTAOS
 BLOCK-T703: FBS-driven closed loop stability test using MTAOS - Into and Out of Wind Pointings
 BLOCK-T706: FBS-driven closed loop stability test using MTAOS - Rotator Positions
+BLOCK-T707: LSSTCam Off-band LED Flats
+BLOCK-T708: Hartmann Giant Donut VMode Sensitivity
+BLOCK-T710: Investigation of High-Order Bending Modes Effects (B20 and B12)
+BLOCK-T711: Minimal LSSTCam Off-band LED Flats
