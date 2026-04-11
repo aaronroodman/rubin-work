@@ -68,8 +68,9 @@ def main():
     # Other options
     parser.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'],
                         help='Coordinate system (default: OCS)')
-    parser.add_argument('--output-dir', default='output',
-                        help='Output directory (default: output)')
+    default_output_dir = str(Path(__file__).resolve().parent.parent / 'output')
+    parser.add_argument('--output-dir', default=default_output_dir,
+                        help=f'Output directory (default: {default_output_dir})')
     parser.add_argument('--rotator-threshold', type=float, default=90.0,
                         help='Rotator angle flagging threshold in degrees')
     parser.add_argument('--fp-radius', type=float, default=1.8,
