@@ -727,8 +727,8 @@ async def get_m1m3_gradients(efd_client, visit_table):
     ).utc.isot
     data_times = pd.to_datetime(date_strings, format="ISO8601", utc=True)
     sorted_data_times = data_times.sort_values()
-    start = Time(sorted_data_times.iloc[0])
-    end = Time(sorted_data_times.iloc[-1])
+    start = Time(sorted_data_times[0])
+    end = Time(sorted_data_times[-1])
     data_times_int = data_times.astype("int64")
 
     thermocouples = ThermocoupleAnalysis(efd_client)
