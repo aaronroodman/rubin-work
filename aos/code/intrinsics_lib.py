@@ -1133,9 +1133,9 @@ async def run_mktable(
 
     # Build output filenames
     os.makedirs(output_dir, exist_ok=True)
-    output_file = (f'{output_dir}/fam_{collection_phrase}_'
+    output_file = (f'{output_dir}/{collection_phrase}_'
                    f'{day_obs_min}_{day_obs_max}.parquet')
-    visit_info_file = (f'{output_dir}/fam_{collection_phrase}_'
+    visit_info_file = (f'{output_dir}/{collection_phrase}_'
                        f'{day_obs_min}_{day_obs_max}_visits.parquet')
 
     print(f"Pipeline: {collection_phrase} {coord_sys} {day_obs_min}-{day_obs_max}")
