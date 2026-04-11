@@ -52,7 +52,7 @@ except ImportError:
 PARAM_SETS = {
     1: dict(
         day_obs_min=20250801, day_obs_max=20251028,
-        butler_repo='/repo/main', prefix='fam_danish',
+        butler_repo='/repo/main',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=[
             'u/brycek/aos_fam_danish/wep_v15_0_2/donut_viz_v2_5_0/20250801_20250831',
@@ -60,16 +60,14 @@ PARAM_SETS = {
         ],
     ),
     2: dict(
-        day_obs_min=20251020, day_obs_max=20251231,
-        butler_repo='/repo/main', prefix='fam_danish',
+        butler_repo='/repo/main',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=[
             'u/brycek/aos_fam_danish_step2/wep_v16_5_0/donut_viz_v3_2_3/20251020_20251231',
         ],
     ),
     3: dict(
-        day_obs_min=20251020, day_obs_max=20251231,
-        butler_repo='/repo/main', prefix='fam_danish',
+        butler_repo='/repo/main',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=[
             'u/brycek/aos_fam_danish/wep_v16_8_0/donut_viz_v3_5_0/match_wavefront_zernikes/20251020_20251231',
@@ -77,19 +75,18 @@ PARAM_SETS = {
     ),
     4: dict(
         day_obs_min=20260315, day_obs_max=20260317,
-        butler_repo='/repo/embargo', prefix='fam_danish',
+        butler_repo='/repo/embargo',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=['aos_fam_danish_triplets'],
     ),
     5: dict(
         day_obs_min=20260315, day_obs_max=20260317,
-        butler_repo='/repo/embargo', prefix='fam_danish_bin1',
+        butler_repo='/repo/embargo',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=['aos_fam_danish_triplets_bin_1x'],
     ),
     6: dict(
-        day_obs_min=20260325, day_obs_max=20260325,
-        butler_repo='/repo/embargo', prefix='fam_danish',
+        butler_repo='/repo/embargo',
         fam_programs=['T614', 'T710'],
         fam_collections=[
             'u/brycek/aos_fam_danish/wep_v16_9_0/donut_viz_v3_6_0/match_wavefront_zernikes/20260325',
@@ -97,13 +94,13 @@ PARAM_SETS = {
     ),
     7: dict(
         day_obs_min=20260318, day_obs_max=20260324,
-        butler_repo='/repo/embargo', prefix='fam_danish',
+        butler_repo='/repo/embargo',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=['aos_fam_danish_triplets'],
     ),
     8: dict(
         day_obs_min=20260401, day_obs_max=20260405,
-        butler_repo='/repo/embargo', prefix='fam_danish',
+        butler_repo='/repo/embargo',
         fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
         fam_collections=['aos_fam_danish_triplets'],
     ),
@@ -154,12 +151,66 @@ def derive_version_strings(collections):
     return wep_ver, dviz_ver
 
 
+def parse_collection_info(collections, include_versions=False):
+    """Parse collection name(s) to extract a filename phrase and date range.
+
+    For a simple collection like 'aos_fam_danish_triplets':
+        collection_phrase = 'aos_fam_danish_triplets', dates = (None, None)
+
+    For 'u/brycek/aos_fam_danish_step2/wep_v16_5_0/donut_viz_v3_2_3/20251020_20251231':
+        - Drop leading 'u/USERNAME/'
+        - collection_phrase = 'aos_fam_danish_step2'
+        - Optionally append version strings if include_versions=True
+        - Parse trailing YYYYMMDD_YYYYMMDD as (day_obs_min, day_obs_max)
+
+    Returns (collection_phrase, day_obs_min_or_None, day_obs_max_or_None).
+    """
+    coll = collections[0]
+    parts = coll.split('/')
+
+    # Check for u/USERNAME/... pattern
+    if len(parts) >= 3 and parts[0] == 'u':
+        # Drop u/USERNAME
+        remaining = parts[2:]
+        # First element is the collection phrase
+        collection_phrase = remaining[0] if remaining else coll
+        # Optionally include version strings
+        if include_versions and len(remaining) > 1:
+            version_parts = []
+            for p in remaining[1:]:
+                if re.match(r'wep_v[\d_]+', p) or re.match(r'donut_viz_v[\d_]+', p):
+                    version_parts.append(p.replace('donut_viz_', 'dviz_'))
+            if version_parts:
+                collection_phrase += '_' + '_'.join(version_parts)
+        # Check if last part is YYYYMMDD_YYYYMMDD or YYYYMMDD
+        last = remaining[-1] if remaining else ''
+        date_match = re.match(r'^(\d{8})_(\d{8})$', last)
+        if date_match:
+            return collection_phrase, int(date_match.group(1)), int(date_match.group(2))
+        single_date = re.match(r'^(\d{8})$', last)
+        if single_date:
+            d = int(single_date.group(1))
+            return collection_phrase, d, d
+        return collection_phrase, None, None
+    else:
+        # Simple collection name
+        return coll, None, None
+
+
 # ============================================================
 # Butler Data Extraction
 # ============================================================
 
-def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera):
+def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
+                           calc_focal_plane=False, calc_mean_zernike=False):
     """Get aggregate Zernike table for a single visit.
+
+    Parameters
+    ----------
+    calc_focal_plane : bool
+        If True, compute intra/extra focal plane coordinates (fpx, fpy).
+    calc_mean_zernike : bool
+        If True, compute per-visit mean Zernike and add as column.
 
     Returns (table, visit_meta_dict) or (None, None).
     """
@@ -222,38 +273,38 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera):
     else:
         aosTable_sel['blur'] = np.nan
 
-    # Focal plane coordinates
-    nstars = len(aosTable_sel)
-    intra_fpx = np.zeros(nstars)
-    intra_fpy = np.zeros(nstars)
-    extra_fpx = np.zeros(nstars)
-    extra_fpy = np.zeros(nstars)
+    # Focal plane coordinates (optional, expensive per-detector loop)
+    if calc_focal_plane:
+        nstars = len(aosTable_sel)
+        intra_fpx = np.zeros(nstars)
+        intra_fpy = np.zeros(nstars)
+        extra_fpx = np.zeros(nstars)
+        extra_fpy = np.zeros(nstars)
 
-    for detector in camera:
-        selone = (aosTable_sel['detector'] == detector.getName())
-        if not np.any(selone):
-            continue
+        for detector in camera:
+            selone = (aosTable_sel['detector'] == detector.getName())
+            if not np.any(selone):
+                continue
 
-        x_one = aosTable_sel[selone]['centroid_x_intra']
-        y_one = aosTable_sel[selone]['centroid_y_intra']
-        fpx_one, fpy_one = pixel_to_focal(x_one, y_one, detector)
-        intra_fpx[selone] = fpx_one
-        intra_fpy[selone] = fpy_one
+            x_one = aosTable_sel[selone]['centroid_x_intra']
+            y_one = aosTable_sel[selone]['centroid_y_intra']
+            fpx_one, fpy_one = pixel_to_focal(x_one, y_one, detector)
+            intra_fpx[selone] = fpx_one
+            intra_fpy[selone] = fpy_one
 
-        x_one = aosTable_sel[selone]['centroid_x_extra']
-        y_one = aosTable_sel[selone]['centroid_y_extra']
-        fpx_one, fpy_one = pixel_to_focal(x_one, y_one, detector)
-        extra_fpx[selone] = fpx_one
-        extra_fpy[selone] = fpy_one
+            x_one = aosTable_sel[selone]['centroid_x_extra']
+            y_one = aosTable_sel[selone]['centroid_y_extra']
+            fpx_one, fpy_one = pixel_to_focal(x_one, y_one, detector)
+            extra_fpx[selone] = fpx_one
+            extra_fpy[selone] = fpy_one
 
-    aosTable_sel['intra_fpx'] = intra_fpx
-    aosTable_sel['intra_fpy'] = intra_fpy
-    aosTable_sel['extra_fpx'] = extra_fpx
-    aosTable_sel['extra_fpy'] = extra_fpy
+        aosTable_sel['intra_fpx'] = intra_fpx
+        aosTable_sel['intra_fpy'] = intra_fpy
+        aosTable_sel['extra_fpx'] = extra_fpx
+        aosTable_sel['extra_fpy'] = extra_fpy
 
     # Coordinate system column names
     zk_col = f'zk_{coord_sys}'
-    zk_mean_col = f'zk_{coord_sys}_mean'
     thx_intra_col = f'thx_{coord_sys}_intra'
     thx_extra_col = f'thx_{coord_sys}_extra'
     thy_intra_col = f'thy_{coord_sys}_intra'
@@ -264,17 +315,20 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera):
     matched_intra_extra = (thx_diff < 100.0) & (thy_diff < 100.0)
     aosTable_sel['matched_intra_extra'] = matched_intra_extra
 
-    values_array = np.stack(aosTable_sel[zk_col])
-    mean_values = np.mean(values_array, axis=0)
-
-    npts = len(aosTable_sel)
-    aosTable_sel[zk_mean_col] = [mean_values for _ in range(npts)]
+    # Per-visit mean Zernike (optional)
+    if calc_mean_zernike:
+        zk_mean_col = f'zk_{coord_sys}_mean'
+        values_array = np.stack(aosTable_sel[zk_col])
+        mean_values = np.mean(values_array, axis=0)
+        npts = len(aosTable_sel)
+        aosTable_sel[zk_mean_col] = [mean_values for _ in range(npts)]
 
     return aosTable_sel, visit_meta
 
 
 def get_zernikes_from_visits(visit_pairs, collections, butler_repo, coord_sys,
-                             camera):
+                             camera, calc_focal_plane=False,
+                             calc_mean_zernike=False):
     """Get aggregate Zernikes for a list of (day_obs, seq_num) pairs.
 
     Returns (aosTable, visit_info_table) or (None, None).
@@ -292,7 +346,9 @@ def get_zernikes_from_visits(visit_pairs, collections, butler_repo, coord_sys,
     print(f"\nExtracting Zernikes for {len(visit_pairs)} visits...")
     for day_obs_val, seq_num in tqdm(visit_pairs):
         agg_zern, visit_meta = get_aggregate_zernikes(
-            butler, day_obs_val, seq_num, coord_sys, camera)
+            butler, day_obs_val, seq_num, coord_sys, camera,
+            calc_focal_plane=calc_focal_plane,
+            calc_mean_zernike=calc_mean_zernike)
         if agg_zern is None:
             error_count += 1
             continue
@@ -996,10 +1052,11 @@ def drop_unwanted_columns(aosTable):
 async def run_mktable(
     butler_repo,
     fam_collections,
-    day_obs_min,
-    day_obs_max,
-    fam_programs,
-    prefix='fam_danish',
+    day_obs_min=None,
+    day_obs_max=None,
+    fam_programs=None,
+    collection_phrase=None,
+    include_versions=False,
     coord_sys='OCS',
     output_dir='output',
     rotator_threshold=DEFAULT_ROTATOR_THRESHOLD,
@@ -1008,10 +1065,31 @@ async def run_mktable(
     intrinsic_band=None,
     min_visits_per_day=DEFAULT_MIN_VISITS_PER_DAY,
     include_thermal=True,
+    calc_intrinsics=False,
+    calc_mean_zernike=False,
+    calc_focal_plane=False,
     temp_time_window_sec=DEFAULT_TEMP_TIME_WINDOW_SEC,
     consdb_url=DEFAULT_CONSDB_URL,
+    # Legacy support
+    prefix=None,
 ):
-    """Run the full intrinsic Zernike table-building pipeline.
+    """Run the full Zernike table-building pipeline.
+
+    Parameters
+    ----------
+    collection_phrase : str, optional
+        Override for output filename phrase. If None, auto-parsed from
+        collection name.
+    include_versions : bool
+        If True, include wep/dviz version strings in the output filename.
+    calc_intrinsics : bool
+        If True, compute intrinsic Zernike model and residuals.
+    calc_mean_zernike : bool
+        If True, compute per-visit mean Zernike columns.
+    calc_focal_plane : bool
+        If True, compute focal plane coordinates (fpx, fpy).
+    prefix : str, optional
+        Deprecated; use collection_phrase instead.
 
     Returns (aosTable, visit_info) or (None, None).
     """
@@ -1035,17 +1113,36 @@ async def run_mktable(
     if intrinsic_band is None:
         intrinsic_band = BandLabel.LSST_I
 
-    # Derive version strings and output filenames
-    wep_ver, dviz_ver = derive_version_strings(fam_collections)
+    # Parse collection info for output naming and default date range
+    parsed_phrase, parsed_min, parsed_max = parse_collection_info(
+        fam_collections, include_versions=include_versions)
+
+    # Resolve collection_phrase: explicit > legacy prefix > auto-parsed
+    if collection_phrase is None:
+        collection_phrase = prefix if prefix is not None else parsed_phrase
+
+    # Resolve day_obs range: explicit > auto-parsed from collection
+    if day_obs_min is None:
+        day_obs_min = parsed_min
+    if day_obs_max is None:
+        day_obs_max = parsed_max
+    if day_obs_min is None or day_obs_max is None:
+        raise ValueError(
+            "day_obs_min and day_obs_max must be specified (either explicitly "
+            "or parseable from collection name)")
+
+    # Build output filenames
     os.makedirs(output_dir, exist_ok=True)
-    output_file = (f'{output_dir}/{prefix}_zernikes_{wep_ver}_{dviz_ver}_'
+    output_file = (f'{output_dir}/fam_{collection_phrase}_'
                    f'{day_obs_min}_{day_obs_max}.parquet')
-    visit_info_file = (f'{output_dir}/{prefix}_zernikes_{wep_ver}_{dviz_ver}_'
+    visit_info_file = (f'{output_dir}/fam_{collection_phrase}_'
                        f'{day_obs_min}_{day_obs_max}_visits.parquet')
 
-    print(f"Pipeline: {prefix} {coord_sys} {day_obs_min}-{day_obs_max}")
+    print(f"Pipeline: {collection_phrase} {coord_sys} {day_obs_min}-{day_obs_max}")
     print(f"  Butler: {butler_repo}")
     print(f"  Collections: {fam_collections}")
+    print(f"  Options: intrinsics={calc_intrinsics}, mean_zk={calc_mean_zernike}, "
+          f"fp_coords={calc_focal_plane}, thermal={include_thermal}")
     print(f"  Output: {output_file}")
 
     # Query ConsDB for visits
@@ -1080,26 +1177,30 @@ async def run_mktable(
     rotator_df = await get_rotator_data(
         visits, visit_pairs, butler_repo, rotator_threshold)
 
-    # Generate intrinsic wavefront model
-    print("\nGenerating intrinsic wavefront model...")
-    xbins = np.linspace(-fp_radius, fp_radius, fp_nsteps)
-    ybins = np.linspace(-fp_radius, fp_radius, fp_nsteps)
-    X_model, Y_model, zkIntrinsics_model = get_intrinsic_map(
-        xbins, ybins, camera_id_map, band=intrinsic_band)
-    print(f"Generated intrinsic model at {len(X_model)} points")
+    # Generate intrinsic wavefront model (optional)
+    if calc_intrinsics:
+        print("\nGenerating intrinsic wavefront model...")
+        xbins = np.linspace(-fp_radius, fp_radius, fp_nsteps)
+        ybins = np.linspace(-fp_radius, fp_radius, fp_nsteps)
+        X_model, Y_model, zkIntrinsics_model = get_intrinsic_map(
+            xbins, ybins, camera_id_map, band=intrinsic_band)
+        print(f"Generated intrinsic model at {len(X_model)} points")
 
-    intrinsic_interpolators = create_intrinsic_interpolators(
-        X_model, Y_model, zkIntrinsics_model)
-    print(f"Created interpolators for {len(intrinsic_interpolators)} Zernike terms")
+        intrinsic_interpolators = create_intrinsic_interpolators(
+            X_model, Y_model, zkIntrinsics_model)
+        print(f"Created interpolators for {len(intrinsic_interpolators)} Zernike terms")
 
     # Extract Zernikes from Butler
     aosTable, visit_info = get_zernikes_from_visits(
-        visit_pairs, fam_collections, butler_repo, coord_sys, camera)
+        visit_pairs, fam_collections, butler_repo, coord_sys, camera,
+        calc_focal_plane=calc_focal_plane,
+        calc_mean_zernike=calc_mean_zernike)
     if aosTable is None:
         return None, None
 
-    # Add intrinsic model
-    aosTable = add_intrinsic_zernikes(aosTable, intrinsic_interpolators, coord_sys)
+    # Add intrinsic model (optional)
+    if calc_intrinsics:
+        aosTable = add_intrinsic_zernikes(aosTable, intrinsic_interpolators, coord_sys)
 
     # Add rotator data
     aosTable, visit_info = merge_rotator_to_tables(

@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""Build intrinsic Zernike tables from Rubin AOS FAM observations.
+"""Build Zernike wavefront tables from Rubin AOS FAM observations.
 
 Usage:
-    python run_mktable.py --param-set 4
-    python run_mktable.py --param-set 4 --no-thermal
+    # Use a predefined parameter set (dates auto-parsed from collection)
+    python run_mktable.py --param-set 2
+
+    # Override date range for a large collection
+    python run_mktable.py --param-set 4 --day-obs-min 20260315 --day-obs-max 20260316
+
+    # Full manual specification
     python run_mktable.py --butler-repo /repo/embargo \
         --collections aos_fam_danish_triplets \
         --day-obs-min 20260315 --day-obs-max 20260317 \
         --programs T278 T381 T492 T539 T614
+
+    # Enable optional computations
+    python run_mktable.py --param-set 4 --calc-intrinsics --calc-focal-plane
 """
 
 import argparse
@@ -21,7 +29,7 @@ from intrinsics_lib import run_mktable, PARAM_SETS
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Build intrinsic Zernike tables from FAM observations.')
+        description='Build Zernike wavefront tables from FAM observations.')
 
     # Option A: use a named parameter set
     parser.add_argument('--param-set', type=int, default=None,
@@ -34,15 +42,30 @@ def main():
     parser.add_argument('--collections', nargs='+', default=None,
                         help='Butler collection(s)')
     parser.add_argument('--day-obs-min', type=int, default=None,
-                        help='Minimum day_obs (e.g. 20260315)')
+                        help='Minimum day_obs (e.g. 20260315); auto-parsed '
+                             'from collection if not specified')
     parser.add_argument('--day-obs-max', type=int, default=None,
-                        help='Maximum day_obs (e.g. 20260317)')
+                        help='Maximum day_obs (e.g. 20260317); auto-parsed '
+                             'from collection if not specified')
     parser.add_argument('--programs', nargs='+', default=None,
                         help='Science program names (e.g. T278 T381)')
 
-    # Optional overrides
-    parser.add_argument('--prefix', default=None,
-                        help='Output filename prefix (default: from param set)')
+    # Output naming
+    parser.add_argument('--collection-phrase', default=None,
+                        help='Override output filename phrase (auto-parsed '
+                             'from collection if not specified)')
+    parser.add_argument('--include-versions', action='store_true',
+                        help='Include wep/dviz versions in output filename')
+
+    # Optional computations (all off by default)
+    parser.add_argument('--calc-intrinsics', action='store_true',
+                        help='Compute intrinsic Zernike model and residuals')
+    parser.add_argument('--calc-mean-zernike', action='store_true',
+                        help='Compute per-visit mean Zernike columns')
+    parser.add_argument('--calc-focal-plane', action='store_true',
+                        help='Compute focal plane coordinates (fpx, fpy)')
+
+    # Other options
     parser.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'],
                         help='Coordinate system (default: OCS)')
     parser.add_argument('--output-dir', default='output',
@@ -62,7 +85,7 @@ def main():
     parser.add_argument('--consdb-url',
                         default='https://usdf-rsp.slac.stanford.edu/consdb',
                         help='ConsDB URL (default: external USDF URL; '
-                             'token read from ACCESS_TOKEN env var)')
+                             'token read from ~/.lsst/consdb_token)')
 
     args = parser.parse_args()
 
@@ -83,30 +106,29 @@ def main():
             params['day_obs_max'] = args.day_obs_max
         if args.programs is not None:
             params['fam_programs'] = args.programs
-        if args.prefix is not None:
-            params['prefix'] = args.prefix
     else:
-        if not all([args.butler_repo, args.collections,
-                    args.day_obs_min, args.day_obs_max, args.programs]):
-            parser.error("Must specify --param-set OR all of: "
-                         "--butler-repo, --collections, --day-obs-min, "
-                         "--day-obs-max, --programs")
+        if not all([args.butler_repo, args.collections, args.programs]):
+            parser.error("Must specify --param-set OR at least: "
+                         "--butler-repo, --collections, --programs "
+                         "(dates can be auto-parsed from collection name)")
         params = dict(
             butler_repo=args.butler_repo,
             fam_collections=args.collections,
-            day_obs_min=args.day_obs_min,
-            day_obs_max=args.day_obs_max,
             fam_programs=args.programs,
-            prefix=args.prefix or 'fam_danish',
         )
+        if args.day_obs_min is not None:
+            params['day_obs_min'] = args.day_obs_min
+        if args.day_obs_max is not None:
+            params['day_obs_max'] = args.day_obs_max
 
     asyncio.run(run_mktable(
         butler_repo=params['butler_repo'],
         fam_collections=params['fam_collections'],
-        day_obs_min=params['day_obs_min'],
-        day_obs_max=params['day_obs_max'],
         fam_programs=params['fam_programs'],
-        prefix=params['prefix'],
+        day_obs_min=params.get('day_obs_min'),
+        day_obs_max=params.get('day_obs_max'),
+        collection_phrase=args.collection_phrase,
+        include_versions=args.include_versions,
         coord_sys=args.coord_sys,
         output_dir=args.output_dir,
         rotator_threshold=args.rotator_threshold,
@@ -114,6 +136,9 @@ def main():
         fp_nsteps=args.fp_nsteps,
         min_visits_per_day=args.min_visits_per_day,
         include_thermal=not args.no_thermal,
+        calc_intrinsics=args.calc_intrinsics,
+        calc_mean_zernike=args.calc_mean_zernike,
+        calc_focal_plane=args.calc_focal_plane,
         temp_time_window_sec=args.temp_time_window,
         consdb_url=args.consdb_url,
     ))
