@@ -1022,6 +1022,8 @@ async def run_mktable(
 
     camera = LsstCam.getCamera()
     camera_id_map = camera.getIdMap()
+    if consdb_url is None:
+        consdb_url = DEFAULT_CONSDB_URL
     consdb_client = ConsDbClient(consdb_url)
 
     if intrinsic_band is None:
