@@ -1024,6 +1024,12 @@ async def run_mktable(
     camera_id_map = camera.getIdMap()
     if consdb_url is None:
         consdb_url = DEFAULT_CONSDB_URL
+    # If using an external URL, embed token from ~/.lsst/consdb_token
+    if "@" not in consdb_url and "consdb-pq.consdb" not in consdb_url:
+        token_file = Path.home() / ".lsst" / "consdb_token"
+        if token_file.exists():
+            token = token_file.read_text().strip()
+            consdb_url = consdb_url.replace("://", f"://user:{token}@", 1)
     consdb_client = ConsDbClient(consdb_url)
 
     if intrinsic_band is None:

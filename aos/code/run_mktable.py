@@ -59,10 +59,10 @@ def main():
                         help='Skip thermal data retrieval')
     parser.add_argument('--temp-time-window', type=float, default=0.2,
                         help='EFD temperature query post-padding (seconds)')
-    parser.add_argument('--consdb-url', default=None,
-                        help='ConsDB URL (default: Kubernetes-internal URL; '
-                             'use http://usdf-rsp.slac.stanford.edu/consdb '
-                             'from outside RSP pods)')
+    parser.add_argument('--consdb-url',
+                        default='https://usdf-rsp.slac.stanford.edu/consdb',
+                        help='ConsDB URL (default: external USDF URL; '
+                             'token read from ACCESS_TOKEN env var)')
 
     args = parser.parse_args()
 
