@@ -2,6 +2,7 @@
 """Quick test of M1M3 thermal gradient retrieval from command line."""
 
 import asyncio
+import os
 import numpy as np
 import pandas as pd
 from astropy.time import Time
@@ -22,80 +23,82 @@ except ImportError as e:
     print(f"   makeEfdClient: FAILED - {e}")
     raise SystemExit(1)
 
+try:
+    from lsst_efd_client import EfdClient
+    print("   EfdClient: OK")
+except ImportError as e:
+    print(f"   EfdClient: FAILED - {e}")
+
 
 async def test_gradients():
-    # Use a known good time range (one FAM visit on 20260315)
     start = Time("2025-03-16T03:00:00", scale="utc")
     end = Time("2025-03-16T04:00:00", scale="utc")
 
     print(f"\n2. Creating EFD client...")
     efd_client = makeEfdClient()
-    print(f"   EFD client: {type(efd_client)}")
+    print(f"   EFD client type: {type(efd_client)}")
 
-    print(f"\n3. Testing raw EFD query (thermocouple topic)...")
+    # Check what instance/URL the client is using
+    for attr in ['_url', 'url', '_client', 'influx_client', '_db']:
+        if hasattr(efd_client, attr):
+            print(f"   {attr}: {getattr(efd_client, attr)}")
+
+    # Check environment variables that might affect EFD connection
+    for var in ['EFD_ENDPOINT', 'LSST_EFD_ENDPOINT', 'EFD_HOST',
+                'LSST_DDS_PARTITION_PREFIX']:
+        val = os.environ.get(var)
+        if val:
+            print(f"   env {var}: {val}")
+
+    print(f"\n3. Listing available topics (first 5 matching MTM1M3)...")
+    try:
+        topics = await efd_client.get_topics()
+        m1m3_topics = [t for t in topics if 'MTM1M3' in t]
+        print(f"   Total topics: {len(topics)}, MTM1M3 topics: {len(m1m3_topics)}")
+        for t in m1m3_topics[:10]:
+            print(f"     {t}")
+    except Exception as e:
+        print(f"   get_topics: FAILED - {type(e).__name__}: {e}")
+
+    print(f"\n4. Testing simple EFD query (ESS temperature, known working)...")
+    try:
+        data = await efd_client.select_time_series(
+            "lsst.sal.ESS.temperature",
+            ["temperatureItem0"], start, end,
+            index=113,
+        )
+        if data is not None and len(data) > 0:
+            print(f"   ESS query: OK, {len(data)} rows")
+        else:
+            print("   ESS query: returned no data")
+    except Exception as e:
+        print(f"   ESS query: FAILED - {type(e).__name__}: {e}")
+
+    print(f"\n5. Testing thermocouple topic query...")
     try:
         data = await efd_client.select_time_series(
             "lsst.sal.MTM1M3TS.thermocoupleScannerInfo",
             [], start, end,
         )
         if data is not None and len(data) > 0:
-            print(f"   Raw query: OK, {len(data)} rows")
+            print(f"   Thermocouple query: OK, {len(data)} rows")
         else:
-            print("   Raw query: returned no data")
+            print("   Thermocouple query: returned no data")
     except Exception as e:
-        print(f"   Raw query: FAILED - {type(e).__name__}: {e}")
+        print(f"   Thermocouple query: FAILED - {type(e).__name__}: {e}")
 
-    print(f"\n4. Testing ThermocoupleAnalysis.load()...")
+    print(f"\n6. Testing ThermocoupleAnalysis.load()...")
     try:
         tc = ThermocoupleAnalysis(efd_client)
         await tc.load(start, end, time_bin=30)
         gradients = tc.xyz_r_gradients
-        print(f"   load: OK, {len(gradients)} gradient rows")
-        print(f"   columns: {list(gradients.columns)}")
-        print(f"   index type: {type(gradients.index)}")
-        if len(gradients) > 0:
-            print(f"   first row: {gradients.iloc[0].to_dict()}")
+        if gradients is not None:
+            print(f"   load: OK, {len(gradients)} gradient rows")
+        else:
+            print("   load: returned None (no data or query failed silently)")
     except Exception as e:
         import traceback
         print(f"   load: FAILED - {type(e).__name__}: {e}")
-        traceback.print_exc()
-
-    print(f"\n5. Testing full interpolation pipeline...")
-    try:
-        # Simulate a visit_table with one obs_start
-        visit_table = pd.DataFrame({
-            "obs_start": ["2025-03-16T03:30:00"],
-            "day_obs": [20250316],
-            "seq_num": [100],
-        })
-        date_strings = Time(
-            [str(x) for x in visit_table["obs_start"].values],
-            format="isot", scale="tai"
-        ).utc.isot
-        data_times = pd.to_datetime(date_strings, format="ISO8601", utc=True)
-        sorted_data_times = data_times.sort_values()
-        print(f"   sorted_data_times type: {type(sorted_data_times)}")
-        print(f"   [0] access: {sorted_data_times[0]}")
-        print(f"   [-1] access: {sorted_data_times[-1]}")
-
-        grad_times = pd.to_datetime(
-            gradients.index, format="ISO8601", utc=True
-        ).astype("int64")
-        data_times_int = data_times.astype("int64")
-        t0 = grad_times[0]
-        grad_times_norm = (grad_times - t0) / 1e9
-        data_times_norm = (data_times_int - t0) / 1e9
-
-        for name in ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]:
-            values = gradients[name].values
-            val_interp = pd.Series(values).interpolate().values
-            result = np.interp(data_times_norm, grad_times_norm, val_interp)
-            print(f"   {name}: {result[0]:.4f}")
-
-        print("   Interpolation: OK")
-    except Exception as e:
-        import traceback
-        print(f"   Interpolation: FAILED - {type(e).__name__}: {e}")
         traceback.print_exc()
 
 
