@@ -2,14 +2,15 @@
 
 Extracts aggregate Zernike data from the LSST Butler, computes intrinsic
 wavefront models, retrieves rotator angles and thermal data, and saves
-the results as parquet files.
+the results as HDF5 files.
 
 Usage from notebook:
     from intrinsics_lib import run_mktable, PARAM_SETS
-    aosTable, visit_info = await run_mktable(**PARAM_SETS[4], coord_sys='OCS')
+    params = PARAM_SETS['fam_danish_triplets']
+    aosTable, visit_info = await run_mktable(**params, coord_sys='OCS')
 
 Usage from CLI:
-    python run_mktable.py --param-set 4
+    python run_mktable.py --param-set fam_danish_triplets
 """
 
 import os
@@ -46,65 +47,51 @@ except ImportError:
 
 
 # ============================================================
-# Parameter Sets
+# Parameter Sets (loaded from param_sets.yaml)
 # ============================================================
 
-PARAM_SETS = {
-    1: dict(
-        day_obs_min=20250801, day_obs_max=20251028,
-        butler_repo='/repo/main',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=[
-            'u/brycek/aos_fam_danish/wep_v15_0_2/donut_viz_v2_5_0/20250801_20250831',
-            'u/brycek/aos_fam_danish/wep_v15_0_2/donut_viz_v2_5_0/20250901_20251028',
-        ],
-    ),
-    2: dict(
-        butler_repo='/repo/main',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=[
-            'u/brycek/aos_fam_danish_step2/wep_v16_5_0/donut_viz_v3_2_3/20251020_20251231',
-        ],
-    ),
-    3: dict(
-        butler_repo='/repo/main',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=[
-            'u/brycek/aos_fam_danish/wep_v16_8_0/donut_viz_v3_5_0/match_wavefront_zernikes/20251020_20251231',
-        ],
-    ),
-    4: dict(
-        day_obs_min=20260315, day_obs_max=20260317,
-        butler_repo='/repo/embargo',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=['aos_fam_danish_triplets'],
-    ),
-    5: dict(
-        day_obs_min=20260315, day_obs_max=20260317,
-        butler_repo='/repo/embargo',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=['aos_fam_danish_triplets_bin_1x'],
-    ),
-    6: dict(
-        butler_repo='/repo/embargo',
-        fam_programs=['T614', 'T710'],
-        fam_collections=[
-            'u/brycek/aos_fam_danish/wep_v16_9_0/donut_viz_v3_6_0/match_wavefront_zernikes/20260325',
-        ],
-    ),
-    7: dict(
-        day_obs_min=20260318, day_obs_max=20260324,
-        butler_repo='/repo/embargo',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=['aos_fam_danish_triplets'],
-    ),
-    8: dict(
-        day_obs_min=20260401, day_obs_max=20260405,
-        butler_repo='/repo/embargo',
-        fam_programs=['T278', 'T381', 'T492', 'T539', 'T614'],
-        fam_collections=['aos_fam_danish_triplets'],
-    ),
-}
+def load_param_sets(yaml_path=None):
+    """Load parameter sets from param_sets.yaml.
+
+    Parameters
+    ----------
+    yaml_path : str or Path, optional
+        Path to param_sets.yaml. Default: aos/param_sets.yaml
+        (auto-detected relative to this file or cwd).
+
+    Returns
+    -------
+    param_sets : dict
+        Mapping of name -> dict with butler_repo, fam_collections, etc.
+    """
+    import yaml
+    if yaml_path is None:
+        # Try relative to this file first, then cwd
+        candidates = [
+            Path(__file__).resolve().parent.parent / 'param_sets.yaml',
+            Path('param_sets.yaml'),
+        ]
+        for c in candidates:
+            if c.exists():
+                yaml_path = c
+                break
+        else:
+            raise FileNotFoundError(
+                "param_sets.yaml not found. Expected in aos/ directory.")
+    yaml_path = Path(yaml_path)
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f)
+    # Strip 'description' key — not a pipeline parameter
+    for name, cfg in data.items():
+        cfg.pop('description', None)
+    return data
+
+
+# Load at import time for backward compatibility
+try:
+    PARAM_SETS = load_param_sets()
+except FileNotFoundError:
+    PARAM_SETS = {}
 
 
 # ============================================================

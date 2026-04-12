@@ -2,11 +2,11 @@
 """Build Zernike wavefront tables from Rubin AOS FAM observations.
 
 Usage:
-    # Use a predefined parameter set (dates auto-parsed from collection)
-    python run_mktable.py --param-set 2
+    # Use a named parameter set (from param_sets.yaml)
+    python run_mktable.py --param-set fam_danish_triplets
 
     # Override date range for a large collection
-    python run_mktable.py --param-set 4 --day-obs-min 20260315 --day-obs-max 20260316
+    python run_mktable.py --param-set fam_danish_triplets --day-obs-min 20260315 --day-obs-max 20260316
 
     # Full manual specification
     python run_mktable.py --butler-repo /repo/embargo \
@@ -15,7 +15,7 @@ Usage:
         --programs T278 T381 T492 T539 T614
 
     # Enable optional computations
-    python run_mktable.py --param-set 4 --calc-intrinsics --calc-focal-plane
+    python run_mktable.py --param-set fam_danish_triplets --calc-intrinsics --calc-focal-plane
 """
 
 import argparse
@@ -24,17 +24,17 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from intrinsics_lib import run_mktable, PARAM_SETS
+from intrinsics_lib import run_mktable, load_param_sets
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Build Zernike wavefront tables from FAM observations.')
 
-    # Option A: use a named parameter set
-    parser.add_argument('--param-set', type=int, default=None,
-                        help=f'Use a predefined parameter set '
-                             f'({", ".join(str(k) for k in sorted(PARAM_SETS))})')
+    # Option A: use a named parameter set from param_sets.yaml
+    parser.add_argument('--param-set', default=None,
+                        help='Use a named parameter set from param_sets.yaml '
+                             '(e.g. fam_danish_triplets)')
 
     # Option B: specify everything directly
     parser.add_argument('--butler-repo', default=None,
@@ -92,10 +92,11 @@ def main():
 
     # Resolve parameters
     if args.param_set is not None:
-        if args.param_set not in PARAM_SETS:
+        param_sets = load_param_sets()
+        if args.param_set not in param_sets:
             parser.error(f"Unknown param-set: {args.param_set}. "
-                         f"Available: {sorted(PARAM_SETS.keys())}")
-        params = dict(PARAM_SETS[args.param_set])
+                         f"Available: {sorted(param_sets.keys())}")
+        params = dict(param_sets[args.param_set])
         # Allow CLI overrides
         if args.butler_repo is not None:
             params['butler_repo'] = args.butler_repo
