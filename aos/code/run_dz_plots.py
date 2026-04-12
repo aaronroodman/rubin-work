@@ -75,8 +75,12 @@ def main():
     iZs_plot_12 = iZs[:12]
     iZs_plot_hi = iZs[12:]
 
-    # Output directory
-    output_dir = args.output_dir or str(Path(args.fit_file).parent)
+    # Output directory: default to output/{input_stem}/
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        input_stem = Path(args.input_file).stem
+        output_dir = str(Path(args.input_file).parent / input_stem)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Filter to matched donuts
