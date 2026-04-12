@@ -60,7 +60,24 @@ async def test_gradients():
     except Exception as e:
         print(f"   get_topics: FAILED - {type(e).__name__}: {e}")
 
-    print(f"\n4. Testing simple EFD query (ESS temperature, known working)...")
+    print(f"\n4. Testing EFD queries...")
+
+    # 4a. Simple query without index
+    print("   4a. ESS temperature, no index filter...")
+    try:
+        data = await efd_client.select_time_series(
+            "lsst.sal.ESS.temperature",
+            ["temperatureItem0"], start, end,
+        )
+        if data is not None and len(data) > 0:
+            print(f"       OK, {len(data)} rows")
+        else:
+            print("       returned no data")
+    except Exception as e:
+        print(f"       FAILED - {type(e).__name__}: {e}")
+
+    # 4b. With index (as used in pipeline)
+    print("   4b. ESS temperature, index=113 (M1M3)...")
     try:
         data = await efd_client.select_time_series(
             "lsst.sal.ESS.temperature",
@@ -68,11 +85,30 @@ async def test_gradients():
             index=113,
         )
         if data is not None and len(data) > 0:
-            print(f"   ESS query: OK, {len(data)} rows")
+            print(f"       OK, {len(data)} rows")
         else:
-            print("   ESS query: returned no data")
+            print("       returned no data")
     except Exception as e:
-        print(f"   ESS query: FAILED - {type(e).__name__}: {e}")
+        print(f"       FAILED - {type(e).__name__}: {e}")
+
+    # 4c. Check what the client does with index parameter
+    print(f"   4c. EFD client details:")
+    print(f"       select_time_series signature: "
+          f"{efd_client.select_time_series.__doc__[:200] if efd_client.select_time_series.__doc__ else 'no docstring'}")
+
+    # 4d. Try MTRotator (known working in pipeline)
+    print("   4d. MTRotator.rotation (used for rotator angles)...")
+    try:
+        data = await efd_client.select_time_series(
+            "lsst.sal.MTRotator.rotation",
+            ["actualPosition"], start, end,
+        )
+        if data is not None and len(data) > 0:
+            print(f"       OK, {len(data)} rows")
+        else:
+            print("       returned no data")
+    except Exception as e:
+        print(f"       FAILED - {type(e).__name__}: {e}")
 
     print(f"\n5. Testing thermocouple topic query...")
     try:
