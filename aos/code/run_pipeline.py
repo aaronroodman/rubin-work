@@ -154,6 +154,11 @@ def build_command(run_name, step, resolved):
         raise ValueError(f'Unknown step: {step}')
 
 
+def step_log_path(run_name, step):
+    """Path to the per-step output log file."""
+    return LOG_FILE.parent / f'{run_name}_{step}.log'
+
+
 def run_step(run_name, step, resolved, data, dry_run=False):
     """Execute one pipeline step, updating status in runs.yaml."""
     cmd = build_command(run_name, step, resolved)
@@ -169,22 +174,39 @@ def run_step(run_name, step, resolved, data, dry_run=False):
     data['runs'][run_name]['steps'][step] = 'running'
     save_runs(data)
 
+    # Capture output to per-step log file while also printing to stdout
+    step_log = step_log_path(run_name, step)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
     t0 = time.time()
     try:
-        result = subprocess.run(cmd, capture_output=False)
+        with open(step_log, 'w') as f:
+            f.write(f'# {run_name}.{step}\n')
+            f.write(f'# {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+            f.write(f'# {cmd_str}\n\n')
+            f.flush()
+            # Tee output to both file and stdout
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1)
+            for line in proc.stdout:
+                sys.stdout.write(line)
+                f.write(line)
+            proc.wait()
+
         elapsed = time.time() - t0
         elapsed_str = format_duration(elapsed)
 
-        if result.returncode == 0:
+        if proc.returncode == 0:
             data['runs'][run_name]['steps'][step] = 'done'
             save_runs(data)
-            log(f'{run_name}.{step}: DONE ({elapsed_str})')
+            log(f'{run_name}.{step}: DONE ({elapsed_str}) — log: {step_log}')
             return True
         else:
             data['runs'][run_name]['steps'][step] = 'failed'
             save_runs(data)
-            log(f'{run_name}.{step}: FAILED exit={result.returncode} '
-                f'({elapsed_str})')
+            log(f'{run_name}.{step}: FAILED exit={proc.returncode} '
+                f'({elapsed_str}) — log: {step_log}')
             return False
 
     except Exception as e:
