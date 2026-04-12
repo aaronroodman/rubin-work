@@ -283,8 +283,11 @@ def _build_pointing_groups(fit_table_day, visit_info, bin_size=3.0,
         if key in vi_lookup:
             az, alt, rot = vi_lookup[key]
             az_wrapped = ((az + 180) % 360) - 180
-            gkey = (round(alt / bin_size) * bin_size,
-                    round(rot / bin_size) * bin_size)
+            if np.isnan(alt) or np.isnan(rot):
+                gkey = (np.nan, np.nan)
+            else:
+                gkey = (round(alt / bin_size) * bin_size,
+                        round(rot / bin_size) * bin_size)
         else:
             az, alt, rot = np.nan, np.nan, np.nan
             gkey = (np.nan, np.nan)
