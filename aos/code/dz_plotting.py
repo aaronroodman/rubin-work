@@ -258,12 +258,22 @@ def _build_pointing_groups(fit_table_day, visit_info, bin_size=3.0,
     ft_dobs = np.array(fit_table_day['day_obs'])
     ft_snum = np.array(fit_table_day['seq_num'])
 
+    # Check if pointing columns exist
+    has_alt = 'alt' in visit_info.colnames
+    has_rot = 'rotAngle' in visit_info.colnames
+
+    if not has_alt:
+        # No pointing info — put everything in one group
+        group_indices = {(0, 0): list(range(len(fit_table_day)))}
+        group_labels = {(0, 0): 'all'}
+        return group_indices, group_labels
+
     vi_lookup = {}
     vi_dobs = np.array(visit_info['day_obs'])
     vi_snum = np.array(visit_info['seq_num'])
-    vi_az = np.array(visit_info['az'])
+    vi_az = np.array(visit_info['az']) if 'az' in visit_info.colnames else np.full(len(visit_info), np.nan)
     vi_alt = np.array(visit_info['alt'])
-    vi_rot = np.array(visit_info['rotAngle'])
+    vi_rot = np.array(visit_info['rotAngle']) if has_rot else np.full(len(visit_info), np.nan)
     for i in range(len(visit_info)):
         vi_lookup[(int(vi_dobs[i]), int(vi_snum[i]))] = (
             float(vi_az[i]), float(vi_alt[i]), float(vi_rot[i]))

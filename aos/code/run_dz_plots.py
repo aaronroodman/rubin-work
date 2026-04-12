@@ -189,11 +189,12 @@ def main():
                 key = (int(row['day_obs']), int(row['seq_num']))
                 band_lookup[key] = str(row['band'])
                 if 'alt' in fit_table.colnames:
-                    pointing_lookup[key] = {
-                        'alt': float(row['alt']),
-                        'az': float(row['az']),
-                        'rotAngle': float(row['rotAngle']),
-                    }
+                    ptg = {'alt': float(row['alt'])}
+                    if 'az' in fit_table.colnames:
+                        ptg['az'] = float(row['az'])
+                    if 'rotAngle' in fit_table.colnames:
+                        ptg['rotAngle'] = float(row['rotAngle'])
+                    pointing_lookup[key] = ptg
 
         all_images = sorted(set(zip(
             np.array(aosTable_matched['day_obs']).tolist(),
