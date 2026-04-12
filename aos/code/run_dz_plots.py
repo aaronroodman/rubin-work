@@ -192,8 +192,11 @@ def main():
                     ptg = {'alt': float(row['alt'])}
                     if 'az' in fit_table.colnames:
                         ptg['az'] = float(row['az'])
-                    if 'rotAngle' in fit_table.colnames:
-                        ptg['rotAngle'] = float(row['rotAngle'])
+                    rot_col = ('rotAngle' if 'rotAngle' in fit_table.colnames
+                               else 'rotator_angle' if 'rotator_angle' in fit_table.colnames
+                               else None)
+                    if rot_col:
+                        ptg['rotAngle'] = float(row[rot_col])
                     pointing_lookup[key] = ptg
 
         all_images = sorted(set(zip(
