@@ -6,9 +6,9 @@ movie), and trio comparison plots. Designed to run outside Jupyter to
 avoid memory limitations.
 
 Usage:
-    python run_dz_plots.py donuts.parquet fits.parquet
-    python run_dz_plots.py donuts.parquet fits.parquet --no-single-image
-    python run_dz_plots.py donuts.parquet fits.parquet --coord-sys CCS
+    python run_dz_plots.py input.hdf5 fits.parquet
+    python run_dz_plots.py input.hdf5 fits.parquet --no-single-image
+    python run_dz_plots.py input.hdf5 fits.parquet --coord-sys CCS
 """
 
 import argparse
@@ -34,10 +34,10 @@ from dz_plotting import (
 def main():
     parser = argparse.ArgumentParser(
         description='Generate DZ analysis plots from pre-computed fits.')
-    parser.add_argument('donut_file',
-                        help='Input donut parquet file')
+    parser.add_argument('input_file',
+                        help='Input HDF5 file with donuts+visits tables')
     parser.add_argument('fit_file',
-                        help='Input fit table parquet file (with visit_info)')
+                        help='Input fit table parquet file (merged fits+visits)')
     parser.add_argument('--coord-sys', default='OCS',
                         choices=['OCS', 'CCS'])
     parser.add_argument('--output-dir', default=None,
@@ -56,8 +56,8 @@ def main():
     coord_sys = args.coord_sys
 
     # Load data
-    print(f"Loading donuts: {args.donut_file}")
-    aosTable = QTable.read(args.donut_file)
+    print(f"Loading donuts: {args.input_file}")
+    aosTable = QTable.read(args.input_file, path='donuts')
     print(f"  {len(aosTable)} donuts")
 
     print(f"Loading fits: {args.fit_file}")

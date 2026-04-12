@@ -268,24 +268,24 @@ def flag_bad_fits(fit_table, prefix, threshold=2.0, min_donuts=200):
 # High-level pipeline
 # ============================================================
 
-def run_double_zernike_fits(donut_file, visit_info_file=None, coord_sys='OCS',
+def run_double_zernike_fits(input_file, coord_sys='OCS',
                             output_file=None, bad_fit_threshold=2.0,
                             min_donuts=200):
     """Run the full Double Zernike fitting pipeline.
 
-    Loads input parquet, derives Noll indices, validates data, runs z1toz3
-    and z1toz6 fits, flags bad fits, merges with visit_info, and saves output.
+    Loads input HDF5 (donuts + visits tables), derives Noll indices,
+    validates data, runs z1toz3 and z1toz6 fits, flags bad fits, merges
+    with visit_info, and saves output.
 
     Parameters
     ----------
-    donut_file : str or Path
-        Path to donut-level parquet table (from intrinsics_mktable).
-    visit_info_file : str or Path, optional
-        Path to visit-level parquet. If None, auto-detected from donut_file name.
+    input_file : str or Path
+        Path to HDF5 file containing 'donuts' and 'visits' tables
+        (from intrinsics_mktable).
     coord_sys : str
         Coordinate system: 'OCS' or 'CCS'.
     output_file : str or Path, optional
-        Output parquet path. If None, derived from donut_file name.
+        Output parquet path. If None, derived as {stem}_fits.parquet.
     bad_fit_threshold : float
         Flag fits with |coefficient| > this (μm). Default 2.0.
     min_donuts : int
@@ -296,34 +296,21 @@ def run_double_zernike_fits(donut_file, visit_info_file=None, coord_sys='OCS',
     fit_merged : QTable
         Combined fit table with both z1toz3 and z1toz6 results.
     """
-    donut_file = Path(donut_file)
-    if not donut_file.exists():
-        raise FileNotFoundError(f"Donut file not found: {donut_file}")
+    input_file = Path(input_file)
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
 
-    # Auto-detect visit_info file
-    if visit_info_file is None:
-        candidate = donut_file.parent / (donut_file.stem + '_visits.parquet')
-        if candidate.exists():
-            visit_info_file = candidate
-    elif not Path(visit_info_file).exists():
-        print(f"Warning: visit_info file not found: {visit_info_file}")
-        visit_info_file = None
-
-    # Auto-derive output file
+    # Auto-derive output file: {stem}_fits.parquet
     if output_file is None:
-        output_file = donut_file.parent / donut_file.name.replace(
-            '_zernikes_', '_intrinsic_fits_')
+        output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
 
-    # Load data
-    print(f"Loading: {donut_file}")
-    aosTable = QTable.read(str(donut_file))
+    # Load data from HDF5
+    print(f"Loading: {input_file}")
+    aosTable = QTable.read(str(input_file), path='donuts')
     print(f"  {len(aosTable)} donuts, {len(aosTable.columns)} columns")
 
-    visit_info = None
-    if visit_info_file is not None:
-        visit_info_file = Path(visit_info_file)
-        visit_info = QTable.read(str(visit_info_file))
-        print(f"  Visit info: {len(visit_info)} visits")
+    visit_info = QTable.read(str(input_file), path='visits')
+    print(f"  {len(visit_info)} visits")
 
     # Extract arrays
     zk_data = np.stack(aosTable[f'zk_{coord_sys}'])
@@ -332,7 +319,7 @@ def run_double_zernike_fits(donut_file, visit_info_file=None, coord_sys='OCS',
 
     # Derive Noll indices
     noll_arr = None
-    if visit_info is not None and 'nollIndices' in visit_info.colnames:
+    if 'nollIndices' in visit_info.colnames:
         noll_arr = np.array(visit_info['nollIndices'][0])
     iZs, iZidx = derive_noll_indices(nZk, noll_arr)
     print(f"  Noll indices ({len(iZs)} terms): {iZs}")
@@ -382,13 +369,10 @@ def run_double_zernike_fits(donut_file, visit_info_file=None, coord_sys='OCS',
     print(f"\nCombined: {n_bad}/{len(fit_combined)} visits flagged as bad_fit")
 
     # Merge with visit_info
-    if visit_info is not None:
-        fit_merged = join(fit_combined, visit_info,
-                          keys=['day_obs', 'seq_num'], join_type='left')
-        print(f"Merged with visit_info: {len(fit_merged)} rows, "
-              f"{len(fit_merged.columns)} columns")
-    else:
-        fit_merged = fit_combined
+    fit_merged = join(fit_combined, visit_info,
+                      keys=['day_obs', 'seq_num'], join_type='left')
+    print(f"Merged with visit_info: {len(fit_merged)} rows, "
+          f"{len(fit_merged.columns)} columns")
 
     # Save
     output_file = Path(output_file)

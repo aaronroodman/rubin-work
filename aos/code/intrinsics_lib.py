@@ -1131,12 +1131,10 @@ async def run_mktable(
             "day_obs_min and day_obs_max must be specified (either explicitly "
             "or parseable from collection name)")
 
-    # Build output filenames
+    # Build output filename (single HDF5 with donuts + visits tables)
     os.makedirs(output_dir, exist_ok=True)
     output_file = (f'{output_dir}/{collection_phrase}_'
-                   f'{day_obs_min}_{day_obs_max}.parquet')
-    visit_info_file = (f'{output_dir}/{collection_phrase}_'
-                       f'{day_obs_min}_{day_obs_max}_visits.parquet')
+                   f'{day_obs_min}_{day_obs_max}.hdf5')
 
     print(f"Pipeline: {collection_phrase} {coord_sys} {day_obs_min}-{day_obs_max}")
     print(f"  Butler: {butler_repo}")
@@ -1221,11 +1219,14 @@ async def run_mktable(
     # Drop unwanted columns
     aosTable = drop_unwanted_columns(aosTable)
 
-    # Save
-    aosTable.write(output_file, overwrite=True)
-    print(f"\nSaved {len(aosTable)} rows to {output_file}")
-    visit_info.write(visit_info_file, overwrite=True)
-    print(f"Saved {len(visit_info)} visit records to {visit_info_file}")
+    # Save to single HDF5 file with donuts and visits tables
+    aosTable.write(output_file, path='donuts', serialize_meta=True,
+                   overwrite=True)
+    visit_info.write(output_file, path='visits', serialize_meta=True,
+                     append=True)
+    print(f"\nSaved to {output_file}:")
+    print(f"  donuts: {len(aosTable)} rows")
+    print(f"  visits: {len(visit_info)} rows")
 
     print(f"\nFinal aosTable: {len(aosTable)} rows, {len(aosTable.columns)} columns")
     print(f"Columns: {aosTable.colnames}")

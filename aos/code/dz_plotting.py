@@ -30,43 +30,41 @@ except ImportError:
 # ============================================================
 
 def discover_input_pairs(input_pattern):
-    """Auto-discover donut+fit parquet pairs from a glob/directory pattern.
+    """Auto-discover HDF5 + fit parquet pairs from a glob pattern.
 
-    Convention: donut files contain '_zernikes_', fit files contain
-    '_intrinsic_fits_' or '_fits_thermal_'.
+    Convention: HDF5 files contain donuts+visits tables, fit files are
+    named {stem}_fits.parquet alongside the HDF5.
 
     Parameters
     ----------
     input_pattern : str
-        Glob pattern for directories (e.g. 'output/fam_danish_*_OCS_*/').
+        Glob pattern for HDF5 files (e.g. 'output/*_20260315_*.hdf5').
 
     Returns
     -------
-    pairs : list of (donut_path, fit_path) tuples
+    pairs : list of (hdf5_path, fit_path) tuples
     """
-    dirs = sorted(glob_module.glob(input_pattern))
+    hdf5_files = sorted(glob_module.glob(input_pattern))
     pairs = []
-    for d in dirs:
-        d = Path(d)
-        if not d.is_dir():
+    for h5 in hdf5_files:
+        h5 = Path(h5)
+        if not h5.is_file() or h5.suffix != '.hdf5':
             continue
-        donut_files = sorted(d.glob('*_zernikes_*.parquet'))
-        # Exclude visit files
-        donut_files = [f for f in donut_files if '_visits' not in f.name]
-        fit_files = sorted(d.glob('*_intrinsic_fits_*.parquet'))
-        if not fit_files:
-            fit_files = sorted(d.glob('*_fits_thermal_*.parquet'))
-        if donut_files and fit_files:
-            pairs.append((str(donut_files[0]), str(fit_files[0])))
+        fit_file = h5.parent / f'{h5.stem}_fits.parquet'
+        if fit_file.exists():
+            pairs.append((str(h5), str(fit_file)))
+        else:
+            print(f"Warning: no fit file found for {h5} "
+                  f"(expected {fit_file})")
     return pairs
 
 
 def load_and_concatenate(pairs, coord_sys='OCS'):
-    """Load multiple donut+fit parquet pairs and concatenate.
+    """Load multiple HDF5+fit parquet pairs and concatenate.
 
     Parameters
     ----------
-    pairs : list of (donut_path, fit_path) tuples
+    pairs : list of (hdf5_path, fit_path) tuples
     coord_sys : str
 
     Returns
@@ -82,9 +80,9 @@ def load_and_concatenate(pairs, coord_sys='OCS'):
     fit_tables = []
     ref_iZs = None
 
-    for donut_file, fit_file in pairs:
-        print(f"Loading: {donut_file}")
-        aos = QTable.read(donut_file)
+    for hdf5_file, fit_file in pairs:
+        print(f"Loading: {hdf5_file}")
+        aos = QTable.read(hdf5_file, path='donuts')
         print(f"  {len(aos)} donuts")
         ft = QTable.read(fit_file)
         print(f"  {len(ft)} visits from {fit_file}")
