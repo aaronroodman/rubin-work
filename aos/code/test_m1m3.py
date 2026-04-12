@@ -31,8 +31,8 @@ except ImportError as e:
 
 
 async def test_gradients():
-    start = Time("2025-03-16T03:00:00", scale="utc")
-    end = Time("2025-03-16T04:00:00", scale="utc")
+    start = Time("2026-03-16T03:00:00", scale="utc")
+    end = Time("2026-03-16T04:00:00", scale="utc")
 
     print(f"\n2. Creating EFD client...")
     efd_client = makeEfdClient()
@@ -78,7 +78,7 @@ async def test_gradients():
     try:
         data = await efd_client.select_time_series(
             "lsst.sal.MTM1M3TS.thermocoupleScannerInfo",
-            [], start, end,
+            ["thermocouple0"], start, end,
         )
         if data is not None and len(data) > 0:
             print(f"   Thermocouple query: OK, {len(data)} rows")
