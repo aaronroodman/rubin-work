@@ -27,7 +27,14 @@ RUNS_FILE = AOS_DIR / 'runs.yaml'
 PARAM_SETS_FILE = AOS_DIR / 'param_sets.yaml'
 LOG_FILE = AOS_DIR / 'output' / 'pipeline.log'
 
-STEP_ORDER = ['mktable', 'fit', 'plots']
+STEP_ORDER = ['mktable', 'fit', 'plots', 'fit_ccs', 'plots_ccs']
+STEP_DEPS = {
+    'mktable': [],
+    'fit': ['mktable'],
+    'plots': ['fit'],
+    'fit_ccs': ['mktable'],
+    'plots_ccs': ['fit_ccs'],
+}
 VALID_STATUSES = ['pending', 'running', 'done', 'failed', 'skip']
 
 
@@ -95,6 +102,18 @@ def fits_path(resolved):
     return str(h5.parent / f'{h5.stem}_fits.parquet')
 
 
+def fits_path_ccs(resolved):
+    """Derive the CCS fits parquet filename for a run."""
+    h5 = Path(hdf5_path(resolved))
+    return str(h5.parent / f'{h5.stem}_ccs_fits.parquet')
+
+
+def plots_dir_ccs(resolved):
+    """Derive the CCS plots output subdirectory for a run."""
+    h5 = Path(hdf5_path(resolved))
+    return str(h5.parent / f'{h5.stem}_ccs')
+
+
 def log(msg):
     """Write to both stdout and log file."""
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -145,6 +164,24 @@ def build_command(run_name, step, resolved):
         cmd = ['python', 'code/run_dz_plots.py', h5, fp,
                '--coord-sys', coord]
         # Add plot flags if present
+        for flag in ['no_single_image', 'no_fit_params', 'no_trio']:
+            if resolved.get(flag):
+                cmd.append(f'--{flag.replace("_", "-")}')
+        return cmd
+
+    elif step == 'fit_ccs':
+        h5 = hdf5_path(resolved)
+        cmd = ['python', 'code/run_dz_fit.py', h5,
+               '--coord-sys', 'CCS',
+               '--output', fits_path_ccs(resolved)]
+        return cmd
+
+    elif step == 'plots_ccs':
+        h5 = hdf5_path(resolved)
+        fp = fits_path_ccs(resolved)
+        cmd = ['python', 'code/run_dz_plots.py', h5, fp,
+               '--coord-sys', 'CCS',
+               '--output-dir', plots_dir_ccs(resolved)]
         for flag in ['no_single_image', 'no_fit_params', 'no_trio']:
             if resolved.get(flag):
                 cmd.append(f'--{flag.replace("_", "-")}')
@@ -237,9 +274,9 @@ def cmd_status(data, run_filter=None):
     param_sets = load_param_sets()
 
     # Header
-    print(f'\n{"Run":<20s} {"param_set":<25s} {"days":<22s} {"coord":>5s}  '
-          f'{"mktable":>8s} {"fit":>8s} {"plots":>8s}')
-    print('-' * 100)
+    step_hdr = ' '.join(f'{s:>9s}' for s in STEP_ORDER)
+    print(f'\n{"Run":<20s} {"param_set":<25s} {"days":<22s}  {step_hdr}')
+    print('-' * (48 + 24 + len(step_hdr)))
 
     for name, cfg in runs.items():
         if run_filter and name != run_filter:
@@ -247,17 +284,13 @@ def cmd_status(data, run_filter=None):
         resolved = resolve_run(cfg, param_sets)
         dmin = resolved.get('day_obs_min', '?')
         dmax = resolved.get('day_obs_max', '?')
-        coord = resolved.get('coord_sys', 'OCS')
         ps_name = cfg.get('param_set', '')
         steps = cfg.get('steps', {})
 
-        statuses = []
-        for s in STEP_ORDER:
-            st = steps.get(s, 'pending')
-            statuses.append(format_status(st))
+        statuses = [format_status(steps.get(s, 'pending')) for s in STEP_ORDER]
+        step_row = ' '.join(f'{st:>9s}' for st in statuses)
 
-        print(f'{name:<20s} {ps_name:<25s} {dmin}-{dmax}  {coord:>5s}  '
-              f'{statuses[0]:>8s} {statuses[1]:>8s} {statuses[2]:>8s}')
+        print(f'{name:<20s} {ps_name:<25s} {dmin}-{dmax}   {step_row}')
 
     # Summary
     total = len(runs)
@@ -298,28 +331,23 @@ def cmd_run(data, run_filter=None, step_filter=None, dry_run=False):
             if status not in ('pending', 'failed'):
                 continue
 
-            # Check prerequisites
-            step_idx = STEP_ORDER.index(step)
+            # Check prerequisites using dependency map
             prereqs_met = True
-            for prev_step in STEP_ORDER[:step_idx]:
+            for prev_step in STEP_DEPS.get(step, []):
                 prev_status = steps.get(prev_step, 'pending')
                 if prev_status != 'done':
-                    if not step_filter:
-                        prereqs_met = False
-                        break
-                    else:
+                    if step_filter:
                         log(f'{name}.{step}: prerequisite {prev_step} '
                             f'is {prev_status}, skipping')
-                        prereqs_met = False
-                        break
+                    prereqs_met = False
+                    break
 
             if not prereqs_met:
                 continue
 
-            ok = run_step(name, step, resolved, data, dry_run=dry_run)
-            if not ok and not step_filter:
-                log(f'{name}: stopping after failed step {step}')
-                break
+            run_step(name, step, resolved, data, dry_run=dry_run)
+            # Non-linear deps: don't break on failure; downstream prereqs
+            # check handles it naturally (independent branches continue).
 
 
 def cmd_set(data, run_name, step, status):

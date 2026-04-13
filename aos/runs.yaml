@@ -8,6 +8,8 @@ runs:
       mktable: done
       fit: done
       plots: pending
+      fit_ccs: pending
+      plots_ccs: pending
   chunk2:
     param_set: fam_danish_triplets
     day_obs_min: 20260324
@@ -17,6 +19,8 @@ runs:
       mktable: done
       fit: done
       plots: pending
+      fit_ccs: pending
+      plots_ccs: pending
   chunk3:
     param_set: fam_danish_triplets
     day_obs_min: 20260331
@@ -26,3 +30,5 @@ runs:
       mktable: done
       fit: done
       plots: pending
+      fit_ccs: pending
+      plots_ccs: pending
