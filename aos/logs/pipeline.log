@@ -9,3 +9,4 @@
 [2026-04-12 00:30:43] [DRY RUN] chunk3.mktable: python code/run_mktable.py --param-set fam_danish_triplets --day-obs-min 20260321 --day-obs-max 20260323 --calc-intrinsics
 [2026-04-12 00:30:47] [DRY RUN] chunk1.fit: python code/run_dz_fit.py output/aos_fam_danish_triplets_20260315_20260317.hdf5 --coord-sys OCS
 [2026-04-12 00:30:50] [DRY RUN] chunk1.plots: python code/run_dz_plots.py output/aos_fam_danish_triplets_20260315_20260317.hdf5 output/aos_fam_danish_triplets_20260315_20260317_fits.parquet --coord-sys OCS
+[2026-04-20 21:30:18] chunk4.mktable: DONE (65s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk4_mktable.log
