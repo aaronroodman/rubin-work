@@ -25,7 +25,8 @@ import yaml
 AOS_DIR = Path(__file__).resolve().parent.parent
 RUNS_FILE = AOS_DIR / 'runs.yaml'
 PARAM_SETS_FILE = AOS_DIR / 'param_sets.yaml'
-LOG_DIR = AOS_DIR / 'output' / 'log'
+# Logs live outside of output/ (which may be a symlink to a data disk)
+LOG_DIR = AOS_DIR / 'logs'
 LOG_FILE = LOG_DIR / 'pipeline.log'
 
 STEP_ORDER = ['mktable', 'fit', 'plots', 'fit_ccs', 'plots_ccs']
