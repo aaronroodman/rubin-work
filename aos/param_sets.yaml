@@ -72,3 +72,12 @@ fam_danish_v1_triplets_bin1x:
     - aos_fam_danish_v1_triplets_bin_1x
   day_obs_min: 20260315
   day_obs_max: 20260409
+
+fam_danish_v1_triplets:
+  description: "Mar-Apr 2026, embargo repo, Danish v1.0 triplets (bin=2)"
+  butler_repo: /repo/embargo
+  fam_programs: [T278, T381, T492, T539, T614, T710]
+  fam_collections:
+    - aos_fam_danish_v1_triplets
+  day_obs_min: 20260315
+  day_obs_max: 20260409
