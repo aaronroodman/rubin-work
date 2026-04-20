@@ -25,7 +25,8 @@ import yaml
 AOS_DIR = Path(__file__).resolve().parent.parent
 RUNS_FILE = AOS_DIR / 'runs.yaml'
 PARAM_SETS_FILE = AOS_DIR / 'param_sets.yaml'
-LOG_FILE = AOS_DIR / 'output' / 'pipeline.log'
+LOG_DIR = AOS_DIR / 'output' / 'log'
+LOG_FILE = LOG_DIR / 'pipeline.log'
 
 STEP_ORDER = ['mktable', 'fit', 'plots', 'fit_ccs', 'plots_ccs']
 STEP_DEPS = {
@@ -119,9 +120,41 @@ def log(msg):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     line = f'[{timestamp}] {msg}'
     print(line)
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     with open(LOG_FILE, 'a') as f:
         f.write(line + '\n')
+
+
+def git_sync(message, extra_paths=None):
+    """Stage runs.yaml + log files, commit, and push.
+
+    Silent on failure — a broken git push shouldn't kill a pipeline run.
+    Returns True if anything was committed, False otherwise.
+    """
+    paths = [str(RUNS_FILE), str(LOG_DIR)]
+    if extra_paths:
+        paths.extend(str(p) for p in extra_paths)
+    try:
+        # Stage the files (ok if some don't exist yet)
+        subprocess.run(['git', 'add', '--'] + paths,
+                       cwd=AOS_DIR.parent, check=False,
+                       capture_output=True)
+        # Check if there's anything staged
+        result = subprocess.run(
+            ['git', 'diff', '--cached', '--quiet'],
+            cwd=AOS_DIR.parent, capture_output=True)
+        if result.returncode == 0:
+            return False  # nothing to commit
+        subprocess.run(['git', 'commit', '-m', message],
+                       cwd=AOS_DIR.parent, check=True,
+                       capture_output=True)
+        subprocess.run(['git', 'push'],
+                       cwd=AOS_DIR.parent, check=False,
+                       capture_output=True, timeout=30)
+        return True
+    except Exception as e:
+        log(f'git_sync: skipped ({type(e).__name__}: {e})')
+        return False
 
 
 def build_command(run_name, step, resolved):
@@ -193,7 +226,7 @@ def build_command(run_name, step, resolved):
 
 def step_log_path(run_name, step):
     """Path to the per-step output log file."""
-    return LOG_FILE.parent / f'{run_name}_{step}.log'
+    return LOG_DIR / f'{run_name}_{step}.log'
 
 
 def run_step(run_name, step, resolved, data, dry_run=False):
@@ -213,7 +246,7 @@ def run_step(run_name, step, resolved, data, dry_run=False):
 
     # Capture output to per-step log file while also printing to stdout
     step_log = step_log_path(run_name, step)
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     t0 = time.time()
     try:
@@ -238,12 +271,14 @@ def run_step(run_name, step, resolved, data, dry_run=False):
             data['runs'][run_name]['steps'][step] = 'done'
             save_runs(data)
             log(f'{run_name}.{step}: DONE ({elapsed_str}) — log: {step_log}')
+            git_sync(f'{run_name}.{step}: done ({elapsed_str})')
             return True
         else:
             data['runs'][run_name]['steps'][step] = 'failed'
             save_runs(data)
             log(f'{run_name}.{step}: FAILED exit={proc.returncode} '
                 f'({elapsed_str}) — log: {step_log}')
+            git_sync(f'{run_name}.{step}: failed ({elapsed_str})')
             return False
 
     except Exception as e:
@@ -251,6 +286,7 @@ def run_step(run_name, step, resolved, data, dry_run=False):
         data['runs'][run_name]['steps'][step] = 'failed'
         save_runs(data)
         log(f'{run_name}.{step}: ERROR — {e} ({format_duration(elapsed)})')
+        git_sync(f'{run_name}.{step}: error')
         return False
 
 

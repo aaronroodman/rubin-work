@@ -24,6 +24,9 @@ env/
 !blocks/output/*.txt
 !blocks/output/*.csv
 !blocks/output/*.csv.gz
+# Keep aos pipeline log files (small, useful for tracking runs across machines)
+!aos/output/log/
+!aos/output/log/*.log
 
 # ===== Large data files =====
 *.fits
@@ -53,3 +56,4 @@ desktop.ini
 # ===== Misc =====
 .env
 *.log
+!aos/output/log/*.log
