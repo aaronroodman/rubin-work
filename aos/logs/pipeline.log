@@ -18,3 +18,4 @@ names = [name for name in tbl.colnames if len(tbl[name].shape) <= 1]
 tbl[names].to_pandas(...)
 [2026-04-21 08:57:18] chunk5.mktable: DONE (7420s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_mktable.log
 [2026-04-21 17:25:49] chunk5.fit: DONE (468s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_fit.log
+[2026-04-21 20:27:46] chunk5.plots: FAILED (18s) — plots exited with 1
