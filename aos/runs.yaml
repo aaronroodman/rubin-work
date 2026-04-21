@@ -43,42 +43,9 @@ runs:
       plots: pending
       fit_ccs: pending
       plots_ccs: pending
-  chunk5a:
+  chunk5:
     param_set: fam_danish_v1_triplets
     day_obs_min: 20260315
-    day_obs_max: 20260323
-    coord_sys: OCS
-    steps:
-      mktable: pending
-      fit: pending
-      plots: pending
-      fit_ccs: pending
-      plots_ccs: pending
-  chunk5b:
-    param_set: fam_danish_v1_triplets
-    day_obs_min: 20260324
-    day_obs_max: 20260330
-    coord_sys: OCS
-    steps:
-      mktable: pending
-      fit: pending
-      plots: pending
-      fit_ccs: pending
-      plots_ccs: pending
-  chunk5c:
-    param_set: fam_danish_v1_triplets
-    day_obs_min: 20260331
-    day_obs_max: 20260404
-    coord_sys: OCS
-    steps:
-      mktable: pending
-      fit: pending
-      plots: pending
-      fit_ccs: pending
-      plots_ccs: pending
-  chunk5d:
-    param_set: fam_danish_v1_triplets
-    day_obs_min: 20260405
     day_obs_max: 20260409
     coord_sys: OCS
     steps:
