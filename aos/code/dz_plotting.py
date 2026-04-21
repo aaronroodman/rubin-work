@@ -21,8 +21,10 @@ from pathlib import Path
 
 try:
     from .dz_fitting import focal_plane_zernike_basis, derive_noll_indices
+    from .intrinsics_lib import read_donuts_table
 except ImportError:
     from dz_fitting import focal_plane_zernike_basis, derive_noll_indices
+    from intrinsics_lib import read_donuts_table
 
 
 # ============================================================
@@ -82,7 +84,8 @@ def load_and_concatenate(pairs, coord_sys='OCS'):
 
     for hdf5_file, fit_file in pairs:
         print(f"Loading: {hdf5_file}")
-        aos = QTable.read(hdf5_file, path='donuts')
+        # donuts is in PyTables format='table' — use our restacking reader
+        aos = read_donuts_table(hdf5_file)
         print(f"  {len(aos)} donuts")
         ft = QTable.read(fit_file)
         print(f"  {len(ft)} visits from {fit_file}")

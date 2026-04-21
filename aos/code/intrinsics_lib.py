@@ -313,6 +313,197 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
     return aosTable_sel, visit_meta
 
 
+# Array-valued columns in the aosTable that need explode/restack for HDF5
+# format='table' storage. These are all shape (n_donuts, n_zernikes) arrays.
+ARRAY_COLUMN_BASES = [
+    'zk_OCS', 'zk_CCS',
+    'zk_intrinsic_OCS', 'zk_intrinsic_CCS',
+    'zk_residual_OCS', 'zk_residual_CCS',
+    'zk_deviation_OCS', 'zk_deviation_CCS',
+    'zk_OCS_mean', 'zk_CCS_mean',
+    'zk_intrinsic', 'zk_residual',
+]
+
+
+def explode_array_columns(df, col_bases=None):
+    """Flatten array-valued DataFrame columns into scalar sub-columns.
+
+    For each column whose elements are arrays of length N, create N new
+    columns named {col}_0, {col}_1, ..., {col}_{N-1} and drop the original.
+
+    Returns the modified DataFrame (same object, modified in place).
+    """
+    if col_bases is None:
+        col_bases = ARRAY_COLUMN_BASES
+    for col in list(df.columns):
+        if col not in col_bases:
+            continue
+        # Determine if this column holds per-row arrays
+        first = df[col].iloc[0]
+        if not hasattr(first, '__len__') or isinstance(first, (str, bytes)):
+            continue
+        arr = np.stack(df[col].values)
+        if arr.ndim != 2:
+            continue
+        for i in range(arr.shape[1]):
+            df[f'{col}_{i}'] = arr[:, i]
+        df.drop(columns=[col], inplace=True)
+    return df
+
+
+def restack_array_columns(df, col_bases=None):
+    """Inverse of explode_array_columns — rebuild array-valued columns.
+
+    For each base name in col_bases, gather columns named {col}_0, {col}_1, ...
+    into a single column of per-row numpy arrays. Drops the sub-columns.
+
+    Returns the modified DataFrame (same object, modified in place).
+    """
+    if col_bases is None:
+        col_bases = ARRAY_COLUMN_BASES
+    for base in col_bases:
+        # Find sub-columns with numeric suffixes in order
+        sub_cols = [c for c in df.columns
+                    if c.startswith(f'{base}_') and c[len(base) + 1:].isdigit()]
+        if not sub_cols:
+            continue
+        sub_cols.sort(key=lambda c: int(c[len(base) + 1:]))
+        arr = df[sub_cols].to_numpy()
+        df[base] = list(arr)
+        df.drop(columns=sub_cols, inplace=True)
+    return df
+
+
+def read_donuts_table(hdf5_path, where=None):
+    """Read the streamed 'donuts' table from HDF5 (PyTables format) as a QTable.
+
+    Restacks the exploded scalar sub-columns back into array-valued QTable
+    columns. Pass where='day_obs==X & seq_num==Y' for per-visit queries.
+    """
+    df = pd.read_hdf(str(hdf5_path), 'donuts', where=where)
+    restack_array_columns(df)
+
+    tbl = QTable()
+    for col in df.columns:
+        vals = df[col].values
+        if vals.dtype == object and len(vals) > 0 and \
+           hasattr(vals[0], '__len__') and not isinstance(vals[0], (str, bytes)):
+            tbl[col] = np.stack(vals)
+        else:
+            tbl[col] = vals
+    return tbl
+
+
+def stream_zernikes_to_hdf5(visit_pairs, collections, butler_repo, coord_sys,
+                            camera, output_file,
+                            calc_focal_plane=False, calc_mean_zernike=False):
+    """Stream aggregate Zernikes per visit to HDF5 under key 'donuts'.
+
+    Uses pandas HDFStore with format='table' (PyTables) so row appending
+    is cheap and per-visit queries via where='day_obs==X & seq_num==Y'
+    are fast. Array-valued columns are exploded to scalar sub-columns
+    for PyTables compatibility (use restack_array_columns when reading).
+
+    Returns visit_info (small QTable), or None on failure.
+    """
+    print(f"Initializing Butler with repo={butler_repo}, collections: {collections}")
+    butler = Butler(butler_repo, instrument='LSSTCam', collections=collections)
+
+    visit_meta_list = []
+    success_count = 0
+    error_count = 0
+    ref_noll_indices = None
+    noll_mismatch_count = 0
+    total_rows = 0
+
+    print(f"\nStreaming Zernikes for {len(visit_pairs)} visits to {output_file}...")
+
+    # Overwrite existing file
+    if Path(output_file).exists():
+        Path(output_file).unlink()
+
+    with pd.HDFStore(str(output_file), mode='w', complevel=1, complib='zlib') as store:
+        for day_obs_val, seq_num in tqdm(visit_pairs):
+            agg_zern, visit_meta = get_aggregate_zernikes(
+                butler, day_obs_val, seq_num, coord_sys, camera,
+                calc_focal_plane=calc_focal_plane,
+                calc_mean_zernike=calc_mean_zernike)
+            if agg_zern is None:
+                error_count += 1
+                continue
+
+            noll = visit_meta.get('nollIndices', None)
+            if noll is not None:
+                if ref_noll_indices is None:
+                    ref_noll_indices = list(noll)
+                elif list(noll) != ref_noll_indices:
+                    print(f"WARNING: nollIndices mismatch for day_obs={day_obs_val}, "
+                          f"seq_num={seq_num}: {list(noll)} != {ref_noll_indices} — skipping")
+                    noll_mismatch_count += 1
+                    error_count += 1
+                    continue
+
+            # Drop unwanted columns per-visit
+            drop_cols = [c for c in agg_zern.colnames
+                         if '_W' in c or '_N' in c or '_NW' in c
+                         or '_ra_' in c or '_dec_' in c]
+            if drop_cols:
+                agg_zern.remove_columns(drop_cols)
+
+            # Convert astropy → pandas and explode array columns
+            df = agg_zern.to_pandas()
+            explode_array_columns(df)
+
+            store.append('donuts', df, format='table',
+                         data_columns=['day_obs', 'seq_num'],
+                         index=False,
+                         min_itemsize={'detector': 20})
+
+            visit_meta_list.append(visit_meta)
+            success_count += 1
+            total_rows += len(df)
+
+        # Build an index on data_columns for fast per-visit queries
+        try:
+            store.create_table_index('donuts', columns=['day_obs', 'seq_num'],
+                                     optlevel=9, kind='full')
+        except Exception as e:
+            print(f"Warning: could not build table index: {e}")
+
+    print(f"\n{'='*60}")
+    print("Extraction Summary:")
+    print(f"  Total visits attempted: {len(visit_pairs)}")
+    print(f"  Successful extractions: {success_count}")
+    print(f"  Failed extractions:     {error_count}")
+    if noll_mismatch_count > 0:
+        print(f"  nollIndices mismatches: {noll_mismatch_count}")
+    if ref_noll_indices is not None:
+        print(f"  nollIndices: {ref_noll_indices}")
+    print(f"  Total donut measurements: {total_rows}")
+    print(f"{'='*60}\n")
+
+    if success_count == 0:
+        print(f"\nERROR: No Zernike data found for any visits!")
+        print(f"Collections used: {collections}")
+        return None
+
+    # Build visit_info QTable (small, stays in memory)
+    visit_info = QTable()
+    visit_info['day_obs'] = [m['day_obs'] for m in visit_meta_list]
+    visit_info['seq_num'] = [m['seq_num'] for m in visit_meta_list]
+    visit_info['visit'] = [m['visit'] for m in visit_meta_list]
+    visit_info['skyAngle'] = [m['skyAngle'] for m in visit_meta_list]
+    visit_info['ra'] = [m['ra'] for m in visit_meta_list]
+    visit_info['dec'] = [m['dec'] for m in visit_meta_list]
+    visit_info['az'] = [m['az'] for m in visit_meta_list]
+    visit_info['alt'] = [m['alt'] for m in visit_meta_list]
+    visit_info['band'] = [m['band'] for m in visit_meta_list]
+    visit_info['mjd'] = [m['mjd'] for m in visit_meta_list]
+    visit_info['nollIndices'] = [m['nollIndices'] for m in visit_meta_list]
+
+    return visit_info
+
+
 def get_zernikes_from_visits(visit_pairs, collections, butler_repo, coord_sys,
                              camera, calc_focal_plane=False,
                              calc_mean_zernike=False):
@@ -963,6 +1154,26 @@ def add_intrinsic_zernikes(aosTable, intrinsic_interpolators, coord_sys):
 # Merge Helpers
 # ============================================================
 
+def merge_rotator_to_visit_info(rotator_df, visit_info, rotator_threshold):
+    """Add rotator_angle + rotator_flagged to visit_info only (no aosTable)."""
+    vi_day_obs = np.array(visit_info['day_obs'])
+    vi_seq_num = np.array(visit_info['seq_num'])
+
+    rot_angle_col = np.full(len(visit_info), np.nan)
+    rot_flagged_col = np.zeros(len(visit_info), dtype=bool)
+    for _, r in rotator_df.iterrows():
+        mask = (vi_day_obs == r['day_obs']) & (vi_seq_num == r['seq_num'])
+        rot_angle_col[mask] = r['rotator_angle']
+        rot_flagged_col[mask] = r['rotator_flagged']
+    visit_info['rotator_angle'] = rot_angle_col
+    visit_info['rotator_flagged'] = rot_flagged_col
+
+    n_flagged = int(np.sum(rot_flagged_col))
+    print(f"Added rotator columns to visit_info. "
+          f"Flagged: {n_flagged} (|angle| > {rotator_threshold} deg)")
+    return visit_info
+
+
 def merge_rotator_to_tables(rotator_df, aosTable, visit_info, rotator_threshold):
     """Add rotator_angle and rotator_flagged to aosTable and visit_info."""
     rot_dict = {}
@@ -1162,36 +1373,26 @@ async def run_mktable(
     rotator_df = await get_rotator_data(
         visits, visit_pairs, butler_repo, rotator_threshold)
 
-    # Generate intrinsic wavefront model (optional)
     if calc_intrinsics:
-        print("\nGenerating intrinsic wavefront model...")
-        xbins = np.linspace(-fp_radius, fp_radius, fp_nsteps)
-        ybins = np.linspace(-fp_radius, fp_radius, fp_nsteps)
-        X_model, Y_model, zkIntrinsics_model = get_intrinsic_map(
-            xbins, ybins, camera_id_map, band=intrinsic_band)
-        print(f"Generated intrinsic model at {len(X_model)} points")
+        print("Warning: calc_intrinsics=True is no longer supported in the "
+              "streaming pipeline (intrinsics are read from Butler metadata). "
+              "Ignoring the flag.")
 
-        intrinsic_interpolators = create_intrinsic_interpolators(
-            X_model, Y_model, zkIntrinsics_model)
-        print(f"Created interpolators for {len(intrinsic_interpolators)} Zernike terms")
-
-    # Extract Zernikes from Butler
-    aosTable, visit_info = get_zernikes_from_visits(
+    # Stream aggregate Zernikes per-visit to HDF5 (format='table').
+    # Only visit_info is returned in memory; donuts go straight to disk.
+    visit_info = stream_zernikes_to_hdf5(
         visit_pairs, fam_collections, butler_repo, coord_sys, camera,
+        output_file=output_file,
         calc_focal_plane=calc_focal_plane,
         calc_mean_zernike=calc_mean_zernike)
-    if aosTable is None:
+    if visit_info is None:
         return None, None
 
-    # Add intrinsic model (optional)
-    if calc_intrinsics:
-        aosTable = add_intrinsic_zernikes(aosTable, intrinsic_interpolators, coord_sys)
+    # Merge rotator info into visit_info only
+    visit_info = merge_rotator_to_visit_info(
+        rotator_df, visit_info, rotator_threshold)
 
-    # Add rotator data
-    aosTable, visit_info = merge_rotator_to_tables(
-        rotator_df, aosTable, visit_info, rotator_threshold)
-
-    # Thermal data
+    # Thermal data (visit_info only)
     if include_thermal:
         try:
             efd_client = makeEfdClient()
@@ -1203,19 +1404,13 @@ async def run_mktable(
         except Exception as e:
             print(f"Warning: Could not retrieve thermal data: {e}")
 
-    # Drop unwanted columns
-    aosTable = drop_unwanted_columns(aosTable)
-
-    # Save to single HDF5 file with donuts and visits tables
-    aosTable.write(output_file, path='donuts', serialize_meta=True,
-                   overwrite=True)
+    # Append visit_info (fixed format) to the same HDF5 file.
+    # Astropy's HDF5 writer happily coexists with PyTables-format 'donuts'.
     visit_info.write(output_file, path='visits', serialize_meta=True,
-                     append=True)
+                     append=True, overwrite=True)
+
     print(f"\nSaved to {output_file}:")
-    print(f"  donuts: {len(aosTable)} rows")
-    print(f"  visits: {len(visit_info)} rows")
+    print(f"  donuts: streamed ({len(visit_info)} visits worth)")
+    print(f"  visits: {len(visit_info)} rows, {len(visit_info.columns)} columns")
 
-    print(f"\nFinal aosTable: {len(aosTable)} rows, {len(aosTable.columns)} columns")
-    print(f"Columns: {aosTable.colnames}")
-
-    return aosTable, visit_info
+    return None, visit_info

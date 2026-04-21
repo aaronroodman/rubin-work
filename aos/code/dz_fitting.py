@@ -6,10 +6,15 @@ donut wavefront residuals using robust regression (Huber M-estimator).
 Can be used as a library or via the companion CLI script run_dz_fit.py.
 """
 
+import sys
 import numpy as np
+import pandas as pd
 import statsmodels.api as sm
 from astropy.table import QTable, join
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from intrinsics_lib import restack_array_columns
 
 
 # ============================================================
@@ -158,7 +163,6 @@ def fit_focal_zernikes(day_obs_arr, seq_num_arr, thx_deg, thy_deg,
     images = sorted(set(zip(day_obs_arr.tolist(), seq_num_arr.tolist())))
     n_donuts = len(day_obs_arr)
     n_zernikes = len(iZs)
-    n_coeffs = max_focal_noll
 
     zk_fit_vals = np.zeros((n_donuts, n_zernikes))
     zk_rlm_weights = np.ones((n_donuts, n_zernikes))
@@ -166,41 +170,13 @@ def fit_focal_zernikes(day_obs_arr, seq_num_arr, thx_deg, thy_deg,
 
     for img_idx, (dobs, snum) in enumerate(images):
         mask = (day_obs_arr == dobs) & (seq_num_arr == snum)
-        n_pts = np.sum(mask)
-
-        A, col_labels = focal_plane_zernike_basis(
-            thx_deg[mask], thy_deg[mask], max_focal_noll, fp_radius)
-
-        img_params = {'day_obs': dobs, 'seq_num': snum,
-                      'image_idx': img_idx, 'n_donuts': int(n_pts)}
-
-        for j_idx, iZ in enumerate(iZs):
-            if include_intrinsic:
-                resid = zk_data[mask, j_idx] - zk_intrinsic[mask, j_idx]
-            else:
-                resid = zk_data[mask, j_idx].copy()
-
-            try:
-                rlm_model = sm.RLM(resid, A, M=sm.robust.norms.HuberT())
-                rlm_results = rlm_model.fit()
-                coeffs = rlm_results.params
-                bse = rlm_results.bse
-                scale = float(rlm_results.scale)
-                weights = rlm_results.weights
-            except Exception:
-                coeffs, _, _, _ = np.linalg.lstsq(A, resid, rcond=None)
-                bse = np.full(n_coeffs, np.nan)
-                scale = float(np.std(resid - A @ coeffs))
-                weights = np.ones(n_pts)
-
-            for ci in range(n_coeffs):
-                img_params[f'{prefix}_z{iZ}_c{ci+1}'] = float(coeffs[ci])
-                img_params[f'{prefix}_z{iZ}_c{ci+1}_err'] = float(bse[ci])
-            img_params[f'{prefix}_z{iZ}_scale'] = scale
-
-            zk_fit_vals[mask, j_idx] = A @ coeffs
-            zk_rlm_weights[mask, j_idx] = weights
-
+        img_params, fit_vals_i, weights_i = _fit_one_image(
+            thx_deg[mask], thy_deg[mask],
+            zk_data[mask], zk_intrinsic[mask],
+            iZs, max_focal_noll, include_intrinsic, fp_radius, prefix,
+            dobs, snum, img_idx)
+        zk_fit_vals[mask] = fit_vals_i
+        zk_rlm_weights[mask] = weights_i
         fit_rows.append(img_params)
 
     print(f"Fit '{prefix}' (focal Noll 1-{max_focal_noll}): "
@@ -208,6 +184,100 @@ def fit_focal_zernikes(day_obs_arr, seq_num_arr, thx_deg, thy_deg,
           f"include_intrinsic={include_intrinsic}")
 
     return fit_rows, zk_fit_vals, zk_rlm_weights
+
+
+def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
+                   max_focal_noll, include_intrinsic, fp_radius, prefix,
+                   dobs, snum, img_idx):
+    """Fit one image's donuts. Returns (img_params, fit_vals, rlm_weights)."""
+    A, _ = focal_plane_zernike_basis(thx_deg, thy_deg, max_focal_noll, fp_radius)
+    n_pts = len(thx_deg)
+    n_zernikes = len(iZs)
+    n_coeffs = max_focal_noll
+
+    fit_vals = np.zeros((n_pts, n_zernikes))
+    rlm_weights = np.ones((n_pts, n_zernikes))
+    img_params = {'day_obs': int(dobs), 'seq_num': int(snum),
+                  'image_idx': int(img_idx), 'n_donuts': int(n_pts)}
+
+    for j_idx, iZ in enumerate(iZs):
+        if include_intrinsic:
+            resid = zk_data[:, j_idx] - zk_intrinsic[:, j_idx]
+        else:
+            resid = zk_data[:, j_idx].copy()
+
+        try:
+            rlm_model = sm.RLM(resid, A, M=sm.robust.norms.HuberT())
+            rlm_results = rlm_model.fit()
+            coeffs = rlm_results.params
+            bse = rlm_results.bse
+            scale = float(rlm_results.scale)
+            weights = rlm_results.weights
+        except Exception:
+            coeffs, _, _, _ = np.linalg.lstsq(A, resid, rcond=None)
+            bse = np.full(n_coeffs, np.nan)
+            scale = float(np.std(resid - A @ coeffs))
+            weights = np.ones(n_pts)
+
+        for ci in range(n_coeffs):
+            img_params[f'{prefix}_z{iZ}_c{ci+1}'] = float(coeffs[ci])
+            img_params[f'{prefix}_z{iZ}_c{ci+1}_err'] = float(bse[ci])
+        img_params[f'{prefix}_z{iZ}_scale'] = scale
+
+        fit_vals[:, j_idx] = A @ coeffs
+        rlm_weights[:, j_idx] = weights
+
+    return img_params, fit_vals, rlm_weights
+
+
+def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
+                                 max_focal_noll=3, include_intrinsic=True,
+                                 fp_radius=1.75, prefix='z1toz3'):
+    """Streaming variant: read donuts per visit via pd.read_hdf(where=...).
+
+    Doesn't load the entire donuts table into memory — each visit is
+    queried individually using the day_obs/seq_num index on the HDF5
+    'donuts' table (written by intrinsics_lib.stream_zernikes_to_hdf5).
+
+    Returns fit_rows (list of dicts) — zk_fit_vals and zk_rlm_weights
+    are not accumulated (they weren't used downstream anyway).
+    """
+    input_file = str(input_file)
+    fit_rows = []
+    total_donuts = 0
+
+    thx_col = f'thx_{coord_sys}'
+    thy_col = f'thy_{coord_sys}'
+    zk_col = f'zk_{coord_sys}'
+    zk_intr_col = f'zk_intrinsic_{coord_sys}'
+
+    for img_idx, v in enumerate(visit_info):
+        dobs = int(v['day_obs'])
+        snum = int(v['seq_num'])
+        q = f'day_obs == {dobs} & seq_num == {snum}'
+        df = pd.read_hdf(input_file, 'donuts', where=q)
+        if len(df) == 0:
+            continue
+
+        restack_array_columns(df)
+
+        thx_deg = np.rad2deg(df[thx_col].to_numpy(dtype=float))
+        thy_deg = np.rad2deg(df[thy_col].to_numpy(dtype=float))
+        zk_data = np.stack(df[zk_col].values)
+        zk_intrinsic = np.stack(df[zk_intr_col].values)
+
+        img_params, _, _ = _fit_one_image(
+            thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
+            max_focal_noll, include_intrinsic, fp_radius, prefix,
+            dobs, snum, img_idx)
+        fit_rows.append(img_params)
+        total_donuts += len(df)
+
+    print(f"Fit '{prefix}' (focal Noll 1-{max_focal_noll}): "
+          f"{len(fit_rows)} images, {total_donuts} donuts (streamed), "
+          f"include_intrinsic={include_intrinsic}")
+
+    return fit_rows
 
 
 # ============================================================
@@ -304,52 +374,36 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
     if output_file is None:
         output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
 
-    # Load data from HDF5
+    # Load visit_info (small); donuts read per-visit via HDF5 where= queries
     print(f"Loading: {input_file}")
-    aosTable = QTable.read(str(input_file), path='donuts')
-    print(f"  {len(aosTable)} donuts, {len(aosTable.columns)} columns")
-
     visit_info = QTable.read(str(input_file), path='visits')
     print(f"  {len(visit_info)} visits")
 
-    # Extract arrays
-    zk_data = np.stack(aosTable[f'zk_{coord_sys}'])
-    zk_intrinsic = np.stack(aosTable[f'zk_intrinsic_{coord_sys}'])
-    nZk = zk_data.shape[1]
-
-    # Derive Noll indices
+    # Derive Noll indices — probe one visit for the zk array width
     noll_arr = None
     if 'nollIndices' in visit_info.colnames:
         noll_arr = np.array(visit_info['nollIndices'][0])
+
+    # Read a single visit's donuts to determine nZk
+    v0 = visit_info[0]
+    q0 = f"day_obs == {int(v0['day_obs'])} & seq_num == {int(v0['seq_num'])}"
+    df0 = pd.read_hdf(str(input_file), 'donuts', where=q0)
+    restack_array_columns(df0)
+    zk_sample = np.stack(df0[f'zk_{coord_sys}'].values)
+    nZk = zk_sample.shape[1]
     iZs, iZidx = derive_noll_indices(nZk, noll_arr)
     print(f"  Noll indices ({len(iZs)} terms): {iZs}")
+    del df0, zk_sample
 
-    # Validate zk = residual + intrinsic
-    resid_col = f'zk_residual_{coord_sys}'
-    if resid_col in aosTable.colnames:
-        zk_resid = np.stack(aosTable[resid_col])
-        diff = zk_data - (zk_resid + zk_intrinsic)
-        max_abs_diff = np.max(np.abs(diff))
-        print(f"  Validation: max |zk - (residual + intrinsic)| = {max_abs_diff:.2e} μm",
-              "PASSED" if max_abs_diff <= 0.01 else "WARNING")
-
-    # Prepare arrays for fitting
-    day_obs_arr = np.array(aosTable['day_obs'])
-    seq_num_arr = np.array(aosTable['seq_num'])
-    thx_deg = np.rad2deg(np.array(aosTable[f'thx_{coord_sys}']))
-    thy_deg = np.rad2deg(np.array(aosTable[f'thy_{coord_sys}']))
-
-    # Fit z1toz3
-    rows_z3, zk_fit_z3, zk_wgt_z3 = fit_focal_zernikes(
-        day_obs_arr, seq_num_arr, thx_deg, thy_deg,
-        zk_data, zk_intrinsic, iZs,
+    # Fit z1toz3 (streaming: per-visit queries)
+    rows_z3 = fit_focal_zernikes_streaming(
+        input_file, visit_info, coord_sys, iZs,
         max_focal_noll=3, prefix='z1toz3')
     fit_table_z3 = QTable(rows_z3)
 
     # Fit z1toz6
-    rows_z6, zk_fit_z6, zk_wgt_z6 = fit_focal_zernikes(
-        day_obs_arr, seq_num_arr, thx_deg, thy_deg,
-        zk_data, zk_intrinsic, iZs,
+    rows_z6 = fit_focal_zernikes_streaming(
+        input_file, visit_info, coord_sys, iZs,
         max_focal_noll=6, prefix='z1toz6')
     fit_table_z6 = QTable(rows_z6)
 
