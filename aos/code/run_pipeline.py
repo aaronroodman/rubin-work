@@ -91,29 +91,33 @@ def collection_phrase(resolved):
     return coll
 
 
-def hdf5_path(resolved):
-    """Derive the HDF5 filename for a run."""
+def donut_path(resolved):
+    """Derive the donut-table parquet filename for a run."""
     phrase = collection_phrase(resolved)
     return (f"output/{phrase}_"
-            f"{resolved['day_obs_min']}_{resolved['day_obs_max']}.hdf5")
+            f"{resolved['day_obs_min']}_{resolved['day_obs_max']}.parquet")
+
+
+# Backward-compatible alias — still called hdf5_path in older notebook cells
+hdf5_path = donut_path
 
 
 def fits_path(resolved):
     """Derive the fits parquet filename for a run."""
-    h5 = Path(hdf5_path(resolved))
-    return str(h5.parent / f'{h5.stem}_fits.parquet')
+    p = Path(donut_path(resolved))
+    return str(p.parent / f'{p.stem}_fits.parquet')
 
 
 def fits_path_ccs(resolved):
     """Derive the CCS fits parquet filename for a run."""
-    h5 = Path(hdf5_path(resolved))
-    return str(h5.parent / f'{h5.stem}_ccs_fits.parquet')
+    p = Path(donut_path(resolved))
+    return str(p.parent / f'{p.stem}_ccs_fits.parquet')
 
 
 def plots_dir_ccs(resolved):
     """Derive the CCS plots output subdirectory for a run."""
-    h5 = Path(hdf5_path(resolved))
-    return str(h5.parent / f'{h5.stem}_ccs')
+    p = Path(donut_path(resolved))
+    return str(p.parent / f'{p.stem}_ccs')
 
 
 def log(msg):

@@ -9,12 +9,12 @@ Can be used as a library or via the companion CLI script run_dz_fit.py.
 import sys
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import statsmodels.api as sm
 from astropy.table import QTable, join
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from intrinsics_lib import restack_array_columns
 
 
 # ============================================================
@@ -230,31 +230,19 @@ def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
     return img_params, fit_vals, rlm_weights
 
 
-def is_streaming_hdf5(input_file):
-    """Return True if 'donuts' is stored in PyTables format='table' (streaming
-    writer), False if it's astropy's fixed format (old mktable output).
-    """
-    try:
-        with pd.HDFStore(str(input_file), mode='r') as store:
-            storer = store.get_storer('donuts')
-            return bool(getattr(storer, 'is_table', False))
-    except Exception:
-        return False
-
-
 def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
                                  max_focal_noll=3, include_intrinsic=True,
                                  fp_radius=1.75, prefix='z1toz3'):
-    """Streaming variant: read donuts per visit via pd.read_hdf(where=...).
+    """Streaming variant: read donuts one row group (= one visit) at a time.
 
-    Doesn't load the entire donuts table into memory — each visit is
-    queried individually using the day_obs/seq_num index on the HDF5
-    'donuts' table (written by intrinsics_lib.stream_zernikes_to_hdf5).
+    Reads the donuts parquet file written by stream_zernikes_to_parquet,
+    where each visit is stored as a single row group. Per-visit reads
+    use row-group stats to avoid scanning the whole file.
 
     Returns fit_rows (list of dicts) — zk_fit_vals and zk_rlm_weights
     are not accumulated (they weren't used downstream anyway).
     """
-    input_file = str(input_file)
+    pf = pq.ParquetFile(str(input_file))
     fit_rows = []
     total_donuts = 0
 
@@ -263,15 +251,31 @@ def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
     zk_col = f'zk_{coord_sys}'
     zk_intr_col = f'zk_intrinsic_{coord_sys}'
 
+    # Build a (day_obs, seq_num) -> row_group_idx lookup from row-group stats
+    rg_index = {}
+    for i in range(pf.num_row_groups):
+        meta = pf.metadata.row_group(i)
+        d = s = None
+        for ci in range(meta.num_columns):
+            cmeta = meta.column(ci)
+            name = cmeta.path_in_schema
+            if name == 'day_obs' and cmeta.statistics is not None:
+                d = cmeta.statistics.min
+            elif name == 'seq_num' and cmeta.statistics is not None:
+                s = cmeta.statistics.min
+        if d is not None and s is not None:
+            rg_index[(int(d), int(s))] = i
+
     for img_idx, v in enumerate(visit_info):
         dobs = int(v['day_obs'])
         snum = int(v['seq_num'])
-        q = f'day_obs == {dobs} & seq_num == {snum}'
-        df = pd.read_hdf(input_file, 'donuts', where=q)
-        if len(df) == 0:
+        rg_i = rg_index.get((dobs, snum))
+        if rg_i is None:
             continue
 
-        restack_array_columns(df)
+        df = pf.read_row_group(rg_i).to_pandas()
+        if len(df) == 0:
+            continue
 
         thx_deg = np.rad2deg(df[thx_col].to_numpy(dtype=float))
         thy_deg = np.rad2deg(df[thy_col].to_numpy(dtype=float))
@@ -382,36 +386,40 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
-    # Auto-derive output file: {stem}_fits.parquet
-    if output_file is None:
-        output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
+    # Detect format by suffix: .parquet (new, streaming) or .hdf5 (legacy)
+    is_parquet = input_file.suffix == '.parquet'
 
-    # Load visit_info (always in astropy format, works for both old and new)
-    print(f"Loading: {input_file}")
-    visit_info = QTable.read(str(input_file), path='visits')
-    print(f"  {len(visit_info)} visits")
+    if is_parquet:
+        visits_file = input_file.parent / f'{input_file.stem}_visits.parquet'
+        if output_file is None:
+            output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
+        print(f"Loading: {input_file} (parquet, one row group per visit)")
+        visit_info = QTable.read(str(visits_file))
+        print(f"  {len(visit_info)} visits")
+    else:
+        # Legacy HDF5: donuts and visits in same file
+        if output_file is None:
+            output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
+        print(f"Loading: {input_file} (legacy HDF5)")
+        visit_info = QTable.read(str(input_file), path='visits')
+        print(f"  {len(visit_info)} visits")
 
     # Derive Noll indices
     noll_arr = None
     if 'nollIndices' in visit_info.colnames:
         noll_arr = np.array(visit_info['nollIndices'][0])
 
-    streaming = is_streaming_hdf5(input_file)
-    print(f"  Format: {'streaming (PyTables)' if streaming else 'legacy (astropy fixed)'}")
-
-    if streaming:
-        # Probe one visit's donuts to determine nZk
-        v0 = visit_info[0]
-        q0 = f"day_obs == {int(v0['day_obs'])} & seq_num == {int(v0['seq_num'])}"
-        df0 = pd.read_hdf(str(input_file), 'donuts', where=q0)
-        restack_array_columns(df0)
+    if is_parquet:
+        # Probe one row group to determine nZk
+        pf = pq.ParquetFile(str(input_file))
+        df0 = pf.read_row_group(0).to_pandas()
         zk_sample = np.stack(df0[f'zk_{coord_sys}'].values)
         nZk = zk_sample.shape[1]
         iZs, iZidx = derive_noll_indices(nZk, noll_arr)
         print(f"  Noll indices ({len(iZs)} terms): {iZs}")
-        del df0, zk_sample
+        del df0, zk_sample, pf
 
-        # Fit via per-visit HDF5 queries
+        # Fit via per-visit row-group reads
         rows_z3 = fit_focal_zernikes_streaming(
             input_file, visit_info, coord_sys, iZs,
             max_focal_noll=3, prefix='z1toz3')

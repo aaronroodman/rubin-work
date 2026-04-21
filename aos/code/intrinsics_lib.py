@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from scipy.interpolate import LinearNDInterpolator
 from astropy.table import QTable, vstack
 from astropy.time import Time, TimeDelta
@@ -313,113 +315,110 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
     return aosTable_sel, visit_meta
 
 
-# Array-valued columns in the aosTable that need explode/restack for HDF5
-# format='table' storage. These are all shape (n_donuts, n_zernikes) arrays.
-ARRAY_COLUMN_BASES = [
-    'zk_OCS', 'zk_CCS',
-    'zk_intrinsic_OCS', 'zk_intrinsic_CCS',
-    'zk_residual_OCS', 'zk_residual_CCS',
-    'zk_deviation_OCS', 'zk_deviation_CCS',
-    'zk_OCS_mean', 'zk_CCS_mean',
-    'zk_intrinsic', 'zk_residual',
-]
-
-
-def explode_array_columns(tbl, col_bases=None):
-    """Flatten 2-D array columns in an astropy Table into scalar sub-columns.
-
-    Astropy Tables can hold 2-D data per column (e.g. zk_OCS is shape
-    (n_rows, n_zernikes)). `to_pandas()` refuses those; this helper splits
-    each 2-D column into N scalar columns named {col}_0, {col}_1, ...,
-    {col}_{N-1} and drops the original. Works in place, returns tbl.
+def _astropy_table_to_pyarrow(tbl):
+    """Convert an astropy Table to a pyarrow Table, preserving list/array
+    columns as pyarrow list<float> columns. Scalar columns pass through.
     """
-    if col_bases is None:
-        col_bases = ARRAY_COLUMN_BASES
-    for col in list(tbl.colnames):
-        if col not in col_bases:
-            continue
+    arrays = []
+    names = []
+    for col in tbl.colnames:
         data = tbl[col]
-        if data.ndim < 2:
-            continue
         arr = np.asarray(data)
-        for i in range(arr.shape[1]):
-            tbl[f'{col}_{i}'] = arr[:, i]
-        tbl.remove_column(col)
-    return tbl
+        if arr.ndim == 2:
+            # Per-row array column (e.g. zk_OCS shape (n, n_zk))
+            # Pass as a list of per-row numpy arrays; pyarrow infers list<float>
+            rows = [np.ascontiguousarray(arr[i]) for i in range(arr.shape[0])]
+            arrays.append(pa.array(rows))
+        elif arr.dtype.kind == 'O':
+            arrays.append(pa.array(list(arr)))
+        else:
+            arrays.append(pa.array(arr))
+        names.append(col)
+    return pa.Table.from_arrays(arrays, names=names)
 
 
-def restack_array_columns(df, col_bases=None):
-    """Inverse of explode_array_columns — rebuild array-valued columns.
+def read_donuts_table(parquet_path, visit_pairs=None):
+    """Load the donuts parquet table as a QTable.
 
-    For each base name in col_bases, gather columns named {col}_0, {col}_1, ...
-    into a single column of per-row numpy arrays. Drops the sub-columns.
-
-    Returns the modified DataFrame (same object, modified in place).
+    If visit_pairs (list of (day_obs, seq_num)) is provided, only those
+    visits' row groups are loaded. Otherwise the full table is loaded.
+    List columns (zk_OCS, etc.) are restacked into 2-D numpy arrays so
+    downstream code sees the same shape as before.
     """
-    if col_bases is None:
-        col_bases = ARRAY_COLUMN_BASES
-    for base in col_bases:
-        # Find sub-columns with numeric suffixes in order
-        sub_cols = [c for c in df.columns
-                    if c.startswith(f'{base}_') and c[len(base) + 1:].isdigit()]
-        if not sub_cols:
-            continue
-        sub_cols.sort(key=lambda c: int(c[len(base) + 1:]))
-        arr = df[sub_cols].to_numpy()
-        df[base] = list(arr)
-        df.drop(columns=sub_cols, inplace=True)
-    return df
+    pf = pq.ParquetFile(str(parquet_path))
 
+    if visit_pairs is not None:
+        wanted = set((int(d), int(s)) for d, s in visit_pairs)
+        chosen = []
+        for i in range(pf.num_row_groups):
+            meta = pf.metadata.row_group(i)
+            # Look up day_obs / seq_num in the row-group statistics
+            stats = {}
+            for ci in range(meta.num_columns):
+                cmeta = meta.column(ci)
+                name = cmeta.path_in_schema
+                if name in ('day_obs', 'seq_num') and cmeta.statistics is not None:
+                    stats[name] = cmeta.statistics.min  # min == max for single-visit
+            key = (stats.get('day_obs'), stats.get('seq_num'))
+            if key in wanted:
+                chosen.append(i)
+        tbls = [pf.read_row_group(i) for i in chosen]
+        tbl_pa = pa.concat_tables(tbls) if tbls else pf.read_row_group(0).slice(0, 0)
+    else:
+        tbl_pa = pf.read()
 
-def read_donuts_table(hdf5_path, where=None):
-    """Read the 'donuts' table from HDF5 as a QTable.
+    df = tbl_pa.to_pandas()
 
-    Handles both formats:
-    - streaming (PyTables format='table'): supports `where=` filter and
-      restacks exploded scalar sub-columns into array columns
-    - legacy (astropy fixed format): `where=` must be None
-
-    Pass where='day_obs==X & seq_num==Y' for per-visit queries on new files.
-    """
-    # Detect which format this file uses
-    is_table = False
-    try:
-        with pd.HDFStore(str(hdf5_path), mode='r') as store:
-            storer = store.get_storer('donuts')
-            is_table = bool(getattr(storer, 'is_table', False))
-    except Exception:
-        pass
-
-    if not is_table:
-        if where is not None:
-            raise ValueError(
-                f"'where=' queries not supported on legacy fixed-format "
-                f"HDF5 file: {hdf5_path}")
-        return QTable.read(str(hdf5_path), path='donuts')
-
-    df = pd.read_hdf(str(hdf5_path), 'donuts', where=where)
-    restack_array_columns(df)
-
-    tbl = QTable()
+    # Reconstruct an astropy QTable, promoting list columns to 2-D arrays
+    out = QTable()
     for col in df.columns:
         vals = df[col].values
-        if vals.dtype == object and len(vals) > 0 and \
-           hasattr(vals[0], '__len__') and not isinstance(vals[0], (str, bytes)):
-            tbl[col] = np.stack(vals)
-        else:
-            tbl[col] = vals
-    return tbl
+        if len(vals) > 0 and isinstance(vals[0], (list, np.ndarray)) \
+           and not isinstance(vals[0], (str, bytes)):
+            try:
+                out[col] = np.stack(vals)
+                continue
+            except ValueError:
+                pass
+        out[col] = vals
+    return out
 
 
-def stream_zernikes_to_hdf5(visit_pairs, collections, butler_repo, coord_sys,
-                            camera, output_file,
-                            calc_focal_plane=False, calc_mean_zernike=False):
-    """Stream aggregate Zernikes per visit to HDF5 under key 'donuts'.
+def read_donuts_for_visit(parquet_path, day_obs, seq_num):
+    """Read the donuts for one visit (one row group) as a pandas DataFrame.
 
-    Uses pandas HDFStore with format='table' (PyTables) so row appending
-    is cheap and per-visit queries via where='day_obs==X & seq_num==Y'
-    are fast. Array-valued columns are exploded to scalar sub-columns
-    for PyTables compatibility (use restack_array_columns when reading).
+    Relies on the streaming writer putting each visit in its own row group,
+    with min/max statistics on day_obs and seq_num so a full scan is avoided.
+    Falls back to a filter if row-group stats don't match.
+    """
+    pf = pq.ParquetFile(str(parquet_path))
+    day_obs = int(day_obs)
+    seq_num = int(seq_num)
+    for i in range(pf.num_row_groups):
+        meta = pf.metadata.row_group(i)
+        d = s = None
+        for ci in range(meta.num_columns):
+            cmeta = meta.column(ci)
+            name = cmeta.path_in_schema
+            if name == 'day_obs' and cmeta.statistics is not None:
+                d = cmeta.statistics.min
+            elif name == 'seq_num' and cmeta.statistics is not None:
+                s = cmeta.statistics.min
+        if d == day_obs and s == seq_num:
+            return pf.read_row_group(i).to_pandas()
+    # Fallback: scan all row groups
+    df = pf.read().to_pandas()
+    return df[(df['day_obs'] == day_obs) & (df['seq_num'] == seq_num)].copy()
+
+
+def stream_zernikes_to_parquet(visit_pairs, collections, butler_repo, coord_sys,
+                               camera, output_file,
+                               calc_focal_plane=False, calc_mean_zernike=False):
+    """Stream aggregate Zernikes per visit to parquet (one row group per visit).
+
+    List/array columns (zk_OCS, zk_intrinsic_OCS, etc.) are stored as
+    native parquet list<float> — no explode/restack, so the file is
+    readable by any parquet-aware tool.
 
     Returns visit_info (small QTable), or None on failure.
     """
@@ -432,6 +431,8 @@ def stream_zernikes_to_hdf5(visit_pairs, collections, butler_repo, coord_sys,
     ref_noll_indices = None
     noll_mismatch_count = 0
     total_rows = 0
+    writer = None
+    ref_schema = None
 
     print(f"\nStreaming Zernikes for {len(visit_pairs)} visits to {output_file}...")
 
@@ -439,7 +440,7 @@ def stream_zernikes_to_hdf5(visit_pairs, collections, butler_repo, coord_sys,
     if Path(output_file).exists():
         Path(output_file).unlink()
 
-    with pd.HDFStore(str(output_file), mode='w', complevel=1, complib='zlib') as store:
+    try:
         for day_obs_val, seq_num in tqdm(visit_pairs):
             agg_zern, visit_meta = get_aggregate_zernikes(
                 butler, day_obs_val, seq_num, coord_sys, camera,
@@ -467,25 +468,29 @@ def stream_zernikes_to_hdf5(visit_pairs, collections, butler_repo, coord_sys,
             if drop_cols:
                 agg_zern.remove_columns(drop_cols)
 
-            # Explode 2D columns into scalar sub-columns, then convert
-            explode_array_columns(agg_zern)
-            df = agg_zern.to_pandas()
+            tbl_pa = _astropy_table_to_pyarrow(agg_zern)
 
-            store.append('donuts', df, format='table',
-                         data_columns=['day_obs', 'seq_num'],
-                         index=False,
-                         min_itemsize={'detector': 20})
+            if writer is None:
+                ref_schema = tbl_pa.schema
+                writer = pq.ParquetWriter(str(output_file), ref_schema,
+                                          compression='snappy')
+            else:
+                # Schema mismatch would corrupt the file — cast to reference
+                try:
+                    tbl_pa = tbl_pa.select(ref_schema.names).cast(ref_schema)
+                except Exception as e:
+                    print(f"WARNING: schema mismatch for day_obs={day_obs_val}, "
+                          f"seq_num={seq_num}: {e} — skipping")
+                    error_count += 1
+                    continue
 
+            writer.write_table(tbl_pa)  # one row group per visit
             visit_meta_list.append(visit_meta)
             success_count += 1
-            total_rows += len(df)
-
-        # Build an index on data_columns for fast per-visit queries
-        try:
-            store.create_table_index('donuts', columns=['day_obs', 'seq_num'],
-                                     optlevel=9, kind='full')
-        except Exception as e:
-            print(f"Warning: could not build table index: {e}")
+            total_rows += len(agg_zern)
+    finally:
+        if writer is not None:
+            writer.close()
 
     print(f"\n{'='*60}")
     print("Extraction Summary:")
@@ -816,6 +821,20 @@ async def get_rotator_data(visits_df, visit_pairs, butler_repo,
           f"{len(rotator_df) - n_missing} present, {n_missing} missing")
 
     if n_missing > 0:
+        # Summarize missing visits by day_obs for quick inspection
+        missing_by_day = Counter(d for d, _ in missing_pairs)
+        print(f"  Missing from ConsDB — falling back to Butler visitInfo + EFD:")
+        for d in sorted(missing_by_day):
+            day_total = sum(1 for dv, _ in visit_pairs if dv == d)
+            print(f"    day_obs={d}: {missing_by_day[d]}/{day_total} visits missing")
+        # Show individual missing visits (up to 20, then summary)
+        show_n = min(20, n_missing)
+        print(f"  First {show_n} missing (day_obs, seq_num):")
+        for d, s in missing_pairs[:show_n]:
+            print(f"    {d} {s}")
+        if n_missing > show_n:
+            print(f"    ... and {n_missing - show_n} more")
+
         butler_rot = Butler(butler_repo, instrument='LSSTCam',
                             collections=['LSSTCam/raw/all'])
         visitinfo_df = get_visitinfo_rotator_angles(butler_rot, missing_pairs)
@@ -1346,10 +1365,11 @@ async def run_mktable(
             "day_obs_min and day_obs_max must be specified (either explicitly "
             "or parseable from collection name)")
 
-    # Build output filename (single HDF5 with donuts + visits tables)
+    # Build output filenames: donuts + visits parquet sidecar
     os.makedirs(output_dir, exist_ok=True)
-    output_file = (f'{output_dir}/{collection_phrase}_'
-                   f'{day_obs_min}_{day_obs_max}.hdf5')
+    stem = f'{collection_phrase}_{day_obs_min}_{day_obs_max}'
+    output_file = f'{output_dir}/{stem}.parquet'
+    visits_file = f'{output_dir}/{stem}_visits.parquet'
 
     print(f"Pipeline: {collection_phrase} {coord_sys} {day_obs_min}-{day_obs_max}")
     print(f"  Butler: {butler_repo}")
@@ -1395,9 +1415,9 @@ async def run_mktable(
               "streaming pipeline (intrinsics are read from Butler metadata). "
               "Ignoring the flag.")
 
-    # Stream aggregate Zernikes per-visit to HDF5 (format='table').
+    # Stream aggregate Zernikes per-visit to parquet (one row group per visit).
     # Only visit_info is returned in memory; donuts go straight to disk.
-    visit_info = stream_zernikes_to_hdf5(
+    visit_info = stream_zernikes_to_parquet(
         visit_pairs, fam_collections, butler_repo, coord_sys, camera,
         output_file=output_file,
         calc_focal_plane=calc_focal_plane,
@@ -1421,13 +1441,12 @@ async def run_mktable(
         except Exception as e:
             print(f"Warning: Could not retrieve thermal data: {e}")
 
-    # Append visit_info (fixed format) to the same HDF5 file.
-    # Astropy's HDF5 writer happily coexists with PyTables-format 'donuts'.
-    visit_info.write(output_file, path='visits', serialize_meta=True,
-                     append=True, overwrite=True)
+    # Write the visits table as a small sidecar parquet
+    visit_info.write(visits_file, format='parquet', overwrite=True)
 
-    print(f"\nSaved to {output_file}:")
-    print(f"  donuts: streamed ({len(visit_info)} visits worth)")
-    print(f"  visits: {len(visit_info)} rows, {len(visit_info.columns)} columns")
+    print(f"\nSaved:")
+    print(f"  donuts: {output_file} (streamed, one row group per visit)")
+    print(f"  visits: {visits_file} — {len(visit_info)} rows, "
+          f"{len(visit_info.columns)} columns")
 
     return None, visit_info

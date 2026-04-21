@@ -32,31 +32,39 @@ except ImportError:
 # ============================================================
 
 def discover_input_pairs(input_pattern):
-    """Auto-discover HDF5 + fit parquet pairs from a glob pattern.
+    """Auto-discover donut + fit file pairs from a glob pattern.
 
-    Convention: HDF5 files contain donuts+visits tables, fit files are
-    named {stem}_fits.parquet alongside the HDF5.
+    Accepts both formats:
+    - new: .parquet donut table (with {stem}_visits.parquet sidecar)
+    - legacy: .hdf5 file with donuts+visits keys
+
+    Convention: fit files are named {stem}_fits.parquet alongside the
+    donut file, where {stem} excludes the donut extension.
 
     Parameters
     ----------
     input_pattern : str
-        Glob pattern for HDF5 files (e.g. 'output/*_20260315_*.hdf5').
+        Glob pattern (e.g. 'output/*_20260315_*.parquet' or '*.hdf5').
 
     Returns
     -------
-    pairs : list of (hdf5_path, fit_path) tuples
+    pairs : list of (donut_path, fit_path) tuples
     """
-    hdf5_files = sorted(glob_module.glob(input_pattern))
+    files = sorted(glob_module.glob(input_pattern))
     pairs = []
-    for h5 in hdf5_files:
-        h5 = Path(h5)
-        if not h5.is_file() or h5.suffix != '.hdf5':
+    for f in files:
+        p = Path(f)
+        # Skip sidecar and fit parquets when globbing *.parquet
+        if p.suffix == '.parquet' and (
+                p.stem.endswith('_visits') or p.stem.endswith('_fits')):
             continue
-        fit_file = h5.parent / f'{h5.stem}_fits.parquet'
+        if not p.is_file() or p.suffix not in ('.parquet', '.hdf5'):
+            continue
+        fit_file = p.parent / f'{p.stem}_fits.parquet'
         if fit_file.exists():
-            pairs.append((str(h5), str(fit_file)))
+            pairs.append((str(p), str(fit_file)))
         else:
-            print(f"Warning: no fit file found for {h5} "
+            print(f"Warning: no fit file found for {p} "
                   f"(expected {fit_file})")
     return pairs
 
@@ -82,14 +90,15 @@ def load_and_concatenate(pairs, coord_sys='OCS'):
     fit_tables = []
     ref_iZs = None
 
-    for hdf5_file, fit_file in pairs:
-        print(f"Loading: {hdf5_file}")
-        # Try the streaming (PyTables format='table') reader first;
-        # fall back to astropy fixed-format for legacy chunks.
-        try:
-            aos = read_donuts_table(hdf5_file)
-        except (KeyError, TypeError, ValueError):
-            aos = QTable.read(hdf5_file, path='donuts')
+    for donut_file, fit_file in pairs:
+        print(f"Loading: {donut_file}")
+        donut_path = Path(donut_file)
+        if donut_path.suffix == '.parquet':
+            # New format: pyarrow parquet (one row group per visit)
+            aos = read_donuts_table(donut_file)
+        else:
+            # Legacy HDF5 path
+            aos = QTable.read(donut_file, path='donuts')
         print(f"  {len(aos)} donuts")
         ft = QTable.read(fit_file)
         print(f"  {len(ft)} visits from {fit_file}")
