@@ -55,9 +55,16 @@ def main():
     args = parser.parse_args()
     coord_sys = args.coord_sys
 
-    # Load data
-    print(f"Loading donuts: {args.input_file}")
-    aosTable = QTable.read(args.input_file, path='donuts')
+    # Load donuts table — detect format by suffix.
+    #   * .parquet  -> streaming donut parquet produced by run_mktable
+    #     (astropy concatenates row groups on read)
+    #   * .hdf5     -> legacy single-file HDF5 with path='donuts'
+    input_path = Path(args.input_file)
+    print(f"Loading donuts: {input_path}")
+    if input_path.suffix == '.parquet':
+        aosTable = QTable.read(str(input_path))
+    else:
+        aosTable = QTable.read(str(input_path), path='donuts')
     print(f"  {len(aosTable)} donuts")
 
     print(f"Loading fits: {args.fit_file}")
