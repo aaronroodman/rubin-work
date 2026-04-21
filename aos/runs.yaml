@@ -51,6 +51,6 @@ runs:
     steps:
       mktable: done
       fit: done
-      plots: failed
+      plots: done
       fit_ccs: pending
       plots_ccs: pending

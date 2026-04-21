@@ -1,16 +1,4 @@
 # chunk5.plots
-# 2026-04-21 20:27:27
+# 2026-04-21 20:50:46
 # python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_20260315_20260409.parquet output/aos_fam_danish_v1_triplets_20260315_20260409_fits.parquet --coord-sys OCS
 
-Loading donuts: output/aos_fam_danish_v1_triplets_20260315_20260409.parquet
-Traceback (most recent call last):
-  File [35m"/home/r/roodman/notebooks/rubin-work/aos/code/run_dz_plots.py"[0m, line [35m319[0m, in [35m<module>[0m
-    [31mmain[0m[1;31m()[0m
-    [31m~~~~[0m[1;31m^^[0m
-  File [35m"/home/r/roodman/notebooks/rubin-work/aos/code/run_dz_plots.py"[0m, line [35m60[0m, in [35mmain[0m
-    aosTable = QTable.read(args.input_file, path='donuts')
-  File [35m"/opt/lsst/software/stack/conda/envs/lsst-scipipe-12.1.0-exact/lib/python3.13/site-packages/astropy/table/connect.py"[0m, line [35m62[0m, in [35m__call__[0m
-    out = self.registry.read(cls, *args, **kwargs)
-  File [35m"/opt/lsst/software/stack/conda/envs/lsst-scipipe-12.1.0-exact/lib/python3.13/site-packages/astropy/io/registry/core.py"[0m, line [35m221[0m, in [35mread[0m
-    data = reader(*args, **kwargs)
-[1;35mTypeError[0m: [35mread_table_parquet() got an unexpected keyword argument 'path'[0m
