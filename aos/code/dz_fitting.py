@@ -230,6 +230,18 @@ def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
     return img_params, fit_vals, rlm_weights
 
 
+def is_streaming_hdf5(input_file):
+    """Return True if 'donuts' is stored in PyTables format='table' (streaming
+    writer), False if it's astropy's fixed format (old mktable output).
+    """
+    try:
+        with pd.HDFStore(str(input_file), mode='r') as store:
+            storer = store.get_storer('donuts')
+            return bool(getattr(storer, 'is_table', False))
+    except Exception:
+        return False
+
+
 def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
                                  max_focal_noll=3, include_intrinsic=True,
                                  fp_radius=1.75, prefix='z1toz3'):
@@ -374,37 +386,74 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
     if output_file is None:
         output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
 
-    # Load visit_info (small); donuts read per-visit via HDF5 where= queries
+    # Load visit_info (always in astropy format, works for both old and new)
     print(f"Loading: {input_file}")
     visit_info = QTable.read(str(input_file), path='visits')
     print(f"  {len(visit_info)} visits")
 
-    # Derive Noll indices — probe one visit for the zk array width
+    # Derive Noll indices
     noll_arr = None
     if 'nollIndices' in visit_info.colnames:
         noll_arr = np.array(visit_info['nollIndices'][0])
 
-    # Read a single visit's donuts to determine nZk
-    v0 = visit_info[0]
-    q0 = f"day_obs == {int(v0['day_obs'])} & seq_num == {int(v0['seq_num'])}"
-    df0 = pd.read_hdf(str(input_file), 'donuts', where=q0)
-    restack_array_columns(df0)
-    zk_sample = np.stack(df0[f'zk_{coord_sys}'].values)
-    nZk = zk_sample.shape[1]
-    iZs, iZidx = derive_noll_indices(nZk, noll_arr)
-    print(f"  Noll indices ({len(iZs)} terms): {iZs}")
-    del df0, zk_sample
+    streaming = is_streaming_hdf5(input_file)
+    print(f"  Format: {'streaming (PyTables)' if streaming else 'legacy (astropy fixed)'}")
 
-    # Fit z1toz3 (streaming: per-visit queries)
-    rows_z3 = fit_focal_zernikes_streaming(
-        input_file, visit_info, coord_sys, iZs,
-        max_focal_noll=3, prefix='z1toz3')
+    if streaming:
+        # Probe one visit's donuts to determine nZk
+        v0 = visit_info[0]
+        q0 = f"day_obs == {int(v0['day_obs'])} & seq_num == {int(v0['seq_num'])}"
+        df0 = pd.read_hdf(str(input_file), 'donuts', where=q0)
+        restack_array_columns(df0)
+        zk_sample = np.stack(df0[f'zk_{coord_sys}'].values)
+        nZk = zk_sample.shape[1]
+        iZs, iZidx = derive_noll_indices(nZk, noll_arr)
+        print(f"  Noll indices ({len(iZs)} terms): {iZs}")
+        del df0, zk_sample
+
+        # Fit via per-visit HDF5 queries
+        rows_z3 = fit_focal_zernikes_streaming(
+            input_file, visit_info, coord_sys, iZs,
+            max_focal_noll=3, prefix='z1toz3')
+        rows_z6 = fit_focal_zernikes_streaming(
+            input_file, visit_info, coord_sys, iZs,
+            max_focal_noll=6, prefix='z1toz6')
+    else:
+        # Legacy path: load the whole donuts table via astropy
+        aosTable = QTable.read(str(input_file), path='donuts')
+        print(f"  {len(aosTable)} donuts, {len(aosTable.columns)} columns")
+
+        zk_data = np.stack(aosTable[f'zk_{coord_sys}'])
+        zk_intrinsic = np.stack(aosTable[f'zk_intrinsic_{coord_sys}'])
+        nZk = zk_data.shape[1]
+        iZs, iZidx = derive_noll_indices(nZk, noll_arr)
+        print(f"  Noll indices ({len(iZs)} terms): {iZs}")
+
+        # Validate zk = residual + intrinsic (legacy-only sanity check)
+        resid_col = f'zk_residual_{coord_sys}'
+        if resid_col in aosTable.colnames:
+            zk_resid = np.stack(aosTable[resid_col])
+            diff = zk_data - (zk_resid + zk_intrinsic)
+            max_abs_diff = np.max(np.abs(diff))
+            print(f"  Validation: max |zk - (residual + intrinsic)| = "
+                  f"{max_abs_diff:.2e} μm",
+                  "PASSED" if max_abs_diff <= 0.01 else "WARNING")
+
+        day_obs_arr = np.array(aosTable['day_obs'])
+        seq_num_arr = np.array(aosTable['seq_num'])
+        thx_deg = np.rad2deg(np.array(aosTable[f'thx_{coord_sys}']))
+        thy_deg = np.rad2deg(np.array(aosTable[f'thy_{coord_sys}']))
+
+        rows_z3, _, _ = fit_focal_zernikes(
+            day_obs_arr, seq_num_arr, thx_deg, thy_deg,
+            zk_data, zk_intrinsic, iZs,
+            max_focal_noll=3, prefix='z1toz3')
+        rows_z6, _, _ = fit_focal_zernikes(
+            day_obs_arr, seq_num_arr, thx_deg, thy_deg,
+            zk_data, zk_intrinsic, iZs,
+            max_focal_noll=6, prefix='z1toz6')
+
     fit_table_z3 = QTable(rows_z3)
-
-    # Fit z1toz6
-    rows_z6 = fit_focal_zernikes_streaming(
-        input_file, visit_info, coord_sys, iZs,
-        max_focal_noll=6, prefix='z1toz6')
     fit_table_z6 = QTable(rows_z6)
 
     # Flag bad fits

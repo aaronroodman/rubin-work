@@ -375,11 +375,31 @@ def restack_array_columns(df, col_bases=None):
 
 
 def read_donuts_table(hdf5_path, where=None):
-    """Read the streamed 'donuts' table from HDF5 (PyTables format) as a QTable.
+    """Read the 'donuts' table from HDF5 as a QTable.
 
-    Restacks the exploded scalar sub-columns back into array-valued QTable
-    columns. Pass where='day_obs==X & seq_num==Y' for per-visit queries.
+    Handles both formats:
+    - streaming (PyTables format='table'): supports `where=` filter and
+      restacks exploded scalar sub-columns into array columns
+    - legacy (astropy fixed format): `where=` must be None
+
+    Pass where='day_obs==X & seq_num==Y' for per-visit queries on new files.
     """
+    # Detect which format this file uses
+    is_table = False
+    try:
+        with pd.HDFStore(str(hdf5_path), mode='r') as store:
+            storer = store.get_storer('donuts')
+            is_table = bool(getattr(storer, 'is_table', False))
+    except Exception:
+        pass
+
+    if not is_table:
+        if where is not None:
+            raise ValueError(
+                f"'where=' queries not supported on legacy fixed-format "
+                f"HDF5 file: {hdf5_path}")
+        return QTable.read(str(hdf5_path), path='donuts')
+
     df = pd.read_hdf(str(hdf5_path), 'donuts', where=where)
     restack_array_columns(df)
 

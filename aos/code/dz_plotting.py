@@ -84,8 +84,12 @@ def load_and_concatenate(pairs, coord_sys='OCS'):
 
     for hdf5_file, fit_file in pairs:
         print(f"Loading: {hdf5_file}")
-        # donuts is in PyTables format='table' — use our restacking reader
-        aos = read_donuts_table(hdf5_file)
+        # Try the streaming (PyTables format='table') reader first;
+        # fall back to astropy fixed-format for legacy chunks.
+        try:
+            aos = read_donuts_table(hdf5_file)
+        except (KeyError, TypeError, ValueError):
+            aos = QTable.read(hdf5_file, path='donuts')
         print(f"  {len(aos)} donuts")
         ft = QTable.read(fit_file)
         print(f"  {len(ft)} visits from {fit_file}")
