@@ -823,7 +823,7 @@ async def get_rotator_data(visits_df, visit_pairs, butler_repo,
     if n_missing > 0:
         # Summarize missing visits by day_obs for quick inspection
         missing_by_day = Counter(d for d, _ in missing_pairs)
-        print(f"  Missing from ConsDB — falling back to Butler visitInfo + EFD:")
+        print(f"  Missing from ConsDB — falling back to EFD, then Butler visitInfo:")
         for d in sorted(missing_by_day):
             day_total = sum(1 for dv, _ in visit_pairs if dv == d)
             print(f"    day_obs={d}: {missing_by_day[d]}/{day_total} visits missing")
@@ -837,9 +837,9 @@ async def get_rotator_data(visits_df, visit_pairs, butler_repo,
 
         butler_rot = Butler(butler_repo, instrument='LSSTCam',
                             collections=['LSSTCam/raw/all'])
-        visitinfo_df = get_visitinfo_rotator_angles(butler_rot, missing_pairs)
-        rotator_df = rotator_df.merge(visitinfo_df, on=['day_obs', 'seq_num'], how='left')
 
+        # Step 1: try EFD first (faster — MTRotator.rotation queries)
+        efd_df = None
         try:
             efd_client = makeEfdClient()
             efd_df = await get_efd_rotator_angles(efd_client, butler_rot, missing_pairs)
@@ -847,6 +847,28 @@ async def get_rotator_data(visits_df, visit_pairs, butler_repo,
         except Exception as e:
             print(f"Warning: Could not access EFD: {e}")
             rotator_df['efd_rotator_angle'] = np.nan
+
+        # Step 2: for visits still missing (EFD returned NaN too), fall back
+        # to Butler visitInfo (much slower; only hit if needed)
+        still_missing_mask = (rotator_df['physical_rotator_angle'].isna()
+                              & rotator_df['efd_rotator_angle'].isna())
+        still_missing_pairs = rotator_df.loc[
+            still_missing_mask, ['day_obs', 'seq_num']].values.tolist()
+        n_still_missing = len(still_missing_pairs)
+
+        if n_still_missing > 0:
+            print(f"  After EFD: {n_still_missing}/{n_missing} still missing, "
+                  f"querying Butler visitInfo...")
+            visitinfo_df = get_visitinfo_rotator_angles(
+                butler_rot, still_missing_pairs)
+            rotator_df = rotator_df.merge(
+                visitinfo_df, on=['day_obs', 'seq_num'], how='left')
+        else:
+            print(f"  EFD filled all {n_missing} ConsDB-missing visits — "
+                  f"skipping Butler visitInfo queries")
+            rotator_df['visitinfo_rotator_angle'] = np.nan
+            rotator_df['visitinfo_rotpa'] = np.nan
+            rotator_df['visitinfo_par_angle'] = np.nan
     else:
         print("All visits have ConsDB physical_rotator_angle, "
               "skipping EFD/visitInfo queries")
