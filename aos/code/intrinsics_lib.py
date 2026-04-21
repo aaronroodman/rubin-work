@@ -325,30 +325,27 @@ ARRAY_COLUMN_BASES = [
 ]
 
 
-def explode_array_columns(df, col_bases=None):
-    """Flatten array-valued DataFrame columns into scalar sub-columns.
+def explode_array_columns(tbl, col_bases=None):
+    """Flatten 2-D array columns in an astropy Table into scalar sub-columns.
 
-    For each column whose elements are arrays of length N, create N new
-    columns named {col}_0, {col}_1, ..., {col}_{N-1} and drop the original.
-
-    Returns the modified DataFrame (same object, modified in place).
+    Astropy Tables can hold 2-D data per column (e.g. zk_OCS is shape
+    (n_rows, n_zernikes)). `to_pandas()` refuses those; this helper splits
+    each 2-D column into N scalar columns named {col}_0, {col}_1, ...,
+    {col}_{N-1} and drops the original. Works in place, returns tbl.
     """
     if col_bases is None:
         col_bases = ARRAY_COLUMN_BASES
-    for col in list(df.columns):
+    for col in list(tbl.colnames):
         if col not in col_bases:
             continue
-        # Determine if this column holds per-row arrays
-        first = df[col].iloc[0]
-        if not hasattr(first, '__len__') or isinstance(first, (str, bytes)):
+        data = tbl[col]
+        if data.ndim < 2:
             continue
-        arr = np.stack(df[col].values)
-        if arr.ndim != 2:
-            continue
+        arr = np.asarray(data)
         for i in range(arr.shape[1]):
-            df[f'{col}_{i}'] = arr[:, i]
-        df.drop(columns=[col], inplace=True)
-    return df
+            tbl[f'{col}_{i}'] = arr[:, i]
+        tbl.remove_column(col)
+    return tbl
 
 
 def restack_array_columns(df, col_bases=None):
@@ -470,9 +467,9 @@ def stream_zernikes_to_hdf5(visit_pairs, collections, butler_repo, coord_sys,
             if drop_cols:
                 agg_zern.remove_columns(drop_cols)
 
-            # Convert astropy → pandas and explode array columns
+            # Explode 2D columns into scalar sub-columns, then convert
+            explode_array_columns(agg_zern)
             df = agg_zern.to_pandas()
-            explode_array_columns(df)
 
             store.append('donuts', df, format='table',
                          data_columns=['day_obs', 'seq_num'],
