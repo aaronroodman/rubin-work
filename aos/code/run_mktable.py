@@ -87,6 +87,9 @@ def main():
                         default='https://usdf-rsp.slac.stanford.edu/consdb',
                         help='ConsDB URL (default: external USDF URL; '
                              'token read from ~/.lsst/consdb_token)')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite existing output parquet files '
+                             '(default: refuse to clobber)')
 
     args = parser.parse_args()
 
@@ -143,6 +146,7 @@ def main():
         calc_focal_plane=args.calc_focal_plane,
         temp_time_window_sec=args.temp_time_window,
         consdb_url=args.consdb_url,
+        overwrite=args.overwrite,
     ))
 
 

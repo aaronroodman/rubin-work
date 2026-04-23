@@ -74,7 +74,8 @@ def resolve_run(run_cfg, param_sets):
     for key in ['day_obs_min', 'day_obs_max', 'coord_sys', 'butler_repo',
                 'fam_collections', 'fam_programs', 'calc_intrinsics',
                 'calc_mean_zernike', 'calc_focal_plane',
-                'no_single_image', 'no_fit_params', 'no_trio']:
+                'no_single_image', 'no_fit_params', 'no_trio',
+                'overwrite']:
         if key in run_cfg:
             resolved[key] = run_cfg[key]
     resolved.setdefault('coord_sys', 'OCS')
@@ -188,6 +189,8 @@ def build_command(run_name, step, resolved):
         for key in ['calc_mean_zernike', 'calc_focal_plane']:
             if resolved.get(key):
                 cmd.append(f'--{key.replace("_", "-")}')
+        if resolved.get('overwrite'):
+            cmd.append('--overwrite')
         return cmd
 
     elif step == 'fit':

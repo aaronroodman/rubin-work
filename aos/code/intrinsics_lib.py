@@ -1326,6 +1326,7 @@ async def run_mktable(
     calc_focal_plane=False,
     temp_time_window_sec=DEFAULT_TEMP_TIME_WINDOW_SEC,
     consdb_url=DEFAULT_CONSDB_URL,
+    overwrite=False,
     # Legacy support
     prefix=None,
 ):
@@ -1393,12 +1394,22 @@ async def run_mktable(
     output_file = f'{output_dir}/{stem}.parquet'
     visits_file = f'{output_dir}/{stem}_visits.parquet'
 
+    # Refuse to clobber existing output unless explicitly asked
+    existing = [p for p in (output_file, visits_file) if Path(p).exists()]
+    if existing and not overwrite:
+        raise FileExistsError(
+            f"Output file(s) already exist — refusing to overwrite:\n  "
+            + "\n  ".join(existing)
+            + "\nPass overwrite=True (or --overwrite from the CLI) to replace them.")
+
     print(f"Pipeline: {collection_phrase} {coord_sys} {day_obs_min}-{day_obs_max}")
     print(f"  Butler: {butler_repo}")
     print(f"  Collections: {fam_collections}")
     print(f"  Options: intrinsics={calc_intrinsics}, mean_zk={calc_mean_zernike}, "
           f"fp_coords={calc_focal_plane}, thermal={include_thermal}")
     print(f"  Output: {output_file}")
+    if existing:
+        print(f"  Overwriting: {existing}")
 
     # Query ConsDB for visits
     instrument = 'lsstcam'
