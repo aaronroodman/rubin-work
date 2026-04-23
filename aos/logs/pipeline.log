@@ -20,3 +20,4 @@ tbl[names].to_pandas(...)
 [2026-04-21 17:25:49] chunk5.fit: DONE (468s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_fit.log
 [2026-04-21 20:27:46] chunk5.plots: FAILED (18s) — plots exited with 1
 [2026-04-21 22:59:44] chunk5.plots: DONE (7739s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_plots.log
+[2026-04-23 08:52:33] chunk6.mktable: DONE (4978s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk6_mktable.log
