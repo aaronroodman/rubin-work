@@ -55,9 +55,9 @@ runs:
       fit_ccs: pending
       plots_ccs: pending
   chunk6:
-    param_set: fam_danish_v1_triplets
+    param_set: fam_danish_triplets
     day_obs_min: 20260315
-    day_obs_max: 20260409
+    day_obs_max: 20260405
     coord_sys: OCS
     steps:
       mktable: pending
