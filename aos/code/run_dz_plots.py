@@ -166,24 +166,15 @@ def main():
             for d, s in zip(np.array(aosTable_matched['day_obs']),
                            np.array(aosTable_matched['seq_num']))])
 
-        # Z4-Z15
+        # Single merged PDF over all pupil Zernikes (Z4..Z26), one
+        # page per pupil Z; 6 focal k coefficients per page.
         plot_fit_params_and_residuals(
             ft_blocks, aosTable_matched, block_donut_mask,
             day_obs_list=all_day_obs, fit_prefix=fit_prefix,
-            iZs_fit_plot=iZs_plot_12, iZs_hist=iZs_plot_12,
+            iZs_fit_plot=iZs, iZs_hist=iZs,
             iZs=iZs, iZidx=iZidx, coord_sys=coord_sys,
             visit_info=visit_info,
             output_dir=output_dir, show=False)
-
-        # Z16+ (if available)
-        if iZs_plot_hi:
-            plot_fit_params_and_residuals(
-                ft_blocks, aosTable_matched, block_donut_mask,
-                day_obs_list=all_day_obs, fit_prefix=fit_prefix,
-                iZs_fit_plot=iZs_plot_hi, iZs_hist=iZs_plot_hi,
-                iZs=iZs, iZidx=iZidx, coord_sys=coord_sys,
-                visit_info=visit_info,
-                output_dir=output_dir, show=False)
 
     # ================================================================
     # Single-image residual maps

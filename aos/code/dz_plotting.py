@@ -257,13 +257,10 @@ def _identify_fam_blocks(fit_table, min_block_size=3):
 
 
 def _fmt_angle(v):
-    """Format angle for display: 2 sig figs, no scientific notation."""
-    if v == 0:
-        return '0'
-    s = f'{v:.2g}'
-    if 'e' in s:
-        return f'{v:.0f}'
-    return s
+    """Format angle (already in degrees) as signed integer."""
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return '--'
+    return f'{int(round(v))}'
 
 
 def _build_pointing_groups(fit_table_day, visit_info, bin_size=3.0,
@@ -288,9 +285,24 @@ def _build_pointing_groups(fit_table_day, visit_info, bin_size=3.0,
     vi_lookup = {}
     vi_dobs = np.array(visit_info['day_obs'])
     vi_snum = np.array(visit_info['seq_num'])
-    vi_az = np.array(visit_info['az']) if 'az' in visit_info.colnames else np.full(len(visit_info), np.nan)
-    vi_alt = np.array(visit_info['alt'])
-    vi_rot = np.array(visit_info[rot_col]) if has_rot else np.full(len(visit_info), np.nan)
+    # alt / az are stored in RADIANS (from Butler visit metadata); auto-detect
+    # by magnitude so a future switch to degrees doesn't break binning.
+    vi_alt_raw = np.array(visit_info['alt'], dtype=float)
+    if np.nanmax(np.abs(vi_alt_raw)) < 2.0 * np.pi + 1e-3:
+        vi_alt = np.rad2deg(vi_alt_raw)
+    else:
+        vi_alt = vi_alt_raw
+    if 'az' in visit_info.colnames:
+        vi_az_raw = np.array(visit_info['az'], dtype=float)
+        if np.nanmax(np.abs(vi_az_raw)) < 2.0 * np.pi + 1e-3:
+            vi_az = np.rad2deg(vi_az_raw)
+        else:
+            vi_az = vi_az_raw
+    else:
+        vi_az = np.full(len(visit_info), np.nan)
+    # rotator_angle is already in DEGREES (physical rotator / EFD / visitInfo).
+    vi_rot = (np.array(visit_info[rot_col], dtype=float)
+              if has_rot else np.full(len(visit_info), np.nan))
     for i in range(len(visit_info)):
         vi_lookup[(int(vi_dobs[i]), int(vi_snum[i]))] = (
             float(vi_az[i]), float(vi_alt[i]), float(vi_rot[i]))
@@ -352,11 +364,19 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                                   iZs, iZidx, coord_sys,
                                   visit_info=None,
                                   position_group_tol=3.0,
-                                  output_dir='.', show=True):
-    """Plot fit coefficients vs image and residual histograms.
+                                  output_dir='.', show=True,
+                                  pdf_path=None):
+    """Plot fit coefficients organized by pupil Zernike and residual histograms.
 
-    Creates a multi-page PDF with coefficient time series (one page per
-    focal coefficient) and residual histograms.
+    Output is a single multi-page PDF with:
+      * Page 1 — legend page listing every pointing group (full, not truncated).
+      * One page per pupil Zernike j in iZs_fit_plot. Each page shows the
+        focal coefficients k=1..n_coeffs (up to 6) in a 2x3 grid as a
+        time-series vs image index, with pointing-group markers.
+      * Final page — residual histograms for iZs_hist.
+
+    Elevation is shown in integer degrees (bug fixed: alt auto-converted
+    from radians to degrees in _build_pointing_groups).
 
     Parameters
     ----------
@@ -365,21 +385,21 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
     aosTable_matched : QTable
         Full matched donut table (with zk_fit column).
     plot_mask_day : ndarray (bool)
-        Mask into aosTable_matched for the selected days.
     day_obs_list : list of int
     fit_prefix : str
     iZs_fit_plot : list of int
-        Zernike indices for coefficient plots.
+        Pupil Zernike Noll indices (one page each).
     iZs_hist : list of int
-        Zernike indices for residual histograms.
+        Pupil Zernike Noll indices for residual histogram page.
     iZs : list of int
-        All available Noll indices.
     iZidx : dict
     coord_sys : str
     visit_info : QTable, optional
     position_group_tol : float
     output_dir : str
     show : bool
+    pdf_path : str, optional
+        Explicit output path. Default: {output_dir}/fit_params_resid_{fit_prefix}_{suffix}.pdf
     """
     if len(day_obs_list) == 1:
         day_label = str(day_obs_list[0])
@@ -399,13 +419,15 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
 
     param_labels = ['k1 (piston)', 'k2 (tilt)', 'k3 (tip)',
                     'k4 (defocus)', 'k5 (astig45)', 'k6 (astig0)'][:n_coeffs]
-    param_units = ['\u03bcm'] * n_coeffs
 
-    n_plots = len(iZs_fit_plot)
-    ncols = 4
-    nrows = (n_plots + ncols - 1) // ncols
+    # 2x3 grid fits 6 focal coefficients; 1x3 for z1toz3.
+    if n_coeffs <= 3:
+        nrows_k, ncols_k = 1, n_coeffs
+    else:
+        nrows_k, ncols_k = 2, 3
 
-    markers = ['o', 's', '^', 'D', 'v', 'P', '*', 'X', 'p', 'h']
+    markers = ['o', 's', '^', 'D', 'v', 'P', '*', 'X', 'p', 'h',
+               '<', '>', '8', '+', 'x', '|', '_']
     if visit_info is not None and len(fit_table_day) > 0:
         group_indices, group_labels = _build_pointing_groups(
             fit_table_day, visit_info, bin_size=position_group_tol)
@@ -413,31 +435,71 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                                key=lambda g: group_indices[g][0])
     else:
         group_indices = None
+        sorted_groups = []
 
-    is_hi = (iZs_fit_plot[0] > 15) if len(iZs_fit_plot) > 0 else False
-    hi_suffix = '_hi' if is_hi else ''
-    pdf_path = (f'{output_dir}/fit_params_resid_{fit_prefix}'
-                f'{hi_suffix}_{file_suffix}.pdf')
+    if pdf_path is None:
+        pdf_path = (f'{output_dir}/fit_params_resid_{fit_prefix}'
+                    f'_{file_suffix}.pdf')
+
+    image_idx = np.arange(len(fit_table_day))
 
     with PdfPages(pdf_path) as pdf:
-        image_idx = np.arange(len(fit_table_day))
+        # ---------- Page 1: full legend of pointing groups ----------
+        if group_indices is not None and len(sorted_groups) > 0:
+            fig_leg = plt.figure(figsize=(11, 8.5))
+            ax_leg = fig_leg.add_subplot(111)
+            ax_leg.set_axis_off()
+            legend_handles = []
+            for gi, gkey in enumerate(sorted_groups):
+                n = len(group_indices[gkey])
+                m = markers[gi % len(markers)]
+                handle = ax_leg.plot([], [], m, markersize=8, linestyle='',
+                                     label=f'{group_labels[gkey]}  '
+                                           f'(n={n})')[0]
+                legend_handles.append(handle)
+            ax_leg.set_title(
+                f'Pointing groups (elevation / rotator, bin = '
+                f'{position_group_tol:.0f}\u00b0)  —  '
+                f'{len(sorted_groups)} groups total  —  {fit_prefix}',
+                fontsize=13)
+            # Choose number of legend columns: about 20 rows per column fits
+            ncol = max(1, int(np.ceil(len(sorted_groups) / 20.0)))
+            ax_leg.legend(handles=legend_handles, loc='center',
+                          ncol=ncol, fontsize=8, frameon=False,
+                          handletextpad=0.4, borderaxespad=0.2,
+                          columnspacing=1.2)
+            pdf.savefig(fig_leg, dpi=150, bbox_inches='tight')
+            if show:
+                plt.show()
+            else:
+                plt.close(fig_leg)
 
-        for ci in range(n_coeffs):
-            cname = f'c{ci + 1}'
-            fig, axes = plt.subplots(nrows, ncols,
-                                     figsize=(18, 10 * nrows / 3),
-                                     sharex=True)
-            if nrows == 1:
-                axes = axes[np.newaxis, :]
+        # ---------- Pages: one per pupil Zernike j ----------
+        for iZ in iZs_fit_plot:
+            # Check this pupil Zernike has columns present
+            if all(f'{fit_prefix}_z{iZ}_c{ci + 1}' not in fit_table_day.colnames
+                   for ci in range(n_coeffs)):
+                continue
+
+            fig, axes = plt.subplots(
+                nrows_k, ncols_k,
+                figsize=(6.0 * ncols_k, 4.0 * nrows_k),
+                sharex=True)
+            axes = np.atleast_2d(axes)
             fig.suptitle(
-                f'{fit_prefix} Fit: {param_labels[ci]} vs Image '
-                f'(day_obs: {day_label})', fontsize=14)
+                f'{fit_prefix}  Pupil Z{iZ}  —  focal coefficient '
+                f'time series  (day_obs: {day_label})',
+                fontsize=14)
 
-            for ax_idx, iZ in enumerate(iZs_fit_plot):
-                ax = axes[ax_idx // ncols, ax_idx % ncols]
+            for ci in range(n_coeffs):
+                r_idx = ci // ncols_k
+                c_idx = ci % ncols_k
+                ax = axes[r_idx, c_idx]
+                cname = f'c{ci + 1}'
                 col = f'{fit_prefix}_z{iZ}_{cname}'
                 err_col = f'{fit_prefix}_z{iZ}_{cname}_err'
                 if col not in fit_table_day.colnames:
+                    ax.set_visible(False)
                     continue
                 vals = np.array(fit_table_day[col])
                 errs = (np.array(fit_table_day[err_col])
@@ -449,29 +511,27 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                     for gi, gkey in enumerate(sorted_groups):
                         idxs = np.array(group_indices[gkey])
                         m = markers[gi % len(markers)]
-                        label = group_labels[gkey] if ax_idx == 0 else None
                         if errs is not None:
                             ax.errorbar(image_idx[idxs], vals[idxs],
                                         yerr=errs[idxs],
-                                        fmt=m, markersize=4, linewidth=0,
-                                        elinewidth=0.5, capsize=0, alpha=0.8,
-                                        label=label, zorder=2)
+                                        fmt=m, markersize=5, linewidth=0,
+                                        elinewidth=0.5, capsize=0, alpha=0.85,
+                                        zorder=2)
                         else:
                             ax.plot(image_idx[idxs], vals[idxs], m,
-                                    markersize=4, alpha=0.8,
-                                    label=label, zorder=2)
+                                    markersize=5, alpha=0.85, zorder=2)
                 else:
                     if errs is not None:
                         ax.errorbar(image_idx, vals, yerr=errs,
-                                    fmt='o-', markersize=3, linewidth=0.8,
+                                    fmt='o-', markersize=4, linewidth=0.8,
                                     elinewidth=0.5, capsize=0, alpha=0.8)
                     else:
-                        ax.plot(image_idx, vals, 'o-', markersize=3)
+                        ax.plot(image_idx, vals, 'o-', markersize=4)
 
-                ax.set_title(f'Z{iZ}')
-                ax.set_ylabel(param_units[ci])
+                ax.set_title(param_labels[ci], fontsize=11)
+                ax.set_ylabel('\u03bcm')
                 ax.axhline(0, color='gray', linestyle='--', linewidth=0.5)
-                if ax_idx // ncols == nrows - 1:
+                if r_idx == nrows_k - 1:
                     ax.set_xlabel('Image index')
 
                 if len(day_obs_list) > 1:
@@ -481,28 +541,10 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                             ax.axvline(d_idx - 0.5, color='black',
                                        linewidth=0.5, linestyle=':',
                                        alpha=0.5, zorder=0)
-                            if ax_idx == 0:
-                                ax.text(d_idx - 0.5, ax.get_ylim()[1],
-                                        str(ft_dobs[d_idx]),
-                                        fontsize=5, rotation=90,
-                                        va='top', ha='right', alpha=0.6)
 
-            for idx in range(n_plots, nrows * ncols):
-                axes[idx // ncols, idx % ncols].set_visible(False)
-
-            if group_indices is not None and len(sorted_groups) > 1:
-                max_legend = 8
-                handles, labels = axes[0, 0].get_legend_handles_labels()
-                if len(handles) > max_legend:
-                    axes[0, 0].legend(
-                        handles[:max_legend], labels[:max_legend],
-                        fontsize=6, loc='best', ncol=1,
-                        handletextpad=0.3, borderpad=0.3,
-                        title=f'+{len(handles) - max_legend} more',
-                        title_fontsize=5)
-                else:
-                    axes[0, 0].legend(fontsize=6, loc='best', ncol=1,
-                                      handletextpad=0.3, borderpad=0.3)
+            # Hide any unused axes (e.g. z1toz3 prefix with 2x3 grid)
+            for ci in range(n_coeffs, nrows_k * ncols_k):
+                axes[ci // ncols_k, ci % ncols_k].set_visible(False)
 
             plt.tight_layout()
             pdf.savefig(fig, dpi=150, bbox_inches='tight')
@@ -511,7 +553,7 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
             else:
                 plt.close(fig)
 
-        # Residual histograms
+        # ---------- Residual histograms ----------
         zk_data_plot = np.stack(
             aosTable_matched[f'zk_{coord_sys}'])[plot_mask_day]
         zk_model_plot = np.stack(
@@ -525,9 +567,10 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                 aosTable_matched['zk_fit'])[plot_mask_day]
 
         n_hist = len(iZs_hist)
-        nrows_h = (n_hist + ncols - 1) // ncols
-        fig, axes = plt.subplots(nrows_h, ncols,
-                                 figsize=(18, 10 * nrows_h / 3))
+        ncols_h = 4
+        nrows_h = (n_hist + ncols_h - 1) // ncols_h
+        fig, axes = plt.subplots(nrows_h, ncols_h,
+                                 figsize=(18, 3.3 * nrows_h))
         if nrows_h == 1:
             axes = axes[np.newaxis, :]
         fig.suptitle(
@@ -538,7 +581,7 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
         n_bins = 100
 
         for ax_idx, iZ in enumerate(iZs_hist):
-            ax = axes[ax_idx // ncols, ax_idx % ncols]
+            ax = axes[ax_idx // ncols_h, ax_idx % ncols_h]
             j = iZidx[iZ]
             resid = (zk_data_plot[:, j] - zk_model_plot[:, j]
                      - zk_fit_plot[:, j])
@@ -558,8 +601,8 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                     transform=ax.transAxes, ha='right', va='top', fontsize=8,
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-        for idx in range(n_hist, nrows_h * ncols):
-            axes[idx // ncols, idx % ncols].set_visible(False)
+        for idx in range(n_hist, nrows_h * ncols_h):
+            axes[idx // ncols_h, idx % ncols_h].set_visible(False)
 
         plt.tight_layout()
         pdf.savefig(fig, dpi=150, bbox_inches='tight')
@@ -569,6 +612,7 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
             plt.close(fig)
 
     print(f"Saved: {pdf_path}")
+    return pdf_path
 
 
 def plot_single_image_residual_grid(aosTable_matched, day_obs, seq_num,
