@@ -67,7 +67,7 @@ fam_danish_v16_9_mar25:
 fam_danish_v1_triplets_bin_1x:
   description: "Mar-Apr 2026, embargo repo, Danish v1.0 triplets bin 1x"
   butler_repo: /repo/embargo
-  fam_programs: [T278, T381, T492, T539, T614, T710]
+  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
   fam_collections:
     - aos_fam_danish_v1_triplets_bin_1x
   day_obs_min: 20260315
@@ -76,7 +76,7 @@ fam_danish_v1_triplets_bin_1x:
 fam_danish_v1_triplets:
   description: "Mar-Apr 2026, embargo repo, Danish v1.0 triplets (bin=2)"
   butler_repo: /repo/embargo
-  fam_programs: [T278, T381, T492, T539, T614, T710]
+  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
   fam_collections:
     - aos_fam_danish_v1_triplets
   day_obs_min: 20260315
