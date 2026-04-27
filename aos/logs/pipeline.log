@@ -36,3 +36,5 @@ tbl[names].to_pandas(...)
 [2026-04-27 08:34:51] chunk8.mktable: DONE (765s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk8_mktable.log
 [2026-04-27 08:36:41] chunk8.fit: DONE (49s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk8_fit.log
 [2026-04-27 08:45:21] chunk8.plots: DONE (314s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk8_plots.log
+[2026-04-27 16:37:02] chunk5.plots: FAILED (73s) — plots exited with -15
+[2026-04-27 18:48:43] chunk5.plots: DONE (7805s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_plots.log
