@@ -40,6 +40,7 @@ BLOCK-T416: WET-001 Optical State M2 Bending
 BLOCK-T417: CLT-001 Incremental Closed Loop w/ coma bending modes
 BLOCK-T425: LSSTCam OFF-field stray light within a filter
 BLOCK-T426: LSSTCam stray light from M2 baffle
+BLOCK-T429: LSSTCam stray light from M2 baffle using 1/4 of Moon
 BLOCK-T432: LSSTCam IN-field stray light occulted star with different filters
 BLOCK-T433: ASCT-009 Telescope Offsets
 BLOCK-T434: LSSTCam First Photon
@@ -114,6 +115,7 @@ BLOCK-T572: Low Level PTC Curves
 BLOCK-T579: LUT update test
 BLOCK-T580: LSSTCam stray light from M2 baffle using CBP - integrated z band 16° off-axis (no filter)
 BLOCK-T581: CBP Reflectance Sweep
+BLOCK-T594: LSSTCam Daily Checkout
 BLOCK-T595: LSSTCam scratched tape stray light path using CBP
 BLOCK-T596: LSSTCam stray light from LSSTCam autochanger 
 BLOCK-T597: LSSTCam stray light from M2 baffle using CBP at 16 deg - scanning over y and I wavelengths (NO filter)
@@ -132,7 +134,7 @@ BLOCK-T624: Simonyi LSSTCam Feature Based Scheduler LSST Survey
 BLOCK-T626: AOS Absolute Unit
 BLOCK-T630: Simonyi LSSTCam Feature Based Scheduler LSST Survey (Poor Seeing)
 BLOCK-T635: Camera dz Focus Sweep
-BLOCK-T636: I Band Flat-Offs
+BLOCK-T636: Z Band Flat-Offs
 BLOCK-T637: LSSTCam Exposure Scan
 BLOCK-T640: Kick the robot
 BLOCK-T641: Closed Loop Stability test
@@ -173,5 +175,9 @@ BLOCK-T703: FBS-driven closed loop stability test using MTAOS - Into and Out of 
 BLOCK-T706: FBS-driven closed loop stability test using MTAOS - Rotator Positions
 BLOCK-T707: LSSTCam Off-band LED Flats
 BLOCK-T708: Hartmann Giant Donut VMode Sensitivity
-BLOCK-T710: Investigation of High-Order Bending Modes Effects (B20 and B12)
+BLOCK-T710: All DoF LUT offsets
 BLOCK-T711: Minimal LSSTCam Off-band LED Flats
+BLOCK-T717: Wavefront Retrieval Independence from Donut Size: Quintuplet Camera Defocus Sequence - 2 Rotator Angles
+BLOCK-T720: AOS Alternating-Elevation Stability - Open Loop Full Array Mode
+BLOCK-T724: AOS Alternating-Rotator Stability - Open Loop Full Array Mode
+BLOCK-T725: LSSTCam U-band Monochromatic Flats
