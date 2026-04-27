@@ -36,5 +36,7 @@ tbl[names].to_pandas(...)
 [2026-04-27 08:34:51] chunk8.mktable: DONE (765s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk8_mktable.log
 [2026-04-27 08:36:41] chunk8.fit: DONE (49s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk8_fit.log
 [2026-04-27 08:45:21] chunk8.plots: DONE (314s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk8_plots.log
+[2026-04-27 14:07:21] [DRY RUN] chunk5.movie: python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_20260315_20260409.parquet output/aos_fam_danish_v1_triplets_20260315_20260409_fits.parquet --coord-sys OCS --no-fit-params --no-trio
+[2026-04-27 14:07:24] [DRY RUN] chunk6.plots: python code/run_dz_plots.py output/aos_fam_danish_triplets_20260315_20260409.parquet output/aos_fam_danish_triplets_20260315_20260409_fits.parquet --coord-sys OCS --no-single-image
 [2026-04-27 16:37:02] chunk5.plots: FAILED (73s) — plots exited with -15
 [2026-04-27 18:48:43] chunk5.plots: DONE (7805s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_plots.log

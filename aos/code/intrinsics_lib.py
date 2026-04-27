@@ -941,16 +941,32 @@ def _interp_dataframe_to_times(df_in, data_times_int, t0):
     """Interpolate every column of a time-indexed DataFrame to a new time
     array (data_times_int, in nanoseconds since epoch). t0 is the reference
     time used for normalization. NaNs in the source are linearly bridged.
+    Columns with object dtype (e.g. EFD per-thermocouple series mixing
+    floats and None) are coerced to float; non-numeric → NaN.
     """
     src_times = pd.to_datetime(
         df_in.index, format="ISO8601", utc=True).astype("int64")
-    src_times_norm = (src_times - t0) / 1e9
-    target_times_norm = (data_times_int - t0) / 1e9
+    src_times_norm = np.asarray((src_times - t0) / 1e9, dtype=float)
+    target_times_norm = np.asarray((data_times_int - t0) / 1e9, dtype=float)
+    n_target = len(target_times_norm)
     out = {}
     for col in df_in.columns:
-        values = df_in[col].values
-        val_interpolated = pd.Series(values).interpolate().values
-        out[col] = np.interp(target_times_norm, src_times_norm, val_interpolated)
+        # Coerce to numeric float; non-numeric (e.g. None) → NaN
+        values = pd.to_numeric(df_in[col], errors='coerce').to_numpy(dtype=float)
+        if np.all(np.isnan(values)):
+            out[col] = np.full(n_target, np.nan)
+            continue
+        val_interpolated = pd.Series(values).interpolate().to_numpy(dtype=float)
+        # If the leading or trailing values were NaN, interpolate() leaves
+        # them NaN — np.interp would then propagate that. Explicitly handle
+        # by clipping target times to the valid src range.
+        valid = ~np.isnan(val_interpolated)
+        if not valid.any():
+            out[col] = np.full(n_target, np.nan)
+            continue
+        out[col] = np.interp(
+            target_times_norm,
+            src_times_norm[valid], val_interpolated[valid])
     return out
 
 
