@@ -1,0 +1,86 @@
+# chunk8.mktable
+# 2026-04-27 07:12:47
+
+Pipeline: aos_fam_danish_v1_triplets_bin_1x OCS 20260418-20260423
+  Butler: /repo/embargo
+  Collections: ['aos_fam_danish_v1_triplets_bin_1x']
+  Options: intrinsics=True, mean_zk=False, fp_coords=False, thermal=True
+  Output: output/aos_fam_danish_v1_triplets_bin_1x_20260418_20260423.parquet
+Retrieved 3733 visits from ConsDB
+Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710'] and img_type='cwfs': 127
+
+Band counts by day_obs:
+band_first   u  g  r   i  z  y
+day_obs                       
+20260418    48  0  0  25  0  0
+20260423     0  0  0  54  0  0
+TOTAL       48  0  0  79  0  0
+Warning: Unpaired image at day_obs=20260418, seq_num=262
+
+Found 63 FAM image pairs (keeping second of each pair)
+Note: 1 unpaired images were skipped
+
+ConsDB physical_rotator_angle: 63/63 visits
+ConsDB physical_rotator_angle: 63 present, 0 missing
+All visits have ConsDB physical_rotator_angle, skipping EFD/visitInfo queries
+
+Rotator angle sources: ConsDB=63, EFD=0, visitInfo=0
+Flagged (|angle| > 90.0 deg): 0
+Warning: calc_intrinsics=True is no longer supported in the streaming pipeline (intrinsics are read from Butler metadata). Ignoring the flag.
+Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets_bin_1x']
+
+Streaming Zernikes for 63 visits to output/aos_fam_danish_v1_triplets_bin_1x_20260418_20260423.parquet...
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=21
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=24
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=27
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=30
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=33
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=36
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=39
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=42
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=45
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=48
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=51
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=54
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=57
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=60
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=63
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=66
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=69
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=72
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=91
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=94
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=97
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=100
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=103
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=106
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=109
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=112
+DatasetNotFoundError: No data for day_obs=20260423, seq_num=115
+
+============================================================
+Extraction Summary:
+  Total visits attempted: 63
+  Successful extractions: 36
+  Failed extractions:     27
+  nollIndices: [np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26)]
+  Total donut measurements: 86415
+============================================================
+
+Added rotator columns to visit_info. Flagged: 0 (|angle| > 90.0 deg)
+ConsDB returned 438 exposure records for obs times
+Matched obs times for 36/36 visits
+Querying EFD temperatures for 36 visits...
+  cam_air_temp: 36/36 valid
+  m2_air_temp: 36/36 valid
+  m1m3_air_temp: 36/36 valid
+  outside_temp: 36/36 valid
+  M1M3 gradients day_obs 20260418: 36 visits
+Querying TMA truss temperatures...
+
+Thermal data: 13 columns for 36 visits
+Added 13 thermal columns to visit_info
+
+Saved:
+  donuts: output/aos_fam_danish_v1_triplets_bin_1x_20260418_20260423.parquet (streamed, one row group per visit)
+  visits: output/aos_fam_danish_v1_triplets_bin_1x_20260418_20260423_visits.parquet — 36 rows, 26 columns
