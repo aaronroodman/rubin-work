@@ -1,5 +1,5 @@
 # chunk7.mktable
-# 2026-04-27 06:23:42
+# 2026-04-27 08:08:43
 
 Pipeline: aos_fam_danish_v1_triplets OCS 20260418-20260423
   Butler: /repo/embargo
@@ -8,29 +8,31 @@ Pipeline: aos_fam_danish_v1_triplets OCS 20260418-20260423
   Output: output/aos_fam_danish_v1_triplets_20260418_20260423.parquet
   Overwriting: ['output/aos_fam_danish_v1_triplets_20260418_20260423.parquet', 'output/aos_fam_danish_v1_triplets_20260418_20260423_visits.parquet']
 Retrieved 3733 visits from ConsDB
-Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710'] and img_type='cwfs': 127
+Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710', 'T717', 'T720', 'T724'] and img_type='cwfs': 247
 
 Band counts by day_obs:
-band_first   u  g  r   i  z  y
-day_obs                       
-20260418    48  0  0  25  0  0
-20260423     0  0  0  54  0  0
-TOTAL       48  0  0  79  0  0
+band_first   u  g  r    i  z  y
+day_obs                        
+20260418    48  0  0   49  0  0
+20260419     0  0  0   48  0  0
+20260420     0  0  0   48  0  0
+20260423     0  0  0   54  0  0
+TOTAL       48  0  0  199  0  0
 Warning: Unpaired image at day_obs=20260418, seq_num=262
 
-Found 63 FAM image pairs (keeping second of each pair)
+Found 123 FAM image pairs (keeping second of each pair)
 Note: 1 unpaired images were skipped
 
-ConsDB physical_rotator_angle: 63/63 visits
-ConsDB physical_rotator_angle: 63 present, 0 missing
+ConsDB physical_rotator_angle: 123/123 visits
+ConsDB physical_rotator_angle: 123 present, 0 missing
 All visits have ConsDB physical_rotator_angle, skipping EFD/visitInfo queries
 
-Rotator angle sources: ConsDB=63, EFD=0, visitInfo=0
+Rotator angle sources: ConsDB=123, EFD=0, visitInfo=0
 Flagged (|angle| > 90.0 deg): 0
 Warning: calc_intrinsics=True is no longer supported in the streaming pipeline (intrinsics are read from Butler metadata). Ignoring the flag.
 Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets']
 
-Streaming Zernikes for 63 visits to output/aos_fam_danish_v1_triplets_20260418_20260423.parquet...
+Streaming Zernikes for 123 visits to output/aos_fam_danish_v1_triplets_20260418_20260423.parquet...
 DatasetNotFoundError: No data for day_obs=20260418, seq_num=227
 DatasetNotFoundError: No data for day_obs=20260418, seq_num=230
 DatasetNotFoundError: No data for day_obs=20260418, seq_num=233
@@ -67,12 +69,72 @@ DatasetNotFoundError: No data for day_obs=20260418, seq_num=334
 DatasetNotFoundError: No data for day_obs=20260418, seq_num=337
 DatasetNotFoundError: No data for day_obs=20260418, seq_num=340
 DatasetNotFoundError: No data for day_obs=20260418, seq_num=343
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=356
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=359
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=362
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=365
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=368
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=371
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=374
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=377
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=380
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=383
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=386
+DatasetNotFoundError: No data for day_obs=20260418, seq_num=389
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=273
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=276
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=279
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=282
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=285
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=288
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=291
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=294
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=297
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=300
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=303
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=306
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=323
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=326
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=329
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=332
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=335
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=338
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=341
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=344
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=347
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=350
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=353
+DatasetNotFoundError: No data for day_obs=20260419, seq_num=356
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=16
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=19
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=22
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=25
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=28
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=31
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=34
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=37
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=40
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=43
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=46
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=49
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=62
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=65
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=68
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=71
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=74
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=77
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=80
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=83
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=86
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=89
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=92
+DatasetNotFoundError: No data for day_obs=20260420, seq_num=95
 
 ============================================================
 Extraction Summary:
-  Total visits attempted: 63
+  Total visits attempted: 123
   Successful extractions: 27
-  Failed extractions:     36
+  Failed extractions:     96
   nollIndices: [np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26)]
   Total donut measurements: 62102
 ============================================================
