@@ -1,18 +1,18 @@
 # chunk8.fit
-# 2026-04-27 07:35:59
+# 2026-04-27 08:36:41
 
 Loading: output/aos_fam_danish_v1_triplets_bin_1x_20260418_20260423.parquet (parquet, one row group per visit)
-  36 visits
+  96 visits
   Noll indices (21 terms): [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
-Fit 'z1toz3' (focal Noll 1-3): 36 images, 86415 donuts (streamed), include_intrinsic=True
-Fit 'z1toz6' (focal Noll 1-6): 36 images, 86415 donuts (streamed), include_intrinsic=True
-z1toz3: 0/36 visits flagged as bad_fit
+Fit 'z1toz3' (focal Noll 1-3): 96 images, 239397 donuts (streamed), include_intrinsic=True
+Fit 'z1toz6' (focal Noll 1-6): 96 images, 239397 donuts (streamed), include_intrinsic=True
+z1toz3: 0/96 visits flagged as bad_fit
   0 with |coeff| > 2.0 μm, 0 with n_donuts < 200
-z1toz6: 0/36 visits flagged as bad_fit
+z1toz6: 0/96 visits flagged as bad_fit
   0 with |coeff| > 2.0 μm, 0 with n_donuts < 200
 
-Combined: 0/36 visits flagged as bad_fit
-Merged with visit_info: 36 rows, 451 columns
+Combined: 0/96 visits flagged as bad_fit
+Merged with visit_info: 96 rows, 451 columns
 
 Saved: output/aos_fam_danish_v1_triplets_bin_1x_20260418_20260423_fits.parquet
-  36 rows x 451 columns
+  96 rows x 451 columns
