@@ -1,11 +1,12 @@
 # chunk7.mktable
-# 2026-04-24 22:41:57
+# 2026-04-27 06:23:42
 
 Pipeline: aos_fam_danish_v1_triplets OCS 20260418-20260423
   Butler: /repo/embargo
   Collections: ['aos_fam_danish_v1_triplets']
   Options: intrinsics=True, mean_zk=False, fp_coords=False, thermal=True
   Output: output/aos_fam_danish_v1_triplets_20260418_20260423.parquet
+  Overwriting: ['output/aos_fam_danish_v1_triplets_20260418_20260423.parquet', 'output/aos_fam_danish_v1_triplets_20260418_20260423_visits.parquet']
 Retrieved 3733 visits from ConsDB
 Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710'] and img_type='cwfs': 127
 
