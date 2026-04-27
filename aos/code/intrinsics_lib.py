@@ -937,25 +937,75 @@ async def get_ess_temperature(efd_client, obs_start, obs_end, index,
     return np.nan
 
 
-async def get_m1m3_gradients(efd_client, visit_table):
-    """Get M1M3 thermal gradients interpolated to observation times.
+def _interp_dataframe_to_times(df_in, data_times_int, t0):
+    """Interpolate every column of a time-indexed DataFrame to a new time
+    array (data_times_int, in nanoseconds since epoch). t0 is the reference
+    time used for normalization. NaNs in the source are linearly bridged.
+    """
+    src_times = pd.to_datetime(
+        df_in.index, format="ISO8601", utc=True).astype("int64")
+    src_times_norm = (src_times - t0) / 1e9
+    target_times_norm = (data_times_int - t0) / 1e9
+    out = {}
+    for col in df_in.columns:
+        values = df_in[col].values
+        val_interpolated = pd.Series(values).interpolate().values
+        out[col] = np.interp(target_times_norm, src_times_norm, val_interpolated)
+    return out
+
+
+def _thermocouple_metadata_table():
+    """Return a DataFrame of static thermocouple metadata: name, x, y, z,
+    core_location, scanner. Pulled from ThermocoupleTable in lsst.ts.xml.
+    Empty DF if utils aren't available.
+    """
+    if not HAS_M1M3_UTILS:
+        return pd.DataFrame()
+    try:
+        from lsst.ts.xml.tables.m1m3 import ThermocoupleTable
+    except ImportError:
+        return pd.DataFrame()
+    rows = []
+    for tc in ThermocoupleTable:
+        rows.append({
+            'name': getattr(tc, 'name', None),
+            'x': getattr(tc, 'x_position', np.nan),
+            'y': getattr(tc, 'y_position', np.nan),
+            'z': getattr(tc, 'z_position', np.nan),
+            'core_location': str(getattr(tc, 'core_location', '')),
+            'scanner': int(getattr(tc, 'scanner', -1)) if getattr(tc, 'scanner', None) is not None else -1,
+        })
+    return pd.DataFrame(rows)
+
+
+async def get_m1m3_data(efd_client, visit_table,
+                        include_thermocouples=True,
+                        include_cell_gradients=True):
+    """Get M1M3 thermal data interpolated to observation times.
 
     Parameters
     ----------
     efd_client : EfdClient
     visit_table : DataFrame
         Must contain obs_start column (TAI isot strings).
+    include_thermocouples : bool
+        If True, include per-thermocouple temperature columns
+        (prefix `m1m3_tc_<name>`, e.g. `m1m3_tc_MTC001B`).
+    include_cell_gradients : bool
+        If True, include per-cell front-back gradient columns
+        (prefix `m1m3_dt_<name>`).
 
     Returns
     -------
-    DataFrame with x_gradient, y_gradient, z_gradient, radial_gradient.
+    DataFrame indexed like visit_table, with at minimum the four
+    columns x_gradient, y_gradient, z_gradient, radial_gradient.
+    Plus optional per-thermocouple and per-cell-gradient columns.
     """
+    base_cols = {'x_gradient': np.nan, 'y_gradient': np.nan,
+                 'z_gradient': np.nan, 'radial_gradient': np.nan}
     if not HAS_M1M3_UTILS:
-        print("Warning: lsst.ts.m1m3.utils not available, skipping M1M3 gradients")
-        return pd.DataFrame({
-            'x_gradient': np.nan, 'y_gradient': np.nan,
-            'z_gradient': np.nan, 'radial_gradient': np.nan,
-        }, index=visit_table.index)
+        print("Warning: lsst.ts.m1m3.utils not available, skipping M1M3 data")
+        return pd.DataFrame(base_cols, index=visit_table.index)
 
     date_strings = Time(
         [str(x) for x in visit_table["obs_start"].values],
@@ -969,21 +1019,51 @@ async def get_m1m3_gradients(efd_client, visit_table):
 
     thermocouples = ThermocoupleAnalysis(efd_client)
     await thermocouples.load(start, end, time_bin=30)
+
     gradients = thermocouples.xyz_r_gradients
     grad_times = pd.to_datetime(
         gradients.index, format="ISO8601", utc=True
     ).astype("int64")
     t0 = grad_times[0]
-    grad_times_norm = (grad_times - t0) / 1e9
-    data_times_norm = (data_times_int - t0) / 1e9
 
     result = {}
+
+    # xyz / r gradients
     for name in ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]:
-        values = gradients[name].values
-        val_interpolated = pd.Series(values).interpolate().values
-        result[name] = np.interp(data_times_norm, grad_times_norm, val_interpolated)
+        result[name] = _interp_dataframe_to_times(
+            gradients[[name]], data_times_int, t0)[name]
+
+    # Per-thermocouple temperatures (~100+ columns named after thermocouples)
+    if include_thermocouples:
+        tc_df = getattr(thermocouples, 'all_thermocouples_dataframe', None)
+        if tc_df is not None and len(tc_df.columns) > 0:
+            interp = _interp_dataframe_to_times(tc_df, data_times_int, t0)
+            for col, vals in interp.items():
+                result[f'm1m3_tc_{col}'] = vals
+            print(f"  Added {len(tc_df.columns)} per-thermocouple temperature columns")
+
+    # Per-cell vertical (front-back) gradients
+    if include_cell_gradients:
+        vg_df = getattr(thermocouples, 'vertical_cell_gradient_dataframe', None)
+        if vg_df is not None and len(vg_df.columns) > 0:
+            interp = _interp_dataframe_to_times(vg_df, data_times_int, t0)
+            for col, vals in interp.items():
+                result[f'm1m3_dt_{col}'] = vals
+            print(f"  Added {len(vg_df.columns)} per-cell vertical gradient columns")
 
     return pd.DataFrame(result, index=visit_table.index)
+
+
+# Backward-compatible alias — old name returns just the four scalar gradient
+# columns (no per-thermocouple data) so existing callers keep working.
+async def get_m1m3_gradients(efd_client, visit_table):
+    """Backward-compatible wrapper; returns only the four xyz/r gradient
+    columns. New code should use get_m1m3_data() for the per-thermocouple
+    temperatures and per-cell gradients."""
+    df = await get_m1m3_data(efd_client, visit_table,
+                             include_thermocouples=False,
+                             include_cell_gradients=False)
+    return df[['x_gradient', 'y_gradient', 'z_gradient', 'radial_gradient']]
 
 
 async def get_thermal_data(consdb_client, efd_client, visit_info,
@@ -1053,13 +1133,16 @@ async def get_thermal_data(consdb_client, efd_client, visit_info,
         n_valid = temp_df[col].notna().sum()
         print(f"  {col}: {n_valid}/{len(temp_df)} valid")
 
-    # M1M3 thermal gradients (process per day_obs to avoid connection resets)
+    # M1M3 thermal data: gradients + per-thermocouple temperatures + per-cell
+    # vertical gradients. Process per day_obs to avoid connection resets.
     gradient_parts = []
     for day_obs_val in sorted(unique_visits["day_obs"].unique()):
         day_visits = unique_visits[unique_visits["day_obs"] == day_obs_val].reset_index(drop=True)
-        print(f"  M1M3 gradients day_obs {day_obs_val}: {len(day_visits)} visits")
+        print(f"  M1M3 data for day_obs {day_obs_val}: {len(day_visits)} visits")
         try:
-            gdf = await get_m1m3_gradients(efd_client, day_visits)
+            gdf = await get_m1m3_data(efd_client, day_visits,
+                                      include_thermocouples=True,
+                                      include_cell_gradients=True)
             gdf["day_obs"] = day_visits["day_obs"].values
             gdf["seq_num"] = day_visits["seq_num"].values
             gradient_parts.append(gdf)
@@ -1073,7 +1156,9 @@ async def get_thermal_data(consdb_client, efd_client, visit_info,
             })
             gradient_parts.append(gdf)
 
-    gradient_df = pd.concat(gradient_parts, ignore_index=True)
+    # Concat with sort=False; missing per-tc columns from a failed day become
+    # NaN, which is what we want.
+    gradient_df = pd.concat(gradient_parts, ignore_index=True, sort=False)
 
     # TMA truss temperatures
     truss_sensors = {
@@ -1097,13 +1182,16 @@ async def get_thermal_data(consdb_client, efd_client, visit_info,
     thermal_df = temp_df.merge(gradient_df, on=["day_obs", "seq_num"], how="left")
     thermal_df = thermal_df.merge(truss_df, on=["day_obs", "seq_num"], how="left")
 
-    thermal_cols = (
-        list(ess_sensors.keys())
-        + ["m2_delta_t", "cam_m1m3_delta_t", "dome_delta_t"]
-        + ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]
-        + list(truss_sensors.keys())
-    )
-    print(f"\nThermal data: {len(thermal_cols)} columns for {len(thermal_df)} visits")
+    # Summarize the columns produced. Includes whatever per-thermocouple
+    # and per-cell-gradient columns get_m1m3_data brought in.
+    thermal_cols = [c for c in thermal_df.columns
+                    if c not in ('day_obs', 'seq_num')]
+    n_tc = sum(1 for c in thermal_cols if c.startswith('m1m3_tc_'))
+    n_dt = sum(1 for c in thermal_cols if c.startswith('m1m3_dt_'))
+    n_other = len(thermal_cols) - n_tc - n_dt
+    print(f"\nThermal data: {len(thermal_cols)} columns for {len(thermal_df)} visits "
+          f"({n_other} scalar, {n_tc} per-thermocouple, "
+          f"{n_dt} per-cell-vertical-gradient)")
 
     return thermal_df
 
@@ -1393,9 +1481,11 @@ async def run_mktable(
     stem = f'{collection_phrase}_{day_obs_min}_{day_obs_max}'
     output_file = f'{output_dir}/{stem}.parquet'
     visits_file = f'{output_dir}/{stem}_visits.parquet'
+    tc_meta_file = f'{output_dir}/{stem}_thermocouples.parquet'
 
     # Refuse to clobber existing output unless explicitly asked
-    existing = [p for p in (output_file, visits_file) if Path(p).exists()]
+    existing = [p for p in (output_file, visits_file, tc_meta_file)
+                if Path(p).exists()]
     if existing and not overwrite:
         raise FileExistsError(
             f"Output file(s) already exist — refusing to overwrite:\n  "
@@ -1476,6 +1566,14 @@ async def run_mktable(
 
     # Write the visits table as a small sidecar parquet
     visit_info.write(visits_file, format='parquet', overwrite=True)
+
+    # Write static thermocouple metadata (name, x, y, z, scanner) once per
+    # mktable run. Useful for spatial analyses of m1m3_tc_<name> columns.
+    tc_meta = _thermocouple_metadata_table()
+    if len(tc_meta) > 0:
+        tc_meta.to_parquet(tc_meta_file, index=False)
+        print(f"  thermocouples: {tc_meta_file} — {len(tc_meta)} thermocouples "
+              f"(name, x, y, z, scanner)")
 
     print(f"\nSaved:")
     print(f"  donuts: {output_file} (streamed, one row group per visit)")
