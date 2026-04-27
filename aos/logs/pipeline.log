@@ -24,3 +24,4 @@ tbl[names].to_pandas(...)
 [2026-04-23 15:58:52] chunk6.fit: DONE (460s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk6_fit.log
 [2026-04-24 22:41:57] chunk7.mktable: DONE (185s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_mktable.log
 [2026-04-27 06:23:42] chunk7.mktable: DONE (228s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_mktable.log
+[2026-04-27 07:00:17] chunk8.mktable: FAILED (0s) — run_mktable() missing 2 required positional arguments: 'butler_repo' and 'fam_collections'
