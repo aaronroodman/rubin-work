@@ -1492,15 +1492,19 @@ async def run_mktable(
             "day_obs_min and day_obs_max must be specified (either explicitly "
             "or parseable from collection name)")
 
-    # Build output filenames: donuts + visits parquet sidecar
+    # Build output filenames: donuts + visits parquet sidecar.
+    # Static thermocouple metadata is shared across all chunks — written
+    # once globally to output/m1m3_thermocouples.parquet (not per-chunk).
     os.makedirs(output_dir, exist_ok=True)
     stem = f'{collection_phrase}_{day_obs_min}_{day_obs_max}'
     output_file = f'{output_dir}/{stem}.parquet'
     visits_file = f'{output_dir}/{stem}_visits.parquet'
-    tc_meta_file = f'{output_dir}/{stem}_thermocouples.parquet'
+    tc_meta_file = f'{output_dir}/m1m3_thermocouples.parquet'
 
     # Refuse to clobber existing output unless explicitly asked
-    existing = [p for p in (output_file, visits_file, tc_meta_file)
+    # (the global thermocouples metadata is excluded — re-writing the same
+    # static lookup table is harmless)
+    existing = [p for p in (output_file, visits_file)
                 if Path(p).exists()]
     if existing and not overwrite:
         raise FileExistsError(
