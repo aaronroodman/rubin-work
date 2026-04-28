@@ -297,6 +297,132 @@ def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
 
 
 # ============================================================
+# Scalar focal-plane fit (used for donut_blur and similar per-donut
+# scalar fields whose focal-plane variation we want to characterize
+# with the same Z1..Zn basis used for the Zernike fits).
+# ============================================================
+
+def _fit_one_image_scalar(thx_deg, thy_deg, values, max_focal_noll,
+                          fp_radius, prefix, dobs, snum, img_idx):
+    """Fit `values` (1-D scalar per donut) to focal-plane Noll Z1..Zn.
+
+    Returns an img_params dict keyed by `{prefix}_c{ci+1}` (and `_err`),
+    plus `{prefix}_scale`, `n_donuts`, `image_idx`, `day_obs`, `seq_num`.
+    Robust regression (Huber M-estimator) with lstsq fallback, mirroring
+    `_fit_one_image` but for a scalar field instead of a Zernike vector.
+    """
+    valid = (np.isfinite(values) & np.isfinite(thx_deg)
+             & np.isfinite(thy_deg))
+    n_pts = int(valid.sum())
+    img_params = {'day_obs': int(dobs), 'seq_num': int(snum),
+                  'image_idx': int(img_idx), 'n_donuts': n_pts}
+
+    if n_pts < max_focal_noll + 1:
+        for ci in range(max_focal_noll):
+            img_params[f'{prefix}_c{ci + 1}'] = np.nan
+            img_params[f'{prefix}_c{ci + 1}_err'] = np.nan
+        img_params[f'{prefix}_scale'] = np.nan
+        return img_params
+
+    A, _ = focal_plane_zernike_basis(
+        thx_deg[valid], thy_deg[valid], max_focal_noll, fp_radius)
+    vals = values[valid]
+    try:
+        rlm = sm.RLM(vals, A, M=sm.robust.norms.HuberT()).fit()
+        coeffs = rlm.params
+        bse = rlm.bse
+        scale = float(rlm.scale)
+    except Exception:
+        coeffs, _, _, _ = np.linalg.lstsq(A, vals, rcond=None)
+        bse = np.full(max_focal_noll, np.nan)
+        scale = float(np.std(vals - A @ coeffs))
+
+    for ci in range(max_focal_noll):
+        img_params[f'{prefix}_c{ci + 1}'] = float(coeffs[ci])
+        img_params[f'{prefix}_c{ci + 1}_err'] = float(bse[ci])
+    img_params[f'{prefix}_scale'] = scale
+    return img_params
+
+
+def fit_focal_scalar(day_obs_arr, seq_num_arr, thx_deg, thy_deg,
+                     values, max_focal_noll=6, fp_radius=1.75,
+                     prefix='blur'):
+    """Fit a scalar per-donut field over the focal plane (in-memory)."""
+    images = sorted(set(zip(day_obs_arr.tolist(), seq_num_arr.tolist())))
+    fit_rows = []
+    for img_idx, (dobs, snum) in enumerate(images):
+        mask = (day_obs_arr == dobs) & (seq_num_arr == snum)
+        img_params = _fit_one_image_scalar(
+            thx_deg[mask], thy_deg[mask], values[mask],
+            max_focal_noll, fp_radius, prefix, dobs, snum, img_idx)
+        fit_rows.append(img_params)
+    print(f"Fit '{prefix}' (focal Noll 1-{max_focal_noll}, scalar): "
+          f"{len(images)} images")
+    return fit_rows
+
+
+def fit_focal_scalar_streaming(input_file, visit_info, coord_sys,
+                               value_col='donut_blur',
+                               max_focal_noll=6, fp_radius=1.75,
+                               prefix='blur'):
+    """Streaming scalar fit: read donut parquet one row group at a time.
+
+    Returns list of img_params dicts.  Skips visits whose row group lacks
+    `value_col` or has fewer than `max_focal_noll + 1` valid points.
+    """
+    pf = pq.ParquetFile(str(input_file))
+
+    # Bail early if the column is absent from the schema entirely.
+    if value_col not in pf.schema_arrow.names:
+        print(f"  '{value_col}' not found in {input_file}; skipping "
+              f"'{prefix}' fit")
+        return []
+
+    fit_rows = []
+    total = 0
+    thx_col = f'thx_{coord_sys}'
+    thy_col = f'thy_{coord_sys}'
+
+    # Build a (day_obs, seq_num) -> row_group_idx lookup from row-group stats
+    rg_index = {}
+    for i in range(pf.num_row_groups):
+        meta = pf.metadata.row_group(i)
+        d = s = None
+        for ci in range(meta.num_columns):
+            cmeta = meta.column(ci)
+            name = cmeta.path_in_schema
+            if name == 'day_obs' and cmeta.statistics is not None:
+                d = cmeta.statistics.min
+            elif name == 'seq_num' and cmeta.statistics is not None:
+                s = cmeta.statistics.min
+        if d is not None and s is not None:
+            rg_index[(int(d), int(s))] = i
+
+    for img_idx, v in enumerate(visit_info):
+        dobs = int(v['day_obs'])
+        snum = int(v['seq_num'])
+        rg_i = rg_index.get((dobs, snum))
+        if rg_i is None:
+            continue
+        df = pf.read_row_group(rg_i).to_pandas()
+        if len(df) == 0 or value_col not in df.columns:
+            continue
+        thx_deg = np.rad2deg(df[thx_col].to_numpy(dtype=float))
+        thy_deg = np.rad2deg(df[thy_col].to_numpy(dtype=float))
+        vals = df[value_col].to_numpy(dtype=float)
+        img_params = _fit_one_image_scalar(
+            thx_deg, thy_deg, vals, max_focal_noll, fp_radius, prefix,
+            dobs, snum, img_idx)
+        fit_rows.append(img_params)
+        total += len(df)
+
+    print(f"Fit '{prefix}' from '{value_col}' "
+          f"(focal Noll 1-{max_focal_noll}): "
+          f"{len(fit_rows)} images, {total} donuts (streamed)")
+    return fit_rows
+
+
+# ============================================================
 # Bad-fit flagging
 # ============================================================
 
@@ -478,6 +604,42 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
     fit_combined['bad_fit'] = bad_z3 | bad_z6
     n_bad = np.sum(fit_combined['bad_fit'])
     print(f"\nCombined: {n_bad}/{len(fit_combined)} visits flagged as bad_fit")
+
+    # ----- Optional donut_blur fit (k=1..6) -----
+    # Per-donut scalar 'donut_blur' is treated like a Zernike: fit the
+    # focal-plane variation with the same Z1..Z6 basis.  Output columns
+    # blur_c1..blur_c6 (and _err / _scale) are merged into fit_combined.
+    if is_parquet:
+        pf_check = pq.ParquetFile(str(input_file))
+        has_blur = 'donut_blur' in pf_check.schema_arrow.names
+        del pf_check
+    else:
+        has_blur = 'donut_blur' in aosTable.colnames
+
+    if has_blur:
+        print("\nFitting donut_blur over focal plane (k=1..6)...")
+        if is_parquet:
+            blur_rows = fit_focal_scalar_streaming(
+                input_file, visit_info, coord_sys,
+                value_col='donut_blur',
+                max_focal_noll=6, prefix='blur')
+        else:
+            blur_arr = np.array(aosTable['donut_blur'], dtype=float)
+            blur_rows = fit_focal_scalar(
+                day_obs_arr, seq_num_arr, thx_deg, thy_deg, blur_arr,
+                max_focal_noll=6, prefix='blur')
+        if blur_rows:
+            fit_table_blur = QTable(blur_rows)
+            keep = ['day_obs', 'seq_num'] + [
+                c for c in fit_table_blur.colnames if c.startswith('blur_')]
+            fit_combined = join(
+                fit_combined, fit_table_blur[keep],
+                keys=['day_obs', 'seq_num'], join_type='left')
+            print(f"  blur fit merged: {len(fit_table_blur)} visits, "
+                  f"{len([c for c in keep if c.startswith('blur_')])} "
+                  f"new columns")
+    else:
+        print("\nNo 'donut_blur' column found — skipping blur fit")
 
     # Merge with visit_info
     fit_merged = join(fit_combined, visit_info,

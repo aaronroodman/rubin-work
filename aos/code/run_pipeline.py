@@ -29,13 +29,16 @@ PARAM_SETS_FILE = AOS_DIR / 'param_sets.yaml'
 LOG_DIR = AOS_DIR / 'logs'
 LOG_FILE = LOG_DIR / 'pipeline.log'
 
-STEP_ORDER = ['mktable', 'fit', 'plots', 'fit_ccs', 'plots_ccs']
+STEP_ORDER = ['mktable', 'fit', 'plots', 'movie',
+              'fit_ccs', 'plots_ccs', 'movie_ccs']
 STEP_DEPS = {
     'mktable': [],
     'fit': ['mktable'],
     'plots': ['fit'],
+    'movie': ['fit'],
     'fit_ccs': ['mktable'],
     'plots_ccs': ['fit_ccs'],
+    'movie_ccs': ['fit_ccs'],
 }
 VALID_STATUSES = ['pending', 'running', 'done', 'failed', 'skip']
 
@@ -200,14 +203,25 @@ def build_command(run_name, step, resolved):
         return cmd
 
     elif step == 'plots':
+        # `plots` produces fit-parameter PDFs and trio comparisons only.
+        # The slow per-image residual maps + movie now live in `movie`.
         h5 = hdf5_path(resolved)
         fp = fits_path(resolved)
         cmd = ['python', 'code/run_dz_plots.py', h5, fp,
-               '--coord-sys', coord]
-        # Add plot flags if present
-        for flag in ['no_single_image', 'no_fit_params', 'no_trio']:
+               '--coord-sys', coord,
+               '--no-single-image']
+        for flag in ['no_fit_params', 'no_trio']:
             if resolved.get(flag):
                 cmd.append(f'--{flag.replace("_", "-")}')
+        return cmd
+
+    elif step == 'movie':
+        # `movie` produces only the per-image residual maps + ffmpeg movie.
+        h5 = hdf5_path(resolved)
+        fp = fits_path(resolved)
+        cmd = ['python', 'code/run_dz_plots.py', h5, fp,
+               '--coord-sys', coord,
+               '--no-fit-params', '--no-trio']
         return cmd
 
     elif step == 'fit_ccs':
@@ -222,10 +236,20 @@ def build_command(run_name, step, resolved):
         fp = fits_path_ccs(resolved)
         cmd = ['python', 'code/run_dz_plots.py', h5, fp,
                '--coord-sys', 'CCS',
-               '--output-dir', plots_dir_ccs(resolved)]
-        for flag in ['no_single_image', 'no_fit_params', 'no_trio']:
+               '--output-dir', plots_dir_ccs(resolved),
+               '--no-single-image']
+        for flag in ['no_fit_params', 'no_trio']:
             if resolved.get(flag):
                 cmd.append(f'--{flag.replace("_", "-")}')
+        return cmd
+
+    elif step == 'movie_ccs':
+        h5 = hdf5_path(resolved)
+        fp = fits_path_ccs(resolved)
+        cmd = ['python', 'code/run_dz_plots.py', h5, fp,
+               '--coord-sys', 'CCS',
+               '--output-dir', plots_dir_ccs(resolved),
+               '--no-fit-params', '--no-trio']
         return cmd
 
     else:
@@ -356,10 +380,34 @@ def format_status(st):
     return symbols.get(st, st)
 
 
+def _normalize_step_filter(step_filter):
+    """Accept None, a single step name, or a list/tuple of step names.
+
+    Returns a set or None.  Validates step names are known.
+    """
+    if step_filter is None:
+        return None
+    if isinstance(step_filter, str):
+        step_filter = [step_filter]
+    if not step_filter:
+        return None
+    unknown = [s for s in step_filter if s not in STEP_ORDER]
+    if unknown:
+        raise ValueError(
+            f'Unknown step(s): {unknown}. Must be from {STEP_ORDER}')
+    return set(step_filter)
+
+
 def cmd_run(data, run_filter=None, step_filter=None, dry_run=False):
-    """Run pending steps."""
+    """Run pending steps.
+
+    step_filter may be None (run every pending step), a single step name,
+    or a list of step names — for example `['fit', 'plots']` to run
+    just those two together.
+    """
     runs = data.get('runs', {})
     param_sets = load_param_sets()
+    filter_set = _normalize_step_filter(step_filter)
 
     for name, cfg in runs.items():
         if run_filter and name != run_filter:
@@ -368,19 +416,25 @@ def cmd_run(data, run_filter=None, step_filter=None, dry_run=False):
         resolved = resolve_run(cfg, param_sets)
         steps = cfg.get('steps', {})
         for step in STEP_ORDER:
-            if step_filter and step != step_filter:
+            if filter_set is not None and step not in filter_set:
                 continue
 
             status = steps.get(step, 'pending')
             if status not in ('pending', 'failed'):
                 continue
 
-            # Check prerequisites using dependency map
+            # Check prerequisites using dependency map.  When prereqs
+            # come from another step that is *also* in this batch, treat
+            # them as effectively satisfied (we just ran or are running
+            # them now).
             prereqs_met = True
             for prev_step in STEP_DEPS.get(step, []):
                 prev_status = steps.get(prev_step, 'pending')
                 if prev_status != 'done':
-                    if step_filter:
+                    if filter_set is not None and prev_step in filter_set:
+                        # Will be / was just satisfied as part of this batch.
+                        continue
+                    if filter_set is not None:
                         log(f'{name}.{step}: prerequisite {prev_step} '
                             f'is {prev_status}, skipping')
                     prereqs_met = False
@@ -433,9 +487,15 @@ def main():
     p_status.add_argument('run', nargs='?', help='Filter to one run')
 
     # run
-    p_run = sub.add_parser('run', help='Execute pending steps')
+    p_run = sub.add_parser(
+        'run', help='Execute pending steps',
+        description=(
+            'Run one or more steps for a chunk.  Pass multiple step names '
+            'to execute them in sequence (in STEP_ORDER), e.g. '
+            '`run chunk5 fit plots`.'))
     p_run.add_argument('run', nargs='?', help='Run name (default: all)')
-    p_run.add_argument('step', nargs='?', help='Step name (default: all)')
+    p_run.add_argument('step', nargs='*',
+                       help='Step name(s); empty = all pending steps')
     p_run.add_argument('--dry-run', action='store_true',
                        help='Show commands without executing')
 
@@ -459,7 +519,9 @@ def main():
     if args.command == 'status':
         cmd_status(data, args.run)
     elif args.command == 'run':
-        cmd_run(data, args.run, args.step, dry_run=args.dry_run)
+        # args.step is a list (possibly empty) thanks to nargs='*'.
+        step_filter = args.step if args.step else None
+        cmd_run(data, args.run, step_filter, dry_run=args.dry_run)
     elif args.command == 'set':
         cmd_set(data, args.run, args.step, args.status)
     elif args.command == 'reset':
