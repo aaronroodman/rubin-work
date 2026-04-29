@@ -376,21 +376,61 @@ def interpolate_grid_at_donuts(grid, xcent, ycent, thx_deg, thy_deg, iZs,
 # High-level driver: 2-iteration measured-intrinsic build
 # ----------------------------------------------------------------------
 
+def _flag_bad_visits(fit_rows, by_pupil, threshold, min_donuts):
+    """Set fit_rows[i]['bad_fit'] = True for visits failing quality cuts.
+
+    Bad if either:
+      * n_donuts < min_donuts, OR
+      * |dz_z{j}_c{k}| > threshold (μm) for any (k, j) in the spec
+        (NaN coefficients also count as bad).
+
+    Returns the list of (day_obs, seq_num) pairs flagged bad.
+    """
+    bad = []
+    for r in fit_rows:
+        bad_flag = False
+        if int(r.get('n_donuts', 0)) < min_donuts:
+            bad_flag = True
+        else:
+            for j, ks in by_pupil.items():
+                for k in ks:
+                    val = r.get(f'dz_z{j}_c{k}', np.nan)
+                    if not np.isfinite(val) or abs(float(val)) > threshold:
+                        bad_flag = True
+                        break
+                if bad_flag:
+                    break
+        r['bad_fit'] = bool(bad_flag)
+        if bad_flag:
+            bad.append((int(r['day_obs']), int(r['seq_num'])))
+    return bad
+
+
 def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
                              removal_spec, n_iter=2,
                              n_bins=73,
                              fp_radius_basis=1.75,
-                             fp_radius_grid=1.8):
+                             fp_radius_grid=1.8,
+                             min_donuts=500,
+                             bad_fit_threshold=2.0):
     """Iterate fit -> subtract -> median to build the measured intrinsic.
+
+    Per-visit quality cuts (matching run_pipeline's fit step):
+      * `min_donuts` — require at least this many donuts per visit
+      * `bad_fit_threshold` — flag a visit if any |coeff| > this (μm)
+    Donuts from bad-fit visits are excluded from the median grid.
 
     Returns
     -------
     out : dict with keys
         'iZs', 'iZidx'
         'original_median'   : grid dict (pupil j -> 2D array) of median raw zk
-        'tabulated'         : grid dict of median tabulated intrinsic
+                              (good visits only)
+        'tabulated_median'  : grid dict of median tabulated intrinsic
+                              (good visits only)
         'iter_results'      : list of length n_iter; each element is a dict
-                              {'fit_rows', 'dz_contrib', 'measured_grid'}
+                              {'fit_rows', 'dz_contrib', 'measured_grid',
+                               'bad_visits'}
         'xbins','ybins','xcent','ycent'
     """
     iZidx = {iZ: i for i, iZ in enumerate(iZs)}
@@ -398,27 +438,24 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
     thy = np.rad2deg(np.asarray(donut_df[f'thy_{coord_sys}'], dtype=float))
     zk_data = np.stack(donut_df[f'zk_{coord_sys}'].values)
     zk_intrinsic_tab = np.stack(donut_df[f'zk_intrinsic_{coord_sys}'].values)
+    dobs_arr = np.asarray(donut_df['day_obs'])
+    snum_arr = np.asarray(donut_df['seq_num'])
 
-    # Reference maps for plotting
-    original_median, xbins, ybins, xcent, ycent = bin_median_focal(
-        thx, thy, zk_data, iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
-    tabulated_median, *_ = bin_median_focal(
-        thx, thy, zk_intrinsic_tab, iZidx, n_bins=n_bins,
-        fp_radius=fp_radius_grid)
+    pairs, by_pupil, _ = expand_removal_spec(removal_spec)
+    images = sorted(set(zip(dobs_arr.tolist(), snum_arr.tolist())))
 
     iter_results = []
     intrinsic_per_donut = zk_intrinsic_tab.copy()
+    # Reference maps (built using only the visits surviving iter-1 cuts —
+    # set after the first pass below).
+    original_median = None
+    tabulated_median = None
+    xbins = ybins = xcent = ycent = None
 
     for it in range(n_iter):
-        # 1. Fit DZ subset using current intrinsic
-        # Use the in-memory fitter; we already have donut_df and intrinsic
-        # We do a direct loop here so we can pass the iterated intrinsic.
+        # 1. Fit DZ subset using current intrinsic (every visit, every donut)
         fit_rows = []
         dz_contrib = np.zeros_like(zk_data)
-        dobs_arr = np.asarray(donut_df['day_obs'])
-        snum_arr = np.asarray(donut_df['seq_num'])
-        images = sorted(set(zip(dobs_arr.tolist(), snum_arr.tolist())))
-        pairs, by_pupil, _ = expand_removal_spec(removal_spec)
         for img_idx, (dobs, snum) in enumerate(images):
             mask = (dobs_arr == dobs) & (snum_arr == snum)
             params, contrib = _fit_one_image_subset(
@@ -428,30 +465,61 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
             fit_rows.append(params)
             dz_contrib[mask] = contrib
 
-        # 2. Subtract DZ contribution from data (but NOT the intrinsic)
+        # 2. Flag bad visits using *this* iteration's fits
+        bad_visits = _flag_bad_visits(fit_rows, by_pupil,
+                                      bad_fit_threshold, min_donuts)
+        bad_set = set(bad_visits)
+
+        # 3. Per-donut good-mask: drop donuts from any bad-flagged visit
+        good_donut_mask = np.array([
+            (int(d), int(s)) not in bad_set
+            for d, s in zip(dobs_arr, snum_arr)
+        ])
+
+        n_visits_good = len(images) - len(bad_visits)
+        n_donuts_good = int(good_donut_mask.sum())
+
+        # 4. Subtract DZ contribution from data (but NOT the intrinsic)
         wfd_subtracted = zk_data - dz_contrib
 
-        # 3. Median per pupil j on the focal grid
-        measured_grid, *_ = bin_median_focal(
-            thx, thy, wfd_subtracted, iZidx, n_bins=n_bins,
-            fp_radius=fp_radius_grid)
+        # 5. Median per pupil j on the focal grid — GOOD visits only
+        measured_grid, xbins, ybins, xcent, ycent = bin_median_focal(
+            thx[good_donut_mask], thy[good_donut_mask],
+            wfd_subtracted[good_donut_mask],
+            iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
+
+        # On the first iteration, also build the reference (Original /
+        # Tabulated) maps using the same good-visit subset.
+        if it == 0:
+            original_median, *_ = bin_median_focal(
+                thx[good_donut_mask], thy[good_donut_mask],
+                zk_data[good_donut_mask],
+                iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
+            tabulated_median, *_ = bin_median_focal(
+                thx[good_donut_mask], thy[good_donut_mask],
+                zk_intrinsic_tab[good_donut_mask],
+                iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
 
         iter_results.append({
             'fit_rows': fit_rows,
             'dz_contrib': dz_contrib,
             'wfd_subtracted': wfd_subtracted,
             'measured_grid': measured_grid,
+            'bad_visits': bad_visits,
+            'good_donut_mask': good_donut_mask,
         })
 
-        # 4. Prepare next iteration's intrinsic from this measured map
+        # 6. Prepare next iteration's intrinsic from this measured map
         intrinsic_per_donut = interpolate_grid_at_donuts(
             measured_grid, xcent, ycent, thx, thy, iZs,
             fallback=zk_intrinsic_tab)
 
         n_modes = sum(len(ks) for ks in by_pupil.values())
         print(f"  iter {it + 1}/{n_iter}: fit {n_modes} DZ modes for "
-              f"{len(images)} visits; built measured grid "
-              f"({n_bins}x{n_bins})")
+              f"{len(images)} visits ({n_visits_good} good, "
+              f"{len(bad_visits)} flagged bad); "
+              f"median over {n_donuts_good} donuts "
+              f"on {n_bins}x{n_bins} grid")
 
     return {
         'iZs': iZs,
