@@ -412,13 +412,28 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
                              fp_radius_basis=1.75,
                              fp_radius_grid=1.8,
                              min_donuts=500,
-                             bad_fit_threshold=2.0):
+                             bad_fit_threshold=2.0,
+                             data_offset=None,
+                             intrinsic_offset=None):
     """Iterate fit -> subtract -> median to build the measured intrinsic.
 
     Per-visit quality cuts (matching run_pipeline's fit step):
       * `min_donuts` — require at least this many donuts per visit
       * `bad_fit_threshold` — flag a visit if any |coeff| > this (μm)
     Donuts from bad-fit visits are excluded from the median grid.
+
+    Per-pupil offsets (subtracted from zk arrays before any binning or
+    fitting):
+      * `data_offset[j]`      — per-donut shift removed from `zk_data[:, j]`
+      * `intrinsic_offset[j]` — per-donut shift removed from
+                                 `zk_intrinsic_tab[:, j]`
+    Used e.g. for the Z4 CCD-height correction:
+      data_offset       = {4: Z4hgt}             (height at donut)
+      intrinsic_offset  = {4: Z4hgt_transpose}   (height at per-CCD
+                                                  x<->y transpose, to
+                                                  match the pipeline's
+                                                  intrinsic-Zernike
+                                                  transpose bug).
 
     Returns
     -------
@@ -436,10 +451,27 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
     iZidx = {iZ: i for i, iZ in enumerate(iZs)}
     thx = np.rad2deg(np.asarray(donut_df[f'thx_{coord_sys}'], dtype=float))
     thy = np.rad2deg(np.asarray(donut_df[f'thy_{coord_sys}'], dtype=float))
-    zk_data = np.stack(donut_df[f'zk_{coord_sys}'].values)
-    zk_intrinsic_tab = np.stack(donut_df[f'zk_intrinsic_{coord_sys}'].values)
+    zk_data = np.stack(donut_df[f'zk_{coord_sys}'].values).astype(float).copy()
+    zk_intrinsic_tab = np.stack(
+        donut_df[f'zk_intrinsic_{coord_sys}'].values).astype(float).copy()
     dobs_arr = np.asarray(donut_df['day_obs'])
     snum_arr = np.asarray(donut_df['seq_num'])
+
+    # Apply per-pupil offsets (e.g. Z4 CCD-height correction)
+    if data_offset:
+        for j, off in data_offset.items():
+            if j in iZidx:
+                zk_data[:, iZidx[j]] -= np.asarray(off, dtype=float)
+                print(f"  data_offset applied to pupil j={j}: "
+                      f"shift mean={float(np.nanmean(off)):.4f} μm, "
+                      f"std={float(np.nanstd(off)):.4f} μm")
+    if intrinsic_offset:
+        for j, off in intrinsic_offset.items():
+            if j in iZidx:
+                zk_intrinsic_tab[:, iZidx[j]] -= np.asarray(off, dtype=float)
+                print(f"  intrinsic_offset applied to pupil j={j}: "
+                      f"shift mean={float(np.nanmean(off)):.4f} μm, "
+                      f"std={float(np.nanstd(off)):.4f} μm")
 
     pairs, by_pupil, _ = expand_removal_spec(removal_spec)
     images = sorted(set(zip(dobs_arr.tolist(), snum_arr.tolist())))

@@ -157,3 +157,58 @@ def get_height_interpolator(metrology_table, k=3,
 def height_to_z4(height_mm, factor=HEIGHT_TO_Z4_UM_PER_MM):
     """Convert local CCD piston (mm) to a defocus-Z4 contribution (μm)."""
     return factor * np.asarray(height_mm, dtype=float)
+
+
+# ----------------------------------------------------------------------
+# Per-CCD x<->y transpose helpers (used to mirror the pipeline's
+# 'intrinsic_transpose_bug' when computing the height contribution that
+# matches the *intrinsic* Zernike tabulation rather than the data.)
+# ----------------------------------------------------------------------
+
+def ccd_centers_fp(camera):
+    """Return {detector_name: (cx_mm, cy_mm)} for every detector in `camera`."""
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from common.camera_utils import pixel_to_focal  # noqa: E402
+
+    centers = {}
+    for det in camera:
+        c = det.getBBox().getCenter()
+        cx, cy = pixel_to_focal(np.array([c.getX()]),
+                                np.array([c.getY()]), det)
+        centers[det.getName()] = (float(cx[0]), float(cy[0]))
+    return centers
+
+
+def transpose_around_ccd_centers(fpx_mm, fpy_mm, det_names, camera):
+    """Per-CCD x<->y transpose around each detector's center.
+
+    Mirrors the pipeline's per-CCD intrinsic Zernike calculation bug:
+    relative to the detector center, the x and y offsets are swapped.
+
+    Parameters
+    ----------
+    fpx_mm, fpy_mm : ndarray (n_donuts,)
+        Focal-plane coordinates (already in DVCS mm) for every donut.
+    det_names : array-like (n_donuts,) of str
+    camera : lsst.afw.cameraGeom.Camera
+
+    Returns
+    -------
+    fpx_swap, fpy_swap : ndarray (n_donuts,)
+    """
+    centers = ccd_centers_fp(camera)
+    fpx_arr = np.asarray(fpx_mm, dtype=float)
+    fpy_arr = np.asarray(fpy_mm, dtype=float)
+    fpx_swap = np.full_like(fpx_arr, np.nan)
+    fpy_swap = np.full_like(fpy_arr, np.nan)
+    det_arr = np.asarray(det_names).astype(str)
+    for name, (cx, cy) in centers.items():
+        mask = (det_arr == name)
+        if not np.any(mask):
+            continue
+        dx = fpx_arr[mask] - cx
+        dy = fpy_arr[mask] - cy
+        fpx_swap[mask] = cx + dy
+        fpy_swap[mask] = cy + dx
+    return fpx_swap, fpy_swap
