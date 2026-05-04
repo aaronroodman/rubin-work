@@ -23,6 +23,7 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 PIXEL_SCALE = 0.2
 SIG2FWHM = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -94,32 +95,36 @@ def _coerce_numeric_inplace(df):
     return df
 
 
-def fetch_chunked(client, instrument, day_obs_min, day_obs_max, programs,
-                  chunk_days=7, verbose=True):
-    """Chunked fetch over [day_obs_min, day_obs_max] inclusive."""
+def _chunk_ranges(day_obs_min, day_obs_max, chunk_days):
     start = _day_obs_to_date(day_obs_min)
     end = _day_obs_to_date(day_obs_max)
-    step = timedelta(days=chunk_days)
-
-    chunks = []
     cur = start
     while cur <= end:
         chunk_end = min(cur + timedelta(days=chunk_days - 1), end)
-        d_min = _date_to_day_obs(cur)
-        d_max = _date_to_day_obs(chunk_end)
+        yield _date_to_day_obs(cur), _date_to_day_obs(chunk_end)
+        cur = chunk_end + timedelta(days=1)
 
+
+def fetch_chunked(client, instrument, day_obs_min, day_obs_max, programs,
+                  chunk_days=7, progress=True):
+    """Chunked fetch over [day_obs_min, day_obs_max] inclusive."""
+    ranges = list(_chunk_ranges(day_obs_min, day_obs_max, chunk_days))
+
+    chunks = []
+    total_rows = 0
+    bar = tqdm(ranges, desc="ConsDB fetch", unit="chunk", disable=not progress)
+    for d_min, d_max in bar:
+        bar.set_postfix(chunk=f"{d_min}-{d_max}", rows=f"{total_rows:,}")
         query = _build_query(instrument, d_min, d_max, programs)
         df = client.query(query).to_pandas()
         _coerce_numeric_inplace(df)
 
-        if verbose:
-            print(f"  {d_min}-{d_max}: {len(df):>8d} rows  "
-                  f"({df.memory_usage(deep=True).sum() / 1e6:.1f} MB)")
+        total_rows += len(df)
+        bar.set_postfix(chunk=f"{d_min}-{d_max}", rows=f"{total_rows:,}")
 
         chunks.append(df)
         del df
         gc.collect()
-        cur = chunk_end + timedelta(days=1)
 
     ccdvisits = pd.concat(chunks, ignore_index=True, copy=False)
     del chunks
