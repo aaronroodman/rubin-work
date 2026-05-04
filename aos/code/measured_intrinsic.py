@@ -55,6 +55,15 @@ from astropy.table import QTable
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import binned_statistic_2d
 
+# Progress bar — pick the notebook variant when running inside Jupyter,
+# fall back to plain tqdm otherwise.  We never want a hard tqdm dependency
+# to break the import.
+try:
+    from tqdm.auto import tqdm as _tqdm
+except Exception:                                 # pragma: no cover
+    def _tqdm(it, *args, **kwargs):                # noqa: ARG001
+        return it
+
 from dz_fitting import focal_plane_zernike_basis, derive_noll_indices
 
 
@@ -488,7 +497,10 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
         # 1. Fit DZ subset using current intrinsic (every visit, every donut)
         fit_rows = []
         dz_contrib = np.zeros_like(zk_data)
-        for img_idx, (dobs, snum) in enumerate(images):
+        bar = _tqdm(enumerate(images), total=len(images),
+                    desc=f'iter {it + 1}/{n_iter} fits',
+                    leave=True)
+        for img_idx, (dobs, snum) in bar:
             mask = (dobs_arr == dobs) & (snum_arr == snum)
             params, contrib = _fit_one_image_subset(
                 thx[mask], thy[mask], zk_data[mask],
