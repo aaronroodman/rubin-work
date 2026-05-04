@@ -19,11 +19,17 @@ Usage in the notebook (replaces both `fetch(...)` and the
 """
 
 import gc
+import hashlib
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
+
+# Bump this when changing the SELECT column list or query structure to
+# invalidate any cached chunk parquet files written under the old schema.
+CACHE_VERSION = "v1"
 
 PIXEL_SCALE = 0.2
 SIG2FWHM = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -105,22 +111,64 @@ def _chunk_ranges(day_obs_min, day_obs_max, chunk_days):
         cur = chunk_end + timedelta(days=1)
 
 
+def _programs_hash(programs):
+    return hashlib.md5(",".join(sorted(programs)).encode()).hexdigest()[:8]
+
+
+def _chunk_cache_path(cache_dir, instrument, programs, d_min, d_max):
+    h = _programs_hash(programs)
+    return cache_dir / (
+        f"ccdvisits_chunk_{instrument}_{h}_{CACHE_VERSION}_{d_min}-{d_max}.pq"
+    )
+
+
 def fetch_chunked(client, instrument, day_obs_min, day_obs_max, programs,
-                  chunk_days=7, progress=True):
-    """Chunked fetch over [day_obs_min, day_obs_max] inclusive."""
+                  chunk_days=7, cache_dir=None, progress=True):
+    """Chunked fetch over [day_obs_min, day_obs_max] inclusive.
+
+    If `cache_dir` is given, each 7-day (or chunk_days-sized) chunk is
+    written to a parquet there after fetching, and read back from
+    parquet on subsequent runs. Cache filename includes instrument, an
+    8-char hash of the program list, and a schema version, so stale
+    caches don't get reused after parameter or column changes.
+    """
     ranges = list(_chunk_ranges(day_obs_min, day_obs_max, chunk_days))
+    if cache_dir is not None:
+        cache_dir = Path(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
     chunks = []
     total_rows = 0
+    cached_count = 0
     bar = tqdm(ranges, desc="ConsDB fetch", unit="chunk", disable=not progress)
     for d_min, d_max in bar:
-        bar.set_postfix(chunk=f"{d_min}-{d_max}", rows=f"{total_rows:,}")
-        query = _build_query(instrument, d_min, d_max, programs)
-        df = client.query(query).to_pandas()
-        _coerce_numeric_inplace(df)
+        bar.set_postfix(
+            chunk=f"{d_min}-{d_max}",
+            rows=f"{total_rows:,}",
+            cached=cached_count,
+        )
+
+        cache_path = (
+            _chunk_cache_path(cache_dir, instrument, programs, d_min, d_max)
+            if cache_dir is not None else None
+        )
+
+        if cache_path is not None and cache_path.exists():
+            df = pd.read_parquet(cache_path)
+            cached_count += 1
+        else:
+            query = _build_query(instrument, d_min, d_max, programs)
+            df = client.query(query).to_pandas()
+            _coerce_numeric_inplace(df)
+            if cache_path is not None:
+                df.to_parquet(cache_path)
 
         total_rows += len(df)
-        bar.set_postfix(chunk=f"{d_min}-{d_max}", rows=f"{total_rows:,}")
+        bar.set_postfix(
+            chunk=f"{d_min}-{d_max}",
+            rows=f"{total_rows:,}",
+            cached=cached_count,
+        )
 
         chunks.append(df)
         del df
