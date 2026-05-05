@@ -39,8 +39,10 @@ All new notebooks should follow the template in `common/notebook_template.ipynb`
 - When creating new notebooks, always start from the template
 
 ### Output conventions
-- Small curated outputs (summary tables, key plots) go in `<topic>/output/` — these are git-tracked
-- Large/ephemeral outputs (FITS, parquet, intermediate results) go in `~/notebooks/rubin-data/<topic>/` on RSP — NOT in git
+- Notebook outputs go in `<topic>/output/` — these are NOT in git (gitignored)
+- On the USDF RSP, `output/` directories are symlinked to `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/<topic>/output/` for disk quota
+- Output is synced to the laptop via `~/bin/sync_rubin_work_output` (rsync)
+- Large/ephemeral outputs (FITS, parquet, intermediate results) go in `~/notebooks/rubin-data/<topic>/` on RSP
 - Notebooks should use a variable like `output_dir` in the Parameters cell to set the output path
 - Name output files as `{topic}_{description}_{date_or_dayobs}.{ext}`
 

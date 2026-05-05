@@ -21,9 +21,6 @@ env/
 # Keep .gitkeep files but ignore everything else in output/
 */output/*
 !*/output/.gitkeep
-!blocks/output/*.txt
-!blocks/output/*.csv
-!blocks/output/*.csv.gz
 
 # ===== Large data files =====
 *.fits
