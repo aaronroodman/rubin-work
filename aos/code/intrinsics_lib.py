@@ -1375,6 +1375,61 @@ def merge_rotator_to_tables(rotator_df, aosTable, visit_info, rotator_threshold)
     return aosTable, visit_info
 
 
+def merge_program_reason_to_visit_info(visits_df, visit_info):
+    """Merge `science_program` and `reason` from the ConsDB visits dataframe.
+
+    The ConsDB query in `run_mktable` joins ``cdb_lsstcam.visit1`` with
+    ``visit1_quicklook`` and pulls every column from `visit1` (`v1.*`).
+    `science_program` is always present; `reason` is present in newer
+    schema versions.  Whichever subset of those two columns is in
+    `visits_df` is copied into `visit_info` keyed on
+    `(day_obs, seq_num)`.  Missing rows get an empty string.
+    """
+    has_program = 'science_program' in visits_df.columns
+    has_reason  = 'reason'           in visits_df.columns
+    if not (has_program or has_reason):
+        print('  (No science_program / reason columns in ConsDB visits — '
+              'skipping)')
+        return visit_info
+
+    vi_day_obs = np.array(visit_info['day_obs']).astype(int)
+    vi_seq_num = np.array(visit_info['seq_num']).astype(int)
+
+    lookup = {}
+    for _, row in visits_df.iterrows():
+        try:
+            d = int(row['day_obs']); s = int(row['seq_num'])
+        except Exception:
+            continue
+        prog = str(row['science_program']) if has_program else ''
+        reas = str(row['reason'])           if has_reason  else ''
+        lookup[(d, s)] = (prog, reas)
+
+    progs   = []
+    reasons = []
+    n_found = 0
+    for d, s in zip(vi_day_obs, vi_seq_num):
+        match = lookup.get((int(d), int(s)))
+        if match is not None:
+            progs.append(match[0])
+            reasons.append(match[1])
+            n_found += 1
+        else:
+            progs.append('')
+            reasons.append('')
+
+    added = []
+    if has_program:
+        visit_info['science_program'] = progs
+        added.append('science_program')
+    if has_reason:
+        visit_info['reason'] = reasons
+        added.append('reason')
+    print(f'  Added {added} to visit_info: {n_found}/{len(vi_day_obs)} '
+          f'visits matched in the ConsDB query result')
+    return visit_info
+
+
 def merge_thermal_to_visit_info(thermal_df, visit_info):
     """Merge thermal columns into visit_info QTable."""
     vi_day_obs = np.array(visit_info['day_obs'])
@@ -1567,6 +1622,11 @@ async def run_mktable(
         calc_mean_zernike=calc_mean_zernike)
     if visit_info is None:
         return None, None
+
+    # Merge science_program / reason from the ConsDB visits dataframe so
+    # downstream notebooks can filter by program / reason without having
+    # to re-query ConsDB.
+    visit_info = merge_program_reason_to_visit_info(visits, visit_info)
 
     # Merge rotator info into visit_info only
     visit_info = merge_rotator_to_visit_info(
