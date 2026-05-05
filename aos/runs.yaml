@@ -72,8 +72,8 @@ runs:
     coord_sys: OCS
     steps:
       mktable: done
-      fit: done
-      plots: done
+      fit: pending
+      plots: pending
       fit_ccs: pending
       plots_ccs: pending
   chunk8:

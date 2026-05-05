@@ -40,3 +40,4 @@ tbl[names].to_pandas(...)
 [2026-04-27 14:07:24] [DRY RUN] chunk6.plots: python code/run_dz_plots.py output/aos_fam_danish_triplets_20260315_20260409.parquet output/aos_fam_danish_triplets_20260315_20260409_fits.parquet --coord-sys OCS --no-single-image
 [2026-04-27 16:37:02] chunk5.plots: FAILED (73s) — plots exited with -15
 [2026-04-27 18:48:43] chunk5.plots: DONE (7805s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_plots.log
+[2026-05-05 17:07:54] chunk7.mktable: DONE (799s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_mktable.log

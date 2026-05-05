@@ -1,5 +1,5 @@
 # chunk7.mktable
-# 2026-04-27 08:08:43
+# 2026-05-05 17:07:54
 
 Pipeline: aos_fam_danish_v1_triplets OCS 20260418-20260423
   Butler: /repo/embargo
@@ -33,126 +33,42 @@ Warning: calc_intrinsics=True is no longer supported in the streaming pipeline (
 Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets']
 
 Streaming Zernikes for 123 visits to output/aos_fam_danish_v1_triplets_20260418_20260423.parquet...
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=227
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=230
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=233
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=236
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=239
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=242
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=245
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=248
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=251
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=254
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=257
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=260
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=274
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=277
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=280
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=283
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=286
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=289
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=292
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=295
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=298
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=301
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=304
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=307
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=310
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=313
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=316
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=319
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=322
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=325
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=328
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=331
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=334
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=337
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=340
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=343
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=356
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=359
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=362
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=365
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=368
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=371
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=374
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=377
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=380
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=383
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=386
-DatasetNotFoundError: No data for day_obs=20260418, seq_num=389
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=273
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=276
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=279
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=282
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=285
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=288
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=291
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=294
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=297
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=300
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=303
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=306
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=323
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=326
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=329
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=332
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=335
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=338
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=341
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=344
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=347
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=350
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=353
-DatasetNotFoundError: No data for day_obs=20260419, seq_num=356
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=16
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=19
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=22
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=25
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=28
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=31
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=34
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=37
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=40
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=43
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=46
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=49
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=62
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=65
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=68
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=71
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=74
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=77
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=80
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=83
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=86
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=89
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=92
-DatasetNotFoundError: No data for day_obs=20260420, seq_num=95
 
 ============================================================
 Extraction Summary:
   Total visits attempted: 123
-  Successful extractions: 27
-  Failed extractions:     96
+  Successful extractions: 123
+  Failed extractions:     0
   nollIndices: [np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26)]
-  Total donut measurements: 62102
+  Total donut measurements: 294880
 ============================================================
 
 Added rotator columns to visit_info. Flagged: 0 (|angle| > 90.0 deg)
-ConsDB returned 869 exposure records for obs times
-Matched obs times for 27/27 visits
-Querying EFD temperatures for 27 visits...
-  cam_air_temp: 27/27 valid
-  m2_air_temp: 27/27 valid
-  m1m3_air_temp: 27/27 valid
-  outside_temp: 27/27 valid
-  M1M3 gradients day_obs 20260423: 27 visits
+ConsDB returned 2857 exposure records for obs times
+Matched obs times for 123/123 visits
+Querying EFD temperatures for 123 visits...
+  cam_air_temp: 123/123 valid
+  m2_air_temp: 123/123 valid
+  m1m3_air_temp: 123/123 valid
+  outside_temp: 123/123 valid
+  M1M3 data for day_obs 20260418: 48 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260419: 24 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260420: 24 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260423: 27 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
 Querying TMA truss temperatures...
 
-Thermal data: 13 columns for 27 visits
-Added 13 thermal columns to visit_info
+Thermal data: 209 columns for 123 visits (13 scalar, 146 per-thermocouple, 50 per-cell-vertical-gradient)
+Added 209 thermal columns to visit_info
+  thermocouples: output/m1m3_thermocouples.parquet — 146 thermocouples (name, x, y, z, scanner)
 
 Saved:
   donuts: output/aos_fam_danish_v1_triplets_20260418_20260423.parquet (streamed, one row group per visit)
-  visits: output/aos_fam_danish_v1_triplets_20260418_20260423_visits.parquet — 27 rows, 26 columns
+  visits: output/aos_fam_danish_v1_triplets_20260418_20260423_visits.parquet — 123 rows, 222 columns
