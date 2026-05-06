@@ -47,3 +47,4 @@ tbl[names].to_pandas(...)
 [2026-05-06 22:34:20] chunk7.mktable: FAILED (0s) — Can only use .str accessor with string values!
 [2026-05-06 22:35:26] chunk7.fit: DONE (64s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_fit.log
 [2026-05-06 22:37:18] chunk7.plots: DONE (109s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_plots.log
+[2026-05-06 22:42:50] chunk7.movie: DONE (330s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_movie.log
