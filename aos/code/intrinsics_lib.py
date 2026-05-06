@@ -611,9 +611,12 @@ def get_zernikes_from_visits(visit_pairs, collections, butler_repo, coord_sys,
 def get_visit_pairs_from_consdb(visits_df, programs, img_type='cwfs',
                                 verify_pairing=True):
     """Extract (day_obs, seq_num) pairs from ConsDB dataframe."""
-    program_mask = visits_df['science_program'].str.contains(programs[0], na=False)
+    # Coerce to string — ConsDB sometimes returns the column as float64
+    # (all NaN) when no rows match yet, which breaks .str.contains.
+    program_col = visits_df['science_program'].fillna('').astype(str)
+    program_mask = program_col.str.contains(programs[0], na=False)
     for prog in programs[1:]:
-        program_mask |= visits_df['science_program'].str.contains(prog, na=False)
+        program_mask |= program_col.str.contains(prog, na=False)
 
     filtered = visits_df[program_mask & (visits_df['img_type'] == img_type)].copy()
 
@@ -665,9 +668,11 @@ def print_band_counts_by_day(df, block_names, img_type_value):
     if isinstance(block_names, str):
         block_names = [block_names]
 
-    block_mask = df['science_program'].str.contains(block_names[0], na=False)
+    # Coerce to string for the same reason as get_visit_pairs_from_consdb
+    program_col = df['science_program'].fillna('').astype(str)
+    block_mask = program_col.str.contains(block_names[0], na=False)
     for block_name in block_names[1:]:
-        block_mask |= df['science_program'].str.contains(block_name, na=False)
+        block_mask |= program_col.str.contains(block_name, na=False)
 
     filtered = df[block_mask & (df['img_type'] == img_type_value)].copy()
     print(f"Total rows matching {block_names} and img_type='{img_type_value}': "
