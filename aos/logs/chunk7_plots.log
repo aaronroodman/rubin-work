@@ -1,17 +1,17 @@
 # chunk7.plots
-# 2026-05-05 17:09:05
+# 2026-05-06 22:35:28
 # python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_20260418_20260423.parquet output/aos_fam_danish_v1_triplets_20260418_20260423_fits.parquet --coord-sys OCS --no-single-image
 
 WARNING: No table::len::detector found in metadata. Using longest string (7 characters). [astropy.io.misc.parquet]
-2026-05-05 17:09:24,530 astroquery _showwarning         WARNING No table::len::detector found in metadata. Using longest string (7 characters).
+2026-05-06 22:35:48,248 astroquery _showwarning         WARNING No table::len::detector found in metadata. Using longest string (7 characters).
 WARNING: No table::len::extra_donut_id found in metadata. Using longest string (21 characters). [astropy.io.misc.parquet]
-2026-05-05 17:09:24,745 astroquery _showwarning         WARNING No table::len::extra_donut_id found in metadata. Using longest string (21 characters).
+2026-05-06 22:35:48,483 astroquery _showwarning         WARNING No table::len::extra_donut_id found in metadata. Using longest string (21 characters).
 WARNING: No table::len::intra_donut_id found in metadata. Using longest string (21 characters). [astropy.io.misc.parquet]
-2026-05-05 17:09:24,958 astroquery _showwarning         WARNING No table::len::intra_donut_id found in metadata. Using longest string (21 characters).
+2026-05-06 22:35:48,707 astroquery _showwarning         WARNING No table::len::intra_donut_id found in metadata. Using longest string (21 characters).
 WARNING: No table::len::donut_id_intra found in metadata. Using longest string (21 characters). [astropy.io.misc.parquet]
-2026-05-05 17:09:25,174 astroquery _showwarning         WARNING No table::len::donut_id_intra found in metadata. Using longest string (21 characters).
+2026-05-06 22:35:48,951 astroquery _showwarning         WARNING No table::len::donut_id_intra found in metadata. Using longest string (21 characters).
 WARNING: No table::len::donut_id_extra found in metadata. Using longest string (21 characters). [astropy.io.misc.parquet]
-2026-05-05 17:09:25,388 astroquery _showwarning         WARNING No table::len::donut_id_extra found in metadata. Using longest string (21 characters).
+2026-05-06 22:35:49,176 astroquery _showwarning         WARNING No table::len::donut_id_extra found in metadata. Using longest string (21 characters).
 Loading donuts: output/aos_fam_danish_v1_triplets_20260418_20260423.parquet
   294880 donuts
 Loading fits: output/aos_fam_danish_v1_triplets_20260418_20260423_fits.parquet
