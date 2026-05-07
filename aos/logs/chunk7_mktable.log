@@ -1,13 +1,12 @@
 # chunk7.mktable
-# 2026-05-05 17:07:54
+# 2026-05-07 02:42:49
 
-Pipeline: aos_fam_danish_v1_triplets OCS 20260418-20260423
+Pipeline: aos_fam_danish_v1_triplets_bin_2x OCS 20260418-20260430
   Butler: /repo/embargo
-  Collections: ['aos_fam_danish_v1_triplets']
+  Collections: ['aos_fam_danish_v1_triplets_bin_2x']
   Options: intrinsics=True, mean_zk=False, fp_coords=False, thermal=True
-  Output: output/aos_fam_danish_v1_triplets_20260418_20260423.parquet
-  Overwriting: ['output/aos_fam_danish_v1_triplets_20260418_20260423.parquet', 'output/aos_fam_danish_v1_triplets_20260418_20260423_visits.parquet']
-Retrieved 3733 visits from ConsDB
+  Output: output/aos_fam_danish_v1_triplets_bin_2x_20260418_20260430.parquet
+Retrieved 6927 visits from ConsDB
 Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710', 'T717', 'T720', 'T724'] and img_type='cwfs': 247
 
 Band counts by day_obs:
@@ -30,9 +29,9 @@ All visits have ConsDB physical_rotator_angle, skipping EFD/visitInfo queries
 Rotator angle sources: ConsDB=123, EFD=0, visitInfo=0
 Flagged (|angle| > 90.0 deg): 0
 Warning: calc_intrinsics=True is no longer supported in the streaming pipeline (intrinsics are read from Butler metadata). Ignoring the flag.
-Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets']
+Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets_bin_2x']
 
-Streaming Zernikes for 123 visits to output/aos_fam_danish_v1_triplets_20260418_20260423.parquet...
+Streaming Zernikes for 123 visits to output/aos_fam_danish_v1_triplets_bin_2x_20260418_20260430.parquet...
 
 ============================================================
 Extraction Summary:
@@ -43,6 +42,7 @@ Extraction Summary:
   Total donut measurements: 294880
 ============================================================
 
+  Added ['science_program'] to visit_info: 123/123 visits matched in the ConsDB query result
 Added rotator columns to visit_info. Flagged: 0 (|angle| > 90.0 deg)
 ConsDB returned 2857 exposure records for obs times
 Matched obs times for 123/123 visits
@@ -70,5 +70,5 @@ Added 209 thermal columns to visit_info
   thermocouples: output/m1m3_thermocouples.parquet — 146 thermocouples (name, x, y, z, scanner)
 
 Saved:
-  donuts: output/aos_fam_danish_v1_triplets_20260418_20260423.parquet (streamed, one row group per visit)
-  visits: output/aos_fam_danish_v1_triplets_20260418_20260423_visits.parquet — 123 rows, 222 columns
+  donuts: output/aos_fam_danish_v1_triplets_bin_2x_20260418_20260430.parquet (streamed, one row group per visit)
+  visits: output/aos_fam_danish_v1_triplets_bin_2x_20260418_20260430_visits.parquet — 123 rows, 223 columns
