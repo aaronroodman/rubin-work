@@ -1,4 +1,0 @@
-# chunk5.plots
-# 2026-04-27 16:38:38
-# python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_20260315_20260409.parquet output/aos_fam_danish_v1_triplets_20260315_20260409_fits.parquet --coord-sys OCS
-
