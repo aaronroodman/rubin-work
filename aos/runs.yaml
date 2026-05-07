@@ -1,53 +1,5 @@
 runs:
   chunk1:
-    param_set: fam_danish_triplets
-    day_obs_min: 20260315
-    day_obs_max: 20260317
-    coord_sys: OCS
-    steps:
-      mktable: done
-      fit: done
-      plots: done
-      fit_ccs: done
-      plots_ccs: done
-      movie: pending
-  chunk2:
-    param_set: fam_danish_triplets
-    day_obs_min: 20260324
-    day_obs_max: 20260327
-    coord_sys: OCS
-    steps:
-      mktable: done
-      fit: done
-      plots: done
-      fit_ccs: done
-      plots_ccs: done
-      movie: pending
-  chunk3:
-    param_set: fam_danish_triplets
-    day_obs_min: 20260331
-    day_obs_max: 20260404
-    coord_sys: OCS
-    steps:
-      mktable: done
-      fit: done
-      plots: done
-      fit_ccs: done
-      plots_ccs: done
-      movie: pending
-  chunk4:
-    param_set: fam_danish_v1_triplets_bin_1x
-    day_obs_min: 20260315
-    day_obs_max: 20260409
-    coord_sys: OCS
-    steps:
-      mktable: failed
-      fit: pending
-      plots: pending
-      fit_ccs: pending
-      plots_ccs: pending
-      movie: pending
-  chunk5:
     param_set: fam_danish_v1_triplets_bin_2x
     day_obs_min: 20260315
     day_obs_max: 20260409
@@ -59,19 +11,19 @@ runs:
       fit_ccs: pending
       plots_ccs: pending
       movie: pending
-  chunk6:
-    param_set: fam_danish_triplets
+  chunk2:
+    param_set: fam_danish_v1_triplets_bin_1x
     day_obs_min: 20260315
     day_obs_max: 20260409
     coord_sys: OCS
     steps:
-      mktable: done
-      fit: done
+      mktable: pending
+      fit: pending
       plots: pending
       fit_ccs: pending
       plots_ccs: pending
       movie: pending
-  chunk7:
+  chunk3:
     param_set: fam_danish_v1_triplets_bin_2x
     day_obs_min: 20260418
     day_obs_max: 20260430
@@ -83,7 +35,7 @@ runs:
       fit_ccs: pending
       plots_ccs: pending
       movie: pending
-  chunk8:
+  chunk4:
     param_set: fam_danish_v1_triplets_bin_1x
     day_obs_min: 20260418
     day_obs_max: 20260430
