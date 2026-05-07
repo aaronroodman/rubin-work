@@ -1,0 +1,28 @@
+# chunk1.movie
+# 2026-05-07 16:38:08
+# python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_bin_2x_20260315_20260327.parquet output/aos_fam_danish_v1_triplets_bin_2x_20260315_20260327_fits.parquet --coord-sys OCS --no-fit-params --no-trio
+
+WARNING: No table::len::detector found in metadata. Using longest string (7 characters). [astropy.io.misc.parquet]
+2026-05-07 16:38:26,722 astroquery _showwarning         WARNING No table::len::detector found in metadata. Using longest string (7 characters).
+Loading donuts: output/aos_fam_danish_v1_triplets_bin_2x_20260315_20260327.parquet
+  173369 donuts
+Loading fits: output/aos_fam_danish_v1_triplets_bin_2x_20260315_20260327_fits.parquet
+  73 visits
+Noll indices (19 terms): [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22, 27, 28]
+Matched donuts (173369/173369): 173369
+Per-visit quality filter: kept 171112/173369 donuts (73 visits)
+
+Reconstructing per-donut fit arrays...
+Reconstructed zk_fit_z1toz3: 171112 donuts, 73 images, 19 Zernikes
+Reconstructed zk_fit_z1toz6: 171112 donuts, 73 images, 19 Zernikes
+
+============================================================
+Single-image residual maps
+============================================================
+Generating residual maps for 73 visits...
+  ...processed 50/73 visits
+Generated 73 residual map frames
+Saved movie: output/aos_fam_danish_v1_triplets_bin_2x_20260315_20260327/single_image_residuals.mp4
+Cleaned up 73 JPEGs
+
+Done.
