@@ -21,10 +21,16 @@ from pathlib import Path
 
 try:
     from .dz_fitting import focal_plane_zernike_basis, derive_noll_indices
-    from .intrinsics_lib import read_donuts_table
+    from .intrinsics_lib import (
+        read_donuts_table, build_visit_marker_lookup,
+        visit_marker_style, markers_legend_figure,
+    )
 except ImportError:
     from dz_fitting import focal_plane_zernike_basis, derive_noll_indices
-    from intrinsics_lib import read_donuts_table
+    from intrinsics_lib import (
+        read_donuts_table, build_visit_marker_lookup,
+        visit_marker_style, markers_legend_figure,
+    )
 
 
 # ============================================================
@@ -426,13 +432,27 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
     else:
         nrows_k, ncols_k = 2, 3
 
-    markers = ['o', 's', '^', 'D', 'v', 'P', '*', 'X', 'p', 'h',
-               '<', '>', '8', '+', 'x', '|', '_']
+    # ---- Build per-visit (elev, rot, band) groups using the shared
+    # marker scheme from intrinsics_lib. Each fit row is classified by
+    # its visit's alt / rotator_angle / band; visits in the same bucket
+    # share a (color, shape, edge) and are plotted together. The
+    # `position_group_tol` parameter is now ignored (kept for backward
+    # compatibility); buckets are fixed at 5 elevation x 9 rotator angles.
     if visit_info is not None and len(fit_table_day) > 0:
-        group_indices, group_labels = _build_pointing_groups(
-            fit_table_day, visit_info, bin_size=position_group_tol)
-        sorted_groups = sorted(group_indices.keys(),
-                               key=lambda g: group_indices[g][0])
+        ft_dobs = np.array(fit_table_day['day_obs'])
+        ft_snum = np.array(fit_table_day['seq_num'])
+        marker_lookup = build_visit_marker_lookup(visit_info)
+        from collections import defaultdict
+        _gtmp = defaultdict(list)
+        for _i in range(len(fit_table_day)):
+            cls = marker_lookup.get(
+                (int(ft_dobs[_i]), int(ft_snum[_i])),
+                {'elev': None, 'rot': None, 'band': None})
+            _gtmp[(cls['elev'], cls['rot'], cls['band'])].append(_i)
+        sorted_groups = sorted(_gtmp.keys(),
+                               key=lambda g: _gtmp[g][0])
+        group_indices = {k: np.array(v, dtype=int)
+                         for k, v in _gtmp.items()}
     else:
         group_indices = None
         sorted_groups = []
@@ -444,30 +464,16 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
     image_idx = np.arange(len(fit_table_day))
 
     with PdfPages(pdf_path) as pdf:
-        # ---------- Page 1: full legend of pointing groups ----------
+        # ---------- Page 1: shared marker-scheme legend ----------
         if group_indices is not None and len(sorted_groups) > 0:
-            fig_leg = plt.figure(figsize=(11, 8.5))
-            ax_leg = fig_leg.add_subplot(111)
-            ax_leg.set_axis_off()
-            legend_handles = []
-            for gi, gkey in enumerate(sorted_groups):
-                n = len(group_indices[gkey])
-                m = markers[gi % len(markers)]
-                handle = ax_leg.plot([], [], m, markersize=8, linestyle='',
-                                     label=f'{group_labels[gkey]}  '
-                                           f'(n={n})')[0]
-                legend_handles.append(handle)
-            ax_leg.set_title(
-                f'Pointing groups (elevation / rotator, bin = '
-                f'{position_group_tol:.0f}\u00b0)  —  '
-                f'{len(sorted_groups)} groups total  —  {fit_prefix}',
-                fontsize=13)
-            # Choose number of legend columns: about 20 rows per column fits
-            ncol = max(1, int(np.ceil(len(sorted_groups) / 20.0)))
-            ax_leg.legend(handles=legend_handles, loc='center',
-                          ncol=ncol, fontsize=8, frameon=False,
-                          handletextpad=0.4, borderaxespad=0.2,
-                          columnspacing=1.2)
+            bands_seen = {bg for (_, _, bg) in sorted_groups if bg}
+            show_band = any(b for b in bands_seen if b != 'i')
+            fig_leg = markers_legend_figure(show_iter_distinction=False,
+                                            show_band_legend=show_band)
+            fig_leg.suptitle(
+                f'{fit_prefix}  --  {len(sorted_groups)} '
+                f'(elev, rot, band) buckets present',
+                fontsize=11, y=0.99)
             pdf.savefig(fig_leg, dpi=150, bbox_inches='tight')
             if show:
                 plt.show()
@@ -508,18 +514,19 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                 if group_indices is not None and len(sorted_groups) > 1:
                     ax.plot(image_idx, vals, '-', color='gray',
                             linewidth=0.5, alpha=0.5, zorder=1)
-                    for gi, gkey in enumerate(sorted_groups):
-                        idxs = np.array(group_indices[gkey])
-                        m = markers[gi % len(markers)]
+                    for gkey in sorted_groups:
+                        idxs = group_indices[gkey]
+                        eg, rg, bg = gkey
+                        style = visit_marker_style(elev=eg, rot=rg, band=bg,
+                                                   base_size=5)
                         if errs is not None:
                             ax.errorbar(image_idx[idxs], vals[idxs],
                                         yerr=errs[idxs],
-                                        fmt=m, markersize=5, linewidth=0,
                                         elinewidth=0.5, capsize=0, alpha=0.85,
-                                        zorder=2)
+                                        zorder=2, **style)
                         else:
-                            ax.plot(image_idx[idxs], vals[idxs], m,
-                                    markersize=5, alpha=0.85, zorder=2)
+                            ax.plot(image_idx[idxs], vals[idxs],
+                                    alpha=0.85, zorder=2, **style)
                 else:
                     if errs is not None:
                         ax.errorbar(image_idx, vals, yerr=errs,
