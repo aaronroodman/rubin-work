@@ -90,13 +90,34 @@ def main():
         output_dir = str(Path(args.input_file).parent / input_stem)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Filter to matched donuts
+    # Filter to matched donuts. The `matched_intra_extra` column is now
+    # populated according to whatever threshold mktable was run with
+    # (default 100" — pass matched_threshold_arcsec=None to disable).
+    # We honor whatever the column says without re-thresholding.
     if 'matched_intra_extra' in aosTable.colnames:
         matched_mask = np.array(aosTable['matched_intra_extra'])
         aosTable_matched = aosTable[matched_mask]
-        print(f"Matched donuts: {len(aosTable_matched)}")
+        print(f"Matched donuts ({matched_mask.sum()}/{len(matched_mask)}): "
+              f"{len(aosTable_matched)}")
     else:
         aosTable_matched = aosTable
+
+    # Apply per-visit quality cuts to the donut table by joining against
+    # the passing visits in fit_table (which has visit_quality_pass merged
+    # in by run_double_zernike_fits).
+    if ('day_obs' in aosTable_matched.colnames
+            and 'seq_num' in aosTable_matched.colnames
+            and 'day_obs' in fit_table.colnames
+            and 'seq_num' in fit_table.colnames):
+        valid_keys = {(int(d), int(s))
+                      for d, s in zip(fit_table['day_obs'], fit_table['seq_num'])}
+        donut_keys = list(zip(np.asarray(aosTable_matched['day_obs']).astype(int),
+                              np.asarray(aosTable_matched['seq_num']).astype(int)))
+        keep = np.array([k in valid_keys for k in donut_keys])
+        n_before = len(aosTable_matched)
+        aosTable_matched = aosTable_matched[keep]
+        print(f"Per-visit quality filter: kept {len(aosTable_matched)}/"
+              f"{n_before} donuts ({len(valid_keys)} visits)")
 
     # Reconstruct per-donut fit arrays
     print("\nReconstructing per-donut fit arrays...")

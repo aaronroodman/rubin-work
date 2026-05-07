@@ -530,6 +530,24 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
         visit_info = QTable.read(str(input_file), path='visits')
         print(f"  {len(visit_info)} visits")
 
+    # Apply per-visit quality cuts (n_donuts, n_detectors, median_blur_arcsec)
+    # if those columns are present (mktable >= 2026-05-06).
+    if 'visit_quality_pass' in visit_info.colnames:
+        keep = np.asarray(visit_info['visit_quality_pass'], dtype=bool)
+        n_pass = int(keep.sum())
+        print(f"  Applying per-visit quality cuts: "
+              f"{n_pass}/{len(visit_info)} visits pass")
+        visit_info = visit_info[keep]
+    elif {'n_donuts', 'n_detectors_with_min_donuts',
+          'median_blur_arcsec'}.issubset(set(visit_info.colnames)):
+        # Visit metrics present but no precomputed flag — apply on the fly
+        try:
+            from intrinsics_lib import quality_visit_mask
+        except ImportError:
+            from .intrinsics_lib import quality_visit_mask
+        keep = quality_visit_mask(visit_info, verbose=True)
+        visit_info = visit_info[keep]
+
     # Derive Noll indices
     noll_arr = None
     if 'nollIndices' in visit_info.colnames:

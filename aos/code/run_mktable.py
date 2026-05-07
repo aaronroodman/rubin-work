@@ -91,6 +91,24 @@ def main():
                         help='Overwrite existing output parquet files '
                              '(default: refuse to clobber)')
 
+    # Per-visit quality cut configuration
+    parser.add_argument('--matched-threshold-arcsec', type=float, default=100.0,
+                        help='intra/extra centroid agreement threshold for the '
+                             'matched_intra_extra column (default 100). '
+                             'Pass 0 or a negative number to disable.')
+    parser.add_argument('--min-donuts-per-visit', type=int, default=500,
+                        help='Minimum donuts per visit (default 500). '
+                             'Pass 0 to disable.')
+    parser.add_argument('--min-donuts-per-detector', type=int, default=3,
+                        help='Per-detector donut floor used to count "covered" '
+                             'detectors (default 3).')
+    parser.add_argument('--min-detectors-per-visit', type=int, default=170,
+                        help='Minimum detectors with at least min-donuts-per-detector '
+                             'donuts per visit (default 170). Pass 0 to disable.')
+    parser.add_argument('--max-median-blur-arcsec', type=float, default=1.2,
+                        help='Maximum median donut FWHM per visit (default 1.2). '
+                             'Pass 0 or a negative number to disable.')
+
     args = parser.parse_args()
 
     # Resolve parameters
@@ -126,6 +144,10 @@ def main():
         if args.day_obs_max is not None:
             params['day_obs_max'] = args.day_obs_max
 
+    # Translate "0 or negative" sentinel values to None to disable the cut
+    def _none_if_disabled(val):
+        return None if (val is None or val <= 0) else val
+
     asyncio.run(run_mktable(
         butler_repo=params['butler_repo'],
         fam_collections=params['fam_collections'],
@@ -147,6 +169,11 @@ def main():
         temp_time_window_sec=args.temp_time_window,
         consdb_url=args.consdb_url,
         overwrite=args.overwrite,
+        matched_threshold_arcsec=_none_if_disabled(args.matched_threshold_arcsec),
+        min_donuts_per_visit=_none_if_disabled(args.min_donuts_per_visit),
+        min_donuts_per_detector=args.min_donuts_per_detector,
+        min_detectors_per_visit=_none_if_disabled(args.min_detectors_per_visit),
+        max_median_blur_arcsec=_none_if_disabled(args.max_median_blur_arcsec),
     ))
 
 

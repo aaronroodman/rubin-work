@@ -109,6 +109,20 @@ DEFAULT_CONSDB_URL = "http://consdb-pq.consdb:8080/consdb"
 DEFAULT_WEP_VER = 'wep_v16_8_0'
 DEFAULT_DVIZ_VER = 'dviz_v3_5_0'
 
+# Per-donut intra/extra centroid agreement (arcsec). The boolean
+# `matched_intra_extra` column flips True when the offset is below this
+# threshold in both axes. Pass None to disable the cut (column becomes
+# True for every donut).
+DEFAULT_MATCHED_THRESHOLD_ARCSEC = 100.0
+
+# Per-visit quality cuts. Computed per visit during mktable, stored as
+# numeric columns in visit_info, and re-applied at use time via
+# quality_visit_mask(). A visit fails if any of these are violated.
+DEFAULT_MIN_DONUTS_PER_VISIT = 500
+DEFAULT_MIN_DONUTS_PER_DETECTOR = 3   # used to count "well-covered" detectors
+DEFAULT_MIN_DETECTORS_PER_VISIT = 170  # at least this many CCDs with N+ donuts
+DEFAULT_MAX_MEDIAN_BLUR_ARCSEC = 1.2
+
 
 # ============================================================
 # Zernike Utilities
@@ -191,7 +205,8 @@ def parse_collection_info(collections, include_versions=False):
 # ============================================================
 
 def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
-                           calc_focal_plane=False, calc_mean_zernike=False):
+                           calc_focal_plane=False, calc_mean_zernike=False,
+                           matched_threshold_arcsec=DEFAULT_MATCHED_THRESHOLD_ARCSEC):
     """Get aggregate Zernike table for a single visit.
 
     Parameters
@@ -200,6 +215,11 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
         If True, compute intra/extra focal plane coordinates (fpx, fpy).
     calc_mean_zernike : bool
         If True, compute per-visit mean Zernike and add as column.
+    matched_threshold_arcsec : float or None
+        Boolean `matched_intra_extra` column flips True when both
+        |Δthx| and |Δthy| are below this (in arcsec). Set to None to
+        disable the cut (the column becomes True for every donut while
+        the offsets are still recorded in `intra_extra_offset_*`).
 
     Returns (table, visit_meta_dict) or (None, None).
     """
@@ -301,8 +321,14 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
 
     thx_diff = np.abs(aosTable_sel[thx_intra_col] - aosTable_sel[thx_extra_col]) * 206265
     thy_diff = np.abs(aosTable_sel[thy_intra_col] - aosTable_sel[thy_extra_col]) * 206265
-    matched_intra_extra = (thx_diff < 100.0) & (thy_diff < 100.0)
+    if matched_threshold_arcsec is None:
+        matched_intra_extra = np.ones(len(aosTable_sel), dtype=bool)
+    else:
+        matched_intra_extra = (thx_diff < matched_threshold_arcsec) & \
+                              (thy_diff < matched_threshold_arcsec)
     aosTable_sel['matched_intra_extra'] = matched_intra_extra
+    aosTable_sel['intra_extra_offset_x_arcsec'] = thx_diff
+    aosTable_sel['intra_extra_offset_y_arcsec'] = thy_diff
 
     # Per-visit mean Zernike (optional)
     if calc_mean_zernike:
@@ -413,12 +439,18 @@ def read_donuts_for_visit(parquet_path, day_obs, seq_num):
 
 def stream_zernikes_to_parquet(visit_pairs, collections, butler_repo, coord_sys,
                                camera, output_file,
-                               calc_focal_plane=False, calc_mean_zernike=False):
+                               calc_focal_plane=False, calc_mean_zernike=False,
+                               matched_threshold_arcsec=DEFAULT_MATCHED_THRESHOLD_ARCSEC,
+                               min_donuts_per_detector=DEFAULT_MIN_DONUTS_PER_DETECTOR):
     """Stream aggregate Zernikes per visit to parquet (one row group per visit).
 
     List/array columns (zk_OCS, zk_intrinsic_OCS, etc.) are stored as
     native parquet list<float> — no explode/restack, so the file is
     readable by any parquet-aware tool.
+
+    Per-visit quality metrics (n_donuts, n_detectors_with_min_donuts,
+    median_blur_arcsec) are computed from each visit's table and stored
+    in the returned visit_info QTable for downstream cuts.
 
     Returns visit_info (small QTable), or None on failure.
     """
@@ -445,7 +477,8 @@ def stream_zernikes_to_parquet(visit_pairs, collections, butler_repo, coord_sys,
             agg_zern, visit_meta = get_aggregate_zernikes(
                 butler, day_obs_val, seq_num, coord_sys, camera,
                 calc_focal_plane=calc_focal_plane,
-                calc_mean_zernike=calc_mean_zernike)
+                calc_mean_zernike=calc_mean_zernike,
+                matched_threshold_arcsec=matched_threshold_arcsec)
             if agg_zern is None:
                 error_count += 1
                 continue
@@ -460,6 +493,24 @@ def stream_zernikes_to_parquet(visit_pairs, collections, butler_repo, coord_sys,
                     noll_mismatch_count += 1
                     error_count += 1
                     continue
+
+            # Per-visit quality metrics computed BEFORE dropping columns,
+            # since `blur` is one of the metrics we care about.
+            visit_meta['n_donuts'] = int(len(agg_zern))
+            if 'detector' in agg_zern.colnames:
+                det_counts = Counter(np.asarray(agg_zern['detector']).tolist())
+                visit_meta['n_detectors'] = int(len(det_counts))
+                visit_meta['n_detectors_with_min_donuts'] = int(sum(
+                    1 for c in det_counts.values() if c >= min_donuts_per_detector))
+            else:
+                visit_meta['n_detectors'] = 0
+                visit_meta['n_detectors_with_min_donuts'] = 0
+            if 'blur' in agg_zern.colnames:
+                with np.errstate(invalid='ignore'):
+                    visit_meta['median_blur_arcsec'] = float(
+                        np.nanmedian(np.asarray(agg_zern['blur'], dtype=float)))
+            else:
+                visit_meta['median_blur_arcsec'] = float('nan')
 
             # Drop unwanted columns per-visit
             drop_cols = [c for c in agg_zern.colnames
@@ -522,6 +573,19 @@ def stream_zernikes_to_parquet(visit_pairs, collections, butler_repo, coord_sys,
     visit_info['band'] = [m['band'] for m in visit_meta_list]
     visit_info['mjd'] = [m['mjd'] for m in visit_meta_list]
     visit_info['nollIndices'] = [m['nollIndices'] for m in visit_meta_list]
+    # Per-visit quality metrics (used by quality_visit_mask downstream)
+    visit_info['n_donuts'] = [m['n_donuts'] for m in visit_meta_list]
+    visit_info['n_detectors'] = [m['n_detectors'] for m in visit_meta_list]
+    visit_info['n_detectors_with_min_donuts'] = [
+        m['n_detectors_with_min_donuts'] for m in visit_meta_list]
+    visit_info['median_blur_arcsec'] = [
+        m['median_blur_arcsec'] for m in visit_meta_list]
+    # Stash the threshold used at extract time so users can interpret
+    # the n_detectors_with_min_donuts column.
+    visit_info.meta['min_donuts_per_detector'] = int(min_donuts_per_detector)
+    visit_info.meta['matched_threshold_arcsec'] = (
+        float(matched_threshold_arcsec) if matched_threshold_arcsec is not None
+        else None)
 
     return visit_info
 
@@ -1341,6 +1405,171 @@ def merge_rotator_to_visit_info(rotator_df, visit_info, rotator_threshold):
     return visit_info
 
 
+def quality_visit_mask(visit_info,
+                       min_donuts_per_visit=DEFAULT_MIN_DONUTS_PER_VISIT,
+                       min_detectors_per_visit=DEFAULT_MIN_DETECTORS_PER_VISIT,
+                       max_median_blur_arcsec=DEFAULT_MAX_MEDIAN_BLUR_ARCSEC,
+                       verbose=True):
+    """Boolean per-visit mask for the standard quality cuts.
+
+    The cuts are evaluated against the numeric metric columns recorded by
+    `stream_zernikes_to_parquet`:
+      * `n_donuts`                    >= min_donuts_per_visit
+      * `n_detectors_with_min_donuts` >= min_detectors_per_visit
+      * `median_blur_arcsec`          <= max_median_blur_arcsec
+
+    Pass any threshold as None to disable that individual cut. The
+    `min_donuts_per_detector` floor used to compute
+    `n_detectors_with_min_donuts` is fixed at mktable time and cannot be
+    re-tuned without re-running mktable; it's recorded in
+    visit_info.meta['min_donuts_per_detector'] for documentation.
+
+    Parameters
+    ----------
+    visit_info : astropy.table.QTable or pandas.DataFrame
+        Visit-level table with the numeric quality metric columns.
+    min_donuts_per_visit, min_detectors_per_visit : int or None
+    max_median_blur_arcsec : float or None
+    verbose : bool
+        Print a one-line summary of how many visits each cut drops.
+
+    Returns
+    -------
+    mask : ndarray of bool, shape (len(visit_info),)
+    """
+    n = len(visit_info)
+    mask = np.ones(n, dtype=bool)
+
+    def _col(name):
+        return np.asarray(visit_info[name]) if name in visit_info.colnames \
+            else None
+
+    n_donuts = _col('n_donuts')
+    n_dets   = _col('n_detectors_with_min_donuts')
+    blur     = _col('median_blur_arcsec')
+
+    drops = []
+    if min_donuts_per_visit is not None and n_donuts is not None:
+        m = n_donuts >= min_donuts_per_visit
+        drops.append(('n_donuts >= %d' % min_donuts_per_visit,
+                      int((~m).sum())))
+        mask &= m
+    if min_detectors_per_visit is not None and n_dets is not None:
+        m = n_dets >= min_detectors_per_visit
+        drops.append(('n_detectors_with_min_donuts >= %d'
+                      % min_detectors_per_visit, int((~m).sum())))
+        mask &= m
+    if max_median_blur_arcsec is not None and blur is not None:
+        m = (np.isfinite(blur)) & (blur <= max_median_blur_arcsec)
+        drops.append(('median_blur_arcsec <= %.2f' % max_median_blur_arcsec,
+                      int((~m).sum())))
+        mask &= m
+
+    if verbose:
+        print(f"quality_visit_mask: {int(mask.sum())}/{n} visits pass")
+        for label, n_dropped in drops:
+            print(f"  cut {label}: drops {n_dropped}")
+
+    return mask
+
+
+def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
+                                   min_donuts_per_visit=DEFAULT_MIN_DONUTS_PER_VISIT,
+                                   min_detectors_per_visit=DEFAULT_MIN_DETECTORS_PER_VISIT,
+                                   max_median_blur_arcsec=DEFAULT_MAX_MEDIAN_BLUR_ARCSEC,
+                                   title=None):
+    """Three-panel validation plot of per-visit quality metrics.
+
+    Plots, vs visit ordinal (sorted day_obs, seq_num):
+      1. n_donuts                        + horizontal line at min_donuts_per_visit
+      2. n_detectors_with_min_donuts     + horizontal line at min_detectors_per_visit
+      3. median_blur_arcsec              + horizontal line at max_median_blur_arcsec
+
+    Visits that pass all cuts are coloured blue; failing visits red.
+
+    Parameters
+    ----------
+    visit_info : QTable or DataFrame
+    output_pdf : str or Path, optional
+        If given, saves the figure to this path.
+    title : str, optional
+        Figure suptitle.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    import matplotlib.pyplot as plt
+
+    n = len(visit_info)
+    if n == 0:
+        print("plot_visit_quality_diagnostics: empty visit_info — skipping")
+        return None
+
+    # Sort by (day_obs, seq_num) so the ordinal is monotonic in time-on-sky
+    day_obs = np.asarray(visit_info['day_obs'])
+    seq_num = np.asarray(visit_info['seq_num'])
+    order = np.lexsort((seq_num, day_obs))
+
+    n_donuts = np.asarray(visit_info['n_donuts'])[order] \
+        if 'n_donuts' in visit_info.colnames else np.full(n, np.nan)
+    n_dets = np.asarray(visit_info['n_detectors_with_min_donuts'])[order] \
+        if 'n_detectors_with_min_donuts' in visit_info.colnames else np.full(n, np.nan)
+    blur = np.asarray(visit_info['median_blur_arcsec'])[order] \
+        if 'median_blur_arcsec' in visit_info.colnames else np.full(n, np.nan)
+
+    pass_mask = quality_visit_mask(
+        visit_info,
+        min_donuts_per_visit=min_donuts_per_visit,
+        min_detectors_per_visit=min_detectors_per_visit,
+        max_median_blur_arcsec=max_median_blur_arcsec,
+        verbose=False)[order]
+
+    x = np.arange(n)
+    colors = np.where(pass_mask, 'tab:blue', 'tab:red')
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
+
+    axes[0].scatter(x, n_donuts, s=8, c=colors)
+    if min_donuts_per_visit is not None:
+        axes[0].axhline(min_donuts_per_visit, ls='--', color='k', lw=1,
+                        label=f'min = {min_donuts_per_visit}')
+        axes[0].legend(loc='lower right', fontsize=9)
+    axes[0].set_ylabel('n_donuts per visit')
+    axes[0].grid(alpha=0.3)
+
+    axes[1].scatter(x, n_dets, s=8, c=colors)
+    if min_detectors_per_visit is not None:
+        axes[1].axhline(min_detectors_per_visit, ls='--', color='k', lw=1,
+                        label=f'min = {min_detectors_per_visit}')
+        axes[1].legend(loc='lower right', fontsize=9)
+    min_n = visit_info.meta.get('min_donuts_per_detector',
+                                DEFAULT_MIN_DONUTS_PER_DETECTOR) \
+        if hasattr(visit_info, 'meta') else DEFAULT_MIN_DONUTS_PER_DETECTOR
+    axes[1].set_ylabel(f'# detectors with ≥ {min_n} donuts')
+    axes[1].grid(alpha=0.3)
+
+    axes[2].scatter(x, blur, s=8, c=colors)
+    if max_median_blur_arcsec is not None:
+        axes[2].axhline(max_median_blur_arcsec, ls='--', color='k', lw=1,
+                        label=f'max = {max_median_blur_arcsec:.2f}')
+        axes[2].legend(loc='upper right', fontsize=9)
+    axes[2].set_ylabel('median blur [arcsec]')
+    axes[2].set_xlabel('visit ordinal (sorted by day_obs, seq_num)')
+    axes[2].grid(alpha=0.3)
+
+    n_pass = int(pass_mask.sum())
+    suptitle = (title or '') + (f"  ({n_pass}/{n} visits pass quality cuts)")
+    fig.suptitle(suptitle, fontsize=11)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+
+    if output_pdf is not None:
+        fig.savefig(str(output_pdf))
+        print(f"  Wrote validation plot: {output_pdf}")
+
+    return fig
+
+
 def merge_rotator_to_tables(rotator_df, aosTable, visit_info, rotator_threshold):
     """Add rotator_angle and rotator_flagged to aosTable and visit_info."""
     rot_dict = {}
@@ -1491,6 +1720,12 @@ async def run_mktable(
     temp_time_window_sec=DEFAULT_TEMP_TIME_WINDOW_SEC,
     consdb_url=DEFAULT_CONSDB_URL,
     overwrite=False,
+    # Per-visit quality cut configuration
+    matched_threshold_arcsec=DEFAULT_MATCHED_THRESHOLD_ARCSEC,
+    min_donuts_per_visit=DEFAULT_MIN_DONUTS_PER_VISIT,
+    min_donuts_per_detector=DEFAULT_MIN_DONUTS_PER_DETECTOR,
+    min_detectors_per_visit=DEFAULT_MIN_DETECTORS_PER_VISIT,
+    max_median_blur_arcsec=DEFAULT_MAX_MEDIAN_BLUR_ARCSEC,
     # Legacy support
     prefix=None,
 ):
@@ -1624,7 +1859,9 @@ async def run_mktable(
         visit_pairs, fam_collections, butler_repo, coord_sys, camera,
         output_file=output_file,
         calc_focal_plane=calc_focal_plane,
-        calc_mean_zernike=calc_mean_zernike)
+        calc_mean_zernike=calc_mean_zernike,
+        matched_threshold_arcsec=matched_threshold_arcsec,
+        min_donuts_per_detector=min_donuts_per_detector)
     if visit_info is None:
         return None, None
 
@@ -1648,6 +1885,39 @@ async def run_mktable(
             visit_info = merge_thermal_to_visit_info(thermal_df, visit_info)
         except Exception as e:
             print(f"Warning: Could not retrieve thermal data: {e}")
+
+    # Compute per-visit quality flag using the standard cuts. Stored as
+    # `visit_quality_pass` so downstream code can filter without
+    # re-evaluating the metric thresholds.
+    print("\n--- Per-visit quality cuts ---")
+    pass_mask = quality_visit_mask(
+        visit_info,
+        min_donuts_per_visit=min_donuts_per_visit,
+        min_detectors_per_visit=min_detectors_per_visit,
+        max_median_blur_arcsec=max_median_blur_arcsec,
+        verbose=True,
+    )
+    visit_info['visit_quality_pass'] = pass_mask
+    visit_info.meta['min_donuts_per_visit'] = (
+        int(min_donuts_per_visit) if min_donuts_per_visit is not None else None)
+    visit_info.meta['min_detectors_per_visit'] = (
+        int(min_detectors_per_visit) if min_detectors_per_visit is not None else None)
+    visit_info.meta['max_median_blur_arcsec'] = (
+        float(max_median_blur_arcsec) if max_median_blur_arcsec is not None
+        else None)
+
+    # Validation plot: n_donuts / n_detectors / median blur vs visit ordinal
+    try:
+        diag_pdf = f'{output_dir}/{stem}_visit_quality.pdf'
+        plot_visit_quality_diagnostics(
+            visit_info, output_pdf=diag_pdf,
+            min_donuts_per_visit=min_donuts_per_visit,
+            min_detectors_per_visit=min_detectors_per_visit,
+            max_median_blur_arcsec=max_median_blur_arcsec,
+            title=stem,
+        )
+    except Exception as e:
+        print(f"Warning: failed to write quality diagnostics PDF: {e}")
 
     # Write the visits table as a small sidecar parquet
     visit_info.write(visits_file, format='parquet', overwrite=True)
