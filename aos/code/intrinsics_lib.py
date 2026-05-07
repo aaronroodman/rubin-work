@@ -116,6 +116,253 @@ DEFAULT_DVIZ_VER = 'dviz_v3_5_0'
 # in `intra_extra_offset_*_arcsec` so the cut can be re-applied later.
 DEFAULT_MATCHED_THRESHOLD_ARCSEC = None
 
+# ============================================================
+# Visit marker scheme (shared by all per-visit AOS plots)
+# ============================================================
+#
+# Color    = elevation bucket (centered on 30, 40, 50, 60, 70 deg ±5°)
+# Shape    = chunky arrow pointing in the rotator direction, one of nine
+#            buckets (-60, -45, -30, -15, 0, 15, 30, 45, 60 deg)
+# Edge     = filter band; i-band uses edge = face (no visible outline);
+#            other bands get a distinctive outline color so the few
+#            non-i visits are easy to spot
+
+ELEV_CENTERS  = (30, 40, 50, 60, 70)
+ELEV_HALFWIDTH = 5
+ROT_CENTERS   = (-60, -45, -30, -15, 0, 15, 30, 45, 60)
+
+ELEV_COLORS = {
+    30: 'tab:blue', 40: 'tab:green', 50: 'tab:orange',
+    60: 'tab:red',  70: 'tab:purple',
+}
+
+# Band → marker edge color. None for i-band means "edge = face color"
+# (no visible outline); all the other bands get a distinct outline.
+BAND_EDGE_COLORS = {
+    'u': 'magenta',
+    'g': 'lime',
+    'r': 'red',
+    'i': None,
+    'z': 'gold',
+    'y': 'black',
+}
+
+
+def _arrow_marker(angle_deg, head_w=1.30, head_h=0.70, shaft_w=0.50):
+    """Build a chunky-arrow MarkerStyle whose tip points at angle_deg
+    (measured CCW from the +y axis, matching the rotator-angle convention).
+    """
+    import matplotlib.path as _mpath
+    import matplotlib.markers as _mmarkers
+    from matplotlib.transforms import Affine2D as _Affine2D
+    sw = shaft_w / 2.0
+    hw = head_w / 2.0
+    verts = [
+        (0.0,  1.0),
+        ( hw,  1.0 - head_h),
+        ( sw,  1.0 - head_h),
+        ( sw, -1.0),
+        (-sw, -1.0),
+        (-sw,  1.0 - head_h),
+        (-hw,  1.0 - head_h),
+        (0.0,  1.0),
+    ]
+    codes = [_mpath.Path.MOVETO] + [_mpath.Path.LINETO] * (len(verts) - 1)
+    return _mmarkers.MarkerStyle(
+        _mpath.Path(verts, codes).transformed(
+            _Affine2D().rotate_deg(angle_deg)))
+
+
+# Built lazily so importing this module doesn't drag in matplotlib up-front.
+_ROT_MARKERS_CACHE = None
+
+
+def _rot_markers():
+    global _ROT_MARKERS_CACHE
+    if _ROT_MARKERS_CACHE is None:
+        _ROT_MARKERS_CACHE = {θ: _arrow_marker(θ) for θ in ROT_CENTERS}
+    return _ROT_MARKERS_CACHE
+
+
+def _alt_to_deg(alt_value):
+    """Coerce an alt/elevation value to degrees, auto-detecting radians."""
+    a = float(alt_value)
+    return np.rad2deg(a) if abs(a) < 2.0 * np.pi + 1e-3 else a
+
+
+def _classify_elev(alt_deg):
+    """Return the nearest elevation bucket center, or None if outside all."""
+    if not np.isfinite(alt_deg):
+        return None
+    for c in ELEV_CENTERS:
+        if (c - ELEV_HALFWIDTH) <= alt_deg < (c + ELEV_HALFWIDTH):
+            return c
+    return None
+
+
+def _classify_rot(rot_deg):
+    """Return the nearest rotator bucket center."""
+    if rot_deg is None or not np.isfinite(rot_deg):
+        return None
+    centers = np.array(ROT_CENTERS, dtype=float)
+    return int(centers[int(np.argmin(np.abs(centers - rot_deg)))])
+
+
+def classify_visit(alt_deg=None, rot_deg=None, band=None):
+    """Classify a visit's elev/rot/band into the marker-scheme buckets.
+
+    Parameters
+    ----------
+    alt_deg : float, optional
+        Elevation in degrees (radians OK, auto-detected).
+    rot_deg : float, optional
+        Rotator angle in degrees.
+    band : str, optional
+        Filter band; first character is used (e.g. 'i_06' → 'i').
+
+    Returns
+    -------
+    dict with keys 'elev', 'rot', 'band' — values are the bucket center
+    (int) or None for missing/out-of-range, and a one-character band.
+    """
+    elev = _classify_elev(_alt_to_deg(alt_deg)) if alt_deg is not None else None
+    rot = _classify_rot(rot_deg) if rot_deg is not None else None
+    if band is None:
+        b = None
+    else:
+        b = str(band).strip().lower()[:1] if str(band).strip() else None
+    return {'elev': elev, 'rot': rot, 'band': b}
+
+
+def visit_marker_style(elev=None, rot=None, band=None,
+                       iter_=None, base_size=7,
+                       fallback_marker='x', fallback_color='gray'):
+    """Translate elev/rot/band buckets into matplotlib plot kwargs.
+
+    iter_ in {None, 1, 2}: when given, controls the fill style — iter 1
+    is filled, iter 2 is open. Otherwise the marker is filled.
+
+    Returns a dict suitable for plt.plot(...): marker, color, mfc, mec,
+    mew, markersize, linestyle.
+    """
+    if elev is None or rot is None:
+        return dict(marker=fallback_marker, color=fallback_color,
+                    markersize=base_size, linestyle='')
+    color = ELEV_COLORS[elev]
+    marker = _rot_markers()[rot]
+    edge = BAND_EDGE_COLORS.get(band, None) if band is not None else None
+    if edge is None:
+        mec = color
+        mew = 0.0
+        size = base_size
+    else:
+        mec = edge
+        mew = 1.5
+        size = base_size + 1
+    if iter_ == 2:
+        mfc = 'none'
+    else:
+        mfc = color
+    return dict(marker=marker, color=color, mfc=mfc, mec=mec, mew=mew,
+                markersize=size, linestyle='')
+
+
+def build_visit_marker_lookup(visit_info):
+    """Build a (day_obs, seq_num) → classified-visit dict from a visits table.
+
+    Reads `alt`, `rotator_angle`, and `band` columns when present. Useful
+    for joining marker styles onto a fit table indexed by (day_obs, seq_num).
+    """
+    has_alt = 'alt' in visit_info.colnames
+    has_rot = 'rotator_angle' in visit_info.colnames
+    has_band = 'band' in visit_info.colnames
+    out = {}
+    for v in visit_info:
+        d = int(v['day_obs'])
+        s = int(v['seq_num'])
+        alt = float(v['alt']) if has_alt else None
+        rot = float(v['rotator_angle']) if has_rot else None
+        band = str(v['band']) if has_band else None
+        out[(d, s)] = classify_visit(alt_deg=alt, rot_deg=rot, band=band)
+    return out
+
+
+def markers_legend_figure(show_iter_distinction=False, show_band_legend=True,
+                          figsize=(11, 8.5)):
+    """Standalone matplotlib figure documenting the marker scheme.
+
+    show_iter_distinction : add a third legend explaining iter1=filled,
+        iter2=open (used on tracking PDFs).
+    show_band_legend : show the band → edge-color legend (suppress if
+        all visits in your data are i-band).
+    """
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+    ax.set_axis_off()
+    ax.set_title('Marker scheme', fontsize=14, pad=20)
+
+    # Rotator (shape)
+    rot_handles = [plt.Line2D([], [], linestyle='', marker=m, markersize=10,
+                              color='gray', mfc='none')
+                   for m in _rot_markers().values()]
+    rot_labels = [f'rot ≈ {θ:+d}°' for θ in ROT_CENTERS]
+    leg1 = ax.legend(rot_handles, rot_labels,
+                     loc='upper left', bbox_to_anchor=(0.05, 0.95),
+                     title='rotator_angle (marker shape)',
+                     fontsize=9, title_fontsize=10, frameon=True, ncol=1)
+    ax.add_artist(leg1)
+
+    # Elevation (color)
+    elev_handles = [plt.Line2D([], [], linestyle='', marker='o',
+                               markersize=10, color=c)
+                    for c in ELEV_COLORS.values()]
+    elev_labels = [f'alt ∈ [{c - ELEV_HALFWIDTH}, {c + ELEV_HALFWIDTH}) → {c}°'
+                   for c in ELEV_COLORS]
+    leg2 = ax.legend(elev_handles, elev_labels,
+                     loc='upper right', bbox_to_anchor=(0.95, 0.95),
+                     title='elevation (marker color)',
+                     fontsize=9, title_fontsize=10, frameon=True)
+    ax.add_artist(leg2)
+
+    if show_band_legend:
+        band_handles = []
+        band_labels = []
+        for b, edge in BAND_EDGE_COLORS.items():
+            if edge is None:
+                edge_disp = 'tab:purple'  # fill color shown for visibility
+                lbl = f'{b} band — no distinct edge'
+            else:
+                edge_disp = edge
+                lbl = f'{b} band'
+            band_handles.append(plt.Line2D([], [], linestyle='', marker='o',
+                                           markersize=10, color='tab:purple',
+                                           mec=edge_disp, mew=1.5))
+            band_labels.append(lbl)
+        leg3 = ax.legend(band_handles, band_labels,
+                         loc='lower right', bbox_to_anchor=(0.95, 0.05),
+                         title='filter band (marker edge)',
+                         fontsize=9, title_fontsize=10, frameon=True)
+        ax.add_artist(leg3)
+
+    if show_iter_distinction:
+        h_it = [
+            plt.Line2D([], [], linestyle='', marker='o', markersize=11,
+                       mec='black', mfc='black'),
+            plt.Line2D([], [], linestyle='', marker='o', markersize=11,
+                       mec='black', mfc='none'),
+        ]
+        ax.legend(h_it, ['iter 1 (filled)', 'iter 2 (open)'],
+                  loc='lower left', bbox_to_anchor=(0.05, 0.05),
+                  fontsize=10, title='Iteration (fill style)',
+                  title_fontsize=10, frameon=True)
+
+    ax.text(0.5, 0.55,
+            'Visits outside the elevation/rotator buckets are drawn as gray ✕.',
+            ha='center', va='center', transform=ax.transAxes,
+            fontsize=10, color='gray')
+    return fig
+
 # Per-visit quality cuts. Computed per visit during mktable, stored as
 # numeric columns in visit_info, and re-applied at use time via
 # quality_visit_mask(). A visit fails if any of these are violated.
@@ -1512,12 +1759,14 @@ def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
     seq_num = np.asarray(visit_info['seq_num'])
     order = np.lexsort((seq_num, day_obs))
 
-    n_donuts = np.asarray(visit_info['n_donuts'])[order] \
-        if 'n_donuts' in visit_info.colnames else np.full(n, np.nan)
-    n_dets = np.asarray(visit_info['n_detectors_with_min_donuts'])[order] \
-        if 'n_detectors_with_min_donuts' in visit_info.colnames else np.full(n, np.nan)
-    blur = np.asarray(visit_info['median_blur_arcsec'])[order] \
-        if 'median_blur_arcsec' in visit_info.colnames else np.full(n, np.nan)
+    def _ordered_col(name, default=np.nan):
+        if name not in visit_info.colnames:
+            return np.full(n, default)
+        return np.asarray(visit_info[name])[order]
+
+    n_donuts = _ordered_col('n_donuts')
+    n_dets = _ordered_col('n_detectors_with_min_donuts')
+    blur = _ordered_col('median_blur_arcsec')
 
     pass_mask = quality_visit_mask(
         visit_info,
@@ -1526,12 +1775,41 @@ def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
         max_median_blur_arcsec=max_median_blur_arcsec,
         verbose=False)[order]
 
-    x = np.arange(n)
-    colors = np.where(pass_mask, 'tab:blue', 'tab:red')
+    # Build per-visit marker styles (color = elev, shape = rot, edge = band).
+    # Visits failing the quality cuts are drawn at lower alpha so the
+    # elev/rot encoding is preserved.
+    has_alt = 'alt' in visit_info.colnames
+    has_rot = 'rotator_angle' in visit_info.colnames
+    has_band = 'band' in visit_info.colnames
+    alt_arr = (np.asarray(visit_info['alt'])[order] if has_alt
+               else np.full(n, np.nan))
+    rot_arr = (np.asarray(visit_info['rotator_angle'])[order] if has_rot
+               else np.full(n, np.nan))
+    band_arr = (np.asarray(visit_info['band'])[order] if has_band
+                else np.array([None] * n, dtype=object))
 
+    classifications = [
+        classify_visit(alt_deg=alt_arr[i], rot_deg=rot_arr[i],
+                       band=band_arr[i] if has_band else None)
+        for i in range(n)
+    ]
+    bands_seen = sorted({c['band'] for c in classifications if c['band']})
+    show_band_legend = any(b for b in bands_seen if b != 'i')
+
+    x = np.arange(n)
     fig, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
 
-    axes[0].scatter(x, n_donuts, s=8, c=colors)
+    def _scatter(ax, y, label_min=None, label_max=None):
+        for i in range(n):
+            if not np.isfinite(y[i]):
+                continue
+            cls = classifications[i]
+            style = visit_marker_style(elev=cls['elev'], rot=cls['rot'],
+                                        band=cls['band'], base_size=7)
+            alpha = 0.95 if pass_mask[i] else 0.30
+            ax.plot(x[i], y[i], alpha=alpha, **style)
+
+    _scatter(axes[0], n_donuts)
     if min_donuts_per_visit is not None:
         axes[0].axhline(min_donuts_per_visit, ls='--', color='k', lw=1,
                         label=f'min = {min_donuts_per_visit}')
@@ -1539,7 +1817,7 @@ def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
     axes[0].set_ylabel('n_donuts per visit')
     axes[0].grid(alpha=0.3)
 
-    axes[1].scatter(x, n_dets, s=8, c=colors)
+    _scatter(axes[1], n_dets)
     if min_detectors_per_visit is not None:
         axes[1].axhline(min_detectors_per_visit, ls='--', color='k', lw=1,
                         label=f'min = {min_detectors_per_visit}')
@@ -1550,7 +1828,7 @@ def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
     axes[1].set_ylabel(f'# detectors with ≥ {min_n} donuts')
     axes[1].grid(alpha=0.3)
 
-    axes[2].scatter(x, blur, s=8, c=colors)
+    _scatter(axes[2], blur)
     if max_median_blur_arcsec is not None:
         axes[2].axhline(max_median_blur_arcsec, ls='--', color='k', lw=1,
                         label=f'max = {max_median_blur_arcsec:.2f}')
@@ -1560,12 +1838,24 @@ def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
     axes[2].grid(alpha=0.3)
 
     n_pass = int(pass_mask.sum())
-    suptitle = (title or '') + (f"  ({n_pass}/{n} visits pass quality cuts)")
-    fig.suptitle(suptitle, fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    suptitle = (title or '') + (
+        f"  ({n_pass}/{n} pass quality cuts; "
+        f"color = elev, shape = rotator, edge = band; "
+        f"failing visits drawn at low alpha)")
+    fig.suptitle(suptitle, fontsize=10)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
 
+    # If we're saving a PDF, prepend a marker-scheme legend page so the
+    # validation document is self-explanatory.
     if output_pdf is not None:
-        fig.savefig(str(output_pdf))
+        from matplotlib.backends.backend_pdf import PdfPages
+        with PdfPages(str(output_pdf)) as pdf:
+            legend_fig = markers_legend_figure(
+                show_iter_distinction=False,
+                show_band_legend=show_band_legend)
+            pdf.savefig(legend_fig)
+            plt.close(legend_fig)
+            pdf.savefig(fig)
         print(f"  Wrote validation plot: {output_pdf}")
 
     return fig
