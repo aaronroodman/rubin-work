@@ -10,6 +10,7 @@ runs:
       plots: done
       fit_ccs: done
       plots_ccs: done
+      movie: pending
   chunk2:
     param_set: fam_danish_triplets
     day_obs_min: 20260324
@@ -21,6 +22,7 @@ runs:
       plots: done
       fit_ccs: done
       plots_ccs: done
+      movie: pending
   chunk3:
     param_set: fam_danish_triplets
     day_obs_min: 20260331
@@ -32,6 +34,7 @@ runs:
       plots: done
       fit_ccs: done
       plots_ccs: done
+      movie: pending
   chunk4:
     param_set: fam_danish_v1_triplets_bin_1x
     day_obs_min: 20260315
@@ -43,8 +46,9 @@ runs:
       plots: pending
       fit_ccs: pending
       plots_ccs: pending
+      movie: pending
   chunk5:
-    param_set: fam_danish_v1_triplets
+    param_set: fam_danish_v1_triplets_bin_2x
     day_obs_min: 20260315
     day_obs_max: 20260409
     coord_sys: OCS
@@ -54,6 +58,7 @@ runs:
       plots: done
       fit_ccs: pending
       plots_ccs: pending
+      movie: pending
   chunk6:
     param_set: fam_danish_triplets
     day_obs_min: 20260315
@@ -65,6 +70,7 @@ runs:
       plots: pending
       fit_ccs: pending
       plots_ccs: pending
+      movie: pending
   chunk7:
     param_set: fam_danish_v1_triplets_bin_2x
     day_obs_min: 20260418
@@ -88,3 +94,4 @@ runs:
       plots: pending
       fit_ccs: pending
       plots_ccs: pending
+      movie: pending
