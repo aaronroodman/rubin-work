@@ -111,9 +111,10 @@ DEFAULT_DVIZ_VER = 'dviz_v3_5_0'
 
 # Per-donut intra/extra centroid agreement (arcsec). The boolean
 # `matched_intra_extra` column flips True when the offset is below this
-# threshold in both axes. Pass None to disable the cut (column becomes
-# True for every donut).
-DEFAULT_MATCHED_THRESHOLD_ARCSEC = 100.0
+# threshold in both axes. Default is None — cut is disabled and the
+# column is True for every donut. The numeric offsets are still recorded
+# in `intra_extra_offset_*_arcsec` so the cut can be re-applied later.
+DEFAULT_MATCHED_THRESHOLD_ARCSEC = None
 
 # Per-visit quality cuts. Computed per visit during mktable, stored as
 # numeric columns in visit_info, and re-applied at use time via

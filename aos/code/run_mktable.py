@@ -92,10 +92,10 @@ def main():
                              '(default: refuse to clobber)')
 
     # Per-visit quality cut configuration
-    parser.add_argument('--matched-threshold-arcsec', type=float, default=100.0,
+    parser.add_argument('--matched-threshold-arcsec', type=float, default=0.0,
                         help='intra/extra centroid agreement threshold for the '
-                             'matched_intra_extra column (default 100). '
-                             'Pass 0 or a negative number to disable.')
+                             'matched_intra_extra column (default 0 = disabled; '
+                             'pass a positive value in arcsec to enable).')
     parser.add_argument('--min-donuts-per-visit', type=int, default=500,
                         help='Minimum donuts per visit (default 500). '
                              'Pass 0 to disable.')
