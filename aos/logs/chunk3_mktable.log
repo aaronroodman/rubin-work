@@ -1,0 +1,112 @@
+# chunk3.mktable
+# 2026-05-08 18:27:30
+
+Pipeline: aos_fam_danish_v1_triplets_bin_2x OCS 20260331-20260409
+  Butler: /repo/embargo
+  Collections: ['aos_fam_danish_v1_triplets_bin_2x']
+  Options: intrinsics=True, mean_zk=False, fp_coords=False, thermal=True
+  Output: output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409.parquet
+Retrieved 7551 visits from ConsDB
+Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710', 'T717', 'T720', 'T724'] and img_type='cwfs': 977
+
+Band counts by day_obs:
+band_first  u  g  r    i  z  y
+day_obs                       
+20260331    0  0  0  193  0  0
+20260401    0  0  0  288  0  0
+20260402    0  0  0  206  0  0
+20260404    0  0  0   98  0  0
+20260409    0  0  0  192  0  0
+TOTAL       0  0  0  977  0  0
+Warning: Unpaired image at day_obs=20260331, seq_num=580
+
+Found 488 FAM image pairs (keeping second of each pair)
+Note: 1 unpaired images were skipped
+
+ConsDB physical_rotator_angle: 248/488 visits
+ConsDB physical_rotator_angle: 248 present, 240 missing
+  Missing from ConsDB — falling back to EFD, then Butler visitInfo:
+    day_obs=20260331: 96/96 visits missing
+    day_obs=20260401: 144/144 visits missing
+  First 20 missing (day_obs, seq_num):
+    20260331 238
+    20260331 241
+    20260331 244
+    20260331 247
+    20260331 250
+    20260331 253
+    20260331 256
+    20260331 259
+    20260331 262
+    20260331 265
+    20260331 268
+    20260331 271
+    20260331 274
+    20260331 277
+    20260331 280
+    20260331 283
+    20260331 286
+    20260331 289
+    20260331 292
+    20260331 295
+    ... and 220 more
+Querying EFD rotator positions for 240 visits...
+  Got EFD rotator for 240/240 visits
+  EFD filled all 240 ConsDB-missing visits — skipping Butler visitInfo queries
+
+Rotator angle sources: ConsDB=248, EFD=240, visitInfo=0
+Flagged (|angle| > 90.0 deg): 0
+Warning: calc_intrinsics=True is no longer supported in the streaming pipeline (intrinsics are read from Butler metadata). Ignoring the flag.
+Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets_bin_2x']
+
+Streaming Zernikes for 488 visits to output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409.parquet...
+
+============================================================
+Extraction Summary:
+  Total visits attempted: 488
+  Successful extractions: 488
+  Failed extractions:     0
+  nollIndices: [np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26)]
+  Total donut measurements: 1225808
+============================================================
+
+  Added ['science_program'] to visit_info: 488/488 visits matched in the ConsDB query result
+Added rotator columns to visit_info. Flagged: 0 (|angle| > 90.0 deg)
+ConsDB returned 3494 exposure records for obs times
+Matched obs times for 488/488 visits
+Querying EFD temperatures for 488 visits...
+  cam_air_temp: 488/488 valid
+  m2_air_temp: 488/488 valid
+  m1m3_air_temp: 488/488 valid
+  outside_temp: 488/488 valid
+  M1M3 data for day_obs 20260331: 96 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260401: 144 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260402: 103 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260404: 49 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260409: 96 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+Querying TMA truss temperatures...
+
+Thermal data: 209 columns for 488 visits (13 scalar, 146 per-thermocouple, 50 per-cell-vertical-gradient)
+Added 209 thermal columns to visit_info
+
+--- Per-visit quality cuts ---
+quality_visit_mask: 476/488 visits pass
+  cut n_donuts >= 500: drops 0
+  cut n_detectors_with_min_donuts >= 170: drops 5
+  cut median_blur_arcsec <= 1.20: drops 7
+  Wrote validation plot: output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409_visit_quality.pdf
+  thermocouples: output/m1m3_thermocouples.parquet — 146 thermocouples (name, x, y, z, scanner)
+
+Saved:
+  donuts: output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409.parquet (streamed, one row group per visit)
+  visits: output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409_visits.parquet — 488 rows, 228 columns
