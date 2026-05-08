@@ -1,0 +1,4 @@
+# chunk3.movie
+# 2026-05-08 18:38:00
+# python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409.parquet output/aos_fam_danish_v1_triplets_bin_2x_20260331_20260409_fits.parquet --coord-sys OCS --no-fit-params --no-trio
+
