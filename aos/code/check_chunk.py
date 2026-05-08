@@ -313,15 +313,18 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
             print(f"  Other errors (load fail):  {len(other_errors)}")
         print()
         if butler_missing:
-            n_show = min(20, len(butler_missing))
-            print(f"  First {n_show} missing (would emit DatasetNotFoundError):")
-            # Group by day_obs for readability
-            by_day = Counter(d for d, _ in butler_missing)
+            print(f"  Missing visits (would emit DatasetNotFoundError) — "
+                  f"all {len(butler_missing)} grouped by day_obs:")
+            # Group by day_obs for readability; cast to plain ints to
+            # avoid noisy `np.int64(...)` reprs from numpy-typed values.
+            by_day = defaultdict(list)
+            for d, s in butler_missing:
+                by_day[int(d)].append(int(s))
             for day in sorted(by_day):
-                seqs = sorted(s for d, s in butler_missing if d == day)
-                shown = seqs if len(seqs) <= 8 \
-                    else seqs[:5] + ['…'] + seqs[-2:]
-                print(f"    day_obs={day}: {by_day[day]} missing  {shown}")
+                seqs = sorted(by_day[day])
+                # Pretty-print the seq_num list across multiple lines if long
+                seq_str = ', '.join(str(s) for s in seqs)
+                print(f"    day_obs={day} ({len(seqs)} missing): {seq_str}")
             print()
 
         # nollIndices distribution (across every present visit)
