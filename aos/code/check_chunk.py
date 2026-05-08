@@ -47,26 +47,25 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
                            consdb_url=None,
                            dataset_type='aggregateAOSVisitTableRaw',
                            detectors=(98, 99, 100),
-                           noll_sample_n=20,
                            verbose=True):
     """Run the pre-flight survey for a single chunk.
 
     Strategy:
       1. ConsDB → list of expected (day_obs, seq_num) visit pairs.
-      2. Butler.registry.queryDatasets — single round-trip query that
-         tells us which (day_obs, seq_num) pairs have the dataset
-         present, without actually loading any data. If `detectors` is
-         given, restrict to those CCD IDs (lots faster on per-detector
-         dataset types).
-      3. Load up to `noll_sample_n` of the present datasets just to
-         peek at meta['nollIndices'] and report the flavor distribution.
+      2. For each pair, butler.get(dataset_type, day_obs=…, seq_num=…,
+         detector=…). The first detector in `detectors` that returns
+         data wins, and we read its `meta['nollIndices']` while we're
+         at it — one round-trip per visit, on a small per-detector
+         table (much faster than the full 188-CCD aggregate).
+      3. Visits with no detector returning data are reported as
+         missing.
 
     Returns a dict with:
         'consdb_pairs'   : list of (day_obs, seq_num) from ConsDB
         'butler_present' : list with Butler data
         'butler_missing' : list in ConsDB but not in Butler
-        'noll_groups'    : dict tuple(nollIndices) -> list of (d,s) sampled
-        'other_errors'   : load failures during the nollIndices peek
+        'noll_groups'    : dict tuple(nollIndices) -> list of (d,s)
+        'other_errors'   : visits that errored when reading
     """
     # Imports kept inside so help/CLI parsing don't pay the LSST stack tax.
     from intrinsics_lib import (
@@ -100,8 +99,8 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
         print(f"  programs:        {fam_programs}")
         print(f"  dataset_type:    {dataset_type}")
         if detectors:
-            print(f"  detector subset: {list(detectors)}")
-        print(f"  noll sample N:   {noll_sample_n}")
+            print(f"  detector probe:  {list(detectors)} "
+                  f"(first match wins per visit)")
         print(f"{'=' * 64}\n")
 
     # ---- 1. ConsDB query ---------------------------------------------------
@@ -124,82 +123,74 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
         print(f"\nConsDB visit pairs (programs + cwfs + paired): "
               f"{len(consdb_pairs)}")
 
-    # ---- 2. Butler — single registry query for existence ------------------
+    # ---- 2. Butler — per-visit existence check + nollIndices peek -------
+    # `aggregateAOSVisitTableRaw` is per (visit, detector) here, so each
+    # butler.get loads just ~one CCD's slice (small) when we pass a
+    # detector. Try `detectors` in order — the first one that exists for
+    # a given visit is enough to count it as present. If detector= is
+    # not a valid dim for this dataset, fall back to a no-detector get.
+    from lsst.daf.butler import DatasetNotFoundError
+
     butler = Butler(butler_repo, instrument='LSSTCam',
                     collections=fam_collections)
 
-    where_parts = [
-        "instrument='LSSTCam'",
-        f"exposure.day_obs >= {day_obs_min} AND exposure.day_obs <= {day_obs_max}",
-    ]
-    if detectors:
-        det_list = ','.join(str(d) for d in detectors)
-        where_parts.append(f"detector IN ({det_list})")
-    where = ' AND '.join(where_parts)
-
-    if verbose:
-        print(f"\nQuerying Butler registry for `{dataset_type}` "
-              f"existence (single round-trip)…")
-
-    refs_by_visit = defaultdict(list)
-    other_errors = []
-    try:
-        ref_iter = butler.registry.queryDatasets(
-            dataset_type, collections=fam_collections, where=where)
-    except Exception as e:
-        # `detector IN (…)` may be invalid if the dataset is per-visit
-        # (no detector dim). Retry without the detector filter.
-        if detectors:
-            if verbose:
-                print(f"  (detector filter not accepted: {e}; "
-                      f"retrying without it)")
-            where_no_det = ' AND '.join(
-                p for p in where_parts if not p.startswith('detector'))
-            ref_iter = butler.registry.queryDatasets(
-                dataset_type, collections=fam_collections, where=where_no_det)
-        else:
-            raise
-
-    for ref in ref_iter:
-        d = ref.dataId.get('day_obs')
-        s = ref.dataId.get('seq_num')
-        if d is None or s is None:
-            continue
-        refs_by_visit[(int(d), int(s))].append(ref)
-
-    butler_visits = set(refs_by_visit)
-    consdb_set = set(consdb_pairs)
-    butler_present = sorted(consdb_set & butler_visits)
-    butler_missing = sorted(consdb_set - butler_visits)
-
-    if verbose:
-        n_refs = sum(len(v) for v in refs_by_visit.values())
-        print(f"  Registry returned {n_refs} refs across "
-              f"{len(refs_by_visit)} unique visits")
-
-    # ---- 3. nollIndices peek on a sample subset ---------------------------
+    butler_present = []
+    butler_missing = []
     noll_groups = defaultdict(list)
-    if noll_sample_n and butler_present:
-        sample = butler_present[:noll_sample_n]
-        if verbose:
-            print(f"\nLoading meta['nollIndices'] from "
-                  f"{len(sample)} sample visits…")
-        iterator = tqdm(sample) if verbose else sample
-        for vk in iterator:
-            ref = refs_by_visit[vk][0]    # any ref for this visit
+    other_errors = []
+
+    detector_list = list(detectors) if detectors else [None]
+
+    if verbose:
+        det_msg = (f"first matching detector from {detector_list}"
+                   if detectors else "no detector filter")
+        print(f"\nProbing Butler for `{dataset_type}` on "
+              f"{len(consdb_pairs)} visits ({det_msg})…")
+
+    iterator = tqdm(consdb_pairs) if verbose else consdb_pairs
+    for d, s in iterator:
+        tbl = None
+        last_err = None
+        for det in detector_list:
             try:
-                tbl = butler.get(ref)
+                kwargs = dict(day_obs=d, seq_num=s)
+                if det is not None:
+                    kwargs['detector'] = det
+                tbl = butler.get(dataset_type, **kwargs)
+                break
+            except DatasetNotFoundError:
+                continue   # try next detector
             except Exception as e:
-                other_errors.append((vk[0], vk[1],
-                                     type(e).__name__, str(e)))
+                last_err = e
+                # Detector kwarg may be invalid if dataset is per-visit
+                # only; try without it once.
+                if det is not None:
+                    try:
+                        tbl = butler.get(
+                            dataset_type, day_obs=d, seq_num=s)
+                        break
+                    except DatasetNotFoundError:
+                        continue
+                    except Exception as e2:
+                        last_err = e2
                 continue
-            noll = tbl.meta.get('nollIndices', None) \
-                if hasattr(tbl, 'meta') else None
-            if noll is None:
-                noll_groups[None].append(vk)
+
+        if tbl is None:
+            if last_err is None:
+                butler_missing.append((d, s))
             else:
-                key = tuple(int(n) for n in noll)
-                noll_groups[key].append(vk)
+                other_errors.append(
+                    (d, s, type(last_err).__name__, str(last_err)))
+            continue
+
+        butler_present.append((d, s))
+        noll = tbl.meta.get('nollIndices', None) \
+            if hasattr(tbl, 'meta') else None
+        if noll is None:
+            noll_groups[None].append((d, s))
+        else:
+            key = tuple(int(n) for n in noll)
+            noll_groups[key].append((d, s))
 
     # ---- 3. Summary --------------------------------------------------------
     if verbose:
@@ -224,12 +215,10 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
                 print(f"    day_obs={day}: {by_day[day]} missing  {shown}")
             print()
 
-        # nollIndices distribution (computed on the sample, not the full set)
-        n_sampled = sum(len(v) for v in noll_groups.values())
+        # nollIndices distribution (across every present visit)
         if noll_groups:
-            print(f"  nollIndices distribution among "
-                  f"{n_sampled} sampled visits "
-                  f"(of {len(butler_present)} present):\n")
+            print(f"  nollIndices distribution across "
+                  f"{len(butler_present)} present visits:\n")
             sorted_groups = sorted(noll_groups.items(),
                                    key=lambda kv: -len(kv[1]))
             for i, (key, pairs) in enumerate(sorted_groups):
@@ -295,14 +284,13 @@ def main():
                              'aggregateAOSVisitTableRaw)')
     parser.add_argument('--detectors', nargs='+', type=int,
                         default=[98, 99, 100],
-                        help='CCD ID subset to query for existence '
-                             '(default: 98 99 100). Pass --no-detectors '
-                             '(an empty list, e.g. --detectors=) to query '
-                             'every detector / use a per-visit dataset.')
-    parser.add_argument('--noll-sample-n', type=int, default=20,
-                        help='How many present visits to actually load '
-                             'for the nollIndices peek (default 20). '
-                             'Set to 0 to skip.')
+                        help='CCD IDs to try in order for the per-visit '
+                             'existence check (default: 98 99 100). The '
+                             'first detector with data wins; reading just '
+                             'one CCD slice is much faster than the full '
+                             '188-CCD aggregate. Pass `--detectors=` to '
+                             'fall back to a no-detector get (per-visit '
+                             'dataset types).')
 
     args = parser.parse_args()
 
@@ -356,7 +344,6 @@ def main():
         consdb_url=args.consdb_url,
         dataset_type=args.dataset_type,
         detectors=tuple(args.detectors) if args.detectors else (),
-        noll_sample_n=args.noll_sample_n,
     ))
 
 
