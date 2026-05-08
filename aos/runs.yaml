@@ -58,7 +58,7 @@ runs:
       plots: done
       fit_ccs: pending
       plots_ccs: pending
-      movie: pending
+      movie: done
   chunk6:
     param_set: fam_danish_v1_triplets_bin_1x
     day_obs_min: 20260418
