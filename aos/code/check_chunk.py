@@ -108,12 +108,20 @@ def _extract_noll_indices_from_text(text):
 
 
 def _fast_noll_indices(butler, dataset_type, day_obs, seq_num,
-                      partial_bytes=32_768):
+                       partial_bytes=32_768, max_partial_bytes=4_194_304):
     """Cheaply read `nollIndices` for one visit by partial-reading the
-    ECSV header at its S3 URI. Returns (status, value) where:
+    ECSV header at its S3 URI.
+
+    Adaptively escalates the read size — the location of `nollIndices`
+    depends on how much earlier meta there is (e.g. `donut_blur`, which
+    is one float per donut pair, can push later keys further into the
+    file). On each failed attempt we double the read up to
+    `max_partial_bytes`, then fall back to a full butler.get.
+
+    Returns (status, value) where:
        status: 'present', 'missing', 'parse-fail', 'fallback-ok',
                'fallback-fail'
-       value : tuple of ints (when status starts with 'present' or
+       value : tuple of ints (when status is 'present' or
                'fallback-ok'), or an error message string otherwise.
     """
     from lsst.daf.butler import DatasetNotFoundError
@@ -127,17 +135,31 @@ def _fast_noll_indices(butler, dataset_type, day_obs, seq_num,
     if ref is None:
         return 'missing', None
 
-    # Try partial read of the ECSV header
+    # Adaptive partial-read: 32K → 128K → 512K → 2M → 4M cap
     try:
         uri = butler.getURI(ref)
-        raw = uri.read(size=partial_bytes).decode('utf-8', errors='replace')
+    except Exception as e:
+        return 'parse-fail', f'getURI: {type(e).__name__}: {e}'
+
+    size = partial_bytes
+    last_partial_err = None
+    while size <= max_partial_bytes:
+        try:
+            raw = uri.read(size=size).decode('utf-8', errors='replace')
+        except Exception as e:
+            last_partial_err = f'partial-read({size}): {type(e).__name__}: {e}'
+            break
         noll = _extract_noll_indices_from_text(raw)
         if noll is not None:
             return 'present', noll
-    except Exception as e:
-        partial_err = f'partial-read: {type(e).__name__}: {e}'
-    else:
-        partial_err = None
+        # If the partial read returned fewer bytes than requested we've
+        # reached EOF — no point growing.
+        if len(raw.encode('utf-8', errors='replace')) < size:
+            last_partial_err = (
+                f'partial-read({size}): EOF reached without finding '
+                f'nollIndices')
+            break
+        size *= 4
 
     # Fall back: full butler.get and read the meta dict
     try:
@@ -146,7 +168,7 @@ def _fast_noll_indices(butler, dataset_type, day_obs, seq_num,
         return 'missing', None
     except Exception as e:
         return ('fallback-fail',
-                f'{partial_err or "partial: no nollIndices"}; '
+                f'{last_partial_err or "partial: no nollIndices in any size"}; '
                 f'fallback: {type(e).__name__}: {e}')
     noll = tbl.meta.get('nollIndices', None) if hasattr(tbl, 'meta') \
         else None
@@ -163,6 +185,7 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
                            consdb_url=None,
                            dataset_type='aggregateAOSVisitTableRaw',
                            partial_bytes=32_768,
+                           max_partial_bytes=4_194_304,
                            verbose=True):
     """Run the pre-flight survey for a single chunk.
 
@@ -260,7 +283,9 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
     iterator = tqdm(consdb_pairs) if verbose else consdb_pairs
     for d, s in iterator:
         status, value = _fast_noll_indices(
-            butler, dataset_type, d, s, partial_bytes=partial_bytes)
+            butler, dataset_type, d, s,
+            partial_bytes=partial_bytes,
+            max_partial_bytes=max_partial_bytes)
         if status == 'missing':
             butler_missing.append((d, s))
         elif status in ('present', 'fallback-ok'):
@@ -368,9 +393,17 @@ def main():
                         help='Butler dataset type to probe (default: '
                              'aggregateAOSVisitTableRaw)')
     parser.add_argument('--partial-bytes', type=int, default=32_768,
-                        help='Bytes to fetch per visit when probing the '
-                             'ECSV header (default 32768 = 32 KB; the '
-                             'nollIndices block is at ~byte 2,400).')
+                        help='Initial bytes to fetch per visit when probing '
+                             'the ECSV header (default 32768 = 32 KB). '
+                             'If nollIndices is not found at this size, the '
+                             'read grows 4x until --max-partial-bytes is '
+                             'reached, then falls back to a full load. The '
+                             'nollIndices offset depends on earlier meta '
+                             '(e.g. variable-size donut_blur arrays).')
+    parser.add_argument('--max-partial-bytes', type=int, default=4_194_304,
+                        help='Cap on the adaptive partial-read size before '
+                             'falling back to a full butler.get '
+                             '(default 4 MB).')
 
     args = parser.parse_args()
 
@@ -424,6 +457,7 @@ def main():
         consdb_url=args.consdb_url,
         dataset_type=args.dataset_type,
         partial_bytes=args.partial_bytes,
+        max_partial_bytes=args.max_partial_bytes,
     ))
 
 
