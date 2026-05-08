@@ -5,12 +5,12 @@ runs:
     day_obs_max: 20260327
     coord_sys: OCS
     steps:
-      mktable: done
-      fit: done
-      plots: done
+      mktable: running
+      fit: pending
+      plots: pending
       fit_ccs: pending
       plots_ccs: pending
-      movie: done
+      movie: pending
   chunk2:
     param_set: fam_danish_v1_triplets_bin_1x
     day_obs_min: 20260315
@@ -29,7 +29,7 @@ runs:
     day_obs_max: 20260409
     coord_sys: OCS
     steps:
-      mktable: pending
+      mktable: running
       fit: pending
       plots: pending
       fit_ccs: pending
@@ -53,7 +53,7 @@ runs:
     day_obs_max: 20260430
     coord_sys: OCS
     steps:
-      mktable: pending
+      mktable: done
       fit: pending
       plots: pending
       fit_ccs: pending
