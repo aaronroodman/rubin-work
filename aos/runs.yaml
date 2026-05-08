@@ -30,7 +30,7 @@ runs:
     coord_sys: OCS
     steps:
       mktable: done
-      fit: pending
+      fit: done
       plots: pending
       fit_ccs: pending
       plots_ccs: pending
