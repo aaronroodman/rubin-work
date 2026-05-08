@@ -46,19 +46,16 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
                            day_obs_max, fam_programs,
                            consdb_url=None,
                            dataset_type='aggregateAOSVisitTableRaw',
-                           detectors=(98, 99, 100),
                            verbose=True):
     """Run the pre-flight survey for a single chunk.
 
     Strategy:
       1. ConsDB → list of expected (day_obs, seq_num) visit pairs.
-      2. For each pair, butler.get(dataset_type, day_obs=…, seq_num=…,
-         detector=…). The first detector in `detectors` that returns
-         data wins, and we read its `meta['nollIndices']` while we're
-         at it — one round-trip per visit, on a small per-detector
-         table (much faster than the full 188-CCD aggregate).
-      3. Visits with no detector returning data are reported as
-         missing.
+      2. For each pair, butler.get(dataset_type, day_obs=…, seq_num=…).
+         `aggregateAOSVisitTableRaw` is per-visit (one table per
+         (day_obs, seq_num)). Read meta['nollIndices'] from each.
+      3. Visits whose butler.get raises DatasetNotFoundError are
+         reported as missing.
 
     Returns a dict with:
         'consdb_pairs'   : list of (day_obs, seq_num) from ConsDB
@@ -98,9 +95,6 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
         print(f"  date range:      {day_obs_min} – {day_obs_max}")
         print(f"  programs:        {fam_programs}")
         print(f"  dataset_type:    {dataset_type}")
-        if detectors:
-            print(f"  detector probe:  {list(detectors)} "
-                  f"(first match wins per visit)")
         print(f"{'=' * 64}\n")
 
     # ---- 1. ConsDB query ---------------------------------------------------
@@ -124,11 +118,8 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
               f"{len(consdb_pairs)}")
 
     # ---- 2. Butler — per-visit existence check + nollIndices peek -------
-    # `aggregateAOSVisitTableRaw` is per (visit, detector) here, so each
-    # butler.get loads just ~one CCD's slice (small) when we pass a
-    # detector. Try `detectors` in order — the first one that exists for
-    # a given visit is enough to count it as present. If detector= is
-    # not a valid dim for this dataset, fall back to a no-detector get.
+    # `aggregateAOSVisitTableRaw` is per (visit, instrument); a single
+    # butler.get returns the full visit-level table.
     from lsst.daf.butler import DatasetNotFoundError
 
     butler = Butler(butler_repo, instrument='LSSTCam',
@@ -139,48 +130,19 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
     noll_groups = defaultdict(list)
     other_errors = []
 
-    detector_list = list(detectors) if detectors else [None]
-
     if verbose:
-        det_msg = (f"first matching detector from {detector_list}"
-                   if detectors else "no detector filter")
         print(f"\nProbing Butler for `{dataset_type}` on "
-              f"{len(consdb_pairs)} visits ({det_msg})…")
+              f"{len(consdb_pairs)} visits…")
 
     iterator = tqdm(consdb_pairs) if verbose else consdb_pairs
     for d, s in iterator:
-        tbl = None
-        last_err = None
-        for det in detector_list:
-            try:
-                kwargs = dict(day_obs=d, seq_num=s)
-                if det is not None:
-                    kwargs['detector'] = det
-                tbl = butler.get(dataset_type, **kwargs)
-                break
-            except DatasetNotFoundError:
-                continue   # try next detector
-            except Exception as e:
-                last_err = e
-                # Detector kwarg may be invalid if dataset is per-visit
-                # only; try without it once.
-                if det is not None:
-                    try:
-                        tbl = butler.get(
-                            dataset_type, day_obs=d, seq_num=s)
-                        break
-                    except DatasetNotFoundError:
-                        continue
-                    except Exception as e2:
-                        last_err = e2
-                continue
-
-        if tbl is None:
-            if last_err is None:
-                butler_missing.append((d, s))
-            else:
-                other_errors.append(
-                    (d, s, type(last_err).__name__, str(last_err)))
+        try:
+            tbl = butler.get(dataset_type, day_obs=d, seq_num=s)
+        except DatasetNotFoundError:
+            butler_missing.append((d, s))
+            continue
+        except Exception as e:
+            other_errors.append((d, s, type(e).__name__, str(e)))
             continue
 
         butler_present.append((d, s))
@@ -282,15 +244,6 @@ def main():
                         default='aggregateAOSVisitTableRaw',
                         help='Butler dataset type to probe (default: '
                              'aggregateAOSVisitTableRaw)')
-    parser.add_argument('--detectors', nargs='+', type=int,
-                        default=[98, 99, 100],
-                        help='CCD IDs to try in order for the per-visit '
-                             'existence check (default: 98 99 100). The '
-                             'first detector with data wins; reading just '
-                             'one CCD slice is much faster than the full '
-                             '188-CCD aggregate. Pass `--detectors=` to '
-                             'fall back to a no-detector get (per-visit '
-                             'dataset types).')
 
     args = parser.parse_args()
 
@@ -343,7 +296,6 @@ def main():
         fam_programs=resolved['fam_programs'],
         consdb_url=args.consdb_url,
         dataset_type=args.dataset_type,
-        detectors=tuple(args.detectors) if args.detectors else (),
     ))
 
 
