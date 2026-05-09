@@ -423,8 +423,17 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                    and not c.endswith('_err')]
     n_coeffs = len(sample_cols)
 
-    param_labels = ['k1 (piston)', 'k2 (tilt)', 'k3 (tip)',
-                    'k4 (defocus)', 'k5 (astig45)', 'k6 (astig0)'][:n_coeffs]
+    # Canonical Noll names (k=1..n_coeffs) — pulled from the common library
+    # so any updates there propagate everywhere.  Lazy import so this
+    # module stays usable on hosts where common/ isn't on sys.path yet.
+    try:
+        from common.zernike_names import NOLL_NAMES
+    except ImportError:
+        sys.path.insert(0,
+                        str(Path(__file__).resolve().parent.parent.parent))
+        from common.zernike_names import NOLL_NAMES
+    param_labels = [f'k{k} ({NOLL_NAMES.get(k, f"Z{k}").lower()})'
+                    for k in range(1, n_coeffs + 1)]
 
     # 2x3 grid fits 6 focal coefficients; 1x3 for z1toz3.
     if n_coeffs <= 3:
