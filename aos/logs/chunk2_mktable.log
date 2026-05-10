@@ -1,0 +1,125 @@
+# chunk2.mktable
+# 2026-05-10 14:52:14
+
+Pipeline: aos_fam_danish_v1_triplets_bin_1x OCS 20260315-20260327
+  Butler: /repo/embargo
+  Collections: ['aos_fam_danish_v1_triplets_bin_1x']
+  Options: intrinsics=True, mean_zk=False, fp_coords=False, thermal=True
+  Output: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327.parquet
+Retrieved 5648 visits from ConsDB
+Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710', 'T717', 'T720', 'T724'] and img_type='cwfs': 879
+
+Band counts by day_obs:
+band_first  u  g  r    i  z  y
+day_obs                       
+20260315    0  0  0  148  0  0
+20260316    0  0  0   70  0  0
+20260317    0  0  0  144  0  0
+20260324    0  0  0   48  0  0
+20260325    0  0  0  184  0  0
+20260326    0  0  0   13  0  0
+20260327    0  0  0  272  0  0
+TOTAL       0  0  0  879  0  0
+Warning: Unpaired image at day_obs=20260326, seq_num=446
+
+Found 439 FAM image pairs (keeping second of each pair)
+Note: 1 unpaired images were skipped
+
+ConsDB physical_rotator_angle: 439/439 visits
+ConsDB physical_rotator_angle: 439 present, 0 missing
+All visits have ConsDB physical_rotator_angle, skipping EFD/visitInfo queries
+
+Rotator angle sources: ConsDB=439, EFD=0, visitInfo=0
+Flagged (|angle| > 90.0 deg): 0
+Warning: calc_intrinsics=True is no longer supported in the streaming pipeline (intrinsics are read from Butler metadata). Ignoring the flag.
+Initializing Butler with repo=/repo/embargo, collections: ['aos_fam_danish_v1_triplets_bin_1x']
+
+Streaming Zernikes for 439 visits to output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327.parquet...
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=647
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=650
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=653
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=656
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=659
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=662
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=665
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=668
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=671
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=674
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=677
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=680
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=693
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=696
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=699
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=702
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=705
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=708
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=711
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=714
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=717
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=720
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=723
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=726
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=737
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=740
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=743
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=746
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=749
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=752
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=755
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=758
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=761
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=764
+DatasetNotFoundError: No data for day_obs=20260316, seq_num=767
+
+============================================================
+Extraction Summary:
+  Total visits attempted: 439
+  Successful extractions: 404
+  Failed extractions:     35
+  nollIndices: [np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26)]
+  Total donut measurements: 999855
+============================================================
+
+  Added ['science_program'] to visit_info: 404/404 visits matched in the ConsDB query result
+Added rotator columns to visit_info. Flagged: 0 (|angle| > 90.0 deg)
+ConsDB returned 3628 exposure records for obs times
+Matched obs times for 404/404 visits
+Querying EFD temperatures for 404 visits...
+  cam_air_temp: 404/404 valid
+  m2_air_temp: 404/404 valid
+  m1m3_air_temp: 404/404 valid
+  outside_temp: 404/404 valid
+  M1M3 data for day_obs 20260315: 74 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260317: 72 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260324: 24 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260325: 92 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260326: 6 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260327: 136 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+Querying TMA truss temperatures...
+
+Thermal data: 209 columns for 404 visits (13 scalar, 146 per-thermocouple, 50 per-cell-vertical-gradient)
+Added 209 thermal columns to visit_info
+
+--- Per-visit quality cuts ---
+quality_visit_mask: 384/404 visits pass
+  cut n_donuts >= 500: drops 0
+  cut n_detectors_with_min_donuts >= 170: drops 0
+  cut median_blur_arcsec <= 1.20: drops 20
+  Wrote validation plot: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327_visit_quality.pdf
+  thermocouples: output/m1m3_thermocouples.parquet — 146 thermocouples (name, x, y, z, scanner)
+
+Saved:
+  donuts: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327.parquet (streamed, one row group per visit)
+  visits: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327_visits.parquet — 404 rows, 228 columns
