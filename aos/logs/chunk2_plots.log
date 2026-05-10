@@ -1,0 +1,73 @@
+# chunk2.plots
+# 2026-05-10 14:55:33
+# python code/run_dz_plots.py output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327.parquet output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327_fits.parquet --coord-sys OCS --no-single-image
+
+WARNING: No table::len::detector found in metadata. Using longest string (7 characters). [astropy.io.misc.parquet]
+2026-05-10 14:55:52,666 astroquery _showwarning         WARNING No table::len::detector found in metadata. Using longest string (7 characters).
+Loading donuts: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327.parquet
+  999855 donuts
+Loading fits: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327_fits.parquet
+  384 visits
+Noll indices (21 terms): [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
+Matched donuts (999855/999855): 999855
+Per-visit quality filter: kept 951222/999855 donuts (384 visits)
+
+Reconstructing per-donut fit arrays...
+Reconstructed zk_fit_z1toz3: 951222 donuts, 384 images, 21 Zernikes
+Reconstructed zk_fit_z1toz6: 951222 donuts, 384 images, 21 Zernikes
+
+============================================================
+Fit parameter plots (z1toz6)
+============================================================
+  Excluded 7 non-block FAM visits
+Saved: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327/fit_params_resid_z1toz6_all.pdf
+
+============================================================
+Trio comparison plots
+============================================================
+Z4: Data σ=0.09, Model σ=0.06, Resid σ=0.07 μm
+Z5: Data σ=0.19, Model σ=0.07, Resid σ=0.21 μm
+Z6: Data σ=0.18, Model σ=0.07, Resid σ=0.19 μm
+Z7: Data σ=0.17, Model σ=0.02, Resid σ=0.16 μm
+Z8: Data σ=0.14, Model σ=0.02, Resid σ=0.14 μm
+Z9: Data σ=0.11, Model σ=0.06, Resid σ=0.11 μm
+Z10: Data σ=0.12, Model σ=0.05, Resid σ=0.11 μm
+Z11: Data σ=0.03, Model σ=0.03, Resid σ=0.02 μm
+Z12: Data σ=0.05, Model σ=0.01, Resid σ=0.05 μm
+Z13: Data σ=0.05, Model σ=0.01, Resid σ=0.04 μm
+Z14: Data σ=0.05, Model σ=0.00, Resid σ=0.05 μm
+Z15: Data σ=0.04, Model σ=0.00, Resid σ=0.05 μm
+Z16: Data σ=0.03, Model σ=0.01, Resid σ=0.03 μm
+Z17: Data σ=0.04, Model σ=0.01, Resid σ=0.03 μm
+Z18: Data σ=0.02, Model σ=0.01, Resid σ=0.02 μm
+Z19: Data σ=0.02, Model σ=0.01, Resid σ=0.02 μm
+Z22: Data σ=0.01, Model σ=0.00, Resid σ=0.01 μm
+Z23: Data σ=0.01, Model σ=0.01, Resid σ=0.01 μm
+Z24: Data σ=0.02, Model σ=0.01, Resid σ=0.01 μm
+Z25: Data σ=0.01, Model σ=0.00, Resid σ=0.01 μm
+Z26: Data σ=0.02, Model σ=0.00, Resid σ=0.02 μm
+Saved: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327/trio_comparison_all.pdf
+Z4: Data σ=0.07, Model σ=0.06, Resid σ=0.05 μm
+Z5: Data σ=0.17, Model σ=0.07, Resid σ=0.17 μm
+Z6: Data σ=0.17, Model σ=0.07, Resid σ=0.17 μm
+Z7: Data σ=0.17, Model σ=0.02, Resid σ=0.15 μm
+Z8: Data σ=0.14, Model σ=0.02, Resid σ=0.13 μm
+Z9: Data σ=0.09, Model σ=0.06, Resid σ=0.09 μm
+Z10: Data σ=0.10, Model σ=0.05, Resid σ=0.09 μm
+Z11: Data σ=0.04, Model σ=0.03, Resid σ=0.02 μm
+Z12: Data σ=0.05, Model σ=0.01, Resid σ=0.04 μm
+Z13: Data σ=0.04, Model σ=0.01, Resid σ=0.04 μm
+Z14: Data σ=0.05, Model σ=0.00, Resid σ=0.05 μm
+Z15: Data σ=0.04, Model σ=0.00, Resid σ=0.04 μm
+Z16: Data σ=0.03, Model σ=0.01, Resid σ=0.03 μm
+Z17: Data σ=0.03, Model σ=0.01, Resid σ=0.03 μm
+Z18: Data σ=0.02, Model σ=0.01, Resid σ=0.02 μm
+Z19: Data σ=0.02, Model σ=0.01, Resid σ=0.02 μm
+Z22: Data σ=0.01, Model σ=0.00, Resid σ=0.01 μm
+Z23: Data σ=0.01, Model σ=0.01, Resid σ=0.01 μm
+Z24: Data σ=0.01, Model σ=0.01, Resid σ=0.01 μm
+Z25: Data σ=0.01, Model σ=0.00, Resid σ=0.01 μm
+Z26: Data σ=0.01, Model σ=0.00, Resid σ=0.01 μm
+Saved: output/aos_fam_danish_v1_triplets_bin_1x_20260315_20260327/trio_comparison_k1to6_all.pdf
+
+Done.
