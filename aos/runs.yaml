@@ -17,7 +17,7 @@ runs:
     day_obs_max: 20260327
     coord_sys: OCS
     steps:
-      mktable: pending
+      mktable: running
       fit: pending
       plots: pending
       fit_ccs: pending
@@ -41,7 +41,7 @@ runs:
     day_obs_max: 20260409
     coord_sys: OCS
     steps:
-      mktable: pending
+      mktable: running
       fit: pending
       plots: pending
       fit_ccs: pending
@@ -65,7 +65,7 @@ runs:
     day_obs_max: 20260430
     coord_sys: OCS
     steps:
-      mktable: pending
+      mktable: done
       fit: pending
       plots: pending
       fit_ccs: pending
