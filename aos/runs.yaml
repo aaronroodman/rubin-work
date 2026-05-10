@@ -70,4 +70,4 @@ runs:
       plots: done
       fit_ccs: pending
       plots_ccs: pending
-      movie: pending
+      movie: done
