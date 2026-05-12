@@ -68,6 +68,39 @@ from dz_fitting import focal_plane_zernike_basis, derive_noll_indices
 
 
 # ----------------------------------------------------------------------
+# OFC sensitivity-matrix utilities (used by the U-mode-constrained and
+# reachability-thresholded paths in build_measured_intrinsic.ipynb).
+# ----------------------------------------------------------------------
+
+def removal_spec_from_reachability(frac_2d, k_range, j_range, threshold):
+    """Build a ``{k: [j, j, ...]}`` removal spec from a reachability grid.
+
+    Parameters
+    ----------
+    frac_2d : ndarray, shape (n_k, n_j)
+        Per-(k, j) reachability fraction in [0, 1], same orientation as
+        the heatmaps produced by the §6 SVD / reachability cells.
+    k_range, j_range : iterable of int
+        The k and j values labeling the rows / cols of `frac_2d`.
+    threshold : float
+        Lower bound on `frac_2d[i, j]` for a cell to enter the spec.
+
+    Returns
+    -------
+    dict {k: [j, ...]} containing only the (k, j) cells that pass.
+    """
+    k_list = list(k_range)
+    j_list = list(j_range)
+    spec = {}
+    for ki, k in enumerate(k_list):
+        js = [int(j) for ji, j in enumerate(j_list)
+              if float(frac_2d[ki, ji]) >= float(threshold)]
+        if js:
+            spec[int(k)] = js
+    return spec
+
+
+# ----------------------------------------------------------------------
 # Removal-spec utilities
 # ----------------------------------------------------------------------
 
@@ -573,6 +606,203 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
         'iter_results': iter_results,
         'xbins': xbins, 'ybins': ybins,
         'xcent': xcent, 'ycent': ycent,
+    }
+
+
+# ----------------------------------------------------------------------
+# U-mode constrained variant
+# ----------------------------------------------------------------------
+
+def _dz_contrib_from_params(params, by_pupil, thx_deg, thy_deg,
+                            iZidx, fp_radius):
+    """Rebuild the per-donut DZ contribution from a coefficient dict.
+
+    Mirrors the contrib computation inside `_fit_one_image_subset`,
+    but reads coefficients from an externally-supplied params dict (so
+    a caller can substitute U-mode-projected coefficients).
+    """
+    max_k = max(max(ks) for ks in by_pupil.values())
+    A_full, _ = focal_plane_zernike_basis(
+        thx_deg, thy_deg, max_k, fp_radius)
+    n_donuts = len(thx_deg)
+    n_zern = len(iZidx)
+    dz_contrib = np.zeros((n_donuts, n_zern))
+    for j, ks in by_pupil.items():
+        if j not in iZidx:
+            continue
+        col_j = iZidx[j]
+        cols = [k - 1 for k in ks]
+        A_j = A_full[:, cols]
+        coeffs = np.array([
+            float(params.get(f'dz_z{j}_c{k}', 0.0))
+            for k in ks])
+        if not np.any(np.isfinite(coeffs)):
+            continue
+        coeffs = np.where(np.isfinite(coeffs), coeffs, 0.0)
+        dz_contrib[:, col_j] = A_j @ coeffs
+    return dz_contrib
+
+
+def _apply_uconstraint(params, kj_grid, U_eff):
+    """Project a per-(k, j) coefficient dict onto the first ``n_keep``
+    U-modes.  Returns (params_proj, w_raw, w_proj) where the raw and
+    projected coefficient vectors are in the row order of `kj_grid`.
+
+    `kj_grid` is a list of ``(k, j)`` tuples whose order must match the
+    rows of `U_eff` (i.e. how `S` was flattened before the SVD).
+    """
+    w = np.array([float(params.get(f'dz_z{j}_c{k}', np.nan))
+                  for k, j in kj_grid])
+    finite = np.isfinite(w)
+    w_use = np.where(finite, w, 0.0)
+    w_proj = U_eff @ (U_eff.T @ w_use)
+    out = dict(params)
+    for idx, (k, j) in enumerate(kj_grid):
+        out[f'dz_z{j}_c{k}'] = float(w_proj[idx])
+    return out, w, w_proj
+
+
+def build_measured_intrinsic_uconstrained(donut_df, visit_table,
+                                          coord_sys, iZs,
+                                          kj_grid, U_eff,
+                                          n_iter=2, n_bins=73,
+                                          fp_radius_basis=1.75,
+                                          fp_radius_grid=1.8,
+                                          min_donuts=500,
+                                          bad_fit_threshold=2.0,
+                                          data_offset=None,
+                                          intrinsic_offset=None):
+    """U-mode-constrained variant of `build_measured_intrinsic`.
+
+    For each visit, fit *all* (k, j) DZ coefficients in `kj_grid`,
+    then project the coefficient vector onto the first `n_keep` U-modes
+    via ``w_proj = U_eff @ (U_eff.T @ w)`` before reconstructing the
+    per-donut DZ contribution.  Same `data_offset` / `intrinsic_offset`
+    conventions as the original function (used for the Z4 height
+    correction).
+
+    `kj_grid` must list ``(k, j)`` tuples in the same row order that
+    was used when computing the SVD of `S`.  `U_eff` is therefore
+    ``shape (len(kj_grid), n_keep)``.
+    """
+    from collections import defaultdict
+    spec = defaultdict(list)
+    for k, j in kj_grid:
+        spec[int(k)].append(int(j))
+    pairs, by_pupil, by_focal = expand_removal_spec(dict(spec))
+    iZidx = {iZ: i for i, iZ in enumerate(iZs)}
+
+    thx = np.rad2deg(np.asarray(donut_df[f'thx_{coord_sys}'], dtype=float))
+    thy = np.rad2deg(np.asarray(donut_df[f'thy_{coord_sys}'], dtype=float))
+    zk_data = np.stack(
+        donut_df[f'zk_{coord_sys}'].values).astype(float).copy()
+    zk_intrinsic_tab = np.stack(
+        donut_df[f'zk_intrinsic_{coord_sys}'].values).astype(float).copy()
+    dobs_arr = np.asarray(donut_df['day_obs'])
+    snum_arr = np.asarray(donut_df['seq_num'])
+
+    if data_offset:
+        for j, off in data_offset.items():
+            if j in iZidx:
+                zk_data[:, iZidx[j]] -= np.asarray(off, dtype=float)
+                print(f"  data_offset applied to pupil j={j}")
+    if intrinsic_offset:
+        for j, off in intrinsic_offset.items():
+            if j in iZidx:
+                zk_intrinsic_tab[:, iZidx[j]] -= np.asarray(off, dtype=float)
+                print(f"  intrinsic_offset applied to pupil j={j}")
+
+    images = sorted(set(zip(dobs_arr.tolist(), snum_arr.tolist())))
+
+    iter_results = []
+    intrinsic_per_donut = zk_intrinsic_tab.copy()
+    original_median = None
+    tabulated_median = None
+    xbins = ybins = xcent = ycent = None
+
+    n_modes = sum(len(ks) for ks in by_pupil.values())
+    print(f"U-constrained DZ fit:  "
+          f"{n_modes} (k,j) modes total; U_eff = {U_eff.shape}  "
+          f"(n_keep = {U_eff.shape[1]})")
+
+    for it in range(n_iter):
+        fit_rows_proj = []
+        fit_rows_raw  = []
+        dz_contrib = np.zeros_like(zk_data)
+        bar = _tqdm(enumerate(images), total=len(images),
+                    desc=f'iter {it + 1}/{n_iter} U-constrained',
+                    leave=True)
+        for img_idx, (dobs, snum) in bar:
+            mask = (dobs_arr == dobs) & (snum_arr == snum)
+            params_raw, _ = _fit_one_image_subset(
+                thx[mask], thy[mask],
+                zk_data[mask], intrinsic_per_donut[mask],
+                iZidx, by_pupil, fp_radius_basis,
+                dobs, snum, img_idx)
+            fit_rows_raw.append(params_raw)
+            params_proj, _w, _w_p = _apply_uconstraint(
+                params_raw, kj_grid, U_eff)
+            fit_rows_proj.append(params_proj)
+            dz_contrib[mask] = _dz_contrib_from_params(
+                params_proj, by_pupil, thx[mask], thy[mask],
+                iZidx, fp_radius_basis)
+
+        bad_visits = _flag_bad_visits(
+            fit_rows_proj, by_pupil, bad_fit_threshold, min_donuts)
+        bad_set = set(bad_visits)
+        good_donut_mask = np.array([
+            (int(d), int(s)) not in bad_set
+            for d, s in zip(dobs_arr, snum_arr)
+        ])
+        n_visits_good = len(images) - len(bad_visits)
+        n_donuts_good = int(good_donut_mask.sum())
+
+        wfd_subtracted = zk_data - dz_contrib
+        measured_grid, xbins, ybins, xcent, ycent = bin_median_focal(
+            thx[good_donut_mask], thy[good_donut_mask],
+            wfd_subtracted[good_donut_mask],
+            iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
+
+        if it == 0:
+            original_median, *_ = bin_median_focal(
+                thx[good_donut_mask], thy[good_donut_mask],
+                zk_data[good_donut_mask],
+                iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
+            tabulated_median, *_ = bin_median_focal(
+                thx[good_donut_mask], thy[good_donut_mask],
+                zk_intrinsic_tab[good_donut_mask],
+                iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
+
+        iter_results.append({
+            'fit_rows':         fit_rows_proj,
+            'fit_rows_raw':     fit_rows_raw,
+            'dz_contrib':       dz_contrib,
+            'wfd_subtracted':   wfd_subtracted,
+            'measured_grid':    measured_grid,
+            'bad_visits':       bad_visits,
+            'good_donut_mask':  good_donut_mask,
+        })
+
+        intrinsic_per_donut = interpolate_grid_at_donuts(
+            measured_grid, xcent, ycent, thx, thy, iZs,
+            fallback=zk_intrinsic_tab)
+
+        print(f"  iter {it + 1}/{n_iter}: U-constrained over "
+              f"{len(images)} visits ({n_visits_good} good, "
+              f"{len(bad_visits)} flagged bad); "
+              f"median over {n_donuts_good} donuts "
+              f"on {n_bins}x{n_bins} grid")
+
+    return {
+        'iZs': iZs,
+        'iZidx': iZidx,
+        'original_median': original_median,
+        'tabulated_median': tabulated_median,
+        'iter_results': iter_results,
+        'xbins': xbins, 'ybins': ybins,
+        'xcent': xcent, 'ycent': ycent,
+        'kj_grid': list(kj_grid),
+        'U_eff_shape': tuple(U_eff.shape),
     }
 
 
