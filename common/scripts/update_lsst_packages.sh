@@ -45,6 +45,11 @@ PACKAGES=(
 okay=()
 skipped=()
 failed=()
+switched=()                                    # "pkg <old-branch>" entries
+
+# Where to record any branch switches so the user can recover the
+# branch they were working on later.  Append-only, timestamped.
+SWITCH_LOG="${SWITCH_LOG:-$PACKAGES_DIR/.branch_switches.log}"
 
 hr() { printf '%s\n' '=================================================='; }
 
@@ -112,6 +117,12 @@ for pkg in "${PACKAGES[@]}"; do
             popd > /dev/null
             continue
         fi
+        # Record the branch we just left so the user can recover it.
+        mkdir -p "$(dirname "$SWITCH_LOG")"
+        printf '%s  %-28s  %s -> %s\n' \
+            "$(date '+%Y-%m-%d %H:%M:%S')" "$pkg" \
+            "$current_branch" "$default" >> "$SWITCH_LOG"
+        switched+=("$pkg (was on '$current_branch')")
     fi
 
     before=$(git rev-parse HEAD)
@@ -142,6 +153,13 @@ printf '  Skipped : %d\n' "${#skipped[@]}";
 [[ ${#skipped[@]} -gt 0 ]] && printf '            %s\n' "${skipped[@]}"
 printf '  Failed  : %d\n' "${#failed[@]}";
 [[ ${#failed[@]}  -gt 0 ]] && printf '            %s\n' "${failed[@]}"
+
+if [[ ${#switched[@]} -gt 0 ]]; then
+    echo
+    echo " NOTE: switched off a non-default branch in ${#switched[@]} repo(s):"
+    printf '   %s\n' "${switched[@]}"
+    echo "   (logged to $SWITCH_LOG)"
+fi
 
 # Exit non-zero if anything failed (skipped is fine).
 [[ ${#failed[@]} -eq 0 ]]
