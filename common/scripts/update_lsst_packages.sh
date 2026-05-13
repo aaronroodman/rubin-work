@@ -2,23 +2,28 @@
 # ----------------------------------------------------------------------
 # update_lsst_packages.sh
 #
-# Fast-forward the develop branch in every manually-cloned LSST package
-# under $PACKAGES_DIR (default: ~/u/LSST/packages).  Designed for the
-# USDF RSP where Aaron maintains local git clones of the ts_* and
-# friends used by various notebooks.
+# Fast-forward the *default* branch in every manually-cloned LSST
+# package under $PACKAGES_DIR (default: ~/u/LSST/packages).  Designed
+# for the USDF RSP where Aaron maintains local git clones of the ts_*
+# and friends used by various notebooks.
+#
+# The default branch is auto-detected per-repo from origin/HEAD —
+# e.g. ts_ofc uses 'develop' while summit_utils uses 'main'.
 #
 # Behaviour per package:
 #   1.  Skip if there are uncommitted changes.
-#   2.  Switch to `develop` if not already there (only if the working
-#       tree is clean).
-#   3.  `git fetch origin`, then `git pull --ff-only origin develop`.
-#   4.  Report how many commits were applied (or "already up to date").
+#   2.  `git fetch origin --prune`.
+#   3.  Resolve origin/HEAD -> default branch.
+#   4.  Switch to it if not already there.
+#   5.  `git pull --ff-only origin <default>`.
+#   6.  Report how many commits were applied (or "already up to date").
 #
 # Usage:
 #   ./update_lsst_packages.sh                  # default packages dir
 #   PACKAGES_DIR=/some/other/path ./update_lsst_packages.sh
 # ----------------------------------------------------------------------
 set -u
+set -o pipefail        # so `git pull ... | sed` propagates git's exit code
 
 PACKAGES_DIR="${PACKAGES_DIR:-$HOME/u/LSST/packages}"
 
@@ -41,8 +46,23 @@ okay=()
 skipped=()
 failed=()
 
-# Plain ASCII bullets so this script is happy in any locale.
 hr() { printf '%s\n' '=================================================='; }
+
+# Return the upstream default branch (e.g. 'main' or 'develop') as
+# tracked by origin/HEAD.  Auto-repairs the ref if missing.  Prints
+# the branch name on stdout; empty string + nonzero exit on failure.
+resolve_default_branch() {
+    local b
+    b=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || b=''
+    if [[ -z "$b" ]]; then
+        git remote set-head origin --auto >/dev/null 2>&1 || true
+        b=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || b=''
+    fi
+    if [[ -z "$b" ]]; then
+        return 1
+    fi
+    printf '%s' "${b#origin/}"
+}
 
 for pkg in "${PACKAGES[@]}"; do
     path="$PACKAGES_DIR/$pkg"
@@ -68,26 +88,34 @@ for pkg in "${PACKAGES[@]}"; do
         continue
     fi
 
+    echo "  fetching..."
+    if ! git fetch origin --prune 2>&1 | sed 's/^/    /'; then
+        failed+=("$pkg (fetch failed)")
+        popd > /dev/null
+        continue
+    fi
+
+    if ! default=$(resolve_default_branch); then
+        echo "  could not resolve origin/HEAD - skipping"
+        failed+=("$pkg (no default branch)")
+        popd > /dev/null
+        continue
+    fi
+    echo "  default branch: $default"
+
     current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '???')
-    if [[ "$current_branch" != "develop" ]]; then
-        echo "  on '$current_branch' - switching to develop"
-        if ! git checkout develop 2>&1 | sed 's/^/    /'; then
-            echo "  could not switch to develop"
+    if [[ "$current_branch" != "$default" ]]; then
+        echo "  on '$current_branch' - switching to '$default'"
+        if ! git checkout "$default" 2>&1 | sed 's/^/    /'; then
+            echo "  could not switch to $default"
             failed+=("$pkg (checkout failed)")
             popd > /dev/null
             continue
         fi
     fi
 
-    echo "  fetching..."
-    if ! git fetch origin 2>&1 | sed 's/^/    /'; then
-        failed+=("$pkg (fetch failed)")
-        popd > /dev/null
-        continue
-    fi
-
     before=$(git rev-parse HEAD)
-    if git pull --ff-only origin develop 2>&1 | sed 's/^/    /'; then
+    if git pull --ff-only origin "$default" 2>&1 | sed 's/^/    /'; then
         after=$(git rev-parse HEAD)
         if [[ "$before" == "$after" ]]; then
             echo "  already up to date"
