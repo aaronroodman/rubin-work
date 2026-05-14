@@ -1,4 +1,19 @@
 runs:
+  chunk0:
+    # Older Danish v0.6 processing of the same dates as chunk1+3
+    # (2x2 binning, collection aos_fam_danish_triplets) — kept for
+    # before/after comparison against the v1 reprocessing.
+    param_set: fam_danish_triplets
+    day_obs_min: 20260315
+    day_obs_max: 20260409
+    coord_sys: OCS
+    steps:
+      mktable: pending
+      fit: pending
+      plots: pending
+      fit_ccs: pending
+      plots_ccs: pending
+      movie: pending
   chunk1:
     param_set: fam_danish_v1_triplets_bin_2x
     day_obs_min: 20260315
