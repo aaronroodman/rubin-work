@@ -43,6 +43,27 @@ STEP_DEPS = {
 VALID_STATUSES = ['pending', 'running', 'done', 'failed', 'skip']
 
 
+def _descendants_of(step):
+    """Return the set of steps that transitively depend on `step`
+    according to STEP_DEPS. E.g. _descendants_of('mktable') is every
+    other step; _descendants_of('fit') is {'plots', 'movie'}.
+    """
+    from collections import defaultdict, deque
+    children = defaultdict(list)
+    for s, parents in STEP_DEPS.items():
+        for p in parents:
+            children[p].append(s)
+    out = set()
+    queue = deque([step])
+    while queue:
+        cur = queue.popleft()
+        for c in children.get(cur, ()):
+            if c not in out:
+                out.add(c)
+                queue.append(c)
+    return out
+
+
 def load_runs():
     with open(RUNS_FILE) as f:
         return yaml.safe_load(f)
@@ -448,8 +469,17 @@ def cmd_run(data, run_filter=None, step_filter=None, dry_run=False):
             # check handles it naturally (independent branches continue).
 
 
-def cmd_set(data, run_name, step, status):
-    """Manually set a step's status."""
+def cmd_set(data, run_name, step, status, cascade=True):
+    """Manually set a step's status.
+
+    When the new status is `pending` and `cascade=True` (default), every
+    step that transitively depends on `step` (per STEP_DEPS) is also
+    forced back to `pending`. That avoids leaving downstream steps
+    marked `done` while their input has been invalidated — e.g.
+    resetting mktable also resets fit/plots/movie/fit_ccs/plots_ccs/
+    movie_ccs; resetting fit also resets plots/movie. Other status
+    changes (`done`, `failed`, `skip`) don't cascade.
+    """
     if run_name not in data.get('runs', {}):
         print(f'Unknown run: {run_name}')
         sys.exit(1)
@@ -460,9 +490,22 @@ def cmd_set(data, run_name, step, status):
         print(f'Unknown status: {status}. Must be one of {VALID_STATUSES}')
         sys.exit(1)
 
-    data['runs'][run_name]['steps'][step] = status
+    run_steps = data['runs'][run_name]['steps']
+    run_steps[step] = status
+
+    cascaded = []
+    if cascade and status == 'pending':
+        for desc in _descendants_of(step):
+            if desc in run_steps and run_steps[desc] != 'pending':
+                run_steps[desc] = 'pending'
+                cascaded.append(desc)
+
     save_runs(data)
-    print(f'Set {run_name}.{step} = {status}')
+    if cascaded:
+        print(f'Set {run_name}.{step} = {status} '
+              f'(also reset: {", ".join(sorted(cascaded))})')
+    else:
+        print(f'Set {run_name}.{step} = {status}')
 
 
 def cmd_reset(data, run_name):
