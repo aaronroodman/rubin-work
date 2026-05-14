@@ -74,6 +74,92 @@ def save_runs(data):
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
 
+# ---- Concurrency-safe per-run status updates ----------------------------
+#
+# When several pipelines run different chunks in parallel they each have
+# their own in-memory copy of runs.yaml. The naive `data = load_runs();
+# data[...] = ...; save_runs(data)` pattern means whoever calls save_runs
+# last clobbers the others' updates to different chunks.
+#
+# `update_run_status` works around that by holding an exclusive lock on a
+# lock file while it re-reads the on-disk runs.yaml, applies the user's
+# step-status delta to just that one run, and writes back. The lock is
+# held only across the read/merge/write — milliseconds — so it's cheap
+# even when many pipelines try at once.
+
+import contextlib
+import errno
+import os
+
+
+_LOCK_FILE = RUNS_FILE.with_suffix(RUNS_FILE.suffix + '.lock')
+
+
+@contextlib.contextmanager
+def _file_lock(timeout_sec=30.0):
+    """Exclusive lock on runs.yaml via a sidecar .lock file and fcntl."""
+    import fcntl
+    import time
+    _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(_LOCK_FILE), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        deadline = time.monotonic() + timeout_sec
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as e:
+                if e.errno not in (errno.EAGAIN, errno.EACCES):
+                    raise
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"could not acquire {_LOCK_FILE} within "
+                        f"{timeout_sec}s")
+                time.sleep(0.05)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def update_run_status(run_name, step_status_dict, cascade=False):
+    """Atomically merge a per-step status update for one run.
+
+    Re-reads runs.yaml from disk under a file lock, applies the updates
+    to `run_name` only, then writes back. This is safe when other
+    pipelines are simultaneously updating *different* chunks.
+
+    Parameters
+    ----------
+    run_name : str
+    step_status_dict : dict[step_name, status_str]
+    cascade : bool
+        If True, any step set to 'pending' also forces all transitive
+        descendants to 'pending'. Default False — callers like the
+        pipeline runner generally don't want side effects.
+
+    Returns the post-update step dict for the run.
+    """
+    with _file_lock():
+        data = load_runs()
+        if run_name not in data.get('runs', {}):
+            raise KeyError(f"run '{run_name}' not in runs.yaml")
+        run_steps = data['runs'][run_name].setdefault('steps', {})
+        for step, status in step_status_dict.items():
+            if status not in VALID_STATUSES:
+                raise ValueError(
+                    f"invalid status '{status}' for step '{step}'")
+            run_steps[step] = status
+            if cascade and status == 'pending':
+                for desc in _descendants_of(step):
+                    if desc in run_steps and run_steps[desc] != 'pending':
+                        run_steps[desc] = 'pending'
+        save_runs(data)
+        return dict(run_steps)
+
+
 def load_param_sets():
     with open(PARAM_SETS_FILE) as f:
         return yaml.safe_load(f)
@@ -159,12 +245,16 @@ def git_sync(message, extra_paths=None):
     """Stage runs.yaml + log files, commit, and push.
 
     Silent on failure — a broken git push shouldn't kill a pipeline run.
-    Returns True if anything was committed, False otherwise.
+    Held under the same file lock as `update_run_status` so concurrent
+    pipelines on the same machine serialize their git activity instead
+    of fighting over the local index. Returns True if anything was
+    committed, False otherwise.
     """
     paths = [str(RUNS_FILE), str(LOG_DIR)]
     if extra_paths:
         paths.extend(str(p) for p in extra_paths)
     try:
+      with _file_lock(timeout_sec=60.0):
         # Stage the files (ok if some don't exist yet)
         subprocess.run(['git', 'add', '--'] + paths,
                        cwd=AOS_DIR.parent, check=False,
@@ -293,9 +383,9 @@ def run_step(run_name, step, resolved, data, dry_run=False):
 
     log(f'{run_name}.{step}: START — {cmd_str}')
 
-    # Mark as running
-    data['runs'][run_name]['steps'][step] = 'running'
-    save_runs(data)
+    # Mark as running (atomic merge — safe when other pipelines are
+    # updating different chunks in parallel).
+    update_run_status(run_name, {step: 'running'})
 
     # Capture output to per-step log file while also printing to stdout
     step_log = step_log_path(run_name, step)
@@ -321,14 +411,12 @@ def run_step(run_name, step, resolved, data, dry_run=False):
         elapsed_str = format_duration(elapsed)
 
         if proc.returncode == 0:
-            data['runs'][run_name]['steps'][step] = 'done'
-            save_runs(data)
+            update_run_status(run_name, {step: 'done'})
             log(f'{run_name}.{step}: DONE ({elapsed_str}) — log: {step_log}')
             git_sync(f'{run_name}.{step}: done ({elapsed_str})')
             return True
         else:
-            data['runs'][run_name]['steps'][step] = 'failed'
-            save_runs(data)
+            update_run_status(run_name, {step: 'failed'})
             log(f'{run_name}.{step}: FAILED exit={proc.returncode} '
                 f'({elapsed_str}) — log: {step_log}')
             git_sync(f'{run_name}.{step}: failed ({elapsed_str})')
@@ -336,8 +424,7 @@ def run_step(run_name, step, resolved, data, dry_run=False):
 
     except Exception as e:
         elapsed = time.time() - t0
-        data['runs'][run_name]['steps'][step] = 'failed'
-        save_runs(data)
+        update_run_status(run_name, {step: 'failed'})
         log(f'{run_name}.{step}: ERROR — {e} ({format_duration(elapsed)})')
         git_sync(f'{run_name}.{step}: error')
         return False
@@ -490,20 +577,16 @@ def cmd_set(data, run_name, step, status, cascade=True):
         print(f'Unknown status: {status}. Must be one of {VALID_STATUSES}')
         sys.exit(1)
 
-    run_steps = data['runs'][run_name]['steps']
-    run_steps[step] = status
-
-    cascaded = []
-    if cascade and status == 'pending':
-        for desc in _descendants_of(step):
-            if desc in run_steps and run_steps[desc] != 'pending':
-                run_steps[desc] = 'pending'
-                cascaded.append(desc)
-
-    save_runs(data)
+    # Atomic per-run merge so concurrent pipelines on other chunks
+    # aren't clobbered. update_run_status handles the cascade.
+    pre = data['runs'][run_name].get('steps', {})
+    post = update_run_status(run_name, {step: status}, cascade=cascade)
+    cascaded = sorted(
+        s for s in post
+        if s != step and post.get(s) == 'pending' and pre.get(s) != 'pending')
     if cascaded:
         print(f'Set {run_name}.{step} = {status} '
-              f'(also reset: {", ".join(sorted(cascaded))})')
+              f'(also reset: {", ".join(cascaded)})')
     else:
         print(f'Set {run_name}.{step} = {status}')
 
@@ -514,9 +597,7 @@ def cmd_reset(data, run_name):
         print(f'Unknown run: {run_name}')
         sys.exit(1)
 
-    for step in STEP_ORDER:
-        data['runs'][run_name]['steps'][step] = 'pending'
-    save_runs(data)
+    update_run_status(run_name, {step: 'pending' for step in STEP_ORDER})
     print(f'Reset all steps for {run_name} to pending')
 
 
