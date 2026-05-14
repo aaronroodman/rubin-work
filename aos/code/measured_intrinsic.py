@@ -58,8 +58,13 @@ from scipy.stats import binned_statistic_2d
 # Progress bar — pick the notebook variant when running inside Jupyter,
 # fall back to plain tqdm otherwise.  We never want a hard tqdm dependency
 # to break the import.
+# Use plain-text tqdm rather than tqdm.auto.  The .auto variant chooses
+# tqdm.notebook (ipywidgets) inside a Jupyter kernel, which renders as
+# "Error displaying widget: model not found" if the widget extension
+# isn't fully initialized (common on the RSP).  Plain tqdm always prints
+# a stable text bar.
 try:
-    from tqdm.auto import tqdm as _tqdm
+    from tqdm import tqdm as _tqdm
 except Exception:                                 # pragma: no cover
     def _tqdm(it, *args, **kwargs):                # noqa: ARG001
         return it
