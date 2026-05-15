@@ -231,4 +231,209 @@ def try_load_from_cache(cache_dir, instrument, programs,
 
     return _finalize(chunks)
 
-    return ccdvisits
+
+# ---------------------------------------------------------------------
+# Memory-friendly path: build per-visit summary chunk-by-chunk, never
+# concatenating the full per-CCD frame.
+# ---------------------------------------------------------------------
+
+# Per-visit columns inherited unchanged (all CCDs of a visit share these,
+# so .first() is sufficient).
+_PER_VISIT_FIRST_COLS = (
+    "day_obs", "target_name", "science_program", "observation_reason",
+    "seq_num", "band", "physical_filter",
+    "exp_midpt_mjd", "dimm_seeing",
+    "airmass", "altitude", "azimuth", "sky_rotation",
+    "s_ra", "s_dec",
+    "donut_blur_fwhm", "aos_fwhm", "ringss_seeing",
+    "physical_rotator_angle",
+    "psf_sigma_min", "psf_sigma_median",
+    "seeing_zenith_500nm_min", "seeing_zenith_500nm_median",
+)
+
+
+def _add_per_ccd_derived(df):
+    """Add psf_fwhm, psf_e, moment_score and friends in-place.
+
+    All derivations are pure arithmetic — no LSST stack imports needed.
+    Airmass / bandpass / CAM_FWHM dependent quantities are left for the
+    caller to compute at the per-visit level on the (smaller) summary.
+    """
+    df["psf_fwhm"] = df["psf_sigma"] * SIG2FWHM * PIXEL_SCALE
+    df["psf_fwhm_area"] = 0.663 * PIXEL_SCALE * np.sqrt(df["psf_area"])
+    sum_xy = df["psf_ixx"] + df["psf_iyy"]
+    df["psf_e1"] = (df["psf_ixx"] - df["psf_iyy"]) / sum_xy
+    df["psf_e2"] = (2.0 * df["psf_ixy"]) / sum_xy
+    df["psf_e"] = np.sqrt(df["psf_e1"] ** 2 + df["psf_e2"] ** 2)
+    df["coma"] = np.sqrt(df["coma_1"] ** 2 + df["coma_2"] ** 2)
+    df["trefoil"] = np.sqrt(df["trefoil_1"] ** 2 + df["trefoil_2"] ** 2)
+    df["moment_score"] = 3.0 * df["coma"] ** 2 + df["trefoil"] ** 2
+    return df
+
+
+def _per_visit_summary_chunk(df):
+    """Build a per-visit summary for one chunk via groupby('visit_id').
+
+    Returns
+    -------
+    pd.DataFrame indexed by visit_id with both the per-visit
+    inherited columns and per-CCD aggregations (medians + 5/50/95
+    quantiles). The CAM_FWHM- and airmass-dependent quantities are
+    deliberately *not* added here.
+    """
+    groups = df.groupby("visit_id", sort=False)
+    out = {}
+    for col in _PER_VISIT_FIRST_COLS:
+        if col in df.columns:
+            out[col] = groups[col].first()
+
+    out["moment_score"] = groups["moment_score"].median()
+    out["psf_fwhm_area_50"] = groups["psf_fwhm_area"].median()
+    for col in ("psf_fwhm", "psf_e", "psf_e1", "psf_e2"):
+        for q in (0.05, 0.50, 0.95):
+            out[f"{col}_{int(q * 100):02d}"] = groups[col].quantile(q)
+
+    return pd.DataFrame(out)
+
+
+def fetch_visits_summary_chunked(client, instrument, day_obs_min, day_obs_max,
+                                 programs, chunk_days=7, cache_dir=None,
+                                 progress=True):
+    """Memory-friendly variant of `fetch_chunked`.
+
+    For each (cached or fetched) chunk: add per-CCD derived columns,
+    groupby('visit_id') to build the per-visit summary, then *discard*
+    the per-CCD frame before reading the next chunk. The per-CCD chunk
+    parquet cache key matches `fetch_chunked`, so the two functions
+    interoperate freely on the same cache.
+
+    Returns
+    -------
+    visits_summary : pd.DataFrame indexed by visit_id
+        Per-visit columns (first()) plus per-CCD aggregations (median,
+        5/50/95-percent quantiles). CAM_FWHM-dependent derivations
+        (aos_cam_fwhm, donut_blur_atm_fwhm, sys_50, psf_fwhm_model) and
+        the airmass-corrected `psf_fwhm_zenith_500nm_50` are left for
+        the notebook to compute on this small frame.
+    """
+    ranges = list(_chunk_ranges(day_obs_min, day_obs_max, chunk_days))
+    if cache_dir is not None:
+        cache_dir = Path(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+    summaries = []
+    n_visits = 0
+    cached_count = 0
+    bar = tqdm(ranges, desc="ConsDB -> visits_summary",
+               unit="chunk", disable=not progress)
+    for d_min, d_max in bar:
+        bar.set_postfix(chunk=f"{d_min}-{d_max}",
+                        visits=f"{n_visits:,}", cached=cached_count)
+
+        cache_path = (
+            _chunk_cache_path(cache_dir, instrument, programs, d_min, d_max)
+            if cache_dir is not None else None
+        )
+        if cache_path is not None and cache_path.exists():
+            df = pd.read_parquet(cache_path)
+            cached_count += 1
+        else:
+            query = _build_query(instrument, d_min, d_max, programs)
+            df = client.query(query).to_pandas()
+            _coerce_numeric_inplace(df)
+            if cache_path is not None:
+                df.to_parquet(cache_path)
+
+        _add_per_ccd_derived(df)
+        chunk_summary = _per_visit_summary_chunk(df)
+        del df
+        gc.collect()
+
+        summaries.append(chunk_summary)
+        n_visits += len(chunk_summary)
+        bar.set_postfix(chunk=f"{d_min}-{d_max}",
+                        visits=f"{n_visits:,}", cached=cached_count)
+
+    return pd.concat(summaries, axis=0, copy=False)
+
+
+def try_load_visits_summary_from_cache(cache_dir, instrument, programs,
+                                       day_obs_min, day_obs_max,
+                                       chunk_days=7, progress=True):
+    """Build visits_summary purely from cached chunks, no ConsDB.
+
+    Returns None if any chunk parquet for the
+    `(instrument, programs_hash, chunk_days, CACHE_VERSION)` key is
+    missing — caller can then fall back to `fetch_visits_summary_chunked`.
+    """
+    cache_dir = Path(cache_dir)
+    ranges = list(_chunk_ranges(day_obs_min, day_obs_max, chunk_days))
+    paths = [
+        _chunk_cache_path(cache_dir, instrument, programs, d_min, d_max)
+        for d_min, d_max in ranges
+    ]
+    if any(not p.exists() for p in paths):
+        return None
+
+    summaries = []
+    bar = tqdm(paths, desc="chunk cache -> visits_summary",
+               unit="chunk", disable=not progress)
+    for p in bar:
+        df = pd.read_parquet(p)
+        _add_per_ccd_derived(df)
+        chunk_summary = _per_visit_summary_chunk(df)
+        del df
+        gc.collect()
+        summaries.append(chunk_summary)
+
+    return pd.concat(summaries, axis=0, copy=False)
+
+
+def iter_chunk_dfs(cache_dir, instrument, programs, day_obs_min, day_obs_max,
+                   chunk_days=7, with_derived=True, progress=True):
+    """Yield each cached chunk DataFrame one at a time.
+
+    Useful for per-CCD plots that can be built incrementally without
+    holding the full multi-week per-CCD frame in memory.
+
+    Raises FileNotFoundError if any chunk parquet is missing.
+    """
+    cache_dir = Path(cache_dir)
+    ranges = list(_chunk_ranges(day_obs_min, day_obs_max, chunk_days))
+    paths = []
+    for d_min, d_max in ranges:
+        p = _chunk_cache_path(cache_dir, instrument, programs, d_min, d_max)
+        if not p.exists():
+            raise FileNotFoundError(f"chunk parquet missing: {p}")
+        paths.append(p)
+
+    bar = tqdm(paths, desc="chunk", unit="chunk", disable=not progress)
+    for p in bar:
+        df = pd.read_parquet(p)
+        if with_derived:
+            _add_per_ccd_derived(df)
+        yield df
+
+
+def chunkwise_columns(cache_dir, instrument, programs, day_obs_min, day_obs_max,
+                      columns, selector=None, chunk_days=7, progress=True):
+    """Concatenate selected per-CCD columns across cached chunks.
+
+    Returns a small DataFrame containing only `columns` — useful as a
+    drop-in "lite" `ccdvisits` for the per-detector plots without
+    paying the gigabyte cost of the full frame. Derived columns
+    (psf_fwhm, psf_e, moment_score, ...) are added on each chunk before
+    selection so they can be requested by name.
+    """
+    if isinstance(columns, str):
+        columns = [columns]
+    keep_columns = list(columns)
+    chunks = []
+    for df in iter_chunk_dfs(cache_dir, instrument, programs,
+                             day_obs_min, day_obs_max,
+                             chunk_days=chunk_days, progress=progress):
+        if selector is not None:
+            df = df.loc[selector(df)]
+        chunks.append(df[keep_columns].copy())
+        gc.collect()
+    return pd.concat(chunks, axis=0, ignore_index=True, copy=False)
