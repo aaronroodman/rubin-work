@@ -174,17 +174,61 @@ def fetch_chunked(client, instrument, day_obs_min, day_obs_max, programs,
         del df
         gc.collect()
 
+    return _finalize(chunks)
+
+
+def _finalize(chunks):
+    """Concatenate chunks and add derived columns."""
     ccdvisits = pd.concat(chunks, ignore_index=True, copy=False)
     del chunks
     gc.collect()
 
-    # Derived columns (computed once on the full frame)
     ccdvisits["psf_fwhm"] = ccdvisits["psf_sigma"] * SIG2FWHM * PIXEL_SCALE
-    ccdvisits["psf_fwhm_area"] = 0.663 * PIXEL_SCALE * np.sqrt(ccdvisits["psf_area"])
+    ccdvisits["psf_fwhm_area"] = (
+        0.663 * PIXEL_SCALE * np.sqrt(ccdvisits["psf_area"])
+    )
 
     sum_xx_yy = ccdvisits["psf_ixx"] + ccdvisits["psf_iyy"]
-    ccdvisits["psf_e1"] = (ccdvisits["psf_ixx"] - ccdvisits["psf_iyy"]) / sum_xx_yy
+    ccdvisits["psf_e1"] = (
+        (ccdvisits["psf_ixx"] - ccdvisits["psf_iyy"]) / sum_xx_yy
+    )
     ccdvisits["psf_e2"] = (2.0 * ccdvisits["psf_ixy"]) / sum_xx_yy
-    ccdvisits["psf_e"] = np.sqrt(ccdvisits["psf_e1"] ** 2 + ccdvisits["psf_e2"] ** 2)
+    ccdvisits["psf_e"] = np.sqrt(
+        ccdvisits["psf_e1"] ** 2 + ccdvisits["psf_e2"] ** 2
+    )
+
+    return ccdvisits
+
+
+def try_load_from_cache(cache_dir, instrument, programs,
+                        day_obs_min, day_obs_max, chunk_days=7,
+                        progress=True):
+    """Assemble ccdvisits from cached chunks alone, without ConsDB.
+
+    Returns the post-derivation DataFrame if every chunk parquet for
+    `(instrument, programs, chunk_days, CACHE_VERSION)` over
+    `[day_obs_min, day_obs_max]` already exists, else None.
+
+    Useful as a fast path in the notebook: when this returns a frame,
+    the caller can skip importing/constructing the ConsDbClient
+    altogether.
+    """
+    cache_dir = Path(cache_dir)
+    ranges = list(_chunk_ranges(day_obs_min, day_obs_max, chunk_days))
+    paths = [
+        _chunk_cache_path(cache_dir, instrument, programs, d_min, d_max)
+        for d_min, d_max in ranges
+    ]
+    missing = [p for p in paths if not p.exists()]
+    if missing:
+        return None
+
+    chunks = []
+    bar = tqdm(paths, desc="chunk cache", unit="chunk",
+               disable=not progress)
+    for p in bar:
+        chunks.append(pd.read_parquet(p))
+
+    return _finalize(chunks)
 
     return ccdvisits
