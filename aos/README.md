@@ -15,6 +15,7 @@ nightly data extraction, PID control simulation, and reference wavefront studies
 | `intrinsics_mktable.ipynb` | Create a table of Zernike wavefront measurements from Full Array Mode (FAM) cwfs images with model intrinsic values. Queries ConsDB for FAM visits, extracts Zernikes via Butler, interpolates Batoid intrinsic model, saves to parquet. | 2026-02-23 | 2026-03-13 |
 | `intrinsics_plots.ipynb` | Analyze the FAM Zernike table from `intrinsics_mktable`. Plots data vs model comparisons (trio plots) for each Zernike term across the focal plane. | 2026-02-23 | 2026-02-23 |
 | `donutalgo_comparison.ipynb` | Compare Zernike wavefront coefficients between two different donut wavefront retrieval algorithms. Matches donuts by position, produces hexbin density plots and difference histograms. | 2026-03-24 | 2026-03-24 |
+| `study_danish_v0p6_vs_v1.ipynb` | Compare Danish v0.6 (chunk0) against Danish v1.0 bin_2x (chunks 1/3/5) per-donut Zernikes on matched donuts. Density "scatter" of Δzk vs zk_v0.6 plus focal-plane median Δzk maps in both OCS (sky-fixed) and CCS (CCD-fixed) coordinate systems. | 2026-05-14 | 2026-05-14 |
 
 ## Typical workflow
 
