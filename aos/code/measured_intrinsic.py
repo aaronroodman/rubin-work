@@ -378,6 +378,14 @@ def bin_median_focal(thx_deg, thy_deg, values_2d, iZidx, n_bins=73,
     """
     xbins, ybins, xcent, ycent = make_focal_grid(n_bins, fp_radius)
     grid = {}
+    # Guard against an empty donut set (e.g. a rotator/elevation window
+    # that catches no visits): binned_statistic_2d would raise on a
+    # zero-size array.  Return all-NaN grids instead.
+    if len(thx_deg) == 0:
+        empty = np.full((n_bins, n_bins), np.nan)
+        for j in iZidx:
+            grid[j] = empty.copy()
+        return grid, xbins, ybins, xcent, ycent
     for j, col in iZidx.items():
         z = values_2d[:, col]
         # Same orientation as plot_zernike_trio: x = thy, y = thx
