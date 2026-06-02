@@ -16,6 +16,8 @@ nightly data extraction, PID control simulation, and reference wavefront studies
 | `intrinsics_plots.ipynb` | Analyze the FAM Zernike table from `intrinsics_mktable`. Plots data vs model comparisons (trio plots) for each Zernike term across the focal plane. | 2026-02-23 | 2026-02-23 |
 | `donutalgo_comparison.ipynb` | Compare Zernike wavefront coefficients between two different donut wavefront retrieval algorithms. Matches donuts by position, produces hexbin density plots and difference histograms. | 2026-03-24 | 2026-03-24 |
 | `study_danish_v0p6_vs_v1.ipynb` | Compare Danish v0.6 (chunk0) against Danish v1.0 bin_2x (chunks 1/3/5) per-donut Zernikes on matched donuts. Density "scatter" of Δzk vs zk_v0.6 plus focal-plane median Δzk maps in both OCS (sky-fixed) and CCS (CCD-fixed) coordinate systems. | 2026-05-14 | 2026-05-14 |
+| `build_measured_intrinsic.ipynb` | Build the empirical focal-plane intrinsic Zernike map from FAM donuts via two DZ-removal methods (Path A U-mode constrained, Path B reachability-thresholded), iterated. Includes OFC SVD/reachability reference, per-path validation, FWHM-equivalent diagnostics, and DOF recovery. Params cell is papermill-tagged. | 2026-04-28 | 2026-05-14 |
+| `build_measured_intrinsic_batch.ipynb` | Papermill driver that runs `build_measured_intrinsic.ipynb` once per parameter set (scan over elevation/rotator ranges, filter bands, n_keep). Each run writes to its own self-describing output_dir; executed notebooks + a run manifest land in `output/build_measured_intrinsic/_runs/`. | 2026-05-14 | 2026-05-14 |
 
 ## Typical workflow
 
