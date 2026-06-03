@@ -824,7 +824,8 @@ def build_measured_intrinsic_uconstrained(donut_df, visit_table,
 # ----------------------------------------------------------------------
 
 def assemble_intrinsic_table(grid, iZs, xcent, ycent,
-                             coord_sys_grid, alt_coord_xform=None):
+                             coord_sys_grid, alt_coord_xform=None,
+                             extra_cols=None):
     """Flatten a per-pupil-j focal grid into a long-format QTable.
 
     Each row is one (thx, thy) bin centre carrying:
@@ -872,6 +873,12 @@ def assemble_intrinsic_table(grid, iZs, xcent, ycent,
             zk_arr[:, col_idx] = grid[j].ravel()
     cols['zk'] = list(zk_arr)
     cols['nollIndices'] = [list(iZs)] * n_pix
+
+    # Optional extra per-bin columns (e.g. z4_optical_OCS).  Each
+    # must be a 2D grid in the same orientation as `grid[j]`.
+    if extra_cols:
+        for cname, cgrid in extra_cols.items():
+            cols[cname] = np.asarray(cgrid, dtype=float).ravel()
 
     tbl = QTable(cols)
     # Drop bins where every zk is NaN (typically corners outside the FoV).

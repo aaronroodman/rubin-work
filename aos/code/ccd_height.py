@@ -212,3 +212,34 @@ def transpose_around_ccd_centers(fpx_mm, fpy_mm, det_names, camera):
         fpx_swap[mask] = cx + dy
         fpy_swap[mask] = cy + dx
     return fpx_swap, fpy_swap
+
+
+# ----------------------------------------------------------------------
+# Corner-WFS field-angle coverage (for radial-shell definitions)
+# ----------------------------------------------------------------------
+
+def wfs_field_radius_range(camera,
+                           sensors=('R00_SW0', 'R04_SW0',
+                                    'R40_SW0', 'R44_SW0')):
+    """Return (r_min_deg, r_max_deg): the inner/outer field-angle radius
+    spanned by the given corner-WFS sensors, from cameraGeom.
+
+    Uses each sensor's PIXELS -> FIELD_ANGLE transform on its bbox
+    corners.  ``SW0`` are the inner halves of the corner CCDs, so the
+    minimum corner radius over the default SW0 sensors is the inner
+    edge of the wavefront-sensor field coverage.
+
+    Requires the LSST stack (lsst.afw.cameraGeom) — RSP only.
+    """
+    from lsst.afw.cameraGeom import FIELD_ANGLE, PIXELS
+    rmins, rmaxs = [], []
+    for name in sensors:
+        det = camera[name]
+        tr = det.getTransform(PIXELS, FIELD_ANGLE)
+        rad = []
+        for c in det.getCorners(PIXELS):
+            fa = tr.applyForward(c)
+            rad.append(float(np.hypot(fa.getX(), fa.getY())))
+        rmins.append(min(rad))
+        rmaxs.append(max(rad))
+    return float(np.degrees(min(rmins))), float(np.degrees(max(rmaxs)))
