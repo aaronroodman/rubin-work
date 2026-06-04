@@ -94,7 +94,7 @@ runs:
       plots: done
       fit_ccs: pending
       plots_ccs: pending
-      movie: pending
+      movie: done
   chunk8:
     param_set: fam_danish_1_0_wep17_3_0_bin2x
     day_obs_min: 20260331
