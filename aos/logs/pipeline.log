@@ -88,3 +88,4 @@ tbl[names].to_pandas(...)
 [2026-05-14 19:46:52] chunk6.plots: DONE (141s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk6_plots.log
 [2026-05-14 19:54:44] chunk5.movie: DONE (491s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk5_movie.log
 [2026-06-04 20:10:44] chunk7.mktable: DONE (2600s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_mktable.log
+[2026-06-04 20:13:58] chunk7.fit: DONE (192s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk7_fit.log
