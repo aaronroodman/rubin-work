@@ -18,6 +18,7 @@ nightly data extraction, PID control simulation, and reference wavefront studies
 | `study_danish_v0p6_vs_v1.ipynb` | Compare Danish v0.6 (chunk0) against Danish v1.0 bin_2x (chunks 1/3/5) per-donut Zernikes on matched donuts. Density "scatter" of Δzk vs zk_v0.6 plus focal-plane median Δzk maps in both OCS (sky-fixed) and CCS (CCD-fixed) coordinate systems. | 2026-05-14 | 2026-05-14 |
 | `build_measured_intrinsic.ipynb` | Build the empirical focal-plane intrinsic Zernike map from FAM donuts via two DZ-removal methods (Path A U-mode constrained, Path B reachability-thresholded), iterated. Includes OFC SVD/reachability reference, per-path validation, FWHM-equivalent diagnostics, and DOF recovery. Params cell is papermill-tagged. | 2026-04-28 | 2026-05-14 |
 | `build_measured_intrinsic_batch.ipynb` | Papermill driver that runs `build_measured_intrinsic.ipynb` once per parameter set (scan over elevation/rotator ranges, filter bands, n_keep). Each run writes to its own self-describing output_dir; executed notebooks + a run manifest land in `output/build_measured_intrinsic/_runs/`. | 2026-05-14 | 2026-05-14 |
+| `study_wfs_mimic.ipynb` | Study whether the 4 corner WFS can reconstruct the optical state from FAM observations. Mimics WFS measurements by averaging FAM donuts in annular wedges at the WFS field radius, subtracts measured intrinsic, builds WFS-specific SVD of the sensitivity matrix, recovers DOFs, and compares against full FAM DOF analysis. | 2026-06-04 | 2026-06-04 |
 
 ## Typical workflow
 
@@ -38,3 +39,4 @@ nightly data extraction, PID control simulation, and reference wavefront studies
 - **intrinsics_mktable**: Requires Butler FAM collections + ConsDB (run on RSP)
 - **intrinsics_plots**: Requires parquet output from intrinsics_mktable
 - **donutalgo_comparison**: Requires parquet output from intrinsics_mktable (two algorithm runs)
+- **study_wfs_mimic**: Requires output from `build_measured_intrinsic` (dz_fits + grid parquets), donut parquets, `lsst.ts.ofc`, and CCD height map (run on RSP)
