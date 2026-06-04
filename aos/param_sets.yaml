@@ -81,3 +81,14 @@ fam_danish_v1_triplets_bin_2x:
     - aos_fam_danish_v1_triplets_bin_2x
   day_obs_min: 20260315
   day_obs_max: 20260430
+
+fam_danish_1_0_wep17_3_0_bin2x:
+  description: "Mar-May 2026, /repo/main, Danish 1.0 wep 17.3.0 dv 4.2.0 bin x2 paired"
+  butler_repo: /repo/main
+  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
+  fam_collections:
+    - LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired
+  # Collection name has slashes — set an explicit filename-safe phrase
+  collection_phrase: aos_fam_danish_1_0_wep17_3_0_bin2x
+  day_obs_min: 20260315
+  day_obs_max: 20260531

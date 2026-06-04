@@ -185,7 +185,7 @@ def resolve_run(run_cfg, param_sets):
                 'fam_collections', 'fam_programs', 'calc_intrinsics',
                 'calc_mean_zernike', 'calc_focal_plane',
                 'no_single_image', 'no_fit_params', 'no_trio',
-                'overwrite']:
+                'overwrite', 'collection_phrase']:
         if key in run_cfg:
             resolved[key] = run_cfg[key]
     resolved.setdefault('coord_sys', 'OCS')
@@ -194,7 +194,15 @@ def resolve_run(run_cfg, param_sets):
 
 
 def collection_phrase(resolved):
-    """Derive collection phrase from resolved params (matches intrinsics_lib logic)."""
+    """Derive collection phrase from resolved params (matches intrinsics_lib logic).
+
+    An explicit `collection_phrase` in the run/param_set always wins —
+    needed for collections whose names don't reduce to a clean filename
+    token (e.g. 'LSSTCam/runs/aos/fam/.../bin_x2/paired').
+    """
+    explicit = resolved.get('collection_phrase')
+    if explicit:
+        return explicit
     coll = resolved['fam_collections'][0]
     parts = coll.split('/')
     if parts[0] == 'u' and len(parts) > 2:
@@ -305,6 +313,8 @@ def build_command(run_name, step, resolved):
                 cmd.append(f'--{key.replace("_", "-")}')
         if resolved.get('overwrite'):
             cmd.append('--overwrite')
+        if resolved.get('collection_phrase'):
+            cmd += ['--collection-phrase', str(resolved['collection_phrase'])]
         return cmd
 
     elif step == 'fit':
