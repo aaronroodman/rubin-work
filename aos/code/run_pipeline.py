@@ -458,6 +458,7 @@ def cmd_status(data, run_filter=None):
         return
 
     param_sets = load_param_sets()
+    run_set = _normalize_run_filter(run_filter)
 
     # Header
     step_hdr = ' '.join(f'{s:>9s}' for s in STEP_ORDER)
@@ -465,7 +466,7 @@ def cmd_status(data, run_filter=None):
     print('-' * (48 + 24 + len(step_hdr)))
 
     for name, cfg in runs.items():
-        if run_filter and name != run_filter:
+        if run_set is not None and name not in run_set:
             continue
         resolved = resolve_run(cfg, param_sets)
         dmin = resolved.get('day_obs_min', '?')
@@ -516,6 +517,20 @@ def _normalize_step_filter(step_filter):
     return set(step_filter)
 
 
+def _normalize_run_filter(run_filter):
+    """Accept None, a single run name, or a list/tuple of run names.
+
+    Returns a set of run names, or None to mean "all runs".
+    """
+    if run_filter is None:
+        return None
+    if isinstance(run_filter, str):
+        run_filter = [run_filter]
+    if not run_filter:
+        return None
+    return set(run_filter)
+
+
 def cmd_run(data, run_filter=None, step_filter=None, dry_run=False):
     """Run pending steps.
 
@@ -526,9 +541,10 @@ def cmd_run(data, run_filter=None, step_filter=None, dry_run=False):
     runs = data.get('runs', {})
     param_sets = load_param_sets()
     filter_set = _normalize_step_filter(step_filter)
+    run_set = _normalize_run_filter(run_filter)
 
     for name, cfg in runs.items():
-        if run_filter and name != run_filter:
+        if run_set is not None and name not in run_set:
             continue
 
         resolved = resolve_run(cfg, param_sets)
