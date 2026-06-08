@@ -1,11 +1,12 @@
 # chunk7.mktable
-# 2026-06-04 20:10:44
+# 2026-06-08 22:00:10
 
 Pipeline: aos_fam_danish_1_0_wep17_3_0_bin2x OCS 20260315-20260327
   Butler: /repo/main
   Collections: ['LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired']
   Options: intrinsics=True, mean_zk=False, fp_coords=False, thermal=True
   Output: output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327.parquet
+  Overwriting: ['output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327.parquet', 'output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327_visits.parquet']
 Retrieved 5648 visits from ConsDB
 Total rows matching ['T278', 'T381', 'T492', 'T539', 'T614', 'T710', 'T717', 'T720', 'T724'] and img_type='cwfs': 879
 
@@ -47,61 +48,29 @@ DimensionValueError for day_obs=20260315, seq_num=97
 DimensionValueError for day_obs=20260315, seq_num=100
 DimensionValueError for day_obs=20260315, seq_num=103
 DimensionValueError for day_obs=20260315, seq_num=106
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=647
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=650
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=653
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=656
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=659
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=662
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=665
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=668
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=671
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=674
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=677
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=680
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=693
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=696
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=699
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=702
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=705
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=708
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=711
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=714
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=717
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=720
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=723
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=726
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=737
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=740
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=743
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=746
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=749
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=752
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=755
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=758
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=761
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=764
-DatasetNotFoundError: No data for day_obs=20260316, seq_num=767
 
 ============================================================
 Extraction Summary:
   Total visits attempted: 439
-  Successful extractions: 392
-  Failed extractions:     47
+  Successful extractions: 427
+  Failed extractions:     12
   nollIndices: [np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26)]
-  Total donut measurements: 969170
+  Total donut measurements: 1053433
 ============================================================
 
-  Added ['science_program'] to visit_info: 392/392 visits matched in the ConsDB query result
+  Added ['science_program'] to visit_info: 427/427 visits matched in the ConsDB query result
 Added rotator columns to visit_info. Flagged: 0 (|angle| > 90.0 deg)
-ConsDB returned 3628 exposure records for obs times
-Matched obs times for 392/392 visits
-Querying EFD temperatures for 392 visits...
-  cam_air_temp: 392/392 valid
-  m2_air_temp: 392/392 valid
-  m1m3_air_temp: 392/392 valid
-  outside_temp: 392/392 valid
+ConsDB returned 4396 exposure records for obs times
+Matched obs times for 427/427 visits
+Querying EFD temperatures for 427 visits...
+  cam_air_temp: 427/427 valid
+  m2_air_temp: 427/427 valid
+  m1m3_air_temp: 427/427 valid
+  outside_temp: 427/427 valid
   M1M3 data for day_obs 20260315: 62 visits
+  Added 146 per-thermocouple temperature columns
+  Added 50 per-cell vertical gradient columns
+  M1M3 data for day_obs 20260316: 35 visits
   Added 146 per-thermocouple temperature columns
   Added 50 per-cell vertical gradient columns
   M1M3 data for day_obs 20260317: 72 visits
@@ -121,11 +90,11 @@ Querying EFD temperatures for 392 visits...
   Added 50 per-cell vertical gradient columns
 Querying TMA truss temperatures...
 
-Thermal data: 209 columns for 392 visits (13 scalar, 146 per-thermocouple, 50 per-cell-vertical-gradient)
+Thermal data: 209 columns for 427 visits (13 scalar, 146 per-thermocouple, 50 per-cell-vertical-gradient)
 Added 209 thermal columns to visit_info
 
 --- Per-visit quality cuts ---
-quality_visit_mask: 385/392 visits pass
+quality_visit_mask: 420/427 visits pass
   cut n_donuts >= 500: drops 0
   cut n_detectors_with_min_donuts >= 170: drops 0
   cut median_blur_arcsec <= 1.20: drops 7
@@ -134,4 +103,4 @@ quality_visit_mask: 385/392 visits pass
 
 Saved:
   donuts: output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327.parquet (streamed, one row group per visit)
-  visits: output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327_visits.parquet — 392 rows, 228 columns
+  visits: output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327_visits.parquet — 427 rows, 228 columns
