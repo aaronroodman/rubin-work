@@ -99,3 +99,7 @@ tbl[names].to_pandas(...)
 [2026-06-04 23:12:50] chunk9.fit: DONE (115s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk9_fit.log
 [2026-06-04 23:15:58] chunk9.plots: DONE (184s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk9_plots.log
 [2026-06-04 23:29:59] chunk9.movie: DONE (839s) — log: /home/r/roodman/notebooks/rubin-work/aos/logs/chunk9_movie.log
+[2026-06-08 21:09:47] chunk7.mktable: FAILED (1s) — Output file(s) already exist — refusing to overwrite:
+  output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327.parquet
+  output/aos_fam_danish_1_0_wep17_3_0_bin2x_20260315_20260327_visits.parquet
+Pass overwrite=True (or --overwrite from the CLI) to replace them.
