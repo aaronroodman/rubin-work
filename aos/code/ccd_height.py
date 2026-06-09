@@ -218,6 +218,26 @@ def transpose_around_ccd_centers(fpx_mm, fpy_mm, det_names, camera):
 # batoid_rubin CCD-height source (ts_wep's current source)
 # ----------------------------------------------------------------------
 
+def _resolve_ccd_height_map_dir(height_map_dir):
+    """Resolve the directory that directly contains ccd_height_map.fits.gz.
+
+    Accepts ``~`` paths.  When `height_map_dir` is None, falls back to
+    ``batoid_rubin.utils.ensure_data_dir('ccd_height_map')``.  If the
+    given dir doesn't hold the file directly, also tries a
+    ``ccd_height_map`` subdirectory (the layout produced by
+    ``download_rubin_data.py --outdir <dir> ccd_height_map``).
+    """
+    if height_map_dir is None:
+        from batoid_rubin.utils import ensure_data_dir
+        return str(ensure_data_dir('ccd_height_map'))
+    p = Path(height_map_dir).expanduser()
+    if (p / 'ccd_height_map.fits.gz').exists():
+        return str(p)
+    if (p / 'ccd_height_map' / 'ccd_height_map.fits.gz').exists():
+        return str(p / 'ccd_height_map')
+    return str(p)   # as given — let det_height_maps raise a clear error
+
+
 def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
                                   x_col='centroid_x_intra',
                                   y_col='centroid_y_intra',
@@ -246,9 +266,8 @@ def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
         metrology path.  batoid maps store metres; converted here.
     """
     from batoid_rubin.builder import det_height_maps
-    if height_map_dir is None:
-        from batoid_rubin.utils import ensure_data_dir
-        height_map_dir = ensure_data_dir('ccd_height_map')
+    height_map_dir = _resolve_ccd_height_map_dir(height_map_dir)
+    print(f'  batoid_rubin ccd_height_map dir: {height_map_dir}')
     maps = det_height_maps(height_map_dir)          # det -> batoid.Bicubic (m)
     centers = ccd_centers_fp(camera)                # det -> (cx_mm, cy_mm)
 
