@@ -24,10 +24,26 @@ N_DOF = 50
 __all__ = ['DOF_TOPIC', 'make_efd_client', 'fetch_aggregated_dof']
 
 
-def make_efd_client():
-    """Return an EFD client (``lsst.summit.utils.makeEfdClient``)."""
-    from lsst.summit.utils import makeEfdClient
-    return makeEfdClient()
+def make_efd_client(efd_name='usdf_efd'):
+    """Return an EFD client.
+
+    ``makeEfdClient`` lives in ``lsst.summit.utils.efdUtils`` in current
+    summit_utils (it used to be re-exported at the package top level);
+    falls back to ``lsst_efd_client.EfdClient(efd_name)`` if neither is
+    importable.
+    """
+    try:
+        from lsst.summit.utils.efdUtils import makeEfdClient
+        return makeEfdClient()
+    except (ImportError, AttributeError):
+        pass
+    try:
+        from lsst.summit.utils import makeEfdClient
+        return makeEfdClient()
+    except (ImportError, AttributeError):
+        pass
+    from lsst_efd_client import EfdClient
+    return EfdClient(efd_name)
 
 
 def fetch_aggregated_dof(times_mjd, efd_client, scale='tai', topic=DOF_TOPIC,
