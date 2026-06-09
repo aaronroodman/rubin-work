@@ -238,7 +238,8 @@ def _resolve_ccd_height_map_dir(height_map_dir):
     return str(p)   # as given — let det_height_maps raise a clear error
 
 
-def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
+def batoid_rubin_height_per_donut(donut_df, camera=None, height_map_dir=None,
+                                  fpx_col='fpx', fpy_col='fpy',
                                   x_col='centroid_x_intra',
                                   y_col='centroid_y_intra',
                                   det_col='detector'):
@@ -273,7 +274,27 @@ def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
     print(f'  batoid_rubin ccd_height_map dir: {height_map_dir}')
     maps = det_height_maps(height_map_dir)          # det -> batoid.Bicubic (m)
 
-    fpx_mm, fpy_mm = compute_fp_coords(donut_df, camera, x_col, y_col, det_col)
+    # Prefer the per-donut focal-plane coords already in the parquet
+    # (`fpx`/`fpy`) — these are populated for every donut, whereas
+    # recomputing from `centroid_x_intra` via cameraGeom yields NaN for
+    # any donut without a matched intra/extra pair.  Fall back to the
+    # cameraGeom computation only if the columns are absent.
+    _cols = (list(donut_df.columns) if hasattr(donut_df, 'columns')
+             else list(donut_df.colnames))
+    if fpx_col in _cols and fpy_col in _cols:
+        fpx = np.asarray(donut_df[fpx_col], dtype=float)
+        fpy = np.asarray(donut_df[fpy_col], dtype=float)
+        # Auto-detect units: the focal plane spans ~±320 mm (~±0.32 m).
+        finite = np.concatenate([fpx[np.isfinite(fpx)], fpy[np.isfinite(fpy)]])
+        to_m = 1e-3 if (finite.size and np.max(np.abs(finite)) > 5.0) else 1.0
+        fpx_m, fpy_m = fpx * to_m, fpy * to_m
+        print(f"  batoid_rubin height eval coords: parquet '{fpx_col}/{fpy_col}'"
+              f" ({'mm' if to_m == 1e-3 else 'm'})")
+    else:
+        fpx_mm, fpy_mm = compute_fp_coords(donut_df, camera, x_col, y_col, det_col)
+        fpx_m, fpy_m = fpx_mm * 1e-3, fpy_mm * 1e-3
+        print('  batoid_rubin height eval coords: cameraGeom(centroids)')
+
     det_names = np.asarray(donut_df[det_col]).astype(str)
     height_mm = np.full(len(det_names), np.nan, dtype=float)
     for det in np.unique(det_names):
@@ -281,10 +302,9 @@ def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
             print(f'  (batoid_rubin: no height map for detector {det!r})')
             continue
         m = (det_names == det)
-        # Focal-plane-absolute position, mm -> m for batoid.sag (the map's
-        # XMIN..XMAX grid is in absolute focal-plane mm).
-        sag_m = np.asarray(maps[det].sag(fpx_mm[m] * 1e-3, fpy_mm[m] * 1e-3),
-                           dtype=float)
+        # focal-plane-absolute position (m); the map XMIN..XMAX grid is
+        # in absolute focal-plane mm.
+        sag_m = np.asarray(maps[det].sag(fpx_m[m], fpy_m[m]), dtype=float)
         height_mm[m] = sag_m * 1e3                  # m -> mm
     return height_mm
 
