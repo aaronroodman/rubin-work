@@ -84,10 +84,17 @@ def fetch_obs_start(consdb_client, day_obs, seq_num,
 
 
 def _dof_at_times(times_utc, efd_client, topic=DOF_TOPIC, n_dof=N_DOF):
-    """Core: aggregatedDoF at each (UTC astropy Time or None) anchor."""
+    """Core: aggregatedDoF + source event id at each anchor time.
+
+    Returns ``(dof, event_ids)``: ``dof`` is (n, n_dof); ``event_ids`` is
+    the ``visitId`` of the ``degreeOfFreedom`` event each anchor resolved
+    to (NaN where none / unavailable).  A change in ``event_ids`` between
+    consecutive visits marks an AOS re-alignment (Trim step).
+    """
     from lsst.summit.utils.efdUtils import getMostRecentRowWithDataBefore
 
     out = np.full((len(times_utc), n_dof), np.nan)
+    event_ids = np.full(len(times_utc), np.nan)
     for i, t in enumerate(times_utc):
         if t is None:
             continue
@@ -95,9 +102,13 @@ def _dof_at_times(times_utc, efd_client, topic=DOF_TOPIC, n_dof=N_DOF):
             ev = getMostRecentRowWithDataBefore(efd_client, topic,
                                                 timeToLookBefore=t)
             out[i] = [ev[f'aggregatedDoF{k}'] for k in range(n_dof)]
+            try:
+                event_ids[i] = float(ev.get('visitId', np.nan))
+            except Exception:
+                pass
         except Exception:
             continue
-    return out
+    return out, event_ids
 
 
 def fetch_aggregated_dof(times_mjd, efd_client, scale='tai', topic=DOF_TOPIC,
@@ -115,7 +126,8 @@ def fetch_aggregated_dof(times_mjd, efd_client, scale='tai', topic=DOF_TOPIC,
     times = [None if not np.isfinite(m)
              else Time(float(m), format='mjd', scale=scale).utc
              for m in times_mjd]
-    return _dof_at_times(times, efd_client, topic=topic, n_dof=n_dof)
+    dof, _ = _dof_at_times(times, efd_client, topic=topic, n_dof=n_dof)
+    return dof
 
 
 def fetch_aggregated_dof_for_visits(fit_table, efd_client=None,
@@ -168,10 +180,12 @@ def fetch_aggregated_dof_for_visits(fit_table, efd_client=None,
             times.append(None)
             src.append('none')
 
-    trim = _dof_at_times(times, efd_client, topic=topic, n_dof=n_dof)
+    trim, event_ids = _dof_at_times(times, efd_client, topic=topic,
+                                    n_dof=n_dof)
     info = {
         'n_obs_start': sum(s == 'obs_start' for s in src),
         'n_mjd_fallback': sum(s == 'mjd' for s in src),
         'n_dof': int(np.isfinite(trim).all(axis=1).sum()),
+        'event_id': event_ids,
     }
     return trim, info
