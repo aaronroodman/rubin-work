@@ -246,8 +246,11 @@ def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
 
     USES ``batoid_rubin.builder.det_height_maps`` (the same per-detector
     ``batoid.Bicubic`` height surfaces ts_wep applies) — it does not
-    reimplement the map I/O.  Each donut's detector-local focal-plane
-    position is evaluated on that detector's Bicubic ``.sag``.
+    reimplement the map I/O.  Each donut's **focal-plane-absolute**
+    position (the frame the per-detector XMIN..XMAX grids live in — a
+    detector's map is centred on its focal-plane location, e.g.
+    R22_S00 spans x ≈ −62…−22 mm) is evaluated on that detector's
+    Bicubic ``.sag``.
 
     Parameters
     ----------
@@ -269,7 +272,6 @@ def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
     height_map_dir = _resolve_ccd_height_map_dir(height_map_dir)
     print(f'  batoid_rubin ccd_height_map dir: {height_map_dir}')
     maps = det_height_maps(height_map_dir)          # det -> batoid.Bicubic (m)
-    centers = ccd_centers_fp(camera)                # det -> (cx_mm, cy_mm)
 
     fpx_mm, fpy_mm = compute_fp_coords(donut_df, camera, x_col, y_col, det_col)
     det_names = np.asarray(donut_df[det_col]).astype(str)
@@ -279,11 +281,10 @@ def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
             print(f'  (batoid_rubin: no height map for detector {det!r})')
             continue
         m = (det_names == det)
-        cx, cy = centers.get(det, (0.0, 0.0))
-        # Detector-local focal-plane position, mm -> m for batoid.sag.
-        lx_m = (fpx_mm[m] - cx) * 1e-3
-        ly_m = (fpy_mm[m] - cy) * 1e-3
-        sag_m = np.asarray(maps[det].sag(lx_m, ly_m), dtype=float)
+        # Focal-plane-absolute position, mm -> m for batoid.sag (the map's
+        # XMIN..XMAX grid is in absolute focal-plane mm).
+        sag_m = np.asarray(maps[det].sag(fpx_mm[m] * 1e-3, fpy_mm[m] * 1e-3),
+                           dtype=float)
         height_mm[m] = sag_m * 1e3                  # m -> mm
     return height_mm
 
