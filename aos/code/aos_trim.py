@@ -55,7 +55,16 @@ def make_efd_client(efd_name='usdf_efd'):
 
 
 def make_consdb_client(url=DEFAULT_CONSDB_URL):
-    """Return a ConsDB client (``lsst.summit.utils.ConsDbClient``)."""
+    """Return a ConsDB client (``lsst.summit.utils.ConsDbClient``).
+
+    The internal ConsDB host (``*.consdb``) must bypass the RSP HTTP proxy,
+    otherwise requests fail with ``502 Bad Gateway`` at the proxy.  This
+    adds ``.consdb`` to ``$no_proxy`` if absent, matching nightly_tablemaker.
+    """
+    import os
+    no_proxy = os.environ.get('no_proxy', '')
+    if '.consdb' not in no_proxy:
+        os.environ['no_proxy'] = (no_proxy + ',.consdb') if no_proxy else '.consdb'
     from lsst.summit.utils import ConsDbClient
     return ConsDbClient(url)
 
