@@ -238,73 +238,162 @@ def _resolve_ccd_height_map_dir(height_map_dir):
     return str(p)   # as given — let det_height_maps raise a clear error
 
 
-def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
-                                  det_col='detector'):
-    """Per-donut CCD surface height (mm) from batoid_rubin's own maps.
+def _sag_oriented(maps, fpx_mm, fpy_mm, det_names, swap, sx, sy):
+    """Evaluate per-detector batoid Bicubic .sag (height mm) at an
+    oriented focal-plane position.  `(swap, sx, sy)` map cameraGeom's
+    focal-plane mm into the batoid map frame: optional x<->y swap and
+    per-axis sign.  Returns NaN where the detector has no map or the
+    point is outside the map domain."""
+    if swap:
+        u, v = sx * fpy_mm, sy * fpx_mm
+    else:
+        u, v = sx * fpx_mm, sy * fpy_mm
+    h = np.full(len(det_names), np.nan, dtype=float)
+    for det in np.unique(det_names):
+        if det not in maps:
+            continue
+        m = (det_names == det)
+        h[m] = np.asarray(maps[det].sag(u[m] * 1e-3, v[m] * 1e-3),
+                          dtype=float) * 1e3        # m -> mm
+    return h
 
-    USES ``batoid_rubin.builder.det_height_maps`` (the same per-detector
-    ``batoid.Bicubic`` height surfaces ts_wep applies) — it does not
-    reimplement the map I/O.  The donut's **focal-plane-absolute**
-    position (the frame the per-detector XMIN..XMAX grids live in — a
-    detector's map is centred on its focal-plane location, e.g.
-    R22_S00 spans x ≈ −62…−22 mm) is computed from the intra- and
-    extra-focal centroids via cameraGeom, the Bicubic ``.sag`` is
-    evaluated at each, and the two heights are averaged (NaN-aware).
+
+def _detect_fp_orientation(maps, fpx_mm, fpy_mm, det_names, n_sample=5000):
+    """Pick the (swap, sign_x, sign_y) that puts the most donuts inside
+    their detector's batoid map domain.
+
+    cameraGeom focal-plane mm and the batoid map frame can differ by an
+    x<->y swap and/or axis-sign flips; `batoid.Bicubic.sag` returns NaN
+    outside the gridded domain, so the correct orientation is simply the
+    one maximising the finite-height count.  Decided on a subsample.
+    """
+    n = len(det_names)
+    idx = (np.linspace(0, n - 1, n_sample).astype(int) if n > n_sample
+           else np.arange(n))
+    best, best_n = (False, 1, 1), -1
+    for swap in (False, True):
+        for sx in (1, -1):
+            for sy in (1, -1):
+                h = _sag_oriented(maps, fpx_mm[idx], fpy_mm[idx],
+                                  det_names[idx], swap, sx, sy)
+                n_ok = int(np.isfinite(h).sum())
+                if n_ok > best_n:
+                    best, best_n = (swap, sx, sy), n_ok
+    return best, best_n, len(idx)
+
+
+def compute_ccd_heights(donut_df, camera, source='batoid_rubin',
+                        height_map_dir=None, metrology_fits=None,
+                        factor=HEIGHT_TO_Z4_UM_PER_MM, det_col='detector',
+                        orientation_sample=5000):
+    """Single entry point for per-donut CCD heights + the Z4 contribution.
+
+    The focal-plane position is computed from the **intra-** and
+    **extra-focal centroids** via cameraGeom, the chosen height model is
+    evaluated at each, and the two are averaged (NaN-aware).
 
     Parameters
     ----------
     donut_df : DataFrame/QTable with centroid_x/y_intra, centroid_x/y_extra,
         and `det_col`.
     camera : lsst.afw.cameraGeom.Camera
+    source : {'batoid_rubin', 'metrology'}
+        'batoid_rubin' uses ``batoid_rubin.builder.det_height_maps`` (the
+        per-detector Bicubic maps ts_wep applies); 'metrology' uses the
+        LSST_FP_cold_b metrology FITS via the KNN interpolator.
     height_map_dir : str or None
-        Directory holding ``ccd_height_map.fits.gz``.  None ->
-        ``batoid_rubin.utils.ensure_data_dir('ccd_height_map')`` (the
-        package/Zenodo default).
+        ccd_height_map dir for the batoid source (None -> ensure_data_dir).
+    metrology_fits : str or None
+        FITS path for the metrology source.
+    factor : float
+        μm of Z4 per mm of height.
 
     Returns
     -------
-    height_mm : ndarray (n_donuts,)
-        Surface height in **mm** (NaN where the detector has no map), so
-        it feeds `height_to_z4` with the same μm/mm factor as the
-        metrology path.  batoid maps store metres; converted here.
+    dict of equal-length ndarrays:
+        ccd_height_intra, ccd_height_extra, ccd_height_mean  [mm]
+        Z4_height  =  factor * ccd_height_mean               [μm]
     """
-    from batoid_rubin.builder import det_height_maps
-    height_map_dir = _resolve_ccd_height_map_dir(height_map_dir)
-    print(f'  batoid_rubin ccd_height_map dir: {height_map_dir}')
-    maps = det_height_maps(height_map_dir)          # det -> batoid.Bicubic (m)
-
-    # The donut parquet stores no fpx/fpy; focal-plane coords are computed
-    # from the centroid columns via cameraGeom.  A donut pair straddles
-    # the intra- and extra-focal images, so evaluate the height at BOTH
-    # the intra and extra focal-plane positions and average (NaN-aware) —
-    # both centroid sides are populated for every donut, matched or not.
+    fpx_i, fpy_i = compute_fp_coords(donut_df, camera,
+                                     'centroid_x_intra', 'centroid_y_intra',
+                                     det_col)
+    fpx_e, fpy_e = compute_fp_coords(donut_df, camera,
+                                     'centroid_x_extra', 'centroid_y_extra',
+                                     det_col)
     det_names = np.asarray(donut_df[det_col]).astype(str)
 
-    def _heights_mm(xcol, ycol):
-        fpx_mm, fpy_mm = compute_fp_coords(donut_df, camera, xcol, ycol, det_col)
-        h = np.full(len(det_names), np.nan, dtype=float)
-        for det in np.unique(det_names):
-            if det not in maps:
-                continue
-            m = (det_names == det)
-            # focal-plane-absolute position (mm -> m); map grid is FP-mm.
-            sag_m = np.asarray(maps[det].sag(fpx_mm[m] * 1e-3, fpy_mm[m] * 1e-3),
-                               dtype=float)
-            h[m] = sag_m * 1e3                      # m -> mm
-        return h
+    if source == 'metrology':
+        if not metrology_fits:
+            raise ValueError("source='metrology' requires metrology_fits")
+        interp = get_height_interpolator(make_metrology_table(metrology_fits))
+        h_i = np.asarray(interp(fpx_i, fpy_i), dtype=float)
+        h_e = np.asarray(interp(fpx_e, fpy_e), dtype=float)
+    elif source == 'batoid_rubin':
+        from batoid_rubin.builder import det_height_maps
+        d = _resolve_ccd_height_map_dir(height_map_dir)
+        print(f'  ccd_height_map dir: {d}')
+        maps = det_height_maps(d)
+        missing = sorted(set(det_names) - {str(k) for k in maps})
+        if missing:
+            print(f'  (no batoid height map for {len(missing)} detector(s): '
+                  f'{missing[:5]}{"..." if len(missing) > 5 else ""})')
+        (swap, sx, sy), n_ok, n_s = _detect_fp_orientation(
+            maps, fpx_i, fpy_i, det_names, orientation_sample)
+        print(f'  batoid focal-plane orientation: swap={swap} '
+              f'sx={sx:+d} sy={sy:+d}  ({n_ok}/{n_s} sample donuts in-domain)')
+        h_i = _sag_oriented(maps, fpx_i, fpy_i, det_names, swap, sx, sy)
+        h_e = _sag_oriented(maps, fpx_e, fpy_e, det_names, swap, sx, sy)
+    else:
+        raise ValueError(f'unknown height source {source!r}')
 
-    missing = sorted(set(det_names) - set(str(k) for k in maps))
-    if missing:
-        print(f'  (batoid_rubin: no height map for {len(missing)} detector(s): '
-              f'{missing[:5]}{"..." if len(missing) > 5 else ""})')
-    h_intra = _heights_mm('centroid_x_intra', 'centroid_y_intra')
-    h_extra = _heights_mm('centroid_x_extra', 'centroid_y_extra')
     with np.errstate(invalid='ignore'):
-        height_mm = np.nanmean(np.vstack([h_intra, h_extra]), axis=0)
-    n_ok = int(np.isfinite(height_mm).sum())
-    print(f'  batoid_rubin height: intra/extra average, '
-          f'{n_ok}/{len(height_mm)} donuts with a finite height')
-    return height_mm
+        h_mean = np.nanmean(np.vstack([h_i, h_e]), axis=0)
+    z4 = factor * h_mean
+    n_fin = int(np.isfinite(z4).sum())
+    print(f'  CCD heights ({source}): intra/extra average -> '
+          f'Z4_height n_finite={n_fin}/{len(z4)}  '
+          f'(factor={factor:g} μm/mm)')
+    return {'ccd_height_intra': h_i, 'ccd_height_extra': h_e,
+            'ccd_height_mean': h_mean, 'Z4_height': z4}
+
+
+def add_ccd_height_to_parquet(in_path, out_path=None, source='batoid_rubin',
+                              camera=None, height_map_dir=None,
+                              metrology_fits=None,
+                              factor=HEIGHT_TO_Z4_UM_PER_MM):
+    """Read a donut parquet, add ccd_height_intra/extra/mean + Z4_height
+    columns, and write it back out (default: ``<stem>_heights.parquet``).
+
+    Reads/writes a flat table — does NOT preserve the per-visit
+    row-group layout — so use the result where whole-table loads are
+    fine (e.g. build_measured_intrinsic), not the streaming consumers.
+    Returns the output path.
+    """
+    import pandas as pd
+    if camera is None:
+        from lsst.obs.lsst import LsstCam
+        camera = LsstCam.getCamera()
+    df = pd.read_parquet(in_path)
+    cols = compute_ccd_heights(df, camera, source=source,
+                               height_map_dir=height_map_dir,
+                               metrology_fits=metrology_fits, factor=factor)
+    for k, v in cols.items():
+        df[k] = v
+    if out_path is None:
+        p = Path(in_path)
+        out_path = str(p.with_name(p.stem + '_heights' + p.suffix))
+    df.to_parquet(out_path)
+    print(f'Wrote {out_path}  (+{len(cols)} height columns)')
+    return out_path
+
+
+def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
+                                  det_col='detector'):
+    """Back-compat thin wrapper: the intra/extra-averaged batoid height
+    (mm) from :func:`compute_ccd_heights`."""
+    return compute_ccd_heights(
+        donut_df, camera, source='batoid_rubin',
+        height_map_dir=height_map_dir, det_col=det_col)['ccd_height_mean']
 
 
 # ----------------------------------------------------------------------
