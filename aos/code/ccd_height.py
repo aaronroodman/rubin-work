@@ -215,6 +215,61 @@ def transpose_around_ccd_centers(fpx_mm, fpy_mm, det_names, camera):
 
 
 # ----------------------------------------------------------------------
+# batoid_rubin CCD-height source (ts_wep's current source)
+# ----------------------------------------------------------------------
+
+def batoid_rubin_height_per_donut(donut_df, camera, height_map_dir=None,
+                                  x_col='centroid_x_intra',
+                                  y_col='centroid_y_intra',
+                                  det_col='detector'):
+    """Per-donut CCD surface height (mm) from batoid_rubin's own maps.
+
+    USES ``batoid_rubin.builder.det_height_maps`` (the same per-detector
+    ``batoid.Bicubic`` height surfaces ts_wep applies) — it does not
+    reimplement the map I/O.  Each donut's detector-local focal-plane
+    position is evaluated on that detector's Bicubic ``.sag``.
+
+    Parameters
+    ----------
+    donut_df : DataFrame/QTable with `x_col`, `y_col`, `det_col`.
+    camera : lsst.afw.cameraGeom.Camera
+    height_map_dir : str or None
+        Directory holding ``ccd_height_map.fits.gz``.  None ->
+        ``batoid_rubin.utils.ensure_data_dir('ccd_height_map')`` (the
+        package/Zenodo default).
+
+    Returns
+    -------
+    height_mm : ndarray (n_donuts,)
+        Surface height in **mm** (NaN where the detector has no map), so
+        it feeds `height_to_z4` with the same μm/mm factor as the
+        metrology path.  batoid maps store metres; converted here.
+    """
+    from batoid_rubin.builder import det_height_maps
+    if height_map_dir is None:
+        from batoid_rubin.utils import ensure_data_dir
+        height_map_dir = ensure_data_dir('ccd_height_map')
+    maps = det_height_maps(height_map_dir)          # det -> batoid.Bicubic (m)
+    centers = ccd_centers_fp(camera)                # det -> (cx_mm, cy_mm)
+
+    fpx_mm, fpy_mm = compute_fp_coords(donut_df, camera, x_col, y_col, det_col)
+    det_names = np.asarray(donut_df[det_col]).astype(str)
+    height_mm = np.full(len(det_names), np.nan, dtype=float)
+    for det in np.unique(det_names):
+        if det not in maps:
+            print(f'  (batoid_rubin: no height map for detector {det!r})')
+            continue
+        m = (det_names == det)
+        cx, cy = centers.get(det, (0.0, 0.0))
+        # Detector-local focal-plane position, mm -> m for batoid.sag.
+        lx_m = (fpx_mm[m] - cx) * 1e-3
+        ly_m = (fpy_mm[m] - cy) * 1e-3
+        sag_m = np.asarray(maps[det].sag(lx_m, ly_m), dtype=float)
+        height_mm[m] = sag_m * 1e3                  # m -> mm
+    return height_mm
+
+
+# ----------------------------------------------------------------------
 # Corner-WFS field-angle coverage (for radial-shell definitions)
 # ----------------------------------------------------------------------
 
