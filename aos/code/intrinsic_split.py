@@ -68,7 +68,7 @@ def sample_maps_polar(maps, X, Y, hole_dist=None):
 
 
 def decompose_polar_lsq(Z, valid, thetas_rad, A, s=1, m0_assignment='ocs',
-                        m_max=12):
+                        m_max=12, ridge=1e-3):
     """Hole-aware decomposition: per radius, fit O and C jointly by
     least-squares over the *valid* (dataset, azimuth) samples only.
 
@@ -79,8 +79,11 @@ def decompose_polar_lsq(Z, valid, thetas_rad, A, s=1, m0_assignment='ocs',
     CCS regions are filled by the smooth Fourier reconstruction of ``C``.
 
     `m_max` caps the azimuthal order (per ring there are 1 + 4*m_max real
-    unknowns).  Returns the same dict as :func:`decompose_polar`, with
-    ``res`` set to NaN at invalid nodes.
+    unknowns).  `ridge` is a small Tikhonov factor (relative to the mean
+    diagonal of DᵀD) that damps azimuthal modes the ring's coverage cannot
+    constrain — prevents Fourier ringing on partially-covered outer rings
+    while leaving well-determined modes essentially unchanged.  Returns the
+    same dict as :func:`decompose_polar`, with ``res`` NaN at invalid nodes.
     """
     n_set, n_r, n_az = Z.shape
     thetas_rad = np.asarray(thetas_rad, float)
@@ -110,7 +113,9 @@ def decompose_polar_lsq(Z, valid, thetas_rad, A, s=1, m0_assignment='ocs',
         D = np.vstack(rows); y = np.concatenate(rhs)
         if D.shape[0] < D.shape[1]:                # under-determined ring
             continue
-        coef, *_ = np.linalg.lstsq(D, y, rcond=None)
+        DtD = D.T @ D
+        lam = ridge * np.trace(DtD) / DtD.shape[0]
+        coef = np.linalg.solve(DtD + lam * np.eye(DtD.shape[0]), D.T @ y)
         const = coef[0]
         Ocs = coef[1:1 + 2 * M].reshape(M, 2)
         Ccs = coef[1 + 2 * M:1 + 4 * M].reshape(M, 2)
@@ -199,7 +204,7 @@ def decompose_polar(Z, thetas_rad, A, s=1, m0_assignment='ocs', m_max=None):
 
 def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
                         m0_assignment='ocs', m_max=None, valid=None,
-                        method='fft'):
+                        method='fft', ridge=1e-3):
     """Run the decomposition for s=+1 and s=-1 and keep the lower residual.
 
     ``method='fft'`` uses :func:`decompose_polar`; ``method='lsq'`` uses the
@@ -211,7 +216,8 @@ def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
         if method == 'lsq':
             r = decompose_polar_lsq(Z, valid, thetas_rad, A, s=s,
                                     m0_assignment=m0_assignment,
-                                    m_max=(12 if m_max is None else m_max))
+                                    m_max=(12 if m_max is None else m_max),
+                                    ridge=ridge)
         else:
             r = decompose_polar(Z, thetas_rad, A, s=s,
                                 m0_assignment=m0_assignment, m_max=m_max)
