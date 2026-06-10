@@ -28,6 +28,107 @@ from __future__ import annotations
 import numpy as np
 
 
+# Noll index -> (radial n, signed azimuthal m).  Even-|m| split into a
+# cosine (m>0) and sine (m<0) partner; the spin of a term is |m|.
+NOLL_NM = {
+    4: (2, 0), 5: (2, -2), 6: (2, 2), 7: (3, -1), 8: (3, 1),
+    9: (3, -3), 10: (3, 3), 11: (4, 0), 12: (4, 2), 13: (4, -2),
+    14: (4, 4), 15: (4, -4), 16: (5, 1), 17: (5, -1), 18: (5, 3),
+    19: (5, -3), 20: (5, 5), 21: (5, -5), 22: (6, 0), 23: (6, -2),
+    24: (6, 2), 25: (6, -4), 26: (6, 4),
+}
+
+
+def group_zernikes(noll_list):
+    """Group a list of Noll indices into decomposition units.
+
+    Returns a list of dicts.  An m=0 term is a scalar singlet
+    ``{'kind':'single','spin':0,'j':j,'label':'Zj'}``; a (cos,sin) doublet
+    with the same (n, |m|) is ``{'kind':'pair','spin':|m|,'j_cos':jc,
+    'j_sin':js,'label':'Zjc/Zjs'}`` — the complex field is
+    ``Z_cos + i*Z_sin`` (vertical + i*oblique), which rotates as spin |m|.
+    Unpaired non-zero-m terms are skipped with a note in the dict.
+    """
+    s = set(int(j) for j in noll_list)
+    groups, used = [], set()
+    for j in sorted(s):
+        if j in used:
+            continue
+        n, m = NOLL_NM[j]
+        if m == 0:
+            groups.append({'kind': 'single', 'spin': 0, 'j': j,
+                           'label': f'Z{j}'})
+            used.add(j)
+            continue
+        # find the opposite-sign partner (same n, same |m|)
+        partner = next((k for k in s if k not in used and k != j
+                        and NOLL_NM[k] == (n, -m)), None)
+        if partner is None:
+            groups.append({'kind': 'orphan', 'spin': abs(m), 'j': j,
+                           'label': f'Z{j}'})
+            used.add(j)
+            continue
+        j_cos, j_sin = (j, partner) if m > 0 else (partner, j)
+        groups.append({'kind': 'pair', 'spin': abs(m),
+                       'j_cos': j_cos, 'j_sin': j_sin,
+                       'label': f'Z{j_cos}/Z{j_sin}'})
+        used.update((j, partner))
+    return groups
+
+
+def decompose_spin_fft(Zc, thetas_rad, A, n_spin=0, s=1,
+                       degen_assignment='ocs'):
+    """Spin-aware camera/telescope split of a (possibly complex) field.
+
+    Model (azimuthal Fourier, per radius):
+        A_{d,m} = O_m + C_m * exp(i (n_spin - m) s theta_d)
+    where the spin ``n_spin`` is the Zernike azimuthal order (0 for a
+    scalar like Z4 — then this reduces to :func:`decompose_polar`; |m| for
+    an astig/coma/... doublet whose complex field rotates as that spin).
+    The degenerate mode is now ``m = n_spin`` (where the phase is 1 for all
+    datasets) and is assigned by ``degen_assignment``.
+
+    ``Zc`` is (n_set, n_r, n_az) real (scalar) or complex (doublet,
+    ``Z_cos + i Z_sin``).  Returns dict with complex ``O_pol``, ``C_pol``
+    (n_r, n_az), per-dataset complex ``res``, ``n_spin``, ``s``.
+    """
+    Zc = np.asarray(Zc, complex)
+    n_set, n_r, n_az = Zc.shape
+    thetas_rad = np.asarray(thetas_rad, float)
+    F = np.fft.fft(Zc, axis=2)
+    mk = np.rint(np.fft.fftfreq(n_az, d=1.0 / n_az)).astype(int)
+    O = np.zeros((n_r, n_az), complex)
+    C = np.zeros_like(O)
+    for k in range(n_az):
+        m = int(mk[k])
+        if m == int(n_spin):
+            tot = F[:, :, k].mean(0)
+            if degen_assignment == 'ccs':
+                C[:, k] = tot
+            elif degen_assignment == 'split':
+                O[:, k] = tot / 2
+                C[:, k] = tot / 2
+            else:
+                O[:, k] = tot
+            continue
+        ph = np.exp(1j * (int(n_spin) - m) * s * thetas_rad)
+        D = np.stack([np.ones_like(ph), ph], axis=1)
+        sol, *_ = np.linalg.lstsq(D, F[:, :, k], rcond=None)
+        O[:, k] = sol[0]
+        C[:, k] = sol[1]
+    O_pol = np.fft.ifft(O, axis=1)
+    C_pol = np.fft.ifft(C, axis=1)
+    dphi = A[1] - A[0]
+    res = np.empty_like(Zc)
+    for d, th in enumerate(thetas_rad):
+        shift = int(np.round(s * th / dphi))
+        res[d] = Zc[d] - (O_pol + np.exp(1j * int(n_spin) * s * th)
+                          * np.roll(C_pol, shift, axis=1))
+    return {'O_pol': O_pol, 'C_pol': C_pol, 'res': res,
+            'n_spin': int(n_spin), 's': int(s),
+            'degen_assignment': degen_assignment}
+
+
 def make_polar_grid(r_min=0.06, r_max=1.70, n_r=40, n_az=180):
     """Common polar sampling grid.  Returns (R, A, X, Y) where X/Y are the
     (n_r, n_az) Cartesian field coords of each polar node."""
@@ -200,6 +301,74 @@ def decompose_polar(Z, thetas_rad, A, s=1, m0_assignment='ocs', m_max=None):
         res[i] = Zc[i] - (O_pol + np.roll(C_pol, shift, axis=1))
     return {'O_pol': O_pol, 'C_pol': C_pol, 'res': res,
             's': int(s), 'm0_assignment': m0_assignment}
+
+
+def decompose_spin_lsq(Zc, valid, thetas_rad, A, n_spin=0, s=1, m_max=12,
+                       ridge=1e-3, degen_assignment='ocs'):
+    """Hole-aware, spin-aware decomposition (unifies the scalar LSQ and the
+    spin FFT).  Per radius, fit complex O and C by least squares over the
+    valid samples only:
+
+        A_d(phi) = sum_m O_m e^{i m phi}
+                 + sum_m C_m e^{i (n_spin - m) s theta_d} e^{i m phi}
+
+    `Zc` is (n_set, n_r, n_az) real (scalar, n_spin=0) or complex (doublet
+    Z_cos + i Z_sin).  The degenerate mode m = n_spin is assigned by
+    ``degen_assignment``.  `m_max` caps the azimuthal order; `ridge` damps
+    modes the ring coverage cannot constrain.  Reduces to
+    :func:`decompose_polar_lsq` at n_spin=0 and to :func:`decompose_spin_fft`
+    when rings are fully sampled.  Returns the same dict shape as
+    :func:`decompose_spin_fft`, with ``res`` NaN at invalid nodes.
+    """
+    Zc = np.asarray(Zc, complex)
+    n_set, n_r, n_az = Zc.shape
+    thetas_rad = np.asarray(thetas_rad, float)
+    ms = np.arange(-int(m_max), int(m_max) + 1)
+    nm = ms.size
+    keepC = ms != int(n_spin)                       # drop degenerate C column
+    EA = np.exp(1j * np.outer(A, ms))               # (n_az, nm) reconstruction
+    O_pol = np.full((n_r, n_az), np.nan, complex)
+    C_pol = np.full((n_r, n_az), np.nan, complex)
+    res = np.full_like(Zc, np.nan)
+    for k in range(n_r):
+        phi, yk, thk, idx = [], [], [], []
+        for d in range(n_set):
+            jj = np.nonzero(valid[d, k, :])[0]
+            if jj.size:
+                phi.append(A[jj]); yk.append(Zc[d, k, jj])
+                thk.append(np.full(jj.size, thetas_rad[d])); idx.append((d, jj))
+        if not phi:
+            continue
+        phi = np.concatenate(phi); yk = np.concatenate(yk)
+        thk = np.concatenate(thk)
+        E = np.exp(1j * np.outer(phi, ms))                          # O basis
+        Cc = E * np.exp(1j * (int(n_spin) - ms[None, :]) * s * thk[:, None])
+        D = np.hstack([E, Cc[:, keepC]])                            # (N, 2nm-1)
+        if D.shape[0] < D.shape[1]:
+            continue
+        DhD = D.conj().T @ D
+        lam = ridge * np.trace(DhD).real / DhD.shape[0]
+        coef = np.linalg.solve(DhD + lam * np.eye(DhD.shape[0]),
+                               D.conj().T @ yk)
+        Ofull = coef[:nm]
+        Cfull = np.zeros(nm, complex); Cfull[keepC] = coef[nm:]
+        # degenerate sum currently sits in O_{n_spin}; redistribute by flag
+        i_n = int(np.nonzero(ms == int(n_spin))[0][0])
+        if degen_assignment == 'ccs':
+            Cfull[i_n] = Ofull[i_n]; Ofull[i_n] = 0
+        elif degen_assignment == 'split':
+            Ofull[i_n] *= 0.5; Cfull[i_n] = Ofull[i_n]
+        O_pol[k] = EA @ Ofull
+        C_pol[k] = EA @ Cfull
+        dphi = A[1] - A[0]
+        for (d, jj) in idx:
+            shift = int(np.round(s * thetas_rad[d] / dphi))
+            pred = O_pol[k] + np.exp(1j * int(n_spin) * s * thetas_rad[d]) \
+                * np.roll(C_pol[k], shift)
+            res[d, k, jj] = Zc[d, k, jj] - pred[jj]
+    return {'O_pol': O_pol, 'C_pol': C_pol, 'res': res,
+            'n_spin': int(n_spin), 's': int(s),
+            'degen_assignment': degen_assignment, 'm_max': int(m_max)}
 
 
 def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
