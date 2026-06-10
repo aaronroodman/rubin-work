@@ -206,7 +206,7 @@ def build_ofc_svd(iZs, k_min, k_max, n_keep, ofc_normalization_yaml=None,
         normalization_weights=normalization_weights, kj_grid=kj_grid,
         n_keep_eff=n_keep_eff, k_min=int(k_min), k_max=int(k_max),
         iZs=[int(j) for j in iZs_arr], n_dof=n_dof,
-        vmode_labels=[f'v{m}' for m in range(n_keep_eff)])
+        vmode_labels=[f'v{m + 1}' for m in range(n_keep_eff)])  # 1-based
 
 
 def dz_table_to_W(fit_table, prefix, kj_grid):
