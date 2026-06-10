@@ -37,20 +37,101 @@ def make_polar_grid(r_min=0.06, r_max=1.70, n_r=40, n_az=180):
     return R, A, RR * np.cos(AA), RR * np.sin(AA)
 
 
-def sample_maps_polar(maps, X, Y):
+def sample_maps_polar(maps, X, Y, hole_dist=None):
     """Interpolate each scattered map onto the polar grid (X, Y).
 
     `maps` is a list of (thx, thy, val) arrays (finite values).  Returns
-    ``Z`` (n_set, n_r, n_az) with NaNs outside each map's hull, and the
-    NaN count.
+    ``(Z, valid, n_nan)``: ``Z`` (n_set, n_r, n_az) is the interpolated
+    value (NaN outside each map's hull); ``valid`` is a boolean mask of the
+    same shape that is True where the node has real support.
+
+    If ``hole_dist`` is given (deg), a node is invalid when the nearest
+    actual grid point is farther than ``hole_dist`` — i.e. it sits in a
+    dead-detector hole and the interpolated value spans the gap.  This lets
+    the decomposition fit only real samples (so the telescope map O is not
+    corrupted by holes), while the camera map C still gets a smooth
+    reconstruction across the camera-fixed dead regions.
     """
     from scipy.interpolate import LinearNDInterpolator
-    out = []
+    from scipy.spatial import cKDTree
+    Zs, Vs = [], []
     for thx, thy, val in maps:
-        interp = LinearNDInterpolator(np.column_stack([thx, thy]), val)
-        out.append(interp(X, Y))
-    Z = np.stack(out)
-    return Z, int(np.isnan(Z).sum())
+        pts = np.column_stack([thx, thy])
+        z = LinearNDInterpolator(pts, val)(X, Y)
+        v = np.isfinite(z)
+        if hole_dist is not None:
+            d, _ = cKDTree(pts).query(np.column_stack([X.ravel(), Y.ravel()]))
+            v = v & (d.reshape(X.shape) <= hole_dist)
+        Zs.append(z); Vs.append(v)
+    Z = np.stack(Zs)
+    return Z, np.stack(Vs), int(np.isnan(Z).sum())
+
+
+def decompose_polar_lsq(Z, valid, thetas_rad, A, s=1, m0_assignment='ocs',
+                        m_max=12):
+    """Hole-aware decomposition: per radius, fit O and C jointly by
+    least-squares over the *valid* (dataset, azimuth) samples only.
+
+    Same model as :func:`decompose_polar` but masked, so dead-detector
+    holes never enter the fit.  Because the holes are camera-fixed and
+    rotate through OCS, every OCS azimuth is sampled by some dataset, so
+    the reconstructed telescope map ``O`` is hole-free; the camera-dead
+    CCS regions are filled by the smooth Fourier reconstruction of ``C``.
+
+    `m_max` caps the azimuthal order (per ring there are 1 + 4*m_max real
+    unknowns).  Returns the same dict as :func:`decompose_polar`, with
+    ``res`` set to NaN at invalid nodes.
+    """
+    n_set, n_r, n_az = Z.shape
+    thetas_rad = np.asarray(thetas_rad, float)
+    M = int(m_max)
+    ms = np.arange(1, M + 1)
+    O_pol = np.full((n_r, n_az), np.nan)
+    C_pol = np.full((n_r, n_az), np.nan)
+    res = np.full_like(Z, np.nan)
+    # azimuth grids per dataset for reconstruction
+    for k in range(n_r):
+        rows, rhs, smp = [], [], []   # design rows, data, (d, j)
+        for d in range(n_set):
+            jj = np.nonzero(valid[d, k, :])[0]
+            if jj.size == 0:
+                continue
+            phi = A[jj]
+            psi = phi - s * thetas_rad[d]          # CCS azimuth
+            cols = [np.ones_like(phi)]             # const (degenerate m=0)
+            for m in ms:
+                cols += [np.cos(m * phi), np.sin(m * phi)]      # O
+            for m in ms:
+                cols += [np.cos(m * psi), np.sin(m * psi)]      # C
+            rows.append(np.column_stack(cols))
+            rhs.append(Z[d, k, jj]); smp.append((d, jj))
+        if not rows:
+            continue
+        D = np.vstack(rows); y = np.concatenate(rhs)
+        if D.shape[0] < D.shape[1]:                # under-determined ring
+            continue
+        coef, *_ = np.linalg.lstsq(D, y, rcond=None)
+        const = coef[0]
+        Ocs = coef[1:1 + 2 * M].reshape(M, 2)
+        Ccs = coef[1 + 2 * M:1 + 4 * M].reshape(M, 2)
+        if m0_assignment == 'ccs':
+            cO, cC = 0.0, const
+        elif m0_assignment == 'split':
+            cO = cC = const / 2
+        else:
+            cO, cC = const, 0.0
+        Orow = cO + sum(Ocs[i, 0] * np.cos(ms[i] * A) + Ocs[i, 1] * np.sin(ms[i] * A)
+                        for i in range(M))
+        Crow = cC + sum(Ccs[i, 0] * np.cos(ms[i] * A) + Ccs[i, 1] * np.sin(ms[i] * A)
+                        for i in range(M))
+        O_pol[k] = Orow; C_pol[k] = Crow
+        dphi = A[1] - A[0]
+        for (d, jj) in smp:
+            shift = int(np.round(s * thetas_rad[d] / dphi))
+            pred = Orow + np.roll(Crow, shift)
+            res[d, k, jj] = Z[d, k, jj] - pred[jj]
+    return {'O_pol': O_pol, 'C_pol': C_pol, 'res': res,
+            's': int(s), 'm0_assignment': m0_assignment, 'm_max': M}
 
 
 def decompose_polar(Z, thetas_rad, A, s=1, m0_assignment='ocs', m_max=None):
@@ -117,15 +198,24 @@ def decompose_polar(Z, thetas_rad, A, s=1, m0_assignment='ocs', m_max=None):
 
 
 def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
-                        m0_assignment='ocs', m_max=None):
-    """Run :func:`decompose_polar` for s=+1 and s=-1 and keep the lower
-    residual.  Returns (result, {+1: rms, -1: rms})."""
+                        m0_assignment='ocs', m_max=None, valid=None,
+                        method='fft'):
+    """Run the decomposition for s=+1 and s=-1 and keep the lower residual.
+
+    ``method='fft'`` uses :func:`decompose_polar`; ``method='lsq'`` uses the
+    hole-aware :func:`decompose_polar_lsq` (requires ``valid``).  Returns
+    (result, {+1: rms, -1: rms})."""
     rms = {}
     best = None
     for s in (+1, -1):
-        r = decompose_polar(Z, thetas_rad, A, s=s,
-                            m0_assignment=m0_assignment, m_max=m_max)
-        rms[s] = residual_rms(r['res'], R, r_lim)
+        if method == 'lsq':
+            r = decompose_polar_lsq(Z, valid, thetas_rad, A, s=s,
+                                    m0_assignment=m0_assignment,
+                                    m_max=(12 if m_max is None else m_max))
+        else:
+            r = decompose_polar(Z, thetas_rad, A, s=s,
+                                m0_assignment=m0_assignment, m_max=m_max)
+        rms[s] = residual_rms(np.nan_to_num(r['res']), R, r_lim)
         if best is None or rms[s] < rms[best['s']]:
             best = r
     return best, rms
@@ -136,9 +226,10 @@ def _rmask(R, r_lim):
 
 
 def residual_rms(field, R, r_lim=(0.1, 1.6)):
-    """RMS of a (..., n_r, n_az) field over rings within ``r_lim``."""
+    """RMS of a (..., n_r, n_az) field over rings within ``r_lim``.
+    NaN entries (e.g. masked holes) are ignored."""
     m = _rmask(R, r_lim)
-    return float(np.sqrt(np.mean(np.asarray(field)[..., m, :] ** 2)))
+    return float(np.sqrt(np.nanmean(np.asarray(field)[..., m, :] ** 2)))
 
 
 def explained_variance(Z, res, R, r_lim=(0.1, 1.6)):
