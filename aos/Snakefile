@@ -1,0 +1,85 @@
+# ----------------------------------------------------------------------
+# Snakemake PROTOTYPE — AOS FAM script steps (mktable -> fit -> {plots, movie}).
+#
+# Evaluation only; run_pipeline.py remains the production orchestrator.
+# Reuses param_sets.yaml; runs to build are listed in snake_runs.yaml.
+#
+#   snakemake -n                       # dry-run: show the plan / what's stale
+#   snakemake -j4                       # build, up to 4 jobs in parallel
+#   snakemake -j4 output/<stem>/trio_comparison_all.pdf   # build one target
+#   snakemake --dag | dot -Tpng > dag.png                 # visualize the DAG
+#
+# Note: mktable needs Butler/RSP access (run there); locally `-n` shows the
+# plan and existing donut/fits files are treated as up-to-date.
+# ----------------------------------------------------------------------
+import yaml
+
+PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
+RUNCFG     = yaml.safe_load(open("snake_runs.yaml"))["runs"]
+
+def resolve(run):
+    r = {k: v for k, v in PARAM_SETS.get(RUNCFG[run]["param_set"], {}).items()
+         if k != "description"}
+    r.update(RUNCFG[run]); r.setdefault("coord_sys", "OCS")
+    return r
+
+def collection_phrase(r):                       # matches run_pipeline.collection_phrase
+    if r.get("collection_phrase"):
+        return r["collection_phrase"]
+    parts = r["fam_collections"][0].split("/")
+    return parts[2] if (parts[0] == "u" and len(parts) > 2) else r["fam_collections"][0]
+
+def stem_of(run):
+    r = resolve(run)
+    return f'{collection_phrase(r)}_{r["day_obs_min"]}_{r["day_obs_max"]}'
+
+STEM2RUN = {stem_of(run): run for run in RUNCFG}            # reverse lookup
+STEMS    = list(STEM2RUN)
+
+# stem ends in _<8 digits>_<8 digits>; disambiguates {stem}.parquet from
+# {stem}_fits.parquet and the {stem}/ plots directory.
+wildcard_constraints:
+    stem = r".+_\d{8}_\d{8}"
+
+rule all:
+    input:
+        expand("output/{stem}/trio_comparison_all.pdf", stem=STEMS),
+        expand("output/{stem}/.movie.done",             stem=STEMS),
+
+rule mktable:                                    # Butler -> donut parquet (+ intrinsic)
+    output: "output/{stem}.parquet"
+    params:
+        ps   = lambda w: resolve(STEM2RUN[w.stem])["param_set"],
+        dmin = lambda w: resolve(STEM2RUN[w.stem])["day_obs_min"],
+        dmax = lambda w: resolve(STEM2RUN[w.stem])["day_obs_max"],
+    log: "logs/{stem}.mktable.log"
+    shell:
+        "python code/run_mktable.py --param-set {params.ps} "
+        "--day-obs-min {params.dmin} --day-obs-max {params.dmax} "
+        "--calc-intrinsics > {log} 2>&1"
+
+rule fit:                                        # donut -> DZ fits parquet
+    input:  "output/{stem}.parquet"
+    output: "output/{stem}_fits.parquet"
+    params: coord = lambda w: resolve(STEM2RUN[w.stem])["coord_sys"]
+    log:    "logs/{stem}.fit.log"
+    shell:
+        "python code/run_dz_fit.py {input} --coord-sys {params.coord} > {log} 2>&1"
+
+rule plots:                                      # fit-param + trio PDFs
+    input:  donut="output/{stem}.parquet", fits="output/{stem}_fits.parquet"
+    output: "output/{stem}/trio_comparison_all.pdf"     # representative artifact
+    params: coord = lambda w: resolve(STEM2RUN[w.stem])["coord_sys"]
+    log:    "logs/{stem}.plots.log"
+    shell:
+        "python code/run_dz_plots.py {input.donut} {input.fits} "
+        "--coord-sys {params.coord} --no-single-image > {log} 2>&1"
+
+rule movie:                                      # per-image residual maps + mp4
+    input:  donut="output/{stem}.parquet", fits="output/{stem}_fits.parquet"
+    output: touch("output/{stem}/.movie.done")          # sentinel (many JPEGs + optional mp4)
+    params: coord = lambda w: resolve(STEM2RUN[w.stem])["coord_sys"]
+    log:    "logs/{stem}.movie.log"
+    shell:
+        "python code/run_dz_plots.py {input.donut} {input.fits} "
+        "--coord-sys {params.coord} --no-fit-params --no-trio > {log} 2>&1"

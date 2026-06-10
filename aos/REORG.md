@@ -189,6 +189,49 @@ validation, intrinsic_split, study_* summaries) into an index / contact-sheet
 
 ---
 
+## 7b. Snakemake evaluation prototype (added 2026-06-10)
+
+Files: `Snakefile` + `snake_runs.yaml` (reuses the existing `param_sets.yaml`).
+Covers the **script** steps only (`mktable → fit → {plots, movie}`, OCS) for two
+runs — enough to judge ergonomics. **`run_pipeline.py` stays the production
+orchestrator**; this changes nothing in it.
+
+Try it (install once: `pip install snakemake`):
+```
+cd aos
+snakemake -n                 # dry-run: shows exactly what is stale / would run
+snakemake -j4                # build, up to 4 jobs in parallel  (mktable needs RSP/Butler)
+snakemake --dag | dot -Tpng > dag.png
+```
+
+What to look at:
+- **Incremental rebuild** — with the existing donut/fits/trio outputs present,
+  `-n` reports only the two `movie` jobs pending; it will *not* re-run the
+  expensive Butler `mktable` or the `fit`. Touch a donut parquet and watch the
+  downstream go stale.
+- **Parallelism** — `-j4` runs independent runs/steps concurrently (vs
+  run_pipeline's sequential loop).
+- **Wildcards** — the scan/runs live in `snake_runs.yaml`; file paths
+  (`output/{stem}…`) drive the DAG. `stem` = `<collection_phrase>_<dmin>_<dmax>`,
+  matching the existing filenames exactly.
+
+Caveats surfaced by the prototype (the real ergonomic costs):
+- **`wildcard_constraints` are required** — `stem` must be constrained to end in
+  `_<8 digits>_<8 digits>`, else `output/{stem}.parquet` is ambiguous with
+  `output/{stem}_fits.parquet`. This is the wildcard pitfall, made concrete.
+- **Multi-output steps need a representative output or a sentinel** — `plots`
+  declares the `trio_comparison_all.pdf`; `movie` uses a `touch`ed
+  `.movie.done` marker (it emits many JPEGs + an optional mp4). Production use
+  would enumerate outputs or keep sentinels.
+- **No git-sync / status-board** — run_pipeline's per-step commit + human-readable
+  `runs.yaml` board would become `onsuccess:`/`onerror:` hooks + `--summary`.
+- mktable needs Butler, so a full local build isn't possible; `-n` and the
+  downstream (fit/plots/movie) are what you can exercise off-RSP.
+
+Decision after trying it: keep extending `run_pipeline`, or commit to migrating
+the whole suite to Snakemake (then the cross-run intrinsic dep + scan become
+`lambda`/`expand`, per §4).
+
 ## 8. Open questions
 
 1. **Cross-run intrinsic dependency** — `intrinsics.yaml` vs a `param_sets`
