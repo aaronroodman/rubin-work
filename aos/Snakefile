@@ -92,32 +92,43 @@ rule fit:
         "--visits {input.visits} --output {output} > {log} 2>&1"
 
 # ---- combine chunks -> one param_set-level table each ----
+# The called script is declared as an input so editing it triggers a re-run
+# (Snakemake's code-change trigger only watches a rule's shell command, not the
+# external scripts it calls).  mktable deliberately does NOT track its script —
+# it would force expensive Butler re-queries on any intrinsics_lib edit.
 rule combine_donuts:
-    input:  lambda w: chunk_files(w.ps, "donuts.parquet")
+    input:
+        chunks = lambda w: chunk_files(w.ps, "donuts.parquet"),
+        script = "code/combine_parquets.py",
     output: "output/{ps}/donuts.parquet"
     resources: mem_mb=3000
     log:    "logs/{ps}.combine_donuts.log"
-    shell:  "python code/combine_parquets.py {input} --output {output} > {log} 2>&1"
+    shell:  "python code/combine_parquets.py {input.chunks} --output {output} > {log} 2>&1"
 
 rule combine_fits:
-    input:  lambda w: chunk_files(w.ps, "fits.parquet")
+    input:
+        chunks = lambda w: chunk_files(w.ps, "fits.parquet"),
+        script = "code/combine_parquets.py",
     output: "output/{ps}/fits.parquet"
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_fits.log"
-    shell:  "python code/combine_parquets.py {input} --output {output} > {log} 2>&1"
+    shell:  "python code/combine_parquets.py {input.chunks} --output {output} > {log} 2>&1"
 
 rule combine_visits:
-    input:  lambda w: chunk_files(w.ps, "visits.parquet")
+    input:
+        chunks = lambda w: chunk_files(w.ps, "visits.parquet"),
+        script = "code/combine_parquets.py",
     output: "output/{ps}/visits.parquet"
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_visits.log"
-    shell:  "python code/combine_parquets.py {input} --output {output} > {log} 2>&1"
+    shell:  "python code/combine_parquets.py {input.chunks} --output {output} > {log} 2>&1"
 
 # ---- validation plots on the combined tables ----
 rule plots:
     input:
         donuts = "output/{ps}/donuts.parquet",
         fits   = "output/{ps}/fits.parquet",
+        script = "code/run_dz_plots.py",
     output: "output/{ps}/plots/trio_comparison_all.pdf"
     params: coord = lambda w: coord(w.ps)
     resources: mem_mb=4000
