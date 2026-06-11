@@ -7,10 +7,12 @@ produced its donut/Zernike dataset, that RUN's software package versions, and
 the dataset's column set.  Reports whether RUN / package tags / column sets are
 **consistent across all chunks**.
 
-Motivation: a param_set points at a single chained collection, so every chunk
-should resolve to the same processing RUN and code version.  If they don't, the
-collection was assembled from more than one processing pass (different code
-versions), which shows up downstream as schema differences between chunks
+Motivation: a param_set points at a single chained collection.  Per-night
+``*_step2`` subcollections legitimately give each chunk a different RUN *name*,
+so consistency is judged on the RUN **recipe** prefix (the wep/donut_viz tag,
+not the night/timestamp suffix), the package versions, and the column set.  A
+mismatch there means the collection was assembled from more than one processing
+recipe/version, which shows up downstream as schema differences between chunks
 (e.g. the *_donut_id columns appearing only in later chunks).
 
 Run on the RSP (needs lsst.daf.butler + the configured repo):
@@ -19,6 +21,7 @@ Run on the RSP (needs lsst.daf.butler + the configured repo):
     python code/inspect_visit_provenance.py --param-set all
 """
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -117,6 +120,19 @@ def inspect_param_set(param_set, params, chunks, dataset_type, output_root,
     return records
 
 
+def _run_recipe(run):
+    """Processing-recipe prefix of a RUN: everything before the first
+    per-night segment (the first path component starting with 8 digits, e.g.
+    ``20260315`` or a ``20260603T...Z`` timestamp).  Per-night ``*_step2``
+    subcollections share one recipe but legitimately differ in this suffix."""
+    keep = []
+    for p in run.split('/'):
+        if re.match(r'\d{8}', p):
+            break
+        keep.append(p)
+    return '/'.join(keep)
+
+
 def _consistency_report(records, key_pkgs):
     print(f'\n  --- consistency across {len(records)} chunk(s) ---')
     if len(records) < 2:
@@ -124,12 +140,18 @@ def _consistency_report(records, key_pkgs):
         return
     ok = True
 
-    runs = {r['run'] for r in records}
-    if len(runs) == 1:
-        print(f'    RUN:      CONSISTENT  ({runs.pop()})')
+    # Per-night RUN names are expected to differ (one step2 subcollection per
+    # night); what must be consistent is the processing recipe prefix.
+    recipes = {_run_recipe(r['run']) for r in records}
+    if len(recipes) == 1:
+        print(f'    RUN:      CONSISTENT recipe  ({recipes.pop()})')
+        print('              (per-night subcollections, expected to differ):')
+        for r in records:
+            suffix = r['run'][len(_run_recipe(r['run'])):].lstrip('/')
+            print(f'              [{r["chunk"]}] {suffix}')
     else:
         ok = False
-        print('    RUN:      INCONSISTENT — chunks span multiple RUNs:')
+        print('    RUN:      INCONSISTENT — chunks span multiple recipes:')
         for r in records:
             print(f'              [{r["chunk"]}] {r["run"]}')
 
