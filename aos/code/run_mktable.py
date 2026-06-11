@@ -15,7 +15,7 @@ Usage:
         --programs T278 T381 T492 T539 T614
 
     # Enable optional computations
-    python run_mktable.py --param-set fam_danish_triplets --calc-intrinsics --calc-focal-plane
+    python run_mktable.py --param-set fam_danish_triplets --calc-focal-plane
 """
 
 import argparse
@@ -58,8 +58,6 @@ def main():
                         help='Include wep/dviz versions in output filename')
 
     # Optional computations (all off by default)
-    parser.add_argument('--calc-intrinsics', action='store_true',
-                        help='Compute intrinsic Zernike model and residuals')
     parser.add_argument('--calc-mean-zernike', action='store_true',
                         help='Compute per-visit mean Zernike columns')
     parser.add_argument('--calc-focal-plane', action='store_true',
@@ -169,7 +167,6 @@ def main():
         fp_nsteps=args.fp_nsteps,
         min_visits_per_day=args.min_visits_per_day,
         include_thermal=not args.no_thermal,
-        calc_intrinsics=args.calc_intrinsics,
         calc_mean_zernike=args.calc_mean_zernike,
         calc_focal_plane=args.calc_focal_plane,
         temp_time_window_sec=args.temp_time_window,

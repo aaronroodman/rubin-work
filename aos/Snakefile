@@ -59,7 +59,7 @@ rule mktable:
         r"""
         python code/run_mktable.py --param-set {wildcards.ps} \
             --day-obs-min {wildcards.dmin} --day-obs-max {wildcards.dmax} \
-            --calc-intrinsics --output-dir {params.cdir} > {log} 2>&1
+            --output-dir {params.cdir} > {log} 2>&1
         mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}.parquet {output.donuts}
         mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}_visits.parquet {output.visits}
         """

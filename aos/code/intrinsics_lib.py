@@ -2005,7 +2005,6 @@ async def run_mktable(
     intrinsic_band=None,
     min_visits_per_day=DEFAULT_MIN_VISITS_PER_DAY,
     include_thermal=True,
-    calc_intrinsics=False,
     calc_mean_zernike=False,
     calc_focal_plane=False,
     temp_time_window_sec=DEFAULT_TEMP_TIME_WINDOW_SEC,
@@ -2029,8 +2028,6 @@ async def run_mktable(
         collection name.
     include_versions : bool
         If True, include wep/dviz version strings in the output filename.
-    calc_intrinsics : bool
-        If True, compute intrinsic Zernike model and residuals.
     calc_mean_zernike : bool
         If True, compute per-visit mean Zernike columns.
     calc_focal_plane : bool
@@ -2101,7 +2098,7 @@ async def run_mktable(
     print(f"Pipeline: {collection_phrase} {coord_sys} {day_obs_min}-{day_obs_max}")
     print(f"  Butler: {butler_repo}")
     print(f"  Collections: {fam_collections}")
-    print(f"  Options: intrinsics={calc_intrinsics}, mean_zk={calc_mean_zernike}, "
+    print(f"  Options: mean_zk={calc_mean_zernike}, "
           f"fp_coords={calc_focal_plane}, thermal={include_thermal}")
     print(f"  Output: {output_file}")
     if existing:
@@ -2138,11 +2135,6 @@ async def run_mktable(
     # Rotator angles
     rotator_df = await get_rotator_data(
         visits, visit_pairs, butler_repo, rotator_threshold)
-
-    if calc_intrinsics:
-        print("Warning: calc_intrinsics=True is no longer supported in the "
-              "streaming pipeline (intrinsics are read from Butler metadata). "
-              "Ignoring the flag.")
 
     # Stream aggregate Zernikes per-visit to parquet (one row group per visit).
     # Only visit_info is returned in memory; donuts go straight to disk.
