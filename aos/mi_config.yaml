@@ -1,0 +1,41 @@
+# ----------------------------------------------------------------------
+# Phase-2 measured-intrinsic config.
+# For each param_set, a list of MI configurations.  Each becomes a
+# subdirectory output/<param_set>/<name>/ holding the build (per rotator
+# bin), the OCS/CCS split, the per-donut zk_intrinsic sidecar, and the
+# MI-refit fits.parquet.  Sweep N_keep / filter / etc. by adding entries.
+#
+# Keys per entry:
+#   name          subdir name (also the Snakemake wildcard)
+#   path          A (U-mode constrained) | B (reachability) — A is the default
+#   n_keep        u-modes retained in the OFC SVD
+#   n_dof         OFC DOF count (50; recorded for provenance)
+#   filter        band or list of bands (null = all)
+#   alt_min_deg / alt_max_deg   elevation window
+#   rotator_bins  list of [lo, hi] rotator windows; the build runs once per bin
+#   n_iter, n_bins, fp_radius_basis, fp_radius_grid, min_donuts,
+#   bad_fit_threshold, coord_sys, max_visits   (optional; sensible defaults)
+#   height_source / batoid_rubin_height_map_dir / height_map_fits /
+#   height_to_z4_factor   (CCD-height Z4; default batoid_rubin)
+#   split:        optional overrides for the OCS/CCS decomposition
+#                 (rotation_sign, spin_sign, m_max, degen_assignment, ...)
+# ----------------------------------------------------------------------
+measured_intrinsics:
+
+  fam_danish_1_0_wep17_3_0_bin2x:
+    - name: pathA_nkeep34_riz
+      path: A
+      n_keep: 34
+      n_dof: 50
+      filter: [r, i, z]
+      alt_min_deg: 55.0
+      alt_max_deg: 75.0
+      rotator_bins:
+        - [-65.0, -55.0]
+        - [-20.0, -10.0]
+        - [-3.0, 3.0]
+        - [10.0, 20.0]
+        - [55.0, 65.0]
+      n_iter: 3
+      n_bins: 73
+      coord_sys: OCS

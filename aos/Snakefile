@@ -33,6 +33,11 @@ PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
 CFG        = yaml.safe_load(open("snake_config.yaml"))["param_sets"]
 PSETS      = list(CFG)
 
+# Phase 2: measured-intrinsic configs (optional file).
+MI_CFG = {}
+if os.path.exists("mi_config.yaml"):
+    MI_CFG = yaml.safe_load(open("mi_config.yaml")).get("measured_intrinsics", {}) or {}
+
 def phrase(ps):                                   # matches run_pipeline / intrinsics_lib
     r = PARAM_SETS.get(ps, {})
     if r.get("collection_phrase"):
@@ -45,12 +50,24 @@ def coord(ps):   return CFG[ps].get("coord_sys", "OCS")
 def chunk_files(ps, name):
     return [f"output/{ps}/chunks/{a}_{b}/{name}" for a, b in chunks(ps)]
 
+# ---- Phase 2 (measured intrinsic) helpers, driven by mi_config.yaml ----
+def mi_names(ps):   return [e["name"] for e in MI_CFG.get(ps, [])]
+def mi_entry(ps, mi): return next(e for e in MI_CFG[ps] if e["name"] == mi)
+def mi_rotbins(ps, mi): return [(lo, hi) for lo, hi in mi_entry(ps, mi)["rotator_bins"]]
+def mi_bin_grids(ps, mi):
+    return [f"output/{ps}/{mi}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
+            for lo, hi in mi_rotbins(ps, mi)]
+MI_PAIRS = [(ps, mi) for ps in MI_CFG for mi in mi_names(ps)]
+
 # param_set names have no slash; keeps output/<ps>/X.parquet (combined)
 # distinct from output/<ps>/chunks/<d>_<d>/X.parquet (per chunk).
 wildcard_constraints:
     ps   = r"[A-Za-z0-9_.+-]+",
     dmin = r"\d{8}",
     dmax = r"\d{8}",
+    mi   = r"[A-Za-z0-9_.+-]+",
+    lo   = r"-?\d+(\.\d+)?",
+    hi   = r"-?\d+(\.\d+)?",
 
 rule all:
     input:
@@ -58,6 +75,8 @@ rule all:
         expand("output/{ps}/fits.parquet",                ps=PSETS),
         expand("output/{ps}/visits.parquet",              ps=PSETS),
         expand("output/{ps}/plots/trio_comparison_all.pdf", ps=PSETS),
+        # Phase 2: measured-intrinsic refit per (param_set, mi_name)
+        [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
 
 # ---- per chunk: mktable (Butler) -> donuts + visits ----
 rule mktable:
@@ -141,3 +160,77 @@ rule plots:
         "python code/run_dz_plots.py {input.donuts} {input.fits} "
         "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/plots "
         "--no-single-image > {log} 2>&1"
+
+# ======================================================================
+# Phase 2 — measured intrinsic, per (param_set, mi_name) from mi_config.yaml
+#   build_intrinsic (per rotator bin) -> intrinsic_split -> intrinsic_sidecar
+#   -> refit_mi (DZ fits using the measured intrinsic).
+# RSP-only (needs lsst.ts.ofc/wep + TS_CONFIG_MTTCS_DIR + batoid height maps).
+# ======================================================================
+
+# ---- per rotator bin: build the Path-A measured-intrinsic grid ----
+rule build_intrinsic:
+    input:
+        donuts = "output/{ps}/donuts.parquet",
+        visits = "output/{ps}/visits.parquet",
+        fits   = "output/{ps}/fits.parquet",
+        config = "mi_config.yaml",
+        script = "code/run_build_intrinsic.py",
+        lib    = "code/measured_intrinsic.py",
+        plots  = "code/intrinsic_build_plots.py",
+    output: "output/{ps}/{mi}/build/rot_{lo}_{hi}/intrinsic_grid.parquet"
+    resources: mem_mb=8000
+    log: "logs/{ps}.{mi}.build_rot_{lo}_{hi}.log"
+    shell:
+        "python code/run_build_intrinsic.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} --rot-min {wildcards.lo} --rot-max {wildcards.hi} "
+        "> {log} 2>&1"
+
+# ---- decompose the per-bin grids into OCS + CCS ----
+rule intrinsic_split:
+    input:
+        grids  = lambda w: mi_bin_grids(w.ps, w.mi),
+        config = "mi_config.yaml",
+        script = "code/run_intrinsic_split.py",
+        lib    = "code/intrinsic_split.py",
+    output:
+        parquet = "output/{ps}/{mi}/intrinsic_split.parquet",
+        decomp  = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.intrinsic_split.log"
+    shell:
+        "python code/run_intrinsic_split.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
+rule intrinsic_sidecar:
+    input:
+        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
+        donuts = "output/{ps}/donuts.parquet",
+        visits = "output/{ps}/visits.parquet",
+        config = "mi_config.yaml",
+        script = "code/run_make_intrinsic_sidecar.py",
+        lib    = "code/intrinsic_split.py",
+    output: "output/{ps}/{mi}/zk_intrinsic.parquet"
+    resources: mem_mb=8000
+    log: "logs/{ps}.{mi}.intrinsic_sidecar.log"
+    shell:
+        "python code/run_make_intrinsic_sidecar.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- refit the Double Zernikes using the measured intrinsic ----
+rule refit_mi:
+    input:
+        donuts  = "output/{ps}/donuts.parquet",
+        visits  = "output/{ps}/visits.parquet",
+        sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
+        script  = "code/run_dz_fit.py",
+        lib     = "code/dz_fitting.py",
+    output: "output/{ps}/{mi}/fits.parquet"
+    params: coord = lambda w: coord(w.ps)
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.refit_mi.log"
+    shell:
+        "python code/run_dz_fit.py {input.donuts} --coord-sys {params.coord} "
+        "--visits {input.visits} --intrinsic-sidecar {input.sidecar} "
+        "--output {output} > {log} 2>&1"
