@@ -31,9 +31,3 @@ param_sets:
       - [20260315, 20260327]
       - [20260331, 20260409]
       - [20260418, 20260531]
-
-  # Legacy single-range set (pre-v1, unbinned) — remove if no longer needed.
-  fam_danish_triplets:
-    coord_sys: OCS
-    chunks:
-      - [20260315, 20260409]
