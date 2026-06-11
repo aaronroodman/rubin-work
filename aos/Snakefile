@@ -14,7 +14,20 @@
 #   output/<ps>/{donuts,fits,visits}.parquet                        (combined)
 #   output/<ps>/plots/                                              (on combined)
 # ----------------------------------------------------------------------
+import os
 import yaml
+
+# Deterministic threading regardless of how the launching terminal set these.
+# A NUMEXPR_MAX_THREADS pinned to 1 (some JupyterHub sessions) crashes mktable;
+# force a safe cap.  One thread per job — parallelism comes from `snakemake -j`
+# (the RSP terminal gets ~4 usable cores via the cgroup cpu quota), so this
+# fills the cores without N_jobs x N_threads oversubscription.  Set in the
+# Snakefile process env, which the rule shell subprocesses inherit.
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
 
 PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
 CFG        = yaml.safe_load(open("snake_config.yaml"))["param_sets"]
