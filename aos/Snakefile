@@ -131,7 +131,11 @@ rule plots:
         script = "code/run_dz_plots.py",
     output: "output/{ps}/plots/trio_comparison_all.pdf"
     params: coord = lambda w: coord(w.ps)
-    resources: mem_mb=4000
+    # run_dz_plots loads the full combined donut table; astropy materializes the
+    # zk_* list columns as Python objects, so a single job can use ~10 GiB for a
+    # multi-million-row set.  Declare it large so the scheduler runs plots one at
+    # a time (two concurrent jobs OOM the 16 GiB allocation).
+    resources: mem_mb=12000
     log: "logs/{ps}.plots.log"
     shell:
         "python code/run_dz_plots.py {input.donuts} {input.fits} "
