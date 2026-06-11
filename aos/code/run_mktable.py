@@ -118,6 +118,12 @@ def main():
             parser.error(f"Unknown param-set: {args.param_set}. "
                          f"Available: {sorted(param_sets.keys())}")
         params = dict(param_sets[args.param_set])
+        # Honor the param_set's collection_phrase override so the output
+        # filename is the clean phrase (e.g. aos_fam_danish_1_0_wep17_3_0_bin2x)
+        # rather than the slashed collection path.  An explicit
+        # --collection-phrase on the CLI still wins.
+        if args.collection_phrase is None:
+            args.collection_phrase = params.get('collection_phrase')
         # Allow CLI overrides
         if args.butler_repo is not None:
             params['butler_repo'] = args.butler_repo
