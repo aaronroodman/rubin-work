@@ -48,9 +48,15 @@ def plot_param_set(ps, visits_path, plots_dir, bands=BANDS,
     rot_c = 0.5 * (rot_edges[:-1] + rot_edges[1:])
     elev_c = 0.5 * (elev_edges[:-1] + elev_edges[1:])
 
+    nr, ne = len(rot_c), len(elev_c)
     ncol = 3
     nrow = int(np.ceil(len(bands) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(5.0 * ncol, 4.0 * nrow),
+    # Size each panel so every bin gets enough room for a 3-digit number
+    # (~0.18 in/bin) — no crowding regardless of bin width.
+    per_bin = 0.22
+    pw = max(3.5, nr * per_bin)
+    ph = max(2.8, ne * per_bin)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(pw * ncol, ph * nrow),
                              sharex=True, sharey=True, layout='constrained')
     axes = np.atleast_1d(axes).ravel()
     counts = {}
@@ -58,14 +64,16 @@ def plot_param_set(ps, visits_path, plots_dir, bands=BANDS,
         m = band == b
         counts[b] = int(m.sum())
         H, _, _ = np.histogram2d(rot[m], elev[m], bins=[rot_edges, elev_edges])
-        vmax = max(H.max(), 1)
-        ax.pcolormesh(rot_edges, elev_edges, H.T, cmap='viridis', vmin=0, vmax=vmax)
-        for i in range(len(rot_c)):
-            for j in range(len(elev_c)):
+        for i in range(nr):
+            for j in range(ne):
                 if H[i, j] > 0:
                     ax.text(rot_c[i], elev_c[j], f'{int(H[i, j])}',
-                            ha='center', va='center', fontsize=6, fontweight='bold',
-                            color='black' if H[i, j] > 0.6 * vmax else 'white')
+                            ha='center', va='center', fontsize=7, color='black')
+        # White background + light dotted grid at every bin edge (ROOT TEXT style).
+        ax.set_xticks(rot_edges, minor=True)
+        ax.set_yticks(elev_edges, minor=True)
+        ax.grid(which='minor', ls=':', lw=0.4, color='0.8')
+        ax.grid(which='major', ls=':', lw=0.6, color='0.6')
         ax.set_xlim(rot_edges[0], rot_edges[-1])
         ax.set_ylim(elev_edges[0], elev_edges[-1])
         ax.set_title(f'{b}-band  (n={counts[b]})', fontsize=11)
@@ -99,8 +107,9 @@ def main():
                     help='snake_config.yaml path (default: ../snake_config.yaml)')
     ap.add_argument('--elev-bin', type=float, default=2.5,
                     help='Elevation bin width in deg (default: %(default)s)')
-    ap.add_argument('--rot-bin', type=float, default=2.5,
-                    help='Rotator-angle bin width in deg (default: %(default)s)')
+    ap.add_argument('--rot-bin', type=float, default=5.0,
+                    help='Rotator-angle bin width in deg (default: %(default)s; '
+                         'rotator spans ~120 deg, so finer bins make a very wide figure)')
     args = ap.parse_args()
 
     aos_dir = Path(__file__).resolve().parent.parent
