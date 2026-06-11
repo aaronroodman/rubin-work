@@ -27,21 +27,22 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from common.utils import text_hist2d, fixed_width_edges  # noqa: E402
+from common.utils import text_hist2d, centered_edges  # noqa: E402
 
 BANDS = ['u', 'g', 'r', 'i', 'z', 'y']
 
 
 def plot_param_set(ps, visits_path, plots_dir, bands=BANDS,
-                   elev_bin=2.5, rot_bin=5.0):
+                   elev_bin=10.0, rot_bin=15.0):
     df = pq.read_table(visits_path, columns=['alt', 'rotator_angle', 'band']).to_pandas()
     elev = np.degrees(df['alt'].to_numpy(dtype=float))
     rot = df['rotator_angle'].to_numpy(dtype=float)
     band = df['band'].astype(str).to_numpy()
 
-    # Fixed-width bins, shared across all panels so they line up band-to-band.
-    rot_edges = fixed_width_edges(np.nanmin(rot), np.nanmax(rot), rot_bin)
-    elev_edges = fixed_width_edges(np.nanmin(elev), np.nanmax(elev), elev_bin)
+    # Bins centered on the setpoints (rotator multiples of rot_bin, elevation
+    # multiples of elev_bin), shared across all panels so they line up.
+    rot_edges = centered_edges(np.nanmin(rot), np.nanmax(rot), rot_bin)
+    elev_edges = centered_edges(np.nanmin(elev), np.nanmax(elev), elev_bin)
     nr, ne = len(rot_edges) - 1, len(elev_edges) - 1
 
     ncol = 3
@@ -90,11 +91,12 @@ def main():
                     help='Root of the output/<param_set> tree (default: %(default)s)')
     ap.add_argument('--config', default=None,
                     help='snake_config.yaml path (default: ../snake_config.yaml)')
-    ap.add_argument('--elev-bin', type=float, default=2.5,
-                    help='Elevation bin width in deg (default: %(default)s)')
-    ap.add_argument('--rot-bin', type=float, default=5.0,
-                    help='Rotator-angle bin width in deg (default: %(default)s; '
-                         'rotator spans ~120 deg, so finer bins make a very wide figure)')
+    ap.add_argument('--elev-bin', type=float, default=10.0,
+                    help='Elevation bin width in deg; bins centered on multiples '
+                         '(default: %(default)s -> centers 30,40,...,70)')
+    ap.add_argument('--rot-bin', type=float, default=15.0,
+                    help='Rotator bin width in deg; bins centered on multiples '
+                         '(default: %(default)s -> centers -60,-45,...,60)')
     args = ap.parse_args()
 
     aos_dir = Path(__file__).resolve().parent.parent

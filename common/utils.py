@@ -99,10 +99,25 @@ def add_repo_root_to_path():
 
 
 def fixed_width_edges(lo, hi, width):
-    """Bin edges of fixed `width` spanning [lo, hi], aligned to multiples of width."""
+    """Bin edges of fixed `width` spanning [lo, hi], aligned to multiples of width
+    (bin *edges* fall on 0, width, 2*width, ...)."""
     start = np.floor(lo / width) * width
     stop = np.ceil(hi / width) * width
     return np.arange(start, stop + 0.5 * width, width)
+
+
+def centered_edges(lo, hi, step):
+    """Bin edges of width `step` whose bin *centers* fall on multiples of `step`
+    (..., -step, 0, step, ...), covering [lo, hi].
+
+    e.g. centered_edges(-60, 60, 15) -> centers at -60,-45,...,60 (edges at
+    -67.5, -52.5, ..., 67.5).
+    """
+    k_lo = int(np.floor(lo / step + 0.5))
+    k_hi = int(np.ceil(hi / step - 0.5))
+    k_hi = max(k_hi, k_lo)
+    centers = np.arange(k_lo, k_hi + 1) * step
+    return np.concatenate([centers - 0.5 * step, [centers[-1] + 0.5 * step]])
 
 
 def text_hist2d(x, y, *, ax=None, xbins=20, ybins=20, range=None, weights=None,
