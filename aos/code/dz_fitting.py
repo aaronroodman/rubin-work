@@ -230,9 +230,35 @@ def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
     return img_params, fit_vals, rlm_weights
 
 
+def _intrinsic_key(dobs, snum, det, cx, cy):
+    return (int(dobs), int(snum), str(det), round(float(cx), 3), round(float(cy), 3))
+
+
+def load_intrinsic_lookup(sidecar_path, iZs):
+    """Build a per-donut measured-intrinsic lookup from a zk_intrinsic sidecar
+    (run_make_intrinsic_sidecar.py), reordered to the fit's ``iZs``.
+
+    Key: (day_obs, seq_num, detector, centroid_x_intra, centroid_y_intra).
+    Value: the zk_intrinsic_MI vector reordered to iZs column order.
+    """
+    t = pq.read_table(str(sidecar_path))
+    meta = t.schema.metadata or {}
+    side_noll = (np.frombuffer(meta[b'nollIndices'], dtype=int).tolist()
+                 if b'nollIndices' in meta else list(iZs))
+    col = [side_noll.index(int(j)) for j in iZs]      # reorder to fit iZs
+    df = t.to_pandas()
+    mi = np.stack(df['zk_intrinsic_MI'].values)[:, col]
+    dobs = df['day_obs'].to_numpy(); snum = df['seq_num'].to_numpy()
+    det = df['detector'].astype(str).to_numpy()
+    cx = df['centroid_x_intra'].to_numpy(float); cy = df['centroid_y_intra'].to_numpy(float)
+    return {_intrinsic_key(dobs[r], snum[r], det[r], cx[r], cy[r]): mi[r]
+            for r in range(len(df))}
+
+
 def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
                                  max_focal_noll=3, include_intrinsic=True,
-                                 fp_radius=1.75, prefix='z1toz3'):
+                                 fp_radius=1.75, prefix='z1toz3',
+                                 intrinsic_lookup=None):
     """Streaming variant: read donuts one row group (= one visit) at a time.
 
     Reads the donuts parquet file written by stream_zernikes_to_parquet,
@@ -280,7 +306,24 @@ def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
         thx_deg = np.rad2deg(df[thx_col].to_numpy(dtype=float))
         thy_deg = np.rad2deg(df[thy_col].to_numpy(dtype=float))
         zk_data = np.stack(df[zk_col].values)
-        zk_intrinsic = np.stack(df[zk_intr_col].values)
+        if intrinsic_lookup is not None:
+            # Use the measured-intrinsic sidecar instead of the tabulated
+            # zk_intrinsic; drop donuts without an MI value (NaN).
+            det = df['detector'].astype(str).to_numpy()
+            cx = df['centroid_x_intra'].to_numpy(float)
+            cy = df['centroid_y_intra'].to_numpy(float)
+            zk_intrinsic = np.full_like(zk_data, np.nan)
+            for r in range(len(df)):
+                v = intrinsic_lookup.get(_intrinsic_key(dobs, snum, det[r], cx[r], cy[r]))
+                if v is not None:
+                    zk_intrinsic[r] = v
+            fin = np.isfinite(zk_intrinsic).all(axis=1)
+            if not fin.any():
+                continue
+            thx_deg, thy_deg = thx_deg[fin], thy_deg[fin]
+            zk_data, zk_intrinsic = zk_data[fin], zk_intrinsic[fin]
+        else:
+            zk_intrinsic = np.stack(df[zk_intr_col].values)
 
         img_params, _, _ = _fit_one_image(
             thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
@@ -482,7 +525,8 @@ def flag_bad_fits(fit_table, prefix, threshold=2.0, min_donuts=200):
 
 def run_double_zernike_fits(input_file, coord_sys='OCS',
                             output_file=None, bad_fit_threshold=2.0,
-                            min_donuts=200, visits_file=None):
+                            min_donuts=200, visits_file=None,
+                            intrinsic_sidecar=None):
     """Run the full Double Zernike fitting pipeline.
 
     Loads input HDF5 (donuts + visits tables), derives Noll indices,
@@ -571,13 +615,19 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
         print(f"  Noll indices ({len(iZs)} terms): {iZs}")
         del df0, zk_sample, pf
 
+        ilookup = None
+        if intrinsic_sidecar is not None:
+            ilookup = load_intrinsic_lookup(intrinsic_sidecar, iZs)
+            print(f"  Using measured-intrinsic sidecar: {intrinsic_sidecar} "
+                  f"({len(ilookup)} donuts)")
+
         # Fit via per-visit row-group reads
         rows_z3 = fit_focal_zernikes_streaming(
             input_file, visit_info, coord_sys, iZs,
-            max_focal_noll=3, prefix='z1toz3')
+            max_focal_noll=3, prefix='z1toz3', intrinsic_lookup=ilookup)
         rows_z6 = fit_focal_zernikes_streaming(
             input_file, visit_info, coord_sys, iZs,
-            max_focal_noll=6, prefix='z1toz6')
+            max_focal_noll=6, prefix='z1toz6', intrinsic_lookup=ilookup)
     else:
         # Legacy path: load the whole donuts table via astropy
         aosTable = QTable.read(str(input_file), path='donuts')

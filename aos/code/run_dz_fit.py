@@ -28,6 +28,11 @@ def main():
                         help='Visits sidecar parquet (default: auto — '
                              '{input_stem}_visits.parquet, else visits.parquet '
                              'in the same directory)')
+    parser.add_argument('--intrinsic-sidecar', default=None,
+                        help='Measured-intrinsic sidecar parquet '
+                             '(zk_intrinsic.parquet from run_make_intrinsic_sidecar). '
+                             'If given, the fit subtracts the measured intrinsic '
+                             'instead of the tabulated zk_intrinsic.')
     parser.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'],
                         help='Coordinate system (default: OCS)')
     parser.add_argument('--bad-fit-threshold', type=float, default=2.0,
@@ -44,6 +49,7 @@ def main():
         bad_fit_threshold=args.bad_fit_threshold,
         min_donuts=args.min_donuts,
         visits_file=args.visits,
+        intrinsic_sidecar=args.intrinsic_sidecar,
     )
 
 
