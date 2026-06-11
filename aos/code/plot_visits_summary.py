@@ -16,6 +16,7 @@ so pass the absolute data path, e.g.
     --output-root /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output
 """
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -25,34 +26,28 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from common.utils import text_hist2d, fixed_width_edges  # noqa: E402
+
 BANDS = ['u', 'g', 'r', 'i', 'z', 'y']
 
 
-def _edges(lo, hi, w):
-    """Fixed-width bin edges spanning [lo, hi], aligned to multiples of w."""
-    start = np.floor(lo / w) * w
-    stop = np.ceil(hi / w) * w
-    return np.arange(start, stop + 0.5 * w, w)
-
-
 def plot_param_set(ps, visits_path, plots_dir, bands=BANDS,
-                   elev_bin=2.5, rot_bin=2.5):
+                   elev_bin=2.5, rot_bin=5.0):
     df = pq.read_table(visits_path, columns=['alt', 'rotator_angle', 'band']).to_pandas()
     elev = np.degrees(df['alt'].to_numpy(dtype=float))
     rot = df['rotator_angle'].to_numpy(dtype=float)
     band = df['band'].astype(str).to_numpy()
 
     # Fixed-width bins, shared across all panels so they line up band-to-band.
-    rot_edges = _edges(np.nanmin(rot), np.nanmax(rot), rot_bin)
-    elev_edges = _edges(np.nanmin(elev), np.nanmax(elev), elev_bin)
-    rot_c = 0.5 * (rot_edges[:-1] + rot_edges[1:])
-    elev_c = 0.5 * (elev_edges[:-1] + elev_edges[1:])
+    rot_edges = fixed_width_edges(np.nanmin(rot), np.nanmax(rot), rot_bin)
+    elev_edges = fixed_width_edges(np.nanmin(elev), np.nanmax(elev), elev_bin)
+    nr, ne = len(rot_edges) - 1, len(elev_edges) - 1
 
-    nr, ne = len(rot_c), len(elev_c)
     ncol = 3
     nrow = int(np.ceil(len(bands) / ncol))
     # Size each panel so every bin gets enough room for a 3-digit number
-    # (~0.18 in/bin) — no crowding regardless of bin width.
+    # (~0.22 in/bin) — no crowding regardless of bin width.
     per_bin = 0.22
     pw = max(3.5, nr * per_bin)
     ph = max(2.8, ne * per_bin)
@@ -63,19 +58,9 @@ def plot_param_set(ps, visits_path, plots_dir, bands=BANDS,
     for ax, b in zip(axes, bands):
         m = band == b
         counts[b] = int(m.sum())
-        H, _, _ = np.histogram2d(rot[m], elev[m], bins=[rot_edges, elev_edges])
-        for i in range(nr):
-            for j in range(ne):
-                if H[i, j] > 0:
-                    ax.text(rot_c[i], elev_c[j], f'{int(H[i, j])}',
-                            ha='center', va='center', fontsize=7, color='black')
-        # White background + light dotted grid at every bin edge (ROOT TEXT style).
-        ax.set_xticks(rot_edges, minor=True)
-        ax.set_yticks(elev_edges, minor=True)
-        ax.grid(which='minor', ls=':', lw=0.4, color='0.8')
-        ax.grid(which='major', ls=':', lw=0.6, color='0.6')
-        ax.set_xlim(rot_edges[0], rot_edges[-1])
-        ax.set_ylim(elev_edges[0], elev_edges[-1])
+        # ROOT TEXT style: numbers at non-empty bin centers, white bg, dotted grid.
+        text_hist2d(rot[m], elev[m], ax=ax, xbins=rot_edges, ybins=elev_edges,
+                    fontsize=7)
         ax.set_title(f'{b}-band  (n={counts[b]})', fontsize=11)
     for ax in axes[len(bands):]:
         ax.set_visible(False)

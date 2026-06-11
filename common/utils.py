@@ -96,3 +96,56 @@ def add_repo_root_to_path():
                 sys.path.insert(0, repo_root)
             return repo_root
     raise FileNotFoundError("Could not find repository root (looking for CLAUDE.md)")
+
+
+def fixed_width_edges(lo, hi, width):
+    """Bin edges of fixed `width` spanning [lo, hi], aligned to multiples of width."""
+    start = np.floor(lo / width) * width
+    stop = np.ceil(hi / width) * width
+    return np.arange(start, stop + 0.5 * width, width)
+
+
+def text_hist2d(x, y, *, ax=None, xbins=20, ybins=20, range=None, weights=None,
+                fmt='{:.0f}', fontsize=7, text_color='black', min_count=1,
+                grid=True, grid_color='0.8'):
+    """ROOT 'TEXT'-style 2-D histogram: bin (x, y) and print the entry count at
+    the center of each bin (no color fill), on a white background with a light
+    dotted grid at the bin edges.
+
+    Parameters
+    ----------
+    x, y : array-like
+        Point coordinates to histogram.
+    ax : matplotlib Axes, optional
+        Target axes (default: current axes).
+    xbins, ybins : int or sequence
+        Bin count or explicit bin edges (as for numpy.histogram2d).  For fixed
+        bin *width*, pass edges from :func:`fixed_width_edges`.
+    range, weights : passed through to numpy.histogram2d.
+    fmt : str
+        Format for each printed value (default integer counts).
+    min_count : float
+        Only annotate bins with at least this value (default 1 = non-empty).
+
+    Returns
+    -------
+    ax, H, xedges, yedges : the axes and the numpy.histogram2d result.
+    """
+    if ax is None:
+        ax = plt.gca()
+    H, xe, ye = np.histogram2d(np.asarray(x, dtype=float), np.asarray(y, dtype=float),
+                               bins=[xbins, ybins], range=range, weights=weights)
+    xc = 0.5 * (xe[:-1] + xe[1:])
+    yc = 0.5 * (ye[:-1] + ye[1:])
+    # np.argwhere (not the builtin range, which the `range` kwarg shadows here)
+    for i, j in np.argwhere(H >= min_count):
+        ax.text(xc[i], yc[j], fmt.format(H[i, j]), ha='center', va='center',
+                fontsize=fontsize, color=text_color)
+    if grid:
+        ax.set_xticks(xe, minor=True)
+        ax.set_yticks(ye, minor=True)
+        ax.grid(which='minor', ls=':', lw=0.4, color=grid_color)
+        ax.grid(which='major', ls=':', lw=0.6, color='0.6')
+    ax.set_xlim(xe[0], xe[-1])
+    ax.set_ylim(ye[0], ye[-1])
+    return ax, H, xe, ye
