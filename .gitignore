@@ -21,6 +21,8 @@ env/
 # Keep .gitkeep files but ignore everything else in output/
 */output/*
 !*/output/.gitkeep
+# Archived output snapshots (e.g. aos/output-backup/) — never track these.
+*-backup/
 
 # ===== Large data files =====
 *.fits
