@@ -1,0 +1,18 @@
+# ----------------------------------------------------------------------
+# Snakemake pipeline config.
+# Each param_set lists the date chunks to process (mktable + fit run per
+# chunk; a combine step concatenates the chunks into one param_set-level
+# table that the downstream steps use).  Butler/collection definitions
+# live in param_sets.yaml (referenced by name).
+# Add data -> add/edit a chunk here -> combine + downstream re-run.
+# ----------------------------------------------------------------------
+param_sets:
+  fam_danish_v1_triplets_bin_2x:
+    coord_sys: OCS
+    chunks:
+      - [20260315, 20260327]
+      - [20260331, 20260409]
+  fam_danish_1_0_wep17_3_0_bin2x:
+    coord_sys: OCS
+    chunks:
+      - [20260418, 20260531]

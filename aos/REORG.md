@@ -245,3 +245,42 @@ the whole suite to Snakemake (then the cross-run intrinsic dep + scan become
    scan point (verbose but uniform) vs a compact `scan:` expansion in a run.
 5. **study_* that are inherently difference-based** (bounce) vs absolute
    (thermal, doublez): confirm which default to `measured_OC` vs `measured`.
+
+---
+
+## 9. Phase-1 implementation — chunk/combine pipeline (committed 2026-06-11)
+
+Committed to Snakemake. Files: `aos/Snakefile`, `aos/snake_config.yaml`,
+`aos/code/combine_parquets.py`. (`snake_runs.yaml` retired.)
+
+**New output layout** (param_set grouped; no shared top-level `output/`):
+```
+output/<param_set>/
+  chunks/<dmin>_<dmax>/  donuts.parquet  fits.parquet  visits.parquet   # per chunk
+  donuts.parquet  fits.parquet  visits.parquet                          # COMBINED
+  plots/                                                                # on combined
+  measured_intrinsic/  intrinsic_split/  study_*/                       # downstream (Phase 2)
+```
+
+**Chunk/combine model** (per Aaron's design):
+- Chunks belong to a param_set (`snake_config.yaml: param_sets.<ps>.chunks: [[dmin,dmax],…]`);
+  Butler defs stay in `param_sets.yaml`. No global chunk1/chunk2 list.
+- `mktable` + `fit` run **per chunk** → short-named `donuts/fits/visits.parquet`
+  in `chunks/<dmin>_<dmax>/` (mktable writes its derived name, the rule renames).
+- `combine_{donuts,fits,visits}` concatenate the chunks → one param_set-level
+  table each. **All downstream uses the combined tables.**
+- Add data → add/edit a chunk → Snakemake re-runs `combine` + everything
+  downstream automatically (the incremental DAG, the whole point).
+
+**The Snakefile owns all paths** and passes them explicitly to the scripts
+(`--output`/`--output-dir`), so the convention lives in one place.
+
+Phase-1 scope: `mktable → fit → combine → plots`. Validated: path logic +
+wildcard disambiguation (combined `output/<ps>/X.parquet` vs chunk
+`output/<ps>/chunks/<d>_<d>/X.parquet`; `ps` constrained to no-slash).
+Not yet run end-to-end (snakemake/pyarrow unavailable locally — RSP test pending).
+
+**Phase 2 (next):** `movie` (per chunk); papermill notebook rules for
+`build_measured_intrinsic`, `intrinsic_split`, `study_*`; the parameter scan
+(nkeep/alt/rot) and cross-run intrinsic dependency; `resources: mem_mb` for
+parallel-safe memory; CCS fits.

@@ -1,85 +1,104 @@
 # ----------------------------------------------------------------------
-# Snakemake PROTOTYPE — AOS FAM script steps (mktable -> fit -> {plots, movie}).
+# AOS FAM pipeline (Snakemake).  Phase 1: mktable + fit per chunk ->
+# combine -> plots, organised under output/<param_set>/.
 #
-# Evaluation only; run_pipeline.py remains the production orchestrator.
-# Reuses param_sets.yaml; runs to build are listed in snake_runs.yaml.
+# Config: snake_config.yaml (param_sets -> date chunks); Butler/collection
+# definitions in param_sets.yaml (referenced by name).
 #
-#   snakemake -n                       # dry-run: show the plan / what's stale
-#   snakemake -j4                       # build, up to 4 jobs in parallel
-#   snakemake -j4 output/<stem>/trio_comparison_all.pdf   # build one target
-#   snakemake --dag | dot -Tpng > dag.png                 # visualize the DAG
+#   snakemake -n                 # dry-run: show the plan
+#   snakemake -j4                # build (4 parallel; add --resources mem_mb=... on RSP)
+#   snakemake --dag | dot -Tpng > dag.png
 #
-# Note: mktable needs Butler/RSP access (run there); locally `-n` shows the
-# plan and existing donut/fits files are treated as up-to-date.
+# Layout:
+#   output/<ps>/chunks/<dmin>_<dmax>/{donuts,fits,visits}.parquet   (per chunk)
+#   output/<ps>/{donuts,fits,visits}.parquet                        (combined)
+#   output/<ps>/plots/                                              (on combined)
 # ----------------------------------------------------------------------
 import yaml
 
 PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
-RUNCFG     = yaml.safe_load(open("snake_runs.yaml"))["runs"]
+CFG        = yaml.safe_load(open("snake_config.yaml"))["param_sets"]
+PSETS      = list(CFG)
 
-def resolve(run):
-    r = {k: v for k, v in PARAM_SETS.get(RUNCFG[run]["param_set"], {}).items()
-         if k != "description"}
-    r.update(RUNCFG[run]); r.setdefault("coord_sys", "OCS")
-    return r
-
-def collection_phrase(r):                       # matches run_pipeline.collection_phrase
+def phrase(ps):                                   # matches run_pipeline / intrinsics_lib
+    r = PARAM_SETS.get(ps, {})
     if r.get("collection_phrase"):
         return r["collection_phrase"]
     parts = r["fam_collections"][0].split("/")
     return parts[2] if (parts[0] == "u" and len(parts) > 2) else r["fam_collections"][0]
 
-def stem_of(run):
-    r = resolve(run)
-    return f'{collection_phrase(r)}_{r["day_obs_min"]}_{r["day_obs_max"]}'
+def chunks(ps):  return [(int(a), int(b)) for a, b in CFG[ps]["chunks"]]
+def coord(ps):   return CFG[ps].get("coord_sys", "OCS")
+def chunk_files(ps, name):
+    return [f"output/{ps}/chunks/{a}_{b}/{name}" for a, b in chunks(ps)]
 
-STEM2RUN = {stem_of(run): run for run in RUNCFG}            # reverse lookup
-STEMS    = list(STEM2RUN)
-
-# stem ends in _<8 digits>_<8 digits>; disambiguates {stem}.parquet from
-# {stem}_fits.parquet and the {stem}/ plots directory.
+# param_set names have no slash; keeps output/<ps>/X.parquet (combined)
+# distinct from output/<ps>/chunks/<d>_<d>/X.parquet (per chunk).
 wildcard_constraints:
-    stem = r".+_\d{8}_\d{8}"
+    ps   = r"[A-Za-z0-9_.+-]+",
+    dmin = r"\d{8}",
+    dmax = r"\d{8}",
 
 rule all:
     input:
-        expand("output/{stem}/trio_comparison_all.pdf", stem=STEMS),
-        expand("output/{stem}/.movie.done",             stem=STEMS),
+        expand("output/{ps}/donuts.parquet",              ps=PSETS),
+        expand("output/{ps}/fits.parquet",                ps=PSETS),
+        expand("output/{ps}/visits.parquet",              ps=PSETS),
+        expand("output/{ps}/plots/trio_comparison_all.pdf", ps=PSETS),
 
-rule mktable:                                    # Butler -> donut parquet (+ intrinsic)
-    output: "output/{stem}.parquet"
+# ---- per chunk: mktable (Butler) -> donuts + visits ----
+rule mktable:
+    output:
+        donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
+        visits = "output/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
     params:
-        ps   = lambda w: resolve(STEM2RUN[w.stem])["param_set"],
-        dmin = lambda w: resolve(STEM2RUN[w.stem])["day_obs_min"],
-        dmax = lambda w: resolve(STEM2RUN[w.stem])["day_obs_max"],
-    log: "logs/{stem}.mktable.log"
+        cdir = lambda w: f"output/{w.ps}/chunks/{w.dmin}_{w.dmax}",
+        ph   = lambda w: phrase(w.ps),
+    log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
-        "python code/run_mktable.py --param-set {params.ps} "
-        "--day-obs-min {params.dmin} --day-obs-max {params.dmax} "
-        "--calc-intrinsics > {log} 2>&1"
+        r"""
+        python code/run_mktable.py --param-set {wildcards.ps} \
+            --day-obs-min {wildcards.dmin} --day-obs-max {wildcards.dmax} \
+            --calc-intrinsics --output-dir {params.cdir} > {log} 2>&1
+        mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}.parquet {output.donuts}
+        mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}_visits.parquet {output.visits}
+        """
 
-rule fit:                                        # donut -> DZ fits parquet
-    input:  "output/{stem}.parquet"
-    output: "output/{stem}_fits.parquet"
-    params: coord = lambda w: resolve(STEM2RUN[w.stem])["coord_sys"]
-    log:    "logs/{stem}.fit.log"
+# ---- per chunk: Double-Zernike fit ----
+rule fit:
+    input:  "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet"
+    output: "output/{ps}/chunks/{dmin}_{dmax}/fits.parquet"
+    params: coord = lambda w: coord(w.ps)
+    log: "logs/{ps}.{dmin}_{dmax}.fit.log"
     shell:
-        "python code/run_dz_fit.py {input} --coord-sys {params.coord} > {log} 2>&1"
+        "python code/run_dz_fit.py {input} --coord-sys {params.coord} "
+        "--output {output} > {log} 2>&1"
 
-rule plots:                                      # fit-param + trio PDFs
-    input:  donut="output/{stem}.parquet", fits="output/{stem}_fits.parquet"
-    output: "output/{stem}/trio_comparison_all.pdf"     # representative artifact
-    params: coord = lambda w: resolve(STEM2RUN[w.stem])["coord_sys"]
-    log:    "logs/{stem}.plots.log"
-    shell:
-        "python code/run_dz_plots.py {input.donut} {input.fits} "
-        "--coord-sys {params.coord} --no-single-image > {log} 2>&1"
+# ---- combine chunks -> one param_set-level table each ----
+rule combine_donuts:
+    input:  lambda w: chunk_files(w.ps, "donuts.parquet")
+    output: "output/{ps}/donuts.parquet"
+    shell:  "python code/combine_parquets.py {input} --output {output}"
 
-rule movie:                                      # per-image residual maps + mp4
-    input:  donut="output/{stem}.parquet", fits="output/{stem}_fits.parquet"
-    output: touch("output/{stem}/.movie.done")          # sentinel (many JPEGs + optional mp4)
-    params: coord = lambda w: resolve(STEM2RUN[w.stem])["coord_sys"]
-    log:    "logs/{stem}.movie.log"
+rule combine_fits:
+    input:  lambda w: chunk_files(w.ps, "fits.parquet")
+    output: "output/{ps}/fits.parquet"
+    shell:  "python code/combine_parquets.py {input} --output {output}"
+
+rule combine_visits:
+    input:  lambda w: chunk_files(w.ps, "visits.parquet")
+    output: "output/{ps}/visits.parquet"
+    shell:  "python code/combine_parquets.py {input} --output {output}"
+
+# ---- validation plots on the combined tables ----
+rule plots:
+    input:
+        donuts = "output/{ps}/donuts.parquet",
+        fits   = "output/{ps}/fits.parquet",
+    output: "output/{ps}/plots/trio_comparison_all.pdf"
+    params: coord = lambda w: coord(w.ps)
+    log: "logs/{ps}.plots.log"
     shell:
-        "python code/run_dz_plots.py {input.donut} {input.fits} "
-        "--coord-sys {params.coord} --no-fit-params --no-trio > {log} 2>&1"
+        "python code/run_dz_plots.py {input.donuts} {input.fits} "
+        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/plots "
+        "--no-single-image > {log} 2>&1"
