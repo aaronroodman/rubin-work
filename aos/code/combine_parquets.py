@@ -10,14 +10,15 @@ Streams one row group at a time (constant memory ~ a single row group), so it
 combines the large per-donut tables without loading everything into RAM —
 important on the 16 GiB RSP allocation.
 
-Inputs come from the same run_mktable but can differ slightly in schema between
-chunks: a chunk may be missing optional columns (e.g. ``*_donut_id`` strings
-absent for some processing dates) or carry a narrower numeric type (e.g.
-``zk_CCS`` as ``list<float>`` in one chunk, ``list<double>`` in another).  We
-build a **unified schema** (union of all columns, recursively type-promoted)
-up front and conform every row group to it — casting types and null-filling
-absent columns — so the append succeeds.  Columns not present in every input
-are reported; genuinely incompatible types raise a clear, column-named error.
+Inputs come from the same run_mktable but can differ between chunks (processing
+drift): a chunk may lack optional columns (e.g. ``*_donut_id`` absent for some
+dates) or carry a different type (``zk_CCS`` as ``list<float>`` vs ``list<double>``;
+``model_flux`` as a per-stamp ``list<double>`` vs a bare scalar).  The combined
+schema keeps only the columns **present in every input with a reconcilable
+type** (numeric/list widths are promoted); columns absent from some input, or
+with irreconcilable types (e.g. list vs scalar), are **dropped with a note**.
+This guarantees a null-free, uniform output that the downstream astropy
+``QTable.read`` can parse (it chokes on null strings).
 """
 import argparse
 import os
@@ -30,10 +31,8 @@ import pyarrow.types as pat
 def promote_type(a, b):
     """Common type two columns can both be cast to (recurses into lists).
 
-    Handles list-vs-scalar of the same element family by unifying to the list
-    type — a chunk that wrote a bare scalar where others wrote a per-stamp array
-    (e.g. model_flux when estimatorInfo was empty) is reconciled to the list
-    type and null-filled by conform_table (the scalar can't be reshaped).
+    Raises TypeError for irreconcilable types (e.g. list vs scalar, string vs
+    number) so the caller can drop that column rather than null-fill it.
     """
     if a.equals(b):
         return a
@@ -45,10 +44,8 @@ def promote_type(a, b):
     b_list = pat.is_list(b) or pat.is_large_list(b)
     if a_list and b_list:
         return pa.list_(promote_type(a.value_type, b.value_type))
-    if a_list and not b_list:
-        return pa.list_(promote_type(a.value_type, b))
-    if b_list and not a_list:
-        return pa.list_(promote_type(b.value_type, a))
+    if a_list != b_list:
+        raise TypeError(f'list vs scalar: {a} vs {b}')
     if pat.is_floating(a) and pat.is_floating(b):
         return a if a.bit_width >= b.bit_width else b
     if pat.is_integer(a) and pat.is_integer(b):
@@ -60,40 +57,46 @@ def promote_type(a, b):
 
 
 def build_unified_schema(schemas):
-    """Union of fields across schemas (first-seen order), type-promoted."""
-    types, order = {}, []
-    for sch in schemas:
-        for f in sch:
-            if f.name not in types:
-                types[f.name] = f.type
-                order.append(f.name)
-            elif not types[f.name].equals(f.type):
-                try:
-                    types[f.name] = promote_type(types[f.name], f.type)
-                except TypeError as e:
-                    raise TypeError(f'column {f.name!r}: {e}')
-    return pa.schema([pa.field(n, types[n]) for n in order])
+    """Schema of columns present in **all** inputs with a reconcilable type.
+
+    Returns ``(schema, dropped)`` where ``dropped`` maps a dropped column name
+    to the reason ('absent from N/M inputs' or 'incompatible types: ...').
+    """
+    name_sets = [set(s.names) for s in schemas]
+    common = set.intersection(*name_sets) if name_sets else set()
+    order = [f.name for f in schemas[0] if f.name in common]  # first-seen order
+
+    types, dropped = {}, {}
+    for name in order:
+        t = None
+        try:
+            for s in schemas:
+                ft = s.field(name).type
+                t = ft if t is None else promote_type(t, ft)
+            types[name] = t
+        except TypeError as e:
+            dropped[name] = f'incompatible types: {e}'
+
+    # Columns missing from any input.
+    union = set().union(*name_sets) if name_sets else set()
+    for name in sorted(union - common):
+        n_missing = sum(name not in ns for ns in name_sets)
+        dropped[name] = f'absent from {n_missing}/{len(schemas)} inputs'
+
+    keep = [n for n in order if n in types]
+    return pa.schema([pa.field(n, types[n]) for n in keep]), dropped
 
 
 def conform_table(tbl, schema):
-    """Rebuild ``tbl`` to match ``schema``: cast types, null-fill missing
-    columns, order columns as in ``schema``."""
-    cols = set(tbl.column_names)
+    """Reorder ``tbl`` to ``schema`` and cast columns whose type differs
+    (e.g. list<float> -> list<double>).  All schema columns are present in every
+    input by construction, so no null-filling is needed."""
     data = {}
     for field in schema:
-        if field.name in cols:
-            col = tbl.column(field.name)
-            if not col.type.equals(field.type):
-                try:
-                    col = col.cast(field.type)
-                except (pa.ArrowNotImplementedError, pa.ArrowInvalid,
-                        pa.ArrowTypeError):
-                    # Irreconcilable representation (e.g. scalar where the
-                    # unified type is a list) — null-fill this chunk's column.
-                    col = pa.nulls(tbl.num_rows, type=field.type)
-            data[field.name] = col
-        else:
-            data[field.name] = pa.nulls(tbl.num_rows, type=field.type)
+        col = tbl.column(field.name)
+        if not col.type.equals(field.type):
+            col = col.cast(field.type)
+        data[field.name] = col
     return pa.table(data, schema=schema)
 
 
@@ -105,26 +108,18 @@ def main():
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
 
-    # Pass 1: collect schemas and build the unified target schema.
+    # Pass 1: schemas -> unified (common, reconcilable) schema.
     pfs = [pq.ParquetFile(p) for p in args.inputs]
     schemas = [pf.schema_arrow for pf in pfs]
-    unified = build_unified_schema(schemas)
+    unified, dropped = build_unified_schema(schemas)
 
-    # Report columns not present in every input (so silent null-fill is visible)
-    # and any column whose type had to be promoted.
-    all_names = [set(s.names) for s in schemas]
-    common = set.intersection(*all_names) if all_names else set()
+    for name, reason in sorted(dropped.items()):
+        print(f'  note: dropped column {name!r} — {reason}')
     for field in unified:
-        if field.name not in common:
-            missing = [args.inputs[i] for i, names in enumerate(all_names)
-                       if field.name not in names]
-            print(f'  note: column {field.name!r} absent from {len(missing)}/'
-                  f'{len(args.inputs)} input(s); null-filled there')
-        else:
-            srctypes = {s.field(field.name).type for s in schemas}
-            if len(srctypes) > 1:
-                print(f'  note: column {field.name!r} promoted to {field.type} '
-                      f'from {sorted(str(t) for t in srctypes)}')
+        srctypes = {str(s.field(field.name).type) for s in schemas}
+        if len(srctypes) > 1:
+            print(f'  note: column {field.name!r} promoted to {field.type} '
+                  f'from {sorted(srctypes)}')
 
     # Pass 2: stream row groups, conforming each to the unified schema.
     writer = pq.ParquetWriter(args.output, unified, compression='snappy')
@@ -140,7 +135,8 @@ def main():
     finally:
         writer.close()
 
-    print(f'combined {len(args.inputs)} files -> {args.output}: {total_rows} rows')
+    print(f'combined {len(args.inputs)} files -> {args.output}: {total_rows} rows '
+          f'({len(unified.names)} columns, {len(dropped)} dropped)')
 
 
 if __name__ == '__main__':
