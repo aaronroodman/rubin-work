@@ -67,6 +67,7 @@ rule mktable:
     params:
         cdir = lambda w: f"output/{w.ps}/chunks/{w.dmin}_{w.dmax}",
         ph   = lambda w: phrase(w.ps),
+    resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
         r"""
@@ -82,6 +83,7 @@ rule fit:
     input:  "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet"
     output: "output/{ps}/chunks/{dmin}_{dmax}/fits.parquet"
     params: coord = lambda w: coord(w.ps)
+    resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.fit.log"
     shell:
         "python code/run_dz_fit.py {input} --coord-sys {params.coord} "
@@ -91,16 +93,19 @@ rule fit:
 rule combine_donuts:
     input:  lambda w: chunk_files(w.ps, "donuts.parquet")
     output: "output/{ps}/donuts.parquet"
+    resources: mem_mb=3000
     shell:  "python code/combine_parquets.py {input} --output {output}"
 
 rule combine_fits:
     input:  lambda w: chunk_files(w.ps, "fits.parquet")
     output: "output/{ps}/fits.parquet"
+    resources: mem_mb=2000
     shell:  "python code/combine_parquets.py {input} --output {output}"
 
 rule combine_visits:
     input:  lambda w: chunk_files(w.ps, "visits.parquet")
     output: "output/{ps}/visits.parquet"
+    resources: mem_mb=2000
     shell:  "python code/combine_parquets.py {input} --output {output}"
 
 # ---- validation plots on the combined tables ----
@@ -110,6 +115,7 @@ rule plots:
         fits   = "output/{ps}/fits.parquet",
     output: "output/{ps}/plots/trio_comparison_all.pdf"
     params: coord = lambda w: coord(w.ps)
+    resources: mem_mb=4000
     log: "logs/{ps}.plots.log"
     shell:
         "python code/run_dz_plots.py {input.donuts} {input.fits} "
