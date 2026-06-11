@@ -24,6 +24,10 @@ env/
 # Archived output snapshots (e.g. aos/output-backup/) — never track these.
 *-backup/
 
+# ===== Log directories (per-run logs are ephemeral) =====
+*/logs/*
+!*/logs/.gitkeep
+
 # ===== Large data files =====
 *.fits
 *.fits.gz
@@ -52,4 +56,3 @@ desktop.ini
 # ===== Misc =====
 .env
 *.log
-!aos/logs/*.log
