@@ -557,8 +557,9 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
 
     # Per-donut fit-quality / status from estimatorInfo (same length handling
     # as blur).  chi2 = donut-fit chi-square; lstsq_* come straight from
-    # scipy.optimize.least_squares (status: 0=max-iter/not converged, 1-4
-    # converged); fit_success / fit_exception flag failures.
+    # scipy.optimize.least_squares (status: 1-4 converged, 0=max-iter).
+    # (fit_success / exception_status omitted: in the aggregate table they are
+    # uniformly True / empty even for not-used donuts, so they carry no info.)
     def _add_estimator_col(out_name, ei_key, default=np.nan):
         v = (estimator_info.get(ei_key)
              if isinstance(estimator_info, dict) else None)
@@ -577,9 +578,6 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
     _add_estimator_col('lstsq_cost', 'lstsq_cost')
     _add_estimator_col('lstsq_optimality', 'lstsq_optimality')
     _add_estimator_col('lstsq_status', 'lstsq_status', default=-99)
-    _add_estimator_col('fit_success', 'fit_success', default=False)
-    _add_estimator_col('fit_exception', 'exception_status', default='')
-    _add_estimator_col('blur_clipped', 'blur_clipped', default=False)
 
     # Fitted model per donut: dx/dy = centering offset, flux per stamp.
     # Each is a 2-element array [stamp0, stamp1] for the intra/extra pair
