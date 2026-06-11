@@ -48,6 +48,31 @@ except ImportError:
     HAS_M1M3_UTILS = False
 
 
+async def _close_efd_client(efd_client):
+    """Close an EfdClient's underlying aioinflux/aiohttp session so the run
+    doesn't end with 'Unclosed client session' warnings.  Best-effort and
+    version-tolerant (tries the aioinflux client's close(), then the raw
+    aiohttp session's close())."""
+    import inspect
+    ic = getattr(efd_client, 'influx_client', None)
+    closers = []
+    if ic is not None:
+        closers.append(getattr(ic, 'close', None))
+        sess = getattr(ic, 'session', None)
+        if sess is not None:
+            closers.append(getattr(sess, 'close', None))
+    for fn in closers:
+        if fn is None:
+            continue
+        try:
+            res = fn()
+            if inspect.isawaitable(res):
+                await res
+            return
+        except Exception:
+            continue
+
+
 # ============================================================
 # Parameter Sets (loaded from param_sets.yaml)
 # ============================================================
@@ -1157,6 +1182,7 @@ async def get_rotator_data(visits_df, visit_pairs, butler_repo,
 
         # Step 1: try EFD first (faster — MTRotator.rotation queries)
         efd_df = None
+        efd_client = None
         try:
             efd_client = makeEfdClient()
             efd_df = await get_efd_rotator_angles(efd_client, butler_rot, missing_pairs)
@@ -1164,6 +1190,9 @@ async def get_rotator_data(visits_df, visit_pairs, butler_repo,
         except Exception as e:
             print(f"Warning: Could not access EFD: {e}")
             rotator_df['efd_rotator_angle'] = np.nan
+        finally:
+            if efd_client is not None:
+                await _close_efd_client(efd_client)
 
         # Step 2: for visits still missing (EFD returned NaN too), fall back
         # to Butler visitInfo (much slower; only hit if needed)
@@ -2159,6 +2188,7 @@ async def run_mktable(
 
     # Thermal data (visit_info only)
     if include_thermal:
+        efd_client = None
         try:
             efd_client = makeEfdClient()
             thermal_df = await get_thermal_data(
@@ -2168,6 +2198,9 @@ async def run_mktable(
             visit_info = merge_thermal_to_visit_info(thermal_df, visit_info)
         except Exception as e:
             print(f"Warning: Could not retrieve thermal data: {e}")
+        finally:
+            if efd_client is not None:
+                await _close_efd_client(efd_client)
 
     # Compute per-visit quality flag using the standard cuts. Stored as
     # `visit_quality_pass` so downstream code can filter without
