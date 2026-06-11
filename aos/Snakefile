@@ -80,33 +80,38 @@ rule mktable:
 
 # ---- per chunk: Double-Zernike fit ----
 rule fit:
-    input:  "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet"
+    input:
+        donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
+        visits = "output/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
     output: "output/{ps}/chunks/{dmin}_{dmax}/fits.parquet"
     params: coord = lambda w: coord(w.ps)
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.fit.log"
     shell:
-        "python code/run_dz_fit.py {input} --coord-sys {params.coord} "
-        "--output {output} > {log} 2>&1"
+        "python code/run_dz_fit.py {input.donuts} --coord-sys {params.coord} "
+        "--visits {input.visits} --output {output} > {log} 2>&1"
 
 # ---- combine chunks -> one param_set-level table each ----
 rule combine_donuts:
     input:  lambda w: chunk_files(w.ps, "donuts.parquet")
     output: "output/{ps}/donuts.parquet"
     resources: mem_mb=3000
-    shell:  "python code/combine_parquets.py {input} --output {output}"
+    log:    "logs/{ps}.combine_donuts.log"
+    shell:  "python code/combine_parquets.py {input} --output {output} > {log} 2>&1"
 
 rule combine_fits:
     input:  lambda w: chunk_files(w.ps, "fits.parquet")
     output: "output/{ps}/fits.parquet"
     resources: mem_mb=2000
-    shell:  "python code/combine_parquets.py {input} --output {output}"
+    log:    "logs/{ps}.combine_fits.log"
+    shell:  "python code/combine_parquets.py {input} --output {output} > {log} 2>&1"
 
 rule combine_visits:
     input:  lambda w: chunk_files(w.ps, "visits.parquet")
     output: "output/{ps}/visits.parquet"
     resources: mem_mb=2000
-    shell:  "python code/combine_parquets.py {input} --output {output}"
+    log:    "logs/{ps}.combine_visits.log"
+    shell:  "python code/combine_parquets.py {input} --output {output} > {log} 2>&1"
 
 # ---- validation plots on the combined tables ----
 rule plots:

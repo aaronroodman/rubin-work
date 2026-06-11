@@ -24,6 +24,10 @@ def main():
     parser.add_argument('--output', default=None,
                         help='Output fit parquet file '
                              '(default: {input_stem}_fits.parquet)')
+    parser.add_argument('--visits', default=None,
+                        help='Visits sidecar parquet (default: auto — '
+                             '{input_stem}_visits.parquet, else visits.parquet '
+                             'in the same directory)')
     parser.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'],
                         help='Coordinate system (default: OCS)')
     parser.add_argument('--bad-fit-threshold', type=float, default=2.0,
@@ -39,6 +43,7 @@ def main():
         output_file=args.output,
         bad_fit_threshold=args.bad_fit_threshold,
         min_donuts=args.min_donuts,
+        visits_file=args.visits,
     )
 
 

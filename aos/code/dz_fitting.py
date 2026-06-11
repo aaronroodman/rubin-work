@@ -482,7 +482,7 @@ def flag_bad_fits(fit_table, prefix, threshold=2.0, min_donuts=200):
 
 def run_double_zernike_fits(input_file, coord_sys='OCS',
                             output_file=None, bad_fit_threshold=2.0,
-                            min_donuts=200):
+                            min_donuts=200, visits_file=None):
     """Run the full Double Zernike fitting pipeline.
 
     Loads input HDF5 (donuts + visits tables), derives Noll indices,
@@ -516,10 +516,18 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
     is_parquet = input_file.suffix == '.parquet'
 
     if is_parquet:
-        visits_file = input_file.parent / f'{input_file.stem}_visits.parquet'
+        # Resolve the visits sidecar.  An explicit visits_file wins; otherwise
+        # try the legacy <stem>_visits.parquet, then fall back to visits.parquet
+        # in the same directory (the Snakemake output/<ps>/chunks/<...>/ layout).
+        if visits_file is not None:
+            visits_file = Path(visits_file)
+        else:
+            cand = input_file.parent / f'{input_file.stem}_visits.parquet'
+            visits_file = cand if cand.exists() else input_file.parent / 'visits.parquet'
         if output_file is None:
             output_file = input_file.parent / f'{input_file.stem}_fits.parquet'
         print(f"Loading: {input_file} (parquet, one row group per visit)")
+        print(f"  visits: {visits_file}")
         visit_info = QTable.read(str(visits_file))
         print(f"  {len(visit_info)} visits")
     else:
