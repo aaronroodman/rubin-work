@@ -581,6 +581,14 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
     _add_estimator_col('fit_exception', 'exception_status', default='')
     _add_estimator_col('blur_clipped', 'blur_clipped', default=False)
 
+    # Fitted model per donut: dx/dy = centering offset, flux per stamp.
+    # Each is a 2-element array [stamp0, stamp1] for the intra/extra pair
+    # (stored like the zk_* array columns).  Useful for centering and a
+    # flux-based noise/SNR assessment.
+    _add_estimator_col('model_dx', 'model_dx')
+    _add_estimator_col('model_dy', 'model_dy')
+    _add_estimator_col('model_flux', 'model_flux')
+
     # Focal plane coordinates (optional, expensive per-detector loop)
     if calc_focal_plane:
         nstars = len(aosTable_sel)
