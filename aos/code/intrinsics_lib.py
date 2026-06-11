@@ -555,6 +555,32 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
     else:
         aosTable_sel['blur'] = np.nan
 
+    # Per-donut fit-quality / status from estimatorInfo (same length handling
+    # as blur).  chi2 = donut-fit chi-square; lstsq_* come straight from
+    # scipy.optimize.least_squares (status: 0=max-iter/not converged, 1-4
+    # converged); fit_success / fit_exception flag failures.
+    def _add_estimator_col(out_name, ei_key, default=np.nan):
+        v = (estimator_info.get(ei_key)
+             if isinstance(estimator_info, dict) else None)
+        if v is None:
+            aosTable_sel[out_name] = default
+            return
+        arr = np.asarray(v)
+        if len(arr) == len(aosTable):
+            aosTable_sel[out_name] = arr[select]
+        elif len(arr) == len(aosTable_sel):
+            aosTable_sel[out_name] = arr
+        else:
+            aosTable_sel[out_name] = default
+
+    _add_estimator_col('chi2', 'chi_square')
+    _add_estimator_col('lstsq_cost', 'lstsq_cost')
+    _add_estimator_col('lstsq_optimality', 'lstsq_optimality')
+    _add_estimator_col('lstsq_status', 'lstsq_status', default=-99)
+    _add_estimator_col('fit_success', 'fit_success', default=False)
+    _add_estimator_col('fit_exception', 'exception_status', default='')
+    _add_estimator_col('blur_clipped', 'blur_clipped', default=False)
+
     # Focal plane coordinates (optional, expensive per-detector loop)
     if calc_focal_plane:
         nstars = len(aosTable_sel)
