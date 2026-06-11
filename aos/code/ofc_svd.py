@@ -38,6 +38,9 @@ __all__ = [
     'find_ofc_normalization_yaml', 'load_normalization_weights',
     'recover_dof_per_visit', 'OFCSvd', 'build_ofc_svd',
     'dz_table_to_W', 'project_dz_table', 'vmode_fwhm_scale',
+    'NORM_SCHEMES', 'FP_ZERNIKE_NAMES', 'compute_normalization_components',
+    'normalization_weights_by_scheme', 'focal_zernike_at_points',
+    'make_dz_basis_vector', 'decompose_into_dz',
 ]
 
 # 50-DOF state vector: M2 hexapod (5), Camera hexapod (5),
@@ -232,6 +235,145 @@ def project_dz_table(fit_table, prefix, svd):
     W = dz_table_to_W(fit_table, prefix, svd.kj_grid)
     A = svd.project_amplitudes(W)
     return svd.vmodes(A), svd.dof(A), A, W
+
+
+# ----------------------------------------------------------------------
+# Normalization-weight schemes (Ã = A @ diag(n_j))
+# ----------------------------------------------------------------------
+# Each scheme sets n_j; only some are invariant under x_j -> alpha*x_j (a
+# change of physical units for DOF j).  See the V-mode normalization study.
+#   'default'   — stored OFC weights as-is            (NOT unit-invariant)
+#   'rf'        — computed r_j * f_j                   (NOT unit-invariant)
+#   'r_only'    — range weights only:    n_j = r_j     (unit-invariant)
+#   'inv_f'     — inverse FWHM weights:  n_j = 1/f_j   (unit-invariant)
+#   'geom_mean' — geometric mean: n_j = sqrt(r_j/f_j)  (unit-invariant; default)
+#   'tunable'   — n_j = r_j**a * f_j**(a-1), a=`a`     (unit-invariant any a)
+NORM_SCHEMES = ('default', 'rf', 'r_only', 'inv_f', 'geom_mean', 'tunable')
+
+# Focal-plane (double-Zernike) Noll index names, k = 1..6.
+FP_ZERNIKE_NAMES = {1: 'piston', 2: 'x-tilt', 3: 'y-tilt',
+                    4: 'defocus', 5: 'astig-45', 6: 'astig-0'}
+
+
+def compute_normalization_components(ofc_data, dz_sensitivity_matrix,
+                                     field_angles):
+    """Range (r_j) and FWHM (f_j) normalization-weight components.
+
+    Mirrors ts_ofc ``generate_normalization_weights.compute_normalization_weights``:
+    ``r_j`` from hexapod stroke / bending-mode force range over the max
+    rotation-matrix element; ``f_j`` from the RSS of the FWHM sensitivity
+    (``convertZernikesToPsfWidth``) across field positions.  Imports
+    ``lsst.ts.ofc`` / ``lsst.ts.wep`` lazily.  Returns ``(range_weights,
+    fwhm_weights)``, each length ``n_dof`` (50).
+    """
+    from lsst.ts.ofc import BendModeToForce
+    from lsst.ts.wep.utils import convertZernikesToPsfWidth
+
+    m1m3_bending_range = ofc_data.m1m3_force_range / 20
+    m2_bending_range = ofc_data.m2_force_range / 20
+    m1m3_bmf = BendModeToForce('M1M3', ofc_data)
+    m2_bmf = BendModeToForce('M2', ofc_data)
+    range_weights = np.concatenate((
+        ofc_data.rb_stroke,
+        m1m3_bending_range / np.max(np.abs(m1m3_bmf.rot_mat), axis=0),
+        m2_bending_range / np.max(np.abs(m2_bmf.rot_mat), axis=0),
+    ))
+
+    sens = dz_sensitivity_matrix.evaluate(field_angles, rotation_angle=0.0)
+    sens = sens[:, ofc_data.zn_idx, :]
+    n_dof = sens.shape[2]
+    fwhm = np.zeros(sens.shape)
+    for idy in range(sens.shape[0]):
+        fwhm[idy, ...] = convertZernikesToPsfWidth(sens[idy, ...].T).T
+    fwhm_2d = fwhm.reshape((-1, n_dof))
+    fwhm_weights = np.sqrt(np.sum(np.square(fwhm_2d), axis=0))
+    return range_weights, fwhm_weights
+
+
+def normalization_weights_by_scheme(scheme, range_weights=None,
+                                    fwhm_weights=None, *, stored=None, a=0.5):
+    """Normalization vector ``n_j`` for a named :data:`NORM_SCHEMES` scheme.
+
+    ``range_weights`` / ``fwhm_weights`` come from
+    :func:`compute_normalization_components`.  ``scheme='default'`` returns the
+    ``stored`` OFC weights (which must be passed); ``'tunable'`` uses exponent
+    ``a`` (``a=0`` → ``1/f``, ``a=0.5`` → ``sqrt(r/f)``, ``a=1`` → ``r_only``).
+    """
+    if scheme == 'default':
+        if stored is None:
+            raise ValueError("scheme 'default' requires stored= weights")
+        return np.asarray(stored, dtype=float)
+    if range_weights is None or fwhm_weights is None:
+        raise ValueError(f'scheme {scheme!r} needs range_weights and fwhm_weights')
+    r = np.asarray(range_weights, dtype=float)
+    f = np.asarray(fwhm_weights, dtype=float)
+    if scheme == 'rf':
+        return r * f
+    if scheme == 'r_only':
+        return r
+    if scheme == 'inv_f':
+        return 1.0 / f
+    if scheme == 'geom_mean':
+        return np.sqrt(r / f)
+    if scheme == 'tunable':
+        return (r ** a) * (f ** (a - 1.0))
+    raise ValueError(f'Unknown normalization scheme {scheme!r}; '
+                     f'expected one of {NORM_SCHEMES}')
+
+
+# ----------------------------------------------------------------------
+# Double-Zernike basis vectors (pupil Noll j x focal-plane Noll k)
+# ----------------------------------------------------------------------
+def focal_zernike_at_points(k_noll, rho, theta):
+    """Noll focal-plane Zernike ``Z_k`` (k = 1..6) at field points ``(rho, theta)``."""
+    rho = np.asarray(rho, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    if k_noll == 1:
+        return np.ones_like(rho)
+    if k_noll == 2:
+        return 2.0 * rho * np.cos(theta)
+    if k_noll == 3:
+        return 2.0 * rho * np.sin(theta)
+    if k_noll == 4:
+        return np.sqrt(3.0) * (2.0 * rho ** 2 - 1.0)
+    if k_noll == 5:
+        return np.sqrt(6.0) * rho ** 2 * np.sin(2.0 * theta)
+    if k_noll == 6:
+        return np.sqrt(6.0) * rho ** 2 * np.cos(2.0 * theta)
+    raise ValueError(f'Noll index {k_noll} not implemented (only 1-6)')
+
+
+def make_dz_basis_vector(j_noll, k_fp, zn_array, fp_zernike_dict, n_fp, n_zernike):
+    """Double-Zernike basis vector: pupil Noll ``j_noll`` × focal-plane ``k_fp``.
+
+    Places the focal-plane values ``fp_zernike_dict[k_fp]`` (one per field
+    position) at the ``j_noll`` slot of each field position's Zernike block, in a
+    flat vector of length ``n_fp * n_zernike`` (field-position outer, Zernike
+    inner).  Returns None if ``j_noll`` is not in ``zn_array``.
+    """
+    match = np.where(np.asarray(zn_array) == j_noll)[0]
+    if len(match) == 0:
+        return None
+    p = int(match[0])
+    fp_vals = fp_zernike_dict[k_fp]
+    vec = np.zeros(n_fp * n_zernike)
+    for s in range(n_fp):
+        vec[s * n_zernike + p] = fp_vals[s]
+    return vec
+
+
+def decompose_into_dz(z_vec, dz_vectors_dict):
+    """Project ``z_vec`` onto each double-Zernike basis vector.
+
+    DZ basis vectors for distinct ``(j, k_fp)`` have non-overlapping support, so
+    each projection is ``(z·d)/(d·d)``.  Returns ``{(j, k_fp): coeff}``.
+    """
+    coeffs = {}
+    for key, d in dz_vectors_dict.items():
+        norm2 = float(np.dot(d, d))
+        if norm2 > 0:
+            coeffs[key] = float(np.dot(z_vec, d) / norm2)
+    return coeffs
 
 
 def vmode_fwhm_scale(svd):
