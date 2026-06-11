@@ -371,6 +371,30 @@ def decompose_spin_lsq(Zc, valid, thetas_rad, A, n_spin=0, s=1, m_max=12,
             'degen_assignment': degen_assignment, 'm_max': int(m_max)}
 
 
+def reconstruct_at(dec, theta_rad, A):
+    """Reconstruct the complex polar field at rotator angle ``theta_rad`` from a
+    decomposition dict (``O_pol``, ``C_pol``, ``n_spin``, ``s``).
+
+    Exactly the model that :func:`decompose_spin_lsq` / :func:`decompose_spin_fft`
+    use to form ``res`` (the per-dataset prediction)::
+
+        A(theta) = O_pol + exp(i*n_spin*s*theta) * roll(C_pol, round(s*theta/dphi))
+
+    ``O_pol``/``C_pol`` are (n_r, n_az).  Returns a complex (n_r, n_az) field;
+    take ``.real`` for a scalar/single Zernike, and ``.real``/``.imag`` for the
+    cos/sin members of a spin doublet.  ``A`` is the azimuth-sample array used in
+    the decomposition (its spacing sets ``dphi``).
+    """
+    O_pol = np.asarray(dec['O_pol'])
+    C_pol = np.asarray(dec['C_pol'])
+    n_spin = int(dec.get('n_spin', 0))
+    s = int(dec['s'])
+    dphi = A[1] - A[0]
+    shift = int(np.round(s * float(theta_rad) / dphi))
+    return O_pol + np.exp(1j * n_spin * s * float(theta_rad)) * \
+        np.roll(C_pol, shift, axis=1)
+
+
 def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
                         m0_assignment='ocs', m_max=None, valid=None,
                         method='fft', ridge=1e-3):

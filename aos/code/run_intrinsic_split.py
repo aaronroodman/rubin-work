@@ -185,6 +185,29 @@ def main():
     print(f'  wrote intrinsic_split.parquet ({len(df_out)} rows x '
           f'{len(df_out.columns)} cols) + intrinsic_split_rms.csv')
 
+    # ---- persist the complex polar decomposition for per-donut reconstruction
+    # (step 3, run_make_intrinsic_sidecar.py).  One (O_pol, C_pol, n_spin, s,
+    # part) record per pupil Noll j; pairs duplicate the shared group dec, which
+    # is cheap (n_r x n_az complex).  `part` = 0 (real) / 1 (imag).
+    jvals, Op, Cp, nsp, ss, prt = [], [], [], [], [], []
+    for j in noll_list:
+        if j not in dec_by_j:
+            continue
+        dec, part = dec_by_j[j]
+        jvals.append(int(j))
+        Op.append(np.asarray(dec['O_pol']))
+        Cp.append(np.asarray(dec['C_pol']))
+        nsp.append(int(dec.get('n_spin', 0)))
+        ss.append(int(dec['s']))
+        prt.append(0 if part is np.real else 1)
+    np.savez(base / 'intrinsic_split_decomp.npz',
+             A=A, X=X, Y=Y, jvals=np.array(jvals, dtype=int),
+             O_pol=np.array(Op), C_pol=np.array(Cp),
+             n_spin=np.array(nsp, dtype=int), s=np.array(ss, dtype=int),
+             part=np.array(prt, dtype=int))
+    print(f'  wrote intrinsic_split_decomp.npz ({len(jvals)} Zernikes) '
+          f'for per-donut reconstruction')
+
 
 if __name__ == '__main__':
     main()
