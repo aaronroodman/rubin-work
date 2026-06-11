@@ -28,17 +28,27 @@ import pyarrow.types as pat
 
 
 def promote_type(a, b):
-    """Common type two columns can both be cast to (recurses into lists)."""
+    """Common type two columns can both be cast to (recurses into lists).
+
+    Handles list-vs-scalar of the same element family by unifying to the list
+    type — a chunk that wrote a bare scalar where others wrote a per-stamp array
+    (e.g. model_flux when estimatorInfo was empty) is reconciled to the list
+    type and null-filled by conform_table (the scalar can't be reshaped).
+    """
     if a.equals(b):
         return a
     if pat.is_null(a):
         return b
     if pat.is_null(b):
         return a
-    if pat.is_list(a) and pat.is_list(b):
+    a_list = pat.is_list(a) or pat.is_large_list(a)
+    b_list = pat.is_list(b) or pat.is_large_list(b)
+    if a_list and b_list:
         return pa.list_(promote_type(a.value_type, b.value_type))
-    if pat.is_large_list(a) and pat.is_large_list(b):
-        return pa.large_list(promote_type(a.value_type, b.value_type))
+    if a_list and not b_list:
+        return pa.list_(promote_type(a.value_type, b))
+    if b_list and not a_list:
+        return pa.list_(promote_type(b.value_type, a))
     if pat.is_floating(a) and pat.is_floating(b):
         return a if a.bit_width >= b.bit_width else b
     if pat.is_integer(a) and pat.is_integer(b):
@@ -74,7 +84,13 @@ def conform_table(tbl, schema):
         if field.name in cols:
             col = tbl.column(field.name)
             if not col.type.equals(field.type):
-                col = col.cast(field.type)
+                try:
+                    col = col.cast(field.type)
+                except (pa.ArrowNotImplementedError, pa.ArrowInvalid,
+                        pa.ArrowTypeError):
+                    # Irreconcilable representation (e.g. scalar where the
+                    # unified type is a list) — null-fill this chunk's column.
+                    col = pa.nulls(tbl.num_rows, type=field.type)
             data[field.name] = col
         else:
             data[field.name] = pa.nulls(tbl.num_rows, type=field.type)
