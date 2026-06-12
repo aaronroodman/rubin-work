@@ -210,9 +210,55 @@ def main():
                         'bands': allowed_bands, 'programs': programs,
                         'use_alt_window': bool(lut.get('use_alt_window'))},
                        fh, sort_keys=False)
+    # ---- one-page DOF summary PDF (4-panel style of the MI validation) ----
+    _write_lut_pdf(out_dir / 'lut.pdf', svd.dof_idx, dof_val, dof_mad,
+                   n_vis, svd.n_dof, svd.n_keep_eff, reduce_how)
+
     print(f'  wrote lut.parquet ({len(dof_val)} DOF) + lut_dz.parquet '
-          f'({len(kk)} (k,j)) over {n_vis} visits')
+          f'({len(kk)} (k,j)) + lut.pdf over {n_vis} visits')
     print('[build_lut] done.')
+
+
+def _write_lut_pdf(path, dof_idx, values, scatter, n_visits, n_dof, n_keep,
+                   reduce_how):
+    """Single-page, 4-panel DOF summary (Hex translations / Hex tip-tilt /
+    M1M3 / M2), mirroring intrinsic_build_plots.plot_dof_median_summary.
+    Points are the LUT values; error bars are the robust (MAD) scatter."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    pos = {int(d): i for i, d in enumerate(dof_idx)}     # abs DOF index -> row
+    buckets = [
+        ('Hexapod Translations (M2, Cam: dz/dx/dy)', [0, 1, 2, 5, 6, 7], 'μm'),
+        ('Hexapod Rotations / tip-tilt (M2, Cam: rx/ry)', [3, 4, 8, 9], 'arcsec'),
+        ('M1M3 Bending Modes', list(range(10, 30)), 'μm'),
+        ('M2 Bending Modes', list(range(30, 50)), 'μm'),
+    ]
+    fig, axes = plt.subplots(4, 1, figsize=(15, 14), layout='constrained',
+                             gridspec_kw=dict(height_ratios=[1.0, 1.0, 1.5, 1.5]))
+    for ax, (title, absidx, unit) in zip(axes, buckets):
+        present = [a for a in absidx if a in pos]
+        x = np.arange(len(present))
+        for xi in range(len(present)):
+            if xi % 2:
+                ax.axvspan(xi - 0.5, xi + 0.5, color='black', alpha=0.05)
+        vals = np.array([values[pos[a]] for a in present])
+        errs = np.array([scatter[pos[a]] for a in present])
+        ax.errorbar(x, vals, yerr=errs, fmt='o', ms=7, color='steelblue',
+                    ecolor='gray', elinewidth=1, capsize=3, lw=0)
+        ax.axhline(0, color='gray', lw=0.5, alpha=0.7)
+        ax.set_xticks(x)
+        ax.set_xticklabels([osv.LABELS_50DOF[a] for a in present],
+                           rotation=45, ha='right', fontsize=8)
+        ax.set_ylabel(f'LUT value ({unit})'); ax.set_title(title)
+        ax.grid(axis='y', alpha=0.3)
+    fig.suptitle(f'Averaged-DOF LUT — {reduce_how} over {n_visits} visits  '
+                 f'(n_dof={n_dof}, n_keep={n_keep}); error bars = robust MAD',
+                 fontsize=13)
+    with PdfPages(str(path)) as pdf:
+        pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+    print('  wrote lut.pdf')
 
 
 if __name__ == '__main__':

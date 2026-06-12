@@ -272,6 +272,7 @@ rule build_lut:
     output:
         lut    = "output/{ps}/{mi}/lut/lut.parquet",
         lut_dz = "output/{ps}/{mi}/lut/lut_dz.parquet",
+        plots  = "output/{ps}/{mi}/lut/lut.pdf",
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.build_lut.log"
     shell:
