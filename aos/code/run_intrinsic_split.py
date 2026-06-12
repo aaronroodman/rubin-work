@@ -136,7 +136,7 @@ def main():
             print(f"  (skipping unpaired {grp['label']})")
             continue
         for j, part in comps:
-            dec_by_j[j] = (dec, part)
+            dec_by_j[j] = (dec, part, Zc)
             metrics.append(dict(
                 Zernike=f'Z{j}', j=j, spin=abs(dec['n_spin']),
                 dataRMS=_map_rms(part(Zc), R, r_lim),
@@ -155,7 +155,7 @@ def main():
     for j in noll_list:
         if j not in dec_by_j:
             continue
-        dec, part = dec_by_j[j]
+        dec, part, _ = dec_by_j[j]
         out[f'O_Z{j}'] = isp.polar_field_to_points(part(dec['O_pol']), X, Y, thx0, thy0)
         out[f'C_Z{j}'] = isp.polar_field_to_points(part(dec['C_pol']), X, Y, thx0, thy0)
     df_out = pd.DataFrame(out)
@@ -176,7 +176,7 @@ def main():
     for j in noll_list:
         if j not in dec_by_j:
             continue
-        dec, part = dec_by_j[j]
+        dec, part, _ = dec_by_j[j]
         jvals.append(int(j))
         Op.append(np.asarray(dec['O_pol']))
         Cp.append(np.asarray(dec['C_pol']))
@@ -190,6 +190,106 @@ def main():
              part=np.array(prt, dtype=int))
     print(f'  wrote intrinsic_split_decomp.npz ({len(jvals)} Zernikes) '
           f'for per-donut reconstruction')
+
+    # ---- diagnostic plots (RMS summary + per-Zernike O/C/residual maps) ----
+    _write_split_pdf(base / 'intrinsic_split.pdf', metrics_df, dec_by_j,
+                     noll_list, thetas, labels, X, Y, R, r_lim, s)
+    print('[intrinsic_split] done.')
+
+
+# ----------------------------------------------------------------------
+# diagnostic plots (port of intrinsic_camera_telescope_split.ipynb maps)
+# ----------------------------------------------------------------------
+def _plot_field(ax, X, Y, vals, title, vlim, levels=21, cmap='RdBu_r'):
+    """Filled-contour map of a polar-grid field on its (X, Y) points."""
+    import numpy as np
+    xr, yr, vr = X.ravel(), Y.ravel(), np.asarray(vals).ravel()
+    fin = np.isfinite(vr)
+    im = ax.tricontourf(xr[fin], yr[fin], vr[fin],
+                        levels=np.linspace(-vlim, vlim, levels),
+                        cmap=cmap, extend='both')
+    ax.set_aspect('equal'); ax.set_title(title, fontsize=9)
+    ax.set_xlabel('thx [deg]', fontsize=7); ax.set_ylabel('thy [deg]', fontsize=7)
+    ax.tick_params(labelsize=6)
+    return im
+
+
+def _abs_vlim(Z, R, r_lim, pct=98):
+    import numpy as np
+    m = (R >= r_lim[0]) & (R <= r_lim[1])
+    return max(float(np.nanpercentile(np.abs(np.asarray(Z)[..., m, :]), pct)), 1e-6)
+
+
+def _zernike_page(part, dec, Zc, thetas, labels, X, Y, R, r_lim, zlabel):
+    """One page per Zernike: data maps at up to 4 representative rotator bins
+    (top row) + O (telescope) / C (camera) / model / residual (bottom row).
+    Adapts to any number of rotator bins (the notebook assumed <=5)."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+    O = part(dec['O_pol']); C = part(dec['C_pol'])
+    data = part(np.asarray(Zc)); resid = part(dec['res'])
+    model = data - resid
+    vlim = _abs_vlim(data, R, r_lim)
+    n_bins = len(labels)
+    sel = sorted(set(np.linspace(0, n_bins - 1, min(4, n_bins)).round().astype(int)))
+    mid = n_bins // 2
+    fig, axs = plt.subplots(2, 4, figsize=(20, 10.5), layout='constrained')
+    flat = axs.flat
+    for p, i in enumerate(sel):
+        rd = _map_rms(data[i], R, r_lim); rr = _map_rms(resid[i], R, r_lim)
+        _plot_field(flat[p], X, Y, data[i],
+                    f'data {zlabel} {labels[i]} (rot={thetas[i]:+.0f})\n'
+                    f'RMS data={rd:.4f}  res={rr:.4f}', vlim)
+    for p in range(len(sel), 4):
+        flat[p].set_visible(False)
+    _plot_field(flat[4], X, Y, O,
+                f'O telescope (OCS)\n|O| RMS={_map_rms(O, R, r_lim):.4f}', vlim)
+    _plot_field(flat[5], X, Y, C,
+                f'C camera (CCS)\n|C| RMS={_map_rms(C, R, r_lim):.4f}', vlim)
+    _plot_field(flat[6], X, Y, model[mid],
+                f'model {labels[mid]} (data-res)\n'
+                f'RMS={_map_rms(model[mid], R, r_lim):.4f}', vlim)
+    im = _plot_field(flat[7], X, Y, resid[mid],
+                     f'residual {labels[mid]}\nRMS={_map_rms(resid[mid], R, r_lim):.4f}',
+                     vlim)
+    fig.colorbar(im, ax=axs.ravel().tolist(), shrink=0.5, label=f'{zlabel} [μm]')
+    fig.suptitle(f'{zlabel}: telescope (OCS) + camera (CCS) split   '
+                 f'(spin n={dec["n_spin"]}, s={dec["s"]:+d})', fontsize=13)
+    return fig
+
+
+def _write_split_pdf(path, metrics_df, dec_by_j, noll_list, thetas, labels,
+                     X, Y, R, r_lim, s):
+    import numpy as np
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    n_pages = 0
+    with PdfPages(str(path)) as pdf:
+        # telescope (O) vs camera (C) map RMS per Zernike
+        d = metrics_df
+        x = np.arange(len(d))
+        fig, ax = plt.subplots(figsize=(16, 5.5), layout='constrained')
+        ax.bar(x - 0.21, d['O_tel'], 0.4, label='|O| telescope', color='steelblue')
+        ax.bar(x + 0.21, d['C_cam'], 0.4, label='|C| camera', color='indianred')
+        ax.plot(x, d['dataRMS'], 'k_', ms=12, label='data RMS')
+        ax.plot(x, d['residRMS'], 'kx', ms=6, label='residual RMS')
+        ax.set_xticks(x); ax.set_xticklabels(d['Zernike'], rotation=45)
+        ax.set_ylabel('map RMS [μm]')
+        ax.set_title('Telescope (O) vs camera (C) map RMS per Zernike  '
+                     f'(in-window r={r_lim[0]:.1f}..{r_lim[1]:.1f} deg)')
+        ax.legend(); ax.grid(axis='y', alpha=0.3)
+        pdf.savefig(fig, bbox_inches='tight'); plt.close(fig); n_pages += 1
+
+        for j in noll_list:
+            if j not in dec_by_j:
+                continue
+            dec, part, Zc = dec_by_j[j]
+            fig = _zernike_page(part, dec, Zc, thetas, labels, X, Y, R, r_lim,
+                                f'Z{j}')
+            pdf.savefig(fig, bbox_inches='tight'); plt.close(fig); n_pages += 1
+    print(f'  wrote intrinsic_split.pdf ({n_pages} pages)')
 
 
 if __name__ == '__main__':

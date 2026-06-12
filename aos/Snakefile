@@ -218,6 +218,7 @@ rule intrinsic_split:
     output:
         parquet = "output/{ps}/{mi}/intrinsic_split.parquet",
         decomp  = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
+        plots   = "output/{ps}/{mi}/intrinsic_split.pdf",
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.intrinsic_split.log"
     shell:

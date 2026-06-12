@@ -56,7 +56,7 @@ configs). Launch detached with `./run_snake.sh` (see its header).
   visit, and collapses over **all** elevation and rotator angle (median by
   default). `code/run_build_lut.py` → `output/<param_set>/<mi_name>/lut/`
   `lut.parquet` (per-DOF) + `lut_dz.parquet` (per-(k,j) raw/fit/residual DZ).
-  (Replaces the LUT-build functionality behind `study_50dofLUT.ipynb`.)
+  (Supersedes the former `study_50dofLUT.ipynb`, now removed.)
 
 ## Data dependencies
 
