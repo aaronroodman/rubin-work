@@ -200,15 +200,20 @@ def main():
 # ----------------------------------------------------------------------
 # diagnostic plots (port of intrinsic_camera_telescope_split.ipynb maps)
 # ----------------------------------------------------------------------
+_SPLIT_DPI = 120        # rasterized-contour resolution (keeps the PDF small)
+
+
 def _plot_field(ax, X, Y, vals, title, vlim, levels=21, cmap='RdBu_r'):
-    """Filled-contour map of a polar-grid field on its (X, Y) points."""
+    """Filled-contour map of a polar-grid field on its (X, Y) points.  The
+    filled contours are rasterized so the multi-panel PDF stays small."""
     import numpy as np
     xr, yr, vr = X.ravel(), Y.ravel(), np.asarray(vals).ravel()
     fin = np.isfinite(vr)
     im = ax.tricontourf(xr[fin], yr[fin], vr[fin],
                         levels=np.linspace(-vlim, vlim, levels),
                         cmap=cmap, extend='both')
-    ax.set_aspect('equal'); ax.set_title(title, fontsize=9)
+    im.set_rasterized(True)
+    ax.set_aspect('equal'); ax.set_title(title, fontsize=8)
     ax.set_xlabel('thx [deg]', fontsize=7); ax.set_ylabel('thy [deg]', fontsize=7)
     ax.tick_params(labelsize=6)
     return im
@@ -220,42 +225,61 @@ def _abs_vlim(Z, R, r_lim, pct=98):
     return max(float(np.nanpercentile(np.abs(np.asarray(Z)[..., m, :]), pct)), 1e-6)
 
 
-def _zernike_page(part, dec, Zc, thetas, labels, X, Y, R, r_lim, zlabel):
-    """One page per Zernike: data maps at up to 4 representative rotator bins
-    (top row) + O (telescope) / C (camera) / model / residual (bottom row).
-    Adapts to any number of rotator bins (the notebook assumed <=5)."""
+def _maps_page(fields, titles, suptitle, X, Y, vlim, unit, ncols=3):
+    """A grid of polar-field maps (one per entry) with a shared colorbar."""
     import numpy as np
     import matplotlib.pyplot as plt
+    n = len(fields)
+    nrows = (n + ncols - 1) // ncols
+    fig, axs = plt.subplots(nrows, ncols, figsize=(4.7 * ncols, 4.5 * nrows),
+                            layout='constrained', squeeze=False)
+    flat = axs.ravel()
+    im = None
+    for p in range(len(flat)):
+        if p < n:
+            im = _plot_field(flat[p], X, Y, fields[p], titles[p], vlim)
+        else:
+            flat[p].set_visible(False)
+    if im is not None:
+        fig.colorbar(im, ax=axs.ravel().tolist(), shrink=0.6, label=unit)
+    fig.suptitle(suptitle, fontsize=13)
+    return fig
+
+
+def _zernike_pages(part, dec, Zc, thetas, labels, X, Y, R, r_lim, zlabel):
+    """Three pages per Zernike: (1) all per-rotator-bin data maps, (2) the
+    OCS / CCS decomposition + the rot~0 model, (3) all per-rotator-bin
+    residual maps.  Every panel title carries its in-window map RMS."""
+    import numpy as np
     O = part(dec['O_pol']); C = part(dec['C_pol'])
     data = part(np.asarray(Zc)); resid = part(dec['res'])
-    model = data - resid
-    vlim = _abs_vlim(data, R, r_lim)
-    n_bins = len(labels)
-    sel = sorted(set(np.linspace(0, n_bins - 1, min(4, n_bins)).round().astype(int)))
-    mid = n_bins // 2
-    fig, axs = plt.subplots(2, 4, figsize=(20, 10.5), layout='constrained')
-    flat = axs.flat
-    for p, i in enumerate(sel):
-        rd = _map_rms(data[i], R, r_lim); rr = _map_rms(resid[i], R, r_lim)
-        _plot_field(flat[p], X, Y, data[i],
-                    f'data {zlabel} {labels[i]} (rot={thetas[i]:+.0f})\n'
-                    f'RMS data={rd:.4f}  res={rr:.4f}', vlim)
-    for p in range(len(sel), 4):
-        flat[p].set_visible(False)
-    _plot_field(flat[4], X, Y, O,
-                f'O telescope (OCS)\n|O| RMS={_map_rms(O, R, r_lim):.4f}', vlim)
-    _plot_field(flat[5], X, Y, C,
-                f'C camera (CCS)\n|C| RMS={_map_rms(C, R, r_lim):.4f}', vlim)
-    _plot_field(flat[6], X, Y, model[mid],
-                f'model {labels[mid]} (data-res)\n'
-                f'RMS={_map_rms(model[mid], R, r_lim):.4f}', vlim)
-    im = _plot_field(flat[7], X, Y, resid[mid],
-                     f'residual {labels[mid]}\nRMS={_map_rms(resid[mid], R, r_lim):.4f}',
-                     vlim)
-    fig.colorbar(im, ax=axs.ravel().tolist(), shrink=0.5, label=f'{zlabel} [μm]')
-    fig.suptitle(f'{zlabel}: telescope (OCS) + camera (CCS) split   '
-                 f'(spin n={dec["n_spin"]}, s={dec["s"]:+d})', fontsize=13)
-    return fig
+    n = len(labels)
+    i0 = int(np.argmin(np.abs(np.asarray(thetas))))      # rot~0 bin
+    model0 = data[i0] - resid[i0]
+    vlim_d = _abs_vlim(data, R, r_lim)
+    vlim_r = _abs_vlim(resid, R, r_lim)                  # residuals scaled to self
+    spin = f'(spin n={dec["n_spin"]}, s={dec["s"]:+d})'
+    unit = f'{zlabel} [μm]'
+
+    dtitles = [f'{labels[i]}  rot={thetas[i]:+.0f}\nRMS={_map_rms(data[i], R, r_lim):.4f}'
+               for i in range(n)]
+    pg1 = _maps_page([data[i] for i in range(n)], dtitles,
+                     f'{zlabel} data — per rotator bin {spin}', X, Y, vlim_d, unit)
+
+    btitles = [f'O telescope (OCS)\n|O| RMS={_map_rms(O, R, r_lim):.4f}',
+               f'C camera (CCS)\n|C| RMS={_map_rms(C, R, r_lim):.4f}',
+               f'model rot={thetas[i0]:+.0f} (data-res)\n'
+               f'RMS={_map_rms(model0, R, r_lim):.4f}']
+    pg2 = _maps_page([O, C, model0], btitles,
+                     f'{zlabel}: OCS telescope + CCS camera + rot~0 model {spin}',
+                     X, Y, vlim_d, unit, ncols=3)
+
+    rtitles = [f'{labels[i]}  rot={thetas[i]:+.0f}\nRMS={_map_rms(resid[i], R, r_lim):.4f}'
+               for i in range(n)]
+    pg3 = _maps_page([resid[i] for i in range(n)], rtitles,
+                     f'{zlabel} residual — per rotator bin {spin}  '
+                     f'(colour ±{vlim_r:.3f} μm)', X, Y, vlim_r, unit)
+    return [pg1, pg2, pg3]
 
 
 def _write_split_pdf(path, metrics_df, dec_by_j, noll_list, thetas, labels,
@@ -286,9 +310,10 @@ def _write_split_pdf(path, metrics_df, dec_by_j, noll_list, thetas, labels,
             if j not in dec_by_j:
                 continue
             dec, part, Zc = dec_by_j[j]
-            fig = _zernike_page(part, dec, Zc, thetas, labels, X, Y, R, r_lim,
-                                f'Z{j}')
-            pdf.savefig(fig, bbox_inches='tight'); plt.close(fig); n_pages += 1
+            for fig in _zernike_pages(part, dec, Zc, thetas, labels,
+                                      X, Y, R, r_lim, f'Z{j}'):
+                pdf.savefig(fig, bbox_inches='tight', dpi=_SPLIT_DPI)
+                plt.close(fig); n_pages += 1
     print(f'  wrote intrinsic_split.pdf ({n_pages} pages)')
 
 
