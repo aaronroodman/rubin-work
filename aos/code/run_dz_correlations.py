@@ -29,11 +29,48 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import mi_config as mc
 import dz_plotting as dzp
 
+try:
+    from common.zernike_names import FOCAL_NAMES, PUPIL_NAMES
+except Exception:                                         # pragma: no cover
+    FOCAL_NAMES, PUPIL_NAMES = {}, {}
+
 DEFAULT = dict(dz_prefix='z1toz6', max_coeff_um=2.0, corr_threshold=0.6,
                top_n=20, pairwise_scan=False,
+               sig_threshold=5.0,       # Fisher-z significance (σ) gate for groups
+               group_min_r=0.5,         # |r| floor to seed a conjugate group
+               max_group_pages=80,      # cap on conjugate-group pages
                expected_astig_pairs=[[[5, 5], [6, 6]], [[6, 5], [5, 6]],
                                      [[1, 5], [1, 6]], [[4, 5], [4, 6]],
                                      [[2, 5], [3, 6]], [[3, 5], [2, 6]]])
+
+# Azimuthal doublet partners (same radial order, m -> -m); m=0 maps to itself.
+# Used to build the conjugate of a correlation pair.
+_J_PARTNER = {4: 4, 5: 6, 6: 5, 7: 8, 8: 7, 9: 10, 10: 9, 11: 11,
+              12: 13, 13: 12, 14: 15, 15: 14, 16: 17, 17: 16, 18: 19, 19: 18,
+              22: 22, 23: 24, 24: 23, 25: 26, 26: 25}
+_K_PARTNER = {1: 1, 2: 3, 3: 2, 4: 4, 5: 6, 6: 5}
+
+
+def _significance(r, n):
+    """(SE(r), Fisher z, significance σ) for Pearson r over n samples.
+    σ = |arctanh r| · sqrt(n-3) (Fisher z-transform); SE(r) ≈ (1-r²)/sqrt(n-1)."""
+    if n is None or n < 4 or not np.isfinite(r):
+        return (np.nan, np.nan, np.nan)
+    rc = min(max(float(r), -0.999999), 0.999999)
+    se_r = (1.0 - rc ** 2) / np.sqrt(n - 1)
+    z = np.arctanh(rc)
+    return se_r, z, abs(z) * np.sqrt(n - 3)
+
+
+def _conj(kj):
+    """Conjugate (k, j) endpoint: swap each index to its doublet partner."""
+    k, j = kj
+    return (_K_PARTNER.get(k, k), _J_PARTNER.get(j, j))
+
+
+def _endpt_name(kj):
+    k, j = kj
+    return f'{FOCAL_NAMES.get(k, f"k{k}")} of {PUPIL_NAMES.get(j, f"Z{j}")} (k={k},j={j})'
 
 
 def dz_coeff_columns(df, prefix):
@@ -122,6 +159,10 @@ def main():
     corr = dzp.compute_dz_correlation_matrix(df, dz_cols)
     all_pairs = dzp.get_top_correlated_pairs(corr, dz_cols, labels,
                                              top_n=len(dz_cols) ** 2)
+    # complete-case sample count (compute_dz_correlation_matrix drops any row
+    # with a NaN in any DZ column) — used for the correlation significance.
+    n_complete = int((~np.isnan(df[dz_cols].values).any(axis=1)).sum())
+    print(f'  complete-case n = {n_complete}')
 
     import matplotlib
     matplotlib.use('Agg')
@@ -133,16 +174,60 @@ def main():
                                       pdf=pdf, show=False)
         _scatter_pairs(df, cfg['expected_astig_pairs'], prefix,
                        'Expected astigmatism-symmetry pairs', pdf)
+        n_grp = _conjugate_group_pages(df, all_pairs, prefix, n_complete, cfg, pdf)
         if cfg.get('pairwise_scan'):
             _pairwise_scan(df, prefix, pdf)
+    print(f'  {n_grp} conjugate-group page(s) '
+          f'(|r|>={cfg["group_min_r"]}, σ>={cfg["sig_threshold"]})')
 
-    # every off-diagonal pair above threshold -> parquet
-    thr = float(cfg['corr_threshold'])
-    rows = [dict(col_i=ci, col_j=cj, label_i=li, label_j=lj, r=r)
-            for ci, cj, li, lj, r in all_pairs if abs(r) >= thr]
+    # all off-diagonal pairs above |r| OR significance -> parquet, with errors
+    thr = float(cfg['corr_threshold']); sig_thr = float(cfg['sig_threshold'])
+    rows = []
+    for ci, cj, li, lj, r in all_pairs:
+        se_r, z, sig = _significance(r, n_complete)
+        if abs(r) >= thr or (np.isfinite(sig) and sig >= sig_thr):
+            rows.append(dict(col_i=ci, col_j=cj, label_i=li, label_j=lj,
+                             r=r, n=n_complete, se_r=se_r, fisher_z=z, sigma=sig))
     pd.DataFrame(rows).to_parquet(out_dir / 'dz_correlations_pairs.parquet')
     print(f'  wrote dz_correlations.pdf + dz_correlations_pairs.parquet '
-          f'({len(rows)} pairs |r|>={thr})')
+          f'({len(rows)} pairs: |r|>={thr} or σ>={sig_thr})')
+
+
+def _conjugate_group_pages(df, all_pairs, prefix, n, cfg, pdf):
+    """One page per significant correlation, showing it WITH its azimuthal
+    conjugate (swap each endpoint's k/j doublet partner) — e.g. (k4,j8)x(k4,j16)
+    [Coma_x x 2ndComa_x] is shown alongside (k4,j7)x(k4,j17) [Coma_y x 2ndComa_y].
+    Seeded by |r| >= group_min_r AND significance >= sig_threshold; deduped so a
+    pair and its conjugate are not emitted as two separate groups."""
+    rmin = float(cfg['group_min_r']); sig_thr = float(cfg['sig_threshold'])
+    cap = int(cfg['max_group_pages'])
+    seen, n_pages, n_seed = set(), 0, 0
+    for ci, cj, li, lj, r in all_pairs:
+        if abs(r) < rmin:
+            continue
+        _se, _z, sig = _significance(r, n)
+        if not (np.isfinite(sig) and sig >= sig_thr):
+            continue
+        jA, kA = parse_jk(ci, prefix); jB, kB = parse_jk(cj, prefix)
+        A, B = (kA, jA), (kB, jB)
+        Ac, Bc = _conj(A), _conj(B)
+        key = frozenset({frozenset({A, B}), frozenset({Ac, Bc})})
+        if key in seen:
+            continue
+        seen.add(key); n_seed += 1
+        if n_pages >= cap:
+            continue
+        pairs = [(A, B)]
+        if frozenset({Ac, Bc}) != frozenset({A, B}):
+            pairs.append((Ac, Bc))
+        title = (f'{_endpt_name(A)}  ×  {_endpt_name(B)}'
+                 + ('   + azimuthal conjugate' if len(pairs) > 1 else ''))
+        _scatter_pairs(df, pairs, prefix, title, pdf)
+        n_pages += 1
+    if n_seed > cap:
+        print(f'  NOTE: {n_seed} conjugate groups found; capped at {cap} pages '
+              f'(raise max_group_pages to see all)')
+    return n_pages
 
 
 def _pairwise_scan(df, prefix, pdf):

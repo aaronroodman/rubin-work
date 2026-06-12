@@ -1144,8 +1144,11 @@ def plot_dz_correlation_heatmap(corr_matrix, dz_labels,
     figsize = max(12, n * 0.15)
     fig, ax = plt.subplots(figsize=(figsize, figsize * 0.9))
 
+    # nearest + rgba interpolation stage: resample to figure pixels with
+    # nearest-neighbour BEFORE colour mapping, so cells stay crisp (no
+    # antialiased blur between cells when the PDF is scaled).
     im = ax.imshow(corr_matrix, cmap='RdBu_r', vmin=-1, vmax=1,
-                   interpolation='none')
+                   interpolation='nearest', interpolation_stage='rgba')
     plt.colorbar(im, ax=ax, shrink=0.7, label='Pearson r')
 
     # Tick labels

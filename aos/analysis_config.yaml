@@ -32,6 +32,9 @@ defaults:
     max_coeff_um: 2.0     # reject visits with any |DZ| > this (μm)
     corr_threshold: 0.6   # |r| floor for the pairs parquet
     top_n: 20             # scatter pages for the top-|r| pairs
+    sig_threshold: 5.0    # Fisher-z significance (σ) floor (pairs parquet + groups)
+    group_min_r: 0.5      # |r| floor to seed a conjugate-group scatter page
+    max_group_pages: 80   # cap on conjugate-group pages (NOTE logged if exceeded)
     pairwise_scan: false  # true -> exhaustive (k1,j1)x(k2,j2) scan (~441 pages)
 
   thermal_correlations:   # DZ_kj <-> temperature (run_thermal_correlations)
