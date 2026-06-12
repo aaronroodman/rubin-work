@@ -32,10 +32,15 @@ nightly data extraction, PID control simulation, and reference wavefront studies
 
 `Snakefile` orchestrates the per-`param_set` processing; configs in
 `snake_config.yaml` (date chunks), `mi_config.yaml` (measured-intrinsic build
-configs — an input of `build_intrinsic`, so editing it re-triggers the builds),
-and `analysis_config.yaml` (LUT / aberration-pair knobs, kept separate so
-editing them re-runs only the analyses, never the builds). Launch detached with
-`./run_snake.sh` (see its header).
+configs), and `analysis_config.yaml` (LUT / correlation / bounce / aberration
+knobs). Launch detached with `./run_snake.sh` (see its header).
+
+Rules consume the **resolved per-`(param_set, mi_name)` config as a Snakemake
+`params` value**, not the config *file* as an input. So Snakemake's `params`
+rerun-trigger fires only when *that* entry's resolved settings change — adding
+or editing one param_set (or one analysis section) never invalidates another's
+cached build/analysis via the shared file's mtime. (Editing the shared
+`defaults:` block still propagates to every entry, as it should.)
 
 - **Phase 1** — per chunk: `mktable` (Butler → donuts/visits) → `fit`
   (Double-Zernike, tabulated intrinsic) → `combine` → validation `plots`.

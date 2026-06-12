@@ -60,6 +60,24 @@ def mi_bin_grids(ps, mi):
             for lo, hi in mi_rotbins(ps, mi)]
 MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
+# Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
+# as a Snakemake `params` value rather than listing mi_config.yaml /
+# analysis_config.yaml as rule inputs.  Snakemake's `params` rerun-trigger then
+# fires only when THIS entry's resolved settings change — so adding or editing
+# another param_set (or an unrelated analysis section) no longer invalidates
+# this rule via the shared file's mtime.  Canonical JSON keeps the hash stable.
+import json as _json
+AN_DOC = (_mc.load_analysis_doc("analysis_config.yaml")
+          if os.path.exists("analysis_config.yaml") else {})
+
+def mi_cfg_json(ps, mi):
+    return _json.dumps(_mc.load_mi_config(ps, mi, doc=MI_DOC),
+                       sort_keys=True, default=str)
+
+def an_json(section, ps, mi=None):
+    return _json.dumps(_mc.analysis_section(section, ps, mi, doc=AN_DOC),
+                       sort_keys=True, default=str)
+
 # param_set names have no slash; keeps output/<ps>/X.parquet (combined)
 # distinct from output/<ps>/chunks/<d>_<d>/X.parquet (per chunk).
 wildcard_constraints:
@@ -176,10 +194,11 @@ rule aberration_pairs:
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
-        config = "analysis_config.yaml",
         script = "code/run_aberration_pairs.py",
     output: "output/{ps}/plots/aberration_pairs.pdf"
-    params: coord = lambda w: coord(w.ps)
+    params:
+        coord = lambda w: coord(w.ps),
+        acfg  = lambda w: an_json("aberration_pairs", w.ps),   # rerun-trigger only
     # streams the donut zk_<coord> column by row group; lighter than run_dz_plots.
     resources: mem_mb=8000
     log: "logs/{ps}.aberration_pairs.log"
@@ -202,11 +221,11 @@ rule build_intrinsic:
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
-        config = "mi_config.yaml",
         script = "code/run_build_intrinsic.py",
         lib    = "code/measured_intrinsic.py",
         plots  = "code/intrinsic_build_plots.py",
     output: "output/{ps}/{mi}/build/rot_{lo}_{hi}/intrinsic_grid.parquet"
+    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=8000
     log: "logs/{ps}.{mi}.build_rot_{lo}_{hi}.log"
     shell:
@@ -218,13 +237,13 @@ rule build_intrinsic:
 rule intrinsic_split:
     input:
         grids  = lambda w: mi_bin_grids(w.ps, w.mi),
-        config = "mi_config.yaml",
         script = "code/run_intrinsic_split.py",
         lib    = "code/intrinsic_split.py",
     output:
         parquet = "output/{ps}/{mi}/intrinsic_split.parquet",
         decomp  = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
         plots   = "output/{ps}/{mi}/intrinsic_split.pdf",
+    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.intrinsic_split.log"
     shell:
@@ -237,10 +256,10 @@ rule intrinsic_sidecar:
         decomp = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
-        config = "mi_config.yaml",
         script = "code/run_make_intrinsic_sidecar.py",
         lib    = "code/intrinsic_split.py",
     output: "output/{ps}/{mi}/zk_intrinsic.parquet"
+    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=8000
     log: "logs/{ps}.{mi}.intrinsic_sidecar.log"
     shell:
@@ -269,14 +288,15 @@ rule build_lut:
     input:
         fits     = "output/{ps}/fits.parquet",
         visits   = "output/{ps}/visits.parquet",
-        config   = "mi_config.yaml",           # SVD params, filters, n_dof/n_keep
-        analysis = "analysis_config.yaml",      # lut knobs (reduce, alt window, ...)
         script   = "code/run_build_lut.py",
         lib      = "code/ofc_svd.py",
     output:
         lut    = "output/{ps}/{mi}/lut/lut.parquet",
         lut_dz = "output/{ps}/{mi}/lut/lut_dz.parquet",
         plots  = "output/{ps}/{mi}/lut/lut.pdf",
+    params:                                            # rerun-trigger only
+        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),      # SVD params, n_dof/n_keep
+        acfg = lambda w: an_json("lut", w.ps, w.mi),   # lut knobs
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.build_lut.log"
     shell:
@@ -287,12 +307,12 @@ rule build_lut:
 rule dz_correlations:
     input:
         fits     = "output/{ps}/{mi}/fits.parquet",
-        analysis = "analysis_config.yaml",
         script   = "code/run_dz_correlations.py",
         lib      = "code/dz_plotting.py",
     output:
         pdf   = "output/{ps}/{mi}/plots/dz_correlations.pdf",
         pairs = "output/{ps}/{mi}/plots/dz_correlations_pairs.parquet",
+    params: acfg = lambda w: an_json("dz_correlations", w.ps, w.mi)   # rerun-trigger
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.dz_correlations.log"
     shell:
@@ -303,12 +323,12 @@ rule dz_correlations:
 rule thermal_correlations:
     input:
         fits     = "output/{ps}/{mi}/fits.parquet",
-        analysis = "analysis_config.yaml",
         script   = "code/run_thermal_correlations.py",
         lib      = "code/dz_plotting.py",
     output:
         pdf     = "output/{ps}/{mi}/plots/thermal_correlations.pdf",
         summary = "output/{ps}/{mi}/plots/thermal_correlations_summary.parquet",
+    params: acfg = lambda w: an_json("thermal_correlations", w.ps, w.mi)  # rerun-trigger
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.thermal_correlations.log"
     shell:
@@ -319,13 +339,13 @@ rule thermal_correlations:
 rule bounce:
     input:
         fits     = "output/{ps}/{mi}/fits.parquet",
-        analysis = "analysis_config.yaml",
         script   = "code/run_bounce.py",
         lib      = "code/bounce_lib.py",
         ofc      = "code/ofc_svd.py",
     output:
         summary = "output/{ps}/{mi}/plots/bounce_summary.pdf",
         stats   = "output/{ps}/{mi}/bounce_kj_stats.parquet",
+    params: acfg = lambda w: an_json("bounce", w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.bounce.log"
     shell:
