@@ -195,10 +195,13 @@ def main():
 
 def _conjugate_group_pages(df, all_pairs, prefix, n, cfg, pdf):
     """One page per significant correlation, showing it WITH its azimuthal
-    conjugate (swap each endpoint's k/j doublet partner) — e.g. (k4,j8)x(k4,j16)
-    [Coma_x x 2ndComa_x] is shown alongside (k4,j7)x(k4,j17) [Coma_y x 2ndComa_y].
-    Seeded by |r| >= group_min_r AND significance >= sig_threshold; deduped so a
-    pair and its conjugate are not emitted as two separate groups."""
+    conjugates: hold one endpoint fixed and/or flip the other's k/j doublet
+    partner.  For (k3,j11)x(k3,j12) [Tilt_y Spherical x Tilt_y 2ndAstig] the page
+    shows the original plus (k3,j11)x(k2,j13) [conj 2nd only], (k2,j11)x(k3,j12)
+    [conj 1st only], and (k2,j11)x(k2,j13) [full conj] — so a correlation that
+    survives only under a *partial* conjugation is visible (the full conjugate
+    can wash it out).  Seeded by |r| >= group_min_r AND σ >= sig_threshold;
+    deduped by the conjugation orbit so the 4 variants emit a single page."""
     rmin = float(cfg['group_min_r']); sig_thr = float(cfg['sig_threshold'])
     cap = int(cfg['max_group_pages'])
     seen, n_pages, n_seed = set(), 0, 0
@@ -211,17 +214,20 @@ def _conjugate_group_pages(df, all_pairs, prefix, n, cfg, pdf):
         jA, kA = parse_jk(ci, prefix); jB, kB = parse_jk(cj, prefix)
         A, B = (kA, jA), (kB, jB)
         Ac, Bc = _conj(A), _conj(B)
-        key = frozenset({frozenset({A, B}), frozenset({Ac, Bc})})
-        if key in seen:
+        # original, conjugate-2nd-only, conjugate-1st-only, full conjugate
+        variants = [(A, B), (A, Bc), (Ac, B), (Ac, Bc)]
+        orbit = frozenset(frozenset((P, Q)) for P, Q in variants)
+        if orbit in seen:
             continue
-        seen.add(key); n_seed += 1
+        seen.add(orbit); n_seed += 1
         if n_pages >= cap:
             continue
-        pairs = [(A, B)]
-        if frozenset({Ac, Bc}) != frozenset({A, B}):
-            pairs.append((Ac, Bc))
-        title = (f'{_endpt_name(A)}  ×  {_endpt_name(B)}'
-                 + ('   + azimuthal conjugate' if len(pairs) > 1 else ''))
+        pairs, seen_pair = [], set()
+        for P, Q in variants:                          # dedup identical panels
+            kpq = frozenset((P, Q))
+            if P != Q and kpq not in seen_pair:
+                seen_pair.add(kpq); pairs.append((P, Q))
+        title = f'{_endpt_name(A)}  ×  {_endpt_name(B)}   + azimuthal conjugates'
         _scatter_pairs(df, pairs, prefix, title, pdf)
         n_pages += 1
     if n_seed > cap:
