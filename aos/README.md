@@ -60,6 +60,22 @@ editing them re-runs only the analyses, never the builds). Launch detached with
   default). `code/run_build_lut.py` → `output/<param_set>/<mi_name>/lut/`
   `lut.parquet` (per-DOF) + `lut_dz.parquet` (per-(k,j) raw/fit/residual DZ).
   (Supersedes the former `study_50dofLUT.ipynb`, now removed.)
+- **MI-refit analyses** — per `(param_set, mi_name)`, run on the *residual*
+  (MI-subtracted) DZ in `output/<ps>/<mi>/fits.parquet`; knobs in
+  `analysis_config.yaml`:
+  - **`dz_correlations`** (`run_dz_correlations.py`, port of
+    `study_doublezernike` §7–§10) — DZ_kj↔DZ_k'j' Pearson heatmap, top-|r|
+    pair scatters, astigmatism-symmetry pairs, optional exhaustive
+    (k1,j1)×(k2,j2) scan. → `plots/dz_correlations.pdf` + `_pairs.parquet`.
+  - **`thermal_correlations`** (`run_thermal_correlations.py`, port of
+    `intrinsics_thermal_correlations`) — DZ_kj × temperature-variable Pearson
+    heatmap + per-term scatter pages. → `plots/thermal_correlations.pdf` +
+    `_summary.parquet`.
+  - **`bounce`** (`run_bounce.py` + `bounce_lib.py`, port of `study_bounce`) —
+    FAM bounce-test time-ordered paired Δ (DZ / v-mode / DOF) with
+    significance/pass heatmaps, vs-ordinal pages, night cross-scatter; optional
+    EFD MTAOS Trim overlay (`add_dof_trim`). → `plots/bounce_*.pdf` +
+    `bounce_kj_stats.parquet`.
 
 ## Data dependencies
 

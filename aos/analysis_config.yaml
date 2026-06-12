@@ -27,6 +27,29 @@ defaults:
     fit_prefix: z1toz6
     # pairs: optional [[pri, sec], ...] override; omit -> script default list
 
+  dz_correlations:        # DZ_kj <-> DZ_k'j' correlations (run_dz_correlations)
+    dz_prefix: z1toz6
+    max_coeff_um: 2.0     # reject visits with any |DZ| > this (μm)
+    corr_threshold: 0.6   # |r| floor for the pairs parquet
+    top_n: 20             # scatter pages for the top-|r| pairs
+    pairwise_scan: false  # true -> exhaustive (k1,j1)x(k2,j2) scan (~441 pages)
+
+  thermal_correlations:   # DZ_kj <-> temperature (run_thermal_correlations)
+    dz_prefix: z1toz6
+    max_coeff_um: 2.0
+    # thermal_vars / dz_terms default to the script lists; override here if needed
+
+  bounce:                 # FAM bounce-test paired Δ (run_bounce)
+    fit_prefix: z1toz6
+    n_dof: 50
+    n_keep: 34
+    night_min_visits: 3
+    pass_nsigma_threshold: 3.5
+    pass_delta_threshold_um: 0.1
+    pass_sigma_only_threshold: 5.0
+    add_dof_trim: false   # true -> overlay EFD/ConsDB MTAOS aggregatedDoF (RSP, live)
+    # bounces: [...] optional; omit -> script default T720 elevation + T724 rotator
+
 # Per-param_set / per-(param_set, mi_name) overrides (optional). Example:
 # overrides:
 #   fam_danish_1_0_wep17_3_0_bin2x:

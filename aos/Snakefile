@@ -82,6 +82,10 @@ rule all:
         [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
         # averaged-DOF LUT per (param_set, mi_name)
         [f"output/{ps}/{mi}/lut/lut.parquet" for ps, mi in MI_PAIRS],
+        # MI-refit analyses: DZ-DZ + DZ-temperature correlations, bounce tests
+        [f"output/{ps}/{mi}/plots/dz_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/plots/thermal_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/bounce_kj_stats.parquet" for ps, mi in MI_PAIRS],
 
 # ---- per chunk: mktable (Butler) -> donuts + visits ----
 rule mktable:
@@ -277,4 +281,53 @@ rule build_lut:
     log: "logs/{ps}.{mi}.build_lut.log"
     shell:
         "python code/run_build_lut.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- DZ-to-DZ correlations on the MI-refit fits (residual DZ) ----
+rule dz_correlations:
+    input:
+        fits     = "output/{ps}/{mi}/fits.parquet",
+        analysis = "analysis_config.yaml",
+        script   = "code/run_dz_correlations.py",
+        lib      = "code/dz_plotting.py",
+    output:
+        pdf   = "output/{ps}/{mi}/plots/dz_correlations.pdf",
+        pairs = "output/{ps}/{mi}/plots/dz_correlations_pairs.parquet",
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.dz_correlations.log"
+    shell:
+        "python code/run_dz_correlations.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- DZ-to-temperature correlations on the MI-refit fits ----
+rule thermal_correlations:
+    input:
+        fits     = "output/{ps}/{mi}/fits.parquet",
+        analysis = "analysis_config.yaml",
+        script   = "code/run_thermal_correlations.py",
+        lib      = "code/dz_plotting.py",
+    output:
+        pdf     = "output/{ps}/{mi}/plots/thermal_correlations.pdf",
+        summary = "output/{ps}/{mi}/plots/thermal_correlations_summary.parquet",
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.thermal_correlations.log"
+    shell:
+        "python code/run_thermal_correlations.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- FAM bounce-test paired Δ (DZ / v-mode / DOF) on the MI-refit fits ----
+rule bounce:
+    input:
+        fits     = "output/{ps}/{mi}/fits.parquet",
+        analysis = "analysis_config.yaml",
+        script   = "code/run_bounce.py",
+        lib      = "code/bounce_lib.py",
+        ofc      = "code/ofc_svd.py",
+    output:
+        summary = "output/{ps}/{mi}/plots/bounce_summary.pdf",
+        stats   = "output/{ps}/{mi}/bounce_kj_stats.parquet",
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.bounce.log"
+    shell:
+        "python code/run_bounce.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
