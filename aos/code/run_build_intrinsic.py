@@ -242,7 +242,8 @@ def main():
                           n_keep_eff, normalization_weights, vmode_scale,
                           frac_2d, n_k, n_j, n_iter, Z4hgt,
                           z4_optical_grid, z4_height_ccs_grid, xbins, ybins,
-                          wfs_edge_cut_deg, n_radial_bins_azimuth, azimuth_bin_deg)
+                          wfs_edge_cut_deg, n_radial_bins_azimuth, azimuth_bin_deg,
+                          svd, dof_labels, dof_units)
     _write_comparison_pdf(out_dir / f'measured_intrinsic_{label}_pathA_comparison.pdf',
                           result, iZs, coord_sys, xbins, ybins)
     _write_final_maps_pdf(out_dir / f'measured_intrinsic_{label}_pathA_final.pdf',
@@ -275,7 +276,7 @@ def main():
     with open(out_dir / 'mi_config.yaml', 'w') as fh:
         yaml.safe_dump({'param_set': args.param_set, 'mi_name': args.mi_name,
                         'rot_min': rot_min, 'rot_max': rot_max,
-                        'n_keep_eff': int(n_keep_eff), **mi}, fh, sort_keys=False)
+                        'n_keep_eff': int(n_keep_eff), **cfg}, fh, sort_keys=False)
     print('[build_intrinsic] done.')
 
 
@@ -287,40 +288,50 @@ def _write_validation_pdf(path, result, donut_df, visits_kept, coord_sys, iZs,
                           n_keep_eff, normalization_weights, vmode_scale,
                           frac_2d, n_k, n_j, n_iter, Z4hgt, z4_optical_grid,
                           z4_height_ccs_grid, xbins, ybins, wfs_edge_cut_deg,
-                          n_radial_bins_azimuth, azimuth_bin_deg):
+                          n_radial_bins_azimuth, azimuth_bin_deg,
+                          svd, dof_labels, dof_units, reach_threshold=0.7):
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     kj_list = list(kj_grid)
-    sig_keep = np.asarray(Sigma[:n_keep_eff], dtype=float)
+    keep_idx = svd._keep()
     wfs_inner = ibp.resolve_wfs_inner_edge(None)
+    nres = result['iter_results'][-1]
     with PdfPages(str(path)) as pdf:
         def emit(fig):
             if fig is not None:
                 pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
-        A_modes, V_modes = {}, {}
-        for it_idx, it in enumerate(result['iter_results']):
-            W_raw = ibp.stack_per_visit_coeffs(it['fit_rows_raw'], kj_list)
-            W_fit = ibp.stack_per_visit_coeffs(it['fit_rows'], kj_list)
-            emit(ibp.plot_w_heatmap(W_raw, kj_list, n_k, n_j,
-                                    f'Path A w_raw — iter {it_idx+1}', k_min=k_min))
-            emit(ibp.plot_w_heatmap(W_fit, kj_list, n_k, n_j,
-                                    f'Path A w_fit — iter {it_idx+1}', k_min=k_min))
-            emit(ibp.plot_w_heatmap(W_raw - W_fit, kj_list, n_k, n_j,
-                                    f'Path A w_residual — iter {it_idx+1}', k_min=k_min))
-            A = np.where(np.isfinite(W_raw), W_raw, 0.0) @ U_eff
-            A_modes[it_idx] = A
-            V_modes[it_idx] = A / sig_keep[None, :]
-        for it_idx, A in A_modes.items():
-            emit(ibp._plot_modes_heatmap(A, f'Path A U-mode amps — iter {it_idx+1} (μm)'))
-            emit(ibp._plot_modes_lines_all(A, n_keep_eff,
-                 f'Path A all {n_keep_eff} U-mode amps — iter {it_idx+1}'))
-        for it_idx in range(n_iter):
-            emit(ibp.plot_per_kj_vs_visit_page(
-                ibp.stack_per_visit_coeffs(result['iter_results'][it_idx]['fit_rows'], kj_list),
-                kj_list, iZs_arr, k_min, k_max,
-                title_root='Path A per-(k,j) w_fit vs visit',
-                iter_label=f'iter {it_idx+1}'))
-        # residual sigmas + example visit + sigma grids + azimuth
+
+        # A. SVD diagnostics + reachability (once; same for all rotator bins)
+        emit(_svd_diagnostics_fig(U_eff, V, Sigma, frac_2d, n_k, n_j, iZs_arr,
+                                  k_min, keep_idx, dof_labels))
+        emit(_reachability_fig(frac_2d, n_k, n_j, iZs_arr, k_min, n_keep_eff,
+                               reach_threshold))
+
+        # B. final-iteration coefficient / mode plots vs visit
+        W_raw = ibp.stack_per_visit_coeffs(nres['fit_rows_raw'], kj_list)
+        W_fit = ibp.stack_per_visit_coeffs(nres['fit_rows'], kj_list)
+        A_last = np.where(np.isfinite(W_raw), W_raw, 0.0) @ U_eff
+        Vm_last = A_last / np.asarray(Sigma[keep_idx])[None, :]
+        emit(ibp.plot_per_kj_vs_visit_page(W_fit, kj_list, iZs_arr, k_min, k_max,
+             title_root='Path A per-(k,j) w_fit vs visit', iter_label='final'))
+        emit(ibp.plot_per_kj_vs_visit_page(W_raw - W_fit, kj_list, iZs_arr, k_min, k_max,
+             title_root='Path A per-(k,j) DZ residual (raw-fit) vs visit', iter_label='final'))
+        emit(ibp.plot_per_kj_vs_visit_page(
+             ibp._stack_per_visit_err_A(nres['fit_rows_raw'], kj_list),
+             kj_list, iZs_arr, k_min, k_max,
+             title_root='Path A per-(k,j) robust RMS (RLM bse) vs visit', iter_label='final'))
+        emit(ibp._plot_modes_lines_all(A_last, n_keep_eff,
+             'Path A U-mode amps vs visit (final)'))
+        emit(ibp._plot_modes_lines_all(Vm_last, n_keep_eff,
+             'Path A V-mode amps a/σ vs visit (final)'))
+
+        # C. one U-mode iteration-stability figure (iter N-1 vs N)
+        if n_iter >= 2:
+            Wp = ibp.stack_per_visit_coeffs(result['iter_results'][-2]['fit_rows_raw'], kj_list)
+            A_prev = np.where(np.isfinite(Wp), Wp, 0.0) @ U_eff
+            emit(_umode_stability_fig(A_prev, A_last, n_keep_eff, n_iter))
+
+        # D. fit-quality / residual diagnostics (final iteration)
         residuals = ibp.compute_validation_residual(donut_df, result, coord_sys, iZs)
         sigmas = ibp.compute_per_visit_sigmas(donut_df, residuals,
                                               result['iter_results'][-1]['fit_rows'],
@@ -329,36 +340,133 @@ def _write_validation_pdf(path, result, donut_df, visits_kept, coord_sys, iZs,
         emit(ibp.plot_example_visit_histograms(donut_df, residuals,
              result['iter_results'][-1]['fit_rows'], list(iZs), iZidx, ex))
         emit(ibp.plot_sigma_vs_visit_grid(sigmas, list(iZs), iZidx, visits_kept,
-             which='sigma', title_root='Path A residual σ per j vs visit'))
-        gm = result['iter_results'][-1].get('good_donut_mask',
-                                            np.ones(len(donut_df), dtype=bool))
+             which='sigma_mad', title_root='Path A residual σ_MAD per j vs visit'))
+        gm = nres.get('good_donut_mask', np.ones(len(donut_df), dtype=bool))
         txo = np.rad2deg(np.asarray(donut_df['thx_OCS'], dtype=float))
         tyo = np.rad2deg(np.asarray(donut_df['thy_OCS'], dtype=float))
         emit(ibp.plot_intrinsic_vs_azimuth(
-            txo[gm], tyo[gm], result['iter_results'][-1]['wfd_subtracted'][gm],
+            txo[gm], tyo[gm], nres['wfd_subtracted'][gm],
             iZidx, list(iZs), wfs_inner, wfs_edge_cut_deg,
             n_radial_bins_azimuth, azimuth_bin_deg,
             title_root='Path A measured intrinsic vs azimuth (OCS)'))
         if z4_optical_grid is not None:
             emit(ibp.plot_z4_optical_page(
-                result['iter_results'][-1]['measured_grid'].get(4),
+                nres['measured_grid'].get(4),
                 z4_height_ccs_grid, z4_optical_grid, xbins, ybins))
-        # DOF recovery pages
-        N_diag = np.asarray(normalization_weights, dtype=float)
+
+        # E. FWHM-equivalent + zk residual cov/corr (final), if wep available
+        if getattr(ibp, '_wep_ok', False):
+            bad = {(int(r['day_obs']), int(r['seq_num'])) for r in nres['fit_rows']
+                   if r.get('bad_fit')}
+            d_all = np.asarray(donut_df['day_obs']); s_all = np.asarray(donut_df['seq_num'])
+            good = np.array([(int(d), int(s)) not in bad for d, s in zip(d_all, s_all)])
+            fwhm = ibp.donut_fwhm_from_zk(residuals[good], list(iZs))
+            txg = np.rad2deg(np.asarray(donut_df.loc[good, f'thx_{coord_sys}'], dtype=float))
+            tyg = np.rad2deg(np.asarray(donut_df.loc[good, f'thy_{coord_sys}'], dtype=float))
+            emit(ibp.plot_fwhm_pooled_histogram(fwhm,
+                 title_root='Path A per-donut FWHM-equiv (pooled)'))
+            emit(ibp.plot_fwhm_vs_visit(fwhm, d_all[good], s_all[good], sigmas, visits_kept,
+                 title_root='Path A median per-donut FWHM-equiv vs visit'))
+            emit(ibp.plot_fwhm_focal_plane_map(txg, tyg, fwhm, n_bins=49, fp_radius=1.8,
+                 title='Path A per-donut FWHM-equiv vs (thx, thy)'))
+            r_deg = np.hypot(txg, tyg)
+            edge = (r_deg >= wfs_inner) & (r_deg <= wfs_edge_cut_deg)
+            emit(ibp.plot_fwhm_pooled_histogram(fwhm[edge],
+                 title_root=f'Path A FWHM-equiv (edge {wfs_inner:.2f}-{wfs_edge_cut_deg:.2f}°)'))
+            emit(ibp.plot_zk_cov_corr(residuals[good], list(iZs),
+                 'Path A zk residual cov/corr (all)'))
+            emit(ibp.plot_zk_cov_corr(residuals[good][edge], list(iZs),
+                 'Path A zk residual cov/corr (edge)'))
+
+        # F. DOF recovery: final-iteration vs visit + median across iterations
         dof_per_iter = {}
-        for it_idx, A in A_modes.items():
-            dof = osv.recover_dof_per_visit(A, V, Sigma, N_diag, n_keep_eff)
-            dof_per_iter[it_idx] = dof
-            it = result['iter_results'][it_idx]
-            for p in ibp.plot_dof_vs_visit_pages(
-                    dof, osv.LABELS_50DOF, osv.DOF_UNITS_50, visits_kept,
-                    [int(r['day_obs']) for r in it['fit_rows']],
-                    [int(r['seq_num']) for r in it['fit_rows']],
-                    title_root=f'Path A DOF vs visit — iter {it_idx+1}'):
-                emit(p)
-        emit(ibp.plot_dof_median_summary(dof_per_iter, osv.LABELS_50DOF,
-             osv.DOF_UNITS_50, title='Path A DOF median per iteration'))
+        for it_idx, it in enumerate(result['iter_results']):
+            Wr = ibp.stack_per_visit_coeffs(it['fit_rows_raw'], kj_list)
+            dof_per_iter[it_idx] = svd.dof(np.where(np.isfinite(Wr), Wr, 0.0) @ U_eff)
+        for p in ibp.plot_dof_vs_visit_pages(
+                dof_per_iter[n_iter - 1], dof_labels, dof_units, visits_kept,
+                [int(r['day_obs']) for r in nres['fit_rows']],
+                [int(r['seq_num']) for r in nres['fit_rows']],
+                title_root='Path A DOF vs visit — final'):
+            emit(p)
+        emit(ibp.plot_dof_median_summary(dof_per_iter, dof_labels, dof_units,
+             title='Path A DOF median per iteration'))
     print(f'  wrote {path.name}')
+
+
+def _svd_diagnostics_fig(U_eff, V, Sigma, frac_2d, n_k, n_j, iZs_arr, k_min,
+                         keep_idx, dof_labels):
+    """V matrix, singular spectrum, U_eff, and U² (reachability) — one page."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(2, 2, figsize=(15, 10), layout='constrained')
+    n_show = min(len(keep_idx), V.shape[1])
+    im = ax[0, 0].imshow(V[:, :n_show], aspect='auto', cmap='seismic',
+                         vmin=-1, vmax=1)
+    ax[0, 0].set_title('V (normalized DOF × v-mode)')
+    ax[0, 0].set_xlabel('v-mode'); ax[0, 0].set_ylabel('DOF')
+    yt = range(0, len(dof_labels), max(1, len(dof_labels) // 12))
+    ax[0, 0].set_yticks(list(yt)); ax[0, 0].set_yticklabels([dof_labels[i] for i in yt], fontsize=6)
+    fig.colorbar(im, ax=ax[0, 0], shrink=0.8)
+    ax[0, 1].semilogy(np.arange(1, len(Sigma) + 1), Sigma, 'o-', ms=4)
+    ax[0, 1].axvline(len(keep_idx) + 0.5, color='green', alpha=0.6,
+                     label=f'n_keep={len(keep_idx)}')
+    ax[0, 1].set_title('singular values σ'); ax[0, 1].set_xlabel('mode')
+    ax[0, 1].legend(fontsize=8); ax[0, 1].grid(alpha=0.3)
+    vmax = float(np.nanpercentile(np.abs(U_eff), 98)) or 1.0
+    im = ax[1, 0].imshow(U_eff, aspect='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    ax[1, 0].set_title('U_eff (DZ row × u-mode)'); ax[1, 0].set_xlabel('u-mode')
+    ax[1, 0].set_ylabel('(k,j) row'); fig.colorbar(im, ax=ax[1, 0], shrink=0.8)
+    im = ax[1, 1].imshow(100.0 * frac_2d, aspect='auto', cmap='magma_r',
+                         vmin=0, vmax=100)
+    ax[1, 1].set_title('U² reachability f(k,j) [%]')
+    ax[1, 1].set_xticks(range(n_j)); ax[1, 1].set_xticklabels([f'Z{j}' for j in iZs_arr],
+                                                              rotation=90, fontsize=7)
+    ax[1, 1].set_yticks(range(n_k)); ax[1, 1].set_yticklabels([f'k={k_min+ki}' for ki in range(n_k)])
+    fig.colorbar(im, ax=ax[1, 1], shrink=0.8)
+    fig.suptitle('OFC SVD diagnostics', fontsize=13)
+    return fig
+
+
+def _reachability_fig(frac_2d, n_k, n_j, iZs_arr, k_min, n_keep_eff, threshold):
+    """Reachability heatmap f(k,j)=‖U_effᵀ e_kj‖² with cell text."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(max(8, 0.45 * n_j + 2), 0.6 * n_k + 2),
+                           layout='constrained')
+    im = ax.imshow(100.0 * frac_2d, aspect='auto', cmap='magma_r', vmin=0, vmax=100)
+    for ki in range(n_k):
+        for ji in range(n_j):
+            v = 100.0 * frac_2d[ki, ji]
+            ax.text(ji, ki, f'{v:4.0f}', ha='center', va='center', fontsize=6,
+                    color='white' if v > 55 else 'black')
+    ax.set_xticks(range(n_j)); ax.set_xticklabels([f'Z{j}' for j in iZs_arr], fontsize=8)
+    ax.set_yticks(range(n_k)); ax.set_yticklabels([f'k={k_min+ki}' for ki in range(n_k)])
+    ax.set_xlabel('pupil Noll j'); ax.set_ylabel('focal Noll k')
+    ax.set_title(f'Reachability f(k,j)  (n_keep={n_keep_eff}, thr={threshold:g})')
+    fig.colorbar(im, ax=ax, label='%')
+    return fig
+
+
+def _umode_stability_fig(A_prev, A_last, n_keep_eff, n_iter):
+    """Per-u-mode amplitude, iter N-1 vs N (convergence check)."""
+    import matplotlib.pyplot as plt
+    ncols = 5
+    nrows = (n_keep_eff + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(15, 1.7 * nrows),
+                             layout='constrained', sharex=True)
+    axes = np.atleast_2d(axes).ravel()
+    nv = A_prev.shape[0]
+    for m in range(nrows * ncols):
+        ax = axes[m]
+        if m >= n_keep_eff:
+            ax.axis('off'); continue
+        ax.plot(range(nv), A_prev[:, m], '.', ms=2, color='steelblue', alpha=0.6)
+        ax.plot(range(nv), A_last[:, m], '.', ms=2.5, color='crimson', alpha=0.9)
+        ax.axhline(0, color='k', lw=0.4, alpha=0.5)
+        ax.set_title(f'mode {m + 1}', fontsize=7); ax.grid(alpha=0.3)
+        ax.tick_params(labelsize=6)
+    fig.suptitle(f'Path A U-mode amplitude stability — iter {n_iter-1} (blue) '
+                 f'vs {n_iter} (red)', fontsize=11)
+    return fig
 
 
 def _write_comparison_pdf(path, result, iZs, coord_sys, xbins, ybins):
