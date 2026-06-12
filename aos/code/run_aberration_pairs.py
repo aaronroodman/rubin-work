@@ -34,6 +34,8 @@ from astropy.table import QTable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+import mi_config as mc
+
 try:
     from common.zernike_names import NOLL_NAMES
 except Exception:                                         # pragma: no cover
@@ -200,14 +202,30 @@ def main():
     ap.add_argument('--fits', default=None, help='output/<ps>/fits.parquet (bad-fit cut)')
     ap.add_argument('--output-dir', required=True)
     ap.add_argument('--coord-sys', default='OCS')
-    ap.add_argument('--fit-prefix', default='z1toz6')
+    ap.add_argument('--param-set', default=None,
+                    help='for analysis_config.yaml aberration_pairs overrides')
+    ap.add_argument('--analysis-config', default=None,
+                    help='analysis_config.yaml path (default: ../analysis_config.yaml)')
+    ap.add_argument('--fit-prefix', default=None, help='override config fit_prefix')
     ap.add_argument('--label', default='')
-    ap.add_argument('--n-quartiles', type=int, default=4)
+    ap.add_argument('--n-quartiles', type=int, default=None,
+                    help='override config n_quartiles')
     args = ap.parse_args()
+
+    # knobs from analysis_config.yaml (CLI overrides win); code defaults last
+    sect = mc.analysis_section(
+        'aberration_pairs', args.param_set,
+        config_path=(Path(args.analysis_config) if args.analysis_config else None))
+    n_quartiles = (args.n_quartiles if args.n_quartiles is not None
+                   else int(sect.get('n_quartiles', 4)))
+    fit_prefix = (args.fit_prefix if args.fit_prefix is not None
+                  else sect.get('fit_prefix', 'z1toz6'))
+    pairs_all = ([tuple(p) for p in sect['pairs']] if sect.get('pairs')
+                 else ABERRATION_PAIRS)
 
     out = Path(args.output_dir); out.mkdir(parents=True, exist_ok=True)
     iZs = iZs_from_visits(args.visits)
-    bad = bad_visit_set(args.fits, args.fit_prefix) if args.fits else set()
+    bad = bad_visit_set(args.fits, fit_prefix) if args.fits else set()
     print(f'[aberration_pairs] {args.donuts}  coord={args.coord_sys}')
     zk = load_donut_zk(args.donuts, args.coord_sys, bad)
     if len(zk) == 0:
@@ -219,19 +237,19 @@ def main():
     from matplotlib.backends.backend_pdf import PdfPages
 
     rows, n_pages = [], 0
-    pairs = [(p, s) for (p, s) in ABERRATION_PAIRS if p in iZs and s in iZs]
-    skipped = [(p, s) for (p, s) in ABERRATION_PAIRS if (p, s) not in pairs]
+    pairs = [(p, s) for (p, s) in pairs_all if p in iZs and s in iZs]
+    skipped = [(p, s) for (p, s) in pairs_all if (p, s) not in pairs]
     if skipped:
         print(f'  skipping pairs absent from iZs: {skipped}')
     with PdfPages(str(out / 'aberration_pairs.pdf')) as pdf:
         for j_pri, j_sec in pairs:
             x = zk[:, iZs.index(j_pri)]
             y = zk[:, iZs.index(j_sec)]
-            qrows, _ = quartile_fit_rows(x, y, n_quartiles=args.n_quartiles)
+            qrows, _ = quartile_fit_rows(x, y, n_quartiles=n_quartiles)
             for rr in qrows:
                 rows.append(dict(j_primary=j_pri, j_secondary=j_sec, **rr))
             fig = plot_quartile_density_page(j_pri, j_sec, x, y,
-                                             n_quartiles=args.n_quartiles,
+                                             n_quartiles=n_quartiles,
                                              label=args.label or args.coord_sys)
             pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
             n_pages += 1

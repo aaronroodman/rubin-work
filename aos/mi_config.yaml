@@ -80,13 +80,8 @@ defaults:
     r_lim_lo: 0.1
     r_lim_hi: 1.6
     use_z4_optical: true
-  lut:                                # averaged-DOF look-up table (run_build_lut)
-    n_dof: null                       # null -> inherit top-level n_dof
-    n_keep: null                      # null -> inherit top-level n_keep
-    reduce: median                    # median | mean over all kept visits
-    use_alt_window: false             # false -> average over ALL elevations
-    drop_bad_fit: true
-    prefix: z1toz6                    # DZ-fit column prefix in fits.parquet
+  # NOTE: LUT / aberration-pairs knobs live in analysis_config.yaml, NOT here —
+  # they must not re-trigger the per-rotator-bin build when edited.
 
 measured_intrinsics:
 

@@ -31,8 +31,11 @@ nightly data extraction, PID control simulation, and reference wavefront studies
 ## Pipeline (Snakemake)
 
 `Snakefile` orchestrates the per-`param_set` processing; configs in
-`snake_config.yaml` (date chunks) and `mi_config.yaml` (measured-intrinsic
-configs). Launch detached with `./run_snake.sh` (see its header).
+`snake_config.yaml` (date chunks), `mi_config.yaml` (measured-intrinsic build
+configs — an input of `build_intrinsic`, so editing it re-triggers the builds),
+and `analysis_config.yaml` (LUT / aberration-pair knobs, kept separate so
+editing them re-runs only the analyses, never the builds). Launch detached with
+`./run_snake.sh` (see its header).
 
 - **Phase 1** — per chunk: `mktable` (Butler → donuts/visits) → `fit`
   (Double-Zernike, tabulated intrinsic) → `combine` → validation `plots`.

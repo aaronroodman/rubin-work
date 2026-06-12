@@ -1,0 +1,37 @@
+# Analysis-only knobs: the averaged-DOF LUT (run_build_lut.py) and the
+# per-donut aberration-pair analysis (run_aberration_pairs.py).
+#
+# Kept SEPARATE from mi_config.yaml on purpose: `rule build_intrinsic` lists
+# mi_config.yaml as an input, so editing the measured-intrinsic config
+# re-triggers the (slow) per-rotator-bin builds.  These downstream-analysis
+# knobs do not affect the build, so they live here — editing them re-runs only
+# build_lut / aberration_pairs, never the builds.
+#
+# Resolution (deep-merge, later wins):
+#   defaults[<section>]
+#     <- overrides[<param_set>][<section>]
+#     <- overrides[<param_set>][<mi_name>][<section>]
+
+defaults:
+
+  lut:                    # averaged-DOF look-up table (collapses elev+rotator)
+    n_dof: null           # null -> inherit the (ps, mi) entry's mi_config n_dof
+    n_keep: null          # null -> inherit the (ps, mi) entry's mi_config n_keep
+    reduce: median        # median | mean over all kept visits
+    use_alt_window: false # false -> average over ALL elevations (and rotators)
+    drop_bad_fit: true
+    prefix: z1toz6        # DZ-fit column prefix in fits.parquet
+
+  aberration_pairs:       # per-donut primary->secondary pair analysis
+    n_quartiles: 4
+    fit_prefix: z1toz6
+    # pairs: optional [[pri, sec], ...] override; omit -> script default list
+
+# Per-param_set / per-(param_set, mi_name) overrides (optional). Example:
+# overrides:
+#   fam_danish_1_0_wep17_3_0_bin2x:
+#     lut: {n_keep: 21}              # a 50/21 LUT regardless of the build's n_keep
+#     aberration_pairs: {n_quartiles: 5}
+#     pathA_50_34_i:
+#       lut: {reduce: mean}
+overrides: {}

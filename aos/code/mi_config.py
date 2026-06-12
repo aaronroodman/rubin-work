@@ -43,6 +43,36 @@ def load_mi_config(param_set, mi_name, config_path=None, doc=None):
     raise KeyError(f'MI config {mi_name!r} not found for param_set {param_set!r}')
 
 
+def analysis_config_path():
+    return Path(__file__).resolve().parent.parent / 'analysis_config.yaml'
+
+
+def load_analysis_doc(config_path=None):
+    """Load analysis_config.yaml (LUT / aberration-pairs knobs).  Returns {} if
+    the file is absent so callers can fall back to code-level defaults."""
+    p = Path(config_path or analysis_config_path())
+    return (yaml.safe_load(open(p)) or {}) if p.exists() else {}
+
+
+def analysis_section(section, param_set=None, mi_name=None,
+                     config_path=None, doc=None):
+    """Merged analysis knobs for one ``section`` ('lut' | 'aberration_pairs').
+
+    Resolution (deep-merge, later wins):
+      defaults[section]
+        <- overrides[param_set][section]
+        <- overrides[param_set][mi_name][section]
+    Kept separate from mi_config.yaml so editing these does not re-trigger the
+    measured-intrinsic build (which lists mi_config.yaml as an input)."""
+    doc = load_analysis_doc(config_path) if doc is None else doc
+    out = (doc.get('defaults') or {}).get(section) or {}
+    ov = ((doc.get('overrides') or {}).get(param_set) or {}) if param_set else {}
+    out = _deep_merge(out, ov.get(section) or {})
+    if mi_name and isinstance(ov.get(mi_name), dict):
+        out = _deep_merge(out, ov[mi_name].get(section) or {})
+    return out
+
+
 def resolve_indices(spec):
     """Resolve the scalar-or-list convention to a sorted list of int indices.
     ``int n`` -> [0, 1, ..., n-1];  ``list`` -> exactly those indices."""

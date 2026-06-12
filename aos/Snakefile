@@ -172,6 +172,7 @@ rule aberration_pairs:
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
+        config = "analysis_config.yaml",
         script = "code/run_aberration_pairs.py",
     output: "output/{ps}/plots/aberration_pairs.pdf"
     params: coord = lambda w: coord(w.ps)
@@ -181,7 +182,8 @@ rule aberration_pairs:
     shell:
         "python code/run_aberration_pairs.py {input.donuts} "
         "--visits {input.visits} --fits {input.fits} --coord-sys {params.coord} "
-        "--label {wildcards.ps} --output-dir output/{wildcards.ps}/plots > {log} 2>&1"
+        "--param-set {wildcards.ps} --label {wildcards.ps} "
+        "--output-dir output/{wildcards.ps}/plots > {log} 2>&1"
 
 # ======================================================================
 # Phase 2 — measured intrinsic, per (param_set, mi_name) from mi_config.yaml
@@ -261,11 +263,12 @@ rule refit_mi:
 # ---- averaged-DOF LUT (n_dof/n_keep settable; collapses elev+rotator) ----
 rule build_lut:
     input:
-        fits   = "output/{ps}/fits.parquet",
-        visits = "output/{ps}/visits.parquet",
-        config = "mi_config.yaml",
-        script = "code/run_build_lut.py",
-        lib    = "code/ofc_svd.py",
+        fits     = "output/{ps}/fits.parquet",
+        visits   = "output/{ps}/visits.parquet",
+        config   = "mi_config.yaml",           # SVD params, filters, n_dof/n_keep
+        analysis = "analysis_config.yaml",      # lut knobs (reduce, alt window, ...)
+        script   = "code/run_build_lut.py",
+        lib      = "code/ofc_svd.py",
     output:
         lut    = "output/{ps}/{mi}/lut/lut.parquet",
         lut_dz = "output/{ps}/{mi}/lut/lut_dz.parquet",

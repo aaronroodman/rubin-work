@@ -82,6 +82,8 @@ def main():
                     help='MI config entry name in mi_config.yaml')
     ap.add_argument('--config', default=None,
                     help='mi_config.yaml path (default: ../mi_config.yaml)')
+    ap.add_argument('--analysis-config', default=None,
+                    help='analysis_config.yaml path (default: ../analysis_config.yaml)')
     ap.add_argument('--n-dof', type=int, default=None,
                     help='override lut.n_dof / top-level n_dof')
     ap.add_argument('--n-keep', type=int, default=None,
@@ -93,7 +95,11 @@ def main():
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
                             config_path=(Path(args.config) if args.config else None))
     b = cfg['build']
-    lut = {**DEFAULT_LUT, **(cfg.get('lut') or {})}
+    # LUT knobs come from analysis_config.yaml (separate from mi_config so they
+    # don't re-trigger the build); fall back to code-level DEFAULT_LUT.
+    lut = {**DEFAULT_LUT, **mc.analysis_section(
+        'lut', args.param_set, args.mi_name,
+        config_path=(Path(args.analysis_config) if args.analysis_config else None))}
 
     # n_dof / n_keep: CLI > lut block > top-level config entry
     n_dof_spec = (args.n_dof if args.n_dof is not None
