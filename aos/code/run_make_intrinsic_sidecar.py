@@ -34,14 +34,7 @@ from scipy.spatial import Delaunay
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import intrinsic_split as isp
-
-
-def load_mi_config(config_path, param_set, mi_name):
-    cfg = yaml.safe_load(open(config_path))['measured_intrinsics']
-    for e in cfg.get(param_set, []):
-        if e.get('name') == mi_name:
-            return dict(e)
-    raise KeyError(f'MI config {mi_name!r} not found for {param_set!r}')
+import mi_config as mc
 
 
 def barycentric_weights(tri, pts):
@@ -72,10 +65,10 @@ def main():
     ap.add_argument('--coord-sys', default='OCS')
     args = ap.parse_args()
 
-    aos_dir = Path(__file__).resolve().parent.parent
-    cfg_path = Path(args.config) if args.config else aos_dir / 'mi_config.yaml'
-    mi = load_mi_config(cfg_path, args.param_set, args.mi_name)
-    coord = args.coord_sys
+    cfg = mc.load_mi_config(args.param_set, args.mi_name,
+                            config_path=(Path(args.config) if args.config else None))
+    b = cfg.get('build', {})
+    coord = cfg.get('coord_sys', args.coord_sys)
     base = Path(args.output_root) / args.param_set
     mi_dir = base / args.mi_name
 
@@ -110,12 +103,12 @@ def main():
         try:
             from lsst.obs.lsst import LsstCam
             from ccd_height import compute_ccd_heights, HEIGHT_TO_Z4_UM_PER_MM
-            fac = mi.get('height_to_z4_factor') or HEIGHT_TO_Z4_UM_PER_MM
+            fac = b.get('height_to_z4_factor') or HEIGHT_TO_Z4_UM_PER_MM
             hc = compute_ccd_heights(
                 dd, LsstCam.getCamera(),
-                source=mi.get('height_source', 'batoid_rubin'),
-                height_map_dir=mi.get('batoid_rubin_height_map_dir'),
-                metrology_fits=mi.get('height_map_fits'), factor=fac)
+                source=b.get('height_source', 'batoid_rubin'),
+                height_map_dir=b.get('batoid_rubin_height_map_dir'),
+                metrology_fits=b.get('height_map_fits'), factor=fac)
             z4_height = np.asarray(hc['Z4_height'], dtype=float)
             print(f'  Z4_height: mean={np.nanmean(z4_height):+.4f} μm')
         except Exception as e:

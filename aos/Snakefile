@@ -33,10 +33,12 @@ PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
 CFG        = yaml.safe_load(open("snake_config.yaml"))["param_sets"]
 PSETS      = list(CFG)
 
-# Phase 2: measured-intrinsic configs (optional file).
-MI_CFG = {}
-if os.path.exists("mi_config.yaml"):
-    MI_CFG = yaml.safe_load(open("mi_config.yaml")).get("measured_intrinsics", {}) or {}
+# Phase 2: measured-intrinsic configs (optional file), via code/mi_config.py.
+import sys as _sys
+_sys.path.insert(0, "code")
+import mi_config as _mc
+MI_DOC = _mc.load_doc("mi_config.yaml") if os.path.exists("mi_config.yaml") else {}
+MI_PSETS = list((MI_DOC or {}).get("measured_intrinsics", {}))
 
 def phrase(ps):                                   # matches run_pipeline / intrinsics_lib
     r = PARAM_SETS.get(ps, {})
@@ -51,13 +53,12 @@ def chunk_files(ps, name):
     return [f"output/{ps}/chunks/{a}_{b}/{name}" for a, b in chunks(ps)]
 
 # ---- Phase 2 (measured intrinsic) helpers, driven by mi_config.yaml ----
-def mi_names(ps):   return [e["name"] for e in MI_CFG.get(ps, [])]
-def mi_entry(ps, mi): return next(e for e in MI_CFG[ps] if e["name"] == mi)
-def mi_rotbins(ps, mi): return [(lo, hi) for lo, hi in mi_entry(ps, mi)["rotator_bins"]]
+def mi_names(ps):   return _mc.mi_names(ps, doc=MI_DOC)
+def mi_rotbins(ps, mi): return _mc.rotator_bins(_mc.load_mi_config(ps, mi, doc=MI_DOC))
 def mi_bin_grids(ps, mi):
     return [f"output/{ps}/{mi}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
             for lo, hi in mi_rotbins(ps, mi)]
-MI_PAIRS = [(ps, mi) for ps in MI_CFG for mi in mi_names(ps)]
+MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
 # param_set names have no slash; keeps output/<ps>/X.parquet (combined)
 # distinct from output/<ps>/chunks/<d>_<d>/X.parquet (per chunk).

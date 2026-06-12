@@ -27,7 +27,7 @@ except Exception:  # marker styling is optional for the plots
 try:
     from ccd_height import HEIGHT_TO_Z4_UM_PER_MM
 except Exception:
-    HEIGHT_TO_Z4_UM_PER_MM = 14.5
+    HEIGHT_TO_Z4_UM_PER_MM = 15.0
 
 # WEP utility for Zernike -> PSF-FWHM conversion (LSST env only).
 try:

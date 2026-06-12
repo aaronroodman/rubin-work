@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import ofc_svd as osv
+import mi_config as mc
 from dz_fitting import derive_noll_indices
 from measured_intrinsic import (
     apply_visit_filters, build_measured_intrinsic_uconstrained,
@@ -81,16 +82,14 @@ def filter_visits_by_band(visits, allowed_bands):
 
 
 # ----------------------------------------------------------------------
-# config
-# ----------------------------------------------------------------------
-def load_mi_config(config_path, param_set, mi_name):
-    cfg = yaml.safe_load(open(config_path))['measured_intrinsics']
-    entries = cfg.get(param_set, [])
-    for e in entries:
-        if e.get('name') == mi_name:
-            return dict(e)
-    raise KeyError(f'MI config {mi_name!r} not found for param_set '
-                   f'{param_set!r} in {config_path}')
+def filter_visits_by_program(visits, programs):
+    """Keep only visits whose science_program is in the whitelist (e.g. the
+    T614 triplets; excludes the bounce blocks that slew within a triplet)."""
+    if not programs or 'science_program' not in visits.colnames:
+        return visits
+    sp = np.asarray(visits['science_program']).astype(str)
+    keep = np.array([p in set(programs) for p in sp])
+    return visits[keep]
 
 
 def main():
@@ -110,36 +109,34 @@ def main():
                          'output/<ps>/<mi>/build/rot_<lo>_<hi>)')
     args = ap.parse_args()
 
-    aos_dir = Path(__file__).resolve().parent.parent
-    cfg_path = Path(args.config) if args.config else aos_dir / 'mi_config.yaml'
-    mi = load_mi_config(cfg_path, args.param_set, args.mi_name)
+    cfg = mc.load_mi_config(args.param_set, args.mi_name,
+                            config_path=(Path(args.config) if args.config else None))
+    b = cfg['build']
 
-    # ---- config with defaults (mirrors the notebook params cell) ----
-    coord_sys = mi.get('coord_sys', 'OCS')
-    n_keep = int(mi['n_keep'])
-    k_min, k_max = int(mi.get('k_min', 1)), int(mi.get('k_max', 6))
-    n_iter = int(mi.get('n_iter', 3))
-    n_bins = int(mi.get('n_bins', 73))
-    fp_radius_basis = float(mi.get('fp_radius_basis', 1.8))
-    fp_radius_grid = float(mi.get('fp_radius_grid', 1.8))
-    min_donuts = int(mi.get('min_donuts', 100))
-    bad_fit_threshold = float(mi.get('bad_fit_threshold', 2.0))
-    allowed_bands = mi.get('filter') or mi.get('allowed_bands') or None
-    if isinstance(allowed_bands, str):
-        allowed_bands = [allowed_bands]
-    alt_min = mi.get('alt_min_deg')
-    alt_max = mi.get('alt_max_deg')
-    rot_min = args.rot_min if args.rot_min is not None else mi.get('rot_min_deg')
-    rot_max = args.rot_max if args.rot_max is not None else mi.get('rot_max_deg')
-    max_visits = mi.get('max_visits')
-    ofc_norm_yaml = mi.get('ofc_normalization_yaml')
-    height_source = mi.get('height_source', 'batoid_rubin')
-    height_map_dir = mi.get('batoid_rubin_height_map_dir')
-    height_map_fits = mi.get('height_map_fits')
-    height_to_z4_factor = mi.get('height_to_z4_factor')
-    wfs_edge_cut_deg = float(mi.get('wfs_edge_cut_deg', 1.75))
-    n_radial_bins_azimuth = int(mi.get('n_radial_bins_azimuth', 4))
-    azimuth_bin_deg = float(mi.get('azimuth_bin_deg', 15.0))
+    # ---- config (defaults merged from mi_config.yaml 'defaults' block) ----
+    coord_sys = cfg.get('coord_sys', 'OCS')
+    n_keep_spec = cfg['n_keep']            # scalar or list -> build_ofc_svd
+    n_dof_spec = cfg.get('n_dof')          # scalar or list (None = all 50)
+    k_min, k_max = int(b['k_min']), int(b['k_max'])
+    n_iter = int(b['n_iter'])
+    n_bins = int(b['n_bins'])
+    fp_radius_basis = float(b['fp_radius_basis'])
+    fp_radius_grid = float(b['fp_radius_grid'])
+    min_donuts = int(b['min_donuts'])
+    bad_fit_threshold = float(b['bad_fit_threshold'])
+    allowed_bands = mc.as_band_list(cfg.get('filter'))
+    programs = cfg.get('programs')
+    alt_min, alt_max = cfg.get('alt_min_deg'), cfg.get('alt_max_deg')
+    rot_min, rot_max = args.rot_min, args.rot_max
+    max_visits = b.get('max_visits')
+    ofc_norm_yaml = b.get('ofc_normalization_yaml')
+    height_source = b.get('height_source', 'batoid_rubin')
+    height_map_dir = b.get('batoid_rubin_height_map_dir')
+    height_map_fits = b.get('height_map_fits')
+    height_to_z4_factor = b.get('height_to_z4_factor')
+    wfs_edge_cut_deg = float(b.get('wfs_edge_cut_deg', 1.75))
+    n_radial_bins_azimuth = int(b.get('n_radial_bins_azimuth', 4))
+    azimuth_bin_deg = float(b.get('azimuth_bin_deg', 15.0))
 
     base = Path(args.output_root) / args.param_set
     if args.out_dir:
@@ -149,7 +146,6 @@ def main():
                 if rot_min is not None and rot_max is not None else 'rot_all')
         out_dir = base / args.mi_name / 'build' / rtag
     out_dir.mkdir(parents=True, exist_ok=True)
-    label = f'nkeep_{n_keep}'
     print(f'[build_intrinsic] {args.param_set} / {args.mi_name}  '
           f'rot=[{rot_min},{rot_max}]  -> {out_dir}')
 
@@ -160,12 +156,13 @@ def main():
         visits_full, alt_min_deg=alt_min, alt_max_deg=alt_max,
         rotator_min_deg=rot_min, rotator_max_deg=rot_max)
     visits_kept = filter_visits_by_band(visits_kept, allowed_bands)
+    visits_kept = filter_visits_by_program(visits_kept, programs)
     if max_visits and len(visits_kept) > max_visits:
         idx = np.unique(np.round(
             np.linspace(0, len(visits_kept) - 1, max_visits)).astype(int))
         visits_kept = visits_kept[idx]
     print(f'  visits kept: {len(visits_kept)}/{len(visits_full)} '
-          f'(bands={allowed_bands}, alt=[{alt_min},{alt_max}])')
+          f'(bands={allowed_bands}, programs={programs}, alt=[{alt_min},{alt_max}])')
     if len(visits_kept) == 0:
         raise RuntimeError('No visits pass the filters for this bin.')
 
@@ -181,15 +178,17 @@ def main():
     print(f'  pupil Noll j ({n_j}): {iZs};  focal k = {k_min}..{k_max}')
 
     # ---- OFC SVD (ofc_svd replaces the notebook inline build) ----
-    svd = osv.build_ofc_svd(iZs, k_min, k_max, n_keep,
+    svd = osv.build_ofc_svd(iZs, k_min, k_max, n_keep_spec, n_dof=n_dof_spec,
                             ofc_normalization_yaml=ofc_norm_yaml)
     U_eff, V, Sigma = svd.U_eff, svd.V, svd.Sigma
     kj_grid, n_keep_eff = svd.kj_grid, svd.n_keep_eff
     normalization_weights = svd.normalization_weights
+    keep_idx = svd._keep()
+    dof_labels, dof_units = svd.dof_labels()
     frac_2d = (U_eff ** 2).sum(axis=1).reshape(n_k, n_j)
     vmode_scale = osv.vmode_fwhm_scale(svd)
-    print(f'  SVD: U_eff={U_eff.shape}, n_keep_eff={n_keep_eff}, '
-          f'sigma=[{Sigma[0]:.3g}..{Sigma[n_keep_eff-1]:.3g}]')
+    label = f'nkeep_{n_keep_eff}'
+    print(f'  SVD: U_eff={U_eff.shape}, n_dof={svd.n_dof}, n_keep_eff={n_keep_eff}')
 
     # ---- per-donut CCD-height Z4 ----
     Z4hgt = None
@@ -253,13 +252,12 @@ def main():
     # ---- DOF recovery + augment final fit rows, then save ----
     A_last = np.where(np.isfinite(ibp.stack_per_visit_coeffs(final['fit_rows_raw'], kj_grid)),
                       ibp.stack_per_visit_coeffs(final['fit_rows_raw'], kj_grid), 0.0) @ U_eff
-    V_last = A_last / np.asarray(Sigma[:n_keep_eff])[None, :]
-    dof_last = osv.recover_dof_per_visit(A_last, V, Sigma,
-                                         np.asarray(normalization_weights), n_keep_eff)
+    V_last = A_last / np.asarray(Sigma[keep_idx])[None, :]
+    dof_last = svd.dof(A_last)
     W_raw = ibp.stack_per_visit_coeffs(final['fit_rows_raw'], kj_grid)
     W_fit = ibp.stack_per_visit_coeffs(final['fit_rows'], kj_grid)
     ibp.augment_fit_rows_with_modes(
-        final['fit_rows'], A_last, V_last, dof_last, osv.LABELS_50DOF,
+        final['fit_rows'], A_last, V_last, dof_last, dof_labels,
         {}, V_fwhm=(V_last * vmode_scale[None, :] if vmode_scale is not None else None),
         W_resid=W_raw - W_fit, kj_list=list(kj_grid), W_raw=W_raw, W_corr=W_fit)
 

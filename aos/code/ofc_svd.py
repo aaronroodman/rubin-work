@@ -128,15 +128,18 @@ def recover_dof_per_visit(A_modes, V, Sigma, N_diag, n_keep):
     Sigma : ndarray (n_dof,)
     N_diag : ndarray (n_dof,)
         OFC normalization weights (diagonal of N).
-    n_keep : int
+    n_keep : int or sequence of int
+        Number of leading modes (0..n_keep-1) or an explicit list of mode
+        indices to retain (to drop individual v-modes).
 
     Returns
     -------
     dof : ndarray (n_visits, n_dof)
         Physical DOF in the mixed units of :data:`DOF_UNITS_50`.
     """
-    V_eff = V[:, :n_keep]
-    inv_sig = 1.0 / Sigma[:n_keep]
+    keep = list(range(int(n_keep))) if np.isscalar(n_keep) else list(n_keep)
+    V_eff = V[:, keep]
+    inv_sig = 1.0 / Sigma[keep]
     A = np.where(np.isfinite(A_modes), A_modes, 0.0)
     dof_norm = (V_eff * inv_sig[None, :]) @ A.T          # (n_dof, n_visits)
     dof_phys = N_diag[:, None] * dof_norm
@@ -162,6 +165,11 @@ class OFCSvd:
     iZs: list
     n_dof: int
     vmode_labels: list = field(default_factory=list)
+    dof_idx: list = field(default_factory=list)   # DOF indices (0-49) in the SVD
+    keep_idx: list = field(default_factory=list)   # mode indices retained
+
+    def _keep(self):
+        return self.keep_idx if self.keep_idx else list(range(self.n_keep_eff))
 
     def project_amplitudes(self, W):
         """Raw DZ matrix ``W`` (n_visits, n_kj) in :attr:`kj_grid` order ->
@@ -170,46 +178,67 @@ class OFCSvd:
 
     def vmodes(self, A_modes):
         """u-mode amps -> v-mode amplitudes ``c_i = a_i/σ_i``."""
-        return np.asarray(A_modes) / self.Sigma[:self.n_keep_eff][None, :]
+        return np.asarray(A_modes) / self.Sigma[self._keep()][None, :]
 
     def dof(self, A_modes):
-        """u-mode amps -> physical DOF (n_visits, n_dof)."""
+        """u-mode amps -> physical DOF (n_visits, n_dof_sub) over dof_idx."""
         return recover_dof_per_visit(
             A_modes, self.V, self.Sigma, self.normalization_weights,
-            self.n_keep_eff)
+            self._keep())
+
+    def dof_labels(self):
+        """DOF labels for the dof_idx subset (full 50 if dof_idx empty)."""
+        idx = self.dof_idx if self.dof_idx else list(range(len(LABELS_50DOF)))
+        return [LABELS_50DOF[i] for i in idx], [DOF_UNITS_50[i] for i in idx]
 
 
-def build_ofc_svd(iZs, k_min, k_max, n_keep, ofc_normalization_yaml=None,
+def build_ofc_svd(iZs, k_min, k_max, n_keep, n_dof=None,
+                  ofc_normalization_yaml=None,
                   instrument='lsst', norm_yaml_name=DEFAULT_NORM_YAML):
     """Build the OFC sensitivity-matrix SVD for a focal-k x pupil-j slice.
 
-    Imports ``lsst.ts.ofc`` lazily.  Returns an :class:`OFCSvd`.
+    ``n_dof`` selects the DOF columns: None -> all 50; an int ``n`` -> DOF
+    0..n-1; an explicit list -> exactly those DOF indices.  ``n_keep`` selects
+    the modes: an int ``n`` -> modes 0..n-1; a list -> exactly those mode
+    indices (to drop individual v-modes).  Imports ``lsst.ts.ofc`` lazily.
+    Returns an :class:`OFCSvd`.
     """
     from lsst.ts.ofc import OFCData
 
-    normalization_weights = load_normalization_weights(
-        ofc_normalization_yaml, norm_yaml_name)
-    normalization_matrix = np.diag(normalization_weights)
-
+    nw_full = load_normalization_weights(ofc_normalization_yaml, norm_yaml_name)
     S_full = np.asarray(OFCData(instrument).sensitivity_matrix)
     iZs_arr = np.asarray(iZs, dtype=int)
     n_k = int(k_max) - int(k_min) + 1
     n_j = len(iZs_arr)
-    S_slab = S_full[int(k_min):int(k_max) + 1, iZs_arr, :]   # (n_k, n_j, n_dof)
-    n_dof = S_slab.shape[-1]
-    S = S_slab.reshape(-1, n_dof) @ normalization_matrix
+    S_slab = S_full[int(k_min):int(k_max) + 1, iZs_arr, :]   # (n_k, n_j, n_dof_full)
+    n_dof_full = S_slab.shape[-1]
+
+    if n_dof is None:
+        dof_idx = list(range(n_dof_full))
+    elif np.isscalar(n_dof):
+        dof_idx = list(range(int(n_dof)))
+    else:
+        dof_idx = sorted(int(d) for d in n_dof)
+    norm_sub = nw_full[dof_idx]
+    S = S_slab.reshape(-1, n_dof_full)[:, dof_idx] @ np.diag(norm_sub)
     kj_grid = [(int(k_min + ki), int(iZs_arr[ji]))
                for ki in range(n_k) for ji in range(n_j)]
 
     U, Sigma, Vh = np.linalg.svd(S, full_matrices=False)
     V = Vh.T
-    n_keep_eff = min(int(n_keep), U.shape[1])
+    n_modes = U.shape[1]
+    if np.isscalar(n_keep):
+        keep_idx = list(range(min(int(n_keep), n_modes)))
+    else:
+        keep_idx = sorted(k for k in (int(x) for x in n_keep) if k < n_modes)
+    n_keep_eff = len(keep_idx)
     return OFCSvd(
-        U_eff=U[:, :n_keep_eff], V=V, Sigma=Sigma,
-        normalization_weights=normalization_weights, kj_grid=kj_grid,
+        U_eff=U[:, keep_idx], V=V, Sigma=Sigma,
+        normalization_weights=norm_sub, kj_grid=kj_grid,
         n_keep_eff=n_keep_eff, k_min=int(k_min), k_max=int(k_max),
-        iZs=[int(j) for j in iZs_arr], n_dof=n_dof,
-        vmode_labels=[f'v{m + 1}' for m in range(n_keep_eff)])  # 1-based
+        iZs=[int(j) for j in iZs_arr], n_dof=len(dof_idx),
+        vmode_labels=[f'v{m + 1}' for m in keep_idx],   # 1-based
+        dof_idx=dof_idx, keep_idx=keep_idx)
 
 
 def dz_table_to_W(fit_table, prefix, kj_grid):

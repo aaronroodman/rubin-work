@@ -24,6 +24,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import intrinsic_split as isp
+import mi_config as mc
 
 DEFAULT_NOLL = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                 22, 23, 24, 25, 26]
@@ -31,14 +32,6 @@ DEFAULT_SPLIT = dict(rotation_sign='auto', spin_sign=1, m_max=12,
                      degen_assignment='ocs', ridge=1e-3, hole_dist=0.06,
                      r_min=0.06, r_max=1.75, n_r=80, n_az=180,
                      r_lim_lo=0.1, r_lim_hi=1.6, use_z4_optical=True)
-
-
-def load_mi_config(config_path, param_set, mi_name):
-    cfg = yaml.safe_load(open(config_path))['measured_intrinsics']
-    for e in cfg.get(param_set, []):
-        if e.get('name') == mi_name:
-            return dict(e)
-    raise KeyError(f'MI config {mi_name!r} not found for {param_set!r}')
 
 
 def _map_rms(vals_pol, R, r_lim):
@@ -57,13 +50,12 @@ def main():
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
 
-    aos_dir = Path(__file__).resolve().parent.parent
-    cfg_path = Path(args.config) if args.config else aos_dir / 'mi_config.yaml'
-    mi = load_mi_config(cfg_path, args.param_set, args.mi_name)
-    sp = {**DEFAULT_SPLIT, **(mi.get('split') or {})}
-    noll_list = mi.get('noll_list') or DEFAULT_NOLL
-    rot_bins = mi['rotator_bins']
-    alt_range = (mi.get('alt_min_deg'), mi.get('alt_max_deg'))
+    cfg = mc.load_mi_config(args.param_set, args.mi_name,
+                            config_path=(Path(args.config) if args.config else None))
+    sp = {**DEFAULT_SPLIT, **(cfg.get('split') or {})}
+    noll_list = cfg.get('noll_list') or DEFAULT_NOLL
+    rot_bins = mc.rotator_bins(cfg)
+    alt_range = (cfg.get('alt_min_deg'), cfg.get('alt_max_deg'))
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.output_root) / args.param_set / 'fits.parquet'
