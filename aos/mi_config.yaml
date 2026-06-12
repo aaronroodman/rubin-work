@@ -62,7 +62,7 @@ defaults:
     max_visits: null
     ofc_normalization_yaml: null      # null -> ts_config_mttcs range0.5_fwhm-0.15.yaml
     height_source: batoid_rubin
-    batoid_rubin_height_map_dir: null # null -> $BATOID_RUBIN_DATA_DIR / ensure_data_dir
+    batoid_rubin_height_map_dir: ~/u/LSST/packages/batoid_rubin_data  # holds ccd_height_map.fits.gz; null -> ensure_data_dir, which downloads into the read-only conda env (PermissionError on USDF)
     height_map_fits: null             # metrology source only
     height_to_z4_factor: 15.0         # μm of Z4 per mm of CCD piston
     wfs_edge_cut_deg: 1.75

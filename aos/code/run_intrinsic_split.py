@@ -35,10 +35,11 @@ DEFAULT_SPLIT = dict(rotation_sign='auto', spin_sign=1, m_max=12,
 
 
 def _map_rms(vals_pol, R, r_lim):
-    m = (R >= r_lim[0]) & (R <= r_lim[1])
-    v = np.real(vals_pol)[m]
-    v = v[np.isfinite(v)]
-    return float(np.sqrt(np.mean(v ** 2))) if v.size else np.nan
+    # Ring-limited RMS over a (..., n_r, n_az) polar field.  R is the 1-D radial
+    # array, so the mask applies to the radial axis (-2), not axis 0 — the data
+    # field is stacked per rotator bin (n_bins, n_r, n_az).  Delegate to the lib
+    # helper, which masks [..., m, :] and ignores NaNs.
+    return isp.residual_rms(np.real(vals_pol), R, r_lim)
 
 
 def main():
