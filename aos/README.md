@@ -37,6 +37,11 @@ configs). Launch detached with `./run_snake.sh` (see its header).
 - **Phase 1** — per chunk: `mktable` (Butler → donuts/visits) → `fit`
   (Double-Zernike, tabulated intrinsic) → `combine` → validation `plots`.
   Outputs `output/<param_set>/{donuts,fits,visits}.parquet` + `plots/`.
+- **`aberration_pairs`** — per `param_set`, per-donut primary→secondary
+  aberration-pair analysis on `donuts.parquet` (e.g. defocus→spherical,
+  astig→2nd-astig): quartile-of-primary OLS slope/r + density pages.
+  `code/run_aberration_pairs.py` → `plots/aberration_pairs.pdf` +
+  `aberration_pairs_summary.parquet`. (Port of `study_aberrationpairs.ipynb`.)
 - **Phase 2** — per `(param_set, mi_name)` from `mi_config.yaml`, the *measured
   intrinsic*: `build_intrinsic` (Path-A U-mode-constrained build, once per
   rotator bin; `code/run_build_intrinsic.py`) → `intrinsic_split` (OCS/CCS
@@ -45,6 +50,13 @@ configs). Launch detached with `./run_snake.sh` (see its header).
   reconstruction + CCD-height Z4; `run_make_intrinsic_sidecar.py`) →
   `refit_mi` (DZ refit using the measured intrinsic; `run_dz_fit.py
   --intrinsic-sidecar`). Outputs under `output/<param_set>/<mi_name>/`.
+- **`build_lut`** — per `(param_set, mi_name)`, an averaged-DOF look-up
+  table: projects the per-visit DZ fits onto the OFC SVD (settable
+  `n_dof`/`n_keep` via the `lut` block in `mi_config.yaml`), recovers DOF per
+  visit, and collapses over **all** elevation and rotator angle (median by
+  default). `code/run_build_lut.py` → `output/<param_set>/<mi_name>/lut/`
+  `lut.parquet` (per-DOF) + `lut_dz.parquet` (per-(k,j) raw/fit/residual DZ).
+  (Replaces the LUT-build functionality behind `study_50dofLUT.ipynb`.)
 
 ## Data dependencies
 
