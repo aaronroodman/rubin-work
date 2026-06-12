@@ -28,7 +28,7 @@ import mi_config as mc
 
 DEFAULT_NOLL = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                 22, 23, 24, 25, 26]
-DEFAULT_SPLIT = dict(rotation_sign='auto', spin_sign=1, m_max=12,
+DEFAULT_SPLIT = dict(rotation_sign=1, spin_sign=1, m_max=12,
                      degen_assignment='ocs', ridge=1e-3, hole_dist=0.06,
                      r_min=0.06, r_max=1.75, n_r=80, n_az=180,
                      r_lim_lo=0.1, r_lim_hi=1.6, use_z4_optical=True)
@@ -105,19 +105,9 @@ def main():
         Z, valid, _ = isp.sample_maps_polar(maps, X, Y, hole_dist=sp['hole_dist'])
         return np.nan_to_num(Z), valid
 
-    # field-rotation sense s
-    if sp['rotation_sign'] == 'auto':
-        _Z, _V = sample_field('z4opt' if (sp['use_z4_optical'] and 'z4opt' in dsets[0])
-                              else 'z4')
-        _r, _rms = isp.decompose_auto_sign(_Z, th_rad, A, R, r_lim=r_lim, valid=_V,
-                                           method='lsq', m_max=sp['m_max'],
-                                           ridge=sp['ridge'])
-        s = _r['s']
-        print(f's (field rotation) = {s:+d}  (Z4 auto: +1 {_rms[1]:.4f}, '
-              f'-1 {_rms[-1]:.4f})')
-    else:
-        s = int(sp['rotation_sign'])
-        print(f's = {s:+d} (fixed)')
+    # field-rotation sense s (fixed; see split.rotation_sign in mi_config.yaml)
+    s = int(sp['rotation_sign'])
+    print(f's (field rotation) = {s:+d} (fixed)')
 
     # ---- per-group decomposition ----
     groups = isp.group_zernikes(noll_list)

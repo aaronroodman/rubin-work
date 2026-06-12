@@ -67,7 +67,7 @@ defaults:
     height_to_z4_factor: 15.0         # μm of Z4 per mm of CCD piston
     wfs_edge_cut_deg: 1.75
   split:
-    rotation_sign: auto               # auto (from Z4) | +1 | -1
+    rotation_sign: 1                  # fixed field-rotation sense: +1 | -1
     spin_sign: 1
     m_max: 12
     degen_assignment: ocs             # ocs | ccs | split
