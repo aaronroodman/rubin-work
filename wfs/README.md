@@ -27,6 +27,13 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
   per fit donut pair with the `used` flag). CWFS pairing: SW0=extra, SW1=intra; the
   paired fit products are stored on the SW0/extra detector.
 
+## Reference
+
+- [`ts_wep_cwfs_dataflow.md`](ts_wep_cwfs_dataflow.md) — how the corner-WFS ts_wep /
+  donut_viz dataset types are produced and flow together (ISR → detection → cutout →
+  pairing → Zernike fit → per-visit aggregation), with the selected/fit/used stage
+  definitions.
+
 ## Notes
 
 - **No `preliminary_visit_image` (PVI) here.** PVI is a full-focal-plane / FAM data
