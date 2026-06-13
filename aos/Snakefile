@@ -304,42 +304,30 @@ rule build_lut:
         "python code/run_build_lut.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
-# ---- DZ-to-DZ correlations on the MI-refit fits (residual DZ) ----
+# ---- DZ-to-DZ correlations on the MI-refit fits (raw + optical-corrected) ----
+# One run emits BOTH PDFs from a shared (raw) selection: dz_correlations.pdf and
+# dz_correlations_optcorr.pdf, where the optcorr panels overlay the corrected DZ
+# (W_resid = (I - U_eff U_effᵀ)·W) on the raw points/fit at the raw axis limits.
+# Needs ofc_svd (lsst.ts.ofc) for the correction -> RSP-only.
 rule dz_correlations:
-    input:
-        fits     = "output/{ps}/{mi}/fits.parquet",
-        script   = "code/run_dz_correlations.py",
-        lib      = "code/dz_plotting.py",
-    output:
-        pdf   = "output/{ps}/{mi}/plots/dz_correlations.pdf",
-        pairs = "output/{ps}/{mi}/plots/dz_correlations_pairs.parquet",
-    params: acfg = lambda w: an_json("dz_correlations", w.ps, w.mi)   # rerun-trigger
-    resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.dz_correlations.log"
-    shell:
-        "python code/run_dz_correlations.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
-
-# ---- DZ-to-DZ correlations AFTER the n_dof/n_keep OFC optical correction ----
-# Same analysis on W_resid = (I - U_eff U_effᵀ) W, i.e. the DZ remaining once the
-# correctable optical state is removed.  Needs ofc_svd (lsst.ts.ofc) -> RSP-only.
-rule dz_correlations_optcorr:
     input:
         fits   = "output/{ps}/{mi}/fits.parquet",
         script = "code/run_dz_correlations.py",
         lib    = "code/dz_plotting.py",
         ofc    = "code/ofc_svd.py",
     output:
-        pdf   = "output/{ps}/{mi}/plots/dz_correlations_optcorr.pdf",
-        pairs = "output/{ps}/{mi}/plots/dz_correlations_optcorr_pairs.parquet",
+        pdf    = "output/{ps}/{mi}/plots/dz_correlations.pdf",
+        pairs  = "output/{ps}/{mi}/plots/dz_correlations_pairs.parquet",
+        opdf   = "output/{ps}/{mi}/plots/dz_correlations_optcorr.pdf",
+        opairs = "output/{ps}/{mi}/plots/dz_correlations_optcorr_pairs.parquet",
     params:                                            # rerun-trigger only
         acfg = lambda w: an_json("dz_correlations", w.ps, w.mi),
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),      # n_dof/n_keep/SVD params
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.dz_correlations_optcorr.log"
+    log: "logs/{ps}.{mi}.dz_correlations.log"
     shell:
         "python code/run_dz_correlations.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --optical-correction > {log} 2>&1"
+        "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- DZ-to-temperature correlations on the MI-refit fits ----
 rule thermal_correlations:
