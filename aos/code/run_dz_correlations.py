@@ -136,7 +136,8 @@ def _scatter_pairs(df, pairs, prefix, title, pdf):
             c = np.polyfit(x, y, 1); xf = np.linspace(x.min(), x.max(), 50)
             ax.plot(xf, np.polyval(c, xf), 'r-', lw=1.4, alpha=0.85)
             r = float(np.corrcoef(x, y)[0, 1])
-            ax.set_title(f'(k={k1},j={j1}) vs (k={k2},j={j2})  r={r:+.3f}', fontsize=10)
+            ax.set_title(f'(k={k1},j={j1}) vs (k={k2},j={j2})  r={r:+.3f}  '
+                         f'(rms {x.std():.3g} × {y.std():.3g} μm)', fontsize=9)
         ax.set_xlabel(f'(k={k1},j={j1}) [μm]', fontsize=9)
         ax.set_ylabel(f'(k={k2},j={j2}) [μm]', fontsize=9)
         ax.tick_params(labelsize=8)
@@ -181,29 +182,48 @@ def _apply_optical_correction(df, prefix, param_set, mi_name, mi_config_path,
     return out
 
 
-def _analyze(df, out_dir, stem, prefix, cfg):
-    """Heatmap + top-|r| scatters + expected-astig + conjugate-orbit pages +
-    the significant-pairs parquet, written as <stem>.pdf / <stem>_pairs.parquet."""
+def _analyze(df, out_dir, stem, prefix, cfg, amp_min=0.0):
+    """Heatmap + top scatters + expected-astig + conjugate-orbit pages + the
+    significant-pairs parquet, written as <stem>.pdf / <stem>_pairs.parquet.
+
+    ``amp_min`` (μm): when > 0 (the optical-correction case), pairs whose
+    residual RMS is below it on either axis are dropped from the top-pairs
+    scatter and conjugate-group seeding, and the top pairs are ranked by
+    covariance |r|·rms_i·rms_j rather than |r| — so near-zero-amplitude
+    residuals that are spuriously collinear (r→1) don't dominate."""
     dz_cols = sorted(dz_coeff_columns(df, prefix),     # by (pupil j, focal k)
                      key=lambda c: parse_jk(c, prefix)[::-1])
     labels = [f'({k},{j})' for c in dz_cols for (j, k) in [parse_jk(c, prefix)]]
-    print(f'  {len(dz_cols)} DZ columns, {len(df)} visits')
+    std = {c: float(np.nanstd(df[c].values)) for c in dz_cols}    # per-column RMS
+    print(f'  {len(dz_cols)} DZ columns, {len(df)} visits  (amp_min={amp_min:g} μm)')
     corr = dzp.compute_dz_correlation_matrix(df, dz_cols)
     all_pairs = dzp.get_top_correlated_pairs(corr, dz_cols, labels,
                                              top_n=len(dz_cols) ** 2)
     n_complete = int((~np.isnan(df[dz_cols].values).any(axis=1)).sum())
     print(f'  complete-case n = {n_complete}')
 
+    # top pairs for the scatter page: amplitude-gated, ranked by covariance
+    # (|r|·rms_i·rms_j) when amp_min>0, else the |r| order from get_top_*.
+    if amp_min > 0:
+        amp_ok = [p for p in all_pairs
+                  if std.get(p[0], 0) >= amp_min and std.get(p[1], 0) >= amp_min]
+        top = sorted(amp_ok, key=lambda p: abs(p[4]) * std[p[0]] * std[p[1]],
+                     reverse=True)[:int(cfg['top_n'])]
+    else:
+        top = all_pairs[:int(cfg['top_n'])]
+
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
     with PdfPages(str(out_dir / f'{stem}.pdf')) as pdf:
         dzp.plot_dz_correlation_heatmap(corr, labels, pdf=pdf, show=False)
-        dzp.plot_dz_scatter_top_pairs(df, all_pairs[:int(cfg['top_n'])],
-                                      pdf=pdf, show=False)
+        if amp_min > 0:                                # amplitude-weighted view
+            _cov_heatmap(corr, dz_cols, labels, std, pdf)
+        dzp.plot_dz_scatter_top_pairs(df, top, pdf=pdf, show=False)
         _scatter_pairs(df, cfg['expected_astig_pairs'], prefix,
                        'Expected astigmatism-symmetry pairs', pdf)
-        n_grp = _conjugate_group_pages(df, all_pairs, prefix, n_complete, cfg, pdf)
+        n_grp = _conjugate_group_pages(df, all_pairs, prefix, n_complete, cfg,
+                                       std, amp_min, pdf)
         if cfg.get('pairwise_scan'):
             _pairwise_scan(df, prefix, pdf)
 
@@ -211,9 +231,12 @@ def _analyze(df, out_dir, stem, prefix, cfg):
     rows = []
     for ci, cj, li, lj, r in all_pairs:
         se_r, z, sig = _significance(r, n_complete)
+        cov = abs(r) * std.get(ci, np.nan) * std.get(cj, np.nan)
         if abs(r) >= thr or (np.isfinite(sig) and sig >= sig_thr):
             rows.append(dict(col_i=ci, col_j=cj, label_i=li, label_j=lj,
-                             r=r, n=n_complete, se_r=se_r, fisher_z=z, sigma=sig))
+                             r=r, n=n_complete, se_r=se_r, fisher_z=z, sigma=sig,
+                             rms_i=std.get(ci, np.nan), rms_j=std.get(cj, np.nan),
+                             cov=cov))
     pd.DataFrame(rows).to_parquet(out_dir / f'{stem}_pairs.parquet')
     print(f'  wrote {stem}.pdf ({n_grp} orbit pages) + {stem}_pairs.parquet '
           f'({len(rows)} pairs: |r|>={thr} or σ>={sig_thr})')
@@ -233,6 +256,9 @@ def main():
                     help='subtract the n_dof/n_keep OFC-correctable DZ (W_resid) first')
     ap.add_argument('--n-dof', type=int, default=None, help='override mi-config n_dof')
     ap.add_argument('--n-keep', type=int, default=None, help='override mi-config n_keep')
+    ap.add_argument('--amp-min', type=float, default=None,
+                    help='residual-RMS floor (μm) for top-pairs / conjugate-group '
+                         'seeding; default 0 (raw) or 0.005 (--optical-correction)')
     args = ap.parse_args()
 
     cfg = {**DEFAULT, **mc.analysis_section(
@@ -252,8 +278,37 @@ def main():
             df, prefix, args.param_set, args.mi_name,
             Path(args.config) if args.config else None, args.n_dof, args.n_keep)
         stem = 'dz_correlations_optcorr'
+    # amplitude floor: explicit CLI > config amp_min_um > 0 (raw) / 0.005 μm (optcorr)
+    amp_min = args.amp_min
+    if amp_min is None:
+        amp_min = cfg.get('amp_min_um')
+    if amp_min is None:
+        amp_min = 0.005 if args.optical_correction else 0.0
     print(f'[dz_correlations] {fits_path}  -> {stem}')
-    _analyze(df, out_dir, stem, prefix, cfg)
+    _analyze(df, out_dir, stem, prefix, cfg, amp_min=float(amp_min))
+
+
+def _cov_heatmap(corr, dz_cols, labels, std, pdf):
+    """Amplitude-weighted companion to the Pearson heatmap: covariance
+    cov_ij = r_ij·σ_i·σ_j [μm²], off-diagonal only.  For the optical-corrected
+    DZ this shows where *real* residual structure remains — small everywhere the
+    correction emptied the coefficient — instead of r→1 at noise amplitude."""
+    import matplotlib.pyplot as plt
+    s = np.array([std.get(c, np.nan) for c in dz_cols])
+    cov = np.asarray(corr) * np.outer(s, s)
+    np.fill_diagonal(cov, np.nan)                       # hide variances
+    vmax = float(np.nanpercentile(np.abs(cov), 99)) or 1e-9
+    n = len(labels); fs = max(12, n * 0.15)
+    fig, ax = plt.subplots(figsize=(fs, fs * 0.9))
+    im = ax.imshow(cov, cmap='RdBu_r', vmin=-vmax, vmax=vmax,
+                   interpolation='nearest', interpolation_stage='rgba')
+    plt.colorbar(im, ax=ax, shrink=0.7, label='covariance r·σ_i·σ_j [μm²]')
+    ax.set_xticks(range(n)); ax.set_xticklabels(labels, rotation=90, fontsize=5)
+    ax.set_yticks(range(n)); ax.set_yticklabels(labels, fontsize=5)
+    ax.set_title(f'DZ covariance (amplitude-weighted; colour ±{vmax:.2g} μm²)',
+                 fontsize=14)
+    fig.tight_layout()
+    pdf.savefig(fig, dpi=150, bbox_inches='tight'); plt.close(fig)
 
 
 def _orbit_grid_page(df, A, B, prefix, title, pdf):
@@ -281,8 +336,9 @@ def _orbit_grid_page(df, A, B, prefix, title, pdf):
             if len(x) > 2:
                 c = np.polyfit(x, y, 1); xf = np.array([x.min(), x.max()])
                 ax.plot(xf, np.polyval(c, xf), 'r-', lw=1.2, alpha=0.85)
-                ttl += f'   r={float(np.corrcoef(x, y)[0, 1]):+.2f}'
-            ax.set_title(ttl, fontsize=8)
+                ttl += (f'   r={float(np.corrcoef(x, y)[0, 1]):+.2f}'
+                        f'\nrms {x.std():.2g} × {y.std():.2g} μm')
+            ax.set_title(ttl, fontsize=7)
             ax.set_xlabel(f'(k{Av[0]},j{Av[1]}) [μm]', fontsize=7)
             ax.set_ylabel(f'(k{Bv[0]},j{Bv[1]}) [μm]', fontsize=7)
             ax.tick_params(labelsize=6)
@@ -290,7 +346,7 @@ def _orbit_grid_page(df, A, B, prefix, title, pdf):
     pdf.savefig(fig, dpi=110, bbox_inches='tight'); plt.close(fig)
 
 
-def _conjugate_group_pages(df, all_pairs, prefix, n, cfg, pdf):
+def _conjugate_group_pages(df, all_pairs, prefix, n, cfg, std, amp_min, pdf):
     """One orbit-grid page per significant correlation: the full conjugation
     orbit (independent focal-k / pupil-j flips of each endpoint) as a grid of
     scatter panels — e.g. (k2,j8)x(k3,j7) [Coma] yields a 4x4 over the coma
@@ -306,6 +362,8 @@ def _conjugate_group_pages(df, all_pairs, prefix, n, cfg, pdf):
         _se, _z, sig = _significance(r, n)
         if not (np.isfinite(sig) and sig >= sig_thr):
             continue
+        if amp_min > 0 and (std.get(ci, 0) < amp_min or std.get(cj, 0) < amp_min):
+            continue                                   # skip near-zero-amplitude
         jA, kA = parse_jk(ci, prefix); jB, kB = parse_jk(cj, prefix)
         A, B = (kA, jA), (kB, jB)
         key = frozenset({frozenset(_index_flips(A)), frozenset(_index_flips(B))})
