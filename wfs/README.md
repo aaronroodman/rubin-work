@@ -8,7 +8,8 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
 | Notebook | Description | Created | Last Modified |
 |----------|-------------|---------|---------------|
 | `wfs_corner_postisr_visualize_v1.ipynb` | Locate and visualize ISR-processed (`post_isr_image`) frames for the eight corner-WFS half-chips. Lists available exposures/nights in the AOS `cwfs` collection, then plots all eight half-chips for a chosen exposure with a sky-foreground-tuned stretch (sigma-clipped / ZScale / percentile + asinh) and writes a multi-page PDF (one page per visit). Start of a sky-foreground-shape study. | 2026-06-12 | 2026-06-12 |
-| `wfs_sky_foreground_radius_v1.ipynb` | Sky-foreground level vs. focal-plane radius on the eight corner-WFS CCDs. Selects high-galactic-latitude visits (\|b\| > `b_min`, from butler `tracking_ra`/`tracking_dec` → galactic), masks pixels above the N-sigma clipped sky level (`clip_sigma` parameter), and computes the sigma-clipped mean sky flux in focal-plane radius bins. Writes 3 PDF pages per visit: sky-stretched images, masked-pixel diagnostic, and the 8 clipped-mean-vs-radius curves. | 2026-06-12 | 2026-06-12 |
+| `wfs_sky_foreground_radius_v1.ipynb` | Sky-foreground level vs. focal-plane radius on the eight corner-WFS CCDs. Selects high-galactic-latitude visits (\|b\| > `b_min`, from butler `tracking_ra`/`tracking_dec` → galactic), masks pixels above the N-sigma clipped sky level (`clip_sigma` parameter), and computes the sigma-clipped mean sky flux in focal-plane radius bins. Writes 4 PDF pages per visit: sky-stretched images, masked-pixel diagnostic, the 8 clipped-mean-vs-radius curves, and a normalized fine-binned (0.25 mm) profile out to the 1.75° donut radius (310.5 mm). | 2026-06-12 | 2026-06-12 |
+| `wfs_donut_selection_stages_v1.ipynb` | Per-CCD donut-location plots showing ts_wep selection stages (selected → fit → used) for each intra/extra corner-WFS half-chip, plus an extended `aggregateDonutTable` with `fit`/`used` flag columns. Stages joined on `donut_id`: `donutTable` (round-1 detection) → `aggregateAOSVisitTableRaw` membership (fit) → `used==True`. Writes a per-visit PDF and an ECSV table. | 2026-06-13 | 2026-06-13 |
 
 ## Data dependencies
 
@@ -20,6 +21,11 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
   `common/camera_utils.py::pixel_to_focal` for the per-pixel focal-plane radius and
   the butler exposure record (`tracking_ra`/`tracking_dec`) for the galactic-latitude
   cut. The corner CCDs span focal-plane radii ~273–333 mm.
+- **wfs_donut_selection_stages_v1**: Same collection. Reads ts_wep products
+  `donutTable` (per detector, round-1 detection), `aggregateDonutTable` (per visit,
+  donuts carried into fitting), and `aggregateAOSVisitTableRaw` (per visit, one row
+  per fit donut pair with the `used` flag). CWFS pairing: SW0=extra, SW1=intra; the
+  paired fit products are stored on the SW0/extra detector.
 
 ## Notes
 
