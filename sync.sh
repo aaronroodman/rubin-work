@@ -13,18 +13,64 @@ case "$1" in
         LOCAL_CHANGED=$(git diff --name-only 2>/dev/null; git diff --name-only --cached 2>/dev/null)
         LOCAL_CHANGED=$(echo "$LOCAL_CHANGED" | sort -u | grep -v '^$')
 
-        # Step 3: Find files changed on remote
-        REMOTE_CHANGED=$(git diff --name-only HEAD origin/main 2>/dev/null)
+        # Step 3: Find what changed on remote, split into deletes vs the rest.
+        # --no-renames so a rename shows up as a delete of its OLD path (which is
+        # exactly the case that breaks stash/pop).
+        REMOTE_DELETED=$(git diff --no-renames --name-only --diff-filter=D HEAD origin/main 2>/dev/null | sort -u | grep -v '^$')
+        REMOTE_MODIFIED=$(git diff --no-renames --name-only --diff-filter=d HEAD origin/main 2>/dev/null | sort -u | grep -v '^$')
 
-        # Step 4: Find conflicts (files changed in both places)
+        # Step 4a: modify/delete — files modified locally AND deleted/renamed
+        # upstream. These cannot survive a stash/pop across the pull (it leaves a
+        # "modify/delete" conflict), so resolve them explicitly BEFORE stashing.
+        DELETE_CONFLICTS=""
+        if [ -n "$LOCAL_CHANGED" ] && [ -n "$REMOTE_DELETED" ]; then
+            DELETE_CONFLICTS=$(comm -12 <(echo "$LOCAL_CHANGED") <(echo "$REMOTE_DELETED"))
+        fi
+        if [ -n "$DELETE_CONFLICTS" ]; then
+            echo ""
+            echo "⚠ Modified locally but DELETED/renamed on GitHub:"
+            echo "$DELETE_CONFLICTS" | while read -r f; do echo "  $f"; done
+            echo "  (these would cause a modify/delete conflict if stashed across the pull)"
+            echo ""
+            for f in $DELETE_CONFLICTS; do
+                while true; do
+                    read -p "  $f — (d)iscard local & accept deletion, (b)ackup to $f.local then delete, (a)bort? " ans < /dev/tty
+                    case "$ans" in
+                        d|D)
+                            git checkout HEAD -- "$f"
+                            echo "    discarded local changes; file will be removed by the pull"
+                            break
+                            ;;
+                        b|B)
+                            cp -- "$f" "$f.local"
+                            git checkout HEAD -- "$f"
+                            echo "    saved $f.local (untracked); tracked file will be removed by the pull"
+                            break
+                            ;;
+                        a|A)
+                            echo "Aborted — no changes made."
+                            exit 0
+                            ;;
+                        *)
+                            echo "    Please enter d, b, or a"
+                            ;;
+                    esac
+                done
+            done
+            echo ""
+            # Resolved files no longer differ from HEAD — recompute local changes.
+            LOCAL_CHANGED=$(git diff --name-only 2>/dev/null; git diff --name-only --cached 2>/dev/null)
+            LOCAL_CHANGED=$(echo "$LOCAL_CHANGED" | sort -u | grep -v '^$')
+        fi
+
+        # Step 4b: modify/modify — changed both locally and (non-delete) on remote.
         CONFLICTS=""
-        if [ -n "$LOCAL_CHANGED" ] && [ -n "$REMOTE_CHANGED" ]; then
-            CONFLICTS=$(comm -12 <(echo "$LOCAL_CHANGED") <(echo "$REMOTE_CHANGED"))
+        if [ -n "$LOCAL_CHANGED" ] && [ -n "$REMOTE_MODIFIED" ]; then
+            CONFLICTS=$(comm -12 <(echo "$LOCAL_CHANGED") <(echo "$REMOTE_MODIFIED"))
         fi
 
         # Step 5: If conflicts, prompt per-file
         OVERWRITE_FILES=""
-        KEEP_FILES=""
         if [ -n "$CONFLICTS" ]; then
             echo ""
             echo "⚠ These files have been changed both locally and on GitHub:"
@@ -39,7 +85,6 @@ case "$1" in
                             break
                             ;;
                         k|K)
-                            KEEP_FILES="$KEEP_FILES $f"
                             break
                             ;;
                         a|A)
