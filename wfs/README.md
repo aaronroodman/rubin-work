@@ -9,7 +9,8 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
 |----------|-------------|---------|---------------|
 | `wfs_corner_postisr_visualize.ipynb` | Locate and visualize ISR-processed (`post_isr_image`) frames for the eight corner-WFS half-chips. Lists available exposures/nights in the AOS `cwfs` collection, then plots all eight half-chips for a chosen exposure with a sky-foreground-tuned stretch (sigma-clipped / ZScale / percentile + asinh) and writes a multi-page PDF (one page per visit). Start of a sky-foreground-shape study. | 2026-06-12 | 2026-06-12 |
 | `wfs_sky_foreground_radius.ipynb` | Sky-foreground level vs. focal-plane radius on the eight corner-WFS CCDs. Selects high-galactic-latitude visits (\|b\| > `b_min`, from butler `tracking_ra`/`tracking_dec` → galactic), masks pixels above the N-sigma clipped sky level (`clip_sigma` parameter), and computes the sigma-clipped mean sky flux in focal-plane radius bins. Writes 4 PDF pages per visit: sky-stretched images, masked-pixel diagnostic, the 8 clipped-mean-vs-radius curves, and a normalized fine-binned (0.25 mm) profile out to the 1.75° donut radius (310.5 mm). | 2026-06-12 | 2026-06-12 |
-| `wfs_donut_selection_stages.ipynb` | Corner-WFS images with **open circles** overlaid on the donuts, coloured by ts_wep stage (selected → fit → used) for each intra/extra half-chip; circle radius a bit larger than a donut (~150 px across). Builds an extended `aggregateDonutTable` with `fit`/`used` flags. Also an **interactive pair inspector** (`%matplotlib widget`): both halves of a corner raft side by side — click a donut in either panel to highlight its paired donut in the other, re-run the **joint Danish fit** of the pair (`WfEstimator`, `jointFitPair=True`), and show **data / model / residual** stamps for both. Stages joined on `donut_id`: `donutTable` → `aggregateAOSVisitTableRaw` membership (fit) → `used==True`. | 2026-06-13 | 2026-06-14 |
+| `wfs_donut_selection_stages.ipynb` | Corner-WFS images with **open circles** overlaid on the donuts, coloured by ts_wep stage (selected → fit → used) for each intra/extra half-chip; circle radius a bit larger than a donut (~150 px across). Builds an extended `aggregateDonutTable` with `fit`/`used` flags. Also an **interactive pair inspector** (`%matplotlib widget`): both halves of a corner raft side by side — click a donut in either panel to highlight its paired donut in the other, re-run the **joint Danish fit** of the pair (`WfEstimator`, `jointFitPair=True`), and show **data / model / residual** stamps for both, plus a RubinTV-style Zernike bar chart. Stages joined on `donut_id`: `donutTable` → `aggregateAOSVisitTableRaw` membership (fit) → `used==True`. | 2026-06-13 | 2026-06-14 |
+| `wfs_giant_donut_fit.ipynb` | Pupil-comparison tool for the large (8 mm) FAM defocus images, which have no donut tables/fits. Runs **minimal ISR** (overscan + nominal gains, no calibs) on the raw, displays a CCD, and lets you **click a giant donut**; cuts a ~1000 px stamp and runs a **single-sided, Z4-only, pure-defocus** Danish fit (`startWithIntrinsic=False`) at the labelled defocus, then shows **data / model / residual** + fitted Z4. The residual reveals where the modelled optical pupil disagrees with the donut. Defocus read from the `observation_reason` `intra_8mm`/`extra_8mm` label (tunable). | 2026-06-15 | 2026-06-15 |
 
 ## Data dependencies
 
@@ -32,6 +33,13 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
   model/residual stamps (the pipeline does not persist the forward-model image).
   Currently uses danish 1.0.0 (the version in the `lsst-scipipe-13.0.0` / `d_latest`
   stack env; danish is part of rubin-env, not an eups product).
+- **wfs_giant_donut_fit**: Reads `raw` from `LSSTCam/raw/all` and runs ISR in-notebook
+  (`lsst.ip.isr.IsrTask`, overscan + nominal gains; no calibs). Single-sided fit via
+  `lsst.ts.wep` `WfEstimator`/`getTaskInstrument` (FAM instrument, `defocalOffset`
+  overridden to the labelled defocus) + `danish`; field angle from `lsst.afw.cameraGeom`
+  `PIXELS→FIELD_ANGLE`. Default exposure `2025102300340` (`intra_8mm`); neighbours
+  `337/338` are `extra_8mm`. The donut's effective defocus is ~7.6 mm (vs the 8 mm
+  label); set `defocus_mm` to drive the fitted Z4 toward zero.
 
 ## Reference
 
