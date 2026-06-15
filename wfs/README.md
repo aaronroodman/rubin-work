@@ -9,7 +9,7 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
 |----------|-------------|---------|---------------|
 | `wfs_corner_postisr_visualize.ipynb` | Locate and visualize ISR-processed (`post_isr_image`) frames for the eight corner-WFS half-chips. Lists available exposures/nights in the AOS `cwfs` collection, then plots all eight half-chips for a chosen exposure with a sky-foreground-tuned stretch (sigma-clipped / ZScale / percentile + asinh) and writes a multi-page PDF (one page per visit). Start of a sky-foreground-shape study. | 2026-06-12 | 2026-06-12 |
 | `wfs_sky_foreground_radius.ipynb` | Sky-foreground level vs. focal-plane radius on the eight corner-WFS CCDs. Selects high-galactic-latitude visits (\|b\| > `b_min`, from butler `tracking_ra`/`tracking_dec` → galactic), masks pixels above the N-sigma clipped sky level (`clip_sigma` parameter), and computes the sigma-clipped mean sky flux in focal-plane radius bins. Writes 4 PDF pages per visit: sky-stretched images, masked-pixel diagnostic, the 8 clipped-mean-vs-radius curves, and a normalized fine-binned (0.25 mm) profile out to the 1.75° donut radius (310.5 mm). | 2026-06-12 | 2026-06-12 |
-| `wfs_donut_selection_stages.ipynb` | Corner-WFS images with **open circles** overlaid on the donuts, coloured by ts_wep stage (selected → fit → used) for each intra/extra half-chip; circle radius is set a bit larger than a donut (~150 px across). Also builds an extended `aggregateDonutTable` with `fit`/`used` flags, and provides an **interactive** (`%matplotlib widget`) click-to-inspect tool that shows a selected donut's fitted wavefront (Zernike coefficients + reconstructed OPD map via galsim). Stages joined on `donut_id`: `donutTable` → `aggregateAOSVisitTableRaw` membership (fit) → `used==True`. | 2026-06-13 | 2026-06-13 |
+| `wfs_donut_selection_stages.ipynb` | Corner-WFS images with **open circles** overlaid on the donuts, coloured by ts_wep stage (selected → fit → used) for each intra/extra half-chip; circle radius a bit larger than a donut (~150 px across). Builds an extended `aggregateDonutTable` with `fit`/`used` flags. Also an **interactive pair inspector** (`%matplotlib widget`): both halves of a corner raft side by side — click a donut in either panel to highlight its paired donut in the other, re-run the **joint Danish fit** of the pair (`WfEstimator`, `jointFitPair=True`), and show **data / model / residual** stamps for both. Stages joined on `donut_id`: `donutTable` → `aggregateAOSVisitTableRaw` membership (fit) → `used==True`. | 2026-06-13 | 2026-06-14 |
 
 ## Data dependencies
 
@@ -23,10 +23,15 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
   cut. The corner CCDs span focal-plane radii ~273–333 mm.
 - **wfs_donut_selection_stages**: Same collection. Reads `post_isr_image` (keyed by
   `exposure`), the ts_wep products `donutTable` (per detector, round-1 detection),
+  `donutStampsExtra`/`donutStampsIntra` (stamps, on the SW0 detector),
   `aggregateDonutTable` (per visit), and `aggregateAOSVisitTableRaw` (per visit, one
   row per fit donut pair with the `used` flag). CWFS pairing: SW0=extra, SW1=intra;
-  paired fit products are stored on the SW0/extra detector. The interactive inspector
-  needs `ipympl` (`%matplotlib widget`) and `galsim` (wavefront reconstruction).
+  paired products are stored on the SW0/extra detector. The interactive pair inspector
+  needs `ipympl` (`%matplotlib widget`) and `lsst.ts.wep` (`WfEstimator`,
+  `getTaskInstrument`) + `danish` for the on-the-fly joint refit that produces the
+  model/residual stamps (the pipeline does not persist the forward-model image).
+  Currently uses danish 1.0.0 (the version in the `lsst-scipipe-13.0.0` / `d_latest`
+  stack env; danish is part of rubin-env, not an eups product).
 
 ## Reference
 
