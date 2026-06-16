@@ -25,12 +25,14 @@ R30_S21 pixel (1167, 2915) → field angle (−1.459, +0.991)°, radius 1.764°.
 Ranked, the improvements that would matter for fitting real donuts:
 
 1. **Make the mask track the camera-hexapod defocus** for the camera-borne elements
-   (filter, L1, L2) — dominant for FAM/giant.
+   (filter, L1, L2) — dominant for FAM/giant. Keeping the circle model but **refitting at
+   the camera position** recovers the giant-intra agreement from 96% to 99.5%.
 2. **Rebuild `maskParams` from the as-built model** (and update the M1 aperture radii) for
    data fits — dominant model-version term.
-3. *(minor)* Use an **ellipse** (not a circle) for each element's off-axis edge — shaves
-   the ~3 mm matched-config residual.
-4. Allow **apportioning giant-donut defocus between the camera and M2 hexapods**.
+3. Allow **apportioning giant-donut defocus between the camera and M2 hexapods**.
+
+*(We tested replacing the circle with a per-element **ellipse** — it does **not** help; see
+Finding 6.)*
 
 ---
 
@@ -131,6 +133,37 @@ and M2 hexapods. Because M2 is powered, the two give different pupils (donut spa
 camera-only vs 6.7 mm for 4 mm + 4 mm), and ts_wep currently cannot apportion the offset
 between the two optics.
 
+### 6. A per-element ellipse does not help — defocal-dependence does
+
+`_fitCircle` fits a 2-parameter circle (centre on the field axis) to each element's
+projected edge. A circular aperture seen off-axis projects to an ellipse, so we tried the
+natural 3-parameter generalization `(xc, a, b)` (centre on the field axis, `a` along /
+`b` across the field). Fitting both to every element edge at R30:
+
+- **M1 and M2 project as circles** (`a = b` to <1 mm); M1 outer is exactly 4.18 m.
+- The far **camera-borne** elements (filter/L1/L2) do project as strong ellipses
+  (e.g. filter `a = 6.9`, `b = 10.5` m), but they present only a short, strongly-curved
+  edge arc on the pupil.
+
+Re-measuring the mask↔batoid agreement:
+
+| config | mask model | agreement |
+|---|---|---|
+| in-focus (matched) | circle (ts_wep) | **99.55%** |
+| in-focus (matched) | ellipse | 96.99% |
+| giant intra | fixed circle (danish) | 96.03% |
+| giant intra | fixed ellipse | 93.46% |
+| giant intra | **defocal-refit circle** | **99.54%** |
+| giant intra | defocal-refit ellipse | 96.99% |
+
+The ellipse **does not reduce** the matched-config residual (the outer edge is unchanged at
+~+2.4 mm — it is M1-dominated and M1 is already circular), and it **lowers** overall
+agreement because a *closed* ellipse fit to a far element's partial edge arc over-clips the
+pupil. The decisive lever is **defocal-dependence**: a refit *circle* at the camera position
+recovers giant-intra to 99.5%, while the ellipse adds nothing. Recommendation: keep the
+circle model and make it defocal-configuration-aware (improvement 1); the ellipse is not
+worth the extra parameter.
+
 ---
 
 ## Proposed improvements
@@ -147,13 +180,13 @@ between the two optics.
    **outer = 4.165 m, inner = 2.5833 m** (currently 4.18 / 2.558). For batoid↔danish
    self-consistency the current design values are fine; this matters only for data.
 
-3. *(Minor)* Replace each element's **circle** edge with an **ellipse**. A circular
-   aperture viewed off-axis projects to an ellipse on the pupil; the current circle leaves
-   the ~3 mm matched-config outer residual (M1-dominated). An ellipse per element would
-   remove most of it. Low priority relative to (1) and (2).
-
-4. **Allow apportioning the giant-donut defocus** between the camera and M2 hexapods, since
+3. **Allow apportioning the giant-donut defocus** between the camera and M2 hexapods, since
    the resulting pupils differ.
+
+*Not recommended:* a per-element **ellipse** edge (instead of the circle) — tested in
+Finding 6, it does not reduce the residual (M1 is already circular) and over-clips the far
+camera-borne elements. The matched-config circle model is already good to ~99.5%; the only
+worthwhile change to the edge model is making it defocal-aware (improvement 1).
 
 ---
 
