@@ -240,4 +240,107 @@ print("giant", compare([("LSSTCamera", -8.0)]))      # ~0.960
 ```
 
 Full notebook (figures, edge-vs-azimuth, per-surface attribution, intra/extra,
-model-version sweep): `rubin-work/wfs/wfs_batoid_pupil_compare.ipynb` (§5–§10).
+model-version sweep, ellipse test): `rubin-work/wfs/wfs_batoid_pupil_compare.ipynb`
+(§5–§11).
+
+---
+
+## Appendix: proposed implementation
+
+Two changes address the only two genuine issues. Both are opt-in / backward-compatible and
+leave the corner-WFS behaviour untouched. Line numbers are vs the current ts_wep checkout.
+
+### A. Measured M1 aperture (data-vs-model correction)
+
+The matched-config "~3 mm" residual is **not** a shape bug — M1 (and M2) project as exact
+circles (Finding 6), and 3 mm is below the boundary-sampling resolution. The real, larger
+M1 correction is the as-built **measured aperture** (outer 4.165 m, inner 2.5833 m) vs the
+design values danish uses (4.18 / 2.558) — a −15 mm outer / +25 mm inner shift. `maskParams`
+is a plain dict and the mask clip is independent of the Zernike-normalization radius
+(`instrument.radius`), so the minimal safe change touches only the mask circles:
+
+```python
+# ts_wep/instrument.py  — new opt-in method on Instrument
+def setApertureRadii(self, *, outer=None, inner=None, element="M1"):
+    """Override the clear-aperture radii used by the *mask* (e.g. the as-built measured M1
+    values) without changing the batoid model that supplies the off-axis wavefront, nor the
+    Zernike-normalization radius (instrument.radius). For fitting DATA only; leave unset for
+    batoid<->danish self-consistency."""
+    mp = self.maskParams
+    if outer is not None:
+        mp[element]["outer"]["radius"][-1] = outer   # constant term of radius(theta)
+    if inner is not None:
+        mp[element]["inner"]["radius"][-1] = inner
+    self.maskParams = mp
+```
+
+Use for data: `inst.setApertureRadii(outer=4.165, inner=2.5833)` (or ship a measured-aperture
+variant of the LSSTCam mask config). Whether to also retune `R_outer`/`R_inner` (the Zernike
+normalization) to the measured value is a separate AOS-convention choice — recommend leaving
+it at 4.18 so fitted-Zernike normalization is unchanged.
+
+### B. Defocal-dependent mask (the FAM / giant fix)
+
+Fit and apply the mask at the **actual defocal configuration**, per `DefocalType`. This is
+automatically safe for the WFS: its `batoidOffsetOptic == "Detector"`, and shifting the
+detector leaves the upstream aperture vignetting unchanged, so the intra and extra masks come
+out identical (no behaviour change). It differs only for FAM/giant (`"LSSTCamera"`), where the
+filter/L1/L2 ride with the camera.
+
+**(a) ts_wep `utils/maskUtils.py` — fit with the defocal shift applied:**
+```python
+def _fitEdges(thx, optic, wavelength, offsetOptic=None, offsetValue=0.0):
+    if offsetOptic is not None and offsetValue:
+        optic = optic.withLocallyShiftedOptic(offsetOptic, [0, 0, offsetValue])
+    ...  # rest unchanged
+
+def fitMaskModel(optic, wavelength=500e-9, thetaMax=2, ..., offsetOptic=None, offsetValue=0.0):
+    ...
+    dataDict = _fitEdges(thetas[0], optic, wavelength, offsetOptic, offsetValue)
+    ...
+```
+Generate one mask per `DefocalType`: call with `offsetValue=+defocalOffset` (extra) and
+`-defocalOffset` (intra), `offsetOptic = inst.batoidOffsetOptic`.
+
+**(b) ts_wep `instrument.py` — serve the mask by defocal type (backward-compatible):**
+```python
+def getMaskParams(self, defocalType=None):
+    """Return the mask for this DefocalType, falling back to the single legacy mask."""
+    byType = getattr(self, "_maskParamsByDefocal", None)   # {'intra': {...}, 'extra': {...}}
+    if byType and defocalType is not None:
+        return byType[defocalType.value]
+    return self.maskParams                                  # legacy: one mask for both
+```
+
+**(c) ts_wep `estimation/danish.py` (~line 844) — build the factory per donut** (today one
+factory is shared by I1 and I2):
+```python
+def _make_factory(defocalType):
+    return danish.DonutFactory(
+        R_outer=instrument.radius, R_inner=instrument.radius * instrument.obscuration,
+        mask_params=instrument.getMaskParams(defocalType),       # <-- per defocal type
+        focal_length=instrument.focalLength,
+        pixel_scale=instrument.pixelSize * self.binning,
+        spider_angle=rtp, **factory_kwargs)
+
+# single-sided: hand each _estimateSingleZk call the factory matching its donut
+# joint: pass one factory per donut, in I1/I2 order
+factories = [_make_factory(I1.defocalType), _make_factory(I2.defocalType)]
+```
+
+**(d) danish `DZMultiDonutModel` — accept a per-donut factory** (it already takes per-donut
+`z_refs`/`thxs`/`thys` lists, so this is consistent):
+```python
+class DZMultiDonutModel:
+    def __init__(self, factory, z_refs, ..., thxs, thys, ...):
+        # allow `factory` to be a single factory (broadcast) or one-per-donut list
+        self.factories = factory if isinstance(factory, (list, tuple)) else [factory] * len(thxs)
+        # render donut i with self.factories[i] (its own mask)
+```
+`SingleDonutModel` / the single-sided path needs no danish change — ts_wep hands it the
+matching factory. The mask configs are regenerated once per camera-offset instrument with
+`offsetOptic`/`offsetValue` applied.
+
+**Expected benefit** (design model, R30, from §10/§11): giant-intra **96.0 → 99.5%**,
+giant-extra likewise; FAM-intra 98.9 → ~99.5%; **WFS unchanged at 99.5%** (intra/extra masks
+identical by construction).
