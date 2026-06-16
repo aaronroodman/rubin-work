@@ -11,8 +11,8 @@ R30_S21 pixel (1167, 2915) → field angle (−1.459, +0.991)°, radius 1.764°.
   **optical model and the defocal configuration match** the ones the mask was built from.
 - The **corner-WFS case is already correct**: the detector pistons while the camera stays
   fixed, so the fixed mask is exactly the in-focus boundary for both intra and extra. The
-  only residual is a small (~3 mm) **outer-edge circle-vs-true-shape** term, dominated by
-  M1.
+  only residual is a ~3 mm outer-edge term that is a **finite-ray-grid artifact** (it
+  shrinks with finer sampling), not a real mask error.
 - The mask falls short only for **camera-hexapod defocus** (FAM, and especially the 8 mm
   giant donuts). The filter, L1 and L2 ride with the camera, so off-axis they clip the
   pupil differently for intra vs extra — but the mask is a single defocus-independent
@@ -74,10 +74,15 @@ is **not** specialised per instrument or per defocal type.
 
 At R30 (1.764°), design model, **in focus**: danish-mask vs batoid agreement **99.50%**.
 The **inner** (central-obscuration) edge matches at every azimuth. The **outer** edge
-residual is **+3 mm mean / +8 mm max**, and the over-extended points are dominated by
-**M1** (≈700), i.e. the true outer boundary is slightly non-circular and danish's single
-circle is a touch too generous there. This ~3 mm is the only residual that survives a
-matched model and matched defocal config.
+residual is **+3 mm mean / +8 mm max** (over-extended points dominated by **M1**, ≈700) —
+but this is a **finite-ray-grid artifact, not a real mask error**. It scales with the
+`asPolar` radial ring spacing (annulus / `nrad` = 8.1 mm at `nrad=200`) and converges toward
+zero with finer sampling: +3.1 → +1.9 → +1.4 → +1.0 mm for `nrad` = 200 → 400 → 800 → 1600
+(agreement 99.50 → 99.71 → 99.82 → 99.88 %). The outermost sampled ring sits on the M1 rim
+(4.18 m) and the trace counts a ray exactly at the aperture edge as vignetted, so batoid's
+inferred edge falls one ring *inside* danish's inclusive M1 circle — hence a positive
+`danish − batoid` of ≈ one ring. M1 really is the nominal 4.18 m circle; there is **no real
+matched-config residual** to model.
 
 ### 2. Corner WFS — danish is already right
 
@@ -90,7 +95,8 @@ in-focus mask for **both** intra and extra:
 | WFS extra | Detector +1.5 mm | 99.50% | +3 / +8 mm |
 | WFS intra | Detector −1.5 mm | 99.50% | +3 / +8 mm |
 
-No mask defect here beyond the 3 mm shape term.
+No mask defect here — the ~3 mm is the ray-grid artifact described above (converges to ~0
+with finer sampling), not a shape error.
 
 ### 3. Camera-hexapod defocus (FAM, giant) — the fixed mask cannot follow the camera
 
@@ -253,7 +259,9 @@ leave the corner-WFS behaviour untouched. Line numbers are vs the current ts_wep
 ### A. Measured M1 aperture (data-vs-model correction)
 
 The matched-config "~3 mm" residual is **not** a shape bug — M1 (and M2) project as exact
-circles (Finding 6), and 3 mm is below the boundary-sampling resolution. The real, larger
+circles (Finding 6), and the ~3 mm is a finite-ray-grid artifact that scales with the
+`asPolar` ring spacing and converges to ~0 with finer `nrad` (+3.1 → +1.0 mm for `nrad`
+200 → 1600). The real, larger
 M1 correction is the as-built **measured aperture** (outer 4.165 m, inner 2.5833 m) vs the
 design values danish uses (4.18 / 2.558) — a −15 mm outer / +25 mm inner shift. `maskParams`
 is a plain dict and the mask clip is independent of the Zernike-normalization radius
