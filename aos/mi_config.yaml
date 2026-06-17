@@ -89,6 +89,9 @@ measured_intrinsics:
     - name: pathA_50_34_i
       n_dof: 50
       n_keep: 34
+    - name: pathA_50_50_i
+      n_dof: 50
+      n_keep: 50
 
   fam_danish_1_1_1_wep17_3_0_bin2x:
     - name: pathA_50_34_i
