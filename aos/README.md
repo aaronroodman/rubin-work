@@ -1,11 +1,11 @@
-# AOS — Active Optics System
+# AOS Measured Intrinsics and Wavefront Analysis Pipelines
 
 Analysis of the Rubin Active Optics System from Full Array Mode (FAM) data:
 per-donut wavefront tables, Double-Zernike (DZ) fits, the *measured intrinsic*
 wavefront (telescope + camera split), DOF look-up tables, and operational
 studies (bounce tests, correlations). A Snakemake pipeline runs the full chain
 per `param_set`; standalone notebooks cover the analyses that have not (yet)
-been ported into it.
+been ported into it, plus AOS closed-loop control studies.
 
 ## Pipeline overview
 
@@ -18,36 +18,44 @@ Phase 1 (per param_set)                Phase 2 (per param_set × mi_name)
 ─────────────────────────              ──────────────────────────────────
 mktable ──► fit          (per chunk)   build_intrinsic   (per rotator bin)
    │         │                              │
-   ▼         ▼                              ▼
-combine_{donuts,fits,visits}           intrinsic_split (OCS + CCS)
-   │                                        │
-   ├──► plots                               ▼
-   ├──► aberration_pairs               intrinsic_sidecar (per-donut zk)
-   └──► (feeds Phase 2) ──────────►         │
+   ▼         ▼                              ├──► study_radialbins (WFS-radius
+combine_{donuts,fits,visits}               │         vs rotator, pre-split)
+   │                                        ▼
+   ├──► plots                          intrinsic_split (OCS + CCS)
+   ├──► aberration_pairs                    │
+   └──► (feeds Phase 2) ──────────►         ▼
+                                       intrinsic_sidecar (per-donut zk)
+                                            │
                                             ▼
                                        refit_mi (DZ refit, measured intrinsic)
                                             │
+Phase 3 — analyses (per param_set × mi_name)│
+────────────────────────────────────────────│
                               ┌─────────────┼──────────────┬──────────┐
                               ▼             ▼              ▼          ▼
                           build_lut   dz_correlations   thermal_   bounce
                                                       correlations
 ```
 
-| Step | Granularity | Short description |
-|------|-------------|-------------------|
-| `mktable` | per chunk | Butler → per-donut Zernike table + per-visit table |
-| `fit` | per chunk | Double-Zernike fit of (data − batoid intrinsic) per visit |
-| `combine_*` | per param_set | Concatenate chunks → one donuts/fits/visits table each |
-| `plots` | per param_set | Trio validation plots (data / model / residual) on the combined tables |
-| `aberration_pairs` | per param_set | Per-donut primary→secondary aberration-pair correlations |
-| `build_intrinsic` | per (ps, mi, rotator bin) | Measured-intrinsic focal-plane grid (Path-A U-mode constrained) |
-| `intrinsic_split` | per (ps, mi) | Decompose the grids into telescope-fixed (OCS) + camera-fixed (CCS) parts |
-| `intrinsic_sidecar` | per (ps, mi) | Per-donut measured-intrinsic Zernikes, row-aligned to `donuts.parquet` |
-| `refit_mi` | per (ps, mi) | DZ refit subtracting the *measured* intrinsic instead of batoid |
-| `build_lut` | per (ps, mi) | Averaged-DOF look-up table from the per-visit DZ fits |
-| `dz_correlations` | per (ps, mi) | DZ↔DZ Pearson correlations on the MI-refit residuals |
-| `thermal_correlations` | per (ps, mi) | DZ↔EFD-temperature correlations on the MI-refit residuals |
-| `bounce` | per (ps, mi) | FAM bounce-test paired Δ (DZ / v-mode / DOF) with significance maps |
+| Phase | Step | Granularity | Short description |
+|-------|------|-------------|-------------------|
+| 1 | `mktable` | per chunk | Butler → per-donut Zernike table + per-visit table |
+| 1 | `fit` | per chunk | Double-Zernike fit of (data − batoid intrinsic) per visit |
+| 1 | `combine_*` | per param_set | Concatenate chunks → one donuts/fits/visits table each |
+| 1 | `plots` | per param_set | Trio validation plots (data / model / residual) on the combined tables |
+| 1 | `aberration_pairs` | per param_set | Per-donut primary→secondary aberration-pair correlations |
+| 2 | `build_intrinsic` | per (ps, mi, rotator bin) | Measured-intrinsic focal-plane grid (Path-A U-mode constrained) |
+| 2 | `intrinsic_split` | per (ps, mi) | Decompose the grids into telescope-fixed (OCS) + camera-fixed (CCS) parts |
+| 2 | `study_radialbins` | per (ps, mi) | OCS measured intrinsic in 4 WFS radial shells, overlaid by rotator bin (pre-split) |
+| 2 | `intrinsic_sidecar` | per (ps, mi) | Per-donut measured-intrinsic Zernikes, row-aligned to `donuts.parquet` |
+| 2 | `refit_mi` | per (ps, mi) | DZ refit subtracting the *measured* intrinsic instead of batoid |
+| 3 | `build_lut` | per (ps, mi) | Averaged-DOF look-up table from the per-visit DZ fits |
+| 3 | `dz_correlations` | per (ps, mi) | DZ↔DZ Pearson correlations on the MI-refit residuals |
+| 3 | `thermal_correlations` | per (ps, mi) | DZ↔EFD-temperature correlations on the MI-refit residuals |
+| 3 | `bounce` | per (ps, mi) | FAM bounce-test paired Δ (DZ / v-mode / DOF) with significance maps |
+
+Planned additions: port `study_compare_donuts.ipynb` and `study_wfs_mimic.ipynb`
+to pipeline scripts and add them to the Snakemake DAG.
 
 ## Pipeline steps in detail
 
@@ -111,6 +119,17 @@ keeps O hole-free → `intrinsic_split.parquet`, `intrinsic_split_decomp.npz`,
 `intrinsic_split.pdf`. (Script version of
 `intrinsic_camera_telescope_split.ipynb`.)
 
+**`study_radialbins`** — `code/run_study_radialbins.py`. Reads the per-rotator-bin
+grids *before* the split and, for each pupil Zernike j, makes one page of four
+full-width panels = the four WFS radial shells, each overlaying the rotator-angle
+samples (median OCS measured intrinsic vs focal-plane azimuth, one colour+marker
+per rotator bin) → `study_radialbins.pdf`. Shows how consistent the intrinsic is
+across rotator at the radius the wavefront sensors see. The shell inner edge is
+the extra-focal `SW0` inner-corner field radius from the `PIXELS→FIELD_ANGLE`
+camera transform (1.5178°; derivation documented in the script docstring), the
+outer edge the AOS-online 1.725° limit; 4 equal-width bins. Knobs in
+`analysis_config.yaml` (`study_radialbins`).
+
 **`intrinsic_sidecar`** — `code/run_make_intrinsic_sidecar.py`. Evaluates the
 O + C decomposition at every donut's field position (full spin reconstruction,
 C evaluated at the donut's CCS coordinates so the camera term rotates
@@ -125,10 +144,12 @@ difference analyses (bounce): any intrinsic fixed in the fitting frame cancels
 in a Δ — it is the rotating camera term **C** that changes the rotator-bounce
 result, which is why the O + C split matters.
 
-### Analyses on the MI-refit fits (per `param_set` × `mi_name`)
+### Phase 3 — analyses on the MI-refit fits (per `param_set` × `mi_name`)
 
-All run on the *residual* (measured-intrinsic-subtracted) DZ in
-`output/<ps>/<mi>/fits.parquet`; knobs in `analysis_config.yaml`.
+`dz_correlations`, `thermal_correlations`, and `bounce` run on the *residual*
+(measured-intrinsic-subtracted) DZ in `output/<ps>/<mi>/fits.parquet`;
+`build_lut` currently projects the Phase-1 `fits.parquet`. Knobs in
+`analysis_config.yaml`.
 
 **`build_lut`** — `code/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
 look-up table: projects the per-visit DZ fits onto the OFC sensitivity-matrix
@@ -208,28 +229,38 @@ output/<param_set>/
   <mi_name>/
     build/rot_<lo>_<hi>/intrinsic_grid.parquet           # per rotator bin
     intrinsic_split.{parquet,pdf}  intrinsic_split_decomp.npz
+    study_radialbins.pdf                                 # MI at WFS radius vs rotator
     zk_intrinsic.parquet                                 # per-donut sidecar
     fits.parquet                                         # MI-refit DZ fits
     lut/ {lut,lut_dz}.parquet  lut.pdf
-    plots/ {dz_correlations,thermal_correlations,bounce_*}.pdf
+    bounce_kj_stats.parquet
+    plots/ {dz_correlations,dz_correlations_optcorr,thermal_correlations,bounce_*}.pdf
 ```
 
 ## Notebooks
 
-### Active analyses (not in the pipeline)
+### AOS control
+
+Closed-loop AOS performance, separate from the FAM wavefront pipeline.
+(Candidates to move to their own `aos_control/` topic directory.)
 
 | Notebook | Description | Created | Last Modified |
 |----------|-------------|---------|---------------|
 | `nightly_tablemaker.ipynb` | Extract per-exposure AOS data (EFD + ConsDB + Butler) into a single parquet table with vmodes, per-corner Zernikes, and summary arrays. Based on `nightly_report_ts_version`. | 2026-03-07 | 2026-03-13 |
 | `aos_nightly_plots.ipynb` | Plots of AOS FWHM and Zernike deviations from multiple nights. Loads nightly_tablemaker output, computes mean 4-corner Zernike deviations, and produces time-series and histogram plots of vmodes and DOF states. | 2026-03-14 | 2026-03-14 |
 | `aos_openloop.ipynb` | Reconstruct closed-loop PID behavior of the AOS system. Builds sensitivity matrix SVD, projects 4-corner Zernikes onto vmodes, runs per-vmode PID simulation, and validates against actual DOF corrections. | 2026-03-11 | 2026-03-13 |
+
+### Active analyses (not in the pipeline)
+
+| Notebook | Description | Created | Last Modified |
+|----------|-------------|---------|---------------|
 | `smatrix_vmode_info.ipynb` | Comprehensive analysis of the AOS sensitivity matrix: SVD (`StateEstimator` + custom-SVD validation), v-mode composition, wavefront signatures, control equations, noise/gain, plus a normalization-scheme deep-dive (unit-invariance) and double-Zernike field patterns & physical impact. Consolidates the former `normalization_study` and `smatrix_doublez`. Shared primitives in `code/ofc_svd.py`. | 2026-03-08 | 2026-06-11 |
 | `intrinsics_mktable.ipynb` | Create a table of Zernike wavefront measurements from FAM cwfs images with model intrinsic values. Queries ConsDB for FAM visits, extracts Zernikes via Butler, interpolates Batoid intrinsic model, saves to parquet. (Interactive counterpart of the pipeline `mktable` step.) | 2026-02-23 | 2026-03-13 |
 | `intrinsics_plots.ipynb` | Analyze the FAM Zernike table from `intrinsics_mktable`. Plots data vs model comparisons (trio plots) for each Zernike term across the focal plane. | 2026-02-23 | 2026-02-23 |
 | `intrinsics_checkZ4.ipynb` | Check that the Z4 intrinsic map correctly accounts for CCD-to-CCD height variation: subtract the per-visit linear (tilt/tip/piston) Z4, bin in focal plane, compare against independent intrinsic computations and the CCD height map. | 2026-04-20 | 2026-04-21 |
 | `intrinsic_Zj.ipynb` | Extend the Z4 check to every Zernike carried by the danish fit (Noll 4–19, 22–26): rotator ≈ 0° donut selection, per-Zj focal-plane median maps of data − model. | 2026-04-22 | 2026-04-22 |
-| `study_compare_donuts.ipynb` | Compare per-donut wavefront Zernikes between two processing runs (param_set A vs B — code version, binning, or algorithm). Per-CCD positional donut matching, then coverage maps, per-visit large-\|Δ\|, density (hist or hexbin) over the full focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS), and an optional per-visit double-Zernike-fit comparison. Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and `donutalgo_comparison`. Shared code in `code/compare_donuts.py`. | 2026-06-11 | 2026-06-11 |
-| `study_wfs_mimic.ipynb` | Study whether the 4 corner WFS can reconstruct the optical state from FAM observations. Mimics WFS measurements by averaging FAM donuts in annular wedges at the WFS field radius, subtracts measured intrinsic, builds WFS-specific SVD of the sensitivity matrix, recovers DOFs, and compares against full FAM DOF analysis. | 2026-06-04 | 2026-06-04 |
+| `study_compare_donuts.ipynb` | Compare per-donut wavefront Zernikes between two processing runs (param_set A vs B — code version, binning, or algorithm). Per-CCD positional donut matching, then coverage maps, per-visit large-\|Δ\|, density (hist or hexbin) over the full focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS), and an optional per-visit double-Zernike-fit comparison. Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and `donutalgo_comparison`. Shared code in `code/compare_donuts.py`. **TODO: port to a pipeline script.** | 2026-06-11 | 2026-06-11 |
+| `study_wfs_mimic.ipynb` | Study whether the 4 corner WFS can reconstruct the optical state from FAM observations. Mimics WFS measurements by averaging FAM donuts in annular wedges at the WFS field radius, subtracts measured intrinsic, builds WFS-specific SVD of the sensitivity matrix, recovers DOFs, and compares against full FAM DOF analysis. **TODO: port to a pipeline script.** | 2026-06-04 | 2026-06-04 |
 
 ### Superseded by pipeline steps (kept as reference)
 
