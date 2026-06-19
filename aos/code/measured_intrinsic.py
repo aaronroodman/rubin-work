@@ -396,6 +396,38 @@ def bin_median_focal(thx_deg, thy_deg, values_2d, iZidx, n_bins=73,
     return grid, xbins, ybins, xcent, ycent
 
 
+def bin_count_rms_focal(thx_deg, thy_deg, values_2d, iZidx, n_bins=73,
+                        fp_radius=1.8):
+    """Per-cell donut count and per-Zernike RMS on the focal grid.
+
+    Same binning / orientation as :func:`bin_median_focal` (x = thy, y = thx).
+    Lets the caller form an error on the per-cell (median) value:
+    SE_median ≈ 1.2533 · rms / sqrt(count).
+
+    Returns
+    -------
+    count : ndarray (n_bins, n_bins)
+        Donut count per cell (Zernike-independent).
+    rms : dict pupil_noll -> ndarray (n_bins, n_bins)
+        Std (RMS about the mean) of the donut values per cell, per Zernike.
+    xbins, ybins, xcent, ycent : grid edges/centres (deg).
+    """
+    xbins, ybins, xcent, ycent = make_focal_grid(n_bins, fp_radius)
+    if len(thx_deg) == 0:
+        empty = np.full((n_bins, n_bins), np.nan)
+        return (empty.copy(), {j: empty.copy() for j in iZidx},
+                xbins, ybins, xcent, ycent)
+    count, _, _, _ = binned_statistic_2d(
+        thy_deg, thx_deg, values_2d[:, 0], statistic='count', bins=[xbins, ybins])
+    rms = {}
+    for j, col in iZidx.items():
+        s, _, _, _ = binned_statistic_2d(
+            thy_deg, thx_deg, values_2d[:, col], statistic='std',
+            bins=[xbins, ybins])
+        rms[j] = s
+    return count, rms, xbins, ybins, xcent, ycent
+
+
 def interpolate_grid_at_donuts(grid, xcent, ycent, thx_deg, thy_deg, iZs,
                                fallback=None):
     """Interpolate a per-pupil-j focal grid at arbitrary donut positions.
@@ -785,6 +817,13 @@ def build_measured_intrinsic_uconstrained(donut_df, visit_table,
                 thx[good_donut_mask], thy[good_donut_mask],
                 zk_intrinsic_tab[good_donut_mask],
                 iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
+        if it == n_iter - 1:
+            # per-cell donut count + RMS of the FINAL measured intrinsic, for the
+            # error on the (median) per-cell value (SE ≈ 1.2533·rms/√count)
+            measured_count, measured_rms, *_ = bin_count_rms_focal(
+                thx[good_donut_mask], thy[good_donut_mask],
+                wfd_subtracted[good_donut_mask],
+                iZidx, n_bins=n_bins, fp_radius=fp_radius_grid)
 
         iter_results.append({
             'fit_rows':         fit_rows_proj,
@@ -811,6 +850,8 @@ def build_measured_intrinsic_uconstrained(donut_df, visit_table,
         'iZidx': iZidx,
         'original_median': original_median,
         'tabulated_median': tabulated_median,
+        'measured_count': measured_count,      # final-iter per-cell donut count
+        'measured_rms': measured_rms,          # final-iter per-cell RMS (per j)
         'iter_results': iter_results,
         'xbins': xbins, 'ybins': ybins,
         'xcent': xcent, 'ycent': ycent,
@@ -825,7 +866,7 @@ def build_measured_intrinsic_uconstrained(donut_df, visit_table,
 
 def assemble_intrinsic_table(grid, iZs, xcent, ycent,
                              coord_sys_grid, alt_coord_xform=None,
-                             extra_cols=None):
+                             extra_cols=None, rms_grid=None, tabulated_grid=None):
     """Flatten a per-pupil-j focal grid into a long-format QTable.
 
     Each row is one (thx, thy) bin centre carrying:
@@ -873,6 +914,16 @@ def assemble_intrinsic_table(grid, iZs, xcent, ycent,
             zk_arr[:, col_idx] = grid[j].ravel()
     cols['zk'] = list(zk_arr)
     cols['nollIndices'] = [list(iZs)] * n_pix
+
+    # parallel per-Zernike list columns (same layout as zk): the donut RMS and
+    # the tabulated (batoid) intrinsic, both medianed onto the same grid.
+    for cname, cgrid in (('zk_rms', rms_grid), ('zk_tabulated', tabulated_grid)):
+        if cgrid is not None:
+            arr = np.full((n_pix, n_zern), np.nan)
+            for col_idx, j in enumerate(iZs):
+                if j in cgrid:
+                    arr[:, col_idx] = cgrid[j].ravel()
+            cols[cname] = list(arr)
 
     # Optional extra per-bin columns (e.g. z4_optical_OCS).  Each
     # must be a 2D grid in the same orientation as `grid[j]`.

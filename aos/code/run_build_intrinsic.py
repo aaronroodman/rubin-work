@@ -264,11 +264,19 @@ def main():
 
     save_dz_fits(final['fit_rows'], out_dir / 'dz_fits.parquet')
 
-    extra = {'z4_optical_OCS': z4_optical_grid} if z4_optical_grid is not None else None
+    # per-cell donut count + RMS + tabulated (batoid) intrinsic for error bars
+    # and the tabulated reference curve in study_radialbins.
+    extra = {}
+    if z4_optical_grid is not None:
+        extra['z4_optical_OCS'] = z4_optical_grid
+    if result.get('measured_count') is not None:
+        extra['n_donuts'] = result['measured_count']
     tbl = assemble_intrinsic_table(
         grid=final['measured_grid'], iZs=iZs,
         xcent=result['xcent'], ycent=result['ycent'],
-        coord_sys_grid=coord_sys, alt_coord_xform=None, extra_cols=extra)
+        coord_sys_grid=coord_sys, alt_coord_xform=None,
+        extra_cols=(extra or None), rms_grid=result.get('measured_rms'),
+        tabulated_grid=result.get('tabulated_median'))
     tbl.write(str(out_dir / 'intrinsic_grid.parquet'), format='parquet', overwrite=True)
     print(f'  wrote intrinsic_grid.parquet ({len(tbl)} bins) + dz_fits.parquet')
 

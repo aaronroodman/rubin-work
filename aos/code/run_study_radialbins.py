@@ -114,14 +114,25 @@ def main():
         thx = np.asarray(df['thx_deg'], float); thy = np.asarray(df['thy_deg'], float)
         zk = np.vstack(df['zk'].values)
         noll = [int(j) for j in np.asarray(df['nollIndices'].iloc[0]).tolist()]
+        # optional per-cell error inputs (present once the build records them)
+        rms = np.vstack(df['zk_rms'].values) if 'zk_rms' in df.columns else None
+        nd = (np.asarray(df['n_donuts'], float) if 'n_donuts' in df.columns else None)
+        tab = (np.vstack(df['zk_tabulated'].values)
+               if 'zk_tabulated' in df.columns else None)
         samples.append(dict(
             center=0.5 * (lo + hi), label=f'rot{0.5 * (lo + hi):+.0f}',
             r=np.hypot(thx, thy), az=np.degrees(np.arctan2(thy, thx)) % 360.0,
-            zk=zk, noll=noll))
+            zk=zk, rms=rms, nd=nd, tab=tab, noll=noll))
     if not samples:
         raise RuntimeError('No rotator-bin intrinsic grids found.')
     noll = samples[0]['noll']
-    print(f'  loaded {len(samples)} rotator samples, {len(noll)} Zernikes')
+    have_err = all(s['rms'] is not None and s['nd'] is not None for s in samples)
+    have_tab = all(s['tab'] is not None for s in samples)
+    print(f'  loaded {len(samples)} rotator samples, {len(noll)} Zernikes  '
+          f'(error bars: {have_err}, tabulated curve: {have_tab})')
+    if not have_err:
+        print('  NOTE: zk_rms/n_donuts absent — rebuild build_intrinsic for '
+              'error-on-median bars (lines plotted without errors)')
 
     import matplotlib
     matplotlib.use('Agg')
@@ -155,17 +166,46 @@ def main():
                         continue
                     med, _, _ = binned_statistic(s['az'][m], s['zk'][m, jj],
                                                  statistic='median', bins=azedges)
-                    ax.plot(azc, med, marker=markers[si % len(markers)], ms=4,
-                            lw=0.9, alpha=0.9, color=cmap(norm(s['center'])),
-                            label=s['label'] if b == 0 else None)
+                    kw = dict(marker=markers[si % len(markers)], ms=4, lw=0.9,
+                              alpha=0.9, color=cmap(norm(s['center'])),
+                              label=s['label'] if b == 0 else None)
+                    if have_err:
+                        # SE of the median ≈ 1.2533·σ_pooled/√N over the donuts in
+                        # each azimuth bin: σ_pooled² = Σ n_c·rms_c² / Σ n_c, so
+                        # SE_median = 1.2533·√(Σ n_c·rms_c²) / Σ n_c.
+                        rc = np.where(np.isfinite(s['rms'][m, jj]), s['rms'][m, jj], 0.0)
+                        nc = np.where(np.isfinite(s['nd'][m]), s['nd'][m], 0.0)
+                        num, _, _ = binned_statistic(s['az'][m], nc * rc ** 2,
+                                                     statistic='sum', bins=azedges)
+                        den, _, _ = binned_statistic(s['az'][m], nc,
+                                                     statistic='sum', bins=azedges)
+                        with np.errstate(divide='ignore', invalid='ignore'):
+                            err = 1.2533 * np.sqrt(num) / den
+                        err[~np.isfinite(err)] = np.nan
+                        ax.errorbar(azc, med, yerr=err, elinewidth=0.7,
+                                    capsize=1.5, **kw)
+                    else:
+                        ax.plot(azc, med, **kw)
+                if have_tab:                              # tabulated (batoid) ref
+                    at = np.concatenate([s['az'][(s['r'] >= redges[b])
+                                         & (s['r'] < redges[b + 1])
+                                         & np.isfinite(s['tab'][:, jj])] for s in samples])
+                    vt = np.concatenate([s['tab'][(s['r'] >= redges[b])
+                                         & (s['r'] < redges[b + 1])
+                                         & np.isfinite(s['tab'][:, jj]), jj] for s in samples])
+                    if at.size >= 5:
+                        tmed, _, _ = binned_statistic(at, vt, statistic='median',
+                                                      bins=azedges)
+                        ax.plot(azc, tmed, 'k--', lw=1.8, alpha=0.85,
+                                label='tabulated' if b == 0 else None)
                 ax.axhline(0, color='k', lw=0.4, alpha=0.5); ax.grid(alpha=0.3)
                 ax.set_title(f'r ∈ [{redges[b]:.4f}, {redges[b+1]:.4f}]°', fontsize=9)
                 ax.set_ylabel(f'Z{j} [μm]', fontsize=8)
                 ax.set_xlim(0, 360); ax.set_xticks(range(0, 361, 30))
                 ax.tick_params(labelsize=7)
             axes[-1].set_xlabel('focal-plane azimuth [deg] (OCS)', fontsize=9)
-            axes[0].legend(fontsize=7, ncol=len(samples), loc='upper center',
-                           title='rotator bin', title_fontsize=7)
+            axes[0].legend(fontsize=7, ncol=len(samples) + (1 if have_tab else 0),
+                           loc='upper center', title='rotator bin', title_fontsize=7)
             fig.suptitle(f'Z{j} {NOLL_NAMES.get(j, "")} — OCS measured intrinsic '
                          f'vs azimuth, by rotator bin   (WFS radial shells '
                          f'{redges[0]:.3f}–{redges[-1]:.3f}°)', fontsize=12)
