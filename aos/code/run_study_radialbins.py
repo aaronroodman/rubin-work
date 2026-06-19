@@ -141,8 +141,10 @@ def main():
     n_pages = 0
     with PdfPages(str(out)) as pdf:
         for jj, j in enumerate(noll):
-            fig, axes = plt.subplots(1, nrb, figsize=(5.0 * nrb, 4.3),
-                                     layout='constrained', sharey=True, squeeze=False)
+            # 4x1 column: each radial-shell panel spans the full page width
+            fig, axes = plt.subplots(nrb, 1, figsize=(15, 3.0 * nrb),
+                                     layout='constrained', sharex=True,
+                                     sharey=True, squeeze=False)
             axes = axes.ravel()
             for b in range(nrb):
                 ax = axes[b]
@@ -158,12 +160,12 @@ def main():
                             label=s['label'] if b == 0 else None)
                 ax.axhline(0, color='k', lw=0.4, alpha=0.5); ax.grid(alpha=0.3)
                 ax.set_title(f'r ∈ [{redges[b]:.4f}, {redges[b+1]:.4f}]°', fontsize=9)
-                ax.set_xlabel('focal-plane azimuth [deg] (OCS)', fontsize=8)
-                ax.set_xlim(0, 360); ax.set_xticks([0, 90, 180, 270, 360])
+                ax.set_ylabel(f'Z{j} [μm]', fontsize=8)
+                ax.set_xlim(0, 360); ax.set_xticks(range(0, 361, 30))
                 ax.tick_params(labelsize=7)
-            axes[0].set_ylabel(f'Z{j} measured intrinsic [μm]', fontsize=9)
-            axes[0].legend(fontsize=6, ncol=2, loc='best', title='rotator',
-                           title_fontsize=6)
+            axes[-1].set_xlabel('focal-plane azimuth [deg] (OCS)', fontsize=9)
+            axes[0].legend(fontsize=7, ncol=len(samples), loc='upper center',
+                           title='rotator bin', title_fontsize=7)
             fig.suptitle(f'Z{j} {NOLL_NAMES.get(j, "")} — OCS measured intrinsic '
                          f'vs azimuth, by rotator bin   (WFS radial shells '
                          f'{redges[0]:.3f}–{redges[-1]:.3f}°)', fontsize=12)
