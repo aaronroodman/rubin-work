@@ -66,12 +66,23 @@ def main():
     has_rot = 'rotator_angle' in fam_visits.colnames
     has_alt = 'alt' in fam_visits.colnames
 
-    donut_tabs, vrows, n_miss = [], [], 0
+    # keep a lean, fixed column set — the raw aggregate has many extra scalar
+    # columns (e.g. lstsq_cost) whose dtype varies across exposures (float vs
+    # all-NaN object), which breaks vstack.  We only need the Zernikes +
+    # per-corner positions + detector.
+    keep = ['detector', f'zk_{coord}', f'zk_intrinsic_{coord}',
+            f'thx_{coord}', f'thy_{coord}',
+            f'thx_{coord}_intra', f'thx_{coord}_extra',
+            f'thy_{coord}_intra', f'thy_{coord}_extra']
+    donut_tabs, vrows, n_miss, noll = [], [], 0, None
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + 1
         tbl, meta = get_aggregate_zernikes(butler, d, infocus, coord, camera)
         if tbl is None:
             n_miss += 1; continue
+        if noll is None and meta.get('nollIndices') is not None:
+            noll = [int(x) for x in meta['nollIndices']]
+        tbl = tbl[[c for c in keep if c in tbl.colnames]]
         rot = float(v['rotator_angle']) if has_rot else np.nan
         alt = float(v['alt']) if has_alt else np.nan
         tbl['day_obs'] = d; tbl['seq_num'] = infocus; tbl['fam_seq_num'] = fam_s
@@ -84,18 +95,21 @@ def main():
         raise RuntimeError('No in-focus cwfs aggregate tables found for any '
                            'FAM visit (FAM_seq+1).')
     donuts = vstack(donut_tabs, metadata_conflicts='silent')
+    donuts.meta['nollIndices'] = noll          # Zernike order of zk_<coord>
     out = base / 'wfs'; out.mkdir(parents=True, exist_ok=True)
     donuts.write(str(out / 'donuts.parquet'), format='parquet', overwrite=True)
-    pd.DataFrame(vrows).to_parquet(out / 'visits.parquet')
+    vdf = pd.DataFrame(vrows)
+    vdf['nollIndices'] = [list(noll) if noll else None] * len(vdf)
+    vdf.to_parquet(out / 'visits.parquet')
     print(f'  {len(vrows)} in-focus exposures, {len(donuts)} WFS donuts '
           f'({n_miss} FAM visits had no in-focus cwfs table); wrote wfs/donuts'
           f'.parquet + wfs/visits.parquet')
 
     if not args.no_plot:
-        _validation_plot(donuts, base, out, coord, args.dz_prefix)
+        _validation_plot(donuts, base, out, coord, args.dz_prefix, noll)
 
 
-def _validation_plot(donuts, base, out, coord, prefix):
+def _validation_plot(donuts, base, out, coord, prefix, noll):
     """Mean WFS Zernike_j vs ordinal in-focus image, FAM k=1 (z_j_c1) overlaid."""
     import matplotlib
     matplotlib.use('Agg')
@@ -105,12 +119,13 @@ def _validation_plot(donuts, base, out, coord, prefix):
         from common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
-    df = donuts.to_pandas() if hasattr(donuts, 'to_pandas') else donuts
-    zk = np.vstack(df[f'zk_{coord}'].values)
-    noll = [int(j) for j in np.asarray(donuts['nollIndices'][0]).tolist()] \
-        if 'nollIndices' in donuts.colnames else list(range(4, 4 + zk.shape[1]))
-    fam_s = np.asarray(df['fam_seq_num']).astype(int)
-    dobs = np.asarray(df['day_obs']).astype(int)
+    # read straight from the astropy table (zk_<coord> is a multidim column,
+    # so to_pandas() would fail)
+    zk = np.array(donuts[f'zk_{coord}'], dtype=float)      # (n_donuts, n_zern)
+    if not noll:
+        noll = list(range(4, 4 + zk.shape[1]))
+    fam_s = np.asarray(donuts['fam_seq_num']).astype(int)
+    dobs = np.asarray(donuts['day_obs']).astype(int)
     # per in-focus image (fam_seq) WFS mean
     keys = sorted(set(zip(dobs.tolist(), fam_s.tolist())))
     ordinal = {k: i for i, k in enumerate(keys)}
