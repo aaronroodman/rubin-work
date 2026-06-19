@@ -109,68 +109,168 @@ def main():
         _validation_plot(donuts, base, out, coord, args.dz_prefix, noll)
 
 
+def _to_deg(a):
+    a = np.asarray(a, float)
+    return np.rad2deg(a) if np.nanmax(np.abs(a)) < 0.1 else a
+
+
+def _fam_radius_median(fam_donuts_path, coord, inner, outer):
+    """Median FAM donut zk per (day_obs, seq_num) within the WFS radial shell
+    [inner, outer]°.  Streams the (large) FAM donuts.parquet by row batch."""
+    import pyarrow.parquet as pq
+    from collections import defaultdict
+    zkc, txc, tyc = f'zk_{coord}', f'thx_{coord}', f'thy_{coord}'
+    pf = pq.ParquetFile(str(fam_donuts_path))
+    acc = defaultdict(list)
+    for batch in pf.iter_batches(columns=[zkc, txc, tyc, 'day_obs', 'seq_num'],
+                                 batch_size=300000):
+        bd = batch.to_pandas()
+        r = np.hypot(_to_deg(bd[txc]), _to_deg(bd[tyc]))
+        shell = (r >= inner) & (r <= outer)
+        if not shell.any():
+            continue
+        sub = bd.loc[shell]
+        zk = np.vstack(sub[zkc].values)
+        dd = np.asarray(sub['day_obs']).astype(int)
+        ss = np.asarray(sub['seq_num']).astype(int)
+        for d, s in set(zip(dd.tolist(), ss.tolist())):
+            acc[(d, s)].append(zk[(dd == d) & (ss == s)])
+    return {k: np.nanmedian(np.vstack(v), axis=0) for k, v in acc.items()}
+
+
+def _ordinal_page(pdf, x, pts, line, noll, names, suptitle, pts_lab, line_lab):
+    import matplotlib.pyplot as plt
+    ncols = 3; nrows = (len(noll) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 2.6 * nrows),
+                             layout='constrained', squeeze=False)
+    axes = axes.ravel()
+    for p, j in enumerate(noll):
+        ax = axes[p]
+        ax.plot(x, pts[:, p], 'o', ms=3, color='steelblue', label=pts_lab)
+        if line is not None:
+            ax.plot(x, line[:, p], '-', lw=1.0, color='crimson', alpha=0.8,
+                    label=line_lab)
+        ax.axhline(0, color='k', lw=0.4, alpha=0.5); ax.grid(alpha=0.3)
+        ax.set_title(f'Z{j} {names.get(j, "")}', fontsize=8); ax.tick_params(labelsize=7)
+    for p in range(len(noll), len(axes)):
+        axes[p].set_visible(False)
+    axes[0].legend(fontsize=7, loc='best')
+    fig.suptitle(suptitle, fontsize=13)
+    pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+
+
+def _scatter_fit_page(pdf, xby, yby, noll, names, suptitle, xlab, ylab):
+    """Per-j scatter of y vs x + OLS fit; returns [(j, slope, offset, r, n)]."""
+    import matplotlib.pyplot as plt
+    ncols = 3; nrows = (len(noll) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.0 * nrows),
+                             layout='constrained', squeeze=False)
+    axes = axes.ravel(); rows = []
+    for p, j in enumerate(noll):
+        ax = axes[p]
+        x = xby[:, p]; y = yby[:, p]
+        m = np.isfinite(x) & np.isfinite(y)
+        ttl = f'Z{j} {names.get(j, "")}'
+        if int(m.sum()) > 2:
+            ax.scatter(x[m], y[m], s=8, alpha=0.5, edgecolors='none')
+            lo = float(np.nanmin([x[m].min(), y[m].min()]))
+            hi = float(np.nanmax([x[m].max(), y[m].max()]))
+            ax.plot([lo, hi], [lo, hi], 'k:', lw=0.8, alpha=0.6)      # unity
+            sl, off = np.polyfit(x[m], y[m], 1)
+            xf = np.array([x[m].min(), x[m].max()])
+            ax.plot(xf, sl * xf + off, 'r-', lw=1.3, alpha=0.9)
+            r = float(np.corrcoef(x[m], y[m])[0, 1])
+            rows.append(dict(j=j, slope=sl, offset=off, r=r, n=int(m.sum())))
+            ttl += f'\nslope={sl:+.2f} off={off:+.3f}μm r={r:+.2f}'
+        ax.set_xlabel(xlab, fontsize=7); ax.set_ylabel(ylab, fontsize=7)
+        ax.set_title(ttl, fontsize=7.5); ax.tick_params(labelsize=6); ax.grid(alpha=0.3)
+    for p in range(len(noll), len(axes)):
+        axes[p].set_visible(False)
+    fig.suptitle(suptitle, fontsize=13)
+    pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+    return rows
+
+
 def _validation_plot(donuts, base, out, coord, prefix, noll):
-    """Mean WFS Zernike_j vs ordinal in-focus image, FAM k=1 (z_j_c1) overlaid."""
+    """WFS↔FAM validation: (0) WFS mean vs FAM k=1 vs ordinal; (A) scatter +
+    linear fit of the same; (B) WFS median vs FAM-donut median *at the WFS
+    radius* (the apples-to-apples comparison incl. the measured intrinsic +
+    k=1..6 field structure) — vs ordinal and as a scatter + fit."""
     import matplotlib
     matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     try:
         from common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
-    # read straight from the astropy table (zk_<coord> is a multidim column,
-    # so to_pandas() would fail)
     zk = np.array(donuts[f'zk_{coord}'], dtype=float)      # (n_donuts, n_zern)
     if not noll:
         noll = list(range(4, 4 + zk.shape[1]))
     fam_s = np.asarray(donuts['fam_seq_num']).astype(int)
     dobs = np.asarray(donuts['day_obs']).astype(int)
-    # per in-focus image (fam_seq) WFS mean
     keys = sorted(set(zip(dobs.tolist(), fam_s.tolist())))
-    ordinal = {k: i for i, k in enumerate(keys)}
+    x = np.arange(len(keys))
     wfs_mean = np.full((len(keys), len(noll)), np.nan)
+    wfs_med = np.full((len(keys), len(noll)), np.nan)
     for i, (d, s) in enumerate(keys):
         m = (dobs == d) & (fam_s == s)
         wfs_mean[i] = np.nanmean(zk[m], axis=0)
+        wfs_med[i] = np.nanmedian(zk[m], axis=0)
 
-    # FAM k=1 (field-mean) per image from fits.parquet, joined by (day_obs, seq)
-    fam = None
+    # FAM k=1 (field-mean) per image from fits.parquet
+    fam_k1 = np.full((len(keys), len(noll)), np.nan)
     fp = base / 'fits.parquet'
     if fp.exists():
         ft = pd.read_parquet(fp)
-        fam = {(int(r.day_obs), int(r.seq_num)): r for r in ft.itertuples()}
+        d = {(int(r.day_obs), int(r.seq_num)): r for r in ft.itertuples()}
+        for i, (dd, ss) in enumerate(keys):
+            r = d.get((dd, ss))
+            if r is not None:
+                fam_k1[i] = [getattr(r, f'{prefix}_z{j}_c1', np.nan) for j in noll]
 
-    ncols = 3
-    nrows = (len(noll) + ncols - 1) // ncols
-    x = np.arange(len(keys))
+    # FAM-donut median at the WFS radius (the careful comparison)
+    inner, outer = _wfs_shell()
+    fam_rad = np.full((len(keys), len(noll)), np.nan)
+    dp = base / 'donuts.parquet'
+    if dp.exists():
+        print(f'  computing FAM median in WFS shell [{inner:.4f}, {outer}]° ...')
+        med = _fam_radius_median(dp, coord, inner, outer)
+        for i, k in enumerate(keys):
+            if k in med:
+                fam_rad[i] = med[k][:len(noll)]
+
     with PdfPages(str(out / 'wfs_mktable_validation.pdf')) as pdf:
-        fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 2.6 * nrows),
-                                 layout='constrained', squeeze=False)
-        axes = axes.ravel()
-        for p, j in enumerate(noll):
-            ax = axes[p]
-            ax.plot(x, wfs_mean[:, p], 'o', ms=3, color='steelblue',
-                    label='WFS mean')
-            if fam is not None:
-                col = f'{prefix}_z{j}_c1'
-                fk = np.array([getattr(fam.get((d, s)), col, np.nan)
-                               if fam.get((d, s)) is not None else np.nan
-                               for (d, s) in keys])
-                ax.plot(x, fk, '-', lw=1.0, color='crimson', alpha=0.8,
-                        label='FAM k=1')
-            ax.axhline(0, color='k', lw=0.4, alpha=0.5); ax.grid(alpha=0.3)
-            ax.set_title(f'Z{j} {NOLL_NAMES.get(j, "")}', fontsize=8)
-            ax.tick_params(labelsize=7)
-        for p in range(len(noll), len(axes)):
-            axes[p].set_visible(False)
-        axes[0].legend(fontsize=7, loc='best')
-        for ax in axes[max(0, len(noll) - ncols):len(noll)]:
-            ax.set_xlabel('ordinal in-focus image', fontsize=8)
-        fig.suptitle('WFS mean Zernike vs ordinal image  (FAM k=1 overlaid)',
-                     fontsize=13)
-        pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+        _ordinal_page(pdf, x, wfs_mean, fam_k1, noll, NOLL_NAMES,
+                      'WFS mean Zernike vs ordinal image  (FAM k=1 overlaid)',
+                      'WFS mean', 'FAM k=1')
+        rA = _scatter_fit_page(pdf, fam_k1, wfs_mean, noll, NOLL_NAMES,
+                               'WFS mean vs FAM k=1  (unity dotted, OLS red)',
+                               'FAM k=1 [μm]', 'WFS mean [μm]')
+        _ordinal_page(pdf, x, wfs_med, fam_rad, noll, NOLL_NAMES,
+                      f'WFS median vs FAM-donut median at WFS radius '
+                      f'[{inner:.3f}-{outer}°] vs ordinal',
+                      'WFS median', 'FAM @WFS-r')
+        rB = _scatter_fit_page(pdf, fam_rad, wfs_med, noll, NOLL_NAMES,
+                               f'WFS median vs FAM median @WFS radius '
+                               f'[{inner:.3f}-{outer}°]  (unity dotted, OLS red)',
+                               'FAM @WFS-r median [μm]', 'WFS median [μm]')
     print('  wrote wfs/wfs_mktable_validation.pdf')
+    print('  offsets (WFS = slope·FAM + offset):')
+    for tag, rr in (('vs k=1', rA), ('vs FAM@WFS-r', rB)):
+        s = '  '.join(f'Z{d["j"]}:{d["offset"]:+.3f}' for d in rr if abs(d['offset']) > 0.02)
+        print(f'    {tag}: {s or "(all |offset|<0.02)"}')
+
+
+def _wfs_shell():
+    """(inner, outer)° radial shell of the corner WFS — extra-focal SW0 inner
+    corner from cameraGeom (RSP), out to the AOS-online 1.725° limit."""
+    try:
+        from lsst.obs.lsst import LsstCam
+        from ccd_height import wfs_field_radius_range
+        inner, _ = wfs_field_radius_range(LsstCam.getCamera())
+    except Exception:
+        inner = 1.5178
+    return float(inner), 1.725
 
 
 if __name__ == '__main__':

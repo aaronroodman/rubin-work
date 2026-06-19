@@ -395,6 +395,7 @@ rule wfs_mktable:
     input:
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",       # FAM k=1 overlay in validation
+        fam_donuts = "output/{ps}/donuts.parquet",  # FAM median at WFS radius
         script = "code/run_wfs_mktable.py",
         lib    = "code/intrinsics_lib.py",
     output:
@@ -404,7 +405,7 @@ rule wfs_mktable:
     params:
         coord = lambda w: coord(w.ps),
         coll  = lambda w: PARAM_SETS[w.ps]["wfs_collection"],   # rerun-trigger
-    resources: mem_mb=6000
+    resources: mem_mb=10000
     log: "logs/{ps}.wfs_mktable.log"
     shell:
         "python code/run_wfs_mktable.py --param-set {wildcards.ps} "
