@@ -60,6 +60,9 @@ def mi_bin_grids(ps, mi):
             for lo, hi in mi_rotbins(ps, mi)]
 MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
+# param_sets with a paired in-focus corner-WFS (cwfs) collection
+WFS_PSETS = [ps for ps in PSETS if PARAM_SETS.get(ps, {}).get("wfs_collection")]
+
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
 # analysis_config.yaml as rule inputs.  Snakemake's `params` rerun-trigger then
@@ -98,6 +101,8 @@ rule all:
         expand("output/{ps}/plots/aberration_pairs.pdf", ps=PSETS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
+        # in-focus corner-WFS ingestion (param_sets with a wfs_collection)
+        expand("output/{ps}/wfs/donuts.parquet", ps=WFS_PSETS),
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
         [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
         # averaged-DOF LUT per (param_set, mi_name)
@@ -379,3 +384,28 @@ rule bounce:
     shell:
         "python code/run_bounce.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ======================================================================
+# In-focus corner-WFS (cwfs) track — paired to the FAM triplets.
+# Runs AFTER Phase 1 (needs the combined FAM visits/fits).  RSP-only (Butler).
+# ======================================================================
+
+# ---- ingest the in-focus cwfs aggregate tables (per param_set) ----
+rule wfs_mktable:
+    input:
+        visits = "output/{ps}/visits.parquet",
+        fits   = "output/{ps}/fits.parquet",       # FAM k=1 overlay in validation
+        script = "code/run_wfs_mktable.py",
+        lib    = "code/intrinsics_lib.py",
+    output:
+        donuts = "output/{ps}/wfs/donuts.parquet",
+        visits = "output/{ps}/wfs/visits.parquet",
+        plot   = "output/{ps}/wfs/wfs_mktable_validation.pdf",
+    params:
+        coord = lambda w: coord(w.ps),
+        coll  = lambda w: PARAM_SETS[w.ps]["wfs_collection"],   # rerun-trigger
+    resources: mem_mb=6000
+    log: "logs/{ps}.wfs_mktable.log"
+    shell:
+        "python code/run_wfs_mktable.py --param-set {wildcards.ps} "
+        "--coord-sys {params.coord} > {log} 2>&1"
