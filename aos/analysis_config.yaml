@@ -59,6 +59,12 @@ defaults:
     n_radial_bins: 4
     azimuth_bin_deg: 15.0 # azimuth binning of the median curves
 
+  study_wfs_radial:       # FAM vs corner-WFS rotator-weighted agreement @ WFS radius
+    inner_deg: null       # null -> extra-focal SW0 inner corner from cameraGeom (1.5178°)
+    outer_deg: 1.725
+    n_radial_bins: 4
+    azimuth_bin_deg: 30.0 # coarser than study_radialbins — WFS annulus is sparser
+
 # Per-param_set / per-(param_set, mi_name) overrides (optional). Example:
 # overrides:
 #   fam_danish_1_0_wep17_3_0_bin2x:

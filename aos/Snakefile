@@ -106,6 +106,8 @@ rule all:
         expand("output/{ps}/wfs/donuts.parquet", ps=WFS_PSETS),
         # original + FAM-corrected WFS maps + FAM continuity check (per ps, mi)
         [f"output/{ps}/{mi}/wfs_build/wfs_continuity.pdf" for ps, mi in WFS_MI_PAIRS],
+        # FAM vs WFS rotator-weighted agreement at the WFS radius (per ps, mi)
+        [f"output/{ps}/{mi}/wfs_build/study_wfs_radial.pdf" for ps, mi in WFS_MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
         [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
         # averaged-DOF LUT per (param_set, mi_name)
@@ -297,6 +299,23 @@ rule wfs_build:
     shell:
         "python code/run_wfs_build.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} --coord-sys {params.coord} > {log} 2>&1"
+
+# ---- FAM vs corner-WFS rotator-weighted agreement at the WFS radius ----
+rule study_wfs_radial:
+    input:
+        grid   = "output/{ps}/{mi}/wfs_build/wfs_grid.parquet",
+        grids  = lambda w: mi_bin_grids(w.ps, w.mi),  # FAM intrinsic reference
+        script = "code/run_study_wfs_radial.py",
+        lib    = "code/run_study_radialbins.py",      # wfs_inner_radius_deg
+    output: "output/{ps}/{mi}/wfs_build/study_wfs_radial.pdf"
+    params:                                           # rerun-trigger only
+        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
+        acfg = lambda w: an_json("study_wfs_radial", w.ps, w.mi),
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.study_wfs_radial.log"
+    shell:
+        "python code/run_study_wfs_radial.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
