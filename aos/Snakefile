@@ -96,6 +96,8 @@ rule all:
         expand("output/{ps}/plots/trio_comparison_all.pdf", ps=PSETS),
         # per-donut aberration-pair (primary->secondary) analysis
         expand("output/{ps}/plots/aberration_pairs.pdf", ps=PSETS),
+        # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
+        [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
         [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
         # averaged-DOF LUT per (param_set, mi_name)
@@ -249,6 +251,22 @@ rule intrinsic_split:
     log: "logs/{ps}.{mi}.intrinsic_split.log"
     shell:
         "python code/run_intrinsic_split.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- OCS measured intrinsic at the WFS radius, per rotator bin (pre-split) ----
+rule study_radialbins:
+    input:
+        grids  = lambda w: mi_bin_grids(w.ps, w.mi),
+        script = "code/run_study_radialbins.py",
+        lib    = "code/ccd_height.py",          # wfs_field_radius_range (inner edge)
+    output: "output/{ps}/{mi}/study_radialbins.pdf"
+    params:                                     # rerun-trigger only
+        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
+        acfg = lambda w: an_json("study_radialbins", w.ps, w.mi),
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.study_radialbins.log"
+    shell:
+        "python code/run_study_radialbins.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----

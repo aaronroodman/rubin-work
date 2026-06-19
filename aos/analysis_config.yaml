@@ -53,6 +53,12 @@ defaults:
     add_dof_trim: false   # true -> overlay EFD/ConsDB MTAOS aggregatedDoF (RSP, live)
     # bounces: [...] optional; omit -> script default T720 elevation + T724 rotator
 
+  study_radialbins:       # OCS measured intrinsic at WFS radius, per rotator bin
+    inner_deg: null       # null -> extra-focal SW0 inner corner from cameraGeom (1.5178°)
+    outer_deg: 1.725      # AOS-online radial limit
+    n_radial_bins: 4
+    azimuth_bin_deg: 15.0 # azimuth binning of the median curves
+
 # Per-param_set / per-(param_set, mi_name) overrides (optional). Example:
 # overrides:
 #   fam_danish_1_0_wep17_3_0_bin2x:
