@@ -62,6 +62,7 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
 # param_sets with a paired in-focus corner-WFS (cwfs) collection
 WFS_PSETS = [ps for ps in PSETS if PARAM_SETS.get(ps, {}).get("wfs_collection")]
+WFS_MI_PAIRS = [(ps, mi) for ps, mi in MI_PAIRS if ps in WFS_PSETS]
 
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
@@ -103,6 +104,8 @@ rule all:
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
         # in-focus corner-WFS ingestion (param_sets with a wfs_collection)
         expand("output/{ps}/wfs/donuts.parquet", ps=WFS_PSETS),
+        # original + FAM-corrected WFS maps + FAM continuity check (per ps, mi)
+        [f"output/{ps}/{mi}/wfs_build/wfs_continuity.pdf" for ps, mi in WFS_MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
         [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
         # averaged-DOF LUT per (param_set, mi_name)
@@ -273,6 +276,27 @@ rule study_radialbins:
     shell:
         "python code/run_study_radialbins.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- original + FAM-corrected corner-WFS maps + continuity check ----
+rule wfs_build:
+    input:
+        wfs    = "output/{ps}/wfs/donuts.parquet",
+        fits   = "output/{ps}/fits.parquet",        # FAM per-image DZ field
+        grids  = lambda w: mi_bin_grids(w.ps, w.mi),  # FAM intrinsic reference
+        script = "code/run_wfs_build.py",
+        lib    = "code/dz_fitting.py",
+        lib2   = "code/measured_intrinsic.py",
+    output:
+        grid = "output/{ps}/{mi}/wfs_build/wfs_grid.parquet",
+        pdf  = "output/{ps}/{mi}/wfs_build/wfs_continuity.pdf",
+    params:
+        coord = lambda w: coord(w.ps),
+        cfg   = lambda w: mi_cfg_json(w.ps, w.mi),    # rerun-trigger only
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.wfs_build.log"
+    shell:
+        "python code/run_wfs_build.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} --coord-sys {params.coord} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
