@@ -418,7 +418,7 @@ def bin_count_rms_focal(thx_deg, thy_deg, values_2d, iZidx, n_bins=73,
         return (empty.copy(), {j: empty.copy() for j in iZidx},
                 xbins, ybins, xcent, ycent)
     count, _, _, _ = binned_statistic_2d(
-        thy_deg, thx_deg, values_2d[:, 0], statistic='count', bins=[xbins, ybins])
+        thy_deg, thx_deg, np.ones(len(thx_deg)), statistic='count', bins=[xbins, ybins])
     rms = {}
     for j, col in iZidx.items():
         s, _, _, _ = binned_statistic_2d(
@@ -989,8 +989,12 @@ def apply_visit_filters(visit_table,
     if rot_col and (rotator_min_deg is not None
                     or rotator_max_deg is not None):
         r = np.asarray(visit_table[rot_col], dtype=float)
+        # Half-open bins [min, max): the upper edge is exclusive so a visit at
+        # exactly a shared bin edge (FAM sits at discrete rotator angles) lands
+        # in only ONE contiguous bin.  The outermost bin's upper edge should be
+        # set above the data (e.g. 90 > max |rot|) so nothing is lost.
         if rotator_min_deg is not None:
             keep &= r >= rotator_min_deg
         if rotator_max_deg is not None:
-            keep &= r <= rotator_max_deg
+            keep &= r < rotator_max_deg
     return visit_table[keep]

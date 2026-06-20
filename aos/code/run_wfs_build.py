@@ -206,10 +206,10 @@ def _continuity_pdf(path, noll, fam, rows, zk_orig, zk_corr):
                                      layout='constrained')
             wfs_cols = {'original': zk_orig[:, p], 'corrected': zk_corr[:, p]}
             fz = fam['zk'][:, p] if fam is not None else None
-            # shared scale from the union of FAM + corrected WFS (robust pctl)
-            allv = wfs_cols['corrected']
-            if fz is not None:
-                allv = np.concatenate([allv, fz])
+            # shared scale from the union of BOTH WFS panels + FAM (robust pctl),
+            # so the 'original' panel isn't saturated by corrected-only limits
+            allv = np.concatenate([wfs_cols['original'], wfs_cols['corrected']]
+                                  + ([fz] if fz is not None else []))
             finite = allv[np.isfinite(allv)]
             vlo, vhi = (np.nanpercentile(finite, [2, 98])
                         if finite.size else (-1, 1))

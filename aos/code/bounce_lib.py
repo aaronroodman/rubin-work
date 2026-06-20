@@ -649,7 +649,7 @@ def paired_delta(values, pairs):
         return {'delta': np.nan, 'err': np.nan, 'sig': np.nan, 'n': 0}
     delta = float(np.median(diffs))
     sigma_mad = 1.4826 * float(np.median(np.abs(diffs - delta)))
-    err = sigma_mad / np.sqrt(n)
+    err = 1.2533 * sigma_mad / np.sqrt(n)        # SEM of a *median* (not mean)
     sig = delta / err if err > 0 else np.nan
     return {'delta': delta, 'err': float(err), 'sig': sig, 'n': n}
 

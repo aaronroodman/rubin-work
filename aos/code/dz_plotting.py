@@ -9,6 +9,8 @@ batch CLI script (run_dz_plots.py).
 """
 
 import glob as glob_module
+import re
+import sys                       # used by the common/ import-fallback below
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -793,7 +795,11 @@ def plot_zernike_trio(aosTable_matched, iZ, iZs, iZidx, coord_sys,
     ]:
         stat_val, _, _, _ = binned_statistic_2d(
             xval, yval, zval, statistic=statistic, bins=[xbins, ybins])
-        vmin, vmax = np.nanpercentile(zval, [plo, phi])
+        # color range from the BINNED medians (what's drawn), not the per-donut
+        # cloud — the cloud's spread is far wider and washes the maps out
+        sv = stat_val[np.isfinite(stat_val)]
+        vmin, vmax = (np.nanpercentile(sv, [plo, phi]) if sv.size
+                      else (None, None))
         im = ax.imshow(stat_val.T, origin='lower',
                        extent=[xbins[0], xbins[-1], ybins[0], ybins[-1]],
                        cmap=cmap, interpolation='none', aspect='equal',
@@ -1116,16 +1122,13 @@ def get_all_dz_columns(fit_table, prefix='z1toz6'):
             continue
         if '_bad_fit' in col:
             continue
-        # Parse (k, j) from z1toz6_z{j}_c{k}
-        parts = col.replace(f'{prefix}_z', '').split('_c')
-        if len(parts) == 2:
-            try:
-                j = int(parts[0])
-                k = int(parts[1])
-                dz_cols.append(col)
-                dz_labels.append(f'({k},{j})')
-            except ValueError:
-                continue
+        # Parse (k, j) from z{prefix}_z{j}_c{k} (anchored regex — robust to any
+        # future column whose fields might contain '_c')
+        m = re.match(rf'^{re.escape(prefix)}_z(\d+)_c(\d+)$', col)
+        if m:
+            j = int(m.group(1)); k = int(m.group(2))
+            dz_cols.append(col)
+            dz_labels.append(f'({k},{j})')
     return dz_cols, dz_labels
 
 

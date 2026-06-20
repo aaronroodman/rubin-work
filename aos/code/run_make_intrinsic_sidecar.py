@@ -148,7 +148,15 @@ def main():
                 n_missing_rot += len(idx)
             start = i
     if j4_col is not None:
-        zk_int[:, j4_col] += z4_height          # add CCD-height Z4 back
+        # add CCD-height Z4 back, but don't let a missing (out-of-domain) height
+        # NaN-poison an otherwise-finite optical Z4
+        finite_h = np.isfinite(z4_height)
+        zk_int[:, j4_col] = np.where(finite_h, zk_int[:, j4_col] + z4_height,
+                                     zk_int[:, j4_col])
+        n_missing_h = int((~finite_h).sum())
+        if n_missing_h:
+            print(f'  CCD-height Z4 missing for {n_missing_h} donuts '
+                  f'(Z4 left optical-only there)')
     n_ok = int(np.isfinite(zk_int).all(axis=1).sum())
     print(f'  reconstructed {n_ok}/{N} donuts with a finite intrinsic '
           f'({n_missing_rot} donuts missing rotator)')

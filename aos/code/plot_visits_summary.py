@@ -35,7 +35,9 @@ BANDS = ['u', 'g', 'r', 'i', 'z', 'y']
 def plot_param_set(ps, visits_path, plots_dir, bands=BANDS,
                    elev_bin=10.0, rot_bin=15.0):
     df = pq.read_table(visits_path, columns=['alt', 'rotator_angle', 'band']).to_pandas()
-    elev = np.degrees(df['alt'].to_numpy(dtype=float))
+    alt = df['alt'].to_numpy(dtype=float)
+    # auto-detect radians vs degrees by magnitude (matches _alt_to_deg elsewhere)
+    elev = np.degrees(alt) if np.nanmax(np.abs(alt)) < 2 * np.pi + 1e-3 else alt
     rot = df['rotator_angle'].to_numpy(dtype=float)
     band = df['band'].astype(str).to_numpy()
 

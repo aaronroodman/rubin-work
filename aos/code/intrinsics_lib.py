@@ -1659,6 +1659,14 @@ def create_intrinsic_interpolators(X, Y, zkIntrinsics):
 
 def add_intrinsic_zernikes(aosTable, intrinsic_interpolators, coord_sys):
     """Add model intrinsic Zernikes to the data table and compute residuals."""
+    if coord_sys != 'OCS':
+        raise NotImplementedError(
+            "add_intrinsic_zernikes evaluates an OCS-domain intrinsic "
+            "interpolator at thx/thy_{coord_sys}_extra. With coord_sys='CCS' "
+            "those are rotator-rotated camera-frame angles, so the "
+            "interpolation would be silently wrong. Rotate (thx,thy) to OCS by "
+            "-rotator_angle first, or build a CCS-domain interpolator, before "
+            "enabling CCS here.")
     zk_col = f'zk_{coord_sys}'
     thx_extra_col = f'thx_{coord_sys}_extra'
     thy_extra_col = f'thy_{coord_sys}_extra'

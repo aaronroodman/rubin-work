@@ -314,9 +314,10 @@ def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
             cy = df['centroid_y_intra'].to_numpy(float)
             zk_intrinsic = np.full_like(zk_data, np.nan)
             for r in range(len(df)):
-                v = intrinsic_lookup.get(_intrinsic_key(dobs, snum, det[r], cx[r], cy[r]))
-                if v is not None:
-                    zk_intrinsic[r] = v
+                mi_val = intrinsic_lookup.get(
+                    _intrinsic_key(dobs, snum, det[r], cx[r], cy[r]))
+                if mi_val is not None:
+                    zk_intrinsic[r] = mi_val
             fin = np.isfinite(zk_intrinsic).all(axis=1)
             if not fin.any():
                 continue
@@ -720,6 +721,12 @@ def run_double_zernike_fits(input_file, coord_sys='OCS',
     # Merge with visit_info
     fit_merged = join(fit_combined, visit_info,
                       keys=['day_obs', 'seq_num'], join_type='left')
+    # left join must not add/drop rows; a visit missing from visit_info would
+    # silently carry NaN metadata — surface it instead
+    assert len(fit_merged) == len(fit_combined), (
+        f"visit_info join changed row count "
+        f"({len(fit_combined)} -> {len(fit_merged)}); a visit is missing or "
+        f"duplicated in visit_info")
     print(f"Merged with visit_info: {len(fit_merged)} rows, "
           f"{len(fit_merged.columns)} columns")
 

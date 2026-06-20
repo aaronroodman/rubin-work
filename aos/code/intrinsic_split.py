@@ -467,7 +467,12 @@ def mean_rotator(fits_table, rot_range, alt_range=None,
                                                     fits_table):
         alt = _np.asarray(fits_table[alt_col], float)
         altd = _np.rad2deg(alt) if _np.nanmax(_np.abs(alt)) < 2 * _np.pi + 1e-3 else alt
-        keep &= (altd >= alt_range[0]) & (altd <= alt_range[1])
+        # guard each end independently so alt_range=(None, None) or a one-sided
+        # bound doesn't raise on the None comparison
+        if alt_range[0] is not None:
+            keep &= altd >= alt_range[0]
+        if alt_range[1] is not None:
+            keep &= altd <= alt_range[1]
     r = rot[keep]
     if r.size == 0:
         return float('nan'), 0, float('nan'), float('nan')
