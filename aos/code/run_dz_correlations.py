@@ -20,8 +20,13 @@ panel OVERLAYS the corrected points + fit (orange/red) on the raw points + fit
 (blue/navy) at the raw axis limits — so the shrink in spread and change in slope
 read off directly.  ``--no-optcorr`` skips it (raw only, off-RSP).
 
+The raw PDF also carries the SVD-space companions to the DZ-DZ heatmap: the
+DOF x DOF and v-mode x v-mode correlation matrices (across visits) plus the
+top-|r| v-mode-pair scatters, from the same n_dof/n_keep OFC SVD (RSP-only).
+
 Writes, under  output/<ps>/<mi>/plots/ :
-    dz_correlations.pdf                  raw: Pearson heatmap + top-|r| scatters
+    dz_correlations.pdf                  raw: DZ Pearson heatmap + DOF/v-mode
+                                         correlation matrices + top-|r| scatters
                                          + astig pairs + conjugate-orbit grids
     dz_correlations_pairs.parquet        pairs above |r| or σ (n, se_r, fisher_z,
                                          sigma, rms_i, rms_j, cov)
@@ -55,6 +60,8 @@ DEFAULT = dict(dz_prefix='z1toz6', max_coeff_um=2.0, corr_threshold=0.6,
                sig_threshold=5.0,       # Fisher-z significance (σ) gate for groups
                group_min_r=0.5,         # |r| floor to seed a conjugate group
                max_group_pages=80,      # cap on conjugate-group pages
+               mode_top_n=12,           # top v-mode-pair scatters (SVD-space pages)
+               mode_annot_r=0.5,        # |r| above which DOF/v-mode cells are labeled
                expected_astig_pairs=[[[5, 5], [6, 6]], [[6, 5], [5, 6]],
                                      [[1, 5], [1, 6]], [[4, 5], [4, 6]],
                                      [[2, 5], [3, 6]], [[3, 5], [2, 6]]])
@@ -191,13 +198,19 @@ def _top_pairs_page(df1, df2, top_pairs, prefix, pdf):
     _scatter_pairs(df1, df2, pairs, prefix, 'Top correlated DZ pairs (raw)', pdf)
 
 
-def _apply_optical_correction(df, prefix, param_set, mi_name, mi_config_path,
-                              n_dof_ov, n_keep_ov):
-    """Subtract the OFC-correctable part of each visit's DZ vector: build the
-    sensitivity-matrix SVD (n_dof / n_keep from the mi_config entry) and replace
-    the (k,j) columns it spans with the residual W_resid = (I - U_eff U_effᵀ)·W
-    — i.e. the DZ that remains after the n_dof/n_keep optical correction.
-    Columns outside the SVD's focal-k × pupil-j slice are left unchanged."""
+def _dz_to_W(df, prefix, svd):
+    """Raw DZ matrix W (n_visits, n_kj) in svd.kj_grid order from df columns."""
+    W = np.full((len(df), len(svd.kj_grid)), np.nan)
+    for ci, (k, j) in enumerate(svd.kj_grid):
+        col = dzp.dz_col_name(k, j, prefix)
+        if col in df.columns:
+            W[:, ci] = np.asarray(df[col], dtype=float)
+    return W
+
+
+def _build_svd(df, prefix, param_set, mi_name, mi_config_path, n_dof_ov, n_keep_ov):
+    """Build the OFC sensitivity-matrix SVD (n_dof / n_keep from the mi_config
+    entry, or CLI overrides).  Imports lsst.ts.ofc lazily (RSP-only)."""
     import ofc_svd as osv
     cfg_mi = mc.load_mi_config(param_set, mi_name, config_path=mi_config_path)
     b = cfg_mi['build']
@@ -205,14 +218,25 @@ def _apply_optical_correction(df, prefix, param_set, mi_name, mi_config_path,
     n_keep = n_keep_ov if n_keep_ov is not None else cfg_mi['n_keep']
     k_min, k_max = int(b['k_min']), int(b['k_max'])
     iZs = sorted({parse_jk(c, prefix)[0] for c in dz_coeff_columns(df, prefix)})
-    svd = osv.build_ofc_svd(iZs, k_min, k_max, n_keep, n_dof=n_dof,
-                            ofc_normalization_yaml=b.get('ofc_normalization_yaml'))
-    n_kj = len(svd.kj_grid)
-    W = np.full((len(df), n_kj), np.nan)
-    for ci, (k, j) in enumerate(svd.kj_grid):
-        col = dzp.dz_col_name(k, j, prefix)
-        if col in df.columns:
-            W[:, ci] = np.asarray(df[col], dtype=float)
+    return osv.build_ofc_svd(iZs, k_min, k_max, n_keep, n_dof=n_dof,
+                             ofc_normalization_yaml=b.get('ofc_normalization_yaml'))
+
+
+def _project_modes(df, prefix, svd):
+    """Per-visit physical-DOF (n_dof) and v-mode (n_keep) amplitudes; returns
+    dict(dof, vmodes, dof_labels, vmode_labels)."""
+    A = svd.project_amplitudes(_dz_to_W(df, prefix, svd))
+    dof_labels, _ = svd.dof_labels()
+    return dict(dof=svd.dof(A), vmodes=svd.vmodes(A),
+                dof_labels=list(dof_labels),
+                vmode_labels=[f'v{i + 1}' for i in range(svd.n_keep_eff)])
+
+
+def _apply_optical_correction(df, prefix, svd):
+    """Replace the (k,j) columns the SVD spans with the residual
+    W_resid = (I - U_eff U_effᵀ)·W — the DZ that remains after the n_dof/n_keep
+    optical correction.  Columns outside the focal-k × pupil-j slice are kept."""
+    W = _dz_to_W(df, prefix, svd)
     A = np.where(np.isfinite(W), W, 0.0) @ svd.U_eff      # u-mode amps
     W_resid = W - A @ svd.U_eff.T                          # (I - U Uᵀ) W
     out = df.copy()
@@ -222,7 +246,7 @@ def _apply_optical_correction(df, prefix, param_set, mi_name, mi_config_path,
             out[col] = W_resid[:, ci]                      # NaN where W was NaN
     removed = np.nansum((A @ svd.U_eff.T) ** 2) / max(np.nansum(W ** 2), 1e-30)
     print(f'  optical correction: n_dof={svd.n_dof}, n_keep={svd.n_keep_eff}, '
-          f'k={k_min}..{k_max}, {n_kj} (k,j); removed ~{removed:.1%} of DZ power')
+          f'{len(svd.kj_grid)} (k,j); removed ~{removed:.1%} of DZ power')
     return out
 
 
@@ -239,11 +263,13 @@ def _selection(df, prefix):
     return dz_cols, labels, all_pairs, n
 
 
-def _write_pdf(path, df1, df2, dz_cols, labels, all_pairs, n, cfg, prefix):
+def _write_pdf(path, df1, df2, dz_cols, labels, all_pairs, n, cfg, prefix,
+               modes=None):
     """Write one correlation PDF.  Panels overlay df2 (corrected) on df1 (raw)
     when df2 is given; the panel SET is fixed by ``all_pairs`` (raw selection)
     so the raw and optcorr PDFs are page-for-page comparable.  The heatmap(s)
-    reflect this PDF's primary data (df2 if given, else df1)."""
+    reflect this PDF's primary data (df2 if given, else df1).  When ``modes`` is
+    given (raw PDF), the DOF / v-mode correlation pages are appended."""
     prim = df2 if df2 is not None else df1
     corr = dzp.compute_dz_correlation_matrix(prim, dz_cols)
     top = all_pairs[:int(cfg['top_n'])]
@@ -255,6 +281,8 @@ def _write_pdf(path, df1, df2, dz_cols, labels, all_pairs, n, cfg, prefix):
         if df2 is not None:                            # amplitude-weighted view
             std = {c: float(np.nanstd(prim[c].values)) for c in dz_cols}
             _cov_heatmap(corr, dz_cols, labels, std, pdf)
+        if modes is not None:                          # SVD-space companions
+            _mode_pages(modes, cfg, pdf)
         _top_pairs_page(df1, df2, top, prefix, pdf)
         _scatter_pairs(df1, df2, cfg['expected_astig_pairs'], prefix,
                        'Expected astigmatism-symmetry pairs', pdf)
@@ -319,19 +347,23 @@ def main():
     dz_cols, labels, all_pairs, n = _selection(df_raw, prefix)
     print(f'  {len(dz_cols)} DZ columns, {len(df_raw)} visits, complete-case n={n}')
 
-    # optical-corrected DZ (W_resid); skipped gracefully off-RSP or via --no-optcorr
-    df_corr = None
+    # OFC SVD (shared): projected DOF/v-modes for the SVD-space correlation
+    # pages, and the W_resid for the optical-corrected PDF.  Skipped gracefully
+    # off-RSP (needs lsst.ts.ofc) or via --no-optcorr.
+    df_corr, modes = None, None
     if not args.no_optcorr:
         try:
-            df_corr = _apply_optical_correction(
-                df_raw, prefix, args.param_set, args.mi_name,
-                Path(args.config) if args.config else None, args.n_dof, args.n_keep)
+            svd = _build_svd(df_raw, prefix, args.param_set, args.mi_name,
+                             Path(args.config) if args.config else None,
+                             args.n_dof, args.n_keep)
+            modes = _project_modes(df_raw, prefix, svd)
+            df_corr = _apply_optical_correction(df_raw, prefix, svd)
         except Exception as e:
-            print(f'  optical correction skipped ({type(e).__name__}: {e})')
+            print(f'  SVD / optical correction skipped ({type(e).__name__}: {e})')
 
-    # raw PDF + parquet
+    # raw PDF + parquet (DOF / v-mode correlation pages appended when available)
     g = _write_pdf(out_dir / 'dz_correlations.pdf', df_raw, None,
-                   dz_cols, labels, all_pairs, n, cfg, prefix)
+                   dz_cols, labels, all_pairs, n, cfg, prefix, modes=modes)
     npair = _write_pairs_parquet(out_dir / 'dz_correlations_pairs.parquet',
                                  df_raw, None, all_pairs, n, cfg, prefix)
     print(f'  wrote dz_correlations.pdf ({g} orbit pages) + _pairs.parquet ({npair})')
@@ -368,6 +400,76 @@ def _cov_heatmap(corr, dz_cols, labels, std, pdf):
                  fontsize=14)
     fig.tight_layout()
     pdf.savefig(fig, dpi=150, bbox_inches='tight'); plt.close(fig)
+
+
+def _corr_matrix_heatmap(M, labels, title, pdf, annot_r=0.5):
+    """Crisp Pearson-r heatmap of the correlations AMONG the columns of M
+    (n_visits, n_mode) — the SVD-space analog of the DZ-DZ heatmap.  Pairwise
+    complete (pandas .corr); diagonal blanked."""
+    import matplotlib.pyplot as plt
+    C = pd.DataFrame(M, columns=labels).corr().to_numpy()
+    np.fill_diagonal(C, np.nan)
+    n = len(labels); fs = max(9, n * 0.2)
+    fig, ax = plt.subplots(figsize=(fs, fs * 0.92), layout='constrained')
+    im = ax.imshow(C, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto',
+                   interpolation='nearest', interpolation_stage='rgba')
+    fig.colorbar(im, ax=ax, shrink=0.7, label='Pearson r')
+    ax.set_xticks(range(n)); ax.set_xticklabels(labels, rotation=90, fontsize=5)
+    ax.set_yticks(range(n)); ax.set_yticklabels(labels, fontsize=5)
+    for i in range(n):
+        for t in range(n):
+            if i != t and np.isfinite(C[i, t]) and abs(C[i, t]) > annot_r:
+                ax.text(t, i, f'{C[i, t]:.1f}', ha='center', va='center',
+                        fontsize=4, color='white' if abs(C[i, t]) > 0.8 else 'black')
+    ax.set_title(title, fontsize=14)
+    pdf.savefig(fig, dpi=150, bbox_inches='tight'); plt.close(fig)
+    return C
+
+
+def _mode_top_scatter(M, labels, C, title, pdf, top_n=12, ncols=3):
+    """Scatter the top-|r| off-diagonal pairs among the columns of M."""
+    import matplotlib.pyplot as plt
+    n = len(labels)
+    pairs = sorted(((abs(C[i, t]), i, t, C[i, t])
+                    for i in range(n) for t in range(i + 1, n)
+                    if np.isfinite(C[i, t])), reverse=True)[:top_n]
+    if not pairs:
+        return
+    nrows = (len(pairs) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.0 * ncols, 3.3 * nrows),
+                             layout='constrained', squeeze=False)
+    axes = axes.ravel()
+    for idx, (_, i, t, r) in enumerate(pairs):
+        ax = axes[idx]
+        x, y = M[:, i], M[:, t]
+        m = np.isfinite(x) & np.isfinite(y)
+        ax.scatter(x[m], y[m], s=7, alpha=0.4, color='steelblue', edgecolors='none')
+        if int(m.sum()) > 2:
+            sl, off = np.polyfit(x[m], y[m], 1)
+            xf = np.array([x[m].min(), x[m].max()])
+            ax.plot(xf, sl * xf + off, 'r-', lw=1.2)
+        ax.set_title(f'{labels[i]} × {labels[t]}   r={r:+.2f}', fontsize=8)
+        ax.set_xlabel(labels[i], fontsize=8); ax.set_ylabel(labels[t], fontsize=8)
+        ax.tick_params(labelsize=7)
+    for idx in range(len(pairs), len(axes)):
+        axes[idx].set_visible(False)
+    fig.suptitle(title, fontsize=13)
+    pdf.savefig(fig, dpi=130, bbox_inches='tight'); plt.close(fig)
+
+
+def _mode_pages(modes, cfg, pdf):
+    """DOF×DOF and v-mode×v-mode correlation heatmaps + top-|r| v-mode-pair
+    scatter — the SVD-space companions to the DZ-DZ pages."""
+    ar = float(cfg['mode_annot_r'])
+    _corr_matrix_heatmap(modes['dof'], modes['dof_labels'],
+                         f'{modes["dof"].shape[1]}-DOF correlation matrix '
+                         f'(across visits)', pdf, ar)
+    Cv = _corr_matrix_heatmap(modes['vmodes'], modes['vmode_labels'],
+                              f'{modes["vmodes"].shape[1]} v-mode correlation '
+                              f'matrix (across visits)', pdf, ar)
+    _mode_top_scatter(modes['vmodes'], modes['vmode_labels'], Cv,
+                      'Top correlated v-mode pairs', pdf,
+                      top_n=int(cfg['mode_top_n']))
 
 
 def _orbit_grid_page(df1, df2, A, B, prefix, title, pdf):
