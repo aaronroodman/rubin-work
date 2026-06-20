@@ -62,6 +62,7 @@ DEFAULT = dict(dz_prefix='z1toz6', max_coeff_um=2.0, corr_threshold=0.6,
                max_group_pages=80,      # cap on conjugate-group pages
                mode_top_n=12,           # top v-mode-pair scatters (SVD-space pages)
                mode_annot_r=0.5,        # |r| above which DOF/v-mode cells are labeled
+               scatter_dpi=80,          # raster dpi for the (many) scatter/orbit pages
                expected_astig_pairs=[[[5, 5], [6, 6]], [[6, 5], [5, 6]],
                                      [[1, 5], [1, 6]], [[4, 5], [4, 6]],
                                      [[2, 5], [3, 6]], [[3, 5], [2, 6]]])
@@ -72,6 +73,11 @@ _J_PARTNER = {4: 4, 5: 6, 6: 5, 7: 8, 8: 7, 9: 10, 10: 9, 11: 11,
               12: 13, 13: 12, 14: 15, 15: 14, 16: 17, 17: 16, 18: 19, 19: 18,
               22: 22, 23: 24, 24: 23, 25: 26, 26: 25}
 _K_PARTNER = {1: 1, 2: 3, 3: 2, 4: 4, 5: 6, 6: 5}
+
+# Raster dpi for the many scatter/orbit-grid pages; set from cfg in main().
+# Only the rasterized scatter clouds scale with this — vector axes/text stay
+# sharp, and the heatmaps keep their own (higher) dpi.
+_DPI = 80
 
 
 def _significance(r, n):
@@ -185,7 +191,7 @@ def _scatter_pairs(df1, df2, pairs, prefix, title, pdf):
     for idx in range(len(present), len(axes)):
         axes[idx].set_visible(False)
     fig.suptitle(title, fontsize=13)
-    pdf.savefig(fig, dpi=130, bbox_inches='tight'); plt.close(fig)
+    pdf.savefig(fig, dpi=_DPI, bbox_inches='tight'); plt.close(fig)
 
 
 def _top_pairs_page(df1, df2, top_pairs, prefix, pdf):
@@ -337,6 +343,8 @@ def main():
         'dz_correlations', args.param_set, args.mi_name,
         config_path=(Path(args.analysis_config) if args.analysis_config else None))}
     prefix = cfg['dz_prefix']
+    global _DPI
+    _DPI = int(cfg['scatter_dpi'])
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
@@ -454,7 +462,7 @@ def _mode_top_scatter(M, labels, C, title, pdf, top_n=12, ncols=3):
     for idx in range(len(pairs), len(axes)):
         axes[idx].set_visible(False)
     fig.suptitle(title, fontsize=13)
-    pdf.savefig(fig, dpi=130, bbox_inches='tight'); plt.close(fig)
+    pdf.savefig(fig, dpi=_DPI, bbox_inches='tight'); plt.close(fig)
 
 
 def _mode_pages(modes, cfg, pdf):
@@ -496,7 +504,7 @@ def _orbit_grid_page(df1, df2, A, B, prefix, title, pdf):
             ax.set_ylabel(f'(k{Bv[0]},j{Bv[1]})', fontsize=6)
             ax.tick_params(labelsize=5)
     fig.suptitle(title, fontsize=13)
-    pdf.savefig(fig, dpi=110, bbox_inches='tight'); plt.close(fig)
+    pdf.savefig(fig, dpi=_DPI, bbox_inches='tight'); plt.close(fig)
 
 
 def _conjugate_group_pages(df1, df2, all_pairs, prefix, n, cfg, pdf):

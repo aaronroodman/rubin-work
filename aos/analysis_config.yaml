@@ -38,6 +38,7 @@ defaults:
     pairwise_scan: false  # true -> exhaustive (k1,j1)x(k2,j2) scan (~441 pages)
     mode_top_n: 12        # top v-mode-pair scatters on the SVD-space page
     mode_annot_r: 0.5     # |r| above which DOF/v-mode heatmap cells are labeled
+    scatter_dpi: 80       # raster dpi for the many scatter/orbit pages (was 110-130)
 
   thermal_correlations:   # DZ_kj / DOF / v-mode <-> temperature (run_thermal_correlations)
     dz_prefix: z1toz6
