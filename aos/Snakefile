@@ -399,12 +399,15 @@ rule dz_correlations:
 rule thermal_correlations:
     input:
         fits     = "output/{ps}/{mi}/fits.parquet",
+        visits   = "output/{ps}/visits.parquet",   # nollIndices for the OFC SVD
         script   = "code/run_thermal_correlations.py",
-        lib      = "code/dz_plotting.py",
+        lib      = "code/ofc_svd.py",               # DOF / v-mode projection
     output:
         pdf     = "output/{ps}/{mi}/plots/thermal_correlations.pdf",
         summary = "output/{ps}/{mi}/plots/thermal_correlations_summary.parquet",
-    params: acfg = lambda w: an_json("thermal_correlations", w.ps, w.mi)  # rerun-trigger
+    params:
+        acfg = lambda w: an_json("thermal_correlations", w.ps, w.mi),  # rerun-trigger
+        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),   # n_dof / n_keep / k-range
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.thermal_correlations.log"
     shell:

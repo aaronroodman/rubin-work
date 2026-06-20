@@ -37,10 +37,12 @@ defaults:
     max_group_pages: 80   # cap on conjugate-group pages (NOTE logged if exceeded)
     pairwise_scan: false  # true -> exhaustive (k1,j1)x(k2,j2) scan (~441 pages)
 
-  thermal_correlations:   # DZ_kj <-> temperature (run_thermal_correlations)
+  thermal_correlations:   # DZ_kj / DOF / v-mode <-> temperature (run_thermal_correlations)
     dz_prefix: z1toz6
     max_coeff_um: 2.0
-    # thermal_vars / dz_terms default to the script lists; override here if needed
+    scatter_ncols: 7      # pupil-j per DZ scatter page; v-modes per row (5x7 @ n_keep=34)
+    annot_r: 0.4          # |r| above which heatmap cells are labeled
+    # thermal_vars defaults to the script list; n_dof/n_keep follow the build's mi_config
 
   bounce:                 # FAM bounce-test paired Δ (run_bounce)
     fit_prefix: z1toz6
