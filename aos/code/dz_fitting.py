@@ -213,7 +213,10 @@ def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
             bse = rlm_results.bse
             scale = float(rlm_results.scale)
             weights = rlm_results.weights
-        except Exception:
+        except Exception as e:
+            print(f"  RLM fit failed (falling back to lstsq) for "
+                  f"day_obs={int(dobs)} seq_num={int(snum)} z{iZ}: "
+                  f"{type(e).__name__}: {e}")
             coeffs, _, _, _ = np.linalg.lstsq(A, resid, rcond=None)
             bse = np.full(n_coeffs, np.nan)
             scale = float(np.std(resid - A @ coeffs))
@@ -231,7 +234,10 @@ def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
 
 
 def _intrinsic_key(dobs, snum, det, cx, cy):
-    return (int(dobs), int(snum), str(det), round(float(cx), 3), round(float(cy), 3))
+    # Round centroids to the nearest pixel: donuts are >> 1 px apart, so this is
+    # a unique key, while avoiding lookup misses from sub-LSB float drift across
+    # a parquet read/write round-trip (the old round(...,3) keyed on 0.001 px).
+    return (int(dobs), int(snum), str(det), round(float(cx)), round(float(cy)))
 
 
 def load_intrinsic_lookup(sidecar_path, iZs):

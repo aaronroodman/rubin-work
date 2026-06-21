@@ -105,9 +105,20 @@ def main():
         Z, valid, _ = isp.sample_maps_polar(maps, X, Y, hole_dist=sp['hole_dist'])
         return np.nan_to_num(Z), valid
 
-    # field-rotation sense s (fixed; see split.rotation_sign in mi_config.yaml)
+    # Field-rotation sense s (fixed; see split.rotation_sign in mi_config.yaml).
+    #
+    # s=+1 is the empirically-correct OCS->CCS convention, determined directly
+    # from the per-donut field angles in donuts.parquet (which come straight
+    # from the Butler aggregateAOSVisitTableRaw): at a nonzero rotator angle
+    # theta, the OCS and CCS field angles of the same donut satisfy
+    #     (thx,thy)_CCS = R(-theta) . (thx,thy)_OCS,  R(-th)=[[c, s],[-s, c]]
+    # i.e. the CCS azimuth phi_CCS = phi_OCS - theta (verified at theta=+/-60 deg:
+    # residual ~6e-5 rad for R(-theta) vs ~3.5e-2 rad for R(+theta)).  The
+    # decomposition models the camera term as C(r, phi - s*theta) (CCS azimuth
+    # psi = phi - s*theta), so phi_CCS = phi_OCS - s*theta matches the data at
+    # s=+1.  No sign search is needed; this is the convention in use.
     s = int(sp['rotation_sign'])
-    print(f's (field rotation) = {s:+d} (fixed)')
+    print(f's (field rotation) = {s:+d} (fixed, OCS->CCS = R(-theta))')
 
     # ---- per-group decomposition ----
     groups = isp.group_zernikes(noll_list)

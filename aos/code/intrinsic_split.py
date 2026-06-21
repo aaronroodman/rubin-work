@@ -399,29 +399,11 @@ def reconstruct_at(dec, theta_rad, A):
         np.roll(C_pol, shift, axis=1)
 
 
-def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
-                        m0_assignment='ocs', m_max=None, valid=None,
-                        method='lsq', ridge=1e-3):
-    """Run the decomposition for s=+1 and s=-1 and keep the lower residual.
-
-    ``method='lsq'`` (default) uses the hole-aware :func:`decompose_polar_lsq`
-    (requires ``valid``); ``method='fft'`` uses :func:`decompose_polar`, which
-    zero-fills NaNs and is NOT hole-aware.  Returns (result, {+1: rms, -1: rms})."""
-    rms = {}
-    best = None
-    for s in (+1, -1):
-        if method == 'lsq':
-            r = decompose_polar_lsq(Z, valid, thetas_rad, A, s=s,
-                                    m0_assignment=m0_assignment,
-                                    m_max=(12 if m_max is None else m_max),
-                                    ridge=ridge)
-        else:
-            r = decompose_polar(Z, thetas_rad, A, s=s,
-                                m0_assignment=m0_assignment, m_max=m_max)
-        rms[s] = residual_rms(np.nan_to_num(r['res']), R, r_lim)
-        if best is None or rms[s] < rms[best['s']]:
-            best = r
-    return best, rms
+# NOTE: a former decompose_auto_sign() searched s=+1 vs s=-1 by residual.  It
+# was removed: the rotation sense is fixed at s=+1, the empirically-verified
+# OCS->CCS convention (CCS = R(-theta).OCS, i.e. phi_CCS = phi_OCS - theta;
+# see the derivation in run_intrinsic_split.py).  There is one source of truth
+# for the sign (split.rotation_sign in mi_config.yaml) and no search.
 
 
 def _rmask(R, r_lim):
