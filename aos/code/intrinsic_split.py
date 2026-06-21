@@ -265,6 +265,10 @@ def decompose_polar(Z, thetas_rad, A, s=1, m0_assignment='ocs', m_max=None):
     dict with O_pol, C_pol (n_r, n_az), res (n_set, n_r, n_az), s,
     m0_assignment.
     """
+    n_nan = int(np.isnan(Z).sum())
+    if n_nan:
+        print(f'  WARNING: decompose_polar (FFT path) zero-filled {n_nan} NaN '
+              f'samples — NOT hole-aware; use method="lsq" for holey maps')
     Zc = np.nan_to_num(Z, nan=0.0)
     n_set, n_r, n_az = Zc.shape
     Afft = np.fft.rfft(Zc, axis=2)                 # (n_set, n_r, M1)
@@ -397,12 +401,12 @@ def reconstruct_at(dec, theta_rad, A):
 
 def decompose_auto_sign(Z, thetas_rad, A, R, r_lim=(0.1, 1.6),
                         m0_assignment='ocs', m_max=None, valid=None,
-                        method='fft', ridge=1e-3):
+                        method='lsq', ridge=1e-3):
     """Run the decomposition for s=+1 and s=-1 and keep the lower residual.
 
-    ``method='fft'`` uses :func:`decompose_polar`; ``method='lsq'`` uses the
-    hole-aware :func:`decompose_polar_lsq` (requires ``valid``).  Returns
-    (result, {+1: rms, -1: rms})."""
+    ``method='lsq'`` (default) uses the hole-aware :func:`decompose_polar_lsq`
+    (requires ``valid``); ``method='fft'`` uses :func:`decompose_polar`, which
+    zero-fills NaNs and is NOT hole-aware.  Returns (result, {+1: rms, -1: rms})."""
     rms = {}
     best = None
     for s in (+1, -1):

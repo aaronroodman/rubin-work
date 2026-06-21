@@ -493,6 +493,36 @@ def _flag_bad_visits(fit_rows, by_pupil, threshold, min_donuts):
     return bad
 
 
+def _grid_l2_change(g_new, g_old):
+    """RMS change between two {j: 2D grid} measured maps over jointly-finite
+    cells (μm).  NaN if no overlap or no previous grid."""
+    if g_old is None:
+        return np.nan
+    num = 0.0; den = 0
+    for j, a in g_new.items():
+        b = g_old.get(j)
+        if b is None:
+            continue
+        m = np.isfinite(a) & np.isfinite(b)
+        num += float(np.sum((a[m] - b[m]) ** 2)); den += int(m.sum())
+    return float(np.sqrt(num / den)) if den else np.nan
+
+
+def _report_convergence(iter_results, converge_tol):
+    """Log the RMS change between successive measured grids; warn if the final
+    step exceeds converge_tol (MI build may need more iterations)."""
+    deltas = [_grid_l2_change(iter_results[i]['measured_grid'],
+                              iter_results[i - 1]['measured_grid'])
+              for i in range(1, len(iter_results))]
+    if not deltas:
+        return
+    print('  MI convergence (RMS Δ between iters, μm): '
+          + ', '.join(f'{d:.2e}' for d in deltas))
+    if np.isfinite(deltas[-1]) and deltas[-1] > converge_tol:
+        print(f'  WARNING: last-iter Δ {deltas[-1]:.2e} > tol {converge_tol:.1e} μm'
+              f' — measured intrinsic may not be converged (raise n_iter)')
+
+
 def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
                              removal_spec, n_iter=2,
                              n_bins=73,
@@ -501,7 +531,8 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
                              min_donuts=500,
                              bad_fit_threshold=2.0,
                              data_offset=None,
-                             intrinsic_offset=None):
+                             intrinsic_offset=None,
+                             converge_tol=1e-3):
     """Iterate fit -> subtract -> median to build the measured intrinsic.
 
     Per-visit quality cuts (matching run_pipeline's fit step):
@@ -643,6 +674,7 @@ def build_measured_intrinsic(donut_df, visit_table, coord_sys, iZs,
               f"median over {n_donuts_good} donuts "
               f"on {n_bins}x{n_bins} grid")
 
+    _report_convergence(iter_results, converge_tol)
     return {
         'iZs': iZs,
         'iZidx': iZidx,
@@ -716,7 +748,8 @@ def build_measured_intrinsic_uconstrained(donut_df, visit_table,
                                           min_donuts=500,
                                           bad_fit_threshold=2.0,
                                           data_offset=None,
-                                          intrinsic_offset=None):
+                                          intrinsic_offset=None,
+                                          converge_tol=1e-3):
     """U-mode-constrained variant of `build_measured_intrinsic`.
 
     For each visit, fit *all* (k, j) DZ coefficients in `kj_grid`,
@@ -845,6 +878,7 @@ def build_measured_intrinsic_uconstrained(donut_df, visit_table,
               f"median over {n_donuts_good} donuts "
               f"on {n_bins}x{n_bins} grid")
 
+    _report_convergence(iter_results, converge_tol)
     return {
         'iZs': iZs,
         'iZidx': iZidx,

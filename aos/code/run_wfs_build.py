@@ -127,15 +127,18 @@ def main():
     dobs2 = np.concatenate([dobs, dobs])
     dz = np.full_like(zk2, np.nan)
     n_fit = 0
+    n_partial = 0          # A2: visits whose FAM coeffs had some (zero-filled) NaN
     for (d, s), C in lut.items():
         m = (dobs2 == d) & (fam_key2 == s)
         if not m.any() or not np.isfinite(C).any():
             continue
-        dz[m] = _fam_dz_at(thx[m], thy[m], np.nan_to_num(C))
+        if not np.isfinite(C).all():
+            n_partial += 1
+        dz[m] = _fam_dz_at(thx[m], thy[m], np.nan_to_num(C))   # NaN coeff -> 0
         n_fit += int(m.sum())
     zk_corr = zk2 - dz
     print(f'  FAM DZ field applied to {n_fit}/{len(zk2)} WFS positions '
-          f'({len(lut)} fitted visits)')
+          f'({len(lut)} fitted visits; {n_partial} with some zero-filled NaN coeff)')
 
     # ---- bin both maps on the FAM grid ----
     g_orig, xb, yb, xc, yc = bin_median_focal(thx, thy, zk2, iZidx,

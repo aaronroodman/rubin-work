@@ -304,13 +304,15 @@ def _write_pairs_parquet(path, df1, df2, all_pairs, n, cfg, prefix):
     thr = float(cfg['corr_threshold']); sig_thr = float(cfg['sig_threshold'])
     rows = []
     for ci, cj, li, lj, r in all_pairs:
-        se_r, z, sig = _significance(r, n)
+        nij = int((df1[ci].notna() & df1[cj].notna()).sum())   # per-pair n (B2)
+        se_r, z, sig = _significance(r, nij)
+        near_unit = bool(np.isfinite(r) and abs(r) > 0.99)      # B3 artifact flag
         if not (abs(r) >= thr or (np.isfinite(sig) and sig >= sig_thr)):
             continue
         si, sj = float(np.nanstd(df1[ci])), float(np.nanstd(df1[cj]))
-        row = dict(col_i=ci, col_j=cj, label_i=li, label_j=lj, r=r, n=n,
-                   se_r=se_r, fisher_z=z, sigma=sig, rms_i=si, rms_j=sj,
-                   cov=abs(r) * si * sj)
+        row = dict(col_i=ci, col_j=cj, label_i=li, label_j=lj, r=r, n=nij,
+                   se_r=se_r, fisher_z=z, sigma=sig, near_unit=near_unit,
+                   rms_i=si, rms_j=sj, cov=abs(r) * si * sj)
         if df2 is not None:
             m = df2[ci].notna() & df2[cj].notna()
             x, y = df2.loc[m, ci].values, df2.loc[m, cj].values
@@ -354,6 +356,21 @@ def main():
     df_raw = quality_cut(pd.read_parquet(fits_path), prefix, cfg['max_coeff_um'])
     dz_cols, labels, all_pairs, n = _selection(df_raw, prefix)
     print(f'  {len(dz_cols)} DZ columns, {len(df_raw)} visits, complete-case n={n}')
+    # multiple-comparisons context (B4): number of off-diagonal tests and the
+    # Bonferroni-adjusted σ for α=0.05.  Note the existing 5σ gate (p~6e-7) is
+    # already more stringent than Bonferroni for this n_tests, so it controls
+    # the family-wise error; this is for transparency, not a behavior change.
+    from scipy.stats import norm as _norm
+    n_tests = len(dz_cols) * (len(dz_cols) - 1) // 2
+    sig_bonf = float(_norm.isf(0.05 / (2 * max(n_tests, 1))))
+    print(f'  multiple comparisons: n_tests={n_tests}, Bonferroni(α=0.05) '
+          f'threshold ≈ {sig_bonf:.2f}σ  (gate sig_threshold={cfg["sig_threshold"]}σ)')
+    # NaN-fill transparency (A2): the SVD projection / optcorr zero-fill any
+    # non-finite DZ coefficient; report how much is imputed (0% on clean data).
+    _W = df_raw[dz_cols].to_numpy(float)
+    _nv = int(np.isnan(_W).any(axis=1).sum())
+    print(f'  DZ NaN: {100 * np.isnan(_W).mean():.2f}% of cells, {_nv} visits '
+          f'with ≥1 NaN (zero-filled in SVD/optcorr)')
 
     # OFC SVD (shared): projected DOF/v-modes for the SVD-space correlation
     # pages, and the W_resid for the optical-corrected PDF.  Skipped gracefully
@@ -518,9 +535,10 @@ def _conjugate_group_pages(df1, df2, all_pairs, prefix, n, cfg, pdf):
     cap = int(cfg['max_group_pages'])
     seen, n_pages, n_seed = set(), 0, 0
     for ci, cj, li, lj, r in all_pairs:
-        if abs(r) < rmin:
+        if abs(r) < rmin or abs(r) > 0.99:        # skip near-unit artifacts (B3)
             continue
-        _se, _z, sig = _significance(r, n)
+        nij = int((df1[ci].notna() & df1[cj].notna()).sum())   # per-pair n (B2)
+        _se, _z, sig = _significance(r, nij)
         if not (np.isfinite(sig) and sig >= sig_thr):
             continue
         jA, kA = parse_jk(ci, prefix); jB, kB = parse_jk(cj, prefix)

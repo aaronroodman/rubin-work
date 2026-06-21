@@ -172,6 +172,36 @@ def main():
     dof_mad = 1.4826 * np.nanmedian(np.abs(dof - np.nanmedian(dof, axis=0)), axis=0)
     n_vis = int(len(fits))
 
+    # ---- per-rotator-bin DOF (B7 diagnostic): the LUT medians over ALL
+    # rotator angles; if MI subtraction leaves rotator-coupled residual it gets
+    # averaged away here.  Reuse the projected dof, masked by bin (half-open,
+    # matching the MI build), so the across-bin spread can be inspected.
+    rot_col = ('rotator_angle' if 'rotator_angle' in fits.colnames
+               else 'rotAngle' if 'rotAngle' in fits.colnames else None)
+    rotbins = []
+    if rot_col is not None:
+        rot = np.asarray(fits[rot_col], dtype=float)
+        rb = {k: [] for k in ('rotbin_center', 'rotbin_lo', 'rotbin_hi',
+                              'dof_index', 'dof_label', 'value', 'n_visits')}
+        for lo, hi in mc.rotator_bins(cfg):
+            m = (rot >= lo) & (rot < hi)
+            if int(m.sum()) < 1:
+                continue
+            dv = _reduce(dof[m], reduce_how)
+            ctr = 0.5 * (lo + hi)
+            rotbins.append((ctr, dv))
+            for di, absidx in enumerate(svd.dof_idx):
+                rb['rotbin_center'].append(float(ctr))
+                rb['rotbin_lo'].append(float(lo)); rb['rotbin_hi'].append(float(hi))
+                rb['dof_index'].append(int(absidx))
+                rb['dof_label'].append(str(dof_labels[di]))
+                rb['value'].append(float(dv[di])); rb['n_visits'].append(int(m.sum()))
+        if rotbins:
+            pd.DataFrame(rb).to_parquet(out_dir / 'lut_by_rotbin.parquet')
+            print(f'  wrote lut_by_rotbin.parquet ({len(rotbins)} populated bins)')
+    else:
+        print('  no rotator column in fits — skipping lut_by_rotbin diagnostic')
+
     dof_tbl = pa.table({
         'dof_index': pa.array(np.asarray(svd.dof_idx, dtype=int)),
         'dof_label': pa.array([str(x) for x in dof_labels]),
@@ -212,7 +242,7 @@ def main():
                        fh, sort_keys=False)
     # ---- one-page DOF summary PDF (4-panel style of the MI validation) ----
     _write_lut_pdf(out_dir / 'lut.pdf', svd.dof_idx, dof_val, dof_mad,
-                   n_vis, svd.n_dof, svd.n_keep_eff, reduce_how)
+                   n_vis, svd.n_dof, svd.n_keep_eff, reduce_how, rotbins=rotbins)
 
     print(f'  wrote lut.parquet ({len(dof_val)} DOF) + lut_dz.parquet '
           f'({len(kk)} (k,j)) + lut.pdf over {n_vis} visits')
@@ -220,14 +250,19 @@ def main():
 
 
 def _write_lut_pdf(path, dof_idx, values, scatter, n_visits, n_dof, n_keep,
-                   reduce_how):
+                   reduce_how, rotbins=None):
     """Single-page, 4-panel DOF summary (Hex translations / Hex tip-tilt /
     M1M3 / M2), mirroring intrinsic_build_plots.plot_dof_median_summary.
-    Points are the LUT values; error bars are the robust (MAD) scatter."""
+    Points are the LUT values; error bars are the robust (MAD) scatter.  When
+    ``rotbins`` (list of (center, dof_values)) is given, each per-rotator-bin
+    LUT is overlaid as small points coloured by rotator angle — if they scatter
+    well beyond the MAD bars, the all-rotator median is hiding rotator structure."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    from matplotlib import cm, colors
     from matplotlib.backends.backend_pdf import PdfPages
+    rnorm = colors.Normalize(vmin=-65.0, vmax=65.0)
     pos = {int(d): i for i, d in enumerate(dof_idx)}     # abs DOF index -> row
     buckets = [
         ('Hexapod Translations (M2, Cam: dz/dx/dy)', [0, 1, 2, 5, 6, 7], 'μm'),
@@ -246,16 +281,26 @@ def _write_lut_pdf(path, dof_idx, values, scatter, n_visits, n_dof, n_keep,
         vals = np.array([values[pos[a]] for a in present])
         errs = np.array([scatter[pos[a]] for a in present])
         ax.errorbar(x, vals, yerr=errs, fmt='o', ms=7, color='steelblue',
-                    ecolor='gray', elinewidth=1, capsize=3, lw=0)
+                    ecolor='gray', elinewidth=1, capsize=3, lw=0, zorder=2)
+        if rotbins:                              # per-rotbin overlay (B7)
+            for ctr, dv in rotbins:
+                yv = [dv[pos[a]] for a in present]
+                ax.scatter(x, yv, s=16, color=cm.turbo(rnorm(ctr)), alpha=0.8,
+                           edgecolors='none', zorder=3)
         ax.axhline(0, color='gray', lw=0.5, alpha=0.7)
         ax.set_xticks(x)
         ax.set_xticklabels([osv.LABELS_50DOF[a] for a in present],
                            rotation=45, ha='right', fontsize=8)
         ax.set_ylabel(f'LUT value ({unit})'); ax.set_title(title)
         ax.grid(axis='y', alpha=0.3)
+    sub = '; error bars = robust MAD'
+    if rotbins:
+        sm = cm.ScalarMappable(norm=rnorm, cmap='turbo')
+        fig.colorbar(sm, ax=axes, shrink=0.5, location='right',
+                     label='rotator bin centre [deg]')
+        sub += '; coloured points = per-rotator-bin LUT'
     fig.suptitle(f'Averaged-DOF LUT — {reduce_how} over {n_visits} visits  '
-                 f'(n_dof={n_dof}, n_keep={n_keep}); error bars = robust MAD',
-                 fontsize=13)
+                 f'(n_dof={n_dof}, n_keep={n_keep}){sub}', fontsize=13)
     with PdfPages(str(path)) as pdf:
         pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
     print('  wrote lut.pdf')

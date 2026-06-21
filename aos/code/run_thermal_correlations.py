@@ -192,6 +192,9 @@ def _project(df, prefix, svd):
         col = f'{prefix}_z{j}_c{k}'
         if col in df.columns:
             W[:, ci] = df[col].to_numpy(dtype=float)
+    nv = int(np.isnan(W).any(axis=1).sum())          # A2: NaN-fill transparency
+    print(f'  DZ NaN before projection: {100 * np.isnan(W).mean():.2f}% of cells, '
+          f'{nv} visits with ≥1 NaN (zero-filled by project_amplitudes)')
     A = svd.project_amplitudes(W)
     return svd.vmodes(A), svd.dof(A)
 
