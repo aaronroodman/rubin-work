@@ -92,10 +92,14 @@ def load_donut_zk(donuts_path, coord_sys, bad_set):
         df = pf.read_row_group(i, columns=cols).to_pandas()
         if len(df) == 0:
             continue
-        key = (int(df['day_obs'].iloc[0]), int(df['seq_num'].iloc[0]))
-        if key in bad_set:
-            n_skip += 1
-            continue
+        # Drop bad/filtered visits by the actual per-row (day_obs, seq_num),
+        # not by the row group's first row — a row group is not guaranteed to
+        # hold exactly one visit.
+        vkey = list(zip(df['day_obs'].astype(int), df['seq_num'].astype(int)))
+        bad_row = np.array([k in bad_set for k in vkey])
+        if bad_row.any():
+            n_skip += len(set(k for k, b in zip(vkey, bad_row) if b))
+            df = df[~bad_row]
         if have_match:
             df = df[df['matched_intra_extra'].fillna(False)]
         if len(df):

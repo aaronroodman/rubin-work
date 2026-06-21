@@ -70,8 +70,15 @@ def resolve_side(*, param_set=None, donut=None, visits=None, fits=None,
     else:
         if donut is None:
             raise ValueError('resolve_side: pass param_set or donut path(s)')
-        first = donut[0] if isinstance(donut, (list, tuple)) else donut
-        d, v, f = donut, visits_sidecar_path(first), fits_sidecar_path(first)
+        if isinstance(donut, (list, tuple)):
+            # Build a sidecar list per donut chunk so multi-chunk legacy runs
+            # don't silently drop visits/fits from chunks 2+ (load_visits /
+            # load_fits concatenate lists).
+            d = donut
+            v = [visits_sidecar_path(p) for p in donut]
+            f = [fits_sidecar_path(p) for p in donut]
+        else:
+            d, v, f = donut, visits_sidecar_path(donut), fits_sidecar_path(donut)
     if donut is not None:
         d = donut
     if visits is not None:

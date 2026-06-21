@@ -544,10 +544,13 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
     # Add blur column
     if fwhm is not None:
         fwhm_arr = np.array(fwhm)
-        if len(fwhm_arr) == len(aosTable):
-            aosTable_sel['blur'] = fwhm_arr[select]
-        elif len(fwhm_arr) == len(aosTable_sel):
+        # Prefer the selected-length match: when no donuts are dropped
+        # len(aosTable) == len(aosTable_sel) and the array is already aligned to
+        # the selection, so applying `select` again would be wrong.
+        if len(fwhm_arr) == len(aosTable_sel):
             aosTable_sel['blur'] = fwhm_arr
+        elif len(fwhm_arr) == len(aosTable):
+            aosTable_sel['blur'] = fwhm_arr[select]
         else:
             print(f"Warning: fwhm length ({len(fwhm_arr)}) doesn't match "
                   f"table ({len(aosTable)}) or selected ({len(aosTable_sel)})")
@@ -567,10 +570,11 @@ def get_aggregate_zernikes(butler, day_obs, seq_num, coord_sys, camera,
             aosTable_sel[out_name] = default
             return
         arr = np.asarray(v)
-        if len(arr) == len(aosTable):
-            aosTable_sel[out_name] = arr[select]
-        elif len(arr) == len(aosTable_sel):
+        # Prefer the selected-length match (see blur handling above).
+        if len(arr) == len(aosTable_sel):
             aosTable_sel[out_name] = arr
+        elif len(arr) == len(aosTable):
+            aosTable_sel[out_name] = arr[select]
         else:
             aosTable_sel[out_name] = default
 
@@ -709,8 +713,9 @@ def read_donuts_table(parquet_path, visit_pairs=None):
             try:
                 out[col] = np.stack(vals)
                 continue
-            except ValueError:
-                pass
+            except ValueError as e:
+                print(f"  WARNING: column {col!r} could not be stacked to a "
+                      f"2-D array (ragged rows?), kept as object dtype: {e}")
         out[col] = vals
     return out
 
@@ -1117,8 +1122,10 @@ def get_visitinfo_rotator_angles(butler, visit_pairs):
                 rec['visitinfo_rotpa'] = rotpa
                 rec['visitinfo_par_angle'] = par
                 rec['visitinfo_rotator_angle'] = calc_rotator_from_visitinfo(par, rotpa)
-            except Exception:
-                pass
+            except Exception as e2:
+                print(f"  visitInfo lookup failed for day_obs={day_obs_val} "
+                      f"seq_num={seq_num} (rotator left NaN): "
+                      f"{type(e2).__name__}: {e2}")
         records.append(rec)
 
     df = pd.DataFrame(records)
@@ -1608,7 +1615,10 @@ def get_intrinsic_map(x, y, camera_id_map, band=BandLabel.LSST_I):
 
     binFactor = 2
     config.estimateZernikes.binning = binFactor
-    nollIndices = np.arange(4, 29)
+    # Project convention: Noll 4-19, 22-26 (skip the spherical-defocus pair
+    # 20, 21).  Must stay in lockstep with create_intrinsic_interpolators, which
+    # maps these rows back to Noll number positionally.
+    nollIndices = np.array(list(range(4, 20)) + list(range(22, 27)))
     config.estimateZernikes.nollIndices = list(nollIndices)
     config.estimateZernikes.lstsqKwargs = {
         'ftol': 1.0e-3, 'xtol': 1.0e-3, 'gtol': 1.0e-3}
@@ -1647,8 +1657,13 @@ def get_intrinsic_map(x, y, camera_id_map, band=BandLabel.LSST_I):
 
 
 def create_intrinsic_interpolators(X, Y, zkIntrinsics):
-    """Create interpolation functions for each Zernike term."""
-    iZs = np.arange(4, 29)
+    """Create interpolation functions for each Zernike term.
+
+    ``iZs`` must match the Noll list and ordering used in get_intrinsic_map
+    (Noll 4-19, 22-26, skipping 20/21) — the rows of ``zkIntrinsics`` are
+    keyed back to Noll number positionally here.
+    """
+    iZs = np.array(list(range(4, 20)) + list(range(22, 27)))
     interpolators = {}
     points = np.column_stack([X, Y])
     for i, iZ in enumerate(iZs):
@@ -1702,17 +1717,30 @@ def add_intrinsic_zernikes(aosTable, intrinsic_interpolators, coord_sys):
 # Merge Helpers
 # ============================================================
 
+def _rotator_columns_for(table, rotator_df, want_flagged):
+    """Build per-row rotator_angle (and optionally rotator_flagged) arrays
+    aligned to ``table``, by matching (day_obs, seq_num) against ``rotator_df``.
+
+    Shared by merge_rotator_to_visit_info and merge_rotator_to_tables so the
+    two stay in lockstep.  Returns (rot_angle_col, rot_flagged_col_or_None).
+    """
+    day_obs_arr = np.array(table['day_obs'])
+    seq_num_arr = np.array(table['seq_num'])
+    rot_angle_col = np.full(len(table), np.nan)
+    rot_flagged_col = (np.zeros(len(table), dtype=bool)
+                       if want_flagged else None)
+    for _, r in rotator_df.iterrows():
+        mask = (day_obs_arr == r['day_obs']) & (seq_num_arr == r['seq_num'])
+        rot_angle_col[mask] = r['rotator_angle']
+        if want_flagged:
+            rot_flagged_col[mask] = r['rotator_flagged']
+    return rot_angle_col, rot_flagged_col
+
+
 def merge_rotator_to_visit_info(rotator_df, visit_info, rotator_threshold):
     """Add rotator_angle + rotator_flagged to visit_info only (no aosTable)."""
-    vi_day_obs = np.array(visit_info['day_obs'])
-    vi_seq_num = np.array(visit_info['seq_num'])
-
-    rot_angle_col = np.full(len(visit_info), np.nan)
-    rot_flagged_col = np.zeros(len(visit_info), dtype=bool)
-    for _, r in rotator_df.iterrows():
-        mask = (vi_day_obs == r['day_obs']) & (vi_seq_num == r['seq_num'])
-        rot_angle_col[mask] = r['rotator_angle']
-        rot_flagged_col[mask] = r['rotator_flagged']
+    rot_angle_col, rot_flagged_col = _rotator_columns_for(
+        visit_info, rotator_df, want_flagged=True)
     visit_info['rotator_angle'] = rot_angle_col
     visit_info['rotator_flagged'] = rot_flagged_col
 
@@ -1932,38 +1960,21 @@ def plot_visit_quality_diagnostics(visit_info, output_pdf=None,
 
 def merge_rotator_to_tables(rotator_df, aosTable, visit_info, rotator_threshold):
     """Add rotator_angle and rotator_flagged to aosTable and visit_info."""
-    rot_dict = {}
-    for _, r in rotator_df.iterrows():
-        rot_dict[(r['day_obs'], r['seq_num'])] = r
+    rot_angle_col, rot_flagged_col = _rotator_columns_for(
+        aosTable, rotator_df, want_flagged=True)
+    aosTable['rotator_angle'] = rot_angle_col
+    aosTable['rotator_flagged'] = rot_flagged_col
 
-    day_obs_arr = np.array(aosTable['day_obs'])
-    seq_num_arr = np.array(aosTable['seq_num'])
-
-    rot_arrays = {
-        'rotator_angle': np.full(len(aosTable), np.nan),
-        'rotator_flagged': np.zeros(len(aosTable), dtype=bool),
-    }
-    for (dobs, snum), rot_info in rot_dict.items():
-        mask = (day_obs_arr == dobs) & (seq_num_arr == snum)
-        for c in rot_arrays:
-            rot_arrays[c][mask] = rot_info[c]
-
-    for c in rot_arrays:
-        aosTable[c] = rot_arrays[c]
-
-    n_flagged = int(np.sum(rot_arrays['rotator_flagged']))
+    n_flagged = int(np.sum(rot_flagged_col))
     print(f"Added rotator columns to aosTable. "
           f"Flagged: {n_flagged} (|angle| > {rotator_threshold} deg)")
 
-    # Add rotator_angle to visit_info
+    # Add rotator_angle to visit_info (angle only, no flag — preserves prior
+    # behaviour of this function).
     if visit_info is not None:
-        rot_angle_col = np.full(len(visit_info), np.nan)
-        vi_day_obs = np.array(visit_info['day_obs'])
-        vi_seq_num = np.array(visit_info['seq_num'])
-        for (dobs, snum), rot_info in rot_dict.items():
-            mask = (vi_day_obs == dobs) & (vi_seq_num == snum)
-            rot_angle_col[mask] = rot_info['rotator_angle']
-        visit_info['rotator_angle'] = rot_angle_col
+        vi_angle, _ = _rotator_columns_for(
+            visit_info, rotator_df, want_flagged=False)
+        visit_info['rotator_angle'] = vi_angle
         print("Added rotator_angle to visit_info")
 
     return aosTable, visit_info

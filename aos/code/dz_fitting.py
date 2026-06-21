@@ -233,18 +233,22 @@ def _fit_one_image(thx_deg, thy_deg, zk_data, zk_intrinsic, iZs,
     return img_params, fit_vals, rlm_weights
 
 
-def _intrinsic_key(dobs, snum, det, cx, cy):
+def _intrinsic_key(dobs, snum, det, cx, cy, cxe, cye):
     # Round centroids to the nearest pixel: donuts are >> 1 px apart, so this is
     # a unique key, while avoiding lookup misses from sub-LSB float drift across
     # a parquet read/write round-trip (the old round(...,3) keyed on 0.001 px).
-    return (int(dobs), int(snum), str(det), round(float(cx)), round(float(cy)))
+    # Both intra- and extra-focal centroids are included so the key is unique
+    # even if two donuts in a visit+detector share a rounded intra centroid.
+    return (int(dobs), int(snum), str(det),
+            round(float(cx)), round(float(cy)),
+            round(float(cxe)), round(float(cye)))
 
 
 def load_intrinsic_lookup(sidecar_path, iZs):
     """Build a per-donut measured-intrinsic lookup from a zk_intrinsic sidecar
     (run_make_intrinsic_sidecar.py), reordered to the fit's ``iZs``.
 
-    Key: (day_obs, seq_num, detector, centroid_x_intra, centroid_y_intra).
+    Key: (day_obs, seq_num, detector, centroid_x/y_intra, centroid_x/y_extra).
     Value: the zk_intrinsic_MI vector reordered to iZs column order.
     """
     t = pq.read_table(str(sidecar_path))
@@ -257,7 +261,9 @@ def load_intrinsic_lookup(sidecar_path, iZs):
     dobs = df['day_obs'].to_numpy(); snum = df['seq_num'].to_numpy()
     det = df['detector'].astype(str).to_numpy()
     cx = df['centroid_x_intra'].to_numpy(float); cy = df['centroid_y_intra'].to_numpy(float)
-    return {_intrinsic_key(dobs[r], snum[r], det[r], cx[r], cy[r]): mi[r]
+    cxe = df['centroid_x_extra'].to_numpy(float); cye = df['centroid_y_extra'].to_numpy(float)
+    return {_intrinsic_key(dobs[r], snum[r], det[r],
+                           cx[r], cy[r], cxe[r], cye[r]): mi[r]
             for r in range(len(df))}
 
 
@@ -318,10 +324,13 @@ def fit_focal_zernikes_streaming(input_file, visit_info, coord_sys, iZs,
             det = df['detector'].astype(str).to_numpy()
             cx = df['centroid_x_intra'].to_numpy(float)
             cy = df['centroid_y_intra'].to_numpy(float)
+            cxe = df['centroid_x_extra'].to_numpy(float)
+            cye = df['centroid_y_extra'].to_numpy(float)
             zk_intrinsic = np.full_like(zk_data, np.nan)
             for r in range(len(df)):
                 mi_val = intrinsic_lookup.get(
-                    _intrinsic_key(dobs, snum, det[r], cx[r], cy[r]))
+                    _intrinsic_key(dobs, snum, det[r],
+                                   cx[r], cy[r], cxe[r], cye[r]))
                 if mi_val is not None:
                     zk_intrinsic[r] = mi_val
             fin = np.isfinite(zk_intrinsic).all(axis=1)

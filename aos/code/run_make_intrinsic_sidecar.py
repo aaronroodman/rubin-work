@@ -167,6 +167,11 @@ def main():
         'detector': pa.array(dd['detector'].astype(str)),
         'centroid_x_intra': pa.array(np.asarray(dd['centroid_x_intra'], dtype=float)),
         'centroid_y_intra': pa.array(np.asarray(dd['centroid_y_intra'], dtype=float)),
+        # Extra-focal centroids included so the per-donut join key (in
+        # dz_fitting.load_intrinsic_lookup) is unique even if two donuts in the
+        # same visit+detector share the same rounded intra centroid.
+        'centroid_x_extra': pa.array(np.asarray(dd['centroid_x_extra'], dtype=float)),
+        'centroid_y_extra': pa.array(np.asarray(dd['centroid_y_extra'], dtype=float)),
         'zk_intrinsic_MI': pa.array(list(zk_int)),
     })
     meta = {b'nollIndices': np.array(jvals, dtype=int).tobytes(),

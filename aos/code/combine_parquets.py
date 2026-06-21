@@ -43,7 +43,12 @@ def promote_type(a, b):
     a_list = pat.is_list(a) or pat.is_large_list(a)
     b_list = pat.is_list(b) or pat.is_large_list(b)
     if a_list and b_list:
-        return pa.list_(promote_type(a.value_type, b.value_type))
+        value_t = promote_type(a.value_type, b.value_type)
+        # Preserve large_list when either side is large; a 32-bit list can't
+        # hold large_list offsets, so the cast would fail at write time.
+        if pat.is_large_list(a) or pat.is_large_list(b):
+            return pa.large_list(value_t)
+        return pa.list_(value_t)
     if a_list != b_list:
         raise TypeError(f'list vs scalar: {a} vs {b}')
     if pat.is_floating(a) and pat.is_floating(b):
