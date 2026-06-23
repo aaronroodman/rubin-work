@@ -1,0 +1,160 @@
+*Topic: Measured Intrinsic Wavefront, separation into TMA and Camera contributions, and the observation of an impact from M1M3 z_gradient*
+
+*Summary* Full Array Mode (FAM) images are used to determine the Measured Intrinsic Wavefront (MIW) (the Wavefront in Zernike coefficients of the ideally aligned system).  I analyze FAM data with different Rotator angles, to separate out contributions from the TMA (OCS) versus contributions from the Camera (CCS).  Clear but sub-leading contributions due to the Camera are observed, especially in Z4 and to a lesser extent in Z5 through Z8.  I also observe that FAM taken on April 9, with M1M3 z_gradient of -0.3 deg C, is noticeably different in Measured Intrinsic Wavefront (MIW) than FAM taken in March. As a result, I intend to use only the March data, which has more typical z_gradient values.
+
+*Method to determine Measured Intrinsic Wavefront*
+
+Full Array Mode data is analyzed by pairing intra and extra focal donuts on the same CCD, and jointly fitting their wavefront with Danish. The data used here is in collection LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired in repo/main.
+
+Of course the FAM data was collected open loop and do not reflect the optimally aligned condition.  So next we use the FAM pair's wavefront to calculate the offset in v-modes from the optimal optical state and apply a corresponding correction to the wavefront. Because, FAM has the full focal plane pattern of Zernike values, this data sample displays complete information about the optical state and so is significantly more informative than just corner wavefront Donuts.  The wavefront after correction is identified as the Measured Intrinsic Wavefront, as this is the remaining or uncorrectable wavefront.  Note that this procedure uses the desired number of DOF and number of characteristic or v-modes. In the work here we use 50 DOF and 34 v-modes with the choice of 34 v-modes made to include modes 33 and 34 which push on the k,j=4,4 Focus-of-Focus term.
+
+*MIW method*
+
+To make this more explicit here is a step by step mathematical description of the MIW method.
+
+1. For each FAM intra/extra focal pair we use all good Danish fits to get the annular Zernike coefficients $Z_j$ as a function of field angle $\vec\theta=(xth_{\rm OCS},yth_{\rm OCS})$ across the focal
+plane. We use the mean of the intra and extra focal Donut's position for $\vec\theta$.
+
+2. We model the field dependence of each pupil coefficient with a *Double-Zernike*
+expansion — a sum over focal-plane Zernikes $\cal{Z}_k(\vec\theta)$ polynomials:
+
+$$
+Z_j(\vec\theta)\;=\;Z_j^{\rm Intrinsic}(\vec\theta)\;+\;\sum_{k=1}^{K} w_{kj}\,\cal{Z}_k(\hat\theta),
+\qquad \hat\theta=\vec\theta/\theta_{\rm fp},\ \ \theta_{\rm fp}=1.75^\circ,
+$$
+
+where $\cal{Z}_k$ are circular Zernikes on the focal plane and we keep field orders $k=1 \ldots 6$ (piston, tip/tilt, focus, and two astigmatisms), and $Z_j^{\rm Intrinsic}$ is the wavefront present for an ideally aligned system.  
+
+3.The active optics sensitivity matrix $\mathbf{S}$ (from `ts.ofc`) maps the
+$n_{\rm dof}=50$ optical degrees of freedom  (M2 Hexapod, Camera Hexapod, M1M3 mirror modes and M2 mirror modes) to the wavefront:
+
+$$
+S_{(kj),\,i}\;=\;\frac{\partial w_{kj}}{\partial \mathrm{DoF}_i}.
+$$
+
+We normalize $S$, $\hat S = S\,N$, by the impact on IQ and allowable range, and take its SVD, keeping the $m=1\ldots34$ best-constrained (v-)modes; their left-singular vectors $u_m$ span the optically correctable subspace, with projector $\bold P$.  The v-modes are shown here
+
+:framed_picture: v-modes vs. DoF  (attach `figures/miw_V_dof_vmode.png`)
+
+$$
+\hat S \;=\; \bold U\,\bold \Sigma\,\bold V^{\top},\qquad \bold P \;=\; \bold U\, \bold U^{\top}.
+$$
+
+The measured Double Zernike coefficient (meas) then splits into the part the optics can remove (corr) and the
+residual (resid),
+
+$$
+w^{\rm corr}=\bold P\,w^{\rm meas}
+$$
+where
+$$
+w^{\rm resid}=w^{\rm meas}-w^{\rm corr} \\
+$$
+and so we also have
+$$
+Z_j^{\rm corr}(\vec\theta)=\sum_k w_{kj}^{\rm corr}\,\cal{Z}_k(\hat\theta).
+$$
+
+4.*Iteration 1*:  We iterate starting with the Batoid (optical-design) intrinsic wavefront, by finding the Doulble Zernike coefficients $w_{kj}$ that fit the model
+
+$$
+Z_j^{\rm model}(\vec\theta)=Z_j^{\rm batoid}(\vec\theta)+\sum_k w_{kj}\,\cal{Z}_k(\hat\theta)
+$$
+
+to the FAM data $Z_j^{\rm meas}(\vec\theta)$ for each FAM visit, then use the $w_{kj}$ to apply the optical correction:
+
+$$
+Z_j^{\rm MIW,1}(\vec\theta)= \big\langle\, Z_j^{\rm meas}-Z_j^{\rm corr}\,\big\rangle_{\rm bin}.
+$$
+
+The optical correction is applied for each FAM visit individually, and then all FAM visits are combined
+where we median over the Donuts in focal-plane bins (a $73\times73$ grid over
+$\pm1.8^\circ$, i.e. $\approx0.05^\circ\approx3'$ bins).
+
+5.*Iteration 2*: Next we refit $w_{kj}$ using the result from the first iteration, with
+
+$$
+Z_j^{\rm model}(\vec\theta)=Z_j^{\rm MIW,1}(\hat\theta)+\sum_k w_{kj}\,\cal{Z}_k(\hat\theta),
+$$
+
+then
+
+$$
+Z_j^{\rm MIW,2}(\vec\theta)=\big\langle\,Z_j^{\rm meas}-Z_j^{\rm corr}\,\big\rangle_{\rm bin},
+$$
+
+6.A 3rd iteration is performed to ensure that the MIW result converges.
+
+*MIW Results*
+
+Here are results from the MIW analysis, for FAM at Rotator angle 0.
+
+The progression from the measured map to the MIW after each iteration is shown here:
+:framed_picture: Z5 for each iteration  (attach `figures/miw_Z5_iterations.png`) showing that the series is converged.
+
+Next the resulting MIW for all Zernike terms is here, where we take special care to account for the CCD heights contribution to Z4, based on the CCD height map:
+
+:framed_picture: MIW maps for Z4-Z10  (attach `figures/miw_final_1.png`)
+:framed_picture: MIW maps for Z11-Z18  (attach `figures/miw_final_2.png`)
+:framed_picture: MIW maps for Z19-Z26  (attach `figures/miw_final_3.png`)
+
+*Covariance Matrix*
+
+With each FAM visit corrected by the 50/34 n_DOF/n_vmode optical correction, and all relevant FAM visits coadded into the medianed MIW, we can also extract a covariance matrix for the Danish wavefront retrieval.  Here we use each individual Donut pair wavefront result, after optical correction, comparing against the ensemble median of all FAM visits.  This yields the covariance without an unwanted contribution from having a non-optimal optical state.
+
+Histograms of the $Z_j$ deviation (ie. the measured minus MIW) for all Donut pairs in a single FAM visit are shown here:
+:framed_picture: $Z_j$ deviation for a single FAM visit  (attach `figures/miw_residual_histograms.png`)
+
+We can also calculate the FWHM equivalent deviation for(similar to AOS_FWHM) for each Donut pair over all FAM visits at the WFS's focal plane radius, showing the overall wavefront retrieval error:
+:framed_picture: FWHM from $Z_j$ deviation  (attach `figures/miw_fwhm_edge.png`)
+
+Finally, the covariance and correlation matrices for at the WFS radius is calculated:
+:framed_picture: $Z_j Z_{j\prime}$ Covariance and Correlation matrices  (attach `figures/miw_covariance_correlation.png`)
+
+*Rotator Angle and z_gradient dependence*
+
+We have collected FAM at 9 Rotator angles, and the MIW analysis was performed separately for each angle, to enable a follow-on separation of the MIW into a TMA and a Camera contribution.  While doing that I observed that there are two families of MIW maps.
+
+Here we show the individual MIW result for Z5 (astigmatism) and Z7 (coma) from FAM for the 9 Rotator angles:
+*Z5 astigmatism:*
+:framed_picture: Z5 by rotator  (attach `figures/rotmaps_Z5_astigmatism.png`)
+
+*Z7 coma:*
+:framed_picture: Z7 by rotator  (attach `figures/rotmaps_Z7_coma.png`)
+
+Very clearly there are two families of maps, one at Rotator angles -60, -15, 0, 15, 60 and another from -45,-30,30 and 45.
+
+Every ±30/±45 visit was taken on a single night, *20260409*, 24 days after the
+March nights with values 0/±15/±60:
+
+```
+| Night | rotator angles present | n visits | family |
+| ------- | ------------------------ | ---------: | -------- |
+| 20260315 | −60, −15, 0, 15, 60 | 61 | A |
+| 20260316 | −60, 0, 60 | 35 | A |
+| 20260317 | −60, −15, 0, 15, 60 | 72 | A |
+| 20260324 | −15 | 24 | A |
+| **20260409** | **−45, −30, 30, 45** | **82** | **B** |
+```
+
+It is instructive to look at the typical thermal telemetry for Family A (March) vs Family B (Apr 9):
+
+```
+| condition | A (March) | B (Apr 9) | Δ |
+| ----------- | ----------: | ----------: | ----: |
+| **z_gradient** (M1M3 axial thermal) | **+0.09** | **−0.30** | **−0.40** |
+| cam / m2 / m1m3 air temp [°C] | ~12–13 | ~10–11.5 | −1.5 |
+| outside_temp [°C] | 11.3 | 9.8 | −1.6 |
+| dome_delta_t | −1.39 | −1.66 | −0.27 |
+| cam_m1m3_delta_t | −0.50 | −0.73 | −0.23 |
+| azimuth | 270° | 314° | +44° |
+| elevation | 69.8° | 69.9° | ~0 (both in [65,75]) |
+```
+
+The z_gradient from April 9th is on the edge of the distribution for this metric, and is a likely source of the difference in maps.  
+
+:framed_picture: Histogram of z_gradient values of FAM visits  (attach `figures/two_epochs_zgradient.png`)
+
+*Conclusions*
+
+The MIW methodology is presented, with results showing partially repeatable Measured Intrinsic maps, and providing a way to separate out optical alignment from Zernike retrieval covariance. For the next steps, I plan to use only the March FAM data points to make the initial *Intrinsic as a Calibration* product, and noting that more FAM at the intermediate angles with more nominal M1M3 z_gradient should be added to the testing queue.
