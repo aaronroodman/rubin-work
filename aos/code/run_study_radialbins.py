@@ -89,10 +89,19 @@ def main():
         'study_radialbins', args.param_set, args.mi_name,
         config_path=(Path(args.analysis_config) if args.analysis_config else None))}
     rot_bins = mc.rotator_bins(cfg)
+    sel = mc.rotator_select(cfg)
+    if sel is not None:
+        sel_set = {(round(lo, 3), round(hi, 3)) for lo, hi in sel}
+        rot_bins = [(lo, hi) for lo, hi in rot_bins
+                    if (round(lo, 3), round(hi, 3)) in sel_set]
     base = Path(args.output_root) / args.param_set / args.mi_name
+    # grids come from the build SOURCE entry (build_from -> reuse parent's grids)
+    src_mi = mc.build_source(cfg, args.mi_name)
+    grid_base = Path(args.output_root) / args.param_set / src_mi
     out = base / 'study_radialbins.pdf'
     print(f'[study_radialbins] {args.param_set}/{args.mi_name}: '
-          f'{len(rot_bins)} rotator bins')
+          f'{len(rot_bins)} rotator bins'
+          + (f' (grids from {src_mi})' if src_mi != args.mi_name else ''))
 
     inner = (float(sec['inner_deg']) if sec.get('inner_deg') is not None
              else wfs_inner_radius_deg())
@@ -107,7 +116,7 @@ def main():
     # ---- load each rotator-bin OCS intrinsic grid ----
     samples = []
     for lo, hi in rot_bins:
-        gp = base / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet'
+        gp = grid_base / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet'
         if not gp.exists():
             print(f'  missing {gp} — skipped'); continue
         df = pd.read_parquet(gp)

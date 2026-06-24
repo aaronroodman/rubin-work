@@ -113,7 +113,14 @@ def main():
         'study_wfs_radial', args.param_set, args.mi_name,
         config_path=(Path(args.analysis_config) if args.analysis_config else None))}
     rot_bins = mc.rotator_bins(cfg)
+    sel = mc.rotator_select(cfg)
+    if sel is not None:
+        sel_set = {(round(lo, 3), round(hi, 3)) for lo, hi in sel}
+        rot_bins = [(lo, hi) for lo, hi in rot_bins
+                    if (round(lo, 3), round(hi, 3)) in sel_set]
     base_mi = Path(args.output_root) / args.param_set / args.mi_name
+    # FAM intrinsic grids come from the build SOURCE entry (build_from reuse)
+    grid_base = Path(args.output_root) / args.param_set / mc.build_source(cfg, args.mi_name)
     out = base_mi / 'wfs_build' / 'study_wfs_radial.pdf'
 
     inner = (float(sec['inner_deg']) if sec.get('inner_deg') is not None
@@ -129,13 +136,13 @@ def main():
     # noll comes from a FAM grid; load once to get it, then the clouds
     first = None
     for lo, hi in rot_bins:
-        gp = base_mi / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet'
+        gp = grid_base / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet'
         if gp.exists():
             first = gp; break
     if first is None:
         raise RuntimeError('No FAM intrinsic grids found.')
     noll = [int(j) for j in pd.read_parquet(first)['nollIndices'].iloc[0]]
-    fam = _load_fam(base_mi, rot_bins, noll)
+    fam = _load_fam(grid_base, rot_bins, noll)
     wfs_c = _load_wfs(base_mi / 'wfs_build' / 'wfs_grid.parquet', noll, 'corr')
     wfs_o = _load_wfs(base_mi / 'wfs_build' / 'wfs_grid.parquet', noll, 'orig')
     have_tab = np.isfinite(fam['tab']).any()
