@@ -74,8 +74,8 @@ tail -f logs/run_*.log
 - `olr_quicklook.ipynb` — quicklook diagnostics on the per-night outputs:
   open- vs closed-loop Zernikes, the wavefront RMS the loop removed (with PSF
   FWHM), and the applied trim split by component (camera/M2 piston, decenter,
-  tip/tilt, and M1M3 / M2 bending-mode heatmaps). Set `day_obs` in the
-  Parameters cell; toggle `field` between `deviation` and `opd`.
+  tip/tilt, and M1M3 / M2 bending-mode per-mode strip charts). Set `day_obs` in
+  the Parameters cell; toggle `field` between `deviation` and `opd`.
 
 ## Provenance
 
