@@ -87,4 +87,16 @@ defaults:
 #     aberration_pairs: {n_quartiles: 5}
 #     pathA_50_34_i:
 #       lut: {reduce: mean}
-overrides: {}
+overrides:
+  fam_danish_1_0_wep17_3_0_bin2x:
+    pathA_50_34_i_5rot:
+      wfs_mimic:
+        # same 5 rotator bins as the MIW 5rot decomposition
+        # (mi_config split.rotator_select for pathA_50_34_i_5rot) -- drops the
+        # out-of-family rotator angles from the covariance.
+        rotator_keep:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
