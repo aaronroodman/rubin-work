@@ -199,6 +199,9 @@ def extract_olr(table, sens_mat, indices=None, seq_min=None, seq_max=None):
             "day_obs": int(row["day_obs"]) if "day_obs" in row else None,
             "rotation_angle": float(row.get("rotation_angle", np.nan)),
             "band": row.get("band"),
+            "block": row.get("block"),
+            "vmodes": (np.asarray(row["vmodes"], dtype=float)
+                       if row.get("vmodes") is not None else None),
             "dof_state": dof,
             "trim": trim,
         }

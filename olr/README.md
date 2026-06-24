@@ -23,7 +23,7 @@ because the downstream measured-intrinsic-wavefront (MIW) analysis needs it.
 | rule | output | notes |
 |------|--------|-------|
 | `nightly_table` | `output/<day_obs>/nightly_aos_table.parquet` | **Summit only** — ConsDB + EFD + embargo Butler |
-| `olr` | `output/<day_obs>/olr.parquet` | one row per usable seq; OPD + deviation, measured + OLR + intrinsic |
+| `olr` | `output/<day_obs>/olr.parquet` | one row per usable seq; OPD + deviation (measured + OLR + intrinsic), plus `block`, `vmodes`, `dof_state`, `trim` |
 | `combine` | `output/olr_combined.parquet` | all nights concatenated |
 
 ## Running on the Summit RSP
@@ -74,8 +74,9 @@ tail -f logs/run_*.log
 - `olr_quicklook.ipynb` — quicklook diagnostics on the per-night outputs:
   open- vs closed-loop Zernikes, the wavefront RMS the loop removed (with PSF
   FWHM), and the applied trim split by component (camera/M2 piston, decenter,
-  tip/tilt, and M1M3 / M2 bending-mode per-mode strip charts). Set `day_obs` in
-  the Parameters cell; toggle `field` between `deviation` and `opd`.
+  tip/tilt, M1M3 / M2 bending-mode strip charts, and a state v-mode timeline;
+  block boundaries are marked on the timelines). Set `day_obs` in the Parameters
+  cell; toggle `field` between `deviation` and `opd`.
 
 ## Provenance
 
