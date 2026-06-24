@@ -34,8 +34,14 @@ def main():
         sys.exit(1)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    # build_nightly_table indexes by seq; keep it as a column for downstream.
-    table = table.reset_index()
+    # build_nightly_table returns a frame indexed by seq; make seq a plain
+    # column for downstream.  On some pandas versions the groupby leaves a 'seq'
+    # column behind too (identical values), so drop the index in that case to
+    # avoid a duplicate-name collision in reset_index().
+    if table.index.name in table.columns:
+        table = table.reset_index(drop=True)
+    else:
+        table = table.reset_index()
     table.to_parquet(args.out)
     print(f"Wrote {args.out}: {len(table)} rows, {len(table.columns)} cols")
 
