@@ -308,7 +308,7 @@ def decompose_polar(Z, thetas_rad, A, s=1, m0_assignment='ocs', m_max=None):
 
 
 def decompose_spin_lsq(Zc, valid, thetas_rad, A, n_spin=0, s=1, m_max=12,
-                       ridge=1e-3, degen_assignment='ocs'):
+                       ridge=1e-3, degen_assignment='ocs', ocs_only=False):
     """Hole-aware, spin-aware decomposition (unifies the scalar LSQ and the
     spin FFT).  Per radius, fit complex O and C by least squares over the
     valid samples only:
@@ -323,6 +323,12 @@ def decompose_spin_lsq(Zc, valid, thetas_rad, A, n_spin=0, s=1, m_max=12,
     :func:`decompose_polar_lsq` at n_spin=0 and to :func:`decompose_spin_fft`
     when rings are fully sampled.  Returns the same dict shape as
     :func:`decompose_spin_fft`, with ``res`` NaN at invalid nodes.
+
+    ``ocs_only=True`` fits the O (telescope) basis ALONE — the camera columns are
+    dropped from the design matrix, so O absorbs the rotator-averaged field and
+    ``C_pol`` is identically zero (a constrained fit, NOT a joint O+C fit with C
+    discarded afterward — the two differ when the joint fit puts signal in C).
+    The degenerate-mode redistribution is skipped (there is no C to assign to).
     """
     Zc = np.asarray(Zc, complex)
     n_set, n_r, n_az = Zc.shape
@@ -346,8 +352,11 @@ def decompose_spin_lsq(Zc, valid, thetas_rad, A, n_spin=0, s=1, m_max=12,
         phi = np.concatenate(phi); yk = np.concatenate(yk)
         thk = np.concatenate(thk)
         E = np.exp(1j * np.outer(phi, ms))                          # O basis
-        Cc = E * np.exp(1j * (int(n_spin) - ms[None, :]) * s * thk[:, None])
-        D = np.hstack([E, Cc[:, keepC]])                            # (N, 2nm-1)
+        if ocs_only:
+            D = E                                                   # O basis only
+        else:
+            Cc = E * np.exp(1j * (int(n_spin) - ms[None, :]) * s * thk[:, None])
+            D = np.hstack([E, Cc[:, keepC]])                        # (N, 2nm-1)
         if D.shape[0] < D.shape[1]:
             continue
         DhD = D.conj().T @ D
@@ -355,13 +364,16 @@ def decompose_spin_lsq(Zc, valid, thetas_rad, A, n_spin=0, s=1, m_max=12,
         coef = np.linalg.solve(DhD + lam * np.eye(DhD.shape[0]),
                                D.conj().T @ yk)
         Ofull = coef[:nm]
-        Cfull = np.zeros(nm, complex); Cfull[keepC] = coef[nm:]
-        # degenerate sum currently sits in O_{n_spin}; redistribute by flag
-        i_n = int(np.nonzero(ms == int(n_spin))[0][0])
-        if degen_assignment == 'ccs':
-            Cfull[i_n] = Ofull[i_n]; Ofull[i_n] = 0
-        elif degen_assignment == 'split':
-            Ofull[i_n] *= 0.5; Cfull[i_n] = Ofull[i_n]
+        if ocs_only:
+            Cfull = np.zeros(nm, complex)        # constrained: no camera term
+        else:
+            Cfull = np.zeros(nm, complex); Cfull[keepC] = coef[nm:]
+            # degenerate sum currently sits in O_{n_spin}; redistribute by flag
+            i_n = int(np.nonzero(ms == int(n_spin))[0][0])
+            if degen_assignment == 'ccs':
+                Cfull[i_n] = Ofull[i_n]; Ofull[i_n] = 0
+            elif degen_assignment == 'split':
+                Ofull[i_n] *= 0.5; Cfull[i_n] = Ofull[i_n]
         O_pol[k] = EA @ Ofull
         C_pol[k] = EA @ Cfull
         dphi = A[1] - A[0]

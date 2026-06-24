@@ -163,38 +163,44 @@ def main():
     for grp in groups:
         n_spin = sp['spin_sign'] * grp['spin']
         if grp['kind'] == 'single':
+            grp_js = [grp['j']]
+            ocs = grp['j'] in ocs_only
             key = ('z4opt' if (grp['j'] == 4 and sp['use_z4_optical']
                                and 'z4opt' in dsets[0]) else f"z{grp['j']}")
             Z, V = sample_field(key)
             dec = isp.decompose_spin_lsq(Z.astype(complex), V, th_rad, A, n_spin=0,
                                          s=s, m_max=sp['m_max'], ridge=sp['ridge'],
-                                         degen_assignment=sp['degen_assignment'])
+                                         degen_assignment=sp['degen_assignment'],
+                                         ocs_only=ocs)
             comps = [(grp['j'], np.real)]
             Zc = Z.astype(complex)
         elif grp['kind'] == 'pair':
+            grp_js = [grp['j_cos'], grp['j_sin']]
+            # a doublet shares one dec; OCS-only if either member is listed
+            ocs = (grp['j_cos'] in ocs_only) or (grp['j_sin'] in ocs_only)
             Zc_, Vc_ = sample_field(f"z{grp['j_cos']}")
             Zs_, Vs_ = sample_field(f"z{grp['j_sin']}")
             Zc = Zc_ + 1j * Zs_
             V = Vc_ & Vs_
             dec = isp.decompose_spin_lsq(Zc, V, th_rad, A, n_spin=n_spin, s=s,
                                          m_max=sp['m_max'], ridge=sp['ridge'],
-                                         degen_assignment=sp['degen_assignment'])
+                                         degen_assignment=sp['degen_assignment'],
+                                         ocs_only=ocs)
             comps = [(grp['j_cos'], np.real), (grp['j_sin'], np.imag)]
         else:
             print(f"  (skipping unpaired {grp['label']})")
             continue
         for j, part in comps:
-            is_ocs_only = j in ocs_only
-            dec_by_j[j] = (dec, part, Zc, is_ocs_only)
+            dec_by_j[j] = (dec, part, Zc, ocs)
             metrics.append(dict(
                 Zernike=f'Z{j}', j=j, spin=abs(dec['n_spin']),
                 dataRMS=_map_rms(part(Zc), R, r_lim),
                 O_tel=_map_rms(part(dec['O_pol']), R, r_lim),
-                # C_cam is the *fitted* camera RMS even when OCS-only zeros it in
-                # the outputs — so the diagnostic shows what was discarded.
+                # C_cam ~ 0 for OCS-only j (the camera term was constrained out
+                # of the fit, not discarded after); nonzero only for full-split j.
                 C_cam=_map_rms(part(dec['C_pol']), R, r_lim),
                 residRMS=_map_rms(part(dec['res']), R, r_lim),
-                ocs_only=bool(is_ocs_only)))
+                ocs_only=bool(ocs)))
 
     metrics_df = pd.DataFrame(metrics).sort_values('j').reset_index(drop=True)
     print(f"  overall |O| tel RMS={np.sqrt((metrics_df['O_tel']**2).mean()):.4f}  "
@@ -229,11 +235,12 @@ def _write_outputs(base, dec_by_j, noll_list, metrics_df, A, X, Y,
 
       intrinsic_split_maps.parquet   — AOS handoff: thx_deg, thy_deg and per j
           Z{j}_OCS / Z{j}_CCS sampled on the rot~0 regular disk-grid (um).
-          Camera term is zeroed for OCS-only j.  meta carries the split params.
+          For OCS-only j the camera term is zero (C was constrained out of the
+          fit, so O is the C=0 telescope map).  meta carries the split params.
       intrinsic_split_decomp.parquet — load-bearing (sidecar reconstruction):
           one row per (j, part) with the complex polar O/C fields flattened to
           O_re/O_im/C_re/C_im list-columns (len n_r*n_az, C-order), plus
-          j, n_spin, s, part, n_r, n_az.  Polar grid A/X/Y in meta.  C is zeroed
+          j, n_spin, s, part, n_r, n_az.  Polar grid A/X/Y in meta.  C is zero
           for OCS-only j (so reconstruct_at yields O-only).
       intrinsic_split_rms.parquet    — per-Zernike diagnostic RMS (was the .csv).
     """
@@ -243,16 +250,15 @@ def _write_outputs(base, dec_by_j, noll_list, metrics_df, A, X, Y,
     jorder = [j for j in noll_list if j in dec_by_j]
 
     # ---- maps table (rot~0 bin's regular disk-grid field points) ----
+    # dec['C_pol'] is already zero for OCS-only j (constrained fit), so we sample
+    # O and C straight from the decomposition with no special-casing here.
     thx0 = np.asarray(thx0, dtype=np.float64)
     thy0 = np.asarray(thy0, dtype=np.float64)
     cols = {'thx_deg': thx0, 'thy_deg': thy0}
     for j in jorder:
         dec, part, _, is_ocs = dec_by_j[j]
         O_pts = isp.polar_field_to_points(part(dec['O_pol']), X, Y, thx0, thy0)
-        if is_ocs:
-            C_pts = np.zeros_like(O_pts)
-        else:
-            C_pts = isp.polar_field_to_points(part(dec['C_pol']), X, Y, thx0, thy0)
+        C_pts = isp.polar_field_to_points(part(dec['C_pol']), X, Y, thx0, thy0)
         cols[f'Z{j}_OCS'] = np.asarray(O_pts, dtype=np.float64)
         cols[f'Z{j}_CCS'] = np.asarray(C_pts, dtype=np.float64)
     maps = Table(cols)
@@ -266,8 +272,7 @@ def _write_outputs(base, dec_by_j, noll_list, metrics_df, A, X, Y,
     for j in jorder:
         dec, part, _, is_ocs = dec_by_j[j]
         O = np.asarray(dec['O_pol'])
-        C = np.zeros_like(np.asarray(dec['C_pol'])) if is_ocs \
-            else np.asarray(dec['C_pol'])
+        C = np.asarray(dec['C_pol'])   # already zero for OCS-only j (constrained)
         rows['j'].append(int(j))
         rows['n_spin'].append(int(dec.get('n_spin', 0)))
         rows['s'].append(int(dec['s']))
