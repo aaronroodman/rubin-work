@@ -1,0 +1,106 @@
+# ----------------------------------------------------------------------
+# OPR (Open Loop Reproduction) pipeline (Snakemake).
+#
+# Per-night: nightly_table (SUMMIT only) -> olr -> combine.
+#
+#   ./run_snake.sh -n            # dry-run: show the plan
+#   ./run_snake.sh               # build (local, detached; tuned for the RSP)
+#   snakemake --until olr        # stop after per-night OLR
+#
+# Layout:
+#   output/<day_obs>/nightly_aos_table.parquet   (ConsDB+EFD+Butler extract)
+#   output/<day_obs>/olr.parquet                 (open-loop reproduction)
+#   output/olr_combined.parquet                  (all nights concatenated)
+#
+# Config: config.yaml (nights + OFC/AOS model params).  OFC model params are
+# passed to run_olr.py as Snakemake `params` (JSON-keyed rerun trigger), not as
+# rule inputs, so editing an unrelated knob doesn't invalidate the table stage.
+# ----------------------------------------------------------------------
+import os
+import json as _json
+import yaml
+
+# Deterministic threading regardless of how the launching terminal set these
+# (mirrors the aos pipeline; one thread per job, parallelism via `snakemake -j`).
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+CFG = yaml.safe_load(open("config.yaml"))
+NIGHTS = [str(d) for d in CFG["nights"]]
+
+def olr_params_json():
+    """Resolved OLR model params -> stable JSON (rerun trigger for the olr rule)."""
+    keys = ["ofc_config_dir", "truncation", "zn_selected", "dof_indices", "per_rotation"]
+    return _json.dumps({k: CFG[k] for k in keys}, sort_keys=True, default=str)
+
+wildcard_constraints:
+    day_obs = r"\d{8}",
+
+
+rule all:
+    input:
+        "output/olr_combined.parquet",
+
+
+# --- SUMMIT-only: extract the nightly AOS table from ConsDB + EFD + Butler ---
+rule nightly_table:
+    output:
+        table = "output/{day_obs}/nightly_aos_table.parquet",
+    input:
+        script = "code/run_nightly_table.py",
+        lib    = "code/nightly_table.py",
+    params:
+        seq_min = CFG["seq_min"],
+        seq_max = CFG["seq_max"],
+    resources:
+        mem_mb = 8000,
+    log:
+        "logs/{day_obs}.nightly_table.log",
+    shell:
+        "python code/run_nightly_table.py --day-obs {wildcards.day_obs} "
+        "--seq-min {params.seq_min} --seq-max {params.seq_max} "
+        "--out {output.table} > {log} 2>&1"
+
+
+# --- Open Loop Reproduction: add the applied trim back to OPD and deviation ---
+rule olr:
+    output:
+        olr = "output/{day_obs}/olr.parquet",
+    input:
+        table  = "output/{day_obs}/nightly_aos_table.parquet",
+        script = "code/run_olr.py",
+        lib    = "code/olr.py",
+    params:
+        cfg          = olr_params_json(),   # rerun-trigger only (see header)
+        ofc_cfg_dir  = CFG["ofc_config_dir"],
+        truncation   = CFG["truncation"],
+        zn_selected  = " ".join(str(z) for z in CFG["zn_selected"]),
+        dof_indices  = " ".join(str(i) for i in CFG["dof_indices"]),
+    resources:
+        mem_mb = 4000,
+    log:
+        "logs/{day_obs}.olr.log",
+    shell:
+        "python code/run_olr.py --in {input.table} --out {output.olr} "
+        "--ofc-config-dir {params.ofc_cfg_dir} --truncation {params.truncation} "
+        "--zn-selected {params.zn_selected} --dof-indices {params.dof_indices} "
+        "> {log} 2>&1"
+
+
+# --- Concatenate all per-night OLR tables ---
+rule combine:
+    output:
+        combined = "output/olr_combined.parquet",
+    input:
+        olrs   = expand("output/{day_obs}/olr.parquet", day_obs=NIGHTS),
+        script = "code/combine_parquets.py",
+    resources:
+        mem_mb = 4000,
+    log:
+        "logs/combine.log",
+    shell:
+        "python code/combine_parquets.py {input.olrs} --output {output.combined} "
+        "> {log} 2>&1"

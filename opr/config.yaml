@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------
+# OPR (Open Loop Reproduction) pipeline config.
+#
+# The pipeline runs per-night:
+#   nightly_table  (SUMMIT only: ConsDB + EFD + embargo Butler)
+#       -> output/<day_obs>/nightly_aos_table.parquet
+#   olr            (adds the applied trim back -> open-loop wavefront)
+#       -> output/<day_obs>/olr.parquet
+#   combine        -> output/olr_combined.parquet
+#
+# Add a night -> add it to `nights` -> Snakemake builds it and re-combines.
+# ----------------------------------------------------------------------
+
+# Nights to process (day_obs, YYYYMMDD).
+nights:
+  - 20260415
+
+# Sequence-number range fetched per night.
+seq_min: 0
+seq_max: 9999
+
+# ConsDB endpoint (internal summit host).
+consdb_url: "http://consdb-pq.consdb:8080/consdb"
+
+# --- OFC / AOS model parameters (the OLR "model"; revise downstream here) ---
+# Path to a checkout of ts_config_mttcs (its MTAOS/ofc directory).
+# git clone https://github.com/lsst-ts/ts_config_mttcs
+ofc_config_dir: "~/WORK/ts_config_mttcs/MTAOS/ofc"
+
+# OFC truncation index (number of v-modes the controller keeps).
+truncation: 12
+
+# Pupil Noll indices the sensitivity matrix spans (z4-z19, z22-z26 = 21 terms;
+# Z20/Z21 are skipped, then zero-padded back to the dense 23-vector).
+zn_selected: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+              22, 23, 24, 25, 26]
+
+# Which of the 50 DOF map to the 22-column sensitivity matrix
+# (5 M2 hex + 5 cam hex + 7 M1M3 bending + 5 M2 bending).
+dof_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+              30, 31, 32, 33, 34]
+
+# Faithful to Craig: build the sensitivity matrix once at rotation 0.
+# (Stub for a future per-rotation revision of the analysis.)
+per_rotation: false

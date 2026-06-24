@@ -1,0 +1,14 @@
+# OPR pipeline — Python packages BEYOND what the Summit RSP lsst-scipipe stack
+# provides.  The stack already supplies: lsst.daf.butler, lsst.ts.ofc,
+# lsst.ts.wep, lsst.summit.utils, lsst.obs.lsst, lsst.ts.xml, lsst.ts.m1m3,
+# numpy, pandas, matplotlib, astropy, galsim, pyarrow.
+#
+# Install on the Summit RSP with:
+#   pip install --user -r requirements.txt
+#
+snakemake        # not in the RSP stack (pulls in pulp)
+tqdm             # usually present in the stack; harmless if already installed
+
+# NOT pip: clone ts_config_mttcs and point config.yaml:ofc_config_dir at its
+# MTAOS/ofc directory:
+#   git clone https://github.com/lsst-ts/ts_config_mttcs
