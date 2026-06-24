@@ -5,7 +5,7 @@ Ported faithfully from the canonical generator
 ``notebooks/nightly_report/nightly_report_ts_version.ipynb`` (branch
 ``tickets/DM-54406``), analysis-code cells only (plotting stripped).
 
-This is the SUMMIT-only stage of the OPR pipeline: it queries ConsDB, the EFD,
+This is the SUMMIT-only stage of the OLR pipeline: it queries ConsDB, the EFD,
 and the embargo Butler to build one row per seq with scalar columns plus the
 vector columns the OLR step consumes:
 

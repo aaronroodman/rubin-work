@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------
-# OPR (Open Loop Reproduction) pipeline (Snakemake).
+# OLR (Open Loop Reproduction) pipeline (Snakemake).
 #
 # Per-night: nightly_table (SUMMIT only) -> olr -> combine.
 #

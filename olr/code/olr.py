@@ -1,4 +1,4 @@
-"""Open Loop Reproduction (OLR/OPR) core.
+"""Open Loop Reproduction (OLR) core.
 
 Reconstruct the open-loop wavefront from a night's closed-loop WFS Zernikes by
 *adding back* the AOS correction (trim) that was applied during the night:

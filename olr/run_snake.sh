@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch the OPR Snakemake pipeline locally on the Summit RSP terminal.
+# Launch the OLR Snakemake pipeline locally on the Summit RSP terminal.
 #
 # Summit RSP has NO Slurm/batch system, so this is local-only: run snakemake on
 # THIS node, detached via nohup so a dropped SSH/network connection won't kill

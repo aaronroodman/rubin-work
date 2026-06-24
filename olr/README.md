@@ -1,4 +1,4 @@
-# opr — Open Loop Reproduction (OPR/OLR) pipeline
+# olr — Open Loop Reproduction (OLR) pipeline
 
 A Snakemake pipeline that reproduces the **open-loop** WFS wavefront from a
 night of Rubin AOS operations, as the starting point for a revised AOS analysis.
@@ -68,6 +68,14 @@ tail -f logs/run_*.log
 - `code/run_olr.py` — CLI for the OLR stage (asserts the OPD/deviation/intrinsic
   identity before writing).
 - `code/combine_parquets.py` — streaming concatenation (copied from `aos/code`).
+
+## Notebooks
+
+- `olr_quicklook.ipynb` — quicklook diagnostics on the per-night outputs:
+  open- vs closed-loop Zernikes, the wavefront RMS the loop removed (with PSF
+  FWHM), and the applied trim split by component (camera/M2 piston, decenter,
+  tip/tilt, and M1M3 / M2 bending-mode heatmaps). Set `day_obs` in the
+  Parameters cell; toggle `field` between `deviation` and `opd`.
 
 ## Provenance
 

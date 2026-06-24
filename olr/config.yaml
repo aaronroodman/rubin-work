@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------
-# OPR (Open Loop Reproduction) pipeline config.
+# OLR (Open Loop Reproduction) pipeline config.
 #
 # The pipeline runs per-night:
 #   nightly_table  (SUMMIT only: ConsDB + EFD + embargo Butler)

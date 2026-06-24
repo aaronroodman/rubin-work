@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CLI: build the nightly AOS table for one night and write it to parquet.
 
-SUMMIT-only stage of the OPR pipeline (needs ConsDB + EFD + embargo Butler).
+SUMMIT-only stage of the OLR pipeline (needs ConsDB + EFD + embargo Butler).
 
     python run_nightly_table.py --day-obs 20260329 --out output/20260329/nightly_aos_table.parquet
 

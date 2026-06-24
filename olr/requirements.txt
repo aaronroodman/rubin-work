@@ -1,4 +1,4 @@
-# OPR pipeline — Python packages BEYOND what the Summit RSP lsst-scipipe stack
+# OLR pipeline — Python packages BEYOND what the Summit RSP lsst-scipipe stack
 # provides.  The stack already supplies: lsst.daf.butler, lsst.ts.ofc,
 # lsst.ts.wep, lsst.summit.utils, lsst.obs.lsst, lsst.ts.xml, lsst.ts.m1m3,
 # numpy, pandas, matplotlib, astropy, galsim, pyarrow.
