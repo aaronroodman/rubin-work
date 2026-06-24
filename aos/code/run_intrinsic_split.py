@@ -5,13 +5,24 @@ and CCS (camera-fixed) components — Phase 2 step 2.
 Script port of the decomposition core of intrinsic_camera_telescope_split.ipynb
 (which stays for interactive diagnostics).  Reads the per-rotator-bin grids
 written by run_build_intrinsic.py, runs the spin-aware OCS/CCS decomposition
-(intrinsic_split.py) per Zernike group, and writes a single
+(intrinsic_split.py) per Zernike group, and writes three all-parquet (astropy
+Table) products under output/<param_set>/<mi_name>/:
 
-    output/<param_set>/<mi_name>/intrinsic_split.parquet
+    intrinsic_split_maps.parquet    AOS handoff: thx_deg, thy_deg, Z{j}_OCS,
+                                    Z{j}_CCS on the rot~0 regular disk-grid (um)
+    intrinsic_split_decomp.parquet  load-bearing: complex polar O/C fields per
+                                    (j, part) for per-donut reconstruction (read
+                                    by run_make_intrinsic_sidecar.py)
+    intrinsic_split_rms.parquet     per-Zernike telescope/camera/residual RMS
 
-with O_Z{j} (OCS) and C_Z{j} (CCS) sampled at the rot~0 field points, plus a
-…_rms.csv of the per-Zernike telescope/camera/residual RMS.  RSP-only
-(numpy/scipy + intrinsic_split).
+Config knobs (mi_config.yaml `split:` block, per entry):
+  * rotator_select  — subset of rotator bins to decompose (drop an out-of-family
+                      epoch that sits at distinct rotator angles); no rebuild.
+  * split_js        — Noll j to keep a FULL OCS/CCS split; all other j become
+                      OCS-only (camera term forced to 0 in the outputs).
+  * ocs_only        — explicit Noll j to force OCS-only.
+  * build_from      — reuse a parent entry's already-built grids (no rebuild).
+RSP-only (numpy/scipy + intrinsic_split).
 """
 import argparse
 import sys
@@ -58,7 +69,33 @@ def main():
     rot_bins = mc.rotator_bins(cfg)
     alt_range = (cfg.get('alt_min_deg'), cfg.get('alt_max_deg'))
 
+    # Optional rotator-bin subset: read/use only these of the entry's bins (the
+    # build grids for ALL bins still exist; we just decompose a subset — e.g. to
+    # drop an out-of-family epoch that occupies distinct rotator angles).
+    sel = mc.rotator_select(cfg)
+    if sel is not None:
+        sel_set = {(round(lo, 3), round(hi, 3)) for lo, hi in sel}
+        kept = [(lo, hi) for lo, hi in rot_bins
+                if (round(lo, 3), round(hi, 3)) in sel_set]
+        missing = sel_set - {(round(lo, 3), round(hi, 3)) for lo, hi in rot_bins}
+        if missing:
+            raise ValueError(f'rotator_select bins not in rotator_bins: {sorted(missing)}')
+        print(f'[intrinsic_split] rotator_select: using {len(kept)}/{len(rot_bins)} '
+              f'bins {kept}')
+        rot_bins = kept
+
+    # Per-Zernike OCS-only set: force the camera (CCS) term to zero in the outputs.
+    ocs_only = mc.ocs_only_js(cfg, noll_list)
+    if ocs_only:
+        print(f'[intrinsic_split] OCS-only (C forced to 0): {sorted(ocs_only)}')
+
+    # Read the per-rotator-bin grids from the BUILD SOURCE entry (build_from lets
+    # a derived entry reuse a parent's already-built grids — no rebuild).
+    src_mi = mc.build_source(cfg, args.mi_name)
     base = Path(args.output_root) / args.param_set / args.mi_name
+    src_base = Path(args.output_root) / args.param_set / src_mi
+    if src_mi != args.mi_name:
+        print(f'[intrinsic_split] reading build grids from source mi={src_mi!r}')
     fits_path = Path(args.output_root) / args.param_set / 'fits.parquet'
     fits_table = (pd.read_parquet(fits_path,
                                   columns=['rotator_angle', 'alt', 'day_obs', 'seq_num'])
@@ -67,7 +104,7 @@ def main():
     # ---- load each rotator-bin grid + its mean rotator angle ----
     dsets, thetas, labels = [], [], []
     for lo, hi in rot_bins:
-        gp = base / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet'
+        gp = src_base / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet'
         if not gp.exists():
             raise FileNotFoundError(gp)
         df = pd.read_parquet(gp)
@@ -147,65 +184,119 @@ def main():
             print(f"  (skipping unpaired {grp['label']})")
             continue
         for j, part in comps:
-            dec_by_j[j] = (dec, part, Zc)
+            is_ocs_only = j in ocs_only
+            dec_by_j[j] = (dec, part, Zc, is_ocs_only)
             metrics.append(dict(
                 Zernike=f'Z{j}', j=j, spin=abs(dec['n_spin']),
                 dataRMS=_map_rms(part(Zc), R, r_lim),
                 O_tel=_map_rms(part(dec['O_pol']), R, r_lim),
+                # C_cam is the *fitted* camera RMS even when OCS-only zeros it in
+                # the outputs — so the diagnostic shows what was discarded.
                 C_cam=_map_rms(part(dec['C_pol']), R, r_lim),
-                residRMS=_map_rms(part(dec['res']), R, r_lim)))
+                residRMS=_map_rms(part(dec['res']), R, r_lim),
+                ocs_only=bool(is_ocs_only)))
 
     metrics_df = pd.DataFrame(metrics).sort_values('j').reset_index(drop=True)
     print(f"  overall |O| tel RMS={np.sqrt((metrics_df['O_tel']**2).mean()):.4f}  "
           f"|C| cam RMS={np.sqrt((metrics_df['C_cam']**2).mean()):.4f} um")
 
-    # ---- resample O / C onto the rot~0 grid; write outputs ----
+    base.mkdir(parents=True, exist_ok=True)
+    # Maps are sampled on the rot~0 bin's regular disk-grid field points (the
+    # build grid is a 71x71 Cartesian lattice masked to the field radius).
     i0 = int(np.argmin(np.abs(thetas)))
     thx0, thy0 = dsets[i0]['thx'], dsets[i0]['thy']
-    out = {'thx_deg': thx0, 'thy_deg': thy0}
-    for j in noll_list:
-        if j not in dec_by_j:
-            continue
-        dec, part, _ = dec_by_j[j]
-        out[f'O_Z{j}'] = isp.polar_field_to_points(part(dec['O_pol']), X, Y, thx0, thy0)
-        out[f'C_Z{j}'] = isp.polar_field_to_points(part(dec['C_pol']), X, Y, thx0, thy0)
-    df_out = pd.DataFrame(out)
-    df_out.attrs['rotation_sign'] = int(s)
-    df_out.attrs['degen_assignment'] = sp['degen_assignment']
-    df_out.attrs['thetas_deg'] = list(np.round(thetas, 3))
-    base.mkdir(parents=True, exist_ok=True)
-    df_out.to_parquet(base / 'intrinsic_split.parquet')
-    metrics_df.to_csv(base / 'intrinsic_split_rms.csv', index=False)
-    print(f'  wrote intrinsic_split.parquet ({len(df_out)} rows x '
-          f'{len(df_out.columns)} cols) + intrinsic_split_rms.csv')
-
-    # ---- persist the complex polar decomposition for per-donut reconstruction
-    # (step 3, run_make_intrinsic_sidecar.py).  One (O_pol, C_pol, n_spin, s,
-    # part) record per pupil Noll j; pairs duplicate the shared group dec, which
-    # is cheap (n_r x n_az complex).  `part` = 0 (real) / 1 (imag).
-    jvals, Op, Cp, nsp, ss, prt = [], [], [], [], [], []
-    for j in noll_list:
-        if j not in dec_by_j:
-            continue
-        dec, part, _ = dec_by_j[j]
-        jvals.append(int(j))
-        Op.append(np.asarray(dec['O_pol']))
-        Cp.append(np.asarray(dec['C_pol']))
-        nsp.append(int(dec.get('n_spin', 0)))
-        ss.append(int(dec['s']))
-        prt.append(0 if part is np.real else 1)
-    np.savez(base / 'intrinsic_split_decomp.npz',
-             A=A, X=X, Y=Y, jvals=np.array(jvals, dtype=int),
-             O_pol=np.array(Op), C_pol=np.array(Cp),
-             n_spin=np.array(nsp, dtype=int), s=np.array(ss, dtype=int),
-             part=np.array(prt, dtype=int))
-    print(f'  wrote intrinsic_split_decomp.npz ({len(jvals)} Zernikes) '
-          f'for per-donut reconstruction')
+    meta = dict(rotation_sign=int(s), degen_assignment=str(sp['degen_assignment']),
+                thetas_deg=[float(t) for t in np.round(thetas, 3)],
+                n_bins_used=int(len(thetas)),
+                rotator_select=([list(b) for b in sel] if sel is not None else None),
+                ocs_only=sorted(int(j) for j in ocs_only),
+                build_from=(src_mi if src_mi != args.mi_name else None))
+    _write_outputs(base, dec_by_j, noll_list, metrics_df, A, X, Y,
+                   thx0, thy0, meta)
 
     # ---- diagnostic plots (RMS summary + per-Zernike O/C/residual maps) ----
     _write_split_pdf(base / 'intrinsic_split.pdf', metrics_df, dec_by_j,
                      noll_list, thetas, labels, X, Y, R, r_lim, s)
     print('[intrinsic_split] done.')
+
+
+# ----------------------------------------------------------------------
+# output tables (all-parquet astropy Tables)
+# ----------------------------------------------------------------------
+def _write_outputs(base, dec_by_j, noll_list, metrics_df, A, X, Y,
+                   thx0, thy0, meta):
+    """Write the three parquet products (all astropy Tables):
+
+      intrinsic_split_maps.parquet   — AOS handoff: thx_deg, thy_deg and per j
+          Z{j}_OCS / Z{j}_CCS sampled on the rot~0 regular disk-grid (um).
+          Camera term is zeroed for OCS-only j.  meta carries the split params.
+      intrinsic_split_decomp.parquet — load-bearing (sidecar reconstruction):
+          one row per (j, part) with the complex polar O/C fields flattened to
+          O_re/O_im/C_re/C_im list-columns (len n_r*n_az, C-order), plus
+          j, n_spin, s, part, n_r, n_az.  Polar grid A/X/Y in meta.  C is zeroed
+          for OCS-only j (so reconstruct_at yields O-only).
+      intrinsic_split_rms.parquet    — per-Zernike diagnostic RMS (was the .csv).
+    """
+    from astropy.table import Table
+
+    n_r, n_az = np.asarray(X).shape
+    jorder = [j for j in noll_list if j in dec_by_j]
+
+    # ---- maps table (rot~0 bin's regular disk-grid field points) ----
+    thx0 = np.asarray(thx0, dtype=np.float64)
+    thy0 = np.asarray(thy0, dtype=np.float64)
+    cols = {'thx_deg': thx0, 'thy_deg': thy0}
+    for j in jorder:
+        dec, part, _, is_ocs = dec_by_j[j]
+        O_pts = isp.polar_field_to_points(part(dec['O_pol']), X, Y, thx0, thy0)
+        if is_ocs:
+            C_pts = np.zeros_like(O_pts)
+        else:
+            C_pts = isp.polar_field_to_points(part(dec['C_pol']), X, Y, thx0, thy0)
+        cols[f'Z{j}_OCS'] = np.asarray(O_pts, dtype=np.float64)
+        cols[f'Z{j}_CCS'] = np.asarray(C_pts, dtype=np.float64)
+    maps = Table(cols)
+    maps.meta.update({k: v for k, v in meta.items() if v is not None})
+    maps.write(str(base / 'intrinsic_split_maps.parquet'),
+               format='parquet', overwrite=True)
+
+    # ---- decomp table (complex polar fields, per (j, part)) ----
+    rows = dict(j=[], n_spin=[], s=[], part=[], n_r=[], n_az=[],
+                O_re=[], O_im=[], C_re=[], C_im=[])
+    for j in jorder:
+        dec, part, _, is_ocs = dec_by_j[j]
+        O = np.asarray(dec['O_pol'])
+        C = np.zeros_like(np.asarray(dec['C_pol'])) if is_ocs \
+            else np.asarray(dec['C_pol'])
+        rows['j'].append(int(j))
+        rows['n_spin'].append(int(dec.get('n_spin', 0)))
+        rows['s'].append(int(dec['s']))
+        rows['part'].append(0 if part is np.real else 1)
+        rows['n_r'].append(int(n_r)); rows['n_az'].append(int(n_az))
+        rows['O_re'].append(O.real.ravel().astype(np.float64))
+        rows['O_im'].append(O.imag.ravel().astype(np.float64))
+        rows['C_re'].append(C.real.ravel().astype(np.float64))
+        rows['C_im'].append(C.imag.ravel().astype(np.float64))
+    decomp = Table(rows)
+    # Polar grid is identical for every row -> store once in meta (lists so the
+    # astropy parquet writer round-trips them via pyarrow metadata).
+    decomp.meta.update(dict(
+        A=[float(a) for a in np.asarray(A).ravel()],
+        X=[float(x) for x in np.asarray(X).ravel()],
+        Y=[float(y) for y in np.asarray(Y).ravel()],
+        n_r=int(n_r), n_az=int(n_az),
+        rotation_sign=int(meta['rotation_sign'])))
+    decomp.write(str(base / 'intrinsic_split_decomp.parquet'),
+                 format='parquet', overwrite=True)
+
+    # ---- rms diagnostic table ----
+    Table.from_pandas(metrics_df).write(
+        str(base / 'intrinsic_split_rms.parquet'),
+        format='parquet', overwrite=True)
+
+    print(f'  wrote intrinsic_split_maps.parquet ({len(maps)} rows x '
+          f'{len(maps.colnames)} cols), intrinsic_split_decomp.parquet '
+          f'({len(decomp)} (j,part) records), intrinsic_split_rms.parquet')
 
 
 # ----------------------------------------------------------------------
@@ -320,7 +411,7 @@ def _write_split_pdf(path, metrics_df, dec_by_j, noll_list, thetas, labels,
         for j in noll_list:
             if j not in dec_by_j:
                 continue
-            dec, part, Zc = dec_by_j[j]
+            dec, part, Zc, _ = dec_by_j[j]
             for fig in _zernike_pages(part, dec, Zc, thetas, labels,
                                       X, Y, R, r_lim, f'Z{j}'):
                 pdf.savefig(fig, bbox_inches='tight', dpi=_SPLIT_DPI)

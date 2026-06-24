@@ -55,9 +55,15 @@ def chunk_files(ps, name):
 # ---- Phase 2 (measured intrinsic) helpers, driven by mi_config.yaml ----
 def mi_names(ps):   return _mc.mi_names(ps, doc=MI_DOC)
 def mi_rotbins(ps, mi): return _mc.rotator_bins(_mc.load_mi_config(ps, mi, doc=MI_DOC))
+def mi_build_src(ps, mi):
+    # entry whose build grids to read (build_from -> reuse a parent's grids)
+    return _mc.build_source(_mc.load_mi_config(ps, mi, doc=MI_DOC), mi)
 def mi_bin_grids(ps, mi):
-    return [f"output/{ps}/{mi}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
-            for lo, hi in mi_rotbins(ps, mi)]
+    # grids come from the build SOURCE entry; bins are the source's bins so the
+    # paths point at already-built grids (a build_from entry triggers no build).
+    src = mi_build_src(ps, mi)
+    return [f"output/{ps}/{src}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
+            for lo, hi in mi_rotbins(ps, src)]
 MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
 # param_sets with a paired in-focus corner-WFS (cwfs) collection
@@ -253,9 +259,10 @@ rule intrinsic_split:
         script = "code/run_intrinsic_split.py",
         lib    = "code/intrinsic_split.py",
     output:
-        parquet = "output/{ps}/{mi}/intrinsic_split.parquet",
-        decomp  = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
-        plots   = "output/{ps}/{mi}/intrinsic_split.pdf",
+        maps   = "output/{ps}/{mi}/intrinsic_split_maps.parquet",
+        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
+        rms    = "output/{ps}/{mi}/intrinsic_split_rms.parquet",
+        plots  = "output/{ps}/{mi}/intrinsic_split.pdf",
     params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.intrinsic_split.log"
@@ -320,7 +327,7 @@ rule study_wfs_radial:
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
     input:
-        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.npz",
+        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         script = "code/run_make_intrinsic_sidecar.py",

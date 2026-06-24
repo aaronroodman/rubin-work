@@ -72,13 +72,26 @@ def main():
     base = Path(args.output_root) / args.param_set
     mi_dir = base / args.mi_name
 
-    # ---- decomposition (step 2) ----
-    dz = np.load(mi_dir / 'intrinsic_split_decomp.npz')
-    A = dz['A']; X = dz['X']; Y = dz['Y']
-    jvals = dz['jvals'].tolist()
-    O_pol, C_pol = dz['O_pol'], dz['C_pol']
-    n_spin, s_arr, part = dz['n_spin'], dz['s'], dz['part']
+    # ---- decomposition (step 2): all-parquet astropy Table ----
+    # One row per (j, part); O/C complex polar fields are flattened to
+    # O_re/O_im/C_re/C_im (len n_r*n_az, C-order).  Polar grid A/X/Y in .meta.
+    from astropy.table import Table
+    dt = Table.read(str(mi_dir / 'intrinsic_split_decomp.parquet'), format='parquet')
+    n_r = int(dt.meta['n_r']); n_az = int(dt.meta['n_az'])
+    A = np.asarray(dt.meta['A'], dtype=float)
+    X = np.asarray(dt.meta['X'], dtype=float).reshape(n_r, n_az)
+    Y = np.asarray(dt.meta['Y'], dtype=float).reshape(n_r, n_az)
+    jvals = [int(j) for j in dt['j']]
     nZk = len(jvals)
+
+    def _fld(row, re_col, im_col):
+        return (np.asarray(dt[re_col][row], dtype=float)
+                + 1j * np.asarray(dt[im_col][row], dtype=float)).reshape(n_r, n_az)
+    O_pol = np.stack([_fld(i, 'O_re', 'O_im') for i in range(nZk)])
+    C_pol = np.stack([_fld(i, 'C_re', 'C_im') for i in range(nZk)])
+    n_spin = np.asarray(dt['n_spin'], dtype=int)
+    s_arr = np.asarray(dt['s'], dtype=int)
+    part = np.asarray(dt['part'], dtype=int)
     j4_col = jvals.index(4) if 4 in jvals else None
     print(f'[sidecar] {args.param_set}/{args.mi_name}: {nZk} Zernikes {jvals}')
 

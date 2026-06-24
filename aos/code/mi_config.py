@@ -87,6 +87,44 @@ def rotator_bins(cfg):
     return [(float(lo), float(hi)) for lo, hi in cfg['rotator_bins']]
 
 
+def build_source(cfg, mi_name):
+    """The mi_name whose build grids this entry's split should read.
+
+    ``build_from`` lets a derived entry (e.g. a rotator-subset split) reuse a
+    parent entry's already-built per-rotator-bin grids instead of triggering its
+    own build.  Absent -> self."""
+    return (cfg.get('build_from') or mi_name)
+
+
+def rotator_select(cfg):
+    """Optional subset of rotator bins the split actually uses, as
+    [(lo, hi), ...].  Read from ``split.rotator_select``; None -> use all bins."""
+    sel = (cfg.get('split') or {}).get('rotator_select')
+    if not sel:
+        return None
+    return [(float(lo), float(hi)) for lo, hi in sel]
+
+
+def ocs_only_js(cfg, noll_list):
+    """Set of Noll j for which the camera (CCS) term is forced to zero.
+
+    Resolution (split.* keys, later wins is not needed — they are alternatives):
+      * ``split.split_js``  -> j to KEEP a full OCS/CCS split; all OTHERS in
+        ``noll_list`` become OCS-only.  (Convenient "only split Z4..Z8" form.)
+      * ``split.ocs_only``  -> explicit j to force OCS-only.
+    If both are given, their effects are unioned (a j is OCS-only if it is in
+    ocs_only OR not in split_js).  Neither -> empty set (full split for all)."""
+    split = cfg.get('split') or {}
+    noll = [int(j) for j in noll_list]
+    out = set()
+    split_js = split.get('split_js')
+    if split_js is not None:
+        keep = {int(j) for j in split_js}
+        out |= {j for j in noll if j not in keep}
+    out |= {int(j) for j in (split.get('ocs_only') or [])}
+    return out
+
+
 def as_band_list(filt):
     if filt is None:
         return None

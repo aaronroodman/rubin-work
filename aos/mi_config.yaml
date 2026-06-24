@@ -28,7 +28,15 @@
 #                 min_donuts, bad_fit_threshold, max_visits, ofc_normalization_yaml,
 #                 height_source, batoid_rubin_height_map_dir, height_map_fits,
 #                 height_to_z4_factor, wfs_edge_cut_deg, ...)
-#   split:        OCS/CCS decomposition params
+#   split:        OCS/CCS decomposition params.  Optional knobs:
+#                   rotator_select: subset of rotator_bins to decompose (drop an
+#                     out-of-family epoch sitting at distinct rotator angles); the
+#                     full set of build grids still exists -> no rebuild.
+#                   split_js: Noll j to KEEP a full OCS/CCS split; all OTHER j in
+#                     noll_list become OCS-only (camera term forced to 0 on output).
+#                   ocs_only: explicit Noll j to force OCS-only.
+#   build_from    reuse another entry's already-built per-rotator-bin grids
+#                 (no rebuild); this entry only re-runs split + downstream.
 #   coord_sys     OCS (default)
 # ----------------------------------------------------------------------
 
@@ -92,6 +100,22 @@ measured_intrinsics:
     - name: pathA_50_50_i
       n_dof: 50
       n_keep: 50
+    # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
+    # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
+    # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
+    # Z9+ approximated as OCS-only.
+    - name: pathA_50_34_i_5rot
+      n_dof: 50
+      n_keep: 34
+      build_from: pathA_50_34_i
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4, 5, 6, 7, 8]
 
   fam_danish_1_1_1_wep17_3_0_bin2x:
     - name: pathA_50_34_i
