@@ -48,14 +48,17 @@ Phase 3 — analyses (per param_set × mi_name)│
 | 2 | `intrinsic_split` | per (ps, mi) | Decompose the grids into telescope-fixed (OCS) + camera-fixed (CCS) parts |
 | 2 | `study_radialbins` | per (ps, mi) | OCS measured intrinsic in 4 WFS radial shells, overlaid by rotator bin (pre-split) |
 | 2 | `intrinsic_sidecar` | per (ps, mi) | Per-donut measured-intrinsic Zernikes, row-aligned to `donuts.parquet` |
+| 2 | `wfs_mimic` | per (ps, mi) | FAM-mimicked 4-corner WFS deviation covariance (84×84 + 21×21), image-sampled |
 | 2 | `refit_mi` | per (ps, mi) | DZ refit subtracting the *measured* intrinsic instead of batoid |
 | 3 | `build_lut` | per (ps, mi) | Averaged-DOF look-up table from the per-visit DZ fits |
 | 3 | `dz_correlations` | per (ps, mi) | DZ↔DZ Pearson correlations on the MI-refit residuals |
 | 3 | `thermal_correlations` | per (ps, mi) | DZ↔EFD-temperature correlations on the MI-refit residuals |
 | 3 | `bounce` | per (ps, mi) | FAM bounce-test paired Δ (DZ / v-mode / DOF) with significance maps |
 
-Planned additions: port `study_compare_donuts.ipynb` and `study_wfs_mimic.ipynb`
-to pipeline scripts and add them to the Snakemake DAG.
+Planned additions: port `study_compare_donuts.ipynb` to a pipeline script and add
+it to the Snakemake DAG. The WFS-mimic *covariance* core is now the `wfs_mimic`
+step; the remaining SVD / DOF-recovery / FWHM exploration still lives in
+`study_wfs_mimic.ipynb`.
 
 ## Pipeline steps in detail
 
@@ -135,6 +138,18 @@ O + C decomposition at every donut's field position (full spin reconstruction,
 C evaluated at the donut's CCS coordinates so the camera term rotates
 correctly; plus CCD-height Z4) → `zk_intrinsic.parquet`, row-aligned to the
 combined `donuts.parquet`.
+
+**`wfs_mimic`** — `code/run_wfs_mimic.py`. Mimics the four corner wavefront
+sensors from FAM donuts: per image, donuts in four annular wedges at the WFS
+radius (centred `delta + [0,90,180,270]°`) give four pseudo-WFS Zernike vectors,
+and the per-donut deviation (measured − `zk_intrinsic` sidecar, so the OCS/CCS
+intrinsic is subtracted at each image's rotator) is median-pooled per wedge.
+Covariance over **images** (not donuts) → `wfs_mimic_cov84.parquet` (84×84
+cross-corner `Z{j}_c{0..3}`), `wfs_mimic_cov21.parquet` (21×21 = mean of the four
+diagonal corner blocks), `wfs_mimic_cov_bins.parquet` (per rotator-subset, tidy),
+and `wfs_mimic.pdf`. Image (rotator-angle) selection via the `analysis_config.yaml`
+`wfs_mimic.rotator_keep` ranges drops out-of-family rotator points, independent of
+`split.rotator_select`. The 84×84 needs ≥84 images for full rank (logged).
 
 **`refit_mi`** — `code/run_dz_fit.py --intrinsic-sidecar`. Re-runs the DZ fit
 subtracting the *measured* intrinsic instead of the batoid column →
@@ -228,9 +243,11 @@ output/<param_set>/
   plots/                                                 # trio validation, aberration_pairs
   <mi_name>/
     build/rot_<lo>_<hi>/intrinsic_grid.parquet           # per rotator bin
-    intrinsic_split.{parquet,pdf}  intrinsic_split_decomp.npz
+    build/rot_<lo>_<hi>/intrinsic_cov_edge.parquet       # FoV-edge 21x21 (per-donut residual)
+    intrinsic_split_{maps,decomp,rms}.parquet  intrinsic_split.pdf
     study_radialbins.pdf                                 # MI at WFS radius vs rotator
     zk_intrinsic.parquet                                 # per-donut sidecar
+    wfs_mimic/ wfs_mimic_cov{84,21}.parquet  wfs_mimic_cov_bins.parquet  wfs_mimic.pdf
     fits.parquet                                         # MI-refit DZ fits
     lut/ {lut,lut_dz}.parquet  lut.pdf
     bounce_kj_stats.parquet
@@ -260,7 +277,8 @@ Closed-loop AOS performance, separate from the FAM wavefront pipeline.
 | `intrinsics_checkZ4.ipynb` | Check that the Z4 intrinsic map correctly accounts for CCD-to-CCD height variation: subtract the per-visit linear (tilt/tip/piston) Z4, bin in focal plane, compare against independent intrinsic computations and the CCD height map. | 2026-04-20 | 2026-04-21 |
 | `intrinsic_Zj.ipynb` | Extend the Z4 check to every Zernike carried by the danish fit (Noll 4–19, 22–26): rotator ≈ 0° donut selection, per-Zj focal-plane median maps of data − model. | 2026-04-22 | 2026-04-22 |
 | `study_compare_donuts.ipynb` | Compare per-donut wavefront Zernikes between two processing runs (param_set A vs B — code version, binning, or algorithm). Per-CCD positional donut matching, then coverage maps, per-visit large-\|Δ\|, density (hist or hexbin) over the full focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS), and an optional per-visit double-Zernike-fit comparison. Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and `donutalgo_comparison`. Shared code in `code/compare_donuts.py`. **TODO: port to a pipeline script.** | 2026-06-11 | 2026-06-11 |
-| `study_wfs_mimic.ipynb` | Study whether the 4 corner WFS can reconstruct the optical state from FAM observations. Mimics WFS measurements by averaging FAM donuts in annular wedges at the WFS field radius, subtracts measured intrinsic, builds WFS-specific SVD of the sensitivity matrix, recovers DOFs, and compares against full FAM DOF analysis. **TODO: port to a pipeline script.** | 2026-06-04 | 2026-06-04 |
+| `study_wfs_mimic.ipynb` | Study whether the 4 corner WFS can reconstruct the optical state from FAM observations. Mimics WFS measurements by averaging FAM donuts in annular wedges at the WFS field radius, subtracts measured intrinsic, builds WFS-specific SVD of the sensitivity matrix, recovers DOFs, and compares against full FAM DOF analysis. The mimic + **covariance** core is now the `wfs_mimic` pipeline step (`run_wfs_mimic.py`); the SVD / DOF-recovery / FWHM exploration here is **TODO: rewire onto the pipeline outputs.** | 2026-06-04 | 2026-06-04 |
+| `wfs_mimic_covariance.ipynb` | Thin reader for the `wfs_mimic` step's covariance products: loads `wfs_mimic_cov{84,21}.parquet` + `_cov_bins.parquet`, plots the 84×84 / 21×21 covariance & correlation heatmaps, the per-Zernike between-corner correlation, and the per rotator-subset rank/n_images summary. | 2026-06-24 | 2026-06-24 |
 
 ### Superseded by pipeline steps (kept as reference)
 
