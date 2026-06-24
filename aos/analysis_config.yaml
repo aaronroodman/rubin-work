@@ -70,6 +70,16 @@ defaults:
     n_radial_bins: 4
     azimuth_bin_deg: 30.0 # coarser than study_radialbins — WFS annulus is sparser
 
+  wfs_mimic:              # FAM-derived corner-WFS deviation covariance (run_wfs_mimic)
+    wfs_inner_radius_deg: 1.60   # annular-wedge inner edge (deg)
+    wfs_outer_radius_deg: 1.725  # annular-wedge outer edge (deg) — AOS-online limit
+    wfs_azimuth_width_deg: 7.5   # full azimuthal extent of each corner wedge (±3.75°)
+    delta_deg: 0.0               # azimuth offset of the 4 wedge centers (delta+[0,90,180,270])
+    min_donuts_per_wedge: 3      # image skipped unless every wedge has this many donuts
+    rotator_keep: null           # [[lo,hi],...] rotator-angle ranges (deg) of images to KEEP;
+                                 # null -> all. Use to drop out-of-family rotator points.
+                                 # Independent of split.rotator_select (the map-build subset).
+
 # Per-param_set / per-(param_set, mi_name) overrides (optional). Example:
 # overrides:
 #   fam_danish_1_0_wep17_3_0_bin2x:

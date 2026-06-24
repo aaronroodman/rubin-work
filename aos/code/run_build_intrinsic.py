@@ -385,6 +385,22 @@ def _write_validation_pdf(path, result, donut_df, visits_kept, coord_sys, iZs,
                  'Path A zk residual cov/corr (all)'))
             emit(ibp.plot_zk_cov_corr(residuals[good][edge], list(iZs),
                  'Path A zk residual cov/corr (edge)'))
+            # also SAVE the FoV-edge 21x21 (per-donut residual) for hand-off
+            ecov, ecorr, en, elabs = ibp.zk_cov_corr(residuals[good][edge], list(iZs))
+            if ecov is not None:
+                from astropy.table import Table as _CovT
+                _ct = _CovT(dict(
+                    label=elabs, j=[int(j) for j in iZs],
+                    cov=[ecov[r].astype(np.float64) for r in range(len(elabs))],
+                    corr=[ecorr[r].astype(np.float64) for r in range(len(elabs))]))
+                _ct.meta.update(dict(
+                    sampling='per-donut', region='FoV edge', labels=elabs,
+                    inner_deg=float(wfs_inner), outer_deg=float(wfs_edge_cut_deg),
+                    quantity='residual = measured - fitted intrinsic',
+                    cov_units='um^2', n_donuts=int(en), coord_sys=str(coord_sys),
+                    noll=[int(j) for j in iZs]))
+                _ct.write(str(path.parent / 'intrinsic_cov_edge.parquet'),
+                          format='parquet', overwrite=True)
 
         # F. DOF recovery: final-iteration vs visit + median across iterations
         dof_per_iter = {}

@@ -1015,6 +1015,26 @@ def plot_z4_optical_page(z4_meas_ocs, z4_height_ccs, z4_optical_ocs,
     return fig
 
 
+def zk_cov_corr(resid_2d, iZs):
+    """Covariance (μm²) + correlation of the per-donut residual Zernikes.
+
+    `resid_2d` is (n_donut, n_zk); rows with any non-finite value are dropped.
+    Returns ``(cov, corr, n, labels)`` — ``(None, None, n, labels)`` if fewer
+    than 10 clean donuts.  Shared by :func:`plot_zk_cov_corr` and the build
+    step's saved ``intrinsic_cov_edge.parquet`` so the plotted and written
+    matrices are identical."""
+    R = np.asarray(resid_2d, dtype=float)
+    R = R[np.all(np.isfinite(R), axis=1)]
+    labs = [f'Z{int(j)}' for j in iZs]
+    if R.shape[0] < 10:
+        return None, None, int(R.shape[0]), labs
+    cov = np.cov(R, rowvar=False)
+    sd = np.sqrt(np.clip(np.diag(cov), 0, None))
+    with np.errstate(divide='ignore', invalid='ignore'):
+        corr = cov / np.outer(sd, sd)
+    return cov, corr, int(R.shape[0]), labs
+
+
 def plot_zk_cov_corr(resid_2d, iZs, title_root):
     """Covariance + correlation color maps of the per-donut residual
     Zernikes (residual after the nDOF / n_keep adjustment).
@@ -1022,15 +1042,9 @@ def plot_zk_cov_corr(resid_2d, iZs, title_root):
     `resid_2d` is (n_donut, n_zk); rows with any non-finite value are
     dropped.  Left panel = covariance (μm²), right = correlation [-1, 1].
     """
-    R = np.asarray(resid_2d, dtype=float)
-    R = R[np.all(np.isfinite(R), axis=1)]
-    if R.shape[0] < 10:
+    cov, corr, n, labs = zk_cov_corr(resid_2d, iZs)
+    if cov is None:
         return None
-    cov = np.cov(R, rowvar=False)
-    sd = np.sqrt(np.clip(np.diag(cov), 0, None))
-    with np.errstate(divide='ignore', invalid='ignore'):
-        corr = cov / np.outer(sd, sd)
-    labs = [f'Z{int(j)}' for j in iZs]
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), layout='constrained')
     vmax = float(np.nanpercentile(np.abs(cov), 99)) or 1e-6
     im0 = axes[0].imshow(cov, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
@@ -1044,7 +1058,7 @@ def plot_zk_cov_corr(resid_2d, iZs, title_root):
         ax.set_xticklabels(labs, rotation=90, fontsize=6)
         ax.set_yticks(range(len(labs)))
         ax.set_yticklabels(labs, fontsize=6)
-    fig.suptitle(f'{title_root}   (n = {R.shape[0]} donuts)', fontsize=12)
+    fig.suptitle(f'{title_root}   (n = {n} donuts)', fontsize=12)
     return fig
 
 

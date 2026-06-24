@@ -114,6 +114,8 @@ rule all:
         [f"output/{ps}/{mi}/wfs_build/wfs_continuity.pdf" for ps, mi in WFS_MI_PAIRS],
         # FAM vs WFS rotator-weighted agreement at the WFS radius (per ps, mi)
         [f"output/{ps}/{mi}/wfs_build/study_wfs_radial.pdf" for ps, mi in WFS_MI_PAIRS],
+        # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per (ps, mi)
+        [f"output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet" for ps, mi in MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
         [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
         # averaged-DOF LUT per (param_set, mi_name)
@@ -339,6 +341,29 @@ rule intrinsic_sidecar:
     shell:
         "python code/run_make_intrinsic_sidecar.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
+
+# ---- FAM-derived corner-WFS covariance of the measured-intrinsic deviation ----
+rule wfs_mimic:
+    input:
+        sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
+        donuts  = "output/{ps}/donuts.parquet",
+        visits  = "output/{ps}/visits.parquet",
+        script  = "code/run_wfs_mimic.py",
+        lib     = "code/mi_config.py",
+    output:
+        cov84 = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet",
+        cov21 = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov21.parquet",
+        bins  = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov_bins.parquet",
+        pdf   = "output/{ps}/{mi}/wfs_mimic/wfs_mimic.pdf",
+    params:
+        coord = lambda w: coord(w.ps),
+        cfg   = lambda w: mi_cfg_json(w.ps, w.mi),    # rerun-trigger only
+        acfg  = lambda w: an_json("wfs_mimic", w.ps, w.mi),
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.wfs_mimic.log"
+    shell:
+        "python code/run_wfs_mimic.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} --coord-sys {params.coord} > {log} 2>&1"
 
 # ---- refit the Double Zernikes using the measured intrinsic ----
 rule refit_mi:
