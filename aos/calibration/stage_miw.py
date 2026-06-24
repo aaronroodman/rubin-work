@@ -8,13 +8,14 @@ tracked, and self-describing — independent of later pipeline reruns.
     python stage_miw.py --param-set fam_danish_1_0_wep17_3_0_bin2x \
         --mi-name pathA_50_34_i_5rot --version v1
 
-Writes:
-    aos/calibration/miw/<version>/intrinsic_split_maps.parquet   (the handoff maps)
-    aos/calibration/miw/<version>/PROVENANCE.yaml                (source + git + meta)
-    aos/calibration/miw/<version>/intrinsic_split_decomp.parquet (only with --with-decomp)
+The version label is in the FILENAME (not a subdir) so it travels with the file
+wherever it is deployed. Writes into aos/calibration/miw/ :
+    intrinsic_split_maps_<version>.parquet           (the handoff maps)
+    intrinsic_split_maps_<version>.provenance.yaml   (source + git + meta)
+    intrinsic_split_decomp_<version>.parquet         (only with --with-decomp)
 
 After staging, commit the new files and tag the repo state, e.g.:
-    git add aos/calibration/miw/<version>
+    git add aos/calibration/miw/intrinsic_split_maps_<version>.*
     git commit -m "MIW calibration <version>: <param_set>/<mi_name>"
     git tag -a miw-<version> -m "MIW calibration <version>"
 
@@ -58,18 +59,22 @@ def main():
     if not src_maps.exists():
         sys.exit(f'ERROR: {src_maps} not found (run the pipeline first).')
 
-    dest = HERE / 'miw' / args.version
-    if dest.exists() and not args.force:
-        sys.exit(f'ERROR: {dest} already exists (use --force to overwrite).')
+    # version is in the FILENAME (not a subdir) so it travels with the file
+    dest = HERE / 'miw'
     dest.mkdir(parents=True, exist_ok=True)
+    v = args.version
+    maps_name = f'intrinsic_split_maps_{v}.parquet'
+    if (dest / maps_name).exists() and not args.force:
+        sys.exit(f'ERROR: {dest / maps_name} already exists (use --force to overwrite).')
 
-    shutil.copy2(src_maps, dest / 'intrinsic_split_maps.parquet')
-    staged = ['intrinsic_split_maps.parquet']
+    shutil.copy2(src_maps, dest / maps_name)
+    staged = [maps_name]
     if args.with_decomp:
         src_dec = src_dir / 'intrinsic_split_decomp.parquet'
         if src_dec.exists():
-            shutil.copy2(src_dec, dest / 'intrinsic_split_decomp.parquet')
-            staged.append('intrinsic_split_decomp.parquet')
+            dec_name = f'intrinsic_split_decomp_{v}.parquet'
+            shutil.copy2(src_dec, dest / dec_name)
+            staged.append(dec_name)
 
     # provenance: source, git state, staging time, and the maps' own .meta
     try:
@@ -86,12 +91,14 @@ def main():
         staged_files=staged,
         maps_meta={k: v for k, v in maps_meta.items()},
     )
-    with open(dest / 'PROVENANCE.yaml', 'w') as fh:
+    prov_name = f'intrinsic_split_maps_{v}.provenance.yaml'
+    with open(dest / prov_name, 'w') as fh:
         yaml.safe_dump(prov, fh, sort_keys=False, default_flow_style=False)
+    staged.append(prov_name)
 
     print(f'staged {staged} -> {dest.relative_to(REPO)}')
     print(f'  source git: {prov["git_describe"]}')
-    print('Next: git add this version dir, commit, and tag (see this script\'s docstring).')
+    print('Next: git add these files, commit, and tag (see this script\'s docstring).')
 
 
 if __name__ == '__main__':
