@@ -9,6 +9,6 @@
 snakemake        # not in the RSP stack (pulls in pulp)
 tqdm             # usually present in the stack; harmless if already installed
 
-# NOT pip: clone ts_config_mttcs and point config.yaml:ofc_config_dir at its
-# MTAOS/ofc directory:
+# NOT pip: clone ts_config_mttcs and point config.yaml:ofc_config_dir at a
+# versioned MTAOS/<vNN>/ofc directory (e.g. MTAOS/v13/ofc):
 #   git clone https://github.com/lsst-ts/ts_config_mttcs

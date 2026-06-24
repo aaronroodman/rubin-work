@@ -52,7 +52,7 @@ def main():
         truncation=args.truncation,
         zn_selected=args.zn_selected,
     )
-    print(f"Sensitivity matrix: {sens_mat.shape}")
+    _log_provenance(sens_mat, ofc_config_dir, args.truncation, args.zn_selected)
 
     records = extract_olr(
         table,
@@ -73,6 +73,34 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     out_df.to_parquet(args.out)
     print(f"Wrote {args.out}: {len(out_df)} rows, {len(out_df.columns)} cols")
+
+
+def _log_provenance(sens_mat, ofc_config_dir, truncation, zn_selected):
+    """Record exactly which OFC sensitivity data produced this run.
+
+    Printed to stdout (captured in logs/<day_obs>.olr.log) so every olr.parquet
+    is traceable to a ts_config_mttcs version + ts_ofc release.
+    """
+    import hashlib
+
+    try:
+        import lsst.ts.ofc as _ofc
+
+        ver = getattr(_ofc, "__version__", "unknown")
+        loc = getattr(_ofc, "__file__", "unknown")
+    except Exception as e:  # off-RSP / import failure
+        ver, loc = f"import-failed: {e}", "unknown"
+
+    arr = np.ascontiguousarray(sens_mat, dtype=np.float64)
+    fp = hashlib.md5(arr.tobytes()).hexdigest()
+    print("  OFC sensitivity-matrix provenance:")
+    print(f"    lsst.ts.ofc version : {ver}")
+    print(f"    lsst.ts.ofc path    : {loc}")
+    print(f"    ofc_config_dir      : {ofc_config_dir}")
+    print(f"    truncation index    : {truncation}")
+    print(f"    zn_selected         : {list(zn_selected)}")
+    print(f"    sens_mat shape      : {sens_mat.shape}")
+    print(f"    sens_mat md5        : {fp}")
 
 
 def _check_identity(df, atol=1e-4):

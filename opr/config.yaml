@@ -23,9 +23,10 @@ seq_max: 9999
 consdb_url: "http://consdb-pq.consdb:8080/consdb"
 
 # --- OFC / AOS model parameters (the OLR "model"; revise downstream here) ---
-# Path to a checkout of ts_config_mttcs (its MTAOS/ofc directory).
+# Path to a checkout of ts_config_mttcs.  The sensitivity matrix is versioned by
+# path segment (v13/ofc here) -- point this at the version you want.
 # git clone https://github.com/lsst-ts/ts_config_mttcs
-ofc_config_dir: "~/WORK/ts_config_mttcs/MTAOS/ofc"
+ofc_config_dir: "/home/aroodman/packages/ts_config_mttcs/MTAOS/v13/ofc"
 
 # OFC truncation index (number of v-modes the controller keeps).
 truncation: 12

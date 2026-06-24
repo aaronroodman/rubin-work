@@ -35,7 +35,7 @@ batch system on Summit, so the pipeline runs locally (detached).
 ```bash
 # one-time setup on the Summit RSP
 pip install --user -r requirements.txt
-git clone https://github.com/lsst-ts/ts_config_mttcs   # then set ofc_config_dir in config.yaml
+git clone https://github.com/lsst-ts/ts_config_mttcs   # set ofc_config_dir -> MTAOS/v13/ofc
 
 # edit config.yaml: add nights, set ofc_config_dir
 ./run_snake.sh -n            # dry-run: show the DAG
@@ -48,7 +48,10 @@ tail -f logs/run_*.log
 
 - `nights` — list of `day_obs` (YYYYMMDD) to process.
 - `seq_min` / `seq_max` — sequence range fetched per night.
-- `ofc_config_dir` — path to `ts_config_mttcs/MTAOS/ofc`.
+- `ofc_config_dir` — path to a versioned `ts_config_mttcs/MTAOS/<vNN>/ofc`
+  directory (the sensitivity matrix is selected by this path segment, e.g.
+  `v13`). `run_olr.py` logs the resolved dir, `lsst.ts.ofc` version, and a
+  matrix md5 for provenance.
 - `truncation`, `zn_selected`, `dof_indices` — the OFC sensitivity-matrix model;
   revise these (or override on the `run_olr.py` CLI) for the new AOS analysis.
 - `per_rotation` — stub; the sensitivity matrix is currently built once at
