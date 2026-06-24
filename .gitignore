@@ -39,6 +39,10 @@ env/
 *.pkl
 *.pickle
 
+# Exception: versioned AOS calibration products are small and tracked on purpose
+# (see aos/calibration/README.md). Negation must come after the *.parquet rule.
+!aos/calibration/**/*.parquet
+
 # ===== OS clutter =====
 .DS_Store
 .DS_Store?
