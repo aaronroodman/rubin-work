@@ -88,12 +88,7 @@ def main():
     sec = {**DEFAULT, **mc.analysis_section(
         'study_radialbins', args.param_set, args.mi_name,
         config_path=(Path(args.analysis_config) if args.analysis_config else None))}
-    rot_bins = mc.rotator_bins(cfg)
-    sel = mc.rotator_select(cfg)
-    if sel is not None:
-        sel_set = {(round(lo, 3), round(hi, 3)) for lo, hi in sel}
-        rot_bins = [(lo, hi) for lo, hi in rot_bins
-                    if (round(lo, 3), round(hi, 3)) in sel_set]
+    rot_bins = mc.selected_rotator_bins(cfg)   # rotator_bins filtered by rotator_select
     base = Path(args.output_root) / args.param_set / args.mi_name
     # grids come from the build SOURCE entry (build_from -> reuse parent's grids)
     src_mi = mc.build_source(cfg, args.mi_name)

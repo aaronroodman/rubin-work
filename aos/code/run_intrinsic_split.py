@@ -66,23 +66,16 @@ def main():
                             config_path=(Path(args.config) if args.config else None))
     sp = {**DEFAULT_SPLIT, **(cfg.get('split') or {})}
     noll_list = cfg.get('noll_list') or DEFAULT_NOLL
-    rot_bins = mc.rotator_bins(cfg)
     alt_range = (cfg.get('alt_min_deg'), cfg.get('alt_max_deg'))
 
-    # Optional rotator-bin subset: read/use only these of the entry's bins (the
-    # build grids for ALL bins still exist; we just decompose a subset — e.g. to
-    # drop an out-of-family epoch that occupies distinct rotator angles).
+    # Optional rotator-bin subset: decompose only these of the entry's bins (the
+    # build grids for ALL bins still exist; e.g. to drop an out-of-family epoch
+    # that occupies distinct rotator angles).  Shared helper validates the subset.
     sel = mc.rotator_select(cfg)
+    rot_bins = mc.selected_rotator_bins(cfg)
     if sel is not None:
-        sel_set = {(round(lo, 3), round(hi, 3)) for lo, hi in sel}
-        kept = [(lo, hi) for lo, hi in rot_bins
-                if (round(lo, 3), round(hi, 3)) in sel_set]
-        missing = sel_set - {(round(lo, 3), round(hi, 3)) for lo, hi in rot_bins}
-        if missing:
-            raise ValueError(f'rotator_select bins not in rotator_bins: {sorted(missing)}')
-        print(f'[intrinsic_split] rotator_select: using {len(kept)}/{len(rot_bins)} '
-              f'bins {kept}')
-        rot_bins = kept
+        print(f'[intrinsic_split] rotator_select: using {len(rot_bins)}/'
+              f'{len(mc.rotator_bins(cfg))} bins {rot_bins}')
 
     # Per-Zernike OCS-only set: force the camera (CCS) term to zero in the outputs.
     ocs_only = mc.ocs_only_js(cfg, noll_list)
@@ -96,6 +89,13 @@ def main():
     src_base = Path(args.output_root) / args.param_set / src_mi
     if src_mi != args.mi_name:
         print(f'[intrinsic_split] reading build grids from source mi={src_mi!r}')
+        # the bins we decompose must have been built by the source entry
+        src_bins = {(round(lo, 3), round(hi, 3))
+                    for lo, hi in mc.rotator_bins(mc.load_mi_config(args.param_set, src_mi))}
+        extra = {(round(lo, 3), round(hi, 3)) for lo, hi in rot_bins} - src_bins
+        if extra:
+            raise ValueError(f'build_from={src_mi!r}: rotator bins {sorted(extra)} are not '
+                             f'among the source entry\'s built bins')
     fits_path = Path(args.output_root) / args.param_set / 'fits.parquet'
     fits_table = (pd.read_parquet(fits_path,
                                   columns=['rotator_angle', 'alt', 'day_obs', 'seq_num'])
@@ -126,8 +126,11 @@ def main():
         labels.append(f'rot{theta:+.0f}')
     thetas = np.array(thetas)
     th_rad = np.deg2rad(thetas)
+    # distinct rotator angles drive the O/C separability — a full split needs >=2
+    n_rot_distinct = int(np.unique(np.round(thetas, 1)).size)
     print(f'[intrinsic_split] {args.param_set}/{args.mi_name}: '
-          f'{len(dsets)} rotator bins, thetas={np.round(thetas,2).tolist()}')
+          f'{len(dsets)} rotator bins, thetas={np.round(thetas,2).tolist()} '
+          f'({n_rot_distinct} distinct)')
 
     R, A, X, Y = isp.make_polar_grid(r_min=sp['r_min'], r_max=sp['r_max'],
                                      n_r=sp['n_r'], n_az=sp['n_az'])
@@ -160,45 +163,56 @@ def main():
     # ---- per-group decomposition ----
     groups = isp.group_zernikes(noll_list)
     dec_by_j, metrics = {}, []
+    def _decomp(Zc, V, n_spin, ocs):
+        return isp.decompose_spin_lsq(Zc, V, th_rad, A, n_spin=n_spin, s=s,
+                                      m_max=sp['m_max'], ridge=sp['ridge'],
+                                      degen_assignment=sp['degen_assignment'],
+                                      ocs_only=ocs)
+
     for grp in groups:
         n_spin = sp['spin_sign'] * grp['spin']
         if grp['kind'] == 'single':
-            grp_js = [grp['j']]
             ocs = grp['j'] in ocs_only
             key = ('z4opt' if (grp['j'] == 4 and sp['use_z4_optical']
                                and 'z4opt' in dsets[0]) else f"z{grp['j']}")
             Z, V = sample_field(key)
-            dec = isp.decompose_spin_lsq(Z.astype(complex), V, th_rad, A, n_spin=0,
-                                         s=s, m_max=sp['m_max'], ridge=sp['ridge'],
-                                         degen_assignment=sp['degen_assignment'],
-                                         ocs_only=ocs)
-            comps = [(grp['j'], np.real)]
             Zc = Z.astype(complex)
+            comps = [(grp['j'], np.real)]
         elif grp['kind'] == 'pair':
-            grp_js = [grp['j_cos'], grp['j_sin']]
             # a doublet shares one dec; OCS-only if either member is listed
             ocs = (grp['j_cos'] in ocs_only) or (grp['j_sin'] in ocs_only)
             Zc_, Vc_ = sample_field(f"z{grp['j_cos']}")
             Zs_, Vs_ = sample_field(f"z{grp['j_sin']}")
             Zc = Zc_ + 1j * Zs_
             V = Vc_ & Vs_
-            dec = isp.decompose_spin_lsq(Zc, V, th_rad, A, n_spin=n_spin, s=s,
-                                         m_max=sp['m_max'], ridge=sp['ridge'],
-                                         degen_assignment=sp['degen_assignment'],
-                                         ocs_only=ocs)
             comps = [(grp['j_cos'], np.real), (grp['j_sin'], np.imag)]
         else:
             print(f"  (skipping unpaired {grp['label']})")
             continue
+
+        # A full O/C split needs >=2 distinct rotator angles to separate the
+        # telescope and camera terms; with fewer the system is degenerate (the
+        # ridge would pick an arbitrary split).  Force OCS-only and warn.
+        if not ocs and n_rot_distinct < 2:
+            print(f"  WARNING: {grp['label']} requested a full OCS/CCS split but only "
+                  f"{n_rot_distinct} distinct rotator angle(s) — degenerate; forcing OCS-only")
+            ocs = True
+
+        dec = _decomp(Zc, V, n_spin, ocs)
+        # Diagnostic camera RMS: for OCS-only j the output C is constrained to 0,
+        # so also run the full split (when non-degenerate) purely to report the
+        # camera RMS that was given up — informs whether OCS-only is justified.
+        c_dec = _decomp(Zc, V, n_spin, False) if (ocs and n_rot_distinct >= 2) else dec
+
         for j, part in comps:
             dec_by_j[j] = (dec, part, Zc, ocs)
             metrics.append(dict(
                 Zernike=f'Z{j}', j=j, spin=abs(dec['n_spin']),
                 dataRMS=_map_rms(part(Zc), R, r_lim),
                 O_tel=_map_rms(part(dec['O_pol']), R, r_lim),
-                # C_cam ~ 0 for OCS-only j (the camera term was constrained out
-                # of the fit, not discarded after); nonzero only for full-split j.
-                C_cam=_map_rms(part(dec['C_pol']), R, r_lim),
+                # C_cam is the camera RMS the *full* split yields (diagnostic);
+                # for OCS-only j the OUTPUT C is 0 but this shows what was given up.
+                C_cam=_map_rms(part(c_dec['C_pol']), R, r_lim),
                 residRMS=_map_rms(part(dec['res']), R, r_lim),
                 ocs_only=bool(ocs)))
 

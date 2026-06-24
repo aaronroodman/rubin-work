@@ -105,6 +105,24 @@ def rotator_select(cfg):
     return [(float(lo), float(hi)) for lo, hi in sel]
 
 
+def selected_rotator_bins(cfg):
+    """The entry's rotator bins, filtered by ``split.rotator_select`` if present
+    (else all bins).  Shared by run_intrinsic_split and the grid-reading study/wfs
+    scripts so they decompose/plot the same subset.  Raises if a selected bin is
+    not one of the entry's rotator_bins (catches config typos)."""
+    bins = rotator_bins(cfg)
+    sel = rotator_select(cfg)
+    if sel is None:
+        return bins
+    key = lambda lo, hi: (round(lo, 3), round(hi, 3))
+    have = {key(lo, hi) for lo, hi in bins}
+    missing = {key(lo, hi) for lo, hi in sel} - have
+    if missing:
+        raise ValueError(f'rotator_select bins not in rotator_bins: {sorted(missing)}')
+    sel_set = {key(lo, hi) for lo, hi in sel}
+    return [(lo, hi) for lo, hi in bins if key(lo, hi) in sel_set]
+
+
 def ocs_only_js(cfg, noll_list):
     """Set of Noll j for which the camera (CCS) term is forced to zero.
 

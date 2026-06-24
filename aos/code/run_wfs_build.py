@@ -91,12 +91,7 @@ def main():
 
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
                             config_path=(Path(args.config) if args.config else None))
-    rot_bins = mc.rotator_bins(cfg)
-    sel = mc.rotator_select(cfg)
-    if sel is not None:
-        sel_set = {(round(lo, 3), round(hi, 3)) for lo, hi in sel}
-        rot_bins = [(lo, hi) for lo, hi in rot_bins
-                    if (round(lo, 3), round(hi, 3)) in sel_set]
+    rot_bins = mc.selected_rotator_bins(cfg)   # rotator_bins filtered by rotator_select
     base_ps = Path(args.output_root) / args.param_set
     base_mi = base_ps / args.mi_name
     # FAM intrinsic grids come from the build SOURCE entry (build_from reuse)
