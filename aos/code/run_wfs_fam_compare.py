@@ -177,7 +177,9 @@ def _draw_zern_bars(ax, noll, zk, used, ymin, ymax):
     ax.axvspan(19.5, 21.5, color='indigo', alpha=0.2, ec='none')
     ax.axvspan(26.5, 28.5, color='violet', alpha=0.2, ec='none')
     ax.set_ylim(ymin, ymax); ax.set_xlim(3.5, 28.5)
-    ax.tick_params(labelsize=6); ax.set_xticks([4, 8, 12, 16, 20, 24, 28])
+    ax.set_xticks([4, 8, 12, 16, 20, 24, 28])
+    ax.yaxis.tick_right()                      # y labels on the right, clear of the abutting image
+    ax.tick_params(labelsize=6)
     ax.spines['right'].set_edgecolor('green' if used else 'red')
     ax.spines['right'].set_linewidth(3)
 
@@ -196,8 +198,10 @@ def corner_gallery_page(pdf, butler, modeler, day_obs, seq, fam_seq, agg, noll, 
     in_xy = np.array([[s.centroid_position.x, s.centroid_position.y] for s in is_])
     zkcol = f'zk_{args.bar_frame}'
     nrow = len(idx)
-    fig, axs = plt.subplots(nrow, 7, figsize=(11.5, 1.55 * nrow), squeeze=False,
-                            gridspec_kw={'width_ratios': [1, 1, 1, 1, 1, 1, 2.4]})
+    fig, axs = plt.subplots(nrow, 7, squeeze=False, sharex='col',
+                            figsize=(11.5, 1.30 * nrow + 0.8),
+                            gridspec_kw={'width_ratios': [1, 1, 1, 1, 1, 1, 2.6],
+                                         'wspace': 0.0, 'hspace': 0.0})
     titles = ['intra data', 'intra model', 'intra resid',
               'extra data', 'extra model', 'extra resid', f'Z ({args.bar_frame}) [μm]']
     for c in range(7):
@@ -231,18 +235,22 @@ def corner_gallery_page(pdf, butler, modeler, day_obs, seq, fam_seq, agg, noll, 
         for c, (img, kind) in enumerate(panels):
             ax = axs[rr][c]; ax.set_xticks([]); ax.set_yticks([])
             if kind == 'd':
-                ax.imshow(img, origin='lower', cmap=DV_CMAP, vmin=-vmax / 10, vmax=vmax)
+                ax.imshow(img, origin='lower', aspect='auto', cmap=DV_CMAP,
+                          vmin=-vmax / 10, vmax=vmax)
             else:
-                ax.imshow(img, origin='lower', cmap='bwr', vmin=-vmax / 3, vmax=vmax / 3)
+                ax.imshow(img, origin='lower', aspect='auto', cmap='bwr',
+                          vmin=-vmax / 3, vmax=vmax / 3)
         res = float(np.sum(np.abs(in_img - in_mdl)))
         axs[rr][0].text(0.04, 0.9, f"blur {meta['fwhm']:.2f}", transform=axs[rr][0].transAxes,
                         fontsize=6, color='k')
         axs[rr][2].text(0.04, 0.9, f"res {res:.3f}", transform=axs[rr][2].transAxes, fontsize=6)
         _draw_zern_bars(axs[rr][6], noll, np.asarray(row[zkcol], float),
                         bool(row['used']), args.zk_ymin, args.zk_ymax)
+    axs[-1][6].set_xlabel('Noll index', fontsize=7)
     fig.suptitle(f"{raft} (det {det}) donut fits — day_obs {day_obs}, in-focus seq {seq} "
                  f"(FAM seq {fam_seq})   [{nrow} used pairs]", fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    fh = 1.30 * nrow + 0.8
+    fig.subplots_adjust(left=0.03, right=0.95, top=1.0 - 0.55 / fh, bottom=0.30 / fh)
     pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
     return True
 
