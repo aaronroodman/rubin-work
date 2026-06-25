@@ -39,9 +39,9 @@ print(f"OK: danish {danish.__version__}, ts_wep + batoid_rubin importable")
 PY
 
 # default args if none given on the sbatch command line
-if [ $# -eq 0 ]; then
-    set -- --param-set fam_danish_1_0_wep17_3_0_bin2x \
-           --b-min 20 --alphas 0.0,0.01,0.02,0.03,0.05
-fi      # --height-map-dir defaults to ~/u/LSST/packages/batoid_rubin_data (the path that worked)
-echo "running: code/run_wfs_refit_ensemble.py $*"
-python code/run_wfs_refit_ensemble.py "$@"
+# Baked-in param-set + baseline knobs; ANY args on the sbatch line override these
+# (argparse uses the last occurrence of a repeated option). --height-map-dir defaults
+# to ~/u/LSST/packages/batoid_rubin_data inside the python.
+DEFAULTS=(--param-set fam_danish_1_0_wep17_3_0_bin2x --b-min 20 --alphas 0.0,0.01,0.02,0.03,0.05)
+echo "running: code/run_wfs_refit_ensemble.py ${DEFAULTS[*]} $*"
+python code/run_wfs_refit_ensemble.py "${DEFAULTS[@]}" "$@"
