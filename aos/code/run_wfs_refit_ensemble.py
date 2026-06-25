@@ -115,10 +115,13 @@ def main():
     ap.add_argument('--max-visits', type=int, default=None)
     ap.add_argument('--collection', default=None)
     ap.add_argument('--butler-repo', default=None)
+    ap.add_argument('--height-map-dir', default='~/u/LSST/packages/batoid_rubin_data',
+                    help='batoid_rubin ccd_height_map dir (avoids the read-only ensure_data_dir download)')
     args = ap.parse_args()
     coord = args.coord_sys
     alphas = [float(a) for a in args.alphas.split(',')]
     base = Path(args.output_root) / args.param_set
+    HMAP = os.path.expanduser(args.height_map_dir)
 
     import danish
     from lsst.daf.butler import Butler
@@ -181,22 +184,31 @@ def main():
             exy = np.array([[s.centroid_position.x, s.centroid_position.y] for s in es])
             ixy = np.array([[s.centroid_position.x, s.centroid_position.y] for s in is_])
             idx = np.where((det_str == f'{raft}_SW0') & np.asarray(agg['used']))[0]
-            for i0 in idx:
+            if len(idx) == 0:
+                continue
+            # batched per-CCD height Z4 for this corner: 2 calls (SW0/SW1), not per-donut
+            cex = [float(agg[i]['centroid_x_extra']) for i in idx]
+            cey = [float(agg[i]['centroid_y_extra']) for i in idx]
+            cix = [float(agg[i]['centroid_x_intra']) for i in idx]
+            ciy = [float(agg[i]['centroid_y_intra']) for i in idx]
+
+            def _hbatch(dn, xs, ys):
+                df = pd.DataFrame({'detector': [dn] * len(xs),
+                                   'centroid_x_intra': xs, 'centroid_y_intra': ys,
+                                   'centroid_x_extra': xs, 'centroid_y_extra': ys})
+                return np.asarray(cch.compute_ccd_heights(
+                    df, camera, source='batoid_rubin', height_map_dir=HMAP)['Z4_height'], float)
+            z4e_arr = _hbatch(f'{raft}_SW0', cex, cey)
+            z4i_arr = _hbatch(f'{raft}_SW1', cix, ciy)
+
+            for k, i0 in enumerate(idx):
                 row = agg[i0]
-                meta = {k: np.asarray(ei[k])[i0] for k in HEIGHT_KEYS}
+                meta = {kk: np.asarray(ei[kk])[i0] for kk in HEIGHT_KEYS}
                 ek = int(np.argmin(np.hypot(exy[:, 0] - row['centroid_x_extra'],
                                             exy[:, 1] - row['centroid_y_extra'])))
                 ik = int(np.argmin(np.hypot(ixy[:, 0] - row['centroid_x_intra'],
                                             ixy[:, 1] - row['centroid_y_intra'])))
-                # per-CCD height Z4 (one helper call per donut; orientation is fixed)
-                def _hz4(dn, cx, cy):
-                    df = pd.DataFrame({'detector': [dn], 'centroid_x_intra': [cx],
-                                       'centroid_y_intra': [cy], 'centroid_x_extra': [cx],
-                                       'centroid_y_extra': [cy]})
-                    return float(cch.compute_ccd_heights(
-                        df, camera, source='batoid_rubin')['Z4_height'][0])
-                z4e = _hz4(f'{raft}_SW0', row['centroid_x_extra'], row['centroid_y_extra'])
-                z4i = _hz4(f'{raft}_SW1', row['centroid_x_intra'], row['centroid_y_intra'])
+                z4e, z4i = float(z4e_arr[k]), float(z4i_arr[k])
                 for alpha in alphas:
                     zk, fwhm, cost, ok = refit_pair(
                         danish, algo, inst, fkw, noll, row, meta, z4e, z4i,
