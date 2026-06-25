@@ -17,7 +17,7 @@
 #     sbatch run_wfs_refit.sbatch                       # default args (below)
 #     sbatch run_wfs_refit.sbatch --max-visits 30 --alphas 0.0,0.02,0.05   # override
 #
-set -euo pipefail
+set -eo pipefail               # NOT -u: the lsst/conda (de)activate scripts use unbound vars
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")}"   # submit dir (= aos/); $0 is Slurm's spool copy under sbatch
 mkdir -p logs
 
