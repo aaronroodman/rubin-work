@@ -36,6 +36,18 @@ from astropy.table import Table
 # Source: Guillem's estimate (≈ 0.15 μm Z4 per 10 μm of local height).
 HEIGHT_TO_Z4_UM_PER_MM = 15.0
 
+# Orientation mapping cameraGeom focal-plane mm -> the batoid_rubin per-detector
+# Bicubic height-map frame, as (swap_xy, sign_x, sign_y).  ESTABLISHED (not guessed)
+# by comparing batoid_rubin .sag against the LSST_FP_cold metrology surface over the
+# 4 corner-WFS rafts + a science CCD (R22S11): swap=True,+1,+1 gave 12415/12415 points
+# in-domain and the lowest RMS (1.0 μm).  See aos/wfs_ccd_height_compare.* .
+BATOID_FP_ORIENTATION = (True, 1, 1)
+
+# Corner-WFS nominal piston (mm): SW0 extra-focal +, SW1 intra-focal -.  Removed from
+# the metrology surface so its height is the figure deviation (consistent with the
+# at-focus science CCDs).  Verified by the same metrology-vs-batoid comparison.
+WFS_DEFOCAL_MM = 1.5
+
 
 # ----------------------------------------------------------------------
 # Pixel -> focal-plane coordinates (per donut)
@@ -86,7 +98,7 @@ def compute_fp_coords(donut_df, camera,
 # Height-map I/O + KNN interpolator
 # ----------------------------------------------------------------------
 
-def make_metrology_table(file, rsid=None):
+def make_metrology_table(file, rsid=None, include_wfs=True):
     """Build a per-point focal-plane metrology table from the height map.
 
     Each per-sensor BinTableHDU is concatenated into one table with
@@ -112,15 +124,26 @@ def make_metrology_table(file, rsid=None):
             extname = hdu.header.get('EXTNAME', '')
             if rsid is not None and extname != rsid:
                 continue
-            if rsid is None and not re.fullmatch(r'R\d\dS\d\d', extname):
+            # science sensor 'R##S##'  or  corner-WFS 'R##WFS0/1' (det 'R##_SW0/1').
+            # The corner WFS sit at the nominal +/-WFS_DEFOCAL_MM piston, removed here
+            # so z is the figure deviation like the at-focus science CCDs.
+            m_sci = re.fullmatch(r'R\d\dS\d\d', extname)
+            m_wfs = re.fullmatch(r'R(\d\d)WFS([01])', extname)
+            if m_sci:
+                det_label, piston = re.sub(r'(R\d\d)(S\d\d)', r'\1_\2', extname), 0.0
+            elif include_wfs and m_wfs:
+                det_label = f'R{m_wfs.group(1)}_SW{m_wfs.group(2)}'
+                piston = +WFS_DEFOCAL_MM if m_wfs.group(2) == '0' else -WFS_DEFOCAL_MM
+            elif rsid is not None:           # explicit rsid that isn't sci/wfs -> take as-is
+                det_label, piston = extname, 0.0
+            else:
                 continue
-            det_label = re.sub(r'(R\d\d)(S\d\d)', r'\1_\2', extname)
             tab = Table(hdu.data)
             for x, y, z_mod, z_meas in zip(
                 tab['X_CCS'], tab['Y_CCS'],
                 tab['Z_CCS_MODEL'], tab['Z_CCS_MEASURED'],
             ):
-                rows.append([y, x, z_mod, z_meas, det_label])
+                rows.append([y, x, z_mod - piston, z_meas - piston, det_label])
     return Table(rows=rows, names=['fpx', 'fpy', 'z_mod', 'z_meas', 'det'])
 
 
@@ -258,34 +281,9 @@ def _sag_oriented(maps, fpx_mm, fpy_mm, det_names, swap, sx, sy):
     return h
 
 
-def _detect_fp_orientation(maps, fpx_mm, fpy_mm, det_names, n_sample=5000):
-    """Pick the (swap, sign_x, sign_y) that puts the most donuts inside
-    their detector's batoid map domain.
-
-    cameraGeom focal-plane mm and the batoid map frame can differ by an
-    x<->y swap and/or axis-sign flips; `batoid.Bicubic.sag` returns NaN
-    outside the gridded domain, so the correct orientation is simply the
-    one maximising the finite-height count.  Decided on a subsample.
-    """
-    n = len(det_names)
-    idx = (np.linspace(0, n - 1, n_sample).astype(int) if n > n_sample
-           else np.arange(n))
-    best, best_n = (False, 1, 1), -1
-    for swap in (False, True):
-        for sx in (1, -1):
-            for sy in (1, -1):
-                h = _sag_oriented(maps, fpx_mm[idx], fpy_mm[idx],
-                                  det_names[idx], swap, sx, sy)
-                n_ok = int(np.isfinite(h).sum())
-                if n_ok > best_n:
-                    best, best_n = (swap, sx, sy), n_ok
-    return best, best_n, len(idx)
-
-
 def compute_ccd_heights(donut_df, camera, source='batoid_rubin',
                         height_map_dir=None, metrology_fits=None,
-                        factor=HEIGHT_TO_Z4_UM_PER_MM, det_col='detector',
-                        orientation_sample=5000):
+                        factor=HEIGHT_TO_Z4_UM_PER_MM, det_col='detector'):
     """Single entry point for per-donut CCD heights + the Z4 contribution.
 
     The focal-plane position is computed from the **intra-** and
@@ -337,10 +335,7 @@ def compute_ccd_heights(donut_df, camera, source='batoid_rubin',
         if missing:
             print(f'  (no batoid height map for {len(missing)} detector(s): '
                   f'{missing[:5]}{"..." if len(missing) > 5 else ""})')
-        (swap, sx, sy), n_ok, n_s = _detect_fp_orientation(
-            maps, fpx_i, fpy_i, det_names, orientation_sample)
-        print(f'  batoid focal-plane orientation: swap={swap} '
-              f'sx={sx:+d} sy={sy:+d}  ({n_ok}/{n_s} sample donuts in-domain)')
+        swap, sx, sy = BATOID_FP_ORIENTATION       # established by metrology comparison
         h_i = _sag_oriented(maps, fpx_i, fpy_i, det_names, swap, sx, sy)
         h_e = _sag_oriented(maps, fpx_e, fpy_e, det_names, swap, sx, sy)
     else:
