@@ -18,7 +18,7 @@
 #     sbatch run_wfs_refit.sbatch --max-visits 30 --alphas 0.0,0.02,0.05   # override
 #
 set -euo pipefail
-cd "$(dirname "$0")"            # aos/
+cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")}"   # submit dir (= aos/); $0 is Slurm's spool copy under sbatch
 mkdir -p logs
 
 # ---- danish 1.2 stack from cvmfs (pinned weekly; newer ones also work) ----
