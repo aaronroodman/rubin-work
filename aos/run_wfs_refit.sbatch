@@ -21,15 +21,14 @@ set -eo pipefail               # NOT -u: the lsst/conda (de)activate scripts use
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")}"   # submit dir (= aos/); $0 is Slurm's spool copy under sbatch
 mkdir -p logs
 
-# ---- danish 1.2 stack from cvmfs (pinned weekly; newer ones also work) ----
-source /cvmfs/sw.lsst.eu/almalinux-x86_64/lsst_distrib/w_2026_25/loadLSST.sh
-setup lsst_distrib
-# If you need your local ts_wep clone instead of the weekly's, uncomment (verify it is
-# compatible with this weekly's danish 1.2):
-# setup -r ~/u/LSST/packages/ts_wep -j
-
-export NUMEXPR_MAX_THREADS=${SLURM_CPUS_PER_TASK:-4}
-export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-4}
+# ---- LSST env: reuse the user's own setup.sh (cvmfs w_2026_25 danish 1.2 + local
+#      ts_wep/ts_ofc clones + BUTLER_CONFIG).  set +e around it: its many `setup -r`
+#      / conda-activate lines can return nonzero without being fatal.
+set +e
+source "$HOME/u/LSST/setup.sh"
+set -e
+export NUMEXPR_MAX_THREADS=${SLURM_CPUS_PER_TASK:-1}   # override setup.sh's 1, silences the warning
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 # fail fast if the env isn't what we need
 python - <<'PY'
@@ -42,8 +41,7 @@ PY
 # default args if none given on the sbatch command line
 if [ $# -eq 0 ]; then
     set -- --param-set fam_danish_1_0_wep17_3_0_bin2x \
-           --b-min 20 --alphas 0.0,0.01,0.02,0.03,0.05 \
-           --height-map-dir /sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data
-fi
+           --b-min 20 --alphas 0.0,0.01,0.02,0.03,0.05
+fi      # --height-map-dir defaults to ~/u/LSST/packages/batoid_rubin_data (the path that worked)
 echo "running: code/run_wfs_refit_ensemble.py $*"
 python code/run_wfs_refit_ensemble.py "$@"
