@@ -123,6 +123,8 @@ def main():
     ap.add_argument('--alphas', default='0.0,0.01,0.02,0.03,0.05',
                     help='comma list of systematicLossAlpha to sweep')
     ap.add_argument('--max-visits', type=int, default=None)
+    ap.add_argument('--resume', action='store_true',
+                    help='skip (day_obs, infocus_seq) already present in the output parquet')
     ap.add_argument('--collection', default=None)
     ap.add_argument('--butler-repo', default=None)
     ap.add_argument('--height-map-dir', default='~/u/LSST/packages/batoid_rubin_data',
@@ -174,10 +176,23 @@ def main():
           f'(|b|>={args.b_min}, i, alt {args.alt_center}+/-{args.alt_tol}{rotmsg}); '
           f'pupil={args.pupil}; alphas={alphas}')
 
+    out = base / 'wfs' / f'wfs_refit_ensemble_{args.pupil}.parquet'
+    out.parent.mkdir(parents=True, exist_ok=True)
     rtp_cache, fkw = {}, None
-    rows = []
+    rows, done = [], set()
+    if args.resume and out.exists():
+        prev = pd.read_parquet(out)
+        rows = prev.to_dict('records')
+        done = {(int(d), int(s)) for d, s in zip(prev['day_obs'], prev['infocus_seq'])}
+        print(f'[resume] {len(rows)} pair-fits from {out.name}; {len(done)} visits already done')
+
+    def _checkpoint():
+        pd.DataFrame(rows).to_parquet(out)
+
     for (day, fam_seq, gb) in visits:
         seq = infocus[(day, fam_seq)]
+        if (day, seq) in done:
+            print(f'  visit {day}/{seq} (b={gb:+.1f}): already done, skip'); continue
         try:
             agg = butler.get('aggregateAOSVisitTableRaw', day_obs=day, seq_num=seq)
         except Exception as e:
@@ -240,13 +255,14 @@ def main():
                                zk_stored=list(np.asarray(row['zk_deviation_CCS'], float)),
                                nollIndices=list(noll))
                     rows.append(rec)
-        print(f'  visit {day}/{seq} (b={gb:+.1f}): {sum(r["day_obs"]==day and r["infocus_seq"]==seq for r in rows)} pair-fits so far')
+        done.add((day, seq))
+        _checkpoint()   # write after every visit so a timeout/cancel keeps partial results
+        print(f'  visit {day}/{seq} (b={gb:+.1f}): {sum(r["day_obs"]==day and r["infocus_seq"]==seq for r in rows)} pair-fits so far '
+              f'[{len(rows)} total, checkpointed]')
 
     if not rows:
         sys.exit('No refits produced — check the visit selection / collection.')
     df = pd.DataFrame(rows)
-    out = base / 'wfs' / f'wfs_refit_ensemble_{args.pupil}.parquet'
-    out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out)
     print(f'  wrote {out}  ({len(df)} pair-fits over {df.donut_id_extra.nunique()} donuts, '
           f'{len(alphas)} alphas)')
