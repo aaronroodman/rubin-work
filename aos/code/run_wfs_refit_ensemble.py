@@ -49,15 +49,20 @@ def _alt_deg(a):
     return np.rad2deg(a) if np.nanmax(np.abs(a)) < 2 * np.pi + 1e-3 else a
 
 
-def build_factory_kwargs(inst, rtp_deg):
-    """DonutTriangleFactory kwargs with the new M1M3 pupil AND matching M1 mask edges."""
+def build_factory_kwargs(inst, rtp_deg, pupil='new'):
+    """DonutTriangleFactory kwargs.  pupil='new' uses the updated M1M3 radii AND matching
+    M1 mask edges; pupil='old' uses the instrument defaults (the pupil the FAM/pipeline
+    used) — both radii and mask left as ts_wep provides them."""
+    base = dict(focal_length=inst.focalLength, pixel_scale=inst.pixelSize * BINNING,
+                spider_angle=rtp_deg)
+    if pupil == 'old':
+        return dict(R_outer=inst.radius, R_inner=inst.radius * inst.obscuration,
+                    mask_params=inst.maskParams, **base)
     import copy
     mp = copy.deepcopy(inst.maskParams)
     mp['M1']['outer']['radius'][-1] = R_OUTER
     mp['M1']['inner']['radius'][-1] = R_INNER
-    return dict(R_outer=R_OUTER, R_inner=R_INNER, mask_params=mp,
-                focal_length=inst.focalLength, pixel_scale=inst.pixelSize * BINNING,
-                spider_angle=rtp_deg)
+    return dict(R_outer=R_OUTER, R_inner=R_INNER, mask_params=mp, **base)
 
 
 def refit_pair(danish, algo, inst, fkw, noll, row, meta, z4_extra, z4_intra,
@@ -110,6 +115,11 @@ def main():
     ap.add_argument('--b-min', type=float, default=20.0, help='keep visits with |gal b| >= this')
     ap.add_argument('--alt-center', type=float, default=70.0)
     ap.add_argument('--alt-tol', type=float, default=2.5)
+    ap.add_argument('--rot-center', type=float, default=None,
+                    help='if set, also require |rotator_angle - rot_center| <= rot_tol (deg)')
+    ap.add_argument('--rot-tol', type=float, default=3.0)
+    ap.add_argument('--pupil', default='new', choices=['new', 'old'],
+                    help="'new' = updated M1M3 radii+mask; 'old' = inst defaults (FAM-matched)")
     ap.add_argument('--alphas', default='0.0,0.01,0.02,0.03,0.05',
                     help='comma list of systematicLossAlpha to sweep')
     ap.add_argument('--max-visits', type=int, default=None)
@@ -147,7 +157,10 @@ def main():
     sel = vt[(vt['band'].astype(str) == 'i')
              & (np.abs(_alt_deg(vt['alt']) - args.alt_center) <= args.alt_tol)].copy()
     sel['gal_b'] = galactic_b(sel['ra'], sel['dec'])
-    sel = sel[np.abs(sel['gal_b']) >= args.b_min].sort_values(['day_obs', 'seq_num'])
+    sel = sel[np.abs(sel['gal_b']) >= args.b_min]
+    if args.rot_center is not None and 'rotator_angle' in sel.columns:
+        sel = sel[np.abs(sel['rotator_angle'].astype(float) - args.rot_center) <= args.rot_tol]
+    sel = sel.sort_values(['day_obs', 'seq_num'])
     wd_meta = pd.read_parquet(base / 'wfs' / 'donuts.parquet',
                               columns=['day_obs', 'seq_num', 'fam_seq_num'])
     infocus = {(int(d), int(f)): int(s) for d, f, s in
@@ -156,9 +169,10 @@ def main():
               for r in sel.itertuples() if (int(r.day_obs), int(r.seq_num)) in infocus]
     if args.max_visits:
         visits = visits[:args.max_visits]
-    print(f'[wfs_refit_ensemble] {args.param_set}: {len(visits)} clean visits '
-          f'(|b|>={args.b_min}, i, alt {args.alt_center}+/-{args.alt_tol}); '
-          f'alphas={alphas}')
+    rotmsg = '' if args.rot_center is None else f', rot {args.rot_center}+/-{args.rot_tol}'
+    print(f'[wfs_refit_ensemble] {args.param_set}: {len(visits)} visits '
+          f'(|b|>={args.b_min}, i, alt {args.alt_center}+/-{args.alt_tol}{rotmsg}); '
+          f'pupil={args.pupil}; alphas={alphas}')
 
     rtp_cache, fkw = {}, None
     rows = []
@@ -180,7 +194,7 @@ def main():
                 continue
             fkw = build_factory_kwargs(inst, np.rad2deg(
                 es.metadata["BORESIGHT_PAR_ANGLE_RAD"]
-                - es.metadata["BORESIGHT_ROT_ANGLE_RAD"] - np.pi / 2))
+                - es.metadata["BORESIGHT_ROT_ANGLE_RAD"] - np.pi / 2), pupil=args.pupil)
             exy = np.array([[s.centroid_position.x, s.centroid_position.y] for s in es])
             ixy = np.array([[s.centroid_position.x, s.centroid_position.y] for s in is_])
             idx = np.where((det_str == f'{raft}_SW0') & np.asarray(agg['used']))[0]
@@ -220,8 +234,9 @@ def main():
                                donut_id_extra=str(row['donut_id_extra']),
                                donut_id_intra=str(row['donut_id_intra']),
                                thx=float(row[f'thx_{coord}']), thy=float(row[f'thy_{coord}']),
-                               fwhm=fwhm, cost=cost, success=ok,
-                               zk_refit=list(np.asarray(zk, float)),
+                               thx_ccs=float(row['thx_CCS']), thy_ccs=float(row['thy_CCS']),
+                               fwhm=fwhm, cost=cost, success=ok, pupil=args.pupil,
+                               zk_refit=list(np.asarray(zk, float)),           # CCS (zkSum)
                                zk_stored=list(np.asarray(row['zk_deviation_CCS'], float)),
                                nollIndices=list(noll))
                     rows.append(rec)
@@ -230,7 +245,7 @@ def main():
     if not rows:
         sys.exit('No refits produced — check the visit selection / collection.')
     df = pd.DataFrame(rows)
-    out = base / 'wfs' / 'wfs_refit_ensemble.parquet'
+    out = base / 'wfs' / f'wfs_refit_ensemble_{args.pupil}.parquet'
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out)
     print(f'  wrote {out}  ({len(df)} pair-fits over {df.donut_id_extra.nunique()} donuts, '
