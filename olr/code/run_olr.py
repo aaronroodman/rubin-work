@@ -12,7 +12,6 @@ the original measured values and the intrinsic, for reference).
 
 import argparse
 import os
-import sys
 
 import numpy as np
 import pandas as pd
@@ -47,6 +46,15 @@ def main():
     table = pd.read_parquet(args.infile)
     print(f"Loaded {args.infile}: {len(table)} rows")
 
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+
+    # Empty nightly table (no AOS data this night) -> propagate a 0-row sentinel
+    # and exit cleanly so the night doesn't block a multi-night run.
+    if len(table) == 0 or "zk_opd_R00" not in table.columns:
+        pd.DataFrame({"seq": pd.Series([], dtype="float64")}).to_parquet(args.out)
+        print(f"Empty/no-AOS input; wrote empty {args.out}")
+        return
+
     sens_mat = build_olr_sensitivity_matrix(
         ofc_config_dir,
         truncation=args.truncation,
@@ -62,8 +70,9 @@ def main():
         seq_max=args.seq_max,
     )
     if not records:
-        print(f"ERROR: no usable seqs in {args.infile}", file=sys.stderr)
-        sys.exit(1)
+        pd.DataFrame({"seq": pd.Series([], dtype="float64")}).to_parquet(args.out)
+        print(f"No usable seqs in {args.infile}; wrote empty {args.out}")
+        return
 
     out_df = pd.DataFrame(records)
 

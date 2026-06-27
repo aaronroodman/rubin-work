@@ -67,7 +67,20 @@ tail -f logs/run_*.log
   ported from Craig Lage's `Open_Loop_Reproduction_Based_PID_Simulator` notebook.
 - `code/run_olr.py` — CLI for the OLR stage (asserts the OPD/deviation/intrinsic
   identity before writing).
-- `code/combine_parquets.py` — streaming concatenation (copied from `aos/code`).
+- `code/combine_parquets.py` — streaming concatenation (copied from `aos/code`);
+  skips 0-row sentinel inputs so an empty night can't collapse the schema.
+- `code/list_nights.py` — Summit-only helper to pick nights: prints the per-night
+  `science_program` breakdown from ConsDB and emits a `nights:` YAML block.
+  `--fbs-substr` filters to the FBS/survey block; `--require-aos` keeps only
+  nights that actually have `aggregateAOSVisitTableAvg` in the Butler.
+
+### No-AOS nights
+
+Some nights have exposures in ConsDB but **no AOS wavefront products** (ConsDB
+corner-WFS quicklook gap, or WEP/AOS processing never ran — e.g. 20260428–0501).
+`run_nightly_table`/`run_olr` detect this, write a 0-row sentinel parquet, and
+exit 0, and `combine` ignores the sentinels — so one dead night never blocks a
+multi-night run. Use `list_nights.py --require-aos` to exclude them up front.
 
 ## Notebooks
 

@@ -12,7 +12,8 @@ canonical ``nightly_report_ts_version.ipynb``).
 import argparse
 import asyncio
 import os
-import sys
+
+import pandas as pd
 
 from nightly_table import build_nightly_table
 
@@ -29,11 +30,16 @@ def main():
         build_nightly_table(args.day_obs, seq_min=args.seq_min, seq_max=args.seq_max)
     )
 
-    if table is None or len(table) == 0:
-        print(f"ERROR: empty table for day_obs={args.day_obs}", file=sys.stderr)
-        sys.exit(1)
-
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+
+    if table is None or len(table) == 0:
+        # No AOS data for this night (e.g. ConsDB quicklook gap, or WEP/AOS
+        # processing never ran).  Write a 0-row sentinel and exit cleanly so a
+        # dead night doesn't block the rest of a multi-night run; combine skips
+        # empties.
+        pd.DataFrame({"seq": pd.Series([], dtype="float64")}).to_parquet(args.out)
+        print(f"No AOS data for day_obs={args.day_obs}; wrote empty {args.out}")
+        return
     # build_nightly_table returns a frame indexed by seq; make seq a plain
     # column for downstream.  On some pandas versions the groupby leaves a 'seq'
     # column behind too (identical values), so drop the index in that case to
