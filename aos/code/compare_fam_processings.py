@@ -182,13 +182,99 @@ def compare_visit_rms(baseA, baseB, coord, zks, pdf):
     return S
 
 
+# ---------------------------------------------------------------- D: per-visit DZ coeffs
+def compare_visit_dz(baseA, baseB, prefix, zks, pdf):
+    """Matched-visit agreement of the per-visit double-Zernike fit coefficients
+    {prefix}_z{j}_c{k} (fits.parquet): robust nMAD of the per-visit (B−A) per (k,j)."""
+    import re
+    import matplotlib.pyplot as plt
+    pat = re.compile(rf'^{re.escape(prefix)}_z(\d+)_c(\d+)$')
+    A = pd.read_parquet(baseA / 'fits.parquet'); B = pd.read_parquet(baseB / 'fits.parquet')
+    cols = sorted(set(c for c in A.columns if pat.match(c)) & set(c for c in B.columns if pat.match(c)),
+                  key=lambda c: tuple(int(x) for x in pat.match(c).groups()))
+    if not cols:
+        print(f'[visit-dz] no {prefix}_z*_c* columns common to both'); return
+    M = A[['day_obs', 'seq_num'] + cols].merge(B[['day_obs', 'seq_num'] + cols],
+                                               on=['day_obs', 'seq_num'], suffixes=('_A', '_B'))
+    print(f'[visit-dz] matched visits {len(M)}; prefix={prefix}; {len(cols)} coeffs')
+    rows = []
+    for c in cols:
+        j, k = (int(x) for x in pat.match(c).groups())
+        d = M[f'{c}_B'] - M[f'{c}_A']
+        rows.append(dict(j=j, k=k, col=c, nmad_diff=nmad(d), med_diff=np.nanmedian(d)))
+    R = pd.DataFrame(rows)
+    fig, ax = plt.subplots(figsize=(13, 4), constrained_layout=True)
+    ax.bar(np.arange(len(R)), R['nmad_diff'])
+    ax.set_xticks(np.arange(len(R))); ax.set_xticklabels([f'Z{j}.c{k}' for j, k in zip(R['j'], R['k'])],
+                                                         rotation=90, fontsize=5)
+    ax.set_ylabel('nMAD of per-visit (B−A) [µm]')
+    ax.set_title(f'Per-visit DZ-coefficient disagreement ({prefix}) [{baseB.name} vs {baseA.name}]')
+    pdf.savefig(fig); plt.close(fig)
+    # paired scatter for the field-constant (c1) terms of the requested Zernikes
+    c1 = [(j, f'{prefix}_z{j}_c1') for j in zks if f'{prefix}_z{j}_c1_A' in M.columns]
+    if c1:
+        n = len(c1); fig, axes = plt.subplots(2, (n + 1) // 2, figsize=(3 * ((n + 1) // 2), 6),
+                                              constrained_layout=True, squeeze=False)
+        for ax, (j, c) in zip(axes.ravel(), c1):
+            a, b = M[f'{c}_A'], M[f'{c}_B']
+            lo, hi = np.nanpercentile(np.concatenate([a, b]), [1, 99])
+            ax.scatter(a, b, s=8, alpha=0.4); ax.plot([lo, hi], [lo, hi], 'k--', lw=0.7)
+            ax.set_title(f'Z{j} c1 (field-const)', fontsize=8); ax.tick_params(labelsize=6)
+            ax.set_xlabel('A', fontsize=7); ax.set_ylabel('B', fontsize=7)
+        for ax in axes.ravel()[n:]:
+            ax.axis('off')
+        fig.suptitle(f'Per-visit DZ field-constant terms: A vs B ({prefix})', fontsize=10)
+        pdf.savefig(fig); plt.close(fig)
+    print(R.reindex(R['nmad_diff'].sort_values(ascending=False).index).head(12)
+          [['col', 'nmad_diff', 'med_diff']].to_string(index=False, float_format=lambda x: f'{x:.4f}'))
+    return R
+
+
+# ---------------------------------------------------------------- E: yield / coverage
+def compare_yield(baseA, baseB, pdf):
+    import matplotlib.pyplot as plt
+    want = ['day_obs', 'seq_num', 'n_donuts', 'n_detectors_with_min_donuts',
+            'median_blur_arcsec', 'visit_quality_pass']
+
+    def load(base):
+        cols = [c for c in want if c in pq.read_schema(str(base / 'visits.parquet')).names]
+        return pd.read_parquet(base / 'visits.parquet', columns=cols)
+    A, B = load(baseA), load(baseB)
+    kA = set(zip(A['day_obs'], A['seq_num'])); kB = set(zip(B['day_obs'], B['seq_num']))
+    print(f'[yield] visits: A={len(A)} B={len(B)}  matched={len(kA & kB)}  '
+          f'only-A={len(kA - kB)}  only-B={len(kB - kA)}')
+    for nm, df in (('A=' + baseA.name, A), ('B=' + baseB.name, B)):
+        qp = df['visit_quality_pass'].mean() if 'visit_quality_pass' in df else np.nan
+        print(f'  {nm}: median n_donuts={df["n_donuts"].median():.0f}  '
+              f'median blur={df.get("median_blur_arcsec", pd.Series([np.nan])).median():.3f}"  '
+              f'quality_pass frac={qp:.3f}')
+    M = A.merge(B, on=['day_obs', 'seq_num'], suffixes=('_A', '_B'))
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+    hi = np.nanpercentile(np.concatenate([M['n_donuts_A'], M['n_donuts_B']]), 99)
+    ax[0].scatter(M['n_donuts_A'], M['n_donuts_B'], s=8, alpha=0.4)
+    ax[0].plot([0, hi], [0, hi], 'k--', lw=0.7); ax[0].set_xlim(0, hi); ax[0].set_ylim(0, hi)
+    ax[0].set_aspect('equal'); ax[0].set_xlabel(f'n_donuts A'); ax[0].set_ylabel('n_donuts B')
+    ax[0].set_title('Per-visit donut yield (matched)')
+    if 'median_blur_arcsec_A' in M:
+        bins = np.linspace(0, np.nanpercentile(np.concatenate(
+            [M['median_blur_arcsec_A'], M['median_blur_arcsec_B']]), 99), 30)
+        ax[1].hist(M['median_blur_arcsec_A'], bins, alpha=0.5, label=baseA.name)
+        ax[1].hist(M['median_blur_arcsec_B'], bins, alpha=0.5, label=baseB.name)
+        ax[1].set_xlabel('median blur ["]'); ax[1].set_ylabel('visits'); ax[1].legend(fontsize=8)
+        ax[1].set_title('Seeing/blur distribution')
+    fig.suptitle(f'Yield & coverage [{baseB.name} vs {baseA.name}]', fontsize=10)
+    pdf.savefig(fig); plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ps-a', default=OLD_DEFAULT, help='baseline (old) param_set')
     ap.add_argument('--ps-b', default=NEW_DEFAULT, help='new param_set')
     ap.add_argument('--mi', default='pathA_50_34_i', help='measured-intrinsic config (for lut comparisons)')
-    ap.add_argument('--comparison', default='all', choices=['all', 'lut-maps', 'lut-dof', 'visit-rms'])
+    ap.add_argument('--comparison', default='all',
+                    choices=['all', 'lut-maps', 'lut-dof', 'visit-rms', 'visit-dz', 'yield'])
     ap.add_argument('--coord', default='CCS', choices=['CCS', 'OCS'], help='frame for visit-rms')
+    ap.add_argument('--dz-prefix', default='z1toz6', help='fits.parquet DZ column prefix for visit-dz')
     ap.add_argument('--zernikes', default='4,5,6,7,8,9,10,11')
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
@@ -212,6 +298,10 @@ def main():
             compare_lut_dof(baseA, baseB, args.mi, pdf)
         if args.comparison in ('all', 'visit-rms'):
             compare_visit_rms(baseA, baseB, args.coord, zks, pdf)
+        if args.comparison in ('all', 'visit-dz'):
+            compare_visit_dz(baseA, baseB, args.dz_prefix, zks, pdf)
+        if args.comparison in ('all', 'yield'):
+            compare_yield(baseA, baseB, pdf)
     print(f'\nwrote {out}')
 
 
