@@ -183,34 +183,64 @@ def compare_visit_rms(baseA, baseB, coord, zks, pdf):
 
 
 # ---------------------------------------------------------------- D: per-visit DZ coeffs
-def compare_visit_dz(baseA, baseB, prefix, zks, pdf):
+def compare_visit_dz(baseA, baseB, rel, prefix, zks, pdf, src):
     """Matched-visit agreement of the per-visit double-Zernike fit coefficients
-    {prefix}_z{j}_c{k} (fits.parquet): robust nMAD of the per-visit (B−A) per (k,j)."""
+    {prefix}_z{j}_c{k} read from <base>/<rel>.  rel='fits.parquet' is the top-level
+    fit (vs the batoid GQ intrinsic); rel='<mi>/fits.parquet' is the measured-intrinsic
+    refit (vs the OCS/CCS-split measured intrinsic).  Compares ALL (k, j) terms:
+    robust nMAD of the per-visit (B−A), shown as a (pupil j × focal k) heatmap, an
+    all-coefficient bar, and paired scatter of the field-constant (c1) terms."""
     import re
     import matplotlib.pyplot as plt
+    fa, fb = baseA / rel, baseB / rel
+    if not (fa.exists() and fb.exists()):
+        print(f'[visit-dz:{src}] missing {rel} for A or B — skip'); return
     pat = re.compile(rf'^{re.escape(prefix)}_z(\d+)_c(\d+)$')
-    A = pd.read_parquet(baseA / 'fits.parquet'); B = pd.read_parquet(baseB / 'fits.parquet')
+    A = pd.read_parquet(fa); B = pd.read_parquet(fb)
     cols = sorted(set(c for c in A.columns if pat.match(c)) & set(c for c in B.columns if pat.match(c)),
                   key=lambda c: tuple(int(x) for x in pat.match(c).groups()))
     if not cols:
-        print(f'[visit-dz] no {prefix}_z*_c* columns common to both'); return
+        print(f'[visit-dz:{src}] no {prefix}_z*_c* columns common to both'); return
     M = A[['day_obs', 'seq_num'] + cols].merge(B[['day_obs', 'seq_num'] + cols],
                                                on=['day_obs', 'seq_num'], suffixes=('_A', '_B'))
-    print(f'[visit-dz] matched visits {len(M)}; prefix={prefix}; {len(cols)} coeffs')
+    print(f'[visit-dz:{src}] matched visits {len(M)}; prefix={prefix}; {len(cols)} coeffs')
     rows = []
     for c in cols:
         j, k = (int(x) for x in pat.match(c).groups())
         d = M[f'{c}_B'] - M[f'{c}_A']
         rows.append(dict(j=j, k=k, col=c, nmad_diff=nmad(d), med_diff=np.nanmedian(d)))
     R = pd.DataFrame(rows)
-    fig, ax = plt.subplots(figsize=(13, 4), constrained_layout=True)
-    ax.bar(np.arange(len(R)), R['nmad_diff'])
-    ax.set_xticks(np.arange(len(R))); ax.set_xticklabels([f'Z{j}.c{k}' for j, k in zip(R['j'], R['k'])],
-                                                         rotation=90, fontsize=5)
-    ax.set_ylabel('nMAD of per-visit (B−A) [µm]')
-    ax.set_title(f'Per-visit DZ-coefficient disagreement ({prefix}) [{baseB.name} vs {baseA.name}]')
+    tag = f'{prefix}, {src}  [{baseB.name} vs {baseA.name}]'
+
+    # (i) all-(k,j) heatmap of the per-visit robust disagreement
+    js, ks = sorted(R['j'].unique()), sorted(R['k'].unique())
+    G = np.full((len(js), len(ks)), np.nan)
+    for r in R.itertuples():
+        G[js.index(r.j), ks.index(r.k)] = r.nmad_diff
+    fig, ax = plt.subplots(figsize=(1.1 * len(ks) + 3, 0.35 * len(js) + 2), constrained_layout=True)
+    im = ax.imshow(G, aspect='auto', cmap='viridis', origin='upper')
+    ax.set_xticks(range(len(ks))); ax.set_xticklabels([f'k{k}' for k in ks])
+    ax.set_yticks(range(len(js))); ax.set_yticklabels([f'Z{j}' for j in js], fontsize=7)
+    for a in range(len(js)):
+        for b in range(len(ks)):
+            if np.isfinite(G[a, b]):
+                ax.text(b, a, f'{G[a,b]:.3f}', ha='center', va='center', fontsize=5,
+                        color='w' if G[a, b] < np.nanmax(G) * 0.6 else 'k')
+    ax.set_xlabel('focal mode k'); ax.set_ylabel('pupil Zernike j')
+    ax.set_title(f'Per-visit DZ nMAD(B−A) [µm] — all (k,j)\n{tag}', fontsize=9)
+    fig.colorbar(im, ax=ax, shrink=0.8, label='nMAD(B−A) [µm]')
     pdf.savefig(fig); plt.close(fig)
-    # paired scatter for the field-constant (c1) terms of the requested Zernikes
+
+    # (ii) all-coefficient bar
+    fig, ax = plt.subplots(figsize=(14, 4), constrained_layout=True)
+    ax.bar(np.arange(len(R)), R['nmad_diff'])
+    ax.set_xticks(np.arange(len(R))); ax.set_xticklabels([f'Z{j}.k{k}' for j, k in zip(R['j'], R['k'])],
+                                                         rotation=90, fontsize=4)
+    ax.set_ylabel('nMAD of per-visit (B−A) [µm]')
+    ax.set_title(f'Per-visit DZ-coefficient disagreement, all terms — {tag}', fontsize=9)
+    pdf.savefig(fig); plt.close(fig)
+
+    # (iii) paired scatter for the field-constant (c1) terms of the requested Zernikes
     c1 = [(j, f'{prefix}_z{j}_c1') for j in zks if f'{prefix}_z{j}_c1_A' in M.columns]
     if c1:
         n = len(c1); fig, axes = plt.subplots(2, (n + 1) // 2, figsize=(3 * ((n + 1) // 2), 6),
@@ -223,7 +253,7 @@ def compare_visit_dz(baseA, baseB, prefix, zks, pdf):
             ax.set_xlabel('A', fontsize=7); ax.set_ylabel('B', fontsize=7)
         for ax in axes.ravel()[n:]:
             ax.axis('off')
-        fig.suptitle(f'Per-visit DZ field-constant terms: A vs B ({prefix})', fontsize=10)
+        fig.suptitle(f'Per-visit DZ field-constant terms: A vs B — {tag}', fontsize=9)
         pdf.savefig(fig); plt.close(fig)
     print(R.reindex(R['nmad_diff'].sort_values(ascending=False).index).head(12)
           [['col', 'nmad_diff', 'med_diff']].to_string(index=False, float_format=lambda x: f'{x:.4f}'))
@@ -272,9 +302,11 @@ def main():
     ap.add_argument('--ps-b', default=NEW_DEFAULT, help='new param_set')
     ap.add_argument('--mi', default='pathA_50_34_i', help='measured-intrinsic config (for lut comparisons)')
     ap.add_argument('--comparison', default='all',
-                    choices=['all', 'lut-maps', 'lut-dof', 'visit-rms', 'visit-dz', 'yield'])
+                    choices=['all', 'lut-maps', 'lut-dof', 'visit-rms', 'visit-dz', 'mi-visit-dz', 'yield'])
     ap.add_argument('--coord', default='CCS', choices=['CCS', 'OCS'], help='frame for visit-rms')
     ap.add_argument('--dz-prefix', default='z1toz6', help='fits.parquet DZ column prefix for visit-dz')
+    ap.add_argument('--dz-mi', default='pathA_50_34_i_5rot',
+                    help='mi config whose measured-intrinsic refit fits to compare (mi-visit-dz)')
     ap.add_argument('--zernikes', default='4,5,6,7,8,9,10,11')
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
@@ -299,7 +331,11 @@ def main():
         if args.comparison in ('all', 'visit-rms'):
             compare_visit_rms(baseA, baseB, args.coord, zks, pdf)
         if args.comparison in ('all', 'visit-dz'):
-            compare_visit_dz(baseA, baseB, args.dz_prefix, zks, pdf)
+            compare_visit_dz(baseA, baseB, 'fits.parquet', args.dz_prefix, zks, pdf,
+                             'top-level vs batoid intrinsic')
+        if args.comparison in ('all', 'mi-visit-dz'):
+            compare_visit_dz(baseA, baseB, f'{args.dz_mi}/fits.parquet', args.dz_prefix, zks, pdf,
+                             f'mi={args.dz_mi} vs measured intrinsic')
         if args.comparison in ('all', 'yield'):
             compare_yield(baseA, baseB, pdf)
     print(f'\nwrote {out}')
