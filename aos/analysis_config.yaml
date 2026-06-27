@@ -100,3 +100,16 @@ overrides:
           - [-3.0, 3.0]
           - [10.0, 20.0]
           - [55.0, 65.0]
+
+  fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
+    pathA_50_34_i_5rot:
+      wfs_mimic:
+        # same 5 rotator bins as the MIW 5rot decomposition
+        # (mi_config split.rotator_select for pathA_50_34_i_5rot) -- drops the
+        # out-of-family rotator angles from the covariance.
+        rotator_keep:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]

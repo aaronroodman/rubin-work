@@ -121,3 +121,24 @@ measured_intrinsics:
     - name: pathA_50_34_i
       n_dof: 50
       n_keep: 34
+
+  fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
+    - name: pathA_50_34_i
+      n_dof: 50
+      n_keep: 34
+    # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
+    # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
+    # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
+    # Z9+ approximated as OCS-only.
+    - name: pathA_50_34_i_5rot
+      n_dof: 50
+      n_keep: 34
+      build_from: pathA_50_34_i
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4, 5, 6, 7, 8]
