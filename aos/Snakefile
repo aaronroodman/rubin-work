@@ -68,7 +68,6 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
 # param_sets with a paired in-focus corner-WFS (cwfs) collection
 WFS_PSETS = [ps for ps in PSETS if PARAM_SETS.get(ps, {}).get("wfs_collection")]
-WFS_MI_PAIRS = [(ps, mi) for ps, mi in MI_PAIRS if ps in WFS_PSETS]
 
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
@@ -110,10 +109,8 @@ rule all:
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
         # in-focus corner-WFS ingestion (param_sets with a wfs_collection)
         expand("output/{ps}/wfs/donuts.parquet", ps=WFS_PSETS),
-        # original + FAM-corrected WFS maps + FAM continuity check (per ps, mi)
-        [f"output/{ps}/{mi}/wfs_build/wfs_continuity.pdf" for ps, mi in WFS_MI_PAIRS],
-        # FAM vs WFS rotator-weighted agreement at the WFS radius (per ps, mi)
-        [f"output/{ps}/{mi}/wfs_build/study_wfs_radial.pdf" for ps, mi in WFS_MI_PAIRS],
+        # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps)
+        expand("output/{ps}/wfs/wfs_corner_compare.pdf", ps=WFS_PSETS),
         # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per (ps, mi)
         [f"output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet" for ps, mi in MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
@@ -288,43 +285,21 @@ rule study_radialbins:
         "python code/run_study_radialbins.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
-# ---- original + FAM-corrected corner-WFS maps + continuity check ----
-rule wfs_build:
+# ---- corner-by-corner CWFS vs FAM measured-OPD comparison (per ps) ----
+rule wfs_corner_compare:
     input:
         wfs    = "output/{ps}/wfs/donuts.parquet",
-        fits   = "output/{ps}/fits.parquet",        # FAM per-image DZ field
-        grids  = lambda w: mi_bin_grids(w.ps, w.mi),  # FAM intrinsic reference
-        script = "code/run_wfs_build.py",
-        lib    = "code/dz_fitting.py",
-        lib2   = "code/measured_intrinsic.py",
-    output:
-        grid = "output/{ps}/{mi}/wfs_build/wfs_grid.parquet",
-        pdf  = "output/{ps}/{mi}/wfs_build/wfs_continuity.pdf",
+        fam    = "output/{ps}/donuts.parquet",
+        visits = "output/{ps}/visits.parquet",
+        script = "code/run_wfs_corner_compare.py",
+    output: "output/{ps}/wfs/wfs_corner_compare.pdf"
     params:
         coord = lambda w: coord(w.ps),
-        cfg   = lambda w: mi_cfg_json(w.ps, w.mi),    # rerun-trigger only
-    resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.wfs_build.log"
+    resources: mem_mb=8000
+    log: "logs/{ps}.wfs_corner_compare.log"
     shell:
-        "python code/run_wfs_build.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --coord-sys {params.coord} > {log} 2>&1"
-
-# ---- FAM vs corner-WFS rotator-weighted agreement at the WFS radius ----
-rule study_wfs_radial:
-    input:
-        grid   = "output/{ps}/{mi}/wfs_build/wfs_grid.parquet",
-        grids  = lambda w: mi_bin_grids(w.ps, w.mi),  # FAM intrinsic reference
-        script = "code/run_study_wfs_radial.py",
-        lib    = "code/run_study_radialbins.py",      # wfs_inner_radius_deg
-    output: "output/{ps}/{mi}/wfs_build/study_wfs_radial.pdf"
-    params:                                           # rerun-trigger only
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
-        acfg = lambda w: an_json("study_wfs_radial", w.ps, w.mi),
-    resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.study_wfs_radial.log"
-    shell:
-        "python code/run_study_wfs_radial.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/run_wfs_corner_compare.py --param-set {wildcards.ps} "
+        "--coord {params.coord} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
