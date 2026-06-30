@@ -380,6 +380,8 @@ def main():
     ap.add_argument('--rot-lim', type=float, default=3.0)
     ap.add_argument('--max-visits', type=int, default=24)
     ap.add_argument('--dz-prefix', default='z1toz6')
+    ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'],
+                    help='donut frame for the WFS-mimic per-donut deviations')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--height-map-dir', default='~/u/LSST/packages/batoid_rubin_data')
     args = ap.parse_args()
@@ -407,7 +409,7 @@ def main():
         from run_wfs_mimic import DEFAULT as MIMIC_DEFAULT
         sec = {**MIMIC_DEFAULT, 'delta_deg': args.mimic_delta}
         mvis = load_fam_visits(base / args.fam_mi / 'fits.parquet', args.day_obs, args.rot_lim, args.max_visits)
-        Zc = mimic_measurements(base, base / args.fam_mi, _coord_sys(args.ps), noll, sec, mvis)
+        Zc = mimic_measurements(base, base / args.fam_mi, args.coord, noll, sec, mvis)
 
     for case in cases:
         out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}.pdf'
