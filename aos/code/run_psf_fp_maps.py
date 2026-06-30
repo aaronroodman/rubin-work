@@ -26,6 +26,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+os.environ.setdefault('NUMEXPR_MAX_THREADS', '8')   # silence galsim/numexpr thread warning
+
 PIXSCALE = 0.2          # arcsec / pixel (LSSTCam)
 DIAM, OBSC = 8.36, 0.612
 FP_RADIUS = 1.75        # deg, field normalization + FoV edge
@@ -33,6 +35,12 @@ ATM_FWHM = 0.6          # arcsec, Kolmogorov seeing
 STAMP = 64              # pixels
 LAM_NM = {'u': 368., 'g': 478., 'r': 622., 'i': 754., 'z': 869., 'y': 971.}
 LN256 = np.log(256.0)
+
+# fixed plot scales (same across all pages so cases are comparable)
+EXTENT = 2.0                              # deg, map axis half-range
+SCALE_ELLIP, KEY_ELLIP = 0.5, 0.2         # quiver scale (e per 0.4deg) + reference key
+SCALE_COMA,  KEY_COMA = 0.125, 0.05
+TREFOIL_AREA, KEY_TREFOIL = 1500.0, 0.1   # marker area per unit amplitude + reference key
 
 
 # ------------------------------------------------------------------ star sampling
@@ -164,54 +172,59 @@ def psf_page(stars, meas, title, fwhm_atm, pdf):
     from matplotlib.patches import Circle
     m = meas.set_index('idx')
     x = stars.thx_deg.values[m.index]; y = stars.thy_deg.values[m.index]
-    fig = plt.figure(figsize=(14, 11), constrained_layout=True)
-    gs = fig.add_gridspec(3, 3, width_ratios=[1, 1, 0.8])
+    fig = plt.figure(figsize=(13, 12))
+    gs = fig.add_gridspec(3, 3, width_ratios=[1, 1, 0.9], hspace=0.22, wspace=0.25)
 
-    def whisker(ax, ang, amp, scale, ttl, key, color='k'):
-        ax.quiver(x, y, amp * np.cos(ang), amp * np.sin(ang), angles='xy',
-                  scale_units='xy', scale=scale, headlength=0, headaxislength=0,
-                  width=0.003, color=color, pivot='mid')
-        ax.set_aspect('equal'); ax.set_title(ttl, fontsize=9)
-        ax.add_patch(Circle((0, 0), FP_RADIUS, fill=False, ls='--', color='r'))
+    def setup_map(ax, ttl):
+        ax.set_xlim(-EXTENT, EXTENT); ax.set_ylim(-EXTENT, EXTENT); ax.set_aspect('equal')
+        ax.add_patch(Circle((0, 0), FP_RADIUS, fill=False, ls='--', color='r', lw=0.8))
+        ax.set_title(ttl, fontsize=9, pad=3); ax.tick_params(labelsize=7)
+        ax.set_xlabel('FP x [deg]', fontsize=7); ax.set_ylabel('FP y [deg]', fontsize=7)
 
-    # (0,0) ellipticity whisker
-    ax = fig.add_subplot(gs[0, 0])
-    whisker(ax, 0.5 * np.arctan2(m.e2, m.e1), m.e, 1.0, 'ellipticity (e)', 0.1)
-    # (0,1) FWHM map
-    ax = fig.add_subplot(gs[0, 1])
+    def whisker(ax, ttl, ang, amp, scale, key):
+        Q = ax.quiver(x, y, amp * np.cos(ang), amp * np.sin(ang), angles='xy',
+                      scale_units='xy', scale=scale, headlength=0, headaxislength=0,
+                      width=0.004, pivot='mid', color='k')
+        setup_map(ax, ttl)
+        ax.quiverkey(Q, 0.14, 0.95, key, f'{key:g}', labelpos='E', coordinates='axes',
+                     fontproperties={'size': 7})
+
+    # row 0: ellipticity whisker | FWHM map
+    whisker(fig.add_subplot(gs[0, 0]), 'ellipticity',
+            0.5 * np.arctan2(m.e2, m.e1), m.e.values, SCALE_ELLIP, KEY_ELLIP)
+    ax = fig.add_subplot(gs[0, 1]); setup_map(ax, 'FWHM [arcsec]')
     vlo, vhi = np.nanpercentile(m.fwhm, [2, 98])
-    sc = ax.scatter(x, y, c=m.fwhm, s=12, cmap='viridis', vmin=vlo, vmax=vhi)
-    ax.set_aspect('equal'); ax.set_title('FWHM [arcsec]', fontsize=9)
-    ax.add_patch(Circle((0, 0), FP_RADIUS, fill=False, ls='--', color='r'))
-    fig.colorbar(sc, ax=ax, shrink=0.8)
-    # (1,0) e1, (1,1) e2
+    fig.colorbar(ax.scatter(x, y, c=m.fwhm, s=10, cmap='viridis', vmin=vlo, vmax=vhi),
+                 ax=ax, shrink=0.85)
+    # row 1: e1 | e2
     for col, key in [(0, 'e1'), (1, 'e2')]:
-        ax = fig.add_subplot(gs[1, col]); v = np.nanpercentile(np.abs(m[key]), 98)
-        sc = ax.scatter(x, y, c=m[key], s=12, cmap='RdBu_r', vmin=-v, vmax=v)
-        ax.set_aspect('equal'); ax.set_title(key, fontsize=9)
-        ax.add_patch(Circle((0, 0), FP_RADIUS, fill=False, ls='--', color='r'))
-        fig.colorbar(sc, ax=ax, shrink=0.8)
-    # (2,0) coma whisker, (2,1) trefoil markers
-    ax = fig.add_subplot(gs[2, 0])
-    whisker(ax, np.arctan2(m.coma2, m.coma1), np.hypot(m.coma1, m.coma2),
-            np.nanpercentile(np.hypot(m.coma1, m.coma2), 90) * 10, 'coma', 0.05)
-    ax = fig.add_subplot(gs[2, 1])
+        ax = fig.add_subplot(gs[1, col]); setup_map(ax, key)
+        v = np.nanpercentile(np.abs(m[key]), 98) or 0.01
+        fig.colorbar(ax.scatter(x, y, c=m[key], s=10, cmap='RdBu_r', vmin=-v, vmax=v),
+                     ax=ax, shrink=0.85)
+    # row 2: coma whisker | trefoil markers
+    whisker(fig.add_subplot(gs[2, 0]), 'coma',
+            np.arctan2(m.coma2, m.coma1), np.hypot(m.coma1, m.coma2), SCALE_COMA, KEY_COMA)
+    ax = fig.add_subplot(gs[2, 1]); setup_map(ax, 'trefoil')
     tamp = np.hypot(m.trefoil1, m.trefoil2); tang = np.degrees(np.arctan2(m.trefoil2, m.trefoil1)) / 3
-    tsz = 300 * tamp / (np.nanpercentile(tamp, 90) + 1e-9)
-    for xi, yi, ai, si in zip(x, y, tang, tsz):
+    for xi, yi, ai, si in zip(x, y, tang, tamp * TREFOIL_AREA):
         ax.scatter(xi, yi, marker=(3, 0, 30 + ai), s=si, color='k', lw=0.1)
-    ax.set_aspect('equal'); ax.set_title('trefoil', fontsize=9)
-    ax.add_patch(Circle((0, 0), FP_RADIUS, fill=False, ls='--', color='r'))
-    # histograms
-    for r, (key, lab) in enumerate([('fwhm', 'FWHM [arcsec]'), ('e', 'e'), ('kurtosis', 'kurtosis')]):
+    ax.scatter(-1.55, 1.6, marker=(3, 0, 30), s=KEY_TREFOIL * TREFOIL_AREA, color='k')
+    ax.text(-1.25, 1.6, f'{KEY_TREFOIL:g}', fontsize=7, va='center')
+
+    # histogram column (independent x-axes), quartile lines + values
+    for r, (key, lab, col) in enumerate([('fwhm', 'FWHM [arcsec]', 'steelblue'),
+                                         ('e', 'e', 'darkorange'), ('kurtosis', 'kurtosis', 'firebrick')]):
         ax = fig.add_subplot(gs[r, 2]); v = m[key].values; v = v[np.isfinite(v)]
-        ax.hist(v, bins=40, color=['steelblue', 'darkorange', 'firebrick'][r])
+        ax.hist(v, bins=40, color=col)
         q = np.nanpercentile(v, [25, 50, 75])
-        ax.axvline(q[1], color='k', lw=2)
-        ax.text(0.97, 0.95, f'{lab}\n25/50/75:\n{q[0]:.3f}/{q[1]:.3f}/{q[2]:.3f}',
+        for qq, lw in zip(q, (1, 2, 1)):
+            ax.axvline(qq, color='k', lw=lw)
+        ax.text(0.97, 0.96, f'{lab}\n25%: {q[0]:.3f}\n50%: {q[1]:.3f}\n75%: {q[2]:.3f}',
                 transform=ax.transAxes, ha='right', va='top', fontsize=8)
+        ax.tick_params(labelsize=7)
     fig.suptitle(title, fontsize=12)
-    pdf.savefig(fig); plt.close(fig)
+    pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
 
 
 def fwhm_optics_hist(meas, fwhm_atm, title, pdf):
