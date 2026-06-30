@@ -115,23 +115,24 @@ def _higher_moments(arr, ix0, iy0, Mxx, Mxy, Myy):
                 kurtosis=M40 + M04 + 2 * M22)
 
 
-def make_atm():
+def build_psf_tools(lam_nm):
+    """Kolmogorov atmosphere + cached Aperture (pupil reused across all renders)."""
     import galsim
-    return galsim.Kolmogorov(fwhm=ATM_FWHM)
+    atm = galsim.Kolmogorov(fwhm=ATM_FWHM)
+    aper = galsim.Aperture(diam=DIAM, obscuration=OBSC, lam=lam_nm)
+    return atm, aper
 
 
-def render_measure(zk_um, noll, lam_nm, atm, with_optics=True):
+def render_measure(zk_um, noll, lam_nm, atm, aper, with_optics=True):
     """Render OpticalPSF(zk)⊗atm, measure with HSM. Returns dict or None on failure."""
     import galsim
     if with_optics:
-        nmax = max(noll)
-        ab = np.zeros(nmax + 1)
+        ab = np.zeros(max(noll) + 1)
         lam_um = lam_nm / 1000.0
         for j, z in zip(noll, zk_um):
             if np.isfinite(z):
                 ab[j] = z / lam_um                      # waves
-        opt = galsim.OpticalPSF(lam=lam_nm, diam=DIAM, obscuration=OBSC, aberrations=ab.tolist())
-        psf = galsim.Convolve(opt, atm)
+        psf = galsim.Convolve(galsim.OpticalPSF(lam=lam_nm, aper=aper, aberrations=ab.tolist()), atm)
     else:
         psf = atm
     try:
@@ -151,19 +152,14 @@ def render_measure(zk_um, noll, lam_nm, atm, with_optics=True):
     return out
 
 
-def measure_all(zk, noll, lam_nm):
-    atm = make_atm()
-    ref = render_measure(None, noll, lam_nm, atm, with_optics=False)
-    fwhm_atm = ref['fwhm']
-    print(f'[atm] pure Kolmogorov(0.6") HSM FWHM = {fwhm_atm:.4f}"')
+def measure_zk(zk, noll, lam_nm, atm, aper):
+    """Render+measure every star's wavefront row. Returns a DataFrame (with idx)."""
     recs = []
     for i in range(len(zk)):
-        r = render_measure(zk[i], noll, lam_nm, atm)
+        r = render_measure(zk[i], noll, lam_nm, atm, aper)
         if r is not None:
-            r['idx'] = i
-        recs.append(r)
-    df = pd.DataFrame([r for r in recs if r is not None])
-    return df, fwhm_atm
+            r['idx'] = i; recs.append(r)
+    return pd.DataFrame(recs)
 
 
 # ------------------------------------------------------------------ plotting (psfPlotting style)
@@ -239,39 +235,131 @@ def fwhm_optics_hist(meas, fwhm_atm, title, pdf):
     ax.set_title(title, fontsize=10); pdf.savefig(fig); plt.close(fig)
 
 
+# ------------------------------------------------------------------ FAM residual
+# 22-DOF subset: 5 M2 hex (0-4) + 5 Cam hex (5-9) + first 7 M1M3 (10-16) + first 5 M2 (30-34)
+DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+
+
+def build_svd(noll, n_keep, n_dof):
+    from ofc_svd import build_ofc_svd
+    return build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_keep, n_dof=n_dof)
+
+
+def residual_W(row, prefix, svd):
+    """Per-visit uncorrectable DZ residual (1, n_kj) = W - n_keep-mode reconstruction."""
+    W = np.array([[float(row.get(f'{prefix}_z{j}_c{k}', np.nan)) for (k, j) in svd.kj_grid]])
+    A = svd.project_amplitudes(W)
+    return W - A @ svd.U_eff.T
+
+
+def eval_dz_field(W_resid, svd, noll, stars):
+    """Evaluate a DZ-coefficient vector (over svd.kj_grid) to a per-star pupil-Zernike
+    matrix (n_star, n_noll) [µm], using the k=1..6 focal-plane Zernike basis."""
+    from ofc_svd import focal_zernike_at_points
+    rho = np.hypot(stars.thx_deg.values, stars.thy_deg.values) / FP_RADIUS
+    theta = np.arctan2(stars.thy_deg.values, stars.thx_deg.values)
+    jpos = {j: i for i, j in enumerate(noll)}
+    zk = np.zeros((len(stars), len(noll)))
+    Wr = W_resid.ravel()
+    for ci, (k, j) in enumerate(svd.kj_grid):
+        if j in jpos and np.isfinite(Wr[ci]):
+            zk[:, jpos[j]] += Wr[ci] * focal_zernike_at_points(k, rho, theta)
+    return zk
+
+
+def load_fam_visits(fits_path, day_obs, rot_lim, n):
+    df = pd.read_parquet(fits_path)
+    sel = df[(df['day_obs'].astype(int) == day_obs)
+             & (np.abs(df['rotator_angle'].astype(float)) <= rot_lim)]
+    if 'visit_quality_pass' in sel.columns:
+        sel = sel[sel['visit_quality_pass'].astype(bool)]
+    sel = sel.sort_values('mjd' if 'mjd' in sel.columns else 'seq_num').head(n)
+    print(f'[fam] {len(sel)} visits (day_obs={day_obs}, |rot|<={rot_lim})')
+    return sel.reset_index(drop=True)
+
+
+def multi_fwhm_hist(visit_arrs, title, pdf, ncol=4):
+    """6x4 grid of per-visit optics-FWHM histograms with mean/rms boxes."""
+    import matplotlib.pyplot as plt
+    n = len(visit_arrs); nrow = int(np.ceil(n / ncol))
+    lo = min(np.nanmin(a) for _, a in visit_arrs); hi = max(np.nanmax(a) for _, a in visit_arrs)
+    bins = np.linspace(lo, hi, 30)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3 * ncol, 2.4 * nrow),
+                             constrained_layout=True, squeeze=False)
+    for ax, (lab, a) in zip(axes.ravel(), visit_arrs):
+        a = a[np.isfinite(a)]
+        ax.hist(a, bins=bins, color='slategray')
+        ax.text(0.96, 0.95, f'{lab}\nμ={np.mean(a):.3f}\nrms={np.std(a):.3f}',
+                transform=ax.transAxes, ha='right', va='top', fontsize=6)
+        ax.tick_params(labelsize=5)
+    for ax in axes.ravel()[n:]:
+        ax.axis('off')
+    fig.suptitle(title + '  — optics FWHM contribution [arcsec]', fontsize=11)
+    pdf.savefig(fig); plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ps', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
-    ap.add_argument('--split-mi', default='pathA_50_34_i_5rot')
-    ap.add_argument('--case', default='miw', choices=['miw'])       # fam50/fam22 next increment
+    ap.add_argument('--split-mi', default='pathA_50_34_i_5rot', help='mi config for the MIW OCS/CCS split')
+    ap.add_argument('--fam-mi', default='pathA_50_34_i', help='mi config whose per-visit FAM fits to use')
+    ap.add_argument('--case', default='miw', choices=['miw', 'fam50', 'fam22', 'all'])
     ap.add_argument('--band', default='i')
     ap.add_argument('--n-stars', type=int, default=1000)
     ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--day-obs', type=int, default=20260315)
+    ap.add_argument('--rot-lim', type=float, default=3.0)
+    ap.add_argument('--max-visits', type=int, default=24)
+    ap.add_argument('--dz-prefix', default='z1toz6')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--height-map-dir', default='~/u/LSST/packages/batoid_rubin_data')
     args = ap.parse_args()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))   # ccd_height, ofc_svd
     from lsst.obs.lsst import LsstCam
     camera = LsstCam.getCamera()
     base = Path(args.output_root) / args.ps
-    maps = base / args.split_mi / 'intrinsic_split_maps.parquet'
-    hmap = os.path.expanduser(args.height_map_dir)
-    lam_nm = LAM_NM[args.band]
-
-    stars = sample_science_stars(camera, args.n_stars, FP_RADIUS, args.seed)
-    out = base / 'plots' / f'psf_fp_maps_{args.case}_{args.band}.pdf'
-    out.parent.mkdir(parents=True, exist_ok=True)
+    hmap = os.path.expanduser(args.height_map_dir); lam_nm = LAM_NM[args.band]
+    cases = ['miw', 'fam50', 'fam22'] if args.case == 'all' else [args.case]
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
-    with PdfPages(str(out)) as pdf:
-        if args.case == 'miw':
-            zk, noll = miw_zernikes(stars, maps, camera, hmap)
-            meas, fwhm_atm = measure_all(zk, noll, lam_nm)
-            print(f'[miw] measured {len(meas)}/{len(stars)} stars; '
-                  f'median FWHM={meas.fwhm.median():.3f}" e={meas.e.median():.3f}')
-            psf_page(stars, meas, f'MIW (rotator 0, {args.band}-band) — {args.ps}', fwhm_atm, pdf)
-            fwhm_optics_hist(meas, fwhm_atm, f'MIW optics FWHM contribution ({args.band})', pdf)
-    print(f'\nwrote {out}')
+
+    # shared: stars, MIW base wavefront, psf tools, atm reference
+    stars = sample_science_stars(camera, args.n_stars, FP_RADIUS, args.seed)
+    miw_zk, noll = miw_zernikes(stars, base / args.split_mi / 'intrinsic_split_maps.parquet', camera, hmap)
+    atm, aper = build_psf_tools(lam_nm)
+    fwhm_atm = render_measure(None, noll, lam_nm, atm, aper, with_optics=False)['fwhm']
+    print(f'[atm] pure Kolmogorov({ATM_FWHM}") HSM FWHM = {fwhm_atm:.4f}"  (subtracted in step 4)')
+
+    for case in cases:
+        out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}.pdf'
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with PdfPages(str(out)) as pdf:
+            if case == 'miw':
+                meas = measure_zk(miw_zk, noll, lam_nm, atm, aper)
+                print(f'[miw] {len(meas)}/{len(stars)} stars; med FWHM={meas.fwhm.median():.3f}" '
+                      f'e={meas.e.median():.3f}')
+                psf_page(stars, meas, f'MIW (rotator 0, {args.band}) — {args.ps}', fwhm_atm, pdf)
+                fwhm_optics_hist(meas, fwhm_atm, f'MIW optics FWHM contribution ({args.band})', pdf)
+            else:
+                n_keep, n_dof = (34, None) if case == 'fam50' else (12, DOF22)
+                svd = build_svd(noll, n_keep, n_dof)
+                visits = load_fam_visits(base / args.fam_mi / 'fits.parquet',
+                                         args.day_obs, args.rot_lim, args.max_visits)
+                tag = '50DOF/34vmode' if case == 'fam50' else '22DOF/12vmode'
+                optics = []
+                for vi, row in visits.iterrows():
+                    Wr = residual_W(row, args.dz_prefix, svd)
+                    zk = miw_zk + eval_dz_field(Wr, svd, noll, stars)
+                    meas = measure_zk(zk, noll, lam_nm, atm, aper)
+                    lab = f"{int(row['day_obs'])}/{int(row['seq_num'])}"
+                    print(f'  [{case}] visit {vi+1}/{len(visits)} {lab}: '
+                          f'med FWHM={meas.fwhm.median():.3f}" e={meas.e.median():.3f}')
+                    psf_page(stars, meas, f'MIW + FAM {lab} corrected {tag} ({args.band}) — {args.ps}',
+                             fwhm_atm, pdf)
+                    optics.append((lab, meas['fwhm'].values - fwhm_atm))
+                multi_fwhm_hist(optics, f'MIW + FAM corrected {tag} ({args.band})', pdf)
+        print(f'wrote {out}')
 
 
 if __name__ == '__main__':
