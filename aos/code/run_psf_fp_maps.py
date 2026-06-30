@@ -364,13 +364,130 @@ def multi_fwhm_hist(visit_arrs, title, pdf, ncol=4):
     pdf.savefig(fig); plt.close(fig)
 
 
+# ------------------------------------------------------------------ closed-loop (P control)
+def loop_corner_data(base_ps, fam_mi_dir, coord, noll, sec, visits):
+    """Per-visit 4-corner WFS measurement for the closed loop.  Donuts are selected in
+    the FIXED CAMERA (CCS) corner wedges, but the OCS deviation medians and the OCS corner
+    positions are returned — so all rotators are handled from the data with no OCS<->CCS
+    rotation convention assumed.  {(day,seq): (z (4,nZk) dev medians, pos (4,2) thx/thy_OCS deg)} or None."""
+    import pyarrow.parquet as _pq
+    dd = _pq.read_table(str(base_ps / 'donuts.parquet'),
+                        columns=['day_obs', 'seq_num', 'thx_CCS', 'thy_CCS',
+                                 'thx_OCS', 'thy_OCS', f'zk_{coord}']).to_pandas()
+    sc = _pq.read_table(str(fam_mi_dir / 'zk_intrinsic.parquet'),
+                        columns=['zk_intrinsic_MI']).to_pandas()
+    vt = _pq.read_table(str(base_ps / 'visits.parquet'), columns=['nollIndices']).to_pandas()
+    noll_m = [int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
+    md = _pq.read_schema(str(fam_mi_dir / 'zk_intrinsic.parquet')).metadata or {}
+    noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist()
+              if b'nollIndices' in md else noll_m)
+    im = [noll_m.index(j) for j in noll]; ii = [noll_i.index(j) for j in noll]
+    dev = np.stack(dd[f'zk_{coord}'].values).astype(float)[:, im] \
+        - np.stack(sc['zk_intrinsic_MI'].values).astype(float)[:, ii]
+    day = dd.day_obs.astype(int).values; seq = dd.seq_num.astype(int).values
+    cx = np.rad2deg(dd.thx_CCS.astype(float).values); cy = np.rad2deg(dd.thy_CCS.astype(float).values)
+    ox = np.rad2deg(dd.thx_OCS.astype(float).values); oy = np.rad2deg(dd.thy_OCS.astype(float).values)
+    rC = np.hypot(cx, cy); azC = np.degrees(np.arctan2(cy, cx)) % 360.0
+    half = sec['wfs_azimuth_width_deg'] / 2.0
+    rin, rout = sec['wfs_inner_radius_deg'], sec['wfs_outer_radius_deg']
+    out = {}
+    for r in visits.itertuples():
+        d, s = int(r.day_obs), int(r.seq_num); vis = (day == d) & (seq == s)
+        z = np.full((4, len(noll)), np.nan); pos = np.full((4, 2), np.nan); ok = True
+        for ci, off in enumerate(MIMIC_OFFSETS):
+            ctr = (sec['delta_deg'] + off) % 360.0; lo, hi = (ctr - half) % 360.0, (ctr + half) % 360.0
+            azin = (azC >= lo) & (azC <= hi) if lo < hi else (azC >= lo) | (azC <= hi)
+            w = vis & (rC >= rin) & (rC <= rout) & azin
+            if int(w.sum()) < sec['min_donuts_per_wedge']:
+                ok = False; break
+            z[ci] = np.nanmedian(dev[w], axis=0); pos[ci] = [np.nanmedian(ox[w]), np.nanmedian(oy[w])]
+        out[(d, s)] = (z, pos) if ok else None
+    print(f'[loop] {sum(v is not None for v in out.values())}/{len(out)} visits with all 4 CCS-corner wedges')
+    return out
+
+
+def corner_matrix_at(svd, noll, pos_deg):
+    """B (4*nj, n_kj): focal basis evaluated at 4 explicit corner OCS positions (deg)."""
+    from ofc_svd import focal_zernike_at_points
+    jpos = {j: i for i, j in enumerate(noll)}; nj = len(noll)
+    B = np.zeros((4 * nj, len(svd.kj_grid)))
+    for ci, (tx, ty) in enumerate(pos_deg):
+        rho = np.hypot(tx, ty) / FP_RADIUS; th = np.arctan2(ty, tx)
+        for k_i, (k, j) in enumerate(svd.kj_grid):
+            if j in jpos:
+                B[ci * nj + jpos[j], k_i] = float(focal_zernike_at_points(k, rho, th))
+    return B
+
+
+def run_closed_loop(case, base, args, svd, miw_zk, noll, stars, atm, aper, lam_nm, fwhm_atm, pdf):
+    """Proportional closed loop over a time-ordered FAM disturbance sequence (all rotators).
+    state: c (accumulated correction, DZ).  Each visit:
+      r = W_true - c          (residual the science exposure sees -> rendered)
+      y = z_corners - B·c      (WFS measures residual at the 4 corners, real-donut noise)
+      A = pinv(B·U_eff)·y ;  c <- c + g·U_eff·A   (P update for next visit)."""
+    import matplotlib.pyplot as plt
+    from run_wfs_mimic import DEFAULT as MD
+    sec = {**MD, 'delta_deg': args.mimic_delta}
+    prefix, g = args.dz_prefix, args.gain
+    fits = pd.read_parquet(base / args.fam_mi / 'fits.parquet')
+    fits = fits.sort_values('mjd' if 'mjd' in fits.columns else 'seq_num').head(args.max_visits).reset_index(drop=True)
+    corners = loop_corner_data(base, base / args.fam_mi, args.coord, noll, sec, fits)
+    tag = ('50DOF/34vmode' if case.endswith('50') else '22DOF/12vmode') + f' P-loop g={g}'
+    c = np.zeros(len(svd.kj_grid)); ts = []; optics = []; sample = {}; step = 0
+    last_meas = None
+    for _, row in fits.iterrows():
+        cm = corners.get((int(row.day_obs), int(row.seq_num)))
+        if cm is None:
+            continue
+        z_corners, pos = cm
+        B = corner_matrix_at(svd, noll, pos)
+        W = np.nan_to_num(np.array([float(row.get(f'{prefix}_z{j}_c{k}', np.nan)) for (k, j) in svd.kj_grid]))
+        r = W - c
+        meas = measure_zk(miw_zk + eval_dz_field(r[None, :], svd, noll, stars), noll, lam_nm, atm, aper)
+        rtp = float(row.get('rotator_angle', np.nan))
+        ts.append((step, rtp, float(meas.fwhm.median()), float(meas.e.median())))
+        optics.append((step, meas['fwhm'].values - fwhm_atm))
+        A = np.linalg.pinv(B @ svd.U_eff) @ (z_corners.ravel() - B @ c)
+        c = c + g * (svd.U_eff @ A)
+        if step == 0:
+            sample[0] = meas
+        last_meas = meas; step += 1
+        print(f'  [{case}] step {step} {int(row.day_obs)}/{int(row.seq_num)} rtp={rtp:+.0f}: '
+              f'medFWHM={meas.fwhm.median():.3f}" e={meas.e.median():.3f}')
+    if not ts:
+        print(f'[{case}] no usable visits'); return
+    sample[ts[-1][0]] = last_meas
+    a = np.array([(t[0], t[2], t[3]) for t in ts])
+    fig, ax = plt.subplots(2, 1, figsize=(12, 7), sharex=True, constrained_layout=True)
+    ax[0].plot(a[:, 0], a[:, 1], '-o', ms=3); ax[0].axhline(fwhm_atm, ls=':', color='gray', label='atm')
+    ax[0].set_ylabel('median FWHM ["]'); ax[0].legend(fontsize=8); ax[0].set_title(f'Closed loop — {tag}')
+    ax[1].plot(a[:, 0], a[:, 2], '-o', ms=3, color='darkorange')
+    ax[1].set_ylabel('median e'); ax[1].set_xlabel('visit step')
+    pdf.savefig(fig); plt.close(fig)
+    burn = args.burn_in
+    pool = np.concatenate([o for st, o in optics if st >= burn] or [o for _, o in optics])
+    pool = pool[np.isfinite(pool)]
+    fig, ax = plt.subplots(figsize=(7, 5), constrained_layout=True)
+    ax.hist(pool, bins=50, color='slategray')
+    ax.text(0.97, 0.95, f'steps≥{burn}\nmean={pool.mean():.3f}"\nrms={pool.std():.3f}"',
+            transform=ax.transAxes, ha='right', va='top', fontsize=10)
+    ax.set_xlabel('optics FWHM contribution = FWHM − atm [arcsec]')
+    ax.set_title(f'Closed-loop steady-state optics FWHM — {tag}')
+    pdf.savefig(fig); plt.close(fig)
+    for st in sorted(sample):
+        psf_page(stars, sample[st], f'Closed loop step {st} — {tag} ({args.band})', fwhm_atm, pdf)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ps', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
     ap.add_argument('--split-mi', default='pathA_50_34_i_5rot', help='mi config for the MIW OCS/CCS split')
     ap.add_argument('--fam-mi', default='pathA_50_34_i', help='mi config whose per-visit FAM fits to use')
     ap.add_argument('--case', default='miw',
-                    choices=['miw', 'fam50', 'fam22', 'all', 'mimic50', 'mimic22', 'mimic'])
+                    choices=['miw', 'fam50', 'fam22', 'all', 'mimic50', 'mimic22', 'mimic',
+                             'loop50', 'loop22', 'loop'])
+    ap.add_argument('--gain', type=float, default=0.3, help='proportional control gain (closed loop)')
+    ap.add_argument('--burn-in', type=int, default=5, help='loop steps to skip for the steady-state histogram')
     ap.add_argument('--mimic-delta', type=float, default=0.0,
                     help='azimuth offset of the 4 WFS-mimic corners (deg); matches wfs_mimic delta_deg')
     ap.add_argument('--band', default='i')
@@ -390,8 +507,8 @@ def main():
     camera = LsstCam.getCamera()
     base = Path(args.output_root) / args.ps
     hmap = os.path.expanduser(args.height_map_dir); lam_nm = LAM_NM[args.band]
-    cases = {'all': ['miw', 'fam50', 'fam22'], 'mimic': ['mimic50', 'mimic22']}.get(
-        args.case, [args.case])
+    cases = {'all': ['miw', 'fam50', 'fam22'], 'mimic': ['mimic50', 'mimic22'],
+             'loop': ['loop50', 'loop22']}.get(args.case, [args.case])
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
@@ -421,6 +538,10 @@ def main():
                       f'e={meas.e.median():.3f}')
                 psf_page(stars, meas, f'MIW (rotator 0, {args.band}) — {args.ps}', fwhm_atm, pdf)
                 fwhm_optics_hist(meas, fwhm_atm, f'MIW optics FWHM contribution ({args.band})', pdf)
+            elif case in ('loop50', 'loop22'):
+                n_keep, n_dof = (34, None) if case.endswith('50') else (12, DOF22)
+                run_closed_loop(case, base, args, build_svd(noll, n_keep, n_dof),
+                                miw_zk, noll, stars, atm, aper, lam_nm, fwhm_atm, pdf)
             else:
                 mimic = case.startswith('mimic')
                 n_keep, n_dof = (34, None) if case.endswith('50') else (12, DOF22)
