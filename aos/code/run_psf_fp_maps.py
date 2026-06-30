@@ -365,25 +365,26 @@ def multi_fwhm_hist(visit_arrs, title, pdf, ncol=4):
 
 
 # ------------------------------------------------------------------ closed-loop (P control)
-def loop_corner_data(base_ps, fam_mi_dir, coord, noll, sec, visits):
-    """Per-visit 4-corner WFS measurement for the closed loop.  Donuts are selected in
-    the FIXED CAMERA (CCS) corner wedges, but the OCS deviation medians and the OCS corner
-    positions are returned — so all rotators are handled from the data with no OCS<->CCS
-    rotation convention assumed.  {(day,seq): (z (4,nZk) dev medians, pos (4,2) thx/thy_OCS deg)} or None."""
+def loop_corner_data(base_ps, fam_mi_dir, coord, noll, sec, visits, intrinsic):
+    """Per-visit 4-corner WFS measurement for the closed loop.  Donuts are selected in the
+    FIXED CAMERA (CCS) corner wedges; the OCS measurement medians and OCS corner positions
+    are returned (so all rotators are handled from the data, no OCS<->CCS rotation assumed).
+    The measured quantity is the wavefront the *controller* sees after subtracting its
+    assumed intrinsic:  tabulated -> zk_deviation (zk - design);  miw -> zk - zk_intrinsic_MI;
+    none -> raw zk.  Returns {(day,seq): (z (4,nZk), pos (4,2) thx/thy_OCS deg)} or None."""
     import pyarrow.parquet as _pq
-    dd = _pq.read_table(str(base_ps / 'donuts.parquet'),
-                        columns=['day_obs', 'seq_num', 'thx_CCS', 'thy_CCS',
-                                 'thx_OCS', 'thy_OCS', f'zk_{coord}']).to_pandas()
-    sc = _pq.read_table(str(fam_mi_dir / 'zk_intrinsic.parquet'),
-                        columns=['zk_intrinsic_MI']).to_pandas()
+    base_cols = ['day_obs', 'seq_num', 'thx_CCS', 'thy_CCS', 'thx_OCS', 'thy_OCS']
+    val = f'zk_deviation_{coord}' if intrinsic == 'tabulated' else f'zk_{coord}'
+    dd = _pq.read_table(str(base_ps / 'donuts.parquet'), columns=base_cols + [val]).to_pandas()
     vt = _pq.read_table(str(base_ps / 'visits.parquet'), columns=['nollIndices']).to_pandas()
     noll_m = [int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
-    md = _pq.read_schema(str(fam_mi_dir / 'zk_intrinsic.parquet')).metadata or {}
-    noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist()
-              if b'nollIndices' in md else noll_m)
-    im = [noll_m.index(j) for j in noll]; ii = [noll_i.index(j) for j in noll]
-    dev = np.stack(dd[f'zk_{coord}'].values).astype(float)[:, im] \
-        - np.stack(sc['zk_intrinsic_MI'].values).astype(float)[:, ii]
+    im = [noll_m.index(j) for j in noll]
+    meas = np.stack(dd[val].values).astype(float)[:, im]
+    if intrinsic == 'miw':
+        sc = _pq.read_table(str(fam_mi_dir / 'zk_intrinsic.parquet'), columns=['zk_intrinsic_MI']).to_pandas()
+        md = _pq.read_schema(str(fam_mi_dir / 'zk_intrinsic.parquet')).metadata or {}
+        noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist() if b'nollIndices' in md else noll_m)
+        meas = meas - np.stack(sc['zk_intrinsic_MI'].values).astype(float)[:, [noll_i.index(j) for j in noll]]
     day = dd.day_obs.astype(int).values; seq = dd.seq_num.astype(int).values
     cx = np.rad2deg(dd.thx_CCS.astype(float).values); cy = np.rad2deg(dd.thy_CCS.astype(float).values)
     ox = np.rad2deg(dd.thx_OCS.astype(float).values); oy = np.rad2deg(dd.thy_OCS.astype(float).values)
@@ -400,9 +401,10 @@ def loop_corner_data(base_ps, fam_mi_dir, coord, noll, sec, visits):
             w = vis & (rC >= rin) & (rC <= rout) & azin
             if int(w.sum()) < sec['min_donuts_per_wedge']:
                 ok = False; break
-            z[ci] = np.nanmedian(dev[w], axis=0); pos[ci] = [np.nanmedian(ox[w]), np.nanmedian(oy[w])]
+            z[ci] = np.nanmedian(meas[w], axis=0); pos[ci] = [np.nanmedian(ox[w]), np.nanmedian(oy[w])]
         out[(d, s)] = (z, pos) if ok else None
-    print(f'[loop] {sum(v is not None for v in out.values())}/{len(out)} visits with all 4 CCS-corner wedges')
+    print(f'[loop] intrinsic={intrinsic}: {sum(v is not None for v in out.values())}/{len(out)} '
+          f'visits with all 4 CCS-corner wedges')
     return out
 
 
@@ -419,36 +421,57 @@ def corner_matrix_at(svd, noll, pos_deg):
     return B
 
 
-def run_closed_loop(case, base, args, svd, miw_zk, noll, stars, atm, aper, lam_nm, fwhm_atm, pdf):
-    """Proportional closed loop over a time-ordered FAM disturbance sequence (all rotators).
-    state: c (accumulated correction, DZ).  Each visit:
-      r = W_true - c          (residual the science exposure sees -> rendered)
-      y = z_corners - B·c      (WFS measures residual at the 4 corners, real-donut noise)
-      A = pinv(B·U_eff)·y ;  c <- c + g·U_eff·A   (P update for next visit)."""
+def _design_intrinsic_at(stars, band, noll):
+    """Design (tabulated GQ) intrinsic Zernikes (µm) at each star field position."""
+    from lsst.ts.wep.utils import getTaskInstrument
+    inst = getTaskInstrument('LSSTCam', 'R22_S11', None); jmax = max(noll)
+    out = np.zeros((len(stars), len(noll)))
+    tx = stars.thx_deg.values; ty = stars.thy_deg.values
+    for i in range(len(stars)):
+        zk = inst._getIntrinsicZernikesCached(float(tx[i]), float(ty[i]), None, band, jmax) * 1e6
+        out[i] = [zk[j] for j in noll]
+    return out
+
+
+def run_closed_loop(case, base, args, svd, noll, stars, atm, aper, lam_nm, fwhm_atm, pdf):
+    """Design-relative proportional closed loop over a FAM disturbance sequence (all rotators).
+    Truth W = deviation-from-design (top-level fits); baseline = design intrinsic per star.
+    Each visit i:
+      r = W_i - c ;  render PSF from design + r
+      (measured images only) y = z_corners_i - B·c ;  A = pinv(B·U_eff)·y
+      schedule  c += g·U_eff·A  to take effect at image i+L   (n+2 latency: L=2, every other
+      image measured; n+1: L=1, every image).  --intrinsic sets what the controller subtracts."""
     import matplotlib.pyplot as plt
     from run_wfs_mimic import DEFAULT as MD
     sec = {**MD, 'delta_deg': args.mimic_delta}
     prefix, g = args.dz_prefix, args.gain
-    fits = pd.read_parquet(base / args.fam_mi / 'fits.parquet')
-    fits = fits.sort_values('mjd' if 'mjd' in fits.columns else 'seq_num').head(args.max_visits).reset_index(drop=True)
-    corners = loop_corner_data(base, base / args.fam_mi, args.coord, noll, sec, fits)
-    tag = ('50DOF/34vmode' if case.endswith('50') else '22DOF/12vmode') + f' P-loop g={g}'
-    c = np.zeros(len(svd.kj_grid)); ts = []; optics = []; sample = {}; step = 0
-    last_meas = None
-    for _, row in fits.iterrows():
-        cm = corners.get((int(row.day_obs), int(row.seq_num)))
-        if cm is None:
-            continue
-        z_corners, pos = cm
-        B = corner_matrix_at(svd, noll, pos)
+    fits = pd.read_parquet(base / 'fits.parquet')          # top-level = deviation from design
+    fits = (fits.sample(frac=1, random_state=args.seed) if args.order == 'random'
+            else fits.sort_values(['day_obs', 'seq_num']))
+    if args.max_visits and args.max_visits > 0:
+        fits = fits.head(args.max_visits)
+    fits = fits.reset_index(drop=True)
+    corners = loop_corner_data(base, base / args.fam_mi, args.coord, noll, sec, fits, args.intrinsic)
+    design = _design_intrinsic_at(stars, args.band, noll)
+    L = 2 if args.latency == 'nplustwo' else 1
+    tag = (('50DOF/34vmode' if case.endswith('50') else '22DOF/12vmode')
+           + f' g={g} {args.intrinsic} {args.order} {args.latency}')
+    c = np.zeros(len(svd.kj_grid)); scheduled = {}; ts = []; optics = []; sample = {}
+    step = 0; last_meas = None
+    for i, row in fits.iterrows():
+        if i in scheduled:
+            c = c + scheduled.pop(i)
         W = np.nan_to_num(np.array([float(row.get(f'{prefix}_z{j}_c{k}', np.nan)) for (k, j) in svd.kj_grid]))
-        r = W - c
-        meas = measure_zk(miw_zk + eval_dz_field(r[None, :], svd, noll, stars), noll, lam_nm, atm, aper)
+        meas = measure_zk(design + eval_dz_field((W - c)[None, :], svd, noll, stars), noll, lam_nm, atm, aper)
         rtp = float(row.get('rotator_angle', np.nan))
         ts.append((step, rtp, float(meas.fwhm.median()), float(meas.e.median())))
         optics.append((step, meas['fwhm'].values - fwhm_atm))
-        A = np.linalg.pinv(B @ svd.U_eff) @ (z_corners.ravel() - B @ c)
-        c = c + g * (svd.U_eff @ A)
+        if i % L == 0:                                     # measured image (stride = latency)
+            cm = corners.get((int(row.day_obs), int(row.seq_num)))
+            if cm is not None and np.all(np.isfinite(cm[0])):
+                z_corners, pos = cm; B = corner_matrix_at(svd, noll, pos)
+                A = np.linalg.pinv(B @ svd.U_eff) @ (z_corners.ravel() - B @ c)
+                scheduled[i + L] = scheduled.get(i + L, 0.0) + g * (svd.U_eff @ A)
         if step == 0:
             sample[0] = meas
         last_meas = meas; step += 1
@@ -488,6 +511,15 @@ def main():
                              'loop50', 'loop22', 'loop'])
     ap.add_argument('--gain', type=float, default=0.3, help='proportional control gain (closed loop)')
     ap.add_argument('--burn-in', type=int, default=5, help='loop steps to skip for the steady-state histogram')
+    ap.add_argument('--intrinsic', default='tabulated', choices=['tabulated', 'miw', 'none'],
+                    help='intrinsic the controller subtracts to estimate DOF (loop): tabulated=design, '
+                         'miw=measured-intrinsic, none=raw OPD')
+    ap.add_argument('--order', default='ordered', choices=['ordered', 'random'],
+                    help='loop visit order: ordered=day_obs,seq_num (groups of same-position visits); '
+                         'random=shuffled (random slewing). Reality is in between.')
+    ap.add_argument('--latency', default='nplustwo', choices=['nplustwo', 'nplusone'],
+                    help='nplustwo: correction from image n applied at n+2, n+1 measurement ignored '
+                         '(realistic); nplusone: applied at n+1 (future goal)')
     ap.add_argument('--mimic-delta', type=float, default=0.0,
                     help='azimuth offset of the 4 WFS-mimic corners (deg); matches wfs_mimic delta_deg')
     ap.add_argument('--band', default='i')
@@ -529,7 +561,9 @@ def main():
         Zc = mimic_measurements(base, base / args.fam_mi, args.coord, noll, sec, mvis)
 
     for case in cases:
-        out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}.pdf'
+        suffix = (f'_{args.intrinsic}_{args.order}_{args.latency}_g{args.gain:g}'
+                  if case.startswith('loop') else '')
+        out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}{suffix}.pdf'
         out.parent.mkdir(parents=True, exist_ok=True)
         with PdfPages(str(out)) as pdf:
             if case == 'miw':
@@ -541,7 +575,7 @@ def main():
             elif case in ('loop50', 'loop22'):
                 n_keep, n_dof = (34, None) if case.endswith('50') else (12, DOF22)
                 run_closed_loop(case, base, args, build_svd(noll, n_keep, n_dof),
-                                miw_zk, noll, stars, atm, aper, lam_nm, fwhm_atm, pdf)
+                                noll, stars, atm, aper, lam_nm, fwhm_atm, pdf)
             else:
                 mimic = case.startswith('mimic')
                 n_keep, n_dof = (34, None) if case.endswith('50') else (12, DOF22)
