@@ -39,6 +39,52 @@ def ang_dist(a, b):
     return np.abs((np.asarray(a) - b + 180.0) % 360.0 - 180.0)
 
 
+def _fourier_curve(az, z, M):
+    """Least-squares truncated Fourier series Z(az) with M harmonics -> callable."""
+    def design(a):
+        a = np.atleast_1d(np.asarray(a, float)); cols = [np.ones_like(a)]
+        for m in range(1, M + 1):
+            cols += [np.cos(m * np.radians(a)), np.sin(m * np.radians(a))]
+        return np.column_stack(cols)
+    coef = np.linalg.lstsq(design(az), z, rcond=None)[0]
+    return lambda a: design(a) @ coef
+
+
+def _gp_curve(az, z, bin_deg):
+    """GP on the cos/sin azimuth circle, fit to bin_deg-binned medians -> callable."""
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
+    bc, bm = [], []
+    for lo in np.arange(0, 360, bin_deg):
+        m = (az >= lo) & (az < lo + bin_deg)
+        if m.any():
+            bc.append(lo + bin_deg / 2); bm.append(np.nanmedian(z[m]))
+    bc, bm = np.array(bc), np.array(bm)
+    circ = lambda a: np.c_[np.cos(np.radians(np.atleast_1d(a))), np.sin(np.radians(np.atleast_1d(a)))]
+    k = ConstantKernel(1.0, (1e-2, 1e2)) * RBF(0.5, (0.05, 3.0)) + WhiteKernel(0.01, (1e-4, 0.2))
+    gp = GaussianProcessRegressor(k, normalize_y=True, n_restarts_optimizer=1).fit(circ(bc), bm)
+    return lambda a: gp.predict(circ(a))
+
+
+def azimuth_interp(az, z, corner_az, method, fourier_m, gp_bin, wedge_half, min_fam):
+    """FAM Zj interpolated to the corner azimuths. Returns (values[len(corner_az)], curve|None).
+    'wedge-median' = local median (curve=None); 'fourier'/'gp' = smooth ring fit + curve callable."""
+    ca = np.atleast_1d(np.asarray(corner_az, float))
+    fin = np.isfinite(z)
+    if method == 'wedge-median':
+        vals = np.array([np.nanmedian(z[ang_dist(az, c) <= wedge_half])
+                         if (ang_dist(az, c) <= wedge_half).sum() >= min_fam else np.nan for c in ca])
+        return vals, None
+    if fin.sum() < max(min_fam, fourier_m * 2 + 2):
+        return np.full(len(ca), np.nan), None
+    try:
+        curve = (_gp_curve(az[fin], z[fin], gp_bin) if method == 'gp'
+                 else _fourier_curve(az[fin], z[fin], fourier_m))
+    except Exception:                              # e.g. sklearn missing -> fall back to fourier
+        curve = _fourier_curve(az[fin], z[fin], fourier_m)
+    return np.asarray(curve(ca), float).ravel(), curve
+
+
 def fit_metrics(x, y):
     m = np.isfinite(x) & np.isfinite(y)
     if m.sum() < 3:
@@ -57,8 +103,13 @@ def main():
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--r-min', type=float, default=1.5178)
     ap.add_argument('--r-max', type=float, default=1.725)
-    ap.add_argument('--wedge-half', type=float, default=30.0, help='FAM azimuth half-width (deg) per corner')
-    ap.add_argument('--min-fam', type=int, default=3, help='min FAM donuts in a wedge (else NaN)')
+    ap.add_argument('--interp', default='gp', choices=['gp', 'fourier', 'wedge-median'],
+                    help='FAM azimuth interpolation to the corner: gp (smooth ring fit, default), '
+                         'fourier (truncated harmonics), wedge-median (local flat median)')
+    ap.add_argument('--fourier-m', type=int, default=4, help='harmonics for --interp fourier')
+    ap.add_argument('--gp-bin-deg', type=float, default=15.0, help='azimuth bin (deg) for the GP medians')
+    ap.add_argument('--wedge-half', type=float, default=30.0, help='FAM azimuth half-width (deg), --interp wedge-median')
+    ap.add_argument('--min-fam', type=int, default=3, help='min FAM donuts (wedge) / ring donuts (gp,fourier)')
     ap.add_argument('--val-stride', type=int, default=20, help='validation page every Nth triplet')
     ap.add_argument('--val-zernikes', default='5,6,7,8')
     args = ap.parse_args()
@@ -96,22 +147,28 @@ def main():
     AZC = np.full((nT, 4), np.nan)              # corner azimuth (deg)
     val_idx = set(range(0, nT, args.val_stride))
     val = {}
+    print(f'  FAM->corner interpolation: {args.interp}'
+          + (f' (M={args.fourier_m})' if args.interp == 'fourier' else
+             f' (bin={args.gp_bin_deg}°)' if args.interp == 'gp' else f' (±{args.wedge_half}°)'))
+    ikw = dict(method=args.interp, fourier_m=args.fourier_m, gp_bin=args.gp_bin_deg,
+               wedge_half=args.wedge_half, min_fam=args.min_fam)
     for t, key in enumerate(triplets):
         ci = np.asarray(cw_grp[key], int)
         fi = np.asarray(fam_grp[key], int)
-        for c, det in enumerate(CORNERS):
+        faz_t, fzk_t = fam_az[fi], fam_zk[fi]
+        for c, det in enumerate(CORNERS):       # CWFS median + corner azimuth
             cc = ci[cw_det[ci] == det]
             if len(cc) == 0:
                 continue
             CWM[t, c] = np.nanmedian(cw_zk[cc], axis=0)
-            azc = np.degrees(np.arctan2(np.nanmedian(np.sin(np.radians(cw_az[cc]))),
-                                        np.nanmedian(np.cos(np.radians(cw_az[cc]))))) % 360.0
-            AZC[t, c] = azc
-            w = fi[ang_dist(fam_az[fi], azc) <= args.wedge_half]
-            if len(w) >= args.min_fam:
-                FAMI[t, c] = np.nanmedian(fam_zk[w], axis=0)
+            AZC[t, c] = np.degrees(np.arctan2(np.nanmedian(np.sin(np.radians(cw_az[cc]))),
+                                              np.nanmedian(np.cos(np.radians(cw_az[cc]))))) % 360.0
+        cok = np.isfinite(AZC[t])               # FAM interp to those corner azimuths, per Zj
+        if cok.any():
+            for jp in range(nZk):
+                FAMI[t, cok, jp] = azimuth_interp(faz_t, fzk_t[:, jp], AZC[t, cok], **ikw)[0]
         if t in val_idx:
-            val[t] = (key, fam_az[fi], fam_zk[fi], cw_az[ci], cw_zk[ci], cw_det[ci])
+            val[t] = (key, faz_t, fzk_t, cw_az[ci], cw_zk[ci], cw_det[ci])
 
     out = base / 'wfs' / 'wfs_corner_compare.pdf'
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -185,10 +242,15 @@ def main():
         for t in sorted(val):
             key, faz, fzk, caz, czk, cdet = val[t]
             fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
+            agrid = np.arange(0, 360.5, 2.0)
             for ax, j in zip(axes.ravel(), vjs):
                 jp = noll.index(j)
                 ax.scatter(faz, fzk[:, jp], s=8, alpha=0.25, color='steelblue', label='FAM donuts')
                 ax.scatter(caz, czk[:, jp], s=18, alpha=0.6, color='crimson', marker='s', label='CWFS donuts')
+                _, curve = azimuth_interp(faz, fzk[:, jp], [0.0], **ikw)
+                if curve is not None:
+                    ax.plot(agrid, np.asarray(curve(agrid), float).ravel(), '-', color='navy', lw=1,
+                            alpha=0.7, label=f'FAM {args.interp} fit')
                 ax.scatter(AZC[t], FAMI[t, :, jp], s=80, color='navy', marker='P',
                            edgecolors='w', zorder=5, label='FAM interp')
                 ax.scatter(AZC[t], CWM[t, :, jp], s=80, color='darkred', marker='X',
