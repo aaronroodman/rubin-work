@@ -268,6 +268,36 @@ def eval_dz_field(W_resid, svd, noll, stars):
     return zk
 
 
+# WFS-mimic corner wedges (run_wfs_mimic DEFAULT / analysis_config): mid-radius + 4 azimuths
+MIMIC_RMID = 0.5 * (1.60 + 1.725)         # deg
+MIMIC_OFFSETS = [0.0, 90.0, 180.0, 270.0]
+
+
+def mimic_corner_matrix(svd, noll, delta):
+    """B (4*nj, n_kj): maps a DZ-coeff vector (svd.kj_grid order) to the pupil-Zernike
+    vectors at the 4 WFS-mimic corner centers (corner-major), via the focal basis."""
+    from ofc_svd import focal_zernike_at_points
+    rho = MIMIC_RMID / FP_RADIUS
+    jpos = {j: i for i, j in enumerate(noll)}; nj = len(noll)
+    B = np.zeros((4 * nj, len(svd.kj_grid)))
+    for c, off in enumerate(MIMIC_OFFSETS):
+        th = np.deg2rad(delta + off)
+        for ci, (k, j) in enumerate(svd.kj_grid):
+            if j in jpos:
+                B[c * nj + jpos[j], ci] = float(focal_zernike_at_points(k, rho, th))
+    return B
+
+
+def residual_W_mimic(row, prefix, svd, B):
+    """Residual after correcting with DOF/amplitudes estimated ONLY from the 4 WFS-mimic
+    corner regions: A = pinv(B·U_eff)·(B·W); W_corr = U_eff·A; residual = W - W_corr.
+    Uncorrectable field structure aliases through the 4-corner sampling into W_corr."""
+    W = np.nan_to_num(np.array([float(row.get(f'{prefix}_z{j}_c{k}', np.nan))
+                                for (k, j) in svd.kj_grid]))
+    A = np.linalg.pinv(B @ svd.U_eff) @ (B @ W)
+    return (W - svd.U_eff @ A)[None, :]
+
+
 def load_fam_visits(fits_path, day_obs, rot_lim, n):
     df = pd.read_parquet(fits_path)
     sel = df[(df['day_obs'].astype(int) == day_obs)
@@ -304,7 +334,10 @@ def main():
     ap.add_argument('--ps', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
     ap.add_argument('--split-mi', default='pathA_50_34_i_5rot', help='mi config for the MIW OCS/CCS split')
     ap.add_argument('--fam-mi', default='pathA_50_34_i', help='mi config whose per-visit FAM fits to use')
-    ap.add_argument('--case', default='miw', choices=['miw', 'fam50', 'fam22', 'all'])
+    ap.add_argument('--case', default='miw',
+                    choices=['miw', 'fam50', 'fam22', 'all', 'mimic50', 'mimic22', 'mimic'])
+    ap.add_argument('--mimic-delta', type=float, default=0.0,
+                    help='azimuth offset of the 4 WFS-mimic corners (deg); matches wfs_mimic delta_deg')
     ap.add_argument('--band', default='i')
     ap.add_argument('--n-stars', type=int, default=1000)
     ap.add_argument('--seed', type=int, default=1)
@@ -320,7 +353,8 @@ def main():
     camera = LsstCam.getCamera()
     base = Path(args.output_root) / args.ps
     hmap = os.path.expanduser(args.height_map_dir); lam_nm = LAM_NM[args.band]
-    cases = ['miw', 'fam50', 'fam22'] if args.case == 'all' else [args.case]
+    cases = {'all': ['miw', 'fam50', 'fam22'], 'mimic': ['mimic50', 'mimic22']}.get(
+        args.case, [args.case])
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
@@ -343,14 +377,21 @@ def main():
                 psf_page(stars, meas, f'MIW (rotator 0, {args.band}) — {args.ps}', fwhm_atm, pdf)
                 fwhm_optics_hist(meas, fwhm_atm, f'MIW optics FWHM contribution ({args.band})', pdf)
             else:
-                n_keep, n_dof = (34, None) if case == 'fam50' else (12, DOF22)
+                mimic = case.startswith('mimic')
+                n_keep, n_dof = (34, None) if case.endswith('50') else (12, DOF22)
                 svd = build_svd(noll, n_keep, n_dof)
+                B = mimic_corner_matrix(svd, noll, args.mimic_delta) if mimic else None
                 visits = load_fam_visits(base / args.fam_mi / 'fits.parquet',
                                          args.day_obs, args.rot_lim, args.max_visits)
-                tag = '50DOF/34vmode' if case == 'fam50' else '22DOF/12vmode'
+                tag = ('50DOF/34vmode' if case.endswith('50') else '22DOF/12vmode') \
+                    + (' WFS-mimic' if mimic else '')
+                if mimic:    # nominal MIW page for comparison (per request)
+                    psf_page(stars, measure_zk(miw_zk, noll, lam_nm, atm, aper),
+                             f'MIW nominal (rotator 0, {args.band}) — {args.ps}', fwhm_atm, pdf)
                 optics = []
                 for vi, row in visits.iterrows():
-                    Wr = residual_W(row, args.dz_prefix, svd)
+                    Wr = (residual_W_mimic(row, args.dz_prefix, svd, B) if mimic
+                          else residual_W(row, args.dz_prefix, svd))
                     zk = miw_zk + eval_dz_field(Wr, svd, noll, stars)
                     meas = measure_zk(zk, noll, lam_nm, atm, aper)
                     lab = f"{int(row['day_obs'])}/{int(row['seq_num'])}"
