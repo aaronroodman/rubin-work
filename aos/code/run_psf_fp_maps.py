@@ -132,7 +132,8 @@ def render_measure(zk_um, noll, lam_nm, atm, aper, with_optics=True):
         for j, z in zip(noll, zk_um):
             if np.isfinite(z):
                 ab[j] = z / lam_um                      # waves
-        psf = galsim.Convolve(galsim.OpticalPSF(lam=lam_nm, aper=aper, aberrations=ab.tolist()), atm)
+        psf = galsim.Convolve(
+            galsim.OpticalPSF(lam=lam_nm, diam=DIAM, aper=aper, aberrations=ab.tolist()), atm)
     else:
         psf = atm
     try:
