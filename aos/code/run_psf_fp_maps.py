@@ -288,14 +288,49 @@ def mimic_corner_matrix(svd, noll, delta):
     return B
 
 
-def residual_W_mimic(row, prefix, svd, B):
-    """Residual after correcting with DOF/amplitudes estimated ONLY from the 4 WFS-mimic
-    corner regions: A = pinv(B·U_eff)·(B·W); W_corr = U_eff·A; residual = W - W_corr.
-    Uncorrectable field structure aliases through the 4-corner sampling into W_corr."""
+def residual_W_mimic(row, prefix, svd, B, z_corners):
+    """Residual after correcting with amplitudes estimated ONLY from the 4 WFS-mimic
+    corner regions.  Truth W = full FAM DZ fit (this visit); the correction amplitudes
+    A = pinv(B·U_eff)·z come from the REAL per-donut wedge-median measurement
+    ``z_corners`` (4 x nZk, corner-major) — so both the 4-corner field-sampling
+    degeneracy AND the finite-donut measurement noise propagate into the residual.
+    W_corr = U_eff·A;  residual = W - W_corr."""
     W = np.nan_to_num(np.array([float(row.get(f'{prefix}_z{j}_c{k}', np.nan))
                                 for (k, j) in svd.kj_grid]))
-    A = np.linalg.pinv(B @ svd.U_eff) @ (B @ W)
+    A = np.linalg.pinv(B @ svd.U_eff) @ np.asarray(z_corners, float).ravel()
     return (W - svd.U_eff @ A)[None, :]
+
+
+def mimic_measurements(base_ps, fam_mi_dir, coord, noll, sec, visits):
+    """Per-visit 4-corner wedge-median of the REAL per-donut MI deviations (the
+    run_wfs_mimic measurement).  Returns {(day,seq): (4, nZk) in `noll` order or None}."""
+    import pyarrow.parquet as _pq
+    from run_wfs_mimic import _wedge_medians
+    dd = _pq.read_table(str(base_ps / 'donuts.parquet'),
+                        columns=['day_obs', 'seq_num', f'thx_{coord}', f'thy_{coord}',
+                                 f'zk_{coord}']).to_pandas()
+    sc = _pq.read_table(str(fam_mi_dir / 'zk_intrinsic.parquet'),
+                        columns=['zk_intrinsic_MI']).to_pandas()
+    if len(sc) != len(dd):
+        raise SystemExit(f'sidecar rows ({len(sc)}) != donuts rows ({len(dd)})')
+    vt = _pq.read_table(str(base_ps / 'visits.parquet'), columns=['nollIndices']).to_pandas()
+    noll_m = [int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
+    md = _pq.read_schema(str(fam_mi_dir / 'zk_intrinsic.parquet')).metadata or {}
+    noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist()
+              if b'nollIndices' in md else noll_m)
+    im = [noll_m.index(j) for j in noll]; ii = [noll_i.index(j) for j in noll]
+    dev = np.stack(dd[f'zk_{coord}'].values).astype(float)[:, im] \
+        - np.stack(sc['zk_intrinsic_MI'].values).astype(float)[:, ii]
+    day = dd['day_obs'].astype(int).values; seq = dd['seq_num'].astype(int).values
+    thx = np.rad2deg(dd[f'thx_{coord}'].astype(float).values)
+    thy = np.rad2deg(dd[f'thy_{coord}'].astype(float).values)
+    Z = {}
+    for r in visits.itertuples():
+        d, s = int(r.day_obs), int(r.seq_num); idx = np.where((day == d) & (seq == s))[0]
+        Z[(d, s)] = _wedge_medians(dev[idx], thx[idx], thy[idx], sec) if len(idx) else None
+    n_ok = sum(v is not None and np.all(np.isfinite(v)) for v in Z.values())
+    print(f'[mimic] real-donut wedge medians: {n_ok}/{len(Z)} visits with all 4 wedges populated')
+    return Z
 
 
 def load_fam_visits(fits_path, day_obs, rot_lim, n):
@@ -366,6 +401,14 @@ def main():
     fwhm_atm = render_measure(None, noll, lam_nm, atm, aper, with_optics=False)['fwhm']
     print(f'[atm] pure Kolmogorov({ATM_FWHM}") HSM FWHM = {fwhm_atm:.4f}"  (subtracted in step 4)')
 
+    # WFS-mimic real-donut corner measurements (loaded once, shared by mimic50/mimic22)
+    Zc = None
+    if any(c.startswith('mimic') for c in cases):
+        from run_wfs_mimic import DEFAULT as MIMIC_DEFAULT
+        sec = {**MIMIC_DEFAULT, 'delta_deg': args.mimic_delta}
+        mvis = load_fam_visits(base / args.fam_mi / 'fits.parquet', args.day_obs, args.rot_lim, args.max_visits)
+        Zc = mimic_measurements(base, base / args.fam_mi, _coord_sys(args.ps), noll, sec, mvis)
+
     for case in cases:
         out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}.pdf'
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -390,11 +433,16 @@ def main():
                              f'MIW nominal (rotator 0, {args.band}) — {args.ps}', fwhm_atm, pdf)
                 optics = []
                 for vi, row in visits.iterrows():
-                    Wr = (residual_W_mimic(row, args.dz_prefix, svd, B) if mimic
-                          else residual_W(row, args.dz_prefix, svd))
+                    lab = f"{int(row['day_obs'])}/{int(row['seq_num'])}"
+                    if mimic:
+                        z = Zc.get((int(row['day_obs']), int(row['seq_num'])))
+                        if z is None or not np.all(np.isfinite(z)):
+                            print(f'  [{case}] visit {lab}: <4 populated wedges, skip'); continue
+                        Wr = residual_W_mimic(row, args.dz_prefix, svd, B, z)
+                    else:
+                        Wr = residual_W(row, args.dz_prefix, svd)
                     zk = miw_zk + eval_dz_field(Wr, svd, noll, stars)
                     meas = measure_zk(zk, noll, lam_nm, atm, aper)
-                    lab = f"{int(row['day_obs'])}/{int(row['seq_num'])}"
                     print(f'  [{case}] visit {vi+1}/{len(visits)} {lab}: '
                           f'med FWHM={meas.fwhm.median():.3f}" e={meas.e.median():.3f}')
                     psf_page(stars, meas, f'MIW + FAM {lab} corrected {tag} ({args.band}) — {args.ps}',
