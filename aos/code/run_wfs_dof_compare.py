@@ -58,8 +58,8 @@ def robust_fit(x, y, K):
     """OLS fit + Pearson r + robust RMS after dropping points >K·nMAD from the mass."""
     m = np.isfinite(x) & np.isfinite(y)
     x, y = np.asarray(x)[m], np.asarray(y)[m]
-    if len(x) < 3:
-        return np.zeros(len(m), bool), dict(n=len(x), ndrop=0, r=np.nan, slope=np.nan, off=np.nan, rms=np.nan)
+    if len(x) < 3:                                    # keep-mask is over the finite subset (len == len(x))
+        return np.zeros(len(x), bool), dict(n=len(x), ndrop=0, r=np.nan, slope=np.nan, off=np.nan, rms=np.nan)
     keep = ((np.abs(x - np.median(x)) <= K * nmad(x) + 1e-12)
             & (np.abs(y - np.median(y)) <= K * nmad(y) + 1e-12))
     xk, yk = x[keep], y[keep]

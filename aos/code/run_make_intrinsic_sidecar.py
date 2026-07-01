@@ -110,7 +110,12 @@ def main():
             'centroid_x_intra', 'centroid_y_intra',
             'centroid_x_extra', 'centroid_y_extra']
     donuts_path = Path(args.donuts) if args.donuts else base / 'donuts.parquet'
+    # prefer a per-donut rotator_angle column (present in wfs/donuts.parquet, whose
+    # seq_num is the in-focus seq and so won't match the FAM-keyed visits.parquet)
+    if 'rotator_angle' in pq.read_schema(str(donuts_path)).names:
+        cols.append('rotator_angle')
     dd = pq.read_table(str(donuts_path), columns=cols).to_pandas()
+    rot_col = dd['rotator_angle'].to_numpy(float) if 'rotator_angle' in dd.columns else None
     N = len(dd)
     print(f'  donuts: {N}')
 
@@ -166,7 +171,7 @@ def main():
         if i == len(keys) or keys[i] != keys[start]:
             idx = order[start:i]
             d, snv = keys[start]
-            theta = rot_lut.get((d, snv))
+            theta = float(rot_col[idx[0]]) if rot_col is not None else rot_lut.get((d, snv))
             if theta is not None and np.isfinite(theta):
                 th = np.deg2rad(theta)
                 for ij in range(nZk):
