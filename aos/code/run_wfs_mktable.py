@@ -74,6 +74,12 @@ def main():
             f'thx_{coord}', f'thy_{coord}',
             f'thx_{coord}_intra', f'thx_{coord}_extra',
             f'thy_{coord}_intra', f'thy_{coord}_extra']
+    # also carry CCS positions (for the Z4 CCS MIW component) and the intra/extra
+    # centroids (for the per-corner CCD-height Z4) — used by run_wfs_dof_compare
+    for extra in ['thx_CCS', 'thy_CCS', 'centroid_x_intra', 'centroid_y_intra',
+                  'centroid_x_extra', 'centroid_y_extra']:
+        if extra not in keep:
+            keep.append(extra)
     donut_tabs, vrows, n_miss, noll = [], [], 0, None
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + 1
