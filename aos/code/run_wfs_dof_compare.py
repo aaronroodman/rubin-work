@@ -127,7 +127,6 @@ def main():
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
     from ofc_svd import build_ofc_svd
-    from scipy.interpolate import LinearNDInterpolator
     coord = args.coord
     base = Path(args.output_root) / args.param_set
     bmi = base / args.mi_name
@@ -136,11 +135,6 @@ def main():
 
     noll = [int(x) for x in np.asarray(
         pq.read_table(str(base / 'visits.parquet'), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
-
-    # ---- MIW (5rot OCS maps) interpolators per Zj ----
-    M = pd.read_parquet(bmi / 'intrinsic_split_maps.parquet')
-    pts = np.column_stack([M.thx_deg, M.thy_deg])
-    miw = {j: LinearNDInterpolator(pts, M[f'Z{j}_OCS'].values) for j in noll if f'Z{j}_OCS' in M.columns}
 
     # ---- FAM per-visit DZ fits (W built per SVD from its kj_grid below) ----
     fits = pd.read_parquet(bmi / 'fits.parquet')
@@ -154,14 +148,24 @@ def main():
     cw_det = cw.detector.astype(str).values
     cw_grp = cw.groupby(['day_obs', 'fam_seq_num']).indices
 
+    # ---- CWFS MIW sidecar (row-aligned to wfs/donuts.parquet; built by
+    #      run_make_intrinsic_sidecar --wfs-corner-height, i.e. the identical
+    #      reconstruct_at path as the FAM sidecar, with the SW1/SW0 half-sensor Z4 height) ----
+    scf = bmi / 'wfs' / 'zk_intrinsic.parquet'
+    mi_sc = np.stack(pq.read_table(str(scf), columns=['zk_intrinsic_MI']).to_pandas()
+                     ['zk_intrinsic_MI'].values).astype(float)
+    md = pq.read_schema(str(scf)).metadata or {}
+    noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist() if b'nollIndices' in md else noll)
+    mi_cw = mi_sc[:, [noll_i.index(j) for j in noll]]          # MIW per donut, aligned to noll
+
     triplets = sorted(set(cw_grp.keys()) & set(fam_key.keys()), key=lambda k: (k[0], k[1]))
     if args.max_triplets:
         triplets = triplets[:args.max_triplets]
     print(f'[wfs_dof_compare] {args.param_set}/{args.mi_name}: {len(triplets)} matched triplets, '
           f'coord={coord}, offsets={"off" if args.no_offsets else "on"}, rcond={args.rcond}')
 
-    # per-corner CWFS deviation (MIW- and offset-subtracted) + corner positions, per triplet
-    jpos = {j: i for i, j in enumerate(noll)}
+    # per-corner CWFS deviation (per-donut MIW-subtracted, then per-(Zj,corner) offset) + positions
+    off_by_det = {det: np.array([offsets.get(j, {}).get(det, 0.0) for j in noll]) for det in CORNERS}
     zdev = np.full((len(triplets), 4, len(noll)), np.nan)
     pos = np.full((len(triplets), 4, 2), np.nan)
     for t, key in enumerate(triplets):
@@ -170,13 +174,8 @@ def main():
             cc = ci[cw_det[ci] == det]
             if len(cc) == 0:
                 continue
-            txm, tym = np.median(cw_thx[cc]), np.median(cw_thy[cc])
-            pos[t, c] = [txm, tym]
-            zmed = np.nanmedian(cw_zk[cc], axis=0)
-            for j, ip in jpos.items():
-                mij = float(miw[j](txm, tym)) if j in miw else np.nan
-                off = offsets.get(j, {}).get(det, 0.0)
-                zdev[t, c, ip] = zmed[ip] - mij - off
+            pos[t, c] = [np.median(cw_thx[cc]), np.median(cw_thy[cc])]
+            zdev[t, c] = np.nanmedian(cw_zk[cc] - mi_cw[cc], axis=0) - off_by_det[det]
 
     import matplotlib
     matplotlib.use('Agg')

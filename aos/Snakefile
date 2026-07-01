@@ -305,14 +305,32 @@ rule wfs_corner_compare:
         "--coord {params.coord} > {log} 2>&1"
 
 # ---- CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi) ----
+# ---- CWFS MIW sidecar (reconstruct_at at the corner donuts + SW1/SW0 half-sensor Z4 height) ----
+rule wfs_intrinsic_sidecar:
+    input:
+        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
+        wfs    = "output/{ps}/wfs/donuts.parquet",
+        visits = "output/{ps}/visits.parquet",
+        script = "code/run_make_intrinsic_sidecar.py",
+        lib    = "code/intrinsic_split.py",
+    output: "output/{ps}/{mi}/wfs/zk_intrinsic.parquet"
+    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)            # rerun-trigger only
+    resources: mem_mb=8000
+    log: "logs/{ps}.{mi}.wfs_intrinsic_sidecar.log"
+    shell:
+        "python code/run_make_intrinsic_sidecar.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} --donuts output/{wildcards.ps}/wfs/donuts.parquet "
+        "--output output/{wildcards.ps}/{wildcards.mi}/wfs/zk_intrinsic.parquet "
+        "--wfs-corner-height > {log} 2>&1"
+
 rule wfs_dof_compare:
     input:
-        wfs    = "output/{ps}/wfs/donuts.parquet",
-        fits   = "output/{ps}/{mi}/fits.parquet",              # FAM MIW-subtracted DZ
-        maps   = "output/{ps}/{mi}/intrinsic_split_maps.parquet",  # MIW (OCS) at the corners
-        visits = "output/{ps}/visits.parquet",
-        script = "code/run_wfs_dof_compare.py",
-        lib    = "code/ofc_svd.py",
+        wfs     = "output/{ps}/wfs/donuts.parquet",
+        fits    = "output/{ps}/{mi}/fits.parquet",             # FAM MIW-subtracted DZ
+        sidecar = "output/{ps}/{mi}/wfs/zk_intrinsic.parquet",  # CWFS MIW at the corner donuts
+        visits  = "output/{ps}/visits.parquet",
+        script  = "code/run_wfs_dof_compare.py",
+        lib     = "code/ofc_svd.py",
     output: "output/{ps}/{mi}/wfs_dof_compare.pdf"
     params:
         coord = lambda w: coord(w.ps),

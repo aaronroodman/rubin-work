@@ -63,6 +63,15 @@ def main():
     ap.add_argument('--config', default=None)
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--coord-sys', default='OCS')
+    ap.add_argument('--donuts', default=None,
+                    help='donuts parquet (default <ps>/donuts.parquet); point at '
+                         'wfs/donuts.parquet to build a corner-WFS MIW sidecar')
+    ap.add_argument('--output', default=None,
+                    help='sidecar output path (default <mi>/zk_intrinsic.parquet)')
+    ap.add_argument('--wfs-corner-height', action='store_true',
+                    help='corner-WFS Z4 height = mean(h(SW1,intra), h(SW0,extra)) — the two '
+                         'correct half-sensors — instead of both centroids on one detector')
+    ap.add_argument('--height-map-dir', default=None, help='override batoid_rubin height-map dir')
     args = ap.parse_args()
 
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
@@ -100,7 +109,8 @@ def main():
             f'thx_{coord}', f'thy_{coord}',
             'centroid_x_intra', 'centroid_y_intra',
             'centroid_x_extra', 'centroid_y_extra']
-    dd = pq.read_table(str(base / 'donuts.parquet'), columns=cols).to_pandas()
+    donuts_path = Path(args.donuts) if args.donuts else base / 'donuts.parquet'
+    dd = pq.read_table(str(donuts_path), columns=cols).to_pandas()
     N = len(dd)
     print(f'  donuts: {N}')
 
@@ -116,14 +126,24 @@ def main():
         try:
             from lsst.obs.lsst import LsstCam
             from ccd_height import compute_ccd_heights, HEIGHT_TO_Z4_UM_PER_MM
+            cam = LsstCam.getCamera()
             fac = b.get('height_to_z4_factor') or HEIGHT_TO_Z4_UM_PER_MM
-            hc = compute_ccd_heights(
-                dd, LsstCam.getCamera(),
-                source=b.get('height_source', 'batoid_rubin'),
-                height_map_dir=b.get('batoid_rubin_height_map_dir'),
-                metrology_fits=b.get('height_map_fits'), factor=fac)
-            z4_height = np.asarray(hc['Z4_height'], dtype=float)
-            print(f'  Z4_height: mean={np.nanmean(z4_height):+.4f} μm')
+            hkw = dict(source=b.get('height_source', 'batoid_rubin'),
+                       height_map_dir=(args.height_map_dir or b.get('batoid_rubin_height_map_dir')),
+                       metrology_fits=b.get('height_map_fits'), factor=fac)
+            if args.wfs_corner_height:
+                # corner rafts: extra donut on <raft>_SW0, intra on <raft>_SW1 -> evaluate
+                # each half on its own sensor and average the two correct heights.
+                dfe = dd.copy()
+                dfi = dd.copy(); dfi['detector'] = dd['detector'].astype(str).str.replace('SW0', 'SW1')
+                he = np.asarray(compute_ccd_heights(dfe, cam, **hkw)['ccd_height_extra'], float)
+                hi = np.asarray(compute_ccd_heights(dfi, cam, **hkw)['ccd_height_intra'], float)
+                with np.errstate(invalid='ignore'):
+                    z4_height = fac * np.nanmean(np.vstack([hi, he]), axis=0)
+                print(f'  Z4_height (WFS corner, SW1-intra/SW0-extra): mean={np.nanmean(z4_height):+.4f} μm')
+            else:
+                z4_height = np.asarray(compute_ccd_heights(dd, cam, **hkw)['Z4_height'], float)
+                print(f'  Z4_height: mean={np.nanmean(z4_height):+.4f} μm')
         except Exception as e:
             print(f'  Z4 height skipped: {type(e).__name__}: {e}')
 
@@ -191,10 +211,10 @@ def main():
             b'mi_name': args.mi_name.encode(), b'coord_sys': coord.encode(),
             b'n_rows': str(N).encode()}
     out_tbl = out_tbl.replace_schema_metadata(meta)
-    mi_dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(out_tbl, str(mi_dir / 'zk_intrinsic.parquet'), compression='snappy')
-    print(f'  wrote zk_intrinsic.parquet ({N} rows, '
-          f'zk_intrinsic_MI[{nZk}] ordered by {jvals})')
+    out_path = Path(args.output) if args.output else mi_dir / 'zk_intrinsic.parquet'
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(out_tbl, str(out_path), compression='snappy')
+    print(f'  wrote {out_path} ({N} rows, zk_intrinsic_MI[{nZk}] ordered by {jvals})')
 
 
 if __name__ == '__main__':
