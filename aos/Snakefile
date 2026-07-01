@@ -68,6 +68,7 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
 # param_sets with a paired in-focus corner-WFS (cwfs) collection
 WFS_PSETS = [ps for ps in PSETS if PARAM_SETS.get(ps, {}).get("wfs_collection")]
+WFS_MI_PAIRS = [(ps, mi) for ps, mi in MI_PAIRS if ps in WFS_PSETS]
 
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
@@ -111,6 +112,8 @@ rule all:
         expand("output/{ps}/wfs/donuts.parquet", ps=WFS_PSETS),
         # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps)
         expand("output/{ps}/wfs/wfs_corner_compare.pdf", ps=WFS_PSETS),
+        # CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi)
+        [f"output/{ps}/{mi}/wfs_dof_compare.pdf" for ps, mi in WFS_MI_PAIRS],
         # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per (ps, mi)
         [f"output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet" for ps, mi in MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
@@ -300,6 +303,24 @@ rule wfs_corner_compare:
     shell:
         "python code/run_wfs_corner_compare.py --param-set {wildcards.ps} "
         "--coord {params.coord} > {log} 2>&1"
+
+# ---- CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi) ----
+rule wfs_dof_compare:
+    input:
+        wfs    = "output/{ps}/wfs/donuts.parquet",
+        fits   = "output/{ps}/{mi}/fits.parquet",              # FAM MIW-subtracted DZ
+        maps   = "output/{ps}/{mi}/intrinsic_split_maps.parquet",  # MIW (OCS) at the corners
+        visits = "output/{ps}/visits.parquet",
+        script = "code/run_wfs_dof_compare.py",
+        lib    = "code/ofc_svd.py",
+    output: "output/{ps}/{mi}/wfs_dof_compare.pdf"
+    params:
+        coord = lambda w: coord(w.ps),
+    resources: mem_mb=8000
+    log: "logs/{ps}.{mi}.wfs_dof_compare.log"
+    shell:
+        "python code/run_wfs_dof_compare.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} --coord {params.coord} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
