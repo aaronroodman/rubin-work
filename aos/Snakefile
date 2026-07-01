@@ -113,7 +113,7 @@ rule all:
         # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps)
         expand("output/{ps}/wfs/wfs_corner_compare.pdf", ps=WFS_PSETS),
         # CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi)
-        [f"output/{ps}/{mi}/wfs_dof_compare.pdf" for ps, mi in WFS_MI_PAIRS],
+        [f"output/{ps}/{mi}/wfs_dof_compare_offsets.pdf" for ps, mi in WFS_MI_PAIRS],
         # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per (ps, mi)
         [f"output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet" for ps, mi in MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
@@ -331,7 +331,7 @@ rule wfs_dof_compare:
         visits  = "output/{ps}/visits.parquet",
         script  = "code/run_wfs_dof_compare.py",
         lib     = "code/ofc_svd.py",
-    output: "output/{ps}/{mi}/wfs_dof_compare.pdf"
+    output: "output/{ps}/{mi}/wfs_dof_compare_offsets.pdf"
     params:
         coord = lambda w: coord(w.ps),
     resources: mem_mb=8000

@@ -180,7 +180,7 @@ def main():
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
-    out = bmi / f"wfs_dof_compare{'_nooffset' if args.no_offsets else ''}.pdf"
+    out = bmi / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
     ordn = np.arange(len(triplets))
     with PdfPages(str(out)) as pdf:
         for name, (n_keep, n_dof) in [('50DOF-34vmode', (34, None)), ('22DOF-12vmode', (12, DOF22))]:
