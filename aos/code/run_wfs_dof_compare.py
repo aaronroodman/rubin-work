@@ -12,8 +12,9 @@ Extract the optical state two ways per FAM triplet and compare:
         truncation as FAM, so the two are directly comparable (only the measurement
         differs: 4 corners vs full field).
 
-Both 50-DOF/34-vmode and 22-DOF/12-vmode are produced.  Pages per SVD: v-mode time
-history (vs image ordinal) and CWFS-vs-FAM scatter; then DoF time history and scatter.
+Both 50-DOF/34-vmode and 22-DOF/12-vmode are produced.  Pages per SVD, for v-modes then
+DoF: time history (vs image ordinal), CWFS-vs-FAM scatter (per-panel slope/offset/r/robust
+RMS/drop), and a summary page of slope, offset, correlation r and robust RMS per mode.
 Scatter fits reject points far (>K·nMAD) from the mass.
 
 Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR; runs in the LSST stack env.
@@ -105,13 +106,36 @@ def scatter_pages(labels, fam, cwfs, title, pdf, K, per=20):
                 lo, hi = np.nanpercentile(np.concatenate([xf[keep], yf[keep]]), [1, 99])
                 ax.plot([lo, hi], [lo, hi], 'k--', lw=0.6)
                 ax.plot([lo, hi], [m['slope'] * lo + m['off'], m['slope'] * hi + m['off']], 'r-', lw=0.8)
-                ax.text(0.04, 0.96, f"r={m['r']:.2f} s={m['slope']:.2f}\nrms={m['rms']:.3f} drop={m['ndrop']}",
+                ax.text(0.04, 0.96, f"r={m['r']:.2f} s={m['slope']:.2f}\noff={m['off']:.3f} rms={m['rms']:.3f}\ndrop={m['ndrop']}",
                         transform=ax.transAxes, va='top', fontsize=6)
             ax.set_title(labels[i], fontsize=7); ax.tick_params(labelsize=6)
         for ax in axes.ravel()[len(idx):]:
             ax.axis('off')
         fig.suptitle(f'{title} — CWFS (y) vs FAM (x)', fontsize=11)
         pdf.savefig(fig); plt.close(fig)
+
+
+def summary_page(labels, fam, cwfs, title, pdf, K):
+    """One page: slope, offset, Pearson r and robust RMS of the CWFS-vs-FAM fit per mode."""
+    import matplotlib.pyplot as plt
+    n = len(labels)
+    st = [robust_fit(fam[:, i], cwfs[:, i], K)[1] for i in range(n)]
+    x = np.arange(n)
+    rows = [('slope', [s['slope'] for s in st], 1.0),
+            ('offset', [s['off'] for s in st], 0.0),
+            ('correlation r', [s['r'] for s in st], 1.0),
+            ('robust RMS', [s['rms'] for s in st], 0.0)]
+    fig, axes = plt.subplots(4, 1, figsize=(max(8, 0.32 * n), 9), constrained_layout=True,
+                             sharex=True, squeeze=False)
+    for ax, (lab, vals, ref) in zip(axes[:, 0], rows):
+        ax.plot(x, vals, 'o-', ms=3, lw=0.6, color='steelblue')
+        if ref is not None:
+            ax.axhline(ref, color='k', lw=0.5, ls='--')
+        ax.set_ylabel(lab, fontsize=8); ax.grid(alpha=0.25); ax.tick_params(labelsize=7)
+    axes[-1, 0].set_xticks(x); axes[-1, 0].set_xticklabels(labels, rotation=90, fontsize=6)
+    fig.suptitle(f'{title} — CWFS-vs-FAM summary per mode  '
+                 f'(slope/r ref=1, offset ref=0; {int(K)}·nMAD outliers dropped)', fontsize=11)
+    pdf.savefig(fig); plt.close(fig)
 
 
 def main():
@@ -203,8 +227,10 @@ def main():
             dfam, dcw = svd.dof(A_fam), svd.dof(A_cwfs)
             th_pages(vmode_lab, ordn, vfam, vcw, f'{name} v-modes', pdf)
             scatter_pages(vmode_lab, vfam, vcw, f'{name} v-modes', pdf, args.reject_k)
+            summary_page(vmode_lab, vfam, vcw, f'{name} v-modes', pdf, args.reject_k)
             th_pages(dof_lab, ordn, dfam, dcw, f'{name} DoF', pdf)
             scatter_pages(dof_lab, dfam, dcw, f'{name} DoF', pdf, args.reject_k)
+            summary_page(dof_lab, dfam, dcw, f'{name} DoF', pdf, args.reject_k)
             med_r = np.nanmedian([robust_fit(vfam[:, i], vcw[:, i], args.reject_k)[1]['r'] for i in range(n_keep)])
             print(f'  {name}: median v-mode CWFS-vs-FAM r = {med_r:.3f}')
     print(f'  wrote {out}')
