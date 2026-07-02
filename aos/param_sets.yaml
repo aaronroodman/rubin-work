@@ -124,7 +124,14 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   wfs_collections:
     refitWcs:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
     paired_3mm: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_6_1/donut_viz_4_5_0/danish_v1_2_0/bin2x
-    ai_donut:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
+    # DEFERRED — ai_donut lacks aggregateAOSVisitTableRaw; it only has
+    # aggregateZernikesRaw (zk in OCS/CCS/NW, no positions) + per-detector
+    # `zernikes` (positions: intra_field/extra_field/centroids, native frame).
+    # Needs a dedicated reader that joins the two on donut_id and rotates
+    # field positions CCS->OCS (determine the rotation empirically first).  When
+    # built, switch entries to {collection, dataset_type} form and set
+    # dataset_type: aggregateZernikesRaw here.
+    # ai_donut:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315
