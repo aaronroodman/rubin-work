@@ -19,6 +19,13 @@ history + scatter, then a 2-page grouped recovery summary (hexapod translations 
 rotations / M1M3 / M2 bending, unit-consistent per panel) with each DoF as a point =
 fit offset, error bar = robust RMS.  Scatter fits reject points far (>K·nMAD) from the mass.
 
+Finally, per SVD, an AOS-FWHM page: the CWFS−FAM v-mode error is the optical-state
+recovery error; it maps to a residual double-Zernike wavefront, evaluated as a pupil-
+Zernike vector at field points and converted to a PSF FWHM (ts_wep convertZernikesToPsfWidth,
+Z4+ quadrature).  Reported per image as a focal-plane area-average, an average at the 4
+rotated CWFS corner positions (the ConsDB AOS_FWHM analog), and a vmode_fwhm_scale
+quadrature cross-check.
+
 Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR; runs in the LSST stack env.
 """
 import argparse
@@ -180,6 +187,80 @@ def dof_summary_pages(labels, units, fam, cwfs, title, pdf, K):
         pdf.savefig(fig); plt.close(fig)
 
 
+def fp_grid(R, step):
+    """Area-uniform grid of field points (deg) within radius R (deg)."""
+    g = np.arange(-R, R + 1e-9, step)
+    xx, yy = np.meshgrid(g, g)
+    m = (xx ** 2 + yy ** 2) <= R ** 2
+    return np.column_stack([xx[m], yy[m]])
+
+
+def zj_to_fwhm(Z, noll, conv):
+    """Z (..., nj) pupil-Zernike vectors (µm) at Noll ``noll`` -> AOS FWHM (arcsec).
+
+    Pads into a Noll-4-start contiguous vector (Z1-3 excluded), applies
+    ts_wep convertZernikesToPsfWidth (per-Zernike arcsec) and quadrature-sums.
+    """
+    Z = np.atleast_2d(np.asarray(Z, float))
+    jmax = max(noll)
+    full = np.zeros((Z.shape[0], jmax - 3))                # column 0 == Noll 4
+    src = [i for i, j in enumerate(noll) if j >= 4]
+    full[:, [noll[i] - 4 for i in src]] = Z[:, src]
+    dpsf = np.asarray(conv(full), float)                   # (n, jmax-3) arcsec per Zernike
+    return np.sqrt(np.nansum(dpsf ** 2, axis=1))
+
+
+def aos_fwhm_series(svd, noll, dvmode, pos, grid_pos, conv):
+    """Per-image AOS FWHM (arcsec) from the CWFS-FAM v-mode recovery error dvmode.
+
+    dvmode -> residual DZ  dW = (dvmode ⊙ σ) @ U_effᵀ; evaluate the pupil-Zernike
+    residual at field points (dW @ Bᵀ), convert to FWHM, average.  Returns
+    corner (4 rotated CWFS OCS positions; the ConsDB AOS_FWHM analog), fp
+    (focal-plane grid area-average) and vscale (vmode_fwhm_scale quadrature xcheck).
+    """
+    from ofc_svd import vmode_fwhm_scale
+    sig = svd.Sigma[svd._keep()]
+    dW = (dvmode * sig[None, :]) @ svd.U_eff.T             # (nt, n_kj) residual DZ (µm)
+    nt, nj = dW.shape[0], len(noll)
+    Bg = corner_matrix_at(svd, noll, grid_pos)             # fixed grid -> one basis
+    zg_all = dW @ Bg.T                                     # (nt, ngrid*nj)
+    fp = np.full(nt, np.nan); cor = np.full(nt, np.nan)
+    for t in range(nt):
+        if not np.all(np.isfinite(dW[t])):
+            continue
+        fp[t] = np.nanmean(zj_to_fwhm(zg_all[t].reshape(-1, nj), noll, conv))
+        if np.all(np.isfinite(pos[t])):
+            zc = (dW[t] @ corner_matrix_at(svd, noll, pos[t]).T).reshape(len(CORNERS), nj)
+            cor[t] = np.nanmean(zj_to_fwhm(zc, noll, conv))
+    g = vmode_fwhm_scale(svd)
+    vsc = (np.sqrt(np.nansum((dvmode * g[None, :]) ** 2, axis=1)) if g is not None
+           else np.full(nt, np.nan))
+    return dict(corner=cor, fp=fp, vscale=vsc)
+
+
+def aos_fwhm_page(ordn, series, name, pdf):
+    import matplotlib.pyplot as plt
+    keys = [('fp', 'focal-plane avg', 'steelblue'),
+            ('corner', 'CWFS-corner avg (ConsDB analog)', 'crimson'),
+            ('vscale', 'v-mode scale (x-check)', 'green')]
+    fig, axes = plt.subplots(2, 1, figsize=(14, 8), constrained_layout=True)
+    for k, lab, c in keys:
+        y = series[k]
+        if np.isfinite(y).any():
+            axes[0].plot(ordn, y, '.', ms=3, color=c,
+                         label=f'{lab}  (median {np.nanmedian(y):.3f}″)')
+    axes[0].set_xlabel('image ordinal'); axes[0].set_ylabel('AOS FWHM [arcsec]')
+    axes[0].set_title(f'{name} — AOS FWHM from CWFS−FAM optical-state recovery error')
+    axes[0].legend(fontsize=8); axes[0].grid(alpha=0.3)
+    for k, lab, c in keys:
+        y = series[k][np.isfinite(series[k])]
+        if y.size:
+            axes[1].hist(y, bins=40, histtype='step', color=c, label=lab)
+    axes[1].set_xlabel('AOS FWHM [arcsec]'); axes[1].set_ylabel('N')
+    axes[1].legend(fontsize=8); axes[1].grid(alpha=0.3)
+    pdf.savefig(fig); plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
@@ -193,6 +274,11 @@ def main():
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
     from ofc_svd import build_ofc_svd
+    try:
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth as conv_fwhm
+    except Exception as e:
+        conv_fwhm = None
+        print(f'[wfs_dof_compare] AOS_FWHM disabled (no convertZernikesToPsfWidth): {e}')
     coord = args.coord
     base = Path(args.output_root) / args.param_set
     bmi = base / args.mi_name
@@ -248,6 +334,7 @@ def main():
     from matplotlib.backends.backend_pdf import PdfPages
     out = bmi / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
     ordn = np.arange(len(triplets))
+    grid_pos = fp_grid(FP_RADIUS, 0.35)                            # ~89-point focal-plane grid
     with PdfPages(str(out)) as pdf:
         for name, (n_keep, n_dof) in [('50DOF-34vmode', (34, None)), ('22DOF-12vmode', (12, DOF22))]:
             svd = build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_keep, n_dof=n_dof)
@@ -275,6 +362,11 @@ def main():
             dof_summary_pages(dof_lab, dof_units, dfam, dcw, f'{name} DoF', pdf, args.reject_k)
             med_r = np.nanmedian([robust_fit(vfam[:, i], vcw[:, i], args.reject_k)[1]['r'] for i in range(n_keep)])
             print(f'  {name}: median v-mode CWFS-vs-FAM r = {med_r:.3f}')
+            if conv_fwhm is not None:
+                fw = aos_fwhm_series(svd, noll, vcw - vfam, pos, grid_pos, conv_fwhm)
+                aos_fwhm_page(ordn, fw, name, pdf)
+                print(f'  {name}: median AOS_FWHM  fp={np.nanmedian(fw["fp"]):.3f}″  '
+                      f'corner={np.nanmedian(fw["corner"]):.3f}″  vscale={np.nanmedian(fw["vscale"]):.3f}″')
     print(f'  wrote {out}')
 
 
