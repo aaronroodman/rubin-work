@@ -122,7 +122,9 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   # CWFS variants as extra keys to repeat the WFS analysis side by side, e.g.
   #   noRefit: LSSTCam/runs/aos/fam_cwfs_triplet/.../bin_x2/noRefit
   wfs_collections:
-    refitWcs: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
+    refitWcs:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
+    paired_3mm: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_6_1/donut_viz_4_5_0/danish_v1_2_0/bin2x
+    ai_donut:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315
