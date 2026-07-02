@@ -325,12 +325,14 @@ rule wfs_intrinsic_sidecar:
 
 rule wfs_dof_compare:
     input:
-        wfs     = "output/{ps}/wfs/donuts.parquet",
-        fits    = "output/{ps}/{mi}/fits.parquet",             # FAM MIW-subtracted DZ
-        sidecar = "output/{ps}/{mi}/wfs/zk_intrinsic.parquet",  # CWFS MIW at the corner donuts
-        visits  = "output/{ps}/visits.parquet",
-        script  = "code/run_wfs_dof_compare.py",
-        lib     = "code/ofc_svd.py",
+        wfs      = "output/{ps}/wfs/donuts.parquet",
+        fits     = "output/{ps}/{mi}/fits.parquet",              # FAM MIW-subtracted DZ
+        sidecar  = "output/{ps}/{mi}/wfs/zk_intrinsic.parquet",  # CWFS MIW at the corner donuts
+        fam_don  = "output/{ps}/donuts.parquet",                 # FAM donuts (MIW-FWHM field sampling)
+        fam_side = "output/{ps}/{mi}/zk_intrinsic.parquet",      # FAM per-donut MIW (baseline FWHM)
+        visits   = "output/{ps}/visits.parquet",
+        script   = "code/run_wfs_dof_compare.py",
+        lib      = "code/ofc_svd.py",
     output: "output/{ps}/{mi}/wfs_dof_compare_offsets.pdf"
     params:
         coord = lambda w: coord(w.ps),
