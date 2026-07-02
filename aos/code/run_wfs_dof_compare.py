@@ -12,10 +12,12 @@ Extract the optical state two ways per FAM triplet and compare:
         truncation as FAM, so the two are directly comparable (only the measurement
         differs: 4 corners vs full field).
 
-Both 50-DOF/34-vmode and 22-DOF/12-vmode are produced.  Pages per SVD, for v-modes then
-DoF: time history (vs image ordinal), CWFS-vs-FAM scatter (per-panel slope/offset/r/robust
-RMS/drop), and a summary page of slope, offset, correlation r and robust RMS per mode.
-Scatter fits reject points far (>K·nMAD) from the mass.
+Both 50-DOF/34-vmode and 22-DOF/12-vmode are produced.  Pages per SVD: for v-modes,
+time history (vs image ordinal), CWFS-vs-FAM scatter (per-panel slope/offset/r/robust
+RMS/drop) and a per-mode summary of slope/offset/r/robust-RMS; for DoF, the same time
+history + scatter, then a 2-page grouped recovery summary (hexapod translations /
+rotations / M1M3 / M2 bending, unit-consistent per panel) with each DoF as a point =
+fit offset, error bar = robust RMS.  Scatter fits reject points far (>K·nMAD) from the mass.
 
 Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR; runs in the LSST stack env.
 """
@@ -138,6 +140,46 @@ def summary_page(labels, fam, cwfs, title, pdf, K):
     pdf.savefig(fig); plt.close(fig)
 
 
+def dof_summary_pages(labels, units, fam, cwfs, title, pdf, K):
+    """DoF recovery summary grouped by the standard scheme (hexapod translations /
+    rotations / M1M3 / M2 bending), unit-consistent per panel.  Each DoF is one
+    point: y = CWFS-vs-FAM fit offset, error bar = robust RMS.  2 pages
+    (rigid body, then bending modes)."""
+    import matplotlib.pyplot as plt
+    n = len(labels)
+    st = [robust_fit(fam[:, i], cwfs[:, i], K)[1] for i in range(n)]
+    off = np.array([s['off'] for s in st]); rms = np.array([s['rms'] for s in st])
+
+    def grp(pred):
+        return [i for i in range(n) if pred(labels[i])]
+    pages = [('rigid body', [('Hexapod translations', grp(lambda l: l.endswith(('_dz', '_dx', '_dy')))),
+                             ('Hexapod rotations', grp(lambda l: l.endswith(('_rx', '_ry'))))]),
+             ('bending modes', [('M1M3 bending modes', grp(lambda l: l.startswith('B1_'))),
+                                ('M2 bending modes', grp(lambda l: l.startswith('B2_')))])]
+
+    def _panel(ax, ttl, idx):
+        if not idx:
+            ax.axis('off'); return
+        x = np.arange(len(idx))
+        for xi in range(len(idx)):
+            if xi % 2:
+                ax.axvspan(xi - 0.5, xi + 0.5, color='black', alpha=0.05)
+        ax.errorbar(x, off[idx], yerr=rms[idx], fmt='o', ms=5, color='steelblue',
+                    ecolor='gray', elinewidth=0.9, capsize=2)
+        ax.axhline(0, color='gray', lw=0.5)
+        ax.set_xticks(x); ax.set_xticklabels([labels[i] for i in idx], rotation=45, ha='right', fontsize=7)
+        u = units[idx[0]] if units is not None else ''
+        ax.set_ylabel(f'CWFS−FAM [{u}]'); ax.set_title(ttl); ax.grid(axis='y', alpha=0.3)
+
+    for pg, panels in pages:
+        fig, axes = plt.subplots(2, 1, figsize=(14, 9), constrained_layout=True, squeeze=False)
+        for ax, (ttl, idx) in zip(axes[:, 0], panels):
+            _panel(ax, ttl, idx)
+        fig.suptitle(f'{title} — CWFS−FAM DoF recovery ({pg}): point = fit offset, bar = robust RMS',
+                     fontsize=11)
+        pdf.savefig(fig); plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
@@ -222,7 +264,7 @@ def main():
                 B = corner_matrix_at(svd, noll, pos[t])
                 A_cwfs[t] = np.linalg.pinv(B @ svd.U_eff, rcond=args.rcond) @ zdev[t].ravel()
             vmode_lab = [f'v{m+1}' for m in range(n_keep)]
-            dof_lab = svd.dof_labels()[0]
+            dof_lab, dof_units = svd.dof_labels()
             vfam, vcw = svd.vmodes(A_fam), svd.vmodes(A_cwfs)
             dfam, dcw = svd.dof(A_fam), svd.dof(A_cwfs)
             th_pages(vmode_lab, ordn, vfam, vcw, f'{name} v-modes', pdf)
@@ -230,7 +272,7 @@ def main():
             summary_page(vmode_lab, vfam, vcw, f'{name} v-modes', pdf, args.reject_k)
             th_pages(dof_lab, ordn, dfam, dcw, f'{name} DoF', pdf)
             scatter_pages(dof_lab, dfam, dcw, f'{name} DoF', pdf, args.reject_k)
-            summary_page(dof_lab, dfam, dcw, f'{name} DoF', pdf, args.reject_k)
+            dof_summary_pages(dof_lab, dof_units, dfam, dcw, f'{name} DoF', pdf, args.reject_k)
             med_r = np.nanmedian([robust_fit(vfam[:, i], vcw[:, i], args.reject_k)[1]['r'] for i in range(n_keep)])
             print(f'  {name}: median v-mode CWFS-vs-FAM r = {med_r:.3f}')
     print(f'  wrote {out}')
