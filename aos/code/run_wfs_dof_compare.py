@@ -19,16 +19,17 @@ history + scatter, then a 2-page grouped recovery summary (hexapod translations 
 rotations / M1M3 / M2 bending, unit-consistent per panel) with each DoF as a point =
 fit offset, error bar = robust RMS.  Scatter fits reject points far (>K·nMAD) from the mass.
 
-Finally, per SVD, an AOS-FWHM page: the CWFS−FAM v-mode error is the optical-state
-recovery error; it maps to a residual double-Zernike wavefront, evaluated as a pupil-
-Zernike vector at field points and converted to a PSF FWHM (ts_wep convertZernikesToPsfWidth,
-Z4+ quadrature).  Reported per image as a focal-plane area-average, an average at the 4
-rotated CWFS corner positions (the ConsDB AOS_FWHM analog), and a vmode_fwhm_scale
-quadrature cross-check.  A final hybrid page differences reconstructions across schemes
-on the shared kj_grid — CWFS-22/12 estimate vs FAM-50/34 truth — so the FWHM captures
-both the recovery error (12 shared modes) and the truncation error (FAM modes 13-34 the
-22/12 CWFS cannot represent); the truncation-only term (FAM-22/12 vs FAM-50/34) is
-overlaid for decomposition.
+Finally, AOS-FWHM pages.  The CWFS−FAM v-mode error is the optical-state recovery error;
+it maps to a residual double-Zernike wavefront, evaluated as a pupil-Zernike vector at
+field points and converted to a PSF FWHM (ts_wep convertZernikesToPsfWidth, Z4+ quadrature).
+Per SVD, a page reports the within-scheme recovery FWHM as a focal-plane area-average and
+an average at the 4 rotated CWFS corner positions (the ConsDB AOS_FWHM analog).  A final
+focal-plane contributions page (both schemes share kj_grid, so reconstructions difference
+directly) overlays: the MIW baseline itself (mean over each FAM visit's science-field
+donuts), the FAM 50/34 excursion beyond MIW (uncorrected), CWFS-22/12 vs FAM-50/34
+(recovery + the truncation error from FAM modes 13-34 the 22/12 CWFS cannot represent),
+CWFS-50/34 vs FAM-50/34 (recovery only — tests whether more CWFS modes help), and the
+truncation-only term (FAM-22/12 vs FAM-50/34).
 
 Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR; runs in the LSST stack env.
 """
@@ -232,18 +233,16 @@ def fwhm_from_dW(svd, noll, dW, pos, grid_pos, conv):
     return dict(corner=cor, fp=fp)
 
 
-def aos_fwhm_series(svd, noll, dvmode, pos, grid_pos, conv):
-    """Per-image AOS FWHM from the within-scheme CWFS-FAM v-mode recovery error
-    dvmode.  Residual DZ  dW = (dvmode ⊙ σ) @ U_effᵀ; adds a vmode_fwhm_scale
-    quadrature cross-check to the corner/fp series from :func:`fwhm_from_dW`."""
-    from ofc_svd import vmode_fwhm_scale
-    sig = svd.Sigma[svd._keep()]
-    dW = (dvmode * sig[None, :]) @ svd.U_eff.T             # (nt, n_kj) residual DZ (µm)
-    d = fwhm_from_dW(svd, noll, dW, pos, grid_pos, conv)
-    g = vmode_fwhm_scale(svd)
-    d['vscale'] = (np.sqrt(np.nansum((dvmode * g[None, :]) ** 2, axis=1)) if g is not None
-                   else np.full(dW.shape[0], np.nan))
-    return d
+def miw_fwhm_series(triplets, fd_grp, fmi, noll, conv):
+    """Per-image focal-plane MIW FWHM (arcsec): mean over the FAM visit's donuts of
+    the per-donut measured-intrinsic-wavefront FWHM (row-aligned sidecar ``fmi``)."""
+    out = np.full(len(triplets), np.nan)
+    for t, key in enumerate(triplets):
+        idx = fd_grp.get(key)
+        if idx is None or len(idx) == 0:
+            continue
+        out[t] = np.nanmean(zj_to_fwhm(fmi[np.asarray(idx, int)], noll, conv))
+    return out
 
 
 def _fwhm_page(ordn, lines, title, pdf):
@@ -266,20 +265,18 @@ def _fwhm_page(ordn, lines, title, pdf):
 
 
 def aos_fwhm_page(ordn, series, name, pdf):
+    """Within-scheme CWFS-FAM recovery-error FWHM: focal-plane + CWFS-corner (ConsDB analog)."""
     lines = [(series['fp'], 'focal-plane avg', 'steelblue'),
-             (series['corner'], 'CWFS-corner avg (ConsDB analog)', 'crimson'),
-             (series['vscale'], 'v-mode scale (x-check)', 'green')]
+             (series['corner'], 'CWFS-corner avg (ConsDB analog)', 'crimson')]
     _fwhm_page(ordn, lines, f'{name} — AOS FWHM from CWFS−FAM optical-state recovery error', pdf)
 
 
-def aos_fwhm_hybrid_page(ordn, total, trunc, pdf):
-    """CWFS-22/12 vs FAM-50/34: recovery + truncation error, with the
-    truncation-only (FAM 22/12 vs FAM 50/34) reference."""
-    lines = [(total['fp'], 'CWFS 22/12 vs FAM 50/34 — focal-plane', 'steelblue'),
-             (total['corner'], 'CWFS 22/12 vs FAM 50/34 — CWFS corners (ConsDB analog)', 'crimson'),
-             (trunc['fp'], 'truncation only: FAM 22/12 vs FAM 50/34 — focal-plane', 'darkorange')]
-    _fwhm_page(ordn, lines,
-               'AOS FWHM — CWFS 22/12 recovery + truncation vs FAM 50/34 truth', pdf)
+def aos_fwhm_contributions_page(ordn, contrib, pdf):
+    """All focal-plane FWHM contributions on one page (time history + histogram).
+
+    ``contrib`` = ordered list of (y_array, label, color)."""
+    _fwhm_page(ordn, contrib, 'AOS FWHM contributions (focal-plane average) — '
+               'MIW baseline, FAM excursion, CWFS recovery+truncation vs FAM 50/34', pdf)
 
 
 def main():
@@ -330,6 +327,22 @@ def main():
     md = pq.read_schema(str(scf)).metadata or {}
     noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist() if b'nollIndices' in md else noll)
     mi_cw = mi_sc[:, [noll_i.index(j) for j in noll]]          # MIW per donut, aligned to noll
+
+    # ---- FAM per-donut MIW sidecar (row-aligned to the full FAM donuts.parquet), for the
+    #      focal-plane MIW FWHM: mean over each visit's science-field donuts ----
+    fd_grp = fmi = None
+    try:
+        fd = pq.read_table(str(base / 'donuts.parquet'), columns=['day_obs', 'seq_num']).to_pandas()
+        scf_f = bmi / 'zk_intrinsic.parquet'
+        fmi_raw = np.stack(pq.read_table(str(scf_f), columns=['zk_intrinsic_MI']).to_pandas()
+                           ['zk_intrinsic_MI'].values).astype(float)
+        mdf = pq.read_schema(str(scf_f)).metadata or {}
+        noll_f = (np.frombuffer(mdf[b'nollIndices'], dtype=int).tolist() if b'nollIndices' in mdf else noll)
+        fmi = fmi_raw[:, [noll_f.index(j) for j in noll]]
+        fd_grp = {(int(d), int(s)): idx for (d, s), idx in
+                  fd.groupby(['day_obs', 'seq_num']).indices.items()}
+    except Exception as e:
+        print(f'[wfs_dof_compare] MIW FWHM disabled (no FAM sidecar/donuts): {e}')
 
     triplets = sorted(set(cw_grp.keys()) & set(fam_key.keys()), key=lambda k: (k[0], k[1]))
     if args.max_triplets:
@@ -385,20 +398,30 @@ def main():
             med_r = np.nanmedian([robust_fit(vfam[:, i], vcw[:, i], args.reject_k)[1]['r'] for i in range(n_keep)])
             print(f'  {name}: median v-mode CWFS-vs-FAM r = {med_r:.3f}')
             if conv_fwhm is not None:
-                fw = aos_fwhm_series(svd, noll, vcw - vfam, pos, grid_pos, conv_fwhm)
+                dW_rec = ((vcw - vfam) * svd.Sigma[svd._keep()][None, :]) @ svd.U_eff.T
+                fw = fwhm_from_dW(svd, noll, dW_rec, pos, grid_pos, conv_fwhm)
                 aos_fwhm_page(ordn, fw, name, pdf)
                 print(f'  {name}: median AOS_FWHM  fp={np.nanmedian(fw["fp"]):.3f}″  '
-                      f'corner={np.nanmedian(fw["corner"]):.3f}″  vscale={np.nanmedian(fw["vscale"]):.3f}″')
+                      f'corner={np.nanmedian(fw["corner"]):.3f}″')
             recon[name] = dict(svd=svd, Wf=A_fam @ svd.U_eff.T, Wc=A_cwfs @ svd.U_eff.T)
 
-        # ---- hybrid: CWFS-22/12 estimate vs FAM-50/34 truth (recovery + truncation) ----
+        # ---- all focal-plane FWHM contributions vs FAM-50/34 truth ----
         if conv_fwhm is not None and {'50DOF-34vmode', '22DOF-12vmode'} <= set(recon):
             r50, r22 = recon['50DOF-34vmode'], recon['22DOF-12vmode']
-            total = fwhm_from_dW(r50['svd'], noll, r50['Wf'] - r22['Wc'], pos, grid_pos, conv_fwhm)
-            trunc = fwhm_from_dW(r50['svd'], noll, r50['Wf'] - r22['Wf'], pos, grid_pos, conv_fwhm)
-            aos_fwhm_hybrid_page(ordn, total, trunc, pdf)
-            print(f'  HYBRID CWFS22/12 vs FAM50/34: median AOS_FWHM  fp={np.nanmedian(total["fp"]):.3f}″  '
-                  f'corner={np.nanmedian(total["corner"]):.3f}″  | truncation-only fp={np.nanmedian(trunc["fp"]):.3f}″')
+            fp = lambda dW: fwhm_from_dW(r50['svd'], noll, dW, pos, grid_pos, conv_fwhm)['fp']
+            contrib = []
+            if fd_grp is not None:                                       # MIW baseline
+                contrib.append((miw_fwhm_series(triplets, fd_grp, fmi, noll, conv_fwhm),
+                                'MIW itself (baseline)', 'black'))
+            contrib += [
+                (fp(r50['Wf']),              'FAM 50/34 excursion beyond MIW (uncorrected)', 'gray'),
+                (fp(r50['Wf'] - r22['Wc']),  'CWFS 22/12 vs FAM 50/34 (recovery + truncation)', 'steelblue'),
+                (fp(r50['Wf'] - r50['Wc']),  'CWFS 50/34 vs FAM 50/34 (recovery only)', 'purple'),
+                (fp(r50['Wf'] - r22['Wf']),  'truncation only: FAM 22/12 vs FAM 50/34', 'darkorange'),
+            ]
+            aos_fwhm_contributions_page(ordn, contrib, pdf)
+            for y, lab, _ in contrib:
+                print(f'  contribution median FWHM {np.nanmedian(y):.3f}″  — {lab}')
     print(f'  wrote {out}')
 
 
