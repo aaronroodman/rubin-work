@@ -24,7 +24,11 @@ recovery error; it maps to a residual double-Zernike wavefront, evaluated as a p
 Zernike vector at field points and converted to a PSF FWHM (ts_wep convertZernikesToPsfWidth,
 Z4+ quadrature).  Reported per image as a focal-plane area-average, an average at the 4
 rotated CWFS corner positions (the ConsDB AOS_FWHM analog), and a vmode_fwhm_scale
-quadrature cross-check.
+quadrature cross-check.  A final hybrid page differences reconstructions across schemes
+on the shared kj_grid — CWFS-22/12 estimate vs FAM-50/34 truth — so the FWHM captures
+both the recovery error (12 shared modes) and the truncation error (FAM modes 13-34 the
+22/12 CWFS cannot represent); the truncation-only term (FAM-22/12 vs FAM-50/34) is
+overlaid for decomposition.
 
 Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR; runs in the LSST stack env.
 """
@@ -210,20 +214,13 @@ def zj_to_fwhm(Z, noll, conv):
     return np.sqrt(np.nansum(dpsf ** 2, axis=1))
 
 
-def aos_fwhm_series(svd, noll, dvmode, pos, grid_pos, conv):
-    """Per-image AOS FWHM (arcsec) from the CWFS-FAM v-mode recovery error dvmode.
-
-    dvmode -> residual DZ  dW = (dvmode ⊙ σ) @ U_effᵀ; evaluate the pupil-Zernike
-    residual at field points (dW @ Bᵀ), convert to FWHM, average.  Returns
-    corner (4 rotated CWFS OCS positions; the ConsDB AOS_FWHM analog), fp
-    (focal-plane grid area-average) and vscale (vmode_fwhm_scale quadrature xcheck).
-    """
-    from ofc_svd import vmode_fwhm_scale
-    sig = svd.Sigma[svd._keep()]
-    dW = (dvmode * sig[None, :]) @ svd.U_eff.T             # (nt, n_kj) residual DZ (µm)
+def fwhm_from_dW(svd, noll, dW, pos, grid_pos, conv):
+    """corner + fp AOS FWHM (arcsec) from a residual double-Zernike wavefront dW
+    (nt, n_kj) on ``svd.kj_grid``.  Evaluate the pupil-Zernike residual at field
+    points (dW @ Bᵀ), convert to FWHM, average over the 4 rotated CWFS corner
+    positions (ConsDB analog) and over the focal-plane grid (area-average)."""
     nt, nj = dW.shape[0], len(noll)
-    Bg = corner_matrix_at(svd, noll, grid_pos)             # fixed grid -> one basis
-    zg_all = dW @ Bg.T                                     # (nt, ngrid*nj)
+    zg_all = dW @ corner_matrix_at(svd, noll, grid_pos).T   # fixed grid -> one basis
     fp = np.full(nt, np.nan); cor = np.full(nt, np.nan)
     for t in range(nt):
         if not np.all(np.isfinite(dW[t])):
@@ -232,33 +229,57 @@ def aos_fwhm_series(svd, noll, dvmode, pos, grid_pos, conv):
         if np.all(np.isfinite(pos[t])):
             zc = (dW[t] @ corner_matrix_at(svd, noll, pos[t]).T).reshape(len(CORNERS), nj)
             cor[t] = np.nanmean(zj_to_fwhm(zc, noll, conv))
+    return dict(corner=cor, fp=fp)
+
+
+def aos_fwhm_series(svd, noll, dvmode, pos, grid_pos, conv):
+    """Per-image AOS FWHM from the within-scheme CWFS-FAM v-mode recovery error
+    dvmode.  Residual DZ  dW = (dvmode ⊙ σ) @ U_effᵀ; adds a vmode_fwhm_scale
+    quadrature cross-check to the corner/fp series from :func:`fwhm_from_dW`."""
+    from ofc_svd import vmode_fwhm_scale
+    sig = svd.Sigma[svd._keep()]
+    dW = (dvmode * sig[None, :]) @ svd.U_eff.T             # (nt, n_kj) residual DZ (µm)
+    d = fwhm_from_dW(svd, noll, dW, pos, grid_pos, conv)
     g = vmode_fwhm_scale(svd)
-    vsc = (np.sqrt(np.nansum((dvmode * g[None, :]) ** 2, axis=1)) if g is not None
-           else np.full(nt, np.nan))
-    return dict(corner=cor, fp=fp, vscale=vsc)
+    d['vscale'] = (np.sqrt(np.nansum((dvmode * g[None, :]) ** 2, axis=1)) if g is not None
+                   else np.full(dW.shape[0], np.nan))
+    return d
 
 
-def aos_fwhm_page(ordn, series, name, pdf):
+def _fwhm_page(ordn, lines, title, pdf):
+    """Shared time-history + histogram page.  ``lines`` = list of (y, label, color)."""
     import matplotlib.pyplot as plt
-    keys = [('fp', 'focal-plane avg', 'steelblue'),
-            ('corner', 'CWFS-corner avg (ConsDB analog)', 'crimson'),
-            ('vscale', 'v-mode scale (x-check)', 'green')]
     fig, axes = plt.subplots(2, 1, figsize=(14, 8), constrained_layout=True)
-    for k, lab, c in keys:
-        y = series[k]
+    for y, lab, c in lines:
         if np.isfinite(y).any():
             axes[0].plot(ordn, y, '.', ms=3, color=c,
                          label=f'{lab}  (median {np.nanmedian(y):.3f}″)')
     axes[0].set_xlabel('image ordinal'); axes[0].set_ylabel('AOS FWHM [arcsec]')
-    axes[0].set_title(f'{name} — AOS FWHM from CWFS−FAM optical-state recovery error')
-    axes[0].legend(fontsize=8); axes[0].grid(alpha=0.3)
-    for k, lab, c in keys:
-        y = series[k][np.isfinite(series[k])]
-        if y.size:
-            axes[1].hist(y, bins=40, histtype='step', color=c, label=lab)
+    axes[0].set_title(title); axes[0].legend(fontsize=8); axes[0].grid(alpha=0.3)
+    for y, lab, c in lines:
+        yf = y[np.isfinite(y)]
+        if yf.size:
+            axes[1].hist(yf, bins=40, histtype='step', color=c, label=lab)
     axes[1].set_xlabel('AOS FWHM [arcsec]'); axes[1].set_ylabel('N')
-    axes[1].legend(fontsize=8); axes[1].grid(alpha=0.3)
+    axes[1].legend(fontsize=7); axes[1].grid(alpha=0.3)
     pdf.savefig(fig); plt.close(fig)
+
+
+def aos_fwhm_page(ordn, series, name, pdf):
+    lines = [(series['fp'], 'focal-plane avg', 'steelblue'),
+             (series['corner'], 'CWFS-corner avg (ConsDB analog)', 'crimson'),
+             (series['vscale'], 'v-mode scale (x-check)', 'green')]
+    _fwhm_page(ordn, lines, f'{name} — AOS FWHM from CWFS−FAM optical-state recovery error', pdf)
+
+
+def aos_fwhm_hybrid_page(ordn, total, trunc, pdf):
+    """CWFS-22/12 vs FAM-50/34: recovery + truncation error, with the
+    truncation-only (FAM 22/12 vs FAM 50/34) reference."""
+    lines = [(total['fp'], 'CWFS 22/12 vs FAM 50/34 — focal-plane', 'steelblue'),
+             (total['corner'], 'CWFS 22/12 vs FAM 50/34 — CWFS corners (ConsDB analog)', 'crimson'),
+             (trunc['fp'], 'truncation only: FAM 22/12 vs FAM 50/34 — focal-plane', 'darkorange')]
+    _fwhm_page(ordn, lines,
+               'AOS FWHM — CWFS 22/12 recovery + truncation vs FAM 50/34 truth', pdf)
 
 
 def main():
@@ -335,6 +356,7 @@ def main():
     out = bmi / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
     ordn = np.arange(len(triplets))
     grid_pos = fp_grid(FP_RADIUS, 0.35)                            # ~89-point focal-plane grid
+    recon = {}                                                     # per-scheme DZ reconstructions for the hybrid page
     with PdfPages(str(out)) as pdf:
         for name, (n_keep, n_dof) in [('50DOF-34vmode', (34, None)), ('22DOF-12vmode', (12, DOF22))]:
             svd = build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_keep, n_dof=n_dof)
@@ -367,6 +389,16 @@ def main():
                 aos_fwhm_page(ordn, fw, name, pdf)
                 print(f'  {name}: median AOS_FWHM  fp={np.nanmedian(fw["fp"]):.3f}″  '
                       f'corner={np.nanmedian(fw["corner"]):.3f}″  vscale={np.nanmedian(fw["vscale"]):.3f}″')
+            recon[name] = dict(svd=svd, Wf=A_fam @ svd.U_eff.T, Wc=A_cwfs @ svd.U_eff.T)
+
+        # ---- hybrid: CWFS-22/12 estimate vs FAM-50/34 truth (recovery + truncation) ----
+        if conv_fwhm is not None and {'50DOF-34vmode', '22DOF-12vmode'} <= set(recon):
+            r50, r22 = recon['50DOF-34vmode'], recon['22DOF-12vmode']
+            total = fwhm_from_dW(r50['svd'], noll, r50['Wf'] - r22['Wc'], pos, grid_pos, conv_fwhm)
+            trunc = fwhm_from_dW(r50['svd'], noll, r50['Wf'] - r22['Wf'], pos, grid_pos, conv_fwhm)
+            aos_fwhm_hybrid_page(ordn, total, trunc, pdf)
+            print(f'  HYBRID CWFS22/12 vs FAM50/34: median AOS_FWHM  fp={np.nanmedian(total["fp"]):.3f}″  '
+                  f'corner={np.nanmedian(total["corner"]):.3f}″  | truncation-only fp={np.nanmedian(trunc["fp"]):.3f}″')
     print(f'  wrote {out}')
 
 
