@@ -283,6 +283,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
     ap.add_argument('--mi-name', default='pathA_50_34_i_5rot')
+    ap.add_argument('--wfs-name', required=True,
+                    help='CWFS variant key; reads/writes under output/<ps>/wfs/<wfs-name>/ '
+                         'and output/<ps>/<mi>/wfs/<wfs-name>/')
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--dz-prefix', default='z1toz6')
     ap.add_argument('--rcond', type=float, default=1e-2, help='pinv cutoff for the corner OFC inverse')
@@ -311,7 +314,7 @@ def main():
     fam_key = {(int(d), int(s)): i for i, (d, s) in enumerate(zip(fits.day_obs, fits.seq_num))}
 
     # ---- CWFS corner donuts ----
-    cw = pq.read_table(str(base / 'wfs' / 'donuts.parquet'),
+    cw = pq.read_table(str(base / 'wfs' / args.wfs_name / 'donuts.parquet'),
                        columns=['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]).to_pandas()
     cw_zk = np.stack(cw[zc].values).astype(float)
     cw_thx = np.rad2deg(cw[txc].astype(float).values); cw_thy = np.rad2deg(cw[tyc].astype(float).values)
@@ -321,7 +324,7 @@ def main():
     # ---- CWFS MIW sidecar (row-aligned to wfs/donuts.parquet; built by
     #      run_make_intrinsic_sidecar --wfs-corner-height, i.e. the identical
     #      reconstruct_at path as the FAM sidecar, with the SW1/SW0 half-sensor Z4 height) ----
-    scf = bmi / 'wfs' / 'zk_intrinsic.parquet'
+    scf = bmi / 'wfs' / args.wfs_name / 'zk_intrinsic.parquet'
     mi_sc = np.stack(pq.read_table(str(scf), columns=['zk_intrinsic_MI']).to_pandas()
                      ['zk_intrinsic_MI'].values).astype(float)
     md = pq.read_schema(str(scf)).metadata or {}
@@ -347,8 +350,9 @@ def main():
     triplets = sorted(set(cw_grp.keys()) & set(fam_key.keys()), key=lambda k: (k[0], k[1]))
     if args.max_triplets:
         triplets = triplets[:args.max_triplets]
-    print(f'[wfs_dof_compare] {args.param_set}/{args.mi_name}: {len(triplets)} matched triplets, '
-          f'coord={coord}, offsets={"off" if args.no_offsets else "on"}, rcond={args.rcond}')
+    print(f'[wfs_dof_compare] {args.param_set}/{args.mi_name}/wfs:{args.wfs_name}: '
+          f'{len(triplets)} matched triplets, coord={coord}, '
+          f'offsets={"off" if args.no_offsets else "on"}, rcond={args.rcond}')
 
     # per-corner CWFS deviation (per-donut MIW-subtracted, then per-(Zj,corner) offset) + positions
     off_by_det = {det: np.array([offsets.get(j, {}).get(det, 0.0) for j in noll]) for det in CORNERS}
@@ -366,7 +370,8 @@ def main():
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
-    out = bmi / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
+    out = bmi / 'wfs' / args.wfs_name / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
+    out.parent.mkdir(parents=True, exist_ok=True)
     ordn = np.arange(len(triplets))
     grid_pos = fp_grid(FP_RADIUS, 0.35)                            # ~89-point focal-plane grid
     recon = {}                                                     # per-scheme DZ reconstructions for the hybrid page

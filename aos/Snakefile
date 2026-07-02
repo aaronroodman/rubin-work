@@ -66,9 +66,15 @@ def mi_bin_grids(ps, mi):
             for lo, hi in mi_rotbins(ps, src)]
 MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
-# param_sets with a paired in-focus corner-WFS (cwfs) collection
-WFS_PSETS = [ps for ps in PSETS if PARAM_SETS.get(ps, {}).get("wfs_collection")]
-WFS_MI_PAIRS = [(ps, mi) for ps, mi in MI_PAIRS if ps in WFS_PSETS]
+# param_sets with paired in-focus corner-WFS (cwfs) collections.  Each ps may
+# carry several CWFS variants (wfs_collections: name -> Butler collection); the
+# name is the {cwfs} wildcard and the output subdir  output/<ps>/wfs/<name>/ .
+def wfs_variants(ps):    return list(PARAM_SETS.get(ps, {}).get("wfs_collections", {}))
+def wfs_collection(ps, cw): return PARAM_SETS[ps]["wfs_collections"][cw]
+WFS_PSETS = [ps for ps in PSETS if wfs_variants(ps)]
+WFS_VARIANTS = [(ps, cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
+WFS_MI_VARIANTS = [(ps, mi, cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
+                   for cw in wfs_variants(ps)]
 
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
@@ -95,6 +101,7 @@ wildcard_constraints:
     dmin = r"\d{8}",
     dmax = r"\d{8}",
     mi   = r"[A-Za-z0-9_.+-]+",
+    cwfs = r"[A-Za-z0-9_.+-]+",
     lo   = r"-?\d+(\.\d+)?",
     hi   = r"-?\d+(\.\d+)?",
 
@@ -108,12 +115,12 @@ rule all:
         expand("output/{ps}/plots/aberration_pairs.pdf", ps=PSETS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
-        # in-focus corner-WFS ingestion (param_sets with a wfs_collection)
-        expand("output/{ps}/wfs/donuts.parquet", ps=WFS_PSETS),
-        # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps)
-        expand("output/{ps}/wfs/wfs_corner_compare.pdf", ps=WFS_PSETS),
-        # CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi)
-        [f"output/{ps}/{mi}/wfs_dof_compare_offsets.pdf" for ps, mi in WFS_MI_PAIRS],
+        # in-focus corner-WFS ingestion (per ps, cwfs variant)
+        [f"output/{ps}/wfs/{cw}/donuts.parquet" for ps, cw in WFS_VARIANTS],
+        # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps, cwfs)
+        [f"output/{ps}/wfs/{cw}/wfs_corner_compare.pdf" for ps, cw in WFS_VARIANTS],
+        # CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi, cwfs)
+        [f"output/{ps}/{mi}/wfs/{cw}/wfs_dof_compare_offsets.pdf" for ps, mi, cw in WFS_MI_VARIANTS],
         # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per (ps, mi)
         [f"output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet" for ps, mi in MI_PAIRS],
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
@@ -291,56 +298,56 @@ rule study_radialbins:
 # ---- corner-by-corner CWFS vs FAM measured-OPD comparison (per ps) ----
 rule wfs_corner_compare:
     input:
-        wfs    = "output/{ps}/wfs/donuts.parquet",
+        wfs    = "output/{ps}/wfs/{cwfs}/donuts.parquet",
         fam    = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         script = "code/run_wfs_corner_compare.py",
-    output: "output/{ps}/wfs/wfs_corner_compare.pdf"
+    output: "output/{ps}/wfs/{cwfs}/wfs_corner_compare.pdf"
     params:
         coord = lambda w: coord(w.ps),
     resources: mem_mb=8000
-    log: "logs/{ps}.wfs_corner_compare.log"
+    log: "logs/{ps}.{cwfs}.wfs_corner_compare.log"
     shell:
         "python code/run_wfs_corner_compare.py --param-set {wildcards.ps} "
-        "--coord {params.coord} > {log} 2>&1"
+        "--wfs-name {wildcards.cwfs} --coord {params.coord} > {log} 2>&1"
 
 # ---- CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi) ----
 # ---- CWFS MIW sidecar (reconstruct_at at the corner donuts + SW1/SW0 half-sensor Z4 height) ----
 rule wfs_intrinsic_sidecar:
     input:
         decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
-        wfs    = "output/{ps}/wfs/donuts.parquet",
+        wfs    = "output/{ps}/wfs/{cwfs}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         script = "code/run_make_intrinsic_sidecar.py",
         lib    = "code/intrinsic_split.py",
-    output: "output/{ps}/{mi}/wfs/zk_intrinsic.parquet"
+    output: "output/{ps}/{mi}/wfs/{cwfs}/zk_intrinsic.parquet"
     params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)            # rerun-trigger only
     resources: mem_mb=8000
-    log: "logs/{ps}.{mi}.wfs_intrinsic_sidecar.log"
+    log: "logs/{ps}.{mi}.{cwfs}.wfs_intrinsic_sidecar.log"
     shell:
         "python code/run_make_intrinsic_sidecar.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --donuts output/{wildcards.ps}/wfs/donuts.parquet "
-        "--output output/{wildcards.ps}/{wildcards.mi}/wfs/zk_intrinsic.parquet "
+        "--mi-name {wildcards.mi} --donuts output/{wildcards.ps}/wfs/{wildcards.cwfs}/donuts.parquet "
+        "--output output/{wildcards.ps}/{wildcards.mi}/wfs/{wildcards.cwfs}/zk_intrinsic.parquet "
         "--wfs-corner-height > {log} 2>&1"
 
 rule wfs_dof_compare:
     input:
-        wfs      = "output/{ps}/wfs/donuts.parquet",
-        fits     = "output/{ps}/{mi}/fits.parquet",              # FAM MIW-subtracted DZ
-        sidecar  = "output/{ps}/{mi}/wfs/zk_intrinsic.parquet",  # CWFS MIW at the corner donuts
-        fam_don  = "output/{ps}/donuts.parquet",                 # FAM donuts (MIW-FWHM field sampling)
-        fam_side = "output/{ps}/{mi}/zk_intrinsic.parquet",      # FAM per-donut MIW (baseline FWHM)
+        wfs      = "output/{ps}/wfs/{cwfs}/donuts.parquet",
+        fits     = "output/{ps}/{mi}/fits.parquet",                     # FAM MIW-subtracted DZ
+        sidecar  = "output/{ps}/{mi}/wfs/{cwfs}/zk_intrinsic.parquet",  # CWFS MIW at the corner donuts
+        fam_don  = "output/{ps}/donuts.parquet",                        # FAM donuts (MIW-FWHM field sampling)
+        fam_side = "output/{ps}/{mi}/zk_intrinsic.parquet",             # FAM per-donut MIW (baseline FWHM)
         visits   = "output/{ps}/visits.parquet",
         script   = "code/run_wfs_dof_compare.py",
         lib      = "code/ofc_svd.py",
-    output: "output/{ps}/{mi}/wfs_dof_compare_offsets.pdf"
+    output: "output/{ps}/{mi}/wfs/{cwfs}/wfs_dof_compare_offsets.pdf"
     params:
         coord = lambda w: coord(w.ps),
     resources: mem_mb=8000
-    log: "logs/{ps}.{mi}.wfs_dof_compare.log"
+    log: "logs/{ps}.{mi}.{cwfs}.wfs_dof_compare.log"
     shell:
         "python code/run_wfs_dof_compare.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --coord {params.coord} > {log} 2>&1"
+        "--mi-name {wildcards.mi} --wfs-name {wildcards.cwfs} --coord {params.coord} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
@@ -493,14 +500,14 @@ rule wfs_mktable:
         script = "code/run_wfs_mktable.py",
         lib    = "code/intrinsics_lib.py",
     output:
-        donuts = "output/{ps}/wfs/donuts.parquet",
-        visits = "output/{ps}/wfs/visits.parquet",
-        plot   = "output/{ps}/wfs/wfs_mktable_validation.pdf",
+        donuts = "output/{ps}/wfs/{cwfs}/donuts.parquet",
+        visits = "output/{ps}/wfs/{cwfs}/visits.parquet",
+        plot   = "output/{ps}/wfs/{cwfs}/wfs_mktable_validation.pdf",
     params:
         coord = lambda w: coord(w.ps),
-        coll  = lambda w: PARAM_SETS[w.ps]["wfs_collection"],   # rerun-trigger
+        coll  = lambda w: wfs_collection(w.ps, w.cwfs),   # rerun-trigger
     resources: mem_mb=10000
-    log: "logs/{ps}.wfs_mktable.log"
+    log: "logs/{ps}.{cwfs}.wfs_mktable.log"
     shell:
         "python code/run_wfs_mktable.py --param-set {wildcards.ps} "
-        "--coord-sys {params.coord} > {log} 2>&1"
+        "--wfs-name {wildcards.cwfs} --coord-sys {params.coord} > {log} 2>&1"

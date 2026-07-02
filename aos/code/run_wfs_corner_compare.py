@@ -99,6 +99,8 @@ def fit_metrics(x, y):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
+    ap.add_argument('--wfs-name', required=True,
+                    help='CWFS variant key; reads/writes under output/<ps>/wfs/<wfs-name>/')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--r-min', type=float, default=1.5178)
@@ -123,7 +125,7 @@ def main():
     vjs = [int(j) for j in args.val_zernikes.split(',') if int(j) in noll]
 
     # ---- CWFS (in-focus corner donuts) ----
-    cw = pq.read_table(str(base / 'wfs' / 'donuts.parquet'),
+    cw = pq.read_table(str(base / 'wfs' / args.wfs_name / 'donuts.parquet'),
                        columns=['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]).to_pandas()
     cw_zk = np.stack(cw[zc].values).astype(float)
     cw_az = np.degrees(np.arctan2(cw[tyc].astype(float), cw[txc].astype(float))) % 360.0
@@ -170,7 +172,7 @@ def main():
         if t in val_idx:
             val[t] = (key, faz_t, fzk_t, cw_az[ci], cw_zk[ci], cw_det[ci])
 
-    out = base / 'wfs' / 'wfs_corner_compare.pdf'
+    out = base / 'wfs' / args.wfs_name / 'wfs_corner_compare.pdf'
     out.parent.mkdir(parents=True, exist_ok=True)
     import matplotlib
     matplotlib.use('Agg')

@@ -88,9 +88,13 @@ fam_danish_1_0_wep17_3_0_bin2x:
   fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
   fam_collections:
     - LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired
-  # In-focus corner-WFS (cwfs) collection paired with this FAM run; the in-focus
+  # In-focus corner-WFS (cwfs) collections paired with this FAM run; the in-focus
   # exposure is FAM_seq+1 (triplet order intra, extra, in-focus; FAM key = extra).
-  wfs_collection: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2
+  # Map of descriptive-name -> Butler collection.  The name is filename-safe and
+  # becomes the output subdir  output/<ps>/wfs/<name>/ .  Add further CWFS
+  # variants as extra keys to repeat the WFS analysis side by side.
+  wfs_collections:
+    wep17_3_0: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_0_wep17_3_0_bin2x
   day_obs_min: 20260315
@@ -113,7 +117,12 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
   fam_collections:
     - LSSTCam/runs/aos/fam/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/paired/refitWcs
-  wfs_collection: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
+  # In-focus corner-WFS (cwfs) collections: descriptive-name -> Butler collection.
+  # The name is filename-safe and becomes  output/<ps>/wfs/<name>/ .  Add further
+  # CWFS variants as extra keys to repeat the WFS analysis side by side, e.g.
+  #   noRefit: LSSTCam/runs/aos/fam_cwfs_triplet/.../bin_x2/noRefit
+  wfs_collections:
+    refitWcs: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315

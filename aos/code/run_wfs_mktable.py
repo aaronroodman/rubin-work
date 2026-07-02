@@ -42,6 +42,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
+    ap.add_argument('--wfs-name', required=True,
+                    help='CWFS variant key in the param_set wfs_collections map; '
+                         'also the output subdir output/<ps>/wfs/<wfs-name>/')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--dz-prefix', default='z1toz6')
@@ -51,9 +54,11 @@ def main():
 
     pset = load_param_sets()[args.param_set]
     repo = pset['butler_repo']
-    wfs_coll = pset.get('wfs_collection')
-    if not wfs_coll:
-        raise SystemExit(f'param_set {args.param_set} has no wfs_collection')
+    wfs_map = pset.get('wfs_collections') or {}
+    if args.wfs_name not in wfs_map:
+        raise SystemExit(f'param_set {args.param_set} has no wfs_collections entry '
+                         f'{args.wfs_name!r} (have: {list(wfs_map)})')
+    wfs_coll = wfs_map[args.wfs_name]
     base = Path(args.output_root) / args.param_set
     fam_visits = QTable.read(str(base / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
@@ -102,7 +107,7 @@ def main():
                            'FAM visit (FAM_seq+1).')
     donuts = vstack(donut_tabs, metadata_conflicts='silent')
     donuts.meta['nollIndices'] = noll          # Zernike order of zk_<coord>
-    out = base / 'wfs'; out.mkdir(parents=True, exist_ok=True)
+    out = base / 'wfs' / args.wfs_name; out.mkdir(parents=True, exist_ok=True)
     donuts.write(str(out / 'donuts.parquet'), format='parquet', overwrite=True)
     vdf = pd.DataFrame(vrows)
     vdf['nollIndices'] = [list(noll) if noll else None] * len(vdf)
