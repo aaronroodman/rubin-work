@@ -58,7 +58,12 @@ def main():
     if args.wfs_name not in wfs_map:
         raise SystemExit(f'param_set {args.param_set} has no wfs_collections entry '
                          f'{args.wfs_name!r} (have: {list(wfs_map)})')
-    wfs_coll = wfs_map[args.wfs_name]
+    entry = wfs_map[args.wfs_name]                  # str, or {collection, seq_offset}
+    if isinstance(entry, dict):
+        wfs_coll = entry['collection']
+        seq_offset = int(entry.get('seq_offset', 1))
+    else:
+        wfs_coll, seq_offset = entry, 1             # bare string -> in-focus (fam+1)
     base = Path(args.output_root) / args.param_set
     fam_visits = QTable.read(str(base / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
@@ -87,7 +92,7 @@ def main():
             keep.append(extra)
     donut_tabs, vrows, n_miss, noll = [], [], 0, None
     for v in fam_visits:
-        d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + 1
+        d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + seq_offset
         tbl, meta = get_aggregate_zernikes(butler, d, infocus, coord, camera)
         if tbl is None:
             n_miss += 1; continue

@@ -121,9 +121,15 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   # The name is filename-safe and becomes  output/<ps>/wfs/<name>/ .  Add further
   # CWFS variants as extra keys to repeat the WFS analysis side by side, e.g.
   #   noRefit: LSSTCam/runs/aos/fam_cwfs_triplet/.../bin_x2/noRefit
+  # Entry is either a bare collection string (in-focus corner WFS, seq = FAM
+  # extra + 1) or a dict {collection, seq_offset} when the aggregate is keyed to
+  # a different exposure of the triplet.  seq_offset is added to the FAM seq_num
+  # (the extra exposure): +1 = in-focus (default), 0 = extra, -1 = intra.
   wfs_collections:
     refitWcs:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
-    paired_3mm: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_6_1/donut_viz_4_5_0/danish_v1_2_0/bin2x
+    paired_3mm:
+      collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_6_1/donut_viz_4_5_0/danish_v1_2_0/bin2x
+      seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
     # DEFERRED — ai_donut lacks aggregateAOSVisitTableRaw; it only has
     # aggregateZernikesRaw (zk in OCS/CCS/NW, no positions) + per-detector
     # `zernikes` (positions: intra_field/extra_field/centroids, native frame).

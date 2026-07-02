@@ -70,7 +70,9 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 # carry several CWFS variants (wfs_collections: name -> Butler collection); the
 # name is the {cwfs} wildcard and the output subdir  output/<ps>/wfs/<name>/ .
 def wfs_variants(ps):    return list(PARAM_SETS.get(ps, {}).get("wfs_collections", {}))
-def wfs_collection(ps, cw): return PARAM_SETS[ps]["wfs_collections"][cw]
+def wfs_collection(ps, cw):                       # entry is a str or {collection, ...}
+    e = PARAM_SETS[ps]["wfs_collections"][cw]
+    return e["collection"] if isinstance(e, dict) else e
 WFS_PSETS = [ps for ps in PSETS if wfs_variants(ps)]
 WFS_VARIANTS = [(ps, cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
 WFS_MI_VARIANTS = [(ps, mi, cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
