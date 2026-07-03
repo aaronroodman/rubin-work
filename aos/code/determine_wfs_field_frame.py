@@ -45,7 +45,10 @@ def main():
     if not visits:
         refs = list(b.registry.queryDatasets('aggregateAOSVisitTableRaw',
                                              collections=args.collection))
-        visits = sorted({int(r.dataId['visit']) for r in refs})[:3]
+        allv = sorted({int(r.dataId['visit']) for r in refs})
+        # spread across the collection so rotTelPos varies (OCS vs CCS degenerate near 0)
+        idx = np.unique(np.linspace(0, len(allv) - 1, min(6, len(allv))).astype(int))
+        visits = [allv[i] for i in idx]
     print(f'testing visits: {visits}\n')
 
     for vid in visits:
