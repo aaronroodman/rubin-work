@@ -38,9 +38,19 @@ def _sid(x):
     return None if s in ('', 'masked', '--') else s
 
 
+def _f(x):
+    """float, stripping any astropy unit (Quantity -> its value)."""
+    return float(getattr(x, 'value', x))
+
+
 def _xy(q):
     """(x, y) floats (native unit) from a structured ('x','y') Quantity/void element."""
-    return np.array([float(q['x']), float(q['y'])])
+    return np.array([_f(q['x']), _f(q['y'])])
+
+
+def _arr(x):
+    """1-D float array, stripping any astropy unit."""
+    return np.asarray(getattr(x, 'value', x), float).ravel()
 
 
 def main():
@@ -99,7 +109,7 @@ def main():
                 print(f'  det {det} donut {ii}/{ee}: intra_field(deg)={fld}')
                 for fr in ('CCS', 'OCS', 'NW'):
                     try:
-                        tgt = np.array([float(arow[f'thx_{fr}_intra']), float(arow[f'thy_{fr}_intra'])])
+                        tgt = np.array([_f(arow[f'thx_{fr}_intra']), _f(arow[f'thy_{fr}_intra'])])
                     except Exception:
                         continue
                     d = tgt - fld
@@ -107,7 +117,7 @@ def main():
                     print(f'      thx/thy_{fr}_intra={tgt}  resid={d}  |tgt|/|fld|={ratio:.4f}')
                 # fit rotation field->OCS
                 try:
-                    ocs = np.array([float(arow['thx_OCS_intra']), float(arow['thy_OCS_intra'])])
+                    ocs = np.array([_f(arow['thx_OCS_intra']), _f(arow['thy_OCS_intra'])])
                     a = np.arctan2(fld[0] * ocs[1] - fld[1] * ocs[0],
                                    fld[0] * ocs[0] + fld[1] * ocs[1])   # angle field->OCS
                     print(f'      => R(alpha).field~=OCS  alpha={np.degrees(a):+.3f} deg  '
@@ -116,16 +126,16 @@ def main():
                     pass
                 # paired thx_OCS vs intra/extra
                 try:
-                    pair = np.array([float(arow['thx_OCS']), float(arow['thy_OCS'])])
-                    ins = np.array([float(arow['thx_OCS_intra']), float(arow['thy_OCS_intra'])])
-                    exs = np.array([float(arow['thx_OCS_extra']), float(arow['thy_OCS_extra'])])
+                    pair = np.array([_f(arow['thx_OCS']), _f(arow['thy_OCS'])])
+                    ins = np.array([_f(arow['thx_OCS_intra']), _f(arow['thy_OCS_intra'])])
+                    exs = np.array([_f(arow['thx_OCS_extra']), _f(arow['thy_OCS_extra'])])
                     print(f'      thx_OCS(paired)={pair}  mean(intra,extra)={(ins + exs) / 2}  extra={exs}')
                 except Exception:
                     pass
                 # native Z frame check
                 try:
-                    zc = {fr: np.asarray(arow[f'zk_{fr}'], float).ravel() for fr in ('OCS', 'CCS', 'NW')}
-                    znat = np.array([float(zr[f'Z{j}']) for j in NOLL])
+                    zc = {fr: _arr(arow[f'zk_{fr}']) for fr in ('OCS', 'CCS', 'NW')}
+                    znat = np.array([_f(zr[f'Z{j}']) for j in NOLL])
                     for fr, zz in zc.items():
                         n = min(len(znat), len(zz))
                         print(f'      Z-native vs zk_{fr}: rms={np.sqrt(np.nanmean((znat[:n] - zz[:n])**2)):.4g}')
