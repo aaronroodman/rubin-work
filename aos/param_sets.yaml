@@ -130,14 +130,13 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
     paired_3mm:
       collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_6_1/donut_viz_4_5_0/danish_v1_2_0/bin2x
       seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
-    # DEFERRED — ai_donut lacks aggregateAOSVisitTableRaw; it only has
-    # aggregateZernikesRaw (zk in OCS/CCS/NW, no positions) + per-detector
-    # `zernikes` (positions: intra_field/extra_field/centroids, native frame).
-    # Needs a dedicated reader that joins the two on donut_id and rotates
-    # field positions CCS->OCS (determine the rotation empirically first).  When
-    # built, switch entries to {collection, dataset_type} form and set
-    # dataset_type: aggregateZernikesRaw here.
-    # ai_donut:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
+    ai_donut:
+      # No joined aggregateAOSVisitTableRaw; run_wfs_mktable's aggregateZernikesRaw
+      # reader joins zk from aggregateZernikesRaw + positions from per-detector
+      # `zernikes` (field deg, x<->y swap -> CCS, R(rotTelPos) -> OCS).  seq_offset
+      # default +1 (in-focus fam+1).
+      collection:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
+      dataset_type: aggregateZernikesRaw
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315

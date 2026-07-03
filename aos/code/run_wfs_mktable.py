@@ -37,6 +37,111 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from intrinsics_lib import get_aggregate_zernikes, load_param_sets
 
+# Extra-focal SW0 corner detectors (the aggregate keys each pair under this SW0
+# detector name; the per-detector `zernikes` tables live on these detector ids).
+AIDONUT_SW0 = {191: 'R00_SW0', 195: 'R04_SW0', 199: 'R40_SW0', 203: 'R44_SW0'}
+
+
+def _sid(x):
+    """donut id as str, or None if masked (`zernikes` ids are <U21 strings)."""
+    if x is np.ma.masked or np.ma.is_masked(x):
+        return None
+    s = str(x)
+    return None if s in ('', 'masked', '--') else s
+
+
+def _xy(q):
+    """(x, y) floats from a structured ('x','y') Quantity/void element, unit stripped."""
+    return np.array([float(getattr(q['x'], 'value', q['x'])),
+                     float(getattr(q['y'], 'value', q['y']))])
+
+
+def _zk_um(q):
+    """Zernike vector -> float array in microns (aggregate zk may be a Quantity)."""
+    if hasattr(q, 'unit'):
+        import astropy.units as u
+        try:
+            return np.asarray(q.to_value(u.um), float).ravel()
+        except Exception:
+            pass
+    return np.asarray(getattr(q, 'value', q), float).ravel()
+
+
+def get_aidonut_zernikes(butler, day_obs, seq_num, coord):
+    """ai_donut reader: the collection has no joined aggregateAOSVisitTableRaw, only
+    `aggregateZernikesRaw` (zk_{OCS,CCS,NW} + intrinsic, no positions) and per-detector
+    `zernikes` (positions: intra/extra_field in deg, centroids in pix).  Join the two on
+    (detector, intra/extra donut id) and build the standard donuts schema.
+
+    Position transform (determined empirically, determine_wfs_field_frame.py):
+      thx_CCS = deg2rad(field_y), thy_CCS = deg2rad(field_x)   [x<->y swap, deg->rad]
+      [thx_OCS, thy_OCS] = R(rotTelPos) . [thx_CCS, thy_CCS]
+      paired thx/thy = mean(intra, extra).
+    Returns (astropy Table with the keep columns, visit_meta) or (None, None).
+    """
+    from astropy.table import Table
+    try:
+        agg = butler.get('aggregateZernikesRaw', day_obs=day_obs, seq_num=seq_num)
+    except Exception:
+        print(f'DatasetNotFoundError: No aggregateZernikesRaw for '
+              f'day_obs={day_obs}, seq_num={seq_num}')
+        return None, None
+    meta = agg.meta
+    theta = float(getattr(meta.get('rotTelPos', 0.0), 'value', meta.get('rotTelPos', 0.0)))
+    ct, st = np.cos(theta), np.sin(theta)
+
+    def to_ocs(v):
+        return np.array([ct * v[0] - st * v[1], st * v[0] + ct * v[1]])
+
+    # positions per (detector-name, intra_id, extra_id) from the 4 SW0 `zernikes` tables
+    pos = {}
+    for det_id, det_name in AIDONUT_SW0.items():
+        try:
+            zt = butler.get('zernikes', day_obs=day_obs, seq_num=seq_num, detector=det_id)
+        except Exception:
+            continue
+        for zr in zt:
+            ii, ee = _sid(zr['intra_donut_id']), _sid(zr['extra_donut_id'])
+            if ii is None or ee is None:
+                continue
+            fi, fe = _xy(zr['intra_field']), _xy(zr['extra_field'])           # deg
+            if not (np.all(np.isfinite(fi)) and np.all(np.isfinite(fe))):
+                continue
+            ci, ce = _xy(zr['intra_centroid']), _xy(zr['extra_centroid'])     # pix
+            ccs_i = np.deg2rad([fi[1], fi[0]]); ccs_e = np.deg2rad([fe[1], fe[0]])  # swap x,y
+            pi, pe = (to_ocs(ccs_i), to_ocs(ccs_e)) if coord == 'OCS' else (ccs_i, ccs_e)
+            pos[(det_name, ii, ee)] = (pi, pe, 0.5 * (ccs_i + ccs_e), ci, ce)
+
+    zkc, zic = f'zk_{coord}', f'zk_intrinsic_{coord}'
+    rows = []
+    for r in agg:
+        if not bool(r['used']):
+            continue
+        p = pos.get((str(r['detector']), _sid(r['intra_donut_id']), _sid(r['extra_donut_id'])))
+        if p is None:
+            continue
+        pi, pe, ccs, ci, ce = p
+        pair = 0.5 * (pi + pe)
+        rows.append((str(r['detector']), _zk_um(r[zkc]), _zk_um(r[zic]),
+                     pair[0], pair[1], pi[0], pe[0], pi[1], pe[1], ccs[0], ccs[1],
+                     ci[0], ci[1], ce[0], ce[1]))
+    if not rows:
+        return None, None
+
+    cols = list(zip(*rows))
+    tbl = Table()
+    tbl['detector'] = list(cols[0])
+    tbl[zkc] = np.array(cols[1]); tbl[zic] = np.array(cols[2])
+    tbl[f'thx_{coord}'] = cols[3]; tbl[f'thy_{coord}'] = cols[4]
+    tbl[f'thx_{coord}_intra'] = cols[5]; tbl[f'thx_{coord}_extra'] = cols[6]
+    tbl[f'thy_{coord}_intra'] = cols[7]; tbl[f'thy_{coord}_extra'] = cols[8]
+    tbl['thx_CCS'] = cols[9]; tbl['thy_CCS'] = cols[10]
+    tbl['centroid_x_intra'] = cols[11]; tbl['centroid_y_intra'] = cols[12]
+    tbl['centroid_x_extra'] = cols[13]; tbl['centroid_y_extra'] = cols[14]
+    noll = ([int(x) for x in meta['nollIndices']]
+            if meta.get('nollIndices') is not None else None)
+    return tbl, dict(band=meta.get('band', ''), nollIndices=noll)
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
@@ -58,12 +163,14 @@ def main():
     if args.wfs_name not in wfs_map:
         raise SystemExit(f'param_set {args.param_set} has no wfs_collections entry '
                          f'{args.wfs_name!r} (have: {list(wfs_map)})')
-    entry = wfs_map[args.wfs_name]                  # str, or {collection, seq_offset}
+    entry = wfs_map[args.wfs_name]                  # str, or {collection, seq_offset, dataset_type}
     if isinstance(entry, dict):
         wfs_coll = entry['collection']
         seq_offset = int(entry.get('seq_offset', 1))
+        dataset_type = entry.get('dataset_type', 'aggregateAOSVisitTableRaw')
     else:
         wfs_coll, seq_offset = entry, 1             # bare string -> in-focus (fam+1)
+        dataset_type = 'aggregateAOSVisitTableRaw'
     base = Path(args.output_root) / args.param_set
     fam_visits = QTable.read(str(base / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
@@ -93,7 +200,10 @@ def main():
     donut_tabs, vrows, n_miss, noll = [], [], 0, None
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + seq_offset
-        tbl, meta = get_aggregate_zernikes(butler, d, infocus, coord, camera)
+        if dataset_type == 'aggregateZernikesRaw':          # ai_donut: no joined AOS table
+            tbl, meta = get_aidonut_zernikes(butler, d, infocus, coord)
+        else:
+            tbl, meta = get_aggregate_zernikes(butler, d, infocus, coord, camera)
         if tbl is None:
             n_miss += 1; continue
         if noll is None and meta.get('nollIndices') is not None:
