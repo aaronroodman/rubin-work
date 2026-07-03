@@ -43,8 +43,8 @@ def main():
     visits = args.visits
     if not visits:
         refs = list(b.registry.queryDatasets('aggregateAOSVisitTableRaw',
-                                             collections=args.collection).expanded())
-        visits = sorted({r.records['visit'].id for r in refs})[:3]
+                                             collections=args.collection))
+        visits = sorted({int(r.dataId['visit']) for r in refs})[:3]
     print(f'testing visits: {visits}\n')
 
     for vid in visits:
