@@ -30,6 +30,16 @@ def _rot(v, ang_rad):
     return np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]])
 
 
+def _int(x):
+    """int, or None if masked/NaN."""
+    if x is np.ma.masked or (np.ma.is_masked(x)):
+        return None
+    try:
+        return int(x)
+    except (ValueError, TypeError):
+        return None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--repo', default='/repo/main')
@@ -62,8 +72,10 @@ def main():
         # index the aggregate by (detector-name, intra_id, extra_id)
         aidx = {}
         for row in agg:
-            key = (str(row['detector']), int(row['intra_donut_id']), int(row['extra_donut_id']))
-            aidx[key] = row
+            ii, ee = _int(row['intra_donut_id']), _int(row['extra_donut_id'])
+            if ii is None or ee is None:
+                continue
+            aidx[(str(row['detector']), ii, ee)] = row
 
         for det in CORNER_DETS:
             try:
@@ -72,8 +84,10 @@ def main():
                 continue
             name = DET_ID_TO_NAME[det]
             for zr in zt:
-                key = (name, int(zr['intra_donut_id']), int(zr['extra_donut_id']))
-                arow = aidx.get(key)
+                ii, ee = _int(zr['intra_donut_id']), _int(zr['extra_donut_id'])
+                if ii is None or ee is None:
+                    continue
+                arow = aidx.get((name, ii, ee))
                 if arow is None:
                     continue
                 fld = np.asarray(zr['intra_field'], float).ravel()[:2]   # native field (intra)
