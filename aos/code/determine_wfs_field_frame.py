@@ -30,14 +30,17 @@ def _rot(v, ang_rad):
     return np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]])
 
 
-def _int(x):
-    """int, or None if masked/NaN."""
-    if x is np.ma.masked or (np.ma.is_masked(x)):
+def _sid(x):
+    """donut id as str, or None if masked (ids are <U21 strings)."""
+    if x is np.ma.masked or np.ma.is_masked(x):
         return None
-    try:
-        return int(x)
-    except (ValueError, TypeError):
-        return None
+    s = str(x)
+    return None if s in ('', 'masked', '--') else s
+
+
+def _xy(q):
+    """(x, y) floats (native unit) from a structured ('x','y') Quantity/void element."""
+    return np.array([float(q['x']), float(q['y'])])
 
 
 def main():
@@ -72,7 +75,7 @@ def main():
         # index the aggregate by (detector-name, intra_id, extra_id)
         aidx = {}
         for row in agg:
-            ii, ee = _int(row['intra_donut_id']), _int(row['extra_donut_id'])
+            ii, ee = _sid(row['intra_donut_id']), _sid(row['extra_donut_id'])
             if ii is None or ee is None:
                 continue
             aidx[(str(row['detector']), ii, ee)] = row
@@ -84,14 +87,16 @@ def main():
                 continue
             name = DET_ID_TO_NAME[det]
             for zr in zt:
-                ii, ee = _int(zr['intra_donut_id']), _int(zr['extra_donut_id'])
+                ii, ee = _sid(zr['intra_donut_id']), _sid(zr['extra_donut_id'])
                 if ii is None or ee is None:
                     continue
                 arow = aidx.get((name, ii, ee))
                 if arow is None:
                     continue
-                fld = np.asarray(zr['intra_field'], float).ravel()[:2]   # native field (intra)
-                print(f'  det {det} donut {key[1]}/{key[2]}: intra_field={fld}')
+                fld = _xy(zr['intra_field'])              # native field (intra), deg
+                if not np.all(np.isfinite(fld)):
+                    continue
+                print(f'  det {det} donut {ii}/{ee}: intra_field(deg)={fld}')
                 for fr in ('CCS', 'OCS', 'NW'):
                     try:
                         tgt = np.array([float(arow[f'thx_{fr}_intra']), float(arow[f'thy_{fr}_intra'])])
