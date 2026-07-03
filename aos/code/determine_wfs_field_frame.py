@@ -20,7 +20,8 @@ RSP only (Butler).  Read-only; writes nothing.
 import argparse
 import numpy as np
 
-CORNER_DETS = [191, 195, 199, 203]                 # extra-focal SW0 corners
+CORNER_DETS = [191, 195, 199, 203]                 # extra-focal SW0 corner detector ids
+DET_ID_TO_NAME = {191: 'R00_SW0', 195: 'R04_SW0', 199: 'R40_SW0', 203: 'R44_SW0'}
 NOLL = list(range(4, 20)) + [22, 23, 24, 25, 26]    # `zernikes` Z columns (no 20,21)
 
 
@@ -55,10 +56,10 @@ def main():
         meta = agg.meta
         rot = {k: meta.get(k) for k in ('rotTelPos', 'rotAngle', 'parallacticAngle', 'skyAngle')}
         print(f'==== visit {vid}  angles(deg?): {rot} ====')
-        # index the aggregate by (detector, intra_id, extra_id)
+        # index the aggregate by (detector-name, intra_id, extra_id)
         aidx = {}
         for row in agg:
-            key = (int(row['detector']), int(row['intra_donut_id']), int(row['extra_donut_id']))
+            key = (str(row['detector']), int(row['intra_donut_id']), int(row['extra_donut_id']))
             aidx[key] = row
 
         for det in CORNER_DETS:
@@ -66,8 +67,9 @@ def main():
                 zt = b.get('zernikes', visit=vid, detector=det, collections=args.collection)
             except Exception:
                 continue
+            name = DET_ID_TO_NAME[det]
             for zr in zt:
-                key = (det, int(zr['intra_donut_id']), int(zr['extra_donut_id']))
+                key = (name, int(zr['intra_donut_id']), int(zr['extra_donut_id']))
                 arow = aidx.get(key)
                 if arow is None:
                     continue
