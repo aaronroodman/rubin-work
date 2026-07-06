@@ -72,7 +72,7 @@ def comparison_page(pdf, zks, row, fmask, wmask, fam, wfs, jf, jw, args, azedges
     """One Z5-Z8 FAM-vs-WFS azimuth page for a triplet; returns True if drawn."""
     import matplotlib.pyplot as plt
     try:
-        from common.zernike_names import NOLL_NAMES
+        from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
     fa_in, fa_az = _annulus(fam['thx'][fmask], fam['thy'][fmask], args.r_min, args.r_max)
@@ -258,9 +258,7 @@ def corner_gallery_page(pdf, butler, modeler, day_obs, seq, fam_seq, agg, noll, 
 def _resolve_butler(args):
     repo, coll = args.butler_repo, args.collection
     if repo is None or coll is None:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-        from intrinsics_lib import load_param_sets
+        from lsst.ts.intrinsic.wavefront.intrinsics_lib import load_param_sets
         ps = load_param_sets()[args.param_set]
         repo = repo or ps.get('butler_repo', '/repo/main')
         coll = coll or ps.get('wfs_collection')

@@ -21,18 +21,12 @@ from scipy.stats import binned_statistic_2d
 from astropy.table import QTable, vstack
 from pathlib import Path
 
-try:
-    from .dz_fitting import focal_plane_zernike_basis, derive_noll_indices
-    from .intrinsics_lib import (
-        read_donuts_table, build_visit_marker_lookup,
-        visit_marker_style, markers_legend_figure,
-    )
-except ImportError:
-    from dz_fitting import focal_plane_zernike_basis, derive_noll_indices
-    from intrinsics_lib import (
-        read_donuts_table, build_visit_marker_lookup,
-        visit_marker_style, markers_legend_figure,
-    )
+from lsst.ts.intrinsic.wavefront.dz_fitting import (
+    focal_plane_zernike_basis, derive_noll_indices)
+from lsst.ts.intrinsic.wavefront.intrinsics_lib import (
+    read_donuts_table, build_visit_marker_lookup,
+    visit_marker_style, markers_legend_figure,
+)
 
 
 # ============================================================
@@ -425,15 +419,9 @@ def plot_fit_params_and_residuals(fit_table_day, aosTable_matched,
                    and not c.endswith('_err')]
     n_coeffs = len(sample_cols)
 
-    # Canonical Noll names (k=1..n_coeffs) — pulled from the common library
-    # so any updates there propagate everywhere.  Lazy import so this
-    # module stays usable on hosts where common/ isn't on sys.path yet.
-    try:
-        from common.zernike_names import NOLL_NAMES
-    except ImportError:
-        sys.path.insert(0,
-                        str(Path(__file__).resolve().parent.parent.parent))
-        from common.zernike_names import NOLL_NAMES
+    # Canonical Noll names (k=1..n_coeffs) — from the package library so any
+    # updates there propagate everywhere.
+    from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
     param_labels = [f'k{k} ({NOLL_NAMES.get(k, f"Z{k}").lower()})'
                     for k in range(1, n_coeffs + 1)]
 

@@ -209,7 +209,7 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
                            the full load succeeded
     """
     # Imports kept inside so help/CLI parsing don't pay the LSST stack tax.
-    from intrinsics_lib import (
+    from lsst.ts.intrinsic.wavefront.intrinsics_lib import (
         DEFAULT_CONSDB_URL, get_visit_pairs_from_consdb,
         print_band_counts_by_day,
     )
@@ -411,7 +411,7 @@ def main():
     args = parser.parse_args()
 
     # Resolve params either from runs.yaml chunk or from explicit flags
-    from intrinsics_lib import load_param_sets
+    from lsst.ts.intrinsic.wavefront.intrinsics_lib import load_param_sets
     from run_pipeline import resolve_run
 
     if args.chunk:
