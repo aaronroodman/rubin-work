@@ -91,7 +91,7 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     try:
-        from common.zernike_names import NOLL_NAMES
+        from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
 

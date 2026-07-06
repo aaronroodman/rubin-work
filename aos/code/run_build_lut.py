@@ -34,12 +34,9 @@ import pyarrow.parquet as pq
 import yaml
 from astropy.table import QTable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-import ofc_svd as osv
-import mi_config as mc
-from measured_intrinsic import apply_visit_filters
+from lsst.ts.intrinsic.wavefront import ofc_svd as osv
+from lsst.ts.intrinsic.wavefront import mi_config as mc
+from lsst.ts.intrinsic.wavefront.measured_intrinsic import apply_visit_filters
 
 DEFAULT_LUT = dict(n_dof=None, n_keep=None, reduce='median',
                    use_alt_window=False, drop_bad_fit=True, prefix='z1toz6')

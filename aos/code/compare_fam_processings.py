@@ -254,10 +254,8 @@ def _fwhm_edge(base, mi, rot_lim, ei, eo, fwhm_fn):
 
 def compare_fwhm_edge(baseA, baseB, mi, rot_lim, ei, eo, pdf):
     import matplotlib.pyplot as plt
-    here = Path(__file__).resolve()
-    sys.path[:0] = [str(here.parent), str(here.parent.parent.parent)]   # code/ + repo root (for `common`)
     try:
-        from intrinsic_build_plots import donut_fwhm_from_zk
+        from lsst.ts.intrinsic.wavefront.intrinsic_build_plots import donut_fwhm_from_zk
     except Exception as e:
         print(f'[fwhm-edge] cannot import donut_fwhm_from_zk ({e}); skip'); return
     if not np.isfinite(donut_fwhm_from_zk(np.zeros((2, 5)), [4, 5, 6, 7, 8])).any():

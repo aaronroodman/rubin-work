@@ -38,8 +38,7 @@ import numpy as np
 import pyarrow.parquet as pq
 from astropy.table import Table
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import mi_config as mc
+from lsst.ts.intrinsic.wavefront import mi_config as mc
 
 DEFAULT = dict(wfs_inner_radius_deg=1.60, wfs_outer_radius_deg=1.725,
                wfs_azimuth_width_deg=7.5, delta_deg=0.0,

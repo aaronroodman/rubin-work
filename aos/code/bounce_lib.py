@@ -13,17 +13,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 try:
-    from intrinsics_lib import classify_visit, visit_marker_style
+    from lsst.ts.intrinsic.wavefront.intrinsics_lib import classify_visit, visit_marker_style
     _marker_ok = True
 except Exception as _e:   # pragma: no cover - RSP-only marker scheme
     print(f'(bounce_lib: intrinsics_lib marker scheme unavailable: '
           f'{type(_e).__name__}: {_e})')
     _marker_ok = False
 
-from common.zernike_names import (
+from lsst.ts.intrinsic.wavefront.common.zernike_names import (
     NOLL_NAMES, NOLL_FORMULAS, FOCAL_NAMES, PUPIL_NAMES,
 )
-from ofc_svd import (LABELS_50DOF, DOF_UNITS_50, DOF_GROUPS,
+from lsst.ts.intrinsic.wavefront.ofc_svd import (LABELS_50DOF, DOF_UNITS_50, DOF_GROUPS,
                      recover_dof_per_visit)
 def _alt_to_deg(alt_arr):
     """Auto-detect radians vs degrees in `alt`."""

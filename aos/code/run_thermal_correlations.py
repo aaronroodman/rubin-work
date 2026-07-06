@@ -30,11 +30,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-import mi_config as mc
-import ofc_svd as osv
+from lsst.ts.intrinsic.wavefront import mi_config as mc
+from lsst.ts.intrinsic.wavefront import ofc_svd as osv
 
 # Thermal-variable suite carried on the visit join (mirrors
 # dz_plotting.DEFAULT_THERMAL_VARS; inlined to avoid the heavy intrinsics_lib
@@ -151,7 +148,7 @@ def _panel(ax, x, y, annotate=True):
 def _dz_scatter_pages(df, present_tv, prefix, pdf, ncols, ks=range(1, 7)):
     import matplotlib.pyplot as plt
     try:
-        from common.zernike_names import NOLL_NAMES
+        from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
     ks = list(ks)

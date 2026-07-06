@@ -33,10 +33,19 @@ PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
 CFG        = yaml.safe_load(open("snake_config.yaml"))["param_sets"]
 PSETS      = list(CFG)
 
-# Phase 2: measured-intrinsic configs (optional file), via code/mi_config.py.
-import sys as _sys
-_sys.path.insert(0, "code")
-import mi_config as _mc
+# Core MIW library + runners now live in the installed ts_intrinsic_wavefront
+# package (set up via ~/notebooks/.user_setups).  rubin-work is a thin client:
+# it imports the package library and calls the package's built runners, keeping
+# only its analysis/WFS/study scripts locally in code/.
+from lsst.ts.intrinsic.wavefront import mi_config as _mc
+
+# Package runner (bin/) and library (python/lsst/...) dirs, from the eups setup.
+# The eups table exports TS_INTRINSIC_WAVEFRONT_DIR; the bin/ shims are built by
+# `scons` (bin/ is NOT auto-added to PATH, so reference it explicitly).
+_WF_DIR = os.environ["TS_INTRINSIC_WAVEFRONT_DIR"]
+WF_BIN  = f"{_WF_DIR}/bin"
+WF_LIB  = f"{_WF_DIR}/python/lsst/ts/intrinsic/wavefront"
+
 MI_DOC = _mc.load_doc("mi_config.yaml") if os.path.exists("mi_config.yaml") else {}
 MI_PSETS = list((MI_DOC or {}).get("measured_intrinsics", {}))
 
@@ -146,12 +155,12 @@ rule mktable:
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
-        r"""
-        python code/run_mktable.py --param-set {wildcards.ps} \
-            --day-obs-min {wildcards.dmin} --day-obs-max {wildcards.dmax} \
-            --output-dir {params.cdir} > {log} 2>&1
-        mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}.parquet {output.donuts}
-        mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}_visits.parquet {output.visits}
+        rf"""
+        python {WF_BIN}/run_mktable.py --param-set {{wildcards.ps}} \
+            --day-obs-min {{wildcards.dmin}} --day-obs-max {{wildcards.dmax}} \
+            --output-dir {{params.cdir}} > {{log}} 2>&1
+        mv {{params.cdir}}/{{params.ph}}_{{wildcards.dmin}}_{{wildcards.dmax}}.parquet {{output.donuts}}
+        mv {{params.cdir}}/{{params.ph}}_{{wildcards.dmin}}_{{wildcards.dmax}}_visits.parquet {{output.visits}}
         """
 
 # ---- per chunk: Double-Zernike fit ----
@@ -164,7 +173,7 @@ rule fit:
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.fit.log"
     shell:
-        "python code/run_dz_fit.py {input.donuts} --coord-sys {params.coord} "
+        f"python {WF_BIN}/run_dz_fit.py {{input.donuts}} --coord-sys {{params.coord}} "
         "--visits {input.visits} --output {output} > {log} 2>&1"
 
 # ---- combine chunks -> one param_set-level table each ----
@@ -175,29 +184,29 @@ rule fit:
 rule combine_donuts:
     input:
         chunks = lambda w: chunk_files(w.ps, "donuts.parquet"),
-        script = "code/combine_parquets.py",
+        script = f"{WF_BIN}/combine_parquets.py",
     output: "output/{ps}/donuts.parquet"
     resources: mem_mb=3000
     log:    "logs/{ps}.combine_donuts.log"
-    shell:  "python code/combine_parquets.py {input.chunks} --output {output} > {log} 2>&1"
+    shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
 
 rule combine_fits:
     input:
         chunks = lambda w: chunk_files(w.ps, "fits.parquet"),
-        script = "code/combine_parquets.py",
+        script = f"{WF_BIN}/combine_parquets.py",
     output: "output/{ps}/fits.parquet"
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_fits.log"
-    shell:  "python code/combine_parquets.py {input.chunks} --output {output} > {log} 2>&1"
+    shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
 
 rule combine_visits:
     input:
         chunks = lambda w: chunk_files(w.ps, "visits.parquet"),
-        script = "code/combine_parquets.py",
+        script = f"{WF_BIN}/combine_parquets.py",
     output: "output/{ps}/visits.parquet"
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_visits.log"
-    shell:  "python code/combine_parquets.py {input.chunks} --output {output} > {log} 2>&1"
+    shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
 
 # ---- validation plots on the combined tables ----
 rule plots:
@@ -251,15 +260,15 @@ rule build_intrinsic:
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
-        script = "code/run_build_intrinsic.py",
-        lib    = "code/measured_intrinsic.py",
-        plots  = "code/intrinsic_build_plots.py",
+        script = f"{WF_BIN}/run_build_intrinsic.py",
+        lib    = f"{WF_LIB}/measured_intrinsic.py",
+        plots  = f"{WF_LIB}/intrinsic_build_plots.py",
     output: "output/{ps}/{mi}/build/rot_{lo}_{hi}/intrinsic_grid.parquet"
     params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=8000
     log: "logs/{ps}.{mi}.build_rot_{lo}_{hi}.log"
     shell:
-        "python code/run_build_intrinsic.py --param-set {wildcards.ps} "
+        f"python {WF_BIN}/run_build_intrinsic.py --param-set {{wildcards.ps}} "
         "--mi-name {wildcards.mi} --rot-min {wildcards.lo} --rot-max {wildcards.hi} "
         "> {log} 2>&1"
 
@@ -267,8 +276,8 @@ rule build_intrinsic:
 rule intrinsic_split:
     input:
         grids  = lambda w: mi_bin_grids(w.ps, w.mi),
-        script = "code/run_intrinsic_split.py",
-        lib    = "code/intrinsic_split.py",
+        script = f"{WF_BIN}/run_intrinsic_split.py",
+        lib    = f"{WF_LIB}/intrinsic_split.py",
     output:
         maps   = "output/{ps}/{mi}/intrinsic_split_maps.parquet",
         decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
@@ -278,7 +287,7 @@ rule intrinsic_split:
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.intrinsic_split.log"
     shell:
-        "python code/run_intrinsic_split.py --param-set {wildcards.ps} "
+        f"python {WF_BIN}/run_intrinsic_split.py --param-set {{wildcards.ps}} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- OCS measured intrinsic at the WFS radius, per rotator bin (pre-split) ----
@@ -286,7 +295,7 @@ rule study_radialbins:
     input:
         grids  = lambda w: mi_bin_grids(w.ps, w.mi),
         script = "code/run_study_radialbins.py",
-        lib    = "code/ccd_height.py",          # wfs_field_radius_range (inner edge)
+        lib    = f"{WF_LIB}/ccd_height.py",          # wfs_field_radius_range (inner edge)
     output: "output/{ps}/{mi}/study_radialbins.pdf"
     params:                                     # rerun-trigger only
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
@@ -320,14 +329,14 @@ rule wfs_intrinsic_sidecar:
         decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
         wfs    = "output/{ps}/wfs/{cwfs}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
-        script = "code/run_make_intrinsic_sidecar.py",
-        lib    = "code/intrinsic_split.py",
+        script = f"{WF_BIN}/run_make_intrinsic_sidecar.py",
+        lib    = f"{WF_LIB}/intrinsic_split.py",
     output: "output/{ps}/{mi}/wfs/{cwfs}/zk_intrinsic.parquet"
     params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)            # rerun-trigger only
     resources: mem_mb=8000
     log: "logs/{ps}.{mi}.{cwfs}.wfs_intrinsic_sidecar.log"
     shell:
-        "python code/run_make_intrinsic_sidecar.py --param-set {wildcards.ps} "
+        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{wildcards.ps}} "
         "--mi-name {wildcards.mi} --donuts output/{wildcards.ps}/wfs/{wildcards.cwfs}/donuts.parquet "
         "--output output/{wildcards.ps}/{wildcards.mi}/wfs/{wildcards.cwfs}/zk_intrinsic.parquet "
         "--wfs-corner-height > {log} 2>&1"
@@ -341,7 +350,7 @@ rule wfs_dof_compare:
         fam_side = "output/{ps}/{mi}/zk_intrinsic.parquet",             # FAM per-donut MIW (baseline FWHM)
         visits   = "output/{ps}/visits.parquet",
         script   = "code/run_wfs_dof_compare.py",
-        lib      = "code/ofc_svd.py",
+        lib      = f"{WF_LIB}/ofc_svd.py",
     output: "output/{ps}/{mi}/wfs/{cwfs}/wfs_dof_compare_offsets.pdf"
     params:
         coord = lambda w: coord(w.ps),
@@ -357,14 +366,14 @@ rule intrinsic_sidecar:
         decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
-        script = "code/run_make_intrinsic_sidecar.py",
-        lib    = "code/intrinsic_split.py",
+        script = f"{WF_BIN}/run_make_intrinsic_sidecar.py",
+        lib    = f"{WF_LIB}/intrinsic_split.py",
     output: "output/{ps}/{mi}/zk_intrinsic.parquet"
     params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=8000
     log: "logs/{ps}.{mi}.intrinsic_sidecar.log"
     shell:
-        "python code/run_make_intrinsic_sidecar.py --param-set {wildcards.ps} "
+        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{wildcards.ps}} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- FAM-derived corner-WFS covariance of the measured-intrinsic deviation ----
@@ -374,7 +383,7 @@ rule wfs_mimic:
         donuts  = "output/{ps}/donuts.parquet",
         visits  = "output/{ps}/visits.parquet",
         script  = "code/run_wfs_mimic.py",
-        lib     = "code/mi_config.py",
+        lib     = f"{WF_LIB}/mi_config.py",
     output:
         cov84 = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet",
         cov21 = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov21.parquet",
@@ -396,14 +405,14 @@ rule refit_mi:
         donuts  = "output/{ps}/donuts.parquet",
         visits  = "output/{ps}/visits.parquet",
         sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
-        script  = "code/run_dz_fit.py",
-        lib     = "code/dz_fitting.py",
+        script  = f"{WF_BIN}/run_dz_fit.py",
+        lib     = f"{WF_LIB}/dz_fitting.py",
     output: "output/{ps}/{mi}/fits.parquet"
     params: coord = lambda w: coord(w.ps)
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.refit_mi.log"
     shell:
-        "python code/run_dz_fit.py {input.donuts} --coord-sys {params.coord} "
+        f"python {WF_BIN}/run_dz_fit.py {{input.donuts}} --coord-sys {{params.coord}} "
         "--visits {input.visits} --intrinsic-sidecar {input.sidecar} "
         "--output {output} > {log} 2>&1"
 
@@ -413,7 +422,7 @@ rule build_lut:
         fits     = "output/{ps}/fits.parquet",
         visits   = "output/{ps}/visits.parquet",
         script   = "code/run_build_lut.py",
-        lib      = "code/ofc_svd.py",
+        lib      = f"{WF_LIB}/ofc_svd.py",
     output:
         lut    = "output/{ps}/{mi}/lut/lut.parquet",
         lut_dz = "output/{ps}/{mi}/lut/lut_dz.parquet",
@@ -437,7 +446,7 @@ rule dz_correlations:
         fits   = "output/{ps}/{mi}/fits.parquet",
         script = "code/run_dz_correlations.py",
         lib    = "code/dz_plotting.py",
-        ofc    = "code/ofc_svd.py",
+        ofc    = f"{WF_LIB}/ofc_svd.py",
     output:
         pdf    = "output/{ps}/{mi}/plots/dz_correlations.pdf",
         pairs  = "output/{ps}/{mi}/plots/dz_correlations_pairs.parquet",
@@ -458,7 +467,7 @@ rule thermal_correlations:
         fits     = "output/{ps}/{mi}/fits.parquet",
         visits   = "output/{ps}/visits.parquet",   # nollIndices for the OFC SVD
         script   = "code/run_thermal_correlations.py",
-        lib      = "code/ofc_svd.py",               # DOF / v-mode projection
+        lib      = f"{WF_LIB}/ofc_svd.py",               # DOF / v-mode projection
     output:
         pdf     = "output/{ps}/{mi}/plots/thermal_correlations.pdf",
         summary = "output/{ps}/{mi}/plots/thermal_correlations_summary.parquet",
@@ -477,7 +486,7 @@ rule bounce:
         fits     = "output/{ps}/{mi}/fits.parquet",
         script   = "code/run_bounce.py",
         lib      = "code/bounce_lib.py",
-        ofc      = "code/ofc_svd.py",
+        ofc      = f"{WF_LIB}/ofc_svd.py",
     output:
         summary = "output/{ps}/{mi}/plots/bounce_summary.pdf",
         stats   = "output/{ps}/{mi}/bounce_kj_stats.parquet",
@@ -500,7 +509,7 @@ rule wfs_mktable:
         fits   = "output/{ps}/fits.parquet",       # FAM k=1 overlay in validation
         fam_donuts = "output/{ps}/donuts.parquet",  # FAM median at WFS radius
         script = "code/run_wfs_mktable.py",
-        lib    = "code/intrinsics_lib.py",
+        lib    = f"{WF_LIB}/intrinsics_lib.py",
     output:
         donuts = "output/{ps}/wfs/{cwfs}/donuts.parquet",
         visits = "output/{ps}/wfs/{cwfs}/visits.parquet",

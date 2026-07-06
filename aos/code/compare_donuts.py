@@ -28,8 +28,7 @@ from scipy.spatial import cKDTree
 from scipy.stats import binned_statistic_2d
 from astropy.table import QTable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from common.zernike_names import NOLL_NAMES  # noqa: E402
+from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES  # noqa: E402
 
 
 # ----------------------------------------------------------------------

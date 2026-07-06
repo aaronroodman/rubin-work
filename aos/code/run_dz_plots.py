@@ -21,7 +21,7 @@ from astropy.table import QTable
 from matplotlib.backends.backend_pdf import PdfPages
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dz_fitting import derive_noll_indices, flag_bad_fits
+from lsst.ts.intrinsic.wavefront.dz_fitting import derive_noll_indices, flag_bad_fits
 from dz_plotting import (
     reconstruct_zk_fit,
     _identify_fam_blocks,

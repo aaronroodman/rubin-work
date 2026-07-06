@@ -31,11 +31,10 @@ import pandas as pd
 from astropy.table import QTable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-import mi_config as mc
+from lsst.ts.intrinsic.wavefront import mi_config as mc
 import bounce_lib as bl
-from ofc_svd import LABELS_50DOF, DOF_UNITS_50
+from lsst.ts.intrinsic.wavefront.ofc_svd import LABELS_50DOF, DOF_UNITS_50
 
 DEFAULT_BOUNCES = [
     {'name': 'T720_elevation', 'description': 'Elevation 40 - 70 deg, rotator ~ 0',
@@ -86,7 +85,7 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     try:
-        from intrinsics_lib import markers_legend_figure
+        from lsst.ts.intrinsic.wavefront.intrinsics_lib import markers_legend_figure
         _marker_ok = True
     except Exception:
         _marker_ok = False
@@ -113,7 +112,7 @@ def main():
     C_all = DOF_all = None
     vmode_labels = []
     try:
-        from ofc_svd import build_ofc_svd, project_dz_table
+        from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, project_dz_table
         svd = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
                             cfg['n_keep'], n_dof=cfg['n_dof'],
                             ofc_normalization_yaml=cfg['ofc_normalization_yaml'])

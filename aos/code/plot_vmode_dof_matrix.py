@@ -19,7 +19,6 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 
@@ -32,7 +31,7 @@ def main():
     ap.add_argument('--annotate-min', type=float, default=0.10,
                     help='annotate cells with |V_im| >= this (0 = none)')
     args = ap.parse_args()
-    from ofc_svd import build_ofc_svd
+    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
     n_dof, n_keep = SCHEMES[args.scheme]
 
     base = Path(args.output_root) / args.param_set

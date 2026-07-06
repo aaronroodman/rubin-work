@@ -45,13 +45,12 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-import mi_config as mc
+from lsst.ts.intrinsic.wavefront import mi_config as mc
 import dz_plotting as dzp
 
 try:
-    from common.zernike_names import FOCAL_NAMES, PUPIL_NAMES
+    from lsst.ts.intrinsic.wavefront.common.zernike_names import FOCAL_NAMES, PUPIL_NAMES
 except Exception:                                         # pragma: no cover
     FOCAL_NAMES, PUPIL_NAMES = {}, {}
 
@@ -217,7 +216,7 @@ def _dz_to_W(df, prefix, svd):
 def _build_svd(df, prefix, param_set, mi_name, mi_config_path, n_dof_ov, n_keep_ov):
     """Build the OFC sensitivity-matrix SVD (n_dof / n_keep from the mi_config
     entry, or CLI overrides).  Imports lsst.ts.ofc lazily (RSP-only)."""
-    import ofc_svd as osv
+    from lsst.ts.intrinsic.wavefront import ofc_svd as osv
     cfg_mi = mc.load_mi_config(param_set, mi_name, config_path=mi_config_path)
     b = cfg_mi['build']
     n_dof = n_dof_ov if n_dof_ov is not None else cfg_mi.get('n_dof')

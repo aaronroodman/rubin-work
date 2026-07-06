@@ -41,7 +41,6 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
 FP_RADIUS = 1.75
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
@@ -58,7 +57,7 @@ def nmad(x):
 
 def corner_matrix_at(svd, noll, pos_deg):
     """B (ncorner*nj, n_kj): focal basis at the corner OCS positions (deg)."""
-    from ofc_svd import focal_zernike_at_points
+    from lsst.ts.intrinsic.wavefront.ofc_svd import focal_zernike_at_points
     jpos = {j: i for i, j in enumerate(noll)}; nj = len(noll)
     B = np.zeros((len(pos_deg) * nj, len(svd.kj_grid)))
     for ci, (tx, ty) in enumerate(pos_deg):
@@ -294,7 +293,7 @@ def main():
     ap.add_argument('--max-triplets', type=int, default=0, help='cap triplets (quick test); 0=all')
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
-    from ofc_svd import build_ofc_svd
+    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
     try:
         from lsst.ts.wep.utils import convertZernikesToPsfWidth as conv_fwhm
     except Exception as e:

@@ -31,13 +31,10 @@ import pandas as pd
 import pyarrow.parquet as pq
 from astropy.table import QTable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-import mi_config as mc
+from lsst.ts.intrinsic.wavefront import mi_config as mc
 
 try:
-    from common.zernike_names import NOLL_NAMES
+    from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
 except Exception:                                         # pragma: no cover
     NOLL_NAMES = {}
 

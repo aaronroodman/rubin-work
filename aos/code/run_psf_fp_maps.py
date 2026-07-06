@@ -73,7 +73,7 @@ def miw_zernikes(stars, maps_path, camera, hmap_dir):
     """Per-star MIW Zernike vector (µm) + noll list, from the 5rot OCS/CCS split maps
     (Z4 = OCS+CCS+CCD-height; other Zj = OCS only)."""
     from scipy.interpolate import LinearNDInterpolator
-    sys.path.insert(0, str(Path(__file__).resolve().parent)); import ccd_height as cch
+    from lsst.ts.intrinsic.wavefront import ccd_height as cch
     M = pd.read_parquet(maps_path)
     noll = sorted(int(c[1:-4]) for c in M.columns if c.endswith('_OCS'))
     pts = np.column_stack([M.thx_deg, M.thy_deg]); q = np.column_stack([stars.thx_deg, stars.thy_deg])
@@ -242,7 +242,7 @@ DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 
 
 def build_svd(noll, n_keep, n_dof):
-    from ofc_svd import build_ofc_svd
+    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
     return build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_keep, n_dof=n_dof)
 
 
@@ -256,7 +256,7 @@ def residual_W(row, prefix, svd):
 def eval_dz_field(W_resid, svd, noll, stars):
     """Evaluate a DZ-coefficient vector (over svd.kj_grid) to a per-star pupil-Zernike
     matrix (n_star, n_noll) [µm], using the k=1..6 focal-plane Zernike basis."""
-    from ofc_svd import focal_zernike_at_points
+    from lsst.ts.intrinsic.wavefront.ofc_svd import focal_zernike_at_points
     rho = np.hypot(stars.thx_deg.values, stars.thy_deg.values) / FP_RADIUS
     theta = np.arctan2(stars.thy_deg.values, stars.thx_deg.values)
     jpos = {j: i for i, j in enumerate(noll)}
@@ -276,7 +276,7 @@ MIMIC_OFFSETS = [0.0, 90.0, 180.0, 270.0]
 def mimic_corner_matrix(svd, noll, delta):
     """B (4*nj, n_kj): maps a DZ-coeff vector (svd.kj_grid order) to the pupil-Zernike
     vectors at the 4 WFS-mimic corner centers (corner-major), via the focal basis."""
-    from ofc_svd import focal_zernike_at_points
+    from lsst.ts.intrinsic.wavefront.ofc_svd import focal_zernike_at_points
     rho = MIMIC_RMID / FP_RADIUS
     jpos = {j: i for i, j in enumerate(noll)}; nj = len(noll)
     B = np.zeros((4 * nj, len(svd.kj_grid)))
@@ -410,7 +410,7 @@ def loop_corner_data(base_ps, fam_mi_dir, coord, noll, sec, visits, intrinsic):
 
 def corner_matrix_at(svd, noll, pos_deg):
     """B (4*nj, n_kj): focal basis evaluated at 4 explicit corner OCS positions (deg)."""
-    from ofc_svd import focal_zernike_at_points
+    from lsst.ts.intrinsic.wavefront.ofc_svd import focal_zernike_at_points
     jpos = {j: i for i, j in enumerate(noll)}; nj = len(noll)
     B = np.zeros((4 * nj, len(svd.kj_grid)))
     for ci, (tx, ty) in enumerate(pos_deg):
@@ -534,7 +534,7 @@ def main():
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--height-map-dir', default='~/u/LSST/packages/batoid_rubin_data')
     args = ap.parse_args()
-    sys.path.insert(0, str(Path(__file__).resolve().parent))   # ccd_height, ofc_svd
+    sys.path.insert(0, str(Path(__file__).resolve().parent))   # sibling run_wfs_mimic
     from lsst.obs.lsst import LsstCam
     camera = LsstCam.getCamera()
     base = Path(args.output_root) / args.ps

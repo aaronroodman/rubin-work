@@ -44,10 +44,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-import mi_config as mc
+from lsst.ts.intrinsic.wavefront import mi_config as mc
 
 DEFAULT = dict(inner_deg=None, outer_deg=1.725, n_radial_bins=4,
                azimuth_bin_deg=15.0)
@@ -62,7 +59,7 @@ def wfs_inner_radius_deg():
     derivation).  cameraGeom is RSP-only; falls back to WFS_INNER_FALLBACK_DEG."""
     try:
         from lsst.obs.lsst import LsstCam
-        from ccd_height import wfs_field_radius_range
+        from lsst.ts.intrinsic.wavefront.ccd_height import wfs_field_radius_range
         r_min, r_max = wfs_field_radius_range(LsstCam.getCamera())
         print(f'  WFS field coverage (cameraGeom): inner {r_min:.4f}°, '
               f'outer {r_max:.4f}°')
@@ -145,7 +142,7 @@ def main():
     from matplotlib.backends.backend_pdf import PdfPages
     from scipy.stats import binned_statistic
     try:
-        from common.zernike_names import NOLL_NAMES
+        from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
 

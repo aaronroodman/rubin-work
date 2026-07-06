@@ -32,10 +32,7 @@ import numpy as np
 import pandas as pd
 from astropy.table import QTable, vstack
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-from intrinsics_lib import get_aggregate_zernikes, load_param_sets
+from lsst.ts.intrinsic.wavefront.intrinsics_lib import get_aggregate_zernikes, load_param_sets
 
 # Extra-focal SW0 corner detectors (the aggregate keys each pair under this SW0
 # detector name; the per-detector `zernikes` tables live on these detector ids).
@@ -326,7 +323,7 @@ def _validation_plot(donuts, base, out, coord, prefix, noll):
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
     try:
-        from common.zernike_names import NOLL_NAMES
+        from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
     except Exception:
         NOLL_NAMES = {}
     zk = np.array(donuts[f'zk_{coord}'], dtype=float)      # (n_donuts, n_zern)
@@ -392,7 +389,7 @@ def _wfs_shell():
     corner from cameraGeom (RSP), out to the AOS-online 1.725° limit."""
     try:
         from lsst.obs.lsst import LsstCam
-        from ccd_height import wfs_field_radius_range
+        from lsst.ts.intrinsic.wavefront.ccd_height import wfs_field_radius_range
         inner, _ = wfs_field_radius_range(LsstCam.getCamera())
     except Exception:
         inner = 1.5178

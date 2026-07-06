@@ -140,12 +140,11 @@ def main():
     from lsst.obs.lsst import LsstCam
     from lsst.ts.wep.estimation import DanishAlgorithm
     from lsst.ts.wep.utils import getTaskInstrument
-    sys.path.insert(0, str(Path(__file__).resolve().parent)); import ccd_height as cch
+    from lsst.ts.intrinsic.wavefront import ccd_height as cch
 
     repo, coll = args.butler_repo, args.collection
     if repo is None or coll is None:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-        from intrinsics_lib import load_param_sets
+        from lsst.ts.intrinsic.wavefront.intrinsics_lib import load_param_sets
         ps = load_param_sets()[args.param_set]
         repo = repo or ps.get('butler_repo', '/repo/main')
         coll = coll or ps.get('wfs_collection')
