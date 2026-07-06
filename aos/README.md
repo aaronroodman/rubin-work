@@ -285,6 +285,27 @@ every entry, as it should.)
 
 ## Running
 
+### Package dependency (`ts_intrinsic_wavefront`)
+
+The core measured-intrinsic library and runners live in the official LSST-TS
+package **`ts_intrinsic_wavefront`** (`lsst.ts.intrinsic.wavefront`), not in this
+repo — `aos/code/` holds only the analysis / WFS / study scripts.  The Snakefile
+imports the package library and calls its built `bin/` runners via
+`$TS_INTRINSIC_WAVEFRONT_DIR`.  Before running the pipeline (or importing any
+`code/` script) the package must be **set up and built** once:
+
+```bash
+# already wired into ~/notebooks/.user_setups and ~/u/LSST/setup.sh:
+setup -r ~/u/LSST/packages/ts_intrinsic_wavefront -j
+# build the version.py + bin/ runner shims once per fresh clone / after edits:
+cd ~/u/LSST/packages/ts_intrinsic_wavefront && scons
+```
+
+`scons` generates the gitignored `version.py` (needed for import) and the `bin/`
+shims (needed by the Snakefile).  Without it, imports fail on
+`No module named 'lsst.ts.intrinsic.wavefront.version'` and rules fail on missing
+`bin/run_*.py`.
+
 On the RSP (Butler, ConsDB, `lsst.ts.ofc`/`wep`, `$TS_CONFIG_MTTCS_DIR`
 required):
 
