@@ -44,6 +44,8 @@ import pyarrow.parquet as pq
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
 FP_RADIUS = 1.75
 GRID_STEP = 0.35          # focal-plane grid step (deg); sets the fp_grid + binning cell
+RAFT_CELL = 0.71          # deg: raft pitch — binning half-box for the 1-star-per-raft
+                          # GalSim sampling (each donut lands in its raft's cell)
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 # CWFS - FAM offsets (OCS, µm) from the corner-compare study; subtracted from CWFS.
 DEFAULT_OFFSETS = {4: {'R00_SW0': -0.11, 'R04_SW0': -0.11, 'R40_SW0': -0.11, 'R44_SW0': -0.19},
@@ -290,6 +292,44 @@ def fwhm_of_cellfield(Zcell, noll, conv):
     return np.nanmean(zj_to_fwhm(Zcell, noll, conv))
 
 
+def raft_centers(camera):
+    """Field-angle centre (deg) of each science raft — the mean over its science
+    CCDs' bbox centres.  ~21 points spanning the focal plane; used as the GalSim
+    delivered-FWHM sampling (one PSF per raft)."""
+    from lsst.afw import cameraGeom
+    from lsst.geom import Point2D
+    from collections import defaultdict
+    pts = defaultdict(list)
+    for d in camera:
+        if d.getType() != cameraGeom.DetectorType.SCIENCE:
+            continue
+        bb = d.getBBox()
+        fa = d.getTransform(cameraGeom.PIXELS, cameraGeom.FIELD_ANGLE).applyForward(
+            Point2D(bb.getCenterX(), bb.getCenterY()))
+        pts[d.getName().split('_')[0]].append((np.rad2deg(fa.getX()), np.rad2deg(fa.getY())))
+    return np.array([np.mean(v, axis=0) for _, v in sorted(pts.items())])
+
+
+def obs_fields_at(pos, cell, svd, noll, fmi, fam_dev, fam_thx, fam_thy, idx,
+                  t, r50, r22):
+    """Per-cell Zernike fields (ncell, nj) at field positions ``pos`` for one
+    triplet ``t`` (donut row indices ``idx``): MIW, Wobserved, and the four
+    'Wobserved - correction' residuals.  Shared by the formula + GalSim reducers.
+
+    ``pos`` (ncell, 2) field-angle deg; ``cell`` the binning half-box side (deg).
+    r50/r22 hold per-triplet DZ reconstructions Wf (FAM) and Wc (CWFS)."""
+    miw = bin_to_grid(fmi[idx], fam_thx[idx], fam_thy[idx], pos, cell)
+    dev = bin_to_grid(fam_dev[idx], fam_thx[idx], fam_thy[idx], pos, cell)
+    Wobs = miw + dev
+    def gz(dW_row):
+        return dW_to_grid_zernikes(svd, noll, dW_row, pos)
+    return dict(miw=miw, obs=Wobs,
+                floor=Wobs - gz(r50['Wf'][t]),
+                fam22=Wobs - gz(r22['Wf'][t]),
+                cwfs50=Wobs - gz(r50['Wc'][t]),
+                cwfs22=Wobs - gz(r22['Wc'][t]))
+
+
 def _fwhm_page(ordn, lines, title, pdf):
     """Shared time-history + histogram page.  ``lines`` = list of (y, label, color)."""
     import matplotlib.pyplot as plt
@@ -309,22 +349,22 @@ def _fwhm_page(ordn, lines, title, pdf):
     pdf.savefig(fig); plt.close(fig)
 
 
-def aos_fwhm_raw_page(ordn, fwhm_obs, fwhm_miw, pdf):
+def aos_fwhm_raw_page(ordn, fwhm_obs, fwhm_miw, pdf, method='formula'):
     """Page A: the raw uncorrected delivered FWHM, FWHM(Wobserved), on its own
     page (its excursion dwarfs the corrected levels), with the MIW baseline as a
-    reference line."""
+    reference line.  ``method`` labels the Zj->FWHM route (formula | GalSim+HSM)."""
     lines = [(fwhm_obs, 'FWHM(FAM) raw — uncorrected observed optics', 'firebrick'),
              (fwhm_miw, 'MIW baseline', 'black')]
-    _fwhm_page(ordn, lines, 'AOS FWHM (focal-plane average) — raw uncorrected FAM '
-               '(Wobserved = MIW + per-donut deviation, full spatial content)', pdf)
+    _fwhm_page(ordn, lines, f'AOS FWHM [{method}] (focal-plane average) — raw '
+               'uncorrected FAM (Wobserved = MIW + per-donut deviation)', pdf)
 
 
-def aos_fwhm_levels_page(ordn, levels, pdf):
+def aos_fwhm_levels_page(ordn, levels, pdf, method='formula'):
     """Page B: cumulative delivered FWHM levels, each = FWHM(Wobserved - correction),
     all including the MIW and the per-visit uncorrectable high-order content.
-
-    ``levels`` = ordered list of (y_array, label, color)."""
-    _fwhm_page(ordn, levels, 'AOS FWHM delivered (focal-plane average) — '
+    ``method`` labels the Zj->FWHM route (formula = convertZernikesToPsfWidth;
+    GalSim+HSM = rendered OpticalPSF⊗Kolmogorov, HSM, one PSF per raft centre)."""
+    _fwhm_page(ordn, levels, f'AOS FWHM delivered [{method}] (focal-plane average) — '
                'FWHM(Wobserved - correction): MIW baseline, uncorrectable floor, '
                'FAM 22/12, CWFS 50/34, CWFS 22/12', pdf)
 
@@ -342,6 +382,13 @@ def main():
     ap.add_argument('--reject-k', type=float, default=5.0, help='scatter outlier: drop >K·nMAD from the mass')
     ap.add_argument('--no-offsets', action='store_true', help='disable the CWFS-FAM per-(Zj,corner) offsets')
     ap.add_argument('--max-triplets', type=int, default=0, help='cap triplets (quick test); 0=all')
+    ap.add_argument('--galsim-fwhm', action='store_true',
+                    help='add a GalSim+HSM delivered-FWHM cross-check of the formula pages '
+                         '(one rendered PSF per raft centre; parallel, slow — RSP + galsim)')
+    ap.add_argument('--galsim-workers', type=int, default=16,
+                    help='process-pool workers for the GalSim renders (--galsim-fwhm)')
+    ap.add_argument('--band', default='i', choices=['u', 'g', 'r', 'i', 'z', 'y'],
+                    help='band for the GalSim OpticalPSF wavelength')
     ap.add_argument('--output-root', default='output')
     args = ap.parse_args()
     from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
@@ -485,45 +532,83 @@ def main():
         if have_obs:
             r50, r22 = recon['50DOF-34vmode'], recon['22DOF-12vmode']
             svd = r50['svd']
-            nt, ncell = len(triplets), len(grid_pos)
-            # per-triplet per-cell Zernike fields
-            fwhm_obs = np.full(nt, np.nan)                     # FWHM(Wobserved)
-            L_miw = np.full(nt, np.nan)                        # FWHM(MIW_grid)
-            L_floor = np.full(nt, np.nan)                      # FWHM(Wobs - Wf50)
-            L_fam22 = np.full(nt, np.nan)                      # FWHM(Wobs - Wf22)
-            L_cwfs50 = np.full(nt, np.nan)                     # FWHM(Wobs - Wc50)
-            L_cwfs22 = np.full(nt, np.nan)                     # FWHM(Wobs - Wc22)
+            nt = len(triplets)
+            FIELDS = ['miw', 'obs', 'floor', 'fam22', 'cwfs50', 'cwfs22']
+            # valid triplets (have FAM donuts) + their per-cell fields on the
+            # FORMULA grid.  Cache each triplet's field dict for reuse.
+            fields_by_t = {}
             for t, key in enumerate(triplets):
                 idx = fd_grp.get(key) if fd_grp is not None else None
                 if idx is None or len(idx) == 0:
                     continue
-                idx = np.asarray(idx, int)
-                miw_grid = bin_to_grid(fmi[idx], fam_thx[idx], fam_thy[idx],
-                                       grid_pos, GRID_STEP)
-                dev_grid = bin_to_grid(fam_dev[idx], fam_thx[idx], fam_thy[idx],
-                                       grid_pos, GRID_STEP)
-                Wobs = miw_grid + dev_grid                    # per-visit truth
-                L_miw[t] = fwhm_of_cellfield(miw_grid, noll, conv_fwhm)
-                fwhm_obs[t] = fwhm_of_cellfield(Wobs, noll, conv_fwhm)
-                # correction residuals evaluated on the same grid cells
-                gz = lambda dW: dW_to_grid_zernikes(svd, noll, dW, grid_pos)
-                L_floor[t] = fwhm_of_cellfield(Wobs - gz(r50['Wf'][t]), noll, conv_fwhm)
-                L_fam22[t] = fwhm_of_cellfield(Wobs - gz(r22['Wf'][t]), noll, conv_fwhm)
-                L_cwfs50[t] = fwhm_of_cellfield(Wobs - gz(r50['Wc'][t]), noll, conv_fwhm)
-                L_cwfs22[t] = fwhm_of_cellfield(Wobs - gz(r22['Wc'][t]), noll, conv_fwhm)
+                fields_by_t[t] = obs_fields_at(
+                    grid_pos, GRID_STEP, svd, noll, fmi, fam_dev, fam_thx, fam_thy,
+                    np.asarray(idx, int), t, r50, r22)
 
-            aos_fwhm_raw_page(ordn, fwhm_obs, L_miw, pdf)     # Page A
+            def series(reducer, fkey):
+                y = np.full(nt, np.nan)
+                for t, fd in fields_by_t.items():
+                    y[t] = reducer(fd[fkey])
+                return y
+
+            form = lambda Z: fwhm_of_cellfield(Z, noll, conv_fwhm)   # noqa: E731
+            fwhm_obs = series(form, 'obs')
+            L = {k: series(form, k) for k in ['miw', 'floor', 'fam22', 'cwfs50', 'cwfs22']}
+            aos_fwhm_raw_page(ordn, fwhm_obs, L['miw'], pdf, method='formula')  # Page A
             levels = [
-                (L_miw,    'MIW baseline', 'black'),
-                (L_floor,  'uncorrectable floor  Wobs - FAM 50/34', 'gray'),
-                (L_fam22,  'FAM 22/12  Wobs - FAM 22/12', 'darkorange'),
-                (L_cwfs50, 'CWFS 50/34  Wobs - CWFS 50/34', 'purple'),
-                (L_cwfs22, 'CWFS 22/12  Wobs - CWFS 22/12', 'steelblue'),
+                (L['miw'],    'MIW baseline', 'black'),
+                (L['floor'],  'uncorrectable floor  Wobs - FAM 50/34', 'gray'),
+                (L['fam22'],  'FAM 22/12  Wobs - FAM 22/12', 'darkorange'),
+                (L['cwfs50'], 'CWFS 50/34  Wobs - CWFS 50/34', 'purple'),
+                (L['cwfs22'], 'CWFS 22/12  Wobs - CWFS 22/12', 'steelblue'),
             ]
-            aos_fwhm_levels_page(ordn, levels, pdf)           # Page B
-            print(f'  raw FWHM(Wobserved) median {np.nanmedian(fwhm_obs):.3f}″')
+            aos_fwhm_levels_page(ordn, levels, pdf, method='formula')          # Page B
+            print(f'  [formula] raw FWHM(Wobserved) median {np.nanmedian(fwhm_obs):.3f}″')
             for y, lab, _ in levels:
-                print(f'  delivered FWHM median {np.nanmedian(y):.3f}″  — {lab}')
+                print(f'  [formula] delivered FWHM median {np.nanmedian(y):.3f}″  — {lab}')
+
+            # ---- GalSim+HSM parallel cross-check (one PSF per raft centre) ----
+            if args.galsim_fwhm:
+                import psf_render as pr
+                from lsst.obs.lsst import LsstCam
+                rpos = raft_centers(LsstCam.getCamera())
+                # recompute the six fields on the raft-centre positions, gather
+                # every (triplet, field, raft) Zernike vector into one big batch.
+                gfields = {t: obs_fields_at(rpos, RAFT_CELL, svd, noll, fmi, fam_dev,
+                                            fam_thx, fam_thy,
+                                            np.asarray(fd_grp[triplets[t]], int),
+                                            t, r50, r22)
+                           for t in fields_by_t}
+                lam_nm = pr.LAM_NM[args.band]
+                batch, keyindex = [], []
+                for t, fd in gfields.items():
+                    for fk in FIELDS:
+                        Z = fd[fk]                           # (nraft, nj)
+                        for c in range(len(rpos)):
+                            keyindex.append((t, fk, c)); batch.append(Z[c])
+                print(f'  [galsim] rendering {len(batch)} PSFs '
+                      f'({len(gfields)} triplets x {len(FIELDS)} fields x {len(rpos)} rafts), '
+                      f'workers={args.galsim_workers} …')
+                fw = pr.optics_fwhm_batch(batch, noll, lam_nm, workers=args.galsim_workers)
+                # median over rafts -> per-(triplet, field)
+                acc = {(t, fk): [] for t in gfields for fk in FIELDS}
+                for (t, fk, _), v in zip(keyindex, fw):
+                    acc[(t, fk)].append(v)
+                gser = {fk: np.full(nt, np.nan) for fk in FIELDS}
+                for (t, fk), vals in acc.items():
+                    gser[fk][t] = np.nanmedian(vals)
+                aos_fwhm_raw_page(ordn, gser['obs'], gser['miw'], pdf, method='GalSim+HSM')
+                glevels = [
+                    (gser['miw'],    'MIW baseline', 'black'),
+                    (gser['floor'],  'uncorrectable floor  Wobs - FAM 50/34', 'gray'),
+                    (gser['fam22'],  'FAM 22/12  Wobs - FAM 22/12', 'darkorange'),
+                    (gser['cwfs50'], 'CWFS 50/34  Wobs - CWFS 50/34', 'purple'),
+                    (gser['cwfs22'], 'CWFS 22/12  Wobs - CWFS 22/12', 'steelblue'),
+                ]
+                aos_fwhm_levels_page(ordn, glevels, pdf, method='GalSim+HSM')
+                print(f'  [galsim] raw FWHM(Wobserved) median {np.nanmedian(gser["obs"]):.3f}″')
+                for y, lab, _ in glevels:
+                    print(f'  [galsim] delivered FWHM median {np.nanmedian(y):.3f}″  — {lab}')
     print(f'  wrote {out}')
 
 
