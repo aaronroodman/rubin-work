@@ -43,6 +43,7 @@ import pyarrow.parquet as pq
 
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
 FP_RADIUS = 1.75
+GRID_STEP = 0.35          # focal-plane grid step (deg); sets the fp_grid + binning cell
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 # CWFS - FAM offsets (OCS, µm) from the corner-compare study; subtracted from CWFS.
 DEFAULT_OFFSETS = {4: {'R00_SW0': -0.11, 'R04_SW0': -0.11, 'R40_SW0': -0.11, 'R44_SW0': -0.19},
@@ -244,6 +245,51 @@ def miw_fwhm_series(triplets, fd_grp, fmi, noll, conv):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Per-visit "observed" wavefront FWHM on the focal-plane grid.
+#
+# The DZ fit is band-limited to k<=6, so the per-visit high-spatial-frequency
+# content is not in Wf/Wc (it lands, averaged, in the MIW).  To get the true
+# delivered image quality we bin the per-donut wavefront onto the grid and work
+# with per-cell Zernike fields (ncell, nj) rather than kj-DZ vectors:
+#   MIW_grid   = binned per-donut MIW sidecar
+#   dev_grid   = binned per-donut (zk - MIW)          (full spatial content)
+#   Wobserved  = MIW_grid + dev_grid                  (the per-visit "truth")
+# Every delivered-FWHM level is then FWHM(Wobserved - correction), where a
+# correction (Wf/Wc) is a kj-DZ residual evaluated on the same grid points.
+# ---------------------------------------------------------------------------
+def bin_to_grid(vals, thx, thy, grid_pos, cell):
+    """Median per-cell Zernike field on ``grid_pos``.
+
+    ``vals`` (ndon, nj) per-donut Zernikes at field positions (``thx``,``thy``,
+    deg); assign each donut to its nearest grid cell (square cell of side
+    ``cell`` deg == the fp_grid step) and take the per-cell median.  Cells with
+    no donut are NaN (dropped from the focal-plane average downstream)."""
+    ncell, nj = len(grid_pos), vals.shape[1]
+    out = np.full((ncell, nj), np.nan)
+    finite = np.isfinite(thx) & np.isfinite(thy)
+    if not finite.any():
+        return out
+    # nearest grid cell by half-cell box around each grid point
+    for c, (gx, gy) in enumerate(grid_pos):
+        m = finite & (np.abs(thx - gx) <= 0.5 * cell) & (np.abs(thy - gy) <= 0.5 * cell)
+        if m.any():
+            out[c] = np.nanmedian(vals[m], axis=0)
+    return out
+
+
+def dW_to_grid_zernikes(svd, noll, dW_row, grid_pos):
+    """Per-cell Zernike field (ncell, nj) for a single kj-DZ residual on grid."""
+    nj = len(noll)
+    return (dW_row @ corner_matrix_at(svd, noll, grid_pos).T).reshape(len(grid_pos), nj)
+
+
+def fwhm_of_cellfield(Zcell, noll, conv):
+    """Focal-plane-average AOS FWHM (arcsec) of a per-cell Zernike field
+    (ncell, nj); NaN cells are ignored."""
+    return np.nanmean(zj_to_fwhm(Zcell, noll, conv))
+
+
 def _fwhm_page(ordn, lines, title, pdf):
     """Shared time-history + histogram page.  ``lines`` = list of (y, label, color)."""
     import matplotlib.pyplot as plt
@@ -263,19 +309,24 @@ def _fwhm_page(ordn, lines, title, pdf):
     pdf.savefig(fig); plt.close(fig)
 
 
-def aos_fwhm_page(ordn, series, name, pdf):
-    """Within-scheme CWFS-FAM recovery-error FWHM: focal-plane + CWFS-corner (ConsDB analog)."""
-    lines = [(series['fp'], 'focal-plane avg', 'steelblue'),
-             (series['corner'], 'CWFS-corner avg (ConsDB analog)', 'crimson')]
-    _fwhm_page(ordn, lines, f'{name} — AOS FWHM from CWFS−FAM optical-state recovery error', pdf)
+def aos_fwhm_raw_page(ordn, fwhm_obs, fwhm_miw, pdf):
+    """Page A: the raw uncorrected delivered FWHM, FWHM(Wobserved), on its own
+    page (its excursion dwarfs the corrected levels), with the MIW baseline as a
+    reference line."""
+    lines = [(fwhm_obs, 'FWHM(FAM) raw — uncorrected observed optics', 'firebrick'),
+             (fwhm_miw, 'MIW baseline', 'black')]
+    _fwhm_page(ordn, lines, 'AOS FWHM (focal-plane average) — raw uncorrected FAM '
+               '(Wobserved = MIW + per-donut deviation, full spatial content)', pdf)
 
 
-def aos_fwhm_contributions_page(ordn, contrib, pdf):
-    """All focal-plane FWHM contributions on one page (time history + histogram).
+def aos_fwhm_levels_page(ordn, levels, pdf):
+    """Page B: cumulative delivered FWHM levels, each = FWHM(Wobserved - correction),
+    all including the MIW and the per-visit uncorrectable high-order content.
 
-    ``contrib`` = ordered list of (y_array, label, color)."""
-    _fwhm_page(ordn, contrib, 'AOS FWHM contributions (focal-plane average) — '
-               'MIW baseline, FAM excursion, CWFS recovery+truncation vs FAM 50/34', pdf)
+    ``levels`` = ordered list of (y_array, label, color)."""
+    _fwhm_page(ordn, levels, 'AOS FWHM delivered (focal-plane average) — '
+               'FWHM(Wobserved - correction): MIW baseline, uncorrectable floor, '
+               'FAM 22/12, CWFS 50/34, CWFS 22/12', pdf)
 
 
 def main():
@@ -330,11 +381,16 @@ def main():
     noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist() if b'nollIndices' in md else noll)
     mi_cw = mi_sc[:, [noll_i.index(j) for j in noll]]          # MIW per donut, aligned to noll
 
-    # ---- FAM per-donut MIW sidecar (row-aligned to the full FAM donuts.parquet), for the
-    #      focal-plane MIW FWHM: mean over each visit's science-field donuts ----
+    # ---- FAM per-donut MIW sidecar + per-donut measured wavefront (row-aligned
+    #      to the full FAM donuts.parquet).  Used for (a) the per-donut MIW FWHM
+    #      series and (b) the binned-to-grid Wobserved: MIW_grid + dev_grid where
+    #      dev = per-donut (zk - MIW), carrying the full spatial content the k<=6
+    #      DZ fit smooths into the visit-averaged MIW. ----
     fd_grp = fmi = None
+    fam_dev = fam_thx = fam_thy = None
     try:
-        fd = pq.read_table(str(base / 'donuts.parquet'), columns=['day_obs', 'seq_num']).to_pandas()
+        fd = pq.read_table(str(base / 'donuts.parquet'),
+                           columns=['day_obs', 'seq_num', zc, txc, tyc]).to_pandas()
         scf_f = bmi / 'zk_intrinsic.parquet'
         fmi_raw = np.stack(pq.read_table(str(scf_f), columns=['zk_intrinsic_MI']).to_pandas()
                            ['zk_intrinsic_MI'].values).astype(float)
@@ -343,6 +399,16 @@ def main():
         fmi = fmi_raw[:, [noll_f.index(j) for j in noll]]
         fd_grp = {(int(d), int(s)): idx for (d, s), idx in
                   fd.groupby(['day_obs', 'seq_num']).indices.items()}
+        # per-donut measured wavefront (aligned to noll) minus per-donut MIW
+        fam_zk = np.stack(fd[zc].values).astype(float)             # (ndon, nZk_file)
+        # align the measured zk columns to noll via the donut file's own nollIndices
+        ndon_md = pq.read_schema(str(base / 'donuts.parquet')).metadata or {}
+        noll_d = (np.frombuffer(ndon_md[b'nollIndices'], dtype=int).tolist()
+                  if b'nollIndices' in ndon_md else noll_f)
+        fam_zk = fam_zk[:, [noll_d.index(j) for j in noll]]
+        fam_dev = fam_zk - fmi                                     # per-donut (zk - MIW)
+        fam_thx = np.rad2deg(np.asarray(fd[txc], float))
+        fam_thy = np.rad2deg(np.asarray(fd[tyc], float))
     except Exception as e:
         print(f'[wfs_dof_compare] MIW FWHM disabled (no FAM sidecar/donuts): {e}')
 
@@ -372,7 +438,7 @@ def main():
     out = bmi / 'wfs' / args.wfs_name / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
     out.parent.mkdir(parents=True, exist_ok=True)
     ordn = np.arange(len(triplets))
-    grid_pos = fp_grid(FP_RADIUS, 0.35)                            # ~89-point focal-plane grid
+    grid_pos = fp_grid(FP_RADIUS, GRID_STEP)                       # ~89-point focal-plane grid
     recon = {}                                                     # per-scheme DZ reconstructions for the hybrid page
     with PdfPages(str(out)) as pdf:
         for name, (n_keep, n_dof) in [('50DOF-34vmode', (34, None)), ('22DOF-12vmode', (12, DOF22))]:
@@ -402,30 +468,62 @@ def main():
             med_r = np.nanmedian([robust_fit(vfam[:, i], vcw[:, i], args.reject_k)[1]['r'] for i in range(n_keep)])
             print(f'  {name}: median v-mode CWFS-vs-FAM r = {med_r:.3f}')
             if conv_fwhm is not None:
+                # CWFS-FAM recovery-error FWHM (fp + ConsDB-corner analog) — kept
+                # as a printed diagnostic; the standalone per-scheme page is
+                # superseded by the delivered-FWHM levels page below.
                 dW_rec = ((vcw - vfam) * svd.Sigma[svd._keep()][None, :]) @ svd.U_eff.T
                 fw = fwhm_from_dW(svd, noll, dW_rec, pos, grid_pos, conv_fwhm)
-                aos_fwhm_page(ordn, fw, name, pdf)
-                print(f'  {name}: median AOS_FWHM  fp={np.nanmedian(fw["fp"]):.3f}″  '
+                print(f'  {name}: median recovery-error FWHM  fp={np.nanmedian(fw["fp"]):.3f}″  '
                       f'corner={np.nanmedian(fw["corner"]):.3f}″')
             recon[name] = dict(svd=svd, Wf=A_fam @ svd.U_eff.T, Wc=A_cwfs @ svd.U_eff.T)
 
-        # ---- all focal-plane FWHM contributions vs FAM-50/34 truth ----
-        if conv_fwhm is not None and {'50DOF-34vmode', '22DOF-12vmode'} <= set(recon):
+        # ---- delivered-FWHM pages: per-visit Wobserved (binned to grid) minus
+        #      each correction.  Requires the per-donut FAM deviation (fam_dev) +
+        #      positions and both SVD schemes. ----
+        have_obs = (conv_fwhm is not None and fam_dev is not None
+                    and {'50DOF-34vmode', '22DOF-12vmode'} <= set(recon))
+        if have_obs:
             r50, r22 = recon['50DOF-34vmode'], recon['22DOF-12vmode']
-            fp = lambda dW: fwhm_from_dW(r50['svd'], noll, dW, pos, grid_pos, conv_fwhm)['fp']
-            contrib = []
-            if fd_grp is not None:                                       # MIW baseline
-                contrib.append((miw_fwhm_series(triplets, fd_grp, fmi, noll, conv_fwhm),
-                                'MIW itself (baseline)', 'black'))
-            contrib += [
-                (fp(r50['Wf']),              'FAM 50/34 excursion beyond MIW (uncorrected)', 'gray'),
-                (fp(r50['Wf'] - r22['Wc']),  'CWFS 22/12 vs FAM 50/34 (recovery + truncation)', 'steelblue'),
-                (fp(r50['Wf'] - r50['Wc']),  'CWFS 50/34 vs FAM 50/34 (recovery only)', 'purple'),
-                (fp(r50['Wf'] - r22['Wf']),  'truncation only: FAM 22/12 vs FAM 50/34', 'darkorange'),
+            svd = r50['svd']
+            nt, ncell = len(triplets), len(grid_pos)
+            # per-triplet per-cell Zernike fields
+            fwhm_obs = np.full(nt, np.nan)                     # FWHM(Wobserved)
+            L_miw = np.full(nt, np.nan)                        # FWHM(MIW_grid)
+            L_floor = np.full(nt, np.nan)                      # FWHM(Wobs - Wf50)
+            L_fam22 = np.full(nt, np.nan)                      # FWHM(Wobs - Wf22)
+            L_cwfs50 = np.full(nt, np.nan)                     # FWHM(Wobs - Wc50)
+            L_cwfs22 = np.full(nt, np.nan)                     # FWHM(Wobs - Wc22)
+            for t, key in enumerate(triplets):
+                idx = fd_grp.get(key) if fd_grp is not None else None
+                if idx is None or len(idx) == 0:
+                    continue
+                idx = np.asarray(idx, int)
+                miw_grid = bin_to_grid(fmi[idx], fam_thx[idx], fam_thy[idx],
+                                       grid_pos, GRID_STEP)
+                dev_grid = bin_to_grid(fam_dev[idx], fam_thx[idx], fam_thy[idx],
+                                       grid_pos, GRID_STEP)
+                Wobs = miw_grid + dev_grid                    # per-visit truth
+                L_miw[t] = fwhm_of_cellfield(miw_grid, noll, conv_fwhm)
+                fwhm_obs[t] = fwhm_of_cellfield(Wobs, noll, conv_fwhm)
+                # correction residuals evaluated on the same grid cells
+                gz = lambda dW: dW_to_grid_zernikes(svd, noll, dW, grid_pos)
+                L_floor[t] = fwhm_of_cellfield(Wobs - gz(r50['Wf'][t]), noll, conv_fwhm)
+                L_fam22[t] = fwhm_of_cellfield(Wobs - gz(r22['Wf'][t]), noll, conv_fwhm)
+                L_cwfs50[t] = fwhm_of_cellfield(Wobs - gz(r50['Wc'][t]), noll, conv_fwhm)
+                L_cwfs22[t] = fwhm_of_cellfield(Wobs - gz(r22['Wc'][t]), noll, conv_fwhm)
+
+            aos_fwhm_raw_page(ordn, fwhm_obs, L_miw, pdf)     # Page A
+            levels = [
+                (L_miw,    'MIW baseline', 'black'),
+                (L_floor,  'uncorrectable floor  Wobs - FAM 50/34', 'gray'),
+                (L_fam22,  'FAM 22/12  Wobs - FAM 22/12', 'darkorange'),
+                (L_cwfs50, 'CWFS 50/34  Wobs - CWFS 50/34', 'purple'),
+                (L_cwfs22, 'CWFS 22/12  Wobs - CWFS 22/12', 'steelblue'),
             ]
-            aos_fwhm_contributions_page(ordn, contrib, pdf)
-            for y, lab, _ in contrib:
-                print(f'  contribution median FWHM {np.nanmedian(y):.3f}″  — {lab}')
+            aos_fwhm_levels_page(ordn, levels, pdf)           # Page B
+            print(f'  raw FWHM(Wobserved) median {np.nanmedian(fwhm_obs):.3f}″')
+            for y, lab, _ in levels:
+                print(f'  delivered FWHM median {np.nanmedian(y):.3f}″  — {lab}')
     print(f'  wrote {out}')
 
 
