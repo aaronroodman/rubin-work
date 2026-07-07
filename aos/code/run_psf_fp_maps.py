@@ -146,7 +146,9 @@ def render_measure(zk_um, noll, lam_nm, atm, aper, with_optics=True):
     e = np.hypot(e1, e2)
     T = 2.0 * sig**2 / np.sqrt(max(1.0 - e**2, 1e-6))    # pixels^2 (trace)
     fwhm = np.sqrt(T / 2.0 * LN256) * PIXSCALE           # arcsec
-    out = dict(fwhm=fwhm, e1=e1, e2=e2, e=e)
+    # T_arcsec2: trace of the second-moment matrix in arcsec^2 (additive under
+    # convolution, so the optics-only trace = T_total - T_atm).
+    out = dict(fwhm=fwhm, T=T * PIXSCALE**2, e1=e1, e2=e2, e=e)
     Mxx = (T / 2) * (1 + e1); Myy = (T / 2) * (1 - e1); Mxy = (T / 2) * e2
     ix0 = res.moments_centroid.x - img.xmin; iy0 = res.moments_centroid.y - img.ymin
     out.update(_higher_moments(img.array, ix0, iy0, Mxx, Mxy, Myy))
@@ -501,6 +503,94 @@ def run_closed_loop(case, base, args, svd, noll, stars, atm, aper, lam_nm, fwhm_
         psf_page(stars, sample[st], f'Closed loop step {st} — {tag} ({args.band})', fwhm_atm, pdf)
 
 
+# ------------------------------------------------------------------ formula validation
+def _formula_fwhm(zk_um, noll, lam_nm):
+    """The convertZernikesToPsfWidth formula under test: per-Zernike arcsec
+    contributions (µm in, Noll>=4, Z1-3 excluded), quadrature-summed."""
+    from lsst.ts.wep.utils import convertZernikesToPsfWidth
+    jmax = max(noll)
+    full = np.zeros(jmax - 3)                              # index 0 == Noll 4
+    for j, z in zip(noll, zk_um):
+        if j >= 4 and np.isfinite(z):
+            full[j - 4] = z
+    dpsf = np.asarray(convertZernikesToPsfWidth(full), float)
+    return float(np.sqrt(np.nansum(dpsf ** 2)))
+
+
+def _galsim_optics_fwhm(zk_um, noll, lam_nm, atm, aper, T_atm):
+    """GalSim 'truth' optics FWHM (arcsec): render OpticalPSF(zk)⊗Kolmogorov, HSM,
+    then remove the atmosphere in the (additive) second-moment-trace domain:
+    T_optics = T_total - T_atm  ->  FWHM = sqrt(T_optics/2·ln256).  Returns NaN if
+    HSM fails or the optics trace underflows."""
+    r = render_measure(zk_um, noll, lam_nm, atm, aper, with_optics=True)
+    if r is None:
+        return np.nan
+    T_opt = r['T'] - T_atm                                 # arcsec^2
+    if T_opt <= 0:
+        return 0.0
+    return float(np.sqrt(T_opt / 2.0 * LN256))
+
+
+def validate_formula_page(miw_zk, noll, lam_nm, atm, aper, pdf, n_scatter=300, seed=1):
+    """Validate convertZernikesToPsfWidth against GalSim+HSM truth.
+
+    Page 1 — scatter over realistic wavefronts: for up to ``n_scatter`` real
+      per-star MIW Zernike vectors, formula FWHM (x) vs GalSim optics FWHM (y,
+      atmosphere removed in quadrature).  1:1 line + median ratio.
+    Page 2 — per-Noll amplitude sweep: each Noll j alone swept 0..~0.8 µm,
+      formula vs GalSim, to expose where the linear/quadrature formula departs
+      from the true (nonlinear, cross-term-free here) PSF width."""
+    import matplotlib.pyplot as plt
+    T_atm = render_measure(None, noll, lam_nm, atm, aper, with_optics=False)['T']
+
+    # ---- Page 1: realistic-wavefront scatter ----
+    rng = np.random.default_rng(seed)
+    n = min(n_scatter, len(miw_zk))
+    sel = rng.choice(len(miw_zk), size=n, replace=False)
+    xf = np.array([_formula_fwhm(miw_zk[i], noll, lam_nm) for i in sel])
+    yg = np.array([_galsim_optics_fwhm(miw_zk[i], noll, lam_nm, atm, aper, T_atm) for i in sel])
+    ok = np.isfinite(xf) & np.isfinite(yg) & (yg > 0) & (xf > 1e-6)
+    xf, yg = xf[ok], yg[ok]
+    ratio = np.nanmedian(yg / xf) if xf.size else np.nan
+    fig, ax = plt.subplots(figsize=(7, 7), constrained_layout=True)
+    ax.plot(xf, yg, '.', ms=4, alpha=0.5)
+    lim = max(xf.max(), yg.max()) * 1.05 if xf.size else 1.0
+    ax.plot([0, lim], [0, lim], 'k-', lw=1, label='1:1')
+    ax.set_xlim(0, lim); ax.set_ylim(0, lim); ax.set_aspect('equal')
+    ax.set_xlabel('convertZernikesToPsfWidth FWHM [arcsec]')
+    ax.set_ylabel('GalSim+HSM optics FWHM (atm removed) [arcsec]')
+    ax.set_title(f'FWHM formula vs GalSim truth — {xf.size} real MIW wavefronts\n'
+                 f'median(GalSim/formula) = {ratio:.3f}')
+    ax.legend(); ax.grid(alpha=0.3)
+    pdf.savefig(fig); plt.close(fig)
+    print(f'[validate] scatter: n={xf.size}  median GalSim/formula = {ratio:.3f}  '
+          f'(formula med {np.nanmedian(xf):.3f}″, GalSim med {np.nanmedian(yg):.3f}″)')
+
+    # ---- Page 2: per-Noll amplitude sweep ----
+    amps = np.linspace(0.0, 0.8, 9)                        # µm
+    ncol = 4; nrow = int(np.ceil(len(noll) / ncol))
+    fig, axs = plt.subplots(nrow, ncol, figsize=(4 * ncol, 3 * nrow),
+                            constrained_layout=True, squeeze=False)
+    for ji, j in enumerate(noll):
+        ax = axs[ji // ncol][ji % ncol]
+        f_form, f_gal = [], []
+        for a in amps:
+            zk = np.zeros(len(noll)); zk[ji] = a
+            f_form.append(_formula_fwhm(zk, noll, lam_nm))
+            f_gal.append(_galsim_optics_fwhm(zk, noll, lam_nm, atm, aper, T_atm))
+        ax.plot(amps, f_form, 'o-', ms=3, label='formula')
+        ax.plot(amps, f_gal, 's--', ms=3, label='GalSim')
+        ax.set_title(f'Z{j}', fontsize=8); ax.grid(alpha=0.3); ax.tick_params(labelsize=6)
+        if ji == 0:
+            ax.legend(fontsize=6)
+    for k in range(len(noll), nrow * ncol):
+        axs[k // ncol][k % ncol].set_visible(False)
+    fig.supxlabel('single-Zernike amplitude [µm]'); fig.supylabel('optics FWHM [arcsec]')
+    fig.suptitle('Per-Noll amplitude sweep: formula vs GalSim+HSM (single Zernike, isolated)')
+    pdf.savefig(fig); plt.close(fig)
+    print(f'[validate] per-Noll sweep written ({len(noll)} Zernikes, amps 0-0.8 µm)')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ps', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
@@ -508,7 +598,8 @@ def main():
     ap.add_argument('--fam-mi', default='pathA_50_34_i', help='mi config whose per-visit FAM fits to use')
     ap.add_argument('--case', default='miw',
                     choices=['miw', 'fam50', 'fam22', 'all', 'mimic50', 'mimic22', 'mimic',
-                             'loop50', 'loop22', 'loop'])
+                             'loop50', 'loop22', 'loop', 'validate'],
+                    help="'validate' = check convertZernikesToPsfWidth vs GalSim+HSM")
     ap.add_argument('--gain', type=float, default=0.3, help='proportional control gain (closed loop)')
     ap.add_argument('--burn-in', type=int, default=5, help='loop steps to skip for the steady-state histogram')
     ap.add_argument('--intrinsic', default='tabulated', choices=['tabulated', 'miw', 'none'],
@@ -541,6 +632,7 @@ def main():
     hmap = os.path.expanduser(args.height_map_dir); lam_nm = LAM_NM[args.band]
     cases = {'all': ['miw', 'fam50', 'fam22'], 'mimic': ['mimic50', 'mimic22'],
              'loop': ['loop50', 'loop22']}.get(args.case, [args.case])
+    # 'validate' checks the convertZernikesToPsfWidth formula vs GalSim+HSM truth.
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
@@ -566,7 +658,10 @@ def main():
         out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}{suffix}.pdf'
         out.parent.mkdir(parents=True, exist_ok=True)
         with PdfPages(str(out)) as pdf:
-            if case == 'miw':
+            if case == 'validate':
+                validate_formula_page(miw_zk, noll, lam_nm, atm, aper, pdf,
+                                      n_scatter=args.n_stars, seed=args.seed)
+            elif case == 'miw':
                 meas = measure_zk(miw_zk, noll, lam_nm, atm, aper)
                 print(f'[miw] {len(meas)}/{len(stars)} stars; med FWHM={meas.fwhm.median():.3f}" '
                       f'e={meas.e.median():.3f}')
