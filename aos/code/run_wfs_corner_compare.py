@@ -9,10 +9,11 @@ of the corner azimuth (>= min_fam donuts).  Both are raw OPD in <coord> (default
 from the same triplet (matched CWFS fam_seq_num <-> FAM seq_num).
 
 Pages (output/<ps>/wfs/wfs_corner_compare.pdf):
-  - per corner: FAM-vs-CWFS scatter, all Zj (Pearson r, OLS slope/offset, robust RMS
-    of residuals about the fit);
+  - per corner: FAM-vs-CWFS scatter, all Zj (Pearson r + Spearman rho, Huber
+    robust slope/offset, nMAD RMS of residuals about the robust fit);
   - per corner: time history (FAM-interp + CWFS-median vs image ordinal), all Zj;
-  - summary: corr / slope / offset / robust-RMS vs Zj, all 4 corners;
+  - summary: Pearson r / Spearman rho / Huber slope / offset / robust-RMS vs Zj,
+    all 4 corners;
   - validation: every val_stride-th triplet, Z5-Z8 vs focal-plane azimuth showing the
     individual FAM (annulus) and CWFS donuts plus the FAM interpolation and CWFS median.
 
@@ -99,14 +100,28 @@ def azimuth_interp(az, z, corner_az, method, fourier_m, gp_bin, wedge_half, min_
 
 
 def fit_metrics(x, y):
+    """Robust CWFS(y)-vs-FAM(x) fit metrics (finite pairs only).
+
+    Line: Huber robust regression (statsmodels RLM + HuberT), falling back to OLS
+    if statsmodels is unavailable or the robust fit fails to converge.
+    Correlation: BOTH Pearson r (linear) and Spearman rho (rank, robust to
+    outliers + monotonic nonlinearity).  ``rms`` = nMAD of the (robust) residuals."""
     m = np.isfinite(x) & np.isfinite(y)
     if m.sum() < 3:
-        return dict(n=int(m.sum()), r=np.nan, slope=np.nan, off=np.nan, rms=np.nan)
+        return dict(n=int(m.sum()), r=np.nan, rho=np.nan, slope=np.nan,
+                    off=np.nan, rms=np.nan)
     x, y = np.asarray(x)[m], np.asarray(y)[m]
-    s, b = np.polyfit(x, y, 1)
+    try:
+        import statsmodels.api as sm
+        rlm = sm.RLM(y, sm.add_constant(x), M=sm.robust.norms.HuberT()).fit()
+        b, s = float(rlm.params[0]), float(rlm.params[1])   # const, slope
+    except Exception:
+        s, b = (float(v) for v in np.polyfit(x, y, 1))
     res = y - (s * x + b)
-    return dict(n=len(x), r=float(np.corrcoef(x, y)[0, 1]), slope=float(s),
-                off=float(b), rms=float(nmad(res)))
+    from scipy.stats import spearmanr
+    rho = float(spearmanr(x, y).statistic)
+    return dict(n=len(x), r=float(np.corrcoef(x, y)[0, 1]), rho=rho,
+                slope=s, off=b, rms=float(nmad(res)))
 
 
 def main():
@@ -257,8 +272,9 @@ def main():
                     lo, hi = np.nanpercentile(np.concatenate([x[fin], y[fin]]), [1, 99])
                     ax.plot([lo, hi], [lo, hi], 'k--', lw=0.6)
                     xx = np.array([lo, hi]); ax.plot(xx, m['slope'] * xx + m['off'], 'r-', lw=0.8)
-                    ax.text(0.04, 0.96, f"r={m['r']:.2f}\ns={m['slope']:.2f} b={m['off']:+.3f}\n"
-                            f"rms={m['rms']:.3f}", transform=ax.transAxes, va='top', fontsize=6)
+                    ax.text(0.04, 0.96, f"r={m['r']:.2f} ρ={m['rho']:.2f}\n"
+                            f"s={m['slope']:.2f} b={m['off']:+.3f}\nrms={m['rms']:.3f}",
+                            transform=ax.transAxes, va='top', fontsize=6)
                 ax.set_title(f'Z{j}', fontsize=8); ax.tick_params(labelsize=6)
             for ax in axes.ravel()[nZk:]:
                 ax.axis('off')
@@ -282,10 +298,10 @@ def main():
             pdf.savefig(fig); plt.close(fig)
 
         # ---- summary: metric vs Zj, all corners ----
-        fig, axes = plt.subplots(2, 2, figsize=(13, 8), constrained_layout=True)
-        for ax, (key, lab) in zip(axes.ravel(),
-                                  [('r', 'correlation r'), ('slope', 'slope'),
-                                   ('off', 'offset [µm]'), ('rms', 'robust RMS [µm]')]):
+        fig, axes = plt.subplots(2, 3, figsize=(17, 8), constrained_layout=True)
+        panels = [('r', 'Pearson r'), ('rho', 'Spearman ρ'), ('slope', 'Huber slope'),
+                  ('off', 'offset [µm]'), ('rms', 'robust RMS [µm]')]
+        for ax, (key, lab) in zip(axes.ravel(), panels):
             for c, det in enumerate(CORNERS):
                 ax.plot(noll, [metrics[(det, j)][key] for j in noll], '-o', ms=4, label=det)
             ax.set_xlabel('Noll j'); ax.set_ylabel(lab); ax.grid(alpha=0.3)
@@ -293,6 +309,7 @@ def main():
                 ax.axhline(1, color='k', lw=0.5)
             if key in ('off',):
                 ax.axhline(0, color='k', lw=0.5)
+        axes.ravel()[len(panels)].axis('off')       # 2x3 grid, 5 panels
         axes.ravel()[0].legend(fontsize=8)
         fig.suptitle(f'CWFS vs FAM-interp summary — {args.param_set} ({coord})', fontsize=12)
         pdf.savefig(fig); plt.close(fig)
