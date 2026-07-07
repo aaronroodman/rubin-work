@@ -51,7 +51,15 @@ def _fourier_curve(az, z, M):
 
 
 def _gp_curve(az, z, bin_deg):
-    """GP on the cos/sin azimuth circle, fit to bin_deg-binned medians -> callable."""
+    """GP on the cos/sin azimuth circle, fit to bin_deg-binned medians -> callable.
+
+    Kernel bounds are wide: many Zernikes are azimuthally smooth (length_scale
+    wants to be large -> nearly constant around the ring) or near-noiseless
+    (noise_level -> ~0), which used to spam sklearn ConvergenceWarnings as the
+    optimizer parked at the old (0.05,3.0)/(1e-4,0.2) bounds.  Widening the
+    bounds and suppressing the (benign) warning keeps those fits well-posed."""
+    import warnings
+    from sklearn.exceptions import ConvergenceWarning
     from sklearn.gaussian_process import GaussianProcessRegressor
     from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
     bc, bm = [], []
@@ -61,8 +69,13 @@ def _gp_curve(az, z, bin_deg):
             bc.append(lo + bin_deg / 2); bm.append(np.nanmedian(z[m]))
     bc, bm = np.array(bc), np.array(bm)
     circ = lambda a: np.c_[np.cos(np.radians(np.atleast_1d(a))), np.sin(np.radians(np.atleast_1d(a)))]
-    k = ConstantKernel(1.0, (1e-2, 1e2)) * RBF(0.5, (0.05, 3.0)) + WhiteKernel(0.01, (1e-4, 0.2))
-    gp = GaussianProcessRegressor(k, normalize_y=True, n_restarts_optimizer=1).fit(circ(bc), bm)
+    # chord length_scale on the unit circle spans ~0..2; give generous headroom.
+    k = (ConstantKernel(1.0, (1e-3, 1e3)) * RBF(0.5, (0.02, 10.0))
+         + WhiteKernel(0.01, (1e-8, 1.0)))
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', ConvergenceWarning)
+        gp = GaussianProcessRegressor(k, normalize_y=True,
+                                      n_restarts_optimizer=2).fit(circ(bc), bm)
     return lambda a: gp.predict(circ(a))
 
 
