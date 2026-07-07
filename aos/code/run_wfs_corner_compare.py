@@ -119,10 +119,16 @@ def main():
     base = Path(args.output_root) / args.param_set
     zc, txc, tyc = f'zk_{coord}', f'thx_{coord}', f'thy_{coord}'
 
-    noll = [int(x) for x in np.asarray(
-        pq.read_table(str(base / 'visits.parquet'), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
+    vt = pq.read_table(str(base / 'visits.parquet')).to_pandas()
+    noll = [int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
     nZk = len(noll)
     vjs = [int(j) for j in args.val_zernikes.split(',') if int(j) in noll]
+    # per-triplet sidecar (rotator/elevation/mjd) keyed by (day_obs, seq_num) —
+    # the triplet key's seq_num is the FAM extra seq == visits.parquet seq_num.
+    _side_cols = [c for c in ('rotator_angle', 'alt', 'az', 'mjd', 'science_program')
+                  if c in vt.columns]
+    sidecar = {(int(r.day_obs), int(r.seq_num)): r
+               for r in vt[['day_obs', 'seq_num', *_side_cols]].itertuples(index=False)}
 
     # ---- CWFS (in-focus corner donuts) ----
     cw = pq.read_table(str(base / 'wfs' / args.wfs_name / 'donuts.parquet'),
@@ -171,6 +177,44 @@ def main():
                 FAMI[t, cok, jp] = azimuth_interp(faz_t, fzk_t[:, jp], AZC[t, cok], **ikw)[0]
         if t in val_idx:
             val[t] = (key, faz_t, fzk_t, cw_az[ci], cw_zk[ci], cw_det[ci])
+
+    # ---- tidy parquet: one row per (triplet, corner, Zj) with FAM interp +
+    #      CWFS median + azimuth + sidecar (rotator/elevation/mjd/program).
+    #      For downstream FAM-vs-CWFS correlation analysis per Zj/corner. ----
+    outdir = base / 'wfs' / args.wfs_name
+    outdir.mkdir(parents=True, exist_ok=True)
+    rows = {k: [] for k in ('day_obs', 'seq_num', 'corner', 'j', 'fam_interp',
+                            'cwfs_median', 'corner_az_deg', 'rotator_angle',
+                            'alt_deg', 'az_deg', 'mjd', 'science_program')}
+    for t, key in enumerate(triplets):
+        d, s = int(key[0]), int(key[1])
+        sc = sidecar.get((d, s))
+        rot = float(getattr(sc, 'rotator_angle', np.nan)) if sc is not None else np.nan
+        # visits.parquet alt/az are in RADIANS; convert to degrees (elevation).
+        _alt = float(getattr(sc, 'alt', np.nan)) if sc is not None else np.nan
+        _az = float(getattr(sc, 'az', np.nan)) if sc is not None else np.nan
+        alt = np.degrees(_alt) if np.isfinite(_alt) and abs(_alt) <= 2 * np.pi else _alt
+        azv = np.degrees(_az) if np.isfinite(_az) and abs(_az) <= 2 * np.pi else _az
+        mjd = float(getattr(sc, 'mjd', np.nan)) if sc is not None else np.nan
+        prog = str(getattr(sc, 'science_program', '')) if sc is not None else ''
+        for c, det in enumerate(CORNERS):
+            for jp, j in enumerate(noll):
+                fam_i, cw_m = FAMI[t, c, jp], CWM[t, c, jp]
+                if not (np.isfinite(fam_i) or np.isfinite(cw_m)):
+                    continue                      # skip fully-empty (corner,Zj)
+                rows['day_obs'].append(d); rows['seq_num'].append(s)
+                rows['corner'].append(det); rows['j'].append(int(j))
+                rows['fam_interp'].append(float(fam_i))
+                rows['cwfs_median'].append(float(cw_m))
+                rows['corner_az_deg'].append(float(AZC[t, c]))
+                rows['rotator_angle'].append(rot); rows['alt_deg'].append(alt)
+                rows['az_deg'].append(azv); rows['mjd'].append(mjd)
+                rows['science_program'].append(prog)
+    cmp_df = pd.DataFrame(rows)
+    cmp_df.attrs['wfs_name'] = args.wfs_name
+    cmp_df.to_parquet(outdir / 'wfs_corner_compare.parquet')
+    print(f'  wrote wfs_corner_compare.parquet ({len(cmp_df)} rows: '
+          f'{len(triplets)} triplets x 4 corners x {nZk} Zj, finite only)')
 
     out = base / 'wfs' / args.wfs_name / 'wfs_corner_compare.pdf'
     out.parent.mkdir(parents=True, exist_ok=True)

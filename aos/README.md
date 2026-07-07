@@ -328,7 +328,7 @@ output/<param_set>/
   chunks/<dmin>_<dmax>/ {donuts,fits,visits}.parquet     # per chunk
   {donuts,fits,visits}.parquet                           # combined (downstream input)
   plots/                                                 # trio validation, aberration_pairs
-  wfs/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf  wfs_corner_compare.pdf
+  wfs/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf  wfs_corner_compare.{pdf,parquet}
   <mi_name>/
     build/rot_<lo>_<hi>/intrinsic_grid.parquet           # per rotator bin
     build/rot_<lo>_<hi>/intrinsic_cov_edge.parquet       # FoV-edge 21x21 (per-donut residual)
@@ -362,7 +362,7 @@ Closed-loop AOS performance, separate from the FAM wavefront pipeline.
 |----------|-------------|---------|---------------|
 | `smatrix_vmode_info.ipynb` | Comprehensive analysis of the AOS sensitivity matrix: SVD (`StateEstimator` + custom-SVD validation), v-mode composition, wavefront signatures, control equations, noise/gain, plus a normalization-scheme deep-dive (unit-invariance) and double-Zernike field patterns & physical impact. Consolidates the former `normalization_study` and `smatrix_doublez`. Shared primitives in `code/ofc_svd.py`. | 2026-03-08 | 2026-06-11 |
 | `study_compare_donuts.ipynb` | Compare per-donut wavefront Zernikes between two processing runs (param_set A vs B — code version, binning, or algorithm). Per-CCD positional donut matching, then coverage maps, per-visit large-\|Δ\|, density (hist or hexbin) over the full focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS), and an optional per-visit double-Zernike-fit comparison. Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and `donutalgo_comparison`. Shared code in `code/compare_donuts.py`. **TODO: port to a pipeline script.** | 2026-06-11 | 2026-06-11 |
-| `wfs_mimic_covariance.ipynb` | Thin reader for the `wfs_mimic` step's covariance products: loads `wfs_mimic_cov{84,21}.parquet` + `_cov_bins.parquet`, plots the 84×84 / 21×21 covariance & correlation heatmaps, the per-Zernike between-corner correlation, and the per rotator-subset rank/n_images summary. | 2026-06-24 | 2026-06-24 |
+| `wfs_mimic_covariance.ipynb` | Thin reader for the `wfs_mimic` step's covariance products: loads `wfs_mimic_cov{84,21}.parquet` + `_cov_bins.parquet`, plots the 84×84 / 21×21 covariance & correlation heatmaps, the per-Zernike between-corner correlation, and the per rotator-subset rank/n_images summary. | 2026-06-24 | 2026-06-24 |\n| `wfs_corner_compare_correlations.ipynb` | Reader for the `wfs_corner_compare` step's tidy `wfs/<cwfs>/wfs_corner_compare.parquet` (one row per triplet×corner×Noll j: `fam_interp`, `cwfs_median` + sidecar rotator/elevation/mjd/program). FAM-vs-CWFS scatter per corner for chosen Zj (Pearson r + OLS, coloured by a sidecar var), time history, and per-Zj r/slope summary across the 4 corners. | 2026-07-07 | 2026-07-07 |
 
 ### Superseded by pipeline steps (removed)
 

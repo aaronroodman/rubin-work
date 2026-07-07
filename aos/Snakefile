@@ -313,7 +313,9 @@ rule wfs_corner_compare:
         fam    = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         script = "code/run_wfs_corner_compare.py",
-    output: "output/{ps}/wfs/{cwfs}/wfs_corner_compare.pdf"
+    output:
+        pdf     = "output/{ps}/wfs/{cwfs}/wfs_corner_compare.pdf",
+        parquet = "output/{ps}/wfs/{cwfs}/wfs_corner_compare.parquet",
     params:
         coord = lambda w: coord(w.ps),
     resources: mem_mb=8000
