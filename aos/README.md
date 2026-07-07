@@ -67,9 +67,9 @@ The **cwfs** track (real corner-WFS data) is distinct from `wfs_mimic` (which
 variants — see [Corner-WFS track](#corner-wfs-cwfs-track).
 
 Planned additions: port `study_compare_donuts.ipynb` to a pipeline script and add
-it to the Snakemake DAG. The WFS-mimic *covariance* core is now the `wfs_mimic`
-step; the remaining SVD / DOF-recovery / FWHM exploration in `study_wfs_mimic.ipynb`
-is now largely realized (against *real* corner WFS) by `wfs_dof_compare`.
+it to the Snakemake DAG. The WFS-mimic *covariance* core is the `wfs_mimic`
+step, and the SVD / DOF-recovery / FWHM comparison (against *real* corner WFS) is
+the `wfs_dof_compare` step.
 
 ## Pipeline steps in detail
 
@@ -361,25 +361,21 @@ Closed-loop AOS performance, separate from the FAM wavefront pipeline.
 | Notebook | Description | Created | Last Modified |
 |----------|-------------|---------|---------------|
 | `smatrix_vmode_info.ipynb` | Comprehensive analysis of the AOS sensitivity matrix: SVD (`StateEstimator` + custom-SVD validation), v-mode composition, wavefront signatures, control equations, noise/gain, plus a normalization-scheme deep-dive (unit-invariance) and double-Zernike field patterns & physical impact. Consolidates the former `normalization_study` and `smatrix_doublez`. Shared primitives in `code/ofc_svd.py`. | 2026-03-08 | 2026-06-11 |
-| `intrinsics_mktable.ipynb` | Create a table of Zernike wavefront measurements from FAM cwfs images with model intrinsic values. Queries ConsDB for FAM visits, extracts Zernikes via Butler, interpolates Batoid intrinsic model, saves to parquet. (Interactive counterpart of the pipeline `mktable` step.) | 2026-02-23 | 2026-03-13 |
-| `intrinsics_plots.ipynb` | Analyze the FAM Zernike table from `intrinsics_mktable`. Plots data vs model comparisons (trio plots) for each Zernike term across the focal plane. | 2026-02-23 | 2026-02-23 |
-| `intrinsics_checkZ4.ipynb` | Check that the Z4 intrinsic map correctly accounts for CCD-to-CCD height variation: subtract the per-visit linear (tilt/tip/piston) Z4, bin in focal plane, compare against independent intrinsic computations and the CCD height map. | 2026-04-20 | 2026-04-21 |
-| `intrinsic_Zj.ipynb` | Extend the Z4 check to every Zernike carried by the danish fit (Noll 4–19, 22–26): rotator ≈ 0° donut selection, per-Zj focal-plane median maps of data − model. | 2026-04-22 | 2026-04-22 |
 | `study_compare_donuts.ipynb` | Compare per-donut wavefront Zernikes between two processing runs (param_set A vs B — code version, binning, or algorithm). Per-CCD positional donut matching, then coverage maps, per-visit large-\|Δ\|, density (hist or hexbin) over the full focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS), and an optional per-visit double-Zernike-fit comparison. Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and `donutalgo_comparison`. Shared code in `code/compare_donuts.py`. **TODO: port to a pipeline script.** | 2026-06-11 | 2026-06-11 |
-| `study_wfs_mimic.ipynb` | Study whether the 4 corner WFS can reconstruct the optical state from FAM observations. Mimics WFS measurements by averaging FAM donuts in annular wedges at the WFS field radius, subtracts measured intrinsic, builds WFS-specific SVD of the sensitivity matrix, recovers DOFs, and compares against full FAM DOF analysis. The mimic + **covariance** core is now the `wfs_mimic` pipeline step (`run_wfs_mimic.py`); the SVD / DOF-recovery / FWHM exploration here is **TODO: rewire onto the pipeline outputs.** | 2026-06-04 | 2026-06-04 |
 | `wfs_mimic_covariance.ipynb` | Thin reader for the `wfs_mimic` step's covariance products: loads `wfs_mimic_cov{84,21}.parquet` + `_cov_bins.parquet`, plots the 84×84 / 21×21 covariance & correlation heatmaps, the per-Zernike between-corner correlation, and the per rotator-subset rank/n_images summary. | 2026-06-24 | 2026-06-24 |
 
-### Superseded by pipeline steps (kept as reference)
+### Superseded by pipeline steps (removed)
 
-| Notebook | Pipeline step | Created | Last Modified |
-|----------|---------------|---------|---------------|
-| `intrinsics_fit.ipynb` | `fit` (`run_dz_fit.py`) — robust DZ focal-plane fitting, z1toz3 + z1toz6 | 2026-02-23 | 2026-03-13 |
-| `build_measured_intrinsic.ipynb` | `build_intrinsic` (`run_build_intrinsic.py`) — also documents the Path-B (reachability-thresholded) alternative, FWHM-equivalent diagnostics, and DOF recovery | 2026-04-28 | 2026-05-14 |
-| `intrinsic_camera_telescope_split.ipynb` | `intrinsic_split` (`run_intrinsic_split.py`) — OCS/CCS spin decomposition; core in `code/intrinsic_split.py` | 2026-06-10 | 2026-06-10 |
-| `study_aberrationpairs.ipynb` | `aberration_pairs` (`run_aberration_pairs.py`) | 2026-05-11 | 2026-05-11 |
-| `study_doublezernike.ipynb` | `dz_correlations` (`run_dz_correlations.py`, §7–§10); the LUT-exploration sections evolved into `build_lut` | 2026-04-12 | 2026-04-12 |
-| `intrinsics_thermal_correlations.ipynb` | `thermal_correlations` (`run_thermal_correlations.py`) | 2026-04-06 | 2026-04-06 |
-| `study_bounce.ipynb` | `bounce` (`run_bounce.py` + `bounce_lib.py`) | 2026-05-06 | 2026-06-09 |
+The interactive notebooks that were fully superseded by pipeline steps have been
+removed (recoverable from git history); the pipeline step is the reference now:
+`intrinsics_fit` → `fit` (`run_dz_fit.py`); `build_measured_intrinsic` →
+`build_intrinsic`; `intrinsic_camera_telescope_split` → `intrinsic_split`;
+`study_aberrationpairs` → `aberration_pairs`; `study_doublezernike` →
+`dz_correlations` (+ LUT sections → `build_lut`); `intrinsics_thermal_correlations`
+→ `thermal_correlations`; `study_bounce` → `bounce`; `intrinsics_mktable`/
+`intrinsics_plots` → `mktable`/`plots`; `study_wfs_mimic` → `wfs_mimic` +
+`wfs_dof_compare`.  The one-off `intrinsics_checkZ4` / `intrinsic_Zj` Z4/height
+validation notebooks were also removed.
 
 ## Standalone & utility scripts
 
@@ -402,10 +398,7 @@ Not wired into the Snakemake DAG; run directly on the RSP.
 - **aos_nightly_plots**: parquet output from nightly_tablemaker
 - **aos_openloop**: parquet output from nightly_tablemaker + `ts_config_mttcs` OFC config
 - **smatrix_vmode_info**: `lsst.ts.ofc` + `lsst.ts.wep` and `$TS_CONFIG_MTTCS_DIR` OFC config (run on RSP)
-- **intrinsics_mktable**: Butler FAM collections + ConsDB (run on RSP)
-- **intrinsics_plots / intrinsics_checkZ4 / intrinsic_Zj**: parquet output from intrinsics_mktable / pipeline Phase 1
 - **study_compare_donuts**: two runs' `output/<param_set>/{donuts,visits}.parquet` (and `fits.parquet` for the optional DZ-fit comparison); numpy/scipy/pyarrow only (no LSST stack)
-- **study_wfs_mimic**: measured-intrinsic build outputs (dz_fits + grid parquets), donut parquets, `lsst.ts.ofc`, and CCD height map (run on RSP)
 
 ## Other docs
 

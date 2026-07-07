@@ -4,8 +4,7 @@ Contains all plotting functions for fit parameter visualization, single-image
 residual maps, trio comparisons, thermal correlation analysis, and DZ
 inter-correlation analysis.
 
-Used by both the interactive notebook (intrinsics_plots.ipynb) and the
-batch CLI script (run_dz_plots.py).
+Used by the batch CLI script run_dz_plots.py (the `plots` pipeline step).
 """
 
 import glob as glob_module

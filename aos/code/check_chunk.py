@@ -412,15 +412,12 @@ def main():
 
     # Resolve params either from runs.yaml chunk or from explicit flags
     from lsst.ts.intrinsic.wavefront.intrinsics_lib import load_param_sets
-    from run_pipeline import resolve_run
 
     if args.chunk:
-        runs = _load_runs(args.runs_yaml)
-        if args.chunk not in runs.get('runs', {}):
-            parser.error(f"Chunk '{args.chunk}' not in runs.yaml. "
-                         f"Available: {sorted(runs.get('runs', {}).keys())}")
-        cfg = runs['runs'][args.chunk]
-        resolved = resolve_run(cfg, load_param_sets())
+        # legacy runs.yaml path — depended on run_pipeline.py, removed with the
+        # move to the Snakemake pipeline.  Use --param-set instead.
+        parser.error('--chunk / runs.yaml mode was removed with run_pipeline.py; '
+                     'use --param-set (+ --day-obs-min/max) instead.')
     elif args.param_set:
         ps = load_param_sets()
         if args.param_set not in ps:
