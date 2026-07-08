@@ -352,7 +352,10 @@ def main():
     out_dir = base / 'plots'; out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[dz_correlations] {fits_path}')
 
-    df_raw = quality_cut(pd.read_parquet(fits_path), prefix, cfg['max_coeff_um'])
+    _fits = pd.read_parquet(fits_path)
+    if 'visit_quality_pass' in _fits.columns:   # fits.parquet now holds ALL visits
+        _fits = _fits[_fits['visit_quality_pass'].astype(bool)]   # keep the nd>=170 set
+    df_raw = quality_cut(_fits, prefix, cfg['max_coeff_um'])
     dz_cols, labels, all_pairs, n = _selection(df_raw, prefix)
     print(f'  {len(dz_cols)} DZ columns, {len(df_raw)} visits, complete-case n={n}')
     # multiple-comparisons context (B4): number of off-diagonal tests and the

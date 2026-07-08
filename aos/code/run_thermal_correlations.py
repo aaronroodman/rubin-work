@@ -295,6 +295,8 @@ def main():
     print(f'[thermal_correlations] {fits_path}')
 
     df = pd.read_parquet(fits_path)
+    if 'visit_quality_pass' in df.columns:      # fits.parquet now holds ALL visits
+        df = df[df['visit_quality_pass'].astype(bool)]   # keep the nd>=170 set
     present_tv = [tv for tv in thermal_vars if tv in df.columns]
     missing = [tv for tv in thermal_vars if tv not in df.columns]
     if missing:

@@ -414,9 +414,13 @@ rule refit_mi:
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.refit_mi.log"
     shell:
+        # --no-quality-cut: fit ALL visits into <mi>/fits.parquet (metric columns
+        # travel with it); each consumer applies its own cut (bounce nd>=160, the
+        # others visit_quality_pass nd>=170).  MIW is built from the Phase-1
+        # fits.parquet (still filtered), so it is unaffected.
         f"python {WF_BIN}/run_dz_fit.py {{input.donuts}} --coord-sys {{params.coord}} "
         "--visits {input.visits} --intrinsic-sidecar {input.sidecar} "
-        "--output {output} > {log} 2>&1"
+        "--no-quality-cut --output {output} > {log} 2>&1"
 
 # ---- averaged-DOF LUT (n_dof/n_keep settable; collapses elev+rotator) ----
 rule build_lut:
@@ -483,6 +487,9 @@ rule thermal_correlations:
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- FAM bounce-test paired Δ (DZ / v-mode / DOF) on the MI-refit fits ----
+# fits.parquet now holds ALL visits (--no-quality-cut); the bounce applies a
+# relaxed CCD-count cut (--min-detectors 160) so marginal low-CCD elevation-40
+# points are kept.  Other consumers apply visit_quality_pass (nd>=170).
 rule bounce:
     input:
         fits     = "output/{ps}/{mi}/fits.parquet",
@@ -497,7 +504,7 @@ rule bounce:
     log: "logs/{ps}.{mi}.bounce.log"
     shell:
         "python code/run_bounce.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "--mi-name {wildcards.mi} --min-detectors 160 > {log} 2>&1"
 
 # ======================================================================
 # In-focus corner-WFS (cwfs) track — paired to the FAM triplets.

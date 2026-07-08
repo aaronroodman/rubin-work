@@ -67,6 +67,12 @@ def main():
     ap.add_argument('--analysis-config', default=None)
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--fits', default=None)
+    ap.add_argument('--min-detectors', type=int, default=None,
+                    help='Per-visit quality cut: keep visits with '
+                         'n_detectors_with_min_donuts >= this (relaxes ONLY the '
+                         'CCD-count cut; blur cut kept). fits.parquet now holds all '
+                         'visits, so the cut is applied here. Default: None -> use '
+                         'the precomputed visit_quality_pass (nd>=170).')
     args = ap.parse_args()
 
     cfg = {**DEFAULT, **mc.analysis_section(
@@ -99,6 +105,25 @@ def main():
                 print(f'  dropping {int(bad.sum())} bad-flagged visits ({bf})')
             fit_table = fit_table[~bad]
             break
+
+    # ---- per-visit quality cut (fits.parquet now holds ALL visits) ----
+    # --min-detectors relaxes ONLY the CCD-count cut (bounce uses 160 to recover
+    # marginal low-CCD elevation-40 points); without it, fall back to the
+    # precomputed visit_quality_pass (nd>=170), preserving the old selection.
+    if args.min_detectors is not None and \
+            'n_detectors_with_min_donuts' in fit_table.colnames:
+        from lsst.ts.intrinsic.wavefront.intrinsics_lib import quality_visit_mask
+        keep = np.asarray(quality_visit_mask(
+            fit_table, min_detectors_per_visit=args.min_detectors, verbose=False),
+            dtype=bool)
+        print(f'  quality cut (min_detectors={args.min_detectors}): '
+              f'{int(keep.sum())}/{len(fit_table)} visits kept')
+        fit_table = fit_table[keep]
+    elif 'visit_quality_pass' in fit_table.colnames:
+        keep = np.asarray(fit_table['visit_quality_pass'], dtype=bool)
+        print(f'  quality cut (visit_quality_pass): '
+              f'{int(keep.sum())}/{len(fit_table)} visits kept')
+        fit_table = fit_table[keep]
     if cfg['pupil_j_range'] is None:
         if 'nollIndices' not in fit_table.colnames:
             raise ValueError('no nollIndices column; set pupil_j_range in config')

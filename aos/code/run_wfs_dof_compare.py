@@ -408,6 +408,8 @@ def main():
 
     # ---- FAM per-visit DZ fits (W built per SVD from its kj_grid below) ----
     fits = pd.read_parquet(bmi / 'fits.parquet')
+    if 'visit_quality_pass' in fits.columns:    # fits.parquet now holds ALL visits
+        fits = fits[fits['visit_quality_pass'].astype(bool)].reset_index(drop=True)  # nd>=170
     fam_key = {(int(d), int(s)): i for i, (d, s) in enumerate(zip(fits.day_obs, fits.seq_num))}
 
     # ---- CWFS corner donuts ----
