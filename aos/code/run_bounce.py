@@ -16,7 +16,12 @@ Writes, under  output/<ps>/<mi>/ :
     plots/bounce_dof_vs_ordinal.pdf      physical DOF vs ordinal (+ Trim sum if enabled)
     plots/bounce_dof_night_scatter.pdf   DOF night-A vs night-B 5-panel scatter
     plots/bounce_dof_night_values.pdf    FAM DOF median per night
+    plots/bounce_5x5_camera_hexapod.pdf  5/5 Camera-hexapod-only v-mode + DOF plots
+                                         (camera_hexapod_only bounces, e.g. rotator)
+    plots/bounce_fwhm_metric.pdf         differential correctable-FWHM bar (before vs
+                                         50/34 [vs 5/5]) per bounce
     bounce_kj_stats.parquet              long-format Δ table (combined + per night)
+    bounce_fwhm_metric.parquet           correctable-FWHM metric per bounce comparison
 
 Knobs (bounce specs, thresholds, n_dof/n_keep, add_dof_trim) come from
 analysis_config.yaml (section ``bounce``).  RSP-only (DOF recovery via
@@ -43,9 +48,14 @@ DEFAULT_BOUNCES = [
      'comparisons': [{'label': 'Elev=40', 'alt_range': [37.0, 43.0], 'rotator_range': [-3.0, 3.0]}]},
     {'name': 'T724_rotator', 'description': 'Rotator 60 - 0 deg, elevation ~ 70',
      'program': 'BLOCK-T724',
+     # rotator bounce: only the camera hexapod moves, so also evaluate a 5-DOF /
+     # 5-v-mode (Camera-hexapod-only) correction alongside the full 50/34.
+     'camera_hexapod_only': True,
      'reference': {'label': 'Rot=0', 'rotator_range': [-3.0, 3.0], 'alt_range': [67.0, 73.0]},
      'comparisons': [{'label': 'Rot=60', 'rotator_range': [57.0, 63.0], 'alt_range': [67.0, 73.0]}]},
 ]
+# Camera-hexapod DOF indices in LABELS_50DOF (Cam_dz/dx/dy/rx/ry) for the 5/5 scheme.
+CAM_HEX_DOF = [5, 6, 7, 8, 9]
 DEFAULT = dict(
     fit_prefix='z1toz6', focal_k_range=[1, 2, 3, 4, 5, 6], pupil_j_range=None,
     bounces=DEFAULT_BOUNCES, n_dof=50, n_keep=34, ofc_normalization_yaml=None,
@@ -135,7 +145,8 @@ def main():
 
     # ---- OFC SVD + per-visit v-mode / DOF projection (cell 12) ----
     C_all = DOF_all = None
-    vmode_labels = []
+    svd = svd5 = C5_all = DOF5_all = None
+    vmode_labels = vmode5_labels = []
     try:
         from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, project_dz_table
         svd = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
@@ -146,10 +157,28 @@ def main():
         C_all, DOF_all, _A, _W = project_dz_table(fit_table, prefix, svd)
         print(f'  OFC SVD: n_keep={svd.n_keep_eff}, n_dof={svd.n_dof}; '
               f'projected C_all{C_all.shape}, DOF_all{DOF_all.shape}')
+        # 5/5 Camera-hexapod-only SVD (shares kj_grid) for the rotator bounce.
+        svd5 = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
+                             5, n_dof=CAM_HEX_DOF,
+                             ofc_normalization_yaml=cfg['ofc_normalization_yaml'])
+        vmode5_labels = svd5.vmode_labels
+        C5_all, DOF5_all, _A5, _W5 = project_dz_table(fit_table, prefix, svd5)
+        print(f'  5/5 Camera-hex SVD: n_keep={svd5.n_keep_eff}, n_dof={svd5.n_dof}')
     except Exception as e:
         print(f'  (OFC SVD unavailable [{type(e).__name__}: {e}]; '
               f'v-mode/DOF sections skipped)')
         _svd_ok = False
+
+    # ---- differential correctable-FWHM metric tooling (RSS of the median Δ-DZ
+    # aberrations -> PSF FWHM; residual after each scheme's OFC projection) ----
+    fwhm_conv = fwhm_grid = None
+    try:
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth as fwhm_conv
+        import aos_fwhm as _afw
+        fwhm_grid = _afw.fp_grid()
+    except Exception as e:
+        print(f'  (correctable-FWHM metric disabled: {type(e).__name__}: {e})')
+    fwhm_rows = []
 
     # ---- optional AOS Trim (aggregatedDoF) (cell 14) ----
     DOFSUM_all = TRIM_segment = None
@@ -186,8 +215,11 @@ def main():
             cblock = combined['comparisons'][label]
             pairs_all = cblock['pairs']
             deltas_by_night = {d: nights[d]['comparisons'][label]['deltas'] for d in nights}
+            cam_only = bool(b.get('camera_hexapod_only', False))
             vmode_deltas = dof_deltas = None
             vmode_deltas_by_night = dof_deltas_by_night = {}
+            vmode5_deltas = dof5_deltas = None
+            vmode5_deltas_by_night = dof5_deltas_by_night = {}
             if _svd_ok and C_all is not None:
                 vmode_deltas = bl.paired_deltas_matrix(C_all, pairs_all)
                 dof_deltas = bl.paired_deltas_matrix(DOF_all, pairs_all)
@@ -197,15 +229,49 @@ def main():
                 dof_deltas_by_night = {
                     d: bl.paired_deltas_matrix(DOF_all, nights[d]['comparisons'][label]['pairs'])
                     for d in nights}
+                if cam_only and C5_all is not None:      # 5/5 Camera-hexapod-only
+                    # DOF5_all has 5 cols (Cam hex); key them by their global DOF
+                    # indices so the DOF plots' 50-DOF panel layout places them right.
+                    vmode5_deltas = bl.paired_deltas_matrix(C5_all, pairs_all)
+                    dof5_deltas = bl.paired_deltas_matrix(DOF5_all, pairs_all, keys=CAM_HEX_DOF)
+                    vmode5_deltas_by_night = {
+                        d: bl.paired_deltas_matrix(C5_all, nights[d]['comparisons'][label]['pairs'])
+                        for d in nights}
+                    dof5_deltas_by_night = {
+                        d: bl.paired_deltas_matrix(DOF5_all, nights[d]['comparisons'][label]['pairs'],
+                                                   keys=CAM_HEX_DOF)
+                        for d in nights}
             br['comparisons'][label] = {
                 'comp_stats': cblock['comp_stats'], 'comp_n': cblock['comp_n'],
                 'deltas': cblock['deltas'], 'pairs': pairs_all,
                 'deltas_by_night': deltas_by_night,
                 'vmode_deltas': vmode_deltas, 'dof_deltas': dof_deltas,
                 'vmode_deltas_by_night': vmode_deltas_by_night,
-                'dof_deltas_by_night': dof_deltas_by_night}
+                'dof_deltas_by_night': dof_deltas_by_night,
+                'cam_only': cam_only,
+                'vmode5_deltas': vmode5_deltas, 'dof5_deltas': dof5_deltas,
+                'vmode5_deltas_by_night': vmode5_deltas_by_night,
+                'dof5_deltas_by_night': dof5_deltas_by_night}
             print(f'      comp "{label}": n={cblock["comp_n"]}, '
                   f'{len(pairs_all)} pairs')
+
+            # ---- differential correctable-FWHM metric ----
+            # median Δ-DZ (comp-ref) over pairs -> FWHM before; residual after the
+            # 50/34 (and, for the rotator, 5/5) OFC projection -> FWHM after.
+            if fwhm_conv is not None and _svd_ok and _W is not None and len(pairs_all):
+                pd_dz = bl.paired_deltas_matrix(_W, pairs_all)
+                med_dW = np.array([pd_dz[i]['delta'] for i in range(_W.shape[1])], float)
+                row = {'bounce': name, 'comparison': label, 'n_pairs': len(pairs_all),
+                       'fwhm_before': _afw.fp_fwhm(svd, iZs, med_dW, fwhm_grid, fwhm_conv),
+                       'fwhm_after_50_34': _afw.fp_fwhm(
+                           svd, iZs, _afw.residual_dW(svd, med_dW), fwhm_grid, fwhm_conv)}
+                if cam_only and svd5 is not None:
+                    row['fwhm_after_5_5'] = _afw.fp_fwhm(
+                        svd5, iZs, _afw.residual_dW(svd5, med_dW), fwhm_grid, fwhm_conv)
+                fwhm_rows.append(row)
+                _extra = (f", 5/5={row['fwhm_after_5_5']:.4f}" if 'fwhm_after_5_5' in row else "")
+                print(f"        correctable FWHM [arcsec]: before={row['fwhm_before']:.4f}, "
+                      f"after 50/34={row['fwhm_after_50_34']:.4f}{_extra}")
             long_dfs.append(bl.to_long_df(
                 cblock['deltas'], name, br['reference_label'], label,
                 combined['ref_stats'], cblock['comp_stats'], night='all'))
@@ -348,6 +414,81 @@ def main():
                         title=f'{b["name"]}: FAM DOF median per night '
                               f'({len(dof_by_night)} nights)'), bbox_inches='tight')
                     plt.close('all')
+
+    # ---- 5/5 Camera-hexapod-only plots (camera_hexapod_only bounces, e.g. rotator) ----
+    if _svd_ok and C5_all is not None:
+        cam_labels = [LABELS_50DOF[i] for i in CAM_HEX_DOF]
+        cam_units = [DOF_UNITS_50[i] for i in CAM_HEX_DOF]
+        cam_bounces = [b for b in bounces if b.get('camera_hexapod_only')]
+        if cam_bounces:
+            dobs = np.asarray(fit_table['day_obs']).astype(int)
+            with PdfPages(str(out_dir / 'bounce_5x5_camera_hexapod.pdf')) as pdf:
+                if _marker_ok:
+                    leg = markers_legend_figure(show_iter_distinction=False)
+                    pdf.savefig(leg, bbox_inches='tight'); plt.close(leg)
+                for b in cam_bounces:
+                    name = b['name']; br = bounce_results[name]
+                    m = bl.bounce_program_mask(fit_table, b)
+                    if int(m.sum()) == 0:
+                        continue
+                    for f in bl.plot_values_vs_ordinal_pages(          # (1) v-mode vs ordinal
+                            fit_table[m], C5_all[m], vmode5_labels, units=None,
+                            title_root=f'{name} [5/5 Cam-hex]: OFC v-mode amplitude c_i',
+                            ncols=cfg['vmode_ncols'], rows_per_page=cfg['vmode_rows_per_page']):
+                        pdf.savefig(f, bbox_inches='tight'); plt.close(f)
+                    for f in bl.plot_values_vs_ordinal_pages(          # (2) DOF vs ordinal
+                            fit_table[m], DOF5_all[m], cam_labels, units=cam_units,
+                            title_root=f'{name} [5/5 Cam-hex]: Camera-hexapod DOF',
+                            ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page']):
+                        pdf.savefig(f, bbox_inches='tight'); plt.close(f)
+                    for clabel, cb in br['comparisons'].items():       # (3) DOF night-vs-night scatter
+                        dbn5 = cb.get('dof5_deltas_by_night', {})
+                        if len(dbn5) >= 2:
+                            for f in bl.plot_dof_night_scatter(
+                                    dbn5, LABELS_50DOF, units=DOF_UNITS_50,
+                                    title_root=f'{name} [5/5]: Cam-hex DOF Δ '
+                                               f'({clabel} - {br["reference_label"]})'):
+                                pdf.savefig(f, bbox_inches='tight'); plt.close(f)
+                    dof50_by_night = {}                                # (4) DOF per-night median
+                    for nt in sorted(set(dobs[m].tolist())):
+                        sel = m & (dobs == nt)
+                        if int(sel.sum()) == 0:
+                            continue
+                        full = np.full((int(sel.sum()), len(LABELS_50DOF)), np.nan)
+                        full[:, CAM_HEX_DOF] = DOF5_all[sel]
+                        dof50_by_night[int(nt)] = full
+                    if dof50_by_night:
+                        pdf.savefig(bl.plot_dof_per_night_summary(
+                            dof50_by_night, LABELS_50DOF, DOF_UNITS_50,
+                            title=f'{name} [5/5 Cam-hex]: DOF median per night'),
+                            bbox_inches='tight')
+                        plt.close('all')
+            print('  wrote bounce_5x5_camera_hexapod.pdf')
+
+    # ---- differential correctable-FWHM metric ----
+    if fwhm_rows:
+        fdf = pd.DataFrame(fwhm_rows)
+        fdf.to_parquet(out_dir.parent / 'bounce_fwhm_metric.parquet')
+        print('  correctable-FWHM metric [arcsec, median over focal plane]:')
+        print('   ' + fdf.to_string(index=False).replace('\n', '\n   '))
+        bar_cols = [c for c in ('fwhm_before', 'fwhm_after_50_34', 'fwhm_after_5_5')
+                    if c in fdf.columns]
+        lab = {'fwhm_before': 'no correction', 'fwhm_after_50_34': '50/34',
+               'fwhm_after_5_5': '5/5 Cam-hex'}
+        with PdfPages(str(out_dir / 'bounce_fwhm_metric.pdf')) as pdf:
+            fig, ax = plt.subplots(figsize=(1.8 * len(fdf) + 3, 5), constrained_layout=True)
+            x = np.arange(len(fdf)); w = 0.8 / max(len(bar_cols), 1)
+            for i, c in enumerate(bar_cols):
+                ax.bar(x + i * w, fdf[c].to_numpy(float), w, label=lab[c])
+            ax.set_xticks(x + w * (len(bar_cols) - 1) / 2)
+            ax.set_xticklabels([f'{r.bounce}\n{r.comparison}' for r in fdf.itertuples()],
+                               fontsize=8)
+            ax.set_ylabel('differential FWHM [arcsec]  (median over FP)')
+            ax.set_title('Bounce optical-state change — correctable FWHM\n'
+                         '(RSS of median Δ-DZ aberrations; residual after OFC projection)')
+            ax.legend(); ax.grid(axis='y', alpha=0.3)
+            pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+        print('  wrote bounce_fwhm_metric.pdf + .parquet')
 
     # ---- long-format table (cell 28) ----
     df_kj.to_parquet(out_dir.parent / 'bounce_kj_stats.parquet')
