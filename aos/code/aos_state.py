@@ -75,6 +75,11 @@ def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13"):
     if config_dir is None:
         config_dir = resolve_ofc_config_dir(version)
     ofc = OFCData("lsst", config_dir=config_dir)
+    # Use the 21 rapid-analysis Zernikes (Z4-Z26 excl Z20,Z21) that ts_wep
+    # actually produces, NOT the OFC config default of 19 (Z4-Z22). Without this
+    # StateEstimator would silently use 19 -> a different v-mode basis than the
+    # measured wavefront. (Confirmed: sets sensitivity rows to 4 x 21 = 84.)
+    ofc.zn_selected = np.array(ZK_NOLL)
     ofc.comp_dof_idx = _comp_dof_idx(DOF_SETS[dof_set])
     return StateEstimator(ofc)
 
