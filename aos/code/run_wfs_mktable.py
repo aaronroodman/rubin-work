@@ -140,6 +140,32 @@ def get_aidonut_zernikes(butler, day_obs, seq_num, coord):
     return tbl, dict(band=meta.get('band', ''), nollIndices=noll)
 
 
+def get_unpaired_zernikes(butler, day_obs, seq_num, coord):
+    """Unpaired / neural CWFS (e.g. TARTS): the collection has a joined
+    aggregateAOSVisitTableRaw but with SINGULAR per-donut positions
+    (thx_<coord>/thy_<coord>; no intra/extra split), so the paired
+    get_aggregate_zernikes cannot read it.  Select ``used`` and return the
+    already-correctly-named singular columns downstream needs.  Returns
+    (astropy Table, visit_meta) or (None, None)."""
+    try:
+        agg = butler.get('aggregateAOSVisitTableRaw', day_obs=day_obs, seq_num=seq_num)
+    except Exception:
+        print(f'DatasetNotFoundError: No aggregateAOSVisitTableRaw for '
+              f'day_obs={day_obs}, seq_num={seq_num}')
+        return None, None
+    meta = dict(agg.meta)
+    sel = (np.asarray(agg['used'], bool) if 'used' in agg.colnames
+           else np.ones(len(agg), bool))
+    tbl = agg[sel]
+    if len(tbl) == 0:
+        print(f"Warning: no 'used' donuts for day_obs={day_obs}, seq_num={seq_num}")
+        return None, None
+    tbl.meta = {}                                   # avoid vstack metadata conflicts
+    noll = ([int(x) for x in meta['nollIndices']]
+            if meta.get('nollIndices') is not None else None)
+    return tbl, dict(band=meta.get('band', ''), nollIndices=noll)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -160,14 +186,15 @@ def main():
     if args.wfs_name not in wfs_map:
         raise SystemExit(f'param_set {args.param_set} has no wfs_collections entry '
                          f'{args.wfs_name!r} (have: {list(wfs_map)})')
-    entry = wfs_map[args.wfs_name]                  # str, or {collection, seq_offset, dataset_type}
+    entry = wfs_map[args.wfs_name]                  # str, or {collection, seq_offset, dataset_type, reader}
     if isinstance(entry, dict):
         wfs_coll = entry['collection']
         seq_offset = int(entry.get('seq_offset', 1))
         dataset_type = entry.get('dataset_type', 'aggregateAOSVisitTableRaw')
+        reader = entry.get('reader')               # explicit reader override (e.g. 'unpaired')
     else:
         wfs_coll, seq_offset = entry, 1             # bare string -> in-focus (fam+1)
-        dataset_type = 'aggregateAOSVisitTableRaw'
+        dataset_type, reader = 'aggregateAOSVisitTableRaw', None
     base = Path(args.output_root) / args.param_set
     fam_visits = QTable.read(str(base / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
@@ -197,7 +224,9 @@ def main():
     donut_tabs, vrows, n_miss, noll = [], [], 0, None
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + seq_offset
-        if dataset_type == 'aggregateZernikesRaw':          # ai_donut: no joined AOS table
+        if reader == 'unpaired':                            # TARTS etc.: singular-position AOS table
+            tbl, meta = get_unpaired_zernikes(butler, d, infocus, coord)
+        elif dataset_type == 'aggregateZernikesRaw':        # ai_donut: no joined AOS table
             tbl, meta = get_aidonut_zernikes(butler, d, infocus, coord)
         else:
             tbl, meta = get_aggregate_zernikes(butler, d, infocus, coord, camera)

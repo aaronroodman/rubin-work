@@ -138,13 +138,15 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
       collection:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
       dataset_type: aggregateZernikesRaw
     tarts:
-      # TARTS AI wavefront retrieval (peterma2), set up in parallel with ai_donut.
-      # ASSUMES the same split-dataset layout: aggregateZernikesRaw + per-detector
-      # `zernikes` with the same field convention.  VERIFY on the first run (dataset
-      # types present; whether a joined aggregateAOSVisitTableRaw exists -> then use
-      # the default reader instead; and the zernikes field->OCS transform).
-      collection:   u/peterma2/tarts_fam_cwfs_triplet
-      dataset_type: aggregateZernikesRaw
+      # TARTS AI wavefront retrieval (peterma2) -- UNPAIRED / neural processing.  Has
+      # aggregateAOSVisitTableRaw but with SINGULAR positions (thx_OCS/thy_OCS; no
+      # intra/extra split), so the default reader (needs the split) can't read it.
+      # reader: unpaired -> run_wfs_mktable.get_unpaired_zernikes.  Keyed to the extra
+      # exposure (= FAM seq) -> seq_offset 0.  Covers 17 nights (subset of FAM);
+      # processes each triplet's intra+extra, skips the in-focus.
+      collection: u/peterma2/tarts_fam_cwfs_triplet
+      seq_offset: 0
+      reader: unpaired
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315
