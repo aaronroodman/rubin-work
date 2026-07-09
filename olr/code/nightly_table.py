@@ -43,7 +43,6 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.ts.xml.tables.m1m3 import *  # noqa: F401,F403
 from lsst.ts.m1m3.utils import *  # noqa: F401,F403  (ThermocoupleAnalysis)
 from lsst.ts.ofc import OFCData, SensitivityMatrix
-from lsst.ts.ofc.state_estimator import StateEstimator
 from lsst.ts.wep.utils import makeDense
 from tqdm import tqdm
 
@@ -53,7 +52,18 @@ if "no_proxy" in os.environ:
 else:
     os.environ["no_proxy"] = ".consdb"
 
-__all__ = ["AOSDatabase", "build_nightly_table"]
+# OFC config dir (v13 = telescope AOS). Its stored normalization_weights ARE the
+# official geom_mean (r^0.5 f^-0.5, field-averaged FWHM) used for the v-modes.
+# OFCData() WITHOUT config_dir loads an old NON-geom default that makes v1 the
+# M2-tilt mode (~0 at convergence) -- always pass config_dir. Prefer
+# TS_CONFIG_MTTCS_DIR (set on the stack); fall back to the USDF packages path.
+_ts_cfg = os.environ.get("TS_CONFIG_MTTCS_DIR")
+OFC_CONFIG_DIR = (
+    os.path.join(_ts_cfg, "MTAOS", "v13", "ofc") if _ts_cfg
+    else "/home/r/roodman/u/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc"
+)
+
+__all__ = ["AOSDatabase", "build_nightly_table", "OFC_CONFIG_DIR"]
 
 
 # ----------------------------------------------------------------------------
@@ -717,27 +727,22 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
     zernikes_fwhm = np.vstack(states_per_seq["zernikes_fwhm"].values)
     lut_state = np.vstack(states_per_seq["lut_state"].values)
 
-    # --- Compute vmodes from dof_state ---
-    ofcData = OFCData()
-    ofcData.configure_controller()
-    await ofcData.configure_instrument("lsst")
+    # --- Compute vmodes from dof_state (geom-normalized SVD projection) ---
+    # Build OFCData WITH config_dir so normalization_weights are the official
+    # geom_mean (v13). Project the DOF state through the standard_22 12-vmode
+    # SVD: v_j = V[:,j] . (dof[idx] / norm). This replaces the old
+    # get_vmodes_from_dofs path, which (via OFCData() with no config_dir) used a
+    # non-geom default and made v1 the M2-tilt mode instead of focus.
+    ofcData = OFCData("lsst", config_dir=OFC_CONFIG_DIR)
 
-    # Restrict to standard_22 DOFs (5+5+7+5 = 22)
-    m2_hexapod = np.ones(5, dtype=bool)
-    cam_hexapod = np.ones(5, dtype=bool)
-    m1m3_bending = np.zeros(20, dtype=bool)
-    m2_bending = np.zeros(20, dtype=bool)
-    m1m3_bending[:7] = True
-    m2_bending[:5] = True
-    ofcData.comp_dof_idx = dict(
-        m2HexPos=m2_hexapod,
-        camHexPos=cam_hexapod,
-        M1M3Bend=m1m3_bending,
-        M2Bend=m2_bending,
-    )
-
-    se = StateEstimator(ofcData)
-    vmodes = np.array([se.get_vmodes_from_dofs(d)[0:12] for d in dof_state])
+    svd = build_sensitivity_svd(ofcData, dof_set_name="standard_22")
+    U, s, V = svd["U"], svd["s"], svd["V"]
+    dof_indices = svd["dof_indices"]
+    norm_vector = svd["norm_vector"]
+    n_modes = 12
+    vmodes = np.array([
+        V[:, :n_modes].T @ (d[dof_indices] / norm_vector) for d in dof_state
+    ])
 
     # --- Add vector columns to filtered_table ---
     seqs = states_per_seq.index.values
@@ -748,11 +753,8 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
     vec_df["vmodes"] = list(vmodes)
 
     # --- zk_constrained: project DOF state through 12-vmode SVD subspace ---
-    svd = build_sensitivity_svd(ofcData, dof_set_name="standard_22")
-    U, s, V = svd["U"], svd["s"], svd["V"]
-    dof_indices = svd["dof_indices"]
-    norm_vector = svd["norm_vector"]
-    n_modes = 12
+    # Reuses the geom SVD (U, s, V, dof_indices, norm_vector, n_modes) built
+    # above for the v-modes.
     corner_names = ["R00", "R04", "R40", "R44"]
     n_zk = 21  # per corner
 
@@ -851,7 +853,8 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
         sample = filtered_table["zk_opd_R00"].dropna()
         if len(sample) > 0:
             print(f"  Dense Zernike length: {len(sample.iloc[0])}")
-    print(f"  StateEstimator restricted to standard_22 ({len(ofcData.dof_idx)} active DOFs)")
+    print(f"  Geom-normalized SVD, standard_22 ({len(dof_indices)} DOFs), "
+          f"config {OFC_CONFIG_DIR}")
     zk_con_cols = [f"zk_constrained_{c}" for c in corner_names]
     print(f"  zk_constrained columns: {zk_con_cols} ({n_zk} Zernikes/corner, microns WF)")
 
