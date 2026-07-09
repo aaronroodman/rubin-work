@@ -6,26 +6,52 @@
 `blocks/t539_closedloop_aos.ipynb`, cross-checked against `olr` and
 `aos/smatrix_vmode_info.ipynb`.
 
-## Summary
+## Summary (corrected)
 
 The v-modes are the right singular vectors of the **normalized** sensitivity
 matrix `Ã = A · diag(n)`, where `n_j` is the per-DOF normalization weight. The
 choice of `n_j` changes the SVD, so it changes **which physical mode is v1** and
-the numerical scale of the v-mode amplitudes. Two conventions are in use:
+the numerical scale of the v-mode amplitudes.
 
-| Convention | `n_j` | v1 is… | v1 at closed-loop convergence |
-|------------|-------|--------|-------------------------------|
-| **default** (OFC stored `normalization_weights`) | stored weights, not unit-invariant | **M2 tilt** (rx/ry) | ~1e-4 (tightly controlled → ~0) |
-| **geom_mean** (recommended; `smatrix_vmode_info`, bounce) | `sqrt(r_j / f_j)` | **focus** (M2_dz + Cam_dz) | ~0.1 (real residual focus) |
+**The canonical normalization is geom_mean `n_j = r_j^0.5 · f_j^-0.5`, and it is
+already stored in the OFC config's `normalization_weights`** (v13). Read it
+directly — do NOT recompute it. The confusing part is *how you obtain it*:
 
-Both are "correct" — they are just different bases. But they are **not
-interchangeable**, and comparing a v1 from one against a v1 from the other is
-meaningless. `blocks/t539_closedloop_aos.ipynb` uses **geom_mean** so that v1 =
-focus and the amplitudes match the bounce test / `smatrix_vmode_info`.
+| How you get `n_j` | Result | v1 is… | Notes |
+|-------------------|--------|--------|-------|
+| `OFCData('lsst', config_dir=v13).normalization_weights` | **official geom** (`r^0.5 f^-0.5`, field-averaged FWHM) | **focus** | ✅ correct — same weights `build_ofc_svd`/bounce use via the ts yaml |
+| `OFCData()` **without** `config_dir` | old non-geom default | **M2 tilt** | ❌ wrong — this is the OLR / nightly_report bug (v1 ~1e-4 at convergence) |
+| `sqrt(compute_normalization_components r/f)` | geom but with **corner-point FWHM** | focus | ⚠️ ~√2 off from the official field-averaged geom (my earlier t539 mistake) |
 
-The operational OFC (and `StateEstimator.get_vmodes_from_dofs`, and the olr
-`vmodes` column from `nightly_table.py`) use the **default** normalization —
-so those v-modes differ from this notebook's geom v-modes by construction.
+So there is really only **one** intended normalization (geom_mean); the
+apparent "conventions" are just three ways of computing it, two of which are
+wrong. The fix everywhere is: pass `config_dir` and use the config's
+`normalization_weights` as-is.
+
+### The `range0.5_fwhm-0.15.yaml` filename typo
+
+The ts_config_mttcs normalization file `build_ofc_svd` defaults to is named
+`range0.5_fwhm-0.15.yaml`, but its **header declares `alpha=0.5, beta=-0.5`** and
+its values are exactly the v13 `normalization_weights`. The `-0.15` in the
+filename is a typo for `-0.5`. So `build_ofc_svd` (bounce and all the
+`run_*` scripts) has been using the correct geom all along.
+
+### Why my manual `sqrt(r/f)` was ~√2 off
+
+`compute_normalization_components` returned the **corner-point** FWHM `f`, while
+the config yaml was generated with the **field-averaged (quadrature)** FWHM ("a
+circular quadrature grid over the field of view", per the yaml header). The two
+differ by ≈ 2× in `f` (so ≈ √2 in `n = r^0.5 f^-0.5`), and non-uniformly for the
+field-dependent bending modes. Same `r`, different `f`. Lesson: use the config's
+stored weights, not a hand-rolled `sqrt(r/f)`.
+
+### What was actually wrong
+
+`StateEstimator.get_vmodes_from_dofs` and the olr `vmodes` column
+(`nightly_table.py`), `nightly_tablemaker`, `aos_openloop`, `olr_quicklook`, and
+the GitHub `nightly_report` all build `OFCData()` **without `config_dir`**, so
+they pick up the old non-geom default → v1 = M2-tilt → ~1e-4 at convergence.
+That is the bug to fix (pass `config_dir`), not the exponent.
 
 ## Evidence
 
@@ -123,10 +149,17 @@ for lab, ri, fi, gi, di in zip(labels, r, f, geom, default):
 
 ### Values (all 50 DOF, v13 config)
 
-From the extraction snippet against `ts_config_mttcs/MTAOS/v13/ofc`. `geom =
-sqrt(r_j/f_j)`; `default` is the v13 stored `normalization_weights`. Hexapod
+From the extraction snippet against `ts_config_mttcs/MTAOS/v13/ofc`. Hexapod
 positions in µm, tilts in arcsec, bending modes dimensionless; f_j in arcsec
 FWHM per DOF unit.
+
+**Column meaning (see corrected Summary):** the `default` column is the v13
+stored `normalization_weights` — this **is the official geom_mean** (`r^0.5
+f^-0.5`, field-averaged FWHM), the one to use. The `geom sqrt(r/f)` column is the
+hand-computed `sqrt(r_j/f_j)` using `compute_normalization_components`'
+corner-point `f_j`; it is ~√2 smaller than the official geom and should **not**
+be used. (The `f_j` column shown is therefore the corner-point FWHM; the
+field-averaged FWHM implied by the config is ≈ `f_j / 2`.)
 
 | DOF | r_j | f_j | geom sqrt(r/f) | default |
 |-----|-----|-----|----------------|---------|
