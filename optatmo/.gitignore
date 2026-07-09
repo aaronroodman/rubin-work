@@ -1,0 +1,5 @@
+# data products + rendered outputs are not committed (rubin-work convention)
+data/
+output/
+__pycache__/
+*.pyc

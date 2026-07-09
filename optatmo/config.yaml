@@ -1,0 +1,52 @@
+# OptAtmo moment-fit configuration.
+
+geometry:
+  diam: 8.36                # Batoid LSST pupilSize
+  obscuration: 0.612        # Batoid LSST pupil obscuration
+  lam_nm: 750.0
+  pixel_scale: 0.2          # arcsec/pixel
+  stamp: 32                 # detector stamp (pixels)
+  oversample: 16            # FFT oversampling factor
+  jmax: 22                  # max Noll index of the wavefront
+  annular: true             # annular Noll Zernikes (ts_wep/Batoid/CWFS convention)
+
+atmosphere:
+  kernel: VonKarman         # VonKarman | Kolmogorov
+  L0: 25.0                  # outer scale (m), fixed
+  init:   {fwhm: 0.8, g1: 0.0, g2: 0.0}
+  bounds: {fwhm: [0.4, 1.6], g1: [-0.2, 0.2], g2: [-0.2, 0.2]}
+  fit: [fwhm, g1, g2]       # which atmosphere params are free
+
+# Double-Zernike free optical terms: for each pupil Noll mode, the list of
+# focal-plane Noll indices to include (1 = constant, 2/3 = field tilt, ...).
+dz_terms:
+  - {pupil: 4,  focal: [1]}
+  - {pupil: 5,  focal: [1, 2, 3]}
+  - {pupil: 6,  focal: [1, 2, 3]}
+  - {pupil: 7,  focal: [1]}
+  - {pupil: 8,  focal: [1]}
+  - {pupil: 9,  focal: [1]}
+  - {pupil: 10, focal: [1]}
+  - {pupil: 11, focal: [1]}
+
+# Constant additive offsets in moment space (telescope jitter / wind-shake).
+# Left empty: jitter ellipticity is degenerate with the atmospheric shear
+# (g1,g2) below, which we fit instead.  Add moments here only if you need a
+# constant term the atmosphere shear cannot absorb (e.g. e0).
+moment_offsets:
+  moments: []
+  init: 0.0
+
+fit:
+  fov_radius_deg: 1.75
+  moments: [e0, e1, e2, M21, M12, M30, M03]   # moments used in the cost
+  weights: {e0: 1.0, e1: 1.0, e2: 1.0, M21: 0.5, M12: 0.5, M30: 0.5, M03: 0.5}
+
+miw:
+  parquet: ../aos/calibration/miw/intrinsic_split_maps_v1.parquet
+  rotation_sign: 1
+
+optimizer:
+  method: L-BFGS-B
+  maxiter: 300
+  gtol: 1.0e-8
