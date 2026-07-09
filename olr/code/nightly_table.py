@@ -682,9 +682,15 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
     -------
     result : pd.DataFrame
         One row per seq, with scalar columns plus vector columns:
-        dof_state (50), lut_state (50), zernikes_fwhm (25), vmodes (12),
+        dof_state (50, the Trim/aggregatedDoF), lut_state (50),
+        zernikes_fwhm (25), vmodes (12, v-modes of the Trim),
         per-corner Zernike columns zernikes_191 ... zernikes_203 (ConsDB),
-        and (if include_butler) zk_opd/intrinsic/deviation_R00/R04/R40/R44.
+        and (if include_butler) zk_opd/intrinsic/deviation_R00/R04/R40/R44
+        plus dof_optical_state (50) and vmodes_optical_state (12) — the DoF /
+        v-modes recovered from the measured corner DEVIATIONS through the geom
+        SVD (Aaron's "optical_state", NOT the Trim) — and zk_constrained_R00..R44
+        (the controllable part of the measured wavefront, reconstructed from
+        dof_optical_state).
     """
     # --- Fetch data via AOSDatabase ---
     db = AOSDatabase(day_obs=day_obs, seq_min=seq_min, seq_max=seq_max)
@@ -767,23 +773,11 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
     vec_df["zernikes_fwhm"] = list(zernikes_fwhm)
     vec_df["vmodes"] = list(vmodes)
 
-    # --- zk_constrained: project DOF state through 12-vmode SVD subspace ---
-    # Reuses the geom SVD (U, s, V, dof_indices, norm_vector, n_modes) built
-    # above for the v-modes.
+    # NOTE: dof_optical_state and zk_constrained are computed later (after the
+    # Butler per-corner DEVIATION Zernikes are joined) — they are recovered from
+    # the measured wavefront, not from the Trim (dof_state). See below.
     corner_names = ["R00", "R04", "R40", "R44"]
     n_zk = 21  # per corner
-
-    zk_con = {f"zk_constrained_{c}": [] for c in corner_names}
-    for dof_vec in dof_state:
-        dof_sub = dof_vec[dof_indices] / norm_vector
-        v_proj = V[:, :n_modes].T @ dof_sub
-        z_all = U[:, :n_modes] @ np.diag(s[:n_modes]) @ v_proj  # 84-vector
-        z_corners = z_all.reshape(4, n_zk)
-        for ic, c in enumerate(corner_names):
-            zk_con[f"zk_constrained_{c}"].append(z_corners[ic])
-
-    for col_name, arr_list in zk_con.items():
-        vec_df[col_name] = arr_list
 
     filtered_table = filtered_table.join(vec_df, how="left")
 
@@ -854,6 +848,44 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
     n_consdb = len(filtered_table)
     if n_butler < n_consdb:
         print(f"  WARNING: Butler has {n_butler} seqs vs ConsDB {n_consdb}")
+
+    # --- dof_optical_state + zk_constrained (from the MEASURED deviations) ---
+    # optical_state = DoF recovered by running the measured per-corner deviation
+    # Zernikes (zk_deviation_*, i.e. OPD - Batoid intrinsic) through the geom SVD
+    # (least-squares onto the 12-mode controllable subspace). zk_constrained is
+    # the controllable part of the measured wavefront (reconstruct-from-optical
+    # _state). These replace the old Trim-based reconstruction. Requires the
+    # Butler deviations (Summit); left NaN when include_butler=False.
+    # z_dev is corner-major (R00,R04,R40,R44) x 21 Zernikes, matching the SVD rows.
+    zk_noll_idx = [z - 4 for z in aos_state.ZK_NOLL]          # dense(Z4-up) -> 21
+    opt_rows = {}
+    for seq in filtered_table.index:
+        zdev = []
+        ok = True
+        for c in corner_names:
+            col = f"zk_deviation_{c}"
+            arr = filtered_table.at[seq, col] if col in filtered_table.columns else None
+            if arr is None or np.ndim(arr) == 0 or len(arr) <= max(zk_noll_idx):
+                ok = False
+                break
+            zdev.append(np.asarray(arr, float)[zk_noll_idx])
+        if not ok or not all(np.all(np.isfinite(z)) for z in zdev):
+            continue
+        dof_os, _v_raw, zk_con = aos_state.recover_optical_state(
+            np.concatenate(zdev), svd, n_modes=n_modes)
+        # v-modes of the optical state in the canonical StateEstimator basis
+        vmode_os = aos_state.vmodes_from_dofs(dof_os, se, n_modes=n_modes)[0]
+        row = {"dof_optical_state": dof_os, "vmodes_optical_state": vmode_os}
+        zc = zk_con.reshape(len(corner_names), n_zk)
+        for ic, c in enumerate(corner_names):
+            row[f"zk_constrained_{c}"] = zc[ic]
+        opt_rows[seq] = row
+    if opt_rows:
+        filtered_table = filtered_table.join(
+            pd.DataFrame.from_dict(opt_rows, orient="index"), how="left")
+        print(f"  optical_state + zk_constrained recovered for {len(opt_rows)} seqs")
+    else:
+        print("  optical_state/zk_constrained: no deviation data (include_butler?)")
 
     # --- Drop redundant columns ---
     drop_cols = [

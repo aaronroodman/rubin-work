@@ -42,7 +42,8 @@ N_MODES = {"hexapod_10": 10, "standard_22": 12, "all_50": 20}
 __all__ = [
     "CORNERS", "SENSOR_NAMES", "ZK_NOLL", "DOF_SETS", "N_MODES",
     "resolve_ofc_config_dir", "make_state_estimator", "vmodes_from_dofs",
-    "build_geom_svd", "project_dofs_to_vmodes", "fetch_corner_zernikes_consdb",
+    "build_geom_svd", "project_dofs_to_vmodes", "recover_optical_state",
+    "fetch_corner_zernikes_consdb",
 ]
 
 # Component layout of the 50-DOF OFC state (for comp_dof_idx construction)
@@ -166,6 +167,46 @@ def project_dofs_to_vmodes(dof_state, svd, n_modes=None):
         if np.all(np.isfinite(sub)):
             out[k] = V[:, :n_modes].T @ (sub / w)
     return out
+
+
+def recover_optical_state(z_dev, svd, n_modes=12):
+    """Recover the optical-state DoF from a measured corner-deviation wavefront.
+
+    This is Aaron's ``optical_state``: the DoF obtained by running the measured
+    Zernike *deviations* (OPD - intrinsic) through the SVD (least-squares onto
+    the top-``n_modes`` controllable subspace). It is NOT the Trim
+    (aggregatedDoF) nor the Tweak.
+
+    Parameters
+    ----------
+    z_dev : ndarray (n_rows,)
+        Measured per-corner deviation Zernikes, flattened in the SAME order as
+        the SVD rows: corner-major, 4 corners x len(ZK_NOLL).
+    svd : dict from build_geom_svd.
+    n_modes : int, default 12.
+
+    Returns
+    -------
+    dof_full : ndarray (50,)
+        Physical DoF; the geom DOF subset is filled, other entries 0.
+    vmode_amps : ndarray (n_modes,)
+        v-mode amplitudes of the optical state, in THIS svd's basis. (For the
+        canonical basis, pass dof_full through StateEstimator.get_vmodes_from_dofs.)
+    zk_constrained : ndarray (n_rows,)
+        Controllable projection of z_dev (the part reproducible by the DOF in
+        the kept subspace) — reconstruct-from-optical_state. Basis-invariant.
+
+    Math: z_dev = U s V^T (dof_sub/w)  ->  v = (U[:,:k].T z_dev)/s[:k],
+    dof_sub = w * (V[:,:k] v),  zk_constrained = U[:,:k] (s[:k]*v).
+    """
+    U, s, V = svd["U"], svd["s"], svd["V"]
+    idx, w = svd["dof_indices"], svd["norm_vector"]
+    k = n_modes
+    v = (U[:, :k].T @ np.asarray(z_dev, float)) / s[:k]
+    dof_full = np.zeros(50)
+    dof_full[idx] = w * (V[:, :k] @ v)
+    zk_con = U[:, :k] @ (s[:k] * v)
+    return dof_full, v, zk_con
 
 
 def fetch_corner_zernikes_consdb(cdb_client, visit_ids, instrument="lsstcam",
