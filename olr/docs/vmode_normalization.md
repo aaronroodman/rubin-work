@@ -236,8 +236,13 @@ the top of the SVD (v1) — whereas the default weights leave tilt dominant.
 
 ## Which to use
 
-- **Analysis / interpreting the optical state** (this notebook, bounce,
-  smatrix_vmode_info): **geom_mean** — physically meaningful, unit-invariant,
-  v1 = focus.
-- **Reproducing the operational loop / olr `vmodes` / RubinTV**: **default** —
-  that is what the telescope OFC and `get_vmodes_from_dofs` use.
+**Always geom_mean, and get it from the OFC config's `normalization_weights`
+(v13) via `config_dir`.** There is no reason to use the old `OFCData()`-default
+weights or a hand-rolled `sqrt(r/f)`. In code, use the shared helpers in
+`aos/code/aos_state.py` (`build_geom_svd` + `project_dofs_to_vmodes`), which both
+`olr/code/nightly_table.py` and `blocks/t539_closedloop_aos.ipynb` now call, so
+the normalization stays in one place. The `build_ofc_svd` run-scripts (bounce,
+etc.) already get the same geom via the ts_config_mttcs yaml.
+
+**Do not** use `OFCData()` without `config_dir` (old non-geom default → v1=tilt)
+or recompute `sqrt(compute_normalization_components r/f)` (corner-FWHM, ~√2 off).
