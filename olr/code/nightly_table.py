@@ -739,18 +739,25 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
     zernikes_fwhm = np.vstack(states_per_seq["zernikes_fwhm"].values)
     lut_state = np.vstack(states_per_seq["lut_state"].values)
 
-    # --- Compute vmodes from dof_state (geom-normalized SVD projection) ---
-    # Shared helper: geom-normalized standard_22 SVD (OFC config weights = the
-    # official geom_mean) + projection v_j = V[:,j] . (dof[idx] / norm). This is
-    # the single source of the v-mode normalization (aos/code/aos_state.py),
-    # shared with blocks/t539_closedloop_aos.ipynb.
+    # --- Compute vmodes from dof_state (canonical StateEstimator path) ---
+    # Use the OFC StateEstimator (geom config weights) via the shared helper, so
+    # these v-modes are identical to the nightly_report and t539 (all call
+    # get_vmodes_from_dofs on the same Vh). This matters because degenerate
+    # singular-value pairs make individual v-modes basis-dependent — sharing one
+    # Vh is the only way they agree. (aos/code/aos_state.py.)
+    n_modes = 12
+    se = aos_state.make_state_estimator(config_dir=OFC_CONFIG_DIR,
+                                        dof_set="standard_22")
+    vmodes = aos_state.vmodes_from_dofs(dof_state, se, n_modes=n_modes)
+
+    # Geom SVD (same weights) for the zk_constrained wavefront reconstruction
+    # below. The reconstruction is basis-invariant within the kept subspace, so
+    # the degenerate-rotation difference vs StateEstimator does not affect it.
     svd = aos_state.build_geom_svd(config_dir=OFC_CONFIG_DIR,
                                    dof_set="standard_22")
     U, s, V = svd["U"], svd["s"], svd["V"]
     dof_indices = svd["dof_indices"]
     norm_vector = svd["norm_vector"]
-    n_modes = 12
-    vmodes = aos_state.project_dofs_to_vmodes(dof_state, svd, n_modes=n_modes)
 
     # --- Add vector columns to filtered_table ---
     seqs = states_per_seq.index.values

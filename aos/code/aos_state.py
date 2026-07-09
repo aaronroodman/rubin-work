@@ -41,9 +41,63 @@ N_MODES = {"hexapod_10": 10, "standard_22": 12, "all_50": 20}
 
 __all__ = [
     "CORNERS", "SENSOR_NAMES", "ZK_NOLL", "DOF_SETS", "N_MODES",
-    "resolve_ofc_config_dir", "build_geom_svd", "project_dofs_to_vmodes",
-    "fetch_corner_zernikes_consdb",
+    "resolve_ofc_config_dir", "make_state_estimator", "vmodes_from_dofs",
+    "build_geom_svd", "project_dofs_to_vmodes", "fetch_corner_zernikes_consdb",
 ]
+
+# Component layout of the 50-DOF OFC state (for comp_dof_idx construction)
+_DOF_COMPONENTS = {"m2HexPos": (0, 5), "camHexPos": (5, 5),
+                   "M1M3Bend": (10, 20), "M2Bend": (30, 20)}
+
+
+def _comp_dof_idx(dof_indices):
+    """Build the OFCData.comp_dof_idx boolean dict from active DOF indices."""
+    active = set(dof_indices)
+    return {name: np.array([(start + i) in active for i in range(n)], dtype=bool)
+            for name, (start, n) in _DOF_COMPONENTS.items()}
+
+
+def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13"):
+    """OFC StateEstimator configured with geom (config) weights + a DOF subset.
+
+    This is the canonical v-mode engine: ``StateEstimator.get_vmodes_from_dofs``
+    uses the OFC config's stored ``normalization_weights`` (the official
+    geom_mean) and its own sensitivity-matrix SVD. Using it everywhere
+    guarantees identical v-modes across nightly_report / OLR / t539 — important
+    because degenerate singular-value pairs make the individual v-mode vectors
+    basis-dependent (only v1 and degenerate-pair magnitudes are unique), so all
+    code must share the same Vh. Requires the LSST stack (lsst.ts.ofc).
+    """
+    from lsst.ts.ofc import OFCData
+    from lsst.ts.ofc.state_estimator import StateEstimator
+
+    if config_dir is None:
+        config_dir = resolve_ofc_config_dir(version)
+    ofc = OFCData("lsst", config_dir=config_dir)
+    ofc.comp_dof_idx = _comp_dof_idx(DOF_SETS[dof_set])
+    return StateEstimator(ofc)
+
+
+def vmodes_from_dofs(dof_state, state_estimator, n_modes=12):
+    """v-modes via ``StateEstimator.get_vmodes_from_dofs`` (canonical method).
+
+    Parameters
+    ----------
+    dof_state : array (50,) or (n, 50)  -- physical DOF vector(s) / trim.
+    state_estimator : from make_state_estimator.
+    n_modes : int, default 12.
+
+    Returns
+    -------
+    ndarray (n, n_modes). Rows with any non-finite active DOF -> NaN.
+    """
+    idx = state_estimator.ofc_data.dof_idx
+    arr = np.atleast_2d(np.asarray(dof_state, dtype=float))
+    out = np.full((len(arr), n_modes), np.nan)
+    for k, d in enumerate(arr):
+        if np.all(np.isfinite(d[idx])):
+            out[k] = np.asarray(state_estimator.get_vmodes_from_dofs(d))[:n_modes]
+    return out
 
 
 def resolve_ofc_config_dir(version="v13"):

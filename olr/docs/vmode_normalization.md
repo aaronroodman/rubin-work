@@ -234,6 +234,31 @@ the top of the SVD (v1) — whereas the default weights leave tilt dominant.
 > normalization is not a stable basis for analysis. The geom weights are derived
 > from `r_j`/`f_j` and so are reproducible given the config.
 
+## Degenerate v-modes and the canonical engine (StateEstimator)
+
+Even with identical geom weights, two independent SVDs (numpy vs the OFC
+`StateEstimator`) do **not** give the same individual v-modes, because several
+singular values are **exactly degenerate** (x/y symmetry: astigmatism, decenter,
+tilt doublets). Within a degenerate 2-D subspace the singular vectors are
+arbitrary, so `v2` vs `v3` (etc.) depend on which rotation the SVD happens to
+pick. Verified: modes with equal `s` gave `|cos(V_se, V_manual)| ≈ 0.43`, while
+non-degenerate modes matched at `≈ 0.9995`.
+
+Consequences:
+- **Only `v1` (focus, non-degenerate) and the per-pair magnitudes**
+  (e.g. `sqrt(v2² + v3²)`) are physically unique. Individual degenerate v-modes
+  are not — do not over-interpret `v2`, `v3`, `v4`, `v5`, `v8`, `v9` singly.
+- For the *code* to agree, every path must use the **same `Vh`**. We standardize
+  on the OFC `StateEstimator` (`get_vmodes_from_dofs`), whose math is exactly
+  `inv(N) @ dof[idx] @ Vh[:trunc].T` = `V[:,:k].T @ (dof/w)` with `N = diag(w)`
+  the geom weights. `aos/code/aos_state.py` provides `make_state_estimator` +
+  `vmodes_from_dofs`; OLR `nightly_table.py`, `t539`, and the nightly-report PR
+  all call it, so their v-modes are bit-identical.
+
+`build_geom_svd` is retained only for the `zk_constrained` wavefront
+reconstruction (basis-invariant within the kept subspace); it is not used for
+the reported v-modes.
+
 ## Which to use
 
 **Always geom_mean, and get it from the OFC config's `normalization_weights`
