@@ -17,6 +17,7 @@ Requires the LSST Science Pipelines / summit stack; runs on the Summit RSP.
 """
 
 import os
+import sys
 import logging
 import warnings
 
@@ -25,6 +26,12 @@ warnings.filterwarnings("ignore")
 import galsim
 import numpy as np
 import pandas as pd
+
+# Shared AOS state helpers (geom v-modes, per-corner Zernikes) live in
+# aos/code/aos_state.py; add it to the path (olr/code -> ../../aos/code).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "aos", "code"))
+import aos_state
 
 pd.set_option("future.no_silent_downcasting", True)
 
@@ -656,7 +663,8 @@ class AOSDatabase:
 # ----------------------------------------------------------------------------
 # build_nightly_table — assemble the one-row-per-seq output table
 # ----------------------------------------------------------------------------
-async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
+async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
+                              include_butler=True):
     """Build the complete per-exposure AOS table for one night.
 
     Parameters
@@ -665,6 +673,10 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
         Observation day (e.g. 20260117).
     seq_min, seq_max : int
         Sequence number range.
+    include_butler : bool, optional
+        Join the Summit embargo-Butler AOS products
+        (zk_opd/intrinsic/deviation). Set False to run ConsDB+EFD only
+        (e.g. on the USDF, where the AOS Butler tables are unavailable).
 
     Returns
     -------
@@ -672,7 +684,7 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
         One row per seq, with scalar columns plus vector columns:
         dof_state (50), lut_state (50), zernikes_fwhm (25), vmodes (12),
         per-corner Zernike columns zernikes_191 ... zernikes_203 (ConsDB),
-        and zk_opd/intrinsic/deviation_R00/R04/R40/R44 (Butler).
+        and (if include_butler) zk_opd/intrinsic/deviation_R00/R04/R40/R44.
     """
     # --- Fetch data via AOSDatabase ---
     db = AOSDatabase(day_obs=day_obs, seq_min=seq_min, seq_max=seq_max)
@@ -728,21 +740,17 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
     lut_state = np.vstack(states_per_seq["lut_state"].values)
 
     # --- Compute vmodes from dof_state (geom-normalized SVD projection) ---
-    # Build OFCData WITH config_dir so normalization_weights are the official
-    # geom_mean (v13). Project the DOF state through the standard_22 12-vmode
-    # SVD: v_j = V[:,j] . (dof[idx] / norm). This replaces the old
-    # get_vmodes_from_dofs path, which (via OFCData() with no config_dir) used a
-    # non-geom default and made v1 the M2-tilt mode instead of focus.
-    ofcData = OFCData("lsst", config_dir=OFC_CONFIG_DIR)
-
-    svd = build_sensitivity_svd(ofcData, dof_set_name="standard_22")
+    # Shared helper: geom-normalized standard_22 SVD (OFC config weights = the
+    # official geom_mean) + projection v_j = V[:,j] . (dof[idx] / norm). This is
+    # the single source of the v-mode normalization (aos/code/aos_state.py),
+    # shared with blocks/t539_closedloop_aos.ipynb.
+    svd = aos_state.build_geom_svd(config_dir=OFC_CONFIG_DIR,
+                                   dof_set="standard_22")
     U, s, V = svd["U"], svd["s"], svd["V"]
     dof_indices = svd["dof_indices"]
     norm_vector = svd["norm_vector"]
     n_modes = 12
-    vmodes = np.array([
-        V[:, :n_modes].T @ (d[dof_indices] / norm_vector) for d in dof_state
-    ])
+    vmodes = aos_state.project_dofs_to_vmodes(dof_state, svd, n_modes=n_modes)
 
     # --- Add vector columns to filtered_table ---
     seqs = states_per_seq.index.values
@@ -798,13 +806,19 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999):
         "deviation": "zk_deviation_OCS",
     }
 
-    butler = butlerUtils.makeDefaultButler("LSSTCam", embargo=True)
-    refs = list(
-        butler.query_datasets(
-            "aggregateAOSVisitTableAvg",
-            where=f"exposure.day_obs = {day_obs}",
+    # Butler AOS tables (zk_opd/intrinsic/deviation) are Summit embargo-only.
+    # include_butler=False (e.g. running on the USDF for the ConsDB-only columns)
+    # skips them: refs stays empty so the loop below no-ops and n_butler=0.
+    if include_butler:
+        butler = butlerUtils.makeDefaultButler("LSSTCam", embargo=True)
+        refs = list(
+            butler.query_datasets(
+                "aggregateAOSVisitTableAvg",
+                where=f"exposure.day_obs = {day_obs}",
+            )
         )
-    )
+    else:
+        refs = []
 
     butler_rows = []
     for ref in tqdm(refs, desc="Butler", disable=True):
