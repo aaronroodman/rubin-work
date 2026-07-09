@@ -20,7 +20,7 @@ from jax_optatmo import MOMENT_LABELS
 
 class Forward:
     def __init__(self, model, layout, z0, G, data, err,
-                 fit_moments, weights):
+                 fit_moments, weights, reg_lambda=0.0):
         self.model = model
         self.layout = layout
         self.z0 = jnp.asarray(z0)                 # (n_stars, jmax+1)
@@ -39,6 +39,7 @@ class Forward:
                              for i, a in enumerate(layout.atm_free)]
         self.off_pos = [(MOMENT_LABELS.index(m), layout.i_off.start + i)
                         for i, m in enumerate(layout.offset_moments)]
+        self.reg_lambda = float(reg_lambda)   # Tikhonov L2 penalty on v-mode amps
 
     def _atm(self, p):
         atm = self.atm_init
@@ -66,4 +67,6 @@ class Forward:
 
     def cost(self, p):
         r = self.residuals(p)
-        return jnp.sum(r ** 2) / r.shape[0]
+        chi2 = jnp.sum(r ** 2) / r.shape[0]
+        reg = self.reg_lambda * jnp.sum(p[:self.n_dz] ** 2)   # Tikhonov on v-modes
+        return chi2 + reg

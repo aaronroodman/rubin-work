@@ -29,7 +29,9 @@ RAD2DEG = 180.0 / np.pi
 
 
 def fwhm_of(e0):
-    return np.sqrt(np.clip(e0, 0, None) / 2) * 2.3548
+    # e0 = HSM-weighted M11 = trace(M)/2 (self-consistent adaptive Gaussian);
+    # RubinTV T = trace(M) = 2 e0, FWHM = sqrt(T/2 * ln256) = sqrt(e0 * ln256).
+    return np.sqrt(np.clip(e0, 0, None) * np.log(256.0))
 
 
 def rot_for(seq):
@@ -47,17 +49,17 @@ def _mapaxis(ax, ttl):
 
 def run(seq, svd_npz, cfg, model, miw):
     rot = rot_for(seq)
-    df = pd.read_parquet(f'data/psfmoments_{DAY}000{seq}.parquet')
-    # rotate per-star data moments + field to OCS
-    mom = np.column_stack([df[k].to_numpy() for k in LAB])
-    mom_ocs = np.array([frames.rotate_moments(mom[i], np.deg2rad(rot)) for i in range(len(df))])
-    thx, thy = frames.rotate_field(df.thx_ccs_deg.values, df.thy_ccs_deg.values, np.deg2rad(rot))
+    # cleaned (MAD-clipped), OCS-rotated stars — same sample as the fit
+    prep = data_fit.load_and_prep(f'data/psfmoments_{DAY}000{seq}.parquet',
+                                  sign=1, rot_deg=rot)
+    thx, thy, mom_ocs = prep['thx'], prep['thy'], prep['mom']
     fit = np.load(f'data/vmodefit_{seq}.npz')
     A, atm = fit['A'], fit['atm']
 
     # ---------- 1. FWHM super-pixels (2x2 per CCD) ----------
-    sp = (df.detector.astype(str) + '_' + (df.x.values // 2048).astype(int).astype(str)
-          + (df.y.values // 2048).astype(int).astype(str))
+    sp = (prep['detector'].astype(str) + '_'
+          + (prep['x'] // 2048).astype(int).astype(str)
+          + (prep['y'] // 2048).astype(int).astype(str))
     g = pd.DataFrame({'sp': sp, 'thx': thx, 'thy': thy, 'e0': mom_ocs[:, 0]})
     agg = g.groupby('sp').agg(thx=('thx', 'mean'), thy=('thy', 'mean'),
                               e0=('e0', 'median'), n=('e0', 'size'))
@@ -68,7 +70,7 @@ def run(seq, svd_npz, cfg, model, miw):
     vlo, vhi = np.percentile(np.r_[fwhm_of(agg.e0.values), fwhm_of(mmom[:, 0])], [2, 98])
     for a, val, tag in [(ax[0], fwhm_of(agg.e0.values), 'DATA'),
                         (ax[1], fwhm_of(mmom[:, 0]), 'MODEL')]:
-        _mapaxis(a, f'{tag} FWHM-like [arcsec] (2x2/CCD super-pixels)')
+        _mapaxis(a, f'{tag} FWHM [arcsec] (2x2/CCD super-pixels)')
         s = a.scatter(agg.thx, agg.thy, c=val, s=55, marker='s', cmap='viridis',
                       vmin=vlo, vmax=vhi)
         fig.colorbar(s, ax=a, shrink=0.8)
@@ -76,32 +78,36 @@ def run(seq, svd_npz, cfg, model, miw):
     fig.savefig(f'output/dm_fwhm_{seq}.png', dpi=115, bbox_inches='tight'); plt.close(fig)
 
     # ---------- 2 & 3. whiskers (dense) ----------
-    def whisker_fig(nstar, keypair, kind, fname, scalefac, title):
-        idx = np.linspace(0, len(df) - 1, min(nstar, len(df))).astype(int)
+    ia0 = LAB.index('e0')
+
+    def angamp(src, ia, ib, kind):
+        if kind == 'spin2':            # ellipticity: normalised e1/e0, e2/e0, half-angle
+            a1, a2 = src[:, ia] / src[:, ia0], src[:, ib] / src[:, ia0]
+            return 0.5 * np.arctan2(a2, a1), np.hypot(a1, a2)
+        return np.arctan2(src[:, ib], src[:, ia]), np.hypot(src[:, ia], src[:, ib])
+
+    def whisker_fig(nstar, keypair, kind, fname, ref_len, title):
+        idx = np.linspace(0, len(thx) - 1, min(nstar, len(thx))).astype(int)
         mm = model_moments_at(model, svd_npz, A, atm, thx[idx], thy[idx],
                               np.full(len(idx), np.deg2rad(rot)), miw=miw)
-        fig, ax = plt.subplots(1, 2, figsize=(15, 7))
         ia, ib = LAB.index(keypair[0]), LAB.index(keypair[1])
-        # amplitude scale from data
-        damp = np.hypot(mom_ocs[idx, ia], mom_ocs[idx, ib])
-        sc = scalefac / max(np.percentile(damp, 95), 1e-6)
+        # scale from the SAME quantity that is plotted: 95th-pct whisker -> ref_len deg
+        amp95 = np.percentile(angamp(mom_ocs[idx], ia, ib, kind)[1], 95)
+        scale = max(amp95, 1e-9) / ref_len
+        fig, ax = plt.subplots(1, 2, figsize=(15, 7))
         for a, src, tag in [(ax[0], mom_ocs[idx], 'DATA'), (ax[1], mm, 'MODEL')]:
             _mapaxis(a, f'{tag} {title}')
-            if kind == 'spin2':
-                ang = 0.5 * np.arctan2(src[:, ib] / src[:, 0], src[:, ia] / src[:, 0])
-                amp = np.hypot(src[:, ia] / src[:, 0], src[:, ib] / src[:, 0])
-            else:
-                ang = np.arctan2(src[:, ib], src[:, ia])
-                amp = np.hypot(src[:, ia], src[:, ib])
+            ang, amp = angamp(src, ia, ib, kind)
             a.quiver(thx[idx], thy[idx], amp * np.cos(ang), amp * np.sin(ang),
-                     angles='xy', scale_units='xy', scale=1 / sc, pivot='mid',
-                     headlength=0, headaxislength=0, width=0.003)
-        fig.suptitle(f'20260513 seq={seq}: {title} data vs model ({len(idx)} stars)')
+                     angles='xy', scale_units='xy', scale=scale, pivot='mid',
+                     headlength=0, headaxislength=0, width=0.0035)
+        fig.suptitle(f'20260513 seq={seq}: {title} data vs model '
+                     f'({len(idx)} stars, 95%-whisker={ref_len:g} deg)')
         fig.tight_layout(); fig.savefig(fname, dpi=115, bbox_inches='tight'); plt.close(fig)
 
-    whisker_fig(1250, ('e1', 'e2'), 'spin2', f'output/dm_ellip_{seq}.png', 0.5, 'ellipticity')
-    whisker_fig(750, ('M21', 'M12'), 'spin1', f'output/dm_coma_{seq}.png', 0.5, 'coma')
-    whisker_fig(750, ('M30', 'M03'), 'spin1', f'output/dm_trefoil_{seq}.png', 0.5, 'trefoil')
+    whisker_fig(1250, ('e1', 'e2'), 'spin2', f'output/dm_ellip_{seq}.png', 0.30, 'ellipticity')
+    whisker_fig(750, ('M21', 'M12'), 'spin1', f'output/dm_coma_{seq}.png', 0.30, 'coma')
+    whisker_fig(750, ('M30', 'M03'), 'spin1', f'output/dm_trefoil_{seq}.png', 0.30, 'trefoil')
     print(f'seq {seq}: wrote FWHM/ellip/coma/trefoil data-vs-model plots')
 
     # ---------- 4. corner bar chart: CWFS vs PSF-model deviation ----------
@@ -116,7 +122,11 @@ def run(seq, svd_npz, cfg, model, miw):
             axc.set_visible(False); continue
         cx = np.median(sub.thx_OCS.values) * RAD2DEG      # rad -> deg
         cy = np.median(sub.thy_OCS.values) * RAD2DEG
-        cwfs_z = np.array([np.median(sub[f'zdev_{i}'].values) for i in range(njz)])
+        # CWFS deviation relative to the SAME v1 MIW the PSF fit uses:
+        #   dev = total OPD (zk_OCS = ztot) - MIW_v1(corner, rotator)
+        miwc = miw.zernikes(cx, cy, np.deg2rad(rot), 22)[0]
+        cwfs_z = np.array([np.median(sub[f'ztot_{i}'].values) - miwc[NOLL_CWFS[i]]
+                           for i in range(njz)])
         psf_dev = wavefront_at(A, svd_npz, [cx], [cy], jmax=22, fp_radius=FP_R)[0]
         psf_z = np.array([psf_dev[NOLL_CWFS[i]] if NOLL_CWFS[i] <= 22 else np.nan
                           for i in range(njz)])
@@ -128,7 +138,7 @@ def run(seq, svd_npz, cfg, model, miw):
         axc.set_title(f'corner {c}  (x={cx:.2f}, y={cy:.2f} deg)', fontsize=9)
         axc.axhline(0, color='k', lw=0.6); axc.legend(fontsize=7)
         axc.set_ylabel('Zj deviation [µm]', fontsize=8)
-    fig.suptitle(f'20260513 seq={seq}: corner-WFS vs PSF v-mode-fit Zj (deviation)')
+    fig.suptitle(f'20260513 seq={seq}: corner-WFS vs PSF v-mode-fit Zj (deviation rel. v1 MIW)')
     fig.tight_layout(); fig.savefig(f'output/dm_corners_{seq}.png', dpi=115,
                                     bbox_inches='tight'); plt.close(fig)
     print(f'seq {seq}: wrote corner bar chart')

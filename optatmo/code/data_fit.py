@@ -20,7 +20,7 @@ import fit as fitmod
 CWFS_FITS = ('../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/fits.parquet')
 
 
-def load_and_prep(parquet, sign=1, rot_deg=None):
+def load_and_prep(parquet, sign=1, rot_deg=None, clip_thr=5.0):
     """Load catalog, rotate CCS->OCS. Returns dict of arrays (OCS frame).
 
     rot_deg overrides the (possibly missing) per-row rotator angle.
@@ -28,15 +28,31 @@ def load_and_prep(parquet, sign=1, rot_deg=None):
     df = pd.read_parquet(parquet)
     if rot_deg is not None:
         df = df.assign(rot_deg=rot_deg)
-    rot = np.deg2rad(df['rot_deg'].to_numpy())
     mom = np.column_stack([df[k].to_numpy() for k in MOMENT_LABELS])
+
+    # robust MAD-based outlier rejection on the fit moments (blends/artifacts
+    # give wild 3rd-order values); keep stars within clip_thr robust-sigma.
+    keep = np.ones(len(df), bool)
+    for k in ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03']:
+        v = mom[:, MOMENT_LABELS.index(k)]
+        med = np.nanmedian(v)
+        mad = 1.4826 * np.nanmedian(np.abs(v - med)) + 1e-30
+        keep &= np.abs(v - med) < clip_thr * mad
+    df = df[keep].reset_index(drop=True)
+    mom = mom[keep]
+
+    rot = np.deg2rad(df['rot_deg'].to_numpy())
     mom_ocs = np.array([frames.rotate_moments(mom[i], rot[i], sign)
                         for i in range(len(df))])
     thx_ocs, thy_ocs = frames.rotate_field(
         df['thx_ccs_deg'].to_numpy(), df['thy_ccs_deg'].to_numpy(), rot, sign)
     err = np.column_stack([df.get(k + '_err', pd.Series(np.full(len(df), np.nan)))
                            .to_numpy() for k in MOMENT_LABELS])
-    return dict(thx=thx_ocs, thy=thy_ocs, rot=rot, mom=mom_ocs, err=err)
+    print(f'  {parquet.split("/")[-1]}: kept {keep.sum()}/{len(keep)} stars '
+          f'(clipped {(~keep).sum()} outliers)')
+    return dict(thx=thx_ocs, thy=thy_ocs, rot=rot, mom=mom_ocs, err=err,
+                detector=df['detector'].to_numpy(), x=df['x'].to_numpy(),
+                y=df['y'].to_numpy())
 
 
 def bin_grid(prep, cell_deg=0.25, min_n=5):

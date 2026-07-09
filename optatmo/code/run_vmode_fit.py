@@ -39,13 +39,17 @@ def main():
 
     model = fitmod.build_model(cfg)
     miw = MIW(MIW_PARQUET)
-    vmode_names = [f'v{i+1}' for i in range(12)]
+    n_v = int(np.load(NPZ)['U_eff'].shape[1])      # #v-modes from the SVD file
+    vmode_names = [f'v{i+1}' for i in range(n_v)]
+    print(f'v-mode fit: {n_v} modes from {NPZ}')
     layout = ParamLayout({**cfg, 'moment_offsets': {'moments': [], 'init': 0}},
                          vmode_names)
 
     import sys
     SIGN = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    print(f'### rotation sign = {SIGN:+d} ###')
+    REG = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('reg=')),
+               0.0)                            # Tikhonov L2 on v-mode amplitudes
+    print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} ###')
     out = {}
     for seq in [31, 34]:
         rot = rot_for(seq)
@@ -58,7 +62,8 @@ def main():
         z0 = np.nan_to_num(miw.zernikes(cat['thx_deg'], cat['thy_deg'],
                                         cat['rotator_rad'], jmax))
         fwd = Forward(model, layout, z0, G_v, cat['moments'], cat['errors'],
-                      cfg['fit']['moments'], {m: 1.0 for m in cfg['fit']['moments']})
+                      cfg['fit']['moments'], {m: 1.0 for m in cfg['fit']['moments']},
+                      reg_lambda=REG)
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = layout.initial()
