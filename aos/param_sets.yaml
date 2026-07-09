@@ -138,15 +138,19 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
       collection:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
       dataset_type: aggregateZernikesRaw
     tarts:
-      # TARTS AI wavefront retrieval (peterma2) -- UNPAIRED / neural processing.  Has
-      # aggregateAOSVisitTableRaw but with SINGULAR positions (thx_OCS/thy_OCS; no
-      # intra/extra split), so the default reader (needs the split) can't read it.
-      # reader: unpaired -> run_wfs_mktable.get_unpaired_zernikes.  Keyed to the extra
-      # exposure (= FAM seq) -> seq_offset 0.  Covers 17 nights (subset of FAM);
-      # processes each triplet's intra+extra, skips the in-focus.
+      # TARTS AI wavefront retrieval (peterma2) -- UNPAIRED / neural processing on the
+      # heavily-defocused (~3mm) corner donuts of the FAM intra & extra exposures (the
+      # in-focus exposure is skipped).  Has aggregateAOSVisitTableRaw but with SINGULAR
+      # positions (thx_OCS/thy_OCS; no intra/extra split) and the `used` flag is always
+      # False -> reader: unpaired (run_wfs_mktable.get_unpaired_zernikes) keeps all rows.
+      # Each exposure carries only some corner half-sensors (extra->SW1, intra->SW0 for
+      # R04/R40/R44; R00 in both), so combine_offsets [-1,0] concatenates the intra
+      # (FAM seq-1) and extra (FAM seq) donuts to cover all four corners.  seq_offset 0
+      # labels the merged row at the extra exposure (= FAM seq).  Covers 17 nights.
       collection: u/peterma2/tarts_fam_cwfs_triplet
-      seq_offset: 0
       reader: unpaired
+      seq_offset: 0
+      combine_offsets: [-1, 0]
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315

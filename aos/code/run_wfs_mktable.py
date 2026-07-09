@@ -144,9 +144,13 @@ def get_unpaired_zernikes(butler, day_obs, seq_num, coord):
     """Unpaired / neural CWFS (e.g. TARTS): the collection has a joined
     aggregateAOSVisitTableRaw but with SINGULAR per-donut positions
     (thx_<coord>/thy_<coord>; no intra/extra split), so the paired
-    get_aggregate_zernikes cannot read it.  Select ``used`` and return the
-    already-correctly-named singular columns downstream needs.  Returns
-    (astropy Table, visit_meta) or (None, None)."""
+    get_aggregate_zernikes cannot read it.  Keep ALL donut rows -- TARTS does
+    not populate the `used` flag (it is always False in this collection), so we
+    cannot filter on it -- and return the already-correctly-named singular
+    columns.  Each exposure carries only some corner half-sensors (e.g. extra ->
+    SW1, intra -> SW0 for R04/R40/R44), so combine both exposures upstream (see
+    combine_offsets) to cover all corners.  Returns (astropy Table, visit_meta)
+    or (None, None)."""
     try:
         agg = butler.get('aggregateAOSVisitTableRaw', day_obs=day_obs, seq_num=seq_num)
     except Exception:
@@ -154,16 +158,16 @@ def get_unpaired_zernikes(butler, day_obs, seq_num, coord):
               f'day_obs={day_obs}, seq_num={seq_num}')
         return None, None
     meta = dict(agg.meta)
-    sel = (np.asarray(agg['used'], bool) if 'used' in agg.colnames
-           else np.ones(len(agg), bool))
-    tbl = agg[sel]
-    if len(tbl) == 0:
-        print(f"Warning: no 'used' donuts for day_obs={day_obs}, seq_num={seq_num}")
+    if len(agg) == 0:
         return None, None
-    tbl.meta = {}                                   # avoid vstack metadata conflicts
+    if 'used' in agg.colnames:                      # keep the real selection if any exists
+        u = np.asarray(agg['used'], bool)
+        if u.any():
+            agg = agg[u]
+    agg.meta = {}                                   # avoid vstack metadata conflicts
     noll = ([int(x) for x in meta['nollIndices']]
             if meta.get('nollIndices') is not None else None)
-    return tbl, dict(band=meta.get('band', ''), nollIndices=noll)
+    return agg, dict(band=meta.get('band', ''), nollIndices=noll)
 
 
 def main():
@@ -192,9 +196,10 @@ def main():
         seq_offset = int(entry.get('seq_offset', 1))
         dataset_type = entry.get('dataset_type', 'aggregateAOSVisitTableRaw')
         reader = entry.get('reader')               # explicit reader override (e.g. 'unpaired')
+        combine_offsets = entry.get('combine_offsets')   # unpaired: concat these seq offsets
     else:
         wfs_coll, seq_offset = entry, 1             # bare string -> in-focus (fam+1)
-        dataset_type, reader = 'aggregateAOSVisitTableRaw', None
+        dataset_type, reader, combine_offsets = 'aggregateAOSVisitTableRaw', None, None
     base = Path(args.output_root) / args.param_set
     fam_visits = QTable.read(str(base / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
@@ -221,11 +226,20 @@ def main():
                   'centroid_x_extra', 'centroid_y_extra']:
         if extra not in keep:
             keep.append(extra)
+    combine = [int(o) for o in combine_offsets] if combine_offsets else None
     donut_tabs, vrows, n_miss, noll = [], [], 0, None
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + seq_offset
         if reader == 'unpaired':                            # TARTS etc.: singular-position AOS table
-            tbl, meta = get_unpaired_zernikes(butler, d, infocus, coord)
+            offs = combine if combine else [seq_offset]     # concat intra+extra to cover all corners
+            parts, meta = [], None
+            for off in offs:
+                t, m = get_unpaired_zernikes(butler, d, fam_s + off, coord)
+                if t is not None:
+                    parts.append(t); meta = meta or m
+            tbl = (None if not parts else
+                   parts[0] if len(parts) == 1 else
+                   vstack(parts, metadata_conflicts='silent'))
         elif dataset_type == 'aggregateZernikesRaw':        # ai_donut: no joined AOS table
             tbl, meta = get_aidonut_zernikes(butler, d, infocus, coord)
         else:
