@@ -51,9 +51,12 @@ def main():
     cfg['geometry']['stamp'] = 24
     cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'
-    cfg['fit']['moments'] = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03']
     cfg['atmosphere']['fit'] = ['fwhm', 'g1', 'g2']
     jmax = cfg['geometry']['jmax']
+    fit_moments = cfg['fit']['moments']            # from config.yaml (incl. M22)
+    weights = cfg['fit'].get('weights', {}) or {}  # relative per-moment weights
+    print(f'fit moments: {fit_moments}')
+    print(f'weights: {[(m, weights.get(m, 1.0)) for m in fit_moments]}')
 
     model = fitmod.build_model(cfg)
     miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
@@ -81,8 +84,7 @@ def main():
                                         cat['rotator_rad'], jmax,
                                         cat['detector']))
         fwd = Forward(model, layout, z0, G_v, cat['moments'], cat['errors'],
-                      cfg['fit']['moments'], {m: 1.0 for m in cfg['fit']['moments']},
-                      reg_lambda=REG)
+                      fit_moments, weights, reg_lambda=REG)
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = layout.initial()

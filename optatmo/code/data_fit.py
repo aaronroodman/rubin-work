@@ -33,7 +33,7 @@ def load_and_prep(parquet, sign=1, rot_deg=None, clip_thr=5.0):
     # robust MAD-based outlier rejection on the fit moments (blends/artifacts
     # give wild 3rd-order values); keep stars within clip_thr robust-sigma.
     keep = np.ones(len(df), bool)
-    for k in ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03']:
+    for k in ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22']:
         v = mom[:, MOMENT_LABELS.index(k)]
         med = np.nanmedian(v)
         mad = 1.4826 * np.nanmedian(np.abs(v - med)) + 1e-30

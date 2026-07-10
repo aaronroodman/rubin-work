@@ -29,7 +29,7 @@ import lsst.geom as geom                                    # noqa: E402
 HALF = 16
 MKEYS = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03',
          'M22', 'M31', 'M13', 'M40', 'M04']
-EKEYS = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03']
+EKEYS = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22']
 
 
 def extract_visit(b, cam, visit, collection, out_dir, max_per_ccd, snr_min):
