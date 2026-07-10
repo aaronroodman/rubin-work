@@ -93,7 +93,7 @@ def main():
     ap.add_argument('--ccs', default='data/intrinsic_official_ccs.parquet')
     ap.add_argument('--ocs-n', type=int, default=71)
     ap.add_argument('--ccs-n', type=int, default=151)
-    ap.add_argument('--lim', type=float, default=1.5)
+    ap.add_argument('--lim', type=float, default=1.75)
     ap.add_argument('--out-dir', default='output')
     args = ap.parse_args()
 
