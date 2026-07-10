@@ -51,7 +51,8 @@ fit:
   # per-detector sub-CCD binning: cell size (deg) and minimum stars per cell.
   # The cost weight is 1/(empirical per-cell scatter)^2; widen cell_deg if the
   # per-cell star counts are too low for a stable scatter estimate.
-  cell_deg: 0.10
+  cell_deg: 0.15            # ~9 stars/cell, ~2 cells/CCD (per-cell scatter is
+                            # noise-dominated, flat vs cell size up to ~0.25 deg)
   min_n: 3
 
 # MIW is read from the Butler intrinsicZernikes calib (miw.MIWCalib); the
