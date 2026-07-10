@@ -58,6 +58,7 @@ rule all:
     input:
         "output/miw_z4_ocs_ccs.png",
         "output/miw_ocs_z5_z11.png",
+        expand("output/fitmon_{seq}.png", seq=SEQS),
         expand("output/dm_{p}_{seq}.png", p=PLOTS, seq=SEQS)
 
 
@@ -113,13 +114,14 @@ rule extract_cwfs:
 rule fit:
     output:
         "data/vmodefit_{seq}.npz",
+        "output/fitmon_{seq}.png",
     input:
         psf   = lambda w: f"data/psfmoments_{visit(int(w.seq))}.parquet",
         svd   = SVD,
         script = f"{CODE}/run_vmode_fit.py",
         deps  = [f"{CODE}/{m}.py" for m in
                  ("miw", "data_fit", "vmode_fit", "model", "fit", "config",
-                  "frames", "jax_optatmo", "jax_hsm")],
+                  "frames", "jax_optatmo", "jax_hsm", "fit_monitor")],
     log: "pipelines/logs/fit.{seq}.log"
     shell:
         "python {input.script} 1 {input.svd} reg={REG} "

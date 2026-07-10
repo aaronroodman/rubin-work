@@ -20,7 +20,9 @@ Z4), and `plot_miw` renders it directly from the calib's interpolators.
 - **extract_cwfs** (per visit) — corner-WFS aggregate Zernikes →
   `data/cwfs_<visit>.parquet`.
 - **fit** (per seq) — v-mode fit against the official MIW baseline →
-  `data/vmodefit_<seq>.npz`.
+  `data/vmodefit_<seq>.npz` (+ the fit-monitor trace) and
+  `output/fitmon_<seq>.png` (cost vs evaluation, v-mode amps & atmosphere params
+  vs evaluation; header line has nfev/njev/nit/wall-time/final-cost).
 - **plots** (per seq) — FWHM / ellipticity / coma / trefoil data-vs-model and
   the corner CWFS-vs-PSF comparison → `output/dm_*_<seq>.png`.
 

@@ -17,6 +17,7 @@ import data_fit
 from model import Forward
 from vmode_fit import build_vmode_design
 from miw import MIWCalib
+from fit_monitor import FitMonitor
 
 import sys as _sys
 NPZ = next((a for a in _sys.argv[1:] if a.endswith('.npz')), 'data/ofc_svd_22_12.npz')
@@ -86,11 +87,13 @@ def main():
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = layout.initial()
 
-        def fun(p):
-            v, g = vg(jnp.asarray(p))
-            return float(v), np.asarray(g, float)
+        mon = FitMonitor()
+        fun = mon.objective(vg)
+        mon.start()
         res = minimize(fun, p0, jac=True, method='L-BFGS-B',
-                       bounds=layout.bounds(), options={'maxiter': 300})
+                       bounds=layout.bounds(), callback=mon.callback,
+                       options={'maxiter': 300})
+        mon.stop()
         A = res.x[layout.i_dz]
         atm = {a: res.x[layout.n_dz + i] for i, a in enumerate(layout.atm_free)}
         model_mom = np.array(fwd.moments(jnp.asarray(res.x)))   # (n_cells, 12)
@@ -98,11 +101,21 @@ def main():
               f'nit={res.nit} success={res.success} ===')
         print('  v-mode amps:', np.round(A, 3))
         print('  atm:', {k: round(v, 4) for k, v in atm.items()})
+        print('  fit monitor:', mon.summary_line(res))
+
+        atm_idx = [layout.n_dz + i for i in range(len(layout.atm_free))]
+        mon.plot(f'output/fitmon_{seq}.png', res, layout.i_dz, vmode_names,
+                 atm_idx, layout.atm_free, reg_lambda=REG,
+                 title=f'20260513 seq={seq} (rot {rot:.1f})')
+        st = mon.stats(res)
         np.savez(f'data/vmodefit_{seq}.npz', A=A, atm=np.array(list(atm.values())),
                  thx=cat['thx_deg'], thy=cat['thy_deg'], rot=rot,
                  detector=cat['detector'],
                  data_mom=cat['moments'], model_mom=model_mom,
-                 data_err=cat['errors'])
+                 data_err=cat['errors'],
+                 mon_costs=st['costs'], mon_params=st['params'],
+                 mon_iter_evals=st['iter_evals'], nfev=st['nfev'],
+                 njev=st['njev'], nit=st['nit'], fit_time_s=st['time_s'])
         out[seq] = (A, atm)
 
     # v-mode amplitudes across the two rotators (not expected identical —
