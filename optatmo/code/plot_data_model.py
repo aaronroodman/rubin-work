@@ -17,11 +17,13 @@ from config import load_config
 import fit as fitmod
 import data_fit, frames
 from vmode_fit import model_moments_at, wavefront_at
-from miw import MIW
+from miw import MIWOfficial
 
 DAY = 20260513
 LAB = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22', 'M31', 'M13', 'M40', 'M04']
-MIW_PARQUET = '../aos/calibration/miw/intrinsic_split_maps_v1.parquet'
+MIW_OCS = 'data/intrinsic_official_ocs.parquet'
+MIW_CCS = 'data/intrinsic_official_ccs.parquet'
+DET_NAMES = 'data/detector_names.parquet'
 VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
 FP_R = 1.75
 NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
@@ -60,12 +62,15 @@ def run(seq, svd_npz, cfg, model, miw):
     sp = (prep['detector'].astype(str) + '_'
           + (prep['x'] // 2048).astype(int).astype(str)
           + (prep['y'] // 2048).astype(int).astype(str))
-    g = pd.DataFrame({'sp': sp, 'thx': thx, 'thy': thy, 'e0': mom_ocs[:, 0]})
+    g = pd.DataFrame({'sp': sp, 'det': prep['detector'], 'thx': thx, 'thy': thy,
+                      'e0': mom_ocs[:, 0]})
     agg = g.groupby('sp').agg(thx=('thx', 'mean'), thy=('thy', 'mean'),
+                              det=('det', 'first'),
                               e0=('e0', 'median'), n=('e0', 'size'))
     agg = agg[agg.n >= 3]
     mmom = model_moments_at(model, svd_npz, A, atm, agg.thx.values, agg.thy.values,
-                            np.full(len(agg), np.deg2rad(rot)), miw=miw)
+                            np.full(len(agg), np.deg2rad(rot)), miw=miw,
+                            detector=agg.det.values)
     fig, ax = plt.subplots(1, 2, figsize=(15, 7))
     vlo, vhi = np.percentile(np.r_[fwhm_of(agg.e0.values), fwhm_of(mmom[:, 0])], [2, 98])
     for a, val, tag in [(ax[0], fwhm_of(agg.e0.values), 'DATA'),
@@ -89,7 +94,8 @@ def run(seq, svd_npz, cfg, model, miw):
     def whisker_fig(nstar, keypair, kind, fname, ref_len, title):
         idx = np.linspace(0, len(thx) - 1, min(nstar, len(thx))).astype(int)
         mm = model_moments_at(model, svd_npz, A, atm, thx[idx], thy[idx],
-                              np.full(len(idx), np.deg2rad(rot)), miw=miw)
+                              np.full(len(idx), np.deg2rad(rot)), miw=miw,
+                              detector=prep['detector'][idx])
         ia, ib = LAB.index(keypair[0]), LAB.index(keypair[1])
         # scale from the SAME quantity that is plotted: 95th-pct whisker -> ref_len deg
         amp95 = np.percentile(angamp(mom_ocs[idx], ia, ib, kind)[1], 95)
@@ -113,6 +119,8 @@ def run(seq, svd_npz, cfg, model, miw):
     # ---------- 4. corner bar chart: CWFS vs PSF-model deviation ----------
     cw = pd.read_parquet(f'data/cwfs_{DAY}000{seq}.parquet')
     cw['corner'] = cw.detector.str[:3]
+    _names = pd.read_parquet(DET_NAMES)
+    name2id = dict(zip(_names.name, _names.detector))
     corners = ['R00', 'R04', 'R40', 'R44']
     njz = min(12, len(NOLL_CWFS))            # compare Noll 4..15
     fig, axes = plt.subplots(2, 2, figsize=(15, 9))
@@ -122,9 +130,11 @@ def run(seq, svd_npz, cfg, model, miw):
             axc.set_visible(False); continue
         cx = np.median(sub.thx_OCS.values) * RAD2DEG      # rad -> deg
         cy = np.median(sub.thy_OCS.values) * RAD2DEG
-        # CWFS deviation relative to the SAME v1 MIW the PSF fit uses:
-        #   dev = total OPD (zk_OCS = ztot) - MIW_v1(corner, rotator)
-        miwc = miw.zernikes(cx, cy, np.deg2rad(rot), 22)[0]
+        # CWFS deviation relative to the SAME official MIW the PSF fit uses:
+        #   dev = total OPD (zk_OCS = ztot) - MIW_official(corner sensor, rotator)
+        det_id = name2id.get(sub.detector.iloc[0], -1)
+        miwc = np.nan_to_num(
+            miw.zernikes(cx, cy, np.deg2rad(rot), 22, [det_id])[0])
         cwfs_z = np.array([np.median(sub[f'ztot_{i}'].values) - miwc[NOLL_CWFS[i]]
                            for i in range(njz)])
         psf_dev = wavefront_at(A, svd_npz, [cx], [cy], jmax=22, fp_radius=FP_R)[0]
@@ -138,7 +148,8 @@ def run(seq, svd_npz, cfg, model, miw):
         axc.set_title(f'corner {c}  (x={cx:.2f}, y={cy:.2f} deg)', fontsize=9)
         axc.axhline(0, color='k', lw=0.6); axc.legend(fontsize=7)
         axc.set_ylabel('Zj deviation [µm]', fontsize=8)
-    fig.suptitle(f'20260513 seq={seq}: corner-WFS vs PSF v-mode-fit Zj (deviation rel. v1 MIW)')
+    fig.suptitle(f'20260513 seq={seq}: corner-WFS vs PSF v-mode-fit Zj '
+                 f'(deviation rel. official MIW)')
     fig.tight_layout(); fig.savefig(f'output/dm_corners_{seq}.png', dpi=115,
                                     bbox_inches='tight'); plt.close(fig)
     print(f'seq {seq}: wrote corner bar chart')
@@ -150,7 +161,7 @@ def main():
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'
     model = fitmod.build_model(cfg)
-    miw = MIW(MIW_PARQUET)
+    miw = MIWOfficial(MIW_OCS, MIW_CCS)
     for seq in [25, 28]:
         run(seq, svd_npz, cfg, model, miw)
 

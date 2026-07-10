@@ -55,13 +55,20 @@ def load_and_prep(parquet, sign=1, rot_deg=None, clip_thr=5.0):
                 y=df['y'].to_numpy())
 
 
-def bin_grid(prep, cell_deg=0.25, min_n=5):
-    """Median-bin stars on a focal-plane grid; empirical per-cell errors."""
-    thx, thy, mom = prep['thx'], prep['thy'], prep['mom']
-    ix = np.floor(thx / cell_deg).astype(int)
-    iy = np.floor(thy / cell_deg).astype(int)
-    keys = ix + 1000 * iy
-    out_thx, out_thy, out_mom, out_err, out_rot = [], [], [], [], []
+def bin_grid(prep, cell_deg=0.10, min_n=3):
+    """Median-bin stars on a *per-detector* sub-CCD grid; empirical errors.
+
+    Bins are keyed by (detector, sub-CCD field cell) so a cell never straddles
+    two CCDs -- this preserves the per-CCD focal-plane-height Z4 step (the focus
+    diversity that breaks the Z4<->seeing degeneracy) and gives each cell a
+    single, well-defined detector for the per-detector CCS intrinsic lookup.
+    cell_deg ~ half a CCD (~0.2 deg) yields a few cells per CCD.
+    """
+    thx, thy, mom, det = prep['thx'], prep['thy'], prep['mom'], prep['detector']
+    ix = np.floor(thx / cell_deg).astype(np.int64)
+    iy = np.floor(thy / cell_deg).astype(np.int64)
+    keys = det.astype(np.int64) * 1_000_000 + (ix + 500) + 1000 * (iy + 500)
+    out_thx, out_thy, out_mom, out_err, out_rot, out_det = [], [], [], [], [], []
     for k in np.unique(keys):
         m = keys == k
         if m.sum() < min_n:
@@ -73,9 +80,10 @@ def bin_grid(prep, cell_deg=0.25, min_n=5):
         # robust error on the median: 1.253 * std / sqrt(n)
         out_err.append(1.253 * np.std(mom[m], axis=0) / np.sqrt(m.sum()))
         out_rot.append(np.median(prep['rot'][m]))
+        out_det.append(int(det[m][0]))          # single detector by construction
     return dict(thx=np.array(out_thx), thy=np.array(out_thy),
                 rot=np.array(out_rot), mom=np.array(out_mom),
-                err=np.array(out_err))
+                err=np.array(out_err), detector=np.array(out_det, int))
 
 
 def to_catalog(binned):
@@ -89,7 +97,7 @@ def to_catalog(binned):
         err[:, j] = col
     return {'thx_deg': binned['thx'], 'thy_deg': binned['thy'],
             'rotator_rad': binned['rot'], 'moments': binned['mom'],
-            'errors': err}
+            'errors': err, 'detector': binned['detector']}
 
 
 def cwfs_dz(day_obs, infocus_seq):

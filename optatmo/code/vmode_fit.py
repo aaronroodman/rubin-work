@@ -63,10 +63,11 @@ def wavefront_at(A, npz_path, thx_deg, thy_deg, jmax=22, fp_radius=1.75):
 
 
 def model_moments_at(model, npz_path, A, atm, thx_deg, thy_deg, rot_rad,
-                     miw=None, jmax=22, fp_radius=1.75, batch=256):
+                     miw=None, detector=None, jmax=22, fp_radius=1.75, batch=256):
     """Model HSM moments at arbitrary field positions (for data-vs-model plots).
 
-    wavefront = MIW(thx,thy,rot) + G_v(thx,thy) @ A ; moments via the JAX model.
+    wavefront = MIW(thx,thy,rot,detector) + G_v(thx,thy) @ A ; JAX model moments.
+    ``detector`` (per point) is required by the per-detector MIWOfficial loader.
     """
     import jax
     import jax.numpy as jnp
@@ -74,7 +75,8 @@ def model_moments_at(model, npz_path, A, atm, thx_deg, thy_deg, rot_rad,
     dev = np.einsum('sjv,v->sj', G_v, np.asarray(A))          # (n, jmax+1)
     z = dev.copy()
     if miw is not None:
-        z = z + np.nan_to_num(miw.zernikes(thx_deg, thy_deg, rot_rad, jmax))
+        z = z + np.nan_to_num(
+            miw.zernikes(thx_deg, thy_deg, rot_rad, jmax, detector))
     atm_j = jnp.asarray(atm)
     fn = jax.jit(lambda zz: model.moments_adaptive(zz, atm_j))
     out = []

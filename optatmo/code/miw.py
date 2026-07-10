@@ -18,8 +18,27 @@ complex coefficient picks up the spin phase.
 """
 
 import numpy as np
+import pandas as pd
 import pyarrow.parquet as pq
 from scipy.spatial import Delaunay
+
+
+def _bary_interp(tri, values, qx, qy):
+    """Barycentric-linear interp of `values` on triangulation `tri`; NaN outside."""
+    q = np.column_stack([np.atleast_1d(qx), np.atleast_1d(qy)])
+    out = np.full(len(q), np.nan)
+    if tri is None:
+        return out
+    simp = tri.find_simplex(q)
+    ok = simp >= 0
+    if np.any(ok):
+        T = tri.transform[simp[ok]]
+        d = q[ok] - T[:, 2]
+        bary = np.einsum('ijk,ik->ij', T[:, :2], d)
+        w = np.column_stack([bary, 1 - bary.sum(1)])
+        verts = tri.simplices[simp[ok]]
+        out[ok] = np.einsum('ij,ij->i', w, values[verts])
+    return out
 
 # Noll -> (radial n, signed azimuthal m); from ts_intrinsic_wavefront.
 NOLL_NM = {
@@ -116,6 +135,97 @@ class MIW:
                 Cs = self._interp(self.ccs[js], cx, cy)
                 phase = np.exp(1j * spin * th)
                 tot = (Oc + 1j * Os) + phase * (Cc + 1j * Cs)
+                if jc <= jmax:
+                    z[:, jc] = tot.real
+                if js <= jmax:
+                    z[:, js] = tot.imag
+        return z
+
+
+class MIWOfficial:
+    """MIW from the official ip_isr ``intrinsicZernikes`` calib product.
+
+    Reads the two parquets written by ``export_official_miw.py``:
+      * ``intrinsic_official_ocs.parquet`` -- shared telescope-fixed OCS map
+        (thx_deg, thy_deg, Z{j}_OCS), interpolated globally.
+      * ``intrinsic_official_ccs.parquet`` -- per-detector camera-fixed CCS map
+        (detector, thx_deg, thy_deg, Z{j}_CCS) with the per-CCD focal-plane
+        height already folded into Z4 at every footprint point.  Interpolated
+        **per detector** so the per-CCD height steps are preserved (a global
+        interp would smear them out).
+
+    Reconstruction is identical to `MIW` (OCS spin-phase convention, OCS-frame
+    output): total(theta) = O(field) + exp(i|m| s theta) * C(R_{-s theta} field),
+    with C taken from the star's own detector footprint.
+    """
+
+    def __init__(self, ocs_parquet, ccs_parquet, rotation_sign=1):
+        ocs = pd.read_parquet(ocs_parquet)
+        ccs = pd.read_parquet(ccs_parquet)
+        self.rotation_sign = rotation_sign
+        self.nolls = sorted(
+            int(c[1:-4]) for c in ocs.columns
+            if c.endswith('_OCS') and c[1:-4].isdigit()
+            and f'Z{c[1:-4]}_CCS' in ccs.columns)
+        # global OCS triangulation
+        self.ocs_tri = Delaunay(np.column_stack(
+            [ocs['thx_deg'].to_numpy(float), ocs['thy_deg'].to_numpy(float)]))
+        self.ocs = {j: ocs[f'Z{j}_OCS'].to_numpy(float) for j in self.nolls}
+        # per-detector CCS triangulations + values
+        self.ccs_tri, self.ccs = {}, {}
+        for det, g in ccs.groupby('detector'):
+            det = int(det)
+            pts = np.column_stack([g['thx_deg'].to_numpy(float),
+                                   g['thy_deg'].to_numpy(float)])
+            try:
+                self.ccs_tri[det] = Delaunay(pts)
+            except Exception:
+                self.ccs_tri[det] = None       # degenerate (collinear) footprint
+            self.ccs[det] = {j: g[f'Z{j}_CCS'].to_numpy(float)
+                             for j in self.nolls}
+        self.groups = _group(self.nolls)
+
+    def zernikes(self, thx_deg, thy_deg, rotator_rad, jmax, detector):
+        """Total intrinsic Zernike vector (microns, index 0 unused) per star.
+
+        :param detector: per-star detector id (int), selects the CCS footprint.
+        :returns: ndarray (n_stars, jmax+1); NaN where OCS/CCS support is missing.
+        """
+        thx = np.atleast_1d(np.asarray(thx_deg, float))
+        thy = np.atleast_1d(np.asarray(thy_deg, float))
+        det = np.broadcast_to(np.atleast_1d(np.asarray(detector, int)),
+                              thx.shape)
+        th = self.rotation_sign * np.atleast_1d(np.asarray(rotator_rad, float))
+        th = np.broadcast_to(th, thx.shape)
+        c, s = np.cos(th), np.sin(th)
+        cx = c * thx + s * thy          # CCS query point R_{-theta}(field)
+        cy = -s * thx + c * thy
+
+        # OCS: one global interp per Noll
+        O = {j: _bary_interp(self.ocs_tri, self.ocs[j], thx, thy)
+             for j in self.nolls}
+        # CCS: per detector interp per Noll
+        C = {j: np.full(thx.size, np.nan) for j in self.nolls}
+        for d in np.unique(det):
+            m = det == d
+            tri = self.ccs_tri.get(int(d))
+            vals = self.ccs.get(int(d))
+            if tri is None or vals is None:
+                continue
+            for j in self.nolls:
+                C[j][m] = _bary_interp(tri, vals[j], cx[m], cy[m])
+
+        z = np.zeros((thx.size, jmax + 1))
+        for kind, spin, ja, jb in self.groups:
+            if ja > jmax and (jb is None or jb > jmax):
+                continue
+            if kind == 'single':
+                if ja <= jmax:
+                    z[:, ja] = O[ja] + C[ja]
+            else:
+                jc, js = ja, jb
+                phase = np.exp(1j * spin * th)
+                tot = (O[jc] + 1j * O[js]) + phase * (C[jc] + 1j * C[js])
                 if jc <= jmax:
                     z[:, jc] = tot.real
                 if js <= jmax:

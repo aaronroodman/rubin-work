@@ -1,8 +1,10 @@
-"""Run the v-Mode OptAtmo fit on real PSF-star moments (seq 31 & 34, 20260513).
+"""Run the v-Mode OptAtmo fit on real PSF-star moments (seq 25 & 28, 20260513).
 
-wavefront = MIW(intrinsic, OCS) + G_v @ A  (12 v-mode amplitudes)
+wavefront = MIW_official(intrinsic, OCS-frame) + G_v @ A  (v-mode amplitudes)
+  MIW_official = official ip_isr intrinsicZernikes product (per-detector CCS with
+  CCD height folded into Z4), reconstructed in the OCS frame (miw.MIWOfficial).
 atmosphere = VonKarman(fwhm, L0=25) sheared by (g1,g2)
-Fit A + (fwhm,g1,g2) to the OCS-rotated, grid-binned HSM moments.
+Fit A + (fwhm,g1,g2) to the OCS-rotated, per-detector sub-CCD-binned HSM moments.
 Outputs the fitted v-mode amplitudes and the wavefront for the corner comparison.
 """
 import numpy as np, pandas as pd, jax, jax.numpy as jnp
@@ -13,11 +15,14 @@ import fit as fitmod
 import data_fit
 from model import Forward
 from vmode_fit import build_vmode_design
-from miw import MIW
+from miw import MIWOfficial
 
 import sys as _sys
 NPZ = next((a for a in _sys.argv[1:] if a.endswith('.npz')), 'data/ofc_svd_22_12.npz')
-MIW_PARQUET = '../aos/calibration/miw/intrinsic_split_maps_v1.parquet'
+# official ip_isr intrinsicZernikes product (CCD height folded into CCS Z4),
+# exported by export_official_miw.py
+MIW_OCS = 'data/intrinsic_official_ocs.parquet'
+MIW_CCS = 'data/intrinsic_official_ccs.parquet'
 VISITS_PARQUET = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
 DAY = 20260513
 
@@ -38,7 +43,7 @@ def main():
     jmax = cfg['geometry']['jmax']
 
     model = fitmod.build_model(cfg)
-    miw = MIW(MIW_PARQUET)
+    miw = MIWOfficial(MIW_OCS, MIW_CCS)
     n_v = int(np.load(NPZ)['U_eff'].shape[1])      # #v-modes from the SVD file
     vmode_names = [f'v{i+1}' for i in range(n_v)]
     print(f'v-mode fit: {n_v} modes from {NPZ}')
@@ -55,12 +60,13 @@ def main():
         rot = rot_for(seq)
         prep = data_fit.load_and_prep(f'data/psfmoments_{DAY}000{seq}.parquet',
                                       sign=SIGN, rot_deg=rot)
-        binned = data_fit.bin_grid(prep, cell_deg=0.30)
+        binned = data_fit.bin_grid(prep, cell_deg=0.10)
         cat = data_fit.to_catalog(binned)
         G_v, _, _ = build_vmode_design(NPZ, cat['thx_deg'], cat['thy_deg'],
                                        jmax, fp_radius=1.75)
         z0 = np.nan_to_num(miw.zernikes(cat['thx_deg'], cat['thy_deg'],
-                                        cat['rotator_rad'], jmax))
+                                        cat['rotator_rad'], jmax,
+                                        cat['detector']))
         fwd = Forward(model, layout, z0, G_v, cat['moments'], cat['errors'],
                       cfg['fit']['moments'], {m: 1.0 for m in cfg['fit']['moments']},
                       reg_lambda=REG)
@@ -82,6 +88,7 @@ def main():
         print('  atm:', {k: round(v, 4) for k, v in atm.items()})
         np.savez(f'data/vmodefit_{seq}.npz', A=A, atm=np.array(list(atm.values())),
                  thx=cat['thx_deg'], thy=cat['thy_deg'], rot=rot,
+                 detector=cat['detector'],
                  data_mom=cat['moments'], model_mom=model_mom,
                  data_err=cat['errors'])
         out[seq] = (A, atm)
