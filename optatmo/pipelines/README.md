@@ -6,14 +6,15 @@ USDF, from Butler data to the data-vs-model + corner-comparison plots.
 Chain (per in-focus visit `seq`):
 
 ```
-export_miw ──┐
-extract_psf ─┼─> fit ─> plots
-extract_cwfs ┘
+extract_psf ─┐
+extract_cwfs ┴─> fit ─> plots       plot_miw (MIW validation) is standalone
 ```
 
-- **export_miw** (once) — dump the official ip_isr `intrinsicZernikes` calib
-  (per-detector CCS with CCD-height in Z4) to `data/intrinsic_official_{ocs,ccs}.parquet`
-  + `data/detector_names.parquet`.
+The **MIW is read straight from the Butler `intrinsicZernikes` calib** (no
+parquet copy): the fit/plots reconstruct it per-detector via `miw.MIWCalib`
+(the calib's OCS interpolator + each CCD's own CCS interpolator, CCD-height in
+Z4), and `plot_miw` renders it directly from the calib's interpolators.
+
 - **extract_psf** (per visit) — clean PSF stars → recomputed HSM moments →
   `data/psfmoments_<visit>.parquet`.
 - **extract_cwfs** (per visit) — corner-WFS aggregate Zernikes →

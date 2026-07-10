@@ -2,7 +2,8 @@
 
 wavefront = MIW_official(intrinsic, OCS-frame) + G_v @ A  (v-mode amplitudes)
   MIW_official = official ip_isr intrinsicZernikes product (per-detector CCS with
-  CCD height folded into Z4), reconstructed in the OCS frame (miw.MIWOfficial).
+  CCD height folded into Z4), read from the Butler and reconstructed in the OCS
+  frame per-detector (miw.MIWCalib).
 atmosphere = VonKarman(fwhm, L0=25) sheared by (g1,g2)
 Fit A + (fwhm,g1,g2) to the OCS-rotated, per-detector sub-CCD-binned HSM moments.
 Outputs the fitted v-mode amplitudes and the wavefront for the corner comparison.
@@ -15,14 +16,18 @@ import fit as fitmod
 import data_fit
 from model import Forward
 from vmode_fit import build_vmode_design
-from miw import MIWOfficial
+from miw import MIWCalib
 
 import sys as _sys
 NPZ = next((a for a in _sys.argv[1:] if a.endswith('.npz')), 'data/ofc_svd_22_12.npz')
-# official ip_isr intrinsicZernikes product (CCD height folded into CCS Z4),
-# exported by export_official_miw.py
-MIW_OCS = 'data/intrinsic_official_ocs.parquet'
-MIW_CCS = 'data/intrinsic_official_ccs.parquet'
+# official ip_isr intrinsicZernikes calib, read straight from the Butler
+# (per-CCD CCS with CCD height in Z4); tokens: coll=, filt=, repo=
+MIW_COLL = next((a.split('=', 1)[1] for a in _sys.argv if a.startswith('coll=')),
+                'u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
+MIW_FILT = next((a.split('=', 1)[1] for a in _sys.argv if a.startswith('filt=')),
+                'i_39')
+MIW_REPO = next((a.split('=', 1)[1] for a in _sys.argv if a.startswith('repo=')),
+                '/repo/main')
 VISITS_PARQUET = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
 DAY = next((int(a.split('=')[1]) for a in _sys.argv if a.startswith('day=')),
            20260513)
@@ -50,7 +55,7 @@ def main():
     jmax = cfg['geometry']['jmax']
 
     model = fitmod.build_model(cfg)
-    miw = MIWOfficial(MIW_OCS, MIW_CCS)
+    miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
     n_v = int(np.load(NPZ)['U_eff'].shape[1])      # #v-modes from the SVD file
     vmode_names = [f'v{i+1}' for i in range(n_v)]
     print(f'v-mode fit: {n_v} modes from {NPZ}')

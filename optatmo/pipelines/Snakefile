@@ -3,13 +3,13 @@
 #
 # Chain, per in-focus visit (seq):
 #
-#   export_miw ─┐
-#   extract_psf ┼─> fit ─> plots
-#   extract_cwfs┘                (corner comparison uses cwfs + official MIW)
+#   extract_psf ─┐
+#   extract_cwfs ┴─> fit ─> plots        plot_miw (MIW validation) is standalone
 #
-# export_miw runs once (dumps the official ip_isr intrinsicZernikes calib to
-# parquet); extract_psf / extract_cwfs run per visit (Butler, parallelisable);
-# fit and plots run per seq.
+# The MIW is read straight from the Butler `intrinsicZernikes` calib (no parquet
+# copy): the fit/plots load it via miw.MIWCalib, plot_miw via the calib's own
+# interpolators.  extract_psf / extract_cwfs run per visit (Butler,
+# parallelisable); fit and plots run per seq.
 #
 # Run from the optatmo/ ROOT (so data/, config.yaml, ../aos/ resolve):
 #
@@ -35,6 +35,9 @@ DAY   = int(config["day"])
 SEQS  = [int(s) for s in config["seqs"]]
 SVD   = config["svd_npz"]
 REG   = config["reg"]
+REPO  = config["repo"]
+MIW_COLL = config["miw_collection"]
+MIW_FILT = config["filter"]
 CODE  = "code"
 
 
@@ -75,23 +78,6 @@ rule plot_miw:
         "--repo {params.repo} --out-dir output &> {log}"
 
 
-# ---- official MIW calibration (once) -> OCS + per-detector CCS + names ----
-rule export_miw:
-    output:
-        ocs   = "data/intrinsic_official_ocs.parquet",
-        ccs   = "data/intrinsic_official_ccs.parquet",
-        names = "data/detector_names.parquet",
-    input:
-        script = f"{CODE}/export_official_miw.py",
-    params:
-        coll = config["miw_collection"], filt = config["filter"],
-        repo = config["repo"],
-    log: "pipelines/logs/export_miw.log"
-    shell:
-        "python {input.script} --out-dir data --collection {params.coll} "
-        "--filter {params.filt} --repo {params.repo} &> {log}"
-
-
 # ---- per-visit PSF-star moment extraction (Butler) ----
 rule extract_psf:
     output:
@@ -123,14 +109,12 @@ rule extract_cwfs:
         "--collection '{params.coll}' --repo {params.repo} --out-dir data &> {log}"
 
 
-# ---- per-seq v-mode fit ----
+# ---- per-seq v-mode fit (MIW read straight from the Butler calib) ----
 rule fit:
     output:
         "data/vmodefit_{seq}.npz",
     input:
         psf   = lambda w: f"data/psfmoments_{visit(int(w.seq))}.parquet",
-        ocs   = "data/intrinsic_official_ocs.parquet",
-        ccs   = "data/intrinsic_official_ccs.parquet",
         svd   = SVD,
         script = f"{CODE}/run_vmode_fit.py",
         deps  = [f"{CODE}/{m}.py" for m in
@@ -139,7 +123,8 @@ rule fit:
     log: "pipelines/logs/fit.{seq}.log"
     shell:
         "python {input.script} 1 {input.svd} reg={REG} "
-        "seqs={wildcards.seq} day={DAY} &> {log}"
+        "seqs={wildcards.seq} day={DAY} "
+        "coll={MIW_COLL} filt={MIW_FILT} repo={REPO} &> {log}"
 
 
 # ---- per-seq data-vs-model + corner comparison plots ----
@@ -150,13 +135,11 @@ rule plots:
         fit   = "data/vmodefit_{seq}.npz",
         cwfs  = lambda w: f"data/cwfs_{visit(int(w.seq))}.parquet",
         psf   = lambda w: f"data/psfmoments_{visit(int(w.seq))}.parquet",
-        ocs   = "data/intrinsic_official_ocs.parquet",
-        ccs   = "data/intrinsic_official_ccs.parquet",
-        names = "data/detector_names.parquet",
         svd   = SVD,
         script = f"{CODE}/plot_data_model.py",
         deps  = [f"{CODE}/{m}.py" for m in ("miw", "data_fit", "vmode_fit",
                                             "model", "fit", "config", "frames")],
     log: "pipelines/logs/plots.{seq}.log"
     shell:
-        "python {input.script} {input.svd} seqs={wildcards.seq} day={DAY} &> {log}"
+        "python {input.script} {input.svd} seqs={wildcards.seq} day={DAY} "
+        "coll={MIW_COLL} filt={MIW_FILT} repo={REPO} &> {log}"

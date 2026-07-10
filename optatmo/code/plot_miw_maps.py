@@ -10,14 +10,19 @@ The ip_isr ``IntrinsicZernikes`` calib exposes:
     ``field_x, field_y, values`` (per-detector CCS), ``noll_indices``.
 
 Plots:
-  1. Z4 OCS (calib.interpolator_ocs) | Z4 CCS (per-detector calib.interpolator,
-     assembled over the focal plane; per-CCD height steps preserved).
+  1. Z4 OCS (calib.interpolator_ocs on a global grid) | Z4 CCS (rendered
+     PER CCD: an n_sub x n_sub grid inside each detector's own footprint hull,
+     evaluated with that detector's calib.interpolator, then imaged together;
+     the per-CCD height steps are preserved and there is no cross-CCD blending).
   2. OCS maps Z5..Z11 (calib.interpolator_ocs).
-Sample points (field_x/field_y from the tables) are overplotted faintly.
+
+The ~16 field-edge CCDs stored height-only on the WHOLE focal-plane grid (not a
+compact footprint) are skipped in the CCS panel -- their per-CCD footprint is
+not recoverable from the calib samples alone.
 
 Usage:
     python plot_miw_maps.py [--repo /repo/main] [--collection ...] [--filter i_39]
-        [--ocs-n 71] [--ccs-n 151] [--lim 1.75] [--out-dir output]
+        [--ocs-n 71] [--ccs-sub 10] [--lim 1.75] [--out-dir output]
 """
 import argparse
 
@@ -27,7 +32,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
-from scipy.spatial import cKDTree
 
 FP_R = 1.75
 
@@ -58,6 +62,27 @@ def _imshow(ax, Z, lim, title, sample_xy=None):
     return im
 
 
+def ccs_ccd_patches(calibs, dets, kidx, n_sub, ocs_n):
+    """One (gx, gy, Z) patch per footprint CCD: an n_sub x n_sub grid inside the
+    CCD's own sample bounding box, evaluated with that CCD's interpolator (NaN
+    outside its footprint hull).  Field-edge CCDs stored height-only on the
+    WHOLE focal-plane grid (n_samples >= 0.5 * ocs_n) have no compact footprint
+    and are skipped.  Returns (patches, n_skipped)."""
+    patches, n_skip = [], 0
+    for d in dets:
+        c = calibs[d]
+        fx, fy = np.asarray(c.field_x), np.asarray(c.field_y)
+        if fx.size >= 0.5 * ocs_n:            # whole-FP height-only fallback CCD
+            n_skip += 1
+            continue
+        ax = np.linspace(fx.min(), fx.max(), n_sub)
+        ay = np.linspace(fy.min(), fy.max(), n_sub)
+        gx, gy = np.meshgrid(ax, ay)
+        z = np.asarray(c.interpolator(np.column_stack([gx.ravel(), gy.ravel()])))
+        patches.append((gx, gy, z[:, kidx].reshape(gx.shape)))
+    return patches, n_skip
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--repo', default='/repo/main')
@@ -66,11 +91,9 @@ def main():
     ap.add_argument('--filter', default='i_39')
     ap.add_argument('--instrument', default='LSSTCam')
     ap.add_argument('--ocs-n', type=int, default=71)
-    ap.add_argument('--ccs-n', type=int, default=151)
+    ap.add_argument('--ccs-sub', type=int, default=10,
+                    help='per-CCD grid (n_sub x n_sub) for the CCS panel')
     ap.add_argument('--lim', type=float, default=1.75)
-    ap.add_argument('--max-dist', type=float, default=0.2,
-                    help='blank CCS grid points farther than this (deg) from any '
-                         'sample (beyond focal-plane coverage)')
     ap.add_argument('--out-dir', default='output')
     args = ap.parse_args()
 
@@ -100,28 +123,11 @@ def main():
     print(f'OCS samples: {ocs_xy[0].size} pts, r_max='
           f'{np.hypot(*ocs_xy).max():.3f} deg')
 
-    # ---- CCS Z4 assembled per-detector via each calib's OWN interpolator ----
-    cgx, cgy, cgg = _grid(args.ccs_n, args.lim)
-    sx = np.concatenate([np.asarray(calibs[d].field_x) for d in dets])
-    sy = np.concatenate([np.asarray(calibs[d].field_y) for d in dets])
-    sdet = np.concatenate([np.full(np.asarray(calibs[d].field_x).size, d)
-                           for d in dets])
-    dist, idx = cKDTree(np.column_stack([sx, sy])).query(cgg)
-    gdet = sdet[idx]
-    Zccs = np.full(len(cgg), np.nan)
-    for d in np.unique(gdet):
-        gm = gdet == d
-        vals = np.asarray(calibs[d].interpolator(cgg[gm]))[:, k[4]]
-        bad = ~np.isfinite(vals)        # outside this CCD's footprint hull
-        if bad.any():
-            sm = sdet == d
-            _, di = cKDTree(np.column_stack([sx[sm], sy[sm]])).query(cgg[gm][bad])
-            vals[bad] = np.asarray(calibs[d].values)[:, k[4]][di]
-        Zccs[gm] = vals
-    Zccs[dist > args.max_dist] = np.nan
-    Zccs = Zccs.reshape(cgx.shape)
-    print(f'CCS samples: {sx.size} pts across {len(dets)} detectors, '
-          f'r_max={np.hypot(sx, sy).max():.3f} deg')
+    # ---- CCS Z4: one n_sub x n_sub patch per CCD, each via its OWN interp ----
+    patches, n_skip = ccs_ccd_patches(calibs, dets, k[4], args.ccs_sub, ocs_xy[0].size)
+    vl_ccs = _vlim(np.concatenate([p[2].ravel() for p in patches]))
+    print(f'CCS: {len(patches)} footprint CCDs rendered '
+          f'({args.ccs_sub}x{args.ccs_sub} each), {n_skip} height-only CCDs skipped')
 
     # ---- 1. Z4 OCS vs CCS ----
     fig, ax = plt.subplots(1, 2, figsize=(13, 6))
@@ -129,10 +135,20 @@ def main():
                  f'Z4 OCS [µm] ({args.ocs_n}x{args.ocs_n}, calib.interpolator_ocs)',
                  sample_xy=ocs_xy)
     fig.colorbar(i0, ax=ax[0], shrink=0.8)
-    i1 = _imshow(ax[1], Zccs, args.lim,
-                 f'Z4 CCS [µm] ({args.ccs_n}x{args.ccs_n}, per-CCD '
-                 f'calib.interpolator, incl. height)', sample_xy=(sx, sy))
-    fig.colorbar(i1, ax=ax[1], shrink=0.8)
+    axc = ax[1]
+    im = None
+    for gx_, gy_, z_ in patches:
+        im = axc.pcolormesh(gx_, gy_, np.ma.masked_invalid(z_), cmap='RdBu_r',
+                            vmin=-vl_ccs, vmax=vl_ccs, shading='nearest')
+    axc.add_patch(Circle((0, 0), FP_R, fill=False, ls='--', color='k',
+                         lw=0.5, alpha=0.5))
+    axc.set_aspect('equal'); axc.set_xlim(-args.lim, args.lim)
+    axc.set_ylim(-args.lim, args.lim); axc.tick_params(labelsize=6)
+    axc.set_title(f'Z4 CCS [µm] (per-CCD {args.ccs_sub}x{args.ccs_sub} '
+                  f'interpolation, incl. height)', fontsize=9)
+    axc.set_xlabel('x [deg]', fontsize=7); axc.set_ylabel('y [deg]', fontsize=7)
+    if im is not None:
+        fig.colorbar(im, ax=axc, shrink=0.8)
     fig.suptitle('Official MIW calib — Z4 (defocus): OCS vs CCS')
     fig.tight_layout()
     fig.savefig(f'{args.out_dir}/miw_z4_ocs_ccs.png', dpi=120, bbox_inches='tight')

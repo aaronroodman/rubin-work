@@ -67,7 +67,7 @@ def model_moments_at(model, npz_path, A, atm, thx_deg, thy_deg, rot_rad,
     """Model HSM moments at arbitrary field positions (for data-vs-model plots).
 
     wavefront = MIW(thx,thy,rot,detector) + G_v(thx,thy) @ A ; JAX model moments.
-    ``detector`` (per point) is required by the per-detector MIWOfficial loader.
+    ``detector`` (per point) is required by the per-detector MIWCalib loader.
     """
     import jax
     import jax.numpy as jnp

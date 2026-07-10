@@ -1,44 +1,26 @@
 """
-Measured Intrinsic Wavefront (MIW) loader: OCS + CCS -> Zernike vector.
+Measured Intrinsic Wavefront (MIW) from the official ip_isr ``intrinsicZernikes``
+calibration in the Butler (RUN ON USDF -- needs Butler + ip_isr).
 
-Reads the ts_intrinsic_wavefront ``intrinsic_split_maps`` parquet (telescope-
-fixed OCS and camera-fixed CCS Zernike field maps, microns, Noll Z4..Z26 on a
-(thx_deg, thy_deg) grid) and reconstructs the total intrinsic wavefront at
-arbitrary field positions and rotator angle.
+Reconstructs the total intrinsic wavefront Zernike vector in the OCS frame using
+the calib object's OWN interpolators (scipy LinearNDInterpolator, NaN outside the
+sample hull -- no re-derivation, no parquet copy):
 
-Reconstruction convention (from ts_intrinsic_wavefront.intrinsic_split, s=+1,
-CCS = R(-theta).OCS): for a spin-|m| Zernike doublet with complex field
-Z_cos + i Z_sin,
+  * OCS (telescope-fixed, shared across detectors): ``calib.interpolator_ocs``
+  * CCS (camera-fixed, per detector; CCD focal-plane height folded into Z4):
+    the star's OWN detector ``calib.interpolator``, evaluated strictly within
+    that CCD's footprint.
 
-    total(theta) = O(field)  +  exp(i|m| s theta) * C(R_{-s theta} field)
+Combined with the spin-phase convention (from ts_intrinsic_wavefront, s=+1,
+CCS = R(-theta) OCS): for a spin-|m| doublet Z_cos + i Z_sin,
 
-and for a scalar (m=0) mode, total = O(field) + C(R_{-s theta} field).
-The CCS map is sampled at the field position rotated by -s*theta and the
-complex coefficient picks up the spin phase.
+    total(theta) = O(field) + exp(i|m| s theta) * C(R_{-s theta} field)
+
+and total = O + C for a scalar (m=0) mode.  OCS-frame output -- consistent with
+the OCS-rotated PSF moments, the v-mode (DZ) deviation, and the CWFS zk_OCS.
 """
 
 import numpy as np
-import pandas as pd
-import pyarrow.parquet as pq
-from scipy.spatial import Delaunay
-
-
-def _bary_interp(tri, values, qx, qy):
-    """Barycentric-linear interp of `values` on triangulation `tri`; NaN outside."""
-    q = np.column_stack([np.atleast_1d(qx), np.atleast_1d(qy)])
-    out = np.full(len(q), np.nan)
-    if tri is None:
-        return out
-    simp = tri.find_simplex(q)
-    ok = simp >= 0
-    if np.any(ok):
-        T = tri.transform[simp[ok]]
-        d = q[ok] - T[:, 2]
-        bary = np.einsum('ijk,ik->ij', T[:, :2], d)
-        w = np.column_stack([bary, 1 - bary.sum(1)])
-        verts = tri.simplices[simp[ok]]
-        out[ok] = np.einsum('ij,ij->i', w, values[verts])
-    return out
 
 # Noll -> (radial n, signed azimuthal m); from ts_intrinsic_wavefront.
 NOLL_NM = {
@@ -74,146 +56,77 @@ def _group(noll_list):
     return groups
 
 
-class MIW:
-    def __init__(self, parquet_path, rotation_sign=1):
-        t = pq.read_table(parquet_path).to_pydict()
-        self.thx = np.asarray(t['thx_deg'], float)
-        self.thy = np.asarray(t['thy_deg'], float)
-        self.pts = np.column_stack([self.thx, self.thy])
-        self.tri = Delaunay(self.pts)
-        self.rotation_sign = rotation_sign
-        # available Noll indices (both OCS and CCS present)
-        self.nolls = sorted(int(k[1:-4]) for k in t
-                            if k.endswith('_OCS') and (k[:-4] + '_CCS') in t)
-        self.ocs = {j: np.asarray(t[f'Z{j}_OCS'], float) for j in self.nolls}
-        self.ccs = {j: np.asarray(t[f'Z{j}_CCS'], float) for j in self.nolls}
-        self.groups = _group(self.nolls)
+class MIWCalib:
+    """MIW from the Butler ``intrinsicZernikes`` calib, queried per detector.
 
-    def _interp(self, values, qx, qy):
-        """Barycentric-linear interpolation of `values` at (qx,qy); NaN outside."""
-        q = np.column_stack([np.atleast_1d(qx), np.atleast_1d(qy)])
-        simp = self.tri.find_simplex(q)
-        out = np.full(len(q), np.nan)
-        ok = simp >= 0
-        if np.any(ok):
-            T = self.tri.transform[simp[ok]]
-            d = q[ok] - T[:, 2]
-            bary = np.einsum('ijk,ik->ij', T[:, :2], d)
-            w = np.column_stack([bary, 1 - bary.sum(1)])
-            verts = self.tri.simplices[simp[ok]]
-            out[ok] = np.einsum('ij,ij->i', w, values[verts])
-        return out
-
-    def zernikes(self, thx_deg, thy_deg, rotator_rad, jmax):
-        """Total intrinsic Zernike vector (microns, index 0 unused) per star.
-
-        :returns: ndarray (n_stars, jmax+1).
-        """
-        thx = np.atleast_1d(np.asarray(thx_deg, float))
-        thy = np.atleast_1d(np.asarray(thy_deg, float))
-        th = self.rotation_sign * np.atleast_1d(np.asarray(rotator_rad, float))
-        th = np.broadcast_to(th, thx.shape)
-        c, s = np.cos(th), np.sin(th)
-        # CCS sampled at R_{-theta} field position
-        cx = c * thx + s * thy
-        cy = -s * thx + c * thy
-
-        z = np.zeros((thx.size, jmax + 1))
-        for kind, spin, ja, jb in self.groups:
-            if ja > jmax and (jb is None or jb > jmax):
-                continue
-            if kind == 'single':
-                o = self._interp(self.ocs[ja], thx, thy)
-                cc = self._interp(self.ccs[ja], cx, cy)
-                if ja <= jmax:
-                    z[:, ja] = o + cc
-            else:
-                jc, js = ja, jb
-                Oc = self._interp(self.ocs[jc], thx, thy)
-                Os = self._interp(self.ocs[js], thx, thy)
-                Cc = self._interp(self.ccs[jc], cx, cy)
-                Cs = self._interp(self.ccs[js], cx, cy)
-                phase = np.exp(1j * spin * th)
-                tot = (Oc + 1j * Os) + phase * (Cc + 1j * Cs)
-                if jc <= jmax:
-                    z[:, jc] = tot.real
-                if js <= jmax:
-                    z[:, js] = tot.imag
-        return z
-
-
-class MIWOfficial:
-    """MIW from the official ip_isr ``intrinsicZernikes`` calib product.
-
-    Reads the two parquets written by ``export_official_miw.py``:
-      * ``intrinsic_official_ocs.parquet`` -- shared telescope-fixed OCS map
-        (thx_deg, thy_deg, Z{j}_OCS), interpolated globally.
-      * ``intrinsic_official_ccs.parquet`` -- per-detector camera-fixed CCS map
-        (detector, thx_deg, thy_deg, Z{j}_CCS) with the per-CCD focal-plane
-        height already folded into Z4 at every footprint point.  Interpolated
-        **per detector** so the per-CCD height steps are preserved (a global
-        interp would smear them out).
-
-    Reconstruction is identical to `MIW` (OCS spin-phase convention, OCS-frame
-    output): total(theta) = O(field) + exp(i|m| s theta) * C(R_{-s theta} field),
-    with C taken from the star's own detector footprint.
+    :param collection: Butler CALIBRATION collection holding intrinsicZernikes.
+    :param physical_filter: e.g. ``i_39`` (the calib is filter-replicated).
+    :param repo/butler: Butler repo path, or an existing Butler instance.
+    Detector calibs are loaded lazily (and cached) as they are first queried, so
+    only the detectors actually used are fetched.
     """
 
-    def __init__(self, ocs_parquet, ccs_parquet, rotation_sign=1):
-        ocs = pd.read_parquet(ocs_parquet)
-        ccs = pd.read_parquet(ccs_parquet)
+    def __init__(self, collection, physical_filter='i_39', repo='/repo/main',
+                 instrument='LSSTCam', rotation_sign=1, butler=None):
+        from lsst.daf.butler import Butler
+        self.b = butler if butler is not None else Butler(repo)
+        self.collection = collection
+        self.filter = physical_filter
+        self.instrument = instrument
         self.rotation_sign = rotation_sign
-        self.nolls = sorted(
-            int(c[1:-4]) for c in ocs.columns
-            if c.endswith('_OCS') and c[1:-4].isdigit()
-            and f'Z{c[1:-4]}_CCS' in ccs.columns)
-        # global OCS triangulation
-        self.ocs_tri = Delaunay(np.column_stack(
-            [ocs['thx_deg'].to_numpy(float), ocs['thy_deg'].to_numpy(float)]))
-        self.ocs = {j: ocs[f'Z{j}_OCS'].to_numpy(float) for j in self.nolls}
-        # per-detector CCS triangulations + values
-        self.ccs_tri, self.ccs = {}, {}
-        for det, g in ccs.groupby('detector'):
-            det = int(det)
-            pts = np.column_stack([g['thx_deg'].to_numpy(float),
-                                   g['thy_deg'].to_numpy(float)])
-            try:
-                self.ccs_tri[det] = Delaunay(pts)
-            except Exception:
-                self.ccs_tri[det] = None       # degenerate (collinear) footprint
-            self.ccs[det] = {j: g[f'Z{j}_CCS'].to_numpy(float)
-                             for j in self.nolls}
-        self.groups = _group(self.nolls)
+        refs = list(self.b.registry.queryDatasets(
+            'intrinsicZernikes', collections=collection,
+            where=f"instrument='{instrument}' and physical_filter='{physical_filter}'",
+            findFirst=True))
+        self.dets = sorted({r.dataId['detector'] for r in refs})
+        if not self.dets:
+            raise RuntimeError(f'no intrinsicZernikes in {collection} '
+                               f'for filter {physical_filter}')
+        cal0 = self._load(self.dets[0])
+        self.noll = [int(j) for j in np.asarray(cal0.noll_indices)]
+        self.k = {j: i for i, j in enumerate(self.noll)}
+        self._ocs = cal0.interpolator_ocs          # shared telescope-fixed field
+        self.groups = _group(self.noll)
+        self._cache = {int(self.dets[0]): cal0}
+
+    def _load(self, det):
+        return self.b.get('intrinsicZernikes', collections=self.collection,
+                          instrument=self.instrument, detector=int(det),
+                          physical_filter=self.filter)
+
+    def _ccs_interp(self, det):
+        c = self._cache.get(int(det))
+        if c is None:
+            c = self._load(det)
+            self._cache[int(det)] = c
+        return c.interpolator
 
     def zernikes(self, thx_deg, thy_deg, rotator_rad, jmax, detector):
-        """Total intrinsic Zernike vector (microns, index 0 unused) per star.
+        """Total intrinsic Zernike vector (microns, index 0 unused), OCS frame.
 
-        :param detector: per-star detector id (int), selects the CCS footprint.
+        :param detector: per-star detector id -- selects the CCS interpolator.
         :returns: ndarray (n_stars, jmax+1); NaN where OCS/CCS support is missing.
         """
         thx = np.atleast_1d(np.asarray(thx_deg, float))
         thy = np.atleast_1d(np.asarray(thy_deg, float))
-        det = np.broadcast_to(np.atleast_1d(np.asarray(detector, int)),
-                              thx.shape)
-        th = self.rotation_sign * np.atleast_1d(np.asarray(rotator_rad, float))
-        th = np.broadcast_to(th, thx.shape)
+        det = np.broadcast_to(np.atleast_1d(np.asarray(detector, int)), thx.shape)
+        th = self.rotation_sign * np.broadcast_to(
+            np.atleast_1d(np.asarray(rotator_rad, float)), thx.shape)
         c, s = np.cos(th), np.sin(th)
         cx = c * thx + s * thy          # CCS query point R_{-theta}(field)
         cy = -s * thx + c * thy
 
-        # OCS: one global interp per Noll
-        O = {j: _bary_interp(self.ocs_tri, self.ocs[j], thx, thy)
-             for j in self.nolls}
-        # CCS: per detector interp per Noll
-        C = {j: np.full(thx.size, np.nan) for j in self.nolls}
+        # OCS: shared interpolator, returns (N, n_noll); NaN outside the hull
+        voc = np.asarray(self._ocs(np.column_stack([thx, thy])), float)
+        O = {j: voc[:, self.k[j]] for j in self.noll}
+        # CCS: each star's own detector interpolator, strictly within that CCD
+        C = {j: np.full(thx.size, np.nan) for j in self.noll}
         for d in np.unique(det):
             m = det == d
-            tri = self.ccs_tri.get(int(d))
-            vals = self.ccs.get(int(d))
-            if tri is None or vals is None:
-                continue
-            for j in self.nolls:
-                C[j][m] = _bary_interp(tri, vals[j], cx[m], cy[m])
+            vcc = np.asarray(self._ccs_interp(int(d))(
+                np.column_stack([cx[m], cy[m]])), float)
+            for j in self.noll:
+                C[j][m] = vcc[:, self.k[j]]
 
         z = np.zeros((thx.size, jmax + 1))
         for kind, spin, ja, jb in self.groups:

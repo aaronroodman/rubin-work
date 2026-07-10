@@ -17,14 +17,17 @@ from config import load_config
 import fit as fitmod
 import data_fit, frames
 from vmode_fit import model_moments_at, wavefront_at
-from miw import MIWOfficial
+from miw import MIWCalib
 
 DAY = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('day=')),
            20260513)
 LAB = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22', 'M31', 'M13', 'M40', 'M04']
-MIW_OCS = 'data/intrinsic_official_ocs.parquet'
-MIW_CCS = 'data/intrinsic_official_ccs.parquet'
-DET_NAMES = 'data/detector_names.parquet'
+MIW_COLL = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('coll=')),
+                'u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
+MIW_FILT = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('filt=')),
+                'i_39')
+MIW_REPO = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('repo=')),
+                '/repo/main')
 
 
 def visit_of(seq):
@@ -124,8 +127,8 @@ def run(seq, svd_npz, cfg, model, miw):
     # ---------- 4. corner bar chart: CWFS vs PSF-model deviation ----------
     cw = pd.read_parquet(f'data/cwfs_{visit_of(seq)}.parquet')
     cw['corner'] = cw.detector.str[:3]
-    _names = pd.read_parquet(DET_NAMES)
-    name2id = dict(zip(_names.name, _names.detector))
+    from lsst.obs.lsst import LsstCam
+    name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
     corners = ['R00', 'R04', 'R40', 'R44']
     njz = min(12, len(NOLL_CWFS))            # compare Noll 4..15
     fig, axes = plt.subplots(2, 2, figsize=(15, 9))
@@ -169,7 +172,7 @@ def main():
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'
     model = fitmod.build_model(cfg)
-    miw = MIWOfficial(MIW_OCS, MIW_CCS)
+    miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
     for seq in seqs:
         run(seq, svd_npz, cfg, model, miw)
 
