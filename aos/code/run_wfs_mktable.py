@@ -236,7 +236,11 @@ def main():
             for off in offs:
                 t, m = get_unpaired_zernikes(butler, d, fam_s + off, coord)
                 if t is not None:
-                    parts.append(t); meta = meta or m
+                    # filter to the lean `keep` set BEFORE vstack: the raw aggregate
+                    # has scalar cols whose dtype varies across exposures (float vs
+                    # all-NaN object), which would break the intra+extra vstack.
+                    parts.append(t[[c for c in keep if c in t.colnames]])
+                    meta = meta or m
             tbl = (None if not parts else
                    parts[0] if len(parts) == 1 else
                    vstack(parts, metadata_conflicts='silent'))
