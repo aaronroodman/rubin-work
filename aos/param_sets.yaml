@@ -128,7 +128,8 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   wfs_collections:
     refitWcs:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
     paired_3mm:
-      collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_6_1/donut_viz_4_5_0/danish_v1_2_0/bin2x
+      # Bryce's paired 3mm-defocus corner donuts, wep 17.8.0 / donut_viz 4.7.0.
+      collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_8_0/donut_viz_4_7_0/danish_v1_2_0/bin2x
       seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
     ai_donut:
       # No joined aggregateAOSVisitTableRaw; run_wfs_mktable's aggregateZernikesRaw
