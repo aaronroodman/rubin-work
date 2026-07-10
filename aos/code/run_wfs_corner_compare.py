@@ -159,11 +159,26 @@ def main():
                for r in vt[['day_obs', 'seq_num', *_side_cols]].itertuples(index=False)}
 
     # ---- CWFS (in-focus corner donuts) ----
-    cw = pq.read_table(str(base / 'wfs' / args.wfs_name / 'donuts.parquet'),
-                       columns=['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]).to_pandas()
+    cw_path = base / 'wfs' / args.wfs_name / 'donuts.parquet'
+    _rc = ['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]
+    if 'wfs_offset' in pq.ParquetFile(str(cw_path)).schema.names:
+        _rc.append('wfs_offset')                 # intra(-1)/extra(0) tag (unpaired CWFS)
+    cw = pq.read_table(str(cw_path), columns=_rc).to_pandas()
     cw_zk = np.stack(cw[zc].values).astype(float)
     cw_az = np.degrees(np.arctan2(cw[tyc].astype(float), cw[txc].astype(float))) % 360.0
     cw_det = cw.detector.astype(str).values
+    # Data-driven corner list: the corner sensors actually present -- 4 for the
+    # paired SW0-only CWFS, 8 for an unpaired set (SW0 intra + SW1 extra).
+    # Grouping by exact detector name keeps intra and extra separate (not averaged).
+    _CR = ('R00', 'R04', 'R40', 'R44')
+    CORNERS = sorted(dd for dd in set(cw_det) if dd[:3] in _CR and dd[-3:] in ('SW0', 'SW1'))
+    if 'wfs_offset' in cw.columns:               # per-corner intra/extra label for the parquet
+        cw['_detstr'] = cw_det
+        _koff = cw.groupby('_detstr')['wfs_offset'].median()
+        defocus_of = {dd: ('intra' if float(_koff.get(dd, 0)) < 0 else 'extra') for dd in CORNERS}
+    else:
+        defocus_of = {dd: '' for dd in CORNERS}
+    print(f'[wfs_corner_compare] corners: {CORNERS}')
 
     # ---- FAM (science array), outer annulus only ----
     fam = pq.read_table(str(base / 'donuts.parquet'), columns=['day_obs', 'seq_num', zc, txc, tyc]).to_pandas()
@@ -177,10 +192,10 @@ def main():
     triplets = sorted(set(cw_grp.keys()) & set(fam_grp.keys()))
     print(f'[wfs_corner_compare] {args.param_set}: {len(triplets)} matched triplets, '
           f'{nZk} Zernikes, coord={coord}, wedge=±{args.wedge_half}°')
-    nT = len(triplets)
-    FAMI = np.full((nT, 4, nZk), np.nan)        # FAM interp at each corner
-    CWM = np.full((nT, 4, nZk), np.nan)         # CWFS median at each corner
-    AZC = np.full((nT, 4), np.nan)              # corner azimuth (deg)
+    nT = len(triplets); nC = len(CORNERS)
+    FAMI = np.full((nT, nC, nZk), np.nan)       # FAM interp at each corner
+    CWM = np.full((nT, nC, nZk), np.nan)        # CWFS median at each corner
+    AZC = np.full((nT, nC), np.nan)             # corner azimuth (deg)
     val_idx = set(range(0, nT, args.val_stride))
     val = {}
     print(f'  FAM->corner interpolation: {args.interp}'
@@ -211,7 +226,7 @@ def main():
     #      For downstream FAM-vs-CWFS correlation analysis per Zj/corner. ----
     outdir = base / 'wfs' / args.wfs_name
     outdir.mkdir(parents=True, exist_ok=True)
-    rows = {k: [] for k in ('day_obs', 'seq_num', 'corner', 'j', 'fam_interp',
+    rows = {k: [] for k in ('day_obs', 'seq_num', 'corner', 'defocus', 'j', 'fam_interp',
                             'cwfs_median', 'corner_az_deg', 'rotator_angle',
                             'alt_deg', 'az_deg', 'mjd', 'science_program')}
     for t, key in enumerate(triplets):
@@ -231,7 +246,8 @@ def main():
                 if not (np.isfinite(fam_i) or np.isfinite(cw_m)):
                     continue                      # skip fully-empty (corner,Zj)
                 rows['day_obs'].append(d); rows['seq_num'].append(s)
-                rows['corner'].append(det); rows['j'].append(int(j))
+                rows['corner'].append(det); rows['defocus'].append(defocus_of.get(det, ''))
+                rows['j'].append(int(j))
                 rows['fam_interp'].append(float(fam_i))
                 rows['cwfs_median'].append(float(cw_m))
                 rows['corner_az_deg'].append(float(AZC[t, c]))
@@ -278,7 +294,8 @@ def main():
                 ax.set_title(f'Z{j}', fontsize=8); ax.tick_params(labelsize=6)
             for ax in axes.ravel()[nZk:]:
                 ax.axis('off')
-            fig.suptitle(f'{det}: CWFS median (y) vs FAM-interp (x) [{coord}, µm] — {args.param_set}', fontsize=11)
+            _dl = f' [{defocus_of.get(det, "")}]' if defocus_of.get(det) else ''
+            fig.suptitle(f'{det}{_dl}: CWFS median (y) vs FAM-interp (x) [{coord}, µm] — {args.param_set}', fontsize=11)
             pdf.savefig(fig); plt.close(fig)
 
         # ---- per-corner time history (all Zj) ----
@@ -294,7 +311,8 @@ def main():
             for ax in axes.ravel()[nZk:]:
                 ax.axis('off')
             axes.ravel()[0].legend(fontsize=6)
-            fig.suptitle(f'{det}: time history vs image ordinal [{coord}, µm] — {args.param_set}', fontsize=11)
+            _dl = f' [{defocus_of.get(det, "")}]' if defocus_of.get(det) else ''
+            fig.suptitle(f'{det}{_dl}: time history vs image ordinal [{coord}, µm] — {args.param_set}', fontsize=11)
             pdf.savefig(fig); plt.close(fig)
 
         # ---- summary: metric vs Zj, all corners ----

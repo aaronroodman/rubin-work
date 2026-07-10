@@ -151,6 +151,11 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
       reader: unpaired
       seq_offset: 0
       combine_offsets: [-1, 0]
+      # keep only the ~3mm-defocused SW half per exposure (drop the singleton
+      # in-focus half, e.g. the lone R00 SW1 in an intra exposure) -> 4 corners
+      # per exposure: intra->SW0, extra->SW1.  wfs_offset tags them for plots.
+      defocused_only: true
+      # TARTS returns 25 Noll terms (Z4-Z28); remapped to the FAM 21 (Z4-Z24).
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315

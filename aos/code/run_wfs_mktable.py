@@ -25,6 +25,7 @@ FAM k=1 (field-mean) DZ coefficient z{prefix}_z{j}_c1 overlaid per image →
 output/<param_set>/wfs/wfs_mktable_validation.pdf .  RSP-only (Butler).
 """
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -140,7 +141,7 @@ def get_aidonut_zernikes(butler, day_obs, seq_num, coord):
     return tbl, dict(band=meta.get('band', ''), nollIndices=noll)
 
 
-def get_unpaired_zernikes(butler, day_obs, seq_num, coord):
+def get_unpaired_zernikes(butler, day_obs, seq_num, coord, defocused_only=False):
     """Unpaired / neural CWFS (e.g. TARTS): the collection has a joined
     aggregateAOSVisitTableRaw but with SINGULAR per-donut positions
     (thx_<coord>/thy_<coord>; no intra/extra split), so the paired
@@ -149,8 +150,12 @@ def get_unpaired_zernikes(butler, day_obs, seq_num, coord):
     cannot filter on it -- and return the already-correctly-named singular
     columns.  Each exposure carries only some corner half-sensors (e.g. extra ->
     SW1, intra -> SW0 for R04/R40/R44), so combine both exposures upstream (see
-    combine_offsets) to cover all corners.  Returns (astropy Table, visit_meta)
-    or (None, None)."""
+    combine_offsets) to cover all corners.
+
+    defocused_only: keep only the majority SW-half for the exposure (the ~3mm
+    out-of-focus side), dropping the singleton opposite half that is effectively
+    in-focus (e.g. the lone R00 SW1 in an intra exposure).  Returns (astropy
+    Table, visit_meta) or (None, None)."""
     try:
         agg = butler.get('aggregateAOSVisitTableRaw', day_obs=day_obs, seq_num=seq_num)
     except Exception:
@@ -164,10 +169,31 @@ def get_unpaired_zernikes(butler, day_obs, seq_num, coord):
         u = np.asarray(agg['used'], bool)
         if u.any():
             agg = agg[u]
+    if defocused_only and 'detector' in agg.colnames and len(agg):
+        det = np.array([str(x) for x in agg['detector']])
+        is_sw0 = np.char.endswith(det, 'SW0')       # SW0 vs SW1 half of each corner raft
+        keep_sw0 = int(is_sw0.sum()) >= int((~is_sw0).sum())
+        agg = agg[is_sw0 if keep_sw0 else ~is_sw0]  # drop the minority (in-focus) half
+    if len(agg) == 0:
+        return None, None
     agg.meta = {}                                   # avoid vstack metadata conflicts
     noll = ([int(x) for x in meta['nollIndices']]
             if meta.get('nollIndices') is not None else None)
     return agg, dict(band=meta.get('band', ''), nollIndices=noll)
+
+
+def _fam_noll(base, prefix):
+    """FAM Zernike (Noll) order taken from the fits.parquet field-mean column
+    names {prefix}_z{j}_c1 -- the target order the CWFS zk are remapped onto so
+    a differently-sized CWFS Noll set (e.g. TARTS 25 vs FAM 21) still lines up."""
+    import pyarrow.parquet as pq
+    try:
+        names = pq.ParquetFile(str(base / 'fits.parquet')).schema.names
+    except Exception:
+        return None
+    js = sorted(int(m.group(1)) for c in names
+                if (m := re.match(rf'{re.escape(prefix)}_z(\d+)_c1$', c)))
+    return js or None
 
 
 def main():
@@ -197,9 +223,11 @@ def main():
         dataset_type = entry.get('dataset_type', 'aggregateAOSVisitTableRaw')
         reader = entry.get('reader')               # explicit reader override (e.g. 'unpaired')
         combine_offsets = entry.get('combine_offsets')   # unpaired: concat these seq offsets
+        defocused_only = bool(entry.get('defocused_only', False))   # keep only ~3mm half
     else:
         wfs_coll, seq_offset = entry, 1             # bare string -> in-focus (fam+1)
         dataset_type, reader, combine_offsets = 'aggregateAOSVisitTableRaw', None, None
+        defocused_only = False
     base = Path(args.output_root) / args.param_set
     fam_visits = QTable.read(str(base / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
@@ -223,24 +251,27 @@ def main():
     # also carry CCS positions (for the Z4 CCS MIW component) and the intra/extra
     # centroids (for the per-corner CCD-height Z4) — used by run_wfs_dof_compare
     for extra in ['thx_CCS', 'thy_CCS', 'centroid_x_intra', 'centroid_y_intra',
-                  'centroid_x_extra', 'centroid_y_extra']:
+                  'centroid_x_extra', 'centroid_y_extra', 'wfs_offset']:
         if extra not in keep:
             keep.append(extra)
     combine = [int(o) for o in combine_offsets] if combine_offsets else None
-    donut_tabs, vrows, n_miss, noll = [], [], 0, None
+    fam_noll = _fam_noll(base, args.dz_prefix)     # target Noll order for the zk remap
+    zk_idx, out_noll = None, None                  # set from the first CWFS table's Noll
+    donut_tabs, vrows, n_miss = [], [], 0
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + seq_offset
         if reader == 'unpaired':                            # TARTS etc.: singular-position AOS table
             offs = combine if combine else [seq_offset]     # concat intra+extra to cover all corners
             parts, meta = [], None
             for off in offs:
-                t, m = get_unpaired_zernikes(butler, d, fam_s + off, coord)
+                t, m = get_unpaired_zernikes(butler, d, fam_s + off, coord, defocused_only)
                 if t is not None:
                     # filter to the lean `keep` set BEFORE vstack: the raw aggregate
                     # has scalar cols whose dtype varies across exposures (float vs
                     # all-NaN object), which would break the intra+extra vstack.
-                    parts.append(t[[c for c in keep if c in t.colnames]])
-                    meta = meta or m
+                    part = t[[c for c in keep if c in t.colnames]]
+                    part['wfs_offset'] = off        # -1 intra, 0 extra — tag before merge
+                    parts.append(part); meta = meta or m
             tbl = (None if not parts else
                    parts[0] if len(parts) == 1 else
                    vstack(parts, metadata_conflicts='silent'))
@@ -250,9 +281,20 @@ def main():
             tbl, meta = get_aggregate_zernikes(butler, d, infocus, coord, camera)
         if tbl is None:
             n_miss += 1; continue
-        if noll is None and meta.get('nollIndices') is not None:
-            noll = [int(x) for x in meta['nollIndices']]
+        if out_noll is None and meta.get('nollIndices') is not None:
+            cwfs_noll = [int(x) for x in meta['nollIndices']]
+            if fam_noll and set(fam_noll) <= set(cwfs_noll) and cwfs_noll != fam_noll:
+                zk_idx = [cwfs_noll.index(j) for j in fam_noll]   # subset/reorder (e.g. 25->21)
+                out_noll = fam_noll
+                print(f'  remapping CWFS Noll (n={len(cwfs_noll)}) -> FAM Noll '
+                      f'(n={len(fam_noll)}) {fam_noll}')
+            else:
+                out_noll = cwfs_noll
         tbl = tbl[[c for c in keep if c in tbl.colnames]]
+        if zk_idx is not None:                     # align zk to the FAM Noll order
+            for zc in (f'zk_{coord}', f'zk_intrinsic_{coord}'):
+                if zc in tbl.colnames:
+                    tbl[zc] = np.asarray(tbl[zc], float)[:, zk_idx]
         rot = float(v['rotator_angle']) if has_rot else np.nan
         alt = float(v['alt']) if has_alt else np.nan
         tbl['day_obs'] = d; tbl['seq_num'] = infocus; tbl['fam_seq_num'] = fam_s
@@ -264,6 +306,7 @@ def main():
     if not donut_tabs:
         raise RuntimeError('No in-focus cwfs aggregate tables found for any '
                            'FAM visit (FAM_seq+1).')
+    noll = out_noll
     donuts = vstack(donut_tabs, metadata_conflicts='silent')
     donuts.meta['nollIndices'] = noll          # Zernike order of zk_<coord>
     out = base / 'wfs' / args.wfs_name; out.mkdir(parents=True, exist_ok=True)
