@@ -151,7 +151,7 @@ def main():
     cfg['atmosphere']['kernel'] = 'VonKarman'
     model = fitmod.build_model(cfg)
     miw = MIW(MIW_PARQUET)
-    for seq in [31, 34]:
+    for seq in [25, 28]:
         run(seq, svd_npz, cfg, model, miw)
 
 

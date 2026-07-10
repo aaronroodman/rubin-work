@@ -51,7 +51,7 @@ def main():
                0.0)                            # Tikhonov L2 on v-mode amplitudes
     print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} ###')
     out = {}
-    for seq in [31, 34]:
+    for seq in [25, 28]:
         rot = rot_for(seq)
         prep = data_fit.load_and_prep(f'data/psfmoments_{DAY}000{seq}.parquet',
                                       sign=SIGN, rot_deg=rot)
@@ -86,14 +86,11 @@ def main():
                  data_err=cat['errors'])
         out[seq] = (A, atm)
 
-    # v-mode amplitude consistency across the two rotators (OCS frame)
-    d = out[31][0] - out[34][0]
-    denom = 0.5 * (np.abs(out[31][0]) + np.abs(out[34][0])) + 1e-6
-    print(f'\n=== v-mode consistency (sign {SIGN:+d}): '
-          f'RMS diff = {np.sqrt(np.mean(d**2)):.3f}, '
-          f'median frac diff = {np.median(np.abs(d)/denom):.2f} ===')
-    print('  seq31:', np.round(out[31][0], 3))
-    print('  seq34:', np.round(out[34][0], 3))
+    # v-mode amplitudes across the two rotators (not expected identical —
+    # turbulence stochasticity, esp. overall k=1 Z4-Z8)
+    ks = list(out)
+    for k in ks:
+        print(f'  seq{k}:', np.round(out[k][0], 3))
 
 
 if __name__ == '__main__':
