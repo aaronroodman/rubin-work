@@ -48,6 +48,11 @@ fit:
   weights: {e0: 1.0, e1: 1.0, e2: 1.0, M21: 1.0, M12: 1.0, M30: 1.0, M03: 1.0,
             M22: 1.0}
   fov_radius_deg: 1.75
+  # per-detector sub-CCD binning: cell size (deg) and minimum stars per cell.
+  # The cost weight is 1/(empirical per-cell scatter)^2; widen cell_deg if the
+  # per-cell star counts are too low for a stable scatter estimate.
+  cell_deg: 0.10
+  min_n: 3
 
 # MIW is read from the Butler intrinsicZernikes calib (miw.MIWCalib); the
 # collection/filter/repo are passed by the pipeline (pipelines/config.yaml).

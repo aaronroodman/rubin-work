@@ -68,7 +68,8 @@ def bin_grid(prep, cell_deg=0.10, min_n=3):
     ix = np.floor(thx / cell_deg).astype(np.int64)
     iy = np.floor(thy / cell_deg).astype(np.int64)
     keys = det.astype(np.int64) * 1_000_000 + (ix + 500) + 1000 * (iy + 500)
-    out_thx, out_thy, out_mom, out_err, out_rot, out_det = [], [], [], [], [], []
+    out_thx, out_thy, out_mom, out_err, out_rot, out_det, out_n = (
+        [], [], [], [], [], [], [])
     for k in np.unique(keys):
         m = keys == k
         if m.sum() < min_n:
@@ -81,9 +82,11 @@ def bin_grid(prep, cell_deg=0.10, min_n=3):
         out_err.append(1.253 * np.std(mom[m], axis=0) / np.sqrt(m.sum()))
         out_rot.append(np.median(prep['rot'][m]))
         out_det.append(int(det[m][0]))          # single detector by construction
+        out_n.append(int(m.sum()))
     return dict(thx=np.array(out_thx), thy=np.array(out_thy),
                 rot=np.array(out_rot), mom=np.array(out_mom),
-                err=np.array(out_err), detector=np.array(out_det, int))
+                err=np.array(out_err), detector=np.array(out_det, int),
+                n=np.array(out_n, int))
 
 
 def to_catalog(binned):

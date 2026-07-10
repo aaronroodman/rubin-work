@@ -58,6 +58,7 @@ rule all:
     input:
         "output/miw_z4_ocs_ccs.png",
         "output/miw_ocs_z5_z11.png",
+        expand("output/binscatter_{k}_{seq}.png", k=["map", "hist"], seq=SEQS),
         expand("output/fitmon_{seq}.png", seq=SEQS),
         expand("output/dm_{p}_{seq}.png", p=PLOTS, seq=SEQS)
 
@@ -94,6 +95,21 @@ rule extract_psf:
         "python {input.script} --visits {wildcards.visit} "
         "--collection {params.coll} --repo {params.repo} --out-dir data "
         "--max-per-ccd {params.mpc} --snr-min {params.snr} &> {log}"
+
+
+# ---- per-seq validation of the empirical per-cell scatter (fit weights) ----
+rule bin_scatter:
+    output:
+        "output/binscatter_map_{seq}.png",
+        "output/binscatter_hist_{seq}.png",
+    input:
+        psf   = lambda w: f"data/psfmoments_{visit(int(w.seq))}.parquet",
+        script = f"{CODE}/plot_bin_scatter.py",
+        deps  = [f"{CODE}/{m}.py" for m in
+                 ("data_fit", "frames", "fit", "config", "jax_optatmo")],
+    log: "pipelines/logs/binscatter.{seq}.log"
+    shell:
+        "python {input.script} seqs={wildcards.seq} day={DAY} out=output &> {log}"
 
 
 # ---- per-visit corner-WFS aggregate Zernikes (Butler) ----

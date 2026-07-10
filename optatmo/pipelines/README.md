@@ -17,6 +17,10 @@ Z4), and `plot_miw` renders it directly from the calib's interpolators.
 
 - **extract_psf** (per visit) — clean PSF stars → recomputed HSM moments →
   `data/psfmoments_<visit>.parquet`.
+- **bin_scatter** (per seq) — validation of the empirical per-cell scatter used
+  as the fit weights: `output/binscatter_map_<seq>.png` (per-moment σ over the
+  FoV + stars-per-cell) and `output/binscatter_hist_<seq>.png`. Widen
+  `fit.cell_deg` in `config.yaml` if the per-cell counts are too low.
 - **extract_cwfs** (per visit) — corner-WFS aggregate Zernikes →
   `data/cwfs_<visit>.parquet`.
 - **fit** (per seq) — v-mode fit against the official MIW baseline →

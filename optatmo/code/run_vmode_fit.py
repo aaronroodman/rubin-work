@@ -76,7 +76,8 @@ def main():
         rot = rot_for(seq)
         prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
                                       sign=SIGN, rot_deg=rot)
-        binned = data_fit.bin_grid(prep, cell_deg=0.10)
+        binned = data_fit.bin_grid(prep, cell_deg=cfg['fit'].get('cell_deg', 0.10),
+                                   min_n=cfg['fit'].get('min_n', 3))
         cat = data_fit.to_catalog(binned)
         G_v, _, _ = build_vmode_design(NPZ, cat['thx_deg'], cat['thy_deg'],
                                        jmax, fp_radius=1.75)

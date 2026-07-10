@@ -18,7 +18,6 @@ from scipy.optimize import minimize
 from jax_optatmo import JaxOptAtmoPSF, MOMENT_LABELS
 from config import ParamLayout
 import dz as dzmod
-from miw import MIW
 from model import Forward
 
 
@@ -42,10 +41,11 @@ def assemble(cfg, catalog, miw=None):
         cfg['dz_terms'], thx, thy, cfg['fit']['fov_radius_deg'], jmax)
     layout = ParamLayout(cfg, dz_names)
 
-    # MIW baseline (optional; zeros if not provided)
+    # MIW baseline (optional; zeros if not provided). MIWCalib.zernikes needs
+    # the per-cell detector; pass it when the catalog carries it.
     if miw is not None:
-        z0 = miw.zernikes(thx, thy, catalog['rotator_rad'], jmax)
-        z0 = np.nan_to_num(z0)
+        z0 = np.nan_to_num(miw.zernikes(thx, thy, catalog['rotator_rad'], jmax,
+                                        catalog['detector']))
     else:
         z0 = np.zeros((len(thx), jmax + 1))
 
