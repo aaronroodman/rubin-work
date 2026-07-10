@@ -1,0 +1,21 @@
+# ----------------------------------------------------------------------
+# optatmo fit pipeline config (Snakemake).
+# Edit here to point at a different night / visit set / calibration.
+# ----------------------------------------------------------------------
+day: 20260513                       # day_obs
+seqs: [25, 28]                      # in-focus FAM-triplet seq_nums to fit
+repo: /repo/main
+
+# Butler collections / calibration
+psf_collection:  LSSTCam/runs/nightlyValidation      # single_visit_star + images
+cwfs_collection: "*danish_1_2_0*"                    # aggregateAOSVisitTableRaw
+miw_collection:  u/gmegias/calib/DM-55048/intrinsicZernikes.v3   # official MIW
+filter:          i_39                                # physical_filter for the MIW
+
+# fit
+svd_npz: data/ofc_svd_50_34_k6.npz  # AOS sensitivity SVD (v-mode basis)
+reg:     10.0                       # Tikhonov L2 on v-mode amplitudes
+
+# PSF-star extraction
+max_per_ccd: 45
+snr_min:     80

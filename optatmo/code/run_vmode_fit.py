@@ -24,7 +24,14 @@ NPZ = next((a for a in _sys.argv[1:] if a.endswith('.npz')), 'data/ofc_svd_22_12
 MIW_OCS = 'data/intrinsic_official_ocs.parquet'
 MIW_CCS = 'data/intrinsic_official_ccs.parquet'
 VISITS_PARQUET = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
-DAY = 20260513
+DAY = next((int(a.split('=')[1]) for a in _sys.argv if a.startswith('day=')),
+           20260513)
+_seqs = next((a.split('=')[1] for a in _sys.argv if a.startswith('seqs=')), None)
+SEQS = [int(s) for s in _seqs.split(',')] if _seqs else [25, 28]
+
+
+def visit_of(seq):
+    return int(f'{DAY}{seq:05d}')
 
 
 def rot_for(seq):
@@ -56,9 +63,9 @@ def main():
                0.0)                            # Tikhonov L2 on v-mode amplitudes
     print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} ###')
     out = {}
-    for seq in [25, 28]:
+    for seq in SEQS:
         rot = rot_for(seq)
-        prep = data_fit.load_and_prep(f'data/psfmoments_{DAY}000{seq}.parquet',
+        prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
                                       sign=SIGN, rot_deg=rot)
         binned = data_fit.bin_grid(prep, cell_deg=0.10)
         cat = data_fit.to_catalog(binned)

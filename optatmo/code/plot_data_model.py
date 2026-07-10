@@ -19,11 +19,16 @@ import data_fit, frames
 from vmode_fit import model_moments_at, wavefront_at
 from miw import MIWOfficial
 
-DAY = 20260513
+DAY = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('day=')),
+           20260513)
 LAB = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22', 'M31', 'M13', 'M40', 'M04']
 MIW_OCS = 'data/intrinsic_official_ocs.parquet'
 MIW_CCS = 'data/intrinsic_official_ccs.parquet'
 DET_NAMES = 'data/detector_names.parquet'
+
+
+def visit_of(seq):
+    return int(f'{DAY}{seq:05d}')
 VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
 FP_R = 1.75
 NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
@@ -52,7 +57,7 @@ def _mapaxis(ax, ttl):
 def run(seq, svd_npz, cfg, model, miw):
     rot = rot_for(seq)
     # cleaned (MAD-clipped), OCS-rotated stars — same sample as the fit
-    prep = data_fit.load_and_prep(f'data/psfmoments_{DAY}000{seq}.parquet',
+    prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
                                   sign=1, rot_deg=rot)
     thx, thy, mom_ocs = prep['thx'], prep['thy'], prep['mom']
     fit = np.load(f'data/vmodefit_{seq}.npz')
@@ -117,7 +122,7 @@ def run(seq, svd_npz, cfg, model, miw):
     print(f'seq {seq}: wrote FWHM/ellip/coma/trefoil data-vs-model plots')
 
     # ---------- 4. corner bar chart: CWFS vs PSF-model deviation ----------
-    cw = pd.read_parquet(f'data/cwfs_{DAY}000{seq}.parquet')
+    cw = pd.read_parquet(f'data/cwfs_{visit_of(seq)}.parquet')
     cw['corner'] = cw.detector.str[:3]
     _names = pd.read_parquet(DET_NAMES)
     name2id = dict(zip(_names.name, _names.detector))
@@ -156,13 +161,16 @@ def run(seq, svd_npz, cfg, model, miw):
 
 
 def main():
-    svd_npz = sys.argv[1] if len(sys.argv) > 1 else 'data/ofc_svd_22_12.npz'
+    svd_npz = next((a for a in sys.argv[1:] if a.endswith('.npz')),
+                   'data/ofc_svd_22_12.npz')
+    seqs = next((a.split('=')[1] for a in sys.argv if a.startswith('seqs=')), None)
+    seqs = [int(s) for s in seqs.split(',')] if seqs else [25, 28]
     cfg = load_config('config.yaml')
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'
     model = fitmod.build_model(cfg)
     miw = MIWOfficial(MIW_OCS, MIW_CCS)
-    for seq in [25, 28]:
+    for seq in seqs:
         run(seq, svd_npz, cfg, model, miw)
 
 
