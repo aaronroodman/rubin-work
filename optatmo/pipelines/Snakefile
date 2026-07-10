@@ -53,7 +53,24 @@ PLOTS = ["fwhm", "ellip", "coma", "trefoil", "corners"]
 
 rule all:
     input:
+        "output/miw_z4_ocs_ccs.png",
+        "output/miw_ocs_z5_z11.png",
         expand("output/dm_{p}_{seq}.png", p=PLOTS, seq=SEQS)
+
+
+# ---- validation plots of the official MIW maps ----
+rule plot_miw:
+    output:
+        "output/miw_z4_ocs_ccs.png",
+        "output/miw_ocs_z5_z11.png",
+    input:
+        ocs    = "data/intrinsic_official_ocs.parquet",
+        ccs    = "data/intrinsic_official_ccs.parquet",
+        script = f"{CODE}/plot_miw_maps.py",
+    log: "pipelines/logs/plot_miw.log"
+    shell:
+        "python {input.script} --ocs {input.ocs} --ccs {input.ccs} "
+        "--out-dir output &> {log}"
 
 
 # ---- official MIW calibration (once) -> OCS + per-detector CCS + names ----
