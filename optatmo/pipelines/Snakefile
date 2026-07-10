@@ -126,6 +126,20 @@ rule extract_cwfs:
         "--collection '{params.coll}' --repo {params.repo} --out-dir data &> {log}"
 
 
+# ---- AOS sensitivity-matrix SVD (v-mode basis) from the one-time raw dump ----
+# data/ofc_raw.npz is produced ONCE by code/dump_ofc_raw.py in the AOS env
+# (ts_ofc); build_svd_local.py (numpy only) turns it into the SVD basis.
+rule build_svd:
+    output:
+        SVD,
+    input:
+        raw    = "data/ofc_raw.npz",
+        script = f"{CODE}/build_svd_local.py",
+    log: "pipelines/logs/build_svd.log"
+    shell:
+        "python {input.script} &> {log}"
+
+
 # ---- per-seq v-mode fit (MIW read straight from the Butler calib) ----
 rule fit:
     output:
