@@ -57,13 +57,13 @@ def _mapaxis(ax, ttl):
     ax.set_xlabel('OCS x [deg]', fontsize=7); ax.set_ylabel('OCS y [deg]', fontsize=7)
 
 
-def run(seq, svd_npz, cfg, model, miw):
+def run(seq, svd_npz, cfg, model, miw, tag=''):
     rot = rot_for(seq)
     # cleaned (MAD-clipped), OCS-rotated stars — same sample as the fit
     prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
                                   sign=1, rot_deg=rot)
     thx, thy, mom_ocs = prep['thx'], prep['thy'], prep['mom']
-    fit = np.load(f'data/vmodefit_{seq}.npz')
+    fit = np.load(f'data/vmodefit_{seq}{tag}.npz')
     A, atm = fit['A'], fit['atm']
 
     # ---------- 1. FWHM super-pixels (2x2 per CCD) ----------
@@ -88,7 +88,7 @@ def run(seq, svd_npz, cfg, model, miw):
                       vmin=vlo, vmax=vhi)
         fig.colorbar(s, ax=a, shrink=0.8)
     fig.suptitle(f'20260513 seq={seq}: FWHM data vs model'); fig.tight_layout()
-    fig.savefig(f'output/dm_fwhm_{seq}.png', dpi=115, bbox_inches='tight'); plt.close(fig)
+    fig.savefig(f'output/dm_fwhm_{seq}{tag}.png', dpi=115, bbox_inches='tight'); plt.close(fig)
 
     # ---------- 2 & 3. whiskers (dense) ----------
     ia0 = LAB.index('e0')
@@ -119,9 +119,9 @@ def run(seq, svd_npz, cfg, model, miw):
                      f'({len(idx)} stars, 95%-whisker={ref_len:g} deg)')
         fig.tight_layout(); fig.savefig(fname, dpi=115, bbox_inches='tight'); plt.close(fig)
 
-    whisker_fig(1250, ('e1', 'e2'), 'spin2', f'output/dm_ellip_{seq}.png', 0.30, 'ellipticity')
-    whisker_fig(750, ('M21', 'M12'), 'spin1', f'output/dm_coma_{seq}.png', 0.30, 'coma')
-    whisker_fig(750, ('M30', 'M03'), 'spin1', f'output/dm_trefoil_{seq}.png', 0.30, 'trefoil')
+    whisker_fig(1250, ('e1', 'e2'), 'spin2', f'output/dm_ellip_{seq}{tag}.png', 0.30, 'ellipticity')
+    whisker_fig(750, ('M21', 'M12'), 'spin1', f'output/dm_coma_{seq}{tag}.png', 0.30, 'coma')
+    whisker_fig(750, ('M30', 'M03'), 'spin1', f'output/dm_trefoil_{seq}{tag}.png', 0.30, 'trefoil')
     print(f'seq {seq}: wrote FWHM/ellip/coma/trefoil data-vs-model plots')
 
     # ---------- 4. corner bar chart: CWFS vs PSF-model deviation ----------
@@ -158,7 +158,7 @@ def run(seq, svd_npz, cfg, model, miw):
         axc.set_ylabel('Zj deviation [µm]', fontsize=8)
     fig.suptitle(f'20260513 seq={seq}: corner-WFS vs PSF v-mode-fit Zj '
                  f'(deviation rel. official MIW)')
-    fig.tight_layout(); fig.savefig(f'output/dm_corners_{seq}.png', dpi=115,
+    fig.tight_layout(); fig.savefig(f'output/dm_corners_{seq}{tag}.png', dpi=115,
                                     bbox_inches='tight'); plt.close(fig)
     print(f'seq {seq}: wrote corner bar chart')
 
@@ -168,13 +168,15 @@ def main():
                    'data/ofc_svd_22_12.npz')
     seqs = next((a.split('=')[1] for a in sys.argv if a.startswith('seqs=')), None)
     seqs = [int(s) for s in seqs.split(',')] if seqs else [25, 28]
+    init = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')), 'zero')
+    tag = '' if init == 'zero' else f'_{init}'    # match run_vmode_fit output tag
     cfg = load_config('config.yaml')
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'
     model = fitmod.build_model(cfg)
     miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
     for seq in seqs:
-        run(seq, svd_npz, cfg, model, miw)
+        run(seq, svd_npz, cfg, model, miw, tag=tag)
 
 
 if __name__ == '__main__':

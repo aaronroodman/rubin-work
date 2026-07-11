@@ -62,6 +62,56 @@ def wavefront_at(A, npz_path, thx_deg, thy_deg, jmax=22, fp_radius=1.75):
     return np.einsum('sjv,v->sj', G_v, np.asarray(A))
 
 
+NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+             22, 23, 24, 25, 26]
+
+
+def cwfs_vmode_amps(cwfs_parquet, miw, npz_path, rot_rad, jmax=22,
+                    fp_radius=1.75, ridge=1e-3):
+    """Least-squares v-mode amplitudes that reproduce the CWFS corner-wavefront
+    deviation (zk_OCS - MIW) at the four corners -- for initialising the fit at
+    the CWFS-expected optical state.
+
+    Solves (in the OCS frame, same basis the fit uses)
+        G_v(corner, j) @ A  ~=  median(zk_OCS_j) - MIW_j(corner, rot)
+    over the four corner positions x representable pupil Noll j (<= jmax), with a
+    small Tikhonov ridge for stability.
+    """
+    import pandas as pd
+    from lsst.obs.lsst import LsstCam
+    rad2deg = 180.0 / np.pi
+    name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
+    cw = pd.read_parquet(cwfs_parquet)
+    cw['corner'] = cw.detector.str[:3]
+
+    cxs, cys, rows, target = [], [], [], []
+    for c in ['R00', 'R04', 'R40', 'R44']:
+        sub = cw[cw.corner == c]
+        if len(sub) == 0:
+            continue
+        cx = float(np.median(sub.thx_OCS)) * rad2deg
+        cy = float(np.median(sub.thy_OCS)) * rad2deg
+        det_id = name2id.get(sub.detector.iloc[0], -1)
+        miwc = np.nan_to_num(miw.zernikes(cx, cy, rot_rad, jmax, [det_id])[0])
+        ci = len(cxs)
+        cxs.append(cx); cys.append(cy)
+        for i, jn in enumerate(NOLL_CWFS):
+            if jn > jmax or f'ztot_{i}' not in sub.columns:
+                continue
+            rows.append((ci, jn))
+            target.append(float(np.median(sub[f'ztot_{i}'])) - miwc[jn])
+    if not rows:
+        raise RuntimeError(f'no usable CWFS corners in {cwfs_parquet}')
+
+    G_v = build_vmode_design(npz_path, np.array(cxs), np.array(cys),
+                             jmax, fp_radius)[0]           # (n_corner, jmax+1, n_v)
+    M = np.array([G_v[ci, jn, :] for (ci, jn) in rows])    # (n_rows, n_v)
+    b = np.array(target)
+    n_v = M.shape[1]
+    A = np.linalg.solve(M.T @ M + ridge * np.eye(n_v), M.T @ b)
+    return A
+
+
 def model_moments_at(model, npz_path, A, atm, thx_deg, thy_deg, rot_rad,
                      miw=None, detector=None, jmax=22, fp_radius=1.75, batch=256):
     """Model HSM moments at arbitrary field positions (for data-vs-model plots).

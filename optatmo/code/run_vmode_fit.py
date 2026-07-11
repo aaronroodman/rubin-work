@@ -15,7 +15,7 @@ from config import load_config, ParamLayout
 import fit as fitmod
 import data_fit
 from model import Forward
-from vmode_fit import build_vmode_design
+from vmode_fit import build_vmode_design, cwfs_vmode_amps
 from miw import MIWCalib
 from fit_monitor import FitMonitor
 
@@ -70,7 +70,11 @@ def main():
     SIGN = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     REG = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('reg=')),
                0.0)                            # Tikhonov L2 on v-mode amplitudes
-    print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} ###')
+    INIT = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')),
+                'zero')                         # v-mode start: zero | cwfs
+    tag = '' if INIT == 'zero' else f'_{INIT}'  # output suffix (don't clobber)
+    print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g}, '
+          f'v-mode init = {INIT} ###')
     out = {}
     for seq in SEQS:
         rot = rot_for(seq)
@@ -88,10 +92,22 @@ def main():
                       fit_moments, weights, reg_lambda=REG)
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
-        p0 = layout.initial()
+        p0 = np.array(layout.initial(), float)
+        A_init = np.zeros(len(layout.i_dz) if hasattr(layout.i_dz, '__len__')
+                          else layout.n_dz)
+        if INIT == 'cwfs':
+            # start the v-modes at the CWFS-expected optical state
+            A_init = cwfs_vmode_amps(f'data/cwfs_{visit_of(seq)}.parquet', miw,
+                                     NPZ, np.deg2rad(rot), jmax, fp_radius=1.75)
+            p0[layout.i_dz] = A_init
+            bnds = layout.bounds()
+            lo = np.array([b[0] if b[0] is not None else -np.inf for b in bnds])
+            hi = np.array([b[1] if b[1] is not None else np.inf for b in bnds])
+            p0 = np.clip(p0, lo, hi)
+            print('  init v-modes from CWFS:', np.round(A_init, 3))
 
-        mon = FitMonitor(label=f'fit seq{seq}', verbose=True,
-                         checkpoint=f'data/fitprog_{seq}.npz')
+        mon = FitMonitor(label=f'fit seq{seq}{tag}', verbose=True,
+                         checkpoint=f'data/fitprog_{seq}{tag}.npz')
         fun = mon.objective(vg)
         mon.start()
         res = minimize(fun, p0, jac=True, method='L-BFGS-B',
@@ -108,11 +124,13 @@ def main():
         print('  fit monitor:', mon.summary_line(res))
 
         atm_idx = [layout.n_dz + i for i in range(len(layout.atm_free))]
-        mon.plot(f'output/fitmon_{seq}.png', res, layout.i_dz, vmode_names,
+        mon.plot(f'output/fitmon_{seq}{tag}.png', res, layout.i_dz, vmode_names,
                  atm_idx, layout.atm_free, reg_lambda=REG,
-                 title=f'20260513 seq={seq} (rot {rot:.1f})')
+                 title=f'20260513 seq={seq} (rot {rot:.1f}) init={INIT}')
         st = mon.stats(res)
-        np.savez(f'data/vmodefit_{seq}.npz', A=A, atm=np.array(list(atm.values())),
+        np.savez(f'data/vmodefit_{seq}{tag}.npz', A=A,
+                 atm=np.array(list(atm.values())),
+                 A_init=A_init, init=INIT,
                  thx=cat['thx_deg'], thy=cat['thy_deg'], rot=rot,
                  detector=cat['detector'],
                  data_mom=cat['moments'], model_mom=model_mom,
