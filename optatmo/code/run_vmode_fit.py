@@ -90,7 +90,8 @@ def main():
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = layout.initial()
 
-        mon = FitMonitor()
+        mon = FitMonitor(label=f'fit seq{seq}', verbose=True,
+                         checkpoint=f'data/fitprog_{seq}.npz')
         fun = mon.objective(vg)
         mon.start()
         res = minimize(fun, p0, jac=True, method='L-BFGS-B',

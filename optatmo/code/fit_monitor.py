@@ -19,25 +19,43 @@ import matplotlib.pyplot as plt
 
 
 class FitMonitor:
-    def __init__(self):
+    def __init__(self, label='', verbose=False, checkpoint=None):
         self.costs = []            # objective at every evaluation
         self.params = []           # parameter vector at every evaluation
         self.iter_evals = []       # evaluation count at each iteration boundary
         self.t_fit = None
         self._t0 = None
+        self.label = label         # tag for the printed progress lines
+        self.verbose = verbose     # print a cost line at every evaluation
+        self.checkpoint = checkpoint   # path: rewrite the trace each iteration
+
+    def _elapsed(self):
+        return (time.perf_counter() - self._t0) if self._t0 is not None else 0.0
 
     def objective(self, vg):
         """Wrap a jitted value_and_grad(cost) into a scipy fun(p) -> (f, grad)
-        that records (cost, params) on every call."""
+        that records (cost, params) on every call (and, if verbose, prints the
+        cost at every function evaluation -- flushed, so a killed job's log
+        still shows the chi2 trajectory)."""
         def fun(p):
             v, g = vg(jnp.asarray(p))
             self.costs.append(float(v))
             self.params.append(np.asarray(p, float).copy())
+            if self.verbose:
+                print(f'[{self.label}] eval {len(self.costs):4d}  '
+                      f'cost {float(v):.6g}  t {self._elapsed():6.0f}s', flush=True)
             return float(v), np.asarray(g, float)
         return fun
 
     def callback(self, xk, *args):
         self.iter_evals.append(len(self.costs))
+        if self.checkpoint:        # persist the trace so a time-limit kill still
+            self.save(self.checkpoint)   # leaves a reviewable partial result
+
+    def save(self, path):
+        np.savez(path, costs=np.asarray(self.costs, float),
+                 params=np.asarray(self.params, float),
+                 iter_evals=np.asarray(self.iter_evals, int))
 
     def start(self):
         self._t0 = time.perf_counter()
