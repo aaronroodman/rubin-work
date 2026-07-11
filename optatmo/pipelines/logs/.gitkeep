@@ -1,0 +1,1 @@
+# keep pipelines/logs/ in git so SLURM --output has a directory to write to

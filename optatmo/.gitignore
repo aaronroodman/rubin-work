@@ -3,3 +3,6 @@ data/
 output/
 __pycache__/
 *.pyc
+# keep the SLURM log dir in git but not its contents
+pipelines/logs/*
+!pipelines/logs/.gitkeep

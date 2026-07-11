@@ -26,13 +26,20 @@
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-set -euo pipefail
 
-cd /sdf/home/r/roodman/notebooks/rubin-work/optatmo
+# print a line FIRST so the log is never empty even if setup fails below
+echo "=== task ${SLURM_ARRAY_TASK_ID:-?} on $(hostname) $(date) ==="
+cd "${SLURM_SUBMIT_DIR:-.}"
+echo "cwd: $(pwd)"
 
-# non-interactive shell: set up the stack explicitly (.bashrc is not sourced here)
-source /sdf/group/rubin/sw/tag/w_2026_27/loadLSST.bash >/dev/null 2>&1
+# Set up the stack BEFORE 'set -e' and WITHOUT silencing stderr: the LSST env
+# scripts are not nounset-clean, so a non-zero return here under set -euo would
+# otherwise kill the job silently (empty log).
+source /sdf/group/rubin/sw/tag/w_2026_27/loadLSST.bash >/dev/null
 setup lsst_distrib
+echo "python: $(which python)"
+
+set -eo pipefail          # note: no -u (loadLSST/eups reference unset vars)
 
 DAY=20260513
 SVD=data/ofc_svd_50_34_k6.npz
