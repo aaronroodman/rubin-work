@@ -34,7 +34,8 @@ RAD_PER_ARCSEC = 1.0 / ARCSEC_PER_RAD
 class JaxOptAtmoPSF:
     def __init__(self, jmax=22, diam=8.36, obscuration=0.61, lam_nm=750.0,
                  pixel_scale=0.2, stamp=32, oversample=16, kernel='Kolmogorov',
-                 L0=25.0, annular=False):
+                 L0=25.0, annular=False, backend='fft', n_pupil=128,
+                 mft_oversample=4):
         """
         :param jmax:        max Noll index of the wavefront basis (Z1..Zjmax).
         :param stamp:       detector stamp size (pixels) at pixel_scale.
@@ -42,6 +43,13 @@ class JaxOptAtmoPSF:
         :param annular:     use annular Noll Zernikes (R_inner=obscuration),
                             matching ts_wep / the MIW & CWFS convention; else
                             circular (galsim.OpticalPSF default).
+        :param backend:     'fft' (zero-padded FFT) or 'mft' (matrix Fourier
+                            transform, Soummer 2007) -- the MFT decouples the
+                            pupil sampling (n_pupil) from the output grid, so it
+                            avoids the FFT's forced huge grid (oversample>=11).
+        :param n_pupil:     MFT pupil samples across the aperture diameter.
+        :param mft_oversample: MFT output sub-pixel factor B (detector pixel =
+                            B native pixels), free of the pupil-fit constraint.
         """
         self.jmax = jmax
         self.annular = annular
@@ -50,36 +58,58 @@ class JaxOptAtmoPSF:
         self.lam_um = lam_nm * 1e-3
         self.pixel_scale = pixel_scale        # arcsec/detector pixel
         self.stamp = stamp
-        self.B = oversample
-        self.N = stamp * oversample           # native FFT grid
         self.kernel = kernel
         self.L0 = L0
         self.n_center_iter = 3                 # weighted-centroid iterations
-
-        # native image angular pixel (rad); require pupil to fit: dtheta<=lam/D
-        self.dtheta = (pixel_scale / oversample) * RAD_PER_ARCSEC  # rad
-        # padded pupil extent so that dtheta = lam / (N*dx) = lam / D_pad
-        D_pad = (self.lam_um * 1e-6) / self.dtheta
-        assert D_pad >= diam, (f"oversample too small: D_pad={D_pad:.2f} < D={diam}"
-                               f"; increase oversample")
-        self.D_pad = D_pad
-        dx = D_pad / self.N                    # pupil sample (m)
-
-        # pupil-plane coordinate grid (m), centred
-        ax = (np.arange(self.N) - self.N / 2) * dx
-        xx, yy = np.meshgrid(ax, ax)
-        r = np.hypot(xx, yy)
-        aperture = ((r <= diam / 2) & (r >= obscuration * diam / 2)).astype(float)
-        self.aperture = jnp.asarray(aperture)
-
-        # circular Noll Zernike basis on the pupil (units: wavefront per unit
-        # coefficient); matches galsim.OpticalPSF (R_inner=0, masked by aperture)
-        u = xx / (diam / 2)
-        v = yy / (diam / 2)
+        self.backend = backend
+        lam_m = self.lam_um * 1e-6
         R_inner = obscuration if annular else 0.0
-        basis = galsim.zernike.zernikeBasis(jmax, u, v, R_outer=1.0,
-                                            R_inner=R_inner)  # (jmax+1,N,N)
-        self.Zbasis = jnp.asarray(basis) * self.aperture[None, :, :]
+
+        if backend == 'fft':
+            self.B = oversample
+            self.N = stamp * oversample           # native FFT grid
+            # native image angular pixel (rad); require pupil to fit: dtheta<=lam/D
+            self.dtheta = (pixel_scale / oversample) * RAD_PER_ARCSEC
+            # padded pupil extent so that dtheta = lam / (N*dx) = lam / D_pad
+            D_pad = lam_m / self.dtheta
+            assert D_pad >= diam, (f"oversample too small: D_pad={D_pad:.2f} < "
+                                   f"D={diam}; increase oversample")
+            self.D_pad = D_pad
+            dx = D_pad / self.N                    # pupil sample (m)
+            ax = (np.arange(self.N) - self.N / 2) * dx
+            xx, yy = np.meshgrid(ax, ax)
+            r = np.hypot(xx, yy)
+            aperture = ((r <= diam / 2) & (r >= obscuration * diam / 2)).astype(float)
+            self.aperture = jnp.asarray(aperture)
+            u, v = xx / (diam / 2), yy / (diam / 2)
+            basis = galsim.zernike.zernikeBasis(jmax, u, v, R_outer=1.0,
+                                                R_inner=R_inner)  # (jmax+1,N,N)
+            self.Zbasis = jnp.asarray(basis) * self.aperture[None, :, :]
+        elif backend == 'mft':
+            self.B = mft_oversample
+            self.N = stamp * mft_oversample        # output native grid (small)
+            self.dtheta = (pixel_scale / mft_oversample) * RAD_PER_ARCSEC
+            self.n_pupil = n_pupil
+            # pupil grid: n_pupil samples spanning the aperture diameter (the
+            # aperture fills the grid -- no zero-padding, unlike the FFT)
+            dxp = diam / n_pupil
+            axp = (np.arange(n_pupil) - n_pupil / 2 + 0.5) * dxp
+            xx, yy = np.meshgrid(axp, axp)
+            r = np.hypot(xx, yy)
+            aperture = ((r <= diam / 2) & (r >= obscuration * diam / 2)).astype(float)
+            self.aperture = jnp.asarray(aperture)
+            u, v = xx / (diam / 2), yy / (diam / 2)
+            basis = galsim.zernike.zernikeBasis(jmax, u, v, R_outer=1.0,
+                                                R_inner=R_inner)  # (jmax+1,n,n)
+            self.Zbasis = jnp.asarray(basis) * self.aperture[None, :, :]
+            # MFT matrix M[j,k] = exp(+2pi i x_k theta_j / lam) (centred output);
+            # +i matches the ifft2 image parity of the FFT backend.
+            theta = (np.arange(self.N) - self.N / 2 + 0.5) * self.dtheta  # rad
+            M = np.exp(2j * np.pi * np.outer(theta, axp) / lam_m)  # (N, n_pupil)
+            self.Mx = jnp.asarray(M)
+            self.dxp2 = dxp ** 2
+        else:
+            raise ValueError(f"unknown backend {backend!r}")
 
         # image-plane angular-frequency grid (cycles/rad) for the atmosphere MTF
         nu = np.fft.fftfreq(self.N, d=self.dtheta)   # cycles/rad
@@ -126,11 +156,21 @@ class JaxOptAtmoPSF:
 
     # ---------- optical PSF ----------
     def _optical_psf_native(self, zernikes):
-        """|FFT(pupil field)|^2 on the native grid (fft-ordered, not shifted)."""
+        """Optical |PSF|^2 on the native output grid, fft-ordered (DC at [0,0]).
+
+        FFT backend: |ifft2(pupil field)|^2 on the N=stamp*oversample grid.
+        MFT backend: |M @ field @ M^T|^2 on the small stamp*mft_oversample grid
+        via two matmuls (pupil sampled with n_pupil, decoupled from output).
+        """
         # zernikes: length jmax+1 (index 0 unused), microns
         W = jnp.tensordot(zernikes, self.Zbasis, axes=(0, 0))   # microns
         phase = 2.0 * jnp.pi * W / self.lam_um
         field = self.aperture * jnp.exp(1j * phase)
+        if self.backend == 'mft':
+            U = self.dxp2 * (self.Mx @ field @ self.Mx.T)       # centred amplitude
+            psf = jnp.abs(U) ** 2
+            psf = psf / jnp.sum(psf)
+            return jnp.fft.ifftshift(psf)                       # -> fft-ordered
         # ifft2 (rather than fft2) gives the image-plane parity that matches
         # galsim.OpticalPSF; |ifft2(f)|^2[k] ~ |fft2(f)|^2[-k].
         E = jnp.fft.ifft2(jnp.fft.ifftshift(field))
