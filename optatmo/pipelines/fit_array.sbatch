@@ -49,6 +49,7 @@ REG=10
 PSF_COLL=LSSTCam/runs/nightlyValidation
 CWFS_COLL='*danish_1_2_0*'
 INIT=${INIT:-zero}          # v-mode start: zero | cwfs (pass via --export)
+OPTICS=${OPTICS:-free}      # free | fixed (freeze v-modes, fit only atmosphere)
 
 if [ ! -f "$SVD" ]; then
     echo "ERROR: $SVD missing -- run 'python code/build_svd_local.py' once first." >&2
@@ -72,10 +73,10 @@ fi
 
 # fit just this one image (prints cost/eval; checkpoints data/fitprog_<seq>*.npz)
 python code/run_vmode_fit.py 1 "$SVD" reg=$REG seqs="$SEQ" day=$DAY \
-    coll="$COLL" filt="$FILT" init="$INIT"
+    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS"
 
 # data-vs-model + corner-comparison plots for this image
 python code/plot_data_model.py "$SVD" seqs="$SEQ" day=$DAY \
-    coll="$COLL" filt="$FILT" init="$INIT"
+    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS"
 
 echo "done seq $SEQ"

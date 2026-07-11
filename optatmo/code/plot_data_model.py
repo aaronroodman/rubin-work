@@ -169,7 +169,9 @@ def main():
     seqs = next((a.split('=')[1] for a in sys.argv if a.startswith('seqs=')), None)
     seqs = [int(s) for s in seqs.split(',')] if seqs else [25, 28]
     init = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')), 'zero')
-    tag = '' if init == 'zero' else f'_{init}'    # match run_vmode_fit output tag
+    optics = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')), 'free')
+    _p = ([init] if init != 'zero' else []) + (['atmonly'] if optics == 'fixed' else [])
+    tag = ('_' + '_'.join(_p)) if _p else ''      # match run_vmode_fit output tag
     cfg = load_config('config.yaml')
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'

@@ -72,9 +72,13 @@ def main():
                0.0)                            # Tikhonov L2 on v-mode amplitudes
     INIT = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')),
                 'zero')                         # v-mode start: zero | cwfs
-    tag = '' if INIT == 'zero' else f'_{INIT}'  # output suffix (don't clobber)
+    OPTICS = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')),
+                  'free')                        # free | fixed (freeze v-modes)
+    _parts = ([INIT] if INIT != 'zero' else []) + (['atmonly'] if OPTICS == 'fixed'
+                                                   else [])
+    tag = ('_' + '_'.join(_parts)) if _parts else ''   # output suffix (no clobber)
     print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g}, '
-          f'v-mode init = {INIT} ###')
+          f'v-mode init = {INIT}, optics = {OPTICS} ###')
     out = {}
     for seq in SEQS:
         rot = rot_for(seq)
@@ -93,25 +97,32 @@ def main():
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = np.array(layout.initial(), float)
-        A_init = np.zeros(len(layout.i_dz) if hasattr(layout.i_dz, '__len__')
-                          else layout.n_dz)
+        bnds = list(layout.bounds())
+        lo = np.array([b[0] if b[0] is not None else -np.inf for b in bnds])
+        hi = np.array([b[1] if b[1] is not None else np.inf for b in bnds])
+        A_init = np.zeros(layout.n_dz)
         if INIT == 'cwfs':
             # start the v-modes at the CWFS-expected optical state
             A_init = cwfs_vmode_amps(f'data/cwfs_{visit_of(seq)}.parquet', miw,
                                      NPZ, np.deg2rad(rot), jmax, fp_radius=1.75)
             p0[layout.i_dz] = A_init
-            bnds = layout.bounds()
-            lo = np.array([b[0] if b[0] is not None else -np.inf for b in bnds])
-            hi = np.array([b[1] if b[1] is not None else np.inf for b in bnds])
             p0 = np.clip(p0, lo, hi)
             print('  init v-modes from CWFS:', np.round(A_init, 3))
+        dz_idx = (list(range(*layout.i_dz.indices(len(p0))))
+                  if isinstance(layout.i_dz, slice) else list(np.atleast_1d(layout.i_dz)))
+        if OPTICS == 'fixed':
+            # freeze the v-modes at their init; fit only the atmosphere
+            for i in dz_idx:
+                bnds[i] = (float(p0[i]), float(p0[i]))
+            print(f'  optics FIXED at init -- fitting only atmosphere '
+                  f'{layout.atm_free}')
 
         mon = FitMonitor(label=f'fit seq{seq}{tag}', verbose=True,
                          checkpoint=f'data/fitprog_{seq}{tag}.npz')
         fun = mon.objective(vg)
         mon.start()
         res = minimize(fun, p0, jac=True, method='L-BFGS-B',
-                       bounds=layout.bounds(), callback=mon.callback,
+                       bounds=bnds, callback=mon.callback,
                        options={'maxiter': 300})
         mon.stop()
         A = res.x[layout.i_dz]
