@@ -130,6 +130,7 @@ def run(seq, svd_npz, cfg, model, miw, tag=''):
     from lsst.obs.lsst import LsstCam
     name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
     corners = ['R00', 'R04', 'R40', 'R44']
+    offsets = cfg.get('cwfs', {}).get('offsets', {})   # (CWFS-FAM) systematic, um
     njz = min(12, len(NOLL_CWFS))            # compare Noll 4..15
     fig, axes = plt.subplots(2, 2, figsize=(15, 9))
     for c, axc in zip(corners, axes.flat):
@@ -144,6 +145,7 @@ def run(seq, svd_npz, cfg, model, miw, tag=''):
         miwc = np.nan_to_num(
             miw.zernikes(cx, cy, np.deg2rad(rot), 22, [det_id])[0])
         cwfs_z = np.array([np.median(sub[f'ztot_{i}'].values) - miwc[NOLL_CWFS[i]]
+                           - float(offsets.get(NOLL_CWFS[i], 0.0))
                            for i in range(njz)])
         psf_dev = wavefront_at(A, svd_npz, [cx], [cy], jmax=22, fp_radius=FP_R)[0]
         psf_z = np.array([psf_dev[NOLL_CWFS[i]] if NOLL_CWFS[i] <= 22 else np.nan

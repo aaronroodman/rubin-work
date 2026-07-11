@@ -104,7 +104,8 @@ def main():
         if INIT == 'cwfs':
             # start the v-modes at the CWFS-expected optical state
             A_init = cwfs_vmode_amps(f'data/cwfs_{visit_of(seq)}.parquet', miw,
-                                     NPZ, np.deg2rad(rot), jmax, fp_radius=1.75)
+                                     NPZ, np.deg2rad(rot), jmax, fp_radius=1.75,
+                                     offsets=cfg.get('cwfs', {}).get('offsets', {}))
             p0[layout.i_dz] = A_init
             p0 = np.clip(p0, lo, hi)
             print('  init v-modes from CWFS:', np.round(A_init, 3))

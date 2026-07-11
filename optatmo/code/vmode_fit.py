@@ -67,16 +67,20 @@ NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
 
 
 def cwfs_vmode_amps(cwfs_parquet, miw, npz_path, rot_rad, jmax=22,
-                    fp_radius=1.75, ridge=1e-3):
+                    fp_radius=1.75, ridge=1e-3, offsets=None):
     """Least-squares v-mode amplitudes that reproduce the CWFS corner-wavefront
     deviation (zk_OCS - MIW) at the four corners -- for initialising the fit at
     the CWFS-expected optical state.
 
     Solves (in the OCS frame, same basis the fit uses)
-        G_v(corner, j) @ A  ~=  median(zk_OCS_j) - MIW_j(corner, rot)
+        G_v(corner, j) @ A  ~=  median(zk_OCS_j) - MIW_j(corner, rot) - offset_j
     over the four corner positions x representable pupil Noll j (<= jmax), with a
     small Tikhonov ridge for stability.
+
+    :param offsets: {Noll j: micron} systematic (CWFS - FAM) offsets subtracted
+        from the CWFS deviation so it is in the FAM / PSF-star system.
     """
+    offsets = offsets or {}
     import pandas as pd
     from lsst.obs.lsst import LsstCam
     rad2deg = 180.0 / np.pi
@@ -99,7 +103,8 @@ def cwfs_vmode_amps(cwfs_parquet, miw, npz_path, rot_rad, jmax=22,
             if jn > jmax or f'ztot_{i}' not in sub.columns:
                 continue
             rows.append((ci, jn))
-            target.append(float(np.median(sub[f'ztot_{i}'])) - miwc[jn])
+            target.append(float(np.median(sub[f'ztot_{i}'])) - miwc[jn]
+                          - float(offsets.get(jn, 0.0)))
     if not rows:
         raise RuntimeError(f'no usable CWFS corners in {cwfs_parquet}')
 
