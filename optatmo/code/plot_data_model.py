@@ -55,7 +55,9 @@ def visit_info(seq):
     if not len(r):
         return dict(alt=np.nan, az=np.nan, rot=0.0, band='?')
     r = r.iloc[0]
-    return dict(alt=float(r.get('alt', np.nan)), az=float(r.get('az', np.nan)),
+    # visits parquet stores alt/az in RADIANS but rotator_angle in DEGREES
+    return dict(alt=float(r.get('alt', np.nan)) * RAD2DEG,
+                az=float(r.get('az', np.nan)) * RAD2DEG,
                 rot=float(r.get('rotator_angle', 0.0)), band=str(r.get('band', '?')))
 
 
@@ -92,7 +94,7 @@ def _angamp(src, ia, ib, kind, ia0):
 
 
 def _page_scalar(pdf, seq, prep, dcell, mcell, scalarfn, label, unit,
-                 model, svd, A, atm, rot, miw, offsets=None):
+                 model, svd, A, atm, rot, miw, jmax, offsets=None):
     """FWHM- / M22-style page: data map | model map | model-vs-data scatter."""
     thx, thy, mom = prep['thx'], prep['thy'], prep['mom']
     g = pd.DataFrame({'sp': _superpix(prep), 'det': prep['detector'],
@@ -103,7 +105,7 @@ def _page_scalar(pdf, seq, prep, dcell, mcell, scalarfn, label, unit,
     agg = agg[agg.n >= 3]
     mm = model_moments_at(model, svd, A, atm, agg.thx.values, agg.thy.values,
                           np.full(len(agg), np.deg2rad(rot)), miw=miw,
-                          detector=agg.det.values, offsets=offsets)
+                          detector=agg.det.values, jmax=jmax, offsets=offsets)
     vdat, vmod = agg.val.values, scalarfn(mm)
     vlo, vhi = np.percentile(np.r_[vdat, vmod], [2, 98])
     fig, ax = plt.subplots(2, 2, figsize=(11, 10))
@@ -119,13 +121,13 @@ def _page_scalar(pdf, seq, prep, dcell, mcell, scalarfn, label, unit,
 
 
 def _page_doublet(pdf, seq, prep, dcell, mcell, keypair, kind, ref_len, title,
-                  model, svd, A, atm, rot, miw, nstar=1000, offsets=None):
+                  model, svd, A, atm, rot, miw, jmax, nstar=1000, offsets=None):
     thx, thy, mom = prep['thx'], prep['thy'], prep['mom']
     ia0 = LAB.index('e0'); ia, ib = LAB.index(keypair[0]), LAB.index(keypair[1])
     idx = np.linspace(0, len(thx) - 1, min(nstar, len(thx))).astype(int)
     mm = model_moments_at(model, svd, A, atm, thx[idx], thy[idx],
                           np.full(len(idx), np.deg2rad(rot)), miw=miw,
-                          detector=prep['detector'][idx], offsets=offsets)
+                          detector=prep['detector'][idx], jmax=jmax, offsets=offsets)
     amp95 = np.percentile(_angamp(mom[idx], ia, ib, kind, ia0)[1], 95)
     scale = max(amp95, 1e-9) / ref_len
     fig, ax = plt.subplots(2, 2, figsize=(11, 10))
@@ -141,14 +143,14 @@ def _page_doublet(pdf, seq, prep, dcell, mcell, keypair, kind, ref_len, title,
     fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
 
-def _page_corners(pdf, seq, fit, A, svd, rot, miw, cfg):
+def _page_corners(pdf, seq, fit, A, svd, rot, miw, cfg, jmax):
     cw = pd.read_parquet(f'data/cwfs_{visit_of(seq)}.parquet')
     cw['corner'] = cw.detector.str[:3]
     from lsst.obs.lsst import LsstCam
     name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
     offsets = cfg.get('cwfs', {}).get('offsets', {})
-    njz = min(12, len(NOLL_CWFS))
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    njz = len(NOLL_CWFS)                          # all 21 AOS terms, Z4..Z26
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
     for c, axc in zip(['R00', 'R04', 'R40', 'R44'], axes.flat):
         sub = cw[cw.corner == c]
         if len(sub) == 0:
@@ -156,17 +158,18 @@ def _page_corners(pdf, seq, fit, A, svd, rot, miw, cfg):
         cx = np.median(sub.thx_OCS.values) * RAD2DEG
         cy = np.median(sub.thy_OCS.values) * RAD2DEG
         det_id = name2id.get(sub.detector.iloc[0], -1)
-        miwc = np.nan_to_num(miw.zernikes(cx, cy, np.deg2rad(rot), 22, [det_id])[0])
+        miwc = np.nan_to_num(miw.zernikes(cx, cy, np.deg2rad(rot), jmax, [det_id])[0])
         cwfs_z = np.array([np.median(sub[f'ztot_{i}'].values) - miwc[NOLL_CWFS[i]]
                            - float(offsets.get(NOLL_CWFS[i], 0.0)) for i in range(njz)])
-        psf_dev = wavefront_at(A, svd, [cx], [cy], jmax=22, fp_radius=FP_R)[0]
-        psf_z = np.array([psf_dev[NOLL_CWFS[i]] if NOLL_CWFS[i] <= 22 else np.nan
+        psf_dev = wavefront_at(A, svd, [cx], [cy], jmax=jmax, fp_radius=FP_R)[0]
+        psf_z = np.array([psf_dev[NOLL_CWFS[i]] if NOLL_CWFS[i] <= jmax else np.nan
                           for i in range(njz)])
         w = 0.4; xloc = np.arange(njz)
         axc.bar(xloc - w / 2, cwfs_z, w, label='CWFS', color='C0')
         axc.bar(xloc + w / 2, psf_z, w, label='PSF v-mode fit', color='C3')
         axc.set_xticks(xloc)
-        axc.set_xticklabels([f'Z{NOLL_CWFS[i]}' for i in range(njz)], fontsize=7)
+        axc.set_xticklabels([f'Z{NOLL_CWFS[i]}' for i in range(njz)],
+                            fontsize=5, rotation=90)
         axc.set_title(f'corner {c}  (x={cx:.2f}, y={cy:.2f})', fontsize=9)
         axc.axhline(0, color='k', lw=0.6); axc.legend(fontsize=7)
         axc.set_ylabel('Zj deviation [µm]', fontsize=8); axc.tick_params(labelsize=6)
@@ -268,24 +271,25 @@ def run(seq, svd_npz, cfg, model, miw, tag=''):
     info = visit_info(seq)
     prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
                                   sign=1, rot_deg=rot)
+    jmax = int(cfg['geometry']['jmax'])
     out = f'output/fit_{seq}{tag}.pdf'
     with PdfPages(out) as pdf:
         _page_info(pdf, seq, fit, info, cfg)
         _page_scalar(pdf, seq, prep, dcell, mcell, lambda m: fwhm_of(m[:, 0]),
-                     'FWHM', 'arcsec', model, svd_npz, A, atm, rot, miw, offsets)
+                     'FWHM', 'arcsec', model, svd_npz, A, atm, rot, miw, jmax, offsets)
         _page_doublet(pdf, seq, prep, dcell, mcell, ('e1', 'e2'), 'spin2', 0.30,
-                      'ellipticity', model, svd_npz, A, atm, rot, miw,
+                      'ellipticity', model, svd_npz, A, atm, rot, miw, jmax,
                       nstar=1250, offsets=offsets)
         _page_doublet(pdf, seq, prep, dcell, mcell, ('M21', 'M12'), 'spin1', 0.30,
-                      'coma', model, svd_npz, A, atm, rot, miw,
+                      'coma', model, svd_npz, A, atm, rot, miw, jmax,
                       nstar=750, offsets=offsets)
         _page_doublet(pdf, seq, prep, dcell, mcell, ('M30', 'M03'), 'spin1', 0.30,
-                      'trefoil', model, svd_npz, A, atm, rot, miw,
+                      'trefoil', model, svd_npz, A, atm, rot, miw, jmax,
                       nstar=750, offsets=offsets)
         _page_scalar(pdf, seq, prep, dcell, mcell, lambda m: m[:, LAB.index('M22')],
                      'M22 = <r^4>', 'arcsec^4', model, svd_npz, A, atm, rot, miw,
-                     offsets)
-        _page_corners(pdf, seq, fit, A, svd_npz, rot, miw, cfg)
+                     jmax, offsets)
+        _page_corners(pdf, seq, fit, A, svd_npz, rot, miw, cfg, jmax)
         _page_progress(pdf, seq, fit)
     print(f'seq {seq}: wrote {out}')
 

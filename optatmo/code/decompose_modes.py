@@ -22,7 +22,7 @@ from moments_hsm import measure_hsm_moments
 import psf_model as pm
 
 AMP = 0.20            # micron per mode
-MODES = list(range(4, 23))   # Z4..Z22
+MODES = [j for j in range(4, 27) if j not in (20, 21)]   # AOS Z4..Z26 omit Z20,Z21
 FINE_SCALE = 0.01
 FINE_STAMP = 256
 

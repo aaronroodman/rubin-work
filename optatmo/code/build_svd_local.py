@@ -8,6 +8,8 @@ import numpy as np
 RAW = 'data/ofc_raw.npz'
 # 22-DOF reduced set: 10 rigid + first 7 M1M3 + first 5 M2
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+# standard AOS pupil Noll set: Z4..Z26 omitting Z20, Z21 (21 terms)
+AOS_NOLL = [j for j in range(4, 27) if j not in (20, 21)]
 
 
 def build(iZs, k_min, k_max, n_keep, dof_idx=None, raw=RAW, out=None):
@@ -49,13 +51,10 @@ def validate_against(npz_path, iZs, k_min, k_max, n_keep, dof_idx):
 
 if __name__ == '__main__':
     import os
-    # 1) validate replication against the 22/12 k6 npz already built on USDF
-    if os.path.exists('data/ofc_svd_22_12_k6.npz') and os.path.exists(RAW):
-        print('=== validate local build vs USDF ofc_svd_22_12_k6.npz ===')
-        validate_against('data/ofc_svd_22_12_k6.npz', range(4, 23), 1, 6, 12, DOF22)
-    # 2) build 50/34 k6 (all 50 DOF, keep 34)
+    # build 50/34 k6 (all 50 DOF, keep 34) on the standard AOS pupil Noll set
+    # Z4..Z26 omitting Z20,Z21 (21 terms) -- matches the MIW calib / CWFS.
     if os.path.exists(RAW):
-        print('\n=== build 50/34 k6 ===')
-        build(range(4, 23), 1, 6, 34, dof_idx=None, out='data/ofc_svd_50_34_k6.npz')
+        print(f'=== build 50/34 k6 on AOS Noll {AOS_NOLL} ===')
+        build(AOS_NOLL, 1, 6, 34, dof_idx=None, out='data/ofc_svd_50_34_k6.npz')
     else:
         print(f'{RAW} not found — run the raw-dump snippet on USDF and scp it here.')

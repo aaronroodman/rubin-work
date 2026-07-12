@@ -7,7 +7,8 @@ geometry:
   pixel_scale: 0.2          # arcsec/pixel
   stamp: 32                 # detector stamp (pixels)
   oversample: 16            # FFT oversampling factor
-  jmax: 22                  # max Noll index of the wavefront
+  jmax: 26                  # max Noll index of the wavefront (AOS uses Z4..Z26
+                            # omitting Z20,Z21; those coeffs are just never set)
   annular: true             # annular Noll Zernikes (ts_wep/Batoid/CWFS convention)
 
 atmosphere:
