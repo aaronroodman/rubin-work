@@ -142,7 +142,11 @@ def main():
         st = mon.stats(res)
         np.savez(f'data/vmodefit_{seq}{tag}.npz', A=A,
                  atm=np.array(list(atm.values())),
-                 A_init=A_init, init=INIT,
+                 atm_names=np.array(layout.atm_free), A_init=A_init,
+                 init=INIT, optics=OPTICS, reg=REG, svd_file=NPZ,
+                 cost=float(res.fun), success=bool(res.success),
+                 n_stars=len(prep['thx']), n_cells=len(cat['thx_deg']),
+                 fit_moments=np.array(fit_moments),
                  thx=cat['thx_deg'], thy=cat['thy_deg'], rot=rot,
                  detector=cat['detector'],
                  data_mom=cat['moments'], model_mom=model_mom,

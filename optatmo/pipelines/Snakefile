@@ -51,16 +51,13 @@ wildcard_constraints:
     seq   = r"\d+",
     visit = r"\d+",
 
-PLOTS = ["fwhm", "ellip", "coma", "trefoil", "corners"]
-
 
 rule all:
     input:
         "output/miw_z4_ocs_ccs.png",
         "output/miw_ocs_z5_z11.png",
         expand("output/binscatter_{k}_{seq}.png", k=["map", "hist"], seq=SEQS),
-        expand("output/fitmon_{seq}.png", seq=SEQS),
-        expand("output/dm_{p}_{seq}.png", p=PLOTS, seq=SEQS)
+        expand("output/fit_{seq}.pdf", seq=SEQS)
 
 
 # ---- validation plots of the official MIW calib (reads the Butler; uses the
@@ -159,10 +156,10 @@ rule fit:
         "coll={MIW_COLL} filt={MIW_FILT} repo={REPO} &> {log}"
 
 
-# ---- per-seq data-vs-model + corner comparison plots ----
+# ---- per-seq multi-page PDF report (moments, corners, fit progress) ----
 rule plots:
     output:
-        expand("output/dm_{p}_{{seq}}.png", p=PLOTS),
+        "output/fit_{seq}.pdf",
     input:
         fit   = "data/vmodefit_{seq}.npz",
         cwfs  = lambda w: f"data/cwfs_{visit(int(w.seq))}.parquet",
