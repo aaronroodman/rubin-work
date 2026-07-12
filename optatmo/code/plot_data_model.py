@@ -181,10 +181,13 @@ def _page_progress(pdf, seq, fit):
     ie = np.asarray(fit['mon_iter_evals'], int)
     reg = float(fit['reg']); n_v = len(np.asarray(fit['A']))
     atm_names = [str(x) for x in np.atleast_1d(fit['atm_names'])]
+    off_names = ([str(x) for x in np.atleast_1d(fit['offset_moments'])]
+                 if 'offset_moments' in fit.files else [])
     ev = np.arange(1, len(costs) + 1)
     dz = P[:, :n_v]
     chi2 = costs - reg * np.sum(dz ** 2, axis=1)
-    fig, ax = plt.subplots(1, 3, figsize=(16, 4.5))
+    ncol = 4 if off_names else 3
+    fig, ax = plt.subplots(1, ncol, figsize=(5.3 * ncol, 4.6))
     for e in ie:
         for a in ax:
             a.axvline(e, color='0.88', lw=0.5, zorder=0)
@@ -203,6 +206,13 @@ def _page_progress(pdf, seq, fit):
         ax[2].plot(ev, P[:, n_v + j], lw=1.3, label=nm)
     ax[2].set_xlabel('function evaluation'); ax[2].set_title('atmosphere params')
     ax[2].legend(fontsize=8)
+    if off_names:
+        base = n_v + len(atm_names)
+        for j, nm in enumerate(off_names):
+            ax[3].plot(ev, P[:, base + j], lw=1.3, label=nm)
+        ax[3].set_xlabel('function evaluation')
+        ax[3].set_ylabel('offset [arcsec^n]')
+        ax[3].set_title('moment offsets'); ax[3].legend(fontsize=7)
     fig.suptitle(f'{DAY} seq={seq}: fit progress', fontsize=12)
     fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 

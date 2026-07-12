@@ -80,15 +80,17 @@ class FitMonitor:
                 f"final_cost={s['final_cost']:.5g} success={s['success']}")
 
     def plot(self, path, res, i_dz, vmode_names, atm_idx, atm_names,
-             reg_lambda=0.0, title=''):
+             reg_lambda=0.0, title='', off_idx=None, off_names=None):
         costs = np.asarray(self.costs, float)
         P = np.asarray(self.params, float)              # (n_eval, n_param)
         ev = np.arange(1, len(costs) + 1)
         dz = P[:, i_dz]                                 # (n_eval, n_v)
         reg = reg_lambda * np.sum(dz ** 2, axis=1)
         chi2 = costs - reg                              # data-only reduced chi2
+        has_off = bool(off_idx is not None and len(off_idx))
+        ncol = 4 if has_off else 3
 
-        fig, ax = plt.subplots(1, 3, figsize=(18, 5))
+        fig, ax = plt.subplots(1, ncol, figsize=(4.5 * ncol, 4.6))
         for e in self.iter_evals:                       # iteration boundaries
             for a in ax:
                 a.axvline(e, color='0.88', lw=0.5, zorder=0)
@@ -112,6 +114,12 @@ class FitMonitor:
             ax[2].plot(ev, P[:, idx], lw=1.3, label=nm)
         ax[2].set_xlabel('function evaluation'); ax[2].set_ylabel('value')
         ax[2].set_title('atmosphere params vs evaluation'); ax[2].legend(fontsize=8)
+
+        if has_off:
+            for idx, nm in zip(off_idx, off_names):
+                ax[3].plot(ev, P[:, idx], lw=1.3, label=nm)
+            ax[3].set_xlabel('function evaluation'); ax[3].set_ylabel('offset [arcsec^n]')
+            ax[3].set_title('moment offsets vs evaluation'); ax[3].legend(fontsize=7)
 
         fig.suptitle(f'{title}  |  {self.summary_line(res)}')
         fig.tight_layout()

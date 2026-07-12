@@ -117,6 +117,15 @@ def main():
         bnds = list(layout.bounds())
         lo = np.array([b[0] if b[0] is not None else -np.inf for b in bnds])
         hi = np.array([b[1] if b[1] is not None else np.inf for b in bnds])
+        # start the atmospheric FWHM at the median measured stellar FWHM (helps
+        # convergence; the fit then trims it for the optical contribution)
+        if 'fwhm' in layout.atm_free:
+            med_fwhm = float(np.nanmedian(
+                np.sqrt(np.clip(prep['mom'][:, 0], 0, None) * np.log(256.0))))
+            fw_i = layout.n_dz + layout.atm_free.index('fwhm')
+            flo, fhi = layout.atm_bounds['fwhm']
+            p0[fw_i] = min(max(med_fwhm, flo), fhi)
+            print(f'  init fwhm = median stellar FWHM = {p0[fw_i]:.3f} arcsec')
         A_init = np.zeros(layout.n_dz)
         if INIT == 'cwfs':
             # start the v-modes at the CWFS-expected optical state
@@ -158,9 +167,11 @@ def main():
         print('  fit monitor:', mon.summary_line(res))
 
         atm_idx = [layout.n_dz + i for i in range(len(layout.atm_free))]
+        off_idx = list(range(layout.i_off.start, layout.i_off.stop))
         mon.plot(f'output/fitmon_{seq}{tag}.png', res, layout.i_dz, vmode_names,
                  atm_idx, layout.atm_free, reg_lambda=REG,
-                 title=f'20260513 seq={seq} (rot {rot:.1f}) init={INIT}')
+                 title=f'{DAY} seq={seq} (rot {rot:.1f}) init={INIT} optics={OPTICS}',
+                 off_idx=off_idx, off_names=list(layout.offset_moments))
         st = mon.stats(res)
         np.savez(f'data/vmodefit_{seq}{tag}.npz', A=A,
                  atm=np.array(list(atm.values())),
