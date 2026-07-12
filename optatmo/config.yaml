@@ -29,10 +29,12 @@ dz_terms:
   - {pupil: 10, focal: [1]}
   - {pupil: 11, focal: [1]}
 
-# Constant additive offsets in moment space (telescope jitter / wind-shake).
-# Left empty: jitter ellipticity is degenerate with the atmospheric shear
-# (g1,g2) below, which we fit instead.  Add moments here only if you need a
-# constant term the atmosphere shear cannot absorb (e.g. e0).
+# Spatially-constant additive offsets in moment space, one free param per listed
+# moment (like g1/g2 give a constant e1/e2, but for the higher-order moments).
+# NOTE: run_vmode_fit sets this from the `moffsets=` option (off | higher | all |
+# csv); 'higher' = the fit moments except e0/e1/e2 (those are the atmosphere's
+# fwhm/g1/g2, so offsetting them would be degenerate). This block is the default
+# when the fit is driven some other way.
 moment_offsets:
   moments: []
   init: 0.0

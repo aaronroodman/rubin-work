@@ -92,7 +92,7 @@ def _angamp(src, ia, ib, kind, ia0):
 
 
 def _page_scalar(pdf, seq, prep, dcell, mcell, scalarfn, label, unit,
-                 model, svd, A, atm, rot, miw):
+                 model, svd, A, atm, rot, miw, offsets=None):
     """FWHM- / M22-style page: data map | model map | model-vs-data scatter."""
     thx, thy, mom = prep['thx'], prep['thy'], prep['mom']
     g = pd.DataFrame({'sp': _superpix(prep), 'det': prep['detector'],
@@ -103,7 +103,7 @@ def _page_scalar(pdf, seq, prep, dcell, mcell, scalarfn, label, unit,
     agg = agg[agg.n >= 3]
     mm = model_moments_at(model, svd, A, atm, agg.thx.values, agg.thy.values,
                           np.full(len(agg), np.deg2rad(rot)), miw=miw,
-                          detector=agg.det.values)
+                          detector=agg.det.values, offsets=offsets)
     vdat, vmod = agg.val.values, scalarfn(mm)
     vlo, vhi = np.percentile(np.r_[vdat, vmod], [2, 98])
     fig, ax = plt.subplots(2, 2, figsize=(11, 10))
@@ -119,13 +119,13 @@ def _page_scalar(pdf, seq, prep, dcell, mcell, scalarfn, label, unit,
 
 
 def _page_doublet(pdf, seq, prep, dcell, mcell, keypair, kind, ref_len, title,
-                  model, svd, A, atm, rot, miw, nstar=1000):
+                  model, svd, A, atm, rot, miw, nstar=1000, offsets=None):
     thx, thy, mom = prep['thx'], prep['thy'], prep['mom']
     ia0 = LAB.index('e0'); ia, ib = LAB.index(keypair[0]), LAB.index(keypair[1])
     idx = np.linspace(0, len(thx) - 1, min(nstar, len(thx))).astype(int)
     mm = model_moments_at(model, svd, A, atm, thx[idx], thy[idx],
                           np.full(len(idx), np.deg2rad(rot)), miw=miw,
-                          detector=prep['detector'][idx])
+                          detector=prep['detector'][idx], offsets=offsets)
     amp95 = np.percentile(_angamp(mom[idx], ia, ib, kind, ia0)[1], 95)
     scale = max(amp95, 1e-9) / ref_len
     fig, ax = plt.subplots(2, 2, figsize=(11, 10))
@@ -231,6 +231,7 @@ def _page_info(pdf, seq, fit, info, cfg):
         f'fit moments    : {", ".join(str(m) for m in np.atleast_1d(fit["fit_moments"]))}',
         f'atmosphere     : kernel={cfg["atmosphere"]["kernel"]}, L0={cfg["atmosphere"]["L0"]}, '
         f'free={atm_names}',
+        f'moment offsets : {[str(m) for m in np.atleast_1d(fit["offset_moments"])] if "offset_moments" in fit.files and np.atleast_1d(fit["offset_moments"]).size else "none"}',
         f'bin cell_deg   : {cfg["fit"].get("cell_deg", 0.1)}   min_n: {cfg["fit"].get("min_n", 3)}',
         f'PSF model      : jmax={cfg["geometry"]["jmax"]}, annular={cfg["geometry"].get("annular")}, '
         f'stamp={cfg["geometry"]["stamp"]}, oversample={cfg["geometry"]["oversample"]}',
@@ -238,6 +239,11 @@ def _page_info(pdf, seq, fit, info, cfg):
         f'--- fitted atmosphere ---',
         '   ' + '   '.join(f'{n}={v:.4f}' for n, v in zip(atm_names, atm)),
     ]
+    if 'offset_moments' in fit.files and np.atleast_1d(fit['offset_moments']).size:
+        offv = np.asarray(fit['offsets'])
+        oms = [str(m) for m in np.atleast_1d(fit['offset_moments'])]
+        lines += ['', f'--- fitted moment offsets ---',
+                  '   ' + '   '.join(f'{m}={offv[LAB.index(m)]:.5f}' for m in oms)]
     fig = plt.figure(figsize=(8.5, 11))
     fig.text(0.08, 0.95, '\n'.join(lines), va='top', ha='left',
              family='monospace', fontsize=11)
@@ -248,6 +254,7 @@ def run(seq, svd_npz, cfg, model, miw, tag=''):
     fit = np.load(f'data/vmodefit_{seq}{tag}.npz', allow_pickle=False)
     A, atm, rot = fit['A'], fit['atm'], float(fit['rot'])
     dcell, mcell = fit['data_mom'], fit['model_mom']       # binned cells (n,12)
+    offsets = fit['offsets'] if 'offsets' in fit.files else None
     info = visit_info(seq)
     prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
                                   sign=1, rot_deg=rot)
@@ -255,15 +262,19 @@ def run(seq, svd_npz, cfg, model, miw, tag=''):
     with PdfPages(out) as pdf:
         _page_info(pdf, seq, fit, info, cfg)
         _page_scalar(pdf, seq, prep, dcell, mcell, lambda m: fwhm_of(m[:, 0]),
-                     'FWHM', 'arcsec', model, svd_npz, A, atm, rot, miw)
+                     'FWHM', 'arcsec', model, svd_npz, A, atm, rot, miw, offsets)
         _page_doublet(pdf, seq, prep, dcell, mcell, ('e1', 'e2'), 'spin2', 0.30,
-                      'ellipticity', model, svd_npz, A, atm, rot, miw, nstar=1250)
+                      'ellipticity', model, svd_npz, A, atm, rot, miw,
+                      nstar=1250, offsets=offsets)
         _page_doublet(pdf, seq, prep, dcell, mcell, ('M21', 'M12'), 'spin1', 0.30,
-                      'coma', model, svd_npz, A, atm, rot, miw, nstar=750)
+                      'coma', model, svd_npz, A, atm, rot, miw,
+                      nstar=750, offsets=offsets)
         _page_doublet(pdf, seq, prep, dcell, mcell, ('M30', 'M03'), 'spin1', 0.30,
-                      'trefoil', model, svd_npz, A, atm, rot, miw, nstar=750)
+                      'trefoil', model, svd_npz, A, atm, rot, miw,
+                      nstar=750, offsets=offsets)
         _page_scalar(pdf, seq, prep, dcell, mcell, lambda m: m[:, LAB.index('M22')],
-                     'M22 = <r^4>', 'arcsec^4', model, svd_npz, A, atm, rot, miw)
+                     'M22 = <r^4>', 'arcsec^4', model, svd_npz, A, atm, rot, miw,
+                     offsets)
         _page_corners(pdf, seq, fit, A, svd_npz, rot, miw, cfg)
         _page_progress(pdf, seq, fit)
     print(f'seq {seq}: wrote {out}')
@@ -276,7 +287,10 @@ def main():
     seqs = [int(s) for s in seqs.split(',')] if seqs else [25, 28]
     init = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')), 'zero')
     optics = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')), 'free')
-    _p = ([init] if init != 'zero' else []) + (['atmonly'] if optics == 'fixed' else [])
+    moff = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('moffsets=')), 'off')
+    _p = (([init] if init != 'zero' else [])
+          + (['atmonly'] if optics == 'fixed' else [])
+          + (['moff'] if moff not in ('off', 'none', '') else []))
     tag = ('_' + '_'.join(_p)) if _p else ''
     cfg = load_config('config.yaml')
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12

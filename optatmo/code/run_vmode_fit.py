@@ -58,12 +58,28 @@ def main():
     print(f'fit moments: {fit_moments}')
     print(f'weights: {[(m, weights.get(m, 1.0)) for m in fit_moments]}')
 
+    # optional spatially-constant per-moment offsets (like g1/g2 for e1/e2, but
+    # for the higher-order moments).  moffsets = off | higher | all | <csv list>.
+    # 'higher' = fit moments except e0/e1/e2 (those are handled by fwhm/g1/g2).
+    MOFF = next((a.split('=', 1)[1] for a in _sys.argv if a.startswith('moffsets=')),
+                'off')
+    _higher = [m for m in fit_moments if m not in ('e0', 'e1', 'e2')]
+    if MOFF in ('off', 'none', ''):
+        moff_list = []
+    elif MOFF == 'higher':
+        moff_list = _higher
+    elif MOFF == 'all':
+        moff_list = list(fit_moments)
+    else:
+        moff_list = [m for m in MOFF.split(',') if m]
+    print(f'moment offsets ({MOFF}): {moff_list}')
+
     model = fitmod.build_model(cfg)
     miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
     n_v = int(np.load(NPZ)['U_eff'].shape[1])      # #v-modes from the SVD file
     vmode_names = [f'v{i+1}' for i in range(n_v)]
     print(f'v-mode fit: {n_v} modes from {NPZ}')
-    layout = ParamLayout({**cfg, 'moment_offsets': {'moments': [], 'init': 0}},
+    layout = ParamLayout({**cfg, 'moment_offsets': {'moments': moff_list, 'init': 0.0}},
                          vmode_names)
 
     import sys
@@ -74,8 +90,9 @@ def main():
                 'zero')                         # v-mode start: zero | cwfs
     OPTICS = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')),
                   'free')                        # free | fixed (freeze v-modes)
-    _parts = ([INIT] if INIT != 'zero' else []) + (['atmonly'] if OPTICS == 'fixed'
-                                                   else [])
+    _parts = (([INIT] if INIT != 'zero' else [])
+              + (['atmonly'] if OPTICS == 'fixed' else [])
+              + (['moff'] if moff_list else []))
     tag = ('_' + '_'.join(_parts)) if _parts else ''   # output suffix (no clobber)
     print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g}, '
           f'v-mode init = {INIT}, optics = {OPTICS} ###')
@@ -128,11 +145,16 @@ def main():
         mon.stop()
         A = res.x[layout.i_dz]
         atm = {a: res.x[layout.n_dz + i] for i, a in enumerate(layout.atm_free)}
+        offsets_vec = np.array(layout.offset_vector(res.x))    # length-12
         model_mom = np.array(fwd.moments(jnp.asarray(res.x)))   # (n_cells, 12)
         print(f'\n=== seq {seq} (rot {rot:.1f}): cost={res.fun:.3f} '
               f'nit={res.nit} success={res.success} ===')
         print('  v-mode amps:', np.round(A, 3))
         print('  atm:', {k: round(v, 4) for k, v in atm.items()})
+        if moff_list:
+            print('  moment offsets:',
+                  {m: round(float(offsets_vec[fitmod.MOMENT_LABELS.index(m)]), 5)
+                   for m in moff_list})
         print('  fit monitor:', mon.summary_line(res))
 
         atm_idx = [layout.n_dz + i for i in range(len(layout.atm_free))]
@@ -143,6 +165,7 @@ def main():
         np.savez(f'data/vmodefit_{seq}{tag}.npz', A=A,
                  atm=np.array(list(atm.values())),
                  atm_names=np.array(layout.atm_free), A_init=A_init,
+                 offsets=offsets_vec, offset_moments=np.array(moff_list),
                  init=INIT, optics=OPTICS, reg=REG, svd_file=NPZ,
                  cost=float(res.fun), success=bool(res.success),
                  n_stars=len(prep['thx']), n_cells=len(cat['thx_deg']),

@@ -118,10 +118,12 @@ def cwfs_vmode_amps(cwfs_parquet, miw, npz_path, rot_rad, jmax=22,
 
 
 def model_moments_at(model, npz_path, A, atm, thx_deg, thy_deg, rot_rad,
-                     miw=None, detector=None, jmax=22, fp_radius=1.75, batch=256):
+                     miw=None, detector=None, jmax=22, fp_radius=1.75, batch=256,
+                     offsets=None):
     """Model HSM moments at arbitrary field positions (for data-vs-model plots).
 
-    wavefront = MIW(thx,thy,rot,detector) + G_v(thx,thy) @ A ; JAX model moments.
+    wavefront = MIW(thx,thy,rot,detector) + G_v(thx,thy) @ A ; JAX model moments,
+    plus the spatially-constant per-moment ``offsets`` (length-12) if fitted.
     ``detector`` (per point) is required by the per-detector MIWCalib loader.
     """
     import jax
@@ -137,4 +139,7 @@ def model_moments_at(model, npz_path, A, atm, thx_deg, thy_deg, rot_rad,
     out = []
     for i in range(0, len(z), batch):
         out.append(np.array(jax.vmap(fn)(jnp.asarray(z[i:i + batch]))))
-    return np.concatenate(out, axis=0)
+    M = np.concatenate(out, axis=0)
+    if offsets is not None:
+        M = M + np.asarray(offsets)[None, :]     # constant per-moment offsets
+    return M
