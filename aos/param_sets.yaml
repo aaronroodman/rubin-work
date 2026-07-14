@@ -139,24 +139,19 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
       collection:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
       dataset_type: aggregateZernikesRaw
     tarts:
-      # TARTS AI wavefront retrieval (peterma2) -- UNPAIRED / neural processing on the
-      # heavily-defocused (~3mm) corner donuts of the FAM intra & extra exposures (the
-      # in-focus exposure is skipped).  Has aggregateAOSVisitTableRaw but with SINGULAR
-      # positions (thx_OCS/thy_OCS; no intra/extra split) and the `used` flag is always
-      # False -> reader: unpaired (run_wfs_mktable.get_unpaired_zernikes) keeps all rows.
-      # Each exposure carries only some corner half-sensors (extra->SW1, intra->SW0 for
-      # R04/R40/R44; R00 in both), so combine_offsets [-1,0] concatenates the intra
-      # (FAM seq-1) and extra (FAM seq) donuts to cover all four corners.  seq_offset 0
-      # labels the merged row at the extra exposure (= FAM seq).  Covers 17 nights.
-      collection: u/peterma2/tarts_fam_cwfs_triplet
+      # TARTS in-focus analysis of the triplet (peterma2), replacing the old
+      # tarts_fam_cwfs_triplet (intra/extra ~3mm defocused) collection, which was
+      # not what was wanted.  This is the IN-FOCUS exposure = FAM seq + 1
+      # (seq_offset default +1, like refitWcs), so all four corners' donuts are in
+      # one exposure -- no combine_offsets / defocused_only needed.
+      # reader: unpaired ASSUMES the aggregate keeps SINGULAR positions
+      # (thx_OCS/thy_OCS, no intra/extra split) as the old TARTS did; VERIFY on the
+      # first run -- if it instead has the paired thx_*_intra/extra split, drop
+      # `reader: unpaired` (default paired reader); if it only has
+      # aggregateZernikesRaw, use `dataset_type: aggregateZernikesRaw`.
+      # TARTS Noll (Z4-Z28) is remapped to the FAM Noll in run_wfs_mktable.
+      collection: u/peterma2/tarts_fam_acq_stability_infocus
       reader: unpaired
-      seq_offset: 0
-      combine_offsets: [-1, 0]
-      # keep only the ~3mm-defocused SW half per exposure (drop the singleton
-      # in-focus half, e.g. the lone R00 SW1 in an intra exposure) -> 4 corners
-      # per exposure: intra->SW0, extra->SW1.  wfs_offset tags them for plots.
-      defocused_only: true
-      # TARTS returns 25 Noll terms (Z4-Z28); remapped to the FAM 21 (Z4-Z24).
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315
