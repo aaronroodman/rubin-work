@@ -348,13 +348,8 @@ output/<param_set>/
 ### AOS control
 
 Closed-loop AOS performance, separate from the FAM wavefront pipeline.
-(Candidates to move to their own `aos_control/` topic directory.)
-
-| Notebook | Description | Created | Last Modified |
-|----------|-------------|---------|---------------|
-| `nightly_tablemaker.ipynb` | Extract per-exposure AOS data (EFD + ConsDB + Butler) into a single parquet table with vmodes, per-corner Zernikes, and summary arrays. Based on `nightly_report_ts_version`. | 2026-03-07 | 2026-03-13 |
-| `aos_nightly_plots.ipynb` | Plots of AOS FWHM and Zernike deviations from multiple nights. Loads nightly_tablemaker output, computes mean 4-corner Zernike deviations, and produces time-series and histogram plots of vmodes and DOF states. | 2026-03-14 | 2026-03-14 |
-| `aos_openloop.ipynb` | Reconstruct closed-loop PID behavior of the AOS system. Builds sensitivity matrix SVD, projects 4-corner Zernikes onto vmodes, runs per-vmode PID simulation, and validates against actual DOF corrections. | 2026-03-11 | 2026-03-13 |
+Moved to the `nightlyiq/` topic directory: `nightly_tablemaker.ipynb`,
+`aos_nightly_plots.ipynb`, `aos_openloop.ipynb`.
 
 ### Active analyses (not in the pipeline)
 
@@ -394,9 +389,6 @@ Not wired into the Snakemake DAG; run directly on the RSP.
 - **Pipeline Phase 1** (`mktable`): EFD/ConsDB + Butler — RSP only. `fit`/`combine`/`plots`/`aberration_pairs` run anywhere the parquet outputs exist.
 - **Pipeline Phase 2 + analyses**: `lsst.ts.ofc` + `lsst.ts.wep`, `$TS_CONFIG_MTTCS_DIR`, batoid height maps — RSP only. `bounce` with `add_dof_trim` additionally queries EFD/ConsDB live.
 - **Corner-WFS track**: `wfs_mktable` needs the Butler (corner-WFS collections) — RSP only; `wfs_dof_compare` also needs `lsst.ts.ofc`/`lsst.ts.wep` (OFC SVD + `convertZernikesToPsfWidth`). Downstream steps run wherever the `wfs/<cwfs>/` parquets + FAM `fits.parquet`/sidecar exist.
-- **nightly_tablemaker**: EFD, ConsDB, and Butler access (run on RSP)
-- **aos_nightly_plots**: parquet output from nightly_tablemaker
-- **aos_openloop**: parquet output from nightly_tablemaker + `ts_config_mttcs` OFC config
 - **smatrix_vmode_info**: `lsst.ts.ofc` + `lsst.ts.wep` and `$TS_CONFIG_MTTCS_DIR` OFC config (run on RSP)
 - **study_compare_donuts**: two runs' `output/<param_set>/{donuts,visits}.parquet` (and `fits.parquet` for the optional DZ-fit comparison); numpy/scipy/pyarrow only (no LSST stack)
 
