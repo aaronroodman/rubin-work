@@ -270,7 +270,8 @@ def main():
                     # has scalar cols whose dtype varies across exposures (float vs
                     # all-NaN object), which would break the intra+extra vstack.
                     part = t[[c for c in keep if c in t.colnames]]
-                    part['wfs_offset'] = off        # -1 intra, 0 extra — tag before merge
+                    if combine is not None:         # only meaningful when merging intra+extra
+                        part['wfs_offset'] = off     # -1 intra, 0 extra — tag before merge
                     parts.append(part); meta = meta or m
             tbl = (None if not parts else
                    parts[0] if len(parts) == 1 else
