@@ -141,25 +141,28 @@ def get_aidonut_zernikes(butler, day_obs, seq_num, coord):
     return tbl, dict(band=meta.get('band', ''), nollIndices=noll)
 
 
-def get_unpaired_zernikes(butler, day_obs, seq_num, coord, defocused_only=False):
-    """Unpaired / neural CWFS (e.g. TARTS): the collection has a joined
-    aggregateAOSVisitTableRaw but with SINGULAR per-donut positions
+def get_unpaired_zernikes(butler, day_obs, seq_num, coord, defocused_only=False,
+                          dataset_type='aggregateAOSVisitTableRaw'):
+    """Unpaired / neural CWFS (e.g. TARTS): a joined singular-position AOS table
     (thx_<coord>/thy_<coord>; no intra/extra split), so the paired
-    get_aggregate_zernikes cannot read it.  Keep ALL donut rows -- TARTS does
-    not populate the `used` flag (it is always False in this collection), so we
-    cannot filter on it -- and return the already-correctly-named singular
-    columns.  Each exposure carries only some corner half-sensors (e.g. extra ->
-    SW1, intra -> SW0 for R04/R40/R44), so combine both exposures upstream (see
-    combine_offsets) to cover all corners.
+    get_aggregate_zernikes cannot read it.  Keep ALL rows -- TARTS does not
+    populate the `used` flag -- and return the already-correctly-named singular
+    columns.
+
+    dataset_type: ``aggregateAOSVisitTableRaw`` = one row per donut (needs
+    combine_offsets / defocused_only to cover corners), or
+    ``aggregateAOSVisitTableAvg`` = TARTS's ML-combined value, ONE row per
+    detector (all four corners' SW0+SW1 in a single in-focus exposure; no
+    combine/defocus handling needed).  The zk_<coord> in both is in microns
+    (the raw per-detector `zernikes` product is in nm; the aggregate is µm).
 
     defocused_only: keep only the majority SW-half for the exposure (the ~3mm
-    out-of-focus side), dropping the singleton opposite half that is effectively
-    in-focus (e.g. the lone R00 SW1 in an intra exposure).  Returns (astropy
+    out-of-focus side), dropping the singleton opposite half.  Returns (astropy
     Table, visit_meta) or (None, None)."""
     try:
-        agg = butler.get('aggregateAOSVisitTableRaw', day_obs=day_obs, seq_num=seq_num)
+        agg = butler.get(dataset_type, day_obs=day_obs, seq_num=seq_num)
     except Exception:
-        print(f'DatasetNotFoundError: No aggregateAOSVisitTableRaw for '
+        print(f'DatasetNotFoundError: No {dataset_type} for '
               f'day_obs={day_obs}, seq_num={seq_num}')
         return None, None
     meta = dict(agg.meta)
@@ -264,7 +267,8 @@ def main():
             offs = combine if combine else [seq_offset]     # concat intra+extra to cover all corners
             parts, meta = [], None
             for off in offs:
-                t, m = get_unpaired_zernikes(butler, d, fam_s + off, coord, defocused_only)
+                t, m = get_unpaired_zernikes(butler, d, fam_s + off, coord, defocused_only,
+                                             dataset_type=dataset_type)
                 if t is not None:
                     # filter to the lean `keep` set BEFORE vstack: the raw aggregate
                     # has scalar cols whose dtype varies across exposures (float vs

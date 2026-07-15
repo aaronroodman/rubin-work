@@ -139,19 +139,18 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
       collection:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
       dataset_type: aggregateZernikesRaw
     tarts:
-      # TARTS in-focus analysis of the triplet (peterma2), replacing the old
-      # tarts_fam_cwfs_triplet (intra/extra ~3mm defocused) collection, which was
-      # not what was wanted.  This is the IN-FOCUS exposure = FAM seq + 1
-      # (seq_offset default +1, like refitWcs), so all four corners' donuts are in
-      # one exposure -- no combine_offsets / defocused_only needed.
-      # reader: unpaired ASSUMES the aggregate keeps SINGULAR positions
-      # (thx_OCS/thy_OCS, no intra/extra split) as the old TARTS did; VERIFY on the
-      # first run -- if it instead has the paired thx_*_intra/extra split, drop
-      # `reader: unpaired` (default paired reader); if it only has
-      # aggregateZernikesRaw, use `dataset_type: aggregateZernikesRaw`.
+      # TARTS in-focus analysis of the triplet (peterma2).  IN-FOCUS exposure =
+      # FAM seq + 1 (seq_offset default +1, like refitWcs).
+      # Use the Avg aggregate: aggregateAOSVisitTableAvg is TARTS's ML-combined
+      # per-detector value (one row per corner half-sensor; all 8 in the single
+      # in-focus exposure), verified == the `zernikes` label=='average' row (in
+      # zk_CCS; the aggregate also carries the rotated zk_OCS + thx_OCS/thy_OCS,
+      # all in microns).  reader: unpaired reads the singular-position table; with
+      # the Avg (one row/detector) no combine_offsets / defocused_only is needed.
       # TARTS Noll (Z4-Z28) is remapped to the FAM Noll in run_wfs_mktable.
-      collection: u/peterma2/tarts_fam_acq_stability_infocus
-      reader: unpaired
+      collection:   u/peterma2/tarts_fam_acq_stability_infocus
+      reader:       unpaired
+      dataset_type: aggregateAOSVisitTableAvg
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315
