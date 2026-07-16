@@ -1,0 +1,128 @@
+# ----------------------------------------------------------------------
+# Guider moment-decomposition pipeline (Snakemake).
+#
+# Per exposure: track guide stars + decompose each sensor's shape into
+# coadd / static-per-stamp / image-motion second moments -> per-exposure
+# parquet.  Combine -> one dataset table -> focal-plane whisker summary.
+#
+#   snakemake -n            # dry-run: show the plan
+#   snakemake -j4           # build (or use ./run_snake.sh)
+#   snakemake --dag | dot -Tpng > dag.png
+#
+# Layout:
+#   output/<ds>/exposures/<expId>/moments.parquet   (per exposure)
+#   output/<ds>/moments.parquet                     (combined)
+#   output/<ds>/plots/whiskers.pdf                  (on combined)
+#
+# Config: snake_config.yaml (datasets -> exposures; butler + tracker/moment
+# settings).  Reusable library in code/ (guiderMoments.py etc).
+# ----------------------------------------------------------------------
+import os
+import yaml
+
+# One thread per job; parallelism comes from `snakemake -j`.  Matches the aos
+# pipeline convention so the two coexist on the same RSP allocation.
+os.environ["NUMEXPR_MAX_THREADS"] = "8"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
+CFG = yaml.safe_load(open("snake_config.yaml"))
+DATASETS = CFG["datasets"]
+BUTLER = CFG["butler"]
+TRACKER = CFG["tracker"]
+MOMENTS = CFG["moments"]
+
+CODE = "code"
+
+
+def expId(dayObs, seqNum):
+    return dayObs * 100000 + seqNum
+
+
+def exposures(ds):
+    return DATASETS[ds]["exposures"]
+
+
+def expIds(ds):
+    return [expId(e["dayObs"], e["seqNum"]) for e in exposures(ds)]
+
+
+def expParquet(ds):
+    return [f"output/{ds}/exposures/{eid}/moments.parquet" for eid in expIds(ds)]
+
+
+# Map an expId back to (dayObs, seqNum) for the per-exposure rule.
+_EXP = {
+    (ds, expId(e["dayObs"], e["seqNum"])): e
+    for ds in DATASETS
+    for e in exposures(ds)
+}
+
+wildcard_constraints:
+    ds = r"[A-Za-z0-9_.+-]+",
+    eid = r"\d+",
+
+
+rule all:
+    input:
+        [f"output/{ds}/moments.parquet" for ds in DATASETS]
+        + [f"output/{ds}/plots/whiskers.pdf" for ds in DATASETS],
+
+
+# ---- per exposure: track + decompose moments ----
+rule moments:
+    output:
+        "output/{ds}/exposures/{eid}/moments.parquet",
+    params:
+        dayObs=lambda w: _EXP[(w.ds, int(w.eid))]["dayObs"],
+        seqNum=lambda w: _EXP[(w.ds, int(w.eid))]["seqNum"],
+        collections=" ".join(BUTLER["collections"]),
+        repo=BUTLER["repo"],
+        view=BUTLER["view"],
+        recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
+    resources:
+        mem_mb=4000,
+    log:
+        "logs/{ds}.{eid}.moments.log",
+    shell:
+        rf"""
+        python {CODE}/run_guider_moments.py \
+            --day-obs {{params.dayObs}} --seq-num {{params.seqNum}} \
+            --repo {{params.repo}} --collections {{params.collections}} \
+            --view {{params.view}} \
+            --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
+            --edge-margin {TRACKER["edge_margin"]} \
+            --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
+            --ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} \
+            --output {{output}} > {{log}} 2>&1
+        """
+
+
+# ---- combine per-exposure tables -> one dataset table ----
+rule combine:
+    input:
+        lambda w: expParquet(w.ds),
+    output:
+        "output/{ds}/moments.parquet",
+    resources:
+        mem_mb=2000,
+    log:
+        "logs/{ds}.combine.log",
+    shell:
+        f"python {CODE}/combine_moments.py {{input}} --output {{output}} > {{log}} 2>&1"
+
+
+# ---- focal-plane whisker summary ----
+rule whiskers:
+    input:
+        "output/{ds}/moments.parquet",
+    output:
+        "output/{ds}/plots/whiskers.pdf",
+    resources:
+        mem_mb=2000,
+    log:
+        "logs/{ds}.whiskers.log",
+    shell:
+        f"python {CODE}/run_guider_whiskers.py {{input}} --output {{output}} > {{log}} 2>&1"

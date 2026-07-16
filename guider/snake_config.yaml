@@ -1,0 +1,41 @@
+# ----------------------------------------------------------------------
+# Guider moment-decomposition pipeline config.
+#
+# Each dataset lists the exposures to process. Per exposure we track the
+# guide stars and decompose each sensor's shape into coadd / static-per-stamp
+# / image-motion second moments (arcsec^2), then combine into one dataset
+# table (output/<dataset>/moments.parquet) and a focal-plane whisker summary.
+#
+# Add data -> add an exposure (or a dataset) -> Snakemake reruns combine +
+# plots for that dataset.
+# ----------------------------------------------------------------------
+
+# Butler / reader settings (shared by all datasets).
+butler:
+  repo: main
+  collections:
+    - LSSTCam/raw/guider
+    - LSSTCam/raw/all
+  view: dvcs
+
+# Tracker + moment settings (shared defaults).
+tracker:
+  min_snr: 10.0
+  max_ellipticity: 0.7
+  edge_margin: 3
+  min_finite_fraction: 0.5      # admit near-edge stars (<1 enables recovery)
+  recover_edge_stars: true
+moments:
+  ap_nsigma: 4.0
+  cen_niter: 3
+
+# Datasets -> exposures. expId = dayObs*100000 + seqNum.
+datasets:
+
+  test_20260709:
+    exposures:
+      - {dayObs: 20260709, seqNum: 808}
+
+  test_20260713:
+    exposures:
+      - {dayObs: 20260713, seqNum: 400}
