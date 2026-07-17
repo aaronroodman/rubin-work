@@ -39,12 +39,15 @@ import numpy as np
 import pandas as pd
 from astropy.time import Time, TimeDelta
 
+# ConsDB lives on an internal host; bypass any HTTP proxy for it -- must be set
+# at import time, before ConsDbClient/requests initializes (as in nightly_table).
+os.environ["no_proxy"] = (os.environ["no_proxy"] + ",.consdb") if "no_proxy" in os.environ else ".consdb"
+
 HEX_AXES = ["x", "y", "z", "u", "v", "w"]      # hexapod: x,y,z µm ; u,v,w deg
 N_DOF = 50
 HEX_SAL = {1: "cam", 2: "m2"}
 DOF_GROUPS = {"M2 hex": range(0, 5), "Cam hex": range(5, 10),
               "M1M3 bend": range(10, 30), "M2 bend": range(30, 50)}
-_MJD_UNIX = 40587.0                            # MJD of 1970-01-01
 
 
 # ---------------------------------------------------------------- helpers ----
@@ -54,9 +57,18 @@ def night_window(day_obs):
     return t0, t0 + TimeDelta(1.0, format="jd")
 
 
-def tai_unix(t):
-    """astropy Time -> TAI seconds since 1970 (to match EFD private_sndStamp)."""
-    return (float(t.tai.mjd) - _MJD_UNIX) * 86400.0
+_EPOCH = pd.Timestamp("1970-01-01", tz="UTC")
+
+
+def _utc_unix(idx):
+    """tz-aware (UTC) DatetimeIndex -> UTC POSIX seconds.  We match on the pandas
+    index (unambiguously UTC) rather than private_sndStamp (scale ambiguous), so
+    no UTC/TAI assumption is needed -- exposure times use astropy .unix (also UTC).
+    Timedelta division is resolution-safe (index may be ns or µs)."""
+    idx = pd.DatetimeIndex(idx)
+    if idx.tz is None:
+        idx = idx.tz_localize("UTC")
+    return ((idx - _EPOCH) / pd.Timedelta("1s")).to_numpy(float)
 
 
 def _numbered(row, stem, n):
@@ -76,11 +88,11 @@ def pick_visit(df, vid, col="visitId"):
 
 
 class TS:
-    """A time series matched on TAI private_sndStamp via searchsorted."""
-    def __init__(self, df, stamp="private_sndStamp"):
-        if df is not None and len(df) and stamp in df.columns:
-            df = df.sort_values(stamp)
-            self.df, self.s = df, df[stamp].to_numpy(float)
+    """A time series matched on the (UTC) pandas index via searchsorted."""
+    def __init__(self, df):
+        if df is not None and len(df):
+            df = df.sort_index()
+            self.df, self.s = df, _utc_unix(df.index)
         else:
             self.df, self.s = df, np.array([])
 
@@ -102,17 +114,18 @@ class TS:
 
 # ---------------------------------------------------------- Butler exposures ---
 def get_exposures(butler, day_obs, instrument="LSSTCam"):
-    """(day,seq) obs_type / program / TAI exposure window from the embargo Butler."""
+    """(seq) obs_type / program / UTC exposure window (POSIX s) from the Butler."""
     out = {}
     for r in butler.registry.queryDimensionRecords(
             "exposure", instrument=instrument, where=f"exposure.day_obs={int(day_obs)}"):
         ts = r.timespan
-        t0 = tai_unix(ts.begin) if ts and ts.begin is not None else np.nan
-        t1 = tai_unix(ts.end) if ts and ts.end is not None else np.nan
+        t0 = float(ts.begin.unix) if ts and ts.begin is not None else np.nan   # astropy .unix = UTC POSIX
+        t1 = float(ts.end.unix) if ts and ts.end is not None else np.nan
         out[int(r.seq_num)] = dict(
             obs_type=r.observation_type,
             program=getattr(r, "science_program", None),
-            t0=t0, t1=t1, mjd_begin=(float(ts.begin.tai.mjd) if ts and ts.begin is not None else np.nan))
+            t0=t0, t1=t1,
+            mjd_begin=(float(ts.begin.utc.mjd) if ts and ts.begin is not None else np.nan))
     return out
 
 
@@ -157,26 +170,26 @@ class AosDofAudit:
         n_m2 = n_cols(m2mC, "zForces")
 
         seen, rows = set(), []
-        for _, r in camC.sort_values("private_sndStamp").iterrows():
+        for t, r in camC.sort_index().iterrows():
             vid = int(pd.to_numeric(r.get("visitId", -1), errors="coerce") or -1)
             if vid <= 0 or vid in seen:                    # dedupe (FAM defocus sends 2/visit)
                 continue
             seen.add(vid)
             seq = vid % 100000
             exp = exposures.get(seq, {})
-            corr_tai = float(r.get("private_sndStamp", np.nan))
+            corr_unix = float(pd.Timestamp(t).timestamp())            # UTC POSIX of the correction
             exp_t0 = exp.get("t0", np.nan)
             exp_mid = np.nanmean([exp.get("t0", np.nan), exp.get("t1", np.nan)])
-            tel_t = exp_mid if np.isfinite(exp_mid) else corr_tai      # telemetry @ exposure
+            tel_t = exp_mid if np.isfinite(exp_mid) else corr_unix    # telemetry @ exposure
 
             row = dict(visit_id=vid, day_obs=vid // 100000, seq_num=seq,
                        obs_type=exp.get("obs_type"), program=exp.get("program"),
-                       exp_mjd=exp.get("mjd_begin", np.nan), exp_tai=exp_t0, corr_tai=corr_tai,
-                       latency_s=(corr_tai - exp_t0) if np.isfinite(exp_t0) else np.nan,
+                       exp_mjd=exp.get("mjd_begin", np.nan), exp_unix=exp_t0, corr_unix=corr_unix,
+                       latency_s=(corr_unix - exp_t0) if np.isfinite(exp_t0) else np.nan,
                        n_cam_corr=int((pd.to_numeric(camC.get("visitId"), errors="coerce") == vid).sum()))
 
             # Trim / Tweak: this visit's DOF (co-emitted with the correction)
-            dr = dof.nearest(corr_tai)
+            dr = dof.nearest(corr_unix)
             for i in range(N_DOF):
                 row[f"trim{i}"]  = float(dr.get(f"aggregatedDoF{i}", np.nan)) if dr is not None else np.nan
                 row[f"tweak{i}"] = float(dr.get(f"visitDoF{i}", np.nan)) if dr is not None else np.nan
@@ -198,7 +211,7 @@ class AosDofAudit:
             row["elevation"] = float(er.get("actualPosition", np.nan)) if er is not None else np.nan
 
             wr = pick_visit(wfe_r, vid, col="extraId")
-            wr = wr if wr is not None else wfe.nearest(corr_tai)
+            wr = wr if wr is not None else wfe.nearest(corr_unix)
             row["wfe_noll"]   = _numbered(wr, "nollZernikeIndices", n_wfe) if wr is not None else None
             row["wfe_values"] = _numbered(wr, "nollZernikeValues", n_wfe) if wr is not None else None
 
@@ -224,9 +237,8 @@ def add_consdb(df, url="http://consdb-pq.consdb:8080/consdb", instrument="lsstca
     """ConsDB elevation + z4..z28 per visit for the EFD<->ConsDB check."""
     if df.empty:
         return df
-    os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",.consdb"   # else the request is proxy-mangled
     try:
-        from lsst.summit.utils import ConsDbClient
+        from lsst.summit.utils import ConsDbClient          # no_proxy set at module import
         cdb = ConsDbClient(url)
     except Exception as e:
         print(f"[dof_audit] ConsDB client unavailable: {type(e).__name__}: {e}")
