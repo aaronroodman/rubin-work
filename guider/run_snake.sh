@@ -12,19 +12,20 @@
 #
 # Scope:
 #   (no --day-obs)      build `rule all` (the static datasets in the config)
-#   --day-obs YYYYMMDD  process a whole night: discover its guider exposures
-#                       from the Butler and build the partitioned dataset +
-#                       validation plot (output/night_YYYYMMDD/).
-#   --limit N           smoke test: keep only the first N exposures of the night
-#                       (0 = all).  Run a limited test first, then re-run without
-#                       --limit to build (and overwrite with) the full night.
+#   --day-obs LIST      process whole nights: LIST is one dayObs or a
+#                       comma-separated list (YYYYMMDD[,YYYYMMDD...]).  Each
+#                       night's guider exposures are discovered from the Butler
+#                       and built into output/night_<dayObs>/ (partitioned
+#                       dataset + validation plot).
+#   --limit N           smoke test: keep only the first N exposures per night
+#                       (0 = all).  Run limited first, then re-run without
+#                       --limit to build (and overwrite with) the full night(s).
 #
 # Usage:
-#   ./run_snake.sh --day-obs 20260709                 # local, one night
-#   ./run_snake.sh --day-obs 20260709 --limit 5 -n    # dry-run, 5-exposure test
-#   ./run_snake.sh --day-obs 20260709 --limit 5       # local, 5-exposure test
-#   ./run_snake.sh --day-obs 20260709 --mode batch    # batch on roma, full night
-#   ./run_snake.sh                                     # local, static datasets
+#   ./run_snake.sh --day-obs 20260709                        # local, one night
+#   ./run_snake.sh --day-obs 20260709 --limit 5 -n           # dry-run, 5-exp test
+#   ./run_snake.sh --day-obs 20260709,20260710 --mode batch  # batch, two nights
+#   ./run_snake.sh                                            # local, static datasets
 #
 # Batch tunables (env vars; defaults in parens):
 #   SB_PARTITION (roma)  SB_CPUS (32)  SB_MEM (96G)  SB_TIME (08:00:00)
@@ -51,10 +52,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Targets: a whole night, or the default `rule all`.
+# Targets: one or more whole nights (comma-separated), or the default `rule all`.
 targets=()
 if [ -n "$dayObs" ]; then
-    targets=("output/night_${dayObs}/moments" "output/night_${dayObs}/plots/validation.png")
+    IFS=',' read -ra _days <<< "$dayObs"
+    for d in "${_days[@]}"; do
+        d="${d// /}"   # strip stray spaces
+        [ -n "$d" ] || continue
+        targets+=("output/night_${d}/moments" "output/night_${d}/plots/validation.png")
+    done
 fi
 
 # --limit becomes a Snakemake config override (read as config["limit"]).
@@ -64,7 +70,7 @@ if [ -n "$limit" ]; then
 fi
 
 ts=$(date +%Y%m%d_%H%M%S)
-tag="${dayObs:-all}"
+tag=$(echo "${dayObs:-all}" | tr ', ' '__')   # filename-safe tag for logs
 
 case "$mode" in
     local)
