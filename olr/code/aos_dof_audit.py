@@ -6,25 +6,32 @@ Chain (Aaron's terminology, see aos-dof-terminology):
     optical_state --PID--> Tweak (visitDoF) --accumulate--> Trim (aggregatedDoF)
     Trim --(ts_ofc map)--> per-component command --+ LUT(el,T)--> Applied
 
+TIME SCALES.  EFD `private_sndStamp` is TAI seconds since 1970 (SAL convention);
+the pandas index from select_time_series is tz-aware UTC.  Butler exposure times
+are TAI.  We match EVERYTHING on TAI `private_sndStamp` to avoid the ~37 s UTC/TAI
+offset.  Per-visit AOS quantities (Trim/Tweak/corrections/wfe) are matched to the
+correction event's sndStamp (co-emitted); slowly-varying telemetry (hexapod
+position, elevation) is matched to the EXPOSURE time (state DURING the image, not
+~40-70 s later when the correction is emitted).
+
 EFD sources (all lsst.sal.*, confirmed 2026-07-13):
     MTAOS.logevent_degreeOfFreedom          aggregatedDoF0..49 (Trim), visitDoF0..49 (Tweak)
     MTAOS.logevent_wavefrontError           nollZernikeValues*/Indices* (OFC input), extraId
-    MTAOS.logevent_cameraHexapodCorrection  x,y,z,u,v,w + visitId  (Cam-hex command)
-    MTAOS.logevent_m2HexapodCorrection      x,y,z,u,v,w + visitId  (M2-hex command)
-    MTAOS.logevent_m1m3Correction           zForces0..155 + visitId
-    MTAOS.logevent_m2Correction             zForces0..71  + visitId
+    MTAOS.logevent_{cameraHexapod,m2Hexapod}Correction  x,y,z,u,v,w + visitId
+    MTAOS.logevent_{m1m3,m2}Correction      zForces* + visitId
     MTHexapod.logevent_compensatedPosition   x..w + salIndex (1=Cam, 2=M2)  (Applied)
     MTHexapod.logevent_uncompensatedPosition x..w + salIndex                (AOS command)
         -> LUT_hex = compensated - uncompensated
-    MTM1M3.logevent_appliedActiveOpticForces zForces0..155 + fz,mx,my       (Applied AOS forces)
+    MTM1M3.logevent_appliedActiveOpticForces zForces* + fz,mx,my            (Applied AOS forces)
     MTMount.elevation                        actualPosition
 
-Image link: visitId = day_obs*100000 + seq_num; EFD telemetry matched by time.
+Image link: visitId = day_obs*100000 + seq_num.
 
 Emits one row per visit: output/<day_obs>/dof_audit.parquet.
 """
 import argparse
 import asyncio
+import os
 import re
 from pathlib import Path
 
@@ -34,51 +41,85 @@ from astropy.time import Time, TimeDelta
 
 HEX_AXES = ["x", "y", "z", "u", "v", "w"]      # hexapod: x,y,z µm ; u,v,w deg
 N_DOF = 50
-HEX_SAL = {1: "cam", 2: "m2"}                  # MTHexapod salIndex -> our name
+HEX_SAL = {1: "cam", 2: "m2"}
 DOF_GROUPS = {"M2 hex": range(0, 5), "Cam hex": range(5, 10),
               "M1M3 bend": range(10, 30), "M2 bend": range(30, 50)}
+_MJD_UNIX = 40587.0                            # MJD of 1970-01-01
 
 
 # ---------------------------------------------------------------- helpers ----
 def night_window(day_obs):
-    """UTC [t0, t1] covering the Chilean night of day_obs (local noon->noon)."""
     d = str(int(day_obs))
     t0 = Time(f"{d[:4]}-{d[4:6]}-{d[6:]}T12:00:00", scale="utc")
     return t0, t0 + TimeDelta(1.0, format="jd")
 
 
-def _numbered(df, stem, n=None):
-    """Pull stem0..stem{n-1} from a Series/row -> list; n auto if None."""
-    if n is None:
-        n = 1 + max([int(m.group(1)) for c in df.index
-                     for m in [re.fullmatch(rf"{stem}(\d+)", c)] if m] or [-1])
-    return [float(df.get(f"{stem}{i}", np.nan)) for i in range(n)]
+def tai_unix(t):
+    """astropy Time -> TAI seconds since 1970 (to match EFD private_sndStamp)."""
+    return (float(t.tai.mjd) - _MJD_UNIX) * 86400.0
 
 
-def nearest(df, t):
-    """Row of a time-indexed EFD df nearest to Timestamp t (None if empty)."""
-    if df is None or len(df) == 0:
-        return None
-    i = df.index.get_indexer([t], method="nearest")[0]
-    return df.iloc[i] if i >= 0 else None
-
-
-def pick_visit(df, vid, col="visitId"):
-    """Last row of df whose `col` == vid (None if absent)."""
-    if df is None or len(df) == 0 or col not in df.columns:
-        return None
-    sub = df[df[col].astype("int64", errors="ignore") == vid]
-    return sub.iloc[-1] if len(sub) else None
+def _numbered(row, stem, n):
+    return [float(row.get(f"{stem}{i}", np.nan)) for i in range(n)]
 
 
 def n_cols(df, stem):
     return sum(bool(re.fullmatch(rf"{stem}\d+", c)) for c in df.columns)
 
 
+def pick_visit(df, vid, col="visitId"):
+    if df is None or len(df) == 0 or col not in df.columns:
+        return None
+    v = pd.to_numeric(df[col], errors="coerce")
+    sub = df[v == vid]
+    return sub.iloc[-1] if len(sub) else None
+
+
+class TS:
+    """A time series matched on TAI private_sndStamp via searchsorted."""
+    def __init__(self, df, stamp="private_sndStamp"):
+        if df is not None and len(df) and stamp in df.columns:
+            df = df.sort_values(stamp)
+            self.df, self.s = df, df[stamp].to_numpy(float)
+        else:
+            self.df, self.s = df, np.array([])
+
+    def nearest(self, t):
+        if self.s.size == 0:
+            return None
+        i = int(np.searchsorted(self.s, t))
+        i = min(max(i, 0), self.s.size - 1)
+        if i > 0 and abs(self.s[i - 1] - t) < abs(self.s[i] - t):
+            i -= 1
+        return self.df.iloc[i]
+
+    def before(self, t):
+        if self.s.size == 0:
+            return None
+        i = int(np.searchsorted(self.s, t, side="right")) - 1
+        return self.df.iloc[i] if i >= 0 else None
+
+
+# ---------------------------------------------------------- Butler exposures ---
+def get_exposures(butler, day_obs, instrument="LSSTCam"):
+    """(day,seq) obs_type / program / TAI exposure window from the embargo Butler."""
+    out = {}
+    for r in butler.registry.queryDimensionRecords(
+            "exposure", instrument=instrument, where=f"exposure.day_obs={int(day_obs)}"):
+        ts = r.timespan
+        t0 = tai_unix(ts.begin) if ts and ts.begin is not None else np.nan
+        t1 = tai_unix(ts.end) if ts and ts.end is not None else np.nan
+        out[int(r.seq_num)] = dict(
+            obs_type=r.observation_type,
+            program=getattr(r, "science_program", None),
+            t0=t0, t1=t1, mjd_begin=(float(ts.begin.tai.mjd) if ts and ts.begin is not None else np.nan))
+    return out
+
+
 # ------------------------------------------------------------- extractor ----
 class AosDofAudit:
     def __init__(self, efd_name="summit_efd"):
-        from lsst_efd_client import EfdClient          # direct ctor: makeEfdClient() is broken
+        from lsst_efd_client import EfdClient          # makeEfdClient() is broken on this stack
         self.efd = EfdClient(efd_name, output_mode="dataframe")
 
     async def _ts(self, topic, t0, t1):
@@ -90,109 +131,105 @@ class AosDofAudit:
             print(f"  [efd] {topic}: {type(e).__name__}: {e}")
             return pd.DataFrame()
 
-    async def fetch_night(self, day_obs):
+    async def fetch_night(self, day_obs, exposures=None):
+        exposures = exposures or {}
         t0, t1 = night_window(day_obs)
         print(f"[dof_audit] {day_obs}  EFD window {t0.isot}..{t1.isot}")
-        dof   = await self._ts("MTAOS.logevent_degreeOfFreedom", t0, t1)
-        wfe   = await self._ts("MTAOS.logevent_wavefrontError", t0, t1)
+        dof   = TS(await self._ts("MTAOS.logevent_degreeOfFreedom", t0, t1))
+        wfe_r = await self._ts("MTAOS.logevent_wavefrontError", t0, t1)
         camC  = await self._ts("MTAOS.logevent_cameraHexapodCorrection", t0, t1)
         m2C   = await self._ts("MTAOS.logevent_m2HexapodCorrection", t0, t1)
         m1m3C = await self._ts("MTAOS.logevent_m1m3Correction", t0, t1)
         m2mC  = await self._ts("MTAOS.logevent_m2Correction", t0, t1)
         comp  = await self._ts("MTHexapod.logevent_compensatedPosition", t0, t1)
         uncmp = await self._ts("MTHexapod.logevent_uncompensatedPosition", t0, t1)
-        aof   = await self._ts("MTM1M3.logevent_appliedActiveOpticForces", t0, t1)
-        elev  = await self._ts("MTMount.elevation", t0, t1)
-
+        aof   = TS(await self._ts("MTM1M3.logevent_appliedActiveOpticForces", t0, t1))
+        elev  = TS(await self._ts("MTMount.elevation", t0, t1))
         if camC.empty:
-            print("[dof_audit] no cameraHexapodCorrection this night -> empty table")
+            print("[dof_audit] no cameraHexapodCorrection -> empty table")
             return pd.DataFrame()
 
-        n_wfe = n_cols(wfe, "nollZernikeValues")
-        n_m1m3 = max(n_cols(m1m3C, "zForces"), n_cols(aof, "zForces"))
-        n_m2f = n_cols(m2mC, "zForces")
+        wfe = TS(wfe_r)
+        comp_ts = {i: TS(comp[comp.salIndex == i]) if "salIndex" in comp else TS(comp) for i in HEX_SAL}
+        uncmp_ts = {i: TS(uncmp[uncmp.salIndex == i]) if "salIndex" in uncmp else TS(uncmp) for i in HEX_SAL}
+        n_wfe = n_cols(wfe_r, "nollZernikeValues")
+        n_m1 = max(n_cols(m1m3C, "zForces"), n_cols(aof.df if aof.df is not None else pd.DataFrame(), "zForces"))
+        n_m2 = n_cols(m2mC, "zForces")
 
-        # one row per visit; anchor on the Cam-hex correction (has visitId + time)
         seen, rows = set(), []
-        for t, r in camC.iterrows():
-            vid = int(r.get("visitId", -1))
-            if vid <= 0 or vid in seen:            # dedupe (FAM defocus sends 2/visit)
+        for _, r in camC.sort_values("private_sndStamp").iterrows():
+            vid = int(pd.to_numeric(r.get("visitId", -1), errors="coerce") or -1)
+            if vid <= 0 or vid in seen:                    # dedupe (FAM defocus sends 2/visit)
                 continue
             seen.add(vid)
-            row = dict(visit_id=vid, day_obs=vid // 100000, seq_num=vid % 100000,
-                       corr_time=t, n_cam_corr=int((camC.get("visitId") == vid).sum()))
+            seq = vid % 100000
+            exp = exposures.get(seq, {})
+            corr_tai = float(r.get("private_sndStamp", np.nan))
+            exp_t0 = exp.get("t0", np.nan)
+            exp_mid = np.nanmean([exp.get("t0", np.nan), exp.get("t1", np.nan)])
+            tel_t = exp_mid if np.isfinite(exp_mid) else corr_tai      # telemetry @ exposure
 
-            # --- Trim / Tweak (nearest degreeOfFreedom to the correction time) ---
-            dr = nearest(dof, t)
+            row = dict(visit_id=vid, day_obs=vid // 100000, seq_num=seq,
+                       obs_type=exp.get("obs_type"), program=exp.get("program"),
+                       exp_mjd=exp.get("mjd_begin", np.nan), exp_tai=exp_t0, corr_tai=corr_tai,
+                       latency_s=(corr_tai - exp_t0) if np.isfinite(exp_t0) else np.nan,
+                       n_cam_corr=int((pd.to_numeric(camC.get("visitId"), errors="coerce") == vid).sum()))
+
+            # Trim / Tweak: this visit's DOF (co-emitted with the correction)
+            dr = dof.nearest(corr_tai)
             for i in range(N_DOF):
                 row[f"trim{i}"]  = float(dr.get(f"aggregatedDoF{i}", np.nan)) if dr is not None else np.nan
                 row[f"tweak{i}"] = float(dr.get(f"visitDoF{i}", np.nan)) if dr is not None else np.nan
 
-            # --- hexapod: command (MTAOS) | applied (comp) | AOS-cmd (uncomp) | LUT ---
+            # hexapod: command (MTAOS) | applied (comp @ exposure) | AOS-cmd (uncomp) | LUT
             for ax in HEX_AXES:
                 row[f"cam_cmd_{ax}"] = float(r.get(ax, np.nan))
             m2r = pick_visit(m2C, vid)
             for ax in HEX_AXES:
                 row[f"m2_cmd_{ax}"] = float(m2r.get(ax, np.nan)) if m2r is not None else np.nan
             for sidx, nm in HEX_SAL.items():
-                cp = nearest(comp[comp.salIndex == sidx] if "salIndex" in comp else comp, t)
-                up = nearest(uncmp[uncmp.salIndex == sidx] if "salIndex" in uncmp else uncmp, t)
+                cp, up = comp_ts[sidx].nearest(tel_t), uncmp_ts[sidx].nearest(tel_t)
                 for ax in HEX_AXES:
                     c = float(cp.get(ax, np.nan)) if cp is not None else np.nan
                     u = float(up.get(ax, np.nan)) if up is not None else np.nan
-                    row[f"{nm}_comp_{ax}"], row[f"{nm}_uncomp_{ax}"] = c, u
-                    row[f"{nm}_lut_{ax}"] = c - u
+                    row[f"{nm}_comp_{ax}"], row[f"{nm}_uncomp_{ax}"], row[f"{nm}_lut_{ax}"] = c, u, c - u
 
-            # --- elevation (for the LUT lookup / consistency) ---
-            er = nearest(elev, t)
+            er = elev.nearest(tel_t)
             row["elevation"] = float(er.get("actualPosition", np.nan)) if er is not None else np.nan
 
-            # --- OFC input (wavefrontError, matched by extraId then time) ---
-            wr = pick_visit(wfe, vid, col="extraId")
-            wr = wr if wr is not None else nearest(wfe, t)
+            wr = pick_visit(wfe_r, vid, col="extraId")
+            wr = wr if wr is not None else wfe.nearest(corr_tai)
             row["wfe_noll"]   = _numbered(wr, "nollZernikeIndices", n_wfe) if wr is not None else None
             row["wfe_values"] = _numbered(wr, "nollZernikeValues", n_wfe) if wr is not None else None
 
-            # --- mirror-mode forces (command + applied) ---
             m1c = pick_visit(m1m3C, vid)
-            row["m1m3_cmd_zForces"] = _numbered(m1c, "zForces", n_m1m3) if m1c is not None else None
-            ar = nearest(aof, t)
-            row["m1m3_applied_zForces"] = _numbered(ar, "zForces", n_m1m3) if ar is not None else None
+            row["m1m3_cmd_zForces"] = _numbered(m1c, "zForces", n_m1) if m1c is not None else None
+            ar = aof.nearest(tel_t)
+            row["m1m3_applied_zForces"] = _numbered(ar, "zForces", n_m1) if ar is not None else None
             for k in ("fz", "mx", "my"):
                 row[f"m1m3_applied_{k}"] = float(ar.get(k, np.nan)) if ar is not None else np.nan
             m2c = pick_visit(m2mC, vid)
-            row["m2_cmd_zForces"] = _numbered(m2c, "zForces", n_m2f) if m2c is not None else None
-
+            row["m2_cmd_zForces"] = _numbered(m2c, "zForces", n_m2) if m2c is not None else None
             rows.append(row)
 
         df = pd.DataFrame(rows).sort_values("seq_num").reset_index(drop=True)
-        print(f"[dof_audit] {len(df)} visits; wfe terms={n_wfe}, "
-              f"m1m3 forces={n_m1m3}, m2 forces={n_m2f}")
+        lat = df["latency_s"].to_numpy()
+        print(f"[dof_audit] {len(df)} visits; wfe={n_wfe}, m1m3={n_m1}, m2={n_m2} forces; "
+              f"correction latency (corr - exposure, TAI) median {np.nanmedian(lat):.1f}s "
+              f"[{np.nanmin(lat):.1f}..{np.nanmax(lat):.1f}]")
         return df
 
 
-# ---------------------------------------------- Butler / ConsDB enrichment ---
-def add_butler_exposure(df, butler=None, instrument="LSSTCam"):
-    """Add exposure obs_type + precise begin MJD from the (embargo) Butler."""
-    if butler is None or df.empty:
+def add_consdb(df, url="http://consdb-pq.consdb:8080/consdb", instrument="lsstcam"):
+    """ConsDB elevation + z4..z28 per visit for the EFD<->ConsDB check."""
+    if df.empty:
         return df
-    days = sorted(df.day_obs.unique())
-    recs = {}
-    for d in days:
-        for r in butler.registry.queryDimensionRecords(
-                "exposure", instrument=instrument, where=f"exposure.day_obs={int(d)}"):
-            recs[(int(d), int(r.seq_num))] = (r.observation_type,
-                                              float(r.timespan.begin.mjd) if r.timespan else np.nan)
-    df["obs_type"] = [recs.get((int(a), int(b)), (None, np.nan))[0]
-                      for a, b in zip(df.day_obs, df.seq_num)]
-    df["exp_mjd"] = [recs.get((int(a), int(b)), (None, np.nan))[1]
-                     for a, b in zip(df.day_obs, df.seq_num)]
-    return df
-
-
-def add_consdb(df, consdb=None, instrument="lsstcam"):
-    """Add ConsDB elevation + z4..z28 (per-visit) for the EFD<->ConsDB check."""
-    if consdb is None or df.empty:
+    os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",.consdb"   # else the request is proxy-mangled
+    try:
+        from lsst.summit.utils import ConsDbClient
+        cdb = ConsDbClient(url)
+    except Exception as e:
+        print(f"[dof_audit] ConsDB client unavailable: {type(e).__name__}: {e}")
         return df
     d0, d1 = int(df.day_obs.min()), int(df.day_obs.max())
     zsel = ", ".join(f"q.z{j} AS cdb_z{j}" for j in range(4, 29))
@@ -201,10 +238,11 @@ def add_consdb(df, consdb=None, instrument="lsstcam"):
          f"JOIN cdb_{instrument}.ccdvisit1_quicklook AS q ON q.ccdvisit1_id = v.visit_id "
          f"WHERE v.day_obs >= {d0} AND v.day_obs <= {d1}")
     try:
-        cdb = consdb.query(q).to_pandas() if hasattr(consdb.query(q), "to_pandas") else consdb.query(q)
-        return df.merge(cdb, on="visit_id", how="left")
+        res = cdb.query(q)
+        cdb_df = res.to_pandas() if hasattr(res, "to_pandas") else res
+        return df.merge(cdb_df, on="visit_id", how="left")
     except Exception as e:
-        print(f"[dof_audit] ConsDB skipped: {type(e).__name__}: {e}")
+        print(f"[dof_audit] ConsDB query skipped: {type(e).__name__}: {e}")
         return df
 
 
@@ -218,21 +256,19 @@ def main():
     ap.add_argument("--no-consdb", action="store_true")
     args = ap.parse_args()
 
-    audit = AosDofAudit(args.efd_name)
-    df = asyncio.get_event_loop().run_until_complete(audit.fetch_night(args.day_obs))
-
+    exposures = {}
     if not args.no_butler:
         try:
             from lsst.summit.utils import butlerUtils
-            df = add_butler_exposure(df, butlerUtils.makeDefaultButler("LSSTCam", embargo=True))
+            exposures = get_exposures(butlerUtils.makeDefaultButler("LSSTCam", embargo=True), args.day_obs)
+            print(f"[dof_audit] Butler: {len(exposures)} exposures for {args.day_obs}")
         except Exception as e:
-            print(f"[dof_audit] Butler enrichment skipped: {type(e).__name__}: {e}")
-    if not args.no_consdb:
-        try:
-            from lsst.summit.utils import ConsDbClient
-            df = add_consdb(df, ConsDbClient("http://consdb-pq.consdb:8080/consdb"))
-        except Exception as e:
-            print(f"[dof_audit] ConsDB enrichment skipped: {type(e).__name__}: {e}")
+            print(f"[dof_audit] Butler exposures skipped: {type(e).__name__}: {e}")
+
+    audit = AosDofAudit(args.efd_name)
+    df = asyncio.get_event_loop().run_until_complete(audit.fetch_night(args.day_obs, exposures))
+    if not args.no_consdb and not df.empty:
+        df = add_consdb(df)
 
     out = Path(args.out_root) / str(args.day_obs) / "dof_audit.parquet"
     out.parent.mkdir(parents=True, exist_ok=True)

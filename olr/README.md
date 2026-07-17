@@ -82,6 +82,49 @@ corner-WFS quicklook gap, or WEP/AOS processing never ran — e.g. 20260428–05
 exit 0, and `combine` ignores the sentinels — so one dead night never blocks a
 multi-night run. Use `list_nights.py --require-aos` to exclude them up front.
 
+## AOS DOF audit (`code/aos_dof_audit.py` + `aos_dof_audit.ipynb`)
+
+A separate, self-contained audit of the AOS degree-of-freedom chain per image —
+verifying the **Applied** hexapod/mirror-mode settings against the LUT, the
+**Trim** (accumulated offset from the LUT), and the **Tweak** (per-visit OFC
+correction), and checking EFD↔ConsDB consistency.
+
+```
+optical_state --PID--> Tweak (MTAOS visitDoF) --accumulate--> Trim (aggregatedDoF)
+Trim --(ts_ofc)--> per-component command --+ LUT(el,T)--> Applied
+```
+
+`aos_dof_audit.py` (Summit RSP only) pulls one row per visit from the EFD and
+writes `output/<day_obs>/dof_audit.parquet`:
+
+| quantity | EFD source |
+|---|---|
+| Trim / Tweak (50-DOF) | `MTAOS.degreeOfFreedom` `aggregatedDoF*` / `visitDoF*` |
+| per-component command | `MTAOS.{cameraHexapod,m2Hexapod,m1m3,m2}Correction` (`visitId`) |
+| Applied / AOS-cmd (hexapod) | `MTHexapod.{compensated,uncompensated}Position` (`salIndex` 1=Cam, 2=M2); LUT = comp − uncomp |
+| Applied AOS forces | `MTM1M3.appliedActiveOpticForces.zForces` |
+| OFC input | `MTAOS.wavefrontError` (`nollZernikeValues/Indices`) |
+| elevation | `MTMount.elevation` |
+
+Notes: `visitId = day_obs*100000 + seq_num`. **All matching is on the TAI
+`private_sndStamp`** (EFD's pandas index is UTC; Butler exposure times are TAI —
+a ~37 s difference, plus a variable WEP+OFC latency), and slowly-varying
+telemetry is matched at the **exposure** time, not the (later) correction time.
+FAM-triplet visits carry a ±1500 µm camera-`z` defocus by design and are open
+loop; the notebook drops them (`OBS_TYPES=("science",)`, `DROP_FAM`).
+
+```bash
+python code/aos_dof_audit.py --day-obs 20260713        # -> output/20260713/dof_audit.parquet
+# then run aos_dof_audit.ipynb (set DAY_OBS)
+```
+
+`aos_dof_audit.ipynb` checks: Trim/Tweak history + accumulation self-consistency
+(`Trim_i − Trim_{i-1}` vs `Tweak_i`); hexapod LUT vs elevation and command vs
+applied; OFC PID input vs output; EFD↔ConsDB elevation; and M1M3 force
+command vs applied. **v2-TODO:** the ts_ofc DOF→physical map (compare
+`aggregatedDoF` directly to the `…Correction` values, via `ofc_config_dir`), and
+the ConsDB-Zernike ↔ `wavefrontError` overlap.
+
 ## Notebooks
 
 - `olr_quicklook.ipynb` — quicklook diagnostics on the per-night outputs:
