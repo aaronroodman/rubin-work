@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Per-exposure guider second-moment decomposition (Snakemake runner).
+"""Per-exposure guider moment + summary row (Snakemake runner).
 
 Reads one guider exposure, tracks its guide stars, decomposes each sensor's
 shape into coadd / static-per-stamp / image-motion second moments, and writes
-a tidy per-exposure parquet table (see `guiderMoments.momentsToDataFrame`).
+a tidy per-(expId, detector) summary parquet: the moment decomposition, the
+temporal (Q1,Q2,T) covariance, binned PSDs of the centroid and shape series,
+integral timescales, per-stamp HSM shape summaries, and the exposure-level
+GuiderMetricsBuilder metrics for comparison. See guiderMoments.summarizeExposure.
 
     python run_guider_moments.py --day-obs 20260709 --seq-num 808 \
         --output output/<dataset>/exposures/2026070900808/moments.parquet
-
-The output has one row per (detector, kind) with kind in
-{coadd, stamp_mean, motion, stamp+motion} and moments Mxx, Myy, Mxy, Q1, Q2, T
-in arcsec**2, plus dayObs / seqNum / expId columns for downstream aggregation.
 """
 from __future__ import annotations
 
@@ -24,7 +23,12 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from guiderEdgeRecovery import makeTrackerConfig  # noqa: E402
-from guiderMoments import MomentConfig, decomposeExposure, momentsToDataFrame  # noqa: E402
+from guiderMoments import (  # noqa: E402
+    MomentConfig,
+    SCHEMA_VERSION,
+    decomposeExposure,
+    summarizeExposure,
+)
 
 
 def parseArgs(argv=None):
@@ -40,36 +44,39 @@ def parseArgs(argv=None):
         help="Butler collections.",
     )
     p.add_argument("--view", default="dvcs", help="Guider readout view.")
+    p.add_argument("--guider-hz", type=float, default=5.0, help="Guider readout rate (Hz).")
     # tracker
     p.add_argument("--min-snr", type=float, default=10.0)
     p.add_argument("--max-ellipticity", type=float, default=0.7)
     p.add_argument("--edge-margin", type=int, default=3)
     p.add_argument("--min-finite-fraction", type=float, default=0.5)
-    p.add_argument(
-        "--no-recover-edge-stars",
-        action="store_true",
-        help="Disable near-edge star recovery (use stock reject-any-NaN).",
-    )
+    p.add_argument("--no-recover-edge-stars", action="store_true")
     # moments
     p.add_argument("--ap-nsigma", type=float, default=4.0)
     p.add_argument("--cen-niter", type=int, default=3)
     return p.parse_args(argv)
 
 
-def emptyTable(dayObs, seqNum, expId):
-    """Return a valid, empty per-exposure table (no stars tracked)."""
-    cols = [
-        "expId", "detector", "kind", "xfp", "yfp", "nStamps",
-        "Mxx", "Myy", "Mxy", "Q1", "Q2", "T", "dayObs", "seqNum",
-    ]
-    return pd.DataFrame(columns=cols)
+def summitUtilsVersion() -> str:
+    """Best-effort summit_utils version string for provenance."""
+    try:
+        import lsst.summit.utils as su
+
+        return str(getattr(su, "__version__", "unknown"))
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+def emptyTable() -> pd.DataFrame:
+    """A 0-row table (no stars tracked) that still carries the partition key."""
+    return pd.DataFrame(columns=["expId", "dayObs", "seqNum", "detector"])
 
 
 def main(argv=None):
     args = parseArgs(argv)
     expId = args.day_obs * 100000 + args.seq_num
 
-    # Imports of the LSST stack are deferred so --help works without it.
+    # Deferred so --help works without the stack.
     from lsst.daf.butler import Butler
     from lsst.summit.utils.guiders.reading import GuiderReader
     from lsst.summit.utils.guiders.tracking import GuiderStarTracker
@@ -88,18 +95,28 @@ def main(argv=None):
     stars = GuiderStarTracker(guiderData, config).trackGuiderStars(refCatalog=None)
 
     if stars.empty:
-        table = emptyTable(args.day_obs, args.seq_num, expId)
+        table = emptyTable()
     else:
         momentConfig = MomentConfig(apNSigma=args.ap_nsigma, cenNIter=args.cen_niter)
         decomps = decomposeExposure(guiderData, stars, momentConfig)
-        table = momentsToDataFrame(decomps)
-        table["dayObs"] = args.day_obs
-        table["seqNum"] = args.seq_num
+        provenance = {
+            "summit_utils_version": summitUtilsVersion(),
+            "schema_version": SCHEMA_VERSION,
+            "ap_nsigma": args.ap_nsigma,
+            "cen_niter": args.cen_niter,
+            "min_snr": args.min_snr,
+            "edge_margin": args.edge_margin,
+            "max_ellipticity": args.max_ellipticity,
+            "min_finite_fraction": args.min_finite_fraction if recover else 1.0,
+        }
+        table = summarizeExposure(
+            guiderData, stars, decomps, guiderHz=args.guider_hz, provenance=provenance
+        )
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     table.to_parquet(args.output, index=False)
-    print(f"{expId}: wrote {len(table)} rows for "
-          f"{table['detector'].nunique() if not table.empty else 0} sensors -> {args.output}")
+    nDet = table["detector"].nunique() if not table.empty else 0
+    print(f"{expId}: wrote {len(table)} rows for {nDet} sensors -> {args.output}")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,12 @@ __all__ = [
     "decomposeExposure",
     "momentsToDataFrame",
     "centroidPsd",
+    "PSD_BIN_EDGES",
+    "temporalShapeCovariance",
+    "bandPowerPsd",
+    "integralTimescale",
+    "summarizeExposure",
+    "SCHEMA_VERSION",
 ]
 
 import logging
@@ -41,7 +47,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from astropy.stats import sigma_clipped_stats
+from astropy.stats import mad_std, sigma_clipped_stats
 from scipy import signal
 from scipy.integrate import trapezoid
 
@@ -49,6 +55,12 @@ if TYPE_CHECKING:
     from lsst.summit.utils.guiders.reading import GuiderData
 
 _LOG = logging.getLogger(__name__)
+
+# Summary-table schema version (bump when columns change).
+SCHEMA_VERSION = 1
+
+# Fixed log-spaced frequency band edges (Hz) for the binned PSDs. 5 bands.
+PSD_BIN_EDGES = (0.03, 0.1, 0.2, 0.5, 1.0, 2.5)
 
 # FWHM = 2*sqrt(2*ln 2) * sigma for a Gaussian.
 _FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -575,3 +587,228 @@ def centroidPsd(
         centroidArcsec, fs=fs, window="hann", detrend="linear", scaling="density"
     )
     return freq, psd, float(trapezoid(psd, freq))
+
+
+def temporalShapeCovariance(perStamp: pd.DataFrame) -> dict[str, float]:
+    """Temporal covariance of the per-stamp (Q1, Q2, T) series.
+
+    Probes higher-order wavefront fluctuations: T ~ defocus (Z4), Q1/Q2 ~
+    defocus x astigmatism (Z4 x Z5, Z4 x Z6). Values in arcsec**4.
+
+    Parameters
+    ----------
+    perStamp : `pandas.DataFrame`
+        Per-stamp moments (arcsec**2) with columns ``Q1, Q2, T``.
+
+    Returns
+    -------
+    cov : `dict` [`str`, `float`]
+        ``var_Q1, var_Q2, var_T, cov_Q1Q2, cov_Q1T, cov_Q2T`` (arcsec**4).
+    """
+    keys = ["var_Q1", "var_Q2", "var_T", "cov_Q1Q2", "cov_Q1T", "cov_Q2T"]
+    m = np.vstack([perStamp["Q1"].to_numpy(), perStamp["Q2"].to_numpy(), perStamp["T"].to_numpy()])
+    m = m[:, np.all(np.isfinite(m), axis=0)]
+    if m.shape[1] < 2:
+        return dict.fromkeys(keys, np.nan)
+    c = np.cov(m, bias=True)
+    return {
+        "var_Q1": float(c[0, 0]), "var_Q2": float(c[1, 1]), "var_T": float(c[2, 2]),
+        "cov_Q1Q2": float(c[0, 1]), "cov_Q1T": float(c[0, 2]), "cov_Q2T": float(c[1, 2]),
+    }
+
+
+def bandPowerPsd(
+    series: np.ndarray, fs: float, binEdges: tuple[float, ...] = PSD_BIN_EDGES
+) -> tuple[list[float], float]:
+    """Band-integrated variance per log-frequency band, plus a noise floor.
+
+    A Hann-windowed, linearly detrended periodogram is integrated over each
+    ``[binEdges[i], binEdges[i+1])`` band, so the band powers sum to the
+    variance of the (detrended) series and partition it by timescale. The
+    floor is the median PSD *density* in the top band (assumed white noise);
+    subtract ``floor * (hi - lo)`` from a band to noise-correct it.
+
+    Parameters
+    ----------
+    series : `numpy.ndarray`
+        Time series (one value per stamp). Units u -> band power u**2.
+    fs : `float`
+        Sampling frequency (Hz).
+    binEdges : `tuple` [`float`, ...]
+        Band edges (Hz); ``len - 1`` bands.
+
+    Returns
+    -------
+    bands : `list` [`float`]
+        Band-integrated variance per band (NaN if a band has < 2 samples).
+    floor : `float`
+        White-noise PSD density (u**2 / Hz) from the top band.
+    """
+    x = np.asarray(series, dtype=float)
+    x = x[np.isfinite(x)]
+    nBands = len(binEdges) - 1
+    if x.size < 4:
+        return [np.nan] * nBands, np.nan
+    freq, psd = signal.periodogram(x, fs=fs, window="hann", detrend="linear", scaling="density")
+    bands = []
+    for lo, hi in zip(binEdges[:-1], binEdges[1:]):
+        m = (freq >= lo) & (freq < hi)
+        bands.append(float(trapezoid(psd[m], freq[m])) if m.sum() >= 2 else np.nan)
+    top = (freq >= binEdges[-2]) & (freq <= binEdges[-1])
+    floor = float(np.nanmedian(psd[top])) if top.any() else np.nan
+    return bands, floor
+
+
+def integralTimescale(series: np.ndarray, fs: float) -> float:
+    """Integral autocorrelation timescale (s) of a detrended series.
+
+    ``tau = dt * (0.5 + sum_k rho_k)`` over positive lags up to the first
+    zero crossing of the normalized autocorrelation ``rho`` -- a coherence
+    time for the fluctuations (e.g. the image-motion wander timescale).
+
+    Parameters
+    ----------
+    series : `numpy.ndarray`
+        Time series (one value per stamp), uniformly sampled.
+    fs : `float`
+        Sampling frequency (Hz).
+
+    Returns
+    -------
+    tau : `float`
+        Integral timescale in seconds (NaN if too few points).
+    """
+    x = np.asarray(series, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size < 4:
+        return np.nan
+    t = np.arange(x.size)
+    x = x - np.polyval(np.polyfit(t, x, 1), t)
+    var = float(np.dot(x, x))
+    if var <= 0:
+        return np.nan
+    acf = np.correlate(x, x, mode="full")[x.size - 1:] / var
+    tau = 0.0
+    for k in range(1, acf.size):
+        if acf[k] <= 0:
+            break
+        tau += acf[k]
+    return float((0.5 + tau) / fs)
+
+
+def _flattenMoments(sm: "ShapeMoments", suffix: str) -> dict[str, float]:
+    """Flatten a ShapeMoments into ``{Mxx_suffix, ..., Q1_suffix, ...}``."""
+    return {
+        f"Mxx_{suffix}": sm.mxx, f"Myy_{suffix}": sm.myy, f"Mxy_{suffix}": sm.mxy,
+        f"Q1_{suffix}": sm.q1, f"Q2_{suffix}": sm.q2, f"T_{suffix}": sm.t,
+    }
+
+
+def summarizeExposure(
+    guiderData: GuiderData,
+    stars: pd.DataFrame,
+    decomps: dict[str, DetectorMoments],
+    guiderHz: float = 5.0,
+    psdBinEdges: tuple[float, ...] = PSD_BIN_EDGES,
+    provenance: dict | None = None,
+) -> pd.DataFrame:
+    """Build the per-(expId, detector) summary table (one row per sensor).
+
+    Combines the moment decomposition, temporal (Q1,Q2,T) covariance, binned
+    PSDs of the centroid and shape series, integral timescales, per-stamp HSM
+    shape summaries, and the exposure-level `GuiderMetricsBuilder` metrics
+    (broadcast to every sensor row) for comparison.
+
+    Parameters
+    ----------
+    guiderData : `GuiderData`
+        Guider dataset (for exposure metadata).
+    stars : `pandas.DataFrame`
+        Tracked-star table from `GuiderStarTracker`.
+    decomps : `dict` [`str`, `DetectorMoments`]
+        Output of `decomposeExposure`.
+    guiderHz : `float`
+        Guider readout rate (Hz) for the PSDs / timescales.
+    psdBinEdges : `tuple` [`float`, ...]
+        Frequency band edges (Hz) for the binned PSDs.
+    provenance : `dict`, optional
+        Extra columns to attach to every row (e.g. code versions, config).
+
+    Returns
+    -------
+    table : `pandas.DataFrame`
+        One row per tracked sensor (the G1 schema).
+    """
+    from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
+
+    expId = int(guiderData.expid)
+    dayObs, seqNum = expId // 100000, expId % 100000
+
+    # exposure-level defaults (GuiderMetricsBuilder), broadcast to all sensors
+    gmRow: dict[str, float] = {}
+    try:
+        gm = GuiderMetricsBuilder(stars, nMissingStamps=0).buildMetrics(expId)
+        if not gm.empty:
+            gmRow = {f"gm_{c}": gm.iloc[0][c] for c in gm.columns}
+    except Exception as exc:  # noqa: BLE001 - metrics are best-effort
+        _LOG.warning("GuiderMetricsBuilder failed for %s: %s", expId, exc)
+    with np.errstate(invalid="ignore"):
+        jitter = float(np.hypot(mad_std(stars["dalt"], ignore_nan=True),
+                                mad_std(stars["daz"], ignore_nan=True)))
+
+    meta = {
+        "expId": expId, "dayObs": dayObs, "seqNum": seqNum,
+        "filter": guiderData.header.get("filter", "UNKNOWN"),
+        "mjd": float(guiderData.obsTime.mjd), "alt": float(guiderData.alt),
+        "az": float(guiderData.az), "camRotAngle": float(guiderData.camRotAngle),
+        "exptime": float(guiderData.guiderDurationSec),
+    }
+    prov = provenance or {}
+
+    rows = []
+    for det, dm in decomps.items():
+        pm = dm.perStamp.sort_values("stamp")
+        pixscale = float(pm["pixscale"].iloc[0])
+        sub = stars[stars["detector"] == det]
+
+        dx = ((pm["xc"] - pm["xc"].mean()) * pixscale).to_numpy()
+        dy = ((pm["yc"] - pm["yc"].mean()) * pixscale).to_numpy()
+        psd_dx, floor_dx = bandPowerPsd(dx, guiderHz, psdBinEdges)
+        psd_dy, floor_dy = bandPowerPsd(dy, guiderHz, psdBinEdges)
+        psd_Q1, floor_Q1 = bandPowerPsd(pm["Q1"].to_numpy(), guiderHz, psdBinEdges)
+        psd_Q2, floor_Q2 = bandPowerPsd(pm["Q2"].to_numpy(), guiderHz, psdBinEdges)
+        psd_T, floor_T = bandPowerPsd(pm["T"].to_numpy(), guiderHz, psdBinEdges)
+
+        row = {
+            **meta,
+            "detector": det, "detid": int(guiderData.getGuiderDetNum(det)),
+            "nStamps": int(dm.nStamps), "xfp": dm.xfp, "yfp": dm.yfp,
+            **_flattenMoments(dm.coadd, "coadd"),
+            **_flattenMoments(dm.stampMean, "stamp"),
+            **_flattenMoments(dm.motion, "motion"),
+            "Nx": dm.noiseFloor[0], "Ny": dm.noiseFloor[1],
+            "resid_Q1": dm.coadd.q1 - (dm.stampMean.q1 + dm.motion.q1),
+            "resid_Q2": dm.coadd.q2 - (dm.stampMean.q2 + dm.motion.q2),
+            "resid_T": dm.coadd.t - (dm.stampMean.t + dm.motion.t),
+            "frac_Q1_static": dm.stampMean.q1 / (dm.stampMean.q1 + dm.motion.q1),
+            "frac_Q2_static": dm.stampMean.q2 / (dm.stampMean.q2 + dm.motion.q2),
+            **temporalShapeCovariance(pm),
+            "psd_dx": psd_dx, "psd_dy": psd_dy,
+            "psd_Q1": psd_Q1, "psd_Q2": psd_Q2, "psd_T": psd_T,
+            "psd_dx_floor": floor_dx, "psd_dy_floor": floor_dy,
+            "psd_Q1_floor": floor_Q1, "psd_Q2_floor": floor_Q2, "psd_T_floor": floor_T,
+            "tau_x": integralTimescale(dx, guiderHz), "tau_y": integralTimescale(dy, guiderHz),
+            "e1_med": float(sub["e1"].median()), "e2_med": float(sub["e2"].median()),
+            "fwhm_med": float(sub["fwhm"].median()),
+            "e1_rms": float(mad_std(sub["e1"], ignore_nan=True)),
+            "e2_rms": float(mad_std(sub["e2"], ignore_nan=True)),
+            "fwhm_rms": float(mad_std(sub["fwhm"], ignore_nan=True)),
+            "jitter_altaz": jitter,
+            "schema_version": SCHEMA_VERSION,
+            "psd_bin_edges": list(psdBinEdges),
+            **gmRow,
+            **prov,
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows)

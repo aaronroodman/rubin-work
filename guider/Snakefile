@@ -67,7 +67,7 @@ wildcard_constraints:
 
 rule all:
     input:
-        [f"output/{ds}/moments.parquet" for ds in DATASETS]
+        [f"output/{ds}/moments" for ds in DATASETS]
         + [f"output/{ds}/plots/whiskers.pdf" for ds in DATASETS],
 
 
@@ -95,17 +95,18 @@ rule moments:
             --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
             --edge-margin {TRACKER["edge_margin"]} \
             --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
+            --guider-hz {CFG.get("guider_hz", 5.0)} \
             --ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} \
             --output {{output}} > {{log}} 2>&1
         """
 
 
-# ---- combine per-exposure tables -> one dataset table ----
+# ---- combine per-exposure tables -> Hive-partitioned dataset (by dayObs) ----
 rule combine:
     input:
         lambda w: expParquet(w.ds),
     output:
-        "output/{ds}/moments.parquet",
+        directory("output/{ds}/moments"),
     resources:
         mem_mb=2000,
     log:
@@ -117,7 +118,7 @@ rule combine:
 # ---- focal-plane whisker summary ----
 rule whiskers:
     input:
-        "output/{ds}/moments.parquet",
+        "output/{ds}/moments",
     output:
         "output/{ds}/plots/whiskers.pdf",
     resources:

@@ -18,6 +18,8 @@ butler:
     - LSSTCam/raw/all
   view: dvcs
 
+guider_hz: 5.0                   # guider readout rate (Hz), for PSDs / timescales
+
 # Tracker + moment settings (shared defaults).
 tracker:
   min_snr: 10.0
