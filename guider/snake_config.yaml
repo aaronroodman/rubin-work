@@ -20,6 +20,11 @@ butler:
 
 guider_hz: 5.0                   # guider readout rate (Hz), for PSDs / timescales
 
+# Exposure observation_types to include when discovering a whole night.
+# Default science only; add e.g. acq / engtest later.
+image_types:
+  - science
+
 # Tracker + moment settings (shared defaults).
 tracker:
   min_snr: 10.0

@@ -38,6 +38,7 @@ MOMENTS = CFG["moments"]
 NIGHTS = [int(d) for d in CFG.get("nights", [])]   # dayObs values to process whole
 COLLECTIONS = " ".join(BUTLER["collections"])
 GUIDER_HZ = CFG.get("guider_hz", 5.0)
+IMAGE_TYPES = " ".join(CFG.get("image_types", ["science"]))   # night-discovery filter
 
 # Smoke-test knob (CLI: --config limit=N): keep only the first N exposures of a
 # night. 0 = all. Set via `./run_snake.sh --day-obs N --limit 5`.
@@ -93,7 +94,8 @@ checkpoint discover_night:
     output:
         "output/night_{dayObs}/exposures.txt",
     params:
-        limit=LIMIT,   # 0 = all; >0 = smoke-test first N (rerun-trigger)
+        limit=LIMIT,               # 0 = all; >0 = smoke-test first N (rerun-trigger)
+        imageTypes=IMAGE_TYPES,    # observation_types to include (rerun-trigger)
     resources:
         mem_mb=2000,
     log:
@@ -102,7 +104,7 @@ checkpoint discover_night:
         f"""
         python {CODE}/list_guider_exposures.py --day-obs {{wildcards.dayObs}} \
             --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
-            --limit {{params.limit}} \
+            --image-types {{params.imageTypes}} --limit {{params.limit}} \
             --output {{output}} > {{log}} 2>&1
         """
 

@@ -27,13 +27,23 @@ def parseArgs(argv=None):
         help="Butler collections.",
     )
     p.add_argument("--instrument", default="LSSTCam")
+    p.add_argument(
+        "--image-types",
+        nargs="+",
+        default=["science"],
+        help="Keep only these exposure observation_types (default: science).",
+    )
     p.add_argument("--output", default=None, help="Output file (default: stdout).")
     p.add_argument("--limit", type=int, default=0, help="Keep only the first N seqNums (0 = all).")
     return p.parse_args(argv)
 
 
-def discoverSeqNums(repo, collections, dayObs, instrument):
-    """Return the sorted list of seqNums with guider_raw data on dayObs."""
+def discoverSeqNums(repo, collections, dayObs, instrument, imageTypes):
+    """Return the sorted seqNums with guider_raw data on dayObs.
+
+    Filtered to the given exposure ``observation_type`` values (case-insensitive).
+    ``imageTypes`` may be None/empty to keep all types.
+    """
     from lsst.daf.butler import Butler
 
     butler = Butler(repo, collections=collections)
@@ -44,12 +54,20 @@ def discoverSeqNums(repo, collections, dayObs, instrument):
         where="instrument = inst AND exposure.day_obs = dayObs",
         bind={"inst": instrument, "dayObs": dayObs},
     )
-    return sorted({int(r.seq_num) for r in records})
+    wanted = {t.lower() for t in imageTypes} if imageTypes else None
+    seqNums = {
+        int(r.seq_num)
+        for r in records
+        if wanted is None or (r.observation_type or "").lower() in wanted
+    }
+    return sorted(seqNums)
 
 
 def main(argv=None):
     args = parseArgs(argv)
-    seqNums = discoverSeqNums(args.repo, args.collections, args.day_obs, args.instrument)
+    seqNums = discoverSeqNums(
+        args.repo, args.collections, args.day_obs, args.instrument, args.image_types
+    )
     if args.limit > 0:
         seqNums = seqNums[: args.limit]
 
@@ -60,7 +78,8 @@ def main(argv=None):
             fh.write(text + ("\n" if text else ""))
     else:
         print(text)
-    print(f"{args.day_obs}: {len(seqNums)} guider exposures", file=sys.stderr)
+    print(f"{args.day_obs}: {len(seqNums)} guider exposures "
+          f"(imagetypes={args.image_types})", file=sys.stderr)
 
 
 if __name__ == "__main__":
