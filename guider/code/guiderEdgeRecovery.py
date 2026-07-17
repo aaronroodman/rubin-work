@@ -19,6 +19,7 @@ Once the upstream fix is released this module becomes a no-op via
 from __future__ import annotations
 
 import dataclasses
+import inspect
 
 import numpy as np
 from lsst.summit.utils.guiders import detection as _det
@@ -28,6 +29,23 @@ from lsst.summit.utils.guiders.tracking import GuiderStarTrackerConfig
 def configSupportsMinFiniteFraction() -> bool:
     """Return `True` if the installed config exposes ``minFiniteFraction``."""
     return any(f.name == "minFiniteFraction" for f in dataclasses.fields(GuiderStarTrackerConfig))
+
+
+def stackHasRobustDetection() -> bool:
+    """Return `True` if the installed stack already has robust guider detection.
+
+    The ``deploy-summit`` branch (what RubinTV runs) adds a MAD-based
+    ``isBlankImage`` (``peakSnrMin``) and a single-stamp detection fallback
+    (``GuiderStarTrackerConfig.nFallbackStamps``). When either is present, no
+    edge-star monkeypatch is needed -- the stack finds near-edge and
+    low-amplitude stars natively.
+    """
+    try:
+        hasPeakSnr = "peakSnrMin" in inspect.signature(_det.isBlankImage).parameters
+    except (TypeError, ValueError):
+        hasPeakSnr = False
+    hasFallback = any(f.name == "nFallbackStamps" for f in dataclasses.fields(GuiderStarTrackerConfig))
+    return hasPeakSnr or hasFallback
 
 
 def _makePatchedMeasure(minFiniteFraction: float):
@@ -96,6 +114,10 @@ def makeTrackerConfig(minFiniteFraction: float = 0.5, **kwargs) -> GuiderStarTra
     config : `GuiderStarTrackerConfig`
         The tracker configuration.
     """
+    if stackHasRobustDetection():
+        # deploy-summit or newer: native robust detection, no patch or
+        # minFiniteFraction needed.
+        return GuiderStarTrackerConfig(**kwargs)
     if configSupportsMinFiniteFraction():
         kwargs["minFiniteFraction"] = minFiniteFraction
     else:
