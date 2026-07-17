@@ -31,7 +31,13 @@ moments:
   ap_nsigma: 4.0
   cen_niter: 3
 
-# Datasets -> exposures. expId = dayObs*100000 + seqNum.
+# Whole nights to process (all guider exposures discovered from the Butler).
+# Each becomes dataset `night_<dayObs>`; `rule all` builds these too. You can
+# also process a night ad hoc without editing this: `./run_snake.sh --day-obs N`.
+nights: []
+  # - 20260709
+
+# Datasets -> exposures (hand-listed). expId = dayObs*100000 + seqNum.
 datasets:
 
   test_20260709:

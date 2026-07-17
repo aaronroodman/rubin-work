@@ -3,19 +3,21 @@
 #
 # Per exposure: track guide stars + decompose each sensor's shape into
 # coadd / static-per-stamp / image-motion second moments -> per-exposure
-# parquet.  Combine -> one dataset table -> focal-plane whisker summary.
+# summary parquet.  Combine -> Hive-partitioned dataset (by dayObs).
 #
-#   snakemake -n            # dry-run: show the plan
-#   snakemake -j4           # build (or use ./run_snake.sh)
-#   snakemake --dag | dot -Tpng > dag.png
+# Two dataset kinds:
+#   * static  : hand-listed exposures in snake_config.yaml `datasets:`
+#   * night   : all guider exposures of a dayObs, discovered from the Butler
+#               (a Snakemake checkpoint).  Dataset name is `night_<dayObs>`.
+#
+#   snakemake -n                                   # dry-run (static datasets)
+#   snakemake output/night_20260709/moments        # one night (auto-discovered)
+#   ./run_snake.sh --day-obs 20260709 [--mode batch]
 #
 # Layout:
 #   output/<ds>/exposures/<expId>/moments.parquet   (per exposure)
-#   output/<ds>/moments.parquet                     (combined)
-#   output/<ds>/plots/whiskers.pdf                  (on combined)
-#
-# Config: snake_config.yaml (datasets -> exposures; butler + tracker/moment
-# settings).  Reusable library in code/ (guiderMoments.py etc).
+#   output/<ds>/moments/dayObs=YYYYMMDD/...parquet   (combined, partitioned)
+#   output/<ds>/plots/{whiskers.pdf,validation.png}  (on combined)
 # ----------------------------------------------------------------------
 import os
 import yaml
@@ -33,6 +35,9 @@ DATASETS = CFG["datasets"]
 BUTLER = CFG["butler"]
 TRACKER = CFG["tracker"]
 MOMENTS = CFG["moments"]
+NIGHTS = [int(d) for d in CFG.get("nights", [])]   # dayObs values to process whole
+COLLECTIONS = " ".join(BUTLER["collections"])
+GUIDER_HZ = CFG.get("guider_hz", 5.0)
 
 CODE = "code"
 
@@ -41,46 +46,67 @@ def expId(dayObs, seqNum):
     return dayObs * 100000 + seqNum
 
 
+# ---- static datasets (hand-listed exposures) ----
 def exposures(ds):
     return DATASETS[ds]["exposures"]
 
 
-def expIds(ds):
-    return [expId(e["dayObs"], e["seqNum"]) for e in exposures(ds)]
-
-
 def expParquet(ds):
-    return [f"output/{ds}/exposures/{eid}/moments.parquet" for eid in expIds(ds)]
+    eids = [expId(e["dayObs"], e["seqNum"]) for e in exposures(ds)]
+    return [f"output/{ds}/exposures/{eid}/moments.parquet" for eid in eids]
 
 
-# Map an expId back to (dayObs, seqNum) for the per-exposure rule.
-_EXP = {
-    (ds, expId(e["dayObs"], e["seqNum"])): e
-    for ds in DATASETS
-    for e in exposures(ds)
-}
+# ---- combine inputs: static from config, night from the discovery checkpoint ----
+def combineInputs(wildcards):
+    ds = wildcards.ds
+    if ds.startswith("night_"):
+        dayObs = int(ds.split("_", 1)[1])
+        manifest = checkpoints.discover_night.get(dayObs=dayObs).output[0]
+        with open(manifest) as fh:
+            seqNums = [int(x) for x in fh.read().split() if x.strip()]
+        return [f"output/{ds}/exposures/{expId(dayObs, s)}/moments.parquet" for s in seqNums]
+    return expParquet(ds)
+
 
 wildcard_constraints:
     ds = r"[A-Za-z0-9_.+-]+",
     eid = r"\d+",
+    dayObs = r"\d{8}",
 
 
 rule all:
     input:
+        # static datasets: partitioned moments + whisker plot
         [f"output/{ds}/moments" for ds in DATASETS]
-        + [f"output/{ds}/plots/whiskers.pdf" for ds in DATASETS],
+        + [f"output/{ds}/plots/whiskers.pdf" for ds in DATASETS]
+        # configured whole-night datasets: partitioned moments + validation plot
+        + [f"output/night_{d}/moments" for d in NIGHTS]
+        + [f"output/night_{d}/plots/validation.png" for d in NIGHTS],
 
 
-# ---- per exposure: track + decompose moments ----
+# ---- discover all guider exposures for a night (Butler query) ----
+checkpoint discover_night:
+    output:
+        "output/night_{dayObs}/exposures.txt",
+    resources:
+        mem_mb=2000,
+    log:
+        "logs/night_{dayObs}.discover.log",
+    shell:
+        f"""
+        python {CODE}/list_guider_exposures.py --day-obs {{wildcards.dayObs}} \
+            --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
+            --output {{output}} > {{log}} 2>&1
+        """
+
+
+# ---- per exposure: track + decompose moments (dayObs/seqNum from eid) ----
 rule moments:
     output:
         "output/{ds}/exposures/{eid}/moments.parquet",
     params:
-        dayObs=lambda w: _EXP[(w.ds, int(w.eid))]["dayObs"],
-        seqNum=lambda w: _EXP[(w.ds, int(w.eid))]["seqNum"],
-        collections=" ".join(BUTLER["collections"]),
-        repo=BUTLER["repo"],
-        view=BUTLER["view"],
+        dayObs=lambda w: int(w.eid) // 100000,
+        seqNum=lambda w: int(w.eid) % 100000,
         recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
     resources:
         mem_mb=4000,
@@ -90,12 +116,11 @@ rule moments:
         rf"""
         python {CODE}/run_guider_moments.py \
             --day-obs {{params.dayObs}} --seq-num {{params.seqNum}} \
-            --repo {{params.repo}} --collections {{params.collections}} \
-            --view {{params.view}} \
+            --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
+            --view {BUTLER["view"]} --guider-hz {GUIDER_HZ} \
             --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
             --edge-margin {TRACKER["edge_margin"]} \
             --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
-            --guider-hz {CFG.get("guider_hz", 5.0)} \
             --ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} \
             --output {{output}} > {{log}} 2>&1
         """
@@ -104,18 +129,18 @@ rule moments:
 # ---- combine per-exposure tables -> Hive-partitioned dataset (by dayObs) ----
 rule combine:
     input:
-        lambda w: expParquet(w.ds),
+        combineInputs,
     output:
         directory("output/{ds}/moments"),
     resources:
-        mem_mb=2000,
+        mem_mb=3000,
     log:
         "logs/{ds}.combine.log",
     shell:
         f"python {CODE}/combine_moments.py {{input}} --output {{output}} > {{log}} 2>&1"
 
 
-# ---- focal-plane whisker summary ----
+# ---- focal-plane whisker summary (static datasets) ----
 rule whiskers:
     input:
         "output/{ds}/moments",
@@ -127,3 +152,17 @@ rule whiskers:
         "logs/{ds}.whiskers.log",
     shell:
         f"python {CODE}/run_guider_whiskers.py {{input}} --output {{output}} > {{log}} 2>&1"
+
+
+# ---- lightweight per-night validation QA plot ----
+rule validate:
+    input:
+        "output/{ds}/moments",
+    output:
+        "output/{ds}/plots/validation.png",
+    resources:
+        mem_mb=2000,
+    log:
+        "logs/{ds}.validate.log",
+    shell:
+        f"python {CODE}/run_guider_validation.py {{input}} --output {{output}} > {{log}} 2>&1"
