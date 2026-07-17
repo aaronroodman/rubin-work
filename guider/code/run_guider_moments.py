@@ -51,6 +51,11 @@ def parseArgs(argv=None):
     p.add_argument("--edge-margin", type=int, default=3)
     p.add_argument("--min-finite-fraction", type=float, default=0.5)
     p.add_argument("--no-recover-edge-stars", action="store_true")
+    p.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail on missing/insufficient guider data instead of skipping the visit.",
+    )
     # moments
     p.add_argument("--ap-nsigma", type=float, default=4.0)
     p.add_argument("--cen-niter", type=int, default=3)
@@ -81,9 +86,26 @@ def main(argv=None):
     from lsst.summit.utils.guiders.reading import GuiderReader
     from lsst.summit.utils.guiders.tracking import GuiderStarTracker
 
+    try:
+        from lsst.daf.butler import DatasetNotFoundError
+    except ImportError:  # older butler
+        from lsst.daf.butler._exceptions import DatasetNotFoundError
+
     butler = Butler(args.repo, collections=args.collections)
     reader = GuiderReader(butler, view=args.view)
-    guiderData = reader.get(dayObs=args.day_obs, seqNum=args.seq_num, doSubtractMedian=True)
+
+    # A visit can be missing a guide sensor's data, or have too few stamps -- the
+    # reader raises on those. Skip such visits (write an empty table) so the batch
+    # and the per-night combine still complete; --strict re-raises instead.
+    try:
+        guiderData = reader.get(dayObs=args.day_obs, seqNum=args.seq_num, doSubtractMedian=True)
+    except (DatasetNotFoundError, RuntimeError) as exc:
+        if args.strict:
+            raise
+        print(f"{expId}: skipping -- no usable guider data ({exc})", file=sys.stderr)
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        emptyTable().to_parquet(args.output, index=False)
+        return
 
     recover = not args.no_recover_edge_stars
     config = makeTrackerConfig(
