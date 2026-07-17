@@ -102,9 +102,13 @@ def main(argv=None):
     except (DatasetNotFoundError, RuntimeError) as exc:
         if args.strict:
             raise
-        print(f"{expId}: skipping -- no usable guider data ({exc})", file=sys.stderr)
-        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        print(f"{expId}: SKIPPED -- no usable guider data ({exc})", file=sys.stderr)
+        outdir = os.path.dirname(os.path.abspath(args.output))
+        os.makedirs(outdir, exist_ok=True)
         emptyTable().to_parquet(args.output, index=False)
+        # drop a marker so `combine` can flag this visit in one place
+        with open(os.path.join(outdir, "SKIPPED.txt"), "w") as fh:
+            fh.write(f"{expId}\t{args.day_obs}\t{args.seq_num}\t{exc}\n")
         return
 
     recover = not args.no_recover_edge_stars
@@ -135,7 +139,11 @@ def main(argv=None):
             guiderData, stars, decomps, guiderHz=args.guider_hz, provenance=provenance
         )
 
-    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    outdir = os.path.dirname(os.path.abspath(args.output))
+    os.makedirs(outdir, exist_ok=True)
+    stale = os.path.join(outdir, "SKIPPED.txt")   # clear any marker from a prior skip
+    if os.path.exists(stale):
+        os.remove(stale)
     table.to_parquet(args.output, index=False)
     nDet = table["detector"].nunique() if not table.empty else 0
     print(f"{expId}: wrote {len(table)} rows for {nDet} sensors -> {args.output}")

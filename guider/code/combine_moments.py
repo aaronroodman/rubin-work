@@ -32,15 +32,42 @@ def parseArgs(argv=None):
 
 def main(argv=None):
     args = parseArgs(argv)
-    frames = [pd.read_parquet(f) for f in args.inputs]
-    nonEmpty = [df for df in frames if not df.empty]
+
+    frames = []
+    missing = []   # visits skipped for missing/insufficient data (have a marker)
+    nostars = []   # visits with empty output but no marker (data present, no stars)
+    for f in args.inputs:
+        d = pd.read_parquet(f)
+        if not d.empty:
+            frames.append(d)
+            continue
+        eid = os.path.basename(os.path.dirname(f))
+        marker = os.path.join(os.path.dirname(f), "SKIPPED.txt")
+        if os.path.exists(marker):
+            missing.append(open(marker).read().strip())
+        else:
+            nostars.append(eid)
+
+    # Flag skipped visits in one place: to stdout (the combine log) and a report.
+    lines = []
+    if missing:
+        lines.append(f"# {len(missing)} visit(s) SKIPPED -- missing/insufficient data:")
+        lines += [f"  {m}" for m in missing]
+    if nostars:
+        lines.append(f"# {len(nostars)} visit(s) with no tracked stars: {', '.join(sorted(nostars))}")
+    report = "\n".join(lines) if lines else "no skipped visits"
+    print(report)
+    parent = os.path.dirname(os.path.abspath(args.output.rstrip("/")))
+    os.makedirs(parent, exist_ok=True)
+    with open(os.path.join(parent, "skipped_visits.txt"), "w") as fh:
+        fh.write(report + "\n")
 
     os.makedirs(args.output, exist_ok=True)
-    if not nonEmpty:
+    if not frames:
         print(f"no non-empty inputs; empty dataset at {args.output}")
         return
 
-    df = pd.concat(nonEmpty, ignore_index=True)
+    df = pd.concat(frames, ignore_index=True)
     df["dayObs"] = df["dayObs"].astype("int64")
     table = pa.Table.from_pandas(df, preserve_index=False)
 
