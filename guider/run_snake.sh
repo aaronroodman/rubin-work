@@ -15,11 +15,15 @@
 #   --day-obs YYYYMMDD  process a whole night: discover its guider exposures
 #                       from the Butler and build the partitioned dataset +
 #                       validation plot (output/night_YYYYMMDD/).
+#   --limit N           smoke test: keep only the first N exposures of the night
+#                       (0 = all).  Run a limited test first, then re-run without
+#                       --limit to build (and overwrite with) the full night.
 #
 # Usage:
 #   ./run_snake.sh --day-obs 20260709                 # local, one night
-#   ./run_snake.sh --day-obs 20260709 -n              # dry-run
-#   ./run_snake.sh --day-obs 20260709 --mode batch    # batch on roma
+#   ./run_snake.sh --day-obs 20260709 --limit 5 -n    # dry-run, 5-exposure test
+#   ./run_snake.sh --day-obs 20260709 --limit 5       # local, 5-exposure test
+#   ./run_snake.sh --day-obs 20260709 --mode batch    # batch on roma, full night
 #   ./run_snake.sh                                     # local, static datasets
 #
 # Batch tunables (env vars; defaults in parens):
@@ -33,6 +37,7 @@ mkdir -p logs
 
 mode=local
 dayObs=""
+limit=""
 passthru=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -40,6 +45,8 @@ while [ $# -gt 0 ]; do
         --mode=*)   mode="${1#*=}"; shift;;
         --day-obs)  dayObs="$2"; shift 2;;
         --day-obs=*) dayObs="${1#*=}"; shift;;
+        --limit)    limit="$2"; shift 2;;
+        --limit=*)  limit="${1#*=}"; shift;;
         *)          passthru+=("$1"); shift;;
     esac
 done
@@ -50,13 +57,20 @@ if [ -n "$dayObs" ]; then
     targets=("output/night_${dayObs}/moments" "output/night_${dayObs}/plots/validation.png")
 fi
 
+# --limit becomes a Snakemake config override (read as config["limit"]).
+cfg=()
+if [ -n "$limit" ]; then
+    cfg=(--config "limit=${limit}")
+fi
+
 ts=$(date +%Y%m%d_%H%M%S)
 tag="${dayObs:-all}"
 
 case "$mode" in
     local)
         log="logs/run_${tag}_${ts}.log"
-        args=(-j 4 --resources mem_mb=14000 --keep-going "${passthru[@]}" "${targets[@]}")
+        # --config is greedy, so it must come last (after targets).
+        args=(-j 4 --resources mem_mb=14000 --keep-going "${passthru[@]}" "${targets[@]}" "${cfg[@]}")
         nohup snakemake "${args[@]}" > "$log" 2>&1 &
         echo "snakemake (local) launched: pid $!"
         echo "  targets: ${targets[*]:-<rule all>}"
@@ -75,7 +89,8 @@ case "$mode" in
         acct=${SB_ACCOUNT:-rubin:developers@roma}
         qos=${SB_QOS:-normal}
         jlog="logs/batch_${tag}_${ts}.out"
-        smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going ${passthru[*]} ${targets[*]}"
+        # --config is greedy, so it must come last (after targets).
+        smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going ${passthru[*]} ${targets[*]} ${cfg[*]}"
         sbatch --partition="$part" --account="$acct" --qos="$qos" \
                --cpus-per-task="$cpus" --mem="$mem" --time="$tlim" \
                --job-name="guider_${tag}" --output="$jlog" \
