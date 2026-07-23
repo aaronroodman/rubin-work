@@ -1,0 +1,19 @@
+# BLOCK-T539 closed-loop AOS state pipeline configuration.
+day_obs_min: 20260420
+day_obs_max: 20260708          # bump to today when re-running
+
+instrument: lsstcam
+consdb_url: "http://consdb-pq.consdb:8080/consdb"
+efd: usdf_efd                  # summit_efd when running on the Summit RSP
+
+# OFC config dir for the sensitivity matrix / v-mode SVD (v13 = telescope AOS)
+ofc_config_dir: "/home/r/roodman/u/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc"
+
+# Selection: converged closed-loop in-focus images
+science_program_prefix: "BLOCK-T539"
+observation_reason: "infocus_initial_alignment"
+annotations:
+  - closed_loop_hexapods_10dof_trunc5
+  - closed_loop_22dof_trunc12
+seq_gap_max: 10                # max seq_num gap within one contiguous run
+n_vmode: 12

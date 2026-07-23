@@ -1,9 +1,10 @@
 """Shared EFD environmental-telemetry helpers for the AOS analyses.
 
 Single source of truth for the thermal + wind telemetry attached per visit, so
-the logic is not duplicated across ``nightly_table.py``, the block-T539
-notebook, and the FAM summary build.  All functions are ``async`` (they await
-the ``lsst_efd_client`` EfdClient).
+the logic is not duplicated across ``nightly_table.py``, the block-T539 build,
+and the FAM summary.  The core functions are ``async`` (they await the
+``lsst_efd_client`` EfdClient); ``*_sync`` wrappers are provided for notebooks /
+sync callers.
 
 Provided:
   - ``fetch_thermal_telemetry`` -- ESS air temperatures (camera / M2 / M1M3 /
@@ -13,7 +14,12 @@ Provided:
     ``lsst.sal.ESS.airFlow`` (weather tower) and inside-dome wind speed from
     ``lsst.sal.ESS.airTurbulence`` (TMA sonic anemometers).
   - ``get_m1m3_gradients`` -- M1M3 bulk thermal gradients interpolated onto each
-    visit's ``obs_start`` (kept public; re-exported by ``nightly_table``).
+    visit's ``obs_start`` (re-exported by ``nightly_table``).
+
+Robustness: the M1M3-gradient and TMA-truss loads are done **per night** (never
+over a multi-night span, which times out), and every EFD call is wrapped so a
+timeout / missing sensor yields NaN for that piece rather than aborting the run.
+Pass ``progress=True`` (default) for a tqdm bar over the slow loops.
 
 Each visit is identified by ``(day_obs, seq)`` and its TAI ``obs_start`` /
 ``obs_end`` ISO strings, matching ``nightly_table.AOSDatabase``.
@@ -43,7 +49,7 @@ ESS_TEMP_INDEX = {
 TRUSS_ESS_INDEX = 2
 TRUSS_ITEMS = {6: "tma_truss_temp_pxpy", 7: "tma_truss_temp_mxmy"}
 
-# --- Wind: outside from ESS.airFlow, inside from ESS.airTurbulence ---------------
+# --- Wind: outside from ESS.airFlow, inside from ESS.airTurbulence --------------
 # Outside dome = the weather-tower anemometer (ESS.airFlow; has speed + direction).
 OUTSIDE_AIRFLOW_INDEX = 301
 # Inside dome = the TMA sonic anemometers (ESS.airTurbulence, ``speedMagnitude``
@@ -55,6 +61,19 @@ INSIDE_AIRTURB_INDICES = (110, 123, 124, 125, 126)
 
 DEFAULT_TEMP_WINDOW = TimeDelta(0.2, format="sec")
 
+GRAD_COLS = ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]
+
+
+def _tqdm(iterable, total=None, desc=None, progress=True):
+    """tqdm wrapper that degrades to a plain iterable if tqdm is unavailable."""
+    if not progress:
+        return iterable
+    try:
+        from tqdm.auto import tqdm
+        return tqdm(iterable, total=total, desc=desc)
+    except Exception:
+        return iterable
+
 
 # ----------------------------------------------------------------------------
 # M1M3 bulk thermal gradients
@@ -64,8 +83,8 @@ async def get_m1m3_gradients(client, data):
 
     Adds ``x_gradient``, ``y_gradient``, ``z_gradient`` and ``radial_gradient``
     to ``data`` (which must have an ``obs_start`` column of TAI ISO strings) and
-    returns it.  Moved verbatim from ``nightly_table.get_m1m3_gradients`` so both
-    callers share one implementation.
+    returns it.  Call it over a **single night's** span -- loading over a
+    multi-night span makes the thermocouple query time out.
     """
     date_strings = Time(
         [str(x) for x in data["obs_start"].values], format="isot", scale="tai"
@@ -86,8 +105,7 @@ async def get_m1m3_gradients(client, data):
     grad_times /= 1e9
     data_times -= t0
     data_times /= 1e9
-    names = ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]
-    for name in names:
+    for name in GRAD_COLS:
         values = gradients[name].values
         val_series = pd.Series(values)
         val_interpolated = val_series.interpolate()
@@ -102,7 +120,8 @@ async def _query_tma_truss(client, start_date, end_date):
     """TMA truss temperatures (ESS index 2, items 6/7) as a 1-minute series.
 
     Adapted from A. Roodman's snippet; returns a time-indexed DataFrame with
-    columns ``tma_truss_temp_pxpy`` and ``tma_truss_temp_mxmy``.
+    columns ``tma_truss_temp_pxpy`` and ``tma_truss_temp_mxmy``.  Query over one
+    night's span.
     """
     topic_name = "lsst.sal.ESS.temperature"
     frames = []
@@ -138,6 +157,14 @@ def _interp_series_to_rows(ts_df, data, cols):
     return data
 
 
+def _nan_cols(sub, cols):
+    """A (day_obs, seq) frame with NaN placeholder columns (failure fallback)."""
+    out = sub[["day_obs", "seq"]].copy()
+    for c in cols:
+        out[c] = np.nan
+    return out
+
+
 # ----------------------------------------------------------------------------
 # Thermal telemetry (temps + delta-Ts + gradients + truss)
 # ----------------------------------------------------------------------------
@@ -147,6 +174,7 @@ async def fetch_thermal_telemetry(
     temp_window=DEFAULT_TEMP_WINDOW,
     include_gradients=True,
     include_truss=True,
+    progress=True,
 ):
     """Per-visit thermal telemetry from the EFD.
 
@@ -159,7 +187,9 @@ async def fetch_thermal_telemetry(
     temp_window : astropy.time.TimeDelta
         Padding added to ``obs_end`` for the ESS temperature averaging window.
     include_gradients, include_truss : bool
-        Toggle the M1M3 gradient / TMA-truss columns.
+        Toggle the M1M3-gradient / TMA-truss columns.
+    progress : bool
+        Show a tqdm bar over the per-visit and per-night loops.
 
     Returns
     -------
@@ -168,22 +198,29 @@ async def fetch_thermal_telemetry(
         dome_delta_t, m2_delta_t, cam_m1m3_delta_t,
         x_gradient, y_gradient, z_gradient, radial_gradient   [gradients],
         tma_truss_temp_pxpy, tma_truss_temp_mxmy              [truss].
+
+    Every EFD call is guarded: a timeout / missing sensor yields NaN for that
+    entry rather than aborting.  Gradient/truss loads are done per night.
     """
 
     async def _temp(index, rec_start, rec_end):
-        d = await efd_client.select_time_series(
-            "lsst.sal.ESS.temperature",
-            ["temperatureItem0"],
-            Time(rec_start, scale="tai").utc,
-            Time(rec_end, scale="tai").utc + temp_window,
-            index=index,
-            convert_influx_index=True,
-        )
-        return d["temperatureItem0"].mean() if "temperatureItem0" in d else np.nan
+        try:
+            d = await efd_client.select_time_series(
+                "lsst.sal.ESS.temperature",
+                ["temperatureItem0"],
+                Time(rec_start, scale="tai").utc,
+                Time(rec_end, scale="tai").utc + temp_window,
+                index=index,
+                convert_influx_index=True,
+            )
+            return d["temperatureItem0"].mean() if ("temperatureItem0" in d and len(d)) else np.nan
+        except Exception:
+            return np.nan
 
     rows = {k: [] for k in ("day_obs", "seq", "cam_air_temp", "m2_air_temp",
                             "m1m3_air_temp", "outside_temp")}
-    for _, r in day_seq.iterrows():
+    for _, r in _tqdm(list(day_seq.iterrows()), total=len(day_seq),
+                      desc="ESS temps/visit", progress=progress):
         rows["day_obs"].append(int(r["day_obs"]))
         rows["seq"].append(int(r["seq"]))
         rows["outside_temp"].append(await _temp(ESS_TEMP_INDEX["outside_temp"], r["obs_start"], r["obs_end"]))
@@ -196,23 +233,43 @@ async def fetch_thermal_telemetry(
     out["dome_delta_t"] = out["outside_temp"] - out["m1m3_air_temp"]
     out["cam_m1m3_delta_t"] = out["cam_air_temp"] - out["m1m3_air_temp"]
 
-    if include_gradients:
-        if ThermocoupleAnalysis is None:
-            warnings.warn("ThermocoupleAnalysis unavailable; M1M3 gradients skipped")
-        else:
-            grad = await get_m1m3_gradients(
-                efd_client, day_seq[["day_obs", "seq", "obs_start"]].copy()
-            )
-            gcols = ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]
-            out = out.merge(grad[["day_obs", "seq"] + gcols], on=["day_obs", "seq"], how="left")
+    # --- M1M3 gradients, loaded per night (a multi-night load times out) ---
+    if include_gradients and ThermocoupleAnalysis is None:
+        warnings.warn("ThermocoupleAnalysis unavailable; M1M3 gradients skipped")
+    elif include_gradients:
+        parts = []
+        for day, sub in _tqdm(list(day_seq.groupby("day_obs")),
+                              desc="M1M3 gradients/night", progress=progress):
+            try:
+                g = await get_m1m3_gradients(
+                    efd_client, sub[["day_obs", "seq", "obs_start"]].copy())
+                parts.append(g[["day_obs", "seq"] + GRAD_COLS])
+            except Exception as e:
+                warnings.warn(f"M1M3 gradients failed for day_obs={day}: "
+                              f"{type(e).__name__}: {e}")
+                parts.append(_nan_cols(sub, GRAD_COLS))
+        out = out.merge(pd.concat(parts, ignore_index=True),
+                        on=["day_obs", "seq"], how="left")
 
+    # --- TMA truss temps, loaded per night ---
     if include_truss:
-        span0 = Time(min(day_seq["obs_start"]), scale="tai")
-        span1 = Time(max(day_seq["obs_end"]), scale="tai")
-        truss = await _query_tma_truss(efd_client, span0, span1)
         tcols = list(TRUSS_ITEMS.values())
-        ds = _interp_series_to_rows(truss, day_seq[["day_obs", "seq", "obs_start"]].copy(), tcols)
-        out = out.merge(ds[["day_obs", "seq"] + tcols], on=["day_obs", "seq"], how="left")
+        parts = []
+        for day, sub in _tqdm(list(day_seq.groupby("day_obs")),
+                              desc="TMA truss/night", progress=progress):
+            try:
+                span0 = Time(min(sub["obs_start"]), scale="tai")
+                span1 = Time(max(sub["obs_end"]), scale="tai")
+                ts = await _query_tma_truss(efd_client, span0, span1)
+                part = _interp_series_to_rows(
+                    ts, sub[["day_obs", "seq", "obs_start"]].copy(), tcols)
+                parts.append(part[["day_obs", "seq"] + tcols])
+            except Exception as e:
+                warnings.warn(f"TMA truss failed for day_obs={day}: "
+                              f"{type(e).__name__}: {e}")
+                parts.append(_nan_cols(sub, tcols))
+        out = out.merge(pd.concat(parts, ignore_index=True),
+                        on=["day_obs", "seq"], how="left")
 
     return out
 
@@ -226,6 +283,7 @@ async def fetch_dome_wind(
     inside_indices=INSIDE_AIRTURB_INDICES,
     outside_index=OUTSIDE_AIRFLOW_INDEX,
     wind_window=DEFAULT_TEMP_WINDOW,
+    progress=True,
 ):
     """Per-visit inside- and outside-dome wind.
 
@@ -234,6 +292,8 @@ async def fetch_dome_wind(
     comes from ``lsst.sal.ESS.airTurbulence`` at ``inside_indices`` (the TMA
     sonic anemometers): the mean ``speedMagnitude`` over those sensors.  The
     airTurbulence topic has no direction field, so there is no inside direction.
+
+    Every EFD call is guarded (timeout / missing sensor -> NaN).
 
     Returns
     -------
@@ -247,38 +307,44 @@ async def fetch_dome_wind(
     async def _outside(rec_start, rec_end):
         if outside_index is None:
             return (np.nan, np.nan)
-        d = await efd_client.select_time_series(
-            "lsst.sal.ESS.airFlow",
-            ["speed", "direction"],
-            Time(rec_start, scale="tai").utc,
-            Time(rec_end, scale="tai").utc + wind_window,
-            index=outside_index,
-            convert_influx_index=True,
-        )
-        speed = d["speed"].mean() if "speed" in d else np.nan
-        direction = d["direction"].mean() if "direction" in d else np.nan
-        return (speed, direction)
+        try:
+            d = await efd_client.select_time_series(
+                "lsst.sal.ESS.airFlow",
+                ["speed", "direction"],
+                Time(rec_start, scale="tai").utc,
+                Time(rec_end, scale="tai").utc + wind_window,
+                index=outside_index,
+                convert_influx_index=True,
+            )
+            speed = d["speed"].mean() if ("speed" in d and len(d)) else np.nan
+            direction = d["direction"].mean() if ("direction" in d and len(d)) else np.nan
+            return (speed, direction)
+        except Exception:
+            return (np.nan, np.nan)
 
     async def _inside(rec_start, rec_end):
         if not inside_set:
             return np.nan
-        # one query for all instances, then average over the inside sensors
-        d = await efd_client.select_time_series(
-            "lsst.sal.ESS.airTurbulence",
-            ["salIndex", "speedMagnitude"],
-            Time(rec_start, scale="tai").utc,
-            Time(rec_end, scale="tai").utc + wind_window,
-            convert_influx_index=True,
-        )
-        if "speedMagnitude" not in d or len(d) == 0:
+        try:
+            d = await efd_client.select_time_series(
+                "lsst.sal.ESS.airTurbulence",
+                ["salIndex", "speedMagnitude"],
+                Time(rec_start, scale="tai").utc,
+                Time(rec_end, scale="tai").utc + wind_window,
+                convert_influx_index=True,
+            )
+            if "speedMagnitude" not in d or len(d) == 0:
+                return np.nan
+            sub = d[d["salIndex"].isin(inside_set)] if "salIndex" in d else d
+            vals = sub["speedMagnitude"].to_numpy(dtype=float)
+            return float(np.nanmean(vals)) if np.any(np.isfinite(vals)) else np.nan
+        except Exception:
             return np.nan
-        sub = d[d["salIndex"].isin(inside_set)] if "salIndex" in d else d
-        vals = sub["speedMagnitude"].to_numpy(dtype=float)
-        return float(np.nanmean(vals)) if np.any(np.isfinite(vals)) else np.nan
 
     rows = {k: [] for k in ("day_obs", "seq", "wind_speed_inside",
                             "wind_speed_outside", "wind_dir_outside")}
-    for _, r in day_seq.iterrows():
+    for _, r in _tqdm(list(day_seq.iterrows()), total=len(day_seq),
+                      desc="dome wind/visit", progress=progress):
         rows["day_obs"].append(int(r["day_obs"]))
         rows["seq"].append(int(r["seq"]))
         so, do = await _outside(r["obs_start"], r["obs_end"])

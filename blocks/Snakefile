@@ -1,0 +1,83 @@
+# ----------------------------------------------------------------------
+# BLOCK-T539 closed-loop AOS state pipeline (Snakemake).
+#
+#   build_table  (RSP: ConsDB + EFD)  ->  plots
+#
+#   ./run_snake.sh -n      # dry-run: show the plan
+#   ./run_snake.sh         # build (local, detached; tuned for the RSP)
+#
+# Layout:
+#   output/t539_closedloop_aos_<dmin>_<dmax>.parquet   (full per-visit table)
+#   output/t539_validation_<dmin>_<dmax>.pdf           (v-modes + telemetry QA)
+#
+# Config: config.yaml (day_obs range, ConsDB/EFD, OFC config, selection).
+# Reuses aos/code (DOF/v-modes/Zernikes) + olr/code/telemetry.py (thermal/wind).
+# ----------------------------------------------------------------------
+import os
+import yaml
+
+# One thread per job; parallelism via `snakemake -j` (mirrors olr/aos).
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+           "NUMEXPR_NUM_THREADS"):
+    os.environ[_v] = "1"
+
+CFG = yaml.safe_load(open("config.yaml"))
+TAG = f"{CFG['day_obs_min']}_{CFG['day_obs_max']}"
+
+
+rule all:
+    input:
+        f"output/t539_closedloop_aos_{TAG}.parquet",
+        f"output/t539_validation_{TAG}.pdf",
+
+
+# --- RSP-only: ConsDB select + DOF + v-modes + Zernikes + thermal/wind ---
+rule build_table:
+    output:
+        table = f"output/t539_closedloop_aos_{TAG}.parquet",
+    input:
+        script    = "code/build_t539_table.py",
+        lib_trim  = "../aos/code/aos_trim.py",
+        lib_state = "../aos/code/aos_state.py",
+        lib_tele  = "../olr/code/telemetry.py",
+    params:
+        dmin = CFG["day_obs_min"],
+        dmax = CFG["day_obs_max"],
+        instrument = CFG["instrument"],
+        consdb = CFG["consdb_url"],
+        efd = CFG["efd"],
+        ofc = CFG["ofc_config_dir"],
+        ann = " ".join(CFG["annotations"]),
+        prefix = CFG["science_program_prefix"],
+        reason = CFG["observation_reason"],
+        seq_gap = CFG["seq_gap_max"],
+        n_vmode = CFG["n_vmode"],
+    resources:
+        mem_mb = 8000,
+    log:
+        "logs/build_table.log",
+    shell:
+        "python code/build_t539_table.py "
+        "--day-obs-min {params.dmin} --day-obs-max {params.dmax} "
+        "--instrument {params.instrument} --consdb-url {params.consdb} "
+        "--efd {params.efd} --ofc-config-dir {params.ofc} "
+        "--science-program-prefix {params.prefix} "
+        "--observation-reason {params.reason} "
+        "--seq-gap-max {params.seq_gap} --n-vmode {params.n_vmode} "
+        "--annotations {params.ann} --out {output.table} > {log} 2>&1"
+
+
+# --- Validation plots (v-mode histograms + telemetry QA) ---
+rule plots:
+    output:
+        pdf = f"output/t539_validation_{TAG}.pdf",
+    input:
+        table  = f"output/t539_closedloop_aos_{TAG}.parquet",
+        script = "code/plot_t539_validation.py",
+    resources:
+        mem_mb = 2000,
+    log:
+        "logs/plots.log",
+    shell:
+        "python code/plot_t539_validation.py --in {input.table} "
+        "--out {output.pdf} > {log} 2>&1"
