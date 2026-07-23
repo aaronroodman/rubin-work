@@ -6,6 +6,12 @@
 # hits ConsDB + EFD and can take many minutes (per-visit ESS queries + per-night
 # M1M3-gradient / TMA-truss loads), so watch the log.
 #
+# IMPORTANT: launch this from a terminal INSIDE the RSP JupyterLab (Nublado) pod
+# -- the same environment as the notebook (File -> New -> Terminal).  ConsDB
+# ('consdb-pq.consdb') is an in-cluster service that only resolves inside that
+# pod; an S3DF SSH login node (e.g. sdfianaNNN) cannot resolve it and build_table
+# will fail with "Failed to resolve 'consdb-pq.consdb'".
+#
 # Usage:
 #   ./run_snake.sh                 # build table + validation PDF
 #   ./run_snake.sh -n              # dry-run (extra args pass through)
