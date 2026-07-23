@@ -286,3 +286,39 @@ async def fetch_dome_wind(
         rows["wind_speed_outside"].append(so)
         rows["wind_dir_outside"].append(do)
     return pd.DataFrame(rows)
+
+
+# ----------------------------------------------------------------------------
+# Synchronous wrappers (for notebooks / sync callers)
+# ----------------------------------------------------------------------------
+# The async functions above are the native interface (nightly_table awaits
+# them).  Notebooks that use the summit_utils sync EFD helpers must NOT mix a
+# top-level ``await`` with those helpers -- summit_utils applies ``nest_asyncio``
+# to the kernel loop, and a subsequent native ``await`` breaks it ("pop from an
+# empty deque").  These wrappers run the coroutine via run_until_complete, which
+# is re-entrant under nest_asyncio and is the pattern the rest of the notebook
+# already relies on.
+def _run_coro(coro):
+    import asyncio
+
+    try:
+        import nest_asyncio
+        nest_asyncio.apply()
+    except Exception:
+        pass
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
+def fetch_thermal_telemetry_sync(efd_client, day_seq, **kwargs):
+    """Synchronous wrapper around :func:`fetch_thermal_telemetry`."""
+    return _run_coro(fetch_thermal_telemetry(efd_client, day_seq, **kwargs))
+
+
+def fetch_dome_wind_sync(efd_client, day_seq, **kwargs):
+    """Synchronous wrapper around :func:`fetch_dome_wind`."""
+    return _run_coro(fetch_dome_wind(efd_client, day_seq, **kwargs))
