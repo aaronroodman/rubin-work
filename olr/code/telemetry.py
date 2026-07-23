@@ -45,8 +45,12 @@ ESS_TEMP_INDEX = {
     "m1m3_air_temp": 113,  # air above M1M3
 }
 
-# --- TMA truss temperatures: ESS index 2, temperatureItem6/7 = +x+y / -x-y ------
-TRUSS_ESS_INDEX = 2
+# --- TMA truss temperatures --------------------------------------------------
+# These are channels of the M2-hexapod ESS instance (salIndex 122, per
+# ts_config_ocs ESS/v8/_init.yaml): temperatureItem0-5 = M2 hexapod struts 1-6,
+# temperatureItem6 = "+X/+Y Truss Structure", temperatureItem7 = "-X/-Y Truss".
+# (The older config used salIndex 2; it was renumbered.)
+TRUSS_ESS_INDEX = 122
 TRUSS_ITEMS = {6: "tma_truss_temp_pxpy", 7: "tma_truss_temp_mxmy"}
 
 # --- Wind: outside from ESS.airFlow, inside from ESS.airTurbulence --------------
@@ -117,24 +121,25 @@ async def get_m1m3_gradients(client, data):
 # TMA truss temperatures
 # ----------------------------------------------------------------------------
 async def _query_tma_truss(client, start_date, end_date):
-    """TMA truss temperatures (ESS index 2, items 6/7) as a 1-minute series.
+    """TMA truss temperatures as a time-indexed DataFrame.
 
-    Adapted from A. Roodman's snippet; returns a time-indexed DataFrame with
-    columns ``tma_truss_temp_pxpy`` and ``tma_truss_temp_mxmy``.  Query over one
-    night's span.
+    The truss RTDs are channels 6/7 of the M2-hexapod ESS instance
+    (``TRUSS_ESS_INDEX`` = 122): ``temperatureItem6`` -> ``tma_truss_temp_pxpy``,
+    ``temperatureItem7`` -> ``tma_truss_temp_mxmy``.  Query over one night's span.
     """
-    topic_name = "lsst.sal.ESS.temperature"
-    frames = []
-    for item, name in TRUSS_ITEMS.items():
-        fields = [f"mean(temperatureItem{item}) AS ch{item}"]
-        query = client.build_time_range_query(
-            topic_name, fields, start_date, end_date, index=TRUSS_ESS_INDEX
-        )
-        query += " GROUP BY time(1m)"
-        table = await client._do_query(query)
-        table.rename(columns={f"ch{item}": name}, inplace=True)
-        frames.append(table)
-    return pd.concat(frames, axis=1)
+    cols = {f"temperatureItem{item}": name for item, name in TRUSS_ITEMS.items()}
+    d = await client.select_time_series(
+        "lsst.sal.ESS.temperature",
+        list(cols),
+        Time(start_date).utc,
+        Time(end_date).utc,
+        index=TRUSS_ESS_INDEX,
+        convert_influx_index=True,
+    )
+    out = pd.DataFrame(index=getattr(d, "index", None))
+    for src, name in cols.items():
+        out[name] = d[src] if (len(d) and src in d) else np.nan
+    return out
 
 
 def _interp_series_to_rows(ts_df, data, cols):
