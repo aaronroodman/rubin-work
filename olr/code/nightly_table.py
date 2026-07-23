@@ -53,6 +53,10 @@ from lsst.ts.ofc import OFCData, SensitivityMatrix
 from lsst.ts.wep.utils import makeDense
 from tqdm import tqdm
 
+# Shared thermal/wind telemetry helpers (single source of truth).
+# get_m1m3_gradients is re-exported here for backwards compatibility.
+from telemetry import fetch_thermal_telemetry, get_m1m3_gradients  # noqa: F401
+
 # ConsDB lives on an internal host; bypass any HTTP proxy for it.
 if "no_proxy" in os.environ:
     os.environ["no_proxy"] += ",.consdb"
@@ -144,34 +148,7 @@ async def find_faults(client, table):
     return table
 
 
-async def get_m1m3_gradients(client, data):
-    """Get the M1M3 thermal gradients."""
-    date_strings = Time(
-        [str(x) for x in data["obs_start"].values], format="isot", scale="tai"
-    ).utc.isot
-    data_times = pd.to_datetime(date_strings, format="ISO8601", utc=True)
-    sorted_data_times = data_times.sort_values()
-    start = Time(sorted_data_times[0])
-    end = Time(sorted_data_times[-1])
-    data_times = data_times.astype("int64")
-    thermocouples = ThermocoupleAnalysis(client)  # noqa: F405
-    await thermocouples.load(start, end, time_bin=30)
-    gradients = thermocouples.xyz_r_gradients
-    grad_times = pd.to_datetime(
-        gradients.index, format="ISO8601", utc=True
-    ).astype("int64")
-    t0 = grad_times[0]
-    grad_times -= t0
-    grad_times /= 1e9
-    data_times -= t0
-    data_times /= 1e9
-    names = ["x_gradient", "y_gradient", "z_gradient", "radial_gradient"]
-    for name in names:
-        values = gradients[name].values
-        val_series = pd.Series(values)
-        val_interpolated = val_series.interpolate()
-        data[name] = np.interp(data_times, grad_times, val_interpolated)
-    return data
+# get_m1m3_gradients now lives in telemetry.py (imported above and re-exported).
 
 
 # ----------------------------------------------------------------------------
@@ -483,17 +460,9 @@ class AOSDatabase:
                 .drop_duplicates()
                 .reset_index(drop=True)
             )
-            (
-                days,
-                seqs,
-                lut,
-                cam_air_temp,
-                states,
-                m1m3_air_temp,
-                outside_temp,
-                m2_air_temp,
-                correction_seq,
-            ) = ([] for _ in range(9))
+            # Thermal telemetry is collected by telemetry.fetch_thermal_telemetry
+            # below; this loop only builds the LUT / DoF state per visit.
+            (days, seqs, lut, states, correction_seq) = ([] for _ in range(5))
             for idx, row in tqdm(
                 unique_day_seq.iterrows(), total=len(unique_day_seq), disable=True
             ):
@@ -559,66 +528,7 @@ class AOSDatabase:
                     int(seq_num_corr - 1e5 * day_obs),
                 )
 
-                # Get outside temperature
-                outside_temp_data = await self.efd_client.select_time_series(
-                    "lsst.sal.ESS.temperature",
-                    ["temperatureItem0"],
-                    Time(rec_start, scale="tai").utc,
-                    Time(rec_end, scale="tai").utc + self.temp_time_window,
-                    index=301,
-                    convert_influx_index=True,
-                )
-                if "temperatureItem0" in outside_temp_data:
-                    outside_temp_val = outside_temp_data["temperatureItem0"].mean()
-                else:
-                    outside_temp_val = np.nan
-
-                # Get M2 temperature
-                m2_temp_data = await self.efd_client.select_time_series(
-                    "lsst.sal.ESS.temperature",
-                    ["temperatureItem0"],
-                    Time(rec_start, scale="tai").utc,
-                    Time(rec_end, scale="tai").utc + self.temp_time_window,
-                    index=112,
-                    convert_influx_index=True,
-                )
-                if "temperatureItem0" in m2_temp_data:
-                    m2_air_temp_val = m2_temp_data["temperatureItem0"].mean()
-                else:
-                    m2_air_temp_val = np.nan
-
-                # Get cam temperature
-                cam_temp_data = await self.efd_client.select_time_series(
-                    "lsst.sal.ESS.temperature",
-                    ["temperatureItem0"],
-                    Time(rec_start, scale="tai").utc,
-                    Time(rec_end, scale="tai").utc + self.temp_time_window,
-                    index=111,
-                )
-                if "temperatureItem0" in cam_temp_data:
-                    cam_air_temp_val = cam_temp_data["temperatureItem0"].mean()
-                else:
-                    cam_air_temp_val = np.nan
-
-                # Get temperature above m1m3
-                m1m3_temp_data = await self.efd_client.select_time_series(
-                    "lsst.sal.ESS.temperature",
-                    ["temperatureItem0"],
-                    Time(rec_start, scale="tai").utc,
-                    Time(rec_end, scale="tai").utc + self.temp_time_window,
-                    index=113,
-                    convert_influx_index=True,
-                )
-                if "temperatureItem0" in m1m3_temp_data:
-                    m1m3_air_temp_val = m1m3_temp_data["temperatureItem0"].mean()
-                else:
-                    m1m3_air_temp_val = np.nan
-
                 lut.append(lut_val)
-                m1m3_air_temp.append(m1m3_air_temp_val)
-                cam_air_temp.append(cam_air_temp_val)
-                m2_air_temp.append(m2_air_temp_val)
-                outside_temp.append(outside_temp_val)
                 states.append(states_val)
                 days.append(day_obs)
                 seqs.append(seq)
@@ -628,33 +538,22 @@ class AOSDatabase:
                 {
                     "day_obs": days,
                     "seq": seqs,
-                    "cam_air_temp": cam_air_temp,
-                    "m2_air_temp": m2_air_temp,
-                    "m1m3_air_temp": m1m3_air_temp,
-                    "outside_temp": outside_temp,
                     "lut_state": lut,
                     "dof_state": states,
                     "seq_num_corr": correction_seq,
                 }
             )
-
             self.table = pd.merge(
                 self.table, efd_table, how="left", on=["seq", "day_obs"]
             )
-            m1m3_gradient_table = await get_m1m3_gradients(
+
+            # Thermal telemetry (ESS air temps, delta-Ts, M1M3 gradients, TMA
+            # truss) via the shared helper so the logic lives in one place.
+            thermal_table = await fetch_thermal_telemetry(
                 self.efd_client, unique_day_seq
             )
             self.table = pd.merge(
-                self.table, m1m3_gradient_table, how="left", on=["seq", "day_obs"]
-            )
-            self.table["m2_delta_t"] = (
-                self.table["m2_air_temp"] - self.table["m1m3_air_temp"]
-            )
-            self.table["dome_delta_t"] = (
-                self.table["outside_temp"] - self.table["m1m3_air_temp"]
-            )
-            self.table["cam_m1m3_delta_t"] = (
-                self.table["cam_air_temp"] - self.table["m1m3_air_temp"]
+                self.table, thermal_table, how="left", on=["seq", "day_obs"]
             )
 
         return self.table
