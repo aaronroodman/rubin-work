@@ -99,6 +99,19 @@ def build(args):
         visits[f"lut_dof{i}"] = lut[:, i]
     print(f"hexapod LUT finite: {lut_info['n_lut']}/{len(visits)}", flush=True)
 
+    # 2c. Mirror LUT: M1M3 elevation + M2 gravity LUT forces -> bending-mode DOFs
+    #     (via ts_ofc BendModeToForce), mapped to lut_dof10-29 (M1M3) / 30-49 (M2).
+    #     Wrapped so a ts_ofc / EFD issue can't abort the whole build.
+    try:
+        mlut, mlut_info = aos_trim.fetch_mirror_lut_for_visits(
+            fit_table, config_dir=args.ofc_config_dir, efd_client=efd,
+            consdb_client=client)
+        for i in range(40):
+            visits[f"lut_dof{10 + i}"] = mlut[:, i]
+        print(f"mirror LUT finite: {mlut_info['n_lut']}/{len(visits)}", flush=True)
+    except Exception as e:
+        print(f"mirror LUT skipped ({type(e).__name__}: {e})", flush=True)
+
     # 3. Geom v-modes from the DOF trim ---------------------------------------
     se = aos_state.make_state_estimator(config_dir=args.ofc_config_dir,
                                         dof_set="standard_22")

@@ -266,3 +266,90 @@ def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
         except Exception:
             continue
     return lut, {'n_lut': int(np.isfinite(lut).all(axis=1).sum())}
+
+
+M1M3_ELEV_TOPIC = 'lsst.sal.MTM1M3.logevent_appliedElevationForces'
+M2_AXIAL_TOPIC = 'lsst.sal.MTM2.axialForce'
+
+
+def _series_array(row, base, n):
+    """Reconstruct a SAL array field (flattened to base0..base{n-1}) from a row."""
+    return np.array([row[f'{base}{k}'] for k in range(n)], dtype=float)
+
+
+def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
+                                consdb_client=None, consdb_url=DEFAULT_CONSDB_URL,
+                                exposure_table=DEFAULT_EXPOSURE_TABLE,
+                                mjd_fallback_col='mjd', mjd_scale='tai',
+                                m1m3_n=156, m2_n=72):
+    """Per-visit M1M3 + M2 mirror LUT as bending-mode DOFs -> (n_visits, 40).
+
+    The mirror LUT is stored as *forces*: the M1M3 elevation LUT
+    (``MTM1M3.logevent_appliedElevationForces.zForces``, 156 axial) and the M2
+    gravity LUT (``MTM2.axialForce.lutGravity``, 72 axial).  These are converted
+    to bending-mode amplitudes with ts_ofc ``BendModeToForce.bending_mode`` (the
+    rcond-thresholded pseudo-inverse of the mode->force influence matrix).
+
+    Columns map to OFC DOFs **dof10-29 (M1M3 bending 1-20)** and
+    **dof30-49 (M2 bending 1-20)** -- the same ordering/units as the
+    aggregatedDoF Trim, so lut and trim are directly comparable.  Returns
+    ``(lut, info)``; anchored on ConsDB obs_start like the other fetchers.
+
+    NOTE (verify on the RSP): assumes the EFD force arrays are in the same
+    actuator order as the ts_ofc influence matrix, and that ``bending_mode``
+    returns >=20 modes per mirror.  M2 uses the gravity (elevation) LUT only;
+    ``lutTemperature`` is available separately if the thermal LUT is also wanted.
+    """
+    from astropy.time import Time
+    from lsst.summit.utils.efdUtils import getMostRecentRowWithDataBefore
+    from lsst.ts.ofc import OFCData, BendModeToForce
+
+    if efd_client is None:
+        efd_client = make_efd_client()
+    ofc = OFCData('lsst', config_dir=config_dir)
+    bmf_m1m3 = BendModeToForce('M1M3', ofc)
+    bmf_m2 = BendModeToForce('M2', ofc)
+
+    day_obs = np.asarray(fit_table['day_obs']).astype(int)
+    seq_num = np.asarray(fit_table['seq_num']).astype(int)
+    n = len(day_obs)
+
+    obs_start = [None] * n
+    try:
+        if consdb_client is None:
+            consdb_client = make_consdb_client(consdb_url)
+        obs_start = fetch_obs_start(consdb_client, day_obs, seq_num,
+                                    exposure_table=exposure_table)
+    except Exception as e:
+        print(f'(ConsDB obs_start unavailable [{type(e).__name__}: {e}])')
+
+    mjd = (np.asarray(fit_table[mjd_fallback_col], dtype=float)
+           if mjd_fallback_col in fit_table.colnames else np.full(n, np.nan))
+
+    def _to20(vec):
+        v = np.atleast_1d(np.asarray(vec, float))
+        out = np.full(20, np.nan)
+        out[:min(20, len(v))] = v[:20]
+        return out
+
+    lut = np.full((n, 40), np.nan)
+    for i in range(n):
+        if obs_start[i] is not None:
+            t = Time(obs_start[i], format='isot', scale='tai').utc
+        elif np.isfinite(mjd[i]):
+            t = Time(float(mjd[i]), format='mjd', scale=mjd_scale).utc
+        else:
+            continue
+        try:
+            m1 = getMostRecentRowWithDataBefore(efd_client, M1M3_ELEV_TOPIC,
+                                                timeToLookBefore=t)
+            lut[i, 0:20] = _to20(bmf_m1m3.bending_mode(_series_array(m1, 'zForces', m1m3_n)))
+        except Exception:
+            pass
+        try:
+            m2 = getMostRecentRowWithDataBefore(efd_client, M2_AXIAL_TOPIC,
+                                                timeToLookBefore=t)
+            lut[i, 20:40] = _to20(bmf_m2.bending_mode(_series_array(m2, 'lutGravity', m2_n)))
+        except Exception:
+            pass
+    return lut, {'n_lut': int(np.isfinite(lut).any(axis=1).sum())}
