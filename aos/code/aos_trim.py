@@ -198,3 +198,71 @@ def fetch_aggregated_dof_for_visits(fit_table, efd_client=None,
         'event_id': event_ids,
     }
     return trim, info
+
+
+HEX_LUT_TOPIC = 'lsst.sal.MTHexapod.logevent_compensationOffset'
+
+
+def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
+                                 consdb_url=DEFAULT_CONSDB_URL,
+                                 exposure_table=DEFAULT_EXPOSURE_TABLE,
+                                 mjd_fallback_col='mjd', mjd_scale='tai'):
+    """Per-visit hexapod LUT (``MTHexapod.logevent_compensationOffset``).
+
+    This is the compensation the hexapod applied from its LUT model
+    (elevation / rotator / filter lookup) -- i.e. the 'total LUT' that the
+    ``aggregatedDoF`` Trim is measured *against*.  Anchored on the ConsDB
+    exposure ``obs_start`` and taken as the most recent event before it, the
+    same convention as :func:`fetch_aggregated_dof_for_visits`.
+
+    Returns ``(lut, info)`` where ``lut`` is (n_visits, 10), mapping to the
+    first 10 OFC DOFs:
+        dof0-4 = M2 hexapod (z, x, y, u, v)   [salIndex 2]
+        dof5-9 = camera hex (z, x, y, u, v)   [salIndex 1]
+    so ``lut[:, 5]`` is the camera-hexapod dz LUT (the filter-dependent focus).
+    Units: z/x/y in micron; u/v as reported by the hexapod (deg) -- note the
+    angular axes may differ from the OFC arcsec convention, but dz (the focus
+    term of interest) is directly comparable to the aggregatedDoF Trim dof5.
+    The M1M3 / M2 bending-mode LUT (dof10-49) is not available from this topic.
+    """
+    from astropy.time import Time
+    from lsst.summit.utils.efdUtils import getMostRecentRowWithDataBefore
+
+    if efd_client is None:
+        efd_client = make_efd_client()
+    day_obs = np.asarray(fit_table['day_obs']).astype(int)
+    seq_num = np.asarray(fit_table['seq_num']).astype(int)
+    n = len(day_obs)
+
+    obs_start = [None] * n
+    try:
+        if consdb_client is None:
+            consdb_client = make_consdb_client(consdb_url)
+        obs_start = fetch_obs_start(consdb_client, day_obs, seq_num,
+                                    exposure_table=exposure_table)
+    except Exception as e:
+        print(f'(ConsDB obs_start unavailable [{type(e).__name__}: {e}])')
+
+    mjd = (np.asarray(fit_table[mjd_fallback_col], dtype=float)
+           if mjd_fallback_col in fit_table.colnames else np.full(n, np.nan))
+
+    lut = np.full((n, 10), np.nan)
+    for i in range(n):
+        if obs_start[i] is not None:
+            t = Time(obs_start[i], format='isot', scale='tai').utc
+        elif np.isfinite(mjd[i]):
+            t = Time(float(mjd[i]), format='mjd', scale=mjd_scale).utc
+        else:
+            continue
+        try:
+            cam = getMostRecentRowWithDataBefore(
+                efd_client, HEX_LUT_TOPIC, timeToLookBefore=t,
+                where=lambda df: df['salIndex'] == 1)
+            m2 = getMostRecentRowWithDataBefore(
+                efd_client, HEX_LUT_TOPIC, timeToLookBefore=t,
+                where=lambda df: df['salIndex'] == 2)
+            lut[i] = [m2['z'], m2['x'], m2['y'], m2['u'], m2['v'],
+                      cam['z'], cam['x'], cam['y'], cam['u'], cam['v']]
+        except Exception:
+            continue
+    return lut, {'n_lut': int(np.isfinite(lut).all(axis=1).sum())}

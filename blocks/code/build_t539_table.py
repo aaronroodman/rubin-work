@@ -90,6 +90,15 @@ def build(args):
         visits[f"dof{i}"] = trim[:, i]
     print(f"DOF finite: {dof_info['n_dof']}/{len(visits)}", flush=True)
 
+    # 2b. Hexapod LUT (compensationOffset) -- the 'total LUT' the Trim (dof*) is
+    #     measured against; lut_dof5 = camera-hex dz (filter-dependent focus).
+    #     Only the 10 hexapod DOFs are available; M1M3/M2 bending LUT is not.
+    lut, lut_info = aos_trim.fetch_hexapod_lut_for_visits(
+        fit_table, efd_client=efd, consdb_client=client)
+    for i in range(10):
+        visits[f"lut_dof{i}"] = lut[:, i]
+    print(f"hexapod LUT finite: {lut_info['n_lut']}/{len(visits)}", flush=True)
+
     # 3. Geom v-modes from the DOF trim ---------------------------------------
     se = aos_state.make_state_estimator(config_dir=args.ofc_config_dir,
                                         dof_set="standard_22")
