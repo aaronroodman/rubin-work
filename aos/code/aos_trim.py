@@ -201,39 +201,33 @@ def fetch_aggregated_dof_for_visits(fit_table, efd_client=None,
 
 
 HEX_LUT_TOPIC = 'lsst.sal.MTHexapod.logevent_compensationOffset'
+M1M3_ELEV_TOPIC = 'lsst.sal.MTM1M3.logevent_appliedElevationForces'
+M2_AXIAL_TOPIC = 'lsst.sal.MTM2.axialForce'
 
 
-def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
-                                 consdb_url=DEFAULT_CONSDB_URL,
-                                 exposure_table=DEFAULT_EXPOSURE_TABLE,
-                                 mjd_fallback_col='mjd', mjd_scale='tai'):
-    """Per-visit hexapod LUT (``MTHexapod.logevent_compensationOffset``).
+def _run_coro(coro):
+    """Run an async EFD coroutine from sync code (re-entrant under nest_asyncio)."""
+    import asyncio
+    try:
+        import nest_asyncio
+        nest_asyncio.apply()
+    except Exception:
+        pass
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
-    This is the compensation the hexapod applied from its LUT model
-    (elevation / rotator / filter lookup) -- i.e. the 'total LUT' that the
-    ``aggregatedDoF`` Trim is measured *against*.  Anchored on the ConsDB
-    exposure ``obs_start`` and taken as the most recent event before it, the
-    same convention as :func:`fetch_aggregated_dof_for_visits`.
 
-    Returns ``(lut, info)`` where ``lut`` is (n_visits, 10), mapping to the
-    first 10 OFC DOFs:
-        dof0-4 = M2 hexapod (z, x, y, u, v)   [salIndex 2]
-        dof5-9 = camera hex (z, x, y, u, v)   [salIndex 1]
-    so ``lut[:, 5]`` is the camera-hexapod dz LUT (the filter-dependent focus).
-    Units: z/x/y in micron; u/v as reported by the hexapod (deg) -- note the
-    angular axes may differ from the OFC arcsec convention, but dz (the focus
-    term of interest) is directly comparable to the aggregatedDoF Trim dof5.
-    The M1M3 / M2 bending-mode LUT (dof10-49) is not available from this topic.
-    """
+def _resolve_obs_times(fit_table, consdb_client, consdb_url, exposure_table,
+                       mjd_fallback_col, mjd_scale):
+    """Return (day_obs, times): times a list of astropy Time (UTC) or None."""
     from astropy.time import Time
-    from lsst.summit.utils.efdUtils import getMostRecentRowWithDataBefore
-
-    if efd_client is None:
-        efd_client = make_efd_client()
     day_obs = np.asarray(fit_table['day_obs']).astype(int)
     seq_num = np.asarray(fit_table['seq_num']).astype(int)
     n = len(day_obs)
-
     obs_start = [None] * n
     try:
         if consdb_client is None:
@@ -242,39 +236,96 @@ def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
                                     exposure_table=exposure_table)
     except Exception as e:
         print(f'(ConsDB obs_start unavailable [{type(e).__name__}: {e}])')
-
     mjd = (np.asarray(fit_table[mjd_fallback_col], dtype=float)
            if mjd_fallback_col in fit_table.colnames else np.full(n, np.nan))
-
-    lut = np.full((n, 10), np.nan)
+    times = []
     for i in range(n):
         if obs_start[i] is not None:
-            t = Time(obs_start[i], format='isot', scale='tai').utc
+            times.append(Time(obs_start[i], format='isot', scale='tai').utc)
         elif np.isfinite(mjd[i]):
-            t = Time(float(mjd[i]), format='mjd', scale=mjd_scale).utc
+            times.append(Time(float(mjd[i]), format='mjd', scale=mjd_scale).utc)
         else:
-            continue
+            times.append(None)
+    return day_obs, times
+
+
+def _asof_rows_by_night(efd_client, topic, columns, times, day_obs,
+                        index=None, buffer_hours=6.0):
+    """Most-recent topic row at/before each visit, querying ONCE per night.
+
+    Bulk ``select_time_series`` over ``[min(obs) - buffer_hours, max(obs)]`` per
+    night, then an as-of (backward) match per visit -- so the number of EFD
+    queries is ~1 per night instead of one backward search per visit (which is
+    ruinous for high-rate telemetry like MTM2.axialForce).  ``buffer_hours``
+    should be a few hours for sparse logevents and small for high-rate topics.
+    Returns a list (len n visits) of pandas Series or None.
+    """
+    import pandas as pd
+    from astropy.time import TimeDelta
+    out = [None] * len(times)
+    nights = {}
+    for i, (d, t) in enumerate(zip(day_obs, times)):
+        if t is not None:
+            nights.setdefault(int(d), []).append(i)
+    buf = TimeDelta(buffer_hours * 3600.0, format='sec')
+    tail = TimeDelta(60.0, format='sec')
+    for d, idxs in nights.items():
+        tvis = [times[i] for i in idxs]
+        t0 = (min(tvis) - buf).utc
+        t1 = (max(tvis) + tail).utc
         try:
-            cam = getMostRecentRowWithDataBefore(
-                efd_client, HEX_LUT_TOPIC, timeToLookBefore=t,
-                where=lambda df: df['salIndex'] == 1)
-            m2 = getMostRecentRowWithDataBefore(
-                efd_client, HEX_LUT_TOPIC, timeToLookBefore=t,
-                where=lambda df: df['salIndex'] == 2)
-            lut[i] = [m2['z'], m2['x'], m2['y'], m2['u'], m2['v'],
-                      cam['z'], cam['x'], cam['y'], cam['u'], cam['v']]
-        except Exception:
+            kw = {} if index is None else {'index': index}
+            df = _run_coro(efd_client.select_time_series(
+                topic, columns, t0, t1, convert_influx_index=True, **kw))
+        except Exception as e:
+            print(f'({topic} night {d} query failed [{type(e).__name__}: {e}])')
             continue
+        if df is None or len(df) == 0:
+            continue
+        df = df.sort_index()
+        di = pd.to_datetime(df.index, utc=True)
+        for i in idxs:
+            tt = pd.Timestamp(times[i].utc.datetime, tz='UTC')
+            found = np.nonzero(np.asarray(di <= tt))[0]
+            if len(found):
+                out[i] = df.iloc[found[-1]]
+    return out
+
+
+def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
+                                 consdb_url=DEFAULT_CONSDB_URL,
+                                 exposure_table=DEFAULT_EXPOSURE_TABLE,
+                                 mjd_fallback_col='mjd', mjd_scale='tai'):
+    """Per-visit hexapod LUT (``MTHexapod.logevent_compensationOffset``).
+
+    The compensation the hexapod applied from its LUT model (elevation / rotator
+    / filter lookup) -- the 'total LUT' the ``aggregatedDoF`` Trim is measured
+    *against*.  Queried once per night (bulk + as-of), anchored on obs_start.
+
+    Returns ``(lut, info)`` with ``lut`` (n_visits, 10):
+        dof0-4 = M2 hexapod (z, x, y, u, v)   [salIndex 2]
+        dof5-9 = camera hex (z, x, y, u, v)   [salIndex 1]
+    so ``lut[:, 5]`` is the camera-hexapod dz LUT (filter-dependent focus).
+    z/x/y in micron; u/v in deg (angular axes may differ from the OFC arcsec
+    convention, but dz is directly comparable to the Trim dof5).
+    """
+    if efd_client is None:
+        efd_client = make_efd_client()
+    day_obs, times = _resolve_obs_times(fit_table, consdb_client, consdb_url,
+                                        exposure_table, mjd_fallback_col, mjd_scale)
+    n = len(times)
+    fields = ['z', 'x', 'y', 'u', 'v']
+    cam = _asof_rows_by_night(efd_client, HEX_LUT_TOPIC, fields, times, day_obs,
+                              index=1, buffer_hours=6.0)
+    m2 = _asof_rows_by_night(efd_client, HEX_LUT_TOPIC, fields, times, day_obs,
+                             index=2, buffer_hours=6.0)
+    lut = np.full((n, 10), np.nan)
+    for i in range(n):
+        if m2[i] is not None:
+            lut[i, 0:5] = [m2[i][k] for k in fields]
+        if cam[i] is not None:
+            lut[i, 5:10] = [cam[i][k] for k in fields]
     return lut, {'n_lut': int(np.isfinite(lut).all(axis=1).sum())}
-
-
-M1M3_ELEV_TOPIC = 'lsst.sal.MTM1M3.logevent_appliedElevationForces'
-M2_AXIAL_TOPIC = 'lsst.sal.MTM2.axialForce'
-
-
-def _series_array(row, base, n):
-    """Reconstruct a SAL array field (flattened to base0..base{n-1}) from a row."""
-    return np.array([row[f'{base}{k}'] for k in range(n)], dtype=float)
 
 
 def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
@@ -284,24 +335,19 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
                                 m1m3_n=156, m2_n=72):
     """Per-visit M1M3 + M2 mirror LUT as bending-mode DOFs -> (n_visits, 40).
 
-    The mirror LUT is stored as *forces*: the M1M3 elevation LUT
-    (``MTM1M3.logevent_appliedElevationForces.zForces``, 156 axial) and the M2
-    gravity LUT (``MTM2.axialForce.lutGravity``, 72 axial).  These are converted
-    to bending-mode amplitudes with ts_ofc ``BendModeToForce.bending_mode`` (the
-    rcond-thresholded pseudo-inverse of the mode->force influence matrix).
-
-    Columns map to OFC DOFs **dof10-29 (M1M3 bending 1-20)** and
-    **dof30-49 (M2 bending 1-20)** -- the same ordering/units as the
-    aggregatedDoF Trim, so lut and trim are directly comparable.  Returns
-    ``(lut, info)``; anchored on ConsDB obs_start like the other fetchers.
+    The mirror LUT is stored as *forces*: M1M3 elevation LUT
+    (``MTM1M3.logevent_appliedElevationForces.zForces``, 156 axial) and M2
+    gravity LUT (``MTM2.axialForce.lutGravity``, 72 axial), converted to
+    bending-mode amplitudes with ts_ofc ``BendModeToForce.bending_mode``.
+    Columns map to OFC DOFs **dof10-29 (M1M3)** and **dof30-49 (M2)** -- same
+    order/units as the aggregatedDoF Trim.  Queried once per night (bulk + as-of;
+    small buffer for the high-rate M2 axialForce telemetry).
 
     NOTE (verify on the RSP): assumes the EFD force arrays are in the same
     actuator order as the ts_ofc influence matrix, and that ``bending_mode``
     returns >=20 modes per mirror.  M2 uses the gravity (elevation) LUT only;
     ``lutTemperature`` is available separately if the thermal LUT is also wanted.
     """
-    from astropy.time import Time
-    from lsst.summit.utils.efdUtils import getMostRecentRowWithDataBefore
     from lsst.ts.ofc import OFCData, BendModeToForce
 
     if efd_client is None:
@@ -310,21 +356,17 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
     bmf_m1m3 = BendModeToForce('M1M3', ofc)
     bmf_m2 = BendModeToForce('M2', ofc)
 
-    day_obs = np.asarray(fit_table['day_obs']).astype(int)
-    seq_num = np.asarray(fit_table['seq_num']).astype(int)
-    n = len(day_obs)
-
-    obs_start = [None] * n
-    try:
-        if consdb_client is None:
-            consdb_client = make_consdb_client(consdb_url)
-        obs_start = fetch_obs_start(consdb_client, day_obs, seq_num,
-                                    exposure_table=exposure_table)
-    except Exception as e:
-        print(f'(ConsDB obs_start unavailable [{type(e).__name__}: {e}])')
-
-    mjd = (np.asarray(fit_table[mjd_fallback_col], dtype=float)
-           if mjd_fallback_col in fit_table.colnames else np.full(n, np.nan))
+    day_obs, times = _resolve_obs_times(fit_table, consdb_client, consdb_url,
+                                        exposure_table, mjd_fallback_col, mjd_scale)
+    n = len(times)
+    zcols = [f'zForces{k}' for k in range(m1m3_n)]
+    gcols = [f'lutGravity{k}' for k in range(m2_n)]
+    # M1M3 elevation forces: sparse logevent -> few-hour buffer.
+    m1 = _asof_rows_by_night(efd_client, M1M3_ELEV_TOPIC, zcols, times, day_obs,
+                             buffer_hours=6.0)
+    # M2 axialForce: high-rate telemetry -> small buffer (always has a sample).
+    m2 = _asof_rows_by_night(efd_client, M2_AXIAL_TOPIC, gcols, times, day_obs,
+                             buffer_hours=0.2)
 
     def _to20(vec):
         v = np.atleast_1d(np.asarray(vec, float))
@@ -334,22 +376,16 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
 
     lut = np.full((n, 40), np.nan)
     for i in range(n):
-        if obs_start[i] is not None:
-            t = Time(obs_start[i], format='isot', scale='tai').utc
-        elif np.isfinite(mjd[i]):
-            t = Time(float(mjd[i]), format='mjd', scale=mjd_scale).utc
-        else:
-            continue
-        try:
-            m1 = getMostRecentRowWithDataBefore(efd_client, M1M3_ELEV_TOPIC,
-                                                timeToLookBefore=t)
-            lut[i, 0:20] = _to20(bmf_m1m3.bending_mode(_series_array(m1, 'zForces', m1m3_n)))
-        except Exception:
-            pass
-        try:
-            m2 = getMostRecentRowWithDataBefore(efd_client, M2_AXIAL_TOPIC,
-                                                timeToLookBefore=t)
-            lut[i, 20:40] = _to20(bmf_m2.bending_mode(_series_array(m2, 'lutGravity', m2_n)))
-        except Exception:
-            pass
+        if m1[i] is not None:
+            zf = np.array([m1[i][c] for c in zcols], float)
+            try:
+                lut[i, 0:20] = _to20(bmf_m1m3.bending_mode(zf))
+            except Exception as e:
+                print(f'(M1M3 bending_mode failed visit {i} [{type(e).__name__}])')
+        if m2[i] is not None:
+            gf = np.array([m2[i][c] for c in gcols], float)
+            try:
+                lut[i, 20:40] = _to20(bmf_m2.bending_mode(gf))
+            except Exception as e:
+                print(f'(M2 bending_mode failed visit {i} [{type(e).__name__}])')
     return lut, {'n_lut': int(np.isfinite(lut).any(axis=1).sum())}
