@@ -201,7 +201,9 @@ def fetch_aggregated_dof_for_visits(fit_table, efd_client=None,
 
 
 HEX_LUT_TOPIC = 'lsst.sal.MTHexapod.logevent_compensationOffset'
-M1M3_ELEV_TOPIC = 'lsst.sal.MTM1M3.logevent_appliedElevationForces'
+# M1M3 elevation LUT: use the telemetry topic (high-rate); the logevent_ variant
+# has no data in the EFD.
+M1M3_ELEV_TOPIC = 'lsst.sal.MTM1M3.appliedElevationForces'
 M2_AXIAL_TOPIC = 'lsst.sal.MTM2.axialForce'
 
 
@@ -219,6 +221,21 @@ def _run_coro(coro):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
+
+
+def _top1(efd_client, topic, columns, t, index=None):
+    """Most recent single row of ``topic`` at/before ``t`` (fast influx LIMIT 1).
+
+    Uses ``select_top_n(.., 1, time_cut=t)`` -- one row regardless of the topic's
+    sample rate, so it is cheap even for high-rate force telemetry.
+    """
+    try:
+        kw = {} if index is None else {'index': index}
+        df = _run_coro(efd_client.select_top_n(topic, columns, 1, time_cut=t.utc, **kw))
+        return df.iloc[0] if (df is not None and len(df)) else None
+    except Exception as e:
+        print(f'({topic} top1 failed [{type(e).__name__}: {e}])')
+        return None
 
 
 def _resolve_obs_times(fit_table, consdb_client, consdb_url, exposure_table,
@@ -313,18 +330,17 @@ def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
         efd_client = make_efd_client()
     day_obs, times = _resolve_obs_times(fit_table, consdb_client, consdb_url,
                                         exposure_table, mjd_fallback_col, mjd_scale)
-    n = len(times)
     fields = ['z', 'x', 'y', 'u', 'v']
-    cam = _asof_rows_by_night(efd_client, HEX_LUT_TOPIC, fields, times, day_obs,
-                              index=1, buffer_hours=6.0)
-    m2 = _asof_rows_by_night(efd_client, HEX_LUT_TOPIC, fields, times, day_obs,
-                             index=2, buffer_hours=6.0)
-    lut = np.full((n, 10), np.nan)
-    for i in range(n):
-        if m2[i] is not None:
-            lut[i, 0:5] = [m2[i][k] for k in fields]
-        if cam[i] is not None:
-            lut[i, 5:10] = [cam[i][k] for k in fields]
+    lut = np.full((len(times), 10), np.nan)
+    for i, t in enumerate(times):
+        if t is None:
+            continue
+        m2 = _top1(efd_client, HEX_LUT_TOPIC, fields, t, index=2)
+        if m2 is not None:
+            lut[i, 0:5] = [m2[k] for k in fields]
+        cam = _top1(efd_client, HEX_LUT_TOPIC, fields, t, index=1)
+        if cam is not None:
+            lut[i, 5:10] = [cam[k] for k in fields]
     return lut, {'n_lut': int(np.isfinite(lut).all(axis=1).sum())}
 
 
@@ -358,15 +374,8 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
 
     day_obs, times = _resolve_obs_times(fit_table, consdb_client, consdb_url,
                                         exposure_table, mjd_fallback_col, mjd_scale)
-    n = len(times)
     zcols = [f'zForces{k}' for k in range(m1m3_n)]
     gcols = [f'lutGravity{k}' for k in range(m2_n)]
-    # M1M3 elevation forces: sparse logevent -> few-hour buffer.
-    m1 = _asof_rows_by_night(efd_client, M1M3_ELEV_TOPIC, zcols, times, day_obs,
-                             buffer_hours=6.0)
-    # M2 axialForce: high-rate telemetry -> small buffer (always has a sample).
-    m2 = _asof_rows_by_night(efd_client, M2_AXIAL_TOPIC, gcols, times, day_obs,
-                             buffer_hours=0.2)
 
     def _to20(vec):
         v = np.atleast_1d(np.asarray(vec, float))
@@ -374,18 +383,20 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
         out[:min(20, len(v))] = v[:20]
         return out
 
-    lut = np.full((n, 40), np.nan)
-    for i in range(n):
-        if m1[i] is not None:
-            zf = np.array([m1[i][c] for c in zcols], float)
+    lut = np.full((len(times), 40), np.nan)
+    for i, t in enumerate(times):
+        if t is None:
+            continue
+        m1 = _top1(efd_client, M1M3_ELEV_TOPIC, zcols, t)
+        if m1 is not None:
             try:
-                lut[i, 0:20] = _to20(bmf_m1m3.bending_mode(zf))
+                lut[i, 0:20] = _to20(bmf_m1m3.bending_mode(m1[zcols].to_numpy(float)))
             except Exception as e:
                 print(f'(M1M3 bending_mode failed visit {i} [{type(e).__name__}])')
-        if m2[i] is not None:
-            gf = np.array([m2[i][c] for c in gcols], float)
+        m2 = _top1(efd_client, M2_AXIAL_TOPIC, gcols, t)
+        if m2 is not None:
             try:
-                lut[i, 20:40] = _to20(bmf_m2.bending_mode(gf))
+                lut[i, 20:40] = _to20(bmf_m2.bending_mode(m2[gcols].to_numpy(float)))
             except Exception as e:
                 print(f'(M2 bending_mode failed visit {i} [{type(e).__name__}])')
     return lut, {'n_lut': int(np.isfinite(lut).any(axis=1).sum())}
