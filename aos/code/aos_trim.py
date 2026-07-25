@@ -223,6 +223,15 @@ def _run_coro(coro):
     return loop.run_until_complete(coro)
 
 
+def _tqdm(iterable, total=None, desc=None):
+    """tqdm progress bar that degrades to a plain iterable if tqdm is absent."""
+    try:
+        from tqdm.auto import tqdm
+        return tqdm(iterable, total=total, desc=desc)
+    except Exception:
+        return iterable
+
+
 def _top1(efd_client, topic, columns, t, index=None):
     """Most recent single row of ``topic`` at/before ``t`` (fast influx LIMIT 1).
 
@@ -332,7 +341,7 @@ def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
                                         exposure_table, mjd_fallback_col, mjd_scale)
     fields = ['z', 'x', 'y', 'u', 'v']
     lut = np.full((len(times), 10), np.nan)
-    for i, t in enumerate(times):
+    for i, t in _tqdm(list(enumerate(times)), total=len(times), desc='hexapod LUT'):
         if t is None:
             continue
         m2 = _top1(efd_client, HEX_LUT_TOPIC, fields, t, index=2)
@@ -384,7 +393,7 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
         return out
 
     lut = np.full((len(times), 40), np.nan)
-    for i, t in enumerate(times):
+    for i, t in _tqdm(list(enumerate(times)), total=len(times), desc='mirror LUT'):
         if t is None:
             continue
         m1 = _top1(efd_client, M1M3_ELEV_TOPIC, zcols, t)
