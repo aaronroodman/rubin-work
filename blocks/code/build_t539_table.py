@@ -86,8 +86,9 @@ def build(args):
     fit_table = Table.from_pandas(visits[["day_obs", "seq_num"]].astype(int))
     trim, dof_info = aos_trim.fetch_aggregated_dof_for_visits(
         fit_table, efd_client=efd, consdb_client=client)
-    for i in range(aos_trim.N_DOF):
-        visits[f"dof{i}"] = trim[:, i]
+    visits = pd.concat([visits, pd.DataFrame(
+        trim, columns=[f"dof{i}" for i in range(aos_trim.N_DOF)],
+        index=visits.index)], axis=1)
     print(f"DOF finite: {dof_info['n_dof']}/{len(visits)}", flush=True)
 
     # 2b. Hexapod LUT (compensationOffset) -- the 'total LUT' the Trim (dof*) is
@@ -95,8 +96,9 @@ def build(args):
     #     Only the 10 hexapod DOFs are available; M1M3/M2 bending LUT is not.
     lut, lut_info = aos_trim.fetch_hexapod_lut_for_visits(
         fit_table, efd_client=efd, consdb_client=client)
-    for i in range(10):
-        visits[f"lut_dof{i}"] = lut[:, i]
+    visits = pd.concat([visits, pd.DataFrame(
+        lut, columns=[f"lut_dof{i}" for i in range(10)],
+        index=visits.index)], axis=1)
     print(f"hexapod LUT finite: {lut_info['n_lut']}/{len(visits)}", flush=True)
 
     # 2c. Mirror LUT: M1M3 elevation + M2 gravity LUT forces -> bending-mode DOFs
@@ -106,8 +108,9 @@ def build(args):
         mlut, mlut_info = aos_trim.fetch_mirror_lut_for_visits(
             fit_table, config_dir=args.ofc_config_dir, efd_client=efd,
             consdb_client=client)
-        for i in range(40):
-            visits[f"lut_dof{10 + i}"] = mlut[:, i]
+        visits = pd.concat([visits, pd.DataFrame(
+            mlut, columns=[f"lut_dof{10 + i}" for i in range(40)],
+            index=visits.index)], axis=1)
         print(f"mirror LUT finite: {mlut_info['n_lut']}/{len(visits)}", flush=True)
     except Exception as e:
         print(f"mirror LUT skipped ({type(e).__name__}: {e})", flush=True)
@@ -117,8 +120,9 @@ def build(args):
                                         dof_set="standard_22")
     dof_mat = visits[[f"dof{i}" for i in range(aos_trim.N_DOF)]].to_numpy(dtype=float)
     vmodes = aos_state.vmodes_from_dofs(dof_mat, se, n_modes=args.n_vmode)
-    for j in range(args.n_vmode):
-        visits[f"v{j + 1}"] = vmodes[:, j]
+    visits = pd.concat([visits, pd.DataFrame(
+        vmodes, columns=[f"v{j + 1}" for j in range(args.n_vmode)],
+        index=visits.index)], axis=1)
     print(f"v-modes finite: {int(np.isfinite(vmodes).all(axis=1).sum())}/{len(visits)}",
           flush=True)
 
