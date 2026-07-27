@@ -1,17 +1,21 @@
 # ----------------------------------------------------------------------
-# BLOCK-T539 closed-loop AOS state pipeline (Snakemake).
+# BLOCK-T539 closed-loop AOS state + per-night telemetry pipeline (Snakemake).
 #
-#   build_table  (RSP: ConsDB + EFD)  ->  plots
+#   build_table  (RSP: ConsDB + EFD)  ->  plots       # converged T539 images
+#   night_table  (RSP: ConsDB + EFD)                  # all visits, one night
 #
 #   ./run_snake.sh -n      # dry-run: show the plan
 #   ./run_snake.sh         # build (local, detached; tuned for the RSP)
+#   ./run_snake.sh output/night_table_20260629.parquet   # just one night
 #
 # Layout:
-#   output/t539_closedloop_aos_<dmin>_<dmax>.parquet   (full per-visit table)
+#   output/t539_closedloop_aos_<dmin>_<dmax>.parquet   (converged-image table)
 #   output/t539_validation_<dmin>_<dmax>.pdf           (v-modes + telemetry QA)
+#   output/night_table_<day_obs>.parquet               (all visits in a night)
 #
-# Config: config.yaml (day_obs range, ConsDB/EFD, OFC config, selection).
-# Reuses aos/code (DOF/v-modes/Zernikes) + olr/code/telemetry.py (thermal/wind).
+# Config: config.yaml (day_obs range, `nights`, ConsDB/EFD, OFC, selection).
+# Both tables share code/telemetry_pipeline.collect_telemetry, which reuses
+# aos/code (DOF/LUT/v-modes/Zernikes) + olr/code/telemetry.py (thermal/wind).
 # ----------------------------------------------------------------------
 import os
 import yaml
@@ -23,12 +27,14 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
 
 CFG = yaml.safe_load(open("config.yaml"))
 TAG = f"{CFG['day_obs_min']}_{CFG['day_obs_max']}"
+NIGHTS = [str(n) for n in CFG.get("nights", [])]
 
 
 rule all:
     input:
         f"output/t539_closedloop_aos_{TAG}.parquet",
         f"output/t539_validation_{TAG}.pdf",
+        expand("output/night_table_{night}.parquet", night=NIGHTS),
 
 
 # --- RSP-only: ConsDB select + DOF + v-modes + Zernikes + thermal/wind ---
@@ -37,6 +43,7 @@ rule build_table:
         table = f"output/t539_closedloop_aos_{TAG}.parquet",
     input:
         script    = "code/build_t539_table.py",
+        lib_pipe  = "code/telemetry_pipeline.py",
         lib_trim  = "../aos/code/aos_trim.py",
         lib_state = "../aos/code/aos_state.py",
         lib_tele  = "../olr/code/telemetry.py",
@@ -81,3 +88,31 @@ rule plots:
     shell:
         "python code/plot_t539_validation.py --in {input.table} "
         "--out {output.pdf} > {log} 2>&1"
+
+
+# --- Per-night full-telemetry table: all science visits in one night, same
+#     collector as the T539 table.  For the mirror-mode-vs-elevation study. ---
+rule night_table:
+    output:
+        table = "output/night_table_{night}.parquet",
+    input:
+        script    = "code/build_night_table.py",
+        lib_pipe  = "code/telemetry_pipeline.py",
+        lib_trim  = "../aos/code/aos_trim.py",
+        lib_state = "../aos/code/aos_state.py",
+        lib_tele  = "../olr/code/telemetry.py",
+    params:
+        instrument = CFG["instrument"],
+        consdb = CFG["consdb_url"],
+        efd = CFG["efd"],
+        ofc = CFG["ofc_config_dir"],
+        n_vmode = CFG["n_vmode"],
+    resources:
+        mem_mb = 8000,
+    log:
+        "logs/night_table_{night}.log",
+    shell:
+        "python code/build_night_table.py --day-obs {wildcards.night} "
+        "--instrument {params.instrument} --consdb-url {params.consdb} "
+        "--efd {params.efd} --ofc-config-dir {params.ofc} "
+        "--n-vmode {params.n_vmode} --out {output.table} > {log} 2>&1"

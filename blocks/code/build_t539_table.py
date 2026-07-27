@@ -14,23 +14,16 @@ import os
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-from astropy.table import Table
 
-# Shared helpers: aos/code (DOF, v-modes, zernikes) + olr/code (telemetry).
-REPO = Path(__file__).resolve().parents[2]          # -> rubin-work/
-sys.path.insert(0, str(REPO / "aos" / "code"))
-sys.path.insert(0, str(REPO / "olr" / "code"))
-import aos_trim       # noqa: E402
-import aos_state      # noqa: E402
-import telemetry      # noqa: E402
+# Shared collector: DOF/LUT/v-modes/Zernikes/thermal/wind (aos + olr helpers).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import aos_trim              # noqa: E402  (via telemetry_pipeline's sys.path)
+import telemetry_pipeline    # noqa: E402
 
 
 def build(args):
     os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",.consdb"
-    corners = {191: "R00_SW0", 195: "R04_SW0", 199: "R40_SW0", 203: "R44_SW0"}
-    zk_noll = [z for z in range(4, 27) if z not in (20, 21)]
 
     # 1. Select converged closed-loop images from ConsDB ----------------------
     client = aos_trim.make_consdb_client(args.consdb_url)
@@ -80,72 +73,8 @@ def build(args):
         except Exception as e:
             print(f"{col} not available: {type(e).__name__}", flush=True)
 
-    # 2. Aggregated DOF (trim) from the EFD -----------------------------------
-    from lsst_efd_client import EfdClient
-    efd = EfdClient(args.efd, output_mode="dataframe")
-    fit_table = Table.from_pandas(visits[["day_obs", "seq_num"]].astype(int))
-    trim, dof_info = aos_trim.fetch_aggregated_dof_for_visits(
-        fit_table, efd_client=efd, consdb_client=client)
-    visits = pd.concat([visits, pd.DataFrame(
-        trim, columns=[f"dof{i}" for i in range(aos_trim.N_DOF)],
-        index=visits.index)], axis=1)
-    print(f"DOF finite: {dof_info['n_dof']}/{len(visits)}", flush=True)
-
-    # 2b. Hexapod LUT (compensationOffset) -- the 'total LUT' the Trim (dof*) is
-    #     measured against; lut_dof5 = camera-hex dz (filter-dependent focus).
-    #     Only the 10 hexapod DOFs are available; M1M3/M2 bending LUT is not.
-    lut, lut_info = aos_trim.fetch_hexapod_lut_for_visits(
-        fit_table, efd_client=efd, consdb_client=client)
-    visits = pd.concat([visits, pd.DataFrame(
-        lut, columns=[f"lut_dof{i}" for i in range(10)],
-        index=visits.index)], axis=1)
-    print(f"hexapod LUT finite: {lut_info['n_lut']}/{len(visits)}", flush=True)
-
-    # 2c. Mirror LUT: M1M3 elevation + M2 gravity LUT forces -> bending-mode DOFs
-    #     (via ts_ofc BendModeToForce), mapped to lut_dof10-29 (M1M3) / 30-49 (M2).
-    #     Wrapped so a ts_ofc / EFD issue can't abort the whole build.
-    try:
-        mlut, mlut_info = aos_trim.fetch_mirror_lut_for_visits(
-            fit_table, config_dir=args.ofc_config_dir, efd_client=efd,
-            consdb_client=client)
-        visits = pd.concat([visits, pd.DataFrame(
-            mlut, columns=[f"lut_dof{10 + i}" for i in range(40)],
-            index=visits.index)], axis=1)
-        print(f"mirror LUT finite: {mlut_info['n_lut']}/{len(visits)}", flush=True)
-    except Exception as e:
-        print(f"mirror LUT skipped ({type(e).__name__}: {e})", flush=True)
-
-    # 3. Geom v-modes from the DOF trim ---------------------------------------
-    se = aos_state.make_state_estimator(config_dir=args.ofc_config_dir,
-                                        dof_set="standard_22")
-    dof_mat = visits[[f"dof{i}" for i in range(aos_trim.N_DOF)]].to_numpy(dtype=float)
-    vmodes = aos_state.vmodes_from_dofs(dof_mat, se, n_modes=args.n_vmode)
-    visits = pd.concat([visits, pd.DataFrame(
-        vmodes, columns=[f"v{j + 1}" for j in range(args.n_vmode)],
-        index=visits.index)], axis=1)
-    print(f"v-modes finite: {int(np.isfinite(vmodes).all(axis=1).sum())}/{len(visits)}",
-          flush=True)
-
-    # 4. Per-corner retrieved wavefront (OPD) ---------------------------------
-    zk_df = aos_state.fetch_corner_zernikes_consdb(
-        client, visits["visit_id"].values, instrument=args.instrument,
-        zk_noll=zk_noll, corners=corners)
-    visits = visits.merge(zk_df, left_on="visit_id", right_index=True, how="left")
-
-    # 5. Thermal + wind telemetry (shared helper; per-night, robust) ----------
-    day_seq = (visits[["day_obs", "seq_num", "obs_start", "obs_end"]]
-               .drop_duplicates().rename(columns={"seq_num": "seq"})
-               .reset_index(drop=True))
-    thermal = telemetry.fetch_thermal_telemetry_sync(efd, day_seq, progress=True)
-    wind = telemetry.fetch_dome_wind_sync(efd, day_seq, progress=True)
-    for tbl in (thermal, wind):
-        t = tbl.rename(columns={"seq": "seq_num"})
-        newcols = [c for c in t.columns if c not in ("day_obs", "seq_num")]
-        visits = visits.merge(t[["day_obs", "seq_num"] + newcols],
-                              on=["day_obs", "seq_num"], how="left")
-    if "z_gradient" in visits:
-        print(f"z_gradient finite: {int(visits['z_gradient'].notna().sum())}/{len(visits)}",
-              flush=True)
+    # 2-5. Full AOS telemetry (DOF/LUT/v-modes/Zernikes/thermal/wind) ---------
+    visits = telemetry_pipeline.collect_telemetry(visits, args, client)
 
     # 6. Save -----------------------------------------------------------------
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)

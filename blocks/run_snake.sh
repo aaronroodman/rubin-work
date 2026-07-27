@@ -13,9 +13,10 @@
 # will fail with "Failed to resolve 'consdb-pq.consdb'".
 #
 # Usage:
-#   ./run_snake.sh                 # build table + validation PDF
+#   ./run_snake.sh                 # build T539 table + validation PDF + nights
 #   ./run_snake.sh -n              # dry-run (extra args pass through)
 #   ./run_snake.sh --until build_table
+#   ./run_snake.sh output/night_table_20260629.parquet   # one night only
 #
 # Remember to `git pull` first to pick up code changes.
 set -euo pipefail

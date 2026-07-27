@@ -17,3 +17,8 @@ annotations:
   - closed_loop_22dof_trunc12
 seq_gap_max: 10                # max seq_num gap within one contiguous run
 n_vmode: 12
+
+# Per-night full-telemetry tables (all science visits in a night) for studying
+# mirror LUT bending modes across the full elevation range.  One parquet each.
+nights:
+  - 20260629
