@@ -22,14 +22,31 @@ import numpy as np
 
 DOF_TOPIC = 'lsst.sal.MTAOS.logevent_degreeOfFreedom'
 N_DOF = 50
-DEFAULT_CONSDB_URL = 'http://consdb-pq.consdb:8080/consdb'
+# In-pod host (only resolves inside the RSP Nublado pod) vs the public RSP
+# endpoint (token-injected, works from S3DF/sdfiana too).  'auto' picks between
+# them via in_rsp(); DEFAULT_CONSDB_URL stays the in-pod host for back-compat.
+IN_POD_CONSDB_URL = 'http://consdb-pq.consdb:8080/consdb'
+EXTERNAL_CONSDB_URL = 'https://usdf-rsp.slac.stanford.edu/consdb'
+DEFAULT_CONSDB_URL = IN_POD_CONSDB_URL
 DEFAULT_EXPOSURE_TABLE = 'cdb_lsstcam.exposure'
 
 __all__ = [
-    'DOF_TOPIC', 'N_DOF', 'DEFAULT_CONSDB_URL', 'DEFAULT_EXPOSURE_TABLE',
+    'DOF_TOPIC', 'N_DOF', 'DEFAULT_CONSDB_URL', 'IN_POD_CONSDB_URL',
+    'EXTERNAL_CONSDB_URL', 'DEFAULT_EXPOSURE_TABLE', 'in_rsp',
     'make_efd_client', 'make_consdb_client', 'fetch_obs_start',
     'fetch_aggregated_dof', 'fetch_aggregated_dof_for_visits',
 ]
+
+
+def in_rsp():
+    """True when running inside the RSP (Nublado) JupyterLab pod.
+
+    Detected via the ``/etc/nublado`` marker directory that the Nublado
+    spawner mounts into every RSP pod; absent on S3DF login/batch nodes
+    (sdfiana / slacrd) and on the laptop.
+    """
+    import os
+    return os.path.isdir('/etc/nublado')
 
 
 def make_efd_client(efd_name='usdf_efd'):
@@ -57,7 +74,9 @@ def make_efd_client(efd_name='usdf_efd'):
 def make_consdb_client(url=DEFAULT_CONSDB_URL, token_file=None):
     """Return a ConsDB client (``lsst.summit.utils.ConsDbClient``).
 
-    Two access modes, selected by ``url``:
+    ``url='auto'`` picks the endpoint by environment via :func:`in_rsp`
+    (in-pod host inside the RSP, external token-injected endpoint on S3DF).
+    Otherwise the two access modes are selected by an explicit ``url``:
 
     * **In-pod (default)** — the internal host ``consdb-pq.consdb`` only
       resolves inside the RSP JupyterLab (Nublado) pod, and must bypass the
@@ -75,6 +94,8 @@ def make_consdb_client(url=DEFAULT_CONSDB_URL, token_file=None):
     """
     import os
     from pathlib import Path
+    if url == 'auto':
+        url = IN_POD_CONSDB_URL if in_rsp() else EXTERNAL_CONSDB_URL
     no_proxy = os.environ.get('no_proxy', '')
     if '.consdb' not in no_proxy:
         os.environ['no_proxy'] = (no_proxy + ',.consdb') if no_proxy else '.consdb'

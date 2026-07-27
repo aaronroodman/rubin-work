@@ -83,7 +83,7 @@ def main():
     ap.add_argument("--day-obs", type=int, required=True, dest="day_obs")
     ap.add_argument("--out", required=True)
     ap.add_argument("--instrument", default="lsstcam")
-    ap.add_argument("--consdb-url", default="http://consdb-pq.consdb:8080/consdb",
+    ap.add_argument("--consdb-url", default="auto",
                     dest="consdb_url")
     ap.add_argument("--efd", default="usdf_efd")
     ap.add_argument("--ofc-config-dir", required=True, dest="ofc_config_dir")

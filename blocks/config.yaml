@@ -3,11 +3,11 @@ day_obs_min: 20260420
 day_obs_max: 20260708          # bump to today when re-running
 
 instrument: lsstcam
-# S3DF batch (sdfiana/slacrd, Slurm): https://usdf-rsp.slac.stanford.edu/consdb
-#   -> make_consdb_client injects the RSP token ($ACCESS_TOKEN, else
-#      ~/.lsst/consdb_token) as https://user:<token>@host/consdb.
-# In-pod (RSP JupyterLab) alternative: http://consdb-pq.consdb:8080/consdb
-consdb_url: "https://usdf-rsp.slac.stanford.edu/consdb"
+# 'auto' picks by environment (in_rsp() via /etc/nublado): in-pod host inside the
+# RSP, external token-injected endpoint (https://usdf-rsp.slac.stanford.edu/consdb,
+# token from $ACCESS_TOKEN / ~/.lsst/consdb_token) on S3DF/sdfiana/slacrd.
+# Override with an explicit URL if needed.
+consdb_url: "auto"
 efd: usdf_efd                  # summit_efd when running on the Summit RSP
 
 # OFC config dir for the sensitivity matrix / v-mode SVD (v13 = telescope AOS)
