@@ -3,6 +3,10 @@ day_obs_min: 20260420
 day_obs_max: 20260708          # bump to today when re-running
 
 instrument: lsstcam
+# In-pod (RSP JupyterLab):  http://consdb-pq.consdb:8080/consdb
+# S3DF batch (sdfiana/slacrd, Slurm): https://usdf-rsp.slac.stanford.edu/consdb
+#   -> make_consdb_client injects the RSP token ($ACCESS_TOKEN, else
+#      ~/.lsst/consdb_token) as https://user:<token>@host/consdb.
 consdb_url: "http://consdb-pq.consdb:8080/consdb"
 efd: usdf_efd                  # summit_efd when running on the Summit RSP
 

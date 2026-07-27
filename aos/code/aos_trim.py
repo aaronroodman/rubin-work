@@ -54,17 +54,39 @@ def make_efd_client(efd_name='usdf_efd'):
     return EfdClient(efd_name)
 
 
-def make_consdb_client(url=DEFAULT_CONSDB_URL):
+def make_consdb_client(url=DEFAULT_CONSDB_URL, token_file=None):
     """Return a ConsDB client (``lsst.summit.utils.ConsDbClient``).
 
-    The internal ConsDB host (``*.consdb``) must bypass the RSP HTTP proxy,
-    otherwise requests fail with ``502 Bad Gateway`` at the proxy.  This
-    adds ``.consdb`` to ``$no_proxy`` if absent, matching nightly_tablemaker.
+    Two access modes, selected by ``url``:
+
+    * **In-pod (default)** — the internal host ``consdb-pq.consdb`` only
+      resolves inside the RSP JupyterLab (Nublado) pod, and must bypass the
+      RSP HTTP proxy (else ``502 Bad Gateway``); ``.consdb`` is added to
+      ``$no_proxy``.  No token needed.
+    * **External / S3DF (sdfiana / slacrd batch)** — pass the tokened RSP
+      endpoint ``https://usdf-rsp.slac.stanford.edu/consdb``.  The internal
+      host does not resolve from an S3DF login/batch node, so use the public
+      endpoint with an RSP access token injected as
+      ``https://user:<token>@host/consdb``.  The token is taken from (in order)
+      the ``ACCESS_TOKEN`` env var (the confirmed slaciana path), else
+      ``~/.lsst/consdb_token`` (override via ``token_file``).  Mirrors
+      ``check_chunk.py`` / ``run_mktable`` so one credential works across the
+      AOS pipelines.
     """
     import os
+    from pathlib import Path
     no_proxy = os.environ.get('no_proxy', '')
     if '.consdb' not in no_proxy:
         os.environ['no_proxy'] = (no_proxy + ',.consdb') if no_proxy else '.consdb'
+    # External https endpoint: inject the RSP token unless one is already present.
+    if '@' not in url and 'consdb-pq.consdb' not in url:
+        token = os.environ.get('ACCESS_TOKEN')
+        if not token:
+            tf = Path(token_file) if token_file else Path.home() / '.lsst' / 'consdb_token'
+            if tf.exists():
+                token = tf.read_text().strip()
+        if token:
+            url = url.replace('://', f'://user:{token}@', 1)
     from lsst.summit.utils import ConsDbClient
     return ConsDbClient(url)
 

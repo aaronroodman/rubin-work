@@ -6,11 +6,16 @@
 # hits ConsDB + EFD and can take many minutes (per-visit ESS queries + per-night
 # M1M3-gradient / TMA-truss loads), so watch the log.
 #
-# IMPORTANT: launch this from a terminal INSIDE the RSP JupyterLab (Nublado) pod
-# -- the same environment as the notebook (File -> New -> Terminal).  ConsDB
-# ('consdb-pq.consdb') is an in-cluster service that only resolves inside that
-# pod; an S3DF SSH login node (e.g. sdfianaNNN) cannot resolve it and build_table
-# will fail with "Failed to resolve 'consdb-pq.consdb'".
+# WHERE TO RUN:
+#  * In-pod (default): launch from a terminal INSIDE the RSP JupyterLab (Nublado)
+#    pod (File -> New -> Terminal).  The default ConsDB URL 'consdb-pq.consdb' is
+#    an in-cluster service that ONLY resolves inside that pod.
+#  * S3DF batch (sdfiana / slacrd, Slurm): set config.yaml consdb_url to
+#    https://usdf-rsp.slac.stanford.edu/consdb -- make_consdb_client then injects
+#    the RSP token ($ACCESS_TOKEN, else ~/.lsst/consdb_token).  CAVEAT: this
+#    pipeline ALSO queries the EFD (usdf_efd) for every DOF/LUT/thermal/wind
+#    value (unlike the AOS-chunk build, which is ConsDB-only), so confirm the
+#    EFD client resolves from your batch node before submitting a long job.
 #
 # Usage:
 #   ./run_snake.sh                 # build T539 table + validation PDF + nights
