@@ -130,7 +130,7 @@ import numpy as np
 from lsst.ts.intrinsic.wavefront.ofc_svd import compute_normalization_components
 from lsst.ts.ofc import OFCData, SensitivityMatrix
 
-ofc_config_dir = '/home/r/roodman/u/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc'
+ofc_config_dir = '/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc'
 zn = np.array([4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,22,23,24,25,26])
 sensors = ['R00_SW0','R04_SW0','R40_SW0','R44_SW0']
 labels = ['M2_dz','M2_dx','M2_dy','M2_rx','M2_ry','Cam_dz','Cam_dx','Cam_dy',

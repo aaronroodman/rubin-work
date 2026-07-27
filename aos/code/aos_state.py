@@ -112,7 +112,7 @@ def resolve_ofc_config_dir(version="v13"):
     ts = os.environ.get("TS_CONFIG_MTTCS_DIR")
     if ts:
         return os.path.join(ts, "MTAOS", version, "ofc")
-    return f"/home/r/roodman/u/LSST/packages/ts_config_mttcs/MTAOS/{version}/ofc"
+    return f"/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs/MTAOS/{version}/ofc"
 
 
 def build_geom_svd(config_dir=None, dof_set="standard_22", version="v13"):

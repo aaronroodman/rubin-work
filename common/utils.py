@@ -72,7 +72,7 @@ def get_packages_dir(location=None):
 
     packages_dirs = {
         'summit': '/home/aroodman/packages',
-        'usdf': '/home/r/roodman/u/LSST/packages',
+        'usdf': '/sdf/group/rubin/u/roodman/LSST/packages',
     }
 
     if location in packages_dirs:

@@ -71,7 +71,7 @@ else:
 _ts_cfg = os.environ.get("TS_CONFIG_MTTCS_DIR")
 OFC_CONFIG_DIR = (
     os.path.join(_ts_cfg, "MTAOS", "v13", "ofc") if _ts_cfg
-    else "/home/r/roodman/u/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc"
+    else "/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc"
 )
 
 __all__ = ["AOSDatabase", "build_nightly_table", "OFC_CONFIG_DIR"]

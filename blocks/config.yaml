@@ -11,7 +11,7 @@ consdb_url: "auto"
 efd: usdf_efd                  # summit_efd when running on the Summit RSP
 
 # OFC config dir for the sensitivity matrix / v-mode SVD (v13 = telescope AOS)
-ofc_config_dir: "/home/r/roodman/u/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc"
+ofc_config_dir: "/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc"
 
 # Selection: converged closed-loop in-focus images
 science_program_prefix: "BLOCK-T539"
