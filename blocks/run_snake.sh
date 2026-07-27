@@ -75,7 +75,7 @@ case "$mode" in
         resmem=${SB_RESMEM:-28000}
         acct=${SB_ACCOUNT:-rubin:developers@roma}
         qos=${SB_QOS:-normal}
-        jlog="logs/batch_${ts}.out"
+        jlog="logs/batch_${ts}_%j.out"   # %j = Slurm job id -> unique per job
         sb=(sbatch --partition="$part" --account="$acct" --qos="$qos"
             --cpus-per-task="$cpus" --mem="$mem" --time="$tlim"
             --export=ALL --job-name=blocks_snake --output="$jlog")
