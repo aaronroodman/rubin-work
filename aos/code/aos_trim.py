@@ -87,10 +87,12 @@ def make_consdb_client(url=DEFAULT_CONSDB_URL, token_file=None):
       host does not resolve from an S3DF login/batch node, so use the public
       endpoint with an RSP access token injected as
       ``https://user:<token>@host/consdb``.  The token is taken from (in order)
-      the ``ACCESS_TOKEN`` env var (the confirmed slaciana path), else
-      ``~/.lsst/consdb_token`` (override via ``token_file``).  Mirrors
-      ``check_chunk.py`` / ``run_mktable`` so one credential works across the
-      AOS pipelines.
+      the ``~/.lsst/consdb_token`` file (override via ``token_file``), else the
+      ``ACCESS_TOKEN`` env var.  The **file is preferred**: it is read at call
+      time (so a long-queued batch job still gets a current token) and is the
+      same long-lived credential ``check_chunk.py`` / ``run_mktable`` use;
+      ``ACCESS_TOKEN`` frozen into a batch job's env by ``--export=ALL`` can be
+      stale/expired by the time the job runs (401 Unauthorized).
     """
     import os
     from pathlib import Path
@@ -100,12 +102,11 @@ def make_consdb_client(url=DEFAULT_CONSDB_URL, token_file=None):
     if '.consdb' not in no_proxy:
         os.environ['no_proxy'] = (no_proxy + ',.consdb') if no_proxy else '.consdb'
     # External https endpoint: inject the RSP token unless one is already present.
+    # Prefer the token FILE (read now, long-lived) over $ACCESS_TOKEN (may be a
+    # stale value exported into a queued batch job) -> matches the AOS pipeline.
     if '@' not in url and 'consdb-pq.consdb' not in url:
-        token = os.environ.get('ACCESS_TOKEN')
-        if not token:
-            tf = Path(token_file) if token_file else Path.home() / '.lsst' / 'consdb_token'
-            if tf.exists():
-                token = tf.read_text().strip()
+        tf = Path(token_file) if token_file else Path.home() / '.lsst' / 'consdb_token'
+        token = tf.read_text().strip() if tf.exists() else os.environ.get('ACCESS_TOKEN')
         if token:
             url = url.replace('://', f'://user:{token}@', 1)
     from lsst.summit.utils import ConsDbClient
