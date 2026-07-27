@@ -18,7 +18,13 @@
 # aos/code (DOF/LUT/v-modes/Zernikes) + olr/code/telemetry.py (thermal/wind).
 # ----------------------------------------------------------------------
 import os
+import sys
 import yaml
+
+# Call the SAME interpreter running snakemake (an absolute path from the active
+# lsst-scipipe env), not bare `python` -- under Slurm --wrap the rule shell's
+# PATH may lack the stack's python ("python: command not found").
+PYTHON = sys.executable
 
 # One thread per job; parallelism via `snakemake -j` (mirrors olr/aos).
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
@@ -48,6 +54,7 @@ rule build_table:
         lib_state = "../aos/code/aos_state.py",
         lib_tele  = "../olr/code/telemetry.py",
     params:
+        python = PYTHON,
         dmin = CFG["day_obs_min"],
         dmax = CFG["day_obs_max"],
         instrument = CFG["instrument"],
@@ -64,7 +71,7 @@ rule build_table:
     log:
         "logs/build_table.log",
     shell:
-        "python code/build_t539_table.py "
+        "{params.python} code/build_t539_table.py "
         "--day-obs-min {params.dmin} --day-obs-max {params.dmax} "
         "--instrument {params.instrument} --consdb-url {params.consdb} "
         "--efd {params.efd} --ofc-config-dir {params.ofc} "
@@ -81,12 +88,14 @@ rule plots:
     input:
         table  = f"output/t539_closedloop_aos_{TAG}.parquet",
         script = "code/plot_t539_validation.py",
+    params:
+        python = PYTHON,
     resources:
         mem_mb = 2000,
     log:
         "logs/plots.log",
     shell:
-        "python code/plot_t539_validation.py --in {input.table} "
+        "{params.python} code/plot_t539_validation.py --in {input.table} "
         "--out {output.pdf} > {log} 2>&1"
 
 
@@ -102,6 +111,7 @@ rule night_table:
         lib_state = "../aos/code/aos_state.py",
         lib_tele  = "../olr/code/telemetry.py",
     params:
+        python = PYTHON,
         instrument = CFG["instrument"],
         consdb = CFG["consdb_url"],
         efd = CFG["efd"],
@@ -112,7 +122,7 @@ rule night_table:
     log:
         "logs/night_table_{night}.log",
     shell:
-        "python code/build_night_table.py --day-obs {wildcards.night} "
+        "{params.python} code/build_night_table.py --day-obs {wildcards.night} "
         "--instrument {params.instrument} --consdb-url {params.consdb} "
         "--efd {params.efd} --ofc-config-dir {params.ofc} "
         "--n-vmode {params.n_vmode} --out {output.table} > {log} 2>&1"
