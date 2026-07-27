@@ -56,10 +56,55 @@ def phrase(ps):                                   # matches run_pipeline / intri
     parts = r["fam_collections"][0].split("/")
     return parts[2] if (parts[0] == "u" and len(parts) > 2) else r["fam_collections"][0]
 
-def chunks(ps):  return [(int(a), int(b)) for a, b in CFG[ps]["chunks"]]
+# A chunk is a finite SET OF VISITS, not necessarily one collection.  Each
+# snake_config chunk is either a bare [dmin, dmax] pair (uses the param_set's
+# fam_collections) or a dict {day_obs: [dmin, dmax], collection:, phrase:,
+# butler_repo:, programs:} that targets its OWN Butler collection for that set of
+# visits.  All chunks of a param_set land in the SAME output/<ps>/ area (combine
+# concatenates them), so a newer disjoint reprocessing can be folded in as one
+# extra chunk without a new param_set or output dir.
+def _chunk_entries(ps):
+    out = []
+    for c in CFG[ps]["chunks"]:
+        if isinstance(c, dict):
+            a, b = c["day_obs"]
+            out.append(dict(dmin=int(a), dmax=int(b), collection=c.get("collection"),
+                            phrase=c.get("phrase"), butler_repo=c.get("butler_repo"),
+                            programs=c.get("programs")))
+        else:
+            a, b = c
+            out.append(dict(dmin=int(a), dmax=int(b), collection=None,
+                            phrase=None, butler_repo=None, programs=None))
+    return out
+
+def chunks(ps):  return [(c["dmin"], c["dmax"]) for c in _chunk_entries(ps)]
 def coord(ps):   return CFG[ps].get("coord_sys", "OCS")
 def chunk_files(ps, name):
     return [f"output/{ps}/chunks/{a}_{b}/{name}" for a, b in chunks(ps)]
+
+def _chunk_at(ps, dmin, dmax):
+    for c in _chunk_entries(ps):
+        if c["dmin"] == int(dmin) and c["dmax"] == int(dmax):
+            return c
+    return dict(collection=None, phrase=None, butler_repo=None, programs=None)
+
+def chunk_phrase(ps, dmin, dmax):
+    # phrase drives run_mktable's output filename ({phrase}_{dmin}_{dmax}.parquet)
+    return _chunk_at(ps, dmin, dmax)["phrase"] or phrase(ps)
+
+def chunk_mktable_extra(ps, dmin, dmax):
+    # CLI overrides for a per-chunk collection; empty string for legacy chunks
+    # (so their mktable command — and Butler query — is unchanged).
+    c = _chunk_at(ps, dmin, dmax)
+    if not c["collection"]:
+        return ""
+    parts = ["--collections", c["collection"],
+             "--collection-phrase", chunk_phrase(ps, dmin, dmax)]
+    if c["butler_repo"]:
+        parts += ["--butler-repo", c["butler_repo"]]
+    if c["programs"]:
+        parts += ["--programs", *[str(p) for p in c["programs"]]]
+    return " ".join(parts)
 
 # ---- Phase 2 (measured intrinsic) helpers, driven by mi_config.yaml ----
 def mi_names(ps):   return _mc.mi_names(ps, doc=MI_DOC)
@@ -150,15 +195,16 @@ rule mktable:
         donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
         visits = "output/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
     params:
-        cdir = lambda w: f"output/{w.ps}/chunks/{w.dmin}_{w.dmax}",
-        ph   = lambda w: phrase(w.ps),
+        cdir  = lambda w: f"output/{w.ps}/chunks/{w.dmin}_{w.dmax}",
+        ph    = lambda w: chunk_phrase(w.ps, w.dmin, w.dmax),
+        extra = lambda w: chunk_mktable_extra(w.ps, w.dmin, w.dmax),
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
         rf"""
         python {WF_BIN}/run_mktable.py --param-set {{wildcards.ps}} \
             --day-obs-min {{wildcards.dmin}} --day-obs-max {{wildcards.dmax}} \
-            --output-dir {{params.cdir}} > {{log}} 2>&1
+            {{params.extra}} --output-dir {{params.cdir}} > {{log}} 2>&1
         mv {{params.cdir}}/{{params.ph}}_{{wildcards.dmin}}_{{wildcards.dmax}}.parquet {{output.donuts}}
         mv {{params.cdir}}/{{params.ph}}_{{wildcards.dmin}}_{{wildcards.dmax}}_visits.parquet {{output.visits}}
         """

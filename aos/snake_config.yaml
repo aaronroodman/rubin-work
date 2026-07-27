@@ -45,3 +45,11 @@ param_sets:
       - [20260315, 20260327]
       - [20260331, 20260409]
       - [20260418, 20260531]
+      # Newer, DISJOINT visits (post May 13; extra elevation/rotator points) from
+      # the danish_1_2_0 wep 17.7.0 reprocessing.  This chunk targets its OWN
+      # collection, so the three chunks above keep reading the 17.6.1 collection.
+      # Combines into the SAME output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/.
+      # Widen day_obs to the new collection's actual span if visits fall outside.
+      - day_obs: [20260514, 20260731]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x
