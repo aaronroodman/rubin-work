@@ -29,9 +29,11 @@
 #   ./run_snake.sh --mode batch -n                   # batch dry-run (validates submission)
 #
 # Batch tunables (env vars; defaults in parens):
-#   SB_PARTITION (roma)  SB_CPUS (8)  SB_MEM (32G)  SB_TIME (08:00:00)
+#   SB_PARTITION (milano)  SB_CPUS (8)  SB_MEM (32G)  SB_TIME (08:00:00)
 #   SB_RESMEM (28000)    # snakemake --resources mem_mb budget on the node
-#   SB_ACCOUNT (rubin:developers@roma)  SB_QOS (normal)   # non-preemptable
+#   SB_ACCOUNT (rubin:developers@milano)  SB_QOS (normal)   # non-preemptable
+#     Account must match SB_PARTITION (USDF encodes the partition in the name).
+#     `normal` won't be preempted; roma also offers `expedite` for urgent jobs.
 #
 # Remember to `git pull` first to pick up code changes.
 set -euo pipefail
@@ -68,12 +70,12 @@ case "$mode" in
             echo "error: sbatch not found — submit batch mode from an s3df" \
                  "interactive node (e.g. slacrd), not the RSP pod." >&2
             exit 2; }
-        part=${SB_PARTITION:-roma}
+        part=${SB_PARTITION:-milano}
         cpus=${SB_CPUS:-8}
         mem=${SB_MEM:-32G}
         tlim=${SB_TIME:-08:00:00}
         resmem=${SB_RESMEM:-28000}
-        acct=${SB_ACCOUNT:-rubin:developers@roma}
+        acct=${SB_ACCOUNT:-rubin:developers@milano}
         qos=${SB_QOS:-normal}
         jlog="logs/batch_${ts}_%j.out"   # %j = Slurm job id -> unique per job
         sb=(sbatch --partition="$part" --account="$acct" --qos="$qos"

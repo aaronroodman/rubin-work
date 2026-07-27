@@ -20,16 +20,16 @@
 #   ./run_snake.sh                        # local, standard run
 #   ./run_snake.sh -n                     # local dry-run (extra args pass through)
 #   ./run_snake.sh --until combine_donuts # local, partial
-#   ./run_snake.sh --mode batch           # batch on roma (32 cpus, 96G, 8h)
+#   ./run_snake.sh --mode batch           # batch on milano (32 cpus, 96G, 8h)
 #   ./run_snake.sh --mode batch -n        # batch dry-run (validates submission)
 #
 # Batch tunables (env vars; defaults in parens):
-#   SB_PARTITION (roma)  SB_CPUS (32)  SB_MEM (96G)  SB_TIME (08:00:00)
+#   SB_PARTITION (milano)  SB_CPUS (32)  SB_MEM (96G)  SB_TIME (08:00:00)
 #   SB_RESMEM (90000)    # snakemake --resources mem_mb budget on the node
-#   SB_ACCOUNT (rubin:developers@roma)  SB_QOS (normal)   # non-preemptable
+#   SB_ACCOUNT (rubin:developers@milano)  SB_QOS (normal)   # non-preemptable
 #     USDF account names encode the partition; pair with SB_PARTITION.
 #     `normal` QOS won't be preempted; `rubin:default@*` only offers
-#     `preemptable`.  roma/milano also expose `expedite` for short urgent jobs.
+#     `preemptable`.  roma also exposes `expedite` for short urgent jobs.
 #
 # Remember to `git pull` (or sync.sh) first to pick up code changes.
 set -euo pipefail
@@ -66,12 +66,12 @@ case "$mode" in
             echo "error: sbatch not found — submit batch mode from an s3df" \
                  "interactive node (e.g. slacrd), not the RSP pod." >&2
             exit 2; }
-        part=${SB_PARTITION:-roma}
+        part=${SB_PARTITION:-milano}
         cpus=${SB_CPUS:-32}
         mem=${SB_MEM:-96G}
         tlim=${SB_TIME:-08:00:00}
         resmem=${SB_RESMEM:-90000}
-        acct=${SB_ACCOUNT:-rubin:developers@roma}
+        acct=${SB_ACCOUNT:-rubin:developers@milano}
         qos=${SB_QOS:-normal}
         jlog="logs/batch_${ts}.out"
         sb=(sbatch --partition="$part" --account="$acct" --qos="$qos"
