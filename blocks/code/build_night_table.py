@@ -95,9 +95,9 @@ def main():
                     help="also fetch per-corner retrieved Zernikes (default off "
                          "for a full night -- usually absent for science visits)")
     ap.add_argument("--n-vmode", type=int, default=12, dest="n_vmode")
-    ap.add_argument("--telemetry-source", default="consdb", choices=["consdb", "efd"],
+    ap.add_argument("--telemetry-source", default="hybrid", choices=["hybrid", "consdb", "efd"],
                     dest="telemetry_source",
-                    help="consdb = ConsDB transformed EFD (fast, default); "
+                    help="hybrid = mirror/temps/wind from ConsDB + DOF/hexapod from raw EFD (default); consdb = all from ConsDB (sparse logevents); "
                          "efd = raw per-visit EFD (cross-check / fallback)")
     ap.add_argument("--no-gradients-from-efd", dest="gradients_from_efd",
                     action="store_false",

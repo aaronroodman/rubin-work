@@ -156,21 +156,24 @@ def _query_cols(cdb, table, cols, visit_ids, gname):
     return pd.concat(frames, ignore_index=True) if frames else None
 
 
-def fetch_scalars_pivoted(cdb, visit_ids):
+def fetch_scalars_pivoted(cdb, visit_ids, hexapod=True):
     """ESS temps/truss/sonic/cam-hex, wind, stress, hexapod LUT/Trim (per group).
 
     Also joins weather-tower ``wind_speed`` / ``wind_dir`` from
     ``cdb_lsstcam.exposure``.  Independent groups so one bad column drops only
-    its group.  Returns a DataFrame indexed by ``exposure_id``.
+    its group.  ``hexapod=False`` skips the (sparse, logevent-sourced) hexapod
+    groups -- take those from the raw EFD instead.  Returns a DataFrame indexed
+    by ``exposure_id``.
     """
     groups = [
         ("efd_lsstcam.exposure_efd", list(TEMP_COLS),  "temps"),
         ("efd_lsstcam.exposure_efd", list(WIND_COLS),  "wind"),
         ("efd_lsstcam.exposure_efd", list(STRESS_COLS), "stress"),
-        ("efd_lsstcam.exposure_efd", HEX_LUT_COLS,     "hexlut"),
-        ("efd_lsstcam.exposure_efd", HEX_TRIM_COLS,    "hextrim"),
         ("cdb_lsstcam.exposure",     ["wind_speed", "wind_dir"], "weather"),
     ]
+    if hexapod:
+        groups += [("efd_lsstcam.exposure_efd", HEX_LUT_COLS, "hexlut"),
+                   ("efd_lsstcam.exposure_efd", HEX_TRIM_COLS, "hextrim")]
     merged = None
     for table, cols, gname in groups:
         g = _query_cols(cdb, table, cols, visit_ids, gname)
@@ -184,8 +187,14 @@ def fetch_scalars_pivoted(cdb, visit_ids):
 
 
 def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
-                             progress=True):
+                             progress=True, dof=True, hexapod=True):
     """Attach DOF/mirror-LUT/hexapod/temps/wind/stress to ``visits`` (a copy).
+
+    ``dof=False`` / ``hexapod=False`` skip the DOF Trim (dof0-49) / hexapod LUT
+    (lut_dof0-9, trim_hex_dof0-9) -- these are SAL logevents that the transform
+    captures in only a few % of exposures, so the hybrid path takes them from the
+    raw EFD (as-of) instead.  The mirror LUT (lut_dof10-49, always continuous
+    telemetry) and temps/wind/stress are always taken from ConsDB.
 
     Does NOT add v-modes (caller derives from dof0-49) or M1M3 gradients (raw EFD).
     """
@@ -206,7 +215,7 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
     visits = visits.copy()
     vids = visits[visit_col].astype(int).to_numpy()
     n = len(vids)
-    dof = np.full((n, 50), np.nan)
+    dof_arr = np.full((n, 50), np.nan)
     lut = np.full((n, 50), np.nan)              # 0-9 hex, 10-29 M1M3 elev, 30-49 M2 grav
     m2temp = np.full((n, 20), np.nan)
     m1m3azim = np.full((n, 20), np.nan)
@@ -219,7 +228,7 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
             if not rec:
                 continue
             if np.isfinite(rec["dof"]).any():
-                dof[i] = rec["dof"]
+                dof_arr[i] = rec["dof"]
             for src, dst in ((_bend(bmf_m1m3, rec["m1m3elev"]),  ("lut", 10, 30)),
                              (_bend(bmf_m2,   rec["m2grav"]),    ("lut", 30, 50))):
                 if src is not None:
@@ -231,7 +240,7 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
         print(f"(ConsDB unpivoted arrays failed [{type(e).__name__}: {e}])", flush=True)
 
     try:
-        scal = fetch_scalars_pivoted(cdb, vids).reindex(vids)
+        scal = fetch_scalars_pivoted(cdb, vids, hexapod=hexapod).reindex(vids)
     except Exception as e:
         print(f"(ConsDB pivoted scalars failed [{type(e).__name__}: {e}])", flush=True)
         scal = pd.DataFrame(index=vids)
@@ -240,17 +249,21 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
         return (pd.to_numeric(scal[name], errors="coerce").to_numpy()
                 if name in scal else np.full(n, np.nan))
 
-    for j, c in enumerate(HEX_LUT_COLS):
-        lut[:, j] = _col(c)
+    if hexapod:
+        for j, c in enumerate(HEX_LUT_COLS):
+            lut[:, j] = _col(c)
 
     blocks = {}
-    blocks.update({f"dof{i}": dof[:, i] for i in range(50)})
-    blocks.update({f"lut_dof{i}": lut[:, i] for i in range(50)})
+    if dof:
+        blocks.update({f"dof{i}": dof_arr[:, i] for i in range(50)})
+    lut_lo = 0 if hexapod else 10              # skip lut_dof0-9 (hexapod) in hybrid
+    blocks.update({f"lut_dof{i}": lut[:, i] for i in range(lut_lo, 50)})
     blocks.update({f"m2temp_dof{i}": m2temp[:, i] for i in range(20)})
     blocks.update({f"m1m3azim_dof{i}": m1m3azim[:, i] for i in range(20)})
     blocks.update({f"m1m3therm_dof{i}": m1m3therm[:, i] for i in range(20)})
-    for j, c in enumerate(HEX_TRIM_COLS):
-        blocks[f"trim_hex_dof{j}"] = _col(c)
+    if hexapod:
+        for j, c in enumerate(HEX_TRIM_COLS):
+            blocks[f"trim_hex_dof{j}"] = _col(c)
     for src, name in {**TEMP_COLS, **WIND_COLS, **STRESS_COLS}.items():
         blocks[name] = _col(src)
     blocks["wind_speed_weather"] = _col("wind_speed")
@@ -265,9 +278,9 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
         add["cam_hex_temp_avg"] = add[cam_hex].mean(axis=1)
     visits = pd.concat([visits, add], axis=1)
 
-    n_dof = int(np.isfinite(dof).all(axis=1).sum())
+    n_dof = int(np.isfinite(dof_arr).all(axis=1).sum())
     n_mir = int(np.isfinite(lut[:, 10:50]).any(axis=1).sum())
-    print(f"ConsDB EFD: DOF {n_dof}/{n}, mirror LUT {n_mir}/{n}, "
+    print(f"ConsDB EFD: DOF {n_dof}/{n} (added={dof}), mirror LUT {n_mir}/{n}, "
           f"azimuth {int(np.isfinite(m1m3azim).any(axis=1).sum())}, "
           f"thermal {int(np.isfinite(m1m3therm).any(axis=1).sum())}", flush=True)
     return visits

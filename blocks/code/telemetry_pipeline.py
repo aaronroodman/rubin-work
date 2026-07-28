@@ -5,18 +5,23 @@ Given a ``visits`` DataFrame (with ``day_obs``, ``seq_num``, ``obs_start``,
 Trim (dof0-49), hexapod + mirror LUT (lut_dof0-49), geom v-modes (v1..N),
 per-corner Zernikes, and thermal + wind.
 
-Two interchangeable telemetry sources (same output schema), chosen by
+Three telemetry sources (same output schema), chosen by
 ``args.telemetry_source`` / the ``source=`` arg:
 
-  * ``"consdb"`` (default) -- per-exposure MEANS from the ConsDB Consolidated
-    (transformed) EFD via ``aos_consdb_efd`` (~2 queries; no per-visit raw EFD).
-    Fast, works on RSP + slaciana.  M1M3 spatial gradients aren't in the
-    transform, so they are still pulled from the raw EFD (per night) unless
-    ``args.gradients_from_efd`` is False.  Adds the separate M2-temperature
-    bending modes (m2temp_dof0-19) and hexapod Trim (trim_hex_dof0-9).
-  * ``"efd"`` -- the original raw-EFD path (``aos_trim`` per-visit/-night +
-    ``olr/telemetry``).  Kept as a cross-check / for time ranges the ConsDB
-    transform doesn't cover.
+  * ``"hybrid"`` (DEFAULT) -- mirror LUT bending modes + ESS temps + wind + stress
+    from the ConsDB transformed EFD (fast, continuous telemetry, complete), but
+    DOF Trim (dof0-49) + hexapod LUT (lut_dof0-9) + M1M3 gradients from the raw
+    EFD (as-of).  Those three are SAL logevents / thermocouple data the transform
+    only records in a few % of exposures, so the raw-EFD "most-recent-before-
+    obs_start" read is needed for full coverage.  Best of both: no slow per-visit
+    mirror download, and dense DOF/hexapod.
+  * ``"consdb"`` -- everything from the ConsDB transform (incl. the sparse
+    logevent DOF/hexapod); fastest but DOF/hexapod are only a few % populated.
+  * ``"efd"`` -- the original raw-EFD path (``aos_trim`` + ``olr/telemetry``);
+    cross-check / for time ranges the transform doesn't cover.
+
+All modes add the separate M2-temperature / M1M3-azimuth+thermal mirror bending
+modes and hexapod Trim from ConsDB where available.
 
 Used by ``build_t539_table.py`` and ``build_night_table.py``.  ConsDB + EFD
 only (no Butler).
@@ -48,10 +53,32 @@ def collect_telemetry(visits, args, client, efd=None, with_zernikes=True, source
     ``source`` overrides ``args.telemetry_source`` (default ``"consdb"``).
     ``args`` supplies ``efd``, ``ofc_config_dir``, ``instrument``, ``n_vmode``.
     """
-    source = source or getattr(args, "telemetry_source", "consdb")
+    source = source or getattr(args, "telemetry_source", "hybrid")
+    if source == "hybrid":
+        return _collect_hybrid(visits, args, client, efd, with_zernikes)
     if source == "consdb":
         return _collect_consdb(visits, args, client, efd, with_zernikes)
     return _collect_efd(visits, args, client, efd, with_zernikes)
+
+
+def _dof_hexapod_from_efd(visits, args, client, efd):
+    """DOF Trim (dof0-49) + hexapod LUT (lut_dof0-9) from the raw EFD (as-of) --
+    the SAL logevents the ConsDB transform only captures in a few % of exposures.
+    Both use aos_trim's per-night bulk as-of helpers (cheap topics)."""
+    fit_table = Table.from_pandas(visits[["day_obs", "seq_num"]].astype(int))
+    trim, dof_info = aos_trim.fetch_aggregated_dof_for_visits(
+        fit_table, efd_client=efd, consdb_client=client)
+    visits = pd.concat([visits, pd.DataFrame(
+        trim, columns=[f"dof{i}" for i in range(aos_trim.N_DOF)],
+        index=visits.index)], axis=1)
+    print(f"DOF finite (efd): {dof_info['n_dof']}/{len(visits)}", flush=True)
+    lut, lut_info = aos_trim.fetch_hexapod_lut_for_visits(
+        fit_table, efd_client=efd, consdb_client=client)
+    visits = pd.concat([visits, pd.DataFrame(
+        lut, columns=[f"lut_dof{i}" for i in range(10)],
+        index=visits.index)], axis=1)
+    print(f"hexapod LUT finite (efd): {lut_info['n_lut']}/{len(visits)}", flush=True)
+    return visits
 
 
 # ----------------------------------------------------------------------------
@@ -106,7 +133,27 @@ def _attach_m1m3_gradients_efd(visits, efd):
 
 
 # ----------------------------------------------------------------------------
-# ConsDB transformed-EFD path (default)
+# Hybrid path (DEFAULT): mirror LUT + temps/wind/stress from ConsDB (fast,
+# continuous telemetry), DOF Trim + hexapod LUT + gradients from raw EFD (the
+# logevents the transform windows drop -- see the coverage note).
+# ----------------------------------------------------------------------------
+def _collect_hybrid(visits, args, client, efd, with_zernikes):
+    from lsst_efd_client import EfdClient
+    visits = aos_consdb_efd.collect_consdb_telemetry(
+        client, visits, config_dir=args.ofc_config_dir, dof=False, hexapod=False)
+    if efd is None:
+        efd = EfdClient(args.efd, output_mode="dataframe")
+    visits = _dof_hexapod_from_efd(visits, args, client, efd)
+    visits = _add_vmodes(visits, args)
+    if getattr(args, "gradients_from_efd", True):
+        visits = _attach_m1m3_gradients_efd(visits, efd)
+    if with_zernikes:
+        visits = _add_corner_zernikes(visits, args, client)
+    return visits
+
+
+# ----------------------------------------------------------------------------
+# ConsDB-only transformed-EFD path (all quantities, incl. sparse logevents)
 # ----------------------------------------------------------------------------
 def _collect_consdb(visits, args, client, efd, with_zernikes):
     visits = aos_consdb_efd.collect_consdb_telemetry(

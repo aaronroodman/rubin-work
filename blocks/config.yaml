@@ -22,10 +22,13 @@ annotations:
 seq_gap_max: 10                # max seq_num gap within one contiguous run
 n_vmode: 12
 
-# Telemetry source: 'consdb' = ConsDB transformed EFD per-exposure means (fast,
-# ~2 queries, no per-visit raw EFD; M1M3 gradients still from raw EFD).
-# 'efd' = original raw per-visit EFD path (cross-check / uncovered time ranges).
-telemetry_source: consdb
+# Telemetry source:
+#  'hybrid' (default) = mirror LUT + temps/wind/stress from the ConsDB transform
+#     (fast, continuous), DOF Trim + hexapod LUT + M1M3 gradients from raw EFD
+#     (SAL logevents the transform windows drop -> only ~5-14% per-exposure).
+#  'consdb' = everything from the transform (DOF/hexapod sparse).
+#  'efd'    = original raw per-visit EFD path (cross-check / uncovered ranges).
+telemetry_source: hybrid
 
 # Per-night full-telemetry tables (all science visits in a night) for studying
 # mirror LUT bending modes across the full elevation range.  One parquet each.
