@@ -59,6 +59,7 @@ rule build_table:
         reason = CFG["observation_reason"],
         seq_gap = CFG["seq_gap_max"],
         n_vmode = CFG["n_vmode"],
+        tsrc = CFG.get("telemetry_source", "consdb"),
     resources:
         mem_mb = 8000,
     log:
@@ -71,6 +72,7 @@ rule build_table:
         "--science-program-prefix {params.prefix} "
         "--observation-reason {params.reason} "
         "--seq-gap-max {params.seq_gap} --n-vmode {params.n_vmode} "
+        "--telemetry-source {params.tsrc} "
         "--annotations {params.ann} --out {output.table} > {log} 2>&1"
 
 
@@ -107,6 +109,7 @@ rule night_table:
         efd = CFG["efd"],
         ofc = CFG["ofc_config_dir"],
         n_vmode = CFG["n_vmode"],
+        tsrc = CFG.get("telemetry_source", "consdb"),
     resources:
         mem_mb = 8000,
     log:
@@ -115,4 +118,5 @@ rule night_table:
         "python code/build_night_table.py --day-obs {wildcards.night} "
         "--instrument {params.instrument} --consdb-url {params.consdb} "
         "--efd {params.efd} --ofc-config-dir {params.ofc} "
-        "--n-vmode {params.n_vmode} --out {output.table} > {log} 2>&1"
+        "--n-vmode {params.n_vmode} --telemetry-source {params.tsrc} "
+        "--out {output.table} > {log} 2>&1"

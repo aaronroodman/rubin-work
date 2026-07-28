@@ -101,6 +101,14 @@ def main():
                              "closed_loop_22dof_trunc12"])
     ap.add_argument("--seq-gap-max", type=int, default=10, dest="seq_gap_max")
     ap.add_argument("--n-vmode", type=int, default=12, dest="n_vmode")
+    ap.add_argument("--telemetry-source", default="consdb", choices=["consdb", "efd"],
+                    dest="telemetry_source",
+                    help="consdb = ConsDB transformed EFD (fast, default); "
+                         "efd = raw per-visit EFD (cross-check / fallback)")
+    ap.add_argument("--no-gradients-from-efd", dest="gradients_from_efd",
+                    action="store_false",
+                    help="skip the raw-EFD M1M3 gradient fetch in consdb mode")
+    ap.set_defaults(gradients_from_efd=True)
     build(ap.parse_args())
 
 
