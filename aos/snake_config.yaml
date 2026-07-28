@@ -9,6 +9,16 @@
 # Add data -> add/edit a chunk -> Snakemake re-runs combine + downstream.
 # (Chunks derived from the old runs.yaml.)
 # ----------------------------------------------------------------------
+# run_mktable speed knobs (applied to every mktable/chunk build):
+#   workers    -- parallel processes for the per-visit Butler donut/Zernike reads
+#                 (1 = serial; raise on a batch node, e.g. 8).
+#   no_thermal -- skip the per-visit ESS-temperature EFD loop (fast; leaves the
+#                 thermal columns empty). Use to get donuts quickly; bounce tests
+#                 don't need thermal (thermal_correlations does).
+mktable:
+  workers: 8
+  no_thermal: false
+
 param_sets:
 
   fam_danish_v1_triplets_bin_2x:

@@ -30,7 +30,9 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
 PARAM_SETS = yaml.safe_load(open("param_sets.yaml"))
-CFG        = yaml.safe_load(open("snake_config.yaml"))["param_sets"]
+_SNAKE     = yaml.safe_load(open("snake_config.yaml"))
+CFG        = _SNAKE["param_sets"]
+MKT        = _SNAKE.get("mktable", {})     # run_mktable knobs: workers, no_thermal
 PSETS      = list(CFG)
 
 # Core MIW library + runners now live in the installed ts_intrinsic_wavefront
@@ -198,12 +200,18 @@ rule mktable:
         cdir  = lambda w: f"output/{w.ps}/chunks/{w.dmin}_{w.dmax}",
         ph    = lambda w: chunk_phrase(w.ps, w.dmin, w.dmax),
         extra = lambda w: chunk_mktable_extra(w.ps, w.dmin, w.dmax),
+        # run_mktable speed knobs (snake_config `mktable:`): parallelize the
+        # per-visit Butler donut reads, and optionally skip the slow per-visit
+        # ESS-temperature loop (--no-thermal) when only donuts/Zernikes are needed.
+        workers   = MKT.get("workers", 1),
+        nothermal = "--no-thermal" if MKT.get("no_thermal") else "",
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
         rf"""
         python {WF_BIN}/run_mktable.py --param-set {{wildcards.ps}} \
             --day-obs-min {{wildcards.dmin}} --day-obs-max {{wildcards.dmax}} \
+            --workers {{params.workers}} {{params.nothermal}} \
             {{params.extra}} --output-dir {{params.cdir}} > {{log}} 2>&1
         mv {{params.cdir}}/{{params.ph}}_{{wildcards.dmin}}_{{wildcards.dmax}}.parquet {{output.donuts}}
         mv {{params.cdir}}/{{params.ph}}_{{wildcards.dmin}}_{{wildcards.dmax}}_visits.parquet {{output.visits}}
