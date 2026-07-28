@@ -79,17 +79,6 @@ _DELTAS = {  # derived, matching telemetry.py
 }
 
 
-def _tqdm(iterable, total=None, desc=None, progress=True):
-    """tqdm wrapper that degrades to a plain iterable if tqdm is unavailable."""
-    if not progress:
-        return iterable
-    try:
-        from tqdm.auto import tqdm
-        return tqdm(iterable, total=total, desc=desc)
-    except Exception:
-        return iterable
-
-
 def _chunks(seq, n=800):
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
@@ -187,7 +176,7 @@ def fetch_scalars_pivoted(cdb, visit_ids, hexapod=True):
 
 
 def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
-                             progress=True, dof=True, hexapod=True):
+                             dof=True, hexapod=True):
     """Attach DOF/mirror-LUT/hexapod/temps/wind/stress to ``visits`` (a copy).
 
     ``dof=False`` / ``hexapod=False`` skip the DOF Trim (dof0-49) / hexapod LUT
@@ -222,8 +211,7 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
     m1m3therm = np.full((n, 20), np.nan)
     try:
         arrays = fetch_arrays_unpivoted(cdb, vids)
-        for i, vid in _tqdm(list(enumerate(vids)), total=n,
-                            desc="mirror bend/visit", progress=progress):
+        for i, vid in enumerate(vids):
             rec = arrays.get(int(vid))
             if not rec:
                 continue
