@@ -384,16 +384,19 @@ def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
     day_obs, times = _resolve_obs_times(fit_table, consdb_client, consdb_url,
                                         exposure_table, mjd_fallback_col, mjd_scale)
     fields = ['z', 'x', 'y', 'u', 'v']
+    # One bulk select_time_series per night per hexapod (salIndex) + as-of match,
+    # i.e. ~2 EFD queries per night instead of 2 per visit.  compensationOffset
+    # is a sparse logevent, so keep a generous lookback buffer.
+    m2_rows = _asof_rows_by_night(efd_client, HEX_LUT_TOPIC, fields, times,
+                                  day_obs, index=2, buffer_hours=6.0)
+    cam_rows = _asof_rows_by_night(efd_client, HEX_LUT_TOPIC, fields, times,
+                                   day_obs, index=1, buffer_hours=6.0)
     lut = np.full((len(times), 10), np.nan)
-    for i, t in _tqdm(list(enumerate(times)), total=len(times), desc='hexapod LUT'):
-        if t is None:
-            continue
-        m2 = _top1(efd_client, HEX_LUT_TOPIC, fields, t, index=2)
-        if m2 is not None:
-            lut[i, 0:5] = [m2[k] for k in fields]
-        cam = _top1(efd_client, HEX_LUT_TOPIC, fields, t, index=1)
-        if cam is not None:
-            lut[i, 5:10] = [cam[k] for k in fields]
+    for i in range(len(times)):
+        if m2_rows[i] is not None:
+            lut[i, 0:5] = [m2_rows[i][k] for k in fields]
+        if cam_rows[i] is not None:
+            lut[i, 5:10] = [cam_rows[i][k] for k in fields]
     return lut, {'n_lut': int(np.isfinite(lut).all(axis=1).sum())}
 
 
@@ -436,17 +439,24 @@ def fetch_mirror_lut_for_visits(fit_table, config_dir=None, efd_client=None,
         out[:min(20, len(v))] = v[:20]
         return out
 
+    # One bulk select_time_series per night per topic + as-of match, instead of
+    # a per-visit backward search.  The per-visit path on the 156-col M1M3 and
+    # high-rate 72-col M2 force topics is what blew the batch wall clock (a full
+    # night of science visits x 2 queries each).  Both topics are continuous
+    # telemetry, so a short lookback buffer suffices to find a prior sample.
+    m1_rows = _asof_rows_by_night(efd_client, M1M3_ELEV_TOPIC, zcols, times,
+                                  day_obs, buffer_hours=2.0)
+    m2_rows = _asof_rows_by_night(efd_client, M2_AXIAL_TOPIC, gcols, times,
+                                  day_obs, buffer_hours=2.0)
     lut = np.full((len(times), 40), np.nan)
-    for i, t in _tqdm(list(enumerate(times)), total=len(times), desc='mirror LUT'):
-        if t is None:
-            continue
-        m1 = _top1(efd_client, M1M3_ELEV_TOPIC, zcols, t)
+    for i in range(len(times)):
+        m1 = m1_rows[i]
         if m1 is not None:
             try:
                 lut[i, 0:20] = _to20(bmf_m1m3.bending_mode(m1[zcols].to_numpy(float)))
             except Exception as e:
                 print(f'(M1M3 bending_mode failed visit {i} [{type(e).__name__}])')
-        m2 = _top1(efd_client, M2_AXIAL_TOPIC, gcols, t)
+        m2 = m2_rows[i]
         if m2 is not None:
             try:
                 lut[i, 20:40] = _to20(bmf_m2.bending_mode(m2[gcols].to_numpy(float)))
