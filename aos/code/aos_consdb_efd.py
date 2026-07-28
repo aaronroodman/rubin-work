@@ -91,21 +91,22 @@ def _to20(vec):
     return out
 
 
-def fetch_arrays_unpivoted(cdb, visit_ids):
+def fetch_arrays_unpivoted(cdb, visit_ids, props=None):
     """DOF Trim + mirror LUT force arrays per exposure from exposure_efd_unpivoted.
 
-    Returns ``exposure_id -> {out_prefix: np.ndarray}`` for the prefixes in
-    ``UNPIVOT_PROPS``; each array holds the fields whose name starts with that
-    property's axial field-name (e.g. ``zForces*``), all-NaN if that field-set
-    is absent (e.g. azimuth stored only as lateral x/y forces).
+    ``props`` (default ``UNPIVOT_PROPS``) is the {property: (out_prefix, axial
+    field-name, length)} map to fetch.  Returns ``exposure_id -> {out_prefix:
+    np.ndarray}``; each array holds the fields whose name starts with that
+    property's axial field-name (e.g. ``zForces*``), all-NaN if absent.
     """
-    props = "', '".join(UNPIVOT_PROPS)
+    props = props if props is not None else UNPIVOT_PROPS
+    propnames = "', '".join(props)
     frames = []
     for ids in _chunks(list(map(int, visit_ids))):
         idlist = ", ".join(str(v) for v in ids)
         q = (f"SELECT exposure_id, property, field, value "
              f"FROM efd_lsstcam.exposure_efd_unpivoted "
-             f"WHERE exposure_id IN ({idlist}) AND property IN ('{props}')")
+             f"WHERE exposure_id IN ({idlist}) AND property IN ('{propnames}')")
         frames.append(cdb.query(q).to_pandas())
     unp = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     out = {}
@@ -116,7 +117,7 @@ def fetch_arrays_unpivoted(cdb, visit_ids):
     unp["k"] = fstr.str.extract(r"(\d+)$")[0].astype(float)
     for eid, g in unp.groupby("exposure_id"):
         rec = {}
-        for prop, (prefix, fname, n) in UNPIVOT_PROPS.items():
+        for prop, (prefix, fname, n) in props.items():
             sub = g[(g["property"] == prop)
                     & g["field"].astype(str).str.startswith(fname)]
             arr = np.full(n, np.nan)
@@ -176,7 +177,7 @@ def fetch_scalars_pivoted(cdb, visit_ids, hexapod=True):
 
 
 def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
-                             dof=True, hexapod=True):
+                             dof=True, hexapod=True, m1m3_azim_therm=False):
     """Attach DOF/mirror-LUT/hexapod/temps/wind/stress to ``visits`` (a copy).
 
     ``dof=False`` / ``hexapod=False`` skip the DOF Trim (dof0-49) / hexapod LUT
@@ -184,6 +185,10 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
     captures in only a few % of exposures, so the hybrid path takes them from the
     raw EFD (as-of) instead.  The mirror LUT (lut_dof10-49, always continuous
     telemetry) and temps/wind/stress are always taken from ConsDB.
+
+    ``m1m3_azim_therm=False`` (default) skips the M1M3 azimuth + thermal LUT
+    bending modes (m1m3azim_dof0-19, m1m3therm_dof0-19) -- currently all zero
+    on-sky.  Set True to compute/store them if those LUT terms ever activate.
 
     Does NOT add v-modes (caller derives from dof0-49) or M1M3 gradients (raw EFD).
     """
@@ -209,8 +214,11 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
     m2temp = np.full((n, 20), np.nan)
     m1m3azim = np.full((n, 20), np.nan)
     m1m3therm = np.full((n, 20), np.nan)
+    props = dict(UNPIVOT_PROPS)
+    if not m1m3_azim_therm:                     # off by default (all zero on-sky)
+        props = {k: v for k, v in props.items() if v[0] not in ("m1m3azim", "m1m3therm")}
     try:
-        arrays = fetch_arrays_unpivoted(cdb, vids)
+        arrays = fetch_arrays_unpivoted(cdb, vids, props=props)
         for i, vid in enumerate(vids):
             rec = arrays.get(int(vid))
             if not rec:
@@ -222,8 +230,9 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
                 if src is not None:
                     lut[i, dst[1]:dst[2]] = src
             v = _bend(bmf_m2, rec["m2temp"]);      m2temp[i] = v if v is not None else m2temp[i]
-            v = _bend(bmf_m1m3, rec["m1m3azim"]);  m1m3azim[i] = v if v is not None else m1m3azim[i]
-            v = _bend(bmf_m1m3, rec["m1m3therm"]); m1m3therm[i] = v if v is not None else m1m3therm[i]
+            if m1m3_azim_therm:
+                v = _bend(bmf_m1m3, rec.get("m1m3azim"));  m1m3azim[i] = v if v is not None else m1m3azim[i]
+                v = _bend(bmf_m1m3, rec.get("m1m3therm")); m1m3therm[i] = v if v is not None else m1m3therm[i]
     except Exception as e:
         print(f"(ConsDB unpivoted arrays failed [{type(e).__name__}: {e}])", flush=True)
 
@@ -247,8 +256,9 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
     lut_lo = 0 if hexapod else 10              # skip lut_dof0-9 (hexapod) in hybrid
     blocks.update({f"lut_dof{i}": lut[:, i] for i in range(lut_lo, 50)})
     blocks.update({f"m2temp_dof{i}": m2temp[:, i] for i in range(20)})
-    blocks.update({f"m1m3azim_dof{i}": m1m3azim[:, i] for i in range(20)})
-    blocks.update({f"m1m3therm_dof{i}": m1m3therm[:, i] for i in range(20)})
+    if m1m3_azim_therm:
+        blocks.update({f"m1m3azim_dof{i}": m1m3azim[:, i] for i in range(20)})
+        blocks.update({f"m1m3therm_dof{i}": m1m3therm[:, i] for i in range(20)})
     if hexapod:
         for j, c in enumerate(HEX_TRIM_COLS):
             blocks[f"trim_hex_dof{j}"] = _col(c)
@@ -268,7 +278,10 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
 
     n_dof = int(np.isfinite(dof_arr).all(axis=1).sum())
     n_mir = int(np.isfinite(lut[:, 10:50]).any(axis=1).sum())
-    print(f"ConsDB EFD: DOF {n_dof}/{n} (added={dof}), mirror LUT {n_mir}/{n}, "
-          f"azimuth {int(np.isfinite(m1m3azim).any(axis=1).sum())}, "
-          f"thermal {int(np.isfinite(m1m3therm).any(axis=1).sum())}", flush=True)
+    extra = ""
+    if m1m3_azim_therm:
+        extra = (f", azimuth {int(np.isfinite(m1m3azim).any(axis=1).sum())}, "
+                 f"thermal {int(np.isfinite(m1m3therm).any(axis=1).sum())}")
+    print(f"ConsDB EFD: DOF {n_dof}/{n} (added={dof}), mirror LUT {n_mir}/{n}{extra}",
+          flush=True)
     return visits

@@ -60,6 +60,7 @@ rule build_table:
         seq_gap = CFG["seq_gap_max"],
         n_vmode = CFG["n_vmode"],
         tsrc = CFG.get("telemetry_source", "consdb"),
+        azim = "--m1m3-azim-therm" if CFG.get("m1m3_azim_therm") else "",
     resources:
         mem_mb = 8000,
     log:
@@ -72,7 +73,7 @@ rule build_table:
         "--science-program-prefix {params.prefix} "
         "--observation-reason {params.reason} "
         "--seq-gap-max {params.seq_gap} --n-vmode {params.n_vmode} "
-        "--telemetry-source {params.tsrc} "
+        "--telemetry-source {params.tsrc} {params.azim} "
         "--annotations {params.ann} --out {output.table} > {log} 2>&1"
 
 
@@ -110,6 +111,7 @@ rule night_table:
         ofc = CFG["ofc_config_dir"],
         n_vmode = CFG["n_vmode"],
         tsrc = CFG.get("telemetry_source", "consdb"),
+        azim = "--m1m3-azim-therm" if CFG.get("m1m3_azim_therm") else "",
     resources:
         mem_mb = 8000,
     log:
@@ -118,5 +120,5 @@ rule night_table:
         "python code/build_night_table.py --day-obs {wildcards.night} "
         "--instrument {params.instrument} --consdb-url {params.consdb} "
         "--efd {params.efd} --ofc-config-dir {params.ofc} "
-        "--n-vmode {params.n_vmode} --telemetry-source {params.tsrc} "
+        "--n-vmode {params.n_vmode} --telemetry-source {params.tsrc} {params.azim} "
         "--out {output.table} > {log} 2>&1"

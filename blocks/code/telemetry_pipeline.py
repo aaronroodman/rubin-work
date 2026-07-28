@@ -140,7 +140,8 @@ def _attach_m1m3_gradients_efd(visits, efd):
 def _collect_hybrid(visits, args, client, efd, with_zernikes):
     from lsst_efd_client import EfdClient
     visits = aos_consdb_efd.collect_consdb_telemetry(
-        client, visits, config_dir=args.ofc_config_dir, dof=False, hexapod=False)
+        client, visits, config_dir=args.ofc_config_dir, dof=False, hexapod=False,
+        m1m3_azim_therm=getattr(args, "m1m3_azim_therm", False))
     if efd is None:
         efd = EfdClient(args.efd, output_mode="dataframe")
     visits = _dof_hexapod_from_efd(visits, args, client, efd)
@@ -157,7 +158,8 @@ def _collect_hybrid(visits, args, client, efd, with_zernikes):
 # ----------------------------------------------------------------------------
 def _collect_consdb(visits, args, client, efd, with_zernikes):
     visits = aos_consdb_efd.collect_consdb_telemetry(
-        client, visits, config_dir=args.ofc_config_dir)
+        client, visits, config_dir=args.ofc_config_dir,
+        m1m3_azim_therm=getattr(args, "m1m3_azim_therm", False))
     visits = _add_vmodes(visits, args)
     if getattr(args, "gradients_from_efd", True):
         from lsst_efd_client import EfdClient

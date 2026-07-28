@@ -103,6 +103,10 @@ def main():
                     action="store_false",
                     help="skip the raw-EFD M1M3 gradient fetch in consdb mode")
     ap.set_defaults(gradients_from_efd=True)
+    ap.add_argument("--m1m3-azim-therm", dest="m1m3_azim_therm",
+                    action="store_true",
+                    help="also compute M1M3 azimuth+thermal LUT bending modes "
+                         "(m1m3azim_dof/m1m3therm_dof; default off, all zero on-sky)")
     build(ap.parse_args())
 
 

@@ -30,6 +30,11 @@ n_vmode: 12
 #  'efd'    = original raw per-visit EFD path (cross-check / uncovered ranges).
 telemetry_source: hybrid
 
+# M1M3 azimuth + thermal LUT bending modes (m1m3azim_dof/m1m3therm_dof).
+# Off by default -- those LUT terms are all zero on-sky at present.  Set true to
+# start storing them if that changes.
+m1m3_azim_therm: false
+
 # Per-night full-telemetry tables (all science visits in a night) for studying
 # mirror LUT bending modes across the full elevation range.  One parquet each.
 nights:
