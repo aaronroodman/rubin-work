@@ -152,6 +152,9 @@ def an_json(section, ps, mi=None):
     return _json.dumps(_mc.analysis_section(section, ps, mi, doc=AN_DOC),
                        sort_keys=True, default=str)
 
+def an_sec(section, ps, mi=None):                  # resolved analysis section (dict)
+    return _mc.analysis_section(section, ps, mi, doc=AN_DOC)
+
 # param_set names have no slash; keeps output/<ps>/X.parquet (combined)
 # distinct from output/<ps>/chunks/<d>_<d>/X.parquet (per chunk).
 wildcard_constraints:
@@ -585,3 +588,29 @@ rule wfs_mktable:
     shell:
         "python code/run_wfs_mktable.py --param-set {wildcards.ps} "
         "--wfs-name {wildcards.cwfs} --coord-sys {params.coord} > {log} 2>&1"
+
+
+# ---- coadded FAM MIW-subtracted Z5-Z8 focal-plane maps (one PDF, per-term
+#      common color scale; coadd = 12-triplet block at common el/rot/az) ----
+# NOT in `rule all` (reads the full multi-GB donuts.parquet); target explicitly:
+#   snakemake --rerun-triggers mtime \
+#     output/<ps>/<mi>/plots/fam_coadd_miw_maps.pdf
+rule fam_coadd_miw:
+    input:
+        donuts  = "output/{ps}/donuts.parquet",
+        visits  = "output/{ps}/visits.parquet",
+        sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
+        script  = "code/run_fam_coadd_miw.py",
+    output: "output/{ps}/{mi}/plots/fam_coadd_miw_maps.pdf"
+    params:
+        bin_deg = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("bin_deg", 1.0),
+        mint    = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("min_triplets", 6),
+        grid    = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("grid_n", 24),
+        pct     = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("pct", 98.0),
+    resources: mem_mb=12000
+    log: "logs/{ps}.{mi}.fam_coadd_miw.log"
+    shell:
+        "python code/run_fam_coadd_miw.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} --bin-deg {params.bin_deg} "
+        "--min-triplets {params.mint} --grid-n {params.grid} --pct {params.pct} "
+        "> {log} 2>&1"

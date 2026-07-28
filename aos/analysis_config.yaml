@@ -80,6 +80,12 @@ defaults:
                                  # null -> all. Use to drop out-of-family rotator points.
                                  # Independent of split.rotator_select (the map-build subset).
 
+  fam_coadd_miw:          # coadded FAM MIW-subtracted Z5-Z8 focal-plane maps
+    bin_deg: 1.0          # pointing bin (el/rot/az) grouping tolerance, deg
+    min_triplets: 6       # min FAM triplets in a block-pointing group to coadd
+    grid_n: 24            # focal-plane bins per axis over +-fp_radius
+    pct: 98.0             # percentile of |binned median| for the per-term scale
+
 # Per-param_set / per-(param_set, mi_name) overrides (optional). Example:
 # overrides:
 #   fam_danish_1_0_wep17_3_0_bin2x:
