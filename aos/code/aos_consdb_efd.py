@@ -1,42 +1,47 @@
 """ConsDB transformed-EFD telemetry -- the fast, no-per-visit-raw-EFD path.
 
 Pulls per-exposure MEAN AOS telemetry from the ConsDB Consolidated (transformed)
-EFD in ~2 queries, instead of per-visit raw-EFD downloads (which ran the night
-table out of batch wall time).  Mirrors Guillem's querying_efd_consdb notebook:
+EFD in a handful of queries, instead of per-visit raw-EFD downloads (which ran
+the night table out of batch wall time).  Mirrors Guillem's querying_efd_consdb
+notebook.
 
-  * ``efd_lsstcam.exposure_efd_unpivoted`` (property/field/value rows) supplies
-    the ARRAY quantities:
-      - ``mt_logevent_aggregated_dof``               -> DOF Trim (50)
-      - ``mt_m1m3_applied_elevation_forces_mean``    -> M1M3 elevation LUT (156 zForces)
-      - ``mt_m2_axial_force_lut_gravity_mean``       -> M2 gravity LUT (72)
-      - ``mt_m2_axial_force_lut_temperature_mean``   -> M2 thermal LUT (72)
-    forces -> bending amplitudes via ts_ofc ``BendModeToForce``.
-  * ``efd_lsstcam.exposure_efd`` (pivoted) supplies the SCALARS: ESS temps, TMA
-    truss, wind/airflow, and hexapod ``compensation_offset`` (LUT) / ``aos_corrections``.
+Array quantities from ``efd_lsstcam.exposure_efd_unpivoted`` (property/field/value):
+  - ``mt_logevent_aggregated_dof``               -> DOF Trim (50)          -> dof0-49
+  - ``mt_m1m3_applied_elevation_forces_mean``    -> M1M3 elevation LUT     -> lut_dof10-29
+  - ``mt_m1m3_applied_azimuth_forces_mean``      -> M1M3 azimuth LUT       -> m1m3azim_dof0-19
+  - ``mt_m1m3_applied_thermal_forces_mean``      -> M1M3 thermal LUT       -> m1m3therm_dof0-19
+  - ``mt_m2_axial_force_lut_gravity_mean``       -> M2 gravity LUT         -> lut_dof30-49
+  - ``mt_m2_axial_force_lut_temperature_mean``   -> M2 thermal LUT         -> m2temp_dof0-19
+axial forces (M1M3 zForces[156] / M2 lut*[72]) -> bending amplitudes via ts_ofc
+``BendModeToForce``.  (M1M3 azimuth is partly lateral; only its axial zForces are
+used, and it is skipped cleanly if the transform stores no zForces for it.)
 
-Column names match ``olr/code/telemetry.py`` + ``aos_trim`` (``dof*``, ``lut_dof*``,
-``cam_air_temp`` ...), so the ConsDB and raw-EFD paths yield the SAME schema and
-are interchangeable.  Mirror terms are kept SEPARATE (per the analysis choice):
-    lut_dof10-29 = M1M3 elevation,   lut_dof30-49 = M2 gravity,
-    m2temp_dof0-19 = M2 temperature   (M2 total LUT = lut_dof30-49 + m2temp_dof0-19).
+Scalars from ``efd_lsstcam.exposure_efd`` (pivoted), queried in independent topic
+groups so one missing column only drops its group:
+  - ESS temps 111/112/113/301 + TMA truss 122 + sonic 110 + camera-hex ESS 1
+  - wind: 110 sonic components/magnitude + 301 airflow speed/direction
+  - mirror stress scalars m1m3_stress / m2_stress
+  - hexapod compensation_offset (LUT -> lut_dof0-9) + aos_corrections (Trim -> trim_hex_dof0-9)
+Plus weather-tower ``wind_speed`` / ``wind_dir`` from ``cdb_lsstcam.exposure``.
 
-NOT in the transform (still need raw EFD if wanted): the M1M3 spatial gradients
-(x/y/z/radial_gradient, from the thermocouple array) and the 123-126 inside
-anemometers (only salIndex 110 is transformed).  Everything else is here.
+Column names match ``olr/code/telemetry.py`` + ``aos_trim`` so the ConsDB and
+raw-EFD paths yield the SAME schema and are interchangeable.  NOT in the
+transform: M1M3 spatial gradients (x/y/z/radial, from the thermocouple array)
+and the 123-126 inside anemometers -- fetch those from raw EFD if wanted.
 
 Keyed on ``exposure_id`` (== ``visit_id`` for these single-snap AOS visits).
 """
-import re
-
 import numpy as np
 import pandas as pd
 
-# --- unpivoted array properties -> short prefix used to rebuild each array ----
+# --- unpivoted array properties -> (out_prefix, axial field-name, length) -----
 UNPIVOT_PROPS = {
-    "mt_logevent_aggregated_dof":             ("dof",      "aggregatedDoF", 50),
-    "mt_m1m3_applied_elevation_forces_mean":  ("m1m3elev", "zForces",       156),
-    "mt_m2_axial_force_lut_gravity_mean":     ("m2grav",   "lutGravity",    72),
-    "mt_m2_axial_force_lut_temperature_mean": ("m2temp",   "lutTemperature", 72),
+    "mt_logevent_aggregated_dof":             ("dof",       "aggregatedDoF",  50),
+    "mt_m1m3_applied_elevation_forces_mean":  ("m1m3elev",  "zForces",       156),
+    "mt_m1m3_applied_azimuth_forces_mean":    ("m1m3azim",  "zForces",       156),
+    "mt_m1m3_applied_thermal_forces_mean":    ("m1m3therm", "zForces",       156),
+    "mt_m2_axial_force_lut_gravity_mean":     ("m2grav",    "lutGravity",     72),
+    "mt_m2_axial_force_lut_temperature_mean": ("m2temp",    "lutTemperature", 72),
 }
 
 # --- pivoted scalar columns: transformed-EFD name -> our output name ----------
@@ -45,23 +50,25 @@ TEMP_COLS = {
     "mt_salindex112_temperature_0_mean": "m2_air_temp",
     "mt_salindex113_temperature_0_mean": "m1m3_air_temp",
     "mt_salindex301_temperature_0_mean": "outside_temp",
-    "mt_salindex122_temperature_6":      "tma_truss_temp_pxpy",  # +X+Y truss
-    "mt_salindex122_temperature_7":      "tma_truss_temp_mxmy",  # -X-Y truss
+    "mt_salindex122_temperature_6":      "tma_truss_temp_pxpy",   # +X+Y truss
+    "mt_salindex122_temperature_7":      "tma_truss_temp_mxmy",   # -X-Y truss
+    "mt_salindex110_sonic_temperature_mean": "sonic_temperature",
+    **{f"mt_salindex1_temperature_{i}_mean": f"cam_hex_temp_{i}" for i in range(8)},
 }
 WIND_COLS = {
-    "mt_salindex110_wind_speed_magnitude_mean": "wind_speed_inside",   # TMA sonic (110 only)
-    "mt_salindex301_airflow_speed_mean":        "wind_speed_outside",  # weather tower
+    "mt_salindex110_wind_speed_magnitude_mean": "wind_speed_inside",
+    "mt_salindex301_airflow_speed_mean":        "wind_speed_outside",
     "mt_salindex301_airflow_direction_mean":    "wind_dir_outside",
-    "mt_salindex110_wind_speed_0_mean":         "wind_inside_x",       # sonic components
+    "mt_salindex110_wind_speed_0_mean":         "wind_inside_x",
     "mt_salindex110_wind_speed_1_mean":         "wind_inside_y",
     "mt_salindex110_wind_speed_2_mean":         "wind_inside_z",
     "mt_salindex110_wind_speed_maxmagnitude_mean": "wind_inside_maxmag",
 }
+STRESS_COLS = {"m1m3_stress": "m1m3_stress", "m2_stress": "m2_stress"}
+
 HEX_AXES = ["z", "x", "y", "u", "v"]           # drop w to match the OFC DOF layout
-# lut_dof0-4 = M2 hex, lut_dof5-9 = cam hex  (LUT = compensation_offset)
 HEX_LUT_COLS = ([f"m2_hexapod_compensation_offset_{a}" for a in HEX_AXES]
                 + [f"camera_hexapod_compensation_offset_{a}" for a in HEX_AXES])
-# hexapod AOS-correction Trim (dof-space), stored as trim_hex_dof0-9
 HEX_TRIM_COLS = ([f"m2_hexapod_aos_corrections_{a}" for a in HEX_AXES]
                  + [f"camera_hexapod_aos_corrections_{a}" for a in HEX_AXES])
 
@@ -87,8 +94,10 @@ def _to20(vec):
 def fetch_arrays_unpivoted(cdb, visit_ids):
     """DOF Trim + mirror LUT force arrays per exposure from exposure_efd_unpivoted.
 
-    Returns a dict ``exposure_id -> {prefix: np.ndarray}`` for prefixes
-    ``dof`` (50), ``m1m3elev`` (156), ``m2grav`` (72), ``m2temp`` (72).
+    Returns ``exposure_id -> {out_prefix: np.ndarray}`` for the prefixes in
+    ``UNPIVOT_PROPS``; each array holds the fields whose name starts with that
+    property's axial field-name (e.g. ``zForces*``), all-NaN if that field-set
+    is absent (e.g. azimuth stored only as lateral x/y forces).
     """
     props = "', '".join(UNPIVOT_PROPS)
     frames = []
@@ -103,11 +112,13 @@ def fetch_arrays_unpivoted(cdb, visit_ids):
     if len(unp) == 0:
         return out
     unp["value"] = pd.to_numeric(unp["value"], errors="coerce")
-    unp["k"] = unp["field"].astype(str).str.extract(r"(\d+)$").astype(float)
+    fstr = unp["field"].astype(str)
+    unp["k"] = fstr.str.extract(r"(\d+)$")[0].astype(float)
     for eid, g in unp.groupby("exposure_id"):
         rec = {}
-        for prop, (prefix, _field, n) in UNPIVOT_PROPS.items():
-            sub = g[g["property"] == prop]
+        for prop, (prefix, fname, n) in UNPIVOT_PROPS.items():
+            sub = g[(g["property"] == prop)
+                    & g["field"].astype(str).str.startswith(fname)]
             arr = np.full(n, np.nan)
             kk = sub["k"].to_numpy()
             vv = sub["value"].to_numpy()
@@ -118,58 +129,76 @@ def fetch_arrays_unpivoted(cdb, visit_ids):
     return out
 
 
-def fetch_scalars_pivoted(cdb, visit_ids):
-    """ESS temps, TMA truss, wind, and hexapod LUT/Trim per exposure (pivoted).
+def _query_cols(cdb, table, cols, visit_ids, gname):
+    """SELECT exposure_id + cols from `table` for visit_ids, chunked + guarded."""
+    sel = ", ".join(["exposure_id"] + cols)
+    frames = []
+    for ids in _chunks(list(map(int, visit_ids))):
+        idlist = ", ".join(str(v) for v in ids)
+        q = f"SELECT {sel} FROM {table} WHERE exposure_id IN ({idlist})"
+        try:
+            frames.append(cdb.query(q).to_pandas())
+        except Exception as e:
+            print(f"(ConsDB '{gname}' query failed [{type(e).__name__}: {e}])",
+                  flush=True)
+            return None
+    return pd.concat(frames, ignore_index=True) if frames else None
 
-    Queried in independent topic groups so a single missing/renamed column in
-    the deployed schema only drops its own group (NaN) rather than the whole
-    scalar block.
+
+def fetch_scalars_pivoted(cdb, visit_ids):
+    """ESS temps/truss/sonic/cam-hex, wind, stress, hexapod LUT/Trim (per group).
+
+    Also joins weather-tower ``wind_speed`` / ``wind_dir`` from
+    ``cdb_lsstcam.exposure``.  Independent groups so one bad column drops only
+    its group.  Returns a DataFrame indexed by ``exposure_id``.
     """
-    groups = {"temps": list(TEMP_COLS), "wind": list(WIND_COLS),
-              "hexlut": HEX_LUT_COLS, "hextrim": HEX_TRIM_COLS}
-    ids_all = list(map(int, visit_ids))
+    groups = [
+        ("efd_lsstcam.exposure_efd", list(TEMP_COLS),  "temps"),
+        ("efd_lsstcam.exposure_efd", list(WIND_COLS),  "wind"),
+        ("efd_lsstcam.exposure_efd", list(STRESS_COLS), "stress"),
+        ("efd_lsstcam.exposure_efd", HEX_LUT_COLS,     "hexlut"),
+        ("efd_lsstcam.exposure_efd", HEX_TRIM_COLS,    "hextrim"),
+        ("cdb_lsstcam.exposure",     ["wind_speed", "wind_dir"], "weather"),
+    ]
     merged = None
-    for gname, cols in groups.items():
-        sel = ", ".join(["exposure_id"] + cols)
-        frames, ok = [], True
-        for ids in _chunks(ids_all):
-            idlist = ", ".join(str(v) for v in ids)
-            q = (f"SELECT {sel} FROM efd_lsstcam.exposure_efd "
-                 f"WHERE exposure_id IN ({idlist})")
-            try:
-                frames.append(cdb.query(q).to_pandas())
-            except Exception as e:
-                print(f"(ConsDB pivoted group '{gname}' failed "
-                      f"[{type(e).__name__}: {e}])", flush=True)
-                ok = False
-                break
-        if not ok or not frames:
+    for table, cols, gname in groups:
+        g = _query_cols(cdb, table, cols, visit_ids, gname)
+        if g is None or len(g) == 0:
             continue
-        g = pd.concat(frames, ignore_index=True)
+        g = g.drop_duplicates("exposure_id")
         merged = g if merged is None else merged.merge(g, on="exposure_id", how="outer")
-    return merged if merged is not None else pd.DataFrame(columns=["exposure_id"])
+    if merged is None:
+        return pd.DataFrame(columns=["exposure_id"]).set_index("exposure_id")
+    return merged.set_index("exposure_id")
 
 
 def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id"):
-    """Attach DOF/mirror-LUT/hexapod/temps/wind to ``visits`` from the ConsDB
-    transformed EFD.  Returns the enriched DataFrame (a copy).
+    """Attach DOF/mirror-LUT/hexapod/temps/wind/stress to ``visits`` (a copy).
 
-    Adds: dof0-49, lut_dof0-49 (hexapod + M1M3 elevation + M2 gravity),
-    m2temp_dof0-19, trim_hex_dof0-9, ESS temps + deltas + truss, wind columns.
-    Does NOT add v-modes (caller derives from dof) or M1M3 gradients (raw EFD).
+    Does NOT add v-modes (caller derives from dof0-49) or M1M3 gradients (raw EFD).
     """
     from lsst.ts.ofc import OFCData, BendModeToForce
     ofc = OFCData("lsst", config_dir=config_dir)
     bmf_m1m3 = BendModeToForce("M1M3", ofc)
     bmf_m2 = BendModeToForce("M2", ofc)
 
+    def _bend(bmf, arr):
+        if arr is None or not np.isfinite(arr).any():
+            return None
+        try:
+            return _to20(bmf.bending_mode(np.nan_to_num(arr, nan=0.0)))
+        except Exception as e:
+            print(f"(bending_mode failed [{type(e).__name__}])", flush=True)
+            return None
+
     visits = visits.copy()
     vids = visits[visit_col].astype(int).to_numpy()
-
-    # --- arrays: DOF Trim + mirror bending modes (guarded) ---
-    dof = np.full((len(vids), 50), np.nan)
-    lut = np.full((len(vids), 50), np.nan)      # 0-9 hex (filled below), 10-49 mirror
-    m2temp = np.full((len(vids), 20), np.nan)
+    n = len(vids)
+    dof = np.full((n, 50), np.nan)
+    lut = np.full((n, 50), np.nan)              # 0-9 hex, 10-29 M1M3 elev, 30-49 M2 grav
+    m2temp = np.full((n, 20), np.nan)
+    m1m3azim = np.full((n, 20), np.nan)
+    m1m3therm = np.full((n, 20), np.nan)
     try:
         arrays = fetch_arrays_unpivoted(cdb, vids)
         for i, vid in enumerate(vids):
@@ -178,51 +207,54 @@ def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id"):
                 continue
             if np.isfinite(rec["dof"]).any():
                 dof[i] = rec["dof"]
-            if np.isfinite(rec["m1m3elev"]).any():
-                lut[i, 10:30] = _to20(bmf_m1m3.bending_mode(rec["m1m3elev"]))
-            if np.isfinite(rec["m2grav"]).any():
-                lut[i, 30:50] = _to20(bmf_m2.bending_mode(rec["m2grav"]))
-            if np.isfinite(rec["m2temp"]).any():
-                m2temp[i] = _to20(bmf_m2.bending_mode(rec["m2temp"]))
+            for src, dst in ((_bend(bmf_m1m3, rec["m1m3elev"]),  ("lut", 10, 30)),
+                             (_bend(bmf_m2,   rec["m2grav"]),    ("lut", 30, 50))):
+                if src is not None:
+                    lut[i, dst[1]:dst[2]] = src
+            v = _bend(bmf_m2, rec["m2temp"]);      m2temp[i] = v if v is not None else m2temp[i]
+            v = _bend(bmf_m1m3, rec["m1m3azim"]);  m1m3azim[i] = v if v is not None else m1m3azim[i]
+            v = _bend(bmf_m1m3, rec["m1m3therm"]); m1m3therm[i] = v if v is not None else m1m3therm[i]
     except Exception as e:
         print(f"(ConsDB unpivoted arrays failed [{type(e).__name__}: {e}])", flush=True)
 
-    # --- scalars: hexapod LUT/Trim + temps + wind (guarded) ---
-    scal = None
     try:
-        scal = fetch_scalars_pivoted(cdb, vids)
+        scal = fetch_scalars_pivoted(cdb, vids).reindex(vids)
     except Exception as e:
         print(f"(ConsDB pivoted scalars failed [{type(e).__name__}: {e}])", flush=True)
-    if scal is not None and len(scal):
-        scal = scal.set_index("exposure_id")
-        scal = scal.reindex(vids)               # align to visit order
-        for j, c in enumerate(HEX_LUT_COLS):    # -> lut_dof0-9
-            if c in scal:
-                lut[:, j] = pd.to_numeric(scal[c], errors="coerce").to_numpy()
+        scal = pd.DataFrame(index=vids)
 
-    # assemble DataFrame columns via one concat (avoid fragmentation)
+    def _col(name):
+        return (pd.to_numeric(scal[name], errors="coerce").to_numpy()
+                if name in scal else np.full(n, np.nan))
+
+    for j, c in enumerate(HEX_LUT_COLS):
+        lut[:, j] = _col(c)
+
     blocks = {}
-    for i in range(50):
-        blocks[f"dof{i}"] = dof[:, i]
-    for i in range(50):
-        blocks[f"lut_dof{i}"] = lut[:, i]
-    for i in range(20):
-        blocks[f"m2temp_dof{i}"] = m2temp[:, i]
-    if scal is not None and len(scal):
-        for j, c in enumerate(HEX_TRIM_COLS):   # hexapod Trim (aos_corrections)
-            blocks[f"trim_hex_dof{j}"] = (pd.to_numeric(scal[c], errors="coerce").to_numpy()
-                                          if c in scal else np.full(len(vids), np.nan))
-        for src, name in {**TEMP_COLS, **WIND_COLS}.items():
-            blocks[name] = (pd.to_numeric(scal[src], errors="coerce").to_numpy()
-                            if src in scal else np.full(len(vids), np.nan))
+    blocks.update({f"dof{i}": dof[:, i] for i in range(50)})
+    blocks.update({f"lut_dof{i}": lut[:, i] for i in range(50)})
+    blocks.update({f"m2temp_dof{i}": m2temp[:, i] for i in range(20)})
+    blocks.update({f"m1m3azim_dof{i}": m1m3azim[:, i] for i in range(20)})
+    blocks.update({f"m1m3therm_dof{i}": m1m3therm[:, i] for i in range(20)})
+    for j, c in enumerate(HEX_TRIM_COLS):
+        blocks[f"trim_hex_dof{j}"] = _col(c)
+    for src, name in {**TEMP_COLS, **WIND_COLS, **STRESS_COLS}.items():
+        blocks[name] = _col(src)
+    blocks["wind_speed_weather"] = _col("wind_speed")
+    blocks["wind_dir_weather"] = _col("wind_dir")
+
     add = pd.DataFrame(blocks, index=visits.index)
-    # derived delta-Ts (match telemetry.py)
     for name, (a, b) in _DELTAS.items():
         if a in add and b in add:
             add[name] = add[a] - add[b]
+    cam_hex = [f"cam_hex_temp_{i}" for i in range(8)]
+    if all(c in add for c in cam_hex):
+        add["cam_hex_temp_avg"] = add[cam_hex].mean(axis=1)
     visits = pd.concat([visits, add], axis=1)
+
     n_dof = int(np.isfinite(dof).all(axis=1).sum())
     n_mir = int(np.isfinite(lut[:, 10:50]).any(axis=1).sum())
-    print(f"ConsDB EFD: DOF {n_dof}/{len(vids)}, mirror LUT {n_mir}/{len(vids)}",
-          flush=True)
+    print(f"ConsDB EFD: DOF {n_dof}/{n}, mirror LUT {n_mir}/{n}, "
+          f"azimuth {int(np.isfinite(m1m3azim).any(axis=1).sum())}, "
+          f"thermal {int(np.isfinite(m1m3therm).any(axis=1).sum())}", flush=True)
     return visits
