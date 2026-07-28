@@ -80,6 +80,16 @@ defaults:
                                  # null -> all. Use to drop out-of-family rotator points.
                                  # Independent of split.rotator_select (the map-build subset).
 
+  vmode_correlations:     # v-mode <-> temperature + v-mode autocorrelation (robust)
+    dz_prefix: z1toz6
+    max_coeff_um: 2.0     # reject visits with any |DZ| > this (um)
+    alpha: 0.05           # significance level (Bonferroni over all pairs)
+    # thermal_vars defaults to the 13-var suite; n_dof/n_keep follow the build
+
+  dz_explained:           # per-visit fraction of DZ explained by 22/12 vs 50/34
+    dz_prefix: z1toz6
+    max_coeff_um: 2.0
+
   fam_coadd_miw:          # coadded FAM MIW-subtracted Z5-Z8 focal-plane maps
     bin_deg: 1.0          # pointing bin (el/rot/az) grouping tolerance, deg
     min_triplets: 6       # min FAM triplets in a block-pointing group to coadd

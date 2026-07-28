@@ -192,6 +192,8 @@ rule all:
         [f"output/{ps}/{mi}/plots/dz_correlations.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/plots/dz_correlations_optcorr.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/plots/thermal_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/plots/vmode_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/plots/dz_explained.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/bounce_kj_stats.parquet" for ps, mi in MI_PAIRS],
 
 # ---- per chunk: mktable (Butler) -> donuts + visits ----
@@ -614,3 +616,44 @@ rule fam_coadd_miw:
         "--mi-name {wildcards.mi} --bin-deg {params.bin_deg} "
         "--min-triplets {params.mint} --grid-n {params.grid} --pct {params.pct} "
         "> {log} 2>&1"
+
+
+# ---- v-mode <-> temperature correlations + v-mode autocorrelation (robust
+#      Spearman rho + Theil-Sen), discrete -1..1 summary with significance ----
+rule vmode_correlations:
+    input:
+        fits   = "output/{ps}/{mi}/fits.parquet",
+        visits = "output/{ps}/visits.parquet",       # nollIndices for the OFC SVD
+        script = "code/run_vmode_correlations.py",
+        lib    = f"{WF_LIB}/ofc_svd.py",
+    output:
+        pdf     = "output/{ps}/{mi}/plots/vmode_correlations.pdf",
+        summary = "output/{ps}/{mi}/plots/vmode_correlations_summary.parquet",
+    params:
+        acfg = lambda w: an_json("vmode_correlations", w.ps, w.mi),
+        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.vmode_correlations.log"
+    shell:
+        "python code/run_vmode_correlations.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
+
+
+# ---- per-visit fraction of the DZ explained by the 22/12 vs 50/34 subspace ----
+rule dz_explained:
+    input:
+        fits   = "output/{ps}/{mi}/fits.parquet",
+        visits = "output/{ps}/visits.parquet",       # nollIndices for the OFC SVD
+        script = "code/run_dz_explained.py",
+        lib    = f"{WF_LIB}/ofc_svd.py",
+    output:
+        pdf     = "output/{ps}/{mi}/plots/dz_explained.pdf",
+        table   = "output/{ps}/{mi}/plots/dz_explained.parquet",
+    params:
+        acfg = lambda w: an_json("dz_explained", w.ps, w.mi),
+        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
+    resources: mem_mb=4000
+    log: "logs/{ps}.{mi}.dz_explained.log"
+    shell:
+        "python code/run_dz_explained.py --param-set {wildcards.ps} "
+        "--mi-name {wildcards.mi} > {log} 2>&1"
