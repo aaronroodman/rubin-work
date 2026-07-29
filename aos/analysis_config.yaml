@@ -84,6 +84,8 @@ defaults:
     dz_prefix: z1toz6
     max_coeff_um: 2.0     # reject visits with any |DZ| > this (um)
     alpha: 0.05           # significance level (Bonferroni over all pairs)
+    corner_block: 6       # v_i-v_j lower triangle tiled into corner_block^2 panels/page
+    top_pairs: 16         # strongest |rho| pairs drawn as large individual scatters
     # thermal_vars defaults to the 13-var suite; n_dof/n_keep follow the build
 
   dz_explained:           # per-visit fraction of DZ explained by 22/12 vs 50/34

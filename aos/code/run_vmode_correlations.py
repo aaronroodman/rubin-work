@@ -8,8 +8,11 @@ v-mode against (a) the temperature telemetry suite and (b) the other v-modes
 Spearman rho + Theil-Sen slope, and gives one v-mode-centric summary: discrete
 -1..1 rho heatmaps + slope heatmaps with statistically-significant cells flagged.
 
-Pages: (1) v-mode x temperature rho + slope, (2) v-mode x v-mode rho + slope.
-Also  vmode_correlations_summary.parquet  (kind, mode_i, term, rho, slope, p, n).
+Pages: (1) v-mode x temperature rho + slope, (2) v-mode x v-mode rho + slope,
+(3..) the full v_i-v_j lower triangle tiled into `corner_block` x `corner_block`
+panels per page (scatter + robust Theil-Sen fit + Spearman rho), (last) the
+top-|rho| individual v-mode pair scatters at readable size.  Also
+vmode_correlations_summary.parquet  (kind, mode_i, term, rho, slope, p, n).
 
 Needs lsst.ts.ofc (RSP).  Knobs: analysis_config.yaml `vmode_correlations`.
 """
@@ -37,7 +40,9 @@ DEFAULT_THERMAL_VARS = [
     "tma_truss_temp_pxpy", "tma_truss_temp_mxmy",
 ]
 DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0,
-               thermal_vars=list(DEFAULT_THERMAL_VARS), alpha=0.05)
+               thermal_vars=list(DEFAULT_THERMAL_VARS), alpha=0.05,
+               corner_block=6,    # v_i-v_j corner tiled into corner_block^2 panels/page
+               top_pairs=16)      # strongest |rho| pairs shown as large scatters
 
 
 def dz_coeff_columns(df, prefix):
@@ -116,6 +121,124 @@ def _corr_grid(V, cols, xs):
     return rho, slope, pval, rows
 
 
+def _fit(x, y):
+    """Robust Spearman rho + Theil-Sen (slope, intercept) on finite pairs."""
+    m = np.isfinite(x) & np.isfinite(y)
+    if int(m.sum()) < 5:
+        return None
+    rho, p = spearmanr(x[m], y[m])
+    slope, intercept, _, _ = theilslopes(y[m], x[m])
+    return dict(rho=float(rho), p=float(p), slope=float(slope),
+                intercept=float(intercept), n=int(m.sum()), mask=m)
+
+
+def _star(p, bonf):
+    return "**" if (np.isfinite(p) and p < bonf) else (
+           "*" if (np.isfinite(p) and p < 0.05) else "")
+
+
+def _scatter_panel(ax, x, y, bonf):
+    """One v_col(x)-vs-v_row(y) scatter with the robust Theil-Sen line and the
+    Spearman rho annotation (bold red for |rho|>=0.3, significance stars)."""
+    mk = np.isfinite(x) & np.isfinite(y)
+    xx, yy = x[mk], y[mk]
+    ax.scatter(xx, yy, s=4, alpha=0.35, color="C0", edgecolors="none",
+               rasterized=True)
+    f = _fit(x, y)
+    if f is not None:
+        xr = np.array([xx.min(), xx.max()])
+        ax.plot(xr, f["intercept"] + f["slope"] * xr, color="C3", lw=0.9)
+        strong = abs(f["rho"]) >= 0.3
+        ax.text(0.05, 0.93, f"{f['rho']:+.2f}{_star(f['p'], bonf)}",
+                transform=ax.transAxes, fontsize=7, va="top",
+                color=("C3" if strong else "0.4"),
+                weight=("bold" if strong else "normal"))
+
+
+def vmode_corner_pages(V, vlabels, block, bonf, title_prefix):
+    """The full v_i-v_j lower triangle, tiled into pages of `block` x `block`
+    panels.  Split the modes into consecutive blocks; emit one page per
+    (row-block >= col-block) pair.  On a diagonal block the page is itself a
+    lower-triangle corner (histograms on the diagonal, upper corner blank);
+    off-diagonal block-pages are a full grid of scatters.  Yields figures one at
+    a time (reading order: row-block outer, col-block inner) so the caller can
+    save and close each before the next is built."""
+    n = V.shape[1]
+    nb = int(np.ceil(n / block))
+    for rb in range(nb):
+        rows = list(range(rb * block, min((rb + 1) * block, n)))
+        for cb in range(rb + 1):
+            cols = list(range(cb * block, min((cb + 1) * block, n)))
+            diag = (rb == cb)
+            fig, axes = plt.subplots(
+                len(rows), len(cols),
+                figsize=(2.2 * len(cols) + 0.6, 2.2 * len(rows) + 0.9),
+                squeeze=False)
+            for ri, i in enumerate(rows):
+                for cj, j in enumerate(cols):
+                    ax = axes[ri][cj]
+                    if diag and j > i:                       # upper corner blank
+                        ax.axis("off"); continue
+                    if diag and i == j:                      # diagonal histogram
+                        v = V[:, i][np.isfinite(V[:, i])]
+                        ax.hist(v, bins=25, color="0.7"); ax.set_yticks([])
+                    else:
+                        _scatter_panel(ax, V[:, j], V[:, i], bonf)
+                    if ri == len(rows) - 1:
+                        ax.set_xlabel(vlabels[j], fontsize=8)
+                    if cj == 0:
+                        ax.set_ylabel(vlabels[i], fontsize=8)
+                    ax.tick_params(labelsize=6, length=2)
+            rr = f"{vlabels[rows[0]]}-{vlabels[rows[-1]]}"
+            cc = f"{vlabels[cols[0]]}-{vlabels[cols[-1]]}"
+            fig.suptitle(f"{title_prefix}: rows {rr} x cols {cc}", fontsize=11)
+            fig.tight_layout(rect=[0, 0, 1, 0.96])
+            yield fig
+
+
+def ranked_pairs(V):
+    """All i<j v-mode pairs with a robust fit, sorted by |rho| descending."""
+    out = []
+    for i in range(V.shape[1]):
+        for j in range(i + 1, V.shape[1]):
+            f = _fit(V[:, i], V[:, j])
+            if f is not None:
+                out.append({"i": i, "j": j, **f})
+    out.sort(key=lambda d: -abs(d["rho"]))
+    return out
+
+
+def top_pairs_page(V, vlabels, pairs, bonf, ncol, title):
+    """The strongest v-mode pairs as large individual scatters (x=v_i, y=v_j)
+    with the robust fit, Spearman rho, Theil-Sen slope and n."""
+    k = len(pairs)
+    if k == 0:
+        return None
+    nrow = int(np.ceil(k / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.2 * ncol, 2.8 * nrow),
+                             squeeze=False)
+    for idx in range(nrow * ncol):
+        ax = axes[idx // ncol][idx % ncol]
+        if idx >= k:
+            ax.axis("off"); continue
+        pr = pairs[idx]; i, j = pr["i"], pr["j"]
+        x, y = V[:, i], V[:, j]
+        mk = np.isfinite(x) & np.isfinite(y)
+        xx, yy = x[mk], y[mk]
+        ax.scatter(xx, yy, s=9, alpha=0.4, color="C0", edgecolors="none",
+                   rasterized=True)
+        xr = np.array([xx.min(), xx.max()])
+        ax.plot(xr, pr["intercept"] + pr["slope"] * xr, color="C3", lw=1.2)
+        ax.set_xlabel(vlabels[i], fontsize=8)
+        ax.set_ylabel(vlabels[j], fontsize=8)
+        ax.set_title(f"rho={pr['rho']:+.2f}{_star(pr['p'], bonf)}  "
+                     f"slope={pr['slope']:+.2g}  n={pr['n']}", fontsize=8)
+        ax.tick_params(labelsize=6)
+    fig.suptitle(title, fontsize=11)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    return fig
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -186,12 +309,30 @@ def main():
         fig.suptitle(f"{args.param_set} / {args.mi_name}: v-mode autocorrelation  "
                      f"(n={len(df)}, {nkeep} modes)", fontsize=11)
         pdf.savefig(fig); plt.close(fig)
+        # pages 3+: full v_i-v_j lower triangle, tiled block x block per page
+        block = int(sec["corner_block"])
+        n_corner = 0
+        for fig in vmode_corner_pages(
+                V, vlabels, block, bonf,
+                f"{args.mi_name}: v-mode corner ({nkeep} modes, {block}x{block}/page;"
+                f" Theil-Sen line, Spearman rho; ** p<{bonf:.1g}, * p<0.05)"):
+            pdf.savefig(fig); plt.close(fig); n_corner += 1
+        # final page: the strongest individual v_i-v_j pair scatters
+        pairs = ranked_pairs(V)[: int(sec["top_pairs"])]
+        fig = top_pairs_page(
+            V, vlabels, pairs, bonf, 4,
+            f"{args.param_set} / {args.mi_name}: top {len(pairs)} v-mode pairs by "
+            f"|rho| (robust fit; ** p<{bonf:.1g}, * p<0.05)")
+        if fig is not None:
+            pdf.savefig(fig); plt.close(fig)
 
     summ = ([dict(kind="vmode_temp", **r) for r in trows]
             + [dict(kind="vmode_vmode", **r) for r in vrows])
     pd.DataFrame(summ).to_parquet(out_dir / "vmode_correlations_summary.parquet")
-    print(f"  wrote vmode_correlations.pdf + _summary.parquet ({len(summ)} rows)",
-          flush=True)
+    print(f"  wrote vmode_correlations.pdf ({2 + n_corner + 1} pages: "
+          f"temp heatmap, autocorr heatmap, {n_corner} corner blocks "
+          f"({block}x{block}), top-{len(pairs)} pairs) "
+          f"+ _summary.parquet ({len(summ)} rows)", flush=True)
 
 
 if __name__ == "__main__":
