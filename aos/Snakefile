@@ -192,7 +192,8 @@ rule all:
         [f"output/{ps}/{mi}/plots/dz_correlations.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/plots/dz_correlations_optcorr.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/plots/thermal_correlations.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/plots/vmode_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/plots/vmode_correlations_50_34.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/plots/vmode_correlations_22_12.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/plots/dz_explained.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/bounce_kj_stats.parquet" for ps, mi in MI_PAIRS],
 
@@ -627,8 +628,10 @@ rule vmode_correlations:
         script = "code/run_vmode_correlations.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf     = "output/{ps}/{mi}/plots/vmode_correlations.pdf",
-        summary = "output/{ps}/{mi}/plots/vmode_correlations_summary.parquet",
+        pdf_50   = "output/{ps}/{mi}/plots/vmode_correlations_50_34.pdf",
+        pdf_22   = "output/{ps}/{mi}/plots/vmode_correlations_22_12.pdf",
+        summ_50  = "output/{ps}/{mi}/plots/vmode_correlations_summary_50_34.parquet",
+        summ_22  = "output/{ps}/{mi}/plots/vmode_correlations_summary_22_12.parquet",
     params:
         acfg = lambda w: an_json("vmode_correlations", w.ps, w.mi),
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
