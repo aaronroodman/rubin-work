@@ -39,7 +39,9 @@ Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
                                   and combined resid RMS / corr + vmode_1..34
   coadd_blocks_miw_perblock.pdf   one block per page: rows coadd / MIW / diff x
                                   Z5..Z8, metrics in titles, ordered by day/seq
-  coadd_blocks_miw_timeseries.pdf v-mode heatmap + metrics vs coadd ordinal
+  coadd_blocks_miw_timeseries.pdf metrics + telemetry (alt/az/rot/blur/
+                                  z_gradient) + per-v-mode value pages (5/page),
+                                  all vs coadd ordinal on a common x-scale
   block_grids.npz                 stacked coadd+MIW grids, v-modes, metadata
 
 RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc); requires the mi_name
@@ -198,6 +200,8 @@ def block_summary(v, rot_windows):
             rot=rot,
             fwhm=float(np.nanmedian(g["median_blur_arcsec"]))
             if "median_blur_arcsec" in g else np.nan,
+            z_gradient=float(np.nanmedian(g["z_gradient"]))
+            if "z_gradient" in g else np.nan,
             in_family=in_family(rot, rot_windows)))
     return pd.DataFrame(rows).sort_values(["day_obs", "seq_min"]).reset_index(drop=True)
 
@@ -258,12 +262,6 @@ def block_vmodes(final, svd):
     return np.nanmedian(V, axis=0)
 
 
-def _mark_days(ax, days):
-    days = np.asarray(days)
-    for x in np.where(days[1:] != days[:-1])[0] + 0.5:
-        ax.axvline(x, color="0.5", lw=0.6, ls=":")
-
-
 def render_perblock(blocks, xbins, ybins, out_pdf, pct):
     """One block per page: rows = coadd remnant / MIW reference / difference,
     cols = Z5..Z8.  Common per-term color scale (all three rows) so good
@@ -307,52 +305,84 @@ def render_perblock(blocks, xbins, ybins, out_pdf, pct):
 
 
 def render_timeseries(blocks, out_pdf):
-    """v-mode amplitudes and comparison metrics vs coadd ordinal (time order)."""
+    """Comparison metrics, block telemetry, and per-v-mode value plots, all vs
+    coadd ordinal on a COMMON horizontal scale.  Single-column panels; day_obs
+    boundaries drawn as dotted vlines on every panel (out-of-family blocks
+    shaded), with day_obs labelled on the top panel of each page.  v-modes are
+    5 panels/page (7 pages for 34)."""
     n = len(blocks); ordn = np.arange(n)
-    days = [b["day_obs"] for b in blocks]
+    days = np.array([b["day_obs"] for b in blocks])
     outfam = np.array([not b["in_family"] for b in blocks])
     Vm = np.array([b["vmodes"] for b in blocks])                 # (n, n_keep)
-    with PdfPages(out_pdf) as pdf:
-        # page 1: v-mode amplitude heatmap
-        fig, ax = plt.subplots(figsize=(max(10, 0.22 * n + 3), 9))
-        vlim = float(np.nanpercentile(np.abs(Vm), 98)) or 1.0
-        im = ax.imshow(Vm.T, aspect="auto", cmap="RdBu_r", vmin=-vlim, vmax=vlim,
-                       origin="lower", extent=[-0.5, n - 0.5, 0.5, Vm.shape[1] + 0.5])
-        ax.set_xlabel("coadd ordinal (day_obs / seq order)")
-        ax.set_ylabel("v-mode (a/sigma)")
+    nkeep = Vm.shape[1]
+    W = max(12.0, 0.30 * n + 3.0)                                # common width
+    xlim = (-0.6, n - 0.4)                                       # common x-range
+    bnd = np.where(days[1:] != days[:-1])[0] + 0.5              # day boundaries
+    day_start = [0] + list(np.where(days[1:] != days[:-1])[0] + 1)
+
+    def decorate(ax, first=False):
+        for x in bnd:
+            ax.axvline(x, color="0.5", lw=0.6, ls=":")
         for i in np.where(outfam)[0]:
-            ax.axvline(i, color="tab:red", lw=0.5, alpha=0.25)
-        _mark_days(ax, days)
-        ax.set_title("v-mode amplitude vs coadd ordinal  "
-                     "(red lines = out-of-5rot-family blocks; dotted = day change)")
-        fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02, label="a/sigma")
+            ax.axvspan(i - 0.5, i + 0.5, color="tab:red", alpha=0.07)
+        ax.set_xlim(*xlim); ax.grid(alpha=0.3)
+        if first:                                    # day_obs labels, top panel only
+            for i in day_start:
+                ax.text(i, 0.99, str(days[i]), transform=ax.get_xaxis_transform(),
+                        rotation=90, fontsize=5, va="top", ha="center", color="0.4")
+
+    def series_page(pdf, items, suptitle, colors=None):
+        fig, axes = plt.subplots(len(items), 1, figsize=(W, 2.0 * len(items) + 0.6),
+                                 sharex=True, squeeze=False)
+        axes = axes[:, 0]
+        for k, (lab, vals) in enumerate(items):
+            axes[k].plot(ordn, vals, "o-", ms=3,
+                         color=(colors[k] if colors else "C0"))
+            axes[k].set_ylabel(lab, fontsize=8)
+            decorate(axes[k], first=(k == 0))
+        axes[-1].set_xlabel("coadd ordinal (day_obs / seq order)")
+        fig.suptitle(suptitle, fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-        # page 2: metrics vs ordinal
-        fig, (a1, a2) = plt.subplots(2, 1, figsize=(max(10, 0.22 * n + 3), 9),
-                                     sharex=True)
+
+    with PdfPages(out_pdf) as pdf:
+        # comparison metrics (resid RMS + corr), multi-series per panel
+        fig, ax = plt.subplots(2, 1, figsize=(W, 6.8), sharex=True)
         for z in Z_TERMS:
-            a1.plot(ordn, [b["metrics"][f"resid_rms_z{z}"] for b in blocks],
-                    "o-", ms=3, label=f"Z{z}")
-        a1.plot(ordn, [b["metrics"]["resid_rms_combined"] for b in blocks],
-                "k-", lw=2, label="combined")
-        a1.set_ylabel("residual RMS (um)"); a1.legend(fontsize=7, ncol=5)
-        a1.grid(alpha=0.3)
+            ax[0].plot(ordn, [b["metrics"][f"resid_rms_z{z}"] for b in blocks],
+                       "o-", ms=3, label=f"Z{z}")
+        ax[0].plot(ordn, [b["metrics"]["resid_rms_combined"] for b in blocks],
+                   "k-", lw=2, label="combined")
+        ax[0].set_ylabel("resid RMS (um)"); ax[0].legend(fontsize=7, ncol=5)
         for z in Z_TERMS:
-            a2.plot(ordn, [b["metrics"][f"corr_z{z}"] for b in blocks],
-                    "o-", ms=3, label=f"Z{z}")
-        a2.plot(ordn, [b["metrics"]["corr_combined"] for b in blocks],
-                "k-", lw=2, label="mean")
-        a2.set_ylabel("spatial corr r"); a2.set_xlabel("coadd ordinal")
-        a2.legend(fontsize=7, ncol=5); a2.grid(alpha=0.3)
-        for a in (a1, a2):
-            for i in np.where(outfam)[0]:
-                a.axvspan(i - 0.5, i + 0.5, color="tab:red", alpha=0.08)
-            _mark_days(a, days)
+            ax[1].plot(ordn, [b["metrics"][f"corr_z{z}"] for b in blocks],
+                       "o-", ms=3, label=f"Z{z}")
+        ax[1].plot(ordn, [b["metrics"]["corr_combined"] for b in blocks],
+                   "k-", lw=2, label="mean")
+        ax[1].set_ylabel("spatial corr r"); ax[1].legend(fontsize=7, ncol=5)
+        ax[1].set_xlabel("coadd ordinal (day_obs / seq order)")
+        decorate(ax[0], first=True); decorate(ax[1])
         fig.suptitle("Coadd-vs-MIW comparison metrics vs ordinal  "
-                     "(red bands = out-of-5rot-family)")
+                     "(red bands = out-of-5rot-family)", fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-    print(f"wrote {out_pdf}  (v-mode heatmap + metrics vs ordinal, n={n})",
-          flush=True)
+
+        # telemetry page: elevation / azimuth / rotator / blur FWHM / z_gradient
+        series_page(pdf, [
+            ("elevation (deg)", [b["alt"] for b in blocks]),
+            ("azimuth (deg)", [b["az"] for b in blocks]),
+            ("rotator (deg)", [b["rot"] for b in blocks]),
+            ("donut blur FWHM (\")", [b["fwhm"] for b in blocks]),
+            ("M1M3 z_gradient", [b["z_gradient"] for b in blocks]),
+        ], "Block telemetry vs coadd ordinal")
+
+        # per-v-mode value plots, 5 panels/page
+        per = 5
+        for pg in range((nkeep + per - 1) // per):
+            lo, hi = pg * per, min((pg + 1) * per, nkeep)
+            series_page(pdf, [(f"v{m + 1}", Vm[:, m]) for m in range(lo, hi)],
+                        f"v-mode amplitude vs coadd ordinal  (v{lo + 1}-v{hi})")
+    npg = 2 + (nkeep + 4) // 5
+    print(f"wrote {out_pdf}  (metrics + telemetry + {(nkeep + 4) // 5} v-mode "
+          f"pages = {npg} pages, n={n})", flush=True)
 
 
 # ------------------------------------------------------------------- main
@@ -420,7 +450,7 @@ def main():
     # ---- block assignment (NO alt/rot cut) + summary table over ALL blocks ----
     vpd = pd.read_parquet(base / "visits.parquet", columns=[
         "day_obs", "seq_num", "alt", "az", "rotator_angle",
-        "science_program", "band", "median_blur_arcsec"])
+        "science_program", "band", "median_blur_arcsec", "z_gradient"])
     bdf = assign_blocks(vpd, allowed_bands, bounce_progs, args.pointing_tol,
                         args.max_seq_span, args.bounce_round,
                         wide_programs=wide_progs, wide_tol=args.wide_tol,
@@ -504,7 +534,8 @@ def main():
             block=int(blk), program=str(r["program"]), day_obs=int(r["day_obs"]),
             seq_min=int(r["seq_min"]), seq_max=int(r["seq_max"]),
             rot=float(r["rot"]), alt=float(r["alt"]), az=float(r["az"]),
-            fwhm=float(r["fwhm"]), n_visits=int(r["n_visits"]),
+            fwhm=float(r["fwhm"]), z_gradient=float(r["z_gradient"]),
+            n_visits=int(r["n_visits"]),
             n_donuts=int(len(dd)), in_family=bool(r["in_family"]),
             grid=grid, miw=miw, metrics=map_metrics(grid, miw),
             vmodes=block_vmodes(final, svd)))
@@ -527,8 +558,8 @@ def main():
     rows = []
     for bb in blocks:
         row = {k: bb[k] for k in ("ordinal", "block", "program", "day_obs",
-               "seq_min", "seq_max", "alt", "az", "rot", "fwhm", "n_visits",
-               "n_donuts", "in_family")}
+               "seq_min", "seq_max", "alt", "az", "rot", "fwhm", "z_gradient",
+               "n_visits", "n_donuts", "in_family")}
         row.update(bb["metrics"])
         for i, vv in enumerate(bb["vmodes"]):
             row[f"vmode_{i + 1}"] = float(vv)
@@ -546,7 +577,7 @@ def main():
         vmodes=np.array([bb["vmodes"] for bb in blocks]),
         **{k: np.array([bb[k] for bb in blocks]) for k in
            ("ordinal", "block", "day_obs", "seq_min", "seq_max", "rot", "alt",
-            "az", "fwhm", "n_visits", "n_donuts", "in_family")})
+            "az", "fwhm", "z_gradient", "n_visits", "n_donuts", "in_family")})
 
     render_perblock(blocks, xbins, ybins,
                     str(out_dir / "coadd_blocks_miw_perblock.pdf"), args.pct)
