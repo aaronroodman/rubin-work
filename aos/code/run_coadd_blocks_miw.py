@@ -98,27 +98,34 @@ def _wrapdiff(a, b):
 
 
 def assign_blocks(visits_pd, allowed_bands, bounce_programs, pointing_tol,
-                  max_seq_span, bounce_round):
+                  max_seq_span, bounce_round, wide_programs=(), wide_tol=20.0,
+                  max_blur=None):
     """Assign every FAM visit to a block (NO elevation / rotator cut).
 
     Standard program: greedy pointing-set -- a new block starts when the program
-    changes, the (alt, az, rot) drifts beyond `pointing_tol`, or seq_num runs
-    more than `max_seq_span` past the block's first visit (tolerates missing
-    triplets within the span).  Bounce program (T720/T724): one block per
-    rounded (alt, rot) state, combining all visits at that state regardless of
-    seq span.  Returns the DataFrame with a 'block' integer label + deg columns."""
+    changes, the (alt, az, rot) drifts beyond tolerance, or seq_num reaches
+    `max_seq_span` past the block's first visit (>= , so a 12-triplet block
+    spanning 33 stays whole and a back-to-back repeat splits cleanly; missing
+    triplets inside the span are tolerated).  `wide_programs` (T710/T710_v2,
+    whose image plan drifts in az/rotator) use `wide_tol` on az and rot instead
+    of `pointing_tol`.  Bounce program (T720/T724): one block per rounded
+    (alt, rot) state, combining all visits at that state regardless of seq span.
+    Optional `max_blur` drops visits with median_blur_arcsec above it.
+    Returns the DataFrame with a 'block' integer label + deg columns."""
     v = visits_pd.dropna(subset=["alt", "az", "rotator_angle"]).copy()
     if allowed_bands and "band" in v.columns:
         v = v[v["band"].astype(str).isin(set(allowed_bands))]
+    if max_blur is not None and "median_blur_arcsec" in v.columns:
+        v = v[v["median_blur_arcsec"].to_numpy(float) <= float(max_blur)]
     v["alt_deg"] = np.rad2deg(v["alt"].to_numpy(float))
     v["az_deg"] = np.mod(np.rad2deg(v["az"].to_numpy(float)), 360.0)
     v["rot_deg"] = v["rotator_angle"].to_numpy(float)
     v = v.sort_values(["science_program", "day_obs", "seq_num"]).reset_index(drop=True)
 
     block = np.full(len(v), -1, dtype=int)
-    prog = v["science_program"].astype(str).to_numpy()
     seq = v["seq_num"].to_numpy(float)
     alt = v["alt_deg"].to_numpy(); az = v["az_deg"].to_numpy(); rot = v["rot_deg"].to_numpy()
+    wide = set(wide_programs)
     nb = 0
     for (pr, day), pos in v.groupby(["science_program", "day_obs"]).indices.items():
         pos = np.sort(np.asarray(pos))
@@ -132,13 +139,22 @@ def assign_blocks(visits_pd, allowed_bands, bounce_programs, pointing_tol,
                     seen[key] = nb; nb += 1
                 block[p] = seen[key]
         else:
+            # T710 family: image plan drifts in az/rot over a long session, so
+            # use a wide az/rot tolerance AND drop the seq-span split (let the
+            # az/rot tolerance bound the block instead) to keep each session one
+            # block.  Standard programs keep tight tol + the ~36 seq-span split.
+            atol = pointing_tol
+            if str(pr) in wide:
+                aztol = rtol = wide_tol; span = np.inf
+            else:
+                aztol = rtol = pointing_tol; span = max_seq_span
             cur = None; start_seq = None; ref = None
             for p in pos:
                 new = (start_seq is None
-                       or (seq[p] - start_seq) > max_seq_span
-                       or abs(alt[p] - ref[0]) > pointing_tol
-                       or _wrapdiff(az[p], ref[1]) > pointing_tol
-                       or abs(rot[p] - ref[2]) > pointing_tol)
+                       or (seq[p] - start_seq) >= span
+                       or abs(alt[p] - ref[0]) > atol
+                       or _wrapdiff(az[p], ref[1]) > aztol
+                       or abs(rot[p] - ref[2]) > rtol)
                 if new:
                     cur = nb; nb += 1; start_seq = seq[p]; ref = (alt[p], az[p], rot[p])
                 block[p] = cur
@@ -166,7 +182,7 @@ def block_summary(v, rot_windows):
             fwhm=float(np.nanmedian(g["median_blur_arcsec"]))
             if "median_blur_arcsec" in g else np.nan,
             in_family=in_family(rot, rot_windows)))
-    return pd.DataFrame(rows).sort_values(["rot", "day_obs", "seq_min"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["day_obs", "seq_min"]).reset_index(drop=True)
 
 
 # ------------------------------------------------------------- plotting
@@ -184,11 +200,11 @@ def _term_scales(blocks, pct):
 
 def render_perblock(blocks, xbins, ybins, out_pdf, pct):
     """One block per page: Z5..Z8 focal-plane remnant maps, common per-term
-    color scale across blocks, rich title.  Sorted by rotator then day."""
+    color scale across blocks, rich title.  Ordered by day_obs then seq_num so
+    time trends are visible top-to-bottom."""
     vmax = _term_scales(blocks, pct)
     order = sorted(range(len(blocks)),
-                   key=lambda i: (blocks[i]["rot"], blocks[i]["day_obs"],
-                                  blocks[i]["seq_min"]))
+                   key=lambda i: (blocks[i]["day_obs"], blocks[i]["seq_min"]))
     with PdfPages(out_pdf) as pdf:
         for bi in order:
             b = blocks[bi]
@@ -234,12 +250,21 @@ def main():
     ap.add_argument("--bounce-programs", nargs="*",
                     default=["BLOCK-T720", "BLOCK-T724"],
                     help="programs split by bounced (alt,rot) state")
+    ap.add_argument("--wide-programs", nargs="*",
+                    default=["BLOCK-T710", "BLOCK-T710_v2"],
+                    help="programs with a drifting image plan -> wider az/rot tol")
     ap.add_argument("--pointing-tol", type=float, default=5.0,
                     help="deg tolerance on (alt,az,rot) within a standard block")
+    ap.add_argument("--wide-tol", type=float, default=20.0,
+                    help="deg az/rot tolerance for --wide-programs (T710 family)")
     ap.add_argument("--max-seq-span", type=float, default=36.0,
-                    help="max seq_num span of a standard block (~3*12)")
+                    help="a block breaks when seq_num reaches this far past its "
+                         "first visit (>=), so a 12-triplet run stays whole")
     ap.add_argument("--bounce-round", type=float, default=10.0,
                     help="deg rounding to separate bounce states")
+    ap.add_argument("--max-blur", type=float, default=1.4,
+                    help="drop visits with median_blur_arcsec above this "
+                         "(relaxed seeing cut; None-> no cut)")
     ap.add_argument("--n-bins", type=int, default=None,
                     help="focal-plane bins/axis (default: build.n_bins)")
     ap.add_argument("--n-iter", type=int, default=None,
@@ -261,6 +286,7 @@ def main():
     allowed_bands = args.bands if args.bands is not None else mc.as_band_list(cfg.get("filter"))
     rot_windows = (cfg.get("split") or {}).get("rotator_select")
     bounce_progs = set(args.bounce_programs or [])
+    wide_progs = set(args.wide_programs or [])
 
     base = Path(args.output_root) / args.param_set
     out_dir = base / args.out_name; out_dir.mkdir(parents=True, exist_ok=True)
@@ -271,13 +297,16 @@ def main():
         "day_obs", "seq_num", "alt", "az", "rotator_angle",
         "science_program", "band", "median_blur_arcsec"])
     bdf = assign_blocks(vpd, allowed_bands, bounce_progs, args.pointing_tol,
-                        args.max_seq_span, args.bounce_round)
+                        args.max_seq_span, args.bounce_round,
+                        wide_programs=wide_progs, wide_tol=args.wide_tol,
+                        max_blur=args.max_blur)
     summ = block_summary(bdf, rot_windows)
     summ["plotted"] = summ["n_visits"] >= args.min_visits
     summ.to_csv(out_dir / "blocks_summary.csv", index=False)
     print(f"[coadd_blocks_miw] {args.param_set}/{args.mi_name}: "
-          f"{len(summ)} blocks (bands={allowed_bands}, no alt/rot cut; "
-          f"bounce={sorted(bounce_progs)})  -> {out_dir}", flush=True)
+          f"{len(summ)} blocks (bands={allowed_bands}, no alt/rot cut, "
+          f"max_blur={args.max_blur}; bounce={sorted(bounce_progs)}, "
+          f"wide={sorted(wide_progs)})  -> {out_dir}", flush=True)
     with pd.option_context("display.max_rows", None, "display.width", 200):
         print(summ.to_string(
             index=False,
