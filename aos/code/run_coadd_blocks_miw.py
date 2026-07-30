@@ -26,15 +26,24 @@ Block definition (NO elevation or rotator cut -- take every block):
     one (alt, rotator) state form one block, the other state its own block
     (e.g. an elevation bounce 70<->40 -> a 70 block + a 40 block).
 
+Each coadd's Z5-Z8 remnant is compared to the MIW reference (the per-donut MIW
+sidecar binned on the same OCS grid): per-Zernike residual RMS (um) + spatial
+Pearson r, plus a combined pooled-RMS and mean-r.  Blocks are ordered in time
+(day_obs, seq) as a "coadd ordinal".
+
 Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
   blocks_summary.csv              every detected block: program, day_obs, seq
                                   range, n_visits, alt/az/rot means, median-blur
                                   FWHM, in-5rot-family flag  (also printed)
-  coadd_blocks_miw_perblock.pdf   one block per page (Z5..Z8), title = alt/az/rot
-                                  means, day_obs, seq range, median-blur FWHM
-  block_grids.npz                 stacked grids + per-block metadata for re-plots
+  coadd_metrics.parquet           one row per coadd: metadata + ordinal + per-Z
+                                  and combined resid RMS / corr + vmode_1..34
+  coadd_blocks_miw_perblock.pdf   one block per page: rows coadd / MIW / diff x
+                                  Z5..Z8, metrics in titles, ordered by day/seq
+  coadd_blocks_miw_timeseries.pdf v-mode heatmap + metrics vs coadd ordinal
+  block_grids.npz                 stacked coadd+MIW grids, v-modes, metadata
 
-RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc).
+RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc); requires the mi_name
+MIW sidecar (zk_intrinsic.parquet) to exist.
 """
 import argparse
 from pathlib import Path
@@ -50,11 +59,19 @@ from astropy.table import QTable
 
 from lsst.ts.intrinsic.wavefront import ofc_svd as osv
 from lsst.ts.intrinsic.wavefront import mi_config as mc
+from lsst.ts.intrinsic.wavefront import intrinsic_build_plots as ibp
 from lsst.ts.intrinsic.wavefront.dz_fitting import derive_noll_indices
 from lsst.ts.intrinsic.wavefront.measured_intrinsic import (
-    build_measured_intrinsic_uconstrained)
+    build_measured_intrinsic_uconstrained, bin_median_focal)
 
 Z_TERMS = [5, 6, 7, 8]
+
+
+def _fixed_list_to_2d(table, col):
+    """A fixed-length list<double> arrow column -> (n, L) float array."""
+    arr = table[col].combine_chunks()
+    flat = arr.values.to_numpy(zero_copy_only=False).astype(float)
+    return flat.reshape(len(table), -1)
 
 
 # ------------------------------------------------------- donut loading (fast)
@@ -198,36 +215,144 @@ def _term_scales(blocks, pct):
     return vmax
 
 
+def _pearson(a, b):
+    if a.size < 5 or np.std(a) == 0 or np.std(b) == 0:
+        return np.nan
+    return float(np.corrcoef(a, b)[0, 1])
+
+
+def map_metrics(coadd, miw):
+    """Per-Zernike residual RMS (um) and spatial Pearson r over co-valid cells,
+    plus a pooled-RMS and mean-r combined metric."""
+    m = {}; diffs = []; rs = []
+    for z in Z_TERMS:
+        c, w = coadd[z], miw[z]
+        ok = np.isfinite(c) & np.isfinite(w)
+        if int(ok.sum()) < 5:
+            m[f"resid_rms_z{z}"] = np.nan; m[f"corr_z{z}"] = np.nan; continue
+        d = c[ok] - w[ok]
+        m[f"resid_rms_z{z}"] = float(np.sqrt(np.mean(d ** 2)))
+        m[f"corr_z{z}"] = _pearson(c[ok], w[ok])
+        diffs.append(d); rs.append(m[f"corr_z{z}"])
+    alld = np.concatenate(diffs) if diffs else np.array([np.nan])
+    m["resid_rms_combined"] = float(np.sqrt(np.mean(alld ** 2))) if diffs else np.nan
+    m["corr_combined"] = float(np.nanmean(rs)) if rs else np.nan
+    return m
+
+
+def miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid):
+    """Bin the per-donut MIW sidecar (row-aligned to dd) on the SAME focal grid
+    as the coadd remnant -> {z: 2D} reference map for Z5-Z8."""
+    thx = np.rad2deg(np.asarray(dd[f"thx_{coord}"], float))
+    thy = np.rad2deg(np.asarray(dd[f"thy_{coord}"], float))
+    grid, *_ = bin_median_focal(thx, thy, mi_full, iZidx,
+                                n_bins=n_bins, fp_radius=fp_grid)
+    return {z: grid.get(z) for z in Z_TERMS}
+
+
+def block_vmodes(final, svd):
+    """Block-median v-mode amplitudes (a/sigma) from the per-visit raw DZ fits,
+    projected onto the OFC subspace (same convention as vmode_correlations)."""
+    W = ibp.stack_per_visit_coeffs(final["fit_rows_raw"], list(svd.kj_grid))
+    V = svd.vmodes(svd.project_amplitudes(np.nan_to_num(W, nan=0.0)))
+    return np.nanmedian(V, axis=0)
+
+
+def _mark_days(ax, days):
+    days = np.asarray(days)
+    for x in np.where(days[1:] != days[:-1])[0] + 0.5:
+        ax.axvline(x, color="0.5", lw=0.6, ls=":")
+
+
 def render_perblock(blocks, xbins, ybins, out_pdf, pct):
-    """One block per page: Z5..Z8 focal-plane remnant maps, common per-term
-    color scale across blocks, rich title.  Ordered by day_obs then seq_num so
-    time trends are visible top-to-bottom."""
+    """One block per page: rows = coadd remnant / MIW reference / difference,
+    cols = Z5..Z8.  Common per-term color scale (all three rows) so good
+    agreement reads faint; the difference row's titles carry the residual RMS
+    and spatial correlation.  Blocks arrive in day_obs/seq order."""
     vmax = _term_scales(blocks, pct)
-    order = sorted(range(len(blocks)),
-                   key=lambda i: (blocks[i]["day_obs"], blocks[i]["seq_min"]))
     with PdfPages(out_pdf) as pdf:
-        for bi in order:
-            b = blocks[bi]
-            fig, axes = plt.subplots(1, 4, figsize=(17, 4.6))
-            for ax, z in zip(axes, Z_TERMS):
-                pcm = ax.pcolormesh(xbins, ybins, b["grid"][z].T, cmap="RdBu_r",
-                                    vmin=-vmax[z], vmax=vmax[z], shading="flat")
-                ax.set_aspect("equal"); ax.set_title(f"Z{z}", fontsize=11)
-                ax.set_xlabel("thy (deg)", fontsize=8)
-                fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.04)
-            axes[0].set_ylabel("thx (deg)", fontsize=8)
+        for b in blocks:
+            fig, axes = plt.subplots(3, 4, figsize=(16, 11.5))
+            rows = [("coadd", b["grid"]), ("MIW ref", b["miw"]),
+                    ("coadd - MIW", {z: b["grid"][z] - b["miw"][z] for z in Z_TERMS})]
+            for r, (rlab, grd) in enumerate(rows):
+                for c, z in enumerate(Z_TERMS):
+                    ax = axes[r][c]
+                    pcm = ax.pcolormesh(xbins, ybins, grd[z].T, cmap="RdBu_r",
+                                        vmin=-vmax[z], vmax=vmax[z], shading="flat")
+                    ax.set_aspect("equal"); ax.tick_params(labelsize=5)
+                    if r == 0:
+                        ax.set_title(f"Z{z}", fontsize=11)
+                    if r == 2:
+                        ax.set_title(f"rms={b['metrics'][f'resid_rms_z{z}']:.3f}  "
+                                     f"r={b['metrics'][f'corr_z{z}']:+.2f}", fontsize=8)
+                    if c == 0:
+                        ax.set_ylabel(rlab, fontsize=10)
+                    fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.03)
             fam = "" if b["in_family"] else "   [out-of-5rot-family]"
             fig.suptitle(
                 f"{b['program']}  {b['day_obs']}  seq {b['seq_min']}-{b['seq_max']}"
-                f"   alt={b['alt']:.1f}  az={b['az']:.1f}  rot={b['rot']:+.1f}"
-                f"   FWHM(med blur)={b['fwhm']:.2f}\"   n_visits={b['n_visits']}"
-                f"  n_donuts={b['n_donuts']}{fam}\n"
-                f"MIW-style remnant (Path A 50/34, 3 iter, OCS)", fontsize=11,
+                f"   alt={b['alt']:.1f} az={b['az']:.1f} rot={b['rot']:+.1f}"
+                f"   FWHM={b['fwhm']:.2f}\"  n_vis={b['n_visits']} n_don={b['n_donuts']}"
+                f"   [ordinal {b['ordinal']}]{fam}\n"
+                f"combined resid RMS={b['metrics']['resid_rms_combined']:.3f} um   "
+                f"mean r={b['metrics']['corr_combined']:+.2f}   "
+                f"(Path A 50/34, 3 iter, OCS)", fontsize=11,
                 color=("black" if b["in_family"] else "tab:red"))
-            fig.tight_layout(rect=[0, 0, 1, 0.93])
+            fig.tight_layout(rect=[0, 0, 1, 0.94])
             pdf.savefig(fig); plt.close(fig)
-    print(f"wrote {out_pdf}  ({len(blocks)} blocks, 1/page; per-term |vmax| "
-          f"Z5-8 = {', '.join(f'{vmax[z]:.3f}' for z in Z_TERMS)} um)", flush=True)
+    print(f"wrote {out_pdf}  ({len(blocks)} blocks x [coadd/MIW/diff]; per-term "
+          f"|vmax| Z5-8 = {', '.join(f'{vmax[z]:.3f}' for z in Z_TERMS)} um)",
+          flush=True)
+
+
+def render_timeseries(blocks, out_pdf):
+    """v-mode amplitudes and comparison metrics vs coadd ordinal (time order)."""
+    n = len(blocks); ordn = np.arange(n)
+    days = [b["day_obs"] for b in blocks]
+    outfam = np.array([not b["in_family"] for b in blocks])
+    Vm = np.array([b["vmodes"] for b in blocks])                 # (n, n_keep)
+    with PdfPages(out_pdf) as pdf:
+        # page 1: v-mode amplitude heatmap
+        fig, ax = plt.subplots(figsize=(max(10, 0.22 * n + 3), 9))
+        vlim = float(np.nanpercentile(np.abs(Vm), 98)) or 1.0
+        im = ax.imshow(Vm.T, aspect="auto", cmap="RdBu_r", vmin=-vlim, vmax=vlim,
+                       origin="lower", extent=[-0.5, n - 0.5, 0.5, Vm.shape[1] + 0.5])
+        ax.set_xlabel("coadd ordinal (day_obs / seq order)")
+        ax.set_ylabel("v-mode (a/sigma)")
+        for i in np.where(outfam)[0]:
+            ax.axvline(i, color="tab:red", lw=0.5, alpha=0.25)
+        _mark_days(ax, days)
+        ax.set_title("v-mode amplitude vs coadd ordinal  "
+                     "(red lines = out-of-5rot-family blocks; dotted = day change)")
+        fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02, label="a/sigma")
+        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+        # page 2: metrics vs ordinal
+        fig, (a1, a2) = plt.subplots(2, 1, figsize=(max(10, 0.22 * n + 3), 9),
+                                     sharex=True)
+        for z in Z_TERMS:
+            a1.plot(ordn, [b["metrics"][f"resid_rms_z{z}"] for b in blocks],
+                    "o-", ms=3, label=f"Z{z}")
+        a1.plot(ordn, [b["metrics"]["resid_rms_combined"] for b in blocks],
+                "k-", lw=2, label="combined")
+        a1.set_ylabel("residual RMS (um)"); a1.legend(fontsize=7, ncol=5)
+        a1.grid(alpha=0.3)
+        for z in Z_TERMS:
+            a2.plot(ordn, [b["metrics"][f"corr_z{z}"] for b in blocks],
+                    "o-", ms=3, label=f"Z{z}")
+        a2.plot(ordn, [b["metrics"]["corr_combined"] for b in blocks],
+                "k-", lw=2, label="mean")
+        a2.set_ylabel("spatial corr r"); a2.set_xlabel("coadd ordinal")
+        a2.legend(fontsize=7, ncol=5); a2.grid(alpha=0.3)
+        for a in (a1, a2):
+            for i in np.where(outfam)[0]:
+                a.axvspan(i - 0.5, i + 0.5, color="tab:red", alpha=0.08)
+            _mark_days(a, days)
+        fig.suptitle("Coadd-vs-MIW comparison metrics vs ordinal  "
+                     "(red bands = out-of-5rot-family)")
+        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+    print(f"wrote {out_pdf}  (v-mode heatmap + metrics vs ordinal, n={n})",
+          flush=True)
 
 
 # ------------------------------------------------------------------- main
@@ -321,7 +446,22 @@ def main():
                 if "nollIndices" in vtab.colnames else None)
     pf, lut = _visit_row_groups(donuts_pq)
 
-    svd = None; iZs = None; xbins = ybins = None
+    # per-donut MIW sidecar (row-aligned to donuts.parquet), indexed per visit so
+    # each block's reference map is binned on the same grid as its remnant
+    sidecar_pq = base / args.mi_name / "zk_intrinsic.parquet"
+    if not sidecar_pq.exists():
+        raise SystemExit(f"MIW sidecar not found: {sidecar_pq}  -- build it first "
+                         "(rule intrinsic_sidecar) so the coadd can compare to the MIW")
+    st = pq.read_table(str(sidecar_pq),
+                       columns=["day_obs", "seq_num", "zk_intrinsic_MI"])
+    sc_mi = _fixed_list_to_2d(st, "zk_intrinsic_MI")          # (N, nZk), Noll order
+    scdf = pd.DataFrame({"day_obs": np.asarray(st["day_obs"]),
+                         "seq_num": np.asarray(st["seq_num"])})
+    sc_groups = {(int(k[0]), int(k[1])): v for k, v in
+                 scdf.groupby(["day_obs", "seq_num"], sort=False).indices.items()}
+    print(f"  MIW sidecar: {len(sc_mi)} donuts, {len(sc_groups)} visits", flush=True)
+
+    svd = None; iZs = iZidx = None; xbins = ybins = None
     blocks = []
     meta = summ.set_index("block")
     for blk, g in bdf.groupby("block"):
@@ -333,7 +473,7 @@ def main():
             print(f"  block {blk}: no donuts, skipped"); continue
         if svd is None:                                    # build SVD once
             nZk = np.stack(dd[f"zk_{coord}"].values).shape[1]
-            iZs, _ = derive_noll_indices(nZk, noll_arr)
+            iZs, iZidx = derive_noll_indices(nZk, noll_arr)
             svd = osv.build_ofc_svd(iZs, k_min, k_max, n_keep, n_dof=n_dof,
                                     ofc_normalization_yaml=ofc_norm)
             print(f"  SVD: n_dof={svd.n_dof} n_keep_eff={svd.n_keep_eff}; "
@@ -348,32 +488,69 @@ def main():
         grid = {z: final["measured_grid"].get(z) for z in Z_TERMS}
         if any(grid[z] is None for z in Z_TERMS):
             print(f"  block {blk}: missing a Z5-8 grid, skipped"); continue
+        # MIW reference (sidecar rows aligned per-visit to dd) on the same grid
+        kept = [k for k in keys if k in lut]
+        if any(k not in sc_groups for k in kept):
+            print(f"  block {blk}: sidecar missing a visit, skipped"); continue
+        mi_full = np.concatenate([sc_mi[sc_groups[k]] for k in kept])
+        if len(mi_full) != len(dd):
+            print(f"  block {blk}: sidecar/donut count mismatch "
+                  f"({len(mi_full)} vs {len(dd)}), skipped"); continue
+        miw = miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid)
+        if any(miw[z] is None for z in Z_TERMS):
+            print(f"  block {blk}: missing a MIW Z5-8 grid, skipped"); continue
         r = meta.loc[blk]
         blocks.append(dict(
             block=int(blk), program=str(r["program"]), day_obs=int(r["day_obs"]),
             seq_min=int(r["seq_min"]), seq_max=int(r["seq_max"]),
             rot=float(r["rot"]), alt=float(r["alt"]), az=float(r["az"]),
             fwhm=float(r["fwhm"]), n_visits=int(r["n_visits"]),
-            n_donuts=int(len(dd)), in_family=bool(r["in_family"]), grid=grid))
+            n_donuts=int(len(dd)), in_family=bool(r["in_family"]),
+            grid=grid, miw=miw, metrics=map_metrics(grid, miw),
+            vmodes=block_vmodes(final, svd)))
         print(f"  block {blk}: {r['program']} {int(r['day_obs'])} "
               f"rot={r['rot']:+.1f} n_visits={int(r['n_visits'])} "
-              f"n_donuts={len(dd)} in_family={bool(r['in_family'])}", flush=True)
+              f"n_donuts={len(dd)} in_family={bool(r['in_family'])}  "
+              f"resid_rms={blocks[-1]['metrics']['resid_rms_combined']:.3f} "
+              f"r={blocks[-1]['metrics']['corr_combined']:+.2f}", flush=True)
 
     if not blocks:
         raise SystemExit("no block produced a remnant grid "
-                         "(is donuts.parquet the full 3M-row combine?)")
+                         "(is donuts.parquet the full combine + is the sidecar built?)")
 
-    # save grids + metadata for cheap re-plots
+    # time order (day_obs, seq) -> coadd ordinal
+    blocks.sort(key=lambda bb: (bb["day_obs"], bb["seq_min"]))
+    for i, bb in enumerate(blocks):
+        bb["ordinal"] = i
+
+    # metrics + v-modes parquet (one row per coadd)
+    rows = []
+    for bb in blocks:
+        row = {k: bb[k] for k in ("ordinal", "block", "program", "day_obs",
+               "seq_min", "seq_max", "alt", "az", "rot", "fwhm", "n_visits",
+               "n_donuts", "in_family")}
+        row.update(bb["metrics"])
+        for i, vv in enumerate(bb["vmodes"]):
+            row[f"vmode_{i + 1}"] = float(vv)
+        rows.append(row)
+    pd.DataFrame(rows).to_parquet(out_dir / "coadd_metrics.parquet", index=False)
+    print(f"  wrote coadd_metrics.parquet ({len(rows)} coadds, "
+          f"{len(blocks[0]['vmodes'])} v-modes each)", flush=True)
+
+    # grids + metadata for cheap re-plots
     np.savez_compressed(
         out_dir / "block_grids.npz",
         xbins=xbins, ybins=ybins, terms=np.array(Z_TERMS),
         grids=np.array([[bb["grid"][z] for z in Z_TERMS] for bb in blocks]),
+        miw=np.array([[bb["miw"][z] for z in Z_TERMS] for bb in blocks]),
+        vmodes=np.array([bb["vmodes"] for bb in blocks]),
         **{k: np.array([bb[k] for bb in blocks]) for k in
-           ("block", "day_obs", "seq_min", "seq_max", "rot", "alt", "az",
-            "fwhm", "n_visits", "n_donuts", "in_family")})
+           ("ordinal", "block", "day_obs", "seq_min", "seq_max", "rot", "alt",
+            "az", "fwhm", "n_visits", "n_donuts", "in_family")})
 
     render_perblock(blocks, xbins, ybins,
                     str(out_dir / "coadd_blocks_miw_perblock.pdf"), args.pct)
+    render_timeseries(blocks, str(out_dir / "coadd_blocks_miw_timeseries.pdf"))
     print("[coadd_blocks_miw] done.", flush=True)
 
 
