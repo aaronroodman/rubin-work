@@ -448,9 +448,25 @@ def main():
     donuts_pq = base / "donuts.parquet"
 
     # ---- block assignment (NO alt/rot cut) + summary table over ALL blocks ----
-    vpd = pd.read_parquet(base / "visits.parquet", columns=[
-        "day_obs", "seq_num", "alt", "az", "rotator_angle",
-        "science_program", "band", "median_blur_arcsec", "z_gradient"])
+    # Read visits PER CHUNK and union columns: the combined visits.parquet keeps
+    # only columns present in every chunk, so if a chunk (e.g. the newer
+    # reprocessing) lacks thermal telemetry the combine drops z_gradient for all
+    # blocks.  Per-chunk concat keeps z_gradient where it exists (NaN elsewhere).
+    need = ["day_obs", "seq_num", "alt", "az", "rotator_angle",
+            "science_program", "band", "median_blur_arcsec", "z_gradient"]
+    chunk_vis = sorted((base / "chunks").glob("*/visits.parquet"))
+    srcs = chunk_vis if chunk_vis else [base / "visits.parquet"]
+    parts = []
+    for f in srcs:
+        avail = set(pq.read_schema(str(f)).names)
+        parts.append(pd.read_parquet(f, columns=[c for c in need if c in avail]))
+    vpd = pd.concat(parts, ignore_index=True)
+    for c in need:
+        if c not in vpd.columns:
+            vpd[c] = np.nan
+    if not vpd["z_gradient"].notna().any():
+        print("  NOTE: z_gradient absent from all visits (no thermal attached) — "
+              "the telemetry z_gradient panel will be empty", flush=True)
     bdf = assign_blocks(vpd, allowed_bands, bounce_progs, args.pointing_tol,
                         args.max_seq_span, args.bounce_round,
                         wide_programs=wide_progs, wide_tol=args.wide_tol,
