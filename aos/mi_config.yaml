@@ -126,6 +126,11 @@ measured_intrinsics:
     - name: pathA_50_34_i
       n_dof: 50
       n_keep: 34
+      # Freeze the MIW to chunks 1-3 (<= 20260513): the combined donuts/visits now
+      # also carry chunk 4 (>= 20260514, the danish wep_17_7_0 reprocessing), but
+      # the MIW build must omit it so a rebuild reproduces the same intrinsic.
+      # pathA_50_34_i_5rot reuses these grids (build_from) so it inherits the cut.
+      day_obs_max: 20260513
     # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
     # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
     # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
