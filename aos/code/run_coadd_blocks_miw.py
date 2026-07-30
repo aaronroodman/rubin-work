@@ -16,12 +16,22 @@ resolved mi_config for the chosen mi_name; only the visit SELECTION differs
 (per block instead of per rotator window).  Z5-Z8 are read straight off the
 final-iteration `measured_grid` (no CCD-height/Z4 step needed for j>=5).
 
+Block definition (NO elevation or rotator cut -- take every block):
+  * Standard programs (e.g. T614): a block is a set of visits with the same
+    program, ~equal (alt, az, rotator), and a seq_num span within ~3*12=36 --
+    so missing triplets inside the set are fine (grouped by pointing, not by
+    strict seq spacing).
+  * Bounce programs (T720/T724): the run alternates between two pointings over a
+    wide seq span, so it is split by the bounced state instead -- all visits at
+    one (alt, rotator) state form one block, the other state its own block
+    (e.g. an elevation bounce 70<->40 -> a 70 block + a 40 block).
+
 Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
-  coadd_blocks_miw_perblock.pdf   rows = blocks (sorted by rotator, then day),
-                                  cols = Z5..Z8, common per-term color scale
-  coadd_blocks_miw_by_rotator.pdf donut-count-weighted mean of block grids per
-                                  rounded rotator bin (the "combine after" view,
-                                  comparable to the 9/5-bin MIW maps)
+  blocks_summary.csv              every detected block: program, day_obs, seq
+                                  range, n_visits, alt/az/rot means, median-blur
+                                  FWHM, in-5rot-family flag  (also printed)
+  coadd_blocks_miw_perblock.pdf   one block per page (Z5..Z8), title = alt/az/rot
+                                  means, day_obs, seq range, median-blur FWHM
   block_grids.npz                 stacked grids + per-block metadata for re-plots
 
 RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc).
@@ -76,34 +86,87 @@ def load_block_donuts(pf, lut, keys):
 
 
 # --------------------------------------------------------- block grouping
-def build_blocks(visits_pd, programs, allowed_bands, alt_min, alt_max,
-                 min_triplets):
-    """FAM contiguous blocks (seq_num spacing 3, day boundary) after the MIW
-    band/elevation/program cuts.  One block per (day, contiguous run, pointing).
-    Returns a DataFrame with a 'block' label and the pointing summary columns."""
+def _circ_mean_deg(a):
+    """Circular mean of angles in degrees (for azimuth)."""
+    a = np.deg2rad(np.asarray(a, float))
+    return float(np.mod(np.rad2deg(np.angle(np.mean(np.exp(1j * a)))), 360.0))
+
+
+def _wrapdiff(a, b):
+    d = abs(a - b) % 360.0
+    return min(d, 360.0 - d)
+
+
+def assign_blocks(visits_pd, allowed_bands, bounce_programs, pointing_tol,
+                  max_seq_span, bounce_round):
+    """Assign every FAM visit to a block (NO elevation / rotator cut).
+
+    Standard program: greedy pointing-set -- a new block starts when the program
+    changes, the (alt, az, rot) drifts beyond `pointing_tol`, or seq_num runs
+    more than `max_seq_span` past the block's first visit (tolerates missing
+    triplets within the span).  Bounce program (T720/T724): one block per
+    rounded (alt, rot) state, combining all visits at that state regardless of
+    seq span.  Returns the DataFrame with a 'block' integer label + deg columns."""
     v = visits_pd.dropna(subset=["alt", "az", "rotator_angle"]).copy()
     if allowed_bands and "band" in v.columns:
         v = v[v["band"].astype(str).isin(set(allowed_bands))]
-    if programs and "science_program" in v.columns:
-        v = v[v["science_program"].astype(str).isin(set(programs))]
     v["alt_deg"] = np.rad2deg(v["alt"].to_numpy(float))
     v["az_deg"] = np.mod(np.rad2deg(v["az"].to_numpy(float)), 360.0)
     v["rot_deg"] = v["rotator_angle"].to_numpy(float)
-    if alt_min is not None:
-        v = v[v["alt_deg"] >= float(alt_min)]
-    if alt_max is not None:
-        v = v[v["alt_deg"] <= float(alt_max)]
-    v = v.sort_values(["day_obs", "seq_num"]).reset_index(drop=True)
-    newblk = ((v["day_obs"] != v["day_obs"].shift())
-              | ((v["seq_num"] - v["seq_num"].shift()) != 3))
-    v["block"] = newblk.cumsum()
-    size = v.groupby("block")["seq_num"].transform("size")
-    v = v[size >= min_triplets].copy()
+    v = v.sort_values(["science_program", "day_obs", "seq_num"]).reset_index(drop=True)
+
+    block = np.full(len(v), -1, dtype=int)
+    prog = v["science_program"].astype(str).to_numpy()
+    seq = v["seq_num"].to_numpy(float)
+    alt = v["alt_deg"].to_numpy(); az = v["az_deg"].to_numpy(); rot = v["rot_deg"].to_numpy()
+    nb = 0
+    for (pr, day), pos in v.groupby(["science_program", "day_obs"]).indices.items():
+        pos = np.sort(np.asarray(pos))
+        if str(pr) in bounce_programs:
+            # split by bounced (alt, rot) state; combine all visits per state
+            seen = {}
+            for p in pos:
+                key = (round(alt[p] / bounce_round) * bounce_round,
+                       round(rot[p] / bounce_round) * bounce_round)
+                if key not in seen:
+                    seen[key] = nb; nb += 1
+                block[p] = seen[key]
+        else:
+            cur = None; start_seq = None; ref = None
+            for p in pos:
+                new = (start_seq is None
+                       or (seq[p] - start_seq) > max_seq_span
+                       or abs(alt[p] - ref[0]) > pointing_tol
+                       or _wrapdiff(az[p], ref[1]) > pointing_tol
+                       or abs(rot[p] - ref[2]) > pointing_tol)
+                if new:
+                    cur = nb; nb += 1; start_seq = seq[p]; ref = (alt[p], az[p], rot[p])
+                block[p] = cur
+    v["block"] = block
     return v
 
 
 def in_family(rot, windows):
     return bool(any(lo <= rot <= hi for lo, hi in (windows or [])))
+
+
+def block_summary(v, rot_windows):
+    """Per-block summary DataFrame (one row per block), from the visit table."""
+    rows = []
+    for blk, g in v.groupby("block"):
+        rot = float(np.mean(g["rot_deg"]))
+        rows.append(dict(
+            block=int(blk),
+            program=str(g["science_program"].iloc[0]).replace("BLOCK-", ""),
+            day_obs=int(g["day_obs"].iloc[0]),
+            seq_min=int(g["seq_num"].min()), seq_max=int(g["seq_num"].max()),
+            n_visits=int(len(g)),
+            alt=float(np.mean(g["alt_deg"])), az=_circ_mean_deg(g["az_deg"]),
+            rot=rot,
+            fwhm=float(np.nanmedian(g["median_blur_arcsec"]))
+            if "median_blur_arcsec" in g else np.nan,
+            in_family=in_family(rot, rot_windows)))
+    return pd.DataFrame(rows).sort_values(["rot", "day_obs", "seq_min"]).reset_index(drop=True)
 
 
 # ------------------------------------------------------------- plotting
@@ -119,94 +182,36 @@ def _term_scales(blocks, pct):
     return vmax
 
 
-def _row(fig, gs_row, axes_row, grids, xbins, ybins, vmax, label, in_fam):
-    ec = "tab:red" if not in_fam else "0.3"
-    for c, z in enumerate(Z_TERMS):
-        ax = axes_row[c]
-        g = grids[z]
-        pcm = ax.pcolormesh(xbins, ybins, g.T, cmap="RdBu_r",
-                            vmin=-vmax[z], vmax=vmax[z], shading="flat")
-        ax.set_aspect("equal"); ax.tick_params(labelsize=5)
-        if c == 0:
-            ax.set_ylabel(label, fontsize=7, color=ec)
-            for sp in ax.spines.values():
-                sp.set_color(ec); sp.set_linewidth(1.6 if not in_fam else 0.8)
-        fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.03)
-    return pcm
-
-
-def render_perblock(blocks, xbins, ybins, out_pdf, pct, per_page=6):
+def render_perblock(blocks, xbins, ybins, out_pdf, pct):
+    """One block per page: Z5..Z8 focal-plane remnant maps, common per-term
+    color scale across blocks, rich title.  Sorted by rotator then day."""
     vmax = _term_scales(blocks, pct)
     order = sorted(range(len(blocks)),
-                   key=lambda i: (blocks[i]["rot"], blocks[i]["day_obs"]))
+                   key=lambda i: (blocks[i]["rot"], blocks[i]["day_obs"],
+                                  blocks[i]["seq_min"]))
     with PdfPages(out_pdf) as pdf:
-        for p0 in range(0, len(order), per_page):
-            idxs = order[p0:p0 + per_page]
-            fig, axes = plt.subplots(len(idxs), 4,
-                                     figsize=(15, 2.7 * len(idxs)),
-                                     squeeze=False)
-            for r, bi in enumerate(idxs):
-                b = blocks[bi]
-                lab = (f"{b['day_obs']}\nrot={b['rot']:+.1f}\n"
-                       f"n={b['n_triplets']}t"
-                       + ("" if b["in_family"] else "\n[out]"))
-                _row(fig, None, axes[r], b["grid"], xbins, ybins, vmax,
-                     lab, b["in_family"])
-                if r == 0:
-                    for c, z in enumerate(Z_TERMS):
-                        axes[r][c].set_title(f"Z{z}", fontsize=10)
-            fig.suptitle("Per-block MIW-style remnant (Path A 50/34, 3 iter, OCS)  "
-                         "— red = out-of-5rot-family rotator", fontsize=11)
-            fig.tight_layout(rect=[0, 0, 1, 0.97])
+        for bi in order:
+            b = blocks[bi]
+            fig, axes = plt.subplots(1, 4, figsize=(17, 4.6))
+            for ax, z in zip(axes, Z_TERMS):
+                pcm = ax.pcolormesh(xbins, ybins, b["grid"][z].T, cmap="RdBu_r",
+                                    vmin=-vmax[z], vmax=vmax[z], shading="flat")
+                ax.set_aspect("equal"); ax.set_title(f"Z{z}", fontsize=11)
+                ax.set_xlabel("thy (deg)", fontsize=8)
+                fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.04)
+            axes[0].set_ylabel("thx (deg)", fontsize=8)
+            fam = "" if b["in_family"] else "   [out-of-5rot-family]"
+            fig.suptitle(
+                f"{b['program']}  {b['day_obs']}  seq {b['seq_min']}-{b['seq_max']}"
+                f"   alt={b['alt']:.1f}  az={b['az']:.1f}  rot={b['rot']:+.1f}"
+                f"   FWHM(med blur)={b['fwhm']:.2f}\"   n_visits={b['n_visits']}"
+                f"  n_donuts={b['n_donuts']}{fam}\n"
+                f"MIW-style remnant (Path A 50/34, 3 iter, OCS)", fontsize=11,
+                color=("black" if b["in_family"] else "tab:red"))
+            fig.tight_layout(rect=[0, 0, 1, 0.93])
             pdf.savefig(fig); plt.close(fig)
-    print(f"wrote {out_pdf}  ({len(blocks)} blocks; per-term |vmax| Z5-8 = "
-          f"{', '.join(f'{vmax[z]:.3f}' for z in Z_TERMS)} um)", flush=True)
-
-
-def render_by_rotator(blocks, xbins, ybins, out_pdf, pct, rot_round):
-    """Donut-count-weighted mean of block grids per rounded rotator bin."""
-    key = {}
-    for b in blocks:
-        rb = round(b["rot"] / rot_round) * rot_round
-        key.setdefault(rb, []).append(b)
-    coadds = []
-    for rb in sorted(key):
-        bs = key[rb]
-        grid = {}
-        for z in Z_TERMS:
-            stack = np.array([bs_i["grid"][z] for bs_i in bs])          # (nb,ny,nx)
-            wts = np.array([bs_i["n_donuts"] for bs_i in bs], float)
-            m = np.isfinite(stack)
-            wsum = (np.where(m, wts[:, None, None], 0.0)).sum(0)
-            gsum = np.nansum(np.where(m, stack * wts[:, None, None], 0.0), 0)
-            with np.errstate(invalid="ignore"):
-                grid[z] = np.where(wsum > 0, gsum / wsum, np.nan)
-        days = sorted({bi["day_obs"] for bi in bs})
-        coadds.append(dict(rot=rb, grid=grid, nblk=len(bs), days=days,
-                           in_family=bs[0]["in_family"], n_triplets=sum(
-                               bi["n_triplets"] for bi in bs)))
-    vmax = _term_scales(coadds, pct)
-    with PdfPages(out_pdf) as pdf:
-        per_page = 6
-        for p0 in range(0, len(coadds), per_page):
-            chunk = coadds[p0:p0 + per_page]
-            fig, axes = plt.subplots(len(chunk), 4,
-                                     figsize=(15, 2.7 * len(chunk)), squeeze=False)
-            for r, cd in enumerate(chunk):
-                lab = (f"rot~{cd['rot']:+.0f}\n{cd['nblk']} blk\n"
-                       + ",".join(str(d)[4:] for d in cd["days"])
-                       + ("" if cd["in_family"] else "\n[out]"))
-                _row(fig, None, axes[r], cd["grid"], xbins, ybins, vmax,
-                     lab, cd["in_family"])
-                if r == 0:
-                    for c, z in enumerate(Z_TERMS):
-                        axes[r][c].set_title(f"Z{z}", fontsize=10)
-            fig.suptitle("Rotator-binned coadd of per-block MIW remnants "
-                         "(count-weighted mean)  — red = out-of-5rot-family",
-                         fontsize=11)
-            fig.tight_layout(rect=[0, 0, 1, 0.97])
-            pdf.savefig(fig); plt.close(fig)
-    print(f"wrote {out_pdf}  ({len(coadds)} rotator bins)", flush=True)
+    print(f"wrote {out_pdf}  ({len(blocks)} blocks, 1/page; per-term |vmax| "
+          f"Z5-8 = {', '.join(f'{vmax[z]:.3f}' for z in Z_TERMS)} um)", flush=True)
 
 
 # ------------------------------------------------------------------- main
@@ -221,14 +226,25 @@ def main():
     ap.add_argument("--output-root", default="output")
     ap.add_argument("--out-name", default="coadd_50_34",
                     help="subdir under output/<ps>/ for this analysis")
-    ap.add_argument("--min-triplets", type=int, default=6)
+    ap.add_argument("--min-visits", type=int, default=6,
+                    help="build/plot only blocks with >= this many visits "
+                         "(the summary table lists ALL detected blocks)")
+    ap.add_argument("--bands", nargs="*", default=None,
+                    help="band whitelist (default: mi_config filter, i.e. i)")
+    ap.add_argument("--bounce-programs", nargs="*",
+                    default=["BLOCK-T720", "BLOCK-T724"],
+                    help="programs split by bounced (alt,rot) state")
+    ap.add_argument("--pointing-tol", type=float, default=5.0,
+                    help="deg tolerance on (alt,az,rot) within a standard block")
+    ap.add_argument("--max-seq-span", type=float, default=36.0,
+                    help="max seq_num span of a standard block (~3*12)")
+    ap.add_argument("--bounce-round", type=float, default=10.0,
+                    help="deg rounding to separate bounce states")
     ap.add_argument("--n-bins", type=int, default=None,
                     help="focal-plane bins/axis (default: build.n_bins)")
     ap.add_argument("--n-iter", type=int, default=None,
                     help="iterations (default: build.n_iter, i.e. 3)")
     ap.add_argument("--pct", type=float, default=98.0)
-    ap.add_argument("--rot-round", type=float, default=5.0,
-                    help="rotator rounding (deg) for the by-rotator coadd")
     args = ap.parse_args()
 
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
@@ -242,39 +258,46 @@ def main():
     fp_basis = float(b["fp_radius_basis"]); fp_grid = float(b["fp_radius_grid"])
     min_donuts = int(b["min_donuts"]); bad_fit = float(b["bad_fit_threshold"])
     ofc_norm = b.get("ofc_normalization_yaml")
-    allowed_bands = mc.as_band_list(cfg.get("filter"))
-    programs = cfg.get("programs")
-    alt_min, alt_max = cfg.get("alt_min_deg"), cfg.get("alt_max_deg")
+    allowed_bands = args.bands if args.bands is not None else mc.as_band_list(cfg.get("filter"))
     rot_windows = (cfg.get("split") or {}).get("rotator_select")
+    bounce_progs = set(args.bounce_programs or [])
 
     base = Path(args.output_root) / args.param_set
     out_dir = base / args.out_name; out_dir.mkdir(parents=True, exist_ok=True)
     donuts_pq = base / "donuts.parquet"
 
-    # blocks (pandas) + Noll indices (QTable)
+    # ---- block assignment (NO alt/rot cut) + summary table over ALL blocks ----
     vpd = pd.read_parquet(base / "visits.parquet", columns=[
         "day_obs", "seq_num", "alt", "az", "rotator_angle",
-        "science_program", "band"])
-    blocks_df = build_blocks(vpd, programs, allowed_bands, alt_min, alt_max,
-                             args.min_triplets)
-    n_blk = blocks_df["block"].nunique()
-    print(f"[coadd_blocks_miw] {args.param_set}/{args.mi_name}: {n_blk} FAM blocks "
-          f">= {args.min_triplets} triplets (bands={allowed_bands}, "
-          f"programs={programs}, alt=[{alt_min},{alt_max}])  -> {out_dir}",
-          flush=True)
-    if n_blk == 0:
-        raise SystemExit("no FAM blocks pass the cuts")
+        "science_program", "band", "median_blur_arcsec"])
+    bdf = assign_blocks(vpd, allowed_bands, bounce_progs, args.pointing_tol,
+                        args.max_seq_span, args.bounce_round)
+    summ = block_summary(bdf, rot_windows)
+    summ["plotted"] = summ["n_visits"] >= args.min_visits
+    summ.to_csv(out_dir / "blocks_summary.csv", index=False)
+    print(f"[coadd_blocks_miw] {args.param_set}/{args.mi_name}: "
+          f"{len(summ)} blocks (bands={allowed_bands}, no alt/rot cut; "
+          f"bounce={sorted(bounce_progs)})  -> {out_dir}", flush=True)
+    with pd.option_context("display.max_rows", None, "display.width", 200):
+        print(summ.to_string(
+            index=False,
+            formatters={"alt": "{:.1f}".format, "az": "{:.1f}".format,
+                        "rot": "{:+.1f}".format, "fwhm": "{:.2f}".format}),
+              flush=True)
+    print(f"  wrote blocks_summary.csv;  {int(summ['plotted'].sum())} blocks "
+          f">= {args.min_visits} visits will be built/plotted", flush=True)
 
     vtab = QTable.read(str(base / "visits.parquet"))
     noll_arr = (np.array(vtab["nollIndices"][0])
                 if "nollIndices" in vtab.colnames else None)
-
     pf, lut = _visit_row_groups(donuts_pq)
 
-    svd = None
-    xbins = ybins = None
+    svd = None; iZs = None; xbins = ybins = None
     blocks = []
-    for blk, g in blocks_df.groupby("block"):
+    meta = summ.set_index("block")
+    for blk, g in bdf.groupby("block"):
+        if meta.loc[blk, "n_visits"] < args.min_visits:
+            continue
         keys = list(zip(g["day_obs"].astype(int), g["seq_num"].astype(int)))
         dd = load_block_donuts(pf, lut, keys)
         if dd is None or len(dd) == 0:
@@ -296,39 +319,32 @@ def main():
         grid = {z: final["measured_grid"].get(z) for z in Z_TERMS}
         if any(grid[z] is None for z in Z_TERMS):
             print(f"  block {blk}: missing a Z5-8 grid, skipped"); continue
-        rot = float(np.median(g["rot_deg"]))
+        r = meta.loc[blk]
         blocks.append(dict(
-            block=int(blk), day_obs=int(g["day_obs"].iloc[0]),
-            rot=rot, alt=float(np.median(g["alt_deg"])),
-            az=float(np.median(g["az_deg"])),
-            n_triplets=int(len(g)), n_donuts=int(len(dd)),
-            in_family=in_family(rot, rot_windows), grid=grid))
-        print(f"  block {blk}: day={blocks[-1]['day_obs']} rot={rot:+.1f} "
-              f"n_triplets={len(g)} n_donuts={len(dd)} "
-              f"in_family={blocks[-1]['in_family']}", flush=True)
+            block=int(blk), program=str(r["program"]), day_obs=int(r["day_obs"]),
+            seq_min=int(r["seq_min"]), seq_max=int(r["seq_max"]),
+            rot=float(r["rot"]), alt=float(r["alt"]), az=float(r["az"]),
+            fwhm=float(r["fwhm"]), n_visits=int(r["n_visits"]),
+            n_donuts=int(len(dd)), in_family=bool(r["in_family"]), grid=grid))
+        print(f"  block {blk}: {r['program']} {int(r['day_obs'])} "
+              f"rot={r['rot']:+.1f} n_visits={int(r['n_visits'])} "
+              f"n_donuts={len(dd)} in_family={bool(r['in_family'])}", flush=True)
 
     if not blocks:
-        raise SystemExit("no block produced a remnant grid")
+        raise SystemExit("no block produced a remnant grid "
+                         "(is donuts.parquet the full 3M-row combine?)")
 
     # save grids + metadata for cheap re-plots
     np.savez_compressed(
         out_dir / "block_grids.npz",
         xbins=xbins, ybins=ybins, terms=np.array(Z_TERMS),
-        grids=np.array([[b["grid"][z] for z in Z_TERMS] for b in blocks]),
-        block=np.array([b["block"] for b in blocks]),
-        day_obs=np.array([b["day_obs"] for b in blocks]),
-        rot=np.array([b["rot"] for b in blocks]),
-        alt=np.array([b["alt"] for b in blocks]),
-        az=np.array([b["az"] for b in blocks]),
-        n_triplets=np.array([b["n_triplets"] for b in blocks]),
-        n_donuts=np.array([b["n_donuts"] for b in blocks]),
-        in_family=np.array([b["in_family"] for b in blocks]))
+        grids=np.array([[bb["grid"][z] for z in Z_TERMS] for bb in blocks]),
+        **{k: np.array([bb[k] for bb in blocks]) for k in
+           ("block", "day_obs", "seq_min", "seq_max", "rot", "alt", "az",
+            "fwhm", "n_visits", "n_donuts", "in_family")})
 
     render_perblock(blocks, xbins, ybins,
                     str(out_dir / "coadd_blocks_miw_perblock.pdf"), args.pct)
-    render_by_rotator(blocks, xbins, ybins,
-                      str(out_dir / "coadd_blocks_miw_by_rotator.pdf"),
-                      args.pct, args.rot_round)
     print("[coadd_blocks_miw] done.", flush=True)
 
 
