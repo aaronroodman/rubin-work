@@ -27,6 +27,8 @@
 #   SB_PARTITION (milano)  SB_CPUS (32)  SB_MEM (96G)  SB_TIME (08:00:00)
 #   SB_RESMEM (90000)    # snakemake --resources mem_mb budget on the node
 #   SB_ACCOUNT (rubin:developers@milano)  SB_QOS (normal)   # non-preemptable
+#   SB_DEP (unset)       # sbatch --dependency value, e.g. afterok:<jobid>, to
+#                        # start this job only after another completes OK
 #     USDF account names encode the partition; pair with SB_PARTITION.
 #     `normal` QOS won't be preempted; `rubin:default@*` only offers
 #     `preemptable`.  roma also exposes `expedite` for short urgent jobs.
@@ -73,15 +75,17 @@ case "$mode" in
         resmem=${SB_RESMEM:-90000}
         acct=${SB_ACCOUNT:-rubin:developers@milano}
         qos=${SB_QOS:-normal}
+        dep=${SB_DEP:-}          # e.g. afterok:<jobid> to chain after another job
         jlog="logs/batch_${ts}.out"
         sb=(sbatch --partition="$part" --account="$acct" --qos="$qos"
             --cpus-per-task="$cpus" --mem="$mem" --time="$tlim"
             --job-name=aos_snake --output="$jlog")
+        [ -n "$dep" ] && sb+=(--dependency="$dep")
         # -j == cpus so rules schedule cpus-wide; mem_mb budget caps concurrent
         # memory so the summed per-rule mem_mb fits the node allocation.
         smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going ${passthru[*]}"
         "${sb[@]}" --wrap "cd '$PWD' && ${smk}"
-        echo "submitted batch job -> '$part' acct=$acct qos=$qos (${cpus} cpus, ${mem}, ${tlim})"
+        echo "submitted batch job -> '$part' acct=$acct qos=$qos (${cpus} cpus, ${mem}, ${tlim})${dep:+ dep=$dep}"
         echo "  snakemake: ${smk}"
         echo "  job log:   $jlog"
         echo "  watch:     squeue --me   |   tail -f $jlog"
