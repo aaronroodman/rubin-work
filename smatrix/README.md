@@ -78,3 +78,31 @@ the 20 AOS bending-mode surfaces per mirror (unit 1 µm coefficient; µm surface
 reconstructed as `Zernike(mode.zk) + grid_residual` on the true mirror footprint
 (M1M3 = M1 outer annulus + M3 inner annulus), labeled B1..B20 with the raw SVD
 index annotated — for comparison with Megias-Homar et al. 2024 (arXiv:2406.04656).
+
+## Full bending-mode set (all actuator modes)
+The `bend` dataset ships only 30 modes/mirror, but the FEA influence data in
+`fea_legacy` (`M1M3_1um_156_grid`, `M2_1um_grid`) provides the complete
+orthonormal mode sets: **156 M1M3 + 72 M2** modes (SVD of each surface matrix
+gives all singular values = 1). The M1M3 modes are verified identical to the
+batoid/OFC modes (corr +1.000); M2 matches up to rotations within degenerate
+pairs.
+
+```bash
+python build_full_modes.py         # -> $BATOID_RUBIN_DATA_DIR/bend_full/ (156+72 modes)
+python compute_smatrix.py --band r --bend-dir bend_full --jobs 8
+# -> output/smatrix_dz_31_29_238_r_bend_full.npy   (31, 29, 238)  [10 rigid + 156 M1M3 + 72 M2]
+python full_mode_analysis.py --band r
+```
+`compute_smatrix.py` is mode-count-aware (reads the target bend dir's bend.yaml),
+so the same OFC convention (ZCS, flips, degree, y-sign) applies to all 238 DOF.
+`build_full_modes.py` replicates the batoid_rubin `decompose_sag` pipeline
+(Zernike Noll≤28 + gridded residual) from the FEA node data; M2 is zero-padded
+to 156 stored modes so `load_bend` can index all mirrors uniformly
+(`use_m2_modes` stays 72).
+
+**Result (`full_mode_analysis.py`):** the controllability spectrum
+(`fullmode_controllability_r.png`) shows wavefront leverage vs mode number.
+M1M3 modes stay optically active well past the AOS-used 20 (variance reaches
+90% only by mode ~99); M2 falls off faster (90% by ~36). The pupil heatmap
+(`fullmode_pupil_heatmap_r.png`) shows the diagonal coupling — mode N drives
+progressively higher pupil Noll.

@@ -58,9 +58,8 @@ RINGS = 11                       # Gauss-Legendre rings in field
 SPOKES = 35                      # azimuthal spokes in field
 JMAX = 28                        # pupil Noll -> 29 pupil terms
 KMAX = 30                        # field Noll -> 31 field terms
-NDOF = 50
-N_M1M3 = 20
-N_M2 = 20
+N_RIGID = 10                     # M2 + camera rigid-body DOF
+ANGLE_DOF = [3, 4, 8, 9]         # M2 Rx,Ry ; Cam Rx,Ry (tip/tilt, in degree)
 
 WAVELENGTHS_UM = {               # microns
     "u": 0.365, "g": 0.480, "r": 0.622, "i": 0.754,
@@ -68,12 +67,12 @@ WAVELENGTHS_UM = {               # microns
 }
 
 # Convention chosen to reproduce the OFC-shipped matrix EXACTLY (see
-# CONVENTIONS.md).  use_m1m3_modes/use_m2_modes=None -> read bend.yaml, the
-# standard AOS 20-of-30 raw SVD modes: M1M3=[0..18, 26], M2=[0..16, 25, 26, 27].
+# CONVENTIONS.md): ZCS, both bending flips on, degree angle units.  The number
+# of M1M3 / M2 modes is read from the target bend dir's bend.yaml, so this works
+# for the 50-DOF `bend` set and the full `bend_full` set (156 M1M3 + 72 M2).
 BUILDER_KWARGS = dict(
     fea_dir="fea_legacy",
-    bend_dir="bend",
-    use_m1m3_modes=None,
+    use_m1m3_modes=None,             # None -> read bend.yaml mode selection
     use_m2_modes=None,
     dof_coord_system="ZCS",          # ZCS: matches OFC hexapod rigid-body sign
     flip_m1m3_bending_modes=True,     # both flips ON to match OFC bending-mode sign
@@ -84,16 +83,22 @@ BUILDER_KWARGS = dict(
 # (dy) and y-tip/tilt (Ry) of M2 and camera.  Flip those 4 DOF columns to match
 # OFC exactly.  See CONVENTIONS.md [open question for Josh/Guillem].
 OFC_Y_SIGN_FLIP = [2, 4, 7, 9]        # M2 dy, M2 Ry, Cam dy, Cam Ry
-CONFIG_TAG = "ofc_zcs"                # identifies the convention in output names
-
-# Per-DOF finite-difference step, in each DOF's native unit (um or degree).
-# Microns/bending: 1.0 is safe and linear.  Angle DOF (3,4,8,9) are in DEGREES
-# here; a 1-degree tilt vignettes the telescope (rank-0 Zernike fit), so use a
-# small angle step and divide it out -> per-degree sensitivity, matching OFC.
-STEP = np.ones(NDOF)
-STEP[[3, 4, 8, 9]] = 1e-3         # 1e-3 deg = 3.6 arcsec: small, linear, no vignetting
+CONFIG_TAG = "ofc_zcs"                # default tag for the 50-DOF OFC comparison
 
 DEFAULT_DATA_DIR = "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data"
+
+
+def mode_counts(data_dir, bend_dir):
+    """(n_m1m3, n_m2) from the target bend dir's bend.yaml."""
+    import yaml
+    cfg = yaml.safe_load((Path(data_dir) / bend_dir / "bend.yaml").read_text())
+    return len(cfg["use_m1m3_modes"]), len(cfg["use_m2_modes"])
+
+
+def make_step(ndof):
+    step = np.ones(ndof)
+    step[ANGLE_DOF] = 1e-3           # 1e-3 deg = 3.6 arcsec: small, linear, no vignetting
+    return step
 
 
 def double_zernike(optic, field, wavelength, rings=RINGS, spokes=SPOKES,
@@ -123,24 +128,26 @@ def double_zernike(optic, field, wavelength, rings=RINGS, spokes=SPOKES,
     return np.dot(basis, coefs * w[:, None]) / np.pi
 
 
-def _builder_kwargs(data_dir):
+def _builder_kwargs(data_dir, bend_dir):
     kwargs = dict(BUILDER_KWARGS)
     kwargs["fea_dir"] = str(Path(data_dir) / kwargs["fea_dir"])
-    kwargs["bend_dir"] = str(Path(data_dir) / kwargs["bend_dir"])
+    kwargs["bend_dir"] = str(Path(data_dir) / bend_dir)
     return kwargs
 
 
-# module-level worker state (set per process by _init_worker)
+# module-level worker state (set per process by _init_worker; spawn-safe)
 _W = {}
 
 
-def _init_worker(band, data_dir):
+def _init_worker(band, data_dir, bend_dir, ndof):
     os.environ["BATOID_RUBIN_DATA_DIR"] = str(data_dir)
     fid_band = "g_500" if band == "ref" else band
     _W["fiducial"] = batoid.Optic.fromYaml(f"LSST_{fid_band}.yaml")
-    _W["kwargs"] = _builder_kwargs(data_dir)
+    _W["kwargs"] = _builder_kwargs(data_dir, bend_dir)
     _W["wl_m"] = WAVELENGTHS_UM[band] * 1e-6
     _W["field"] = np.deg2rad(FIELD_RADIUS_DEG)
+    _W["ndof"] = ndof
+    _W["step"] = make_step(ndof)
 
 
 def _dz_for_dof(idof):
@@ -149,38 +156,42 @@ def _dz_for_dof(idof):
     if idof < 0:
         optic = _W["fiducial"]
     else:
-        dof = np.zeros(NDOF)
-        dof[idof] = STEP[idof]
+        dof = np.zeros(_W["ndof"])
+        dof[idof] = _W["step"][idof]
         optic = LSSTBuilder(_W["fiducial"], **_W["kwargs"]).with_aos_dof(dof.tolist()).build()
     return idof, double_zernike(optic, _W["field"], _W["wl_m"])
 
 
-def compute(band, data_dir, jobs=1):
+def compute(band, data_dir, bend_dir="bend", jobs=1):
     wl_um = WAVELENGTHS_UM[band]
+    n_m1m3, n_m2 = mode_counts(data_dir, bend_dir)
+    ndof = N_RIGID + n_m1m3 + n_m2
+    step = make_step(ndof)
 
-    tasks = list(range(-1, NDOF))  # -1 = intrinsic, then 0..49
+    tasks = list(range(-1, ndof))  # -1 = intrinsic, then 0..ndof-1
     results = {}
     if jobs and jobs > 1:
         import multiprocessing as mp
-        with mp.Pool(jobs, initializer=_init_worker, initargs=(band, data_dir)) as pool:
+        with mp.Pool(jobs, initializer=_init_worker,
+                     initargs=(band, data_dir, bend_dir, ndof)) as pool:
             for idof, dz in tqdm(pool.imap_unordered(_dz_for_dof, tasks), total=len(tasks)):
                 results[idof] = dz
     else:
-        _init_worker(band, data_dir)
+        _init_worker(band, data_dir, bend_dir, ndof)
         for idof in tqdm(tasks):
             i, dz = _dz_for_dof(idof)
             results[i] = dz
 
     dz0 = results[-1]
-    sens = np.empty((NDOF, KMAX + 1, JMAX + 1))
-    for idof in range(NDOF):
-        sens[idof] = (results[idof] - dz0) / STEP[idof]  # per unit DOF
+    sens = np.empty((ndof, KMAX + 1, JMAX + 1))
+    for idof in range(ndof):
+        sens[idof] = (results[idof] - dz0) / step[idof]  # per unit DOF
 
-    # -> (field_k=31, pupil_j=29, dof=50), then waves -> um
+    # -> (field_k, pupil_j, dof), then waves -> um
     sens = np.einsum("ijk->jki", sens) * wl_um
     # y-axis handedness patch so the result matches the OFC-shipped matrix.
     sens[:, :, OFC_Y_SIGN_FLIP] *= -1.0
-    return sens
+    return sens, (n_m1m3, n_m2)
 
 
 def main():
@@ -190,25 +201,32 @@ def main():
     p.add_argument("--data-dir",
                    default=os.environ.get("BATOID_RUBIN_DATA_DIR", DEFAULT_DATA_DIR),
                    help="batoid_rubin_data dir containing fea_legacy/ and bend/")
+    p.add_argument("--bend-dir", default="bend",
+                   help="bend-format dir under data-dir (e.g. bend, bend_full)")
     p.add_argument("--output-dir", default=str(Path(__file__).resolve().parent.parent / "output"))
     p.add_argument("--jobs", type=int, default=1, help="parallel processes over DOF")
+    p.add_argument("--tag", default=None, help="override output config tag")
     args = p.parse_args()
 
     data_dir = Path(args.data_dir)
-    if not (data_dir / "fea_legacy").is_dir() or not (data_dir / "bend").is_dir():
+    if not (data_dir / "fea_legacy").is_dir() or not (data_dir / args.bend_dir).is_dir():
         raise SystemExit(
-            f"data-dir {data_dir} must contain fea_legacy/ and bend/ subdirs")
+            f"data-dir {data_dir} must contain fea_legacy/ and {args.bend_dir}/ subdirs")
 
-    sens = compute(args.band, data_dir, jobs=args.jobs)
-    print("sensitivity matrix shape:", sens.shape)
+    sens, (n_m1m3, n_m2) = compute(args.band, data_dir, bend_dir=args.bend_dir, jobs=args.jobs)
+    ndof = sens.shape[2]
+    print("sensitivity matrix shape:", sens.shape, f"({n_m1m3} M1M3 + {n_m2} M2 modes)")
 
+    tag = args.tag or ("ofc_zcs" if args.bend_dir == "bend" else args.bend_dir)
     outdir = Path(args.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
-    stem = f"smatrix_dz_31_29_50_{args.band}_{CONFIG_TAG}"
+    stem = f"smatrix_dz_{KMAX+1}_{JMAX+1}_{ndof}_{args.band}_{tag}"
     np.save(outdir / f"{stem}.npy", sens)
     hdr = fits.Header()
     hdr["CONTENT"] = "DZ sensitivity (field_k, pupil_j, dof)"
-    hdr["DIM"] = "(31,29,50)"
+    hdr["DIM"] = f"({KMAX+1},{JMAX+1},{ndof})"
+    hdr["NM1M3"] = n_m1m3
+    hdr["NM2"] = n_m2
     hdr["BAND"] = args.band
     hdr["COORDSYS"] = "ZCS"
     hdr["FLIPM1M3"] = True
