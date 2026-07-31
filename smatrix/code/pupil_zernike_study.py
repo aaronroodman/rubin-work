@@ -1,10 +1,18 @@
 #!/usr/bin/env python
 """Which mirror bending modes contribute to pupil astigmatism/coma (Z5-Z8)?
 
-A pupil-Zernike slice through the DZ sensitivity matrix.  For a chosen pupil
-Noll term j, each DOF's sensitivity sens[:, j, dof] is a field-Zernike expansion
-giving the pupil-Zj wavefront (um) vs focal-plane position.  For every mirror
-bending mode we compute the peak |Zj| over the field per 1 um of mode, and:
+A pupil-Zernike slice through the DZ sensitivity matrix, FORCE-WEIGHTED by each
+mode's allowed range.  For a chosen pupil Noll term j, each DOF's sensitivity
+sens[:, j, dof] is a field-Zernike expansion giving the pupil-Zj wavefront (um)
+vs focal-plane position.  Each mode is dialed to a fixed fraction of its
+force-limited range r (default fraction 1.0), so the plotted quantity is the
+peak |Zj| over the field for that realistic offset:
+
+    contribution_j(mode) = peak_field |Zj sens per um| * range_fraction * r_mode
+
+r comes from the geometric-normalization range weights (full_zemax, ZEMAX
+force).  This answers: within its force budget, how much Zj can each mode add?
+For every mirror bending mode we compute this contribution and:
 
   - top panel: the per-mode contribution landscape (all 153 M1M3 + 69 M2 modes),
     with the AOS-used 20 marked and the threshold line;
@@ -45,12 +53,17 @@ def dof_label(idof):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--threshold", type=float, default=0.02,
-                    help="peak |Zj| over field, um per 1um mode")
+                    help="min peak |Zj| over field (um WF) at range_fraction*range")
+    ap.add_argument("--range-fraction", type=float, default=1.0,
+                    help="fraction of each mode's allowed (force-limited) range")
     ap.add_argument("--pupil", type=int, nargs="+", default=[5, 6, 7, 8])
     ap.add_argument("--n-maps", type=int, default=18, help="# top maps to show")
     args = ap.parse_args()
 
     sens = np.load(OUT / "smatrix_dz_31_29_232_r_bend_zemax.npy")
+    # per-mode force-limited range (ZEMAX force), bending DOF only
+    r_all = np.load(OUT / "normalization_all.npz")["full_zemax_r"]   # (232,)
+    r_bend = r_all[N_RIGID:] * args.range_fraction                    # (222,)
     t = np.linspace(-FR, FR, 120); X, Y = np.meshgrid(t, t)
     inside = np.hypot(X, Y) <= FR
     bend = np.arange(N_RIGID, N_RIGID + N_M1M3 + N_M2)
@@ -63,13 +76,14 @@ def main():
 
     with PdfPages(OUT / "pupil_zernike_study.pdf") as pdf:
         for j in args.pupil:
-            peak = np.array([np.nanmax(np.abs(zmap(i, j))) for i in bend])
+            peak_raw = np.array([np.nanmax(np.abs(zmap(i, j))) for i in bend])  # µm/µm
+            peak = peak_raw * r_bend                       # µm WF at range_fraction*range
             sel = peak >= args.threshold
             n_aos = sum(dof_label(bend[k])[1] for k in np.where(sel)[0])
             n_ho = int(sel.sum()) - n_aos
             top = bend[np.argsort(-peak)[:args.n_maps]]
-            print(f"Z{j}: {int(sel.sum())}/{len(bend)} modes >= {args.threshold} µm/µm "
-                  f"({n_aos} AOS-20, {n_ho} higher-order); "
+            print(f"Z{j}: {int(sel.sum())}/{len(bend)} modes >= {args.threshold} µm WF "
+                  f"(rf={args.range_fraction}) ({n_aos} AOS-20, {n_ho} higher-order); "
                   f"top: {', '.join(dof_label(d)[0] for d in top[:6])}")
 
             nrow_maps = int(np.ceil(args.n_maps / 6))
@@ -86,10 +100,10 @@ def main():
                            else "darkorange" for k in range(N_M2)],
                     label="M2 (red=AOS-20)")
             axb.axhline(args.threshold, color="k", ls="--", lw=1,
-                        label=f"threshold {args.threshold} µm/µm")
+                        label=f"threshold {args.threshold} µm WF")
             axb.set_yscale("log")
             axb.set_xlabel("mode number   (M1M3 B1-153  |  gap  |  M2 B1-69)")
-            axb.set_ylabel(f"peak |Z{j}| over field\n(µm WF / µm mode)")
+            axb.set_ylabel(f"peak |Z{j}| over field (µm WF)\nat {args.range_fraction}×range")
             axb.set_title(f"pupil Z{j} contribution per mirror mode  —  "
                           f"{int(sel.sum())} modes above threshold "
                           f"({n_aos} AOS-20, {n_ho} higher-order)")
@@ -98,7 +112,7 @@ def main():
             # --- top-contributor focal-plane maps ---
             for k, idof in enumerate(top):
                 ax = fig.add_subplot(gs[1 + k // 6, k % 6])
-                m = zmap(idof, j)
+                m = zmap(idof, j) * r_bend[idof - N_RIGID]     # µm WF at range_fraction*range
                 vmax = float(np.nanmax(np.abs(m)))
                 vmax = vmax if np.isfinite(vmax) and vmax > 0 else 1e-9
                 im = ax.imshow(m, origin="lower", cmap="RdBu_r",
@@ -110,7 +124,8 @@ def main():
                 ax.set_xticks([]); ax.set_yticks([]); ax.set_aspect("equal")
                 fig.colorbar(im, ax=ax, shrink=0.7)
 
-            fig.suptitle(f"Pupil Z{j} across the focal plane per 1µm mirror-mode offset "
+            fig.suptitle(f"Pupil Z{j} across the focal plane at {args.range_fraction}×"
+                         f"(force-limited range) per mirror mode "
                          f"(top {len(top)} contributors mapped)   [full_zemax]",
                          fontsize=13, y=0.995)
             fig.tight_layout(rect=(0, 0, 1, 0.98))

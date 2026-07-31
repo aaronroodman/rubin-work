@@ -92,11 +92,22 @@ the field (µm per 1µm mode) and focal-plane maps of the top contributors.
 For the MIW investigation (do higher-order mode offsets explain the observed
 Z5-Z8 excess over batoid).
 
+**Force-weighted** (the physical version): each mode is dialed to
+`range_fraction × its force-limited range r` (full_zemax ZEMAX-force r), so the
+contribution is `peak|Zj sens| × range_fraction × r_mode` (µm WF).
+
 | output | what | regenerate |
 |---|---|---|
-| `pupil_zernike_study.pdf` | 1 page/pupil-Noll: contribution bar chart (all 222 mirror modes, AOS-20 marked) + top-contributor field maps | `python pupil_zernike_study.py --threshold 0.02` |
+| `pupil_zernike_study.pdf` | 1 page/pupil-Noll: contribution bar chart (all 222 mirror modes, AOS-20 marked) + top-contributor field maps | `python pupil_zernike_study.py --threshold 0.02 --range-fraction 1.0` |
 
-Finding: at 0.02 µm/µm, ~214 modes drive Z5/Z6 and ~199 drive Z7/Z8 — the
-large majority (incl. ~170 higher-order). For coma the strongest contributors
-are genuinely high modes. So even small higher-order mode offsets can add
-0.05-0.1µm of Z5-Z8.  `--threshold` and `--n-maps` are parameters.
+Finding (rf=1.0, thr=0.02µm WF): only **13 modes drive Z5/Z6, 5 drive Z7, 4
+drive Z8 — all AOS-20, zero higher-order**. Within their force budget the higher
+modes can't reach 0.02µm. Scan: Z5 has 13 modes at rf=1, 19 at rf=3, and the
+first higher-order modes only enter at **rf≈10** (34 modes, 4 higher-order). So
+a MIW-scale Z5-Z8 from a higher-order mode needs an offset ~10× the AOS
+force-limited range — i.e. a real figure error well beyond control authority.
+Params: `--range-fraction`, `--threshold`, `--n-maps`, `--pupil`.
+
+(The earlier per-µm version — unweighted by force — is the `range_fraction`→
+"1 µm regardless of force" limit; it selected ~200 modes and is misleading for
+the force-constrained question.)
