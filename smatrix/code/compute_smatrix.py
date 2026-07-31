@@ -67,22 +67,24 @@ WAVELENGTHS_UM = {               # microns
     "z": 0.869, "y": 0.971, "ref": 0.5,
 }
 
-# Our AOS convention (matches ts_intrinsic_wavefront/batoid_intrinsic.py).
-# use_m1m3_modes/use_m2_modes=None -> read bend.yaml, which selects the standard
-# AOS 20-of-30 raw SVD modes: M1M3=[0..18, 26], M2=[0..16, 25, 26, 27].  This is
-# exactly what OFC's bare LSSTBuilder uses.  (Forcing range(20) instead would use
-# the wrong physical modes at the top of the set.)
+# Convention chosen to reproduce the OFC-shipped matrix EXACTLY (see
+# CONVENTIONS.md).  use_m1m3_modes/use_m2_modes=None -> read bend.yaml, the
+# standard AOS 20-of-30 raw SVD modes: M1M3=[0..18, 26], M2=[0..16, 25, 26, 27].
 BUILDER_KWARGS = dict(
     fea_dir="fea_legacy",
     bend_dir="bend",
     use_m1m3_modes=None,
     use_m2_modes=None,
-    dof_coord_system="OCS",
-    flip_m1m3_bending_modes=False,
-    flip_m2_bending_modes=False,
-    dof_angle_units="degree",     # degree: matches OFC angle columns and ts_intrinsic_wavefront
+    dof_coord_system="ZCS",          # ZCS: matches OFC hexapod rigid-body sign
+    flip_m1m3_bending_modes=True,     # both flips ON to match OFC bending-mode sign
+    flip_m2_bending_modes=True,
+    dof_angle_units="degree",         # degree: matches OFC angle columns
 )
-CONFIG_TAG = "ocs_flipfalse"      # identifies the convention in output names
+# batoid_rubin ZCS differs from the OFC matrix by a sign on the y-translation
+# (dy) and y-tip/tilt (Ry) of M2 and camera.  Flip those 4 DOF columns to match
+# OFC exactly.  See CONVENTIONS.md [open question for Josh/Guillem].
+OFC_Y_SIGN_FLIP = [2, 4, 7, 9]        # M2 dy, M2 Ry, Cam dy, Cam Ry
+CONFIG_TAG = "ofc_zcs"                # identifies the convention in output names
 
 # Per-DOF finite-difference step, in each DOF's native unit (um or degree).
 # Microns/bending: 1.0 is safe and linear.  Angle DOF (3,4,8,9) are in DEGREES
@@ -176,6 +178,8 @@ def compute(band, data_dir, jobs=1):
 
     # -> (field_k=31, pupil_j=29, dof=50), then waves -> um
     sens = np.einsum("ijk->jki", sens) * wl_um
+    # y-axis handedness patch so the result matches the OFC-shipped matrix.
+    sens[:, :, OFC_Y_SIGN_FLIP] *= -1.0
     return sens
 
 
@@ -206,8 +210,10 @@ def main():
     hdr["CONTENT"] = "DZ sensitivity (field_k, pupil_j, dof)"
     hdr["DIM"] = "(31,29,50)"
     hdr["BAND"] = args.band
-    hdr["COORDSYS"] = "OCS"
-    hdr["FLIPM2"] = False
+    hdr["COORDSYS"] = "ZCS"
+    hdr["FLIPM1M3"] = True
+    hdr["FLIPM2"] = True
+    hdr["YSIGN"] = "dy,Ry flipped to match OFC"
     hdr["UNITS"] = "um_zk_per_um_or_degree_dof"
     fits.PrimaryHDU(sens, header=hdr).writeto(outdir / f"{stem}.fits", overwrite=True)
     print("wrote", outdir / f"{stem}.npy")

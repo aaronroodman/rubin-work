@@ -21,14 +21,13 @@ helper, sampling, and unit handling).
 | 30-49 | M2 bending modes 0..19 | µm |
 
 ## Convention
-`LSSTBuilder` is configured to match our other AOS work
-(`ts_intrinsic_wavefront`): **OCS**, `flip_m1m3_bending_modes=False`,
-`flip_m2_bending_modes=False`, `dof_angle_units="arcsec"`.
-
-The OFC-shipped matrix was generated with bare `LSSTBuilder(fiducial)`
-defaults (**ZCS**, `flip_m2=True`). The comparison is expected to reveal
-per-DOF sign flips on the columns where these conventions differ (hexapod
-tilts, M2 bending modes); magnitudes should still agree.
+`LSSTBuilder` is configured to reproduce the OFC-shipped matrix **exactly**
+(see `CONVENTIONS.md`): **ZCS**, `flip_m1m3_bending_modes=True`,
+`flip_m2_bending_modes=True`, `dof_angle_units="degree"`, `use_*_modes=None`
+(bend.yaml AOS mode set). One extra convention detail: batoid_rubin's ZCS
+differs from the OFC matrix by a sign on the **y-translation (dy) and y-tip/tilt
+(Ry)** of M2 and camera, so those 4 DOF columns are sign-flipped
+(`OFC_Y_SIGN_FLIP`) — an open question for Josh/Guillem (see CONVENTIONS.md).
 
 ## Data
 Uses the pre-downloaded batoid_rubin data at
@@ -55,13 +54,11 @@ Report `output/compare_ofc_r.txt`; plots:
 - `smatrix_ofc_examples_r.png`   — full 31×29 DZ maps ours/OFC/diff, sample DOF
 - `smatrix_ofc_residual_r.png`   — per-DOF residual after global sign
 
-**All 50/50 DOF agree with OFC to |corr| > 0.999 and rms ratio 1.000**, sharing
-a single global sign **ours = −OFC**. After that one scalar sign, the max
-residual is **0.11 µm**, confined to the very-high-leverage tilt DOF (M2/Cam
-Rx,Ry, sensitivity ~300 µm/deg → ~3×10⁻⁴ relative); **relative residual is
-< 0.2% for every DOF.** The global sign flips even the coordinate-independent
-axial terms (M2 dz, Cam dz) and the bending modes, so it is a wavefront-sign
-convention, *not* the OCS-vs-ZCS hexapod choice.
+**All 50/50 DOF agree with OFC to |corr| > 0.999, rms ratio 1.000, and the same
+sign (ours = +OFC).** Max residual **0.11 µm**, confined to the very-high-leverage
+tip/tilt DOF (M2/Cam Rx,Ry, ~300 µm/deg → ~3×10⁻⁴ relative); **relative residual
+is < 0.2% for every DOF.** Getting the sign right required ZCS (hexapod),
+bending-mode flips, and the y-axis (dy, Ry) sign patch — see `CONVENTIONS.md`.
 
 ### Three gotchas that had to be matched
 1. **Mode selection.** The `bend` dataset stores **30** raw SVD modes per mirror;

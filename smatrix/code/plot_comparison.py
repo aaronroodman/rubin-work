@@ -36,6 +36,7 @@ def main():
             corr[d] = np.dot(a, b) / (na * nb)
             ratio[d] = np.sqrt(np.mean(a**2)) / np.sqrt(np.mean(b**2))
     bad = np.abs(corr) < 0.9
+    gsign = "+" if np.nanmean(np.sign(corr[~bad])) >= 0 else "-"
 
     x = np.arange(ndof)
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(13, 6), sharex=True)
@@ -46,7 +47,7 @@ def main():
     ax0.set_ylabel("corr(ours, OFC)")
     ax0.set_title(f"batoid_rubin DZ sensitivity vs OFC "
                   f"(band {args.band}, {CONFIG_TAG}) — "
-                  f"{int((~bad).sum())}/50 agree (global sign: ours = -OFC)")
+                  f"{int((~bad).sum())}/50 agree (ours = {gsign}OFC)")
     ax0.set_ylim(-1.15, 1.15)
 
     ax1.bar(x, ratio, color=c)
