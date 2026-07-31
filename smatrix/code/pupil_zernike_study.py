@@ -56,7 +56,8 @@ def main():
                     help="min peak |Zj| over field (um WF) at range_fraction*range")
     ap.add_argument("--range-fraction", type=float, default=1.0,
                     help="fraction of each mode's allowed (force-limited) range")
-    ap.add_argument("--pupil", type=int, nargs="+", default=[5, 6, 7, 8])
+    ap.add_argument("--pupil", type=int, nargs="+", default=list(range(4, 27)),
+                    help="pupil Noll terms (default Z4-Z26, incl. Z20,Z21)")
     ap.add_argument("--n-maps", type=int, default=18, help="# top maps to show")
     args = ap.parse_args()
 
@@ -102,12 +103,12 @@ def main():
             axb.axhline(args.threshold, color="k", ls="--", lw=1,
                         label=f"threshold {args.threshold} µm WF")
             axb.set_yscale("log")
+            axb.set_ylim(1e-4, 0.5)
             axb.set_xlabel("mode number   (M1M3 B1-153  |  gap  |  M2 B1-69)")
             axb.set_ylabel(f"peak |Z{j}| over field (µm WF)\nat {args.range_fraction}×range")
-            axb.set_title(f"pupil Z{j} contribution per mirror mode  —  "
-                          f"{int(sel.sum())} modes above threshold "
-                          f"({n_aos} AOS-20, {n_ho} higher-order)")
-            axb.legend(fontsize=8, ncol=3, loc="upper right")
+            # legend just above the panel (outside the data) so it never obscures bars
+            axb.legend(fontsize=8, ncol=4, loc="lower center",
+                       bbox_to_anchor=(0.5, 1.0), frameon=False)
 
             # --- top-contributor focal-plane maps ---
             for k, idof in enumerate(top):
@@ -124,10 +125,10 @@ def main():
                 ax.set_xticks([]); ax.set_yticks([]); ax.set_aspect("equal")
                 fig.colorbar(im, ax=ax, shrink=0.7)
 
-            fig.suptitle(f"Pupil Z{j} across the focal plane at {args.range_fraction}×"
-                         f"(force-limited range) per mirror mode "
-                         f"(top {len(top)} contributors mapped)   [full_zemax]",
-                         fontsize=13, y=0.995)
+            fig.suptitle(f"Pupil Z{j} at {args.range_fraction}×(force-limited range) per "
+                         f"mirror mode — {int(sel.sum())} modes >{args.threshold}µm "
+                         f"({n_aos} AOS-20, {n_ho} higher-order); top {len(top)} mapped "
+                         f"[full_zemax]", fontsize=12, y=0.997)
             fig.tight_layout(rect=(0, 0, 1, 0.98))
             pdf.savefig(fig); plt.close(fig)
     print("wrote", OUT / "pupil_zernike_study.pdf")

@@ -98,10 +98,12 @@ contribution is `peak|Zj sens| × range_fraction × r_mode` (µm WF).
 
 | output | what | regenerate |
 |---|---|---|
-| `pupil_zernike_study.pdf` | 1 page/pupil-Noll: contribution bar chart (all 222 mirror modes, AOS-20 marked) + top-contributor field maps | `python pupil_zernike_study.py --threshold 0.02 --range-fraction 1.0` |
+| `pupil_zernike_study.pdf` | 1 page per pupil Noll **Z4-Z26** (incl. Z20,Z21): contribution bar chart (all 222 mirror modes, AOS-20 marked, y 1e-4..0.5) + top-contributor field maps | `python pupil_zernike_study.py --threshold 0.02 --range-fraction 1.0` |
 
 Finding (rf=1.0, thr=0.02µm WF): only **13 modes drive Z5/Z6, 5 drive Z7, 4
-drive Z8 — all AOS-20, zero higher-order**. Within their force budget the higher
+drive Z8 — all AOS-20, zero higher-order**. Across Z4-Z26 the count is small
+(0-13) and always AOS-20; **Z11 (primary spherical) has 0 modes** above
+threshold at rf=1 (B52 is force-limited). Within their force budget the higher
 modes can't reach 0.02µm. Scan: Z5 has 13 modes at rf=1, 19 at rf=3, and the
 first higher-order modes only enter at **rf≈10** (34 modes, 4 higher-order). So
 a MIW-scale Z5-Z8 from a higher-order mode needs an offset ~10× the AOS
