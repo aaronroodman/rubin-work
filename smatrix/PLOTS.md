@@ -85,3 +85,18 @@ Normalization = OFC convention `A·diag(w)`; standalone (not the LSST-stack
 | `m1m3_B52.png` | surface + Zernike content + wavefront (primary spherical Z11) | `python plot_b52.py` |
 
 B52 (raw 51) is 96% m=0; drives Z4/Z11/Z22; **not in the AOS-used 20**.
+
+## 8. Pupil-Zernike slice: which modes drive astigmatism/coma (Z5-Z8)
+`pupil_zernike_study.py` — for each pupil Noll j, the per-mode peak |Zj| over
+the field (µm per 1µm mode) and focal-plane maps of the top contributors.
+For the MIW investigation (do higher-order mode offsets explain the observed
+Z5-Z8 excess over batoid).
+
+| output | what | regenerate |
+|---|---|---|
+| `pupil_zernike_study.pdf` | 1 page/pupil-Noll: contribution bar chart (all 222 mirror modes, AOS-20 marked) + top-contributor field maps | `python pupil_zernike_study.py --threshold 0.02` |
+
+Finding: at 0.02 µm/µm, ~214 modes drive Z5/Z6 and ~199 drive Z7/Z8 — the
+large majority (incl. ~170 higher-order). For coma the strongest contributors
+are genuinely high modes. So even small higher-order mode offsets can add
+0.05-0.1µm of Z5-Z8.  `--threshold` and `--n-maps` are parameters.
