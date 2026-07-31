@@ -48,3 +48,29 @@ Cost scales with the number of Zernike terms; a targeted high-jmax run over just
 the bending-mode DOF may be sufficient.
 
 ---
+
+## 3. Range force source: IM vs ZEMAX basis for the full mode set
+
+**What:** The range `r` uses force-per-micron. Two force sources exist and are
+both generated (`make_normalization.py`, `normalization_all.npz`):
+- **IM** (Bo's IM force = ts_config v13 files) — what the **official OFC v13**
+  range used. Self-consistent with the IM-basis modes (`bend_full`, 156+72).
+- **ZEMAX** (`match_forces`, in `bend_zemax`) — self-consistent with the
+  ZEMAX/OFC-basis modes that reproduce the OFC *sensitivity* exactly (153+69).
+
+**Findings (resolved):**
+- The M2 force differs between the two by an exact **lbf→N** factor (4.4482);
+  the raw M2 FEA / `match_forces` output is in **pounds-force**. After that
+  conversion, **IM and ZEMAX M2 force are identical** for all modes.
+- **M1M3** IM vs ZEMAX force differ by up to ~1.75x for a handful of modes
+  (B3, B6, B7, B15, B16, B20) — genuine SVD-basis differences between Bo's IM
+  decomposition and the `match_forces` reconstruction. Median ratio ~1.06.
+
+**To decide:** which basis is canonical going forward. `50dof_im` reproduces
+OFC v13 exactly (baseline). For the *full* set, `full_zemax` is the natural
+self-consistent choice (matches the OFC sensitivity basis); `full_im` is the
+IM-basis analogue (bend_full). Pin down whether the ~1.75x M1M3 force
+differences are a `match_forces` artifact or a real basis difference before
+adopting one as the reference for tracking changes.
+
+---
