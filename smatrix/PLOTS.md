@@ -86,6 +86,26 @@ Normalization = OFC convention `A·diag(w)`; standalone (not the LSST-stack
 
 B52 (raw 51) is 96% m=0; drives Z4/Z11/Z22; **not in the AOS-used 20**.
 
+## 9. Thermal-gradient wavefront sensitivity (force-free)
+`thermal_sensitivity.py` → `thermal_sensitivity.npz` — DZ sensitivity (µm WF
+per unit gradient) to 7 thermal DOF: M1M3 {TBulk (C), TxGrad, TyGrad, TzGrad,
+TrGrad (C/m)}, M2 {TzGrad, TrGrad}.
+`thermal_study.py` → `thermal_study.pdf` (coupling heatmap; per-DOF field maps;
+astig/coma Z5-Z8 + gradient needed for MIW scale).
+
+| output | what | regenerate |
+|---|---|---|
+| `thermal_sensitivity.npz` | (31,29,7) thermal DZ sensitivity | `python thermal_sensitivity.py` |
+| `thermal_study.pdf` | coupling + field maps + MIW astig/coma | `python thermal_study.py` |
+
+Findings: TBulk→Z4; **TxGrad→Z8 coma, TyGrad→Z7 coma**; TzGrad→Z4(17µm/[C/m])+Z11
+spherical; **TrGrad→Z4+Z11+Z22** (0.0185µm Z22 per C/m, so ~1.1 C/m gives the
+observed 0.02µm Z22). That 0.02µm Z22 would need **~700 N** via bending (≈5× the
+~134N AOS budget) — thermal produces it force-free. Coma at MIW scale (0.05µm)
+needs ~0.3 C/m x/y gradient; axisymmetric gradients make astig/coma only with
+huge accompanying defocus. Supports thermal gradients as the MIW Z5-Z8/Z11/Z22
+source that force-limited bending can't reach.
+
 ## 8. Pupil-Zernike slice: which modes drive astigmatism/coma (Z5-Z8)
 `pupil_zernike_study.py` — for each pupil Noll j, the per-mode peak |Zj| over
 the field (µm per 1µm mode) and focal-plane maps of the top contributors.
