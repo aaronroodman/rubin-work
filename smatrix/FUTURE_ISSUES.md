@@ -49,6 +49,29 @@ the bending-mode DOF may be sufficient.
 
 ---
 
+## 4. MIW high-field-order astigmatism/coma -> camera refractive optics, not mirrors
+
+**Observation:** the MIW Z5-Z8 shows large (~±0.3µm) HIGH-field-order (many-lobe)
+structure that rotates with the camera rotator (`aos/output/pathA_50_34_i_5rot/
+intrinsic_split.pdf`, spin n=2 s=+1 component).
+
+**Diagnosis (see `demo_field_order.py`, `demo_field_order.png`):**
+- It rotates with the rotator => fixed to the CAMERA (downstream of the rotator),
+  NOT M1M3/M2 (telescope-fixed).
+- High field-order => a surface far from the pupil.  Mirror figure/thermal are
+  near-pupil => low field-order (field-constant-ish), so they cannot produce it.
+- batoid demo: the same fine figure error gives Z5~0 at the pupil (M2) and at
+  exact focus (detector), but LARGE high-field-order Z5 at the intermediate
+  camera refractive elements (L1/L2/filter).
+- => the source is fine-scale figure and/or refractive-index inhomogeneity
+  (striae) in the camera lenses (esp. L1/L2, large fused-silica blanks) and/or
+  the filter; amplitude ~0.3µm is plausible from lens index striae.
+
+**To do:** model camera-lens index striae / mid-spatial figure explicitly and
+fit the observed rotating MIW pattern; check band dependence (filter) and
+per-lens contributions.  (batoid_rubin has L1/L2/L3 surface-figure hooks in
+fea_legacy: L1S1zer, L2S1zer, etc.)
+
 ## 3. Range force source: IM vs ZEMAX basis for the full mode set
 
 **What:** The range `r` uses force-per-micron. Two force sources exist and are
