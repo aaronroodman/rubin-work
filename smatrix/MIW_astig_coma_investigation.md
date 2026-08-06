@@ -73,36 +73,50 @@ at **field radial order n=3–5**, telescope-fixed.
    static reference-model/pipeline artifact and *for* a time-varying physical
    effect (thermal, mirror supports, or elevation/gravity).
 5. **Gravity-induced camera-lens deformation appearing as OCS.** Gravity is
-   fixed to the telescope/elevation frame, not the rotator. The **axial**
-   camera-lens gravity term in `LSSTCam_gravity` is
-   `∝ (cos z − 1)` and **rotation-independent** → it is assigned to **OCS**,
-   even though it is camera lenses (near focus → high field-order), and it is
-   **elevation-dependent → time-varying** (explaining #4). This uniquely
-   satisfies OCS + high-field-order + time-varying. **Leading candidate.**
+   fixed to the **telescope/elevation frame**, not the rotator: the gravity
+   vector is constant relative to the mirrors and rotates relative to the
+   camera. A gravity-induced lens deformation is therefore fixed in the
+   telescope frame and **counter-rotates in the detector frame** as the rotator
+   turns — which is exactly the signature the split assigns to **OCS**. This
+   holds for **both** the axial *and* the lateral parts of the camera-lens
+   gravity response in `LSSTCam_gravity`; the entire gravity contribution
+   follows the mirrors (OCS). (A camera-fixed = CCS aberration is one bolted to
+   the camera body — lens figure, striae, mount stress — which rotates *with*
+   the rotator. Gravity is not one of those.) It is near-focus (can make
+   high field-order) and **elevation-dependent → time-varying** (explaining #4).
    [batoid test result below.]
 
-### Camera-gravity test (`_camgrav.py`, zenith 45°, rotation-averaged)
-| term | cam-grav OCS-like | field order | cam-grav CCS-like | observed MIW OCS |
-|---|---|---|---|---|
-| Z5 | 0.028 | n≈1.8 | 0.042 | 0.11 |
-| Z6 | 0.029 | n≈2.7 | 0.047 | 0.12 |
-| Z7 | 0.016 | n≈1.7 | 0.010 | 0.13 |
-| Z8 | 0.007 | n≈1.5 | 0.014 | 0.13 |
+### Camera-gravity test (`_cg2.py`, full axial+lateral response, all OCS)
+Full camera-lens gravity wavefront (Z in µm RMS over the field), vs zenith:
 
-The mechanism is real — the axial term **is** rotation-independent (→ assigned
-to OCS). But as modeled it is **not the dominant source**:
-1. **Too small:** ~0.03 µm astig, ~0.01 µm coma — 4–15× below the observed
-   0.1–0.13 µm (grows only ~1.7× by z=60°).
-2. **Field-order too low:** n≈2 vs observed n=3–5 (the FEA lens deformation is
-   smooth/low-order).
-3. **Wrong OCS/CCS ratio (the clincher):** gravity produces axial(OCS) and
-   lateral(CCS) parts with ratio −tan(z/2), so **OCS ≲ CCS**. The data has
-   **OCS ≫ CCS** (0.11 vs 0.022). The small observed CCS astig therefore
-   *bounds* any gravity contribution to ~0.03 µm.
+| term | z=30° | z=45° | z=60° | field order | observed MIW OCS |
+|---|---|---|---|---|---|
+| Z5 astig | 0.040 | 0.065 | 0.091 | n≈1.5 | 0.11 |
+| Z6 astig | 0.032 | 0.049 | 0.066 | n≈1.5–2 | 0.12 |
+| Z7 coma | 0.011 | 0.020 | 0.031 | n≈1 | 0.13 |
+| Z8 coma | 0.012 | 0.018 | 0.024 | n≈1.5 | 0.13 |
+| Z4 defocus | 0.030 | 0.047 | 0.063 | n≈0.5–1 | 0.04 |
 
-So camera gravity is a real ~0.03 µm OCS contributor but cannot explain the
-0.1 µm / n=3–5 excess (unless the true lens gravitational response is several×
-larger and finer than the FEA model — testable via elevation dependence).
+**Correction to an earlier (wrong) argument.** A prior version claimed gravity
+splits into an axial(OCS) and lateral(CCS) part with ratio −tan(z/2), so
+OCS ≲ CCS, and used the small observed CCS to *bound* gravity to ~0.03 µm.
+**That is wrong** — gravity is telescope-fixed, so both parts are OCS; the
+rotation-*varying* (lateral) piece varies in the detector frame precisely
+*because* it is OCS, not because it is CCS. The small observed CCS does **not**
+bound the gravity contribution.
+
+With the frame correct, camera gravity is a **much more serious contributor**
+than before: the **astigmatism** reaches ~0.09 µm (Z5) by z=60°, comparable to
+the observed ~0.11 µm OCS astig. Two discrepancies remain, though:
+1. **Field-order too low:** n≈1.5–2 (roughly field-linear astig), vs the
+   observed n=3–5 — the FEA lens deformation is smooth/low-order.
+2. **Coma too small:** ~0.02–0.03 µm Z7/Z8, ~5× below the observed ~0.13 µm.
+
+So (as modeled) camera gravity can plausibly account for much of the OCS
+**astig** amplitude and its elevation/time dependence (#4), but not the
+high-field-order structure nor the large coma. Both gaps would close if the
+real lens gravitational response were larger and finer than this low-order FEA
+reduction — which the **elevation dependence** directly tests.
 
 ## Leading conclusion (as of this analysis)
 **No single considered mechanism explains the excess.** Summary of where each
@@ -110,23 +124,31 @@ stands:
 - Camera lens figure/striae — CCS, excluded by CCS≈0.
 - Mirror figure — needs ~1.7 µm mid-spatial figure, implausible.
 - Thermal — low field-order + huge defocus.
-- Camera gravity (#5) — real but ~0.03 µm, low field-order, and gives OCS≲CCS
-  (data is OCS≫CCS).
+- Camera gravity (#5) — **all OCS** (telescope-fixed), astig ~0.09 µm at z=60°
+  (comparable to observed), elevation/time-dependent — but low field-order
+  (n≈1.5–2) and coma ~5× too small. **The strongest remaining lead.**
 - Reference-model/pipeline systematic — would be static, but the MIW **changes**
   night-to-night (#4), so at least part is not a static artifact.
 
 The tension: it is OCS (telescope-frame), high field-order (n=3–5), ~0.1 µm,
-**time-varying** — yet every physical optic that could make high field-order is
-either CCS (camera) or force/figure-prohibitive (mirrors). The two most
-important unresolved leads are (a) the **time variability** (#4) — measure the
-two rotator-subset groups vs elevation/temperature to find what changes; and
-(b) the **field-azimuthal / OCS-CCS ambiguity** (#3) — a cylindrical-basis
-decomposition may reassign part of the "OCS" pattern, and limited rotator
-sampling (5 angles) may inflate the apparent field-order.
+**time-varying**. Camera gravity now matches the OCS frame, the astig
+amplitude, and the time dependence; what it does **not** yet reproduce is the
+high field-order and the coma amplitude. The two most important unresolved
+leads are (a) the **elevation/time dependence** (#4/#5) — measure the two
+rotator-subset groups (and the astig amplitude) against mean elevation; a
+gravity origin predicts the astig scales roughly as `sin z` (or `cos z − 1` for
+the axial piece); and (b) the **field-azimuthal / OCS-CCS ambiguity** (#3) — a
+cylindrical-basis decomposition may reassign part of the "OCS" pattern, and
+limited rotator sampling (5 angles) may inflate the apparent field-order,
+softening the field-order discrepancy.
 
 ## Next steps
-- Quantify axial camera-gravity Z5–Z8 amplitude & field-order vs the observed
-  0.1 µm / n=3–5 (in progress).
-- Compare MIW between the two rotator-subset groups vs their mean elevation
-  (test the gravity/elevation dependence directly).
-- Field-azimuthal (cylindrical) harmonic decomposition of the OCS maps (#3).
+- **Elevation test (highest value):** compare the MIW OCS astig/coma amplitude
+  (and the two rotator-subset groups) vs mean elevation. Camera gravity predicts
+  the astig scales ~`sin z` (lateral) / `cos z − 1` (axial); a static systematic
+  predicts no elevation dependence. This directly discriminates #5 from #1.
+- Field-azimuthal (cylindrical) harmonic decomposition of the OCS maps (#3) — may
+  reassign part of the pattern and may soften the apparent n=3–5 field-order.
+- If the elevation test supports gravity, revisit the `LSSTCam_gravity` FEA
+  reduction: check whether the true lens response carries more coma and higher
+  field-order than the low-order Zernike tables in `fea_legacy/L?S?zer.fits.gz`.
