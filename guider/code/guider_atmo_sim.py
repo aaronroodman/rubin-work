@@ -582,6 +582,10 @@ if __name__ == "__main__":
     ap.add_argument("--alt", type=float, help="explicit pointing altitude [deg]")
     ap.add_argument("--az", type=float, help="explicit pointing azimuth [deg]")
     ap.add_argument("--n-visits", type=int, dest="n_visits")
+    ap.add_argument("--screen-size", type=float, dest="screen_size",
+                    help="phase-screen size [m] (default: auto from winds/FoV)")
+    ap.add_argument("--screen-scale", type=float, dest="screen_scale",
+                    help="phase-screen pixel [m] (default 0.10; 0.15 ~halves memory)")
     ap.add_argument("--doOpt", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -589,7 +593,7 @@ if __name__ == "__main__":
     cfg.setdefault("mode", "guiders")
     for key in ("mode", "fov_dets", "atmo_source", "render", "n_visits",
                 "psfws_forecast_file", "psfws_data_dir", "psfws_date",
-                "obs_time", "alt", "az"):
+                "obs_time", "alt", "az", "screen_size", "screen_scale"):
         if getattr(args, key) is not None:
             cfg[key] = getattr(args, key)
     if args.psfws_month is not None:
