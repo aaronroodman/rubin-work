@@ -167,9 +167,14 @@ def resolve_pointing(cfg):
         coord = SkyCoord(cfg["boresight_ra"] * u.deg, cfg["boresight_dec"] * u.deg)
         aa = coord.transform_to(AltAz(obstime=time, location=site))
         alt, az, am = aa.alt.deg, aa.az.deg, float(aa.secz)
-        if alt < 10.0:
-            print(f"  WARNING: boresight is at alt={alt:.1f} deg (airmass {am:.1f}) "
-                  f"at {t} -- below/near horizon; check boresight_ra/dec + obs_time.")
+        if alt <= 0.0:
+            raise ValueError(
+                f"boresight_ra/dec ({cfg['boresight_ra']},{cfg['boresight_dec']}) is "
+                f"below the horizon (alt={alt:.1f} deg) at {t}. Set a boresight that is "
+                f"up at that UTC time, or override with --alt/--az.")
+        if alt < 20.0:
+            print(f"  WARNING: boresight at alt={alt:.1f} deg (airmass {am:.2f}) at {t} "
+                  f"-- high airmass; check boresight_ra/dec + obs_time.")
         return alt, az, am, f"astropy@{t}"
     alt = 90.0 - np.degrees(np.arccos(1.0 / cfg["airmass"]))
     return alt, (cfg.get("az") or 0.0), cfg["airmass"], "airmass"
@@ -240,7 +245,18 @@ def _psfws_generator(cfg, rng):
         kw["telemetry_file"] = tel
     if cfg["psfws_data_dir"]:
         kw["data_dir"] = pathlib.Path(cfg["psfws_data_dir"])
-    return psfws.ParameterGenerator(**kw)
+    pg = psfws.ParameterGenerator(**kw)
+    # ERA5/ERA5T (expver 1 vs 5) overlap duplicates timestamps in recent-date
+    # forecast files; keep one row per timestamp so get_parameters is well-posed.
+    if pg.data_fa.index.has_duplicates:
+        dup = pg.data_fa.index.duplicated(keep="first")
+        n = int(dup.sum())
+        pg.data_fa = pg.data_fa[~dup]
+        if getattr(pg, "data_gl", None) is not None:
+            pg.data_gl = pg.data_gl[~pg.data_gl.index.duplicated(keep="first")]
+        pg.N = len(pg.data_fa)
+        print(f"  psfws: dropped {n} duplicate timestamps (ERA5/ERA5T overlap)")
+    return pg
 
 
 def _psfws_pick(pg, cfg, rng):

@@ -60,6 +60,20 @@ def preflight():
     return problems
 
 
+def _dedupe_forecast(path):
+    """Drop duplicate timestamps (ERA5 vs ERA5T expver overlap duplicates recent
+    dates) so psfws/guider_atmo_sim see one row per time. Rewrites the pickle."""
+    import pickle
+    with open(path, "rb") as f:
+        df = pickle.load(f)
+    if df.index.has_duplicates:
+        n0 = len(df)
+        df = df[~df.index.duplicated(keep="first")].sort_index()
+        with open(path, "wb") as f:
+            pickle.dump(df, f)
+        print(f"  de-duplicated: {n0} -> {len(df)} rows (ERA5/ERA5T overlap)")
+
+
 def _validate_forecast(path):
     """True if the forecast pickle has usable rows (guards against empty ERA5T)."""
     import pickle
@@ -69,9 +83,9 @@ def _validate_forecast(path):
     except Exception as exc:                                  # noqa: BLE001
         print(f"  could not read {path}: {exc}")
         return False
-    n = len(df)
-    print(f"  forecast rows: {n}"
-          + (f"  ({df.index.min()} .. {df.index.max()})" if n else ""))
+    n = df.index.nunique()
+    print(f"  forecast rows: {len(df)} ({n} unique times)"
+          + (f"  {df.index.min()} .. {df.index.max()}" if n else ""))
     return n > 0
 
 
@@ -132,6 +146,7 @@ def main():
     finally:
         os.chdir(cwd)
 
+    _dedupe_forecast(outdir / forecast_name)
     ok = _validate_forecast(outdir / forecast_name)
     print(f"\nwrote {outdir / forecast_name}")
     if not ok:
