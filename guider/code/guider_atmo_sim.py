@@ -585,7 +585,8 @@ if __name__ == "__main__":
     ap.add_argument("--screen-size", type=float, dest="screen_size",
                     help="phase-screen size [m] (default: auto from winds/FoV)")
     ap.add_argument("--screen-scale", type=float, dest="screen_scale",
-                    help="phase-screen pixel [m] (default 0.10; 0.15 ~halves memory)")
+                    help="phase-screen pixel [m] (default 0.10 -> 16384px/12.9GB; "
+                         "0.2 -> 8192px/3.2GB, same FoV coverage)")
     ap.add_argument("--doOpt", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
