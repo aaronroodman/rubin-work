@@ -35,6 +35,7 @@ __all__ = [
     "centroidPsd",
     "PSD_BIN_EDGES",
     "temporalShapeCovariance",
+    "temporalMomentCovariance",
     "bandPowerPsd",
     "integralTimescale",
     "summarizeExposure",
@@ -57,7 +58,8 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__name__)
 
 # Summary-table schema version (bump when columns change).
-SCHEMA_VERSION = 1
+# v2: add (Mxx,Myy,Mxy) temporal covariance + their band PSDs/floors.
+SCHEMA_VERSION = 2
 
 # Fixed log-spaced frequency band edges (Hz) for the binned PSDs. 5 bands.
 PSD_BIN_EDGES = (0.03, 0.1, 0.2, 0.5, 1.0, 2.5)
@@ -617,6 +619,35 @@ def temporalShapeCovariance(perStamp: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def temporalMomentCovariance(perStamp: pd.DataFrame) -> dict[str, float]:
+    """Temporal covariance of the per-stamp (Mxx, Myy, Mxy) series.
+
+    The (Ixx, Iyy, Ixy) basis, directly comparable to a per-stamp simulation.
+    A linear transform of `temporalShapeCovariance` (T=Mxx+Myy, Q1=Mxx-Myy,
+    Q2=2*Mxy); both are stored for convenience. Values in arcsec**4.
+
+    Parameters
+    ----------
+    perStamp : `pandas.DataFrame`
+        Per-stamp moments (arcsec**2) with columns ``Mxx, Myy, Mxy``.
+
+    Returns
+    -------
+    cov : `dict` [`str`, `float`]
+        ``var_Mxx, var_Myy, var_Mxy, cov_Mxx_Myy, cov_Mxx_Mxy, cov_Myy_Mxy``.
+    """
+    keys = ["var_Mxx", "var_Myy", "var_Mxy", "cov_Mxx_Myy", "cov_Mxx_Mxy", "cov_Myy_Mxy"]
+    m = np.vstack([perStamp["Mxx"].to_numpy(), perStamp["Myy"].to_numpy(), perStamp["Mxy"].to_numpy()])
+    m = m[:, np.all(np.isfinite(m), axis=0)]
+    if m.shape[1] < 2:
+        return dict.fromkeys(keys, np.nan)
+    c = np.cov(m, bias=True)
+    return {
+        "var_Mxx": float(c[0, 0]), "var_Myy": float(c[1, 1]), "var_Mxy": float(c[2, 2]),
+        "cov_Mxx_Myy": float(c[0, 1]), "cov_Mxx_Mxy": float(c[0, 2]), "cov_Myy_Mxy": float(c[1, 2]),
+    }
+
+
 def bandPowerPsd(
     series: np.ndarray, fs: float, binEdges: tuple[float, ...] = PSD_BIN_EDGES
 ) -> tuple[list[float], float]:
@@ -778,6 +809,9 @@ def summarizeExposure(
         psd_Q1, floor_Q1 = bandPowerPsd(pm["Q1"].to_numpy(), guiderHz, psdBinEdges)
         psd_Q2, floor_Q2 = bandPowerPsd(pm["Q2"].to_numpy(), guiderHz, psdBinEdges)
         psd_T, floor_T = bandPowerPsd(pm["T"].to_numpy(), guiderHz, psdBinEdges)
+        psd_Mxx, floor_Mxx = bandPowerPsd(pm["Mxx"].to_numpy(), guiderHz, psdBinEdges)
+        psd_Myy, floor_Myy = bandPowerPsd(pm["Myy"].to_numpy(), guiderHz, psdBinEdges)
+        psd_Mxy, floor_Mxy = bandPowerPsd(pm["Mxy"].to_numpy(), guiderHz, psdBinEdges)
 
         row = {
             **meta,
@@ -793,10 +827,13 @@ def summarizeExposure(
             "frac_Q1_static": dm.stampMean.q1 / (dm.stampMean.q1 + dm.motion.q1),
             "frac_Q2_static": dm.stampMean.q2 / (dm.stampMean.q2 + dm.motion.q2),
             **temporalShapeCovariance(pm),
+            **temporalMomentCovariance(pm),
             "psd_dx": psd_dx, "psd_dy": psd_dy,
             "psd_Q1": psd_Q1, "psd_Q2": psd_Q2, "psd_T": psd_T,
+            "psd_Mxx": psd_Mxx, "psd_Myy": psd_Myy, "psd_Mxy": psd_Mxy,
             "psd_dx_floor": floor_dx, "psd_dy_floor": floor_dy,
             "psd_Q1_floor": floor_Q1, "psd_Q2_floor": floor_Q2, "psd_T_floor": floor_T,
+            "psd_Mxx_floor": floor_Mxx, "psd_Myy_floor": floor_Myy, "psd_Mxy_floor": floor_Mxy,
             "tau_x": integralTimescale(dx, guiderHz), "tau_y": integralTimescale(dy, guiderHz),
             "e1_med": float(sub["e1"].median()), "e2_med": float(sub["e2"].median()),
             "fwhm_med": float(sub["fwhm"].median()),
