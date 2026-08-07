@@ -98,8 +98,17 @@ def load_sim_guiderdata(outdir, visit=0):
     stamps = np.load(os.path.join(outdir, f"guider_atmo_stamps_visit{visit:02d}.npy"))
     moments = pd.read_parquet(os.path.join(outdir, "guider_atmo_moments.parquet"))
     moments = moments[moments.visit == visit]
-    with open(os.path.join(outdir, "guider_atmo_meta.json")) as fh:
-        meta = json.load(fh)
+    meta_path = os.path.join(outdir, "guider_atmo_meta.json")
+    if os.path.isfile(meta_path):
+        with open(meta_path) as fh:
+            meta = json.load(fh)
+    else:
+        # Output predates the sidecar (older guider_atmo_sim.py). Fall back to
+        # defaults derived from the data; re-run the sim to write the sidecar
+        # (alt/az then reflect the real pointing instead of these defaults).
+        print(f"  note: no {os.path.basename(meta_path)}; using defaults "
+              "(alt=90, az=0, cadence=0.2). Re-run guider_atmo_sim.py to write it.")
+        meta = {}
     order = meta.get("guider_order") or list(moments[moments.stamp == 0].guider)
     roi = int(meta.get("roi", stamps.shape[-1]))
     gd = SimGuiderData(stamps, order, meta)
