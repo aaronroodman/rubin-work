@@ -79,6 +79,7 @@ CFG = dict(
     fov_roi=64,              # ROI per CCD [pix]
     fov_flux=1.0e6,          # photons per CCD stamp
 
+    day_obs=0, seq_num=0,    # labels only (for the GuiderData adapter / movie titles)
     doOpt=False,             # add imSim field-dependent optical phase screen
     seed=57721,
 
@@ -529,7 +530,18 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd):
     df = df[[c for c in cols if c in df.columns]]
     pq = os.path.join(outdir, "guider_atmo_moments.parquet")
     df.to_parquet(pq, index=False)
-    print(f"\nwrote {pq}  ({len(df)} rows)")
+    # Sidecar metadata for the GuiderData adapter / movie (alt/az/cadence/etc.)
+    import json
+    meta = dict(dayObs=int(cfg["day_obs"]), seqNum=int(cfg["seq_num"]),
+                alt=float(cfg["_alt"]), az=float(cfg["_az"]),
+                airmass=float(cfg["airmass"]), camRotAngle=0.0,
+                cadence=float(cadence), exptime=float(cfg["exptime"]),
+                band=cfg["band"], source=source_key,
+                psfws_date=cfg.get("psfws_date"), roi=int(roi),
+                pixel_scale=PIXEL_SCALE, guider_order=[g[0] for g in geom])
+    with open(os.path.join(outdir, "guider_atmo_meta.json"), "w") as fh:
+        json.dump(meta, fh, indent=2)
+    print(f"\nwrote {pq}  ({len(df)} rows) + guider_atmo_meta.json")
     print(df.head(6).to_string(index=False))
 
 
@@ -611,6 +623,8 @@ if __name__ == "__main__":
     ap.add_argument("--alt", type=float, help="explicit pointing altitude [deg]")
     ap.add_argument("--az", type=float, help="explicit pointing azimuth [deg]")
     ap.add_argument("--n-visits", type=int, dest="n_visits")
+    ap.add_argument("--day-obs", type=int, dest="day_obs", help="label for outputs")
+    ap.add_argument("--seq-num", type=int, dest="seq_num", help="label for outputs")
     ap.add_argument("--screen-size", type=float, dest="screen_size",
                     help="phase-screen size [m] (default: auto from winds/FoV)")
     ap.add_argument("--screen-scale", type=float, dest="screen_scale",
@@ -623,7 +637,8 @@ if __name__ == "__main__":
     cfg.setdefault("mode", "guiders")
     for key in ("mode", "fov_dets", "atmo_source", "render", "n_visits",
                 "psfws_forecast_file", "psfws_data_dir", "psfws_date",
-                "obs_time", "alt", "az", "screen_size", "screen_scale"):
+                "obs_time", "alt", "az", "screen_size", "screen_scale",
+                "day_obs", "seq_num"):
         if getattr(args, key) is not None:
             cfg[key] = getattr(args, key)
     if args.psfws_month is not None:
