@@ -89,6 +89,7 @@ CFG = dict(
 
 D_APER = 8.36
 OBSC = 0.61
+PIXEL_SCALE = 0.2            # arcsec/pixel, nominal LSSTCam DVCS grid
 WLEN_EFF = dict(u=365.49, g=480.03, r=622.20, i=754.06, z=868.21, y=991.66)
 CP_LAT, CP_LON, CP_HEIGHT = -30.2446, -70.7494, 2715.0   # Cerro Pachon (Rubin)
 GUIDE_DETS = ["R00_SG0", "R00_SG1", "R04_SG0", "R04_SG1",
@@ -100,20 +101,32 @@ GUIDE_DETS = ["R00_SG0", "R00_SG1", "R04_SG0", "R04_SG1",
 # --------------------------------------------------------------------------
 def _det_entry(det):
     """(name, theta_x_asec, theta_y_asec, galsim_wcs) for one afw detector.
-    WCS maps stamp pixels -> field-angle arcsec in the detector pixel frame."""
+
+    Option A (draw directly in DVCS): the stamp axes are aligned to the camera
+    FOCAL_PLANE frame -- which IS the DVCS view (summit_utils' np.rot90(-nQuarter)
+    is exactly what aligns a CCD's pixels to FOCAL_PLANE). So the drawn stamps come
+    out already in the real-data DVCS orientation and need no per-CCD remap; all
+    downstream code (moments, movie) is identical to the on-sky path.
+
+    The WCS maps stamp pixels -> field-angle arcsec (what makePSF's theta uses),
+    with +x = FOCAL_PLANE/DVCS X, +y = DVCS Y, at PIXEL_SCALE arcsec/pix.
+    """
     import lsst.afw.cameraGeom as cg
     import lsst.geom as geom
     R2A = 206265.0
-    t = det.getTransform(cg.PIXELS, cg.FIELD_ANGLE)   # pixels -> radians
-    c = det.getCenter(cg.PIXELS)
+    t = det.getTransform(cg.FOCAL_PLANE, cg.FIELD_ANGLE)   # mm -> radians
+    c = det.getCenter(cg.FOCAL_PLANE)
     fa0 = t.applyForward(c)
-    fax = t.applyForward(geom.Point2D(c.getX() + 1.0, c.getY()))
-    fay = t.applyForward(geom.Point2D(c.getX(), c.getY() + 1.0))
-    dudx = (fax.getX() - fa0.getX()) * R2A
-    dvdx = (fax.getY() - fa0.getY()) * R2A
-    dudy = (fay.getX() - fa0.getX()) * R2A
-    dvdy = (fay.getY() - fa0.getY()) * R2A
-    wcs = galsim.JacobianWCS(dudx, dudy, dvdx, dvdy)
+    eps = 0.1                                              # mm step
+    fax = t.applyForward(geom.Point2D(c.getX() + eps, c.getY()))
+    fay = t.applyForward(geom.Point2D(c.getX(), c.getY() + eps))
+    # field-angle directions [arcsec/mm] of the FOCAL_PLANE (DVCS) axes
+    ex = np.array([fax.getX() - fa0.getX(), fax.getY() - fa0.getY()]) * R2A / eps
+    ey = np.array([fay.getX() - fa0.getX(), fay.getY() - fa0.getY()]) * R2A / eps
+    ex = ex / np.linalg.norm(ex)                          # unit DVCS-X in field angle
+    ey = ey / np.linalg.norm(ey)                          # unit DVCS-Y in field angle
+    s = PIXEL_SCALE
+    wcs = galsim.JacobianWCS(s * ex[0], s * ey[0], s * ex[1], s * ey[1])
     return (det.getName(), fa0.getX() * R2A, fa0.getY() * R2A, wcs)
 
 
