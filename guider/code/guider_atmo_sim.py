@@ -71,13 +71,25 @@ CFG = dict(
     stamp_rate_hz=5.0,       # -> 0.20 s between stamp starts
     exptime=0.05,            # 50 ms integration per stamp
     roi=200,                 # ROI size [pix]
-    flux_photons=1.0e5,      # photons per stamp (bright guide star)
+    flux_counts=2.0e5,       # total star flux per stamp [ADU counts]
+
+    # detector noise (guiders): shot noise via photon shooting in electrons,
+    # then Gaussian read noise; gain converts counts<->electrons.
+    gain=1.6,                # e-/count (guider gain, for shot-noise scaling)
+    read_noise=6.0,          # read noise [e- rms] (ITL guider ~5-7)
+    sky_counts=0.0,          # sky background [ADU/pixel] (negligible in 50 ms)
+
+    # delivered-FWHM matching (item 3): if set, calibrate the atmosphere so the
+    # median per-stamp FWHM equals this [arcsec] (matches observed fwhm_med).
+    target_fwhm=None,
+    fwhm_cal=True,           # auto-calibrate when target_fwhm is set
+    fwhm_cal_stamps=6,       # stamps used per calibration measurement
 
     # fov mode
     fov_dets="all",          # "science" | "guiders" | "all" (science + 8 guiders)
     fov_exptime=30.0,        # single long exposure per CCD [s]
     fov_roi=64,              # ROI per CCD [pix]
-    fov_flux=1.0e6,          # photons per CCD stamp
+    fov_flux_counts=1.0e6,   # total star flux per CCD [ADU counts]
 
     day_obs=0, seq_num=0,    # labels only (for the GuiderData adapter / movie titles)
     doOpt=False,             # add imSim field-dependent optical phase screen
@@ -195,6 +207,10 @@ def resolve_pointing(cfg):
 
 
 def target_fwhm(cfg):
+    # Calibrated atmospheric von Karman FWHM override (set by FWHM matching), else
+    # the rawSeeing -> delivered scaling.
+    if cfg.get("_atm_fwhm") is not None:
+        return cfg["_atm_fwhm"]
     wlen = WLEN_EFF[cfg["band"]]
     return cfg["rawSeeing"] * cfg["airmass"]**0.6 * (wlen / 500.0)**(-0.3)
 
@@ -391,7 +407,11 @@ def make_atmo(params, screen_size, cfg, rng):
     return Atmo(atm, aper, second_kick, opt, wlen, render)
 
 
-def draw_stamp(atmo, theta_xy_asec, t0, exptime, roi, wcs, rng, flux):
+def draw_stamp(atmo, theta_xy_asec, t0, exptime, roi, wcs, rng, flux_counts, cfg):
+    """Draw one stamp in ADU counts with realistic noise. Flux is total star
+    counts; shot noise is Poisson in electrons (flux*gain) via photon shooting,
+    then Gaussian read noise (+ optional sky) is added, then converted to counts.
+    The fft render is the noiseless PSF cross-check."""
     theta = (theta_xy_asec[0] * galsim.arcsec, theta_xy_asec[1] * galsim.arcsec)
     if atmo.render == "fft":
         psf = atmo.atm.makePSF(atmo.wlen_eff, aper=atmo.aper, theta=theta,
@@ -404,12 +424,22 @@ def draw_stamp(atmo, theta_xy_asec, t0, exptime, roi, wcs, rng, flux):
     if atmo.opt is not None:
         comps.append(atmo.opt.makePSF(atmo.wlen_eff, aper=atmo.aper, theta=theta,
                                       t0=t0, exptime=exptime, second_kick=False))
-    prof = galsim.Convolve(comps).withFlux(flux)
+    gain = cfg["gain"]
+    prof = galsim.Convolve(comps).withFlux(flux_counts * gain)   # electrons
     img = galsim.Image(roi, roi, wcs=wcs)
     if atmo.render == "fft":
-        prof.drawImage(image=img, center=img.true_center, method="fft")
+        prof.drawImage(image=img, center=img.true_center, method="fft")  # noiseless e-
     else:
-        prof.drawImage(image=img, center=img.true_center, method="phot", rng=rng)
+        # photon shooting -> Poisson shot noise in electrons
+        prof.drawImage(image=img, center=img.true_center, method="phot",
+                       rng=rng, poisson_flux=True)
+        sky_e = cfg["sky_counts"] * gain
+        if sky_e > 0:
+            img += sky_e
+        var = cfg["read_noise"]**2 + sky_e          # read noise + sky shot noise
+        if var > 0:
+            img.addNoise(galsim.GaussianNoise(rng, sigma=np.sqrt(var)))
+    img /= gain                                     # electrons -> ADU counts
     return img
 
 
@@ -494,6 +524,48 @@ def _resolve_geometry(cfg, selftest):
     return geom, cfg["atmo_source"]
 
 
+def _median_fwhm(atmo, geom, cfg, rng, nstamps, exptime, roi, flux):
+    """Median measured FWHM [arcsec] over a few (stamp, guider) draws."""
+    cadence = 1.0 / cfg["stamp_rate_hz"]
+    vals = []
+    for k in range(nstamps):
+        for (name, gx, gy, wcs) in geom:
+            img = draw_stamp(atmo, (gx, gy), k * cadence, exptime, roi, wcs, rng, flux, cfg)
+            m = measure(img)
+            if m["ok"]:
+                vals.append(m["fwhm_asec"])
+    return float(np.median(vals)) if vals else float("nan")
+
+
+def build_calibrated_atmo(cfg, source_key, geom, theta_max, exposure_s, seed):
+    """Build the atmosphere; if target_fwhm is set, calibrate the atmospheric von
+    Karman FWHM so the median per-stamp delivered FWHM matches it. Returns
+    (atmo, cfg, rng, params, ss). Re-seeds identically so only r0 changes."""
+    def build(cfg_):
+        rng = galsim.BaseDeviate(seed)              # same seed -> same realization
+        params = LAYER_SOURCES[source_key](cfg_, rng)
+        ss, need = choose_screen_size(params, theta_max, exposure_s, cfg_)
+        atmo = make_atmo(params, ss, cfg_, rng)
+        return atmo, rng, params, ss, need
+
+    atmo, rng, params, ss, need = build(cfg)
+    if cfg.get("target_fwhm") and cfg.get("fwhm_cal", True):
+        target = cfg["target_fwhm"]
+        cfg = dict(cfg, _atm_fwhm=target_fwhm(cfg))   # seed the atmospheric target
+        for it in range(3):
+            m = _median_fwhm(atmo, geom, cfg, galsim.BaseDeviate(seed + 9999),
+                             cfg["fwhm_cal_stamps"], cfg["exptime"], cfg["roi"],
+                             cfg["flux_counts"])
+            print(f"  [fwhm cal {it}] median per-stamp FWHM={m:.3f}\" "
+                  f"(target {target:.3f}\", atm_fwhm={cfg['_atm_fwhm']:.3f}\")")
+            if not np.isfinite(m) or abs(m - target) / target < 0.02:
+                break
+            cfg = dict(cfg, _atm_fwhm=cfg["_atm_fwhm"] * target / m)
+            atmo, rng, params, ss, need = build(cfg)
+    report_atmo(params, ss, need, cfg["screen_scale"])
+    return atmo, cfg, rng, params, ss
+
+
 def run_guiders(cfg, geom, source_key, outdir, os, pd):
     cadence = 1.0 / cfg["stamp_rate_hz"]
     visit_time = cfg["stamps_per_visit"] * cadence
@@ -501,17 +573,16 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd):
     rows, ng, roi = [], len(geom), cfg["roi"]
     for v in range(cfg["n_visits"]):
         print(f"\n=== visit {v} ({source_key}, {cfg['render']}): building atmosphere ===")
-        rng = galsim.BaseDeviate(cfg["seed"] + v)
-        params = LAYER_SOURCES[source_key](cfg, rng)
-        ss, need = choose_screen_size(params, theta_max, visit_time, cfg)
-        report_atmo(params, ss, need, cfg["screen_scale"])
-        atmo = make_atmo(params, ss, cfg, rng)
+        atmo, cfgv, rng, params, ss = build_calibrated_atmo(
+            cfg, source_key, geom, theta_max, visit_time, cfg["seed"] + v)
+        fmap = cfgv.get("_flux_map") or {}   # optional per-guider observed counts
         stamps = np.empty((cfg["stamps_per_visit"], ng, roi, roi), dtype=np.float32)
         for k in range(cfg["stamps_per_visit"]):
             t0 = k * cadence
             for gi, (name, gx, gy, wcs) in enumerate(geom):
-                img = draw_stamp(atmo, (gx, gy), t0, cfg["exptime"], roi, wcs, rng,
-                                 cfg["flux_photons"])
+                flux = fmap.get(name, cfgv["flux_counts"])
+                img = draw_stamp(atmo, (gx, gy), t0, cfgv["exptime"], roi, wcs, rng,
+                                 flux, cfgv)
                 stamps[k, gi] = img.array.astype(np.float32)
                 m = measure(img)
                 m = {kk: vv for kk, vv in m.items() if not kk.startswith("_")}
@@ -530,6 +601,7 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd):
     df = df[[c for c in cols if c in df.columns]]
     pq = os.path.join(outdir, "guider_atmo_moments.parquet")
     df.to_parquet(pq, index=False)
+    med_fwhm = float(df.loc[df.ok, "fwhm_asec"].median())
     # Sidecar metadata for the GuiderData adapter / movie (alt/az/cadence/etc.)
     import json
     meta = dict(dayObs=int(cfg["day_obs"]), seqNum=int(cfg["seq_num"]),
@@ -538,10 +610,15 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd):
                 cadence=float(cadence), exptime=float(cfg["exptime"]),
                 band=cfg["band"], source=source_key,
                 psfws_date=cfg.get("psfws_date"), roi=int(roi),
-                pixel_scale=PIXEL_SCALE, guider_order=[g[0] for g in geom])
+                pixel_scale=PIXEL_SCALE, gain=float(cfg["gain"]),
+                read_noise=float(cfg["read_noise"]), flux_counts=float(cfg["flux_counts"]),
+                target_fwhm=cfg.get("target_fwhm"), median_fwhm=med_fwhm,
+                guider_order=[g[0] for g in geom])
     with open(os.path.join(outdir, "guider_atmo_meta.json"), "w") as fh:
         json.dump(meta, fh, indent=2)
     print(f"\nwrote {pq}  ({len(df)} rows) + guider_atmo_meta.json")
+    tgt = f" (target {cfg['target_fwhm']:.3f}\")" if cfg.get("target_fwhm") else ""
+    print(f"delivered median per-stamp FWHM = {med_fwhm:.3f}\"{tgt}")
     print(df.head(6).to_string(index=False))
 
 
@@ -549,16 +626,19 @@ def run_fov(cfg, geom, source_key, outdir, os, pd):
     theta_max = max(np.hypot(gx, gy) for _, gx, gy, _ in geom) / 3600.0
     roi, exptime = cfg["fov_roi"], cfg["fov_exptime"]
     rows = []
+    # long exposure -> delivered FWHM ~ atmospheric von Karman FWHM; set it directly
+    cfgf = dict(cfg, _atm_fwhm=cfg["target_fwhm"]) if cfg.get("target_fwhm") else cfg
     for v in range(cfg["n_visits"]):
         print(f"\n=== visit {v} ({source_key}, {cfg['render']}): FoV, "
               f"{len(geom)} CCDs, {exptime:.0f}s exposure ===")
-        rng = galsim.BaseDeviate(cfg["seed"] + v)
-        params = LAYER_SOURCES[source_key](cfg, rng)
-        ss, need = choose_screen_size(params, theta_max, exptime, cfg)
-        report_atmo(params, ss, need, cfg["screen_scale"])
-        atmo = make_atmo(params, ss, cfg, rng)
+        rng = galsim.BaseDeviate(cfgf["seed"] + v)
+        params = LAYER_SOURCES[source_key](cfgf, rng)
+        ss, need = choose_screen_size(params, theta_max, exptime, cfgf)
+        report_atmo(params, ss, need, cfgf["screen_scale"])
+        atmo = make_atmo(params, ss, cfgf, rng)
         for di, (name, gx, gy, wcs) in enumerate(geom):
-            img = draw_stamp(atmo, (gx, gy), 0.0, exptime, roi, wcs, rng, cfg["fov_flux"])
+            img = draw_stamp(atmo, (gx, gy), 0.0, exptime, roi, wcs, rng,
+                             cfgf["fov_flux_counts"], cfgf)
             m2 = measure(img)
             m3 = measure_third(img, m2)
             row = {kk: vv for kk, vv in m2.items() if not kk.startswith("_")}
@@ -625,6 +705,18 @@ if __name__ == "__main__":
     ap.add_argument("--n-visits", type=int, dest="n_visits")
     ap.add_argument("--day-obs", type=int, dest="day_obs", help="label for outputs")
     ap.add_argument("--seq-num", type=int, dest="seq_num", help="label for outputs")
+    ap.add_argument("--flux-counts", type=float, dest="flux_counts",
+                    help="total star flux per stamp [ADU counts]")
+    ap.add_argument("--flux-file", dest="flux_file",
+                    help="JSON {detName: counts} of observed per-guider fluxes "
+                         "(e.g. sum of each stacked-coadd stamp); overrides --flux-counts per CCD")
+    ap.add_argument("--gain", type=float, help="guider gain [e-/count] (default 1.6)")
+    ap.add_argument("--read-noise", type=float, dest="read_noise", help="read noise [e- rms]")
+    ap.add_argument("--sky-counts", type=float, dest="sky_counts", help="sky [ADU/pix]")
+    ap.add_argument("--target-fwhm", type=float, dest="target_fwhm",
+                    help="match delivered median per-stamp FWHM to this [arcsec]")
+    ap.add_argument("--no-fwhm-cal", action="store_true",
+                    help="with --target-fwhm, set the atmospheric FWHM directly (no calibration)")
     ap.add_argument("--screen-size", type=float, dest="screen_size",
                     help="phase-screen size [m] (default: auto from winds/FoV)")
     ap.add_argument("--screen-scale", type=float, dest="screen_scale",
@@ -638,9 +730,16 @@ if __name__ == "__main__":
     for key in ("mode", "fov_dets", "atmo_source", "render", "n_visits",
                 "psfws_forecast_file", "psfws_data_dir", "psfws_date",
                 "obs_time", "alt", "az", "screen_size", "screen_scale",
-                "day_obs", "seq_num"):
+                "day_obs", "seq_num", "flux_counts", "gain", "read_noise",
+                "sky_counts", "target_fwhm"):
         if getattr(args, key) is not None:
             cfg[key] = getattr(args, key)
+    if args.no_fwhm_cal:
+        cfg["fwhm_cal"] = False
+    if args.flux_file:
+        import json
+        with open(args.flux_file) as fh:
+            cfg["_flux_map"] = json.load(fh)
     if args.psfws_month is not None:
         cfg["psfws_month"] = None if args.psfws_month < 0 else args.psfws_month
     if args.doOpt:
