@@ -79,18 +79,26 @@ class SimGuiderData:
         return iter(self._idx)
 
 
-def _stars_df(moments, roi):
-    """Build the summit_utils starsDf (detector/stamp/xroi/yroi/xroi_ref/yroi_ref)
-    from the sim moments so GuiderPlotter draws the tracking centroid. The star is
-    placed at the ROI centre, so the reference frame is the centre and the measured
-    (cen_x, cen_y) offsets give its per-stamp wander (all in DVCS pixels)."""
+def _stars_df(moments, roi, expid, pixel_scale=0.2):
+    """Build the summit_utils starsDf from the sim moments so GuiderPlotter draws
+    the tracking centroid and jitter. The star is placed at the ROI centre, so the
+    reference is the centre and (cen_x, cen_y) give the per-stamp wander (DVCS pix).
+    Alt/Az offsets from the DVCS axes at rotator 0 (DVCS Y=azimuth, X=-elevation)."""
     c = roi / 2.0
     df = moments.rename(columns={"guider": "detector"}).copy()
-    df["xroi_ref"] = c
-    df["yroi_ref"] = c
+    df["expid"] = expid
+    df["xroi_ref"], df["yroi_ref"] = c, c
     df["xroi"] = c + df["cen_x"]
     df["yroi"] = c + df["cen_y"]
-    return df[["detector", "stamp", "xroi", "yroi", "xroi_ref", "yroi_ref"]]
+    df["dx"], df["dy"] = df["cen_x"], df["cen_y"]
+    ax = df["cen_x_asec"] if "cen_x_asec" in df else df["cen_x"] * pixel_scale
+    ay = df["cen_y_asec"] if "cen_y_asec" in df else df["cen_y"] * pixel_scale
+    df["daz"] = ay                                   # DVCS Y = azimuth
+    df["dalt"] = -ax                                 # DVCS X = -elevation
+    df["magoffset"] = 0.0
+    cols = ["expid", "detector", "stamp", "xroi", "yroi", "xroi_ref", "yroi_ref",
+            "dx", "dy", "dalt", "daz", "magoffset"]
+    return df[cols]
 
 
 def load_sim_guiderdata(outdir, visit=0):
@@ -112,7 +120,8 @@ def load_sim_guiderdata(outdir, visit=0):
     order = meta.get("guider_order") or list(moments[moments.stamp == 0].guider)
     roi = int(meta.get("roi", stamps.shape[-1]))
     gd = SimGuiderData(stamps, order, meta)
-    return gd, _stars_df(moments, roi)
+    return gd, _stars_df(moments, roi, gd.expid,
+                         pixel_scale=meta.get("pixel_scale", 0.2))
 
 
 def main():
