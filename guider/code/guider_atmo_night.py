@@ -113,6 +113,8 @@ def main():
     ap.add_argument("--stride", type=int, default=1, help="use every Nth visit")
     ap.add_argument("--seq-min", type=int, default=None)
     ap.add_argument("--seq-max", type=int, default=None)
+    ap.add_argument("--overwrite", action="store_true",
+                    help="redo visits even if a checkpoint parquet already exists")
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
 
@@ -130,16 +132,25 @@ def main():
     cfg0 = dict(gas.CFG, atmo_source=args.atmo_source, screen_scale=args.screen_scale,
                 psfws_forecast_file=args.psfws_forecast, psfws_data_dir=args.psfws_data_dir)
 
-    rows = []
+    # Per-visit checkpoints: each finished visit writes its own parquet, so a long
+    # run is restartable (rerun the same command -> completed visits are skipped)
+    # and the final table is combined from ALL checkpoints (across restarts).
+    visitsdir = os.path.join(args.outdir, "visits")
+    os.makedirs(visitsdir, exist_ok=True)
     for i, seq in enumerate(seqs):
+        pv = os.path.join(visitsdir, f"seq_{seq:05d}.parquet")
+        if os.path.exists(pv) and not args.overwrite:
+            print(f"[{i+1}/{len(seqs)}] seqNum {seq}: checkpoint exists, skipping")
+            continue
         drow = data[data.seqNum == seq]
         print(f"[{i+1}/{len(seqs)}] seqNum {seq}  ({len(drow)} guiders)")
         try:
             sim = simulate_visit(gas, mm, geom, args.atmo_source, drow, cfg0,
                                  gas.CFG["seed"] + int(seq))
         except Exception as exc:                              # noqa: BLE001
-            print(f"   FAILED: {type(exc).__name__}: {exc}")
+            print(f"   FAILED: {type(exc).__name__}: {exc}")  # no checkpoint -> retried on restart
             continue
+        vrows = []
         for name, mo in sim.items():
             d = drow[drow.detector == name]
             row = dict(seqNum=int(seq), detector=name)
@@ -150,13 +161,19 @@ def main():
                     row["data_" + k] = float(d[k].iloc[0])
             if {"Mxx_motion", "Myy_motion"} <= set(d):
                 row["data_T_motion"] = float(d["Mxx_motion"].iloc[0] + d["Myy_motion"].iloc[0])
-            rows.append(row)
+            vrows.append(row)
+        pd.DataFrame(vrows).to_parquet(pv, index=False)       # checkpoint this visit
 
-    out = pd.DataFrame(rows)
+    # Combine every completed visit checkpoint (this run + any prior runs)
+    files = sorted(glob.glob(os.path.join(visitsdir, "seq_*.parquet")))
+    out = (pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+           if files else pd.DataFrame())
     pq = os.path.join(args.outdir, "guider_atmo_night_motion.parquet")
     out.to_parquet(pq, index=False)
-    print(f"\nwrote {pq}  ({len(out)} rows, {out.seqNum.nunique()} visits)")
-    _plots(out, args.outdir)
+    nvis = out.seqNum.nunique() if len(out) else 0
+    print(f"\nwrote {pq}  ({len(out)} rows, {nvis} visits from {len(files)} checkpoints)")
+    if len(out):
+        _plots(out, args.outdir)
 
 
 def _plots(df, outdir):
