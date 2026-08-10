@@ -141,7 +141,13 @@ def main():
     ap.add_argument('--instrument', default='lsstcam')
     ap.add_argument('--out-dir', default='data')
     ap.add_argument('--sign', type=int, default=1, help='CCS->OCS rotation sign')
-    ap.add_argument('--token-file', default=None)
+    ap.add_argument('--consdb-url', default='auto',
+                    help="ConsDB endpoint; 'auto' picks the in-pod host inside "
+                         "the RSP and the external tokened endpoint on S3DF "
+                         "(sdfiana/slacrd batch). Default 'auto'.")
+    ap.add_argument('--token-file', default=None,
+                    help='RSP access-token file for the external endpoint '
+                         '(default ~/.lsst/consdb_token, else $ACCESS_TOKEN)')
     ap.add_argument('--validate', action='store_true',
                     help='after writing, compare each visit against the danish '
                          'cwfs_<visit>_danish.parquet (frame/sign check)')
@@ -151,7 +157,7 @@ def main():
     cam = LsstCam.getCamera()
     corners = corner_names(cam)                 # {det_id: LsstCam name}
     print('corner SW0 detectors (LsstCam names):', corners)
-    cdb = make_consdb_client(token_file=args.token_file)
+    cdb = make_consdb_client(url=args.consdb_url, token_file=args.token_file)
     meta = fetch_visit_meta(cdb, args.visits, args.instrument)
     zk = fetch_corner_zernikes_consdb(cdb, args.visits, instrument=args.instrument,
                                       corners=corners)
