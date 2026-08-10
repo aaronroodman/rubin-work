@@ -147,18 +147,21 @@ def main():
     print(f"dayObs {meta.get('dayObs')} seqNum {meta.get('seqNum')}  "
           f"(sim source={meta.get('source')}, target_fwhm={meta.get('target_fwhm')})\n")
 
-    _section("STATIC (mean of per-stamp moments)", 1, sim, data, dets)
-    _section("MOTION (centroid-jitter covariance)", 2, sim, data, dets)
+    # STATIC is contaminated by the (real) telescope optics that the sim does not
+    # model, so it is shown only for reference. The MOTION moments are purely
+    # atmospheric (optics are static and do not move the centroid), so they are the
+    # clean sim-vs-data comparison.
+    _section("STATIC (mean of per-stamp moments; reference -- sim has no optics)",
+             1, sim, data, dets)
+    _section("MOTION (centroid-motion 2nd moments; the atmospheric comparison)",
+             2, sim, data, dets)
 
-    # the user's point: motion is a small fraction of T but a larger fraction of Q
-    print("field-median motion/static ratio (how much the jitter adds):")
-    for lab, sc, mc in [("Q1", "Q1_stamp", "Q1_motion"), ("Q2", "Q2_stamp", "Q2_motion"),
-                        ("T", "T_stamp", "T_motion")]:
-        for tag, df in (("SIM", sim), ("DATA", data)):
-            if sc in df and mc in df:
-                s, m = abs(df[sc].median()), abs(df[mc].median())
-                print(f"  {tag:4s} {lab}: |motion|/|static| = {m/s:6.1%}"
-                      f"   (static={df[sc].median():+.4f}, motion={df[mc].median():+.4f})")
+    print("MOTION field-median  SIM  DATA  SIM/DATA  [arcsec^2]:")
+    for lab, _, mc in QUANTS:
+        if mc in sim and mc in data:
+            s, d = sim[mc].median(), data[mc].median()
+            ratio = f"{s/d:6.2f}" if d != 0 else "   -  "
+            print(f"  {lab:3s}  {s:+.4f}  {d:+.4f}   {ratio}")
     if "jitter_altaz" in data:
         print(f"\n  data jitter_altaz = {data['jitter_altaz'].iloc[0]:.4f}\" "
               "[trend-removed per-axis centroid scatter]")
