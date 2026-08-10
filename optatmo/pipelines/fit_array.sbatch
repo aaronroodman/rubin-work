@@ -51,6 +51,12 @@ source /sdf/group/rubin/sw/tag/w_2026_27/loadLSST.bash >/dev/null
 setup lsst_distrib
 echo "python: $(which python)"
 
+# The stack points CARGO_HOME/RUSTUP_HOME at the read-only shared conda env, so a
+# Rust-backed package's import tries (and fails) to mkdir there -- harmless, but
+# noisy. Redirect them to a writable path to silence it.
+export CARGO_HOME="$HOME/.cargo"
+export RUSTUP_HOME="$HOME/.rustup"
+
 set -eo pipefail          # note: no -u (loadLSST/eups reference unset vars)
 
 DAY=${DAY:-20260513}        # night (override via --export for 20260706 etc.)
