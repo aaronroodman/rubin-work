@@ -538,30 +538,37 @@ def _median_fwhm(atmo, geom, cfg, rng, nstamps, exptime, roi, flux):
 
 
 def build_calibrated_atmo(cfg, source_key, geom, theta_max, exposure_s, seed):
-    """Build the atmosphere; if target_fwhm is set, calibrate the atmospheric von
-    Karman FWHM so the median per-stamp delivered FWHM matches it. Returns
-    (atmo, cfg, rng, params, ss). Re-seeds identically so only r0 changes."""
-    def build(cfg_):
-        rng = galsim.BaseDeviate(seed)              # same seed -> same realization
-        params = LAYER_SOURCES[source_key](cfg_, rng)
-        ss, need = choose_screen_size(params, theta_max, exposure_s, cfg_)
-        atmo = make_atmo(params, ss, cfg_, rng)
-        return atmo, rng, params, ss, need
-
-    atmo, rng, params, ss, need = build(cfg)
+    """Build the atmosphere; if target_fwhm is set, first calibrate the atmospheric
+    von Karman FWHM so the median per-stamp delivered FWHM matches it. The FWHM is
+    independent of screen size (the PSF samples only an aperture-sized footprint),
+    so calibration uses a small cheap screen at theta=0 (same seed/winds as the
+    final), and the full-size atmosphere is built ONCE at the end. Returns
+    (atmo, cfg, rng, params, ss)."""
+    import gc
     if cfg.get("target_fwhm") and cfg.get("fwhm_cal", True):
         target = cfg["target_fwhm"]
-        cfg = dict(cfg, _atm_fwhm=target_fwhm(cfg))   # seed the atmospheric target
-        for it in range(3):
-            m = _median_fwhm(atmo, geom, cfg, galsim.BaseDeviate(seed + 9999),
+        cfg = dict(cfg, _atm_fwhm=target_fwhm(cfg))          # seed atmospheric target
+        cal_geom = [("cal", 0.0, 0.0, geom[0][3])]           # on-axis, reuse a WCS
+        for it in range(4):
+            cal_cfg = dict(cfg, screen_size=204.8, screen_scale=0.1)
+            rng = galsim.BaseDeviate(seed)                   # same winds as final
+            params = LAYER_SOURCES[source_key](cal_cfg, rng)
+            atmo = make_atmo(params, 204.8, cal_cfg, rng)
+            m = _median_fwhm(atmo, cal_geom, cfg, galsim.BaseDeviate(seed + 7),
                              cfg["fwhm_cal_stamps"], cfg["exptime"], cfg["roi"],
                              cfg["flux_counts"])
-            print(f"  [fwhm cal {it}] median per-stamp FWHM={m:.3f}\" "
+            del atmo, params
+            gc.collect()
+            print(f"  [fwhm cal {it}] on-axis FWHM={m:.3f}\" "
                   f"(target {target:.3f}\", atm_fwhm={cfg['_atm_fwhm']:.3f}\")")
             if not np.isfinite(m) or abs(m - target) / target < 0.02:
                 break
             cfg = dict(cfg, _atm_fwhm=cfg["_atm_fwhm"] * target / m)
-            atmo, rng, params, ss, need = build(cfg)
+
+    rng = galsim.BaseDeviate(seed)                           # final full-size build
+    params = LAYER_SOURCES[source_key](cfg, rng)
+    ss, need = choose_screen_size(params, theta_max, exposure_s, cfg)
+    atmo = make_atmo(params, ss, cfg, rng)
     report_atmo(params, ss, need, cfg["screen_scale"])
     return atmo, cfg, rng, params, ss
 
