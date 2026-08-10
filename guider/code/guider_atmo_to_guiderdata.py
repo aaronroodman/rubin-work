@@ -130,8 +130,9 @@ def main():
     ap.add_argument("--outdir", default="output/atmo_sim")
     ap.add_argument("--visit", type=int, default=0)
     ap.add_argument("--save", default=None, help="movie path (.mp4/.gif)")
-    ap.add_argument("--cutout", type=int, default=25,
-                    help="cutout size [pix]; RubinTV guider movies use ~25-26")
+    ap.add_argument("--cutout", type=int, default=20,
+                    help="cutout size [pix]; RubinTV guider movies use ~20 (matched by "
+                         "the 2-inch circle diameter: displayed size ~ 1/cutout)")
     ap.add_argument("--fps", type=int, default=5)
     args = ap.parse_args()
 
