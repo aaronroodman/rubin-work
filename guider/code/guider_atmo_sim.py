@@ -573,11 +573,13 @@ def build_calibrated_atmo(cfg, source_key, geom, theta_max, exposure_s, seed):
     return atmo, cfg, rng, params, ss
 
 
-def run_guiders(cfg, geom, source_key, outdir, os, pd):
+def run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=None):
     cadence = 1.0 / cfg["stamp_rate_hz"]
     visit_time = cfg["stamps_per_visit"] * cadence
-    theta_max = max(np.hypot(gx, gy) for _, gx, gy, _ in geom) / 3600.0
+    # size the screen for the wider of the guider set or the (optional) FoV set
+    theta_max = max(np.hypot(gx, gy) for _, gx, gy, _ in (fov_geom or geom)) / 3600.0
     rows, ng, roi = [], len(geom), cfg["roi"]
+    fov_rows, fov_stamps_by_visit = [], {}
     for v in range(cfg["n_visits"]):
         print(f"\n=== visit {v} ({source_key}, {cfg['render']}): building atmosphere ===")
         atmo, cfgv, rng, params, ss = build_calibrated_atmo(
@@ -601,6 +603,11 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd):
         out = os.path.join(outdir, f"guider_atmo_stamps_visit{v:02d}.npy")
         np.save(out, stamps)
         print(f"  wrote {out}  {stamps.shape}  ({stamps.nbytes/1e6:.0f} MB)")
+        if fov_geom is not None:                    # FoV stars from the SAME atmosphere
+            print(f"  --also-fov: {len(fov_geom)} CCDs, {cfgv['fov_exptime']:.0f}s exposure")
+            vr, vs = draw_fov(atmo, fov_geom, cfgv, rng, v)
+            fov_rows += vr
+            fov_stamps_by_visit[v] = vs
     df = pd.DataFrame(rows)
     cols = ["visit", "stamp", "t0", "guider", "theta_x_asec", "theta_y_asec",
             "cen_x", "cen_y", "cen_x_asec", "cen_y_asec", "sigma_pix", "fwhm_asec",
@@ -627,34 +634,33 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd):
     tgt = f" (target {cfg['target_fwhm']:.3f}\")" if cfg.get("target_fwhm") else ""
     print(f"delivered median per-stamp FWHM = {med_fwhm:.3f}\"{tgt}")
     print(df.head(6).to_string(index=False))
+    if fov_geom is not None:
+        write_fov(fov_rows, fov_stamps_by_visit, outdir, os, pd, PIXEL_SCALE)
 
 
-def run_fov(cfg, geom, source_key, outdir, os, pd):
-    theta_max = max(np.hypot(gx, gy) for _, gx, gy, _ in geom) / 3600.0
+def draw_fov(atmo, geom, cfg, rng, v):
+    """Draw one long-exposure star per CCD from a GIVEN atmosphere; return
+    (rows, stamps[n_ccd, roi, roi]). Reused by run_fov and the guiders --also-fov
+    path (so the FoV shares the exact guider atmosphere)."""
     roi, exptime = cfg["fov_roi"], cfg["fov_exptime"]
-    rows = []
-    # long exposure -> delivered FWHM ~ atmospheric von Karman FWHM; set it directly
-    cfgf = dict(cfg, _atm_fwhm=cfg["target_fwhm"]) if cfg.get("target_fwhm") else cfg
-    for v in range(cfg["n_visits"]):
-        print(f"\n=== visit {v} ({source_key}, {cfg['render']}): FoV, "
-              f"{len(geom)} CCDs, {exptime:.0f}s exposure ===")
-        rng = galsim.BaseDeviate(cfgf["seed"] + v)
-        params = LAYER_SOURCES[source_key](cfgf, rng)
-        ss, need = choose_screen_size(params, theta_max, exptime, cfgf)
-        report_atmo(params, ss, need, cfgf["screen_scale"])
-        atmo = make_atmo(params, ss, cfgf, rng)
-        for di, (name, gx, gy, wcs) in enumerate(geom):
-            img = draw_stamp(atmo, (gx, gy), 0.0, exptime, roi, wcs, rng,
-                             cfgf["fov_flux_counts"], cfgf)
-            m2 = measure(img)
-            m3 = measure_third(img, m2)
-            row = {kk: vv for kk, vv in m2.items() if not kk.startswith("_")}
-            row.update(m3)
-            row.update(visit=v, det=name, field_x_asec=gx, field_y_asec=gy,
-                       field_x_deg=gx / 3600.0, field_y_deg=gy / 3600.0)
-            rows.append(row)
-            if (di + 1) % 40 == 0 or di == 0:
-                print(f"  ccd {di+1}/{len(geom)}  {name}  fwhm={row['fwhm_asec']:.3f}\"")
+    rows, stamps = [], np.empty((len(geom), roi, roi), dtype=np.float32)
+    for di, (name, gx, gy, wcs) in enumerate(geom):
+        img = draw_stamp(atmo, (gx, gy), 0.0, exptime, roi, wcs, rng,
+                         cfg["fov_flux_counts"], cfg)
+        stamps[di] = img.array.astype(np.float32)
+        m2 = measure(img)
+        m3 = measure_third(img, m2)
+        row = {kk: vv for kk, vv in m2.items() if not kk.startswith("_")}
+        row.update(m3)
+        row.update(visit=v, det=name, field_x_asec=gx, field_y_asec=gy,
+                   field_x_deg=gx / 3600.0, field_y_deg=gy / 3600.0)
+        rows.append(row)
+        if (di + 1) % 40 == 0 or di == 0:
+            print(f"  fov ccd {di+1}/{len(geom)}  {name}  fwhm={row['fwhm_asec']:.3f}\"")
+    return rows, stamps
+
+
+def write_fov(rows, stamps_by_visit, outdir, os, pd, pixel_scale):
     df = pd.DataFrame(rows)
     lead = ["visit", "det", "field_x_asec", "field_y_asec", "field_x_deg",
             "field_y_deg", "fwhm_asec", "e1", "e2", "T_asec2",
@@ -663,9 +669,34 @@ def run_fov(cfg, geom, source_key, outdir, os, pd):
     df = df[[c for c in lead if c in df.columns]]
     pq = os.path.join(outdir, "guider_atmo_fov_moments.parquet")
     df.to_parquet(pq, index=False)
-    print(f"\nwrote {pq}  ({len(df)} rows)")
+    for v, stamps in stamps_by_visit.items():
+        np.save(os.path.join(outdir, f"guider_atmo_fov_stamps_visit{v:02d}.npy"), stamps)
+    import json
+    with open(os.path.join(outdir, "guider_atmo_fov_meta.json"), "w") as fh:
+        json.dump(dict(pixel_scale=pixel_scale,
+                       det_order=list(df[df.visit == df.visit.min()].det)), fh, indent=2)
+    print(f"\nwrote {pq}  ({len(df)} rows) + fov stamps + guider_atmo_fov_meta.json")
     print(df[["det", "field_x_deg", "field_y_deg", "fwhm_asec", "e1", "e2"]]
           .head(8).to_string(index=False))
+
+
+def run_fov(cfg, geom, source_key, outdir, os, pd):
+    theta_max = max(np.hypot(gx, gy) for _, gx, gy, _ in geom) / 3600.0
+    # long exposure -> delivered FWHM ~ atmospheric von Karman FWHM; set it directly
+    cfgf = dict(cfg, _atm_fwhm=cfg["target_fwhm"]) if cfg.get("target_fwhm") else cfg
+    rows, stamps_by_visit = [], {}
+    for v in range(cfg["n_visits"]):
+        print(f"\n=== visit {v} ({source_key}, {cfg['render']}): FoV, "
+              f"{len(geom)} CCDs, {cfg['fov_exptime']:.0f}s exposure ===")
+        rng = galsim.BaseDeviate(cfgf["seed"] + v)
+        params = LAYER_SOURCES[source_key](cfgf, rng)
+        ss, need = choose_screen_size(params, theta_max, cfg["fov_exptime"], cfgf)
+        report_atmo(params, ss, need, cfgf["screen_scale"])
+        atmo = make_atmo(params, ss, cfgf, rng)
+        vr, vs = draw_fov(atmo, geom, cfgf, rng, v)
+        rows += vr
+        stamps_by_visit[v] = vs
+    write_fov(rows, stamps_by_visit, outdir, os, pd, PIXEL_SCALE)
 
 
 def main(cfg, selftest=False, outdir="output/atmo_sim"):
@@ -685,7 +716,13 @@ def main(cfg, selftest=False, outdir="output/atmo_sim"):
     if cfg["mode"] == "fov":
         run_fov(cfg, geom, source_key, outdir, os, pd)
     else:
-        run_guiders(cfg, geom, source_key, outdir, os, pd)
+        fov_geom = None
+        if cfg.get("also_fov"):
+            # FoV stars (science + guiders) drawn from the SAME guider atmosphere
+            fcfg = dict(cfg, mode="fov")
+            fov_geom, _ = _resolve_geometry(fcfg, selftest)
+            print(f"--also-fov: FoV on {len(fov_geom)} CCDs from the same atmosphere")
+        run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=fov_geom)
 
 
 if __name__ == "__main__":
@@ -729,6 +766,9 @@ if __name__ == "__main__":
     ap.add_argument("--screen-scale", type=float, dest="screen_scale",
                     help="phase-screen pixel [m] (default 0.10 -> 16384px/12.9GB; "
                          "0.2 -> 8192px/3.2GB, same FoV coverage)")
+    ap.add_argument("--also-fov", action="store_true", dest="also_fov",
+                    help="in guiders mode, also draw FoV stars (science+guiders) from "
+                         "the SAME atmosphere -> guider_atmo_fov_moments.parquet + stamps")
     ap.add_argument("--doOpt", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -743,6 +783,8 @@ if __name__ == "__main__":
             cfg[key] = getattr(args, key)
     if args.no_fwhm_cal:
         cfg["fwhm_cal"] = False
+    if args.also_fov:
+        cfg["also_fov"] = True
     if args.flux_file:
         import json
         with open(args.flux_file) as fh:
