@@ -50,8 +50,8 @@ def make_maps(outdir, visit=0, save=None):
     axes[1].set_title(f"ellipticity whiskers  (<|e|>={e.mean():.3f})")
 
     # 3) 3rd-order spin-3 whiskers: length |M3|, angle (1/3)*atan2(spin3_y,spin3_x)
-    m3 = np.hypot(d.M_spin3_x, d.M_spin3_y)
-    ang_3 = (1.0 / 3.0) * np.arctan2(d.M_spin3_y, d.M_spin3_x)
+    m3 = np.hypot(d.trefoil1, d.trefoil2)
+    ang_3 = (1.0 / 3.0) * np.arctan2(d.trefoil2, d.trefoil1)
     _whiskers(axes[2], x, y, m3.values, ang_3.values,
               scale=0.15 * span / max(m3.max(), 1e-9), color="firebrick")
     axes[2].scatter(x, y, s=4, c="0.6")

@@ -91,7 +91,8 @@ CFG = dict(
     fov_roi=64,              # ROI per CCD [pix]
     fov_flux_counts=1.0e6,   # total star flux per CCD [ADU counts]
 
-    day_obs=0, seq_num=0,    # labels only (for the GuiderData adapter / movie titles)
+    day_obs=0, seq_num=0,    # labels only (GuiderData adapter / plot titles)
+    rot_tel_pos=0.0,         # rotator telescope position [deg] (psf-shape plot orientation)
     doOpt=False,             # add imSim field-dependent optical phase screen
     seed=57721,
 
@@ -457,8 +458,12 @@ def measure(img):
         T = 2.0 * sig**2 / np.sqrt(max(1e-9, 1.0 - e1**2 - e2**2))
         out = dict(flux=float(m.moments_amp), cen_x=cx, cen_y=cy,
                    cen_x_asec=cx * scale, cen_y_asec=cy * scale, sigma_pix=sig,
-                   e1=e1, e2=e2, fwhm_asec=2.3548 * sig * scale,
+                   e1=e1, e2=e2, e=float(np.hypot(e1, e2)),
+                   fwhm_asec=2.3548 * sig * scale,
                    Ixx=T * (1 + e1) / 2, Iyy=T * (1 - e1) / 2, Ixy=T * e2 / 2,
+                   Ixx_asec2=T * (1 + e1) / 2 * scale**2,
+                   Iyy_asec2=T * (1 - e1) / 2 * scale**2,
+                   Ixy_asec2=T * e2 / 2 * scale**2,
                    T_asec2=T * scale**2, ok=True)
         out["_cen_pix"] = (m.moments_centroid.x, m.moments_centroid.y)
         out["_sig_pix"] = sig
@@ -471,34 +476,49 @@ def measure(img):
                     T_asec2=np.nan, ok=False, err=str(exc))
 
 
+_NAN_HIGHER = dict(coma1=np.nan, coma2=np.nan, trefoil1=np.nan, trefoil2=np.nan,
+                   kurtosis=np.nan)
+
+
 def measure_third(img, m2):
-    """Gaussian-weighted 3rd central moments [arcsec^3] about the adaptive centroid.
-    Returns M30, M21, M12, M03 and the spin-1 / spin-3 combinations."""
+    """HSM-style standardized higher moments, matching the summit_extras / HSM
+    HigherOrderMoments definitions used on-sky. Coordinates are whitened by the
+    HSM adaptive 2nd-moment matrix (so the weight is a unit Gaussian), then
+    standardized moments M_pq = <W*I * u^p v^q> are formed, giving:
+      coma1 = M30+M12, coma2 = M21+M03  (spin-1)
+      trefoil1 = M30-3*M12, trefoil2 = 3*M21-M03  (spin-3)
+      kurtosis = M40+M04+2*M22   (== 2 for a Gaussian)
+    All dimensionless, matching makeTableFromSourceCatalogs."""
     if not m2.get("ok"):
-        return dict(M30=np.nan, M21=np.nan, M12=np.nan, M03=np.nan,
-                    M_spin1_x=np.nan, M_spin1_y=np.nan,
-                    M_spin3_x=np.nan, M_spin3_y=np.nan)
-    arr = img.array.astype(float)
+        return dict(_NAN_HIGHER)
+    arr = np.clip(img.array.astype(float), 0, None)
     ny, nx = arr.shape
     cx, cy = m2["_cen_pix"]
-    sig, scale = m2["_sig_pix"], m2["_scale"]
+    # HSM adaptive 2nd-moment matrix [pix^2] -> whitening M^{-1/2}
+    M = np.array([[m2["Ixx"], m2["Ixy"]], [m2["Ixy"], m2["Iyy"]]])
+    try:
+        evals, evecs = np.linalg.eigh(M)
+        if np.any(evals <= 0):
+            return dict(_NAN_HIGHER)
+        Minvhalf = evecs @ np.diag(evals**-0.5) @ evecs.T
+    except np.linalg.LinAlgError:
+        return dict(_NAN_HIGHER)
     yy, xx = np.mgrid[0:ny, 0:nx]
-    x = (xx + img.bounds.xmin - cx) * scale        # arcsec, centred
-    y = (yy + img.bounds.ymin - cy) * scale
-    w = np.exp(-(x**2 + y**2) / (2.0 * (sig * scale)**2))
-    wi = w * np.clip(arr, 0, None)
+    dx = xx + img.bounds.xmin - cx
+    dy = yy + img.bounds.ymin - cy
+    u = Minvhalf[0, 0] * dx + Minvhalf[0, 1] * dy          # whitened coords
+    v = Minvhalf[1, 0] * dx + Minvhalf[1, 1] * dy
+    wi = np.exp(-(u**2 + v**2) / 2.0) * arr                # adaptive Gaussian * image
     norm = wi.sum()
     if norm <= 0:
-        return dict(M30=np.nan, M21=np.nan, M12=np.nan, M03=np.nan,
-                    M_spin1_x=np.nan, M_spin1_y=np.nan,
-                    M_spin3_x=np.nan, M_spin3_y=np.nan)
-    M30 = (wi * x**3).sum() / norm
-    M21 = (wi * x**2 * y).sum() / norm
-    M12 = (wi * x * y**2).sum() / norm
-    M03 = (wi * y**3).sum() / norm
-    return dict(M30=M30, M21=M21, M12=M12, M03=M03,
-                M_spin1_x=M30 + M12, M_spin1_y=M03 + M21,       # spin-1 (coma-like)
-                M_spin3_x=M30 - 3 * M12, M_spin3_y=3 * M21 - M03)  # spin-3 (trefoil)
+        return dict(_NAN_HIGHER)
+    def M_(p, q):
+        return (wi * u**p * v**q).sum() / norm
+    M30, M21, M12, M03 = M_(3, 0), M_(2, 1), M_(1, 2), M_(0, 3)
+    M40, M04, M22 = M_(4, 0), M_(0, 4), M_(2, 2)
+    return dict(coma1=M30 + M12, coma2=M21 + M03,
+                trefoil1=M30 - 3 * M12, trefoil2=3 * M21 - M03,
+                kurtosis=M40 + M04 + 2 * M22)
 
 
 # --------------------------------------------------------------------------
@@ -635,7 +655,7 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=None):
     print(f"delivered median per-stamp FWHM = {med_fwhm:.3f}\"{tgt}")
     print(df.head(6).to_string(index=False))
     if fov_geom is not None:
-        write_fov(fov_rows, fov_stamps_by_visit, outdir, os, pd, PIXEL_SCALE)
+        write_fov(fov_rows, fov_stamps_by_visit, outdir, os, pd, PIXEL_SCALE, _fov_extra_meta(cfg))
 
 
 def draw_fov(atmo, geom, cfg, rng, v):
@@ -660,24 +680,34 @@ def draw_fov(atmo, geom, cfg, rng, v):
     return rows, stamps
 
 
-def write_fov(rows, stamps_by_visit, outdir, os, pd, pixel_scale):
+def write_fov(rows, stamps_by_visit, outdir, os, pd, pixel_scale, extra_meta=None):
     df = pd.DataFrame(rows)
+    # HSM columns for the summit_extras psf-shape plot (Ixx/Iyy/Ixy in arcsec^2;
+    # coma/trefoil/kurtosis are HSM-standardized, dimensionless).
     lead = ["visit", "det", "field_x_asec", "field_y_asec", "field_x_deg",
-            "field_y_deg", "fwhm_asec", "e1", "e2", "T_asec2",
-            "M_spin1_x", "M_spin1_y", "M_spin3_x", "M_spin3_y",
-            "M30", "M21", "M12", "M03", "flux", "ok"]
+            "field_y_deg", "fwhm_asec", "e1", "e2", "e",
+            "Ixx_asec2", "Iyy_asec2", "Ixy_asec2", "T_asec2",
+            "coma1", "coma2", "trefoil1", "trefoil2", "kurtosis", "flux", "ok"]
     df = df[[c for c in lead if c in df.columns]]
     pq = os.path.join(outdir, "guider_atmo_fov_moments.parquet")
     df.to_parquet(pq, index=False)
     for v, stamps in stamps_by_visit.items():
         np.save(os.path.join(outdir, f"guider_atmo_fov_stamps_visit{v:02d}.npy"), stamps)
     import json
+    meta = dict(pixel_scale=pixel_scale,
+                det_order=list(df[df.visit == df.visit.min()].det))
+    meta.update(extra_meta or {})
     with open(os.path.join(outdir, "guider_atmo_fov_meta.json"), "w") as fh:
-        json.dump(dict(pixel_scale=pixel_scale,
-                       det_order=list(df[df.visit == df.visit.min()].det)), fh, indent=2)
+        json.dump(meta, fh, indent=2)
     print(f"\nwrote {pq}  ({len(df)} rows) + fov stamps + guider_atmo_fov_meta.json")
-    print(df[["det", "field_x_deg", "field_y_deg", "fwhm_asec", "e1", "e2"]]
+    print(df[["det", "field_x_deg", "field_y_deg", "fwhm_asec", "e1", "e2", "kurtosis"]]
           .head(8).to_string(index=False))
+
+
+def _fov_extra_meta(cfg):
+    return dict(band=cfg["band"], alt=float(cfg["_alt"]), az=float(cfg["_az"]),
+                el=float(cfg["_alt"]), rotTelPos_deg=float(cfg.get("rot_tel_pos", 0.0)),
+                dayObs=int(cfg["day_obs"]), seqNum=int(cfg["seq_num"]))
 
 
 def run_fov(cfg, geom, source_key, outdir, os, pd):
@@ -696,7 +726,7 @@ def run_fov(cfg, geom, source_key, outdir, os, pd):
         vr, vs = draw_fov(atmo, geom, cfgf, rng, v)
         rows += vr
         stamps_by_visit[v] = vs
-    write_fov(rows, stamps_by_visit, outdir, os, pd, PIXEL_SCALE)
+    write_fov(rows, stamps_by_visit, outdir, os, pd, PIXEL_SCALE, _fov_extra_meta(cfgf))
 
 
 def main(cfg, selftest=False, outdir="output/atmo_sim"):
@@ -766,6 +796,9 @@ if __name__ == "__main__":
     ap.add_argument("--screen-scale", type=float, dest="screen_scale",
                     help="phase-screen pixel [m] (default 0.10 -> 16384px/12.9GB; "
                          "0.2 -> 8192px/3.2GB, same FoV coverage)")
+    ap.add_argument("--band", choices=list("ugrizy"), help="filter band (wavelength + plot label)")
+    ap.add_argument("--rot-tel-pos", type=float, dest="rot_tel_pos",
+                    help="rotator telescope position [deg] for psf-shape plot orientation")
     ap.add_argument("--also-fov", action="store_true", dest="also_fov",
                     help="in guiders mode, also draw FoV stars (science+guiders) from "
                          "the SAME atmosphere -> guider_atmo_fov_moments.parquet + stamps")
@@ -778,7 +811,7 @@ if __name__ == "__main__":
                 "psfws_forecast_file", "psfws_data_dir", "psfws_date",
                 "obs_time", "alt", "az", "screen_size", "screen_scale",
                 "day_obs", "seq_num", "flux_counts", "gain", "read_noise",
-                "sky_counts", "target_fwhm"):
+                "sky_counts", "target_fwhm", "rot_tel_pos", "band"):
         if getattr(args, key) is not None:
             cfg[key] = getattr(args, key)
     if args.no_fwhm_cal:
