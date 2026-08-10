@@ -142,6 +142,9 @@ def main():
     ap.add_argument('--out-dir', default='data')
     ap.add_argument('--sign', type=int, default=1, help='CCS->OCS rotation sign')
     ap.add_argument('--token-file', default=None)
+    ap.add_argument('--validate', action='store_true',
+                    help='after writing, compare each visit against the danish '
+                         'cwfs_<visit>_danish.parquet (frame/sign check)')
     args = ap.parse_args()
 
     from lsst.obs.lsst import LsstCam
@@ -154,6 +157,13 @@ def main():
                                       corners=corners)
     for v in args.visits:
         write_visit(cdb, v, args.out_dir, meta, zk, sign=args.sign, cam=cam)
+        if args.validate:
+            import os
+            if os.path.exists(f'{args.out_dir}/cwfs_{v}_danish.parquet'):
+                validate(args.out_dir, v)
+            else:
+                print(f'  validate {v}: no cwfs_{v}_danish.parquet in '
+                      f'{args.out_dir}; skipping')
 
 
 if __name__ == '__main__':
