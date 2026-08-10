@@ -87,13 +87,49 @@ def decompose_sim(outdir, visit=0, config=None):
     return pd.DataFrame(rows), meta
 
 
-def load_data(data_summary, dayObs, seqNum):
+def load_data(data_summary, seqNum):
     if os.path.isdir(data_summary):
         files = glob.glob(os.path.join(data_summary, "*.parquet"))
     else:
         files = [data_summary]
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-    return df[df.seqNum == seqNum]
+    df = df[df.seqNum == seqNum].copy()
+    # derive any columns the summary does not store explicitly
+    if "T_stamp" not in df and {"Mxx_stamp", "Myy_stamp"} <= set(df):
+        df["T_stamp"] = df["Mxx_stamp"] + df["Myy_stamp"]
+    if "T_motion" not in df and {"Mxx_motion", "Myy_motion"} <= set(df):
+        df["T_motion"] = df["Mxx_motion"] + df["Myy_motion"]
+    if "Mxy_motion" not in df and "Q2_motion" in df:
+        df["Mxy_motion"] = df["Q2_motion"] / 2.0
+    return df
+
+
+# quantity label -> (static column, motion column)
+QUANTS = [("Ixx", "Mxx_stamp", "Mxx_motion"), ("Iyy", "Myy_stamp", "Myy_motion"),
+          ("Ixy", "Mxy_stamp", "Mxy_motion"), ("Q1", "Q1_stamp", "Q1_motion"),
+          ("Q2", "Q2_stamp", "Q2_motion"), ("T", "T_stamp", "T_motion")]
+
+
+def _section(name, col_index, sim, data, dets):
+    """Per-detector SIM/DATA table + field medians for one component (static/motion)."""
+    labels = [q[0] for q in QUANTS]
+    cols = [q[col_index] for q in QUANTS]
+    print(f"=== {name} moments [arcsec^2] ===")
+    print(f"{'detector':9s} " + " ".join(f"{lab:>9s}" for lab in labels))
+    for tag, df in (("SIM", sim), ("DATA", data)):
+        print(f"-- {tag}")
+        for det in dets:
+            r = df[df.detector == det]
+            if r.empty:
+                continue
+            r = r.iloc[0]
+            print(f"{det:9s} " + " ".join(
+                f"{r[c]:9.4f}" if c in r and pd.notna(r[c]) else f"{'-':>9s}" for c in cols))
+    print(f"{'MED SIM':9s} " + " ".join(f"{sim[c].median():9.4f}" if c in sim else f"{'-':>9s}"
+                                        for c in cols))
+    print(f"{'MED DATA':9s} " + " ".join(f"{data[c].median():9.4f}" if c in data else f"{'-':>9s}"
+                                         for c in cols))
+    print()
 
 
 def main():
@@ -106,32 +142,26 @@ def main():
     args = ap.parse_args()
 
     sim, meta = decompose_sim(args.outdir, visit=args.visit)
-    data = load_data(args.data_summary, meta.get("dayObs"), meta.get("seqNum"))
+    data = load_data(args.data_summary, meta.get("seqNum"))
+    dets = list(sim.detector)
     print(f"dayObs {meta.get('dayObs')} seqNum {meta.get('seqNum')}  "
           f"(sim source={meta.get('source')}, target_fwhm={meta.get('target_fwhm')})\n")
 
-    keep = ["T_stamp", "Q1_stamp", "Q2_stamp", "T_motion", "Q1_motion", "Q2_motion"]
-    hdr = f"{'detector':9s} " + " ".join(f"{k:>10s}" for k in keep)
-    for tag, df in (("SIM", sim), ("DATA", data)):
-        print(tag)
-        print(hdr)
-        for det in sim.detector:
-            r = df[df.detector == det]
-            if r.empty:
-                continue
-            r = r.iloc[0]
-            print(f"{det:9s} " + " ".join(f"{r[k]:10.4f}" if k in r else f"{'-':>10s}"
-                                           for k in keep))
-        print()
+    _section("STATIC (mean of per-stamp moments)", 1, sim, data, dets)
+    _section("MOTION (centroid-jitter covariance)", 2, sim, data, dets)
 
-    # field medians + the key scalars
-    print("field median   T_stamp[arcsec^2]   T_motion[arcsec^2]   sqrt(T_motion/2)['']")
-    for tag, df in (("SIM", sim), ("DATA", data)):
-        ts, tm = df["T_stamp"].median(), df["T_motion"].median()
-        print(f"  {tag:4s}        {ts:10.4f}          {tm:10.4f}         {np.sqrt(tm/2):8.4f}")
+    # the user's point: motion is a small fraction of T but a larger fraction of Q
+    print("field-median motion/static ratio (how much the jitter adds):")
+    for lab, sc, mc in [("Q1", "Q1_stamp", "Q1_motion"), ("Q2", "Q2_stamp", "Q2_motion"),
+                        ("T", "T_stamp", "T_motion")]:
+        for tag, df in (("SIM", sim), ("DATA", data)):
+            if sc in df and mc in df:
+                s, m = abs(df[sc].median()), abs(df[mc].median())
+                print(f"  {tag:4s} {lab}: |motion|/|static| = {m/s:6.1%}"
+                      f"   (static={df[sc].median():+.4f}, motion={df[mc].median():+.4f})")
     if "jitter_altaz" in data:
-        print(f"\n  (data jitter_altaz = {data['jitter_altaz'].iloc[0]:.4f}\" "
-              "[trend-removed per-axis centroid scatter])")
+        print(f"\n  data jitter_altaz = {data['jitter_altaz'].iloc[0]:.4f}\" "
+              "[trend-removed per-axis centroid scatter]")
 
 
 if __name__ == "__main__":
