@@ -41,7 +41,12 @@ def visit_of(seq):
 
 
 def rot_for(seq):
-    v = pd.read_parquet(VISITS_PARQUET)
+    # night-agnostic: prefer the per-visit ConsDB meta (consdb_cwfs.py) if present
+    import os
+    mp = f'data/visitmeta_{visit_of(seq)}.parquet'
+    if os.path.exists(mp):
+        return float(pd.read_parquet(mp).iloc[0]['rot_deg'])
+    v = pd.read_parquet(VISITS_PARQUET)           # fallback: 20260513 danish table
     r = v[(v.day_obs == DAY) & (v.seq_num == seq - 1)]
     return float(r.rotator_angle.iloc[0]) if len(r) else 0.0
 

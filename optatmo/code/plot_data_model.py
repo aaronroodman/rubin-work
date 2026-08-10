@@ -49,14 +49,24 @@ def fwhm_of(e0):
 
 
 def visit_info(seq):
-    """Alt/Az/rot/band for the triplet (from the FAM-key row = seq-1)."""
+    """Alt/Az(deg)/rot(deg)/band for the visit.
+
+    Prefer the per-visit ConsDB meta (data/visitmeta_<visit>.parquet from
+    consdb_cwfs.py; alt/az already in degrees) so the report is night-agnostic;
+    else fall back to the 20260513 danish visits table (alt/az in radians).
+    """
+    import os
+    mp = f'data/visitmeta_{visit_of(seq)}.parquet'
+    if os.path.exists(mp):
+        m = pd.read_parquet(mp).iloc[0]
+        return dict(alt=float(m['alt_deg']), az=float(m['az_deg']),
+                    rot=float(m['rot_deg']), band=str(m['band']))
     v = pd.read_parquet(VISITS)
     r = v[(v.day_obs == DAY) & (v.seq_num == seq - 1)]
     if not len(r):
         return dict(alt=np.nan, az=np.nan, rot=0.0, band='?')
     r = r.iloc[0]
-    # visits parquet stores alt/az in RADIANS but rotator_angle in DEGREES
-    return dict(alt=float(r.get('alt', np.nan)) * RAD2DEG,
+    return dict(alt=float(r.get('alt', np.nan)) * RAD2DEG,        # danish: radians
                 az=float(r.get('az', np.nan)) * RAD2DEG,
                 rot=float(r.get('rotator_angle', 0.0)), band=str(r.get('band', '?')))
 
