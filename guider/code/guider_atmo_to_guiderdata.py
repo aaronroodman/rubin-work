@@ -16,7 +16,7 @@ Or in a notebook:
   from guider_atmo_to_guiderdata import load_sim_guiderdata
   gd, starsDf = load_sim_guiderdata("output/atmo_sim")
   from lsst.summit.utils.guiders.plotting import GuiderPlotter
-  GuiderPlotter(gd, starsDf).makeAnimation(cutoutSize=31, saveAs="sim_movie.mp4")
+  GuiderPlotter(gd, starsDf).makeAnimation(cutoutSize=25, saveAs="sim_movie.mp4")
 
 Reads guider_atmo_stamps_visit{v}.npy + guider_atmo_moments.parquet +
 guider_atmo_meta.json from --outdir.
@@ -130,7 +130,8 @@ def main():
     ap.add_argument("--outdir", default="output/atmo_sim")
     ap.add_argument("--visit", type=int, default=0)
     ap.add_argument("--save", default=None, help="movie path (.mp4/.gif)")
-    ap.add_argument("--cutout", type=int, default=31)
+    ap.add_argument("--cutout", type=int, default=25,
+                    help="cutout size [pix]; RubinTV guider movies use ~25-26")
     ap.add_argument("--fps", type=int, default=5)
     args = ap.parse_args()
 
