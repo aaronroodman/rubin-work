@@ -76,17 +76,26 @@ def main():
     ap.add_argument("--visit", type=int, default=0)
     ap.add_argument("--save", default=None, help="output PNG (default in --outdir)")
     ap.add_argument("--band", default=None, help="override physical filter (else meta band)")
+    ap.add_argument("--marker-size", type=float, default=40.0,
+                    help="marker size for the FWHM/e1/e2 scatter panels (summit_extras uses 1)")
     args = ap.parse_args()
 
     with open(os.path.join(args.outdir, "guider_atmo_fov_meta.json")) as fh:
         meta = json.load(fh)
     t, camera = build_table(args.outdir, args.visit, meta)
 
+    import matplotlib.collections as mcoll
     from lsst.summit.extras.plotting.psfPlotting import makeFigureAndAxes, makeAzElPlot
     fig, axs = makeFigureAndAxes(nrows=3)               # 3 rows -> incl. coma/trefoil/kurtosis
     band = args.band or meta.get("band", "i")
+    makeAzElPlot(fig, axs, t, camera, physicalFilter=band, saveAs="")  # draw, don't save yet
+    # enlarge the color-map scatter markers (FWHM, e1, e2) -- helpful for one-star-per-CCD
+    for ax in (axs[0, 1], axs[1, 0], axs[1, 1]):
+        for coll in ax.collections:
+            if isinstance(coll, mcoll.PathCollection):
+                coll.set_sizes([args.marker_size])
     save = args.save or os.path.join(args.outdir, f"guider_atmo_psfshape_visit{args.visit:02d}.png")
-    makeAzElPlot(fig, axs, t, camera, physicalFilter=band, saveAs=save)
+    fig.savefig(save)
     print(f"wrote {save}  ({len(t)} CCDs)  via summit_extras makeAzElPlot")
 
 
