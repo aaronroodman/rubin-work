@@ -156,11 +156,13 @@ def main():
             row = dict(seqNum=int(seq), detector=name)
             for k, v in mo.items():
                 row["sim_" + k] = v
-            for k in ("Mxx_motion", "Myy_motion", "Q1_motion", "Q2_motion"):
-                if k in d and len(d):
-                    row["data_" + k] = float(d[k].iloc[0])
-            if {"Mxx_motion", "Myy_motion"} <= set(d):
-                row["data_T_motion"] = float(d["Mxx_motion"].iloc[0] + d["Myy_motion"].iloc[0])
+            if len(d):                               # data may lack a guider the sim has
+                dd = d.iloc[0]
+                for k in ("Mxx_motion", "Myy_motion", "Q1_motion", "Q2_motion"):
+                    if k in d.columns:
+                        row["data_" + k] = float(dd[k])
+                if {"Mxx_motion", "Myy_motion"} <= set(d.columns):
+                    row["data_T_motion"] = float(dd["Mxx_motion"] + dd["Myy_motion"])
             vrows.append(row)
         pd.DataFrame(vrows).to_parquet(pv, index=False)       # checkpoint this visit
 
