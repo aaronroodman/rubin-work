@@ -33,8 +33,12 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 '..', '..', 'aos', 'code'))
 from aos_trim import make_consdb_client                       # noqa: E402
-from aos_state import fetch_corner_zernikes_consdb, ZK_NOLL, CORNERS  # noqa: E402
+from aos_state import fetch_corner_zernikes_consdb, ZK_NOLL   # noqa: E402
 import frames                                                 # noqa: E402
+
+# corner wavefront-sensor SW0 detector ids ONLY; names come from LsstCam so we
+# never hardcode a detector->raft mapping (that could itself mislabel a corner).
+CORNER_DETS = [191, 195, 199, 203]
 
 # candidate visit1 column names for altitude / azimuth (pick whichever exists)
 ALT_CANDS = ['altitude', 's_alt', 'altitude_start', 'elevation', 'sky_altitude']
@@ -63,32 +67,42 @@ def fetch_visit_meta(cdb, visit_ids, instrument='lsstcam'):
     return out.set_index('visit')
 
 
-def corner_ocs_positions(rot_deg, sign=1):
-    """OCS field positions (rad) of the 4 corner SW0 sensors at this rotator."""
-    from lsst.obs.lsst import LsstCam
+def corner_names(cam=None):
+    """{det_id: LsstCam detector name} for the corner SW0 sensors."""
+    if cam is None:
+        from lsst.obs.lsst import LsstCam
+        cam = LsstCam.getCamera()
+    return {d: cam[int(d)].getName() for d in CORNER_DETS}
+
+
+def corner_ocs_positions(rot_deg, sign=1, cam=None):
+    """OCS field positions (rad) of the corner SW0 sensors at this rotator,
+    keyed by the LsstCam detector name (no hardcoded raft mapping)."""
     from lsst.afw.cameraGeom import PIXELS, FIELD_ANGLE
     import lsst.geom as geom
-    cam = LsstCam.getCamera()
+    if cam is None:
+        from lsst.obs.lsst import LsstCam
+        cam = LsstCam.getCamera()
     pos = {}
-    for det, name in CORNERS.items():
+    for det in CORNER_DETS:
         d = cam[int(det)]
         c = d.getBBox().getCenter()
         fa = d.getTransform(PIXELS, FIELD_ANGLE).applyForward(
             geom.Point2D(c.getX(), c.getY()))
         tx, ty = frames.rotate_field(fa.getX(), fa.getY(),
                                      np.deg2rad(rot_deg), sign)   # CCS->OCS, rad
-        pos[name] = (float(tx), float(ty))
+        pos[d.getName()] = (float(tx), float(ty))
     return pos
 
 
-def write_visit(cdb, visit, out_dir, meta, zk, sign=1):
+def write_visit(cdb, visit, out_dir, meta, zk, sign=1, cam=None):
     """Write cwfs_<visit>.parquet (corner totals + OCS positions) + visitmeta."""
     m = meta.loc[visit]
     m.to_frame().T.to_parquet(f'{out_dir}/visitmeta_{visit}.parquet')
     if visit not in zk.index:
         print(f'  {visit}: no corner Zernikes in ConsDB'); return
     row = zk.loc[visit]
-    pos = corner_ocs_positions(float(m['rot_deg']), sign=sign)
+    pos = corner_ocs_positions(float(m['rot_deg']), sign=sign, cam=cam)
     recs = []
     for name, (tx, ty) in pos.items():
         rec = {'detector': name, 'thx_OCS': tx, 'thy_OCS': ty, 'snr': np.nan}
@@ -126,11 +140,16 @@ def main():
     ap.add_argument('--token-file', default=None)
     args = ap.parse_args()
 
+    from lsst.obs.lsst import LsstCam
+    cam = LsstCam.getCamera()
+    corners = corner_names(cam)                 # {det_id: LsstCam name}
+    print('corner SW0 detectors (LsstCam names):', corners)
     cdb = make_consdb_client(token_file=args.token_file)
     meta = fetch_visit_meta(cdb, args.visits, args.instrument)
-    zk = fetch_corner_zernikes_consdb(cdb, args.visits, instrument=args.instrument)
+    zk = fetch_corner_zernikes_consdb(cdb, args.visits, instrument=args.instrument,
+                                      corners=corners)
     for v in args.visits:
-        write_visit(cdb, v, args.out_dir, meta, zk, sign=args.sign)
+        write_visit(cdb, v, args.out_dir, meta, zk, sign=args.sign, cam=cam)
 
 
 if __name__ == '__main__':
