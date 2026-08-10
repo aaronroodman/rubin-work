@@ -89,7 +89,11 @@ def corner_ocs_positions(rot_deg, sign=1, cam=None):
         c = d.getBBox().getCenter()
         fa = d.getTransform(PIXELS, FIELD_ANGLE).applyForward(
             geom.Point2D(c.getX(), c.getY()))
-        tx, ty = frames.rotate_field(fa.getX(), fa.getY(),
+        # cameraGeom FIELD_ANGLE is DVCS; swap to CCS (thx_CCS = field_y) before
+        # the rotator rotation to OCS, matching the star-moment path in
+        # data_fit.load_and_prep.  See frames.dvcs_to_ccs_field.
+        cx, cy = frames.dvcs_to_ccs_field(fa.getX(), fa.getY())
+        tx, ty = frames.rotate_field(cx, cy,
                                      np.deg2rad(rot_deg), sign)   # CCS->OCS, rad
         pos[d.getName()] = (float(tx), float(ty))
     return pos

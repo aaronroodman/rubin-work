@@ -41,11 +41,21 @@ def load_and_prep(parquet, sign=1, rot_deg=None, clip_thr=5.0):
     df = df[keep].reset_index(drop=True)
     mom = mom[keep]
 
+    # thx_ccs_deg/thy_ccs_deg (from cameraGeom FIELD_ANGLE) and the recomputed
+    # HSM moments are actually DVCS, not CCS.  DVCS and CCS differ by a fixed
+    # x<->y reflection (thx_CCS = field_y); apply it to BOTH positions and
+    # moments BEFORE the rotator rotation to OCS, so the star data lands in the
+    # same OCS frame as the MIW model.  Skipping it made the whole dataset a
+    # mirror image of true OCS -> good moment fit but reflected wavefront and
+    # poor CWFS-corner correlation.  See frames.dvcs_to_ccs_*.
+    mom = frames.dvcs_to_ccs_moments(mom)
+    thx_ccs, thy_ccs = frames.dvcs_to_ccs_field(
+        df['thx_ccs_deg'].to_numpy(), df['thy_ccs_deg'].to_numpy())
+
     rot = np.deg2rad(df['rot_deg'].to_numpy())
     mom_ocs = np.array([frames.rotate_moments(mom[i], rot[i], sign)
                         for i in range(len(df))])
-    thx_ocs, thy_ocs = frames.rotate_field(
-        df['thx_ccs_deg'].to_numpy(), df['thy_ccs_deg'].to_numpy(), rot, sign)
+    thx_ocs, thy_ocs = frames.rotate_field(thx_ccs, thy_ccs, rot, sign)
     err = np.column_stack([df.get(k + '_err', pd.Series(np.full(len(df), np.nan)))
                            .to_numpy() for k in MOMENT_LABELS])
     print(f'  {parquet.split("/")[-1]}: kept {keep.sum()}/{len(keep)} stars '

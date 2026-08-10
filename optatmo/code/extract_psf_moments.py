@@ -73,6 +73,11 @@ def extract_visit(b, cam, visit, collection, out_dir, max_per_ccd, snr_min):
             if mom is None:
                 continue
             fa = tr.applyForward(geom.Point2D(float(r.x), float(r.y)))
+            # NB: cameraGeom FIELD_ANGLE is DVCS, not CCS -- these columns are
+            # named *_ccs_deg for historical reasons but hold DVCS field angle.
+            # data_fit.load_and_prep applies frames.dvcs_to_ccs_field (the x<->y
+            # swap) before rotating to OCS.  The HSM moments below are likewise
+            # DVCS (measured on the pixel stamp) and get dvcs_to_ccs_moments.
             rec = {'visit': visit, 'detector': int(det), 'x': r.x, 'y': r.y,
                    'thx_ccs_deg': np.degrees(fa.getX()),
                    'thy_ccs_deg': np.degrees(fa.getY()),

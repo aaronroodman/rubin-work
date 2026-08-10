@@ -22,6 +22,60 @@ import numpy as np
 _PAIRS = [(1, 2, 2), (3, 4, 1), (5, 6, 3), (8, 9, 2), (10, 11, 4)]
 
 
+# ----------------------------------------------------------------------------
+# DVCS -> CCS  (a fixed x<->y reflection; NOT the rotator rotation above)
+#
+# Three frames are in play (established 2026-07, verified against the ip_isr
+# intrinsicZernikes calib on 20260513):
+#   * DVCS  -- what lsst.afw.cameraGeom FIELD_ANGLE returns, (field_x, field_y).
+#             Camera-fixed (rotates with the camera rotator). Also the frame the
+#             recomputed HSM moments come out in (they're measured on the CCD
+#             *pixel* stamp, whose axes map to field angle via that same
+#             cameraGeom transform).  RubinTV focal-plane mosaics are DVCS.
+#   * CCS   -- Camera Coordinate System, also camera-fixed; differs from DVCS by
+#             a pure x<->y swap:  thx_CCS = field_y,  thy_CCS = field_x.
+#             This is the frame the MIW/intrinsicZernikes calib and the
+#             aggregateAOSVisitTableRaw store (confirmed: every clean per-detector
+#             calib footprint = swap(cameraGeom), never cameraGeom directly).
+#   * OCS   -- mirror/telescope frame, constant in Alt/Az (does NOT rotate with
+#             the rotator).  OCS = R(rotTelPos) . CCS  (rotate_field/rotate_moments).
+#
+# So optatmo's star data (positions from cameraGeom, moments from the pixel
+# stamp) starts in DVCS and must be swapped to CCS BEFORE the rotator rotation
+# to OCS -- otherwise the whole dataset is a mirror image (across field_x=field_y)
+# of the true OCS, while the model (MIW-OCS + AOS v-modes) is genuine OCS.  That
+# reflection was the cause of good-looking moment fits but a wrong (reflected)
+# wavefront and poor CWFS-corner correlation.
+#
+# Under the x<->y reflection the central moments transform as (from their
+# integral definitions, u<->v):
+#   e0 +   e1 -   e2 +   M21<->M12   M30<->-M03   M22 +   M31 -   M13 +   M40 +   M04 -
+# (indices in the MOMENT_LABELS order [e0,e1,e2,M21,M12,M30,M03,M22,M31,M13,M40,M04]).
+# ----------------------------------------------------------------------------
+
+def dvcs_to_ccs_field(thx, thy):
+    """DVCS field angle (cameraGeom FIELD_ANGLE) -> CCS: the x<->y swap."""
+    return thy, thx
+
+
+def dvcs_to_ccs_moments(mom):
+    """DVCS -> CCS moment vector(s), shape (..., 12) in MOMENT_LABELS order."""
+    m = np.asarray(mom, float)
+    out = m.copy()
+    out[..., 1] = -m[..., 1]        # e1  -> -e1
+    #      2      e2 unchanged
+    out[..., 3] = m[..., 4]         # M21 <- M12
+    out[..., 4] = m[..., 3]         # M12 <- M21
+    out[..., 5] = -m[..., 6]        # M30 <- -M03
+    out[..., 6] = -m[..., 5]        # M03 <- -M30
+    #      7      M22 unchanged
+    out[..., 8] = -m[..., 8]        # M31 -> -M31
+    #      9      M13 unchanged
+    #      10     M40 unchanged
+    out[..., 11] = -m[..., 11]      # M04 -> -M04
+    return out
+
+
 def rotate_moments(mom, alpha_rad, sign=1):
     """Rotate a (..., 12) moment array from CCS to OCS by `alpha_rad`."""
     mom = np.asarray(mom, float).copy()
