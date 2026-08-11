@@ -28,8 +28,11 @@ Block definition (NO elevation or rotator cut -- take every block):
 
 Each coadd's Z5-Z8 remnant is compared to the MIW reference (the per-donut MIW
 sidecar binned on the same OCS grid): per-Zernike residual RMS (um) + spatial
-Pearson r, plus a combined pooled-RMS and mean-r.  Blocks are ordered in time
-(day_obs, seq) as a "coadd ordinal".
+Pearson r, plus a combined pooled-RMS and mean-r.  The same metrics are ALSO
+computed over just the corner-WFS radial annulus (cameraGeom SW0 inner corner
+~1.5178 deg to 1.725 deg, --cwfs-inner/--cwfs-outer) as `cwfs_`-prefixed
+columns, to highlight the high-radius region where the CWFS sit.  Blocks are
+ordered in time (day_obs, seq) as a "coadd ordinal".
 
 Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
   blocks_summary.parquet          every detected block: program, day_obs, seq
@@ -243,23 +246,37 @@ def _pearson(a, b):
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def map_metrics(coadd, miw):
-    """Per-Zernike residual RMS (um) and spatial Pearson r over co-valid cells,
-    plus a pooled-RMS and mean-r combined metric."""
+def _metrics_over(coadd, miw, extra_mask, prefix=""):
+    """Per-Zernike residual RMS (um) + spatial Pearson r over co-valid cells
+    (optionally AND'd with extra_mask), plus a pooled-RMS and mean-r combined."""
     m = {}; diffs = []; rs = []
     for z in Z_TERMS:
         c, w = coadd[z], miw[z]
         ok = np.isfinite(c) & np.isfinite(w)
+        if extra_mask is not None:
+            ok = ok & extra_mask
         if int(ok.sum()) < 5:
-            m[f"resid_rms_z{z}"] = np.nan; m[f"corr_z{z}"] = np.nan; continue
+            m[f"{prefix}resid_rms_z{z}"] = np.nan
+            m[f"{prefix}corr_z{z}"] = np.nan
+            continue
         d = c[ok] - w[ok]
-        m[f"resid_rms_z{z}"] = float(np.sqrt(np.mean(d ** 2)))
-        m[f"corr_z{z}"] = _pearson(c[ok], w[ok])
-        diffs.append(d); rs.append(m[f"corr_z{z}"])
+        m[f"{prefix}resid_rms_z{z}"] = float(np.sqrt(np.mean(d ** 2)))
+        m[f"{prefix}corr_z{z}"] = _pearson(c[ok], w[ok])
+        diffs.append(d); rs.append(m[f"{prefix}corr_z{z}"])
     alld = np.concatenate(diffs) if diffs else np.array([np.nan])
-    m["resid_rms_combined"] = float(np.sqrt(np.mean(alld ** 2))) if diffs else np.nan
-    m["corr_combined"] = float(np.nanmean(rs)) if rs else np.nan
+    m[f"{prefix}resid_rms_combined"] = (
+        float(np.sqrt(np.mean(alld ** 2))) if diffs else np.nan)
+    m[f"{prefix}corr_combined"] = float(np.nanmean(rs)) if rs else np.nan
     return m
+
+
+def map_metrics(coadd, miw, cwfs_mask=None):
+    """Coadd-vs-MIW metrics over the whole focal plane, plus (if `cwfs_mask` is
+    given) a second `cwfs_`-prefixed set restricted to the corner-WFS annulus."""
+    out = _metrics_over(coadd, miw, None, "")
+    if cwfs_mask is not None:
+        out.update(_metrics_over(coadd, miw, cwfs_mask, "cwfs_"))
+    return out
 
 
 def miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid):
@@ -311,8 +328,10 @@ def render_perblock(blocks, xbins, ybins, out_pdf, pct):
                 f"   alt={b['alt']:.1f} az={b['az']:.1f} rot={b['rot']:+.1f}"
                 f"   FWHM={b['fwhm']:.2f}\"  n_vis={b['n_visits']} n_don={b['n_donuts']}"
                 f"   [ordinal {b['ordinal']}]{fam}\n"
-                f"combined resid RMS={b['metrics']['resid_rms_combined']:.3f} um   "
-                f"mean r={b['metrics']['corr_combined']:+.2f}   "
+                f"resid RMS={b['metrics']['resid_rms_combined']:.3f} um "
+                f"(CWFS {b['metrics'].get('cwfs_resid_rms_combined', float('nan')):.3f})   "
+                f"mean r={b['metrics']['corr_combined']:+.2f} "
+                f"(CWFS {b['metrics'].get('cwfs_corr_combined', float('nan')):+.2f})   "
                 f"(Path A 50/34, 3 iter, OCS)", fontsize=11,
                 color=("black" if b["in_family"] else "tab:red"))
             fig.tight_layout(rect=[0, 0, 1, 0.94])
@@ -407,14 +426,20 @@ def render_timeseries(blocks, out_pdf):
             ax[0].plot(ordn, [b["metrics"][f"resid_rms_z{z}"] for b in blocks],
                        "o-", ms=3, label=f"Z{z}")
         ax[0].plot(ordn, [b["metrics"]["resid_rms_combined"] for b in blocks],
-                   "k-", lw=2, label="combined")
-        ax[0].set_ylabel("resid RMS (um)"); ax[0].legend(fontsize=7, ncol=5)
+                   "k-", lw=2, label="combined (full FP)")
+        ax[0].plot(ordn, [b["metrics"].get("cwfs_resid_rms_combined", np.nan)
+                          for b in blocks],
+                   color="tab:red", ls="--", lw=2, label="combined (CWFS annulus)")
+        ax[0].set_ylabel("resid RMS (um)"); ax[0].legend(fontsize=7, ncol=6)
         for z in Z_TERMS:
             ax[1].plot(ordn, [b["metrics"][f"corr_z{z}"] for b in blocks],
                        "o-", ms=3, label=f"Z{z}")
         ax[1].plot(ordn, [b["metrics"]["corr_combined"] for b in blocks],
-                   "k-", lw=2, label="mean")
-        ax[1].set_ylabel("spatial corr r"); ax[1].legend(fontsize=7, ncol=5)
+                   "k-", lw=2, label="mean (full FP)")
+        ax[1].plot(ordn, [b["metrics"].get("cwfs_corr_combined", np.nan)
+                          for b in blocks],
+                   color="tab:red", ls="--", lw=2, label="mean (CWFS annulus)")
+        ax[1].set_ylabel("spatial corr r"); ax[1].legend(fontsize=7, ncol=6)
         ax[1].set_xlabel("coadd ordinal (day_obs / seq order)")
         decorate(ax[0], first=True); decorate(ax[1], first=True)
         fig.suptitle("Coadd-vs-MIW comparison metrics vs ordinal  "
@@ -506,6 +531,12 @@ def main():
     ap.add_argument("--n-iter", type=int, default=None,
                     help="iterations (default: build.n_iter, i.e. 3)")
     ap.add_argument("--pct", type=float, default=98.0)
+    ap.add_argument("--cwfs-inner", type=float, default=None,
+                    help="corner-WFS annulus inner radius (deg); default = the "
+                         "cameraGeom SW0 extra-focal inner corner (~1.5178)")
+    ap.add_argument("--cwfs-outer", type=float, default=1.725,
+                    help="corner-WFS annulus outer radius (deg); default 1.725 "
+                         "(AOS-online radial limit)")
     args = ap.parse_args()
 
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
@@ -591,7 +622,12 @@ def main():
                  scdf.groupby(["day_obs", "seq_num"], sort=False).indices.items()}
     print(f"  MIW sidecar: {len(sc_mi)} donuts, {len(sc_groups)} visits", flush=True)
 
-    svd = None; iZs = iZidx = None; xbins = ybins = None
+    # corner-WFS annulus (radial region of the CWFS), matched from cameraGeom
+    cwfs_inner = (float(args.cwfs_inner) if args.cwfs_inner is not None
+                  else float(ibp.resolve_wfs_inner_edge(None)))
+    cwfs_outer = float(args.cwfs_outer)
+
+    svd = None; iZs = iZidx = None; xbins = ybins = None; cwfs_mask = None
     blocks = []
     meta = summ.set_index("block")
     for blk, g in bdf.groupby("block"):
@@ -615,6 +651,12 @@ def main():
             bad_fit_threshold=bad_fit)
         final = res["iter_results"][-1]
         xbins, ybins = res["xbins"], res["ybins"]
+        if cwfs_mask is None:                   # radial CWFS mask on the grid
+            cx = 0.5 * (xbins[:-1] + xbins[1:]); cy = 0.5 * (ybins[:-1] + ybins[1:])
+            rr = np.hypot(cy[:, None], cx[None, :])
+            cwfs_mask = (rr >= cwfs_inner) & (rr <= cwfs_outer)
+            print(f"  CWFS annulus [{cwfs_inner:.4f}, {cwfs_outer:.3f}] deg: "
+                  f"{int(cwfs_mask.sum())} of {cwfs_mask.size} focal cells", flush=True)
         grid = {z: final["measured_grid"].get(z) for z in Z_TERMS}
         if any(grid[z] is None for z in Z_TERMS):
             print(f"  block {blk}: missing a Z5-8 grid, skipped"); continue
@@ -637,7 +679,7 @@ def main():
             fwhm=float(r["fwhm"]), band=str(r["band"]),
             n_visits=int(r["n_visits"]),
             n_donuts=int(len(dd)), in_family=bool(r["in_family"]),
-            grid=grid, miw=miw, metrics=map_metrics(grid, miw),
+            grid=grid, miw=miw, metrics=map_metrics(grid, miw, cwfs_mask),
             vmodes=block_vmodes(final, svd),
             **{tv: float(r[tv]) for tv in THERMAL_VARS}))
         print(f"  block {blk}: {r['program']} {int(r['day_obs'])} "
