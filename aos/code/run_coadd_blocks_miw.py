@@ -41,15 +41,16 @@ Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
                                   (a compact subset is also printed)
   coadd_metrics.parquet           one row per coadd: metadata + ordinal + band +
                                   13 thermal means + per-Z and combined resid RMS
-                                  / corr + vmode_1..34
+                                  / corr (full FP + cwfs_ annulus) + umode_1..34
+                                  (u-mode amplitudes, um wavefront)
   coadd_blocks_miw_perblock.pdf   one block per page: rows coadd / MIW / diff x
                                   Z5..Z8, metrics in titles, ordered by day/seq
   coadd_blocks_miw_timeseries.pdf comparison metrics (day_obs-labelled) + a
                                   telemetry<->metric correlation bar chart +
                                   telemetry (alt/az/rot/blur/z_gradient/band,
-                                  2/page) + per-v-mode pages (5/page), all vs
+                                  2/page) + per-u-mode pages (um, 5/page), all vs
                                   coadd ordinal on a common x-scale
-  block_grids.npz                 stacked coadd+MIW grids, v-modes, metadata
+  block_grids.npz                 stacked coadd+MIW grids, u-modes, metadata
 
 RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc); requires the mi_name
 MIW sidecar (zk_intrinsic.parquet) to exist.
@@ -289,12 +290,15 @@ def miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid):
     return {z: grid.get(z) for z in Z_TERMS}
 
 
-def block_vmodes(final, svd):
-    """Block-median v-mode amplitudes (a/sigma) from the per-visit raw DZ fits,
-    projected onto the OFC subspace (same convention as vmode_correlations)."""
+def block_umodes(final, svd):
+    """Block-median u-mode amplitudes (MICRONS of wavefront) from the per-visit
+    raw DZ fits: a = U_eff^T . W, the measured Double-Zernike projected onto the
+    OFC left-singular vectors.  NOT divided by sigma -- this is physical
+    wavefront (um), keeping all modes on a common scale, unlike the v-mode
+    a/sigma."""
     W = ibp.stack_per_visit_coeffs(final["fit_rows_raw"], list(svd.kj_grid))
-    V = svd.vmodes(svd.project_amplitudes(np.nan_to_num(W, nan=0.0)))
-    return np.nanmedian(V, axis=0)
+    A = svd.project_amplitudes(W)          # (n_visits, n_keep) u-mode amps, um
+    return np.nanmedian(A, axis=0)
 
 
 def render_perblock(blocks, xbins, ybins, out_pdf, pct):
@@ -381,15 +385,15 @@ def _corr_bar_page(pdf, blocks, n):
 
 def render_timeseries(blocks, out_pdf):
     """Comparison metrics, a telemetry<->metric correlation bar chart, block
-    telemetry (2 panels/page incl. filter band), and per-v-mode value plots, all
+    telemetry (2 panels/page incl. filter band), and per-u-mode value plots, all
     vs coadd ordinal on a COMMON horizontal scale.  day_obs boundaries are dotted
     vlines on every panel (out-of-family blocks shaded); day_obs is labelled in
-    small vertical text at each day's start.  v-modes are 5 panels/page."""
+    small vertical text at each day's start.  u-modes are 5 panels/page."""
     n = len(blocks); ordn = np.arange(n)
     days = np.array([b["day_obs"] for b in blocks])
     outfam = np.array([not b["in_family"] for b in blocks])
-    Vm = np.array([b["vmodes"] for b in blocks])                 # (n, n_keep)
-    nkeep = Vm.shape[1]
+    Um = np.array([b["umodes"] for b in blocks])                 # (n, n_keep), um
+    nkeep = Um.shape[1]
     W = max(12.0, 0.30 * n + 3.0)                                # common width
     xlim = (-0.6, n - 0.4)                                       # common x-range
     bnd = np.where(days[1:] != days[:-1])[0] + 0.5              # day boundaries
@@ -481,14 +485,15 @@ def render_timeseries(blocks, out_pdf):
             fig.suptitle("Block telemetry vs coadd ordinal", fontsize=11)
             fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # per-v-mode value plots, 5 panels/page
+        # per-u-mode value plots (microns), 5 panels/page
         per = 5
         for pg in range((nkeep + per - 1) // per):
             lo, hi = pg * per, min((pg + 1) * per, nkeep)
-            series_page(pdf, [(f"v{m + 1}", Vm[:, m]) for m in range(lo, hi)],
-                        f"v-mode amplitude vs coadd ordinal  (v{lo + 1}-v{hi})")
+            series_page(pdf, [(f"u{m + 1} (um)", Um[:, m]) for m in range(lo, hi)],
+                        f"u-mode amplitude (um wavefront) vs coadd ordinal  "
+                        f"(u{lo + 1}-u{hi})")
     print(f"wrote {out_pdf}  (metrics + corr-bars + 3 telemetry + "
-          f"{(nkeep + 4) // 5} v-mode pages, n={n})", flush=True)
+          f"{(nkeep + 4) // 5} u-mode pages, n={n})", flush=True)
 
 
 # ------------------------------------------------------------------- main
@@ -680,7 +685,7 @@ def main():
             n_visits=int(r["n_visits"]),
             n_donuts=int(len(dd)), in_family=bool(r["in_family"]),
             grid=grid, miw=miw, metrics=map_metrics(grid, miw, cwfs_mask),
-            vmodes=block_vmodes(final, svd),
+            umodes=block_umodes(final, svd),
             **{tv: float(r[tv]) for tv in THERMAL_VARS}))
         print(f"  block {blk}: {r['program']} {int(r['day_obs'])} "
               f"rot={r['rot']:+.1f} n_visits={int(r['n_visits'])} "
@@ -697,7 +702,7 @@ def main():
     for i, bb in enumerate(blocks):
         bb["ordinal"] = i
 
-    # metrics + v-modes parquet (one row per coadd)
+    # metrics + u-modes parquet (one row per coadd)
     rows = []
     for bb in blocks:
         row = {k: bb[k] for k in ("ordinal", "block", "program", "day_obs",
@@ -705,12 +710,12 @@ def main():
                "n_visits", "n_donuts", "in_family")}
         row.update({tv: bb[tv] for tv in THERMAL_VARS})
         row.update(bb["metrics"])
-        for i, vv in enumerate(bb["vmodes"]):
-            row[f"vmode_{i + 1}"] = float(vv)
+        for i, vv in enumerate(bb["umodes"]):
+            row[f"umode_{i + 1}"] = float(vv)          # u-mode amplitude, um
         rows.append(row)
     pd.DataFrame(rows).to_parquet(out_dir / "coadd_metrics.parquet", index=False)
     print(f"  wrote coadd_metrics.parquet ({len(rows)} coadds, "
-          f"{len(blocks[0]['vmodes'])} v-modes each)", flush=True)
+          f"{len(blocks[0]['umodes'])} u-modes each)", flush=True)
 
     # grids + metadata for cheap re-plots
     np.savez_compressed(
@@ -718,7 +723,7 @@ def main():
         xbins=xbins, ybins=ybins, terms=np.array(Z_TERMS),
         grids=np.array([[bb["grid"][z] for z in Z_TERMS] for bb in blocks]),
         miw=np.array([[bb["miw"][z] for z in Z_TERMS] for bb in blocks]),
-        vmodes=np.array([bb["vmodes"] for bb in blocks]),
+        umodes=np.array([bb["umodes"] for bb in blocks]),
         band=np.array([bb["band"] for bb in blocks]),
         **{k: np.array([bb[k] for bb in blocks]) for k in
            (("ordinal", "block", "day_obs", "seq_min", "seq_max", "rot", "alt",
