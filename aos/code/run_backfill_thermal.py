@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """Backfill thermal telemetry onto a FAM visits.parquet, without re-running mktable.
 
-Thermal (the 13 ESS-temperature / M1M3-gradient / TMA-truss columns, incl.
+Thermal (the 13 core ESS-temperature / M1M3-gradient / TMA-truss columns, incl.
 `z_gradient`) is a VISIT-level product: run_mktable merges it into the visits
 table only (never the donuts).  When a chunk's mktable ran somewhere the EFD or
 ConsDB was unreachable (e.g. a Slurm compute node), the thermal step fails and
 those columns are dropped -- but the expensive donut/Zernike streaming is fine.
 This script fixes only the thermal part: it loads an existing visits.parquet,
-re-fetches thermal via the package's own get_thermal_data + merge, and rewrites
-the file.  Fast (a visit-level EFD/ConsDB fetch), no donut reprocessing.
+re-fetches thermal via the package's own get_thermal_data, keeps the 13 core
+columns (dropping the ~180 per-thermocouple m1m3_tc_* / per-cell m1m3_dt_*
+columns), and rewrites the file.  It ALSO refreshes the sibling fits.parquet,
+which carries a denormalized snapshot of the visit telemetry that goes stale
+whenever visits thermal changes (--no-fits to skip).
 
-Run on a node where BOTH the EFD (usdf_efd) and ConsDB resolve -- the RSP
-terminal or a slaciana/slacrd interactive node -- NOT a batch compute node.
+Provenance: the ESS temps/deltas AND the TMA truss come from the ConsDB
+transform (fast); only the 4 M1M3 gradients need the EFD.  So this must run on a
+node where both the EFD (usdf_efd) and ConsDB resolve -- the RSP terminal or a
+slaciana/slacrd interactive node -- NOT a batch compute node.
 
     python run_backfill_thermal.py --visits output/<ps>/chunks/<d>_<d>/visits.parquet
 
@@ -24,6 +29,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
 from astropy.table import QTable
 
 from lsst.summit.utils import ConsDbClient
@@ -32,6 +39,17 @@ from lsst.ts.intrinsic.wavefront.intrinsics_lib import (
     _close_efd_client)
 
 DEFAULT_CONSDB_URL = "https://usdf-rsp.slac.stanford.edu/consdb"
+
+# The 13 "core" thermal columns we keep -- ESS temps/deltas + M1M3 gradients +
+# TMA truss.  Everything else get_thermal_data returns (per-thermocouple
+# m1m3_tc_*, per-cell m1m3_dt_*) is dropped: those didn't add analysis value and
+# they bloat the table (~180 cols) + the EFD payload.
+CORE_THERMAL = [
+    "cam_air_temp", "m2_air_temp", "m1m3_air_temp", "outside_temp",
+    "m2_delta_t", "cam_m1m3_delta_t", "dome_delta_t",
+    "x_gradient", "y_gradient", "z_gradient", "radial_gradient",
+    "tma_truss_temp_pxpy", "tma_truss_temp_mxmy",
+]
 
 
 def make_consdb_client(consdb_url):
@@ -50,17 +68,37 @@ def make_consdb_client(consdb_url):
     return ConsDbClient(url)
 
 
-async def backfill(visits_path, output_path, consdb_url, temp_window, force):
-    vi = QTable.read(str(visits_path))
-    has = "z_gradient" in vi.colnames
-    days = sorted({int(d) for d in vi["day_obs"]})
-    print(f"[backfill_thermal] {visits_path}")
-    print(f"  {len(vi)} visits, {len(vi.colnames)} cols, day_obs={days}, "
-          f"thermal already present={has}")
-    if has and not force:
-        print("  thermal already present -- nothing to do (use --force to refetch)")
-        return 0
+def patch_fits(visits_path, fits_path=None):
+    """Refresh the core thermal columns in the sibling fits.parquet from a
+    visits.parquet (join on day_obs, seq_num).  fits denormalizes the visit
+    telemetry at fit time, so it must be re-synced whenever visits thermal
+    changes -- this avoids a full re-fit."""
+    vp = Path(visits_path)
+    fp = Path(fits_path) if fits_path else vp.with_name("fits.parquet")
+    if not fp.exists():
+        print(f"  no sibling fits.parquet ({fp}) -- skipping fits patch")
+        return
+    have = [c for c in CORE_THERMAL if c in set(pq.read_schema(str(vp)).names)]
+    if not have:
+        print("  visits has no core thermal cols -- cannot patch fits")
+        return
+    v = pd.read_parquet(vp, columns=["day_obs", "seq_num"] + have)
+    f = pd.read_parquet(fp)
+    f = f.drop(columns=[c for c in have if c in f.columns], errors="ignore")
+    f = f.merge(v, on=["day_obs", "seq_num"], how="left")
+    f.to_parquet(fp, index=False)
+    nz = int(f["z_gradient"].notna().sum()) if "z_gradient" in f.columns else 0
+    print(f"  patched {fp.name}: +{len(have)} thermal cols, "
+          f"z_gradient valid {nz}/{len(f)}, {len(f.columns)} cols total")
 
+
+async def ensure_visits_thermal(vi, out, consdb_url, temp_window, force):
+    """Fetch + merge the core thermal columns into the visits QTable and write
+    it, unless already present (and not --force).  Returns 0 / error code."""
+    if "z_gradient" in vi.colnames and not force:
+        print("  visits already has thermal -- skipping fetch (use --force to refetch)")
+        return 0
+    days = sorted({int(d) for d in vi["day_obs"]})
     consdb = make_consdb_client(consdb_url)
     try:
         probe = consdb.query(
@@ -79,8 +117,11 @@ async def backfill(visits_path, output_path, consdb_url, temp_window, force):
         print("  EFD client OK")
         kw = {} if temp_window is None else {"temp_time_window_sec": temp_window}
         thermal_df = await get_thermal_data(consdb, efd, vi, **kw)
+        keep = ["day_obs", "seq_num"] + [c for c in CORE_THERMAL if c in thermal_df.columns]
+        thermal_df = thermal_df[keep]           # drop m1m3_tc_* / m1m3_dt_*
         nz = int(thermal_df["z_gradient"].notna().sum()) if "z_gradient" in thermal_df else 0
-        print(f"  thermal_df: {thermal_df.shape}, z_gradient valid {nz}/{len(thermal_df)}")
+        print(f"  thermal_df (core {len(keep)-2}/13): {thermal_df.shape}, "
+              f"z_gradient valid {nz}/{len(thermal_df)}")
         vi = merge_thermal_to_visit_info(thermal_df, vi)
     except Exception as e:
         print(f"  ERROR: thermal fetch/merge failed -> {type(e).__name__}: {e}")
@@ -89,21 +130,30 @@ async def backfill(visits_path, output_path, consdb_url, temp_window, force):
         if efd is not None:
             await _close_efd_client(efd)
 
-    out = output_path or visits_path
     vi.write(str(out), overwrite=True)
     chk = QTable.read(str(out))
     nz = (int(np.isfinite(np.asarray(chk["z_gradient"], float)).sum())
           if "z_gradient" in chk.colnames else 0)
-    ntc = sum(1 for c in chk.colnames if c in (
-        "z_gradient", "x_gradient", "y_gradient", "radial_gradient",
-        "cam_air_temp", "m2_air_temp", "m1m3_air_temp", "outside_temp",
-        "m2_delta_t", "cam_m1m3_delta_t", "dome_delta_t",
-        "tma_truss_temp_pxpy", "tma_truss_temp_mxmy"))
-    print(f"  wrote {out}: {len(chk.colnames)} cols, {ntc}/13 thermal cols, "
+    nc = sum(1 for c in chk.colnames if c in CORE_THERMAL)
+    print(f"  wrote {out}: {len(chk.colnames)} cols, {nc}/13 core thermal, "
           f"z_gradient valid {nz}/{len(chk)}")
     if nz == 0:
         print("  WARNING: z_gradient is all-NaN -- EFD had no M1M3 gradient data "
               "for these visits (check the EFD/date range)")
+    return 0
+
+
+async def run(visits_path, output_path, consdb_url, temp_window, force, do_fits):
+    vi = QTable.read(str(visits_path))
+    print(f"[backfill_thermal] {visits_path}")
+    print(f"  {len(vi)} visits, {len(vi.colnames)} cols, "
+          f"thermal present={'z_gradient' in vi.colnames}")
+    out = output_path or visits_path
+    rc = await ensure_visits_thermal(vi, out, consdb_url, temp_window, force)
+    if rc != 0:
+        return rc
+    if do_fits:
+        patch_fits(out)
     return 0
 
 
@@ -120,13 +170,15 @@ def main():
                     help="temp_time_window_sec (default: package default)")
     ap.add_argument("--force", action="store_true",
                     help="refetch even if thermal columns are already present")
+    ap.add_argument("--no-fits", action="store_true",
+                    help="do NOT refresh the sibling fits.parquet thermal snapshot")
     args = ap.parse_args()
 
     vp = Path(args.visits)
     if not vp.exists():
         sys.exit(f"visits file not found: {vp}")
-    rc = asyncio.run(backfill(vp, args.output, args.consdb_url,
-                              args.temp_window, args.force))
+    rc = asyncio.run(run(vp, args.output, args.consdb_url, args.temp_window,
+                         args.force, not args.no_fits))
     sys.exit(rc)
 
 
