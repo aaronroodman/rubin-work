@@ -32,16 +32,20 @@ Pearson r, plus a combined pooled-RMS and mean-r.  Blocks are ordered in time
 (day_obs, seq) as a "coadd ordinal".
 
 Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
-  blocks_summary.csv              every detected block: program, day_obs, seq
-                                  range, n_visits, alt/az/rot means, median-blur
-                                  FWHM, in-5rot-family flag  (also printed)
-  coadd_metrics.parquet           one row per coadd: metadata + ordinal + per-Z
-                                  and combined resid RMS / corr + vmode_1..34
+  blocks_summary.parquet          every detected block: program, day_obs, seq
+                                  range, n_visits, alt/az/rot means, blur FWHM,
+                                  band, in-5rot-family flag, 13 thermal means
+                                  (a compact subset is also printed)
+  coadd_metrics.parquet           one row per coadd: metadata + ordinal + band +
+                                  13 thermal means + per-Z and combined resid RMS
+                                  / corr + vmode_1..34
   coadd_blocks_miw_perblock.pdf   one block per page: rows coadd / MIW / diff x
                                   Z5..Z8, metrics in titles, ordered by day/seq
-  coadd_blocks_miw_timeseries.pdf metrics + telemetry (alt/az/rot/blur/
-                                  z_gradient) + per-v-mode value pages (5/page),
-                                  all vs coadd ordinal on a common x-scale
+  coadd_blocks_miw_timeseries.pdf comparison metrics (day_obs-labelled) + a
+                                  telemetry<->metric correlation bar chart +
+                                  telemetry (alt/az/rot/blur/z_gradient/band,
+                                  2/page) + per-v-mode pages (5/page), all vs
+                                  coadd ordinal on a common x-scale
   block_grids.npz                 stacked coadd+MIW grids, v-modes, metadata
 
 RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc); requires the mi_name
@@ -53,6 +57,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+from scipy.stats import spearmanr
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -67,6 +72,17 @@ from lsst.ts.intrinsic.wavefront.measured_intrinsic import (
     build_measured_intrinsic_uconstrained, bin_median_focal)
 
 Z_TERMS = [5, 6, 7, 8]
+
+# 13 core thermal telemetry columns (ESS temps/deltas + M1M3 gradients + truss);
+# block-mean of each is carried into the metrics parquet + the correlation bars.
+THERMAL_VARS = [
+    "cam_air_temp", "m2_air_temp", "m1m3_air_temp", "outside_temp",
+    "m2_delta_t", "cam_m1m3_delta_t", "dome_delta_t",
+    "x_gradient", "y_gradient", "z_gradient", "radial_gradient",
+    "tma_truss_temp_pxpy", "tma_truss_temp_mxmy",
+]
+# numeric telemetry correlated against the metrics (az excluded: circular)
+CORR_VARS = ["alt", "rot", "fwhm"] + THERMAL_VARS
 
 
 def _fixed_list_to_2d(table, col):
@@ -200,9 +216,11 @@ def block_summary(v, rot_windows):
             rot=rot,
             fwhm=float(np.nanmedian(g["median_blur_arcsec"]))
             if "median_blur_arcsec" in g else np.nan,
-            z_gradient=float(np.nanmedian(g["z_gradient"]))
-            if "z_gradient" in g else np.nan,
-            in_family=in_family(rot, rot_windows)))
+            band=(str(g["band"].mode().iloc[0])
+                  if "band" in g and len(g["band"].mode()) else ""),
+            in_family=in_family(rot, rot_windows),
+            **{tv: (float(np.nanmean(g[tv])) if tv in g.columns else np.nan)
+               for tv in THERMAL_VARS}))
     return pd.DataFrame(rows).sort_values(["day_obs", "seq_min"]).reset_index(drop=True)
 
 
@@ -304,12 +322,50 @@ def render_perblock(blocks, xbins, ybins, out_pdf, pct):
           flush=True)
 
 
+def _spearman(x, y):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    m = np.isfinite(x) & np.isfinite(y)
+    if int(m.sum()) < 5 or np.nanstd(x[m]) == 0 or np.nanstd(y[m]) == 0:
+        return np.nan
+    return float(spearmanr(x[m], y[m]).correlation)
+
+
+def _corr_bar_page(pdf, blocks, n):
+    """Bar chart of each numeric telemetry var's Spearman correlation with the
+    coadd-vs-MIW deviation (residual RMS) and with the mean spatial agreement."""
+    rms = np.array([b["metrics"]["resid_rms_combined"] for b in blocks], float)
+    cor = np.array([b["metrics"]["corr_combined"] for b in blocks], float)
+    rows = []
+    for tv in CORR_VARS:
+        x = np.array([b.get(tv, np.nan) for b in blocks], float)
+        rows.append((tv, _spearman(x, rms), _spearman(x, cor)))
+    rows = [r for r in rows if np.isfinite(r[1]) or np.isfinite(r[2])]
+    rows.sort(key=lambda r: -(abs(r[1]) if np.isfinite(r[1]) else 0.0))
+    labels = [r[0] for r in rows]
+    rrms = np.array([r[1] for r in rows]); rcor = np.array([r[2] for r in rows])
+    x = np.arange(len(labels))
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(max(10, 0.45 * len(labels) + 3), 8.5))
+    for ax, vals, ylab, ttl in [
+            (a1, rrms, "rho vs resid_rms_combined",
+             "telemetry vs deviation magnitude (residual RMS)"),
+            (a2, rcor, "rho vs corr_combined",
+             "telemetry vs spatial agreement (mean r)")]:
+        ax.bar(x, np.nan_to_num(vals),
+               color=["tab:red" if v > 0 else "tab:blue" for v in vals])
+        ax.axhline(0, color="k", lw=0.5); ax.set_ylim(-1, 1); ax.grid(alpha=0.3)
+        ax.set_ylabel(ylab, fontsize=9); ax.set_title(ttl, fontsize=10)
+        ax.set_xticks(x); ax.set_xticklabels(labels, rotation=90, fontsize=7)
+    fig.suptitle(f"Telemetry <-> coadd-vs-MIW metric  Spearman correlation "
+                 f"(n={n} coadds; red rho>0, blue rho<0)", fontsize=11)
+    fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+
 def render_timeseries(blocks, out_pdf):
-    """Comparison metrics, block telemetry, and per-v-mode value plots, all vs
-    coadd ordinal on a COMMON horizontal scale.  Single-column panels; day_obs
-    boundaries drawn as dotted vlines on every panel (out-of-family blocks
-    shaded), with day_obs labelled on the top panel of each page.  v-modes are
-    5 panels/page (7 pages for 34)."""
+    """Comparison metrics, a telemetry<->metric correlation bar chart, block
+    telemetry (2 panels/page incl. filter band), and per-v-mode value plots, all
+    vs coadd ordinal on a COMMON horizontal scale.  day_obs boundaries are dotted
+    vlines on every panel (out-of-family blocks shaded); day_obs is labelled in
+    small vertical text at each day's start.  v-modes are 5 panels/page."""
     n = len(blocks); ordn = np.arange(n)
     days = np.array([b["day_obs"] for b in blocks])
     outfam = np.array([not b["in_family"] for b in blocks])
@@ -326,10 +382,10 @@ def render_timeseries(blocks, out_pdf):
         for i in np.where(outfam)[0]:
             ax.axvspan(i - 0.5, i + 0.5, color="tab:red", alpha=0.07)
         ax.set_xlim(*xlim); ax.grid(alpha=0.3)
-        if first:                                    # day_obs labels, top panel only
+        if first:                     # small day_obs labels at each day's start
             for i in day_start:
-                ax.text(i, 0.99, str(days[i]), transform=ax.get_xaxis_transform(),
-                        rotation=90, fontsize=5, va="top", ha="center", color="0.4")
+                ax.text(i, 0.985, str(days[i]), transform=ax.get_xaxis_transform(),
+                        rotation=90, fontsize=6, va="top", ha="left", color="0.35")
 
     def series_page(pdf, items, suptitle, colors=None):
         fig, axes = plt.subplots(len(items), 1, figsize=(W, 2.0 * len(items) + 0.6),
@@ -360,19 +416,45 @@ def render_timeseries(blocks, out_pdf):
                    "k-", lw=2, label="mean")
         ax[1].set_ylabel("spatial corr r"); ax[1].legend(fontsize=7, ncol=5)
         ax[1].set_xlabel("coadd ordinal (day_obs / seq order)")
-        decorate(ax[0], first=True); decorate(ax[1])
+        decorate(ax[0], first=True); decorate(ax[1], first=True)
         fig.suptitle("Coadd-vs-MIW comparison metrics vs ordinal  "
-                     "(red bands = out-of-5rot-family)", fontsize=11)
+                     "(vertical = day_obs; red bands = out-of-5rot-family)",
+                     fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # telemetry page: elevation / azimuth / rotator / blur FWHM / z_gradient
-        series_page(pdf, [
-            ("elevation (deg)", [b["alt"] for b in blocks]),
-            ("azimuth (deg)", [b["az"] for b in blocks]),
-            ("rotator (deg)", [b["rot"] for b in blocks]),
-            ("donut blur FWHM (\")", [b["fwhm"] for b in blocks]),
-            ("M1M3 z_gradient", [b["z_gradient"] for b in blocks]),
-        ], "Block telemetry vs coadd ordinal")
+        # telemetry <-> metric correlation bar chart
+        _corr_bar_page(pdf, blocks, n)
+
+        # block telemetry, 2 panels/page (incl. filter band)
+        tele = [("elevation (deg)", "line", [b["alt"] for b in blocks]),
+                ("azimuth (deg)", "line", [b["az"] for b in blocks]),
+                ("camera rotator (deg)", "line", [b["rot"] for b in blocks]),
+                ("donut blur FWHM (\")", "line", [b["fwhm"] for b in blocks]),
+                ("M1M3 z_gradient", "line", [b["z_gradient"] for b in blocks]),
+                ("filter band", "band", [b["band"] for b in blocks])]
+        for p0 in range(0, len(tele), 2):
+            chunk = tele[p0:p0 + 2]
+            fig, axes = plt.subplots(len(chunk), 1,
+                                     figsize=(W, 4.2 * len(chunk) + 0.4),
+                                     sharex=True, squeeze=False)
+            axes = axes[:, 0]
+            for k, (lab, kind, vals) in enumerate(chunk):
+                if kind == "band":
+                    cats = sorted({v for v in vals if v})
+                    idx = {c: i for i, c in enumerate(cats)}
+                    axes[k].plot(ordn, [idx.get(v, np.nan) for v in vals],
+                                 "o", ms=5, color="C0")
+                    axes[k].set_yticks(range(len(cats)))
+                    axes[k].set_yticklabels(cats)
+                    axes[k].set_ylim(-0.5, max(0.5, len(cats) - 0.5))
+                    axes[k].set_ylabel("filter band", fontsize=9)
+                else:
+                    axes[k].plot(ordn, vals, "o-", ms=4, color="C0")
+                    axes[k].set_ylabel(lab, fontsize=9)
+                decorate(axes[k], first=(k == 0))
+            axes[-1].set_xlabel("coadd ordinal (day_obs / seq order)")
+            fig.suptitle("Block telemetry vs coadd ordinal", fontsize=11)
+            fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
         # per-v-mode value plots, 5 panels/page
         per = 5
@@ -380,9 +462,8 @@ def render_timeseries(blocks, out_pdf):
             lo, hi = pg * per, min((pg + 1) * per, nkeep)
             series_page(pdf, [(f"v{m + 1}", Vm[:, m]) for m in range(lo, hi)],
                         f"v-mode amplitude vs coadd ordinal  (v{lo + 1}-v{hi})")
-    npg = 2 + (nkeep + 4) // 5
-    print(f"wrote {out_pdf}  (metrics + telemetry + {(nkeep + 4) // 5} v-mode "
-          f"pages = {npg} pages, n={n})", flush=True)
+    print(f"wrote {out_pdf}  (metrics + corr-bars + 3 telemetry + "
+          f"{(nkeep + 4) // 5} v-mode pages, n={n})", flush=True)
 
 
 # ------------------------------------------------------------------- main
@@ -452,8 +533,8 @@ def main():
     # only columns present in every chunk, so if a chunk (e.g. the newer
     # reprocessing) lacks thermal telemetry the combine drops z_gradient for all
     # blocks.  Per-chunk concat keeps z_gradient where it exists (NaN elsewhere).
-    need = ["day_obs", "seq_num", "alt", "az", "rotator_angle",
-            "science_program", "band", "median_blur_arcsec", "z_gradient"]
+    need = (["day_obs", "seq_num", "alt", "az", "rotator_angle",
+             "science_program", "band", "median_blur_arcsec"] + THERMAL_VARS)
     chunk_vis = sorted((base / "chunks").glob("*/visits.parquet"))
     srcs = chunk_vis if chunk_vis else [base / "visits.parquet"]
     parts = []
@@ -473,19 +554,22 @@ def main():
                         max_blur=args.max_blur)
     summ = block_summary(bdf, rot_windows)
     summ["plotted"] = summ["n_visits"] >= args.min_visits
-    summ.to_csv(out_dir / "blocks_summary.csv", index=False)
+    summ.to_parquet(out_dir / "blocks_summary.parquet", index=False)
     print(f"[coadd_blocks_miw] {args.param_set}/{args.mi_name}: "
           f"{len(summ)} blocks (bands={allowed_bands}, no alt/rot cut, "
           f"max_blur={args.max_blur}; bounce={sorted(bounce_progs)}, "
           f"wide={sorted(wide_progs)})  -> {out_dir}", flush=True)
-    with pd.option_context("display.max_rows", None, "display.width", 200):
-        print(summ.to_string(
+    show = ["block", "program", "day_obs", "seq_min", "seq_max", "n_visits",
+            "alt", "az", "rot", "fwhm", "band", "in_family", "plotted"]
+    with pd.option_context("display.max_rows", None, "display.width", 220):
+        print(summ[[c for c in show if c in summ.columns]].to_string(
             index=False,
             formatters={"alt": "{:.1f}".format, "az": "{:.1f}".format,
                         "rot": "{:+.1f}".format, "fwhm": "{:.2f}".format}),
               flush=True)
-    print(f"  wrote blocks_summary.csv;  {int(summ['plotted'].sum())} blocks "
-          f">= {args.min_visits} visits will be built/plotted", flush=True)
+    print(f"  wrote blocks_summary.parquet (+thermal means);  "
+          f"{int(summ['plotted'].sum())} blocks >= {args.min_visits} visits "
+          f"will be built/plotted", flush=True)
 
     vtab = QTable.read(str(base / "visits.parquet"))
     noll_arr = (np.array(vtab["nollIndices"][0])
@@ -550,11 +634,12 @@ def main():
             block=int(blk), program=str(r["program"]), day_obs=int(r["day_obs"]),
             seq_min=int(r["seq_min"]), seq_max=int(r["seq_max"]),
             rot=float(r["rot"]), alt=float(r["alt"]), az=float(r["az"]),
-            fwhm=float(r["fwhm"]), z_gradient=float(r["z_gradient"]),
+            fwhm=float(r["fwhm"]), band=str(r["band"]),
             n_visits=int(r["n_visits"]),
             n_donuts=int(len(dd)), in_family=bool(r["in_family"]),
             grid=grid, miw=miw, metrics=map_metrics(grid, miw),
-            vmodes=block_vmodes(final, svd)))
+            vmodes=block_vmodes(final, svd),
+            **{tv: float(r[tv]) for tv in THERMAL_VARS}))
         print(f"  block {blk}: {r['program']} {int(r['day_obs'])} "
               f"rot={r['rot']:+.1f} n_visits={int(r['n_visits'])} "
               f"n_donuts={len(dd)} in_family={bool(r['in_family'])}  "
@@ -574,8 +659,9 @@ def main():
     rows = []
     for bb in blocks:
         row = {k: bb[k] for k in ("ordinal", "block", "program", "day_obs",
-               "seq_min", "seq_max", "alt", "az", "rot", "fwhm", "z_gradient",
+               "seq_min", "seq_max", "alt", "az", "rot", "fwhm", "band",
                "n_visits", "n_donuts", "in_family")}
+        row.update({tv: bb[tv] for tv in THERMAL_VARS})
         row.update(bb["metrics"])
         for i, vv in enumerate(bb["vmodes"]):
             row[f"vmode_{i + 1}"] = float(vv)
@@ -591,9 +677,10 @@ def main():
         grids=np.array([[bb["grid"][z] for z in Z_TERMS] for bb in blocks]),
         miw=np.array([[bb["miw"][z] for z in Z_TERMS] for bb in blocks]),
         vmodes=np.array([bb["vmodes"] for bb in blocks]),
+        band=np.array([bb["band"] for bb in blocks]),
         **{k: np.array([bb[k] for bb in blocks]) for k in
-           ("ordinal", "block", "day_obs", "seq_min", "seq_max", "rot", "alt",
-            "az", "fwhm", "z_gradient", "n_visits", "n_donuts", "in_family")})
+           (("ordinal", "block", "day_obs", "seq_min", "seq_max", "rot", "alt",
+             "az", "fwhm", "n_visits", "n_donuts", "in_family") + tuple(THERMAL_VARS))})
 
     render_perblock(blocks, xbins, ybins,
                     str(out_dir / "coadd_blocks_miw_perblock.pdf"), args.pct)
