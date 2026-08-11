@@ -42,6 +42,7 @@ MIW_COLL = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('coll=')),
 MIW_FILT = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('filt=')), 'i_39')
 MIW_REPO = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('repo=')), '/repo/main')
 TAG = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('tag=')), '')
+VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
 FP_R = 1.75
 NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
 RAD2DEG = 180.0 / np.pi
@@ -64,12 +65,30 @@ def discover_seqs():
     return sorted(seqs)
 
 
+def donut_blur_by_seq():
+    """{our-seq: donut median_blur_arcsec} from the danish visits table.
+
+    The danish row is keyed on the FAM extra seq_num = our in-focus seq - 1.
+    Returns {} if the table (or column) is unavailable (e.g. off-20260513).
+    """
+    if not os.path.exists(VISITS):
+        return {}
+    v = pd.read_parquet(VISITS)
+    v = v[v.day_obs == DAY]
+    if 'median_blur_arcsec' not in v.columns:
+        return {}
+    return {int(sq) + 1: float(b) for sq, b
+            in zip(v.seq_num, v.median_blur_arcsec)}
+
+
 def collect(seqs, cfg, miw, jmax):
-    """Return a long DataFrame of pooled corner deviations for all seqs."""
+    """Pool per-corner deviations (long df) + per-visit atmo FWHM vs donut blur."""
     from lsst.obs.lsst import LsstCam
     name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
     offsets = cfg.get('cwfs', {}).get('offsets', {})
+    blur = donut_blur_by_seq()
     rows = []
+    vrows = []
     used = 0
     for seq in seqs:
         npz = f'data/vmodefit_{seq}{TAG}.npz'
@@ -80,6 +99,12 @@ def collect(seqs, cfg, miw, jmax):
         d = np.load(npz, allow_pickle=True)
         A = np.asarray(d['A'], float)
         rot = float(d['rot'])
+        # fitted atmospheric FWHM (arcsec) vs donut blur seeing for this visit
+        atm_names = [str(x) for x in np.atleast_1d(d['atm_names'])]
+        atm = np.asarray(d['atm'], float)
+        mfwhm = float(atm[atm_names.index('fwhm')]) if 'fwhm' in atm_names else np.nan
+        vrows.append(dict(seq=seq, rot=rot, model_fwhm=mfwhm,
+                          donut_blur=blur.get(seq, np.nan)))
         cw = pd.read_parquet(cwf)
         cw['corner'] = cw.detector.str[:3]
         got = 0
@@ -105,7 +130,7 @@ def collect(seqs, cfg, miw, jmax):
         if got:
             used += 1
     print(f'pooled {used}/{len(seqs)} visits, {len(rows)} corner-Zernike points')
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows), pd.DataFrame(vrows)
 
 
 def stats_per_j(df):
@@ -124,12 +149,33 @@ def stats_per_j(df):
     return out
 
 
-def plot(df, st, out_pdf):
+def _fwhm_panel(ax, vdf):
+    """Model atmospheric FWHM vs donut blur FWHM, one point per visit."""
+    x = vdf.donut_blur.to_numpy(); y = vdf.model_fwhm.to_numpy()
+    m = np.isfinite(x) & np.isfinite(y)
+    x, y = x[m], y[m]
+    ax.scatter(x, y, s=16, c='C4', alpha=0.8)
+    if len(x) >= 3 and np.ptp(x) > 0:
+        r = np.corrcoef(x, y)[0, 1]
+        lo = float(min(x.min(), y.min())); hi = float(max(x.max(), y.max()))
+        pad = 0.05 * (hi - lo + 1e-6)
+        ax.plot([lo - pad, hi + pad], [lo - pad, hi + pad], 'k--', lw=0.7)
+        ax.set_xlim(lo - pad, hi + pad); ax.set_ylim(lo - pad, hi + pad)
+        ax.set_title(f'atmo FWHM vs donut blur  r={r:+.2f} N={len(x)}', fontsize=8)
+    else:
+        ax.set_title('atmo FWHM vs donut blur (n/a)', fontsize=8)
+    ax.set_aspect('equal')
+    ax.set_xlabel('donut blur FWHM [arcsec]', fontsize=7)
+    ax.set_ylabel('model atmo FWHM [arcsec]', fontsize=7)
+    ax.tick_params(labelsize=6)
+
+
+def plot(df, st, vdf, out_pdf):
     with PdfPages(out_pdf) as pdf:
-        # page 1: per-Zernike scatter grid
+        # page 1: per-Zernike scatter grid (+ atmo-FWHM-vs-donut-blur panel)
         nj = len(NOLL_CWFS)
         ncol = 6
-        nrow = int(np.ceil(nj / ncol))
+        nrow = int(np.ceil((nj + 1) / ncol))
         fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 3.0 * nrow))
         for ax, j in zip(axes.flat, NOLL_CWFS):
             s = df[df.j == j]
@@ -147,7 +193,8 @@ def plot(df, st, out_pdf):
             ax.axvline(0, color='0.7', lw=0.5)
             ax.set_title(f'Z{j}  r={r:+.2f} m={slope:+.2f}', fontsize=8)
             ax.tick_params(labelsize=6)
-        for ax in axes.flat[nj:]:
+        _fwhm_panel(axes.flat[nj], vdf)           # first empty cell after the Zj's
+        for ax in axes.flat[nj + 1:]:
             ax.set_visible(False)
         axes.flat[0].legend(fontsize=6, loc='upper left')
         fig.suptitle(f'{DAY}{TAG}: PSF v-mode fit vs CWFS corner deviation '
@@ -187,19 +234,24 @@ def main():
         sys.exit('no vmodefit_*.npz found (and no seqs= given)')
     print(f'ensemble over {len(seqs)} seqs, tag={TAG!r}, jmax={jmax}')
     miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
-    df = collect(seqs, cfg, miw, jmax)
+    df, vdf = collect(seqs, cfg, miw, jmax)
     if df.empty:
         sys.exit('no corner points pooled')
     st = stats_per_j(df)
     base = f'output/ensemble_corners_{DAY}{TAG}'
     df.to_csv(f'{base}.csv', index=False)
-    print(f'wrote {base}.csv')
-    plot(df, st, f'{base}.pdf')
+    vdf.to_csv(f'{base}_fwhm.csv', index=False)
+    print(f'wrote {base}.csv and {base}_fwhm.csv')
+    plot(df, st, vdf, f'{base}.pdf')
     # console summary of the key AOS terms
     print('  key terms (r, slope, N):')
     for j in (4, 5, 6, 7, 8, 11):
         r, m, n = st[j]
         print(f'    Z{j:<2d}: r={r:+.2f}  slope={m:+.2f}  N={n}')
+    fw = vdf.dropna(subset=['model_fwhm', 'donut_blur'])
+    if len(fw) >= 3 and np.ptp(fw.donut_blur) > 0:
+        rr = np.corrcoef(fw.donut_blur, fw.model_fwhm)[0, 1]
+        print(f'  atmo FWHM vs donut blur: r={rr:+.2f}  N={len(fw)}')
 
 
 if __name__ == '__main__':
