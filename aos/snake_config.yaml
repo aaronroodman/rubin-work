@@ -63,3 +63,13 @@ param_sets:
       - day_obs: [20260514, 20260731]
         collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
         phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x
+      # 20260713 was processed only into /repo/embargo (not yet promoted to
+      # /repo/main) under the SAME collection name -> pull it as its own chunk
+      # via a per-chunk butler_repo override.  Chunk 4 above nominally covers
+      # 0713 but finds nothing for it in /repo/main, so the visits are disjoint
+      # (no duplication).  NOTE: once 0713 is promoted to /repo/main, drop this
+      # chunk (or narrow chunk 4's dmax) to avoid a duplicate 0713 in the combine.
+      - day_obs: [20260713, 20260713]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_embargo0713
+        butler_repo: /repo/embargo
