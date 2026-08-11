@@ -14,6 +14,32 @@ import pandas as pd
 from lsst.daf.butler import Butler
 
 
+def _meta_blur(meta):
+    """Find the scalar donut blur (arcsec) in the aggregate table metadata.
+
+    The corner-WFS donut blur (seeing during THIS in-focus visit -- the SW
+    sensors are permanently defocused) lives in the aggregateAOSVisitTableRaw
+    metadata, not in a column.  Search meta keys (one level of nesting) for a
+    scalar whose name contains 'blur'.  Returns (key, value) or None.
+    """
+    if not meta:
+        return None
+
+    def _search(d):
+        for k, v in dict(d).items():
+            if 'blur' in str(k).lower():
+                try:
+                    return str(k), float(v)
+                except (TypeError, ValueError):
+                    pass
+            if isinstance(v, dict):
+                r = _search(v)
+                if r:
+                    return r
+        return None
+    return _search(meta)
+
+
 def extract_visit(b, visit, collection, out_dir):
     refs = list(b.registry.queryDatasets(
         'aggregateAOSVisitTableRaw', collections=collection,
@@ -36,11 +62,16 @@ def extract_visit(b, visit, collection, out_dir):
     for i in range(zdev.shape[1]):
         out[f'zdev_{i}'] = zdev[:, i]
         out[f'ztot_{i}'] = ztot[:, i]
+    # corner-donut blur (seeing during THIS in-focus visit) from table metadata
+    mb = _meta_blur(t.meta)
+    if mb is not None:
+        out['donut_blur'] = mb[1]
     path = f'{out_dir}/cwfs_{visit}.parquet'
     out.to_parquet(path)
     dets = np.asarray(t['detector']).astype(str)
+    blur_msg = f"blur[{mb[0]}]={mb[1]:.3f}\"" if mb is not None else 'blur=NA'
     print(visit, len(out), 'donuts, nZk=', zdev.shape[1], 'corners:',
-          sorted(set(d[:3] for d in dets)), ' run:', ref.run)
+          sorted(set(d[:3] for d in dets)), blur_msg, ' run:', ref.run)
 
 
 def main():

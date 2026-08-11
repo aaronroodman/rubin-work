@@ -66,10 +66,11 @@ def discover_seqs():
 
 
 def donut_blur_by_seq():
-    """{our-seq: donut median_blur_arcsec} from the danish visits table.
+    """FALLBACK {our-seq: median_blur_arcsec} from the danish visits table.
 
-    The danish row is keyed on the FAM extra seq_num = our in-focus seq - 1.
-    Returns {} if the table (or column) is unavailable (e.g. off-20260513).
+    NB this is keyed on the DEFOCUSED full-FP FAM exposure (seq = our in-focus
+    seq - 1), a *different* visit than the one we fit -- used only when the cwfs
+    parquet has no in-focus-visit donut_blur.  {} if unavailable (off-20260513).
     """
     if not os.path.exists(VISITS):
         return {}
@@ -99,13 +100,20 @@ def collect(seqs, cfg, miw, jmax):
         d = np.load(npz, allow_pickle=True)
         A = np.asarray(d['A'], float)
         rot = float(d['rot'])
-        # fitted atmospheric FWHM (arcsec) vs donut blur seeing for this visit
+        cw = pd.read_parquet(cwf)
+        # fitted atmospheric FWHM (arcsec) vs donut blur seeing for this visit.
+        # Prefer the in-focus-visit corner-donut blur stored in the cwfs parquet
+        # (same visit as the CWFS Zernikes); fall back to the danish visits-table
+        # value (a DIFFERENT, defocused exposure) only if absent.
         atm_names = [str(x) for x in np.atleast_1d(d['atm_names'])]
         atm = np.asarray(d['atm'], float)
         mfwhm = float(atm[atm_names.index('fwhm')]) if 'fwhm' in atm_names else np.nan
+        if 'donut_blur' in cw.columns and np.isfinite(cw['donut_blur']).any():
+            db = float(np.nanmedian(cw['donut_blur'].to_numpy())); bsrc = 'infocus'
+        else:
+            db = blur.get(seq, np.nan); bsrc = 'danish_defocus'
         vrows.append(dict(seq=seq, rot=rot, model_fwhm=mfwhm,
-                          donut_blur=blur.get(seq, np.nan)))
-        cw = pd.read_parquet(cwf)
+                          donut_blur=db, blur_src=bsrc))
         cw['corner'] = cw.detector.str[:3]
         got = 0
         for c in CORNERS:
@@ -165,7 +173,11 @@ def _fwhm_panel(ax, vdf):
     else:
         ax.set_title('atmo FWHM vs donut blur (n/a)', fontsize=8)
     ax.set_aspect('equal')
-    ax.set_xlabel('donut blur FWHM [arcsec]', fontsize=7)
+    srcs = set(vdf.get('blur_src', pd.Series(dtype=str)).dropna().unique())
+    src = ('in-focus corner donuts' if srcs == {'infocus'}
+           else 'danish defocus' if srcs == {'danish_defocus'}
+           else 'mixed' if srcs else '?')
+    ax.set_xlabel(f'donut blur FWHM [arcsec] ({src})', fontsize=7)
     ax.set_ylabel('model atmo FWHM [arcsec]', fontsize=7)
     ax.tick_params(labelsize=6)
 
