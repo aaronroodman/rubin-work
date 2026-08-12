@@ -17,6 +17,10 @@ renders a multi-page PDF:
 Data-independent apart from the pupil-Zernike set (iZs), read from the param_set's
 visits.parquet so it matches the wfs_dof_compare SVD.  Defaults to the 22-DoF /
 12-v-mode scheme.  Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR.
+
+`--check` runs a regression test instead of plotting: it asserts build_ofc_svd
+reproduces ts_ofc's StateEstimator.get_dofs_from_vmodes (DOF-per-v-mode = N.V) on
+identical inputs, and exits 0=PASS / 1=FAIL.
 """
 import argparse
 import sys
@@ -29,6 +33,51 @@ DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 
 
+def run_ofc_check(instrument='lsst'):
+    """Regression check: build_ofc_svd must reproduce ts_ofc's
+    StateEstimator.get_dofs_from_vmodes on IDENTICAL inputs.
+
+    ts_ofc and ofc_svd both do svd(sensitivity[:, dof_idx] @ diag(norm)); ts_ofc's
+    get_dofs_from_vmodes(e_m) = N . V[:, m] = physical DOF per unit v-mode, which
+    is exactly our normalization_weights * svd.V.  Building our SVD from the SAME
+    full focal-k x pupil-zn matrix, DOF set, normalization yaml and truncation,
+    the two must agree to numerical precision.  Returns True on PASS.
+    """
+    from lsst.ts.ofc import OFCData, StateEstimator
+    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
+    ofc = OFCData(instrument); se = StateEstimator(ofc)
+    S = np.asarray(ofc.sensitivity_matrix)               # (n_k, n_zn, n_dof)
+    n_k, n_zn, _ = S.shape
+    dof_idx = [int(d) for d in ofc.dof_idx]
+    norm_yaml = ofc.controller['normalization_weights_filename']
+    n_keep = int(se.truncate_index) if se.truncate_index else se.Vh.shape[0]
+    n_modes = se.Vh.shape[0]
+    # ts_ofc DOF-per-v-mode: get_dofs_from_vmodes on each unit v-mode
+    M_ofc = np.column_stack(
+        [se.get_dofs_from_vmodes(np.eye(n_modes)[m]) for m in range(n_keep)])
+    # our ofc_svd, same inputs (all focal-k, all pupil-zn, same DOF + norm)
+    svd = build_ofc_svd(list(range(n_zn)), k_min=0, k_max=n_k - 1,
+                        n_keep=n_keep, n_dof=dof_idx, norm_yaml_name=norm_yaml)
+    M_ours = np.asarray(svd.normalization_weights)[:, None] * svd.V[:, :n_keep]
+    norm_ok = np.allclose(np.asarray(ofc.normalization_weights)[dof_idx],
+                          svd.normalization_weights)
+    sig_ok = np.allclose(se.S[:n_keep], svd.Sigma[:n_keep], rtol=1e-6)
+    for m in range(n_keep):                              # SVD sign is per-mode arbitrary
+        if np.dot(M_ofc[:, m], M_ours[:, m]) < 0:
+            M_ours[:, m] *= -1
+    d = float(np.abs(M_ofc - M_ours).max())
+    ok = bool(norm_ok and sig_ok and d < 1e-8)
+    print(f'[check vs ts_ofc StateEstimator.get_dofs_from_vmodes]  '
+          f'n_dof={len(dof_idx)} n_keep={n_keep} norm={norm_yaml}\n'
+          f'  normalization arrays match: {norm_ok}\n'
+          f'  singular values match:      {sig_ok} '
+          f'(max |dS|={np.abs(se.S[:n_keep]-svd.Sigma[:n_keep]).max():.2e})\n'
+          f'  DOF-per-v-mode max |ts_ofc - ours| = {d:.3e} '
+          f'(scale ~{np.abs(M_ofc).max():.3g})\n'
+          f'  -> {"PASS" if ok else "FAIL"}')
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
@@ -36,7 +85,15 @@ def main():
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--annotate-min', type=float, default=0.10,
                     help='annotate cells with |V_im| >= this (0 = none)')
+    ap.add_argument('--check', action='store_true',
+                    help='regression check only: assert build_ofc_svd reproduces '
+                         'ts_ofc StateEstimator.get_dofs_from_vmodes, then exit '
+                         '(0=PASS, 1=FAIL); makes no plot')
     args = ap.parse_args()
+
+    if args.check:
+        sys.exit(0 if run_ofc_check() else 1)
+
     from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
     n_dof, n_keep = SCHEMES[args.scheme]
 
