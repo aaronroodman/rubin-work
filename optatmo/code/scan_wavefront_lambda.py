@@ -62,9 +62,15 @@ def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force):
 
 
 def make_pdf(lam, seqs, day, svd, coll, filt, repo, force):
-    """Per-lambda multi-page report (incl. the corner comparison page)."""
+    """Per-lambda multi-page report (incl. the corner comparison page).
+
+    Only for seqs whose vmodefit npz exists (so --no-fit before the fits are
+    produced doesn't crash); skip seqs whose PDF is already present.
+    """
     tag = f'_cwfs_wreg_lam{lam_tag(lam)}'
-    need = [s for s in seqs if force or not os.path.exists(f'output/fit_{s}{tag}.pdf')]
+    need = [s for s in seqs
+            if os.path.exists(f'data/vmodefit_{s}{tag}.npz')
+            and (force or not os.path.exists(f'output/fit_{s}{tag}.pdf'))]
     if not need:
         return
     cmd = ['python', 'code/plot_data_model.py', svd,
@@ -161,6 +167,9 @@ def main():
               f'cost={rows[-1]["cost"]:.3f} N={len(c)}')
 
     df = pd.DataFrame(rows).sort_values('lam')
+    if int(df.n.sum()) == 0:
+        sys.exit('no fitted lambdas found -- run the fits first (drop --no-fit, '
+                 'or submit pipelines/scan_lambda.sbatch), then re-run with --no-fit')
     base = args.out or f'output/wavefront_lambda_scan_{args.day}'
     df.to_csv(base + '.csv', index=False)
 
