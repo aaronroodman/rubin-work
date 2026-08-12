@@ -7,11 +7,12 @@ renders a multi-page PDF:
 
   Page 1  V matrix (right singular vectors): the normalized (dimensionless) DOF
           composition of each retained v-mode, + the singular-value spectrum.
-  Page 2  U_eff matrix (left singular vectors): the Double-Zernike composition of
-          each mode -- rows are the (focal k, pupil Zj) DZ terms ordered k=1
-          j=4..26, then k=2, ... (S v_m = sigma_m u_m, so U_eff[:,m] is the unit
-          DZ pattern of v-mode m).
-  Page 3  the per-DOF OFC normalization weights that were applied.
+  Page 2  microns of Double-Zernike produced per unit v-mode (sigma_m * u_m =
+          S v_m) -- rows are the (focal k, pupil Zj) DZ terms ordered k=1
+          j=4..26, then k=2, ...; columns the v-modes.  This is the physical
+          um-of-DZ each unit v-mode maps to (U_eff alone is only the unit shape).
+  Page 3  the per-DOF OFC normalization weights that were applied, as a table
+          (printed to stdout too; they span orders of magnitude).
 
 Data-independent apart from the pupil-Zernike set (iZs), read from the param_set's
 visits.parquet so it matches the wfs_dof_compare SVD.  Defaults to the 22-DoF /
@@ -81,20 +82,22 @@ def main():
 
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 2: U_eff -- DZ-term composition of each mode ----
-        # S v_m = sigma_m u_m, so U_eff[:, m] is the unit Double-Zernike pattern
-        # of v-mode m.  Rows are the (focal k, pupil Zj) DZ terms in the SVD's
-        # kj_grid order (k outer, j inner: k=1 j=4..26, then k=2, ...).
-        U = np.asarray(svd.U_eff)                       # (n_kj, n_keep_eff)
+        # ---- Page 2: MICRONS of Double-Zernike produced per unit v-mode ----
+        # S v_m = sigma_m u_m, so (sigma_m * U_eff[:, m]) is the physical DZ
+        # wavefront (um) a unit-amplitude v-mode m produces, broken down by DZ
+        # term.  Rows are the (focal k, pupil Zj) terms in kj_grid order
+        # (k outer, j inner: k=1 j=4..26, then k=2, ...).
+        sig = np.asarray(svd.Sigma)[svd._keep()]        # kept singular values
+        DZ = np.asarray(svd.U_eff) * sig[None, :]        # (n_kj, n_keep_eff), um
         kj = list(svd.kj_grid)
-        n_kj = U.shape[0]
+        n_kj = DZ.shape[0]
         karr = np.array([k for k, j in kj])
         fig = plt.figure(figsize=(max(8, 0.42 * svd.n_keep_eff + 3),
                                   max(8, 0.11 * n_kj + 2)), dpi=150)
         ax = fig.add_subplot(111)
-        vmax = float(np.nanpercentile(np.abs(U), 99)) or 1.0
-        im = ax.imshow(U, cmap='seismic', vmin=-vmax, vmax=vmax, aspect='auto')
-        ax.set_xlabel('mode m  (u-mode = v-mode index)')
+        vmax = float(np.nanpercentile(np.abs(DZ), 99)) or 1.0
+        im = ax.imshow(DZ, cmap='seismic', vmin=-vmax, vmax=vmax, aspect='auto')
+        ax.set_xlabel('v-mode m')
         ax.set_ylabel('Double-Zernike term  (pupil Zj within each focal-k block)')
         ax.set_xticks(range(svd.n_keep_eff))
         ax.set_xticklabels([str(m + 1) for m in range(svd.n_keep_eff)], fontsize=7)
@@ -106,27 +109,36 @@ def main():
             ax.text(-0.085, float(np.where(karr == k)[0].mean()), f'k={k}',
                     transform=ax.get_yaxis_transform(), ha='right', va='center',
                     fontsize=9, fontweight='bold')
-        ax.set_title(f'U_eff — Double-Zernike composition of each mode  '
+        ax.set_title(f'Double-Zernike produced per unit v-mode  '
+                     f'(sigma_m * u_m, um of DZ)  '
                      f'({args.scheme.replace("_", " DoF / ")})')
-        fig.colorbar(im, ax=ax, shrink=0.8, label='U_eff (unit DZ amplitude)')
+        fig.colorbar(im, ax=ax, shrink=0.8, label='um of DZ per unit v-mode')
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 3: per-DOF OFC normalization weights ----
+        # ---- Page 3: per-DOF OFC normalization weights (TABLE) ----
+        # weights span orders of magnitude, so a table reads better than a bar.
         nw = np.asarray(svd.normalization_weights, float)
-        fig = plt.figure(figsize=(max(10, 0.32 * len(nw) + 2), 5.5), dpi=150)
-        ax = fig.add_subplot(111)
-        ax.bar(range(len(nw)), nw, color='steelblue')
-        ax.set_xticks(range(len(nw)))
-        ax.set_xticklabels(labels, rotation=90, fontsize=6)
-        ax.set_ylabel('OFC normalization weight'); ax.grid(alpha=0.3, axis='y')
-        ax.set_title('OFC per-DOF normalization weights applied '
-                     '(ts_config_mttcs range0.5_fwhm-0.15)  '
-                     f'[{args.scheme}]')
-        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+        print(f'\nOFC per-DOF normalization weights ({args.scheme}, '
+              f'ts_config_mttcs range0.5_fwhm-0.15):')
+        for lab, w in zip(labels, nw):
+            print(f'  {lab:24s} {w:14.6g}')
+        half = (len(nw) + 1) // 2
+        fig, axes = plt.subplots(1, 2, figsize=(11, max(5, 0.22 * half + 1.2)),
+                                 dpi=150)
+        for ax, lo, hi in [(axes[0], 0, half), (axes[1], half, len(nw))]:
+            ax.axis('off')
+            rows = [[labels[i], f'{nw[i]:.6g}'] for i in range(lo, hi)]
+            if rows:
+                t = ax.table(cellText=rows, colLabels=['DOF', 'norm weight'],
+                             loc='center', cellLoc='left')
+                t.auto_set_font_size(False); t.set_fontsize(7); t.scale(1, 1.25)
+        fig.suptitle('OFC per-DOF normalization weights applied '
+                     f'(range0.5_fwhm-0.15)  [{args.scheme}]', fontsize=11)
+        fig.tight_layout(rect=[0, 0, 1, 0.96]); pdf.savefig(fig); plt.close(fig)
 
     print(f'wrote {out}  (3 pages: V {V.shape[0]}x{V.shape[1]}, '
-          f'U_eff {U.shape[0]}x{U.shape[1]}, {len(nw)} DOF norm weights; '
-          f'{len(noll)} pupil Zernikes)')
+          f'DZ-per-v-mode {DZ.shape[0]}x{DZ.shape[1]} um, '
+          f'{len(nw)} DOF norm-weight table; {len(noll)} pupil Zernikes)')
 
 
 if __name__ == '__main__':
