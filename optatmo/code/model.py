@@ -22,7 +22,7 @@ class Forward:
     def __init__(self, model, layout, z0, G, data, err,
                  fit_moments, weights, reg_lambda=0.0,
                  reg_mode='vmode', G_reg=None, reg_w=None,
-                 reg_form='quadratic', reg_power=2.0):
+                 reg_form='quadratic', reg_power=2.0, reg_knee=1.0):
         self.model = model
         self.layout = layout
         self.z0 = jnp.asarray(z0)                 # (n_stars, jmax+1)
@@ -51,11 +51,13 @@ class Forward:
         self.G_reg = None if G_reg is None else jnp.asarray(G_reg)   # (n_pt,jmax+1,n_dz)
         self.reg_w = None if reg_w is None else jnp.asarray(reg_w)   # 1/sigma_j^2
         # penalty shape on the standardized deviation s_j = dev_j/sigma_j:
-        #   'quadratic' -> sum s^2          (standard Gaussian prior)
-        #   'power'     -> sum |s|^p         (p>2: flat near 0, steep past sigma)
-        #   'hinge'     -> sum max(|s|-1,0)^p  (FREE inside +/-sigma, costly outside)
+        #   'quadratic' -> sum s^2               (standard Gaussian prior)
+        #   'power'     -> sum |s|^p              (p>2: flat near 0, steep past sigma)
+        #   'hinge'     -> sum max(|s|-knee,0)^p  (FREE inside +/-knee*sigma, costly
+        #                  outside; knee=2 => no cost until the deviation exceeds 2 sigma)
         self.reg_form = reg_form
         self.reg_power = float(reg_power)
+        self.reg_knee = float(reg_knee)
 
     def _atm(self, p):
         atm = self.atm_init
@@ -94,7 +96,7 @@ class Forward:
             dev = jnp.einsum('pjv,v->pj', self.G_reg, A)       # (n_pt, jmax+1)
             s = dev * jnp.sqrt(self.reg_w)[None, :]            # 0 where unconstrained
             if self.reg_form == 'hinge':
-                pen = jnp.maximum(jnp.abs(s) - 1.0, 0.0) ** self.reg_power
+                pen = jnp.maximum(jnp.abs(s) - self.reg_knee, 0.0) ** self.reg_power
             elif self.reg_form == 'power':
                 pen = jnp.abs(s) ** self.reg_power
             else:                                              # quadratic

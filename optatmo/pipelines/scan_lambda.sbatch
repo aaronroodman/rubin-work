@@ -63,11 +63,16 @@ LAMTAG=$(python -c "import sys;print(('%g'%float(sys.argv[1])).replace('.','p').
 # penalty form (matches scan_wavefront_lambda.form_suffix); quadratic -> no suffix
 REGFORM=${REGFORM:-quadratic}
 REGPOW=${REGPOW:-2}
+REGKNEE=${REGKNEE:-2}                          # hinge free-zone in sigma units
 if [ "$REGFORM" = quadratic ]; then
     OUTTAG="_lam${LAMTAG}"
 else
     PW=$(python -c "print(('%g'%float('$REGPOW')).replace('.','p'))")
-    OUTTAG="_${REGFORM}p${PW}_lam${LAMTAG}"
+    KN=""
+    if [ "$REGFORM" = hinge ] && [ "$REGKNEE" != 1 ]; then
+        KN="k$(python -c "print(('%g'%float('$REGKNEE')).replace('.','p'))")"
+    fi
+    OUTTAG="_${REGFORM}p${PW}${KN}_lam${LAMTAG}"
 fi
 : "${SEQS:?set SEQS via --export=ALL,SEQS=\"25\"}"
 echo "task $SLURM_ARRAY_TASK_ID -> lambda $LAM (tag _lam$LAMTAG), seqs $SEQS"
@@ -91,7 +96,7 @@ done
 
 SEQ_CSV=$(echo $SEQS | tr ' ' ',')
 python code/run_vmode_fit.py 1 "$SVD" reg=$LAM regmode=wavefront \
-    regform=$REGFORM regpow=$REGPOW init=cwfs \
+    regform=$REGFORM regpow=$REGPOW regknee=$REGKNEE init=cwfs \
     seqs="$SEQ_CSV" day=$DAY coll="$COLL" filt="$FILT" outtag=$OUTTAG
 
 # per-lambda multi-page report incl. the corner-comparison page

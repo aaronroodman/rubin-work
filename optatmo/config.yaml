@@ -90,9 +90,11 @@ regularization:
   # penalty shape on the standardized deviation s_j = dev_j/sigma_j (wavefront):
   #   quadratic -> sum s^2            (standard; penalizes small deviations too)
   #   power     -> sum |s|^power      (power>2: flat near 0, steep past sigma)
-  #   hinge     -> sum max(|s|-1,0)^power  (FREE inside +/-sigma, costly outside)
+  #   hinge     -> sum max(|s|-knee,0)^power  (FREE inside +/-knee*sigma, costly outside)
   form: quadratic           # quadratic | power | hinge (CLI regform= overrides)
   power: 2.0                # exponent for power/hinge (CLI regpow= overrides)
+  knee: 2.0                 # hinge threshold in sigma units: free below knee*sigma
+                            # (CLI regknee= overrides; only used by form: hinge)
   sigma_j:                  # microns; doublet-averaged robust RMS (CWFS vs FAM)
     4: 0.1259
     5: 0.1944

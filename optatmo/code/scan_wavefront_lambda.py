@@ -45,22 +45,26 @@ def lam_tag(lam):
     return s
 
 
-def form_suffix(regform, regpow):
+def form_suffix(regform, regpow, regknee=1.0):
     """Output-tag suffix for the penalty form (empty for the quadratic default),
     so hinge/power variants don't clobber the quadratic scan's files."""
     if regform == 'quadratic':
         return ''
-    return f'_{regform}p{("%g" % regpow).replace(".", "p")}'
+    s = f'_{regform}p{("%g" % regpow).replace(".", "p")}'
+    if regform == 'hinge' and regknee != 1.0:
+        s += f'k{("%g" % regknee).replace(".", "p")}'
+    return s
 
 
-def scan_tag(lam, regform, regpow):
+def scan_tag(lam, regform, regpow, regknee=1.0):
     """The vmodefit/PDF tag for one scan point (init=cwfs, wavefront)."""
-    return f'_cwfs_wreg{form_suffix(regform, regpow)}_lam{lam_tag(lam)}'
+    return f'_cwfs_wreg{form_suffix(regform, regpow, regknee)}_lam{lam_tag(lam)}'
 
 
-def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force, regform, regpow):
-    tag = scan_tag(lam, regform, regpow)
-    outtag = form_suffix(regform, regpow) + f'_lam{lam_tag(lam)}'
+def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force,
+            regform, regpow, regknee):
+    tag = scan_tag(lam, regform, regpow, regknee)
+    outtag = form_suffix(regform, regpow, regknee) + f'_lam{lam_tag(lam)}'
     need = [s for s in seqs if force
             or not os.path.exists(f'data/vmodefit_{s}{tag}.npz')]
     if not need:
@@ -68,21 +72,21 @@ def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force, regform, regpow)
         return
     cmd = ['python', 'code/run_vmode_fit.py', str(sign), svd,
            f'reg={lam}', 'regmode=wavefront', f'regform={regform}',
-           f'regpow={regpow}', 'init=cwfs',
+           f'regpow={regpow}', f'regknee={regknee}', 'init=cwfs',
            f'seqs={",".join(str(s) for s in need)}', f'day={day}',
            f'coll={coll}', f'filt={filt}', f'repo={repo}', f'outtag={outtag}']
     print(f'  lambda={lam}: fitting seqs {need}\n    {" ".join(cmd)}')
     subprocess.run(cmd, check=True)
 
 
-def make_pdf(lam, seqs, day, svd, coll, filt, repo, force, regform, regpow):
+def make_pdf(lam, seqs, day, svd, coll, filt, repo, force, regform, regpow, regknee):
     """Per-lambda multi-page report (incl. the corner comparison page).
 
     Only for seqs whose vmodefit npz exists (so --no-fit before the fits are
     produced doesn't crash); skip seqs whose PDF is already present.
     """
-    tag = scan_tag(lam, regform, regpow)
-    outtag = form_suffix(regform, regpow) + f'_lam{lam_tag(lam)}'
+    tag = scan_tag(lam, regform, regpow, regknee)
+    outtag = form_suffix(regform, regpow, regknee) + f'_lam{lam_tag(lam)}'
     need = [s for s in seqs
             if os.path.exists(f'data/vmodefit_{s}{tag}.npz')
             and (force or not os.path.exists(f'output/fit_{s}{tag}.pdf'))]
@@ -145,6 +149,8 @@ def main():
     ap.add_argument('--regform', default='quadratic',
                     choices=['quadratic', 'power', 'hinge'])
     ap.add_argument('--regpow', type=float, default=2.0)
+    ap.add_argument('--regknee', type=float, default=2.0,
+                    help='hinge free-zone in sigma units (only used by --regform hinge)')
     ap.add_argument('--no-fit', action='store_true', help='aggregate only')
     ap.add_argument('--no-pdf', action='store_true',
                     help='skip the per-lambda corner-comparison PDFs')
@@ -162,12 +168,12 @@ def main():
         if not args.no_fit:
             run_fit(lam, args.seqs, args.day, args.svd, args.sign,
                     args.coll, args.filt, args.repo, args.force,
-                    args.regform, args.regpow)
+                    args.regform, args.regpow, args.regknee)
         if not args.no_pdf:
             make_pdf(lam, args.seqs, args.day, args.svd,
                      args.coll, args.filt, args.repo, args.force,
-                     args.regform, args.regpow)
-        tag = scan_tag(lam, args.regform, args.regpow)
+                     args.regform, args.regpow, args.regknee)
+        tag = scan_tag(lam, args.regform, args.regpow, args.regknee)
         cw_all, ps_all, chi2s = [], [], []
         for s in args.seqs:
             c, p, chi2 = corner_pairs(s, args.day, tag, args.svd, miw, jmax, offsets)
@@ -193,7 +199,7 @@ def main():
         sys.exit('no fitted lambdas found -- run the fits first (drop --no-fit, '
                  'or submit pipelines/scan_lambda.sbatch), then re-run with --no-fit')
     base = args.out or (f'output/wavefront_lambda_scan_{args.day}'
-                        + form_suffix(args.regform, args.regpow))
+                        + form_suffix(args.regform, args.regpow, args.regknee))
     df.to_csv(base + '.csv', index=False)
 
     fig, ax1 = plt.subplots(figsize=(8, 5))
@@ -207,7 +213,8 @@ def main():
     ax2.set_ylabel('moment chi2 (data term only)', color='C3')
     ax2.tick_params(axis='y', colors='C3')
     seqs_s = ','.join(str(s) for s in args.seqs)
-    fm = args.regform + (f'^{args.regpow:g}' if args.regform != 'quadratic' else '')
+    fm = args.regform + (f'^{args.regpow:g}' if args.regform != 'quadratic' else '') \
+        + (f' knee={args.regknee:g}sig' if args.regform == 'hinge' else '')
     ax1.set_title(f'{args.day} seq {seqs_s}: wavefront-reg lambda scan '
                   f'(init=cwfs, {fm})   corner agreement vs moment chi2')
     fig.tight_layout(); fig.savefig(base + '.png', dpi=130)

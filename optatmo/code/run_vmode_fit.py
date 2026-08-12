@@ -96,6 +96,8 @@ def main():
                    _regcfg.get('form', 'quadratic'))    # quadratic | power | hinge
     REGPOW = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('regpow=')),
                   float(_regcfg.get('power', 2.0)))      # exponent for power/hinge
+    REGKNEE = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('regknee=')),
+                   float(_regcfg.get('knee', 1.0)))       # hinge free-zone in sigma
     # default lambda depends on mode (the two penalties are on different scales)
     _lam_def = float(_regcfg.get('lambda_wavefront', _regcfg.get('lambda', 0.0))
                      if REGMODE == 'wavefront' else _regcfg.get('lambda', 0.0))
@@ -157,7 +159,7 @@ def main():
         fwd = Forward(model, layout, z0, G_v, cat['moments'], cat['errors'],
                       fit_moments, weights, reg_lambda=REG,
                       reg_mode=REGMODE, G_reg=G_reg, reg_w=reg_w,
-                      reg_form=REGFORM, reg_power=REGPOW)
+                      reg_form=REGFORM, reg_power=REGPOW, reg_knee=REGKNEE)
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = np.array(layout.initial(), float)
@@ -228,7 +230,7 @@ def main():
                  atm_names=np.array(layout.atm_free), A_init=A_init,
                  offsets=offsets_vec, offset_moments=np.array(moff_list),
                  init=INIT, optics=OPTICS, reg=REG, regmode=REGMODE,
-                 regform=REGFORM, regpow=REGPOW, svd_file=NPZ,
+                 regform=REGFORM, regpow=REGPOW, regknee=REGKNEE, svd_file=NPZ,
                  cost=float(res.fun), chi2=chi2_val, reg_term=reg_val,
                  success=bool(res.success),
                  n_stars=len(prep['thx']), n_cells=len(cat['thx_deg']),
