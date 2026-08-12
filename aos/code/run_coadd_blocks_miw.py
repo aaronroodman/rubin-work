@@ -47,9 +47,10 @@ Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
                                   Z5..Z8, metrics in titles, ordered by day/seq
   coadd_blocks_miw_timeseries.pdf comparison metrics (day_obs-labelled) + a
                                   telemetry<->metric correlation bar chart +
-                                  telemetry (alt/az/rot/blur/z_gradient/band,
-                                  2/page) + per-u-mode pages (um, 5/page), all vs
-                                  coadd ordinal on a common x-scale
+                                  telemetry-vs-corr scatters (z/y_gradient,
+                                  dome_delta_t) + telemetry strips (alt/az/rot/
+                                  blur/z_gradient/band, 2/page) + a u-mode
+                                  amplitude heatmap (um), all vs coadd ordinal
   block_grids.npz                 stacked coadd+MIW grids, u-modes, metadata
 
 RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc); requires the mi_name
@@ -61,7 +62,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, theilslopes
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -87,6 +88,8 @@ THERMAL_VARS = [
 ]
 # numeric telemetry correlated against the metrics (az excluded: circular)
 CORR_VARS = ["alt", "rot", "fwhm"] + THERMAL_VARS
+# telemetry scatter-plotted directly against the coadd-vs-MIW spatial correlation
+SCATTER_VARS = ["z_gradient", "y_gradient", "dome_delta_t"]
 
 
 def _fixed_list_to_2d(table, col):
@@ -383,6 +386,34 @@ def _corr_bar_page(pdf, blocks, n):
     fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
 
+def _scatter_vs_metric_page(pdf, blocks, tvars, metric_key, metric_label):
+    """Scatter each telemetry var against a per-coadd metric (default the
+    combined Z5-Z8 spatial correlation), colored by 5rot-family, with a robust
+    Theil-Sen line + Spearman rho."""
+    outfam = np.array([not b["in_family"] for b in blocks])
+    y = np.array([b["metrics"].get(metric_key, np.nan) for b in blocks], float)
+    fig, axes = plt.subplots(1, len(tvars), figsize=(4.6 * len(tvars), 4.6),
+                             squeeze=False)
+    axes = axes[0]
+    for ax, tv in zip(axes, tvars):
+        x = np.array([b.get(tv, np.nan) for b in blocks], float)
+        ok = np.isfinite(x) & np.isfinite(y)
+        ax.scatter(x[ok & ~outfam], y[ok & ~outfam], s=20, c="tab:blue",
+                   alpha=0.7, label="in-family")
+        ax.scatter(x[ok & outfam], y[ok & outfam], s=26, c="tab:red",
+                   alpha=0.85, label="out-of-family")
+        rho = _spearman(x, y)
+        if np.isfinite(rho) and int(ok.sum()) >= 5:
+            sl, ic, _, _ = theilslopes(y[ok], x[ok])
+            xr = np.array([np.nanmin(x[ok]), np.nanmax(x[ok])])
+            ax.plot(xr, ic + sl * xr, "k--", lw=1)
+        ax.set_xlabel(tv, fontsize=9); ax.grid(alpha=0.3)
+        ax.set_title(f"{tv}   Spearman rho={rho:+.2f}", fontsize=9)
+    axes[0].set_ylabel(metric_label, fontsize=9); axes[0].legend(fontsize=7)
+    fig.suptitle(f"telemetry vs {metric_label} (one point per coadd)", fontsize=11)
+    fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+
 def render_timeseries(blocks, out_pdf):
     """Comparison metrics, a telemetry<->metric correlation bar chart, block
     telemetry (2 panels/page incl. filter band), and per-u-mode value plots, all
@@ -451,8 +482,10 @@ def render_timeseries(blocks, out_pdf):
                      fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # telemetry <-> metric correlation bar chart
+        # telemetry <-> metric correlation bar chart, then direct scatters
         _corr_bar_page(pdf, blocks, n)
+        _scatter_vs_metric_page(pdf, blocks, SCATTER_VARS, "corr_combined",
+                                "spatial corr (combined Z5-Z8)")
 
         # block telemetry, 2 panels/page (incl. filter band)
         tele = [("elevation (deg)", "line", [b["alt"] for b in blocks]),
@@ -485,15 +518,27 @@ def render_timeseries(blocks, out_pdf):
             fig.suptitle("Block telemetry vs coadd ordinal", fontsize=11)
             fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # per-u-mode value plots (microns), 5 panels/page
-        per = 5
-        for pg in range((nkeep + per - 1) // per):
-            lo, hi = pg * per, min((pg + 1) * per, nkeep)
-            series_page(pdf, [(f"u{m + 1} (um)", Um[:, m]) for m in range(lo, hi)],
-                        f"u-mode amplitude (um wavefront) vs coadd ordinal  "
-                        f"(u{lo + 1}-u{hi})")
-    print(f"wrote {out_pdf}  (metrics + corr-bars + 3 telemetry + "
-          f"{(nkeep + 4) // 5} u-mode pages, n={n})", flush=True)
+        # u-mode amplitude heatmap (um): rows = u-mode, cols = coadd ordinal
+        fig, ax = plt.subplots(figsize=(W, max(6.0, 0.20 * nkeep + 2.5)))
+        vlim = float(np.nanpercentile(np.abs(Um), 98)) or 1.0
+        im = ax.imshow(Um.T, aspect="auto", cmap="RdBu_r", vmin=-vlim, vmax=vlim,
+                       origin="lower", extent=[-0.5, n - 0.5, 0.5, nkeep + 0.5])
+        for x in bnd:
+            ax.axvline(x, color="0.3", lw=0.6, ls=":")
+        for i in np.where(outfam)[0]:
+            ax.axvline(i, color="tab:red", lw=0.5, alpha=0.3)
+        for i in day_start:
+            ax.text(i, 1.005, str(days[i]), transform=ax.get_xaxis_transform(),
+                    rotation=90, fontsize=6, va="bottom", ha="left", color="0.35")
+        ax.set_xlabel("coadd ordinal (day_obs / seq order)")
+        ax.set_ylabel("u-mode index"); ax.set_yticks(list(range(1, nkeep + 1, 2)))
+        ax.set_title("u-mode amplitude (um wavefront) vs coadd ordinal  "
+                     "(red lines = out-of-5rot-family; vertical dotted = day_obs)")
+        fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02,
+                     label="u-mode amplitude (um)")
+        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+    print(f"wrote {out_pdf}  (metrics + corr-bars + scatter + 3 telemetry + "
+          f"u-mode heatmap, n={n})", flush=True)
 
 
 # ------------------------------------------------------------------- main
