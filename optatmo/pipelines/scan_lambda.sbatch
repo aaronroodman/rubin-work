@@ -60,6 +60,15 @@ LAM=${LARR[$SLURM_ARRAY_TASK_ID]:?array index out of range for LAMS}
 # compute the tag with the SAME rule as scan_wavefront_lambda.lam_tag (%g form)
 # so the aggregation step finds these npz files
 LAMTAG=$(python -c "import sys;print(('%g'%float(sys.argv[1])).replace('.','p').replace('-','m'))" "$LAM")
+# penalty form (matches scan_wavefront_lambda.form_suffix); quadratic -> no suffix
+REGFORM=${REGFORM:-quadratic}
+REGPOW=${REGPOW:-2}
+if [ "$REGFORM" = quadratic ]; then
+    OUTTAG="_lam${LAMTAG}"
+else
+    PW=$(python -c "print(('%g'%float('$REGPOW')).replace('.','p'))")
+    OUTTAG="_${REGFORM}p${PW}_lam${LAMTAG}"
+fi
 : "${SEQS:?set SEQS via --export=ALL,SEQS=\"25\"}"
 echo "task $SLURM_ARRAY_TASK_ID -> lambda $LAM (tag _lam$LAMTAG), seqs $SEQS"
 
@@ -81,14 +90,15 @@ for SEQ in $SEQS; do
 done
 
 SEQ_CSV=$(echo $SEQS | tr ' ' ',')
-python code/run_vmode_fit.py 1 "$SVD" reg=$LAM regmode=wavefront init=cwfs \
-    seqs="$SEQ_CSV" day=$DAY coll="$COLL" filt="$FILT" outtag=_lam$LAMTAG
+python code/run_vmode_fit.py 1 "$SVD" reg=$LAM regmode=wavefront \
+    regform=$REGFORM regpow=$REGPOW init=cwfs \
+    seqs="$SEQ_CSV" day=$DAY coll="$COLL" filt="$FILT" outtag=$OUTTAG
 
 # per-lambda multi-page report incl. the corner-comparison page
 python code/plot_data_model.py "$SVD" seqs="$SEQ_CSV" day=$DAY \
-    coll="$COLL" filt="$FILT" init=cwfs regmode=wavefront outtag=_lam$LAMTAG
+    coll="$COLL" filt="$FILT" init=cwfs regmode=wavefront outtag=$OUTTAG
 
-echo "done lambda $LAM"
+echo "done lambda $LAM (form $REGFORM^$REGPOW)"
 
 # After the whole array finishes, aggregate + plot (no re-fit):
 #     python code/scan_wavefront_lambda.py --no-fit --seqs $SEQS --lams $LAMS \

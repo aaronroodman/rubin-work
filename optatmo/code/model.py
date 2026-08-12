@@ -21,7 +21,8 @@ from jax_optatmo import MOMENT_LABELS
 class Forward:
     def __init__(self, model, layout, z0, G, data, err,
                  fit_moments, weights, reg_lambda=0.0,
-                 reg_mode='vmode', G_reg=None, reg_w=None):
+                 reg_mode='vmode', G_reg=None, reg_w=None,
+                 reg_form='quadratic', reg_power=2.0):
         self.model = model
         self.layout = layout
         self.z0 = jnp.asarray(z0)                 # (n_stars, jmax+1)
@@ -48,7 +49,13 @@ class Forward:
         #             with reg_w_j = 1/sigma_j^2  (0 for j not constrained).
         self.reg_mode = reg_mode
         self.G_reg = None if G_reg is None else jnp.asarray(G_reg)   # (n_pt,jmax+1,n_dz)
-        self.reg_w = None if reg_w is None else jnp.asarray(reg_w)   # (jmax+1,)
+        self.reg_w = None if reg_w is None else jnp.asarray(reg_w)   # 1/sigma_j^2
+        # penalty shape on the standardized deviation s_j = dev_j/sigma_j:
+        #   'quadratic' -> sum s^2          (standard Gaussian prior)
+        #   'power'     -> sum |s|^p         (p>2: flat near 0, steep past sigma)
+        #   'hinge'     -> sum max(|s|-1,0)^p  (FREE inside +/-sigma, costly outside)
+        self.reg_form = reg_form
+        self.reg_power = float(reg_power)
 
     def _atm(self, p):
         atm = self.atm_init
@@ -74,15 +81,26 @@ class Forward:
         r = (self.d[:, self.sel] - M[:, self.sel]) / self.e[:, self.sel]
         return r * jnp.sqrt(self.w)[None, :]
 
-    def cost(self, p):
+    def chi2(self, p):
+        """Moment data term only (no regularization)."""
         r = self.residuals(p)
-        chi2 = jnp.sum(r ** 2) / r.shape[0]
+        return jnp.sum(r ** 2) / r.shape[0]
+
+    def reg(self, p):
+        """Regularization term only."""
         A = p[:self.n_dz]
         if self.reg_mode == 'wavefront':
-            # prior on the wavefront deviation at the corners (v-modes only)
+            # standardized wavefront deviation s_j = dev_j/sigma_j at the corners
             dev = jnp.einsum('pjv,v->pj', self.G_reg, A)       # (n_pt, jmax+1)
-            reg = self.reg_lambda * jnp.mean(
-                jnp.sum(self.reg_w[None, :] * dev ** 2, axis=1))
-        else:
-            reg = self.reg_lambda * jnp.sum(A ** 2)            # L2 on v-modes
-        return chi2 + reg
+            s = dev * jnp.sqrt(self.reg_w)[None, :]            # 0 where unconstrained
+            if self.reg_form == 'hinge':
+                pen = jnp.maximum(jnp.abs(s) - 1.0, 0.0) ** self.reg_power
+            elif self.reg_form == 'power':
+                pen = jnp.abs(s) ** self.reg_power
+            else:                                              # quadratic
+                pen = s ** 2
+            return self.reg_lambda * jnp.mean(jnp.sum(pen, axis=1))
+        return self.reg_lambda * jnp.sum(A ** 2)              # L2 on v-modes
+
+    def cost(self, p):
+        return self.chi2(p) + self.reg(p)

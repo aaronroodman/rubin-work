@@ -92,6 +92,10 @@ def main():
     _regcfg = cfg.get('regularization', {}) or {}
     REGMODE = next((a.split('=')[1] for a in sys.argv if a.startswith('regmode=')),
                    _regcfg.get('mode', 'vmode'))       # vmode | wavefront
+    REGFORM = next((a.split('=')[1] for a in sys.argv if a.startswith('regform=')),
+                   _regcfg.get('form', 'quadratic'))    # quadratic | power | hinge
+    REGPOW = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('regpow=')),
+                  float(_regcfg.get('power', 2.0)))      # exponent for power/hinge
     # default lambda depends on mode (the two penalties are on different scales)
     _lam_def = float(_regcfg.get('lambda_wavefront', _regcfg.get('lambda', 0.0))
                      if REGMODE == 'wavefront' else _regcfg.get('lambda', 0.0))
@@ -152,7 +156,8 @@ def main():
                                        jmax, fp_radius=1.75)[0]   # (n_corner,jmax+1,n_v)
         fwd = Forward(model, layout, z0, G_v, cat['moments'], cat['errors'],
                       fit_moments, weights, reg_lambda=REG,
-                      reg_mode=REGMODE, G_reg=G_reg, reg_w=reg_w)
+                      reg_mode=REGMODE, G_reg=G_reg, reg_w=reg_w,
+                      reg_form=REGFORM, reg_power=REGPOW)
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = np.array(layout.initial(), float)
@@ -198,7 +203,10 @@ def main():
         atm = {a: res.x[layout.n_dz + i] for i, a in enumerate(layout.atm_free)}
         offsets_vec = np.array(layout.offset_vector(res.x))    # length-12
         model_mom = np.array(fwd.moments(jnp.asarray(res.x)))   # (n_cells, 12)
+        chi2_val = float(fwd.chi2(jnp.asarray(res.x)))          # moment term only
+        reg_val = float(fwd.reg(jnp.asarray(res.x)))            # prior term only
         print(f'\n=== seq {seq} (rot {rot:.1f}): cost={res.fun:.3f} '
+              f'(chi2={chi2_val:.3f} + reg={reg_val:.3f}) '
               f'nit={res.nit} success={res.success} ===')
         print('  v-mode amps:', np.round(A, 3))
         print('  atm:', {k: round(v, 4) for k, v in atm.items()})
@@ -219,8 +227,10 @@ def main():
                  atm=np.array(list(atm.values())),
                  atm_names=np.array(layout.atm_free), A_init=A_init,
                  offsets=offsets_vec, offset_moments=np.array(moff_list),
-                 init=INIT, optics=OPTICS, reg=REG, regmode=REGMODE, svd_file=NPZ,
-                 cost=float(res.fun), success=bool(res.success),
+                 init=INIT, optics=OPTICS, reg=REG, regmode=REGMODE,
+                 regform=REGFORM, regpow=REGPOW, svd_file=NPZ,
+                 cost=float(res.fun), chi2=chi2_val, reg_term=reg_val,
+                 success=bool(res.success),
                  n_stars=len(prep['thx']), n_cells=len(cat['thx_deg']),
                  fit_moments=np.array(fit_moments),
                  thx=cat['thx_deg'], thy=cat['thy_deg'], rot=rot,

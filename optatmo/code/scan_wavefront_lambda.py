@@ -45,29 +45,44 @@ def lam_tag(lam):
     return s
 
 
-def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force):
-    tag = f'_cwfs_wreg_lam{lam_tag(lam)}'
+def form_suffix(regform, regpow):
+    """Output-tag suffix for the penalty form (empty for the quadratic default),
+    so hinge/power variants don't clobber the quadratic scan's files."""
+    if regform == 'quadratic':
+        return ''
+    return f'_{regform}p{("%g" % regpow).replace(".", "p")}'
+
+
+def scan_tag(lam, regform, regpow):
+    """The vmodefit/PDF tag for one scan point (init=cwfs, wavefront)."""
+    return f'_cwfs_wreg{form_suffix(regform, regpow)}_lam{lam_tag(lam)}'
+
+
+def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force, regform, regpow):
+    tag = scan_tag(lam, regform, regpow)
+    outtag = form_suffix(regform, regpow) + f'_lam{lam_tag(lam)}'
     need = [s for s in seqs if force
             or not os.path.exists(f'data/vmodefit_{s}{tag}.npz')]
     if not need:
         print(f'  lambda={lam}: all npz present, skipping fit')
         return
     cmd = ['python', 'code/run_vmode_fit.py', str(sign), svd,
-           f'reg={lam}', 'regmode=wavefront', 'init=cwfs',
+           f'reg={lam}', 'regmode=wavefront', f'regform={regform}',
+           f'regpow={regpow}', 'init=cwfs',
            f'seqs={",".join(str(s) for s in need)}', f'day={day}',
-           f'coll={coll}', f'filt={filt}', f'repo={repo}',
-           f'outtag=_lam{lam_tag(lam)}']
+           f'coll={coll}', f'filt={filt}', f'repo={repo}', f'outtag={outtag}']
     print(f'  lambda={lam}: fitting seqs {need}\n    {" ".join(cmd)}')
     subprocess.run(cmd, check=True)
 
 
-def make_pdf(lam, seqs, day, svd, coll, filt, repo, force):
+def make_pdf(lam, seqs, day, svd, coll, filt, repo, force, regform, regpow):
     """Per-lambda multi-page report (incl. the corner comparison page).
 
     Only for seqs whose vmodefit npz exists (so --no-fit before the fits are
     produced doesn't crash); skip seqs whose PDF is already present.
     """
-    tag = f'_cwfs_wreg_lam{lam_tag(lam)}'
+    tag = scan_tag(lam, regform, regpow)
+    outtag = form_suffix(regform, regpow) + f'_lam{lam_tag(lam)}'
     need = [s for s in seqs
             if os.path.exists(f'data/vmodefit_{s}{tag}.npz')
             and (force or not os.path.exists(f'output/fit_{s}{tag}.pdf'))]
@@ -76,7 +91,7 @@ def make_pdf(lam, seqs, day, svd, coll, filt, repo, force):
     cmd = ['python', 'code/plot_data_model.py', svd,
            f'seqs={",".join(str(s) for s in need)}', f'day={day}',
            f'coll={coll}', f'filt={filt}', f'repo={repo}',
-           'init=cwfs', 'regmode=wavefront', f'outtag=_lam{lam_tag(lam)}']
+           'init=cwfs', 'regmode=wavefront', f'outtag={outtag}']
     print(f'  lambda={lam}: corner PDF -> output/fit_<seq>{tag}.pdf')
     subprocess.run(cmd, check=True)
 
@@ -91,6 +106,8 @@ def corner_pairs(seq, day, tag, svd, miw, jmax, offsets):
     d = np.load(npz, allow_pickle=True)
     A = np.asarray(d['A'], float)
     rot = float(d['rot'])
+    # moment data term only (falls back to total cost for pre-chi2 npz)
+    chi2 = float(d['chi2']) if 'chi2' in d.files else float(d['cost'])
     cw = pd.read_parquet(cwf)
     cw['corner'] = cw.detector.str[:3]
     from lsst.obs.lsst import LsstCam
@@ -111,7 +128,7 @@ def corner_pairs(seq, day, tag, svd, miw, jmax, offsets):
             cwfs.append(float(np.median(sub[f'ztot_{i}'])) - miwc[j]
                         - float(offsets.get(j, 0.0)))
             psf.append(float(pdev[j]))
-    return np.array(cwfs), np.array(psf), float(d['cost'])
+    return np.array(cwfs), np.array(psf), chi2
 
 
 def main():
@@ -125,6 +142,9 @@ def main():
     ap.add_argument('--coll', default='u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
     ap.add_argument('--filt', default='i_39')
     ap.add_argument('--repo', default='/repo/main')
+    ap.add_argument('--regform', default='quadratic',
+                    choices=['quadratic', 'power', 'hinge'])
+    ap.add_argument('--regpow', type=float, default=2.0)
     ap.add_argument('--no-fit', action='store_true', help='aggregate only')
     ap.add_argument('--no-pdf', action='store_true',
                     help='skip the per-lambda corner-comparison PDFs')
@@ -141,17 +161,19 @@ def main():
     for lam in args.lams:
         if not args.no_fit:
             run_fit(lam, args.seqs, args.day, args.svd, args.sign,
-                    args.coll, args.filt, args.repo, args.force)
+                    args.coll, args.filt, args.repo, args.force,
+                    args.regform, args.regpow)
         if not args.no_pdf:
             make_pdf(lam, args.seqs, args.day, args.svd,
-                     args.coll, args.filt, args.repo, args.force)
-        tag = f'_cwfs_wreg_lam{lam_tag(lam)}'
-        cw_all, ps_all, costs = [], [], []
+                     args.coll, args.filt, args.repo, args.force,
+                     args.regform, args.regpow)
+        tag = scan_tag(lam, args.regform, args.regpow)
+        cw_all, ps_all, chi2s = [], [], []
         for s in args.seqs:
-            c, p, cost = corner_pairs(s, args.day, tag, args.svd, miw, jmax, offsets)
+            c, p, chi2 = corner_pairs(s, args.day, tag, args.svd, miw, jmax, offsets)
             cw_all.append(c); ps_all.append(p)
-            if np.isfinite(cost):
-                costs.append(cost)
+            if np.isfinite(chi2):
+                chi2s.append(chi2)
         c = np.concatenate(cw_all) if cw_all else np.array([])
         p = np.concatenate(ps_all) if ps_all else np.array([])
         m = np.isfinite(c) & np.isfinite(p)
@@ -162,15 +184,16 @@ def main():
         else:
             r = slope = np.nan
         rows.append(dict(lam=lam, r=r, slope=slope,
-                         cost=float(np.mean(costs)) if costs else np.nan, n=len(c)))
+                         chi2=float(np.mean(chi2s)) if chi2s else np.nan, n=len(c)))
         print(f'lambda={lam:<8g} r={r:+.3f} slope={slope:+.3f} '
-              f'cost={rows[-1]["cost"]:.3f} N={len(c)}')
+              f'chi2={rows[-1]["chi2"]:.3f} N={len(c)}')
 
     df = pd.DataFrame(rows).sort_values('lam')
     if int(df.n.sum()) == 0:
         sys.exit('no fitted lambdas found -- run the fits first (drop --no-fit, '
                  'or submit pipelines/scan_lambda.sbatch), then re-run with --no-fit')
-    base = args.out or f'output/wavefront_lambda_scan_{args.day}'
+    base = args.out or (f'output/wavefront_lambda_scan_{args.day}'
+                        + form_suffix(args.regform, args.regpow))
     df.to_csv(base + '.csv', index=False)
 
     fig, ax1 = plt.subplots(figsize=(8, 5))
@@ -180,11 +203,13 @@ def main():
     ax1.set_ylabel('CWFS-corner r / slope'); ax1.axhline(1, color='0.7', lw=0.6, ls=':')
     ax1.legend(loc='lower left', fontsize=8)
     ax2 = ax1.twinx()
-    ax2.plot(df.lam, df.cost, '^-', color='C3', label='moment cost')
-    ax2.set_ylabel('moment-fit cost', color='C3'); ax2.tick_params(axis='y', colors='C3')
+    ax2.plot(df.lam, df.chi2, '^-', color='C3', label='moment chi2')
+    ax2.set_ylabel('moment chi2 (data term only)', color='C3')
+    ax2.tick_params(axis='y', colors='C3')
     seqs_s = ','.join(str(s) for s in args.seqs)
+    fm = args.regform + (f'^{args.regpow:g}' if args.regform != 'quadratic' else '')
     ax1.set_title(f'{args.day} seq {seqs_s}: wavefront-reg lambda scan '
-                  f'(init=cwfs)   corner agreement vs moment cost')
+                  f'(init=cwfs, {fm})   corner agreement vs moment chi2')
     fig.tight_layout(); fig.savefig(base + '.png', dpi=130)
     print(f'\nwrote {base}.csv and {base}.png')
 
