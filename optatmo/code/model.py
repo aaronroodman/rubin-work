@@ -20,7 +20,8 @@ from jax_optatmo import MOMENT_LABELS
 
 class Forward:
     def __init__(self, model, layout, z0, G, data, err,
-                 fit_moments, weights, reg_lambda=0.0):
+                 fit_moments, weights, reg_lambda=0.0,
+                 reg_mode='vmode', G_reg=None, reg_w=None):
         self.model = model
         self.layout = layout
         self.z0 = jnp.asarray(z0)                 # (n_stars, jmax+1)
@@ -39,7 +40,15 @@ class Forward:
                              for i, a in enumerate(layout.atm_free)]
         self.off_pos = [(MOMENT_LABELS.index(m), layout.i_off.start + i)
                         for i, m in enumerate(layout.offset_moments)]
-        self.reg_lambda = float(reg_lambda)   # Tikhonov L2 penalty on v-mode amps
+        self.reg_lambda = float(reg_lambda)   # Tikhonov / MAP prior strength
+        # reg_mode 'vmode'     -> L2 on v-mode amplitudes A
+        #          'wavefront' -> Gaussian prior on the wavefront deviation
+        #             G_reg @ A at field points (corners), width sigma_j:
+        #             reg = lambda * mean_pt sum_j reg_w_j (G_reg[pt] @ A)_j^2
+        #             with reg_w_j = 1/sigma_j^2  (0 for j not constrained).
+        self.reg_mode = reg_mode
+        self.G_reg = None if G_reg is None else jnp.asarray(G_reg)   # (n_pt,jmax+1,n_dz)
+        self.reg_w = None if reg_w is None else jnp.asarray(reg_w)   # (jmax+1,)
 
     def _atm(self, p):
         atm = self.atm_init
@@ -68,5 +77,12 @@ class Forward:
     def cost(self, p):
         r = self.residuals(p)
         chi2 = jnp.sum(r ** 2) / r.shape[0]
-        reg = self.reg_lambda * jnp.sum(p[:self.n_dz] ** 2)   # Tikhonov on v-modes
+        A = p[:self.n_dz]
+        if self.reg_mode == 'wavefront':
+            # prior on the wavefront deviation at the corners (v-modes only)
+            dev = jnp.einsum('pjv,v->pj', self.G_reg, A)       # (n_pt, jmax+1)
+            reg = self.reg_lambda * jnp.mean(
+                jnp.sum(self.reg_w[None, :] * dev ** 2, axis=1))
+        else:
+            reg = self.reg_lambda * jnp.sum(A ** 2)            # L2 on v-modes
         return chi2 + reg

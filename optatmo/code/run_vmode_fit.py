@@ -89,18 +89,33 @@ def main():
 
     import sys
     SIGN = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    _regcfg = cfg.get('regularization', {}) or {}
     REG = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('reg=')),
-               0.0)                            # Tikhonov L2 on v-mode amplitudes
+               float(_regcfg.get('lambda', 0.0)))    # prior strength lambda
+    REGMODE = next((a.split('=')[1] for a in sys.argv if a.startswith('regmode=')),
+                   _regcfg.get('mode', 'vmode'))       # vmode | wavefront
+    # per-Zernike prior weights 1/sigma_j^2 (wavefront mode); sigma_j from config
+    reg_w = None
+    if REGMODE == 'wavefront':
+        sig = _regcfg.get('sigma_j', {}) or {}
+        reg_w = np.zeros(jmax + 1)
+        for j, s in sig.items():
+            if 0 < int(j) <= jmax and s and float(s) > 0:
+                reg_w[int(j)] = 1.0 / float(s) ** 2
+        if not reg_w.any():
+            raise SystemExit('regmode=wavefront but regularization.sigma_j is '
+                             'empty/invalid in config.yaml')
     INIT = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')),
                 'zero')                         # v-mode start: zero | cwfs
     OPTICS = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')),
                   'free')                        # free | fixed (freeze v-modes)
     _parts = (([INIT] if INIT != 'zero' else [])
               + (['atmonly'] if OPTICS == 'fixed' else [])
-              + (['moff'] if moff_list else []))
+              + (['moff'] if moff_list else [])
+              + (['wreg'] if REGMODE == 'wavefront' else []))
     tag = ('_' + '_'.join(_parts)) if _parts else ''   # output suffix (no clobber)
-    print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g}, '
-          f'v-mode init = {INIT}, optics = {OPTICS} ###')
+    print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} '
+          f'({REGMODE}), v-mode init = {INIT}, optics = {OPTICS} ###')
     out = {}
     for seq in SEQS:
         rot = rot_for(seq)
@@ -114,8 +129,23 @@ def main():
         z0 = np.nan_to_num(miw.zernikes(cat['thx_deg'], cat['thy_deg'],
                                         cat['rotator_rad'], jmax,
                                         cat['detector']))
+        # wavefront-space prior: design at the 4 corner OCS positions (same
+        # corners the sigma_j prior was measured at), from the cwfs parquet.
+        G_reg = None
+        if REGMODE == 'wavefront':
+            cwo = pd.read_parquet(f'data/cwfs_{visit_of(seq)}.parquet')
+            cwo['corner'] = cwo.detector.str[:3]
+            cxs, cys = [], []
+            for c in ('R00', 'R04', 'R40', 'R44'):
+                sub = cwo[cwo.corner == c]
+                if len(sub):
+                    cxs.append(float(np.median(sub.thx_OCS)) * 180.0 / np.pi)
+                    cys.append(float(np.median(sub.thy_OCS)) * 180.0 / np.pi)
+            G_reg = build_vmode_design(NPZ, np.array(cxs), np.array(cys),
+                                       jmax, fp_radius=1.75)[0]   # (n_corner,jmax+1,n_v)
         fwd = Forward(model, layout, z0, G_v, cat['moments'], cat['errors'],
-                      fit_moments, weights, reg_lambda=REG)
+                      fit_moments, weights, reg_lambda=REG,
+                      reg_mode=REGMODE, G_reg=G_reg, reg_w=reg_w)
 
         vg = jax.jit(jax.value_and_grad(fwd.cost))
         p0 = np.array(layout.initial(), float)
@@ -182,7 +212,7 @@ def main():
                  atm=np.array(list(atm.values())),
                  atm_names=np.array(layout.atm_free), A_init=A_init,
                  offsets=offsets_vec, offset_moments=np.array(moff_list),
-                 init=INIT, optics=OPTICS, reg=REG, svd_file=NPZ,
+                 init=INIT, optics=OPTICS, reg=REG, regmode=REGMODE, svd_file=NPZ,
                  cost=float(res.fun), success=bool(res.success),
                  n_stars=len(prep['thx']), n_cells=len(cat['thx_deg']),
                  fit_moments=np.array(fit_moments),

@@ -67,6 +67,47 @@ cwfs:
   # system (used by init=cwfs and the corner comparison).
   offsets: {4: -0.11, 11: -0.07, 14: 0.13}
 
+# Tikhonov / MAP regularization (run_vmode_fit reg=<lambda> regmode=<mode>):
+#   mode: vmode     -> lambda * sum_i A_i^2              (L2 on v-mode amplitudes)
+#         wavefront -> lambda * mean_corner sum_j ((G_v(corner) @ A)_j / sigma_j)^2
+#             a Gaussian prior on the wavefront DEVIATION (v-modes only, no MIW)
+#             evaluated at the 4 corner field points, with per-Zernike width
+#             sigma_j.  lambda=1 is the plain MAP scale; raise it to pull harder.
+# sigma_j PROVENANCE: robust RMS (nMAD of residuals about a Huber CWFS-vs-FAM
+# fit) from the CWFS-vs-FAM corner comparison -- the 'robust RMS' panel (page 9)
+# of  aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/wfs/refitWcs/
+# wfs_corner_compare.pdf  -- averaged over the 4 corner rafts, THEN averaged
+# within each Noll azimuthal doublet (cos/sin pair: 5/6, 7/8, 9/10, 12/13,
+# 14/15, 16/17, 18/19, 23/24, 25/26) so paired terms share one prior width; the
+# m=0 singles (4, 11, 22) are unpaired.  Regenerate with:
+#     python code/extract_cwfs_sigma.py
+regularization:
+  mode: vmode               # vmode | wavefront
+  lambda: 10.0              # prior strength (CLI reg= overrides)
+  field: corners            # where the wavefront prior is evaluated
+  sigma_j:                  # microns; doublet-averaged robust RMS (CWFS vs FAM)
+    4: 0.1259
+    5: 0.1944
+    6: 0.1944
+    7: 0.0977
+    8: 0.0977
+    9: 0.0846
+    10: 0.0846
+    11: 0.0396
+    12: 0.0422
+    13: 0.0422
+    14: 0.0710
+    15: 0.0710
+    16: 0.0164
+    17: 0.0164
+    18: 0.0198
+    19: 0.0198
+    22: 0.0064
+    23: 0.0114
+    24: 0.0114
+    25: 0.0207
+    26: 0.0207
+
 optimizer:
   method: L-BFGS-B
   maxiter: 300
