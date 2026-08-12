@@ -61,6 +61,20 @@ def run_fit(lam, seqs, day, svd, sign, coll, filt, repo, force):
     subprocess.run(cmd, check=True)
 
 
+def make_pdf(lam, seqs, day, svd, coll, filt, repo, force):
+    """Per-lambda multi-page report (incl. the corner comparison page)."""
+    tag = f'_cwfs_wreg_lam{lam_tag(lam)}'
+    need = [s for s in seqs if force or not os.path.exists(f'output/fit_{s}{tag}.pdf')]
+    if not need:
+        return
+    cmd = ['python', 'code/plot_data_model.py', svd,
+           f'seqs={",".join(str(s) for s in need)}', f'day={day}',
+           f'coll={coll}', f'filt={filt}', f'repo={repo}',
+           'init=cwfs', 'regmode=wavefront', f'outtag=_lam{lam_tag(lam)}']
+    print(f'  lambda={lam}: corner PDF -> output/fit_<seq>{tag}.pdf')
+    subprocess.run(cmd, check=True)
+
+
 def corner_pairs(seq, day, tag, svd, miw, jmax, offsets):
     """Pooled (cwfs_dev, psf_dev) over corners x Noll for one fitted visit."""
     visit = int(f'{day}{seq:05d}')
@@ -106,6 +120,8 @@ def main():
     ap.add_argument('--filt', default='i_39')
     ap.add_argument('--repo', default='/repo/main')
     ap.add_argument('--no-fit', action='store_true', help='aggregate only')
+    ap.add_argument('--no-pdf', action='store_true',
+                    help='skip the per-lambda corner-comparison PDFs')
     ap.add_argument('--force', action='store_true', help='re-run fits even if npz exists')
     ap.add_argument('--out', default=None)
     args = ap.parse_args()
@@ -120,6 +136,9 @@ def main():
         if not args.no_fit:
             run_fit(lam, args.seqs, args.day, args.svd, args.sign,
                     args.coll, args.filt, args.repo, args.force)
+        if not args.no_pdf:
+            make_pdf(lam, args.seqs, args.day, args.svd,
+                     args.coll, args.filt, args.repo, args.force)
         tag = f'_cwfs_wreg_lam{lam_tag(lam)}'
         cw_all, ps_all, costs = [], [], []
         for s in args.seqs:

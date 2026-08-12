@@ -84,6 +84,10 @@ SEQ_CSV=$(echo $SEQS | tr ' ' ',')
 python code/run_vmode_fit.py 1 "$SVD" reg=$LAM regmode=wavefront init=cwfs \
     seqs="$SEQ_CSV" day=$DAY coll="$COLL" filt="$FILT" outtag=_lam$LAMTAG
 
+# per-lambda multi-page report incl. the corner-comparison page
+python code/plot_data_model.py "$SVD" seqs="$SEQ_CSV" day=$DAY \
+    coll="$COLL" filt="$FILT" init=cwfs regmode=wavefront outtag=_lam$LAMTAG
+
 echo "done lambda $LAM"
 
 # After the whole array finishes, aggregate + plot (no re-fit):
