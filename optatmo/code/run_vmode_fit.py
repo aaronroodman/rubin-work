@@ -90,10 +90,13 @@ def main():
     import sys
     SIGN = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     _regcfg = cfg.get('regularization', {}) or {}
-    REG = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('reg=')),
-               float(_regcfg.get('lambda', 0.0)))    # prior strength lambda
     REGMODE = next((a.split('=')[1] for a in sys.argv if a.startswith('regmode=')),
                    _regcfg.get('mode', 'vmode'))       # vmode | wavefront
+    # default lambda depends on mode (the two penalties are on different scales)
+    _lam_def = float(_regcfg.get('lambda_wavefront', _regcfg.get('lambda', 0.0))
+                     if REGMODE == 'wavefront' else _regcfg.get('lambda', 0.0))
+    REG = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('reg=')),
+               _lam_def)                               # prior strength lambda
     # per-Zernike prior weights 1/sigma_j^2 (wavefront mode); sigma_j from config
     reg_w = None
     if REGMODE == 'wavefront':
@@ -109,11 +112,15 @@ def main():
                 'zero')                         # v-mode start: zero | cwfs
     OPTICS = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')),
                   'free')                        # free | fixed (freeze v-modes)
+    # optional extra suffix (e.g. the lambda-scan uses outtag=_lam0p5 so per-lambda
+    # outputs do not clobber each other)
+    OUTTAG = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('outtag=')), '')
     _parts = (([INIT] if INIT != 'zero' else [])
               + (['atmonly'] if OPTICS == 'fixed' else [])
               + (['moff'] if moff_list else [])
               + (['wreg'] if REGMODE == 'wavefront' else []))
     tag = ('_' + '_'.join(_parts)) if _parts else ''   # output suffix (no clobber)
+    tag += OUTTAG
     print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} '
           f'({REGMODE}), v-mode init = {INIT}, optics = {OPTICS} ###')
     out = {}
