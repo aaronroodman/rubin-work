@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""plot_vmode_dof_matrix — DoF-vs-v-mode matrix (V) for an OFC SVD scheme.
+"""plot_vmode_dof_matrix — OFC SVD mode diagnostics for a DOF/v-mode scheme.
 
-Rebuilds the OFC sensitivity-matrix SVD (via ofc_svd.build_ofc_svd) and renders
-the right-singular-vector block V[:, :n_keep]: the (dimensionless) DOF composition
-of each retained v-mode, exactly as in smatrix_vmode_info §3.  Companion panel:
-the singular-value spectrum with the truncation cut.  Defaults to the 22-DoF /
-12-v-mode scheme used by wfs_dof_compare.
+Rebuilds the OFC sensitivity-matrix SVD (via ofc_svd.build_ofc_svd, which uses
+ts_ofc for the sensitivity matrix and the ts_config_mttcs normalization yaml) and
+renders a multi-page PDF:
 
-The V matrix is data-independent; only the pupil-Zernike set (iZs) enters, read
-from the param_set's visits.parquet so it matches the wfs_dof_compare SVD.
+  Page 1  V matrix (right singular vectors): the normalized (dimensionless) DOF
+          composition of each retained v-mode, + the singular-value spectrum.
+  Page 2  U_eff matrix (left singular vectors): the Double-Zernike composition of
+          each mode -- rows are the (focal k, pupil Zj) DZ terms ordered k=1
+          j=4..26, then k=2, ... (S v_m = sigma_m u_m, so U_eff[:,m] is the unit
+          DZ pattern of v-mode m).
+  Page 3  the per-DOF OFC normalization weights that were applied.
 
-Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR; runs in the LSST stack env.
+Data-independent apart from the pupil-Zernike set (iZs), read from the param_set's
+visits.parquet so it matches the wfs_dof_compare SVD.  Defaults to the 22-DoF /
+12-v-mode scheme.  Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR.
 """
 import argparse
 import sys
@@ -75,7 +80,53 @@ def main():
         ax1.set_title('Singular values'); ax1.legend(fontsize=8); ax1.grid(alpha=0.3)
 
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-    print(f'wrote {out}  (V {V.shape[0]}x{V.shape[1]}, {len(noll)} pupil Zernikes)')
+
+        # ---- Page 2: U_eff -- DZ-term composition of each mode ----
+        # S v_m = sigma_m u_m, so U_eff[:, m] is the unit Double-Zernike pattern
+        # of v-mode m.  Rows are the (focal k, pupil Zj) DZ terms in the SVD's
+        # kj_grid order (k outer, j inner: k=1 j=4..26, then k=2, ...).
+        U = np.asarray(svd.U_eff)                       # (n_kj, n_keep_eff)
+        kj = list(svd.kj_grid)
+        n_kj = U.shape[0]
+        karr = np.array([k for k, j in kj])
+        fig = plt.figure(figsize=(max(8, 0.42 * svd.n_keep_eff + 3),
+                                  max(8, 0.11 * n_kj + 2)), dpi=150)
+        ax = fig.add_subplot(111)
+        vmax = float(np.nanpercentile(np.abs(U), 99)) or 1.0
+        im = ax.imshow(U, cmap='seismic', vmin=-vmax, vmax=vmax, aspect='auto')
+        ax.set_xlabel('mode m  (u-mode = v-mode index)')
+        ax.set_ylabel('Double-Zernike term  (pupil Zj within each focal-k block)')
+        ax.set_xticks(range(svd.n_keep_eff))
+        ax.set_xticklabels([str(m + 1) for m in range(svd.n_keep_eff)], fontsize=7)
+        ax.set_yticks(range(n_kj))
+        ax.set_yticklabels([f'Z{j}' for k, j in kj], fontsize=4)
+        for b in np.where(karr[1:] != karr[:-1])[0]:    # k-block separators
+            ax.axhline(b + 0.5, color='k', lw=0.8)
+        for k in dict.fromkeys(karr):                   # k=N labels per block
+            ax.text(-0.085, float(np.where(karr == k)[0].mean()), f'k={k}',
+                    transform=ax.get_yaxis_transform(), ha='right', va='center',
+                    fontsize=9, fontweight='bold')
+        ax.set_title(f'U_eff — Double-Zernike composition of each mode  '
+                     f'({args.scheme.replace("_", " DoF / ")})')
+        fig.colorbar(im, ax=ax, shrink=0.8, label='U_eff (unit DZ amplitude)')
+        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+        # ---- Page 3: per-DOF OFC normalization weights ----
+        nw = np.asarray(svd.normalization_weights, float)
+        fig = plt.figure(figsize=(max(10, 0.32 * len(nw) + 2), 5.5), dpi=150)
+        ax = fig.add_subplot(111)
+        ax.bar(range(len(nw)), nw, color='steelblue')
+        ax.set_xticks(range(len(nw)))
+        ax.set_xticklabels(labels, rotation=90, fontsize=6)
+        ax.set_ylabel('OFC normalization weight'); ax.grid(alpha=0.3, axis='y')
+        ax.set_title('OFC per-DOF normalization weights applied '
+                     '(ts_config_mttcs range0.5_fwhm-0.15)  '
+                     f'[{args.scheme}]')
+        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+    print(f'wrote {out}  (3 pages: V {V.shape[0]}x{V.shape[1]}, '
+          f'U_eff {U.shape[0]}x{U.shape[1]}, {len(nw)} DOF norm weights; '
+          f'{len(noll)} pupil Zernikes)')
 
 
 if __name__ == '__main__':
