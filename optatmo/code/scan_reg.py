@@ -8,7 +8,7 @@ from vmode_fit import build_vmode_design, wavefront_at
 from miw import MIW
 import pandas as pd
 
-NPZ = 'data/ofc_svd_50_34_k6.npz'
+NPZ = 'data/svd/ofc_svd_50_34_k6.npz'
 DAY = 20260513
 cfg = load_config('config.yaml')
 cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12

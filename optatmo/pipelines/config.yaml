@@ -13,7 +13,7 @@ miw_collection:  u/gmegias/calib/DM-55048/intrinsicZernikes.v3   # official MIW
 filter:          i_39                                # physical_filter for the MIW
 
 # fit
-svd_npz: data/ofc_svd_50_34_k6.npz  # AOS sensitivity SVD (v-mode basis)
+svd_npz: data/svd/ofc_svd_50_34_k6.npz  # AOS sensitivity SVD (v-mode basis)
 reg:     10.0                       # Tikhonov L2 on v-mode amplitudes
 
 # PSF-star extraction

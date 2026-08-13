@@ -8,7 +8,7 @@
 # Before submitting, ONCE (from the optatmo dir): pull the code, build the SVD,
 # and PRE-EXTRACT the visits so tasks don't race the same visit's parquets:
 #     git pull
-#     [ -f data/ofc_svd_50_34_k6.npz ] || python code/build_svd_local.py
+#     [ -f data/svd/ofc_svd_50_34_k6.npz ] || python code/build_svd_local.py
 #     SEQS="25 28 ..."; DAY=20260513
 #     for S in $SEQS; do V=$(printf '%s%05d' $DAY $S); \
 #         python code/extract_psf_moments.py --visits $V --collection LSSTCam/runs/nightlyValidation --out-dir data; \
@@ -54,7 +54,7 @@ CAMPAIGN=${CAMPAIGN:?set CAMPAIGN via --export=ALL,CAMPAIGN=<label>}
 PLAN=${PLAN:-full}                 # full | focus | focus_then_full
 INIT=${INIT:-cwfs}                 # zero | cwfs
 MINIMIZER=${MINIMIZER:-lbfgsb}     # lbfgsb | migrad
-SVD=data/ofc_svd_50_34_k6.npz
+SVD=data/svd/ofc_svd_50_34_k6.npz
 COLL=u/gmegias/calib/DM-55048/intrinsicZernikes.v3
 FILT=i_39
 PSF_COLL=${PSF_COLL:-LSSTCam/runs/nightlyValidation}

@@ -3,9 +3,10 @@
 
 Lets us make any (iZs, k_min, k_max, n_keep, dof_idx) SVD without ts_ofc.
 """
+import os
 import numpy as np
 
-RAW = 'data/ofc_raw.npz'
+RAW = 'data/svd/ofc_raw.npz'
 # 22-DOF reduced set: 10 rigid + first 7 M1M3 + first 5 M2
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 # standard AOS pupil Noll set: Z4..Z26 omitting Z20, Z21 (21 terms)
@@ -30,6 +31,7 @@ def build(iZs, k_min, k_max, n_keep, dof_idx=None, raw=RAW, out=None):
                dof_idx=np.asarray(dof_idx), normalization_weights=norm_sub,
                iZs=iZs, k_min=k_min, k_max=k_max)
     if out:
+        os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
         np.savez(out, **res)
         print(f'wrote {out}: U_eff {res["U_eff"].shape}, Sigma[:14] {Sigma[:14].round(3)}')
     return res
@@ -55,6 +57,6 @@ if __name__ == '__main__':
     # Z4..Z26 omitting Z20,Z21 (21 terms) -- matches the MIW calib / CWFS.
     if os.path.exists(RAW):
         print(f'=== build 50/34 k6 on AOS Noll {AOS_NOLL} ===')
-        build(AOS_NOLL, 1, 6, 34, dof_idx=None, out='data/ofc_svd_50_34_k6.npz')
+        build(AOS_NOLL, 1, 6, 34, dof_idx=None, out='data/svd/ofc_svd_50_34_k6.npz')
     else:
         print(f'{RAW} not found — run the raw-dump snippet on USDF and scp it here.')

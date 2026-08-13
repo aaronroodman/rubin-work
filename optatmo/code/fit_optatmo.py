@@ -126,7 +126,7 @@ def parse_args():
     ap.add_argument('--plan', default='full', choices=list(PLANS))
     ap.add_argument('--init', default='cwfs', choices=['zero', 'cwfs'])
     ap.add_argument('--minimizer', default='lbfgsb', choices=['lbfgsb', 'migrad'])
-    ap.add_argument('--svd', default='data/ofc_svd_50_34_k6.npz')
+    ap.add_argument('--svd', default='data/svd/ofc_svd_50_34_k6.npz')
     ap.add_argument('--coll', default='u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
     ap.add_argument('--filt', default='i_39')
     ap.add_argument('--repo', default='/repo/main')

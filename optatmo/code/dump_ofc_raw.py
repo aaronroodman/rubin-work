@@ -18,7 +18,7 @@ from lsst.ts.ofc import OFCData
 S_full = np.asarray(OFCData('lsst').sensitivity_matrix)   # (n_focal, n_noll, 50)
 nw_full = np.asarray(osv.load_normalization_weights())    # (50,) default (geom_mean)
 
-out = os.path.join(os.path.dirname(__file__), '..', 'data', 'ofc_raw.npz')
+out = os.path.join(os.path.dirname(__file__), '..', 'data', 'svd', 'ofc_raw.npz')
 os.makedirs(os.path.dirname(out), exist_ok=True)
 np.savez(out, S_full=S_full, nw_full=nw_full)
 print(f'S_full {S_full.shape}, nw_full {nw_full.shape}')

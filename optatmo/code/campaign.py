@@ -8,7 +8,7 @@ run's products live under its own labelled directory:
       psfmoments_<visit>.parquet
       cwfs_<visit>.parquet
       visitmeta_<visit>.parquet
-      ofc_svd_*.npz                        # v-mode SVD basis
+      svd/ofc_svd_*.npz                    # v-mode SVD basis
 
     output/runs/<campaign>/                # OUTPUTS (one dir per campaign)
       manifest.json                        # options/provenance for every run
