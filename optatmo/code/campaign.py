@@ -16,7 +16,7 @@ run's products live under its own labelled directory:
         config_snapshot.yaml
         fits/     vmodefit_<seq>.npz  fitprog_<seq>.npz
         reports/  fit_<seq>.pdf  fitmon_<seq>.png
-        ensemble/ ensemble_vmodes.pdf/.csv  ensemble_corners.pdf/.csv
+        ensemble/ ensemble_corners_stage_<name>.pdf/.csv (+ _fits, _visits)
 
 output/runs is under output/ so it inherits the USDF output/ symlink to the big
 filesystem.  A "campaign" is a named run with a fixed set of options; different

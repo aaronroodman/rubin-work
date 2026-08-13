@@ -23,7 +23,6 @@
 #   full fit with iminuit MIGRAD:
 #     ...,CAMPAIGN=full_migrad,PLAN=full,INIT=cwfs,MINIMIZER=migrad,...
 #   then the ensemble summary for the campaign:
-#     python code/ensemble_vmodes.py  --campaign <CAMPAIGN> --day 20260513
 #     python code/ensemble_corners.py --campaign <CAMPAIGN> --day 20260513 --coll <COLL> --filt i_39
 #
 # ConsDB on S3DF batch reads ~/.lsst/consdb_token (shared home is mounted); no

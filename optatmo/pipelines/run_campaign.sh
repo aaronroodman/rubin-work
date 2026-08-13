@@ -53,6 +53,6 @@ echo "submitted fit array job $JID ($N tasks)"
 EID=$(sbatch --parsable --dependency=afterok:$JID \
     -p milano -A rubin:developers -t 00:30:00 -c 2 --mem 8G \
     -o pipelines/logs/ensemble_%j.log \
-    --wrap "source $STACK >/dev/null; setup lsst_distrib; export CARGO_HOME=\$HOME/.cargo RUSTUP_HOME=\$HOME/.rustup; python code/ensemble_vmodes.py --campaign $CAMPAIGN --day $DAY; python code/ensemble_corners.py --campaign $CAMPAIGN --day $DAY --coll $COLL --filt $FILT")
+    --wrap "source $STACK >/dev/null; setup lsst_distrib; export CARGO_HOME=\$HOME/.cargo RUSTUP_HOME=\$HOME/.rustup; python code/ensemble_corners.py --campaign $CAMPAIGN --day $DAY --coll $COLL --filt $FILT")
 echo "submitted ensemble job $EID (after $JID)"
 echo "outputs -> output/runs/$CAMPAIGN/$DAY/{fits,reports,ensemble}"

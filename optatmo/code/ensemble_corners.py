@@ -113,8 +113,8 @@ def plot(df, vdf, Afit, Acwfs, out_pdf, title):
             ax.set_aspect('equal'); ax.tick_params(labelsize=6)
             ax.set_title(f'Z{j}  r={f["r"]:+.2f} m={f["slope"]:+.2f} '
                          f'b={f["intercept"]:+.3f}', fontsize=7)
-        eu.scatter_fit_xy(axes.flat[nj], vdf.donut_blur.to_numpy(),
-                          vdf.model_fwhm.to_numpy(), 'atmo FWHM vs donut blur')
+        ffit = eu.scatter_fit_xy(axes.flat[nj], vdf.donut_blur.to_numpy(),
+                                 vdf.model_fwhm.to_numpy(), 'atmo FWHM vs donut blur')
         axes.flat[nj].set_xlabel('donut blur', fontsize=7)
         axes.flat[nj].set_ylabel('atmo FWHM', fontsize=7)
         for ax in axes.flat[nj + 1:]:
@@ -141,7 +141,7 @@ def plot(df, vdf, Afit, Acwfs, out_pdf, title):
         eu.summary_bars(pdf, plt, [f'v{i+1}' for i in range(n_v)],
                         [vfits[i] for i in range(n_v)], f'{title}  (v-modes)')
     print(f'wrote {out_pdf}')
-    return zfits, vfits
+    return zfits, vfits, ffit
 
 
 def main():
@@ -167,13 +167,21 @@ def main():
     if df.empty:
         raise SystemExit('no corner points pooled')
     base = f'{campn.ensemble}/ensemble_corners_stage_{stage_name}'
-    df.to_csv(base + '.csv', index=False)
-    zfits, vfits = plot(df, vdf, Afit, Acwfs, base + '.pdf',
-                        f'{args.day} {args.campaign} stage {stage_name}')
-    # per-fit CSV of the robust slope/intercept/r
+    df.to_csv(base + '.csv', index=False)                    # raw corner points
+    zfits, vfits, ffit = plot(df, vdf, Afit, Acwfs, base + '.pdf',
+                              f'{args.day} {args.campaign} stage {stage_name}')
+    n_v = Afit.shape[1]
+    # per-term robust slope/intercept/r (Zj + v-modes + the FWHM-vs-blur fit)
     pd.DataFrame([dict(term=f'Z{j}', **zfits[j]) for j in NOLL_CWFS]
-                 + [dict(term=f'v{i+1}', **vfits[i]) for i in range(Afit.shape[1])]
+                 + [dict(term=f'v{i+1}', **vfits[i]) for i in range(n_v)]
+                 + [dict(term='atmo_fwhm_vs_blur', **ffit)]
                  ).to_csv(base + '_fits.csv', index=False)
+    # per-visit raw values (v-mode amplitudes + atmo FWHM + donut blur)
+    vc = {'seq': vdf.seq.to_numpy(), 'atm_fwhm': vdf.model_fwhm.to_numpy(),
+          'donut_blur': vdf.donut_blur.to_numpy()}
+    for i in range(n_v):
+        vc[f'v{i+1}_fit'] = Afit[:, i]; vc[f'v{i+1}_cwfs'] = Acwfs[:, i]
+    pd.DataFrame(vc).to_csv(base + '_visits.csv', index=False)
     print('  key corner terms (r, slope, intercept, N):')
     for j in (4, 5, 6, 7, 8, 11):
         f = zfits[j]
