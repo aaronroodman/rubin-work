@@ -9,6 +9,7 @@ Fit A + (fwhm,g1,g2) to the OCS-rotated, per-detector sub-CCD-binned HSM moments
 Outputs the fitted v-mode amplitudes and the wavefront for the corner comparison.
 """
 import numpy as np, pandas as pd, jax, jax.numpy as jnp
+from types import SimpleNamespace
 from scipy.optimize import minimize
 
 from config import load_config, ParamLayout
@@ -18,6 +19,48 @@ from model import Forward
 from vmode_fit import build_vmode_design, cwfs_vmode_amps
 from miw import MIWCalib
 from fit_monitor import FitMonitor
+
+
+def run_migrad(vg, p0, bnds, mon, maxcall=200000):
+    """Minimize with iminuit MIGRAD using the jax value_and_grad (exact grads).
+
+    MIGRAD is strong on high-dimensional problems.  Records every unique
+    evaluation into `mon` (so the fit-progress trace/plot still work) and returns
+    a scipy-like result (x, fun, nfev, njev, nit, success).  Bounds with lo==hi
+    are treated as fixed parameters.
+    """
+    from iminuit import Minuit
+    last = {'k': None}
+
+    def _both(par):
+        par = np.asarray(par, float)
+        key = par.tobytes()
+        if key != last['k']:
+            v, g = vg(jnp.asarray(par))
+            last.update(k=key, v=float(v), g=np.asarray(g, float))
+            mon.costs.append(float(v)); mon.params.append(par.copy())
+            if mon.verbose:
+                print(f'[{mon.label}] eval {len(mon.costs):4d}  cost {float(v):.6g}'
+                      f'  t {mon._elapsed():6.0f}s', flush=True)
+        return last
+
+    m = Minuit(lambda p: _both(p)['v'], np.asarray(p0, float),
+               grad=lambda p: _both(p)['g'])
+    m.errordef = 1.0
+    for i, (lo, hi) in enumerate(bnds):
+        lo_f = None if (lo is None or not np.isfinite(lo)) else float(lo)
+        hi_f = None if (hi is None or not np.isfinite(hi)) else float(hi)
+        if lo_f is not None and hi_f is not None and lo_f == hi_f:
+            m.values[i] = lo_f; m.fixed[i] = True          # frozen parameter
+        else:
+            m.limits[i] = (lo_f, hi_f)
+    m.migrad(ncall=maxcall)
+    mon.iter_evals.append(len(mon.costs))                  # single "iteration" marker
+    if mon.checkpoint:
+        mon.save(mon.checkpoint)
+    return SimpleNamespace(x=np.array(m.values, float), fun=float(m.fval),
+                           nfev=int(m.nfcn), njev=int(m.ngrad), nit=int(m.nfcn),
+                           success=bool(m.valid))
 
 import sys as _sys
 NPZ = next((a for a in _sys.argv[1:] if a.endswith('.npz')), 'data/ofc_svd_22_12.npz')
@@ -123,6 +166,8 @@ def main():
     # optical state.  Empty => all v-modes free (unless optics=fixed).
     FREEV = next((a.split('=')[1] for a in sys.argv if a.startswith('freevmodes=')), '')
     free_set = set(int(x) for x in FREEV.split(',') if x) if FREEV else None
+    OPT = next((a.split('=')[1] for a in sys.argv if a.startswith('opt=')),
+               'lbfgsb')                       # lbfgsb (scipy) | migrad (iminuit)
     # optional extra suffix (e.g. the lambda-scan uses outtag=_lam0p5 so per-lambda
     # outputs do not clobber each other)
     OUTTAG = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('outtag=')), '')
@@ -130,7 +175,8 @@ def main():
               + (['atmonly'] if OPTICS == 'fixed' else [])
               + ([f'v{FREEV.replace(",", "-")}'] if free_set else [])
               + (['moff'] if moff_list else [])
-              + (['wreg'] if REGMODE == 'wavefront' else []))
+              + (['wreg'] if REGMODE == 'wavefront' else [])
+              + (['migrad'] if OPT == 'migrad' else []))
     tag = ('_' + '_'.join(_parts)) if _parts else ''   # output suffix (no clobber)
     tag += OUTTAG
     print(f'### rotation sign = {SIGN:+d}, reg_lambda = {REG:g} '
@@ -208,11 +254,14 @@ def main():
 
         mon = FitMonitor(label=f'fit seq{seq}{tag}', verbose=True,
                          checkpoint=f'data/fitprog_{seq}{tag}.npz')
-        fun = mon.objective(vg)
         mon.start()
-        res = minimize(fun, p0, jac=True, method='L-BFGS-B',
-                       bounds=bnds, callback=mon.callback,
-                       options={'maxiter': 300})
+        if OPT == 'migrad':
+            res = run_migrad(vg, p0, bnds, mon)
+        else:
+            fun = mon.objective(vg)
+            res = minimize(fun, p0, jac=True, method='L-BFGS-B',
+                           bounds=bnds, callback=mon.callback,
+                           options={'maxiter': 300})
         mon.stop()
         A = res.x[layout.i_dz]
         atm = {a: res.x[layout.n_dz + i] for i, a in enumerate(layout.atm_free)}
@@ -243,7 +292,8 @@ def main():
                  atm_names=np.array(layout.atm_free), A_init=A_init,
                  offsets=offsets_vec, offset_moments=np.array(moff_list),
                  init=INIT, optics=OPTICS, reg=REG, regmode=REGMODE,
-                 regform=REGFORM, regpow=REGPOW, regknee=REGKNEE, svd_file=NPZ,
+                 regform=REGFORM, regpow=REGPOW, regknee=REGKNEE, opt=OPT,
+                 svd_file=NPZ,
                  cost=float(res.fun), chi2=chi2_val, reg_term=reg_val,
                  success=bool(res.success),
                  n_stars=len(prep['thx']), n_cells=len(cat['thx_deg']),

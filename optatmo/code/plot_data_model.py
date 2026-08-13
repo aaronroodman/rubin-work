@@ -314,11 +314,15 @@ def main():
     moff = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('moffsets=')), 'off')
     regmode = next((a.split('=')[1] for a in sys.argv if a.startswith('regmode=')), 'vmode')
     outtag = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('outtag=')), '')
+    freev = next((a.split('=')[1] for a in sys.argv if a.startswith('freevmodes=')), '')
+    opt = next((a.split('=')[1] for a in sys.argv if a.startswith('opt=')), 'lbfgsb')
     # must mirror run_vmode_fit's tag exactly so we load the matching vmodefit npz
     _p = (([init] if init != 'zero' else [])
           + (['atmonly'] if optics == 'fixed' else [])
+          + ([f'v{freev.replace(",", "-")}'] if freev else [])
           + (['moff'] if moff not in ('off', 'none', '') else [])
-          + (['wreg'] if regmode == 'wavefront' else []))
+          + (['wreg'] if regmode == 'wavefront' else [])
+          + (['migrad'] if opt == 'migrad' else []))
     tag = ('_' + '_'.join(_p)) if _p else ''
     tag += outtag
     cfg = load_config('config.yaml')
