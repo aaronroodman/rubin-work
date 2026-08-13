@@ -82,10 +82,12 @@ cwfs:
 # m=0 singles (4, 11, 22) are unpaired.  Regenerate with:
 #     python code/extract_cwfs_sigma.py
 regularization:
+  # DEFAULT is no regularization (lambda 0): the 20260513 lambda scans showed the
+  # Tikhonov term only raised the moment cost with no plateau/knee and ~no gain in
+  # CWFS-corner correlation.  Set reg=<lambda> on the CLI to re-enable.
   mode: vmode               # vmode | wavefront
-  lambda: 10.0              # vmode-mode prior strength (CLI reg= overrides)
-  lambda_wavefront: 0.5     # wavefront-mode default (very different scale from
-                            # `lambda`; TUNE via code/scan_wavefront_lambda.py)
+  lambda: 0.0               # vmode-mode prior strength (CLI reg= overrides)
+  lambda_wavefront: 0.0     # wavefront-mode default (CLI reg= overrides)
   field: corners            # where the wavefront prior is evaluated
   # penalty shape on the standardized deviation s_j = dev_j/sigma_j (wavefront):
   #   quadratic -> sum s^2            (standard; penalizes small deviations too)

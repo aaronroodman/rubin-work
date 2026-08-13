@@ -118,11 +118,17 @@ def main():
                 'zero')                         # v-mode start: zero | cwfs
     OPTICS = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')),
                   'free')                        # free | fixed (freeze v-modes)
+    # freevmodes=1  (or 1,2,..): float ONLY these v-modes (1-indexed), freeze the
+    # rest at their init -- use with init=cwfs to hold the others at the CWFS
+    # optical state.  Empty => all v-modes free (unless optics=fixed).
+    FREEV = next((a.split('=')[1] for a in sys.argv if a.startswith('freevmodes=')), '')
+    free_set = set(int(x) for x in FREEV.split(',') if x) if FREEV else None
     # optional extra suffix (e.g. the lambda-scan uses outtag=_lam0p5 so per-lambda
     # outputs do not clobber each other)
     OUTTAG = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('outtag=')), '')
     _parts = (([INIT] if INIT != 'zero' else [])
               + (['atmonly'] if OPTICS == 'fixed' else [])
+              + ([f'v{FREEV.replace(",", "-")}'] if free_set else [])
               + (['moff'] if moff_list else [])
               + (['wreg'] if REGMODE == 'wavefront' else []))
     tag = ('_' + '_'.join(_parts)) if _parts else ''   # output suffix (no clobber)
@@ -192,6 +198,13 @@ def main():
                 bnds[i] = (float(p0[i]), float(p0[i]))
             print(f'  optics FIXED at init -- fitting only atmosphere '
                   f'{layout.atm_free}')
+        elif free_set is not None:
+            # float only the requested v-modes; freeze the rest at init (CWFS)
+            for k, i in enumerate(dz_idx):
+                if (k + 1) not in free_set:
+                    bnds[i] = (float(p0[i]), float(p0[i]))
+            print(f'  optics PARTIAL -- free v-modes {sorted(free_set)}, '
+                  f'others frozen at init (use init=cwfs)')
 
         mon = FitMonitor(label=f'fit seq{seq}{tag}', verbose=True,
                          checkpoint=f'data/fitprog_{seq}{tag}.npz')

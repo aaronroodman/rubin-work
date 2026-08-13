@@ -63,7 +63,7 @@ DAY=${DAY:-20260513}        # night (override via --export for 20260706 etc.)
 SVD=data/ofc_svd_50_34_k6.npz
 COLL=u/gmegias/calib/DM-55048/intrinsicZernikes.v3
 FILT=i_39
-REG=${REG:-10}
+REG=${REG:-0}               # no Tikhonov by default (scans showed it only hurt)
 PSF_COLL=${PSF_COLL:-LSSTCam/runs/nightlyValidation}
 CWFS_SRC=${CWFS_SRC:-consdb}   # consdb (any night, writes visitmeta) | danish (20260513 only)
 CWFS_COLL=${CWFS_COLL:-'*danish_1_2_0*'}   # only used when CWFS_SRC=danish
