@@ -82,6 +82,11 @@ def run_migrad(vg, p0, bnds, mon, maxcall=200000):
     m = Minuit(lambda p: _both(p)['v'], np.asarray(p0, float),
                grad=lambda p: _both(p)['g'])
     m.errordef = 1.0
+    # strategy 0 is ESSENTIAL with an exact (jax autodiff) gradient: it trusts the
+    # gradient and skips MIGRAD's numerical-Hessian probing (~2*npar evals before
+    # the first step), which otherwise makes the fit ~30x slower.  We only want
+    # the minimum, not the error matrix.
+    m.strategy = 0
     for i, (lo, hi) in enumerate(bnds):
         lo_f = None if (lo is None or not np.isfinite(lo)) else float(lo)
         hi_f = None if (hi is None or not np.isfinite(hi)) else float(hi)
