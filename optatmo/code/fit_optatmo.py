@@ -26,6 +26,7 @@ Inputs (psfmoments/cwfs/visitmeta, SVD) are shared under data/.
         --minimizer lbfgsb --coll <MIW_COLL> --filt i_39
 """
 import argparse
+import os
 from collections import namedtuple
 from types import SimpleNamespace
 
@@ -131,6 +132,8 @@ def parse_args():
     ap.add_argument('--filt', default='i_39')
     ap.add_argument('--repo', default='/repo/main')
     ap.add_argument('--sign', type=int, default=1, help='CCS->OCS rotation sign')
+    ap.add_argument('--skip-existing', action='store_true',
+                    help='skip visits whose campaign fit npz already exists')
     ap.add_argument('--moffsets', default='off', help='off | higher | all | csv')
     # regularization (off by default; kept as an option)
     ap.add_argument('--reg', type=float, default=None, help='lambda (default: config)')
@@ -204,6 +207,9 @@ def main():
     n_atm = len(layout.atm_free)
 
     for seq in args.seqs:
+        if args.skip_existing and os.path.exists(campn.fit_npz(seq)):
+            print(f'  [seq {seq}] skip (exists: {campn.fit_npz(seq)})')
+            continue
         fit_one(seq, args, cfg, model, miw, layout, jmax, fit_moments, weights,
                 moff_list, plan, n_v, n_atm, vmode_names,
                 REG, REGMODE, REGFORM, REGPOW, REGKNEE, reg_w, campn)

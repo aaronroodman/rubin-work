@@ -54,6 +54,7 @@ CAMPAIGN=${CAMPAIGN:?set CAMPAIGN via --export=ALL,CAMPAIGN=<label>}
 PLAN=${PLAN:-full}                 # full | focus | focus_then_full
 INIT=${INIT:-cwfs}                 # zero | cwfs
 MINIMIZER=${MINIMIZER:-lbfgsb}     # lbfgsb | migrad
+SKIP=${SKIP:-0}                    # 1 => skip visits already fit in this campaign
 SVD=data/svd/ofc_svd_50_34_k6.npz
 COLL=u/gmegias/calib/DM-55048/intrinsicZernikes.v3
 FILT=i_39
@@ -86,8 +87,9 @@ if [ ! -f "data/cwfs_${VISIT}.parquet" ]; then
 fi
 
 # staged v-mode fit -> output/runs/<CAMPAIGN>/<DAY>/fits/vmodefit_<seq>.npz
+SKIPFLAG=""; [ "$SKIP" = 1 ] && SKIPFLAG="--skip-existing"
 python code/fit_optatmo.py --day "$DAY" --seqs "$SEQ" --campaign "$CAMPAIGN" \
-    --plan "$PLAN" --init "$INIT" --minimizer "$MINIMIZER" \
+    --plan "$PLAN" --init "$INIT" --minimizer "$MINIMIZER" $SKIPFLAG \
     --svd "$SVD" --coll "$COLL" --filt "$FILT"
 
 # per-stage report PDFs -> .../reports/
