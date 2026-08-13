@@ -13,7 +13,7 @@ USDF (e.g. 20260706), this is the corner-WFS source.  It writes, per visit:
       same schema extract_cwfs.py produces, so plot_data_model is unchanged
       (ztot_<i> is the total OPD for Noll ZK_NOLL[i], Z4..Z26 excl Z20,Z21).
   data/visitmeta_<visit>.parquet   visit, rot_deg, alt_deg, az_deg, band  --
-      night-agnostic rotator/alt/az for run_vmode_fit + plot_data_model.
+      night-agnostic rotator/alt/az for fit_optatmo + plot_data_model.
 
 Corner field positions come from cameraGeom (the SW0 detector centres in CCS)
 rotated to OCS by the rotator (frames.rotate_field), matching the moment frame.

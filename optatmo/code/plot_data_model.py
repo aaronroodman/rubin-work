@@ -14,25 +14,22 @@
 Writes output/fit_<seq><tag>.pdf.  Model maps/whiskers are recomputed from the
 saved fit; the scatters use the fit's binned cells (data_mom vs model_mom).
 """
-import sys, numpy as np, pandas as pd
+import argparse, numpy as np, pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.backends.backend_pdf import PdfPages
 
+import campaign as camp
 from config import load_config
 import fit as fitmod
 import data_fit
 from vmode_fit import model_moments_at, wavefront_at
 from miw import MIWCalib
 
-DAY = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('day=')), 20260513)
+DAY = 20260513          # set from --day in main(); used by the helper functions
 LAB = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22', 'M31', 'M13', 'M40', 'M04']
-MIW_COLL = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('coll=')),
-                'u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
-MIW_FILT = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('filt=')), 'i_39')
-MIW_REPO = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('repo=')), '/repo/main')
 VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
 FP_R = 1.75
 NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
@@ -56,7 +53,7 @@ def visit_info(seq):
     else fall back to the 20260513 danish visits table (alt/az in radians).
     """
     import os
-    mp = f'data/visitmeta_{visit_of(seq)}.parquet'
+    mp = camp.visitmeta_path(visit_of(seq))
     if os.path.exists(mp):
         m = pd.read_parquet(mp).iloc[0]
         return dict(alt=float(m['alt_deg']), az=float(m['az_deg']),
@@ -154,7 +151,7 @@ def _page_doublet(pdf, seq, prep, dcell, mcell, keypair, kind, ref_len, title,
 
 
 def _page_corners(pdf, seq, fit, A, svd, rot, miw, cfg, jmax):
-    cw = pd.read_parquet(f'data/cwfs_{visit_of(seq)}.parquet')
+    cw = pd.read_parquet(camp.cwfs_path(visit_of(seq)))
     cw['corner'] = cw.detector.str[:3]
     from lsst.obs.lsst import LsstCam
     name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
@@ -195,7 +192,7 @@ def _page_progress(pdf, seq, fit):
     reg = float(fit['reg']); n_v = len(np.asarray(fit['A']))
     atm_names = [str(x) for x in np.atleast_1d(fit['atm_names'])]
     off_names = ([str(x) for x in np.atleast_1d(fit['offset_moments'])]
-                 if 'offset_moments' in fit.files else [])
+                 if 'offset_moments' in fit else [])
     ev = np.arange(1, len(costs) + 1)
     dz = P[:, :n_v]
     chi2 = costs - reg * np.sum(dz ** 2, axis=1)
@@ -241,20 +238,23 @@ def _page_info(pdf, seq, fit, info, cfg):
         f'Rotator        : {float(fit["rot"]):.3f}  deg',
         f'N stars        : {int(fit["n_stars"])}      N binned cells: {int(fit["n_cells"])}',
         '',
-        f'final cost     : {float(fit["cost"]):.5g}   (reduced χ² + Tikhonov reg)',
+        f'final cost     : {float(fit["cost"]):.5g}   (reduced χ² + reg)',
+        f'reduced χ²     : {float(fit["chi2"]):.5g}   (moment data term only)',
         f'success        : {bool(fit["success"])}',
-        f'nfev / njev    : {int(fit["nfev"])} / {int(fit["njev"])}     nit: {int(fit["nit"])}',
         f'fit wall time  : {float(fit["fit_time_s"]):.1f}  s',
         '',
         f'--- options ---',
+        f'plan / stage   : {str(fit["plan"])}  /  {str(fit["stage_name"])} '
+        f'(stage {int(fit["stage"])+1} of {int(fit["n_stages"])})',
         f'v-mode init    : {str(fit["init"])}',
-        f'optics         : {str(fit["optics"])}  ({"frozen at init" if str(fit["optics"])=="fixed" else "free"})',
-        f'Tikhonov reg λ : {float(fit["reg"]):g}',
+        f'minimizer      : {str(fit["minimizer"])}',
+        f'free v-modes   : {fit["n_free"]} of {len(np.asarray(fit["A"]))}',
+        f'reg λ ({str(fit["regmode"])}) : {float(fit["reg"]):g}',
         f'SVD basis      : {str(fit["svd_file"])}   ({len(np.asarray(fit["A"]))} v-modes)',
         f'fit moments    : {", ".join(str(m) for m in np.atleast_1d(fit["fit_moments"]))}',
         f'atmosphere     : kernel={cfg["atmosphere"]["kernel"]}, L0={cfg["atmosphere"]["L0"]}, '
         f'free={atm_names}',
-        f'moment offsets : {[str(m) for m in np.atleast_1d(fit["offset_moments"])] if "offset_moments" in fit.files and np.atleast_1d(fit["offset_moments"]).size else "none"}',
+        f'moment offsets : {[str(m) for m in np.atleast_1d(fit["offset_moments"])] if "offset_moments" in fit and np.atleast_1d(fit["offset_moments"]).size else "none"}',
         f'bin cell_deg   : {cfg["fit"].get("cell_deg", 0.1)}   min_n: {cfg["fit"].get("min_n", 3)}',
         f'PSF model      : jmax={cfg["geometry"]["jmax"]}, annular={cfg["geometry"].get("annular")}, '
         f'stamp={cfg["geometry"]["stamp"]}, oversample={cfg["geometry"]["oversample"]}',
@@ -262,7 +262,7 @@ def _page_info(pdf, seq, fit, info, cfg):
         f'--- fitted atmosphere ---',
         '   ' + '   '.join(f'{n}={v:.4f}' for n, v in zip(atm_names, atm)),
     ]
-    if 'offset_moments' in fit.files and np.atleast_1d(fit['offset_moments']).size:
+    if 'offset_moments' in fit and np.atleast_1d(fit['offset_moments']).size:
         offv = np.asarray(fit['offsets'])
         oms = [str(m) for m in np.atleast_1d(fit['offset_moments'])]
         lines += ['', f'--- fitted moment offsets ---',
@@ -273,16 +273,34 @@ def _page_info(pdf, seq, fit, info, cfg):
     pdf.savefig(fig); plt.close(fig)
 
 
-def run(seq, svd_npz, cfg, model, miw, tag=''):
-    fit = np.load(f'data/vmodefit_{seq}{tag}.npz', allow_pickle=False)
+def stage_fit(Z, s, names):
+    """A single-stage view of the multi-stage vmodefit npz (dict the page
+    functions consume, mimicking the old per-fit npz schema)."""
+    return dict(
+        A=Z['A'][s], atm=Z['atm'][s], atm_names=Z['atm_names'],
+        offsets=Z['offsets'][s], offset_moments=Z['offset_moments'],
+        rot=float(Z['rot']), data_mom=Z['data_mom'], model_mom=Z['model_mom'][s],
+        data_err=Z['data_err'], thx=Z['thx'], thy=Z['thy'], detector=Z['detector'],
+        fit_moments=Z['fit_moments'], n_stars=int(Z['n_stars']),
+        n_cells=int(Z['n_cells']), cost=float(Z['cost'][s]),
+        chi2=float(Z['chi2'][s]), success=bool(Z['success'][s]),
+        reg=float(Z['reg']), regmode=str(Z['regmode']), init=str(Z['init']),
+        minimizer=str(Z['minimizer']), plan=str(Z['plan']),
+        svd_file=str(Z['svd_file']), fit_time_s=float(Z['fit_time_s']),
+        stage=s, stage_name=names[s], n_stages=int(Z['n_stages']),
+        n_free=int(np.asarray(Z['free_vmodes_mask'])[s].sum()),
+        mon_costs=Z['mon_costs'], mon_params=Z['mon_params'],
+        mon_iter_evals=Z['mon_iter_evals'], A_init=Z['A_init'])
+
+
+def run(seq, svd_npz, cfg, model, miw, fit, out):
     A, atm, rot = fit['A'], fit['atm'], float(fit['rot'])
     dcell, mcell = fit['data_mom'], fit['model_mom']       # binned cells (n,12)
-    offsets = fit['offsets'] if 'offsets' in fit.files else None
+    offsets = fit['offsets'] if 'offsets' in fit else None
     info = visit_info(seq)
-    prep = data_fit.load_and_prep(f'data/psfmoments_{visit_of(seq)}.parquet',
+    prep = data_fit.load_and_prep(camp.psfmoments_path(visit_of(seq)),
                                   sign=1, rot_deg=rot)
     jmax = int(cfg['geometry']['jmax'])
-    out = f'output/fit_{seq}{tag}.pdf'
     with PdfPages(out) as pdf:
         _page_info(pdf, seq, fit, info, cfg)
         _page_scalar(pdf, seq, prep, dcell, mcell, lambda m: fwhm_of(m[:, 0]),
@@ -305,33 +323,40 @@ def run(seq, svd_npz, cfg, model, miw, tag=''):
 
 
 def main():
-    svd_npz = next((a for a in sys.argv[1:] if a.endswith('.npz')),
-                   'data/ofc_svd_22_12.npz')
-    seqs = next((a.split('=')[1] for a in sys.argv if a.startswith('seqs=')), None)
-    seqs = [int(s) for s in seqs.split(',')] if seqs else [25, 28]
-    init = next((a.split('=')[1] for a in sys.argv if a.startswith('init=')), 'zero')
-    optics = next((a.split('=')[1] for a in sys.argv if a.startswith('optics=')), 'free')
-    moff = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('moffsets=')), 'off')
-    regmode = next((a.split('=')[1] for a in sys.argv if a.startswith('regmode=')), 'vmode')
-    outtag = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('outtag=')), '')
-    freev = next((a.split('=')[1] for a in sys.argv if a.startswith('freevmodes=')), '')
-    opt = next((a.split('=')[1] for a in sys.argv if a.startswith('opt=')), 'lbfgsb')
-    # must mirror run_vmode_fit's tag exactly so we load the matching vmodefit npz
-    _p = (([init] if init != 'zero' else [])
-          + (['atmonly'] if optics == 'fixed' else [])
-          + ([f'v{freev.replace(",", "-")}'] if freev else [])
-          + (['moff'] if moff not in ('off', 'none', '') else [])
-          + (['wreg'] if regmode == 'wavefront' else [])
-          + (['migrad'] if opt == 'migrad' else []))
-    tag = ('_' + '_'.join(_p)) if _p else ''
-    tag += outtag
+    global DAY
+    ap = argparse.ArgumentParser(description='optatmo per-visit fit report')
+    ap.add_argument('--campaign', required=True)
+    ap.add_argument('--day', type=int, required=True)
+    ap.add_argument('--seqs', type=int, nargs='+', required=True)
+    ap.add_argument('--stage', default='last',
+                    help='last | all | <int>  (which fit stage to report)')
+    ap.add_argument('--coll', default='u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
+    ap.add_argument('--filt', default='i_39')
+    ap.add_argument('--repo', default='/repo/main')
+    args = ap.parse_args()
+    DAY = args.day
     cfg = load_config('config.yaml')
     cfg['geometry']['stamp'] = 24; cfg['geometry']['oversample'] = 12
     cfg['atmosphere']['kernel'] = 'VonKarman'
     model = fitmod.build_model(cfg)
-    miw = MIWCalib(MIW_COLL, physical_filter=MIW_FILT, repo=MIW_REPO)
-    for seq in seqs:
-        run(seq, svd_npz, cfg, model, miw, tag=tag)
+    miw = MIWCalib(args.coll, physical_filter=args.filt, repo=args.repo)
+    campn = camp.Campaign(args.campaign, args.day)
+    for seq in args.seqs:
+        Z = np.load(campn.fit_npz(seq), allow_pickle=False)
+        S = int(Z['n_stages'])
+        names = [str(x) for x in np.atleast_1d(Z['stage_names'])]
+        if args.stage == 'all':
+            sel = list(range(S))
+        elif args.stage == 'last':
+            sel = [S - 1]
+        else:
+            sel = [int(args.stage)]
+        svd = str(Z['svd_file'])
+        for s in sel:
+            fit = stage_fit(Z, s, names)
+            out = (campn.report_pdf(seq) if s == S - 1
+                   else f'{campn.reports}/fit_{seq}_{names[s]}.pdf')
+            run(seq, svd, cfg, model, miw, fit, out)
 
 
 if __name__ == '__main__':

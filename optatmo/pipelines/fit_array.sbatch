@@ -1,88 +1,65 @@
 #!/bin/bash
-# SLURM array job: fully process one in-focus image (seq_num) per array task --
-# extract PSF-star moments + corner-WFS Zernikes (if needed), run the v-mode fit
-# (-> data/vmodefit_<seq>.npz + output/fitmon_<seq>.png), and make the
-# data-vs-model + corner-comparison plots (-> output/dm_*_<seq>.png).  Tasks are
-# fully independent (distinct output files), so no Snakemake lock / no races.
-# The fit prints a chi2 line per function evaluation and checkpoints its trace to
-# data/fitprog_<seq>.npz every iteration, so a time-limit kill still leaves a
-# reviewable partial result.
+# SLURM array: fully process one in-focus image (seq_num) per array task with
+# fit_optatmo -- extract PSF-star moments + corner-WFS Zernikes (if needed), run
+# the staged v-mode fit, and make the per-stage report PDFs.  Outputs are
+# organized per campaign: output/runs/<CAMPAIGN>/<DAY>/{fits,reports,ensemble}.
+# Tasks are independent (distinct output files), so no lock / no races.
 #
-# Before submitting, ONCE (from the optatmo dir): pull the code you want the
-# whole array to run, and build the SVD basis (avoids a 20-way race):
+# Before submitting, ONCE (from the optatmo dir): pull the code, build the SVD,
+# and PRE-EXTRACT the visits so tasks don't race the same visit's parquets:
 #     git pull
-#     python code/build_svd_local.py
-# Do NOT git pull inside the task -- array tasks would race and could run
-# different code versions.
+#     [ -f data/ofc_svd_50_34_k6.npz ] || python code/build_svd_local.py
+#     SEQS="25 28 ..."; DAY=20260513
+#     for S in $SEQS; do V=$(printf '%s%05d' $DAY $S); \
+#         python code/extract_psf_moments.py --visits $V --collection LSSTCam/runs/nightlyValidation --out-dir data; \
+#         python code/extract_cwfs.py --visits $V --collection '*danish_1_2_0*' --out-dir data; done
 #
-# Submit (set SEQS to your list; N = number of seqs):
-#     SEQS="25 28 30 31 34 ..."          # your in-focus seq_nums
-#     N=$(echo $SEQS | wc -w)
-#     sbatch --array=0-$((N-1)) --export=ALL,SEQS="$SEQS" pipelines/fit_array.sbatch
-#
-# Override the night / CWFS source / fit options via --export, e.g. 20260706
-# (no danish aggregate table there -> corners must come from ConsDB):
-#     sbatch --array=0-$((N-1)) \
-#            --export=ALL,SEQS="$SEQS",DAY=20260706,CWFS_SRC=consdb \
+# Submit (N = number of seqs).  Pick a fit plan + minimizer via --export:
+#     SEQS="25 28 ..."; N=$(echo $SEQS | wc -w)
+#   stage-1-then-full, L-BFGS-B:
+#     sbatch --array=0-$((N-1))%12 --export=ALL,SEQS="$SEQS",DAY=20260513,\
+#CAMPAIGN=focus_then_full,PLAN=focus_then_full,INIT=cwfs,MINIMIZER=lbfgsb,CWFS_SRC=danish \
 #            pipelines/fit_array.sbatch
-# ConsDB on S3DF batch reads the token FILE ~/.lsst/consdb_token (shared home is
-# mounted on the milano nodes), so no token needs to be exported.
+#   full fit with iminuit MIGRAD:
+#     ...,CAMPAIGN=full_migrad,PLAN=full,INIT=cwfs,MINIMIZER=migrad,...
+#   then the ensemble summary for the campaign:
+#     python code/ensemble_vmodes.py  --campaign <CAMPAIGN> --day 20260513
+#     python code/ensemble_corners.py --campaign <CAMPAIGN> --day 20260513 --coll <COLL> --filt i_39
 #
-# Fit stages (all with SEQS="<your list>",DAY=20260513,CWFS_SRC=danish added):
-#   stage 1 (v1 + atmosphere, others held at CWFS):
-#       --export=ALL,SEQS="$SEQS",...,INIT=cwfs,FREEVMODES=1
-#       then: python code/ensemble_vmodes.py --tag _cwfs_v1 --day 20260513
-#   stage 2 (full v-mode fit from the CWFS start):
-#       --export=ALL,SEQS="$SEQS",...,INIT=cwfs
-#       then: python code/ensemble_vmodes.py --tag _cwfs --day 20260513
-#   stage 3 (full fit with the iminuit MIGRAD minimizer):
-#       --export=ALL,SEQS="$SEQS",...,INIT=cwfs,OPT=migrad
-#       then: python code/ensemble_vmodes.py --tag _cwfs_migrad --day 20260513
-#
-# Adjust --partition/--account below to your S3DF allocation if these defaults
-# are wrong (check: sacctmgr show assoc user=$USER format=account,partition).
+# ConsDB on S3DF batch reads ~/.lsst/consdb_token (shared home is mounted); no
+# token export needed.  Adjust --partition/--account to your S3DF allocation.
 #
 #SBATCH --job-name=optatmo_fit
 #SBATCH --partition=milano
 #SBATCH --account=rubin:developers
 #SBATCH --output=pipelines/logs/fit_%A_%a.log
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 
-# print a line FIRST so the log is never empty even if setup fails below
 echo "=== task ${SLURM_ARRAY_TASK_ID:-?} on $(hostname) $(date) ==="
 cd "${SLURM_SUBMIT_DIR:-.}"
 echo "cwd: $(pwd)"
 
-# Set up the stack BEFORE 'set -e' and WITHOUT silencing stderr: the LSST env
-# scripts are not nounset-clean, so a non-zero return here under set -euo would
-# otherwise kill the job silently (empty log).
 source /sdf/group/rubin/sw/tag/w_2026_27/loadLSST.bash >/dev/null
 setup lsst_distrib
 echo "python: $(which python)"
-
-# The stack points CARGO_HOME/RUSTUP_HOME at the read-only shared conda env, so a
-# Rust-backed package's import tries (and fails) to mkdir there -- harmless, but
-# noisy. Redirect them to a writable path to silence it.
 export CARGO_HOME="$HOME/.cargo"
 export RUSTUP_HOME="$HOME/.rustup"
 
-set -eo pipefail          # note: no -u (loadLSST/eups reference unset vars)
+set -eo pipefail
 
-DAY=${DAY:-20260513}        # night (override via --export for 20260706 etc.)
+DAY=${DAY:-20260513}
+CAMPAIGN=${CAMPAIGN:?set CAMPAIGN via --export=ALL,CAMPAIGN=<label>}
+PLAN=${PLAN:-full}                 # full | focus | focus_then_full
+INIT=${INIT:-cwfs}                 # zero | cwfs
+MINIMIZER=${MINIMIZER:-lbfgsb}     # lbfgsb | migrad
 SVD=data/ofc_svd_50_34_k6.npz
 COLL=u/gmegias/calib/DM-55048/intrinsicZernikes.v3
 FILT=i_39
-REG=${REG:-0}               # no Tikhonov by default (scans showed it only hurt)
 PSF_COLL=${PSF_COLL:-LSSTCam/runs/nightlyValidation}
-CWFS_SRC=${CWFS_SRC:-consdb}   # consdb (any night, writes visitmeta) | danish (20260513 only)
-CWFS_COLL=${CWFS_COLL:-'*danish_1_2_0*'}   # only used when CWFS_SRC=danish
-INIT=${INIT:-zero}          # v-mode start: zero | cwfs (pass via --export)
-OPTICS=${OPTICS:-free}      # free | fixed (freeze v-modes, fit only atmosphere)
-MOFFSETS=${MOFFSETS:-off}   # off | higher | all | csv (constant per-moment offsets)
-FREEVMODES=${FREEVMODES:-}  # e.g. 1 (float only v1, freeze rest at init) -- use INIT=cwfs
-OPT=${OPT:-lbfgsb}          # lbfgsb (scipy) | migrad (iminuit)
+CWFS_SRC=${CWFS_SRC:-danish}       # danish (20260513) | consdb (any night)
+CWFS_COLL=${CWFS_COLL:-'*danish_1_2_0*'}
 
 if [ ! -f "$SVD" ]; then
     echo "ERROR: $SVD missing -- run 'python code/build_svd_local.py' once first." >&2
@@ -92,33 +69,29 @@ fi
 read -ra ARR <<< "${SEQS:?set SEQS via --export=ALL,SEQS=\"25 28 ...\"}"
 SEQ=${ARR[$SLURM_ARRAY_TASK_ID]:?array index out of range for SEQS}
 VISIT=$(printf '%s%05d' "$DAY" "$SEQ")
-echo "task $SLURM_ARRAY_TASK_ID -> seq $SEQ (visit $VISIT)"
+echo "task $SLURM_ARRAY_TASK_ID -> seq $SEQ (visit $VISIT) campaign=$CAMPAIGN plan=$PLAN"
 
-# extract this visit's PSF-star moments + corner-WFS Zernikes if not present
+# extract this visit's inputs to data/ if not present (should be pre-extracted)
 if [ ! -f "data/psfmoments_${VISIT}.parquet" ]; then
     python code/extract_psf_moments.py --visits "$VISIT" \
         --collection "$PSF_COLL" --out-dir data
 fi
 if [ ! -f "data/cwfs_${VISIT}.parquet" ]; then
     if [ "$CWFS_SRC" = consdb ]; then
-        # ConsDB corners (works on any night; also writes visitmeta_<visit> that
-        # run_vmode_fit.rot_for needs off-20260513).  url='auto' + token file.
         python code/consdb_cwfs.py --visits "$VISIT" --out-dir data
     else
-        # danish aggregateAOSVisitTableRaw (20260513 only)
         python code/extract_cwfs.py --visits "$VISIT" \
             --collection "$CWFS_COLL" --out-dir data
     fi
 fi
 
-# fit just this one image (prints cost/eval; checkpoints data/fitprog_<seq>*.npz)
-python code/run_vmode_fit.py 1 "$SVD" reg=$REG seqs="$SEQ" day=$DAY \
-    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS" moffsets="$MOFFSETS" \
-    freevmodes="$FREEVMODES" opt="$OPT"
+# staged v-mode fit -> output/runs/<CAMPAIGN>/<DAY>/fits/vmodefit_<seq>.npz
+python code/fit_optatmo.py --day "$DAY" --seqs "$SEQ" --campaign "$CAMPAIGN" \
+    --plan "$PLAN" --init "$INIT" --minimizer "$MINIMIZER" \
+    --svd "$SVD" --coll "$COLL" --filt "$FILT"
 
-# multi-page PDF report (moments, corners, fit progress) for this image
-python code/plot_data_model.py "$SVD" seqs="$SEQ" day=$DAY \
-    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS" moffsets="$MOFFSETS" \
-    freevmodes="$FREEVMODES" opt="$OPT"
+# per-stage report PDFs -> .../reports/
+python code/plot_data_model.py --campaign "$CAMPAIGN" --day "$DAY" --seqs "$SEQ" \
+    --stage all --coll "$COLL" --filt "$FILT"
 
-echo "done seq $SEQ (init=$INIT optics=$OPTICS freevmodes='$FREEVMODES' opt=$OPT)"
+echo "done seq $SEQ (campaign=$CAMPAIGN plan=$PLAN minimizer=$MINIMIZER)"
