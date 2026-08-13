@@ -28,6 +28,17 @@
 # ConsDB on S3DF batch reads the token FILE ~/.lsst/consdb_token (shared home is
 # mounted on the milano nodes), so no token needs to be exported.
 #
+# Fit stages (all with SEQS="<your list>",DAY=20260513,CWFS_SRC=danish added):
+#   stage 1 (v1 + atmosphere, others held at CWFS):
+#       --export=ALL,SEQS="$SEQS",...,INIT=cwfs,FREEVMODES=1
+#       then: python code/ensemble_vmodes.py --tag _cwfs_v1 --day 20260513
+#   stage 2 (full v-mode fit from the CWFS start):
+#       --export=ALL,SEQS="$SEQS",...,INIT=cwfs
+#       then: python code/ensemble_vmodes.py --tag _cwfs --day 20260513
+#   stage 3 (full fit with the iminuit MIGRAD minimizer):
+#       --export=ALL,SEQS="$SEQS",...,INIT=cwfs,OPT=migrad
+#       then: python code/ensemble_vmodes.py --tag _cwfs_migrad --day 20260513
+#
 # Adjust --partition/--account below to your S3DF allocation if these defaults
 # are wrong (check: sacctmgr show assoc user=$USER format=account,partition).
 #
@@ -70,6 +81,8 @@ CWFS_COLL=${CWFS_COLL:-'*danish_1_2_0*'}   # only used when CWFS_SRC=danish
 INIT=${INIT:-zero}          # v-mode start: zero | cwfs (pass via --export)
 OPTICS=${OPTICS:-free}      # free | fixed (freeze v-modes, fit only atmosphere)
 MOFFSETS=${MOFFSETS:-off}   # off | higher | all | csv (constant per-moment offsets)
+FREEVMODES=${FREEVMODES:-}  # e.g. 1 (float only v1, freeze rest at init) -- use INIT=cwfs
+OPT=${OPT:-lbfgsb}          # lbfgsb (scipy) | migrad (iminuit)
 
 if [ ! -f "$SVD" ]; then
     echo "ERROR: $SVD missing -- run 'python code/build_svd_local.py' once first." >&2
@@ -100,10 +113,12 @@ fi
 
 # fit just this one image (prints cost/eval; checkpoints data/fitprog_<seq>*.npz)
 python code/run_vmode_fit.py 1 "$SVD" reg=$REG seqs="$SEQ" day=$DAY \
-    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS" moffsets="$MOFFSETS"
+    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS" moffsets="$MOFFSETS" \
+    freevmodes="$FREEVMODES" opt="$OPT"
 
 # multi-page PDF report (moments, corners, fit progress) for this image
 python code/plot_data_model.py "$SVD" seqs="$SEQ" day=$DAY \
-    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS" moffsets="$MOFFSETS"
+    coll="$COLL" filt="$FILT" init="$INIT" optics="$OPTICS" moffsets="$MOFFSETS" \
+    freevmodes="$FREEVMODES" opt="$OPT"
 
-echo "done seq $SEQ"
+echo "done seq $SEQ (init=$INIT optics=$OPTICS freevmodes='$FREEVMODES' opt=$OPT)"
