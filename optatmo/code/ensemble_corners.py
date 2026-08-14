@@ -39,24 +39,39 @@ CORNERS = ['R00', 'R04', 'R40', 'R44']
 CCOLOR = {'R00': 'C0', 'R04': 'C1', 'R40': 'C2', 'R44': 'C3'}
 
 
-def discover_seqs(campn):
+def campaign_items(campaign, day=None, seqs=None):
+    """List of (day, seq, npz_path) for a campaign: one day, or all days."""
     pat = re.compile(r'vmodefit_(\d+)\.npz$')
-    return sorted(int(pat.search(os.path.basename(f)).group(1))
-                  for f in glob.glob(f'{campn.fits}/vmodefit_*.npz')
-                  if pat.search(os.path.basename(f)))
+    if day is not None:
+        fits = glob.glob(f'output/runs/{campaign}/{day}/fits/vmodefit_*.npz')
+        items = [(day, int(pat.search(os.path.basename(f)).group(1)), f)
+                 for f in fits if pat.search(os.path.basename(f))]
+        if seqs:
+            items = [it for it in items if it[1] in set(seqs)]
+        return sorted(items, key=lambda t: t[1])
+    items = []
+    for dd in sorted(glob.glob(f'output/runs/{campaign}/*/fits')):
+        d = int(dd.split('/')[-2])
+        for f in sorted(glob.glob(f'{dd}/vmodefit_*.npz')):
+            m = pat.search(os.path.basename(f))
+            if m:
+                items.append((d, int(m.group(1)), f))
+    return items
 
 
-def collect(campn, seqs, cfg, miw, jmax, stage):
+def collect(items, cfg, miw, jmax, stage):
     from lsst.obs.lsst import LsstCam
     name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
     offsets = cfg.get('cwfs', {}).get('offsets', {})
-    fb = eu.danish_blur(campn.day)
+    fb_cache = {}
     rows, vrows, Afit, Acwfs, used, stage_name = [], [], [], [], 0, None
-    for seq in seqs:
-        npz = campn.fit_npz(seq)
-        cwf = camp.cwfs_path(int(f'{campn.day}{seq:05d}'))
+    for (day, seq, npz) in items:
+        cwf = camp.cwfs_path(int(f'{day}{seq:05d}'))
         if not (os.path.exists(npz) and os.path.exists(cwf)):
             continue
+        if day not in fb_cache:
+            fb_cache[day] = eu.danish_blur(day)
+        fb = fb_cache[day]
         Z = np.load(npz, allow_pickle=False)
         S = int(Z['n_stages'])
         si = S - 1 if stage == 'last' else int(stage)
@@ -67,8 +82,8 @@ def collect(campn, seqs, cfg, miw, jmax, stage):
         mfwhm = (float(np.asarray(Z['atm'])[si][an.index('fwhm')])
                  if 'fwhm' in an else np.nan)
         Afit.append(A); Acwfs.append(np.asarray(Z['A_init']))
-        vrows.append(dict(seq=seq, model_fwhm=mfwhm,
-                          donut_blur=eu.donut_blur(seq, campn.day, fb)))
+        vrows.append(dict(day=day, seq=seq, model_fwhm=mfwhm,
+                          donut_blur=eu.donut_blur(seq, day, fb)))
         cw = pd.read_parquet(cwf); cw['corner'] = cw.detector.str[:3]
         got = 0
         for c in CORNERS:
@@ -91,7 +106,7 @@ def collect(campn, seqs, cfg, miw, jmax, stage):
             got += 1
         if got:
             used += 1
-    print(f'pooled {used}/{len(seqs)} visits, {len(rows)} corner-Zernike points '
+    print(f'pooled {used}/{len(items)} visits, {len(rows)} corner-Zernike points '
           f'(stage {stage_name})')
     return (pd.DataFrame(rows), pd.DataFrame(vrows),
             np.array(Afit), np.array(Acwfs), stage_name)
@@ -147,29 +162,41 @@ def plot(df, vdf, Afit, Acwfs, out_pdf, title):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--campaign', required=True)
-    ap.add_argument('--day', type=int, required=True)
+    ap.add_argument('--day', type=int, default=None,
+                    help='single day_obs; omit with --all-days')
+    ap.add_argument('--all-days', action='store_true',
+                    help='pool every day_obs in the campaign (production run)')
     ap.add_argument('--seqs', type=int, nargs='+', default=None)
     ap.add_argument('--stage', default='last', help='last | <int>')
     ap.add_argument('--coll', default='u/gmegias/calib/DM-55048/intrinsicZernikes.v3')
     ap.add_argument('--filt', default='i_39')
     ap.add_argument('--repo', default='/repo/main')
     args = ap.parse_args()
+    if not args.all_days and args.day is None:
+        ap.error('give --day <day_obs> or --all-days')
 
     cfg = load_config('config.yaml')
     jmax = cfg['geometry']['jmax']
-    campn = camp.Campaign(args.campaign, args.day)
-    os.makedirs(campn.ensemble, exist_ok=True)
-    seqs = args.seqs or discover_seqs(campn)
-    if not seqs:
-        raise SystemExit(f'no vmodefit_*.npz in {campn.fits}')
+    if args.all_days:
+        items = campaign_items(args.campaign)
+        out_dir = f'output/runs/{args.campaign}'
+        label = f'{args.campaign} ALL days'
+    else:
+        items = campaign_items(args.campaign, args.day, args.seqs)
+        out_dir = camp.Campaign(args.campaign, args.day).ensemble
+        label = f'{args.day} {args.campaign}'
+    if not items:
+        raise SystemExit(f'no vmodefit_*.npz found for campaign {args.campaign}')
+    os.makedirs(out_dir, exist_ok=True)
     miw = MIWCalib(args.coll, physical_filter=args.filt, repo=args.repo)
-    df, vdf, Afit, Acwfs, stage_name = collect(campn, seqs, cfg, miw, jmax, args.stage)
+    df, vdf, Afit, Acwfs, stage_name = collect(items, cfg, miw, jmax, args.stage)
     if df.empty:
         raise SystemExit('no corner points pooled')
-    base = f'{campn.ensemble}/ensemble_corners_stage_{stage_name}'
+    base = (f'{out_dir}/ensemble_corners_alldays_stage_{stage_name}' if args.all_days
+            else f'{out_dir}/ensemble_corners_stage_{stage_name}')
     df.to_csv(base + '.csv', index=False)                    # raw corner points
     zfits, vfits, ffit = plot(df, vdf, Afit, Acwfs, base + '.pdf',
-                              f'{args.day} {args.campaign} stage {stage_name}')
+                              f'{label} stage {stage_name} ({len(vdf)} visits)')
     n_v = Afit.shape[1]
     # per-term robust slope/intercept/r (Zj + v-modes + the FWHM-vs-blur fit)
     pd.DataFrame([dict(term=f'Z{j}', **zfits[j]) for j in NOLL_CWFS]
@@ -177,7 +204,8 @@ def main():
                  + [dict(term='atmo_fwhm_vs_blur', **ffit)]
                  ).to_csv(base + '_fits.csv', index=False)
     # per-visit raw values (v-mode amplitudes + atmo FWHM + donut blur)
-    vc = {'seq': vdf.seq.to_numpy(), 'atm_fwhm': vdf.model_fwhm.to_numpy(),
+    vc = {'day': vdf.day.to_numpy(), 'seq': vdf.seq.to_numpy(),
+          'atm_fwhm': vdf.model_fwhm.to_numpy(),
           'donut_blur': vdf.donut_blur.to_numpy()}
     for i in range(n_v):
         vc[f'v{i+1}_fit'] = Afit[:, i]; vc[f'v{i+1}_cwfs'] = Acwfs[:, i]
