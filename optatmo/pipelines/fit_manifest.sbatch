@@ -10,14 +10,19 @@
 #     20260513 25
 #     20260706 40
 #     ...
-# then submit (N = number of lines; throttle concurrency with %):
-#     N=$(wc -l < pipelines/prod_famcwfs.txt)
-#     sbatch --array=0-$((N-1))%50 \
-#       --export=ALL,MANIFEST=pipelines/prod_famcwfs.txt,CAMPAIGN=famcwfs_prod,\
+# then submit in CHUNKS (each array index must be < the cluster MaxArraySize;
+# check: scontrol show config | grep MaxArraySize).  OFFSET selects the manifest
+# block, so every array stays 0..CHUNK-1:
+#     MANIFEST=pipelines/prod_famcwfs.txt; N=$(wc -l < $MANIFEST); CHUNK=500
+#     for OFF in $(seq 0 $CHUNK $((N-1))); do
+#       L=$((N-OFF)); [ $L -gt $CHUNK ] && L=$CHUNK
+#       sbatch --array=0-$((L-1))%50 \
+#         --export=ALL,OFFSET=$OFF,MANIFEST=$MANIFEST,CAMPAIGN=famcwfs_prod,\
 #PLAN=focus_then_full,INIT=cwfs,MINIMIZER=lbfgsb,CWFS_SRC=danish,SKIP=1 \
-#       pipelines/fit_manifest.sbatch
-# SKIP=1 makes it resumable: re-submitting only fits visits missing from the
-# campaign.  Outputs -> output/runs/<CAMPAIGN>/<day_obs>/{fits,reports}.
+#         pipelines/fit_manifest.sbatch
+#     done
+# (set CHUNK <= MaxArraySize.)  SKIP=1 makes it resumable: re-submitting only
+# fits visits missing from the campaign.  Outputs -> output/runs/<CAMPAIGN>/<day>.
 #
 #SBATCH --job-name=optatmo_prod
 #SBATCH --partition=milano
@@ -51,7 +56,14 @@ CWFS_COLL=${CWFS_COLL:-'*danish_1_2_0*'}
 
 [ -f "$SVD" ] || { echo "ERROR: $SVD missing" >&2; exit 1; }
 
-LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "$MANIFEST")
+# manifest line = OFFSET + task id (OFFSET lets you chunk a manifest longer than
+# the cluster MaxArraySize into several submissions).
+OFFSET=${OFFSET:-0}
+LINE_NO=$((OFFSET + SLURM_ARRAY_TASK_ID + 1))
+LINE=$(sed -n "${LINE_NO}p" "$MANIFEST")
+if [ -z "$LINE" ]; then
+    echo "no manifest line $LINE_NO (past end of $MANIFEST); nothing to do"; exit 0
+fi
 DAY=$(echo "$LINE" | awk '{print $1}')
 SEQ=$(echo "$LINE" | awk '{print $2}')
 [ -n "$DAY" ] && [ -n "$SEQ" ] || { echo "ERROR: bad manifest line '$LINE'" >&2; exit 1; }
