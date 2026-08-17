@@ -71,9 +71,13 @@ def fit_line(ax, x, y, lim=None):
     return f
 
 
-def scatter_fit(ax, x, y, title, c='C0'):
-    """Single-colour scatter with 1:1 + robust fit line; annotate r/m/b."""
-    ax.scatter(x, y, s=15, c=c, alpha=0.75)
+def scatter_fit(ax, x, y, title, c='C0', s=6, alpha=0.4):
+    """Single-colour scatter with 1:1 + robust fit line; annotate r/m/b.
+
+    Small edgeless markers at low alpha so overlapping points accumulate into a
+    visible density.
+    """
+    ax.scatter(x, y, s=s, c=c, alpha=alpha, linewidths=0)
     f = fit_line(ax, x, y)
     ax.set_aspect('equal'); ax.tick_params(labelsize=6)
     ax.axhline(0, color='0.85', lw=0.4); ax.axvline(0, color='0.85', lw=0.4)
@@ -85,12 +89,12 @@ def scatter_fit(ax, x, y, title, c='C0'):
     return f
 
 
-def scatter_fit_xy(ax, x, y, title, c='C4'):
+def scatter_fit_xy(ax, x, y, title, c='C4', s=6, alpha=0.4):
     """Scatter + robust fit over the DATA range (not origin-centred) -- for
     quantities like FWHM that don't straddle zero."""
     x = np.asarray(x, float); y = np.asarray(y, float)
     m = np.isfinite(x) & np.isfinite(y)
-    ax.scatter(x[m], y[m], s=15, c=c, alpha=0.8)
+    ax.scatter(x[m], y[m], s=s, c=c, alpha=alpha, linewidths=0)
     f = robust_fit(x, y)
     if m.sum() >= 3 and np.ptp(x[m]) > 0:
         lo = float(min(x[m].min(), y[m].min())); hi = float(max(x[m].max(), y[m].max()))

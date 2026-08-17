@@ -4,10 +4,14 @@ Comprehensive report pooling every fitted visit
 (output/runs/<campaign>/<day>/fits/vmodefit_<seq>.npz):
   page 1  per-Noll corner-Zernike scatter (PSF-fit deviation vs CWFS deviation,
           both rel. official MIW) + the atmo-FWHM vs donut-blur panel;
-  page 2  per-v-mode fitted amplitude A[stage] vs CWFS-projected A_init;
-  page 3  summary bars (Pearson r / robust slope / robust intercept) per Noll j;
-  page 4  summary bars per v-mode.
-Every scatter uses a robust (Huber) linear fit with a FREE intercept.
+  page 2  Z4 per corner (fit stage) -- is the slope/offset corner-consistent?
+  page 3  Z4 per corner from the focus-only stage (v1+atm), if distinct;
+  page 4  per-v-mode fitted amplitude A[stage] vs CWFS-projected A_init;
+  page 5  summary bars (Pearson r / robust slope / robust intercept) per Noll j;
+  page 6  summary bars per v-mode;
+  page 7  per-visit validation histograms (χ², n_stars, n_cells, FWHM, blur, rot).
+Every scatter uses a robust (Huber) linear fit with a FREE intercept, drawn with
+small low-alpha markers so overlapping points show as density.
 
 Needs the Butler (MIW) for the corner deviations -> run on USDF.
 
@@ -63,8 +67,10 @@ def collect(items, cfg, miw, jmax, stage):
     from lsst.obs.lsst import LsstCam
     name2id = {d.getName(): d.getId() for d in LsstCam.getCamera()}
     offsets = cfg.get('cwfs', {}).get('offsets', {})
+    i4 = NOLL_CWFS.index(4)
     fb_cache = {}
-    rows, vrows, Afit, Acwfs, used, stage_name = [], [], [], [], 0, None
+    rows, vrows, frows = [], [], []
+    Afit, Acwfs, used, stage_name, focus_name = [], [], 0, None, None
     for (day, seq, npz) in items:
         cwf = camp.cwfs_path(int(f'{day}{seq:05d}'))
         if not (os.path.exists(npz) and os.path.exists(cwf)):
@@ -75,15 +81,22 @@ def collect(items, cfg, miw, jmax, stage):
         Z = np.load(npz, allow_pickle=False)
         S = int(Z['n_stages'])
         si = S - 1 if stage == 'last' else int(stage)
-        stage_name = [str(x) for x in np.atleast_1d(Z['stage_names'])][si]
+        names = [str(x) for x in np.atleast_1d(Z['stage_names'])]
+        stage_name = names[si]
         A = np.asarray(Z['A'])[si]
+        A0 = np.asarray(Z['A'])[0]                       # focus (stage 0)
+        has_focus = S > 1 and si != 0
+        focus_name = names[0]
         rot = float(Z['rot']); svd = str(Z['svd_file'])
         an = [str(x) for x in np.atleast_1d(Z['atm_names'])]
         mfwhm = (float(np.asarray(Z['atm'])[si][an.index('fwhm')])
                  if 'fwhm' in an else np.nan)
         Afit.append(A); Acwfs.append(np.asarray(Z['A_init']))
         vrows.append(dict(day=day, seq=seq, model_fwhm=mfwhm,
-                          donut_blur=eu.donut_blur(seq, day, fb)))
+                          donut_blur=eu.donut_blur(seq, day, fb),
+                          chi2=float(np.asarray(Z['chi2'])[si]),
+                          n_stars=int(Z['n_stars']), n_cells=int(Z['n_cells']),
+                          rot=rot))
         cw = pd.read_parquet(cwf); cw['corner'] = cw.detector.str[:3]
         got = 0
         for c in CORNERS:
@@ -96,23 +109,61 @@ def collect(items, cfg, miw, jmax, stage):
             miwc = np.nan_to_num(miw.zernikes(cx, cy, np.deg2rad(rot), jmax,
                                               [det_id])[0])
             pdev = wavefront_at(A, svd, [cx], [cy], jmax=jmax, fp_radius=FP_R)[0]
+            pdev0 = (wavefront_at(A0, svd, [cx], [cy], jmax=jmax, fp_radius=FP_R)[0]
+                     if has_focus else None)
             for i, j in enumerate(NOLL_CWFS):
                 if j > jmax or f'ztot_{i}' not in sub.columns:
                     continue
+                cwfs_dev = (float(np.median(sub[f'ztot_{i}'])) - miwc[j]
+                            - float(offsets.get(j, 0.0)))
                 rows.append(dict(seq=seq, corner=c, j=j,
-                                 cwfs=float(np.median(sub[f'ztot_{i}'])) - miwc[j]
-                                 - float(offsets.get(j, 0.0)),
-                                 psf=float(pdev[j])))
+                                 cwfs=cwfs_dev, psf=float(pdev[j])))
+                if j == 4 and has_focus:
+                    frows.append(dict(seq=seq, corner=c, cwfs=cwfs_dev,
+                                      psf=float(pdev0[4])))
             got += 1
         if got:
             used += 1
     print(f'pooled {used}/{len(items)} visits, {len(rows)} corner-Zernike points '
           f'(stage {stage_name})')
-    return (pd.DataFrame(rows), pd.DataFrame(vrows),
-            np.array(Afit), np.array(Acwfs), stage_name)
+    return (pd.DataFrame(rows), pd.DataFrame(vrows), pd.DataFrame(frows),
+            np.array(Afit), np.array(Acwfs), stage_name, focus_name)
 
 
-def plot(df, vdf, Afit, Acwfs, out_pdf, title):
+def _z4_corner_page(pdf, dsub, title):
+    """2x2 page: Z4 PSF-vs-CWFS deviation, one panel per corner, with r/m/b."""
+    fig, axes = plt.subplots(2, 2, figsize=(10, 9.5))
+    for c, ax in zip(CORNERS, axes.flat):
+        s = dsub[dsub.corner == c]
+        eu.scatter_fit(ax, s.cwfs.to_numpy(), s.psf.to_numpy(), f'Z4  {c}',
+                       c=CCOLOR[c], s=10)
+        ax.set_xlabel('CWFS Z4 deviation [µm]', fontsize=8)
+        ax.set_ylabel('PSF Z4 deviation [µm]', fontsize=8)
+    fig.suptitle(title, fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.97]); pdf.savefig(fig); plt.close(fig)
+
+
+def _validation_page(pdf, vdf, title):
+    """Per-visit distributions -- fit quality + observing conditions."""
+    specs = [('chi2', 'moment χ² (fit stage)'), ('n_stars', 'stars fit / visit'),
+             ('n_cells', 'binned cells / visit'), ('model_fwhm', 'atmo FWHM [arcsec]'),
+             ('donut_blur', 'donut blur [arcsec]'), ('rot', 'rotator angle [deg]')]
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    for (col, lab), ax in zip(specs, axes.flat):
+        v = pd.to_numeric(vdf.get(col), errors='coerce').to_numpy()
+        v = v[np.isfinite(v)]
+        if len(v):
+            ax.hist(v, bins=40, color='C0', alpha=0.85)
+            ax.set_title(f'{lab}\nmed={np.median(v):.3g}  N={len(v)}', fontsize=9)
+        else:
+            ax.set_title(f'{lab} (n/a)', fontsize=9)
+        ax.set_xlabel(lab, fontsize=8); ax.set_ylabel('visits', fontsize=8)
+        ax.tick_params(labelsize=7)
+    fig.suptitle(title, fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.96]); pdf.savefig(fig); plt.close(fig)
+
+
+def plot(df, vdf, fdf, Afit, Acwfs, out_pdf, title, stage_name, focus_name):
     zfits, vfits = {}, {}
     with PdfPages(out_pdf) as pdf:
         # page 1: per-Noll corner scatter (colour by corner) + FWHM panel
@@ -122,7 +173,8 @@ def plot(df, vdf, Afit, Acwfs, out_pdf, title):
             s = df[df.j == j]
             for c in CORNERS:
                 sc = s[s.corner == c]
-                ax.scatter(sc.cwfs, sc.psf, s=13, c=CCOLOR[c], label=c, alpha=0.7)
+                ax.scatter(sc.cwfs, sc.psf, s=5, c=CCOLOR[c], label=c,
+                           alpha=0.4, linewidths=0)
             f = eu.fit_line(ax, s.cwfs.to_numpy(), s.psf.to_numpy())
             zfits[j] = f
             ax.set_aspect('equal'); ax.tick_params(labelsize=6)
@@ -139,7 +191,15 @@ def plot(df, vdf, Afit, Acwfs, out_pdf, title):
                      f'red=robust fit', fontsize=12)
         fig.tight_layout(rect=[0, 0, 1, 0.98]); pdf.savefig(fig); plt.close(fig)
 
-        # page 2: per-v-mode fitted vs CWFS
+        # page 2: Z4 per corner (fit stage)  -- is the slope/offset corner-consistent?
+        _z4_corner_page(pdf, df[df.j == 4],
+                        f'{title}  Z4 per corner (stage {stage_name})')
+        # page 3: Z4 per corner from the focus-only stage (if distinct)
+        if len(fdf):
+            _z4_corner_page(pdf, fdf,
+                            f'{title}  Z4 per corner (stage {focus_name}: v1+atm only)')
+
+        # page: per-v-mode fitted vs CWFS
         n_v = Afit.shape[1]; nrow = int(np.ceil(n_v / ncol))
         fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 3.0 * nrow))
         for i in range(n_v):
@@ -150,11 +210,14 @@ def plot(df, vdf, Afit, Acwfs, out_pdf, title):
                      f'red=robust fit', fontsize=12)
         fig.tight_layout(rect=[0, 0, 1, 0.98]); pdf.savefig(fig); plt.close(fig)
 
-        # pages 3-4: summary bars (r / slope / intercept)
+        # summary bars (r / slope / intercept)
         eu.summary_bars(pdf, plt, [f'Z{j}' for j in NOLL_CWFS],
                         [zfits[j] for j in NOLL_CWFS], f'{title}  (corner Zj)')
         eu.summary_bars(pdf, plt, [f'v{i+1}' for i in range(n_v)],
                         [vfits[i] for i in range(n_v)], f'{title}  (v-modes)')
+
+        # validation / conditions
+        _validation_page(pdf, vdf, f'{title}  per-visit validation')
     print(f'wrote {out_pdf}')
     return zfits, vfits, ffit
 
@@ -189,14 +252,16 @@ def main():
         raise SystemExit(f'no vmodefit_*.npz found for campaign {args.campaign}')
     os.makedirs(out_dir, exist_ok=True)
     miw = MIWCalib(args.coll, physical_filter=args.filt, repo=args.repo)
-    df, vdf, Afit, Acwfs, stage_name = collect(items, cfg, miw, jmax, args.stage)
+    df, vdf, fdf, Afit, Acwfs, stage_name, focus_name = collect(
+        items, cfg, miw, jmax, args.stage)
     if df.empty:
         raise SystemExit('no corner points pooled')
     base = (f'{out_dir}/ensemble_corners_alldays_stage_{stage_name}' if args.all_days
             else f'{out_dir}/ensemble_corners_stage_{stage_name}')
     df.to_csv(base + '.csv', index=False)                    # raw corner points
-    zfits, vfits, ffit = plot(df, vdf, Afit, Acwfs, base + '.pdf',
-                              f'{label} stage {stage_name} ({len(vdf)} visits)')
+    zfits, vfits, ffit = plot(df, vdf, fdf, Afit, Acwfs, base + '.pdf',
+                              f'{label} stage {stage_name} ({len(vdf)} visits)',
+                              stage_name, focus_name)
     n_v = Afit.shape[1]
     # per-term robust slope/intercept/r (Zj + v-modes + the FWHM-vs-blur fit)
     pd.DataFrame([dict(term=f'Z{j}', **zfits[j]) for j in NOLL_CWFS]
