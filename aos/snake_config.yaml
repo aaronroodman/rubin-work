@@ -73,3 +73,12 @@ param_sets:
         collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
         phrase: aos_fam_danish_1_2_0_wep17_7_0_embargo0713
         butler_repo: /repo/embargo
+
+  fam_danish_1_2_0_wep17_7_0_2025:
+    coord_sys: OCS
+    chunks:
+      - [20250415, 20250531]
+      - [20250601, 20250930]
+      - [20251001, 20251115]
+      - [20251116, 20251130]
+      - [20251201, 20251231]

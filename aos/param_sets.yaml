@@ -156,3 +156,38 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   day_obs_min: 20260315
   day_obs_max: 20260531
   
+
+# ---------------------------------------------------------------------------
+# 2025 FAM reprocessing — Danish 1.2.0, wep 17.7.0, dviz 4.7.0, bin x2, paired,
+# refitWcs (Chris's run).  2025 FAM lives in the BASE fam collection (NO /2025
+# suffix); 2025 corner-WFS lives in the /2025 cwfs collection.  One param_set,
+# five date chunks in snake_config -> one combined output/<ps>/ table.
+#   FAM  : LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+#   CWFS : LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
+# The base FAM collection also holds 2026 data (to 20260711); day_obs_min/max
+# (and the snake_config chunks) restrict to 2025.
+#
+# fam_programs is substring-matched (science_program.str.contains).  CAPTURES ALL
+# 2025 FAM via [BLOCK, CWFS, AOSSEQUENCE] (all 2243 visits).  mktable merges the
+# science_program column into the output, so stable-vs-S-matrix can be split at
+# analysis time.  Canonical 2025 program groupings:
+#   STABLE   (1204, clean optical state):
+#     [T278, T381, T393, T395, T475, T492, T539, T559, T614, T717, T720, T724]
+#   S-MATRIX (837, AOS DOF deliberately moved — exclude for stable studies/MIW):
+#     [T197, T377, T378, T379, T380, T503, T598, T606]
+#   other    (202): T417 T459 T460 T519 T609 T615 T626 T630 CWFS AOSSEQUENCE
+# NB the measured-intrinsic (MIW/sidecar) build has NO program filter, so a
+# sidecar must be built from a STABLE-only source, not this all-programs table.
+# ---------------------------------------------------------------------------
+
+fam_danish_1_2_0_wep17_7_0_2025:
+  description: "2025 (Apr-Dec), Danish 1.2.0 wep 17.7.0 dv 4.7.0 bin x2 paired refitWcs; all programs"
+  butler_repo: /repo/main
+  fam_programs: [BLOCK, CWFS, AOSSEQUENCE]
+  fam_collections:
+    - LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+  wfs_collections:
+    refitWcs: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
+  collection_phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+  day_obs_min: 20250415
+  day_obs_max: 20251231
