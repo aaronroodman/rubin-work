@@ -1,15 +1,15 @@
 """Ensemble PSF-vs-CWFS comparison for one campaign / day / fit stage.
 
 Comprehensive report pooling every fitted visit
-(output/runs/<campaign>/<day>/fits/vmodefit_<seq>.npz):
-  page 1  per-Noll corner-Zernike scatter (PSF-fit deviation vs CWFS deviation,
-          both rel. official MIW) + the atmo-FWHM vs donut-blur panel;
-  page 2  Z4 per corner (fit stage) -- is the slope/offset corner-consistent?
-  page 3  Z4 per corner from the focus-only stage (v1+atm), if distinct;
-  page 4  per-v-mode fitted amplitude A[stage] vs CWFS-projected A_init;
-  page 5  summary bars (Pearson r / robust slope / robust intercept) per Noll j;
-  page 6  summary bars per v-mode;
-  page 7  per-visit validation histograms (χ², n_stars, n_cells, FWHM, blur, rot).
+(output/runs/<campaign>/<day>/fits/vmodefit_<seq>.npz), FULL-stage pages first,
+then the focus-only stage, then validation:
+  1  FULL: per-Noll corner-Zernike scatter (+ atmo-FWHM vs donut-blur panel);
+  2  FULL: Z4 per corner (is the slope/offset corner-consistent?);
+  3  FULL: per-v-mode fitted A[stage] vs CWFS-projected A_init;
+  4  FULL: summary bars (Pearson r / robust slope / robust intercept) per Noll j;
+  5  FULL: summary bars per v-mode;
+  6  FOCUS stage (v1+atm only): Z4 per corner + v1 + atmo-FWHM vs blur, one page;
+  7  per-visit validation histograms (χ², n_stars, n_cells, FWHM, blur, rot).
 Every scatter uses a robust (Huber) linear fit with a FREE intercept, drawn with
 small low-alpha markers so overlapping points show as density.
 
@@ -70,7 +70,7 @@ def collect(items, cfg, miw, jmax, stage):
     i4 = NOLL_CWFS.index(4)
     fb_cache = {}
     rows, vrows, frows = [], [], []
-    Afit, Acwfs, used, stage_name, focus_name = [], [], 0, None, None
+    Afit, Afocus, Acwfs, used, stage_name, focus_name = [], [], [], 0, None, None
     for (day, seq, npz) in items:
         cwf = camp.cwfs_path(int(f'{day}{seq:05d}'))
         if not (os.path.exists(npz) and os.path.exists(cwf)):
@@ -89,10 +89,11 @@ def collect(items, cfg, miw, jmax, stage):
         focus_name = names[0]
         rot = float(Z['rot']); svd = str(Z['svd_file'])
         an = [str(x) for x in np.atleast_1d(Z['atm_names'])]
-        mfwhm = (float(np.asarray(Z['atm'])[si][an.index('fwhm')])
-                 if 'fwhm' in an else np.nan)
-        Afit.append(A); Acwfs.append(np.asarray(Z['A_init']))
-        vrows.append(dict(day=day, seq=seq, model_fwhm=mfwhm,
+        fwhm_i = an.index('fwhm') if 'fwhm' in an else None
+        mfwhm = float(np.asarray(Z['atm'])[si][fwhm_i]) if fwhm_i is not None else np.nan
+        ffwhm = float(np.asarray(Z['atm'])[0][fwhm_i]) if fwhm_i is not None else np.nan
+        Afit.append(A); Afocus.append(A0); Acwfs.append(np.asarray(Z['A_init']))
+        vrows.append(dict(day=day, seq=seq, model_fwhm=mfwhm, focus_fwhm=ffwhm,
                           donut_blur=eu.donut_blur(seq, day, fb),
                           chi2=float(np.asarray(Z['chi2'])[si]),
                           n_stars=int(Z['n_stars']), n_cells=int(Z['n_cells']),
@@ -127,7 +128,8 @@ def collect(items, cfg, miw, jmax, stage):
     print(f'pooled {used}/{len(items)} visits, {len(rows)} corner-Zernike points '
           f'(stage {stage_name})')
     return (pd.DataFrame(rows), pd.DataFrame(vrows), pd.DataFrame(frows),
-            np.array(Afit), np.array(Acwfs), stage_name, focus_name)
+            np.array(Afit), np.array(Afocus), np.array(Acwfs),
+            stage_name, focus_name)
 
 
 def _z4_corner_page(pdf, dsub, title):
@@ -163,11 +165,36 @@ def _validation_page(pdf, vdf, title):
     fig.tight_layout(rect=[0, 0, 1, 0.96]); pdf.savefig(fig); plt.close(fig)
 
 
-def plot(df, vdf, fdf, Afit, Acwfs, out_pdf, title, stage_name, focus_name):
-    zfits, vfits = {}, {}
+def _focus_page(pdf, fdf, Afocus, Acwfs, vdf, title):
+    """One page for the focus-only stage: Z4 per corner + v1 + FWHM vs blur."""
+    fig, axes = plt.subplots(2, 3, figsize=(15, 9.5))
+    ff = {}
+    for c, ax in zip(CORNERS, axes.flat[:4]):
+        s = fdf[fdf.corner == c]
+        ff[f'Z4_{c}'] = eu.scatter_fit(ax, s.cwfs.to_numpy(), s.psf.to_numpy(),
+                                       f'Z4  {c}', c=CCOLOR[c], s=10)
+        ax.set_xlabel('CWFS Z4 dev [µm]', fontsize=8)
+        ax.set_ylabel('PSF Z4 dev [µm]', fontsize=8)
+    ff['v1_focus'] = eu.scatter_fit(axes.flat[4], Acwfs[:, 0], Afocus[:, 0],
+                                    'v1 (focus)', c='C0', s=10)
+    axes.flat[4].set_xlabel('CWFS v1 (A_init)', fontsize=8)
+    axes.flat[4].set_ylabel('focus-fit v1', fontsize=8)
+    ff['fwhm_vs_blur_focus'] = eu.scatter_fit_xy(
+        axes.flat[5], vdf.donut_blur.to_numpy(), vdf.focus_fwhm.to_numpy(),
+        'atmo FWHM (focus) vs donut blur', s=10)
+    axes.flat[5].set_xlabel('donut blur [arcsec]', fontsize=8)
+    axes.flat[5].set_ylabel('atmo FWHM [arcsec]', fontsize=8)
+    fig.suptitle(title, fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.97]); pdf.savefig(fig); plt.close(fig)
+    return ff
+
+
+def plot(df, vdf, fdf, Afit, Afocus, Acwfs, out_pdf, title, stage_name, focus_name):
+    zfits, vfits, focus_fits = {}, {}, {}
+    ncol = 6
     with PdfPages(out_pdf) as pdf:
-        # page 1: per-Noll corner scatter (colour by corner) + FWHM panel
-        nj = len(NOLL_CWFS); ncol = 6; nrow = int(np.ceil((nj + 1) / ncol))
+        # 1. FULL: corner-Zernike scatter (colour by corner) + FWHM-vs-blur panel
+        nj = len(NOLL_CWFS); nrow = int(np.ceil((nj + 1) / ncol))
         fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 3.0 * nrow))
         for ax, j in zip(axes.flat, NOLL_CWFS):
             s = df[df.j == j]
@@ -187,39 +214,40 @@ def plot(df, vdf, fdf, Afit, Acwfs, out_pdf, title, stage_name, focus_name):
         for ax in axes.flat[nj + 1:]:
             ax.set_visible(False)
         axes.flat[0].legend(fontsize=6, loc='upper left')
-        fig.suptitle(f'{title}   corner Zj: x=CWFS y=PSF [µm]  dashed 1:1  '
+        fig.suptitle(f'{title}   FULL corner Zj: x=CWFS y=PSF [µm]  dashed 1:1  '
                      f'red=robust fit', fontsize=12)
         fig.tight_layout(rect=[0, 0, 1, 0.98]); pdf.savefig(fig); plt.close(fig)
 
-        # page 2: Z4 per corner (fit stage)  -- is the slope/offset corner-consistent?
+        # 2. FULL: Z4 per corner
         _z4_corner_page(pdf, df[df.j == 4],
-                        f'{title}  Z4 per corner (stage {stage_name})')
-        # page 3: Z4 per corner from the focus-only stage (if distinct)
-        if len(fdf):
-            _z4_corner_page(pdf, fdf,
-                            f'{title}  Z4 per corner (stage {focus_name}: v1+atm only)')
+                        f'{title}  FULL Z4 per corner (stage {stage_name})')
 
-        # page: per-v-mode fitted vs CWFS
+        # 3. FULL: per-v-mode fitted vs CWFS
         n_v = Afit.shape[1]; nrow = int(np.ceil(n_v / ncol))
         fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 3.0 * nrow))
         for i in range(n_v):
             vfits[i] = eu.scatter_fit(axes.flat[i], Acwfs[:, i], Afit[:, i], f'v{i+1}')
         for ax in axes.flat[n_v:]:
             ax.set_visible(False)
-        fig.suptitle(f'{title}   v-modes: x=CWFS A_init  y=fit A  dashed 1:1  '
+        fig.suptitle(f'{title}   FULL v-modes: x=CWFS A_init  y=fit A  dashed 1:1  '
                      f'red=robust fit', fontsize=12)
         fig.tight_layout(rect=[0, 0, 1, 0.98]); pdf.savefig(fig); plt.close(fig)
 
-        # summary bars (r / slope / intercept)
+        # 4-5. FULL: summary bars (r / slope / intercept)
         eu.summary_bars(pdf, plt, [f'Z{j}' for j in NOLL_CWFS],
-                        [zfits[j] for j in NOLL_CWFS], f'{title}  (corner Zj)')
+                        [zfits[j] for j in NOLL_CWFS], f'{title}  FULL (corner Zj)')
         eu.summary_bars(pdf, plt, [f'v{i+1}' for i in range(n_v)],
-                        [vfits[i] for i in range(n_v)], f'{title}  (v-modes)')
+                        [vfits[i] for i in range(n_v)], f'{title}  FULL (v-modes)')
 
-        # validation / conditions
+        # 6. FOCUS-only stage: Z4 per corner + v1 + FWHM-vs-blur, one page
+        if len(fdf):
+            focus_fits = _focus_page(pdf, fdf, Afocus, Acwfs, vdf,
+                                     f'{title}  FOCUS stage ({focus_name}: v1+atm only)')
+
+        # 7. per-visit validation / conditions
         _validation_page(pdf, vdf, f'{title}  per-visit validation')
     print(f'wrote {out_pdf}')
-    return zfits, vfits, ffit
+    return zfits, vfits, ffit, focus_fits
 
 
 def main():
@@ -252,21 +280,22 @@ def main():
         raise SystemExit(f'no vmodefit_*.npz found for campaign {args.campaign}')
     os.makedirs(out_dir, exist_ok=True)
     miw = MIWCalib(args.coll, physical_filter=args.filt, repo=args.repo)
-    df, vdf, fdf, Afit, Acwfs, stage_name, focus_name = collect(
+    df, vdf, fdf, Afit, Afocus, Acwfs, stage_name, focus_name = collect(
         items, cfg, miw, jmax, args.stage)
     if df.empty:
         raise SystemExit('no corner points pooled')
     base = (f'{out_dir}/ensemble_corners_alldays_stage_{stage_name}' if args.all_days
             else f'{out_dir}/ensemble_corners_stage_{stage_name}')
     df.to_csv(base + '.csv', index=False)                    # raw corner points
-    zfits, vfits, ffit = plot(df, vdf, fdf, Afit, Acwfs, base + '.pdf',
-                              f'{label} stage {stage_name} ({len(vdf)} visits)',
-                              stage_name, focus_name)
+    zfits, vfits, ffit, focus_fits = plot(
+        df, vdf, fdf, Afit, Afocus, Acwfs, base + '.pdf',
+        f'{label} stage {stage_name} ({len(vdf)} visits)', stage_name, focus_name)
     n_v = Afit.shape[1]
-    # per-term robust slope/intercept/r (Zj + v-modes + the FWHM-vs-blur fit)
+    # per-term robust slope/intercept/r (full Zj + v-modes + FWHM-vs-blur + focus)
     pd.DataFrame([dict(term=f'Z{j}', **zfits[j]) for j in NOLL_CWFS]
                  + [dict(term=f'v{i+1}', **vfits[i]) for i in range(n_v)]
                  + [dict(term='atmo_fwhm_vs_blur', **ffit)]
+                 + [dict(term=f'focus_{k}', **v) for k, v in focus_fits.items()]
                  ).to_csv(base + '_fits.csv', index=False)
     # per-visit raw values (v-mode amplitudes + atmo FWHM + donut blur)
     vc = {'day': vdf.day.to_numpy(), 'seq': vdf.seq.to_numpy(),
