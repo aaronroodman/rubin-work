@@ -211,7 +211,14 @@ rule mktable:
         # ESS-temperature loop (--no-thermal) when only donuts/Zernikes are needed.
         workers   = MKT.get("workers", 1),
         nothermal = "--no-thermal" if MKT.get("no_thermal") else "",
-    resources: mem_mb=4000
+    # Declare the REAL cost so Snakemake self-throttles: each mktable spawns
+    # `workers` donut-reading processes.  threads=workers makes -j cap the number
+    # of concurrent chunks (e.g. -j 32, workers 8 -> 4 chunks), and mem_mb scales
+    # so the --resources mem_mb budget does too.  Without this Snakemake saw a
+    # 1-core/4GB job and ran every chunk x8 workers at once -> node OOM ->
+    # BrokenProcessPool.  ~3 GB/worker is a conservative bin-x2 donut estimate.
+    threads: MKT.get("workers", 1)
+    resources: mem_mb=3000 * MKT.get("workers", 1)
     log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
         rf"""
