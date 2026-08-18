@@ -159,35 +159,24 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
 
 # ---------------------------------------------------------------------------
 # 2025 FAM reprocessing — Danish 1.2.0, wep 17.7.0, dviz 4.7.0, bin x2, paired,
-# refitWcs (Chris's run).  2025 FAM lives in the BASE fam collection (NO /2025
-# suffix); 2025 corner-WFS lives in the /2025 cwfs collection.  One param_set,
-# five date chunks in snake_config -> one combined output/<ps>/ table.
-#   FAM  : LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
-#   CWFS : LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
-# The base FAM collection also holds 2026 data (to 20260711); day_obs_min/max
-# (and the snake_config chunks) restrict to 2025.
+# refitWcs (Chris's run).  The 17.7.0 base FAM collection spans 2025-04..2026-07,
+# so the 2025 FAM is folded into fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x as five
+# extra date-chunks (see snake_config.yaml), combining into that param_set's
+# output/<ps>/ table so the coadd runs over 2025+2026 together.  Those chunks carry
+# their own per-chunk collection + phrase + programs=[BLOCK,CWFS,AOSSEQUENCE]
+# (all 2243 2025 FAM visits), so no standalone param_set is needed here.
+#   FAM base : LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
 #
-# fam_programs is substring-matched (science_program.str.contains).  CAPTURES ALL
-# 2025 FAM via [BLOCK, CWFS, AOSSEQUENCE] (all 2243 visits).  mktable merges the
-# science_program column into the output, so stable-vs-S-matrix can be split at
-# analysis time.  Canonical 2025 program groupings:
-#   STABLE   (1204, clean optical state):
-#     [T278, T381, T393, T395, T475, T492, T539, T559, T614, T717, T720, T724]
-#   S-MATRIX (837, AOS DOF deliberately moved — exclude for stable studies/MIW):
-#     [T197, T377, T378, T379, T380, T503, T598, T606]
-#   other    (202): T417 T459 T460 T519 T609 T615 T626 T630 CWFS AOSSEQUENCE
-# NB the measured-intrinsic (MIW/sidecar) build has NO program filter, so a
-# sidecar must be built from a STABLE-only source, not this all-programs table.
+# Canonical 2025 program groups (substring-matched; filter at coadd time via
+# run_fam_coadd_miw --programs, or when building a stable-only MIW/sidecar —
+# the MIW build has NO program filter, so its source must be stable-only):
+#   STABLE   (1204): T278 T381 T393 T395 T475 T492 T539 T559 T614 T717 T720 T724
+#   S-MATRIX (837) : T197 T377 T378 T379 T380 T503 T598 T606
+#   other    (202) : T417 T459 T460 T519 T609 T615 T626 T630 CWFS AOSSEQUENCE
+#
+# 2025 corner-WFS is a SEPARATE collection and wfs_collections is param_set-level,
+# so the merge above does NOT ingest 2025 CWFS.  To add it, extend this param_set's
+# wfs_collections with a 2025 variant (its ingestion just finds no match for 2026
+# visits, and the 2026 refitWcs variant finds none for 2025):
+#   refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
 # ---------------------------------------------------------------------------
-
-fam_danish_1_2_0_wep17_7_0_2025:
-  description: "2025 (Apr-Dec), Danish 1.2.0 wep 17.7.0 dv 4.7.0 bin x2 paired refitWcs; all programs"
-  butler_repo: /repo/main
-  fam_programs: [BLOCK, CWFS, AOSSEQUENCE]
-  fam_collections:
-    - LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
-  wfs_collections:
-    refitWcs: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
-  collection_phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
-  day_obs_min: 20250415
-  day_obs_max: 20251231

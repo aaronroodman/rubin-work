@@ -73,12 +73,35 @@ param_sets:
         collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
         phrase: aos_fam_danish_1_2_0_wep17_7_0_embargo0713
         butler_repo: /repo/embargo
-
-  fam_danish_1_2_0_wep17_7_0_2025:
-    coord_sys: OCS
-    chunks:
-      - [20250415, 20250531]
-      - [20250601, 20250930]
-      - [20251001, 20251115]
-      - [20251116, 20251130]
-      - [20251201, 20251231]
+      # ---- 2025 FAM (Chris's danish 1.2.0 wep 17.7.0 reprocessing) ----
+      # The base 17.7.0 FAM collection spans 2025-04..2026-07, so the 2025 visits
+      # are pulled here as per-chunk overrides (own collection + all-programs
+      # capture) and combine into the SAME output/<ps>/ table as the 2026 data,
+      # so the coadd runs over both years.  programs=[BLOCK,CWFS,AOSSEQUENCE]
+      # captures all 2025 FAM (2243 visits); filter stable-vs-S-matrix at coadd
+      # time (run_fam_coadd_miw --programs).  Canonical 2025 program groups:
+      #   STABLE  : T278 T381 T393 T395 T475 T492 T539 T559 T614 T717 T720 T724
+      #   S-MATRIX: T197 T377 T378 T379 T380 T503 T598 T606
+      # NB: 2025 corner-WFS lives in a SEPARATE collection (.../cwfs/.../refitWcs/2025);
+      # wfs_collections is param_set-level, so 2025 CWFS is not ingested by this
+      # merge — wire it up separately if needed (see param_sets.yaml note).
+      - day_obs: [20250415, 20250531]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20250601, 20250930]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20251001, 20251115]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20251116, 20251130]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20251201, 20251231]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
