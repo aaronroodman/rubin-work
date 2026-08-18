@@ -127,6 +127,12 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   # (the extra exposure): +1 = in-focus (default), 0 = extra, -1 = intra.
   wfs_collections:
     refitWcs:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
+    # 2025 in-focus corners (Chris's 17.7.0 reprocessing).  SEPARATE collection from
+    # the 17.6.1 refitWcs above; it matches only the 2025 FAM chunks (2026 visits find
+    # no aggregate here, and the 17.6.1 refitWcs finds none for 2025).  In-focus
+    # exposure = FAM extra + 1 (seq_offset default +1, like refitWcs).  Lands in
+    # output/<ps>/wfs/refitWcs_2025/.
+    refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
     paired_3mm:
       # Bryce's paired 3mm-defocus corner donuts, wep 17.8.0 / donut_viz 4.7.0.
       collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_8_0/donut_viz_4_7_0/danish_v1_2_0/bin2x
