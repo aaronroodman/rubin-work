@@ -146,7 +146,7 @@ def main():
     guider_geom = gas.get_guiders_afw()
     science_geom = gas.get_science_afw()               # 189, for the FoV / psf-shape
     cfg0 = dict(gas.CFG, atmo_source=args.atmo_source, screen_scale=args.screen_scale,
-                roi=args.roi, fov_dets="science", fov_roi=args.roi,
+                roi=args.roi, fov_dets="science", fov_roi=args.roi, atmo_plots=True,
                 psfws_forecast_file=args.psfws_forecast, psfws_data_dir=args.psfws_data_dir)
 
     ckptdir = os.path.join(args.outdir, "visits"); os.makedirs(ckptdir, exist_ok=True)

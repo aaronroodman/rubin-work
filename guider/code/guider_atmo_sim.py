@@ -93,6 +93,7 @@ CFG = dict(
 
     day_obs=0, seq_num=0,    # labels only (GuiderData adapter / plot titles)
     rot_tel_pos=0.0,         # rotator telescope position [deg] (psf-shape plot orientation)
+    atmo_plots=False,        # write per-visit atmosphere validation (screens/winds/Cn2)
     doOpt=False,             # add imSim field-dependent optical phase screen
     seed=57721,
 
@@ -565,6 +566,7 @@ def build_calibrated_atmo(cfg, source_key, geom, theta_max, exposure_s, seed):
     final), and the full-size atmosphere is built ONCE at the end. Returns
     (atmo, cfg, rng, params, ss)."""
     import gc
+    calib = []                                              # (atm_fwhm, measured) record
     if cfg.get("target_fwhm") and cfg.get("fwhm_cal", True):
         target = cfg["target_fwhm"]
         cfg = dict(cfg, _atm_fwhm=target_fwhm(cfg))          # seed atmospheric target
@@ -579,6 +581,7 @@ def build_calibrated_atmo(cfg, source_key, geom, theta_max, exposure_s, seed):
                              cfg["flux_counts"])
             del atmo, params
             gc.collect()
+            calib.append((float(cfg["_atm_fwhm"]), float(m)))
             print(f"  [fwhm cal {it}] on-axis FWHM={m:.3f}\" "
                   f"(target {target:.3f}\", atm_fwhm={cfg['_atm_fwhm']:.3f}\")")
             if not np.isfinite(m) or abs(m - target) / target < 0.02:
@@ -590,6 +593,7 @@ def build_calibrated_atmo(cfg, source_key, geom, theta_max, exposure_s, seed):
     ss, need = choose_screen_size(params, theta_max, exposure_s, cfg)
     atmo = make_atmo(params, ss, cfg, rng)
     report_atmo(params, ss, need, cfg["screen_scale"])
+    cfg = dict(cfg, _calib=calib, _screen_size=ss)           # for atmosphere validation
     return atmo, cfg, rng, params, ss
 
 
@@ -604,6 +608,9 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=None):
         print(f"\n=== visit {v} ({source_key}, {cfg['render']}): building atmosphere ===")
         atmo, cfgv, rng, params, ss = build_calibrated_atmo(
             cfg, source_key, geom, theta_max, visit_time, cfg["seed"] + v)
+        if cfgv.get("atmo_plots"):
+            from guider_atmo_atmoinfo import write_atmo_info
+            write_atmo_info(outdir, atmo, params, cfgv)
         fmap = cfgv.get("_flux_map") or {}   # optional per-guider observed counts
         stamps = np.empty((cfg["stamps_per_visit"], ng, roi, roi), dtype=np.float32)
         for k in range(cfg["stamps_per_visit"]):
@@ -723,6 +730,10 @@ def run_fov(cfg, geom, source_key, outdir, os, pd):
         ss, need = choose_screen_size(params, theta_max, cfg["fov_exptime"], cfgf)
         report_atmo(params, ss, need, cfgf["screen_scale"])
         atmo = make_atmo(params, ss, cfgf, rng)
+        cfgv = dict(cfgf, _screen_size=ss, _calib=[])
+        if cfgv.get("atmo_plots"):
+            from guider_atmo_atmoinfo import write_atmo_info
+            write_atmo_info(outdir, atmo, params, cfgv)
         vr, vs = draw_fov(atmo, geom, cfgf, rng, v)
         rows += vr
         stamps_by_visit[v] = vs
@@ -799,6 +810,8 @@ if __name__ == "__main__":
     ap.add_argument("--band", choices=list("ugrizy"), help="filter band (wavelength + plot label)")
     ap.add_argument("--rot-tel-pos", type=float, dest="rot_tel_pos",
                     help="rotator telescope position [deg] for psf-shape plot orientation")
+    ap.add_argument("--atmo-plots", action="store_true", dest="atmo_plots",
+                    help="write per-visit atmosphere validation (phase screens, winds, Cn2, FWHM cal)")
     ap.add_argument("--also-fov", action="store_true", dest="also_fov",
                     help="in guiders mode, also draw FoV stars (science+guiders) from "
                          "the SAME atmosphere -> guider_atmo_fov_moments.parquet + stamps")
@@ -818,6 +831,8 @@ if __name__ == "__main__":
         cfg["fwhm_cal"] = False
     if args.also_fov:
         cfg["also_fov"] = True
+    if args.atmo_plots:
+        cfg["atmo_plots"] = True
     if args.flux_file:
         import json
         with open(args.flux_file) as fh:
