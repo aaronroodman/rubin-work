@@ -74,15 +74,35 @@ def data_dir():
     return Path(d)
 
 
-def base_builder(band="i"):
-    """Fiducial LSSTBuilder in the smatrix/OFC convention (no perturbations)."""
+def _resolve_dir(dd, name):
+    """Full path under the data dir if it exists, else the bare name so
+    batoid_rubin can infer its bundled default (envs differ: the laptop has the
+    custom bend_zemax/bend_full, the USDF cvmfs install ships only its default)."""
+    p = dd / name
+    return str(p) if p.exists() else name
+
+
+def base_builder(band="i", bend_dir=None):
+    """Fiducial LSSTBuilder in the smatrix/OFC convention (no perturbations).
+
+    Gravity does NOT use the bending-mode basis, so bend_dir is irrelevant to the
+    result; we just need a valid one.  Prefer an existing custom basis, else fall
+    back to batoid_rubin's bundled default.
+    """
     from batoid_rubin import LSSTBuilder
     dd = data_dir()
+    if bend_dir is None:
+        for cand in ("bend_zemax", "bend_full", "bend"):
+            if (dd / cand).exists():
+                bend_dir = str(dd / cand)
+                break
+        else:
+            bend_dir = "bend"   # batoid_rubin bundled default
     fid = batoid.Optic.fromYaml(f"LSST_{band}.yaml")
     return LSSTBuilder(
         fid,
-        fea_dir=str(dd / "fea_legacy"),
-        bend_dir=str(dd / "bend_zemax"),
+        fea_dir=_resolve_dir(dd, "fea_legacy"),
+        bend_dir=bend_dir,
         use_m1m3_modes=None, use_m2_modes=None,
         dof_coord_system="ZCS",
         flip_m1m3_bending_modes=True, flip_m2_bending_modes=True,
