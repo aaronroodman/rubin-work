@@ -142,6 +142,17 @@ cylindrical-basis decomposition may reassign part of the "OCS" pattern, and
 limited rotator sampling (5 angles) may inflate the apparent field-order,
 softening the field-order discrepancy.
 
+## Follow-up: camera-gravity model + maps (aos/CAMERA_GRAVITY.md)
+The camera-gravity test is now a reusable model in `aos/code/camera_gravity*.py`
+(`aos/CAMERA_GRAVITY.md`), with side-by-side Z5–Z8 focal-plane maps vs the MIW
+(RAW and after-50/34). Additional finding: the batoid_rubin gravity model
+applies **only** lens surface figure; the rigid-body FEA files
+(`fea_legacy/{L1,L2,L3,F,FP}RB.fits.gz`, incl. **focal-plane** motion) exist but
+are **never used**. Applying them (RB toggle) changes mostly **defocus**;
+astig/coma are nearly unchanged — so the omitted focal-plane/decenter motion
+does not hide a large astig/coma gravity contribution. The maps confirm gravity
+adds a **low field-order** (n≈1.5–2) astig quadrupole, unlike the MIW's n=3–5.
+
 ## Next steps
 - **Elevation test (highest value):** compare the MIW OCS astig/coma amplitude
   (and the two rotator-subset groups) vs mean elevation. Camera gravity predicts
