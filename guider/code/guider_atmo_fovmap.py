@@ -110,6 +110,35 @@ def make_psf_mosaic(outdir, visit=0, cutout=None, save=None):
     print(f"wrote {save}")
 
 
+def make_astrometry(outdir, visit=0, save=None):
+    """Quiver of the atmospheric astrometric shift (dx, dy) per star over the FoV."""
+    df = pd.read_parquet(os.path.join(outdir, "guider_atmo_fov_moments.parquet"))
+    d = df[(df.visit == visit) & df.ok].copy()
+    if "shift_x_asec" not in d.columns:
+        print("  (no shift columns; re-run the sim with the astrometric-shift update)")
+        return
+    x, y = d.field_x_deg.values, d.field_y_deg.values
+    dx, dy = d.shift_x_asec.values, d.shift_y_asec.values
+    mag = np.hypot(dx, dy)
+    fig, ax = plt.subplots(figsize=(7.5, 7))
+    q = ax.quiver(x, y, dx, dy, mag, cmap="viridis", angles="xy",
+                  scale_units="xy", scale=0.5, width=0.004)
+    fig.colorbar(q, ax=ax, label="|shift| [arcsec]", fraction=0.046)
+    ax.quiverkey(q, 0.85, 1.02, 0.05, "0.05\"", labelpos="E")
+    ax.scatter(x, y, s=3, c="0.6")
+    lim = 1.05 * max(np.abs(np.r_[x, y]))
+    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_aspect("equal")
+    ax.set_xlabel("field x [deg]"); ax.set_ylabel("field y [deg]")
+    ax.set_title(f"atmospheric astrometric shift — visit {visit}  "
+                 f"(rms {np.hypot(np.std(dx), np.std(dy))*1000:.1f} mas)")
+    fig.tight_layout()
+    if save is None:
+        save = os.path.join(outdir, f"guider_atmo_astrometry_visit{visit:02d}.png")
+    fig.savefig(save, dpi=120)
+    plt.close(fig)
+    print(f"wrote {save}  ({len(d)} stars)")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -120,3 +149,4 @@ if __name__ == "__main__":
     args = ap.parse_args()
     make_maps(args.outdir, visit=args.visit, save=args.save)
     make_psf_mosaic(args.outdir, visit=args.visit, cutout=args.cutout)
+    make_astrometry(args.outdir, visit=args.visit)

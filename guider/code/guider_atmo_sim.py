@@ -604,6 +604,7 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=None):
     theta_max = max(np.hypot(gx, gy) for _, gx, gy, _ in (fov_geom or geom)) / 3600.0
     rows, ng, roi = [], len(geom), cfg["roi"]
     fov_rows, fov_stamps_by_visit = [], {}
+    fov_refs = reference_offsets(fov_geom, cfg) if fov_geom is not None else {}
     for v in range(cfg["n_visits"]):
         print(f"\n=== visit {v} ({source_key}, {cfg['render']}): building atmosphere ===")
         atmo, cfgv, rng, params, ss = build_calibrated_atmo(
@@ -633,6 +634,7 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=None):
         if fov_geom is not None:                    # FoV stars from the SAME atmosphere
             print(f"  --also-fov: {len(fov_geom)} CCDs, {cfgv['fov_exptime']:.0f}s exposure")
             vr, vs = draw_fov(atmo, fov_geom, cfgv, rng, v)
+            _add_shifts(vr, fov_refs)
             fov_rows += vr
             fov_stamps_by_visit[v] = vs
     df = pd.DataFrame(rows)
@@ -665,6 +667,31 @@ def run_guiders(cfg, geom, source_key, outdir, os, pd, fov_geom=None):
         write_fov(fov_rows, fov_stamps_by_visit, outdir, os, pd, PIXEL_SCALE, _fov_extra_meta(cfg))
 
 
+def reference_offsets(geom, cfg):
+    """No-atmosphere (telescope Airy only) centroid offset per CCD [arcsec]. This
+    captures any sub-pixel placement/pixelization bias, which is subtracted from
+    the FoV centroids so the reported shift is purely atmospheric. Geometry-fixed,
+    so computed once per run."""
+    wlen = WLEN_EFF[cfg["band"]]
+    psf = galsim.Airy(lam=wlen, diam=D_APER, obscuration=OBSC)
+    roi = cfg["fov_roi"]
+    refs = {}
+    for name, gx, gy, wcs in geom:
+        img = galsim.Image(roi, roi, wcs=wcs)
+        psf.withFlux(1.0e6).drawImage(image=img, center=img.true_center, method="fft")
+        m = measure(img)
+        refs[name] = (m["cen_x_asec"], m["cen_y_asec"]) if m.get("ok") else (0.0, 0.0)
+    return refs
+
+
+def _add_shifts(rows, refs):
+    """Atmospheric astrometric shift per star = FoV centroid - no-atmo reference."""
+    for row in rows:
+        rx, ry = refs.get(row["det"], (0.0, 0.0))
+        row["shift_x_asec"] = row.get("cen_x_asec", np.nan) - rx
+        row["shift_y_asec"] = row.get("cen_y_asec", np.nan) - ry
+
+
 def draw_fov(atmo, geom, cfg, rng, v):
     """Draw one long-exposure star per CCD from a GIVEN atmosphere; return
     (rows, stamps[n_ccd, roi, roi]). Reused by run_fov and the guiders --also-fov
@@ -694,7 +721,8 @@ def write_fov(rows, stamps_by_visit, outdir, os, pd, pixel_scale, extra_meta=Non
     lead = ["visit", "det", "field_x_asec", "field_y_asec", "field_x_deg",
             "field_y_deg", "fwhm_asec", "e1", "e2", "e",
             "Ixx_asec2", "Iyy_asec2", "Ixy_asec2", "T_asec2",
-            "coma1", "coma2", "trefoil1", "trefoil2", "kurtosis", "flux", "ok"]
+            "coma1", "coma2", "trefoil1", "trefoil2", "kurtosis",
+            "cen_x_asec", "cen_y_asec", "shift_x_asec", "shift_y_asec", "flux", "ok"]
     df = df[[c for c in lead if c in df.columns]]
     pq = os.path.join(outdir, "guider_atmo_fov_moments.parquet")
     df.to_parquet(pq, index=False)
@@ -722,6 +750,9 @@ def run_fov(cfg, geom, source_key, outdir, os, pd):
     # long exposure -> delivered FWHM ~ atmospheric von Karman FWHM; set it directly
     cfgf = dict(cfg, _atm_fwhm=cfg["target_fwhm"]) if cfg.get("target_fwhm") else cfg
     rows, stamps_by_visit = [], {}
+    refs = reference_offsets(geom, cfgf)                # no-atmosphere placement bias
+    print(f"  no-atmosphere reference bias: median |offset| = "
+          f"{np.median([np.hypot(a, b) for a, b in refs.values()])*1000:.2f} mas")
     for v in range(cfg["n_visits"]):
         print(f"\n=== visit {v} ({source_key}, {cfg['render']}): FoV, "
               f"{len(geom)} CCDs, {cfg['fov_exptime']:.0f}s exposure ===")
@@ -735,6 +766,7 @@ def run_fov(cfg, geom, source_key, outdir, os, pd):
             from guider_atmo_atmoinfo import write_atmo_info
             write_atmo_info(outdir, atmo, params, cfgv)
         vr, vs = draw_fov(atmo, geom, cfgf, rng, v)
+        _add_shifts(vr, refs)
         rows += vr
         stamps_by_visit[v] = vs
     write_fov(rows, stamps_by_visit, outdir, os, pd, PIXEL_SCALE, _fov_extra_meta(cfgf))

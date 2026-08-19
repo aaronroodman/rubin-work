@@ -45,7 +45,8 @@ def _mods():
         m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
         return m
     return (load("guider_atmo_sim"), load("guider_atmo_compare"),
-            load("guider_atmo_to_guiderdata"), load("guider_atmo_psfshape"))
+            load("guider_atmo_to_guiderdata"), load("guider_atmo_psfshape"),
+            load("guider_atmo_fovmap"))
 
 
 def _load_summary(path, seq_min, seq_max):
@@ -138,7 +139,7 @@ def main():
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
 
-    gas, gc, ga, gp = _mods()
+    gas, gc, ga, gp, gf = _mods()
     data = _load_summary(args.data_summary, args.seq_min, args.seq_max)
     seqs = sorted(data.seqNum.unique())[:: args.stride]
     if args.max:
@@ -172,6 +173,10 @@ def main():
                     _make_psfshape(gp, subdir, args.band, args.marker_size)
                 except Exception as exc:                 # noqa: BLE001
                     print(f"   psfshape failed: {type(exc).__name__}: {exc}")
+            try:
+                gf.make_astrometry(subdir, 0)            # atmospheric shift quiver
+            except Exception as exc:                     # noqa: BLE001
+                print(f"   astrometry failed: {type(exc).__name__}: {exc}")
             rows = _motion_rows(gc, subdir, seq, drow)
             pd.DataFrame(rows).to_parquet(ckpt, index=False)   # checkpoint (also = 'done')
         except Exception as exc:                          # noqa: BLE001
