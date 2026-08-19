@@ -36,6 +36,7 @@ __all__ = [
     "PSD_BIN_EDGES",
     "temporalShapeCovariance",
     "temporalMomentCovariance",
+    "thirdOrderDecomposition",
     "bandPowerPsd",
     "integralTimescale",
     "summarizeExposure",
@@ -59,7 +60,8 @@ _LOG = logging.getLogger(__name__)
 
 # Summary-table schema version (bump when columns change).
 # v2: add (Mxx,Myy,Mxy) temporal covariance + their band PSDs/floors.
-SCHEMA_VERSION = 2
+# v3: add 3rd-moment (coma, trefoil) static/dynamic/cross decomposition.
+SCHEMA_VERSION = 3
 
 # Fixed log-spaced frequency band edges (Hz) for the binned PSDs. 5 bands.
 PSD_BIN_EDGES = (0.03, 0.1, 0.2, 0.5, 1.0, 2.5)
@@ -159,6 +161,7 @@ class DetectorMoments:
     stampMean: ShapeMoments
     motion: ShapeMoments
     perStamp: pd.DataFrame = field(repr=False)
+    third: dict[str, float] = field(default_factory=dict, repr=False)
 
 
 def makeCutout(
@@ -279,6 +282,7 @@ def unweightedMoments(
     xc: float,
     yc: float,
     rAper: float,
+    third: bool = False,
 ) -> dict[str, float] | None:
     """Unweighted second moments about a fixed center within an aperture.
 
@@ -310,12 +314,18 @@ def unweightedMoments(
     if flux <= 0:
         return None
     dx, dy = xx - xc, yy - yc
-    return {
+    out = {
         "flux": float(flux),
         "Mxx": float((w * dx * dx).sum() / flux),
         "Myy": float((w * dy * dy).sum() / flux),
         "Mxy": float((w * dx * dy).sum() / flux),
     }
+    if third:
+        out["m30"] = float((w * dx * dx * dx).sum() / flux)
+        out["m21"] = float((w * dx * dx * dy).sum() / flux)
+        out["m12"] = float((w * dx * dy * dy).sum() / flux)
+        out["m03"] = float((w * dy * dy * dy).sum() / flux)
+    return out
 
 
 def measureStampMoments(
@@ -325,6 +335,7 @@ def measureStampMoments(
     rAper: float,
     half: int,
     nIter: int = 3,
+    third: bool = True,
 ) -> dict[str, float] | None:
     """Measure one stamp: weighted centroid then unweighted moments.
 
@@ -354,7 +365,7 @@ def measureStampMoments(
         return None
     subBkg, _ = annulusBackground(sub, xx, yy, refCenter[0], refCenter[1], rAper, 2 * rAper)
     xc, yc = gaussianWeightedCentroid(subBkg, xx, yy, refCenter[0], refCenter[1], sigmaW, nIter)
-    moments = unweightedMoments(subBkg, xx, yy, xc, yc, rAper)
+    moments = unweightedMoments(subBkg, xx, yy, xc, yc, rAper, third=third)
     if moments is None:
         return None
     moments["xc"] = xc
@@ -450,19 +461,29 @@ def decomposeDetector(
     coadd = np.nanmean(stack, axis=0)
     csub, cxx, cyy = makeCutout(coadd, (xm, ym), half)
     csub, _ = annulusBackground(csub, cxx, cyy, xm, ym, rAper, 2 * rAper)
-    mc = unweightedMoments(csub, cxx, cyy, xm, ym, rAper)
+    mc = unweightedMoments(csub, cxx, cyy, xm, ym, rAper, third=True)
     if mc is None:
         _LOG.warning("Coadd moment measurement failed for %s.", detector)
         return None
 
-    # per-stamp moments in arcsec**2 for the time-series / PSD analysis
+    # per-stamp moments in arcsec**2 (2nd) / arcsec**3 (3rd) for the analysis
+    s3 = pixscale**3
     perStamp = pm.copy()
     for col in ("Mxx", "Myy", "Mxy"):
         perStamp[col] *= s2
+    for col in ("m30", "m21", "m12", "m03"):
+        if col in perStamp:
+            perStamp[col] *= s3
     perStamp["Q1"] = perStamp["Mxx"] - perStamp["Myy"]
     perStamp["Q2"] = 2.0 * perStamp["Mxy"]
     perStamp["T"] = perStamp["Mxx"] + perStamp["Myy"]
     perStamp["pixscale"] = pixscale
+
+    # 3rd-order static/dynamic/cross decomposition (coma, trefoil)
+    third = {}
+    if all(c in mc for c in ("m30", "m21", "m12", "m03")) and "m30" in perStamp:
+        coadd3rd = {k: mc[k] * s3 for k in ("m30", "m21", "m12", "m03")}
+        third = thirdOrderDecomposition(perStamp, coadd3rd)
 
     return DetectorMoments(
         detector=detector,
@@ -475,6 +496,7 @@ def decomposeDetector(
         stampMean=ShapeMoments(mxxS * s2, myyS * s2, mxyS * s2),
         motion=ShapeMoments(vxx * s2, vyy * s2, vxy * s2),
         perStamp=perStamp,
+        third=third,
     )
 
 
@@ -646,6 +668,78 @@ def temporalMomentCovariance(perStamp: pd.DataFrame) -> dict[str, float]:
         "var_Mxx": float(c[0, 0]), "var_Myy": float(c[1, 1]), "var_Mxy": float(c[2, 2]),
         "cov_Mxx_Myy": float(c[0, 1]), "cov_Mxx_Mxy": float(c[0, 2]), "cov_Myy_Mxy": float(c[1, 2]),
     }
+
+
+def thirdOrderDecomposition(perStamp: pd.DataFrame, coadd3rd: dict[str, float]) -> dict[str, float]:
+    """Static / dynamic / cross split of the 3rd-order moments (coma, trefoil).
+
+    Coma ``(coma1, coma2) = (<u r^2>, <v r^2>)`` and trefoil
+    ``(tref1, tref2) = (<u(u^2-3v^2)>, <v(3u^2-v^2)>)``, arcsec^3. By the law of
+    total cumulants for the flux-weighted mixture of shifted stamps, the coadd
+    3rd moment = static (mean per-stamp) + dynamic (centroid-motion 3rd moment)
+    + cross (3 x cov of centroid offset with per-stamp 2nd moment):
+
+        <u^3>   : static <u^3>   + 3 Cov(du, Mxx)              + <du^3>
+        <u^2 v> : static <u^2 v> + [Cov(dv,Mxx) + 2 Cov(du,Mxy)] + <du^2 dv>
+        <u v^2> : static <u v^2> + [Cov(du,Myy) + 2 Cov(dv,Mxy)] + <du dv^2>
+        <v^3>   : static <v^3>   + 3 Cov(dv, Myy)              + <dv^3>
+
+    then coma/trefoil are linear combos. Returns each of coma1/coma2/tref1/tref2
+    with suffixes _static, _dyn, _cross, _coadd, and _resid = coadd-(sum).
+
+    NOTE: unlike the 2nd-order additivity (which closes to ~1%), the 3rd-order
+    closure is only approximate (``*_resid`` is often tens of %): 3rd moments of
+    ~150 stamps are sampling-noisy and the broader coadd is truncated by a
+    fixed aperture differently than the per-stamp images. The individual
+    ``_static`` (intrinsic coma/trefoil) and ``_dyn`` (centroid-motion skewness)
+    terms are robust and are the intended comparison; ``_cross``/``_resid`` are
+    diagnostic.
+
+    Parameters
+    ----------
+    perStamp : `pandas.DataFrame`
+        Per-stamp table with ``flux, xc, yc, pixscale`` and arcsec-unit
+        ``Mxx, Myy, Mxy`` (arcsec^2) and ``m30, m21, m12, m03`` (arcsec^3),
+        the raw 3rd central moments <u^3>, <u^2 v>, <u v^2>, <v^3>.
+    coadd3rd : `dict`
+        Coadd raw 3rd moments (arcsec^3): ``m30, m21, m12, m03``.
+    """
+    f = perStamp["flux"].to_numpy()
+    wsum = f.sum()
+
+    def wmean(a):
+        return float((f * np.asarray(a)).sum() / wsum)
+
+    px = float(perStamp["pixscale"].iloc[0])
+    xc, yc = perStamp["xc"].to_numpy(), perStamp["yc"].to_numpy()
+    du = (xc - wmean(xc)) * px   # arcsec (wmean(du) = 0)
+    dv = (yc - wmean(yc)) * px
+    Mxx, Myy, Mxy = (perStamp[k].to_numpy() for k in ("Mxx", "Myy", "Mxy"))
+
+    # raw static / dynamic / cross for <u^3>, <u^2 v>, <u v^2>, <v^3>
+    static = (wmean(perStamp["m30"]), wmean(perStamp["m21"]),
+              wmean(perStamp["m12"]), wmean(perStamp["m03"]))
+    dyn = (wmean(du**3), wmean(du * du * dv), wmean(du * dv * dv), wmean(dv**3))
+    cross = (3 * wmean(du * Mxx),
+             wmean(dv * Mxx) + 2 * wmean(du * Mxy),
+             wmean(du * Myy) + 2 * wmean(dv * Mxy),
+             3 * wmean(dv * Myy))
+    coadd = (coadd3rd["m30"], coadd3rd["m21"], coadd3rd["m12"], coadd3rd["m03"])
+
+    def combos(u3, u2v, uv2, v3):
+        return {"coma1": u3 + uv2, "coma2": u2v + v3,
+                "tref1": u3 - 3 * uv2, "tref2": 3 * u2v - v3}
+
+    out = {}
+    parts = {"static": combos(*static), "dyn": combos(*dyn),
+             "cross": combos(*cross), "coadd": combos(*coadd)}
+    for tag, d in parts.items():
+        for k, v in d.items():
+            out[f"{k}_{tag}"] = float(v)
+    for k in ("coma1", "coma2", "tref1", "tref2"):
+        out[f"{k}_resid"] = float(parts["coadd"][k]
+                                  - (parts["static"][k] + parts["dyn"][k] + parts["cross"][k]))
+    return out
 
 
 def bandPowerPsd(
@@ -828,6 +922,7 @@ def summarizeExposure(
             "frac_Q2_static": dm.stampMean.q2 / (dm.stampMean.q2 + dm.motion.q2),
             **temporalShapeCovariance(pm),
             **temporalMomentCovariance(pm),
+            **dm.third,
             "psd_dx": psd_dx, "psd_dy": psd_dy,
             "psd_Q1": psd_Q1, "psd_Q2": psd_Q2, "psd_T": psd_T,
             "psd_Mxx": psd_Mxx, "psd_Myy": psd_Myy, "psd_Mxy": psd_Mxy,
