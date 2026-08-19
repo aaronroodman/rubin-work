@@ -46,7 +46,7 @@ def _mods():
         return m
     return (load("guider_atmo_sim"), load("guider_atmo_compare"),
             load("guider_atmo_to_guiderdata"), load("guider_atmo_psfshape"),
-            load("guider_atmo_fovmap"))
+            load("guider_atmo_fovmap"), load("guider_atmo_tracker"))
 
 
 def _load_summary(path, seq_min, seq_max):
@@ -135,11 +135,13 @@ def main():
                     help="retain the raw stamp .npy files (large!)")
     ap.add_argument("--no-movie", action="store_true")
     ap.add_argument("--no-psfshape", action="store_true")
+    ap.add_argument("--repo", default=None,
+                    help="butler repo -> also emit per-visit GuiderStarTracker table + Cn2")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
 
-    gas, gc, ga, gp, gf = _mods()
+    gas, gc, ga, gp, gf, gt = _mods()
     data = _load_summary(args.data_summary, args.seq_min, args.seq_max)
     seqs = sorted(data.seqNum.unique())[:: args.stride]
     if args.max:
@@ -177,6 +179,13 @@ def main():
                 gf.make_astrometry(subdir, 0)            # atmospheric shift quiver
             except Exception as exc:                     # noqa: BLE001
                 print(f"   astrometry failed: {type(exc).__name__}: {exc}")
+            if args.repo:                                # GuiderStarTracker table + Cn2 (Jackie)
+                try:
+                    stars, _ = gt.build_tracker_table(subdir, args.repo)
+                    stars.to_parquet(os.path.join(subdir, "guider_tracker_table.parquet"), index=False)
+                    gt.write_cn2(subdir, os.path.join(subdir, "guider_tracker_cn2.parquet"))
+                except Exception as exc:                 # noqa: BLE001
+                    print(f"   tracker table failed: {type(exc).__name__}: {exc}")
             rows = _motion_rows(gc, subdir, seq, drow)
             pd.DataFrame(rows).to_parquet(ckpt, index=False)   # checkpoint (also = 'done')
         except Exception as exc:                          # noqa: BLE001
