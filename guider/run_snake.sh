@@ -60,6 +60,7 @@ if [ -n "$dayObs" ]; then
         d="${d// /}"   # strip stray spaces
         [ -n "$d" ] || continue
         targets+=("output/night_${d}/guider_moments_${d}.parquet" \
+                  "output/night_${d}/guider_psfmoments_${d}.parquet" \
                   "output/night_${d}/guider_plots_${d}.pdf")
     done
 fi

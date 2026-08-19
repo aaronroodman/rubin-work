@@ -36,6 +36,7 @@ NIGHTS = [int(d) for d in CFG.get("nights", [])]
 COLLECTIONS = " ".join(BUTLER["collections"])
 GUIDER_HZ = CFG.get("guider_hz", 5.0)
 IMAGE_TYPES = " ".join(CFG.get("image_types", ["science"]))
+SCIENCE_REPO = CFG.get("science_repo", "/repo/main")
 LIMIT = int(config.get("limit", 0))   # CLI: --config limit=N (smoke test)
 
 CODE = "code"
@@ -58,7 +59,8 @@ wildcard_constraints:
 rule all:
     input:
         [f"output/night_{d}/guider_moments_{d}.parquet" for d in NIGHTS]
-        + [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS],
+        + [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
+        + [f"output/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS],
 
 
 checkpoint discover_night:
@@ -127,6 +129,21 @@ rule combine:
             --seqdir output/night_{{wildcards.dayObs}}/seq \
             --outdir output/night_{{wildcards.dayObs}} --dayobs {{wildcards.dayObs}} \
             > {{log}} 2>&1
+        """
+
+
+# ---- adjacent-CCD PSF star moments (science side; independent of guider) ----
+rule psfmoments:
+    output:
+        "output/night_{dayObs}/guider_psfmoments_{dayObs}.parquet",
+    resources:
+        mem_mb=6000,
+    log:
+        "logs/night_{dayObs}.psfmoments.log",
+    shell:
+        f"""
+        python {CODE}/extract_adjacent_psf_moments.py --day-obs {{wildcards.dayObs}} \
+            --out output/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} > {{log}} 2>&1
         """
 
 
