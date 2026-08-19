@@ -14,6 +14,15 @@ from __future__ import annotations
 import argparse
 import os
 
+# Focal-plane-corner science CCDs that are totally vignetted and unusable --
+# the corner-most CCD of each corner-adjacent raft. Excluded as candidates.
+VIGNETTED_CCDS = {
+    "R01_S00", "R10_S00",   # R00 corner
+    "R03_S02", "R14_S02",   # R04 corner
+    "R30_S20", "R41_S00",   # R40 corner
+    "R43_S22", "R34_S22",   # R44 corner
+}
+
 
 def classify(det, DetectorType):
     """Return 'science', 'guider', or 'other' for a detector."""
@@ -31,22 +40,31 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=os.path.join(here, "guider_adjacent_ccds.yaml"))
     ap.add_argument("--topn", type=int, default=3, help="nearest N science CCDs to print.")
+    ap.add_argument("--keep-vignetted", action="store_true",
+                    help="do NOT exclude the vignetted corner CCDs (default: exclude).")
     args = ap.parse_args()
 
     import numpy as np
     from lsst.obs.lsst import LsstCam
     from lsst.afw.cameraGeom import DetectorType, FOCAL_PLANE
 
+    exclude = set() if args.keep_vignetted else VIGNETTED_CCDS
+
     cam = LsstCam.getCamera()
-    science, guiders = [], []
+    science, guiders, dropped = [], [], []
     for det in cam:
         c = det.getCenter(FOCAL_PLANE)   # Point2D, mm
         rec = (det.getId(), det.getName(), c.getX(), c.getY())
         kind = classify(det, DetectorType)
         if kind == "science":
-            science.append(rec)
+            if rec[1] in exclude:
+                dropped.append(rec[1])
+            else:
+                science.append(rec)
         elif kind == "guider":
             guiders.append(rec)
+    if dropped:
+        print(f"excluded {len(dropped)} vignetted corner CCDs: {', '.join(sorted(dropped))}\n")
 
     sci_xy = np.array([[r[2], r[3]] for r in science])
     mapping = {}
