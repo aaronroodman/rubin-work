@@ -1,29 +1,27 @@
 # ----------------------------------------------------------------------
-# Guider moment-decomposition pipeline (Snakemake).
+# Guider moment-decomposition pipeline (Snakemake), per whole night.
 #
-# Per exposure: track guide stars + decompose each sensor's shape into
-# coadd / static-per-stamp / image-motion second moments -> per-exposure
-# summary parquet.  Combine -> Hive-partitioned dataset (by dayObs).
+# discover_night (Butler query, science-only) -> one job per exposure
+#   -> seq/<seqNum>_{moments,stars,metrics}.parquet
+#   -> combine into per-day single files + a per-day QA/summary PDF.
 #
-# Two dataset kinds:
-#   * static  : hand-listed exposures in snake_config.yaml `datasets:`
-#   * night   : all guider exposures of a dayObs, discovered from the Butler
-#               (a Snakemake checkpoint).  Dataset name is `night_<dayObs>`.
+#   snakemake -n                                        # dry-run
+#   snakemake output/night_20260709/guider_moments_20260709.parquet
+#   ./run_snake.sh --day-obs 20260709[,20260710,...] [--mode batch] [--limit N]
 #
-#   snakemake -n                                   # dry-run (static datasets)
-#   snakemake output/night_20260709/moments        # one night (auto-discovered)
-#   ./run_snake.sh --day-obs 20260709 [--mode batch]
-#
-# Layout:
-#   output/<ds>/exposures/<expId>/moments.parquet   (per exposure)
-#   output/<ds>/moments/dayObs=YYYYMMDD/...parquet   (combined, partitioned)
-#   output/<ds>/plots/{whiskers.pdf,validation.png}  (on combined)
+# Per-day outputs (output/night_<dayObs>/):
+#   seq/<seqNum>_moments.parquet     NEW: unweighted moment decomposition
+#   seq/<seqNum>_stars.parquet       summit_utils per-stamp tracker table
+#   seq/<seqNum>_metrics.parquet     summit_utils per-exposure metrics
+#   guider_moments_<dayObs>.parquet  per-day combined (yours)
+#   guider_stars_<dayObs>.parquet    per-day combined (summit_utils stars)
+#   guider_metrics_<dayObs>.parquet  per-day combined (summit_utils metrics)
+#   guider_plots_<dayObs>.pdf        per-day QA/summary PDF
+#   skipped_visits.txt
 # ----------------------------------------------------------------------
 import os
 import yaml
 
-# One thread per job; parallelism comes from `snakemake -j`.  Matches the aos
-# pipeline convention so the two coexist on the same RSP allocation.
 os.environ["NUMEXPR_MAX_THREADS"] = "8"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -31,71 +29,44 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 CFG = yaml.safe_load(open("snake_config.yaml"))
-DATASETS = CFG["datasets"]
 BUTLER = CFG["butler"]
 TRACKER = CFG["tracker"]
 MOMENTS = CFG["moments"]
-NIGHTS = [int(d) for d in CFG.get("nights", [])]   # dayObs values to process whole
+NIGHTS = [int(d) for d in CFG.get("nights", [])]
 COLLECTIONS = " ".join(BUTLER["collections"])
 GUIDER_HZ = CFG.get("guider_hz", 5.0)
-IMAGE_TYPES = " ".join(CFG.get("image_types", ["science"]))   # night-discovery filter
-
-# Smoke-test knob (CLI: --config limit=N): keep only the first N exposures of a
-# night. 0 = all. Set via `./run_snake.sh --day-obs N --limit 5`.
-LIMIT = int(config.get("limit", 0))
+IMAGE_TYPES = " ".join(CFG.get("image_types", ["science"]))
+LIMIT = int(config.get("limit", 0))   # CLI: --config limit=N (smoke test)
 
 CODE = "code"
 
 
-def expId(dayObs, seqNum):
-    return dayObs * 100000 + seqNum
-
-
-# ---- static datasets (hand-listed exposures) ----
-def exposures(ds):
-    return DATASETS[ds]["exposures"]
-
-
-def expParquet(ds):
-    eids = [expId(e["dayObs"], e["seqNum"]) for e in exposures(ds)]
-    return [f"output/{ds}/exposures/{eid}/moments.parquet" for eid in eids]
-
-
-# ---- combine inputs: static from config, night from the discovery checkpoint ----
-def combineInputs(wildcards):
-    ds = wildcards.ds
-    if ds.startswith("night_"):
-        dayObs = int(ds.split("_", 1)[1])
-        manifest = checkpoints.discover_night.get(dayObs=dayObs).output[0]
-        with open(manifest) as fh:
-            seqNums = [int(x) for x in fh.read().split() if x.strip()]
-        return [f"output/{ds}/exposures/{expId(dayObs, s)}/moments.parquet" for s in seqNums]
-    return expParquet(ds)
+def nightMomentsFiles(wildcards):
+    """Per-seq moments files for a night, from the discovery checkpoint."""
+    dayObs = int(wildcards.dayObs)
+    manifest = checkpoints.discover_night.get(dayObs=wildcards.dayObs).output[0]
+    with open(manifest) as fh:
+        seqs = [int(x) for x in fh.read().split() if x.strip()]
+    return [f"output/night_{dayObs}/seq/{s}_moments.parquet" for s in seqs]
 
 
 wildcard_constraints:
-    ds = r"[A-Za-z0-9_.+-]+",
-    eid = r"\d+",
     dayObs = r"\d{8}",
+    seqNum = r"\d+",
 
 
 rule all:
     input:
-        # static datasets: partitioned moments + whisker plot
-        [f"output/{ds}/moments" for ds in DATASETS]
-        + [f"output/{ds}/plots/whiskers.pdf" for ds in DATASETS]
-        # configured whole-night datasets: partitioned moments + validation plot
-        + [f"output/night_{d}/moments" for d in NIGHTS]
-        + [f"output/night_{d}/plots/validation.png" for d in NIGHTS],
+        [f"output/night_{d}/guider_moments_{d}.parquet" for d in NIGHTS]
+        + [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS],
 
 
-# ---- discover all guider exposures for a night (Butler query) ----
 checkpoint discover_night:
     output:
         "output/night_{dayObs}/exposures.txt",
     params:
-        limit=LIMIT,               # 0 = all; >0 = smoke-test first N (rerun-trigger)
-        imageTypes=IMAGE_TYPES,    # observation_types to include (rerun-trigger)
+        limit=LIMIT,
+        imageTypes=IMAGE_TYPES,
     resources:
         mem_mb=2000,
     log:
@@ -109,69 +80,65 @@ checkpoint discover_night:
         """
 
 
-# ---- per exposure: track + decompose moments (dayObs/seqNum from eid) ----
+# ---- per exposure: 3 products (moments / stars / metrics) ----
 rule moments:
     output:
-        "output/{ds}/exposures/{eid}/moments.parquet",
+        moments="output/night_{dayObs}/seq/{seqNum}_moments.parquet",
+        stars="output/night_{dayObs}/seq/{seqNum}_stars.parquet",
+        metrics="output/night_{dayObs}/seq/{seqNum}_metrics.parquet",
     params:
-        dayObs=lambda w: int(w.eid) // 100000,
-        seqNum=lambda w: int(w.eid) % 100000,
+        seqdir="output/night_{dayObs}/seq",
         recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
     resources:
         mem_mb=4000,
     log:
-        "logs/{ds}.{eid}.moments.log",
+        "logs/night_{dayObs}.{seqNum}.moments.log",
     shell:
         rf"""
         python {CODE}/run_guider_moments.py \
-            --day-obs {{params.dayObs}} --seq-num {{params.seqNum}} \
+            --day-obs {{wildcards.dayObs}} --seq-num {{wildcards.seqNum}} \
+            --outdir {{params.seqdir}} \
             --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
             --view {BUTLER["view"]} --guider-hz {GUIDER_HZ} \
             --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
             --edge-margin {TRACKER["edge_margin"]} \
             --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
             --ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} \
-            --output {{output}} > {{log}} 2>&1
+            > {{log}} 2>&1
         """
 
 
-# ---- combine per-exposure tables -> Hive-partitioned dataset (by dayObs) ----
+# ---- combine per-seq -> per-day single files (+ skip report) ----
 rule combine:
     input:
-        combineInputs,
+        nightMomentsFiles,
     output:
-        directory("output/{ds}/moments"),
+        moments="output/night_{dayObs}/guider_moments_{dayObs}.parquet",
+        stars="output/night_{dayObs}/guider_stars_{dayObs}.parquet",
+        metrics="output/night_{dayObs}/guider_metrics_{dayObs}.parquet",
+        skipped="output/night_{dayObs}/skipped_visits.txt",
     resources:
         mem_mb=3000,
     log:
-        "logs/{ds}.combine.log",
+        "logs/night_{dayObs}.combine.log",
     shell:
-        f"python {CODE}/combine_moments.py {{input}} --output {{output}} > {{log}} 2>&1"
+        f"""
+        python {CODE}/combine_moments.py \
+            --seqdir output/night_{{wildcards.dayObs}}/seq \
+            --outdir output/night_{{wildcards.dayObs}} --dayobs {{wildcards.dayObs}} \
+            > {{log}} 2>&1
+        """
 
 
-# ---- focal-plane whisker summary (static datasets) ----
-rule whiskers:
+# ---- per-day QA/summary PDF ----
+rule plots:
     input:
-        "output/{ds}/moments",
+        "output/night_{dayObs}/guider_moments_{dayObs}.parquet",
     output:
-        "output/{ds}/plots/whiskers.pdf",
+        "output/night_{dayObs}/guider_plots_{dayObs}.pdf",
     resources:
         mem_mb=2000,
     log:
-        "logs/{ds}.whiskers.log",
+        "logs/night_{dayObs}.plots.log",
     shell:
-        f"python {CODE}/run_guider_whiskers.py {{input}} --output {{output}} > {{log}} 2>&1"
-
-
-# ---- lightweight per-night validation QA plot ----
-rule validate:
-    input:
-        "output/{ds}/moments",
-    output:
-        "output/{ds}/plots/validation.png",
-    resources:
-        mem_mb=2000,
-    log:
-        "logs/{ds}.validate.log",
-    shell:
-        f"python {CODE}/run_guider_validation.py {{input}} --output {{output}} > {{log}} 2>&1"
+        f"python {CODE}/run_guider_dayplots.py {{input}} --output {{output}} > {{log}} 2>&1"

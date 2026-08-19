@@ -59,7 +59,8 @@ if [ -n "$dayObs" ]; then
     for d in "${_days[@]}"; do
         d="${d// /}"   # strip stray spaces
         [ -n "$d" ] || continue
-        targets+=("output/night_${d}/moments" "output/night_${d}/plots/validation.png")
+        targets+=("output/night_${d}/guider_moments_${d}.parquet" \
+                  "output/night_${d}/guider_plots_${d}.pdf")
     done
 fi
 

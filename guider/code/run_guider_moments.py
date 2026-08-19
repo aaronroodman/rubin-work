@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Per-exposure guider moment + summary row (Snakemake runner).
+"""Per-exposure guider products (Snakemake runner).
 
-Reads one guider exposure, tracks its guide stars, decomposes each sensor's
-shape into coadd / static-per-stamp / image-motion second moments, and writes
-a tidy per-(expId, detector) summary parquet: the moment decomposition, the
-temporal (Q1,Q2,T) covariance, binned PSDs of the centroid and shape series,
-integral timescales, per-stamp HSM shape summaries, and the exposure-level
-GuiderMetricsBuilder metrics for comparison. See guiderMoments.summarizeExposure.
+Reads one guider exposure, tracks its guide stars, and writes three parquets
+into --outdir, named by seqNum:
 
-    python run_guider_moments.py --day-obs 20260709 --seq-num 808 \
-        --output output/<dataset>/exposures/2026070900808/moments.parquet
+  <seqNum>_moments.parquet   NEW analysis: per-(detector) unweighted moment
+                             decomposition (coadd/stamp/motion, 2nd + 3rd order
+                             static/dynamic/cross, temporal covariances, PSDs).
+  <seqNum>_stars.parquet     summit_utils GuiderStarTracker per-stamp table.
+  <seqNum>_metrics.parquet   summit_utils GuiderMetricsBuilder per-exposure row.
+
+Visits with missing/insufficient guider data are skipped (empty tables + a
+SKIPPED.txt marker) so the batch and per-day combine still complete.
+
+    python run_guider_moments.py --day-obs 20260709 --seq-num 808 --outdir <dir>
 """
 from __future__ import annotations
 
@@ -19,7 +23,6 @@ import sys
 
 import pandas as pd
 
-# guiderMoments / guiderEdgeRecovery live alongside this runner in code/.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from guiderEdgeRecovery import makeTrackerConfig  # noqa: E402
@@ -33,120 +36,121 @@ from guiderMoments import (  # noqa: E402
 
 def parseArgs(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--day-obs", type=int, required=True, help="Observation date, YYYYMMDD.")
-    p.add_argument("--seq-num", type=int, required=True, help="Sequence number in the night.")
-    p.add_argument("--output", required=True, help="Output parquet path.")
-    p.add_argument("--repo", default="main", help="Butler repository.")
-    p.add_argument(
-        "--collections",
-        nargs="+",
-        default=["LSSTCam/raw/guider", "LSSTCam/raw/all"],
-        help="Butler collections.",
-    )
-    p.add_argument("--view", default="dvcs", help="Guider readout view.")
-    p.add_argument("--guider-hz", type=float, default=5.0, help="Guider readout rate (Hz).")
-    # tracker
+    p.add_argument("--day-obs", type=int, required=True)
+    p.add_argument("--seq-num", type=int, required=True)
+    p.add_argument("--outdir", required=True, help="Output dir (per-seq files written here).")
+    p.add_argument("--repo", default="main")
+    p.add_argument("--collections", nargs="+", default=["LSSTCam/raw/guider", "LSSTCam/raw/all"])
+    p.add_argument("--view", default="dvcs")
+    p.add_argument("--guider-hz", type=float, default=5.0)
     p.add_argument("--min-snr", type=float, default=10.0)
     p.add_argument("--max-ellipticity", type=float, default=0.7)
     p.add_argument("--edge-margin", type=int, default=3)
     p.add_argument("--min-finite-fraction", type=float, default=0.5)
     p.add_argument("--no-recover-edge-stars", action="store_true")
-    p.add_argument(
-        "--strict",
-        action="store_true",
-        help="Fail on missing/insufficient guider data instead of skipping the visit.",
-    )
-    # moments
     p.add_argument("--ap-nsigma", type=float, default=4.0)
     p.add_argument("--cen-niter", type=int, default=3)
+    p.add_argument("--strict", action="store_true",
+                   help="Fail on missing/insufficient data instead of skipping.")
     return p.parse_args(argv)
 
 
 def summitUtilsVersion() -> str:
-    """Best-effort summit_utils version string for provenance."""
     try:
         import lsst.summit.utils as su
-
         return str(getattr(su, "__version__", "unknown"))
     except Exception:  # noqa: BLE001
         return "unknown"
 
 
-def emptyTable() -> pd.DataFrame:
-    """A 0-row table (no stars tracked) that still carries the partition key."""
-    return pd.DataFrame(columns=["expId", "dayObs", "seqNum", "detector"])
+def paths(outdir, seqNum):
+    return {k: os.path.join(outdir, f"{seqNum}_{k}.parquet")
+            for k in ("moments", "stars", "metrics")}
+
+
+def writeEmpty(outdir, seqNum, dayObs, reason):
+    """Write empty per-seq tables + a SKIPPED marker so combine can flag it."""
+    os.makedirs(outdir, exist_ok=True)
+    for p in paths(outdir, seqNum).values():
+        pd.DataFrame(columns=["expId", "dayObs", "seqNum", "detector"]).to_parquet(p, index=False)
+    with open(os.path.join(outdir, f"{seqNum}_SKIPPED.txt"), "w") as fh:
+        fh.write(f"{dayObs * 100000 + seqNum}\t{dayObs}\t{seqNum}\t{reason}\n")
 
 
 def main(argv=None):
     args = parseArgs(argv)
     expId = args.day_obs * 100000 + args.seq_num
+    out = paths(args.outdir, args.seq_num)
 
-    # Deferred so --help works without the stack.
     from lsst.daf.butler import Butler
     from lsst.summit.utils.guiders.reading import GuiderReader
     from lsst.summit.utils.guiders.tracking import GuiderStarTracker
-
+    from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
     try:
         from lsst.daf.butler import DatasetNotFoundError
-    except ImportError:  # older butler
+    except ImportError:
         from lsst.daf.butler._exceptions import DatasetNotFoundError
 
     butler = Butler(args.repo, collections=args.collections)
     reader = GuiderReader(butler, view=args.view)
-
-    # A visit can be missing a guide sensor's data, or have too few stamps -- the
-    # reader raises on those. Skip such visits (write an empty table) so the batch
-    # and the per-night combine still complete; --strict re-raises instead.
     try:
         guiderData = reader.get(dayObs=args.day_obs, seqNum=args.seq_num, doSubtractMedian=True)
     except (DatasetNotFoundError, RuntimeError) as exc:
         if args.strict:
             raise
-        print(f"{expId}: SKIPPED -- no usable guider data ({exc})", file=sys.stderr)
-        outdir = os.path.dirname(os.path.abspath(args.output))
-        os.makedirs(outdir, exist_ok=True)
-        emptyTable().to_parquet(args.output, index=False)
-        # drop a marker so `combine` can flag this visit in one place
-        with open(os.path.join(outdir, "SKIPPED.txt"), "w") as fh:
-            fh.write(f"{expId}\t{args.day_obs}\t{args.seq_num}\t{exc}\n")
+        print(f"{expId}: SKIPPED -- {exc}", file=sys.stderr)
+        writeEmpty(args.outdir, args.seq_num, args.day_obs, str(exc))
         return
 
     recover = not args.no_recover_edge_stars
     config = makeTrackerConfig(
         minFiniteFraction=args.min_finite_fraction if recover else 1.0,
-        minSnr=args.min_snr,
-        maxEllipticity=args.max_ellipticity,
-        edgeMargin=args.edge_margin,
+        minSnr=args.min_snr, maxEllipticity=args.max_ellipticity, edgeMargin=args.edge_margin,
     )
     stars = GuiderStarTracker(guiderData, config).trackGuiderStars(refCatalog=None)
 
-    if stars.empty:
-        table = emptyTable()
-    else:
-        momentConfig = MomentConfig(apNSigma=args.ap_nsigma, cenNIter=args.cen_niter)
-        decomps = decomposeExposure(guiderData, stars, momentConfig)
-        provenance = {
-            "summit_utils_version": summitUtilsVersion(),
-            "schema_version": SCHEMA_VERSION,
-            "ap_nsigma": args.ap_nsigma,
-            "cen_niter": args.cen_niter,
-            "min_snr": args.min_snr,
-            "edge_margin": args.edge_margin,
-            "max_ellipticity": args.max_ellipticity,
-            "min_finite_fraction": args.min_finite_fraction if recover else 1.0,
-        }
-        table = summarizeExposure(
-            guiderData, stars, decomps, guiderHz=args.guider_hz, provenance=provenance
-        )
-
-    outdir = os.path.dirname(os.path.abspath(args.output))
-    os.makedirs(outdir, exist_ok=True)
-    stale = os.path.join(outdir, "SKIPPED.txt")   # clear any marker from a prior skip
+    os.makedirs(args.outdir, exist_ok=True)
+    stale = os.path.join(args.outdir, f"{args.seq_num}_SKIPPED.txt")
     if os.path.exists(stale):
         os.remove(stale)
-    table.to_parquet(args.output, index=False)
-    nDet = table["detector"].nunique() if not table.empty else 0
-    print(f"{expId}: wrote {len(table)} rows for {nDet} sensors -> {args.output}")
+
+    if stars.empty:
+        for p in out.values():
+            pd.DataFrame(columns=["expId", "dayObs", "seqNum", "detector"]).to_parquet(p, index=False)
+        print(f"{expId}: no tracked stars; wrote empty tables")
+        return
+
+    # (1) summit_utils per-stamp tracker table (Jackie)
+    starsOut = stars.copy()
+    starsOut["dayObs"] = args.day_obs
+    starsOut["seqNum"] = args.seq_num
+    starsOut.to_parquet(out["stars"], index=False)
+
+    # (2) summit_utils per-exposure metrics (Jackie)
+    try:
+        metrics = GuiderMetricsBuilder(stars, nMissingStamps=0).buildMetrics(expId)
+        metrics = metrics.copy()
+        metrics["expId"] = expId
+        metrics["dayObs"] = args.day_obs
+        metrics["seqNum"] = args.seq_num
+    except Exception as exc:  # noqa: BLE001
+        print(f"{expId}: GuiderMetricsBuilder failed: {exc}", file=sys.stderr)
+        metrics = pd.DataFrame([{"expId": expId, "dayObs": args.day_obs, "seqNum": args.seq_num}])
+    metrics.to_parquet(out["metrics"], index=False)
+
+    # (3) NEW moment decomposition
+    provenance = {
+        "summit_utils_version": summitUtilsVersion(), "schema_version": SCHEMA_VERSION,
+        "ap_nsigma": args.ap_nsigma, "cen_niter": args.cen_niter, "min_snr": args.min_snr,
+        "edge_margin": args.edge_margin, "max_ellipticity": args.max_ellipticity,
+        "min_finite_fraction": args.min_finite_fraction if recover else 1.0,
+    }
+    decomps = decomposeExposure(guiderData, stars, MomentConfig(apNSigma=args.ap_nsigma,
+                                                                cenNIter=args.cen_niter))
+    summary = summarizeExposure(guiderData, stars, decomps,
+                                guiderHz=args.guider_hz, provenance=provenance)
+    summary.to_parquet(out["moments"], index=False)
+    print(f"{expId}: wrote moments({len(summary)}) stars({len(starsOut)}) metrics({len(metrics)})")
 
 
 if __name__ == "__main__":

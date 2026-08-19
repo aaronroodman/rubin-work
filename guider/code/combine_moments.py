@@ -1,87 +1,82 @@
 #!/usr/bin/env python3
-"""Combine per-exposure guider summary tables into a partitioned dataset.
+"""Combine per-seq guider products into per-day single-file parquets.
 
-    python combine_moments.py exp1.parquet exp2.parquet ... --output moments/
+Concatenates the per-seq tables in --seqdir into three per-day files under
+--outdir:
 
-Writes a Hive-partitioned parquet dataset under ``--output``, partitioned by
-``dayObs`` (``moments/dayObs=YYYYMMDD/part-*.parquet``), so downstream reads can
-prune by night:
+  guider_moments_<dayObs>.parquet   (your decomposition, per detector)
+  guider_stars_<dayObs>.parquet     (summit_utils per-stamp tracker table)
+  guider_metrics_<dayObs>.parquet   (summit_utils per-exposure metrics)
 
-    import pyarrow.dataset as pds
-    df = pds.dataset("moments/", partitioning="hive").to_table(
-        filter=(pds.field("dayObs") >= 20260701)).to_pandas()
+and writes skipped_visits.txt listing visits with missing data (from the
+per-seq SKIPPED markers) and visits with no tracked stars.
 
-Empty inputs (exposures with no tracked stars) are skipped.
+    python combine_moments.py --seqdir <night>/seq --outdir <night> --dayobs 20260709
 """
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.dataset as pds
+
+PRODUCTS = ("moments", "stars", "metrics")
 
 
 def parseArgs(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("inputs", nargs="+", help="Per-exposure parquet files.")
-    p.add_argument("--output", required=True, help="Output dataset directory.")
+    p.add_argument("--seqdir", required=True, help="Dir with per-seq <seqNum>_*.parquet.")
+    p.add_argument("--outdir", required=True, help="Per-day output dir.")
+    p.add_argument("--dayobs", type=int, required=True)
     return p.parse_args(argv)
+
+
+def combineProduct(seqdir, product):
+    """Concat non-empty per-seq files for one product; return (df, empties)."""
+    files = sorted(glob.glob(os.path.join(seqdir, f"*_{product}.parquet")))
+    frames, empties = [], []
+    for f in files:
+        d = pd.read_parquet(f)
+        if d.empty:
+            empties.append(os.path.basename(f).split("_")[0])   # seqNum
+        else:
+            frames.append(d)
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return df, empties
 
 
 def main(argv=None):
     args = parseArgs(argv)
+    os.makedirs(args.outdir, exist_ok=True)
 
-    frames = []
-    missing = []   # visits skipped for missing/insufficient data (have a marker)
-    nostars = []   # visits with empty output but no marker (data present, no stars)
-    for f in args.inputs:
-        d = pd.read_parquet(f)
-        if not d.empty:
-            frames.append(d)
-            continue
-        eid = os.path.basename(os.path.dirname(f))
-        marker = os.path.join(os.path.dirname(f), "SKIPPED.txt")
-        if os.path.exists(marker):
-            missing.append(open(marker).read().strip())
-        else:
-            nostars.append(eid)
+    counts = {}
+    for product in PRODUCTS:
+        df, _ = combineProduct(args.seqdir, product)
+        out = os.path.join(args.outdir, f"guider_{product}_{args.dayobs}.parquet")
+        df.to_parquet(out, index=False)
+        counts[product] = len(df)
 
-    # Flag skipped visits in one place: to stdout (the combine log) and a report.
+    # skip report: missing-data markers vs no-star empties (from the moments product)
+    missing = []
+    for m in sorted(glob.glob(os.path.join(args.seqdir, "*_SKIPPED.txt"))):
+        missing.append(open(m).read().strip())
+    _, nostar = combineProduct(args.seqdir, "moments")
+    nostar = [s for s in nostar if s not in {mm.split("\t")[2] for mm in missing if "\t" in mm}]
+
     lines = []
     if missing:
         lines.append(f"# {len(missing)} visit(s) SKIPPED -- missing/insufficient data:")
         lines += [f"  {m}" for m in missing]
-    if nostars:
-        lines.append(f"# {len(nostars)} visit(s) with no tracked stars: {', '.join(sorted(nostars))}")
+    if nostar:
+        lines.append(f"# {len(nostar)} visit(s) with no tracked stars: {', '.join(sorted(nostar))}")
     report = "\n".join(lines) if lines else "no skipped visits"
     print(report)
-    parent = os.path.dirname(os.path.abspath(args.output.rstrip("/")))
-    os.makedirs(parent, exist_ok=True)
-    with open(os.path.join(parent, "skipped_visits.txt"), "w") as fh:
+    with open(os.path.join(args.outdir, "skipped_visits.txt"), "w") as fh:
         fh.write(report + "\n")
 
-    os.makedirs(args.output, exist_ok=True)
-    if not frames:
-        print(f"no non-empty inputs; empty dataset at {args.output}")
-        return
-
-    df = pd.concat(frames, ignore_index=True)
-    df["dayObs"] = df["dayObs"].astype("int64")
-    table = pa.Table.from_pandas(df, preserve_index=False)
-
-    # Partition by dayObs (Hive layout); the column is stripped from the files
-    # and encoded in the folder names. delete_matching clears stale partitions.
-    pds.write_dataset(
-        table,
-        base_dir=args.output,
-        format="parquet",
-        partitioning=pds.partitioning(pa.schema([("dayObs", pa.int64())]), flavor="hive"),
-        existing_data_behavior="delete_matching",
-    )
-    print(f"wrote partitioned dataset -> {args.output} "
-          f"({len(df)} rows, {df['dayObs'].nunique()} nights, {df['expId'].nunique()} exposures)")
+    print(f"dayObs {args.dayobs}: "
+          + ", ".join(f"{k}={counts[k]}" for k in PRODUCTS) + f" -> {args.outdir}")
 
 
 if __name__ == "__main__":
