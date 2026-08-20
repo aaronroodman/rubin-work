@@ -171,13 +171,14 @@ def _hsmToDict(mom: dict | None) -> dict[str, float]:
 
     HSM-weighted moments of the coadd, in the guider frame, using the *same*
     estimator as the adjacent-CCD PSF stars -- for an apples-to-apples
-    comparison free of the unweighted-vs-weighted confound. ``M11=T``,
-    ``M20=Q1``, ``M02=Q2``; M21/M12/M30/M03 are coma/trefoil.
+    comparison free of the unweighted-vs-weighted confound. moments_hsm uses
+    PIFF naming for 2nd order: ``e0=M11=T``, ``e1=M20=Q1``, ``e2=M02=Q2``
+    (``e1n/e2n`` are normalized); M21/M12/M30/M03 are coma/trefoil.
     """
     if not mom:
         return {}
     return {
-        "hsm_Q1": float(mom["M20"]), "hsm_Q2": float(mom["M02"]), "hsm_T": float(mom["M11"]),
+        "hsm_Q1": float(mom["e1"]), "hsm_Q2": float(mom["e2"]), "hsm_T": float(mom["e0"]),
         "hsm_e1": float(mom["e1n"]), "hsm_e2": float(mom["e2n"]),
         "hsm_coma1": float(mom["M21"]), "hsm_coma2": float(mom["M12"]),
         "hsm_tref1": float(mom["M30"]), "hsm_tref2": float(mom["M03"]),

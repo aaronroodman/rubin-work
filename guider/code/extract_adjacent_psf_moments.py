@@ -195,8 +195,9 @@ def main(argv=None):
                             third_order=not args.no_third, fourth_order=False, radial=False)
                         if mom is None:
                             continue
-                        acc["Q1"].append(mom["M20"]); acc["Q2"].append(mom["M02"])
-                        acc["T"].append(mom["M11"])
+                        # moments_hsm PIFF naming: e0=M11=T, e1=M20=Q1, e2=M02=Q2
+                        acc["Q1"].append(mom["e1"]); acc["Q2"].append(mom["e2"])
+                        acc["T"].append(mom["e0"])
                         acc["e1"].append(mom["e1n"]); acc["e2"].append(mom["e2n"])
                         if not args.no_third:
                             acc["coma1"].append(mom["M21"]); acc["coma2"].append(mom["M12"])
