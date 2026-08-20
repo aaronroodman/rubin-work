@@ -57,8 +57,8 @@ def main(argv=None):
     if moments is not None and not moments.empty:
         det = sorted(moments["detector"].unique())
         print(f"\n=== moments (decomposition) === {len(det)} guiders: {det}")
-        cols = ["detector", "nStamps", "coadd_Q1", "coadd_Q2", "coadd_T",
-                "stamp_Q1", "motion_Q1", "resid_Q1", "resid_T",
+        cols = ["detector", "nStamps", "Q1_coadd", "Q2_coadd", "T_coadd",
+                "Q1_stamp", "Q1_motion", "resid_Q1", "resid_T",
                 "coma1_static", "coma1_dyn", "tau_x", "tau_y"]
         show = [c for c in cols if c in moments.columns]
         with pd.option_context("display.width", 160, "display.max_columns", 40):
@@ -67,7 +67,7 @@ def main(argv=None):
         # additivity: coadd ~ stamp + motion (2nd order should nearly close)
         for q in ("Q1", "T"):
             r = moments.get(f"resid_{q}")
-            c = moments.get(f"coadd_{q}")
+            c = moments.get(f"{q}_coadd")
             if r is not None and c is not None:
                 frac = np.abs(r) / np.abs(c).replace(0, np.nan)
                 print(f"  additivity {q}: |resid|/|coadd| median={np.nanmedian(frac):.3f}")
