@@ -68,6 +68,23 @@ def paths(outdir, seqNum):
             for k in ("moments", "stars", "metrics")}
 
 
+def parquetSafe(df):
+    """Coerce columns pyarrow can't serialize (e.g. astropy Time) to plain types.
+
+    The summit_utils tracker table carries a `timestamp` column of astropy Time
+    objects (w_2026_33+); convert any such object columns to MJD floats so the
+    table round-trips through parquet.
+    """
+    from astropy.time import Time
+    for col in df.columns:
+        if df[col].dtype != object:
+            continue
+        nonnull = df[col].dropna()
+        if len(nonnull) and isinstance(nonnull.iloc[0], Time):
+            df[col] = df[col].map(lambda t: float(t.mjd) if isinstance(t, Time) else None)
+    return df
+
+
 def writeEmpty(outdir, seqNum, dayObs, reason):
     """Write empty per-seq tables + a SKIPPED marker so combine can flag it."""
     os.makedirs(outdir, exist_ok=True)
@@ -124,7 +141,7 @@ def main(argv=None):
     starsOut = stars.copy()
     starsOut["dayObs"] = args.day_obs
     starsOut["seqNum"] = args.seq_num
-    starsOut.to_parquet(out["stars"], index=False)
+    parquetSafe(starsOut).to_parquet(out["stars"], index=False)
 
     # (2) summit_utils per-exposure metrics (Jackie)
     try:
@@ -136,7 +153,7 @@ def main(argv=None):
     except Exception as exc:  # noqa: BLE001
         print(f"{expId}: GuiderMetricsBuilder failed: {exc}", file=sys.stderr)
         metrics = pd.DataFrame([{"expId": expId, "dayObs": args.day_obs, "seqNum": args.seq_num}])
-    metrics.to_parquet(out["metrics"], index=False)
+    parquetSafe(metrics).to_parquet(out["metrics"], index=False)
 
     # (3) NEW moment decomposition
     provenance = {
