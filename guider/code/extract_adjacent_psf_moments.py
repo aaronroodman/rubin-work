@@ -3,13 +3,18 @@
 
 For each science visit of a night, and each guider's adjacent science CCD
 (from guider_adjacent_ccds.yaml), select clean PSF stars from the processed
-collection (guider_science_collections.yaml) and record:
-  - median 2nd moments from single_visit_star (ixx,iyy,ixy -> e1,e2), and
-  - median 3rd moments (coma M21/M12, trefoil M30/M03) recomputed from
+collection (guider_science_collections.yaml) and record, as the median AND RMS
+over that CCD's stars:
+  - 2nd moments: ixx/iyy/ixy (pixel**2), the unnormalized Q1/Q2/T (arcsec**2,
+    directly comparable to the guider Q1_coadd/Q2_coadd/T_coadd), and the
+    normalized e1/e2; and
+  - 3rd moments (coma M21/M12, trefoil M30/M03, arcsec**3) recomputed from
     preliminary_visit_image stamps via optatmo's HSM estimator.
 
-Writes guider_psfmoments_<dayObs>.parquet, one row per (expId, guider,
-adjacent_ccd), for joining to the guider moments on (expId, detector).
+Each stat has a companion ``*_rms`` column (scatter over the CCD's stars);
+``pixscale_ccd`` records the assumed 0.2 arcsec/pixel used for the arcsec
+conversions. Writes guider_psfmoments_<dayObs>.parquet, one row per (expId,
+guider, adjacent_ccd), for joining to the guider moments on (expId, detector).
 
 NOTE: moments here are HSM-*weighted* and in the science-CCD pixel (DVCS) frame;
 ``rot_deg`` and the CCD field angle are recorded so the comparison notebook can
@@ -34,6 +39,13 @@ sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_HERE, "..", "..", "optatmo", "code"))
 
 HALF = 16
+SCIENCE_PIXSCALE = 0.2   # arcsec/pixel; single_visit_star shapes (ixx..) are pixel**2
+
+
+def medRms(a):
+    """Median and RMS (std) of a 1-D array, as plain floats."""
+    a = np.asarray(a, dtype=float)
+    return float(np.nanmedian(a)), float(np.nanstd(a))
 
 
 def parseArgs(argv=None):
@@ -155,12 +167,24 @@ def main(argv=None):
             sub = ps[ps.detector == ccd]
             sub = sub[(sub.psfFlux / sub.psfFluxErr) > args.snr_min]
             row = {"expId": int(visit), "dayObs": args.day_obs, "guider": guider,
-                   "adjacent_ccd": ccd, "rot_deg": rot_deg, "n_stars": int(len(sub))}
+                   "adjacent_ccd": ccd, "rot_deg": rot_deg, "n_stars": int(len(sub)),
+                   "pixscale_ccd": SCIENCE_PIXSCALE}
             if len(sub):
-                ixx, iyy, ixy = sub.ixx.median(), sub.iyy.median(), sub.ixy.median()
-                tr = (ixx + iyy)
-                row.update(ixx_ccd=float(ixx), iyy_ccd=float(iyy), ixy_ccd=float(ixy),
-                           e1_ccd=float((ixx - iyy) / tr), e2_ccd=float(2 * ixy / tr))
+                ixx = sub.ixx.to_numpy(); iyy = sub.iyy.to_numpy(); ixy = sub.ixy.to_numpy()
+                s2 = SCIENCE_PIXSCALE ** 2
+                # per-star series: raw moments (pixel**2), unnormalized Q/T (arcsec**2),
+                # normalized ellipticity -- store median AND RMS over the CCD's stars.
+                series = {
+                    "ixx_ccd": ixx, "iyy_ccd": iyy, "ixy_ccd": ixy,           # pixel**2
+                    "Q1_ccd": (ixx - iyy) * s2, "Q2_ccd": 2.0 * ixy * s2,     # arcsec**2
+                    "T_ccd": (ixx + iyy) * s2,
+                    "e1_ccd": (ixx - iyy) / (ixx + iyy),                      # dimensionless
+                    "e2_ccd": 2.0 * ixy / (ixx + iyy),
+                }
+                for name, arr in series.items():
+                    med, rms = medRms(arr)
+                    row[name] = med
+                    row[f"{name}_rms"] = rms
             if len(sub) and not args.no_third:
                 try:
                     exp = butler.get("preliminary_visit_image", collections=collection,
@@ -181,9 +205,12 @@ def main(argv=None):
                         m21.append(mom["M21"]); m12.append(mom["M12"])
                         m30.append(mom["M30"]); m03.append(mom["M03"])
                     if m21:
-                        row.update(coma1_ccd=float(np.median(m21)), coma2_ccd=float(np.median(m12)),
-                                   tref1_ccd=float(np.median(m30)), tref2_ccd=float(np.median(m03)),
-                                   n_third=len(m21))
+                        for name, arr in [("coma1_ccd", m21), ("coma2_ccd", m12),
+                                          ("tref1_ccd", m30), ("tref2_ccd", m03)]:  # arcsec**3
+                            med, rms = medRms(arr)
+                            row[name] = med
+                            row[f"{name}_rms"] = rms
+                        row["n_third"] = len(m21)
                 except Exception as exc:  # noqa: BLE001
                     print(f"  visit {visit} ccd {ccd}: 3rd-order failed: {exc}", file=sys.stderr)
             rows.append(row)
