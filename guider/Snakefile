@@ -161,7 +161,7 @@ rule psfmoments:
         f"""
         python {CODE}/extract_adjacent_psf_moments.py --day-obs {{wildcards.dayObs}} \
             --out output/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} \
-            --limit {LIMIT} > {{log}} 2>&1
+            --image-types {IMAGE_TYPES} --limit {LIMIT} > {{log}} 2>&1
         """
 
 

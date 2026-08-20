@@ -46,6 +46,9 @@ def parseArgs(argv=None):
     p.add_argument("--collection", default=None, help="Override the collection for this night.")
     p.add_argument("--max-per-ccd", type=int, default=45)
     p.add_argument("--snr-min", type=float, default=80.0)
+    p.add_argument("--image-types", nargs="+", default=["science"],
+                   help="Keep only visits with these exposure observation_types "
+                        "(default: science; excludes acq/eng where science CCDs aren't processed).")
     p.add_argument("--limit", type=int, default=0,
                    help="Process only the first N science visits (0=all); for quick tests.")
     p.add_argument("--no-third", action="store_true", help="Skip 3rd-order (no image reads).")
@@ -119,6 +122,19 @@ def main(argv=None):
         "single_visit_star", collections=collection,
         where="instrument='LSSTCam' AND visit.day_obs = d", bind={"d": args.day_obs},
         findFirst=True)})
+
+    # Restrict to the wanted observation_types (default science). Acq/eng visits
+    # can have single_visit_star on only a stray CCD (no science-CCD photometry),
+    # so they would contribute all-zero rows -- drop them (matches the guider side).
+    wanted = {t.lower() for t in args.image_types}
+    sci = {r.id for r in butler.registry.queryDimensionRecords(
+        "exposure", where="instrument='LSSTCam' AND exposure.day_obs = d",
+        bind={"d": args.day_obs})
+        if (r.observation_type or "").lower() in wanted}
+    nRaw = len(visits)
+    visits = [v for v in visits if v in sci]
+    print(f"{args.day_obs}: {len(visits)}/{nRaw} visits are {sorted(wanted)} "
+          f"(dropped {nRaw - len(visits)} acq/eng).")
     if args.limit > 0:
         visits = visits[:args.limit]
         print(f"{args.day_obs}: limited to first {len(visits)} science visits (--limit).")
