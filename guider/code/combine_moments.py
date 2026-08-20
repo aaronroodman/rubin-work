@@ -51,11 +51,13 @@ def main(argv=None):
     os.makedirs(args.outdir, exist_ok=True)
 
     counts = {}
+    dfs = {}
     for product in PRODUCTS:
         df, _ = combineProduct(args.seqdir, product)
         out = os.path.join(args.outdir, f"guider_{product}_{args.dayobs}.parquet")
         df.to_parquet(out, index=False)
         counts[product] = len(df)
+        dfs[product] = df
 
     # skip report: missing-data markers vs no-star empties (from the moments product)
     missing = []
@@ -75,8 +77,27 @@ def main(argv=None):
     with open(os.path.join(args.outdir, "skipped_visits.txt"), "w") as fh:
         fh.write(report + "\n")
 
+    # per-night detector-count summary: how many guiders produced moments per visit
+    detReport = detectorCountReport(dfs["moments"], args.dayobs)
+    print(detReport)
+    with open(os.path.join(args.outdir, f"detector_counts_{args.dayobs}.txt"), "w") as fh:
+        fh.write(detReport + "\n")
+
     print(f"dayObs {args.dayobs}: "
           + ", ".join(f"{k}={counts[k]}" for k in PRODUCTS) + f" -> {args.outdir}")
+
+
+def detectorCountReport(moments, dayObs):
+    """Histogram of guiders-with-moments per visit (recovery visibility)."""
+    if moments.empty or "expId" not in moments or "detector" not in moments:
+        return f"dayObs {dayObs}: detector counts -- no moments rows"
+    perVisit = moments.groupby("expId")["detector"].nunique()
+    hist = perVisit.value_counts().sort_index(ascending=False)
+    dist = ", ".join(f"{n}guider={c}" for n, c in hist.items())
+    partial = int((perVisit < 8).sum())
+    return (f"dayObs {dayObs}: {len(perVisit)} visits with moments, "
+            f"mean {perVisit.mean():.2f} guiders/visit, {partial} partial (<8); "
+            f"distribution: {dist}")
 
 
 if __name__ == "__main__":
