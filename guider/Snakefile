@@ -160,7 +160,8 @@ rule psfmoments:
     shell:
         f"""
         python {CODE}/extract_adjacent_psf_moments.py --day-obs {{wildcards.dayObs}} \
-            --out output/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} > {{log}} 2>&1
+            --out output/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} \
+            --limit {LIMIT} > {{log}} 2>&1
         """
 
 
