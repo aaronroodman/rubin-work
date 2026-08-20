@@ -59,24 +59,12 @@ def cleanStars(st):
 
 
 def visitRotDeg(butler, collection, visit, ccds):
-    """Boresight rotation angle (deg) for a visit, robust across stack versions.
+    """Boresight rotation angle (deg) for a visit.
 
-    The ``visit`` dimension record field name has changed over daf_butler
-    releases (and was dropped in some), so try a few known record attributes
-    first, then fall back to the image's ``visitInfo`` (always present).
+    The ``visit`` dimension record carries no rotation field, so read it from
+    the image's ``visitInfo`` (a component get, no pixels loaded). Try each
+    adjacent CCD in turn in case one is missing; nan if none resolve.
     """
-    import numpy as np
-    recs = list(butler.registry.queryDimensionRecords(
-        "visit", where="instrument='LSSTCam' and visit=v", bind={"v": int(visit)}))
-    if recs:
-        for attr in ("boresight_rotation_angle", "sky_rotation", "rotation_angle"):
-            val = getattr(recs[0], attr, None)
-            if val is None:
-                continue
-            try:
-                return float(np.degrees(val.asRadians()))  # lsst.geom.Angle
-            except AttributeError:
-                return float(val)                           # already degrees
     for ccd in ccds:
         try:
             vi = butler.get("preliminary_visit_image.visitInfo", collections=collection,
@@ -84,7 +72,7 @@ def visitRotDeg(butler, collection, visit, ccds):
             return float(vi.boresightRotAngle.asDegrees())
         except Exception:
             continue
-    return float(np.nan)
+    return float("nan")
 
 
 def main(argv=None):
