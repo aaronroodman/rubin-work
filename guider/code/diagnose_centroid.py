@@ -20,7 +20,9 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "optatmo", "code"))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_HERE, "..", "..", "optatmo", "code"))
 
 
 def com_window(img, cx, cy, half=8):
@@ -46,7 +48,7 @@ def main():
     ap.add_argument("--seq-num", type=int, required=True)
     ap.add_argument("--detector", required=True)
     ap.add_argument("--stars", default=None,
-                    help="stars parquet (default: output/night_<dayObs>/guider_stars_<dayObs>.parquet)")
+                    help="optional stars parquet; default recomputes the tracker inline.")
     ap.add_argument("--repo", default="main")
     ap.add_argument("--collections", nargs="+",
                     default=["LSSTCam/raw/guider", "LSSTCam/raw/all"])
@@ -60,20 +62,26 @@ def main():
     import galsim
     from lsst.daf.butler import Butler
     from lsst.summit.utils.guiders.reading import GuiderReader
+    from lsst.summit.utils.guiders.tracking import GuiderStarTracker
 
     det = args.detector
-    starsPath = args.stars or f"output/night_{args.day_obs}/guider_stars_{args.day_obs}.parquet"
-    sdf = pd.read_parquet(starsPath)
-    sdf = sdf[(sdf["detector"] == det) & (sdf["seqNum"] == args.seq_num)] \
-        if "seqNum" in sdf else sdf[sdf["detector"] == det]
-    if sdf.empty:
-        raise SystemExit(f"no stars rows for {det} seq {args.seq_num} in {starsPath}")
-    refX = float(sdf["xroi_ref"].median())
-    refY = float(sdf["yroi_ref"].median())
-
     reader = GuiderReader(Butler(args.repo, collections=args.collections), view="dvcs")
     gd = reader.get(dayObs=args.day_obs, seqNum=args.seq_num, doSubtractMedian=True)
     coadd = gd.getStampArrayCoadd(det)
+
+    # tracker centroids: recompute inline (self-contained) unless a parquet is given
+    if args.stars:
+        sdf = pd.read_parquet(args.stars)
+    else:
+        from guiderEdgeRecovery import makeTrackerConfig
+        cfg = makeTrackerConfig(minFiniteFraction=0.5, minSnr=10.0,
+                                maxEllipticity=0.7, edgeMargin=3)
+        sdf = GuiderStarTracker(gd, cfg).trackGuiderStars(refCatalog=None)
+    sdf = sdf[sdf["detector"] == det]
+    if sdf.empty:
+        raise SystemExit(f"no tracked stars for {det} on {args.day_obs}/{args.seq_num}")
+    refX = float(sdf["xroi_ref"].median())
+    refY = float(sdf["yroi_ref"].median())
 
     # independent centroids on the SAME dvcs coadd
     comx, comy = com_window(coadd, refX, refY)
