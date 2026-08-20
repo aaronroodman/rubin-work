@@ -17,6 +17,8 @@
 #   guider_stars_<dayObs>.parquet    per-day combined (summit_utils stars)
 #   guider_metrics_<dayObs>.parquet  per-day combined (summit_utils metrics)
 #   guider_plots_<dayObs>.pdf        per-day QA/summary PDF
+#   movies/<seqNum>_{full,star}.mp4  RubinTV-style movies, every Nth visit
+#   guider_movies_<dayObs>.txt       movie manifest (movie_stride in config)
 #   skipped_visits.txt
 # ----------------------------------------------------------------------
 import os
@@ -42,6 +44,9 @@ LIMIT = int(config.get("limit", 0))   # CLI: --config limit=N (smoke test)
 CODE = "code"
 
 
+MOVIE_STRIDE = int(config.get("movie_stride", 50))  # movie for every Nth visit (0=off)
+
+
 def nightMomentsFiles(wildcards):
     """Per-seq moments files for a night, from the discovery checkpoint."""
     dayObs = int(wildcards.dayObs)
@@ -49,6 +54,17 @@ def nightMomentsFiles(wildcards):
     with open(manifest) as fh:
         seqs = [int(x) for x in fh.read().split() if x.strip()]
     return [f"output/night_{dayObs}/seq/{s}_moments.parquet" for s in seqs]
+
+
+def nightMovieFiles(wildcards):
+    """RubinTV-style movies for every MOVIE_STRIDE-th visit of a night."""
+    dayObs = int(wildcards.dayObs)
+    manifest = checkpoints.discover_night.get(dayObs=wildcards.dayObs).output[0]
+    with open(manifest) as fh:
+        seqs = sorted(int(x) for x in fh.read().split() if x.strip())
+    picked = seqs[::MOVIE_STRIDE] if MOVIE_STRIDE > 0 else []
+    return [f"output/night_{dayObs}/movies/{s}_{kind}.mp4"
+            for s in picked for kind in ("full", "star")]
 
 
 wildcard_constraints:
@@ -60,7 +76,8 @@ rule all:
     input:
         [f"output/night_{d}/guider_moments_{d}.parquet" for d in NIGHTS]
         + [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
-        + [f"output/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS],
+        + [f"output/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS]
+        + [f"output/night_{d}/guider_movies_{d}.txt" for d in NIGHTS],
 
 
 checkpoint discover_night:
@@ -145,6 +162,44 @@ rule psfmoments:
         python {CODE}/extract_adjacent_psf_moments.py --day-obs {{wildcards.dayObs}} \
             --out output/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} > {{log}} 2>&1
         """
+
+
+# ---- RubinTV-style movies for a strided subset of visits ----
+rule movie:
+    output:
+        full="output/night_{dayObs}/movies/{seqNum}_full.mp4",
+        star="output/night_{dayObs}/movies/{seqNum}_star.mp4",
+    params:
+        moviedir="output/night_{dayObs}/movies",
+        recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
+    resources:
+        mem_mb=4000,
+    log:
+        "logs/night_{dayObs}.{seqNum}.movie.log",
+    shell:
+        rf"""
+        python {CODE}/run_guider_movie.py \
+            --day-obs {{wildcards.dayObs}} --seq-num {{wildcards.seqNum}} \
+            --outdir {{params.moviedir}} \
+            --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
+            --view {BUTLER["view"]} \
+            --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
+            --edge-margin {TRACKER["edge_margin"]} \
+            --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
+            > {{log}} 2>&1
+        """
+
+
+rule movies:
+    input:
+        nightMovieFiles,
+    output:
+        "output/night_{dayObs}/guider_movies_{dayObs}.txt",
+    resources:
+        mem_mb=1000,
+    shell:
+        "ls output/night_{wildcards.dayObs}/movies > {output} 2>/dev/null || "
+        "echo 'no movies (movie_stride=0 or empty night)' > {output}"
 
 
 # ---- per-day QA/summary PDF ----

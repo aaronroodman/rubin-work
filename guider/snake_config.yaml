@@ -40,6 +40,10 @@ moments:
   ap_nsigma: 4.0
   cen_niter: 3
 
+# RubinTV-style movies (full ROI + star cutout) for every Nth discovered visit,
+# as a visual cross-check against RubinTV. 0 disables. Override: --config movie_stride=N
+movie_stride: 50
+
 # Whole nights to process (all guider exposures discovered from the Butler).
 # Each becomes dataset `night_<dayObs>`; `rule all` builds these too. You can
 # also process a night ad hoc without editing this: `./run_snake.sh --day-obs N`.

@@ -61,7 +61,8 @@ if [ -n "$dayObs" ]; then
         [ -n "$d" ] || continue
         targets+=("output/night_${d}/guider_moments_${d}.parquet" \
                   "output/night_${d}/guider_psfmoments_${d}.parquet" \
-                  "output/night_${d}/guider_plots_${d}.pdf")
+                  "output/night_${d}/guider_plots_${d}.pdf" \
+                  "output/night_${d}/guider_movies_${d}.txt")
     done
 fi
 
