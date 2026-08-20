@@ -68,6 +68,31 @@ def paths(outdir, seqNum):
             for k in ("moments", "stars", "metrics")}
 
 
+def makeHsmFunc():
+    """galsim-HSM estimator (optatmo) injected into the guider coadd HSM pass.
+
+    Same estimator used for the adjacent-CCD PSF stars, so the guider-vs-CCD
+    comparison is matched-algorithm. Returns None if optatmo/galsim aren't
+    importable (hsm_* columns then just absent).
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "..", "..", "optatmo", "code"))
+        import galsim
+        import numpy as np
+        from moments_hsm import measure_hsm_moments
+    except Exception:  # noqa: BLE001
+        return None
+
+    def hsmFunc(arr, scale):
+        mom, _ = measure_hsm_moments(
+            galsim.Image(np.ascontiguousarray(arr, dtype=float), scale=scale),
+            third_order=True, fourth_order=False, radial=False)
+        return mom
+
+    return hsmFunc
+
+
 def parquetSafe(df):
     """Coerce columns pyarrow can't serialize (e.g. astropy Time) to plain types.
 
@@ -164,7 +189,8 @@ def main(argv=None):
     }
     try:
         decomps = decomposeExposure(guiderData, stars, MomentConfig(apNSigma=args.ap_nsigma,
-                                                                    cenNIter=args.cen_niter))
+                                                                    cenNIter=args.cen_niter),
+                                    hsmFunc=makeHsmFunc())
         summary = summarizeExposure(guiderData, stars, decomps,
                                     guiderHz=args.guider_hz, provenance=provenance)
     except Exception as exc:  # noqa: BLE001 - keep the stars/metrics; never crash the visit

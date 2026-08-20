@@ -3,23 +3,25 @@
 
 For each science visit of a night, and each guider's adjacent science CCD
 (from guider_adjacent_ccds.yaml), select clean PSF stars from the processed
-collection (guider_science_collections.yaml) and record, as the median AND RMS
-over that CCD's stars:
-  - 2nd moments: ixx/iyy/ixy (pixel**2), the unnormalized Q1/Q2/T (arcsec**2,
-    directly comparable to the guider Q1_coadd/Q2_coadd/T_coadd), and the
-    normalized e1/e2; and
-  - 3rd moments (coma M21/M12, trefoil M30/M03, arcsec**3) recomputed from
-    preliminary_visit_image stamps via optatmo's HSM estimator.
+collection (guider_science_collections.yaml) and measure, from the
+preliminary_visit_image star stamps via optatmo's galsim-HSM estimator, the
+median AND RMS over that CCD's stars of:
+  - 2nd moments: Q1/Q2/T (arcsec**2, directly comparable to the guider HSM
+    hsm_Q1/hsm_Q2/hsm_T) and the normalized e1/e2; and
+  - 3rd moments: coma (M21/M12) and trefoil (M30/M03), arcsec**3.
 
-Each stat has a companion ``*_rms`` column (scatter over the CCD's stars);
-``pixscale_ccd`` records the assumed 0.2 arcsec/pixel used for the arcsec
-conversions. Writes guider_psfmoments_<dayObs>.parquet, one row per (expId,
-guider, adjacent_ccd), for joining to the guider moments on (expId, detector).
+The SAME HSM estimator is applied to the guider coadd (guiderMoments hsm_*),
+so the guider-vs-CCD comparison is matched-algorithm (no unweighted-vs-weighted
+confound). n_stars = snr-passing single_visit_star count; n_hsm = stars actually
+HSM-measured. Each stat has a companion ``*_rms`` column; ``pixscale_ccd``
+records the 0.2 arcsec/pixel scale used. Writes guider_psfmoments_<dayObs>.parquet,
+one row per (expId, guider, adjacent_ccd), for joining to the guider moments on
+(expId, detector).
 
-NOTE: moments here are HSM-*weighted* and in the science-CCD pixel (DVCS) frame;
-``rot_deg`` and the CCD field angle are recorded so the comparison notebook can
-rotate both sides to a common frame (the guider moments are unweighted -- treat
-absolute-scale differences with that in mind).
+NOTE: moments are HSM-weighted, in the science-CCD pixel (DVCS) frame; ``rot_deg``
+is recorded so the comparison notebook can rotate both sides to a common (OCS)
+frame. T and magnitudes are frame-invariant; Q1/Q2/coma/trefoil components need
+that rotation.
 
     python extract_adjacent_psf_moments.py --day-obs 20260709 --out <dir> \
         [--repo /repo/main] [--max-per-ccd 45] [--snr-min 80] [--no-third]
@@ -39,7 +41,7 @@ sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_HERE, "..", "..", "optatmo", "code"))
 
 HALF = 16
-SCIENCE_PIXSCALE = 0.2   # arcsec/pixel; single_visit_star shapes (ixx..) are pixel**2
+SCIENCE_PIXSCALE = 0.2   # arcsec/pixel; HSM image scale -> moments in arcsec**n
 
 
 def medRms(a):
@@ -63,7 +65,8 @@ def parseArgs(argv=None):
                         "(default: science; excludes acq/eng where science CCDs aren't processed).")
     p.add_argument("--limit", type=int, default=0,
                    help="Process only the first N science visits (0=all); for quick tests.")
-    p.add_argument("--no-third", action="store_true", help="Skip 3rd-order (no image reads).")
+    p.add_argument("--no-third", action="store_true",
+                   help="Skip 3rd-order columns (2nd moments still measured from stamps).")
     return p.parse_args(argv)
 
 
@@ -170,49 +173,42 @@ def main(argv=None):
                    "adjacent_ccd": ccd, "rot_deg": rot_deg, "n_stars": int(len(sub)),
                    "pixscale_ccd": SCIENCE_PIXSCALE}
             if len(sub):
-                ixx = sub.ixx.to_numpy(); iyy = sub.iyy.to_numpy(); ixy = sub.ixy.to_numpy()
-                s2 = SCIENCE_PIXSCALE ** 2
-                # per-star series: raw moments (pixel**2), unnormalized Q/T (arcsec**2),
-                # normalized ellipticity -- store median AND RMS over the CCD's stars.
-                series = {
-                    "ixx_ccd": ixx, "iyy_ccd": iyy, "ixy_ccd": ixy,           # pixel**2
-                    "Q1_ccd": (ixx - iyy) * s2, "Q2_ccd": 2.0 * ixy * s2,     # arcsec**2
-                    "T_ccd": (ixx + iyy) * s2,
-                    "e1_ccd": (ixx - iyy) / (ixx + iyy),                      # dimensionless
-                    "e2_ccd": 2.0 * ixy / (ixx + iyy),
-                }
-                for name, arr in series.items():
-                    med, rms = medRms(arr)
-                    row[name] = med
-                    row[f"{name}_rms"] = rms
-            if len(sub) and not args.no_third:
+                # Measure 2nd AND 3rd moments with the SAME galsim-HSM estimator
+                # used on the guider coadd -- matched algorithm, no weighting
+                # confound. Q1/Q2/T in arcsec**2, coma/trefoil in arcsec**3
+                # (scale=SCIENCE_PIXSCALE). Median + RMS over the CCD's stars.
                 try:
                     exp = butler.get("preliminary_visit_image", collections=collection,
                                      instrument="LSSTCam", visit=visit, detector=ccd)
                     img = exp.image.array
                     ny, nx = img.shape
-                    m21, m12, m30, m03 = [], [], [], []
+                    acc = {k: [] for k in ("Q1", "Q2", "T", "e1", "e2",
+                                           "coma1", "coma2", "tref1", "tref2")}
                     for _, r in sub.sort_values("psfFlux", ascending=False).head(args.max_per_ccd).iterrows():
                         xi, yi = int(round(r.x)), int(round(r.y))
                         if xi < HALF or yi < HALF or xi >= nx - HALF or yi >= ny - HALF:
                             continue
                         stamp = np.ascontiguousarray(
                             img[yi - HALF:yi + HALF + 1, xi - HALF:xi + HALF + 1].astype(float))
-                        mom, _ = measure_hsm_moments(galsim.Image(stamp, scale=0.2),
-                                                     fourth_order=False, radial=False)
+                        mom, _ = measure_hsm_moments(
+                            galsim.Image(stamp, scale=SCIENCE_PIXSCALE),
+                            third_order=not args.no_third, fourth_order=False, radial=False)
                         if mom is None:
                             continue
-                        m21.append(mom["M21"]); m12.append(mom["M12"])
-                        m30.append(mom["M30"]); m03.append(mom["M03"])
-                    if m21:
-                        for name, arr in [("coma1_ccd", m21), ("coma2_ccd", m12),
-                                          ("tref1_ccd", m30), ("tref2_ccd", m03)]:  # arcsec**3
+                        acc["Q1"].append(mom["M20"]); acc["Q2"].append(mom["M02"])
+                        acc["T"].append(mom["M11"])
+                        acc["e1"].append(mom["e1n"]); acc["e2"].append(mom["e2n"])
+                        if not args.no_third:
+                            acc["coma1"].append(mom["M21"]); acc["coma2"].append(mom["M12"])
+                            acc["tref1"].append(mom["M30"]); acc["tref2"].append(mom["M03"])
+                    row["n_hsm"] = len(acc["T"])
+                    for base, arr in acc.items():
+                        if arr:
                             med, rms = medRms(arr)
-                            row[name] = med
-                            row[f"{name}_rms"] = rms
-                        row["n_third"] = len(m21)
+                            row[f"{base}_ccd"] = med
+                            row[f"{base}_ccd_rms"] = rms
                 except Exception as exc:  # noqa: BLE001
-                    print(f"  visit {visit} ccd {ccd}: 3rd-order failed: {exc}", file=sys.stderr)
+                    print(f"  visit {visit} ccd {ccd}: HSM moments failed: {exc}", file=sys.stderr)
             rows.append(row)
 
     df = pd.DataFrame(rows)

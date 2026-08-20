@@ -61,7 +61,8 @@ _LOG = logging.getLogger(__name__)
 # Summary-table schema version (bump when columns change).
 # v2: add (Mxx,Myy,Mxy) temporal covariance + their band PSDs/floors.
 # v3: add 3rd-moment (coma, trefoil) static/dynamic/cross decomposition.
-SCHEMA_VERSION = 3
+# v4: add hsm_* (HSM-weighted coadd 2nd+3rd moments) for the matched CCD comparison.
+SCHEMA_VERSION = 4
 
 # Fixed log-spaced frequency band edges (Hz) for the binned PSDs. 5 bands.
 PSD_BIN_EDGES = (0.03, 0.1, 0.2, 0.5, 1.0, 2.5)
@@ -162,6 +163,26 @@ class DetectorMoments:
     motion: ShapeMoments
     perStamp: pd.DataFrame = field(repr=False)
     third: dict[str, float] = field(default_factory=dict, repr=False)
+    hsm: dict[str, float] = field(default_factory=dict, repr=False)
+
+
+def _hsmToDict(mom: dict | None) -> dict[str, float]:
+    """Map an ``optatmo.moments_hsm`` result to hsm_* columns (arcsec**n).
+
+    HSM-weighted moments of the coadd, in the guider frame, using the *same*
+    estimator as the adjacent-CCD PSF stars -- for an apples-to-apples
+    comparison free of the unweighted-vs-weighted confound. ``M11=T``,
+    ``M20=Q1``, ``M02=Q2``; M21/M12/M30/M03 are coma/trefoil.
+    """
+    if not mom:
+        return {}
+    return {
+        "hsm_Q1": float(mom["M20"]), "hsm_Q2": float(mom["M02"]), "hsm_T": float(mom["M11"]),
+        "hsm_e1": float(mom["e1n"]), "hsm_e2": float(mom["e2n"]),
+        "hsm_coma1": float(mom["M21"]), "hsm_coma2": float(mom["M12"]),
+        "hsm_tref1": float(mom["M30"]), "hsm_tref2": float(mom["M03"]),
+        "hsm_sigma": float(mom.get("sigma_arcsec", np.nan)),
+    }
 
 
 def makeCutout(
@@ -378,6 +399,7 @@ def decomposeDetector(
     stars: pd.DataFrame,
     detector: str,
     config: MomentConfig | None = None,
+    hsmFunc=None,
 ) -> DetectorMoments | None:
     """Decompose one guide sensor's shape into coadd, stamp-mean, motion.
 
@@ -485,6 +507,16 @@ def decomposeDetector(
         coadd3rd = {k: mc[k] * s3 for k in ("m30", "m21", "m12", "m03")}
         third = thirdOrderDecomposition(perStamp, coadd3rd)
 
+    # HSM-weighted moments of the coadd, via the injected estimator (same one
+    # used for the adjacent-CCD PSF stars) -- matched-algorithm comparison.
+    hsm = {}
+    if hsmFunc is not None:
+        try:
+            mom = hsmFunc(np.nan_to_num(csub, nan=0.0), pixscale)
+            hsm = _hsmToDict(mom)
+        except Exception as exc:  # noqa: BLE001 - HSM is best-effort, never fatal
+            _LOG.warning("Coadd HSM measurement failed for %s: %s", detector, exc)
+
     return DetectorMoments(
         detector=detector,
         expId=int(guiderData.expid),
@@ -497,6 +529,7 @@ def decomposeDetector(
         motion=ShapeMoments(vxx * s2, vyy * s2, vxy * s2),
         perStamp=perStamp,
         third=third,
+        hsm=hsm,
     )
 
 
@@ -504,6 +537,7 @@ def decomposeExposure(
     guiderData: GuiderData,
     stars: pd.DataFrame,
     config: MomentConfig | None = None,
+    hsmFunc=None,
 ) -> dict[str, DetectorMoments]:
     """Decompose every tracked guide sensor in an exposure.
 
@@ -524,7 +558,7 @@ def decomposeExposure(
     out = {}
     for detector in sorted(stars["detector"].unique()):
         try:
-            dm = decomposeDetector(guiderData, stars, detector, config)
+            dm = decomposeDetector(guiderData, stars, detector, config, hsmFunc=hsmFunc)
         except Exception as exc:  # noqa: BLE001 - one bad sensor must not sink the exposure
             _LOG.warning("decomposeDetector failed for %s: %s", detector, exc)
             continue
@@ -926,6 +960,7 @@ def summarizeExposure(
             **temporalShapeCovariance(pm),
             **temporalMomentCovariance(pm),
             **dm.third,
+            **dm.hsm,
             "psd_dx": psd_dx, "psd_dy": psd_dy,
             "psd_Q1": psd_Q1, "psd_Q2": psd_Q2, "psd_T": psd_T,
             "psd_Mxx": psd_Mxx, "psd_Myy": psd_Myy, "psd_Mxy": psd_Mxy,
