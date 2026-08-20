@@ -58,6 +58,35 @@ def cleanStars(st):
              & np.isfinite(st.psfFlux) & (st.psfFlux > 0)]
 
 
+def visitRotDeg(butler, collection, visit, ccds):
+    """Boresight rotation angle (deg) for a visit, robust across stack versions.
+
+    The ``visit`` dimension record field name has changed over daf_butler
+    releases (and was dropped in some), so try a few known record attributes
+    first, then fall back to the image's ``visitInfo`` (always present).
+    """
+    import numpy as np
+    recs = list(butler.registry.queryDimensionRecords(
+        "visit", where="instrument='LSSTCam' and visit=v", bind={"v": int(visit)}))
+    if recs:
+        for attr in ("boresight_rotation_angle", "sky_rotation", "rotation_angle"):
+            val = getattr(recs[0], attr, None)
+            if val is None:
+                continue
+            try:
+                return float(np.degrees(val.asRadians()))  # lsst.geom.Angle
+            except AttributeError:
+                return float(val)                           # already degrees
+    for ccd in ccds:
+        try:
+            vi = butler.get("preliminary_visit_image.visitInfo", collections=collection,
+                            instrument="LSSTCam", visit=visit, detector=ccd)
+            return float(vi.boresightRotAngle.asDegrees())
+        except Exception:
+            continue
+    return float(np.nan)
+
+
 def main(argv=None):
     args = parseArgs(argv)
     adj = yaml.safe_load(open(args.adjacent_yaml))
@@ -103,9 +132,7 @@ def main(argv=None):
             continue
         ps = cleanStars(st)
         ps = ps[ps.detector.isin(ccds)]
-        vrec = list(butler.registry.queryDimensionRecords(
-            "visit", where="instrument='LSSTCam' and visit=v", bind={"v": int(visit)}))
-        rot_deg = float(np.degrees(vrec[0].boresight_rotation_angle.asRadians())) if vrec else np.nan
+        rot_deg = visitRotDeg(butler, collection, int(visit), ccds)
 
         for guider, ccd in guiderToCcd.items():
             sub = ps[ps.detector == ccd]
