@@ -1,27 +1,33 @@
 #!/usr/bin/env python
-"""Discover + verify the physical camera rotator angle for science visits.
+"""Verify the physical camera rotator angle computed from visitInfo.
 
-Run on the RSP (where ConsDB resolves). For a range of visits it prints a table:
-  seq_num | ROTPA | ROTCOORD | boresightRotAngle | physical_rotator_angle | diff
+Run on the RSP (where ConsDB resolves). The physical camera rotator (rotTelPos)
+is NOT boresightRotAngle; it is derived from the two boresight angles
+(cf. aos/code/run_wfs_fam_compare.py):
 
-  * ROTPA / ROTCOORD  -- from the preliminary_visit_image FITS metadata.
-  * boresightRotAngle -- visitInfo (the SKY position angle; typically == ROTPA).
-  * physical_rotator_angle -- ConsDB cdb_lsstcam.visit1_quicklook (canonical
-    physical camera rotator, degrees).
+    rotTelPos = parallacticAngle - boresightRotAngle - pi/2
 
-Use the table to lock down the relation between the header ROTPA and the ConsDB
-physical rotator (units, sign, offset) BEFORE wiring the chosen source into
-extract_adjacent_psf_moments.visitRotDeg().
+For a range of visits this prints a table comparing that visitInfo-derived value
+against ConsDB cdb_lsstcam.visit1_quicklook.physical_rotator_angle (the canonical
+physical rotator, degrees), so we can lock down sign / offset / 2*pi wrap BEFORE
+wiring the visitInfo source into extract_adjacent_psf_moments.visitRotDeg().
 
     python check_rotator_field.py --day-obs 20260709 \
         --collection LSSTCam/runs/nightlyValidation/68 \
-        --seq-min 800 --seq-max 830 --detector 94
+        --seq-min 730 --seq-max 790 --detector 94
 """
 import argparse
+import math
 import os
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+HALFPI = math.pi / 2.0
+
+
+def wrap180(x):
+    """Wrap a degree value to (-180, 180]."""
+    return (x + 180.0) % 360.0 - 180.0
 
 
 def main():
@@ -30,10 +36,10 @@ def main():
     ap.add_argument("--day-obs", type=int, required=True)
     ap.add_argument("--collection", required=True,
                     help="processed-science run holding preliminary_visit_image")
-    ap.add_argument("--seq-min", type=int, default=0)
-    ap.add_argument("--seq-max", type=int, default=10**9)
-    ap.add_argument("--limit", type=int, default=25,
-                    help="max visits to probe headers for (default 25)")
+    ap.add_argument("--seq-min", type=int, default=730)
+    ap.add_argument("--seq-max", type=int, default=790)
+    ap.add_argument("--limit", type=int, default=40,
+                    help="max visits to probe (default 40)")
     ap.add_argument("--detector", type=int, default=94,
                     help="a science detector present in the visits (default 94)")
     ap.add_argument("--repo", default="/repo/main")
@@ -62,34 +68,38 @@ def main():
     visits = sorted(v for v in cdf.index
                     if args.seq_min <= (v - base) <= args.seq_max)[:args.limit]
 
-    hdr = f"{'seq':>6} {'ROTPA':>11} {'ROTCOORD':>9} {'boresight':>11} " \
-          f"{'consdb_rot':>11} {'consdb-ROTPA':>13}"
+    def f(x, w=10):
+        return f"{x:{w}.4f}" if isinstance(x, (int, float)) else f"{str(x):>{w}}"
+
+    hdr = (f"{'seq':>5} {'parAng':>10} {'boresight':>10} {'rtp_vi':>10} "
+           f"{'consdb':>10} {'c-rtp':>10} {'c-rtp(w)':>10}")
     print("\n" + hdr)
     print("-" * len(hdr))
+    diffs = []
     for v in visits:
         kw = dict(collections=args.collection, instrument="LSSTCam",
                   visit=int(v), detector=args.detector)
-        rotpa = coord = bore = None
-        try:
-            md = butler.get("preliminary_visit_image.metadata", **kw)
-            rotpa = md.get("ROTPA")
-            coord = md.get("ROTCOORD")
-        except Exception:
-            pass
+        par = bore = rtp = None
         try:
             vi = butler.get("preliminary_visit_image.visitInfo", **kw)
+            par = vi.boresightParAngle.asDegrees()
             bore = vi.boresightRotAngle.asDegrees()
-        except Exception:
-            pass
-        crot = cdf.loc[v, "physical_rotator_angle"]
+            rtp = math.degrees(vi.boresightParAngle.asRadians()
+                               - vi.boresightRotAngle.asRadians() - HALFPI)
+        except Exception as e:
+            print(f"{v - base:>5}  visitInfo failed: {type(e).__name__}: {e}")
+            continue
+        crot = float(cdf.loc[v, "physical_rotator_angle"])
+        d = crot - rtp
+        dw = wrap180(d)
+        diffs.append(dw)
+        print(f"{v - base:>5} {f(par)} {f(bore)} {f(rtp)} {f(crot)} {f(d)} {f(dw)}")
 
-        def f(x):
-            return f"{x:11.4f}" if isinstance(x, (int, float)) else f"{str(x):>11}"
-
-        diff = (crot - rotpa) if (isinstance(rotpa, (int, float))
-                                  and isinstance(crot, (int, float))) else None
-        print(f"{v - base:>6} {f(rotpa)} {str(coord):>9} {f(bore)} "
-              f"{f(crot)} {f(diff):>13}")
+    if diffs:
+        import statistics
+        print(f"\nconsdb - rtp_vi (wrapped): mean={statistics.mean(diffs):.4f}  "
+              f"stdev={statistics.pstdev(diffs):.4f}  n={len(diffs)}")
+        print("If stdev ~ 0, the physical rotator = rtp_vi + (that constant mean offset).")
 
 
 if __name__ == "__main__":
