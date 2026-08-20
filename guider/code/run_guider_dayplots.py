@@ -2,8 +2,9 @@
 """One multi-page per-day QA/summary PDF from a per-day moments parquet.
 
 Pages: (1) validation QA vs seqNum (sensors tracked, median FWHM, Alt/Az
-jitter, 2nd-order additivity residual); (2) static vs dynamic 2nd-order shape
-(Q1, Q2); (3) static vs dynamic 3rd-order coma & trefoil.
+jitter, 2nd-order additivity residual); (2) detector counts (guiders per visit
++ per-guider presence); (3) static vs dynamic 2nd-order shape (Q1, Q2);
+(4) static vs dynamic 3rd-order coma & trefoil.
 
     python run_guider_dayplots.py <night>/guider_moments_<dayObs>.parquet \
         --output <night>/guider_plots_<dayObs>.pdf
@@ -60,6 +61,36 @@ def page_validation(pdf, df, dayObs):
     fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
 
+def page_detector_counts(pdf, df, dayObs):
+    """Guiders-with-moments per visit (recovery) + per-guider presence."""
+    perVisit = df.groupby("expId")["detector"].nunique()
+    nVisits = len(perVisit)
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+
+    # (a) distribution of #guiders per visit
+    counts = perVisit.value_counts().reindex(range(1, 9), fill_value=0)
+    ax[0].bar(counts.index, counts.values, color="C0")
+    ax[0].set(title=f"guiders with moments / visit  (mean {perVisit.mean():.2f})",
+              xlabel="# guiders", ylabel="# visits", xticks=range(1, 9))
+    for n, c in counts.items():
+        if c:
+            ax[0].text(n, c, str(int(c)), ha="center", va="bottom", fontsize=8)
+
+    # (b) per-guider presence fraction across visits (spot chronic dropouts)
+    pres = (df.groupby("detector")["expId"].nunique() / nVisits).sort_index()
+    ax[1].barh(pres.index, pres.values, color="C2")
+    ax[1].set(title="fraction of visits each guider is present",
+              xlabel="fraction", xlim=(0, 1.02))
+    ax[1].axvline(1.0, color="k", lw=0.8, ls="--")
+    for i, (name, v) in enumerate(pres.items()):
+        ax[1].text(v, i, f" {v:.2f}", va="center", fontsize=8)
+
+    partial = int((perVisit < 8).sum())
+    fig.suptitle(f"Guider detector counts  {dayObs}  "
+                 f"({nVisits} visits, {partial} partial <8)", fontweight="bold")
+    fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+
 def page_static_dynamic(pdf, df, pairs, title, dayObs):
     fig, axes = plt.subplots(1, len(pairs), figsize=(5 * len(pairs), 5))
     axes = np.atleast_1d(axes)
@@ -83,6 +114,7 @@ def main(argv=None):
 
     with PdfPages(args.output) as pdf:
         page_validation(pdf, df, dayObs)
+        page_detector_counts(pdf, df, dayObs)
         page_static_dynamic(pdf, df,
                             [("Q1_stamp", "Q1_motion", "Q1"), ("Q2_stamp", "Q2_motion", "Q2")],
                             "2nd-order static vs dynamic", dayObs)
