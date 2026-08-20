@@ -59,17 +59,25 @@ def cleanStars(st):
 
 
 def visitRotDeg(butler, collection, visit, ccds):
-    """Boresight rotation angle (deg) for a visit.
+    """Physical camera rotator angle (deg), wrapped to (-180, 180].
 
-    The ``visit`` dimension record carries no rotation field, so read it from
-    the image's ``visitInfo`` (a component get, no pixels loaded). Try each
-    adjacent CCD in turn in case one is missing; nan if none resolve.
+    This is the mechanical rotator (rotTelPos, == ConsDB physical_rotator_angle),
+    NOT visitInfo.boresightRotAngle (which is the sky position angle). It is
+    derived from the two boresight angles (cf. aos/code/run_wfs_fam_compare.py):
+
+        rotTelPos = parallacticAngle - boresightRotAngle - 90 deg
+
+    verified against ConsDB physical_rotator_angle to ~0.3 deg. Read from the
+    image's visitInfo (a component get, no pixels); try each adjacent CCD in
+    turn in case one is missing; nan if none resolve.
     """
     for ccd in ccds:
         try:
             vi = butler.get("preliminary_visit_image.visitInfo", collections=collection,
                             instrument="LSSTCam", visit=visit, detector=ccd)
-            return float(vi.boresightRotAngle.asDegrees())
+            rtp = (vi.boresightParAngle.asDegrees()
+                   - vi.boresightRotAngle.asDegrees() - 90.0)
+            return (rtp + 180.0) % 360.0 - 180.0
         except Exception:
             continue
     return float("nan")

@@ -17,12 +17,10 @@ wiring the visitInfo source into extract_adjacent_psf_moments.visitRotDeg().
         --seq-min 730 --seq-max 790 --detector 94
 """
 import argparse
-import math
 import os
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-HALFPI = math.pi / 2.0
 
 
 def wrap180(x):
@@ -84,8 +82,7 @@ def main():
             vi = butler.get("preliminary_visit_image.visitInfo", **kw)
             par = vi.boresightParAngle.asDegrees()
             bore = vi.boresightRotAngle.asDegrees()
-            rtp = math.degrees(vi.boresightParAngle.asRadians()
-                               - vi.boresightRotAngle.asRadians() - HALFPI)
+            rtp = par - bore - 90.0     # rotTelPos = parAngle - boresightRotAngle - 90 deg
         except Exception as e:
             print(f"{v - base:>5}  visitInfo failed: {type(e).__name__}: {e}")
             continue
