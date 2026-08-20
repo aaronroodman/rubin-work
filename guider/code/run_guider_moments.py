@@ -145,12 +145,21 @@ def main(argv=None):
         "edge_margin": args.edge_margin, "max_ellipticity": args.max_ellipticity,
         "min_finite_fraction": args.min_finite_fraction if recover else 1.0,
     }
-    decomps = decomposeExposure(guiderData, stars, MomentConfig(apNSigma=args.ap_nsigma,
-                                                                cenNIter=args.cen_niter))
-    summary = summarizeExposure(guiderData, stars, decomps,
-                                guiderHz=args.guider_hz, provenance=provenance)
+    try:
+        decomps = decomposeExposure(guiderData, stars, MomentConfig(apNSigma=args.ap_nsigma,
+                                                                    cenNIter=args.cen_niter))
+        summary = summarizeExposure(guiderData, stars, decomps,
+                                    guiderHz=args.guider_hz, provenance=provenance)
+    except Exception as exc:  # noqa: BLE001 - keep the stars/metrics; never crash the visit
+        if args.strict:
+            raise
+        print(f"{expId}: moment decomposition failed: {exc}", file=sys.stderr)
+        summary = pd.DataFrame()
+    if summary.empty:
+        summary = pd.DataFrame(columns=["expId", "dayObs", "seqNum", "detector"])
     summary.to_parquet(out["moments"], index=False)
-    print(f"{expId}: wrote moments({len(summary)}) stars({len(starsOut)}) metrics({len(metrics)})")
+    print(f"{expId}: wrote moments({len(summary)}) stars({len(starsOut)}) "
+          f"metrics({len(metrics)}) detectors({sorted(stars['detector'].unique())})")
 
 
 if __name__ == "__main__":

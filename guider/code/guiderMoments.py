@@ -523,7 +523,11 @@ def decomposeExposure(
     """
     out = {}
     for detector in sorted(stars["detector"].unique()):
-        dm = decomposeDetector(guiderData, stars, detector, config)
+        try:
+            dm = decomposeDetector(guiderData, stars, detector, config)
+        except Exception as exc:  # noqa: BLE001 - one bad sensor must not sink the exposure
+            _LOG.warning("decomposeDetector failed for %s: %s", detector, exc)
+            continue
         if dm is not None:
             out[detector] = dm
     return out
@@ -890,8 +894,7 @@ def summarizeExposure(
     }
     prov = provenance or {}
 
-    rows = []
-    for det, dm in decomps.items():
+    def _row(det, dm):
         pm = dm.perStamp.sort_values("stamp")
         pixscale = float(pm["pixscale"].iloc[0])
         sub = stars[stars["detector"] == det]
@@ -941,6 +944,12 @@ def summarizeExposure(
             **gmRow,
             **prov,
         }
-        rows.append(row)
+        return row
 
+    rows = []
+    for det, dm in decomps.items():
+        try:
+            rows.append(_row(det, dm))
+        except Exception as exc:  # noqa: BLE001 - one bad sensor must not sink the summary
+            _LOG.warning("summarizeExposure row failed for %s: %s", det, exc)
     return pd.DataFrame(rows)
