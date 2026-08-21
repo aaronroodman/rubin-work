@@ -17,15 +17,20 @@ Plots:
      PER CCD: an n_sub x n_sub grid inside each detector's own footprint hull,
      evaluated with that detector's calib.interpolator, then imaged together;
      the per-CCD height steps are preserved and there is no cross-CCD blending).
-  2. OCS maps Z5..Z11 (calib.interpolator_ocs).
+  2. OCS maps Z5..Zmax -- every Noll index present (--zmax to cap)
+     (calib.interpolator_ocs).
 
 The ~16 field-edge CCDs stored height-only on the WHOLE focal-plane grid (not a
 compact footprint) are skipped in the CCS panel -- their per-CCD footprint is
 not recoverable from the calib samples alone.
 
+Orientation is selectable: --orient dvcs (y_field horizontal, default) or
+--orient aos (y_field vertical, to match AOS/Danish/Batoid).
+
 Usage:
     python plot_miw_maps.py [--repo /repo/main] [--collection ...] [--filter i_39]
-        [--ocs-n 71] [--ccs-sub 10] [--lim 1.75] [--out-dir output]
+        [--ocs-n 71] [--ccs-sub 10] [--lim 1.75] [--orient dvcs|aos] [--zmax N]
+        [--out-dir output]
 """
 import argparse
 
@@ -51,24 +56,40 @@ def _grid(n, lim):
     return gx, gy, np.column_stack([gx.ravel(), gy.ravel()])
 
 
-def _dvcs_axes(ax, lim, title):
-    """DVCS orientation: x_field on the VERTICAL axis, y_field on the HORIZONTAL."""
+def _axes(ax, lim, title, orient):
+    """Field-map axes. orient='dvcs' -> x_field vertical, y_field horizontal;
+    orient='aos' -> y_field vertical, x_field horizontal (AOS/Danish/Batoid)."""
     ax.add_patch(Circle((0, 0), FP_R, fill=False, ls='--', color='k',
                         lw=0.5, alpha=0.5))
     ax.set_aspect('equal'); ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
     ax.set_title(title, fontsize=9); ax.tick_params(labelsize=6)
-    ax.set_xlabel('y_field [deg]', fontsize=7)
-    ax.set_ylabel('x_field [deg]', fontsize=7)
+    if orient == 'dvcs':
+        ax.set_xlabel('y_field [deg]', fontsize=7)
+        ax.set_ylabel('x_field [deg]', fontsize=7)
+    else:  # aos
+        ax.set_xlabel('x_field [deg]', fontsize=7)
+        ax.set_ylabel('y_field [deg]', fontsize=7)
 
 
-def _imshow(ax, Z, lim, title, sample_xy=None):
-    # DVCS: transpose so x_field is vertical, y_field horizontal
+# back-compat alias (older call sites)
+def _dvcs_axes(ax, lim, title, orient='dvcs'):
+    _axes(ax, lim, title, orient)
+
+
+def _imshow(ax, Z, lim, title, orient='dvcs', sample_xy=None):
+    """Z is indexed [iy, ix] (iy over y_field, ix over x_field).
+    dvcs: transpose so x_field is vertical; aos: no transpose (y_field vertical)."""
     vl = _vlim(Z)
-    im = ax.imshow(Z.T, origin='lower', extent=[-lim, lim, -lim, lim],
+    Zp = Z.T if orient == 'dvcs' else Z
+    im = ax.imshow(Zp, origin='lower', extent=[-lim, lim, -lim, lim],
                    cmap='RdBu_r', vmin=-vl, vmax=vl, interpolation='nearest')
-    if sample_xy is not None:                 # plot (y_field, x_field)
-        ax.plot(sample_xy[1], sample_xy[0], '.', ms=0.5, color='k', alpha=0.15)
-    _dvcs_axes(ax, lim, title)
+    if sample_xy is not None:
+        fx, fy = sample_xy                    # (field_x, field_y)
+        if orient == 'dvcs':
+            ax.plot(fy, fx, '.', ms=0.5, color='k', alpha=0.15)
+        else:
+            ax.plot(fx, fy, '.', ms=0.5, color='k', alpha=0.15)
+    _axes(ax, lim, title, orient)
     return im
 
 
@@ -109,6 +130,11 @@ def main():
     ap.add_argument('--ccs-sub', type=int, default=10,
                     help='per-CCD grid (n_sub x n_sub) for the CCS panel')
     ap.add_argument('--lim', type=float, default=1.75)
+    ap.add_argument('--orient', choices=['dvcs', 'aos'], default='dvcs',
+                    help="dvcs: y_field horizontal (x_field vertical); "
+                         "aos: y_field vertical (x_field horizontal, AOS/Danish/Batoid)")
+    ap.add_argument('--zmax', type=int, default=None,
+                    help='highest Noll index for the OCS map grid (default: all present)')
     ap.add_argument('--out-dir', default='output')
     args = ap.parse_args()
 
@@ -149,44 +175,51 @@ def main():
           f'median in-hull cell fraction {np.median(fills):.2f}')
 
     # ---- 1. Z4 OCS vs CCS (DVCS: x_field vertical, y_field horizontal) ----
+    orient = args.orient
+    otag = orient.upper()
     fig, ax = plt.subplots(1, 2, figsize=(13, 6))
     i0 = _imshow(ax[0], ocs_map(4), args.lim,
                  f'Z4 OCS [µm] ({args.ocs_n}x{args.ocs_n}, calib.interpolator_ocs)',
-                 sample_xy=ocs_xy)
+                 orient=orient, sample_xy=ocs_xy)
     fig.colorbar(i0, ax=ax[0], shrink=0.8)
     axc = ax[1]
     im = None
     for ex, ey, z in patches:
-        # DVCS: horizontal = field_y (ey), vertical = field_x (ex); C = z.T
-        im = axc.pcolormesh(ey, ex, np.ma.masked_invalid(z.T), cmap='RdBu_r',
-                            vmin=-vl_ccs, vmax=vl_ccs, shading='flat')
-    _dvcs_axes(axc, args.lim, f'Z4 CCS [µm] (per-CCD {args.ccs_sub}x'
-               f'{args.ccs_sub} interpolation, incl. height)')
+        if orient == 'dvcs':      # horizontal = field_y (ey), vertical = field_x (ex)
+            im = axc.pcolormesh(ey, ex, np.ma.masked_invalid(z.T), cmap='RdBu_r',
+                                vmin=-vl_ccs, vmax=vl_ccs, shading='flat')
+        else:                     # aos: horizontal = field_x (ex), vertical = field_y (ey)
+            im = axc.pcolormesh(ex, ey, np.ma.masked_invalid(z), cmap='RdBu_r',
+                                vmin=-vl_ccs, vmax=vl_ccs, shading='flat')
+    _axes(axc, args.lim, f'Z4 CCS [µm] (per-CCD {args.ccs_sub}x'
+          f'{args.ccs_sub} interpolation, incl. height)', orient)
     if im is not None:
         fig.colorbar(im, ax=axc, shrink=0.8)
-    fig.suptitle('Official MIW calib — Z4 (defocus): OCS vs CCS  (DVCS)')
+    fig.suptitle(f'Official MIW calib — Z4 (defocus): OCS vs CCS  ({otag})')
     fig.tight_layout()
     fig.savefig(f'{args.out_dir}/miw_z4_ocs_ccs.png', dpi=120, bbox_inches='tight')
     plt.close(fig)
 
-    # ---- 2. OCS maps Z5..Z11 ----
-    js = [j for j in range(5, 12) if j in k]
-    cols = 4
+    # ---- 2. OCS maps: every Noll >= 5 (up to --zmax) ----
+    zmax = args.zmax if args.zmax is not None else max(noll)
+    js = [j for j in noll if 5 <= j <= zmax]
+    cols = 5
     rows = int(np.ceil(len(js) / cols))
-    fig, axs = plt.subplots(rows, cols, figsize=(4.0 * cols, 3.7 * rows))
+    fig, axs = plt.subplots(rows, cols, figsize=(3.4 * cols, 3.2 * rows))
     axs = np.atleast_1d(axs).ravel()
     for a, j in zip(axs, js):
-        im = _imshow(a, ocs_map(j), args.lim, f'Z{j} OCS [µm]', sample_xy=ocs_xy)
+        im = _imshow(a, ocs_map(j), args.lim, f'Z{j} OCS [µm]',
+                     orient=orient, sample_xy=ocs_xy)
         fig.colorbar(im, ax=a, shrink=0.8)
     for a in axs[len(js):]:
         a.axis('off')
-    fig.suptitle(f'Official MIW calib — OCS maps Z5–Z11 '
-                 f'({args.ocs_n}x{args.ocs_n}, calib.interpolator_ocs)  (DVCS)')
+    fig.suptitle(f'Official MIW calib — OCS maps Z5–Z{zmax} '
+                 f'({args.ocs_n}x{args.ocs_n}, calib.interpolator_ocs)  ({otag})')
     fig.tight_layout()
-    fig.savefig(f'{args.out_dir}/miw_ocs_z5_z11.png', dpi=120, bbox_inches='tight')
+    fig.savefig(f'{args.out_dir}/miw_ocs_maps.png', dpi=120, bbox_inches='tight')
     plt.close(fig)
     print(f'wrote {args.out_dir}/miw_z4_ocs_ccs.png and '
-          f'{args.out_dir}/miw_ocs_z5_z11.png')
+          f'{args.out_dir}/miw_ocs_maps.png')
 
 
 if __name__ == '__main__':
