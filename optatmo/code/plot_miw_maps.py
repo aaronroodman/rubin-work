@@ -76,10 +76,11 @@ def _dvcs_axes(ax, lim, title, orient='dvcs'):
     _axes(ax, lim, title, orient)
 
 
-def _imshow(ax, Z, lim, title, orient='dvcs', sample_xy=None):
+def _imshow(ax, Z, lim, title, orient='dvcs', sample_xy=None, vlim=None):
     """Z is indexed [iy, ix] (iy over y_field, ix over x_field).
-    dvcs: transpose so x_field is vertical; aos: no transpose (y_field vertical)."""
-    vl = _vlim(Z)
+    dvcs: transpose so x_field is vertical; aos: no transpose (y_field vertical).
+    vlim: shared symmetric color limit (default: per-panel 99th percentile)."""
+    vl = vlim if vlim is not None else _vlim(Z)
     Zp = Z.T if orient == 'dvcs' else Z
     im = ax.imshow(Zp, origin='lower', extent=[-lim, lim, -lim, lim],
                    cmap='RdBu_r', vmin=-vl, vmax=vl, interpolation='nearest')
@@ -135,6 +136,16 @@ def main():
                          "aos: y_field vertical (x_field horizontal, AOS/Danish/Batoid)")
     ap.add_argument('--zmax', type=int, default=None,
                     help='highest Noll index for the OCS map grid (default: all present)')
+    ap.add_argument('--batoid', action='store_true',
+                    help='also compute the batoid design intrinsic on the SAME grid '
+                         'and write a per-Noll MIW-vs-batoid comparison PDF (RSP: needs '
+                         'batoid_rubin; per-point, so use a modest --batoid-n)')
+    ap.add_argument('--batoid-band', default=None,
+                    help="band for the batoid design intrinsic (default: first char of --filter)")
+    ap.add_argument('--batoid-model', default='Rubin_v3.14',
+                    help="batoid yaml stem: Rubin_v3.14 (as-built) or LSST (nominal)")
+    ap.add_argument('--batoid-n', type=int, default=41,
+                    help='grid size for the batoid comparison (per-point eval; keep modest)')
     ap.add_argument('--out-dir', default='output')
     args = ap.parse_args()
 
@@ -220,6 +231,49 @@ def main():
     plt.close(fig)
     print(f'wrote {args.out_dir}/miw_z4_ocs_ccs.png and '
           f'{args.out_dir}/miw_ocs_maps.png')
+
+    # ---- 3. optional: batoid design intrinsic vs MIW, same grid & bins ----
+    if args.batoid:
+        from matplotlib.backends.backend_pdf import PdfPages
+        from lsst.ts.intrinsic.wavefront.batoid_intrinsic import batoid_ocs_zernikes
+        band = args.batoid_band or args.filter[0].lower()
+        bgx, bgy, bgg = _grid(args.batoid_n, args.lim)
+        ins = np.hypot(bgg[:, 0], bgg[:, 1]) <= args.lim     # skip corners (vignetted)
+        print(f'batoid design intrinsic: model {args.batoid_model}, band {band}, '
+              f'{int(ins.sum())} pts on {args.batoid_n}x{args.batoid_n} grid '
+              f'(per-point eval, may take a few min)...')
+        bat = batoid_ocs_zernikes(bgg[ins, 0], bgg[ins, 1], noll_list=noll,
+                                  band=band, optical_model=args.batoid_model)
+        miw_same = np.asarray(cal0.interpolator_ocs(bgg))    # MIW on the SAME grid
+
+        def bmap(j):
+            full = np.full(bgx.size, np.nan); full[ins] = bat[j]
+            return full.reshape(bgx.shape)
+
+        def mmap(j):
+            return miw_same[:, k[j]].reshape(bgx.shape)
+
+        js = [j for j in noll if 5 <= j <= (args.zmax if args.zmax is not None else max(noll))]
+        outpdf = f'{args.out_dir}/miw_vs_batoid_{orient}.pdf'
+        per = 3
+        with PdfPages(outpdf) as pdf:
+            for s in range(0, len(js), per):
+                chunk = js[s:s + per]
+                fig, axs = plt.subplots(len(chunk), 3, figsize=(12, 3.7 * len(chunk)),
+                                        squeeze=False)
+                for row, j in enumerate(chunk):
+                    M, B = mmap(j), bmap(j)
+                    vl = _vlim(np.concatenate([M.ravel(), B.ravel()]))
+                    for a, (Z, ttl, vv) in zip(
+                            axs[row],
+                            [(M, f'Z{j} MIW', vl), (B, f'Z{j} batoid', vl),
+                             (M - B, f'Z{j} MIW-batoid', None)]):
+                        im = _imshow(a, Z, args.lim, f'{ttl} [µm]', orient=orient, vlim=vv)
+                        fig.colorbar(im, ax=a, shrink=0.8)
+                fig.suptitle(f'MIW vs batoid design intrinsic ({args.batoid_model}, '
+                             f'{band}-band, OCS)  ({otag})', fontsize=11)
+                fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+        print(f'wrote {outpdf}')
 
 
 if __name__ == '__main__':
