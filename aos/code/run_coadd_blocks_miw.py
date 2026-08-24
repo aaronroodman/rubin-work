@@ -91,6 +91,19 @@ CORR_VARS = ["alt", "rot", "fwhm"] + THERMAL_VARS
 # telemetry scatter-plotted directly against the coadd-vs-MIW spatial correlation
 SCATTER_VARS = ["z_gradient", "y_gradient", "dome_delta_t"]
 
+# Blocks used to BUILD the 5rot MIW: a build rotation (in_family) within the
+# frozen build epoch (2025 FAM was folded in later, so it is NOT in the build).
+# Shaded lightly on the time series to mark the self-comparison / reference set.
+BUILD_DAY_MIN = 20260101
+BUILD_DAY_MAX = 20260513
+
+
+def _build_used(blocks):
+    """Boolean per-block: was this block part of the 5rot MIW build set?"""
+    return np.array([bool(b.get("in_family")) and
+                     BUILD_DAY_MIN <= int(b["day_obs"]) <= BUILD_DAY_MAX
+                     for b in blocks])
+
 
 def _fixed_list_to_2d(table, col):
     """A fixed-length list<double> arrow column -> (n, L) float array."""
@@ -390,7 +403,7 @@ def _scatter_vs_metric_page(pdf, blocks, tvars, metric_key, metric_label):
     """Scatter each telemetry var against a per-coadd metric (default the
     combined Z5-Z8 spatial correlation), colored by 5rot-family, with a robust
     Theil-Sen line + Spearman rho."""
-    outfam = np.array([not b["in_family"] for b in blocks])
+    bu = _build_used(blocks)
     y = np.array([b["metrics"].get(metric_key, np.nan) for b in blocks], float)
     fig, axes = plt.subplots(1, len(tvars), figsize=(4.6 * len(tvars), 4.6),
                              squeeze=False)
@@ -398,10 +411,10 @@ def _scatter_vs_metric_page(pdf, blocks, tvars, metric_key, metric_label):
     for ax, tv in zip(axes, tvars):
         x = np.array([b.get(tv, np.nan) for b in blocks], float)
         ok = np.isfinite(x) & np.isfinite(y)
-        ax.scatter(x[ok & ~outfam], y[ok & ~outfam], s=20, c="tab:blue",
-                   alpha=0.7, label="in-family")
-        ax.scatter(x[ok & outfam], y[ok & outfam], s=26, c="tab:red",
-                   alpha=0.85, label="out-of-family")
+        ax.scatter(x[ok & ~bu], y[ok & ~bu], s=20, c="0.55",
+                   alpha=0.6, label="other")
+        ax.scatter(x[ok & bu], y[ok & bu], s=26, c="tab:green",
+                   alpha=0.85, label="MIW build")
         rho = _spearman(x, y)
         if np.isfinite(rho) and int(ok.sum()) >= 5:
             sl, ic, _, _ = theilslopes(y[ok], x[ok])
@@ -422,7 +435,7 @@ def render_timeseries(blocks, out_pdf):
     small vertical text at each day's start.  u-modes are 5 panels/page."""
     n = len(blocks); ordn = np.arange(n)
     days = np.array([b["day_obs"] for b in blocks])
-    outfam = np.array([not b["in_family"] for b in blocks])
+    build_used = _build_used(blocks)
     Um = np.array([b["umodes"] for b in blocks])                 # (n, n_keep), um
     nkeep = Um.shape[1]
     W = max(12.0, 0.30 * n + 3.0)                                # common width
@@ -433,8 +446,8 @@ def render_timeseries(blocks, out_pdf):
     def decorate(ax, first=False):
         for x in bnd:
             ax.axvline(x, color="0.5", lw=0.6, ls=":")
-        for i in np.where(outfam)[0]:
-            ax.axvspan(i - 0.5, i + 0.5, color="tab:red", alpha=0.07)
+        for i in np.where(build_used)[0]:
+            ax.axvspan(i - 0.5, i + 0.5, color="tab:blue", alpha=0.10)
         ax.set_xlim(*xlim); ax.grid(alpha=0.3)
         if first:                     # small day_obs labels at each day's start
             for i in day_start:
@@ -478,7 +491,7 @@ def render_timeseries(blocks, out_pdf):
         ax[1].set_xlabel("coadd ordinal (day_obs / seq order)")
         decorate(ax[0], first=True); decorate(ax[1], first=True)
         fig.suptitle("Coadd-vs-MIW comparison metrics vs ordinal  "
-                     "(vertical = day_obs; red bands = out-of-5rot-family)",
+                     "(vertical = day_obs; blue bands = 5rot MIW build blocks)",
                      fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
@@ -525,15 +538,15 @@ def render_timeseries(blocks, out_pdf):
                        origin="lower", extent=[-0.5, n - 0.5, 0.5, nkeep + 0.5])
         for x in bnd:
             ax.axvline(x, color="0.3", lw=0.6, ls=":")
-        for i in np.where(outfam)[0]:
-            ax.axvline(i, color="tab:red", lw=0.5, alpha=0.3)
+        for i in np.where(build_used)[0]:
+            ax.axvline(i, color="tab:blue", lw=0.5, alpha=0.3)
         for i in day_start:
             ax.text(i, 1.005, str(days[i]), transform=ax.get_xaxis_transform(),
                     rotation=90, fontsize=6, va="bottom", ha="left", color="0.35")
         ax.set_xlabel("coadd ordinal (day_obs / seq order)")
         ax.set_ylabel("u-mode index"); ax.set_yticks(list(range(1, nkeep + 1, 2)))
         ax.set_title("u-mode amplitude (um wavefront) vs coadd ordinal  "
-                     "(red lines = out-of-5rot-family; vertical dotted = day_obs)")
+                     "(blue lines = 5rot MIW build blocks; vertical dotted = day_obs)")
         fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02,
                      label="u-mode amplitude (um)")
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
