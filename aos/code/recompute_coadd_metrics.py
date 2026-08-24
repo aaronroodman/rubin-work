@@ -79,7 +79,8 @@ def block_metrics(cg, wg, cwfs):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--param-set", default="fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x")
-    ap.add_argument("--mi-name", default="pathA_50_34_i_5rot")
+    ap.add_argument("--mi-name", default="pathA_50_34_i_5rot",
+                    help="(not used for the path; coadd dir is <ps>/<out_name>)")
     ap.add_argument("--out-name", default="coadd_50_34")
     ap.add_argument("--output-root", default="output")
     ap.add_argument("--npz", default=None, help="override path to block_grids.npz")
@@ -88,7 +89,9 @@ def main():
     ap.add_argument("--cwfs-outer", type=float, default=1.725)
     args = ap.parse_args()
 
-    cdir = os.path.join(args.output_root, args.param_set, args.mi_name, args.out_name)
+    # coadd output dir = output/<param_set>/<out_name> (NOT nested under mi_name;
+    # mi_name only selects the sidecar/build, not the output location)
+    cdir = os.path.join(args.output_root, args.param_set, args.out_name)
     npz = args.npz or os.path.join(cdir, "block_grids.npz")
     d = np.load(npz, allow_pickle=True)
     grids, miw = d["grids"], d["miw"]        # (n, 4, ny, nx), term order = d["terms"]
