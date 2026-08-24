@@ -18,8 +18,14 @@ Pages (mirrors run_coadd_blocks_miw.render_timeseries, with rebinned metrics):
   3. scatter of the leading telemetry vs spatial r (Theil-Sen line)
   4. block telemetry (alt/az/rot/fwhm/z_gradient/band) vs ordinal
   5. u-mode amplitude heatmap vs ordinal
-Light blue shading / lines mark the blocks used to BUILD the 5rot MIW
-(a build rotation in_family, within the frozen 2026 build epoch).
+  6. ML prediction of spatial r from telemetry (grouped leave-night-out CV,
+     full vs S/N-only feature sets; excludes the MIW-build blocks)
+Light blue shading / lines mark the blocks used to BUILD the 5rot MIW.  This is
+the ACTUAL build selection (from mi_config.yaml, verified against the build
+fits.parquet): i-band, program BLOCK-T614_triplets, elevation 65-75 deg, the 5
+in-family rotator windows, day_obs <= 20260513 -- 16 blocks on 4 nights
+(2026-03-15..03-24) at elevation ~70.  `program` is not in block_grids.npz, so
+it is read from the sibling blocks_summary.parquet.
 
 Writes (new files; originals untouched):
   <coadd_dir>/coadd_metrics_rebin<f>.parquet
@@ -97,6 +103,154 @@ def _spear(x, y):
     return float(spearmanr(x[ok], y[ok]).correlation)
 
 
+def _block_programs(cdir, blocks, n):
+    """Per-block science_program (BLOCK- prefix stripped) from blocks_summary.parquet.
+
+    block_grids.npz does not carry program, so the build-selection needs this
+    sidecar.  Returns "" for any block not found (or if the file is absent)."""
+    p = os.path.join(cdir, "blocks_summary.parquet")
+    if not os.path.exists(p):
+        print(f"  WARNING: {p} missing -> cannot apply the program cut for build_used")
+        return np.array([""] * n)
+    bs = (pd.read_parquet(p, columns=["block", "program"])
+          .drop_duplicates("block").set_index("block"))
+    return np.array([str(bs.loc[b, "program"]).replace("BLOCK-", "")
+                     if b in bs.index else "" for b in blocks])
+
+
+# ---------- ML: predict spatial r from telemetry (excludes build blocks) ----------
+def render_ml(pdf, Fdf, r, groups, build_used, f):
+    """Predict the per-block combined spatial r from telemetry, on the NON-build
+    blocks only (the 16 MIW-build blocks are the self-comparison / a curated
+    self-consistent set, so they are excluded from train AND test).
+
+    Target is Fisher-z(r)=arctanh(r) (linearises the bounded metric).  Two feature
+    sets (full telemetry vs S/N-only: fwhm/n_donuts/n_visits) x two models
+    (RidgeCV, HistGradientBoosting) are scored with GroupKFold by day_obs
+    (leave-night-out; blocks from one night share conditions).  The increment
+    full - S/N is the honest test of whether thermal/optical telemetry predicts
+    agreement beyond observing S/N."""
+    try:
+        from sklearn.linear_model import RidgeCV
+        from sklearn.ensemble import HistGradientBoostingRegressor
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.pipeline import make_pipeline
+        from sklearn.model_selection import GroupKFold, cross_val_predict, GroupShuffleSplit
+        from sklearn.inspection import permutation_importance, PartialDependenceDisplay
+        from sklearn.metrics import r2_score, mean_squared_error
+    except Exception as e:  # sklearn not installed -> a single note page
+        fig, a = plt.subplots(figsize=(10, 3)); a.axis("off")
+        a.text(0.5, 0.5, f"ML pages skipped: scikit-learn unavailable ({e})",
+               ha="center", va="center", fontsize=11)
+        pdf.savefig(fig); plt.close(fig); return None
+
+    y = np.asarray(r, float)
+    keep = (~build_used) & np.isfinite(y)
+    F = Fdf[keep].copy(); yv = y[keep]; grp = np.asarray(groups)[keep]
+    F = F.loc[:, F.notna().any(axis=0)]                 # drop all-NaN columns
+    rowok = F.notna().all(axis=1).values                # then rows with any NaN
+    F = F[rowok]; yv = yv[rowok]; grp = grp[rowok]
+    F = F.loc[:, F.nunique() > 1]                        # drop constant columns
+    feat = list(F.columns)
+    n_used, n_nights = len(yv), len(np.unique(grp))
+    if n_used < 25 or n_nights < 4 or not feat:
+        fig, a = plt.subplots(figsize=(10, 3)); a.axis("off")
+        a.text(0.5, 0.5, f"ML pages skipped: too little usable data "
+               f"(n={n_used}, nights={n_nights}, feats={len(feat)})",
+               ha="center", va="center", fontsize=11)
+        pdf.savefig(fig); plt.close(fig)
+        return None
+
+    yz = np.arctanh(np.clip(yv, -0.999, 0.999))          # Fisher-z target
+    k = int(min(5, n_nights))
+    gkf = GroupKFold(n_splits=k)
+    ridge = lambda: make_pipeline(StandardScaler(),
+                                  RidgeCV(alphas=np.logspace(-3, 3, 25)))
+    gbt = lambda: HistGradientBoostingRegressor(
+        max_depth=3, max_iter=400, learning_rate=0.05, l2_regularization=1.0,
+        min_samples_leaf=8, random_state=0)
+    SN = [c for c in ["fwhm", "n_donuts", "n_visits"] if c in feat]
+
+    def cv(cols, mk):
+        Xc = F[cols].values.astype(float)
+        pred = cross_val_predict(mk(), Xc, yz, cv=gkf, groups=grp)
+        return (r2_score(yz, pred),
+                float(np.sqrt(mean_squared_error(yv, np.tanh(pred)))), pred)
+
+    res = {}
+    for fname, cols in [("full", feat), ("S/N-only", SN)]:
+        for mname, mk in [("Ridge", ridge), ("GBT", gbt)]:
+            res[(fname, mname)] = cv(cols, mk)
+    print("  ML grouped-CV (leave-night-out) R^2 on Fisher-z(r), "
+          f"non-build n={n_used}, nights={n_nights}:")
+    for kk, (r2, rmse, _) in res.items():
+        print(f"    {kk[0]:9s} {kk[1]:5s}: R2={r2:+.3f}  RMSE(r)={rmse:.3f}")
+
+    # ---- page A: CV R^2 bars (full vs S/N, Ridge vs GBT) ----
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4.6))
+    combos = [("full", "GBT"), ("full", "Ridge"), ("S/N-only", "GBT"), ("S/N-only", "Ridge")]
+    labs = [f"{c[0]}\n{c[1]}" for c in combos]
+    xp = np.arange(len(combos))
+    a1.bar(xp, [res[c][0] for c in combos],
+           color=["tab:green", "tab:olive", "0.5", "0.7"])
+    a1.axhline(0, color="k", lw=0.5); a1.set_xticks(xp); a1.set_xticklabels(labs, fontsize=8)
+    a1.set_ylabel("grouped-CV R$^2$  (Fisher-z r)"); a1.grid(alpha=0.3, axis="y")
+    a1.set_title("predictability of spatial r")
+    a2.bar(xp, [res[c][1] for c in combos],
+           color=["tab:green", "tab:olive", "0.5", "0.7"])
+    a2.set_xticks(xp); a2.set_xticklabels(labs, fontsize=8)
+    a2.set_ylabel("CV RMSE in r units"); a2.grid(alpha=0.3, axis="y")
+    a2.set_title("residual scatter")
+    dR2 = res[("full", "GBT")][0] - res[("S/N-only", "GBT")][0]
+    fig.suptitle(f"ML: predict coadd-vs-MIW spatial r from telemetry  "
+                 f"(non-build blocks; n={n_used}, {n_nights} nights)\n"
+                 f"GBT full-model R$^2$={res[('full','GBT')][0]:+.2f}; "
+                 f"thermal/optical adds {dR2:+.2f} over S/N-only", fontsize=11)
+    fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+    # ---- page B: permutation importance (grouped train/test split, GBT) ----
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.3, random_state=0)
+    (tr, te), = gss.split(F.values, yz, grp)
+    Xall = F.values.astype(float)
+    mdl = gbt().fit(Xall[tr], yz[tr])
+    pi = permutation_importance(mdl, Xall[te], yz[te], n_repeats=30, random_state=0)
+    order = np.argsort(pi.importances_mean)
+    fig, a = plt.subplots(figsize=(9, max(4.5, 0.32 * len(feat) + 1.5)))
+    a.barh(np.arange(len(feat)), pi.importances_mean[order],
+           xerr=pi.importances_std[order], color="tab:blue")
+    a.set_yticks(np.arange(len(feat))); a.set_yticklabels([feat[i] for i in order], fontsize=8)
+    a.axvline(0, color="k", lw=0.5); a.grid(alpha=0.3, axis="x")
+    a.set_xlabel("permutation importance (drop in R$^2$ on held-out nights)")
+    a.set_title(f"GBT feature importance for spatial r  "
+                f"(train {len(tr)} / test {len(te)} blocks, grouped by night)")
+    fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+    # ---- page C: OOF predicted-vs-actual + partial dependence of top drivers ----
+    _, _, predz = res[("full", "GBT")]
+    pred_r = np.tanh(predz)
+    top = [feat[i] for i in order[::-1][:4]]
+    fig = plt.figure(figsize=(12, 7.6))
+    axp = fig.add_subplot(2, 3, 1)
+    axp.scatter(yv, pred_r, s=22, c="tab:green", alpha=0.7)
+    lim = [min(yv.min(), pred_r.min()), max(yv.max(), pred_r.max())]
+    axp.plot(lim, lim, "k--", lw=1); axp.set_xlabel("actual r"); axp.set_ylabel("CV-predicted r")
+    axp.set_title(f"GBT out-of-fold  (R$^2$={res[('full','GBT')][0]:+.2f})", fontsize=9)
+    axp.grid(alpha=0.3)
+    full_fit = gbt().fit(Xall, yz)
+    for j, tv in enumerate(top):
+        ax = fig.add_subplot(2, 3, j + 2)
+        try:
+            PartialDependenceDisplay.from_estimator(
+                full_fit, Xall, [feat.index(tv)], feature_names=feat, ax=ax)
+            ax.set_title(f"partial dep: {tv}", fontsize=9)
+        except Exception:
+            ax.axis("off"); ax.text(0.5, 0.5, f"PD failed: {tv}", ha="center")
+    fig.suptitle("GBT prediction of spatial r: out-of-fold accuracy + partial "
+                 "dependence of the leading drivers (Fisher-z target)", fontsize=11)
+    fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+    return res
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--param-set", default="fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x")
@@ -106,8 +260,13 @@ def main():
     ap.add_argument("--rebin", type=int, default=3)
     ap.add_argument("--cwfs-inner", type=float, default=1.59)
     ap.add_argument("--cwfs-outer", type=float, default=1.725)
-    ap.add_argument("--build-day-min", type=int, default=20260101)
+    # MIW 5rot build selection (mi_config.yaml defaults + entry) -- see docstring
+    ap.add_argument("--build-bands", nargs="+", default=["i"])
+    ap.add_argument("--build-programs", nargs="+", default=["T614_triplets"])
+    ap.add_argument("--build-alt-min", type=float, default=65.0)
+    ap.add_argument("--build-alt-max", type=float, default=75.0)
     ap.add_argument("--build-day-max", type=int, default=20260513)
+    ap.add_argument("--no-ml", action="store_true", help="skip the ML prediction pages")
     args = ap.parse_args()
 
     cdir = os.path.join(args.output_root, args.param_set, args.out_name)
@@ -121,8 +280,15 @@ def main():
     band = np.asarray(d["band"]).astype(str)
     Um = np.asarray(d["umodes"], float)
     day = np.asarray(d["day_obs"]).astype(int)
-    infam = np.asarray(d["in_family"]).astype(bool)
-    build_used = infam & (day >= args.build_day_min) & (day <= args.build_day_max)
+    alt = np.asarray(d["alt"], float)
+    infam = np.asarray(d["in_family"]).astype(bool)  # == the 5 rotator-window membership
+    # ACTUAL MIW-build selection: program is not in the npz -> read blocks_summary.parquet.
+    prog = _block_programs(cdir, np.asarray(d["block"]), n)
+    progset = {p.replace("BLOCK-", "") for p in args.build_programs}
+    build_used = (np.isin(band, args.build_bands)
+                  & np.array([p in progset for p in prog])
+                  & (alt >= args.build_alt_min) & (alt <= args.build_alt_max)
+                  & infam & (day <= args.build_day_max))
     ordn = np.arange(n)
 
     # coarse CWFS annulus mask
@@ -273,7 +439,23 @@ def main():
         fig.colorbar(im, ax=a, fraction=0.03, pad=0.02, label="u-mode amplitude (um)")
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-    print(f"wrote {outpdf}  (5 page groups, rebin {f}x{f})")
+        # 6. ML: predict spatial r from telemetry (excludes the MIW-build blocks)
+        if not args.no_ml:
+            az = np.asarray(d["az"], float) if "az" in d.files else np.full(n, np.nan)
+            ndon = np.asarray(d["n_donuts"], float) if "n_donuts" in d.files else np.full(n, np.nan)
+            nvis = np.asarray(d["n_visits"], float) if "n_visits" in d.files else np.full(n, np.nan)
+            feat = {"fwhm": tele.get("fwhm", np.full(n, np.nan)),
+                    "alt": tele.get("alt", alt), "rot": tele.get("rot", np.full(n, np.nan)),
+                    "az_sin": np.sin(np.deg2rad(az)), "az_cos": np.cos(np.deg2rad(az)),
+                    "n_donuts": ndon, "n_visits": nvis}
+            for tv in THERMAL_VARS:
+                feat[tv] = tele.get(tv, np.full(n, np.nan))
+            Fdf = pd.DataFrame(feat)
+            bcats = pd.get_dummies(pd.Series(band, name="band"), prefix="band").astype(float)
+            Fdf = pd.concat([Fdf, bcats], axis=1)
+            render_ml(pdf, Fdf, M("corr_combined"), day, build_used, f)
+
+    print(f"wrote {outpdf}  ({'6' if not args.no_ml else '5'} page groups, rebin {f}x{f})")
 
 
 if __name__ == "__main__":

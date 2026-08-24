@@ -91,18 +91,29 @@ CORR_VARS = ["alt", "rot", "fwhm"] + THERMAL_VARS
 # telemetry scatter-plotted directly against the coadd-vs-MIW spatial correlation
 SCATTER_VARS = ["z_gradient", "y_gradient", "dome_delta_t"]
 
-# Blocks used to BUILD the 5rot MIW: a build rotation (in_family) within the
-# frozen build epoch (2025 FAM was folded in later, so it is NOT in the build).
-# Shaded lightly on the time series to mark the self-comparison / reference set.
-BUILD_DAY_MIN = 20260101
+# Blocks used to BUILD the 5rot MIW -- the ACTUAL selection from mi_config.yaml
+# (defaults + the pathA_50_34_i_5rot entry), verified against the build
+# fits.parquet: i-band, program BLOCK-T614_triplets, elevation 65-75 deg, one of
+# the 5 in-family rotator windows (== in_family), day_obs <= 20260513.  On the
+# real data this is 16 blocks over 4 nights (2026-03-15..03-24) at elevation ~70.
+# 2025 FAM (folded in later, different programs) is NOT in the build.  Shaded
+# lightly on the time series to mark the self-comparison / reference set.
+BUILD_BANDS = ("i",)
+BUILD_PROGRAMS = ("T614_triplets",)   # blocks_summary program has the BLOCK- prefix stripped
+BUILD_ALT_MIN = 65.0
+BUILD_ALT_MAX = 75.0
 BUILD_DAY_MAX = 20260513
 
 
 def _build_used(blocks):
     """Boolean per-block: was this block part of the 5rot MIW build set?"""
-    return np.array([bool(b.get("in_family")) and
-                     BUILD_DAY_MIN <= int(b["day_obs"]) <= BUILD_DAY_MAX
-                     for b in blocks])
+    return np.array([
+        (str(b.get("band")) in BUILD_BANDS)
+        and (str(b.get("program", "")).replace("BLOCK-", "") in BUILD_PROGRAMS)
+        and (BUILD_ALT_MIN <= float(b["alt"]) <= BUILD_ALT_MAX)
+        and bool(b.get("in_family"))
+        and (int(b["day_obs"]) <= BUILD_DAY_MAX)
+        for b in blocks])
 
 
 def _fixed_list_to_2d(table, col):
