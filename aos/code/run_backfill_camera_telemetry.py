@@ -15,17 +15,20 @@ flows into the coadd / time-series study exactly like the ESS thermal columns.
 Camera-body temperatures are NOT in ConsDB; they come from the camera
 utility-trunk housekeeping EFD topic
 
-    lsst.sal.MTCamera.utiltrunk_body   (Chronograf: "lsst.MTCamera"."autogen".
-                                        "lsst.MTCamera.utiltrunk_body")
+    measurement lsst.MTCamera.utiltrunk_body  in InfluxDB database lsst.MTCamera
+    (Chronograf: "lsst.MTCamera"."autogen"."lsst.MTCamera.utiltrunk_body")
 
 which carries ~25 structural temps -- CamBody{X+,Y+,Y-}Temp, CamHous*, BackFlng*,
 ShrdRng*, L1/L2 lens temps, and the aggregate `AverageTemp` (the single most
 useful scalar).  Field names verified from ts_xml MTCamera/utiltrunk_body.avsc.
 
 The camera housekeeping lives in its OWN InfluxDB database (`lsst.MTCamera`), not
-the main `efd` DB, so we point the EFD client at --db (default lsst.MTCamera).
-If that DB is not reachable from your EFD instance, try --db efd (in case it is
-bridged into the observatory EFD).
+the main `efd` DB, and its measurement name is `lsst.MTCamera.utiltrunk_body`
+(NOT the SAL name lsst.sal.MTCamera.*).  We point the EFD client at --db (default
+lsst.MTCamera) and query --topic (default lsst.MTCamera.utiltrunk_body).  NOTE:
+EfdClient.select_time_series only flags "Topic ... not in EFD schema" when the
+query comes back EMPTY -- i.e. it means the measurement/db/time-range yielded no
+rows, usually a wrong --topic/--db, not a hard schema error.
 
 RSP-ONLY (needs lsst_efd_client + EFD access; run on an interactive node).
 
@@ -48,7 +51,7 @@ import numpy as np
 import pandas as pd
 from astropy.time import Time
 
-TOPIC_DEFAULT = "lsst.sal.MTCamera.utiltrunk_body"
+TOPIC_DEFAULT = "lsst.MTCamera.utiltrunk_body"   # camera-DB measurement (no `sal`)
 DB_DEFAULT = "lsst.MTCamera"
 
 # camera-body-relevant defaults (AverageTemp first); --all-fields adds the rest
@@ -77,7 +80,7 @@ async def fetch_visit_means(efd, topic, v, fields, pad_days, tmin, tmax,
                             require_state, ok_state):
     """Return a DataFrame [day_obs, seq_num, cam_n_samp, cam_<field>...] with one
     row per visit, meaning each field over the visit's padded window."""
-    cols = fields + [f + "_state" for f in fields]
+    cols = list(fields) + ([f + "_state" for f in fields] if require_state else [])
     out = {"day_obs": [], "seq_num": [], "cam_n_samp": []}
     for f in fields:
         out["cam_" + f] = []
