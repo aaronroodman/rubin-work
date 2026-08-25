@@ -48,10 +48,17 @@ def load_telescope(band="r"):
 
 
 def surface_aperture(tel, name):
-    """(R_outer, R_inner) of a mirror's clear aperture [m] from its obscuration."""
+    """(R_outer, R_inner) of a surface's clear aperture [m] from its obscuration.
+
+    Mirrors carry ObscNegation(ObscAnnulus) -> (outer, inner); the refractive
+    surfaces (L1/L2/Filter/L3) carry ObscNegation(ObscCircle) -> (radius, 0)."""
     obsc = tel[name].obscuration
-    orig = getattr(obsc, "original", obsc)          # ObscNegation(ObscAnnulus)
-    return float(orig.outer), float(orig.inner)
+    orig = getattr(obsc, "original", obsc)          # unwrap ObscNegation
+    if hasattr(orig, "outer"):                      # ObscAnnulus (mirrors)
+        return float(orig.outer), float(orig.inner)
+    if hasattr(orig, "radius"):                     # ObscCircle (lenses/filter)
+        return float(orig.radius), 0.0
+    raise TypeError(f"{name}: unhandled obscuration {type(orig).__name__}")
 
 
 def perturb_surface(tel, name, coef_surface_m, R_outer=None, R_inner=None):
