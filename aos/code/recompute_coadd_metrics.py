@@ -289,6 +289,10 @@ def main():
     ap.add_argument("--build-alt-max", type=float, default=75.0)
     ap.add_argument("--build-day-max", type=int, default=20260513)
     ap.add_argument("--no-ml", action="store_true", help="skip the ML prediction pages")
+    ap.add_argument("--cambody-parquet", default=None,
+                    help="camera-body temperature sidecar keyed by block "
+                    "(run_backfill_cambody_temps.py); default: auto-detect "
+                    "<coadd_dir>/cambody_temps.parquet if present")
     args = ap.parse_args()
 
     cdir = os.path.join(args.output_root, args.param_set, args.out_name)
@@ -312,6 +316,23 @@ def main():
                   & (alt >= args.build_alt_min) & (alt <= args.build_alt_max)
                   & infam & (day <= args.build_day_max))
     ordn = np.arange(n)
+
+    # optional camera-body temperature sidecar (from run_backfill_cambody_temps.py),
+    # aligned to the npz block order; these EFD temps are NOT in ConsDB.
+    cam_vars = []
+    campath = args.cambody_parquet or os.path.join(cdir, "cambody_temps.parquet")
+    if os.path.exists(campath):
+        cam = pd.read_parquet(campath).drop_duplicates("block").set_index("block")
+        blk = np.asarray(d["block"])
+        for c in [c for c in cam.columns if c.startswith("cam_")]:
+            arr = np.array([cam.loc[b, c] if b in cam.index else np.nan for b in blk], float)
+            if np.isfinite(arr).sum() >= 10:      # need enough coverage to be useful
+                tele[c] = arr; cam_vars.append(c)
+        print(f"  merged {len(cam_vars)} camera-body temp column(s) from {campath}: "
+              f"{cam_vars}")
+    else:
+        print(f"  (no camera-body sidecar at {campath}; run "
+              f"run_backfill_cambody_temps.py on the RSP to add it)")
 
     # coarse CWFS annulus mask
     cx = 0.5 * (d["xbins"][:-1] + d["xbins"][1:])
@@ -381,7 +402,7 @@ def main():
         # 2. telemetry <-> metric Spearman bars
         rms, cor = M("resid_rms_combined"), M("corr_combined")
         rows = [(tv, _spear(tele[tv], rms), _spear(tele[tv], cor))
-                for tv in CORR_VARS if tv in tele]
+                for tv in CORR_VARS + cam_vars if tv in tele]
         rows = [r for r in rows if np.isfinite(r[1]) or np.isfinite(r[2])]
         rows.sort(key=lambda r: -(abs(r[1]) if np.isfinite(r[1]) else 0.0))
         labels = [r[0] for r in rows]; xr = np.arange(len(labels))
@@ -398,10 +419,11 @@ def main():
                      f"n={n}; red rho>0, blue rho<0)", fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # 3. scatter: leading telemetry vs spatial r
-        fig, axes = plt.subplots(1, len(SCATTER_VARS), figsize=(4.6 * len(SCATTER_VARS), 4.6),
+        # 3. scatter: leading telemetry vs spatial r (+ camera-body avg if present)
+        scatter_vars = SCATTER_VARS + (["cam_AverageTemp"] if "cam_AverageTemp" in tele else [])
+        fig, axes = plt.subplots(1, len(scatter_vars), figsize=(4.6 * len(scatter_vars), 4.6),
                                  squeeze=False)
-        for a, tv in zip(axes[0], SCATTER_VARS):
+        for a, tv in zip(axes[0], scatter_vars):
             x = tele.get(tv, np.full(n, np.nan)); y = cor
             ok = np.isfinite(x) & np.isfinite(y)
             a.scatter(x[ok & ~build_used], y[ok & ~build_used], s=20, c="0.55", alpha=0.6, label="other")
@@ -474,9 +496,11 @@ def main():
                     "n_donuts": ndon, "n_visits": nvis}
             for tv in THERMAL_VARS:
                 feat[tv] = tele.get(tv, np.full(n, np.nan))
+            for cv in cam_vars:                       # camera-body EFD temps
+                feat[cv] = tele[cv]
             Fdf = pd.DataFrame(feat)   # NOTE: no fwhm, no band -> environmental only
             render_ml(pdf, Fdf, M("corr_combined"), day, build_used, f,
-                      ENV_FEATS, SN_FEATS)
+                      ENV_FEATS + cam_vars, SN_FEATS)
 
     print(f"wrote {outpdf}  ({'6' if not args.no_ml else '5'} page groups, rebin {f}x{f})")
 
