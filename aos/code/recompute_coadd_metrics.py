@@ -128,6 +128,44 @@ def _block_programs(cdir, blocks, n):
                      if b in bs.index else "" for b in blocks])
 
 
+def _block_camera_means(cdir, visits_path, blocks, min_cov=10):
+    """Per-block mean of the camera-body cam_<field> columns, aggregated from the
+    combined visits.parquet (option-1 path: no coadd rebuild).  A block's cam
+    value is the mean over its visits (blocks_summary day_obs, seq_min..seq_max).
+
+    Excludes the pre-existing ESS cols cam_air_temp / cam_m1m3_delta_t (already in
+    THERMAL_VARS) and cam_n_samp.  Returns ({col: array aligned to blocks}, [cols])
+    keeping only columns with >= min_cov finite blocks."""
+    bpath = os.path.join(cdir, "blocks_summary.parquet")
+    if not (visits_path and os.path.exists(visits_path) and os.path.exists(bpath)):
+        return {}, []
+    v = pd.read_parquet(visits_path)
+    camcols = [c for c in v.columns if c.startswith("cam_")
+               and c not in THERMAL_VARS and c != "cam_n_samp"]
+    if not camcols:
+        return {}, []
+    v = v[["day_obs", "seq_num"] + camcols].copy()
+    v["day_obs"] = v["day_obs"].astype(int)
+    v["seq_num"] = v["seq_num"].astype(int)
+    bs = (pd.read_parquet(bpath, columns=["block", "day_obs", "seq_min", "seq_max"])
+          .drop_duplicates("block").set_index("block"))
+    means = {c: [] for c in camcols}
+    for b in blocks:
+        if b in bs.index:
+            r = bs.loc[b]
+            sub = v[(v.day_obs == int(r.day_obs)) & (v.seq_num >= int(r.seq_min))
+                    & (v.seq_num <= int(r.seq_max))]
+        else:
+            sub = v.iloc[0:0]
+        for c in camcols:
+            x = sub[c].to_numpy(float) if len(sub) else np.array([])
+            means[c].append(float(np.nanmean(x)) if x.size and np.isfinite(x).any()
+                            else np.nan)
+    out = {c: np.array(means[c], float) for c in camcols}
+    keep = [c for c in camcols if np.isfinite(out[c]).sum() >= min_cov]
+    return {c: out[c] for c in keep}, keep
+
+
 # ---------- ML: predict spatial r from telemetry (excludes build blocks) ----------
 def render_ml(pdf, Fdf, r, groups, build_used, f, env_cols, sn_cols):
     """Predict the per-block combined spatial r from ENVIRONMENTAL telemetry
@@ -289,6 +327,10 @@ def main():
     ap.add_argument("--build-alt-max", type=float, default=75.0)
     ap.add_argument("--build-day-max", type=int, default=20260513)
     ap.add_argument("--no-ml", action="store_true", help="skip the ML prediction pages")
+    ap.add_argument("--visits", default=None,
+                    help="combined visits.parquet carrying camera-body cam_<field> "
+                    "columns (from run_backfill_camera_telemetry --merge); default: "
+                    "auto-detect <output_root>/<param_set>/visits.parquet")
     args = ap.parse_args()
 
     cdir = os.path.join(args.output_root, args.param_set, args.out_name)
@@ -312,6 +354,19 @@ def main():
                   & (alt >= args.build_alt_min) & (alt <= args.build_alt_max)
                   & infam & (day <= args.build_day_max))
     ordn = np.arange(n)
+
+    # option-1: camera-body temps aggregated per block from the merged visits.parquet
+    # (no coadd rebuild); added to the Spearman bars, scatter, and environmental ML.
+    vpath = args.visits or os.path.join(args.output_root, args.param_set, "visits.parquet")
+    cam_means, cam_vars = _block_camera_means(cdir, vpath, np.asarray(d["block"]))
+    for c in cam_vars:
+        tele[c] = cam_means[c]
+    if cam_vars:
+        print(f"  merged {len(cam_vars)} camera-body temp col(s) per block from "
+              f"{vpath}: {cam_vars[:5]}{'...' if len(cam_vars) > 5 else ''}")
+    else:
+        print(f"  (no camera-body cam_* cols in {vpath}; run "
+              f"run_backfill_camera_telemetry.py --merge on the RSP to add them)")
 
     # coarse CWFS annulus mask
     cx = 0.5 * (d["xbins"][:-1] + d["xbins"][1:])
@@ -381,7 +436,7 @@ def main():
         # 2. telemetry <-> metric Spearman bars
         rms, cor = M("resid_rms_combined"), M("corr_combined")
         rows = [(tv, _spear(tele[tv], rms), _spear(tele[tv], cor))
-                for tv in CORR_VARS if tv in tele]
+                for tv in CORR_VARS + cam_vars if tv in tele]
         rows = [r for r in rows if np.isfinite(r[1]) or np.isfinite(r[2])]
         rows.sort(key=lambda r: -(abs(r[1]) if np.isfinite(r[1]) else 0.0))
         labels = [r[0] for r in rows]; xr = np.arange(len(labels))
@@ -398,10 +453,11 @@ def main():
                      f"n={n}; red rho>0, blue rho<0)", fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # 3. scatter: leading telemetry vs spatial r
-        fig, axes = plt.subplots(1, len(SCATTER_VARS), figsize=(4.6 * len(SCATTER_VARS), 4.6),
+        # 3. scatter: leading telemetry vs spatial r (+ camera-body avg if present)
+        scatter_vars = SCATTER_VARS + (["cam_AverageTemp"] if "cam_AverageTemp" in tele else [])
+        fig, axes = plt.subplots(1, len(scatter_vars), figsize=(4.6 * len(scatter_vars), 4.6),
                                  squeeze=False)
-        for a, tv in zip(axes[0], SCATTER_VARS):
+        for a, tv in zip(axes[0], scatter_vars):
             x = tele.get(tv, np.full(n, np.nan)); y = cor
             ok = np.isfinite(x) & np.isfinite(y)
             a.scatter(x[ok & ~build_used], y[ok & ~build_used], s=20, c="0.55", alpha=0.6, label="other")
@@ -474,9 +530,11 @@ def main():
                     "n_donuts": ndon, "n_visits": nvis}
             for tv in THERMAL_VARS:
                 feat[tv] = tele.get(tv, np.full(n, np.nan))
+            for cv in cam_vars:                       # camera-body temps (per block)
+                feat[cv] = tele[cv]
             Fdf = pd.DataFrame(feat)   # NOTE: no fwhm, no band -> environmental only
             render_ml(pdf, Fdf, M("corr_combined"), day, build_used, f,
-                      ENV_FEATS, SN_FEATS)
+                      ENV_FEATS + cam_vars, SN_FEATS)
 
     print(f"wrote {outpdf}  ({'6' if not args.no_ml else '5'} page groups, rebin {f}x{f})")
 
