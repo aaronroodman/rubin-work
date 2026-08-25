@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Backfill CAMERA-BODY temperatures as a per-chunk, visit-keyed parquet, then
-(optionally) merge them into the chunk's visits.parquet.
+(optionally) merge them into the COMBINED visits.parquet.
 
 Architecture (parallel to the per-chunk {donuts,fits,visits}.parquet products):
 
   output/<ps>/chunks/<dmin>_<dmax>/camera_telemetry.parquet   <- this script
       one row per visit: day_obs, seq_num, cam_n_samp, cam_<field>...
 
-Then `--merge` joins those cam_<field> columns into the sibling visits.parquet
-(on day_obs, seq_num), so the combined output/<ps>/visits.parquet picks them up
-via the existing combine_visits step -- and from there the camera telemetry
-flows into the coadd / time-series study exactly like the ESS thermal columns.
+`--merge` gathers ALL chunks' camera_telemetry.parquet and joins the cam_<field>
+columns (on day_obs, seq_num) into the COMBINED output/<ps>/visits.parquet --
+NOT into the per-chunk visits.parquet, which are left pristine (they are the
+expensive mktable outputs; the combined file is a cheap concat, safe to augment
+in place).  From there the camera telemetry flows into the coadd / time-series
+study exactly like the ESS thermal columns.  (Re-running combine_visits would
+drop the cam columns from the combined file -- just re-run --merge --skip-produce
+to restore them from the per-chunk camera_telemetry.parquet, the source of truth.)
 
 Camera-body temperatures are NOT in ConsDB; they come from the camera
 utility-trunk housekeeping EFD topic
@@ -32,11 +36,12 @@ rows, usually a wrong --topic/--db, not a hard schema error.
 
 RSP-ONLY (needs lsst_efd_client + EFD access; run on an interactive node).
 
-  # one chunk:
-  python run_backfill_camera_telemetry.py \
-      --visits output/<ps>/chunks/<d>_<d>/visits.parquet
-  # all chunks of a param_set, then merge into each chunk's visits:
-  python run_backfill_camera_telemetry.py --param-set <ps> --all-fields --merge
+  # 1. produce per-chunk camera_telemetry.parquet (verify before merging):
+  python run_backfill_camera_telemetry.py --param-set <ps> --all-fields
+  # or a single chunk:
+  python run_backfill_camera_telemetry.py --visits output/<ps>/chunks/<d>_<d>/visits.parquet
+  # 2. merge the per-chunk tables into the COMBINED visits (no re-fetch):
+  python run_backfill_camera_telemetry.py --param-set <ps> --merge --skip-produce
 
 Per visit: mean of each field over [visit_mjd - pad, visit_mjd + pad], keeping
 only finite samples within [--tmin,--tmax] degC (and, with --require-state, only
@@ -117,9 +122,23 @@ async def fetch_visit_means(efd, topic, v, fields, pad_days, tmin, tmax,
     return pd.DataFrame(out)
 
 
-def merge_into_visits(visits_path, cam_df):
-    """Add the cam_<field> columns to visits.parquet in place, aligned by
-    (day_obs, seq_num), preserving the QTable (units on existing columns)."""
+def gather_chunk_camera(output_root, param_set):
+    """Concatenate all per-chunk camera_telemetry.parquet for a param_set.
+    Chunks are date-disjoint, so (day_obs, seq_num) is unique; keep first if not."""
+    paths = sorted(glob.glob(os.path.join(
+        output_root, param_set, "chunks", "*", "camera_telemetry.parquet")))
+    if not paths:
+        return None, paths
+    cam = pd.concat([pd.read_parquet(p) for p in paths], ignore_index=True)
+    cam = cam.drop_duplicates(subset=["day_obs", "seq_num"], keep="first")
+    return cam, paths
+
+
+def merge_camera_into_visits(visits_path, cam_df, out_path):
+    """Add the cam_<field> columns from cam_df to the visits table at
+    visits_path (aligned by day_obs, seq_num) and write to out_path, preserving
+    the QTable (units on existing columns).  Never modifies the per-chunk files;
+    intended for the COMBINED output/<ps>/visits.parquet."""
     from astropy.table import QTable
     vi = QTable.read(str(visits_path))
     key = list(zip(np.asarray(vi["day_obs"], int), np.asarray(vi["seq_num"], int)))
@@ -128,11 +147,12 @@ def merge_into_visits(visits_path, cam_df):
     for c in camcols:
         vi[c] = np.array([getattr(idx.get(k), c, np.nan) if k in idx else np.nan
                           for k in key], float)
-    vi.write(str(visits_path), overwrite=True)
+    vi.write(str(out_path), overwrite=True)
     nfin = int(np.isfinite(np.asarray(vi["cam_AverageTemp"], float)).sum()) \
         if "cam_AverageTemp" in vi.colnames else -1
-    print(f"  merged {len(camcols)} cam cols into {visits_path} "
-          f"(cam_AverageTemp finite {nfin}/{len(vi)})")
+    print(f"merged {len(camcols)} cam cols into {out_path} "
+          f"(matched {sum(k in idx for k in key)}/{len(vi)} visits; "
+          f"cam_AverageTemp finite {nfin}/{len(vi)})")
 
 
 async def process_one(efd, visits_path, args, fields):
@@ -148,25 +168,42 @@ async def process_one(efd, visits_path, args, fields):
     cam_df.to_parquet(out, index=False)
     nfin = int(cam_df["cam_AverageTemp"].notna().sum()) if "cam_AverageTemp" in cam_df else -1
     print(f"  wrote {out} ({len(cam_df)} visits; cam_AverageTemp finite {nfin})")
-    if args.merge:
-        merge_into_visits(visits_path, cam_df)
 
 
 async def run(args):
-    from lsst_efd_client import EfdClient
     fields = ALL_FIELDS if args.all_fields else (args.fields or CAMBODY_FIELDS)
-    if args.visits:
-        targets = [args.visits]
-    else:
-        targets = sorted(glob.glob(os.path.join(
-            args.output_root, args.param_set, "chunks", "*", "visits.parquet")))
-        if not targets:
-            print(f"no chunk visits.parquet under {args.output_root}/{args.param_set}/chunks/")
+
+    # --- produce per-chunk camera_telemetry.parquet (unless --skip-produce) ---
+    if not args.skip_produce:
+        from lsst_efd_client import EfdClient
+        if args.visits:
+            targets = [args.visits]
+        else:
+            targets = sorted(glob.glob(os.path.join(
+                args.output_root, args.param_set, "chunks", "*", "visits.parquet")))
+            if not targets:
+                print(f"no chunk visits.parquet under "
+                      f"{args.output_root}/{args.param_set}/chunks/")
+                return
+            print(f"{len(targets)} chunk(s) for {args.param_set}")
+        efd = EfdClient(args.efd, db_name=args.db)
+        for t in targets:
+            await process_one(efd, t, args, fields)
+
+    # --- merge all chunks' camera_telemetry into the COMBINED visits.parquet ---
+    # (leaves the per-chunk visits.parquet untouched; the combined file is a
+    #  cheap-to-regenerate concat, so it is safe to augment in place.)
+    if args.merge:
+        cam, paths = gather_chunk_camera(args.output_root, args.param_set)
+        if cam is None:
+            print("  --merge: no per-chunk camera_telemetry.parquet found "
+                  "(run the produce step first)")
             return
-        print(f"{len(targets)} chunk(s) for {args.param_set}")
-    efd = EfdClient(args.efd, db_name=args.db)
-    for t in targets:
-        await process_one(efd, t, args, fields)
+        combined = os.path.join(args.output_root, args.param_set, "visits.parquet")
+        out = args.merge_output or combined
+        print(f"  merging {len(paths)} chunk camera tables ({len(cam)} visit rows) "
+              f"-> {out}")
+        merge_camera_into_visits(combined, cam, out)
 
 
 def main():
@@ -187,7 +224,15 @@ def main():
                     help="override field list (default: camera-body set)")
     ap.add_argument("--all-fields", action="store_true", help="pull all ~25 temps")
     ap.add_argument("--merge", action="store_true",
-                    help="also merge cam_<field> into the chunk's visits.parquet")
+                    help="after producing, merge ALL chunks' camera_telemetry into "
+                    "the COMBINED output/<ps>/visits.parquet (per-chunk visits.parquet "
+                    "are left untouched); requires --param-set")
+    ap.add_argument("--merge-output", default=None,
+                    help="write the camera-augmented combined visits here instead of "
+                    "overwriting output/<ps>/visits.parquet")
+    ap.add_argument("--skip-produce", action="store_true",
+                    help="skip the EFD fetch; only merge existing per-chunk "
+                    "camera_telemetry.parquet into the combined visits (use with --merge)")
     ap.add_argument("--pad-sec", type=float, default=120.0,
                     help="pad each visit window by this many seconds")
     ap.add_argument("--tmin", type=float, default=-40.0, help="reject samples below")
@@ -198,6 +243,10 @@ def main():
     args = ap.parse_args()
     if args.output and not args.visits:
         ap.error("--output only applies with --visits")
+    if args.merge and not args.param_set:
+        ap.error("--merge merges into the combined visits, so it requires --param-set")
+    if args.skip_produce and not args.merge:
+        ap.error("--skip-produce only makes sense with --merge")
     asyncio.run(run(args))
 
 
