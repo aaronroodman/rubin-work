@@ -51,10 +51,19 @@ import argparse
 import asyncio
 import glob
 import os
+import warnings
 
 import numpy as np
 import pandas as pd
 from astropy.time import Time
+
+# Harmless: QTable.read warns "No table::len::<col> found" for the combined
+# visits.parquet (written by combine_parquets.py via pandas, without astropy's
+# fixed-string-length metadata).  astropy falls back to the longest string, so
+# band/science_program are read losslessly (verified: values + dtypes preserved,
+# coadd filters match exactly), and our QTable.write adds the metadata so it does
+# not recur.  Silence just this one message.
+warnings.filterwarnings("ignore", message="No table::len::")
 
 TOPIC_DEFAULT = "lsst.MTCamera.utiltrunk_body"   # camera-DB measurement (no `sal`)
 DB_DEFAULT = "lsst.MTCamera"
