@@ -129,7 +129,7 @@ def _block_programs(cdir, blocks, n):
 
 
 def _block_camera_means(cdir, visits_path, blocks, min_cov=10,
-                        ref="cam_AmbAirtemp", diff=True):
+                        ref="cam_AmbAirtemp", diff=True, keep_only=("AverageTemp",)):
     """Per-block camera-body temperatures aggregated from the combined
     visits.parquet (option-1 path: no coadd rebuild).  A block's value is the
     mean over its visits (blocks_summary day_obs, seq_min..seq_max).
@@ -140,6 +140,10 @@ def _block_camera_means(cdir, visits_path, blocks, min_cov=10,
     temperature difference than an absolute temperature).  The reference column
     (default cam_AmbAirtemp) and the raw lines are then dropped.  With
     ``diff=False`` the raw per-block means are returned instead.
+
+    ``keep_only`` restricts to these field basenames (default just AverageTemp --
+    the ~25 utiltrunk sensors are highly collinear, so one aggregate is the clean
+    representative and the full set only dilutes the ML; None keeps them all).
 
     Excludes the pre-existing ESS cols cam_air_temp / cam_m1m3_delta_t (already in
     THERMAL_VARS) and cam_n_samp.  Returns ({col: array aligned to blocks}, [cols])
@@ -178,6 +182,12 @@ def _block_camera_means(cdir, visits_path, blocks, min_cov=10,
         else:
             rv = out[ref]
             out = {f"{c}_dAmb": out[c] - rv for c in camcols if c != ref}
+    if keep_only is not None:
+        kset = set(keep_only)
+        def _basename(col):
+            c = col[4:] if col.startswith("cam_") else col   # strip cam_
+            return c[:-5] if c.endswith("_dAmb") else c       # strip _dAmb
+        out = {c: v for c, v in out.items() if _basename(c) in kset}
     keep = [c for c in out if np.isfinite(out[c]).sum() >= min_cov]
     return {c: out[c] for c in keep}, keep
 
@@ -352,6 +362,9 @@ def main():
                     "features cam_<field>_dAmb (default: cam_AmbAirtemp)")
     ap.add_argument("--camera-raw", action="store_true",
                     help="use raw camera temps instead of the _dAmb gradients")
+    ap.add_argument("--camera-all", action="store_true",
+                    help="use all ~23 camera sensors (default: just AverageTemp -- "
+                    "the sensors are collinear, so one aggregate is the clean choice)")
     args = ap.parse_args()
 
     cdir = os.path.join(args.output_root, args.param_set, args.out_name)
@@ -381,7 +394,8 @@ def main():
     vpath = args.visits or os.path.join(args.output_root, args.param_set, "visits.parquet")
     cam_means, cam_vars = _block_camera_means(
         cdir, vpath, np.asarray(d["block"]),
-        ref=args.camera_ref, diff=not args.camera_raw)
+        ref=args.camera_ref, diff=not args.camera_raw,
+        keep_only=None if args.camera_all else ("AverageTemp",))
     for c in cam_vars:
         tele[c] = cam_means[c]
     if cam_vars:
