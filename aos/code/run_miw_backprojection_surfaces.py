@@ -7,31 +7,37 @@ with the refractive elements handled as per-LENS UNITS (a lens's entrance+exit
 surfaces are fit jointly).  Everything is i-band to match the MIW data.
 
 Why more than the mirrors: a surface imprints FIELD-DEPENDENT aberrations only
-where the beam footprint walks across it with field angle.  The footprint
-walk/size grows monotonically down the column (M1~0.1 pupil-like -> M3~0.8 ->
-L1~1.9 -> ... -> L3~20 focal-plane-like).  Two consequences:
-  * the sub-aperture STITCH needs footprint overlap, so its consistency VE is
-    trustworthy for M3/L1 (and marginally L2) but DEGENERATE for Filter/L3, where
-    near-disjoint footprints let a static figure mimic almost any field pattern;
-  * so the honest metric is the batoid least-squares FIT VE swept vs the number
-    of surface Zernike modes -- a physical source reaches high VE at LOW order,
-    an over-flexible near-focal-plane fit only as modes blow up.
+where the beam footprint walks across it with field angle.  The per-field-STEP
+footprint walk grows down the column, but the STITCH only needs neighbouring
+footprints to overlap, and on the dense MIW grid (71x71, 0.049 deg spacing) they
+do on EVERY surface -- e.g. at the Filter the 5.8 cm-radius footprint shifts only
+~1.3 cm between adjacent field points (~88% overlap), at L3 ~81%.  So the
+consistency test is well-posed all the way down (given dense field sampling); the
+earlier "Filter/L3 degenerate" note was an artefact of coarse subsampling.
+
+Primary test = the batoid ROUND-TRIP: back-project + stitch the MIW to a single
+static surface OPD, forward-model that figure through batoid, and compare the
+predicted focal-plane aberrations to the MIW per field.  A single global
+amplitude scale is fit so the mirror-vs-lens OPD/surface-height factor cancels.
+The least-squares surface-Zernike FIT (+ mode sweep) is kept only as a secondary
+cross-check.
 
 Outputs (--outdir, default output/):
-  miw_surfaces_footprints.pdf     beam footprints at several field points on each
-                                  optic, over its clear aperture (geometry check)
-  miw_surfaces_stitched_opd.pdf   per-surface stitched OPD + per-FoV consistency
-  miw_surfaces_fit_ve.pdf         fit VE vs #modes, all units; + injection control
-  miw_surfaces_azimuthal.pdf      recovered OPD split into m=0 vs m!=0
-
-Injection control per surface (inject a known low-order figure, forward-model,
-back-project+stitch, correlate with truth) doubles as the stitch-fidelity gauge:
-corr~1 where the stitch is well-posed, dropping toward the focal plane.
+  miw_surfaces_footprints.pdf        beam footprints at several field points on
+                                     each optic, over its clear aperture
+  miw_surfaces_consistency_maps.pdf  FULL-SIZE focal-plane map, per optic, of the
+                                     round-trip agreement (forward model vs MIW)
+  miw_surfaces_stitched_opd.pdf      per-surface stitched OPD + per-FoV consistency
+  miw_surfaces_azimuthal.pdf         recovered OPD split into m=0 vs m!=0
+  miw_surfaces_fit_ve.pdf            (only with --fit) secondary mode-sweep fit VE
 
 Usage:
-  python code/run_miw_backprojection_surfaces.py --stride 8 --nx 48       # full (RSP)
-  python code/run_miw_backprojection_surfaces.py --stride 24 --nx 28 \
-         --max-mode 15                                                     # fast (laptop)
+  python code/run_miw_backprojection_surfaces.py                       # stride 3 (laptop)
+  python code/run_miw_backprojection_surfaces.py --stride 1 --nx 64    # full grid (RSP)
+  python code/run_miw_backprojection_surfaces.py --only Filter L1      # a couple optics
+
+Injection control per surface (inject a known low-order figure, forward-model,
+back-project+stitch, correlate with truth) doubles as the stitch-fidelity gauge.
 """
 import argparse
 import os
@@ -106,6 +112,35 @@ def ve_vs_modes(A, ids, dvec, caps):
         ve = 1 - np.var(dvec - A[:, sel] @ c) / np.var(dvec)
         out.append((M, len(sel), ve))
     return out
+
+
+def roundtrip_map(tel, pts, zk, surface, r, nx, fitmax=22):
+    """Round-trip consistency (the primary test): represent the stitched OPD in
+    surface Zernikes, forward-model that figure through batoid, fit ONE global
+    amplitude scale (absorbs the mirror-vs-lens OPD/surface-height factor), and
+    compare the predicted field aberrations to the MIW.
+
+    Returns (global VE, per-field corr [len N], scale)."""
+    X, Y, glob, mask = r["X"], r["Y"], r["glob"], r["mask"]
+    Ro, Ri = bp.surface_aperture(tel, surface)
+    m = np.isfinite(glob) & mask
+    B = gz.zernikeBasis(fitmax, X[m], Y[m], R_inner=Ri, R_outer=Ro)
+    coef, *_ = np.linalg.lstsq(B.T, glob[m], rcond=None)          # OPD shape [µm]
+    telp = bp.perturb_surface(tel, surface, coef * 1e-7,          # small height inject
+                              R_outer=Ro, R_inner=Ri)
+    ptl = list(map(tuple, pts))
+    model = (bp.field_zernikes(telp, ptl, jmax=26, nx=nx)
+             - bp.field_zernikes(tel, ptl, jmax=26, nx=nx)) * bp.WAVELENGTH * 1e6
+    d = zk[:, JS].ravel(); mo = model[:, JS].ravel()
+    s = float((d @ mo) / (mo @ mo)) if mo @ mo > 0 else 0.0       # global amplitude
+    model *= s
+    ve = 1 - np.var(d - model[:, JS].ravel()) / np.var(d)
+    perfield = np.full(len(pts), np.nan)
+    for i in range(len(pts)):
+        a, b = zk[i, JS], model[i, JS]
+        if np.std(a) > 0 and np.std(b) > 0:
+            perfield[i] = np.corrcoef(a, b)[0, 1]
+    return float(ve), perfield, s
 
 
 def injection_stitch_fidelity(tel, pts, surface, grid_n, nrad, naz, nx):
@@ -202,6 +237,28 @@ def fig_stitched(tel, pts, res, out, order=ORDER):
     fig.tight_layout(); fig.savefig(out, dpi=110); plt.close(fig)
 
 
+def fig_consistency_maps(pts, res, out, order=ORDER):
+    """Full-size per-optic focal-plane map of the round-trip agreement (corr
+    between the static-surface forward model and the MIW at each field point)."""
+    n = len(order); nc = min(4, n); nr = int(np.ceil(n / nc))
+    fig, axes = plt.subplots(nr, nc, figsize=(5.0 * nc, 4.6 * nr), squeeze=False)
+    axes = axes.ravel()
+    ss = max(6, int(2200 / np.sqrt(len(pts))))
+    for ax, name in zip(axes, order):
+        pf = res[name]["rt_perfield"]; ve = res[name]["rt_ve"]
+        sc = ax.scatter(pts[:, 0], pts[:, 1], c=pf, s=ss, cmap="RdYlGn",
+                        vmin=-1, vmax=1, marker="s")
+        ax.set_aspect("equal"); ax.set_xlabel("field x [deg]"); ax.set_ylabel("field y [deg]")
+        ax.set_title(f"{name}: round-trip agreement  (global VE={ve:+.2f})", fontsize=11)
+        plt.colorbar(sc, ax=ax, shrink=.85, label="per-field corr (model vs MIW)")
+    for ax in axes[len(order):]:
+        ax.axis("off")
+    fig.suptitle("Consistency: batoid forward-model of the single static-surface "
+                 "OPD vs the MIW, per field point (green=agrees, red=disagrees)",
+                 fontsize=13)
+    fig.tight_layout(); fig.savefig(out, dpi=115); plt.close(fig)
+
+
 def fig_fit_ve(res, out, order=ORDER):
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 5.5))
     cmap = plt.cm.turbo(np.linspace(0.05, 0.95, len(order)))
@@ -248,15 +305,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--miw", default=DEFAULT_MIW)
     ap.add_argument("--band", default="i")
-    ap.add_argument("--stride", type=int, default=8)
-    ap.add_argument("--grid-n", type=int, default=110)
+    ap.add_argument("--stride", type=int, default=3,
+                    help="field-point subsample of the 71x71 MIW grid; 1=full grid "
+                    "(~3985 pts; the maps array is only ~0.3 GB, so cost is compute)")
+    ap.add_argument("--grid-n", type=int, default=100)
     ap.add_argument("--nrad", type=int, default=22)
     ap.add_argument("--naz", type=int, default=88)
     ap.add_argument("--nx", type=int, default=48, help="batoid.zernike grid for forward models")
+    ap.add_argument("--fit", action="store_true",
+                    help="also run the (slow) secondary response-matrix mode-sweep fit")
     ap.add_argument("--max-mode", type=int, default=22, help="max surface Noll mode in the fit")
     ap.add_argument("--mode-caps", type=int, nargs="+", default=[6, 11, 15, 22, 28])
+    ap.add_argument("--rt-fitmax", type=int, default=22,
+                    help="surface-Zernike order used to represent the stitched OPD for the round-trip")
     ap.add_argument("--only", nargs="+", default=None, help="subset of optics (e.g. M3 L1)")
-    ap.add_argument("--no-fit", action="store_true", help="skip the (slow) response-matrix fit")
     ap.add_argument("--outdir", default="output")
     args = ap.parse_args()
 
@@ -264,8 +326,10 @@ def main():
     tel = bp.load_telescope(args.band)
     pts, zk = load_miw(args.miw, args.stride)
     dvec = zk[:, JS].ravel()
+    gb = len(pts) * args.grid_n ** 2 * 8 / 1e9
     print(f"MIW: {args.miw}\n  {len(pts)} field points (stride {args.stride}), "
-          f"band {args.band}, frame OCS==batoid (identity)")
+          f"band {args.band}, frame OCS==batoid (identity)\n"
+          f"  maps array ~{gb:.1f} GB/surface (grid_n={args.grid_n})")
 
     field_pts = [(0.0, 0.0), (1.7, 0.0), (-1.7, 0.0), (0.0, 1.7), (0.0, -1.7),
                  (1.2, 1.2), (-1.2, -1.2)]
@@ -276,29 +340,32 @@ def main():
     caps = [c for c in args.mode_caps if c <= args.max_mode]
     modes = list(range(4, args.max_mode + 1))
     res = {}
-    print(f"\n{'optic':7s} {'stitch_medVE':>12s} {'inj_corr':>9s} {'m0_frac':>8s} "
-          f"{'fitVE@lowest':>12s} {'fitVE@max':>10s}")
+    hdr = f"\n{'optic':7s} {'roundtripVE':>11s} {'stitch_medVE':>12s} {'inj_corr':>9s} {'m0_frac':>8s}"
+    print(hdr + ("  fitVE@lo  fitVE@hi" if args.fit else ""))
     for name in order:
         surfs = UNITS[name]; rep = surfs[0]
         r = bp.run_backprojection(tel, pts, zk, surface=rep, grid_n=args.grid_n,
                                   nrad=args.nrad, naz=args.naz)
         medve = float(np.nanmedian(r["con"]["var_explained"]))
+        rt_ve, rt_perfield, _ = roundtrip_map(tel, pts, zk, rep, r, args.nx,
+                                              fitmax=args.rt_fitmax)
         icorr = injection_stitch_fidelity(tel, pts, rep, args.grid_n, args.nrad,
                                           args.naz, args.nx)
         m0, azpack = azimuthal_m0_fraction(r)
         sweep = []
-        if not args.no_fit:
+        if args.fit:
             A, ids = response_matrix(tel, pts, surfs, modes, args.nx)
             sweep = ve_vs_modes(A, ids, dvec, caps)
-        res[name] = dict(r=r, con_medve=medve, icorr=icorr, m0=m0, azpack=azpack,
-                         sweep=sweep)
-        lo = f"{sweep[0][2]:+.2f}@Z{sweep[0][0]}" if sweep else "--"
-        hi = f"{sweep[-1][2]:+.2f}@Z{sweep[-1][0]}" if sweep else "--"
-        print(f"{name:7s} {medve:12.3f} {icorr:9.3f} {m0:8.2f} {lo:>12s} {hi:>10s}")
+        res[name] = dict(r=r, con_medve=medve, rt_ve=rt_ve, rt_perfield=rt_perfield,
+                         icorr=icorr, m0=m0, azpack=azpack, sweep=sweep)
+        extra = (f"  {sweep[0][2]:+.2f}@Z{sweep[0][0]:<3d} {sweep[-1][2]:+.2f}@Z{sweep[-1][0]}"
+                 if sweep else "")
+        print(f"{name:7s} {rt_ve:11.3f} {medve:12.3f} {icorr:9.3f} {m0:8.2f}{extra}")
 
+    fig_consistency_maps(pts, res, os.path.join(args.outdir, "miw_surfaces_consistency_maps.pdf"), order)
     fig_stitched(tel, pts, res, os.path.join(args.outdir, "miw_surfaces_stitched_opd.pdf"), order)
     fig_azimuthal(res, os.path.join(args.outdir, "miw_surfaces_azimuthal.pdf"), order)
-    if not args.no_fit:
+    if args.fit:
         fig_fit_ve(res, os.path.join(args.outdir, "miw_surfaces_fit_ve.pdf"), order)
     print(f"\nwrote figures to {args.outdir}/miw_surfaces_*.pdf")
 
