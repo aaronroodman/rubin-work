@@ -53,7 +53,10 @@ THERMAL_VARS = ["cam_air_temp", "m2_air_temp", "m1m3_air_temp", "outside_temp",
                 "x_gradient", "y_gradient", "z_gradient", "radial_gradient",
                 "tma_truss_temp_pxpy", "tma_truss_temp_mxmy"]
 CORR_VARS = ["alt", "rot", "fwhm"] + THERMAL_VARS
-SCATTER_VARS = ["z_gradient", "y_gradient", "dome_delta_t"]
+# telemetry shown as scatter (one panel each) vs the spatial r on page 3; any
+# entry not present for this run (e.g. the camera gradient when visits carries no
+# cam_* columns) is silently skipped.
+SCATTER_VARS = ["z_gradient", "y_gradient", "dome_delta_t", "cam_AverageTemp_dAmb"]
 
 # ML predictors: ENVIRONMENTAL factors only -- telescope geometry + thermal
 # telemetry.  fwhm (donut blur), band, and the donut counts are deliberately
@@ -491,9 +494,9 @@ def main():
                      f"n={n}; red rho>0, blue rho<0)", fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # 3. scatter: leading telemetry vs spatial r (+ camera avg-temp gradient if present)
-        cam_scatter = [c for c in cam_vars if "AverageTemp" in c][:1]
-        scatter_vars = SCATTER_VARS + cam_scatter
+        # 3. scatter: leading telemetry vs spatial r (skip any SCATTER_VARS entry,
+        #    e.g. the camera gradient, that is absent for this run)
+        scatter_vars = [v for v in SCATTER_VARS if v in tele]
         fig, axes = plt.subplots(1, len(scatter_vars), figsize=(4.6 * len(scatter_vars), 4.6),
                                  squeeze=False)
         for a, tv in zip(axes[0], scatter_vars):
