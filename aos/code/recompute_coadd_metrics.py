@@ -128,10 +128,18 @@ def _block_programs(cdir, blocks, n):
                      if b in bs.index else "" for b in blocks])
 
 
-def _block_camera_means(cdir, visits_path, blocks, min_cov=10):
-    """Per-block mean of the camera-body cam_<field> columns, aggregated from the
-    combined visits.parquet (option-1 path: no coadd rebuild).  A block's cam
-    value is the mean over its visits (blocks_summary day_obs, seq_min..seq_max).
+def _block_camera_means(cdir, visits_path, blocks, min_cov=10,
+                        ref="cam_AmbAirtemp", diff=True):
+    """Per-block camera-body temperatures aggregated from the combined
+    visits.parquet (option-1 path: no coadd rebuild).  A block's value is the
+    mean over its visits (blocks_summary day_obs, seq_min..seq_max).
+
+    With ``diff`` (default), returns the GRADIENT of each camera line relative to
+    the camera ambient-air sensor: ``cam_<field>_dAmb = mean(cam_<field>) -
+    mean(<ref>)`` per block (an optical effect is more plausibly driven by a
+    temperature difference than an absolute temperature).  The reference column
+    (default cam_AmbAirtemp) and the raw lines are then dropped.  With
+    ``diff=False`` the raw per-block means are returned instead.
 
     Excludes the pre-existing ESS cols cam_air_temp / cam_m1m3_delta_t (already in
     THERMAL_VARS) and cam_n_samp.  Returns ({col: array aligned to blocks}, [cols])
@@ -162,7 +170,15 @@ def _block_camera_means(cdir, visits_path, blocks, min_cov=10):
             means[c].append(float(np.nanmean(x)) if x.size and np.isfinite(x).any()
                             else np.nan)
     out = {c: np.array(means[c], float) for c in camcols}
-    keep = [c for c in camcols if np.isfinite(out[c]).sum() >= min_cov]
+    # gradient relative to the camera ambient-air sensor
+    if diff:
+        if ref not in out:
+            print(f"  WARNING: camera ref {ref!r} not in visits -> using raw camera "
+                  f"temps (add --camera-raw to silence)")
+        else:
+            rv = out[ref]
+            out = {f"{c}_dAmb": out[c] - rv for c in camcols if c != ref}
+    keep = [c for c in out if np.isfinite(out[c]).sum() >= min_cov]
     return {c: out[c] for c in keep}, keep
 
 
@@ -331,6 +347,11 @@ def main():
                     help="combined visits.parquet carrying camera-body cam_<field> "
                     "columns (from run_backfill_camera_telemetry --merge); default: "
                     "auto-detect <output_root>/<param_set>/visits.parquet")
+    ap.add_argument("--camera-ref", default="cam_AmbAirtemp",
+                    help="camera ambient reference for the temperature-gradient "
+                    "features cam_<field>_dAmb (default: cam_AmbAirtemp)")
+    ap.add_argument("--camera-raw", action="store_true",
+                    help="use raw camera temps instead of the _dAmb gradients")
     args = ap.parse_args()
 
     cdir = os.path.join(args.output_root, args.param_set, args.out_name)
@@ -358,12 +379,15 @@ def main():
     # option-1: camera-body temps aggregated per block from the merged visits.parquet
     # (no coadd rebuild); added to the Spearman bars, scatter, and environmental ML.
     vpath = args.visits or os.path.join(args.output_root, args.param_set, "visits.parquet")
-    cam_means, cam_vars = _block_camera_means(cdir, vpath, np.asarray(d["block"]))
+    cam_means, cam_vars = _block_camera_means(
+        cdir, vpath, np.asarray(d["block"]),
+        ref=args.camera_ref, diff=not args.camera_raw)
     for c in cam_vars:
         tele[c] = cam_means[c]
     if cam_vars:
-        print(f"  merged {len(cam_vars)} camera-body temp col(s) per block from "
-              f"{vpath}: {cam_vars[:5]}{'...' if len(cam_vars) > 5 else ''}")
+        mode = "raw" if args.camera_raw else f"gradient vs {args.camera_ref}"
+        print(f"  merged {len(cam_vars)} camera-body temp col(s) per block ({mode}) "
+              f"from {vpath}: {cam_vars[:5]}{'...' if len(cam_vars) > 5 else ''}")
     else:
         print(f"  (no camera-body cam_* cols in {vpath}; run "
               f"run_backfill_camera_telemetry.py --merge on the RSP to add them)")
@@ -453,8 +477,9 @@ def main():
                      f"n={n}; red rho>0, blue rho<0)", fontsize=11)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # 3. scatter: leading telemetry vs spatial r (+ camera-body avg if present)
-        scatter_vars = SCATTER_VARS + (["cam_AverageTemp"] if "cam_AverageTemp" in tele else [])
+        # 3. scatter: leading telemetry vs spatial r (+ camera avg-temp gradient if present)
+        cam_scatter = [c for c in cam_vars if "AverageTemp" in c][:1]
+        scatter_vars = SCATTER_VARS + cam_scatter
         fig, axes = plt.subplots(1, len(scatter_vars), figsize=(4.6 * len(scatter_vars), 4.6),
                                  squeeze=False)
         for a, tv in zip(axes[0], scatter_vars):
