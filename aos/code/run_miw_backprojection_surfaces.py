@@ -27,6 +27,8 @@ Outputs (--outdir, default output/):
                                      each optic, over its clear aperture
   miw_surfaces_consistency_maps.pdf  FULL-SIZE focal-plane map, per optic, of the
                                      round-trip agreement (forward model vs MIW)
+  miw_surfaces_zernike_maps.pdf      focal-plane Z5-Z8 maps: MIW data vs each
+                                     optic's forward-modeled OPD (direct compare)
   miw_surfaces_stitched_opd.pdf      per-surface stitched OPD + per-FoV consistency
   miw_surfaces_azimuthal.pdf         recovered OPD split into m=0 vs m!=0
   miw_surfaces_fit_ve.pdf            (only with --fit) secondary mode-sweep fit VE
@@ -120,7 +122,7 @@ def roundtrip_map(tel, pts, zk, surface, r, nx, fitmax=22):
     amplitude scale (absorbs the mirror-vs-lens OPD/surface-height factor), and
     compare the predicted field aberrations to the MIW.
 
-    Returns (global VE, per-field corr [len N], scale)."""
+    Returns (global VE, per-field corr [len N], scale, model[N,27] µm)."""
     X, Y, glob, mask = r["X"], r["Y"], r["glob"], r["mask"]
     Ro, Ri = bp.surface_aperture(tel, surface)
     m = np.isfinite(glob) & mask
@@ -140,7 +142,7 @@ def roundtrip_map(tel, pts, zk, surface, r, nx, fitmax=22):
         a, b = zk[i, JS], model[i, JS]
         if np.std(a) > 0 and np.std(b) > 0:
             perfield[i] = np.corrcoef(a, b)[0, 1]
-    return float(ve), perfield, s
+    return float(ve), perfield, s, model
 
 
 def injection_stitch_fidelity(tel, pts, surface, grid_n, nrad, naz, nx):
@@ -259,6 +261,33 @@ def fig_consistency_maps(pts, res, out, order=ORDER):
     fig.tight_layout(); fig.savefig(out, dpi=115); plt.close(fig)
 
 
+def fig_zernike_maps(pts, zk, res, out, order=ORDER, zs=(5, 6, 7, 8)):
+    """Focal-plane Z5-Z8 maps: top row = the MIW data, one row per optic = the
+    aberrations the forward model of that optic's recovered OPD produces.  A more
+    direct consistency read than the per-field correlation.  Per-Zernike (column)
+    color scale is set by the DATA, so both pattern AND amplitude are comparable."""
+    rows = [("MIW data", zk)] + [(n, res[n]["rt_model"]) for n in order]
+    nr, nc = len(rows), len(zs)
+    fig, ax = plt.subplots(nr, nc, figsize=(3.5 * nc, 3.3 * nr), squeeze=False)
+    ss = max(5, int(1800 / np.sqrt(len(pts))))
+    vlim = {j: np.nanpercentile(np.abs(zk[:, j]), 98) for j in zs}
+    for row, (name, arr) in enumerate(rows):
+        for col, j in enumerate(zs):
+            a = ax[row, col]
+            sc = a.scatter(pts[:, 0], pts[:, 1], c=arr[:, j], s=ss, marker="s",
+                           cmap="RdBu_r", vmin=-vlim[j], vmax=vlim[j])
+            a.set_aspect("equal")
+            rms = np.sqrt(np.nanmean(arr[:, j] ** 2))
+            a.set_title(f"{name}  Z{j}  (rms={rms:.3f})", fontsize=9)
+            if col == 0:
+                a.set_ylabel(name, fontsize=10)
+            plt.colorbar(sc, ax=a, shrink=.8)
+    fig.suptitle("Focal-plane Z5-Z8 [µm]: MIW data (top) vs forward model of each "
+                 "optic's recovered static OPD (same per-column color scale)",
+                 fontsize=12)
+    fig.tight_layout(); fig.savefig(out, dpi=105); plt.close(fig)
+
+
 def fig_fit_ve(res, out, order=ORDER):
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 5.5))
     cmap = plt.cm.turbo(np.linspace(0.05, 0.95, len(order)))
@@ -347,8 +376,8 @@ def main():
         r = bp.run_backprojection(tel, pts, zk, surface=rep, grid_n=args.grid_n,
                                   nrad=args.nrad, naz=args.naz)
         medve = float(np.nanmedian(r["con"]["var_explained"]))
-        rt_ve, rt_perfield, _ = roundtrip_map(tel, pts, zk, rep, r, args.nx,
-                                              fitmax=args.rt_fitmax)
+        rt_ve, rt_perfield, _, rt_model = roundtrip_map(tel, pts, zk, rep, r, args.nx,
+                                                        fitmax=args.rt_fitmax)
         icorr = injection_stitch_fidelity(tel, pts, rep, args.grid_n, args.nrad,
                                           args.naz, args.nx)
         m0, azpack = azimuthal_m0_fraction(r)
@@ -357,12 +386,13 @@ def main():
             A, ids = response_matrix(tel, pts, surfs, modes, args.nx)
             sweep = ve_vs_modes(A, ids, dvec, caps)
         res[name] = dict(r=r, con_medve=medve, rt_ve=rt_ve, rt_perfield=rt_perfield,
-                         icorr=icorr, m0=m0, azpack=azpack, sweep=sweep)
+                         rt_model=rt_model, icorr=icorr, m0=m0, azpack=azpack, sweep=sweep)
         extra = (f"  {sweep[0][2]:+.2f}@Z{sweep[0][0]:<3d} {sweep[-1][2]:+.2f}@Z{sweep[-1][0]}"
                  if sweep else "")
         print(f"{name:7s} {rt_ve:11.3f} {medve:12.3f} {icorr:9.3f} {m0:8.2f}{extra}")
 
     fig_consistency_maps(pts, res, os.path.join(args.outdir, "miw_surfaces_consistency_maps.pdf"), order)
+    fig_zernike_maps(pts, zk, res, os.path.join(args.outdir, "miw_surfaces_zernike_maps.pdf"), order)
     fig_stitched(tel, pts, res, os.path.join(args.outdir, "miw_surfaces_stitched_opd.pdf"), order)
     fig_azimuthal(res, os.path.join(args.outdir, "miw_surfaces_azimuthal.pdf"), order)
     if args.fit:
