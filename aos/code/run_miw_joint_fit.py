@@ -71,7 +71,7 @@ def build_response(tel, pts, optics, modes, nx):
             c = np.zeros(27); c[k] = UNIT
             telp = bp.perturb_surface(tel, s, c, R_outer=Ro, R_inner=Ri)
             dz = (bp.field_zernikes(telp, ptl, jmax=26, nx=nx) - z0) \
-                * bp.WAVELENGTH * 1e6 / UNIT          # µm field-Z per unit figure
+                * bp.WAVELENGTH * 1e6                 # µm field-Z per UNIT(100nm) figure
             cols.append(dz[:, JS].ravel()); ids.append((o, s, k))
         print(f"  built response for {o} ({s}): {len(modes)} modes", flush=True)
     return np.column_stack(cols), ids
@@ -138,13 +138,40 @@ def main():
         print(f"  {o:24s} ({len(sel):2d} params): VE={ve:+.3f}")
 
     ve_full, c = fit(A, dvec, np.arange(A.shape[1]))
+    cond = float(np.linalg.cond(A))
     print(f"\n=== JOINT FIT (all {A.shape[1]} params): VE={ve_full:+.3f} ===")
-    print("  fitted figure RMS per surface (µm surface height):")
+    print(f"  response-matrix condition number = {cond:.3g}  "
+          f"({'well' if cond < 1e3 else 'ILL' if cond > 1e5 else 'moderately'}-conditioned)")
+    print("  fitted figure amplitude per surface (SURFACE HEIGHT; physical if <~0.1µm):")
     for o in args.optics:
         cc = c[opt_of == o]
         rms_um = float(np.sqrt(np.sum(cc ** 2)) * UNIT * 1e6)   # orthonormal Zernikes
         pk_um = float(np.max(np.abs(cc)) * UNIT * 1e6)
-        print(f"    {o:8s}: RMS={rms_um:7.3f} µm   peak-mode={pk_um:7.3f} µm")
+        kpk = int([k for (oo, s, k), b in zip(ids, opt_of == o) if b]
+                  [int(np.argmax(np.abs(cc)))])
+        print(f"    {o:8s}: RMS={rms_um:8.2f} µm   peak={pk_um:8.2f} µm (Z{kpk})")
+
+    # VE vs PHYSICAL figure amplitude: ridge-regularized L-curve.  The unconstrained
+    # fit uses ~20µm figures; this shows how little VE survives at plausible (<~0.1µm)
+    # surface figures -- the honest "how much can real static optics explain".
+    AtA = A.T @ A; Atd = A.T @ dvec
+    print("\n--- VE vs allowed figure amplitude (ridge) ---")
+    for lam in np.logspace(-6, 4, 11):
+        cr = np.linalg.solve(AtA + lam * np.eye(A.shape[1]), Atd)
+        ver = 1 - np.var(dvec - A @ cr) / np.var(dvec)
+        amp = float(np.sqrt(np.sum(cr ** 2)) * UNIT * 1e6)   # total RMS figure µm
+        print(f"    total figure RMS = {amp:9.3f} µm  ->  VE = {ver:+.3f}")
+
+    # per-column response leverage (field-Z rms produced by a unit=100nm figure)
+    col_resp = np.sqrt(np.mean(A ** 2, axis=0))
+    print("  per-optic response leverage (median µm field-Z per 100nm figure):")
+    for o in args.optics:
+        print(f"    {o:8s}: {np.median(col_resp[opt_of == o]):.4g}")
+    print(f"  max fitted surface amplitude = {np.abs(c).max()*UNIT*1e6:.2f} µm "
+          f"(peak-to-plausible: a real figure error is <~0.1µm)")
+    np.savez(os.path.join(args.outdir, "joint_fit_solution.npz"),
+             c=c, ids=np.array(ids, dtype=object), col_resp=col_resp,
+             optics=np.array(args.optics), modes=np.array(modes), ve=ve_full, cond=cond)
 
     # residual Z5-Z8 maps
     model_js = (A @ c).reshape(len(pts), len(JS))
