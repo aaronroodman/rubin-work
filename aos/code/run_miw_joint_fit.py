@@ -102,6 +102,37 @@ def fig_residual(pts, zk, model_full, out, zs=(5, 6, 7, 8)):
     fig.tight_layout(); fig.savefig(out, dpi=110); plt.close(fig)
 
 
+def fig_fitted_opd(tel, ids, c, optics, out, gn=220):
+    """The surface figure (OPD) the joint fit places on each optic."""
+    surf_of = {i[0]: i[1] for i in ids}
+    n = len(optics); nc = min(4, n); nr = int(np.ceil(n / nc))
+    fig, axes = plt.subplots(nr, nc, figsize=(4.6 * nc, 4.3 * nr), squeeze=False)
+    axes = axes.ravel()
+    for ax, o in zip(axes, optics):
+        s = surf_of[o]; Ro, Ri = bp.surface_aperture(tel, s)
+        coef = np.zeros(27)
+        for (oo, ss, k), cv in zip(ids, c):
+            if oo == o:
+                coef[k] = cv * UNIT * 1e6                 # µm surface height
+        X, Y, mask = bp.make_grid(Ro, Ri, gn)
+        Z = gz.Zernike(coef, R_inner=Ri, R_outer=Ro).evalCartesian(X, Y)
+        Z[~mask] = np.nan
+        rms = float(np.sqrt(np.nanmean(Z ** 2)))
+        vm = np.nanpercentile(np.abs(Z[np.isfinite(Z)]), 99)
+        im = ax.imshow(Z, origin="lower", extent=[-Ro, Ro, -Ro, Ro], cmap="RdBu_r",
+                       vmin=-vm, vmax=vm)
+        ax.set_aspect("equal"); ax.set_xlabel(f"{s} x [m]")
+        ax.set_title(f"{o} ({s}) fitted figure\nRMS={rms:.2f} µm  (physical <~0.1 µm)",
+                     fontsize=10)
+        plt.colorbar(im, ax=ax, shrink=.8, label="surface height [µm]")
+    for ax in axes[len(optics):]:
+        ax.axis("off")
+    fig.suptitle("Joint-fit recovered STATIC SURFACE FIGURE on each optic "
+                 "(the shape reproduces the MIW coma/astig field pattern, but the "
+                 "amplitude is unphysical)", fontsize=12)
+    fig.tight_layout(); fig.savefig(out, dpi=115); plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--miw", default=DEFAULT_MIW)
@@ -181,10 +212,16 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
     out = os.path.join(args.outdir, "miw_joint_fit_residual.pdf")
     fig_residual(pts, zk, model_full, out)
+    fig_fitted_opd(tel, ids, c, args.optics,
+                   os.path.join(args.outdir, "miw_joint_fit_opd.pdf"))
+    print("  per-Zernike: data rms -> residual rms | variance explained | shape corr | amp ratio")
     for j in (5, 6, 7, 8):
-        dr = np.sqrt(np.mean(zk[:, j] ** 2)); rr = np.sqrt(np.mean((zk - model_full)[:, j] ** 2))
-        print(f"  Z{j}: data rms={dr:.3f} -> residual rms={rr:.3f} µm  "
-              f"({100*(1-rr/dr):+.0f}% reduced)")
+        d = zk[:, j]; mo = model_full[:, j]; rr = np.sqrt(np.mean((d - mo) ** 2))
+        dr = np.sqrt(np.mean(d ** 2)); mr = np.sqrt(np.mean(mo ** 2))
+        vez = 1 - np.var(d - mo) / np.var(d)
+        cor = np.corrcoef(d, mo)[0, 1]
+        print(f"  Z{j}: {dr:.3f} -> {rr:.3f} µm | VE={vez:+.2f} | corr={cor:+.2f} | "
+              f"amp(model/data)={mr/dr:.2f}")
     print(f"\nwrote {out}")
 
 
