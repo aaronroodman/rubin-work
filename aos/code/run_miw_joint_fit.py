@@ -83,6 +83,37 @@ def fit(A, dvec, sel):
     return ve, c
 
 
+def build_model(A, c, npts):
+    """A@c reshaped to a full (npts,27) field-Zernike array (JS columns filled)."""
+    mj = (A @ c).reshape(npts, len(JS))
+    mf = np.zeros((npts, 27))
+    for col, j in enumerate(JS):
+        mf[:, j] = mj[:, col]
+    return mf
+
+
+def print_perZ(zk, mf, tag):
+    print(f"  per-Zernike [{tag}]: data rms -> resid rms | VE | SHAPE corr | amp(model/data)")
+    for j in (5, 6, 7, 8):
+        d = zk[:, j]; mo = mf[:, j]
+        dr = np.sqrt(np.mean(d ** 2)); rr = np.sqrt(np.mean((d - mo) ** 2))
+        mr = np.sqrt(np.mean(mo ** 2)); vez = 1 - np.var(d - mo) / np.var(d)
+        cor = np.corrcoef(d, mo)[0, 1] if mr > 0 else np.nan
+        print(f"    Z{j}: {dr:.3f} -> {rr:.3f} µm | VE={vez:+.2f} | corr={cor:+.2f} | amp={mr/dr:.2f}")
+
+
+def ridge_at_amplitude(AtA, Atd, target_um):
+    """Ridge coefficients whose total figure RMS is closest to target_um [µm]."""
+    best = None
+    for lam in np.logspace(-6, 6, 300):
+        cr = np.linalg.solve(AtA + lam * np.eye(AtA.shape[0]), Atd)
+        amp = float(np.sqrt(np.sum(cr ** 2)) * UNIT * 1e6)
+        d = abs(amp - target_um)
+        if best is None or d < best[0]:
+            best = (d, lam, cr, amp)
+    return best[2], best[3]
+
+
 def fig_residual(pts, zk, model_full, out, zs=(5, 6, 7, 8)):
     rows = [("MIW data", zk), ("joint model", model_full), ("residual", zk - model_full)]
     fig, ax = plt.subplots(3, len(zs), figsize=(3.5 * len(zs), 10), squeeze=False)
@@ -142,6 +173,9 @@ def main():
     ap.add_argument("--mode-max", type=int, default=22)
     ap.add_argument("--stride", type=int, default=3)
     ap.add_argument("--nx", type=int, default=44)
+    ap.add_argument("--phys-amp", type=float, default=0.1,
+                    help="total surface-figure RMS [µm] for the physically-"
+                    "constrained (ridge) fit")
     ap.add_argument("--outdir", default="output")
     args = ap.parse_args()
 
@@ -204,25 +238,32 @@ def main():
              c=c, ids=np.array(ids, dtype=object), col_resp=col_resp,
              optics=np.array(args.optics), modes=np.array(modes), ve=ve_full, cond=cond)
 
-    # residual Z5-Z8 maps
-    model_js = (A @ c).reshape(len(pts), len(JS))
-    model_full = np.zeros((len(pts), 27))
-    for col, j in enumerate(JS):
-        model_full[:, j] = model_js[:, col]
     os.makedirs(args.outdir, exist_ok=True)
-    out = os.path.join(args.outdir, "miw_joint_fit_residual.pdf")
-    fig_residual(pts, zk, model_full, out)
+
+    # (a) UNCONSTRAINED fit -- fits amplitude, but needs unphysical ~20µm figures
+    mf = build_model(A, c, len(pts))
+    print(f"\n(a) UNCONSTRAINED joint fit  (VE={ve_full:+.3f}; figures unphysical ~20µm):")
+    print_perZ(zk, mf, "unconstrained")
+    fig_residual(pts, zk, mf, os.path.join(args.outdir, "miw_joint_fit_residual.pdf"))
     fig_fitted_opd(tel, ids, c, args.optics,
                    os.path.join(args.outdir, "miw_joint_fit_opd.pdf"))
-    print("  per-Zernike: data rms -> residual rms | variance explained | shape corr | amp ratio")
-    for j in (5, 6, 7, 8):
-        d = zk[:, j]; mo = model_full[:, j]; rr = np.sqrt(np.mean((d - mo) ** 2))
-        dr = np.sqrt(np.mean(d ** 2)); mr = np.sqrt(np.mean(mo ** 2))
-        vez = 1 - np.var(d - mo) / np.var(d)
-        cor = np.corrcoef(d, mo)[0, 1]
-        print(f"  Z{j}: {dr:.3f} -> {rr:.3f} µm | VE={vez:+.2f} | corr={cor:+.2f} | "
-              f"amp(model/data)={mr/dr:.2f}")
-    print(f"\nwrote {out}")
+
+    # (b) PHYSICALLY-CONSTRAINED fit -- ridge to ~--phys-amp total figure RMS.
+    #     Tests whether a believable set of figures reproduces the MIW SHAPE
+    #     (low amplitude expected; correlation is the point).
+    c_phys, amp_phys = ridge_at_amplitude(AtA, Atd, args.phys_amp)
+    ve_phys = 1 - np.var(dvec - A @ c_phys) / np.var(dvec)
+    mfp = build_model(A, c_phys, len(pts))
+    print(f"\n(b) PHYSICAL joint fit  (total figure RMS={amp_phys:.3f} µm, "
+          f"target {args.phys_amp}; VE={ve_phys:+.3f}):")
+    for o in args.optics:
+        cc = c_phys[opt_of == o]
+        print(f"    {o:8s}: figure RMS={np.sqrt(np.sum(cc**2))*UNIT*1e6:.3f} µm")
+    print_perZ(zk, mfp, "physical")
+    fig_residual(pts, zk, mfp, os.path.join(args.outdir, "miw_joint_fit_residual_phys.pdf"))
+    fig_fitted_opd(tel, ids, c_phys, args.optics,
+                   os.path.join(args.outdir, "miw_joint_fit_opd_phys.pdf"))
+    print(f"\nwrote miw_joint_fit_{{residual,opd}}{{,_phys}}.pdf to {args.outdir}")
 
 
 if __name__ == "__main__":
