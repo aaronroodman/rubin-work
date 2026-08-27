@@ -13,6 +13,11 @@ then the focus-only stage, then validation:
 Every scatter uses a robust (Huber) linear fit with a FREE intercept, drawn with
 small low-alpha markers so overlapping points show as density.
 
+Also writes a combined ONE-ROW-PER-VISIT parquet (<base>.parquet) with day_obs,
+seq_num, visit_id, per-visit conditions/quality, v-mode fit/cwfs amplitudes, and
+the per-corner Zernike deviations pivoted to columns -- a single table for
+subsetting/joining (e.g. against dome-louver telemetry on visit_id).
+
 Needs the Butler (MIW) for the corner deviations -> run on USDF.
 
     python code/ensemble_corners.py --campaign focus_then_full --day 20260513 \
@@ -117,7 +122,7 @@ def collect(items, cfg, miw, jmax, stage):
                     continue
                 cwfs_dev = (float(np.median(sub[f'ztot_{i}'])) - miwc[j]
                             - float(offsets.get(j, 0.0)))
-                rows.append(dict(seq=seq, corner=c, j=j,
+                rows.append(dict(day=day, seq=seq, corner=c, j=j,
                                  cwfs=cwfs_dev, psf=float(pdev[j])))
                 if j == 4 and has_focus:
                     frows.append(dict(seq=seq, corner=c, cwfs=cwfs_dev,
@@ -304,6 +309,33 @@ def main():
     for i in range(n_v):
         vc[f'v{i+1}_fit'] = Afit[:, i]; vc[f'v{i+1}_cwfs'] = Acwfs[:, i]
     pd.DataFrame(vc).to_csv(base + '_visits.csv', index=False)
+
+    # combined ONE-ROW-PER-VISIT parquet: high-level per-visit info + v-modes +
+    # per-corner Zernike deviations pivoted to columns (cwfs_/psf_<corner>_z<j>).
+    per = vdf.rename(columns={'day': 'day_obs', 'seq': 'seq_num',
+                              'model_fwhm': 'atm_fwhm'}).copy()
+    per['visit_id'] = per.day_obs.astype('int64') * 100000 + per.seq_num.astype('int64')
+    for i in range(n_v):
+        per[f'v{i+1}_fit'] = Afit[:, i]; per[f'v{i+1}_cwfs'] = Acwfs[:, i]
+    key = df.corner + '_z' + df.j.astype(str)
+    wc = df.assign(k=key).pivot_table(index=['day', 'seq'], columns='k',
+                                      values='cwfs', aggfunc='first')
+    wp = df.assign(k=key).pivot_table(index=['day', 'seq'], columns='k',
+                                      values='psf', aggfunc='first')
+    wc.columns = [f'cwfs_{c}' for c in wc.columns]
+    wp.columns = [f'psf_{c}' for c in wp.columns]
+    wide = wc.join(wp).reset_index().rename(columns={'day': 'day_obs', 'seq': 'seq_num'})
+    per = per.merge(wide, on=['day_obs', 'seq_num'], how='left')
+    lead = [c for c in ['day_obs', 'seq_num', 'visit_id', 'atm_fwhm', 'focus_fwhm',
+                        'donut_blur', 'chi2', 'n_stars', 'n_cells', 'rot']
+            if c in per.columns]
+    vmode_cols = [f'v{i+1}_{k}' for i in range(n_v) for k in ('fit', 'cwfs')]
+    corner_cols = [f'{p}_{c}_z{j}' for p in ('cwfs', 'psf')
+                   for c in CORNERS for j in NOLL_CWFS
+                   if f'{p}_{c}_z{j}' in per.columns]
+    per = per[lead + vmode_cols + corner_cols]
+    per.to_parquet(base + '.parquet', index=False)
+    print(f'wrote {base}.parquet  ({per.shape[0]} visits x {per.shape[1]} cols)')
     print('  key corner terms (r, slope, intercept, N):')
     for j in (4, 5, 6, 7, 8, 11):
         f = zfits[j]
