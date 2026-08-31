@@ -67,6 +67,16 @@ def nightMovieFiles(wildcards):
             for s in picked for kind in ("full", "star")]
 
 
+def nightRtvPlotFiles(wildcards):
+    """RubinTV-style review plots for every MOVIE_STRIDE-th visit of a night."""
+    dayObs = int(wildcards.dayObs)
+    manifest = checkpoints.discover_night.get(dayObs=wildcards.dayObs).output[0]
+    with open(manifest) as fh:
+        seqs = sorted(int(x) for x in fh.read().split() if x.strip())
+    picked = seqs[::MOVIE_STRIDE] if MOVIE_STRIDE > 0 else []
+    return [f"output/night_{dayObs}/rtvplots/{s}_rtvplots.pdf" for s in picked]
+
+
 wildcard_constraints:
     dayObs = r"\d{8}",
     seqNum = r"\d+",
@@ -77,7 +87,8 @@ rule all:
         [f"output/night_{d}/guider_moments_{d}.parquet" for d in NIGHTS]
         + [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
         + [f"output/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS]
-        + [f"output/night_{d}/guider_movies_{d}.txt" for d in NIGHTS],
+        + [f"output/night_{d}/guider_movies_{d}.txt" for d in NIGHTS]
+        + [f"output/night_{d}/guider_rtvplots_{d}.txt" for d in NIGHTS],
 
 
 checkpoint discover_night:
@@ -201,6 +212,43 @@ rule movies:
     shell:
         "ls output/night_{wildcards.dayObs}/movies > {output} 2>/dev/null || "
         "echo 'no movies (movie_stride=0 or empty night)' > {output}"
+
+
+# ---- RubinTV-style review plots for a strided subset of visits ----
+rule rtvplot:
+    output:
+        "output/night_{dayObs}/rtvplots/{seqNum}_rtvplots.pdf",
+    params:
+        plotdir="output/night_{dayObs}/rtvplots",
+        recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
+    resources:
+        mem_mb=4000,
+    log:
+        "logs/night_{dayObs}.{seqNum}.rtvplot.log",
+    shell:
+        rf"""
+        python {CODE}/run_guider_rubintv_plots.py \
+            --day-obs {{wildcards.dayObs}} --seq-num {{wildcards.seqNum}} \
+            --outdir {{params.plotdir}} \
+            --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
+            --view {BUTLER["view"]} \
+            --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
+            --edge-margin {TRACKER["edge_margin"]} \
+            --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
+            > {{log}} 2>&1
+        """
+
+
+rule rtvplots:
+    input:
+        nightRtvPlotFiles,
+    output:
+        "output/night_{dayObs}/guider_rtvplots_{dayObs}.txt",
+    resources:
+        mem_mb=1000,
+    shell:
+        "ls output/night_{wildcards.dayObs}/rtvplots > {output} 2>/dev/null || "
+        "echo 'no rtvplots (movie_stride=0 or empty night)' > {output}"
 
 
 # ---- per-day QA/summary PDF ----

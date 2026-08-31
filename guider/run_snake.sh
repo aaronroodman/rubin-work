@@ -71,7 +71,8 @@ day_targets() {
     echo "output/night_${d}/guider_moments_${d}.parquet" \
          "output/night_${d}/guider_psfmoments_${d}.parquet" \
          "output/night_${d}/guider_plots_${d}.pdf" \
-         "output/night_${d}/guider_movies_${d}.txt"
+         "output/night_${d}/guider_movies_${d}.txt" \
+         "output/night_${d}/guider_rtvplots_${d}.txt"
 }
 
 # All targets together (local mode / default rule all).
