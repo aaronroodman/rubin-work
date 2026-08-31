@@ -62,7 +62,8 @@ _LOG = logging.getLogger(__name__)
 # v2: add (Mxx,Myy,Mxy) temporal covariance + their band PSDs/floors.
 # v3: add 3rd-moment (coma, trefoil) static/dynamic/cross decomposition.
 # v4: add hsm_* (HSM-weighted coadd 2nd+3rd moments) for the matched CCD comparison.
-SCHEMA_VERSION = 4
+# v5: add tracker flux_med/flux_mean/snr_med per detector (for flux/SNR cuts).
+SCHEMA_VERSION = 5
 
 # Fixed log-spaced frequency band edges (Hz) for the binned PSDs. 5 bands.
 PSD_BIN_EDGES = (0.03, 0.1, 0.2, 0.5, 1.0, 2.5)
@@ -974,6 +975,11 @@ def summarizeExposure(
             "e1_rms": float(mad_std(sub["e1"], ignore_nan=True)),
             "e2_rms": float(mad_std(sub["e2"], ignore_nan=True)),
             "fwhm_rms": float(mad_std(sub["fwhm"], ignore_nan=True)),
+            # tracker (summit_utils) flux/SNR per detector -- a flux/SNR cut here
+            # separates real stars from no-star cases that give spurious T/Q.
+            "flux_med": float(sub["flux"].median()) if "flux" in sub else np.nan,
+            "flux_mean": float(sub["flux"].mean()) if "flux" in sub else np.nan,
+            "snr_med": float(sub["snr"].median()) if "snr" in sub else np.nan,
             "jitter_altaz": jitter,
             "schema_version": SCHEMA_VERSION,
             "psd_bin_edges": list(psdBinEdges),
