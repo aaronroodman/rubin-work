@@ -35,6 +35,8 @@ def parseArgs(argv=None):
     p.add_argument("--edge-margin", type=int, default=3)
     p.add_argument("--min-finite-fraction", type=float, default=0.5)
     p.add_argument("--no-recover-edge-stars", action="store_true")
+    p.add_argument("--residual-scale", type=float, default=5.0,
+                   help="RANSAC inlier band (x mad_std) for the strip-plot trend fits.")
     p.add_argument("--strict", action="store_true")
     return p.parse_args(argv)
 
@@ -80,7 +82,7 @@ def main(argv=None):
     with PdfPages(out) as pdf:
         for kind in STRIP_TYPES:
             try:
-                fig = plotter.stripPlot(plotType=kind)
+                fig = plotter.stripPlot(plotType=kind, residualScale=args.residual_scale)
                 pdf.savefig(fig); plt.close(fig)
             except Exception as exc:  # noqa: BLE001
                 print(f"{expId}: stripPlot {kind} failed: {exc}", file=sys.stderr)

@@ -45,6 +45,7 @@ CODE = "code"
 
 
 MOVIE_STRIDE = int(config.get("movie_stride", 50))  # movie for every Nth visit (0=off)
+RESIDUAL_SCALE = float(TRACKER.get("residual_scale", 5.0))  # trend outlier band (x mad_std)
 
 
 def nightMomentsFiles(wildcards):
@@ -134,6 +135,7 @@ rule moments:
             --edge-margin {TRACKER["edge_margin"]} \
             --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
             --ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} \
+            --residual-scale {RESIDUAL_SCALE} \
             > {{log}} 2>&1
         """
 
@@ -235,6 +237,7 @@ rule rtvplot:
             --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
             --edge-margin {TRACKER["edge_margin"]} \
             --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
+            --residual-scale {RESIDUAL_SCALE} \
             > {{log}} 2>&1
         """
 

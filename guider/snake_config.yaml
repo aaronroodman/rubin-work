@@ -36,6 +36,10 @@ tracker:
   edge_margin: 3
   min_finite_fraction: 0.5      # admit near-edge stars (<1 enables recovery)
   recover_edge_stars: true
+  # RANSAC inlier band (x mad_std of residuals) for the trend-fit metrics/plots.
+  # summit_utils default is 5.0; raise to keep more real turbulence-driven
+  # scatter (heavy-tailed centroid/shape series). Tune per run.
+  residual_scale: 10.0
 moments:
   ap_nsigma: 4.0
   cen_niter: 3

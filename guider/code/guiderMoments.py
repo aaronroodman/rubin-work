@@ -876,6 +876,7 @@ def summarizeExposure(
     guiderHz: float = 5.0,
     psdBinEdges: tuple[float, ...] = PSD_BIN_EDGES,
     provenance: dict | None = None,
+    residualScale: float = 5.0,
 ) -> pd.DataFrame:
     """Build the per-(expId, detector) summary table (one row per sensor).
 
@@ -912,7 +913,8 @@ def summarizeExposure(
     # exposure-level defaults (GuiderMetricsBuilder), broadcast to all sensors
     gmRow: dict[str, float] = {}
     try:
-        gm = GuiderMetricsBuilder(stars, nMissingStamps=0).buildMetrics(expId)
+        gm = GuiderMetricsBuilder(stars, nMissingStamps=0,
+                                  residualScale=residualScale).buildMetrics(expId)
         if not gm.empty:
             gmRow = {f"gm_{c}": gm.iloc[0][c] for c in gm.columns}
     except Exception as exc:  # noqa: BLE001 - metrics are best-effort

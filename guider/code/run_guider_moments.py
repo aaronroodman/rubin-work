@@ -50,6 +50,9 @@ def parseArgs(argv=None):
     p.add_argument("--no-recover-edge-stars", action="store_true")
     p.add_argument("--ap-nsigma", type=float, default=4.0)
     p.add_argument("--cen-niter", type=int, default=3)
+    p.add_argument("--residual-scale", type=float, default=5.0,
+                   help="RANSAC inlier band (x mad_std of residuals) for trend metrics; "
+                        "raise to keep more turbulence-driven scatter.")
     p.add_argument("--strict", action="store_true",
                    help="Fail on missing/insufficient data instead of skipping.")
     return p.parse_args(argv)
@@ -170,7 +173,8 @@ def main(argv=None):
 
     # (2) summit_utils per-exposure metrics (Jackie)
     try:
-        metrics = GuiderMetricsBuilder(stars, nMissingStamps=0).buildMetrics(expId)
+        metrics = GuiderMetricsBuilder(stars, nMissingStamps=0,
+                                       residualScale=args.residual_scale).buildMetrics(expId)
         metrics = metrics.copy()
         metrics["expId"] = expId
         metrics["dayObs"] = args.day_obs
@@ -186,13 +190,15 @@ def main(argv=None):
         "ap_nsigma": args.ap_nsigma, "cen_niter": args.cen_niter, "min_snr": args.min_snr,
         "edge_margin": args.edge_margin, "max_ellipticity": args.max_ellipticity,
         "min_finite_fraction": args.min_finite_fraction if recover else 1.0,
+        "residual_scale": args.residual_scale,
     }
     try:
         decomps = decomposeExposure(guiderData, stars, MomentConfig(apNSigma=args.ap_nsigma,
                                                                     cenNIter=args.cen_niter),
                                     hsmFunc=makeHsmFunc())
         summary = summarizeExposure(guiderData, stars, decomps,
-                                    guiderHz=args.guider_hz, provenance=provenance)
+                                    guiderHz=args.guider_hz, provenance=provenance,
+                                    residualScale=args.residual_scale)
     except Exception as exc:  # noqa: BLE001 - keep the stars/metrics; never crash the visit
         if args.strict:
             raise
