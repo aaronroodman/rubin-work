@@ -52,6 +52,7 @@ import pandas as pd
 from astropy.stats import mad_std, sigma_clipped_stats
 from scipy import signal
 from scipy.integrate import trapezoid
+from scipy.ndimage import gaussian_filter1d
 
 if TYPE_CHECKING:
     from lsst.summit.utils.guiders.reading import GuiderData
@@ -63,7 +64,8 @@ _LOG = logging.getLogger(__name__)
 # v3: add 3rd-moment (coma, trefoil) static/dynamic/cross decomposition.
 # v4: add hsm_* (HSM-weighted coadd 2nd+3rd moments) for the matched CCD comparison.
 # v5: add tracker flux_med/flux_mean/snr_med per detector (for flux/SNR cuts).
-SCHEMA_VERSION = 5
+# v6: add centroid fast/slow variance split (Gaussian smooth, 1.6 s FWHM).
+SCHEMA_VERSION = 6
 
 # Fixed log-spaced frequency band edges (Hz) for the binned PSDs. 5 bands.
 PSD_BIN_EDGES = (0.03, 0.1, 0.2, 0.5, 1.0, 2.5)
@@ -869,6 +871,31 @@ def _flattenMoments(sm: "ShapeMoments", suffix: str) -> dict[str, float]:
     }
 
 
+def centroidVarianceSplit(da, dz, fwhmStamps, noiseVar=0.0):
+    """Fast/slow split of the centroid motion via Gaussian smoothing.
+
+    ``slow`` = variance of the Gaussian-smoothed (dalt, daz) series (motion above
+    the smoothing timescale); ``fast`` = variance of the residual (below it),
+    both summed over the two axes (arcsec**2). White measurement noise
+    ``noiseVar`` (per axis) is subtracted using the smoother's retained power.
+    Centroid motion is scale-free (no knee), so a fixed FWHM is used.
+    """
+    if fwhmStamps <= 0:
+        return np.nan, np.nan
+    sig = fwhmStamps / 2.3548
+    sumk2 = 1.0 / (2.0 * np.sqrt(np.pi) * sig)      # noise power kept by the smoother
+    vslow = vfast = 0.0
+    for a in (da, dz):
+        a = np.asarray(a, float)
+        a = a[np.isfinite(a)]
+        if len(a) < 6:
+            return np.nan, np.nan
+        sm = gaussian_filter1d(a, sig, mode="reflect")
+        vslow += float(np.var(sm)) - noiseVar * sumk2
+        vfast += float(np.var(a - sm)) - noiseVar * (1.0 - sumk2)
+    return vslow, vfast
+
+
 def summarizeExposure(
     guiderData: GuiderData,
     stars: pd.DataFrame,
@@ -877,6 +904,7 @@ def summarizeExposure(
     psdBinEdges: tuple[float, ...] = PSD_BIN_EDGES,
     provenance: dict | None = None,
     residualScale: float = 5.0,
+    cenSmoothSec: float = 1.6,
 ) -> pd.DataFrame:
     """Build the per-(expId, detector) summary table (one row per sensor).
 
@@ -948,6 +976,17 @@ def summarizeExposure(
         psd_Myy, floor_Myy = bandPowerPsd(pm["Myy"].to_numpy(), guiderHz, psdBinEdges)
         psd_Mxy, floor_Mxy = bandPowerPsd(pm["Mxy"].to_numpy(), guiderHz, psdBinEdges)
 
+        # centroid motion fast/slow split (Gaussian smooth at cenSmoothSec)
+        cen_slow = cen_fast = np.nan
+        if {"dalt", "daz"} <= set(sub.columns):
+            ss = sub.sort_values("stamp")
+            nvar = 0.0
+            if {"xerr", "yerr"} <= set(ss.columns):
+                nvar = 0.5 * (np.nanmedian(ss["xerr"].to_numpy()**2)
+                              + np.nanmedian(ss["yerr"].to_numpy()**2)) * pixscale**2
+            cen_slow, cen_fast = centroidVarianceSplit(
+                ss["dalt"].to_numpy(), ss["daz"].to_numpy(), cenSmoothSec * guiderHz, nvar)
+
         row = {
             **meta,
             "detector": det, "detid": int(guiderData.getGuiderDetNum(det)),
@@ -982,6 +1021,8 @@ def summarizeExposure(
             "flux_med": float(sub["flux"].median()) if "flux" in sub else np.nan,
             "flux_mean": float(sub["flux"].mean()) if "flux" in sub else np.nan,
             "snr_med": float(sub["snr"].median()) if "snr" in sub else np.nan,
+            # centroid motion split above/below the smoothing timescale (arcsec**2)
+            "cen_var_slow": cen_slow, "cen_var_fast": cen_fast, "cen_smooth_sec": cenSmoothSec,
             "jitter_altaz": jitter,
             "schema_version": SCHEMA_VERSION,
             "psd_bin_edges": list(psdBinEdges),
