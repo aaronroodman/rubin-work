@@ -47,25 +47,19 @@ def col(df, j):
     return df[f"Z{j}_OCS"].to_numpy(float)
 
 
-def scatter_pair(ax, df, oa, ob, la, lb):
-    """oa, ob = (cos_j, sin_j) for the two radial orders; overlay cos & sin."""
-    xs, ys = [], []
-    for comp, cc, (ja, jb) in [("cos (X)", "tab:blue", (oa[0], ob[0])),
-                               ("sin (Y)", "tab:red", (oa[1], ob[1]))]:
-        if ja is None or jb is None:
-            continue
-        x, y = col(df, ja), col(df, jb)
-        ok = np.isfinite(x) & np.isfinite(y)
-        ax.scatter(x[ok], y[ok], s=6, alpha=0.35, color=cc, label=comp)
-        xs.append(x[ok]); ys.append(y[ok])
-    X, Y = np.concatenate(xs), np.concatenate(ys)
-    r = np.corrcoef(X, Y)[0, 1]
-    sl, ic = np.polyfit(X, Y, 1)
-    xx = np.array([X.min(), X.max()])
-    ax.plot(xx, sl * xx + ic, "k--", lw=1.2, label=f"fit slope={sl:+.2f}")
+def scatter_one(ax, df, ja, jb, la, lb, color):
+    """Single component (one cos OR one sin term) scatter of two radial orders."""
+    x, y = col(df, ja), col(df, jb)
+    ok = np.isfinite(x) & np.isfinite(y)
+    x, y = x[ok], y[ok]
+    ax.scatter(x, y, s=6, alpha=0.35, color=color)
+    r = np.corrcoef(x, y)[0, 1]
+    sl, ic = np.polyfit(x, y, 1)
+    xx = np.array([x.min(), x.max()])
+    ax.plot(xx, sl * xx + ic, "k--", lw=1.2, label=f"slope={sl:+.2f}")
     ax.axhline(0, color="0.8", lw=0.5); ax.axvline(0, color="0.8", lw=0.5)
     ax.set_xlabel(f"{la} [µm]"); ax.set_ylabel(f"{lb} [µm]")
-    ax.set_title(f"{la} vs {lb}    r={r:+.2f}", fontsize=11)
+    ax.set_title(f"{la} vs {lb}    r={r:+.2f}", fontsize=10)
     ax.legend(fontsize=7, loc="best")
     return r
 
@@ -85,20 +79,26 @@ def main():
         for name, mlabel, orders in FAMILIES:
             keys = list(orders)
             pairs = [(a, b) for i, a in enumerate(keys) for b in keys[i + 1:]]
-            fig, axes = plt.subplots(1, len(pairs), figsize=(5.2 * len(pairs), 5.0),
+            # rows = components (cos X, sin Y); spherical m=0 has only the cos slot
+            has_sin = orders[keys[0]][1] is not None
+            comps = ([("cos (X)", 0, "tab:blue"), ("sin (Y)", 1, "tab:red")]
+                     if has_sin else [("(m=0)", 0, "tab:blue")])
+            nr, nc = len(comps), len(pairs)
+            fig, axes = plt.subplots(nr, nc, figsize=(5.2 * nc, 4.7 * nr),
                                      squeeze=False)
-            rs = []
-            for ax, (a, b) in zip(axes[0], pairs):
-                rs.append(scatter_pair(ax, df, orders[a], orders[b],
-                                       f"{name} {a}", f"{name} {b}"))
+            summ = []
+            for ri, (clab, ci, cc) in enumerate(comps):
+                for cj, (a, b) in enumerate(pairs):
+                    r = scatter_one(axes[ri, cj], df, orders[a][ci], orders[b][ci],
+                                    f"{name} {a} {clab}", f"{name} {b} {clab}", cc)
+                    summ.append(f"{a}-{b}/{clab.split()[0]} r={r:+.2f}")
             js = ", ".join(f"{o}:Z{orders[o][0]}"
                            + (f"/Z{orders[o][1]}" if orders[o][1] else "")
                            for o in keys)
-            fig.suptitle(f"{name} ({mlabel})  radial-order cross-correlation  [{js}]",
-                         fontsize=12)
+            fig.suptitle(f"{name} ({mlabel})  radial-order cross-correlation "
+                         f"(X and Y on separate rows)  [{js}]", fontsize=12)
             fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-            print(f"  {name:11s}: " + "  ".join(f"{a}-{b} r={r:+.2f}"
-                                                for (a, b), r in zip(pairs, rs)))
+            print(f"  {name:11s}: " + "  ".join(summ))
     print(f"wrote {args.out} (5 pages)")
 
 
