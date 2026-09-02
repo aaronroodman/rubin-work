@@ -120,6 +120,12 @@ forces.
 
 ### 3.1 What the fixed point contains
 
+> **Why this section exists.** It establishes exactly one thing needed downstream:
+> that the coadd-vs-MIW difference is driven by the $(\mathbb 1-\mathbf P)$ part of
+> the state and **not** by the u-modes (§4). Steps 1–3 are the algebra for that;
+> Step 4 disposes of the starting-point/gauge question, which turns out **not** to
+> affect the comparison. A reader who accepts §4's boxed result can skip to it.
+
 **Assumptions.** (i) The data model is
 $$Z_v^{\rm meas}=I_{\rm true}+\mathcal R[\mathbf W_v]+n_v,$$
 i.e. the true *optical state* is DZ-representable in the **fitted** basis, while
@@ -201,9 +207,8 @@ condition.**
 > fixed-point equations cannot separate them. This is the same degeneracy that
 > leaves the MIW without an absolute $Z_{1..3}$ (piston/tilt) reference.
 
-**Step 4 — the gauge is set by the starting point, and is build-independent.**
-Run the iteration explicitly from $I^{(0)}=I_{\rm batoid}$ instead of assuming a
-fixed point. Iteration 1 gives
+**Step 4 — which fixed point? Convergence does not answer this.** Run the
+iteration explicitly from $I^{(0)}=I_{\rm batoid}$. Iteration 1 gives
 $\mathbf w_v^{(1)}=\mathcal F[I_{\rm true}-I_{\rm batoid}]+\mathbf W_v+\mathcal F[n_v]$, so
 
 $$
@@ -220,17 +225,39 @@ $$
 I^{(2)}=I_{\rm true}+\mathcal R\big[(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}\big]-\mathcal R[\mathbf G]=I^{(1)}.
 $$
 
-So in this linearized model the iteration **converges after one step**, with
-$\mathbf P\boldsymbol\Delta=\mathbf G$ depending only on $I_{\rm true}$ and
-$I_{\rm batoid}$ — **not** on the visit set. The real build needs `n_iter=3`
-because of what the linearization drops: median vs mean, bad-visit flagging,
-grid interpolation between iterations, and the differing donut sampling of each
-set. Those are exactly the terms that make $\mathbf G$ only *approximately*
-build-independent.
+So in the linearized model the iteration reaches a fixed point after **one** step
+and then sits there — but the point it sits at **retains $\mathbf G$**, i.e. it
+depends on $I^{(0)}$. Step 3 already showed why: $\mathbf P\boldsymbol\Delta$ is
+unconstrained, so the fixed points form a *manifold* over the 34-dimensional
+$\mathbf P$ subspace, and $I^{(0)}$ selects which point on it you land on.
+Consistency check: starting from $I^{(0)}=I_{\mathcal V}$ reproduces
+$I_{\mathcal V}$ exactly, as a fixed point must.
 
-**Consequence.** Two builds started from the same $I_{\rm batoid}$ share
-$\mathbf G$, so it cancels in their difference. A build started from a different
-$I^{(0)}$ is **not** comparable.
+> **This is why iteration $2\approx3$ is not evidence of start-independence.**
+> Agreement between successive iterations shows you have *landed* on the manifold
+> — which is exactly what validates using the fixed-point equations above — but
+> says nothing about *which* point. A contractive map toward a unique answer and a
+> map that lands immediately on a fixed-point manifold both produce
+> "iteration 3 = iteration 2".
+
+**How much of the MIW is actually gauge?** Only the part of
+$I_{\rm batoid}-I_{\rm true}$ that is simultaneously (a) inside the fitted basis
+$k\le6$ (field radial order $\le2$) and (b) in $\mathrm{span}(\mathbf U_{\rm eff})$.
+The MIW's headline excess over the batoid design — $\sim0.1\,\mu$m of astig/coma at
+**field radial order $n=3$–5** ([smatrix/MIW_astig_coma_investigation.md](../smatrix/MIW_astig_coma_investigation.md))
+— is *outside* the $k\le6$ fit basis entirely, so it is **not** gauge and cannot be
+an artifact of the batoid start. The gauge worry is confined to low field order.
+
+**Consequence for this analysis: none.** Both $I_b$ and $I_{\mathcal B}$ start from
+the same $I_{\rm batoid}$, so $\mathbf G$ is common and cancels in the difference.
+The gauge matters only if one wants to interpret $I_{\mathcal V}$ *absolutely*, or
+to compare builds started differently.
+
+**Decisive test (cheap).** Rerun one build with $I^{(0)}=I_{\rm batoid}+\mathcal R[\delta]$
+for a deliberate $\mathbf P$-representable $\delta$ (say a $0.1\,\mu$m v-mode
+pattern at $k\le6$). The algebra above predicts the converged MIW shifts by
+$-\mathcal R[\mathbf P\delta]$; genuine start-independence predicts no shift. One
+build rerun settles it.
 
 ---
 
