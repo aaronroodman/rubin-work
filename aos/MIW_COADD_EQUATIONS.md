@@ -29,6 +29,9 @@ configured in `ts_intrinsic_wavefront/pipelines/mi_config.yaml`.
 | $Z_j^{\rm meas}(\vec\theta)$ | Danish per-donut annular Zernike | per intra/extra FAM pair |
 | $\mathcal{Z}_k(\hat\theta)$ | focal-plane Zernike basis | piston, tip/tilt, focus, 2 astig |
 | $w_{kj}$ | Double-Zernike (DZ) coefficient | flattened $\mathbf{w}$, $n_{kj}=n_k n_j=126$ |
+| $\mathbf W_v$ | **true optical-state DZ coefficients** of visit $v$ — the physical misalignment/figure state expressed in the same DZ basis. The thing $\mathbf P$ is meant to remove. | 126, µm |
+| $\mathcal R$ | reconstruction, coefficients $\to$ field function: $\mathcal R[\mathbf w](\vec\theta)=\sum_k w_{kj}\mathcal Z_k(\hat\theta)$ | linear |
+| $\mathcal F$ | per-visit least-squares fit, field function $\to$ coefficients | linear |
 | $\mathbf{S}$ | OFC sensitivity, $S_{(kj),i}=\partial w_{kj}/\partial\mathrm{DoF}_i$ | $126\times 50$ |
 | $\mathbf{N}$ | diagonal geom-mean DOF normalization | $50\times 50$ |
 | $\hat{\mathbf S}=\mathbf{S}\mathbf{N}$ | normalized sensitivity | $126\times 50$ |
@@ -37,12 +40,31 @@ configured in `ts_intrinsic_wavefront/pipelines/mi_config.yaml`.
 | $\mathbf{P}=\mathbf U_{\rm eff}\mathbf U_{\rm eff}^\top$ | projector onto the corrected subspace | rank 34 of 126 |
 | $a_m$ | **u-mode amplitude**, $a_m=\mathbf u_m^\top\mathbf w$ | µm of wavefront, $m=1..34$ |
 | $c_m=a_m/\sigma_m$ | **v-mode amplitude** (normalized DOF coords) | dimensionless |
-| $I(\vec\theta)$ | intrinsic-wavefront estimate (the MIW) | $73\times73$ grid, $\pm1.8^\circ$ |
+| $I_{\mathcal V}(\vec\theta)$ | **the MIW** — the converged intrinsic-wavefront estimate built from visit set $\mathcal V$ | $73\times73$ grid, $\pm1.8^\circ$ |
+| $I_{\mathcal B}$, $I_b$ | the **calibration MIW** (16 build blocks $\mathcal B$) and one block's **coadd** ($b$) — both are $I_{\mathcal V}$ for different $\mathcal V$ | same grid |
+| $I_{\rm true}$ | the true intrinsic wavefront of the ideally-aligned system | — |
 
 Code correspondence: $\mathbf U_{\rm eff}$ = `OFCSvd.U_eff`; $a_m$ =
 `OFCSvd.project_amplitudes(W)` $=\mathbf{W}\mathbf U_{\rm eff}$; $c_m$ =
 `OFCSvd.vmodes`; row order of $\mathbf w$ is $(k-k_{\min})n_j+j_{\rm idx}$
 (`OFCSvd.kj_grid`, $k$ outer / $j$ inner).
+
+### 1.1 Properties of $\mathcal F$ and $\mathcal R$ (used throughout §3)
+
+Both are linear. $\mathcal R$ maps a coefficient vector to a field-dependent
+wavefront; $\mathcal F$ fits a field-dependent wavefront back to coefficients. The
+two properties the derivation needs:
+
+$$
+\mathcal F\mathcal R=\mathbb 1 \quad\text{(on coefficient space)},\qquad
+\mathcal R\mathcal F=\Pi \quad\text{(projection onto DZ-representable functions)}.
+$$
+
+$\mathcal F\mathcal R=\mathbb 1$ is the statement that fitting a field that *is*
+exactly a DZ sum returns its coefficients. $\mathcal R\mathcal F=\Pi\neq\mathbb 1$:
+a general field — $I_{\rm true}$ and $I_{\mathcal V}$ included — is **not**
+DZ-representable, and $\mathcal F$ applied to it returns its best-fit projection,
+discarding the rest. Nothing below assumes otherwise.
 
 **Note on "u-mode" vs "v-mode".** $\mathbf u_m$ (left-singular, wavefront side)
 and $\mathbf v_m$ (right-singular, DOF side) are paired by $\sigma_m$. The stored
@@ -63,7 +85,7 @@ DZ space splits three ways:
 | $\mathrm{span}(\mathbf u_{35..50})$ | 16 | reachable but discarded (ill-conditioned v-modes) | **survives** |
 | $\mathrm{null}(\hat{\mathbf S}^\top)$ | 76 | not reachable by any of the 50 DOF | **survives** |
 
-So $\mathbf 1-\mathbf P$ is 92-dimensional, of which 16 dimensions are *physically
+So $\mathbb 1-\mathbf P$ is 92-dimensional, of which 16 dimensions are *physically
 achievable optical states that the 34-mode truncation chooses not to correct*.
 Those 16 are the AOS-relevant part of the surviving wavefront.
 
@@ -76,45 +98,139 @@ for a visit set $\mathcal V$ and iteration $n$:
 
 $$
 \mathbf w_v^{(n)}=\mathcal F\!\left[Z_v^{\rm meas}-I^{(n-1)}\right],\qquad
-I^{(n)}(\vec\theta)=\Big\langle\, Z_v^{\rm meas}(\vec\theta)-\textstyle\sum_k(\mathbf P\mathbf w_v^{(n)})_{kj}\,\mathcal Z_k(\hat\theta)\,\Big\rangle^{\rm bin}_{v\in\mathcal V}
+I^{(n)}=\Big\langle\, Z_v^{\rm meas}-\mathcal R\big[\mathbf P\,\mathbf w_v^{(n)}\big]\,\Big\rangle^{\rm bin}_{v\in\mathcal V}
 $$
 
-where $\mathcal F$ is the per-visit least-squares fit onto the $\mathcal Z_k$ basis
-and $\langle\cdot\rangle^{\rm bin}$ is the per-cell **median** over all good donuts
-of all good visits. $I^{(0)}=$ batoid design intrinsic. Note the **projected**
-$\mathbf P\mathbf w$ is subtracted while the **raw** $\mathbf w$ is what gets stored
-(`fit_rows_raw`), so $a_m$ is measured from the raw fit.
+where $\langle\cdot\rangle^{\rm bin}$ is the per-cell **median** over all good donuts
+of all good visits, on the $73\times73$ grid. $I^{(0)}=$ batoid design intrinsic.
+Note the **projected** $\mathbf P\mathbf w$ is subtracted while the **raw**
+$\mathbf w$ is what gets stored (`fit_rows_raw`), so $a_m$ is measured from the raw
+fit.
 
 At the fixed point $I^{(n)}\to I_{\mathcal V}$, drop the iteration index:
 
 $$
-\boxed{\;I_{\mathcal V}=\big\langle Z_v^{\rm meas}-(\mathbf P\mathbf w_v)\!\cdot\!\mathcal Z\big\rangle_{\mathcal V},\qquad
+\boxed{\;I_{\mathcal V}=\Big\langle Z_v^{\rm meas}-\mathcal R\big[\mathbf P\,\mathbf w_v\big]\Big\rangle_{\mathcal V},\qquad
 \mathbf w_v=\mathcal F\big[Z_v^{\rm meas}-I_{\mathcal V}\big]\;}
 $$
 
+These two equations are coupled: the fit is made against the very intrinsic
+estimate that the fit's own output defines. §3.1 unpacks what that self-consistency
+forces.
+
 ### 3.1 What the fixed point contains
 
-Model the truth as an intrinsic plus a DZ-representable optical state,
-$Z_v^{\rm meas}=I_{\rm true}+\mathbf W_v\!\cdot\!\mathcal Z+n_v$, with $\mathbf W_v$
-the true state's DZ coefficients and $n_v$ retrieval noise. Since $\mathcal F$ is
-the identity on DZ-representable fields, write
-$\boldsymbol\Delta\equiv\mathcal F[I_{\rm true}-I_{\mathcal V}]$ and assume
-$\mathcal F[n_v]$ averages away. Then $\mathbf w_v=\boldsymbol\Delta+\mathbf W_v$ and
+**Assumptions.** (i) The data model is
+$$Z_v^{\rm meas}=I_{\rm true}+\mathcal R[\mathbf W_v]+n_v,$$
+i.e. the true *optical state* is DZ-representable in the **fitted** basis, while
+$I_{\rm true}$ need not be. This is only approximate: the state acts through
+$\mathbf w$ by construction of the sensitivity matrix, but ts_ofc's DZ matrix
+carries 31 field orders whereas the build fits only $k=1..6$, so the state's
+field content above $k=6$ is *not* representable and behaves like additional
+$I_{\rm true}$. (ii) The per-cell **median** is replaced by a **mean** so that
+$\langle\cdot\rangle$ is linear. (iii) Retrieval noise averages away,
+$\langle\mathcal F[n_v]\rangle\approx0$.
+
+All three are approximations. (i) and (ii) are the ones worth revisiting — (i)
+because the $k>6$ state leakage is a genuine physical term, not just algebra.
+
+**Step 1 — what each visit's fit returns.** Substitute the data model into
+$\mathbf w_v=\mathcal F[Z_v^{\rm meas}-I_{\mathcal V}]$ and use linearity:
 
 $$
-I_{\mathcal V}=I_{\rm true}+(\mathbf 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}\!\cdot\!\mathcal Z-\mathbf P\boldsymbol\Delta\!\cdot\!\mathcal Z .
+\mathbf w_v=\underbrace{\mathcal F\big[I_{\rm true}-I_{\mathcal V}\big]}_{\textstyle\equiv\,\boldsymbol\Delta}
++\underbrace{\mathcal F\mathcal R[\mathbf W_v]}_{=\;\mathbf W_v}
++\;\mathcal F[n_v]
+\;\;\Longrightarrow\;\;
+\langle\mathbf w\rangle_{\mathcal V}=\boldsymbol\Delta+\langle\mathbf W\rangle_{\mathcal V}.
 $$
 
-Applying $\mathcal F$ to this expression gives $(\mathbf 1-\mathbf P)\boldsymbol\Delta=-(\mathbf 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}$,
-which fixes the $(\mathbf 1-\mathbf P)$ part of $\boldsymbol\Delta$ but leaves
-$\mathbf P\boldsymbol\Delta$ **undetermined**.
+Two things to be clear about here. $\boldsymbol\Delta$ is a **definition**, not a
+claim: it is simply the coefficient vector $\mathcal F$ returns when handed the
+field $I_{\rm true}-I_{\mathcal V}$, and requires no representability assumption —
+this is where the earlier draft misplaced its justification. The property
+$\mathcal F\mathcal R=\mathbb 1$ is needed only for the **middle** term, the
+optical state, which *is* DZ-representable by assumption (i).
+
+$\boldsymbol\Delta$ carries no $v$ label, but strictly $\mathcal F$ is per-visit —
+each visit has its own donut positions, so $\mathcal F_v$ and hence
+$\boldsymbol\Delta_v$ differ slightly. Treating $\boldsymbol\Delta$ as common to the
+set assumes equivalent field sampling across visits; the residual
+sampling-dependence is one of the second-order terms collected in §4.1.
+
+**Step 2 — what the MIW then equals.** Put Step 1 into the fixed-point definition
+$I_{\mathcal V}=\langle Z_v^{\rm meas}\rangle-\mathcal R[\mathbf P\langle\mathbf w\rangle]$:
+
+$$
+I_{\mathcal V}
+= I_{\rm true}+\mathcal R\big[\langle\mathbf W\rangle_{\mathcal V}\big]
+-\mathcal R\big[\mathbf P(\boldsymbol\Delta+\langle\mathbf W\rangle_{\mathcal V})\big]
+= I_{\rm true}+\mathcal R\big[(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}-\mathbf P\boldsymbol\Delta\big].
+\tag{$\ast$}
+$$
+
+Already the main message is visible: the MIW differs from the truth by the
+**uncorrected** part of the mean state, $(\mathbb 1-\mathbf P)\langle\mathbf W\rangle$,
+plus a term $\mathbf P\boldsymbol\Delta$ still to be pinned down.
+
+**Step 3 — close the loop on $\boldsymbol\Delta$.** Rearrange $(\ast)$ to
+$I_{\rm true}-I_{\mathcal V}=-\mathcal R\big[(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}-\mathbf P\boldsymbol\Delta\big]$
+and apply $\mathcal F$ to both sides. The left side is $\boldsymbol\Delta$ by
+definition; on the right $\mathcal F\mathcal R=\mathbb 1$ applies because the
+argument is now a DZ *coefficient* vector:
+
+$$
+\boldsymbol\Delta=-(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}+\mathbf P\boldsymbol\Delta .
+$$
+
+Split this by projecting with $(\mathbb 1-\mathbf P)$ and with $\mathbf P$, using
+$(\mathbb 1-\mathbf P)\mathbf P=0$ and $\mathbf P^2=\mathbf P$:
+
+$$
+(\mathbb 1-\mathbf P)\boldsymbol\Delta=-(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V},
+\qquad
+\mathbf P\boldsymbol\Delta=\mathbf P\boldsymbol\Delta .
+$$
+
+The first fixes the uncorrectable half of $\boldsymbol\Delta$. The second is a
+tautology: **$\mathbf P\boldsymbol\Delta$ is undetermined by the fixed-point
+condition.**
 
 > **Gauge freedom.** Any $\mathbf P$-representable field pattern can be moved
-> between "intrinsic" and "optical state" without changing the data. The iteration
-> resolves it only through its starting point $I^{(0)}=$ batoid. Two builds started
-> from the same batoid intrinsic land in the same gauge, so $\mathbf P\boldsymbol\Delta$
-> cancels in differences — but a build started elsewhere is **not** comparable.
-> This is also why the MIW lacks an absolute $Z_{1..3}$ (piston/tilt) reference.
+> between "intrinsic" and "optical state" without changing the data at all, so the
+> fixed-point equations cannot separate them. This is the same degeneracy that
+> leaves the MIW without an absolute $Z_{1..3}$ (piston/tilt) reference.
+
+**Step 4 — the gauge is set by the starting point, and is build-independent.**
+Run the iteration explicitly from $I^{(0)}=I_{\rm batoid}$ instead of assuming a
+fixed point. Iteration 1 gives
+$\mathbf w_v^{(1)}=\mathcal F[I_{\rm true}-I_{\rm batoid}]+\mathbf W_v+\mathcal F[n_v]$, so
+
+$$
+I^{(1)}=I_{\rm true}+\mathcal R\big[(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}\big]-\mathcal R[\mathbf G],
+\qquad
+\mathbf G\equiv\mathbf P\,\mathcal F\big[I_{\rm true}-I_{\rm batoid}\big].
+$$
+
+Feeding $I^{(1)}$ back through Step 1 gives
+$\mathbf w_v^{(2)}=\mathbf W_v-(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}+\mathbf G+\mathcal F[n_v]$,
+and since $\mathbf P(\mathbb 1-\mathbf P)=0$ and $\mathbf P\mathbf G=\mathbf G$,
+
+$$
+I^{(2)}=I_{\rm true}+\mathcal R\big[(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}\big]-\mathcal R[\mathbf G]=I^{(1)}.
+$$
+
+So in this linearized model the iteration **converges after one step**, with
+$\mathbf P\boldsymbol\Delta=\mathbf G$ depending only on $I_{\rm true}$ and
+$I_{\rm batoid}$ — **not** on the visit set. The real build needs `n_iter=3`
+because of what the linearization drops: median vs mean, bad-visit flagging,
+grid interpolation between iterations, and the differing donut sampling of each
+set. Those are exactly the terms that make $\mathbf G$ only *approximately*
+build-independent.
+
+**Consequence.** Two builds started from the same $I_{\rm batoid}$ share
+$\mathbf G$, so it cancels in their difference. A build started from a different
+$I^{(0)}$ is **not** comparable.
 
 ---
 
@@ -122,13 +238,16 @@ $\mathbf P\boldsymbol\Delta$ **undetermined**.
 
 `run_coadd_blocks_miw.py` runs the *same* fixed point per contiguous block $b$,
 giving $I_b$; the reference is the pooled build $I_{\mathcal B}$ (the 16 build
-blocks). Subtracting two fixed points in the same gauge:
+blocks). Differencing $(\ast)$ for the two sets, with $\mathbf G$ shared (Step 4):
 
 $$
-\boxed{\;I_b-I_{\mathcal B}\;\simeq\;(\mathbf 1-\mathbf P)\big[\langle\mathbf W\rangle_b-\langle\mathbf W\rangle_{\mathcal B}\big]\!\cdot\!\mathcal Z\;}
+\boxed{\;I_b-I_{\mathcal B}\;\simeq\;\mathcal R\Big[(\mathbb 1-\mathbf P)\big(\langle\mathbf W\rangle_b-\langle\mathbf W\rangle_{\mathcal B}\big)\Big]\;}
 $$
 
-**The residual is driven by the $(\mathbf 1-\mathbf P)$ — discarded — part of the
+Both $I_{\rm true}$ and the gauge term $\mathcal R[\mathbf G]$ drop out; what
+remains is the uncorrected part of the state difference.
+
+**The residual is driven by the $(\mathbb 1-\mathbf P)$ — discarded — part of the
 state difference, not the $\mathbf P$ part.** The $\mathbf P$ part is exactly what
 both builds subtract, so it cancels at first order.
 
@@ -143,15 +262,19 @@ cancels*. They can therefore only enter through second-order channels:
 
 1. **Sensitivity-matrix error.** If the true response is $\mathbf S+\delta\mathbf S$,
    then $\mathbf P$ is the wrong projector and a term
-   $\sim(\mathbf 1-\mathbf P)\,\delta\mathbf S\,\mathbf N\,\mathbf V\boldsymbol\Sigma^{-1}\Delta\mathbf a$
+   $\sim(\mathbb 1-\mathbf P)\,\delta\mathbf S\,\mathbf N\,\mathbf V\boldsymbol\Sigma^{-1}\Delta\mathbf a$
    leaks in — first order in $\delta\mathbf S$, linear in $\Delta a_m$. This is the
    only channel that makes $\Delta a_m$ a legitimate (and interesting) regressor: a
    significant coefficient measures a **gain error in mode $m$'s removal**.
 2. **Nonlinearity** of the true DOF→wavefront response (the DZ fit is linear).
-3. **Correlation** between the $\mathbf P$ and $(\mathbf 1-\mathbf P)$ parts of the
+3. **Correlation** between the $\mathbf P$ and $(\mathbb 1-\mathbf P)$ parts of the
    state across blocks — physically likely, since one thermal state drives both.
    This makes $\Delta a_m$ a *proxy* rather than a cause, and is why the partial
    correlation controlling for `z_gradient` must always be reported alongside.
+4. **Assumption violations from §3.1**: state field content above $k=6$ (assumption i),
+   median-vs-mean (ii), and per-visit sampling differences in $\mathcal F_v$ — each
+   makes $\mathbf G$ only approximately build-independent, leaving a residual that
+   need not be orthogonal to $\Delta a_m$.
 
 Empirically (rebin 3, $n=221$, 16 build blocks) this is what the data show:
 u-mode-only ML $R^2=-0.33$ and env+u-mode $R^2=+0.64$ vs environmental-only
@@ -161,7 +284,7 @@ telemetry, exactly as the boxed equation predicts.
 ### 4.2 The quantity that *is* first order — and is not currently saved
 
 $$
-\mathbf r_v\;\equiv\;(\mathbf 1-\mathbf P)\,\mathbf w_v
+\mathbf r_v\;\equiv\;(\mathbb 1-\mathbf P)\,\mathbf w_v
 $$
 
 the **discarded** DZ coefficients (the note's $w^{\rm resid}$). Per block,
@@ -176,7 +299,7 @@ It is 92-dimensional; useful reductions:
 `run_coadd_blocks_miw.py` currently stores only $a_m$ (34 kept) in
 `block_grids.npz`. Adding $\mathbf r$ — or equivalently the full raw
 $\mathbf w_v$ (126 per visit), from which both $\mathbf P\mathbf w$ and
-$(\mathbf 1-\mathbf P)\mathbf w$ follow — is a one-line addition to
+$(\mathbb 1-\mathbf P)\mathbf w$ follow — is a one-line addition to
 `block_umodes()`/the npz save and requires an RSP rerun. **This is the single
 highest-value change to the coadd study.**
 
@@ -209,7 +332,7 @@ failure.
 
 ## 6. Summary of what changes in the analysis
 
-1. First-order driver is $(\mathbf 1-\mathbf P)\mathbf w$, **not** the u-modes → save
+1. First-order driver is $(\mathbb 1-\mathbf P)\mathbf w$, **not** the u-modes → save
    it (RSP rerun) and make it the primary regressor.
 2. Within it, prioritize the **16 reachable-but-discarded** modes $\mathbf u_{35..50}$.
 3. Keep $\Delta a_m$ as the **sensitivity-gain-error** test, second order, always with
