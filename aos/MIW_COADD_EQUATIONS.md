@@ -287,21 +287,70 @@ that expression is not the first-order term, it is one of the second-order ones.
 The stored u-modes $a_m=\mathbf u_m^\top\mathbf w$ span *precisely the subspace that
 cancels*. They can therefore only enter through second-order channels:
 
-1. **Sensitivity-matrix error.** If the true response is $\mathbf S+\delta\mathbf S$,
-   then $\mathbf P$ is the wrong projector and a term
-   $\sim(\mathbb 1-\mathbf P)\,\delta\mathbf S\,\mathbf N\,\mathbf V\boldsymbol\Sigma^{-1}\Delta\mathbf a$
-   leaks in — first order in $\delta\mathbf S$, linear in $\Delta a_m$. This is the
-   only channel that makes $\Delta a_m$ a legitimate (and interesting) regressor: a
-   significant coefficient measures a **gain error in mode $m$'s removal**.
+1. **Field-order truncation of the fit basis — the dominant channel.** The build
+   fits only $k=1..6$, but ts_ofc's DZ sensitivity carries **31** field orders. A
+   DOF direction excited during a block produces wavefront at *all* field orders;
+   only its $k\le6$ projection is fitted, and therefore only that part is
+   subtracted. The $k>6$ part is **invisible to the fit and lands in the MIW**.
+   Writing the state's field contribution as $g_v$ and $\Pi=\mathcal R\mathcal F$,
+
+   $$
+   I_{\mathcal V}=I_{\rm true}+\big\langle(\mathbb 1-\Pi)g_v\big\rangle_{\mathcal V}
+   +\mathcal R\big[(\mathbb 1-\mathbf P)\langle\mathbf W\rangle_{\mathcal V}\big]-\mathcal R[\mathbf G].
+   $$
+
+   Because $(\mathbb 1-\Pi)g_v$ and $\mathbf W_v=\mathcal F[g_v]$ are driven by the
+   **same** DOF amplitude, $a_m$ is a *linear proxy* for the un-removed $k>6$
+   content of mode $m$ — with a computable per-mode weight (§4.3). This is a
+   software/basis effect: it is present no matter how accurate $\mathbf S$ is.
 2. **Nonlinearity** of the true DOF→wavefront response (the DZ fit is linear).
 3. **Correlation** between the $\mathbf P$ and $(\mathbb 1-\mathbf P)$ parts of the
    state across blocks — physically likely, since one thermal state drives both.
    This makes $\Delta a_m$ a *proxy* rather than a cause, and is why the partial
    correlation controlling for `z_gradient` must always be reported alongside.
-4. **Assumption violations from §3.1**: state field content above $k=6$ (assumption i),
-   median-vs-mean (ii), and per-visit sampling differences in $\mathcal F_v$ — each
-   makes $\mathbf G$ only approximately build-independent, leaving a residual that
-   need not be orthogonal to $\Delta a_m$.
+4. **Assumption violations from §3.1**: median-vs-mean (ii) and per-visit sampling
+   differences in $\mathcal F_v$ — each makes $\mathbf G$ only approximately
+   build-independent, leaving a residual that need not be orthogonal to $\Delta a_m$.
+
+> **Not a channel: sensitivity-matrix error.** An earlier draft claimed a
+> $\delta\mathbf S$ "gain error in mode $m$'s removal". That is **wrong**. The
+> removal is done entirely **in software**: the build subtracts
+> $\mathcal R[\mathbf P\mathbf w_v]$, exactly the quantity it just fitted, from the
+> measured wavefront. No hardware applies anything, so there is no gain to be in
+> error. The boxed result of §4 holds for *whatever* $\mathbf P$ is — an inaccurate
+> $\mathbf S$ changes *which* subspace is removed, not whether the removal is
+> faithfully executed. $\delta\mathbf S$ matters for applying corrections to the
+> telescope; it does not enter this comparison.
+
+### 4.3 Per-mode field-order leakage — which $\Delta a_m$ can matter
+
+Computed from the ts_ofc DZ matrix (31 field orders) by mapping each kept mode's
+DOF direction $\mathbf N\mathbf v_m$ through the full sensitivity and comparing the
+fitted ($k\le6$) and un-fitted ($k>6$) wavefront norms:
+
+| mode $m$ | leakage $\|k{>}6\|/\|k{\le}6\|$ |
+|---|---|
+| 1–7 | 0.000 – 0.002 |
+| 8–15 | 0.005 – 0.033 |
+| 16–27 | 0.03 – 0.18 |
+| 28–34 | **0.13 – 0.47** |
+
+Median 0.036; highest $u_{34}$ 0.47, $u_{33}$ 0.37, $u_{32}$ 0.34, $u_{28}$ 0.34.
+
+**Consequence.** For the leading modes the removal is essentially exact — their
+wavefront lives entirely inside $k\le6$, so $\Delta a_{1..10}$ **cannot** cause MIW
+residual and any correlation there is proxy or coincidence. Only the high-index
+modes leak enough to be causal. This predicts that the *tail* of the u-mode
+spectrum should carry the correlation, and it does: `du_norm_tail` gives
+$\rho=-0.49$ vs spatial $r$ against `du_norm_lead` $-0.21$, and $u_{30},u_{31},u_{32}$
+appear among both the highest-leakage and the strongest-correlating modes.
+
+The recommended scalar is therefore the **leakage-weighted displacement**
+$\;\|\mathrm{diag}(\rho_m)\,\Delta\mathbf a\|\;$ (`du_leak`), which is
+physically motivated where `du_norm`/`du_maha` are not. Caveat: $u_{13},u_{14}$
+correlate strongly ($+0.43,+0.48$) despite low leakage ($0.011,0.033$), so
+channel 3 (thermal driving both subspaces) is certainly also operating —
+`du_leak` must still be reported with the `z_gradient` partial correlation.
 
 Empirically (rebin 3, $n=221$, 16 build blocks) this is what the data show:
 u-mode-only ML $R^2=-0.33$ and env+u-mode $R^2=+0.64$ vs environmental-only

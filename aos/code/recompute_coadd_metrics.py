@@ -93,8 +93,21 @@ SN_FEATS = ["n_donuts", "n_visits"]
 #     coadd_b - MIW = sum_i eps_i * (u_b,i - <u_i>_build) * M_i
 # i.e. the residual responds to the DISPLACEMENT from the state the MIW was
 # calibrated at, not to the raw amplitude.  Hence du_i = u_i - <u_i>_build.
+#
+# Which du_i can CAUSE residual, though, is set by field-order leakage, not by
+# amplitude.  The build fits only k=1..6 while the ts_ofc DZ sensitivity carries 31
+# field orders, so a mode's k>6 wavefront is never fitted and never subtracted -- it
+# lands in the MIW.  Since the k<=6 and k>6 parts share one DOF amplitude, a_m is a
+# linear proxy for that un-removed content, weighted by
+#   rho_m = |k>6| / |k<=6|   (calibration/miw/umode_k_leakage_50_34.npy)
+# which runs 0.000-0.002 for modes 1-7 but 0.13-0.47 for modes 28-34.  For the
+# leading modes the software removal is essentially exact, so du_1..10 CANNOT be
+# causal.  du_leak = ||diag(rho) du|| is therefore the physically motivated scalar.
+# (NOT a sensitivity-matrix "gain error": the removal is pure software -- the build
+# subtracts exactly the R[P w] it just fitted -- so dS does not enter.)
 N_UMODE_LEAD = 10                 # leading modes carried as individual du_i features
-UMODE_SCALARS = ["du_norm", "du_norm_lead", "du_norm_tail", "du_maha"]
+UMODE_SCALARS = ["du_norm", "du_norm_lead", "du_norm_tail", "du_maha", "du_leak"]
+LEAKAGE_NPY = "calibration/miw/umode_k_leakage_50_34.npy"
 
 
 def umode_reference(Um, build_used, n_visits, sidecar=None):
@@ -136,7 +149,24 @@ def umode_reference(Um, build_used, n_visits, sidecar=None):
     return mean_w, sigma, sem, f"n_visits-weighted mean of {nb} build blocks (approx)"
 
 
-def umode_features(Um, u_ref, sigma_build, n_lead=N_UMODE_LEAD, floor_pct=25.0):
+def load_leakage(path=LEAKAGE_NPY, n_keep=None):
+    """Per-mode field-order leakage rho_m = |k>6|/|k<=6|, or None if unavailable.
+
+    Regenerate with scratch kleak.py: map each kept mode's DOF direction N.v_m
+    through the FULL 31-field-order ts_ofc DZ sensitivity and compare the fitted
+    (k<=6) and un-fitted (k>6) wavefront norms."""
+    for p in (path, os.path.join(os.path.dirname(__file__), "..", path)):
+        if p and os.path.exists(p):
+            rho = np.load(p).astype(float).ravel()
+            if n_keep is not None and rho.size != n_keep:
+                print(f"  (leakage vector has {rho.size} modes, need {n_keep}; ignored)")
+                return None
+            return rho
+    return None
+
+
+def umode_features(Um, u_ref, sigma_build, n_lead=N_UMODE_LEAD, floor_pct=25.0,
+                   leakage=None):
     """du = u - <u>_build, plus scalar distances from the MIW build state.
 
     du_maha uses a DIAGONAL metric: with only ~16 build blocks and 34 modes the
@@ -156,6 +186,11 @@ def umode_features(Um, u_ref, sigma_build, n_lead=N_UMODE_LEAD, floor_pct=25.0):
     feat["du_norm_tail"] = (np.sqrt(np.nansum(dU[:, nl:] ** 2, axis=1))
                             if nk > nl else np.zeros(dU.shape[0]))
     feat["du_maha"] = np.sqrt(np.nanmean((dU / sg[None, :]) ** 2, axis=1))
+    # leakage-weighted displacement: only the un-removed k>6 part of a mode can
+    # cause MIW residual, so weight each du_i by that mode's leakage ratio
+    feat["du_leak"] = (np.sqrt(np.nansum((dU * np.asarray(leakage, float)[None, :]) ** 2,
+                                         axis=1))
+                       if leakage is not None else np.full(dU.shape[0], np.nan))
     return dU, feat
 
 
@@ -516,6 +551,10 @@ def main():
                     "in the npz (median-of-medians, approximate)")
     ap.add_argument("--umode-lead", type=int, default=N_UMODE_LEAD,
                     help="number of leading u-modes carried as individual du_i features")
+    ap.add_argument("--leakage", default=LEAKAGE_NPY,
+                    help="per-mode k>6 field-order leakage ratios (.npy) used to build "
+                    "du_leak; only modes whose wavefront extends beyond the fitted "
+                    "k<=6 basis can cause MIW residual")
     ap.add_argument("--no-umode", action="store_true",
                     help="skip the u-mode displacement pages and features")
     args = ap.parse_args()
@@ -610,7 +649,16 @@ def main():
             sidecar = (np.load(args.umode_ref) if args.umode_ref.endswith(".npy")
                        else pd.read_parquet(args.umode_ref).to_numpy(float).ravel())
         u_ref, sig_b, sem_b, uref_src = umode_reference(Um, build_used, nvis, sidecar)
-        dU, ufeat = umode_features(Um, u_ref, sig_b, n_lead=args.umode_lead)
+        leak = load_leakage(args.leakage, n_keep=Um.shape[1])
+        dU, ufeat = umode_features(Um, u_ref, sig_b, n_lead=args.umode_lead,
+                                   leakage=leak)
+        if leak is None:
+            print("  (no u-mode leakage vector -> du_leak unavailable)")
+        else:
+            print(f"  u-mode k>6 leakage: median {np.median(leak):.3f}, "
+                  f"modes 1-7 <= {leak[:7].max():.3f}, modes 28-34 "
+                  f"{leak[27:].min():.2f}-{leak[27:].max():.2f} "
+                  "(only leaky modes can be causal)")
         umode_cols = [c for c in ufeat if c.startswith("du_")]
         print(f"  u-mode reference <u_i>_build from {uref_src}: "
               f"{Um.shape[1]} modes, |u_ref| = {np.linalg.norm(u_ref):.3f} um")
