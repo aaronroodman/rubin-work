@@ -190,6 +190,41 @@ def main():
           f"mean {null.mean():+.4f}, 95th {np.percentile(null,95):+.4f}; "
           f"observed {r2_obs:+.4f}  ->  p={p:.3f}")
 
+    # ---- THE DISCRIMINATOR (needs the RSP rerun that saves resid_dz/U_all) ----
+    # Unbiased model: (1-P)W lies ENTIRELY in the 16 reachable-but-discarded dims
+    # u_35..50, because a real state W is in col(S_hat).  Retrieval bias: B_+ W
+    # leaves col(S_hat), so the residual also acquires null(S_hat^T) components,
+    # and those are proportional to Δa.  So Δa predicting the NULL part is a
+    # signature the unbiased model cannot produce -- unlike Δa predicting the
+    # residual maps, which thermal proxying can also explain.
+    if all(k in d.files for k in ("resid_dz", "U_all", "U_disc")):
+        Rdz = np.asarray(d["resid_dz"], float)[keep][ok]
+        U_all, U_disc = np.asarray(d["U_all"], float), np.asarray(d["U_disc"], float)
+        A_disc = Rdz @ U_disc                                    # reachable, discarded
+        Rn = Rdz - (Rdz @ U_all) @ U_all.T                       # null(S^T) remainder
+        f_null = (np.linalg.norm(Rn, axis=1) ** 2
+                  / np.maximum(np.linalg.norm(Rdz, axis=1) ** 2, 1e-30))
+        print(f"\nDISCRIMINATOR (residual DZ subspace split, {U_disc.shape[1]} "
+              f"reachable-but-discarded + {U_all.shape[0] - U_all.shape[1]} null dims):")
+        print(f"  null-space share of residual power: median {np.median(f_null):.3f}, "
+              f"10-90th {np.percentile(f_null,10):.3f}-{np.percentile(f_null,90):.3f}")
+        print("  (unbiased model predicts ~0; nonzero already implicates bias, but "
+              "retrieval NOISE also lands there -- the test is the Δa DEPENDENCE)")
+        for lab, tgt in (("reachable-discarded amps", A_disc), ("null-space amps", Rn)):
+            lm, _ = scan_lambda(X, tgt, grp, lams)
+            r2a = cv_r2(X, tgt, grp, lm)[0]
+            lmt, _ = scan_lambda(np.column_stack([T, X]), tgt, grp, lams)
+            r2c = cv_r2(np.column_stack([T, X]), tgt, grp, lmt)[0]
+            lm0, _ = scan_lambda(T, tgt, grp, lams)
+            r2t = cv_r2(T, tgt, grp, lm0)[0]
+            print(f"  {lab:26s} CV R2: Δa {r2a:+.4f} | thermal {r2t:+.4f} | "
+                  f"both {r2c:+.4f} | Δa over thermal {r2c - r2t:+.4f}")
+    else:
+        print("\nDISCRIMINATOR skipped: block_grids.npz has no resid_dz/U_all/U_disc."
+              "\n  Rerun run_coadd_blocks_miw.py on the RSP (it now saves them) to get"
+              "\n  the reachable-but-discarded vs null(S^T) split -- the test that"
+              "\n  separates retrieval bias from thermal proxying.")
+
     # ---- full-sample Phi (the map-space columns of L) ----
     mu, sd = X.mean(0), X.std(0)
     sd = np.where(sd > 0, sd, 1.0)

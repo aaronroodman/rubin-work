@@ -51,7 +51,22 @@ Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
                                   dome_delta_t) + telemetry strips (alt/az/rot/
                                   blur/z_gradient/band, 2/page) + a u-mode
                                   amplitude heatmap (um), all vs coadd ordinal
-  block_grids.npz                 stacked coadd+MIW grids, u-modes, metadata
+  block_grids.npz                 stacked coadd+MIW Z5-Z8 grids, u-modes, metadata,
+                                  plus the DZ PRIMITIVES: block-median raw w
+                                  (`raw_dz`) and residual (1-P)w (`resid_dz`),
+                                  and the subspace bases `U_eff` / `U_all` /
+                                  `U_disc` (+ kj_grid, iZs, sigma, V,
+                                  norm_weights).  With those saved, the u-mode
+                                  amplitudes, the removed part Pw, and the
+                                  reachable-but-discarded vs null(S^T) split of
+                                  the residual are all derivable OFF-RSP -- the
+                                  discriminating test for the retrieval-bias
+                                  hypothesis (aos/MIW_COADD_EQUATIONS.md §4.2).
+  block_grids_ext.npz             coadd+MIW grids for the EXTRA pupil Zernikes
+                                  (`--ext-terms`, default the 2nd/3rd radial
+                                  orders).  Z5-Z8 are all primary, so these are
+                                  what reveal which radial orders a retrieval
+                                  bias mixes.  Row-aligned by `block`.
 
 RSP-only (needs lsst.ts.intrinsic.wavefront + lsst.ts.ofc); requires the mi_name
 MIW sidecar (zk_intrinsic.parquet) to exist.
@@ -307,14 +322,55 @@ def map_metrics(coadd, miw, cwfs_mask=None):
     return out
 
 
-def miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid):
+def miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid, terms=None):
     """Bin the per-donut MIW sidecar (row-aligned to dd) on the SAME focal grid
-    as the coadd remnant -> {z: 2D} reference map for Z5-Z8."""
+    as the coadd remnant -> {z: 2D} reference map (default Z5-Z8)."""
     thx = np.rad2deg(np.asarray(dd[f"thx_{coord}"], float))
     thy = np.rad2deg(np.asarray(dd[f"thy_{coord}"], float))
     grid, *_ = bin_median_focal(thx, thy, mi_full, iZidx,
                                 n_bins=n_bins, fp_radius=fp_grid)
-    return {z: grid.get(z) for z in Z_TERMS}
+    return {z: grid.get(z) for z in (terms if terms is not None else Z_TERMS)}
+
+
+def residual_subspace_basis(svd, instrument="lsst"):
+    """Orthonormal bases for the DZ subspaces that SURVIVE the n_dof/n_keep removal.
+
+    ``(1-P)w`` splits in two (see aos/MIW_COADD_EQUATIONS.md §2, §4.2):
+      * ``u_35..50``  -- REACHABLE by the n_dof DOF but discarded by the n_keep
+        truncation (the ill-conditioned v-modes); 16 dims for 50/34.
+      * ``null(S^T)`` -- not reachable by ANY combination of the DOF; 76 dims.
+
+    The retrieval-bias hypothesis predicts residual power in the NULL part
+    proportional to Δa, which an unbiased retrieval cannot produce (there
+    ``(1-P)W`` lives entirely in the 16 reachable-but-discarded dims).  So this
+    split is the discriminating measurement, which is why the bases are saved.
+
+    Returns (U_all, U_disc): the full reachable basis (n_kj, n_dof) and its
+    discarded columns (n_kj, n_dof - n_keep)."""
+    from lsst.ts.ofc import OFCData
+    S_full = np.asarray(OFCData(instrument).sensitivity_matrix)
+    S_slab = S_full[svd.k_min:svd.k_max + 1, np.asarray(svd.iZs, int), :]
+    Sh = (S_slab.reshape(-1, S_slab.shape[-1])[:, svd.dof_idx]
+          @ np.diag(svd.normalization_weights))
+    U_all = np.linalg.svd(np.nan_to_num(np.asarray(Sh, float)),
+                          full_matrices=False)[0]
+    keep = set(svd.keep_idx if svd.keep_idx else range(svd.U_eff.shape[1]))
+    disc = [i for i in range(U_all.shape[1]) if i not in keep]
+    return U_all, U_all[:, disc]
+
+
+def block_dz_vectors(final, svd):
+    """Block-median RAW and RESIDUAL Double-Zernike coefficient vectors (µm).
+
+    ``w`` is the unconstrained per-visit DZ fit (``fit_rows_raw``); the build
+    subtracts only ``P w``, so ``(1-P) w`` is what survives into this block's
+    coadd.  Saving both primitives (rather than just the u-mode amplitudes)
+    lets the whole §4.2 analysis -- a, Pw, the 16/76 subspace split, the L
+    regression -- be redone off-RSP from block_grids.npz alone."""
+    W = ibp.stack_per_visit_coeffs(final["fit_rows_raw"], list(svd.kj_grid))
+    W = np.where(np.isfinite(W), W, 0.0)
+    R = W - (W @ svd.U_eff) @ svd.U_eff.T           # (1-P) w, per visit
+    return np.nanmedian(W, axis=0), np.nanmedian(R, axis=0)
 
 
 def block_umodes(final, svd):
@@ -605,6 +661,13 @@ def main():
     ap.add_argument("--n-iter", type=int, default=None,
                     help="iterations (default: build.n_iter, i.e. 3)")
     ap.add_argument("--pct", type=float, default=98.0)
+    ap.add_argument("--instrument", default="lsst",
+                    help="ts_ofc instrument name, for the residual subspace bases")
+    ap.add_argument("--ext-terms", default="secondary",
+                    help="extra pupil Noll maps written to block_grids_ext.npz, on top "
+                    "of the Z5-Z8 in block_grids.npz.  'secondary' (default) = the "
+                    "2nd/3rd radial orders that resolve which orders a retrieval bias "
+                    "mixes; 'all' = every fitted pupil Noll; 'none'; or a comma list")
     ap.add_argument("--cwfs-inner", type=float, default=None,
                     help="corner-WFS annulus inner radius (deg); default = the "
                          "cameraGeom SW0 extra-focal inner corner (~1.5178)")
@@ -701,6 +764,11 @@ def main():
                   else float(ibp.resolve_wfs_inner_edge(None)))
     cwfs_outer = float(args.cwfs_outer)
 
+    # extra pupil Zernikes to map (resolved against the fitted iZs once known)
+    SECONDARY = [12, 13, 16, 17, 18, 19, 22, 23, 24, 25, 26]   # 2nd/3rd radial orders
+    ext_spec = str(args.ext_terms).strip().lower()
+    ext_terms = []
+
     svd = None; iZs = iZidx = None; xbins = ybins = None; cwfs_mask = None
     blocks = []
     meta = summ.set_index("block")
@@ -718,6 +786,16 @@ def main():
                                     ofc_normalization_yaml=ofc_norm)
             print(f"  SVD: n_dof={svd.n_dof} n_keep_eff={svd.n_keep_eff}; "
                   f"pupil Noll={iZs}", flush=True)
+            if ext_spec in ("none", ""):
+                want = []
+            elif ext_spec == "all":
+                want = list(iZs)
+            elif ext_spec == "secondary":
+                want = SECONDARY
+            else:
+                want = [int(x) for x in ext_spec.replace(" ", "").split(",") if x]
+            ext_terms = [z for z in want if z in iZidx and z not in Z_TERMS]
+            print(f"  extra mapped pupil Noll ({ext_spec}): {ext_terms}", flush=True)
         res = build_measured_intrinsic_uconstrained(
             dd, None, coord, iZs, kj_grid=svd.kj_grid, U_eff=svd.U_eff,
             n_iter=n_iter, n_bins=n_bins, fp_radius_basis=fp_basis,
@@ -745,6 +823,17 @@ def main():
         miw = miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid)
         if any(miw[z] is None for z in Z_TERMS):
             print(f"  block {blk}: missing a MIW Z5-8 grid, skipped"); continue
+        # extra pupil Zernikes (secondary/tertiary radial orders) -> sidecar npz.
+        # These are what resolve WHICH radial orders the retrieval bias mixes;
+        # Z_TERMS (Z5-Z8) are all PRIMARY, so the main npz cannot show it.
+        nanmap = np.full_like(np.asarray(grid[Z_TERMS[0]], float), np.nan)
+        _eg = {z: final["measured_grid"].get(z) for z in ext_terms}
+        _em = miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid,
+                           terms=ext_terms)
+        # a missing extra term must not abort the block -- fill it with NaN
+        ext_grid = {z: (nanmap if _eg[z] is None else _eg[z]) for z in ext_terms}
+        ext_miw = {z: (nanmap if _em[z] is None else _em[z]) for z in ext_terms}
+        raw_dz, resid_dz = block_dz_vectors(final, svd)
         r = meta.loc[blk]
         blocks.append(dict(
             block=int(blk), program=str(r["program"]), day_obs=int(r["day_obs"]),
@@ -755,6 +844,8 @@ def main():
             n_donuts=int(len(dd)), in_family=bool(r["in_family"]),
             grid=grid, miw=miw, metrics=map_metrics(grid, miw, cwfs_mask),
             umodes=block_umodes(final, svd),
+            raw_dz=raw_dz, resid_dz=resid_dz,
+            ext_grid=ext_grid, ext_miw=ext_miw,
             **{tv: float(r[tv]) for tv in THERMAL_VARS}))
         print(f"  block {blk}: {r['program']} {int(r['day_obs'])} "
               f"rot={r['rot']:+.1f} n_visits={int(r['n_visits'])} "
@@ -786,17 +877,44 @@ def main():
     print(f"  wrote coadd_metrics.parquet ({len(rows)} coadds, "
           f"{len(blocks[0]['umodes'])} u-modes each)", flush=True)
 
-    # grids + metadata for cheap re-plots
+    # grids + metadata for cheap re-plots.  NOTE the legacy keys (terms/grids/miw)
+    # keep their exact Z5-Z8 meaning so existing consumers (recompute_coadd_metrics,
+    # analyze_miw_bias_regression) are unaffected; the new DZ primitives are added
+    # alongside and the extra Zernike maps go to a sidecar file.
+    U_all, U_disc = residual_subspace_basis(svd, args.instrument)
     np.savez_compressed(
         out_dir / "block_grids.npz",
         xbins=xbins, ybins=ybins, terms=np.array(Z_TERMS),
         grids=np.array([[bb["grid"][z] for z in Z_TERMS] for bb in blocks]),
         miw=np.array([[bb["miw"][z] for z in Z_TERMS] for bb in blocks]),
         umodes=np.array([bb["umodes"] for bb in blocks]),
+        # --- DZ primitives: block-median raw w and residual (1-P)w, plus the
+        # subspace bases, so a, Pw and the 16/76 split are all derivable off-RSP
+        raw_dz=np.array([bb["raw_dz"] for bb in blocks]),
+        resid_dz=np.array([bb["resid_dz"] for bb in blocks]),
+        U_eff=np.asarray(svd.U_eff, float), U_all=U_all, U_disc=U_disc,
+        kj_grid=np.array(svd.kj_grid, int), iZs=np.array(svd.iZs, int),
+        sigma=np.asarray(svd.Sigma, float),
+        V=np.asarray(svd.V, float),
+        norm_weights=np.asarray(svd.normalization_weights, float),
         band=np.array([bb["band"] for bb in blocks]),
         **{k: np.array([bb[k] for bb in blocks]) for k in
            (("ordinal", "block", "day_obs", "seq_min", "seq_max", "rot", "alt",
              "az", "fwhm", "n_visits", "n_donuts", "in_family") + tuple(THERMAL_VARS))})
+    print(f"  wrote block_grids.npz (+ raw_dz/resid_dz {len(svd.kj_grid)}-vectors, "
+          f"U_all {U_all.shape}, U_disc {U_disc.shape})", flush=True)
+
+    if ext_terms:
+        np.savez_compressed(
+            out_dir / "block_grids_ext.npz",
+            xbins=xbins, ybins=ybins, terms=np.array(ext_terms),
+            block=np.array([bb["block"] for bb in blocks]),
+            grids=np.array([[bb["ext_grid"][z] for z in ext_terms]
+                            for bb in blocks], dtype=float),
+            miw=np.array([[bb["ext_miw"][z] for z in ext_terms]
+                          for bb in blocks], dtype=float))
+        print(f"  wrote block_grids_ext.npz ({len(ext_terms)} extra pupil Zernikes "
+              f"{ext_terms}; row-aligned to block_grids.npz by `block`)", flush=True)
 
     render_perblock(blocks, xbins, ybins,
                     str(out_dir / "coadd_blocks_miw_perblock.pdf"), args.pct)
