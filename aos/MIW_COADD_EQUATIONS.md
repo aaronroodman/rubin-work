@@ -284,8 +284,12 @@ that expression is not the first-order term, it is one of the second-order ones.
 
 ### 4.1 Consequences for the regressors
 
-The stored u-modes $a_m=\mathbf u_m^\top\mathbf w$ span *precisely the subspace that
-cancels*. They can therefore only enter through second-order channels:
+**Scope of this subsection: it assumes an UNBIASED retrieval** (§3.1 assumption iii).
+Under that assumption the stored u-modes $a_m=\mathbf u_m^\top\mathbf w$ span
+precisely the subspace that cancels, and can only enter through the second-order
+channels below. **§4.2 removes that assumption**, and with a state-dependent
+retrieval bias $\Delta a_m$ becomes a *first-order* regressor — read §4.2 before
+concluding anything from this list.
 
 1. **Field-order truncation of the fit basis — the dominant channel.** The build
    fits only $k=1..6$, but ts_ofc's DZ sensitivity carries **31** field orders. A
@@ -321,6 +325,89 @@ cancels*. They can therefore only enter through second-order channels:
 > $\mathbf S$ changes *which* subspace is removed, not whether the removal is
 > faithfully executed. $\delta\mathbf S$ matters for applying corrections to the
 > telescope; it does not enter this comparison.
+
+### 4.2 Retrieval bias — the channel that makes $a_m$ a FIRST-order regressor
+
+§4.1's "the u-modes cancel" rests entirely on assumption (iii) of §3.1: that the
+measurement error $n_v$ is zero-mean and **independent of the wavefront being
+measured**. A *bias* in the donut fit is neither. Aaron's proposed mechanism:
+
+> a small bias in the Danish donut fit redistributes power among the
+> primary/secondary/tertiary radial orders of each azimuthal family; the 50/34
+> software correction, computed from that biased wavefront, then subtracts a
+> pattern that corresponds to no real optical state — *exacerbating* rather than
+> removing the error — and leaves a correlated primary/secondary/tertiary pattern
+> in the MIW. Block-to-block variation in the bias then drives the coadd scatter.
+
+Formally, let $\mathbf B_+=\mathbb 1+\mathbf B$ be the (linear) retrieval bias. It
+acts on the **pupil** index $j$ — mixing radial orders within an azimuthal family —
+and is a property of the fit, so to first approximation it is the *same at every
+field order $k$*: $\mathbf B_+=\mathbb 1_k\otimes\mathbf B_+^{(j)}$. Two consequences:
+
+1. Because $\mathbf B_+$ does not touch $k$, the biased state is still representable
+   in the same field basis: $\mathbf B_+\mathcal R[\mathbf W]=\mathcal R[\mathbf B_+\mathbf W]$.
+   The build therefore fits, and removes, an **effective** state
+   $\widetilde{\mathbf W}=\mathbf B_+\mathbf W$.
+2. **But $\widetilde{\mathbf W}$ is not a reachable state.** $\mathbf W$ lies in the
+   50-dimensional $\mathrm{col}(\hat{\mathbf S})$; $\mathbf B_+\mathbf W$ lies in a
+   *different* 50-dimensional subspace, with components in all 126 DZ dimensions —
+   including the **76 unreachable ones** (§2). Those components are a fixed linear
+   function of $\mathbf W$.
+
+So the residual and the stored u-modes are two linear maps of the *same* 50-dim input:
+
+$$
+\mathbf a=\mathbf U_{\rm eff}^\top\mathbf B_+\mathbf W,
+\qquad
+\text{residual}=(\mathbb 1-\mathbf P)\,\mathbf B_+\mathbf W .
+$$
+
+They remain orthogonal *as vectors*, which is why §4.1 looked airtight — but as
+functions of $\mathbf W$ they are **deterministically related**, because $34+92>50$.
+Generically $\mathbf a$ fixes $\widetilde{\mathbf W}$ up to a 16-dim ambiguity, so
+
+$$
+\boxed{\;I_b-I_{\mathcal B}\;\supset\;\mathcal R\big[\mathbf L\,\Delta\mathbf a\big],\qquad
+\mathbf L=\mathbf L(\mathbf B)\ \ \text{a fixed }92\times34\ \text{operator}\;}
+$$
+
+**This is first order in the bias and linear in $\Delta\mathbf a$** — no
+$\delta\mathbf S$, no nonlinearity, no field-order truncation required. It is
+present even with a perfect sensitivity matrix and flawless software, because the
+correction is *computed from biased data*: the recovered DOF are wrong, so
+$\mathcal R[\mathbf P\widetilde{\mathbf W}]$ is a real wavefront pattern
+corresponding to no real state, and subtracting it **injects** structure.
+
+Contrast with the unbiased case, where $\mathbf W\in\mathrm{col}(\hat{\mathbf S})$
+so $(\mathbb 1-\mathbf P)\mathbf W$ has only the **16** reachable-but-discarded
+components, and its relation to $\mathbf a$ depends on how the physics happens to
+distribute $\mathbf W$ across modes — no operator relation at all.
+
+**Why this is physically plausible here.** Piece 1 of the sparse-fit study found
+that nearly every DOF drives the primary *and* secondary of a family with field
+correlation $\approx\pm1$ — the two are near-degenerate per DOF. A small
+misallocation between radial orders in the donut fit is therefore almost
+indistinguishable from a genuine state change, which is precisely the condition for
+$\mathbf B$ to be both small and consequential. It also explains the observed MIW
+radial-order cross-correlations (astig 1st–2nd, coma 1st–2nd, tetrafoil) directly.
+
+**Block-to-block variation.** $\mathbf B$ depends on the donut population — seeing,
+S/N, defocus, field sampling, filter — so $\mathbf B_b$ varies, and both the injected
+pattern and $\mathbf L$ vary with it. That is a natural account of the coadd-vs-MIW
+scatter, which the unbiased model can only reach through the thermal proxy channel.
+
+**Decisive discriminator.** The two models put the residual in *different subspaces*:
+
+| model | where the residual lives |
+|---|---|
+| unbiased (§4.1) | only the **16** reachable-but-discarded dims $\mathbf u_{35..50}$ |
+| retrieval bias (§4.2) | also the **76 unreachable** dims, **$\propto\mathbf a$** |
+
+So: save $(\mathbb 1-\mathbf P)\mathbf w$ per block, split it into its
+$\mathbf u_{35..50}$ and null-space parts, and regress each on $\Delta\mathbf a$.
+Null-space power scaling with $\Delta\mathbf a$ is a signature the unbiased model
+cannot produce. **This makes correlating directly against the u-mode amplitudes the
+right thing to do**, and supersedes §4.1's deprioritization of $\Delta a_m$.
 
 ### 4.3a The $k\le6$ truncation is an inconsistency with how the OFC corrects
 
@@ -466,11 +553,16 @@ failure.
 
 ## 6. Summary of what changes in the analysis
 
-1. First-order driver is $(\mathbb 1-\mathbf P)\mathbf w$, **not** the u-modes → save
-   it (RSP rerun) and make it the primary regressor.
+1. Two candidate first-order drivers, and they are distinguishable:
+   $(\mathbb 1-\mathbf P)\mathbf w$ under an unbiased retrieval (§4.1), and
+   $\mathbf L\,\Delta\mathbf a$ under a state-dependent retrieval bias (§4.2).
+   Save $(\mathbb 1-\mathbf P)\mathbf w$ per block (RSP rerun) and split it into its
+   $\mathbf u_{35..50}$ and null-space parts: null-space power $\propto\Delta\mathbf a$
+   is the bias signature.
 2. Within it, prioritize the **16 reachable-but-discarded** modes $\mathbf u_{35..50}$.
-3. Keep $\Delta a_m$ as the **sensitivity-gain-error** test, second order, always with
-   the `z_gradient` partial correlation.
+3. Correlate directly against $\Delta a_m$ — first order under §4.2, and the
+   motivated regressor for the retrieval-bias hypothesis. Always with the
+   `z_gradient` partial correlation, since thermal state drives both subspaces.
 4. Report $\Delta a$ in units of $\sigma_{\rm build}$ with the SEM floor marked.
 5. Both builds must start from the same $I^{(0)}$ (batoid) or the $\mathbf P$ gauge
    does not cancel.
