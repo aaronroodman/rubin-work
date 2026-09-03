@@ -877,6 +877,30 @@ def main():
     print(f"  wrote coadd_metrics.parquet ({len(rows)} coadds, "
           f"{len(blocks[0]['umodes'])} u-modes each)", flush=True)
 
+    if ext_terms:
+        # Memory-lean: stack into float32 (these are diagnostic maps -- float64
+        # would double the footprint for no useful precision), POP the per-block
+        # dicts as we go so the only copy is the stacked array, and free it right
+        # after writing.  With 11 extra terms the float64/keep-both version is
+        # ~4x the Z5-Z8 arrays and was enough to OOM a modest RSP pod.
+        eg = np.empty((len(blocks), len(ext_terms)) + np.shape(blocks[0]["grid"][Z_TERMS[0]]),
+                      dtype=np.float32)
+        em = np.empty_like(eg)
+        for i, bb in enumerate(blocks):
+            g_i, m_i = bb.pop("ext_grid"), bb.pop("ext_miw")
+            for t, z in enumerate(ext_terms):
+                eg[i, t] = g_i[z]
+                em[i, t] = m_i[z]
+        np.savez_compressed(
+            out_dir / "block_grids_ext.npz",
+            xbins=xbins, ybins=ybins, terms=np.array(ext_terms),
+            block=np.array([bb["block"] for bb in blocks]),
+            grids=eg, miw=em)
+        print(f"  wrote block_grids_ext.npz ({len(ext_terms)} extra pupil Zernikes "
+              f"{ext_terms}, float32; row-aligned to block_grids.npz by `block`)",
+              flush=True)
+        del eg, em
+
     # grids + metadata for cheap re-plots.  NOTE the legacy keys (terms/grids/miw)
     # keep their exact Z5-Z8 meaning so existing consumers (recompute_coadd_metrics,
     # analyze_miw_bias_regression) are unaffected; the new DZ primitives are added
@@ -904,17 +928,6 @@ def main():
     print(f"  wrote block_grids.npz (+ raw_dz/resid_dz {len(svd.kj_grid)}-vectors, "
           f"U_all {U_all.shape}, U_disc {U_disc.shape})", flush=True)
 
-    if ext_terms:
-        np.savez_compressed(
-            out_dir / "block_grids_ext.npz",
-            xbins=xbins, ybins=ybins, terms=np.array(ext_terms),
-            block=np.array([bb["block"] for bb in blocks]),
-            grids=np.array([[bb["ext_grid"][z] for z in ext_terms]
-                            for bb in blocks], dtype=float),
-            miw=np.array([[bb["ext_miw"][z] for z in ext_terms]
-                          for bb in blocks], dtype=float))
-        print(f"  wrote block_grids_ext.npz ({len(ext_terms)} extra pupil Zernikes "
-              f"{ext_terms}; row-aligned to block_grids.npz by `block`)", flush=True)
 
     render_perblock(blocks, xbins, ybins,
                     str(out_dir / "coadd_blocks_miw_perblock.pdf"), args.pct)
