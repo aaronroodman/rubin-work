@@ -339,37 +339,95 @@ measured**. A *bias* in the donut fit is neither. Aaron's proposed mechanism:
 > removing the error — and leaves a correlated primary/secondary/tertiary pattern
 > in the MIW. Block-to-block variation in the bias then drives the coadd scatter.
 
-Formally, let $\mathbf B_+=\mathbb 1+\mathbf B$ be the (linear) retrieval bias. It
-acts on the **pupil** index $j$ — mixing radial orders within an azimuthal family —
-and is a property of the fit, so to first approximation it is the *same at every
-field order $k$*: $\mathbf B_+=\mathbb 1_k\otimes\mathbf B_+^{(j)}$. Two consequences:
+#### Setup
 
-1. Because $\mathbf B_+$ does not touch $k$, the biased state is still representable
-   in the same field basis: $\mathbf B_+\mathcal R[\mathbf W]=\mathcal R[\mathbf B_+\mathbf W]$.
-   The build therefore fits, and removes, an **effective** state
-   $\widetilde{\mathbf W}=\mathbf B_+\mathbf W$.
-2. **But $\widetilde{\mathbf W}$ is not a reachable state.** $\mathbf W$ lies in the
-   50-dimensional $\mathrm{col}(\hat{\mathbf S})$; $\mathbf B_+\mathbf W$ lies in a
-   *different* 50-dimensional subspace, with components in all 126 DZ dimensions —
-   including the **76 unreachable ones** (§2). Those components are a fixed linear
-   function of $\mathbf W$.
-
-So the residual and the stored u-modes are two linear maps of the *same* 50-dim input:
+Let $\mathbf B_+=\mathbb 1+\mathbf B$ be the linear retrieval bias. It acts on the
+**pupil** index $j$ — mixing radial orders within an azimuthal family — and is a
+property of the donut fit, so to first approximation it is the *same at every field
+order $k$*: $\mathbf B_+=\mathbb 1_k\otimes\mathbf B_+^{(j)}$, a $21\times21$ matrix
+replicated over $k$. The measurement is then
 
 $$
-\mathbf a=\mathbf U_{\rm eff}^\top\mathbf B_+\mathbf W,
+Z_v^{\rm meas}=\mathbf B_+\big(I_{\rm true}+\mathcal R[\mathbf W_v]\big)+n_v
+=\underbrace{\mathbf B_+I_{\rm true}}_{\textstyle\equiv\,\widetilde I_{\rm true}}
++\;\mathcal R\big[\underbrace{\mathbf B_+\mathbf W_v}_{\textstyle\equiv\,\widetilde{\mathbf W}_v}\big]+n_v ,
+$$
+
+using $\mathbf B_+\mathcal R[\mathbf W]=\mathcal R[\mathbf B_+\mathbf W]$, which holds
+precisely because $\mathbf B_+$ does not touch $k$.
+
+**This is the §3.1 data model with $(I_{\rm true},\mathbf W)\to(\widetilde I_{\rm true},\widetilde{\mathbf W})$.**
+So every step of §3.1 goes through verbatim, and
+
+$$
+I_b-I_{\mathcal B}=\mathcal R\big[(\mathbb 1-\mathbf P)\,\mathbf B_+\,\Delta\langle\mathbf W\rangle\big],
+\qquad \Delta\langle\mathbf W\rangle\equiv\langle\mathbf W\rangle_b-\langle\mathbf W\rangle_{\mathcal B}.
+$$
+
+The *form* of §4 is unchanged. What changes is the **content**: $\widetilde{\mathbf W}$
+is no longer confined to $\mathrm{col}(\hat{\mathbf S})$. $\mathbf W$ lies in that
+50-dim reachable subspace; $\mathbf B_+\mathbf W$ lies in a *different* 50-dim
+subspace with components spread over all 126 DZ dimensions — including the **76
+unreachable** ones (§2) — as a fixed linear function of $\mathbf W$.
+
+#### The observable relation
+
+A real state difference is reachable, so write $\Delta\langle\mathbf W\rangle=\hat{\mathbf S}\mathbf q$
+for a normalized-DOF difference $\mathbf q\in\mathbb R^{50}$. The gauge cancels
+($\mathbf P\boldsymbol\Delta$ shared, §3.1 Step 4), so the two quantities are
+
+$$
+\Delta\mathbf a=\underbrace{\mathbf U_{\rm eff}^\top\mathbf B_+\hat{\mathbf S}}_{\textstyle \mathbf A\;(34\times50)}\mathbf q,
 \qquad
-\text{residual}=(\mathbb 1-\mathbf P)\,\mathbf B_+\mathbf W .
+\text{residual coeffs}=\underbrace{(\mathbb 1-\mathbf P)\,\mathbf B_+\hat{\mathbf S}}_{\textstyle \mathbf C\;(126\times50)}\mathbf q .
 $$
 
-They remain orthogonal *as vectors*, which is why §4.1 looked airtight — but as
-functions of $\mathbf W$ they are **deterministically related**, because $34+92>50$.
-Generically $\mathbf a$ fixes $\widetilde{\mathbf W}$ up to a 16-dim ambiguity, so
+Both are linear maps of the **same** $\mathbf q$. They stay orthogonal *as vectors*
+— which is why §4.1 looked airtight — but eliminating $\mathbf q$ via
+$\mathbf q=\mathbf A^{+}\Delta\mathbf a$ (exact up to $\mathrm{null}(\mathbf A)$,
+dimension $\ge16$) gives
 
 $$
-\boxed{\;I_b-I_{\mathcal B}\;\supset\;\mathcal R\big[\mathbf L\,\Delta\mathbf a\big],\qquad
-\mathbf L=\mathbf L(\mathbf B)\ \ \text{a fixed }92\times34\ \text{operator}\;}
+\boxed{\;I_b-I_{\mathcal B}\;\supset\;\mathcal R\big[\mathbf L\,\Delta\mathbf a\big],
+\qquad
+\mathbf L=(\mathbb 1-\mathbf P)\,\mathbf B_+\hat{\mathbf S}\,
+\big(\mathbf U_{\rm eff}^\top\mathbf B_+\hat{\mathbf S}\big)^{+}\;}
 $$
+
+#### $\mathbf L$ vanishes identically without bias
+
+Set $\mathbf B_+=\mathbb 1$ and use $\hat{\mathbf S}=\mathbf U\boldsymbol\Sigma\mathbf V^\top$:
+
+$$
+\mathbf A=\mathbf U_{\rm eff}^\top\mathbf U\boldsymbol\Sigma\mathbf V^\top=\boldsymbol\Sigma_{34}\mathbf V_{34}^\top,
+\qquad
+\mathbf C=(\mathbb 1-\mathbf P)\hat{\mathbf S}=\mathbf U_{35:50}\boldsymbol\Sigma_{35:50}\mathbf V_{35:50}^\top,
+$$
+
+so $\mathbf A^{+}=\mathbf V_{34}\boldsymbol\Sigma_{34}^{-1}$ and
+
+$$
+\mathbf L=\mathbf U_{35:50}\boldsymbol\Sigma_{35:50}\underbrace{\mathbf V_{35:50}^\top\mathbf V_{34}}_{=\;0}\boldsymbol\Sigma_{34}^{-1}=\mathbf 0 .
+$$
+
+**$\mathbf L\equiv\mathbf 0$ for an unbiased retrieval, and $\mathbf L\neq\mathbf 0$
+generically once $\mathbf B\neq\mathbf 0$.** So $\mathbf L$ is not merely *a*
+regressor — it is a **direct estimator of the retrieval bias**, with a null
+hypothesis of exactly zero. Equivalently: $\mathbf L=0$ iff
+$\mathbf B_+\hat{\mathbf S}\mathbf V_{34}\subseteq\mathrm{span}(\mathbf U_{\rm eff})$,
+i.e. iff the biased response of the controlled v-modes stays inside the subspace the
+build removes. Bias tilts it out, and the tilt is what survives into the MIW.
+
+#### Why the correction *exacerbates*
+
+The subtracted pattern is $\mathcal R[\mathbf P\widetilde{\mathbf W}]$ — computed
+from biased data, so the recovered DOF are wrong and this is a real wavefront
+pattern corresponding to **no physical state**. It is not a partial correction; it
+is a correct-magnitude correction applied along a wrong direction, which both fails
+to remove the true state and *injects* $\mathbf P(\mathbf B_+-\mathbb 1)\mathbf W$ of
+new structure. Iterating three times does not help: §3.1 Step 4 shows the iteration
+lands on its fixed point immediately, so the injected term is reproduced, not
+damped.
 
 **This is first order in the bias and linear in $\Delta\mathbf a$** — no
 $\delta\mathbf S$, no nonlinearity, no field-order truncation required. It is
