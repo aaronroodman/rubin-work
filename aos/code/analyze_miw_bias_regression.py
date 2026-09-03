@@ -104,22 +104,41 @@ def main():
     ap.add_argument("--umode-ref", default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--n-perm", type=int, default=200)
+    ap.add_argument("--min-cov", type=float, default=0.97,
+                    help="keep map cells finite in at least this fraction of blocks "
+                    "(0.97 maximises cells x blocks for the 3x3 rebin)")
     args = ap.parse_args()
 
     cdir = os.path.join(args.output_root, args.param_set, args.out_name)
     d = np.load(os.path.join(cdir, "block_grids.npz"), allow_pickle=True)
-    n = d["grids"].shape[0]
     f = args.rebin
 
     # ---- residual maps, coarsened, flattened over (Zernike, cell) ----
+    # NOTE: pull the arrays out of the NpzFile ONCE -- every d[key] access
+    # re-decompresses the whole 37 MB array, so indexing it inside a loop is
+    # pathologically slow.
+    G, MW = np.asarray(d["grids"], float), np.asarray(d["miw"], float)
+    n = G.shape[0]
     resid = np.stack([
-        np.stack([coarsen(d["grids"][i, k] - d["miw"][i, k], f)
+        np.stack([coarsen(G[i, k] - MW[i, k], f)
                   for k in range(len(Z_TERMS))]) for i in range(n)])   # (n,4,ny,nx)
     flat = resid.reshape(n, -1)
-    good = np.isfinite(flat).all(0) & (np.nanstd(flat, 0) > 0)
-    Y = flat[:, good]
+    # Per-block donut coverage differs, so NO cell is finite in every block --
+    # requiring that empties the mask.  Keep well-covered cells, then column-mean
+    # impute the <1% that remain missing: those cells then contribute nothing to
+    # either the residual or the prediction variance, so this cannot manufacture
+    # signal (it very slightly deflates R^2, which is the safe direction).
+    fin = np.isfinite(flat)
+    cov = fin.mean(0)
+    good = (cov >= args.min_cov) & (np.nanstd(flat, 0) > 0)
+    Y = flat[:, good].copy()
+    miss = ~np.isfinite(Y)
+    colmean = np.where(np.isfinite(Y), Y, np.nan)
+    colmean = np.nanmean(colmean, axis=0)
+    Y[miss] = np.take(colmean, np.where(miss)[1])
     print(f"residual maps: rebin {f}x{f} -> {resid.shape[2]}x{resid.shape[3]} per "
-          f"Zernike, {int(good.sum())} usable cells x {len(Z_TERMS)} terms")
+          f"Zernike; {int(good.sum())} cells with coverage >= {args.min_cov} "
+          f"(of {len(cov)}), {100*miss.mean():.2f}% imputed")
 
     # ---- Δa ----
     Um = np.asarray(d["umodes"], float)
@@ -181,16 +200,29 @@ def main():
     for i in order[:10]:
         print(f"    mode u{i+1:<3d} |Phi|={power[i]:.4f}")
 
-    # ---- drop-one-mode CV contribution ----
-    contrib = []
+    # ---- drop-one-mode CV contribution, within Δa and OVER THERMAL ----
+    # Δa and the thermal telemetry are largely redundant (one thermal state drives
+    # the optical state), so the decisive per-mode question is what a mode adds
+    # once the thermal predictors are already in the model.  Under the UNBIASED
+    # model Δa should add NOTHING beyond thermal; under retrieval bias it should.
+    XT = np.column_stack([T, X])
+    lam_c = res["thermal + Δa"][2]
+    r2_comb = res["thermal + Δa"][0]
+    r2_th = res["thermal only"][0]
+    contrib, contrib_th = [], []
     for m in range(nm):
         cols = [c for c in range(nm) if c != m]
         contrib.append(r2_obs - cv_r2(X[:, cols], Y, grp, lam)[0])
-    contrib = np.array(contrib)
-    top = np.argsort(-contrib)
-    print("\ndrop-one-mode CV R2 loss (positive = mode carries unique signal):")
-    for i in top[:8]:
-        print(f"    u{i+1:<3d} ΔR2={contrib[i]:+.4f}")
+        keepc = list(range(T.shape[1])) + [T.shape[1] + c for c in cols]
+        contrib_th.append(r2_comb - cv_r2(XT[:, keepc], Y, grp, lam_c)[0])
+    contrib, contrib_th = np.array(contrib), np.array(contrib_th)
+    print(f"\nΔa unique over thermal: R2(thermal+Δa) - R2(thermal) = "
+          f"{r2_comb - r2_th:+.4f}")
+    print(f"thermal unique over Δa: {r2_comb - r2_obs:+.4f}   "
+          "(large shared component => Δa may be a thermal proxy)")
+    print("\nper-mode drop-one CV R2 loss  [within Δa | over thermal]:")
+    for i in np.argsort(-contrib_th)[:8]:
+        print(f"    u{i+1:<3d} {contrib[i]:+.4f} | {contrib_th[i]:+.4f}")
 
     # ---------------------------------------------------------------- figures
     ny, nx = resid.shape[2], resid.shape[3]
@@ -215,9 +247,13 @@ def main():
         a1.set_ylabel("leave-night-out CV R$^2$ of the residual MAPS")
         a1.set_title("Does the residual map respond linearly to $\\Delta a$?")
         a1.grid(alpha=0.3, axis="y")
-        a2.hist(null, 30, color="0.7", label=f"permutation null (n={args.n_perm})")
+        nn = null[np.isfinite(null)]
+        if nn.size:
+            a2.hist(nn, 30, color="0.7", label=f"permutation null (n={nn.size})")
         a2.axvline(r2_obs, color="tab:purple", lw=2, label=f"observed {r2_obs:+.3f}")
-        a2.axvline(np.percentile(null, 95), color="k", ls="--", lw=1, label="null 95th")
+        if nn.size:
+            a2.axvline(np.percentile(nn, 95), color="k", ls="--", lw=1,
+                       label="null 95th")
         a2.set_xlabel("CV R$^2$"); a2.legend(fontsize=8)
         a2.set_title(f"$\\Delta a$ permutation test, p={p:.3f}")
         fig.suptitle("Retrieval-bias test: the unbiased model predicts $L\\equiv0$, "
@@ -234,11 +270,14 @@ def main():
         b1.set_title("Estimated columns of $L$ in map space -- magnitude per u-mode")
         b1.grid(alpha=0.3, axis="y"); b1.set_xticks(mi)
         b1.set_xticklabels(mi, fontsize=7)
-        b2.bar(mi, contrib, color=["tab:red" if c > 0 else "0.6" for c in contrib])
+        b2.bar(mi - 0.2, contrib, 0.4, color="tab:purple", label="within $\\Delta a$")
+        b2.bar(mi + 0.2, contrib_th, 0.4, color="tab:red", label="over thermal")
+        b2.legend(fontsize=8)
         b2.axhline(0, color="k", lw=0.6)
         b2.set_ylabel("drop-one CV $\\Delta R^2$"); b2.set_xlabel("u-mode index")
-        b2.set_title("Unique cross-validated contribution of each mode "
-                     "(guards against the collinearity of $\\Delta a$)")
+        b2.set_title("Unique cross-validated contribution of each mode. 'over thermal' "
+                     "is decisive: the UNBIASED model predicts $\\Delta a$ adds nothing "
+                     "once thermal is in")
         b2.grid(alpha=0.3, axis="y"); b2.set_xticks(mi)
         b2.set_xticklabels(mi, fontsize=7)
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
