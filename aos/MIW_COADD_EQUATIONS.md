@@ -322,7 +322,64 @@ cancels*. They can therefore only enter through second-order channels:
 > faithfully executed. $\delta\mathbf S$ matters for applying corrections to the
 > telescope; it does not enter this comparison.
 
-### 4.3 Per-mode field-order leakage — which $\Delta a_m$ can matter
+### 4.3a The $k\le6$ truncation is an inconsistency with how the OFC corrects
+
+`ts_ofc`'s `SensitivityMatrix.evaluate()` evaluates galsim DoubleZernikes at the
+requested field angles, summing **all 31 field terms**. So a closed-loop correction
+computed from the corner WFS and applied to hardware removes the DOF change's
+*entire* field dependence. The MIW build does not: `_apply_uconstraint` returns
+coefficients on `kj_grid` ($k\le6$ only) and `_dz_contrib_from_params` reconstructs
+from just those, so **only the $k\le6$ part of the estimated state is subtracted.**
+
+Two checks (`code/check_k_truncation.py`):
+
+- **$k\le6$ *is* sufficient to specify the state.** $\hat{\mathbf S}_{k\le6}$
+  (126×50) has full rank 50, condition number 1.12e4 vs 0.998e4 for $k\le30$; the
+  top-50 v-mode subspace is *identical* (max principal angle 0.00°) and the top-34
+  agrees to 4.9° (28/34 modes align >0.99; the rest are an ordering swap at the
+  near-degenerate $\sigma_{34}/\sigma_{35}$ boundary).
+- **but the $k>6$ response of that state is never subtracted.** Fraction of each
+  mode's *total* wavefront power left behind: modes 1–7 ~0.0000, modes 8–27
+  0.0007–0.001, **modes 28–34 0.086–0.179**. Median 0.0013.
+
+**Because the first holds, the second is fixable.** The DOF are fully determined by
+the $k\le6$ fit, so the principled reconstruction is: recover
+$\mathbf d=\mathbf N\mathbf V\boldsymbol\Sigma^{-1}\mathbf U_{\rm eff}^\top\mathbf w$,
+then subtract $\mathbf S_{\rm full}\mathbf d$ over all 31 field orders instead of
+re-expanding only the fitted $k\le6$ coefficients. (Identity worth noting:
+$\mathbf S_{k\le6}\mathbf d=\mathbf P\mathbf w$ exactly, so the present code is
+precisely the $k\le6$ half of the right answer.)
+
+**How much would that change the MIW?** For the build's own mean state the
+un-subtracted part is $\|w\|_{k>6}=0.022\,\mu$m over all 21 pupil Zernikes — per
+Zernike, **11.5% / 10.1%** of the MIW's Z5/Z6 amplitude and **1.5% / 2.9%** of
+Z7/Z8. Real, worth fixing, not transformative.
+
+**But it does not explain the MIW astigmatism** (`code/analyze_miw_field_order.py`,
+`output/miw_k_gt6_leakage.pdf`). Map-to-map correlation of the un-subtracted $k>6$
+term against the MIW: Z5 **+0.19**, Z6 **−0.02** — right order of magnitude, wrong
+shape. Against coma it is the reverse: Z7 **+0.80**, Z8 **+0.64** at only ~2%
+amplitude. (The $k\le6$ part correlates −0.15…+0.08, as expected — that is what got
+subtracted.)
+
+### 4.3b Field-order content of the MIW itself
+
+Fitting the MIW maps to focal Zernikes $k=1..30$ — fraction of power above $k=6$:
+
+| | Z5 | Z6 | Z7 | Z8 | Z11 |
+|---|---|---|---|---|---|
+| power at $k>6$ | **0.957** | 0.729 | **0.929** | 0.881 | 0.064 |
+| leading $k>6$ terms | 23, 15, 25 | 22, 24, 11 | **7**, 17, 9 | **8**, 16, 10 | 11, 22 |
+
+So Z5–Z8 are overwhelmingly high-field-order, and spherical (Z11) is not.
+**Caveat: this is partly by construction** — the build removes $k\le6$ content at
+every iteration, so the remainder is necessarily depleted there. The informative
+part is *where* the $k>6$ power sits: coma peaks at $k=7,8$ (field radial order
+$n=3$, immediately above the cut), astigmatism at $k=15,22,23,25$ ($n=4$–6, far
+above it). That is exactly why the leakage model — whose $k>6$ content is dominated
+by the lowest un-fitted orders — matches the coma shape and misses the astigmatism.
+
+### 4.3c Per-mode field-order leakage — which $\Delta a_m$ can matter
 
 Computed from the ts_ofc DZ matrix (31 field orders) by mapping each kept mode's
 DOF direction $\mathbf N\mathbf v_m$ through the full sensitivity and comparing the
@@ -335,7 +392,8 @@ fitted ($k\le6$) and un-fitted ($k>6$) wavefront norms:
 | 16–27 | 0.03 – 0.18 |
 | 28–34 | **0.13 – 0.47** |
 
-Median 0.036; highest $u_{34}$ 0.47, $u_{33}$ 0.37, $u_{32}$ 0.34, $u_{28}$ 0.34.
+Median 0.036 as a ratio; as a **fraction of total power** (the fairer statement) this
+is 0.0013 median, reaching 0.086-0.179 for modes 28-34.
 
 **Consequence.** For the leading modes the removal is essentially exact — their
 wavefront lives entirely inside $k\le6$, so $\Delta a_{1..10}$ **cannot** cause MIW
