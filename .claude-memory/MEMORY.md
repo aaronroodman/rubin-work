@@ -1,0 +1,18 @@
+- [AOS DOF terminology](aos-dof-terminology.md) — optical_state vs Tweak vs Trim, and which to use for zk_constrained
+- [AOS v-mode normalization](aos-vmode-normalization.md) — geom weights, StateEstimator (4-CWFS) vs build_ofc_svd (double-Zernike), degeneracy caveat
+- [OptAtmo moments project](optatmo-moments-project.md) — standalone Optics+Atmo PSF-moment fit (rubin-work/optatmo), JAX Fraunhofer model, DZ-vs-CWFS; famcwfs_prod run done (~924 visits, 17 nights), only Z4/focus correlates; combined parquet + report movies
+- [USDF access via slacrd](usdf-access-slacrd.md) — ssh slacrd, stack setup, Butler /repo/main, ts_ofc not in lsst_distrib
+- [Ask before SLAC](ask-before-slac.md) — get user OK before ssh slacrd/USDF; prefer runnable snippets
+- [Python interpreter by env](python-interpreter-by-env.md) — MacPorts python3 on laptop only; bare `python` on RSP/USDF
+- [gitpull script](gitpull-script.md) — Aaron syncs repos with his gitpull script, not raw `git pull`
+- [Full commands, no ellipsis](full-commands-no-ellipsis.md) — always give complete copy-paste-ready commands
+- [AOS 22 DOF reduced set](aos-22dof-reduced-set.md) — 10 rigid + 7 M1M3 + 5 M2 bending; explicit DOF indices
+- [Guider summit_utils fixes](guider-summit-utils-fixes.md) — local clone packages/summit_utils, branch guider-fixes, push access to lsst-so, collecting fixes for PR
+- [Guider atmo sim](guider-atmo-sim.md) — imSim-based atmospheric PSF simulator for the 8 guide sensors (rubin-work/guider/code); 50ms stamps, screen-size caveat
+- [desc-work repo](desc-work-repo.md) — new aaronroodman/desc-work repo for DESC/DP1 coadd analysis; coadd object→input-image focal-plane notebook
+- [Transformed EFD in ConsDB](transformed-efd-consdb.md) — efd_lsstcam has hexapod LUT/Trim + wind + thermal per visit (slaciana-reachable); no mirror modes or M1M3 gradients
+- [USDF mount paths](usdf-mount-paths.md) — use /sdf/group/rubin/u/roodman/LSST/... everywhere; /home/r/roodman/u/... is RSP-only and breaks batch
+- [Apr 2026 50-DOF LUT](apr-2026-50dof-lut.md) — fixed single-value 50-DOF LUT on-sky Apr 24-28 (explains 20260424/28 anomaly); not active Apr 9
+- [DP2 is cloud-RSP only](dp2-cloud-rsp-only.md) — early DP2 (2026-07-27) catalogs on data.lsst.cloud, not USDF; DiaSource queryable, diff images deferred; cloud work in rubin-cloud repo
+- [smatrix project](smatrix-project.md) — rubin-work/smatrix DZ sensitivity matrix via batoid_rubin, matches OFC 46/50 (global −sign); angle DOF per-degree + 1° tilt vignetting gotchas
+- [Thin-film filters project](thinfilm-filters-project.md) — rubin-work/filters multilayer interference filter design; tmm_fast (autograd) is engine, tmmax multilayer is broken, g-band demo hits 0.98 in-band
