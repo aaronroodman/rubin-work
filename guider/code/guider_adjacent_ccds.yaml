@@ -1,0 +1,40 @@
+R00_SG0:
+  adjacent_ccd: 3
+  adjacent_ccd_name: R01_S10
+  dist_mm: 43.2
+  guider_id: 189
+R00_SG1:
+  adjacent_ccd: 28
+  adjacent_ccd_name: R10_S01
+  dist_mm: 43.2
+  guider_id: 190
+R04_SG0:
+  adjacent_ccd: 64
+  adjacent_ccd_name: R14_S01
+  dist_mm: 43.2
+  guider_id: 193
+R04_SG1:
+  adjacent_ccd: 23
+  adjacent_ccd_name: R03_S12
+  dist_mm: 43.2
+  guider_id: 194
+R40_SG0:
+  adjacent_ccd: 124
+  adjacent_ccd_name: R30_S21
+  dist_mm: 43.2
+  guider_id: 197
+R40_SG1:
+  adjacent_ccd: 165
+  adjacent_ccd_name: R41_S10
+  dist_mm: 43.2
+  guider_id: 198
+R44_SG0:
+  adjacent_ccd: 185
+  adjacent_ccd_name: R43_S12
+  dist_mm: 43.3
+  guider_id: 201
+R44_SG1:
+  adjacent_ccd: 160
+  adjacent_ccd_name: R34_S21
+  dist_mm: 43.2
+  guider_id: 202

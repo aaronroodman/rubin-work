@@ -1,0 +1,57 @@
+20260512:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 884
+  runs:
+  - LSSTCam/runs/nightlyValidation/67
+20260513:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 617
+  runs:
+  - LSSTCam/runs/nightlyValidation/67
+20260702:
+  collection: null
+  n_visits: 0
+  runs: []
+20260703:
+  collection: null
+  n_visits: 0
+  runs: []
+20260704:
+  collection: null
+  n_visits: 0
+  runs: []
+20260705:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 835
+  runs:
+  - LSSTCam/runs/nightlyValidation/67
+20260706:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 622
+  runs:
+  - LSSTCam/runs/nightlyValidation/67
+20260708:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 520
+  runs:
+  - LSSTCam/runs/nightlyValidation/68
+20260709:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 775
+  runs:
+  - LSSTCam/runs/nightlyValidation/68
+20260710:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 414
+  runs:
+  - LSSTCam/runs/nightlyValidation/68
+20260711:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 238
+  runs:
+  - LSSTCam/runs/nightlyValidation/68
+20260712:
+  collection: LSSTCam/runs/nightlyValidation
+  n_visits: 765
+  runs:
+  - LSSTCam/runs/nightlyValidation/68
