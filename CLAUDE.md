@@ -47,6 +47,40 @@ Support:
 Note: `alerts/` and the top-level `output/` currently have no git-tracked content
 (local/gitignored output only).
 
+### Topic independence and shared code
+
+The topic directories are **mostly independent lines of work** that happen to share one
+git history. A session working in one topic should stay in it: do not refactor, rename,
+or "fix" files in a sibling topic as a side effect of a task, and do not assume a
+convention found in one topic applies in another.
+
+Launch Claude from the **repo root**, not a subdirectory, so `common/` and git context
+stay visible. Per-topic scoping comes from nested `CLAUDE.md` files, which load when
+files in that subtree are touched:
+
+- `aos/CLAUDE.md` — MIW, FAM coadds, DZ fitting, sensitivity/v-modes
+- `guider/CLAUDE.md` — guider pipeline, `summit_utils` fork state, bias/streak work
+
+Shared code lives in **`common/`** (`utils.py`, `FocalPlaneInterpolator.py`,
+`psf_moments_consdb.py`, plus `common/scripts/`), imported by inserting the repo root on
+`sys.path`. Genuinely shared helpers belong there rather than being copied between
+topics.
+
+Two cross-topic couplings are real and intentional — know them before refactoring:
+
+- `guider/code/` imports `moments_hsm.measure_hsm_moments` from **`optatmo/code`**, so
+  that both sides of the guider-vs-science-CCD moment comparison use the same
+  galsim-HSM estimator. Changing that estimator changes guider results.
+- `guider/code/check_rotator_field.py` imports `aos_trim.make_consdb_client` from
+  **`aos/code`**.
+
+Both go through `sys.path.insert`, not real packages, so the coupling is invisible to
+static import checks.
+
+Beware one naming collision: in `aos/code/`, `common` in an import almost always means
+`lsst.ts.intrinsic.wavefront.common` — an **external** package — not this repo's
+`common/`. Read the full import path before acting.
+
 ## Working with Aaron
 
 Standing rules that apply to every session in this repo, on every machine. The

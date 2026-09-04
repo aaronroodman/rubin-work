@@ -97,7 +97,38 @@ this machine, but the slug is machine-specific) or move them into
 `notes/claude-memory/` with everything else. Leaning toward moving them, for one
 location, since Phase 2 promotes their content into `CLAUDE.md` anyway.
 
-## Phase 4 — per-subproject CLAUDE.md
+## Phase 4 — per-subproject CLAUDE.md — DONE
+
+Done 2026-09-04. `aos/CLAUDE.md` and `guider/CLAUDE.md` written, plus a "Topic
+independence and shared code" subsection in the root `CLAUDE.md`.
+
+Deliberately **behavioral, not descriptive** — `aos/README.md` is already 397 lines of
+pipeline reference and `guider/HANDOFF_guider_session_2026-09.md` is 199 lines of current
+state, so both new files point at those and carry only what is easy to get wrong: which
+code lives outside the repo, frame/unit traps, hard-stop reminders, and which results are
+still open questions rather than settled facts.
+
+Corrections found while writing them (all verified against the source, not the docs):
+
+- `dz_fitting.py` is in the **external** `ts_intrinsic_wavefront` package, not
+  `aos/code/` — the `robust-fits-aos` memory says "as used in `code/dz_fitting.py`",
+  which reads as in-repo. The in-repo Huber uses are
+  `run_wfs_corner_compare.py` and `run_wfs_dof_compare.robust_fit`.
+- The guider `guider_*` names in the HANDOFF §6 are per-night **output files**, not
+  Snakefile rule names — the rules are `moments`, `combine`, `psfmoments`, `movie`,
+  `movies`, `rtvplot`, `rtvplots`, `plots`.
+- `guider/` has real `sys.path` couplings into `optatmo/code`
+  (`moments_hsm.measure_hsm_moments`) and `aos/code`
+  (`aos_trim.make_consdb_client`) — invisible to static import checks, so the root
+  CLAUDE.md now names them before anyone refactors.
+- In `aos/code/`, `common` in an import almost always means the external
+  `lsst.ts.intrinsic.wavefront.common`, not this repo's `common/`. Only
+  `plot_visits_summary.py` uses the repo's.
+- Guider `--mode batch` submits **one job per night**, so `--day-obs A,B,C` is three
+  submissions — differs from `aos/`, and from the single-job description in
+  `s3df-batch-job-rules`.
+
+### Original plan
 
 The repo has ~20 topic subdirectories that are mostly independent work but share
 `common/` and one git history. Launch from the repo root (not a subdirectory) so
