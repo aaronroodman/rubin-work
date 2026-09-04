@@ -1,5 +1,7 @@
 # Memory Index
 
+- [Work autonomy & guardrails](work-autonomy-and-guardrails.md) — act without asking on well-scoped work; MUST ask before deleting files or submitting batch jobs
+- [S3DF batch job rules](s3df-batch-job-rules.md) — Slurm via run_snake.sh --mode batch; submit from slacrd not the RSP pod; never submit without Aaron's approval
 - [Reporting units standard](reporting-units-standard.md) — every number I cite needs its quantity name + units (or "dimensionless" with the ratio spelled out); no bare numbers
 - [Full commands, no ellipsis](full-commands-no-ellipsis.md) — always give complete copy-paste-ready commands
 - [Python interpreter by env](python-interpreter-by-env.md) — MacPorts python3 on laptop only; bare `python` on RSP/USDF
@@ -9,6 +11,7 @@
 - [USDF mount paths](usdf-mount-paths.md) — use /sdf/group/rubin/u/roodman/LSST/... everywhere; /home/r/roodman/u/... is RSP-only and breaks batch
 - [DP2 is cloud-RSP only](dp2-cloud-rsp-only.md) — early DP2 (2026-07-27) catalogs on data.lsst.cloud, not USDF; DiaSource queryable, diff images deferred; cloud work in rubin-cloud repo
 - [desc-work repo](desc-work-repo.md) — new aaronroodman/desc-work repo for DESC/DP1 coadd analysis; coadd object→input-image focal-plane notebook
+- [Robust fits for AOS data](robust-fits-aos.md) — prefer robust over OLS and ask which method; Huber (RLM/HuberT) default, show both Pearson r and Spearman rho
 - [AOS DOF terminology](aos-dof-terminology.md) — optical_state vs Tweak vs Trim, and which to use for zk_constrained
 - [AOS 22 DOF reduced set](aos-22dof-reduced-set.md) — 10 rigid + 7 M1M3 + 5 M2 bending; explicit DOF indices
 - [AOS v-mode normalization](aos-vmode-normalization.md) — geom weights, StateEstimator (4-CWFS) vs build_ofc_svd (double-Zernike), degeneracy caveat

@@ -1,0 +1,24 @@
+---
+name: robust-fits-aos
+description: Aaron prefers robust fitting methods when fitting AOS data — ask which
+metadata: 
+  node_type: memory
+  type: feedback
+  originSessionId: 777eb79b-59b5-4cc5-bdd0-cc6f4468e799
+---
+
+When fitting AOS data (Zernike/DZ correlations, corner comparisons, calibration
+lines, etc.), prefer **robust** methods over plain OLS, and **ask Aaron which
+robust method** before implementing rather than defaulting to OLS.
+
+**Why:** outlier visits/triplets (bad fits, sparse-wedge interpolation artifacts)
+pull ordinary least-squares slopes and Pearson r; Aaron wants those downweighted.
+
+**How to apply:**
+- Linear fits: Aaron likes **Huber** (statsmodels `RLM(y, X, M=HuberT())`, as used
+  in `code/dz_fitting.py`). Use it unless he says otherwise.
+- Correlation: show BOTH the plain Pearson r AND a robust coefficient; Aaron
+  chose **Spearman rho** (`scipy.stats.spearmanr`) for the wfs_corner_compare panels.
+- The existing `run_wfs_dof_compare.robust_fit` (drop >K·nMAD then OLS) is another
+  robust pattern already in the repo.
+- Keep `nmad(residuals)` for robust scatter RMS.

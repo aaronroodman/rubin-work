@@ -60,7 +60,21 @@ Rules covered:
 Keep the memory files as the detailed record — `CLAUDE.md` carries the rule, the
 memory carries the reasoning.
 
-## Phase 3 — track the S3DF memory
+## Phase 3 — track the S3DF memory — DONE
+
+Done 2026-09-04. All three files copied into `notes/claude-memory/` and tracked;
+index and README updated. `notes/claude-memory/` is now 37 files / 37 entries, still
+0 dead links in either direction (nothing indexed-but-missing, nothing
+file-but-unindexed).
+
+**Open question resolved: copy, do not move.** The in-repo
+`.claude/projects/-sdf-home-r-roodman-notebooks-rubin-work/memory/` copies stay in
+place and stay untracked. That is the path Claude Code reads natively on this
+machine, so moving the files out would drop those rules from live S3DF sessions —
+and Phase 2 only promoted the *rules* into `CLAUDE.md`, not the reasoning. This also
+matches the pattern `notes/claude-memory/README.md` already documents: that directory
+is a versioned **snapshot**, the live originals stay under `.claude/` and will drift.
+Re-copy to refresh.
 
 **Correction found while doing Phase 2:** the 3 files are split across two
 directories, not one. The plan above assumed all three were in the repo.

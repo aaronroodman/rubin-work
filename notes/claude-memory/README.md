@@ -12,9 +12,25 @@ laptop:
 |---|---|
 | `~/.claude/projects/-Users-roodman/memory/` | AOS / MIW / wavefront, guider pipeline |
 | `~/.claude/projects/-Users-roodman-Astrophysics-Claude/memory/` | OptAtmo, smatrix, filters, DESC, environment + standing instructions |
+| S3DF, added 2026-09-04 (see below) | autonomy guardrails, batch-job rules, robust fits |
 
-`MEMORY.md` is the merged index (34 entries) — the file Claude loads at session start,
+`MEMORY.md` is the merged index (37 entries) — the file Claude loads at session start,
 one line per memory. Every line resolves to a file in this directory.
+
+### The S3DF additions (2026-09-04)
+
+Three memories were written on S3DF rather than the laptop and so were in neither
+laptop snapshot. They were copied in on 2026-09-04, from two different directories:
+
+| file | copied from |
+|---|---|
+| `work-autonomy-and-guardrails.md` | `rubin-work/.claude/projects/-sdf-home-r-roodman-notebooks-rubin-work/memory/` (in-repo but untracked) |
+| `s3df-batch-job-rules.md` | same |
+| `robust-fits-aos.md` | `~/.claude/projects/-sdf-home-r-roodman-notebooks-rubin-work/memory/` (outside the repo) |
+
+The in-repo `.claude/` copies stay where they are — that is the path Claude Code
+reads natively on this machine, so deleting them would drop the rules from live S3DF
+sessions. They are untracked and remain so; this directory is the versioned copy.
 
 ## What these are
 
@@ -37,17 +53,21 @@ Copy the `*.md` files (including `MEMORY.md`) into that account's memory dir,
 
 ### Standing instructions (behavioral rules, not project facts)
 
-These five are how-to-work rules rather than findings. They are also being promoted
-into `CLAUDE.md` so they load on every machine and account; the memory files stay as
-the record.
+These eight are how-to-work rules rather than findings. All of them were promoted
+into the root `CLAUDE.md` "Working with Aaron" section on 2026-09-04, so they load on
+every machine and account regardless of memory; the memory files stay as the record
+of the reasoning.
 
 | file | what it holds |
 |---|---|
+| `work-autonomy-and-guardrails.md` | act without asking on well-scoped work; hard stops on deleting files and batch jobs |
+| `s3df-batch-job-rules.md` | Slurm `run_snake.sh --mode batch`, memory sizing, submit from `slacrd` only |
 | `reporting-units-standard.md` | every number carries its quantity name and units (or "dimensionless" with the ratio named) |
 | `full-commands-no-ellipsis.md` | always give complete, copy-paste-ready commands |
 | `python-interpreter-by-env.md` | MacPorts `python3` on the laptop, bare `python` on RSP/USDF |
 | `gitpull-script.md` | sync repos with Aaron's `gitpull` script, not raw `git pull` |
 | `ask-before-slac.md` | get an explicit OK before `ssh slacrd` / USDF work |
+| `robust-fits-aos.md` | prefer robust fits, ask which method; Huber default, Pearson + Spearman |
 
 ### Environment and data access
 
