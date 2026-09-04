@@ -24,6 +24,12 @@ env/
 # Products belong in <topic>/output/, but the pattern above needs a directory
 # component before output/, so a REPO-ROOT output/ would slip through untracked.
 /output/
+# NOTE: do NOT add aos/output/.gitkeep or blocks/output/.gitkeep.  On the USDF RSP
+# those two output/ dirs are SYMLINKS to /sdf/group/rubin/u/roodman/LSST/notebooks/
+# rubin-work/<topic>/output (disk quota).  git sees a symlink as a file, so a
+# tracked .gitkeep inside them makes `git pull` abort on S3DF with
+# "untracked working tree files would be overwritten by merge: aos/output".
+# Every other topic's output/ is a real directory there and keeps its .gitkeep.
 # Archived output snapshots (e.g. aos/output-backup/) — never track these.
 *-backup/
 
