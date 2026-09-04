@@ -21,6 +21,9 @@ env/
 # Keep .gitkeep files but ignore everything else in output/
 */output/*
 !*/output/.gitkeep
+# Products belong in <topic>/output/, but the pattern above needs a directory
+# component before output/, so a REPO-ROOT output/ would slip through untracked.
+/output/
 # Archived output snapshots (e.g. aos/output-backup/) — never track these.
 *-backup/
 
