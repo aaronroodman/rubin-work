@@ -1,18 +1,36 @@
 # Memory Index
 
-- [Z11 intra/extra mystery](z11-intra-extra-mystery.md) — unexplained Z11/Z14 intra-vs-extra difference in Danish unpaired CWFS; not expected
-- [AOS private ConsDB cache](aos-private-consdb-cache.md) — deferred: lightweight cache for per-visit AOS telemetry needing EFD (M1M3 gradients, LUT values), to avoid batch-node EFD backfills
-- [Frame conventions CCS/OCS](frame-conventions-ccs-ocs.md) — CCS=camera, OCS=mirror frame; camera rotator = ConsDB physical_rotator_angle (not boresightRotAngle); static optics move with mirrors (OCS), not instrument-fixed
-- [Camera temperature sources](camera-temperature-sources.md) — ConsDB has only ESS air/hexapod temps; camera-body temps are EFD-only (MTCamera.utiltrunk_body, AverageTemp)
-- [Sparse-fit sensitivity study](sparse-fit-sensitivity.md) — fix secondary/tertiary Zernikes in donut fit + revise sensitivity; Piece-1: production zeroes coma2/tref2, all DOF couple primary↔secondary at ±1
 - [Reporting units standard](reporting-units-standard.md) — every number I cite needs its quantity name + units (or "dimensionless" with the ratio spelled out); no bare numbers
+- [Full commands, no ellipsis](full-commands-no-ellipsis.md) — always give complete copy-paste-ready commands
+- [Python interpreter by env](python-interpreter-by-env.md) — MacPorts python3 on laptop only; bare `python` on RSP/USDF
+- [gitpull script](gitpull-script.md) — Aaron syncs repos with his gitpull script, not raw `git pull`
+- [Ask before SLAC](ask-before-slac.md) — get user OK before ssh slacrd/USDF; prefer runnable snippets
+- [USDF access via slacrd](usdf-access-slacrd.md) — ssh slacrd, stack setup, Butler /repo/main, ts_ofc not in lsst_distrib
+- [USDF mount paths](usdf-mount-paths.md) — use /sdf/group/rubin/u/roodman/LSST/... everywhere; /home/r/roodman/u/... is RSP-only and breaks batch
+- [DP2 is cloud-RSP only](dp2-cloud-rsp-only.md) — early DP2 (2026-07-27) catalogs on data.lsst.cloud, not USDF; DiaSource queryable, diff images deferred; cloud work in rubin-cloud repo
+- [desc-work repo](desc-work-repo.md) — new aaronroodman/desc-work repo for DESC/DP1 coadd analysis; coadd object→input-image focal-plane notebook
+- [AOS DOF terminology](aos-dof-terminology.md) — optical_state vs Tweak vs Trim, and which to use for zk_constrained
+- [AOS 22 DOF reduced set](aos-22dof-reduced-set.md) — 10 rigid + 7 M1M3 + 5 M2 bending; explicit DOF indices
+- [AOS v-mode normalization](aos-vmode-normalization.md) — geom weights, StateEstimator (4-CWFS) vs build_ofc_svd (double-Zernike), degeneracy caveat
+- [Frame conventions CCS/OCS](frame-conventions-ccs-ocs.md) — CCS=camera, OCS=mirror frame; camera rotator = ConsDB physical_rotator_angle (not boresightRotAngle); static optics move with mirrors (OCS), not instrument-fixed
+- [smatrix project](smatrix-project.md) — rubin-work/smatrix DZ sensitivity matrix via batoid_rubin, matches OFC 46/50 (global −sign); angle DOF per-degree + 1° tilt vignetting gotchas
+- [Sparse-fit sensitivity study](sparse-fit-sensitivity.md) — fix secondary/tertiary Zernikes in donut fit + revise sensitivity; Piece-1: production zeroes coma2/tref2, all DOF couple primary↔secondary at ±1
+- [Z11 intra/extra mystery](z11-intra-extra-mystery.md) — unexplained Z11/Z14 intra-vs-extra difference in Danish unpaired CWFS; not expected
 - [MIW focal-order truncation](miw-focal-order-truncation.md) — 83% of MIW power is above the k<=6 the build fits; reframes every DZ-subspace analysis
 - [MIW coadd & retrieval bias](miw-coadd-retrieval-bias.md) — aos/MIW_COADD_EQUATIONS.md is the reference; Aaron's donut-fit-bias hypothesis, the L estimator (L≡0 iff unbiased), and 4 corrections I had to make
 - [MIW products & M3 back-projection](miw-products-and-m3-backprojection.md) — use the _5rot intrinsic_split_maps (OCS cols) for the MIW; calibration/miw needs review; MIW OCS frame == batoid identity (validated vs ts_ofc DZ sensitivity)
+- [OptAtmo moments project](optatmo-moments-project.md) — standalone Optics+Atmo PSF-moment fit (rubin-work/optatmo), JAX Fraunhofer model, DZ-vs-CWFS; famcwfs_prod run done (~924 visits, 17 nights), only Z4/focus correlates; combined parquet + report movies
+- [Apr 2026 50-DOF LUT](apr-2026-50dof-lut.md) — fixed single-value 50-DOF LUT on-sky Apr 24-28 (explains 20260424/28 anomaly); not active Apr 9
+- [Transformed EFD in ConsDB](transformed-efd-consdb.md) — efd_lsstcam has hexapod LUT/Trim + wind + thermal per visit (slaciana-reachable); no mirror modes or M1M3 gradients
+- [Camera temperature sources](camera-temperature-sources.md) — ConsDB has only ESS air/hexapod temps; camera-body temps are EFD-only (MTCamera.utiltrunk_body, AverageTemp)
+- [AOS private ConsDB cache](aos-private-consdb-cache.md) — deferred: lightweight cache for per-visit AOS telemetry needing EFD (M1M3 gradients, LUT values), to avoid batch-node EFD backfills
+- [Guider summit_utils fixes](guider-summit-utils-fixes.md) — local clone packages/summit_utils, branch guider-fixes, push access to lsst-so, collecting fixes for PR
 - [Guider-fixes branch state](guider-fixes-branch-state.md) — summit_utils u/aaronroodman/guider-fixes: has all deploy-summit fixes + layout/stripPlot/reading/detection changes; at/ahead of summit; bias-streak rework not yet in processStamps
 - [deploy-summit guider branch](deploy-summit-guider-branch.md) — summit runs origin/deploy-summit (8 Esteves guider fixes never merged to main); the key one = 10th-pct column bias (0f9701d)
 - [Guider bias/streak plan](guider-bias-streak-plan.md) — planned blank-2-stamp per-column-median bias + ROIROW 5-category streak subtraction; validate before touching processStamps; stamps 0,1 only
 - [Guider centroid timescale](guider-centroid-timescale.md) — centroid motion is scale-free (no knee); fixed 1.6s Gaussian split; cen_var_slow/fast in guiderMoments schema v6 + stripPlot overlay
 - [Guider mosaic layout](guider-mosaic-layout.md) — GuiderPlotter MosaicLayout: independent star vs full-frame geometry + circular NaN pixel mask for the 2" star cutouts
 - [Guider vs CCD HSM frames](guider-vs-ccd-hsm-frames.md) — matched galsim-HSM both sides; guider coadd + adjacent-CCD single_visit_star, both DVCS unrotated; T is 1:1, Q1/Q2 need OCS rotation
+- [Guider atmo sim](guider-atmo-sim.md) — imSim-based atmospheric PSF simulator for the 8 guide sensors (rubin-work/guider/code); 50ms stamps, screen-size caveat
 - [Guider pipeline commands](guider-pipeline-commands.md) — run_snake.sh (per-night), single-visit snakemake target, per-visit runners, saturation script; rubin-work/guider
+- [Thin-film filters project](thinfilm-filters-project.md) — rubin-work/filters multilayer interference filter design; tmm_fast (autograd) is engine, tmmax multilayer is broken, g-band demo hits 0.98 in-band
