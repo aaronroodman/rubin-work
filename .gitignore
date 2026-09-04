@@ -57,6 +57,11 @@ desktop.ini
 *.swo
 *~
 
+# ===== Snakemake =====
+# Per-topic pipeline state (locks, metadata, conda/singularity caches).
+# Present in aos/, guider/, optatmo/ and created by any future Snakefile.
+.snakemake/
+
 # ===== Misc =====
 .env
 *.log
