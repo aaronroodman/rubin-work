@@ -27,9 +27,14 @@ Image quality / PSF / instrument:
   given `day_obs`, combining science-image PSF metrics with guider/AOS/pointing
   diagnostics), `blocks/`
 
+Optical design / prescription (no data needed):
+- `optics/` — batoid ray-trace studies: telecentricity, pupil geometry
+- `filters/` — interference-filter design study for future narrow/medium-band
+  imaging (multilayer dielectric stacks via `tmm_fast`, autograd on layer
+  thicknesses); the f/1.23 beam is what limits narrow bands
+
 Survey / astrometry / other:
-- `survey/`, `wcs/`, `astrometry/`, `starcolor/`, `des/`, `filters/`, `alerts/`,
-  `optics/`
+- `survey/`, `wcs/`, `astrometry/`, `starcolor/`, `des/`, `alerts/`
 
 Support:
 - `common/` — shared utility functions used across topics
@@ -39,8 +44,8 @@ Support:
   README — notes-to-self, not documentation)
 - `scratch/` — work-in-progress, not yet organized
 
-Note: `optics/`, `filters/`, `alerts/` and `output/` currently have no git-tracked
-content (local/gitignored output only).
+Note: `alerts/` and the top-level `output/` currently have no git-tracked content
+(local/gitignored output only).
 
 ## Conventions
 
