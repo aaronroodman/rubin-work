@@ -47,6 +47,74 @@ Support:
 Note: `alerts/` and the top-level `output/` currently have no git-tracked content
 (local/gitignored output only).
 
+## Working with Aaron
+
+Standing rules that apply to every session in this repo, on every machine. The
+detailed reasoning behind each lives in the matching memory file under
+`notes/claude-memory/` (named in parentheses) — this section carries the rule.
+
+### Autonomy and hard stops
+Default to **acting without asking** on routine coding and analysis work that is
+already well-scoped; only ask when genuinely unsure what to do. Three exceptions
+are hard MUST-ASK rules, no exceptions (`work-autonomy-and-guardrails`):
+
+1. **Deleting any files** — ask first, always.
+2. **Submitting any batch job** — Slurm `sbatch` / `condor_submit` on S3DF, in
+   practice `run_snake.sh --mode batch`. Hand over the command instead of running
+   it. Batch must be submitted from an s3df node (`slacrd`), never from an RSP pod
+   (no Slurm there) (`s3df-batch-job-rules`).
+3. **Connecting to SLAC / USDF from the laptop** — `ssh slacrd`, USDF,
+   `/repo/main` Butler. Ask before opening the connection, or hand Aaron a
+   runnable snippet to execute himself (his established preference). Local work in
+   `rubin-work/` needs no permission (`ask-before-slac`, `usdf-access-slacrd`).
+
+### Commands handed to Aaron
+Give the **full copy-paste-ready command — no `...`, no `<placeholder>`, no
+abbreviation**. Spell out the entire seq_num list, the full collection name, every
+argument. If a value is genuinely unknown, ask for it rather than leaving an
+ellipsis (`full-commands-no-ellipsis`).
+
+Two things to get right in those commands:
+- **Repo sync:** say "run your gitpull script", not `git pull` — Aaron uses his own
+  `gitpull` wrapper (`gitpull-script`). Claude's own commits/pushes still use git
+  directly.
+- **Python interpreter:** MacPorts `/opt/local/bin/python3` on the laptop; bare
+  `python` on the RSP / USDF, where the stack interpreter is on PATH and the
+  MacPorts binary does not exist (`python-interpreter-by-env`).
+- **Aaron's interactive shells already set up the LSST stack via `.bashrc`** — do
+  not prepend `source .../loadLSST.bash && setup lsst_distrib` to snippets he runs
+  himself (`usdf-access-slacrd`).
+
+### Paths across environments
+Use the `/sdf/group/rubin/u/roodman/LSST/...` form in any code or config that might
+run in batch — it resolves identically in the RSP notebook, the RSP terminal, and on
+slaciana/sdfiana batch nodes. The `/home/r/roodman/u/LSST/...` form is **RSP-only**
+and silently fails in a Slurm job (`usdf-mount-paths`). Where the stack sets
+`$TS_CONFIG_MTTCS_DIR`, prefer it and keep the hardcoded path as fallback.
+
+### Reporting numbers
+**Every numerical value carries (a) the name of the quantity and (b) its units** —
+or an explicit "dimensionless" with the ratio's numerator and denominator named. No
+bare numbers, ever: not in prose, tables, captions, plot labels, print statements,
+or commit messages (`reporting-units-standard`). In particular:
+
+- Ratios: `sigma_emp/sigma_RLM = 8.5 (dimensionless; empirical over formal
+  coefficient error)`, not "inflation 8.5".
+- Correlations: give the statistic, both variables with units, and `n`.
+- chi2: always as `chi2/dof`, with dof stated.
+- Fractions: say *of what*, and say **power vs amplitude** explicitly — they differ
+  by a square.
+- Angles/field: give deg and the frame (OCS/CCS).
+- Tables: units in the header row once, not per cell.
+
+### Fitting AOS data
+Prefer **robust** methods over plain OLS for Zernike/DZ correlations, corner
+comparisons, and calibration lines — and **ask which robust method** before
+implementing rather than defaulting to OLS (`robust-fits-aos`). Defaults if he
+doesn't specify: **Huber** for linear fits (statsmodels `RLM(y, X, M=HuberT())`, as
+in `aos/code/dz_fitting.py`); report **both** Pearson r and Spearman rho for
+correlations; `nmad(residuals)` for robust scatter RMS.
+
 ## Conventions
 
 ### Notebook naming
