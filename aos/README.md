@@ -10,6 +10,13 @@ AOS FWHM contribution). A Snakemake pipeline runs the full chain per `param_set`
 standalone notebooks cover the analyses that have not (yet) been ported into it,
 plus AOS closed-loop control studies.
 
+> **Start here:** [`docs/studies.md`](docs/studies.md) is the inventory of the **eleven
+> separable studies** in this topic — what each asks, which code implements it, what it
+> reads and writes, and where it stands. This README currently documents the MIW
+> pipeline in depth and says little about the other studies; the inventory covers all of
+> them. (Being restructured — Phase 4 of
+> [`../notes/status/memory_cleanup_plan.md`](../notes/status/memory_cleanup_plan.md).)
+
 ## Pipeline overview
 
 The pipeline (`Snakefile`) processes each `param_set` (a FAM Butler
@@ -399,6 +406,7 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
+| [`docs/studies.md`](docs/studies.md) | **inventory of the 11 analysis studies** — code, inputs, outputs, and state per study; the map for this topic |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level — the reference for the equations |
 | [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess; what `batoid_rubin`'s gravity model does and does not include |
 | [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic, `zernikeGQ` vs `zernikeTA`, and what the `aggregateAOSVisitTableRaw` `zk_*` columns mean |

@@ -1,6 +1,6 @@
 # Claude context cleanup + code review plan
 
-> **Status:** in progress — Phases 1–4 done, Phase 5 next · **Last updated:** 2026-09-04 · **Kind:** working state (plan)
+> **Status:** in progress — Phases 1–4 done; the aos study reorg is at sub-phase 3 of 8 · **Last updated:** 2026-09-05 · **Kind:** working state (plan)
 
 Plan for rationalizing the `CLAUDE.md` / memory files in this repo, and for the code
 review that follows. Written 2026-09-04. Supersedes
@@ -147,20 +147,37 @@ Start with the two biggest:
 The root `CLAUDE.md` should name which subprojects are independent and where the
 shared code lives, so a session working on `aos/` does not wander into `guider/`.
 
-## Phase 5 — reorganization and cleanup of aos/code
+## Phase 5 — reorganization and cleanup of aos/code — SUPERSEDED, IN PROGRESS
 
-**Do this before any new code review.** The point is to get the tree into the shape
-it should have before spending effort on a review whose line references would then
-immediately go stale.
+**Superseded 2026-09-05** by a wider, agreed reorganization of *all* of `rubin-work`,
+not just `aos/code`. Aaron's framing: organize by **study** (a separable project inside
+a topic), fix the README fragmentation, group the code, and align the outputs. The
+detailed plan is the session plan file; sub-phases and status:
 
-Scope to be defined at the time, but expected to include:
+| sub-phase | what | status |
+|---|---|---|
+| 0 | tag `pre-aos-reorg-2026-09-05` | **done** |
+| 1 | standing rules: batch (revised), studies (new), imports (new) | **done** (`be62a41`) |
+| 2 | repo-wide import mechanism: `__init__.py`, `repo_root()`, laptop paths | **done** (`be62a41`) |
+| 3 | `aos/docs/studies.md` — the study inventory | **done** |
+| 4 | restructure `aos/README.md` + 11 per-study docs | next |
+| 5 | extract shared helpers (`nmad`, `_alt_to_deg`, `dz_coeff_columns`) | pending |
+| 6 | `aos/code/<study>/` subdirectories | pending |
+| 7 | `output/<ps>/<mi>/<study>/` layout | pending |
+| 8 | notebooks → studies | pending |
 
-- Factor genuinely shared helpers out of `aos/code/` into `common/` — the old review
-  flagged cross-file duplication as a candidate for a shared utils module
-- Resolve the angle-unit heuristic that the old review found duplicated across files
-  ("fix once at source")
-- Retire dead code and superseded scripts
-- Settle path conventions (see `usdf-mount-paths`)
+The original Phase-5 bullets are all still in scope and land in sub-phases 5–7:
+factor shared helpers into `common/`, resolve the duplicated angle-unit heuristic
+("fix once at source"), retire dead code, settle path conventions.
+
+**Terminology settled:** these are **studies**, not "threads" —
+`aos/code/check_threads.py` is genuinely about CPU threads, and the repo already uses
+"study" (`study_compare_donuts.ipynb`, `run_study_radialbins.py`).
+
+**Key constraints found (see `aos/docs/studies.md`):** scripts run in *script mode*
+(`python code/x.py`), so relative imports are impossible; and `aos_trim`/`aos_state`/
+`aos_consdb_efd` have 39 bare-name references from `blocks/`, `olr/`, `optatmo/`, and
+`guider/`, so they must stay flat at `aos/code/`.
 
 ## Phase 6 — fresh code review of aos/code
 
