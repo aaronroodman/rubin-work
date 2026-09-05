@@ -13,7 +13,7 @@ Zanmar Sanchez et al.): *complete*. Verdict: the analytic (geometric,
 phase-gradient) moments are adequate only for 2nd-order size/ellipticity (with
 a calibration slope); 3rd/4th-order moments are dominated by diffraction
 (trefoil skew is 100% diffractive) and cannot be reproduced by any geometric
-model. See [FINDINGS.md](FINDINGS.md).
+model. See [docs/findings.md](docs/findings.md).
 
 **Phase 2 — differentiable JAX forward model**: *complete & validated*. A
 standalone `Fraunhofer × atmosphere × HSM-adaptive-moment` model in JAX with
@@ -104,3 +104,9 @@ atm = jnp.array([0.8, 0.0, 0.0])          # [fwhm_arcsec, g1, g2]
 mom = m.moments_adaptive(z, atm)          # 12 HSM moments (arcsec^n)
 J = jax.jacobian(lambda z: m.moments_adaptive(z, atm))(z)   # d(moments)/d(zernike)
 ```
+
+## Docs
+
+| doc | what it holds |
+|---|---|
+| [`docs/findings.md`](docs/findings.md) | whether momfit analytic moments can replace GalSim/HSM weighted moments inside the Optics+Atmosphere PSF fit, including the 3rd/4th-order moments needed to break degeneracies |

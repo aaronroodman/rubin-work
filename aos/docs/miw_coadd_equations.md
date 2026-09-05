@@ -1,12 +1,14 @@
 # MIW nomenclature and the coadd-vs-MIW residual — equation level
 
+> **Status:** current · **Last updated:** 2026-09-03 · **Kind:** reference (derivations)
+
 **Purpose.** Fix notation for the Measured Intrinsic Wavefront (MIW) construction and
 then *derive* what the per-block coadd-minus-MIW difference actually equals, because
 that derivation determines which quantity is the correct regressor in the
 coadd-vs-MIW correlation study (`aos/code/recompute_coadd_metrics.py`).
 
 **Relation to existing docs.** The iterative MIW method is *already* written at
-equation level in [`notes/aos-measured-intrinsics/note.md`](../notes/aos-measured-intrinsics/note.md)
+equation level in [`notes/aos-measured-intrinsics/note.md`](../../notes/aos-measured-intrinsics/note.md)
 §"MIW method" (steps 1–6). That note is the primary reference and is not repeated
 here beyond the notation table. `ts_intrinsic_wavefront`'s `README.rst`,
 `doc/index.rst`, `calibration/README.md` and `pipelines/README.md` describe the
@@ -244,7 +246,7 @@ $I_{\mathcal V}$ exactly, as a fixed point must.
 $I_{\rm batoid}-I_{\rm true}$ that is simultaneously (a) inside the fitted basis
 $k\le6$ (field radial order $\le2$) and (b) in $\mathrm{span}(\mathbf U_{\rm eff})$.
 The MIW's headline excess over the batoid design — $\sim0.1\,\mu$m of astig/coma at
-**field radial order $n=3$–5** ([smatrix/MIW_astig_coma_investigation.md](../smatrix/MIW_astig_coma_investigation.md))
+**field radial order $n=3$–5** ([smatrix/docs/miw_astig_coma_investigation.md](../../smatrix/docs/miw_astig_coma_investigation.md))
 — is *outside* the $k\le6$ fit basis entirely, so it is **not** gauge and cannot be
 an artifact of the batoid start. The gauge worry is confined to low field order.
 

@@ -1,5 +1,12 @@
 # AOS code review — action handoff
 
+> **Status:** stale — verify before acting · **Last updated:** 2026-06-27 · **Kind:** working state (review backlog)
+> The `file:line` anchors below predate later edits to `aos/code/` and cannot be trusted.
+> `aos/code/` is also slated for reorganization (Phase 5 of
+> [`../../../notes/status/memory_cleanup_plan.md`](../../../notes/status/memory_cleanup_plan.md)),
+> which will move code further. Treat the *named defects* as probably still real, but
+> re-locate each one in the current source before fixing it.
+
 Findings from a medium-depth review of `aos/code/` (~16k LOC, 36 Python files) covering correctness, code quality, and scientific soundness. Each item is independently actionable; nothing depends on prior conversation.
 
 **Project context.** Rubin Observatory AOS analysis. Snakemake pipeline over per-`param_set` (Butler collection × processing variant) data:

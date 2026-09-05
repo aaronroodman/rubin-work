@@ -1,5 +1,7 @@
 # batoid_rubin DZ sensitivity matrix — convention choices (for review)
 
+> **Status:** current · **Last updated:** 2026-07-31 · **Kind:** reference (conventions)
+
 Prepared for input from Josh Meyers and Guillem Megias-Homar.
 
 ## What we are computing

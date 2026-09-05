@@ -394,4 +394,18 @@ Not wired into the Snakemake DAG; run directly on the RSP.
 
 ## Other docs
 
-- `double_zernike_convention_validation.md` — validation of the DZ index/normalization conventions used throughout.
+Reference docs in `docs/`; transient working state in `docs/status/`. Each carries a
+status + last-updated line under its title.
+
+| doc | what it holds |
+|---|---|
+| [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level — the reference for the equations |
+| [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess; what `batoid_rubin`'s gravity model does and does not include |
+| [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic, `zernikeGQ` vs `zernikeTA`, and what the `aggregateAOSVisitTableRaw` `zk_*` columns mean |
+| [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions used throughout, vs GalSim and `ts_ofc` |
+| [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
+| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | review backlog for `aos/code/` — **stale line anchors**, verify before acting |
+
+Related, in sibling topics: [`../smatrix/docs/conventions.md`](../smatrix/docs/conventions.md)
+(DZ sensitivity-matrix sign/unit conventions) and
+[`../smatrix/docs/miw_astig_coma_investigation.md`](../smatrix/docs/miw_astig_coma_investigation.md).

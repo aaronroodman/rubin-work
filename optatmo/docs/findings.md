@@ -1,5 +1,7 @@
 # Accuracy of momfit analytic moments vs HSM weighted moments
 
+> **Status:** current · **Last updated:** 2026-07-09 · **Kind:** investigation
+
 **Question.** Can the analytic phase-gradient moment method of Zanmar Sanchez et
 al. (SPIE 2026) — or a Gaussian-*weighted* variant of it — replace per-star
 Galsim/Fraunhofer + HSM moment evaluation inside an Optics+Atmosphere PSF fit

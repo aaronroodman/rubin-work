@@ -31,6 +31,18 @@ permalink once posted.
 `notes/` lives at the **repo top level** on purpose: it's outside the `*/output/*`
 gitignore rule, so figures are versioned (unlike everything under `<topic>/output/`).
 
+## `notes/status/` — repo-wide working state
+
+`notes/` proper is for **outward-facing deliverables** (Slack posts → tech notes). Plans
+and working state that span the whole repo — and so belong to no single topic — go in
+`notes/status/` instead, mirroring the `<topic>/docs/status/` convention. Currently:
+
+| doc | what it holds |
+|---|---|
+| [`status/memory_cleanup_plan.md`](status/memory_cleanup_plan.md) | the phased `CLAUDE.md` / memory / code-cleanup plan for this repo |
+
+Topic-specific docs stay in their topic (`<topic>/docs/`), not here.
+
 ## Conventions
 
 - **Draft in plain Markdown.** Do NOT use MyST directives (` ```{figure} `, `{cite}`,

@@ -1,5 +1,7 @@
 # Double Zernike Convention Validation — AOS FAM Fit vs GalSim / OFC
 
+> **Status:** current · **Last updated:** 2026-04-24 · **Kind:** reference (convention validation)
+
 **Author:** Aaron Roodman
 **Date:** 2026-04-19
 **Purpose:** Verify that the Double Zernike (DZ) conventions used by the

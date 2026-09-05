@@ -1,5 +1,7 @@
 # ts_wep Corner-WFS Data Flow
 
+> **Status:** current · **Last updated:** 2026-06-13 · **Kind:** reference (external dataflow)
+
 How the AOS corner-wavefront-sensor (CWFS) pipeline products in collection
 `LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2` (repo `/repo/main`)
 are produced and how they connect, from raw images to the aggregated Zernike tables.

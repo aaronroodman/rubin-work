@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Estimate the retrieval-bias operator L from the coadd-vs-MIW residual maps.
 
-Hypothesis (aos/MIW_COADD_EQUATIONS.md §4.2): a small bias B in the Danish donut
+Hypothesis (aos/docs/miw_coadd_equations.md §4.2): a small bias B in the Danish donut
 fit redistributes power among primary/secondary/tertiary radial orders.  The 50/34
 software correction, computed from that biased wavefront, then subtracts a pattern
 corresponding to no real optical state -- injecting structure rather than removing

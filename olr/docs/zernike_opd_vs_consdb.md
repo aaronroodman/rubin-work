@@ -1,5 +1,7 @@
 # ConsDB vs Butler Zernikes: OPD identity and a ~0.1° rotation offset
 
+> **Status:** current · **Last updated:** 2026-07-08 · **Kind:** investigation
+
 **Date:** 2026-07-08
 **Author:** Aaron Roodman (analysis with Claude)
 **Data:** `olr/output/20260420/nightly_aos_table.parquet` (Summit run) and

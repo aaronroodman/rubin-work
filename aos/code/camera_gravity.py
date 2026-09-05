@@ -5,8 +5,8 @@ Builds the batoid_rubin telescope with gravitational flexure of the camera and
 computes the induced double-Zernike (DZ) wavefront and per-Zernike focal-plane
 maps, to compare against the measured intrinsic wavefront (MIW) OCS maps.
 
-Two gravity ingredients (see MIW_astig_coma_investigation.md and
-smatrix/FUTURE_ISSUES.md #4):
+Two gravity ingredients (see smatrix/docs/miw_astig_coma_investigation.md and
+smatrix/docs/status/future_issues.md #4):
 
 1. LENS SURFACE FIGURE (what batoid_rubin ships) -- ``with_camera_gravity``
    applies the ``fea_legacy/L?S?zer.fits.gz`` files as a surface-figure

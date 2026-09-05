@@ -67,7 +67,7 @@ WAVELENGTHS_UM = {               # microns
 }
 
 # Convention chosen to reproduce the OFC-shipped matrix EXACTLY (see
-# CONVENTIONS.md): ZCS, both bending flips on, degree angle units.  The number
+# docs/conventions.md): ZCS, both bending flips on, degree angle units.  The number
 # of M1M3 / M2 modes is read from the target bend dir's bend.yaml, so this works
 # for the 50-DOF `bend` set and the full `bend_full` set (156 M1M3 + 72 M2).
 BUILDER_KWARGS = dict(
@@ -81,7 +81,7 @@ BUILDER_KWARGS = dict(
 )
 # batoid_rubin ZCS differs from the OFC matrix by a sign on the y-translation
 # (dy) and y-tip/tilt (Ry) of M2 and camera.  Flip those 4 DOF columns to match
-# OFC exactly.  See CONVENTIONS.md [open question for Josh/Guillem].
+# OFC exactly.  See docs/conventions.md [open question for Josh/Guillem].
 OFC_Y_SIGN_FLIP = [2, 4, 7, 9]        # M2 dy, M2 Ry, Cam dy, Cam Ry
 CONFIG_TAG = "ofc_zcs"                # default tag for the 50-DOF OFC comparison
 

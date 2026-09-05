@@ -269,7 +269,7 @@ def gaussianWeightedCentroid(
     A minimum-variance centroid: the Gaussian weight downweights the noisy
     wings that dominate an unweighted centroid. A fixed width (not adaptive)
     keeps the weighting bias static, so it cancels in the moment
-    decomposition. See ``moment_weighting_analysis.md``.
+    decomposition. See ``docs/moment_weighting_analysis.md``.
 
     Parameters
     ----------
@@ -407,7 +407,7 @@ def decomposeDetector(
 ) -> DetectorMoments | None:
     """Decompose one guide sensor's shape into coadd, stamp-mean, motion.
 
-    Implements the scheme in ``moment_weighting_analysis.md``: a fixed
+    Implements the scheme in ``docs/moment_weighting_analysis.md``: a fixed
     Gaussian weighted centroid per stamp, unweighted moments about it, the
     flux-weighted covariance of those centroids for the image motion, and a
     mean coadd centered on the mean weighted centroid. The mean per-stamp

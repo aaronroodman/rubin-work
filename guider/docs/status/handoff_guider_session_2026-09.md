@@ -1,5 +1,9 @@
 # Guider work — session handoff (2026-09)
 
+> **Status:** current · **Last updated:** 2026-09-04 · **Kind:** working state (handoff)
+> Point-in-time snapshot, not a reference doc. Paths below are the **laptop's**
+> (`~/Astrophysics/Claude/...`); on S3DF the repo is `~/notebooks/rubin-work`.
+
 Consolidated state of the LSSTCam guider-sensor analysis + summit_utils guider-code
 work, for handing off to another Claude account. Repos:
 

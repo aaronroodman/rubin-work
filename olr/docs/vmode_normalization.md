@@ -1,5 +1,7 @@
 # V-mode normalization: default vs geom_mean (why v1 differs)
 
+> **Status:** current · **Last updated:** 2026-07-27 · **Kind:** investigation
+
 **Date:** 2026-07-08
 **Author:** Aaron Roodman (analysis with Claude)
 **Context:** computing v-modes from the AOS DOF trim in

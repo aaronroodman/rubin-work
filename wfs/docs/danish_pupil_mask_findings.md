@@ -1,5 +1,7 @@
 # Batoid ↔ danish pupil-mask comparison for the LSST Camera
 
+> **Status:** current · **Last updated:** 2026-06-16 · **Kind:** investigation
+
 **Findings and proposed improvements, for danish / ts_wep.**
 Aaron Roodman, 2026-06-15. Worked example: corner-WFS / giant-donut study, field point
 R30_S21 pixel (1167, 2915) → field angle (−1.459, +0.991)°, radius 1.764°.

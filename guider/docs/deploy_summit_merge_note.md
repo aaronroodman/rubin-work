@@ -1,5 +1,7 @@
 # Guider fixes on `deploy-summit` are not in `main`/weeklies
 
+> **Status:** current · **Last updated:** 2026-08-06 · **Kind:** investigation
+
 **TL;DR:** RubinTV's guider star detection is substantially more robust than the
 `summit_utils` weeklies because RubinTV builds from the `deploy-summit` branch,
 which carries ~9 guider commits that were never merged to `main`. Anyone running

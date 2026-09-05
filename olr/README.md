@@ -143,3 +143,10 @@ the ConsDB-Zernike ↔ `wavefrontError` overlap.
 
 The closed-loop PID re-simulation (Craig's downstream use) is intentionally out
 of scope here; this pipeline emits the open-loop reproduction only.
+
+## Docs
+
+| doc | what it holds |
+|---|---|
+| [`docs/vmode_normalization.md`](docs/vmode_normalization.md) | v-mode normalization, default vs `geom_mean`, and why v1 differs |
+| [`docs/zernike_opd_vs_consdb.md`](docs/zernike_opd_vs_consdb.md) | ConsDB vs Butler Zernikes: the OPD identity and a ~0.1° rotation offset |

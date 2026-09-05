@@ -61,7 +61,7 @@ Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
                                   reachable-but-discarded vs null(S^T) split of
                                   the residual are all derivable OFF-RSP -- the
                                   discriminating test for the retrieval-bias
-                                  hypothesis (aos/MIW_COADD_EQUATIONS.md §4.2).
+                                  hypothesis (aos/docs/miw_coadd_equations.md §4.2).
   block_grids_ext.npz             coadd+MIW grids for the EXTRA pupil Zernikes
                                   (`--ext-terms`, default the 2nd/3rd radial
                                   orders).  Z5-Z8 are all primary, so these are
@@ -335,7 +335,7 @@ def miw_ref_grid(dd, mi_full, coord, iZidx, n_bins, fp_grid, terms=None):
 def residual_subspace_basis(svd, instrument="lsst"):
     """Orthonormal bases for the DZ subspaces that SURVIVE the n_dof/n_keep removal.
 
-    ``(1-P)w`` splits in two (see aos/MIW_COADD_EQUATIONS.md §2, §4.2):
+    ``(1-P)w`` splits in two (see aos/docs/miw_coadd_equations.md §2, §4.2):
       * ``u_35..50``  -- REACHABLE by the n_dof DOF but discarded by the n_keep
         truncation (the ill-conditioned v-modes); 16 dims for 50/34.
       * ``null(S^T)`` -- not reachable by ANY combination of the DOF; 76 dims.

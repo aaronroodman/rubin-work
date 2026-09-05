@@ -1,5 +1,7 @@
 # smatrix — plots & outputs index
 
+> **Status:** current · **Last updated:** 2026-08-05 · **Kind:** reference (output index)
+
 All outputs live in `output/` (gitignored; rsync-synced). Regenerate from
 `code/`. Set the data location first (laptop shown; USDF = the `/sdf` path):
 
@@ -52,7 +54,7 @@ Confirms our matrix reproduces the ts_ofc-shipped `lsst_sensitivity_dz_31_29_50`
 | `fullmode_controllability_r.png` | wavefront-RMS leverage vs mode number | `python full_mode_analysis.py --band r` |
 | `fullmode_pupil_heatmap_r.png` | field-constant pupil-Noll × mode | (same) |
 
-Caveat: sensitivity is `jmax=28`, so high modes are under-captured (FUTURE_ISSUES #2).
+Caveat: sensitivity is `jmax=28`, so high modes are under-captured (status/future_issues.md #2).
 
 ## 5. Normalization weights (f, r, geometric w = sqrt(r/f))
 `normalization_weights.py` — standalone `convertZernikesToPsfWidth` + f

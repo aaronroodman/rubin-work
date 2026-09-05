@@ -1,5 +1,7 @@
 # ts_wep / Danish wavefront conventions: intrinsics, zernikeGQ vs zernikeTA, and the AOS visit table
 
+> **Status:** current · **Last updated:** 2026-06-26 · **Kind:** reference (external conventions)
+
 Reference notes on how `ts_wep` + Danish compute the off-axis intrinsic wavefront, how
 `batoid.zernikeGQ` and `batoid.zernikeTA` are used, and exactly what the
 `aggregateAOSVisitTableRaw` columns (`zk_*`, `zk_intrinsic_*`, `zk_deviation_*`) mean.
@@ -219,5 +221,5 @@ ta_i = inst._getIntrinsicZernikesTACached(thx_d, thy_d, DefocalType.Intra, 'i', 
   `createZkTableMetadata()`.
 - donut_viz `python/lsst/donut/viz/aggregate_visit.py` — `AggregateZernikeTablesTask`
   (copy + CCS/OCS/NW rotation), `AggregateAOSVisitTableTask`.
-- Related local notes: `../wfs/ts_wep_cwfs_dataflow.md`, `code/ccd_height.py`,
+- Related local notes: `../../wfs/docs/ts_wep_cwfs_dataflow.md`, `code/ccd_height.py`,
   `code/run_wfs_refit_ensemble.py`.

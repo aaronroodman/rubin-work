@@ -1,9 +1,13 @@
 # MIW investigation — portable handoff
 
+> **Status:** current · **Last updated:** 2026-09-04 · **Kind:** working state (handoff)
+> Point-in-time snapshot, not a reference doc — it goes stale as the investigation moves.
+> The durable derivations live in [`../miw_coadd_equations.md`](../miw_coadd_equations.md).
+
 Self-contained state of the Measured Intrinsic Wavefront (MIW) investigation as of
 **2026-09-04**, written to be handed to a fresh assistant with no prior context.
 Everything needed to continue is here or in the files referenced. Companion
-document: [`MIW_COADD_EQUATIONS.md`](MIW_COADD_EQUATIONS.md) (the derivations).
+document: [`../miw_coadd_equations.md`](../miw_coadd_equations.md) (the derivations).
 
 ---
 
@@ -72,7 +76,7 @@ bias drives the coadd scatter.**
 
 ---
 
-## 3. Notation (matches MIW_COADD_EQUATIONS.md)
+## 3. Notation (matches ../miw_coadd_equations.md)
 
 | symbol | meaning | shape / units |
 |---|---|---|
@@ -142,7 +146,7 @@ permutation importance; r rises as z_gradient → 0.
 
 ### 4.4 The retrieval-bias algebra, and what it predicts
 
-Derived in `MIW_COADD_EQUATIONS.md` §3–§4. Two results matter:
+Derived in `../miw_coadd_equations.md` §3–§4. Two results matter:
 
 **(a) Unbiased case — the u-modes cancel.** Differencing two MIW fixed points built
 from the same batoid starting intrinsic gives

@@ -6,7 +6,7 @@ uses them to constrain 34 v-modes, so the measurement is massively overdetermine
 That redundancy is testable: is each visit's 126-vector w actually consistent with
 being the response of SOME physical DOF state?
 
-Two nested null hypotheses (aos/MIW_COADD_EQUATIONS.md §2):
+Two nested null hypotheses (aos/docs/miw_coadd_equations.md §2):
 
   chi2_50 : w = S_hat q  for some q in R^50  -- consistent with ANY reachable state.
             dof = 126 - 50 = 76.  The residual lives in null(S_hat^T), which NO

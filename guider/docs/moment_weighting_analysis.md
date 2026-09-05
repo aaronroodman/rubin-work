@@ -1,5 +1,7 @@
 # Weighted vs. Unweighted Moments in the Guider Ellipticity Decomposition
 
+> **Status:** current · **Last updated:** 2026-07-16 · **Kind:** reference (analytic derivation)
+
 **Author:** Aaron Roodman
 **Date:** 2026-07-15
 **Context:** Guider star ellipticity study (`guider_star_ellipticity.ipynb`). Analytic

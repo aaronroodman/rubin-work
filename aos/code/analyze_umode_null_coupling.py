@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Per-mode coupling of the u-mode amplitudes into the UNREACHABLE (null) subspace.
 
-The sharp form of the retrieval-bias test (aos/MIW_COADD_EQUATIONS.md §4.2).  Split
+The sharp form of the retrieval-bias test (aos/docs/miw_coadd_equations.md §4.2).  Split
 each visit's 126-coefficient DZ vector w into three orthogonal pieces:
 
     a       = U_eff^T w        (34 amps, µm)  the CONTROLLED subspace, removed

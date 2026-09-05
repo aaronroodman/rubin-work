@@ -1,5 +1,9 @@
 # smatrix — future issues / to revisit
 
+> **Status:** current (open list) · **Last updated:** 2026-08-06 · **Kind:** working state (todo list)
+> Open items, not settled conclusions. The conventions this work assumes are in
+> [`../conventions.md`](../conventions.md).
+
 Running list of known issues and follow-ups for the sensitivity-matrix,
 mode-set, and normalization work. Newest context at the bottom of each item.
 
@@ -49,9 +53,9 @@ the bending-mode DOF may be sufficient.
 
 ---
 
-## 4. MIW high-field-order astigmatism/coma — see MIW_astig_coma_investigation.md
+## 4. MIW high-field-order astigmatism/coma — see ../miw_astig_coma_investigation.md
 
-Full analysis is in `MIW_astig_coma_investigation.md`. Corrected summary:
+Full analysis is in `../miw_astig_coma_investigation.md`. Corrected summary:
 
 **Observation:** MIW Z5-Z8 show large (~±0.3µm) HIGH-field-order (many-lobe,
 n=3-5) structure. The rotator-based OCS/CCS split assigns astig/coma almost

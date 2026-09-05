@@ -1,5 +1,7 @@
 # Claude context cleanup + code review plan
 
+> **Status:** in progress — Phases 1–4 done, Phase 5 next · **Last updated:** 2026-09-04 · **Kind:** working state (plan)
+
 Plan for rationalizing the `CLAUDE.md` / memory files in this repo, and for the code
 review that follows. Written 2026-09-04. Supersedes
 `~/Claude/laptop_memory_export_request.md` (the laptop-export request, now complete).
@@ -103,7 +105,7 @@ Done 2026-09-04. `aos/CLAUDE.md` and `guider/CLAUDE.md` written, plus a "Topic
 independence and shared code" subsection in the root `CLAUDE.md`.
 
 Deliberately **behavioral, not descriptive** — `aos/README.md` is already 397 lines of
-pipeline reference and `guider/HANDOFF_guider_session_2026-09.md` is 199 lines of current
+pipeline reference and `guider/docs/status/handoff_guider_session_2026-09.md` is 199 lines of current
 state, so both new files point at those and carry only what is easy to get wrong: which
 code lives outside the repo, frame/unit traps, hard-stop reminders, and which results are
 still open questions rather than settled facts.
@@ -138,8 +140,8 @@ shared-code and git context stay visible; get per-topic scoping from nested
 Start with the two biggest:
 
 - `aos/CLAUDE.md` — MIW, FAM coadds, DZ fitting, sensitivity/v-modes. Existing docs
-  to reference rather than duplicate: `MIW_COADD_EQUATIONS.md`,
-  `MIW_INVESTIGATION_HANDOFF.md`, `CAMERA_GRAVITY.md`
+  to reference rather than duplicate: `aos/docs/miw_coadd_equations.md`,
+  `aos/docs/status/miw_investigation_handoff.md`, `aos/docs/camera_gravity.md`
 - `guider/CLAUDE.md` — pipeline commands, `summit_utils` fork state, bias/streak work
 
 The root `CLAUDE.md` should name which subprojects are independent and where the

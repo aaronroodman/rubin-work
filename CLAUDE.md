@@ -4,17 +4,18 @@
 This repository contains Jupyter notebooks and Python scripts for Vera C. Rubin Observatory work, organized by topic. It is used on both the Rubin Science Platform (Summit and USDF) and locally.
 
 ## Repository Structure
-Each topic directory has `code/` and `output/` subdirectories; notebooks (`.ipynb`) live
-directly in the topic directory. Most topics also carry a `README.md` describing their
-scope — read it before working in an unfamiliar topic.
+Each topic directory has `code/` and `output/` subdirectories, and `docs/` where it has
+prose documentation; notebooks (`.ipynb`) live directly in the topic directory. Most
+topics also carry a `README.md` describing their scope — read it before working in an
+unfamiliar topic. See [Markdown docs](#markdown-docs) for where each kind of `.md` lives.
 
 AOS / wavefront:
 - `aos/` — the main AOS topic: measured intrinsic wavefront (MIW), FAM coadds, DZ
   fitting, sensitivity/v-mode studies. Largest directory. Key docs:
-  `MIW_COADD_EQUATIONS.md` (derivations), `MIW_INVESTIGATION_HANDOFF.md` (portable
-  state of the MIW investigation), `CAMERA_GRAVITY.md`
+  `docs/miw_coadd_equations.md` (derivations), `docs/status/miw_investigation_handoff.md` (portable
+  state of the MIW investigation), `docs/camera_gravity.md`
 - `smatrix/` — batoid_rubin DZ sensitivity-matrix construction and convention
-  choices (`CONVENTIONS.md`, `MIW_astig_coma_investigation.md`)
+  choices (`docs/conventions.md`, `docs/miw_astig_coma_investigation.md`)
 - `wfs/` — corner wavefront sensor (CWFS) studies: sky foreground, ISR-processed
   image inspection, Danish pupil-mask findings, ts_wep dataflow
 - `olr/` — Open Loop Reproduction: a Snakemake pipeline reproducing the open-loop
@@ -154,6 +155,33 @@ correlations; `nmad(residuals)` for robust scatter RMS.
 ### Notebook naming
 Use descriptive snake_case names: `topic_description_version.ipynb`
 Examples: `aos_wavefront_residuals_v2.ipynb`, `psf_ellipticity_focal_plane.ipynb`
+
+### Markdown docs
+Every `.md` file has exactly one home, by kind:
+
+| kind | location | example |
+|---|---|---|
+| topic scope + index | `<topic>/README.md` | `aos/README.md` |
+| Claude scoping rules | `<topic>/CLAUDE.md` | `aos/CLAUDE.md` |
+| durable reference, conventions, investigation writeups | `<topic>/docs/` | `smatrix/docs/conventions.md` |
+| transient working state — handoffs, todo lists, review backlogs, plans | `<topic>/docs/status/` | `aos/docs/status/code_review_findings.md` |
+| repo-wide working state (belongs to no one topic) | `notes/status/` | `notes/status/memory_cleanup_plan.md` |
+| outward-facing deliverable (Slack post → `lsstdoc` tech note) | `notes/<slug>/` | `notes/aos-measured-intrinsics/` |
+
+Rules:
+- **Filenames are snake_case**, like notebooks and Python modules. `README.md` and
+  `CLAUDE.md` are the only uppercase names.
+- **Nothing loose in a topic root** except `README.md` and `CLAUDE.md`.
+- **Every doc opens with a status line** directly under its H1, so a reader knows
+  immediately whether to trust it:
+  `> **Status:** current · **Last updated:** YYYY-MM-DD · **Kind:** reference (conventions)`
+  Use `Status: stale — verify before acting` once the content has been outrun by the
+  code, and say what specifically went stale.
+- **The `docs/` vs `docs/status/` split is the point**: a stale handoff must never be
+  mistaken for a live convention. If a doc records *where the work is*, it is status; if
+  it records *how something is defined or what was concluded*, it is reference.
+- **Index every doc in the topic's `README.md`** — a doc nothing links to is a doc
+  nobody finds.
 
 ### Notebook template
 All new notebooks should follow the template in `common/notebook_template.ipynb`:

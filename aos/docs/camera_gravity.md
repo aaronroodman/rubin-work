@@ -1,8 +1,10 @@
 # Camera-gravity wavefront model vs. the MIW (astig/coma)
 
+> **Status:** current · **Last updated:** 2026-08-18 · **Kind:** investigation
+
 Tests whether **camera-lens gravitational flexure** can produce the measured
 intrinsic-wavefront (MIW) astigmatism/coma excess (OCS, high field order,
-~0.1 µm) documented in `smatrix/MIW_astig_coma_investigation.md`.
+~0.1 µm) documented in `../../smatrix/docs/miw_astig_coma_investigation.md`.
 
 Code: `code/camera_gravity*.py`. Output: `output/camera_gravity/`.
 

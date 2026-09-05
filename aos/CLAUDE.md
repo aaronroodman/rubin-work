@@ -15,11 +15,11 @@ into new files:
 
 | doc | what it settles |
 |---|---|
-| `MIW_COADD_EQUATIONS.md` | the coadd/MIW derivations — the reference for the equations |
-| `MIW_INVESTIGATION_HANDOFF.md` | portable state of the MIW investigation, written for an outside reader, with an explicit list of **retracted claims** |
-| `CAMERA_GRAVITY.md` | camera-gravity model and validation |
-| `double_zernike_convention_validation.md` | DZ index and normalization conventions used throughout |
-| `../smatrix/CONVENTIONS.md` | sign and unit conventions for the DZ sensitivity matrix |
+| `docs/miw_coadd_equations.md` | the coadd/MIW derivations — the reference for the equations |
+| `docs/status/miw_investigation_handoff.md` | portable state of the MIW investigation, written for an outside reader, with an explicit list of **retracted claims** |
+| `docs/camera_gravity.md` | camera-gravity model and validation |
+| `docs/double_zernike_convention_validation.md` | DZ index and normalization conventions used throughout |
+| `../smatrix/docs/conventions.md` | sign and unit conventions for the DZ sensitivity matrix |
 
 If an analysis appears to contradict one of these, say so explicitly rather than
 quietly picking a different convention — sign and frame errors here are the recurring
@@ -118,8 +118,8 @@ indices (`aos-22dof-reduced-set`) — do not infer them.
 
 ## Reorganization in progress
 
-`aos/code/` is slated for reorganization (Phase 5 of `../notes/memory_cleanup_plan.md`):
+`aos/code/` is slated for reorganization (Phase 5 of `../notes/status/memory_cleanup_plan.md`):
 factoring genuinely shared helpers into `common/`, resolving a duplicated angle-unit
-heuristic, retiring dead scripts. `code_review_findings.md` is in the tree.
+heuristic, retiring dead scripts. `docs/status/code_review_findings.md` is in the tree.
 `aos_code_review_2026-08.md` is **superseded as a task list** — its line numbers cannot
 be trusted — but the specific defects it names are likely still real.

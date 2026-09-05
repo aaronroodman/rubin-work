@@ -22,12 +22,12 @@ helper, sampling, and unit handling).
 
 ## Convention
 `LSSTBuilder` is configured to reproduce the OFC-shipped matrix **exactly**
-(see `CONVENTIONS.md`): **ZCS**, `flip_m1m3_bending_modes=True`,
+(see `docs/conventions.md`): **ZCS**, `flip_m1m3_bending_modes=True`,
 `flip_m2_bending_modes=True`, `dof_angle_units="degree"`, `use_*_modes=None`
 (bend.yaml AOS mode set). One extra convention detail: batoid_rubin's ZCS
 differs from the OFC matrix by a sign on the **y-translation (dy) and y-tip/tilt
 (Ry)** of M2 and camera, so those 4 DOF columns are sign-flipped
-(`OFC_Y_SIGN_FLIP`) — an open question for Josh/Guillem (see CONVENTIONS.md).
+(`OFC_Y_SIGN_FLIP`) — an open question for Josh/Guillem (see docs/conventions.md).
 
 ## Data
 Uses the pre-downloaded batoid_rubin data at
@@ -58,7 +58,7 @@ Report `output/compare_ofc_r.txt`; plots:
 sign (ours = +OFC).** Max residual **0.11 µm**, confined to the very-high-leverage
 tip/tilt DOF (M2/Cam Rx,Ry, ~300 µm/deg → ~3×10⁻⁴ relative); **relative residual
 is < 0.2% for every DOF.** Getting the sign right required ZCS (hexapod),
-bending-mode flips, and the y-axis (dy, Ry) sign patch — see `CONVENTIONS.md`.
+bending-mode flips, and the y-axis (dy, Ry) sign patch — see `docs/conventions.md`.
 
 ### Three gotchas that had to be matched
 1. **Mode selection.** The `bend` dataset stores **30** raw SVD modes per mirror;
@@ -106,3 +106,15 @@ M1M3 modes stay optically active well past the AOS-used 20 (variance reaches
 90% only by mode ~99); M2 falls off faster (90% by ~36). The pupil heatmap
 (`fullmode_pupil_heatmap_r.png`) shows the diagonal coupling — mode N drives
 progressively higher pupil Noll.
+
+## Docs
+
+Reference docs in `docs/`; transient working state in `docs/status/`. Each carries a
+status + last-updated line under its title.
+
+| doc | what it holds |
+|---|---|
+| [`docs/conventions.md`](docs/conventions.md) | the convention choices (ZCS, bending-mode flips, degree angle units, the y-sign patch) — prepared for review by Josh Meyers / Guillem Megias-Homar |
+| [`docs/miw_astig_coma_investigation.md`](docs/miw_astig_coma_investigation.md) | what can produce the observed high-field-order Z5–Z8 in the MIW that the batoid design model does not predict |
+| [`docs/plots.md`](docs/plots.md) | index of the plots/outputs in `output/` and how to regenerate each |
+| [`docs/status/future_issues.md`](docs/status/future_issues.md) | running list of open issues and follow-ups |

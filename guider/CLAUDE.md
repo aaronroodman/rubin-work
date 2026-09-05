@@ -3,7 +3,7 @@
 Scoping notes for the guider topic. Loads when files in `guider/` are touched, on top of
 the root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here).
 
-**`HANDOFF_guider_session_2026-09.md` is the reference for the state of this work** —
+**`docs/status/handoff_guider_session_2026-09.md` is the reference for the state of this work** —
 the `summit_utils` branch contents, the bias/streak plan, the centroid-timescale result,
 the mosaic geometry, and the open follow-ups. Read it before starting. `README.md` is
 thin (it documents one notebook) and does not reflect the current scope. This file
@@ -84,7 +84,7 @@ not to rule names — the Snakefile's rules are `moments`, `combine`, `psfmoment
 There is no single-seq option in `run_snake.sh` — target the per-seq output files directly
 with `snakemake`, or use the per-visit runners (`run_guider_rubintv_plots.py`,
 `run_guider_movie.py`) with `--day-obs` / `--seq-num`. Full command forms are in
-`HANDOFF_guider_session_2026-09.md` §6.
+`docs/status/handoff_guider_session_2026-09.md` §6.
 
 **Batch submission is a hard MUST-ASK** — hand Aaron the command instead. Note the
 difference from `aos/`: here `--mode batch` submits **one sbatch job per night**, so
