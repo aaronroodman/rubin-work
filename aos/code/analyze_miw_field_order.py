@@ -6,7 +6,9 @@ part of that state's wavefront.  The k>6 part of the SAME state is predictable
 from the full 31-field-order ts_ofc sensitivity.  Here we form it for the build's
 own mean state and compare, map to map, with the MIW.
 """
+import os
 import sys
+import pathlib
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -14,18 +16,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-_PKG = "/Users/roodman/Astrophysics/Claude/packages"
-_OUT = "/Users/roodman/Astrophysics/Claude/rubin-work/aos/output"
-sys.path.insert(0, _PKG + "/ts_ofc/python")
-sys.path.insert(0, "/Users/roodman/Astrophysics/Claude/rubin-work/aos/code")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # aos/code (siblings)
 from lsst.ts.ofc import OFCData
 import galsim.zernike as gz
-import importlib.util as _iu
-_spec = _iu.spec_from_file_location(
-    "ofc_svd", _PKG + "/ts_intrinsic_wavefront/python/lsst/ts/intrinsic/wavefront/ofc_svd.py")
-osv = _iu.module_from_spec(_spec); sys.modules["ofc_svd"] = osv
-_spec.loader.exec_module(osv)
-from recompute_coadd_metrics import umode_reference
+from lsst.ts.intrinsic.wavefront import ofc_svd as osv
+from recompute_coadd_metrics import umode_reference  # noqa: E402
+
+# aos/output, relative to this file — works on RSP, s3df batch, and the laptop alike.
+_OUT = os.environ.get(
+    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[1] / "output"))
 
 ZK = [z for z in range(4, 27) if z not in (20, 21)]
 K_MIN, K_MAX, N_KEEP, K_ALL = 1, 6, 34, 30
@@ -75,8 +74,7 @@ for j in Z_SHOW:
     rows.append((j, m, lk, ok, rm, rl, c1))
     print(f"{'Z'+str(j):>4} {rm:9.4f} {rl:13.4f} {rl/rm:7.3f} {c1:+15.3f} {c6:+15.3f}")
 
-with PdfPages("/Users/roodman/Astrophysics/Claude/rubin-work/aos/output/"
-              "miw_k_gt6_leakage.pdf") as pdf:
+with PdfPages(f"{_OUT}/miw_k_gt6_leakage.pdf") as pdf:
     fig, ax = plt.subplots(3, len(Z_SHOW), figsize=(4.1 * len(Z_SHOW), 11))
     for c, (j, m, lk, ok, rm, rl, c1) in enumerate(rows):
         for r, (lab, val) in enumerate((("MIW", m), ("un-subtracted k>6", lk),

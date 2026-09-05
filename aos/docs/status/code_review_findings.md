@@ -281,3 +281,48 @@ For each fix the next session should:
 - For Priority 2/3, ask the user before changing scientific behaviour (e.g. NaN policy, detrending choice).
 - After fixing, search for the same anti-pattern elsewhere in `aos/code/` (e.g. once A2's NaN policy is decided, sweep for other `nan_to_num` and `where(isfinite, ..., 0)` sites).
 - Don't introduce new abstractions, tests, type hints, or docstrings unless the user asks.
+
+---
+
+## Appendix — findings from the 2026-09-05 import sweep
+
+Added during Phase 2 of the study reorganization (see
+[`../../../notes/status/memory_cleanup_plan.md`](../../../notes/status/memory_cleanup_plan.md)).
+These are **current** as of 2026-09-05, unlike the line-anchored items above.
+
+### Fixed
+- `check_k_truncation.py`, `analyze_miw_field_order.py`,
+  `analyze_dz_goodness_of_fit.py` loaded `ofc_svd` via `importlib` from a hardcoded
+  **`/Users/roodman/...` macOS laptop path**, so the first two could never run on S3DF
+  at all (`FileNotFoundError`). Now use the normal
+  `from lsst.ts.intrinsic.wavefront import ofc_svd`. `analyze_miw_field_order.py` also
+  had its output dir hardcoded to the laptop; it is now `aos/output` relative to
+  `__file__`, overridable with `$AOS_OUTPUT`.
+- `compare_to_archive.py`'s `--archive` docstring used the RSP-only
+  `/home/r/roodman/...` form; now `/sdf/group/rubin/...` (`usdf-mount-paths`).
+
+### Open — stale coadd products on disk (data, not code)
+`analyze_miw_field_order.py` now imports cleanly but dies with
+
+```
+IndexError: boolean index did not match indexed array along axis 0;
+size of axis is 130 but size of corresponding boolean axis is 221
+```
+
+because in
+`output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/coadd_50_34/`,
+`block_grids.npz` has **umodes shape (130, 34)** while
+`coadd_metrics_rebin3.parquet` has **221 rows** (`build_used` sum 16). The two
+products are from different runs. This is the "undocumented row-order/count invariant
+between the sidecar parquet and the main table" defect from the original review,
+occurring for real. Either regenerate both from one run, or make the script assert
+`len(mt) == len(Um)` with a clear message instead of an `IndexError`.
+
+### Open — laptop paths across other topics
+A repo-wide sweep found **17 more tracked files** with hardcoded
+`/Users/roodman/...`, outside `aos/`: `filters/code/design_*.py` (3, throughput dir)
+and `smatrix/code/*.py` (12, `batoid_rubin_data` + `ts_config_mttcs`), plus
+`aos/code/analyze_sensitivity_sparse.py` and `analyze_sparse_observability.py`. These
+are data-directory constants rather than import bootstrapping, so they were left alone
+in Phase 2 — but each will fail on S3DF. Worth an env-var + fallback pass
+(`$BATOID_RUBIN_DATA_DIR`, `$TS_CONFIG_MTTCS_DIR`) when those topics are next touched.

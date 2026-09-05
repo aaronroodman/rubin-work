@@ -84,18 +84,64 @@ def get_packages_dir(location=None):
         )
 
 
-def add_repo_root_to_path():
-    """Add the repository root to sys.path so 'from common import ...' works."""
+def repo_root(start=None):
+    """Return the rubin-work repo root, found by walking up from `start`.
+
+    Parameters
+    ----------
+    start : str, pathlib.Path, or None
+        Where to start walking up. Pass ``__file__`` from a script to get a
+        location-independent answer. A directory works too. If None, falls back to
+        the current working directory — the only option in a **notebook**, which has
+        no ``__file__``.
+
+    Returns
+    -------
+    pathlib.Path
+        The repo root (the directory containing both ``CLAUDE.md`` and ``common/``).
+
+    Raises
+    ------
+    FileNotFoundError
+        If no ancestor of `start` looks like the repo root.
+
+    Notes
+    -----
+    Scripts do not need this function: they cannot import it until the repo root is
+    already on ``sys.path``, which is the chicken-and-egg this used to have. A script
+    should use the two-line idiom instead (see the root CLAUDE.md, "Imports"):
+
+        import sys, pathlib
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+
+    This function is for **notebooks**, and for code that already has `common` importable
+    and wants the root path as a value (e.g. to build an output path).
+    """
     import sys
     from pathlib import Path
-    cwd = Path.cwd()
-    for parent in [cwd] + list(cwd.parents):
-        if (parent / 'CLAUDE.md').exists():
-            repo_root = str(parent)
-            if repo_root not in sys.path:
-                sys.path.insert(0, repo_root)
-            return repo_root
-    raise FileNotFoundError("Could not find repository root (looking for CLAUDE.md)")
+
+    base = Path.cwd() if start is None else Path(start).resolve()
+    if base.is_file():
+        base = base.parent
+    for parent in [base] + list(base.parents):
+        # Require both markers: CLAUDE.md alone also matches topic dirs (aos/, guider/).
+        if (parent / 'CLAUDE.md').exists() and (parent / 'common').is_dir():
+            root = parent
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            return root
+    raise FileNotFoundError(
+        f"Could not find the rubin-work repo root above {base} "
+        "(looking for a directory with both CLAUDE.md and common/)")
+
+
+def add_repo_root_to_path():
+    """Deprecated alias for repo_root(); returns the root as a str.
+
+    Kept so existing callers keep working. Prefer repo_root(), which accepts a
+    ``__file__`` and so does not depend on the current working directory.
+    """
+    return str(repo_root())
 
 
 def fixed_width_edges(lo, hi, width):

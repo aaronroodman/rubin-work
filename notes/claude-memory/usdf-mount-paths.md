@@ -26,6 +26,15 @@ StateEstimator + mirror LUT).
 Fixed across rubin-work 2026-07-27 (blocks/config.yaml ofc_config_dir,
 common/utils.py 'usdf' base, aos_state.resolve_ofc_config_dir + nightly_table
 OFC fallbacks, notebooks). Note aos_state/nightly_table prefer $TS_CONFIG_MTTCS_DIR
-when the stack sets it; the hardcoded path is only the fallback. One un-migrated
-example remains: compare_to_archive.py's --archive usage comment points at the
-`/home/.../LSST/notebooks/...` form (docstring only, not runtime).
+when the stack sets it; the hardcoded path is only the fallback.
+
+**Closed 2026-09-05:** the last un-migrated example (compare_to_archive.py's
+`--archive` docstring) now uses the `/sdf/group/...` form. A full sweep that day found
+only 3 `/home/r/roodman` references left in *tracked* code, and none is import
+bootstrapping: this docstring, a `common/utils.py` comment describing the RSP layout,
+and `blocks/locate_test_blocks.ipynb`'s `~/.lsst/zephyr_token` (legitimately a home
+path). The other ~25 hits live in the untracked scratch notebooks
+(`aos/{snippets,moresnippets,danish_snippets}.ipynb`), which stay untracked.
+
+For **import** bootstrapping specifically, the rule is now `parents[N]` off `__file__`
+— never any absolute path. See the root CLAUDE.md "Imports and `sys.path`".

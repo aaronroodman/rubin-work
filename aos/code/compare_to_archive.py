@@ -14,7 +14,7 @@ concatenating the archived chunk files and compares:
                      (per-donut rows are hard to align 1:1)
 
 Run on the RSP (needs pyarrow).  Examples:
-  python code/compare_to_archive.py --archive /home/r/roodman/u/LSST/notebooks/rubin-work/aos/output-archive-2026-06-11
+  python code/compare_to_archive.py --archive /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output-archive-2026-06-11
   python code/compare_to_archive.py --archive ../output-archive-2026-06-11 --param-set fam_danish_v1_triplets_bin_2x
 """
 import argparse

@@ -95,13 +95,36 @@ are hard MUST-ASK rules, no exceptions (`work-autonomy-and-guardrails`):
 
 1. **Deleting any files** — ask first, always.
 2. **Submitting any batch job** — Slurm `sbatch` / `condor_submit` on S3DF, in
-   practice `run_snake.sh --mode batch`. Hand over the command instead of running
-   it. Batch must be submitted from an s3df node (`slacrd`), never from an RSP pod
-   (no Slurm there) (`s3df-batch-job-rules`).
+   practice `run_snake.sh --mode batch`. **Ask Aaron to start it**, and give him two
+   commands: the full submit command *and* the command to monitor its progress. Batch
+   must be submitted from an s3df node (`slacrd`), never from an RSP pod (no Slurm
+   there) (`s3df-batch-job-rules`). See [Batch jobs](#batch-jobs) for the exact forms.
 3. **Connecting to SLAC / USDF from the laptop** — `ssh slacrd`, USDF,
    `/repo/main` Butler. Ask before opening the connection, or hand Aaron a
    runnable snippet to execute himself (his established preference). Local work in
    `rubin-work/` needs no permission (`ask-before-slac`, `usdf-access-slacrd`).
+
+### Batch jobs
+Never submit one. Hand Aaron the submit command **plus a monitoring command**, both
+copy-paste-ready. The log path depends on the topic:
+
+- **`aos/`** — one job per invocation, log `aos/logs/batch_<timestamp>.out`. The script
+  does *not* print the path, so monitor the newest log:
+  ```bash
+  cd ~/notebooks/rubin-work/aos && ./run_snake.sh --mode batch
+  tail -f "$(ls -t ~/notebooks/rubin-work/aos/logs/batch_*.out | head -1)"
+  ```
+- **`guider/`** — **one job per night**, so `--day-obs A,B,C` is three submissions.
+  Logs are `guider/logs/batch_<night>_<timestamp>.out`, and the script prints each
+  path as it submits:
+  ```bash
+  cd ~/notebooks/rubin-work/guider && ./run_snake.sh --day-obs 20260706 --mode batch
+  tail -f "$(ls -t ~/notebooks/rubin-work/guider/logs/batch_20260706_*.out | head -1)"
+  ```
+
+Also useful alongside the tail: `squeue -u roodman` for queue state. For a local
+(non-batch) detached run, the log is `logs/run_<timestamp>.log` (`aos/`) or
+`logs/run_<tag>_<timestamp>.log` (`guider/`, which prints it).
 
 ### Commands handed to Aaron
 Give the **full copy-paste-ready command — no `...`, no `<placeholder>`, no
@@ -191,6 +214,52 @@ All new notebooks should follow the template in `common/notebook_template.ipynb`
 - Parameters section (all configurable values collected at top)
 - Helper Functions section
 - Numbered sections with markdown headers using anchor tags
+
+### Studies — where new code goes
+A **study** is a separable project inside a topic: the MIW pipeline, the FAM↔CWFS
+comparison, the coadd-vs-MIW investigation, the sensitivity-matrix/v-mode work, and so
+on. Topics are the top level (`aos/`, `guider/`); studies are the level below.
+
+**Before writing any new code, agree which study it belongs to.** This applies
+everywhere in `rubin-work`, not just `aos/`. Ask rather than guess — the answer decides
+where the code, its docs, and its outputs land.
+
+If the work does not fit an existing study, it is a **new study**, and it needs all
+three of:
+
+1. a short description in the topic's `README.md` (a few lines, linking to 2.);
+2. a detail doc at `<topic>/docs/studies/<study>.md`, with the standard status header;
+3. usually a `<topic>/code/<study>/` subdirectory, and an output directory that matches.
+
+Do not add a script to a topic's `code/` root "for now" — that is how a flat 56-file
+directory happens. `aos/docs/studies.md` is the worked example of the inventory.
+
+The word is **study**, not "thread" — `aos/code/check_threads.py` is about CPU threads,
+and the repo already says study (`study_compare_donuts.ipynb`, `run_study_radialbins.py`).
+
+### Imports and `sys.path`
+The repo is **not** an installed package, and scripts are run as `python code/x.py`
+(script mode), so relative imports (`from ..other import x`) do not work — Python
+leaves `__package__` unset and raises `ImportError`. Use exactly one idiom, at the top
+of the file, before any repo import:
+
+```python
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))  # repo root
+from common.utils import nmad
+```
+
+`N` counts directories up to the repo root: **2** for `<topic>/code/x.py`, **3** for
+`<topic>/code/<study>/x.py`. In a **notebook** there is no `__file__` — use
+`common.utils.repo_root()`, which walks up from the working directory instead.
+
+Rules:
+- **Never hardcode `/home/r/roodman/...` or `/sdf/...` in import bootstrapping.** The
+  `/home/...` form is RSP-only and fails silently in a Slurm job (`usdf-mount-paths`);
+  `parents[N]` is correct in every environment.
+- Genuinely shared helpers belong in `common/`, not copied between topics.
+- Reaching into a sibling topic's `code/` is a real dependency — see
+  [Topic independence](#topic-independence-and-shared-code) before adding one.
 
 ### Code style
 - Python code should follow PEP 8

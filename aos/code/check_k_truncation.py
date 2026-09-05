@@ -1,17 +1,10 @@
 #!/usr/bin/env python
 """(a) Is k=1..6 sufficient to SPECIFY the 50 DOF / 34 v-modes?
    (b) Does the R subtraction actually remove the higher-k content?"""
-import sys
 import numpy as np
 
-_PKG = "/Users/roodman/Astrophysics/Claude/packages"
-sys.path.insert(0, _PKG + "/ts_ofc/python")
 from lsst.ts.ofc import OFCData
-import importlib.util as _iu
-_spec = _iu.spec_from_file_location(
-    "ofc_svd", _PKG + "/ts_intrinsic_wavefront/python/lsst/ts/intrinsic/wavefront/ofc_svd.py")
-osv = _iu.module_from_spec(_spec); sys.modules["ofc_svd"] = osv
-_spec.loader.exec_module(osv)
+from lsst.ts.intrinsic.wavefront import ofc_svd as osv
 
 ZK = [z for z in range(4, 27) if z not in (20, 21)]
 K_MIN, K_MAX, N_KEEP, K_ALL = 1, 6, 34, 30

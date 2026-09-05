@@ -52,7 +52,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-_PKG = "/Users/roodman/Astrophysics/Claude/packages"
 K_MIN, K_MAX, N_KEEP = 1, 6, 34
 ZK = [z for z in range(4, 27) if z not in (20, 21)]
 # azimuthal families -> radial orders, for the B-structure breakdown
@@ -66,18 +65,10 @@ FAMILIES = {
 }
 
 
-def load_bases(instrument="lsst", pkg=_PKG):
+def load_bases(instrument="lsst"):
     """(U_eff, U_all, kj_grid) for the k<=6 x 21-pupil x 50-DOF slice."""
-    if pkg + "/ts_ofc/python" not in sys.path:
-        sys.path.insert(0, pkg + "/ts_ofc/python")
     from lsst.ts.ofc import OFCData
-    import importlib.util as iu
-    spec = iu.spec_from_file_location(
-        "ofc_svd", pkg + "/ts_intrinsic_wavefront/python/lsst/ts/intrinsic/"
-        "wavefront/ofc_svd.py")
-    osv = iu.module_from_spec(spec)
-    sys.modules["ofc_svd"] = osv
-    spec.loader.exec_module(osv)
+    from lsst.ts.intrinsic.wavefront import ofc_svd as osv
     svd = osv.build_ofc_svd(ZK, K_MIN, K_MAX, N_KEEP, instrument=instrument)
     S_full = np.asarray(OFCData(instrument).sensitivity_matrix)
     S_slab = S_full[K_MIN:K_MAX + 1, np.asarray(ZK, int), :]
