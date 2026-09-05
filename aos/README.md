@@ -1,403 +1,108 @@
-# AOS Measured Intrinsics and Wavefront Analysis Pipelines
+# AOS — Active Optics wavefront analysis
 
-Analysis of the Rubin Active Optics System from Full Array Mode (FAM) data:
-per-donut wavefront tables, Double-Zernike (DZ) fits, the *measured intrinsic*
-wavefront (telescope + camera split), DOF look-up tables, and operational
-studies (bounce tests, correlations). A parallel **corner-WFS (cwfs) track**
-ingests the real in-focus corner-wavefront-sensor data and compares the optical
-state it recovers against the FAM "truth" (per-corner OPD, v-modes/DoF, and the
-AOS FWHM contribution). A Snakemake pipeline runs the full chain per `param_set`;
-standalone notebooks cover the analyses that have not (yet) been ported into it,
-plus AOS closed-loop control studies.
+Analysis of the Rubin Active Optics System, mostly from Full Array Mode (FAM) donut
+data: per-donut wavefront tables, Double-Zernike (DZ) fits, the **Measured Intrinsic
+Wavefront (MIW)**, corner-wavefront-sensor comparisons, DOF look-up tables, and
+operational studies. A Snakemake pipeline runs the MIW chain per `param_set`; a larger
+set of standalone analyses hangs off its outputs.
 
-> **Start here:** [`docs/studies.md`](docs/studies.md) is the inventory of the **eleven
-> separable studies** in this topic — what each asks, which code implements it, what it
-> reads and writes, and where it stands. This README currently documents the MIW
-> pipeline in depth and says little about the other studies; the inventory covers all of
-> them. (Being restructured — Phase 4 of
-> [`../notes/status/memory_cleanup_plan.md`](../notes/status/memory_cleanup_plan.md).)
+This is the **largest topic in the repo** — 56 Python files, 13 notebooks — and it is
+not one project. It is **eleven separable studies**.
 
-## Pipeline overview
+## Start here
 
-The pipeline (`Snakefile`) processes each `param_set` (a FAM Butler
-collection + processing variant, e.g. `fam_danish_1_0_wep17_3_0_bin2x`)
-end-to-end. Launch with `./run_snake.sh` on the RSP (see [Running](#running)).
+| doc | what it gives you |
+|---|---|
+| **[`docs/studies.md`](docs/studies.md)** | the map: all 11 studies, what each asks, which code implements it, what it reads and writes, current state |
+| [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | step-by-step reference for the Snakemake pipeline (every rule, config file, output path) |
+| [`CLAUDE.md`](CLAUDE.md) | the traps — frames, units, which code lives outside this repo, open questions not to present as settled |
 
-```
-Phase 1 (per param_set)                Phase 2 (per param_set × mi_name)
-─────────────────────────              ──────────────────────────────────
-mktable ──► fit          (per chunk)   build_intrinsic   (per rotator bin)
-   │         │                              │
-   ▼         ▼                              ├──► study_radialbins (WFS-radius
-combine_{donuts,fits,visits}               │         vs rotator, pre-split)
-   │                                        ▼
-   ├──► plots                          intrinsic_split (OCS + CCS)
-   ├──► aberration_pairs                    │
-   └──► (feeds Phase 2) ──────────►         ▼
-                                       intrinsic_sidecar (per-donut zk)
-                                            │
-                                            ▼
-                                       refit_mi (DZ refit, measured intrinsic)
-                                            │
-Phase 3 — analyses (per param_set × mi_name)│
-────────────────────────────────────────────│
-                              ┌─────────────┼──────────────┬──────────┐
-                              ▼             ▼              ▼          ▼
-                          build_lut   dz_correlations   thermal_   bounce
-                                                      correlations
-```
+## The studies
 
-| Phase | Step | Granularity | Short description |
-|-------|------|-------------|-------------------|
-| 1 | `mktable` | per chunk | Butler → per-donut Zernike table + per-visit table |
-| 1 | `fit` | per chunk | Double-Zernike fit of (data − batoid intrinsic) per visit |
-| 1 | `combine_*` | per param_set | Concatenate chunks → one donuts/fits/visits table each |
-| 1 | `plots` | per param_set | Trio validation plots (data / model / residual) on the combined tables |
-| 1 | `aberration_pairs` | per param_set | Per-donut primary→secondary aberration-pair correlations |
-| 2 | `build_intrinsic` | per (ps, mi, rotator bin) | Measured-intrinsic focal-plane grid (Path-A U-mode constrained) |
-| 2 | `intrinsic_split` | per (ps, mi) | Decompose the grids into telescope-fixed (OCS) + camera-fixed (CCS) parts |
-| 2 | `study_radialbins` | per (ps, mi) | OCS measured intrinsic in 4 WFS radial shells, overlaid by rotator bin (pre-split) |
-| 2 | `intrinsic_sidecar` | per (ps, mi) | Per-donut measured-intrinsic Zernikes, row-aligned to `donuts.parquet` |
-| 2 | `wfs_mimic` | per (ps, mi) | FAM-mimicked 4-corner WFS deviation covariance (84×84 + 21×21), image-sampled |
-| 2 | `refit_mi` | per (ps, mi) | DZ refit subtracting the *measured* intrinsic instead of batoid |
-| 3 | `build_lut` | per (ps, mi) | Averaged-DOF look-up table from the per-visit DZ fits |
-| 3 | `dz_correlations` | per (ps, mi) | DZ↔DZ Pearson correlations on the MI-refit residuals |
-| 3 | `thermal_correlations` | per (ps, mi) | DZ↔EFD-temperature correlations on the MI-refit residuals |
-| 3 | `bounce` | per (ps, mi) | FAM bounce-test paired Δ (DZ / v-mode / DOF) with significance maps |
-| cwfs | `wfs_mktable` | per (ps, cwfs) | Butler → in-focus corner-WFS per-donut table (`wfs/<cwfs>/donuts.parquet`); multi-collection |
-| cwfs | `wfs_corner_compare` | per (ps, cwfs) | Corner-by-corner CWFS vs FAM measured-OPD vs azimuth (GP interpolation) |
-| cwfs | `wfs_intrinsic_sidecar` | per (ps, mi, cwfs) | CWFS measured-intrinsic at the corner donuts (reconstruct_at + SW1/SW0 half-sensor Z4 height) |
-| cwfs | `wfs_dof_compare` | per (ps, mi, cwfs) | CWFS-vs-FAM optical state (v-modes + DoF) per image, + AOS-FWHM contributions |
+Detail for each is in `docs/studies/<study>.md`.
 
-The **cwfs** track (real corner-WFS data) is distinct from `wfs_mimic` (which
-*mimics* the corner WFS from FAM donuts). It fans out over CWFS-collection
-variants — see [Corner-WFS track](#corner-wfs-cwfs-track).
+| study | what it asks | pipeline? |
+|---|---|---|
+| [`miw`](docs/studies/miw.md) | What is the measured intrinsic wavefront, and is the build trustworthy? | 4 rules |
+| [`coadd`](docs/studies/coadd.md) | Why does the per-block FAM coadd disagree with the MIW? | 1 rule |
+| [`cwfs`](docs/studies/cwfs.md) | Does the corner WFS recover the same optical state as FAM? | 4 rules |
+| [`static_optics`](docs/studies/static_optics.md) | Can any static optical figure (M3, lenses, gravity) explain the MIW? | standalone |
+| [`telemetry`](docs/studies/telemetry.md) | What was the telescope's commanded and thermal state per visit? | standalone |
+| [`correlations`](docs/studies/correlations.md) | What does the residual DZ correlate with — itself, v-modes, temperature? | 4 rules |
+| [`smatrix_vmode`](docs/studies/smatrix_vmode.md) | What does the sensitivity matrix's mode structure let us observe? | 1 rule |
+| [`bounce`](docs/studies/bounce.md) | Do elevation/rotator bounce tests show a repeatable Δ? | 2 rules |
+| [`processing_compare`](docs/studies/processing_compare.md) | Do two reductions of the same data agree? | standalone |
+| [`psf`](docs/studies/psf.md) | What PSF does a given wavefront actually produce? | standalone |
+| [`infra`](docs/studies/infra.md) | (support) How many usable cores does this node have? | standalone |
 
-Planned additions: port `study_compare_donuts.ipynb` to a pipeline script and add
-it to the Snakemake DAG. The WFS-mimic *covariance* core is the `wfs_mimic`
-step, and the SVD / DOF-recovery / FWHM comparison (against *real* corner WFS) is
-the `wfs_dof_compare` step.
-
-## Pipeline steps in detail
-
-### Phase 1 — donut tables and DZ fits (per `param_set`)
-
-**`mktable`** — `code/run_mktable.py` (library: `intrinsics_lib.py`). Per date
-chunk: queries ConsDB for FAM visits, extracts per-donut Zernikes via the
-Butler, attaches OCS/CCS field angles and the tabulated batoid intrinsic
-(`zk_intrinsic_{OCS,CCS}`), and writes
-`output/<ps>/chunks/<dmin>_<dmax>/{donuts,visits}.parquet`. The expensive
-Butler step — deliberately *not* re-triggered by code edits (see Snakefile
-comments). Requires RSP (Butler + ConsDB).
-
-**`fit`** — `code/run_dz_fit.py` (library: `dz_fitting.py`). Per chunk: robust
-(Huber) Double-Zernike fit of the per-donut residual
-`zk_data − zk_intrinsic_<coord>` for each visit, producing per-visit DZ
-coefficients, errors, and quality flags in `chunks/<d>_<d>/fits.parquet`.
-`coord_sys` (OCS default) set per param_set in `snake_config.yaml`.
-
-**`combine_donuts` / `combine_fits` / `combine_visits`** —
-`code/combine_parquets.py`. Concatenate the chunk tables into one
-param_set-level table each: `output/<ps>/{donuts,fits,visits}.parquet`.
-**All downstream steps use the combined tables.** Adding data = adding/editing
-a chunk in `snake_config.yaml`; Snakemake re-runs combine + everything
-downstream automatically.
-
-**`plots`** — `code/run_dz_plots.py` (library: `dz_plotting.py`). Validation
-trio plots (data / DZ model / residual across the focal plane) on the combined
-tables → `output/<ps>/plots/trio_comparison_all.pdf`. Memory-heavy (loads the
-full donut table); the Snakefile's `mem_mb` throttle serializes it.
-
-**`aberration_pairs`** — `code/run_aberration_pairs.py` (port of
-`study_aberrationpairs.ipynb`). Per-donut primary→secondary aberration-pair
-analysis (e.g. defocus→spherical, astig→2nd-astig): quartile-of-primary OLS
-slope/r plus density pages → `output/<ps>/plots/aberration_pairs.pdf` +
-`aberration_pairs_summary.parquet`. Knobs in `analysis_config.yaml`.
-
-### Phase 2 — measured intrinsic (per `param_set` × `mi_name`)
-
-Each `mi_name` entry in `mi_config.yaml` (e.g. `pathA_50_34_i`) defines one
-measured-intrinsic build: path, `n_dof`/`n_keep`, band/program/elevation
-selection, rotator bins, and build/split parameters. Outputs live under
-`output/<ps>/<mi>/`. RSP-only (needs `lsst.ts.ofc`/`wep`,
-`$TS_CONFIG_MTTCS_DIR`, batoid height maps).
-
-**`build_intrinsic`** — `code/run_build_intrinsic.py` (libraries:
-`measured_intrinsic.py`, `intrinsic_build_plots.py`). Per rotator bin: builds
-the empirical focal-plane intrinsic Zernike grid from the FAM donuts via the
-Path-A U-mode-constrained method (iterated DZ removal of the reachable
-wavefront), with CCD-height Z4 handling →
-`output/<ps>/<mi>/build/rot_<lo>_<hi>/intrinsic_grid.parquet` + validation
-plots. (Script version of `build_measured_intrinsic.ipynb`.)
-
-**`intrinsic_split`** — `code/run_intrinsic_split.py` (library:
-`intrinsic_split.py`). Decomposes the per-rotator-bin grids into a
-telescope-fixed component **O** (OCS frame) and a camera-fixed component **C**
-(CCS frame, rotating with the rotator) for every Noll Zernike in use (4–19,
-22–26). Spin-aware: astig/coma/trefoil doublets are combined as
-Z_cos + i·Z_sin and decomposed with the spin model; hole-aware least-squares
-keeps O hole-free → `intrinsic_split.parquet`, `intrinsic_split_decomp.npz`,
-`intrinsic_split.pdf`. (Script version of
-`intrinsic_camera_telescope_split.ipynb`.)
-
-**`study_radialbins`** — `code/run_study_radialbins.py`. Reads the per-rotator-bin
-grids *before* the split and, for each pupil Zernike j, makes one page of four
-full-width panels = the four WFS radial shells, each overlaying the rotator-angle
-samples (median OCS measured intrinsic vs focal-plane azimuth, one colour+marker
-per rotator bin) → `study_radialbins.pdf`. Shows how consistent the intrinsic is
-across rotator at the radius the wavefront sensors see. The shell inner edge is
-the extra-focal `SW0` inner-corner field radius from the `PIXELS→FIELD_ANGLE`
-camera transform (1.5178°; derivation documented in the script docstring), the
-outer edge the AOS-online 1.725° limit; 4 equal-width bins. Knobs in
-`analysis_config.yaml` (`study_radialbins`).
-
-**`intrinsic_sidecar`** — `code/run_make_intrinsic_sidecar.py`. Evaluates the
-O + C decomposition at every donut's field position (full spin reconstruction,
-C evaluated at the donut's CCS coordinates so the camera term rotates
-correctly; plus CCD-height Z4) → `zk_intrinsic.parquet`, row-aligned to the
-combined `donuts.parquet`.
-
-**`wfs_mimic`** — `code/run_wfs_mimic.py`. Mimics the four corner wavefront
-sensors from FAM donuts: per image, donuts in four annular wedges at the WFS
-radius (centred `delta + [0,90,180,270]°`) give four pseudo-WFS Zernike vectors,
-and the per-donut deviation (measured − `zk_intrinsic` sidecar, so the OCS/CCS
-intrinsic is subtracted at each image's rotator) is median-pooled per wedge.
-Covariance over **images** (not donuts) → `wfs_mimic_cov84.parquet` (84×84
-cross-corner `Z{j}_c{0..3}`), `wfs_mimic_cov21.parquet` (21×21 = mean of the four
-diagonal corner blocks), `wfs_mimic_cov_bins.parquet` (per rotator-subset, tidy),
-and `wfs_mimic.pdf`. Image (rotator-angle) selection via the `analysis_config.yaml`
-`wfs_mimic.rotator_keep` ranges drops out-of-family rotator points, independent of
-`split.rotator_select`. The 84×84 needs ≥84 images for full rank (logged).
-
-**`refit_mi`** — `code/run_dz_fit.py --intrinsic-sidecar`. Re-runs the DZ fit
-subtracting the *measured* intrinsic instead of the batoid column →
-`output/<ps>/<mi>/fits.parquet`. Why re-fit rather than patch: DZ fitting is
-linear, so swapping the intrinsic is cleanest as a recompute. Note for
-difference analyses (bounce): any intrinsic fixed in the fitting frame cancels
-in a Δ — it is the rotating camera term **C** that changes the rotator-bounce
-result, which is why the O + C split matters.
-
-### Phase 3 — analyses on the MI-refit fits (per `param_set` × `mi_name`)
-
-`dz_correlations`, `thermal_correlations`, and `bounce` run on the *residual*
-(measured-intrinsic-subtracted) DZ in `output/<ps>/<mi>/fits.parquet`;
-`build_lut` currently projects the Phase-1 `fits.parquet`. Knobs in
-`analysis_config.yaml`.
-
-**`build_lut`** — `code/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
-look-up table: projects the per-visit DZ fits onto the OFC sensitivity-matrix
-SVD (settable `n_dof`/`n_keep`), recovers DOF per visit, and collapses over
-**all** elevation and rotator angle (median by default) →
-`output/<ps>/<mi>/lut/lut.parquet` (per-DOF) + `lut_dz.parquet`
-(per-(k, j) raw/fit/residual DZ) + `lut.pdf`. (Supersedes the removed
-`study_50dofLUT.ipynb`. Uses the Phase-1 `fits.parquet`.)
-
-**`dz_correlations`** — `code/run_dz_correlations.py` (port of
-`study_doublezernike.ipynb` §7–§10). DZ_kj ↔ DZ_k'j' Pearson heatmap, top-|r|
-pair scatters, astigmatism-symmetry pairs, per-correlation **conjugate-orbit
-scatter grids** (rows/cols = independent focal-k / pupil-j doublet-flips of each
-endpoint, up to 4×4), and **significance** (Fisher-z σ, with `n`/`se_r`) in the
-pairs parquet; optional exhaustive (k1, j1)×(k2, j2) scan →
-`output/<ps>/<mi>/plots/dz_correlations.pdf` + `_pairs.parquet`.
-
-**`dz_correlations_optcorr`** — same analysis on the DZ that *remains after the
-n_dof/n_keep OFC correction* (`W_resid = (I − U_eff U_effᵀ)·W`, SVD from the
-mi_config entry) → `output/<ps>/<mi>/plots/dz_correlations_optcorr.pdf` +
-`_pairs.parquet`. Sits beside the raw analysis for before/after comparison.
-RSP-only (builds the OFC SVD via `lsst.ts.ofc`).
-
-**`thermal_correlations`** — `code/run_thermal_correlations.py` (port of
-`intrinsics_thermal_correlations.ipynb`). DZ_kj × EFD temperature-variable
-Pearson heatmap plus per-term scatter pages →
-`output/<ps>/<mi>/plots/thermal_correlations.pdf` + `_summary.parquet`.
-
-**`bounce`** — `code/run_bounce.py` + `bounce_lib.py` (port of
-`study_bounce.ipynb`). FAM bounce-test paired Δ (BLOCK-T720 elevation 40↔70°,
-BLOCK-T724 rotator 0↔60°): time-ordered within-night comp−ref pairs for DZ
-coefficients, OFC v-modes, and physical DOF, with significance/pass heatmaps,
-vs-ordinal pages, and night cross-scatter; optional EFD MTAOS Trim overlay
-(`add_dof_trim`) → `output/<ps>/<mi>/plots/bounce_*.pdf` +
-`bounce_kj_stats.parquet`.
-
-### Corner-WFS (cwfs) track
-
-For `param_set`s paired with real in-focus corner-wavefront-sensor collections,
-this track ingests the CWFS data and compares the optical state it recovers to the
-FAM "truth". A `param_set` may carry several CWFS reductions, listed under
-`wfs_collections` in `param_sets.yaml`; each is a named **variant** `<cwfs>`
-(e.g. `refitWcs`, `paired_3mm`, `ai_donut`) and all outputs go under
-`output/<ps>/wfs/<cwfs>/` (and `output/<ps>/<mi>/wfs/<cwfs>/`), so variants sit
-side by side. RSP-only (Butler). Each `wfs_collections` entry is either a bare
-collection string or a dict `{collection, seq_offset, dataset_type}`:
-
-- `seq_offset` — added to the FAM seq_num (the extra exposure) to find the paired
-  CWFS exposure: **+1** in-focus (default), **0** extra, **−1** intra. Determined
-  per collection by Butler introspection (e.g. `paired_3mm`'s aggregate is keyed to
-  the extra exposure → `0`).
-- `dataset_type` — `aggregateAOSVisitTableRaw` (default; the joined table carrying
-  positions) or `aggregateZernikesRaw` (selects the `ai_donut` reader).
-
-**`wfs_mktable`** — `code/run_wfs_mktable.py` (`--wfs-name <cwfs>`). For each FAM
-visit, reads the paired corner-WFS exposure's aggregate Zernikes, attaches OCS/CCS
-field angles + centroids, and writes `wfs/<cwfs>/{donuts,visits}.parquet` + a
-validation plot. The `ai_donut` product has no joined AOS table, so its reader
-(`get_aidonut_zernikes`) joins `aggregateZernikesRaw` (zk in µm) with the four SW0
-per-detector `zernikes` tables (positions) and rotates the field angles to OCS
-(x↔y swap + deg→rad → CCS, then `R(rotTelPos)` → OCS; convention fixed by
-`determine_wfs_field_frame.py`).
-
-**`wfs_corner_compare`** — `code/run_wfs_corner_compare.py` (`--wfs-name`).
-Corner-by-corner CWFS vs FAM measured-OPD: per corner, the CWFS Zernikes against
-the FAM wavefront interpolated to that corner (`--interp gp` Gaussian-process
-azimuth fit by default; `fourier` / `wedge-median` alternatives), with per-corner
-scatter, time-history, summary, and azimuth-validation pages →
-`wfs/<cwfs>/wfs_corner_compare.pdf`.
-
-**`wfs_intrinsic_sidecar`** — `code/run_make_intrinsic_sidecar.py
---wfs-corner-height`. The same measured-intrinsic reconstruction as
-`intrinsic_sidecar`, evaluated at the corner-WFS donut positions (paired OCS
-position; Z4 CCD-height averaged over the SW1-intra / SW0-extra half-sensors) →
-`<mi>/wfs/<cwfs>/zk_intrinsic.parquet`.
-
-**`wfs_dof_compare`** — `code/run_wfs_dof_compare.py` (library `ofc_svd.py`). Per
-FAM triplet, extracts the optical state two ways and compares: **FAM** by
-projecting the full-field DZ fit onto the OFC SVD; **CWFS** from the 4 corner
-medians via the corner OFC inverse (`pinv(B·U_eff)`), MIW- and offset-subtracted.
-For both the 50-DOF/34-v-mode and 22-DOF/12-v-mode schemes it emits v-mode + DoF
-time histories, CWFS-vs-FAM scatter, a per-mode v-mode summary and a grouped DoF
-recovery summary (point = fit offset, error bar = robust RMS), plus **AOS-FWHM**
-pages: the CWFS−FAM recovery error → residual wavefront → PSF FWHM (`ts_wep
-convertZernikesToPsfWidth`, Z4+ quadrature), reported as a focal-plane average and
-a CWFS-corner average (the ConsDB `AOS_FWHM` analog), with a contributions page
-overlaying the MIW baseline, the FAM excursion beyond MIW, CWFS-22/12
-(recovery + truncation vs FAM-50/34), CWFS-50/34 (recovery only), and the
-truncation-only term → `<mi>/wfs/<cwfs>/wfs_dof_compare_offsets.pdf` (per-(Zj,corner)
-CWFS−FAM offsets applied) or `_nooffset.pdf` (`--no-offsets`).
-
-## Configuration
-
-| File | Contents |
-|------|----------|
-| `param_sets.yaml` | Butler repo / FAM collection definitions per param_set (referenced by name). Optional `wfs_collections:` map (name → collection string, or `{collection, seq_offset, dataset_type}`) drives the corner-WFS track's `<cwfs>` variants |
-| `snake_config.yaml` | Which param_sets to build, their date chunks, and `coord_sys` |
-| `mi_config.yaml` | Measured-intrinsic entries per param_set: path, `n_dof`/`n_keep` (scalar or explicit index list), band/program/elevation selection, rotator bins, build + split parameters. `defaults:` block applies to every entry |
-| `analysis_config.yaml` | Analysis-only knobs (`lut`, `aberration_pairs`, `dz_correlations`, `thermal_correlations`, `bounce`), deep-merged: `defaults` ← per-param_set ← per-(param_set, mi_name) overrides. Kept separate from `mi_config.yaml` so editing analysis knobs never re-triggers the slow intrinsic builds |
-
-Rules consume the **resolved per-entry config as a Snakemake `params` value**,
-not the config *file* as an input. The `params` rerun-trigger then fires only
-when *that* entry's resolved settings change — adding or editing one param_set
-(or one analysis section) never invalidates another's cached outputs via the
-shared file's mtime. (Editing a shared `defaults:` block still propagates to
-every entry, as it should.)
-
-## Running
-
-### Package dependency (`ts_intrinsic_wavefront`)
-
-The core measured-intrinsic library and runners live in the official LSST-TS
-package **`ts_intrinsic_wavefront`** (`lsst.ts.intrinsic.wavefront`), not in this
-repo — `aos/code/` holds only the analysis / WFS / study scripts.  The Snakefile
-imports the package library and calls its built `bin/` runners via
-`$TS_INTRINSIC_WAVEFRONT_DIR`.  Before running the pipeline (or importing any
-`code/` script) the package must be **set up and built** once:
+## Running the pipeline
 
 ```bash
-# already wired into ~/notebooks/.user_setups and ~/u/LSST/setup.sh:
-setup -r ~/u/LSST/packages/ts_intrinsic_wavefront -j
-# build the version.py + bin/ runner shims once per fresh clone / after edits:
-cd ~/u/LSST/packages/ts_intrinsic_wavefront && scons
-```
-
-`scons` generates the gitignored `version.py` (needed for import) and the `bin/`
-shims (needed by the Snakefile).  Without it, imports fail on
-`No module named 'lsst.ts.intrinsic.wavefront.version'` and rules fail on missing
-`bin/run_*.py`.
-
-On the RSP (Butler, ConsDB, `lsst.ts.ofc`/`wep`, `$TS_CONFIG_MTTCS_DIR`
-required):
-
-```bash
-./run_snake.sh                  # detached run (survives dropped SSH), logs to logs/
-./run_snake.sh -n               # dry-run: show what is stale / would run
+cd ~/notebooks/rubin-work/aos
+./run_snake.sh                       # detached run, survives a dropped SSH; logs to logs/
+./run_snake.sh -n                    # dry run: what is stale / would run
 ./run_snake.sh --until combine_donuts
-snakemake --dag | dot -Tpng > dag.png
 ```
 
-`run_snake.sh` uses `-j 4 --resources mem_mb=14000 --keep-going`, tuned for
-the RSP terminal allocation (~4 usable cores, 16 GiB); per-rule `mem_mb`
-declarations throttle the memory-heavy steps. `git pull` (or `sync.sh`) first
-to pick up code changes.
+Full detail — every rule, the four config files, `mem_mb` throttling, and the
+`ts_intrinsic_wavefront` package setup that must be `scons`-built first — is in
+[`docs/miw_pipeline.md`](docs/miw_pipeline.md).
+
+**Batch runs are a MUST-ASK**: never submitted from a session. See the root
+`CLAUDE.md` "Batch jobs" for the submit-plus-monitor command pair. Batch goes from an
+s3df node (`slacrd`), never an RSP pod.
+
+## Data dependencies at a glance
+
+- **Butler + ConsDB/EFD, RSP only:** `mktable`, `wfs_mktable`, and the telemetry
+  backfills. The expensive Butler step (`mktable`) is deliberately *not* re-triggered
+  by code edits.
+- **`lsst.ts.ofc` + `lsst.ts.wep`, `$TS_CONFIG_MTTCS_DIR`, batoid height maps:** all of
+  Phase 2/3 and anything projecting onto the OFC SVD. Note these are **not** in
+  `lsst_distrib` — they need the AOS/CWFS environment.
+- **Parquet only (no LSST stack):** `fit`, `combine_*`, `plots`, `aberration_pairs`,
+  and `processing_compare` run anywhere the tables already exist.
 
 ## Output layout
 
+Keyed by `param_set` (Butler collection × processing variant), then by `mi_name`
+(a measured-intrinsic build):
+
 ```
 output/<param_set>/
-  chunks/<dmin>_<dmax>/ {donuts,fits,visits}.parquet     # per chunk
-  {donuts,fits,visits}.parquet                           # combined (downstream input)
-  plots/                                                 # trio validation, aberration_pairs
-  wfs/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf  wfs_corner_compare.{pdf,parquet}
+  chunks/<dmin>_<dmax>/{donuts,fits,visits}.parquet   # per date chunk
+  {donuts,fits,visits}.parquet                        # combined -> downstream input
   <mi_name>/
-    build/rot_<lo>_<hi>/intrinsic_grid.parquet           # per rotator bin
-    build/rot_<lo>_<hi>/intrinsic_cov_edge.parquet       # FoV-edge 21x21 (per-donut residual)
-    intrinsic_split_{maps,decomp,rms}.parquet  intrinsic_split.pdf
-    study_radialbins.pdf                                 # MI at WFS radius vs rotator
-    zk_intrinsic.parquet                                 # per-donut sidecar (FAM)
-    wfs_mimic/ wfs_mimic_cov{84,21}.parquet  wfs_mimic_cov_bins.parquet  wfs_mimic.pdf
-    fits.parquet                                         # MI-refit DZ fits
-    lut/ {lut,lut_dz}.parquet  lut.pdf
-    wfs/<cwfs>/ zk_intrinsic.parquet  wfs_dof_compare_offsets.pdf   # corner-WFS track
-    bounce_kj_stats.parquet
-    plots/ {dz_correlations,dz_correlations_optcorr,thermal_correlations,bounce_*}.pdf
+    build/rot_<lo>_<hi>/intrinsic_grid.parquet
+    intrinsic_split_{maps,decomp,rms}.parquet
+    fits.parquet                                      # MI-refit DZ
+    lut/, wfs/<cwfs>/, wfs_mimic/
+    plots/                                            # flat; being split per study
 ```
+
+Outputs are **gitignored** and symlinked to
+`/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/` on the USDF RSP.
+`calibration/` holds frozen, version-controlled calibration products — see
+[`calibration/README.md`](calibration/README.md).
 
 ## Notebooks
 
-### AOS control
+Each notebook belongs to a study; the mapping (all 13, including untracked scratch) is
+in [`docs/studies.md`](docs/studies.md#notebook--study).
 
-Closed-loop AOS performance, separate from the FAM wavefront pipeline.
-Moved to the `nightlyiq/` topic directory: `nightly_tablemaker.ipynb`,
+**AOS control** notebooks — closed-loop performance, separate from the FAM wavefront
+work — moved to the `nightlyiq/` topic: `nightly_tablemaker.ipynb`,
 `aos_nightly_plots.ipynb`, `aos_openloop.ipynb`.
 
-### Active analyses (not in the pipeline)
-
-| Notebook | Description | Created | Last Modified |
-|----------|-------------|---------|---------------|
-| `smatrix_vmode_info.ipynb` | Comprehensive analysis of the AOS sensitivity matrix: SVD (`StateEstimator` + custom-SVD validation), v-mode composition, wavefront signatures, control equations, noise/gain, plus a normalization-scheme deep-dive (unit-invariance) and double-Zernike field patterns & physical impact. Consolidates the former `normalization_study` and `smatrix_doublez`. Shared primitives in `code/ofc_svd.py`. | 2026-03-08 | 2026-06-11 |
-| `study_compare_donuts.ipynb` | Compare per-donut wavefront Zernikes between two processing runs (param_set A vs B — code version, binning, or algorithm). Per-CCD positional donut matching, then coverage maps, per-visit large-\|Δ\|, density (hist or hexbin) over the full focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS), and an optional per-visit double-Zernike-fit comparison. Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and `donutalgo_comparison`. Shared code in `code/compare_donuts.py`. **TODO: port to a pipeline script.** | 2026-06-11 | 2026-06-11 |
-| `wfs_mimic_covariance.ipynb` | Thin reader for the `wfs_mimic` step's covariance products: loads `wfs_mimic_cov{84,21}.parquet` + `_cov_bins.parquet`, plots the 84×84 / 21×21 covariance & correlation heatmaps, the per-Zernike between-corner correlation, and the per rotator-subset rank/n_images summary. | 2026-06-24 | 2026-06-24 |\n| `wfs_corner_compare_correlations.ipynb` | Reader for the `wfs_corner_compare` step's tidy `wfs/<cwfs>/wfs_corner_compare.parquet` (one row per triplet×corner×Noll j: `fam_interp`, `cwfs_median` + sidecar rotator/elevation/mjd/program). FAM-vs-CWFS scatter per corner for chosen Zj (Pearson r + OLS, coloured by a sidecar var), time history, and per-Zj r/slope summary across the 4 corners. | 2026-07-07 | 2026-07-07 |
-
-### Superseded by pipeline steps (removed)
-
-The interactive notebooks that were fully superseded by pipeline steps have been
-removed (recoverable from git history); the pipeline step is the reference now:
-`intrinsics_fit` → `fit` (`run_dz_fit.py`); `build_measured_intrinsic` →
-`build_intrinsic`; `intrinsic_camera_telescope_split` → `intrinsic_split`;
-`study_aberrationpairs` → `aberration_pairs`; `study_doublezernike` →
-`dz_correlations` (+ LUT sections → `build_lut`); `intrinsics_thermal_correlations`
-→ `thermal_correlations`; `study_bounce` → `bounce`; `intrinsics_mktable`/
-`intrinsics_plots` → `mktable`/`plots`; `study_wfs_mimic` → `wfs_mimic` +
-`wfs_dof_compare`.  The one-off `intrinsics_checkZ4` / `intrinsic_Zj` Z4/height
-validation notebooks were also removed.
-
-## Standalone & utility scripts
-
-Not wired into the Snakemake DAG; run directly on the RSP.
-
-| Script | Purpose |
-|--------|---------|
-| `code/determine_wfs_field_frame.py` | One-off determination: how per-detector `zernikes` field angles map to the aggregate `thx/thy_{OCS,CCS,NW}` (frame, rotation, units, paired-position rule). Fixes the `ai_donut` reader's field→OCS transform without guessing. Run on a collection carrying both `zernikes` and `aggregateAOSVisitTableRaw`. |
-| `code/plot_vmode_dof_matrix.py` | Render the OFC SVD **V** matrix (DoF composition of each v-mode) + singular-value spectrum for a scheme (default 22-DoF/12-v-mode) → `output/<ps>/vmode_dof_matrix_<scheme>.pdf`. |
-| `code/run_wfs_fam_compare.py` | Per-image FAM ↔ in-focus corner-WFS wavefront vs azimuth, with an optional per-corner donut-fit gallery (data/model/residual, RubinTV style). Foundational visual consistency check; predates `wfs_corner_compare`. Reads the flat `wfs/donuts.parquet` (pre-multi-collection). |
-| `code/run_wfs_refit_ensemble.py`, `code/run_wfs_fam_refit_compare.py` | Danish-1.2 corner-WFS refit-ensemble tuning (sweep `systematicLossAlpha`, score vs FAM + v-mode scatter). **Parked** pending 1.2 FAM reprocessing. |
-| `code/run_psf_fp_maps.py` (+ `.sbatch`) | GalSim/HSM focal-plane PSF maps (FWHM/e1/e2/coma/trefoil) from wavefronts, for MIW / FAM / mimic / closed-loop cases. |
-
-## Data dependencies
-
-- **Pipeline Phase 1** (`mktable`): EFD/ConsDB + Butler — RSP only. `fit`/`combine`/`plots`/`aberration_pairs` run anywhere the parquet outputs exist.
-- **Pipeline Phase 2 + analyses**: `lsst.ts.ofc` + `lsst.ts.wep`, `$TS_CONFIG_MTTCS_DIR`, batoid height maps — RSP only. `bounce` with `add_dof_trim` additionally queries EFD/ConsDB live.
-- **Corner-WFS track**: `wfs_mktable` needs the Butler (corner-WFS collections) — RSP only; `wfs_dof_compare` also needs `lsst.ts.ofc`/`lsst.ts.wep` (OFC SVD + `convertZernikesToPsfWidth`). Downstream steps run wherever the `wfs/<cwfs>/` parquets + FAM `fits.parquet`/sidecar exist.
-- **smatrix_vmode_info**: `lsst.ts.ofc` + `lsst.ts.wep` and `$TS_CONFIG_MTTCS_DIR` OFC config (run on RSP)
-- **study_compare_donuts**: two runs' `output/<param_set>/{donuts,visits}.parquet` (and `fits.parquet` for the optional DZ-fit comparison); numpy/scipy/pyarrow only (no LSST stack)
+**Superseded and removed.** Notebooks fully replaced by pipeline steps were deleted
+(recoverable from git history); the pipeline step is the reference now:
+`intrinsics_fit` → `fit`; `build_measured_intrinsic` → `build_intrinsic`;
+`intrinsic_camera_telescope_split` → `intrinsic_split`; `study_aberrationpairs` →
+`aberration_pairs`; `study_doublezernike` → `dz_correlations` (+ LUT sections →
+`build_lut`); `intrinsics_thermal_correlations` → `thermal_correlations`;
+`study_bounce` → `bounce`; `intrinsics_mktable`/`intrinsics_plots` →
+`mktable`/`plots`; `study_wfs_mimic` → `wfs_mimic` + `wfs_dof_compare`. The one-off
+`intrinsics_checkZ4` / `intrinsic_Zj` Z4-height validation notebooks were also removed.
 
 ## Other docs
 
@@ -406,13 +111,14 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/studies.md`](docs/studies.md) | **inventory of the 11 analysis studies** — code, inputs, outputs, and state per study; the map for this topic |
-| [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level — the reference for the equations |
-| [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess; what `batoid_rubin`'s gravity model does and does not include |
-| [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic, `zernikeGQ` vs `zernikeTA`, and what the `aggregateAOSVisitTableRaw` `zk_*` columns mean |
-| [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions used throughout, vs GalSim and `ts_ofc` |
+| [`docs/studies.md`](docs/studies.md) | **inventory of the 11 analysis studies** — the map for this topic |
+| [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
+| [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
+| [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |
+| [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic; what the `zk_*` columns mean |
+| [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions, vs GalSim and `ts_ofc` |
 | [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
-| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | review backlog for `aos/code/` — **stale line anchors**, verify before acting |
+| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | review backlog — **stale line anchors**, verify before acting |
 
 Related, in sibling topics: [`../smatrix/docs/conventions.md`](../smatrix/docs/conventions.md)
 (DZ sensitivity-matrix sign/unit conventions) and
