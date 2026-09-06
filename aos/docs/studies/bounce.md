@@ -2,9 +2,10 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** When the telescope is moved to a position and back, does the optical state
-return? A repeatable Δ between two elevations (or two rotator angles) is hysteresis or
-gravity-driven flexure, not noise.
+Analysis of elevation and rotator bounce test data, for Look-Up-Table (LUT)
+development. A bounce test moves the telescope to a position and back; a repeatable
+difference between the two visits measures hysteresis or gravity-driven flexure rather
+than noise.
 
 Two BLOCKs supply the data: **BLOCK-T720** (elevation 40↔70 deg) and **BLOCK-T724**
 (rotator 0↔60 deg). The analysis is a *paired* Δ — time-ordered comp−ref pairs **within a
@@ -30,7 +31,8 @@ matters — a bounce analysis run against a frame-fixed intrinsic would show an 
 enabled it additionally queries the EFD live for the MTAOS Trim overlay, so that mode
 needs RSP/EFD access.
 
-**Phase 7 will move the PDFs** out of the flat `<mi>/plots/` dump into `<mi>/bounce/`.
+These PDFs currently share `<mi>/plots/` with three other studies' output; splitting
+them per study is outstanding work.
 
 ## Statistics note — SEM of a median
 

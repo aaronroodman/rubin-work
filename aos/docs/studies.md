@@ -1,46 +1,37 @@
 # AOS analysis studies — inventory
 
-> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (inventory)
+> **Status:** current · **Last updated:** 2026-09-06 · **Kind:** reference (inventory)
 
-The `aos/` topic is not one project. It is **eleven separable studies** that share the
-FAM donut tables and the OFC sensitivity matrix. This file is the map: what each study
-asks, which code implements it, what it reads and writes, and where it stands.
+Inventory of the eleven studies in the `aos/` directory: the code implementing each one,
+what it reads and writes, and its current state. All eleven draw on a common base — the
+Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
+matrix — but are otherwise independent lines of work.
 
-Written during the Phase 3 reorganization (`../../notes/status/memory_cleanup_plan.md`).
-
-> **Note:** the per-study links below point at `studies/<study>.md`, which **Phase 4
-> creates** — they do not resolve yet. Everything on *this* page is complete and
-> current; the per-study pages will carry the detail (method, commands, findings).
-> The MIW pipeline's step-by-step reference moves to `miw_pipeline.md` in Phase 4 and
-> currently still lives inline in `../README.md`.
-
-## Why this exists
-
-`aos/` holds **56 Python files (18.5 K lines) and 13 notebooks**, of which only **16
-scripts are driven by the Snakefile**. Before this reorganization, 35 of the 56 scripts
-and 9 of the 13 notebooks were **not mentioned anywhere** in `README.md` — the README
-documented the MIW pipeline thoroughly and was nearly silent on the other ~11 K lines.
+Per-study detail is in `studies/<study>.md`; the Snakemake pipeline that produces the
+shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 ## The studies
 
-| study | files | lines | pipeline rules | the question it answers |
+Counts are of files and lines in `aos/code/`, and of Snakemake rules driving them. Of
+the 56 Python files, 16 are pipeline-driven and 40 are standalone.
+
+| study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`miw`](studies/miw.md) | 9 | 3207 | 4 | What is the measured intrinsic wavefront, and is the build trustworthy? |
-| [`coadd`](studies/coadd.md) | 9 | 3506 | 1 | Why does the per-block FAM coadd disagree with the MIW? |
-| [`cwfs`](studies/cwfs.md) | 9 | 2828 | 4 | Does the corner WFS recover the same optical state as FAM? |
-| [`static_optics`](studies/static_optics.md) | 8 | 1862 | 0 | Can any static optical figure (M3, lenses, gravity) explain the MIW? |
-| [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | What was the telescope's commanded/thermal state per visit? |
-| [`correlations`](studies/correlations.md) | 4 | 1472 | 4 | What does the residual DZ correlate with — itself, v-modes, or temperature? |
-| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 876 | 1 | What does the sensitivity matrix's mode structure allow us to observe? |
-| [`bounce`](studies/bounce.md) | 2 | 1394 | 2 | Do elevation/rotator bounce tests show a repeatable Δ? |
-| [`processing_compare`](studies/processing_compare.md) | 2 | 922 | 0 | Do two reductions of the same data agree? |
-| [`psf`](studies/psf.md) | 2 | 776 | 0 | What PSF does a given wavefront actually produce? |
-| [`infra`](studies/infra.md) | 1 | 126 | 0 | (support) How many usable cores does this node have? |
+| [`miw`](studies/miw.md) | 9 | 3207 | 4 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, and validation of the build |
+| [`coadd`](studies/coadd.md) | 9 | 3506 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
+| [`cwfs`](studies/cwfs.md) | 9 | 2828 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
+| [`static_optics`](studies/static_optics.md) | 8 | 1862 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
+| [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | Per-visit telescope state from the EFD and ConsDB: commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
+| [`correlations`](studies/correlations.md) | 4 | 1472 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
+| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 876 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
+| [`bounce`](studies/bounce.md) | 2 | 1394 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
+| [`processing_compare`](studies/processing_compare.md) | 2 | 922 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`psf`](studies/psf.md) | 2 | 776 | 0 | Focal-plane Point Spread Function (PSF) maps rendered from a wavefront — FWHM and ellipticity |
+| [`infra`](studies/infra.md) | 1 | 126 | 0 | Node CPU and memory capability, for sizing pipeline concurrency |
 
-Every one of the 56 files belongs to exactly one study — verified by set comparison,
-zero orphans, none assigned twice.
+Every file in `aos/code/` belongs to exactly one study.
 
-## Cross-cutting code — deliberately *not* in a study subdirectory
+## Cross-cutting code
 
 These stay flat at `aos/code/` because moving them breaks things:
 
@@ -88,16 +79,16 @@ output/<param_set>/
     plots/                                            # <- flat, mixes 4 studies
 ```
 
-**Known wart, to be fixed in Phase 7:** `<mi_name>/plots/` is a flat dump holding
+`<mi_name>/plots/` currently holds the output of four separate studies side by side —
 `dz_correlations*`, `vmode_correlations*`, `thermal_correlations*`, `dz_explained*`,
-`bounce_*`, and `fam_coadd_miw_maps.pdf` side by side — four studies' outputs in one
-directory. Also loose at the wrong level: `vmode_dof_matrix_*.pdf` and
-`visits_check.pdf` inside a param_set, and `output/miw_cwfs_intrinsic_check.parquet` at
-the very top.
+`bounce_*` and `fam_coadd_miw_maps.pdf`. Three products also sit at the wrong level:
+`vmode_dof_matrix_*.pdf` and `visits_check.pdf` inside a `param_set`, and
+`miw_cwfs_intrinsic_check.parquet` at the top of `output/`. Splitting these per study is
+outstanding work.
 
-## Where the physics is written down
+## Supporting documentation
 
-Do not re-derive these; link to them.
+The derivations and conventions underlying these studies:
 
 | doc | covers |
 |---|---|

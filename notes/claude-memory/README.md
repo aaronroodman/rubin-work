@@ -53,7 +53,7 @@ Copy the `*.md` files (including `MEMORY.md`) into that account's memory dir,
 
 ### Standing instructions (behavioral rules, not project facts)
 
-These eight are how-to-work rules rather than findings. All of them were promoted
+These nine are how-to-work rules rather than findings. All of them were promoted
 into the root `CLAUDE.md` "Working with Aaron" section on 2026-09-04, so they load on
 every machine and account regardless of memory; the memory files stay as the record
 of the reasoning.
@@ -68,6 +68,7 @@ of the reasoning.
 | `gitpull-script.md` | sync repos with Aaron's `gitpull` script, not raw `git pull` |
 | `ask-before-slac.md` | get an explicit OK before `ssh slacrd` / USDF work |
 | `robust-fits-aos.md` | prefer robust fits, ask which method; Huber default, Pearson + Spearman |
+| `readme-prose-style.md` | READMEs describe content with acronyms defined; no development history or meta-commentary |
 
 ### Environment and data access
 

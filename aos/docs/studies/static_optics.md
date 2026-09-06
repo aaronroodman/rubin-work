@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** Is there a single static optical figure — on M3, on the camera lenses, or
-from gravitational flexure — that reproduces the measured intrinsic wavefront?
+Tests of whether a static optical figure — a mirror surface, the camera lenses, or
+gravitational flexure of the camera — reproduces the Measured Intrinsic Wavefront (MIW).
 
 This is the "close the loophole" study. The MIW carries high-field-order astigmatism and
 coma (Z5–Z8, OCS, ~0.1 µm) that the batoid design model does not predict. Either some

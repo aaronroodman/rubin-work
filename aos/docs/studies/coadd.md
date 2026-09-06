@@ -2,7 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** Why does the per-FAM-block coadd disagree with the MIW?
+Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias
+model developed to explain their disagreement.
 
 The standard MIW build pools **all** FAM visits in a camera-rotator bin, across many
 nights. If instead you coadd Z5–Z8 maps per FAM *block* (one contiguous run), the result
@@ -10,9 +11,9 @@ does not match the pooled MIW. The live explanation is **retrieval bias**: a sma
 `B` in the Danish donut fit redistributes power among primary/secondary/tertiary radial
 orders, so what the build recovers depends on the visit mix.
 
-This is the most mathematically developed study in the topic. **The derivations are in
-[`../miw_coadd_equations.md`](../miw_coadd_equations.md)** — do not re-derive them, and
-read the retracted-claims section of the handoff before repeating any earlier conclusion.
+The derivations are in [`../miw_coadd_equations.md`](../miw_coadd_equations.md), which is
+the reference for the notation and the algebra. The handoff document lists claims from
+earlier stages of this investigation that were subsequently retracted.
 
 ## Code
 

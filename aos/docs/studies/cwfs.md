@@ -2,7 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** Does the corner WFS recover the same optical state as FAM?
+Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS)
+against the Full Array Mode (FAM) full-focal-plane measurement.
 
 FAM (all 189 science CCDs, defocused) is the "truth" here: it samples the whole focal
 plane. The corner WFS sees only four corners, in focus, and the AOS closed loop runs on

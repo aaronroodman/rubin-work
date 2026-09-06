@@ -2,8 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** What was the telescope actually doing, per visit — what did the AOS loop
-command, and what were the temperatures?
+Per-visit telescope state: the degrees of freedom (DOF) commanded by the AOS closed
+loop, hexapod and mirror look-up table values, and temperatures, retrieved from the
+Engineering Facility Database (EFD) and the Consolidated Database (ConsDB).
 
 Every other study that correlates a wavefront against *conditions* depends on this one.
 It is infrastructure, not an analysis: it fetches, caches, and normalizes per-visit state

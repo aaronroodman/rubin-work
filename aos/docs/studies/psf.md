@@ -2,12 +2,13 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** What PSF does a given wavefront actually produce across the focal plane?
+Focal-plane Point Spread Function (PSF) maps rendered from a wavefront: full width at
+half maximum (FWHM), ellipticity, and higher-order shape terms.
 
-Everything else in this topic works in wavefront (Zernike) space. This study closes the
-loop to the observable: render the PSF from the wavefront, measure it the way the survey
-measures it, and report FWHM and ellipticity maps. That is what makes a wavefront result
-interpretable as image quality.
+The other studies work in wavefront (Zernike) space. This one converts a wavefront to the
+observable quantity: the PSF is rendered, then measured with the same estimator the
+survey uses, giving FWHM and ellipticity maps that express a wavefront result as image
+quality.
 
 **Standalone** — no Snakefile rules.
 

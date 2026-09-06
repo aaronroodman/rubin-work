@@ -2,8 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** What does the OFC sensitivity matrix's mode structure actually let us
-observe and control?
+Analysis of the Optical Feedback Control (OFC) sensitivity matrix and its mode
+structure: the singular value decomposition, v-mode composition, and which degrees of
+freedom (DOF) are observable.
 
 The sensitivity matrix maps 50 degrees of freedom to a double-Zernike wavefront. Its SVD
 gives **v-modes** (DOF-space directions) and **u-modes** (wavefront-space directions).

@@ -2,10 +2,11 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** How many usable cores does this node actually have, and does threading help?
+Measurement of the CPU and memory available on a given node, used to size pipeline
+concurrency.
 
-Support tooling, not analysis. Included as its own "study" so that every file in
-`aos/code/` has exactly one home.
+Support tooling rather than analysis, listed as a study so that every file in
+`aos/code/` has one documented home.
 
 ## Code
 

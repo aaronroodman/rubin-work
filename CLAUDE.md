@@ -179,6 +179,37 @@ correlations; `nmad(residuals)` for robust scatter RMS.
 Use descriptive snake_case names: `topic_description_version.ipynb`
 Examples: `aos_wavefront_residuals_v2.ipynb`, `psf_ellipticity_focal_plane.ipynb`
 
+### Writing style for READMEs and docs
+A `README.md` opens with a **high-level description of the content**, in plain prose,
+with every acronym defined on first use. It says what the work *is* — not how the code
+got that way. Aaron's model for `aos/README.md`:
+
+> Analysis and Development for the Rubin Observatory Active Optics System (AOS). This
+> directory contains multiple studies of AOS engineering data and development of
+> calibrations and methods for AOS operation. These include the construction of the
+> Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) data, study of
+> correlations between Double Zernike (DZ), v-modes and Rubin telemetry, analysis of
+> bounce test data for Look-Up-Tables (LUT), and comparisons between FAM and Corner
+> Wavefront Sensor (CWFS) data.
+
+Follow that register throughout. Specifically:
+
+- **Describe content, not development history.** No lists of renamed or removed files,
+  no "consolidates the former X and Y", no "ported from notebook Z". That is what git
+  history is for.
+- **Define acronyms on first use** — AOS, FAM, MIW, DZ, CWFS, LUT, OFC, DOF, PSF, FWHM,
+  EFD, ConsDB. Assume a competent reader who does not know this project's shorthand.
+- **No meta-commentary about the repository or the documentation itself.** Not "this is
+  the largest topic", not "this file is the map", not "Phase 7 will fix this", not "do
+  not re-derive these".
+- **Describe a study by its content, not as a rhetorical question.** "Comparison of the
+  optical state recovered from the CWFS against the FAM measurement", not "Does the
+  corner WFS recover the same optical state as FAM?"
+- Outstanding work is stated plainly as a fact about the current state ("splitting these
+  per study is outstanding work"), not as a plan or a scolding.
+
+Status headers, units, and the file-location rules below still apply.
+
 ### Markdown docs
 Every `.md` file has exactly one home, by kind:
 

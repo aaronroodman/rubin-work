@@ -2,8 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** After the measured intrinsic is subtracted, what structure is left in the
-per-visit Double-Zernikes — internal DZ↔DZ coupling, v-mode structure, or telemetry?
+Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
+the measured intrinsic is subtracted: against each other, against OFC v-modes, and
+against telescope telemetry.
 
 All four scripts run on the **MI-refit** residual (`output/<ps>/<mi>/fits.parquet`), not
 the raw DZ. All four are pipeline rules. Knobs live in `analysis_config.yaml`, kept
@@ -25,8 +26,8 @@ intrinsic build.
 `vmode_correlations_{50_34,22_12}.pdf` + summary parquets,
 `thermal_correlations.pdf` + `_summary.parquet`, `dz_explained.{pdf,parquet}`.
 
-**Phase 7 will move these** out of the flat `<mi>/plots/` dump into
-`<mi>/correlations/`.
+These currently share `<mi>/plots/` with the bounce and coadd output; splitting them per
+study is outstanding work.
 
 ## Statistical cautions
 

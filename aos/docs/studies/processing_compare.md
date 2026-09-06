@@ -2,8 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** Given the same raw data reduced two ways — different code version, binning,
-or donut algorithm — do the wavefronts agree?
+Comparison of two reductions of the same donut data, across code versions, binnings and
+fitting algorithms. This distinguishes a genuine change in a wavefront result from a
+processing artifact.
 
 This is the regression harness for the whole topic. Every time `ts_wep`, Danish, or the
 binning changes, a result that shifted might be a real improvement or might be a
@@ -38,8 +39,8 @@ including the laptop.
 Donuts are matched **positionally per CCD**, not by row index. Two reductions of the same
 exposure do not produce the same row order or even the same donut count (detection
 differs), so any comparison that assumed row alignment would be silently wrong. The
-review backlog flags exactly this class of defect elsewhere in the topic: a count
-mismatch gets caught, an *order* mismatch does not.
+review backlog flags this class of defect elsewhere in `aos/code/`: a count mismatch is
+caught, an order mismatch is not.
 
 ## Running
 

@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
-**Question.** What is the measured intrinsic wavefront (MIW) of the telescope + camera,
-and is the build trustworthy?
+Construction and validation of the Measured Intrinsic Wavefront (MIW) — the static
+wavefront of the telescope and camera, measured on sky.
 
 The MIW is the empirical, on-sky replacement for the batoid design intrinsic: the static
 wavefront that remains after the reachable (OFC-controllable) part of the optical state
@@ -33,7 +33,7 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`; the per-rotator-bin
 grids come from the package's `build_intrinsic`. Writes `plots/trio_comparison_all.pdf`,
 `aberration_pairs.{pdf,parquet}`, `study_radialbins.pdf`, and the
-`intrinsic_split_{maps,decomp,rms}.parquet` products the rest of the topic consumes.
+`intrinsic_split_{maps,decomp,rms}.parquet` products that the other studies consume.
 
 The **canonical MIW product** for downstream use is the `_5rot` `intrinsic_split_maps`
 (OCS columns) — see `../../../notes/claude-memory/miw-products-and-m3-backprojection.md`.
