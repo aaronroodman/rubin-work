@@ -57,6 +57,10 @@ python code/static_optics/camera_gravity_maps.py --help
 Needs `batoid` + `batoid_rubin` and the MIW product (the `_5rot` `intrinsic_split_maps`,
 OCS columns). Output goes to `output/camera_gravity/` and per-script directories.
 
+## Notebooks
+
+None. All eight scripts are run directly.
+
 ## See also
 
 - [`../camera_gravity.md`](../camera_gravity.md) — the gravity model write-up

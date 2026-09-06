@@ -51,6 +51,10 @@ cd ~/notebooks/rubin-work/aos
 
 Knobs in `analysis_config.yaml` under `bounce`.
 
+## Notebooks
+
+None. Driven entirely by the `bounce` pipeline rule.
+
 ## See also
 
 - [`../miw_pipeline.md`](../miw_pipeline.md) — the `bounce` rule in context

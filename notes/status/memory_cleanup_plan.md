@@ -1,6 +1,6 @@
 # Claude context cleanup + code review plan
 
-> **Status:** in progress — Phases 1–4 done; the aos study reorg is at sub-phase 7 of 8 · **Last updated:** 2026-09-06 · **Kind:** working state (plan)
+> **Status:** in progress — Phases 1–4 done; the aos study reorg is complete (8 of 8) · **Last updated:** 2026-09-06 · **Kind:** working state (plan)
 
 Plan for rationalizing the `CLAUDE.md` / memory files in this repo, and for the code
 review that follows. Written 2026-09-04. Supersedes
@@ -164,7 +164,7 @@ detailed plan is the session plan file; sub-phases and status:
 | 5 | extract shared helpers (`nmad`, `_alt_to_deg`, `dz_coeff_columns`) | **done** |
 | 6 | `aos/code/<study>/` subdirectories | **done** |
 | 7 | `output/<ps>/<mi>/<study>/` layout | **done** |
-| 8 | notebooks → studies | next |
+| 8 | notebooks → studies | **done** |
 
 The original Phase-5 bullets are all still in scope and land in sub-phases 5–7:
 factor shared helpers into `common/`, resolve the duplicated angle-unit heuristic

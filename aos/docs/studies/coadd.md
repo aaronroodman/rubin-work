@@ -62,6 +62,10 @@ python code/coadd/analyze_dz_goodness_of_fit.py --help
 Batch form for the block coadd is `run_coadd_blocks_miw.sbatch` — **MUST-ASK**, hand over
 the submit plus `tail -f` pair rather than submitting.
 
+## Notebooks
+
+None. This study is entirely scripted.
+
 ## See also
 
 - [`../miw_coadd_equations.md`](../miw_coadd_equations.md) — **the** reference for the equations

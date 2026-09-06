@@ -53,6 +53,10 @@ FWHM in arcsec; ellipticity is **dimensionless** but state the convention (e1/e2
 |e|, and which frame). When quoting a fraction of a residual, say **power or amplitude**
 explicitly — they differ by a square.
 
+## Notebooks
+
+None. Driven by `run_psf_fp_maps.py`.
+
 ## See also
 
 - [`cwfs.md`](cwfs.md) — `wfs_dof_compare` uses `psf_render` for its AOS-FWHM pages

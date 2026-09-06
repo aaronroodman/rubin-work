@@ -56,6 +56,10 @@ cd ~/notebooks/rubin-work/aos
 `run_vmode_correlations.py` and `run_dz_explained.py` build the OFC SVD, so they need
 `lsst.ts.ofc` — RSP only.
 
+## Notebooks
+
+None. All four analyses are Snakemake rules.
+
 ## See also
 
 - [`smatrix_vmode.md`](smatrix_vmode.md) — where the v-modes come from

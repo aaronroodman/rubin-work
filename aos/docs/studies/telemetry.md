@@ -57,6 +57,10 @@ python code/run_backfill_camera_telemetry.py --help
 Needs ConsDB/EFD access — RSP or slaciana. `$TS_CONFIG_MTTCS_DIR` is preferred for OFC
 config where the stack sets it; the hardcoded `/sdf/group/rubin/...` path is the fallback.
 
+## Notebooks
+
+None. These are libraries and backfill scripts.
+
 ## See also
 
 - [`correlations.md`](correlations.md) — the main consumer

@@ -62,6 +62,11 @@ re-triggered by code edits.
   [`static_optics`](static_optics.md) study; the write-up is
   [`../../../smatrix/docs/miw_astig_coma_investigation.md`](../../../smatrix/docs/miw_astig_coma_investigation.md).
 
+## Notebooks
+
+`aos_miw_ocs_ccs_maps.ipynb` reads the MIW OCS/CCS split maps — a viewer for
+`<mi>/intrinsic_split_maps.parquet`, no repo-module imports.
+
 ## See also
 
 - [`../miw_pipeline.md`](../miw_pipeline.md) — every rule, config file, output path

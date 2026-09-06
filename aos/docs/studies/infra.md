@@ -33,6 +33,10 @@ cd ~/notebooks/rubin-work/aos
 python code/infra/check_threads.py
 ```
 
+## Notebooks
+
+None.
+
 ## See also
 
 - [`../miw_pipeline.md`](../miw_pipeline.md#running) — the `run_snake.sh` resource settings
