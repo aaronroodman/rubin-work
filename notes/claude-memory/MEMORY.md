@@ -2,6 +2,7 @@
 
 - [Work autonomy & guardrails](work-autonomy-and-guardrails.md) — act without asking on well-scoped work; MUST ask before deleting files or submitting batch jobs
 - [S3DF batch job rules](s3df-batch-job-rules.md) — Slurm via run_snake.sh --mode batch; submit from slacrd not the RSP pod; never submit without Aaron's approval
+- [Docstring standard (Rubin DM)](docstring-standard-dm.md) — numpydoc with backticked types; units + frame on every physical quantity; upgrade files as you touch them
 - [README prose style](readme-prose-style.md) — content summary with acronyms defined; no development history or meta-commentary in READMEs/docs
 - [Reporting units standard](reporting-units-standard.md) — every number I cite needs its quantity name + units (or "dimensionless" with the ratio spelled out); no bare numbers
 - [Full commands, no ellipsis](full-commands-no-ellipsis.md) — always give complete copy-paste-ready commands

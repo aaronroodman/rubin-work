@@ -14,7 +14,7 @@ laptop:
 | `~/.claude/projects/-Users-roodman-Astrophysics-Claude/memory/` | OptAtmo, smatrix, filters, DESC, environment + standing instructions |
 | S3DF, added 2026-09-04 (see below) | autonomy guardrails, batch-job rules, robust fits |
 
-`MEMORY.md` is the merged index (37 entries) — the file Claude loads at session start,
+`MEMORY.md` is the merged index (39 entries) — the file Claude loads at session start,
 one line per memory. Every line resolves to a file in this directory.
 
 ### The S3DF additions (2026-09-04)
@@ -40,7 +40,7 @@ Useful for continuity and for auditing how a conclusion was reached; not intende
 a primary reference.
 
 **For handing the MIW work to another person or another assistant, use
-[`../../aos/MIW_INVESTIGATION_HANDOFF.md`](../../aos/MIW_INVESTIGATION_HANDOFF.md)
+[`../../aos/docs/status/miw_investigation_handoff.md`](../../aos/docs/status/miw_investigation_handoff.md)
 instead.** That document covers the same ground written for an outside reader, with
 full context, units on every quantity, and an explicit list of retracted claims.
 
@@ -53,7 +53,7 @@ Copy the `*.md` files (including `MEMORY.md`) into that account's memory dir,
 
 ### Standing instructions (behavioral rules, not project facts)
 
-These nine are how-to-work rules rather than findings. All of them were promoted
+These ten are how-to-work rules rather than findings. All of them were promoted
 into the root `CLAUDE.md` "Working with Aaron" section on 2026-09-04, so they load on
 every machine and account regardless of memory; the memory files stay as the record
 of the reasoning.
@@ -69,6 +69,7 @@ of the reasoning.
 | `ask-before-slac.md` | get an explicit OK before `ssh slacrd` / USDF work |
 | `robust-fits-aos.md` | prefer robust fits, ask which method; Huber default, Pearson + Spearman |
 | `readme-prose-style.md` | READMEs describe content with acronyms defined; no development history or meta-commentary |
+| `docstring-standard-dm.md` | Rubin DM numpydoc docstrings; types in backticks, units and frame stated |
 
 ### Environment and data access
 

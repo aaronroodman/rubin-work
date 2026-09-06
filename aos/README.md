@@ -100,7 +100,8 @@ status + last-updated line under its title.
 | [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic; what the `zk_*` columns mean |
 | [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions, vs GalSim and `ts_ofc` |
 | [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
-| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | review backlog — **stale line anchors**, verify before acting |
+| [`docs/status/code_review_backlog.md`](docs/status/code_review_backlog.md) | open review items: non-equivalent duplicate helpers, confirmed live defects, `common/` candidates |
+| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | the earlier full review — **stale line anchors**, verify before acting |
 | [`CLAUDE.md`](CLAUDE.md) | conventions and known pitfalls for this directory: frames, units, and which code lives in the external `ts_intrinsic_wavefront` package |
 
 Related, in sibling topics: [`../smatrix/docs/conventions.md`](../smatrix/docs/conventions.md)

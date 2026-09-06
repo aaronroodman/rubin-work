@@ -14,15 +14,15 @@ def dz_coeff_columns(df, prefix):
 
     Parameters
     ----------
-    df : pandas.DataFrame
+    df : `pandas.DataFrame`
         A DZ fit table.
-    prefix : str
+    prefix : `str`
         Coefficient-family prefix, e.g. ``'dz'`` or ``'dz_resid'``. Regex-escaped, so
         it is treated literally.
 
     Returns
     -------
-    list of str
+    columns : `list` [`str`]
         Matching column names, in the order they appear in `df.columns`. Empty if none
         match — callers that require coefficients should check for that themselves.
     """

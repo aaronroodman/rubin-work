@@ -89,7 +89,7 @@ def repo_root(start=None):
 
     Parameters
     ----------
-    start : str, pathlib.Path, or None
+    start : `str`, `pathlib.Path`, or `None`, optional
         Where to start walking up. Pass ``__file__`` from a script to get a
         location-independent answer. A directory works too. If None, falls back to
         the current working directory — the only option in a **notebook**, which has
@@ -97,12 +97,12 @@ def repo_root(start=None):
 
     Returns
     -------
-    pathlib.Path
+    root : `pathlib.Path`
         The repo root (the directory containing both ``CLAUDE.md`` and ``common/``).
 
     Raises
     ------
-    FileNotFoundError
+    `FileNotFoundError`
         If no ancestor of `start` looks like the repo root.
 
     Notes
@@ -152,15 +152,15 @@ def nmad(x, min_n=3):
 
     Parameters
     ----------
-    x : array_like
+    x : `array_like`
         Values in any single unit; the result carries that same unit.
-    min_n : int
-        Return NaN if fewer than this many finite values remain (default 3).
+    min_n : `int`, optional
+        Return NaN if fewer than this many finite values remain.
 
     Returns
     -------
-    float
-        Robust scatter in the units of `x`, or NaN if under-determined.
+    sigma : `float`
+        Robust scatter, in the units of `x`, or NaN if under-determined.
     """
     x = np.asarray(x, float)
     x = x[np.isfinite(x)]
@@ -179,13 +179,13 @@ def alt_to_deg(alt):
 
     Parameters
     ----------
-    alt : array_like
-        Altitude/elevation in radians or degrees.
+    alt : `array_like`
+        Altitude/elevation, in radians or degrees.
 
     Returns
     -------
-    numpy.ndarray
-        Altitude in degrees.
+    alt_deg : `numpy.ndarray`
+        Altitude, in degrees.
 
     Notes
     -----
