@@ -7,7 +7,7 @@ the full temperature suite (cam/m2/m1m3 air temps, gradients, deltas, truss
 temps), so the correlations are between the MI-subtracted residual state and the
 thermal state.
 
-Pages written to  output/<ps>/<mi>/plots/thermal_correlations.pdf :
+Pages written to  output/<ps>/<mi>/correlations/thermal_correlations.pdf :
   1. DZ(k,j) x thermal-variable Pearson-r heatmap (crisp, no smoothing).
   2. Per thermal variable: all DZ(k,j) scatter, k=1..6 down each column and
      7 pupil-j per page (3 pages covering the 21 j), shared x-axis.
@@ -290,7 +290,7 @@ def main():
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
-    out_dir = base / 'plots'; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = base / 'correlations'; out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[thermal_correlations] {fits_path}')
 
     df = pd.read_parquet(fits_path)

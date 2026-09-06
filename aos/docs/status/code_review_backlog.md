@@ -123,3 +123,38 @@ package-internal dependency that can break on any `ts_ofc` update. Worth asking 
   needs live EFD access. Each behaviour decision above (the quality cut, the MIW reader,
   the parquet combiner) is a natural place for the first real tests, since each is a pure
   function over a table.
+
+## Review the `psf` study — what is it for?
+
+Deferred from the Phase 7 output reorganization (2026-09-06). Aaron's note: *"I now
+don't even remember what this study did."* Its output was moved to `<ps>/psf/` as a
+holding location, not a considered placement.
+
+What is there: `code/psf/run_psf_fp_maps.py` (634 lines) plus the shared
+`code/psf_render.py`, and 14 PDFs in
+`output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/psf/`, one per case:
+
+| case | what it renders |
+|---|---|
+| `miw_i` | PSF from the MIW wavefront |
+| `fam50_i`, `fam22_i` | PSF from the FAM-recovered state, 50-DOF and 22-DOF schemes |
+| `mimic50_i`, `mimic22_i` | PSF from the WFS-mimic corner recovery |
+| `loop{22,50}_i_{miw,tabulated}_{ordered,random}_nplustwo_g0.3` | 8 closed-loop simulations: gain 0.3, N+2 latency, MIW vs tabulated intrinsic, ordered vs random visit order |
+| `validate_i` | validation of the FWHM formula against rendered PSFs |
+
+Questions to settle:
+
+- **Is the closed-loop simulation still wanted?** 8 of the 14 outputs are loop cases.
+  That is a control-simulation study, arguably distinct from "render a PSF from a
+  wavefront", and might deserve its own study name (`aosloop`?) or retirement.
+- **Where should output live?** It is at `<ps>/psf/` now. The script reads **two**
+  different `<mi>` builds in one run — `--split-mi` (default `pathA_50_34_i_5rot`,
+  supplying `intrinsic_split_maps.parquet`) and `--fam-mi` (default `pathA_50_34_i`,
+  supplying `zk_intrinsic.parquet`) — and several cases use no MIW at all, so it does
+  not belong under a single `<mi>`. If the loop cases are split out, the remainder may
+  be simple enough to key properly.
+- **Is `psf_render.py` a `common/` candidate?** It is GalSim `OpticalPSF` + Kolmogorov
+  + HSM with nothing AOS-specific, already used by `psf` and `cwfs`, and `optatmo/` and
+  `guider/` do similar moment work. Decision deferred at Aaron's request.
+- **One live bug**: the NaN-truthy colour-scale guard at
+  `code/psf/run_psf_fp_maps.py:141` (see above).

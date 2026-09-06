@@ -21,33 +21,35 @@ mktable:
 
 param_sets:
 
-  fam_danish_v1_triplets_bin_2x:
-    coord_sys: OCS
-    chunks:
-      - [20260315, 20260327]
-      - [20260331, 20260409]
-      - [20260418, 20260430]
+  # ---- Superseded 2026-09-06: outputs moved to output/archive/.
+  # Re-enable a block to rebuild that param_set (mktable is expensive).
+  # fam_danish_v1_triplets_bin_2x:
+  #   coord_sys: OCS
+  #   chunks:
+  #     - [20260315, 20260327]
+  #     - [20260331, 20260409]
+  #     - [20260418, 20260430]
 
-  fam_danish_v1_triplets_bin_1x:
-    coord_sys: OCS
-    chunks:
-      - [20260315, 20260327]
-      - [20260331, 20260409]
-      - [20260418, 20260430]
+  # fam_danish_v1_triplets_bin_1x:
+  #   coord_sys: OCS
+  #   chunks:
+  #     - [20260315, 20260327]
+  #     - [20260331, 20260409]
+  #     - [20260418, 20260430]
 
-  fam_danish_1_0_wep17_3_0_bin2x:
-    coord_sys: OCS
-    chunks:
-      - [20260315, 20260327]
-      - [20260331, 20260409]
-      - [20260418, 20260531]
+  # fam_danish_1_0_wep17_3_0_bin2x:
+  #   coord_sys: OCS
+  #   chunks:
+  #     - [20260315, 20260327]
+  #     - [20260331, 20260409]
+  #     - [20260418, 20260531]
 
-  fam_danish_1_1_1_wep17_3_0_bin2x:
-    coord_sys: OCS
-    chunks:
-      - [20260315, 20260327]
-      - [20260331, 20260409]
-      - [20260418, 20260531]
+  # fam_danish_1_1_1_wep17_3_0_bin2x:
+  #   coord_sys: OCS
+  #   chunks:
+  #     - [20260315, 20260327]
+  #     - [20260331, 20260409]
+  #     - [20260418, 20260531]
 
   fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
     coord_sys: OCS

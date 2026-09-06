@@ -111,7 +111,7 @@ def main():
         if not visits.exists():
             print(f'{ps}: SKIP — no visits.parquet at {visits}')
             continue
-        plot_param_set(ps, visits, Path(args.output_root) / ps / 'plots',
+        plot_param_set(ps, visits, Path(args.output_root) / ps / 'miw',
                        elev_bin=args.elev_bin, rot_bin=args.rot_bin)
 
 

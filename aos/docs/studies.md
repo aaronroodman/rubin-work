@@ -73,26 +73,46 @@ topics reach them via a hardcoded `sys.path.insert(.../aos/code)`. See the root
 
 ## Output layout
 
-Outputs are keyed by `param_set` (a Butler collection × processing variant) and then by
-`mi_name` (a measured-intrinsic build):
+Outputs are keyed by `param_set` — a Butler collection paired with a processing variant
+— and then, where the product depends on which Measured Intrinsic Wavefront build was
+used, by `mi_name`. Within each level the products are grouped by study, so a study's
+output is found by name rather than by searching a shared `plots/` directory.
 
 ```
-output/<param_set>/
-  chunks/<dmin>_<dmax>/{donuts,fits,visits}.parquet   # per date chunk
-  {donuts,fits,visits}.parquet                        # combined -> all downstream input
-  <mi_name>/
-    build/rot_<lo>_<hi>/intrinsic_grid.parquet
-    intrinsic_split_{maps,decomp,rms}.parquet
-    fits.parquet                                      # MI-refit DZ
-    plots/                                            # <- flat, mixes 4 studies
+output/
+  <param_set>/
+    {donuts,fits,visits}.parquet          # combined tables, input to everything
+    chunks/<dmin>_<dmax>/                 # per-chunk tables
+    miw/                                  # build validation: trio comparison, aberration pairs
+    psf/                                  # focal-plane PSF maps
+    smatrix_vmode/                        # v-mode / DOF matrix diagnostics
+    processing_compare/                   # cross-param_set comparison
+    wfs/<cwfs_variant>/                   # corner-WFS ingest and corner comparison
+    coadd_50_34/, coadd_50_34_v2/         # per-block coadd vs MIW
+    <mi_name>/
+      intrinsic_split_{maps,decomp,rms}.parquet, intrinsic_split.pdf
+      study_radialbins.pdf, zk_intrinsic.parquet
+      fits.parquet                        # DZ refit against the MIW
+      correlations/                       # DZ, v-mode and thermal correlations
+      bounce/                             # bounce-test Δ, PDFs and parquets together
+      lut/                                # DOF look-up table
+      wfs/<cwfs_variant>/, wfs_mimic/     # MIW-subtracted corner-WFS products
+      plots/                              # coadd-vs-MIW maps
+  archive/                                # superseded param_sets
+  camera_gravity/                         # static_optics; no param_set dependence
+  danish_tarts_compare_<day_obs>/         # dated processing comparison
 ```
 
-`<mi_name>/plots/` currently holds the output of four separate studies side by side —
-`dz_correlations*`, `vmode_correlations*`, `thermal_correlations*`, `dz_explained*`,
-`bounce_*` and `fam_coadd_miw_maps.pdf`. Three products also sit at the wrong level:
-`vmode_dof_matrix_*.pdf` and `visits_check.pdf` inside a `param_set`, and
-`miw_cwfs_intrinsic_check.parquet` at the top of `output/`. Splitting these per study is
-outstanding work.
+Which level a study writes to follows one rule: **if the product changes when a
+different MIW build is chosen, it lives under `<mi_name>/`; otherwise under
+`<param_set>/`.** So `correlations` and `bounce` are under `<mi_name>/` because they run
+on the MIW-subtracted fits, while `smatrix_vmode`'s matrix diagnostics are under
+`<param_set>/` because they are a property of the sensitivity matrix alone.
+
+`psf/` sits at the `<param_set>` level as a holding location: a single run reads two
+different MIW builds (`--split-mi` and `--fam-mi`) and several of its cases use no MIW
+at all, so it has no single `<mi_name>`. See
+[`status/code_review_backlog.md`](status/code_review_backlog.md).
 
 ## Supporting documentation
 

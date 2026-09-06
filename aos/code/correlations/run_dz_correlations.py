@@ -24,7 +24,7 @@ The raw PDF also carries the SVD-space companions to the DZ-DZ heatmap: the
 DOF x DOF and v-mode x v-mode correlation matrices (across visits) plus the
 top-|r| v-mode-pair scatters, from the same n_dof/n_keep OFC SVD (RSP-only).
 
-Writes, under  output/<ps>/<mi>/plots/ :
+Writes, under  output/<ps>/<mi>/correlations/ :
     dz_correlations.pdf                  raw: DZ Pearson heatmap + DOF/v-mode
                                          correlation matrices + top-|r| scatters
                                          + astig pairs + conjugate-orbit grids
@@ -346,7 +346,7 @@ def main():
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
-    out_dir = base / 'plots'; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = base / 'correlations'; out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[dz_correlations] {fits_path}')
 
     _fits = pd.read_parquet(fits_path)

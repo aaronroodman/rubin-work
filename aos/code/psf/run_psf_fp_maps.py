@@ -582,7 +582,7 @@ def main():
     for case in cases:
         suffix = (f'_{args.intrinsic}_{args.order}_{args.latency}_g{args.gain:g}'
                   if case.startswith('loop') else '')
-        out = base / 'plots' / f'psf_fp_maps_{case}_{args.band}{suffix}.pdf'
+        out = base / 'psf' / f'psf_fp_maps_{case}_{args.band}{suffix}.pdf'
         out.parent.mkdir(parents=True, exist_ok=True)
         with PdfPages(str(out)) as pdf:
             if case == 'validate':

@@ -330,7 +330,7 @@ def main():
     for b in (baseA, baseB):
         if not b.exists():
             raise SystemExit(f'missing output dir: {b}')
-    out = root / args.ps_b / 'plots' / f'compare_vs_{args.ps_a}.pdf'
+    out = root / args.ps_b / 'processing_compare' / f'compare_vs_{args.ps_a}.pdf'
     out.parent.mkdir(parents=True, exist_ok=True)
     import matplotlib
     matplotlib.use('Agg')

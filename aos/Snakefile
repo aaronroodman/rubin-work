@@ -171,9 +171,9 @@ rule all:
         expand("output/{ps}/donuts.parquet",              ps=PSETS),
         expand("output/{ps}/fits.parquet",                ps=PSETS),
         expand("output/{ps}/visits.parquet",              ps=PSETS),
-        expand("output/{ps}/plots/trio_comparison_all.pdf", ps=PSETS),
+        expand("output/{ps}/miw/trio_comparison_all.pdf", ps=PSETS),
         # per-donut aberration-pair (primary->secondary) analysis
-        expand("output/{ps}/plots/aberration_pairs.pdf", ps=PSETS),
+        expand("output/{ps}/miw/aberration_pairs.pdf", ps=PSETS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
         # in-focus corner-WFS ingestion (per ps, cwfs variant)
@@ -189,12 +189,12 @@ rule all:
         # averaged-DOF LUT per (param_set, mi_name)
         [f"output/{ps}/{mi}/lut/lut.parquet" for ps, mi in MI_PAIRS],
         # MI-refit analyses: DZ-DZ + DZ-temperature correlations, bounce tests
-        [f"output/{ps}/{mi}/plots/dz_correlations.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/plots/dz_correlations_optcorr.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/plots/thermal_correlations.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/plots/vmode_correlations_50_34.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/plots/vmode_correlations_22_12.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/plots/dz_explained.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/correlations/dz_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/correlations/dz_correlations_optcorr.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/correlations/thermal_correlations.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/correlations/vmode_correlations_50_34.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/correlations/vmode_correlations_22_12.pdf" for ps, mi in MI_PAIRS],
+        [f"output/{ps}/{mi}/correlations/dz_explained.pdf" for ps, mi in MI_PAIRS],
         [f"output/{ps}/{mi}/bounce_kj_stats.parquet" for ps, mi in MI_PAIRS],
 
 # ---- per chunk: mktable (Butler) -> donuts + visits ----
@@ -281,7 +281,7 @@ rule plots:
         donuts = "output/{ps}/donuts.parquet",
         fits   = "output/{ps}/fits.parquet",
         script = "code/miw/run_dz_plots.py",
-    output: "output/{ps}/plots/trio_comparison_all.pdf"
+    output: "output/{ps}/miw/trio_comparison_all.pdf"
     params: coord = lambda w: coord(w.ps)
     # run_dz_plots loads the full combined donut table; astropy materializes the
     # zk_* list columns as Python objects, so a single job can use ~10 GiB for a
@@ -301,7 +301,7 @@ rule aberration_pairs:
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
         script = "code/miw/run_aberration_pairs.py",
-    output: "output/{ps}/plots/aberration_pairs.pdf"
+    output: "output/{ps}/miw/aberration_pairs.pdf"
     params:
         coord = lambda w: coord(w.ps),
         acfg  = lambda w: an_json("aberration_pairs", w.ps),   # rerun-trigger only
@@ -521,10 +521,10 @@ rule dz_correlations:
         lib    = "code/dz_plotting.py",
         ofc    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf    = "output/{ps}/{mi}/plots/dz_correlations.pdf",
-        pairs  = "output/{ps}/{mi}/plots/dz_correlations_pairs.parquet",
-        opdf   = "output/{ps}/{mi}/plots/dz_correlations_optcorr.pdf",
-        opairs = "output/{ps}/{mi}/plots/dz_correlations_optcorr_pairs.parquet",
+        pdf    = "output/{ps}/{mi}/correlations/dz_correlations.pdf",
+        pairs  = "output/{ps}/{mi}/correlations/dz_correlations_pairs.parquet",
+        opdf   = "output/{ps}/{mi}/correlations/dz_correlations_optcorr.pdf",
+        opairs = "output/{ps}/{mi}/correlations/dz_correlations_optcorr_pairs.parquet",
     params:                                            # rerun-trigger only
         acfg = lambda w: an_json("dz_correlations", w.ps, w.mi),
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),      # n_dof/n_keep/SVD params
@@ -542,8 +542,8 @@ rule thermal_correlations:
         script   = "code/correlations/run_thermal_correlations.py",
         lib      = f"{WF_LIB}/ofc_svd.py",               # DOF / v-mode projection
     output:
-        pdf     = "output/{ps}/{mi}/plots/thermal_correlations.pdf",
-        summary = "output/{ps}/{mi}/plots/thermal_correlations_summary.parquet",
+        pdf     = "output/{ps}/{mi}/correlations/thermal_correlations.pdf",
+        summary = "output/{ps}/{mi}/correlations/thermal_correlations_summary.parquet",
     params:
         acfg = lambda w: an_json("thermal_correlations", w.ps, w.mi),  # rerun-trigger
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),   # n_dof / n_keep / k-range
@@ -564,7 +564,7 @@ rule bounce:
         lib      = "code/bounce/bounce_lib.py",
         ofc      = f"{WF_LIB}/ofc_svd.py",
     output:
-        summary = "output/{ps}/{mi}/plots/bounce_summary.pdf",
+        summary = "output/{ps}/{mi}/bounce/bounce_summary.pdf",
         stats   = "output/{ps}/{mi}/bounce_kj_stats.parquet",
     params: acfg = lambda w: an_json("bounce", w.ps, w.mi)   # rerun-trigger only
     resources: mem_mb=4000
@@ -635,10 +635,10 @@ rule vmode_correlations:
         script = "code/correlations/run_vmode_correlations.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf_50   = "output/{ps}/{mi}/plots/vmode_correlations_50_34.pdf",
-        pdf_22   = "output/{ps}/{mi}/plots/vmode_correlations_22_12.pdf",
-        summ_50  = "output/{ps}/{mi}/plots/vmode_correlations_summary_50_34.parquet",
-        summ_22  = "output/{ps}/{mi}/plots/vmode_correlations_summary_22_12.parquet",
+        pdf_50   = "output/{ps}/{mi}/correlations/vmode_correlations_50_34.pdf",
+        pdf_22   = "output/{ps}/{mi}/correlations/vmode_correlations_22_12.pdf",
+        summ_50  = "output/{ps}/{mi}/correlations/vmode_correlations_summary_50_34.parquet",
+        summ_22  = "output/{ps}/{mi}/correlations/vmode_correlations_summary_22_12.parquet",
     params:
         acfg = lambda w: an_json("vmode_correlations", w.ps, w.mi),
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
@@ -657,8 +657,8 @@ rule dz_explained:
         script = "code/correlations/run_dz_explained.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf     = "output/{ps}/{mi}/plots/dz_explained.pdf",
-        table   = "output/{ps}/{mi}/plots/dz_explained.parquet",
+        pdf     = "output/{ps}/{mi}/correlations/dz_explained.pdf",
+        table   = "output/{ps}/{mi}/correlations/dz_explained.parquet",
     params:
         acfg = lambda w: an_json("dz_explained", w.ps, w.mi),
         cfg  = lambda w: mi_cfg_json(w.ps, w.mi),

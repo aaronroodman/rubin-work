@@ -85,7 +85,7 @@ def main():
                             config_path=(Path(args.config) if args.config else None))
 
     base = Path(args.output_root) / args.param_set / args.mi_name
-    out_dir = base / "plots"; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = base / "correlations"; out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_parquet(base / "fits.parquet").reset_index(drop=True)
     if "visit_quality_pass" in df.columns:
         df = df[df["visit_quality_pass"].astype(bool)].reset_index(drop=True)

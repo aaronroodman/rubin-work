@@ -61,18 +61,24 @@ see the root `CLAUDE.md`.
 
 ## Output layout
 
-Keyed by `param_set`, then by `mi_name` — one MIW build configuration:
+Keyed by `param_set` — a Butler collection paired with a processing variant — then by
+`mi_name` for products that depend on which MIW build was used. Within each level,
+output is grouped by study:
 
 ```
 output/<param_set>/
-  chunks/<dmin>_<dmax>/{donuts,fits,visits}.parquet   # per date chunk
-  {donuts,fits,visits}.parquet                        # combined -> downstream input
+  {donuts,fits,visits}.parquet     # combined tables, input to everything
+  chunks/<dmin>_<dmax>/            # per-chunk tables
+  miw/  psf/  smatrix_vmode/  processing_compare/  wfs/<variant>/
+  coadd_50_34/  coadd_50_34_v2/
   <mi_name>/
-    build/rot_<lo>_<hi>/intrinsic_grid.parquet
-    intrinsic_split_{maps,decomp,rms}.parquet
-    fits.parquet                                      # DZ refit against the MIW
-    lut/, wfs/<cwfs>/, wfs_mimic/, plots/
+    intrinsic_split_{maps,decomp,rms}.parquet    # the MIW itself
+    fits.parquet                                 # DZ refit against the MIW
+    correlations/  bounce/  lut/  wfs/<variant>/  wfs_mimic/
 ```
+
+A study writes under `<mi_name>/` when its result depends on which MIW build was used,
+and under `<param_set>/` otherwise. Superseded param_sets are in `output/archive/`.
 
 Outputs are gitignored, and symlinked to
 `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/` on the USDF RSP.

@@ -10,15 +10,15 @@ per-night cross-scatter; and DOF night-vs-night scatter.  All analysis/plot
 logic lives in code/bounce_lib.py (verbatim from the notebook).
 
 Writes, under  output/<ps>/<mi>/ :
-    plots/bounce_summary.pdf             Δ / significance / pass heatmaps + cross-scatter
-    plots/bounce_dz_vs_ordinal.pdf       DZ_kj vs ordinal image (per bounce)
-    plots/bounce_vmode_vs_ordinal.pdf    v-mode amplitude vs ordinal
-    plots/bounce_dof_vs_ordinal.pdf      physical DOF vs ordinal (+ Trim sum if enabled)
-    plots/bounce_dof_night_scatter.pdf   DOF night-A vs night-B 5-panel scatter
-    plots/bounce_dof_night_values.pdf    FAM DOF median per night
-    plots/bounce_5x5_camera_hexapod.pdf  5/5 Camera-hexapod-only v-mode + DOF plots
+    bounce/bounce_summary.pdf             Δ / significance / pass heatmaps + cross-scatter
+    bounce/bounce_dz_vs_ordinal.pdf       DZ_kj vs ordinal image (per bounce)
+    bounce/bounce_vmode_vs_ordinal.pdf    v-mode amplitude vs ordinal
+    bounce/bounce_dof_vs_ordinal.pdf      physical DOF vs ordinal (+ Trim sum if enabled)
+    bounce/bounce_dof_night_scatter.pdf   DOF night-A vs night-B 5-panel scatter
+    bounce/bounce_dof_night_values.pdf    FAM DOF median per night
+    bounce/bounce_5x5_camera_hexapod.pdf  5/5 Camera-hexapod-only v-mode + DOF plots
                                          (camera_hexapod_only bounces, e.g. rotator)
-    plots/bounce_fwhm_metric.pdf         differential correctable-FWHM bar (before vs
+    bounce/bounce_fwhm_metric.pdf         differential correctable-FWHM bar (before vs
                                          50/34 [vs 5/5]) per bounce
     bounce_kj_stats.parquet              long-format Δ table (combined + per night)
     bounce_fwhm_metric.parquet           correctable-FWHM metric per bounce comparison
@@ -94,7 +94,7 @@ def main():
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
-    out_dir = base / 'plots'; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = base / 'bounce'; out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[bounce] {fits_path}')
 
     import matplotlib
