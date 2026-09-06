@@ -15,8 +15,11 @@ This did not exist before -- run_dz_correlations only printed a single
 dataset-wide "removed %" for one scheme.  Needs lsst.ts.ofc (RSP).
 """
 import argparse
-import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # aos/code siblings
+from dz_columns import dz_coeff_columns  # noqa: E402
 
 import numpy as np
 import pandas as pd
@@ -33,11 +36,6 @@ from astropy.table import QTable
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 SCHEMES = {"22_12": (DOF22, 12), "50_34": (None, 34)}   # (n_dof, n_keep)
 DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0)
-
-
-def dz_coeff_columns(df, prefix):
-    pat = re.compile(rf"^{re.escape(prefix)}_z\d+_c\d+$")
-    return [c for c in df.columns if pat.match(c)]
 
 
 def quality_cut(df, prefix, maxc):

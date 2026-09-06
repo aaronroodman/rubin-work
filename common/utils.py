@@ -144,6 +144,65 @@ def add_repo_root_to_path():
     return str(repo_root())
 
 
+def nmad(x, min_n=3):
+    """Normalized median absolute deviation — a robust standard-deviation estimate.
+
+    ``1.4826 * median(|x - median(x)|)``, the 1.4826 factor making it consistent with
+    the standard deviation for Gaussian data. Non-finite values are dropped.
+
+    Parameters
+    ----------
+    x : array_like
+        Values in any single unit; the result carries that same unit.
+    min_n : int
+        Return NaN if fewer than this many finite values remain (default 3).
+
+    Returns
+    -------
+    float
+        Robust scatter in the units of `x`, or NaN if under-determined.
+    """
+    x = np.asarray(x, float)
+    x = x[np.isfinite(x)]
+    if x.size < min_n:
+        return np.nan
+    return 1.4826 * np.median(np.abs(x - np.median(x)))
+
+
+def alt_to_deg(alt):
+    """Express an altitude/elevation array in degrees, auto-detecting radian input.
+
+    Rubin telemetry delivers altitude in radians from some sources and degrees from
+    others. This applies the convention used across `rubin-work`: if the largest
+    absolute value is below 2*pi, treat the input as radians and convert; otherwise
+    assume it is already degrees.
+
+    Parameters
+    ----------
+    alt : array_like
+        Altitude/elevation in radians or degrees.
+
+    Returns
+    -------
+    numpy.ndarray
+        Altitude in degrees.
+
+    Notes
+    -----
+    The detection is a heuristic on magnitude, and it has one real failure mode: an
+    array of genuine **degrees that all happen to fall below 6.28 deg** is
+    misidentified as radians and scaled by 180/pi (so 1-5 deg becomes 57-287 deg).
+    Real Rubin altitudes are well above that, but do not reuse this for a quantity
+    whose degree values can be small — pass explicit units instead.
+
+    An all-NaN input returns all-NaN and emits numpy's "All-NaN slice" warning.
+    """
+    a = np.asarray(alt, dtype=float)
+    if np.nanmax(np.abs(a)) < 2.0 * np.pi + 1e-3:
+        return np.rad2deg(a)
+    return a
+
+
 def fixed_width_edges(lo, hi, width):
     """Bin edges of fixed `width` spanning [lo, hi], aligned to multiples of width
     (bin *edges* fall on 0, width, 2*width, ...)."""

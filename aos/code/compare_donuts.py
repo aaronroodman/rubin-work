@@ -90,11 +90,6 @@ def resolve_side(*, param_set=None, donut=None, visits=None, fits=None,
 # ----------------------------------------------------------------------
 # Visit selection / streaming
 # ----------------------------------------------------------------------
-def _alt_to_deg(alt_arr):
-    a = np.asarray(alt_arr, dtype=float)
-    if np.nanmax(np.abs(a)) < 2.0 * np.pi + 1e-3:
-        return np.rad2deg(a)
-    return a
 
 
 def select_visits(visits_table, *, rot_max_deg=3.0, program_filter=None):

@@ -40,6 +40,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+from common.utils import nmad  # noqa: E402
 
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
 FP_RADIUS = 1.75
@@ -51,11 +53,6 @@ DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 DEFAULT_OFFSETS = {4: {'R00_SW0': -0.11, 'R04_SW0': -0.11, 'R40_SW0': -0.11, 'R44_SW0': -0.19},
                    11: {c: -0.07 for c in CORNERS},
                    14: {c: +0.13 for c in CORNERS}}
-
-
-def nmad(x):
-    x = np.asarray(x, float); x = x[np.isfinite(x)]
-    return 1.4826 * np.median(np.abs(x - np.median(x))) if x.size >= 3 else np.nan
 
 
 def corner_matrix_at(svd, noll, pos_deg):

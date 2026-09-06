@@ -26,13 +26,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+import sys  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+from common.utils import nmad  # noqa: E402
 
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
-
-
-def nmad(x):
-    x = np.asarray(x, float); x = x[np.isfinite(x)]
-    return 1.4826 * np.median(np.abs(x - np.median(x))) if x.size >= 3 else np.nan
 
 
 def ang_dist(a, b):

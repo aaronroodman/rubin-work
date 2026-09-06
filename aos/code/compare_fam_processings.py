@@ -27,6 +27,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+from common.utils import nmad  # noqa: E402
 
 OLD_DEFAULT = 'fam_danish_1_0_wep17_3_0_bin2x'
 NEW_DEFAULT = 'fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x'
@@ -38,11 +40,6 @@ DOF_GROUPS = [
     ('M1M3 Bending Modes',   'µm',     list(range(10, 30))),   # B1_1..20
     ('M2 Bending Modes',     'µm',     list(range(30, 50))),   # B2_1..20
 ]
-
-
-def nmad(x):
-    x = np.asarray(x, float); x = x[np.isfinite(x)]
-    return 1.4826 * np.median(np.abs(x - np.median(x))) if x.size >= 3 else np.nan
 
 
 def _noll(base):

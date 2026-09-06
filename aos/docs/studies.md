@@ -122,3 +122,29 @@ Carried here so they are visible in one place; detail in each study doc.
   will fail on S3DF.
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
   it to a pipeline script is a standing TODO.
+
+## Shared helpers
+
+Helpers used by more than one study live in one place rather than being copied:
+
+| helper | location | used by |
+|---|---|---|
+| `nmad(x)` — normalized median absolute deviation, robust sigma | `common/utils.py` | `cwfs`, `processing_compare` |
+| `alt_to_deg(alt)` — altitude in degrees, auto-detecting radian input | `common/utils.py` | `bounce`, `cwfs` |
+| `dz_coeff_columns(df, prefix)` — DZ coefficient column names | `aos/code/dz_columns.py` | all four `correlations` scripts |
+| `repo_root(start)` — repo root for notebooks | `common/utils.py` | notebooks |
+
+`alt_to_deg` detects radians by magnitude: if the largest absolute value is below 2*pi it
+converts, otherwise it assumes degrees. That misidentifies genuine degree values that all
+fall below 6.28 deg, which real Rubin altitudes never do — the docstring says so.
+
+Two similar-looking helpers are **deliberately not shared**, because the copies are not
+equivalent:
+
+- **`quality_cut`** appears in four `correlations` scripts with two different signatures
+  (`max_coeff_um` versus `maxc`) and differing bodies.
+- **`load_miw`** appears in four scripts across `static_optics` and `coadd` with four
+  different behaviours, some taking a `stride` argument and some not.
+
+Unifying either would change results, not just structure, so each needs its own decision
+about what the single correct behaviour is.

@@ -47,6 +47,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lsst.ts.intrinsic.wavefront import mi_config as mc
+from dz_columns import dz_coeff_columns  # noqa: E402
 import dz_plotting as dzp
 
 try:
@@ -108,11 +109,6 @@ def _index_flips(kj):
 def _endpt_name(kj):
     k, j = kj
     return f'{FOCAL_NAMES.get(k, f"k{k}")} of {PUPIL_NAMES.get(j, f"Z{j}")} (k={k},j={j})'
-
-
-def dz_coeff_columns(df, prefix):
-    pat = re.compile(rf'^{re.escape(prefix)}_z\d+_c\d+$')
-    return [c for c in df.columns if pat.match(c)]
 
 
 def parse_jk(col, prefix):

@@ -28,6 +28,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+from common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 from astropy.table import QTable
 from matplotlib.colors import LinearSegmentedColormap
 
@@ -43,10 +45,6 @@ DV_CMAP = LinearSegmentedColormap.from_list(
 # ----------------------------------------------------------------------
 # comparison helpers
 # ----------------------------------------------------------------------
-def _alt_to_deg(a):
-    """Robustly express altitude in degrees (auto-detect radians)."""
-    a = np.asarray(a, dtype=float)
-    return np.rad2deg(a) if np.nanmax(np.abs(a)) < 2 * np.pi + 1e-3 else a
 
 
 def _az_medians(az, vals, azedges, min_n):

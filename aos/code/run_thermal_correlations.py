@@ -27,6 +27,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # aos/code siblings
+from dz_columns import dz_coeff_columns  # noqa: E402
+
 import numpy as np
 import pandas as pd
 
@@ -48,11 +51,6 @@ DEFAULT = dict(
     thermal_vars=list(DEFAULT_THERMAL_VARS),
     scatter_ncols=7,        # pupil-j per page (DZ) / v-modes per row
     annot_r=0.4)            # |r| above which a heatmap cell is annotated
-
-
-def dz_coeff_columns(df, prefix):
-    pat = re.compile(rf'^{re.escape(prefix)}_z\d+_c\d+$')
-    return [c for c in df.columns if pat.match(c)]
 
 
 def parse_jk(col, prefix):

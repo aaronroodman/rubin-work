@@ -72,7 +72,7 @@ Robust by default, and **ask which robust method** before implementing — see t
 | Huber `RLM(y, X, M=HuberT())` — the DZ fit itself | `dz_fitting.py` in the **external package**, not `aos/code/` |
 | Huber RLM + HuberT with OLS fallback | `code/run_wfs_corner_compare.py` |
 | drop > K·nMAD then OLS (`robust_fit`) | `code/run_wfs_dof_compare.py` |
-| `nmad(residuals)` for robust scatter RMS | throughout |
+| `nmad(residuals)` for robust scatter RMS | `common/utils.py` — shared, import it |
 
 Report both Pearson r and Spearman rho for correlations.
 

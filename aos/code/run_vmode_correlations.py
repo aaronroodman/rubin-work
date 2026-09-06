@@ -25,8 +25,11 @@ Also  vmode_correlations_summary_<tag>.parquet  (kind, mode_i, term, rho, slope,
 Needs lsst.ts.ofc (RSP).  Knobs: analysis_config.yaml `vmode_correlations`.
 """
 import argparse
-import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # aos/code siblings
+from dz_columns import dz_coeff_columns  # noqa: E402
 
 import numpy as np
 import pandas as pd
@@ -56,11 +59,6 @@ DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0,
 # 22-DOF reduced set: M2 hex(0-4) + Cam hex(5-9) + M1M3 B1-7(10-16) + M2 B1-5(30-34)
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 SCHEMES = [("50_34", None, 34), ("22_12", DOF22, 12)]   # (tag, n_dof, n_keep)
-
-
-def dz_coeff_columns(df, prefix):
-    pat = re.compile(rf"^{re.escape(prefix)}_z\d+_c\d+$")
-    return [c for c in df.columns if pat.match(c)]
 
 
 def quality_cut(df, prefix, maxc):

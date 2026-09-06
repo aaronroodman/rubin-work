@@ -7,10 +7,15 @@ DOF, with robust (MAD) errors; plus the heatmap / vs-ordinal / night-scatter
 plotters.  Driven by code/run_bounce.py.  RSP-only for the marker scheme and
 DOF recovery (lsst.ts.ofc via ofc_svd)."""
 import itertools
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+from common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 
 try:
     from lsst.ts.intrinsic.wavefront.intrinsics_lib import classify_visit, visit_marker_style
@@ -25,12 +30,6 @@ from lsst.ts.intrinsic.wavefront.common.zernike_names import (
 )
 from lsst.ts.intrinsic.wavefront.ofc_svd import (LABELS_50DOF, DOF_UNITS_50, DOF_GROUPS,
                      recover_dof_per_visit)
-def _alt_to_deg(alt_arr):
-    """Auto-detect radians vs degrees in `alt`."""
-    a = np.asarray(alt_arr, dtype=float)
-    if np.nanmax(np.abs(a)) < 2.0 * np.pi + 1e-3:
-        return np.rad2deg(a)
-    return a
 
 
 def filter_visits(fit_table, *, alt_range=None, rotator_range=None,
@@ -585,7 +584,6 @@ def plot_night_cross_scatter(deltas_by_night, passing_kj, title_root='',
         if zoom_lim_um is not None:
             figs.append(_make(A, B, xs, ys, xe, ye, labs, zoom_lim_um))
     return figs
-
 
 
 # ==================================================================

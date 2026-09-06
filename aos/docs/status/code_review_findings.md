@@ -326,3 +326,52 @@ and `smatrix/code/*.py` (12, `batoid_rubin_data` + `ts_config_mttcs`), plus
 are data-directory constants rather than import bootstrapping, so they were left alone
 in Phase 2 — but each will fail on S3DF. Worth an env-var + fallback pass
 (`$BATOID_RUBIN_DATA_DIR`, `$TS_CONFIG_MTTCS_DIR`) when those topics are next touched.
+
+---
+
+## Appendix — Phase 5 shared-helper extraction (2026-09-06)
+
+### Done
+- `nmad` was byte-identical in three files (`compare_fam_processings.py`,
+  `run_wfs_corner_compare.py`, `run_wfs_dof_compare.py`, same md5). Now
+  `common/utils.nmad`, verified equivalent on 9 cases including all-NaN, n<3, and
+  empty input.
+- `_alt_to_deg` existed three times with identical logic and differing docstrings
+  (`bounce_lib.py`, `run_wfs_fam_compare.py`, and a **dead copy in
+  `compare_donuts.py` that was never called** — removed). Now
+  `common/utils.alt_to_deg`, verified equivalent on 5 cases.
+  The docstring now records the heuristic's real failure mode: genuine degree values
+  that all fall below 6.28 deg are misidentified as radians and scaled by 180/pi.
+- `dz_coeff_columns` was duplicated in all four `correlations` scripts, identical apart
+  from quote style. Now `aos/code/dz_columns.py`. Two of those scripts no longer use
+  `re` at all, so the now-unused `import re` was dropped from each.
+- All three `ofc_svd` `importlib` hacks are gone (two fixed in Phase 2,
+  `analyze_dz_goodness_of_fit.py`'s in-function copy in the same pass). 16 files now
+  import `lsst.ts.intrinsic.wavefront.ofc_svd` normally; none loads it from a path.
+
+Verification: `--help` on all 58 `aos/code` scripts (57 pass; the one failure is the
+pre-existing stale-data `IndexError` in `analyze_miw_field_order.py`), plus
+`./run_snake.sh -n`, which planned 200 jobs with no errors and no missing inputs.
+
+### Deliberately not unified
+- **`quality_cut`** — four copies across the `correlations` scripts, with **two
+  different signatures** (`max_coeff_um` vs `maxc`) and differing bodies.
+- **`load_miw`** — four copies across `static_optics` and `coadd`, with **four
+  different behaviours**; some take a `stride` argument, some do not.
+
+Merging either changes results rather than just structure. Each needs a decision about
+what the single correct behaviour should be first.
+
+### `combine_parquets.py` diverged, and `olr/`'s copy is ahead
+`aos/code/combine_parquets.py` (148 lines) and `olr/code/combine_parquets.py` (168
+lines) are not a copy — the `olr/` version has a feature the `aos/` one lacks. It
+**drops 0-row sentinel inputs before schema unification**, because a night with no AOS
+products writes an empty marker file so the DAG completes, and that marker's minimal
+schema would otherwise shrink the common-column intersection to nothing. It also
+handles the all-inputs-empty case by writing a valid 0-row output.
+
+The `aos/` copy would fail or silently produce a column-starved table in that
+situation. Porting the `olr/` logic into `aos/` (or better, promoting one copy to
+`common/`) is worth doing, but it is a behaviour change to the pipeline's combine step
+and should be done deliberately, with a test over a chunk set that includes an empty
+night.
