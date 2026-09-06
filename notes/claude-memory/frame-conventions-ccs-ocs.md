@@ -22,7 +22,7 @@ In the user's rubin-work/aos and MIW work:
   i.e. `vi.boresightParAngle.asDegrees() − vi.boresightRotAngle.asDegrees() − 90`,
   wrapped to (−180,180]. **Verified vs ConsDB `physical_rotator_angle` = 0.2° ±
   0.26°** over a ~90° rotator sweep (day_obs 20260709). Same form used in
-  `aos/code/run_wfs_fam_compare.py` / `run_wfs_refit_ensemble.py` (there via the
+  `aos/code/cwfs/run_wfs_fam_compare.py` / `run_wfs_refit_ensemble.py` (there via the
   stamp-metadata keys `BORESIGHT_PAR_ANGLE_RAD` / `BORESIGHT_ROT_ANGLE_RAD`,
   with `−π/2`). Frame-rotation machinery: `optatmo/code/frames.py`
   (`rotate_moments`, `rotate_field`, `R(rotTelPos)`; note DVCS→CCS swap first).

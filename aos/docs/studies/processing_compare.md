@@ -46,8 +46,8 @@ caught, an order mismatch is not.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/compare_fam_processings.py --help
-python code/compare_donuts.py --help
+python code/processing_compare/compare_fam_processings.py --help
+python code/processing_compare/compare_donuts.py --help
 ```
 
 ## See also

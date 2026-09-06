@@ -38,7 +38,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.stats import pearsonr
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)                                  # same-study siblings
+sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
 from analyze_dz_goodness_of_fit import (        # noqa: E402
     load_bases, read_dz, assign_blocks, within_block_covariance)
 

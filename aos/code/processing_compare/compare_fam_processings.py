@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from common.utils import nmad  # noqa: E402
 
 OLD_DEFAULT = 'fam_danish_1_0_wep17_3_0_bin2x'

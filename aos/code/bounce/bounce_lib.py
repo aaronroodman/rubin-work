@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 
 try:

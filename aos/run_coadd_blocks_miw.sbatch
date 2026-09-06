@@ -8,7 +8,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/coadd_miw_%j.log
 #
-# Per-FAM-block MIW-style coadds (code/run_coadd_blocks_miw.py) on s3df.
+# Per-FAM-block MIW-style coadds (code/coadd/run_coadd_blocks_miw.py) on s3df.
 #
 # Why batch: the job holds every block's donut table plus the stacked coadd/MIW
 # map arrays, and now also the DZ primitives and the extra secondary-Zernike
@@ -55,5 +55,5 @@ PY
 DEFAULTS=(--param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
           --mi-name pathA_50_34_i_5rot
           --ext-terms secondary)
-echo "running: code/run_coadd_blocks_miw.py ${DEFAULTS[*]} $*"
-python code/run_coadd_blocks_miw.py "${DEFAULTS[@]}" "$@"
+echo "running: code/coadd/run_coadd_blocks_miw.py ${DEFAULTS[*]} $*"
+python code/coadd/run_coadd_blocks_miw.py "${DEFAULTS[@]}" "$@"

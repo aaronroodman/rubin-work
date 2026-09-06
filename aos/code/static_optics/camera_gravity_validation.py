@@ -14,6 +14,7 @@ Output: ../output/camera_gravity/camera_gravity_validation.pdf
 
 Laptop-runnable (needs only batoid_rubin).
 """
+import sys
 from pathlib import Path
 import numpy as np
 import matplotlib
@@ -23,6 +24,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from astropy.io import fits
 
 import camera_gravity as cg
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 
 OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"
 OUT.mkdir(parents=True, exist_ok=True)

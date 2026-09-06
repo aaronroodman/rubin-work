@@ -265,7 +265,7 @@ three of:
 Do not add a script to a topic's `code/` root "for now" — that is how a flat 56-file
 directory happens. `aos/docs/studies.md` is the worked example of the inventory.
 
-The word is **study**, not "thread" — `aos/code/check_threads.py` is about CPU threads,
+The word is **study**, not "thread" — `aos/code/infra/check_threads.py` is about CPU threads,
 and the repo already says study (`study_compare_donuts.ipynb`, `run_study_radialbins.py`).
 
 ### Imports and `sys.path`

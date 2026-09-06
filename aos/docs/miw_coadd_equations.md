@@ -5,7 +5,7 @@
 **Purpose.** Fix notation for the Measured Intrinsic Wavefront (MIW) construction and
 then *derive* what the per-block coadd-minus-MIW difference actually equals, because
 that derivation determines which quantity is the correct regressor in the
-coadd-vs-MIW correlation study (`aos/code/recompute_coadd_metrics.py`).
+coadd-vs-MIW correlation study (`aos/code/coadd/recompute_coadd_metrics.py`).
 
 **Relation to existing docs.** The iterative MIW method is *already* written at
 equation level in [`notes/aos-measured-intrinsics/note.md`](../../notes/aos-measured-intrinsics/note.md)
@@ -478,7 +478,7 @@ computed from the corner WFS and applied to hardware removes the DOF change's
 coefficients on `kj_grid` ($k\le6$ only) and `_dz_contrib_from_params` reconstructs
 from just those, so **only the $k\le6$ part of the estimated state is subtracted.**
 
-Two checks (`code/check_k_truncation.py`):
+Two checks (`code/coadd/check_k_truncation.py`):
 
 - **$k\le6$ *is* sufficient to specify the state.** $\hat{\mathbf S}_{k\le6}$
   (126×50) has full rank 50, condition number 1.12e4 vs 0.998e4 for $k\le30$; the
@@ -502,7 +502,7 @@ un-subtracted part is $\|w\|_{k>6}=0.022\,\mu$m over all 21 pupil Zernikes — p
 Zernike, **11.5% / 10.1%** of the MIW's Z5/Z6 amplitude and **1.5% / 2.9%** of
 Z7/Z8. Real, worth fixing, not transformative.
 
-**But it does not explain the MIW astigmatism** (`code/analyze_miw_field_order.py`,
+**But it does not explain the MIW astigmatism** (`code/coadd/analyze_miw_field_order.py`,
 `output/miw_k_gt6_leakage.pdf`). Map-to-map correlation of the un-subtracted $k>6$
 term against the MIW: Z5 **+0.19**, Z6 **−0.02** — right order of magnitude, wrong
 shape. Against coma it is the reverse: Z7 **+0.80**, Z8 **+0.64** at only ~2%

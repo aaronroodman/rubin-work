@@ -10,7 +10,7 @@ metadata:
 
 M3 back-projection study: testing whether a single effective OPD at M3 can explain
 the field-dependent astig/coma in the measured intrinsic wavefront (MIW). Code:
-`rubin-work/aos/code/m3_backprojection.py` (+ `run_m3_backprojection_validation.py`,
+`rubin-work/aos/code/static_optics/m3_backprojection.py` (+ `run_m3_backprojection_validation.py`,
 D1 sim validation). See [[frame-conventions-ccs-ocs]].
 
 **Extended to ALL optics (2026-08-25):** `run_miw_backprojection_surfaces.py` runs

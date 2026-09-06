@@ -24,7 +24,7 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 ## A. Top — fix soon (highest impact)
 
 ### A1. [BUG] Paired-Δ SEM missing the median factor
-- **File:line:** `aos/code/bounce_lib.py:652`
+- **File:line:** `aos/code/bounce/bounce_lib.py:652`
 - **What's wrong:** `err = sigma_mad / np.sqrt(n)` is SEM of a *mean*. The companion `stats_per_kj` at line 136 correctly uses `1.2533 * sigma_mad / sqrt(n)` for SEM-of-median.
 - **Why it matters:** `paired_delta` reports `delta = median(diffs)`, so all bounce paired-Δ uncertainties are ~25% too small and significances ~25% inflated, in heatmaps and in `bounce_kj_stats.parquet`.
 - **Fix:** `err = 1.2533 * sigma_mad / np.sqrt(n)`. Verify the same factor is consistently applied wherever a median's SEM is reported in `bounce_lib.py`.
@@ -33,7 +33,7 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - **File:line:**
   - `aos/code/run_wfs_build.py:122-138` — `np.nan_to_num(C)` zeros missing FAM coefficients before subtraction.
   - `aos/code/ofc_svd.py:177` — `np.where(np.isfinite(W), W, 0.0) @ U_eff`.
-  - Called from `aos/code/run_dz_correlations.py:240` — `_apply_optical_correction`.
+  - Called from `aos/code/correlations/run_dz_correlations.py:240` — `_apply_optical_correction`.
 - **What's wrong:** Visits with even one missing (k,j) DZ coefficient get u-mode amplitudes biased toward 0; "corrected" WFS maps mix corrected and uncorrected modes per visit; `W_resid = W - A U_effᵀ` underestimates true amplitudes where W has NaNs.
 - **Why it matters:** Plots and parquet outputs marked "corrected" / "optcorr-residual" silently mix two regimes per visit, biasing every downstream interpretation; no count of imputed cells is logged.
 - **Fix:** Drop visits with any non-finite coefficient before the projection (or NaN-mask the affected modes per-visit), and at minimum log the per-visit NaN-fill fraction.
@@ -61,25 +61,25 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 ## B. Significant scientific gaps
 
 ### B1. [SCIENCE] Thermal correlations have no detrending or trend warning
-- **File:** `aos/code/run_thermal_correlations.py` (whole file)
+- **File:** `aos/code/correlations/run_thermal_correlations.py` (whole file)
 - **What's wrong:** Temperatures and AOS state both drift slowly across the night (alt/az coverage, focus drift, mirror state). Reported `r` between any two slowly-varying quantities can be dominated by mutual time-trends rather than physics. No detrending, partial-out, or annotation in the output.
 - **Why it matters:** Heatmap interpretation is misleading; high-r cells look like physics but may be "both drift with the night."
 - **Fix:** At minimum partial out a per-night linear time term and/or `cos(alt)` before correlating; OR explicitly annotate the page title that r values are uncorrected for shared trends and recommend the joint-drift caveat in the parquet output.
 
 ### B2. [SCIENCE] Pearson significance uses global complete-case n, not per-pair n
-- **File:line:** `aos/code/run_dz_correlations.py:262, 300-305` (the `_significance` call site)
+- **File:line:** `aos/code/correlations/run_dz_correlations.py:262, 300-305` (the `_significance` call site)
 - **What's wrong:** `r` is computed pairwise-complete by pandas (large n), but `_significance(r, n)` is called with the global n where *all* DZ columns are simultaneously finite (much smaller).
 - **Why it matters:** Fisher-z σ is systematically understated; some real pairs miss the 5σ cut. Conservative direction, but it drives the visible report.
 - **Fix:** Compute per-pair `n_ij = (df[ci].notna() & df[cj].notna()).sum()` and pass that to `_significance`.
 
 ### B3. [SCIENCE] `r` clamp to ±0.999999 fakes huge significances near unity
-- **File:line:** `aos/code/run_dz_correlations.py:82`
+- **File:line:** `aos/code/correlations/run_dz_correlations.py:82`
 - **What's wrong:** On the optcorr-residual run some pair `r` can be near ±1 by construction (very small residuals). Clamping returns a finite-but-huge σ that ranks at the top of the "significant pairs" table.
 - **Why it matters:** Top of the report is contaminated by numerical artifacts.
 - **Fix:** When `|r| > 0.99`, set a `near_unit=True` flag on the row and exclude from ranking (or report separately).
 
 ### B4. [SCIENCE] No multi-comparisons note in DZ-correlation σ gate
-- **File:line:** `aos/code/run_dz_correlations.py:77-86, 502-533`
+- **File:line:** `aos/code/correlations/run_dz_correlations.py:77-86, 502-533`
 - **What's wrong:** ~8000 off-diagonal tests across ~126 columns; per-cell 5σ threshold; nothing in the code records the effective number of independent tests or a Bonferroni/BH-adjusted threshold. The "find largest |r| → claim significance" workflow is implicitly cherry-picking.
 - **Why it matters:** Reported "significant" pairs are not interpreted with the correct effective threshold.
 - **Fix:** Print effective `n_tests` and a Bonferroni- (or BH-) adjusted threshold alongside `sig_threshold` in the report header and the parquet metadata.
@@ -97,7 +97,7 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - **Fix:** Compute the L2 delta between successive `measured_grid` arrays each iteration, log it, and warn if not below a configurable tolerance at exit.
 
 ### B7. [SCIENCE] `build_lut` median-over-rotator can hide rotator structure
-- **File:line:** `aos/code/run_build_lut.py:8, 137-139, 170`
+- **File:line:** `aos/code/smatrix_vmode/run_build_lut.py:8, 137-139, 170`
 - **What's wrong:** LUT explicitly averages over all rotator angles. If MI subtraction is imperfect at separating gravity-driven (alt-only) from rotator-coupled state, residuals get medianed out and LUT is biased toward rotator-mode-zero.
 - **Why it matters:** Documented design choice; concern is that there's no diagnostic to verify the assumption holds.
 - **Fix:** Also write `lut_by_rotbin.parquet` (3–4 rotator bins) so the spread across bins can be inspected and shown in `lut.pdf` as a sanity diagnostic.
@@ -147,7 +147,7 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - **Fix:** Rename inner to `mi_val`.
 
 ### D4. [QUALITY] `bounce_lib.filter_visits` warns then silently drops the program filter
-- **File:line:** `aos/code/bounce_lib.py:65-71`
+- **File:line:** `aos/code/bounce/bounce_lib.py:65-71`
 - **What's wrong:** If `science_program` column is missing, prints a one-time warning and proceeds *without* the program filter. For BLOCK-T720/T724 selections, this means visits aren't filtered by program — silent contamination.
 - **Fix:** `raise ValueError(...)` instead of warning when `program=` is requested but the column is absent.
 
@@ -157,12 +157,12 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - **Fix:** `zk_int[:, j4_col] = np.where(np.isfinite(z4_height), zk_int[:, j4_col] + z4_height, zk_int[:, j4_col])` and print a count of donuts where the height was missing.
 
 ### D6. [QUALITY] `load_donut_zk` decides bad-flag from row-group's first row
-- **File:line:** `aos/code/run_aberration_pairs.py:91-103` (around line 95-98)
+- **File:line:** `aos/code/miw/run_aberration_pairs.py:91-103` (around line 95-98)
 - **What's wrong:** `key = (df['day_obs'].iloc[0], df['seq_num'].iloc[0])` decides the bad-flag for the *entire* row group based on the first row. Assumes a parquet row group never spans multiple visits — not asserted by the writer.
 - **Fix:** Filter on the actual columns: `df = df[~df.set_index([day_obs_col, seq_num_col]).index.isin(bad_set)]`.
 
 ### D7. [QUALITY] Unconditional `np.degrees(df['alt'])` in summary plot
-- **File:line:** `aos/code/plot_visits_summary.py:38`
+- **File:line:** `aos/code/miw/plot_visits_summary.py:38`
 - **What's wrong:** Hard `np.degrees(df['alt'])` assumes radians. Other modules (`dz_plotting._build_pointing_groups`, `compare_donuts._alt_to_deg`) auto-detect rad vs deg by magnitude.
 - **Fix:** Use the same `_alt_to_deg` pattern (factor `_alt_to_deg` to a shared helper if convenient).
 
@@ -177,12 +177,12 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - **Fix:** Log when stacking fails so the failure is locatable.
 
 ### D10. [QUALITY] `compare_donuts.resolve_side` legacy path uses raw `donut` (possibly a list) as path
-- **File:line:** `aos/code/compare_donuts.py:74`
+- **File:line:** `aos/code/processing_compare/compare_donuts.py:74`
 - **What's wrong:** Fallback does `d, v, f = donut, visits_sidecar_path(first), fits_sidecar_path(first)` — `d` set to `donut` (can be a list), but `v`/`f` only from the first element. `load_visits` handles a list, but only one fits sidecar gets used, silently dropping fits info from chunks 2+.
 - **Fix:** When `donut` is a list, build matching lists for `v` and `f`, or restrict legacy path to a single donut path.
 
 ### D11. [QUALITY] `_significance` clamp coupling — see B3 for the scientific implication
-- **File:line:** `aos/code/run_dz_correlations.py:82`
+- **File:line:** `aos/code/correlations/run_dz_correlations.py:82`
 - **Note:** Same line as B3; quality-side ask is to log when the clamp activates so callers know.
 
 ### D12. [QUALITY] DZ trio `(k,j)` parsing assumes `_c` separator unique
@@ -242,11 +242,11 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - `aos/code/ofc_svd.py` — SVD ordering (descending σ), projector `(I − U_eff U_effᵀ)`, weighting all check out. NaN handling lives at call sites — see A2.
 - `aos/code/mi_config.py`, `aos/code/wcsutils.py`, `aos/code/combine_parquets.py` (modulo D15) — small and tight.
 - `aos/code/run_pipeline.py` — large but consistent with the documented step graph; lock semantics and dependency cascade are correct.
-- Diagnostic scripts: `aos/code/check_chunk.py`, `aos/code/check_threads.py`, `aos/code/inspect_visit_provenance.py`, `aos/code/compare_to_archive.py`, `aos/code/test_m1m3.py`, `aos/code/aos_trim.py`.
+- Diagnostic scripts: `aos/code/miw/check_chunk.py`, `aos/code/infra/check_threads.py`, `aos/code/miw/inspect_visit_provenance.py`, `aos/code/miw/compare_to_archive.py`, `aos/code/test_m1m3.py`, `aos/code/aos_trim.py`.
 - `aos/code/intrinsic_split.py` math (Noll→(n,m), spin model, doublet pairing, m=0 degeneracy redistribution) is internally consistent — caveats are the FFT path (B5) and the global `degen_assignment` (B8).
-- The `1.5178°` / `1.725°` WFS-shell convention is centralized via `wfs_inner_radius_deg()` and `_wfs_shell()`; no drift across `aos/code/run_study_radialbins.py`, `aos/code/run_study_wfs_radial.py`, `aos/code/run_wfs_mktable.py`.
-- `aos/code/run_aberration_pairs.py` quartile-OLS computes a within-quartile slope/r — matches the README ("OLS line + Pearson r is fit per quartile"); not the biased "regress on quartile bins" pattern.
-- `aos/code/run_bounce.py`'s `setting[comp_mask] = 1` "comp wins overlap" choice (`bounce_lib.py:611`) is safe for the documented BLOCK-T720/T724 alt/rot ranges (disjoint), so no double-counting.
+- The `1.5178°` / `1.725°` WFS-shell convention is centralized via `wfs_inner_radius_deg()` and `_wfs_shell()`; no drift across `aos/code/miw/run_study_radialbins.py`, `aos/code/run_study_wfs_radial.py`, `aos/code/cwfs/run_wfs_mktable.py`.
+- `aos/code/miw/run_aberration_pairs.py` quartile-OLS computes a within-quartile slope/r — matches the README ("OLS line + Pearson r is fit per quartile"); not the biased "regress on quartile bins" pattern.
+- `aos/code/bounce/run_bounce.py`'s `setting[comp_mask] = 1` "comp wins overlap" choice (`bounce_lib.py:611`) is safe for the documented BLOCK-T720/T724 alt/rot ranges (disjoint), so no double-counting.
 
 ---
 
@@ -322,7 +322,7 @@ occurring for real. Either regenerate both from one run, or make the script asse
 A repo-wide sweep found **17 more tracked files** with hardcoded
 `/Users/roodman/...`, outside `aos/`: `filters/code/design_*.py` (3, throughput dir)
 and `smatrix/code/*.py` (12, `batoid_rubin_data` + `ts_config_mttcs`), plus
-`aos/code/analyze_sensitivity_sparse.py` and `analyze_sparse_observability.py`. These
+`aos/code/smatrix_vmode/analyze_sensitivity_sparse.py` and `analyze_sparse_observability.py`. These
 are data-directory constants rather than import bootstrapping, so they were left alone
 in Phase 2 — but each will fail on S3DF. Worth an env-var + fallback pass
 (`$BATOID_RUBIN_DATA_DIR`, `$TS_CONFIG_MTTCS_DIR`) when those topics are next touched.

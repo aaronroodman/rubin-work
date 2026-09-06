@@ -3,10 +3,31 @@
 Scoping notes for the AOS topic. Loads when files in `aos/` are touched, on top of the
 root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here).
 
-**This file is not a description of the pipeline.** `aos/README.md` (397 lines) is the
-reference for what every Snakemake step does, the config files, the output layout, and
-the data dependencies. Read it before touching pipeline code. What follows is only the
-things that are easy to get wrong and are not written down there.
+**This file is not a description of the pipeline.** `README.md` indexes the topic and
+`docs/miw_pipeline.md` is the reference for what every Snakemake step does, the config
+files, and the output layout. `docs/studies.md` maps the eleven studies to their code.
+What follows is only the things that are easy to get wrong.
+
+## Code layout
+
+`code/` is organized by **study** — `code/miw/`, `code/coadd/`, `code/cwfs/`,
+`code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
+`code/processing_compare/`, `code/psf/`, `code/infra/`. See `docs/studies.md`.
+
+Nine modules stay **flat at `code/`** on purpose:
+
+| module | why |
+|---|---|
+| `aos_trim.py`, `aos_state.py`, `aos_consdb_efd.py` | imported **by bare module name from `blocks/`, `olr/`, `optatmo/`, `guider/`** (39 references) via a hardcoded `sys.path.insert(.../aos/code)`. Moving them breaks four sibling topics with no static-import warning. |
+| `aos_fwhm.py`, `dz_columns.py`, `dz_plotting.py`, `psf_render.py`, `combine_parquets.py` | used by more than one study |
+| `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities, no study of their own |
+
+Do not "finish the job" by moving the first three into `code/telemetry/`.
+
+Scripts run in **script mode** (`python code/<study>/x.py`), so relative imports do not
+work. Each moved file puts its own study dir and `code/` on `sys.path`, so bare-name
+sibling imports resolve wherever the sibling lives. The repo root is `parents[3]` from a
+study subdirectory (`parents[2]` from `code/` itself).
 
 ## Read these before working on the physics
 
@@ -45,7 +66,7 @@ In `aos/code/`, `common` almost always means the **external package's** submodul
 from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
 ```
 
-That is not this repo's `common/`. Only `code/plot_visits_summary.py` imports the
+That is not this repo's `common/`. Only `code/miw/plot_visits_summary.py` imports the
 repo's own `common/` (via a `sys.path.insert` of the repo root). Do not "consolidate"
 the two — they are unrelated.
 
@@ -70,8 +91,8 @@ Robust by default, and **ask which robust method** before implementing — see t
 | pattern | location |
 |---|---|
 | Huber `RLM(y, X, M=HuberT())` — the DZ fit itself | `dz_fitting.py` in the **external package**, not `aos/code/` |
-| Huber RLM + HuberT with OLS fallback | `code/run_wfs_corner_compare.py` |
-| drop > K·nMAD then OLS (`robust_fit`) | `code/run_wfs_dof_compare.py` |
+| Huber RLM + HuberT with OLS fallback | `code/cwfs/run_wfs_corner_compare.py` |
+| drop > K·nMAD then OLS (`robust_fit`) | `code/cwfs/run_wfs_dof_compare.py` |
 | `nmad(residuals)` for robust scatter RMS | `common/utils.py` — shared, import it |
 
 Report both Pearson r and Spearman rho for correlations.
@@ -116,10 +137,10 @@ indices (`aos-22dof-reduced-set`) — do not infer them.
 - 83% of MIW power sits above the `k<=6` focal orders the build actually fits, which
   reframes any DZ-subspace analysis (`miw-focal-order-truncation`).
 
-## Reorganization in progress
+## Code review state
 
-`aos/code/` is slated for reorganization (Phase 5 of `../notes/status/memory_cleanup_plan.md`):
-factoring genuinely shared helpers into `common/`, resolving a duplicated angle-unit
-heuristic, retiring dead scripts. `docs/status/code_review_findings.md` is in the tree.
-`aos_code_review_2026-08.md` is **superseded as a task list** — its line numbers cannot
-be trusted — but the specific defects it names are likely still real.
+`docs/status/code_review_backlog.md` holds the open items: duplicated helpers that are
+**not** equivalent (`quality_cut`, `load_miw`), confirmed live defects, and `common/`
+candidates. `docs/status/code_review_findings.md` is the earlier full review — its
+`file:line` anchors predate the study reorganization and cannot be trusted, though the
+defects it names may still be real.

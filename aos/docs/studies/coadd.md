@@ -55,8 +55,8 @@ Reads `output/<ps>/<mi>/fits.parquet` (MI-refit DZ) and the `coadd_50_34/` produ
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/recompute_coadd_metrics.py --help
-python code/analyze_dz_goodness_of_fit.py --help
+python code/coadd/recompute_coadd_metrics.py --help
+python code/coadd/analyze_dz_goodness_of_fit.py --help
 ```
 
 Batch form for the block coadd is `run_coadd_blocks_miw.sbatch` — **MUST-ASK**, hand over

@@ -108,7 +108,7 @@ discarded by the truncation), and null(S_hatᵀ) = 76 (unreachable by any DOF).
 
 The per-visit fit uses only **k=1..6**, but the MIW's structure is overwhelmingly
 above that. Fitting each MIW map to focal Noll k=1..45
-(`code/analyze_miw_dz_full_k.py`), fractions of MIW **power**, dimensionless,
+(`code/coadd/analyze_miw_dz_full_k.py`), fractions of MIW **power**, dimensionless,
 power-weighted over the 21 pupil Zernikes:
 
 | k ≤ 6 (fitted) | 7..30 (in ts_ofc, unfitted) | k > 30 (outside ts_ofc) | unfit at k≤45 |
@@ -164,13 +164,13 @@ bias with a null hypothesis of exactly zero.
 
 ### 4.5 Measurements of L
 
-**Block level** (`code/analyze_miw_bias_regression.py`): regressing the per-block
+**Block level** (`code/coadd/analyze_miw_bias_regression.py`): regressing the per-block
 residual maps on Δa, ridge, leave-night-out, 1568 map cells, ~180 non-build blocks —
 Δa-only **CV R² = +0.322**, permutation null mean −0.144 → p = 0.000. **But** thermal
 alone gives +0.344 and thermal+Δa +0.371, so Δa adds only **+0.028** over thermal:
 largely redundant, and this test alone cannot separate bias from thermal proxying.
 
-**Per-visit level** (`code/analyze_umode_null_coupling.py`) — the stronger test.
+**Per-visit level** (`code/coadd/analyze_umode_null_coupling.py`) — the stronger test.
 Ridge (lambda/n ≈ 0.11) of n_null [µm] on the 34 **signed** a_m [µm],
 leave-night-out CV over 19 nights, n = 1126 visits:
 
@@ -199,7 +199,7 @@ open-loop focus drift — so never correlate against total ‖a‖; use per-mode
 scale/sqrt(N_donuts), which treat ~2800 donuts as independent. Turbulence breaks
 that. Using them gives chi²_50/dof ≈ 500, which is **an artifact**.
 
-Fix (`code/analyze_dz_goodness_of_fit.py`): **Sigma_emp**, the empirical 126×126
+Fix (`code/coadd/analyze_dz_goodness_of_fit.py`): **Sigma_emp**, the empirical 126×126
 coefficient covariance [µm²] from **within-block visit-to-visit scatter**. Inside a
 stable block the optical state is essentially fixed, so that scatter measures the
 coefficient error with turbulence, dome seeing, retrieval noise and their spatial
@@ -274,17 +274,17 @@ Local (laptop, no LSST stack unless noted):
 
 | file | purpose |
 |---|---|
-| `code/analyze_miw_dz_full_k.py` | MIW fitted to focal Noll k=1..45; the §4.1 result. Needs ts_ofc? No — galsim only |
-| `code/analyze_dz_goodness_of_fit.py` | per-visit chi² vs the sensitivity matrix; Sigma_emp; `--stable-programs`; `--fits-biw` |
-| `code/analyze_umode_null_coupling.py` | the §4.5 per-visit L test with the simulated noise null |
-| `code/analyze_miw_bias_regression.py` | block-level L from the residual maps; auto-detects the new npz keys |
-| `code/recompute_coadd_metrics.py` | **the single** coadd time-series renderer; `--rebin 1 3` (one page per factor), u-mode pages, ML |
-| `code/check_k_truncation.py` | §4.7 checks (a) and (b) |
-| `code/analyze_miw_field_order.py` | is the MIW the un-subtracted k>6 term? (§4.7 shape test) |
-| `code/analyze_sparse_observability.py` | sparse-mode DOF observability, both samplings |
-| `code/analyze_sensitivity_sparse.py` | which DOF drive secondary/tertiary aberrations |
+| `code/coadd/analyze_miw_dz_full_k.py` | MIW fitted to focal Noll k=1..45; the §4.1 result. Needs ts_ofc? No — galsim only |
+| `code/coadd/analyze_dz_goodness_of_fit.py` | per-visit chi² vs the sensitivity matrix; Sigma_emp; `--stable-programs`; `--fits-biw` |
+| `code/coadd/analyze_umode_null_coupling.py` | the §4.5 per-visit L test with the simulated noise null |
+| `code/coadd/analyze_miw_bias_regression.py` | block-level L from the residual maps; auto-detects the new npz keys |
+| `code/coadd/recompute_coadd_metrics.py` | **the single** coadd time-series renderer; `--rebin 1 3` (one page per factor), u-mode pages, ML |
+| `code/coadd/check_k_truncation.py` | §4.7 checks (a) and (b) |
+| `code/coadd/analyze_miw_field_order.py` | is the MIW the un-subtracted k>6 term? (§4.7 shape test) |
+| `code/smatrix_vmode/analyze_sparse_observability.py` | sparse-mode DOF observability, both samplings |
+| `code/smatrix_vmode/analyze_sensitivity_sparse.py` | which DOF drive secondary/tertiary aberrations |
 
-RSP-only: `code/run_coadd_blocks_miw.py` (+ `run_coadd_blocks_miw.sbatch` — roma,
+RSP-only: `code/coadd/run_coadd_blocks_miw.py` (+ `run_coadd_blocks_miw.sbatch` — roma,
 128 GB, 12 h; it OOMs a notebook pod). `--param-set` is **required**.
 
 Calibration: `calibration/miw/umode_k_leakage_50_34.npy` (per-mode k>6 leakage

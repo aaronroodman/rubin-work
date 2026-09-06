@@ -19,8 +19,8 @@ pull ordinary least-squares slopes and Pearson r; Aaron wants those downweighted
   unless he says otherwise. Note `dz_fitting.py` lives in the **external**
   `ts_intrinsic_wavefront` package (`lsst.ts.intrinsic.wavefront`), not in
   `aos/code/` — verified 2026-09-04. The in-repo Huber uses are
-  `aos/code/run_wfs_corner_compare.py` (RLM + HuberT, OLS fallback) and
-  `aos/code/run_wfs_dof_compare.py` (`robust_fit`).
+  `aos/code/cwfs/run_wfs_corner_compare.py` (RLM + HuberT, OLS fallback) and
+  `aos/code/cwfs/run_wfs_dof_compare.py` (`robust_fit`).
 - Correlation: show BOTH the plain Pearson r AND a robust coefficient; Aaron
   chose **Spearman rho** (`scipy.stats.spearmanr`) for the wfs_corner_compare panels.
 - The existing `run_wfs_dof_compare.robust_fit` (drop >K·nMAD then OLS) is another

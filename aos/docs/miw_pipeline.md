@@ -96,12 +96,12 @@ param_set-level table each: `output/<ps>/{donuts,fits,visits}.parquet`.
 a chunk in `snake_config.yaml`; Snakemake re-runs combine + everything
 downstream automatically.
 
-**`plots`** — `code/run_dz_plots.py` (library: `dz_plotting.py`). Validation
+**`plots`** — `code/miw/run_dz_plots.py` (library: `dz_plotting.py`). Validation
 trio plots (data / DZ model / residual across the focal plane) on the combined
 tables → `output/<ps>/plots/trio_comparison_all.pdf`. Memory-heavy (loads the
 full donut table); the Snakefile's `mem_mb` throttle serializes it.
 
-**`aberration_pairs`** — `code/run_aberration_pairs.py` (port of
+**`aberration_pairs`** — `code/miw/run_aberration_pairs.py` (port of
 `study_aberrationpairs.ipynb`). Per-donut primary→secondary aberration-pair
 analysis (e.g. defocus→spherical, astig→2nd-astig): quartile-of-primary OLS
 slope/r plus density pages → `output/<ps>/plots/aberration_pairs.pdf` +
@@ -133,7 +133,7 @@ keeps O hole-free → `intrinsic_split.parquet`, `intrinsic_split_decomp.npz`,
 `intrinsic_split.pdf`. (Script version of
 `intrinsic_camera_telescope_split.ipynb`.)
 
-**`study_radialbins`** — `code/run_study_radialbins.py`. Reads the per-rotator-bin
+**`study_radialbins`** — `code/miw/run_study_radialbins.py`. Reads the per-rotator-bin
 grids *before* the split and, for each pupil Zernike j, makes one page of four
 full-width panels = the four WFS radial shells, each overlaying the rotator-angle
 samples (median OCS measured intrinsic vs focal-plane azimuth, one colour+marker
@@ -150,7 +150,7 @@ C evaluated at the donut's CCS coordinates so the camera term rotates
 correctly; plus CCD-height Z4) → `zk_intrinsic.parquet`, row-aligned to the
 combined `donuts.parquet`.
 
-**`wfs_mimic`** — `code/run_wfs_mimic.py`. Mimics the four corner wavefront
+**`wfs_mimic`** — `code/cwfs/run_wfs_mimic.py`. Mimics the four corner wavefront
 sensors from FAM donuts: per image, donuts in four annular wedges at the WFS
 radius (centred `delta + [0,90,180,270]°`) give four pseudo-WFS Zernike vectors,
 and the per-donut deviation (measured − `zk_intrinsic` sidecar, so the OCS/CCS
@@ -177,7 +177,7 @@ result, which is why the O + C split matters.
 `build_lut` currently projects the Phase-1 `fits.parquet`. Knobs in
 `analysis_config.yaml`.
 
-**`build_lut`** — `code/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
+**`build_lut`** — `code/smatrix_vmode/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
 look-up table: projects the per-visit DZ fits onto the OFC sensitivity-matrix
 SVD (settable `n_dof`/`n_keep`), recovers DOF per visit, and collapses over
 **all** elevation and rotator angle (median by default) →
@@ -185,7 +185,7 @@ SVD (settable `n_dof`/`n_keep`), recovers DOF per visit, and collapses over
 (per-(k, j) raw/fit/residual DZ) + `lut.pdf`. (Supersedes the removed
 `study_50dofLUT.ipynb`. Uses the Phase-1 `fits.parquet`.)
 
-**`dz_correlations`** — `code/run_dz_correlations.py` (port of
+**`dz_correlations`** — `code/correlations/run_dz_correlations.py` (port of
 `study_doublezernike.ipynb` §7–§10). DZ_kj ↔ DZ_k'j' Pearson heatmap, top-|r|
 pair scatters, astigmatism-symmetry pairs, per-correlation **conjugate-orbit
 scatter grids** (rows/cols = independent focal-k / pupil-j doublet-flips of each
@@ -199,12 +199,12 @@ mi_config entry) → `output/<ps>/<mi>/plots/dz_correlations_optcorr.pdf` +
 `_pairs.parquet`. Sits beside the raw analysis for before/after comparison.
 RSP-only (builds the OFC SVD via `lsst.ts.ofc`).
 
-**`thermal_correlations`** — `code/run_thermal_correlations.py` (port of
+**`thermal_correlations`** — `code/correlations/run_thermal_correlations.py` (port of
 `intrinsics_thermal_correlations.ipynb`). DZ_kj × EFD temperature-variable
 Pearson heatmap plus per-term scatter pages →
 `output/<ps>/<mi>/plots/thermal_correlations.pdf` + `_summary.parquet`.
 
-**`bounce`** — `code/run_bounce.py` + `bounce_lib.py` (port of
+**`bounce`** — `code/bounce/run_bounce.py` + `bounce_lib.py` (port of
 `study_bounce.ipynb`). FAM bounce-test paired Δ (BLOCK-T720 elevation 40↔70°,
 BLOCK-T724 rotator 0↔60°): time-ordered within-night comp−ref pairs for DZ
 coefficients, OFC v-modes, and physical DOF, with significance/pass heatmaps,
@@ -230,7 +230,7 @@ collection string or a dict `{collection, seq_offset, dataset_type}`:
 - `dataset_type` — `aggregateAOSVisitTableRaw` (default; the joined table carrying
   positions) or `aggregateZernikesRaw` (selects the `ai_donut` reader).
 
-**`wfs_mktable`** — `code/run_wfs_mktable.py` (`--wfs-name <cwfs>`). For each FAM
+**`wfs_mktable`** — `code/cwfs/run_wfs_mktable.py` (`--wfs-name <cwfs>`). For each FAM
 visit, reads the paired corner-WFS exposure's aggregate Zernikes, attaches OCS/CCS
 field angles + centroids, and writes `wfs/<cwfs>/{donuts,visits}.parquet` + a
 validation plot. The `ai_donut` product has no joined AOS table, so its reader
@@ -239,7 +239,7 @@ per-detector `zernikes` tables (positions) and rotates the field angles to OCS
 (x↔y swap + deg→rad → CCS, then `R(rotTelPos)` → OCS; convention fixed by
 `determine_wfs_field_frame.py`).
 
-**`wfs_corner_compare`** — `code/run_wfs_corner_compare.py` (`--wfs-name`).
+**`wfs_corner_compare`** — `code/cwfs/run_wfs_corner_compare.py` (`--wfs-name`).
 Corner-by-corner CWFS vs FAM measured-OPD: per corner, the CWFS Zernikes against
 the FAM wavefront interpolated to that corner (`--interp gp` Gaussian-process
 azimuth fit by default; `fourier` / `wedge-median` alternatives), with per-corner
@@ -252,7 +252,7 @@ scatter, time-history, summary, and azimuth-validation pages →
 position; Z4 CCD-height averaged over the SW1-intra / SW0-extra half-sensors) →
 `<mi>/wfs/<cwfs>/zk_intrinsic.parquet`.
 
-**`wfs_dof_compare`** — `code/run_wfs_dof_compare.py` (library `ofc_svd.py`). Per
+**`wfs_dof_compare`** — `code/cwfs/run_wfs_dof_compare.py` (library `ofc_svd.py`). Per
 FAM triplet, extracts the optical state two ways and compares: **FAM** by
 projecting the full-field DZ fit onto the OFC SVD; **CWFS** from the 4 corner
 medians via the corner OFC inverse (`pinv(B·U_eff)`), MIW- and offset-subtracted.

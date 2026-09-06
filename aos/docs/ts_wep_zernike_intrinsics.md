@@ -179,7 +179,7 @@ No intrinsic/deviation recompute — OCS/NW are just frame rotations of the CCS 
   Danish forward model uses **TA** for the donut *shape*. Everything in the table is OPD/GQ;
   TA only lives inside the fit reference.
 - `zk_deviation` equals the `wavefront_params` a refit produces when seeded with
-  `zkStart = zk_intrinsic` (as in `code/run_wfs_refit_ensemble.py`).
+  `zkStart = zk_intrinsic` (as in `code/cwfs/run_wfs_refit_ensemble.py`).
 - At rotator ≈ 0, CCS ≈ OCS (rtp ≈ 0); near field center the off-axis terms are tiny so
   TA ≈ GQ for low orders.
 
@@ -222,4 +222,4 @@ ta_i = inst._getIntrinsicZernikesTACached(thx_d, thy_d, DefocalType.Intra, 'i', 
 - donut_viz `python/lsst/donut/viz/aggregate_visit.py` — `AggregateZernikeTablesTask`
   (copy + CCS/OCS/NW rotation), `AggregateAOSVisitTableTask`.
 - Related local notes: `../../wfs/docs/ts_wep_cwfs_dataflow.md`, `code/ccd_height.py`,
-  `code/run_wfs_refit_ensemble.py`.
+  `code/cwfs/run_wfs_refit_ensemble.py`.

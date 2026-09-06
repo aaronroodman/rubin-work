@@ -43,5 +43,5 @@ PY
 # (argparse uses the last occurrence of a repeated option). --height-map-dir defaults
 # to ~/u/LSST/packages/batoid_rubin_data inside the python.
 DEFAULTS=(--param-set fam_danish_1_0_wep17_3_0_bin2x --b-min 20 --alphas 0.0,0.01,0.02,0.03,0.05)
-echo "running: code/run_wfs_refit_ensemble.py ${DEFAULTS[*]} $*"
-python code/run_wfs_refit_ensemble.py "${DEFAULTS[@]}" "$@"
+echo "running: code/cwfs/run_wfs_refit_ensemble.py ${DEFAULTS[*]} $*"
+python code/cwfs/run_wfs_refit_ensemble.py "${DEFAULTS[@]}" "$@"

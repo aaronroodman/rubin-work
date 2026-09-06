@@ -100,10 +100,21 @@ package-internal dependency that can break on any `ts_ofc` update. Worth asking 
 
 ## Notes for the file-by-file pass
 
-- **`common/` candidates seen so far:** the parquet combiner (above); a MIW reader (via
-  `load_miw`); the focal-plane binning/gridding helpers that recur across
-  `static_optics` and `coadd`. `common/` already holds `nmad`, `alt_to_deg`,
-  `repo_root`, `FocalPlaneInterpolator`, and the text-histogram helpers.
+- **`common/` candidates.** `common/` already holds `nmad`, `alt_to_deg`, `repo_root`,
+  `FocalPlaneInterpolator`, and the text-histogram helpers. Further candidates, in
+  rough order of how clearly they are generic:
+  - **`psf_render.py`** — GalSim `OpticalPSF` + Kolmogorov atmosphere + HSM
+    measurement. Nothing in it is AOS-specific: it takes Zernikes and a wavelength and
+    returns rendered/measured moments. Already used by two studies (`psf`, `cwfs`) and
+    would plausibly serve `optatmo/` and `guider/` too, both of which do their own PSF
+    moment work. Strongest candidate.
+  - **the parquet combiner** — see above; concatenating chunked parquet with schema
+    unification is not topic-specific, and `olr/`'s implementation is the better one.
+  - **a MIW reader** — via the four `load_miw` copies; settles which product is
+    canonical at the same time. Probably `aos/code/miw_io.py` rather than `common/`,
+    since the MIW is an AOS concept.
+  - **focal-plane binning/gridding helpers** that recur across `static_optics` and
+    `coadd`; worth a closer look during the file-by-file pass.
 - **Docstrings:** numpydoc with backticked types, per the root `CLAUDE.md`. Only a
   handful of files currently comply. Units and frame (OCS/CCS) belong in the parameter
   and return descriptions.

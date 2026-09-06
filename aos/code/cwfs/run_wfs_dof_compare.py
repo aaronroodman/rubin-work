@@ -40,8 +40,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from common.utils import nmad  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
 FP_RADIUS = 1.75

@@ -16,7 +16,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # aos/code (siblings)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 from lsst.ts.ofc import OFCData
 import galsim.zernike as gz
 from lsst.ts.intrinsic.wavefront import ofc_svd as osv

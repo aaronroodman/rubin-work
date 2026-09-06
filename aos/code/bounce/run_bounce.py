@@ -35,7 +35,8 @@ import numpy as np
 import pandas as pd
 from astropy.table import QTable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 
 from lsst.ts.intrinsic.wavefront import mi_config as mc
 import bounce_lib as bl

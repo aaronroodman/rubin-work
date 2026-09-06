@@ -37,7 +37,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import galsim.zernike as gz
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)                                  # same-study siblings
+sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
 import m3_backprojection as bp
 
 warnings.filterwarnings("ignore")

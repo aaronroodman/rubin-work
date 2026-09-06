@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 from astropy.table import QTable
 from matplotlib.colors import LinearSegmentedColormap

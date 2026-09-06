@@ -47,7 +47,7 @@ import galsim
 import batoid
 
 # reuse the exact OFC/smatrix DZ convention (field sampling, eps, nx, jmax, kmax)
-_SMATRIX_CODE = Path(__file__).resolve().parents[2] / "smatrix" / "code"
+_SMATRIX_CODE = Path(__file__).resolve().parents[3] / "smatrix" / "code"
 sys.path.insert(0, str(_SMATRIX_CODE))
 import compute_smatrix as C  # noqa: E402
 

@@ -8,7 +8,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/psf_fp_%j.log
 #
-# GalSim/HSM focal-plane PSF maps (code/run_psf_fp_maps.py) on s3df.  One job per
+# GalSim/HSM focal-plane PSF maps (code/psf/run_psf_fp_maps.py) on s3df.  One job per
 # option combination — pass the run-specific options on the sbatch line; they go
 # straight to the python (argparse last-wins over the baked DEFAULTS below).
 #
@@ -47,5 +47,5 @@ PY
 # Baked defaults: the new collection, full visit set, 1000 stars.  ANY option on the
 # sbatch line overrides (argparse last occurrence wins).
 DEFAULTS=(--ps fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --band i --max-visits 0 --n-stars 1000)
-echo "running: code/run_psf_fp_maps.py ${DEFAULTS[*]} $*"
-python code/run_psf_fp_maps.py "${DEFAULTS[@]}" "$@"
+echo "running: code/psf/run_psf_fp_maps.py ${DEFAULTS[*]} $*"
+python code/psf/run_psf_fp_maps.py "${DEFAULTS[@]}" "$@"

@@ -41,7 +41,7 @@ Note lines 135 and 159 use `nanpercentile` without the `or` idiom, so they are u
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/run_psf_fp_maps.py --help
+python code/psf/run_psf_fp_maps.py --help
 ```
 
 Needs `galsim` (rendering + HSM). Batch form is `run_psf_fp_maps.sbatch` — **MUST-ASK**,

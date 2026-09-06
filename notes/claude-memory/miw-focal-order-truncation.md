@@ -15,7 +15,7 @@ optical-state determination needs. But the MIW's structure is overwhelmingly ABO
 that range, so any subspace built on the 126-coefficient (21 pupil x 6 focal) vector
 is blind to most of it.
 
-`aos/code/analyze_miw_dz_full_k.py` -> `output/miw_dz_full_k.pdf` +
+`aos/code/coadd/analyze_miw_dz_full_k.py` -> `output/miw_dz_full_k.pdf` +
 `miw_dz_full_k_coeffs.parquet` (w_kj, 21 x 45, in um). Fits each MIW pupil map
 Z_j(theta) [um] (OCS) to focal Noll k=1..45 on the 3985 finite cells, fp_radius
 1.8 deg. Capture measured as 1 - residual_power/total_power because the focal basis

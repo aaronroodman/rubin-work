@@ -49,9 +49,9 @@ angle. What is included is per-surface *figure* deformation — see
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/run_m3_backprojection_miw.py --miw <path> --stride 8 --nx 48
-python code/run_miw_joint_fit.py --help
-python code/camera_gravity_maps.py --help
+python code/static_optics/run_m3_backprojection_miw.py --miw <path> --stride 8 --nx 48
+python code/static_optics/run_miw_joint_fit.py --help
+python code/static_optics/camera_gravity_maps.py --help
 ```
 
 Needs `batoid` + `batoid_rubin` and the MIW product (the `_5rot` `intrinsic_split_maps`,

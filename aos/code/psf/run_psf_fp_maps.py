@@ -28,7 +28,8 @@ import pandas as pd
 
 os.environ.setdefault('NUMEXPR_MAX_THREADS', '8')   # silence galsim/numexpr thread warning
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))   # sibling psf_render
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 from psf_render import (   # noqa: E402  GalSim render + HSM (shared with run_wfs_dof_compare)
     PIXSCALE, DIAM, OBSC, ATM_FWHM, STAMP, LAM_NM, LN256,
     build_psf_tools, render_measure, optics_fwhm)

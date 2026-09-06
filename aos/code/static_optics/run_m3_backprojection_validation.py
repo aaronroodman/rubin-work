@@ -12,6 +12,8 @@ Usage:
   python code/run_m3_backprojection_validation.py [--out FILE.pdf] [--band r]
 """
 import argparse
+import sys
+from pathlib import Path
 import warnings
 
 import numpy as np
@@ -22,6 +24,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import m3_backprojection as bp
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 
 warnings.filterwarnings("ignore")
 

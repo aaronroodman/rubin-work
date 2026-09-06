@@ -31,9 +31,13 @@ the 56 Python files, 16 are pipeline-driven and 40 are standalone.
 
 Every file in `aos/code/` belongs to exactly one study.
 
-## Cross-cutting code
+## Code layout
 
-These stay flat at `aos/code/` because moving them breaks things:
+`aos/code/` is organized by study, one subdirectory each: `miw/`, `coadd/`, `cwfs/`,
+`static_optics/`, `correlations/`, `smatrix_vmode/`, `bounce/`, `processing_compare/`,
+`psf/`, `infra/`.
+
+Nine modules stay flat at `aos/code/`:
 
 | file | why it stays flat |
 |---|---|
@@ -41,7 +45,11 @@ These stay flat at `aos/code/` because moving them breaks things:
 | `aos_state.py` | **15 references from other topics**, same mechanism |
 | `aos_consdb_efd.py` | **3 references from `blocks/`** |
 | `aos_fwhm.py` | used by `cwfs` and `correlations` |
+| `dz_columns.py` | used by all four `correlations` scripts |
+| `dz_plotting.py` | used by `miw` and `correlations` |
+| `psf_render.py` | used by `psf` and `cwfs` |
 | `combine_parquets.py` | used by the pipeline across studies |
+| `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities belonging to no single study |
 
 The first three are effectively **shared infrastructure**, not aos-private: sibling
 topics reach them via a hardcoded `sys.path.insert(.../aos/code)`. See the root

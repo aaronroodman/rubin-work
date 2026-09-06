@@ -30,7 +30,7 @@ node, not co-run on an RSP pod.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/check_threads.py
+python code/infra/check_threads.py
 ```
 
 ## See also

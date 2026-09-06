@@ -51,7 +51,7 @@ Z5/Z6, 1.5/2.9% of Z7/Z8. Shape matches MIW COMA (+0.80/+0.64) not astig (+0.19/
 because coma peaks at k=7,8 (n=3, just above the cut) and astig at k=15,22,23,25 (n=4-6).
 MIW power above k=6: Z5 0.96, Z6 0.73, Z7 0.93, Z8 0.88, Z11 0.06 (partly by construction).
 
-**Measurement so far** (`aos/code/analyze_miw_bias_regression.py` ->
+**Measurement so far** (`aos/code/coadd/analyze_miw_bias_regression.py` ->
 `coadd_50_34/miw_bias_regression.pdf`): regress residual MAPS on Delta_a, ridge,
 leave-night-out. Delta_a CV R2 **+0.322**, permutation null mean -0.144 -> **p=0.000**.
 BUT thermal-only +0.344 and thermal+Delta_a +0.371, so Delta_a adds only **+0.028**
@@ -68,7 +68,7 @@ under the unbiased model. `run_coadd_blocks_miw.py` now saves `raw_dz`, `resid_d
 PRIMARY so the main npz can't show which orders B mixes). Legacy npz keys unchanged.
 analyze_miw_bias_regression.py auto-detects and prints a skip message until the rerun.
 
-**PER-VISIT DZ CONSISTENCY (2026-09-03).** `aos/code/analyze_dz_goodness_of_fit.py`
+**PER-VISIT DZ CONSISTENCY (2026-09-03).** `aos/code/coadd/analyze_dz_goodness_of_fit.py`
 and `analyze_umode_null_coupling.py`. 126 coefficients constrain 34 v-modes, so the
 fit is hugely redundant and testable. Split w: a=U_eff^T w (34, um), d=U_disc^T w
 (16, um), n_null=U_null^T w (76, um, unreachable by any DOF).

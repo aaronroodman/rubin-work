@@ -44,7 +44,7 @@ The **canonical MIW product** for downstream use is the `_5rot` `intrinsic_split
 cd ~/notebooks/rubin-work/aos
 ./run_snake.sh -n                                    # what is stale
 ./run_snake.sh --until plots
-python code/check_chunk.py --help                    # pre-flight, before mktable
+python code/miw/check_chunk.py --help                    # pre-flight, before mktable
 ```
 
 Phase 2 needs `lsst.ts.ofc`/`lsst.ts.wep`, `$TS_CONFIG_MTTCS_DIR`, and batoid height
@@ -56,7 +56,7 @@ re-triggered by code edits.
 - **83 % of MIW power sits above the `k<=6` focal orders the build actually fits.** This
   reframes every DZ-subspace analysis: the fit constrains 34 v-modes from k≤6, then
   subtracts only the k≤6 part of that state's wavefront. Quantified in
-  `../../code/analyze_miw_dz_full_k.py` and `analyze_miw_field_order.py` (`coadd` study).
+  `../../code/coadd/analyze_miw_dz_full_k.py` and `analyze_miw_field_order.py` (`coadd` study).
 - The MIW's high-field-order astigmatism/coma excess (Z5–Z8, OCS, ~0.1 µm) is **not**
   predicted by the batoid design model. Whether static optics can explain it is the
   [`static_optics`](static_optics.md) study; the write-up is

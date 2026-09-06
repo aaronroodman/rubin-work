@@ -21,6 +21,7 @@ produced and the AFTER-50/34 figure is skipped with a message.
 
 Output: ../output/camera_gravity/camera_gravity_maps_{raw,corr}_{rb tag}.pdf
 """
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -31,6 +32,9 @@ from matplotlib.colors import TwoSlopeNorm
 from matplotlib.backends.backend_pdf import PdfPages
 
 import camera_gravity as cg
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 
 OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"
 OUT.mkdir(parents=True, exist_ok=True)

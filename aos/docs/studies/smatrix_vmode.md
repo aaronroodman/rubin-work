@@ -60,7 +60,7 @@ are settled in [`../../../smatrix/docs/conventions.md`](../../../smatrix/docs/co
 ```bash
 cd ~/notebooks/rubin-work/aos
 ./run_snake.sh --until build_lut
-python code/plot_vmode_dof_matrix.py --help
+python code/smatrix_vmode/plot_vmode_dof_matrix.py --help
 ```
 
 All of these need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR` — RSP only, and note `ts_ofc`

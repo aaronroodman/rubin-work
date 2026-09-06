@@ -20,7 +20,8 @@ import numpy as np
 from astropy.table import QTable
 from matplotlib.backends.backend_pdf import PdfPages
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 from lsst.ts.intrinsic.wavefront.dz_fitting import derive_noll_indices, flag_bad_fits
 from dz_plotting import (
     reconstruct_zk_fit,

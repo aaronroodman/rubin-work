@@ -44,7 +44,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 
 from lsst.ts.intrinsic.wavefront import mi_config as mc
 from dz_columns import dz_coeff_columns  # noqa: E402
