@@ -79,22 +79,16 @@ In other words `tmmax` is installed here as a **data source**, not a solver. Do 
 
 ## Two things to review in `$BATOID_RUBIN_DATA_DIR`
 
-### 14 duplicated files at the top level (~68 M)
+### Top-level duplicates — CLEANED 2026-09-07
 
-The data directory carries `M1_bend_*.fits.gz`, `M2_bend_*`, `M3_bend_*`,
-`M1M3_actuator_table.fits.gz`, `M2_actuator_table.fits.gz`, `M1M3_bend_forces.fits.gz`,
-`M2_bend_forces.fits.gz` and `bend.yaml` at its **top level**, and identical copies inside
-`bend/`. All 14 pairs are **byte-identical** (md5 verified 2026-09-07); the three grid
-files are 19 M, 23 M and 28 M, so the duplication costs ~68 M.
+The data directory used to carry 14 files at its top level that were byte-identical
+(md5-verified) to copies inside `bend/`, costing ~68 M. Aaron deleted them. The directory
+now holds only `bend/`, `bend_full/`, `ccd_height_map/`, `fea_legacy/` and a leftover
+top-level `bend.yaml` (still an exact duplicate of `bend/bend.yaml`, harmless).
 
-Only `ccd_height_map.fits.gz` (7.3 M) is genuinely top-level-only — it is the separate
-Zenodo `ccd_height_map` dataset, not part of `bend`.
-
-Nothing appears to read the top-level copies: `batoid_rubin.builder.load_bend` takes an
-explicit `bend_dir`, `LSSTBuilder`'s default is the bare string `"bend"`, and no script in
-this repo passes the data directory itself as a bend directory. Deleting the 14 top-level
-duplicates looks safe, but has not been done — worth confirming against any notebook or
-external caller first.
+Verified after the cleanup: `load_bend` works for both `bend` (20 modes) and `bend_full`
+(156 modes). Nothing read the top-level copies — `load_bend` takes an explicit `bend_dir`
+and `LSSTBuilder` defaults to the bare string `"bend"`.
 
 ### `camera_gravity.py` now picks a different bending basis
 

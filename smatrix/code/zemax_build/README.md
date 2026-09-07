@@ -81,3 +81,18 @@ two-line stub back in locally:
 def tqdm(x, *a, **k):
     return x
 ```
+
+## Running on the USDF (added 2026-09-07)
+
+`ZEMAX_FEMAP` is cloned at `u/LSST/packages/ZEMAX_FEMAP` (also reachable as
+`/sdf/group/rubin/u/roodman/LSST/packages/ZEMAX_FEMAP`, the form that works from batch
+nodes). The `--indir` defaults now read `$ZEMAX_FEMAP_DIR` and fall back to that
+`/sdf/group` path, so no repointing is needed here.
+
+These scripts need **`asdf`**, which is not in the LSST stack:
+
+```bash
+pip install --user asdf      # pulls asdf-standard + semantic_version, both pure Python
+```
+
+All six scripts have been confirmed to start on the USDF with that installed.
