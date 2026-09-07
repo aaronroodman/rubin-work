@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-06 · **Kind:** reference (inventory)
 
-Inventory of the twelve studies in the `aos/` directory: the code implementing each one,
-what it reads and writes, and its current state. All twelve draw on a common base — the
+Inventory of the thirteen studies in the `aos/` directory: the code implementing each one,
+what it reads and writes, and its current state. All thirteen draw on a common base — the
 Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
 matrix — but are otherwise independent lines of work.
 
@@ -28,7 +28,8 @@ the 57 Python files, 16 are referenced by the Snakefile and the rest are standal
 | [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 894 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
 | [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
-| [`psf`](studies/psf.md) | 2 | 777 | 0 | Focal-plane Point Spread Function (PSF) maps rendered from a wavefront — FWHM and ellipticity |
+| [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
+| [`closedloop`](studies/closedloop.md) | 1 | 237 | 0 | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
 | [`infra`](studies/infra.md) | 1 | 126 | 0 | Node CPU and memory capability, for sizing pipeline concurrency |
 
 Every file in `aos/code/` belongs to exactly one study.
@@ -37,7 +38,7 @@ Every file in `aos/code/` belongs to exactly one study.
 
 `aos/code/` is organized by study, one subdirectory each: `dzfit/`, `miw/`, `coadd/`,
 `cwfs/`, `static_optics/`, `correlations/`, `smatrix_vmode/`, `bounce/`,
-`processing_compare/`, `psf/`, `infra/`.
+`processing_compare/`, `psf/`, `closedloop/`, `infra/`.
 
 Nine modules stay flat at `aos/code/`:
 
@@ -50,7 +51,7 @@ Nine modules stay flat at `aos/code/`:
 | `fam_selection.py` | FAM visit selection + DZ column helper; used by all four `correlations` scripts |
 | `miw_io.py` | reads the MIW parquet field maps; used by `static_optics` |
 | `dz_plotting.py` | used by `dzfit` and `correlations` |
-| `psf_render.py` | used by `psf` and `cwfs` |
+| `psf_maps_lib.py` | star sampling, MIW lookup, DZ residuals, page layout; used by `psf` and `closedloop` |
 | `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities belonging to no single study |
 
 The first three are effectively **shared infrastructure**, not aos-private: sibling
@@ -86,7 +87,6 @@ output/
     {donuts,fits,visits}.parquet          # combined tables, input to everything
     chunks/<dmin>_<dmax>/                 # per-chunk tables
     dzfit/                                # DZ-fit validation: trio comparison, aberration pairs
-    psf/                                  # focal-plane PSF maps
     processing_compare/                   # cross-param_set comparison
     wfs/<cwfs_variant>/                   # corner-WFS ingest and corner comparison
     coadd_50_34/, coadd_50_34_v2/         # per-block coadd vs MIW
@@ -95,6 +95,8 @@ output/
       study_radialbins.pdf, zk_intrinsic.parquet
       fits.parquet                        # DZ refit against the MIW
       correlations/                       # DZ, v-mode and thermal correlations
+      psf/                                # focal-plane PSF maps
+      closedloop/                         # closed-loop simulation pages
       bounce/                             # bounce-test Δ, PDFs and parquets together
       lut/                                # DOF look-up table
       wfs/<cwfs_variant>/, wfs_mimic/     # MIW-subtracted corner-WFS products
@@ -114,10 +116,9 @@ it precedes any MIW. `smatrix_vmode` sits at the **top level**, outside any
 DOF scheme alone, and the one data-derived input (the pupil-Zernike set) is identical
 in every `param_set` built to date, so it defaults in code.
 
-`psf/` sits at the `<param_set>` level as a holding location: a single run reads two
-different MIW builds (`--split-mi` and `--fam-mi`) and several of its cases use no MIW
-at all, so it has no single `<mi_name>`. See
-[`status/code_review_backlog.md`](status/code_review_backlog.md).
+`psf/` and `closedloop/` are under `<mi_name>/`: both read the MIW split maps and the
+per-visit FAM fits from a single measured-intrinsic build. They previously mixed two
+builds via `--split-mi` and `--fam-mi`; that collapsed to one `--mi` on 2026-09-07.
 
 ## Supporting documentation
 

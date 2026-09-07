@@ -571,7 +571,7 @@ def main():
 
             # ---- GalSim+HSM parallel cross-check (one PSF per raft centre) ----
             if args.galsim_fwhm:
-                import psf_render as pr
+                from common import psf_render as pr
                 from lsst.obs.lsst import LsstCam
                 rpos = raft_centers(LsstCam.getCamera())
                 # recompute the six fields on the raft-centre positions, gather

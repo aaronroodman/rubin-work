@@ -43,6 +43,29 @@ index — so their existing output is still valid.
 ./run_snake.sh --until vmode_correlations
 ```
 
+### `psf` and `closedloop` — single MI build, study split, new output paths
+**Why:** three changes on 2026-09-07. The `psf` study previously mixed **two**
+measured-intrinsic builds — `--split-mi` (`pathA_50_34_i_5rot`) for the MIW split maps and
+`--fam-mi` (`pathA_50_34_i`) for the per-visit FAM fits. `pathA_50_34_i` is a superseded
+first-pass build, so every existing PDF was made partly from stale input. Both studies now
+take a single `--mi`, defaulting to `pathA_50_34_i_5rot`, which also carries the larger
+sample (1126 versus 960 visits in `fits.parquet`).
+
+The closed-loop cases also moved into their own
+[`closedloop`](../studies/closedloop.md) study, and output moved from `<ps>/psf/` to
+`<ps>/<mi>/{psf,closedloop}/`.
+
+**Affected files:** the 6 PDFs now in `output/<ps>/<mi>/psf/` and the 8 in
+`output/<ps>/<mi>/closedloop/`. The latter still carry their old `psf_fp_maps_loop*`
+names; a rerun writes `closedloop_*` instead.
+
+```bash
+python code/psf/run_psf_fp_maps.py --case all
+python code/psf/run_psf_fp_maps.py --case mimic
+python code/psf/run_psf_fp_maps.py --case validate
+python code/closedloop/run_closed_loop.py --case loop
+```
+
 ## Not affected, for the record
 
 - **`static_optics`** — the four scripts now share `miw_io.load_miw`, but it reproduces

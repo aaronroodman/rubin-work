@@ -1,63 +1,71 @@
 # Study: `psf` — from wavefront to delivered PSF
 
-> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
-Focal-plane Point Spread Function (PSF) maps rendered from a wavefront: full width at
-half maximum (FWHM), ellipticity, and higher-order shape terms.
+The expected Point Spread Function (PSF) due to the optical contribution, under given
+conditions. Focal-plane maps of full width at half maximum (FWHM), ellipticity and
+higher-order shape, rendered from a wavefront and measured the way the survey measures
+them — so a wavefront result can be read as image quality.
 
-The other studies work in wavefront (Zernike) space. This one converts a wavefront to the
-observable quantity: the PSF is rendered, then measured with the same estimator the
-survey uses, giving FWHM and ellipticity maps that express a wavefront result as image
-quality.
+The other studies work in wavefront (Zernike) space. This one converts a given optical
+state into the observable.
 
-**Standalone** — no Snakefile rules.
+## Cases
+
+Each `--case` renders the PSF from a different wavefront, and names its output file:
+
+| case | wavefront rendered |
+|---|---|
+| `miw` | the Measured Intrinsic Wavefront |
+| `fam50`, `fam22` | the FAM-recovered optical state, 50-DOF/34-v-mode and 22-DOF/12-v-mode schemes |
+| `mimic50`, `mimic22` | the state recovered from the four WFS-mimic corners, same two schemes |
+| `validate` | a check of ts_wep's `convertZernikesToPsfWidth` formula against GalSim + HSM truth |
+| `all`, `mimic` | convenience groups |
 
 ## Code
 
 | file | role |
 |---|---|
-| `psf_render.py` | library: `galsim.OpticalPSF(Zernikes)` convolved with a Kolmogorov atmosphere, measured with HSM. Shared with `run_wfs_dof_compare.py` in the [`cwfs`](cwfs.md) study |
-| `run_psf_fp_maps.py` | focal-plane maps of FWHM, e1/e2, coma, trefoil, kurtosis — RubinTV `psfPlotting` style. Has an `.sbatch` |
+| `run_psf_fp_maps.py` | the runner: case dispatch, formula validation, output pages |
+| `../psf_maps_lib.py` | shared with `closedloop`: star sampling, MIW wavefront lookup, Double Zernike (DZ) residual evaluation, corner-recovery matrices, page layout |
+| `../../../common/psf_render.py` | GalSim `OpticalPSF` + Kolmogorov atmosphere + HSM measurement. Nothing in it is AOS-specific, so it lives in `common/` |
 
-Cases it can render: MIW, FAM, WFS-mimic, and closed-loop.
+## Inputs and outputs
 
-## Known bug — NaN is truthy
+A single measured-intrinsic build supplies everything: `intrinsic_split_maps.parquet`
+(the MIW) and `fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state).
+`--mi` defaults to `pathA_50_34_i_5rot`, the current build.
 
-`run_psf_fp_maps.py:141` reads
-
-```python
-v = np.nanpercentile(np.abs(m[key]), 98) or 0.01
-```
-
-If the percentile is **NaN** (all-NaN input for that key), `NaN or 0.01` evaluates to
-**NaN**, not `0.01` — because NaN is truthy in Python. The NaN then propagates into
-`vmin`/`vmax` and the colour scale silently breaks. The `or 0.01` guard only catches an
-exact `0.0`. Flagged in the original review and **still live** as of 2026-09-05. Fix with
-an explicit `np.isfinite` check.
-
-Note lines 135 and 159 use `nanpercentile` without the `or` idiom, so they are unaffected.
+Writes `output/<ps>/<mi>/psf/psf_fp_maps_<case>_<band>.pdf`.
 
 ## Running
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/psf/run_psf_fp_maps.py --help
+python code/psf/run_psf_fp_maps.py --case miw
+python code/psf/run_psf_fp_maps.py --case all --band i
+python code/psf/run_psf_fp_maps.py --case validate
 ```
 
-Needs `galsim` (rendering + HSM). Batch form is `run_psf_fp_maps.sbatch` — **MUST-ASK**,
-hand over the submit plus `tail -f` pair.
+Needs `galsim` for rendering, `lsst.obs.lsst` for camera geometry, and `lsst.ts.ofc` for
+the cases that project onto the sensitivity matrix.
 
 ## Reporting
 
-FWHM in arcsec; ellipticity is **dimensionless** but state the convention (e1/e2 vs
-|e|, and which frame). When quoting a fraction of a residual, say **power or amplitude**
+FWHM in arcsec. Ellipticity is dimensionless, but state the convention (e1/e2 versus
+|e|) and the frame. When quoting a fraction of a residual, say **power or amplitude**
 explicitly — they differ by a square.
 
-## Notebooks
+## State
 
-None. Driven by `run_psf_fp_maps.py`.
+The closed-loop simulation was split out into the [`closedloop`](closedloop.md) study on
+2026-09-07, and the study now uses a **single** `<mi>` rather than the former
+`--split-mi`/`--fam-mi` pair (which mixed `pathA_50_34_i_5rot` for the MIW with the
+superseded first-pass `pathA_50_34_i` for the FAM fits). Existing output predates both
+changes — see [`../status/rerun_needed.md`](../status/rerun_needed.md).
 
 ## See also
 
-- [`cwfs.md`](cwfs.md) — `wfs_dof_compare` uses `psf_render` for its AOS-FWHM pages
-- [`../../../notes/claude-memory/optatmo-moments-project.md`](../../../notes/claude-memory/optatmo-moments-project.md) — the related standalone Optics+Atmosphere moment fit in `optatmo/`
+- [`closedloop.md`](closedloop.md) — how the control loop evolves the state over a visit sequence
+- [`cwfs.md`](cwfs.md) — `run_wfs_dof_compare` uses `common/psf_render.py` for its AOS-FWHM pages
+- [`miw.md`](miw.md) — where the MIW comes from

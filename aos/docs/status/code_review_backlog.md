@@ -1,11 +1,16 @@
 # AOS code review — open backlog
 
-> **Status:** current · **Last updated:** 2026-09-06 · **Kind:** working state (review backlog)
+> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** working state (review backlog)
 
 Items deferred during the study reorganization, each because fixing it would change
 results or behaviour rather than structure. Kept separate from
 [`code_review_findings.md`](code_review_findings.md), which is the older
 severity-ordered review whose line anchors are stale.
+
+**Still open:** the stale `coadd_50_34` products (a data problem, not code), and 11 files
+in `filters/` and `smatrix/` carrying `/Users/roodman` data paths. Everything else here is
+resolved, with the reasoning kept so a later pass does not re-litigate it. Outputs needing
+regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
 
 Aaron is reviewing `aos/code/` file by file, assessing (a) whether code belongs in
 `common/` and (b) readability, including bringing docstrings up to the Rubin DM
@@ -113,15 +118,18 @@ a file to keep in sync rather than remove one. The remaining duplication is
 
 ## Live defects confirmed during the reorganization
 
-### `run_psf_fp_maps.py:141` — NaN is truthy
-```python
-v = np.nanpercentile(np.abs(m[key]), 98) or 0.01
-```
-If the percentile is NaN (all-NaN input for that key), `NaN or 0.01` evaluates to
-**NaN**, because NaN is truthy in Python — verified. The `or 0.01` guard only catches an
-exact `0.0`. The NaN then propagates into `vmin`/`vmax` and the colour scale breaks
-silently. Fix with an explicit `np.isfinite` check. Lines 135 and 159 use
-`nanpercentile` without the `or` idiom and are unaffected.
+### `run_psf_fp_maps.py` NaN-truthy colour scale — FIXED 2026-09-07 (`b5ac9c8`)
+
+`v = np.nanpercentile(np.abs(m[key]), 98) or 0.01` looks like a guard but is not: NaN is
+truthy, so an all-NaN input gave `NaN or 0.01` -> NaN, which propagated into `vmin`/`vmax`
+and silently broke the e1/e2 colour scale. The `or` only ever caught an exact `0.0`.
+Replaced with an explicit `np.isfinite` check that still catches zero:
+
+| input | percentile | old | new |
+|---|---|---|---|
+| all-NaN | nan | **nan** | 0.01 |
+| all-zero | 0.0 | 0.01 | 0.01 |
+| normal | 2.96 | 2.96 | 2.96 |
 
 ### `analyze_miw_field_order.py` — stale products, unhelpful failure
 In `output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/coadd_50_34/`,
@@ -135,9 +143,18 @@ real. The general lesson for the review pass: **a count mismatch is caught, an o
 mismatch is not** — sidecar tables row-aligned to `donuts.parquet` have an undocumented
 ordering contract.
 
-### Laptop paths that cannot resolve on S3DF
-`analyze_sensitivity_sparse.py` and `analyze_sparse_observability.py` still set
-`_PKG = "/Users/roodman/..."`. Outside `aos/`, **11 more tracked files** do the same for
+### Laptop paths — the two in `aos/` FIXED 2026-09-07 (`3997c26`); 11 elsewhere remain
+
+`analyze_sensitivity_sparse.py` and `analyze_sparse_observability.py` set
+`_PKG = "/Users/roodman/Astrophysics/Claude/packages"` and used it both as a
+`TS_CONFIG_MTTCS_DIR` fallback and for a `sys.path` insert to find `ts_ofc` — a macOS path,
+so neither script could run on S3DF at all. Both are now unnecessary: the DM stack, `ts_ofc`
+and `ts_intrinsic_wavefront` all come from the environment on the RSP and the sdfiana nodes
+alike, and that setup exports `TS_CONFIG_MTTCS_DIR`. The `sys.path` insert is deleted; the
+config-dir fallback uses the `/sdf/group` form. **Verified by running both to completion on
+S3DF**, which was not previously possible.
+
+Still open — outside `aos/`, **11 tracked files** do the same for
 data directories: 3 in `filters/code/design_*.py` (throughput dir) and 8 in
 `smatrix/code/` (`batoid_rubin_data`, `ts_config_mttcs`). These are data-directory
 constants rather than import bootstrapping, so they were out of scope for the import
@@ -190,37 +207,28 @@ Left as-is deliberately. Do not re-flag.
   the parquet combiner) is a natural place for the first real tests, since each is a pure
   function over a table.
 
-## Review the `psf` study — what is it for?
+## `psf` study review — RESOLVED 2026-09-07
 
-Deferred from the Phase 7 output reorganization (2026-09-06). Aaron's note: *"I now
-don't even remember what this study did."* Its output was moved to `<ps>/psf/` as a
-holding location, not a considered placement.
+Aaron's answer: the study looks at the **expected PSF due to the optical contribution
+under given conditions**, it is worth keeping as one study, and it does depend on the MIW.
+Acted on:
 
-What is there: `code/psf/run_psf_fp_maps.py` (634 lines) plus the shared
-`code/psf_render.py`, and 14 PDFs in
-`output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/psf/`, one per case:
+- **Output moved to `<ps>/<mi>/psf/`.** It is MI-dependent, so the `<param_set>`-level
+  holding location was wrong.
+- **Collapsed to a single `--mi`.** It previously read two builds: `--split-mi`
+  (`pathA_50_34_i_5rot`) for the MIW split maps and `--fam-mi` (`pathA_50_34_i`) for the
+  per-visit FAM fits. `pathA_50_34_i` is a superseded first-pass MIW, so every output was
+  partly stale. One `--mi` now supplies both, defaulting to `_5rot`, which also carries the
+  larger sample (1126 versus 960 visits).
+- **Closed-loop split into its own [`closedloop`](../studies/closedloop.md) study.** 8 of
+  the 14 cases were control simulations — how the loop *evolves* the state over a visit
+  sequence, with its own gain/latency/intrinsic/order knobs — which is a different question
+  from the single-shot forward calculation.
+- **`psf_render.py` promoted to `common/`.** Nothing in it is AOS-specific: GalSim
+  `OpticalPSF` + Kolmogorov + HSM, and `optatmo/` and `guider/` do similar moment work. The
+  shared *AOS-specific* machinery went to `aos/code/psf_maps_lib.py` instead, used by both
+  `psf` and `closedloop`.
+- The NaN-truthy colour-scale bug in this study was fixed separately (`b5ac9c8`).
 
-| case | what it renders |
-|---|---|
-| `miw_i` | PSF from the MIW wavefront |
-| `fam50_i`, `fam22_i` | PSF from the FAM-recovered state, 50-DOF and 22-DOF schemes |
-| `mimic50_i`, `mimic22_i` | PSF from the WFS-mimic corner recovery |
-| `loop{22,50}_i_{miw,tabulated}_{ordered,random}_nplustwo_g0.3` | 8 closed-loop simulations: gain 0.3, N+2 latency, MIW vs tabulated intrinsic, ordered vs random visit order |
-| `validate_i` | validation of the FWHM formula against rendered PSFs |
-
-Questions to settle:
-
-- **Is the closed-loop simulation still wanted?** 8 of the 14 outputs are loop cases.
-  That is a control-simulation study, arguably distinct from "render a PSF from a
-  wavefront", and might deserve its own study name (`aosloop`?) or retirement.
-- **Where should output live?** It is at `<ps>/psf/` now. The script reads **two**
-  different `<mi>` builds in one run — `--split-mi` (default `pathA_50_34_i_5rot`,
-  supplying `intrinsic_split_maps.parquet`) and `--fam-mi` (default `pathA_50_34_i`,
-  supplying `zk_intrinsic.parquet`) — and several cases use no MIW at all, so it does
-  not belong under a single `<mi>`. If the loop cases are split out, the remainder may
-  be simple enough to key properly.
-- **Is `psf_render.py` a `common/` candidate?** It is GalSim `OpticalPSF` + Kolmogorov
-  + HSM with nothing AOS-specific, already used by `psf` and `cwfs`, and `optatmo/` and
-  `guider/` do similar moment work. Decision deferred at Aaron's request.
-- **One live bug**: the NaN-truthy colour-scale guard at
-  `code/psf/run_psf_fp_maps.py:141` (see above).
+`run_psf_fp_maps.py` went from 638 to 231 lines. Existing output predates all of this —
+see [`rerun_needed.md`](rerun_needed.md).

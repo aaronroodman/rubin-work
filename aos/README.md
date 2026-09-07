@@ -10,7 +10,7 @@ Wavefront Sensor (CWFS) data.
 
 ## Studies
 
-The work divides into twelve studies. Each has a detail document under
+The work divides into thirteen studies. Each has a detail document under
 `docs/studies/`; [`docs/studies.md`](docs/studies.md) is the combined inventory,
 listing the code, inputs, outputs and current state of every one.
 
@@ -26,7 +26,8 @@ listing the code, inputs, outputs and current state of every one.
 | [`smatrix_vmode`](docs/studies/smatrix_vmode.md) | Structure of the Optical Feedback Control (OFC) sensitivity matrix: its singular value decomposition, v-mode composition, and DOF observability |
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table development |
 | [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
-| [`psf`](docs/studies/psf.md) | Focal-plane Point Spread Function (PSF) maps rendered from a wavefront — full width at half maximum (FWHM) and ellipticity |
+| [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
+| [`closedloop`](docs/studies/closedloop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
 | [`infra`](docs/studies/infra.md) | Node CPU and memory capability, for sizing pipeline concurrency |
 
 ## Pipeline
@@ -71,12 +72,12 @@ output/
   <param_set>/
     {donuts,fits,visits}.parquet   # combined tables, input to everything
     chunks/<dmin>_<dmax>/          # per-chunk tables
-    dzfit/  psf/  processing_compare/  wfs/<variant>/
+    dzfit/  processing_compare/  wfs/<variant>/
     coadd_50_34/  coadd_50_34_v2/
     <mi_name>/
       intrinsic_split_{maps,decomp,rms}.parquet  # the MIW itself
       fits.parquet                               # DZ refit against the MIW
-      correlations/  bounce/  lut/  wfs/<variant>/  wfs_mimic/
+      correlations/  bounce/  psf/  closedloop/  lut/  wfs/<variant>/  wfs_mimic/
   smatrix_vmode/                   # OFC matrix diagnostics, no param_set dependence
   camera_gravity/                  # static_optics, no param_set dependence
   archive/                         # superseded param_sets
@@ -104,7 +105,7 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/studies.md`](docs/studies.md) | **inventory of the 12 analysis studies** — the map for this topic |
+| [`docs/studies.md`](docs/studies.md) | **inventory of the 13 analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
 | [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |
