@@ -95,6 +95,13 @@ python full_mode_analysis.py --band r
 ```
 `compute_smatrix.py` is mode-count-aware (reads the target bend dir's bend.yaml),
 so the same OFC convention (ZCS, flips, degree, y-sign) applies to all 238 DOF.
+Regenerating `bend_full/` (291 M, ~2 min, needs only `fea_legacy/`):
+
+```bash
+cd ~/notebooks/rubin-work/smatrix
+python code/build_full_modes.py          # writes $BATOID_RUBIN_DATA_DIR/bend_full
+```
+
 `build_full_modes.py` replicates the batoid_rubin `decompose_sag` pipeline
 (Zernike Noll≤28 + gridded residual) from the FEA node data; M2 is zero-padded
 to 156 stored modes so `load_bend` can index all mirrors uniformly
@@ -118,3 +125,4 @@ status + last-updated line under its title.
 | [`docs/miw_astig_coma_investigation.md`](docs/miw_astig_coma_investigation.md) | what can produce the observed high-field-order Z5–Z8 in the MIW that the batoid design model does not predict |
 | [`docs/plots.md`](docs/plots.md) | index of the plots/outputs in `output/` and how to regenerate each |
 | [`docs/status/future_issues.md`](docs/status/future_issues.md) | running list of open issues and follow-ups |
+| [`docs/status/data_provenance.md`](docs/status/data_provenance.md) | where the four batoid_rubin datasets come from and which are recoverable — `bend_zemax` has no recovery path |

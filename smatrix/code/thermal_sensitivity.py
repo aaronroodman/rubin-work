@@ -15,6 +15,7 @@ non-axisymmetric (x/y), astigmatism/coma -- with NO actuator force.  This is a
 natural source of the MIW Z5-Z8/Z11/Z22 excess that force-limited bending modes
 cannot reach.
 """
+import os
 from pathlib import Path
 import numpy as np
 import batoid
@@ -23,7 +24,14 @@ from batoid_rubin import LSSTBuilder
 import compute_smatrix as C
 
 OUT = Path(__file__).resolve().parent.parent / "output"
-DD = "/Users/roodman/LSST/batoid_rubin_data"
+# batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
+# the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
+# and on slaciana batch nodes. fea_legacy/ and bend/ come from Zenodo (DOIs 8384326 and
+# 8384775); bend_full/ and bend_zemax/ are locally generated and are NOT on S3DF -- see
+# ../docs/status/laptop_only_data.md.
+_BRD = os.environ.get("BATOID_RUBIN_DATA_DIR",
+                      "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data")
+DD = _BRD
 WL = 0.622e-6
 WL_UM = 0.622
 

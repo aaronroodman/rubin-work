@@ -19,7 +19,12 @@ import thinfilm as tf
 HERE = os.path.dirname(os.path.abspath(__file__))
 # scripts live in filters/code/; products go to filters/output/
 OUT = os.path.join(os.path.dirname(HERE), "output")
-THROUGHPUTS = "/Users/roodman/Astrophysics/LSST/Throughput/throughputs/baseline"
+# LSST filter/detector throughput curves. $THROUGHPUTS_DIR is exported by the stack
+# setup on the RSP and the sdfiana nodes; the fallback is the /sdf/group form, which
+# resolves identically there and on slaciana batch nodes.
+THROUGHPUTS = os.path.join(os.environ.get("THROUGHPUTS_DIR",
+                     "/sdf/group/rubin/u/roodman/LSST/packages/throughputs"),
+                     "baseline")
 
 LO, HI = "SiO2", "Ta2O5"          # low / high index coating materials
 BAND = (402.0, 552.0)             # g-band ~half-max edges (nm)

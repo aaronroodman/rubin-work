@@ -19,6 +19,7 @@ Combinations produced (all saved to ../output/normalization_all.npz):
 
 f is field-averaged quadrature FWHM over Noll Z4-Z22 (the v13 convention).
 """
+import os
 import numpy as np
 import yaml
 from pathlib import Path
@@ -28,8 +29,19 @@ import normalization_weights as NW
 
 LBF2N = 4.4482216
 OUT = Path(__file__).resolve().parent.parent / "output"
-DATA = "/Users/roodman/LSST/batoid_rubin_data"
-V13 = "/Users/roodman/Astrophysics/Claude/packages/ts_config_mttcs/MTAOS/v13/ofc"
+# batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
+# the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
+# and on slaciana batch nodes. fea_legacy/ and bend/ come from Zenodo (DOIs 8384326 and
+# 8384775); bend_full/ and bend_zemax/ are locally generated and are NOT on S3DF -- see
+# ../docs/status/laptop_only_data.md.
+_BRD = os.environ.get("BATOID_RUBIN_DATA_DIR",
+                      "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data")
+DATA = _BRD
+# OFC configuration. $TS_CONFIG_MTTCS_DIR is exported by the stack setup; fallback is the
+# cross-environment /sdf/group form.
+_MTTCS = os.environ.get("TS_CONFIG_MTTCS_DIR",
+                        "/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs")
+V13 = os.path.join(_MTTCS, "MTAOS/v13/ofc")
 
 # bend.yaml AOS mode selections (raw indices), per basis
 AOS_M1M3_IM = list(range(20))                    # IM first-20 == bend.yaml modes

@@ -154,12 +154,18 @@ alike, and that setup exports `TS_CONFIG_MTTCS_DIR`. The `sys.path` insert is de
 config-dir fallback uses the `/sdf/group` form. **Verified by running both to completion on
 S3DF**, which was not previously possible.
 
-Still open — outside `aos/`, **11 tracked files** do the same for
-data directories: 3 in `filters/code/design_*.py` (throughput dir) and 8 in
-`smatrix/code/` (`batoid_rubin_data`, `ts_config_mttcs`). These are data-directory
-constants rather than import bootstrapping, so they were out of scope for the import
-fix. Each wants an env-var plus fallback (`$BATOID_RUBIN_DATA_DIR`,
-`$TS_CONFIG_MTTCS_DIR`).
+**FIXED 2026-09-07 as well** — outside `aos/`, the **11 tracked files** that did the same for
+data directories — 3 in `filters/code/design_*.py` (throughput dir) and 8 in
+`smatrix/code/` (`batoid_rubin_data`, `ts_config_mttcs`, `ts_ofc` policy) — now use
+`$THROUGHPUTS_DIR`, `$BATOID_RUBIN_DATA_DIR` and `$TS_CONFIG_MTTCS_DIR` with `/sdf/group`
+fallbacks, and every resolved path was checked to exist. There are no `/Users/roodman`
+references left in tracked Python.
+
+Two data gaps remain, recorded in
+[`../../../smatrix/docs/status/data_provenance.md`](../../../smatrix/docs/status/data_provenance.md):
+`bend_zemax/` is a locally generated dataset with **no recovery path** (4 smatrix scripts
+need it), and `filters/` imports `tmmax`, which is installed on the laptop but not in the
+S3DF stack. `bend_full/` was regenerated on S3DF, so that gap is closed.
 
 ### `svd._keep()` — WON'T FIX, and the original flag was inaccurate
 

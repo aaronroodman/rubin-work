@@ -19,6 +19,7 @@ Output dir (default $BATOID_RUBIN_DATA_DIR/bend_full):
   M1_bend_zk/grid/coords, M3_*, M2_*, bend.yaml
   use_m1m3_modes = range(156), use_m2_modes = range(72)
 """
+import os
 import argparse
 from pathlib import Path
 
@@ -26,6 +27,12 @@ import numpy as np
 import galsim
 from astropy.io import fits
 from scipy.interpolate import CloughTocher2DInterpolator
+
+# batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
+# the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
+# and on slaciana batch nodes.
+_BRD = os.environ.get("BATOID_RUBIN_DATA_DIR",
+                      "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data")
 
 # mirror geometry (m) -- matches bend.yaml
 M1_OUTER, M1_INNER = 4.18, 2.558
@@ -96,7 +103,7 @@ def write_mirror(outdir, name, zk, grid, x_grid):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--data-dir", default="/Users/roodman/LSST/batoid_rubin_data")
+    p.add_argument("--data-dir", default=_BRD)
     p.add_argument("--outdir", default=None)
     args = p.parse_args()
     data_dir = Path(args.data_dir)

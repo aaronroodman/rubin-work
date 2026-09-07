@@ -14,6 +14,7 @@ Outputs (../output/):
     mode_gallery_M1M3.png
     mode_gallery_M2.png
 """
+import os
 import argparse
 from pathlib import Path
 
@@ -24,7 +25,14 @@ from matplotlib.colors import TwoSlopeNorm
 
 from batoid_rubin.builder import load_bend
 
-DATA_DIR_DEFAULT = "/Users/roodman/LSST/batoid_rubin_data"
+# batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
+# the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
+# and on slaciana batch nodes. fea_legacy/ and bend/ come from Zenodo (DOIs 8384326 and
+# 8384775); bend_full/ and bend_zemax/ are locally generated and are NOT on S3DF -- see
+# ../docs/status/laptop_only_data.md.
+_BRD = os.environ.get("BATOID_RUBIN_DATA_DIR",
+                      "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data")
+DATA_DIR_DEFAULT = _BRD
 
 
 def mode_surface(bm, i, X, Y):

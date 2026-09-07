@@ -14,6 +14,7 @@ Outputs ../output/:
   normalization_full.npz              (f, r, w, labels)
   fullmode_normalization.png          (f, r, w vs mode number)
 """
+import os
 import numpy as np
 from pathlib import Path
 from astropy.io import fits
@@ -24,9 +25,20 @@ import normalization_weights as NW
 N_RIGID = 10
 N_M1M3 = 153
 N_M2 = 69
-DATA = "/Users/roodman/LSST/batoid_rubin_data/bend_zemax"
-V13 = ("/Users/roodman/Astrophysics/Claude/packages/ts_config_mttcs/MTAOS/v13/ofc/"
-       "normalization_weights/range0.5_fwhm-0.15.yaml")
+# batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
+# the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
+# and on slaciana batch nodes. fea_legacy/ and bend/ come from Zenodo (DOIs 8384326 and
+# 8384775); bend_full/ and bend_zemax/ are locally generated and are NOT on S3DF -- see
+# ../docs/status/laptop_only_data.md.
+_BRD = os.environ.get("BATOID_RUBIN_DATA_DIR",
+                      "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data")
+DATA = os.path.join(_BRD, "bend_zemax")
+# OFC configuration. $TS_CONFIG_MTTCS_DIR is exported by the stack setup; fallback is
+# the cross-environment /sdf/group form.
+_MTTCS = os.environ.get("TS_CONFIG_MTTCS_DIR",
+                        "/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs")
+V13 = os.path.join(_MTTCS, "MTAOS/v13/ofc/normalization_weights",
+                   "range0.5_fwhm-0.15.yaml")
 
 
 def main():

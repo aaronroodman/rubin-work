@@ -27,7 +27,12 @@ import filterstack as fs
 HERE = os.path.dirname(os.path.abspath(__file__))
 # scripts live in filters/code/; products go to filters/output/
 OUT = os.path.join(os.path.dirname(HERE), "output")
-THRU = "/Users/roodman/Astrophysics/LSST/Throughput/throughputs/baseline"
+# LSST filter/detector throughput curves. $THROUGHPUTS_DIR is exported by the stack
+# setup on the RSP and the sdfiana nodes; the fallback is the /sdf/group form, which
+# resolves identically there and on slaciana batch nodes.
+THRU = os.path.join(os.environ.get("THROUGHPUTS_DIR",
+                     "/sdf/group/rubin/u/roodman/LSST/packages/throughputs"),
+                     "baseline")
 LO, HI = "SiO2", "Nb2O5"
 BAND = (402.0, 552.0)
 WL = np.linspace(320.0, 1120.0, 1001)      # full Si detector range

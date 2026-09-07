@@ -13,6 +13,7 @@ We reproduce it standalone from our batoid_rubin OFC-basis DZ sensitivity matrix
   w = sqrt(r/f)
 Result: all 50 DOF agree with the official weights to < 0.1%.
 """
+import os
 import argparse
 from pathlib import Path
 
@@ -22,8 +23,14 @@ import yaml
 import normalization_weights as NW
 
 # default locations (edit for USDF: /sdf/group/rubin/u/roodman/LSST/packages/...)
-TS_OFC = "/Users/roodman/Astrophysics/Claude/packages/ts_ofc/python/lsst/ts/ofc/policy"
-V13 = "/Users/roodman/Astrophysics/Claude/packages/ts_config_mttcs/MTAOS/v13/ofc"
+# ts_ofc policy dir, taken from the installed package rather than a fixed path.
+import lsst.ts.ofc as _tsofc
+TS_OFC = os.path.join(os.path.dirname(_tsofc.__file__), "policy")
+# OFC configuration. $TS_CONFIG_MTTCS_DIR is exported by the stack setup; fallback is the
+# cross-environment /sdf/group form.
+_MTTCS = os.environ.get("TS_CONFIG_MTTCS_DIR",
+                        "/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs")
+V13 = os.path.join(_MTTCS, "MTAOS/v13/ofc")
 
 # ts_ofc compute_range_weights uses the FIRST 20 raw force columns
 # (BendModeToForce.rot_mat = force_data[:, 3:23]) -- NOT the bend.yaml sensitivity

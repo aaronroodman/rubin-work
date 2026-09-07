@@ -8,6 +8,7 @@ aberration, which the AOS 20-mode set omits.
 
 Output: ../output/m1m3_B52.png
 """
+import os
 from pathlib import Path
 import numpy as np
 import galsim
@@ -16,7 +17,14 @@ from matplotlib.colors import TwoSlopeNorm
 from batoid_rubin.builder import load_bend
 
 OUT = Path(__file__).resolve().parent.parent / "output"
-BZ = "/Users/roodman/LSST/batoid_rubin_data/bend_zemax"
+# batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
+# the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
+# and on slaciana batch nodes. fea_legacy/ and bend/ come from Zenodo (DOIs 8384326 and
+# 8384775); bend_full/ and bend_zemax/ are locally generated and are NOT on S3DF -- see
+# ../docs/status/laptop_only_data.md.
+_BRD = os.environ.get("BATOID_RUBIN_DATA_DIR",
+                      "/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data")
+BZ = os.path.join(_BRD, "bend_zemax")
 I = 51   # B52 (0-based raw index)
 
 
@@ -29,7 +37,7 @@ def surf(bm, X, Y):
 
 def main():
     import os
-    os.environ.setdefault("BATOID_RUBIN_DATA_DIR", "/Users/roodman/LSST/batoid_rubin_data")
+    os.environ.setdefault("BATOID_RUBIN_DATA_DIR", _BRD)
     modes = load_bend(BZ, tuple(range(60)))
     fig, axes = plt.subplots(1, 3, figsize=(18, 5.5))
 
