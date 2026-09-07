@@ -139,7 +139,10 @@ def psf_page(stars, meas, title, fwhm_atm, pdf):
     # row 1: e1 | e2
     for col, key in [(0, 'e1'), (1, 'e2')]:
         ax = fig.add_subplot(gs[1, col]); setup_map(ax, key)
-        v = np.nanpercentile(np.abs(m[key]), 98) or 0.01
+        # NaN is truthy, so `x or 0.01` does NOT guard an all-NaN percentile:
+        # it would propagate NaN into vmin/vmax and silently break the scale.
+        v = np.nanpercentile(np.abs(m[key]), 98)
+        v = 0.01 if not np.isfinite(v) or v == 0 else v
         fig.colorbar(ax.scatter(x, y, c=m[key], s=10, cmap='RdBu_r', vmin=-v, vmax=v),
                      ax=ax, shrink=0.85)
     # row 2: coma whisker | trefoil markers
