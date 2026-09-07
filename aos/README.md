@@ -56,7 +56,8 @@ setup the pipeline requires.
   build and anything projecting onto the OFC sensitivity matrix. These packages are not
   part of `lsst_distrib` and need the AOS/CWFS environment.
 - **Parquet only:** the DZ fits, combines, validation plots, aberration pairs and
-  processing comparisons run wherever the tables exist, including the laptop.
+  processing comparisons need no Butler or AOS packages — they run wherever the tables
+  exist.
 
 ## Output layout
 

@@ -31,8 +31,7 @@ processing artifact. This study tells them apart.
 
 Two runs' `output/<param_set>/{donuts,visits}.parquet`, plus `fits.parquet` for the
 optional per-visit DZ-fit comparison. **numpy/scipy/pyarrow only** — no LSST stack
-needed, so this is one of the few studies that runs anywhere the parquets exist,
-including the laptop.
+needed, so this is one of the few studies that runs anywhere the parquets exist.
 
 ## Method note — matching, not indexing
 

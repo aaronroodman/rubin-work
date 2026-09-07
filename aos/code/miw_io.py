@@ -9,7 +9,7 @@ The MIW also exists in a Butler as an `lsst.ip.isr.IntrinsicZernikes` calibratio
 (dataset type ``intrinsicZernikes``, one per detector, written by the external package's
 ``ingest_calib_tables.py``). That form is an interpolator queried at arbitrary field
 positions, with a per-detector CCS contribution, and it is **deliberately not wrapped
-here**: its only consumer is `aos_miw_cwfs_intrinsic_check.ipynb`, which exists to verify
+here**: its only consumer is `notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb`, which exists to verify
 that the ingested calibration reproduces what ts_wep computes, and so must call
 `getIntrinsicZernikes` directly rather than through a wrapper that could mask the
 behaviour under test.

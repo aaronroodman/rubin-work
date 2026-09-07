@@ -60,7 +60,7 @@ rubin-work/
 
 ## Quick Start
 
-### First time setup (laptop or RSP)
+### First time setup
 
 ```bash
 git clone git@github.com:aaronroodman/rubin-work.git
@@ -83,9 +83,11 @@ The `gitpull` and `gitpush` aliases are set up by `setup_env.sh` (see below). Yo
 
 `gitpush` stages all changes, commits, and pushes. It also pushes any previously committed but unpushed commits.
 
-### Working with Claude Code (laptop)
+### Working with Claude Code
 
-Open the Claude Desktop app Code tab, point it at this repo folder, and ask it to create or edit notebooks and scripts. It can commit and push directly.
+Launch Claude Code from the repo root, so that `common/` and the git context stay
+visible. `CLAUDE.md` at the root carries the conventions it follows; per-topic
+`CLAUDE.md` files add scoping rules for `aos/` and `guider/`.
 
 ### Authentication on RSP
 

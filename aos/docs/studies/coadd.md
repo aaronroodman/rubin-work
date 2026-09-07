@@ -46,8 +46,6 @@ Reads `output/<ps>/<mi>/fits.parquet` (MI-refit DZ) and the `coadd_50_34/` produ
   raises `IndexError`. Either regenerate both from one run, or make the script assert
   `len(mt) == len(Um)` with a clear message. Recorded in
   [`../status/code_review_findings.md`](../status/code_review_findings.md).
-- Its imports were fixed on 2026-09-05 (it previously loaded `ofc_svd` from a hardcoded
-  `/Users/roodman` macOS path and could never run on S3DF).
 - **Never correlate against total `‖a‖`** — open-loop focus drift dominates it; use
   per-mode signed `a`. See the handoff.
 

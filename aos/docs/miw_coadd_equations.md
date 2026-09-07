@@ -597,7 +597,7 @@ needs the build-set reference. Two sources:
   central statistic (median; strictly the MIW cell is a per-donut median, so the
   effective centre is donut-weighted and can drift slightly cell to cell — second
   order, ignored). Pass via `--umode-ref`.
-- **approximate** (laptop default) — `n_visits`-weighted mean of $a_i$ over the 16
+- **approximate** (the default) — `n_visits`-weighted mean of $a_i$ over the 16
   `build_used` blocks. A median-of-medians; fine for a first look.
 
 **No test lives at the centre.** $\langle\Delta a\rangle_{\mathcal B}=0$ identically

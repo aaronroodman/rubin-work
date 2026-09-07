@@ -33,10 +33,10 @@ config_dir=$TS_CONFIG_MTTCS_DIR/MTAOS/v13/ofc)`, `configure_controller()`,
 which has ALL radial orders populated (coma2/tref2/astig3/tet2 present, 0 NaN).
 The `new_measured_lsst_sensitivity_*` file (which zeroes those orders) does NOT
 match that glob and is NOT loaded. RETRACTED my earlier wrong claim that
-"production zeroes coma2/tref2/...". analyze_sensitivity_sparse.py loads via
+"production zeroes coma2/tref2/...". analyze_sparse_fit.py (--part sensitivity) loads via
 OFCData (fallback: read the lsst_sensitivity yaml).
 
-**Piece 1 done (2026-09-01), `aos/code/smatrix_vmode/analyze_sensitivity_sparse.py` ->
+**Piece 1 done (2026-09-01), `aos/code/smatrix_vmode/analyze_sparse_fit.py --part sensitivity` ->
 output/sensitivity_sparse_analysis.pdf (loads the CORRECT full matrix):**
 1. All radial orders ARE present in the OFC's matrix (page 0). [Earlier
    "production zeroes higher orders" was WRONG -- that was the non-loaded
@@ -61,7 +61,7 @@ select the 21 by Noll index; `SensitivityMatrix.evaluate(...)[:, zn_idx, :]` out
 pupil axis is Noll-4. StateEstimator's se.S/se.Vh use the RAW matrix incl piston/tilt
 (Noll0-3) -> for observability recompute the SVD on the 21-packed subset.
 
-**Sparse OBSERVABILITY (Piece 1b, `aos/code/smatrix_vmode/analyze_sparse_observability.py` ->
+**Sparse OBSERVABILITY (Piece 1b, `aos/code/smatrix_vmode/analyze_sparse_fit.py --part observability` ->
 output/sparse_observability.pdf, 4 pages = 2 schemes x 2 samplings):** if the donut
 fit measures ONLY the primary (drop 2nd/3rd = [12,13,16,17,18,19,22,23,24,25,26]) do
 the controlled v-modes stay observable? v-modes recomputed on the 21-packed set. Two

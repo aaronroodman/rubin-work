@@ -47,6 +47,6 @@ git tag -a miw-v1 -m "MIW calibration v1"
 ```
 
 ## Reading it
-`aos/aos_miw_ocs_ccs_maps.ipynb` reads `miw/intrinsic_split_maps_<version>.parquet`
+`aos/notebooks/miw/aos_miw_ocs_ccs_maps.ipynb` reads `miw/intrinsic_split_maps_<version>.parquet`
 (set the `version` parameter). For online/AOS use, point its `maps_path` at the
 deployed copy of that file.

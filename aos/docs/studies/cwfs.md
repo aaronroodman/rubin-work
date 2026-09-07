@@ -46,9 +46,14 @@ Writes `wfs/<cwfs>/{donuts,visits}.parquet`, `wfs_corner_compare.{pdf,parquet}`,
 
 ## Notebooks
 
-`aos_miw_cwfs_intrinsic_check.ipynb`, `wfs_corner_compare_correlations.ipynb`
-(8 half-sensors, v3, tarts), `wfs_corner_compare_correlations-aidonut.ipynb`
-(4 corners, v2), `wfs_mimic_covariance.ipynb` (covariance reader).
+All four live in `notebooks/cwfs/`:
+
+| notebook | content |
+|---|---|
+| `aos_miw_cwfs_intrinsic_check.ipynb` | verifies the Butler-ingested `intrinsicZernikes` calibration against what ts_wep computes per detector |
+| `wfs_corner_compare_correlations.ipynb` | corner comparison, 8 half-sensors, v3, TARTS |
+| `wfs_corner_compare_correlations-aidonut.ipynb` | corner comparison, 4 corners, v2, ai_donut |
+| `wfs_mimic_covariance.ipynb` | reads the mimic covariance product |
 
 ## State and open questions
 

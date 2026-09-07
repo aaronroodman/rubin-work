@@ -63,7 +63,7 @@ re-triggered by code edits.
 
 ## Notebooks
 
-`aos_miw_ocs_ccs_maps.ipynb` reads the MIW OCS/CCS split maps — a viewer for
+`notebooks/miw/aos_miw_ocs_ccs_maps.ipynb` reads the MIW OCS/CCS split maps — a viewer for
 `<mi>/intrinsic_split_maps.parquet`, no repo-module imports.
 
 ## See also

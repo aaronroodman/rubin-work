@@ -14,11 +14,11 @@ shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 Counts are of files and lines in `aos/code/`, including the shared modules that stay
 flat there, and of Snakemake rules driving each study. Of
-the 57 Python files, 16 are referenced by the Snakefile and the rest are standalone.
+the 56 Python files, 16 are referenced by the Snakefile and the rest are standalone.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 894 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
+| [`smatrix_vmode`](studies/smatrix_vmode.md) | 3 | 977 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
 | [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`dzfit`](studies/dzfit.md) | 6 | 1598 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic, and quality checks on the donut data |
 | [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | Per-visit telescope state from the EFD and ConsDB: commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
@@ -59,21 +59,24 @@ The first three are effectively **shared infrastructure**, not aos-private: sibl
 topics reach them via a hardcoded `sys.path.insert(.../aos/code)`. See the root
 `CLAUDE.md` "Topic independence and shared code", and `../CLAUDE.md` in this topic.
 
-## Notebook → study
+## Notebooks
 
-| notebook | study |
+Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
+
+| notebook | content |
 |---|---|
-| `aos_miw_ocs_ccs_maps.ipynb` | `miw` (OCS/CCS split-map reader) |
-| `aos_miw_cwfs_intrinsic_check.ipynb` | `cwfs` |
-| `wfs_corner_compare_correlations.ipynb` | `cwfs` (8 half-sensors, v3, tarts) |
-| `wfs_corner_compare_correlations-aidonut.ipynb` | `cwfs` (4 corners, v2, ai_donut) |
-| `wfs_mimic_covariance.ipynb` | `cwfs` (mimic covariance reader) |
-| `aos_danish_tarts_compare_20260713.ipynb` | `processing_compare` (Danish vs TARTS) |
-| `study_compare_donuts.ipynb` | `processing_compare` — **TODO: port to a pipeline script** |
-| `smatrix_vmode_info.ipynb` | `smatrix_vmode` |
-| `vmode_dof_ts_ofc.ipynb` | `smatrix_vmode` (ts_ofc StateEstimator normalization) |
-| `jk_coverage_plots.ipynb` | `smatrix_vmode` (50-DOF SVD visualizations) |
-| `snippets.ipynb`, `moresnippets.ipynb`, `danish_snippets.ipynb` | **untracked scratch** — not part of any study |
+| `notebooks/miw/aos_miw_ocs_ccs_maps.ipynb` | reads the OCS and CCS MIW split maps |
+| `notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb` | verifies the Butler-ingested `intrinsicZernikes` calibration against what ts_wep computes per detector |
+| `notebooks/cwfs/wfs_corner_compare_correlations.ipynb` | corner comparison, 8 half-sensors, TARTS |
+| `notebooks/cwfs/wfs_corner_compare_correlations-aidonut.ipynb` | corner comparison, 4 corners, ai_donut |
+| `notebooks/cwfs/wfs_mimic_covariance.ipynb` | reads the mimic covariance product |
+| `notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb` | Danish versus TARTS on one day_obs |
+| `notebooks/processing_compare/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
+| `notebooks/smatrix_vmode/smatrix_vmode_info.ipynb` | early exploratory look at the OFC sensitivity matrix; predates the `StateEstimator` normalization used everywhere else |
+| `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF structure through the `ts_ofc` `StateEstimator` normalization |
+
+`snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
+untracked scratch, gitignored, and belong to no study.
 
 ## Output layout
 
@@ -152,9 +155,6 @@ Carried here so they are visible in one place; detail in each study doc.
   known instrumental effect.
 - **`miw`** — 83 % of MIW **power** sits above the `k<=6` focal orders the build fits,
   which reframes any DZ-subspace analysis.
-- **`smatrix_vmode`** — `analyze_sensitivity_sparse.py` and
-  `analyze_sparse_observability.py` still hardcode a `/Users/roodman` data path and
-  will fail on S3DF.
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
   it to a pipeline script is a standing TODO.
 
@@ -166,20 +166,16 @@ Helpers used by more than one study live in one place rather than being copied:
 |---|---|---|
 | `nmad(x)` — normalized median absolute deviation, robust sigma | `common/utils.py` | `cwfs`, `processing_compare` |
 | `alt_to_deg(alt)` — altitude in degrees, auto-detecting radian input | `common/utils.py` | `bounce`, `cwfs` |
-| `dz_coeff_columns(df, prefix)` — DZ coefficient column names | `aos/code/dz_columns.py` | all four `correlations` scripts |
+| `dz_coeff_columns(df, prefix)` — DZ coefficient column names | `aos/code/fam_selection.py` | all four `correlations` scripts |
+| `fam_quality_selection(df, ...)` — which FAM visits are usable | `aos/code/fam_selection.py` | all four `correlations` scripts |
 | `repo_root(start)` — repo root for notebooks | `common/utils.py` | notebooks |
 
 `alt_to_deg` detects radians by magnitude: if the largest absolute value is below 2*pi it
 converts, otherwise it assumes degrees. That misidentifies genuine degree values that all
 fall below 6.28 deg, which real Rubin altitudes never do — the docstring says so.
 
-Two similar-looking helpers are **deliberately not shared**, because the copies are not
-equivalent:
-
-- **`quality_cut`** appears in four `correlations` scripts with two different signatures
-  (`max_coeff_um` versus `maxc`) and differing bodies.
-- **`load_miw`** appears in four scripts across `static_optics` and `coadd` with four
-  different behaviours, some taking a `stride` argument and some not.
-
-Unifying either would change results, not just structure, so each needs its own decision
-about what the single correct behaviour is.
+Two helpers that were previously duplicated with non-equivalent bodies are now unified,
+each in one place: `fam_quality_selection` (was four copies of `quality_cut` implementing
+two different cuts) and `load_miw` (was four copies with four row cuts). The reasoning and
+the verification are in
+[`status/code_review_backlog.md`](status/code_review_backlog.md).

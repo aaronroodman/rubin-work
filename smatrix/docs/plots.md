@@ -2,17 +2,19 @@
 
 > **Status:** current · **Last updated:** 2026-08-05 · **Kind:** reference (output index)
 
-All outputs live in `output/` (gitignored; rsync-synced). Regenerate from
-`code/`. Set the data location first (laptop shown; USDF = the `/sdf` path):
+All outputs live in `output/` (gitignored; rsync-synced). Regenerate from `code/`. The
+scripts read `$BATOID_RUBIN_DATA_DIR` and fall back to the `/sdf/group` path below, so
+setting it is only needed to override:
 
 ```bash
 cd code
-export BATOID_RUBIN_DATA_DIR=/Users/roodman/LSST/batoid_rubin_data
+export BATOID_RUBIN_DATA_DIR=/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data
 ```
 
 Data dirs under `$BATOID_RUBIN_DATA_DIR`: `fea_legacy/`, `bend/` (OFC 30-mode),
-`bend_full/` (IM basis, 156+72), `bend_zemax/` (ZEMAX/OFC basis, 153+69).
-Python is MacPorts `/opt/local/bin/python3`.
+`bend_full/` (influence-matrix basis, 156 M1M3 + 72 M2 modes), `bend_zemax/`
+(ZEMAX/OFC basis, 153 + 69). See
+[`status/data_provenance.md`](status/data_provenance.md) for where each comes from.
 
 ---
 

@@ -4,10 +4,11 @@
 This repository contains Jupyter notebooks and Python scripts for Vera C. Rubin Observatory work, organized by topic. It is used on both the Rubin Science Platform (Summit and USDF) and locally.
 
 ## Repository Structure
-Each topic directory has `code/` and `output/` subdirectories, and `docs/` where it has
-prose documentation; notebooks (`.ipynb`) live directly in the topic directory. Most
-topics also carry a `README.md` describing their scope — read it before working in an
-unfamiliar topic. See [Markdown docs](#markdown-docs) for where each kind of `.md` lives.
+Each topic directory has `code/`, `notebooks/` and `output/` subdirectories, and `docs/`
+where it has prose documentation. Most topics also carry a `README.md` describing their
+scope — read it before working in an unfamiliar topic. See
+[Markdown docs](#markdown-docs) for where each kind of `.md` lives, and
+[Studies](#studies--where-new-code-goes) for the per-study subdirectory layout.
 
 AOS / wavefront:
 - `aos/` — the main AOS topic: measured intrinsic wavefront (MIW), FAM coadds, DZ
@@ -175,9 +176,33 @@ correlations; `nmad(residuals)` for robust scatter RMS.
 
 ## Conventions
 
-### Notebook naming
+### Notebook naming and location
 Use descriptive snake_case names: `topic_description_version.ipynb`
 Examples: `aos_wavefront_residuals_v2.ipynb`, `psf_ellipticity_focal_plane.ipynb`
+
+Notebooks live in **`<topic>/notebooks/<study>/`**, mirroring `<topic>/code/<study>/`, so
+a study's notebooks sit next to nothing but its own. A topic with only one study can use
+a flat `<topic>/notebooks/` and add the `<study>/` level when a second study appears.
+Nothing but `README.md` and `CLAUDE.md` belongs loose in a topic root.
+
+A notebook has no `__file__`, so it cannot use the `parents[N]` idiom from
+[Imports](#imports-and-syspath). Walk up to the topic directory instead, which works at
+any depth:
+
+```python
+import sys
+from pathlib import Path
+_TOPIC = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / 'code').is_dir())
+sys.path.insert(0, str(_TOPIC.parent))        # repo root -> common/
+sys.path.insert(0, str(_TOPIC / 'code'))      # flat cross-study modules
+for _d in sorted((_TOPIC / 'code').glob('*/')):
+    if _d.is_dir() and not _d.name.startswith(('_', '.')):
+        sys.path.insert(0, str(_d))
+```
+
+Do **not** write `Path.cwd() if (Path.cwd() / 'code').is_dir() else Path.cwd().parent` —
+that guesses one level and breaks as soon as the notebook moves into a `<study>/`
+subdirectory.
 
 ### Writing style for READMEs and docs
 A `README.md` opens with a **high-level description of the content**, in plain prose,
@@ -260,7 +285,8 @@ three of:
 
 1. a short description in the topic's `README.md` (a few lines, linking to 2.);
 2. a detail doc at `<topic>/docs/studies/<study>.md`, with the standard status header;
-3. usually a `<topic>/code/<study>/` subdirectory, and an output directory that matches.
+3. usually a `<topic>/code/<study>/` subdirectory, a `<topic>/notebooks/<study>/` for
+   its notebooks, and an output directory that matches.
 
 Do not add a script to a topic's `code/` root "for now" — that is how a flat 56-file
 directory happens. `aos/docs/studies.md` is the worked example of the inventory.

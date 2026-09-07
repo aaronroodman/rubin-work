@@ -282,7 +282,9 @@ the beam's angular range at the filter — not a coating change.
 | `plot_twosurface.py` | re-plot helper (Si-range metric) |
 | `output/figs/` | output figures |
 
-Run with MacPorts Python: `/opt/local/bin/python3 <script>.py`.
+Run each with `python code/<script>.py`. They need `tmmax` — see
+[`../smatrix/docs/status/data_provenance.md`](../smatrix/docs/status/data_provenance.md)
+for its install note.
 
 ---
 

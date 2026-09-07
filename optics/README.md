@@ -10,10 +10,10 @@ pupil geometry, and other prescription-level questions that do not need data.
 | `code/telecentricity.py` | library — chief-ray and flux-weighted-cone tracing, radial/tangential tilt decomposition |
 | `code/run_telecentricity.py` | driver — makes the figures and the `.npz` in `output/` |
 
-Run with the MacPorts python:
+Run it with:
 
 ```bash
-/opt/local/bin/python3 rubin-work/optics/code/run_telecentricity.py
+python code/run_telecentricity.py
 ```
 
 Outputs land in `optics/output/` (gitignored).
