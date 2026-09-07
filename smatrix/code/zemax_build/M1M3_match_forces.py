@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import batoid
@@ -174,10 +175,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--indir",
         type=str,
-        default="/Users/josh/src/ZEMAX_FEMAP/",
+        default=os.environ.get("ZEMAX_FEMAP_DIR",
+                               "/sdf/group/rubin/u/roodman/LSST/packages/ZEMAX_FEMAP"),
         help=
             "Location of ZEMAX_FEMAP directory.  "
-            "Default: /Users/josh/src/ZEMAX_FEMAP/"
+            "Defaults to $ZEMAX_FEMAP_DIR, else the USDF clone of "
+            "github.com/bxin/ZEMAX_FEMAP"
     )
     parser.add_argument(
         "--M1ptt",

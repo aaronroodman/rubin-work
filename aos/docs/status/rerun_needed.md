@@ -66,6 +66,17 @@ python code/psf/run_psf_fp_maps.py --case validate
 python code/closedloop/run_closed_loop.py --case loop
 ```
 
+### `static_optics` camera-gravity — bending basis may have changed
+**Why:** `camera_gravity.py:95` picks a bend directory in the order `bend_zemax` →
+`bend_full` → `bend`, first match wins. Until 2026-09-07 only `bend` existed on S3DF;
+`bend_full` was then regenerated there, so the same code now selects a **different basis**
+(156 M1M3 + 72 M2 modes instead of 20 per mirror) with no change to the code or arguments.
+
+The script's docstring states that gravity does not use the bending-mode basis, so output
+may be identical — but that is unverified. Any camera-gravity output produced after
+2026-09-07 should be checked against the earlier PDFs in `output/camera_gravity/`, or the
+basis pinned explicitly via `bend_dir`.
+
 ## Not affected, for the record
 
 - **`static_optics`** — the four scripts now share `miw_io.load_miw`, but it reproduces

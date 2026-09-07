@@ -76,3 +76,34 @@ the stack's and break `optatmo/`.
 
 In other words `tmmax` is installed here as a **data source**, not a solver. Do not
 "fix" it by installing the full dependency tree.
+
+## Two things to review in `$BATOID_RUBIN_DATA_DIR`
+
+### 14 duplicated files at the top level (~68 M)
+
+The data directory carries `M1_bend_*.fits.gz`, `M2_bend_*`, `M3_bend_*`,
+`M1M3_actuator_table.fits.gz`, `M2_actuator_table.fits.gz`, `M1M3_bend_forces.fits.gz`,
+`M2_bend_forces.fits.gz` and `bend.yaml` at its **top level**, and identical copies inside
+`bend/`. All 14 pairs are **byte-identical** (md5 verified 2026-09-07); the three grid
+files are 19 M, 23 M and 28 M, so the duplication costs ~68 M.
+
+Only `ccd_height_map.fits.gz` (7.3 M) is genuinely top-level-only — it is the separate
+Zenodo `ccd_height_map` dataset, not part of `bend`.
+
+Nothing appears to read the top-level copies: `batoid_rubin.builder.load_bend` takes an
+explicit `bend_dir`, `LSSTBuilder`'s default is the bare string `"bend"`, and no script in
+this repo passes the data directory itself as a bend directory. Deleting the 14 top-level
+duplicates looks safe, but has not been done — worth confirming against any notebook or
+external caller first.
+
+### `camera_gravity.py` now picks a different bending basis
+
+`aos/code/static_optics/camera_gravity.py:95` searches for a bend directory in the order
+**`bend_zemax` → `bend_full` → `bend`**, taking the first that exists. Before 2026-09-07
+only `bend` existed on S3DF, so it used that. Now that `bend_full` has been regenerated
+here, the same code silently selects `bend_full` instead — a different basis (156 M1M3 +
+72 M2 modes rather than 20 per mirror).
+
+Its own docstring says gravity does not use the bending-mode basis, so the result may be
+unaffected, but this has not been verified. Check before trusting a camera-gravity output
+produced after that date, and see [`rerun_needed`](../../../aos/docs/status/rerun_needed.md).
