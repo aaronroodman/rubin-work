@@ -58,7 +58,7 @@ DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0,
                top_thermal_pairs=16) # strongest |rho| v-mode x thermal scatters
 
 # 22-DOF reduced set: M2 hex(0-4) + Cam hex(5-9) + M1M3 B1-7(10-16) + M2 B1-5(30-34)
-DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 SCHEMES = [("50_34", None, 34), ("22_12", DOF22, 12)]   # (tag, n_dof, n_keep)
 
 

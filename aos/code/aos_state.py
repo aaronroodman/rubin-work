@@ -39,8 +39,14 @@ DOF_SETS = {
 }
 N_MODES = {"hexapod_10": 10, "standard_22": 12, "all_50": 20}
 
+# Canonical 22-DOF reduced set, as an explicit index list for
+# ``ofc_svd.build_ofc_svd(..., n_dof=DOF22)``. It is NOT the first 22 contiguous
+# indices: passing the scalar 22 silently selects DOF 0-21, i.e. 10 rigid + the first
+# 12 M1M3 bending modes, instead of 10 rigid + 7 M1M3 + 5 M2. Always pass this list.
+DOF22 = DOF_SETS["standard_22"]
+
 __all__ = [
-    "CORNERS", "SENSOR_NAMES", "ZK_NOLL", "DOF_SETS", "N_MODES",
+    "CORNERS", "SENSOR_NAMES", "ZK_NOLL", "DOF_SETS", "N_MODES", "DOF22",
     "resolve_ofc_config_dir", "make_state_estimator", "vmodes_from_dofs",
     "build_geom_svd", "project_dofs_to_vmodes", "recover_optical_state",
     "fetch_corner_zernikes_consdb",

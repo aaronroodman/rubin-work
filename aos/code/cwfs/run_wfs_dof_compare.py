@@ -51,7 +51,7 @@ FP_RADIUS = 1.75
 GRID_STEP = 0.35          # focal-plane grid step (deg); sets the fp_grid + binning cell
 RAFT_CELL = 0.71          # deg: raft pitch — binning half-box for the 1-star-per-raft
                           # GalSim sampling (each donut lands in its raft's cell)
-DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 # CWFS - FAM offsets (OCS, µm) from the corner-compare study; subtracted from CWFS.
 DEFAULT_OFFSETS = {4: {'R00_SW0': -0.11, 'R04_SW0': -0.11, 'R40_SW0': -0.11, 'R44_SW0': -0.19},
                    11: {c: -0.07 for c in CORNERS},

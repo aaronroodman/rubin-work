@@ -34,7 +34,7 @@ from lsst.ts.intrinsic.wavefront import ofc_svd as osv
 from astropy.table import QTable
 
 # 22-DOF reduced set: M2 hex(0-4) + Cam hex(5-9) + M1M3 B1-7(10-16) + M2 B1-5(30-34)
-DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 SCHEMES = {"22_12": (DOF22, 12), "50_34": (None, 34)}   # (n_dof, n_keep)
 DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0)
 

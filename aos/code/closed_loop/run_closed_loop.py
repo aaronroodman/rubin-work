@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (sh
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root -> common/
 from common.psf_render import (   # noqa: E402
     LAM_NM, build_psf_tools, render_measure)
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 from psf_maps_lib import (   # noqa: E402
     FP_RADIUS, sample_science_stars, measure_zk,
     psf_page, build_svd, eval_dz_field,
@@ -223,7 +224,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     for case in cases:
         n_keep = 34 if case.endswith('50') else 12
-        n_dof = None if case.endswith('50') else 22
+        n_dof = None if case.endswith('50') else DOF22
         suffix = (f'_{args.intrinsic}_{args.order}_{args.latency}'
                   f'_g{args.gain:g}')
         out = out_dir / f'closed_loop_{case}_{args.band}{suffix}.pdf'

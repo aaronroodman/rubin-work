@@ -29,7 +29,10 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
-DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # aos/code
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 
 # Pupil (annular) Zernike Noll indices carried by the FAM donut tables: Z4-Z26 with

@@ -51,7 +51,7 @@ TREFOIL_AREA, KEY_TREFOIL = 1500.0, 0.1   # marker area per unit amplitude + ref
 
 
 # 22-DOF subset: 5 M2 hex (0-4) + 5 Cam hex (5-9) + first 7 M1M3 (10-16) + first 5 M2 (30-34)
-DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 
 
 # ------------------------------------------------------------------ formula validation
