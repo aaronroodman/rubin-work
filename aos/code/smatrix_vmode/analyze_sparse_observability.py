@@ -30,11 +30,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-_PKG = "/Users/roodman/Astrophysics/Claude/packages"
-DEFAULT_CONFIG_DIR = os.environ.get(
-    "TS_CONFIG_MTTCS_DIR", _PKG + "/ts_config_mttcs") + "/MTAOS/v13/ofc"
-if _PKG + "/ts_ofc/python" not in sys.path:
-    sys.path.insert(0, _PKG + "/ts_ofc/python")
+# The DM stack, ts_ofc and ts_intrinsic_wavefront all come from the environment on both
+# the RSP and the s3df/sdfiana nodes, and that setup exports TS_CONFIG_MTTCS_DIR -- so
+# no sys.path bootstrapping is needed here. The fallback only covers an environment
+# where the variable is unset, and uses the /sdf/group form, which resolves identically
+# on the RSP, on s3df batch nodes and on slaciana (never the RSP-only /home form; see
+# notes/claude-memory/usdf-mount-paths.md).
+_OFC_CONFIG_FALLBACK = ("/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs"
+                        "/MTAOS/v13/ofc")
+_ENV_MTTCS = os.environ.get("TS_CONFIG_MTTCS_DIR")
+DEFAULT_CONFIG_DIR = (_ENV_MTTCS + "/MTAOS/v13/ofc" if _ENV_MTTCS
+                      else _OFC_CONFIG_FALLBACK)
 
 # The OFC measures the 21 packed Zernikes (zn_selected): Z4-Z26 minus Z20,Z21.
 # Raw sensitivity_matrix pupil axis = Noll (verified: M2 tilt -> Noll7 coma), so we

@@ -38,10 +38,17 @@ from matplotlib.backends.backend_pdf import PdfPages
 # glob `lsst_sensitivity*.yaml`) to lsst_sensitivity_dz_31_29_50.yaml, which has
 # ALL radial orders populated.  (The separate new_measured_lsst_* file, which
 # zeroes coma2/tref2/astig3/tet2, does NOT match that glob and is not loaded.)
-_PKG = "/Users/roodman/Astrophysics/Claude/packages"
-DEFAULT_CONFIG_DIR = os.environ.get(
-    "TS_CONFIG_MTTCS_DIR", _PKG + "/ts_config_mttcs") + "/MTAOS/v13/ofc"
-_TS_OFC_PY = _PKG + "/ts_ofc/python"
+# The DM stack, ts_ofc and ts_intrinsic_wavefront all come from the environment on both
+# the RSP and the s3df/sdfiana nodes, and that setup exports TS_CONFIG_MTTCS_DIR -- so
+# no sys.path bootstrapping is needed here. The fallback only covers an environment
+# where the variable is unset, and uses the /sdf/group form, which resolves identically
+# on the RSP, on s3df batch nodes and on slaciana (never the RSP-only /home form; see
+# notes/claude-memory/usdf-mount-paths.md).
+_OFC_CONFIG_FALLBACK = ("/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs"
+                        "/MTAOS/v13/ofc")
+_ENV_MTTCS = os.environ.get("TS_CONFIG_MTTCS_DIR")
+DEFAULT_CONFIG_DIR = (_ENV_MTTCS + "/MTAOS/v13/ofc" if _ENV_MTTCS
+                      else _OFC_CONFIG_FALLBACK)
 
 
 def load_sensitivity(config_dir, instrument="lsst"):
@@ -49,9 +56,6 @@ def load_sensitivity(config_dir, instrument="lsst"):
     (S[31 field, 29 pupil, 50 dof], provenance str).  Falls back to reading the
     lsst_sensitivity yaml directly if ts_ofc cannot be imported."""
     import asyncio
-    import sys
-    if _TS_OFC_PY not in sys.path:
-        sys.path.insert(0, _TS_OFC_PY)
     try:
         from lsst.ts.ofc import OFCData
         ofc = OFCData(instrument, config_dir=config_dir)
