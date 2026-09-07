@@ -50,7 +50,29 @@ data is absent.
 
 ## Separately: `tmmax` in `filters/`
 
-`filters/code/design_*.py` import `tmmax`, a JAX thin-film package that is installed on
-the laptop but not in the S3DF stack environment. Their throughput paths are fixed and
-resolve, but the imports fail until `tmmax` is available. See
-[`filters/README.md`](../../../filters/README.md).
+`filters/` needs [`tmmax`](https://github.com/bahremsd/tmmax), installed on the laptop
+with `pip install --user` but not present in the S3DF stack environment. The throughput
+paths are fixed and resolve; the imports fail until it is installed.
+
+**Install it with `--no-deps`:**
+
+```bash
+pip install --user --no-deps tmmax
+```
+
+The reason matters. `tmmax` is JAX-based, and the stack already ships JAX 0.10.2 which
+**four `optatmo/` modules depend on** (`config.py`, `data_fit.py`, `fit_monitor.py`,
+`fit_optatmo.py`). A full-dependency install could pull an incompatible JAX that shadows
+the stack's and break `optatmo/`.
+
+`--no-deps` is sufficient because `filters/` barely uses the package:
+
+- `thinfilm.py:20` needs only `__import__("tmmax").__file__` to locate the bundled
+  `nk_data/numpy` refractive-index tables — no solver, no JAX.
+- `validate_engines.py:44` imports `tmmax.tmm` as an optional cross-check inside a
+  try/except, and that file's own docstring records that **`tmmax` is broken for
+  multilayers** and is deliberately not used as the engine; `tmm_fast` is. So a skipped
+  check costs nothing.
+
+In other words `tmmax` is installed here as a **data source**, not a solver. Do not
+"fix" it by installing the full dependency tree.
