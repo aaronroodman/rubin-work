@@ -5,12 +5,12 @@ root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here)
 
 **This file is not a description of the pipeline.** `README.md` indexes the topic and
 `docs/miw_pipeline.md` is the reference for what every Snakemake step does, the config
-files, and the output layout. `docs/studies.md` maps the eleven studies to their code.
+files, and the output layout. `docs/studies.md` maps the twelve studies to their code.
 What follows is only the things that are easy to get wrong.
 
 ## Code layout
 
-`code/` is organized by **study** — `code/miw/`, `code/coadd/`, `code/cwfs/`,
+`code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
 `code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
 `code/processing_compare/`, `code/psf/`, `code/infra/`. See `docs/studies.md`.
 
@@ -66,7 +66,7 @@ In `aos/code/`, `common` almost always means the **external package's** submodul
 from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
 ```
 
-That is not this repo's `common/`. Only `code/miw/plot_visits_summary.py` imports the
+That is not this repo's `common/`. Only `code/dzfit/plot_visits_summary.py` imports the
 repo's own `common/` (via a `sys.path.insert` of the repo root). Do not "consolidate"
 the two — they are unrelated.
 

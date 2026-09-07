@@ -18,15 +18,14 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 
 | file | role |
 |---|---|
-| `dz_plotting.py` | plotting library: fit parameters, residual maps, trio comparisons (1243 lines, the largest file in `aos/code/`) |
-| `run_dz_plots.py` | pipeline `plots` rule — data/model/residual trio validation on the combined tables |
-| `run_aberration_pairs.py` | pipeline `aberration_pairs` — per-donut primary→secondary aberration-pair correlations |
-| `run_study_radialbins.py` | pipeline `study_radialbins` — OCS MIW at the WFS radius, overlaid per rotator bin |
-| `combine_parquets.py` | streaming row-group concatenation of per-chunk tables (**stays flat**, cross-study) |
-| `plot_visits_summary.py` | per-param_set visit summary: elevation vs rotator, one panel per band |
-| `check_chunk.py` | pre-flight: visits in ConsDB but missing from the Butler collection, before `mktable` runs |
-| `inspect_visit_provenance.py` | Butler provenance consistency across a param_set's date chunks |
-| `compare_to_archive.py` | new combined outputs vs the archived pre-reorg ones, after a from-scratch run |
+| `run_study_radialbins.py` | pipeline `study_radialbins` rule — OCS measured intrinsic in four WFS radial shells, overlaid by rotator bin |
+
+The build itself is in the external `ts_intrinsic_wavefront` package
+(`measured_intrinsic.build_measured_intrinsic_uconstrained`, driven by the
+`build_intrinsic` and `intrinsic_split` rules), not here.
+
+Validation of the per-visit DZ fit that feeds the build, and quality checks on the donut
+data, are the [`dzfit`](dzfit.md) study.
 
 ## Inputs and outputs
 

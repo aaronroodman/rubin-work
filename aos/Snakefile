@@ -171,9 +171,9 @@ rule all:
         expand("output/{ps}/donuts.parquet",              ps=PSETS),
         expand("output/{ps}/fits.parquet",                ps=PSETS),
         expand("output/{ps}/visits.parquet",              ps=PSETS),
-        expand("output/{ps}/miw/trio_comparison_all.pdf", ps=PSETS),
+        expand("output/{ps}/dzfit/trio_comparison_all.pdf", ps=PSETS),
         # per-donut aberration-pair (primary->secondary) analysis
-        expand("output/{ps}/miw/aberration_pairs.pdf", ps=PSETS),
+        expand("output/{ps}/dzfit/aberration_pairs.pdf", ps=PSETS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
         # in-focus corner-WFS ingestion (per ps, cwfs variant)
@@ -280,8 +280,8 @@ rule plots:
     input:
         donuts = "output/{ps}/donuts.parquet",
         fits   = "output/{ps}/fits.parquet",
-        script = "code/miw/run_dz_plots.py",
-    output: "output/{ps}/miw/trio_comparison_all.pdf"
+        script = "code/dzfit/run_dz_plots.py",
+    output: "output/{ps}/dzfit/trio_comparison_all.pdf"
     params: coord = lambda w: coord(w.ps)
     # run_dz_plots loads the full combined donut table; astropy materializes the
     # zk_* list columns as Python objects, so a single job can use ~10 GiB for a
@@ -290,7 +290,7 @@ rule plots:
     resources: mem_mb=12000
     log: "logs/{ps}.plots.log"
     shell:
-        "python code/miw/run_dz_plots.py {input.donuts} {input.fits} "
+        "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
         "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/plots "
         "--no-single-image > {log} 2>&1"
 
@@ -300,8 +300,8 @@ rule aberration_pairs:
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
-        script = "code/miw/run_aberration_pairs.py",
-    output: "output/{ps}/miw/aberration_pairs.pdf"
+        script = "code/dzfit/run_aberration_pairs.py",
+    output: "output/{ps}/dzfit/aberration_pairs.pdf"
     params:
         coord = lambda w: coord(w.ps),
         acfg  = lambda w: an_json("aberration_pairs", w.ps),   # rerun-trigger only
@@ -309,7 +309,7 @@ rule aberration_pairs:
     resources: mem_mb=8000
     log: "logs/{ps}.aberration_pairs.log"
     shell:
-        "python code/miw/run_aberration_pairs.py {input.donuts} "
+        "python code/dzfit/run_aberration_pairs.py {input.donuts} "
         "--visits {input.visits} --fits {input.fits} --coord-sys {params.coord} "
         "--param-set {wildcards.ps} --label {wildcards.ps} "
         "--output-dir output/{wildcards.ps}/plots > {log} 2>&1"

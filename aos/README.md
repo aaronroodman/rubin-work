@@ -10,13 +10,14 @@ Wavefront Sensor (CWFS) data.
 
 ## Studies
 
-The work divides into eleven studies. Each has a detail document under
+The work divides into twelve studies. Each has a detail document under
 `docs/studies/`; [`docs/studies.md`](docs/studies.md) is the combined inventory,
 listing the code, inputs, outputs and current state of every one.
 
 | study | content |
 |---|---|
-| [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront from FAM donut data, and validation of the build |
+| [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront from FAM donut data |
+| [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike fit, and quality checks on the donut data |
 | [`coadd`](docs/studies/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors with the FAM full-focal-plane measurement |
 | [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
@@ -69,8 +70,9 @@ output is grouped by study:
 output/<param_set>/
   {donuts,fits,visits}.parquet     # combined tables, input to everything
   chunks/<dmin>_<dmax>/            # per-chunk tables
-  miw/  psf/  smatrix_vmode/  processing_compare/  wfs/<variant>/
+  dzfit/  psf/  processing_compare/  wfs/<variant>/
   coadd_50_34/  coadd_50_34_v2/
+output/smatrix_vmode/                # OFC matrix diagnostics, no param_set dependence
   <mi_name>/
     intrinsic_split_{maps,decomp,rms}.parquet    # the MIW itself
     fits.parquet                                 # DZ refit against the MIW
@@ -99,7 +101,7 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/studies.md`](docs/studies.md) | **inventory of the 11 analysis studies** — the map for this topic |
+| [`docs/studies.md`](docs/studies.md) | **inventory of the 12 analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
 | [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |

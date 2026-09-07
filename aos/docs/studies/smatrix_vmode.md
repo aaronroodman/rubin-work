@@ -19,7 +19,7 @@ this study is about using and diagnosing it.
 | file | role |
 |---|---|
 | `run_build_lut.py` | pipeline `build_lut` — averaged-DOF look-up table: project per-visit DZ fits onto the OFC SVD, recover DOF, collapse over elevation and rotator |
-| `plot_vmode_dof_matrix.py` | render the OFC SVD **V** matrix (DOF composition of each v-mode) + singular-value spectrum for a scheme (default 22-DoF/12-v-mode) |
+| `plot_vmode_dof_matrix.py` | render the OFC SVD **V** matrix (DOF composition of each v-mode) + singular-value spectrum for a scheme (default 22-DoF/12-v-mode) → `output/smatrix_vmode/` |
 | `analyze_sensitivity_sparse.py` | which DOF drive the **secondary/tertiary** aberrations of each azimuthal family |
 | `analyze_sparse_observability.py` | if the donut fit measures only **primary** aberrations (drop secondary/tertiary rows), which DOF stay observable? |
 
@@ -31,6 +31,16 @@ noise/gain, a normalization-scheme deep-dive (unit invariance), and DZ field pat
 It consolidates the former `normalization_study` and `smatrix_doublez`.
 `vmode_dof_ts_ofc.ipynb` covers v-mode/DOF normalization via the `ts_ofc`
 `StateEstimator`; `jk_coverage_plots.ipynb` has 50-DOF SVD visualizations.
+
+## Output sits outside any `param_set`
+
+`plot_vmode_dof_matrix.py` writes to **`output/smatrix_vmode/`**, at the top level, not
+under a `param_set`. The v-mode/DOF matrix is a property of the OFC sensitivity matrix
+and the DOF scheme alone — no FAM data enters it. The one data-derived input is the
+pupil-Zernike set, which is identical in every `param_set` built to date (Z4–Z26 omitting
+Z20 and Z21, 21 terms), so it defaults in code as `ZK_NOLL_DEFAULT`. Passing
+`--param-set` reads it from that `param_set`'s `visits.parquet` instead and warns if it
+differs from the default.
 
 ## Normalization — the trap
 

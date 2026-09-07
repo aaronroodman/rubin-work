@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-06 · **Kind:** reference (inventory)
 
-Inventory of the eleven studies in the `aos/` directory: the code implementing each one,
-what it reads and writes, and its current state. All eleven draw on a common base — the
+Inventory of the twelve studies in the `aos/` directory: the code implementing each one,
+what it reads and writes, and its current state. All twelve draw on a common base — the
 Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
 matrix — but are otherwise independent lines of work.
 
@@ -12,30 +12,32 @@ shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 ## The studies
 
-Counts are of files and lines in `aos/code/`, and of Snakemake rules driving them. Of
-the 56 Python files, 16 are pipeline-driven and 40 are standalone.
+Counts are of files and lines in `aos/code/`, including the shared modules that stay
+flat there, and of Snakemake rules driving each study. Of
+the 57 Python files, 16 are referenced by the Snakefile and the rest are standalone.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`miw`](studies/miw.md) | 9 | 3207 | 4 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, and validation of the build |
-| [`coadd`](studies/coadd.md) | 9 | 3506 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
-| [`cwfs`](studies/cwfs.md) | 9 | 2828 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
-| [`static_optics`](studies/static_optics.md) | 8 | 1862 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
+| [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
+| [`dzfit`](studies/dzfit.md) | 6 | 1598 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic, and quality checks on the donut data |
+| [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
+| [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
+| [`static_optics`](studies/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
 | [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | Per-visit telescope state from the EFD and ConsDB: commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
-| [`correlations`](studies/correlations.md) | 4 | 1472 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
-| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 876 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
-| [`bounce`](studies/bounce.md) | 2 | 1394 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
-| [`processing_compare`](studies/processing_compare.md) | 2 | 922 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
-| [`psf`](studies/psf.md) | 2 | 776 | 0 | Focal-plane Point Spread Function (PSF) maps rendered from a wavefront — FWHM and ellipticity |
+| [`correlations`](studies/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
+| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 894 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
+| [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
+| [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`psf`](studies/psf.md) | 2 | 777 | 0 | Focal-plane Point Spread Function (PSF) maps rendered from a wavefront — FWHM and ellipticity |
 | [`infra`](studies/infra.md) | 1 | 126 | 0 | Node CPU and memory capability, for sizing pipeline concurrency |
 
 Every file in `aos/code/` belongs to exactly one study.
 
 ## Code layout
 
-`aos/code/` is organized by study, one subdirectory each: `miw/`, `coadd/`, `cwfs/`,
-`static_optics/`, `correlations/`, `smatrix_vmode/`, `bounce/`, `processing_compare/`,
-`psf/`, `infra/`.
+`aos/code/` is organized by study, one subdirectory each: `dzfit/`, `miw/`, `coadd/`,
+`cwfs/`, `static_optics/`, `correlations/`, `smatrix_vmode/`, `bounce/`,
+`processing_compare/`, `psf/`, `infra/`.
 
 Nine modules stay flat at `aos/code/`:
 
@@ -46,7 +48,7 @@ Nine modules stay flat at `aos/code/`:
 | `aos_consdb_efd.py` | **3 references from `blocks/`** |
 | `aos_fwhm.py` | used by `cwfs` and `correlations` |
 | `dz_columns.py` | used by all four `correlations` scripts |
-| `dz_plotting.py` | used by `miw` and `correlations` |
+| `dz_plotting.py` | used by `dzfit` and `correlations` |
 | `psf_render.py` | used by `psf` and `cwfs` |
 | `combine_parquets.py` | used by the pipeline across studies |
 | `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities belonging to no single study |
@@ -59,7 +61,7 @@ topics reach them via a hardcoded `sys.path.insert(.../aos/code)`. See the root
 
 | notebook | study |
 |---|---|
-| `aos_miw_ocs_ccs_maps.ipynb` | `miw` (OCS/CCS map reader) |
+| `aos_miw_ocs_ccs_maps.ipynb` | `miw` (OCS/CCS split-map reader) |
 | `aos_miw_cwfs_intrinsic_check.ipynb` | `cwfs` |
 | `wfs_corner_compare_correlations.ipynb` | `cwfs` (8 half-sensors, v3, tarts) |
 | `wfs_corner_compare_correlations-aidonut.ipynb` | `cwfs` (4 corners, v2, ai_donut) |
@@ -83,9 +85,8 @@ output/
   <param_set>/
     {donuts,fits,visits}.parquet          # combined tables, input to everything
     chunks/<dmin>_<dmax>/                 # per-chunk tables
-    miw/                                  # build validation: trio comparison, aberration pairs
+    dzfit/                                # DZ-fit validation: trio comparison, aberration pairs
     psf/                                  # focal-plane PSF maps
-    smatrix_vmode/                        # v-mode / DOF matrix diagnostics
     processing_compare/                   # cross-param_set comparison
     wfs/<cwfs_variant>/                   # corner-WFS ingest and corner comparison
     coadd_50_34/, coadd_50_34_v2/         # per-block coadd vs MIW
@@ -98,6 +99,7 @@ output/
       lut/                                # DOF look-up table
       wfs/<cwfs_variant>/, wfs_mimic/     # MIW-subtracted corner-WFS products
       plots/                              # coadd-vs-MIW maps
+  smatrix_vmode/                          # OFC matrix diagnostics; no param_set dependence
   archive/                                # superseded param_sets
   camera_gravity/                         # static_optics; no param_set dependence
   danish_tarts_compare_<day_obs>/         # dated processing comparison
@@ -106,8 +108,11 @@ output/
 Which level a study writes to follows one rule: **if the product changes when a
 different MIW build is chosen, it lives under `<mi_name>/`; otherwise under
 `<param_set>/`.** So `correlations` and `bounce` are under `<mi_name>/` because they run
-on the MIW-subtracted fits, while `smatrix_vmode`'s matrix diagnostics are under
-`<param_set>/` because they are a property of the sensitivity matrix alone.
+on the MIW-subtracted fits, while `dzfit`'s validation is under `<param_set>/` because
+it precedes any MIW. `smatrix_vmode` sits at the **top level**, outside any
+`param_set`: the v-mode/DOF matrix is a property of the OFC sensitivity matrix and the
+DOF scheme alone, and the one data-derived input (the pupil-Zernike set) is identical
+in every `param_set` built to date, so it defaults in code.
 
 `psf/` sits at the `<param_set>` level as a holding location: a single run reads two
 different MIW builds (`--split-mi` and `--fam-mi`) and several of its cases use no MIW

@@ -32,6 +32,11 @@ import pyarrow.parquet as pq
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 
+# Pupil (annular) Zernike Noll indices carried by the FAM donut tables: Z4-Z26 with
+# Z20 and Z21 omitted, 21 terms. Identical in every param_set built to date, so it is
+# the default here; --param-set reads it from that param_set's visits.parquet instead.
+ZK_NOLL_DEFAULT = tuple(z for z in range(4, 27) if z not in (20, 21))
+
 
 def run_ofc_check(instrument='lsst'):
     """Regression check: build_ofc_svd must reproduce ts_ofc's
@@ -80,7 +85,9 @@ def run_ofc_check(instrument='lsst'):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--param-set', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
+    ap.add_argument('--param-set', default=None,
+                    help='optional: read the pupil-Zernike set from this param_set\'s '
+                         'visits.parquet instead of using ZK_NOLL_DEFAULT')
     ap.add_argument('--scheme', default='22_12', choices=list(SCHEMES))
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--annotate-min', type=float, default=0.10,
@@ -97,9 +104,19 @@ def main():
     from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
     n_dof, n_keep = SCHEMES[args.scheme]
 
-    base = Path(args.output_root) / args.param_set
-    noll = [int(x) for x in np.asarray(
-        pq.read_table(str(base / 'visits.parquet'), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
+    # The v-mode/DOF matrix is a property of the OFC sensitivity matrix and the DOF
+    # scheme alone -- no FAM data enters it. The pupil-Zernike set is the only
+    # data-derived input, and it is the same in every param_set built to date, so it
+    # defaults to the standard set and the output is not keyed by param_set.
+    out_dir = Path(args.output_root) / 'smatrix_vmode'
+    if args.param_set:
+        vis = Path(args.output_root) / args.param_set / 'visits.parquet'
+        noll = [int(x) for x in np.asarray(
+            pq.read_table(str(vis), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
+        if noll != list(ZK_NOLL_DEFAULT):
+            print(f'note: {args.param_set} pupil-Zernike set differs from the default')
+    else:
+        noll = list(ZK_NOLL_DEFAULT)
 
     svd = build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_keep, n_dof=n_dof)
     V = svd.V[:, :svd.n_keep_eff]                 # (n_dof, n_keep) DOF composition
@@ -112,7 +129,8 @@ def main():
     from matplotlib import gridspec
     from matplotlib.backends.backend_pdf import PdfPages
 
-    out = base / f'vmode_dof_matrix_{args.scheme}.pdf'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f'vmode_dof_matrix_{args.scheme}.pdf'
     with PdfPages(str(out)) as pdf:
         fig = plt.figure(figsize=(12, max(6, 0.32 * n_d)), dpi=150)
         gs = gridspec.GridSpec(1, 2, width_ratios=[1.5, 1])
