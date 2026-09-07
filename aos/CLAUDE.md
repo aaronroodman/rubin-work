@@ -19,7 +19,7 @@ Nine modules stay **flat at `code/`** on purpose:
 | module | why |
 |---|---|
 | `aos_trim.py`, `aos_state.py`, `aos_consdb_efd.py` | imported **by bare module name from `blocks/`, `olr/`, `optatmo/`, `guider/`** (39 references) via a hardcoded `sys.path.insert(.../aos/code)`. Moving them breaks four sibling topics with no static-import warning. |
-| `aos_fwhm.py`, `dz_columns.py`, `dz_plotting.py`, `psf_render.py`, `combine_parquets.py` | used by more than one study |
+| `aos_fwhm.py`, `fam_selection.py`, `dz_plotting.py`, `psf_render.py`, `combine_parquets.py` | used by more than one study |
 | `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities, no study of their own |
 
 Do not "finish the job" by moving the first three into `code/telemetry/`.
@@ -140,7 +140,7 @@ indices (`aos-22dof-reduced-set`) — do not infer them.
 ## Code review state
 
 `docs/status/code_review_backlog.md` holds the open items: duplicated helpers that are
-**not** equivalent (`quality_cut`, `load_miw`), confirmed live defects, and `common/`
+**not** equivalent (`load_miw`; `quality_cut` is resolved), confirmed live defects, and `common/`
 candidates. `docs/status/code_review_findings.md` is the earlier full review — its
 `file:line` anchors predate the study reorganization and cannot be trusted, though the
 defects it names may still be real.

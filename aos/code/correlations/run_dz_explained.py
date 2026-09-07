@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
-from dz_columns import dz_coeff_columns  # noqa: E402
+from fam_selection import dz_coeff_columns, fam_quality_selection  # noqa: E402
 
 import numpy as np
 import pandas as pd
@@ -37,13 +37,6 @@ from astropy.table import QTable
 DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 SCHEMES = {"22_12": (DOF22, 12), "50_34": (None, 34)}   # (n_dof, n_keep)
 DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0)
-
-
-def quality_cut(df, prefix, maxc):
-    cols = dz_coeff_columns(df, prefix)
-    if not cols or not maxc:
-        return df
-    return df[~(df[cols].abs() > maxc).any(axis=1)]
 
 
 def _pack_W(df, prefix, kj_grid):
@@ -89,7 +82,10 @@ def main():
     df = pd.read_parquet(base / "fits.parquet").reset_index(drop=True)
     if "visit_quality_pass" in df.columns:
         df = df[df["visit_quality_pass"].astype(bool)].reset_index(drop=True)
-    df = quality_cut(df, prefix, sec["max_coeff_um"]).reset_index(drop=True)
+    df = fam_quality_selection(df, prefix,
+                               max_coeff_um=sec.get("max_coeff_um"),
+                               max_blur_arcsec=sec.get("max_blur_arcsec")
+                               ).reset_index(drop=True)
     print(f"[dz_explained] {base}  {len(df)} visits", flush=True)
 
     b = cfg["build"]

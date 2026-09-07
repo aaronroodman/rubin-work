@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
-from dz_columns import dz_coeff_columns  # noqa: E402
+from fam_selection import dz_coeff_columns, fam_quality_selection  # noqa: E402
 
 import numpy as np
 import pandas as pd
@@ -57,18 +57,6 @@ DEFAULT = dict(
 def parse_jk(col, prefix):
     m = re.match(rf'^{re.escape(prefix)}_z(\d+)_c(\d+)$', col)
     return (int(m.group(1)), int(m.group(2))) if m else None
-
-
-def quality_cut(df, prefix, max_coeff_um):
-    n0 = len(df)
-    for bc in (f'{prefix}_bad_fit', 'bad_fit'):
-        if bc in df.columns:
-            df = df[~df[bc].astype(bool)].copy()
-            break
-    cols = dz_coeff_columns(df, prefix)
-    df = df[~df[cols].abs().gt(max_coeff_um).any(axis=1)].copy()
-    print(f'  quality cut: {len(df)}/{n0} visits (|c| < {max_coeff_um} μm)')
-    return df
 
 
 def _corr(x, y):
@@ -302,7 +290,9 @@ def main():
         print(f'  thermal vars absent from fits.parquet: {missing}')
     if not present_tv:
         raise RuntimeError('No thermal variables present in the fit table.')
-    df = quality_cut(df, prefix, sec['max_coeff_um'])
+    df = fam_quality_selection(df, prefix,
+                               max_coeff_um=sec.get('max_coeff_um'),
+                               max_blur_arcsec=sec.get('max_blur_arcsec'))
     dz_cols = sorted(dz_coeff_columns(df, prefix),
                      key=lambda c: parse_jk(c, prefix)[::-1])   # k-major
     print(f'  {len(dz_cols)} DZ columns, {len(present_tv)} thermal vars, '

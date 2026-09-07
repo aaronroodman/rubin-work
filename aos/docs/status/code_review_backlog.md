@@ -13,21 +13,39 @@ standard. These are the known items to fold into that pass.
 
 ## Duplicated helpers that are not equivalent
 
-Both were left alone in the shared-helper extraction because the copies genuinely
-differ; unifying either changes results.
+### `quality_cut` — RESOLVED 2026-09-07
 
-### `quality_cut` — four copies, two signatures
-| file | signature |
-|---|---|
-| `run_dz_correlations.py` | `quality_cut(df, prefix, max_coeff_um)` |
-| `run_thermal_correlations.py` | `quality_cut(df, prefix, max_coeff_um)` |
-| `run_dz_explained.py` | `quality_cut(df, prefix, maxc)` |
-| `run_vmode_correlations.py` | `quality_cut(df, prefix, maxc)` |
+Was four copies under one name implementing **two different cuts**:
+`run_dz_correlations.py` and `run_thermal_correlations.py` dropped visits flagged
+`bad_fit` before the coefficient cut; `run_dz_explained.py` and
+`run_vmode_correlations.py` did not, so they analysed ~24 known-bad fits that the other
+two excluded. `bad_fit` marks visits with too few donuts to constrain the k=1..6
+focal-plane terms, and it is nearly independent of the large-coefficient cut, so those
+visits survived it.
 
-The bodies also differ, not just the parameter name. Decide the one correct cut —
-including what it does about non-finite coefficients — then share it. Candidate home:
-`aos/code/dz_columns.py`, alongside `dz_coeff_columns`, or `common/` if it turns out to
-be generic over any coefficient table.
+Replaced by `fam_quality_selection` in `aos/code/fam_selection.py` (renamed from
+`dz_columns.py`, which now also holds `dz_coeff_columns`). It is the single place that
+decides which FAM visits are usable:
+
+- **always** drops any visit with a true value in *any* `*bad_fit` column, combined with
+  a logical OR rather than trusting one flag;
+- **optionally** cuts on the maximum absolute DZ coefficient (`max_coeff_um`, µm of
+  wavefront) and on the maximum per-visit median donut blur (`max_blur_arcsec`, arcsec).
+  Both default to `None`, so adding a cut is an explicit choice visible at the call site;
+- reports a count per cut applied.
+
+All four scripts now call it, reading both thresholds from `analysis_config.yaml`, where
+`max_blur_arcsec` is present but commented out in each of the four sections.
+
+Verified on `pathA_50_34_i_5rot/fits.parquet` (1126 visits) at the configured
+`max_coeff_um = 2.0` µm: `run_dz_correlations` and `run_thermal_correlations` are
+**unchanged**, selecting the same 1101 visits with an identical index;
+`run_dz_explained` and `run_vmode_correlations` go from 1125 to 1101, correctly losing
+the 24 bad-fit visits. **Their existing output predates this fix and should be
+regenerated.**
+
+Blur, for reference on that param_set: range 0.62–1.41 arcsec, median 0.86. A
+`max_blur_arcsec` of 1.0 would drop 185 of 1126 visits; 1.1 would drop 71.
 
 ### `load_miw` — four copies, four behaviours
 | file | signature |

@@ -30,6 +30,7 @@ defaults:
   dz_correlations:        # DZ_kj <-> DZ_k'j' correlations (run_dz_correlations)
     dz_prefix: z1toz6
     max_coeff_um: 2.0     # reject visits with any |DZ| > this (μm)
+    # max_blur_arcsec: 1.0  # also reject visits with median donut blur > this (arcsec)
     corr_threshold: 0.6   # |r| floor for the pairs parquet
     top_n: 20             # scatter pages for the top-|r| pairs
     sig_threshold: 5.0    # Fisher-z significance (σ) floor (pairs parquet + groups)
@@ -43,6 +44,7 @@ defaults:
   thermal_correlations:   # DZ_kj / DOF / v-mode <-> temperature (run_thermal_correlations)
     dz_prefix: z1toz6
     max_coeff_um: 2.0
+    # max_blur_arcsec: 1.0  # also reject visits with median donut blur > this (arcsec)
     scatter_ncols: 7      # pupil-j per DZ scatter page; v-modes per row (5x7 @ n_keep=34)
     annot_r: 0.4          # |r| above which heatmap cells are labeled
     # thermal_vars defaults to the script list; n_dof/n_keep follow the build's mi_config
@@ -83,6 +85,7 @@ defaults:
   vmode_correlations:     # v-mode <-> temperature + v-mode autocorrelation (robust)
     dz_prefix: z1toz6
     max_coeff_um: 2.0     # reject visits with any |DZ| > this (um)
+    # max_blur_arcsec: 1.0  # also reject visits with median donut blur > this (arcsec)
     alpha: 0.05           # significance level (Bonferroni over all pairs)
     corner_block: 6       # v_i-v_j lower triangle tiled into corner_block^2 panels/page
     top_pairs: 16         # strongest |rho| v-mode pairs drawn as large scatters
@@ -93,6 +96,7 @@ defaults:
   dz_explained:           # per-visit fraction of DZ explained by 22/12 vs 50/34
     dz_prefix: z1toz6
     max_coeff_um: 2.0
+    # max_blur_arcsec: 1.0  # also reject visits with median donut blur > this (arcsec)
 
   fam_coadd_miw:          # coadded FAM MIW-subtracted Z5-Z8 focal-plane maps
     bin_deg: 1.0          # pointing bin (el/rot/az) grouping tolerance, deg
