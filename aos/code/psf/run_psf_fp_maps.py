@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (sh
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root -> common/
 from common.psf_render import (   # noqa: E402  GalSim render + HSM
     LAM_NM, build_psf_tools, render_measure, optics_fwhm)
-from psf_maps_lib import (   # noqa: E402  shared with the closedloop study
+from psf_maps_lib import (   # noqa: E402  shared with the closed_loop study
     FP_RADIUS, sample_science_stars, miw_zernikes, measure_zk, psf_page,
     fwhm_optics_hist, build_svd, residual_W, eval_dz_field,
     mimic_corner_matrix, residual_W_mimic, mimic_measurements,

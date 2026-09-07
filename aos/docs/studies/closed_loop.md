@@ -1,4 +1,4 @@
-# Study: `closedloop` — AOS closed-loop simulation
+# Study: `closed_loop` — AOS closed-loop simulation
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
@@ -39,15 +39,15 @@ These are what the study exists to vary; each appears in the output filename.
 Reads `intrinsic_split_maps.parquet` (the MIW, which fixes the Noll index set) and
 `fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state), all from a single
 `<mi>` build. Writes
-`output/<ps>/<mi>/closedloop/closedloop_<case>_<band>_<intrinsic>_<order>_<latency>_g<gain>.pdf`,
+`output/<ps>/<mi>/closed_loop/closed_loop_<case>_<band>_<intrinsic>_<order>_<latency>_g<gain>.pdf`,
 so runs with different control settings sit side by side.
 
 ## Running
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/closedloop/run_closed_loop.py --case loop50
-python code/closedloop/run_closed_loop.py --case loop --gain 0.5 --latency nplusone
+python code/closed_loop/run_closed_loop.py --case loop50
+python code/closed_loop/run_closed_loop.py --case loop --gain 0.5 --latency nplusone
 ```
 
 Needs `lsst.ts.ofc` (the sensitivity-matrix SVD), `lsst.obs.lsst` (camera geometry) and
@@ -55,7 +55,7 @@ Needs `lsst.ts.ofc` (the sensitivity-matrix SVD), `lsst.obs.lsst` (camera geomet
 
 ## State
 
-The 8 PDFs currently in `output/<ps>/<mi>/closedloop/` were produced by the former
+The 8 PDFs currently in `output/<ps>/<mi>/closed_loop/` were produced by the former
 `run_psf_fp_maps.py --case loop*` and are named `psf_fp_maps_loop*`. They predate this
 split and the move to a single `<mi>`; see
 [`../status/rerun_needed.md`](../status/rerun_needed.md).

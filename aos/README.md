@@ -10,24 +10,25 @@ Wavefront Sensor (CWFS) data.
 
 ## Studies
 
-The work divides into thirteen studies. Each has a detail document under
-`docs/studies/`; [`docs/studies.md`](docs/studies.md) is the combined inventory,
-listing the code, inputs, outputs and current state of every one.
+The work divides into thirteen studies, ordered here from the most general to the most
+specialized. Each has a detailed document under `docs/studies/`;
+[`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
+outputs and current state of every one.
 
 | study | content |
 |---|---|
-| [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront from FAM donut data |
-| [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike fit, and quality checks on the donut data |
+| [`smatrix_vmode`](docs/studies/smatrix_vmode.md) | Structure of the Optical Feedback Control (OFC) sensitivity matrix: its singular value decomposition, v-mode composition, and degree-of-freedom (DOF) observability |
+| [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
+| [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit, and quality checks on the donut data |
+| [`telemetry`](docs/studies/telemetry.md) | Per-visit telescope state from the Engineering Facility Database (EFD) and Consolidated Database (ConsDB): commanded DOF, hexapod look-up tables, temperatures |
 | [`coadd`](docs/studies/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
-| [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors with the FAM full-focal-plane measurement |
-| [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
-| [`telemetry`](docs/studies/telemetry.md) | Per-visit telescope state from the Engineering Facility Database (EFD) and Consolidated Database (ConsDB): commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
 | [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry |
-| [`smatrix_vmode`](docs/studies/smatrix_vmode.md) | Structure of the Optical Feedback Control (OFC) sensitivity matrix: its singular value decomposition, v-mode composition, and DOF observability |
-| [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table development |
-| [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
+| [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
-| [`closedloop`](docs/studies/closedloop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
+| [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
+| [`closed_loop`](docs/studies/closed_loop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
 | [`infra`](docs/studies/infra.md) | Node CPU and memory capability, for sizing pipeline concurrency |
 
 ## Pipeline
@@ -46,10 +47,6 @@ cd ~/notebooks/rubin-work/aos
 [`docs/miw_pipeline.md`](docs/miw_pipeline.md) documents every rule, the four
 configuration files, the memory throttling, and the `ts_intrinsic_wavefront` package
 setup the pipeline requires.
-
-Batch submission goes from an s3df node (`slacrd`), not a Rubin Science Platform (RSP)
-pod, which has no Slurm. Batch jobs are started by Aaron, not from a Claude session —
-see the root `CLAUDE.md`.
 
 ## Data dependencies
 
@@ -77,7 +74,7 @@ output/
     <mi_name>/
       intrinsic_split_{maps,decomp,rms}.parquet  # the MIW itself
       fits.parquet                               # DZ refit against the MIW
-      correlations/  bounce/  psf/  closedloop/  lut/  wfs/<variant>/  wfs_mimic/
+      correlations/  bounce/  psf/  closed_loop/  lut/  wfs/<variant>/  wfs_mimic/
   smatrix_vmode/                   # OFC matrix diagnostics, no param_set dependence
   camera_gravity/                  # static_optics, no param_set dependence
   archive/                         # superseded param_sets

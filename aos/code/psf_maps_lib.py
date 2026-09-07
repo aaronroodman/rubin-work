@@ -1,7 +1,7 @@
 """Shared machinery for rendering focal-plane PSF maps from an AOS wavefront.
 
 Used by the `psf` study (`run_psf_fp_maps.py`, PSF from a given optical state) and the
-`closedloop` study (`run_closed_loop.py`, AOS closed-loop simulation), which need the
+`closed_loop` study (`run_closed_loop.py`, AOS closed-loop simulation), which need the
 same star sampling, wavefront evaluation, GalSim rendering and page layout.
 
 The GalSim render/measure primitives themselves are in `common/psf_render.py` — nothing

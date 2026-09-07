@@ -27,7 +27,7 @@ Each `--case` renders the PSF from a different wavefront, and names its output f
 | file | role |
 |---|---|
 | `run_psf_fp_maps.py` | the runner: case dispatch, formula validation, output pages |
-| `../psf_maps_lib.py` | shared with `closedloop`: star sampling, MIW wavefront lookup, Double Zernike (DZ) residual evaluation, corner-recovery matrices, page layout |
+| `../psf_maps_lib.py` | shared with `closed_loop`: star sampling, MIW wavefront lookup, Double Zernike (DZ) residual evaluation, corner-recovery matrices, page layout |
 | `../../../common/psf_render.py` | GalSim `OpticalPSF` + Kolmogorov atmosphere + HSM measurement. Nothing in it is AOS-specific, so it lives in `common/` |
 
 ## Inputs and outputs
@@ -58,7 +58,7 @@ explicitly — they differ by a square.
 
 ## State
 
-The closed-loop simulation was split out into the [`closedloop`](closedloop.md) study on
+The closed-loop simulation was split out into the [`closed_loop`](closed_loop.md) study on
 2026-09-07, and the study now uses a **single** `<mi>` rather than the former
 `--split-mi`/`--fam-mi` pair (which mixed `pathA_50_34_i_5rot` for the MIW with the
 superseded first-pass `pathA_50_34_i` for the FAM fits). Existing output predates both
@@ -66,6 +66,6 @@ changes — see [`../status/rerun_needed.md`](../status/rerun_needed.md).
 
 ## See also
 
-- [`closedloop.md`](closedloop.md) — how the control loop evolves the state over a visit sequence
+- [`closed_loop.md`](closed_loop.md) — how the control loop evolves the state over a visit sequence
 - [`cwfs.md`](cwfs.md) — `run_wfs_dof_compare` uses `common/psf_render.py` for its AOS-FWHM pages
 - [`miw.md`](miw.md) — where the MIW comes from

@@ -226,14 +226,14 @@ Acted on:
   per-visit FAM fits. `pathA_50_34_i` is a superseded first-pass MIW, so every output was
   partly stale. One `--mi` now supplies both, defaulting to `_5rot`, which also carries the
   larger sample (1126 versus 960 visits).
-- **Closed-loop split into its own [`closedloop`](../studies/closedloop.md) study.** 8 of
+- **Closed-loop split into its own [`closed_loop`](../studies/closed_loop.md) study.** 8 of
   the 14 cases were control simulations — how the loop *evolves* the state over a visit
   sequence, with its own gain/latency/intrinsic/order knobs — which is a different question
   from the single-shot forward calculation.
 - **`psf_render.py` promoted to `common/`.** Nothing in it is AOS-specific: GalSim
   `OpticalPSF` + Kolmogorov + HSM, and `optatmo/` and `guider/` do similar moment work. The
   shared *AOS-specific* machinery went to `aos/code/psf_maps_lib.py` instead, used by both
-  `psf` and `closedloop`.
+  `psf` and `closed_loop`.
 - The NaN-truthy colour-scale bug in this study was fixed separately (`b5ac9c8`).
 
 `run_psf_fp_maps.py` went from 638 to 231 lines. Existing output predates all of this —

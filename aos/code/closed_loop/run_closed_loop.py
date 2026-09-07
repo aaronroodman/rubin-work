@@ -18,10 +18,10 @@ Knobs that matter physically:
                 random = shuffled, i.e. random slewing. Reality is in between.
 
 Usage:
-  python code/closedloop/run_closed_loop.py --case loop50
-  python code/closedloop/run_closed_loop.py --case loop --gain 0.5 --latency nplusone
+  python code/closed_loop/run_closed_loop.py --case loop50
+  python code/closed_loop/run_closed_loop.py --case loop --gain 0.5 --latency nplusone
 
-Writes output/<param_set>/<mi>/closedloop/closedloop_<case>_<band><suffix>.pdf, where the
+Writes output/<param_set>/<mi>/closed_loop/closed_loop_<case>_<band><suffix>.pdf, where the
 suffix records the intrinsic, order, latency and gain, so runs with different control
 settings sit side by side.
 
@@ -219,14 +219,14 @@ def main():
     fwhm_atm = render_measure(None, noll, lam_nm, atm, aper,
                               with_optics=False)['fwhm']
 
-    out_dir = base / args.mi / 'closedloop'
+    out_dir = base / args.mi / 'closed_loop'
     out_dir.mkdir(parents=True, exist_ok=True)
     for case in cases:
         n_keep = 34 if case.endswith('50') else 12
         n_dof = None if case.endswith('50') else 22
         suffix = (f'_{args.intrinsic}_{args.order}_{args.latency}'
                   f'_g{args.gain:g}')
-        out = out_dir / f'closedloop_{case}_{args.band}{suffix}.pdf'
+        out = out_dir / f'closed_loop_{case}_{args.band}{suffix}.pdf'
         with PdfPages(str(out)) as pdf:
             run_closed_loop(case, base, args, build_svd(noll, n_keep, n_dof),
                             noll, stars, atm, aper, lam_nm, fwhm_atm, pdf)

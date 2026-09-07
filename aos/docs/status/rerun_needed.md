@@ -8,6 +8,43 @@ would produce. Kept here so a stale plot is not mistaken for a current result.
 The current `param_set` is `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`. Superseded
 `param_set` outputs are in `output/archive/` and are not worth regenerating.
 
+## The `mktable` re-run trigger, and how to bypass it
+
+A plain `./run_snake.sh -n` plans **77 jobs**, five of them `mktable` — the expensive
+Butler step — with:
+
+```
+reason: Params have changed since last execution:
+        before: '--no-thermal' now: ''
+```
+
+The five are exactly the **2025 chunks** (`20250415_20250531`, `20250601_20250930`,
+`20251001_20251115`, `20251116_20251130`, `20251201_20251231`). They were built with
+`mktable: no_thermal: true` to get donuts quickly; `snake_config.yaml` now says `false`,
+so Snakemake correctly sees the recorded params differ.
+
+**But the data is not stale.** The thermal columns in those chunks *are* populated —
+checked `20250415_20250531`: 623 of 637 rows have `cam_air_temp`, `m2_air_temp`,
+`m1m3_air_temp`, `outside_temp` and the gradients. `donuts.parquet` is dated Aug 20 and
+`visits.parquet` Aug 24, four days later: `run_backfill_thermal.py` added them
+afterwards, which is exactly what that script exists to do ("backfill thermal telemetry
+onto a FAM `visits.parquet`, without re-running `mktable`").
+
+So the trigger is **stale provenance metadata, not stale data**. Bypass it with:
+
+```bash
+cd ~/notebooks/rubin-work/aos
+snakemake -n --rerun-triggers mtime -j 4 --resources mem_mb=14000    # 67 jobs, no mktable
+```
+
+That drops the 5 `mktable` and 5 dependent `fit` jobs, leaving 67 — everything else
+unchanged. `--rerun-triggers mtime` tells Snakemake to decide staleness from file times
+only, ignoring the params and code hashes.
+
+The alternative, if you would rather keep the default triggers, is to wipe just those
+outputs' metadata:
+`snakemake --cleanup-metadata output/<ps>/chunks/<chunk>/visits.parquet` per chunk.
+
 ## Pending
 
 ### Everything, once the 2025 FAM data is folded in
@@ -43,7 +80,7 @@ index — so their existing output is still valid.
 ./run_snake.sh --until vmode_correlations
 ```
 
-### `psf` and `closedloop` — single MI build, study split, new output paths
+### `psf` and `closed_loop` — single MI build, study split, new output paths
 **Why:** three changes on 2026-09-07. The `psf` study previously mixed **two**
 measured-intrinsic builds — `--split-mi` (`pathA_50_34_i_5rot`) for the MIW split maps and
 `--fam-mi` (`pathA_50_34_i`) for the per-visit FAM fits. `pathA_50_34_i` is a superseded
@@ -52,18 +89,18 @@ take a single `--mi`, defaulting to `pathA_50_34_i_5rot`, which also carries the
 sample (1126 versus 960 visits in `fits.parquet`).
 
 The closed-loop cases also moved into their own
-[`closedloop`](../studies/closedloop.md) study, and output moved from `<ps>/psf/` to
-`<ps>/<mi>/{psf,closedloop}/`.
+[`closed_loop`](../studies/closed_loop.md) study, and output moved from `<ps>/psf/` to
+`<ps>/<mi>/{psf,closed_loop}/`.
 
 **Affected files:** the 6 PDFs now in `output/<ps>/<mi>/psf/` and the 8 in
-`output/<ps>/<mi>/closedloop/`. The latter still carry their old `psf_fp_maps_loop*`
-names; a rerun writes `closedloop_*` instead.
+`output/<ps>/<mi>/closed_loop/`. The latter still carry their old `psf_fp_maps_loop*`
+names; a rerun writes `closed_loop_*` instead.
 
 ```bash
 python code/psf/run_psf_fp_maps.py --case all
 python code/psf/run_psf_fp_maps.py --case mimic
 python code/psf/run_psf_fp_maps.py --case validate
-python code/closedloop/run_closed_loop.py --case loop
+python code/closed_loop/run_closed_loop.py --case loop
 ```
 
 ### `static_optics` camera-gravity — bending basis may have changed

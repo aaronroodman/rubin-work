@@ -12,7 +12,7 @@ What follows is only the things that are easy to get wrong.
 
 `code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
 `code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
-`code/processing_compare/`, `code/psf/`, `code/closedloop/`, `code/infra/`. See `docs/studies.md`.
+`code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/infra/`. See `docs/studies.md`.
 
 Eight modules stay **flat at `code/`** on purpose:
 

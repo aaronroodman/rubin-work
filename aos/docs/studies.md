@@ -1,6 +1,6 @@
 # AOS analysis studies — inventory
 
-> **Status:** current · **Last updated:** 2026-09-06 · **Kind:** reference (inventory)
+> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (inventory)
 
 Inventory of the thirteen studies in the `aos/` directory: the code implementing each one,
 what it reads and writes, and its current state. All thirteen draw on a common base — the
@@ -18,27 +18,28 @@ the 57 Python files, 16 are referenced by the Snakefile and the rest are standal
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
+| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 894 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
 | [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`dzfit`](studies/dzfit.md) | 6 | 1598 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic, and quality checks on the donut data |
-| [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
-| [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
-| [`static_optics`](studies/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
 | [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | Per-visit telescope state from the EFD and ConsDB: commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
+| [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
 | [`correlations`](studies/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
-| [`smatrix_vmode`](studies/smatrix_vmode.md) | 4 | 894 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
+| [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
 | [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
-| [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
-| [`closedloop`](studies/closedloop.md) | 1 | 237 | 0 | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
+| [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`static_optics`](studies/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
+| [`closed_loop`](studies/closed_loop.md) | 1 | 237 | 0 | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
 | [`infra`](studies/infra.md) | 1 | 126 | 0 | Node CPU and memory capability, for sizing pipeline concurrency |
 
 Every file in `aos/code/` belongs to exactly one study.
 
 ## Code layout
 
-`aos/code/` is organized by study, one subdirectory each: `dzfit/`, `miw/`, `coadd/`,
-`cwfs/`, `static_optics/`, `correlations/`, `smatrix_vmode/`, `bounce/`,
-`processing_compare/`, `psf/`, `closedloop/`, `infra/`.
+`aos/code/` is organized by study, one subdirectory each, listed here in the same
+general-to-specialized order as `../README.md`: `smatrix_vmode/`, `miw/`, `dzfit/`,
+`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `psf/`, `processing_compare/`,
+`static_optics/`, `closed_loop/`, `infra/`.
 
 Nine modules stay flat at `aos/code/`:
 
@@ -51,7 +52,7 @@ Nine modules stay flat at `aos/code/`:
 | `fam_selection.py` | FAM visit selection + DZ column helper; used by all four `correlations` scripts |
 | `miw_io.py` | reads the MIW parquet field maps; used by `static_optics` |
 | `dz_plotting.py` | used by `dzfit` and `correlations` |
-| `psf_maps_lib.py` | star sampling, MIW lookup, DZ residuals, page layout; used by `psf` and `closedloop` |
+| `psf_maps_lib.py` | star sampling, MIW lookup, DZ residuals, page layout; used by `psf` and `closed_loop` |
 | `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities belonging to no single study |
 
 The first three are effectively **shared infrastructure**, not aos-private: sibling
@@ -96,7 +97,7 @@ output/
       fits.parquet                        # DZ refit against the MIW
       correlations/                       # DZ, v-mode and thermal correlations
       psf/                                # focal-plane PSF maps
-      closedloop/                         # closed-loop simulation pages
+      closed_loop/                         # closed-loop simulation pages
       bounce/                             # bounce-test Δ, PDFs and parquets together
       lut/                                # DOF look-up table
       wfs/<cwfs_variant>/, wfs_mimic/     # MIW-subtracted corner-WFS products
@@ -116,7 +117,7 @@ it precedes any MIW. `smatrix_vmode` sits at the **top level**, outside any
 DOF scheme alone, and the one data-derived input (the pupil-Zernike set) is identical
 in every `param_set` built to date, so it defaults in code.
 
-`psf/` and `closedloop/` are under `<mi_name>/`: both read the MIW split maps and the
+`psf/` and `closed_loop/` are under `<mi_name>/`: both read the MIW split maps and the
 per-visit FAM fits from a single measured-intrinsic build. They previously mixed two
 builds via `--split-mi` and `--fam-mi`; that collapsed to one `--mi` on 2026-09-07.
 
