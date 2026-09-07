@@ -144,12 +144,25 @@ constants rather than import bootstrapping, so they were out of scope for the im
 fix. Each wants an env-var plus fallback (`$BATOID_RUBIN_DATA_DIR`,
 `$TS_CONFIG_MTTCS_DIR`).
 
-### `svd._keep()` — private API
-Two call sites use the private `_keep()` from `ts_ofc`:
-`plot_vmode_dof_matrix.py:147` and `run_wfs_dof_compare.py:520`, both to index
-`svd.Sigma` down to the kept singular values. Flagged in the original review; a
-package-internal dependency that can break on any `ts_ofc` update. Worth asking whether
-`ts_ofc` exposes a public equivalent.
+### `svd._keep()` — WON'T FIX, and the original flag was inaccurate
+
+Two call sites use it: `plot_vmode_dof_matrix.py:165` and `run_wfs_dof_compare.py:523`,
+both to slice `svd.Sigma` down to the retained singular modes.
+
+The original review described this as reaching into `ts_ofc`, a third-party package. It
+is actually in **`ts_intrinsic_wavefront`**, Aaron's own package, and the package's own
+`bin.src/run_build_intrinsic.py` calls `svd._keep()` in two places as well. So it was
+already being used as public API in four call sites across two repositories — the leading
+underscore was mislabelling, not a real stability boundary, and there is no failure mode
+to fix.
+
+A public `keep_indices()` was added and then **reverted 2026-09-07**: the branch is headed
+for a PR against `lsst-ts/ts_intrinsic_wavefront`, and a cosmetic API addition with no
+behaviour change is noise in that review. If the underscore is ever worth removing, it
+belongs in a rename done inside the package for the package's own reasons, not driven from
+here.
+
+Left as-is deliberately. Do not re-flag.
 
 ## Notes for the file-by-file pass
 
