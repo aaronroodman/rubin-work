@@ -1,25 +1,35 @@
 #!/usr/bin/env python3
 """plot_vmode_dof_matrix — OFC SVD mode diagnostics for a DOF/v-mode scheme.
 
-Rebuilds the OFC sensitivity-matrix SVD (via ofc_svd.build_ofc_svd, which uses
-ts_ofc for the sensitivity matrix and the ts_config_mttcs normalization yaml) and
-renders a multi-page PDF:
+Rebuilds the Optical Feedback Control (OFC) sensitivity-matrix singular value
+decomposition (via ``ofc_svd.build_ofc_svd``, which takes the sensitivity matrix from
+ts_ofc and the normalization weights from the ts_config_mttcs yaml) and renders one
+figure per page:
 
-  Page 1  V matrix (right singular vectors): the normalized (dimensionless) DOF
-          composition of each retained v-mode, + the singular-value spectrum.
-  Page 2  microns of Double-Zernike produced per unit v-mode (sigma_m * u_m =
-          S v_m) -- rows are the (focal k, pupil Zj) DZ terms ordered k=1
-          j=4..26, then k=2, ...; columns the v-modes.  This is the physical
-          um-of-DZ each unit v-mode maps to (U_eff alone is only the unit shape).
-  Page 3  the per-DOF OFC normalization weights that were applied, as a table
-          (printed to stdout too; they span orders of magnitude).
+  1  **V matrix** — the normalized, dimensionless degree-of-freedom (DOF) composition
+     of each v-mode, drawn with square cells. All v-modes are shown, with a line
+     marking the ``n_keep`` truncation, so the discarded modes are visible.
+  2  **Singular values** — the spectrum, with the truncation marked.
+  3  **Double Zernike per unit v-mode** — µm of DZ that a unit-amplitude v-mode
+     produces (``sigma_m * u_m = S v_m``), rows being the (focal k, pupil Zj) terms.
+     Only the retained v-modes are shown.
+  4  **Reachability and residual per DZ term** — the fraction of each elementary DZ
+     term that the retained v-modes can produce, and the irreducible remainder. Folded
+     in from the former ``jk_coverage_plots.ipynb``.
+  5  **Normalization weights** — a table of the per-DOF weight ``w_i`` applied,
+     decomposed into its range factor ``r_i`` (DOF-units of stroke) and FWHM factor
+     ``f_i`` (arcsec of PSF width per DOF-unit), since ``w_i = r_i^0.5 * f_i^-0.5``.
 
-Data-independent apart from the pupil-Zernike set (iZs), read from the param_set's
-visits.parquet so it matches the wfs_dof_compare SVD.  Defaults to the 22-DoF /
-12-v-mode scheme.  Needs ts_ofc (build_ofc_svd) + TS_CONFIG_MTTCS_DIR.
+Data-independent apart from the pupil-Zernike set, which defaults to the standard
+Z4-Z26 (omitting Z20, Z21) and is identical in every param_set built to date.
+``--param-set`` reads it from that param_set's ``visits.parquet`` instead and warns on
+a difference. Output goes to ``output/smatrix_vmode/`` — outside any param_set, because
+nothing here depends on FAM data.
 
-`--check` runs a regression test instead of plotting: it asserts build_ofc_svd
-reproduces ts_ofc's StateEstimator.get_dofs_from_vmodes (DOF-per-v-mode = N.V) on
+Needs ts_ofc and $TS_CONFIG_MTTCS_DIR.
+
+``--check`` runs a regression test instead of plotting: it asserts ``build_ofc_svd``
+reproduces ts_ofc's ``StateEstimator.get_dofs_from_vmodes`` (DOF-per-v-mode = N.V) on
 identical inputs, and exits 0=PASS / 1=FAIL.
 """
 import argparse
@@ -29,9 +39,8 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # aos/code
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))          # aos/code
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'smatrix' / 'code'))
 from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 
@@ -52,7 +61,7 @@ def run_ofc_check(instrument='lsst'):
     the two must agree to numerical precision.  Returns True on PASS.
     """
     from lsst.ts.ofc import OFCData, StateEstimator
-    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
+    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, DEFAULT_NORM_YAML
     ofc = OFCData(instrument); se = StateEstimator(ofc)
     S = np.asarray(ofc.sensitivity_matrix)               # (n_k, n_zn, n_dof)
     n_k, n_zn, _ = S.shape
@@ -92,6 +101,7 @@ def main():
                     help='optional: read the pupil-Zernike set from this param_set\'s '
                          'visits.parquet instead of using ZK_NOLL_DEFAULT')
     ap.add_argument('--scheme', default='22_12', choices=list(SCHEMES))
+    ap.add_argument('--instrument', default='lsst')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--annotate-min', type=float, default=0.10,
                     help='annotate cells with |V_im| >= this (0 = none)')
@@ -104,7 +114,7 @@ def main():
     if args.check:
         sys.exit(0 if run_ofc_check() else 1)
 
-    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
+    from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, DEFAULT_NORM_YAML
     n_dof, n_keep = SCHEMES[args.scheme]
 
     # The v-mode/DOF matrix is a property of the OFC sensitivity matrix and the DOF
@@ -121,102 +131,180 @@ def main():
     else:
         noll = list(ZK_NOLL_DEFAULT)
 
+    # Build with ALL modes kept so the discarded ones can be shown, then mark the
+    # truncation. n_keep_eff on the full SVD is the DOF count.
     svd = build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_keep, n_dof=n_dof)
-    V = svd.V[:, :svd.n_keep_eff]                 # (n_dof, n_keep) DOF composition
+    n_all = svd.V.shape[1]                        # every available v-mode
+    n_kept = svd.n_keep_eff                       # retained by this scheme
+    V_all = svd.V                                 # (n_dof, n_all) dimensionless
     labels = svd.dof_labels()[0]
-    n_d = V.shape[0]
+    n_d = V_all.shape[0]
 
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from matplotlib import gridspec
     from matplotlib.backends.backend_pdf import PdfPages
 
+    scheme_txt = args.scheme.replace('_', ' DoF / ') + ' v-modes'
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f'vmode_dof_matrix_{args.scheme}.pdf'
     with PdfPages(str(out)) as pdf:
-        fig = plt.figure(figsize=(12, max(6, 0.32 * n_d)), dpi=150)
-        gs = gridspec.GridSpec(1, 2, width_ratios=[1.5, 1])
-        ax0, ax1 = plt.subplot(gs[0]), plt.subplot(gs[1])
 
-        im = ax0.imshow(V, cmap='seismic', vmin=-1, vmax=1, aspect='auto')
-        ax0.set_xlabel('V-mode m'); ax0.set_ylabel('Normalized DOF')
-        ax0.set_xticks(range(svd.n_keep_eff)); ax0.set_xticklabels([str(m + 1) for m in range(svd.n_keep_eff)])
-        ax0.set_yticks(range(n_d)); ax0.set_yticklabels(labels, fontsize=7)
-        ax0.set_title(f'V matrix — normalized (dimensionless) DOF coefficients\n'
-                      f'({args.scheme.replace("_", " DoF / ")} v-modes)')
-        fig.colorbar(im, ax=ax0, shrink=0.8)
+        # ---- Page 1: V matrix, square cells, all v-modes, truncation marked ----
+        # 0.32 in per cell keeps the cells square at any (n_dof, n_all).
+        cell = 0.32
+        fig, ax = plt.subplots(figsize=(max(7, cell * n_all + 4.5),
+                                       max(5, cell * n_d + 2.0)), dpi=150)
+        im = ax.imshow(V_all, cmap='seismic', vmin=-1, vmax=1, aspect='equal')
+        ax.set_xlabel('v-mode m')
+        ax.set_ylabel('normalized DOF (dimensionless)')
+        ax.set_xticks(range(n_all))
+        ax.set_xticklabels([str(m + 1) for m in range(n_all)], fontsize=6)
+        ax.set_yticks(range(n_d))
+        ax.set_yticklabels(labels, fontsize=6)
+        if n_kept < n_all:
+            ax.axvline(n_kept - 0.5, color='lime', lw=2.0)
+            ax.text(n_kept - 0.5, -0.9, f'  kept: {n_kept}  |  discarded: {n_all - n_kept}',
+                    color='green', fontsize=8, va='bottom', ha='left')
+        ax.set_title(f'V matrix — DOF composition of each v-mode ({scheme_txt})\n'
+                     f'all {n_all} v-modes shown; green line marks the n_keep truncation')
+        fig.colorbar(im, ax=ax, shrink=0.7, label='V element (dimensionless)')
         if args.annotate_min > 0:
             for i in range(n_d):
-                for m in range(svd.n_keep_eff):
-                    if abs(V[i, m]) >= args.annotate_min:
-                        ax0.text(m, i, f'{V[i, m]:.2f}', ha='center', va='center', fontsize=5,
-                                 color='k' if abs(V[i, m]) < 0.6 else 'w')
-
-        ax1.semilogy(np.arange(1, len(svd.Sigma) + 1), svd.Sigma, 'o-', ms=4)
-        ax1.axvline(svd.n_keep_eff + 0.5, color='green', alpha=0.6, label=f'truncation at {svd.n_keep_eff}')
-        ax1.set_xlabel('V-mode m'); ax1.set_ylabel(r'$\sigma_m$')
-        ax1.set_title('Singular values'); ax1.legend(fontsize=8); ax1.grid(alpha=0.3)
-
+                for m in range(n_all):
+                    if abs(V_all[i, m]) >= args.annotate_min:
+                        ax.text(m, i, f'{V_all[i, m]:.2f}', ha='center', va='center',
+                                fontsize=4, color='k' if abs(V_all[i, m]) < 0.6 else 'w')
         fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 2: MICRONS of Double-Zernike produced per unit v-mode ----
-        # S v_m = sigma_m u_m, so (sigma_m * U_eff[:, m]) is the physical DZ
-        # wavefront (um) a unit-amplitude v-mode m produces, broken down by DZ
-        # term.  Rows are the (focal k, pupil Zj) terms in kj_grid order
-        # (k outer, j inner: k=1 j=4..26, then k=2, ...).
-        sig = np.asarray(svd.Sigma)[svd._keep()]        # kept singular values
-        DZ = np.asarray(svd.U_eff) * sig[None, :]        # (n_kj, n_keep_eff), um
+        # ---- Page 2: singular values, on their own page ----
+        fig, ax = plt.subplots(figsize=(9, 5.5), dpi=150)
+        ax.semilogy(np.arange(1, len(svd.Sigma) + 1), svd.Sigma, 'o-', ms=5)
+        ax.axvline(n_kept + 0.5, color='green', alpha=0.7,
+                   label=f'truncation at n_keep = {n_kept}')
+        ax.set_xlabel('v-mode m')
+        ax.set_ylabel(r'singular value $\sigma_m$  (µm of DZ per unit v-mode)')
+        ax.set_title(f'Singular-value spectrum ({scheme_txt})')
+        ax.legend(fontsize=9); ax.grid(alpha=0.3, which='both')
+        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+        # ---- Page 3: µm of DZ per unit v-mode (retained modes only) ----
+        # S v_m = sigma_m u_m, so sigma_m * U_eff[:, m] is the physical DZ wavefront
+        # in µm that a unit-amplitude v-mode m produces.
+        sig = np.asarray(svd.Sigma)[svd._keep()]
+        DZ = np.asarray(svd.U_eff) * sig[None, :]        # (n_kj, n_kept), µm
         kj = list(svd.kj_grid)
         n_kj = DZ.shape[0]
         karr = np.array([k for k, j in kj])
-        fig = plt.figure(figsize=(max(8, 0.42 * svd.n_keep_eff + 3),
-                                  max(8, 0.11 * n_kj + 2)), dpi=150)
-        ax = fig.add_subplot(111)
-        vmax = float(np.nanpercentile(np.abs(DZ), 99)) or 1.0
+        fig, ax = plt.subplots(figsize=(max(8, 0.42 * n_kept + 4.5),
+                                       max(8, 0.11 * n_kj + 2)), dpi=150)
+        vmax = float(np.nanpercentile(np.abs(DZ), 99))
+        if not np.isfinite(vmax) or vmax == 0:
+            vmax = 1.0
         im = ax.imshow(DZ, cmap='seismic', vmin=-vmax, vmax=vmax, aspect='auto')
         ax.set_xlabel('v-mode m')
         ax.set_ylabel('Double-Zernike term  (pupil Zj within each focal-k block)')
-        ax.set_xticks(range(svd.n_keep_eff))
-        ax.set_xticklabels([str(m + 1) for m in range(svd.n_keep_eff)], fontsize=7)
+        ax.set_xticks(range(n_kept))
+        ax.set_xticklabels([str(m + 1) for m in range(n_kept)], fontsize=7)
         ax.set_yticks(range(n_kj))
         ax.set_yticklabels([f'Z{j}' for k, j in kj], fontsize=4)
-        for b in np.where(karr[1:] != karr[:-1])[0]:    # k-block separators
+        for b in np.where(karr[1:] != karr[:-1])[0]:
             ax.axhline(b + 0.5, color='k', lw=0.8)
-        for k in dict.fromkeys(karr):                   # k=N labels per block
-            ax.text(-0.085, float(np.where(karr == k)[0].mean()), f'k={k}',
-                    transform=ax.get_yaxis_transform(), ha='right', va='center',
-                    fontsize=9, fontweight='bold')
+        # k=N block labels, placed inside the axes so they are never clipped
+        for k in dict.fromkeys(karr):
+            ax.text(-0.4, float(np.where(karr == k)[0].mean()), f'k={k}',
+                    ha='right', va='center', fontsize=9, fontweight='bold',
+                    clip_on=False)
         ax.set_title(f'Double-Zernike produced per unit v-mode  '
-                     f'(sigma_m * u_m, um of DZ)  '
-                     f'({args.scheme.replace("_", " DoF / ")})')
-        fig.colorbar(im, ax=ax, shrink=0.8, label='um of DZ per unit v-mode')
-        fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+                     rf'($\sigma_m u_m$, µm of DZ)  ({scheme_txt})')
+        fig.colorbar(im, ax=ax, shrink=0.8, label='µm of DZ per unit v-mode')
+        # extra left margin for the k= labels
+        fig.subplots_adjust(left=0.16)
+        pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 3: per-DOF OFC normalization weights (TABLE) ----
-        # weights span orders of magnitude, so a table reads better than a bar.
+        # ---- Page 4: reachability / residual per DZ term ----
+        # From the former jk_coverage_plots.ipynb: how much of each elementary DZ term
+        # the retained v-modes can produce, and the irreducible remainder.
+        U_eff = np.asarray(svd.U_eff)
+        frac = (U_eff ** 2).sum(axis=1)              # reachable fraction per DZ term
+        n_k = len(dict.fromkeys(karr)); n_j = n_kj // n_k
+        frac_2d = frac.reshape(n_k, n_j)
+        resid_2d = 1.0 - frac_2d
+        jlabels = [f'Z{j}' for k, j in kj[:n_j]]
+        klabels = [f'k={k}' for k in dict.fromkeys(karr)]
+        fig, axes = plt.subplots(2, 1, figsize=(max(8, 0.45 * n_j + 3), 7.5), dpi=150)
+        for ax, M, ttl, cm in (
+                (axes[0], 100 * frac_2d, 'reachable', 'viridis'),
+                (axes[1], 100 * resid_2d, 'residual after the v-mode fit', 'magma')):
+            im = ax.imshow(M, cmap=cm, vmin=0, vmax=100, aspect='auto')
+            ax.set_xticks(range(n_j)); ax.set_xticklabels(jlabels, fontsize=6, rotation=90)
+            ax.set_yticks(range(n_k)); ax.set_yticklabels(klabels, fontsize=8)
+            ax.set_title(f'Per-DZ-term {ttl}, n_keep = {n_kept}  [% of power]')
+            fig.colorbar(im, ax=ax, shrink=0.9, label='% of power')
+        fig.suptitle(f'Reachability of each Double-Zernike term ({scheme_txt})\n'
+                     f'mean residual {100 * resid_2d.mean():.1f}% of power; '
+                     f'{int((frac_2d >= 0.95).sum())} of {n_kj} terms >= 95% reachable',
+                     fontsize=11)
+        fig.tight_layout(rect=[0, 0, 1, 0.93]); pdf.savefig(fig); plt.close(fig)
+
+        # ---- Page 5: normalization weights, decomposed into range and FWHM ----
+        # w_i = r_i^0.5 * f_i^-0.5 (alpha=0.5, beta=-0.5 for range0.5_fwhm-0.15).
+        # f_i is recomputed from the sensitivity matrix as the field-averaged
+        # quadrature PSF width per DOF-unit (arcsec/DOF-unit); r_i then follows as
+        # w_i^2 * f_i, in DOF-units of usable stroke.
         nw = np.asarray(svd.normalization_weights, float)
+        f_i = r_i = None
+        try:
+            import normalization_weights as NW
+            from lsst.ts.ofc import OFCData
+            sens = np.asarray(OFCData(args.instrument).sensitivity_matrix)
+            f_full = NW.compute_f_quadrature(sens, rings=5, spokes=6, znmin=4, znmax=22)
+            f_i = f_full[list(svd.dof_idx)]
+            r_i = nw ** 2 * f_i
+        except Exception as e:                                  # noqa: BLE001
+            print(f'note: could not decompose the weights ({type(e).__name__}: {e});'
+                  ' showing the combined weight only')
+
         print(f'\nOFC per-DOF normalization weights ({args.scheme}, '
-              f'ts_config_mttcs range0.5_fwhm-0.15):')
-        for lab, w in zip(labels, nw):
-            print(f'  {lab:24s} {w:14.6g}')
+              f'{DEFAULT_NORM_YAML}):')
+        hdr = f'  {"DOF":22s} {"w_i":>13s}'
+        if f_i is not None:
+            hdr += f' {"r_i [DOF-unit]":>16s} {"f_i [arcsec/DOF-unit]":>22s}'
+        print(hdr)
+        for i, (lab, w) in enumerate(zip(labels, nw)):
+            line = f'  {lab:22s} {w:13.6g}'
+            if f_i is not None:
+                line += f' {r_i[i]:16.6g} {f_i[i]:22.6g}'
+            print(line)
+
+        ncol = 4 if f_i is not None else 2
+        colw = 12 if f_i is not None else 9
         half = (len(nw) + 1) // 2
-        fig, axes = plt.subplots(1, 2, figsize=(11, max(5, 0.22 * half + 1.2)),
+        fig, axes = plt.subplots(1, 2, figsize=(colw * 1.7, max(5, 0.22 * half + 1.4)),
                                  dpi=150)
+        head = ['DOF', 'w_i'] + (['r_i\n[DOF-unit]', 'f_i\n[arcsec / DOF-unit]']
+                                 if f_i is not None else [])
         for ax, lo, hi in [(axes[0], 0, half), (axes[1], half, len(nw))]:
             ax.axis('off')
-            rows = [[labels[i], f'{nw[i]:.6g}'] for i in range(lo, hi)]
+            rows = []
+            for i in range(lo, hi):
+                row = [labels[i], f'{nw[i]:.5g}']
+                if f_i is not None:
+                    row += [f'{r_i[i]:.5g}', f'{f_i[i]:.4g}']
+                rows.append(row)
             if rows:
-                t = ax.table(cellText=rows, colLabels=['DOF', 'norm weight'],
-                             loc='center', cellLoc='left')
-                t.auto_set_font_size(False); t.set_fontsize(7); t.scale(1, 1.25)
-        fig.suptitle('OFC per-DOF normalization weights applied '
-                     f'(range0.5_fwhm-0.15)  [{args.scheme}]', fontsize=11)
-        fig.tight_layout(rect=[0, 0, 1, 0.96]); pdf.savefig(fig); plt.close(fig)
+                t = ax.table(cellText=rows, colLabels=head, loc='center', cellLoc='left')
+                t.auto_set_font_size(False); t.set_fontsize(6); t.scale(1, 1.3)
+        sub = (r'  $w_i = r_i^{0.5} f_i^{-0.5}$;  $r_i$ = usable stroke in DOF units,  '
+               r'$f_i$ = field-averaged PSF width per DOF unit [arcsec]'
+               if f_i is not None else '')
+        fig.suptitle(f'OFC per-DOF normalization weights  [{args.scheme}]\n{sub}',
+                     fontsize=10)
+        fig.tight_layout(rect=[0, 0, 1, 0.93]); pdf.savefig(fig); plt.close(fig)
 
-    print(f'wrote {out}  (3 pages: V {V.shape[0]}x{V.shape[1]}, '
-          f'DZ-per-v-mode {DZ.shape[0]}x{DZ.shape[1]} um, '
-          f'{len(nw)} DOF norm-weight table; {len(noll)} pupil Zernikes)')
+    print(f'wrote {out}  (5 pages: V {n_d}x{n_all} with {n_kept} kept; '
+          f'singular values; DZ-per-v-mode {n_kj}x{n_kept} µm; '
+          f'reachability; {len(nw)} DOF normalization table)')
 
 
 if __name__ == '__main__':
