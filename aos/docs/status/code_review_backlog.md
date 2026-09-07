@@ -74,20 +74,42 @@ detector, with the real `rotTelPos`, rather than through a wrapper that could ma
 behaviour under test. A future Butler-backed reader should be a separate
 `load_miw_calib()` returning the calibration object, not a mode of this function.
 
-## `combine_parquets.py` — two versions, `olr/`'s is ahead
+## `combine_parquets.py` — RESOLVED 2026-09-07
 
-`aos/code/combine_parquets.py` is 148 lines; `olr/code/combine_parquets.py` is 168.
-Not a copy: the `olr/` version **drops 0-row sentinel inputs before schema
-unification**, and handles the all-inputs-empty case by writing a valid 0-row output.
+The backlog said two versions; there were **three**, and the one the AOS pipeline
+actually runs was neither of the ones being compared.
 
-Why it matters: a night with no AOS products writes an empty marker file so the DAG
-completes. That marker's minimal schema would shrink the common-column intersection to
-nothing, so the `aos/` copy would fail or silently produce a column-starved table.
+- `aos/code/combine_parquets.py` — **dead code**. Nothing referenced it: `aos/Snakefile`
+  calls `{WF_BIN}/combine_parquets.py`, i.e. the external package's copy. Deleted.
+- `ts_intrinsic_wavefront/bin.src/combine_parquets.py` — what the AOS pipeline runs, and
+  it lacked the sentinel logic. **Patched** (branch `tickets/RSO-809`, commit `f4f23b6`),
+  now byte-identical to the `olr/` version. `bin/` is a scons-generated copy of
+  `bin.src/`, so `bin.src/` is the file to edit.
+- `olr/code/combine_parquets.py` — already correct, independently invoked by
+  `olr/Snakefile`. Unchanged.
 
-Fix is to promote one implementation — the `olr/` logic is the right one — ideally into
-`common/`, since concatenating parquet chunks is not topic-specific. It changes the
-pipeline's combine step, so it needs a test over a chunk set that includes an empty
-night.
+The bug, demonstrated on two chunks with columns (a, b) plus a 0-row sentinel with only
+(a): the unified schema is the **intersection** of all input schemas, so the sentinel
+silently shrank the output from 2 columns to 1 — reported as a `note:`, not an error.
+Real column loss.
+
+```
+before:  note: dropped column 'b' — absent from 1/3 inputs
+         combined 3 files: 5 rows (1 columns, 1 dropped)
+after:   note: skipping empty input empty.parquet (0 rows)
+         combined 2 files: 5 rows (2 columns, 0 dropped)
+```
+
+Verified: with no sentinels the output is bit-identical to before (pyarrow
+`Table.equals`); with every input empty, a valid readable 0-row file is written so the
+DAG target exists.
+
+**Not promoted to `common/`.** The packaged copy runs via a `bin/` shim and cannot import
+from this repo, so it has to stay standalone; putting a third copy in `common/` would add
+a file to keep in sync rather than remove one. The remaining duplication is
+`olr/code/combine_parquets.py` against the package, and those two are now identical.
+
+**Package commit is not pushed** — `ts_intrinsic_wavefront` is a separate repo.
 
 ## Live defects confirmed during the reorganization
 

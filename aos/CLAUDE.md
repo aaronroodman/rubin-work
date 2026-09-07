@@ -14,12 +14,12 @@ What follows is only the things that are easy to get wrong.
 `code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
 `code/processing_compare/`, `code/psf/`, `code/infra/`. See `docs/studies.md`.
 
-Nine modules stay **flat at `code/`** on purpose:
+Eight modules stay **flat at `code/`** on purpose:
 
 | module | why |
 |---|---|
 | `aos_trim.py`, `aos_state.py`, `aos_consdb_efd.py` | imported **by bare module name from `blocks/`, `olr/`, `optatmo/`, `guider/`** (39 references) via a hardcoded `sys.path.insert(.../aos/code)`. Moving them breaks four sibling topics with no static-import warning. |
-| `aos_fwhm.py`, `fam_selection.py`, `miw_io.py`, `dz_plotting.py`, `psf_render.py`, `combine_parquets.py` | used by more than one study |
+| `aos_fwhm.py`, `fam_selection.py`, `miw_io.py`, `dz_plotting.py`, `psf_render.py` | used by more than one study |
 | `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities, no study of their own |
 
 Do not "finish the job" by moving the first three into `code/telemetry/`.
