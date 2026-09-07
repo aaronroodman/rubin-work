@@ -40,6 +40,7 @@ import galsim.zernike as gz
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
 sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
+from miw_io import load_miw  # noqa: E402
 import m3_backprojection as bp
 
 warnings.filterwarnings("ignore")
@@ -47,19 +48,6 @@ warnings.filterwarnings("ignore")
 JS = [j for j in range(4, 27) if j not in (20, 21)]   # FAM Noll set
 DEFAULT_MIW = ("output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
                "pathA_50_34_i_5rot/intrinsic_split_maps.parquet")
-
-
-def load_miw(path, stride):
-    """Return (pts[N,2] deg, zk[N,27] µm OCS Noll-indexed, df) from an MIW map."""
-    df = pd.read_parquet(path)
-    cols = [f"Z{j}_OCS" for j in JS]
-    ok = np.all(np.isfinite(df[cols].values), axis=1)
-    df = df[ok].iloc[::stride].reset_index(drop=True)
-    pts = np.column_stack([df.thx_deg.values, df.thy_deg.values])
-    zk = np.zeros((len(df), 27))
-    for j in JS:
-        zk[:, j] = df[f"Z{j}_OCS"].values
-    return pts, zk, df
 
 
 def mean_cos(tel, s):
@@ -171,7 +159,7 @@ def main():
     args = ap.parse_args()
 
     tel = bp.load_telescope(args.band)
-    pts, zk, _ = load_miw(args.miw, args.stride)
+    pts, zk, _ = load_miw(args.miw, args.stride, js=JS)
     print(f"MIW: {args.miw}\n  field points: {len(pts)} (stride {args.stride}), units µm, frame OCS==batoid (identity)")
 
     # 1. per-surface back-projection

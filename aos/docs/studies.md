@@ -48,6 +48,7 @@ Nine modules stay flat at `aos/code/`:
 | `aos_consdb_efd.py` | **3 references from `blocks/`** |
 | `aos_fwhm.py` | used by `cwfs` and `correlations` |
 | `fam_selection.py` | FAM visit selection + DZ column helper; used by all four `correlations` scripts |
+| `miw_io.py` | reads the MIW parquet field maps; used by `static_optics` |
 | `dz_plotting.py` | used by `dzfit` and `correlations` |
 | `psf_render.py` | used by `psf` and `cwfs` |
 | `combine_parquets.py` | used by the pipeline across studies |

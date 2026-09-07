@@ -47,19 +47,32 @@ regenerated.**
 Blur, for reference on that param_set: range 0.62–1.41 arcsec, median 0.86. A
 `max_blur_arcsec` of 1.0 would drop 185 of 1126 visits; 1.1 would drop 71.
 
-### `load_miw` — four copies, four behaviours
-| file | signature |
-|---|---|
-| `camera_gravity_maps.py` | `load_miw(path)` |
-| `run_m3_backprojection_miw.py` | `load_miw(path, stride)` → `(pts[N,2] deg, zk[N,27] µm OCS, df)` |
-| `run_miw_backprojection_surfaces.py` | `load_miw(path, stride)` |
-| `run_miw_joint_fit.py` | `load_miw(path, stride)` |
+### `load_miw` — RESOLVED 2026-09-07
 
-Spans the `static_optics` and `coadd` studies. The three `stride` versions are not
-identical either. This is the natural place to also settle *which* MIW product is
-canonical — the `_5rot` `intrinsic_split_maps` with OCS columns — so that every caller
-reads the same thing. A shared MIW reader is a strong `common/` or
-`aos/code/miw_io.py` candidate.
+Was four copies across `static_optics`. Three (`run_m3_backprojection_miw`,
+`run_miw_backprojection_surfaces`, `run_miw_joint_fit`) were identical apart from
+returning a 2- or 3-tuple; `camera_gravity_maps` used a laxer row cut.
+
+Replaced by `load_miw` in `aos/code/miw_io.py`, which returns `(pts, zk, df)` — field
+positions in degrees, Noll-indexed Zernikes in µm of wavefront, and the surviving rows.
+`require=` controls which Zernikes must be finite for a row to be kept, defaulting to all
+of `js`.
+
+That parameter exists because the row cut genuinely differed, and for a good reason:
+`camera_gravity_maps` plots only Z5–Z8, and requiring all 21 Zernikes finite would
+discard **108 field points** where `Z4_OCS` (defocus, CCD-height sensitive) is non-finite
+but Z5–Z8 are fine. It now passes `require=(5, 6, 7, 8)` and keeps the same 3969 rows as
+before. The three back-projection scripts get a bit-identical grid — verified same rows,
+same `pts`, same `zk` at stride 1 and 8 — so no output needs regenerating.
+
+**Deliberately parquet-only.** The MIW also lives in a Butler as an
+`lsst.ip.isr.IntrinsicZernikes` calibration (dataset type `intrinsicZernikes`, one per
+detector). That is *not* wrapped, because its only consumer,
+`aos_miw_cwfs_intrinsic_check.ipynb`, exists to verify that the ingested calibration
+reproduces what ts_wep computes — so it must call `getIntrinsicZernikes` directly, per
+detector, with the real `rotTelPos`, rather than through a wrapper that could mask the
+behaviour under test. A future Butler-backed reader should be a separate
+`load_miw_calib()` returning the calibration object, not a mode of this function.
 
 ## `combine_parquets.py` — two versions, `olr/`'s is ahead
 

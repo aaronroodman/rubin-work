@@ -35,6 +35,7 @@ import camera_gravity as cg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
+from miw_io import load_miw  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -45,12 +46,6 @@ DEFAULT_MIW = (Path(__file__).resolve().parents[1] / "output" /
 # Zernikes kept for the OFC wavefront correction: Z4..Z26 excl Z20,Z21
 ZK_NOLL = [z for z in range(4, 27) if z not in (20, 21)]
 NOLLS = (5, 6, 7, 8)
-
-
-def load_miw(path):
-    m = pd.read_parquet(path)
-    good = np.isfinite(m["Z5_OCS"].values)
-    return m[good].reset_index(drop=True)
 
 
 def design_and_gravity_dz(band, elevations, include_rb):
@@ -129,7 +124,8 @@ def main():
     cg.C.RINGS, cg.C.SPOKES, cg.C.NX = args.rings, args.spokes, args.nx
     tag = "rb" if args.rb else "surf"
 
-    miw = load_miw(args.miw)
+    # Only Z5-Z8 are plotted, so keep rows where Z4_OCS is non-finite.
+    _, _, miw = load_miw(args.miw, require=(5, 6, 7, 8))
     dz_design, dz_tot = design_and_gravity_dz(args.band, args.elevations, args.rb)
 
     # RAW figure

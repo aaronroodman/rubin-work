@@ -56,6 +56,7 @@ import galsim.zernike as gz
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
 sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
+from miw_io import load_miw  # noqa: E402
 import m3_backprojection as bp
 
 warnings.filterwarnings("ignore")
@@ -72,18 +73,6 @@ UNITS = {
     "Filter": ["Filter_entrance", "Filter_exit"], "L3": ["L3_entrance", "L3_exit"],
 }
 ORDER = ["M1", "M2", "M3", "L1", "L2", "Filter", "L3"]
-
-
-def load_miw(path, stride):
-    df = pd.read_parquet(path)
-    cols = [f"Z{j}_OCS" for j in JS]
-    ok = np.all(np.isfinite(df[cols].values), axis=1)
-    df = df[ok].iloc[::stride].reset_index(drop=True)
-    pts = np.column_stack([df.thx_deg.values, df.thy_deg.values])
-    zk = np.zeros((len(df), 27))
-    for j in JS:
-        zk[:, j] = df[f"Z{j}_OCS"].values
-    return pts, zk
 
 
 # ---------------- batoid response matrix + mode-swept fit VE ----------------
@@ -355,7 +344,7 @@ def main():
 
     order = args.only or ORDER
     tel = bp.load_telescope(args.band)
-    pts, zk = load_miw(args.miw, args.stride)
+    pts, zk, _ = load_miw(args.miw, args.stride, js=JS)
     dvec = zk[:, JS].ravel()
     gb = len(pts) * args.grid_n ** 2 * 8 / 1e9
     print(f"MIW: {args.miw}\n  {len(pts)} field points (stride {args.stride}), "

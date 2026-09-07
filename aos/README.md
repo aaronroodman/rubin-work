@@ -67,20 +67,23 @@ Keyed by `param_set` — a Butler collection paired with a processing variant �
 output is grouped by study:
 
 ```
-output/<param_set>/
-  {donuts,fits,visits}.parquet     # combined tables, input to everything
-  chunks/<dmin>_<dmax>/            # per-chunk tables
-  dzfit/  psf/  processing_compare/  wfs/<variant>/
-  coadd_50_34/  coadd_50_34_v2/
-output/smatrix_vmode/                # OFC matrix diagnostics, no param_set dependence
-  <mi_name>/
-    intrinsic_split_{maps,decomp,rms}.parquet    # the MIW itself
-    fits.parquet                                 # DZ refit against the MIW
-    correlations/  bounce/  lut/  wfs/<variant>/  wfs_mimic/
+output/
+  <param_set>/
+    {donuts,fits,visits}.parquet   # combined tables, input to everything
+    chunks/<dmin>_<dmax>/          # per-chunk tables
+    dzfit/  psf/  processing_compare/  wfs/<variant>/
+    coadd_50_34/  coadd_50_34_v2/
+    <mi_name>/
+      intrinsic_split_{maps,decomp,rms}.parquet  # the MIW itself
+      fits.parquet                               # DZ refit against the MIW
+      correlations/  bounce/  lut/  wfs/<variant>/  wfs_mimic/
+  smatrix_vmode/                   # OFC matrix diagnostics, no param_set dependence
+  camera_gravity/                  # static_optics, no param_set dependence
+  archive/                         # superseded param_sets
 ```
 
 A study writes under `<mi_name>/` when its result depends on which MIW build was used,
-and under `<param_set>/` otherwise. Superseded param_sets are in `output/archive/`.
+under `<param_set>/` when it does not, and at the top level when it depends on neither.
 
 Outputs are gitignored, and symlinked to
 `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/` on the USDF RSP.
@@ -108,6 +111,7 @@ status + last-updated line under its title.
 | [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic; what the `zk_*` columns mean |
 | [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions, vs GalSim and `ts_ofc` |
 | [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
+| [`docs/status/rerun_needed.md`](docs/status/rerun_needed.md) | outputs that predate a code change and need regenerating |
 | [`docs/status/code_review_backlog.md`](docs/status/code_review_backlog.md) | open review items: non-equivalent duplicate helpers, confirmed live defects, `common/` candidates |
 | [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | the earlier full review — **stale line anchors**, verify before acting |
 | [`CLAUDE.md`](CLAUDE.md) | conventions and known pitfalls for this directory: frames, units, and which code lives in the external `ts_intrinsic_wavefront` package |

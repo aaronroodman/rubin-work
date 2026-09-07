@@ -36,6 +36,7 @@ import galsim.zernike as gz
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
 sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
+from miw_io import load_miw  # noqa: E402
 import m3_backprojection as bp
 
 warnings.filterwarnings("ignore")
@@ -47,18 +48,6 @@ DEFAULT_MIW = ("output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
 SURF_MAP = {"M1": "M1", "M2": "M2", "M3": "M3", "L1": "L1_entrance",
             "L2": "L2_entrance", "Filter": "Filter_entrance", "L3": "L3_entrance"}
 UNIT = 1e-7   # response-column unit surface-height amplitude [m] (=100 nm)
-
-
-def load_miw(path, stride):
-    df = pd.read_parquet(path)
-    cols = [f"Z{j}_OCS" for j in JS]
-    ok = np.all(np.isfinite(df[cols].values), axis=1)
-    df = df[ok].iloc[::stride].reset_index(drop=True)
-    pts = np.column_stack([df.thx_deg.values, df.thy_deg.values])
-    zk = np.zeros((len(df), 27))
-    for j in JS:
-        zk[:, j] = df[f"Z{j}_OCS"].values
-    return pts, zk
 
 
 def build_response(tel, pts, optics, modes, nx):
@@ -183,7 +172,7 @@ def main():
 
     modes = list(range(args.mode_min, args.mode_max + 1))
     tel = bp.load_telescope(args.band)
-    pts, zk = load_miw(args.miw, args.stride)
+    pts, zk, _ = load_miw(args.miw, args.stride, js=JS)
     dvec = zk[:, JS].ravel()
     print(f"MIW: {args.miw}\n  {len(pts)} field pts (stride {args.stride}), band {args.band}"
           f"\n  optics {args.optics}, modes Z{args.mode_min}..Z{args.mode_max} "
