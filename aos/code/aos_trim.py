@@ -18,99 +18,32 @@ lazily so this module imports cleanly without the LSST stack.
 """
 from __future__ import annotations
 
+import pathlib
+import sys
+
 import numpy as np
 
 DOF_TOPIC = 'lsst.sal.MTAOS.logevent_degreeOfFreedom'
 N_DOF = 50
-# In-pod host (only resolves inside the RSP Nublado pod) vs the public RSP
-# endpoint (token-injected, works from S3DF/sdfiana too).  'auto' picks between
-# them via in_rsp(); DEFAULT_CONSDB_URL stays the in-pod host for back-compat.
-IN_POD_CONSDB_URL = 'http://consdb-pq.consdb:8080/consdb'
-EXTERNAL_CONSDB_URL = 'https://usdf-rsp.slac.stanford.edu/consdb'
-DEFAULT_CONSDB_URL = IN_POD_CONSDB_URL
-DEFAULT_EXPOSURE_TABLE = 'cdb_lsstcam.exposure'
+
+# Client construction, endpoint selection and token handling are shared across every
+# topic in this repo and live in common/telemetry_clients.py. They are re-exported here
+# unchanged so that `from aos_trim import make_consdb_client` keeps working -- four
+# sibling topics (blocks/, olr/, optatmo/, guider/) import it by that name.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))   # repo root
+from common.telemetry_clients import (            # noqa: E402
+    IN_POD_CONSDB_URL, EXTERNAL_CONSDB_URL, DEFAULT_CONSDB_URL,
+    DEFAULT_EXPOSURE_TABLE, in_rsp, make_efd_client, make_consdb_client, efd_window,
+    PAD_SEC,
+)
 
 __all__ = [
     'DOF_TOPIC', 'N_DOF', 'DEFAULT_CONSDB_URL', 'IN_POD_CONSDB_URL',
     'EXTERNAL_CONSDB_URL', 'DEFAULT_EXPOSURE_TABLE', 'in_rsp',
-    'make_efd_client', 'make_consdb_client', 'fetch_obs_start',
-    'fetch_aggregated_dof', 'fetch_aggregated_dof_for_visits',
+    'make_efd_client', 'make_consdb_client', 'efd_window', 'PAD_SEC',
+    'fetch_obs_start', 'fetch_aggregated_dof', 'fetch_aggregated_dof_for_visits',
+    'fetch_hexapod_lut_for_visits', 'fetch_mirror_lut_for_visits',
 ]
-
-
-def in_rsp():
-    """True when running inside the RSP (Nublado) JupyterLab pod.
-
-    Detected via the ``/etc/nublado`` marker directory that the Nublado
-    spawner mounts into every RSP pod; absent on S3DF login/batch nodes
-    (sdfiana / slacrd) and on the laptop.
-    """
-    import os
-    return os.path.isdir('/etc/nublado')
-
-
-def make_efd_client(efd_name='usdf_efd'):
-    """Return an EFD client.
-
-    ``makeEfdClient`` lives in ``lsst.summit.utils.efdUtils`` in current
-    summit_utils (it used to be re-exported at the package top level);
-    falls back to ``lsst_efd_client.EfdClient(efd_name)`` if neither is
-    importable.
-    """
-    try:
-        from lsst.summit.utils.efdUtils import makeEfdClient
-        return makeEfdClient()
-    except (ImportError, AttributeError):
-        pass
-    try:
-        from lsst.summit.utils import makeEfdClient
-        return makeEfdClient()
-    except (ImportError, AttributeError):
-        pass
-    from lsst_efd_client import EfdClient
-    return EfdClient(efd_name)
-
-
-def make_consdb_client(url=DEFAULT_CONSDB_URL, token_file=None):
-    """Return a ConsDB client (``lsst.summit.utils.ConsDbClient``).
-
-    ``url='auto'`` picks the endpoint by environment via :func:`in_rsp`
-    (in-pod host inside the RSP, external token-injected endpoint on S3DF).
-    Otherwise the two access modes are selected by an explicit ``url``:
-
-    * **In-pod (default)** — the internal host ``consdb-pq.consdb`` only
-      resolves inside the RSP JupyterLab (Nublado) pod, and must bypass the
-      RSP HTTP proxy (else ``502 Bad Gateway``); ``.consdb`` is added to
-      ``$no_proxy``.  No token needed.
-    * **External / S3DF (sdfiana / slacrd batch)** — pass the tokened RSP
-      endpoint ``https://usdf-rsp.slac.stanford.edu/consdb``.  The internal
-      host does not resolve from an S3DF login/batch node, so use the public
-      endpoint with an RSP access token injected as
-      ``https://user:<token>@host/consdb``.  The token is taken from (in order)
-      the ``~/.lsst/consdb_token`` file (override via ``token_file``), else the
-      ``ACCESS_TOKEN`` env var.  The **file is preferred**: it is read at call
-      time (so a long-queued batch job still gets a current token) and is the
-      same long-lived credential ``check_chunk.py`` / ``run_mktable`` use;
-      ``ACCESS_TOKEN`` frozen into a batch job's env by ``--export=ALL`` can be
-      stale/expired by the time the job runs (401 Unauthorized).
-    """
-    import os
-    from pathlib import Path
-    if url == 'auto':
-        url = IN_POD_CONSDB_URL if in_rsp() else EXTERNAL_CONSDB_URL
-    no_proxy = os.environ.get('no_proxy', '')
-    if '.consdb' not in no_proxy:
-        os.environ['no_proxy'] = (no_proxy + ',.consdb') if no_proxy else '.consdb'
-    # External https endpoint: inject the RSP token unless one is already present.
-    # Prefer the token FILE (read now, long-lived) over $ACCESS_TOKEN (may be a
-    # stale value exported into a queued batch job) -> matches the AOS pipeline.
-    if '@' not in url and 'consdb-pq.consdb' not in url:
-        tf = Path(token_file) if token_file else Path.home() / '.lsst' / 'consdb_token'
-        token = tf.read_text().strip() if tf.exists() else os.environ.get('ACCESS_TOKEN')
-        if token:
-            url = url.replace('://', f'://user:{token}@', 1)
-    from lsst.summit.utils import ConsDbClient
-    return ConsDbClient(url)
 
 
 def fetch_obs_start(consdb_client, day_obs, seq_num,

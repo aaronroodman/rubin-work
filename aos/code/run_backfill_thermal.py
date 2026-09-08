@@ -33,11 +33,14 @@ import pandas as pd
 import pyarrow.parquet as pq
 from astropy.table import QTable
 
-from lsst.summit.utils import ConsDbClient
 from lsst.ts.intrinsic.wavefront.intrinsics_lib import (
     get_thermal_data, merge_thermal_to_visit_info, makeEfdClient,
     _close_efd_client)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))          # repo root
+from common.telemetry_clients import make_consdb_client  # noqa: E402
+
+# Kept as this script's documented default; make_consdb_client also accepts "auto".
 DEFAULT_CONSDB_URL = "https://usdf-rsp.slac.stanford.edu/consdb"
 
 # The 13 "core" thermal columns we keep -- ESS temps/deltas + M1M3 gradients +
@@ -52,20 +55,7 @@ CORE_THERMAL = [
 ]
 
 
-def make_consdb_client(consdb_url):
-    """ConsDbClient with the same token convention as run_mktable: embed the
-    ~/.lsst/consdb_token into an external URL; leave in-pod URLs untouched."""
-    url = consdb_url
-    if "@" not in url and "consdb-pq.consdb" not in url:
-        tf = Path.home() / ".lsst" / "consdb_token"
-        if tf.exists():
-            url = url.replace("://", f"://user:{tf.read_text().strip()}@", 1)
-            print("  ConsDB: external URL with token from ~/.lsst/consdb_token")
-        else:
-            print("  WARNING: external ConsDB URL but no ~/.lsst/consdb_token found")
-    else:
-        print("  ConsDB: in-pod URL")
-    return ConsDbClient(url)
+
 
 
 def patch_fits(visits_path, fits_path=None):

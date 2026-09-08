@@ -75,6 +75,10 @@ What is where: ConsDB has hexapod LUT/Trim, wind and thermal per visit; it does 
 M1M3 spatial gradients. Camera-body temperatures are EFD-only. That split is why there are
 two backfill scripts.
 
+[`docs/telemetry.md`](docs/telemetry.md) is the full inventory: every quantity, its
+ConsDB property or column name, whether it is documented upstream, its measured
+coverage on FAM exposures, units, and the source a fetch should prefer.
+
 **Commanded DOF are currently absent from the combined tables.** Trim, Tweak and LUT
 columns are in none of `visits.parquet`, `fits.parquet` or the MI-refit `fits.parquet`, and
 `mktable` never calls the fetchers — each study re-fetches on demand.
@@ -195,6 +199,7 @@ status + last-updated line under its title.
 |---|---|
 | [`docs/studies.md`](docs/studies.md) | **inventory of the 13 analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
+| [`docs/telemetry.md`](docs/telemetry.md) | **telemetry inventory** — every quantity, its ConsDB/EFD name, measured coverage on FAM exposures, units, and which source to prefer |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
 | [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |
 | [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic; what the `zk_*` columns mean |

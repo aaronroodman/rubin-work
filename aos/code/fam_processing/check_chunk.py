@@ -32,7 +32,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))           # repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common.telemetry_clients import make_consdb_client  # noqa: E402
 
 
 def _load_runs(runs_yaml=None):
@@ -214,22 +216,13 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
         print_band_counts_by_day,
     )
     from lsst.daf.butler import Butler
-    from lsst.summit.utils import ConsDbClient
     from tqdm import tqdm
 
     if consdb_url is None:
         consdb_url = DEFAULT_CONSDB_URL
 
-    # Setup ConsDB no_proxy + token (mirrors run_mktable behavior)
-    os.environ.setdefault('no_proxy', '')
-    if '.consdb' not in os.environ['no_proxy']:
-        os.environ['no_proxy'] += ',.consdb'
-    if '@' not in consdb_url and 'consdb-pq.consdb' not in consdb_url:
-        token_file = Path.home() / '.lsst' / 'consdb_token'
-        if token_file.exists():
-            consdb_url = consdb_url.replace(
-                '://', f'://user:{token_file.read_text().strip()}@', 1)
-    consdb_client = ConsDbClient(consdb_url)
+    # no_proxy, endpoint selection and token injection are all handled centrally.
+    consdb_client = make_consdb_client(consdb_url)
 
     if verbose:
         print(f"\n{'=' * 64}")

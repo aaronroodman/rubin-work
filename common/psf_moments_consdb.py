@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 from astropy.table import Table
-from lsst.summit.utils import ConsDbClient
+from common.telemetry_clients import make_consdb_client
 
 __all__ = ["PSFMomentsTable"]
 
@@ -36,7 +36,7 @@ class PSFMomentsTable:
         detectors: list[int] | None = None,
         seq_min: int = 1,
         seq_max: int = 9999,
-        consdb_url: str = "http://consdb-pq.consdb:8080/consdb",
+        consdb_url: str = "auto",
     ) -> None:
         if "no_proxy" in os.environ:
             if ".consdb" not in os.environ["no_proxy"]:
@@ -48,7 +48,9 @@ class PSFMomentsTable:
         self.detectors = detectors if detectors is not None else [191, 195, 199, 203]
         self.seq_min = seq_min
         self.seq_max = seq_max
-        self.client = ConsDbClient(consdb_url)
+        # 'auto' resolves the in-pod host inside the RSP and the tokened external
+        # endpoint on S3DF; the in-pod host does not resolve off the RSP.
+        self.client = make_consdb_client(consdb_url)
 
     def fetch(self) -> Table:
         """Query ConsDB and return an astropy Table of PSF moments.

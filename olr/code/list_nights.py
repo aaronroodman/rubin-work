@@ -23,7 +23,10 @@ import os
 
 import pandas as pd
 
-from lsst.summit.utils import ConsDbClient
+import pathlib
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from common.telemetry_clients import make_consdb_client  # noqa: E402
 
 # ConsDB lives on an internal host; bypass any HTTP proxy for it.
 if "no_proxy" in os.environ:
@@ -39,7 +42,8 @@ def main():
                     help="day_obs cutoff, exclusive (default 20260417 -> nights from 0418)")
     ap.add_argument("--before", type=int, default=None,
                     help="optional upper day_obs cutoff, inclusive")
-    ap.add_argument("--consdb-url", default="http://consdb-pq.consdb:8080/consdb")
+    ap.add_argument("--consdb-url", default="auto",
+                    help="ConsDB endpoint; 'auto' picks in-pod vs external by environment")
     ap.add_argument("--fbs-substr", default=None,
                     help="science_program substring identifying FBS/survey; "
                          "if set, emit a config nights: YAML block")
@@ -61,7 +65,7 @@ def main():
         FROM cdb_lsstcam.exposure AS e
         WHERE {where}
     """
-    df = ConsDbClient(args.consdb_url).query(query).to_pandas()
+    df = make_consdb_client(args.consdb_url).query(query).to_pandas()
     if len(df) == 0:
         print(f"No exposures found after day_obs {args.after}.")
         return

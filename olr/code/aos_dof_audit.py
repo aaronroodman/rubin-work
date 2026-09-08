@@ -132,8 +132,12 @@ def get_exposures(butler, day_obs, instrument="LSSTCam"):
 # ------------------------------------------------------------- extractor ----
 class AosDofAudit:
     def __init__(self, efd_name="summit_efd"):
-        from lsst_efd_client import EfdClient          # makeEfdClient() is broken on this stack
-        self.efd = EfdClient(efd_name, output_mode="dataframe")
+        # makeEfdClient() was broken on an older stack; make_efd_client falls back to
+        # EfdClient itself, so go through the shared helper.
+        import pathlib, sys
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        from common.telemetry_clients import make_efd_client
+        self.efd = make_efd_client(efd_name)
 
     async def _ts(self, topic, t0, t1):
         try:
@@ -233,13 +237,16 @@ class AosDofAudit:
         return df
 
 
-def add_consdb(df, url="http://consdb-pq.consdb:8080/consdb", instrument="lsstcam"):
+def add_consdb(df, url="auto", instrument="lsstcam"):
     """ConsDB elevation + z4..z28 per visit for the EFD<->ConsDB check."""
     if df.empty:
         return df
     try:
-        from lsst.summit.utils import ConsDbClient          # no_proxy set at module import
-        cdb = ConsDbClient(url)
+        import pathlib
+        import sys
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        from common.telemetry_clients import make_consdb_client
+        cdb = make_consdb_client(url)      # sets no_proxy and resolves the endpoint
     except Exception as e:
         print(f"[dof_audit] ConsDB client unavailable: {type(e).__name__}: {e}")
         return df
