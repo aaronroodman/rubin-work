@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (inventory)
 
-Inventory of the fourteen studies in the `aos/` directory: the code implementing each one,
-what it reads and writes, and its current state. All fourteen draw on a common base — the
+Inventory of the fifteen studies in the `aos/` directory: the code implementing each one,
+what it reads and writes, and its current state. All fifteen draw on a common base — the
 Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
 matrix — but are otherwise independent lines of work.
 
@@ -20,7 +20,8 @@ the 56 Python files, 16 are referenced by the Snakefile and the rest are standal
 |---|---|---|---|---|
 | [`smatrix_vmode`](studies/smatrix_vmode.md) | 2 | 664 | 0 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
 | [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
-| [`dzfit`](studies/dzfit.md) | 6 | 1598 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic, and quality checks on the donut data |
+| [`fam_processing`](studies/fam_processing.md) | 5 | 1411 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, and an all-chunks status roll-up |
+| [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | Per-visit telescope state from the EFD and ConsDB: commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
 | [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
 | [`correlations`](studies/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
@@ -39,7 +40,8 @@ Every file in `aos/code/` belongs to exactly one study.
 
 `aos/code/` is organized by study, one subdirectory each, listed here in the same
 general-to-specialized order as `../README.md`: `smatrix_vmode/`, `miw/`, `dzfit/`,
-`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `lut/`, `psf/`, `processing_compare/`,
+`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `lut/`, `fam_processing/`, `psf/`,
+`processing_compare/`,
 `static_optics/`, `closed_loop/`, `infra/`.
 
 Nine modules stay flat at `aos/code/`:

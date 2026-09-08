@@ -8,9 +8,97 @@ correlations between Double Zernike (DZ), v-modes and Rubin telemetry, analysis 
 bounce test data for Look-Up-Tables (LUT), and comparisons between FAM and Corner
 Wavefront Sensor (CWFS) data.
 
+## Processing
+
+Every study draws on a common set of tables built from the Full Array Mode (FAM)
+observations, in date-range **chunks** keyed by a `param_set` — a Butler collection paired
+with a processing variant. Because the studies all consume these tables and none of them
+owns the code that makes them, the processing is described here rather than as a study of
+its own.
+
+### The code lives in an external package
+
+The build steps run from **`ts_intrinsic_wavefront`** (`lsst.ts.intrinsic.wavefront`), a
+separate LSST-TS repository, not from `aos/code/`. The Snakefile locates it through the
+environment:
+
+```python
+_WF_DIR = os.environ["TS_INTRINSIC_WAVEFRONT_DIR"]
+WF_BIN  = f"{_WF_DIR}/bin"            # scons-built shims of bin.src/
+WF_LIB  = f"{_WF_DIR}/python/lsst/ts/intrinsic/wavefront"
+```
+
+So a fix to build, fit or split *logic* usually belongs in that package. After editing it,
+`scons` must be re-run: it generates the gitignored `version.py` and the `bin/` shims.
+
+### The chain
+
+| rule | script | produces |
+|---|---|---|
+| `mktable` | `{WF_BIN}/run_mktable.py` | `output/<ps>/chunks/<dmin>_<dmax>/{donuts,visits}.parquet` |
+| `fit` | `{WF_BIN}/run_dz_fit.py` | `chunks/<dmin>_<dmax>/fits.parquet` |
+| `combine_donuts` / `combine_fits` / `combine_visits` | `{WF_BIN}/combine_parquets.py` | `output/<ps>/{donuts,fits,visits}.parquet` |
+
+`mktable` queries the Butler for donut Zernikes per visit and **fetches the telemetry in
+the same step** — it takes `--no-thermal`, `--temp-time-window` and `--consdb-url`, and
+passes `include_thermal` down to `intrinsics_lib.run_mktable`. It is the expensive step and
+is *deliberately* not re-triggered by code edits; see the Snakefile comments.
+
+`combine_parquets.py` unifies chunk schemas as their intersection, so a 0-row sentinel
+chunk would silently drop columns. It now skips empty inputs instead.
+
+### Telemetry, and where it enters
+
+Per-visit telescope state — commanded degrees of freedom (DOF), hexapod and mirror
+look-up-table (LUT) values, and temperatures — comes from the Engineering Facility Database
+(EFD) and the Consolidated Database (ConsDB). Three library modules and two repair scripts
+support this, and they stay **flat at `code/`** rather than in a study subdirectory:
+
+| module | role |
+|---|---|
+| `code/aos_trim.py` | Trim (accumulated per-DOF offset) from the EFD topic `MTAOS.logevent_degreeOfFreedom`; hexapod and mirror LUT fetchers; the generic `make_consdb_client` |
+| `code/aos_state.py` | shared per-visit state helpers — `make_state_estimator`, `vmodes_from_dofs`, `recover_optical_state`, `ZK_NOLL`, `DOF22` |
+| `code/aos_consdb_efd.py` | ConsDB *transformed*-EFD telemetry: the fast bulk path, per-exposure means, no per-visit raw EFD |
+| `code/run_backfill_thermal.py` | add the 13 core thermal columns to an existing `visits.parquet` **without re-running `mktable`** |
+| `code/run_backfill_camera_telemetry.py` | add camera-**body** temperatures, which are EFD-only |
+
+The first three are imported **by bare module name from four sibling topics**
+(`blocks/`, `olr/`, `optatmo/`, `guider/`) through a hardcoded `sys.path.insert`. Moving
+them breaks those topics with no static-import warning, so they stay where they are.
+
+The backfills exist because thermal retrieval fails when `mktable` runs somewhere the EFD
+is unreachable — a Slurm compute node — while the expensive donut streaming succeeds. They
+repair only the telemetry part. Both need a node where the EFD and ConsDB both resolve: the
+RSP terminal or a slaciana/slacrd interactive node, **not** a batch node.
+
+What is where: ConsDB has hexapod LUT/Trim, wind and thermal per visit; it does **not** have
+M1M3 spatial gradients. Camera-body temperatures are EFD-only. That split is why there are
+two backfill scripts.
+
+**Commanded DOF are currently absent from the combined tables.** Trim, Tweak and LUT
+columns are in none of `visits.parquet`, `fits.parquet` or the MI-refit `fits.parquet`, and
+`mktable` never calls the fetchers — each study re-fetches on demand.
+[`docs/status/dof_telemetry_availability.md`](docs/status/dof_telemetry_availability.md)
+records what is retrievable from where, including the finding that ConsDB now carries Trim
+and both mirror LUTs but that Trim does not land on the FAM exposure IDs.
+
+### Reviewing the processed chunks
+
+The [`fam_processing`](docs/studies/fam_processing.md) study holds the tools for checking a
+chunk before and after it is built — pre-flight surveys, Butler provenance consistency,
+coverage maps, and an all-chunks status roll-up.
+
+### Terminology — do not interchange
+
+`optical_state`, **Tweak** and **Trim** are different quantities:
+`optical_state` is recovered from the measured wavefront, `Tweak = PID(optical_state)` is
+the per-iteration correction, and `Trim` is the accumulated offset the EFD reports as
+`aggregatedDoF0..49`. See `../notes/claude-memory/aos-dof-terminology.md`. The 22-DOF
+reduced set has **specific indices** and is not the first 22 — use `aos_state.DOF22`.
+
 ## Studies
 
-The work divides into fourteen studies, ordered here from the most general to the most
+The work divides into fifteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
 outputs and current state of every one.
@@ -19,7 +107,8 @@ outputs and current state of every one.
 |---|---|
 | [`smatrix_vmode`](docs/studies/smatrix_vmode.md) | Structure of the Optical Feedback Control (OFC) sensitivity matrix: its singular value decomposition, v-mode composition, and degree-of-freedom (DOF) observability |
 | [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
-| [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit, and quality checks on the donut data |
+| [`fam_processing`](docs/studies/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
+| [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`telemetry`](docs/studies/telemetry.md) | Per-visit telescope state from the Engineering Facility Database (EFD) and Consolidated Database (ConsDB): commanded DOF, hexapod look-up tables, temperatures |
 | [`coadd`](docs/studies/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
 | [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry |

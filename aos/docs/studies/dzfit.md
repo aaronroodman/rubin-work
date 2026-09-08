@@ -1,5 +1,10 @@
 # Study: `dzfit` — Double-Zernike fitting and data quality
 
+> **Note:** the chunk-audit scripts (`check_chunk`, `inspect_visit_provenance`,
+> `plot_visits_summary`, `compare_to_archive`) moved to
+> [`fam_processing`](fam_processing.md) on 2026-09-08; this study is now just the
+> DZ-fit validation it is named for.
+
 > **Status:** current · **Last updated:** 2026-09-06 · **Kind:** reference (study)
 
 Validation of the per-visit Double Zernike (DZ) fit, and quality checks on the Full
@@ -46,8 +51,8 @@ Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`. Writes to
 ```bash
 cd ~/notebooks/rubin-work/aos
 ./run_snake.sh --until plots
-python code/dzfit/check_chunk.py --help          # before mktable, on a new chunk
-python code/dzfit/plot_visits_summary.py --help
+python code/dzfit/run_dz_plots.py --help
+python code/dzfit/run_aberration_pairs.py --help
 ```
 
 The `plots` rule loads the full donut table and is memory-heavy; the Snakefile's

@@ -12,7 +12,8 @@ What follows is only the things that are easy to get wrong.
 
 `code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
 `code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
-`code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`, `code/infra/`.
+`code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`,
+`code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.
 
 Eight modules stay **flat at `code/`** on purpose:
@@ -67,9 +68,9 @@ In `aos/code/`, `common` almost always means the **external package's** submodul
 from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
 ```
 
-That is not this repo's `common/`. Only `code/dzfit/plot_visits_summary.py` imports the
-repo's own `common/` (via a `sys.path.insert` of the repo root). Do not "consolidate"
-the two — they are unrelated.
+That is not this repo's `common/`. Only `code/fam_processing/` imports the repo's own
+`common/` (`plot_visits_summary.py` and `run_chunk_status.py`, via a `sys.path.insert` of
+the repo root). Do not "consolidate" the two — they are unrelated.
 
 ## Frames, units, and numbers
 
