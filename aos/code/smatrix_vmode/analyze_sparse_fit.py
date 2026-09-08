@@ -29,13 +29,14 @@ Primary terms (first radial order per azimuthal family, Z4-Z28):
   Z4, Z5/6, Z7/8, Z9/10, Z11, Z14/15, Z20/21, Z27/28
 Dropped as secondary/tertiary: Z12/13, Z16/17, Z18/19, Z22, Z23/24, Z25/26.
 
-Output goes to ``output/smatrix_vmode/`` -- outside any param_set, since nothing here
-depends on FAM data.
+Both parts together are the study, written to
+``output/smatrix_vmode/sparse_fit_study.pdf`` -- outside any param_set, since nothing
+here depends on FAM data. A single ``--part`` is for a quick look and must be given its
+own ``--out``, so that a partial run cannot overwrite the full PDF.
 
 Usage:
-  python code/smatrix_vmode/analyze_sparse_fit.py                    # both parts
-  python code/smatrix_vmode/analyze_sparse_fit.py --part sensitivity
-  python code/smatrix_vmode/analyze_sparse_fit.py --part observability
+  python code/smatrix_vmode/analyze_sparse_fit.py                    # the study
+  python code/smatrix_vmode/analyze_sparse_fit.py --part sensitivity --out /tmp/s.pdf
 
 Needs lsst.ts.ofc and $TS_CONFIG_MTTCS_DIR.
 """
@@ -86,7 +87,6 @@ def load_sensitivity(config_dir, instrument="lsst"):
     """Load the DZ sensitivity matrix the way the OFC does (OFCData), returning
     (S[31 field, 29 pupil, 50 dof], provenance str).  Falls back to reading the
     lsst_sensitivity yaml directly if ts_ofc cannot be imported."""
-    import asyncio
     try:
         from lsst.ts.ofc import OFCData
         ofc = OFCData(instrument, config_dir=config_dir)
@@ -96,27 +96,11 @@ def load_sensitivity(config_dir, instrument="lsst"):
         return S, f"OFCData({instrument}, {config_dir}) -> ofc.sensitivity_matrix"
     except Exception as e:
         import glob as _g
-        import yaml
         hit = sorted(_g.glob(f"{config_dir}/sensitivity_matrix/"
                              f"{instrument}_sensitivity*.yaml"))[0]
         print(f"  (OFCData load failed: {e}; falling back to {hit})")
         return np.nan_to_num(np.array(yaml.safe_load(open(hit)), dtype=float)), hit
 
-DOF_NAMES = (["M2:dZ", "M2:dX", "M2:dY", "M2:rX", "M2:rY"]
-             + ["Cam:dZ", "Cam:dX", "Cam:dY", "Cam:rX", "Cam:rY"]
-             + [f"M13b{i+1}" for i in range(20)]
-             + [f"M2b{i+1}" for i in range(20)])
-DOF_GROUPS = [(0, 5, "M2 hex"), (5, 10, "Cam hex"), (10, 30, "M1M3 bend"),
-              (30, 50, "M2 bend")]
-
-# family -> {order: (cos_Noll, sin_Noll)}; sin=None for m=0
-FAMILIES = [
-    ("Astigmatism", "m=2", {"1st": (6, 5), "2nd": (12, 13), "3rd": (24, 23)}),
-    ("Coma", "m=1", {"1st": (8, 7), "2nd": (16, 17)}),
-    ("Trefoil", "m=3", {"1st": (10, 9), "2nd": (18, 19)}),
-    ("Tetrafoil", "m=4", {"1st": (14, 15), "2nd": (26, 25)}),
-    ("Spherical", "m=0", {"1st": (11, None), "2nd": (22, None)}),
-]
 
 def power(S, j, d):
     """Total field-response power (const + varying) of pupil Noll j to DOF d."""
@@ -328,20 +312,26 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--part", default="both",
                     choices=["sensitivity", "observability", "both"],
-                    help="which half of the sparse-fit question to answer")
+                    help="which half of the sparse-fit question to answer; the default "
+                         "'both' is the full study, and a single part is for a quick "
+                         "look and needs --out so it cannot overwrite the full PDF")
     ap.add_argument("--config-dir", default=DEFAULT_CONFIG_DIR,
                     help="OFC config dir (v13); defaults to $TS_CONFIG_MTTCS_DIR")
     ap.add_argument("--instrument", default="lsst")
     ap.add_argument("--out", default=None,
-                    help="output PDF; default output/smatrix_vmode/sparse_fit_<part>.pdf")
+                    help="output PDF; default output/smatrix_vmode/sparse_fit_study.pdf")
     ap.add_argument("--output-root", default="output")
     ap.add_argument("--min-frac", type=float, default=0.05,
                     help="[sensitivity] report DOF with at least this fraction of the "
                          "family's field power (dimensionless)")
     args = ap.parse_args()
 
+    if args.part != "both" and not args.out:
+        ap.error(f"--part {args.part} writes only half the study, so it needs an "
+                 f"explicit --out rather than overwriting sparse_fit_study.pdf")
+
     out = (Path(args.out) if args.out
-           else Path(args.output_root) / "smatrix_vmode" / f"sparse_fit_{args.part}.pdf")
+           else Path(args.output_root) / "smatrix_vmode" / "sparse_fit_study.pdf")
     out.parent.mkdir(parents=True, exist_ok=True)
 
     with PdfPages(str(out)) as pdf:

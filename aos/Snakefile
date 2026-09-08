@@ -494,7 +494,7 @@ rule build_lut:
     input:
         fits     = "output/{ps}/fits.parquet",
         visits   = "output/{ps}/visits.parquet",
-        script   = "code/smatrix_vmode/run_build_lut.py",
+        script   = "code/lut/run_build_lut.py",
         lib      = f"{WF_LIB}/ofc_svd.py",
     output:
         lut    = "output/{ps}/{mi}/lut/lut.parquet",
@@ -506,7 +506,7 @@ rule build_lut:
     resources: mem_mb=4000
     log: "logs/{ps}.{mi}.build_lut.log"
     shell:
-        "python code/smatrix_vmode/run_build_lut.py --param-set {wildcards.ps} "
+        "python code/lut/run_build_lut.py --param-set {wildcards.ps} "
         "--mi-name {wildcards.mi} > {log} 2>&1"
 
 # ---- DZ-to-DZ correlations on the MI-refit fits (raw + optical-corrected) ----

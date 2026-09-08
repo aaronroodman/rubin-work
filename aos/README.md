@@ -10,7 +10,7 @@ Wavefront Sensor (CWFS) data.
 
 ## Studies
 
-The work divides into thirteen studies, ordered here from the most general to the most
+The work divides into fourteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
 outputs and current state of every one.
@@ -25,6 +25,7 @@ outputs and current state of every one.
 | [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry |
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
+| [`lut`](docs/studies/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
 | [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
 | [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |

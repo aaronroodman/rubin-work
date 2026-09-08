@@ -5,14 +5,15 @@ root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here)
 
 **This file is not a description of the pipeline.** `README.md` indexes the topic and
 `docs/miw_pipeline.md` is the reference for what every Snakemake step does, the config
-files, and the output layout. `docs/studies.md` maps the thirteen studies to their code.
+files, and the output layout. `docs/studies.md` maps the fourteen studies to their code.
 What follows is only the things that are easy to get wrong.
 
 ## Code layout
 
 `code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
 `code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
-`code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/infra/`. See `docs/studies.md`.
+`code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`, `code/infra/`.
+See `docs/studies.md`.
 
 Eight modules stay **flat at `code/`** on purpose:
 

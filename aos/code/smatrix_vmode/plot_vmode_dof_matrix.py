@@ -143,6 +143,7 @@ def main():
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    import matplotlib.transforms as mtransforms
     from matplotlib.backends.backend_pdf import PdfPages
 
     scheme_txt = args.scheme.replace('_', ' DoF / ') + ' v-modes'
@@ -203,23 +204,32 @@ def main():
             vmax = 1.0
         im = ax.imshow(DZ, cmap='seismic', vmin=-vmax, vmax=vmax, aspect='auto')
         ax.set_xlabel('v-mode m')
-        ax.set_ylabel('Double-Zernike term  (pupil Zj within each focal-k block)')
         ax.set_xticks(range(n_kept))
         ax.set_xticklabels([str(m + 1) for m in range(n_kept)], fontsize=7)
         ax.set_yticks(range(n_kj))
         ax.set_yticklabels([f'Z{j}' for k, j in kj], fontsize=4)
         for b in np.where(karr[1:] != karr[:-1])[0]:
             ax.axhline(b + 0.5, color='k', lw=0.8)
-        # k=N block labels, placed inside the axes so they are never clipped
+        # Three things stack up leftward from the axes: the Zj ticks, then a gutter of
+        # k= block labels, then the y-axis title. Offsets are in POINTS from the axes
+        # edge, not axes fractions, so the layout is identical whether the figure is 12
+        # v-modes wide or 34 -- a fractional offset scales with figure width and lets
+        # the title drift into the k= labels.
+        K_GUTTER_PT, TITLE_PAD_PT = 22.0, 34.0
+        trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
+        off = mtransforms.ScaledTranslation(-K_GUTTER_PT / 72.0, 0, fig.dpi_scale_trans)
         for k in dict.fromkeys(karr):
-            ax.text(-0.4, float(np.where(karr == k)[0].mean()), f'k={k}',
-                    ha='right', va='center', fontsize=9, fontweight='bold',
-                    clip_on=False)
+            ax.text(0.0, float(np.where(karr == k)[0].mean()), f'k={k}',
+                    transform=trans + off, ha='right', va='center',
+                    fontsize=8, fontweight='bold', clip_on=False)
+        ax.set_ylabel('Double-Zernike term  (pupil Zj within each focal-k block)',
+                      labelpad=TITLE_PAD_PT)
         ax.set_title(f'Double-Zernike produced per unit v-mode  '
                      rf'($\sigma_m u_m$, µm of DZ)  ({scheme_txt})')
         fig.colorbar(im, ax=ax, shrink=0.8, label='µm of DZ per unit v-mode')
-        # extra left margin for the k= labels
-        fig.subplots_adjust(left=0.16)
+        # Reserve the left margin in points too, for the same reason.
+        fig.subplots_adjust(left=(TITLE_PAD_PT + 34.0) / 72.0 / fig.get_figwidth(),
+                            right=0.99, top=0.95, bottom=0.06)
         pdf.savefig(fig); plt.close(fig)
 
         # ---- Page 4: reachability / residual per DZ term ----

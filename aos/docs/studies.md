@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (inventory)
 
-Inventory of the thirteen studies in the `aos/` directory: the code implementing each one,
-what it reads and writes, and its current state. All thirteen draw on a common base — the
+Inventory of the fourteen studies in the `aos/` directory: the code implementing each one,
+what it reads and writes, and its current state. All fourteen draw on a common base — the
 Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
 matrix — but are otherwise independent lines of work.
 
@@ -18,7 +18,7 @@ the 56 Python files, 16 are referenced by the Snakefile and the rest are standal
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`smatrix_vmode`](studies/smatrix_vmode.md) | 3 | 977 | 1 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
+| [`smatrix_vmode`](studies/smatrix_vmode.md) | 2 | 664 | 0 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
 | [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`dzfit`](studies/dzfit.md) | 6 | 1598 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic, and quality checks on the donut data |
 | [`telemetry`](studies/telemetry.md) | 6 | 1602 | 0 | Per-visit telescope state from the EFD and ConsDB: commanded degrees of freedom (DOF), hexapod look-up tables, temperatures |
@@ -26,6 +26,7 @@ the 56 Python files, 16 are referenced by the Snakefile and the rest are standal
 | [`correlations`](studies/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
 | [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
 | [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
+| [`lut`](studies/lut.md) | 1 | 308 | 1 | Averaged DOF look-up table from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
 | [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
 | [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](studies/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
@@ -38,7 +39,7 @@ Every file in `aos/code/` belongs to exactly one study.
 
 `aos/code/` is organized by study, one subdirectory each, listed here in the same
 general-to-specialized order as `../README.md`: `smatrix_vmode/`, `miw/`, `dzfit/`,
-`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `psf/`, `processing_compare/`,
+`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `lut/`, `psf/`, `processing_compare/`,
 `static_optics/`, `closed_loop/`, `infra/`.
 
 Nine modules stay flat at `aos/code/`:

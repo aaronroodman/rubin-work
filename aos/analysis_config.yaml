@@ -1,4 +1,4 @@
-# Analysis-only knobs: the averaged-DOF LUT (run_build_lut.py) and the
+# Analysis-only knobs: the averaged-DOF LUT (code/lut/run_build_lut.py) and the
 # per-donut aberration-pair analysis (run_aberration_pairs.py).
 #
 # Kept SEPARATE from mi_config.yaml on purpose: `rule build_intrinsic` lists

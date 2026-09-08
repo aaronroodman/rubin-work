@@ -177,7 +177,7 @@ result, which is why the O + C split matters.
 `build_lut` currently projects the Phase-1 `fits.parquet`. Knobs in
 `analysis_config.yaml`.
 
-**`build_lut`** — `code/smatrix_vmode/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
+**`build_lut`** — `code/lut/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
 look-up table: projects the per-visit DZ fits onto the OFC sensitivity-matrix
 SVD (settable `n_dof`/`n_keep`), recovers DOF per visit, and collapses over
 **all** elevation and rotator angle (median by default) →

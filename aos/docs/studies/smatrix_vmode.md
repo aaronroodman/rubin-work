@@ -18,9 +18,12 @@ this study is about using and diagnosing it.
 
 | file | role |
 |---|---|
-| `run_build_lut.py` | pipeline `build_lut` — averaged-DOF look-up table: project per-visit DZ fits onto the OFC SVD, recover DOF, collapse over elevation and rotator |
 | `plot_vmode_dof_matrix.py` | five-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/smatrix_vmode/vmode_dof_matrix_<scheme>.pdf` |
-| `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/smatrix_vmode/sparse_fit_<part>.pdf` |
+| `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/smatrix_vmode/sparse_fit_study.pdf` |
+
+This study is diagnostics of the matrix itself. The consumer that *builds a product* from
+the same SVD is [`lut`](lut.md), which projects the FAM Double Zernike fits onto it to
+recover degrees of freedom.
 
 ### `plot_vmode_dof_matrix.py` — the five pages
 
@@ -54,7 +57,9 @@ rows and compares the singular-value spectrum, per-v-mode observability and per-
 observability ratio against the full matrix, for both the 50-DOF/34-v-mode and
 22-DOF/12-v-mode schemes.
 
-`--part both` (the default) does both in one PDF. Neither part needs FAM data: both work
+`--part both` (the default) does both, and is the study — it writes
+`sparse_fit_study.pdf`. A single `--part` is for a quick look and must be given its own
+`--out`, so a partial run cannot overwrite the full PDF. Neither part needs FAM data: both work
 directly on the ts_ofc DoubleZernike sensitivity matrix `S[k, j, d]` (31 field-Zernike
 `k`, 29 pupil-Noll `j`, 50 DOF `d`). Because the field basis is orthonormal, the
 field-map correlation of two pupil Zernikes' responses to a DOF is just the correlation
@@ -112,7 +117,6 @@ plus 30–34, **not** 0–21. Pass the explicit index list `aos_state.DOF22` to
 
 - The sparse-fit study found that **all DOF couple primary↔secondary at ±1**, and that
   production zeroes coma2/tref2 — see `../../../notes/claude-memory/sparse-fit-sensitivity.md`.
-- `build_lut` currently projects the **Phase-1** `fits.parquet`, not the MI-refit one.
 - `svd._keep()` is used here and in `cwfs`. Its leading underscore is mislabelling
   rather than a stability boundary — it is `ts_intrinsic_wavefront`'s own function, used
   as public API in four call sites across two repositories. Left as-is deliberately; see
@@ -126,7 +130,7 @@ cd ~/notebooks/rubin-work/aos
 python code/smatrix_vmode/plot_vmode_dof_matrix.py --scheme 22_12
 python code/smatrix_vmode/plot_vmode_dof_matrix.py --scheme 50_34
 python code/smatrix_vmode/plot_vmode_dof_matrix.py --check
-python code/smatrix_vmode/analyze_sparse_fit.py --part both
+python code/smatrix_vmode/analyze_sparse_fit.py
 ```
 
 All of these need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR`; note `ts_ofc` is **not** in
