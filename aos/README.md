@@ -47,44 +47,39 @@ is *deliberately* not re-triggered by code edits; see the Snakefile comments.
 `combine_parquets.py` unifies chunk schemas as their intersection, so a 0-row sentinel
 chunk would silently drop columns. It now skips empty inputs instead.
 
-### Telemetry, and where it enters
+### Telemetry
 
-Per-visit telescope state — commanded degrees of freedom (DOF), hexapod and mirror
-look-up-table (LUT) values, and temperatures — comes from the Engineering Facility Database
-(EFD) and the Consolidated Database (ConsDB). Three library modules and two repair scripts
-support this, and they stay **flat at `code/`** rather than in a study subdirectory:
+Per-visit telescope state comes from the Engineering Facility Database (EFD) and the
+Consolidated Database (ConsDB): air and structural temperatures, wind and airflow,
+commanded degrees of freedom (DOF), and hexapod and mirror look-up-table (LUT) values.
 
-| module | role |
-|---|---|
-| `code/aos_trim.py` | Trim (accumulated per-DOF offset) from the EFD topic `MTAOS.logevent_degreeOfFreedom`; hexapod and mirror LUT fetchers; the generic `make_consdb_client` |
-| `code/aos_state.py` | shared per-visit state helpers — `make_state_estimator`, `vmodes_from_dofs`, `recover_optical_state`, `ZK_NOLL`, `DOF22` |
-| `code/aos_consdb_efd.py` | ConsDB *transformed*-EFD telemetry: the fast bulk path, per-exposure means, no per-visit raw EFD |
-| `code/run_backfill_thermal.py` | add the 13 core thermal columns to an existing `visits.parquet` **without re-running `mktable`** |
-| `code/run_backfill_camera_telemetry.py` | add camera-**body** temperatures, which are EFD-only |
+`mktable` merges the thermal columns as it builds a chunk.
+`code/fam_processing/run_attach_telemetry.py` attaches the full set in one pass, reading
+ConsDB where it carries a quantity for Full Array Mode (FAM) exposures and the EFD
+otherwise:
 
-The first three are imported **by bare module name from four sibling topics**
-(`blocks/`, `olr/`, `optatmo/`, `guider/`) through a hardcoded `sys.path.insert`. Moving
-them breaks those topics with no static-import warning, so they stay where they are.
+| group | columns | source |
+|---|---|---|
+| thermal | ESS air temperatures, their differences, TMA truss | ConsDB |
+| gradients | M1M3 spatial temperature gradients | EFD |
+| wind | inside and outside wind speed and direction, sonic temperature | ConsDB |
+| camera | 24 camera-body, housing, lens and shutter temperatures | EFD |
+| lut | M1M3 elevation and M2 gravity axial forces | ConsDB |
+| trim | the 50 accumulated DOF offsets | EFD |
+| tweak | the per-iteration DOF correction, differenced from Trim | derived |
 
-The backfills exist because thermal retrieval fails when `mktable` runs somewhere the EFD
-is unreachable — a Slurm compute node — while the expensive donut streaming succeeds. They
-repair only the telemetry part. Both need a node where the EFD and ConsDB both resolve: the
-RSP terminal or a slaciana/slacrd interactive node, **not** a batch node.
+Each chunk gets a `telemetry.parquet` holding every fetched column; `--merge` joins it
+into the per-chunk and combined `visits.parquet`.
 
-What is where: ConsDB has hexapod LUT/Trim, wind and thermal per visit; it does **not** have
-M1M3 spatial gradients. Camera-body temperatures are EFD-only. That split is why there are
-two backfill scripts.
+Supporting modules at `code/`: `aos_trim.py` (Trim and the LUT fetchers), `aos_state.py`
+(per-visit optical-state helpers), `aos_consdb_efd.py` (bulk ConsDB telemetry). EFD and
+ConsDB clients come from [`../common/telemetry_clients.py`](../common/telemetry_clients.py).
 
-[`docs/telemetry.md`](docs/telemetry.md) is the full inventory: every quantity, its
-ConsDB property or column name, whether it is documented upstream, its measured
-coverage on FAM exposures, units, and the source a fetch should prefer.
-
-**Commanded DOF are currently absent from the combined tables.** Trim, Tweak and LUT
-columns are in none of `visits.parquet`, `fits.parquet` or the MI-refit `fits.parquet`, and
-`mktable` never calls the fetchers — each study re-fetches on demand.
+[`docs/telemetry.md`](docs/telemetry.md) inventories every quantity with its ConsDB or
+EFD name, measured coverage on FAM exposures, and units. Trim is absent from ConsDB for
+FAM exposures and is read from the EFD by time;
 [`docs/status/dof_telemetry_availability.md`](docs/status/dof_telemetry_availability.md)
-records what is retrievable from where, including the finding that ConsDB now carries Trim
-and both mirror LUTs but that Trim does not land on the FAM exposure IDs.
+holds that measurement.
 
 ### Reviewing the processed chunks
 
@@ -102,7 +97,7 @@ reduced set has **specific indices** and is not the first 22 — use `aos_state.
 
 ## Studies
 
-The work divides into fifteen studies, ordered here from the most general to the most
+The work divides into fourteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
 outputs and current state of every one.
@@ -113,7 +108,6 @@ outputs and current state of every one.
 | [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
 | [`fam_processing`](docs/studies/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
 | [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
-| [`telemetry`](docs/studies/telemetry.md) | Per-visit telescope state from the Engineering Facility Database (EFD) and Consolidated Database (ConsDB): commanded DOF, hexapod look-up tables, temperatures |
 | [`coadd`](docs/studies/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
 | [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry |
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
@@ -145,7 +139,7 @@ setup the pipeline requires.
 ## Data dependencies
 
 - **Butler and ConsDB/EFD, RSP only:** the donut and corner-WFS table builds
-  (`mktable`, `wfs_mktable`) and the telemetry backfills.
+  (`mktable`, `wfs_mktable`) and the telemetry attachment.
 - **`lsst.ts.ofc`, `lsst.ts.wep`, `$TS_CONFIG_MTTCS_DIR`, batoid height maps:** the MIW
   build and anything projecting onto the OFC sensitivity matrix. These packages are not
   part of `lsst_distrib` and need the AOS/CWFS environment.

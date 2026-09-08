@@ -16,13 +16,13 @@ What follows is only the things that are easy to get wrong.
 `code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.
 
-Eight modules stay **flat at `code/`** on purpose:
+Seven modules stay **flat at `code/`** on purpose:
 
 | module | why |
 |---|---|
 | `aos_trim.py`, `aos_state.py`, `aos_consdb_efd.py` | imported **by bare module name from `blocks/`, `olr/`, `optatmo/`, `guider/`** (39 references) via a hardcoded `sys.path.insert(.../aos/code)`. Moving them breaks four sibling topics with no static-import warning. |
 | `aos_fwhm.py`, `fam_selection.py`, `miw_io.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
-| `run_backfill_thermal.py`, `run_backfill_camera_telemetry.py`, `test_m1m3.py` | telemetry utilities, no study of their own |
+| `test_m1m3.py` | manual EFD probe, no study of its own |
 
 Do not "finish the job" by moving the first three into `code/telemetry/`.
 

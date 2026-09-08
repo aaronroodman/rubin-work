@@ -63,5 +63,5 @@ None. All four analyses are Snakemake rules.
 ## See also
 
 - [`smatrix_vmode.md`](smatrix_vmode.md) — where the v-modes come from
-- [`telemetry.md`](telemetry.md) — where the temperature columns come from
+- [`telemetry.md`](../telemetry.md) — where the temperature columns come from
 - [`../miw_pipeline.md`](../miw_pipeline.md#phase-3--analyses-on-the-mi-refit-fits-per-param_set--mi_name)

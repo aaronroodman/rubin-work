@@ -533,7 +533,7 @@ def main():
     ap.add_argument("--no-ml", action="store_true", help="skip the ML prediction pages")
     ap.add_argument("--visits", default=None,
                     help="combined visits.parquet carrying camera-body cam_<field> "
-                    "columns (from run_backfill_camera_telemetry --merge); default: "
+                    "columns (from run_attach_telemetry --groups camera --merge); default: "
                     "auto-detect <output_root>/<param_set>/visits.parquet")
     ap.add_argument("--camera-ref", default="cam_AmbAirtemp",
                     help="camera ambient reference for the temperature-gradient "
@@ -600,7 +600,7 @@ def main():
               f"from {vpath}: {cam_vars[:5]}{'...' if len(cam_vars) > 5 else ''}")
     else:
         print(f"  (no camera-body cam_* cols in {vpath}; run "
-              f"run_backfill_camera_telemetry.py --merge on the RSP to add them)")
+              f"run_attach_telemetry.py --groups camera --merge on the RSP to add them)")
 
     # ---- metrics at every requested rebin factor (each gets its own PDF page) ----
     cx = 0.5 * (d["xbins"][:-1] + d["xbins"][1:])

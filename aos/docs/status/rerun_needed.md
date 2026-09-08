@@ -26,9 +26,8 @@ so Snakemake correctly sees the recorded params differ.
 **But the data is not stale.** The thermal columns in those chunks *are* populated —
 checked `20250415_20250531`: 623 of 637 rows have `cam_air_temp`, `m2_air_temp`,
 `m1m3_air_temp`, `outside_temp` and the gradients. `donuts.parquet` is dated Aug 20 and
-`visits.parquet` Aug 24, four days later: `run_backfill_thermal.py` added them
-afterwards, which is exactly what that script exists to do ("backfill thermal telemetry
-onto a FAM `visits.parquet`, without re-running `mktable`").
+`visits.parquet` Aug 24, four days later: the thermal columns were attached after the
+chunk was built, which `code/fam_processing/run_attach_telemetry.py` now does.
 
 So the trigger is **stale provenance metadata, not stale data**. Bypass it with:
 

@@ -66,7 +66,8 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))           # repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))           # aos/code
-from common.telemetry_clients import make_consdb_client, make_efd_client  # noqa: E402
+from common.telemetry_clients import (  # noqa: E402
+    PAD_SEC, make_consdb_client, make_efd_client)
 
 GROUPS = ('thermal', 'gradients', 'wind', 'camera', 'lut', 'trim', 'tweak')
 
@@ -101,6 +102,26 @@ LUT_PROPS = {
 }
 
 N_DOF = 50
+
+# Camera-body temperatures come from the camera housekeeping measurement in its OWN
+# InfluxDB database (lsst.MTCamera), not the main `efd` one, so they need a second EFD
+# client. Values are deg C; a reading outside CAM_T_RANGE is a dropout, not a temperature.
+CAM_TOPIC = 'lsst.MTCamera.utiltrunk_body'
+CAM_DB = 'lsst.MTCamera'
+CAM_T_RANGE = (-50.0, 60.0)
+CAM_OK_STATE = 1.0                  # <field>_state == 1 marks a valid reading
+CAM_FIELDS = [
+    'AverageTemp',
+    'CamBodyXPlusTemp', 'CamBodyYPlusTemp', 'CamBodyYMinusTemp',
+    'CamHousXPlusTemp', 'CamHousXMinusTemp', 'CamHousYPlusTemp', 'CamHousYMinusTemp',
+    'BackFlngXMinusTemp', 'BackFlngYMinusTemp',
+    'ShrdRngXPlusTemp', 'ShrdRngXMinusTemp', 'ShrdRngYPlusTemp',
+    'L1XMinusTemp', 'L1YMinusTemp', 'L2XPlusTemp', 'L2XMinusTemp', 'L2YPlusTemp',
+    'DomeYMinusTemp', 'VPPlenumInTemp',
+    'ShtrEboxRtnAirTemp', 'ShtrMtrRtnAirTemp', 'ChgrYMinusRtnAirTemp', 'AmbAirtemp',
+]
+# DomeXMinusTemp is deliberately absent: it read 0 of 3385 visits finite while its
+# DomeYMinusTemp sibling read 98.6%, so the sensor is taken to be non-functional.
 
 
 def _visit_keys(visits_path):
@@ -180,6 +201,120 @@ def fetch_lut_forces(cdb, visit_ids):
     for f in frames[1:]:
         out = out.merge(f, on='visit', how='outer')
     return out
+
+
+def _close_efd(efd):
+    """Close an EFD client's aiohttp session, ignoring any failure to do so.
+
+    Notes
+    -----
+    Reaching for ``efd.influx_client`` emits a deprecation warning on this stack, so the
+    session is found by scanning ``__dict__`` instead of by attribute name. Without this,
+    asyncio prints "Unclosed client session" at interpreter shutdown.
+    """
+    import asyncio
+    seen = []
+    for holder in list(vars(efd).values()):
+        sess = getattr(holder, '_session', None)
+        if sess is not None and not getattr(sess, 'closed', True):
+            seen.append(sess)
+    for sess in seen:
+        try:
+            asyncio.run(sess.close())
+        except Exception:
+            pass
+
+
+def fetch_camera(keys, pad_sec=None, require_state=False, verbose=True):
+    """Camera-body temperatures per visit, averaged over a window around each visit.
+
+    Parameters
+    ----------
+    keys : `pandas.DataFrame`
+        Must carry ``day_obs``, ``seq_num`` and ``mjd``.
+    pad_sec : `float`, optional
+        Half-width of the averaging window in seconds; defaults to
+        ``PAD_SEC['camera_body']``.
+    require_state : `bool`, optional
+        Keep only samples whose companion ``<field>_state`` equals `CAM_OK_STATE`. Off by
+        default: the ``_state`` columns are empty in the EFD for the range checked
+        (2026-07), so requiring them discards every sample.
+    verbose : `bool`, optional
+        Print a per-night row count.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        ``day_obs``, ``seq_num``, ``cam_n_samp`` (samples averaged) and ``cam_<field>``
+        for each of `CAM_FIELDS`, in deg C. NaN where no valid sample fell in the window.
+
+    Notes
+    -----
+    Queried once per night in bulk and sliced per visit, rather than one query per visit.
+    Readings are kept when finite and inside `CAM_T_RANGE`; the ``<field>_state`` flag is
+    consulted only if `require_state` is set.
+
+    The EFD client is constructed **inside** the event loop: aiohttp binds its session to
+    the running loop, so a client built before ``asyncio.run`` cannot be used within it.
+    """
+    import asyncio
+    from astropy.time import Time
+    from lsst_efd_client import EfdClient
+    pad = (PAD_SEC['camera_body'] if pad_sec is None else pad_sec) / 86400.0
+    tmin, tmax = CAM_T_RANGE
+    v = keys.dropna(subset=['mjd']).copy()
+    v['day_obs'] = v['day_obs'].astype(int)
+    v['seq_num'] = v['seq_num'].astype(int)
+    cols = CAM_FIELDS + ([f + '_state' for f in CAM_FIELDS] if require_state else [])
+    out = {'day_obs': [], 'seq_num': [], 'cam_n_samp': []}
+    for f in CAM_FIELDS:
+        out['cam_' + f] = []
+
+    async def _go():
+        efd_cam = EfdClient('usdf_efd', db_name=CAM_DB)
+        for day, g in v.groupby('day_obs'):
+            t0 = Time(g.mjd.min() - pad, format='mjd', scale='utc')
+            t1 = Time(g.mjd.max() + pad, format='mjd', scale='utc')
+            try:
+                df = await efd_cam.select_time_series(CAM_TOPIC, cols, t0, t1)
+            except Exception as e:
+                print(f'    camera {day}: EFD query failed ({type(e).__name__}); '
+                      f'NaN for {len(g)} visits')
+                df = pd.DataFrame()
+            if len(df):
+                df = df.copy()
+                df['mjd'] = Time(df.index).utc.mjd
+            for _, r in g.iterrows():
+                out['day_obs'].append(int(r.day_obs))
+                out['seq_num'].append(int(r.seq_num))
+                if not len(df):
+                    out['cam_n_samp'].append(0)
+                    for f in CAM_FIELDS:
+                        out['cam_' + f].append(np.nan)
+                    continue
+                sl = df[(df.mjd >= r.mjd - pad) & (df.mjd <= r.mjd + pad)]
+                out['cam_n_samp'].append(int(len(sl)))
+                for f in CAM_FIELDS:
+                    if f not in sl or not len(sl):
+                        out['cam_' + f].append(np.nan)
+                        continue
+                    x = pd.to_numeric(sl[f], errors='coerce').to_numpy(float)
+                    good = np.isfinite(x) & (x >= tmin) & (x <= tmax)
+                    st_col = f + '_state'
+                    if require_state and st_col in sl:
+                        st = pd.to_numeric(sl[st_col], errors='coerce').to_numpy(float)
+                        good &= (st == CAM_OK_STATE)
+                    out['cam_' + f].append(float(np.mean(x[good])) if good.any()
+                                           else np.nan)
+            if verbose:
+                print(f'    camera {day}: {len(df)} EFD rows, {len(g)} visits')
+        for holder in list(vars(efd_cam).values()):
+            sess = getattr(holder, '_session', None)
+            if sess is not None and not getattr(sess, 'closed', True):
+                await sess.close()
+
+    asyncio.run(_go())
+    return pd.DataFrame(out)
 
 
 def derive_tweak(trim, event_ids):
@@ -301,6 +436,18 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
         except Exception as e:
             print(f'    trim/tweak FAILED: {type(e).__name__}: {str(e)[:140]}')
 
+    if 'camera' in groups and 'mjd' in keys:
+        try:
+            cam = fetch_camera(keys)
+            out = out.merge(cam, on=['day_obs', 'seq_num'], how='left')
+            got = [c for c in out.columns if c.startswith('cam_') and c != 'cam_n_samp']
+            if verbose and got:
+                f = float(np.isfinite(out['cam_AverageTemp'].to_numpy(
+                    dtype=float, na_value=np.nan)).mean())
+                print(f'    camera: {len(got)} cols, cam_AverageTemp {100 * f:.1f}% finite')
+        except Exception as e:
+            print(f'    camera FAILED: {type(e).__name__}: {str(e)[:140]}')
+
     if 'thermal' in groups or 'gradients' in groups:
         try:
             _attach_thermal(out, keys, cdb, efd, groups, verbose)
@@ -381,28 +528,6 @@ def merge_sidecars(base, verbose=True):
         pq.write_table(pa.Table.from_pandas(vis, preserve_index=False), str(cvp))
         print(f'  merged {len(newc)} cols into the combined visits.parquet '
               f'({len(vis)} rows)')
-
-
-def _close_efd(efd):
-    """Close an EFD client's aiohttp session, ignoring any failure to do so.
-
-    Notes
-    -----
-    Reaching for ``efd.influx_client`` emits a deprecation warning on this stack, so the
-    session is found by scanning ``__dict__`` instead of by attribute name. Without this,
-    asyncio prints "Unclosed client session" at interpreter shutdown.
-    """
-    import asyncio
-    seen = []
-    for holder in list(vars(efd).values()):
-        sess = getattr(holder, '_session', None)
-        if sess is not None and not getattr(sess, 'closed', True):
-            seen.append(sess)
-    for sess in seen:
-        try:
-            asyncio.run(sess.close())
-        except Exception:
-            pass
 
 
 def main():
