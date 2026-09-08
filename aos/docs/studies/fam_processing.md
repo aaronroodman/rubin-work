@@ -77,6 +77,12 @@ ConsDB access:
    [`../status/dof_telemetry_availability.md`](../status/dof_telemetry_availability.md).
 5. **`nollIndices` consistency** — the pupil-Zernike set per chunk, flagging any variation.
 
+## Notebooks
+
+| notebook | content |
+|---|---|
+| `notebooks/fam_processing/fam_telemetry_history.ipynb` | time history and distribution of one representative quantity per telemetry group in the combined `visits.parquet`: M1M3 gradients, air and structure temperatures, camera body, wind and airflow, Trim and Tweak, mirror LUT forces, pointing and donut blur |
+
 ## Output
 
 `output/<param_set>/fam_processing/chunk_status.pdf`, plus a machine-readable

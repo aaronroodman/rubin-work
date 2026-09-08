@@ -76,6 +76,7 @@ Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
 | `notebooks/processing_compare/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
 | `notebooks/smatrix_vmode/smatrix_vmode_info.ipynb` | early exploratory look at the OFC sensitivity matrix; predates the `StateEstimator` normalization used everywhere else |
 | `notebooks/smatrix_vmode/jk_coverage_plots.ipynb` | derivation behind page 4 of `vmode_dof_matrix_<scheme>.pdf`: reachability of the DZ space by the retained v-modes |
+| `notebooks/fam_processing/fam_telemetry_history.ipynb` | per-visit telemetry time histories and distributions, one quantity per group |
 | `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF structure through the `ts_ofc` `StateEstimator` normalization |
 
 `snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
