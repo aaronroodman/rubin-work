@@ -14,8 +14,10 @@ figure per page:
      produces (``sigma_m * u_m = S v_m``), rows being the (focal k, pupil Zj) terms.
      Only the retained v-modes are shown.
   4  **Reachability and residual per DZ term** — the fraction of each elementary DZ
-     term that the retained v-modes can produce, and the irreducible remainder. Folded
-     in from the former ``jk_coverage_plots.ipynb``.
+     term that the retained v-modes can produce, f_kj = ||U^T e_kj||^2, and the
+     irreducible remainder 1 - f_kj. Derived in
+     ``notebooks/smatrix_vmode/jk_coverage_plots.ipynb``, which explains why this and
+     not the (k,j)-isolation view is the meaningful quantity.
   5  **Normalization weights** — a table of the per-DOF weight ``w_i`` applied,
      decomposed into its range factor ``r_i`` (DOF-units of stroke) and FWHM factor
      ``f_i`` (arcsec of PSF width per DOF-unit), since ``w_i = r_i^0.5 * f_i^-0.5``.

@@ -35,7 +35,11 @@ recover degrees of freedom.
    produces (`sigma_m * u_m = S v_m`), rows being the (focal `k`, pupil `Zj`) terms.
    Retained v-modes only.
 4. **Reachability and residual per DZ term** — the fraction of each elementary DZ term
-   the retained v-modes can produce, and the irreducible remainder.
+   the retained v-modes can produce, and the irreducible remainder. The derivation is in
+   `notebooks/smatrix_vmode/jk_coverage_plots.ipynb`; the short version is that the
+   $(k,j)$ axes are an arbitrary coordinate choice, whereas the columns of $U$ are the
+   intrinsic orthonormal basis of $\mathrm{col}(S)$, so the meaningful quantity is
+   $f_{k,j} = \|U^\top \mathbf{e}_{k,j}\|^2$ — the squared row-sum of $U$.
 5. **Normalization weights** — the per-DOF weight `w_i` applied, decomposed into its
    range factor `r_i` (DOF-units of stroke) and FWHM factor `f_i` (arcsec of PSF width
    per DOF-unit), since `w_i = r_i^0.5 * f_i^-0.5`.
@@ -69,12 +73,20 @@ of their field-coefficient vectors, so no simulation is required.
 
 | notebook | content |
 |---|---|
+| `notebooks/smatrix_vmode/jk_coverage_plots.ipynb` | **derivation behind page 4**: why reachability is the right quantity, and the algebra for $f_{k,j}$ and the u-mode residual |
 | `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF normalization through the `ts_ofc` `StateEstimator` |
 | `notebooks/smatrix_vmode/smatrix_vmode_info.ipynb` | early exploratory treatment: SVD with `StateEstimator` plus custom-SVD validation, v-mode composition, wavefront signatures, control equations, noise/gain, a normalization-scheme unit-invariance study, and DZ field patterns |
 
 `smatrix_vmode_info.ipynb` predates the decision to use `StateEstimator` everywhere and
 is the one place that still carries the alternative normalizations, kept deliberately as
 the record of that comparison.
+
+The reachability derivation stays a notebook rather than becoming PDF text pages because
+its equations use `\underbrace` to label the reachable and residual parts of a
+decomposition, which matplotlib's mathtext cannot render, and no system LaTeX is
+available here for `usetex`. The script owns the figures; the notebook owns the algebra.
+Its plotting sections 1 and 2 were dropped when it moved, since pages 1 and 3 of the PDF
+supersede them.
 
 ## Output sits outside any `param_set`
 
