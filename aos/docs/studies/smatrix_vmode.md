@@ -110,9 +110,16 @@ before comparing v-modes computed two ways.
 The scripts here take the normalization weights from a ts_config_mttcs yaml rather than
 defining their own. `plot_vmode_dof_matrix.py` reads the name from the OFC controller
 config at runtime (`ofc.controller['normalization_weights_filename']`), so it uses
-whatever the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` is
-`range0.5_fwhm-0.15.yaml`, matching the `w_i = r_i^0.5 * f_i^-0.5` decomposition on page
-5. `--check` verifies the result against `StateEstimator`.
+whatever the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` names
+`range0.5_fwhm-0.15.yaml`. `--check` verifies the result against `StateEstimator`.
+
+**The `-0.15` and `-0.5` filenames hold the same weights.** An older
+`range0.5_fwhm-0.5.yaml` exists on the `ts_ofc` branch `tickets/DM-54762` (commit
+`76764fe`) and is not in any checked-out `normalization_weights/` directory here. Its 50
+weights are numerically identical to `range0.5_fwhm-0.15.yaml` — verified with
+`np.allclose`, ratio exactly 1.0, both spanning 0.02701 to 6869 in per-DOF weight units.
+So the exponent in the filename does not describe the file's contents, and seeing the
+other name in an old notebook does not mean a different normalization was used.
 
 Sign and unit conventions (ZCS, bending-mode flips, degree angle units, the y-sign patch)
 are settled in [`../../../smatrix/docs/conventions.md`](../../../smatrix/docs/conventions.md).
