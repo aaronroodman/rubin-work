@@ -61,21 +61,28 @@ TELEMETRY_GROUPS = {
 }
 COMBINED_ONLY_GROUPS = ('camera body',)
 
-# Commanded-DOF columns, none of which the pipeline currently writes. Each entry names the
-# quantity, the column prefix a backfill would use, and where it would come from.
+# Commanded-DOF and LUT column families that run_attach_telemetry writes. Each entry is
+# (label, matcher, expected count, source). The matcher is a callable so that 'dof' does
+# not also catch 'dof_event_id' or the 'tweak_dof' family.
 DOF_EXPECTED = [
-    ('Trim (accumulated offset)', 'dof',
-     'EFD MTAOS.logevent_degreeOfFreedom aggregatedDoF0..49',
-     'aos_trim.fetch_aggregated_dof_for_visits'),
-    ('Tweak (per-iteration correction)', 'tweak_dof',
-     'not retrievable -- derive by differencing Trim across a re-alignment',
-     'derived from Trim + event_ids'),
-    ('Hexapod LUT', 'lut_dof',
-     'EFD MTHexapod.logevent_compensationOffset (dof0-9)',
-     'aos_trim.fetch_hexapod_lut_for_visits'),
-    ('Mirror LUT (M1M3 + M2 bending)', 'lut_dof',
-     'EFD MTM1M3 elevation zForces + MTM2 lutGravity -> bending (dof10-49)',
-     'aos_trim.fetch_mirror_lut_for_visits'),
+    ('Trim (accumulated offset)',
+     lambda c: c.startswith('dof') and c[3:].isdigit(), 50,
+     'EFD MTAOS.logevent_degreeOfFreedom aggregatedDoF0..49'),
+    ('Tweak (per-iteration correction)',
+     lambda c: c.startswith('tweak_dof'), 50,
+     'derived: Trim differenced, 0.0 where no correction was applied'),
+    ('M1M3 elevation LUT (axial force, N)',
+     lambda c: c.startswith('m1m3elev_'), 156,
+     'ConsDB mt_m1m3_applied_elevation_forces_mean'),
+    ('M2 gravity LUT (axial force, N)',
+     lambda c: c.startswith('m2grav_'), 72,
+     'ConsDB mt_m2_axial_force_lut_gravity_mean'),
+    ('Wind and airflow',
+     lambda c: c.startswith(('wind_', 'sonic_')), 8,
+     'ConsDB salindex110 / salindex301'),
+    ('Camera body temperatures',
+     lambda c: c.startswith('cam_') and c.endswith('Temp'), 24,
+     'EFD lsst.MTCamera.utiltrunk_body'),
 ]
 
 
@@ -321,25 +328,22 @@ def _page_dof(pdf, ps, combined):
     ax.axis('off')
     vcols = set(combined['visits']['cols'] or [])
     fcols = set(combined['fits']['cols'] or [])
-    n_cam = sum(1 for c in vcols if c.startswith('cam_'))
     body = []
-    for label, prefix, source, fetcher in DOF_EXPECTED:
-        hits_v = sorted(c for c in vcols if c.startswith(prefix))
-        hits_f = sorted(c for c in fcols if c.startswith(prefix))
+    for label, match, want, source in DOF_EXPECTED:
+        nv = sum(1 for c in vcols if match(c))
+        nf = sum(1 for c in fcols if match(c))
         body.append([label,
-                     f'{len(hits_v)} col' if hits_v else 'ABSENT',
-                     f'{len(hits_f)} col' if hits_f else 'ABSENT',
-                     source, fetcher])
+                     f'{nv}/{want}' if nv else 'ABSENT',
+                     f'{nf}/{want}' if nf else '-',
+                     source])
     t = ax.table(cellText=body,
-                 colLabels=['quantity', 'in visits', 'in fits', 'source', 'fetcher'],
+                 colLabels=['quantity', 'in visits', 'in fits', 'source'],
                  loc='upper center', cellLoc='left')
-    t.auto_set_font_size(False); t.set_fontsize(6.5); t.scale(1, 1.5)
+    t.auto_set_font_size(False); t.set_fontsize(7); t.scale(1, 1.6)
     ax.set_title(
-        f'{ps}\ncommanded degree-of-freedom (DOF) columns\n'
-        'Trim/Tweak/LUT are not written by mktable; see '
-        'docs/status/dof_telemetry_availability.md\n'
-        f'(for contrast, camera-body telemetry IS merged: {n_cam} cam_* columns '
-        'in the combined visits table)', fontsize=9)
+        f'{ps}\ntelemetry column families in the combined visits table\n'
+        'attached by code/fam_processing/run_attach_telemetry.py; '
+        'see docs/telemetry.md', fontsize=9)
     fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
 

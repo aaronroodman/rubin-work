@@ -51,6 +51,12 @@ WF_LIB  = f"{_WF_DIR}/python/lsst/ts/intrinsic/wavefront"
 MI_DOC = _mc.load_doc("mi_config.yaml") if os.path.exists("mi_config.yaml") else {}
 MI_PSETS = list((MI_DOC or {}).get("measured_intrinsics", {}))
 
+# Telemetry attachment needs the EFD and ConsDB to resolve, which they do not on a Slurm
+# compute node, so run_snake.sh --mode batch passes --config attach_telemetry=0 and the
+# target drops out of `rule all`. Attach it afterwards with a local run, or directly:
+#   python code/fam_processing/run_attach_telemetry.py --param-set <ps> --all-chunks --merge
+ATTACH_TELEMETRY = str(config.get("attach_telemetry", 1)).lower() not in ("0", "false", "no")
+
 def phrase(ps):                                   # matches run_pipeline / intrinsics_lib
     r = PARAM_SETS.get(ps, {})
     if r.get("collection_phrase"):
@@ -171,6 +177,9 @@ rule all:
         expand("output/{ps}/donuts.parquet",              ps=PSETS),
         expand("output/{ps}/fits.parquet",                ps=PSETS),
         expand("output/{ps}/visits.parquet",              ps=PSETS),
+        # telemetry attachment: skipped in batch mode, where the EFD does not resolve
+        (expand("output/{ps}/fam_processing/telemetry_attached.txt", ps=PSETS)
+         if ATTACH_TELEMETRY else []),
         expand("output/{ps}/dzfit/trio_comparison_all.pdf", ps=PSETS),
         # per-donut aberration-pair (primary->secondary) analysis
         expand("output/{ps}/dzfit/aberration_pairs.pdf", ps=PSETS),
@@ -274,6 +283,24 @@ rule combine_visits:
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_visits.log"
     shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
+
+# ---- per param_set: attach all per-visit telemetry, then merge into the visits tables ----
+# One pass over every chunk: thermal, M1M3 gradients, wind, camera body, mirror LUT, Trim
+# and a derived Tweak. Each chunk gets a telemetry.parquet, which --merge joins into both
+# the per-chunk and the combined visits.parquet. Because the sidecars are the source of
+# truth, re-running combine_visits and then this rule's --merge restores the columns.
+rule attach_telemetry:
+    input:
+        visits = "output/{ps}/visits.parquet",
+        script = "code/fam_processing/run_attach_telemetry.py",
+    output:
+        stamp = "output/{ps}/fam_processing/telemetry_attached.txt",
+    resources: mem_mb=4000
+    log: "logs/{ps}.attach_telemetry.log"
+    shell:
+        "python code/fam_processing/run_attach_telemetry.py "
+        "--param-set {wildcards.ps} --all-chunks --merge > {log} 2>&1 && "
+        "date -u +'%Y-%m-%dT%H:%M:%SZ attached' > {output.stamp}"
 
 # ---- validation plots on the combined tables ----
 rule plots:

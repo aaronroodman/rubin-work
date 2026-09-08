@@ -83,7 +83,9 @@ case "$mode" in
         [ -n "$dep" ] && sb+=(--dependency="$dep")
         # -j == cpus so rules schedule cpus-wide; mem_mb budget caps concurrent
         # memory so the summed per-rule mem_mb fits the node allocation.
-        smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going ${passthru[*]}"
+        # Telemetry attachment needs the EFD/ConsDB, which do not resolve on a
+        # compute node; attach it afterwards with a local run.
+        smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going --config attach_telemetry=0 ${passthru[*]}"
         "${sb[@]}" --wrap "cd '$PWD' && ${smk}"
         echo "submitted batch job -> '$part' acct=$acct qos=$qos (${cpus} cpus, ${mem}, ${tlim})${dep:+ dep=$dep}"
         echo "  snakemake: ${smk}"
