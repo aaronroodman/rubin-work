@@ -21,11 +21,11 @@ bug. Filling those visits with NaN is the intended behaviour.
 | what | source to use | why |
 |---|---|---|
 | ESS air temperatures | **ConsDB** | 88.6% on FAM exposures, one bulk query |
-| Wind and airflow | **ConsDB** | 88.6%, available but **never currently fetched** |
+| Wind and airflow | **ConsDB** | 88.6%; was unused, now fetched by `run_attach_telemetry.py` |
 | TMA truss temperatures | **ConsDB** | 88.6% |
 | M1M3 elevation LUT, M2 gravity LUT | **ConsDB** | 400/400 sampled FAM visits |
 | **Trim (all 50 DOF)** | **EFD, as-of-time** | **0% on FAM exposures in ConsDB** — no ConsDB path exists |
-| Tweak | **derived** | not retrievable; difference Trim across a re-alignment |
+| Tweak | **derived** | no topic or property exists; difference consecutive Trim (0.0 where no correction was applied) |
 | M1M3 spatial gradients | **EFD** | not in the transform |
 | Camera-body temperatures | **EFD** | not in ConsDB at all |
 | Mirror stress | neither | 0% in ConsDB on FAM exposures |
@@ -140,11 +140,21 @@ Per `../../notes/claude-memory/aos-dof-terminology.md`:
 - **Trim** — the accumulated offset, `Trim_(i+1) = Trim_i + Tweak`, reported by the EFD
   topic `lsst.sal.MTAOS.logevent_degreeOfFreedom` as `aggregatedDoF0..49`.
 
-**Tweak has no EFD topic and no ConsDB property.** It must be derived by differencing
-consecutive Trim values, and only across an actual re-alignment:
-`aos_trim._dof_at_times` returns an `event_ids` array (the `visitId` of the source
-`degreeOfFreedom` event) precisely so that visits sharing one event are not differenced to
-a spurious zero.
+**Tweak has no EFD topic and no ConsDB property.** It is derived by differencing
+consecutive Trim values, `Tweak_i = Trim_i - Trim_(i-1)`.
+
+The `event_id` array returned by `aos_trim.fetch_aggregated_dof_for_visits` (the `visitId`
+of the source `degreeOfFreedom` event) distinguishes the two cases that matter:
+
+- consecutive visits sharing one event mean the AOS applied **no new correction**, so
+  Tweak is **0.0** — a real measurement, not missing data;
+- **NaN** is reserved for genuinely unknown values: the first visit of a chunk, or one
+  whose Trim or event id could not be resolved.
+
+Measured on `20260514_20260731` (54 visits): 53 known, 8 with a non-zero correction, 45
+with none applied, 1 NaN (the first visit). The round-trip invariant
+`Trim_i = Trim_0 + cumsum(Tweak)` holds to 1e-6 in DOF units, confirming Trim and Tweak
+are mutually consistent.
 
 ### ConsDB carries Trim, but never on FAM exposures
 

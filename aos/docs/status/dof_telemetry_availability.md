@@ -38,10 +38,11 @@ Per `../../../notes/claude-memory/aos-dof-terminology.md`:
   topic `lsst.sal.MTAOS.logevent_degreeOfFreedom` reports as `aggregatedDoF0..49`.
 
 **Tweak is not a retrievable quantity.** There is no EFD topic or ConsDB property for it,
-and correspondingly no fetcher in `aos_trim.py`. It has to be *derived* by differencing
-consecutive Trim values, and only across an actual re-alignment — `_dof_at_times` returns
-an `event_ids` array (the `visitId` of the source `degreeOfFreedom` event) precisely so
-that consecutive visits sharing one event are not differenced to a spurious zero.
+and correspondingly no fetcher in `aos_trim.py`. It is *derived* by differencing consecutive
+Trim values. `fetch_aggregated_dof_for_visits` returns an `event_id` array (the `visitId` of
+the source `degreeOfFreedom` event), which separates the two cases: visits sharing one event
+had **no correction applied**, so Tweak is **0.0**, a real measurement; NaN is reserved for
+genuinely unknown values — the first visit of a chunk, or an unresolved Trim or event id.
 
 ## ConsDB now carries Trim and both LUTs — but not on the FAM exposures
 
@@ -103,7 +104,9 @@ written the way it is, and it should not be "simplified" into a ConsDB join.
 
 ## Open
 
-- `run_backfill_dof.py` is the agreed fix: add Trim, the LUTs, and a derived Tweak to
-  `visits.parquet` the way `run_backfill_thermal.py` adds thermal columns. Not yet written.
+- **Done 2026-09-08:** `code/fam_processing/run_attach_telemetry.py` attaches Trim, the
+  mirror LUTs, wind, thermal and a derived Tweak in one pass. Verified on two chunks: Trim
+  anchors 54/54 and 24/24 visits via ConsDB `obs_start` with no MJD fallback, and
+  `Trim_i = Trim_0 + cumsum(Tweak)` reconstructs to 1e-6.
 - The mirror-LUT actuator-order assumption above wants verifying against ts_ofc before its
   bending amplitudes are trusted quantitatively.

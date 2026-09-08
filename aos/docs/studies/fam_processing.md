@@ -16,6 +16,7 @@ review layer over that output.
 
 | file | role | pipeline rule |
 |---|---|---|
+| `run_attach_telemetry.py` | attach **all** per-visit telemetry in one pass: thermal, gradients, wind, camera, mirror LUT, Trim, derived Tweak | no |
 | `run_chunk_status.py` | all-chunks status roll-up in one PDF: counts, coverage, telemetry completeness, DOF presence | no |
 | `check_chunk.py` | **pre-flight**, before `mktable`: visits in ConsDB but missing from the Butler collection, and heterogeneous `nollIndices` across a chunk | no |
 | `inspect_visit_provenance.py` | Butler provenance consistency across a `param_set`'s chunks | no |
@@ -24,6 +25,29 @@ review layer over that output.
 
 None of these is a Snakefile rule; they are run by hand when a chunk is added or a build is
 questioned.
+
+### `run_attach_telemetry.py` — one pass, sidecars as the source of truth
+
+It replaces the split between `run_backfill_thermal.py` (rewrote each per-chunk
+`visits.parquet` in place) and `run_backfill_camera_telemetry.py` (wrote per-chunk sidecars
+but merged only into the *combined* table). That split is why re-running `combine_visits`
+silently dropped the 28 `cam_*` columns.
+
+Now every quantity lands in one per-chunk `telemetry.parquet`, and `--merge` joins it into
+both the per-chunk and combined `visits.parquet`. A re-combine is always repairable with
+`--merge --skip-fetch`, and a failed fetch never damages an expensive `mktable` output.
+
+Sources are ConsDB-first, EFD only where ConsDB cannot answer — see
+[`../telemetry.md`](../telemetry.md) for the measurements behind each choice. Verified on
+two chunks: Trim anchors **54/54** and **24/24** visits via ConsDB `obs_start` with no MJD
+fallback; wind returns 8 columns at 87.5% finite; the mirror LUT returns 228 axial-force
+columns (156 M1M3 + 72 M2); and `Trim_i = Trim_0 + cumsum(Tweak)` reconstructs to 1e-6 in
+DOF units.
+
+Tweak is **0.0** where the AOS applied no new correction — a real measurement — and NaN
+only where genuinely unknown (the first visit of a chunk, or an unresolved Trim or event
+id). On `20260514_20260731`: 53 of 54 visits known, 8 with a non-zero correction, 45 with
+none applied.
 
 ### `check_chunk.py` catches two failure modes early
 
@@ -47,8 +71,9 @@ ConsDB access:
    histogram over all chunks.
 3. **Telemetry completeness** — the fraction of finite values per telemetry column per
    chunk, which is how a chunk built with `--no-thermal` is spotted.
-4. **DOF presence** — whether Trim, Tweak and LUT degree-of-freedom (DOF) columns exist at
-   all. They currently do not; see
+4. **DOF presence** — whether Trim, Tweak and LUT degree-of-freedom (DOF) columns exist,
+   and which fetcher supplies each. `mktable` writes none of them; they arrive via
+   `run_attach_telemetry.py`. See
    [`../status/dof_telemetry_availability.md`](../status/dof_telemetry_availability.md).
 5. **`nollIndices` consistency** — the pupil-Zernike set per chunk, flagging any variation.
 
@@ -63,6 +88,7 @@ used — this is about the tables that precede any MIW.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
+python code/fam_processing/run_attach_telemetry.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --all-chunks --merge
 python code/fam_processing/run_chunk_status.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 python code/fam_processing/plot_visits_summary.py --param-set all
 python code/fam_processing/inspect_visit_provenance.py --help
@@ -71,16 +97,16 @@ python code/fam_processing/check_chunk.py --help          # needs ConsDB + Butle
 
 `run_chunk_status.py`, `plot_visits_summary.py` and `compare_to_archive.py` are
 parquet-only. `check_chunk.py` and `inspect_visit_provenance.py` need the Butler and
-ConsDB, so they are RSP or slaciana only.
+ConsDB, and `run_attach_telemetry.py` needs both the EFD and ConsDB to resolve — so those
+three are RSP or slaciana/slacrd only, **not** a batch compute node.
 
 ## State and open questions
 
-- **Commanded DOF are absent from every combined table.** `run_backfill_dof.py` is the
-  agreed fix, adding Trim, the mirror and hexapod LUTs, and a derived Tweak the way
-  `run_backfill_thermal.py` adds thermal columns.
-- **Tweak is not directly retrievable.** It has to be derived by differencing consecutive
-  Trim values across an actual re-alignment, using the `event_ids` that
-  `aos_trim._dof_at_times` returns — not by differencing every consecutive visit pair.
+- The mirror LUT is stored as axial **forces**; converting to bending amplitudes assumes
+  the EFD force arrays share the actuator order of the ts_ofc influence matrix, which
+  `aos_trim.fetch_mirror_lut_for_visits` flags as unverified.
+- `run_backfill_thermal.py` and `run_backfill_camera_telemetry.py` are superseded by
+  `run_attach_telemetry.py` but still in place; retiring them is outstanding.
 - `compare_to_archive.py` compares against the pre-reorganization archive and will lose its
   purpose once that archive is dropped.
 
