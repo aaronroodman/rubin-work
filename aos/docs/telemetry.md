@@ -1,13 +1,14 @@
 # Telemetry inventory — what exists, where it comes from, and what reaches the tables
 
-> **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (telemetry inventory)
+> **Status:** current · **Last updated:** 2026-09-09 · **Kind:** reference (telemetry inventory)
 
 Every per-visit telemetry quantity used in the AOS work: its name in the Consolidated
 Database (ConsDB) transformed Engineering Facility Database (EFD) or in the raw EFD,
 whether it is documented, its measured coverage on Full Array Mode (FAM) exposures, its
 units, and which source a fetch should prefer.
 
-All coverage figures were measured on 2026-09-08 against `param_set`
+All coverage figures were measured on 2026-09-08, and the LUT / Trim / Tweak figures in §4
+on 2026-09-09, against `param_set`
 `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` — 3385 FAM visits, `day_obs` 20250415 to
 20260713 — using the USDF ConsDB at `https://usdf-rsp.slac.stanford.edu/consdb`. Samples
 of 400–500 visits are the most recent ones unless stated.
@@ -24,6 +25,7 @@ bug. Filling those visits with NaN is the intended behaviour.
 | Wind and airflow | **ConsDB** | 88.6%; was unused, now fetched by `run_attach_telemetry.py` |
 | TMA truss temperatures | **ConsDB** | 88.6% |
 | M1M3 elevation LUT, M2 gravity LUT | **ConsDB** | 400/400 sampled FAM visits |
+| **Hexapod LUT (both hexapods)** | **EFD, as-of-time** | ConsDB covers 7.7% (camera) and 0.0% (M2) of FAM exposures |
 | **Trim (all 50 DOF)** | **EFD, as-of-time** | **0% on FAM exposures in ConsDB** — no ConsDB path exists |
 | Tweak | **derived** | no topic or property exists; difference consecutive Trim (0.0 where no correction was applied) |
 | M1M3 spatial gradients | **EFD** | not in the transform |
@@ -32,7 +34,8 @@ bug. Filling those visits with NaN is the intended behaviour.
 
 ## 1. What actually reaches `visits.parquet` today
 
-The combined `output/<ps>/visits.parquet` has **58 columns**. Measured finite fractions:
+The combined `output/<ps>/visits.parquet` has **405 columns**, of which 228 are the mirror
+LUT axial forces and 110 the commanded degrees of freedom. Measured finite fractions:
 
 | group | columns | finite | notes |
 |---|---|---|---|
@@ -44,8 +47,11 @@ The combined `output/<ps>/visits.parquet` has **58 columns**. Measured finite fr
 | pointing | `alt`, `az`, `rotator_angle`, `ra`, `dec`, `skyAngle` | — | deg |
 | identity | `visit`, `day_obs`, `seq_num`, `band`, `science_program`, `mjd` | — | |
 | donut counts | `n_donuts`, `n_detectors`, `median_blur_arcsec`, `visit_quality_pass` | — | arcsec for the blur |
-| **commanded DOF** | — | **absent entirely** | see §4 |
-| **wind / airflow** | — | **absent entirely** | see §3, available in ConsDB |
+| hexapod LUT | 10 `lut_dof0..9` | 100.0% camera, 98.5% M2 | µm (z, x, y), **deg** (u, v); see §4 |
+| mirror LUT | 156 `m1m3elev_*`, 72 `m2grav_*` | 400/400 sampled | N, axial force |
+| Trim | 50 `dof0..49` | 100.0% | µm, arcsec; see §4 |
+| Tweak | 50 `tweak_dof0..49`, `dof_event_id` | 99.7%, 77.1% | derived from Trim; see §4 |
+| wind / airflow | 8 `wind_*`, `sonic_temperature` | 88.6% | m/s, deg, deg C |
 
 ### Camera-body temperatures are combined-table only, by design
 
@@ -122,13 +128,43 @@ list — no new query.
 The uniform 88.6% is the commissioning-history effect: these are present for recent
 visits and absent for the earliest ones.
 
-## 4. Commanded degrees of freedom — the important finding
+## 4. Commanded degrees of freedom
 
-**No DOF column of any kind is in the pipeline output.** `visits.parquet` (58 columns),
-`fits.parquet` (456) and the MI-refit `fits.parquet` (653) contain no Trim, Tweak or LUT.
-Name searches for `dof`, `trim`, `tweak`, `lut`, `hex`, `bend` and `offset` return only
-false positives: `m1m3_air_temp`, `m2_delta_t`, `cam_m1m3_delta_t`, and about 200
-`m1m3_tc_*` / `m1m3_dt_*` **thermocouple** channels.
+`visits.parquet` (405 columns) carries the Trim, the Tweak and the hexapod LUT, all
+attached by the `attach_telemetry` rule. `fits.parquet` (456 columns) and the
+measured-intrinsic refit `fits.parquet` (653) carry **none** of them — join on
+`(day_obs, seq_num)` to get them.
+
+### Which columns are LUT, which are Trim, which are Tweak
+
+The three are different physical quantities and are not interchangeable. A physical
+hexapod position is **LUT + Trim**; neither term alone is the position.
+
+| quantity | columns in `visits.parquet` | source | units | coverage |
+|---|---|---|---|---|
+| **LUT**, hexapods | `lut_dof0..lut_dof9` | EFD `lsst.sal.MTHexapod.logevent_compensationOffset` | µm (z, x, y), deg (u, v) | 100.0% camera, 98.5% M2 |
+| **LUT**, mirrors | `m1m3elev_0..155`, `m2grav_0..71` | ConsDB `mt_m1m3_applied_elevation_forces_mean`, `mt_m2_axial_force_lut_gravity_mean` | N (axial force) | 400/400 sampled |
+| **Trim**, all 50 DOF | `dof0..dof49` | EFD `lsst.sal.MTAOS.logevent_degreeOfFreedom`, `aggregatedDoF0..49` | µm (positions, bending), arcsec (hexapod u, v) | 100.0% |
+| **Tweak**, all 50 DOF | `tweak_dof0..tweak_dof49` | derived, `Trim_i - Trim_(i-1)` | same as Trim | 99.7% |
+| Trim source event | `dof_event_id` | the `visitId` of the source `degreeOfFreedom` event | — | 77.1% |
+
+`lut_dof*` is ordered to match the first 10 entries of the 50-DOF OFC state — `lut_dof0..4`
+are M2 hexapod (z, x, y, u, v) and `lut_dof5..9` the camera hexapod — so `lut_dof5` pairs
+with Trim `dof5`, both camera-hexapod dz in µm.
+
+**The angular axes do not share units.** `lut_dof3`, `lut_dof4`, `lut_dof8` and `lut_dof9`
+are in **deg**, as MTHexapod reports them, while the corresponding Trim `dof3`, `dof4`,
+`dof8`, `dof9` are in **arcsec** in the OFC convention. Adding them requires a conversion;
+the four dz/dx/dy axes per hexapod are directly additive.
+
+The mirror LUT is in axial **force** (N), not bending amplitude — `aos_trim.fetch_mirror_lut_for_visits`
+converts. It has never been changed from the mirror-lab values, so for v-mode work
+dominated by hexapod motion it can be treated as constant.
+
+LUT and Trim are substantially **anti-correlated** on the camera-hexapod dz axis, i.e. the
+AOS Trim partly undoes the LUT. Over n = 3385 visits: LUT std 1362 µm, Trim std 1405 µm,
+LUT+Trim std 997 µm. A quantity built from Trim alone therefore has the wrong variance,
+not merely a missing offset.
 
 ### Terminology — the three are different quantities
 
@@ -187,8 +223,15 @@ science, 156 cwfs and 777 acq exposures since 2026-06:
 
 Note the three distinct behaviours. `aos_corrections` and `aggregated_dof` are both
 **Trim** and are science-gated, landing on *exactly the same* exposures.
-`compensation_offset` is the **LUT**, is low everywhere, and is *not* img_type-gated.
-`uncompensated_position` appears entirely unpopulated even on science exposures.
+`compensation_offset` is the **hexapod LUT** — the ConsDB name does not contain the word
+LUT — is low everywhere, and is *not* img_type-gated. `uncompensated_position` appears
+entirely unpopulated even on science exposures.
+
+Because the ConsDB hexapod LUT reaches only 7.7% of `cwfs` exposures for the camera
+hexapod and 0.0% for M2, the pipeline takes the **EFD** route instead
+(`lsst.sal.MTHexapod.logevent_compensationOffset`, via
+`aos_trim.fetch_hexapod_lut_for_visits`), which resolves 100.0% and 98.5% of FAM visits
+respectively. These are the `lut_dof0..9` columns tabulated above.
 
 The OFC DOF layout uses only 5 hexapod axes per hexapod (z, x, y, u, v); ConsDB also
 carries `w`, which `aos_consdb_efd.HEX_AXES` correctly drops.
