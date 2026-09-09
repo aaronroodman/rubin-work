@@ -28,7 +28,7 @@ processing variant — not on any MIW build.
 | file | role |
 |---|---|
 | `run_dz_fit_check.py` | pipeline `dz_fit_check` rule — residual metrics and plots for the k<=3 and k<=6 fits |
-| `run_dz_plots.py` | pipeline `plots` and `residual_movie` rules — data / model / residual trio comparisons, fit-parameter pages, and the per-visit residual movie |
+| `run_dz_plots.py` | pipeline `plots` and `residual_movie_chunk` rules — data / model / residual trio comparisons, fit-parameter pages, and the per-visit residual movie |
 
 The plotting library `dz_plotting.py` sits at `aos/code/` because the
 [`correlations`](correlations.md) study uses it too.
@@ -62,12 +62,19 @@ difference; coefficient distributions; coefficient time histories.
 
 Reconstructs per-donut fit values, then produces measured / model / residual map trios
 per pupil Zernike, fit-parameter pages grouped by pointing, and one residual-map frame
-per visit rendered into `single_image_residuals.mp4` by ffmpeg. The `plots` rule skips
-the movie; the `residual_movie` rule produces only the movie.
+per visit rendered into an mp4 by ffmpeg. The `plots` rule skips the movie; the
+`residual_movie_chunk` rule produces only the movie.
+
+The movie subtracts the `z1toz6` fit by default, selected by `--movie-prefix`. It is
+rendered one movie per date chunk rather than one per param_set: the largest chunk holds
+2.2 M donuts against 9.1 M for the combined table, so the jobs fit in a 4 GB declaration,
+run in parallel, and each mp4 stays a tenth the size. `residual_movies` is the aggregate
+target that asks for all ten.
 
 ## Inputs and outputs
 
-Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`. Writes to
+Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`, except the movie, which
+reads the per-chunk `output/<ps>/chunks/<dmin>_<dmax>/{donuts,fits}.parquet`. Writes to
 `output/<ps>/dzfit/`:
 
 | product | from |
@@ -75,7 +82,7 @@ Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`. Writes to
 | `dz_fit_check.pdf`, `dz_fit_check.parquet` | `dz_fit_check` |
 | `trio_comparison_all.pdf`, `trio_comparison_k1to6_all.pdf` | `plots` |
 | `fit_params_resid_z1toz6_all.pdf` | `plots` |
-| `single_image_residuals.mp4` | `residual_movie` |
+| `movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4`, one per chunk | `residual_movie_chunk` |
 
 `dz_fit_check.parquet` has one row per (visit, prefix, pupil Zernike), carrying donut
 count, residual nMAD, RMS and median in µm of wavefront, and the deviation nMAD for
@@ -88,11 +95,13 @@ cd ~/notebooks/rubin-work/aos
 ./run_snake.sh --until dz_fit_check
 python code/dzfit/run_dz_fit_check.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 python code/dzfit/run_dz_fit_check.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --max-visits 25
-./run_snake.sh --until residual_movie
+./run_snake.sh --until residual_movies
+./run_snake.sh output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/dzfit/movies/20260713_20260713/residuals_z1toz6_20260713_20260713.mp4
 ```
 
-`residual_movie` renders one frame per visit and is not in `rule all`; ask for it
-explicitly. `--skip-metrics` replots from an existing `dz_fit_check.parquet`, without the
+The movie rules render one frame per visit and are not in `rule all`; ask for them
+explicitly, either as the `residual_movies` aggregate or one chunk at a time.
+`--skip-metrics` replots from an existing `dz_fit_check.parquet`, without the
 focal-plane maps, which need the donut stream.
 
 The `plots` rule loads the full donut table and is memory-heavy; the Snakefile's `mem_mb`
@@ -102,8 +111,9 @@ Consolidated Database (ConsDB) or Engineering Facilities Database (EFD) access n
 
 ## State and open questions
 
-- `residual_movie` and `plots` both call `run_dz_plots.py`, which materializes the donut
-  table through astropy; a streaming rewrite would remove the 12 GiB declaration.
+- `residual_movie_chunk` and `plots` both call `run_dz_plots.py`, which materializes the
+  donut table through astropy. Chunking bounds that for the movie; `plots` still reads the
+  combined table and keeps the 12 GiB declaration.
 
 ## See also
 
@@ -111,4 +121,4 @@ Consolidated Database (ConsDB) or Engineering Facilities Database (EFD) access n
 - [`correlations.md`](correlations.md) — the same DZ coefficients after MIW subtraction, and the per-donut aberration-pair analysis
 - [`fam_processing.md`](fam_processing.md) — the chunk build and telemetry this study's inputs come from
 - [`../double_zernike_convention_validation.md`](../double_zernike_convention_validation.md) — DZ index and normalization conventions
-- [`../miw_pipeline.md`](../miw_pipeline.md) — the `plots`, `dz_fit_check` and `residual_movie` rules in context
+- [`../miw_pipeline.md`](../miw_pipeline.md) — the `plots`, `dz_fit_check` and `residual_movie_chunk` rules in context

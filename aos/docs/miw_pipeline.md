@@ -48,7 +48,8 @@ Phase 3 — analyses (per param_set × mi_name)│
 | 1 | `combine_*` | per param_set | Concatenate chunks → one donuts/fits/visits table each |
 | 1 | `plots` | per param_set | Trio validation plots (data / model / residual) on the combined tables |
 | 1 | `dz_fit_check` | per param_set | Residual metrics and plots for the k<=3 and k<=6 DZ fits |
-| 1 | `residual_movie` | per param_set | Per-visit residual-map movie (not in `rule all`) |
+| 1 | `residual_movie_chunk` | per (ps, chunk) | Per-visit residual-map movie, one mp4 per chunk (not in `rule all`) |
+| 1 | `residual_movies` | per param_set | Aggregate target requesting every chunk's movie |
 | 1 | `aberration_pairs` | per param_set | Per-donut primary→secondary aberration-pair correlations |
 | 2 | `build_intrinsic` | per (ps, mi, rotator bin) | Measured-intrinsic focal-plane grid (Path-A U-mode constrained) |
 | 2 | `intrinsic_split` | per (ps, mi) | Decompose the grids into telescope-fixed (OCS) + camera-fixed (CCS) parts |
@@ -109,9 +110,15 @@ stored k<=3 and k<=6 DZ fits, writing robust residual metrics per (visit, prefix
 Zernike) plus coefficient and residual-map pages →
 `output/<ps>/dzfit/dz_fit_check.{pdf,parquet}`. Streams the donut table by row group.
 
-**`residual_movie`** — `code/dzfit/run_dz_plots.py` with `--no-fit-params --no-trio`.
-One residual-map frame per visit, rendered by ffmpeg →
-`output/<ps>/dzfit/single_image_residuals.mp4`. Not in `rule all`; request it explicitly.
+**`residual_movie_chunk`** — `code/dzfit/run_dz_plots.py` with `--no-fit-params
+--no-trio --movie-prefix z1toz6`. One residual-map frame per visit of the k<=6 fit
+residual, rendered by ffmpeg →
+`output/<ps>/dzfit/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4`,
+one movie per date chunk, each in its own subdirectory so the concurrent jobs do not race
+on the intermediate frame files. Reads the per-chunk `chunks/<dmin>_<dmax>/{donuts,fits}.parquet`
+rather than the combined tables, which bounds the memory and lets the ten chunks render in
+parallel. **`residual_movies`** is the aggregate target for all of them. Neither is in
+`rule all`; request them explicitly.
 
 **`aberration_pairs`** — `code/correlations/run_aberration_pairs.py`. Per-donut
 primary→secondary aberration-pair analysis (e.g. defocus→spherical, astig→2nd-astig):
@@ -339,7 +346,8 @@ to pick up code changes.
 output/<param_set>/
   chunks/<dmin>_<dmax>/ {donuts,fits,visits}.parquet     # per chunk
   {donuts,fits,visits}.parquet                           # combined (downstream input)
-  dzfit/                                                 # trio validation, dz_fit_check, residual movie
+  dzfit/                                                 # trio validation, dz_fit_check
+  dzfit/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4   # one residual movie per chunk
   correlations/                                          # aberration_pairs
   wfs/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf  wfs_corner_compare.{pdf,parquet}
   <mi_name>/

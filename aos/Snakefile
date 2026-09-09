@@ -323,22 +323,35 @@ rule plots:
         "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
         "--no-single-image > {log} 2>&1"
 
-# ---- per-visit residual-map movie ----
-# One frame per visit, strung together by ffmpeg (in lsst_distrib).  Split from `plots`
-# so the ~2500-frame render can be requested on its own; it is not in `rule all`.
-rule residual_movie:
+# ---- per-visit residual-map movie, one movie per chunk ----
+# One frame per visit of the k<=6 fit residual, strung together by ffmpeg (in
+# lsst_distrib).  Per chunk rather than per param_set: the largest chunk is 2.2M donuts
+# against 9.1M combined, so the jobs fit in memory, run in parallel and each movie stays
+# small.  Not in `rule all` — request `residual_movies` explicitly.
+rule residual_movie_chunk:
     input:
-        donuts = "output/{ps}/donuts.parquet",
-        fits   = "output/{ps}/fits.parquet",
+        donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
+        fits   = "output/{ps}/chunks/{dmin}_{dmax}/fits.parquet",
         script = "code/dzfit/run_dz_plots.py",
-    output: "output/{ps}/dzfit/single_image_residuals.mp4"
+    # Each chunk renders into its own subdirectory: the intermediate JPEG frames and the
+    # ffmpeg `frame_list.txt` are fixed names, so a shared directory would race when the
+    # chunks run concurrently.
+    output: "output/{ps}/dzfit/movies/{dmin}_{dmax}/residuals_z1toz6_{dmin}_{dmax}.mp4"
     params: coord = lambda w: coord(w.ps)
-    resources: mem_mb=12000
-    log: "logs/{ps}.residual_movie.log"
+    resources: mem_mb=4000
+    log: "logs/{ps}.{dmin}_{dmax}.residual_movie.log"
     shell:
         "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
-        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
+        "--coord-sys {params.coord} --movie-prefix z1toz6 "
+        "--movie-name residuals_z1toz6_{wildcards.dmin}_{wildcards.dmax}.mp4 "
+        "--output-dir output/{wildcards.ps}/dzfit/movies/{wildcards.dmin}_{wildcards.dmax} "
         "--no-fit-params --no-trio > {log} 2>&1"
+
+rule residual_movies:
+    input:
+        lambda w: [f"output/{w.ps}/dzfit/movies/{a}_{b}/residuals_z1toz6_{a}_{b}.mp4"
+                   for a, b in chunks(w.ps)]
+    output: touch("output/{ps}/dzfit/movies/all_movies.done")
 
 # ---- k<=3 vs k<=6 DZ fit check ----
 # Streams donuts.parquet by row group, so it needs far less memory than `plots`.
