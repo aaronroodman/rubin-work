@@ -30,8 +30,7 @@ data, are the [`dzfit`](dzfit.md) study.
 ## Inputs and outputs
 
 Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`; the per-rotator-bin
-grids come from the package's `build_intrinsic`. Writes `plots/trio_comparison_all.pdf`,
-`aberration_pairs.{pdf,parquet}`, `study_radialbins.pdf`, and the
+grids come from the package's `build_intrinsic`. Writes `study_radialbins.pdf` and the
 `intrinsic_split_{maps,decomp,rms}.parquet` products that the other studies consume.
 
 The **canonical MIW product** for downstream use is the `_5rot` `intrinsic_split_maps`

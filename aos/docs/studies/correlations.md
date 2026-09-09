@@ -1,13 +1,15 @@
 # Study: `correlations` — what does the residual DZ correlate with?
 
-> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
 Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
-the measured intrinsic is subtracted: against each other, against OFC v-modes, and
-against telescope telemetry.
+the measured intrinsic is subtracted: against each other, against Optical Feedback
+Control (OFC) v-modes, and against telescope telemetry. Also the per-donut
+primary→secondary aberration-pair correlations, on the single-Zernike values rather than
+the DZ fits.
 
-All four scripts run on the **MI-refit** residual (`output/<ps>/<mi>/fits.parquet`), not
-the raw DZ. All four are pipeline rules. Knobs live in `analysis_config.yaml`, kept
+The first four scripts run on the **MI-refit** residual (`output/<ps>/<mi>/fits.parquet`),
+not the raw DZ. All five are pipeline rules. Knobs live in `analysis_config.yaml`, kept
 separate from `mi_config.yaml` so editing an analysis knob never re-triggers a slow
 intrinsic build.
 
@@ -19,22 +21,29 @@ intrinsic build.
 | `run_vmode_correlations.py` | project the MI-subtracted DZ onto the OFC SVD and correlate v-modes, for both 50/34 and 22/12 schemes |
 | `run_thermal_correlations.py` | DZ_kj × EFD temperature-variable Pearson heatmap plus per-term scatter pages |
 | `run_dz_explained.py` | per-visit fraction of the measured DZ explained by the OFC sensitivity subspace, 22/12 and 50/34 |
+| `run_aberration_pairs.py` | per-donut primary→secondary aberration pairs (defocus→spherical, astigmatism→2nd astigmatism, and so on), split into quartiles of the primary |
+
+`run_aberration_pairs.py` works on the **Phase-1** per-donut `zk_<coord>` values in
+`donuts.parquet`, so it needs no `mi_name` and writes to `output/<ps>/correlations/`.
+It streams the donut table by row group.
 
 ## Outputs
 
 `<mi>/plots/dz_correlations{,_optcorr}.{pdf,_pairs.parquet}`,
 `vmode_correlations_{50_34,22_12}.pdf` + summary parquets,
-`thermal_correlations.pdf` + `_summary.parquet`, `dz_explained.{pdf,parquet}`.
+`thermal_correlations.pdf` + `_summary.parquet`, `dz_explained.{pdf,parquet}`, and
+`<ps>/correlations/aberration_pairs.{pdf,_summary.parquet}`.
 
-These currently share `<mi>/plots/` with the bounce and coadd output; splitting them per
-study is outstanding work.
+The first four currently share `<mi>/plots/` with the bounce and coadd output; splitting
+them per study is outstanding work.
 
 ## Statistical cautions
 
 These are correlation studies, so the reporting rules matter more than usual:
 
 - **Robust methods, and ask which** before implementing. Report **both** Pearson r and
-  Spearman rho (`robust-fits-aos`).
+  Spearman rho (`robust-fits-aos`). `run_aberration_pairs.py` uses a quartile-of-primary
+  ordinary least-squares slope, which predates that preference.
 - Every number needs its quantity name and units, or an explicit "dimensionless" with
   numerator and denominator named. `chi2` always as `chi2/dof` with dof stated.
   Correlations need the statistic, both variables with units, and `n`.

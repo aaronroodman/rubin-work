@@ -25,6 +25,7 @@ mktable ──► fit          (per chunk)   build_intrinsic   (per rotator bin)
 combine_{donuts,fits,visits}               │         vs rotator, pre-split)
    │                                        ▼
    ├──► plots                          intrinsic_split (OCS + CCS)
+   ├──► dz_fit_check                        │
    ├──► aberration_pairs                    │
    └──► (feeds Phase 2) ──────────►         ▼
                                        intrinsic_sidecar (per-donut zk)
@@ -46,6 +47,8 @@ Phase 3 — analyses (per param_set × mi_name)│
 | 1 | `fit` | per chunk | Double-Zernike fit of (data − batoid intrinsic) per visit |
 | 1 | `combine_*` | per param_set | Concatenate chunks → one donuts/fits/visits table each |
 | 1 | `plots` | per param_set | Trio validation plots (data / model / residual) on the combined tables |
+| 1 | `dz_fit_check` | per param_set | Residual metrics and plots for the k<=3 and k<=6 DZ fits |
+| 1 | `residual_movie` | per param_set | Per-visit residual-map movie (not in `rule all`) |
 | 1 | `aberration_pairs` | per param_set | Per-donut primary→secondary aberration-pair correlations |
 | 2 | `build_intrinsic` | per (ps, mi, rotator bin) | Measured-intrinsic focal-plane grid (Path-A U-mode constrained) |
 | 2 | `intrinsic_split` | per (ps, mi) | Decompose the grids into telescope-fixed (OCS) + camera-fixed (CCS) parts |
@@ -98,14 +101,23 @@ downstream automatically.
 
 **`plots`** — `code/miw/run_dz_plots.py` (library: `dz_plotting.py`). Validation
 trio plots (data / DZ model / residual across the focal plane) on the combined
-tables → `output/<ps>/plots/trio_comparison_all.pdf`. Memory-heavy (loads the
+tables → `output/<ps>/dzfit/trio_comparison_all.pdf`. Memory-heavy (loads the
 full donut table); the Snakefile's `mem_mb` throttle serializes it.
 
-**`aberration_pairs`** — `code/miw/run_aberration_pairs.py` (port of
-`study_aberrationpairs.ipynb`). Per-donut primary→secondary aberration-pair
-analysis (e.g. defocus→spherical, astig→2nd-astig): quartile-of-primary OLS
-slope/r plus density pages → `output/<ps>/plots/aberration_pairs.pdf` +
-`aberration_pairs_summary.parquet`. Knobs in `analysis_config.yaml`.
+**`dz_fit_check`** — `code/dzfit/run_dz_fit_check.py`. Recomputes the residual of the
+stored k<=3 and k<=6 DZ fits, writing robust residual metrics per (visit, prefix, pupil
+Zernike) plus coefficient and residual-map pages →
+`output/<ps>/dzfit/dz_fit_check.{pdf,parquet}`. Streams the donut table by row group.
+
+**`residual_movie`** — `code/dzfit/run_dz_plots.py` with `--no-fit-params --no-trio`.
+One residual-map frame per visit, rendered by ffmpeg →
+`output/<ps>/dzfit/single_image_residuals.mp4`. Not in `rule all`; request it explicitly.
+
+**`aberration_pairs`** — `code/correlations/run_aberration_pairs.py`. Per-donut
+primary→secondary aberration-pair analysis (e.g. defocus→spherical, astig→2nd-astig):
+quartile-of-primary OLS slope/r plus density pages →
+`output/<ps>/correlations/aberration_pairs.pdf` + `aberration_pairs_summary.parquet`.
+Knobs in `analysis_config.yaml`.
 
 ### Phase 2 — measured intrinsic (per `param_set` × `mi_name`)
 
@@ -327,7 +339,8 @@ to pick up code changes.
 output/<param_set>/
   chunks/<dmin>_<dmax>/ {donuts,fits,visits}.parquet     # per chunk
   {donuts,fits,visits}.parquet                           # combined (downstream input)
-  plots/                                                 # trio validation, aberration_pairs
+  dzfit/                                                 # trio validation, dz_fit_check, residual movie
+  correlations/                                          # aberration_pairs
   wfs/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf  wfs_corner_compare.{pdf,parquet}
   <mi_name>/
     build/rot_<lo>_<hi>/intrinsic_grid.parquet           # per rotator bin

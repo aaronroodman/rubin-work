@@ -181,8 +181,10 @@ rule all:
         (expand("output/{ps}/fam_processing/telemetry_attached.txt", ps=PSETS)
          if ATTACH_TELEMETRY else []),
         expand("output/{ps}/dzfit/trio_comparison_all.pdf", ps=PSETS),
+        # k<=3 vs k<=6 DZ fit check: residual metrics + plots
+        expand("output/{ps}/dzfit/dz_fit_check.pdf", ps=PSETS),
         # per-donut aberration-pair (primary->secondary) analysis
-        expand("output/{ps}/dzfit/aberration_pairs.pdf", ps=PSETS),
+        expand("output/{ps}/correlations/aberration_pairs.pdf", ps=PSETS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
         [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
         # in-focus corner-WFS ingestion (per ps, cwfs variant)
@@ -318,8 +320,44 @@ rule plots:
     log: "logs/{ps}.plots.log"
     shell:
         "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
-        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/plots "
+        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
         "--no-single-image > {log} 2>&1"
+
+# ---- per-visit residual-map movie ----
+# One frame per visit, strung together by ffmpeg (in lsst_distrib).  Split from `plots`
+# so the ~2500-frame render can be requested on its own; it is not in `rule all`.
+rule residual_movie:
+    input:
+        donuts = "output/{ps}/donuts.parquet",
+        fits   = "output/{ps}/fits.parquet",
+        script = "code/dzfit/run_dz_plots.py",
+    output: "output/{ps}/dzfit/single_image_residuals.mp4"
+    params: coord = lambda w: coord(w.ps)
+    resources: mem_mb=12000
+    log: "logs/{ps}.residual_movie.log"
+    shell:
+        "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
+        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
+        "--no-fit-params --no-trio > {log} 2>&1"
+
+# ---- k<=3 vs k<=6 DZ fit check ----
+# Streams donuts.parquet by row group, so it needs far less memory than `plots`.
+rule dz_fit_check:
+    input:
+        donuts = "output/{ps}/donuts.parquet",
+        fits   = "output/{ps}/fits.parquet",
+        visits = "output/{ps}/visits.parquet",
+        script = "code/dzfit/run_dz_fit_check.py",
+    output:
+        pdf     = "output/{ps}/dzfit/dz_fit_check.pdf",
+        metrics = "output/{ps}/dzfit/dz_fit_check.parquet",
+    params: coord = lambda w: coord(w.ps)
+    resources: mem_mb=6000
+    log: "logs/{ps}.dz_fit_check.log"
+    shell:
+        "python code/dzfit/run_dz_fit_check.py --param-set {wildcards.ps} "
+        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
+        "> {log} 2>&1"
 
 # ---- per-donut primary->secondary aberration-pair analysis ----
 rule aberration_pairs:
@@ -327,8 +365,8 @@ rule aberration_pairs:
         donuts = "output/{ps}/donuts.parquet",
         visits = "output/{ps}/visits.parquet",
         fits   = "output/{ps}/fits.parquet",
-        script = "code/dzfit/run_aberration_pairs.py",
-    output: "output/{ps}/dzfit/aberration_pairs.pdf"
+        script = "code/correlations/run_aberration_pairs.py",
+    output: "output/{ps}/correlations/aberration_pairs.pdf"
     params:
         coord = lambda w: coord(w.ps),
         acfg  = lambda w: an_json("aberration_pairs", w.ps),   # rerun-trigger only
@@ -336,10 +374,10 @@ rule aberration_pairs:
     resources: mem_mb=8000
     log: "logs/{ps}.aberration_pairs.log"
     shell:
-        "python code/dzfit/run_aberration_pairs.py {input.donuts} "
+        "python code/correlations/run_aberration_pairs.py {input.donuts} "
         "--visits {input.visits} --fits {input.fits} --coord-sys {params.coord} "
         "--param-set {wildcards.ps} --label {wildcards.ps} "
-        "--output-dir output/{wildcards.ps}/plots > {log} 2>&1"
+        "--output-dir output/{wildcards.ps}/correlations > {log} 2>&1"
 
 # ======================================================================
 # Phase 2 — measured intrinsic, per (param_set, mi_name) from mi_config.yaml
