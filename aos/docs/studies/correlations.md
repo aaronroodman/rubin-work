@@ -216,7 +216,117 @@ LTS-213 drawing for the final page.
 
 ## Notebooks
 
-None. The first five analyses are Snakemake rules; `run_dz14_truss.py` is run directly.
+The six analyses above are scripts — five Snakemake rules plus `run_dz14_truss.py`, which is
+run directly. Two notebooks sit alongside them in `notebooks/correlations/`.
+
+### `consdb_vs_efd_aos_dof_20260513.ipynb`
+
+Where the Consolidated Database (ConsDB) copy of the AOS degree-of-freedom values is filled,
+whether it agrees with the Engineering Facility Database (EFD) where filled, and where it is
+empty. Written for colleagues outside this project, so it imports **only released LSST code**
+— `lsst.summit.utils`, `lsst_efd_client` — and nothing from `rubin-work`; the client
+construction is inlined rather than taken from `common/telemetry_clients.py`. Keeping that
+constraint is the point of the notebook, so any edit that adds a repo import defeats it.
+
+One night, `day_obs = 20260513`, chosen for its mix of `acq`, `cwfs` and `science` exposures.
+It plots 22 Trim quantities and the 10 hexapod LUT axes against `seq_num`, ConsDB points over
+the EFD as-of-`obs_start` step trace, with the exact ConsDB column and EFD topic named in every
+panel title, plus an `img_type` reference panel and a coverage table broken down by `img_type`.
+
+Results on that night: the ConsDB Trim (`mt_logevent_aggregated_dof`) reaches 24.1% of 510
+science exposures and **0.0% of all 114 `acq` and all 110 `cwfs` exposures**, confirming the
+`img_type='science'` gate. The hexapod LUT (`compensation_offset`) is 1.8% science, 4.4% `acq`,
+5.5% `cwfs` for the camera hexapod and 0.2% for M2 — sparse everywhere and *not* img_type-gated,
+a different failure mode. The EFD as-of lookup resolves 816 of 822 exposures for every type,
+from 437 MTAOS events.
+
+It also settles the ConsDB transform rule, which `telemetry.md` previously only inferred. Of
+the 123 exposures carrying both values, 113 agree to within 1 × 10⁻⁶ µm and 10 disagree; on
+**all 10**, exactly one MTAOS event fell inside the exposure window and the ConsDB value equals
+that event, while the EFD as-of value is the state at exposure start. The ConsDB takes a
+**within-exposure** event, not the most-recent-before one, which explains both the sparse
+coverage and the residual disagreement.
+
+### `corner_z4_vs_temperature_science.ipynb`
+
+The same thermal question as `run_dz14_truss.py`, asked on ordinary **science** exposures
+instead of FAM ones: `day_obs` 20260419 to 20260713, bands g/r/i/z. Science exposures carry
+corner-wavefront-sensor Zernikes for free, so the sample is much larger and differently
+selected than the 2465 FAM visits.
+
+The measured term is the **four-corner mean Z4 (OPD)** from `cdb_lsstcam.ccdvisit1_quicklook`,
+via `aos_state.fetch_corner_zernikes_consdb`. It is deliberately not called DZ(1,4): four field
+points cannot separate a field-constant defocus from real field tilt, and it is a different
+estimator from the 189-detector DZ fit. The batoid intrinsic is not subtracted; the notebook
+evaluates it with `lsst.ts.ofc.utils.get_intrinsic_zernikes` and finds it identical across the
+four corners to five decimal places (0.0050 µm of wavefront in g, 0.0191 µm in i), so dropping
+it moves the zero point and cannot affect any slope, though the 0.014 µm of wavefront g-to-i
+difference is a per-band offset absorbed by each per-band intercept.
+
+The total is `v1_total = v1(LUT) + v1(Trim) + v1_equivalent(four-corner mean Z4)`, with LUT and
+Trim taken from the **EFD** through `aos_trim.fetch_hexapod_lut_for_visits` and
+`fetch_aggregated_dof_for_visits` rather than the ConsDB, whose coverage of these is a third of
+science exposures at best. Both v-mode routes are used and cross-checked before any result
+depends on them: `aos_state.make_state_estimator` + `vmodes_from_dofs` for DOF → v-mode, and
+`ofc_svd.build_ofc_svd(..., n_dof=DOF22)` + `U_eff` for wavefront → v-mode.
+
+That cross-check produced a result worth recording: the canonical DOF route agrees with the
+five-coefficient `V1_HEX` / `V1_BEND` shortcut in `run_dz14_truss.py` **exactly on the hexapod
+dz axes** (−8.9153 × 10⁻⁴ per µm for the camera hexapod, −9.1035 × 10⁻⁴ per µm for M2), but the
+shortcut omits nine smaller coefficients (DOF 3, 4, 8, 9, 10, 11, 13, 15, 16). Those multiply
+hexapod tilts in arcsec, which are numerically large, so on a general 22-DOF vector the two
+differ by roughly 10% (dimensionless, canonical over shortcut). The notebook uses the canonical
+route throughout.
+
+Temperatures come from ConsDB `efd_lsstcam.exposure_efd` using the `aos_consdb_efd.TEMP_COLS`
+names. The camera-body environmental sensing system (ESS) at salIndex 1 — `cam_hex_temp_0..7` —
+carries **no data on any of the 27671 science visits in this range**, so the camera variable is
+the camera *air* temperature from the salIndex-111 ESS, whose channel 0 is the only populated
+one; truss and ambient are 89.7% populated. The notebook measures this coverage rather than
+assuming it, and labels the axis for whichever source it actually used.
+
+The per-visit pull is cached to
+`output/notebooks/correlations/corner_z4_vs_temperature_science_<first>_<last>.parquet`, since
+the EFD LUT and Trim queries cost roughly 20 s per night over about 50 nights.
+
+#### Results on science exposures
+
+27671 science visits in g/r/i/z over 52 nights, of which 25430 carry a finite `v1_total`; the
+LUT and Trim resolve for all 27671, the four corner Z4 values for 91.0%, and the temperatures
+for 89.7%. Pooled over bands:
+
+| v-mode 1 form | Huber slope [dimensionless per °C] | Pearson r | Spearman rho | n | residual nMAD |
+|---|---|---|---|---|---|
+| LUT + Trim | +0.10524 ± 0.00163 | +0.341 | +0.396 | 24831 | 0.5171 |
+| LUT + Trim + measured | +0.09242 ± 0.00186 | +0.289 | +0.321 | 22824 | 0.5660 |
+| measured Z4 alone | −0.00150 ± 0.00050 | −0.007 | −0.008 | 22824 | 0.1540 |
+
+Two conclusions, both consistent with the FAM analysis reached by an independent route:
+
+- **The commanded state tracks truss temperature at the same rate.** LUT + Trim gives
+  +0.10524 ± 0.00163 per °C here against +0.1811 ± 0.0043 per °C pooled on FAM visits, and the
+  per-band g value of +0.0966 ± 0.0018 per °C sits on top of the +0.09634 per °C from the lower
+  FAM Trim population. Through the same chain that page 20 of the `run_dz14_truss.py` PDF sets
+  out, +0.10524 per °C implies **116.8 µm of hexapod dz per °C**, against 102.6 µm per °C for
+  `v1_total` and 94 µm per °C for a 7835 mm steel truss at 12 ppm per °C.
+- **The measured wavefront carries no truss-temperature signal.** The four-corner mean Z4 term
+  alone has Huber slope −0.00150 ± 0.00050 per °C with Pearson r = −0.007 and Spearman
+  rho = −0.008 over n = 22824 — a slope 70× smaller than the commanded one and a correlation
+  indistinguishable from zero. This is the science-exposure counterpart of the FAM result that
+  truss temperature accounts for almost none of the uniform defocus, and it is reached from
+  corner-sensor OPD rather than a 189-detector DZ fit.
+
+The per-band slopes for `v1_total` against truss temperature run +0.1153 ± 0.0022 (g, n = 2394),
++0.1156 ± 0.0017 (r, n = 5224), +0.0913 ± 0.0012 (i, n = 9551) and +0.1017 ± 0.0016 per °C
+(z, n = 5655) — consistent to about 20% across bands, with the i band lowest. Ambient and camera
+air temperature give the same picture at slightly shallower slopes (`v1_total`: +0.07083 ± 0.00174
+and +0.07925 ± 0.00178 per °C respectively), as expected for quantities correlated with the truss
+temperature rather than independent of it.
+
+The sign of the measured term is not determined by this data: the two choices differ by 0.56%
+in residual nMAD, because the measured term (nMAD 0.1535, dimensionless) is far too small
+against LUT + Trim (nMAD 0.5957) for the truss relation to distinguish them. The notebook
+reports both and says so rather than presenting the marginally tighter choice as a result.
 
 ## See also
 

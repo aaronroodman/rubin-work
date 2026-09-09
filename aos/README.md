@@ -109,7 +109,7 @@ outputs and current state of every one.
 | [`fam_processing`](docs/studies/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
 | [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](docs/studies/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
-| [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry |
+| [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry; the uniform-defocus term against truss temperature on both FAM and science exposures; and where the ConsDB copy of the AOS degree-of-freedom values agrees with the EFD |
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](docs/studies/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
