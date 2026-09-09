@@ -55,6 +55,9 @@ MI_PSETS = list((MI_DOC or {}).get("measured_intrinsics", {}))
 # compute node, so run_snake.sh --mode batch passes --config attach_telemetry=0 and the
 # target drops out of `rule all`. Attach it afterwards with a local run, or directly:
 #   python code/fam_processing/run_attach_telemetry.py --param-set <ps> --all-chunks --merge
+# Every EFD-querying group (gradients, camera, hexlut, trim) lives inside this one rule,
+# so this switch is the single point that keeps EFD access out of batch. A new EFD group
+# belongs here rather than in a rule of its own.
 ATTACH_TELEMETRY = str(config.get("attach_telemetry", 1)).lower() not in ("0", "false", "no")
 
 def phrase(ps):                                   # matches run_pipeline / intrinsics_lib
@@ -287,8 +290,8 @@ rule combine_visits:
     shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
 
 # ---- per param_set: attach all per-visit telemetry, then merge into the visits tables ----
-# One pass over every chunk: thermal, M1M3 gradients, wind, camera body, mirror LUT, Trim
-# and a derived Tweak. Each chunk gets a telemetry.parquet, which --merge joins into both
+# One pass over every chunk: thermal, M1M3 gradients, wind, camera body, mirror LUT,
+# hexapod LUT, Trim and a derived Tweak. Each chunk gets a telemetry.parquet, which --merge joins into both
 # the per-chunk and the combined visits.parquet. Because the sidecars are the source of
 # truth, re-running combine_visits and then this rule's --merge restores the columns.
 rule attach_telemetry:

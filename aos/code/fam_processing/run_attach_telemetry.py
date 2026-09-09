@@ -22,9 +22,26 @@ group                 source    why
 ``wind``              ConsDB    88.6% and currently thrown away entirely
 ``camera``            EFD       camera-body temperatures are not in ConsDB at all
 ``lut``               ConsDB    M1M3 elevation + M2 gravity LUT join 400/400 sampled
+``hexlut``            EFD       hexapod LUT: ConsDB covers 7.7% (cam) / 0.0% (M2) of cwfs
 ``trim``              EFD       0% on FAM (cwfs) exposures in ConsDB -- no ConsDB path
 ``tweak``             derived   no topic and no property exists; differenced from Trim
 ===================== ========= ==========================================================
+
+Three distinct DOF quantities are attached, and they are **not** interchangeable:
+
+===================== ==================== ===================================================
+quantity              columns              meaning
+===================== ==================== ===================================================
+LUT (hexapod)         ``lut_dof0..9``      baseline from the hexapod elevation/rotator/filter
+                                           lookup, ``MTHexapod.logevent_compensationOffset``
+LUT (mirror)          ``m1m3elev_*``,      axial forces from the M1M3 elevation and M2 gravity
+                      ``m2grav_*``         LUTs, in N (never changed from mirror-lab values)
+Trim                  ``dof0..49``         accumulated AOS offset *from* the LUT,
+                                           ``MTAOS.logevent_degreeOfFreedom.aggregatedDoF``
+Tweak                 ``tweak_dof0..49``   the per-iteration correction, ``Trim_i - Trim_(i-1)``
+===================== ==================== ===================================================
+
+A physical hexapod position is LUT + Trim; neither alone is the position.
 
 Telemetry that predates its deployment is filled with NaN, which is expected rather than a
 failure: much of this was added gradually through commissioning in 2025.
@@ -69,7 +86,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))           # aos/cod
 from common.telemetry_clients import (  # noqa: E402
     PAD_SEC, make_consdb_client, make_efd_client)
 
-GROUPS = ('thermal', 'gradients', 'wind', 'camera', 'lut', 'trim', 'tweak')
+GROUPS = ('thermal', 'gradients', 'wind', 'camera', 'lut', 'hexlut', 'trim', 'tweak')
+
+# Hexapod LUT axis order, matching the first 10 entries of the 50-DOF OFC state
+# (m2HexPos 0-4, camHexPos 5-9). z/x/y in µm, u/v in deg -- note the OFC state uses
+# arcsec for the angular axes, so lut_dof3/4/8/9 are NOT directly comparable to dof3/4/8/9
+# without a unit conversion; the dz axes lut_dof0 and lut_dof5 are.
+HEXLUT_COLS = [f'lut_dof{k}' for k in range(10)]
 
 # ESS / truss / gradient columns kept from the package's get_thermal_data. The ~180
 # per-thermocouple m1m3_tc_* and per-cell m1m3_dt_* columns are dropped: they bloat the
@@ -399,6 +422,24 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
             if verbose:
                 print(f'    lut: {len(lut.columns) - 1} axial-force cols')
 
+    if 'hexlut' in groups:
+        import aos_trim
+        from astropy.table import QTable
+        try:
+            # The hexapod LUT (MTHexapod.logevent_compensationOffset) is the baseline the
+            # Trim is an offset from, so a physical hexapod position needs both. ConsDB's
+            # *_compensation_offset_z covers only 7.7% (camera) and 0.0% (M2) of cwfs
+            # exposures, so this is EFD-only -- see docs/telemetry.md.
+            hlut, hinfo = aos_trim.fetch_hexapod_lut_for_visits(
+                QTable.from_pandas(keys), efd_client=efd, consdb_client=cdb,
+                consdb_url=consdb_url)
+            out = pd.concat([out, pd.DataFrame(hlut, columns=HEXLUT_COLS,
+                                               index=out.index)], axis=1)
+            if verbose:
+                print(f"    hexlut: {hinfo.get('n_lut')}/{n} visits with all 10 axes")
+        except Exception as e:
+            print(f'    hexlut FAILED: {type(e).__name__}: {str(e)[:200]}')
+
     if 'trim' in groups or 'tweak' in groups:
         import aos_trim
         from astropy.table import QTable
@@ -454,7 +495,24 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
         except Exception as e:
             print(f'    thermal FAILED: {type(e).__name__}: {str(e)[:140]}')
 
+    # Preserve columns an earlier run fetched. `out` holds only the groups requested this
+    # time, so writing it directly would drop every other group's columns from the
+    # sidecar -- and the sidecar is the source of truth the merge step reads. Columns
+    # fetched now win; columns only in the old sidecar are carried forward.
     sidecar = Path(chunk_dir) / 'telemetry.parquet'
+    if sidecar.exists():
+        old = pq.read_table(str(sidecar)).to_pandas()
+        on = [c for c in ('day_obs', 'seq_num') if c in old.columns and c in out.columns]
+        if not on:
+            on = [c for c in ('visit',) if c in old.columns and c in out.columns]
+        if on:
+            carry = [c for c in old.columns if c not in out.columns]
+            if carry:
+                out = out.merge(old[on + carry], on=on, how='left')
+                if verbose:
+                    print(f'    carried forward {len(carry)} existing sidecar cols')
+        else:
+            print('    WARNING: cannot key the existing sidecar; not carrying it forward')
     pq.write_table(pa.Table.from_pandas(out, preserve_index=False), str(sidecar))
     cols = [c for c in out.columns if c not in ('day_obs', 'seq_num', 'visit', 'mjd')]
     if verbose:
