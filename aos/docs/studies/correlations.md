@@ -53,10 +53,10 @@ term is small either way: v1 Deviation has nMAD 0.0281 against 0.7321 for LUT + 
 `vmode_correlations_{50_34,22_12}.pdf` + summary parquets,
 `thermal_correlations.pdf` + `_summary.parquet`, `dz_explained.{pdf,parquet}`,
 `<ps>/correlations/aberration_pairs.{pdf,_summary.parquet}`, and
-`<ps>/correlations/dz14_truss_<dz_prefix>.{pdf,_summary.parquet}` (18 pages: four
+`<ps>/correlations/dz14_truss_<dz_prefix>.{pdf,_summary.parquet}` (20 pages: four
 one-per-page truss scatters, LUT validation, v1 LUT vs v1 Trim coloured by time, the
-pooled and split Trim populations, the DZ(1,4) time history, then nine pages of per-night
-traces).
+pooled and split Trim populations, the DZ(1,4) time history, nine pages of per-night
+traces, then the conversion constants and page 1 of the LTS-213 drawing).
 
 Every DZ(1,4) panel carries a second y-axis giving the equivalent hexapod dz in µm. The
 conversion is taken from the singular-value decomposition rather than fitted: v-mode 1 is
@@ -100,6 +100,37 @@ that (n = 1591 throughout):
 | LUT alone | +0.1212 ± 0.0046 | +0.413 | +0.556 |
 | LUT + Trim | +0.1811 ± 0.0043 | +0.588 | +0.683 |
 | LUT + Trim + Deviation | +0.1829 ± 0.0043 | +0.589 | +0.680 |
+
+## Thermal interpretation of the commanded focus
+
+The commanded focus tracking is quantitatively consistent with a thermally expanding steel
+truss, which the final page of the PDF sets out as a chain of three conversions:
+
+| quantity | value | source |
+|---|---|---|
+| d(v1) / d(truss T) | +0.09634 per °C (dimensionless v-mode amplitude per °C) | Huber slope of the lower Trim population, n = 1367 |
+| v1 per hexapod dz | 9.0095 × 10⁻⁴ per µm | mean of the camera- and M2-hexapod dz coefficients of v-mode 1 |
+| DZ(1,4) to hexapod dz | −1110.0 µm per µm of wavefront | `U_eff[(1,4),0]` = −0.999919 |
+
+Dividing the first by the second gives **106.9 µm of hexapod dz per °C**, equivalently
+0.0963 µm of wavefront of DZ(k=1, j=4) per °C. A steel truss of the LTS-213 length,
+7835 mm from the elevation axis to the top of the lower top-end right light baffle, expands
+94 µm per °C at a coefficient of thermal expansion of 12 ppm per °C. The ratio is 1.14
+(dimensionless, measured over predicted) — agreement to 14%. Attributing the excess to
+geometry alone would need an effective length of 8911 mm; attributing it to material alone
+would need 13.6 ppm per °C at the LTS-213 length.
+
+Note that this is the *commanded* sensitivity, from the LUT and Trim. It does not contradict
+the measured DZ(1,4) being nearly uncorrelated with truss temperature: the hexapod is being
+driven as though the truss were expanding thermally, and the residual defocus that survives
+that correction is what the earlier sections show has no truss-temperature dependence.
+
+Page 1 of the LTS-213 assembly drawing is appended to show where the length is measured, and
+is available at <https://docushare.lsst.org/docushare/dsweb/Get/LTS-213>. It is not kept in
+this repository; `--lts213-pdf` points at a local copy, defaulting to
+`~/Documents/LSST/LTS-213.pdf`, and the page is skipped if the file is absent. Its dimension callouts render as mojibake under
+both MuPDF and Ghostscript because the drawing embeds Identity-H Arial subsets whose font
+programs neither engine can parse; the geometry and the notes block are unaffected.
 
 ## Two Trim populations
 
@@ -180,7 +211,8 @@ python code/correlations/run_dz14_truss.py \
 ```
 
 `--min-contig-triplets` sets how long a contiguous FAM block a night must contain to appear
-on the trace pages, which are laid out 6 panels per page.
+on the trace pages, which are laid out 6 panels per page. `--lts213-pdf` points at the
+LTS-213 drawing for the final page.
 
 ## Notebooks
 

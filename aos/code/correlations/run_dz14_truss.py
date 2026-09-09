@@ -41,6 +41,13 @@ derived from the SVD rather than fitted: v-mode 1 is almost purely DZ(1,4), so d
 mean of the camera- and M2-hexapod dz coefficients by ``U_eff[(1,4), 0]`` gives about
 -1110 µm of hexapod dz per µm of wavefront of DZ(1,4).
 
+The last two pages close the loop on the thermal interpretation. Chaining the v-mode-1
+sensitivity to truss temperature through the v-mode-1 hexapod dz coefficient gives about
+107 µm of hexapod dz per °C, against 94 µm per °C for a 7835 mm steel truss at 12 ppm per
+°C -- agreement to 14%, so the commanded focus tracking is consistent with a thermally
+expanding truss. The truss length is taken from the LTS-213 assembly drawing, page 1 of
+which is appended when available.
+
 Fits are Huber M-estimators (`statsmodels` RLM with `HuberT`), and both Pearson r and
 Spearman rho are reported, per the repository's convention for AOS correlations.
 
@@ -104,6 +111,175 @@ LUT_FIX_MJD = 61018.0
 # hexapod dz. The camera and M2 values differ by only 2.1%, so a single effective dz is a
 # meaningful secondary axis on the DZ(1,4) plots.
 V1_PER_UM_DZ = 0.5 * (abs(V1_HEX[5]) + abs(V1_HEX[0]))   # [1/µm], = 9.0095e-4
+
+# Thermal cross-check of the focus--temperature chain. The truss length is taken from the
+# LTS-213 telescope assembly drawing, from the elevation axis to the top of the lower top-end
+# right light baffle, and steel is used for the coefficient of thermal expansion.
+TRUSS_LENGTH_MM = 7835.0
+STEEL_CTE_PER_C = 12e-6
+
+# Page 1 of the LTS-213 telescope assembly drawing, included in the PDF to show where the
+# truss length is measured. Not in this repository (it is a controlled document, and large);
+# pass --lts213-pdf to point at a copy elsewhere.
+LTS213_DEFAULT = '~/Documents/LSST/LTS-213.pdf'
+LTS213_URL = 'https://docushare.lsst.org/docushare/dsweb/Get/LTS-213'
+
+
+def constants_page(pdf, df, dz_to_um, trim_slope=None):
+    """A text page of the conversion constants and the thermal cross-check.
+
+    Chains the measured v-mode-1 sensitivity to truss temperature through the v-mode-1
+    hexapod dz coefficient to get an equivalent hexapod motion per °C, and compares that
+    against the thermal expansion of a steel truss of the LTS-213 length.
+
+    Parameters
+    ----------
+    dz_to_um : `float`
+        Effective hexapod dz in µm per µm of wavefront of DZ(k=1, j=4); negative.
+    trim_slope : `float`, optional
+        Huber slope of v-mode 1 from LUT+Trim against truss temperature, in dimensionless
+        v-mode amplitude per °C. Taken from the lower Trim population, which holds 1367 of
+        the 1591 visits with a truss temperature.
+    """
+    um_per_c = trim_slope / V1_PER_UM_DZ if trim_slope else np.nan
+    exp_um_per_c = TRUSS_LENGTH_MM * 1e3 * STEEL_CTE_PER_C
+    dz14_per_c = um_per_c / abs(dz_to_um) if np.isfinite(dz_to_um) else np.nan
+
+    lines = [
+        ('h', 'Measured chain: truss temperature to focus'),
+        ('r', 'd(v1) / d(truss T)',
+         f'{trim_slope:+.5f} per deg C',
+         'dimensionless v-mode 1 amplitude per deg C; Huber slope of the lower Trim '
+         'population (n=1367)'),
+        ('r', 'v1 per hexapod dz',
+         f'{V1_PER_UM_DZ:.4e} per um',
+         'mean of the camera-hexapod dz and M2-hexapod dz coefficients of v-mode 1, '
+         'which agree to 2.1%'),
+        ('r', 'DZ(1,4) to hexapod dz',
+         f'{dz_to_um:+.1f} um per um',
+         'um of effective hexapod dz per um of wavefront of DZ(k=1, j=4); from '
+         'U_eff[(1,4),0] = -0.999919'),
+        ('b', 'implied focus sensitivity',
+         f'{um_per_c:.1f} um of hexapod dz per deg C',
+         'the first two rows divided: (d v1 / d T) / (v1 per um of dz)'),
+        ('r', 'equivalently, in wavefront',
+         f'{dz14_per_c:.4f} um of wavefront per deg C',
+         'the same sensitivity expressed as DZ(k=1, j=4)'),
+        ('h', 'Thermal cross-check: steel truss expansion'),
+        ('r', 'truss length',
+         f'{TRUSS_LENGTH_MM:.0f} mm',
+         'LTS-213, elevation axis to the top of the lower top-end right light baffle; '
+         f'see {LTS213_URL}'),
+        ('r', 'coefficient of thermal expansion',
+         f'{STEEL_CTE_PER_C * 1e6:.0f} ppm per deg C',
+         'steel'),
+        ('b', 'predicted expansion',
+         f'{exp_um_per_c:.0f} um per deg C',
+         'length times coefficient of thermal expansion'),
+        ('h', 'Comparison'),
+        ('b', 'measured / predicted',
+         f'{um_per_c / exp_um_per_c:.2f} (dimensionless)',
+         f'{um_per_c:.0f} um per deg C measured against {exp_um_per_c:.0f} um per deg C '
+         'from the steel truss'),
+        ('r', 'implied effective length',
+         f'{um_per_c / STEEL_CTE_PER_C / 1e3:.0f} mm',
+         f'the length a steel member would need to give {um_per_c:.0f} um per deg C'),
+        ('r', 'implied coefficient of expansion',
+         f'{um_per_c / (TRUSS_LENGTH_MM * 1e3) * 1e6:.1f} ppm per deg C',
+         f'the coefficient a {TRUSS_LENGTH_MM:.0f} mm member would need instead'),
+    ]
+
+    fig = plt.figure(figsize=(11, 8.5))
+    fig.text(0.5, 0.955, 'Conversion constants: uniform defocus, hexapod dz and truss '
+             'temperature', ha='center', fontsize=13)
+    fig.text(0.5, 0.925, 'the commanded focus sensitivity to truss temperature agrees '
+             'with a thermally expanding steel truss to '
+             f'{abs(um_per_c / exp_um_per_c - 1) * 100:.0f}%',
+             ha='center', fontsize=10, style='italic')
+    y = 0.875
+    for kind, *rest in lines:
+        if kind == 'h':
+            y -= 0.016
+            fig.text(0.06, y, rest[0], fontsize=11, weight='bold')
+            fig.text(0.06, y - 0.011, '_' * 118, fontsize=7, color='0.6')
+            y -= 0.040
+            continue
+        name, value, note = rest
+        weight = 'bold' if kind == 'b' else 'normal'
+        color = 'C0' if kind == 'b' else 'k'
+        fig.text(0.08, y, name, fontsize=10, weight=weight)
+        fig.text(0.42, y, value, fontsize=10, weight=weight, color=color,
+                 family='monospace')
+        fig.text(0.08, y - 0.019, note, fontsize=8, color='0.35')
+        y -= 0.049
+
+    fig.text(0.06, 0.045,
+             'All v-mode amplitudes are dimensionless; the v-mode-1 basis vector is '
+             '99.98% DZ(k=1, j=4), so a\nunit v-mode amplitude is very nearly one um of '
+             'wavefront of uniform defocus. The sign convention\nis that a positive '
+             'DZ(k=1, j=4) corresponds to a negative hexapod dz.',
+             fontsize=8, color='0.35')
+    pdf.savefig(fig)
+    plt.close(fig)
+    return dict(kind='constants', x='truss', y='dz14',
+                trim_slope_per_c=float(trim_slope) if trim_slope else np.nan,
+                v1_per_um_dz=float(V1_PER_UM_DZ), dz14_to_um_hex=float(dz_to_um),
+                um_hex_per_c=float(um_per_c), truss_length_mm=float(TRUSS_LENGTH_MM),
+                steel_cte_per_c=float(STEEL_CTE_PER_C),
+                thermal_um_per_c=float(exp_um_per_c),
+                measured_over_thermal=float(um_per_c / exp_um_per_c))
+
+
+def lts213_page(pdf, path):
+    """Append page 1 of the LTS-213 telescope assembly drawing, if it is available.
+
+    The drawing shows where the truss length used in `constants_page` is measured. It is not
+    in this repository, so a missing file is reported and skipped rather than raising.
+
+    Parameters
+    ----------
+    path : `str` or `None`
+        Path to the LTS-213 PDF; ``~`` is expanded.
+
+    Returns
+    -------
+    ok : `bool`
+        True if the drawing page was added.
+    """
+    if not path:
+        return False
+    p = pathlib.Path(path).expanduser()
+    if not p.is_file():
+        print(f'  LTS-213 drawing not found at {p} -- skipping that page')
+        return False
+    try:
+        import fitz
+    except ImportError:
+        print('  pymupdf not available -- skipping the LTS-213 drawing page')
+        return False
+    doc = fitz.open(str(p))
+    pix = doc[0].get_pixmap(dpi=200)
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    doc.close()
+
+    fig = plt.figure(figsize=(11, 8.5))
+    ax = fig.add_axes([0.03, 0.03, 0.94, 0.88])
+    ax.imshow(img[:, :, :3] if pix.n >= 3 else img[:, :, 0], cmap=None)
+    ax.axis('off')
+    fig.suptitle('LTS-213 telescope assembly, page 1\n'
+                 f'the truss length used above, {TRUSS_LENGTH_MM:.0f} mm, runs from the '
+                 'elevation axis to the top of the\nlower top-end right light baffle',
+                 fontsize=10)
+    fig.text(0.5, 0.030,
+             'The dimension callouts render as mojibake: the drawing embeds Identity-H '
+             'Arial subsets whose font programs neither\nMuPDF nor Ghostscript can parse, '
+             'so CIDs fall through as raw codes. The geometry and the notes are unaffected; '
+             'read\nthe dimensions from the source document.',
+             ha='center', fontsize=7, color='0.35')
+    fig.text(0.5, 0.008, LTS213_URL, ha='center', fontsize=7, color='0.35')
+    pdf.savefig(fig)
+    plt.close(fig)
+    return True
 
 
 def robust_line(x, y):
@@ -686,6 +862,10 @@ def main():
     ap.add_argument('--min-contig-triplets', type=int, default=MIN_CONTIG_TRIPLETS,
                     help='a night is shown if it has a contiguous block of this many '
                          'FAM triplets (default %(default)s)')
+    ap.add_argument('--lts213-pdf', default=LTS213_DEFAULT,
+                    help='LTS-213 telescope assembly drawing, page 1 of which is appended '
+                         'after the constants page; skipped if absent '
+                         f'(default %(default)s, from {LTS213_URL})')
     args = ap.parse_args()
 
     out = pathlib.Path(args.output_dir or
@@ -787,9 +967,21 @@ def main():
                      'shown for information; no fit', fit=False,
                      dz_to_um=dz_to_um, color='C4')
 
-        # last pages: every night with a long enough contiguous FAM block
+        # per-night traces
         pick = night_trace_pages(pdf, df, dz_to_um, args.min_contig_triplets)
         print(f'\n  trace pages show day_obs: {", ".join(str(d) for d in pick)}')
+
+        # last pages: the conversion constants and the LTS-213 drawing they refer to
+        trim_slope = split['fit_lo']['slope'] if split is not None else None
+        crow = constants_page(pdf, df, dz_to_um, trim_slope)
+        rows.append(crow)
+        print(f"\n  focus sensitivity implied by the chain: "
+              f"{crow['um_hex_per_c']:.1f} um of hexapod dz per deg C, against "
+              f"{crow['thermal_um_per_c']:.0f} um per deg C for a "
+              f"{TRUSS_LENGTH_MM:.0f} mm steel truss at "
+              f"{STEEL_CTE_PER_C * 1e6:.0f} ppm per deg C "
+              f"(ratio {crow['measured_over_thermal']:.2f}, dimensionless)")
+        lts213_page(pdf, args.lts213_pdf)
 
     print(f'\nSaved: {pdf_path}')
     sm_path = out / f'dz14_truss_{args.dz_prefix}_summary.parquet'
