@@ -2,6 +2,7 @@
 
 > **Status:** current · **Last updated:** 2026-09-09 · **Kind:** reference (study)
 
+
 Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
 the measured intrinsic is subtracted: against each other, against Optical Feedback
 Control (OFC) v-modes, and against telescope telemetry. Also the per-donut
@@ -22,7 +23,7 @@ intrinsic build.
 | `run_thermal_correlations.py` | DZ_kj × EFD temperature-variable Pearson heatmap plus per-term scatter pages |
 | `run_dz_explained.py` | per-visit fraction of the measured DZ explained by the OFC sensitivity subspace, 22/12 and 50/34 |
 | `run_aberration_pairs.py` | per-donut primary→secondary aberration pairs (defocus→spherical, astigmatism→2nd astigmatism, and so on), split into quartiles of the primary |
-| `run_dz14_truss.py` | the focal-plane-uniform defocus DZ(k=1, j=4) against Telescope Mount Assembly (TMA) truss temperature, and against v-mode 1 reconstructed from the commanded degrees of freedom in three cumulative forms (LUT, LUT+Trim, LUT+Trim+Deviation); includes a hexapod-LUT validation page and per-night traces of DZ(1,4) overlaid with truss temperature |
+| `run_dz14_truss.py` | the focal-plane-uniform defocus DZ(k=1, j=4) against Telescope Mount Assembly (TMA) truss temperature, and against v-mode 1 reconstructed from the commanded degrees of freedom in three cumulative forms (LUT, LUT+Trim, LUT+Trim+Deviation); includes a DZ(1,4) time history, a hexapod-LUT validation page and per-night traces of DZ(1,4) overlaid with truss temperature |
 
 `run_aberration_pairs.py` works on the **Phase-1** per-donut `zk_<coord>` values in
 `donuts.parquet`, so it needs no `mi_name` and writes to `output/<ps>/correlations/`.
@@ -52,9 +53,16 @@ term is small either way: v1 Deviation has nMAD 0.0281 against 0.7321 for LUT + 
 `vmode_correlations_{50_34,22_12}.pdf` + summary parquets,
 `thermal_correlations.pdf` + `_summary.parquet`, `dz_explained.{pdf,parquet}`,
 `<ps>/correlations/aberration_pairs.{pdf,_summary.parquet}`, and
-`<ps>/correlations/dz14_truss_<dz_prefix>.{pdf,_summary.parquet}` (11 pages: four
+`<ps>/correlations/dz14_truss_<dz_prefix>.{pdf,_summary.parquet}` (18 pages: four
 one-per-page truss scatters, LUT validation, v1 LUT vs v1 Trim coloured by time, the
-pooled and split Trim populations, then three pages of per-night traces).
+pooled and split Trim populations, the DZ(1,4) time history, then nine pages of per-night
+traces).
+
+Every DZ(1,4) panel carries a second y-axis giving the equivalent hexapod dz in µm. The
+conversion is taken from the singular-value decomposition rather than fitted: v-mode 1 is
+99.98% DZ(k=1, j=4) by the first entry of `U_eff` (−0.999919, dimensionless), and the
+camera- and M2-hexapod dz coefficients of v-mode 1 agree to 2.1%, so their mean
+9.0095 × 10⁻⁴ per µm gives **−1110.03 µm of hexapod dz per µm of wavefront of DZ(1,4)**.
 
 The first four currently share `<mi>/plots/` with the bounce and coadd output; splitting
 them per study is outstanding work.
@@ -68,12 +76,20 @@ r = −0.124, Spearman rho = −0.108, n = 1591, residual nMAD 0.444 µm of wave
 the full 13 °C range spanned by the data that trend gives only 0.43 µm of wavefront,
 against a total DZ(1,4) scatter of 0.490 µm of wavefront (nMAD, n = 2465).
 
-The per-night traces make the same point without any averaging. On day_obs 20260423,
-DZ(1,4) spans 1.438 µm of wavefront while the truss temperature moves 0.163 °C, within a
-single LUT plateau; at the pooled slope that temperature motion predicts 0.005 µm of
-wavefront, some 270× smaller than observed. day_obs 20260404 is comparable at 1.633 µm of
-wavefront against 0.401 °C. Whatever drives the intra-night focus excursions, truss
-temperature is not it.
+The per-night traces make the same point without any averaging. On day_obs 20251026,
+DZ(1,4) spans 3.290 µm of wavefront while the truss temperature moves 0.446 °C, across only
+two LUT plateaux; at the pooled slope that temperature motion predicts 0.015 µm of
+wavefront, some 220× smaller than observed. day_obs 20251215 spans the same 3.290 µm of
+wavefront against 0.811 °C, and day_obs 20260423 spans 1.438 µm of wavefront against
+0.163 °C inside a single LUT plateau. Whatever drives the intra-night focus excursions,
+truss temperature is not it.
+
+The trace pages show every night carrying at least one contiguous block of 12 Full Array
+Mode (FAM) triplets, using the same block definition as the coadd study — a new block
+starts whenever `day_obs` changes or `seq_num` advances by other than the triplet spacing of
+3. That is a criterion on the observing pattern, not on any value of DZ(1,4), so the figure
+is not selected on the result. 49 of 97 nights qualify, of which 34 also carry a truss
+temperature; the remaining 15 are shown with an empty truss trace rather than dropped.
 
 The commanded v-mode 1 does track truss temperature, as expected from a hexapod LUT that
 is a function of elevation and temperature, and adding successive terms barely changes
@@ -107,17 +123,24 @@ then reports the date ranges rather than assuming a cut date.
 
 ## Hexapod LUT validation
 
-v-mode 1 from the LUT against elevation traces several distinct parallel curves rather
-than one, each a different LUT version. Fitting a cubic in elevation and taking the
-residual separates the LUT changes from the elevation dependence itself, and confirms that
-the LUT settled at the end of 2025: residual nMAD 0.9310 (n = 904) before day_obs
-20251101 versus 0.0859 (n = 1515) on and after, a factor 10.8 reduction, both
-dimensionless. Against camera rotator angle v1 LUT is flat, as it must be — the hexapod
-LUT has no rotator dependence, so that panel is a null test.
+The hexapod LUT is a two-dimensional function of elevation and camera rotator angle, so
+neither one-dimensional projection is expected to be a single curve, and structure against
+rotator angle is not a defect. v-mode 1 from the LUT against elevation traces several
+distinct parallel branches, each a different LUT version, and the time history places the
+last LUT change on or about day_obs 20251209. The map itself is therefore drawn as the mean
+v1 LUT over 5 deg × 10 deg bins in (elevation, camera rotator angle), restricted to
+day_obs ≥ 20251209 so that a single LUT version is in force: 1267 visits, 56 of 180 bins
+occupied, spanning elevation 22.9 to 75.0 deg and rotator angle −70.1 to +60.2 deg.
 
 The v1 LUT versus v1 Trim scatter separates into two clusters that the time colouring
 identifies as epochs, not distinct physical states: the lower-right cluster is the first
 ~100 days of the sample and the upper-left cluster days 200 to 350.
+
+The DZ(1,4) time-history page is information only, with no fit. It marks the 2025-12-09 LUT
+change, after which the uniform defocus is no quieter: median per-night nMAD 0.1670 µm of
+wavefront over the 65 nights before against 0.2258 µm of wavefront over the 32 nights on
+and after, with pooled nMAD 0.5272 (n = 1198) and 0.4732 (n = 1267). The intra-night
+excursions above are therefore not an artefact of an unsettled LUT version.
 
 ## Statistical cautions
 
@@ -156,10 +179,8 @@ python code/correlations/run_dz14_truss.py \
   --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 ```
 
-The nights on the trace pages are drawn at random from those with at least 10 visits and
-10 truss-temperature readings — a requirement on coverage, not on any value of DZ(1,4), so
-the figure is not selected on the result. `--seed` fixes the draw and `--n-days` sets how
-many nights to show, 6 panels per page.
+`--min-contig-triplets` sets how long a contiguous FAM block a night must contain to appear
+on the trace pages, which are laid out 6 panels per page.
 
 ## Notebooks
 
