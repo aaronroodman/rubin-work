@@ -3,26 +3,43 @@
 
 DZ(k=1, j=4) is the focal-plane-uniform part of the Zernike Z4 (defocus) wavefront: the
 k=1 focal Zernike is a constant over the field, so this single coefficient is the mean
-defocus of the whole focal plane, in µm of wavefront. Truss temperature is known to
-correlate with focus changes, and this script asks how much of DZ(1,4) it actually
-explains -- separately for the drift between Full Array Mode (FAM) sequences and the large
-swings seen within a single sequence.
+defocus of the whole focal plane, in µm of wavefront. Telescope Mount Assembly (TMA) truss
+temperature is known to correlate with focus changes, and this script asks how much of
+DZ(1,4) it actually explains -- separately for the drift between Full Array Mode (FAM)
+sequences and the large swings seen within a single night.
 
-Alongside it the script reconstructs v-mode 1 of the Optical Feedback Control (OFC) 22-DOF
-/ 12-v-mode scheme from the commanded degrees of freedom, so the measured focus can be
-compared against the commanded optical state. v-mode 1 is dominated by the two hexapod
-dz axes (99.8% of its normalized weight), and a hexapod position is the look-up table
-(LUT) baseline plus the accumulated Trim offset, so both terms are included:
+Alongside it the script builds v-mode 1 of the Optical Feedback Control (OFC) 22-degree-of-
+freedom (DOF) / 12-v-mode scheme in three cumulative forms, so that the measured focus can
+be compared against the commanded optical state:
 
-    v1 = C_CamHexdz * (lut_dof5 + dof5) + C_M2Hexdz * (lut_dof0 + dof0)
-         + C_M1M3B3 * dof12 + C_M2B5 * dof34 + C_M2B4 * dof33
+- **LUT**       -- the hexapod look-up table baseline, from ``lut_dof0`` and ``lut_dof5``.
+- **LUT+Trim**  -- plus the accumulated Trim offset (``dof0``, ``dof5`` and the three
+  mirror bending terms). A physical hexapod position is LUT + Trim; neither term alone is
+  the position, and on the camera-hexapod dz axis the two are strongly anti-correlated, so
+  a v-mode from the Trim alone has the wrong variance rather than merely a missing offset.
+- **LUT+Trim+Deviation** -- plus the v-mode 1 amplitude of the *measured* Double Zernike
+  (DZ), obtained by projecting the raw DZ fit onto the same OFC singular-value
+  decomposition (SVD) that defines the v-modes. This is the closest thing to the true
+  optical state: commanded position plus the departure the wavefront actually measured.
+
+The commanded part uses per-DOF coefficients from the ts_ofc StateEstimator:
+
+    v1_cmd = C_CamHexdz * (lut_dof5 + dof5) + C_M2Hexdz * (lut_dof0 + dof0)
+             + C_M1M3B3 * dof12 + C_M2B5 * dof34 + C_M2B4 * dof33
 
 The mirror-mode LUT is omitted deliberately: it has never been changed from the
-mirror-laboratory values, and the three mirror bending terms carry only 0.063 of v-mode 1's
-normalized weight in total.
+mirror-laboratory values, and the three mirror bending terms carry only 0.063 of v-mode
+1's normalized weight in total (the two hexapod dz axes carry 0.759 and 0.650).
+
+The Deviation sign is not fixed a priori -- the measured wavefront could add to or oppose
+the commanded state -- so both signs are evaluated against truss temperature and the one
+giving the tighter residual is used for the cumulative panel, with the alternative
+reported in the summary table.
 
 Fits are Huber M-estimators (`statsmodels` RLM with `HuberT`), and both Pearson r and
 Spearman rho are reported, per the repository's convention for AOS correlations.
+
+Needs `lsst.ts.ofc` and `lsst.ts.intrinsic.wavefront` for the v-mode SVD -- RSP only.
 
 Usage:
     python code/correlations/run_dz14_truss.py --param-set <ps>
@@ -40,10 +57,14 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.stats import pearsonr, spearmanr
 import statsmodels.api as sm
+from astropy.table import QTable
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))   # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))   # aos/code
-from common.utils import nmad  # noqa: E402
+from common.utils import nmad, alt_to_deg  # noqa: E402
+from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
+
+from lsst.ts.intrinsic.wavefront import ofc_svd as osv  # noqa: E402
 
 # v-mode 1 of the OFC 22_12 scheme, as v-mode amplitude per unit DOF, from the ts_ofc
 # StateEstimator (notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb). Units 1/µm.
@@ -55,8 +76,19 @@ V1_BEND = {12: +0.1172,     # M1M3 bending mode 3 [1/µm], normalized weight +0.
            34: +0.1142,     # M2 bending mode 5   [1/µm], normalized weight +0.029
            33: +0.001562}   # M2 bending mode 4   [1/µm], normalized weight +0.001
 
-SEQ_GAP = 5          # a seq_num jump larger than this starts a new FAM sequence
-MIN_SEQ_LEN = 5      # sequences shorter than this are excluded from within-sequence stats
+# A consecutive-visit change in v-mode 1 larger than this (dimensionless) is a real slew
+# rather than tracking drift. The distribution of |delta v1_lut| between consecutive
+# same-night visits is strongly bimodal -- median 0.00012, 75th percentile 0.0048, 90th
+# percentile 0.153 -- so this threshold sits in the empty gap between plateaus and slews.
+LUT_STEP = 0.05
+TRIM_STEP = 0.01     # same idea for the Trim, which steps at closed-loop alignments
+N_DAYS_SHOW = 18     # day_obs drawn at random for the per-night trace pages
+PANELS_PER_PAGE = 6
+# A night must have this many visits, and this many with a truss temperature, to be
+# eligible for the random trace draw -- both axes of the comparison need data. This is a
+# requirement on coverage, not on any value of DZ(1,4), so the draw stays unbiased.
+MIN_NIGHT_VISITS = 10
+MIN_NIGHT_TRUSS = 10
 
 
 def robust_line(x, y):
@@ -91,48 +123,102 @@ def robust_line(x, y):
                 resid_nmad=float(nmad(y - r.predict(X))))
 
 
-def label_fam_sequences(df, gap=SEQ_GAP):
-    """Integer FAM-sequence id per visit: a new night or a seq_num gap starts a sequence.
+def label_runs(df, col, step, by='day_obs'):
+    """Integer run id per visit: a new night or a jump in `col` starts a new run.
+
+    Used to group visits that share one look-up table (LUT) plateau or one Trim setting,
+    so a trace can be coloured by which commanded state was in force.
 
     Parameters
     ----------
     df : `pandas.DataFrame`
         Must be sorted by ``(day_obs, seq_num)``.
-    gap : `int`, optional
-        A ``seq_num`` increment larger than this begins a new sequence.
+    col : `str`
+        Column to watch for jumps, in its own units.
+    step : `float`
+        A consecutive-visit change larger than this, in the units of `col`, starts a new
+        run.
+    by : `str`, optional
+        Column whose change also forces a new run, normally ``day_obs``.
 
     Returns
     -------
-    seq_id : `numpy.ndarray`
-        Sequence id per row, counting from 1.
+    run_id : `numpy.ndarray`
+        Run id per row, counting from 1. NaN values in `col` never start a run.
     """
+    v = df[col].to_numpy(float)
+    b = df[by].to_numpy()
     out = np.empty(len(df), dtype=int)
-    cur, prev_day, prev_sn = 0, None, None
-    for i, (day, sn) in enumerate(zip(df['day_obs'].to_numpy(),
-                                      df['seq_num'].to_numpy())):
-        if prev_day is None or day != prev_day or (sn - prev_sn) > gap:
+    cur = 0
+    for i in range(len(df)):
+        if i == 0 or b[i] != b[i - 1]:
+            cur += 1
+        elif np.isfinite(v[i]) and np.isfinite(v[i - 1]) and abs(v[i] - v[i - 1]) > step:
             cur += 1
         out[i] = cur
-        prev_day, prev_sn = day, sn
     return out
 
 
-def load(param_set, dz_prefix):
+def project_v1(df, prefix, iZs, k_min, k_max):
+    """v-mode 1 amplitude of the measured DZ, projected onto the OFC 22_12 SVD.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Must carry the DZ coefficient columns ``{prefix}_z{j}_c{k}`` in µm of wavefront.
+    prefix : `str`
+        DZ column prefix, e.g. ``z1toz6``.
+    iZs : `list` of `int`
+        Noll indices of the pupil Zernikes the DZ fit used.
+    k_min, k_max : `int`
+        Focal-Zernike order range of the DZ fit.
+
+    Returns
+    -------
+    v1 : `numpy.ndarray`
+        v-mode 1 amplitude per visit, dimensionless.
+    """
+    svd = osv.build_ofc_svd(iZs, int(k_min), int(k_max), 12, n_dof=DOF22)
+    W = np.full((len(df), len(svd.kj_grid)), np.nan)
+    missing = 0
+    for ci, (k, j) in enumerate(svd.kj_grid):
+        col = f'{prefix}_z{j}_c{k}'
+        if col in df.columns:
+            W[:, ci] = df[col].to_numpy(float)
+        else:
+            missing += 1
+    if missing:
+        print(f'  WARNING: {missing}/{len(svd.kj_grid)} DZ columns absent from the fit')
+    return svd.vmodes(svd.project_amplitudes(W))[:, 0]
+
+
+def load(param_set, dz_prefix, output_root='output'):
     """Join the DZ fit, the truss temperature and the commanded DOF, one row per visit.
 
     Returns
     -------
     df : `pandas.DataFrame`
-        Quality-passing FAM visits with ``dz14`` (µm of wavefront), ``truss`` and
-        ``truss_dt`` (deg C), ``v1_lut_trim``, ``v1_trim`` and ``v1_lut``
-        (dimensionless v-mode amplitudes), and ``fam_seq``.
+        Quality-passing FAM visits with ``dz14`` (µm of wavefront), ``truss`` (deg C),
+        ``elev`` and ``rot`` (deg), ``mjd`` (days), the four cumulative v-mode 1 variants
+        ``v1_lut``, ``v1_lut_trim``, ``v1_dev`` and ``v1_total`` (all dimensionless), and
+        the run labels ``lut_run`` and ``trim_run``.
+    sign : `int`
+        The Deviation sign (+1 or -1) chosen for ``v1_total``.
+    both : `dict`
+        Residual nMAD of DZ(1,4) against each candidate sign, for reporting.
     """
-    base = pathlib.Path('output') / param_set
+    base = pathlib.Path(output_root) / param_set
+    k_min, k_max = 1, int(dz_prefix.split('toz')[-1])
     dz_col = f'{dz_prefix}_z4_c1'
-    fits = pd.read_parquet(base / 'fits.parquet', columns=[
-        'day_obs', 'seq_num', dz_col, f'{dz_col}_err', f'{dz_prefix}_bad_fit',
-        'visit_quality_pass', 'tma_truss_temp_pxpy', 'tma_truss_temp_mxmy',
-        'alt', 'az', 'band'])
+
+    fits = pd.read_parquet(base / 'fits.parquet')
+    keep = [c for c in fits.columns
+            if c.startswith(f'{dz_prefix}_z') or c in (
+                'day_obs', 'seq_num', 'mjd', 'alt', 'rotator_angle', 'band',
+                'visit_quality_pass', f'{dz_prefix}_bad_fit',
+                'tma_truss_temp_pxpy', 'tma_truss_temp_mxmy')]
+    fits = fits[keep]
+
     dof_cols = ([f'dof{k}' for k in list(V1_HEX) + list(V1_BEND)]
                 + [f'lut_dof{k}' for k in V1_HEX])
     vis = pd.read_parquet(base / 'visits.parquet',
@@ -145,7 +231,9 @@ def load(param_set, dz_prefix):
 
     df['dz14'] = df[dz_col]
     df['truss'] = 0.5 * (df['tma_truss_temp_pxpy'] + df['tma_truss_temp_mxmy'])
-    df['truss_dt'] = df['tma_truss_temp_pxpy'] - df['tma_truss_temp_mxmy']
+    # `alt` arrives in radians from this source; alt_to_deg auto-detects and converts.
+    df['elev'] = alt_to_deg(df['alt'].to_numpy(float))
+    df['rot'] = df['rotator_angle'].to_numpy(float)
 
     # v-mode 1 from the commanded DOF. The hexapod dz axes need LUT + Trim to be a
     # physical position; the mirror bending modes use Trim alone (see module docstring).
@@ -153,186 +241,306 @@ def load(param_set, dz_prefix):
     df['v1_trim'] = (sum(c * df[f'dof{k}'] for k, c in V1_HEX.items())
                      + sum(c * df[f'dof{k}'] for k, c in V1_BEND.items()))
     df['v1_lut_trim'] = df['v1_lut'] + df['v1_trim']
-    df['fam_seq'] = label_fam_sequences(df)
-    return df
+
+    # The Deviation term: v-mode 1 of the measured DZ itself.
+    iZs = [int(j) for j in
+           np.asarray(QTable.read(str(base / 'visits.parquet'))['nollIndices'][0]).tolist()]
+    df['v1_dev'] = project_v1(df, dz_prefix, iZs, k_min, k_max)
+
+    # Choose the Deviation sign empirically: whichever makes DZ(1,4) vs the cumulative
+    # v-mode the tighter relation. Both are reported so the choice stays visible.
+    both = {}
+    for s in (+1, -1):
+        f = robust_line(df['v1_lut_trim'] + s * df['v1_dev'], df['dz14'])
+        both[s] = f['resid_nmad'] if f else np.inf
+    sign = min(both, key=both.get)
+    df['v1_total'] = df['v1_lut_trim'] + sign * df['v1_dev']
+
+    df['lut_run'] = label_runs(df, 'v1_lut', LUT_STEP)
+    df['trim_run'] = label_runs(df, 'v1_trim', TRIM_STEP)
+    return df, sign, both
 
 
-def _scatter(ax, x, y, xlabel, ylabel, title=None, color='C0'):
-    """Scatter with a Huber-RLM line, annotating slope, Pearson r and Spearman rho."""
-    ax.plot(x, y, '.', ms=2.5, alpha=0.35, color=color)
+def scatter_page(pdf, rows, df, xc, yc, xlabel, ylabel, title, subtitle=None,
+                 kind='pooled', color='C0', cbar=None, cbar_label=None):
+    """One full-page scatter with a Huber-RLM line and the correlation statistics."""
+    fig, ax = plt.subplots(figsize=(8.5, 8.0))
+    x = df[xc].to_numpy(float)
+    y = df[yc].to_numpy(float)
+    if cbar is not None:
+        c = df[cbar].to_numpy(float)
+        m = np.isfinite(x) & np.isfinite(y) & np.isfinite(c)
+        sc = ax.scatter(x[m], y[m], c=c[m], s=7, alpha=0.75, cmap='viridis')
+        cb = fig.colorbar(sc, ax=ax)
+        cb.set_label(cbar_label or cbar, fontsize=9)
+    else:
+        ax.plot(x, y, '.', ms=4, alpha=0.45, color=color)
+
     f = robust_line(x, y)
     if f is not None:
         xs = np.linspace(np.nanmin(x), np.nanmax(x), 50)
-        ax.plot(xs, f['intercept'] + f['slope'] * xs, 'r-', lw=1.5)
-        head = f"{title + chr(10) if title else ''}"
-        ax.set_title(f"{head}slope {f['slope']:+.4g} +/- {f['slope_err']:.2g}\n"
-                     f"Pearson r {f['pearson_r']:+.3f}, "
-                     f"Spearman rho {f['spearman_rho']:+.3f}, n={f['n']}", fontsize=8)
-    ax.set_xlabel(xlabel, fontsize=8)
-    ax.set_ylabel(ylabel, fontsize=8)
+        ax.plot(xs, f['intercept'] + f['slope'] * xs, 'r-', lw=2.0,
+                label=(f"Huber RLM slope {f['slope']:+.4g} +/- {f['slope_err']:.3g}\n"
+                       f"Pearson r {f['pearson_r']:+.3f}\n"
+                       f"Spearman rho {f['spearman_rho']:+.3f}\n"
+                       f"n = {f['n']}\n"
+                       f"residual nMAD {f['resid_nmad']:.4g}"))
+        ax.legend(fontsize=9, loc='best', framealpha=0.9)
+        rows.append(dict(kind=kind, x=xc, y=yc, **f))
+    ax.set_xlabel(xlabel, fontsize=11)
+    ax.set_ylabel(ylabel, fontsize=11)
     ax.grid(alpha=0.3)
-    ax.tick_params(labelsize=7)
+    ax.set_title(title + (f'\n{subtitle}' if subtitle else ''), fontsize=11)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
     return f
 
 
-def page_overview(df, pdf, rows):
-    """DZ(1,4) and v-mode 1 against truss temperature, all visits pooled."""
+def lut_validation_page(pdf, df):
+    """The hexapod-LUT v-mode 1 against elevation, rotator angle and time.
+
+    The LUT is a function of elevation (and temperature), so v1_lut against elevation
+    should trace a single smooth curve; scatter about that curve means the LUT itself
+    changed. The rotator panel is a null test -- the hexapod LUT has no rotator
+    dependence, so any structure there is a proxy for something else.
+    """
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
-    specs = [
-        ('truss', 'dz14', 'mean TMA truss temp [deg C]',
-         'DZ(k=1,j=4) [um of wavefront]', 'measured focus vs truss temp'),
-        ('truss', 'v1_lut_trim', 'mean TMA truss temp [deg C]',
-         'v1 from LUT+Trim [dimensionless]', 'commanded v-mode 1 vs truss temp'),
-        ('v1_lut_trim', 'dz14', 'v1 from LUT+Trim [dimensionless]',
-         'DZ(k=1,j=4) [um of wavefront]', 'measured focus vs commanded v-mode 1'),
-        ('truss_dt', 'dz14', 'truss pxpy - mxmy [deg C]',
-         'DZ(k=1,j=4) [um of wavefront]', 'focus vs truss gradient'),
-    ]
-    for ax, (xc, yc, xl, yl, ti) in zip(axes.ravel(), specs):
-        f = _scatter(ax, df[xc].to_numpy(float), df[yc].to_numpy(float), xl, yl, ti)
-        if f:
-            rows.append(dict(kind='pooled', x=xc, y=yc, **f))
-    fig.suptitle('DZ(k=1,j=4) uniform focus, TMA truss temperature and OFC v-mode 1\n'
-                 'all quality-passing FAM visits pooled', fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
-    pdf.savefig(fig)
-    plt.close(fig)
+    t0 = float(np.nanmin(df['mjd']))
+    days = df['mjd'].to_numpy(float) - t0
 
-
-def page_lut_vs_trim(df, pdf, rows):
-    """Why the LUT term cannot be dropped: LUT, Trim and their sum against each other."""
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
-    specs = [
-        ('v1_trim', 'v1_lut', 'v1 from Trim alone [dimensionless]',
-         'v1 from LUT alone [dimensionless]', 'LUT vs Trim: are they anti-correlated?'),
-        ('truss', 'v1_lut', 'mean TMA truss temp [deg C]',
-         'v1 from LUT alone [dimensionless]', 'the LUT is an elevation/filter model'),
-        ('truss', 'v1_trim', 'mean TMA truss temp [deg C]',
-         'v1 from Trim alone [dimensionless]', 'Trim alone vs truss temp'),
-        ('v1_trim', 'dz14', 'v1 from Trim alone [dimensionless]',
-         'DZ(k=1,j=4) [um of wavefront]', 'focus vs Trim-only v1 (incomplete)'),
-    ]
-    for ax, (xc, yc, xl, yl, ti) in zip(axes.ravel(), specs):
-        f = _scatter(ax, df[xc].to_numpy(float), df[yc].to_numpy(float), xl, yl, ti,
-                     color='C2')
-        if f:
-            rows.append(dict(kind='lut_vs_trim', x=xc, y=yc, **f))
-    for c, lbl in [('v1_lut', 'LUT alone'), ('v1_trim', 'Trim alone'),
-                   ('v1_lut_trim', 'LUT+Trim')]:
-        v = df[c].to_numpy(float)
-        v = v[np.isfinite(v)]
-        print(f"  v1 {lbl:10s}: n={v.size} median {np.median(v):+.4f} "
-              f"std {v.std():.4f} nMAD {nmad(v):.4f} (dimensionless)")
-    fig.suptitle('v-mode 1 from the hexapod LUT, the Trim, and their sum\n'
-                 'a hexapod position is LUT + Trim; neither term alone is the position',
-                 fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
-    pdf.savefig(fig)
-    plt.close(fig)
-
-
-def page_within_between(df, pdf, rows):
-    """Split the DZ(1,4) variation into within-FAM-sequence and between-sequence parts."""
-    sizes = df.groupby('fam_seq').size()
-    big = sizes[sizes >= MIN_SEQ_LEN].index
-    sub = df[df['fam_seq'].isin(big)]
-    g = sub.groupby('fam_seq')
-
-    w_dz = g['dz14'].apply(lambda v: nmad(v.to_numpy(float)))
-    w_tr = g['truss'].apply(lambda v: nmad(v.to_numpy(float))
-                            if v.notna().sum() >= 3 else np.nan)
-    w_v1 = g['v1_lut_trim'].apply(lambda v: nmad(v.to_numpy(float)))
-    m_dz = g['dz14'].median()
-    m_tr = g['truss'].median()
-
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
     ax = axes[0, 0]
-    ax.hist(w_dz.dropna(), bins=30, color='C0', alpha=0.85)
-    med_w = float(np.nanmedian(w_dz))
-    ax.axvline(med_w, color='r', lw=1.5)
-    ax.set_xlabel('within-sequence nMAD of DZ(k=1,j=4) [um of wavefront]', fontsize=8)
-    ax.set_ylabel(f'FAM sequences (>= {MIN_SEQ_LEN} visits)', fontsize=8)
-    ax.set_title(f'the swing within one FAM sequence\nmedian {med_w:.4f} um of wavefront, '
-                 f'{len(big)} sequences', fontsize=8)
+    sc = ax.scatter(df['elev'], df['v1_lut'], c=days, s=7, cmap='viridis', alpha=0.8)
+    fig.colorbar(sc, ax=ax).set_label(f'days since MJD {t0:.1f}', fontsize=8)
+    ax.set_xlabel('elevation [deg]', fontsize=9)
+    ax.set_ylabel('v1 from LUT [dimensionless]', fontsize=9)
+    ax.set_title('v1 LUT vs elevation: one curve per LUT version', fontsize=9)
     ax.grid(alpha=0.3)
-    ax.tick_params(labelsize=7)
 
-    f = _scatter(axes[0, 1], w_tr.to_numpy(float), w_dz.to_numpy(float),
-                 'within-sequence nMAD of truss temp [deg C]',
-                 'within-sequence nMAD of DZ(1,4) [um]',
-                 'does a wobblier truss give a wobblier focus?')
-    if f:
-        rows.append(dict(kind='within_seq_nmad', x='truss_nmad', y='dz14_nmad', **f))
+    ax = axes[0, 1]
+    sc = ax.scatter(df['rot'], df['v1_lut'], c=days, s=7, cmap='viridis', alpha=0.8)
+    fig.colorbar(sc, ax=ax).set_label(f'days since MJD {t0:.1f}', fontsize=8)
+    ax.set_xlabel('camera rotator angle [deg]', fontsize=9)
+    ax.set_ylabel('v1 from LUT [dimensionless]', fontsize=9)
+    ax.set_title('v1 LUT vs rotator angle: expected to be flat (null test)', fontsize=9)
+    ax.grid(alpha=0.3)
 
-    f = _scatter(axes[1, 0], m_tr.to_numpy(float), m_dz.to_numpy(float),
-                 'per-sequence median truss temp [deg C]',
-                 'per-sequence median DZ(1,4) [um of wavefront]',
-                 'BETWEEN sequences: medians only')
-    if f:
-        rows.append(dict(kind='between_seq_median', x='truss_median', y='dz14_median', **f))
+    ax = axes[1, 0]
+    ax.plot(df['mjd'], df['v1_lut'], '.', ms=3, alpha=0.6, color='C0')
+    ax.axvline(60980.0, color='r', lw=1.2, ls='--')
+    ax.text(60980.0, ax.get_ylim()[1], ' 2025-11-01', color='r', fontsize=8,
+            va='top', ha='left')
+    ax.set_xlabel('MJD [days]', fontsize=9)
+    ax.set_ylabel('v1 from LUT [dimensionless]', fontsize=9)
+    ax.set_title('v1 LUT time history; the LUT was expected fixed after Nov 2025',
+                 fontsize=9)
+    ax.grid(alpha=0.3)
 
+    # Residual about a smooth elevation model, per epoch: this isolates LUT changes from
+    # the elevation dependence itself.
     ax = axes[1, 1]
-    labels = ['DZ(1,4)\n[um of wf]', 'truss temp\n[deg C]', 'v1 LUT+Trim\n[dimensionless]']
-    within = [np.nanmedian(w_dz), np.nanmedian(w_tr), np.nanmedian(w_v1)]
-    between = [nmad(m_dz.to_numpy(float)),
-               nmad(m_tr.dropna().to_numpy(float)),
-               nmad(sub.groupby('fam_seq')['v1_lut_trim'].median().to_numpy(float))]
-    xs = np.arange(3)
-    ax.bar(xs - 0.2, within, 0.4, label='within sequence (median nMAD)')
-    ax.bar(xs + 0.2, between, 0.4, label='between sequences (nMAD of medians)')
-    ax.set_xticks(xs)
-    ax.set_xticklabels(labels, fontsize=7)
-    ax.set_ylabel('robust scatter, own units', fontsize=8)
-    ax.set_yscale('log')
-    ax.legend(fontsize=7)
-    ax.grid(alpha=0.3, axis='y')
-    ax.set_title('where the variation lives', fontsize=8)
-    ax.tick_params(labelsize=7)
+    m = np.isfinite(df['elev']) & np.isfinite(df['v1_lut'])
+    if int(m.sum()) > 20:
+        late = df['mjd'].to_numpy(float) >= 60980.0
+        for sel, lbl, col in [(m & ~late, 'before 2025-11-01', 'C1'),
+                              (m & late, 'on/after 2025-11-01', 'C0')]:
+            if int(np.sum(sel)) > 20:
+                e = df['elev'].to_numpy(float)[sel]
+                v = df['v1_lut'].to_numpy(float)[sel]
+                p = np.polyfit(e, v, 3)
+                r = v - np.polyval(p, e)
+                ax.plot(e, r, '.', ms=3, alpha=0.6, color=col,
+                        label=f'{lbl}: nMAD {nmad(r):.4f}, n={r.size}')
+        ax.legend(fontsize=8)
+    ax.set_xlabel('elevation [deg]', fontsize=9)
+    ax.set_ylabel('v1 LUT - cubic elevation fit [dimensionless]', fontsize=9)
+    ax.set_title('scatter about a smooth elevation model = LUT changes', fontsize=9)
+    ax.grid(alpha=0.3)
 
-    print(f"\n  FAM sequences: {len(sizes)} total, {len(big)} with >= {MIN_SEQ_LEN} visits")
-    print(f"  WITHIN-sequence median nMAD:  DZ(1,4) {within[0]:.4f} um of wavefront, "
-          f"truss {within[1]:.4f} deg C, v1 {within[2]:.4f} dimensionless")
-    print(f"  BETWEEN-sequence nMAD of medians: DZ(1,4) {between[0]:.4f} um of wavefront, "
-          f"truss {between[1]:.4f} deg C, v1 {between[2]:.4f} dimensionless")
-    rows.append(dict(kind='variance_split', x='within_vs_between', y='dz14',
-                     n=int(len(big)), dz_within_nmad_um=float(within[0]),
-                     dz_between_nmad_um=float(between[0]),
-                     truss_within_nmad_degC=float(within[1]),
-                     truss_between_nmad_degC=float(between[1])))
-    fig.suptitle('Is the DZ(k=1,j=4) swing during a FAM sequence thermal?\n'
-                 'truss temperature is nearly constant within a sequence', fontsize=11)
+    fig.suptitle('Validation of the hexapod LUT v-mode 1\n'
+                 'v1 LUT is built from lut_dof5 (camera hexapod dz) and lut_dof0 '
+                 '(M2 hexapod dz)', fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     pdf.savefig(fig)
     plt.close(fig)
-    return w_dz, w_tr, m_dz, m_tr
 
 
-def page_sequences(df, pdf, n_show=6):
-    """DZ(1,4), truss temperature and commanded v-mode 1 through the longest sequences."""
-    sizes = df.groupby('fam_seq').size().sort_values(ascending=False)
-    show = list(sizes.index[:n_show])
-    fig, axes = plt.subplots(3, 2, figsize=(11, 9))
-    for ax, sid in zip(axes.ravel(), show):
-        s = df[df['fam_seq'] == sid]
-        ax.plot(s['seq_num'], s['dz14'], 'o-', ms=3, lw=0.8, color='C0')
-        ax.set_ylabel('DZ(1,4) [um of wf]', fontsize=7, color='C0')
-        ax.tick_params(labelsize=6)
-        ax2 = ax.twinx()
-        ax2.plot(s['seq_num'], s['truss'], 's-', ms=2.5, lw=0.8, color='C3')
-        ax2.set_ylabel('truss [deg C]', fontsize=7, color='C3')
-        ax2.tick_params(labelsize=6)
-        dz_sw = nmad(s['dz14'].to_numpy(float))
-        tr = s['truss'].to_numpy(float)
-        tr_sw = nmad(tr) if np.isfinite(tr).sum() >= 3 else np.nan
-        ax.set_title(f"day_obs {int(s['day_obs'].iloc[0])}, {len(s)} visits: "
-                     f"DZ nMAD {dz_sw:.3f} um, truss nMAD {tr_sw:.3f} deg C", fontsize=7)
-        ax.set_xlabel('seq_num', fontsize=7)
+def split_offset_populations(df, xc='truss', yc='v1_trim'):
+    """Separate two populations offset in `yc` at fixed `xc`, by a gap in the residual.
+
+    The v-mode-1 Trim against truss temperature falls into two bands with a similar slope
+    and a large offset. A single date boundary cannot define them -- three nights contain
+    visits from both bands -- so the split is made on the residual about one common Huber
+    line, cut at the widest empty gap in that residual's distribution. The date intervals
+    each population covers are then reported rather than assumed.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Must carry `xc`, `yc` and ``day_obs``.
+    xc, yc : `str`, optional
+        Column names; the residual and its cut carry the units of `yc`.
+
+    Returns
+    -------
+    split : `dict` or `None`
+        ``cut`` (residual value of the split, units of `yc`), ``gap`` (width of the empty
+        gap, same units), boolean mask ``hi``, the two per-population fits ``fit_hi`` /
+        ``fit_lo``, and ``days_hi`` / ``days_lo`` (sorted `day_obs` lists). `None` if the
+        residual shows no clear gap.
+    """
+    m = np.isfinite(df[xc]) & np.isfinite(df[yc])
+    d = df[m]
+    if len(d) < 60:
+        return None
+    f = robust_line(d[xc], d[yc])
+    if f is None:
+        return None
+    res = (d[yc] - (f['intercept'] + f['slope'] * d[xc])).to_numpy(float)
+
+    # Widest empty gap in the sorted residual, ignoring the sparse tails so a single
+    # outlier cannot define the split.
+    s = np.sort(res)
+    lo_i, hi_i = int(0.02 * s.size), int(0.98 * s.size)
+    seg = s[lo_i:hi_i]
+    gaps = np.diff(seg)
+    gi = int(np.argmax(gaps))
+    gap = float(gaps[gi])
+    # A real bimodality has a gap far wider than the typical spacing between points.
+    if gap < 10 * float(np.median(gaps[gaps > 0])):
+        return None
+    cut = float(0.5 * (seg[gi] + seg[gi + 1]))
+
+    hi = pd.Series(res > cut, index=d.index)
+    fh = robust_line(d[xc][hi], d[yc][hi])
+    fl = robust_line(d[xc][~hi], d[yc][~hi])
+    if fh is None or fl is None:
+        return None
+    return dict(cut=cut, gap=gap, hi=hi, fit_hi=fh, fit_lo=fl,
+                days_hi=sorted(int(v) for v in d['day_obs'][hi].unique()),
+                days_lo=sorted(int(v) for v in d['day_obs'][~hi].unique()))
+
+
+def trim_population_pages(pdf, rows, df, split):
+    """v1 Trim vs truss temperature, pooled and then split into the two populations."""
+    scatter_page(pdf, rows, df, 'truss', 'v1_trim',
+                 'mean TMA truss temperature [deg C]',
+                 'v1 from Trim alone [dimensionless]',
+                 'v-mode 1 from the Trim alone vs TMA truss temperature',
+                 'two populations with the same slope and different intercept; '
+                 'the single pooled line below fits neither',
+                 kind='trim_pooled', color='C2')
+
+    if split is None:
+        return
+    hi = split['hi'].reindex(df.index, fill_value=False)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5.5), sharey=True)
+    for ax, (sel, lbl, tag, col, days) in zip(axes, [
+            (hi, 'upper population', 'trim_hi', 'C1', split['days_hi']),
+            (~hi, 'lower population', 'trim_lo', 'C0', split['days_lo'])]):
+        d = df[sel]
+        ax.plot(d['truss'], d['v1_trim'], '.', ms=4, alpha=0.5, color=col)
+        f = robust_line(d['truss'], d['v1_trim'])
+        if f is not None:
+            xs = np.linspace(np.nanmin(d['truss']), np.nanmax(d['truss']), 50)
+            ax.plot(xs, f['intercept'] + f['slope'] * xs, 'r-', lw=2.0)
+            ax.set_title(f"{lbl}\nslope {f['slope']:+.4g} +/- {f['slope_err']:.3g} "
+                         f"per deg C, intercept {f['intercept']:+.4g}\n"
+                         f"Pearson r {f['pearson_r']:+.3f}, "
+                         f"Spearman rho {f['spearman_rho']:+.3f}, n={f['n']}\n"
+                         f"{len(days)} nights, {days[0]} to {days[-1]}", fontsize=8)
+            rows.append(dict(kind=tag, x='truss', y='v1_trim', **f))
+        ax.set_xlabel('mean TMA truss temperature [deg C]', fontsize=10)
         ax.grid(alpha=0.3)
-    fig.suptitle('The longest FAM sequences: measured focus (blue) and truss temp (red)\n'
-                 'large focus swings at essentially fixed temperature', fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    axes[0].set_ylabel('v1 from Trim alone [dimensionless]', fontsize=10)
+    fh, fl = split['fit_hi'], split['fit_lo']
+    both_days = sorted(set(split['days_hi']) & set(split['days_lo']))
+    fig.suptitle(
+        'The two Trim populations, split on the residual about a common Huber line\n'
+        f'offset {fh["intercept"] - fl["intercept"]:+.4g} (dimensionless) at fixed '
+        f'temperature, across an empty residual gap of {split["gap"]:.3g}; '
+        f'{len(both_days)} nights contain both, so no single date defines the split',
+        fontsize=10)
+    fig.tight_layout(rect=[0, 0, 1, 0.88])
     pdf.savefig(fig)
     plt.close(fig)
+
+
+def night_trace_pages(pdf, df, n_days=N_DAYS_SHOW, seed=1234):
+    """DZ(1,4) and truss temperature against seq_num, for randomly chosen nights.
+
+    Nights are drawn at random from those with enough coverage on both axes -- not
+    selected on any property of DZ(1,4) -- so the figure is not cherry-picked. Marker
+    colour groups visits sharing one look-up table (LUT) plateau; a colour change is a
+    telescope slew or a LUT change, and an open triangle flags a visit where the Trim also
+    stepped, which is a closed-loop alignment.
+    """
+    rng = np.random.default_rng(seed)
+    per_night = df.groupby('day_obs').agg(n=('dz14', 'size'), ntruss=('truss', 'count'))
+    ok = per_night[(per_night['n'] >= MIN_NIGHT_VISITS)
+                   & (per_night['ntruss'] >= MIN_NIGHT_TRUSS)]
+    days = np.array(sorted(ok.index))
+    print(f'  eligible nights ({MIN_NIGHT_VISITS}+ visits, {MIN_NIGHT_TRUSS}+ with '
+          f'truss): {len(days)} of {len(per_night)}')
+    if len(days) == 0:
+        return np.array([], dtype=int)
+    pick = np.sort(rng.choice(days, size=min(n_days, len(days)), replace=False))
+    palette = plt.get_cmap('tab10').colors
+
+    for start in range(0, len(pick), PANELS_PER_PAGE):
+        chunk = pick[start:start + PANELS_PER_PAGE]
+        fig, axes = plt.subplots(3, 2, figsize=(11, 9))
+        for ax, day in zip(axes.ravel(), chunk):
+            d = df[df['day_obs'] == day].sort_values('seq_num')
+            runs = list(dict.fromkeys(d['lut_run']))
+            for ri, r in enumerate(runs):
+                s = d[d['lut_run'] == r]
+                col = palette[ri % len(palette)]
+                # Break the connecting line across seq_num gaps, so a straight segment
+                # never implies visits that were not taken.
+                sn = s['seq_num'].to_numpy(float)
+                y = s['dz14'].to_numpy(float).copy()
+                if len(sn) > 1:
+                    y_plot = np.where(np.r_[False, np.diff(sn) > 20], np.nan, y)
+                    ax.plot(sn, y_plot, '-', lw=0.8, color=col, alpha=0.8)
+                ax.plot(sn, y, 'o', ms=3.5, color=col)
+            # mark the visits where the Trim stepped: closed-loop alignments
+            tr = d['trim_run'].to_numpy()
+            step = np.zeros(len(d), bool)
+            step[1:] = tr[1:] != tr[:-1]
+            if step.any():
+                ax.plot(d['seq_num'].to_numpy()[step], d['dz14'].to_numpy()[step],
+                        'k^', ms=6, mfc='none', mew=1.2)
+            ax.set_ylabel('DZ(1,4) [um of wf]', fontsize=7, color='C0')
+            ax.tick_params(labelsize=6)
+            ax2 = ax.twinx()
+            sn_all = d['seq_num'].to_numpy(float)
+            tr_plot = d['truss'].to_numpy(float).copy()
+            if len(sn_all) > 1:
+                tr_plot = np.where(np.r_[False, np.diff(sn_all) > 20], np.nan, tr_plot)
+            ax2.plot(sn_all, tr_plot, '-', lw=1.2, color='r', alpha=0.8)
+            ax2.set_ylabel('truss [deg C]', fontsize=7, color='r')
+            ax2.tick_params(labelsize=6, colors='r')
+            tr_v = d['truss'].to_numpy(float)
+            dz_v = d['dz14'].to_numpy(float)
+            dz_rng = (np.nanmax(dz_v) - np.nanmin(dz_v)) if np.isfinite(dz_v).any() else np.nan
+            tr_rng = (np.nanmax(tr_v) - np.nanmin(tr_v)) if np.isfinite(tr_v).any() else np.nan
+            ax.set_title(f'day_obs {day}: {len(d)} visits, {len(runs)} LUT groups\n'
+                         f'DZ(1,4) range {dz_rng:.3f} um of wf, '
+                         f'truss range {tr_rng:.3f} deg C', fontsize=7)
+            ax.set_xlabel('seq_num', fontsize=7)
+            ax.grid(alpha=0.3)
+        for ax in axes.ravel()[len(chunk):]:
+            ax.axis('off')
+        fig.suptitle('Randomly chosen nights: DZ(k=1,j=4) (colour = LUT group) and '
+                     'TMA truss temperature (red)\n'
+                     'open triangles mark a Trim step (closed-loop alignment); '
+                     'large focus swings occur with no matching truss motion',
+                     fontsize=10)
+        fig.tight_layout(rect=[0, 0, 1, 0.92])
+        pdf.savefig(fig)
+        plt.close(fig)
+    return pick
 
 
 def main():
@@ -341,37 +549,115 @@ def main():
     ap.add_argument('--param-set', required=True)
     ap.add_argument('--dz-prefix', default='z1toz6', choices=['z1toz3', 'z1toz6'],
                     help='which focal-order DZ fit to read (default z1toz6)')
+    ap.add_argument('--output-root', default='output')
     ap.add_argument('--output-dir', default=None,
-                    help='default output/<param_set>/correlations')
+                    help='default <output-root>/<param_set>/correlations')
+    ap.add_argument('--n-days', type=int, default=N_DAYS_SHOW,
+                    help='number of day_obs drawn at random for the trace pages')
+    ap.add_argument('--seed', type=int, default=1234,
+                    help='random seed for the day_obs draw, so the figure is reproducible')
     args = ap.parse_args()
 
     out = pathlib.Path(args.output_dir or
-                       f'output/{args.param_set}/correlations')
+                       f'{args.output_root}/{args.param_set}/correlations')
     out.mkdir(parents=True, exist_ok=True)
 
-    df = load(args.param_set, args.dz_prefix)
-    print(f"quality-passing FAM visits: {len(df)}")
+    df, sign, both = load(args.param_set, args.dz_prefix, args.output_root)
+    print(f'quality-passing FAM visits: {len(df)}')
     print(f"  with truss temperature:   {int(df['truss'].notna().sum())}")
     print(f"  with hexapod LUT:         {int(df['v1_lut'].notna().sum())}")
+    print(f'  Deviation sign chosen: {sign:+d}  '
+          f"(residual nMAD of DZ(1,4): {both[+1]:.4f} um of wavefront for +1, "
+          f'{both[-1]:.4f} for -1)')
     for c, unit in [('dz14', 'um of wavefront'), ('truss', 'deg C'),
-                    ('v1_lut_trim', 'dimensionless')]:
+                    ('elev', 'deg'), ('rot', 'deg'),
+                    ('v1_lut', 'dimensionless'), ('v1_trim', 'dimensionless'),
+                    ('v1_lut_trim', 'dimensionless'), ('v1_dev', 'dimensionless'),
+                    ('v1_total', 'dimensionless')]:
         v = df[c].to_numpy(float)
         v = v[np.isfinite(v)]
-        print(f"  {c:12s} [{unit:15s}] n={v.size:5d} median {np.median(v):+.4f} "
-              f"nMAD {nmad(v):.4f}")
+        print(f'  {c:12s} [{unit:15s}] n={v.size:5d} median {np.median(v):+.4f} '
+              f'nMAD {nmad(v):.4f}')
 
-    rows = []
+    rows = [dict(kind='deviation_sign', x='v1_total', y='dz14', n=int(len(df)),
+                 resid_nmad=float(both[sign]),
+                 resid_nmad_plus=float(both[+1]), resid_nmad_minus=float(both[-1]),
+                 deviation_sign=int(sign))]
     pdf_path = out / f'dz14_truss_{args.dz_prefix}.pdf'
     with PdfPages(str(pdf_path)) as pdf:
-        page_overview(df, pdf, rows)
-        page_lut_vs_trim(df, pdf, rows)
-        page_within_between(df, pdf, rows)
-        page_sequences(df, pdf)
-    print(f"\nSaved: {pdf_path}")
+        # (a)-(d) the four requested scatters, one per page, cumulative in v-mode 1
+        scatter_page(pdf, rows, df, 'truss', 'dz14',
+                     'mean TMA truss temperature [deg C]',
+                     'DZ(k=1, j=4) [um of wavefront]',
+                     '(a) measured uniform defocus vs TMA truss temperature',
+                     'DZ(k=1,j=4) is the focal-plane-uniform part of Z4 defocus',
+                     kind='pooled')
+        scatter_page(pdf, rows, df, 'truss', 'v1_lut',
+                     'mean TMA truss temperature [deg C]',
+                     'v1 from LUT [dimensionless]',
+                     '(b) v-mode 1 from the hexapod LUT alone vs TMA truss temperature',
+                     'the LUT is a model of elevation and temperature, so a trend here '
+                     'is by construction', kind='pooled', color='C1')
+        scatter_page(pdf, rows, df, 'truss', 'v1_lut_trim',
+                     'mean TMA truss temperature [deg C]',
+                     'v1 from LUT+Trim [dimensionless]',
+                     '(c) v-mode 1 from LUT + Trim vs TMA truss temperature',
+                     'LUT + Trim is the physical commanded hexapod position',
+                     kind='pooled', color='C2')
+        scatter_page(pdf, rows, df, 'truss', 'v1_total',
+                     'mean TMA truss temperature [deg C]',
+                     f'v1 from LUT+Trim{"+" if sign > 0 else "-"}Deviation '
+                     '[dimensionless]',
+                     '(d) v-mode 1 from LUT + Trim + Deviation vs TMA truss temperature',
+                     f'Deviation is v-mode 1 of the measured DZ, entering with sign '
+                     f'{sign:+d} (chosen by residual scatter)', kind='pooled', color='C3')
 
+        # LUT validation
+        lut_validation_page(pdf, df)
+
+        # v1 LUT vs v1 Trim, coloured by time
+        t0 = float(np.nanmin(df['mjd']))
+        df['days'] = df['mjd'] - t0
+        scatter_page(pdf, rows, df, 'v1_trim', 'v1_lut',
+                     'v1 from Trim alone [dimensionless]',
+                     'v1 from LUT alone [dimensionless]',
+                     'v-mode 1 from the LUT vs from the Trim, coloured by time',
+                     'a slope near -1 means the Trim undoes the LUT, so neither term '
+                     'alone is the hexapod position', kind='lut_vs_trim',
+                     cbar='days', cbar_label=f'days since MJD {t0:.1f}')
+
+        # the two Trim populations
+        split = split_offset_populations(df)
+        if split is not None:
+            fh, fl = split['fit_hi'], split['fit_lo']
+            both_days = sorted(set(split['days_hi']) & set(split['days_lo']))
+            print(f"\n  two Trim populations, split at residual {split['cut']:+.4f} "
+                  f"across an empty gap of {split['gap']:.4f} (dimensionless)")
+            print(f"    upper: n={fh['n']:5d}, intercept {fh['intercept']:+.4f}, "
+                  f"slope {fh['slope']:+.4f} per deg C, {len(split['days_hi'])} nights "
+                  f"{split['days_hi'][0]}-{split['days_hi'][-1]}")
+            print(f"    lower: n={fl['n']:5d}, intercept {fl['intercept']:+.4f}, "
+                  f"slope {fl['slope']:+.4f} per deg C, {len(split['days_lo'])} nights "
+                  f"{split['days_lo'][0]}-{split['days_lo'][-1]}")
+            print(f"    offset {fh['intercept'] - fl['intercept']:+.4f} (dimensionless) "
+                  f"at fixed temperature")
+            print(f"    nights containing BOTH populations: "
+                  f"{both_days if both_days else 'none'}")
+            rows.append(dict(kind='trim_split', x='truss', y='v1_trim',
+                             n=fh['n'] + fl['n'], resid_cut=split['cut'],
+                             resid_gap=split['gap'],
+                             intercept_offset=fh['intercept'] - fl['intercept'],
+                             n_days_both=len(both_days)))
+        trim_population_pages(pdf, rows, df, split)
+
+        # last pages: randomly chosen nights
+        pick = night_trace_pages(pdf, df, args.n_days, args.seed)
+        print(f'\n  trace pages show day_obs: {", ".join(str(d) for d in pick)}')
+
+    print(f'\nSaved: {pdf_path}')
     sm_path = out / f'dz14_truss_{args.dz_prefix}_summary.parquet'
     pd.DataFrame(rows).to_parquet(sm_path)
-    print(f"Saved: {sm_path}  ({len(rows)} fit rows)")
+    print(f'Saved: {sm_path}  ({len(rows)} fit rows)')
 
 
 if __name__ == '__main__':
