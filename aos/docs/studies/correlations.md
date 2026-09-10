@@ -289,6 +289,12 @@ The per-visit pull is cached to
 `output/notebooks/correlations/corner_z4_vs_temperature_science_<first>_<last>.parquet`, since
 the EFD LUT and Trim queries cost roughly 20 s per night over about 50 nights.
 
+One section steps outside that sample to fix the sign of the measured term, reading
+`MTAOS.logevent_wavefrontError` (the Optical Feedback Control input, four rows per visit, one per
+corner sensor) and `MTAOS.logevent_degreeOfFreedom` (which co-emits `opticalState`, `visitDoF`,
+`aggregatedDoF` and the PID gains on one event) over a single initial-alignment sequence. See
+[The sign of the measured term](#the-sign-of-the-measured-term).
+
 #### Results on science exposures
 
 27671 science visits in g/r/i/z over 52 nights, of which 25430 carry a finite `v1_total`; the
@@ -323,22 +329,55 @@ air temperature give the same picture at slightly shallower slopes (`v1_total`: 
 and +0.07925 ± 0.00178 per °C respectively), as expected for quantities correlated with the truss
 temperature rather than independent of it.
 
-The overall sign with which the measured term enters the sum is a convention, set by the
-notebook's `MEASURED_SIGN` parameter rather than fitted. Two sign conventions compose into it,
-neither pinned down by anything measured here: the sign of the ConsDB corner OPD Z4 relative to
-the batoid/OFC wavefront convention, and the sign of the −1110.03 µm-per-µm conversion. The
-truss fit cannot resolve the choice — the two options differ by 0.56% in residual nMAD, because
-the measured term (nMAD 0.1535, dimensionless) is only 0.26× the size of LUT + Trim (nMAD
-0.5957, ratio dimensionless).
+#### The sign of the measured term
 
-A weaker but physically meaningful diagnostic does favour one. A measured residual should report
-the part of the commanded focus that was *not* achieved, so adding it with the correct sign
-should reduce the scatter of the total rather than increase it. Sign −1 gives nMAD 0.5939 against
-0.5957 for LUT + Trim alone (−0.30% relative, dimensionless); sign +1 gives 0.6065 (+1.82%).
-Sign −1 is therefore the notebook's default, which makes the composed map from OPD Z4 to v-mode 1
-net positive. The margin is small enough that this is stated as an indication, not a
-determination, and flipping `MEASURED_SIGN` and re-running from Section 7 reproduces the
-alternative. No conclusion above depends on the choice.
+The overall sign with which the measured term enters the sum is the notebook's `MEASURED_SIGN`
+parameter. Two sign conventions compose into it: the sign of the ConsDB corner OPD Z4 relative to
+the batoid/OFC wavefront convention, and the sign of the −1110.03 µm-per-µm conversion.
+
+**The temperature fits cannot settle it.** The two choices differ by 0.56% in residual nMAD about
+the truss relation, because the measured term (nMAD 0.1535, dimensionless) is only 0.26× the size
+of LUT + Trim (nMAD 0.5957, ratio dimensionless). A weaker diagnostic — that a measured residual
+should reduce the scatter of the total rather than increase it — favours −1 (nMAD 0.5939 against
+0.5957 for LUT + Trim alone, −0.30% relative; sign +1 gives 0.6065, +1.82%), but not decisively.
+
+**The initial-alignment sequence settles it.** `MEASURED_SIGN = -1`, determined from the AOS
+closing the loop in real time rather than from any fit. Each night opens with a BLOCK-T539
+`infocus_initial_alignment` sequence that walks the telescope in from a large focus error; on
+20260513 that is seq_num 10–19, ten `acq` exposures. Because those errors are several µm of
+wavefront, the direction of the response is unambiguous:
+
+| seq_num | four-corner mean Z4 [µm of wavefront] | Tweak, camera hexapod dz [µm] | Tweak, M2 hexapod dz [µm] |
+|---|---|---|---|
+| 10 | +3.870 | −119.75 | −86.04 |
+| 12 | +2.346 | −74.59 | −53.59 |
+
+The commanded hexapod dz opposes the measured Z4. A residual Z4 surviving after the command is
+therefore the part of the error not yet removed, and enters the commanded state with the sign
+that cancels it. Since the −1110.03 µm-per-µm conversion is itself negative, `MEASURED_SIGN = -1`
+makes the composed map from OPD Z4 to v-mode 1 net positive. Over the sequence the four-corner
+mean Z4 converges +3.870 → +2.346 → +0.327 → −0.351 → +0.007 µm of wavefront.
+
+Three properties of the block are verified in the same section rather than assumed, and each is
+a check that the repo's model of the control chain matches what the AOS actually does:
+
+- **Correction latency.** The AOS emitted a `degreeOfFreedom` event only on seq_num 10, 12, 14,
+  16, 18 and none on 11, 13, 15, 17, 19 — image *n*'s correction is applied at *n+2* and
+  *n+1*'s is discarded.
+- **Trim accumulates the Tweak.** `Trim_n = Trim_{n−1} + Tweak_n` holds exactly (largest residual
+  0.0 µm of hexapod dz over both hexapod dz axes and all five events).
+- **Proportional gain.** `kpGain` is published per DOF on the same event and reads 0.80 on
+  seq_num 10 and 12, then 0.75 on 14, 16 and 18 — this block runs a higher gain than the usual
+  0.3 (all dimensionless). `kiGain` and `kdGain` are zero, so the controller is pure proportional
+  here.
+
+The sign conclusion is independent of the DOF subset in force, which changes partway through the
+sequence between the 10-DOF/5-v-mode truncation and the usual 22-DOF/12-v-mode scheme: either way
+the hexapod dz axes carry the focus correction. For that reason no measured-to-commanded gain
+line is drawn on the scatter panel — only the quadrant is meaningful. The three small-|Z4| visits
+(seq_num 14, 16, 18, all under 0.4 µm of wavefront) do not all fall in the opposing quadrant and
+are not expected to: once the focus error approaches the corner-to-corner spread, the correction
+is driven by the other Zernikes and DOF in the fit rather than by defocus.
 
 ## See also
 
