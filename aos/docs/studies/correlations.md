@@ -488,6 +488,34 @@ Twilight validates as a smooth 22.25 h to 21.75 h UTC seasonal walk over April t
 0.50 h swing) and precedes the first exposure on all 52 nights. On 8 of those nights the first
 exposure fell after 00:00 UTC, so the validation panel plots its hour unwrapped past midnight.
 
+#### Per-visit summary table
+
+The notebook writes
+`output/notebooks/correlations/corner_z4_v1_summary_<first>_<last>_<version>.parquet`, one row
+per science visit (27671 rows, 20 columns, 3.96 MB) for follow-up work outside the notebook:
+
+| column | quantity |
+|---|---|
+| `day_obs`, `seq_num`, `visit_id`, `band`, `exp_midpt_mjd` | visit identification and exposure midpoint MJD (UTC) |
+| `elevation_deg`, `azimuth_deg` | telescope pointing, deg, 100% populated |
+| `rotator_deg` | camera physical rotator angle, deg, from `cdb_lsstcam.visit1_quicklook.physical_rotator_angle`, 91.93% populated |
+| `sky_rotation_deg` | sky position angle, deg — carried alongside the rotator, and a different quantity |
+| `v1_lut`, `v1_trim`, `v1_meas` | the three v-mode-1 components, dimensionless; `v1_meas` is stored with its own sign as measured, before `MEASURED_SIGN` is applied |
+| `v1_total` | `v1_lut + v1_trim + MEASURED_SIGN * v1_meas` with `MEASURED_SIGN = -1`, dimensionless |
+| `v1_truss_fit`, `v1_resid_truss` | the per-band Huber prediction from truss temperature and the residual about it, dimensionless |
+| `truss_temp`, `cam_body_temp`, `outside_temp` | mean TMA truss, camera body `AverageTemp`, and outside air temperature, deg C |
+| `delta_mjd_twilight`, `delta_mjd_firstimg` | exposure midpoint minus each per-night zero point, days |
+
+`v1_truss_fit` is rebuilt from the same per-band fits Section 10 subtracts, so
+`v1_truss_fit + v1_resid_truss` reproduces `v1_total` to 4.4 × 10⁻¹⁶ (dimensionless, the
+floating-point round-off over the 22824 rows where all three are finite). The parquet is read
+back and compared against the in-memory frame in the same cell.
+
+The camera physical rotator angle required extending the visit query with a `LEFT JOIN` onto
+`visit1_quicklook`, since `visit1` itself carries only `sky_rotation`. Because the pointing
+columns come from that ConsDB query rather than from the slow EFD pull, the cache loader
+back-fills them into a cache written before they were added instead of forcing a refetch.
+
 ## See also
 
 - [`smatrix_vmode.md`](smatrix_vmode.md) — where the v-modes come from
