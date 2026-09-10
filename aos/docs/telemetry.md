@@ -1,14 +1,15 @@
 # Telemetry inventory — what exists, where it comes from, and what reaches the tables
 
-> **Status:** current · **Last updated:** 2026-09-09 · **Kind:** reference (telemetry inventory)
+> **Status:** current · **Last updated:** 2026-09-10 · **Kind:** reference (telemetry inventory)
 
 Every per-visit telemetry quantity used in the AOS work: its name in the Consolidated
 Database (ConsDB) transformed Engineering Facility Database (EFD) or in the raw EFD,
 whether it is documented, its measured coverage on Full Array Mode (FAM) exposures, its
 units, and which source a fetch should prefer.
 
-All coverage figures were measured on 2026-09-08, and the LUT / Trim / Tweak figures in §4
-on 2026-09-09, against `param_set`
+All coverage figures were measured on 2026-09-08, the LUT / Trim / Tweak figures in §4 on
+2026-09-09, and the hexapod-topic identity, compensation-mode and ConsDB-column
+identification in §4 on 2026-09-10, against `param_set`
 `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` — 3385 FAM visits, `day_obs` 20250415 to
 20260713 — using the USDF ConsDB at `https://usdf-rsp.slac.stanford.edu/consdb`. Samples
 of 400–500 visits are the most recent ones unless stated.
@@ -27,6 +28,7 @@ bug. Filling those visits with NaN is the intended behaviour.
 | M1M3 elevation LUT, M2 gravity LUT | **ConsDB** | 400/400 sampled FAM visits |
 | **Hexapod LUT (both hexapods)** | **EFD, as-of-time** | ConsDB covers 7.7% (camera) and 0.0% (M2) of FAM exposures |
 | **Trim (all 50 DOF)** | **EFD, as-of-time** | **0% on FAM exposures in ConsDB** — no ConsDB path exists |
+| **Compensation mode** | **EFD, as-of-time with a days-long lookback** | a state-change event, not per-exposure telemetry; says whether the LUT was actually applied |
 | Tweak | **derived** | no topic or property exists; difference consecutive Trim (0.0 where no correction was applied) |
 | M1M3 spatial gradients | **EFD** | not in the transform |
 | Camera-body temperatures | **EFD** | not in ConsDB at all |
@@ -224,8 +226,14 @@ science, 156 cwfs and 777 acq exposures since 2026-06:
 Note the three distinct behaviours. `aos_corrections` and `aggregated_dof` are both
 **Trim** and are science-gated, landing on *exactly the same* exposures.
 `compensation_offset` is the **hexapod LUT** — the ConsDB name does not contain the word
-LUT — is low everywhere, and is *not* img_type-gated. `uncompensated_position` appears
-entirely unpopulated even on science exposures.
+LUT — is low everywhere, and is *not* img_type-gated. `mt_hexapod_uncompensated_position_*`
+is unpopulated everywhere, and additionally carries no `salIndex` distinction, so it could
+not separate the two hexapods even if it were filled.
+
+That last row names a *different* column from the hexapod's `uncompensatedPosition` event.
+`aos_corrections` **is** `uncompensatedPosition` — see
+[what the ConsDB hexapod columns actually hold](#what-the-consdb-hexapod-columns-actually-hold)
+below. There is **no ConsDB column for `compensatedPosition`** at all.
 
 Because the ConsDB hexapod LUT reaches only 7.7% of `cwfs` exposures for the camera
 hexapod and 0.0% for M2, the pipeline takes the **EFD** route instead
@@ -235,6 +243,87 @@ respectively. These are the `lut_dof0..9` columns tabulated above.
 
 The OFC DOF layout uses only 5 hexapod axes per hexapod (z, x, y, u, v); ConsDB also
 carries `w`, which `aos_consdb_efd.HEX_AXES` correctly drops.
+
+### The hexapod position identity — three EFD topics, two routes to the LUT
+
+`MTHexapod` publishes the hexapod position three ways. All are indexed SAL events:
+**`salIndex = 1` is the camera hexapod, `salIndex = 2` is M2**.
+
+| EFD topic | quantity | fields |
+|---|---|---|
+| `lsst.sal.MTHexapod.logevent_uncompensatedPosition` | the AOS Offset (**Trim**) alone | `x, y, z` µm; `u, v, w` deg |
+| `lsst.sal.MTHexapod.logevent_compensationOffset` | the **LUT** alone | same |
+| `lsst.sal.MTHexapod.logevent_compensatedPosition` | LUT + Trim, the physical position | same |
+
+These satisfy `compensatedPosition = uncompensatedPosition + compensationOffset`
+**exactly**. Measured on `day_obs = 20260513` by a two-stage nearest-time match (LUT onto
+uncompensated, then compensated onto that sum) over 427 camera-hexapod and 261 M2 event
+triples: max residual **0 µm on x, y, z and 0 deg on u, v, w** for both hexapods, at both
+1 s and 5 s match tolerance, and unchanged when restricted to compensation-enabled events.
+
+Two consequences:
+
+- The hexapod LUT has **two independent EFD routes** — read `compensationOffset` directly,
+  or difference `compensatedPosition − uncompensatedPosition`. The pipeline uses the
+  former; the latter is a valid cross-check.
+- The **match tolerance matters, and a single-stage match is not equivalent.** Matching
+  `compensatedPosition` against `uncompensatedPosition` alone leaves a residual at 5 s that
+  the two-stage form does not, because a straddled hexapod move breaks the pairing. Any
+  reimplementation should reproduce the two-stage form before trusting a nonzero residual.
+
+### Compensation mode gates whether the LUT was applied
+
+`lsst.sal.MTHexapod.logevent_compensationMode` (field `enabled`) says whether the hexapod
+was actually applying its LUT. When disabled, `compensationOffset` still publishes a
+computed LUT that the hexapod **did not apply**, so LUT + Trim is not the physical position
+for that exposure.
+
+It is a **state-change event, not per-exposure telemetry** — 9 events for the camera
+hexapod over a 7-day window around 20260513. It therefore needs an as-of lookup with a
+days-long lookback; a per-exposure join returns nothing, and taking the first `True` in a
+window gives the wrong switch time.
+
+Measured on `20260513` (822 exposures): **737 enabled, 85 disabled** — but the 85 are
+entirely `bias` (25) and `dark` (60) frames. All 510 `science`, 114 `acq`, 110 `cwfs` and 3
+`flat` exposures had the LUT applied. The mode took effect at 2026-05-13 21:32:33 UTC,
+before the first on-sky exposure.
+
+Measured across the **whole FAM sample** — 3385 visits over 106 nights,
+`day_obs` 20250415–20260713 — the mode resolved for 3385 of 3385 visits and **zero were
+taken with compensation disabled**, on either hexapod. The window does contain plenty of
+disable events (883 camera, 1127 M2 of 1711 and 2216 total), so the check is not vacuous:
+the disables simply fall outside FAM exposures. The stored `lut_dof0..9` is therefore an
+applied LUT for every FAM visit, and LUT + Trim is the physical position throughout.
+
+### What the ConsDB hexapod columns actually hold
+
+Identified by **measurement**, not from the names — each ConsDB column was compared
+as-of `obs_start` against all three MTHexapod topics on 20260513, and the best match taken:
+
+| ConsDB column family | is actually | margin over runner-up |
+|---|---|---|
+| `{camera,m2}_hexapod_aos_corrections_*` | `uncompensatedPosition` — the accumulated Offset (**Trim**) | 6/6 translation axes, runner-up wrong by 11× to 264× |
+| `{camera,m2}_hexapod_compensation_offset_*` | `compensationOffset` — the **LUT** | 6/6 axes |
+| `mt_hexapod_uncompensated_position_*_{mean,max,min}` | unidentifiable — 0.0% populated, no `salIndex` | — |
+
+The name `aos_corrections` suggests a per-iteration correction; it is not. It is the
+running total, and its magnitudes (thousands of µm on x and y) are a standing alignment,
+not a nightly correction.
+
+**Where ConsDB is populated, the values are correct.** The apparent LUT disagreement is a
+*sampling* effect, not a different reduction: the as-of-`obs_start` difference on camera-x
+is 9.903 µm median, but comparing against the best-matching event *inside* the exposure
+window gives **1.22 µm** (camera x), 1.159 µm (y), 0.02978 µm (z), and **exactly 0** on all
+M2 axes — against a nightly LUT range of 1959 µm (x), 1730 µm (y) and 4000 µm (z). It is
+the same stream read at a slightly different instant.
+
+The same rule shows up on Trim. Of 123 exposures on 20260513 carrying both a ConsDB and an
+EFD `dof5`, 113 agree to 1e-6 µm and 10 disagree; on **all 10**, exactly one MTAOS
+`degreeOfFreedom` event fell inside the exposure window and the ConsDB value equals that
+event. So the transform takes an event from *inside* the exposure, not the most-recent
+event before it.
+
+**Coverage, not arithmetic, is the reason to prefer the EFD.**
 
 ### It is not about closed-loop operation, and not about time coverage
 
@@ -272,7 +361,19 @@ science-visit selection that excludes AOS image types.
 **Consequence for code:** the as-of-time EFD lookup in
 `aos_trim.fetch_aggregated_dof_for_visits` — anchor on ConsDB `obs_start` (TAI), then
 `getMostRecentRowWithDataBefore` on the topic — is **required**. It must not be
-"simplified" into a ConsDB join.
+"simplified" into a ConsDB join. The same holds for the hexapod LUT via
+`aos_trim.fetch_hexapod_lut_for_visits`.
+
+**Trim and the hexapod LUT are EFD-only in the AOS pipeline.** ConsDB is used for these
+two quantities in exactly one place: `aos_consdb_efd.collect_consdb_telemetry` populates
+`dof0..49` from `mt_logevent_aggregated_dof` and `lut_dof0..9` / `trim_hex_dof0..9` from
+`HEX_LUT_COLS` / `HEX_TRIM_COLS`, and that is reachable only with `dof=True, hexapod=True`.
+The FAM path never sets them: `run_attach_telemetry.py` takes both groups from the EFD, and
+its `hexlut` and `trim` groups have no ConsDB branch. The ConsDB variant is kept as a
+deliberate cross-check, not as a source for the tables.
+
+ConsDB `obs_start` remains the *time anchor* for both EFD lookups. That is not a ConsDB
+data path for Trim or the LUT — it supplies only the exposure timestamp.
 
 ### The mirror LUTs, by contrast, join perfectly
 
@@ -345,15 +446,15 @@ hypothetical.
 | `aos/code/aos_trim.py` | Trim, hexapod and mirror LUT fetchers, `make_consdb_client` | client layer to `common/`, AOS physics stays |
 | `aos/code/aos_consdb_efd.py` | ConsDB transformed-EFD bulk path | `common/` |
 | `aos/code/aos_state.py` | per-visit state helpers, `DOF22` | stays in `aos/` |
-| `aos/code/run_backfill_thermal.py` | thermal repair, rewrites per-chunk visits in place | folded into the unified attach |
-| `aos/code/run_backfill_camera_telemetry.py` | camera-body sidecars, merges to combined only | folded into the unified attach |
+| `aos/code/fam_processing/run_attach_telemetry.py` | the unified attach: every group, per-chunk sidecar plus merge | stays in `aos/` |
 
-The two backfills exist because thermal retrieval fails when `mktable` runs on a Slurm
-node with no EFD access, while the expensive donut streaming succeeds. Both need a node
-where the EFD and ConsDB resolve: the RSP terminal or a slaciana/slacrd interactive node,
-**not** a batch node. Their split — one rewriting per-chunk files, the other writing
-sidecars and merging only to the combined table — is the source of the `cam_*` fragility
-in §1, and is what the unified script replaces.
+Client construction is already shared: `common/telemetry_clients.py` holds the URLs, token
+handling and `make_efd_client` / `make_consdb_client`, and `aos_trim` re-exports them
+unchanged so the four sibling topics that import them by bare name keep working.
+
+`run_attach_telemetry.py` needs a node where the EFD and ConsDB resolve: the RSP terminal or
+a slaciana/slacrd interactive node, **not** a batch node. That is why `attach_telemetry` is
+excluded from the Snakemake batch mode.
 
 ## See also
 

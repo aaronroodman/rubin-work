@@ -22,6 +22,7 @@ groups so one missing column only drops its group:
   - wind: 110 sonic components/magnitude + 301 airflow speed/direction
   - mirror stress scalars m1m3_stress / m2_stress
   - hexapod compensation_offset (LUT -> lut_dof0-9) + aos_corrections (Trim -> trim_hex_dof0-9)
+    -- OFF by default (``hexapod=False``); cross-check only, see below
 Plus weather-tower ``wind_speed`` / ``wind_dir`` from ``cdb_lsstcam.exposure``.
 
 Column names match ``olr/code/telemetry.py`` + ``aos_trim`` so the ConsDB and
@@ -30,6 +31,17 @@ transform: M1M3 spatial gradients (x/y/z/radial, from the thermocouple array)
 and the 123-126 inside anemometers -- fetch those from raw EFD if wanted.
 
 Keyed on ``exposure_id`` (== ``visit_id`` for these single-snap AOS visits).
+
+**The EFD is the source of record for Trim and the hexapod LUT.**  The ConsDB
+transform gates ``mt_logevent_aggregated_dof`` and ``*_hexapod_aos_corrections_*``
+on ``img_type='science'`` (0% on the ``cwfs`` exposures FAM uses) and populates
+``*_hexapod_compensation_offset_*`` at only a few % everywhere; there is no
+``compensatedPosition`` column at all.  Where it *is* populated the values are
+correct -- the transform takes an event from inside the exposure window rather
+than the most-recent-before, so the difference is a sampling offset, not a
+different quantity.  Coverage is the reason to prefer the EFD, and ``dof`` /
+``hexapod`` are therefore off by default.  Use ``aos_trim.fetch_aggregated_dof_for_visits``
+and ``aos_trim.fetch_hexapod_lut_for_visits`` instead.  See ``../docs/telemetry.md`` §4.
 """
 import numpy as np
 import pandas as pd
@@ -177,14 +189,17 @@ def fetch_scalars_pivoted(cdb, visit_ids, hexapod=True):
 
 
 def collect_consdb_telemetry(cdb, visits, config_dir, visit_col="visit_id",
-                             dof=True, hexapod=True, m1m3_azim_therm=False):
+                             dof=False, hexapod=False, m1m3_azim_therm=False):
     """Attach DOF/mirror-LUT/hexapod/temps/wind/stress to ``visits`` (a copy).
 
-    ``dof=False`` / ``hexapod=False`` skip the DOF Trim (dof0-49) / hexapod LUT
-    (lut_dof0-9, trim_hex_dof0-9) -- these are SAL logevents that the transform
-    captures in only a few % of exposures, so the hybrid path takes them from the
-    raw EFD (as-of) instead.  The mirror LUT (lut_dof10-49, always continuous
-    telemetry) and temps/wind/stress are always taken from ConsDB.
+    ``dof`` / ``hexapod`` default to **False**: the DOF Trim (dof0-49) and hexapod
+    LUT (lut_dof0-9, trim_hex_dof0-9) are SAL logevents that the ConsDB transform
+    captures in only a few % of exposures, and 0% of the ``img_type='cwfs'``
+    exposures FAM uses, so the EFD as-of lookup (``aos_trim``) is the source of
+    record for both.  Set them True only for a deliberate ConsDB-vs-EFD
+    cross-check -- see ``../docs/telemetry.md`` §4.  The mirror LUT (lut_dof10-49,
+    continuous telemetry that joins 400/400 sampled visits) and temps/wind/stress
+    are always taken from ConsDB.
 
     ``m1m3_azim_therm=False`` (default) skips the M1M3 azimuth + thermal LUT
     bending modes (m1m3azim_dof0-19, m1m3therm_dof0-19) -- currently all zero

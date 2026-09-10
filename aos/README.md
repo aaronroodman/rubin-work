@@ -65,6 +65,7 @@ otherwise:
 | wind | inside and outside wind speed and direction, sonic temperature | ConsDB |
 | camera | 24 camera-body, housing, lens and shutter temperatures | EFD |
 | lut | M1M3 elevation and M2 gravity axial forces | ConsDB |
+| hexlut | the camera and M2 hexapod look-up-table baseline | EFD |
 | trim | the 50 accumulated DOF offsets | EFD |
 | tweak | the per-iteration DOF correction, differenced from Trim | derived |
 
@@ -76,8 +77,9 @@ Supporting modules at `code/`: `aos_trim.py` (Trim and the LUT fetchers), `aos_s
 ConsDB clients come from [`../common/telemetry_clients.py`](../common/telemetry_clients.py).
 
 [`docs/telemetry.md`](docs/telemetry.md) inventories every quantity with its ConsDB or
-EFD name, measured coverage on FAM exposures, and units. Trim is absent from ConsDB for
-FAM exposures and is read from the EFD by time;
+EFD name, measured coverage on FAM exposures, and units. Trim and the hexapod LUT are read
+from the EFD by time — the ConsDB copy of Trim is absent on FAM exposures, and its hexapod
+LUT reaches only a few percent — while the mirror LUT comes from ConsDB;
 [`docs/status/dof_telemetry_availability.md`](docs/status/dof_telemetry_availability.md)
 holds that measurement.
 

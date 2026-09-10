@@ -157,8 +157,11 @@ def _collect_hybrid(visits, args, client, efd, with_zernikes):
 # ConsDB-only transformed-EFD path (all quantities, incl. sparse logevents)
 # ----------------------------------------------------------------------------
 def _collect_consdb(visits, args, client, efd, with_zernikes):
+    # dof/hexapod are explicit: collect_consdb_telemetry defaults them off, because the
+    # EFD is the source of record for Trim and the hexapod LUT. This path is the
+    # deliberate ConsDB-only cross-check, so it opts back in.
     visits = aos_consdb_efd.collect_consdb_telemetry(
-        client, visits, config_dir=args.ofc_config_dir,
+        client, visits, config_dir=args.ofc_config_dir, dof=True, hexapod=True,
         m1m3_azim_therm=getattr(args, "m1m3_azim_therm", False))
     visits = _add_vmodes(visits, args)
     if getattr(args, "gradients_from_efd", True):
