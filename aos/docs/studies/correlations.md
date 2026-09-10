@@ -1,6 +1,6 @@
 # Study: `correlations` — what does the residual DZ correlate with?
 
-> **Status:** current · **Last updated:** 2026-09-09 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-10 · **Kind:** reference (study)
 
 
 Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
@@ -221,31 +221,72 @@ run directly. Two notebooks sit alongside them in `notebooks/correlations/`.
 
 ### `consdb_vs_efd_aos_dof_20260513.ipynb`
 
-Where the Consolidated Database (ConsDB) copy of the AOS degree-of-freedom values is filled,
-whether it agrees with the Engineering Facility Database (EFD) where filled, and where it is
-empty. Written for colleagues outside this project, so it imports **only released LSST code**
-— `lsst.summit.utils`, `lsst_efd_client` — and nothing from `rubin-work`; the client
-construction is inlined rather than taken from `common/telemetry_clients.py`. Keeping that
-constraint is the point of the notebook, so any edit that adds a repo import defeats it.
+The Engineering Facility Database (EFD) as the source of record for the AOS degree-of-freedom
+Trim and hexapod look-up table (LUT), and where the Consolidated Database (ConsDB) copy of
+those quantities is filled. Written for colleagues outside this project, so it imports **only
+released LSST code** — `lsst.summit.utils`, `lsst_efd_client` — and nothing from `rubin-work`;
+the client construction is inlined rather than taken from `common/telemetry_clients.py`.
+Keeping that constraint is the point of the notebook, so any edit that adds a repo import
+defeats it.
 
 One night, `day_obs = 20260513`, chosen for its mix of `acq`, `cwfs` and `science` exposures.
-It plots 22 Trim quantities and the 10 hexapod LUT axes against `seq_num`, ConsDB points over
-the EFD as-of-`obs_start` step trace, with the exact ConsDB column and EFD topic named in every
-panel title, plus an `img_type` reference panel and a coverage table broken down by `img_type`.
 
-Results on that night: the ConsDB Trim (`mt_logevent_aggregated_dof`) reaches 24.1% of 510
-science exposures and **0.0% of all 114 `acq` and all 110 `cwfs` exposures**, confirming the
-`img_type='science'` gate. The hexapod LUT (`compensation_offset`) is 1.8% science, 4.4% `acq`,
-5.5% `cwfs` for the camera hexapod and 0.2% for M2 — sparse everywhere and *not* img_type-gated,
-a different failure mode. The EFD as-of lookup resolves 816 of 822 exposures for every type,
-from 437 MTAOS events.
+**The EFD side.** Three checks establish that the terms are correctly identified before any
+ConsDB comparison is made.
 
-It also settles the ConsDB transform rule, which `telemetry.md` previously only inferred. Of
-the 123 exposures carrying both values, 113 agree to within 1 × 10⁻⁶ µm and 10 disagree; on
-**all 10**, exactly one MTAOS event fell inside the exposure window and the ConsDB value equals
-that event, while the EFD as-of value is the state at exposure start. The ConsDB takes a
-**within-exposure** event, not the most-recent-before one, which explains both the sparse
-coverage and the residual disagreement.
+`MTHexapod.logevent_compensationMode` is checked first, because `compensationOffset` publishes
+a computed LUT value whether or not the hexapod acts on it. Of the 822 exposures, 737 ran with
+compensation enabled and 85 with it disabled — and the 85 are entirely `bias` and `dark`
+frames, so every `science`, `acq`, `cwfs` and `flat` exposure of the night had the LUT applied.
+It is a state-change event (nine events for the camera hexapod over a seven-day window), so it
+needs an as-of lookup with a lookback of days, not a per-exposure join.
+
+The identity `compensatedPosition = uncompensatedPosition + compensationOffset` holds
+**exactly**: maximum residual 0 µm on x, y, z and 0 deg on u, v, w, on both hexapods, over 261
+(M2) and 427 (camera) matched event triples, unchanged when restricted to compensation-enabled
+events. So `uncompensatedPosition` is the accumulated Offset (Trim) alone, `compensationOffset`
+is the LUT alone, and the LUT has two independent EFD routes. The matching tolerance is the one
+trap: a single-stage match with a loose window pairs values across a hexapod move during a slew
+and shows spurious residuals of hundreds of µm, which is a property of the pairing rather than
+of the identity. The notebook matches in two nearest-in-time stages and reports both a 1 s and a
+5 s tolerance.
+
+**The ConsDB gaps.** The Trim (`mt_logevent_aggregated_dof`) reaches 24.1% of 510 science
+exposures and **0.0% of all 114 `acq` and all 110 `cwfs` exposures**, confirming the
+`img_type='science'` gate. The hexapod LUT (`compensation_offset`) is a few percent on all
+three on-sky types for the camera hexapod and under a percent for M2 — sparse everywhere and
+*not* img_type-gated, a different failure mode. There is **no ConsDB column for
+`compensatedPosition`**, so a physical position can be rebuilt from the ConsDB only where both
+term families happen to be populated.
+
+**What the ConsDB columns actually hold**, measured by comparing each pivoted family against
+all three `MTHexapod` topics rather than inferred from its name:
+
+- `{camera,m2}_hexapod_aos_corrections_*` is the **accumulated Offset**, closest to
+  `uncompensatedPosition` on 6 of 6 translation axes with the runner-up topic wrong by a factor
+  of 11 to 264. The name suggests a per-iteration correction; it is not one, and the magnitudes
+  agree — thousands of µm on x and y is a standing alignment.
+- `{camera,m2}_hexapod_compensation_offset_*` is the **LUT**, closest to `compensationOffset`
+  on 6 of 6 axes.
+
+**Where populated, the ConsDB values are correct.** The LUT difference from the EFD as-of value
+at `obs_start` (about 10 µm median on the camera hexapod x axis) collapses to 1.2 µm or less
+against the best-matching `compensationOffset` event inside the exposure, and to exactly 0 µm
+for M2 — a fraction of a percent of the 1959 µm (x), 1730 µm (y) and 4000 µm (z) range the LUT
+covers in the night. The ConsDB value is a sample of the same stream at a different instant;
+the LUT genuinely moves during an exposure.
+
+The transform rule itself is settled by the Trim, which `telemetry.md` previously only
+inferred. Of the 123 exposures carrying both values, 113 agree to within 1 × 10⁻⁶ µm and 10
+disagree; on **all 10**, exactly one MTAOS event fell inside the exposure window and the ConsDB
+value equals that event, while the EFD as-of value is the state at exposure start. The ConsDB
+takes a **within-exposure** event, not the most-recent-before one, which explains both the
+sparse coverage and the residual disagreement. For a step-function quantity like the Trim that
+is the wrong instant.
+
+Scatter plots of ConsDB against EFD, one panel per axis and coloured by `img_type`, are given
+for all three families, so the coverage question and the value-agreement question are answered
+separately.
 
 ### `corner_z4_vs_temperature_science.ipynb`
 
