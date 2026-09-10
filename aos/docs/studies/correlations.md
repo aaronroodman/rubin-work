@@ -319,16 +319,23 @@ hexapod tilts in arcsec, which are numerically large, so on a general 22-DOF vec
 differ by roughly 10% (dimensionless, canonical over shortcut). The notebook uses the canonical
 route throughout.
 
-Temperatures come from ConsDB `efd_lsstcam.exposure_efd` using the `aos_consdb_efd.TEMP_COLS`
-names. The camera-body environmental sensing system (ESS) at salIndex 1 — `cam_hex_temp_0..7` —
-carries **no data on any of the 27671 science visits in this range**, so the camera variable is
-the camera *air* temperature from the salIndex-111 ESS, whose channel 0 is the only populated
-one; truss and ambient are 89.7% populated. The notebook measures this coverage rather than
-assuming it, and labels the axis for whichever source it actually used.
+Air temperatures come from ConsDB `efd_lsstcam.exposure_efd` using the
+`aos_consdb_efd.TEMP_COLS` names: truss and ambient at 89.7% populated, and the camera *air*
+temperature from the salIndex-111 environmental sensing system (ESS), whose channel 0 is the only
+populated one. The camera **body** temperature is a different quantity and does not come from the
+ESS at all — the salIndex-1 ESS (`cam_hex_temp_0..7`) carries no data on any of the 27671 science
+visits in this range. It is camera housekeeping published to the camera's own InfluxDB database
+`lsst.MTCamera`, topic `lsst.MTCamera.utiltrunk_body`, field `AverageTemp`, and the notebook
+fetches it with a second EFD client constructed against that database, following the pattern in
+`code/fam_processing/run_attach_telemetry.py`. A reading outside (−50.0, 60.0) °C is a sensor
+dropout rather than a temperature. Both the body and the air temperature near the camera are kept
+as independent thermal channels.
 
 The per-visit pull is cached to
-`output/notebooks/correlations/corner_z4_vs_temperature_science_<first>_<last>.parquet`, since
-the EFD LUT and Trim queries cost roughly 20 s per night over about 50 nights.
+`output/notebooks/correlations/corner_z4_vs_temperature_science_<first>_<last>_<version>.parquet`,
+since the EFD LUT, Trim and camera-body queries cost roughly 20 s per night over about 50 nights.
+The version suffix is bumped when a new column is added, which forces a refetch rather than
+silently serving a cache that predates it.
 
 One section steps outside that sample to fix the sign of the measured term, reading
 `MTAOS.logevent_wavefrontError` (the Optical Feedback Control input, four rows per visit, one per
@@ -419,6 +426,67 @@ line is drawn on the scatter panel — only the quadrant is meaningful. The thre
 (seq_num 14, 16, 18, all under 0.4 µm of wavefront) do not all fall in the opposing quadrant and
 are not expected to: once the focus error approaches the corner-to-corner spread, the correction
 is driven by the other Zernikes and DOF in the fit rather than by defocus.
+
+#### Structure in the residual about the truss relation
+
+Subtracting each band's own Huber fit of `v1_total` against mean truss temperature leaves a
+residual with nMAD 0.2152 (g), 0.2432 (r), 0.2414 (i) and 0.2670 (z), all dimensionless — 239
+to 296 µm of equivalent hexapod dz, pooling to 0.2450 dimensionless or 271.9 µm over n = 22824.
+Truss temperature is therefore far from a complete description of the commanded focus state.
+
+The residual core is close to Gaussian but carries a **one-sided positive tail** in every band:
+2.38% (g), 2.01% (r), 3.04% (i) and 0.88% (z) of visits lie beyond +3 nMAD against 0.25%,
+0.38%, 0.34% and 0.04% beyond −3 nMAD, where a Gaussian would put 0.135% on each side. The
+positive/negative ratio runs 5 to 25 (dimensionless) and in the same direction in all four
+bands, so it is not symmetric measurement noise on the wavefront term but a population of
+visits whose commanded focus sat above the truss relation — the reason the fits are robust
+rather than ordinary least squares.
+
+#### No thermal channel adds information beyond the truss
+
+The ten-channel `CORE_THERMAL` set is scored against a truss-only baseline with `GroupKFold` on
+`day_obs` — grouping is load-bearing, since thermal state is correlated within a night and an
+ungrouped split leaks near-duplicate rows into the test fold and inflates every score. Ridge on
+all ten channels and histogram gradient-boosted trees are compared to the baseline on identical
+rows, scored once on accumulated out-of-fold predictions.
+
+Out-of-sample R² (dimensionless): truss-only +0.3898 (g), +0.3545 (r), +0.1603 (i), +0.3255
+(z); ridge +0.4759, +0.3932, +0.1381, +0.3952; gradient boosting +0.2501, +0.2964, −0.0181,
++0.2236.
+
+**The answer is no, on two grounds.** The mean ridge gain of +0.0431 in R² is smaller than the
+0.0880 across-band standard deviation of the baseline R² itself, and it is not uniform — the i
+band, the largest sample at n = 9397, gets worse by −0.0222. Gradient boosting is worse than
+the baseline in every band, inflating the residual nMAD by 4.4% to 10.9% (dimensionless, GB
+over truss-only), so there is no exploitable nonlinearity. Permutation importance on the
+held-out fold puts `cam_AverageTemp` (mean drop in R² 0.3596) and `tma_truss_temp_pxpy` (0.3498)
+far above the other eight channels, all under 0.08 and several negative. The channels are
+largely redundant, as expected.
+
+#### The residual does not drift within a night
+
+The residual is plotted against hours since two per-night zero points: (a) zero-degree evening
+twilight, the descending crossing of geometric sun altitude 0.0 deg computed from the site
+coordinates by a coarse scan plus bisection, and (b) the first `science` or `acq` exposure of
+the night, queried separately from ConsDB because the notebook's own visit list is
+`img_type='science'` in g/r/i/z only. The first aligns nights by solar time, the second by
+operational time; they differ by the observing-start delay, median +0.99 h with a range of
++0.75 to +5.26 h over the 52 nights.
+
+Read through the median across nights in one-hour bins — the per-night lines are too noisy
+visit-to-visit to carry a shape — the residual sits flat on zero to within about ±0.05
+dimensionless (±55 µm of equivalent hexapod dz) from the start of the night to the end, in every
+band and under both alignments, with error bars of the same size as the excursions. The pooled
+Huber slopes are small and **inconsistent in sign between bands** (g −0.00680 ± 0.00171, r
++0.00786 ± 0.00106 dimensionless per h under alignment (a), both at |slope/err| above 3), the
+nMAD of the per-night slopes (0.042 to 0.084 per h) is 3 to 180× the median per-night slope, and
+even the largest pooled slope integrated over a 9-hour night gives 0.07 dimensionless, under
+30% of the residual nMAD it would need to explain. Neither zero point does better than the
+other.
+
+Twilight validates as a smooth 22.25 h to 21.75 h UTC seasonal walk over April to July (a
+0.50 h swing) and precedes the first exposure on all 52 nights. On 8 of those nights the first
+exposure fell after 00:00 UTC, so the validation panel plots its hour unwrapped past midnight.
 
 ## See also
 
