@@ -323,10 +323,22 @@ air temperature give the same picture at slightly shallower slopes (`v1_total`: 
 and +0.07925 ± 0.00178 per °C respectively), as expected for quantities correlated with the truss
 temperature rather than independent of it.
 
-The sign of the measured term is not determined by this data: the two choices differ by 0.56%
-in residual nMAD, because the measured term (nMAD 0.1535, dimensionless) is far too small
-against LUT + Trim (nMAD 0.5957) for the truss relation to distinguish them. The notebook
-reports both and says so rather than presenting the marginally tighter choice as a result.
+The overall sign with which the measured term enters the sum is a convention, set by the
+notebook's `MEASURED_SIGN` parameter rather than fitted. Two sign conventions compose into it,
+neither pinned down by anything measured here: the sign of the ConsDB corner OPD Z4 relative to
+the batoid/OFC wavefront convention, and the sign of the −1110.03 µm-per-µm conversion. The
+truss fit cannot resolve the choice — the two options differ by 0.56% in residual nMAD, because
+the measured term (nMAD 0.1535, dimensionless) is only 0.26× the size of LUT + Trim (nMAD
+0.5957, ratio dimensionless).
+
+A weaker but physically meaningful diagnostic does favour one. A measured residual should report
+the part of the commanded focus that was *not* achieved, so adding it with the correct sign
+should reduce the scatter of the total rather than increase it. Sign −1 gives nMAD 0.5939 against
+0.5957 for LUT + Trim alone (−0.30% relative, dimensionless); sign +1 gives 0.6065 (+1.82%).
+Sign −1 is therefore the notebook's default, which makes the composed map from OPD Z4 to v-mode 1
+net positive. The margin is small enough that this is stated as an indication, not a
+determination, and flipping `MEASURED_SIGN` and re-running from Section 7 reproduces the
+alternative. No conclusion above depends on the choice.
 
 ## See also
 
