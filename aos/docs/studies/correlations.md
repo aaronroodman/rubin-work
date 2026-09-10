@@ -442,6 +442,13 @@ bands, so it is not symmetric measurement noise on the wavefront term but a popu
 visits whose commanded focus sat above the truss relation — the reason the fits are robust
 rather than ordinary least squares.
 
+The same fit is also run against the **commanded state alone**, `v1_lut_trim = v1_lut + v1_trim`,
+dropping the measured wavefront term. That residual is 15% tighter — pooled nMAD 0.2091 against
+0.2450, both dimensionless, a ratio of 0.854 — while the within-night focus excursions remain, so
+`v1_meas` contributes more scatter than it removes at this level. It is a four-field-point
+estimate of a field-constant quantity, which is the expected reason. Both residuals are stored in
+the summary table, so either can be used as the starting point for the time-history work.
+
 #### No thermal channel adds information beyond the truss
 
 The ten-channel `CORE_THERMAL` set is scored against a truss-only baseline with `GroupKFold` on
@@ -492,7 +499,7 @@ exposure fell after 00:00 UTC, so the validation panel plots its hour unwrapped 
 
 The notebook writes
 `output/notebooks/correlations/corner_z4_v1_summary_<first>_<last>_<version>.parquet`, one row
-per science visit (27671 rows, 20 columns, 3.96 MB) for follow-up work outside the notebook:
+per science visit (27671 rows, 36 columns) for follow-up work outside the notebook:
 
 | column | quantity |
 |---|---|
@@ -502,19 +509,40 @@ per science visit (27671 rows, 20 columns, 3.96 MB) for follow-up work outside t
 | `sky_rotation_deg` | sky position angle, deg — carried alongside the rotator, and a different quantity |
 | `v1_lut`, `v1_trim`, `v1_meas` | the three v-mode-1 components, dimensionless; `v1_meas` is stored with its own sign as measured, before `MEASURED_SIGN` is applied |
 | `v1_total` | `v1_lut + v1_trim + MEASURED_SIGN * v1_meas` with `MEASURED_SIGN = -1`, dimensionless |
-| `v1_truss_fit`, `v1_resid_truss` | the per-band Huber prediction from truss temperature and the residual about it, dimensionless |
+| `v1_lut_trim` | `v1_lut + v1_trim`, the commanded state with no measured term, dimensionless |
+| `v1_truss_fit`, `v1_resid_truss` | the per-band Huber prediction of `v1_total` from truss temperature and the residual about it, dimensionless |
+| `v1_truss_fit_lutptrim`, `v1_resid_truss_lutptrim` | the same pair fitted to `v1_lut_trim` instead, dimensionless |
 | `truss_temp`, `cam_body_temp`, `outside_temp` | mean TMA truss, camera body `AverageTemp`, and outside air temperature, deg C |
+| `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy` | the two TMA truss thermocouples individually, deg C |
+| `cam_air_temp`, `m2_air_temp`, `m1m3_air_temp` | ESS air temperatures near the camera, M2 and M1M3 (salindex 111/112/113), deg C |
+| `m2_delta_t`, `cam_m1m3_delta_t`, `dome_delta_t` | air-temperature differences against `m1m3_air_temp`, deg C |
+| `pressure_pa` | ambient air pressure, **Pa** — median about 74300 Pa at 2663 m, not hPa |
+| `donut_blur_fwhm`, `aos_fwhm` | ConsDB donut-blur and AOS FWHM contributions, arcsec, 91.85% populated |
+| `psf_sigma_median`, `psf_fwhm` | ConsDB median PSF Gaussian sigma in pixels, and the FWHM derived from it in arcsec |
 | `delta_mjd_twilight`, `delta_mjd_firstimg` | exposure midpoint minus each per-night zero point, days |
 
-`v1_truss_fit` is rebuilt from the same per-band fits Section 10 subtracts, so
-`v1_truss_fit + v1_resid_truss` reproduces `v1_total` to 4.4 × 10⁻¹⁶ (dimensionless, the
-floating-point round-off over the 22824 rows where all three are finite). The parquet is read
-back and compared against the in-memory frame in the same cell.
+Both fit/residual pairs are rebuilt from the same per-band fits Section 10 subtracts, so
+`v1_truss_fit + v1_resid_truss` reproduces `v1_total`, and the `_lutptrim` pair reproduces
+`v1_lut_trim`, to floating-point round-off. The parquet is read back and compared against the
+in-memory frame in the same cell.
+
+The commanded state alone gives a **15% smaller** residual about the truss relation than the
+total does: pooled nMAD 0.2091 against 0.2450 (both dimensionless), a ratio of 0.854, or 232.1
+against 271.9 µm of equivalent hexapod dz. Per band the ratio runs 0.779 (g) to 0.870 (i). The
+within-night focus excursions survive in both, so the difference is measurement noise carried by
+the four-field-point `v1_meas` term rather than signal removed. Its commanded-only truss slope in
+g band, +0.09664 ± 0.00182 per °C, also sits close to the +0.09634 per °C that
+`run_dz14_truss.py` finds on FAM exposures — an independent check on units and indexing.
+
+`psf_fwhm` is derived, not stored by the ConsDB: `psf_sigma_median` is a Gaussian sigma in
+pixels, scaled by 2.3548 (dimensionless) and 0.2 arcsec/pixel. The three image-quality columns
+arrive as `object` dtype from the ConsDB and are cast to numeric before use.
 
 The camera physical rotator angle required extending the visit query with a `LEFT JOIN` onto
-`visit1_quicklook`, since `visit1` itself carries only `sky_rotation`. Because the pointing
-columns come from that ConsDB query rather than from the slow EFD pull, the cache loader
-back-fills them into a cache written before they were added instead of forcing a refetch.
+`visit1_quicklook`, since `visit1` itself carries only `sky_rotation`; `pressure` comes from
+`visit1` and the image-quality columns from `visit1_quicklook`. Because all of these come from
+that ConsDB query rather than from the slow EFD pull, the cache loader back-fills them into a
+cache written before they were added instead of forcing a refetch.
 
 ## See also
 
