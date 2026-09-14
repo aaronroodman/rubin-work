@@ -301,22 +301,24 @@ These are **current** as of 2026-09-05, unlike the line-anchored items above.
 - `compare_to_archive.py`'s `--archive` docstring used the RSP-only
   `/home/r/roodman/...` form; now `/sdf/group/rubin/...` (`usdf-mount-paths`).
 
-### Open — stale coadd products on disk (data, not code)
-`analyze_miw_field_order.py` now imports cleanly but dies with
+### Open — `analyze_miw_field_order.py` lacks a row-count guard
+The script imports cleanly but dies with
 
 ```
 IndexError: boolean index did not match indexed array along axis 0;
 size of axis is 130 but size of corresponding boolean axis is 221
 ```
 
-because in
-`output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/coadd_50_34/`,
-`block_grids.npz` has **umodes shape (130, 34)** while
-`coadd_metrics_rebin3.parquet` has **221 rows** (`build_used` sum 16). The two
-products are from different runs. This is the "undocumented row-order/count invariant
-between the sidecar parquet and the main table" defect from the original review,
-occurring for real. Either regenerate both from one run, or make the script assert
-`len(mt) == len(Um)` with a clear message instead of an `IndexError`.
+when `block_grids.npz` (umodes shape (130, 34)) is paired with a
+`coadd_metrics_rebin3.parquet` of 221 rows. This is the "undocumented row-order/count
+invariant between the sidecar parquet and the main table" defect from the original review,
+occurring for real, and the guard — assert `len(mt) == len(Um)` with a message naming both
+files and counts — is still wanted.
+
+The mismatch cause is no longer open: it is band selection, since `--bands` inherits
+`mi_config.yaml` `defaults: filter: [i]` when omitted and 2025 Full Array Mode data is
+mostly r-band. See [`code_review_backlog.md`](code_review_backlog.md) and
+[`../studies/coadd.md`](../studies/coadd.md).
 
 ### Open — laptop paths across other topics
 A repo-wide sweep found **17 more tracked files** with hardcoded

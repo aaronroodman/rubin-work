@@ -40,9 +40,23 @@ svd = osv.build_ofc_svd(ZK, K_MIN, K_MAX, N_KEEP)
 V, Sig, N = svd.V, svd.Sigma, svd.normalization_weights
 
 # --- the build's own mean u-mode state -> DOF -> full 31-order wavefront ---
-d = np.load(f"{CO}/block_grids.npz", allow_pickle=True)
-mt = pd.read_parquet(f"{CO}/coadd_metrics_rebin3.parquet")
+_npz = f"{CO}/block_grids.npz"
+_metrics = f"{CO}/coadd_metrics_rebin3.parquet"
+d = np.load(_npz, allow_pickle=True)
+mt = pd.read_parquet(_metrics)
 Um = np.asarray(d["umodes"], float)
+# The metrics table is masked by a boolean array sized from the npz, so the two must
+# come from the SAME run.  The usual cause of a mismatch is a differing band selection:
+# run_coadd_blocks_miw.py's --bands inherits mi_config.yaml `defaults: filter: [i]` when
+# omitted, and 2025 FAM is mostly r-band, so an i-band run builds far fewer 2025 blocks
+# than an all-band one (130 vs 216 blocks on the current chunk tables).
+if len(mt) != len(Um):
+    raise SystemExit(
+        f"block count mismatch -- these two products are from different runs:\n"
+        f"  {_npz}\n      umodes {Um.shape[0]} blocks\n"
+        f"  {_metrics}\n      {len(mt)} rows\n"
+        f"Regenerate both from one run (same --bands): rerun run_coadd_blocks_miw.sbatch, "
+        f"then recompute_coadd_metrics.py on its block_grids.npz.")
 u_ref, sig_b, _, src = umode_reference(
     Um, mt["build_used"].to_numpy(bool), np.asarray(d["n_visits"], float))
 dof = N * (V[:, :N_KEEP] @ (u_ref / Sig[:N_KEEP]))          # recover_dof_per_visit

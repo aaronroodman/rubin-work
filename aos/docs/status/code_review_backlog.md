@@ -1,16 +1,19 @@
 # AOS code review — open backlog
 
-> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** working state (review backlog)
+> **Status:** current · **Last updated:** 2026-09-14 · **Kind:** working state (review backlog)
 
 Items deferred during the study reorganization, each because fixing it would change
 results or behaviour rather than structure. Kept separate from
 [`code_review_findings.md`](code_review_findings.md), which is the older
 severity-ordered review whose line anchors are stale.
 
-**Still open:** the stale `coadd_50_34` products (a data problem, not code), and 11 files
-in `filters/` and `smatrix/` carrying `/Users/roodman` data paths. Everything else here is
-resolved, with the reasoning kept so a later pass does not re-litigate it. Outputs needing
-regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
+**Still open:** the missing row-count guard in `analyze_miw_field_order.py`. Everything
+else here is resolved, with the reasoning kept so a later pass does not re-litigate it.
+Outputs needing regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
+
+No `/Users/roodman` data path remains in any tracked code file — the only occurrences left
+in the repository are in this document and
+[`code_review_findings.md`](code_review_findings.md), describing the problem.
 
 Aaron is reviewing `aos/code/` file by file, assessing (a) whether code belongs in
 `common/` and (b) readability, including bringing docstrings up to the Rubin DM
@@ -131,19 +134,32 @@ Replaced with an explicit `np.isfinite` check that still catches zero:
 | all-zero | 0.0 | 0.01 | 0.01 |
 | normal | 2.96 | 2.96 | 2.96 |
 
-### `analyze_miw_field_order.py` — stale products, unhelpful failure
-In `output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/coadd_50_34/`,
-`block_grids.npz` has umodes shape **(130, 34)** while
-`coadd_metrics_rebin3.parquet` has **221 rows** (`build_used` sum 16). The two are from
-different runs, so the boolean mask raises `IndexError`. Either regenerate both from one
-run, or assert `len(mt) == len(Um)` with a message naming both files and both counts.
+### `analyze_miw_field_order.py` — missing row-count guard (OPEN)
+The script masks `coadd_metrics_rebin3.parquet` with a boolean array sized from
+`block_grids.npz`, with no check that the two agree, so mismatched products raise a bare
+`IndexError` instead of naming the problem:
+
+```
+IndexError: boolean index did not match indexed array along axis 0;
+size of axis is 130 but size of corresponding boolean axis is 221
+```
+
+**The mismatch cause is understood: band selection, not stale data.** `--bands` defaults to
+the `mi_config.yaml` `defaults: filter: [i]`, and FAM data from 2025 is mostly r-band (1229
+visits) rather than i-band (689), so an i-band run builds 130 blocks against an all-band
+run's 216. Both counts are reproducible from the current chunk tables. Superseded products
+now sit under `output/<ps>/coadd_50_34/archive/` with their band selection recorded; see
+[`../studies/coadd.md`](../studies/coadd.md).
+
+**The code fix still wanted:** assert `len(mt) == len(Um)` with a message naming both files,
+both counts, and the likely band-selection cause.
 
 This is the row-count/row-order invariant defect from the original review, occurring for
 real. The general lesson for the review pass: **a count mismatch is caught, an order
 mismatch is not** — sidecar tables row-aligned to `donuts.parquet` have an undocumented
 ordering contract.
 
-### Laptop paths — the two in `aos/` FIXED 2026-09-07 (`3997c26`); 11 elsewhere remain
+### Laptop paths — RESOLVED; no tracked code file carries `/Users/roodman`
 
 `analyze_sensitivity_sparse.py` and `analyze_sparse_observability.py` set
 `_PKG = "/Users/roodman/Astrophysics/Claude/packages"` and used it both as a

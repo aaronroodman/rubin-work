@@ -1,6 +1,6 @@
 # Outputs that need regenerating
 
-> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** working state (rerun list)
+> **Status:** current · **Last updated:** 2026-09-14 · **Kind:** working state (rerun list)
 
 Products on disk that predate a code change and no longer match what the current code
 would produce. Kept here so a stale plot is not mistaken for a current result.
@@ -124,12 +124,35 @@ basis pinned explicitly via `bend_dir`.
 - **`smatrix_vmode`** — `vmode_dof_matrix_{22_12,50_34}.pdf` were regenerated on
   2026-09-06 into `output/smatrix_vmode/` when the output moved out of `<ps>`.
 
-## Notes
+## `coadd_50_34` — rerunning over all bands, 2025 and 2026
 
-Two products are stale for a data reason rather than a code reason, and a rerun of the
-owning step is the fix:
+The products in `output/<ps>/coadd_50_34/` came from two runs with two different band
+selections: `block_grids.npz` from an i-band run (130 blocks built) and
+`coadd_metrics_rebin3.parquet` from an all-band run (221 blocks). Mixing them makes
+`analyze_miw_field_order.py` fail with an `IndexError`. Both counts are reproducible from
+the current chunk tables, so no data was lost; the cause is that `--bands` inherits
+`mi_config.yaml` `defaults: filter: [i]` when omitted, and 2025 Full Array Mode data is
+mostly r-band.
 
-- `output/<ps>/coadd_50_34/` — `block_grids.npz` (130 umode rows) and
-  `coadd_metrics_rebin3.parquet` (221 rows) are from **different runs**, which makes
-  `analyze_miw_field_order.py` fail with an `IndexError`. See
-  [`code_review_backlog.md`](code_review_backlog.md).
+The 2026-08-24 to 2026-09-03 products are archived under
+`output/<ps>/coadd_50_34/archive/20260903_iband/` and
+`output/<ps>/coadd_50_34_v2/archive/20260903_iband/`, each with a note recording its band
+selection and block count.
+
+**Rerunning over all bands** rebuilds both `coadd_50_34/` products from one run: 216 blocks
+(117 from 2025, 99 from 2026) spanning `day_obs` 20250417 to 20260713, of which 16 remain
+flagged `build_used`. Selection details are in
+[`../studies/coadd.md`](../studies/coadd.md).
+
+Batch submission is **MUST-ASK**. The producer runs first, then the metrics recompute reads
+its `block_grids.npz`:
+
+```bash
+cd ~/notebooks/rubin-work/aos
+sbatch run_coadd_blocks_miw.sbatch --bands g r i z u y
+```
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/coadd/recompute_coadd_metrics.py --rebin 1 3
+```
