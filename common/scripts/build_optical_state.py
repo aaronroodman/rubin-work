@@ -172,7 +172,12 @@ def intrinsic_batoid(bands, rot_angles, zk_noll, ofc_version=DEFAULT_OFC_VERSION
     out = np.full((len(rot_angles), 4 * n_z), np.nan)
     cols = [z - ofcd.znmin for z in zk_noll]
     for i, (band, rot) in enumerate(zip(bands, rot_angles)):
-        if not isinstance(band, str) or not band or not np.isfinite(rot):
+        # ConsDB reports the literal string 'none' for exposures taken with no filter --
+        # flats, darks, biases and CBP -- rather than a null, and 'none'.upper() is not a
+        # filter ts_ofc knows, so it must be screened here with the empty and null cases.
+        # Science exposures always carry a real band, so this only skips calibration rows.
+        if (not isinstance(band, str) or band.lower() in ('', 'none')
+                or not np.isfinite(rot)):
             continue
         key = (band.lower(), round(float(rot) * 2.0) / 2.0)
         if key not in cache:
