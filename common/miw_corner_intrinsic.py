@@ -38,13 +38,21 @@ carries a band-dependent intrinsic offset on the batoid route and a band-indepen
 the MIW route. That shifts intercepts between the two routes, and is the expected difference
 rather than a defect.
 
-The Zernike 4 (defocus) term of the MIW differs from the batoid intrinsic in what it
-includes. The FAM-derived MIW absorbs the physical height of each detector above the focal
-surface into its measured defocus, whereas the corner sensors' own height is a property of
-those detectors and not of the field point. `corner_z4_height_um` returns that per-sensor
-term so a caller can state explicitly whether it is included; `MiwCornerLookup` takes
-``add_ccd_height`` to control it, defaulting to false because the corner Zernikes ConsDB
-reports are referenced to the corner sensors themselves.
+**The detector heights are already in the MIW.** The physical height of each detector above
+the focal surface is a camera-fixed property, so the MIW fit puts it in the camera-fixed CCS
+component, and `reconstruct_at` combines that with the telescope-fixed OCS component --
+counter-rotating the CCS part into the OCS frame at the given rotator angle -- to give the
+full intrinsic. Evaluating that combination at the corner field points therefore accounts for
+the corner sensors' heights on the intrinsic side, with no separate height term. At the
+corners the CCS Zernike 4 component runs from +0.013 to +0.066 µm of wavefront, reaching 1.83
+times the OCS component at ``R40_SW0``, and it carries ``n_spin = 0, s = 1`` -- a pure
+camera-fixed pattern, which is the height signature.
+
+`corner_z4_height_um` computes a standalone per-sensor height term from the `batoid_rubin`
+height maps, for comparison against what the CCS component implies. It is **not** added by
+default and `MiwCornerLookup`'s ``add_ccd_height`` should normally stay false: the standalone
+term is -0.055 to -0.093 µm of wavefront at the corners, comparable to the CCS component
+itself, so adding it double-counts the heights.
 """
 
 import pathlib
@@ -204,6 +212,11 @@ def corner_z4_height_um(ofc_version=None, height_map_dir=None):
     The corner sensors are split, with the intra-focal half on ``SW1`` and the extra-focal
     half on ``SW0``; the height taken here is the mean of the two halves at the sensor
     centre, matching ``run_make_intrinsic_sidecar.py --wfs-corner-height``.
+
+    This is a **diagnostic**, not a term to add to the MIW. The heights are camera-fixed and
+    the MIW already carries them in its CCS component, so adding this on top double-counts
+    them. It is useful for checking that the two routes to the same physical quantity are of
+    comparable size.
     """
     import aos_state
 
@@ -252,9 +265,11 @@ class MiwCornerLookup:
     ofc_version : `str`, optional
         Passed to `corner_field_points`, so both intrinsic routes use the same field points.
     add_ccd_height : `bool`, optional
-        Add each corner sensor's height-equivalent defocus to the Zernike 4 term. Default
-        false -- the ConsDB corner Zernikes are referenced to the corner sensors themselves,
-        so their height is already absorbed in the measurement.
+        Add a standalone per-sensor height-equivalent defocus to the Zernike 4 term. Default
+        false, and normally left false: the detector heights are camera-fixed and so are
+        already carried by the CCS component that `field_at` reconstructs, making this a
+        double count. Available only for comparing the standalone height term against what
+        the CCS component implies.
     height_map_dir : `str`, optional
     round_deg : `int`, optional
         Rotator angles are grouped after rounding to this many decimal places, which

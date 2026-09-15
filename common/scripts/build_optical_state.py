@@ -357,9 +357,10 @@ def main(argv=None):
                    help='param_set holding the MIW build named by --intrinsic-ref; '
                         'defaults to the one in common/miw_corner_intrinsic.py')
     p.add_argument('--miw-ccd-height', action='store_true',
-                   help="add each corner sensor's height-equivalent defocus to the MIW "
-                        'Zernike 4; off by default because the ConsDB corner Zernikes are '
-                        'referenced to those sensors already')
+                   help='add a standalone per-sensor height-equivalent defocus to the MIW '
+                        'Zernike 4. Normally leave this off: the detector heights are '
+                        'camera-fixed and the MIW already carries them in its CCS '
+                        'component, so this double-counts them')
     p.add_argument('--day-obs', default=None,
                    help='single night, inclusive range, or a comma list')
     p.add_argument('--img-type', default=None,

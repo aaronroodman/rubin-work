@@ -99,6 +99,13 @@ batoid prediction is band-dependent and identical across the four corners, while
 field-dependent per corner, varies with camera rotator angle, and carries no band dependence
 because it is measured in one band.
 
+The MIW is stored as a telescope-fixed component in the Observatory Coordinate System (OCS)
+plus a camera-fixed component in the Camera Coordinate System (CCS), combined at each rotator
+angle by `intrinsic_split.reconstruct_at`. The detector heights are camera-fixed and so live
+in the CCS component, which means evaluating the combination at the corner field points
+already accounts for the corner sensors' heights — no separate height term is added, and
+adding one would double-count them.
+
 Two bookkeeping tables: **`column_coverage`** gives each column's first and last `day_obs`
 and non-null count, so a reader can tell "never deployed at that epoch" from "fetch failed"
 from "genuinely NaN"; **`fetch_log`** records one row per `(day_obs, group)`, which makes an
