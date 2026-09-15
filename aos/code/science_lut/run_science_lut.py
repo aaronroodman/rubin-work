@@ -120,6 +120,12 @@ def huber_fit(x, y, min_n=10):
     if m.sum() < min_n:
         return None
     x, y = x[m], y[m]
+    # A regressor that is constant over the finite pairs is rank-deficient against the
+    # intercept: add_constant collapses to a single column and the slope does not exist.
+    # Callers screen x over their whole selection, but a factor with contrast overall can
+    # still be constant within one band, so the guard belongs here where the pairs are final.
+    if np.ptp(x) == 0.0:
+        return None
     X = sm.add_constant(x)
     r = sm.RLM(y, X, M=sm.robust.norms.HuberT()).fit()
     resid = y - r.predict(X)
@@ -163,6 +169,8 @@ def theilsen_fit(x, y, min_n=10):
     if m.sum() < min_n:
         return None
     x, y = x[m], y[m]
+    if np.ptp(x) == 0.0:      # every pairwise slope would be a division by zero
+        return None
     slope, inter, lo, hi = theilslopes(y, x, alpha=0.95)
     resid = y - (inter + slope * x)
     return dict(n=int(x.size), slope=float(slope), intercept=float(inter),
@@ -656,6 +664,12 @@ def modulator_tests(df, ycol, variant, bands, modulators, verbose=True):
                 continue
             h = huber_fit(x[ok], y[ok])
             if h is None:
+                # Either too few pairs or no contrast within this band; say which, since a
+                # silently absent row reads the same as a null result.
+                if verbose:
+                    why = ('constant over this band'
+                           if np.ptp(x[ok]) == 0.0 else f'only {int(ok.sum())} pairs')
+                    print(f'  {label}, {b} band: {why} — skipped')
                 continue
             pr, npart = partial_correlation(y[ok], x[ok], el[ok])
             base = huber_fit(el[ok], y[ok])
@@ -708,6 +722,10 @@ def _chi2_dof_two(y, x1, x2):
     y, x1, x2 = (np.asarray(v, float) for v in (y, x1, x2))
     m = np.isfinite(y) & np.isfinite(x1) & np.isfinite(x2)
     if m.sum() < 12:
+        return np.nan
+    # Either regressor constant over the finite triples makes the design rank-deficient, and
+    # the fit would then report a two-regressor chi2/dof that only one regressor earned.
+    if np.ptp(x1[m]) == 0.0 or np.ptp(x2[m]) == 0.0:
         return np.nan
     X = sm.add_constant(np.column_stack([x1[m], x2[m]]))
     r = sm.RLM(y[m], X, M=sm.robust.norms.HuberT()).fit()
