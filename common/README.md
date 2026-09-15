@@ -13,6 +13,7 @@ imported by inserting the repository root on `sys.path` — `parents[2]` from
 | `utils.py` | `nmad` (normalized median absolute deviation), `alt_to_deg`, `repo_root`, `setup_plotting` |
 | `efd_db.py` | schema, upsert and read helpers for the value-added telemetry database |
 | `telemetry_clients.py` | Engineering Facility Database (EFD) and Consolidated Database (ConsDB) client construction, with the per-topic time-window padding each quantity needs |
+| `miw_corner_intrinsic.py` | Measured Intrinsic Wavefront (MIW) evaluated at the four corner-wavefront-sensor field points, as a function of camera rotator angle |
 | `FocalPlaneInterpolator.py` | focal-plane interpolation of a quantity sampled per detector |
 | `psf_moments_consdb.py` | Point Spread Function (PSF) moments read from ConsDB |
 | `notebook_template.ipynb` | the starting point for a new notebook |
@@ -67,6 +68,37 @@ The one failure mode this introduces is a forgotten variant filter, which would 
 multiply the sample by the variant count. So `efd_db.optical_state(variant, ...)` requires
 `variant` with no default and raises `KeyError` if it is not registered.
 
+#### Both intrinsic routes, side by side
+
+The intrinsic wavefront is what defines the optical state, since the corner sensors measure
+total OPD and the recovery consumes the deviation. Two routes are therefore kept
+simultaneously, as two variants over the same visits rather than two columns or two files:
+
+| variant | intrinsic | `intrinsic_ref` |
+|---|---|---|
+| `v50_34__batoid__consdb_v1` | batoid ray-trace prediction from `lsst.ts.ofc` | `ofc_v13` |
+| `v50_34__miw__consdb_v1` | Measured Intrinsic Wavefront from FAM data | `pathA_50_34_i_5rot` |
+
+Neither overwrites the other, `state_variant.intrinsic_ref` records which intrinsic produced
+each, and comparing them is a self-join on `visit_id`:
+
+```sql
+SELECT a.visit_id, a.v_modes[1] AS v1_batoid, b.v_modes[1] AS v1_miw
+FROM optical_state a JOIN optical_state b USING (visit_id)
+WHERE a.variant_id = 'v50_34__batoid__consdb_v1'
+  AND b.variant_id = 'v50_34__miw__consdb_v1' AND a.ok AND b.ok
+```
+
+or `efd_db.compare_variants(a, b)`. A further MIW build is a new `intrinsic_ref` and so a new
+variant, which is why the build name is registered rather than assumed.
+
+Both routes use the same 21-Zernike basis (`aos_state.ZK_NOLL`, Noll 4 to 26 excluding 20 and
+21) and the same `ts_ofc` corner sample points, so the only thing that differs between them is
+the intrinsic itself. Two asymmetries are properties of the intrinsics, not of the code: the
+batoid prediction is band-dependent and identical across the four corners, while the MIW is
+field-dependent per corner, varies with camera rotator angle, and carries no band dependence
+because it is measured in one band.
+
 Two bookkeeping tables: **`column_coverage`** gives each column's first and last `day_obs`
 and non-null count, so a reader can tell "never deployed at that epoch" from "fetch failed"
 from "genuinely NaN"; **`fetch_log`** records one row per `(day_obs, group)`, which makes an
@@ -101,7 +133,15 @@ python common/scripts/build_efd_db.py --day-obs 20260419-20260713 --groups all -
 # the recovered optical state, one variant at a time
 python common/scripts/build_optical_state.py --variant v50_34__batoid__consdb_v1 \
     --day-obs 20260419-20260713 --resume
+
+# the same visits with the MIW intrinsic instead; a new variant is registered on first use
+python common/scripts/build_optical_state.py --scheme 50_34 --intrinsic miw \
+    --intrinsic-ref pathA_50_34_i_5rot --day-obs 20260419-20260713 --img-type science
 ```
+
+`--list` prints the registry with per-variant row counts. The MIW route needs the AOS
+environment (`lsst.ts.ofc`, `lsst.ts.intrinsic.wavefront`) and the named build's
+`intrinsic_split_decomp.parquet`.
 
 Nights are independent and every `(day_obs, group)` outcome is logged, so `--resume` skips
 what already succeeded and the backfill restarts at any point. A group that fails or returns

@@ -353,6 +353,13 @@ def main(argv=None):
                    help="MIW build name for --intrinsic miw, e.g. pathA_50_34_i_5rot; "
                         "defaults to the ts_ofc config version for the batoid route")
     p.add_argument('--ofc-version', default=DEFAULT_OFC_VERSION)
+    p.add_argument('--miw-param-set', default=None,
+                   help='param_set holding the MIW build named by --intrinsic-ref; '
+                        'defaults to the one in common/miw_corner_intrinsic.py')
+    p.add_argument('--miw-ccd-height', action='store_true',
+                   help="add each corner sensor's height-equivalent defocus to the MIW "
+                        'Zernike 4; off by default because the ConsDB corner Zernikes are '
+                        'referenced to those sensors already')
     p.add_argument('--day-obs', default=None,
                    help='single night, inclusive range, or a comma list')
     p.add_argument('--img-type', default=None,
@@ -418,6 +425,23 @@ def main(argv=None):
           + (f' [{intrinsic_ref}]' if intrinsic_ref else '')
           + f', OPD {opd_version}, {len(zk_noll)} Zernike terms')
 
+    # The MIW route needs its intrinsic evaluated at the corner field points. The build named
+    # in the variant's intrinsic_ref is the intrinsic, so a different build is a different
+    # variant rather than a switch here.
+    miw_lookup = None
+    if route == 'miw':
+        from common.miw_corner_intrinsic import DEFAULT_PARAM_SET, MiwCornerLookup
+        miw_lookup = MiwCornerLookup(mi_name=intrinsic_ref,
+                                     param_set=a.miw_param_set or DEFAULT_PARAM_SET,
+                                     add_ccd_height=a.miw_ccd_height)
+        print(f'  MIW intrinsic from {miw_lookup.path}')
+        print(f'  corner field points [deg, OCS]: '
+              + ', '.join(f'{s} ({p[0]:+.4f}, {p[1]:+.4f})'
+                          for s, p in zip(aos_state.SENSOR_NAMES, miw_lookup.points)))
+        if miw_lookup.z4_height_um is not None:
+            print(f'  corner CCD-height Zernike 4 added [µm of wavefront]: '
+                  + ', '.join(f'{v:+.4f}' for v in miw_lookup.z4_height_um))
+
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     from build_efd_db import parse_day_obs
     cdb = make_consdb_client(a.consdb_url)
@@ -440,7 +464,7 @@ def main(argv=None):
     for day in days:
         vids, v_modes, dof, resid, ok = recover_night(
             cdb, day, svd, n_modes, route, zk_noll, ofc_version, cache,
-            img_type=a.img_type, verbose=not a.quiet)
+            miw_lookup=miw_lookup, img_type=a.img_type, verbose=not a.quiet)
         if not len(vids):
             continue
         efd_db.upsert_optical_state(con, vid, vids, v_modes, dof, resid, ok)
