@@ -99,7 +99,7 @@ reduced set has **specific indices** and is not the first 22 — use `aos_state.
 
 ## Studies
 
-The work divides into fourteen studies, ordered here from the most general to the most
+The work divides into fifteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
 outputs and current state of every one.
@@ -115,6 +115,7 @@ outputs and current state of every one.
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](docs/studies/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
+| [`science_lut`](docs/studies/science_lut.md) | Focus look-up table from ordinary science exposures: the truss-temperature dependence of the Corner Wavefront Sensor optical state, and the elevation dependence of the residual with four candidate modulating factors |
 | [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
 | [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
@@ -168,6 +169,7 @@ output/
       correlations/  bounce/  psf/  closed_loop/  lut/  wfs/<variant>/  wfs_mimic/
   smatrix_vmode/                   # OFC matrix diagnostics, no param_set dependence
   camera_gravity/                  # static_optics, no param_set dependence
+  science_lut/                     # science-exposure focus LUT, from the value-added database
   archive/                         # superseded param_sets
 ```
 

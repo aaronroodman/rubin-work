@@ -48,6 +48,9 @@ DEFAULT_EFD_NAME = 'usdf_efd'
 PAD_SEC = {
     'ess_temperature': 0.2,      # ESS temps: ConsDB transform already averages per exposure
     'wind': 0.2,                 # as above
+    'air_turbulence': 15.0,      # raw ESS.airTurbulence: measured 5.00 s cadence, so a
+                                 # 0.2 s window lands a sample only ~4% of the time
+
     'm1m3_thermocouple': 60.0,   # ~0.05 Hz array; widen to land a sample
     'camera_body': 120.0,        # utility-trunk housekeeping, slowest of the set
     'dof_event': 60.0,           # MTAOS logevent: as-of lookup, tail only
