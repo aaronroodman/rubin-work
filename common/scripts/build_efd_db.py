@@ -449,12 +449,12 @@ def build_night(con, cdb, efd, day_obs, groups, refetch=False, done=(), verbose=
     spine = visit_spine(cdb, day_obs)
     if spine.empty:
         if verbose:
-            print(f'{day_obs}: no exposures')
+            print(f'{day_obs}: no exposures', flush=True)
         for g in groups:
             efd_db.log_fetch(con, day_obs, g, 'empty', 0)
         return 0
     if verbose:
-        print(f'{day_obs}: {len(spine)} exposures')
+        print(f'{day_obs}: {len(spine)} exposures', flush=True)
     # The identity block alone first, so a night exists in the table even if every group
     # fails -- and, being identity-only, without nulling any group's columns.
     efd_db.upsert_visits(con, spine)
@@ -462,7 +462,7 @@ def build_night(con, cdb, efd, day_obs, groups, refetch=False, done=(), verbose=
     for g in groups:
         if not refetch and (int(day_obs), g) in done:
             if verbose:
-                print(f'    {g:13s} skipped (already ok)')
+                print(f'    {g:13s} skipped (already ok)', flush=True)
             continue
         fn, _needs_efd = FETCHERS[g]
         try:
@@ -470,12 +470,12 @@ def build_night(con, cdb, efd, day_obs, groups, refetch=False, done=(), verbose=
             n = efd_db.upsert_visits(con, df, g) if df is not None else 0
             efd_db.log_fetch(con, day_obs, g, 'ok' if n else 'empty', n)
             if verbose:
-                print(f'    {g:13s} {n} rows')
+                print(f'    {g:13s} {n} rows', flush=True)
         except Exception as e:
             efd_db.log_fetch(con, day_obs, g, 'error', 0,
                              f'{type(e).__name__}: {e}')
             if verbose:
-                print(f'    {g:13s} FAILED {type(e).__name__}: {e}')
+                print(f'    {g:13s} FAILED {type(e).__name__}: {e}', flush=True)
                 traceback.print_exc(limit=3)
     return len(spine)
 

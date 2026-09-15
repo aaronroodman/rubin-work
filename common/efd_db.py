@@ -252,6 +252,14 @@ def open_db(path=None, readonly=True, create=False):
     ------
     FileNotFoundError
         If the file does not exist and `create` is false.
+    `duckdb.IOException`
+        If a writer holds the file. DuckDB's lock is process-wide and excludes readers
+        too, so a read-only open fails while a build is running -- track a backfill
+        through the builder's own log rather than by querying `fetch_log`.
+
+    Notes
+    -----
+    Many readers may share the file once no writer is attached.
     """
     import duckdb
 
