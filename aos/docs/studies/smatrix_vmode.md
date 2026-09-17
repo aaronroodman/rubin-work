@@ -74,7 +74,8 @@ of their field-coefficient vectors, so no simulation is required.
 | notebook | content |
 |---|---|
 | `notebooks/smatrix_vmode/jk_coverage_plots.ipynb` | **derivation behind page 4**: why reachability is the right quantity, and the algebra for $f_{k,j}$ and the u-mode residual |
-| `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF normalization through the `ts_ofc` `StateEstimator` |
+| `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF normalization through the `ts_ofc` `StateEstimator`, deliberately independent of `rubin-work` code so it can be shared outside this repository |
+| `notebooks/smatrix_vmode/vmode_svd_engine_validation.ipynb` | **the engine-equivalence record**: `StateEstimator` against `build_ofc_svd` on a matched slab, both schemes, plus what the obsolete normalization costs |
 | `notebooks/smatrix_vmode/smatrix_vmode_info.ipynb` | early exploratory treatment: SVD with `StateEstimator` plus custom-SVD validation, v-mode composition, wavefront signatures, control equations, noise/gain, a normalization-scheme unit-invariance study, and DZ field patterns |
 
 `smatrix_vmode_info.ipynb` predates the decision to use `StateEstimator` everywhere and
@@ -98,20 +99,69 @@ set, which is identical in every `param_set` built to date (Z4–Z26 omitting Z2
 `plot_vmode_dof_matrix.py` reads it from that `param_set`'s `visits.parquet` instead and
 warns if it differs from the default.
 
-## Normalization — the trap
+## Two sanctioned engines, and their measured equivalence
 
-There are **two** ways to get v-modes and they do not agree unless you are careful:
-`StateEstimator` (4-CWFS) versus `build_ofc_svd` (double-Zernike), with geometric
-weights in play. There is a genuine degeneracy caveat. Read
+There are exactly **two** sanctioned ways to get v-modes, and given the same matrix they
+are the same engine:
+
+| engine | what it is for |
+|---|---|
+| `lsst.ts.ofc.state_estimator.StateEstimator`, reached **only** through `aos_state.make_state_estimator` | the online control basis — what the Main Telescope AOS runs on the summit; the basis `optical_state` v-modes use |
+| `lsst.ts.intrinsic.wavefront.ofc_svd.build_ofc_svd` | Double Zernike focal-order slices, `k_min=1, k_max=6`, for the FAM/MIW studies |
+
+Handed the matched full slab — all focal orders `k = 0..30`, all 29 pupil Zernikes, the
+same DOF subset and the same normalization yaml — they agree **exactly**, for both the
+22-DOF/12-v-mode and the 50-DOF/34-v-mode schemes:
+
+| quantity | agreement |
+|---|---|
+| normalization weights | `max\|Δw\| = 0.000e+00` (per-DOF weight units) |
+| singular values | `max\|ΔS\| = 0.000e+00` (DZ sensitivity units) |
+| DOF per unit v-mode (`N·V`) | `max\|Δ\| = 0.000e+00` (µm or arcsec of DOF; scale 645.7) |
+| per-mode alignment | `\|cos\| = 1.0000000000` (dimensionless) for every mode, zero sign flips |
+
+That is expected rather than surprising — it is the identical matrix through the identical
+LAPACK call — but it is now pinned by
+`notebooks/smatrix_vmode/vmode_svd_engine_validation.ipynb`, so the question does not have
+to be reopened. The remaining difference between them is the `k` range, which is the
+deliberate difference of purpose in the section above and not a defect.
+
+### The normalization is the trap
+
+Only `range0.5_fwhm-0.15.yaml` is acceptable. The bare `OFCData('lsst')` default resolves
+`range-fwhm.yaml`, the obsolete normalization whose sensitivity matrix retains a dependence
+on physical units. It is **not** a rescaling — the per-DOF weight ratios of required over
+obsolete are 10.452 (M2Hex dz), 948.79 (dx, dy) and 0.0057914 (rx, ry), all dimensionless
+— so it rotates the basis. Measured for `standard_22`,
+`|cos(v1_obsolete, v1_required)| = 0.000012` (dimensionless): v1 per µm of camera-hexapod
+dz collapses from -8.9153336e-04 to -1.2933321e-09 (dimensionless amplitude per µm), and v1
+becomes the M2-tilt mode instead of the focus-like combination.
+
+The config *directory* does not settle it. Inside the v13 directory, `init.yaml` selects the
+required yaml, while `dz_controller.yaml` and `oic_controller.yaml` select the obsolete one
+and `pid_controller.yaml` selects `default.yaml`. So `make_state_estimator` asserts the
+resolved `ofc.controller['normalization_weights_filename']` and raises on mismatch — never
+silently corrects it. That single interface is what makes the obsolete normalization
+unreachable rather than merely discouraged.
+
+There is a genuine degeneracy caveat: consecutive singular values come in near-degenerate
+pairs (visible as steps at m = 2/3, 4/5, 6/7, 8/9, 10/11 in the spectrum), so individual
+v-mode *vectors* within a pair are basis-dependent — only v1 and the pair magnitudes are
+unique. That is the second reason all code must share one `Vh`. Read
 `../../../notes/claude-memory/aos-vmode-normalization.md` and
 [`../../../olr/docs/vmode_normalization.md`](../../../olr/docs/vmode_normalization.md)
 before comparing v-modes computed two ways.
 
 The scripts here take the normalization weights from a ts_config_mttcs yaml rather than
 defining their own. `plot_vmode_dof_matrix.py` reads the name from the OFC controller
-config at runtime (`ofc.controller['normalization_weights_filename']`), so it uses
-whatever the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` names
-`range0.5_fwhm-0.15.yaml`. `--check` verifies the result against `StateEstimator`.
+config at runtime (`ofc.controller['normalization_weights_filename']`), so it uses whatever
+the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` names `range0.5_fwhm-0.15.yaml`.
+`--check` verifies the result against `StateEstimator`.
+
+`--check` currently builds its own `OFCData(instrument)` without a `config_dir`, so it
+validates the equivalence under the obsolete normalization. Its assertions are all
+`max|Δ| = 0.0`, so it is not reporting a false pass — it is a true statement about the
+wrong config. Routing it through `make_state_estimator` is outstanding work.
 
 **The `-0.15` and `-0.5` filenames hold the same weights.** An older
 `range0.5_fwhm-0.5.yaml` exists on the `ts_ofc` branch `tickets/DM-54762` (commit
