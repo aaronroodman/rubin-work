@@ -132,6 +132,81 @@ plus 30–34, **not** 0–21. Pass the explicit index list `aos_state.DOF22` to
 `analyze_sparse_fit.py` takes the equivalent route through ts_ofc's own
 `comp_dof_idx` with `(7, 5)` bending modes per mirror.
 
+## Two `k` regimes — the `k=1..6` convention and where it does not apply
+
+The focal (field) Noll index `k` can be truncated in one regime and not the other, and
+conflating them is the easy mistake:
+
+| regime | how the matrix is formed | `k` truncation |
+|---|---|---|
+| **DZ-space** — `build_ofc_svd(iZs, k_min, k_max, ...)` | slices the slab, `S_full[k_min:k_max+1, iZs, :]` | **`k=1..6` throughout `aos/`** — `bounce/`, `coadd/`, `cwfs/`, `static_optics/`, `lut/`, `correlations/`, `psf_maps_lib.py` |
+| **field-evaluated** — `StateEstimator` | `Vh` from the whole slab flattened to 899 rows (31 focal × 29 pupil); `get_sensitivity_matrix` evaluates the DZ polynomial at the corner field angles | **none possible** — evaluating at a field point sums every `k` from 0 to 30, leaving no `k` axis |
+
+Both are legitimate bases for different questions. `optical_state` v-modes use the
+**full-`k` `StateEstimator` basis**, because that is what MTAOS runs on the summit; the
+`k=1..6` basis is what the DZ correlation work uses, and the two are not interchangeable.
+
+## Open question for the OFC maintainers: `Vh` ignores `zn_selected`
+
+`StateEstimator._update_from_ofc_data` (`state_estimator.py:93-96`) builds the v-mode basis
+from the **full** slab, applying no pupil-Zernike selection:
+
+```python
+dz_sens_matrix = ofc_data.sensitivity_matrix.reshape(-1, ofc_data.ndofs)[:, ofc_data.dof_idx]
+self.U, self.S, self.Vh = np.linalg.svd(dz_sens_matrix @ self.normalization_matrix, ...)
+```
+
+`get_sensitivity_matrix` **does** apply it (`[:, self.ofc_data.zn_idx, :]`, line 312) and
+then projects the result onto that same `Vh` (`sensitivity_matrix @ self.Vh.T`, line 316).
+So the Zernike-selected corner matrix is truncated in a basis built from the unselected
+slab. Setting `ofc_data.zn_selected` therefore leaves `Vh` bit-identical; setting it before
+`configure_controller` is additionally reverted, since that re-reads the key from the
+controller yaml (`ofc_data.py:714`).
+
+Measured, for the 21-term set (Z4–Z26 omitting Z20, Z21), comparing the current `Vh`
+against one rebuilt from the `zn_idx`-selected slab (651 rows rather than 899):
+
+| DOF set | `n_keep` | `\|cos\|` per mode (dimensionless) | `\|ΔS\|/S` (dimensionless) |
+|---|---|---|---|
+| `all_50` | 34 | min 1.04e-05 at v27; median 0.99808 | max 0.2838 at v31; median 0.00287 |
+| `standard_22` | 12 | min 0.99999392 at v11; median 1.00000000 | max 0.00127 at v12; median 2.10e-05 |
+
+Principal angles between the top-`n_keep` DOF subspaces, and the largest fraction of a
+retained mode's power (dimensionless, power not amplitude) falling outside the other
+convention's retained block:
+
+| `n_keep` | max principal angle [deg] | max power leaking outside |
+|---|---|---|
+| 6 | 0.0042 | 5.5e-09 |
+| 12 | 0.3795 | 4.4e-05 |
+| 18 | 8.5154 | 2.19e-02 |
+| 24 | 55.19 | 0.672 |
+| 34 | 89.68 | 0.626 |
+| 50 | 0.0000 | 2.3e-15 |
+
+Three qualifications keep this short of "the basis is wrong":
+
+- **It is not mode reordering.** All-slab mode `v_m` inside the top-`m` selected subspace
+  gives 0.0036 at v23, 0.374 at v29, 0.627 at v30 (fractions of power) — modes genuinely
+  rotate and re-rank rather than swapping.
+- **It is a truncation-boundary effect in near-degenerate singular values.** The affected
+  modes sit where consecutive singular values are close (v29→v30 fractional gap 0.78%,
+  v33→v34 1.75%), where individual singular vectors are ill-defined. At `n_keep=50` the
+  subspaces agree exactly (max angle 0.0000 deg), so both decompositions span the same
+  space and differ only in ordering and mixing of the weak modes.
+- **The solve does not degrade.** On the corner-evaluated matrices (84×50 and 84×22) over
+  200 unit-scale random DOF probes, median DOF recovery RMS is 8.8635e+02 (current) vs
+  9.1488e+02 (Zernike-consistent) for 50/34 — ratio 0.969 dimensionless — and 4.2908e+01 vs
+  4.7976e+01 for 22/12, ratio 0.894. Conditioning is comparable: `cond(A_v)` = 3.4846e+05
+  vs 2.9376e+05 for 50/34, identical to five figures for 22/12. Units of the RMS are mixed
+  (µm for translations and bending, arcsec for tilts), so only the ratio is meaningful.
+
+Using the full slab makes `Vh` independent of controller configuration, which may well be
+deliberate. What is not defensible is applying `zn_idx` on one side of the projection and
+not the other: at `n_keep` between 18 and 34 that makes "the retained v-modes" ambiguous at
+the level of a 89.7 deg subspace rotation. **For the 22-DOF/12-v-mode scheme the effect is
+negligible** and no result here depends on the resolution.
+
 ## State and open questions
 
 - The sparse-fit study found that **all DOF couple primary↔secondary at ±1**, and that
