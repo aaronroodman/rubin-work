@@ -7,18 +7,36 @@ AOS table, so they cannot drift between the two callers:
 - ``blocks/t539_closedloop_aos.ipynb`` (USDF, selected visits across many days)
 
 Provides:
+- ``make_state_estimator`` — **the single sanctioned v-mode engine**, wrapping ts_ofc's
+  ``StateEstimator`` with the required normalization asserted
+- ``vmodes_from_dofs`` — project physical DOF onto the v-modes through that estimator
 - ``resolve_ofc_config_dir`` — locate the OFC config (v13) via TS_CONFIG_MTTCS_DIR
 - ``build_geom_svd`` — the geom-normalized sensitivity-matrix SVD for a DOF subset
 - ``project_dofs_to_vmodes`` — project a physical DOF vector onto the v-modes
 - ``fetch_corner_zernikes_consdb`` — per-corner retrieved-wavefront OPD Zernikes
 
-Normalization note: the v-modes use the OFC config's stored
-``normalization_weights`` (v13), which ARE the official geom_mean
-``n_j = r_j^0.5 * f_j^-0.5`` (field-averaged FWHM) — the same normalization
-``build_ofc_svd`` / the bounce analysis use via the ts_config_mttcs yaml. Do NOT
-recompute ``sqrt(range/fwhm)`` (that uses corner-point FWHM, ~sqrt(2) off) and do
-NOT use ``OFCData()`` without ``config_dir`` (old non-geom default -> v1 becomes
-the M2-tilt mode). See ``olr/docs/vmode_normalization.md``.
+Never build the sensitivity-matrix SVD outside OFC code. Every v-mode in this
+repository comes from ``make_state_estimator``, which is what makes the obsolete
+normalization unreachable rather than merely discouraged.
+
+Normalization: the v-modes use the OFC config's stored ``normalization_weights``
+(v13), which ARE the official geom_mean ``n_j = r_j^0.5 * f_j^-0.5`` (field-averaged
+FWHM) — the same normalization ``build_ofc_svd`` and the bounce analysis use via the
+ts_config_mttcs yaml. Do NOT recompute ``sqrt(range/fwhm)`` (that uses corner-point
+FWHM, ~sqrt(2) off), and do NOT use ``OFCData()`` without ``config_dir``: the bare
+default resolves ``range-fwhm.yaml``, the obsolete normalization whose sensitivity
+matrix retains a dependence on physical units. Measured, ``standard_22``: it makes v1
+an essentially orthogonal mode, ``|cos(v1_obsolete, v1_required)| = 1.2e-05``
+(dimensionless), with v1 per µm of CamHex dz collapsing from -8.9153e-04 to
+-1.2933e-09 (dimensionless amplitude per µm) — v1 becomes the M2-tilt mode.
+
+Note that ``range-fwhm.yaml`` is reachable *inside* the v13 config directory too:
+``init.yaml`` selects the required normalization but ``dz_controller.yaml`` and
+``oic_controller.yaml`` select the obsolete one, and ``pid_controller.yaml`` selects
+``default.yaml``. So the config directory alone does not settle it, which is why
+``make_state_estimator`` asserts the resolved filename.
+
+See ``olr/docs/vmode_normalization.md`` and ``aos/docs/studies/smatrix_vmode.md``.
 """
 import os
 
@@ -30,6 +48,16 @@ SENSOR_NAMES = ["R00_SW0", "R04_SW0", "R40_SW0", "R44_SW0"]
 
 # Zernikes kept for the wavefront: Z4..Z26 excluding Z20, Z21 (Noll) -> 21 terms
 ZK_NOLL = [z for z in range(4, 27) if z not in (20, 21)]
+
+# The only acceptable OFC normalization. The bare ``OFCData('lsst')`` default resolves
+# OBSOLETE_NORM_YAML, whose sensitivity matrix retains a dependence on physical units.
+# The two differ non-uniformly per DOF -- ratios of required over obsolete, dimensionless
+# per-DOF weight: 10.45 (M2Hex dz), 948.8 (dx, dy), 0.00579 (rx, ry) -- so substituting one
+# for the other rotates the v-mode basis rather than rescaling it. ``znmin``, ``znmax``,
+# ``sample_points`` and ``sensitivity_matrix`` are identical between the two configs, so a
+# bare OFCData that reads only those is harmless; anything touching normalization is not.
+REQUIRED_NORM_YAML = "range0.5_fwhm-0.15.yaml"
+OBSOLETE_NORM_YAML = "range-fwhm.yaml"
 
 # DOF subsets (indices into the 50-DOF OFC state) and their v-mode truncation
 DOF_SETS = {
@@ -47,6 +75,7 @@ DOF22 = DOF_SETS["standard_22"]
 
 __all__ = [
     "CORNERS", "SENSOR_NAMES", "ZK_NOLL", "DOF_SETS", "N_MODES", "DOF22",
+    "REQUIRED_NORM_YAML", "OBSOLETE_NORM_YAML",
     "resolve_ofc_config_dir", "make_state_estimator", "vmodes_from_dofs",
     "build_geom_svd", "project_dofs_to_vmodes", "recover_optical_state",
     "fetch_corner_zernikes_consdb",
@@ -64,16 +93,54 @@ def _comp_dof_idx(dof_indices):
             for name, (start, n) in _DOF_COMPONENTS.items()}
 
 
-def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13"):
-    """OFC StateEstimator configured with geom (config) weights + a DOF subset.
+def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13",
+                         n_modes=None):
+    """OFC `StateEstimator` — the single sanctioned v-mode engine.
 
-    This is the canonical v-mode engine: ``StateEstimator.get_vmodes_from_dofs``
-    uses the OFC config's stored ``normalization_weights`` (the official
-    geom_mean) and its own sensitivity-matrix SVD. Using it everywhere
-    guarantees identical v-modes across nightly_report / OLR / t539 — important
-    because degenerate singular-value pairs make the individual v-mode vectors
-    basis-dependent (only v1 and degenerate-pair magnitudes are unique), so all
-    code must share the same Vh. Requires the LSST stack (lsst.ts.ofc).
+    Every v-mode in this repository comes from here. `StateEstimator` is what MTAOS
+    runs on the summit, so using it everywhere guarantees identical v-modes across
+    `olr/`, `blocks/`, `aos/` and `common/`. This matters beyond tidiness: degenerate
+    singular-value pairs leave the individual v-mode vectors basis-dependent — only
+    v1 and the degenerate-pair magnitudes are unique — so all code must share one
+    `Vh`. Never build the SVD outside OFC code.
+
+    Parameters
+    ----------
+    config_dir : `str`, optional
+        OFC config directory. Default resolves `version` via `TS_CONFIG_MTTCS_DIR`.
+    dof_set : `str`, optional
+        Key into `DOF_SETS`: ``'hexapod_10'``, ``'standard_22'`` or ``'all_50'``.
+    version : `str`, optional
+        OFC config version used when `config_dir` is None. Must be one whose
+        controller selects `REQUIRED_NORM_YAML`.
+    n_modes : `int`, optional
+        Sets `truncate_index`, the number of v-modes returned. The **mode count is
+        set by this, not by the DOF set** — `Vh` is ``(n_dof, n_dof)`` either way, and
+        the controller yaml default of 12 silently caps a 34-mode scheme. Default
+        leaves the configured value.
+
+    Returns
+    -------
+    se : `lsst.ts.ofc.state_estimator.StateEstimator`
+        With `Vh`, `S`, `normalization_matrix` already built.
+
+    Raises
+    ------
+    RuntimeError
+        If the resolved controller normalization is not `REQUIRED_NORM_YAML`.
+
+    Notes
+    -----
+    The normalization is asserted rather than overridden, so a misconfigured config
+    directory surfaces as an error instead of being silently corrected.
+
+    `zn_selected` is set to the 21 rapid-analysis Zernikes for the wavefront-to-DOF
+    solve, but it does **not** affect the v-mode basis: `StateEstimator` builds `Vh`
+    from the whole sensitivity slab flattened to 899 rows (31 focal x 29 pupil),
+    applying no Zernike selection (`state_estimator.py:93-96`); `zn_idx` enters only
+    `get_sensitivity_matrix`. See `aos/docs/studies/smatrix_vmode.md`.
+
+    Requires the LSST stack (`lsst.ts.ofc`) and `$TS_CONFIG_MTTCS_DIR`.
     """
     from lsst.ts.ofc import OFCData
     from lsst.ts.ofc.state_estimator import StateEstimator
@@ -81,13 +148,26 @@ def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13"):
     if config_dir is None:
         config_dir = resolve_ofc_config_dir(version)
     ofc = OFCData("lsst", config_dir=config_dir)
-    # Use the 21 rapid-analysis Zernikes (Z4-Z26 excl Z20,Z21) that ts_wep
-    # actually produces, NOT the OFC config default of 19 (Z4-Z22). Without this
-    # StateEstimator would silently use 19 -> a different v-mode basis than the
-    # measured wavefront. (Confirmed: sets sensitivity rows to 4 x 21 = 84.)
+    ofc.configure_controller()
+    got = ofc.controller.get("normalization_weights_filename")
+    if got != REQUIRED_NORM_YAML:
+        raise RuntimeError(
+            f"refusing to build v-modes with normalization {got!r}: this repository "
+            f"requires {REQUIRED_NORM_YAML!r}. The bare OFCData('lsst') default is "
+            f"{OBSOLETE_NORM_YAML!r}, the obsolete normalization whose sensitivity "
+            f"matrix retains a dependence on physical units; its weights differ from "
+            f"the required ones non-uniformly per DOF (ratios 10.45 for M2Hex dz, "
+            f"948.8 for dx/dy, 0.00579 for rx/ry, dimensionless), so it rotates the "
+            f"v-mode basis rather than rescaling it. Pass a config_dir whose "
+            f"controller selects {REQUIRED_NORM_YAML!r} (v13 does)."
+        )
+    # Honoured by get_sensitivity_matrix (the wavefront -> DOF solve); inert for Vh.
     ofc.zn_selected = np.array(ZK_NOLL)
     ofc.comp_dof_idx = _comp_dof_idx(DOF_SETS[dof_set])
-    return StateEstimator(ofc)
+    se = StateEstimator(ofc)
+    if n_modes is not None:
+        se.truncate_index = int(n_modes)
+    return se
 
 
 def vmodes_from_dofs(dof_state, state_estimator, n_modes=12):
