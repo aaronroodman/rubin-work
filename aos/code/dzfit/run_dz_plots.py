@@ -49,6 +49,11 @@ def main():
                         help='Skip fit parameter PDFs')
     parser.add_argument('--no-trio', action='store_true',
                         help='Skip trio comparison plots')
+    parser.add_argument('--movie-prefix', default='z1toz6',
+                        choices=['z1toz3', 'z1toz6'],
+                        help='Which fit the residual movie subtracts (default z1toz6)')
+    parser.add_argument('--movie-name', default='single_image_residuals.mp4',
+                        help='Movie filename written into --output-dir')
     parser.add_argument('--bad-fit-threshold', type=float, default=2.0)
     parser.add_argument('--min-donuts', type=int, default=200)
     parser.add_argument('--date-range-str', default=None)
@@ -126,7 +131,7 @@ def main():
                        prefix='z1toz3', max_focal_noll=3)
     reconstruct_zk_fit(aosTable_matched, fit_table, coord_sys, iZs,
                        prefix='z1toz6', max_focal_noll=6)
-    aosTable_matched['zk_fit'] = aosTable_matched['zk_fit_z1toz3']
+    aosTable_matched['zk_fit'] = aosTable_matched[f'zk_fit_{args.movie_prefix}']
 
     # Date range
     all_day_obs = sorted(set(
@@ -238,7 +243,7 @@ def main():
                 band=band,
                 alt=ptg.get('alt'), az=ptg.get('az'),
                 rotAngle=ptg.get('rotAngle'),
-                fit_table=fit_table, fit_prefix='z1toz3',
+                fit_table=fit_table, fit_prefix=args.movie_prefix,
                 iZs_plot=iZs_plot_12,
                 output_dir=output_dir, show=False)
             if outfile is not None:
@@ -261,14 +266,14 @@ def main():
                 '-i', 'frame_list.txt',
                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
-                '-r', '2', 'single_image_residuals.mp4']
+                '-r', '2', args.movie_name]
 
             try:
                 result = subprocess.run(
                     ffmpeg_cmd, capture_output=True, text=True,
                     cwd=output_dir)
                 if result.returncode == 0:
-                    movie_file = f'{output_dir}/single_image_residuals.mp4'
+                    movie_file = f'{output_dir}/{args.movie_name}'
                     print(f"Saved movie: {movie_file}")
                     # Clean up JPEGs
                     for fpath in frame_files:
