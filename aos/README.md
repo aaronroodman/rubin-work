@@ -115,7 +115,7 @@ outputs and current state of every one.
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](docs/studies/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
-| [`science_lut`](docs/studies/science_lut.md) | Focus look-up table from ordinary science exposures: the truss-temperature dependence of the Corner Wavefront Sensor optical state, and the elevation dependence of the residual with four candidate modulating factors |
+| [`science_lut`](docs/studies/science_lut.md) | Focus look-up table from ordinary science exposures: the uniform-defocus error of the Corner Wavefront Sensor optical state predicted from thermal telemetry alone, with one band-independent robust linear model on the truss temperature and the four M1M3 thermal gradients. Includes the calibration of that prediction per band and the absence of any remaining elevation dependence |
 | [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
 | [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
@@ -204,6 +204,7 @@ status + last-updated line under its title.
 | [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions, vs GalSim and `ts_ofc` |
 | [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
 | [`docs/status/rerun_needed.md`](docs/status/rerun_needed.md) | outputs that predate a code change and need regenerating |
+| [`docs/status/corner_recovery_route_comparison.md`](docs/status/corner_recovery_route_comparison.md) | the three routes from measured corner Zernikes to DOF, the measurements between them, and the hybrid that was adopted |
 | [`docs/status/code_review_backlog.md`](docs/status/code_review_backlog.md) | open review items: non-equivalent duplicate helpers, confirmed live defects, `common/` candidates |
 | [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | the earlier full review — **stale line anchors**, verify before acting |
 | [`CLAUDE.md`](CLAUDE.md) | conventions and known pitfalls for this directory: frames, units, and which code lives in the external `ts_intrinsic_wavefront` package |

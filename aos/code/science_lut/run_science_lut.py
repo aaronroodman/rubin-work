@@ -72,6 +72,18 @@ from common.utils import nmad                                    # noqa: E402
 #: Overall sign of the measured term in v1_total. A convention, not a fitted quantity.
 MEASURED_SIGN = -1.0
 
+#: Nights whose hexapod look-up-table (LUT) term sits about 2400 µm of equivalent
+#: camera-hexapod dz below every other night's, at the same elevation and the same elevation
+#: slope. The split is all-or-nothing per night -- these 8 nights are 100% offset, the
+#: remaining 153 are under 10% -- so a different LUT configuration was loaded at the time
+#: rather than these being per-visit outliers. Fitting them together with the rest turns a
+#: two-population offset into apparent curvature: pooled, the per-band Pearson r of the LUT
+#: term against elevation is -0.37 to -0.89 against a Spearman rho of -0.88 to -0.98; split,
+#: the Pearson r rises to -0.83 to -0.96 and the two epochs agree on slope (i band -16.81 vs
+#: -16.90 µm of equivalent camera-hexapod dz per deg).
+LUT_EPOCH_OFFSET_NIGHTS = (20251102, 20251210, 20251211, 20251212,
+                           20251214, 20251216, 20251218, 20251219)
+
 #: Hexapod tilt DOF indices: deg in the hexapod LUT, arcsec in the Trim.
 HEX_TILT_LUT = [3, 4, 8, 9]
 DEG_TO_ARCSEC = 3600.0
@@ -271,6 +283,51 @@ def program_inventory(df):
     return g
 
 
+def drop_no_truss_nights(df, col='truss_temp_mean_c', verbose=True):
+    """Drop whole nights that carry no Telescope Mount Assembly truss temperature at all.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        One row per visit, carrying `day_obs` and `col` [°C].
+    col : `str`, optional
+        The truss temperature column, already gap-filled by
+        `common.efd_db.interpolate_within_night`.
+    verbose : `bool`, optional
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        `df` with every visit on a night having no valid `col` removed.
+
+    Notes
+    -----
+    Both truss resistance thermometers drop out together, and within a night the scattered
+    single-exposure gaps are recovered by interpolation. A night where the channel is absent
+    from end to end has nothing to interpolate from, and the thermal correction would then
+    have to substitute a value from a different night: the median over the whole run is
+    11.745 °C against a typical night median near 10.7 °C, so a substituted value carries a
+    per-night **bias** of order +1 °C, which the fitted +124 µm of equivalent dz per °C turns
+    into a coherent offset of order 100 µm rather than into extra scatter.
+
+    The nights are identified by measurement rather than by a hardcoded list, so extending
+    the sample does not silently leave a newly-empty night in.
+    """
+    if col not in df.columns or 'day_obs' not in df.columns or not len(df):
+        return df
+    ok_nights = df.groupby('day_obs')[col].apply(lambda s: s.notna().any())
+    bad = sorted(int(d) for d in ok_nights.index[~ok_nights])
+    if not bad:
+        return df
+    keep = ~df['day_obs'].isin(bad)
+    if verbose:
+        print(f'no {col} on any visit: dropped {len(bad)} nights, '
+              f'{int((~keep).sum())} visits ({", ".join(str(d) for d in bad)})')
+        print(f'after the truss-coverage night cut: n = {int(keep.sum())} visits, '
+              f'{df.loc[keep, "day_obs"].nunique()} nights')
+    return df[keep].copy()
+
+
 def assemble(day_obs_range, bands, programs=None, db_path=None, consdb_url='auto',
              verbose=True):
     """Stage A — the per-visit table, from the database plus live ConsDB reads.
@@ -328,6 +385,7 @@ def assemble(day_obs_range, bands, programs=None, db_path=None, consdb_url='auto
     df = df[df['img_type'] == 'science'].copy()
     if verbose:
         print(f"img_type = 'science': n = {len(df)}")
+    df = drop_no_truss_nights(df, verbose=verbose)
     inv = program_inventory(df) if 'science_program' in df.columns else pd.DataFrame()
     if verbose and len(inv):
         print('\nscience_program inventory (read off the data, not hardcoded):')
@@ -372,9 +430,15 @@ def commanded_v1(df, dof_set='standard_22', n_modes=12, verbose=True):
     -----
     The tilt axes are converted from deg to arcsec, and the LUT's mirror bending entries are
     set to zero rather than NaN, before the projection.
+
+    The projection is `aos_state.vmodes_from_dofs` through `aos_state.make_state_estimator`,
+    the single sanctioned v-mode engine and the same basis `aos_state.recover_optical_state`
+    reports the measured v-modes in. The 12-mode cap that once argued against it was
+    `StateEstimator.truncate_index`, a controller-yaml default rather than a limit, and
+    `make_state_estimator` sets it from ``n_modes``.
     """
     import aos_state
-    se = aos_state.make_state_estimator(dof_set=dof_set)
+    se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
 
     lut_dof = np.zeros((len(df), 50))
     lut_cols = [f'lut_dof{k}' for k in range(10)]
@@ -406,6 +470,67 @@ def commanded_v1(df, dof_set='standard_22', n_modes=12, verbose=True):
     return v1_lut, v1_trim, v1_per_um_dz
 
 
+#: ts_ofc DOF-set name and v-mode count per `state_variant.scheme`, mirroring
+#: `common/scripts/build_optical_state.py:SCHEMES` so the conversion factor is derived in the
+#: same basis the stored v-modes were.
+SCHEME_BASIS = {'22_12': ('standard_22', 12), '50_34': ('all_50', 34)}
+
+
+def variant_v1_per_um_dz(variant, db_path=None, verbose=True):
+    """v-mode-1 amplitude per µm of hexapod dz, in one variant's own scheme.
+
+    Parameters
+    ----------
+    variant : `str`
+        Registered ``variant_id``.
+    db_path : `str`, optional
+    verbose : `bool`, optional
+
+    Returns
+    -------
+    v1_per_um_dz : `float`
+        Mean magnitude over the camera-hexapod (DOF 5) and M2-hexapod (DOF 0) dz axes
+        [dimensionless v-mode-1 amplitude per µm].
+
+    Raises
+    ------
+    KeyError
+        If the variant is not registered, or its scheme is not in `SCHEME_BASIS`.
+
+    Notes
+    -----
+    v1 is the camera-hexapod dz (DOF 5) and M2-hexapod dz (DOF 0) combination plus small
+    mirror-bending terms, and comes out the same in both schemes, so this factor agrees to 5
+    decimal places between ``standard_22``/12 and ``all_50``/34. It is still taken from the
+    variant's own scheme so the number cannot drift from the stored v-modes.
+    """
+    import aos_state
+    reg = efd_db.variants(db_path=db_path)
+    row = reg[reg['variant_id'] == variant]
+    if not len(row):
+        raise KeyError(f'variant {variant!r} is not registered')
+    scheme = str(row.iloc[0]['scheme'])
+    if scheme not in SCHEME_BASIS:
+        raise KeyError(f'variant {variant!r} has scheme {scheme!r}, which has no basis in '
+                       f'SCHEME_BASIS ({sorted(SCHEME_BASIS)})')
+    dof_set, n_modes = SCHEME_BASIS[scheme]
+    se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
+    c = {}
+    for k in (0, 5):
+        d = np.zeros(50)
+        d[k] = 1.0
+        c[k] = float(aos_state.vmodes_from_dofs(d, se, n_modes=n_modes)[0, 0])
+    v1_per_um_dz = 0.5 * (abs(c[5]) + abs(c[0]))
+    if verbose:
+        print(f'variant {variant}: scheme {scheme} ({dof_set}, {n_modes} modes)')
+        print(f'  v1 per um of camera-hexapod dz (DOF 5) = {c[5]:+.7e} per um')
+        print(f'  v1 per um of M2-hexapod dz     (DOF 0) = {c[0]:+.7e} per um')
+        print(f'  mean magnitude                         = {v1_per_um_dz:.5e} per um; '
+              f'the two axes agree to '
+              f'{100 * abs(c[5] - c[0]) / v1_per_um_dz:.1f}% (dimensionless)')
+    return v1_per_um_dz
+
+
 def attach_measured(df, variant, day_obs_range, db_path=None, verbose=True):
     """Read one ``optical_state`` variant and attach its v-mode-1 amplitude.
 
@@ -423,7 +548,8 @@ def attach_measured(df, variant, day_obs_range, db_path=None, verbose=True):
     -------
     out : `pandas.DataFrame`
         `df` with ``v1_meas`` [dimensionless], ``resid_rms_um`` [µm of wavefront] and
-        ``dz_meas_dof5_um`` [µm, the recovered camera-hexapod dz] merged on ``visit_id``.
+        ``dz_meas_dof5_um`` [µm, the recovered camera-hexapod dz] merged on ``visit_id``,
+        plus ``v1_lut`` and ``v1_trim`` [dimensionless] where the variant stored them.
     n_state : `int`
         Visits for which the variant supplied a recovered state.
 
@@ -446,7 +572,7 @@ def attach_measured(df, variant, day_obs_range, db_path=None, verbose=True):
     # table already carries the commanded Trim under the same name, so it is renamed on the
     # way in rather than allowed to collide into dof5_x / dof5_y.
     keep = ['visit_id', 'v1']
-    for c in ('resid_rms_um', 'dof5'):
+    for c in ('resid_rms_um', 'dof5', 'v1_lut', 'v1_trim'):
         if c in st.columns:
             keep.append(c)
     st = st[keep].rename(columns={'v1': 'v1_meas', 'dof5': 'dz_meas_dof5_um'})
@@ -475,9 +601,11 @@ def build_v1_total(df, v1_lut, v1_trim, v1_per_um_dz, verbose=True):
     Parameters
     ----------
     df : `pandas.DataFrame`
-        Carries ``v1_meas`` [dimensionless].
-    v1_lut, v1_trim : `array_like`
-        [dimensionless]
+        Carries ``v1_meas`` [dimensionless], and ``v1_lut``/``v1_trim`` [dimensionless] if the
+        variant stored its own commanded projection.
+    v1_lut, v1_trim : `array_like` or `None`
+        Fallback commanded v-mode-1 amplitudes [dimensionless], used only when `df` does not
+        already carry them. Pass `None` to require the stored columns.
     v1_per_um_dz : `float`
         [per µm], used only to express scatters in µm of equivalent hexapod dz.
     verbose : `bool`, optional
@@ -487,10 +615,37 @@ def build_v1_total(df, v1_lut, v1_trim, v1_per_um_dz, verbose=True):
     df : `pandas.DataFrame`
         With ``v1_lut``, ``v1_trim``, ``v1_lut_trim`` and ``v1_total`` added, all
         dimensionless v-mode-1 amplitudes.
+
+    Raises
+    ------
+    RuntimeError
+        If neither the stored columns nor a fallback projection is available.
+
+    Notes
+    -----
+    The stored columns are preferred because `build_optical_state` projects them in the
+    variant's **own** scheme, so all three terms of the sum share one basis. The fallback
+    reprojects at whatever scheme `commanded_v1` was called with, which for a variant of a
+    different scheme would mix bases — so it reports that it was used.
     """
     df = df.copy()
-    df['v1_lut'] = v1_lut
-    df['v1_trim'] = v1_trim
+    stored = {'v1_lut', 'v1_trim'} <= set(df.columns) and df['v1_lut'].notna().any()
+    if stored:
+        if verbose:
+            print(f'v1_lut, v1_trim: from the variant, '
+                  f'{int(df.v1_lut.notna().sum())} of {len(df)} visits '
+                  f'(projected in the variant own scheme)')
+    else:
+        if v1_lut is None or v1_trim is None:
+            raise RuntimeError(
+                'the variant stored no commanded v-modes (v_modes_lut / v_modes_trim) and no '
+                'fallback projection was supplied; rebuild the variant with '
+                'common/scripts/build_optical_state.py so all three v1 terms share one basis')
+        print('  WARNING: this variant stored no commanded v-modes, so v1_lut and v1_trim '
+              'are reprojected here. Check that the projection scheme matches the variant, '
+              'or rebuild the variant with build_optical_state.py.')
+        df['v1_lut'] = v1_lut
+        df['v1_trim'] = v1_trim
     df['v1_lut_trim'] = df['v1_lut'] + df['v1_trim']
     df['v1_total'] = df['v1_lut_trim'] + MEASURED_SIGN * df['v1_meas']
     if verbose:
@@ -843,8 +998,8 @@ def plot_modulator_page(pdf, df, rows, col, label, unit, bands, ycol):
 
 # --------------------------------------------------------------------------- driver
 
-def run_variant(df0, variant, bands, day_obs_range, v1_lut, v1_trim, v1_per_um_dz,
-                pdf=None, verbose=True):
+def run_variant(df0, variant, bands, day_obs_range, v1_lut=None, v1_trim=None,
+                v1_per_um_dz=None, db_path=None, pdf=None, verbose=True):
     """Stages B to D for one ``optical_state`` variant.
 
     Parameters
@@ -854,10 +1009,12 @@ def run_variant(df0, variant, bands, day_obs_range, v1_lut, v1_trim, v1_per_um_d
     variant : `str`
     bands : `list` [`str`]
     day_obs_range : `tuple` [`int`]
-    v1_lut, v1_trim : `array_like`
-        Commanded v-mode-1 amplitudes for the rows of `df0` [dimensionless].
-    v1_per_um_dz : `float`
-        [per µm]
+    v1_lut, v1_trim : `array_like`, optional
+        Fallback commanded v-mode-1 amplitudes for the rows of `df0` [dimensionless], used
+        only if the variant stored none of its own.
+    v1_per_um_dz : `float`, optional
+        [per µm]. Default is derived from the variant's own scheme.
+    db_path : `str`, optional
     pdf : `matplotlib.backends.backend_pdf.PdfPages`, optional
     verbose : `bool`, optional
 
@@ -870,7 +1027,10 @@ def run_variant(df0, variant, bands, day_obs_range, v1_lut, v1_trim, v1_per_um_d
     """
     if verbose:
         print(f'\n{"=" * 78}\nvariant {variant}\n{"=" * 78}')
-    df, _n_state = attach_measured(df0, variant, day_obs_range, verbose=verbose)
+    if v1_per_um_dz is None:
+        v1_per_um_dz = variant_v1_per_um_dz(variant, db_path=db_path, verbose=verbose)
+    df, _n_state = attach_measured(df0, variant, day_obs_range, db_path=db_path,
+                                   verbose=verbose)
     df = build_v1_total(df, v1_lut, v1_trim, v1_per_um_dz, verbose=verbose)
     df['variant'] = variant
 
@@ -1007,9 +1167,14 @@ def main(argv=None):
                    help='registered optical_state variant id; repeatable')
     p.add_argument('--day-obs', default='20251023-',
                    help="inclusive day_obs range, e.g. '20251023-20260913'")
-    p.add_argument('--bands', nargs='+', default=['g', 'r', 'i', 'z'])
+    p.add_argument('--bands', nargs='+', default=['u', 'g', 'r', 'i', 'z', 'y'])
     p.add_argument('--programs', nargs='+', default=None,
                    help='science_program values to keep; default all')
+    p.add_argument('--reproject-commanded', choices=sorted(SCHEME_BASIS), default=None,
+                   help='project the commanded hexapod LUT and Trim v-modes here in this '
+                        'scheme, instead of using the ones each variant stored. Only for a '
+                        'variant built before build_optical_state stored them; it mixes bases '
+                        'unless the scheme given is the variant own')
     p.add_argument('--out-dir', default=None,
                    help='output directory; default aos/output/science_lut')
     p.add_argument('--db', default=None)
@@ -1036,7 +1201,15 @@ def main(argv=None):
         print('no science visits in this selection — nothing to do')
         return 1
 
-    v1_lut, v1_trim, v1_per_um_dz = commanded_v1(df0, verbose=verbose)
+    # The commanded v-modes normally come from each variant, projected in that variant's own
+    # scheme by build_optical_state, so nothing is reprojected here. --reproject-commanded
+    # forces the old behaviour for a variant built before those columns existed; it projects in
+    # one fixed scheme, which mixes bases unless that scheme is the variant's own.
+    v1_lut = v1_trim = None
+    if a.reproject_commanded:
+        dof_set, n_modes = SCHEME_BASIS[a.reproject_commanded]
+        v1_lut, v1_trim, _v1_per_um = commanded_v1(df0, dof_set=dof_set, n_modes=n_modes,
+                                                   verbose=verbose)
 
     import matplotlib
     matplotlib.use('Agg')
@@ -1049,8 +1222,8 @@ def main(argv=None):
             plot_table_page(pdf, inv.to_string(index=False),
                             'science_program inventory over the selected day_obs range')
         for vid in a.variant:
-            d, fr = run_variant(df0, vid, a.bands, rng, v1_lut, v1_trim, v1_per_um_dz,
-                                pdf=pdf, verbose=verbose)
+            d, fr = run_variant(df0, vid, a.bands, rng, v1_lut=v1_lut, v1_trim=v1_trim,
+                                db_path=a.db, pdf=pdf, verbose=verbose)
             per_visit.append(d)
             fit_rows += fr
         cov = efd_db.coverage(db_path=a.db)
