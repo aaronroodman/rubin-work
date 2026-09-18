@@ -288,9 +288,16 @@ repository rather than this study.
 | [`lut`](lut.md) | FAM DZ fits over 189 detectors, collapsed to one static DOF vector | dedicated FAM visits |
 | [`correlations`](correlations.md) | the same truss-temperature question, on both FAM DZ(1,4) and the four-corner mean Z4 | FAM visits and science visits |
 | `science_lut` | the temperature-dependent focus surface from the CWFS optical state | all science visits |
+| [`fam_focus`](fam_focus.md) | drift of the same v-mode-1 response within one fixed-pointing FAM block | FAM `acq` visits |
 
 The `lut` study produces one static vector; this study produces a dependence on temperature. They
 are separate outputs and neither consumes the other.
+
+`fam_focus` does consume this study: it applies the model fitted here, unchanged, to the in-focus
+visit of each FAM triplet, and finds that the correction **increases** within-block scatter by a
+factor 1.31 (dimensionless, corrected over uncorrected median peak-to-peak). The model is fitted
+between nights, and within one block the thermal inputs move too little for it to describe the
+drift.
 
 ## Notebook
 

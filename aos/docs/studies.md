@@ -2,12 +2,13 @@
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (inventory)
 
-Inventory of the fifteen studies in the `aos/` directory: the code implementing each one,
+Inventory of the sixteen studies in the `aos/` directory: the code implementing each one,
 what it reads and writes, and its current state. Most draw on a common base — the
 Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
-matrix — but are otherwise independent lines of work. `science_lut` is the exception: it
-works from science exposures and the repository's value-added Engineering Facility Database
-(EFD) and Consolidated Database (ConsDB) store rather than from FAM donuts.
+matrix — but are otherwise independent lines of work. Two work instead from the repository's
+value-added Engineering Facility Database (EFD) and Consolidated Database (ConsDB) store:
+`science_lut`, from science exposures, and `fam_focus`, from the in-focus visit of each FAM
+triplet.
 
 Per-study detail is in `studies/<study>.md`; the Snakemake pipeline that produces the
 shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
@@ -16,7 +17,9 @@ shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 Counts are of files and lines in `aos/code/`, including the shared modules that stay
 flat there, and of Snakemake rules driving each study. Of
-the 78 Python files, 18 are referenced by the Snakefile and the rest are standalone.
+the 85 Python files, 18 are referenced by the Snakefile and the rest are standalone. The
+`science_lut` count is of its two current scripts; the `(+4)` marks four superseded ones still
+present on disk.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
@@ -29,7 +32,8 @@ the 78 Python files, 18 are referenced by the Snakefile and the rest are standal
 | [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
 | [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](studies/lut.md) | 1 | 308 | 1 | Averaged DOF look-up table from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
-| [`science_lut`](studies/science_lut.md) | 1 | 1104 | 0 | Focus look-up table from science exposures: the truss-temperature dependence of the CWFS optical state, and the elevation dependence of the residual |
+| [`science_lut`](studies/science_lut.md) | 2 (+4) | 4459 | 0 | Focus look-up table from science exposures: the uniform-defocus error of the CWFS optical state predicted from thermal telemetry alone, its per-band calibration, and the absence of any remaining elevation dependence |
+| [`fam_focus`](studies/fam_focus.md) | 1 | 832 | 0 | Focus drift — v-mode 1 — against exposure sequence number within contiguous FAM blocks at fixed pointing, raw and corrected by the `science_lut` thermal model |
 | [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
 | [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](studies/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |

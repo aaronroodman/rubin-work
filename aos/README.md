@@ -99,7 +99,7 @@ reduced set has **specific indices** and is not the first 22 — use `aos_state.
 
 ## Studies
 
-The work divides into fifteen studies, ordered here from the most general to the most
+The work divides into sixteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
 outputs and current state of every one.
@@ -116,6 +116,7 @@ outputs and current state of every one.
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](docs/studies/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
 | [`science_lut`](docs/studies/science_lut.md) | Focus look-up table from ordinary science exposures: the uniform-defocus error of the Corner Wavefront Sensor optical state predicted from thermal telemetry alone, with one band-independent robust linear model on the truss temperature and the four M1M3 thermal gradients. Includes the calibration of that prediction per band and the absence of any remaining elevation dependence |
+| [`fam_focus`](docs/studies/fam_focus.md) | Change in focus — v-mode 1 of the Corner Wavefront Sensor (CWFS) optical state — against exposure sequence number within contiguous Full Array Mode (FAM) blocks at fixed pointing, raw and corrected by the science-exposure thermal model |
 | [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
 | [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
@@ -170,6 +171,7 @@ output/
   smatrix_vmode/                   # OFC matrix diagnostics, no param_set dependence
   camera_gravity/                  # static_optics, no param_set dependence
   science_lut/                     # science-exposure focus LUT, from the value-added database
+  fam_focus/                       # focus drift within a FAM block, same database
   archive/                         # superseded param_sets
 ```
 
@@ -195,7 +197,7 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/studies.md`](docs/studies.md) | **inventory of the 13 analysis studies** — the map for this topic |
+| [`docs/studies.md`](docs/studies.md) | **inventory of the sixteen analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
 | [`docs/telemetry.md`](docs/telemetry.md) | **telemetry inventory** — every quantity, its ConsDB/EFD name, measured coverage on FAM exposures, units, and which source to prefer |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
