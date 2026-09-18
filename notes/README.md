@@ -40,6 +40,8 @@ and working state that span the whole repo — and so belong to no single topic 
 | doc | what it holds |
 |---|---|
 | [`status/memory_cleanup_plan.md`](status/memory_cleanup_plan.md) | the phased `CLAUDE.md` / memory / code-cleanup plan for this repo |
+| [`status/reorg_review_plan_2026-09.md`](status/reorg_review_plan_2026-09.md) | assessment of code, notebook and output organization across all topics, with the plan for organization, documentation and systematic code review |
+| [`status/parallel_claude_sessions.md`](status/parallel_claude_sessions.md) | running several Claude Code sessions on one working tree: what collides, git worktrees, subagents |
 
 Topic-specific docs stay in their topic (`<topic>/docs/`), not here.
 
