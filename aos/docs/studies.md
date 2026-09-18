@@ -33,7 +33,7 @@ present on disk.
 | [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](studies/lut.md) | 1 | 308 | 1 | Averaged DOF look-up table from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
 | [`science_lut`](studies/science_lut.md) | 2 (+4) | 4459 | 0 | Focus look-up table from science exposures: the uniform-defocus error of the CWFS optical state predicted from thermal telemetry alone, its per-band calibration, and the absence of any remaining elevation dependence |
-| [`fam_focus`](studies/fam_focus.md) | 1 | 832 | 0 | Focus drift — v-mode 1 — against exposure sequence number within contiguous FAM blocks at fixed pointing, raw and corrected by the `science_lut` thermal model |
+| [`fam_focus`](studies/fam_focus.md) | 1 | 1353 | 0 | Focus drift — v-mode 1 — against exposure sequence number within contiguous FAM blocks at fixed pointing, raw and corrected by the `science_lut` thermal model, and against the DZ defocus term of each triplet's own FAM pair |
 | [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
 | [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](studies/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |

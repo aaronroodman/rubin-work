@@ -4,10 +4,14 @@
 
 Change in focus — v-mode 1 of the Active Optics System (AOS) sensitivity matrix, essentially
 uniform defocus — against exposure sequence number within a single Full Array Mode (FAM) block. A
-FAM block is a run of `acq, cwfs, cwfs` triplets taken at one fixed pointing over tens of minutes;
-the in-focus `acq` visit of each triplet carries a Corner Wavefront Sensor (CWFS) optical state in
-the Consolidated Database (ConsDB), so v-mode 1 can be read per triplet and followed across the
+FAM block is a run of triplets taken at one fixed pointing over tens of minutes; the in-focus
+`acq` visit of each triplet carries a Corner Wavefront Sensor (CWFS) optical state in the
+Consolidated Database (ConsDB), so v-mode 1 can be read per triplet and followed across the
 block.
+
+The study also compares that in-focus v-mode 1 against the Double Zernike (DZ) fit of the
+triplet's own defocused FAM pair, term DZ(k=1, j=4) — the field-constant component of pupil
+Noll index 4, defocus — read from the `fam_dz` table of the value-added database.
 
 The measurement matters twice over. A FAM coadd averages the wavefront over a whole block, so any
 within-block focus drift enters the coadd as a systematic. And it is a timescale the
@@ -39,6 +43,52 @@ The elevation- and temperature-dependent hexapod look-up-table (LUT) baseline is
 excluded**, as in `science_lut`, so the known commanded elevation dependence does not enter a
 measurement about drift at fixed pointing.
 
+## The triplet
+
+Each triplet of a `BLOCK-T614` block is three consecutive visits, in ascending `seq_num`:
+
+| member | `seq_num` | commanded Trim camera-hexapod dz, offset from the `acq` value [µm] |
+|---|---|---|
+| intra-focal cwfs | *n* | **−1500.0** |
+| extra-focal cwfs | *n* + 1 | **+1500.0** |
+| in-focus acq | *n* + 2 | 0 |
+
+The **`acq` is the last** member, not the first. The two defocused members are the FAM donut pair
+the DZ fit is made from, and `fits.parquet` is keyed on the **extra-focal** one, so the in-focus
+visit of the same triplet is `seq_num + 1` from a FAM fit row and `seq_num − 2` from the intra-focal
+one.
+
+Measured over the 919 selected triplets that have complete telemetry (of 984 selected): the intra-
+and extra-focal offsets match −1500.0 and +1500.0 µm with a maximum residual of **0.0000 µm**, and
+the M2 hexapod dz holds fixed across the triplet to a maximum |offset| of **0.0000 µm**. **The
+±1500 µm defocus is applied on the camera hexapod alone**; it is not split between the two
+hexapods. The 65 triplets without a full set of three rows in `visit_telemetry` are excluded from
+the count rather than treated as failures.
+
+One consequence for the response's units: `v1_per_um_dz` is stated per µm of *total* hexapod dz
+travel, 0.5 µm on each hexapod, but the two dz axes carry the same sign and their v-mode-1
+sensitivities differ by only **2.1% (dimensionless, camera over M2)** — v-mode 1 per µm is
+−8.9144254e-04 for the camera hexapod (degree of freedom 5) and −9.1026032e-04 for M2 (degree of
+freedom 0), against the mean magnitude 9.00851e-04 the constant uses. So the same constant converts
+a camera-only motion, **1.1% low** — ±17 µm on a 1500 µm offset, far below any scatter here. One
+constant, not two.
+
+## The commanded focus is constant within a set
+
+Within-set spread of the three terms of the response, over the 82 sets:
+
+| quantity | median | p90 | max | unit |
+|---|---|---|---|---|
+| commanded `v1_trim`, standard deviation | 0.00 | 0.00 | 2.43 | µm equiv hexapod dz |
+| commanded `v1_trim`, peak-to-peak | 0.00 | 0.00 | 8.43 | µm equiv hexapod dz |
+| measured `v1`, standard deviation | 11.23 | 19.43 | 32.33 | µm equiv hexapod dz |
+| response, standard deviation | 11.23 | 19.43 | 32.33 | µm equiv hexapod dz |
+
+`v1_trim` is **exactly constant in 81 of 82 sets** — the one exception is set 65 on `day_obs`
+20260404, where it moves 8.43 µm peak-to-peak. So the within-set variation of the response is
+entirely the measured optical state, not the command, which is what makes the drift a measurement
+of the telescope rather than of the loop's own motion.
+
 ## Sample
 
 82 sets of 12 triplets — 984 `acq` visits over 24 nights, `day_obs` 20251104 to 20260619, at
@@ -61,7 +111,7 @@ visit, or when altitude, azimuth or camera rotator angle drifts beyond **2.0 deg
 compared circularly. The tolerance is not load-bearing — the `coadd` default of 5.0 deg gives 85
 sized blocks against 84, because within a selected set the pointing holds to about 0.01 deg.
 
-The `seq_num` step of 3 validates the `acq, cwfs, cwfs` triplet structure; a 12-triplet set spans
+The `seq_num` step of 3 validates the triplet structure; a 12-triplet set spans
 exactly 33. It currently rejects nothing, because the one block of consecutive `acq` visits
 (step 1, 18 visits, 20251219) is already excluded by the size cut. It is kept as a guard.
 
@@ -102,11 +152,56 @@ The model describes night-to-night thermal drift, which is what it was built for
 describe what happens inside one block, and applying it there is not a correction but an addition
 of noise.
 
+## The FAM pair's own defocus, DZ(k=1, j=4)
+
+The defocused pair of each triplet carries its own measurement of the same physical quantity: the
+DZ fit's term at focal (field) Zernike order k=1 and pupil Noll index j=4, in µm of wavefront. The
+study plots that against the in-focus `acq` v-mode 1 response, one panel per set, `seq_num` on x.
+
+Within-set spread over the 62 sets with a DZ fit on every triplet:
+
+| quantity | median within-set peak-to-peak | max | within-set standard deviation, median | unit |
+|---|---|---|---|---|
+| DZ(k=1, j=4) | **0.3350** | 0.8458 | 0.1044 | µm of wavefront |
+| `acq` v-mode 1 response | **36.2** | 94.7 | 11.8 | µm equiv hexapod dz |
+
+The two move together, but only moderately: across those 62 sets the within-set peak-to-peak of
+DZ(k=1, j=4) against that of the response gives **Pearson r +0.529, Spearman rho +0.518
+(dimensionless, n = 62)**, and the within-set standard deviations **Pearson r +0.520, Spearman rho
++0.538 (dimensionless, n = 62)**. A Huber robust linear fit gives a slope of **44.1 µm of
+equivalent hexapod dz per µm of wavefront** on the peak-to-peak pair and 39.2 on the standard
+deviations. So neither series is a restatement of the other: the two sensors see a common focus
+motion plus substantial independent scatter.
+
+The two panel axes are scaled so equal vertical distance means equal fraction of each series' own
+median within-set peak-to-peak. That is a **display choice, not a physical conversion**:
+DZ(k=1, j=4) is the field-constant component of pupil Zernike 4, so its relation to hexapod dz runs
+through the sensitivity matrix rather than through `v1_per_um_dz`. The direct comparison in one unit
+is available — `fam_dz` stores the FAM pair's own v-mode 1 in the same basis as the `acq` optical
+state — but it is a different measurement and is not folded into these plots.
+
+Coverage: **870 of 984** selected `acq` visits have a FAM DZ fit, touching **78 of 82** sets, of
+which **62** are complete at 12 of 12 triplets. The shortfall is FAM processing coverage — the
+`param_set` was built over a narrower date range than the `acq` selection spans — not a quality cut:
+no matched row is flagged `bad_fit`.
+
+### Where the DZ coefficients live
+
+The DZ coefficients are in `output/<param_set>/fits.parquet`, one row per FAM extra/intra-focal
+pair, with columns named `<prefix>_z<j>_c<k>` — so DZ(k=1, j=4) at `prefix = z1toz6` is
+`z1toz6_z4_c1` [µm of wavefront], with its formal error in `z1toz6_z4_c1_err`.
+`output/<param_set>/dz_fit_check.parquet` holds **residual diagnostics only** (`resid_nmad_um`,
+`resid_rms_um`, `resid_median_um`, `dev_nmad_um` per `pupil_j`) and carries no DZ coefficient.
+
+The two prefixes, `z1toz3` (k=1..3) and `z1toz6` (k=1..6), agree here to 0.0003 µm of wavefront on
+the median within-set peak-to-peak, so the focal-order truncation does not drive the result.
+
 ## Code
 
 | file | role |
 |---|---|
-| `code/fam_focus/run_fam_focus.py` | the whole study: selection, the applied correction, and the document |
+| `code/fam_focus/run_fam_focus.py` | the whole study: selection, the applied correction, the DZ comparison, and the document |
+| `../../common/scripts/build_fam_dz.py` | writes the `fam_dz` table this study reads |
 
 **This script needs ConsDB, so it runs on the Rubin Science Platform (RSP) or USDF only** — unlike
 `code/science_lut/run_science_lut_analysis.py`, which reads parquet alone. The reason is
@@ -122,7 +217,9 @@ both studies share one definition of the response and one fitted model. It also 
 
 Options: `--variant`, `--day-obs-min`, `--programs`, `--set-size`, `--seq-step`, `--pointing-tol`,
 `--max-seq-span`, `--keep-lut-epoch-offset-nights`, `--free-y` (autoscale each panel instead of
-sharing one y-range), `--science-lut-dir`, `--out-dir`, `--cache`, `--db-path`, `--consdb-url`.
+sharing one y-range), `--science-lut-dir`, `--out-dir`, `--cache`, `--db-path`, `--consdb-url`,
+`--fam-variant`, `--dz-col`, `--no-dz` (skip the DZ comparison pages). The DZ pages are skipped with
+a note, rather than failing the run, when the named `fam_dz` variant is not registered.
 
 Output goes to `output/fam_focus/` — the top level, outside any `param_set` or `mi_name`, because
 the study consumes ConsDB and the value-added database rather than the FAM donut tables. The
@@ -130,9 +227,10 @@ optical-state variant is carried in the data instead.
 
 | product | content |
 |---|---|
-| `fam_focus.pdf` | the document: 14 pages, opening description, selection validation, the per-set tables, 7 pages of 12-panel drift plots, and the closing scatter comparison |
-| `fam_focus_visits.parquet` | one row per selected `acq` visit: identity, `set_id`, band, pointing [deg], the v-mode-1 components, the response, the prediction and the corrected response [µm equiv hexapod dz], and the five thermal features |
+| `fam_focus.pdf` | the document: 22 pages — opening description, selection validation, the per-set tables, 7 pages of 12-panel drift plots, the closing scatter comparison, the commanded-focus validation page, 6 pages of 12-panel DZ(k=1, j=4) comparison plots, and the DZ summary |
+| `fam_focus_visits.parquet` | one row per selected `acq` visit: identity, `set_id`, band, pointing [deg], the v-mode-1 components, the response, the prediction and the corrected response [µm equiv hexapod dz], the five thermal features, and the matched FAM `dz` and `dz_err` [µm of wavefront] with the extra-focal `fam_seq_num` |
 | `fam_focus_sets.parquet` | one row per set: `day_obs`, `seq_num` range, mean pointing [deg], band, `n`, and the within-set median, peak-to-peak, standard deviation and drift for both responses [µm equiv hexapod dz] |
+| `fam_focus_dz_sets.parquet` | one row per set with a DZ fit: the within-set median, peak-to-peak and standard deviation of DZ(k=1, j=4) [µm of wavefront] and of the response [µm equiv hexapod dz], `n_dz`, and whether the set is complete |
 
 ## Relation to the other focus studies
 
