@@ -18,6 +18,30 @@ night**, which cancels slowly-varying terms.
 | `bounce_lib.py` | library: pairing, per-(k,j) statistics, significance, plotting (894 lines) |
 | `run_bounce.py` | pipeline `bounce` rule — paired Δ for DZ coefficients, OFC v-modes, and physical DOF, with significance/pass heatmaps, vs-ordinal pages, night cross-scatter |
 
+## Notebooks
+
+| file | role |
+|---|---|
+| `notebooks/bounce/bending_mode_test_lut_trim.ipynb` | commanded hexapod LUT (10 axes) and Trim (all 50 DOF) against `seq_num` for the CWFS exposures of the bending-mode test BLOCKs T377–T380, read from the value-added telemetry DuckDB |
+
+### Bending-mode test BLOCKs
+
+BLOCK-T378 (M1M3 bending modes) and BLOCK-T379 (M2 bending modes) command an individual
+mirror bending mode and take Corner Wavefront Sensor (CWFS) pairs, with the mode named in
+the `science_program` suffix (`BLOCK-T378_M1M3B12`, `BLOCK-T378_M1M3B20`,
+`BLOCK-T379_M2B18`). The notebook shows what the hexapod LUT had loaded and what the Trim
+had accumulated while each mode was exercised.
+
+The LUT and the Trim are **different index spaces** that agree only over their first ten
+entries. Both order the hexapods M2 first (indices 0–4, `M2_dz/dx/dy/rx/ry`) then camera
+(5–9, `Cam_dz/dx/dy/rx/ry`); the Trim continues with M1M3 bending (10–29) and M2 bending
+(30–49), which the hexapod LUT has no counterpart for. Labels, units and index groups come
+from `lsst.ts.intrinsic.wavefront.ofc_svd` (`LABELS_50DOF`, `DOF_UNITS_50`, `DOF_GROUPS`),
+and the LUT axis order is documented at `aos_trim.fetch_hexapod_lut_for_visits`.
+
+One unit trap: the LUT angular axes are **deg**, as the hexapod reports them, while the
+Trim rotations are **arcsec**, the OFC convention. Translations are µm in both.
+
 ## Why the O/C split matters here
 
 Any intrinsic that is **fixed in the fitting frame cancels in a Δ**. So the
@@ -50,10 +74,6 @@ cd ~/notebooks/rubin-work/aos
 ```
 
 Knobs in `analysis_config.yaml` under `bounce`.
-
-## Notebooks
-
-None. Driven entirely by the `bounce` pipeline rule.
 
 ## See also
 

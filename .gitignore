@@ -94,4 +94,7 @@ optatmo/pipelines/prod_famcwfs.txt
 # Scratch notebooks -- throwaway, for testing code development. Deliberately untracked
 # (they were swept into commits three times by `git add -A` before being ignored here).
 *snippets.ipynb
+# nbconvert --execute writes an executed copy alongside the source; never track it.
+_exectest.ipynb
+*-exectest.ipynb
 Untitled*.ipynb
