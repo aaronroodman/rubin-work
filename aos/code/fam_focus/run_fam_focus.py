@@ -112,6 +112,19 @@ TRIPLET_TRIM_DZ_UM = (-1500.0, 1500.0, 0.0)
 #: Tolerance [µm] on each `TRIPLET_TRIM_DZ_UM` offset before a triplet counts as deviating.
 TRIPLET_TRIM_TOL_UM = 1.0
 
+#: Conversion from DZ(k=1, j=4) [µm of wavefront] to equivalent hexapod dz travel [µm], so the
+#: FAM pair's own defocus is plotted in the same unit as the ``acq`` response. Derived in
+#: ``notebooks/smatrix_vmode/ofc_conversion_constants.ipynb`` from the OFC sensitivity matrix at
+#: camera rotator angle 0.0 deg, focal orders k=1..6, 50 DOF and 34 v-modes, in OCS.
+#:
+#: This is the **0.5 µm on each hexapod** inverse, which is the convention `v1_per_um_dz`
+#: already uses for the response, so the two series share one definition of "equivalent hexapod
+#: dz". The camera-only inverse is −62.8389 and the singular-value-decomposition minimum-norm
+#: total is −63.2195 µm of dz per µm of wavefront; all three agree to 1.2% (dimensionless,
+#: spread over the mean), because the camera and M2 dz axes are near-degenerate — their forward
+#: sensitivities differ by only 3.7%. The choice therefore does not affect any conclusion here.
+DZ_UM_PER_UM_WF = -63.9902
+
 
 # --------------------------------------------------------------------------- selection
 
@@ -440,7 +453,9 @@ def attach_fam_dz(sel, fam_variant=DEFAULT_FAM_VARIANT, dz_col=DZ_COL, db_path=N
     Returns
     -------
     out : `pandas.DataFrame`
-        A copy of `sel` with ``dz`` [µm of wavefront], ``dz_err`` [µm of wavefront] and
+        A copy of `sel` with ``dz`` [µm of wavefront], ``dz_err`` [µm of wavefront],
+        ``dz_dz_um`` and ``dz_dz_err_um`` — the same two converted to µm of equivalent hexapod
+        dz through `DZ_UM_PER_UM_WF`, the unit the ``acq`` response ``y`` already uses — and
         ``fam_seq_num`` (the extra-focal member) added, NaN where no FAM fit exists.
     cov : `dict`
         Coverage counts for the page: ``n_acq``, ``n_matched``, ``n_sets``, ``n_sets_touched``,
@@ -463,6 +478,11 @@ def attach_fam_dz(sel, fam_variant=DEFAULT_FAM_VARIANT, dz_col=DZ_COL, db_path=N
     if 'dz' not in out.columns:
         raise RuntimeError(f'fam_dz variant {fam_variant!r} has no column {dz_col!r}; the '
                            f'variant k-range or pupil Noll set does not contain it')
+    # Into the response's own unit, so both series share one y-axis. The error scales by the
+    # same constant; its magnitude is taken, since a negative sigma is meaningless.
+    out['dz_dz_um'] = out['dz'] * DZ_UM_PER_UM_WF
+    if 'dz_err' in out.columns:
+        out['dz_dz_err_um'] = out['dz_err'].abs() * abs(DZ_UM_PER_UM_WF)
     n_set = int(sel.set_id.nunique())
     per_set = out.groupby('set_id')['dz'].apply(lambda s: int(s.notna().sum()))
     set_size = int(sel.groupby('set_id').size().max())
@@ -472,6 +492,8 @@ def attach_fam_dz(sel, fam_variant=DEFAULT_FAM_VARIANT, dz_col=DZ_COL, db_path=N
                fam_variant=fam_variant, dz_col=dz_col)
     if verbose:
         print(f'\nFAM DZ join, variant {fam_variant}, column {dz_col} [um of wavefront]:')
+        print(f'  converted to um of equivalent hexapod dz at {DZ_UM_PER_UM_WF:.4f} um of dz '
+              f'per um of wavefront')
         print(f'  acq visits with a FAM fit: {cov["n_matched"]} of {cov["n_acq"]}')
         print(f'  sets touched: {cov["n_sets_touched"]} of {cov["n_sets"]}; '
               f'complete ({set_size} of {set_size} triplets): {cov["n_sets_complete"]}')
@@ -491,8 +513,10 @@ def dz_summary(df, verbose=True):
     -------
     out : `pandas.DataFrame`
         Per set with a FAM fit on every triplet: ``dz_median_um``, ``dz_p2p_um``,
-        ``dz_std_um`` [µm of wavefront] and ``y_p2p_um``, ``y_std_um`` [µm of equivalent
-        hexapod dz], plus ``n_dz``.
+        ``dz_std_um`` [µm of wavefront]; the same three converted to µm of equivalent hexapod
+        dz as ``dz_dz_median_um``, ``dz_dz_p2p_um``, ``dz_dz_std_um``; ``y_p2p_um``,
+        ``y_std_um`` and ``pred_p2p_um``, ``pred_std_um`` [µm of equivalent hexapod dz]; plus
+        ``n_dz``.
     """
     rows = []
     for sid, g in df.groupby('set_id'):
@@ -500,13 +524,19 @@ def dz_summary(df, verbose=True):
         if len(d) < 2:
             continue
         y = g['y'].dropna().to_numpy(float)
+        p = g['pred'].dropna().to_numpy(float) if 'pred' in g.columns else np.array([])
+        dd = d * DZ_UM_PER_UM_WF
         rows.append(dict(
             set_id=int(sid), day_obs=int(g.day_obs.iloc[0]), n_dz=len(d),
             complete=bool(len(d) == len(g)),
             dz_median_um=float(np.median(d)), dz_p2p_um=float(np.ptp(d)),
             dz_std_um=float(np.std(d, ddof=1)),
+            dz_dz_median_um=float(np.median(dd)), dz_dz_p2p_um=float(np.ptp(dd)),
+            dz_dz_std_um=float(np.std(dd, ddof=1)),
             y_p2p_um=float(np.ptp(y)) if len(y) else np.nan,
-            y_std_um=float(np.std(y, ddof=1)) if len(y) > 1 else np.nan))
+            y_std_um=float(np.std(y, ddof=1)) if len(y) > 1 else np.nan,
+            pred_p2p_um=float(np.ptp(p)) if len(p) else np.nan,
+            pred_std_um=float(np.std(p, ddof=1)) if len(p) > 1 else np.nan))
     out = pd.DataFrame(rows)
     if len(out):
         out = out.sort_values('set_id').reset_index(drop=True)
@@ -515,8 +545,12 @@ def dz_summary(df, verbose=True):
         print(f'  within-set spread over {len(c)} complete sets:')
         print(f'    DZ(k=1,j=4) [um of wavefront]     : p2p median '
               f'{c.dz_p2p_um.median():.4f}  std median {c.dz_std_um.median():.4f}')
+        print(f'    DZ(k=1,j=4) [um equiv hexapod dz] : p2p median '
+              f'{c.dz_dz_p2p_um.median():.1f}  std median {c.dz_dz_std_um.median():.1f}')
         print(f'    response [um equiv hexapod dz]    : p2p median '
               f'{c.y_p2p_um.median():.1f}  std median {c.y_std_um.median():.1f}')
+        print(f'    prediction [um equiv hexapod dz]  : p2p median '
+              f'{c.pred_p2p_um.median():.1f}  std median {c.pred_std_um.median():.1f}')
     return out
 
 
@@ -903,17 +937,20 @@ def page_trim_validation(pdf, df, sets):
 
 
 def page_dz_panels(pdf, df, sets, dzs, cov, panels=PANELS_PER_PAGE):
-    """Per-set panels: the FAM pair's DZ(k=1,j=4) against the in-focus v-mode 1 response.
+    """Per-set panels: three focus estimates against ``seq_num``, on one shared y-axis.
 
     One panel per set with a FAM Double Zernike fit, `panels` per page at 4 columns by 3 rows,
-    matching `page_set_panels` so a reader can flip between the two. Both series have their
-    within-set median removed, so each panel shows change rather than offset.
+    matching `page_set_panels` so a reader can flip between the two. All three series are in
+    **µm of equivalent hexapod dz** and share a single y-axis, so vertical distance means the
+    same thing everywhere on the panel:
 
-    The two y-axes carry genuinely different units — µm of wavefront against µm of equivalent
-    hexapod dz — and are scaled so equal vertical distance means equal fraction of that
-    series' own median within-set peak-to-peak over all drawn sets. That is a display choice,
-    not a physical conversion: DZ(k=1,j=4) is the field-constant component of pupil Zernike 4
-    and its relation to hexapod dz runs through the sensitivity matrix.
+    - the FAM pair's own DZ(k=1,j=4), converted through `DZ_UM_PER_UM_WF`;
+    - the in-focus ``acq`` v-mode 1 response, ``Trim − measured``;
+    - the `science_lut` thermal prediction for that response.
+
+    Each series has its own within-set median removed, so a panel shows change rather than
+    offset and the three curves start from a common zero. The three medians are printed in the
+    panel title, since removing them discards a real difference in absolute level.
     """
     import matplotlib.pyplot as plt
 
@@ -921,61 +958,68 @@ def page_dz_panels(pdf, df, sets, dzs, cov, panels=PANELS_PER_PAGE):
     ids = drawn.set_id.tolist()
     if not ids:
         return
-    dz_half = 0.5 * float(np.nanmedian(drawn.dz_p2p_um)) * 2.2
-    y_half = 0.5 * float(np.nanmedian(drawn.y_p2p_um)) * 2.2
+    # One symmetric y-range for every panel, so panels are comparable page to page. Taken from
+    # the 90th percentile of the three series' within-set peak-to-peak rather than the median,
+    # so the widest-swinging sets are not clipped; a few extreme ones still are.
+    spreads = [float(np.nanpercentile(drawn[c].dropna(), 90))
+               for c in ('dz_dz_p2p_um', 'y_p2p_um', 'pred_p2p_um')
+               if c in drawn.columns and drawn[c].notna().any()]
+    half = 0.5 * max(spreads) * 1.25 if spreads else 1.0
     ncol, nrow = 4, 3
     for start in range(0, len(ids), panels):
         chunk = ids[start:start + panels]
-        fig, axes = plt.subplots(nrow, ncol, figsize=(11, 8.5))
+        fig, axes = plt.subplots(nrow, ncol, figsize=(11, 8.5), sharey=True)
         axes = np.atleast_1d(axes).ravel()
         for ax, sid in zip(axes, chunk):
             g = df[df.set_id == sid].sort_values('seq_num')
             row = drawn[drawn.set_id == sid].iloc[0]
             s0 = int(g.seq_num.min())
-            ax2 = ax.twinx()
+            xs = g.seq_num.to_numpy(float) - s0
+
             y = g['y'].to_numpy(float)
-            ax2.plot(g.seq_num.to_numpy(float) - s0, y - np.nanmedian(y), 'o-', ms=3.2,
-                     lw=1.0, color=RAW_COLOR, label='acq v1 response')
-            d = g['dz'].to_numpy(float)
+            ax.plot(xs, y - np.nanmedian(y), 'o-', ms=3.2, lw=1.0, color=RAW_COLOR,
+                    label='acq v1 response')
+            if 'pred' in g.columns:
+                p = g['pred'].to_numpy(float)
+                if np.isfinite(p).any():
+                    ax.plot(xs, p - np.nanmedian(p), '^--', ms=3.0, lw=0.9,
+                            color=CORR_COLOR, alpha=0.85, label='thermal prediction')
+            # The FAM series carries its own x: the extra-focal member, seq_num - 1 from acq.
+            d = g['dz_dz_um'].to_numpy(float)
             fs = g['fam_seq_num'].to_numpy(float) - s0
             ok = np.isfinite(d) & np.isfinite(fs)
             if ok.any():
                 ax.plot(fs[ok], d[ok] - np.nanmedian(d[ok]), 's-', ms=3.2, lw=1.0,
                         color=DZ_COLOR, label='FAM DZ(k=1,j=4)')
             ax.axhline(0.0, color='k', lw=0.6, alpha=0.5)
-            ax.set_ylim(-dz_half, dz_half)
-            ax2.set_ylim(-y_half, y_half)
-            ax.set_zorder(ax2.get_zorder() + 1)
-            ax.patch.set_visible(False)
+            ax.set_ylim(-half, half)
             ax.set_title(f'set {int(sid)}  {int(row.day_obs)}\n'
-                         f'p2p {row.dz_p2p_um:.3f} um wf / {row.y_p2p_um:.0f} um dz',
+                         f'p2p {row.dz_dz_p2p_um:.0f} FAM / {row.y_p2p_um:.0f} acq um dz',
                          fontsize=7.2)
             ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=6.6, colors=DZ_COLOR)
-            ax2.tick_params(labelsize=6.6, colors=RAW_COLOR)
+            ax.tick_params(labelsize=6.6)
         for ax in axes[len(chunk):]:
             ax.axis('off')
         for k, ax in enumerate(axes[:len(chunk)]):
             if k % ncol == 0:
-                ax.set_ylabel('DZ - set median\n[um of wavefront]', fontsize=7.0,
-                              color=DZ_COLOR)
+                ax.set_ylabel('series - set median\n[um equiv hexapod dz]', fontsize=7.0)
             if k >= len(chunk) - ncol:
                 ax.set_xlabel('seq_num - first of set [dimensionless]', fontsize=7.2)
         from matplotlib.lines import Line2D
         handles = [Line2D([], [], color=DZ_COLOR, marker='s', ms=4, lw=1.2,
-                          label='FAM pair DZ(k=1,j=4), left axis [um of wavefront]'),
+                          label='FAM pair DZ(k=1,j=4), converted'),
                    Line2D([], [], color=RAW_COLOR, marker='o', ms=4, lw=1.2,
-                          label='in-focus acq v-mode 1 response, right axis '
-                                '[um equiv hexapod dz]')]
-        fig.legend(handles=handles, loc='lower center', ncol=2, fontsize=8.5, frameon=False)
+                          label='in-focus acq v-mode 1 response'),
+                   Line2D([], [], color=CORR_COLOR, marker='^', ms=4, lw=1.2, ls='--',
+                          label='science_lut thermal prediction')]
+        fig.legend(handles=handles, loc='lower center', ncol=3, fontsize=8.5, frameon=False)
         fig.suptitle(
-            f'FAM DZ(k=1,j=4) and the in-focus acq v-mode 1 response, '
-            f'sets {chunk[0]}-{chunk[-1]}\n'
-            f'medians removed; the two axes are scaled to each series\' own median '
-            f'within-set peak-to-peak\n'
-            f'({np.nanmedian(drawn.dz_p2p_um):.3f} um of wavefront against '
-            f'{np.nanmedian(drawn.y_p2p_um):.0f} um of equivalent hexapod dz) -- a display '
-            f'choice, not a physical conversion', fontsize=9.0)
+            f'Focus within a FAM set: the science-donut FAM pair, the in-focus acq state and '
+            f'the thermal model,\nsets {chunk[0]}-{chunk[-1]} -- all in um of equivalent '
+            f'hexapod dz, one shared y-axis, each series about its own median\n'
+            f'DZ(k=1,j=4) converted at {DZ_UM_PER_UM_WF:.4f} um of dz per um of wavefront; '
+            f'a few of the widest acq excursions clip at the shared range',
+            fontsize=9.0)
         fig.tight_layout(rect=(0, 0.035, 1, 0.905))
         pdf.savefig(fig)
         plt.close(fig)
@@ -989,9 +1033,11 @@ def page_dz_summary(pdf, dzs, cov, trim):
     c = dzs[dzs.complete]
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
 
+    # Both axes are now the same unit, so the Huber slope is dimensionless and a slope of 1
+    # would mean the two sensors see the same within-set motion. Draw that line for reference.
     for ax, (xc, yc, lab) in zip(axes[0],
-                                 ((('dz_p2p_um', 'y_p2p_um', 'peak-to-peak')),
-                                  (('dz_std_um', 'y_std_um', 'standard deviation')))):
+                                 ((('dz_dz_p2p_um', 'y_p2p_um', 'peak-to-peak')),
+                                  (('dz_dz_std_um', 'y_std_um', 'standard deviation')))):
         x = c[xc].to_numpy(float)
         y = c[yc].to_numpy(float)
         m = np.isfinite(x) & np.isfinite(y)
@@ -1000,20 +1046,23 @@ def page_dz_summary(pdf, dzs, cov, trim):
         if m.sum() > 2:
             pr = stats.pearsonr(x[m], y[m])
             sr = stats.spearmanr(x[m], y[m])
+            lim = max(np.nanmax(x[m]), np.nanmax(y[m])) * 1.05
+            ax.plot([0, lim], [0, lim], ':', color='0.45', lw=1.0,
+                    label='equality (slope 1, dimensionless)')
             try:
                 import statsmodels.api as sm
                 X = sm.add_constant(x[m])
                 rlm = sm.RLM(y[m], X, M=sm.robust.norms.HuberT()).fit()
                 xs = np.linspace(x[m].min(), x[m].max(), 10)
                 ax.plot(xs, rlm.params[0] + rlm.params[1] * xs, 'k-', lw=1.2,
-                        label=f'Huber RLM, slope {rlm.params[1]:.1f} '
-                              f'um dz per um wavefront')
-                ax.legend(fontsize=7.4)
+                        label=f'Huber RLM, slope {rlm.params[1]:.3f} (dimensionless, '
+                              f'acq over FAM)')
             except Exception:
                 pass
+            ax.legend(fontsize=7.4)
             title += (f'\nPearson r {pr[0]:+.3f}, Spearman rho {sr.statistic:+.3f} '
                       f'(dimensionless, n = {int(m.sum())})')
-        ax.set_xlabel(f'DZ(k=1,j=4) {lab} [um of wavefront]')
+        ax.set_xlabel(f'FAM DZ(k=1,j=4) {lab} [um equiv hexapod dz]')
         ax.set_ylabel(f'acq v1 response {lab} [um equiv hexapod dz]')
         ax.set_title(title, fontsize=9.0)
         ax.grid(alpha=0.3)
@@ -1057,9 +1106,18 @@ def page_dz_summary(pdf, dzs, cov, trim):
     lines = [f'{"quantity":<40} {"median":>9} {"max":>9}']
     for col, lab, unit in (('dz_p2p_um', 'DZ(k=1,j=4) within-set p2p', 'um of wavefront'),
                            ('dz_std_um', 'DZ(k=1,j=4) within-set std', 'um of wavefront'),
+                           ('dz_dz_p2p_um', 'DZ(k=1,j=4) p2p, converted', 'um equiv dz'),
+                           ('dz_dz_std_um', 'DZ(k=1,j=4) std, converted', 'um equiv dz'),
                            ('y_p2p_um', 'acq v1 response within-set p2p', 'um equiv dz'),
-                           ('y_std_um', 'acq v1 response within-set std', 'um equiv dz')):
+                           ('y_std_um', 'acq v1 response within-set std', 'um equiv dz'),
+                           ('pred_p2p_um', 'thermal prediction within-set p2p', 'um equiv dz'),
+                           ('pred_std_um', 'thermal prediction within-set std', 'um equiv dz')):
+        if col not in c.columns:
+            continue
         lines.append(f'{lab:<40} {c[col].median():>9.4f} {c[col].max():>9.4f}  [{unit}]')
+    lines += ['', f'DZ(k=1,j=4) converted at {DZ_UM_PER_UM_WF:.4f} um of equivalent',
+              'hexapod dz per um of wavefront (0.5 um on each hexapod, the',
+              'same convention v1_per_um_dz uses for the response).']
     lines += ['', 'Coverage',
               f'  acq visits with a FAM DZ fit : {cov["n_matched"]} of {cov["n_acq"]}',
               f'  sets touched                 : {cov["n_sets_touched"]} of '
@@ -1072,13 +1130,15 @@ def page_dz_summary(pdf, dzs, cov, trim):
               '', f'  fam_dz variant: {cov["fam_variant"]}',
               f'  DZ column     : {cov["dz_col"]} [um of wavefront]']
     lines += ['', 'Follow-up not drawn here: fam_dz also stores the FAM pair\'s own',
-              'v-mode 1, in the same basis as the acq optical state, so the two',
-              'can be compared directly in um of equivalent hexapod dz. That is a',
-              'different measurement from this DZ(k=1,j=4) comparison.']
+              'v-mode 1, recovered from the whole wavefront rather than from the',
+              'DZ(k=1,j=4) term alone, in the same basis as the acq optical state.',
+              'Routing through that instead of through one DZ term is a different',
+              'measurement and is one query away.']
     ax.text(0.0, 1.0, '\n'.join(lines), va='top', ha='left', family='monospace',
             fontsize=7.4, transform=ax.transAxes)
 
-    fig.suptitle('FAM DZ(k=1,j=4) against the in-focus v-mode 1 response', fontsize=12)
+    fig.suptitle('FAM DZ(k=1,j=4) against the in-focus v-mode 1 response, '
+                 'both in um of equivalent hexapod dz', fontsize=12)
     fig.tight_layout(rect=(0, 0.01, 1, 0.95))
     pdf.savefig(fig)
     plt.close(fig)
@@ -1250,7 +1310,9 @@ def main(argv=None):
     p.add_argument('--keep-lut-epoch-offset-nights', action='store_true',
                    help='keep the nights running a different hexapod LUT configuration')
     p.add_argument('--free-y', action='store_true',
-                   help='autoscale each panel instead of sharing one y-range')
+                   help='autoscale each drift panel instead of sharing one y-range; the DZ '
+                        'comparison panels always share one axis, since all three series are '
+                        'in um of equivalent hexapod dz')
     p.add_argument('--science-lut-dir', default=None,
                    help='directory holding science_lut.parquet (default aos/output/science_lut)')
     p.add_argument('--out-dir', default=None,
