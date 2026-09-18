@@ -49,7 +49,6 @@ from lsst.summit.utils.efdUtils import (
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.ts.xml.tables.m1m3 import *  # noqa: F401,F403
 from lsst.ts.m1m3.utils import *  # noqa: F401,F403  (ThermocoupleAnalysis)
-from lsst.ts.ofc import OFCData, SensitivityMatrix
 from lsst.ts.wep.utils import makeDense
 from tqdm import tqdm
 
@@ -66,8 +65,10 @@ else:
 # OFC config dir (v13 = telescope AOS). Its stored normalization_weights ARE the
 # official geom_mean (r^0.5 f^-0.5, field-averaged FWHM) used for the v-modes.
 # OFCData() WITHOUT config_dir loads an old NON-geom default that makes v1 the
-# M2-tilt mode (~0 at convergence) -- always pass config_dir. Prefer
-# TS_CONFIG_MTTCS_DIR (set on the stack); fall back to the USDF packages path.
+# M2-tilt mode (~0 at convergence) -- always pass config_dir. This is passed to
+# aos_state.make_state_estimator, which asserts the resolved normalization yaml and
+# raises rather than silently correcting it. Prefer TS_CONFIG_MTTCS_DIR (set on the
+# stack); fall back to the USDF packages path.
 _ts_cfg = os.environ.get("TS_CONFIG_MTTCS_DIR")
 OFC_CONFIG_DIR = (
     os.path.join(_ts_cfg, "MTAOS", "v13", "ofc") if _ts_cfg
@@ -149,67 +150,6 @@ async def find_faults(client, table):
 
 
 # get_m1m3_gradients now lives in telemetry.py (imported above and re-exported).
-
-
-# ----------------------------------------------------------------------------
-# Sensitivity-matrix SVD (for the zk_constrained columns)
-# ----------------------------------------------------------------------------
-def build_sensitivity_svd(ofc_data, dof_set_name="standard_22"):
-    """Build sensitivity matrix SVD for the given DOF subset.
-
-    Parameters
-    ----------
-    ofc_data : OFCData
-        Configured OFC data object (with dof_idx set).
-    dof_set_name : str
-        DOF subset name ('standard_22', 'hexapod_10', etc.).
-
-    Returns
-    -------
-    svd_result : dict
-        Keys: U, s, V, dof_indices, norm_vector, A_sub, n_modes
-    """
-    sensor_name_list = ["R00_SW0", "R04_SW0", "R40_SW0", "R44_SW0"]
-
-    # Zernike selection: z4-z19, z22-z26 (21 terms, skip z20, z21, z27, z28)
-    zn = np.array(
-        [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-         22, 23, 24, 25, 26]
-    )
-    zn_idx = zn - 4
-
-    dof_sets = {
-        "hexapod_10": list(range(0, 10)),
-        "standard_22": list(range(0, 17)) + list(range(30, 35)),
-    }
-
-    field_angles = [ofc_data.sample_points[s] for s in sensor_name_list]
-    dz_sensitivity_matrix = SensitivityMatrix(ofc_data)
-    sens_3d = dz_sensitivity_matrix.evaluate(field_angles, 0.0)
-
-    # Select Zernike subset, reshape to 2D (all 50 DOFs)
-    sens_3d = sens_3d[:, zn_idx, :]
-    A_full = sens_3d.reshape((-1, sens_3d.shape[2]))
-
-    # Restrict to chosen DOF subset, then normalize
-    dof_indices = dof_sets[dof_set_name]
-    A_sub = A_full[:, dof_indices]
-    norm_vector = ofc_data.normalization_weights[dof_indices]
-    Atilde_sub = A_sub @ np.diag(norm_vector)
-
-    # SVD
-    U, s, Vh = np.linalg.svd(Atilde_sub, full_matrices=False)
-    V = Vh.T
-
-    return dict(
-        U=U,
-        s=s,
-        V=V,
-        dof_indices=dof_indices,
-        norm_vector=norm_vector,
-        A_sub=A_sub,
-        n_modes=len(s),
-    )
 
 
 # ----------------------------------------------------------------------------
@@ -652,14 +592,14 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
     # Vh is the only way they agree. (aos/code/aos_state.py.)
     n_modes = 12
     se = aos_state.make_state_estimator(config_dir=OFC_CONFIG_DIR,
-                                        dof_set="standard_22")
+                                        dof_set="standard_22", n_modes=n_modes)
     vmodes = aos_state.vmodes_from_dofs(dof_state, se, n_modes=n_modes)
 
-    # Geom SVD (same weights) for the zk_constrained wavefront reconstruction
-    # below. The reconstruction is basis-invariant within the kept subspace, so
-    # the degenerate-rotation difference vs StateEstimator does not affect it.
-    svd = aos_state.build_geom_svd(config_dir=OFC_CONFIG_DIR,
-                                   dof_set="standard_22")
+    # The corner-evaluated recovery basis used below for zk_constrained. It is not
+    # the v-mode basis: recover_optical_state inverts in this basis (the one that
+    # actually spans the 84-row corner problem) and reports v-modes through
+    # StateEstimator, so nothing here has to reconcile the two by hand.
+    svd = aos_state.corner_recovery_basis(se)
     U, s, V = svd["U"], svd["s"], svd["V"]
     dof_indices = svd["dof_indices"]
     norm_vector = svd["norm_vector"]
@@ -770,10 +710,9 @@ async def build_nightly_table(day_obs, seq_min=0, seq_max=9999,
             zdev.append(np.asarray(arr, float)[zk_noll_idx])
         if not ok or not all(np.all(np.isfinite(z)) for z in zdev):
             continue
-        dof_os, _v_raw, zk_con = aos_state.recover_optical_state(
-            np.concatenate(zdev), svd, n_modes=n_modes)
-        # v-modes of the optical state in the canonical StateEstimator basis
-        vmode_os = aos_state.vmodes_from_dofs(dof_os, se, n_modes=n_modes)[0]
+        # v-modes come back already in the canonical StateEstimator basis.
+        dof_os, vmode_os, zk_con = aos_state.recover_optical_state(
+            np.concatenate(zdev), se, n_modes=n_modes)
         row = {"dof_optical_state": dof_os, "vmodes_optical_state": vmode_os}
         zc = zk_con.reshape(len(corner_names), n_zk)
         for ic, c in enumerate(corner_names):

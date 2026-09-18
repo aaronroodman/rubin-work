@@ -109,6 +109,15 @@ are the same engine:
 | `lsst.ts.ofc.state_estimator.StateEstimator`, reached **only** through `aos_state.make_state_estimator` | the online control basis — what the Main Telescope AOS runs on the summit; the basis `optical_state` v-modes use |
 | `lsst.ts.intrinsic.wavefront.ofc_svd.build_ofc_svd` | Double Zernike focal-order slices, `k_min=1, k_max=6`, for the FAM/MIW studies |
 
+A third decomposition exists but is **not** a v-mode engine: `aos_state.corner_recovery_basis`
+is the SVD of the corner-evaluated, Zernike-selected matrix, used only to *invert* a measured
+corner wavefront. `StateEstimator.Vh` cannot do that job — built from the unselected 899-row
+slab, it does not span the 84-row corner problem and leaves an irreducible
+2.3e-02 µm wavefront-residual floor even on noiseless data, where the corner-evaluated SVD
+closes to 2.1e-14 µm. `recover_optical_state` therefore inverts in that basis and reports
+v-modes through `get_vmodes_from_dofs`, so no v-mode ever leaves the sanctioned basis. See
+[`../status/corner_recovery_route_comparison.md`](../status/corner_recovery_route_comparison.md).
+
 Handed the matched full slab — all focal orders `k = 0..30`, all 29 pupil Zernikes, the
 same DOF subset and the same normalization yaml — they agree **exactly**, for both the
 22-DOF/12-v-mode and the 50-DOF/34-v-mode schemes:
@@ -158,10 +167,11 @@ config at runtime (`ofc.controller['normalization_weights_filename']`), so it us
 the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` names `range0.5_fwhm-0.15.yaml`.
 `--check` verifies the result against `StateEstimator`.
 
-`--check` currently builds its own `OFCData(instrument)` without a `config_dir`, so it
-validates the equivalence under the obsolete normalization. Its assertions are all
-`max|Δ| = 0.0`, so it is not reporting a false pass — it is a true statement about the
-wrong config. Routing it through `make_state_estimator` is outstanding work.
+`--check` takes its estimator from `aos_state.make_state_estimator`, so it validates the
+equivalence under the required normalization and honours `--scheme`. Both schemes pass with
+`norm = range0.5_fwhm-0.15.yaml`: normalization arrays match, `max|ΔS| = 0.00e+00` (DZ
+sensitivity units), and DOF-per-v-mode `max|Δ| = 0.000e+00` (µm or arcsec of DOF, on scales
+of 6.30e+03 for 22/12 and 6.02e+03 for 50/34).
 
 **The `-0.15` and `-0.5` filenames hold the same weights.** An older
 `range0.5_fwhm-0.5.yaml` exists on the `ts_ofc` branch `tickets/DM-54762` (commit

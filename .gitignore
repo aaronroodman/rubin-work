@@ -36,6 +36,9 @@ env/
 # ===== Log directories (per-run logs are ephemeral) =====
 */logs/*
 !*/logs/.gitkeep
+# As with output/ above, the pattern needs a directory component before logs/, so a
+# REPO-ROOT logs/ would otherwise slip through untracked.
+/logs/
 
 # ===== Large data files =====
 *.fits

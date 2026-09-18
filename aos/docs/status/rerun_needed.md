@@ -1,6 +1,6 @@
 # Outputs that need regenerating
 
-> **Status:** current · **Last updated:** 2026-09-14 · **Kind:** working state (rerun list)
+> **Status:** current · **Last updated:** 2026-09-16 · **Kind:** working state (rerun list)
 
 Products on disk that predate a code change and no longer match what the current code
 would produce. Kept here so a stale plot is not mistaken for a current result.
@@ -101,6 +101,35 @@ python code/psf/run_psf_fp_maps.py --case mimic
 python code/psf/run_psf_fp_maps.py --case validate
 python code/closed_loop/run_closed_loop.py --case loop
 ```
+
+### Everything storing v-modes — the v-mode basis changed, and v1 flips sign
+**Why:** the retired `aos_state.build_geom_svd` produced v-modes in the corner-evaluated
+basis. Every v-mode in the repository now comes from `aos_state.make_state_estimator`, the
+basis the Main Telescope AOS runs on the summit. `aos_state.recover_optical_state` still
+*inverts* in the corner basis — recovered DOF and `zk_constrained` are bit-identical to
+before, `max|Δ| = 0.000e+00` — but the v-modes it reports are the estimator's.
+
+**Measured effect.** The `v1_per_um_dz` scale factor moves only 0.46% (dimensionless, new
+over old): 8.9678249e-04 to 9.0094231e-04 per µm for `standard_22`/12, and 8.9677770e-04 to
+9.0085143e-04 per µm for `all_50`/34, still agreeing between schemes to five decimals. The
+**sign flips**, so every stored `v1`, `v1_lut` and `v1_trim` reverses: v1 per µm of
+camera-hexapod dz goes from +9.1327060e-04 to -8.9153336e-04 per µm. On synthetic LUT-like
+DOF (n = 3,000), Spearman rho between old and new v1 is -0.9992 (dimensionless). The
+previously recorded Spearman rho = +0.9513 between `v1_lut` and `lut_dof5` [µm] will come
+back near -0.95 — **a convention change, not a regression.** Details and the equivalence
+table are in
+[`corner_recovery_route_comparison.md`](corner_recovery_route_comparison.md).
+
+**Affected:** all three `optical_state` variants (`v50_34__batoid__consdb_v1`,
+`v50_34__miw__consdb_v1`, `v22_12__batoid__consdb_v1`); `science_lut.parquet`,
+`science_lut_fits.parquet` and `science_lut_results.pdf`; `olr/` nightly tables carrying
+`vmodes_optical_state`; and
+`notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb`, whose stored v-mode
+cells and PDFs predate the basis change — it now calls `make_state_estimator` and runs, but
+needs re-executing.
+
+The 50/34 `optical_state` rebuild also gains modes: `truncate_index` was capping the
+commanded projection at 12 modes regardless of the scheme, and now returns 34.
 
 ### `static_optics` camera-gravity — bending basis may have changed
 **Why:** `camera_gravity.py:95` picks a bend directory in the order `bend_zemax` →

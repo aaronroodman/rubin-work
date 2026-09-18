@@ -52,7 +52,7 @@ SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 ZK_NOLL_DEFAULT = tuple(z for z in range(4, 27) if z not in (20, 21))
 
 
-def run_ofc_check(instrument='lsst'):
+def run_ofc_check(dof_set='standard_22', n_modes=None):
     """Regression check: build_ofc_svd must reproduce ts_ofc's
     StateEstimator.get_dofs_from_vmodes on IDENTICAL inputs.
 
@@ -61,19 +61,24 @@ def run_ofc_check(instrument='lsst'):
     is exactly our normalization_weights * svd.V.  Building our SVD from the SAME
     full focal-k x pupil-zn matrix, DOF set, normalization yaml and truncation,
     the two must agree to numerical precision.  Returns True on PASS.
+
+    The estimator comes from ``aos_state.make_state_estimator``, so the check runs under
+    the required normalization (`aos_state.REQUIRED_NORM_YAML`) rather than the obsolete
+    bare-``OFCData`` default.
     """
-    from lsst.ts.ofc import OFCData, StateEstimator
+    import aos_state
     from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, DEFAULT_NORM_YAML
-    ofc = OFCData(instrument); se = StateEstimator(ofc)
+    se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
+    ofc = se.ofc_data
     S = np.asarray(ofc.sensitivity_matrix)               # (n_k, n_zn, n_dof)
     n_k, n_zn, _ = S.shape
     dof_idx = [int(d) for d in ofc.dof_idx]
     norm_yaml = ofc.controller['normalization_weights_filename']
     n_keep = int(se.truncate_index) if se.truncate_index else se.Vh.shape[0]
-    n_modes = se.Vh.shape[0]
+    n_basis = se.Vh.shape[0]           # full basis width, for the unit v-mode probes
     # ts_ofc DOF-per-v-mode: get_dofs_from_vmodes on each unit v-mode
     M_ofc = np.column_stack(
-        [se.get_dofs_from_vmodes(np.eye(n_modes)[m]) for m in range(n_keep)])
+        [se.get_dofs_from_vmodes(np.eye(n_basis)[m]) for m in range(n_keep)])
     # our ofc_svd, same inputs (all focal-k, all pupil-zn, same DOF + norm)
     svd = build_ofc_svd(list(range(n_zn)), k_min=0, k_max=n_k - 1,
                         n_keep=n_keep, n_dof=dof_idx, norm_yaml_name=norm_yaml)
@@ -114,7 +119,11 @@ def main():
     args = ap.parse_args()
 
     if args.check:
-        sys.exit(0 if run_ofc_check() else 1)
+        # The scheme selects the DOF set and mode count, so --check tests the same
+        # configuration the plot would be made for.
+        _dof_set = {'22_12': 'standard_22', '50_34': 'all_50'}[args.scheme]
+        _n_keep = SCHEMES[args.scheme][1]
+        sys.exit(0 if run_ofc_check(dof_set=_dof_set, n_modes=_n_keep) else 1)
 
     from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, DEFAULT_NORM_YAML
     n_dof, n_keep = SCHEMES[args.scheme]

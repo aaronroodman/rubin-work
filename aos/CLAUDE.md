@@ -5,7 +5,7 @@ root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here)
 
 **This file is not a description of the pipeline.** `README.md` indexes the topic and
 `docs/miw_pipeline.md` is the reference for what every Snakemake step does, the config
-files, and the output layout. `docs/studies.md` maps the fourteen studies to their code.
+files, and the output layout. `docs/studies.md` maps the sixteen studies to their code.
 What follows is only the things that are easy to get wrong.
 
 ## Code layout
@@ -13,7 +13,7 @@ What follows is only the things that are easy to get wrong.
 `code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
 `code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
 `code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`,
-`code/fam_processing/`, `code/infra/`.
+`code/science_lut/`, `code/fam_focus/`, `code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.
 
 Seven modules stay **flat at `code/`** on purpose:
@@ -80,6 +80,18 @@ the repo root). Do not "consolidate" the two — they are unrelated.
   `../notes/claude-memory/`.
 - Camera rotator angle comes from the ConsDB `physical_rotator_angle`, **not**
   `boresightRotAngle`.
+- **v-modes come only from `aos_state.make_state_estimator`** — never write
+  `np.linalg.svd` on a sensitivity matrix. The matrix is always evaluated at camera rotator
+  angle **0.0 deg** (`aos_state.SMATRIX_ROTATION_ANGLE_DEG`), an AOS group decision; do not
+  add a rotation-angle argument. Wavefronts entering `recover_optical_state` must therefore
+  be **OCS** (`aos_state.ZK_FRAME`), which is what all work here assumes — note ts_ofc's own
+  `dof_state` wants the opposite pairing (CCS plus the angle). `truncate_index` sets the mode
+  count, so pass `n_modes`. See `svd-use-state-estimator` in `../notes/claude-memory/` and
+  `docs/status/corner_recovery_route_comparison.md`.
+- The retired `build_geom_svd` and `project_dofs_to_vmodes` are **guarded**: a module-level
+  `__getattr__` in `aos_state.py` raises an `AttributeError` naming the replacement, on both
+  `aos_state.build_geom_svd` and `from aos_state import build_geom_svd`. Do not re-add either
+  name; add to `_RETIRED` when retiring another.
 - Every number reported carries its quantity name and units, per the root `CLAUDE.md`.
   In this topic that bites hardest on Zernike coefficients (µm of wavefront vs a
   dimensionless ratio vs a correlation coefficient can all wear the same symbol) and

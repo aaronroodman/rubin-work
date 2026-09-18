@@ -17,6 +17,7 @@
 - [AOS DOF terminology](aos-dof-terminology.md) — optical_state vs Tweak vs Trim, and which to use for zk_constrained
 - [AOS 22 DOF reduced set](aos-22dof-reduced-set.md) — 10 rigid + 7 M1M3 + 5 M2 bending; explicit DOF indices
 - [AOS v-mode normalization](aos-vmode-normalization.md) — geom weights, StateEstimator (4-CWFS) vs build_ofc_svd (double-Zernike), degeneracy caveat
+- [Use StateEstimator for every SVD](svd-use-state-estimator.md) — aos_state helpers only; S-matrix fixed at rotator zero, wavefronts must be OCS
 - [Frame conventions CCS/OCS](frame-conventions-ccs-ocs.md) — CCS=camera, OCS=mirror frame; camera rotator = ConsDB physical_rotator_angle (not boresightRotAngle); static optics move with mirrors (OCS), not instrument-fixed
 - [smatrix project](smatrix-project.md) — rubin-work/smatrix DZ sensitivity matrix via batoid_rubin, matches OFC 46/50 (global −sign); angle DOF per-degree + 1° tilt vignetting gotchas
 - [Sparse-fit sensitivity study](sparse-fit-sensitivity.md) — fix secondary/tertiary Zernikes in donut fit + revise sensitivity; Piece-1: production zeroes coma2/tref2, all DOF couple primary↔secondary at ±1

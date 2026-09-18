@@ -33,6 +33,11 @@ List what is registered::
 
     python common/scripts/build_optical_state.py --list
 
+Alongside the measured state, each row stores the **commanded** v-modes — the hexapod
+look-up-table (LUT) and the Trim, read from `visit_telemetry` and projected in the variant's
+own scheme. Storing them here rather than reprojecting them per analysis is what guarantees
+that all three terms of ``v_lut + v_trim - v_meas`` share one basis.
+
 Notes
 -----
 `aos_state.DOF_SETS['standard_22']` is ``sorted(range(0, 17) + range(30, 35))`` — 10
@@ -40,11 +45,23 @@ rigid-body plus M1M3 bending 1–7 plus M2 bending 1–5. It is **not** the firs
 indices, so a scalar 22 would silently select DOF 0–21 instead.
 
 The 50/34 scheme passes ``n_modes=34`` explicitly. `aos_state.N_MODES['all_50']` is 20, but
-that is only a default: `build_geom_svd(dof_set='all_50')` returns all 50 modes and
-``n_modes`` is applied at the projection call, so 34 is well-defined.
+that is only a default: the decomposition for ``all_50`` offers all 50 modes and ``n_modes``
+sets `StateEstimator.truncate_index`, so 34 is well-defined.
+
+Every v-mode stored here — measured, LUT and Trim — comes from
+`aos_state.make_state_estimator`, the single sanctioned engine. The *inversion* of the
+measured corner wavefront uses `aos_state.corner_recovery_basis` instead, because
+``StateEstimator.Vh`` does not span the 84-row corner problem; the recovered DOF are then
+re-projected onto the estimator basis so the three v-mode terms remain comparable. See
+`aos/docs/status/corner_recovery_route_comparison.md`.
 
 The camera rotator angle comes from the ConsDB ``physical_rotator_angle``, **not**
-``boresightRotAngle``.
+``boresightRotAngle``. It enters only the intrinsic-wavefront lookup, which is evaluated at
+the observed angle so that the intrinsic is in the same frame as the ConsDB measured
+Zernikes and the deviation is frame-consistent. The deviation is then inverted against a
+sensitivity matrix fixed at rotator zero (`aos_state.SMATRIX_ROTATION_ANGLE_DEG`), which
+takes the deviation to be in the telescope frame (Optical Coordinate System, OCS) —
+`aos_state.ZK_FRAME`.
 """
 import argparse
 import pathlib
@@ -70,31 +87,38 @@ SCHEMES = {
 
 DEFAULT_OFC_VERSION = 'v13'
 
+#: hexapod-LUT entries carrying a tilt, in the 50-element DOF vector: camera and M2 rx/ry.
+HEX_TILT_LUT = [3, 4, 8, 9]
+DEG_TO_ARCSEC = 3600.0
 
-def build_svd(scheme, ofc_version=DEFAULT_OFC_VERSION):
-    """The sensitivity-matrix SVD for one scheme.
+
+def build_state_estimator(scheme, ofc_version=DEFAULT_OFC_VERSION):
+    """The OFC `StateEstimator` for one scheme — the single v-mode engine.
 
     Parameters
     ----------
     scheme : `str`
         ``'22_12'`` or ``'50_34'``.
     ofc_version : `str`, optional
-        ts_ofc configuration version.
+        ts_ofc configuration version. Must be one whose controller selects
+        `aos_state.REQUIRED_NORM_YAML`; `aos_state.make_state_estimator` raises otherwise.
 
     Returns
     -------
-    svd : `dict`
-        As returned by `aos_state.build_geom_svd`.
+    se : `lsst.ts.ofc.state_estimator.StateEstimator`
+        From `aos_state.make_state_estimator`, with `truncate_index` set to `n_modes`.
     n_modes : `int`
-        Modes to retain at the projection call — 12 or 34.
+        Modes retained — 12 or 34.
     """
     import aos_state
     dof_set, _n_dof, n_modes = SCHEMES[scheme]
-    svd = aos_state.build_geom_svd(dof_set=dof_set, version=ofc_version)
-    if svd['V'].shape[1] < n_modes:
-        raise RuntimeError(f'scheme {scheme} wants {n_modes} modes but the SVD for '
-                           f'{dof_set!r} offers only {svd["V"].shape[1]}')
-    return svd, n_modes
+    se = aos_state.make_state_estimator(dof_set=dof_set, version=ofc_version,
+                                        n_modes=n_modes)
+    avail = aos_state.corner_recovery_basis(se)['n_modes']
+    if avail < n_modes:
+        raise RuntimeError(f'scheme {scheme} wants {n_modes} modes but {dof_set!r} '
+                           f'offers only {avail}')
+    return se, n_modes
 
 
 def visit_metadata(cdb, day_obs):
@@ -265,7 +289,65 @@ def measured_deviation(cdb, visit_ids, bands, rot_angles, intrinsic_route,
     return opd - intr, n_opd
 
 
-def recover_night(cdb, day_obs, svd, n_modes, intrinsic_route, zk_noll,
+def make_commanded_projector(state_estimator, n_modes):
+    """A callable projecting the commanded hexapod LUT and Trim onto the v-modes.
+
+    Parameters
+    ----------
+    state_estimator : `lsst.ts.ofc.state_estimator.StateEstimator`
+        From `build_state_estimator` — **the same estimator the measured state's v-modes
+        are reported in**. Sharing it is what puts all three v-mode terms in one basis, so
+        ``v_lut + v_trim - v_meas`` mixes none.
+    n_modes : `int`
+        Modes to retain — 12 or 34.
+
+    Returns
+    -------
+    project : `callable`
+        ``project(con, visit_ids)`` -> ``(v_lut, v_trim)``, each shaped
+        ``(len(visit_ids), n_modes)`` of dimensionless v-mode amplitudes, NaN for any visit
+        with no `visit_telemetry` row or a non-finite active DOF.
+
+    Notes
+    -----
+    The hexapod LUT is read from `visit_telemetry` as ``lut_dof0..9`` [µm, deg] and the Trim
+    as ``dof0..49`` [µm, arcsec]. The LUT's four tilt entries are converted deg -> arcsec and
+    its 40 mirror-bending entries are set to zero rather than NaN, since the hexapods command
+    no bending; leaving them NaN would poison every projection.
+
+    The projection is `aos_state.vmodes_from_dofs`, i.e. ``StateEstimator``'s own
+    ``get_vmodes_from_dofs`` — the basis the Main Telescope AOS reports on the summit. The
+    12-mode cap that once argued against it was `truncate_index`, a controller-yaml default
+    rather than a limit; `aos_state.make_state_estimator` sets it from ``n_modes``, so 34
+    modes are returned for the 50/34 scheme.
+    """
+    import aos_state
+    lut_cols = [f'lut_dof{k}' for k in range(10)]
+    trim_cols = [f'dof{k}' for k in range(50)]
+
+    def project(con, visit_ids):
+        vids = np.asarray(visit_ids, 'int64')
+        out_lut = np.full((len(vids), n_modes), np.nan)
+        out_trim = np.full((len(vids), n_modes), np.nan)
+        sel = ', '.join(['visit_id'] + lut_cols + trim_cols)
+        tel = con.execute(
+            f'SELECT {sel} FROM visit_telemetry WHERE visit_id IN '
+            f'({",".join(str(int(v)) for v in vids)})').df() if len(vids) else None
+        if tel is None or not len(tel):
+            return out_lut, out_trim
+        tel = tel.set_index('visit_id').reindex(index=vids)
+        lut_dof = np.zeros((len(vids), 50))
+        lut_dof[:, :10] = tel[lut_cols].to_numpy(float)
+        lut_dof[:, HEX_TILT_LUT] *= DEG_TO_ARCSEC
+        trim_dof = tel[trim_cols].to_numpy(float)
+        out_lut = aos_state.vmodes_from_dofs(lut_dof, state_estimator, n_modes=n_modes)
+        out_trim = aos_state.vmodes_from_dofs(trim_dof, state_estimator, n_modes=n_modes)
+        return out_lut, out_trim
+
+    return project
+
+
+def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_noll,
                   ofc_version=DEFAULT_OFC_VERSION, cache=None, miw_lookup=None,
                   img_type=None, verbose=True):
     """Recover the optical state for every visit of one night.
@@ -274,8 +356,8 @@ def recover_night(cdb, day_obs, svd, n_modes, intrinsic_route, zk_noll,
     ----------
     cdb : `lsst.summit.utils.ConsDbClient`
     day_obs : `int`
-    svd : `dict`
-        From `build_svd`.
+    state_estimator : `lsst.ts.ofc.state_estimator.StateEstimator`
+        From `build_state_estimator`.
     n_modes : `int`
         Modes to retain — 12 or 34.
     intrinsic_route : `str`
@@ -283,9 +365,9 @@ def recover_night(cdb, day_obs, svd, n_modes, intrinsic_route, zk_noll,
     ofc_version : `str`, optional
     cache : `dict`, optional
     miw_lookup : `callable`, optional
-    img_type : `str`, optional
-        Restrict to one ConsDB ``img_type``. Default is every exposure that has corner
-        Zernikes.
+    img_type : `str` or `iterable` [`str`], optional
+        Restrict to these ConsDB ``img_type`` values. Default is every exposure that has
+        corner Zernikes.
     verbose : `bool`, optional
 
     Returns
@@ -306,10 +388,11 @@ def recover_night(cdb, day_obs, svd, n_modes, intrinsic_route, zk_noll,
         return (np.array([], 'int64'), np.zeros((0, n_modes)), np.zeros((0, 50)),
                 np.array([]), np.array([], bool))
     if img_type is not None:
-        meta = meta[meta['img_type'] == img_type]
+        want = [img_type] if isinstance(img_type, str) else list(img_type)
+        meta = meta[meta['img_type'].isin(want)]
         if meta.empty:
             if verbose:
-                print(f'{day_obs}: no {img_type} exposures')
+                print(f'{day_obs}: no {",".join(want)} exposures')
             return (np.array([], 'int64'), np.zeros((0, n_modes)), np.zeros((0, 50)),
                     np.array([]), np.array([], bool))
     vids = meta['visit_id'].to_numpy('int64')
@@ -326,7 +409,8 @@ def recover_night(cdb, day_obs, svd, n_modes, intrinsic_route, zk_noll,
         row = z_dev[i]
         if not np.isfinite(row).all():
             continue
-        d, v, zk_con = aos_state.recover_optical_state(row, svd, n_modes=n_modes)
+        d, v, zk_con = aos_state.recover_optical_state(
+            row, state_estimator, n_modes=n_modes)
         dof[i] = d
         v_modes[i] = v
         resid[i] = float(np.sqrt(np.mean((row - zk_con) ** 2)))
@@ -364,7 +448,8 @@ def main(argv=None):
     p.add_argument('--day-obs', default=None,
                    help='single night, inclusive range, or a comma list')
     p.add_argument('--img-type', default=None,
-                   help="restrict to one ConsDB img_type, e.g. 'science'")
+                   help="restrict to these ConsDB img_types, comma separated, e.g. "
+                        "'science,acq'")
     p.add_argument('--resume', action='store_true',
                    help='skip nights already fully populated for this variant')
     p.add_argument('--list', action='store_true',
@@ -421,7 +506,7 @@ def main(argv=None):
 
     import aos_state
     zk_noll = aos_state.ZK_NOLL
-    svd, n_modes = build_svd(scheme, ofc_version)
+    se, n_modes = build_state_estimator(scheme, ofc_version)
     print(f'variant {vid}: scheme {scheme} ({n_modes} v-modes), intrinsic {route}'
           + (f' [{intrinsic_ref}]' if intrinsic_ref else '')
           + f', OPD {opd_version}, {len(zk_noll)} Zernike terms')
@@ -461,21 +546,36 @@ def main(argv=None):
         print('nothing to do')
         return 0
 
-    cache, total, total_ok = {}, 0, 0
+    # The commanded hexapod LUT and Trim are projected here, in the variant's own scheme, so
+    # that all three v-mode terms stored for a visit share one basis and v1_lut + v1_trim -
+    # v1_meas mixes none. A visit with no visit_telemetry row gets NaN commanded terms and
+    # keeps its measured state.
+    project_commanded = make_commanded_projector(se, n_modes)
+
+    img_types = ([t.strip() for t in a.img_type.split(',') if t.strip()]
+                 if a.img_type else None)
+    cache, total, total_ok, total_cmd = {}, 0, 0, 0
     for day in days:
         vids, v_modes, dof, resid, ok = recover_night(
-            cdb, day, svd, n_modes, route, zk_noll, ofc_version, cache,
-            miw_lookup=miw_lookup, img_type=a.img_type, verbose=not a.quiet)
+            cdb, day, se, n_modes, route, zk_noll, ofc_version, cache,
+            miw_lookup=miw_lookup, img_type=img_types, verbose=not a.quiet)
         if not len(vids):
             continue
-        efd_db.upsert_optical_state(con, vid, vids, v_modes, dof, resid, ok)
+        v_lut, v_trim = project_commanded(con, vids)
+        n_cmd = int(np.isfinite(v_lut[:, 0]).sum())
+        if not a.quiet:
+            print(f'{day}: {n_cmd} of {len(vids)} with commanded v-modes '
+                  f'(hexapod LUT and Trim, dimensionless)')
+        efd_db.upsert_optical_state(con, vid, vids, v_modes, dof, resid, ok,
+                                    v_modes_lut=v_lut, v_modes_trim=v_trim)
         total += len(vids)
         total_ok += int(ok.sum())
+        total_cmd += n_cmd
     n_rows = con.execute('SELECT COUNT(*) FROM optical_state WHERE variant_id = ?',
                          [vid]).fetchone()[0]
     con.close()
-    print(f'\n{total} visits this run, {total_ok} recovered; '
-          f'{n_rows} rows for variant {vid}')
+    print(f'\n{total} visits this run, {total_ok} recovered, {total_cmd} with commanded '
+          f'v-modes; {n_rows} rows for variant {vid}')
     return 0
 
 

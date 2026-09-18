@@ -11,13 +11,26 @@ Provides:
   ``StateEstimator`` with the required normalization asserted
 - ``vmodes_from_dofs`` — project physical DOF onto the v-modes through that estimator
 - ``resolve_ofc_config_dir`` — locate the OFC config (v13) via TS_CONFIG_MTTCS_DIR
-- ``build_geom_svd`` — the geom-normalized sensitivity-matrix SVD for a DOF subset
-- ``project_dofs_to_vmodes`` — project a physical DOF vector onto the v-modes
+- ``corner_recovery_basis`` — SVD of the corner-evaluated sensitivity, for *inverting*
+  a measured wavefront; the recovery basis, not the v-mode basis
+- ``recover_optical_state`` — measured corner wavefront -> DOF, v-modes, constrained
+  wavefront
 - ``fetch_corner_zernikes_consdb`` — per-corner retrieved-wavefront OPD Zernikes
 
 Never build the sensitivity-matrix SVD outside OFC code. Every v-mode in this
 repository comes from ``make_state_estimator``, which is what makes the obsolete
 normalization unreachable rather than merely discouraged.
+
+Two bases, deliberately: v-modes are always reported in the ``make_state_estimator``
+basis (``StateEstimator.Vh``, the full 899-row Double Zernike slab — what MTAOS runs),
+while the *inversion* of a measured 84-row corner wavefront happens in
+``corner_recovery_basis``, because ``Vh`` does not span that problem and leaves a
+2.3e-02 µm wavefront-residual floor. See ``recover_optical_state`` and
+``aos/docs/status/corner_recovery_route_comparison.md``.
+
+Every sensitivity matrix here is evaluated at camera rotator angle
+``SMATRIX_ROTATION_ANGLE_DEG`` = 0.0 deg by AOS group decision, so wavefronts must be
+derotated into the telescope frame (``ZK_FRAME`` = ``'ocs'``) before inversion.
 
 Normalization: the v-modes use the OFC config's stored ``normalization_weights``
 (v13), which ARE the official geom_mean ``n_j = r_j^0.5 * f_j^-0.5`` (field-averaged
@@ -75,11 +88,56 @@ DOF22 = DOF_SETS["standard_22"]
 
 __all__ = [
     "CORNERS", "SENSOR_NAMES", "ZK_NOLL", "DOF_SETS", "N_MODES", "DOF22",
-    "REQUIRED_NORM_YAML", "OBSOLETE_NORM_YAML",
+    "REQUIRED_NORM_YAML", "OBSOLETE_NORM_YAML", "SMATRIX_ROTATION_ANGLE_DEG",
+    "ZK_FRAME",
     "resolve_ofc_config_dir", "make_state_estimator", "vmodes_from_dofs",
-    "build_geom_svd", "project_dofs_to_vmodes", "recover_optical_state",
+    "corner_recovery_basis", "recover_optical_state",
     "fetch_corner_zernikes_consdb",
 ]
+
+# Names retired when the hand-rolled SVD was replaced by the OFC `StateEstimator`,
+# mapped to what supersedes each. A caller that still asks for one gets a message
+# naming the replacement, rather than an AttributeError that looks like a typo --
+# these names appear in notebooks and in three sibling topics, which are not
+# checked by any static import analysis.
+_RETIRED = {
+    "build_geom_svd":
+        "make_state_estimator(dof_set=..., version=...) -- the OFC StateEstimator, "
+        "which owns the single sanctioned SVD of the sensitivity matrix",
+    "project_dofs_to_vmodes":
+        "vmodes_from_dofs(dof_state, state_estimator, n_modes=...)",
+}
+
+
+def __getattr__(name):
+    """Raise a named error for a retired helper; normal AttributeError otherwise.
+
+    Parameters
+    ----------
+    name : `str`
+        Attribute requested from this module.
+
+    Raises
+    ------
+    AttributeError
+        Always. For a name in `_RETIRED` the message gives the replacement, so an
+        `import`-time failure says what to call instead.
+
+    Notes
+    -----
+    Module-level ``__getattr__`` (PEP 562) is consulted only after normal lookup
+    fails, so it cannot shadow a live name. It also fires for
+    ``from aos_state import build_geom_svd``, which is how every stale caller in
+    this repository reached the removed function.
+    """
+    if name in _RETIRED:
+        raise AttributeError(
+            f"aos_state.{name} was removed. Never build the sensitivity-matrix SVD "
+            f"outside OFC code -- degenerate singular-value pairs leave the "
+            f"individual v-mode vectors basis-dependent, so all code must share one "
+            f"Vh. Use {_RETIRED[name]}.")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # Component layout of the 50-DOF OFC state (for comp_dof_idx construction)
 _DOF_COMPONENTS = {"m2HexPos": (0, 5), "camHexPos": (5, 5),
@@ -132,7 +190,16 @@ def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13",
     Notes
     -----
     The normalization is asserted rather than overridden, so a misconfigured config
-    directory surfaces as an error instead of being silently corrected.
+    directory surfaces as an error instead of being silently corrected. Frames are
+    handled the same way: `recover_optical_state` requires its wavefront in `ZK_FRAME`
+    and refuses any other value rather than rotating it for the caller.
+
+    Every sensitivity matrix derived from this estimator is evaluated at camera rotator
+    angle `SMATRIX_ROTATION_ANGLE_DEG` = 0.0 deg, by AOS group decision — evaluating at
+    the observed rotator angle would redefine the v-modes visit by visit. Wavefronts
+    must therefore be derotated to the telescope frame before inversion. Anything in
+    this repository that calls `get_sensitivity_matrix` directly with a nonzero
+    rotation angle is departing from that convention and should say why.
 
     `zn_selected` is set to the 21 rapid-analysis Zernikes for the wavefront-to-DOF
     solve, but it does **not** affect the v-mode basis: `StateEstimator` builds `Vh`
@@ -183,6 +250,17 @@ def vmodes_from_dofs(dof_state, state_estimator, n_modes=12):
     -------
     ndarray (n, n_modes). Rows with any non-finite active DOF -> NaN.
     """
+    # The estimator's own truncate_index, not n_modes, decides how many v-modes
+    # get_vmodes_from_dofs returns, and OFC defaults it to 12. Asking for more than the
+    # estimator was built for used to surface as a bare numpy broadcast error naming
+    # neither knob; check it here so the message says which call to fix.
+    n_avail = int(getattr(state_estimator, "truncate_index", n_modes))
+    if n_modes > n_avail:
+        raise ValueError(
+            f"asked for {n_modes} v-modes but the StateEstimator returns {n_avail} "
+            f"(its truncate_index). Pass n_modes={n_modes} to make_state_estimator "
+            f"as well, so the estimator and this call agree."
+        )
     idx = state_estimator.ofc_data.dof_idx
     arr = np.atleast_2d(np.asarray(dof_state, dtype=float))
     out = np.full((len(arr), n_modes), np.nan)
@@ -201,103 +279,187 @@ def resolve_ofc_config_dir(version="v13"):
     return f"/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs/MTAOS/{version}/ofc"
 
 
-def build_geom_svd(config_dir=None, dof_set="standard_22", version="v13"):
-    """Geom-normalized OFC sensitivity-matrix SVD for a DOF subset.
+# The camera rotator angle at which every sensitivity matrix in this repository is
+# evaluated. This is an AOS group decision, not an implementation shortcut: evaluating
+# the S-matrix at the observed rotator angle is formally more correct, but it also
+# redefines the v-modes visit by visit, which would make the control loop's basis a
+# moving target and put a rotator-angle confound into every v-mode time series. The
+# fidelity given up is small -- the rotation-dependent wobble in recovered DOF is
+# 7.3e-03 to 1.5e-02 relative (dimensionless, over a truth scale of max|DOF| = 645.7 µm
+# or arcsec) -- and the near-degenerate singular-value pairs (consecutive fractional
+# gaps of 0.78% and 1.75%) mean a small rotation can swap or arbitrarily mix two modes
+# rather than rotating the basis smoothly.
+#
+# Consequence for callers: the WAVEFRONT must be derotated into the telescope frame
+# before inversion. Fixing the matrix at rotator zero does not make rotation go away,
+# it moves the responsibility to the caller. See ``frame-conventions-ccs-ocs``.
+SMATRIX_ROTATION_ANGLE_DEG = 0.0
 
-    Uses the OFC config's stored ``normalization_weights`` (the official
-    geom_mean). Requires the LSST stack (``lsst.ts.ofc``).
+# The Zernike frame every wavefront entering `recover_optical_state` must be in. OCS is
+# the telescope-fixed frame the sensitivity matrix lives in; CCS is camera-fixed and
+# rotates with the rotator. Passing CCS Zernikes is not a small error -- recovered DOF
+# then drift with rotator angle and invert sign by 90 deg (measured: M2-hexapod dx from
+# +81.5 µm at rotator 0 deg to -12.1 µm at 90 deg, against a +100.0 µm truth).
+ZK_FRAME = "ocs"
 
-    Returns a dict with U, s, V, dof_indices, norm_vector, n_modes, config_dir.
-    ``V`` has shape (n_dof_sub, n_dof_sub); v-mode j amplitude for a physical DOF
-    vector d is ``V[:, j] . (d[dof_indices] / norm_vector)``.
-    """
-    from lsst.ts.ofc import OFCData, SensitivityMatrix
-
-    if config_dir is None:
-        config_dir = resolve_ofc_config_dir(version)
-    zn = np.array(ZK_NOLL)
-    ofc = OFCData("lsst", config_dir=config_dir)
-    ofc.zn_selected = zn
-    field_angles = [ofc.sample_points[s] for s in SENSOR_NAMES]
-    sens = SensitivityMatrix(ofc).evaluate(field_angles, 0.0)[:, zn - 4, :]
-    A_full = sens.reshape((-1, sens.shape[2]))
-    dof_indices = DOF_SETS[dof_set]
-    A_sub = A_full[:, dof_indices]
-    norm_vector = ofc.normalization_weights[dof_indices]
-    U, s, Vh = np.linalg.svd(A_sub @ np.diag(norm_vector), full_matrices=False)
-    return dict(U=U, s=s, V=Vh.T, dof_indices=list(dof_indices),
-                norm_vector=np.asarray(norm_vector), n_modes=len(s),
-                config_dir=config_dir)
+_CORNER_BASIS_CACHE = {}
 
 
-def project_dofs_to_vmodes(dof_state, svd, n_modes=None):
-    """Project physical DOF vector(s) onto v-modes.
+def corner_recovery_basis(state_estimator):
+    """SVD of the corner-evaluated sensitivity, for inverting measured wavefronts.
 
-    ``v_j = V[:, j] . (dof[dof_indices] / norm_vector)``. Numbered from 0; caller
-    labels v1.. as needed. Rows with any non-finite DOF become NaN.
+    The recovery basis, as distinct from the v-mode basis. `StateEstimator.Vh` comes
+    from the full Double Zernike (DZ) slab flattened to 899 rows (31 focal x 29 pupil)
+    with **no** field-point evaluation and **no** pupil-Zernike selection, so it does
+    not span the 84-row (4 corners x 21 Zernikes) problem a measured corner wavefront
+    actually poses. Inverting in it leaves an irreducible floor of 2.3e-02 µm of
+    wavefront residual RMS even on noiseless data drawn from its own subspace. This
+    function decomposes the matrix that is actually being inverted, which closes to
+    machine precision (2.1e-14 µm residual RMS).
 
-    Parameters
-    ----------
-    dof_state : array (50,) or (n, 50)
-    svd : dict from build_geom_svd
-    n_modes : int, optional (default = min(12, available))
+    Always evaluated at camera rotator angle `SMATRIX_ROTATION_ANGLE_DEG` = 0.0 deg.
+    There is deliberately **no** rotation-angle argument: see that constant for the
+    reasoning, and note that the wavefront must therefore be derotated into the
+    telescope frame before it is passed to `recover_optical_state`.
 
-    Returns
-    -------
-    ndarray (n, n_modes)
-    """
-    V = svd["V"]
-    idx = svd["dof_indices"]
-    w = svd["norm_vector"]
-    if n_modes is None:
-        n_modes = min(12, V.shape[1])
-    arr = np.atleast_2d(np.asarray(dof_state, dtype=float))
-    out = np.full((len(arr), n_modes), np.nan)
-    for k, d in enumerate(arr):
-        sub = d[idx]
-        if np.all(np.isfinite(sub)):
-            out[k] = V[:, :n_modes].T @ (sub / w)
-    return out
-
-
-def recover_optical_state(z_dev, svd, n_modes=12):
-    """Recover the optical-state DoF from a measured corner-deviation wavefront.
-
-    This is Aaron's ``optical_state``: the DoF obtained by running the measured
-    Zernike *deviations* (OPD - intrinsic) through the SVD (least-squares onto
-    the top-``n_modes`` controllable subspace). It is NOT the Trim
-    (aggregatedDoF) nor the Tweak.
+    Everything comes from `state_estimator`, so the required normalization asserted by
+    `make_state_estimator` carries over: the sensitivity is
+    `get_sensitivity_matrix(..., normalize=False)` and the weights are its
+    `normalization_matrix` diagonal. Verified to reproduce the retired
+    ``build_geom_svd`` singular values to ``max|Δs| = 0.000e+00``.
 
     Parameters
     ----------
-    z_dev : ndarray (n_rows,)
-        Measured per-corner deviation Zernikes, flattened in the SAME order as
-        the SVD rows: corner-major, 4 corners x len(ZK_NOLL).
-    svd : dict from build_geom_svd.
-    n_modes : int, default 12.
+    state_estimator : `lsst.ts.ofc.state_estimator.StateEstimator`
+        From `make_state_estimator`.
 
     Returns
     -------
-    dof_full : ndarray (50,)
-        Physical DoF; the geom DOF subset is filled, other entries 0.
-    vmode_amps : ndarray (n_modes,)
-        v-mode amplitudes of the optical state, in THIS svd's basis. (For the
-        canonical basis, pass dof_full through StateEstimator.get_vmodes_from_dofs.)
-    zk_constrained : ndarray (n_rows,)
-        Controllable projection of z_dev (the part reproducible by the DOF in
-        the kept subspace) — reconstruct-from-optical_state. Basis-invariant.
+    basis : `dict`
+        ``U`` `(n_rows, n_sv)`, ``s`` `(n_sv,)` (DZ sensitivity units, µm of wavefront
+        per normalized DOF unit), ``V`` `(n_dof, n_sv)`, ``dof_indices`` `list`,
+        ``norm_vector`` `(n_dof,)` in per-DOF weight units, ``n_modes`` `int` and
+        ``rotation_angle`` `float` [deg], always 0.0.
 
-    Math: z_dev = U s V^T (dof_sub/w)  ->  v = (U[:,:k].T z_dev)/s[:k],
-    dof_sub = w * (V[:,:k] v),  zk_constrained = U[:,:k] (s[:k]*v).
+    Notes
+    -----
+    `get_sensitivity_matrix` costs about 270 ms per call because it evaluates the DZ
+    polynomial, so the result is cached per `state_estimator`. Uncached, a per-visit
+    rebuild would cost roughly 5.8 hours over 76,577 visits.
     """
-    U, s, V = svd["U"], svd["s"], svd["V"]
-    idx, w = svd["dof_indices"], svd["norm_vector"]
-    k = n_modes
-    v = (U[:, :k].T @ np.asarray(z_dev, float)) / s[:k]
+    key = id(state_estimator)
+    if key in _CORNER_BASIS_CACHE:
+        return _CORNER_BASIS_CACHE[key]
+
+    idx = [int(d) for d in state_estimator.ofc_data.dof_idx]
+    field_angles = [state_estimator.ofc_data.sample_points[s] for s in SENSOR_NAMES]
+    # Zernike-selected (zn_idx), corner-evaluated, unnormalized: the matrix being inverted.
+    sens = state_estimator.get_sensitivity_matrix(
+        field_angles, SMATRIX_ROTATION_ANGLE_DEG, normalize=False, truncate=False)
+    norm_vector = np.asarray(state_estimator.normalization_matrix).diagonal().copy()
+    U, s, Vh = np.linalg.svd(sens @ np.diag(norm_vector), full_matrices=False)
+    basis = dict(U=U, s=s, V=Vh.T, dof_indices=idx,
+                 norm_vector=norm_vector, n_modes=len(s),
+                 rotation_angle=SMATRIX_ROTATION_ANGLE_DEG)
+    _CORNER_BASIS_CACHE[key] = basis
+    return basis
+
+
+def recover_optical_state(z_dev, state_estimator, n_modes=None, zk_frame=ZK_FRAME):
+    """Recover the optical-state DOF from a measured corner-deviation wavefront.
+
+    This is the ``optical_state``: the DOF obtained by inverting the measured Zernike
+    *deviations* (measured OPD minus intrinsic) onto the top-``n_modes`` controllable
+    subspace. It is **not** the Trim (aggregated DOF) nor the Tweak — see
+    ``aos-dof-terminology``.
+
+    Hybrid by design. The **inversion** uses `corner_recovery_basis`, the SVD of the
+    corner-evaluated Zernike-selected matrix, because that is the matrix being
+    inverted and it closes to machine precision. The reported **v-modes** are in the
+    `make_state_estimator` basis, so they are directly comparable with the commanded
+    LUT and Trim v-modes and with what the Main Telescope AOS reports on the summit.
+    Those are two different bases: measured principal angles between the retained DOF
+    subspaces reach 4.768 deg for ``standard_22``/12 and 89.951 deg for ``all_50``/34,
+    so the distinction is not cosmetic.
+
+    Parameters
+    ----------
+    z_dev : `numpy.ndarray`
+        Measured per-corner deviation Zernikes in µm of wavefront, flattened
+        corner-major as ``4 corners x len(ZK_NOLL)`` = 84 values, matching
+        `SENSOR_NAMES` order. **Must already be derotated into the telescope frame**
+        (OCS), because the sensitivity matrix is fixed at rotator zero — see
+        `SMATRIX_ROTATION_ANGLE_DEG`. Passing camera-frame (CCS) Zernikes silently
+        gives a rotator-dependent answer that inverts sign by 90 deg of rotation.
+    state_estimator : `lsst.ts.ofc.state_estimator.StateEstimator`
+        From `make_state_estimator`.
+    n_modes : `int`, optional
+        Modes retained in the inversion. Default uses the estimator's
+        `truncate_index`, which `make_state_estimator` sets from ``n_modes``.
+    zk_frame : `str`, optional
+        Frame of `z_dev`; must be `ZK_FRAME` (``'ocs'``). Present so that a caller
+        holding camera-frame Zernikes has to confront the frame rather than get a
+        plausible-looking wrong answer — the failure is silent in the numbers.
+
+    Returns
+    -------
+    dof_full : `numpy.ndarray`
+        Physical DOF, length 50; the used-DOF subset is filled and the rest are zero.
+        Units are µm for translations and bending modes, arcsec for tilts.
+    vmode_amps : `numpy.ndarray`
+        v-mode amplitudes (dimensionless) in the **`make_state_estimator` basis**,
+        length `truncate_index`, from `get_vmodes_from_dofs`.
+    zk_constrained : `numpy.ndarray`
+        Controllable projection of `z_dev` in µm of wavefront — the part reproducible
+        by DOF in the kept subspace. Basis-invariant, and what
+        `olr/code/nightly_table.py` consumes.
+
+    Notes
+    -----
+    Math, with ``w`` the per-DOF normalization weights and ``k = n_modes``:
+    ``z_dev = U s V^T (dof_sub / w)`` gives ``v_rec = (U[:, :k].T z_dev) / s[:k]``,
+    ``dof_sub = w * (V[:, :k] v_rec)`` and ``zk_constrained = U[:, :k] (s[:k] v_rec)``.
+    ``v_rec`` is in the recovery basis and is deliberately **not** returned; the DOF
+    are re-projected onto the v-mode basis instead.
+
+    Rows of `z_dev` containing non-finite values make the result non-finite; screen
+    them in the caller.
+    """
+    if str(zk_frame).lower() != ZK_FRAME:
+        raise ValueError(
+            f"recover_optical_state got zk_frame={zk_frame!r}; it requires "
+            f"{ZK_FRAME!r}. The sensitivity matrix is fixed at camera rotator angle "
+            f"{SMATRIX_ROTATION_ANGLE_DEG} deg (see SMATRIX_ROTATION_ANGLE_DEG), so the "
+            f"wavefront must be derotated into the telescope frame first. Camera-frame "
+            f"(CCS) input is not rejected by the numbers -- it returns a "
+            f"rotator-dependent answer that inverts sign over 90 deg of rotation "
+            f"(measured: M2-hexapod dx from +81.5 to -12.1 µm against a +100.0 µm "
+            f"truth) -- which is why this is an explicit argument."
+        )
+
+    basis = corner_recovery_basis(state_estimator)
+    U, s, V = basis["U"], basis["s"], basis["V"]
+    idx, w = basis["dof_indices"], basis["norm_vector"]
+
+    z = np.asarray(z_dev, dtype=float).ravel()
+    if z.size != U.shape[0]:
+        raise ValueError(
+            f"z_dev has {z.size} values; the corner-evaluated matrix has "
+            f"{U.shape[0]} rows ({len(SENSOR_NAMES)} corners x {len(ZK_NOLL)} Zernikes, "
+            f"corner-major in SENSOR_NAMES order)."
+        )
+
+    k = int(n_modes) if n_modes is not None else int(state_estimator.truncate_index)
+    k = min(k, len(s))
+
+    v_rec = (U[:, :k].T @ z) / s[:k]
     dof_full = np.zeros(50)
-    dof_full[idx] = w * (V[:, :k] @ v)
-    zk_con = U[:, :k] @ (s[:k] * v)
-    return dof_full, v, zk_con
+    dof_full[idx] = w * (V[:, :k] @ v_rec)
+    zk_con = U[:, :k] @ (s[:k] * v_rec)
+
+    # Report v-modes in the sanctioned basis, not the recovery basis.
+    vmode_amps = np.asarray(state_estimator.get_vmodes_from_dofs(dof_full), dtype=float)
+    return dof_full, vmode_amps, zk_con
 
 
 def fetch_corner_zernikes_consdb(cdb_client, visit_ids, instrument="lsstcam",

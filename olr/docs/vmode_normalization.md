@@ -257,19 +257,28 @@ Consequences:
   `vmodes_from_dofs`; OLR `nightly_table.py`, `t539`, and the nightly-report PR
   all call it, so their v-modes are bit-identical.
 
-`build_geom_svd` is retained only for the `zk_constrained` wavefront
-reconstruction (basis-invariant within the kept subspace); it is not used for
-the reported v-modes.
+The corner-evaluated decomposition, now `aos_state.corner_recovery_basis`, is used
+only to **invert** a measured corner wavefront — it is not a v-mode basis.
+`StateEstimator.Vh` cannot do that job: built from the unselected 899-row Double
+Zernike slab, it does not span the 84-row corner problem and leaves an irreducible
+2.3e-02 µm wavefront-residual floor even on noiseless data, where the
+corner-evaluated SVD closes to 2.1e-14 µm. `aos_state.recover_optical_state` is
+therefore a hybrid: it inverts in the corner basis and reports v-modes through
+`get_vmodes_from_dofs`, so no v-mode leaves the sanctioned basis.
 
 ## Which to use
 
 **Always geom_mean, and get it from the OFC config's `normalization_weights`
 (v13) via `config_dir`.** There is no reason to use the old `OFCData()`-default
 weights or a hand-rolled `sqrt(r/f)`. In code, use the shared helpers in
-`aos/code/aos_state.py` (`build_geom_svd` + `project_dofs_to_vmodes`), which both
+`aos/code/aos_state.py` (`make_state_estimator` + `vmodes_from_dofs`), which both
 `olr/code/nightly_table.py` and `blocks/t539_closedloop_aos.ipynb` now call, so
-the normalization stays in one place. The `build_ofc_svd` run-scripts (bounce,
-etc.) already get the same geom via the ts_config_mttcs yaml.
+the normalization stays in one place — `make_state_estimator` asserts the resolved
+yaml and raises rather than silently correcting it. The `build_ofc_svd` run-scripts
+(bounce, etc.) already get the same geom via the ts_config_mttcs yaml.
+
+`build_geom_svd` and `project_dofs_to_vmodes` were removed in September 2026; so was
+`nightly_table.py`'s local `build_sensitivity_svd`, which duplicated the first.
 
 **Do not** use `OFCData()` without `config_dir` (old non-geom default → v1=tilt)
 or recompute `sqrt(compute_normalization_components r/f)` (corner-FWHM, ~√2 off).
