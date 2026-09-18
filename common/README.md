@@ -106,6 +106,48 @@ in the CCS component, which means evaluating the combination at the corner field
 already accounts for the corner sensors' heights — no separate height term is added, and
 adding one would double-count them.
 
+#### `fam_dz` — the Full Array Mode Double Zernike fits
+
+**`fam_dz` is long** on the same pattern, keyed `(visit_id, fam_variant_id)` with
+`fam_variant` as its registry. One row per Full Array Mode (FAM) extra/intra-focal pair holds
+the Double Zernike (DZ) coefficients of that pair's wavefront fit in `dz_coeff` [µm of
+wavefront], their formal errors in `dz_coeff_err`, and the `v_modes` and `dof` projected from
+them — so a follow-up never re-projects and risks a different basis. The variant family runs
+along four axes: the `param_set` (Butler collection plus processing variant), the
+`intrinsic_route` (`batoid` or `miw`), the column `prefix` (`z1toz6` for focal orders k=1..6,
+`z1toz3` for k=1..3), and the `scheme` (`50_34` or `22_12`).
+
+`dz_coeff` is stored in the `kj_grid` order of `ofc_svd.build_ofc_svd` — `(k, j)` with pupil
+Noll index `j` fastest within each focal order `k` — and that grid is recoverable from
+`fam_variant`'s `k_min`, `k_max` and `pupil_j`, so `efd_db.fam_dz(variant, wide=True)` expands
+the array to named `dz_k1_j4`-style scalars and nothing indexes it by hand. The pupil Noll set
+is read from the `param_set`'s `visits.parquet` `nollIndices` column, never hardcoded: the
+canonical set is the 21 indices 4–19 and 22–26, so a contiguous `range(4, 23)` would silently
+carry Noll 20 and 21 as all-NaN and drop 23–26.
+
+The FAM triplet is **intra-focal cwfs, extra-focal cwfs, in-focus acq** in ascending
+`seq_num`. The DZ fit belongs to the extra-focal member, which is what `fits.parquet` is keyed
+on, so each row also stores `intra_seq_num = seq_num - 1`, `acq_seq_num = seq_num + 1` and the
+matching `acq_visit_id`. That makes the join to the in-focus visit's corner-sensor
+`optical_state` a key lookup rather than a search — the comparison
+`aos/docs/studies/fam_focus.md` draws.
+
+```bash
+python common/scripts/build_fam_dz.py \
+    --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
+python common/scripts/build_fam_dz.py --list
+```
+
+```python
+fam = efd_db.fam_dz('fam__fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x__batoid__z1toz6__50_34',
+                    wide=True)           # dz_k1_j4 .. dz_k6_j26, v1..v34, dof0..dof49
+```
+
+`build_fam_dz.py` needs `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR` for the sensitivity-matrix
+singular value decomposition, the same constraint `build_optical_state.py` has, but no Butler
+and no ConsDB: `fits.parquet` and `visits.parquet` are local. `good_only=True` on the reader
+drops rows flagged `bad_fit` while keeping rows whose flag is NULL.
+
 Two bookkeeping tables: **`column_coverage`** gives each column's first and last `day_obs`
 and non-null count, so a reader can tell "never deployed at that epoch" from "fetch failed"
 from "genuinely NaN"; **`fetch_log`** records one row per `(day_obs, group)`, which makes an
@@ -120,7 +162,8 @@ df = efd_db.visits(day_obs_range=(20260419, 20260713))   # the wide EFD/value-ad
 df = efd_db.join_consdb(df)                              # live ConsDB metadata merged on visit_id
 st = efd_db.optical_state('v50_34__batoid__consdb_v1', wide=True)   # v1..v34 per visit
 
-efd_db.variants()          # the variant registry
+efd_db.variants()          # the optical_state variant registry
+efd_db.fam_variants()      # the fam_dz variant registry
 efd_db.coverage()          # column_coverage
 ```
 
