@@ -312,7 +312,7 @@ Each item is one commit. Verify imports after each before continuing.
 | 3 | Create `value_added/`, move the 7 files, fix the importing files, move the DB out of repo-root `output/` | `common/`, 11 files, `.gitignore` | **done** — `8f7ab33` |
 | 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | **done** — `8f7ab33` |
 | 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | 9 files + 15 cross-references | **done** — `8e5f76c` |
-| 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | requested 2026-09-18 |
+| 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | **copied + verified** — `92aef81`; `rm`/`ln` left to run by hand |
 | 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files in 2 dirs | needs deletion approval |
 | 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
 | 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | after 9 |
@@ -361,15 +361,35 @@ doing it before the renaming in item 9 would move every directory twice.
 
 ### Item 10 — `guider/output` and `optatmo/output` to group space
 
-Aaron asked for these on 2026-09-18. Both are still **real directories on `/sdf/home`**,
-which has 4.0 GB free of 30 GB (87% used):
+Aaron asked for these on 2026-09-18. `/sdf/home` has 4.0 GB free of 30 GB (87% used).
 
-| topic | size | files |
-|---|---|---|
-| `guider/output` | 4.3 GB | 23,354 |
-| `optatmo/output` | 2.1 GB | 5,242 |
+**State as of 2026-09-19 (`92aef81`): copied and verified, deletion outstanding.** Both
+trees now exist in group space, byte-for-byte identical to the originals:
 
-Neither target exists in group space yet, so each needs `mkdir -p` before the move. The
+| topic | files | bytes | verified |
+|---|---|---|---|
+| `guider/output` | 23,354 | 4,485,731,571 | totals match; `rsync --dry-run` reports 0 files to transfer |
+| `optatmo/output` | 5,242 | 2,158,645,519 | same |
+
+The originals are **still real directories on `/sdf/home`**, so these two trees currently
+occupy 6.4 GB twice. What remains is one command, which Claude cannot run — `Bash(rm:*)` is
+in the `.claude/settings.local.json` deny list, which conversational approval does not
+override:
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work
+rm -rf guider/output optatmo/output
+ln -s /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/guider/output guider/output
+ln -s /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/optatmo/output optatmo/output
+```
+
+The git-side work is already committed in `92aef81`: `/guider/output` and `/optatmo/output`
+added to the `.gitignore` symlink block, `guider/output/.gitkeep` removed from the index,
+and the comment listing which `output/` dirs are symlinks brought up to date. `optatmo` was
+already covered by its own topic-level `.gitignore`, so its root entry is redundant but
+kept for an explicit list. Only `guider` carried a tracked `.gitkeep`.
+
+The
 pattern to follow is the one `aos/output`, `blocks/output` and now `value_added/output`
 use: move the contents to
 `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/<topic>/output/`, replace the
