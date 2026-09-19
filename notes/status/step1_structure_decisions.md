@@ -297,8 +297,8 @@ Each item is one commit. Verify imports after each before continuing.
 | 1 | Write the structure rule into the root `CLAUDE.md` (D1, D2, D5) | `CLAUDE.md` | **done** — `3bc0134` |
 | 2 | Add the D4 path header to the 16 `aos/docs/studies/*.md` | 16 docs | **done** — `3bc0134` |
 | 8 | Prune the empty dirs — `aos/notebooks/fam_focus/`, `aos/code/output/` | dirs only | **done** — approved 2026-09-18 |
-| 3 | Create `value_added/`, move the 7 files, fix the **13** importing files, move the DB out of repo-root `output/` | `common/`, 13 files, `.gitignore` | ready |
-| 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | ready (same commit as 3) |
+| 3 | Create `value_added/`, move the 7 files, fix the importing files, move the DB out of repo-root `output/` | `common/`, 11 files, `.gitignore` | **done** — `8f7ab33` |
+| 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | **done** — `8f7ab33` |
 | 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | ~9 files | ready |
 | 6 | Resolve the output collision (D8) — delete the two stale param_set-scoped PDFs | 2 output paths | needs deletion approval |
 | 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
@@ -307,6 +307,21 @@ Each item is one commit. Verify imports after each before continuing.
 Items 3–6 are unblocked as of 2026-09-18: the other session's
 `aos/notebooks/smatrix_vmode/vmode_dof_ts_ofc-13Aug2026.ipynb` was deleted rather than
 kept, which was the one file standing in the way of item 5.
+
+Three corrections from doing items 3 and 4, worth carrying into the later items:
+
+- The "13 importing files" count was wrong. Two of the thirteen
+  (`run_thermal_model.py`, `run_science_lut_analysis.py`) mention `efd_db` only in
+  comments, so there were **11** live imports; three further hits were in gitignored
+  `.ipynb_checkpoints`. Count live imports, not grep hits, when sizing items 7 and 9.
+- **Docs hold as many stale paths as code does.** A grep limited to `.py`/`.ipynb` came back
+  clean while 13 stale references remained in tracked Markdown, including a 180-line section
+  of `common/README.md` documenting the moved database. Item 7 rewrites output paths, so its
+  verification grep must cover `*.md` too.
+- `value_added/output/` is a **symlink** to group space, like `aos/output` and
+  `blocks/output`, and needed its own `.gitignore` entry: `*/output/*` ignores the contents
+  but not the symlink path itself, so without the entry it shows up as an untracked file on
+  S3DF. Any future topic whose `output/` is a symlink needs the same line.
 
 Item 7 is last on purpose. It is the only item that rewrites output paths in code, and
 doing it before the renaming in item 9 would move every directory twice.
