@@ -234,12 +234,24 @@ Paths: `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/smatrix_vmode/` and
 `aos/output/smatrix_vmode/`.
 
 **Different files.** The study's own doc settles which is live:
-`aos/docs/studies/smatrix_vmode.md` states that both scripts write to
-`output/smatrix_vmode/` at the top level, "not under a `param_set`", because the v-mode/DOF
-structure is a property of the OFC sensitivity matrix and the DOF scheme alone. So the
-param_set-scoped copies are stale leftovers from before that decision — consistent with
-being four weeks older and smaller. They are deleted (**must-ask**) and the top-level pair
-moves to `smatrix/output/vmode/`.
+`smatrix/docs/studies/vmode.md` states that both scripts write to `output/vmode/` at the top
+level, "not under a `param_set`", because the v-mode/DOF structure is a property of the OFC
+sensitivity matrix and the DOF scheme alone. So the param_set-scoped copies are stale
+leftovers from before that decision — consistent with being four weeks older and smaller.
+
+**State after item 5 (`8e5f76c`).** The live copies are now in `smatrix/output/vmode/`,
+copied rather than moved, so **three** paths hold a copy of this study's products and all
+that remains is deletion, which is must-ask:
+
+| path | files | delete? |
+|---|---|---|
+| `smatrix/output/vmode/` | the 3 live products | **keep** — this is the live location |
+| `aos/output/smatrix_vmode/` | same 3 files, byte-identical | delete once confirmed |
+| `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/smatrix_vmode/` | the 2 stale 2026-08-12 PDFs | delete |
+
+The copies were verified identical with `cmp` before the originals were left in place; the
+regenerated `vmode_dof_matrix_22_12.pdf` differs from its 2026-09-08 predecessor only in PDF
+creation-date metadata (same byte count).
 
 ### D9. Shorten `param_set` and `mi_name`, and retire the obsolete param_sets
 
@@ -299,8 +311,9 @@ Each item is one commit. Verify imports after each before continuing.
 | 8 | Prune the empty dirs — `aos/notebooks/fam_focus/`, `aos/code/output/` | dirs only | **done** — approved 2026-09-18 |
 | 3 | Create `value_added/`, move the 7 files, fix the importing files, move the DB out of repo-root `output/` | `common/`, 11 files, `.gitignore` | **done** — `8f7ab33` |
 | 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | **done** — `8f7ab33` |
-| 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | ~9 files | ready |
-| 6 | Resolve the output collision (D8) — delete the two stale param_set-scoped PDFs | 2 output paths | needs deletion approval |
+| 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | 9 files + 15 cross-references | **done** — `8e5f76c` |
+| 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | requested 2026-09-18 |
+| 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files in 2 dirs | needs deletion approval |
 | 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
 | 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | after 9 |
 
@@ -323,8 +336,59 @@ Three corrections from doing items 3 and 4, worth carrying into the later items:
   but not the symlink path itself, so without the entry it shows up as an untracked file on
   S3DF. Any future topic whose `output/` is a symlink needs the same line.
 
+Four more from doing item 5, all bearing on items 7 and 9:
+
+- **A move changes what a relative path means, in both directions.** Nine `git mv`s needed
+  **15** cross-reference rewrites outside the moved files: five `aos/docs/studies/*.md`
+  "See also" links, three `aos/docs/status/` docs, four Python docstrings, `aos/CLAUDE.md`,
+  and the study tables in `aos/README.md` and `aos/docs/studies.md`. Two links *inside* the
+  moved doc also broke — they resolved only from the old location. Check links in the moved
+  file, not just links to it.
+- **Verify relative links mechanically.** Resolving every non-anchor Markdown link against
+  the filesystem found the two broken in-file links that reading had missed. Worth doing over
+  the touched docs after item 7's path rewrite.
+- **Counts in prose go stale with the tree.** `aos/docs/studies.md` opened with "sixteen
+  studies" and "85 Python files"; both were wrong the moment the study left (now fifteen and
+  78). Item 7 touches 7 study docs and item 9 touches 71 files — recount rather than assume.
+- **Re-dumping a notebook through `json` rewrites the whole file.** `ensure_ascii=False`
+  converted every stored `\uXXXX` escape and a per-line edit collapsed a multi-line source
+  string, turning a 3-line fix into a 156-line diff. Editing the raw file as text, asserting
+  each target string occurs exactly once, gave a 3-line diff. Do that for item 7's notebook
+  path rewrites.
+
 Item 7 is last on purpose. It is the only item that rewrites output paths in code, and
 doing it before the renaming in item 9 would move every directory twice.
+
+### Item 10 — `guider/output` and `optatmo/output` to group space
+
+Aaron asked for these on 2026-09-18. Both are still **real directories on `/sdf/home`**,
+which has 4.0 GB free of 30 GB (87% used):
+
+| topic | size | files |
+|---|---|---|
+| `guider/output` | 4.3 GB | 23,354 |
+| `optatmo/output` | 2.1 GB | 5,242 |
+
+Neither target exists in group space yet, so each needs `mkdir -p` before the move. The
+pattern to follow is the one `aos/output`, `blocks/output` and now `value_added/output`
+use: move the contents to
+`/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/<topic>/output/`, replace the
+directory with a symlink, and add `/guider/output` and `/optatmo/output` to the
+`.gitignore` symlink block — `*/output/*` ignores the contents but not the symlink path
+itself.
+
+Two things to check that did not arise for `value_added/`, whose files were a handful of
+large database files:
+
+- **A tracked `.gitkeep`.** `.gitignore` warns that a tracked `.gitkeep` inside a
+  symlinked `output/` makes `git pull` abort on S3DF with "untracked working tree files
+  would be overwritten by merge". Both topics are real directories today, so each may
+  carry one that must be removed from the index as part of the move.
+- **Whether the move is a rename or a copy.** Group space is a different filesystem from
+  `/sdf/home`, so unlike the `value_added/` database move — which was a same-filesystem
+  rename of 2.6 GB in 5.2 s — this is a genuine 6.4 GB copy across 28,596 files and will
+  take real time. Verify the file count and total size on both sides before removing
+  anything, and deleting the originals is a MUST-ASK.
 
 The `**Output:**` headers added in item 2 describe the tree **as it is on disk today**,
 including the nested `<param_set>/<mi_name>/` form in seven of them
