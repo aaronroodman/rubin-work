@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
+> **Code:** `code/static_optics/`
+> **Output:** `output/camera_gravity/` (`camera_gravity_maps_{raw,corr}_{rb,surf}.pdf`, `camera_gravity_validation.pdf`)
+
 Tests of whether a static optical figure — a mirror surface, the camera lenses, or
 gravitational flexure of the camera — reproduces the Measured Intrinsic Wavefront (MIW).
 

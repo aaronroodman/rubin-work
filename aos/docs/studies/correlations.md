@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-10 · **Kind:** reference (study)
 
+> **Code:** `code/correlations/` · **Notebooks:** `notebooks/correlations/`
+> **Output:** `output/<param_set>/<mi_name>/correlations/`, `output/<param_set>/correlations/aberration_pairs.*`, `output/<param_set>/correlations/dz14_truss_*`
+
 
 Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
 the measured intrinsic is subtracted: against each other, against Optical Feedback

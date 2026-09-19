@@ -286,10 +286,26 @@ three of:
 1. a short description in the topic's `README.md` (a few lines, linking to 2.);
 2. a detail doc at `<topic>/docs/studies/<study>.md`, with the standard status header;
 3. usually a `<topic>/code/<study>/` subdirectory, a `<topic>/notebooks/<study>/` for
-   its notebooks, and an output directory that matches.
+   its notebooks, and an output directory placed by the rule in
+   [Output conventions](#output-conventions) — which is **not** a mirror of the code
+   layout.
 
 Do not add a script to a topic's `code/` root "for now" — that is how a flat 56-file
 directory happens. `aos/docs/studies.md` is the worked example of the inventory.
+
+**Which tier a module belongs to.** Code is placed by who uses it, and each tier has a
+test that can be applied to one file:
+
+| tier | location | test |
+|---|---|---|
+| study | `<topic>/code/<study>/` | answers one question about one data set |
+| topic-common | `<topic>/code/` (flat) | encodes something true of the **instrument or a convention**, not of one analysis — or is used by more than one study |
+| repo-common | `common/` | true across **topics**: used by two or more |
+| service | its own topic | maintains **state or a product** other topics consume |
+
+Promote a module only when it *already* has the second caller — not in anticipation of
+one. The flat modules in `aos/code/` are the worked example of the topic-common tier, and
+`aos/CLAUDE.md` lists which they are and why three of them cannot move.
 
 The word is **study**, not "thread" — `aos/code/infra/check_threads.py` is about CPU threads,
 and the repo already says study (`study_compare_donuts.ipynb`, `run_study_radialbins.py`).
@@ -381,6 +397,36 @@ Points to get right in this repo:
 - Large/ephemeral outputs (FITS, parquet, intermediate results) go in `~/notebooks/rubin-data/<topic>/` on RSP
 - Notebooks should use a variable like `output_dir` in the Parameters cell to set the output path
 - Name output files as `{topic}_{description}_{date_or_dayobs}.{ext}`
+
+**Where a product goes: the path names the data the product depends on.** Code is
+organized by *what question is being asked* (the study); output is organized by *the data
+the question was asked of*, which is a different axis — so the output tree is deliberately
+**not** a mirror of `code/`. The data axes go outermost, most general first, and the study
+is the innermost level:
+
+```
+output/<data axis 1>/<data axis 2>/<study>/     # depends on both
+output/<data axis 1>/<study>/                   # depends on one
+output/<study>/                                 # depends on neither
+```
+
+A product that depends on nothing but the optical prescription, a design matrix, or a
+database sits at `output/<study>/` with no data level at all.
+
+In `aos/` the two axes are `param_set` (a Butler collection paired with a processing
+variant) and `mi_name` (which MIW build was used) — see `aos/README.md` "Output layout"
+for the worked tree. A topic with one data axis uses one level; most topics outside `aos/`
+have none.
+
+Two rules that follow, and that past work got wrong:
+
+- **One product, one path.** Never write the same filename under two different levels —
+  a reader cannot tell which is live, and the older copy silently becomes a trap. If a
+  product turns out not to depend on a data axis, move it out and delete the copy (asking
+  first, per [Autonomy and hard stops](#autonomy-and-hard-stops)).
+- **Do not create a study's output directory until it has output.** An empty directory
+  makes the tree claim a result exists. The study doc, not the tree, is what records that
+  a study exists.
 
 ### RSP environment
 - Code should work on the Rubin Science Platform (both Summit and USDF)

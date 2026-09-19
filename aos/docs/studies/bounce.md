@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
+> **Code:** `code/bounce/` · **Notebooks:** `notebooks/bounce/`
+> **Output:** `output/<param_set>/<mi_name>/plots/bounce_*.pdf`, `output/<param_set>/<mi_name>/bounce_kj_stats.parquet`, `output/bounce/bending_mode_test_meta.parquet`
+
 Analysis of elevation and rotator bounce test data, for Look-Up-Table (LUT)
 development. A bounce test moves the telescope to a position and back; a repeatable
 difference between the two visits measures hysteresis or gravity-driven flexure rather

@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-17 · **Kind:** reference (study)
 
+> **Code:** `code/science_lut/` · **Notebooks:** `notebooks/science_lut/`
+> **Output:** `output/science_lut/` (`science_lut_analysis.pdf`, `science_lut_fits.parquet`)
+
 Construction of a focus Look-Up Table (LUT) for the Active Optics System (AOS) from ordinary
 **science** exposures rather than from Full Array Mode (FAM) data. The measured quantity is the
 optical state at the four Corner Wavefront Sensors (CWFS), which the Consolidated Database

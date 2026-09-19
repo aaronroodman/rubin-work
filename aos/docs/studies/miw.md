@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
+> **Code:** `code/miw/` · **Notebooks:** `notebooks/miw/`
+> **Output:** `output/<param_set>/<mi_name>/intrinsic_split_{maps,decomp,rms}.parquet`, `output/<param_set>/<mi_name>/intrinsic_split.pdf`, `output/<param_set>/<mi_name>/study_radialbins.pdf`, `output/<param_set>/<mi_name>/fits.parquet`
+
 Construction and validation of the Measured Intrinsic Wavefront (MIW) — the static
 wavefront of the telescope and camera, measured on sky.
 

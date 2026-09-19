@@ -11,6 +11,9 @@
 > validation are unaffected. See
 > [`../status/rerun_needed.md`](../status/rerun_needed.md).
 
+> **Code:** `code/fam_focus/`
+> **Output:** `output/fam_focus/` (`fam_focus.pdf`, `fam_acq.parquet`, `fam_focus_sets.parquet`, `fam_focus_dz_sets.parquet`)
+
 Change in focus — v-mode 1 of the Active Optics System (AOS) sensitivity matrix, essentially
 uniform defocus — against exposure sequence number within a single Full Array Mode (FAM) block. A
 FAM block is a run of triplets taken at one fixed pointing over tens of minutes; the in-focus

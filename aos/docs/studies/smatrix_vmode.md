@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
+> **Code:** `code/smatrix_vmode/` · **Notebooks:** `notebooks/smatrix_vmode/`
+> **Output:** `output/smatrix_vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
+
 Analysis of the Optical Feedback Control (OFC) sensitivity matrix and its mode
 structure: the singular value decomposition, v-mode composition, and which degrees of
 freedom (DOF) are observable.

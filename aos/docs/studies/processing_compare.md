@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
+> **Code:** `code/processing_compare/` · **Notebooks:** `notebooks/processing_compare/`
+> **Output:** `output/<param_set>/processing_compare/compare_vs_*.pdf`
+
 Comparison of two reductions of the same donut data, across code versions, binnings and
 fitting algorithms. This distinguishes a genuine change in a wavefront result from a
 processing artifact.

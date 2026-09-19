@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
+> **Code:** `code/cwfs/` · **Notebooks:** `notebooks/cwfs/`
+> **Output:** `output/<param_set>/wfs/` (`donuts.parquet`, `visits.parquet`), `output/<param_set>/<mi_name>/wfs/`, `output/<param_set>/<mi_name>/wfs_mimic/`
+
 Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS)
 against the Full Array Mode (FAM) full-focal-plane measurement.
 

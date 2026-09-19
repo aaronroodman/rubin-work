@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
+> **Code:** `code/dzfit/`
+> **Output:** `output/<param_set>/dzfit/`
+
 Validation of the per-visit Double Zernike (DZ) fit of the Full Array Mode (FAM) donut
 wavefront. This is the stage before any Measured Intrinsic Wavefront (MIW) exists: the
 fit is made against the **batoid design intrinsic**, and these products show whether that

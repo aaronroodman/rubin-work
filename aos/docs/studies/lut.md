@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
+> **Code:** `code/lut/`
+> **Output:** `output/<param_set>/<mi_name>/lut/`
+
 Construction of a Look-Up Table (LUT) of telescope degrees of freedom (DOF) from Full
 Array Mode (FAM) wavefront measurements. The per-visit Double Zernike (DZ) fits are
 projected onto the Optical Feedback Control (OFC) sensitivity-matrix singular value

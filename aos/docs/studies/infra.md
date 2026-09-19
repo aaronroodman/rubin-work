@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
+> **Code:** `code/infra/`
+> **Output:** none yet
+
 Measurement of the CPU and memory available on a given node, used to size pipeline
 concurrency.
 

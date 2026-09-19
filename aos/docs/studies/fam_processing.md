@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
+> **Code:** `code/fam_processing/` · **Notebooks:** `notebooks/fam_processing/`
+> **Output:** `output/<param_set>/fam_processing/chunk_status.pdf`, `output/<param_set>/fam_processing/chunk_status.parquet`
+
 Tools for checking the Full Array Mode (FAM) chunk tables: what a chunk contains before it
 is built, whether the Butler provenance is consistent across chunks, how the visits cover
 elevation and rotator angle, and whether the expected telemetry columns are actually

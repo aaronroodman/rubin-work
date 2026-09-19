@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
+> **Code:** `code/closed_loop/`
+> **Output:** `output/<param_set>/<mi_name>/closedloop/`
+
 Simulation of Active Optics System (AOS) closed-loop control over a sequence of Full
 Array Mode (FAM) visits, measuring the delivered Point Spread Function (PSF) that results.
 At each step the corner wavefront recovery estimates the optical state, a proportional

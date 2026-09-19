@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-14 · **Kind:** reference (study)
 
+> **Code:** `code/coadd/`
+> **Output:** `output/<param_set>/coadd_50_34/`, `output/<param_set>/coadd_50_34_v2/` (`blocks_summary.parquet`, `coadd_metrics.parquet`, `block_grids.npz`, `coadd_blocks_miw_*.pdf`)
+
 Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias
 model developed to explain their disagreement.
 

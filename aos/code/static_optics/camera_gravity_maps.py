@@ -37,9 +37,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study s
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
 from miw_io import load_miw  # noqa: E402
 
-OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"
+OUT = Path(__file__).resolve().parents[2] / "output" / "camera_gravity"
 OUT.mkdir(parents=True, exist_ok=True)
-DEFAULT_MIW = (Path(__file__).resolve().parents[1] / "output" /
+DEFAULT_MIW = (Path(__file__).resolve().parents[2] / "output" /
                "fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x" /
                "pathA_50_34_i_5rot" / "intrinsic_split_maps.parquet")
 

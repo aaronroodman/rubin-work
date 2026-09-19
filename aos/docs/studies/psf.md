@@ -2,6 +2,9 @@
 
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
+> **Code:** `code/psf/`
+> **Output:** `output/<param_set>/<mi_name>/psf/`
+
 The expected Point Spread Function (PSF) due to the optical contribution, under given
 conditions. Focal-plane maps of full width at half maximum (FWHM), ellipticity and
 higher-order shape, rendered from a wavefront and measured the way the survey measures

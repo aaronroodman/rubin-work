@@ -25,7 +25,7 @@ from recompute_coadd_metrics import umode_reference  # noqa: E402
 
 # aos/output, relative to this file — works on RSP, s3df batch, and the laptop alike.
 _OUT = os.environ.get(
-    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[1] / "output"))
+    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[2] / "output"))
 
 ZK = [z for z in range(4, 27) if z not in (20, 21)]
 K_MIN, K_MAX, N_KEEP, K_ALL = 1, 6, 34, 30
