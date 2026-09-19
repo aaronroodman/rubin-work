@@ -239,19 +239,28 @@ level, "not under a `param_set`", because the v-mode/DOF structure is a property
 sensitivity matrix and the DOF scheme alone. So the param_set-scoped copies are stale
 leftovers from before that decision — consistent with being four weeks older and smaller.
 
-**State after item 5 (`8e5f76c`).** The live copies are now in `smatrix/output/vmode/`,
-copied rather than moved, so **three** paths hold a copy of this study's products and all
-that remains is deletion, which is must-ask:
+**Resolved 2026-09-19.** Aaron deleted the 5 superseded files after they were verified
+against the live copies with `cmp`. Exactly one copy of each product now exists, in
+`smatrix/output/vmode/`:
 
-| path | files | delete? |
+| path | files | outcome |
 |---|---|---|
-| `smatrix/output/vmode/` | the 3 live products | **keep** — this is the live location |
-| `aos/output/smatrix_vmode/` | same 3 files, byte-identical | delete once confirmed |
-| `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/smatrix_vmode/` | the 2 stale 2026-08-12 PDFs | delete |
+| `smatrix/output/vmode/` | `sparse_fit_study.pdf` 98,665 B; `vmode_dof_matrix_22_12.pdf` 92,361 B; `vmode_dof_matrix_50_34.pdf` 190,400 B | **live** |
+| `aos/output/smatrix_vmode/` | the same 3 files, 381,426 B total | deleted |
+| `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/smatrix_vmode/` | the 2 stale 2026-08-12 PDFs, 196,656 B total | deleted |
 
-The copies were verified identical with `cmp` before the originals were left in place; the
-regenerated `vmode_dof_matrix_22_12.pdf` differs from its 2026-09-08 predecessor only in PDF
-creation-date metadata (same byte count).
+Of the 3 superseded copies, two were byte-identical to the live copy and
+`vmode_dof_matrix_22_12.pdf` differed in 6 bytes of 92,361, all inside the PDF
+`/CreationDate` string (2026-09-08 → 2026-09-19, from a regeneration while testing the moved
+script) — same producer, same byte count, same plot content.
+
+**Still orphaned in `aos/output/`, outside this item's scope:**
+`sensitivity_sparse_analysis.pdf` (65,949 B) and `sparse_observability.pdf` (49,626 B), both
+2026-09-07. They were written by `analyze_sensitivity_sparse.py` and
+`analyze_sparse_observability.py`, which `analyze_sparse_fit.py` superseded and which no
+longer exist anywhere in the repository. They belong to the `vmode` study and so to
+`smatrix/output/vmode/`, but their producing scripts are gone, so they cannot be
+regenerated — moving rather than deleting them is the safe option. Needs a decision.
 
 ### D9. Shorten `param_set` and `mi_name`, and retire the obsolete param_sets
 
@@ -313,7 +322,7 @@ Each item is one commit. Verify imports after each before continuing.
 | 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | **done** — `8f7ab33` |
 | 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | 9 files + 15 cross-references | **done** — `8e5f76c` |
 | 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | **copied + verified** — `92aef81`; `rm`/`ln` left to run by hand |
-| 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files in 2 dirs | needs deletion approval |
+| 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files, 578,082 B | **done** — deleted 2026-09-19 |
 | 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
 | 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | after 9 |
 

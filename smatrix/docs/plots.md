@@ -1,10 +1,11 @@
 # smatrix — plots & outputs index
 
-> **Status:** current · **Last updated:** 2026-08-05 · **Kind:** reference (output index)
+> **Status:** current · **Last updated:** 2026-09-19 · **Kind:** reference (output index)
 
-All outputs live in `output/` (gitignored; rsync-synced). Regenerate from `code/`. The
-scripts read `$BATOID_RUBIN_DATA_DIR` and fall back to the `/sdf/group` path below, so
-setting it is only needed to override:
+All outputs live in `output/` (gitignored; rsync-synced). Regenerate from `code/`,
+except the `vmode` study in [section 10](#10-vmode-study--svd-mode-structure-and-the-sparse-fit-question),
+which is run from the topic root. The scripts read `$BATOID_RUBIN_DATA_DIR` and fall
+back to the `/sdf/group` path below, so setting it is only needed to override:
 
 ```bash
 cd code
@@ -81,7 +82,9 @@ Baseline: `50dof_im` reproduces official v13 (`range0.5_fwhm-0.15.yaml`, α=0.5,
 | `full_svd.npz` | U, S, Vt, w | (same) |
 
 Normalization = OFC convention `A·diag(w)`; standalone (not the LSST-stack
-`StateEstimator`), so faithful but not bit-identical to `build_geom_svd`.
+`StateEstimator`), so faithful but not bit-identical to `build_geom_svd`. This is
+the full 222-mirror-mode basis; for the 22-DOF and 50-DOF control schemes, whose
+SVD is checked against `StateEstimator` itself, see [section 10](#10-vmode-study--svd-mode-structure-and-the-sparse-fit-question).
 
 ## 7. M1M3 B52 — axisymmetric spherical-aberration mode
 | output | what | regenerate |
@@ -89,6 +92,22 @@ Normalization = OFC convention `A·diag(w)`; standalone (not the LSST-stack
 | `m1m3_B52.png` | surface + Zernike content + wavefront (primary spherical Z11) | `python plot_b52.py` |
 
 B52 (raw 51) is 96% m=0; drives Z4/Z11/Z22; **not in the AOS-used 20**.
+
+## 7b. Field order vs distance from focus
+`demo_field_order.py` — the same mid-spatial-frequency figure error (a Noll-12
+surface Zernike) is placed on each of several surfaces from near-pupil (M2) to
+near-focus (L3, detector), and the induced pupil astigmatism Z5 is mapped across
+the focal plane. Takes no arguments.
+
+| output | what | regenerate |
+|---|---|---|
+| `demo_field_order.png` | Z5 field maps, one per perturbed surface, near-pupil to near-focus | `python demo_field_order.py` |
+
+Near the pupil the Z5 field pattern is smooth (low field order); near focus it
+becomes high field order — the signature seen in the Measured Intrinsic
+Wavefront (MIW). See
+[`status/future_issues.md`](status/future_issues.md) for a correction to the
+conclusion originally drawn from this demo.
 
 ## 9. Thermal-gradient wavefront sensitivity (force-free)
 `thermal_sensitivity.py` → `thermal_sensitivity.npz` — DZ sensitivity (µm WF
@@ -137,3 +156,37 @@ Params: `--range-fraction`, `--threshold`, `--n-maps`, `--pupil`.
 (The earlier per-µm version — unweighted by force — is the `range_fraction`→
 "1 µm regardless of force" limit; it selected ~200 modes and is misleading for
 the force-constrained question.)
+
+## 10. `vmode` study — SVD mode structure and the sparse-fit question
+The products of the `vmode` study, documented in
+[`studies/vmode.md`](studies/vmode.md). These go under `output/vmode/`, with no
+data level: nothing here depends on Full Array Mode (FAM) data, only on the
+sensitivity matrix and the Optical Feedback Control (OFC) normalization weights.
+
+Unlike the sections above, these two scripts are run from the **topic root**, not
+from `code/`, because their default `--output-root` is `output` relative to it:
+
+```bash
+cd ~/notebooks/rubin-work/smatrix
+```
+
+| output | what | regenerate |
+|---|---|---|
+| `vmode/vmode_dof_matrix_22_12.pdf` | 5 pages for the 22-DOF / 12-v-mode scheme: V matrix (dimensionless DOF composition per v-mode), singular-value spectrum, double Zernike (DZ) per unit v-mode (µm wavefront), per-DZ-term reachability f_kj and residual 1-f_kj (both dimensionless), and the per-DOF normalization weights w_i with their range r_i and FWHM f_i factors | `python code/vmode/plot_vmode_dof_matrix.py --scheme 22_12` |
+| `vmode/vmode_dof_matrix_50_34.pdf` | the same 5 pages for the 50-DOF / 34-v-mode scheme | `python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34` |
+| `vmode/sparse_fit_study.pdf` | 10 pages: sensitivity population per pupil Noll, then 1 page per azimuthal family (astigmatism m=2, coma m=1, trefoil m=3, tetrafoil m=4, spherical m=0) giving per-DOF field response by radial order and the primary↔secondary field correlation; then 4 observability pages (22/12 and 50/34 schemes × 4-corner-WFS and field-complete sampling) comparing the primary-only singular values, per-v-mode and per-DOF observability against the full matrix | `python code/vmode/analyze_sparse_fit.py` |
+
+`plot_vmode_dof_matrix.py --check` plots nothing; it asserts that
+`ofc_svd.build_ofc_svd` reproduces `ts_ofc`'s
+`StateEstimator.get_dofs_from_vmodes` and exits 0=PASS / 1=FAIL.
+`analyze_sparse_fit.py --part sensitivity|observability` is for a quick look and
+requires its own `--out`, so a partial run cannot overwrite the full PDF.
+
+`plot_vmode_dof_matrix.py --param-set <name>` reads the pupil-Zernike set from
+that `param_set`'s `visits.parquet`; the `param_set`s live under the `aos` topic,
+so that lookup is rooted at `--param-set-root` (default `aos/output`) while the
+plot still goes to this topic's `--output-root`.
+
+Both need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR`. `ts_ofc` is **not** in
+`lsst_distrib`, so they need the AOS/CWFS environment rather than the plain
+stack the sections above run under.
