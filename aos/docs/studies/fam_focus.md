@@ -1,6 +1,15 @@
 # Study: `fam_focus` — focus drift within a FAM block
 
-> **Status:** current · **Last updated:** 2026-09-18 · **Kind:** reference (study)
+> **Status:** stale — verify before acting · **Last updated:** 2026-09-18 · **Kind:** reference (study)
+
+> **Two v-mode sign errors were found on 2026-09-18 and are not yet fixed.**
+> `v1_per_um_dz` discards the sign of a negative sensitivity, and `fam_dz.v_modes` is built by
+> a different engine than `optical_state.v_modes`, with the opposite sign for v-mode 1. Every
+> conclusion below that involves the **thermal prediction** — in particular "the `science_lut`
+> thermal correction makes within-block scatter worse" — must be re-derived after the fix.
+> The Double Zernike (DZ) coefficients, the selection, the triplet structure and the commanded-focus
+> validation are unaffected. See
+> [`../status/rerun_needed.md`](../status/rerun_needed.md).
 
 Change in focus — v-mode 1 of the Active Optics System (AOS) sensitivity matrix, essentially
 uniform defocus — against exposure sequence number within a single Full Array Mode (FAM) block. A
