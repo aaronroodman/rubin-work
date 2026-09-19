@@ -254,13 +254,18 @@ Of the 3 superseded copies, two were byte-identical to the live copy and
 `/CreationDate` string (2026-09-08 → 2026-09-19, from a regeneration while testing the moved
 script) — same producer, same byte count, same plot content.
 
-**Still orphaned in `aos/output/`, outside this item's scope:**
-`sensitivity_sparse_analysis.pdf` (65,949 B) and `sparse_observability.pdf` (49,626 B), both
-2026-09-07. They were written by `analyze_sensitivity_sparse.py` and
-`analyze_sparse_observability.py`, which `analyze_sparse_fit.py` superseded and which no
-longer exist anywhere in the repository. They belong to the `vmode` study and so to
-`smatrix/output/vmode/`, but their producing scripts are gone, so they cannot be
-regenerated — moving rather than deleting them is the safe option. Needs a decision.
+**The two orphans in `aos/output/` — resolved 2026-09-19, copied to `smatrix/output/vmode/`:**
+`sensitivity_sparse_analysis.pdf` (65,949 B, 6 pages) and `sparse_observability.pdf`
+(49,626 B, 4 pages), both 2026-09-07, written by `analyze_sensitivity_sparse.py` and
+`analyze_sparse_observability.py`. Commit `f9f9ff1` combined those two scripts into
+`analyze_sparse_fit.py`, so neither PDF is regenerable — but the combined 10-page
+`sparse_fit_study.pdf` is 6 + 4 pages and reproduces their numbers exactly (retained-v-mode
+observability, dimensionless, primary-only over full matrix: 0.44/0.96 and 0.36/0.97 for
+50-DOF / 34-v-mode, 0.99/1.00 and 0.99/1.00 for 22-DOF / 12-v-mode, per `f9f9ff1`'s own
+message). So they are superseded predecessors, not unique results. Copied with matching
+md5 (`234d08b5…`, `aaa83266…`) and indexed in `smatrix/docs/plots.md` as not regenerable;
+the `aos/output/` copies are Aaron's to delete, which is the last thing keeping this from
+satisfying "one product, one path".
 
 ### D9. Shorten `param_set` and `mi_name`, and retire the obsolete param_sets
 
@@ -321,7 +326,7 @@ Each item is one commit. Verify imports after each before continuing.
 | 3 | Create `value_added/`, move the 7 files, fix the importing files, move the DB out of repo-root `output/` | `common/`, 11 files, `.gitignore` | **done** — `8f7ab33` |
 | 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | **done** — `8f7ab33` |
 | 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | 9 files + 15 cross-references | **done** — `8e5f76c` |
-| 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | **copied + verified** — `92aef81`; `rm`/`ln` left to run by hand |
+| 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | **done** — `92aef81`; symlinked 2026-09-19, `/sdf/home` 87% → 66% |
 | 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files, 578,082 B | **done** — deleted 2026-09-19 |
 | 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
 | 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | after 9 |
@@ -372,25 +377,23 @@ doing it before the renaming in item 9 would move every directory twice.
 
 Aaron asked for these on 2026-09-18. `/sdf/home` has 4.0 GB free of 30 GB (87% used).
 
-**State as of 2026-09-19 (`92aef81`): copied and verified, deletion outstanding.** Both
-trees now exist in group space, byte-for-byte identical to the originals:
+**Done 2026-09-19.** Both trees were copied to group space byte-for-byte, verified, then
+the originals deleted and replaced with symlinks (Aaron ran the `rm`/`ln`, since
+`Bash(rm:*)` is in the `.claude/settings.local.json` deny list, which conversational
+approval does not override):
 
 | topic | files | bytes | verified |
 |---|---|---|---|
-| `guider/output` | 23,354 | 4,485,731,571 | totals match; `rsync --dry-run` reports 0 files to transfer |
-| `optatmo/output` | 5,242 | 2,158,645,519 | same |
+| `guider/output` | 23,354 | 4,485,731,571 | totals match; `rsync --dry-run` 0 files to transfer; 10 random files `cmp`-identical |
+| `optatmo/output` | 5,242 | 2,158,645,519 | same, 10 random files `cmp`-identical |
 
-The originals are **still real directories on `/sdf/home`**, so these two trees currently
-occupy 6.4 GB twice. What remains is one command, which Claude cannot run — `Bash(rm:*)` is
-in the `.claude/settings.local.json` deny list, which conversational approval does not
-override:
+After the switch both symlinks resolve and all 23,354 and 5,242 files are readable through
+them, git reports the tree clean (the `.gitignore` entries work), and `/sdf/home` went from
+27 GB used of 30 GB (87%) to 20 GB used (66%), recovering the expected 6.4 GB.
 
-```bash
-cd /sdf/home/r/roodman/notebooks/rubin-work
-rm -rf guider/output optatmo/output
-ln -s /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/guider/output guider/output
-ln -s /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/optatmo/output optatmo/output
-```
+One caveat for any future check of this kind: once `<topic>/output` is a symlink into group
+space, `df -h <topic>/output` reports the **group** filesystem (273 T), not `/sdf/home`. Run
+`df -h /sdf/home/r/roodman` on a real path in home to see the quota that matters.
 
 The git-side work is already committed in `92aef81`: `/guider/output` and `/optatmo/output`
 added to the `.gitignore` symlink block, `guider/output/.gitkeep` removed from the index,

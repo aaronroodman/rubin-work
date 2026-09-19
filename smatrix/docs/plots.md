@@ -176,6 +176,20 @@ cd ~/notebooks/rubin-work/smatrix
 | `vmode/vmode_dof_matrix_50_34.pdf` | the same 5 pages for the 50-DOF / 34-v-mode scheme | `python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34` |
 | `vmode/sparse_fit_study.pdf` | 10 pages: sensitivity population per pupil Noll, then 1 page per azimuthal family (astigmatism m=2, coma m=1, trefoil m=3, tetrafoil m=4, spherical m=0) giving per-DOF field response by radial order and the primary↔secondary field correlation; then 4 observability pages (22/12 and 50/34 schemes × 4-corner-WFS and field-complete sampling) comparing the primary-only singular values, per-v-mode and per-DOF observability against the full matrix | `python code/vmode/analyze_sparse_fit.py` |
 
+Two predecessor PDFs sit alongside them, from before the two driver scripts were
+combined into `analyze_sparse_fit.py`:
+
+| output | what | regenerate |
+|---|---|---|
+| `vmode/sensitivity_sparse_analysis.pdf` | the 6 sensitivity pages, as `sparse_fit_study.pdf` pages 1-6 | not regenerable — producing script no longer exists |
+| `vmode/sparse_observability.pdf` | the 4 observability pages, as `sparse_fit_study.pdf` pages 7-10 | not regenerable — producing script no longer exists |
+
+`sparse_fit_study.pdf` reproduces both: the retained-v-mode observability
+(dimensionless, primary-only over full matrix) is 0.44/0.96 and 0.36/0.97 for the
+50-DOF / 34-v-mode scheme and 0.99/1.00 and 0.99/1.00 for 22-DOF / 12-v-mode, the
+same values the predecessors gave. They are kept only as a record of the earlier
+split form; the combined PDF is the live product.
+
 `plot_vmode_dof_matrix.py --check` plots nothing; it asserts that
 `ofc_svd.build_ofc_svd` reproduces `ts_ofc`'s
 `StateEstimator.get_dofs_from_vmodes` and exits 0=PASS / 1=FAIL.
