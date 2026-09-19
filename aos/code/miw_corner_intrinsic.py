@@ -5,7 +5,7 @@ path difference (OPD) minus an assumed intrinsic wavefront, so the intrinsic is 
 the state rather than being an implementation detail. Two routes exist: the batoid ray-trace
 prediction from ``lsst.ts.ofc``, and the MIW measured from Full Array Mode (FAM) data. This
 module supplies the second one, as the ``miw_lookup`` callable that
-``common/scripts/build_optical_state.py`` takes for ``--intrinsic miw``.
+``value_added/code/build_optical_state.py`` takes for ``--intrinsic miw``.
 
 The MIW is stored as a rotator-angle decomposition: each Zernike term carries a
 telescope-fixed component in the Observatory Coordinate System (OCS) and a camera-fixed

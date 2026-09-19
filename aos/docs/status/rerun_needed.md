@@ -165,8 +165,8 @@ both columns being called v-modes:
 
 | table | builder | engine |
 |---|---|---|
-| `optical_state` | `common/scripts/build_optical_state.py` | `aos_state.vmodes_from_dofs` / `make_state_estimator` |
-| `fam_dz` | `common/scripts/build_fam_dz.py:259` | `ofc_svd.build_ofc_svd` + `svd.vmodes()` |
+| `optical_state` | `value_added/code/build_optical_state.py` | `aos_state.vmodes_from_dofs` / `make_state_estimator` |
+| `fam_dz` | `value_added/code/build_fam_dz.py:259` | `ofc_svd.build_ofc_svd` + `svd.vmodes()` |
 
 Round-tripping a known +1 µm camera dz through `ofc_svd` recovers the **DOF correctly**
 (+0.9611 µm against the +1.0000 µm input) but returns v1 = **+9.1326830e-04** where
@@ -217,8 +217,8 @@ reports a v-mode **amplitude**, whose sign moves:
 
 | product | producer |
 |---|---|
-| `fam_dz.v_modes` (all rows) | `common/scripts/build_fam_dz.py` |
-| all three `optical_state` variants' `v_modes`, `v1_lut`, `v1_trim` | `common/scripts/build_optical_state.py` |
+| `fam_dz.v_modes` (all rows) | `value_added/code/build_fam_dz.py` |
+| all three `optical_state` variants' `v_modes`, `v1_lut`, `v1_trim` | `value_added/code/build_optical_state.py` |
 | `science_lut.parquet`, `science_lut_fits.parquet`, `science_lut_results.pdf` | `code/science_lut/` — **the fit must be redone**, since the response changes sign; the truss coefficient becomes −124.64 µm of equivalent hexapod dz per °C |
 | `fam_focus.{pdf,parquet}` | `code/fam_focus/run_fam_focus.py` — after `science_lut` |
 | `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `code/correlations/run_vmode_correlations.py:71` |

@@ -29,17 +29,17 @@ Usage
 -----
 Register and build the Batoid-intrinsic k=1..6 variant at 50 DOF / 34 v-modes::
 
-    python common/scripts/build_fam_dz.py \\
+    python value_added/code/build_fam_dz.py \\
         --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 
 The same for a Measured Intrinsic Wavefront build::
 
-    python common/scripts/build_fam_dz.py \\
+    python value_added/code/build_fam_dz.py \\
         --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --mi pathA_50_34_i_5rot
 
 List what is registered::
 
-    python common/scripts/build_fam_dz.py --list
+    python value_added/code/build_fam_dz.py --list
 
 Notes
 -----
@@ -65,7 +65,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # repo root
-from common import efd_db  # noqa: E402
+import efd_db  # noqa: E402
 
 #: Focal (field) Zernike order range implied by each DZ-fit column prefix.
 PREFIX_K_RANGE = {'z1toz3': (1, 3), 'z1toz6': (1, 6)}

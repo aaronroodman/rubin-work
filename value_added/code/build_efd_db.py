@@ -2,23 +2,23 @@
 """Build the value-added telemetry database, one night and one group at a time.
 
 Fetches the slow Engineering Facility Database (EFD) quantities and the value-added
-quantities derived from them into ``output/value_added/aos_efd.duckdb``, so that later
+quantities derived from them into ``value_added/output/aos_efd.duckdb``, so that later
 analysis never re-pays the EFD cost. Consolidated Database (ConsDB) columns are **not**
-copied — ConsDB is fast and is read live via `common.efd_db.join_consdb`.
+copied — ConsDB is fast and is read live via `efd_db.join_consdb`.
 
 Usage
 -----
 One night, every group (do this first, before any backfill)::
 
-    python common/scripts/build_efd_db.py --day-obs 20251102 --groups all
+    python value_added/code/build_efd_db.py --day-obs 20251102 --groups all
 
 A range, resuming an interrupted run::
 
-    python common/scripts/build_efd_db.py --day-obs 20250415-20260913 --groups all --resume
+    python value_added/code/build_efd_db.py --day-obs 20250415-20260913 --groups all --resume
 
 Add a newly-defined group over nights already built, touching nothing else::
 
-    python common/scripts/build_efd_db.py --day-obs 20250415-20260913 --groups turbulence
+    python value_added/code/build_efd_db.py --day-obs 20250415-20260913 --groups turbulence
 
 Groups
 ------
@@ -72,7 +72,7 @@ sys.path.insert(0, str(_ROOT / 'aos' / 'code'))
 sys.path.insert(0, str(_ROOT / 'aos' / 'code' / 'fam_processing'))
 sys.path.insert(0, str(_ROOT / 'olr' / 'code'))
 
-from common import efd_db                                            # noqa: E402
+import efd_db                                                       # noqa: E402
 from common.telemetry_clients import make_consdb_client, make_efd_client  # noqa: E402
 
 DEFAULT_FIRST_DAY_OBS = 20250415
@@ -495,7 +495,7 @@ def main(argv=None):
     p.add_argument('--refetch', action='store_true',
                    help='fetch even pairs already recorded ok, overwriting them')
     p.add_argument('--db', default=None,
-                   help='database file; default output/value_added/aos_efd.duckdb')
+                   help='database file; default value_added/output/aos_efd.duckdb')
     p.add_argument('--consdb-url', default='auto')
     p.add_argument('--quiet', action='store_true')
     a = p.parse_args(argv)

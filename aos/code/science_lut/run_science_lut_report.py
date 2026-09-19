@@ -846,7 +846,7 @@ def _chain_ml(pdf, df, bands, theilsen=True, verbose=True):
     # A visit with no truss temperature is dropped, not imputed: the pipeline's median
     # imputer would substitute the run-wide median, a per-night bias of order 1 deg C and
     # so about 124 um of equivalent camera-hexapod dz. The scattered single-exposure gaps
-    # are already filled in time by common.efd_db.interpolate_within_night.
+    # are already filled in time by efd_db.interpolate_within_night.
     if 'truss_temp_mean_c' in fit.columns:
         has_truss = np.isfinite(fit.truss_temp_mean_c.to_numpy(float))
         if verbose and (ok & ~has_truss).any():
@@ -1440,9 +1440,11 @@ def main(argv=None):
 
     db = a.db
     if db is None:
-        from common import efd_db
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]
+                               / 'value_added' / 'code'))   # -> efd_db
+        import efd_db
         db = str(efd_db.default_db_path()) if hasattr(efd_db, 'default_db_path') else \
-            'output/value_added/aos_efd.duckdb'
+            'value_added/output/aos_efd.duckdb'
 
     out = build_report(pv, fits, a.variant, bands, v1, out_path, db,
                        theilsen=not a.no_theilsen,

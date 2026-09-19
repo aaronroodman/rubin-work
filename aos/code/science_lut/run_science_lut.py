@@ -65,8 +65,9 @@ import pandas as pd
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_ROOT))                       # repo root -> common/
 sys.path.insert(0, str(_ROOT / 'aos' / 'code'))      # flat cross-study modules
+sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))  # -> efd_db
 
-from common import efd_db                                        # noqa: E402
+import efd_db                                                    # noqa: E402
 from common.utils import nmad                                    # noqa: E402
 
 #: Overall sign of the measured term in v1_total. A convention, not a fitted quantity.
@@ -292,7 +293,7 @@ def drop_no_truss_nights(df, col='truss_temp_mean_c', verbose=True):
         One row per visit, carrying `day_obs` and `col` [°C].
     col : `str`, optional
         The truss temperature column, already gap-filled by
-        `common.efd_db.interpolate_within_night`.
+        `efd_db.interpolate_within_night`.
     verbose : `bool`, optional
 
     Returns
@@ -471,7 +472,7 @@ def commanded_v1(df, dof_set='standard_22', n_modes=12, verbose=True):
 
 
 #: ts_ofc DOF-set name and v-mode count per `state_variant.scheme`, mirroring
-#: `common/scripts/build_optical_state.py:SCHEMES` so the conversion factor is derived in the
+#: `value_added/code/build_optical_state.py:SCHEMES` so the conversion factor is derived in the
 #: same basis the stored v-modes were.
 SCHEME_BASIS = {'22_12': ('standard_22', 12), '50_34': ('all_50', 34)}
 
@@ -640,7 +641,7 @@ def build_v1_total(df, v1_lut, v1_trim, v1_per_um_dz, verbose=True):
             raise RuntimeError(
                 'the variant stored no commanded v-modes (v_modes_lut / v_modes_trim) and no '
                 'fallback projection was supplied; rebuild the variant with '
-                'common/scripts/build_optical_state.py so all three v1 terms share one basis')
+                'value_added/code/build_optical_state.py so all three v1 terms share one basis')
         print('  WARNING: this variant stored no commanded v-modes, so v1_lut and v1_trim '
               'are reprojected here. Check that the projection scheme matches the variant, '
               'or rebuild the variant with build_optical_state.py.')

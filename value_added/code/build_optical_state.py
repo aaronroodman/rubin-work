@@ -21,17 +21,17 @@ Usage
 -----
 Register and build a new variant::
 
-    python common/scripts/build_optical_state.py --scheme 50_34 --intrinsic batoid \\
+    python value_added/code/build_optical_state.py --scheme 50_34 --intrinsic batoid \\
         --opd-version consdb_v1 --day-obs 20251023-20260913
 
 Fill only the gaps in an existing variant::
 
-    python common/scripts/build_optical_state.py --variant v50_34__batoid__consdb_v1 \\
+    python value_added/code/build_optical_state.py --variant v50_34__batoid__consdb_v1 \\
         --day-obs 20251023-20260913 --resume
 
 List what is registered::
 
-    python common/scripts/build_optical_state.py --list
+    python value_added/code/build_optical_state.py --list
 
 Alongside the measured state, each row stores the **commanded** v-modes — the hexapod
 look-up-table (LUT) and the Trim, read from `visit_telemetry` and projected in the variant's
@@ -74,7 +74,7 @@ _ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(_ROOT / 'aos' / 'code'))
 
-from common import efd_db                                            # noqa: E402
+import efd_db                                                       # noqa: E402
 from common.telemetry_clients import make_consdb_client              # noqa: E402
 
 INSTRUMENT = 'lsstcam'
@@ -439,7 +439,7 @@ def main(argv=None):
     p.add_argument('--ofc-version', default=DEFAULT_OFC_VERSION)
     p.add_argument('--miw-param-set', default=None,
                    help='param_set holding the MIW build named by --intrinsic-ref; '
-                        'defaults to the one in common/miw_corner_intrinsic.py')
+                        'defaults to the one in aos/code/miw_corner_intrinsic.py')
     p.add_argument('--miw-ccd-height', action='store_true',
                    help='add a standalone per-sensor height-equivalent defocus to the MIW '
                         'Zernike 4. Normally leave this off: the detector heights are '
@@ -516,7 +516,7 @@ def main(argv=None):
     # variant rather than a switch here.
     miw_lookup = None
     if route == 'miw':
-        from common.miw_corner_intrinsic import DEFAULT_PARAM_SET, MiwCornerLookup
+        from miw_corner_intrinsic import DEFAULT_PARAM_SET, MiwCornerLookup
         miw_lookup = MiwCornerLookup(mi_name=intrinsic_ref,
                                      param_set=a.miw_param_set or DEFAULT_PARAM_SET,
                                      add_ccd_height=a.miw_ccd_height)

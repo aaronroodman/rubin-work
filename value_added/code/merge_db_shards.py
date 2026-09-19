@@ -11,11 +11,11 @@ Usage
 -----
 Merge every shard of one build and leave the shard files in place::
 
-    python common/scripts/merge_db_shards.py --shards output/value_added/shards/telemetry_*.duckdb
+    python value_added/code/merge_db_shards.py --shards value_added/output/shards/telemetry_*.duckdb
 
 Report what would be merged without writing::
 
-    python common/scripts/merge_db_shards.py --shards 'output/value_added/shards/*.duckdb' --dry-run
+    python value_added/code/merge_db_shards.py --shards 'value_added/output/shards/*.duckdb' --dry-run
 
 Notes
 -----
@@ -39,7 +39,7 @@ import sys
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-from common import efd_db                                            # noqa: E402
+import efd_db                                                       # noqa: E402
 
 #: Tables merged, with their conflict keys. Order matters: `state_variant` must precede
 #: `optical_state`, whose rows reference it.

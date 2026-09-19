@@ -26,11 +26,16 @@ Two storage shapes, for two different kinds of quantity:
   and optical path difference (OPD) source version — so a new variant must be rows rather
   than schema. `state_variant` is the registry describing each one.
 
-Import from the repo root::
+Import by putting this topic's ``code/`` on the path::
 
     import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))
-    from common import efd_db
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]
+                           / 'value_added' / 'code'))
+    import efd_db
+
+``N`` counts up to the repo root: 2 from ``<topic>/code/x.py``, 3 from
+``<topic>/code/<study>/x.py``. Sibling scripts in ``value_added/code/`` need no path
+insert at all — Python puts a script's own directory on ``sys.path``.
 
 Typical read, EFD columns joined to live ConsDB metadata::
 
@@ -53,7 +58,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-DEFAULT_DB = 'output/value_added/aos_efd.duckdb'
+DEFAULT_DB = 'output/aos_efd.duckdb'
 
 # ---------------------------------------------------------------------------
 # Column inventory.  Each group is (column, sql_type, units, source) and is the
@@ -216,14 +221,16 @@ def default_db_path():
     Returns
     -------
     path : `pathlib.Path`
-        ``<repo_root>/output/value_added/aos_efd.duckdb``, overridable with the
+        ``<repo_root>/value_added/output/aos_efd.duckdb``, overridable with the
         ``AOS_EFD_DB`` environment variable.
 
     Notes
     -----
-    Resolved via ``parents[1]`` of this file rather than a hardcoded ``/sdf`` or
-    ``/home`` path, so it is correct in the RSP notebook, an RSP terminal, and a Slurm
-    job alike.
+    Resolved via ``parents[1]`` of this file — the ``value_added`` topic directory —
+    rather than a hardcoded ``/sdf`` or ``/home`` path, so it is correct in the RSP
+    notebook, an RSP terminal, and a Slurm job alike. On the USDF RSP
+    ``value_added/output`` is a symlink into ``/sdf/group/rubin`` for disk quota, which
+    this resolution follows transparently.
     """
     env = os.environ.get('AOS_EFD_DB')
     if env:
@@ -270,7 +277,7 @@ def open_db(path=None, readonly=True, create=False):
     elif not path.exists():
         raise FileNotFoundError(
             f'no value-added database at {path}\n'
-            f'build it with: python common/scripts/build_efd_db.py --day-obs <range>')
+            f'build it with: python value_added/code/build_efd_db.py --day-obs <range>')
     con = duckdb.connect(str(path), read_only=readonly)
     if create:
         create_schema(con)
@@ -1202,7 +1209,9 @@ def join_consdb(df, groups=CONSDB_GROUPS, cdb=None, consdb_url='auto',
     string.
     """
     import sys
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'aos' / 'code'))
+    _root = pathlib.Path(__file__).resolve().parents[2]                 # repo root
+    sys.path.insert(0, str(_root))
+    sys.path.insert(0, str(_root / 'aos' / 'code'))
     import aos_consdb_efd as ace                                       # noqa: E402
     from common.telemetry_clients import make_consdb_client            # noqa: E402
 

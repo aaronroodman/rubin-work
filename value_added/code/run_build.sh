@@ -39,7 +39,7 @@
 #   --img-type LIST          ConsDB img_types, comma separated, for --what state
 #   --groups LIST            EFD/value-added groups, for --what telemetry (default all)
 #   --resume                 pass --resume to the builder (skip what is already done)
-#   --shard-dir DIR          where shard databases go (default output/value_added/shards)
+#   --shard-dir DIR          where shard databases go (default output/shards)
 #   --dry-run                print the shard plan and the commands, launch nothing
 #
 # Batch tunables (env vars; defaults in parens), matching aos/run_snake.sh:
@@ -47,13 +47,13 @@
 #   SB_ACCOUNT (rubin:developers@milano)  SB_QOS (normal)
 #
 # After every shard finishes, merge them into the main database:
-#   python common/scripts/merge_db_shards.py --shards '<shard-dir>/<tag>_*.duckdb'
+#   python code/merge_db_shards.py --shards '<shard-dir>/<tag>_*.duckdb'
 set -euo pipefail
-cd "$(dirname "$0")/../.."          # repo root
-repo=$PWD
+cd "$(dirname "$0")/.."             # value_added topic directory
+topic=$PWD
 
 what=""; day_obs=""; chunk=24; mode=local; variant=""; img_type=""
-groups="all"; resume=0; shard_dir="output/value_added/shards"; dry=0
+groups="all"; resume=0; shard_dir="output/shards"; dry=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --what)       what="$2"; shift 2;;
@@ -81,8 +81,8 @@ done
 [ -n "$what" ]    || { echo "error: --what telemetry|state is required" >&2; exit 2; }
 [ -n "$day_obs" ] || { echo "error: --day-obs is required" >&2; exit 2; }
 case "$what" in
-    telemetry) builder=common/scripts/build_efd_db.py; tag=telemetry;;
-    state)     builder=common/scripts/build_optical_state.py; tag=state;;
+    telemetry) builder=code/build_efd_db.py; tag=telemetry;;
+    state)     builder=code/build_optical_state.py; tag=state;;
     *) echo "error: --what must be 'telemetry' or 'state'" >&2; exit 2;;
 esac
 case "$mode" in
@@ -116,9 +116,9 @@ variant_flags=()
 if [ "$what" = state ]; then
     mapfile -t vrow < <(python - "$variant" <<'PY'
 import pathlib, sys
-sys.path.insert(0, str(pathlib.Path.cwd()))
-from common import efd_db
-con = efd_db.open_db('output/value_added/aos_efd.duckdb', readonly=True)
+sys.path.insert(0, str(pathlib.Path.cwd() / 'code'))
+import efd_db
+con = efd_db.open_db('output/aos_efd.duckdb', readonly=True)
 r = con.execute('SELECT scheme, intrinsic_route, opd_version, intrinsic_ref, '
                 'ofc_config_version FROM state_variant WHERE variant_id = ?',
                 [sys.argv[1]]).fetchall()
@@ -144,8 +144,8 @@ mkdir -p logs "$shard_dir"
 echo "expanding --day-obs $day_obs (ConsDB query for nights with exposures) ..."
 mapfile -t nights < <(python - "$day_obs" <<'PY'
 import pathlib, sys
-sys.path.insert(0, str(pathlib.Path.cwd()))
-sys.path.insert(0, str(pathlib.Path.cwd() / 'common' / 'scripts'))
+sys.path.insert(0, str(pathlib.Path.cwd().parent))
+sys.path.insert(0, str(pathlib.Path.cwd() / 'code'))
 from build_efd_db import parse_day_obs
 from common.telemetry_clients import make_consdb_client
 spec = sys.argv[1]
@@ -205,7 +205,7 @@ for ((s = 0; s < n_shards; s++)); do
                    --cpus-per-task="${SB_CPUS:-1}" --mem="${SB_MEM:-16G}" \
                    --time="${SB_TIME:-01:00:00}" \
                    --job-name="build_${tag}_${idx}" --output="$jlog" \
-                   --wrap "cd '$repo' && ${cmd[*]}"
+                   --wrap "cd '$topic' && ${cmd[*]}"
             echo "  job log: $jlog"
             ;;
     esac
@@ -233,4 +233,4 @@ case "$mode" in
 esac
 echo
 echo "when every shard has finished, merge into the main database:"
-echo "  cd $repo && python common/scripts/merge_db_shards.py --shards '$merge_glob'"
+echo "  cd $topic && python code/merge_db_shards.py --shards '$merge_glob'"

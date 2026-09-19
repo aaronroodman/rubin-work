@@ -13,9 +13,9 @@ basis and ``v1_lut + v1_trim - v1_meas`` mixes none.
 
 Usage
 -----
-    python common/scripts/backfill_commanded_vmodes.py
-    python common/scripts/backfill_commanded_vmodes.py --variant v50_34__batoid__consdb_v1
-    python common/scripts/backfill_commanded_vmodes.py --dry-run
+    python value_added/code/backfill_commanded_vmodes.py
+    python value_added/code/backfill_commanded_vmodes.py --variant v50_34__batoid__consdb_v1
+    python value_added/code/backfill_commanded_vmodes.py --dry-run
 
 Options
 -------
@@ -34,7 +34,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # repo roo
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'aos' / 'code'))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from common import efd_db  # noqa: E402
+import efd_db  # noqa: E402
 from build_optical_state import (build_state_estimator, make_commanded_projector,  # noqa: E402
                                  DEFAULT_OFC_VERSION)
 

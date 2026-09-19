@@ -68,7 +68,7 @@ difference (OPD) minus an intrinsic wavefront — through the OFC sensitivity-ma
 value decomposition (SVD), recovering DOF and v-mode amplitudes properly.
 
 That recovery is a value-added quantity in the repository's EFD/ConsDB database rather than a
-calculation in this study: it is held in `output/value_added/aos_efd.duckdb` as one
+calculation in this study: it is held in `value_added/output/aos_efd.duckdb` as one
 `optical_state` variant per combination of
 
 * **scheme** — `22_12` (22 DOF, 12 v-modes, what the AOS runs online) or `50_34`;
@@ -280,8 +280,8 @@ without appearing in the path.
 | `science_lut_predictions.parquet` | one row per visit: `visit_id`, `day_obs`, `seq_num`, `band`, elevation, response, out-of-fold prediction and residual, in µm of equivalent hexapod dz |
 | `science_lut_nights.parquet` | one row per night: elevation slope and offset at 60 deg for all points and for the rising and falling legs, within-night residual nMAD, and n |
 
-The database itself is built by `common/scripts/build_efd_db.py` and
-`common/scripts/build_optical_state.py`, outside this topic, because it serves the whole
+The database itself is built by `value_added/code/build_efd_db.py` and
+`value_added/code/build_optical_state.py`, outside this topic, because it serves the whole
 repository rather than this study.
 
 ## Relation to the other focus studies

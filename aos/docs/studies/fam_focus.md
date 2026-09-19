@@ -242,7 +242,7 @@ the median within-set peak-to-peak, so the focal-order truncation does not drive
 | file | role |
 |---|---|
 | `code/fam_focus/run_fam_focus.py` | the whole study: selection, the applied correction, the DZ comparison, and the document |
-| `../../common/scripts/build_fam_dz.py` | writes the `fam_dz` table this study reads |
+| `../../value_added/code/build_fam_dz.py` | writes the `fam_dz` table this study reads |
 
 **This script needs ConsDB, so it runs on the Rubin Science Platform (RSP) or USDF only** — unlike
 `code/science_lut/run_science_lut_analysis.py`, which reads parquet alone. The reason is

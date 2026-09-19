@@ -34,7 +34,7 @@ Usage
 
 Needs ConsDB, so it runs on the Rubin Science Platform (RSP) or USDF only — unlike
 ``run_science_lut_analysis.py``, which reads parquet alone. ``truss_temp_mean_c`` is derived
-inside `common.efd_db.join_consdb` from two Telescope Mount Assembly (TMA) truss thermometers
+inside `efd_db.join_consdb` from two Telescope Mount Assembly (TMA) truss thermometers
 rather than stored, so there is no offline route to it. ``--cache`` makes the network cost
 one-time.
 """
@@ -50,8 +50,9 @@ _HERE = pathlib.Path(__file__).resolve()
 sys.path.insert(0, str(_HERE.parents[3]))                     # repo root -> common/
 sys.path.insert(0, str(_HERE.parents[2]))                     # aos/code -> flat modules
 sys.path.insert(0, str(_HERE.parents[1] / 'science_lut'))     # the science_lut study
+sys.path.insert(0, str(_HERE.parents[3] / 'value_added' / 'code'))  # -> efd_db
 
-from common import efd_db                                                 # noqa: E402
+import efd_db                                                            # noqa: E402
 from common.utils import nmad                                            # noqa: E402
 import run_science_lut_analysis as A                                     # noqa: E402
 from run_science_lut import LUT_EPOCH_OFFSET_NIGHTS, MEASURED_SIGN       # noqa: E402
@@ -97,7 +98,7 @@ CORR_COLOR = '#d62728'
 DZ_COLOR = '#2ca02c'
 
 #: Default `fam_dz` variant: the Batoid design intrinsic, focal orders k=1..6, 50 degrees of
-#: freedom and 34 v-modes, built by ``common/scripts/build_fam_dz.py``.
+#: freedom and 34 v-modes, built by ``value_added/code/build_fam_dz.py``.
 DEFAULT_FAM_VARIANT = ('fam__fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x__batoid'
                        '__z1toz6__50_34')
 
@@ -306,8 +307,8 @@ def load_acq(variant=A.DEFAULT_VARIANT, day_obs_min=DEFAULT_DAY_OBS_MIN,
 
     Notes
     -----
-    ``truss_temp_mean_c`` is derived inside `common.efd_db.join_consdb`, not stored, so this
-    function cannot run offline. `common.efd_db.visits` is queried for the gradients only —
+    ``truss_temp_mean_c`` is derived inside `efd_db.join_consdb`, not stored, so this
+    function cannot run offline. `efd_db.visits` is queried for the gradients only —
     asking it for the truss temperature raises `duckdb.BinderException`.
     """
     cols = [c for c in GRADIENT_COLS if c in {c0[0] for c0 in efd_db.all_columns()}]
@@ -444,7 +445,7 @@ def attach_fam_dz(sel, fam_variant=DEFAULT_FAM_VARIANT, dz_col=DZ_COL, db_path=N
         An `attach_response` result, one row per in-focus ``acq`` visit, carrying ``visit_id``
         and ``set_id``.
     fam_variant : `str`, optional
-        `fam_dz` variant id; see `common.efd_db.fam_variants`.
+        `fam_dz` variant id; see `efd_db.fam_variants`.
     dz_col : `str`, optional
         Wide DZ column to carry through, e.g. ``'dz_k1_j4'`` [µm of wavefront].
     db_path : `str`, optional
@@ -579,7 +580,7 @@ def trim_pattern_check(sel, db_path=None, verbose=True):
     Notes
     -----
     Reads the ``dof5`` and ``dof0`` Trim columns of `visit_telemetry` directly, since
-    `common.efd_db.visit_telemetry` keys on the ``acq`` alone and the cwfs members are separate
+    `efd_db.visit_telemetry` keys on the ``acq`` alone and the cwfs members are separate
     visits. Triplets whose cwfs members are absent from the table give NaN offsets and are
     excluded from the deviating count.
     """

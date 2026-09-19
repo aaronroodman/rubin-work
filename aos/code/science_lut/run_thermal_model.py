@@ -305,7 +305,7 @@ def load_target(in_dir, variant=DEFAULT_VARIANT, v1_per_um_dz=None, features=Non
     # dropped and not imputed: the imputer substitutes the run-wide median, which is a
     # per-night bias of order 1 deg C -- about 124 um of equivalent camera-hexapod dz --
     # rather than noise. Scattered single-exposure gaps are already filled upstream by
-    # common.efd_db.interpolate_within_night, so what survives here sits hours outside
+    # efd_db.interpolate_within_night, so what survives here sits hours outside
     # its own night's valid span.
     if 'truss_temp_mean_c' in df.columns:
         no_truss = df.truss_temp_mean_c.isna()

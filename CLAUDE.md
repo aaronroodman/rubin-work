@@ -39,6 +39,10 @@ Survey / astrometry / other:
 - `survey/`, `wcs/`, `astrometry/`, `starcolor/`, `des/`, `alerts/`
 
 Support:
+- `value_added/` — the value-added DuckDB database of per-exposure engineering telemetry,
+  derived quantities and recovered optical state, plus the builders that maintain it. A
+  **service topic**: it maintains a product other topics consume, read through
+  `value_added/code/efd_db.py` (`docs/schema.md`, `docs/status/build_progress.md`)
 - `common/` — shared utility functions used across topics
 - `notes/` — working notes for Slack posts and Summit-Operations tech notes; each
   note is a self-contained dated directory, drafted in plain Markdown.
