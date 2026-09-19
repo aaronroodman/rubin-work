@@ -102,11 +102,13 @@ reduced set has **specific indices** and is not the first 22 — use `aos_state.
 The work divides into sixteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
-outputs and current state of every one.
+outputs and current state of every one. Several of these studies project onto the Optical
+Feedback Control (OFC) sensitivity matrix; its singular value decomposition and v-mode
+structure are the `vmode` study in the `smatrix` topic
+([`../smatrix/docs/studies/vmode.md`](../smatrix/docs/studies/vmode.md)).
 
 | study | content |
 |---|---|
-| [`smatrix_vmode`](docs/studies/smatrix_vmode.md) | Structure of the Optical Feedback Control (OFC) sensitivity matrix: its singular value decomposition, v-mode composition, and degree-of-freedom (DOF) observability |
 | [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
 | [`fam_processing`](docs/studies/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
 | [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
@@ -168,7 +170,6 @@ output/
       intrinsic_split_{maps,decomp,rms}.parquet  # the MIW itself
       fits.parquet                               # DZ refit against the MIW
       correlations/  bounce/  psf/  closed_loop/  lut/  wfs/<variant>/  wfs_mimic/
-  smatrix_vmode/                   # OFC matrix diagnostics, no param_set dependence
   camera_gravity/                  # static_optics, no param_set dependence
   science_lut/                     # science-exposure focus LUT, from the value-added database
   fam_focus/                       # focus drift within a FAM block, same database

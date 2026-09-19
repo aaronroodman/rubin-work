@@ -180,7 +180,7 @@ distance means the same thing everywhere on a panel. DZ(k=1, j=4) is converted t
 DZ_UM_PER_UM_WF = -63.9902 um of equivalent hexapod dz per um of wavefront
 ```
 
-derived in [`../../notebooks/smatrix_vmode/ofc_conversion_constants.ipynb`](../../notebooks/smatrix_vmode/ofc_conversion_constants.ipynb)
+derived in [`../../../smatrix/notebooks/vmode/ofc_conversion_constants.ipynb`](../../../smatrix/notebooks/vmode/ofc_conversion_constants.ipynb)
 from the OFC sensitivity matrix. It is the **0.5 µm on each hexapod** inverse, the same convention
 `v1_per_um_dz` uses for the response, so both series share one definition of "equivalent hexapod
 dz". The camera-only inverse is −62.8389 and the singular-value-decomposition minimum-norm total is

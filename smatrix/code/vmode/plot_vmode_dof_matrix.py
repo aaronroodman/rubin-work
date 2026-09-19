@@ -16,7 +16,7 @@ figure per page:
   4  **Reachability and residual per DZ term** — the fraction of each elementary DZ
      term that the retained v-modes can produce, f_kj = ||U^T e_kj||^2, and the
      irreducible remainder 1 - f_kj. Derived in
-     ``notebooks/smatrix_vmode/jk_coverage_plots.ipynb``, which explains why this and
+     ``notebooks/vmode/jk_coverage_plots.ipynb``, which explains why this and
      not the (k,j)-isolation view is the meaningful quantity.
   5  **Normalization weights** — a table of the per-DOF weight ``w_i`` applied,
      decomposed into its range factor ``r_i`` (DOF-units of stroke) and FWHM factor
@@ -25,8 +25,10 @@ figure per page:
 Data-independent apart from the pupil-Zernike set, which defaults to the standard
 Z4-Z26 (omitting Z20, Z21) and is identical in every param_set built to date.
 ``--param-set`` reads it from that param_set's ``visits.parquet`` instead and warns on
-a difference. Output goes to ``output/smatrix_vmode/`` — outside any param_set, because
-nothing here depends on FAM data.
+a difference; the param_sets live under the ``aos`` topic, so that lookup is rooted at
+``--param-set-root`` (default ``aos/output``) rather than at ``--output-root``. Output
+goes to ``output/vmode/`` in this topic — outside any param_set, because nothing here
+depends on FAM data.
 
 Needs ts_ofc and $TS_CONFIG_MTTCS_DIR.
 
@@ -41,8 +43,8 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))          # aos/code
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'smatrix' / 'code'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))          # smatrix/code
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'aos' / 'code'))
 from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
 
@@ -109,7 +111,12 @@ def main():
                          'visits.parquet instead of using ZK_NOLL_DEFAULT')
     ap.add_argument('--scheme', default='22_12', choices=list(SCHEMES))
     ap.add_argument('--instrument', default='lsst')
-    ap.add_argument('--output-root', default='output')
+    ap.add_argument('--output-root', default='output',
+                    help='where the plot is written; relative to the smatrix topic')
+    ap.add_argument('--param-set-root',
+                    default=str(Path(__file__).resolve().parents[3] / 'aos' / 'output'),
+                    help='where --param-set is looked up; the param_sets and their '
+                         'visits.parquet live under the aos topic, not this one')
     ap.add_argument('--annotate-min', type=float, default=0.10,
                     help='annotate cells with |V_im| >= this (0 = none)')
     ap.add_argument('--check', action='store_true',
@@ -132,9 +139,9 @@ def main():
     # scheme alone -- no FAM data enters it. The pupil-Zernike set is the only
     # data-derived input, and it is the same in every param_set built to date, so it
     # defaults to the standard set and the output is not keyed by param_set.
-    out_dir = Path(args.output_root) / 'smatrix_vmode'
+    out_dir = Path(args.output_root) / 'vmode'
     if args.param_set:
-        vis = Path(args.output_root) / args.param_set / 'visits.parquet'
+        vis = Path(args.param_set_root) / args.param_set / 'visits.parquet'
         noll = [int(x) for x in np.asarray(
             pq.read_table(str(vis), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
         if noll != list(ZK_NOLL_DEFAULT):

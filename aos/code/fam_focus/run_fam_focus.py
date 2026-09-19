@@ -115,7 +115,7 @@ TRIPLET_TRIM_TOL_UM = 1.0
 
 #: Conversion from DZ(k=1, j=4) [µm of wavefront] to equivalent hexapod dz travel [µm], so the
 #: FAM pair's own defocus is plotted in the same unit as the ``acq`` response. Derived in
-#: ``notebooks/smatrix_vmode/ofc_conversion_constants.ipynb`` from the OFC sensitivity matrix at
+#: ``../smatrix/notebooks/vmode/ofc_conversion_constants.ipynb`` from the OFC sensitivity matrix at
 #: camera rotator angle 0.0 deg, focal orders k=1..6, 50 DOF and 34 v-modes, in OCS.
 #:
 #: This is the **0.5 µm on each hexapod** inverse, which is the convention `v1_per_um_dz`

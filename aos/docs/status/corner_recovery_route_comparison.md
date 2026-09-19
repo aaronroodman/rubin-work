@@ -106,7 +106,7 @@ rows (31 focal x 29 pupil), with no field-point evaluation, while the problem be
 is the 84-row (4 corners x 21 Zernikes) field-evaluated, Zernike-selected matrix. The
 truncation basis therefore does not span the data space. This is the same
 `zn_selected`/`Vh` inconsistency recorded as an open question for the OFC maintainers in
-[`../studies/smatrix_vmode.md`](../studies/smatrix_vmode.md) — here it has a measurable
+[`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — here it has a measurable
 consequence on recovered DOF rather than being an internal inconsistency only.
 
 On the same synthetic input at rotator 0 deg, wavefront residuals were 1.1884e-02 µm RMS

@@ -81,5 +81,5 @@ Knobs in `analysis_config.yaml` under `bounce`.
 ## See also
 
 - [`../miw_pipeline.md`](../miw_pipeline.md) — the `bounce` rule in context
-- [`smatrix_vmode.md`](smatrix_vmode.md) — where the v-modes and DOF come from
+- [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — where the v-modes and DOF come from
 - `../../../notes/claude-memory/apr-2026-50dof-lut.md` — the fixed 50-DOF LUT on sky Apr 24–28 2026, which explains the 20260424/28 anomaly

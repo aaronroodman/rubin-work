@@ -1,9 +1,9 @@
-# Study: `smatrix_vmode` — sensitivity matrix and mode structure
+# Study: `vmode` — sensitivity matrix and mode structure
 
-> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-19 · **Kind:** reference (study)
 
-> **Code:** `code/smatrix_vmode/` · **Notebooks:** `notebooks/smatrix_vmode/`
-> **Output:** `output/smatrix_vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
+> **Code:** `code/vmode/` · **Notebooks:** `notebooks/vmode/`
+> **Output:** `output/vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
 
 Analysis of the Optical Feedback Control (OFC) sensitivity matrix and its mode
 structure: the singular value decomposition, v-mode composition, and which degrees of
@@ -14,18 +14,18 @@ gives **v-modes** (DOF-space directions) and **u-modes** (wavefront-space direct
 Which modes are observable — and how badly they mix — sets the ceiling on everything the
 AOS can do. This study is the linear algebra behind the other studies' interpretation.
 
-The matrix *construction* lives in the sibling [`smatrix/`](../../../smatrix/) topic;
-this study is about using and diagnosing it.
+The matrix *construction* is documented in [`../conventions.md`](../conventions.md); this
+study is about using and diagnosing the matrix that construction produces.
 
 ## Code
 
 | file | role |
 |---|---|
-| `plot_vmode_dof_matrix.py` | five-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/smatrix_vmode/vmode_dof_matrix_<scheme>.pdf` |
-| `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/smatrix_vmode/sparse_fit_study.pdf` |
+| `plot_vmode_dof_matrix.py` | five-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/vmode/vmode_dof_matrix_<scheme>.pdf` |
+| `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/vmode/sparse_fit_study.pdf` |
 
 This study is diagnostics of the matrix itself. The consumer that *builds a product* from
-the same SVD is [`lut`](lut.md), which projects the FAM Double Zernike fits onto it to
+the same SVD is [`lut`](../../../aos/docs/studies/lut.md), which projects the FAM Double Zernike fits onto it to
 recover degrees of freedom.
 
 ### `plot_vmode_dof_matrix.py` — the five pages
@@ -39,7 +39,7 @@ recover degrees of freedom.
    Retained v-modes only.
 4. **Reachability and residual per DZ term** — the fraction of each elementary DZ term
    the retained v-modes can produce, and the irreducible remainder. The derivation is in
-   `notebooks/smatrix_vmode/jk_coverage_plots.ipynb`; the short version is that the
+   `notebooks/vmode/jk_coverage_plots.ipynb`; the short version is that the
    $(k,j)$ axes are an arbitrary coordinate choice, whereas the columns of $U$ are the
    intrinsic orthonormal basis of $\mathrm{col}(S)$, so the meaningful quantity is
    $f_{k,j} = \|U^\top \mathbf{e}_{k,j}\|^2$ — the squared row-sum of $U$.
@@ -76,14 +76,17 @@ of their field-coefficient vectors, so no simulation is required.
 
 | notebook | content |
 |---|---|
-| `notebooks/smatrix_vmode/jk_coverage_plots.ipynb` | **derivation behind page 4**: why reachability is the right quantity, and the algebra for $f_{k,j}$ and the u-mode residual |
-| `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF normalization through the `ts_ofc` `StateEstimator`, deliberately independent of `rubin-work` code so it can be shared outside this repository |
-| `notebooks/smatrix_vmode/vmode_svd_engine_validation.ipynb` | **the engine-equivalence record**: `StateEstimator` against `build_ofc_svd` on a matched slab, both schemes, plus what the obsolete normalization costs |
-| `notebooks/smatrix_vmode/smatrix_vmode_info.ipynb` | early exploratory treatment: SVD with `StateEstimator` plus custom-SVD validation, v-mode composition, wavefront signatures, control equations, noise/gain, a normalization-scheme unit-invariance study, and DZ field patterns |
+| `notebooks/vmode/jk_coverage_plots.ipynb` | **derivation behind page 4**: why reachability is the right quantity, and the algebra for $f_{k,j}$ and the u-mode residual |
+| `notebooks/vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF normalization through the `ts_ofc` `StateEstimator`, deliberately independent of `rubin-work` code so it can be shared outside this repository |
+| `notebooks/vmode/vmode_svd_engine_validation.ipynb` | **the engine-equivalence record**: `StateEstimator` against `build_ofc_svd` on a matched slab, both schemes, plus what the obsolete normalization costs |
+| `notebooks/vmode/smatrix_vmode_info.ipynb` | early exploratory treatment: SVD with `StateEstimator` plus custom-SVD validation, v-mode composition, wavefront signatures, control equations, noise/gain, a normalization-scheme unit-invariance study, and DZ field patterns |
 
 `smatrix_vmode_info.ipynb` predates the decision to use `StateEstimator` everywhere and
 is the one place that still carries the alternative normalizations, kept deliberately as
 the record of that comparison.
+
+`ofc_svd` is the external `lsst.ts.intrinsic.wavefront.ofc_svd`, not a module in this
+repository, and every notebook here imports it by that full path.
 
 The reachability derivation stays a notebook rather than becoming PDF text pages because
 its equations use `\underbrace` to label the reachable and residual parts of a
@@ -94,7 +97,7 @@ supersede them.
 
 ## Output sits outside any `param_set`
 
-Both scripts write to **`output/smatrix_vmode/`**, at the top level, not under a
+Both scripts write to **`output/vmode/`** in this topic, at the top level, not under a
 `param_set`. The v-mode/DOF structure is a property of the OFC sensitivity matrix and the
 DOF scheme alone — no FAM data enters it. The one data-derived input is the pupil-Zernike
 set, which is identical in every `param_set` built to date (Z4–Z26 omitting Z20 and Z21,
@@ -119,7 +122,7 @@ slab, it does not span the 84-row corner problem and leaves an irreducible
 2.3e-02 µm wavefront-residual floor even on noiseless data, where the corner-evaluated SVD
 closes to 2.1e-14 µm. `recover_optical_state` therefore inverts in that basis and reports
 v-modes through `get_vmodes_from_dofs`, so no v-mode ever leaves the sanctioned basis. See
-[`../status/corner_recovery_route_comparison.md`](../status/corner_recovery_route_comparison.md).
+[`../../../aos/docs/status/corner_recovery_route_comparison.md`](../../../aos/docs/status/corner_recovery_route_comparison.md).
 
 Handed the matched full slab — all focal orders `k = 0..30`, all 29 pupil Zernikes, the
 same DOF subset and the same normalization yaml — they agree **exactly**, for both the
@@ -134,7 +137,7 @@ same DOF subset and the same normalization yaml — they agree **exactly**, for 
 
 That is expected rather than surprising — it is the identical matrix through the identical
 LAPACK call — but it is now pinned by
-`notebooks/smatrix_vmode/vmode_svd_engine_validation.ipynb`, so the question does not have
+`notebooks/vmode/vmode_svd_engine_validation.ipynb`, so the question does not have
 to be reopened. The remaining difference between them is the `k` range, which is the
 deliberate difference of purpose in the section above and not a defect.
 
@@ -185,7 +188,7 @@ So the exponent in the filename does not describe the file's contents, and seein
 other name in an old notebook does not mean a different normalization was used.
 
 Sign and unit conventions (ZCS, bending-mode flips, degree angle units, the y-sign patch)
-are settled in [`../../../smatrix/docs/conventions.md`](../../../smatrix/docs/conventions.md).
+are settled in [`../conventions.md`](../conventions.md).
 
 ## The 22-DOF reduced set is not the first 22 indices
 
@@ -277,24 +280,29 @@ negligible** and no result here depends on the resolution.
 - `svd._keep()` is used here and in `cwfs`. Its leading underscore is mislabelling
   rather than a stability boundary — it is `ts_intrinsic_wavefront`'s own function, used
   as public API in four call sites across two repositories. Left as-is deliberately; see
-  [`../status/code_review_backlog.md`](../status/code_review_backlog.md).
+  [`../../../aos/docs/status/code_review_backlog.md`](../../../aos/docs/status/code_review_backlog.md).
 
 ## Running
 
 ```bash
-cd ~/notebooks/rubin-work/aos
-./run_snake.sh --until build_lut
-python code/smatrix_vmode/plot_vmode_dof_matrix.py --scheme 22_12
-python code/smatrix_vmode/plot_vmode_dof_matrix.py --scheme 50_34
-python code/smatrix_vmode/plot_vmode_dof_matrix.py --check
-python code/smatrix_vmode/analyze_sparse_fit.py
+cd ~/notebooks/rubin-work/smatrix
+python code/vmode/plot_vmode_dof_matrix.py --scheme 22_12
+python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34
+python code/vmode/plot_vmode_dof_matrix.py --check
+python code/vmode/analyze_sparse_fit.py
 ```
+
+`plot_vmode_dof_matrix.py --param-set <name>` reads the pupil-Zernike set from that
+`param_set`'s `visits.parquet`, which lives under the `aos` topic rather than this one, so
+that lookup is rooted at `--param-set-root` (default `aos/output`) while the plot still
+goes to this topic's `--output-root`. Building a `param_set` in the first place is
+`cd ~/notebooks/rubin-work/aos && ./run_snake.sh --until build_lut`.
 
 All of these need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR`; note `ts_ofc` is **not** in
 `lsst_distrib`, so they need the AOS/CWFS environment.
 
 ## See also
 
-- [`../../../smatrix/README.md`](../../../smatrix/README.md) — matrix construction
-- [`correlations.md`](correlations.md) — the v-mode correlation consumer
-- [`cwfs.md`](cwfs.md) — the corner OFC inverse uses the same SVD
+- [`../../README.md`](../../README.md) — matrix construction
+- [`../../../aos/docs/studies/correlations.md`](../../../aos/docs/studies/correlations.md) — the v-mode correlation consumer
+- [`../../../aos/docs/studies/cwfs.md`](../../../aos/docs/studies/cwfs.md) — the corner OFC inverse uses the same SVD

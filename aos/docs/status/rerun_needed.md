@@ -296,8 +296,9 @@ and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are
   `camera_gravity_maps` keeps its laxer row cut via `require=(5, 6, 7, 8)`, giving the
   same 3969 rows as before. No rerun needed.
 - **`dz_correlations`, `thermal_correlations`** — see above.
-- **`smatrix_vmode`** — `vmode_dof_matrix_{22_12,50_34}.pdf` were regenerated on
-  2026-09-06 into `output/smatrix_vmode/` when the output moved out of `<ps>`.
+- **`vmode`** (now the `smatrix` topic) — `vmode_dof_matrix_{22_12,50_34}.pdf` were
+  regenerated on 2026-09-06 when the output moved out of `<ps>`; they now live in
+  `smatrix/output/vmode/`.
 
 ## `coadd_50_34` — rerunning over all bands, 2025 and 2026
 

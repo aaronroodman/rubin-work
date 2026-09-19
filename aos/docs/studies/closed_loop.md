@@ -67,4 +67,4 @@ split and the move to a single `<mi>`; see
 
 - [`psf.md`](psf.md) — the single-shot forward calculation this was split from
 - [`cwfs.md`](cwfs.md) — the real corner-wavefront recovery this simulates
-- [`smatrix_vmode.md`](smatrix_vmode.md) — the sensitivity matrix and v-mode structure the controller works in
+- [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — the sensitivity matrix and v-mode structure the controller works in

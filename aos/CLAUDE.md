@@ -11,7 +11,7 @@ What follows is only the things that are easy to get wrong.
 ## Code layout
 
 `code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
-`code/static_optics/`, `code/correlations/`, `code/smatrix_vmode/`, `code/bounce/`,
+`code/static_optics/`, `code/correlations/`, `code/bounce/`,
 `code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`,
 `code/science_lut/`, `code/fam_focus/`, `code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.

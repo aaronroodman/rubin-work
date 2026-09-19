@@ -49,7 +49,7 @@ Note that ``range-fwhm.yaml`` is reachable *inside* the v13 config directory too
 ``default.yaml``. So the config directory alone does not settle it, which is why
 ``make_state_estimator`` asserts the resolved filename.
 
-See ``olr/docs/vmode_normalization.md`` and ``aos/docs/studies/smatrix_vmode.md``.
+See ``olr/docs/vmode_normalization.md`` and ``smatrix/docs/studies/vmode.md``.
 """
 import os
 
@@ -205,7 +205,7 @@ def make_state_estimator(config_dir=None, dof_set="standard_22", version="v13",
     solve, but it does **not** affect the v-mode basis: `StateEstimator` builds `Vh`
     from the whole sensitivity slab flattened to 899 rows (31 focal x 29 pupil),
     applying no Zernike selection (`state_estimator.py:93-96`); `zn_idx` enters only
-    `get_sensitivity_matrix`. See `aos/docs/studies/smatrix_vmode.md`.
+    `get_sensitivity_matrix`. See `smatrix/docs/studies/vmode.md`.
 
     Requires the LSST stack (`lsst.ts.ofc`) and `$TS_CONFIG_MTTCS_DIR`.
     """

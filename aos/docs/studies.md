@@ -1,8 +1,8 @@
 # AOS analysis studies — inventory
 
-> **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (inventory)
+> **Status:** current · **Last updated:** 2026-09-19 · **Kind:** reference (inventory)
 
-Inventory of the sixteen studies in the `aos/` directory: the code implementing each one,
+Inventory of the fifteen studies in the `aos/` directory: the code implementing each one,
 what it reads and writes, and its current state. Most draw on a common base — the
 Full Array Mode (FAM) donut tables and the Optical Feedback Control (OFC) sensitivity
 matrix — but are otherwise independent lines of work. Two work instead from the repository's
@@ -17,13 +17,12 @@ shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 Counts are of files and lines in `aos/code/`, including the shared modules that stay
 flat there, and of Snakemake rules driving each study. Of
-the 85 Python files, 18 are referenced by the Snakefile and the rest are standalone. The
+the 78 Python files, 18 are referenced by the Snakefile and the rest are standalone. The
 `science_lut` count is of its two current scripts; the `(+4)` marks four superseded ones still
 present on disk.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`smatrix_vmode`](studies/smatrix_vmode.md) | 2 | 664 | 0 | Structure of the OFC sensitivity matrix: singular value decomposition, v-mode composition, DOF observability |
 | [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`fam_processing`](studies/fam_processing.md) | 5 | 1411 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, and an all-chunks status roll-up |
 | [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
@@ -45,7 +44,7 @@ Every file in `aos/code/` belongs to exactly one study.
 ## Code layout
 
 `aos/code/` is organized by study, one subdirectory each, listed here in the same
-general-to-specialized order as `../README.md`: `smatrix_vmode/`, `miw/`, `dzfit/`,
+general-to-specialized order as `../README.md`: `miw/`, `dzfit/`,
 `coadd/`, `correlations/`, `cwfs/`, `bounce/`, `lut/`, `fam_processing/`, `psf/`,
 `processing_compare/`,
 `static_optics/`, `closed_loop/`, `infra/`.
@@ -81,10 +80,7 @@ Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
 | `notebooks/cwfs/wfs_mimic_covariance.ipynb` | reads the mimic covariance product |
 | `notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb` | Danish versus TARTS on one day_obs |
 | `notebooks/processing_compare/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
-| `notebooks/smatrix_vmode/smatrix_vmode_info.ipynb` | early exploratory look at the OFC sensitivity matrix; predates the `StateEstimator` normalization used everywhere else |
-| `notebooks/smatrix_vmode/jk_coverage_plots.ipynb` | derivation behind page 4 of `vmode_dof_matrix_<scheme>.pdf`: reachability of the DZ space by the retained v-modes |
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | per-visit telemetry time histories and distributions, one quantity per group |
-| `notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF structure through the `ts_ofc` `StateEstimator` normalization |
 
 `snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
 untracked scratch, gitignored, and belong to no study.
@@ -116,7 +112,6 @@ output/
       lut/                                # DOF look-up table
       wfs/<cwfs_variant>/, wfs_mimic/     # MIW-subtracted corner-WFS products
       plots/                              # coadd-vs-MIW maps
-  smatrix_vmode/                          # OFC matrix diagnostics; no param_set dependence
   archive/                                # superseded param_sets
   camera_gravity/                         # static_optics; no param_set dependence
   science_lut/                            # science-exposure focus LUT; reads the value-added DB
@@ -127,10 +122,10 @@ Which level a study writes to follows one rule: **if the product changes when a
 different MIW build is chosen, it lives under `<mi_name>/`; otherwise under
 `<param_set>/`.** So `correlations` and `bounce` are under `<mi_name>/` because they run
 on the MIW-subtracted fits, while `dzfit`'s validation is under `<param_set>/` because
-it precedes any MIW. `smatrix_vmode` sits at the **top level**, outside any
-`param_set`: the v-mode/DOF matrix is a property of the OFC sensitivity matrix and the
-DOF scheme alone, and the one data-derived input (the pupil-Zernike set) is identical
-in every `param_set` built to date, so it defaults in code.
+it precedes any MIW. The OFC sensitivity matrix's own mode structure has no `param_set`
+dependence at all and is not an `aos` study — it is `vmode` in the `smatrix` topic
+([`../../smatrix/docs/studies/vmode.md`](../../smatrix/docs/studies/vmode.md)), writing to
+`smatrix/output/vmode/`.
 
 `psf/` and `closed_loop/` are under `<mi_name>/`: both read the MIW split maps and the
 per-visit FAM fits from a single measured-intrinsic build. They previously mixed two

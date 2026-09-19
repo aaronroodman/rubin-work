@@ -114,10 +114,19 @@ M1M3 modes stay optically active well past the AOS-used 20 (variance reaches
 (`fullmode_pupil_heatmap_r.png`) shows the diagonal coupling — mode N drives
 progressively higher pupil Noll.
 
+## Studies
+
+| study | content |
+|---|---|
+| [`vmode`](docs/studies/vmode.md) | the singular value decomposition (SVD) of the Optical Feedback Control (OFC) sensitivity matrix and its mode structure: v-mode composition in degree-of-freedom (DOF) space, the singular-value spectrum, which DOF are observable and how badly they mix, and whether a sparse donut fit still constrains the optical state. Code in `code/vmode/`, notebooks in `notebooks/vmode/`, output in `output/vmode/` |
+
+The matrix construction described above is not yet split into a study of its own; doing so
+is outstanding work.
+
 ## Docs
 
-Reference docs in `docs/`; transient working state in `docs/status/`. Each carries a
-status + last-updated line under its title.
+Reference docs in `docs/`; transient working state in `docs/status/`; per-study detail in
+`docs/studies/`. Each carries a status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
@@ -126,3 +135,4 @@ status + last-updated line under its title.
 | [`docs/plots.md`](docs/plots.md) | index of the plots/outputs in `output/` and how to regenerate each |
 | [`docs/status/future_issues.md`](docs/status/future_issues.md) | running list of open issues and follow-ups |
 | [`docs/status/data_provenance.md`](docs/status/data_provenance.md) | where the four batoid_rubin datasets come from and which are recoverable — `bend_zemax` has no recovery path |
+| [`docs/studies/vmode.md`](docs/studies/vmode.md) | the `vmode` study in detail: what each page of the SVD diagnostic shows, the reachability derivation, and the engine-equivalence record |

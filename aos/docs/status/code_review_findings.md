@@ -97,7 +97,7 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - **Fix:** Compute the L2 delta between successive `measured_grid` arrays each iteration, log it, and warn if not below a configurable tolerance at exit.
 
 ### B7. [SCIENCE] `build_lut` median-over-rotator can hide rotator structure
-- **File:line:** `aos/code/smatrix_vmode/run_build_lut.py:8, 137-139, 170`
+- **File:line:** `aos/code/lut/run_build_lut.py:8, 137-139, 170`
 - **What's wrong:** LUT explicitly averages over all rotator angles. If MI subtraction is imperfect at separating gravity-driven (alt-only) from rotator-coupled state, residuals get medianed out and LUT is biased toward rotator-mode-zero.
 - **Why it matters:** Documented design choice; concern is that there's no diagnostic to verify the assumption holds.
 - **Fix:** Also write `lut_by_rotbin.parquet` (3–4 rotator bins) so the spread across bins can be inspected and shown in `lut.pdf` as a sanity diagnostic.

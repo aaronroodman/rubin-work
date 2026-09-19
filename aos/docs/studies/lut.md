@@ -90,7 +90,7 @@ the AOS/CWFS environment; `ts_ofc` is **not** in `lsst_distrib`.
 
 ## See also
 
-- [`smatrix_vmode.md`](smatrix_vmode.md) — the SVD this study projects onto
+- [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — the SVD this study projects onto
 - [`bounce.md`](bounce.md) — elevation- and rotator-dependent LUT development
 - [`miw.md`](miw.md) — the intrinsic build that shares the `mi_config.yaml` keying
 - [`../miw_pipeline.md`](../miw_pipeline.md) — the `build_lut` rule in context

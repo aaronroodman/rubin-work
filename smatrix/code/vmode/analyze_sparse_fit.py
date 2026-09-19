@@ -30,13 +30,13 @@ Primary terms (first radial order per azimuthal family, Z4-Z28):
 Dropped as secondary/tertiary: Z12/13, Z16/17, Z18/19, Z22, Z23/24, Z25/26.
 
 Both parts together are the study, written to
-``output/smatrix_vmode/sparse_fit_study.pdf`` -- outside any param_set, since nothing
+``output/vmode/sparse_fit_study.pdf`` -- outside any param_set, since nothing
 here depends on FAM data. A single ``--part`` is for a quick look and must be given its
 own ``--out``, so that a partial run cannot overwrite the full PDF.
 
 Usage:
-  python code/smatrix_vmode/analyze_sparse_fit.py                    # the study
-  python code/smatrix_vmode/analyze_sparse_fit.py --part sensitivity --out /tmp/s.pdf
+  python code/vmode/analyze_sparse_fit.py                    # the study
+  python code/vmode/analyze_sparse_fit.py --part sensitivity --out /tmp/s.pdf
 
 Needs lsst.ts.ofc and $TS_CONFIG_MTTCS_DIR.
 """
@@ -319,7 +319,7 @@ def main():
                     help="OFC config dir (v13); defaults to $TS_CONFIG_MTTCS_DIR")
     ap.add_argument("--instrument", default="lsst")
     ap.add_argument("--out", default=None,
-                    help="output PDF; default output/smatrix_vmode/sparse_fit_study.pdf")
+                    help="output PDF; default output/vmode/sparse_fit_study.pdf")
     ap.add_argument("--output-root", default="output")
     ap.add_argument("--min-frac", type=float, default=0.05,
                     help="[sensitivity] report DOF with at least this fraction of the "
@@ -331,7 +331,7 @@ def main():
                  f"explicit --out rather than overwriting sparse_fit_study.pdf")
 
     out = (Path(args.out) if args.out
-           else Path(args.output_root) / "smatrix_vmode" / "sparse_fit_study.pdf")
+           else Path(args.output_root) / "vmode" / "sparse_fit_study.pdf")
     out.parent.mkdir(parents=True, exist_ok=True)
 
     with PdfPages(str(out)) as pdf:

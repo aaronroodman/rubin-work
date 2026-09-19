@@ -80,7 +80,7 @@ from aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 from lsst.ts.intrinsic.wavefront import ofc_svd as osv  # noqa: E402
 
 # v-mode 1 of the OFC 22_12 scheme, as v-mode amplitude per unit DOF, from the ts_ofc
-# StateEstimator (notebooks/smatrix_vmode/vmode_dof_ts_ofc.ipynb). Units 1/µm.
+# StateEstimator (../smatrix/notebooks/vmode/vmode_dof_ts_ofc.ipynb). Units 1/µm.
 # The normalized weight of each term is given for context: the two hexapod dz axes carry
 # 0.759 and 0.650, the three mirror bending modes only 0.033, 0.029 and 0.001.
 V1_HEX = {5: -0.0008915,    # camera hexapod dz [1/µm], normalized weight -0.759
