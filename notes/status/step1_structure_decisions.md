@@ -310,6 +310,48 @@ Naming is Aaron's call. The constraint from D2 is only that
 `<param_set>_<mi_name>` stay legible at a glance — roughly 30 characters or so for the
 pair — and that the separator not be ambiguous, since both parts already contain `_`.
 
+#### Decided 2026-09-19: retire three, rename nothing, shorten going forward
+
+Aaron reviewed the five param_sets and settled it as follows.
+
+**Retired** — `fam_danish_v1_triplets_bin_1x`, `fam_danish_v1_triplets_bin_2x`,
+`fam_danish_1_1_1_wep17_3_0_bin2x` (`9958662`). All three had been superseded since
+2026-09-06: disabled in `snake_config.yaml`, output in `output/archive/`, no live output
+directory, and between 3 and 5 tracked references each.
+
+**Kept, not renamed** — `fam_danish_1_0_wep17_3_0_bin2x`. Superseded as a working
+param_set, but its name is the recorded provenance of the local MIW staged at
+`aos/calibration/miw/intrinsic_split_maps_v1.parquet` and of the two-epochs tech note. It
+still carries a live `analysis_config.yaml` override block. Renaming or dropping it would
+dangle that provenance. **The official MIW is Guillem's**, built by `ts_intrinsic_wavefront`
+and read from the Butler — the staged `v1` product is Aaron's own build, which is why that
+provenance file names a Danish 1.0 param_set rather than 1.2.
+
+**Kept, not renamed** — `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`. A rename to
+`danish_1_2` was scoped and declined: **71 occurrences across 50 tracked files**, reaching
+into `optatmo`, `value_added`, `blocks` and `smatrix`, plus an `UPDATE` pass over the
+value-added registries. (The "96 times across 71 files" figure above counted gitignored
+`snippets.ipynb` and `.ipynb_checkpoints`; the tracked-only count is the one that matters.)
+It buys readability, not correctness, so the cost was not worth it on working code.
+
+**`mi_name` unchanged** — `pathA_50_34_i` / `pathA_50_34_i_5rot`. Dropping the obsolete
+`path` prefix was considered and declined on the same grounds: 4 characters against 87
+occurrences and a DB `UPDATE`. Note 61 of those 87 are the substring inside
+`pathA_50_34_i_5rot`, so any future rename must substitute longest-first, and
+`intrinsic_split_maps_v1.parquet` contains the string as frozen binary provenance.
+
+**The convention going forward** is recorded in `param_sets.yaml`: a new param_set gets a
+short name — `danish_1_3`, not `fam_danish_1_3_0_wep17_8_0_refitWCS_bin2x` — with the wep /
+donut_viz / bin detail in `description` and `fam_collections`, where it is actually read
+from. This gets D2's legibility on everything new without a sweep over working code.
+
+**Consequence for D2/item 7.** The joined name for the live pair stays
+`fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x_pathA_50_34_i_5rot` (59 characters), well over
+the ~30 target. D2's premise — that flattening needs short parts first — does not hold for
+this param_set and will not be made to hold. Item 7 has to either accept a long directory
+name for the current pair or wait until the live data is a short-named param_set
+(`danish_1_3` onward). That is a real change to item 7's assumptions, not a detail.
+
 ---
 
 ## Queued work, in order
@@ -328,8 +370,8 @@ Each item is one commit. Verify imports after each before continuing.
 | 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | 9 files + 15 cross-references | **done** — `8e5f76c` |
 | 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | **done** — `92aef81`; symlinked 2026-09-19, `/sdf/home` 87% → 66% |
 | 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files, 578,082 B | **done** — deleted 2026-09-19 |
-| 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
-| 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | after 9 |
+| 9 | Retire the obsolete param_sets; renaming declined (D9) | 3 param_sets, 7 files | **done** — `9958662`; no rename, short names from `danish_1_3` on |
+| 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | **blocked on a decision** — the live joined name is 59 chars, not the ~30 D2 assumed (see D9) |
 
 Items 3–6 are unblocked as of 2026-09-18: the other session's
 `aos/notebooks/smatrix_vmode/vmode_dof_ts_ofc-13Aug2026.ipynb` was deleted rather than
