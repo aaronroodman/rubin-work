@@ -29,50 +29,60 @@ So:
 - **Output** — the path names **the data the product depends on**, most-general axis
   first, then grouped by study.
 
-In `aos/` that data dependence has **two** axes, not one, and this is already the rule
-`aos/README.md` states:
+In `aos/` the data dependence has **two** axes: `param_set` (a Butler collection paired
+with a processing variant) and `mi_name` (which Measured Intrinsic Wavefront build was
+used, e.g. `pathA_50_34_i_5rot`). Both are real — `mi_name` appears **54 times** across
+`aos/code/` and is a Snakemake wildcard.
+
+**The two axes are joined into one directory name** rather than nested, so there is
+always exactly **one** data level:
 
 | what the product depends on | output path |
 |---|---|
-| the processing run **and** which MIW build was used | `output/<param_set>/<mi_name>/<study>/` |
-| the processing run only | `output/<param_set>/<study>/` |
+| the processing run **and** the MIW build | `output/<study>/<param_set>_<mi_name>/` |
+| the processing run only | `output/<study>/<param_set>/` |
 | neither — the optical prescription, the S-matrix, or the value-added database | `output/<study>/` |
 
-`param_set` is a Butler collection paired with a processing variant; `mi_name` is a MIW
-build (`pathA_50_34_i`, `pathA_50_34_i_5rot`, `coadd_50_34_v2`). Both are real axes —
-`mi_name` appears **54 times** across `aos/code/`, and `pathA_50_34_i_5rot/` alone holds
-six studies' output (`bounce`, `correlations`, `lut`, `wfs`, `psf`, `closedloop`).
+Joining rather than nesting is what makes D2 work: with a single data level the study can
+be outermost without any study having to carry a nested subtree. The directory name still
+says exactly what the product depends on, which was the point of the nesting.
 
-**This supersedes an earlier A/B/C formulation in this document** that had a single
-data axis and put the study level first. It was wrong on both counts: it missed
-`mi_name`, and see D2.
+**This supersedes an earlier A/B/C formulation in this document** that had a single data
+axis and no `mi_name`.
 
-### D2. Data axes stay outermost — `output/<param_set>/<mi_name>/<study>/` is kept
+### D2. Study outermost, one flattened data level — `output/<study>/<param_set>_<mi_name>/`
 
-**Reversed from an earlier draft of this document, which proposed inverting to
-`output/<study>/<param_set>/`. Do not invert.** That recommendation was made while
-believing there was one data axis; there are two.
+The study comes first, and the data axes are joined into a single directory name beneath
+it. Aaron's resolution, and it is better than either of the two layouts previously
+written here.
 
-With two axes, study-first means every study that depends on both has to carry a
-`<param_set>/<mi_name>/` subtree of its own. Six studies do
-(`bounce`, `correlations`, `lut`, `wfs`, `psf`, `closed_loop`), so the pair of axes gets
-duplicated six times over, and a MIW rebuild scatters its products across six trees
-instead of landing in one directory.
+The objection to putting the study first was that with two nested data axes, each of the
+six studies depending on both (`bounce`, `correlations`, `lut`, `wfs`, `psf`,
+`closed_loop`) would have to carry its own `<param_set>/<mi_name>/` subtree — duplicating
+the pair six times. **Joining the axes removes the objection entirely**: one level, so
+there is no subtree to duplicate.
 
-Keeping the data axes outermost has three concrete properties the inversion loses:
+What this buys:
 
-1. **A MIW build is one directory.** `pathA_50_34_i_5rot/` is the complete set of
-   products derived from that build — which is what makes it comparable against
-   `pathA_50_34_i/`, and comparing MIW builds is the point of much of the work.
-2. **Deleting a superseded `param_set` is one `rm -rf`**, which is how
-   `output/archive/` already works.
-3. **It is what the code does now.** `mi_name` is threaded through 54 call sites; the
-   inversion would rewrite every one for no gain.
+1. **The ragged axis becomes legible.** A study directory lists exactly the data sets it
+   was actually run against, so "not run" and "not applicable" stop looking alike.
+2. **A study's products are in one place**, which is how the work is actually read —
+   a study is the unit of investigation.
+3. **The directory name still states the dependence**, which was the only real merit of
+   nesting. `bounce/fam_danish_1_2_0_..._pathA_50_34_i_5rot/` is self-describing.
+4. **Kind-C studies need no exception** — they simply have no data level.
 
-The ragged-axis objection that motivated the inversion is real but is a **documentation**
-problem, not a layout problem — you cannot tell "not run" from "not applicable" by
-looking at the tree. D4 fixes it by naming each study's actual output path in its study
-doc, which costs nothing and does not move a single file.
+**Cost, accepted:** the products of one MIW build are no longer collected under a single
+directory, so comparing two builds means reading the same subdirectory name across several
+study directories, and deleting a superseded `param_set` becomes N removals rather than
+one. Both are scriptable
+(`find output -maxdepth 2 -type d -name '<param_set>_*'`), and deletion is a must-ask
+one-off rather than daily friction.
+
+**Prerequisite — shorten the names first (D9).** Joined naively, the current names give
+`fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x_pathA_50_34_i_5rot`, which is 58 characters and
+unreadable. The flattening should land *after* the renaming, not before, so the move
+happens once.
 
 ### D3. `aos/` keeps its current substructure
 
@@ -223,10 +233,56 @@ places at once**, with nothing marking which is live:
 Paths: `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/smatrix_vmode/` and
 `aos/output/smatrix_vmode/`.
 
-**Different files.** Under D1 the study is kind C — v-mode/DOF matrices derive from the
-S-matrix, not from a night's data — so the param_set-scoped copy is the stale leftover,
-consistent with the other being newer and larger. It moves to `smatrix/output/vmode/`
-and the stale copy is deleted (**must-ask**).
+**Different files.** The study's own doc settles which is live:
+`aos/docs/studies/smatrix_vmode.md` states that both scripts write to
+`output/smatrix_vmode/` at the top level, "not under a `param_set`", because the v-mode/DOF
+structure is a property of the OFC sensitivity matrix and the DOF scheme alone. So the
+param_set-scoped copies are stale leftovers from before that decision — consistent with
+being four weeks older and smaller. They are deleted (**must-ask**) and the top-level pair
+moves to `smatrix/output/vmode/`.
+
+### D9. Shorten `param_set` and `mi_name`, and retire the obsolete param_sets
+
+A prerequisite for D2, since the joined name is only readable if the parts are short.
+Naively joined today:
+
+```
+fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x_pathA_50_34_i_5rot     (58 characters)
+```
+
+**Scope measured, not estimated.** The current param_set name appears **96 times across 71
+files** — 27 `.yaml`, 23 `.py`, 14 `.md`, 7 `.ipynb`. The `.py` hits are hardcoded CLI
+defaults and module constants, not config reads, so a rename is a code sweep and not a
+one-line config edit. Seven of them are in **`optatmo/`**, reaching into `aos/output/` by
+absolute-ish relative path — a sibling topic breaks if the rename misses them.
+
+**The name is also inside the value-added database**, which is the part most likely to be
+forgotten:
+
+| table.column | stored value |
+|---|---|
+| `fam_variant.fam_variant_id` | `fam__fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x__batoid__z1toz6__50_34` |
+| `fam_variant.param_set` | `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` |
+| `fam_variant.fits_path` | absolute path containing the param_set name |
+| `state_variant.intrinsic_ref` | `pathA_50_34_i_5rot` — so `mi_name` is in there too |
+
+A rename therefore needs an `UPDATE` pass over those rows, or a rebuild, or the database
+stops joining to the files. `aos/code/fam_focus/run_fam_focus.py:101` hardcodes that
+`fam_variant_id` as `DEFAULT_FAM_VARIANT`.
+
+**What makes this cheap right now:** `mi_config.yaml` defines MI entries for only **one**
+param_set, with only **two** entries (`pathA_50_34_i` and `pathA_50_34_i_5rot`, the second
+reusing the first's grids via `build_from`). Five param_sets are defined in
+`param_sets.yaml` but four are superseded. So the flattening touches far fewer directories
+than the tree suggests — and the cost grows with every param_set and MI entry added.
+
+**Order of operations.** Retire the obsolete param_sets *first* (they need no rename at
+all), then rename, then flatten. Doing it in that order means the rename and the move each
+touch the smallest possible set of paths.
+
+Naming is Aaron's call. The constraint from D2 is only that
+`<param_set>_<mi_name>` stay legible at a glance — roughly 30 characters or so for the
+pair — and that the separator not be ambiguous, since both parts already contain `_`.
 
 ---
 
@@ -234,18 +290,32 @@ and the stale copy is deleted (**must-ask**).
 
 Each item is one commit. Verify imports after each before continuing.
 
-| # | work | touches | blocked? |
-|---|---|---|---|
-| 1 | Write the structure rule into the root `CLAUDE.md` (D1–D5) — the convention text, no file moves | `CLAUDE.md` | no |
-| 2 | Add the D4 header block to the 16 `aos/docs/studies/*.md` | 16 docs | no |
-| 3 | Create `value_added/`, move the 7 files, fix the **13** importing files, move the DB out of repo-root `output/` | `common/`, 13 files, `.gitignore` | **yes** |
-| 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | yes (same commit as 3) |
-| 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | ~9 files | **yes** |
-| 6 | Resolve the output collision (D8) — needs deletion approval | 2 output paths | yes |
-| 7 | ~~Invert the output tree~~ — **withdrawn**, see D2. No work to do. | — | — |
-| 8 | Prune the sparse/empty dirs — `notebooks/fam_focus/` and any created-but-unused | dirs only | no |
+Each item is one commit. Verify imports after each before continuing.
 
-Items 1, 2 and 8 are safe to start now — they touch no file the other session has open.
+| # | work | touches | state |
+|---|---|---|---|
+| 1 | Write the structure rule into the root `CLAUDE.md` (D1, D2, D5) | `CLAUDE.md` | **done** — `3bc0134` |
+| 2 | Add the D4 path header to the 16 `aos/docs/studies/*.md` | 16 docs | **done** — `3bc0134` |
+| 8 | Prune the empty dirs — `aos/notebooks/fam_focus/`, `aos/code/output/` | dirs only | **done** — approved 2026-09-18 |
+| 3 | Create `value_added/`, move the 7 files, fix the **13** importing files, move the DB out of repo-root `output/` | `common/`, 13 files, `.gitignore` | ready |
+| 4 | Move `miw_corner_intrinsic.py` → `aos/code/` | 2 files | ready (same commit as 3) |
+| 5 | Move `smatrix_vmode` → `smatrix/code/vmode/` + `notebooks/vmode/` (D7) | ~9 files | ready |
+| 6 | Resolve the output collision (D8) — delete the two stale param_set-scoped PDFs | 2 output paths | needs deletion approval |
+| 9 | Retire the obsolete param_sets, then shorten `param_set` / `mi_name` (D9) | 71 files + DB rows | needs Aaron's names |
+| 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | after 9 |
+
+Items 3–6 are unblocked as of 2026-09-18: the other session's
+`aos/notebooks/smatrix_vmode/vmode_dof_ts_ofc-13Aug2026.ipynb` was deleted rather than
+kept, which was the one file standing in the way of item 5.
+
+Item 7 is last on purpose. It is the only item that rewrites output paths in code, and
+doing it before the renaming in item 9 would move every directory twice.
+
+The `**Output:**` headers added in item 2 describe the tree **as it is on disk today**,
+including the nested `<param_set>/<mi_name>/` form in seven of them
+(`bounce`, `closed_loop`, `correlations`, `cwfs`, `lut`, `miw`, `psf`). They are accurate
+now and deliberately not written in the future layout — item 7 updates them as part of the
+move, so a reader is never sent to a path that does not exist.
 
 The 13 files needing the `efd_db` import edit in item 3:
 
@@ -280,33 +350,33 @@ cd ~/notebooks/rubin-work && grep -rl "efd_db" --include='*.py' --include='*.ipy
   | grep -v ipynb_checkpoints | grep -v '^./common/efd_db.py' | sort
 ```
 
-## What is blocked, and by what
+## Where this stands
 
-**Items 3–7 wait for the other session to finish.** As of 2026-09-18 that session has
-largely landed — from 16 modified files down to:
+**The other-session blocker is cleared.** As of 2026-09-18 the only remaining uncommitted
+work is two `aos/notebooks/correlations/` notebooks, which no queued item touches.
 
-```
- M aos/notebooks/correlations/corner_z4_vs_temperature_science.ipynb
-?? aos/notebooks/correlations/querying_efd_consdb.ipynb
-?? aos/notebooks/smatrix_vmode/vmode_dof_ts_ofc-13Aug2026.ipynb
-```
+Tag **`pre-value-added-reorg-2026-09-18`** at `3bc0134` marks the tree before any file or
+output moves — the point to return to if a move goes wrong.
 
-The third is inside `aos/notebooks/smatrix_vmode/`, which **item 5 moves wholesale** — so
-item 5 in particular must not start while that notebook is uncommitted, or the move will
-either miss it or conflict.
-
-None of the 7 files moving to `value_added/`, and none of the 13 needing an import edit,
-is currently modified. So **item 3 is unblocked the moment that notebook lands**; it does
-not need the whole session's backlog cleared.
-
-**Check before starting items 3–7:**
+**Check before starting any move:**
 
 ```bash
 cd ~/notebooks/rubin-work && git status --porcelain
 ```
 
-Proceed when it shows nothing under `aos/notebooks/smatrix_vmode/`, `common/` or
-`aos/code/science_lut/`.
+Proceed when nothing is modified under `common/`, `aos/code/`, or the directory being
+moved.
+
+**Two decisions still needed from Aaron:**
+
+1. **Item 6** — delete the two stale param_set-scoped `vmode_dof_matrix_*.pdf` copies
+   (D8). A deletion, so it is a must-ask.
+2. **Item 9** — the shortened `param_set` and `mi_name` names (D9). Everything about the
+   output layout is decided; only the strings are open.
+
+Also still open from the main plan's Part A, unchanged by this document: deleting the
+27 GB `aos/output/archive/`, the `FocalPlaneInterpolator.py` delete-or-demonstrate call,
+study splits for `smatrix`/`guider`/`optatmo`/`filters`, and the seven empty topics.
 
 **Decision still outstanding:** item 6 deletes the stale duplicate PDFs, and item 7 of
 the main plan's Part A proposes deleting the 27 GB `aos/output/archive/`. Both are

@@ -398,25 +398,35 @@ Points to get right in this repo:
 - Notebooks should use a variable like `output_dir` in the Parameters cell to set the output path
 - Name output files as `{topic}_{description}_{date_or_dayobs}.{ext}`
 
-**Where a product goes: the path names the data the product depends on.** Code is
-organized by *what question is being asked* (the study); output is organized by *the data
-the question was asked of*, which is a different axis — so the output tree is deliberately
-**not** a mirror of `code/`. The data axes go outermost, most general first, and the study
-is the innermost level:
+**Where a product goes: the study first, then the data it depends on.** Code is organized
+by *what question is being asked* (the study); output is organized by the study **and the
+data the question was asked of**. There is exactly one data level, and when a product
+depends on more than one data axis those axes are **joined into one directory name**
+rather than nested:
 
 ```
-output/<data axis 1>/<data axis 2>/<study>/     # depends on both
-output/<data axis 1>/<study>/                   # depends on one
-output/<study>/                                 # depends on neither
+output/<study>/<axis1>_<axis2>/    # depends on two data axes
+output/<study>/<axis1>/           # depends on one
+output/<study>/                   # depends on neither
 ```
 
 A product that depends on nothing but the optical prescription, a design matrix, or a
 database sits at `output/<study>/` with no data level at all.
 
+Joining rather than nesting is what keeps the study outermost: no study has to carry a
+nested subtree, so a study directory lists exactly the data sets it was actually run
+against — which is what tells you "not run" from "not applicable". The directory name
+still states the full dependence.
+
 In `aos/` the two axes are `param_set` (a Butler collection paired with a processing
-variant) and `mi_name` (which MIW build was used) — see `aos/README.md` "Output layout"
-for the worked tree. A topic with one data axis uses one level; most topics outside `aos/`
-have none.
+variant) and `mi_name` (which MIW build was used). A topic with one data axis uses one
+level; most topics outside `aos/` have none.
+
+**`aos/output/` does not follow this yet** — it is still
+`output/<param_set>/<mi_name>/<study>/`, and the conversion is queued behind a renaming of
+the param_sets (`notes/status/step1_structure_decisions.md`, items 9 then 7). Until it
+lands, read the actual tree from `aos/README.md` "Output layout", and put new output where
+the neighbouring products already are rather than half-converting a directory.
 
 Two rules that follow, and that past work got wrong:
 
