@@ -13,9 +13,14 @@ concatenating the archived chunk files and compares:
   * donuts         — row count + order-independent per-column summary stats
                      (per-donut rows are hard to align 1:1)
 
+The archive it was written against, `output-archive-2026-06-11`, exists only under
+/sdf/group (not in the home checkout), and the param_sets it held have been retired, so
+this script no longer has a reference point for them.  It still runs against any archive
+directory in that per-chunk flat-file layout.
+
 Run on the RSP (needs pyarrow).  Examples:
   python code/compare_to_archive.py --archive /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output-archive-2026-06-11
-  python code/compare_to_archive.py --archive ../output-archive-2026-06-11 --param-set fam_danish_v1_triplets_bin_2x
+  python code/compare_to_archive.py --archive /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output-archive-2026-06-11 --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 """
 import argparse
 from pathlib import Path

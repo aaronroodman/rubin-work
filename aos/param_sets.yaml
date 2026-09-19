@@ -8,25 +8,24 @@
 #   fam_collections:  Butler collection name(s)
 #   fam_programs:     Science program names (test blocks)
 #   day_obs_min/max:  Date range covered by the collection (optional)
+#
+# Naming: new param_sets get a SHORT name — `danish_1_3`, not
+# `fam_danish_1_3_0_wep17_8_0_refitWCS_bin2x`.  The name appears in output paths, in
+# value_added DB rows (fam_variant.fam_variant_id / .param_set / .fits_path,
+# state_variant.intrinsic_ref) and in every script and doc that names a param_set, so a
+# long one is expensive to carry and expensive to change.  Put the wep / donut_viz / bin
+# detail in `description` and `fam_collections`, which is where it is actually read from.
+# The two names below predate this convention and keep their long form: renaming them
+# would touch 71 references across five topics plus a DB UPDATE pass, and
+# fam_danish_1_0_wep17_3_0_bin2x is frozen provenance (see below).
 
-fam_danish_v1_triplets_bin_1x:
-  description: "Mar-May 2026, embargo repo, Danish v1.0 triplets bin 1x"
-  butler_repo: /repo/embargo
-  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
-  fam_collections:
-    - aos_fam_danish_v1_triplets_bin_1x
-  day_obs_min: 20260315
-  day_obs_max: 20260430
-
-fam_danish_v1_triplets_bin_2x:
-  description: "Mar-May 2026, embargo repo, Danish v1.0 triplets (bin=2 default)"
-  butler_repo: /repo/embargo
-  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
-  fam_collections:
-    - aos_fam_danish_v1_triplets_bin_2x
-  day_obs_min: 20260315
-  day_obs_max: 20260430
-
+# SUPERSEDED as a working param_set by fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x, but kept
+# and NOT renamed: this name is the recorded provenance of the local MIW build staged at
+# aos/calibration/miw/intrinsic_split_maps_v1.parquet (see its .provenance.yaml, tracked in
+# git) and of the two-epochs tech note (notes/aos-measured-intrinsics/provenance.md).  Both
+# must keep resolving to this collection.  The official MIW is Guillem's, built by
+# ts_intrinsic_wavefront and read from the Butler, not this one.  Its chunks are disabled in
+# snake_config.yaml and its output sits in output/archive/, so nothing rebuilds it.
 fam_danish_1_0_wep17_3_0_bin2x:
   description: "Mar-May 2026, /repo/main, Danish 1.0 wep 17.3.0 dv 4.2.0 bin x2 paired"
   butler_repo: /repo/main
@@ -42,17 +41,6 @@ fam_danish_1_0_wep17_3_0_bin2x:
     wep17_3_0: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2
   # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_0_wep17_3_0_bin2x
-  day_obs_min: 20260315
-  day_obs_max: 20260531
-
-fam_danish_1_1_1_wep17_3_0_bin2x:
-  description: "Mar-May 2026, /repo/main, Danish 1.1.1 wep 17.3.0 dv 4.2.0 bin x2 paired; reuse RSO-582 donut stamps"
-  butler_repo: /repo/main
-  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
-  fam_collections:
-    - LSSTCam/runs/aos/fam/danish_1_1_1/wep_17_3_0/dv_4_2_0/bin_x2/paired
-  # Collection name has slashes — set an explicit filename-safe phrase
-  collection_phrase: aos_fam_danish_1_1_1_wep17_3_0_bin2x
   day_obs_min: 20260315
   day_obs_max: 20260531
 

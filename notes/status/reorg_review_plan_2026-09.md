@@ -120,24 +120,27 @@ there.
 Ordered by benefit per unit of disruption. A1–A3 are mechanical and safe; A4–A6 are
 judgement calls; A7 needs Aaron's decisions.
 
-### A1. Reclaim 27 GB and make output provenance automatic — **needs Aaron's approval**
+### A1. Reclaim 17.5 GB and make output provenance automatic — **approved 2026-09-19**
 
-`aos/output/archive/` holds four superseded `param_set`s, 27 GB, last built June 2026,
-documented as "nothing current reads them". Deleting files is a hard must-ask, so this
-is a decision, not an action. The commands are prepared but **not run**:
+`aos/output/archive/` holds 27 GB of superseded `param_set` output, last built June 2026,
+documented as "nothing current reads them". Aaron approved deleting the three retired
+`param_set`s plus the 2025 orphan, and **keeping** `fam_danish_1_0_wep17_3_0_bin2x` (9.2 GB):
+that name is the recorded provenance of the staged v1 MIW and of the two-epochs tech note,
+so its data stays with it. Deleting files is a hard must-ask and `Bash(rm:*)` is in the
+settings deny list, so these are Aaron's to run:
 
 ```bash
 du -sh /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive
-rm -rf /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive/fam_danish_1_0_wep17_3_0_bin2x
 rm -rf /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive/fam_danish_1_1_1_wep17_3_0_bin2x
 rm -rf /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive/fam_danish_v1_triplets_bin_1x
 rm -rf /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive/fam_danish_v1_triplets_bin_2x
 rm -rf /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive/fam_danish_1_2_0_wep17_7_0_2025
+du -sh /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/archive
 ```
 
-A cheaper middle option: delete only the `donuts.parquet` inside each archived
-`param_set` (the 3.5 + 3.5 + 3.1 + 1.6 GB per-donut tables, ~12 GB) and keep the small
-derived products, which are what one would actually want to consult.
+Frees 17.5 GB of the 27 GB; the 9.2 GB `fam_danish_1_0_wep17_3_0_bin2x` remains. Note this
+is group space (751 GB free of 932 GB), so it is housekeeping rather than quota relief —
+unlike item 10, which was on the 87%-full `/sdf/home`.
 
 **The durable fix** is a provenance sidecar, written by the code rather than by hand.
 Add to `common/utils.py` a `write_provenance(outdir, **fields)` that drops a

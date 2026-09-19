@@ -15,7 +15,7 @@ Usage:
     python code/check_chunk.py chunk1
 
     # Survey one chunk by param_set + explicit dates:
-    python code/check_chunk.py --param-set fam_danish_v1_triplets_bin_2x \\
+    python code/check_chunk.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \\
         --day-obs-min 20260315 --day-obs-max 20260327
 
     # Override the ConsDB URL (e.g. when running from outside the RSP):
