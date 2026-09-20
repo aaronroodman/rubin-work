@@ -1,64 +1,68 @@
 # rubin-work
 
-Personal Jupyter notebooks and scripts for Vera C. Rubin Observatory work, covering Active Optics, PSF analysis, Camera, Guider, and related topics.
+Analysis and development for the Vera C. Rubin Observatory, organized by topic: the Active
+Optics System (AOS) and wavefront sensing, point spread function (PSF) and image quality,
+the guider, the camera, optical design, survey and astrometry studies, and the
+value-added telemetry database that supports them. The work runs on the Rubin Science
+Platform (RSP) at both the Summit and the United States Data Facility (USDF), and locally.
 
-## Repository Structure
+Each topic directory holds `code/`, `notebooks/` and `output/`, plus `docs/` where it has
+prose documentation. Most carry a `README.md` describing their scope — read it before
+working in an unfamiliar topic.
 
-```
-rubin-work/
-├── README.md
-├── .gitignore
-├── .gitattributes
-├── setup_env.sh          # Run once after cloning (adds gitpull/gitpush aliases)
-├── sync.sh               # Pull/push helper (auto-stash, conflict guidance)
-├── requirements.txt      # Python deps beyond what RSP provides
-├── CLAUDE.md             # Instructions for Claude Code
-│
-├── aos/                  # Active Optics System
-│   ├── *.ipynb           # Notebooks live directly in topic dir
-│   ├── code/             # Saved Python code
-│   └── output/           # Small curated outputs (git-tracked)
-│
-├── camera/               # Camera analysis
-│   ├── code/
-│   └── output/
-│
-├── psf/                  # Point Spread Function
-│   ├── code/
-│   └── output/
-│
-├── guider/               # Guider
-│   ├── code/
-│   └── output/
-│
-├── starcolor/            # Star color / photometry
-│   ├── code/
-│   └── output/
-│
-├── des/                  # Dark Energy Survey related
-│   ├── code/
-│   └── output/
-│
-├── survey/               # Survey strategy / operations
-│   ├── code/
-│   └── output/
-│
-├── wcs/                  # World Coordinate System
-│   ├── code/
-│   └── output/
-│
-├── blocks/               # Observing blocks
-│   ├── code/
-│   └── output/
-│
-├── common/               # Shared utilities across all topics
-│   ├── __init__.py
-│   └── utils.py
-│
-└── scratch/              # Work-in-progress, not yet organized
-```
+## Topics
 
-## Quick Start
+AOS and wavefront sensing:
+
+| topic | content |
+|---|---|
+| [`aos/`](aos/README.md) | The main AOS topic: construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data, FAM coadds, Double Zernike (DZ) fitting, look-up table (LUT) development, and FAM-versus-corner-wavefront-sensor comparisons |
+| [`smatrix/`](smatrix/README.md) | The AOS double-Zernike sensitivity matrix computed with `batoid_rubin`, compared against the matrix shipped in `ts_ofc`, and the v-mode structure of its singular value decomposition |
+| [`wfs/`](wfs/README.md) | Corner wavefront sensor (CWFS) studies: sky-foreground shape, inspection of instrument-signature-removed images, and the `ts_wep` dataflow |
+| [`olr/`](olr/README.md) | Open Loop Reproduction — a Snakemake pipeline that reproduces the open-loop wavefront from a night of AOS operations |
+| [`optatmo/`](optatmo/README.md) | Standalone optics-plus-atmosphere PSF moment tools; a differentiable rebuild of the ideas in the PIFF `optatmo3` branch |
+
+Image quality, PSF and instrument:
+
+| topic | content |
+|---|---|
+| [`psf/`](psf/README.md) | PSF simulation, measurement and analysis |
+| [`nightlyiq/`](nightlyiq/README.md) | Image quality image-by-image for a given `day_obs`, combining science-image PSF metrics with guider, AOS and pointing diagnostics |
+| [`guider/`](guider/README.md) | The guider system: region-of-interest placement, star catalog matching and pointing diagnostics |
+| `camera/` | LSST Camera analysis |
+| [`blocks/`](blocks/README.md) | Identifying and tabulating observing blocks and test programs, and trending image-quality metrics across them |
+
+Optical design and prescription, needing no data:
+
+| topic | content |
+|---|---|
+| [`optics/`](optics/README.md) | Batoid ray-trace studies of the optical system: telecentricity and pupil geometry |
+| [`filters/`](filters/README.md) | Feasibility of multilayer dielectric interference filters for future narrow- and medium-band imaging, with automatic differentiation on the layer thicknesses |
+
+Survey, astrometry and other:
+
+| topic | content |
+|---|---|
+| `survey/` | Survey strategy and operations |
+| `wcs/` | World Coordinate System studies |
+| `astrometry/` | Astrometric studies |
+| `starcolor/` | Stellar color and photometry |
+| `des/` | Dark Energy Survey comparisons |
+| `alerts/` | Alert stream studies |
+
+Support:
+
+| directory | content |
+|---|---|
+| [`value_added/`](value_added/README.md) | A curated DuckDB database of per-exposure engineering telemetry, derived quantities and recovered optical state, plus the builders that maintain it. Other topics read it rather than refetching |
+| [`common/`](common/README.md) | Shared utility code used across topics, imported by inserting the repository root on `sys.path` |
+| [`notes/`](notes/README.md) | Working notes for Slack posts and Summit-Operations tech notes; each note is a self-contained dated directory drafted in plain Markdown |
+| `scratch/` | Work in progress, not yet organized |
+
+`CLAUDE.md` at the repository root carries the conventions Claude Code follows, with
+per-topic `CLAUDE.md` files adding scoping rules for `aos/` and `guider/`.
+
+## Quick start
 
 ### First time setup
 
@@ -68,59 +72,87 @@ cd rubin-work
 ./setup_env.sh
 ```
 
-### Daily workflow on RSP (Summit or USDF)
+`setup_env.sh` adds the `gitpull` and `gitpush` aliases and configures credential caching
+for 24 hours.
+
+### Daily workflow on the RSP
 
 ```bash
 cd ~/notebooks/rubin-work
-gitpull                                 # Get latest changes
+gitpull                                 # get latest changes
 # ... do your work ...
-gitpush "description of changes"        # Commit and push
+gitpush "description of changes"        # commit and push
 ```
 
-The `gitpull` and `gitpush` aliases are set up by `setup_env.sh` (see below). You can also use `./sync.sh pull` and `./sync.sh push` directly.
+`gitpull` stashes any local changes, rebases on the remote and restores the stash, showing
+the affected files and resolution steps on a conflict. `gitpush` stages, commits and pushes,
+including any previously committed but unpushed commits. `./sync.sh pull` and
+`./sync.sh push` do the same thing directly.
 
-`gitpull` automatically stashes any local changes, rebases on the remote, and restores the stash. If there are merge conflicts, it shows the affected files and resolution steps.
+### Authentication on the RSP
 
-`gitpush` stages all changes, commits, and pushes. It also pushes any previously committed but unpushed commits.
+Use a GitHub fine-grained personal access token scoped to this repository: GitHub →
+Settings → Developer Settings → Personal Access Tokens → Fine-grained tokens, with
+read/write access to the repository. On the first push, give your GitHub username and the
+token as the password.
 
-### Working with Claude Code
+## Conventions
 
-Launch Claude Code from the repo root, so that `common/` and the git context stay
-visible. `CLAUDE.md` at the root carries the conventions it follows; per-topic
-`CLAUDE.md` files add scoping rules for `aos/` and `guider/`.
+The root `CLAUDE.md` is the full reference; the essentials are below.
 
-### Authentication on RSP
+### Code and notebook layout
 
-Use a GitHub Personal Access Token (fine-grained, scoped to this repo):
+Code is organized by **study** — a separable project inside a topic — at
+`<topic>/code/<study>/`, with its notebooks alongside at `<topic>/notebooks/<study>/`. A
+topic with one study can use a flat `<topic>/notebooks/`. Nothing but `README.md` and
+`CLAUDE.md` belongs loose in a topic root.
 
-1. GitHub → Settings → Developer Settings → Personal Access Tokens → Fine-grained tokens
-2. Create token with read/write access to this repository
-3. On first git push, enter your GitHub username and the token as password
-4. The setup_env.sh script configures credential caching for 24 hours
+Modules shared across studies within a topic sit flat at `<topic>/code/`; modules shared
+across topics go in `common/`. The repository is not an installed package and scripts run
+in script mode, so imports bootstrap by inserting the repository root on `sys.path` via
+`pathlib.Path(__file__).resolve().parents[N]` — never a hardcoded absolute path, which is
+RSP-only and fails silently in a batch job.
 
-### Notebook Template
+Notebooks use descriptive snake_case names and follow the template in
+`common/notebook_template.ipynb`: a header cell with title, author, dates, status,
+keywords and description; a change log; a table of contents; a parameters section
+collecting every configurable value at the top; and a helper-functions section.
 
-All notebooks should follow the standard template in `common/notebook_template.ipynb`, which includes:
+### Markdown documentation
 
-* Header cell with title, author, date, status, keywords, description, and references
-* Change log
-* Table of Contents with anchor links
-* Parameters section (all configurable values at the top)
-* Helper Functions section
-* Standard sections for Data Access, Analysis, Results
+Durable reference — conventions, derivations, investigation writeups — lives in
+`<topic>/docs/`. Transient working state such as handoffs, todo lists and review backlogs
+lives in `<topic>/docs/status/`, and repository-wide working state in `notes/status/`.
+Keeping the two apart is the point: a stale handoff must never be mistaken for a live
+convention. Every document opens with a status line stating whether it can be trusted, and
+is indexed in its topic's `README.md`.
 
 ### Output conventions
 
-There are two places for notebook outputs:
+Output is **not** in git — `.gitignore` excludes the contents of every `<topic>/output/`.
+On the USDF RSP several of those directories are symlinks to
+`/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/<topic>/output/` for disk quota, and
+output is pulled down to the laptop with the `sync_rubin_work_output` rsync wrapper there.
+Large or ephemeral intermediates go to `~/notebooks/rubin-data/<topic>/` instead.
 
-* **`<topic>/output/` (in git)** — Small, curated outputs worth preserving: summary CSV tables, key plots for papers/presentations. These are git-tracked but large binary formats are still excluded by `.gitignore`.
+Within a topic's `output/`, products are laid out **study outermost with exactly one data
+level**, and where a product depends on more than one data axis those axes are joined into
+a single directory name rather than nested:
 
-* **`~/notebooks/rubin-data/<topic>/` (on RSP, NOT in git)** — Large or ephemeral outputs: FITS files, big parquet tables, intermediate results. Create this directory structure on each RSP instance. Notebooks should write large outputs here. Run `./list_notebooks.sh` on each RSP to see what you have.
+```
+output/<study>/<axis1>_<axis2>/    # depends on two data axes
+output/<study>/<axis1>/            # depends on one
+output/<study>/                    # depends on neither
+```
 
-The `list_notebooks.sh` script inventories all `.ipynb` files in your RSP home directory to help with triage and organization.
+A product depending on nothing but the optical prescription, a design matrix or a database
+sits at `output/<study>/` with no data level. Joining rather than nesting keeps the study
+outermost, so a study directory lists exactly the data sets it was run against — which is
+what distinguishes "not run" from "not applicable". In `aos/` the two axes are the
+`param_set` (a Butler collection paired with a processing variant) and the `mi_name`
+(which MIW build was used); most topics have none.
 
-### Notes
+Notebook outputs are committed to git without stripping, so plots and commentary are
+preserved across machines. Large data files — FITS, Parquet, HDF5 — are excluded.
 
-* Notebook outputs are committed to git (no stripping) so plots and commentary are preserved across machines
-* Large data files (FITS, Parquet, HDF5) are excluded via `.gitignore`
-* The `scratch/` directory is for work-in-progress
+`./list_notebooks.sh` inventories the `.ipynb` files in an RSP home directory, for triage.

@@ -5,7 +5,7 @@ root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here)
 
 **This file is not a description of the pipeline.** `README.md` indexes the topic and
 `docs/miw_pipeline.md` is the reference for what every Snakemake step does, the config
-files, and the output layout. `docs/studies.md` maps the sixteen studies to their code.
+files, and the output layout. `docs/studies.md` maps the fifteen studies to their code.
 What follows is only the things that are easy to get wrong.
 
 ## Code layout

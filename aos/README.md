@@ -99,7 +99,7 @@ reduced set has **specific indices** and is not the first 22 — use `aos_state.
 
 ## Studies
 
-The work divides into sixteen studies, ordered here from the most general to the most
+The work divides into fifteen studies, ordered here from the most general to the most
 specialized. Each has a detailed document under `docs/studies/`;
 [`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
 outputs and current state of every one. Several of these studies project onto the Optical
@@ -217,7 +217,7 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/studies.md`](docs/studies.md) | **inventory of the sixteen analysis studies** — the map for this topic |
+| [`docs/studies.md`](docs/studies.md) | **inventory of the fifteen analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
 | [`docs/telemetry.md`](docs/telemetry.md) | **telemetry inventory** — every quantity, its ConsDB/EFD name, measured coverage on FAM exposures, units, and which source to prefer |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
