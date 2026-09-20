@@ -176,7 +176,21 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--param-set", required=True, dest="param_set")
     ap.add_argument("--mi-name", default="pathA_50_34_i", dest="mi_name")
-    ap.add_argument("--output-dir", default=None, dest="output_dir")
+    ap.add_argument("--output-dir", default=None, dest="output_dir",
+                    help="param_set base dir the other paths hang off "
+                         "(default: output/<ps>)")
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument("--tables-dir", default=None, dest="tables_dir",
+                    help="dir holding the phase-1 donuts/visits.parquet "
+                         "(default: output/<ps>)")
+    ap.add_argument("--miw-dir", default=None, dest="miw_dir",
+                    help="dir holding the per-donut zk_intrinsic.parquet "
+                         "(default: output/<ps>/<mi>)")
+    ap.add_argument("--out-dir", default=None, dest="out_dir",
+                    help="directory to write into "
+                         "(default: output/<ps>/<mi>/plots)")
     ap.add_argument("--bin-deg", type=float, default=1.0, dest="bin_deg")
     ap.add_argument("--min-triplets", type=int, default=6, dest="min_triplets")
     ap.add_argument("--grid-n", type=int, default=24, dest="grid_n")
@@ -189,11 +203,14 @@ def main():
     args = ap.parse_args()
 
     base = args.output_dir or f"output/{args.param_set}"
-    donuts = f"{base}/donuts.parquet"
-    visits_p = f"{base}/visits.parquet"
-    sidecar = f"{base}/{args.mi_name}/zk_intrinsic.parquet"
-    out_pdf = f"{base}/{args.mi_name}/plots/fam_coadd_miw_maps.pdf"
-    os.makedirs(os.path.dirname(out_pdf), exist_ok=True)
+    tables = args.tables_dir or base
+    miw = args.miw_dir or f"{base}/{args.mi_name}"
+    out_dir = args.out_dir or f"{base}/{args.mi_name}/plots"
+    donuts = f"{tables}/donuts.parquet"
+    visits_p = f"{tables}/visits.parquet"
+    sidecar = f"{miw}/zk_intrinsic.parquet"
+    out_pdf = f"{out_dir}/fam_coadd_miw_maps.pdf"
+    os.makedirs(out_dir, exist_ok=True)
 
     visits = pd.read_parquet(visits_p, columns=[
         "day_obs", "seq_num", "alt", "az", "rotator_angle", "science_program", "band"])

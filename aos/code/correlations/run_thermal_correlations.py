@@ -222,17 +222,21 @@ def _vmode_scatter_pages(V, thermal_df, present_tv, pdf, ncols):
         pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
 
 
-def _mode_section(df, present_tv, prefix, cfg, base, pdf, annot_r, ncols):
+def _mode_section(df, present_tv, prefix, cfg, tables, pdf, annot_r, ncols):
     """Build the SVD, project, and emit DOF/v-mode heatmaps + v-mode scatter.
     Returns summary rows; returns [] (with a printed note) if the SVD can't be
-    built (e.g. off-RSP where lsst.ts.ofc is unavailable)."""
+    built (e.g. off-RSP where lsst.ts.ofc is unavailable).
+
+    ``tables`` is the directory holding the phase-1 ``visits.parquet``, whose
+    ``nollIndices`` column sets the OFC SVD's Zernike set.
+    """
     from astropy.table import QTable
     b = cfg['build']
     k_min, k_max = int(b['k_min']), int(b['k_max'])
     n_dof_spec = cfg.get('n_dof')
     n_keep_spec = cfg['n_keep']
     ofc_norm_yaml = b.get('ofc_normalization_yaml')
-    visits = QTable.read(str(base.parent / 'visits.parquet'))
+    visits = QTable.read(str(tables / 'visits.parquet'))
     if 'nollIndices' not in visits.colnames:
         raise RuntimeError('visits.parquet has no nollIndices column')
     iZs = [int(j) for j in np.asarray(visits['nollIndices'][0]).tolist()]
@@ -264,6 +268,15 @@ def main():
     ap.add_argument('--analysis-config', default=None)
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--fits', default=None)
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 visits.parquet '
+                         '(default: output/<ps>)')
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into '
+                         '(default: output/<ps>/<mi>/correlations)')
     args = ap.parse_args()
 
     sec = {**DEFAULT, **mc.analysis_section(
@@ -278,7 +291,9 @@ def main():
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
-    out_dir = base / 'correlations'; out_dir.mkdir(parents=True, exist_ok=True)
+    tables = Path(args.tables_dir) if args.tables_dir else base.parent
+    out_dir = Path(args.out_dir) if args.out_dir else base / 'correlations'
+    out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[thermal_correlations] {fits_path}')
 
     df = pd.read_parquet(fits_path)
@@ -306,7 +321,8 @@ def main():
         rows += _dz_heatmap(df, dz_cols, present_tv, prefix, pdf, annot_r)   # 1
         _dz_scatter_pages(df, present_tv, prefix, pdf, ncols)               # 2
         try:                                                               # 3 + 4
-            rows += _mode_section(df, present_tv, prefix, cfg, base, pdf, annot_r, ncols)
+            rows += _mode_section(df, present_tv, prefix, cfg, tables, pdf,
+                                  annot_r, ncols)
         except Exception as e:
             print(f'  DOF/v-mode section skipped ({type(e).__name__}: {e}) — '
                   f'needs lsst.ts.ofc (RSP)')

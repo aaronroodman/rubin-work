@@ -127,6 +127,18 @@ def main():
     ap.add_argument('--config', default=None)
     ap.add_argument('--analysis-config', default=None)
     ap.add_argument('--output-root', default='output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 donuts/visits.parquet '
+                         '(default: output/<ps>)')
+    ap.add_argument('--miw-dir', default=None,
+                    help='dir holding the per-donut zk_intrinsic.parquet '
+                         '(default: output/<ps>/<mi>)')
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into '
+                         '(default: output/<ps>/<mi>/wfs_mimic)')
     args = ap.parse_args()
     coord = args.coord_sys
 
@@ -139,11 +151,13 @@ def main():
               if sec.get('rotator_keep') else None)
     base_ps = Path(args.output_root) / args.param_set
     base_mi = base_ps / args.mi_name
-    out = base_mi / 'wfs_mimic'
+    tables = Path(args.tables_dir) if args.tables_dir else base_ps
+    miw = Path(args.miw_dir) if args.miw_dir else base_mi
+    out = Path(args.out_dir) if args.out_dir else base_mi / 'wfs_mimic'
     out.mkdir(parents=True, exist_ok=True)
 
     # ---- measured per-donut zk (file order) ----
-    dd = pq.read_table(str(base_ps / 'donuts.parquet')).to_pandas()
+    dd = pq.read_table(str(tables / 'donuts.parquet')).to_pandas()
     zk_meas = np.stack(dd[f'zk_{coord}'].values).astype(float)        # (N, nzk_m)
     day = np.asarray(dd['day_obs']).astype(int)
     seq = np.asarray(dd['seq_num']).astype(int)
@@ -151,7 +165,7 @@ def main():
     thy_deg = np.rad2deg(np.asarray(dd[f'thy_{coord}'], dtype=float))
 
     # ---- visits: rotator angle per image + measured Noll ordering ----
-    vt = pq.read_table(str(base_ps / 'visits.parquet')).to_pandas()
+    vt = pq.read_table(str(tables / 'visits.parquet')).to_pandas()
     rot_lut = {(int(r.day_obs), int(r.seq_num)): float(r.rotator_angle)
                for r in vt.itertuples()}
     if 'nollIndices' in vt.columns:
@@ -160,7 +174,7 @@ def main():
         noll_m = list(range(4, 4 + zk_meas.shape[1]))
 
     # ---- intrinsic sidecar (row-aligned to donuts.parquet) ----
-    sc = pq.read_table(str(base_mi / 'zk_intrinsic.parquet'))
+    sc = pq.read_table(str(miw / 'zk_intrinsic.parquet'))
     md = sc.schema.metadata or {}
     noll_i = (np.frombuffer(md[b'nollIndices'], dtype=int).tolist()
               if b'nollIndices' in md else noll_m)

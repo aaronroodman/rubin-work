@@ -73,6 +73,12 @@ def parse_args():
                     help='default: output/<param_set>/dzfit')
     ap.add_argument('--output-root', default=None,
                     help='default: <topic>/output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set key, so the phase-1 table location is
+    # supplied directly rather than derived from it.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 donuts/fits/visits.parquet '
+                         '(default: output/<param_set>)')
     ap.add_argument('--skip-metrics', action='store_true',
                     help='reuse an existing dz_fit_check.parquet and only replot')
     ap.add_argument('--max-visits', type=int, default=None,
@@ -583,13 +589,14 @@ def main():
     topic = pathlib.Path(__file__).resolve().parents[2]
     out_root = pathlib.Path(args.output_root) if args.output_root else topic / 'output'
     ps_dir = out_root / args.param_set
+    tables = pathlib.Path(args.tables_dir) if args.tables_dir else ps_dir
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
                else ps_dir / 'dzfit')
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    donuts_path = ps_dir / 'donuts.parquet'
-    fits_path = ps_dir / 'fits.parquet'
-    visits_path = ps_dir / 'visits.parquet'
+    donuts_path = tables / 'donuts.parquet'
+    fits_path = tables / 'fits.parquet'
+    visits_path = tables / 'visits.parquet'
     for p in (donuts_path, fits_path):
         if not p.exists():
             raise SystemExit(f'missing input: {p}')

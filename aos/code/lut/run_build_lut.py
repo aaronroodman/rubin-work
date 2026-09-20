@@ -87,6 +87,12 @@ def main():
                     help='override lut.n_keep / top-level n_keep')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--out-dir', default=None)
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set key, so the phase-1 table location is
+    # supplied directly rather than derived from it.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 fits/visits.parquet '
+                         '(default: output/<ps>)')
     args = ap.parse_args()
 
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
@@ -113,8 +119,9 @@ def main():
     programs = cfg.get('programs')
     ofc_norm_yaml = b.get('ofc_normalization_yaml')
 
-    base = Path(args.output_root) / args.param_set
-    out_dir = Path(args.out_dir) if args.out_dir else base / args.mi_name / 'lut'
+    ps_base = Path(args.output_root) / args.param_set
+    base = Path(args.tables_dir) if args.tables_dir else ps_base
+    out_dir = Path(args.out_dir) if args.out_dir else ps_base / args.mi_name / 'lut'
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[build_lut] {args.param_set} / {args.mi_name}  -> {out_dir}')
     print(f'  n_dof={n_dof_spec}  n_keep={n_keep_spec}  reduce={reduce_how}  '

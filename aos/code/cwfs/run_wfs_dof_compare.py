@@ -373,9 +373,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
     ap.add_argument('--mi-name', default='pathA_50_34_i_5rot')
-    ap.add_argument('--wfs-name', required=True,
-                    help='CWFS variant key; reads/writes under output/<ps>/wfs/<wfs-name>/ '
-                         'and output/<ps>/<mi>/wfs/<wfs-name>/')
+    ap.add_argument('--wfs-name', required=True, help='CWFS variant key')
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--dz-prefix', default='z1toz6')
     ap.add_argument('--rcond', type=float, default=1e-2, help='pinv cutoff for the corner OFC inverse')
@@ -390,6 +388,22 @@ def main():
     ap.add_argument('--band', default='i', choices=['u', 'g', 'r', 'i', 'z', 'y'],
                     help='band for the GalSim OpticalPSF wavelength')
     ap.add_argument('--output-root', default='output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name / wfs_name keys, so each path this
+    # script needs can be supplied directly rather than derived from those keys.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 donuts/visits.parquet '
+                         '(default: output/<ps>)')
+    ap.add_argument('--miw-dir', default=None,
+                    help='dir holding the MIW-refit fits.parquet and the FAM '
+                         'per-donut zk_intrinsic.parquet (default: output/<ps>/<mi>)')
+    ap.add_argument('--wfs-dir', default=None,
+                    help='dir holding the ingested CWFS donuts.parquet '
+                         '(default: output/<ps>/wfs/<wfs-name>)')
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into; also holds the CWFS-corner '
+                         'zk_intrinsic.parquet sidecar '
+                         '(default: output/<ps>/<mi>/wfs/<wfs-name>)')
     args = ap.parse_args()
     from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd
     try:
@@ -398,22 +412,27 @@ def main():
         conv_fwhm = None
         print(f'[wfs_dof_compare] AOS_FWHM disabled (no convertZernikesToPsfWidth): {e}')
     coord = args.coord
-    base = Path(args.output_root) / args.param_set
-    bmi = base / args.mi_name
+    ps_base = Path(args.output_root) / args.param_set
+    mi_base = ps_base / args.mi_name
+    tables = Path(args.tables_dir) if args.tables_dir else ps_base
+    miw = Path(args.miw_dir) if args.miw_dir else mi_base
+    wfs_dir = Path(args.wfs_dir) if args.wfs_dir else ps_base / 'wfs' / args.wfs_name
+    out_dir = (Path(args.out_dir) if args.out_dir
+               else mi_base / 'wfs' / args.wfs_name)
     zc, txc, tyc = f'zk_{coord}', f'thx_{coord}', f'thy_{coord}'
     offsets = {} if args.no_offsets else DEFAULT_OFFSETS
 
     noll = [int(x) for x in np.asarray(
-        pq.read_table(str(base / 'visits.parquet'), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
+        pq.read_table(str(tables / 'visits.parquet'), columns=['nollIndices']).to_pandas()['nollIndices'].iloc[0])]
 
     # ---- FAM per-visit DZ fits (W built per SVD from its kj_grid below) ----
-    fits = pd.read_parquet(bmi / 'fits.parquet')
+    fits = pd.read_parquet(miw / 'fits.parquet')
     if 'visit_quality_pass' in fits.columns:    # fits.parquet now holds ALL visits
         fits = fits[fits['visit_quality_pass'].astype(bool)].reset_index(drop=True)  # nd>=170
     fam_key = {(int(d), int(s)): i for i, (d, s) in enumerate(zip(fits.day_obs, fits.seq_num))}
 
     # ---- CWFS corner donuts ----
-    cw = pq.read_table(str(base / 'wfs' / args.wfs_name / 'donuts.parquet'),
+    cw = pq.read_table(str(wfs_dir / 'donuts.parquet'),
                        columns=['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]).to_pandas()
     cw_zk = np.stack(cw[zc].values).astype(float)
     cw_thx = np.rad2deg(cw[txc].astype(float).values); cw_thy = np.rad2deg(cw[tyc].astype(float).values)
@@ -423,7 +442,7 @@ def main():
     # ---- CWFS MIW sidecar (row-aligned to wfs/donuts.parquet; built by
     #      run_make_intrinsic_sidecar --wfs-corner-height, i.e. the identical
     #      reconstruct_at path as the FAM sidecar, with the SW1/SW0 half-sensor Z4 height) ----
-    scf = bmi / 'wfs' / args.wfs_name / 'zk_intrinsic.parquet'
+    scf = out_dir / 'zk_intrinsic.parquet'      # beside this script's own output
     mi_sc = np.stack(pq.read_table(str(scf), columns=['zk_intrinsic_MI']).to_pandas()
                      ['zk_intrinsic_MI'].values).astype(float)
     md = pq.read_schema(str(scf)).metadata or {}
@@ -438,9 +457,9 @@ def main():
     fd_grp = fmi = None
     fam_dev = fam_thx = fam_thy = None
     try:
-        fd = pq.read_table(str(base / 'donuts.parquet'),
+        fd = pq.read_table(str(tables / 'donuts.parquet'),
                            columns=['day_obs', 'seq_num', zc, txc, tyc]).to_pandas()
-        scf_f = bmi / 'zk_intrinsic.parquet'
+        scf_f = miw / 'zk_intrinsic.parquet'
         fmi_raw = np.stack(pq.read_table(str(scf_f), columns=['zk_intrinsic_MI']).to_pandas()
                            ['zk_intrinsic_MI'].values).astype(float)
         mdf = pq.read_schema(str(scf_f)).metadata or {}
@@ -451,7 +470,7 @@ def main():
         # per-donut measured wavefront (aligned to noll) minus per-donut MIW
         fam_zk = np.stack(fd[zc].values).astype(float)             # (ndon, nZk_file)
         # align the measured zk columns to noll via the donut file's own nollIndices
-        ndon_md = pq.read_schema(str(base / 'donuts.parquet')).metadata or {}
+        ndon_md = pq.read_schema(str(tables / 'donuts.parquet')).metadata or {}
         noll_d = (np.frombuffer(ndon_md[b'nollIndices'], dtype=int).tolist()
                   if b'nollIndices' in ndon_md else noll_f)
         fam_zk = fam_zk[:, [noll_d.index(j) for j in noll]]
@@ -484,8 +503,8 @@ def main():
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
-    out = bmi / 'wfs' / args.wfs_name / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"wfs_dof_compare_{'nooffset' if args.no_offsets else 'offsets'}.pdf"
+    out_dir.mkdir(parents=True, exist_ok=True)
     ordn = np.arange(len(triplets))
     grid_pos = fp_grid(FP_RADIUS, GRID_STEP)                       # ~89-point focal-plane grid
     recon = {}                                                     # per-scheme DZ reconstructions for the hybrid page

@@ -78,6 +78,14 @@ def main():
     ap.add_argument('--analysis-config', default=None)
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--fits', default=None)
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so it supplies the path
+    # directly rather than having it derived from those keys.  Given, ALL
+    # products land here — including the two tables that otherwise go one level
+    # up (bounce_kj_stats and bounce_fwhm_metric).
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into '
+                         '(default: output/<ps>/<mi>/bounce)')
     ap.add_argument('--min-detectors', type=int, default=None,
                     help='Per-visit quality cut: keep visits with '
                          'n_detectors_with_min_donuts >= this (relaxes ONLY the '
@@ -94,7 +102,11 @@ def main():
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
-    out_dir = base / 'bounce'; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.out_dir) if args.out_dir else base / 'bounce'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # The two long-format tables sit beside the PDFs when --out-dir is given,
+    # and one level up in the legacy layout where out_dir is a 'bounce/' subdir.
+    tbl_dir = out_dir if args.out_dir else out_dir.parent
     print(f'[bounce] {fits_path}')
 
     import matplotlib
@@ -469,7 +481,7 @@ def main():
     # ---- differential correctable-FWHM metric ----
     if fwhm_rows:
         fdf = pd.DataFrame(fwhm_rows)
-        fdf.to_parquet(out_dir.parent / 'bounce_fwhm_metric.parquet')
+        fdf.to_parquet(tbl_dir / 'bounce_fwhm_metric.parquet')
         print('  correctable-FWHM metric [arcsec, median over focal plane]:')
         print('   ' + fdf.to_string(index=False).replace('\n', '\n   '))
         bar_cols = [c for c in ('fwhm_before', 'fwhm_after_50_34', 'fwhm_after_5_5')
@@ -492,7 +504,7 @@ def main():
         print('  wrote bounce_fwhm_metric.pdf + .parquet')
 
     # ---- long-format table (cell 28) ----
-    df_kj.to_parquet(out_dir.parent / 'bounce_kj_stats.parquet')
+    df_kj.to_parquet(tbl_dir / 'bounce_kj_stats.parquet')
     print(f'  wrote bounce_*.pdf + bounce_kj_stats.parquet ({len(df_kj)} rows)')
     print('[bounce] done.')
 

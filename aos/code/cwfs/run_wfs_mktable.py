@@ -185,13 +185,15 @@ def get_unpaired_zernikes(butler, day_obs, seq_num, coord, defocused_only=False,
     return agg, dict(band=meta.get('band', ''), nollIndices=noll)
 
 
-def _fam_noll(base, prefix):
+def _fam_noll(tables, prefix):
     """FAM Zernike (Noll) order taken from the fits.parquet field-mean column
     names {prefix}_z{j}_c1 -- the target order the CWFS zk are remapped onto so
-    a differently-sized CWFS Noll set (e.g. TARTS 25 vs FAM 21) still lines up."""
+    a differently-sized CWFS Noll set (e.g. TARTS 25 vs FAM 21) still lines up.
+
+    ``tables`` is the directory holding the phase-1 fits.parquet."""
     import pyarrow.parquet as pq
     try:
-        names = pq.ParquetFile(str(base / 'fits.parquet')).schema.names
+        names = pq.ParquetFile(str(tables / 'fits.parquet')).schema.names
     except Exception:
         return None
     js = sorted(int(m.group(1)) for c in names
@@ -204,9 +206,17 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
     ap.add_argument('--wfs-name', required=True,
-                    help='CWFS variant key in the param_set wfs_collections map; '
-                         'also the output subdir output/<ps>/wfs/<wfs-name>/')
+                    help='CWFS variant key in the param_set wfs_collections map')
     ap.add_argument('--output-root', default='output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / wfs_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 fits/visits.parquet '
+                         '(default: output/<ps>)')
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into '
+                         '(default: output/<ps>/wfs/<wfs-name>)')
     ap.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--dz-prefix', default='z1toz6')
     ap.add_argument('--no-plot', action='store_true')
@@ -231,8 +241,11 @@ def main():
         wfs_coll, seq_offset = entry, 1             # bare string -> in-focus (fam+1)
         dataset_type, reader, combine_offsets = 'aggregateAOSVisitTableRaw', None, None
         defocused_only = False
-    base = Path(args.output_root) / args.param_set
-    fam_visits = QTable.read(str(base / 'visits.parquet'))
+    ps_base = Path(args.output_root) / args.param_set
+    tables = Path(args.tables_dir) if args.tables_dir else ps_base
+    out = (Path(args.out_dir) if args.out_dir
+           else ps_base / 'wfs' / args.wfs_name)
+    fam_visits = QTable.read(str(tables / 'visits.parquet'))
     print(f'[wfs_mktable] {args.param_set}: {len(fam_visits)} FAM visits; '
           f'cwfs collection {wfs_coll}')
 
@@ -258,7 +271,7 @@ def main():
         if extra not in keep:
             keep.append(extra)
     combine = [int(o) for o in combine_offsets] if combine_offsets else None
-    fam_noll = _fam_noll(base, args.dz_prefix)     # target Noll order for the zk remap
+    fam_noll = _fam_noll(tables, args.dz_prefix)   # target Noll order for the zk remap
     zk_idx, out_noll = None, None                  # set from the first CWFS table's Noll
     donut_tabs, vrows, n_miss = [], [], 0
     for v in fam_visits:
@@ -314,17 +327,17 @@ def main():
     noll = out_noll
     donuts = vstack(donut_tabs, metadata_conflicts='silent')
     donuts.meta['nollIndices'] = noll          # Zernike order of zk_<coord>
-    out = base / 'wfs' / args.wfs_name; out.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     donuts.write(str(out / 'donuts.parquet'), format='parquet', overwrite=True)
     vdf = pd.DataFrame(vrows)
     vdf['nollIndices'] = [list(noll) if noll else None] * len(vdf)
     vdf.to_parquet(out / 'visits.parquet')
     print(f'  {len(vrows)} in-focus exposures, {len(donuts)} WFS donuts '
-          f'({n_miss} FAM visits had no in-focus cwfs table); wrote wfs/donuts'
-          f'.parquet + wfs/visits.parquet')
+          f'({n_miss} FAM visits had no in-focus cwfs table); wrote '
+          f'donuts.parquet + visits.parquet under {out}')
 
     if not args.no_plot:
-        _validation_plot(donuts, base, out, coord, args.dz_prefix, noll)
+        _validation_plot(donuts, tables, out, coord, args.dz_prefix, noll)
 
 
 def _to_deg(a):
@@ -409,11 +422,14 @@ def _scatter_fit_page(pdf, xby, yby, noll, names, suptitle, xlab, ylab):
     return rows
 
 
-def _validation_plot(donuts, base, out, coord, prefix, noll):
+def _validation_plot(donuts, tables, out, coord, prefix, noll):
     """WFS↔FAM validation: (0) WFS mean vs FAM k=1 vs ordinal; (A) scatter +
     linear fit of the same; (B) WFS median vs FAM-donut median *at the WFS
     radius* (the apples-to-apples comparison incl. the measured intrinsic +
-    k=1..6 field structure) — vs ordinal and as a scatter + fit."""
+    k=1..6 field structure) — vs ordinal and as a scatter + fit.
+
+    ``tables`` is the directory holding the phase-1 fits/donuts.parquet; ``out``
+    is where the PDF is written."""
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib.backends.backend_pdf import PdfPages
@@ -437,7 +453,7 @@ def _validation_plot(donuts, base, out, coord, prefix, noll):
 
     # FAM k=1 (field-mean) per image from fits.parquet
     fam_k1 = np.full((len(keys), len(noll)), np.nan)
-    fp = base / 'fits.parquet'
+    fp = tables / 'fits.parquet'
     if fp.exists():
         ft = pd.read_parquet(fp)
         d = {(int(r.day_obs), int(r.seq_num)): r for r in ft.itertuples()}
@@ -449,7 +465,7 @@ def _validation_plot(donuts, base, out, coord, prefix, noll):
     # FAM-donut median at the WFS radius (the careful comparison)
     inner, outer = _wfs_shell()
     fam_rad = np.full((len(keys), len(noll)), np.nan)
-    dp = base / 'donuts.parquet'
+    dp = tables / 'donuts.parquet'
     if dp.exists():
         print(f'  computing FAM median in WFS shell [{inner:.4f}, {outer}]° ...')
         med = _fam_radius_median(dp, coord, inner, outer)

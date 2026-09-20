@@ -125,9 +125,20 @@ def fit_metrics(x, y):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--param-set', required=True)
-    ap.add_argument('--wfs-name', required=True,
-                    help='CWFS variant key; reads/writes under output/<ps>/wfs/<wfs-name>/')
+    ap.add_argument('--wfs-name', required=True, help='CWFS variant key')
     ap.add_argument('--output-root', default='output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / wfs_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument('--tables-dir', default=None,
+                    help='dir holding the phase-1 donuts/visits.parquet '
+                         '(default: output/<ps>)')
+    ap.add_argument('--wfs-dir', default=None,
+                    help='dir holding the ingested CWFS donuts.parquet '
+                         '(default: output/<ps>/wfs/<wfs-name>)')
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into '
+                         '(default: output/<ps>/wfs/<wfs-name>)')
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
     ap.add_argument('--r-min', type=float, default=1.5178)
     ap.add_argument('--r-max', type=float, default=1.725)
@@ -142,10 +153,14 @@ def main():
     ap.add_argument('--val-zernikes', default='5,6,7,8')
     args = ap.parse_args()
     coord = args.coord
-    base = Path(args.output_root) / args.param_set
+    ps_base = Path(args.output_root) / args.param_set
+    _wfs_default = ps_base / 'wfs' / args.wfs_name
+    tables = Path(args.tables_dir) if args.tables_dir else ps_base
+    wfs_dir = Path(args.wfs_dir) if args.wfs_dir else _wfs_default
+    outdir = Path(args.out_dir) if args.out_dir else _wfs_default
     zc, txc, tyc = f'zk_{coord}', f'thx_{coord}', f'thy_{coord}'
 
-    vt = pq.read_table(str(base / 'visits.parquet')).to_pandas()
+    vt = pq.read_table(str(tables / 'visits.parquet')).to_pandas()
     noll = [int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
     nZk = len(noll)
     vjs = [int(j) for j in args.val_zernikes.split(',') if int(j) in noll]
@@ -157,7 +172,7 @@ def main():
                for r in vt[['day_obs', 'seq_num', *_side_cols]].itertuples(index=False)}
 
     # ---- CWFS (in-focus corner donuts) ----
-    cw_path = base / 'wfs' / args.wfs_name / 'donuts.parquet'
+    cw_path = wfs_dir / 'donuts.parquet'
     _rc = ['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]
     if 'wfs_offset' in pq.ParquetFile(str(cw_path)).schema.names:
         _rc.append('wfs_offset')                 # intra(-1)/extra(0) tag (unpaired CWFS)
@@ -179,7 +194,7 @@ def main():
     print(f'[wfs_corner_compare] corners: {CORNERS}')
 
     # ---- FAM (science array), outer annulus only ----
-    fam = pq.read_table(str(base / 'donuts.parquet'), columns=['day_obs', 'seq_num', zc, txc, tyc]).to_pandas()
+    fam = pq.read_table(str(tables / 'donuts.parquet'), columns=['day_obs', 'seq_num', zc, txc, tyc]).to_pandas()
     fr = np.degrees(np.hypot(fam[txc].astype(float), fam[tyc].astype(float)))
     ann = (fr >= args.r_min) & (fr <= args.r_max)
     fam = fam[ann].reset_index(drop=True)
@@ -222,7 +237,6 @@ def main():
     # ---- tidy parquet: one row per (triplet, corner, Zj) with FAM interp +
     #      CWFS median + azimuth + sidecar (rotator/elevation/mjd/program).
     #      For downstream FAM-vs-CWFS correlation analysis per Zj/corner. ----
-    outdir = base / 'wfs' / args.wfs_name
     outdir.mkdir(parents=True, exist_ok=True)
     rows = {k: [] for k in ('day_obs', 'seq_num', 'corner', 'defocus', 'j', 'fam_interp',
                             'cwfs_median', 'corner_az_deg', 'rotator_angle',
@@ -258,8 +272,7 @@ def main():
     print(f'  wrote wfs_corner_compare.parquet ({len(cmp_df)} rows: '
           f'{len(triplets)} triplets x 4 corners x {nZk} Zj, finite only)')
 
-    out = base / 'wfs' / args.wfs_name / 'wfs_corner_compare.pdf'
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = outdir / 'wfs_corner_compare.pdf'
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt

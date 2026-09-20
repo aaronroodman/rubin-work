@@ -68,6 +68,17 @@ def main():
     ap.add_argument("--config", default=None)
     ap.add_argument("--analysis-config", default=None, dest="analysis_config")
     ap.add_argument("--output-root", default="output")
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument("--fits", default=None,
+                    help="MI-refit fits.parquet (default: output/<ps>/<mi>/fits.parquet)")
+    ap.add_argument("--tables-dir", default=None, dest="tables_dir",
+                    help="dir holding the phase-1 visits.parquet "
+                         "(default: output/<ps>)")
+    ap.add_argument("--out-dir", default=None, dest="out_dir",
+                    help="directory to write into "
+                         "(default: output/<ps>/<mi>/correlations)")
     args = ap.parse_args()
 
     sec = {**DEFAULT, **mc.analysis_section(
@@ -78,18 +89,21 @@ def main():
                             config_path=(Path(args.config) if args.config else None))
 
     base = Path(args.output_root) / args.param_set / args.mi_name
-    out_dir = base / "correlations"; out_dir.mkdir(parents=True, exist_ok=True)
-    df = pd.read_parquet(base / "fits.parquet").reset_index(drop=True)
+    tables = Path(args.tables_dir) if args.tables_dir else base.parent
+    fits_path = Path(args.fits) if args.fits else base / "fits.parquet"
+    out_dir = Path(args.out_dir) if args.out_dir else base / "correlations"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    df = pd.read_parquet(fits_path).reset_index(drop=True)
     if "visit_quality_pass" in df.columns:
         df = df[df["visit_quality_pass"].astype(bool)].reset_index(drop=True)
     df = fam_quality_selection(df, prefix,
                                max_coeff_um=sec.get("max_coeff_um"),
                                max_blur_arcsec=sec.get("max_blur_arcsec")
                                ).reset_index(drop=True)
-    print(f"[dz_explained] {base}  {len(df)} visits", flush=True)
+    print(f"[dz_explained] {fits_path}  {len(df)} visits", flush=True)
 
     b = cfg["build"]
-    visits = QTable.read(str(base.parent / "visits.parquet"))
+    visits = QTable.read(str(tables / "visits.parquet"))
     iZs = [int(j) for j in np.asarray(visits["nollIndices"][0]).tolist()]
 
     out = df[[c for c in ["day_obs", "seq_num", "visit", "alt", "rotator_angle",

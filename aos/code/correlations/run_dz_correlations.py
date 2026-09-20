@@ -319,6 +319,12 @@ def main():
                     help='mi_config.yaml path (n_dof/n_keep for the optical correction)')
     ap.add_argument('--output-root', default='output')
     ap.add_argument('--fits', default=None, help='override fits.parquet path')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so it supplies the path
+    # directly rather than having it derived from those keys.
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into '
+                         '(default: output/<ps>/<mi>/correlations)')
     ap.add_argument('--no-optcorr', action='store_true',
                     help='skip the optical-correction PDF (raw only; off-RSP)')
     ap.add_argument('--n-dof', type=int, default=None, help='override mi-config n_dof')
@@ -334,7 +340,8 @@ def main():
 
     base = Path(args.output_root) / args.param_set / args.mi_name
     fits_path = Path(args.fits) if args.fits else base / 'fits.parquet'
-    out_dir = base / 'correlations'; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.out_dir) if args.out_dir else base / 'correlations'
+    out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[dz_correlations] {fits_path}')
 
     _fits = pd.read_parquet(fits_path)

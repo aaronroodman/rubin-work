@@ -78,6 +78,15 @@ def main():
     ap.add_argument('--config', default=None, help='mi_config.yaml path')
     ap.add_argument('--analysis-config', default=None)
     ap.add_argument('--output-root', default='output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set / mi_name keys, so each path this script
+    # needs can be supplied directly rather than derived from those keys.
+    ap.add_argument('--out-dir', default=None,
+                    help='directory to write into (default: output/<ps>/<mi>)')
+    ap.add_argument('--src-dir', default=None,
+                    help='dir holding the build/rot_*/ grids to read; differs '
+                         'from --out-dir only for a build_from entry '
+                         '(default: output/<ps>/<build_source>)')
     args = ap.parse_args()
 
     cfg = mc.load_mi_config(args.param_set, args.mi_name,
@@ -86,11 +95,14 @@ def main():
         'study_radialbins', args.param_set, args.mi_name,
         config_path=(Path(args.analysis_config) if args.analysis_config else None))}
     rot_bins = mc.selected_rotator_bins(cfg)   # rotator_bins filtered by rotator_select
-    base = Path(args.output_root) / args.param_set / args.mi_name
+    base = (Path(args.out_dir) if args.out_dir
+            else Path(args.output_root) / args.param_set / args.mi_name)
     # grids come from the build SOURCE entry (build_from -> reuse parent's grids)
     src_mi = mc.build_source(cfg, args.mi_name)
-    grid_base = Path(args.output_root) / args.param_set / src_mi
+    grid_base = (Path(args.src_dir) if args.src_dir
+                 else Path(args.output_root) / args.param_set / src_mi)
     out = base / 'study_radialbins.pdf'
+    base.mkdir(parents=True, exist_ok=True)
     print(f'[study_radialbins] {args.param_set}/{args.mi_name}: '
           f'{len(rot_bins)} rotator bins'
           + (f' (grids from {src_mi})' if src_mi != args.mi_name else ''))

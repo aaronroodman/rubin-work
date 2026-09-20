@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------
 # AOS FAM pipeline (Snakemake).  Phase 1: mktable + fit per chunk ->
-# combine -> plots, organised under output/<param_set>/.
+# combine -> analyses, organised under output/<study>/<data>/.
 #
 # Config: snake_config.yaml (param_sets -> date chunks); Butler/collection
 # definitions in param_sets.yaml (referenced by name).
@@ -9,10 +9,17 @@
 #   snakemake -j4                # build (4 parallel; add --resources mem_mb=... on RSP)
 #   snakemake --dag | dot -Tpng > dag.png
 #
-# Layout:
-#   output/<ps>/chunks/<dmin>_<dmax>/{donuts,fits,visits}.parquet   (per chunk)
-#   output/<ps>/{donuts,fits,visits}.parquet                        (combined)
-#   output/<ps>/plots/                                              (on combined)
+# Layout — study outermost, ONE data level, the data axes joined into one
+# directory name (root CLAUDE.md "Output conventions"):
+#   output/fam_processing/<P>/chunks/<dmin>_<dmax>/{donuts,fits,visits}.parquet
+#   output/fam_processing/<P>/{donuts,fits,visits}.parquet          (combined)
+#   output/miw/<P>_<M>/                                             (the MIW build)
+#   output/<study>/<P>/           studies depending on the param_set only
+#   output/<study>/<P>_<M>/       studies depending on param_set + MIW build
+#   output/<study>/<P>[_<M>]/<C>/ CWFS studies: the cwfs variant nests
+#
+# <P> and <M> are the SHORT directory names (`dir_name` in param_sets.yaml /
+# mi_config.yaml), not the param_set / mi_name keys; see the resolvers below.
 # ----------------------------------------------------------------------
 import os
 import yaml
@@ -67,13 +74,33 @@ def phrase(ps):                                   # matches run_pipeline / intri
     parts = r["fam_collections"][0].split("/")
     return parts[2] if (parts[0] == "u" and len(parts) > 2) else r["fam_collections"][0]
 
+# ---- name translation: config KEY -> output DIRECTORY name ----------------
+# The param_set and mi_name keys are the identity (what --param-set / --mi-name
+# take, what the value_added DB rows carry, what frozen provenance resolves
+# against), and two of them are long for historical reasons.  `dir_name` in
+# param_sets.yaml / mi_config.yaml supplies a short string for the path only,
+# exactly as `collection_phrase` above does for the Butler collection.  Absent
+# -> the key itself, so a param_set that is already short needs no entry.
+#
+# Consequence: the WILDCARDS carry the SHORT names, because they come from the
+# output paths — {ps} is a param_set's dir_name and {d} is the JOINED
+# param_set+mi_name pair (the two axes are one directory name, so there is no
+# separate {mi}).  Every rule therefore translates back with PS_BY_DIR /
+# MI_BY_DTAG before invoking a script, and tells the script its output
+# directory rather than letting it re-derive one from the key.
+def ps_dir(ps):
+    return PARAM_SETS.get(ps, {}).get("dir_name") or ps
+
+def mi_dir(ps, mi):
+    return _mc.dir_name(_mc.load_mi_config(ps, mi, doc=MI_DOC), mi)
+
 # A chunk is a finite SET OF VISITS, not necessarily one collection.  Each
 # snake_config chunk is either a bare [dmin, dmax] pair (uses the param_set's
 # fam_collections) or a dict {day_obs: [dmin, dmax], collection:, phrase:,
 # butler_repo:, programs:} that targets its OWN Butler collection for that set of
-# visits.  All chunks of a param_set land in the SAME output/<ps>/ area (combine
-# concatenates them), so a newer disjoint reprocessing can be folded in as one
-# extra chunk without a new param_set or output dir.
+# visits.  All chunks of a param_set land in the SAME output/fam_processing/<P>/
+# area (combine concatenates them), so a newer disjoint reprocessing can be
+# folded in as one extra chunk without a new param_set or output dir.
 def _chunk_entries(ps):
     out = []
     for c in CFG[ps]["chunks"]:
@@ -90,8 +117,9 @@ def _chunk_entries(ps):
 
 def chunks(ps):  return [(c["dmin"], c["dmax"]) for c in _chunk_entries(ps)]
 def coord(ps):   return CFG[ps].get("coord_sys", "OCS")
-def chunk_files(ps, name):
-    return [f"output/{ps}/chunks/{a}_{b}/{name}" for a, b in chunks(ps)]
+def chunk_files(psd, name):
+    return [f"output/fam_processing/{psd}/chunks/{a}_{b}/{name}"
+            for a, b in chunks(PS_BY_DIR[psd])]
 
 def _chunk_at(ps, dmin, dmax):
     for c in _chunk_entries(ps):
@@ -123,25 +151,63 @@ def mi_rotbins(ps, mi): return _mc.rotator_bins(_mc.load_mi_config(ps, mi, doc=M
 def mi_build_src(ps, mi):
     # entry whose build grids to read (build_from -> reuse a parent's grids)
     return _mc.build_source(_mc.load_mi_config(ps, mi, doc=MI_DOC), mi)
-def mi_bin_grids(ps, mi):
-    # grids come from the build SOURCE entry; bins are the source's bins so the
-    # paths point at already-built grids (a build_from entry triggers no build).
-    src = mi_build_src(ps, mi)
-    return [f"output/{ps}/{src}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
-            for lo, hi in mi_rotbins(ps, src)]
 MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 
 # param_sets with paired in-focus corner-WFS (cwfs) collections.  Each ps may
 # carry several CWFS variants (wfs_collections: name -> Butler collection); the
-# name is the {cwfs} wildcard and the output subdir  output/<ps>/wfs/<name>/ .
+# name is the {cwfs} wildcard and nests one level under the joined data dir,
+# e.g.  output/wfs_ingest/<P>/<name>/ .
 def wfs_variants(ps):    return list(PARAM_SETS.get(ps, {}).get("wfs_collections", {}))
 def wfs_collection(ps, cw):                       # entry is a str or {collection, ...}
     e = PARAM_SETS[ps]["wfs_collections"][cw]
     return e["collection"] if isinstance(e, dict) else e
 WFS_PSETS = [ps for ps in PSETS if wfs_variants(ps)]
-WFS_VARIANTS = [(ps, cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
-WFS_MI_VARIANTS = [(ps, mi, cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
-                   for cw in wfs_variants(ps)]
+
+# ---- the data-axis directory names, and the inverse maps back to the keys ----
+# Rules see only the short names (they come out of the output paths), so every
+# rule that invokes a script recovers the real key here.  A duplicate dir_name
+# would silently merge two param_sets' output into one directory, so assert
+# injectivity at load time and fail loudly instead.
+def dtag(ps, mi=None):                     # joined data-axis directory name
+    return f"{ps_dir(ps)}_{mi_dir(ps, mi)}" if mi else ps_dir(ps)
+
+PS_DIRS  = [ps_dir(ps) for ps in PSETS]
+assert len(set(PS_DIRS)) == len(PS_DIRS), \
+    f"duplicate param_set dir_name in param_sets.yaml: {sorted(PS_DIRS)}"
+PS_BY_DIR = {ps_dir(ps): ps for ps in PSETS}
+
+MI_DTAGS = [dtag(ps, mi) for ps, mi in MI_PAIRS]
+assert len(set(MI_DTAGS)) == len(MI_DTAGS), \
+    f"duplicate (param_set, mi_name) dir_name pair: {sorted(MI_DTAGS)}"
+# dtag -> (real param_set, real mi_name); the ONE wildcard {d} carries both axes.
+MI_BY_DTAG = {dtag(ps, mi): (ps, mi) for ps, mi in MI_PAIRS}
+
+def d_ps_dir(d):                       # the param_set dir of a joined dtag
+    return ps_dir(MI_BY_DTAG[d][0])
+
+def d_tables(d):                       # phase-1 tables dir for a joined dtag
+    return f"output/fam_processing/{d_ps_dir(d)}"
+
+def d_wfs(d, cwfs):                    # ingested CWFS dir for a joined dtag
+    return f"output/wfs_ingest/{d_ps_dir(d)}/{cwfs}"
+
+WFS_DVARIANTS    = [(ps_dir(ps), cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
+WFS_MI_DVARIANTS = [(dtag(ps, mi), cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
+                    for cw in wfs_variants(ps)]
+
+def mi_bin_grids(d):
+    # grids come from the build SOURCE entry; bins are the source's bins so the
+    # paths point at already-built grids (a build_from entry triggers no build).
+    ps, mi = MI_BY_DTAG[d]
+    src = mi_build_src(ps, mi)
+    return [f"output/miw/{dtag(ps, src)}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
+            for lo, hi in mi_rotbins(ps, src)]
+
+def src_miw_dir(d):
+    # the MIW directory holding this entry's build grids (self, or its build_from
+    # parent's) — what run_intrinsic_split reads via --src-dir.
+    ps, mi = MI_BY_DTAG[d]
+    return f"output/miw/{dtag(ps, mi_build_src(ps, mi))}"
 
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
@@ -153,7 +219,10 @@ import json as _json
 AN_DOC = (_mc.load_analysis_doc("analysis_config.yaml")
           if os.path.exists("analysis_config.yaml") else {})
 
-def mi_cfg_json(ps, mi):
+# These take the joined data-axis dir name {d} and resolve it back to the real
+# (param_set, mi_name) the config is keyed on.
+def mi_cfg_json(d):
+    ps, mi = MI_BY_DTAG[d]
     return _json.dumps(_mc.load_mi_config(ps, mi, doc=MI_DOC),
                        sort_keys=True, default=str)
 
@@ -161,65 +230,75 @@ def an_json(section, ps, mi=None):
     return _json.dumps(_mc.analysis_section(section, ps, mi, doc=AN_DOC),
                        sort_keys=True, default=str)
 
+def an_json_d(section, d):                         # by joined dir name
+    return an_json(section, *MI_BY_DTAG[d])
+
 def an_sec(section, ps, mi=None):                  # resolved analysis section (dict)
     return _mc.analysis_section(section, ps, mi, doc=AN_DOC)
 
-# param_set names have no slash; keeps output/<ps>/X.parquet (combined)
-# distinct from output/<ps>/chunks/<d>_<d>/X.parquet (per chunk).
+def an_sec_d(section, d):                          # by joined dir name
+    return an_sec(section, *MI_BY_DTAG[d])
+
+# Directory names have no slash; keeps output/fam_processing/<ps>/X.parquet
+# (combined) distinct from .../chunks/<d>_<d>/X.parquet (per chunk).  {ps} is the
+# param_set's short dir_name; {d} is the joined param_set+mi_name dir name.
 wildcard_constraints:
     ps   = r"[A-Za-z0-9_.+-]+",
     dmin = r"\d{8}",
     dmax = r"\d{8}",
-    mi   = r"[A-Za-z0-9_.+-]+",
+    d    = r"[A-Za-z0-9_.+-]+",
     cwfs = r"[A-Za-z0-9_.+-]+",
     lo   = r"-?\d+(\.\d+)?",
     hi   = r"-?\d+(\.\d+)?",
 
 rule all:
     input:
-        expand("output/{ps}/donuts.parquet",              ps=PSETS),
-        expand("output/{ps}/fits.parquet",                ps=PSETS),
-        expand("output/{ps}/visits.parquet",              ps=PSETS),
+        expand("output/fam_processing/{ps}/donuts.parquet", ps=PS_DIRS),
+        expand("output/fam_processing/{ps}/fits.parquet",   ps=PS_DIRS),
+        expand("output/fam_processing/{ps}/visits.parquet", ps=PS_DIRS),
         # telemetry attachment: skipped in batch mode, where the EFD does not resolve
-        (expand("output/{ps}/fam_processing/telemetry_attached.txt", ps=PSETS)
+        (expand("output/fam_processing/{ps}/telemetry_attached.txt", ps=PS_DIRS)
          if ATTACH_TELEMETRY else []),
-        expand("output/{ps}/dzfit/trio_comparison_all.pdf", ps=PSETS),
+        expand("output/dzfit/{ps}/trio_comparison_all.pdf", ps=PS_DIRS),
         # k<=3 vs k<=6 DZ fit check: residual metrics + plots
-        expand("output/{ps}/dzfit/dz_fit_check.pdf", ps=PSETS),
+        expand("output/dzfit/{ps}/dz_fit_check.pdf", ps=PS_DIRS),
         # per-donut aberration-pair (primary->secondary) analysis
-        expand("output/{ps}/correlations/aberration_pairs.pdf", ps=PSETS),
+        expand("output/correlations/{ps}/aberration_pairs.pdf", ps=PS_DIRS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
-        [f"output/{ps}/{mi}/study_radialbins.pdf" for ps, mi in MI_PAIRS],
+        expand("output/miw/{d}/study_radialbins.pdf", d=MI_DTAGS),
         # in-focus corner-WFS ingestion (per ps, cwfs variant)
-        [f"output/{ps}/wfs/{cw}/donuts.parquet" for ps, cw in WFS_VARIANTS],
+        [f"output/wfs_ingest/{p}/{cw}/donuts.parquet" for p, cw in WFS_DVARIANTS],
         # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps, cwfs)
-        [f"output/{ps}/wfs/{cw}/wfs_corner_compare.pdf" for ps, cw in WFS_VARIANTS],
-        # CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi, cwfs)
-        [f"output/{ps}/{mi}/wfs/{cw}/wfs_dof_compare_offsets.pdf" for ps, mi, cw in WFS_MI_VARIANTS],
-        # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per (ps, mi)
-        [f"output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet" for ps, mi in MI_PAIRS],
+        [f"output/wfs_corner_compare/{p}/{cw}/wfs_corner_compare.pdf"
+         for p, cw in WFS_DVARIANTS],
+        # CWFS vs FAM optical state (v-modes + DoF) per image (per ps+mi, cwfs)
+        [f"output/wfs_dof_compare/{d}/{cw}/wfs_dof_compare_offsets.pdf"
+         for d, cw in WFS_MI_DVARIANTS],
+        # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per ps+mi
+        expand("output/wfs_mimic/{d}/wfs_mimic_cov84.parquet", d=MI_DTAGS),
         # Phase 2: measured-intrinsic refit per (param_set, mi_name)
-        [f"output/{ps}/{mi}/fits.parquet" for ps, mi in MI_PAIRS],
+        expand("output/miw/{d}/fits.parquet", d=MI_DTAGS),
         # averaged-DOF LUT per (param_set, mi_name)
-        [f"output/{ps}/{mi}/lut/lut.parquet" for ps, mi in MI_PAIRS],
+        expand("output/lut/{d}/lut.parquet", d=MI_DTAGS),
         # MI-refit analyses: DZ-DZ + DZ-temperature correlations, bounce tests
-        [f"output/{ps}/{mi}/correlations/dz_correlations.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/correlations/dz_correlations_optcorr.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/correlations/thermal_correlations.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/correlations/vmode_correlations_50_34.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/correlations/vmode_correlations_22_12.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/correlations/dz_explained.pdf" for ps, mi in MI_PAIRS],
-        [f"output/{ps}/{mi}/bounce_kj_stats.parquet" for ps, mi in MI_PAIRS],
+        expand("output/correlations/{d}/dz_correlations.pdf", d=MI_DTAGS),
+        expand("output/correlations/{d}/dz_correlations_optcorr.pdf", d=MI_DTAGS),
+        expand("output/correlations/{d}/thermal_correlations.pdf", d=MI_DTAGS),
+        expand("output/correlations/{d}/vmode_correlations_50_34.pdf", d=MI_DTAGS),
+        expand("output/correlations/{d}/vmode_correlations_22_12.pdf", d=MI_DTAGS),
+        expand("output/correlations/{d}/dz_explained.pdf", d=MI_DTAGS),
+        expand("output/bounce/{d}/bounce_kj_stats.parquet", d=MI_DTAGS),
 
 # ---- per chunk: mktable (Butler) -> donuts + visits ----
 rule mktable:
     output:
-        donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
-        visits = "output/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
+        donuts = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
+        visits = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
     params:
-        cdir  = lambda w: f"output/{w.ps}/chunks/{w.dmin}_{w.dmax}",
-        ph    = lambda w: chunk_phrase(w.ps, w.dmin, w.dmax),
-        extra = lambda w: chunk_mktable_extra(w.ps, w.dmin, w.dmax),
+        real_ps = lambda w: PS_BY_DIR[w.ps],
+        cdir  = lambda w: f"output/fam_processing/{w.ps}/chunks/{w.dmin}_{w.dmax}",
+        ph    = lambda w: chunk_phrase(PS_BY_DIR[w.ps], w.dmin, w.dmax),
+        extra = lambda w: chunk_mktable_extra(PS_BY_DIR[w.ps], w.dmin, w.dmax),
         # run_mktable speed knobs (snake_config `mktable:`): parallelize the
         # per-visit Butler donut reads, and optionally skip the slow per-visit
         # ESS-temperature loop (--no-thermal) when only donuts/Zernikes are needed.
@@ -236,7 +315,7 @@ rule mktable:
     log: "logs/{ps}.{dmin}_{dmax}.mktable.log"
     shell:
         rf"""
-        python {WF_BIN}/run_mktable.py --param-set {{wildcards.ps}} \
+        python {WF_BIN}/run_mktable.py --param-set {{params.real_ps}} \
             --day-obs-min {{wildcards.dmin}} --day-obs-max {{wildcards.dmax}} \
             --workers {{params.workers}} {{params.nothermal}} --overwrite \
             {{params.extra}} --output-dir {{params.cdir}} > {{log}} 2>&1
@@ -247,10 +326,10 @@ rule mktable:
 # ---- per chunk: Double-Zernike fit ----
 rule fit:
     input:
-        donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
-        visits = "output/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
-    output: "output/{ps}/chunks/{dmin}_{dmax}/fits.parquet"
-    params: coord = lambda w: coord(w.ps)
+        donuts = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
+        visits = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/visits.parquet",
+    output: "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/fits.parquet"
+    params: coord = lambda w: coord(PS_BY_DIR[w.ps])
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.fit.log"
     shell:
@@ -266,7 +345,7 @@ rule combine_donuts:
     input:
         chunks = lambda w: chunk_files(w.ps, "donuts.parquet"),
         script = f"{WF_BIN}/combine_parquets.py",
-    output: "output/{ps}/donuts.parquet"
+    output: "output/fam_processing/{ps}/donuts.parquet"
     resources: mem_mb=3000
     log:    "logs/{ps}.combine_donuts.log"
     shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
@@ -275,7 +354,7 @@ rule combine_fits:
     input:
         chunks = lambda w: chunk_files(w.ps, "fits.parquet"),
         script = f"{WF_BIN}/combine_parquets.py",
-    output: "output/{ps}/fits.parquet"
+    output: "output/fam_processing/{ps}/fits.parquet"
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_fits.log"
     shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
@@ -284,7 +363,7 @@ rule combine_visits:
     input:
         chunks = lambda w: chunk_files(w.ps, "visits.parquet"),
         script = f"{WF_BIN}/combine_parquets.py",
-    output: "output/{ps}/visits.parquet"
+    output: "output/fam_processing/{ps}/visits.parquet"
     resources: mem_mb=2000
     log:    "logs/{ps}.combine_visits.log"
     shell:  f"python {WF_BIN}/combine_parquets.py {{input.chunks}} --output {{output}} > {{log}} 2>&1"
@@ -296,25 +375,27 @@ rule combine_visits:
 # truth, re-running combine_visits and then this rule's --merge restores the columns.
 rule attach_telemetry:
     input:
-        visits = "output/{ps}/visits.parquet",
+        visits = "output/fam_processing/{ps}/visits.parquet",
         script = "code/fam_processing/run_attach_telemetry.py",
     output:
-        stamp = "output/{ps}/fam_processing/telemetry_attached.txt",
+        stamp = "output/fam_processing/{ps}/telemetry_attached.txt",
+    params: real_ps = lambda w: PS_BY_DIR[w.ps]
     resources: mem_mb=4000
     log: "logs/{ps}.attach_telemetry.log"
     shell:
         "python code/fam_processing/run_attach_telemetry.py "
-        "--param-set {wildcards.ps} --all-chunks --merge > {log} 2>&1 && "
+        "--param-set {params.real_ps} --out-dir output/fam_processing/{wildcards.ps} "
+        "--all-chunks --merge > {log} 2>&1 && "
         "date -u +'%Y-%m-%dT%H:%M:%SZ attached' > {output.stamp}"
 
 # ---- validation plots on the combined tables ----
 rule plots:
     input:
-        donuts = "output/{ps}/donuts.parquet",
-        fits   = "output/{ps}/fits.parquet",
+        donuts = "output/fam_processing/{ps}/donuts.parquet",
+        fits   = "output/fam_processing/{ps}/fits.parquet",
         script = "code/dzfit/run_dz_plots.py",
-    output: "output/{ps}/dzfit/trio_comparison_all.pdf"
-    params: coord = lambda w: coord(w.ps)
+    output: "output/dzfit/{ps}/trio_comparison_all.pdf"
+    params: coord = lambda w: coord(PS_BY_DIR[w.ps])
     # run_dz_plots loads the full combined donut table; astropy materializes the
     # zk_* list columns as Python objects, so a single job can use ~10 GiB for a
     # multi-million-row set.  Declare it large so the scheduler runs plots one at
@@ -323,7 +404,7 @@ rule plots:
     log: "logs/{ps}.plots.log"
     shell:
         "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
-        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
+        "--coord-sys {params.coord} --output-dir output/dzfit/{wildcards.ps} "
         "--no-single-image > {log} 2>&1"
 
 # ---- per-visit residual-map movie, one movie per chunk ----
@@ -333,67 +414,72 @@ rule plots:
 # small.  Not in `rule all` — request `residual_movies` explicitly.
 rule residual_movie_chunk:
     input:
-        donuts = "output/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
-        fits   = "output/{ps}/chunks/{dmin}_{dmax}/fits.parquet",
+        donuts = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
+        fits   = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/fits.parquet",
         script = "code/dzfit/run_dz_plots.py",
     # Each chunk renders into its own subdirectory: the intermediate JPEG frames and the
     # ffmpeg `frame_list.txt` are fixed names, so a shared directory would race when the
     # chunks run concurrently.
-    output: "output/{ps}/dzfit/movies/{dmin}_{dmax}/residuals_z1toz6_{dmin}_{dmax}.mp4"
-    params: coord = lambda w: coord(w.ps)
+    output: "output/dzfit/{ps}/movies/{dmin}_{dmax}/residuals_z1toz6_{dmin}_{dmax}.mp4"
+    params: coord = lambda w: coord(PS_BY_DIR[w.ps])
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.residual_movie.log"
     shell:
         "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
         "--coord-sys {params.coord} --movie-prefix z1toz6 "
         "--movie-name residuals_z1toz6_{wildcards.dmin}_{wildcards.dmax}.mp4 "
-        "--output-dir output/{wildcards.ps}/dzfit/movies/{wildcards.dmin}_{wildcards.dmax} "
+        "--output-dir output/dzfit/{wildcards.ps}/movies/{wildcards.dmin}_{wildcards.dmax} "
         "--no-fit-params --no-trio > {log} 2>&1"
 
 rule residual_movies:
     input:
-        lambda w: [f"output/{w.ps}/dzfit/movies/{a}_{b}/residuals_z1toz6_{a}_{b}.mp4"
-                   for a, b in chunks(w.ps)]
-    output: touch("output/{ps}/dzfit/movies/all_movies.done")
+        lambda w: [f"output/dzfit/{w.ps}/movies/{a}_{b}/residuals_z1toz6_{a}_{b}.mp4"
+                   for a, b in chunks(PS_BY_DIR[w.ps])]
+    output: touch("output/dzfit/{ps}/movies/all_movies.done")
 
 # ---- k<=3 vs k<=6 DZ fit check ----
 # Streams donuts.parquet by row group, so it needs far less memory than `plots`.
 rule dz_fit_check:
     input:
-        donuts = "output/{ps}/donuts.parquet",
-        fits   = "output/{ps}/fits.parquet",
-        visits = "output/{ps}/visits.parquet",
+        donuts = "output/fam_processing/{ps}/donuts.parquet",
+        fits   = "output/fam_processing/{ps}/fits.parquet",
+        visits = "output/fam_processing/{ps}/visits.parquet",
         script = "code/dzfit/run_dz_fit_check.py",
     output:
-        pdf     = "output/{ps}/dzfit/dz_fit_check.pdf",
-        metrics = "output/{ps}/dzfit/dz_fit_check.parquet",
-    params: coord = lambda w: coord(w.ps)
+        pdf     = "output/dzfit/{ps}/dz_fit_check.pdf",
+        metrics = "output/dzfit/{ps}/dz_fit_check.parquet",
+    params:
+        real_ps = lambda w: PS_BY_DIR[w.ps],
+        coord   = lambda w: coord(PS_BY_DIR[w.ps]),
     resources: mem_mb=6000
     log: "logs/{ps}.dz_fit_check.log"
     shell:
-        "python code/dzfit/run_dz_fit_check.py --param-set {wildcards.ps} "
-        "--coord-sys {params.coord} --output-dir output/{wildcards.ps}/dzfit "
-        "> {log} 2>&1"
+        "python code/dzfit/run_dz_fit_check.py --param-set {params.real_ps} "
+        "--coord-sys {params.coord} "
+        "--tables-dir output/fam_processing/{wildcards.ps} "
+        "--output-dir output/dzfit/{wildcards.ps} > {log} 2>&1"
 
 # ---- per-donut primary->secondary aberration-pair analysis ----
 rule aberration_pairs:
     input:
-        donuts = "output/{ps}/donuts.parquet",
-        visits = "output/{ps}/visits.parquet",
-        fits   = "output/{ps}/fits.parquet",
+        donuts = "output/fam_processing/{ps}/donuts.parquet",
+        visits = "output/fam_processing/{ps}/visits.parquet",
+        fits   = "output/fam_processing/{ps}/fits.parquet",
         script = "code/correlations/run_aberration_pairs.py",
-    output: "output/{ps}/correlations/aberration_pairs.pdf"
+    output: "output/correlations/{ps}/aberration_pairs.pdf"
     params:
-        coord = lambda w: coord(w.ps),
-        acfg  = lambda w: an_json("aberration_pairs", w.ps),   # rerun-trigger only
+        real_ps = lambda w: PS_BY_DIR[w.ps],
+        coord = lambda w: coord(PS_BY_DIR[w.ps]),
+        # rerun-trigger only
+        acfg  = lambda w: an_json("aberration_pairs", PS_BY_DIR[w.ps]),
     # streams the donut zk_<coord> column by row group; lighter than run_dz_plots.
     resources: mem_mb=8000
     log: "logs/{ps}.aberration_pairs.log"
     shell:
         "python code/correlations/run_aberration_pairs.py {input.donuts} "
         "--visits {input.visits} --fits {input.fits} --coord-sys {params.coord} "
-        "--param-set {wildcards.ps} --label {wildcards.ps} "
-        "--output-dir output/{wildcards.ps}/correlations > {log} 2>&1"
+        "--param-set {params.real_ps} --label {wildcards.ps} "
+        "--output-dir output/correlations/{wildcards.ps} > {log} 2>&1"
 
 # ======================================================================
 # Phase 2 — measured intrinsic, per (param_set, mi_name) from mi_config.yaml
@@ -405,162 +491,210 @@ rule aberration_pairs:
 # ---- per rotator bin: build the Path-A measured-intrinsic grid ----
 rule build_intrinsic:
     input:
-        donuts = "output/{ps}/donuts.parquet",
-        visits = "output/{ps}/visits.parquet",
-        fits   = "output/{ps}/fits.parquet",
+        donuts = lambda w: f"{d_tables(w.d)}/donuts.parquet",
+        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
+        fits   = lambda w: f"{d_tables(w.d)}/fits.parquet",
         script = f"{WF_BIN}/run_build_intrinsic.py",
         lib    = f"{WF_LIB}/measured_intrinsic.py",
         plots  = f"{WF_LIB}/intrinsic_build_plots.py",
-    output: "output/{ps}/{mi}/build/rot_{lo}_{hi}/intrinsic_grid.parquet"
-    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
+    output: "output/miw/{d}/build/rot_{lo}_{hi}/intrinsic_grid.parquet"
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),          # rerun-trigger only
     resources: mem_mb=8000
-    log: "logs/{ps}.{mi}.build_rot_{lo}_{hi}.log"
+    log: "logs/{d}.build_rot_{lo}_{hi}.log"
     shell:
-        f"python {WF_BIN}/run_build_intrinsic.py --param-set {{wildcards.ps}} "
-        "--mi-name {wildcards.mi} --rot-min {wildcards.lo} --rot-max {wildcards.hi} "
+        f"python {WF_BIN}/run_build_intrinsic.py --param-set {{params.real_ps}} "
+        "--mi-name {params.real_mi} --rot-min {wildcards.lo} --rot-max {wildcards.hi} "
+        "--tables-dir {params.tdir} "
+        "--out-dir output/miw/{wildcards.d}/build/rot_{wildcards.lo}_{wildcards.hi} "
         "> {log} 2>&1"
 
 # ---- decompose the per-bin grids into OCS + CCS ----
 rule intrinsic_split:
     input:
-        grids  = lambda w: mi_bin_grids(w.ps, w.mi),
+        grids  = lambda w: mi_bin_grids(w.d),
         script = f"{WF_BIN}/run_intrinsic_split.py",
         lib    = f"{WF_LIB}/intrinsic_split.py",
     output:
-        maps   = "output/{ps}/{mi}/intrinsic_split_maps.parquet",
-        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
-        rms    = "output/{ps}/{mi}/intrinsic_split_rms.parquet",
-        plots  = "output/{ps}/{mi}/intrinsic_split.pdf",
-    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
+        maps   = "output/miw/{d}/intrinsic_split_maps.parquet",
+        decomp = "output/miw/{d}/intrinsic_split_decomp.parquet",
+        rms    = "output/miw/{d}/intrinsic_split_rms.parquet",
+        plots  = "output/miw/{d}/intrinsic_split.pdf",
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        # differs from --out-dir only for a build_from entry, which reads its
+        # parent's already-built grids
+        sdir    = lambda w: src_miw_dir(w.d),
+        fits    = lambda w: f"{d_tables(w.d)}/fits.parquet",
+        cfg     = lambda w: mi_cfg_json(w.d),          # rerun-trigger only
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.intrinsic_split.log"
+    log: "logs/{d}.intrinsic_split.log"
     shell:
-        f"python {WF_BIN}/run_intrinsic_split.py --param-set {{wildcards.ps}} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        f"python {WF_BIN}/run_intrinsic_split.py --param-set {{params.real_ps}} "
+        "--mi-name {params.real_mi} --out-dir output/miw/{wildcards.d} "
+        "--src-dir {params.sdir} --fits {params.fits} > {log} 2>&1"
 
 # ---- OCS measured intrinsic at the WFS radius, per rotator bin (pre-split) ----
 rule study_radialbins:
     input:
-        grids  = lambda w: mi_bin_grids(w.ps, w.mi),
+        grids  = lambda w: mi_bin_grids(w.d),
         script = "code/miw/run_study_radialbins.py",
         lib    = f"{WF_LIB}/ccd_height.py",          # wfs_field_radius_range (inner edge)
-    output: "output/{ps}/{mi}/study_radialbins.pdf"
-    params:                                     # rerun-trigger only
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
-        acfg = lambda w: an_json("study_radialbins", w.ps, w.mi),
+    output: "output/miw/{d}/study_radialbins.pdf"
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        sdir    = lambda w: src_miw_dir(w.d),        # where the build grids are
+        cfg     = lambda w: mi_cfg_json(w.d),        # rerun-trigger only
+        acfg    = lambda w: an_json_d("study_radialbins", w.d),
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.study_radialbins.log"
+    log: "logs/{d}.study_radialbins.log"
     shell:
-        "python code/miw/run_study_radialbins.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/miw/run_study_radialbins.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --out-dir output/miw/{wildcards.d} "
+        "--src-dir {params.sdir} > {log} 2>&1"
 
 # ---- corner-by-corner CWFS vs FAM measured-OPD comparison (per ps) ----
 rule wfs_corner_compare:
     input:
-        wfs    = "output/{ps}/wfs/{cwfs}/donuts.parquet",
-        fam    = "output/{ps}/donuts.parquet",
-        visits = "output/{ps}/visits.parquet",
+        wfs    = "output/wfs_ingest/{ps}/{cwfs}/donuts.parquet",
+        fam    = "output/fam_processing/{ps}/donuts.parquet",
+        visits = "output/fam_processing/{ps}/visits.parquet",
         script = "code/cwfs/run_wfs_corner_compare.py",
     output:
-        pdf     = "output/{ps}/wfs/{cwfs}/wfs_corner_compare.pdf",
-        parquet = "output/{ps}/wfs/{cwfs}/wfs_corner_compare.parquet",
+        pdf     = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.pdf",
+        parquet = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.parquet",
     params:
-        coord = lambda w: coord(w.ps),
+        real_ps = lambda w: PS_BY_DIR[w.ps],
+        coord   = lambda w: coord(PS_BY_DIR[w.ps]),
     resources: mem_mb=8000
     log: "logs/{ps}.{cwfs}.wfs_corner_compare.log"
     shell:
-        "python code/cwfs/run_wfs_corner_compare.py --param-set {wildcards.ps} "
-        "--wfs-name {wildcards.cwfs} --coord {params.coord} > {log} 2>&1"
+        "python code/cwfs/run_wfs_corner_compare.py --param-set {params.real_ps} "
+        "--wfs-name {wildcards.cwfs} --coord {params.coord} "
+        "--tables-dir output/fam_processing/{wildcards.ps} "
+        "--wfs-dir output/wfs_ingest/{wildcards.ps}/{wildcards.cwfs} "
+        "--out-dir output/wfs_corner_compare/{wildcards.ps}/{wildcards.cwfs} "
+        "> {log} 2>&1"
 
 # ---- CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi) ----
 # ---- CWFS MIW sidecar (reconstruct_at at the corner donuts + SW1/SW0 half-sensor Z4 height) ----
 rule wfs_intrinsic_sidecar:
     input:
-        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
-        wfs    = "output/{ps}/wfs/{cwfs}/donuts.parquet",
-        visits = "output/{ps}/visits.parquet",
+        decomp = "output/miw/{d}/intrinsic_split_decomp.parquet",
+        wfs    = lambda w: f"{d_wfs(w.d, w.cwfs)}/donuts.parquet",
+        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script = f"{WF_BIN}/run_make_intrinsic_sidecar.py",
         lib    = f"{WF_LIB}/intrinsic_split.py",
-    output: "output/{ps}/{mi}/wfs/{cwfs}/zk_intrinsic.parquet"
-    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)            # rerun-trigger only
+    output: "output/wfs_dof_compare/{d}/{cwfs}/zk_intrinsic.parquet"
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),                  # rerun-trigger only
     resources: mem_mb=8000
-    log: "logs/{ps}.{mi}.{cwfs}.wfs_intrinsic_sidecar.log"
+    log: "logs/{d}.{cwfs}.wfs_intrinsic_sidecar.log"
     shell:
-        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{wildcards.ps}} "
-        "--mi-name {wildcards.mi} --donuts output/{wildcards.ps}/wfs/{wildcards.cwfs}/donuts.parquet "
-        "--output output/{wildcards.ps}/{wildcards.mi}/wfs/{wildcards.cwfs}/zk_intrinsic.parquet "
-        "--wfs-corner-height > {log} 2>&1"
+        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{params.real_ps}} "
+        "--mi-name {params.real_mi} --mi-dir output/miw/{wildcards.d} "
+        "--tables-dir {params.tdir} --donuts {input.wfs} "
+        "--output {output} --wfs-corner-height > {log} 2>&1"
 
 rule wfs_dof_compare:
     input:
-        wfs      = "output/{ps}/wfs/{cwfs}/donuts.parquet",
-        fits     = "output/{ps}/{mi}/fits.parquet",                     # FAM MIW-subtracted DZ
-        sidecar  = "output/{ps}/{mi}/wfs/{cwfs}/zk_intrinsic.parquet",  # CWFS MIW at the corner donuts
-        fam_don  = "output/{ps}/donuts.parquet",                        # FAM donuts (MIW-FWHM field sampling)
-        fam_side = "output/{ps}/{mi}/zk_intrinsic.parquet",             # FAM per-donut MIW (baseline FWHM)
-        visits   = "output/{ps}/visits.parquet",
+        wfs      = lambda w: f"{d_wfs(w.d, w.cwfs)}/donuts.parquet",
+        # FAM MIW-subtracted DZ
+        fits     = "output/miw/{d}/fits.parquet",
+        # CWFS MIW at the corner donuts
+        sidecar  = "output/wfs_dof_compare/{d}/{cwfs}/zk_intrinsic.parquet",
+        # FAM donuts (MIW-FWHM field sampling)
+        fam_don  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
+        # FAM per-donut MIW (baseline FWHM)
+        fam_side = "output/miw/{d}/zk_intrinsic.parquet",
+        visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script   = "code/cwfs/run_wfs_dof_compare.py",
         lib      = f"{WF_LIB}/ofc_svd.py",
-    output: "output/{ps}/{mi}/wfs/{cwfs}/wfs_dof_compare_offsets.pdf"
+    output: "output/wfs_dof_compare/{d}/{cwfs}/wfs_dof_compare_offsets.pdf"
     params:
-        coord = lambda w: coord(w.ps),
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        coord   = lambda w: coord(MI_BY_DTAG[w.d][0]),
+        tdir    = lambda w: d_tables(w.d),
+        wdir    = lambda w: d_wfs(w.d, w.cwfs),
     resources: mem_mb=8000
-    log: "logs/{ps}.{mi}.{cwfs}.wfs_dof_compare.log"
+    log: "logs/{d}.{cwfs}.wfs_dof_compare.log"
     shell:
-        "python code/cwfs/run_wfs_dof_compare.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --wfs-name {wildcards.cwfs} --coord {params.coord} > {log} 2>&1"
+        "python code/cwfs/run_wfs_dof_compare.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --wfs-name {wildcards.cwfs} --coord {params.coord} "
+        "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
+        "--wfs-dir {params.wdir} "
+        "--out-dir output/wfs_dof_compare/{wildcards.d}/{wildcards.cwfs} > {log} 2>&1"
 
 # ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
 rule intrinsic_sidecar:
     input:
-        decomp = "output/{ps}/{mi}/intrinsic_split_decomp.parquet",
-        donuts = "output/{ps}/donuts.parquet",
-        visits = "output/{ps}/visits.parquet",
+        decomp = "output/miw/{d}/intrinsic_split_decomp.parquet",
+        donuts = lambda w: f"{d_tables(w.d)}/donuts.parquet",
+        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script = f"{WF_BIN}/run_make_intrinsic_sidecar.py",
         lib    = f"{WF_LIB}/intrinsic_split.py",
-    output: "output/{ps}/{mi}/zk_intrinsic.parquet"
-    params: cfg = lambda w: mi_cfg_json(w.ps, w.mi)   # rerun-trigger only
+    output: "output/miw/{d}/zk_intrinsic.parquet"
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),          # rerun-trigger only
     resources: mem_mb=8000
-    log: "logs/{ps}.{mi}.intrinsic_sidecar.log"
+    log: "logs/{d}.intrinsic_sidecar.log"
     shell:
-        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{wildcards.ps}} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{params.real_ps}} "
+        "--mi-name {params.real_mi} --mi-dir output/miw/{wildcards.d} "
+        "--tables-dir {params.tdir} > {log} 2>&1"
 
 # ---- FAM-derived corner-WFS covariance of the measured-intrinsic deviation ----
 rule wfs_mimic:
     input:
-        sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
-        donuts  = "output/{ps}/donuts.parquet",
-        visits  = "output/{ps}/visits.parquet",
+        sidecar = "output/miw/{d}/zk_intrinsic.parquet",
+        donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
+        visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script  = "code/cwfs/run_wfs_mimic.py",
         lib     = f"{WF_LIB}/mi_config.py",
     output:
-        cov84 = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov84.parquet",
-        cov21 = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov21.parquet",
-        bins  = "output/{ps}/{mi}/wfs_mimic/wfs_mimic_cov_bins.parquet",
-        pdf   = "output/{ps}/{mi}/wfs_mimic/wfs_mimic.pdf",
+        cov84 = "output/wfs_mimic/{d}/wfs_mimic_cov84.parquet",
+        cov21 = "output/wfs_mimic/{d}/wfs_mimic_cov21.parquet",
+        bins  = "output/wfs_mimic/{d}/wfs_mimic_cov_bins.parquet",
+        pdf   = "output/wfs_mimic/{d}/wfs_mimic.pdf",
     params:
-        coord = lambda w: coord(w.ps),
-        cfg   = lambda w: mi_cfg_json(w.ps, w.mi),    # rerun-trigger only
-        acfg  = lambda w: an_json("wfs_mimic", w.ps, w.mi),
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        coord   = lambda w: coord(MI_BY_DTAG[w.d][0]),
+        tdir    = lambda w: d_tables(w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),         # rerun-trigger only
+        acfg    = lambda w: an_json_d("wfs_mimic", w.d),
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.wfs_mimic.log"
+    log: "logs/{d}.wfs_mimic.log"
     shell:
-        "python code/cwfs/run_wfs_mimic.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --coord-sys {params.coord} > {log} 2>&1"
+        "python code/cwfs/run_wfs_mimic.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --coord-sys {params.coord} "
+        "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
+        "--out-dir output/wfs_mimic/{wildcards.d} > {log} 2>&1"
 
 # ---- refit the Double Zernikes using the measured intrinsic ----
 rule refit_mi:
     input:
-        donuts  = "output/{ps}/donuts.parquet",
-        visits  = "output/{ps}/visits.parquet",
-        sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
+        donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
+        visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
+        sidecar = "output/miw/{d}/zk_intrinsic.parquet",
         script  = f"{WF_BIN}/run_dz_fit.py",
         lib     = f"{WF_LIB}/dz_fitting.py",
-    output: "output/{ps}/{mi}/fits.parquet"
-    params: coord = lambda w: coord(w.ps)
+    output: "output/miw/{d}/fits.parquet"
+    params: coord = lambda w: coord(MI_BY_DTAG[w.d][0])
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.refit_mi.log"
+    log: "logs/{d}.refit_mi.log"
     shell:
         # --no-quality-cut: fit ALL visits into <mi>/fits.parquet (metric columns
         # travel with it); each consumer applies its own cut (bounce nd>=160, the
@@ -573,22 +707,27 @@ rule refit_mi:
 # ---- averaged-DOF LUT (n_dof/n_keep settable; collapses elev+rotator) ----
 rule build_lut:
     input:
-        fits     = "output/{ps}/fits.parquet",
-        visits   = "output/{ps}/visits.parquet",
+        fits     = lambda w: f"{d_tables(w.d)}/fits.parquet",
+        visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script   = "code/lut/run_build_lut.py",
         lib      = f"{WF_LIB}/ofc_svd.py",
     output:
-        lut    = "output/{ps}/{mi}/lut/lut.parquet",
-        lut_dz = "output/{ps}/{mi}/lut/lut_dz.parquet",
-        plots  = "output/{ps}/{mi}/lut/lut.pdf",
-    params:                                            # rerun-trigger only
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),      # SVD params, n_dof/n_keep
-        acfg = lambda w: an_json("lut", w.ps, w.mi),   # lut knobs
+        lut    = "output/lut/{d}/lut.parquet",
+        lut_dz = "output/lut/{d}/lut_dz.parquet",
+        plots  = "output/lut/{d}/lut.pdf",
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        # rerun-trigger only
+        cfg     = lambda w: mi_cfg_json(w.d),          # SVD params, n_dof/n_keep
+        acfg    = lambda w: an_json_d("lut", w.d),     # lut knobs
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.build_lut.log"
+    log: "logs/{d}.build_lut.log"
     shell:
-        "python code/lut/run_build_lut.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/lut/run_build_lut.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --tables-dir {params.tdir} "
+        "--out-dir output/lut/{wildcards.d} > {log} 2>&1"
 
 # ---- DZ-to-DZ correlations on the MI-refit fits (raw + optical-corrected) ----
 # One run emits BOTH PDFs from a shared (raw) selection: dz_correlations.pdf and
@@ -597,42 +736,51 @@ rule build_lut:
 # Needs ofc_svd (lsst.ts.ofc) for the correction -> RSP-only.
 rule dz_correlations:
     input:
-        fits   = "output/{ps}/{mi}/fits.parquet",
+        fits   = "output/miw/{d}/fits.parquet",
         script = "code/correlations/run_dz_correlations.py",
         lib    = "code/dz_plotting.py",
         ofc    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf    = "output/{ps}/{mi}/correlations/dz_correlations.pdf",
-        pairs  = "output/{ps}/{mi}/correlations/dz_correlations_pairs.parquet",
-        opdf   = "output/{ps}/{mi}/correlations/dz_correlations_optcorr.pdf",
-        opairs = "output/{ps}/{mi}/correlations/dz_correlations_optcorr_pairs.parquet",
-    params:                                            # rerun-trigger only
-        acfg = lambda w: an_json("dz_correlations", w.ps, w.mi),
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),      # n_dof/n_keep/SVD params
+        pdf    = "output/correlations/{d}/dz_correlations.pdf",
+        pairs  = "output/correlations/{d}/dz_correlations_pairs.parquet",
+        opdf   = "output/correlations/{d}/dz_correlations_optcorr.pdf",
+        opairs = "output/correlations/{d}/dz_correlations_optcorr_pairs.parquet",
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        # rerun-trigger only
+        acfg    = lambda w: an_json_d("dz_correlations", w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),          # n_dof/n_keep/SVD params
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.dz_correlations.log"
+    log: "logs/{d}.dz_correlations.log"
     shell:
-        "python code/correlations/run_dz_correlations.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/correlations/run_dz_correlations.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --fits {input.fits} "
+        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
 
 # ---- DZ-to-temperature correlations on the MI-refit fits ----
 rule thermal_correlations:
     input:
-        fits     = "output/{ps}/{mi}/fits.parquet",
-        visits   = "output/{ps}/visits.parquet",   # nollIndices for the OFC SVD
+        fits     = "output/miw/{d}/fits.parquet",
+        # nollIndices for the OFC SVD
+        visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script   = "code/correlations/run_thermal_correlations.py",
         lib      = f"{WF_LIB}/ofc_svd.py",               # DOF / v-mode projection
     output:
-        pdf     = "output/{ps}/{mi}/correlations/thermal_correlations.pdf",
-        summary = "output/{ps}/{mi}/correlations/thermal_correlations_summary.parquet",
+        pdf     = "output/correlations/{d}/thermal_correlations.pdf",
+        summary = "output/correlations/{d}/thermal_correlations_summary.parquet",
     params:
-        acfg = lambda w: an_json("thermal_correlations", w.ps, w.mi),  # rerun-trigger
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),   # n_dof / n_keep / k-range
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        acfg    = lambda w: an_json_d("thermal_correlations", w.d),   # rerun-trigger
+        cfg     = lambda w: mi_cfg_json(w.d),       # n_dof / n_keep / k-range
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.thermal_correlations.log"
+    log: "logs/{d}.thermal_correlations.log"
     shell:
-        "python code/correlations/run_thermal_correlations.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/correlations/run_thermal_correlations.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
+        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
 
 # ---- FAM bounce-test paired Δ (DZ / v-mode / DOF) on the MI-refit fits ----
 # fits.parquet now holds ALL visits (--no-quality-cut); the bounce applies a
@@ -640,19 +788,23 @@ rule thermal_correlations:
 # points are kept.  Other consumers apply visit_quality_pass (nd>=170).
 rule bounce:
     input:
-        fits     = "output/{ps}/{mi}/fits.parquet",
+        fits     = "output/miw/{d}/fits.parquet",
         script   = "code/bounce/run_bounce.py",
         lib      = "code/bounce/bounce_lib.py",
         ofc      = f"{WF_LIB}/ofc_svd.py",
     output:
-        summary = "output/{ps}/{mi}/bounce/bounce_summary.pdf",
-        stats   = "output/{ps}/{mi}/bounce_kj_stats.parquet",
-    params: acfg = lambda w: an_json("bounce", w.ps, w.mi)   # rerun-trigger only
+        summary = "output/bounce/{d}/bounce_summary.pdf",
+        stats   = "output/bounce/{d}/bounce_kj_stats.parquet",
+    params:
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        acfg    = lambda w: an_json_d("bounce", w.d),   # rerun-trigger only
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.bounce.log"
+    log: "logs/{d}.bounce.log"
     shell:
-        "python code/bounce/run_bounce.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --min-detectors 160 > {log} 2>&1"
+        "python code/bounce/run_bounce.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --fits {input.fits} "
+        "--out-dir output/bounce/{wildcards.d} --min-detectors 160 > {log} 2>&1"
 
 # ======================================================================
 # In-focus corner-WFS (cwfs) track — paired to the FAM triplets.
@@ -662,23 +814,26 @@ rule bounce:
 # ---- ingest the in-focus cwfs aggregate tables (per param_set) ----
 rule wfs_mktable:
     input:
-        visits = "output/{ps}/visits.parquet",
-        fits   = "output/{ps}/fits.parquet",       # FAM k=1 overlay in validation
-        fam_donuts = "output/{ps}/donuts.parquet",  # FAM median at WFS radius
+        visits = "output/fam_processing/{ps}/visits.parquet",
+        fits   = "output/fam_processing/{ps}/fits.parquet",   # FAM k=1 overlay in validation
+        fam_donuts = "output/fam_processing/{ps}/donuts.parquet",  # FAM median at WFS radius
         script = "code/cwfs/run_wfs_mktable.py",
         lib    = f"{WF_LIB}/intrinsics_lib.py",
     output:
-        donuts = "output/{ps}/wfs/{cwfs}/donuts.parquet",
-        visits = "output/{ps}/wfs/{cwfs}/visits.parquet",
-        plot   = "output/{ps}/wfs/{cwfs}/wfs_mktable_validation.pdf",
+        donuts = "output/wfs_ingest/{ps}/{cwfs}/donuts.parquet",
+        visits = "output/wfs_ingest/{ps}/{cwfs}/visits.parquet",
+        plot   = "output/wfs_ingest/{ps}/{cwfs}/wfs_mktable_validation.pdf",
     params:
-        coord = lambda w: coord(w.ps),
-        coll  = lambda w: wfs_collection(w.ps, w.cwfs),   # rerun-trigger
+        real_ps = lambda w: PS_BY_DIR[w.ps],
+        coord   = lambda w: coord(PS_BY_DIR[w.ps]),
+        coll    = lambda w: wfs_collection(PS_BY_DIR[w.ps], w.cwfs),   # rerun-trigger
     resources: mem_mb=10000
     log: "logs/{ps}.{cwfs}.wfs_mktable.log"
     shell:
-        "python code/cwfs/run_wfs_mktable.py --param-set {wildcards.ps} "
-        "--wfs-name {wildcards.cwfs} --coord-sys {params.coord} > {log} 2>&1"
+        "python code/cwfs/run_wfs_mktable.py --param-set {params.real_ps} "
+        "--wfs-name {wildcards.cwfs} --coord-sys {params.coord} "
+        "--tables-dir output/fam_processing/{wildcards.ps} "
+        "--out-dir output/wfs_ingest/{wildcards.ps}/{wildcards.cwfs} > {log} 2>&1"
 
 
 # ---- coadded FAM MIW-subtracted Z5-Z8 focal-plane maps (one PDF, per-term
@@ -688,63 +843,77 @@ rule wfs_mktable:
 #     output/<ps>/<mi>/plots/fam_coadd_miw_maps.pdf
 rule fam_coadd_miw:
     input:
-        donuts  = "output/{ps}/donuts.parquet",
-        visits  = "output/{ps}/visits.parquet",
-        sidecar = "output/{ps}/{mi}/zk_intrinsic.parquet",
+        donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
+        visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
+        sidecar = "output/miw/{d}/zk_intrinsic.parquet",
         script  = "code/coadd/run_fam_coadd_miw.py",
-    output: "output/{ps}/{mi}/plots/fam_coadd_miw_maps.pdf"
+    output: "output/coadd/{d}/fam_coadd_miw_maps.pdf"
     params:
-        bin_deg = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("bin_deg", 1.0),
-        mint    = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("min_triplets", 6),
-        grid    = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("grid_n", 24),
-        pct     = lambda w: an_sec("fam_coadd_miw", w.ps, w.mi).get("pct", 98.0),
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        bin_deg = lambda w: an_sec_d("fam_coadd_miw", w.d).get("bin_deg", 1.0),
+        mint    = lambda w: an_sec_d("fam_coadd_miw", w.d).get("min_triplets", 6),
+        grid    = lambda w: an_sec_d("fam_coadd_miw", w.d).get("grid_n", 24),
+        pct     = lambda w: an_sec_d("fam_coadd_miw", w.d).get("pct", 98.0),
     resources: mem_mb=12000
-    log: "logs/{ps}.{mi}.fam_coadd_miw.log"
+    log: "logs/{d}.fam_coadd_miw.log"
     shell:
-        "python code/coadd/run_fam_coadd_miw.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} --bin-deg {params.bin_deg} "
+        "python code/coadd/run_fam_coadd_miw.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --bin-deg {params.bin_deg} "
         "--min-triplets {params.mint} --grid-n {params.grid} --pct {params.pct} "
-        "> {log} 2>&1"
+        "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
+        "--out-dir output/coadd/{wildcards.d} > {log} 2>&1"
 
 
 # ---- v-mode <-> temperature correlations + v-mode autocorrelation (robust
 #      Spearman rho + Theil-Sen), discrete -1..1 summary with significance ----
 rule vmode_correlations:
     input:
-        fits   = "output/{ps}/{mi}/fits.parquet",
-        visits = "output/{ps}/visits.parquet",       # nollIndices for the OFC SVD
+        fits   = "output/miw/{d}/fits.parquet",
+        # nollIndices for the OFC SVD
+        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script = "code/correlations/run_vmode_correlations.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf_50   = "output/{ps}/{mi}/correlations/vmode_correlations_50_34.pdf",
-        pdf_22   = "output/{ps}/{mi}/correlations/vmode_correlations_22_12.pdf",
-        summ_50  = "output/{ps}/{mi}/correlations/vmode_correlations_summary_50_34.parquet",
-        summ_22  = "output/{ps}/{mi}/correlations/vmode_correlations_summary_22_12.parquet",
+        pdf_50   = "output/correlations/{d}/vmode_correlations_50_34.pdf",
+        pdf_22   = "output/correlations/{d}/vmode_correlations_22_12.pdf",
+        summ_50  = "output/correlations/{d}/vmode_correlations_summary_50_34.parquet",
+        summ_22  = "output/correlations/{d}/vmode_correlations_summary_22_12.parquet",
     params:
-        acfg = lambda w: an_json("vmode_correlations", w.ps, w.mi),
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        acfg    = lambda w: an_json_d("vmode_correlations", w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.vmode_correlations.log"
+    log: "logs/{d}.vmode_correlations.log"
     shell:
-        "python code/correlations/run_vmode_correlations.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/correlations/run_vmode_correlations.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
+        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
 
 
 # ---- per-visit fraction of the DZ explained by the 22/12 vs 50/34 subspace ----
 rule dz_explained:
     input:
-        fits   = "output/{ps}/{mi}/fits.parquet",
-        visits = "output/{ps}/visits.parquet",       # nollIndices for the OFC SVD
+        fits   = "output/miw/{d}/fits.parquet",
+        # nollIndices for the OFC SVD
+        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script = "code/correlations/run_dz_explained.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf     = "output/{ps}/{mi}/correlations/dz_explained.pdf",
-        table   = "output/{ps}/{mi}/correlations/dz_explained.parquet",
+        pdf     = "output/correlations/{d}/dz_explained.pdf",
+        table   = "output/correlations/{d}/dz_explained.parquet",
     params:
-        acfg = lambda w: an_json("dz_explained", w.ps, w.mi),
-        cfg  = lambda w: mi_cfg_json(w.ps, w.mi),
+        real_ps = lambda w: MI_BY_DTAG[w.d][0],
+        real_mi = lambda w: MI_BY_DTAG[w.d][1],
+        tdir    = lambda w: d_tables(w.d),
+        acfg    = lambda w: an_json_d("dz_explained", w.d),
+        cfg     = lambda w: mi_cfg_json(w.d),
     resources: mem_mb=4000
-    log: "logs/{ps}.{mi}.dz_explained.log"
+    log: "logs/{d}.dz_explained.log"
     shell:
-        "python code/correlations/run_dz_explained.py --param-set {wildcards.ps} "
-        "--mi-name {wildcards.mi} > {log} 2>&1"
+        "python code/correlations/run_dz_explained.py --param-set {params.real_ps} "
+        "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
+        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"

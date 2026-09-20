@@ -601,6 +601,12 @@ def main():
     ap.add_argument('--skip-fetch', action='store_true',
                     help='merge only, from existing sidecars')
     ap.add_argument('--output-root', default='output')
+    # The caller (the Snakefile) owns the output layout and may name directories
+    # differently from the param_set key, so the phase-1 table directory can be
+    # supplied directly rather than derived from it.
+    ap.add_argument('--out-dir', default=None,
+                    help='dir holding the phase-1 chunks/ and visits.parquet '
+                         '(read and updated in place; default: output/<ps>)')
     ap.add_argument('--consdb-url', default='auto')
     ap.add_argument('--efd', default='usdf_efd')
     args = ap.parse_args()
@@ -611,9 +617,10 @@ def main():
     if bad:
         ap.error(f'unknown group(s) {bad}; choose from {GROUPS}')
 
-    base = Path(args.output_root) / args.param_set
+    base = (Path(args.out_dir) if args.out_dir
+            else Path(args.output_root) / args.param_set)
     if not base.is_dir():
-        ap.error(f'no such param_set output dir: {base}')
+        ap.error(f'no such phase-1 table dir: {base}')
 
     if not args.skip_fetch:
         if args.all_chunks:
