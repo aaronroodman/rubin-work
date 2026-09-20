@@ -68,7 +68,7 @@ bias drives the coadd scatter.**
   `sys.modules` before `exec_module` (dataclass resolves by module name).
 - macOS has no `timeout` command.
 - Current param set: **`fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`**.
-- MIW product to use: **`pathA_50_34_i_5rot/intrinsic_split_maps.parquet`**, columns
+- MIW product to use: **`miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_maps.parquet`**, columns
   `thx_deg, thy_deg, Z{j}_OCS, Z{j}_CCS`. **Use the OCS columns.** 3985 field cells
   to 1.8 deg. The MIW OCS frame is the batoid frame, identity mapping.
 - `fits.parquet` in the same directory has 1126 visits × 653 columns, including the

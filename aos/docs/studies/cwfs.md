@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
 > **Code:** `code/cwfs/` · **Notebooks:** `notebooks/cwfs/`
-> **Output:** `output/<param_set>/wfs/` (`donuts.parquet`, `visits.parquet`), `output/<param_set>/<mi_name>/wfs/`, `output/<param_set>/<mi_name>/wfs_mimic/`
+> **Output:** `output/wfs_ingest/<P>/<cwfs>/` (`donuts.parquet`, `visits.parquet`), `output/wfs_corner_compare/<P>/<cwfs>/`, `output/wfs_dof_compare/<P>_<M>/<cwfs>/`, `output/wfs_mimic/<P>_<M>/`
 
 Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS)
 against the Full Array Mode (FAM) full-focal-plane measurement.
@@ -36,7 +36,7 @@ Two distinct tracks, easy to confuse:
 
 A `param_set` can carry several CWFS reductions, listed under `wfs_collections` in
 `param_sets.yaml`; each is a named variant `<cwfs>` (e.g. `refitWcs`, `paired_3mm`,
-`ai_donut`) and outputs sit side by side under `output/<ps>/wfs/<cwfs>/`. Each entry
+`ai_donut`) and the variant is the innermost directory of each CWFS study. Each entry
 carries a `seq_offset` (**+1** in-focus default, **0** extra, **−1** intra) determined
 per collection by Butler introspection, and a `dataset_type`.
 

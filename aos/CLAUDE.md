@@ -16,12 +16,14 @@ What follows is only the things that are easy to get wrong.
 `code/science_lut/`, `code/fam_focus/`, `code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.
 
-Seven modules stay **flat at `code/`** on purpose:
+Eleven modules stay **flat at `code/`** on purpose:
 
 | module | why |
 |---|---|
 | `aos_trim.py`, `aos_state.py`, `aos_consdb_efd.py` | imported **by bare module name from `blocks/`, `olr/`, `optatmo/`, `guider/`** (39 references) via a hardcoded `sys.path.insert(.../aos/code)`. Moving them breaks four sibling topics with no static-import warning. |
 | `aos_fwhm.py`, `fam_selection.py`, `miw_io.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
+| `output_paths.py` | resolves `output/<study>/<P>[_<M>]/` from the long `param_set` and `mi_name` keys through their `dir_name` entries. For the **hand-run** scripts only — the Snakefile owns the layout for every rule it runs and passes `--out-dir`. |
+| `miw_corner_intrinsic.py` | supplies the `miw_lookup` callable that **`value_added/code/build_optical_state.py`** takes for `--intrinsic miw`, so it is consumed from a sibling topic rather than by a study here |
 | `test_m1m3.py` | manual EFD probe, no study of its own |
 
 Do not "finish the job" by moving the first three into `code/telemetry/`.

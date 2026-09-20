@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
 > **Code:** `code/psf/`
-> **Output:** `output/<param_set>/<mi_name>/psf/`
+> **Output:** `output/psf/<P>_<M>/`
 
 The expected Point Spread Function (PSF) due to the optical contribution, under given
 conditions. Focal-plane maps of full width at half maximum (FWHM), ellipticity and
@@ -39,7 +39,7 @@ A single measured-intrinsic build supplies everything: `intrinsic_split_maps.par
 (the MIW) and `fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state).
 `--mi` defaults to `pathA_50_34_i_5rot`, the current build.
 
-Writes `output/<ps>/<mi>/psf/psf_fp_maps_<case>_<band>.pdf`.
+Writes `output/psf/<P>_<M>/psf_fp_maps_<case>_<band>.pdf`.
 
 ## Running
 

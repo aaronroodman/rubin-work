@@ -34,7 +34,7 @@ computed over just the corner-WFS radial annulus (cameraGeom SW0 inner corner
 columns, to highlight the high-radius region where the CWFS sit.  Blocks are
 ordered in time (day_obs, seq) as a "coadd ordinal".
 
-Outputs (into output/<ps>/<out-name>/, default out-name=coadd_50_34):
+Outputs (into the directory given by --out-dir, e.g. output/coadd/<P>/50_34/):
   blocks_summary.parquet          every detected block: program, day_obs, seq
                                   range, n_visits, alt/az/rot means, blur FWHM,
                                   band, in-5rot-family flag, 13 thermal means
@@ -632,7 +632,20 @@ def main():
     ap.add_argument("--config", default=None)
     ap.add_argument("--output-root", default="output")
     ap.add_argument("--out-name", default="coadd_50_34",
-                    help="subdir under output/<ps>/ for this analysis")
+                    help="subdir under --output-root/<ps>/ naming this analysis "
+                         "variant, used only when --out-dir is not given")
+    # The caller owns the output layout and may name directories differently
+    # from the param_set / mi_name keys, so each path this script needs can be
+    # supplied directly rather than derived from those keys.
+    ap.add_argument("--tables-dir", default=None, dest="tables_dir",
+                    help="dir holding the phase-1 donuts.parquet and chunks/ "
+                         "(default: output/<ps>)")
+    ap.add_argument("--miw-dir", default=None, dest="miw_dir",
+                    help="dir holding the per-donut zk_intrinsic.parquet "
+                         "(default: output/<ps>/<mi>)")
+    ap.add_argument("--out-dir", default=None, dest="out_dir",
+                    help="directory to write into "
+                         "(default: output/<ps>/<out-name>)")
     ap.add_argument("--min-visits", type=int, default=6,
                     help="build/plot only blocks with >= this many visits "
                          "(the summary table lists ALL detected blocks)")
@@ -693,8 +706,11 @@ def main():
     wide_progs = set(args.wide_programs or [])
 
     base = Path(args.output_root) / args.param_set
-    out_dir = base / args.out_name; out_dir.mkdir(parents=True, exist_ok=True)
-    donuts_pq = base / "donuts.parquet"
+    tables = Path(args.tables_dir) if args.tables_dir else base
+    miw_dir = Path(args.miw_dir) if args.miw_dir else base / args.mi_name
+    out_dir = Path(args.out_dir) if args.out_dir else base / args.out_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    donuts_pq = tables / "donuts.parquet"
 
     # ---- block assignment (NO alt/rot cut) + summary table over ALL blocks ----
     # Read visits PER CHUNK and union columns: the combined visits.parquet keeps
@@ -703,8 +719,8 @@ def main():
     # blocks.  Per-chunk concat keeps z_gradient where it exists (NaN elsewhere).
     need = (["day_obs", "seq_num", "alt", "az", "rotator_angle",
              "science_program", "band", "median_blur_arcsec"] + THERMAL_VARS)
-    chunk_vis = sorted((base / "chunks").glob("*/visits.parquet"))
-    srcs = chunk_vis if chunk_vis else [base / "visits.parquet"]
+    chunk_vis = sorted((tables / "chunks").glob("*/visits.parquet"))
+    srcs = chunk_vis if chunk_vis else [tables / "visits.parquet"]
     parts = []
     for f in srcs:
         avail = set(pq.read_schema(str(f)).names)
@@ -739,14 +755,14 @@ def main():
           f"{int(summ['plotted'].sum())} blocks >= {args.min_visits} visits "
           f"will be built/plotted", flush=True)
 
-    vtab = QTable.read(str(base / "visits.parquet"))
+    vtab = QTable.read(str(tables / "visits.parquet"))
     noll_arr = (np.array(vtab["nollIndices"][0])
                 if "nollIndices" in vtab.colnames else None)
     pf, lut = _visit_row_groups(donuts_pq)
 
     # per-donut MIW sidecar (row-aligned to donuts.parquet), indexed per visit so
     # each block's reference map is binned on the same grid as its remnant
-    sidecar_pq = base / args.mi_name / "zk_intrinsic.parquet"
+    sidecar_pq = miw_dir / "zk_intrinsic.parquet"
     if not sidecar_pq.exists():
         raise SystemExit(f"MIW sidecar not found: {sidecar_pq}  -- build it first "
                          "(rule intrinsic_sidecar) so the coadd can compare to the MIW")

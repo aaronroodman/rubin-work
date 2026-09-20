@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
 > **Code:** `code/lut/`
-> **Output:** `output/<param_set>/<mi_name>/lut/`
+> **Output:** `output/lut/<P>_<M>/`
 
 Construction of a Look-Up Table (LUT) of telescope degrees of freedom (DOF) from Full
 Array Mode (FAM) wavefront measurements. The per-visit Double Zernike (DZ) fits are
@@ -33,9 +33,9 @@ count than the MIW build it sits beside.
 |---|---|
 | `code/lut/run_build_lut.py` | pipeline rule `build_lut` — the whole study |
 
-Reads `output/<param_set>/fits.parquet` and `visits.parquet`, the **Phase-1** per-visit
+Reads `output/fam_processing/<P>/fits.parquet` and `visits.parquet`, the **Phase-1** per-visit
 DZ fits rather than the MI-refit ones, and writes under
-`output/<param_set>/<mi_name>/lut/`:
+`output/lut/<P>_<M>/`:
 
 | product | content |
 |---|---|

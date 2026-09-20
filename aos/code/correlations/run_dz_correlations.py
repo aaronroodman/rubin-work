@@ -2,7 +2,7 @@
 """DZ-to-DZ correlation analysis (script port of study_doublezernike.ipynb
 §7-§10), run on a per-(param_set, mi_name) DZ-fit table.
 
-Operates on the measured-intrinsic refit  output/<ps>/<mi>/fits.parquet  (or any
+Operates on the measured-intrinsic refit  output/miw/<P>_<M>/fits.parquet  (or any
 DZ-fit parquet with z{prefix}_z{j}_c{k} columns), so the correlations are over
 the MI-subtracted residual Double-Zernike coefficients.  Reuses the plotting
 primitives in code/dz_plotting.py.
@@ -24,7 +24,8 @@ The raw PDF also carries the SVD-space companions to the DZ-DZ heatmap: the
 DOF x DOF and v-mode x v-mode correlation matrices (across visits) plus the
 top-|r| v-mode-pair scatters, from the same n_dof/n_keep OFC SVD (RSP-only).
 
-Writes, under  output/<ps>/<mi>/correlations/ :
+Writes, under the directory given by --out-dir (the pipeline passes
+output/correlations/<P>_<M>/) :
     dz_correlations.pdf                  raw: DZ Pearson heatmap + DOF/v-mode
                                          correlation matrices + top-|r| scatters
                                          + astig pairs + conjugate-orbit grids

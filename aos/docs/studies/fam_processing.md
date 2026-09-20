@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
 > **Code:** `code/fam_processing/` · **Notebooks:** `notebooks/fam_processing/`
-> **Output:** `output/<param_set>/fam_processing/chunk_status.pdf`, `output/<param_set>/fam_processing/chunk_status.parquet`
+> **Output:** `output/fam_processing/<P>/chunk_status.pdf`, `output/fam_processing/<P>/chunk_status.parquet`
 
 Tools for checking the Full Array Mode (FAM) chunk tables: what a chunk contains before it
 is built, whether the Butler provenance is consistent across chunks, how the visits cover
@@ -88,7 +88,7 @@ ConsDB access:
 
 ## Output
 
-`output/<param_set>/fam_processing/chunk_status.pdf`, plus a machine-readable
+`output/fam_processing/<P>/chunk_status.pdf`, plus a machine-readable
 `chunk_status.parquet` with one row per chunk. Under `<param_set>/` rather than
 `<mi_name>/`, because none of it depends on which Measured Intrinsic Wavefront build was
 used — this is about the tables that precede any MIW.

@@ -42,7 +42,8 @@ only, ignoring the params and code hashes.
 
 The alternative, if you would rather keep the default triggers, is to wipe just those
 outputs' metadata:
-`snakemake --cleanup-metadata output/<ps>/chunks/<chunk>/visits.parquet` per chunk.
+`snakemake --cleanup-metadata output/fam_processing/<P>/chunks/<chunk>/visits.parquet`
+per chunk.
 
 ## Pending
 
@@ -65,13 +66,13 @@ flagged `bad_fit`, while `dz_correlations` and `thermal_correlations` did. They 
 included ~24 visits whose DZ fit had failed, usually for too few donuts to constrain the
 k=1..6 focal-plane terms. Both now call the shared `fam_quality_selection`.
 
-**Measured effect** on `pathA_50_34_i_5rot/fits.parquet` at the configured
+**Measured effect** on `miw/danish_1_2_A_50_34_i_5rot/fits.parquet` at the configured
 `max_coeff_um = 2.0` µm: the selected sample drops from 1125 to 1101 of 1126 visits.
 `dz_correlations` and `thermal_correlations` are unaffected — same 1101 visits, identical
 index — so their existing output is still valid.
 
 **Affected files:**
-`output/<ps>/<mi>/correlations/dz_explained.{pdf,parquet}`,
+`output/correlations/<P>_<M>/dz_explained.{pdf,parquet}`,
 `vmode_correlations_{50_34,22_12}.pdf`, `vmode_correlations_summary_{50_34,22_12}.parquet`
 
 ```bash
@@ -88,11 +89,11 @@ take a single `--mi`, defaulting to `pathA_50_34_i_5rot`, which also carries the
 sample (1126 versus 960 visits in `fits.parquet`).
 
 The closed-loop cases also moved into their own
-[`closed_loop`](../studies/closed_loop.md) study, and output moved from `<ps>/psf/` to
-`<ps>/<mi>/{psf,closed_loop}/`.
+[`closed_loop`](../studies/closed_loop.md) study, and output moved from `<ps>/psf/` to what is now
+`output/{psf,closed_loop}/<P>_<M>/`.
 
-**Affected files:** the 6 PDFs now in `output/<ps>/<mi>/psf/` and the 8 in
-`output/<ps>/<mi>/closed_loop/`. The latter still carry their old `psf_fp_maps_loop*`
+**Affected files:** the 6 PDFs now in `output/psf/<P>_<M>/` and the 8 in
+`output/closed_loop/<P>_<M>/`. The latter still carry their old `psf_fp_maps_loop*`
 names; a rerun writes `closed_loop_*` instead.
 
 ```bash
@@ -302,7 +303,7 @@ and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are
 
 ## `coadd_50_34` — rerunning over all bands, 2025 and 2026
 
-The products in `output/<ps>/coadd_50_34/` came from two runs with two different band
+The products in `output/coadd/<P>/50_34/` came from two runs with two different band
 selections: `block_grids.npz` from an i-band run (130 blocks built) and
 `coadd_metrics_rebin3.parquet` from an all-band run (221 blocks). Mixing them makes
 `analyze_miw_field_order.py` fail with an `IndexError`. Both counts are reproducible from
@@ -311,8 +312,8 @@ the current chunk tables, so no data was lost; the cause is that `--bands` inher
 mostly r-band.
 
 The 2026-08-24 to 2026-09-03 products are archived under
-`output/<ps>/coadd_50_34/archive/20260903_iband/` and
-`output/<ps>/coadd_50_34_v2/archive/20260903_iband/`, each with a note recording its band
+`output/coadd/<P>/50_34/archive/20260903_iband/` and
+`output/coadd/<P>/50_34_v2/archive/20260903_iband/`, each with a note recording its band
 selection and block count.
 
 **Rerunning over all bands** rebuilds both `coadd_50_34/` products from one run: 216 blocks

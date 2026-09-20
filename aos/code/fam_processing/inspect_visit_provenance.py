@@ -27,6 +27,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # aos/code -> flat modules
+from output_paths import study_dir  # noqa: E402
+
 # Packages highlighted in the printout; the full diff still compares them all.
 DEFAULT_KEY_PKGS = ['lsst_distrib', 'ts_wep', 'ts_donut_viz', 'donut_viz', 'ts_ofc']
 
@@ -82,7 +85,8 @@ def inspect_param_set(param_set, params, chunks, dataset_type, output_root,
     records = []   # one dict per chunk
     for dmin, dmax in chunks:
         chunk = f'{dmin}_{dmax}'
-        donut_parquet = f'{output_root}/{param_set}/chunks/{chunk}/donuts.parquet'
+        tables = study_dir('fam_processing', param_set, output_root=output_root)
+        donut_parquet = f'{tables}/chunks/{chunk}/donuts.parquet'
         visit = None if use_butler_first else first_visit_from_parquet(donut_parquet)
         if visit is None:
             try:
@@ -210,7 +214,7 @@ def main():
     ap.add_argument('--dataset-type', default='aggregateAOSVisitTableRaw',
                     help='Butler dataset type to trace (default: %(default)s)')
     ap.add_argument('--output-root', default='output',
-                    help='Root of the output/<param_set>/chunks tree (default: %(default)s)')
+                    help='Root of the output tree (default: %(default)s)')
     ap.add_argument('--config', default=None,
                     help='snake_config.yaml path (default: ../snake_config.yaml '
                          'next to this script)')

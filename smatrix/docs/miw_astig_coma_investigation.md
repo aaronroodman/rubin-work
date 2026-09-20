@@ -5,8 +5,9 @@
 Investigation of the large, high-field-order astigmatism (Z5,Z6) and coma
 (Z7,Z8) seen in the measured intrinsic wavefront (MIW) that is **not** predicted
 by the batoid design model. Data: FAM analysis
-`aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/pathA_50_34_i_5rot`
-(i-band, 5 rotator subsets). Supporting analysis code lives in `smatrix/code`.
+`aos/output/miw/danish_1_2_A_50_34_i_5rot` (i-band, 5 rotator subsets), from
+`param_set = fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` and
+`mi_name = pathA_50_34_i_5rot`. Supporting analysis code lives in `smatrix/code`.
 
 ## The observation
 - Per-rotator-bin Z5 field maps show a complex dipole/quadrupole pattern with

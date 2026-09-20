@@ -35,7 +35,7 @@ system).  Four equal-width radial bins between them:
 
     [1.5178, 1.5696]  [1.5696, 1.6214]  [1.6214, 1.6732]  [1.6732, 1.7250] deg
 
-Writes  output/<param_set>/<mi_name>/study_radialbins.pdf .
+Writes  <out-dir>/study_radialbins.pdf ; the pipeline passes output/miw/<P>_<M>/ .
 """
 import argparse
 import sys

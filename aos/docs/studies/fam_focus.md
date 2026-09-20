@@ -228,10 +228,10 @@ no matched row is flagged `bad_fit`.
 
 ### Where the DZ coefficients live
 
-The DZ coefficients are in `output/<param_set>/fits.parquet`, one row per FAM extra/intra-focal
+The DZ coefficients are in `output/fam_processing/<P>/fits.parquet`, one row per FAM extra/intra-focal
 pair, with columns named `<prefix>_z<j>_c<k>` — so DZ(k=1, j=4) at `prefix = z1toz6` is
 `z1toz6_z4_c1` [µm of wavefront], with its formal error in `z1toz6_z4_c1_err`.
-`output/<param_set>/dz_fit_check.parquet` holds **residual diagnostics only** (`resid_nmad_um`,
+`output/dzfit/<P>/dz_fit_check.parquet` holds **residual diagnostics only** (`resid_nmad_um`,
 `resid_rms_um`, `resid_median_um`, `dev_nmad_um` per `pupil_j`) and carries no DZ coefficient.
 
 The two prefixes, `z1toz3` (k=1..3) and `z1toz6` (k=1..6), agree here to 0.0003 µm of wavefront on

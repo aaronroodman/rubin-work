@@ -7,8 +7,8 @@ notebooks, which all did the same thing: load two donut parquet tables, match
 the same physical donuts across them, and compare ``zk`` per Noll index.
 
 Two runs are referenced as side **A** and side **B**.  Inputs are resolved
-from a named ``param_set`` (the new ``output/<ps>/{donuts,visits,fits}.parquet``
-layout) with an explicit-path fallback for legacy tables.
+from a named ``param_set`` (``output/fam_processing/<P>/{donuts,visits,fits}.parquet``)
+with an explicit-path fallback for legacy tables.
 
 Donut matching is per-CCD positional: two donuts match when their intra-focal
 centroids ``(centroid_x_intra, centroid_y_intra)`` lie within ``tol_pix`` on the
@@ -28,7 +28,9 @@ from scipy.spatial import cKDTree
 from scipy.stats import binned_statistic_2d
 from astropy.table import QTable
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # aos/code -> flat modules
 from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES  # noqa: E402
+from output_paths import study_dir  # noqa: E402
 
 
 # ----------------------------------------------------------------------
@@ -47,8 +49,8 @@ def fits_sidecar_path(donut_parquet_path):
 
 
 def resolve_param_set_paths(param_set, output_root='output'):
-    """``(donuts, visits, fits)`` paths for the new ``output/<ps>/`` layout."""
-    base = Path(output_root) / param_set
+    """``(donuts, visits, fits)`` paths under ``output/fam_processing/<P>/``."""
+    base = study_dir('fam_processing', param_set, output_root=output_root)
     return (base / 'donuts.parquet',
             base / 'visits.parquet',
             base / 'fits.parquet')
@@ -58,7 +60,7 @@ def resolve_side(*, param_set=None, donut=None, visits=None, fits=None,
                  output_root='output'):
     """Resolve one comparison side to ``(donut, visits, fits)`` paths.
 
-    ``param_set`` selects ``output/<ps>/{donuts,visits,fits}.parquet``.  Any of
+    ``param_set`` selects ``output/fam_processing/<P>/{donuts,visits,fits}.parquet``.  Any of
     ``donut`` / ``visits`` / ``fits`` (str, ``Path``, or list of donut paths for
     a legacy multi-chunk run) override the resolved value.  Without a
     ``param_set``, ``visits`` / ``fits`` fall back to the ``_visits`` / ``_fits``

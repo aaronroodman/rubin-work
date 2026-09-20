@@ -13,7 +13,8 @@ every visit that passes the band / program / good-fit cuts.  ``n_dof`` and
 ``n_keep`` are settable in mi_config.yaml (the ``lut`` block overrides the
 top-level values, so the LUT can use a different mode count than the build).
 
-Writes, under  output/<param_set>/<mi_name>/lut/ :
+Writes, under the directory given by --out-dir (the pipeline passes
+output/lut/<P>_<M>/) :
 
     lut.parquet       one row per recovered DOF: index, label, unit, value
                       (median by default), mean, robust scatter, n_visits

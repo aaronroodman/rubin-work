@@ -1,10 +1,11 @@
 # Step 1 — repository structure decisions
 
-> **Status:** agreed, queued — execution blocked on the other session finishing · **Last updated:** 2026-09-18 · **Kind:** working state (plan)
+> **Status:** current — all ten queued items done · **Last updated:** 2026-09-20 · **Kind:** working state (plan)
 
 Step 1 of the work in [`reorg_review_plan_2026-09.md`](reorg_review_plan_2026-09.md):
 settle the directory structure of `rubin-work`, so that later choices follow from it.
-Decided in discussion 2026-09-18. **Nothing here has been executed yet.**
+Decided in discussion 2026-09-18; the queued items were executed between 2026-09-18 and
+2026-09-20. The items still open below all belong to the main plan's Part A, not to step 1.
 
 ## Contents
 
@@ -345,12 +346,48 @@ short name — `danish_1_3`, not `fam_danish_1_3_0_wep17_8_0_refitWCS_bin2x` —
 donut_viz / bin detail in `description` and `fam_collections`, where it is actually read
 from. This gets D2's legibility on everything new without a sweep over working code.
 
-**Consequence for D2/item 7.** The joined name for the live pair stays
+**Consequence for D2/item 7.** The joined name for the live pair would be
 `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x_pathA_50_34_i_5rot` (59 characters), well over
 the ~30 target. D2's premise — that flattening needs short parts first — does not hold for
-this param_set and will not be made to hold. Item 7 has to either accept a long directory
-name for the current pair or wait until the live data is a short-named param_set
-(`danish_1_3` onward). That is a real change to item 7's assumptions, not a detail.
+this param_set and will not be made to hold.
+
+**Superseded by D10 on 2026-09-20.** The dilemma D9 posed — accept a long directory name or
+wait for a short-named param_set — had a third answer: keep the long key as the identity and
+give each entry a short `dir_name` used in paths only. Item 7 landed on that basis.
+
+### D10. A `dir_name` translation layer separates the identity from the directory name
+
+Each entry in `param_sets.yaml` and in the `measured_intrinsics` list of `mi_config.yaml`
+carries a `dir_name` giving a short form used in `output/` paths **only**. The long key
+remains the identity that `--param-set`, the value-added database rows, the LUT parquet
+metadata and the frozen provenance resolve against. `dir_name` defaults to the key when
+absent, so a future short-named param_set needs no entry.
+
+```
+fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x  ->  danish_1_2
+pathA_50_34_i_5rot                         ->  A_50_34_i_5rot
+output/correlations/danish_1_2_A_50_34_i_5rot/       (25 characters)
+```
+
+The repo already did this once: `collection_phrase` in `param_sets.yaml` maps a long Butler
+collection name onto a short filename-safe string. `dir_name` follows that precedent.
+
+The translation lives in the `Snakefile`, which owns the `output:` declarations. Each rule
+resolves the short wildcard back to the long key through an injective map built at load
+time, and passes both — `--param-set <long key>` for the config lookup and `--out-dir` for
+the path. The scripts no longer re-derive their own output path, which removes the
+duplicated path logic rather than adding a resolver to 27 call sites. Every semantic use of
+`param_set` and `mi_name` inside the scripts was checked first and is either a config lookup
+or a plot label; nothing derives physics from the string.
+
+Two departures from the root `CLAUDE.md` rule, both now written there:
+
+- **The corner wavefront sensor (CWFS) variant nests** one level below the data directory
+  (`wfs_ingest/<P>/<cwfs>/`) instead of joining as a third axis, which would reach 36
+  characters.
+- **`fits.parquet` appears under two studies** — the phase-1 per-visit DZ fit under
+  `fam_processing/` and the DZ refit referenced to the MIW under `miw/`. Different products
+  under different studies is not a "one product, one path" violation.
 
 ---
 
@@ -371,7 +408,7 @@ Each item is one commit. Verify imports after each before continuing.
 | 10 | Move `guider/output` and `optatmo/output` to group space and replace with symlinks | 6.4 GB / 28,596 files, `.gitignore` | **done** — `92aef81`; symlinked 2026-09-19, `/sdf/home` 87% → 66% |
 | 6 | Resolve the output collision (D8) — delete the 2 stale param_set-scoped PDFs and the 3 superseded copies in `aos/output/smatrix_vmode/` | 5 files, 578,082 B | **done** — deleted 2026-09-19 |
 | 9 | Retire the obsolete param_sets; renaming declined (D9) | 3 param_sets, 7 files | **done** — `9958662`; no rename, short names from `danish_1_3` on |
-| 7 | Flatten `<param_set>/<mi_name>/` → `<param_set>_<mi_name>/` and put the study first (D2) | output tree + 54 `mi_name` call sites + 7 study docs | **blocked on a decision** — the live joined name is 59 chars, not the ~30 D2 assumed (see D9) |
+| 7 | Flatten `<param_set>/<mi_name>/<study>/` → `<study>/<param_set>_<mi_name>/` (D2, D10) | `Snakefile`, 2 config files, 16 scripts, 25 docs, 2 notebooks, 308 files moved | **done** — `d839399` + `6579204` + this commit; short `dir_name` per D10 |
 
 Items 3–6 are unblocked as of 2026-09-18: the other session's
 `aos/notebooks/smatrix_vmode/vmode_dof_ts_ofc-13Aug2026.ipynb` was deleted rather than
@@ -414,6 +451,23 @@ Four more from doing item 5, all bearing on items 7 and 9:
 
 Item 7 is last on purpose. It is the only item that rewrites output paths in code, and
 doing it before the renaming in item 9 would move every directory twice.
+
+Four things from doing item 7 on 2026-09-20:
+
+- **The scope estimate was low in code and high in notebooks.** The plan named ~20 docs and
+  6 notebooks; the actual grep found 25 tracked `.md` files, only 3 notebooks with source
+  hits (two of which the plan had not listed), and **13 hardcoded path defaults the plan
+  never mentioned** — 8 of them in `optatmo/`, which reads `aos/output/` cross-topic.
+- **A move into a sibling topic is repair, not refactor.** Fixing those 8 `optatmo/` paths
+  looks like the side-effect refactoring the root `CLAUDE.md` forbids, but the migration had
+  just broken them. Committed separately (`6579204`) so it is revertable on its own.
+- **`find` will not traverse a symlinked start path** without `-L`, so `find output -type f`
+  silently returns nothing for `aos/output`. Two counts were lost to this.
+- **Compare rerun *reasons*, not job counts.** The post-migration dry run wanted 78 jobs,
+  which looked like migration damage. Pre-migration it wanted 89, every rule reporting
+  "Missing output files"; post-migration that phrase is gone from every rule whose product
+  exists, and `mktable` × 10 vanished entirely. `os.rename` preserves mtimes, so the
+  remaining `fit` × 10 is the same pre-existing staleness as before the move.
 
 ### Item 10 — `guider/output` and `optatmo/output` to group space
 
@@ -464,11 +518,9 @@ large database files:
   take real time. Verify the file count and total size on both sides before removing
   anything, and deleting the originals is a MUST-ASK.
 
-The `**Output:**` headers added in item 2 describe the tree **as it is on disk today**,
-including the nested `<param_set>/<mi_name>/` form in seven of them
-(`bounce`, `closed_loop`, `correlations`, `cwfs`, `lut`, `miw`, `psf`). They are accurate
-now and deliberately not written in the future layout — item 7 updates them as part of the
-move, so a reader is never sent to a path that does not exist.
+The `**Output:**` headers added in item 2 originally described the nested
+`<param_set>/<mi_name>/` form, so that a reader was never sent to a path that did not yet
+exist. Item 7 rewrote all of them to the flattened layout as part of the move.
 
 The 13 files needing the `efd_db` import edit in item 3:
 
@@ -520,17 +572,16 @@ cd ~/notebooks/rubin-work && git status --porcelain
 Proceed when nothing is modified under `common/`, `aos/code/`, or the directory being
 moved.
 
-**Two decisions still needed from Aaron:**
+All ten queued items are done. Both decisions this section previously held open are
+settled: item 6's stale duplicate PDFs were deleted on 2026-09-19, and item 9 declined the
+rename in favour of short names from `danish_1_3` on, which D10 then made sufficient for
+item 7.
 
-1. **Item 6** — delete the two stale param_set-scoped `vmode_dof_matrix_*.pdf` copies
-   (D8). A deletion, so it is a must-ask.
-2. **Item 9** — the shortened `param_set` and `mi_name` names (D9). Everything about the
-   output layout is decided; only the strings are open.
+The migration left the emptied `output/<param_set>/` directories in place, per the
+delete-asking rule. Removing them is a deletion and needs approval.
 
-Also still open from the main plan's Part A, unchanged by this document: deleting the
-27 GB `aos/output/archive/`, the `FocalPlaneInterpolator.py` delete-or-demonstrate call,
-study splits for `smatrix`/`guider`/`optatmo`/`filters`, and the seven empty topics.
-
-**Decision still outstanding:** item 6 deletes the stale duplicate PDFs, and item 7 of
-the main plan's Part A proposes deleting the 27 GB `aos/output/archive/`. Both are
-deletions, so both need explicit approval.
+Still open from the main plan's Part A, unchanged by this document: deleting
+`aos/output/archive/`, the `FocalPlaneInterpolator.py` delete-or-demonstrate call, study
+splits for `smatrix`/`guider`/`optatmo`/`filters`, the seven empty topics, and the five
+stray astrometry files in the repo-root `output/`. The archive deletion is a deletion, so
+it needs explicit approval.

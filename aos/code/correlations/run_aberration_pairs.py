@@ -13,10 +13,11 @@ For each pair, donuts are split into quartiles by the primary value and an OLS
 line + Pearson r is fit per quartile; the per-quartile slope/intercept/r/n are
 written to a summary parquet and rendered as a 2x2 density page per pair.
 
-Operates on one Phase-1 combined param_set:
-    output/<ps>/donuts.parquet   per-donut zk_<coord> (streamed by row group)
-    output/<ps>/visits.parquet   nollIndices (pupil-j ordering)
-    output/<ps>/fits.parquet     bad-fit flag (per visit, optional)
+Operates on one Phase-1 combined param_set, whose tables are passed in
+(the pipeline reads them from output/fam_processing/<P>/):
+    donuts.parquet   per-donut zk_<coord> (streamed by row group)
+    visits.parquet   nollIndices (pupil-j ordering)
+    fits.parquet     bad-fit flag (per visit, optional)
 
 Writes:
     <output-dir>/aberration_pairs.pdf

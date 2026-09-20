@@ -592,7 +592,7 @@ For the (second-order) gain-error test, $\Delta a_{b,i}=a_{b,i}-\langle a_i\rang
 needs the build-set reference. Two sources:
 
 - **exact** — project the build's own per-visit raw DZ fits
-  (`pathA_50_34_i_5rot/fits.parquet`, 1126 rows of `z1toz6_*` columns) onto the same
+  (`miw/danish_1_2_A_50_34_i_5rot/fits.parquet`, 1126 rows of `z1toz6_*` columns) onto the same
   $\mathbf U_{\rm eff}$, over exactly the build-selected visits, with the build's own
   central statistic (median; strictly the MIW cell is a per-donut median, so the
   effective centre is donut-weighted and can drift slightly cell to cell — second

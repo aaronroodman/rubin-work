@@ -39,7 +39,7 @@ non-DOF structure), so the honest comparison is on the NON-build visits; the scr
 splits them.
 
   python code/analyze_dz_goodness_of_fit.py
-  python code/analyze_dz_goodness_of_fit.py --fits-biw output/<ps>/<biw_build>/fits.parquet
+  python code/analyze_dz_goodness_of_fit.py --fits-biw output/miw/<P>_<biw_build>/fits.parquet
 """
 import argparse
 import os

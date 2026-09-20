@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-07 · **Kind:** reference (study)
 
 > **Code:** `code/closed_loop/`
-> **Output:** `output/<param_set>/<mi_name>/closedloop/`
+> **Output:** `output/closed_loop/<P>_<M>/`
 
 Simulation of Active Optics System (AOS) closed-loop control over a sequence of Full
 Array Mode (FAM) visits, measuring the delivered Point Spread Function (PSF) that results.
@@ -42,7 +42,7 @@ These are what the study exists to vary; each appears in the output filename.
 Reads `intrinsic_split_maps.parquet` (the MIW, which fixes the Noll index set) and
 `fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state), all from a single
 `<mi>` build. Writes
-`output/<ps>/<mi>/closed_loop/closed_loop_<case>_<band>_<intrinsic>_<order>_<latency>_g<gain>.pdf`,
+`output/closed_loop/<P>_<M>/closed_loop_<case>_<band>_<intrinsic>_<order>_<latency>_g<gain>.pdf`,
 so runs with different control settings sit side by side.
 
 ## Running
@@ -58,7 +58,7 @@ Needs `lsst.ts.ofc` (the sensitivity-matrix SVD), `lsst.obs.lsst` (camera geomet
 
 ## State
 
-The 8 PDFs currently in `output/<ps>/<mi>/closed_loop/` were produced by the former
+The 8 PDFs currently in `output/closed_loop/<P>_<M>/` were produced by the former
 `run_psf_fp_maps.py --case loop*` and are named `psf_fp_maps_loop*`. They predate this
 split and the move to a single `<mi>`; see
 [`../status/rerun_needed.md`](../status/rerun_needed.md).

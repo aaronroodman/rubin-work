@@ -2,7 +2,7 @@
 """Per-visit fraction of the measured Double-Zernike explained by the OFC
 sensitivity subspace, for the 22/12 and 50/34 schemes (FAM, per ps/mi).
 
-For output/<ps>/<mi>/fits.parquet, pack the MI-subtracted per-visit DZ into W and,
+For output/miw/<P>_<M>/fits.parquet, pack the MI-subtracted per-visit DZ into W and,
 for each scheme, project onto the OFC u-mode subspace (U_eff) and report the
 fraction of DZ power captured:  frac = ||U_eff U_effT W||^2 / ||W||^2  (per visit),
 i.e. how much of the measured wavefront is reachable by that DOF/mode truncation.

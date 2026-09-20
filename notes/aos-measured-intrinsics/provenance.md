@@ -14,6 +14,11 @@
     (`aos/output/<ps>/fits.parquet`) + `z_gradient` from the MI-refit fit
     (`aos/output/<ps>/<mi>/fits.parquet`).
   - `two_epochs_fieldmaps.png` — reconstructed low-order DZ field (per-epoch median).
+- **Figure-source paths** are the layout in use on 2026-06-20. `aos/output/` was
+  reorganized on 2026-09-20 to `output/<study>/<data>/`, so the equivalents are now
+  `aos/output/miw/<P>_<M>/build/rot_*/`, `aos/output/fam_processing/<P>/fits.parquet` and
+  `aos/output/miw/<P>_<M>/fits.parquet`. This `param_set` was retired before that move and
+  its products are under `aos/output/archive/`, which keeps the original layout.
 - **Regenerate:** `make_figures.py` (reads the above; writes `figures/`).
 - **Stack / env:** USDF `lsst-scipipe-13.0.0` (numpy 2.3.5, scipy 1.16.3, matplotlib 3.10.8).
 - **Code commit:** record the `rubin-work` git SHA when the build was produced

@@ -83,7 +83,7 @@ the `wfs_dof_compare` step.
 chunk: queries ConsDB for FAM visits, extracts per-donut Zernikes via the
 Butler, attaches OCS/CCS field angles and the tabulated batoid intrinsic
 (`zk_intrinsic_{OCS,CCS}`), and writes
-`output/<ps>/chunks/<dmin>_<dmax>/{donuts,visits}.parquet`. The expensive
+`output/fam_processing/<P>/chunks/<dmin>_<dmax>/{donuts,visits}.parquet`. The expensive
 Butler step — deliberately *not* re-triggered by code edits (see Snakefile
 comments). Requires RSP (Butler + ConsDB).
 
@@ -95,25 +95,25 @@ coefficients, errors, and quality flags in `chunks/<d>_<d>/fits.parquet`.
 
 **`combine_donuts` / `combine_fits` / `combine_visits`** —
 `code/combine_parquets.py`. Concatenate the chunk tables into one
-param_set-level table each: `output/<ps>/{donuts,fits,visits}.parquet`.
+param_set-level table each: `output/fam_processing/<P>/{donuts,fits,visits}.parquet`.
 **All downstream steps use the combined tables.** Adding data = adding/editing
 a chunk in `snake_config.yaml`; Snakemake re-runs combine + everything
 downstream automatically.
 
 **`plots`** — `code/miw/run_dz_plots.py` (library: `dz_plotting.py`). Validation
 trio plots (data / DZ model / residual across the focal plane) on the combined
-tables → `output/<ps>/dzfit/trio_comparison_all.pdf`. Memory-heavy (loads the
+tables → `output/dzfit/<P>/trio_comparison_all.pdf`. Memory-heavy (loads the
 full donut table); the Snakefile's `mem_mb` throttle serializes it.
 
 **`dz_fit_check`** — `code/dzfit/run_dz_fit_check.py`. Recomputes the residual of the
 stored k<=3 and k<=6 DZ fits, writing robust residual metrics per (visit, prefix, pupil
 Zernike) plus coefficient and residual-map pages →
-`output/<ps>/dzfit/dz_fit_check.{pdf,parquet}`. Streams the donut table by row group.
+`output/dzfit/<P>/dz_fit_check.{pdf,parquet}`. Streams the donut table by row group.
 
 **`residual_movie_chunk`** — `code/dzfit/run_dz_plots.py` with `--no-fit-params
 --no-trio --movie-prefix z1toz6`. One residual-map frame per visit of the k<=6 fit
 residual, rendered by ffmpeg →
-`output/<ps>/dzfit/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4`,
+`output/dzfit/<P>/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4`,
 one movie per date chunk, each in its own subdirectory so the concurrent jobs do not race
 on the intermediate frame files. Reads the per-chunk `chunks/<dmin>_<dmax>/{donuts,fits}.parquet`
 rather than the combined tables, which bounds the memory and lets the ten chunks render in
@@ -123,7 +123,7 @@ parallel. **`residual_movies`** is the aggregate target for all of them. Neither
 **`aberration_pairs`** — `code/correlations/run_aberration_pairs.py`. Per-donut
 primary→secondary aberration-pair analysis (e.g. defocus→spherical, astig→2nd-astig):
 quartile-of-primary OLS slope/r plus density pages →
-`output/<ps>/correlations/aberration_pairs.pdf` + `aberration_pairs_summary.parquet`.
+`output/correlations/<P>/aberration_pairs.pdf` + `aberration_pairs_summary.parquet`.
 Knobs in `analysis_config.yaml`.
 
 ### Phase 2 — measured intrinsic (per `param_set` × `mi_name`)
@@ -131,7 +131,7 @@ Knobs in `analysis_config.yaml`.
 Each `mi_name` entry in `mi_config.yaml` (e.g. `pathA_50_34_i`) defines one
 measured-intrinsic build: path, `n_dof`/`n_keep`, band/program/elevation
 selection, rotator bins, and build/split parameters. Outputs live under
-`output/<ps>/<mi>/`. RSP-only (needs `lsst.ts.ofc`/`wep`,
+`output/miw/<P>_<M>/`. RSP-only (needs `lsst.ts.ofc`/`wep`,
 `$TS_CONFIG_MTTCS_DIR`, batoid height maps).
 
 **`build_intrinsic`** — `code/run_build_intrinsic.py` (libraries:
@@ -139,7 +139,7 @@ selection, rotator bins, and build/split parameters. Outputs live under
 the empirical focal-plane intrinsic Zernike grid from the FAM donuts via the
 Path-A U-mode-constrained method (iterated DZ removal of the reachable
 wavefront), with CCD-height Z4 handling →
-`output/<ps>/<mi>/build/rot_<lo>_<hi>/intrinsic_grid.parquet` + validation
+`output/miw/<P>_<M>/build/rot_<lo>_<hi>/intrinsic_grid.parquet` + validation
 plots. (Script version of `build_measured_intrinsic.ipynb`.)
 
 **`intrinsic_split`** — `code/run_intrinsic_split.py` (library:
@@ -183,7 +183,7 @@ and `wfs_mimic.pdf`. Image (rotator-angle) selection via the `analysis_config.ya
 
 **`refit_mi`** — `code/run_dz_fit.py --intrinsic-sidecar`. Re-runs the DZ fit
 subtracting the *measured* intrinsic instead of the batoid column →
-`output/<ps>/<mi>/fits.parquet`. Why re-fit rather than patch: DZ fitting is
+`output/miw/<P>_<M>/fits.parquet`. Why re-fit rather than patch: DZ fitting is
 linear, so swapping the intrinsic is cleanest as a recompute. Note for
 difference analyses (bounce): any intrinsic fixed in the fitting frame cancels
 in a Δ — it is the rotating camera term **C** that changes the rotator-bounce
@@ -192,7 +192,7 @@ result, which is why the O + C split matters.
 ### Phase 3 — analyses on the MI-refit fits (per `param_set` × `mi_name`)
 
 `dz_correlations`, `thermal_correlations`, and `bounce` run on the *residual*
-(measured-intrinsic-subtracted) DZ in `output/<ps>/<mi>/fits.parquet`;
+(measured-intrinsic-subtracted) DZ in `output/miw/<P>_<M>/fits.parquet`;
 `build_lut` currently projects the Phase-1 `fits.parquet`. Knobs in
 `analysis_config.yaml`.
 
@@ -200,7 +200,7 @@ result, which is why the O + C split matters.
 look-up table: projects the per-visit DZ fits onto the OFC sensitivity-matrix
 SVD (settable `n_dof`/`n_keep`), recovers DOF per visit, and collapses over
 **all** elevation and rotator angle (median by default) →
-`output/<ps>/<mi>/lut/lut.parquet` (per-DOF) + `lut_dz.parquet`
+`output/lut/<P>_<M>/lut.parquet` (per-DOF) + `lut_dz.parquet`
 (per-(k, j) raw/fit/residual DZ) + `lut.pdf`. (Supersedes the removed
 `study_50dofLUT.ipynb`. Uses the Phase-1 `fits.parquet`.)
 
@@ -210,25 +210,25 @@ pair scatters, astigmatism-symmetry pairs, per-correlation **conjugate-orbit
 scatter grids** (rows/cols = independent focal-k / pupil-j doublet-flips of each
 endpoint, up to 4×4), and **significance** (Fisher-z σ, with `n`/`se_r`) in the
 pairs parquet; optional exhaustive (k1, j1)×(k2, j2) scan →
-`output/<ps>/<mi>/plots/dz_correlations.pdf` + `_pairs.parquet`.
+`output/correlations/<P>_<M>/dz_correlations.pdf` + `_pairs.parquet`.
 
 **`dz_correlations_optcorr`** — same analysis on the DZ that *remains after the
 n_dof/n_keep OFC correction* (`W_resid = (I − U_eff U_effᵀ)·W`, SVD from the
-mi_config entry) → `output/<ps>/<mi>/plots/dz_correlations_optcorr.pdf` +
+mi_config entry) → `output/correlations/<P>_<M>/dz_correlations_optcorr.pdf` +
 `_pairs.parquet`. Sits beside the raw analysis for before/after comparison.
 RSP-only (builds the OFC SVD via `lsst.ts.ofc`).
 
 **`thermal_correlations`** — `code/correlations/run_thermal_correlations.py` (port of
 `intrinsics_thermal_correlations.ipynb`). DZ_kj × EFD temperature-variable
 Pearson heatmap plus per-term scatter pages →
-`output/<ps>/<mi>/plots/thermal_correlations.pdf` + `_summary.parquet`.
+`output/correlations/<P>_<M>/thermal_correlations.pdf` + `_summary.parquet`.
 
 **`bounce`** — `code/bounce/run_bounce.py` + `bounce_lib.py` (port of
 `study_bounce.ipynb`). FAM bounce-test paired Δ (BLOCK-T720 elevation 40↔70°,
 BLOCK-T724 rotator 0↔60°): time-ordered within-night comp−ref pairs for DZ
 coefficients, OFC v-modes, and physical DOF, with significance/pass heatmaps,
 vs-ordinal pages, and night cross-scatter; optional EFD MTAOS Trim overlay
-(`add_dof_trim`) → `output/<ps>/<mi>/plots/bounce_*.pdf` +
+(`add_dof_trim`) → `output/bounce/<P>_<M>/bounce_*.pdf` +
 `bounce_kj_stats.parquet`.
 
 ### Corner-WFS (cwfs) track
@@ -237,9 +237,11 @@ For `param_set`s paired with real in-focus corner-wavefront-sensor collections,
 this track ingests the CWFS data and compares the optical state it recovers to the
 FAM "truth". A `param_set` may carry several CWFS reductions, listed under
 `wfs_collections` in `param_sets.yaml`; each is a named **variant** `<cwfs>`
-(e.g. `refitWcs`, `paired_3mm`, `ai_donut`) and all outputs go under
-`output/<ps>/wfs/<cwfs>/` (and `output/<ps>/<mi>/wfs/<cwfs>/`), so variants sit
-side by side. RSP-only (Butler). Each `wfs_collections` entry is either a bare
+(e.g. `refitWcs`, `paired_3mm`, `ai_donut`). The variant is the innermost directory of
+each of the studies this track writes — `wfs_ingest/<P>/<cwfs>/` for the ingested tables,
+`wfs_corner_compare/<P>/<cwfs>/` for the comparison against FAM, and
+`wfs_dof_compare/<P>_<M>/<cwfs>/` for the recovered optical state, which also depends on
+the MIW build — so variants sit side by side within each study. RSP-only (Butler). Each `wfs_collections` entry is either a bare
 collection string or a dict `{collection, seq_offset, dataset_type}`:
 
 - `seq_offset` — added to the FAM seq_num (the extra exposure) to find the paired
@@ -269,7 +271,8 @@ scatter, time-history, summary, and azimuth-validation pages →
 --wfs-corner-height`. The same measured-intrinsic reconstruction as
 `intrinsic_sidecar`, evaluated at the corner-WFS donut positions (paired OCS
 position; Z4 CCD-height averaged over the SW1-intra / SW0-extra half-sensors) →
-`<mi>/wfs/<cwfs>/zk_intrinsic.parquet`.
+`wfs_dof_compare/<P>_<M>/<cwfs>/zk_intrinsic.parquet` — beside the comparison that
+consumes it, not in the MIW directory, which holds the FAM sidecar of the same name.
 
 **`wfs_dof_compare`** — `code/cwfs/run_wfs_dof_compare.py` (library `ofc_svd.py`). Per
 FAM triplet, extracts the optical state two ways and compares: **FAM** by
@@ -283,7 +286,7 @@ convertZernikesToPsfWidth`, Z4+ quadrature), reported as a focal-plane average a
 a CWFS-corner average (the ConsDB `AOS_FWHM` analog), with a contributions page
 overlaying the MIW baseline, the FAM excursion beyond MIW, CWFS-22/12
 (recovery + truncation vs FAM-50/34), CWFS-50/34 (recovery only), and the
-truncation-only term → `<mi>/wfs/<cwfs>/wfs_dof_compare_offsets.pdf` (per-(Zj,corner)
+truncation-only term → `wfs_dof_compare/<P>_<M>/<cwfs>/wfs_dof_compare_offsets.pdf` (per-(Zj,corner)
 CWFS−FAM offsets applied) or `_nooffset.pdf` (`--no-offsets`).
 
 ## Configuration
@@ -342,25 +345,53 @@ to pick up code changes.
 
 ## Output layout
 
+Study outermost, then one data directory: `<P>` for the `param_set` alone, `<P>_<M>` where
+the product also depends on which MIW build was used. Both are the short `dir_name` forms
+from `param_sets.yaml` and `mi_config.yaml` (`danish_1_2`, `A_50_34_i_5rot`), while the
+long keys stay the identity the `--param-set` and `--mi-name` arguments take.
+
 ```
-output/<param_set>/
-  chunks/<dmin>_<dmax>/ {donuts,fits,visits}.parquet     # per chunk
-  {donuts,fits,visits}.parquet                           # combined (downstream input)
-  dzfit/                                                 # trio validation, dz_fit_check
-  dzfit/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4   # one residual movie per chunk
-  correlations/                                          # aberration_pairs
-  wfs/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf  wfs_corner_compare.{pdf,parquet}
-  <mi_name>/
-    build/rot_<lo>_<hi>/intrinsic_grid.parquet           # per rotator bin
-    build/rot_<lo>_<hi>/intrinsic_cov_edge.parquet       # FoV-edge 21x21 (per-donut residual)
+output/
+  fam_processing/<P>/
+    chunks/<dmin>_<dmax>/ {donuts,fits,visits}.parquet   # per chunk
+    {donuts,fits,visits}.parquet                         # combined (downstream input)
+    chunk_status.{parquet,pdf}  visits_check.pdf  telemetry_attached.txt
+  dzfit/<P>/                                             # trio validation, dz_fit_check
+  dzfit/<P>/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4   # one per chunk
+  correlations/<P>/                                      # aberration_pairs, dz14_truss
+  processing_compare/<P>/ compare_vs_*.pdf
+  coadd/<P>/{50_34,50_34_v2}/ blocks_summary.parquet  coadd_metrics.parquet
+  wfs_ingest/<P>/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf
+  wfs_corner_compare/<P>/<cwfs>/ wfs_corner_compare.{pdf,parquet}
+  wfs_fam_compare/<P>/ fam_wfs_triplet_compare.pdf
+  miw/<P>_<M>/
+    build/rot_<lo>_<hi>/intrinsic_grid.parquet            # per rotator bin
+    build/rot_<lo>_<hi>/intrinsic_cov_edge.parquet        # FoV-edge 21x21 (per-donut residual)
     intrinsic_split_{maps,decomp,rms}.parquet  intrinsic_split.pdf
-    study_radialbins.pdf                                 # MI at WFS radius vs rotator
-    zk_intrinsic.parquet                                 # per-donut sidecar (FAM)
-    wfs_mimic/ wfs_mimic_cov{84,21}.parquet  wfs_mimic_cov_bins.parquet  wfs_mimic.pdf
-    fits.parquet                                         # MI-refit DZ fits
-    lut/ {lut,lut_dz}.parquet  lut.pdf
-    wfs/<cwfs>/ zk_intrinsic.parquet  wfs_dof_compare_offsets.pdf   # corner-WFS track
-    bounce_kj_stats.parquet
-    plots/ {dz_correlations,dz_correlations_optcorr,thermal_correlations,bounce_*}.pdf
+    study_radialbins.pdf                                  # MI at WFS radius vs rotator
+    zk_intrinsic.parquet                                  # per-donut sidecar (FAM)
+    fits.parquet                                          # MI-refit DZ fits
+  correlations/<P>_<M>/ {dz_correlations,dz_correlations_optcorr,thermal_correlations,
+                         vmode_correlations*,dz_explained}.{pdf,parquet}
+  bounce/<P>_<M>/ bounce_kj_stats.parquet  bounce_*.pdf
+  lut/<P>_<M>/ {lut,lut_dz,lut_by_rotbin}.parquet  lut.pdf  lut_config.yaml
+  psf/<P>_<M>/ psf_fp_maps_<case>_<band>.pdf
+  closed_loop/<P>_<M>/ psf_fp_maps_loop*.pdf
+  wfs_mimic/<P>_<M>/ wfs_mimic_cov{84,21}.parquet  wfs_mimic_cov_bins.parquet  wfs_mimic.pdf
+  wfs_dof_compare/<P>_<M>/<cwfs>/ zk_intrinsic.parquet  wfs_dof_compare_offsets.pdf
 ```
+
+Two things to read carefully in that tree:
+
+- **`fits.parquet` appears twice, and the two are different products.**
+  `fam_processing/<P>/fits.parquet` is the phase-1 per-visit DZ fit against the tabulated
+  intrinsic; `miw/<P>_<M>/fits.parquet` is the refit referenced to the MIW. Several rules
+  read both, so check which one a path names before reusing it.
+- **`zk_intrinsic.parquet` also appears twice.** `miw/<P>_<M>/` holds the FAM sidecar,
+  row-aligned to `fam_processing/<P>/donuts.parquet`; `wfs_dof_compare/<P>_<M>/<cwfs>/`
+  holds the CWFS-corner sidecar, row-aligned to that variant's ingested donuts.
+
+The CWFS variant `<cwfs>` nests below the data directory rather than joining as a third
+axis; `correlations/` appears at both data levels because the aberration-pair and truss
+products do not depend on the MIW build while the DZ, thermal and v-mode correlations do.
 

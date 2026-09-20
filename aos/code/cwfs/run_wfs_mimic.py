@@ -9,7 +9,8 @@ sidecar) is median-pooled per wedge, so each image yields a (4, nZk) deviation.
 Covariance over images then gives the corner-to-corner structure a single WFS
 estimate cannot show.
 
-Outputs (per param_set / mi_name, under ``output/<ps>/<mi>/wfs_mimic/``):
+Outputs, under the directory given by ``--out-dir`` (the pipeline passes
+``output/wfs_mimic/<P>_<M>/``):
     wfs_mimic_cov84.parquet   (4*nZk)x(4*nZk) cross-corner covariance + correlation
     wfs_mimic_cov21.parquet   nZk x nZk single-corner covariance (mean of the four
                               diagonal corner blocks) + correlation

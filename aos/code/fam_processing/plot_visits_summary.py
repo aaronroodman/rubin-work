@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Per-param_set visit summary: elevation vs rotator angle, one panel per filter.
 
-Reads ``output/<param_set>/visits.parquet`` and writes
-``output/<param_set>/plots/visits_elev_rot_by_band.{pdf,png}`` — a fixed ugrizy
+Reads ``output/fam_processing/<P>/visits.parquet`` and writes
+``output/dzfit/<P>/visits_elev_rot_by_band.{pdf,png}`` — a fixed ugrizy
 grid (empty bands shown empty so the layout is uniform), each panel a 2-D
 histogram of visit counts in fixed-width elevation (deg, from ``alt``) ×
 rotator-angle (deg) bins (``--elev-bin`` / ``--rot-bin``, default 2.5°), with
@@ -27,7 +27,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # aos/code -> flat modules
 from common.utils import text_hist2d, centered_edges  # noqa: E402
+from output_paths import study_dir  # noqa: E402
 
 BANDS = ['u', 'g', 'r', 'i', 'z', 'y']
 
@@ -90,7 +92,7 @@ def main():
     ap.add_argument('--param-set', required=True,
                     help="param_set name, or 'all' (from snake_config.yaml)")
     ap.add_argument('--output-root', default='output',
-                    help='Root of the output/<param_set> tree (default: %(default)s)')
+                    help='Root of the output tree (default: %(default)s)')
     ap.add_argument('--config', default=None,
                     help='snake_config.yaml path (default: ../snake_config.yaml)')
     ap.add_argument('--elev-bin', type=float, default=10.0,
@@ -107,11 +109,13 @@ def main():
              if args.param_set == 'all' else [args.param_set])
 
     for ps in names:
-        visits = Path(args.output_root) / ps / 'visits.parquet'
+        visits = study_dir('fam_processing', ps,
+                           output_root=args.output_root) / 'visits.parquet'
         if not visits.exists():
             print(f'{ps}: SKIP — no visits.parquet at {visits}')
             continue
-        plot_param_set(ps, visits, Path(args.output_root) / ps / 'dzfit',
+        plot_param_set(ps, visits,
+                       study_dir('dzfit', ps, output_root=args.output_root),
                        elev_bin=args.elev_bin, rot_bin=args.rot_bin)
 
 

@@ -2,12 +2,13 @@
 """DZ / DOF / v-mode -to-temperature correlation analysis, run on a
 per-(param_set, mi_name) DZ-fit table.
 
-Operates on  output/<ps>/<mi>/fits.parquet  (MI refit), whose visit join carries
+Operates on  output/miw/<P>_<M>/fits.parquet  (MI refit), whose visit join carries
 the full temperature suite (cam/m2/m1m3 air temps, gradients, deltas, truss
 temps), so the correlations are between the MI-subtracted residual state and the
 thermal state.
 
-Pages written to  output/<ps>/<mi>/correlations/thermal_correlations.pdf :
+Pages written to  <out-dir>/thermal_correlations.pdf  (the pipeline passes
+output/correlations/<P>_<M>/) :
   1. DZ(k,j) x thermal-variable Pearson-r heatmap (crisp, no smoothing).
   2. Per thermal variable: all DZ(k,j) scatter, k=1..6 down each column and
      7 pupil-j per page (3 pages covering the 21 j), shared x-axis.

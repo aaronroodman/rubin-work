@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
 
 > **Code:** `code/dzfit/`
-> **Output:** `output/<param_set>/dzfit/`
+> **Output:** `output/dzfit/<P>/`
 
 Validation of the per-visit Double Zernike (DZ) fit of the Full Array Mode (FAM) donut
 wavefront. This is the stage before any Measured Intrinsic Wavefront (MIW) exists: the
@@ -76,9 +76,9 @@ target that asks for all ten.
 
 ## Inputs and outputs
 
-Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`, except the movie, which
-reads the per-chunk `output/<ps>/chunks/<dmin>_<dmax>/{donuts,fits}.parquet`. Writes to
-`output/<ps>/dzfit/`:
+Reads the combined `output/fam_processing/<P>/{donuts,fits,visits}.parquet`, except the movie, which
+reads the per-chunk `output/fam_processing/<P>/chunks/<dmin>_<dmax>/{donuts,fits}.parquet`.
+Writes to `output/dzfit/<P>/`:
 
 | product | from |
 |---|---|
@@ -99,7 +99,7 @@ cd ~/notebooks/rubin-work/aos
 python code/dzfit/run_dz_fit_check.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 python code/dzfit/run_dz_fit_check.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --max-visits 25
 ./run_snake.sh --until residual_movies
-./run_snake.sh output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/dzfit/movies/20260713_20260713/residuals_z1toz6_20260713_20260713.mp4
+./run_snake.sh output/dzfit/danish_1_2/movies/20260713_20260713/residuals_z1toz6_20260713_20260713.mp4
 ```
 
 The movie rules render one frame per visit and are not in `rule all`; ask for them

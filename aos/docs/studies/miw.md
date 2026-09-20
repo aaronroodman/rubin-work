@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
 > **Code:** `code/miw/` · **Notebooks:** `notebooks/miw/`
-> **Output:** `output/<param_set>/<mi_name>/intrinsic_split_{maps,decomp,rms}.parquet`, `output/<param_set>/<mi_name>/intrinsic_split.pdf`, `output/<param_set>/<mi_name>/study_radialbins.pdf`, `output/<param_set>/<mi_name>/fits.parquet`
+> **Output:** `output/miw/<P>_<M>/intrinsic_split_{maps,decomp,rms}.parquet`, `output/miw/<P>_<M>/intrinsic_split.pdf`, `output/miw/<P>_<M>/study_radialbins.pdf`, `output/miw/<P>_<M>/fits.parquet`
 
 Construction and validation of the Measured Intrinsic Wavefront (MIW) — the static
 wavefront of the telescope and camera, measured on sky.
@@ -32,7 +32,7 @@ data, are the [`dzfit`](dzfit.md) study.
 
 ## Inputs and outputs
 
-Reads the combined `output/<ps>/{donuts,fits,visits}.parquet`; the per-rotator-bin
+Reads the combined `output/fam_processing/<P>/{donuts,fits,visits}.parquet`; the per-rotator-bin
 grids come from the package's `build_intrinsic`. Writes `study_radialbins.pdf` and the
 `intrinsic_split_{maps,decomp,rms}.parquet` products that the other studies consume.
 

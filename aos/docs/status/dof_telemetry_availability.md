@@ -13,9 +13,9 @@ directly against the parquet schemas:
 
 | table | columns | Trim / Tweak / LUT DOF present |
 |---|---|---|
-| `output/<ps>/visits.parquet` | 58 | none |
-| `output/<ps>/fits.parquet` | 456 | none |
-| `output/<ps>/<mi>/fits.parquet` | 653 | none |
+| `output/fam_processing/<P>/visits.parquet` | 58 | none |
+| `output/fam_processing/<P>/fits.parquet` | 456 | none |
+| `output/miw/<P>_<M>/fits.parquet` | 653 | none |
 
 Name searches for `dof`, `trim`, `tweak`, `lut`, `hex`, `bend` and `offset` return only
 **false positives** — `m1m3_air_temp`, `m2_delta_t`, `cam_m1m3_delta_t`, and roughly 200

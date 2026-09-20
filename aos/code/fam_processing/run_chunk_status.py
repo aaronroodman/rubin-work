@@ -23,9 +23,9 @@ Five pages:
 Reads only the parquet tables, so it needs no Butler, EFD or ConsDB access and runs
 anywhere the output tree exists.
 
-Writes ``output/<param_set>/fam_processing/chunk_status.{pdf,parquet}`` — under
-``<param_set>/`` because nothing here depends on which Measured Intrinsic Wavefront build
-was used.
+Writes ``output/fam_processing/<P>/chunk_status.{pdf,parquet}`` — under the
+``fam_processing`` study because nothing here depends on which Measured Intrinsic
+Wavefront build was used.
 
 Usage:
   python code/fam_processing/run_chunk_status.py --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
@@ -44,7 +44,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # aos/code -> flat modules
 from common.utils import alt_to_deg, centered_edges, text_hist2d  # noqa: E402
+from output_paths import study_dir  # noqa: E402
 
 # Telemetry columns mktable is expected to merge into visits.parquet. Grouped so a page
 # can say which group is missing rather than listing 13 names.
@@ -150,7 +152,7 @@ def gather(ps, out_root, chunks):
     combined : `dict`
         Row counts and columns of the three combined tables.
     """
-    base = out_root / ps
+    base = study_dir('fam_processing', ps, output_root=out_root)
     rows = []
     for ch in chunks:
         d = base / 'chunks' / ch
@@ -349,11 +351,12 @@ def _page_dof(pdf, ps, combined):
 
 def run(ps, out_root, chunks, elev_bin, rot_bin):
     """Build the status PDF and parquet for one param_set. Returns the row dicts."""
-    base = Path(out_root) / ps
+    # The study directory is both where the tables are read from and where the
+    # status products go, so there is one path here rather than two.
+    base = study_dir('fam_processing', ps, output_root=out_root)
     rows, combined = gather(ps, Path(out_root), chunks)
-    out_dir = base / 'fam_processing'
-    out_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = out_dir / 'chunk_status.pdf'
+    base.mkdir(parents=True, exist_ok=True)
+    pdf_path = base / 'chunk_status.pdf'
     with PdfPages(str(pdf_path)) as pdf:
         _page_inventory(pdf, ps, rows, combined)
         _page_coverage(pdf, ps, base)
@@ -370,9 +373,9 @@ def run(ps, out_root, chunks, elev_bin, rot_bin):
         flat.append(q)
     keys = list(flat[0]) if flat else []
     tbl = pa.table({k: pa.array([f.get(k) for f in flat]) for k in keys})
-    pq.write_table(tbl, str(out_dir / 'chunk_status.parquet'))
+    pq.write_table(tbl, str(base / 'chunk_status.parquet'))
     print(f'  wrote {pdf_path}')
-    print(f'  wrote {out_dir / "chunk_status.parquet"}  ({len(rows)} chunks)')
+    print(f'  wrote {base / "chunk_status.parquet"}  ({len(rows)} chunks)')
     return rows, combined
 
 
@@ -391,8 +394,12 @@ def main():
 
     out_root = Path(args.output_root)
     if args.param_set == 'all':
-        names = sorted(p.name for p in out_root.iterdir()
-                       if p.is_dir() and (p / 'chunks').is_dir())
+        # Directory names here are the SHORT dir_name forms, which is what the
+        # study_dir() calls below round-trip to themselves.
+        fp_root = out_root / 'fam_processing'
+        names = sorted(p.name for p in fp_root.iterdir()
+                       if p.is_dir() and (p / 'chunks').is_dir()) \
+            if fp_root.is_dir() else []
     else:
         names = [args.param_set]
 
@@ -404,7 +411,7 @@ def main():
     for ps in names:
         # Chunk list comes from the directories actually on disk, not the config, so a
         # chunk built and later dropped from the config still shows up.
-        cdir = out_root / ps / 'chunks'
+        cdir = study_dir('fam_processing', ps, output_root=out_root) / 'chunks'
         if not cdir.is_dir():
             print(f'  {ps}: no chunks/ directory, skipping')
             continue

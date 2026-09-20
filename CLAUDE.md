@@ -426,18 +426,28 @@ In `aos/` the two axes are `param_set` (a Butler collection paired with a proces
 variant) and `mi_name` (which MIW build was used). A topic with one data axis uses one
 level; most topics outside `aos/` have none.
 
-**`aos/output/` does not follow this yet** — it is still
-`output/<param_set>/<mi_name>/<study>/`, and the conversion is queued behind a renaming of
-the param_sets (`notes/status/step1_structure_decisions.md`, items 9 then 7). Until it
-lands, read the actual tree from `aos/README.md` "Output layout", and put new output where
-the neighbouring products already are rather than half-converting a directory.
+**When a joined name would be unreadable, shorten the axis, do not nest the study.** The
+`aos/` keys are long enough that joining them directly gives a 59-character directory, so
+`param_sets.yaml` and `mi_config.yaml` each carry a `dir_name` giving a short form used in
+paths only — `danish_1_2`, `A_50_34_i_5rot`. The long key remains the identity that
+`--param-set`, the `value_added` database rows and the frozen provenance resolve against.
+The Snakefile owns the translation and tells each script the directory to write into, so no
+script derives a path from a key.
+
+One carve-out, in `aos/` only: the **corner wavefront sensor (CWFS) variant nests** one
+level below the data directory (`wfs_ingest/<P>/<cwfs>/`) rather than joining as a third
+axis, which would reach 36 characters even with the short names. Nesting a *variant* under
+the data level is not the same as nesting the study — the study stays outermost.
 
 Two rules that follow, and that past work got wrong:
 
 - **One product, one path.** Never write the same filename under two different levels —
   a reader cannot tell which is live, and the older copy silently becomes a trap. If a
   product turns out not to depend on a data axis, move it out and delete the copy (asking
-  first, per [Autonomy and hard stops](#autonomy-and-hard-stops)).
+  first, per [Autonomy and hard stops](#autonomy-and-hard-stops)). The same *filename*
+  under two different **studies** is not a violation: `aos/` has a phase-1
+  `fam_processing/<P>/fits.parquet` and a MIW-referenced `miw/<P>_<M>/fits.parquet`, which
+  are different products that the study directory distinguishes.
 - **Do not create a study's output directory until it has output.** An empty directory
   makes the tree claim a result exists. The study doc, not the tree, is what records that
   a study exists.

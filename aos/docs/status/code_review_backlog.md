@@ -45,7 +45,7 @@ decides which FAM visits are usable:
 All four scripts now call it, reading both thresholds from `analysis_config.yaml`, where
 `max_blur_arcsec` is present but commented out in each of the four sections.
 
-Verified on `pathA_50_34_i_5rot/fits.parquet` (1126 visits) at the configured
+Verified on `miw/danish_1_2_A_50_34_i_5rot/fits.parquet` (1126 visits) at the configured
 `max_coeff_um = 2.0` µm: `run_dz_correlations` and `run_thermal_correlations` are
 **unchanged**, selecting the same 1101 visits with an identical index;
 `run_dz_explained` and `run_vmode_correlations` go from 1125 to 1101, correctly losing
@@ -148,7 +148,7 @@ size of axis is 130 but size of corresponding boolean axis is 221
 the `mi_config.yaml` `defaults: filter: [i]`, and FAM data from 2025 is mostly r-band (1229
 visits) rather than i-band (689), so an i-band run builds 130 blocks against an all-band
 run's 216. Both counts are reproducible from the current chunk tables. Superseded products
-now sit under `output/<ps>/coadd_50_34/archive/` with their band selection recorded; see
+now sit under `output/coadd/<P>/50_34/archive/` with their band selection recorded; see
 [`../studies/coadd.md`](../studies/coadd.md).
 
 **The code fix still wanted:** assert `len(mt) == len(Um)` with a message naming both files,

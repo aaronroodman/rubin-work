@@ -8,21 +8,22 @@ seq_num is the EXTRA-focal exposure, so the in-focus exposure is **FAM_seq + 1**
 (verified against the Butler: FAM aggregate seqs …122,125,128; cwfs in-focus
 seqs …123,126,129).
 
-This walks the already-built FAM ``output/<ps>/visits.parquet``, reads each
+This walks the already-built FAM ``output/fam_processing/<P>/visits.parquet``, reads each
 in-focus exposure's ``aggregateAOSVisitTableRaw`` from the param_set's
 ``wfs_collection`` (reusing intrinsics_lib.get_aggregate_zernikes — the cwfs
 table has the same schema as FAM, plus per-corner intra/extra positions), tags
 each donut with the paired FAM seq_num and the FAM visit's rotator/elevation (so
 WFS and FAM share the same rotator binning), and writes:
 
-    output/<param_set>/wfs/donuts.parquet   per-corner WFS donuts: zk_<coord>,
+    <out-dir>/donuts.parquet               per-corner WFS donuts: zk_<coord>,
         zk_intrinsic_<coord>, thx/thy_<coord>[_intra/_extra], detector,
         day_obs, seq_num (in-focus), fam_seq_num, rotator_angle, alt
-    output/<param_set>/wfs/visits.parquet   one row per in-focus exposure
+    <out-dir>/visits.parquet               one row per in-focus exposure
 
 Validation (default on): mean WFS Zernike_j vs ordinal in-focus image, with the
 FAM k=1 (field-mean) DZ coefficient z{prefix}_z{j}_c1 overlaid per image →
-output/<param_set>/wfs/wfs_mktable_validation.pdf .  RSP-only (Butler).
+<out-dir>/wfs_mktable_validation.pdf .  The pipeline passes
+output/wfs_ingest/<P>/<cwfs>/ as --out-dir.  RSP-only (Butler).
 """
 import argparse
 import re

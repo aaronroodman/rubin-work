@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
 
 > **Code:** `code/processing_compare/` · **Notebooks:** `notebooks/processing_compare/`
-> **Output:** `output/<param_set>/processing_compare/compare_vs_*.pdf`
+> **Output:** `output/processing_compare/<P>/compare_vs_*.pdf`
 
 Comparison of two reductions of the same donut data, across code versions, binnings and
 fitting algorithms. This distinguishes a genuine change in a wavefront result from a
@@ -32,7 +32,7 @@ processing artifact. This study tells them apart.
 
 ## Inputs
 
-Two runs' `output/<param_set>/{donuts,visits}.parquet`, plus `fits.parquet` for the
+Two runs' `output/fam_processing/<P>/{donuts,visits}.parquet`, plus `fits.parquet` for the
 optional per-visit DZ-fit comparison. **numpy/scipy/pyarrow only** — no LSST stack
 needed, so this is one of the few studies that runs anywhere the parquets exist.
 

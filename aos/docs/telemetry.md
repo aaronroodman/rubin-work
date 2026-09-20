@@ -36,7 +36,7 @@ bug. Filling those visits with NaN is the intended behaviour.
 
 ## 1. What actually reaches `visits.parquet` today
 
-The combined `output/<ps>/visits.parquet` has **405 columns**, of which 228 are the mirror
+The combined `output/fam_processing/<P>/visits.parquet` has **405 columns**, of which 228 are the mirror
 LUT axial forces and 110 the commanded degrees of freedom. Measured finite fractions:
 
 | group | columns | finite | notes |

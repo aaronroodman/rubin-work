@@ -47,7 +47,7 @@ def fam_quality_selection(df, prefix='z1toz6', max_coeff_um=None,
     Parameters
     ----------
     df : `pandas.DataFrame`
-        A per-visit DZ fit table, e.g. from ``output/<ps>/<mi>/fits.parquet``.
+        A per-visit DZ fit table, e.g. from ``output/miw/<P>_<M>/fits.parquet``.
     prefix : `str`, optional
         DZ coefficient-family prefix, used both to find the coefficient columns and to
         prefer a ``<prefix>_bad_fit`` column. Default ``'z1toz6'``.

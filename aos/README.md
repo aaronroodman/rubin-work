@@ -35,9 +35,9 @@ So a fix to build, fit or split *logic* usually belongs in that package. After e
 
 | rule | script | produces |
 |---|---|---|
-| `mktable` | `{WF_BIN}/run_mktable.py` | `output/<ps>/chunks/<dmin>_<dmax>/{donuts,visits}.parquet` |
+| `mktable` | `{WF_BIN}/run_mktable.py` | `output/fam_processing/<P>/chunks/<dmin>_<dmax>/{donuts,visits}.parquet` |
 | `fit` | `{WF_BIN}/run_dz_fit.py` | `chunks/<dmin>_<dmax>/fits.parquet` |
-| `combine_donuts` / `combine_fits` / `combine_visits` | `{WF_BIN}/combine_parquets.py` | `output/<ps>/{donuts,fits,visits}.parquet` |
+| `combine_donuts` / `combine_fits` / `combine_visits` | `{WF_BIN}/combine_parquets.py` | `output/fam_processing/<P>/{donuts,fits,visits}.parquet` |
 
 `mktable` queries the Butler for donut Zernikes per visit and **fetches the telemetry in
 the same step** — it takes `--no-thermal`, `--temp-time-window` and `--consdb-url`, and
@@ -155,29 +155,48 @@ setup the pipeline requires.
 
 ## Output layout
 
-Keyed by `param_set` — a Butler collection paired with a processing variant — then by
-`mi_name` for products that depend on which MIW build was used. Within each level,
-output is grouped by study:
+Study outermost, then one directory naming the data the study was run against. The two
+data axes are `param_set` — a Butler collection paired with a processing variant — and
+`mi_name`, which MIW build was used; a product depending on both carries the two joined
+into a single name:
 
 ```
 output/
-  <param_set>/
-    {donuts,fits,visits}.parquet   # combined tables, input to everything
-    chunks/<dmin>_<dmax>/          # per-chunk tables
-    dzfit/  processing_compare/  wfs/<variant>/
-    coadd_50_34/  coadd_50_34_v2/
-    <mi_name>/
-      intrinsic_split_{maps,decomp,rms}.parquet  # the MIW itself
-      fits.parquet                               # DZ refit against the MIW
-      correlations/  bounce/  psf/  closed_loop/  lut/  wfs/<variant>/  wfs_mimic/
-  camera_gravity/                  # static_optics, no param_set dependence
-  science_lut/                     # science-exposure focus LUT, from the value-added database
-  fam_focus/                       # focus drift within a FAM block, same database
-  archive/                         # superseded param_sets
+  fam_processing/<P>/               # phase-1 tables, input to every study
+    {donuts,fits,visits}.parquet  chunk_status.parquet  visits_check.pdf
+    chunks/<dmin>_<dmax>/           # per-chunk tables
+  miw/<P>_<M>/                      # the MIW build itself
+    intrinsic_split_{maps,decomp,rms}.parquet  intrinsic_split.pdf
+    fits.parquet                    # DZ refit against the MIW
+    zk_intrinsic.parquet            # per-donut intrinsic, row-aligned to donuts
+    study_radialbins.pdf  build/rot_<lo>_<hi>/intrinsic_grid.parquet
+  dzfit/<P>/  processing_compare/<P>/  coadd/<P>/{50_34,50_34_v2}/
+  correlations/<P>/                 # aberration pairs, truss: no MIW dependence
+  correlations/<P>_<M>/             # DZ, thermal and v-mode correlations
+  bounce/<P>_<M>/  lut/<P>_<M>/  psf/<P>_<M>/  closed_loop/<P>_<M>/
+  wfs_mimic/<P>_<M>/
+  wfs_ingest/<P>/<cwfs>/            # CWFS tables, one directory per variant
+  wfs_corner_compare/<P>/<cwfs>/    # CWFS against FAM, same donuts
+  wfs_fam_compare/<P>/
+  wfs_dof_compare/<P>_<M>/<cwfs>/   # recovered optical state, needs the MIW
+  camera_gravity/                   # static_optics, no data dependence
+  science_lut/                      # science-exposure focus LUT, from the value-added database
+  fam_focus/                        # focus drift within a FAM block, same database
+  archive/                          # superseded param_sets, old layout
 ```
 
-A study writes under `<mi_name>/` when its result depends on which MIW build was used,
-under `<param_set>/` when it does not, and at the top level when it depends on neither.
+`<P>` and `<M>` are short directory names — `danish_1_2`, `A_50_34_i_5rot` — set by
+`dir_name` in `param_sets.yaml` and `mi_config.yaml`. The long keys stay the identity that
+`--param-set`, the value-added database rows and the frozen provenance resolve against; the
+short forms appear only in paths. A study directory therefore lists exactly the data sets it
+was run against, which is what distinguishes "not run" from "not applicable".
+
+The corner wavefront sensor (CWFS) variant nests one level below the data directory rather
+than joining as a third axis, which would make the name unreadable.
+
+`fits.parquet` appears twice by design: the phase-1 per-visit DZ fit under
+`fam_processing/`, and the DZ refit referenced to the MIW under `miw/`. They are different
+products and the directory is what distinguishes them.
 
 Outputs are gitignored, and symlinked to
 `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/` on the USDF RSP.

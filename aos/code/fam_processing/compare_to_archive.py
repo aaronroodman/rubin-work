@@ -2,7 +2,7 @@
 """Compare the new combined pipeline outputs against the archived (pre-reorg) ones.
 
 After a from-scratch Snakemake run, this checks that the new combined tables
-  output/<param_set>/{donuts,fits,visits}.parquet
+  output/fam_processing/<P>/{donuts,fits,visits}.parquet
 reproduce the old per-chunk flat files that were renamed into an archive dir
 (e.g. output-archive-2026-06-11/<phrase>_<dmin>_<dmax>{,_fits,_visits}.parquet).
 
@@ -23,11 +23,15 @@ Run on the RSP (needs pyarrow).  Examples:
   python code/compare_to_archive.py --archive /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output-archive-2026-06-11 --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
 """
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # aos/code -> flat modules
+from output_paths import study_dir  # noqa: E402
 
 ALIGN_KEY = ['day_obs', 'seq_num']
 
@@ -152,7 +156,8 @@ def main():
                                   ('fits', '_fits', compare_aligned),
                                   ('visits', '_visits', compare_aligned)):
             print(f'\n=== {name} ===')
-            new_path = Path(args.output_root) / ps / f'{name}.parquet'
+            new_path = (study_dir('fam_processing', ps, output_root=args.output_root)
+                        / f'{name}.parquet')
             if not new_path.exists():
                 print(f'  NEW MISSING: {new_path}'); all_ok = False; continue
             old, missing = load_concat(archived_chunk_paths(args.archive, ph, chunks, suffix))

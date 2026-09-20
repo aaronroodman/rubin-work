@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-10 · **Kind:** reference (study)
 
 > **Code:** `code/correlations/` · **Notebooks:** `notebooks/correlations/`
-> **Output:** `output/<param_set>/<mi_name>/correlations/`, `output/<param_set>/correlations/aberration_pairs.*`, `output/<param_set>/correlations/dz14_truss_*`
+> **Output:** `output/correlations/<P>_<M>/`, `output/correlations/<P>/aberration_pairs.*`, `output/correlations/<P>/dz14_truss_*`
 
 
 Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
@@ -12,7 +12,7 @@ Control (OFC) v-modes, and against telescope telemetry. Also the per-donut
 primary→secondary aberration-pair correlations, on the single-Zernike values rather than
 the DZ fits.
 
-The first four scripts run on the **MI-refit** residual (`output/<ps>/<mi>/fits.parquet`),
+The first four scripts run on the **MI-refit** residual (`output/miw/<P>_<M>/fits.parquet`),
 not the raw DZ. All five are pipeline rules. Knobs live in `analysis_config.yaml`, kept
 separate from `mi_config.yaml` so editing an analysis knob never re-triggers a slow
 intrinsic build.
@@ -29,10 +29,10 @@ intrinsic build.
 | `run_dz14_truss.py` | the focal-plane-uniform defocus DZ(k=1, j=4) against Telescope Mount Assembly (TMA) truss temperature, and against v-mode 1 reconstructed from the commanded degrees of freedom in three cumulative forms (LUT, LUT+Trim, LUT+Trim+Deviation); includes a DZ(1,4) time history, a hexapod-LUT validation page and per-night traces of DZ(1,4) overlaid with truss temperature |
 
 `run_aberration_pairs.py` works on the **Phase-1** per-donut `zk_<coord>` values in
-`donuts.parquet`, so it needs no `mi_name` and writes to `output/<ps>/correlations/`.
+`donuts.parquet`, so it needs no `mi_name` and writes to `output/correlations/<P>/`.
 It streams the donut table by row group.
 
-`run_dz14_truss.py` reads the raw DZ fit (`output/<ps>/fits.parquet`), not the MI-refit
+`run_dz14_truss.py` reads the raw DZ fit (`output/fam_processing/<P>/fits.parquet`), not the MI-refit
 residual, because the quantity of interest is the absolute mean focus rather than a
 residual. It takes the commanded degrees of freedom from `visits.parquet`: the hexapod
 look-up table (LUT) as `lut_dof0..9` and the Trim as `dof0..49`. A hexapod position is

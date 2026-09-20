@@ -8,7 +8,8 @@ median: FAM donuts in the outer annulus r in [r_min, r_max] within +/- wedge_hal
 of the corner azimuth (>= min_fam donuts).  Both are raw OPD in <coord> (default OCS),
 from the same triplet (matched CWFS fam_seq_num <-> FAM seq_num).
 
-Pages (output/<ps>/wfs/wfs_corner_compare.pdf):
+Pages (<out-dir>/wfs_corner_compare.pdf; the pipeline passes
+output/wfs_corner_compare/<P>/<cwfs>/):
   - per corner: FAM-vs-CWFS scatter, all Zj (Pearson r + Spearman rho, Huber
     robust slope/offset, nMAD RMS of residuals about the robust fit);
   - per corner: time history (FAM-interp + CWFS-median vs image ordinal), all Zj;

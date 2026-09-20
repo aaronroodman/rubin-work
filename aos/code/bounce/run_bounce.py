@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bounce-test analysis (script port of study_bounce.ipynb), per (param_set,
-mi_name) on the measured-intrinsic refit  output/<ps>/<mi>/fits.parquet.
+mi_name) on the measured-intrinsic refit  output/miw/<P>_<M>/fits.parquet.
 
 FAM-triplet telescope-position bounce tests (e.g. BLOCK-T720 elevation,
 BLOCK-T724 rotator): time-ordered paired-difference Δ (comparison − reference)
@@ -9,7 +9,8 @@ significance / pass heatmaps; DZ / v-mode / DOF vs ordinal-image pages;
 per-night cross-scatter; and DOF night-vs-night scatter.  All analysis/plot
 logic lives in code/bounce_lib.py (verbatim from the notebook).
 
-Writes, under  output/<ps>/<mi>/ :
+Writes, under the directory given by --out-dir (the pipeline passes
+output/bounce/<P>_<M>/) :
     bounce/bounce_summary.pdf             Δ / significance / pass heatmaps + cross-scatter
     bounce/bounce_dz_vs_ordinal.pdf       DZ_kj vs ordinal image (per bounce)
     bounce/bounce_vmode_vs_ordinal.pdf    v-mode amplitude vs ordinal

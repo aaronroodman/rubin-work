@@ -84,6 +84,6 @@ python camera_gravity_maps.py --band i --elevations 70 45 30 --rb       # +RB
 ```
 
 Default MIW sidecar:
-`output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/pathA_50_34_i_5rot/intrinsic_split_maps.parquet`
+`output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_maps.parquet`
 (override with `--miw`). Elevation = 90 − zenith. The scripts reuse the smatrix
 DZ convention (`smatrix/code/compute_smatrix.py`, added to `sys.path`).

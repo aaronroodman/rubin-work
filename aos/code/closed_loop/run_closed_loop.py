@@ -21,7 +21,8 @@ Usage:
   python code/closed_loop/run_closed_loop.py --case loop50
   python code/closed_loop/run_closed_loop.py --case loop --gain 0.5 --latency nplusone
 
-Writes output/<param_set>/<mi>/closed_loop/closed_loop_<case>_<band><suffix>.pdf, where the
+Writes closed_loop_<case>_<band><suffix>.pdf into the directory given by --out-dir
+(the pipeline passes output/closed_loop/<P>_<M>/), where the
 suffix records the intrinsic, order, latency and gain, so runs with different control
 settings sit side by side.
 

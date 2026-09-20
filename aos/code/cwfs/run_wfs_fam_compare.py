@@ -15,11 +15,12 @@ a chosen rotator angle and elevation; default rotator 0 deg, elevation 70 deg):
   persisted) following lsst-ts/donut_viz PlotDonutFitsTask.getModel.
 
 Reads parquets for the comparison:
-    output/<ps>/donuts.parquet, visits.parquet, wfs/donuts.parquet
+    output/fam_processing/<P>/{donuts,visits}.parquet
+    output/wfs_ingest/<P>/<cwfs>/donuts.parquet
 The gallery additionally needs the butler (corner-WFS collection), danish, and
 lsst.ts.wep — RSP only.  Use --max-visits to cap the number of triplets.
 
-Writes output/<ps>/wfs/fam_wfs_triplet_compare.pdf .
+Writes output/wfs_fam_compare/<P>/fam_wfs_triplet_compare.pdf .
 """
 import argparse
 import sys

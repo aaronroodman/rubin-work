@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-14 · **Kind:** reference (study)
 
 > **Code:** `code/coadd/`
-> **Output:** `output/<param_set>/coadd_50_34/`, `output/<param_set>/coadd_50_34_v2/` (`blocks_summary.parquet`, `coadd_metrics.parquet`, `block_grids.npz`, `coadd_blocks_miw_*.pdf`)
+> **Output:** `output/coadd/<P>/50_34/`, `output/coadd/<P>/50_34_v2/` (`blocks_summary.parquet`, `coadd_metrics.parquet`, `block_grids.npz`, `coadd_blocks_miw_*.pdf`)
 
 Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias
 model developed to explain their disagreement.
@@ -67,10 +67,12 @@ series. It does not change with the band selection.
 
 ## Inputs and outputs
 
-`run_coadd_blocks_miw.py` reads the per-chunk `output/<ps>/chunks/*/visits.parquet` (per
-chunk rather than the combined table, so a chunk carrying thermal telemetry keeps it),
-`donuts.parquet`, and the MIW sidecar `output/<ps>/<mi>/zk_intrinsic.parquet`, which must
-exist. It writes into `output/<ps>/<out-name>/`:
+`run_coadd_blocks_miw.py` reads the per-chunk
+`output/fam_processing/<P>/chunks/*/visits.parquet` (per chunk rather than the combined
+table, so a chunk carrying thermal telemetry keeps it), `donuts.parquet`, and the MIW
+sidecar `output/miw/<P>_<M>/zk_intrinsic.parquet`, which must exist. It writes into the
+directory given by `--out-dir`, on disk `output/coadd/<P>/<out-name>/` with `<out-name>`
+naming the variant — `50_34`, `50_34_v2`:
 
 | product | content |
 |---|---|
@@ -95,8 +97,8 @@ from 0.54 to 0.74 at 3×3 rebinning on a test block. `--analysis-rebin` (default
 coarsest factor) selects which metric set feeds the correlation, u-mode-displacement and
 machine-learning pages.
 
-The other scripts read `output/<ps>/<mi>/fits.parquet` (the MI-refit DZ) and the
-`coadd_50_34/` products, and write per-analysis PDFs.
+The other scripts read `output/miw/<P>_<M>/fits.parquet` (the MI-refit DZ) and the
+`output/coadd/<P>/50_34/` products, and write per-analysis PDFs.
 
 ## State and open questions
 
@@ -106,7 +108,7 @@ The other scripts read `output/<ps>/<mi>/fits.parquet` (the MI-refit DZ) and the
   `analyze_miw_field_order.py` masks the metrics table with a boolean array sized from the
   npz, so pairing products built under different band selections raises `IndexError`
   rather than a clear message. Superseded output is kept under
-  `output/<ps>/coadd_50_34/archive/`, each archive directory carrying a note of its band
+  `output/coadd/<P>/50_34/archive/`, each archive directory carrying a note of its band
   selection and block count.
 - **Never correlate against total `‖a‖`** — open-loop focus drift dominates it; use
   per-mode signed `a`. See the handoff.

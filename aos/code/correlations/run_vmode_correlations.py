@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """v-mode <-> temperature correlations + v-mode autocorrelation (FAM, per ps/mi).
 
-Projects the MI-subtracted per-visit Double-Zernikes in output/<ps>/<mi>/fits.parquet
+Projects the MI-subtracted per-visit Double-Zernikes in output/miw/<P>_<M>/fits.parquet
 onto the OFC v-modes, then correlates each v-mode against (a) the temperature
 telemetry suite and (b) the other v-modes (autocorrelation).  Unlike
 thermal_correlations (Pearson) this uses the ROBUST Spearman rho + Theil-Sen
