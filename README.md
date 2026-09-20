@@ -39,16 +39,14 @@ Optical design and prescription, needing no data:
 | [`optics/`](optics/README.md) | Batoid ray-trace studies of the optical system: telecentricity and pupil geometry |
 | [`filters/`](filters/README.md) | Feasibility of multilayer dielectric interference filters for future narrow- and medium-band imaging, with automatic differentiation on the layer thicknesses |
 
-Survey, astrometry and other:
+Astrometry:
 
 | topic | content |
 |---|---|
-| `survey/` | Survey strategy and operations |
-| `wcs/` | World Coordinate System studies |
-| `astrometry/` | Astrometric studies |
-| `starcolor/` | Stellar color and photometry |
-| `des/` | Dark Energy Survey comparisons |
-| `alerts/` | Alert stream studies |
+| `astrometry/` | Per-visit World Coordinate System (WCS) astrometric residual fields as a probe of the atmospheric contribution, compared against the PSF ellipticity pattern across the focal plane |
+
+Reserved, holding no work yet — `camera/`, `des/`, `starcolor/`, `survey/`, `wcs/` and
+`alerts/` are scaffolding only.
 
 Support:
 
