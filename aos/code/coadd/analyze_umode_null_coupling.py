@@ -62,11 +62,11 @@ def cv_r2_multi(X, Y, groups, lam, n_splits=5):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fits", default="output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-                    "pathA_50_34_i_5rot/fits.parquet")
+    ap.add_argument("--fits", default="output/miw/danish_1_2_A_50_34_i_5rot/"
+                    "fits.parquet")
     ap.add_argument("--blocks-summary",
-                    default="output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-                    "coadd_50_34/blocks_summary.parquet")
+                    default="output/coadd/danish_1_2/50_34/"
+                    "blocks_summary.parquet")
     ap.add_argument("--stable-programs", nargs="+", default=["T614_triplets"])
     ap.add_argument("--n-sim", type=int, default=100)
     ap.add_argument("--out", default="output/umode_null_coupling.pdf")

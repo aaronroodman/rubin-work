@@ -48,7 +48,7 @@ from vmode_fit import build_vmode_design, cwfs_vmode_amps
 from miw import MIWCalib
 from fit_monitor import FitMonitor
 
-VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
+VISITS = '../aos/output/fam_processing/danish_1_2/visits.parquet'
 
 Stage = namedtuple('Stage', 'name free_vmodes free_atm')   # free_vmodes: 'all' | [ints]
 PLANS = {

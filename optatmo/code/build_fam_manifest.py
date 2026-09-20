@@ -7,7 +7,7 @@ seq_num + 1).  Pass one or more visits.parquet paths (globs OK); rows are kept i
 visit_quality_pass and not rotator_flagged.
 
     python code/build_fam_manifest.py --out pipelines/prod_famcwfs.txt \
-        '../aos/output/fam_danish_*/**/visits.parquet'
+        '../aos/output/fam_processing/*/visits.parquet'
 
 If your FAM triplets are enumerated some other way (e.g. a ConsDB
 observation_reason / science_program), build the manifest from that instead --

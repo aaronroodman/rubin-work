@@ -17,7 +17,7 @@ from jax_optatmo import MOMENT_LABELS
 import frames
 import fit as fitmod
 
-CWFS_FITS = ('../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/fits.parquet')
+CWFS_FITS = ('../aos/output/fam_processing/danish_1_2/fits.parquet')
 
 
 def load_and_prep(parquet, sign=1, rot_deg=None, clip_thr=5.0):

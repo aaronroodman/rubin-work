@@ -283,16 +283,16 @@ def slope_test(a, chi2, dof):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fits", default="output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-                    "pathA_50_34_i_5rot/fits.parquet",
+    ap.add_argument("--fits", default="output/miw/danish_1_2_A_50_34_i_5rot/"
+                    "fits.parquet",
                     help="build fits.parquet -- the MIW-referenced per-visit DZ fit")
     ap.add_argument("--fits-biw", default=None,
                     help="second fits.parquet fit against the BATOID intrinsic "
                     "(produce it by rerunning the build with --n-iter 1)")
     ap.add_argument("--instrument", default="lsst")
     ap.add_argument("--blocks-summary",
-                    default="output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-                    "coadd_50_34/blocks_summary.parquet",
+                    default="output/coadd/danish_1_2/50_34/"
+                    "blocks_summary.parquet",
                     help="block table used to build the EMPIRICAL within-block "
                     "coefficient covariance (the turbulence-aware error model)")
     ap.add_argument("--min-visits", type=int, default=3,

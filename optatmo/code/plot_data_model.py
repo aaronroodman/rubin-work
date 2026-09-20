@@ -30,7 +30,7 @@ from miw import MIWCalib
 
 DAY = 20260513          # set from --day in main(); used by the helper functions
 LAB = ['e0', 'e1', 'e2', 'M21', 'M12', 'M30', 'M03', 'M22', 'M31', 'M13', 'M40', 'M04']
-VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
+VISITS = '../aos/output/fam_processing/danish_1_2/visits.parquet'
 FP_R = 1.75
 NOLL_CWFS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
 RAD2DEG = 180.0 / np.pi

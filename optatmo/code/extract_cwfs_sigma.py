@@ -2,7 +2,7 @@
 wavefront-space regularization, from the CWFS-vs-FAM corner comparison.
 
 PROVENANCE
-  Source : aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/wfs/refitWcs/
+  Source : aos/output/wfs_corner_compare/danish_1_2/refitWcs/
            wfs_corner_compare.parquet  (raw fam_interp vs cwfs_median pairs; the
            'robust RMS' panel of the companion wfs_corner_compare.pdf, page 9).
   Metric : sigma_j = robust RMS = nMAD of residuals about a Huber CWFS(y)-vs-
@@ -20,8 +20,8 @@ import argparse
 import numpy as np
 import pandas as pd
 
-DEFAULT_PARQUET = ('../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/'
-                   'wfs/refitWcs/wfs_corner_compare.parquet')
+DEFAULT_PARQUET = ('../aos/output/wfs_corner_compare/danish_1_2/refitWcs/'
+                   'wfs_corner_compare.parquet')
 
 # Noll azimuthal doublets (cos/sin pairs) in the AOS set Z4..Z26 (Z20,Z21 omit).
 # Both members get the mean sigma; the m=0 singles (4, 11, 22) are unpaired.

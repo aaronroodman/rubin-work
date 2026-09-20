@@ -52,8 +52,8 @@ def noll_radial_order(k):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--miw", default="output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-                    "pathA_50_34_i_5rot/intrinsic_split_maps.parquet")
+    ap.add_argument("--miw", default="output/miw/danish_1_2_A_50_34_i_5rot/"
+                    "intrinsic_split_maps.parquet")
     ap.add_argument("--kmax", type=int, default=45,
                     help="highest focal Noll index to fit (45 completes radial order n=8)")
     ap.add_argument("--fp-radius", type=float, default=1.8,

@@ -11,7 +11,7 @@ import pandas as pd
 
 import campaign as camp
 
-VISITS = '../aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/visits.parquet'
+VISITS = '../aos/output/fam_processing/danish_1_2/visits.parquet'
 
 
 def robust_fit(x, y):

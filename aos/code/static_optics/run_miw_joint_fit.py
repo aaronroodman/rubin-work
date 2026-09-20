@@ -42,8 +42,8 @@ import m3_backprojection as bp
 warnings.filterwarnings("ignore")
 
 JS = [j for j in range(4, 27) if j not in (20, 21)]          # MIW target Noll set
-DEFAULT_MIW = ("output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-               "pathA_50_34_i_5rot/intrinsic_split_maps.parquet")
+DEFAULT_MIW = ("output/miw/danish_1_2_A_50_34_i_5rot/"
+               "intrinsic_split_maps.parquet")
 # optic -> the single surface carrying its figure
 SURF_MAP = {"M1": "M1", "M2": "M2", "M3": "M3", "L1": "L1_entrance",
             "L2": "L2_entrance", "Filter": "Filter_entrance", "L3": "L3_entrance"}

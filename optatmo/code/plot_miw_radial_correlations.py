@@ -30,8 +30,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-DEFAULT_MIW = ("aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-               "pathA_50_34_i_5rot/intrinsic_split_maps.parquet")
+DEFAULT_MIW = ("aos/output/miw/danish_1_2_A_50_34_i_5rot/"
+               "intrinsic_split_maps.parquet")
 
 # family -> {order: (cos_noll, sin_noll)}; sin=None for m=0 (spherical)
 FAMILIES = [
