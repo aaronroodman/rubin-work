@@ -122,7 +122,7 @@ Measured on the 500 most recent FAM visits, all in `efd_lsstcam.exposure_efd`:
 | `m2_stress` | `m2_stress` | **0.0%** | — | |
 
 **Wind and airflow are fully available and currently thrown away.**
-`aos/code/aos_consdb_efd.py` already defines all seven wind columns plus
+`common/consdb_efd.py` already defines all seven wind columns plus
 `sonic_temperature`, but nothing in the FAM pipeline calls that module, so none of them
 reach `visits.parquet`. Adding them is a one-line change to the attach script's column
 list — no new query.
@@ -159,7 +159,7 @@ are in **deg**, as MTHexapod reports them, while the corresponding Trim `dof3`, 
 `dof8`, `dof9` are in **arcsec** in the OFC convention. Adding them requires a conversion;
 the four dz/dx/dy axes per hexapod are directly additive.
 
-The mirror LUT is in axial **force** (N), not bending amplitude — `aos_trim.fetch_mirror_lut_for_visits`
+The mirror LUT is in axial **force** (N), not bending amplitude — `dof_telemetry.fetch_mirror_lut_for_visits`
 converts. It has never been changed from the mirror-lab values, so for v-mode work
 dominated by hexapod motion it can be treated as constant.
 
@@ -181,7 +181,7 @@ Per `../../notes/claude-memory/aos-dof-terminology.md`:
 **Tweak has no EFD topic and no ConsDB property.** It is derived by differencing
 consecutive Trim values, `Tweak_i = Trim_i - Trim_(i-1)`.
 
-The `event_id` array returned by `aos_trim.fetch_aggregated_dof_for_visits` (the `visitId`
+The `event_id` array returned by `dof_telemetry.fetch_aggregated_dof_for_visits` (the `visitId`
 of the source `degreeOfFreedom` event) distinguishes the two cases that matter:
 
 - consecutive visits sharing one event mean the AOS applied **no new correction**, so
@@ -238,11 +238,11 @@ below. There is **no ConsDB column for `compensatedPosition`** at all.
 Because the ConsDB hexapod LUT reaches only 7.7% of `cwfs` exposures for the camera
 hexapod and 0.0% for M2, the pipeline takes the **EFD** route instead
 (`lsst.sal.MTHexapod.logevent_compensationOffset`, via
-`aos_trim.fetch_hexapod_lut_for_visits`), which resolves 100.0% and 98.5% of FAM visits
+`dof_telemetry.fetch_hexapod_lut_for_visits`), which resolves 100.0% and 98.5% of FAM visits
 respectively. These are the `lut_dof0..9` columns tabulated above.
 
 The OFC DOF layout uses only 5 hexapod axes per hexapod (z, x, y, u, v); ConsDB also
-carries `w`, which `aos_consdb_efd.HEX_AXES` correctly drops.
+carries `w`, which `consdb_efd.HEX_AXES` correctly drops.
 
 ### The hexapod position identity — three EFD topics, two routes to the LUT
 
@@ -359,13 +359,13 @@ within the exposure window rather than doing an as-of-most-recent lookup, and (b
 science-visit selection that excludes AOS image types.
 
 **Consequence for code:** the as-of-time EFD lookup in
-`aos_trim.fetch_aggregated_dof_for_visits` — anchor on ConsDB `obs_start` (TAI), then
+`dof_telemetry.fetch_aggregated_dof_for_visits` — anchor on ConsDB `obs_start` (TAI), then
 `getMostRecentRowWithDataBefore` on the topic — is **required**. It must not be
 "simplified" into a ConsDB join. The same holds for the hexapod LUT via
-`aos_trim.fetch_hexapod_lut_for_visits`.
+`dof_telemetry.fetch_hexapod_lut_for_visits`.
 
 **Trim and the hexapod LUT are EFD-only in the AOS pipeline.** ConsDB is used for these
-two quantities in exactly one place: `aos_consdb_efd.collect_consdb_telemetry` populates
+two quantities in exactly one place: `consdb_efd.collect_consdb_telemetry` populates
 `dof0..49` from `mt_logevent_aggregated_dof` and `lut_dof0..9` / `trim_hex_dof0..9` from
 `HEX_LUT_COLS` / `HEX_TRIM_COLS`, and that is reachable only with `dof=True, hexapod=True`.
 The FAM path never sets them: `run_attach_telemetry.py` takes both groups from the EFD, and
@@ -385,7 +385,7 @@ On the same FAM exposures where Trim fails:
 | `mt_m2_axial_force_lut_gravity_mean` | **400/400** sampled visits | 72 axial forces |
 
 So the exposure rows themselves exist in the transform; the gap is specific to the AOS
-Trim quantities. `aos_trim.fetch_mirror_lut_for_visits` converts these axial forces to
+Trim quantities. `dof_telemetry.fetch_mirror_lut_for_visits` converts these axial forces to
 bending-mode amplitudes with ts_ofc `BendModeToForce.bending_mode`, mapping to DOF 10–29
 (M1M3) and 30–49 (M2).
 
@@ -409,7 +409,7 @@ The result is four unreconciled padding conventions for the same job:
 | `common/ess_telemetry.py` | `DEFAULT_TEMP_WINDOW = 0.2 s` |
 | `olr/code/nightly_table.py` | `time_window` and `temp_time_window` both 0.2 s |
 | `aos/code/run_backfill_camera_telemetry.py` | `--pad-sec`, default 120 s |
-| `aos/code/aos_trim.py` | `buffer_hours` plus a 60 s tail |
+| `common/dof_telemetry.py` | `buffer_hours` plus a 60 s tail |
 
 A 600× spread. Some variation is legitimate — a high-rate M2 `axialForce` stream needs a
 different window than a slow ESS temperature — but at present it is accidental and
@@ -418,7 +418,8 @@ undocumented rather than reasoned.
 Two reasons `getEfdData` is not a drop-in replacement:
 
 - **It queries one window per call.** For 3385 visits that is 3385 round-trips.
-  `aos_trim` and `olr/telemetry` deliberately query **once per night in bulk** and then do
+  `dof_telemetry` and `common/ess_telemetry.py` deliberately query **once per night in
+  bulk** and then do
   as-of lookups in memory; that is the fix for what previously ran the OLR night table out
   of batch wall time.
 - **`expRecordToTimespan` needs a Butler `DimensionRecord`**, whereas everything here
@@ -441,16 +442,17 @@ and token-file handling reimplemented in 5 files.
 The in-pod URL does not resolve outside the RSP, which is a live failure mode, not a
 hypothetical.
 
-| module | role | destination |
-|---|---|---|
-| `aos/code/aos_trim.py` | Trim, hexapod and mirror LUT fetchers, `make_consdb_client` | client layer to `common/`, AOS physics stays |
-| `aos/code/aos_consdb_efd.py` | ConsDB transformed-EFD bulk path | `common/` |
-| `aos/code/aos_state.py` | per-visit state helpers, `DOF22` | stays in `aos/` |
-| `aos/code/fam_processing/run_attach_telemetry.py` | the unified attach: every group, per-chunk sidecar plus merge | stays in `aos/` |
+| module | role |
+|---|---|
+| `common/dof_telemetry.py` | Trim, hexapod LUT and mirror LUT fetchers; the force-to-bending-mode conversion; the Tweak derivation |
+| `common/consdb_efd.py` | ConsDB transformed-EFD bulk path |
+| `common/visit_telemetry.py` | per-visit wind and camera-body temperatures |
+| `aos/code/aos_state.py` | per-visit state helpers, `DOF22` |
+| `aos/code/fam_processing/run_attach_telemetry.py` | the unified attach: every group, per-chunk sidecar plus merge |
 
-Client construction is already shared: `common/telemetry_clients.py` holds the URLs, token
-handling and `make_efd_client` / `make_consdb_client`, and `aos_trim` re-exports them
-unchanged so the four sibling topics that import them by bare name keep working.
+Client construction is shared: `common/telemetry_clients.py` holds the URLs, token handling
+and `make_efd_client` / `make_consdb_client`. Re-export shims remain at
+`aos/code/aos_trim.py` and `aos/code/aos_consdb_efd.py` for untracked notebooks.
 
 `run_attach_telemetry.py` needs a node where the EFD and ConsDB resolve: the RSP terminal or
 a slaciana/slacrd interactive node, **not** a batch node. That is why `attach_telemetry` is

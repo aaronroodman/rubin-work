@@ -114,7 +114,7 @@ three are RSP or slaciana/slacrd only, **not** a batch compute node.
 
 - The mirror LUT is stored as axial **forces**; converting to bending amplitudes assumes
   the EFD force arrays share the actuator order of the ts_ofc influence matrix, which
-  `aos_trim.fetch_mirror_lut_for_visits` flags as unverified.
+  `common/dof_telemetry.py` flags as unverified in `bending_modes_from_forces`.
 - `run_backfill_thermal.py` and `run_backfill_camera_telemetry.py` are superseded by
   `run_attach_telemetry.py` but still in place; retiring them is outstanding.
 - `compare_to_archive.py` compares against the pre-reorganization archive and will lose its

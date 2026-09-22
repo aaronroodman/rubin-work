@@ -1,7 +1,7 @@
-"""ConsDB corner-WFS Zernikes + per-visit metadata for optatmo, REUSING the
-rubin-work/aos ConsDB code:
+"""ConsDB corner-WFS Zernikes + per-visit metadata for optatmo, REUSING:
 
-  * aos_trim.make_consdb_client         -- the generic ConsDB client
+  * common.telemetry_clients.make_consdb_client
+                                        -- the generic ConsDB client
   * aos_state.fetch_corner_zernikes_consdb / ZK_NOLL / CORNERS
                                         -- per-corner total-OPD Zernikes from
                                            cdb_<instr>.ccdvisit1_quicklook
@@ -29,10 +29,11 @@ import sys
 import numpy as np
 import pandas as pd
 
-# reuse the aos ConsDB code (sibling package rubin-work/aos/code)
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'aos', 'code'))
-from aos_trim import make_consdb_client                       # noqa: E402
+# the shared ConsDB client from common/, and the corner-Zernike reader from aos/code
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, '..', '..'))                    # repo root
+sys.path.insert(0, os.path.join(_HERE, '..', '..', 'aos', 'code'))
+from common.telemetry_clients import make_consdb_client       # noqa: E402
 from aos_state import fetch_corner_zernikes_consdb, ZK_NOLL   # noqa: E402
 import frames                                                 # noqa: E402
 

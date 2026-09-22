@@ -13,6 +13,9 @@ imported by inserting the repository root on `sys.path` — `parents[2]` from
 | `utils.py` | `nmad` (normalized median absolute deviation), `alt_to_deg`, `repo_root`, `setup_plotting` |
 | `telemetry_clients.py` | Engineering Facility Database (EFD) and Consolidated Database (ConsDB) client construction, with the per-topic time-window padding each quantity needs |
 | `ess_telemetry.py` | Per-visit Environmental Sensor System (ESS) telemetry from the EFD: air temperatures and their differences, Telescope Mount Assembly (TMA) truss temperatures, the four M1M3 bulk thermal gradients in degrees Celsius per metre, and inside- and outside-dome wind |
+| `dof_telemetry.py` | The three per-visit degree-of-freedom (DOF) quantities in the 50-DOF Optical Feedback Control (OFC) ordering: the look-up-table (LUT) baseline, the accumulated Trim from `MTAOS.logevent_degreeOfFreedom`, and the per-iteration Tweak differenced from it. Hexapod translations in µm and rotations in arcsec; mirror bending amplitudes dimensionless. The forty mirror-LUT DOF have no published value and are derived here from the M1M3 and M2 axial forces in newtons |
+| `consdb_efd.py` | Bulk per-visit read of the ConsDB transformed EFD: scalar temperatures, mirror stresses and wind pivoted per exposure, and the M1M3 and M2 axial-force arrays unpivoted and converted to bending amplitudes |
+| `visit_telemetry.py` | Per-visit environmental scalars: inside- and outside-dome wind speed in m/s and direction in deg from ConsDB, and the twenty-four camera-body temperatures in degrees Celsius, which live in the camera's own InfluxDB database rather than the main EFD |
 | `FocalPlaneInterpolator.py` | focal-plane interpolation of a quantity sampled per detector |
 | `psf_moments_consdb.py` | Point Spread Function (PSF) moments read from ConsDB |
 | `psf_render.py` | PSF rendering helpers |

@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pandas as pd
 
-# Shared collector: DOF/LUT/v-modes/Zernikes/thermal/wind (aos + olr helpers).
+# Shared collector: DOF/LUT/v-modes/Zernikes/thermal/wind (common/ + aos helpers).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import telemetry_pipeline    # noqa: E402  (adds the repo root + aos/code to sys.path)
-import aos_trim              # noqa: E402
+from common.telemetry_clients import make_consdb_client        # noqa: E402
 
 
 def build(args):
     os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",.consdb"
 
     # 1. Select converged closed-loop images from ConsDB ----------------------
-    client = aos_trim.make_consdb_client(args.consdb_url)
+    client = make_consdb_client(args.consdb_url)
     q = f"""
         SELECT v1.*, ql.physical_rotator_angle, ql.psf_sigma_median,
                ql.seeing_zenith_500nm_median

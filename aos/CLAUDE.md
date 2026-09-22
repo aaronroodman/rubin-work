@@ -16,17 +16,24 @@ What follows is only the things that are easy to get wrong.
 `code/science_lut/`, `code/fam_focus/`, `code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.
 
-Eleven modules stay **flat at `code/`** on purpose:
+Nine modules stay **flat at `code/`** on purpose:
 
 | module | why |
 |---|---|
-| `aos_trim.py`, `aos_state.py`, `aos_consdb_efd.py` | imported **by bare module name from `blocks/`, `olr/`, `optatmo/`, `guider/`** (39 references) via a hardcoded `sys.path.insert(.../aos/code)`. Moving them breaks four sibling topics with no static-import warning. |
+| `aos_state.py` | imported **by bare module name from `blocks/` and `optatmo/`** via a hardcoded `sys.path.insert(.../aos/code)`. Moving it breaks those topics with no static-import warning. |
 | `aos_fwhm.py`, `fam_selection.py`, `miw_io.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
 | `output_paths.py` | resolves `output/<study>/<P>[_<M>]/` from the long `param_set` and `mi_name` keys through their `dir_name` entries. For the **hand-run** scripts only — the Snakefile owns the layout for every rule it runs and passes `--out-dir`. |
 | `miw_corner_intrinsic.py` | supplies the `miw_lookup` callable that **`value_added/code/build_optical_state.py`** takes for `--intrinsic miw`, so it is consumed from a sibling topic rather than by a study here |
 | `test_m1m3.py` | manual EFD probe, no study of its own |
 
-Do not "finish the job" by moving the first three into `code/telemetry/`.
+Do not "finish the job" by moving `aos_state.py` into `code/telemetry/`.
+
+The engineering telemetry that used to sit beside it lives in `common/` — the degree-of-freedom
+(DOF) look-up table (LUT), Trim and Tweak in `common/dof_telemetry.py`, the bulk Consolidated
+Database (ConsDB) transformed-Engineering-Facility-Database (EFD) path in
+`common/consdb_efd.py`, and the per-visit wind and camera-body temperatures in
+`common/visit_telemetry.py`. Re-export shims remain at `code/aos_trim.py` and
+`code/aos_consdb_efd.py` for untracked notebooks; new code imports from `common/` directly.
 
 Scripts run in **script mode** (`python code/<study>/x.py`), so relative imports do not
 work. Each moved file puts its own study dir and `code/` on `sys.path`, so bare-name

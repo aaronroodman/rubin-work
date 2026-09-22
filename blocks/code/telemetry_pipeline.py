@@ -17,7 +17,8 @@ Three telemetry sources (same output schema), chosen by
     mirror download, and dense DOF/hexapod.
   * ``"consdb"`` -- everything from the ConsDB transform (incl. the sparse
     logevent DOF/hexapod); fastest but DOF/hexapod are only a few % populated.
-  * ``"efd"`` -- the original raw-EFD path (``aos_trim`` + ``olr/telemetry``);
+  * ``"efd"`` -- the original raw-EFD path (``common/dof_telemetry.py`` +
+    ``common/ess_telemetry.py``);
     cross-check / for time ranges the transform doesn't cover.
 
 All modes add the separate M2-temperature / M1M3-azimuth+thermal mirror bending
@@ -34,13 +35,13 @@ import numpy as np
 import pandas as pd
 from astropy.table import Table
 
-# Shared helpers: aos/code (DOF, v-modes, Zernikes, LUT) + common/ (ESS telemetry).
+# Shared helpers: common/ (DOF, ConsDB EFD, ESS telemetry) + aos/code (v-modes, Zernikes).
 REPO = Path(__file__).resolve().parents[2]          # -> rubin-work/
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "aos" / "code"))
-import aos_trim         # noqa: E402
 import aos_state        # noqa: E402
-import aos_consdb_efd   # noqa: E402
+from common import dof_telemetry as aos_trim                                # noqa: E402
+from common import consdb_efd as aos_consdb_efd                             # noqa: E402
 from common import ess_telemetry as telemetry                              # noqa: E402
 from common.ess_telemetry import GRAD_COLS, get_m1m3_gradients_sync        # noqa: E402
 
@@ -65,7 +66,7 @@ def collect_telemetry(visits, args, client, efd=None, with_zernikes=True, source
 def _dof_hexapod_from_efd(visits, args, client, efd):
     """DOF Trim (dof0-49) + hexapod LUT (lut_dof0-9) from the raw EFD (as-of) --
     the SAL logevents the ConsDB transform only captures in a few % of exposures.
-    Both use aos_trim's per-night bulk as-of helpers (cheap topics)."""
+    Both use the dof_telemetry per-night bulk as-of helpers (cheap topics)."""
     fit_table = Table.from_pandas(visits[["day_obs", "seq_num"]].astype(int))
     trim, dof_info = aos_trim.fetch_aggregated_dof_for_visits(
         fit_table, efd_client=efd, consdb_client=client)

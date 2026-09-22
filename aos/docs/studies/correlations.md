@@ -308,7 +308,7 @@ it moves the zero point and cannot affect any slope, though the 0.014 µm of wav
 difference is a per-band offset absorbed by each per-band intercept.
 
 The total is `v1_total = v1(LUT) + v1(Trim) + v1_equivalent(four-corner mean Z4)`, with LUT and
-Trim taken from the **EFD** through `aos_trim.fetch_hexapod_lut_for_visits` and
+Trim taken from the **EFD** through `common/dof_telemetry.py:fetch_hexapod_lut_for_visits` and
 `fetch_aggregated_dof_for_visits` rather than the ConsDB, whose coverage of these is a third of
 science exposures at best. Both v-mode routes are used and cross-checked before any result
 depends on them: `aos_state.make_state_estimator` + `vmodes_from_dofs` for DOF → v-mode, and
@@ -323,7 +323,7 @@ differ by roughly 10% (dimensionless, canonical over shortcut). The notebook use
 route throughout.
 
 Air temperatures come from ConsDB `efd_lsstcam.exposure_efd` using the
-`aos_consdb_efd.TEMP_COLS` names: truss and ambient at 89.7% populated, and the camera *air*
+`common/consdb_efd.py:TEMP_COLS` names: truss and ambient at 89.7% populated, and the camera *air*
 temperature from the salIndex-111 environmental sensing system (ESS), whose channel 0 is the only
 populated one. The camera **body** temperature is a different quantity and does not come from the
 ESS at all — the salIndex-1 ESS (`cam_hex_temp_0..7`) carries no data on any of the 27671 science

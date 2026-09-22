@@ -15,7 +15,8 @@
 #
 # Config: config.yaml (day_obs range, `nights`, ConsDB/EFD, OFC, selection).
 # Both tables share code/telemetry_pipeline.collect_telemetry, which reuses
-# aos/code (DOF/LUT/v-modes/Zernikes) + common/ess_telemetry.py (thermal/wind).
+# common/ (DOF/LUT, ConsDB transformed EFD, thermal/wind) + aos/code/aos_state.py
+# (v-modes, per-corner Zernikes).
 # ----------------------------------------------------------------------
 import os
 import yaml
@@ -44,7 +45,8 @@ rule build_table:
     input:
         script    = "code/build_t539_table.py",
         lib_pipe  = "code/telemetry_pipeline.py",
-        lib_trim  = "../aos/code/aos_trim.py",
+        lib_dof   = "../common/dof_telemetry.py",
+        lib_cdb   = "../common/consdb_efd.py",
         lib_state = "../aos/code/aos_state.py",
         lib_tele  = "../common/ess_telemetry.py",
     params:
@@ -101,7 +103,8 @@ rule night_table:
     input:
         script    = "code/build_night_table.py",
         lib_pipe  = "code/telemetry_pipeline.py",
-        lib_trim  = "../aos/code/aos_trim.py",
+        lib_dof   = "../common/dof_telemetry.py",
+        lib_cdb   = "../common/consdb_efd.py",
         lib_state = "../aos/code/aos_state.py",
         lib_tele  = "../common/ess_telemetry.py",
     params:

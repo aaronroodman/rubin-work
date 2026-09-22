@@ -22,7 +22,7 @@ Name searches for `dof`, `trim`, `tweak`, `lut`, `hex`, `bend` and `offset` retu
 `m1m3_tc_*` / `m1m3_dt_*` **thermocouple** channels in the MI-refit table. Those are
 temperatures, not degrees of freedom.
 
-The retrieval code exists in `aos/code/aos_trim.py` and `aos/code/aos_consdb_efd.py`, but
+The retrieval code exists in `common/dof_telemetry.py` and `common/consdb_efd.py`, but
 `mktable` never calls it. Its only callers are `code/bounce/run_bounce.py` and the sibling
 topic `blocks/code/telemetry_pipeline.py`, so every study needing commanded state re-fetches
 it itself.
@@ -38,7 +38,7 @@ Per `../../../notes/claude-memory/aos-dof-terminology.md`:
   topic `lsst.sal.MTAOS.logevent_degreeOfFreedom` reports as `aggregatedDoF0..49`.
 
 **Tweak is not a retrievable quantity.** There is no EFD topic or ConsDB property for it,
-and correspondingly no fetcher in `aos_trim.py`. It is *derived* by differencing consecutive
+and correspondingly no fetcher in `common/dof_telemetry.py`. It is *derived* by differencing consecutive
 Trim values. `fetch_aggregated_dof_for_visits` returns an `event_id` array (the `visitId` of
 the source `degreeOfFreedom` event), which separates the two cases: visits sharing one event
 had **no correction applied**, so Tweak is **0.0**, a real measurement; NaN is reserved for
@@ -83,7 +83,7 @@ a direct `exposure_id` equality join finds almost nothing. `visit1_efd_unpivoted
 identically (0 / 600 sampled), so moving to the visit-level table does not help.
 
 **Consequence for design.** The LUTs can come from ConsDB with a fast bulk query. Trim
-cannot, and needs the as-of-time lookup that `aos_trim.fetch_aggregated_dof_for_visits`
+cannot, and needs the as-of-time lookup that `dof_telemetry.fetch_aggregated_dof_for_visits`
 already implements — anchor on the ConsDB exposure `obs_start` (TAI), then
 `getMostRecentRowWithDataBefore` on the EFD topic. That is exactly why that function is
 written the way it is, and it should not be "simplified" into a ConsDB join.

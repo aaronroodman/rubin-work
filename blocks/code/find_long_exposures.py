@@ -11,7 +11,8 @@ This queries cdb_<instrument>.visit1 directly for the exposure-time column
     python code/find_long_exposures.py --min-exptime 120 --out ../blocks/output/long_exposures.csv
 
 Runs on the RSP (in-pod ConsDB) or S3DF slaciana (external endpoint +
-~/.lsst/consdb_token); --consdb-url defaults to 'auto' (see aos_trim).
+~/.lsst/consdb_token); --consdb-url defaults to 'auto' (see
+common/telemetry_clients.py).
 """
 import argparse
 import os
@@ -20,10 +21,10 @@ from pathlib import Path
 
 import pandas as pd
 
-# reuse the shared ConsDB client (rubin-work/aos/code), same as build_night_table
+# reuse the shared ConsDB client, same as build_night_table
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "aos" / "code"))
-from aos_trim import make_consdb_client                        # noqa: E402
+sys.path.insert(0, str(REPO))
+from common.telemetry_clients import make_consdb_client        # noqa: E402
 
 
 def find_exp_column(client, instrument):

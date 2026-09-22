@@ -38,6 +38,7 @@ from astropy.table import QTable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root (common/)
 
 from lsst.ts.intrinsic.wavefront import mi_config as mc
 import bounce_lib as bl
@@ -198,7 +199,7 @@ def main():
     DOFSUM_all = TRIM_segment = None
     if cfg['add_dof_trim'] and _svd_ok and DOF_all is not None:
         try:
-            from aos_trim import fetch_aggregated_dof_for_visits
+            from common.dof_telemetry import fetch_aggregated_dof_for_visits
             TRIM_all, info = fetch_aggregated_dof_for_visits(
                 fit_table, consdb_url=cfg['trim_consdb_url'],
                 topic=cfg['trim_efd_topic'], n_dof=DOF_all.shape[1],

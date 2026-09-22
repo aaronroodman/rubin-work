@@ -57,7 +57,8 @@ visits share one ``degreeOfFreedom`` event the AOS applied no new correction, an
 **0.0** -- a real measurement of "no correction", not missing data. NaN is reserved for
 genuinely unknown values: the first visit of a chunk, or a visit whose Trim or source event
 id could not be resolved. The ``event_id`` array returned by
-``aos_trim.fetch_aggregated_dof_for_visits`` is what distinguishes the two cases.
+``common.dof_telemetry.fetch_aggregated_dof_for_visits`` is what distinguishes the two
+cases.
 
 Needs a node where both the EFD and ConsDB resolve -- the RSP terminal or a
 slaciana/slacrd interactive node, NOT a batch compute node.
@@ -83,8 +84,11 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))           # repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))           # aos/code
-from common.telemetry_clients import (  # noqa: E402
-    PAD_SEC, make_consdb_client, make_efd_client)
+from common.dof_telemetry import (  # noqa: E402
+    derive_tweak, fetch_aggregated_dof_for_visits, fetch_hexapod_lut_for_visits,
+    fetch_lut_forces)
+from common.telemetry_clients import make_consdb_client, make_efd_client   # noqa: E402
+from common.visit_telemetry import WIND_COLS, fetch_camera, fetch_wind     # noqa: E402
 
 GROUPS = ('thermal', 'gradients', 'wind', 'camera', 'lut', 'hexlut', 'trim', 'tweak')
 
@@ -104,126 +108,12 @@ CORE_THERMAL = [
 ]
 GRADIENT_COLS = ['x_gradient', 'y_gradient', 'z_gradient', 'radial_gradient']
 
-# Wind and airflow: present in ConsDB at 88.6% on FAM exposures and currently unused.
-# ConsDB transformed-EFD column -> our name.
-WIND_COLS = {
-    'mt_salindex110_wind_speed_magnitude_mean': 'wind_speed_inside',
-    'mt_salindex301_airflow_speed_mean': 'wind_speed_outside',
-    'mt_salindex301_airflow_direction_mean': 'wind_dir_outside',
-    'mt_salindex110_wind_speed_0_mean': 'wind_inside_x',
-    'mt_salindex110_wind_speed_1_mean': 'wind_inside_y',
-    'mt_salindex110_wind_speed_2_mean': 'wind_inside_z',
-    'mt_salindex110_wind_speed_maxmagnitude_mean': 'wind_inside_maxmag',
-    'mt_salindex110_sonic_temperature_mean': 'sonic_temperature',
-}
-
-# Mirror LUT array properties in efd_lsstcam.exposure_efd_unpivoted. These are axial
-# FORCES; aos_trim.fetch_mirror_lut_for_visits converts them to bending amplitudes.
-LUT_PROPS = {
-    'mt_m1m3_applied_elevation_forces_mean': ('m1m3elev', 'zForces', 156),
-    'mt_m2_axial_force_lut_gravity_mean': ('m2grav', 'lutGravity', 72),
-}
-
-N_DOF = 50
-
-# Camera-body temperatures come from the camera housekeeping measurement in its OWN
-# InfluxDB database (lsst.MTCamera), not the main `efd` one, so they need a second EFD
-# client. Values are deg C; a reading outside CAM_T_RANGE is a dropout, not a temperature.
-CAM_TOPIC = 'lsst.MTCamera.utiltrunk_body'
-CAM_DB = 'lsst.MTCamera'
-CAM_T_RANGE = (-50.0, 60.0)
-CAM_OK_STATE = 1.0                  # <field>_state == 1 marks a valid reading
-CAM_FIELDS = [
-    'AverageTemp',
-    'CamBodyXPlusTemp', 'CamBodyYPlusTemp', 'CamBodyYMinusTemp',
-    'CamHousXPlusTemp', 'CamHousXMinusTemp', 'CamHousYPlusTemp', 'CamHousYMinusTemp',
-    'BackFlngXMinusTemp', 'BackFlngYMinusTemp',
-    'ShrdRngXPlusTemp', 'ShrdRngXMinusTemp', 'ShrdRngYPlusTemp',
-    'L1XMinusTemp', 'L1YMinusTemp', 'L2XPlusTemp', 'L2XMinusTemp', 'L2YPlusTemp',
-    'DomeYMinusTemp', 'VPPlenumInTemp',
-    'ShtrEboxRtnAirTemp', 'ShtrMtrRtnAirTemp', 'ChgrYMinusRtnAirTemp', 'AmbAirtemp',
-]
-# DomeXMinusTemp is deliberately absent: it read 0 of 3385 visits finite while its
-# DomeYMinusTemp sibling read 98.6%, so the sensor is taken to be non-functional.
-
 
 def _visit_keys(visits_path):
     """Return the (day_obs, seq_num, visit, mjd) frame for a visits.parquet."""
     have = set(pq.ParquetFile(str(visits_path)).schema_arrow.names)
     cols = [c for c in ('day_obs', 'seq_num', 'visit', 'mjd') if c in have]
     return pq.read_table(str(visits_path), columns=cols).to_pandas()
-
-
-def fetch_wind(cdb, visit_ids):
-    """Wind and airflow per visit from the ConsDB transformed EFD.
-
-    Parameters
-    ----------
-    cdb : `lsst.summit.utils.ConsDbClient`
-        ConsDB client.
-    visit_ids : `list` [`int`]
-        Visit (exposure) ids.
-
-    Returns
-    -------
-    df : `pandas.DataFrame`
-        ``visit`` plus the columns named in `WIND_COLS`; speeds in m/s, directions in deg,
-        `sonic_temperature` in deg C. Missing visits are absent rather than NaN-filled.
-    """
-    out = []
-    sel = ', '.join(WIND_COLS)
-    for i in range(0, len(visit_ids), 700):
-        part = visit_ids[i:i + 700]
-        inl = ','.join(str(int(v)) for v in part)
-        q = (f'SELECT exposure_id, {sel} FROM efd_lsstcam.exposure_efd '
-             f'WHERE exposure_id IN ({inl})')
-        try:
-            out.append(cdb.query(q).to_pandas())
-        except Exception as e:
-            print(f'    wind chunk {i}: {type(e).__name__}: {str(e)[:90]}')
-    if not out:
-        return pd.DataFrame(columns=['visit'] + list(WIND_COLS.values()))
-    df = pd.concat(out, ignore_index=True).rename(columns=WIND_COLS)
-    return df.rename(columns={'exposure_id': 'visit'})
-
-
-def fetch_lut_forces(cdb, visit_ids):
-    """Mirror LUT axial forces per visit, pivoted, from the unpivoted ConsDB table.
-
-    Returns
-    -------
-    df : `pandas.DataFrame`
-        ``visit`` plus ``<prefix>_<n>`` columns of axial force in N: 156 for M1M3
-        elevation, 72 for M2 gravity.
-    """
-    frames = []
-    for prop, (prefix, field, n) in LUT_PROPS.items():
-        rows = []
-        for i in range(0, len(visit_ids), 400):
-            part = visit_ids[i:i + 400]
-            inl = ','.join(str(int(v)) for v in part)
-            q = (f"SELECT exposure_id, field, value "
-                 f"FROM efd_lsstcam.exposure_efd_unpivoted "
-                 f"WHERE property='{prop}' AND exposure_id IN ({inl})")
-            try:
-                rows.append(cdb.query(q).to_pandas())
-            except Exception as e:
-                print(f'    {prefix} chunk {i}: {type(e).__name__}: {str(e)[:90]}')
-        if not rows:
-            continue
-        d = pd.concat(rows, ignore_index=True)
-        p = d.pivot_table(index='exposure_id', columns='field', values='value')
-        # field names are e.g. zForces0..zForces155; order them numerically
-        order = [f'{field}{k}' for k in range(n) if f'{field}{k}' in p.columns]
-        p = p[order]
-        p.columns = [f'{prefix}_{k}' for k in range(len(order))]
-        frames.append(p.reset_index().rename(columns={'exposure_id': 'visit'}))
-    if not frames:
-        return pd.DataFrame(columns=['visit'])
-    out = frames[0]
-    for f in frames[1:]:
-        out = out.merge(f, on='visit', how='outer')
-    return out
 
 
 def _close_efd(efd):
@@ -246,143 +136,6 @@ def _close_efd(efd):
             asyncio.run(sess.close())
         except Exception:
             pass
-
-
-def fetch_camera(keys, pad_sec=None, require_state=False, verbose=True):
-    """Camera-body temperatures per visit, averaged over a window around each visit.
-
-    Parameters
-    ----------
-    keys : `pandas.DataFrame`
-        Must carry ``day_obs``, ``seq_num`` and ``mjd``.
-    pad_sec : `float`, optional
-        Half-width of the averaging window in seconds; defaults to
-        ``PAD_SEC['camera_body']``.
-    require_state : `bool`, optional
-        Keep only samples whose companion ``<field>_state`` equals `CAM_OK_STATE`. Off by
-        default: the ``_state`` columns are empty in the EFD for the range checked
-        (2026-07), so requiring them discards every sample.
-    verbose : `bool`, optional
-        Print a per-night row count.
-
-    Returns
-    -------
-    df : `pandas.DataFrame`
-        ``day_obs``, ``seq_num``, ``cam_n_samp`` (samples averaged) and ``cam_<field>``
-        for each of `CAM_FIELDS`, in deg C. NaN where no valid sample fell in the window.
-
-    Notes
-    -----
-    Queried once per night in bulk and sliced per visit, rather than one query per visit.
-    Readings are kept when finite and inside `CAM_T_RANGE`; the ``<field>_state`` flag is
-    consulted only if `require_state` is set.
-
-    The EFD client is constructed **inside** the event loop: aiohttp binds its session to
-    the running loop, so a client built before ``asyncio.run`` cannot be used within it.
-    """
-    import asyncio
-    from astropy.time import Time
-    from lsst_efd_client import EfdClient
-    pad = (PAD_SEC['camera_body'] if pad_sec is None else pad_sec) / 86400.0
-    tmin, tmax = CAM_T_RANGE
-    v = keys.dropna(subset=['mjd']).copy()
-    v['day_obs'] = v['day_obs'].astype(int)
-    v['seq_num'] = v['seq_num'].astype(int)
-    cols = CAM_FIELDS + ([f + '_state' for f in CAM_FIELDS] if require_state else [])
-    out = {'day_obs': [], 'seq_num': [], 'cam_n_samp': []}
-    for f in CAM_FIELDS:
-        out['cam_' + f] = []
-
-    async def _go():
-        efd_cam = EfdClient('usdf_efd', db_name=CAM_DB)
-        for day, g in v.groupby('day_obs'):
-            t0 = Time(g.mjd.min() - pad, format='mjd', scale='utc')
-            t1 = Time(g.mjd.max() + pad, format='mjd', scale='utc')
-            try:
-                df = await efd_cam.select_time_series(CAM_TOPIC, cols, t0, t1)
-            except Exception as e:
-                print(f'    camera {day}: EFD query failed ({type(e).__name__}); '
-                      f'NaN for {len(g)} visits')
-                df = pd.DataFrame()
-            if len(df):
-                df = df.copy()
-                df['mjd'] = Time(df.index).utc.mjd
-            for _, r in g.iterrows():
-                out['day_obs'].append(int(r.day_obs))
-                out['seq_num'].append(int(r.seq_num))
-                if not len(df):
-                    out['cam_n_samp'].append(0)
-                    for f in CAM_FIELDS:
-                        out['cam_' + f].append(np.nan)
-                    continue
-                sl = df[(df.mjd >= r.mjd - pad) & (df.mjd <= r.mjd + pad)]
-                out['cam_n_samp'].append(int(len(sl)))
-                for f in CAM_FIELDS:
-                    if f not in sl or not len(sl):
-                        out['cam_' + f].append(np.nan)
-                        continue
-                    x = pd.to_numeric(sl[f], errors='coerce').to_numpy(float)
-                    good = np.isfinite(x) & (x >= tmin) & (x <= tmax)
-                    st_col = f + '_state'
-                    if require_state and st_col in sl:
-                        st = pd.to_numeric(sl[st_col], errors='coerce').to_numpy(float)
-                        good &= (st == CAM_OK_STATE)
-                    out['cam_' + f].append(float(np.mean(x[good])) if good.any()
-                                           else np.nan)
-            if verbose:
-                print(f'    camera {day}: {len(df)} EFD rows, {len(g)} visits')
-        for holder in list(vars(efd_cam).values()):
-            sess = getattr(holder, '_session', None)
-            if sess is not None and not getattr(sess, 'closed', True):
-                await sess.close()
-
-    asyncio.run(_go())
-    return pd.DataFrame(out)
-
-
-def derive_tweak(trim, event_ids):
-    """Tweak per visit, differenced from Trim.
-
-    Parameters
-    ----------
-    trim : `numpy.ndarray`
-        Shape ``(n_visits, n_dof)`` Trim values, in the OFC DOF units (µm for hexapod
-        translations, arcsec for rotations, dimensionless for bending amplitudes).
-    event_ids : `numpy.ndarray`
-        Shape ``(n_visits,)`` ``visitId`` of the source ``degreeOfFreedom`` event, NaN
-        where none resolved. A change between consecutive visits marks a re-alignment.
-
-    Returns
-    -------
-    tweak : `numpy.ndarray`
-        Shape ``(n_visits, n_dof)``, same units as `trim`. **0.0** where the AOS applied
-        no new correction between this visit and the previous one, since that is a real
-        measurement of "no correction" rather than missing information. **NaN** only where
-        the value is genuinely unknown: the first row (no predecessor), or where either
-        visit's Trim or source event id could not be resolved.
-
-    Notes
-    -----
-    Tweak has no EFD topic and no ConsDB property; ``Tweak = PID(optical_state)`` and
-    ``Trim_(i+1) = Trim_i + Tweak``, so differencing Trim is the only route.
-
-    Where consecutive visits share one ``degreeOfFreedom`` event the difference is exactly
-    zero by construction, and it is written as 0.0 rather than recomputed -- guarding
-    against a float subtraction of two equal Trim values landing on a denormal instead of
-    a clean zero.
-    """
-    trim = np.asarray(trim, dtype=float)
-    ev = np.asarray(event_ids, dtype=float)
-    tweak = np.full_like(trim, np.nan)
-    for i in range(1, len(trim)):
-        # Unknown Trim on either side -> genuinely unknown Tweak.
-        if not (np.isfinite(trim[i]).any() and np.isfinite(trim[i - 1]).any()):
-            continue
-        if np.isfinite(ev[i]) and np.isfinite(ev[i - 1]) and ev[i] == ev[i - 1]:
-            tweak[i] = 0.0            # loop ran, emitted no new correction
-        else:
-            tweak[i] = trim[i] - trim[i - 1]
-    return tweak
 
 
 def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
@@ -423,14 +176,13 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
                 print(f'    lut: {len(lut.columns) - 1} axial-force cols')
 
     if 'hexlut' in groups:
-        import aos_trim
         from astropy.table import QTable
         try:
             # The hexapod LUT (MTHexapod.logevent_compensationOffset) is the baseline the
             # Trim is an offset from, so a physical hexapod position needs both. ConsDB's
             # *_compensation_offset_z covers only 7.7% (camera) and 0.0% (M2) of cwfs
             # exposures, so this is EFD-only -- see docs/telemetry.md.
-            hlut, hinfo = aos_trim.fetch_hexapod_lut_for_visits(
+            hlut, hinfo = fetch_hexapod_lut_for_visits(
                 QTable.from_pandas(keys), efd_client=efd, consdb_client=cdb,
                 consdb_url=consdb_url)
             out = pd.concat([out, pd.DataFrame(hlut, columns=HEXLUT_COLS,
@@ -441,12 +193,11 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
             print(f'    hexlut FAILED: {type(e).__name__}: {str(e)[:200]}')
 
     if 'trim' in groups or 'tweak' in groups:
-        import aos_trim
         from astropy.table import QTable
         try:
-            # aos_trim indexes fit_table[...] and tests `in fit_table.colnames`, so it
+            # The fetcher indexes fit_table[...] and tests `in fit_table.colnames`, so it
             # wants an astropy table rather than a DataFrame.
-            trim, info = aos_trim.fetch_aggregated_dof_for_visits(
+            trim, info = fetch_aggregated_dof_for_visits(
                 QTable.from_pandas(keys), efd_client=efd, consdb_client=cdb,
                 consdb_url=consdb_url)
             # One concat rather than 50 inserts: a per-column assign fragments the

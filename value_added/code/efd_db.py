@@ -77,7 +77,7 @@ N_DOF = 50
 N_HEX_LUT = 10
 
 #: Camera-body temperature fields, mirroring
-#: ``aos/code/fam_processing/run_attach_telemetry.py:CAM_FIELDS`` so both products carry the
+#: ``common/visit_telemetry.py:CAM_FIELDS`` so both products carry the
 #: same column names. ``DomeXMinusTemp`` is deliberately absent — the sensor read 0 of 3385
 #: visits finite while its ``DomeYMinusTemp`` sibling read 98.6%.
 CAM_FIELDS = [
@@ -132,7 +132,7 @@ GROUPS = {
         [(f'dof{i}', 'DOUBLE',
           'um (z/x/y, bending) or deg (u/v)', 'efd_MTAOS_degreeOfFreedom')
          for i in range(N_DOF)]),
-    # No event-id column: aos_trim.fetch_hexapod_lut_for_visits returns only a count, so
+    # No event-id column: dof_telemetry.fetch_hexapod_lut_for_visits returns only a count, so
     # unlike Trim there is no per-visit source event to record.
     'lut': (
         [(f'lut_dof{i}', 'DOUBLE',
@@ -1211,8 +1211,7 @@ def join_consdb(df, groups=CONSDB_GROUPS, cdb=None, consdb_url='auto',
     import sys
     _root = pathlib.Path(__file__).resolve().parents[2]                 # repo root
     sys.path.insert(0, str(_root))
-    sys.path.insert(0, str(_root / 'aos' / 'code'))
-    import aos_consdb_efd as ace                                       # noqa: E402
+    from common import consdb_efd as ace                               # noqa: E402
     from common.telemetry_clients import make_consdb_client            # noqa: E402
 
     groups = tuple(groups)

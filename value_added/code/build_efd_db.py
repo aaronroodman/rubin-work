@@ -68,8 +68,7 @@ import pandas as pd
 
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
-sys.path.insert(0, str(_ROOT / 'aos' / 'code'))
-sys.path.insert(0, str(_ROOT / 'aos' / 'code' / 'fam_processing'))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))     # value_added/code
 
 import efd_db                                                       # noqa: E402
 from common.ess_telemetry import get_m1m3_gradients_sync            # noqa: E402
@@ -160,13 +159,13 @@ def visit_spine(cdb, day_obs):
     for c in ('mjd', 'azimuth_deg', 'wind_dir_deg', 'wind_speed_ms'):
         df[c] = pd.to_numeric(df[c], errors='coerce')
     df['obs_start'] = df['obs_start'].astype(str)
-    # aos_trim's fetchers take an astropy-Table-like object keyed on day_obs/seq_num.
+    # The dof_telemetry fetchers take an astropy-Table-like object keyed on day_obs/seq_num.
     df['visit_id'] = df['visit_id'].astype('int64')
     return df
 
 
 class _FitTable:
-    """Minimal astropy-Table-like view of the spine, for the `aos_trim` fetchers.
+    """Minimal astropy-Table-like view of the spine, for the `dof_telemetry` fetchers.
 
     They test membership with ``.colnames`` and index columns with ``[name]``, which a
     DataFrame does not provide identically, so this wraps one rather than converting to a
@@ -197,8 +196,8 @@ def fetch_trim(spine, ctx):
     Also stashes the source event ids on `ctx` so `derive_tweak_group` can distinguish
     "the loop applied no correction" (0.0) from "unknown" (NaN).
     """
-    import aos_trim
-    trim, info = aos_trim.fetch_aggregated_dof_for_visits(
+    from common.dof_telemetry import fetch_aggregated_dof_for_visits
+    trim, info = fetch_aggregated_dof_for_visits(
         _FitTable(spine), efd_client=ctx['efd'], consdb_client=ctx['cdb'])
     out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
     trim = np.asarray(trim, float)
@@ -216,8 +215,8 @@ def fetch_lut(spine, ctx):
     ``lut_dof0..4`` are the M2 hexapod (z, x, y, u, v) at salIndex 2 and ``lut_dof5..9``
     the camera hexapod at salIndex 1; z/x/y are µm and u/v are deg.
     """
-    import aos_trim
-    lut, _info = aos_trim.fetch_hexapod_lut_for_visits(
+    from common.dof_telemetry import fetch_hexapod_lut_for_visits
+    lut, _info = fetch_hexapod_lut_for_visits(
         _FitTable(spine), efd_client=ctx['efd'], consdb_client=ctx['cdb'])
     out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
     lut = np.asarray(lut, float)
@@ -233,7 +232,7 @@ def derive_tweak_group(spine, ctx):
     Requires ``trim`` earlier in the same pass; Trim is not re-read from the database,
     because the derivation also needs the per-visit source event ids, which are not stored.
     """
-    from run_attach_telemetry import derive_tweak
+    from common.dof_telemetry import derive_tweak
     if 'trim' not in ctx:
         raise RuntimeError("group 'tweak' requires 'trim' in the same pass; "
                            "use --groups trim,tweak")
@@ -273,11 +272,11 @@ def fetch_camera_group(spine, ctx):
 
     Notes
     -----
-    Delegates to ``run_attach_telemetry.fetch_camera``, which builds its own EFD client
+    Delegates to ``common.visit_telemetry.fetch_camera``, which builds its own EFD client
     **inside** the coroutine — aiohttp binds a session to the running event loop, so a
     client made outside cannot be used within it.
     """
-    from run_attach_telemetry import fetch_camera
+    from common.visit_telemetry import fetch_camera
     keys = spine[['day_obs', 'seq_num', 'mjd']].copy()
     cam = fetch_camera(keys, verbose=False)
     out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].merge(

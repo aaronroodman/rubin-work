@@ -68,7 +68,8 @@ files in that subtree are touched:
 - `guider/CLAUDE.md` — guider pipeline, `summit_utils` fork state, bias/streak work
 
 Shared code lives in **`common/`** (`utils.py`, `telemetry_clients.py`,
-`ess_telemetry.py`, `FocalPlaneInterpolator.py`, `psf_moments_consdb.py`, plus
+`ess_telemetry.py`, `dof_telemetry.py`, `consdb_efd.py`, `visit_telemetry.py`,
+`FocalPlaneInterpolator.py`, `psf_moments_consdb.py`, plus
 `common/scripts/`), imported by inserting the repo root on
 `sys.path`. Genuinely shared helpers belong there rather than being copied between
 topics.
@@ -78,8 +79,10 @@ Two cross-topic couplings are real and intentional — know them before refactor
 - `guider/code/` imports `moments_hsm.measure_hsm_moments` from **`optatmo/code`**, so
   that both sides of the guider-vs-science-CCD moment comparison use the same
   galsim-HSM estimator. Changing that estimator changes guider results.
-- `guider/code/check_rotator_field.py` imports `aos_trim.make_consdb_client` from
-  **`aos/code`**.
+- `blocks/`, `olr/`, `optatmo/`, `smatrix/` and `value_added/` import `aos_state` from
+  **`aos/code`** for the v-modes, the DOF sets and the per-corner Zernike recovery. That is
+  AOS physics and stays in `aos/`; the engineering telemetry those topics also need was
+  moved to `common/` so `aos_state` is the only remaining reach into `aos/code`.
 
 Both go through `sys.path.insert`, not real packages, so the coupling is invisible to
 static import checks.

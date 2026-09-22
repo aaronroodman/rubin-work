@@ -42,15 +42,16 @@ def main():
                     help="a science detector present in the visits (default 94)")
     ap.add_argument("--repo", default="/repo/main")
     ap.add_argument("--consdb-url", default="auto",
-                    help="ConsDB URL ('auto' picks in-pod vs external; see aos_trim)")
+                    help="ConsDB URL ('auto' picks in-pod vs external; see "
+                         "common/telemetry_clients.py)")
     args = ap.parse_args()
 
     from lsst.daf.butler import Butler
     butler = Butler(args.repo)
 
     # ---- ConsDB: physical_rotator_angle for the night (canonical) -----------
-    sys.path.insert(0, os.path.join(_HERE, "..", "..", "aos", "code"))
-    from aos_trim import make_consdb_client
+    sys.path.insert(0, os.path.join(_HERE, "..", ".."))          # repo root
+    from common.telemetry_clients import make_consdb_client
     cdb = make_consdb_client(args.consdb_url)
     q = f"""
         SELECT v1.visit_id, ql.physical_rotator_angle

@@ -242,7 +242,7 @@ Findings are flagged `[BUG]` (wrong result), `[SCIENCE]` (methodologically suspe
 - `aos/code/ofc_svd.py` — SVD ordering (descending σ), projector `(I − U_eff U_effᵀ)`, weighting all check out. NaN handling lives at call sites — see A2.
 - `aos/code/mi_config.py`, `aos/code/wcsutils.py`, `aos/code/combine_parquets.py` (modulo D15) — small and tight.
 - `aos/code/run_pipeline.py` — large but consistent with the documented step graph; lock semantics and dependency cascade are correct.
-- Diagnostic scripts: `aos/code/miw/check_chunk.py`, `aos/code/infra/check_threads.py`, `aos/code/miw/inspect_visit_provenance.py`, `aos/code/miw/compare_to_archive.py`, `aos/code/test_m1m3.py`, `aos/code/aos_trim.py`.
+- Diagnostic scripts: `aos/code/miw/check_chunk.py`, `aos/code/infra/check_threads.py`, `aos/code/miw/inspect_visit_provenance.py`, `aos/code/miw/compare_to_archive.py`, `aos/code/test_m1m3.py`.
 - `aos/code/intrinsic_split.py` math (Noll→(n,m), spin model, doublet pairing, m=0 degeneracy redistribution) is internally consistent — caveats are the FFT path (B5) and the global `degen_assignment` (B8).
 - The `1.5178°` / `1.725°` WFS-shell convention is centralized via `wfs_inner_radius_deg()` and `_wfs_shell()`; no drift across `aos/code/miw/run_study_radialbins.py`, `aos/code/run_study_wfs_radial.py`, `aos/code/cwfs/run_wfs_mktable.py`.
 - `aos/code/miw/run_aberration_pairs.py` quartile-OLS computes a within-quartile slope/r — matches the README ("OLS line + Pearson r is fit per quartile"); not the biased "regress on quartile bins" pattern.

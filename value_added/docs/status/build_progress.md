@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-09-18 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Read from the live database's `fetch_log` and `column_coverage` on 2026-09-18.
@@ -11,6 +11,7 @@ Read from the live database's `fetch_log` and `column_coverage` on 2026-09-18.
 - [Two failed nights](#two-failed-nights)
 - [Sparse columns to check before using](#sparse-columns-to-check-before-using)
 - [`optical_state` and `fam_dz`](#optical_state-and-fam_dz)
+- [Mirror LUT zero-fill on a dropped actuator](#mirror-lut-zero-fill-on-a-dropped-actuator)
 - [Rebuilding](#rebuilding)
 
 ## `visit_telemetry` coverage
@@ -93,6 +94,23 @@ v-mode sign errors"; `aos/docs/studies/fam_focus.md` carries the same warning.
 A separate, earlier change to the v-mode basis also flips v1 for **every stored** `v1`,
 `v1_lut` and `v1_trim` — see the same document. Stored v-mode values therefore need
 regenerating, not just reinterpreting.
+
+## Mirror LUT zero-fill on a dropped actuator
+
+The forty mirror look-up-table (LUT) degrees of freedom `lut_dof10` to `lut_dof49` have no
+published value: they are derived from the M1M3 and M2 axial forces, in newtons, through
+`common/dof_telemetry.bending_modes_from_forces`. A single dropped actuator is routine on
+M1M3, and the converter currently substitutes **0 N** for any actuator reporting NaN, which
+is what every stored value was built with.
+
+Zero force is not what the hardware does. M1M3's force-balance system redistributes a failed
+actuator's load onto its neighbours, so the physical substitute is a redistributed force
+pattern, not zero. The stored bending amplitudes (dimensionless) are therefore slightly
+biased on exposures with a dropped actuator, by an amount that has not been quantified.
+
+Modelling the redistribution, and rebuilding the affected `lut_dof10` to `lut_dof49` values,
+is outstanding work. The alternative considered and rejected was propagating NaN, which
+would discard every visit with one dead actuator.
 
 ## Rebuilding
 

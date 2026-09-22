@@ -35,13 +35,12 @@ implement it into `processStamps` without asking.
 
 ## This topic imports from other topics
 
-Unlike most of the repo, `guider/code/` genuinely depends on two sibling topics, via
-`sys.path.insert` rather than real packages:
+Unlike most of the repo, `guider/code/` genuinely depends on a sibling topic, via
+`sys.path.insert` rather than a real package:
 
 | import | from | used by |
 |---|---|---|
 | `moments_hsm.measure_hsm_moments` | `optatmo/code` | `run_guider_moments.py`, `extract_adjacent_psf_moments.py`, `guiderMoments.py` |
-| `aos_trim.make_consdb_client` | `aos/code` | `check_rotator_field.py` |
 
 So a change to `optatmo/code/moments_hsm.py` can silently change guider moments. The
 matched-estimator property is the *point* — both sides of the guider-vs-CCD comparison

@@ -40,7 +40,7 @@ entries. Both order the hexapods M2 first (indices 0–4, `M2_dz/dx/dy/rx/ry`) t
 (5–9, `Cam_dz/dx/dy/rx/ry`); the Trim continues with M1M3 bending (10–29) and M2 bending
 (30–49), which the hexapod LUT has no counterpart for. Labels, units and index groups come
 from `lsst.ts.intrinsic.wavefront.ofc_svd` (`LABELS_50DOF`, `DOF_UNITS_50`, `DOF_GROUPS`),
-and the LUT axis order is documented at `aos_trim.fetch_hexapod_lut_for_visits`.
+and the LUT axis order is documented at `common/dof_telemetry.py:fetch_hexapod_lut_for_visits`.
 
 One unit trap: the LUT angular axes are **deg**, as the hexapod reports them, while the
 Trim rotations are **arcsec**, the OFC convention. Translations are µm in both.

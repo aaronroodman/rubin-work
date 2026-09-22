@@ -72,9 +72,13 @@ otherwise:
 Each chunk gets a `telemetry.parquet` holding every fetched column; `--merge` joins it
 into the per-chunk and combined `visits.parquet`.
 
-Supporting modules at `code/`: `aos_trim.py` (Trim and the LUT fetchers), `aos_state.py`
-(per-visit optical-state helpers), `aos_consdb_efd.py` (bulk ConsDB telemetry). EFD and
-ConsDB clients come from [`../common/telemetry_clients.py`](../common/telemetry_clients.py).
+Supporting module at `code/`: `aos_state.py` (per-visit optical-state helpers). The
+telemetry fetchers are shared across topics and live in `common/` —
+[`../common/dof_telemetry.py`](../common/dof_telemetry.py) for Trim and the LUT,
+[`../common/consdb_efd.py`](../common/consdb_efd.py) for the bulk ConsDB path, and
+[`../common/visit_telemetry.py`](../common/visit_telemetry.py) for wind and camera-body
+temperatures. EFD and ConsDB clients come from
+[`../common/telemetry_clients.py`](../common/telemetry_clients.py).
 
 [`docs/telemetry.md`](docs/telemetry.md) inventories every quantity with its ConsDB or
 EFD name, measured coverage on FAM exposures, and units. Trim and the hexapod LUT are read

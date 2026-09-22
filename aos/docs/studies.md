@@ -49,13 +49,11 @@ general-to-specialized order as `../README.md`: `miw/`, `dzfit/`,
 `processing_compare/`,
 `static_optics/`, `closed_loop/`, `infra/`.
 
-Nine modules stay flat at `aos/code/`:
+Seven modules stay flat at `aos/code/`:
 
 | file | why it stays flat |
 |---|---|
-| `aos_trim.py` | **21 references from 4 other topics** (`blocks/`, `olr/`, `optatmo/`, `guider/`) by bare module name |
-| `aos_state.py` | **15 references from other topics**, same mechanism |
-| `aos_consdb_efd.py` | **3 references from `blocks/`** |
+| `aos_state.py` | **15 references from other topics** by bare module name |
 | `aos_fwhm.py` | used by `cwfs` and `correlations` |
 | `fam_selection.py` | FAM visit selection + DZ column helper; used by all four `correlations` scripts |
 | `miw_io.py` | reads the MIW parquet field maps; used by `static_optics` |
@@ -63,9 +61,11 @@ Nine modules stay flat at `aos/code/`:
 | `psf_maps_lib.py` | star sampling, MIW lookup, DZ residuals, page layout; used by `psf` and `closed_loop` |
 | `test_m1m3.py` | manual EFD probe belonging to no single study |
 
-The first three are effectively **shared infrastructure**, not aos-private: sibling
-topics reach them via a hardcoded `sys.path.insert(.../aos/code)`. See the root
-`CLAUDE.md` "Topic independence and shared code", and `../CLAUDE.md` in this topic.
+`aos_state.py` is effectively **shared infrastructure**, not aos-private: sibling topics
+reach it via a hardcoded `sys.path.insert(.../aos/code)`. The engineering telemetry that
+used to sit beside it — Trim, the LUT, the ConsDB transformed-EFD path, wind and
+camera-body temperatures — is now in `common/`. See the root `CLAUDE.md` "Topic
+independence and shared code", and `../CLAUDE.md` in this topic.
 
 ## Notebooks
 
