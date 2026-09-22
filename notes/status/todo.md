@@ -1,6 +1,6 @@
 # rubin-work — open work
 
-> **Status:** current · **Last updated:** 2026-09-20 · **Kind:** working state (todo index)
+> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** working state (todo index)
 
 One place to see what is open across the whole repository. This file is an **index**, not
 a specification: each row points at the document that states the work and holds the
@@ -66,6 +66,8 @@ Newest first. Kept short — the reasoning stays in the source document.
 
 | item | closed | ref |
 |---|---|---|
+| `visit_telemetry` backfill: 154 nights, 84,462 exposures, to 366 nights total | 2026-09-22 | `211c5d2` |
+| DOF/ConsDB/per-visit telemetry moved `aos/` → `common/`, breaking the import cycle | 2026-09-22 | `7961075` |
 | Step-1 queue items 1–6, 8–10 (9 of 10; only item 7 remains) | 2026-09-19 | [step1][s1] |
 | Item 9 — retire the 3 superseded param_sets, short-name convention | 2026-09-19 | `9958662` |
 | Item 6 — resolve the output collision (D8), 5 files | 2026-09-19 | `0c6c0c8` |
