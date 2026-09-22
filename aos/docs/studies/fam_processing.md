@@ -1,6 +1,6 @@
 # Study: `fam_processing` — auditing the FAM chunk build
 
-> **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** reference (study)
 
 > **Code:** `code/fam_processing/` · **Notebooks:** `notebooks/fam_processing/`
 > **Output:** `output/fam_processing/<P>/chunk_status.pdf`, `output/fam_processing/<P>/chunk_status.parquet`
@@ -85,6 +85,7 @@ ConsDB access:
 | notebook | content |
 |---|---|
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | time history and distribution of one representative quantity per telemetry group in the combined `visits.parquet`: M1M3 gradients, air and structure temperatures, camera body, wind and airflow, Trim and Tweak, mirror LUT forces, pointing and donut blur |
+| `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | column-by-column review of the Danish 1.3 "blitz" unpaired output (`donutBlitzFamResults`, `donutBlitzResults`) against the Danish 1.2 `aggregateAOSVisitTableRaw` and the processed `donuts.parquet`, on one FAM triplet; donuts matched per CCD on detector pixel position separately for each side of focus, and the deviation and intrinsic Zernikes compared in micrometres of wavefront |
 
 ## Output
 

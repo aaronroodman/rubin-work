@@ -1,6 +1,6 @@
 # AOS analysis studies — inventory
 
-> **Status:** current · **Last updated:** 2026-09-19 · **Kind:** reference (inventory)
+> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** reference (inventory)
 
 Inventory of the fifteen studies in the `aos/` directory: the code implementing each one,
 what it reads and writes, and its current state. Most draw on a common base — the
@@ -81,6 +81,7 @@ Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
 | `notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb` | Danish versus TARTS on one day_obs |
 | `notebooks/processing_compare/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | per-visit telemetry time histories and distributions, one quantity per group |
+| `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | Danish 1.3 blitz unpaired output against Danish 1.2 on one FAM triplet: column census, Noll basis, matched-donut Zernike comparison |
 
 `snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
 untracked scratch, gitignored, and belong to no study.
