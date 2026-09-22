@@ -132,6 +132,10 @@ async def get_m1m3_gradients(client, data):
     `ThermocoupleAnalysis.load` raise `KeyError` while it slices that fixed column list.
     That is a gap in the telemetry, not an error in the caller, so it is caught here and
     the four gradient columns come back as NaN for the whole span rather than aborting.
+
+    Where no thermocouple reported at all over the span, `load` succeeds but
+    ``xyz_r_gradients`` is `None` rather than a frame — the M1M3 thermocouple telemetry is
+    absent before about ``day_obs`` 20251102. That is handled the same way, as NaN.
     """
     if ThermocoupleAnalysis is None:
         return _nan_gradients(data)
@@ -151,6 +155,12 @@ async def get_m1m3_gradients(client, data):
         # A cold-junction or thermocouple channel that never reported over this span;
         # ThermocoupleAnalysis slices a fixed column list and raises. Telemetry gap.
         warnings.warn(f"M1M3 thermocouple channel {exc} missing over {start.isot} to "
+                      f"{end.isot}; gradients set to NaN")
+        return _nan_gradients(data)
+    if gradients is None or len(gradients) == 0:
+        # No thermocouple reported over the span at all, so load() had nothing to reduce
+        # and returns None instead of raising. Same telemetry gap, same NaN result.
+        warnings.warn(f"no M1M3 thermocouple telemetry over {start.isot} to "
                       f"{end.isot}; gradients set to NaN")
         return _nan_gradients(data)
     grad_times = pd.to_datetime(
