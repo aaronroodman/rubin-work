@@ -70,9 +70,9 @@ _ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(_ROOT / 'aos' / 'code'))
 sys.path.insert(0, str(_ROOT / 'aos' / 'code' / 'fam_processing'))
-sys.path.insert(0, str(_ROOT / 'olr' / 'code'))
 
 import efd_db                                                       # noqa: E402
+from common.ess_telemetry import get_m1m3_gradients_sync            # noqa: E402
 from common.telemetry_clients import make_consdb_client, make_efd_client  # noqa: E402
 
 DEFAULT_FIRST_DAY_OBS = 20250415
@@ -251,14 +251,18 @@ def fetch_gradients(spine, ctx):
     -----
     A multi-night thermocouple query times out, so this must be called per night. The
     column names are prefixed ``m1m3_`` and suffixed with their units here, while
-    `olr.telemetry.GRAD_COLS` uses the bare ``x_gradient`` form.
+    `common.ess_telemetry.GRAD_COLS` uses the bare ``x_gradient`` form.
+
+    A night missing one of the four M1M3 cold-junction reference channels yields NaN in
+    all four columns rather than failing the night; a missing `ThermocoupleAnalysis`
+    means the wrong environment and does fail, since it would NaN out every night.
     """
-    import telemetry as olr_tel
-    if olr_tel.ThermocoupleAnalysis is None:
+    import common.ess_telemetry as ess
+    if ess.ThermocoupleAnalysis is None:
         raise RuntimeError('lsst.ts.m1m3.utils.ThermocoupleAnalysis is unavailable; '
                            'the gradients group needs the AOS stack environment')
     data = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
-    data = olr_tel._run_coro(olr_tel.get_m1m3_gradients(ctx['efd'], data))
+    data = get_m1m3_gradients_sync(ctx['efd'], data)
     ren = {f'{n}_gradient': f'm1m3_{n}_gradient_c_per_m'
            for n in ('x', 'y', 'z', 'radial')}
     return data.rename(columns=ren)

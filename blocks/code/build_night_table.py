@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import telemetry_pipeline    # noqa: E402  (adds aos/code + olr/code to sys.path)
+import telemetry_pipeline    # noqa: E402  (adds the repo root + aos/code to sys.path)
 import aos_trim              # noqa: E402
 
 

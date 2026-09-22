@@ -34,14 +34,15 @@ import numpy as np
 import pandas as pd
 from astropy.table import Table
 
-# Shared helpers: aos/code (DOF, v-modes, Zernikes, LUT) + olr/code (telemetry).
+# Shared helpers: aos/code (DOF, v-modes, Zernikes, LUT) + common/ (ESS telemetry).
 REPO = Path(__file__).resolve().parents[2]          # -> rubin-work/
+sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "aos" / "code"))
-sys.path.insert(0, str(REPO / "olr" / "code"))
 import aos_trim         # noqa: E402
 import aos_state        # noqa: E402
 import aos_consdb_efd   # noqa: E402
-import telemetry        # noqa: E402
+from common import ess_telemetry as telemetry                              # noqa: E402
+from common.ess_telemetry import GRAD_COLS, get_m1m3_gradients_sync        # noqa: E402
 
 CORNERS = {191: "R00_SW0", 195: "R04_SW0", 199: "R40_SW0", 203: "R44_SW0"}
 ZK_NOLL = [z for z in range(4, 27) if z not in (20, 21)]
@@ -115,12 +116,12 @@ def _attach_m1m3_gradients_efd(visits, efd):
     parts = []
     for day, sub in base.groupby("day_obs"):
         try:
-            g = telemetry._run_coro(telemetry.get_m1m3_gradients(efd, sub.copy()))
-            parts.append(g[["day_obs", "seq"] + telemetry.GRAD_COLS])
+            g = get_m1m3_gradients_sync(efd, sub.copy())
+            parts.append(g[["day_obs", "seq"] + GRAD_COLS])
         except Exception as e:
             print(f"(M1M3 gradients failed day {day} [{type(e).__name__}])", flush=True)
             s = sub[["day_obs", "seq"]].copy()
-            for c in telemetry.GRAD_COLS:
+            for c in GRAD_COLS:
                 s[c] = np.nan
             parts.append(s)
     grad = (pd.concat(parts, ignore_index=True)

@@ -25,7 +25,7 @@ groups so one missing column only drops its group:
     -- OFF by default (``hexapod=False``); cross-check only, see below
 Plus weather-tower ``wind_speed`` / ``wind_dir`` from ``cdb_lsstcam.exposure``.
 
-Column names match ``olr/code/telemetry.py`` + ``aos_trim`` so the ConsDB and
+Column names match ``common/ess_telemetry.py`` + ``aos_trim`` so the ConsDB and
 raw-EFD paths yield the SAME schema and are interchangeable.  NOT in the
 transform: M1M3 spatial gradients (x/y/z/radial, from the thermocouple array)
 and the 123-126 inside anemometers -- fetch those from raw EFD if wanted.

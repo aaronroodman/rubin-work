@@ -29,8 +29,9 @@ import pandas as pd
 
 # Shared AOS state helpers (geom v-modes, per-corner Zernikes) live in
 # aos/code/aos_state.py; add it to the path (olr/code -> ../../aos/code).
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "aos", "code"))
+_CODE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_CODE_DIR, "..", "..", "aos", "code"))
+sys.path.insert(0, os.path.join(_CODE_DIR, "..", ".."))       # repo root -> common/
 import aos_state
 
 pd.set_option("future.no_silent_downcasting", True)
@@ -54,7 +55,7 @@ from tqdm import tqdm
 
 # Shared thermal/wind telemetry helpers (single source of truth).
 # get_m1m3_gradients is re-exported here for backwards compatibility.
-from telemetry import fetch_thermal_telemetry, get_m1m3_gradients  # noqa: F401
+from common.ess_telemetry import fetch_thermal_telemetry, get_m1m3_gradients  # noqa: F401
 
 # ConsDB lives on an internal host; bypass any HTTP proxy for it.
 if "no_proxy" in os.environ:

@@ -12,6 +12,7 @@ imported by inserting the repository root on `sys.path` — `parents[2]` from
 |---|---|
 | `utils.py` | `nmad` (normalized median absolute deviation), `alt_to_deg`, `repo_root`, `setup_plotting` |
 | `telemetry_clients.py` | Engineering Facility Database (EFD) and Consolidated Database (ConsDB) client construction, with the per-topic time-window padding each quantity needs |
+| `ess_telemetry.py` | Per-visit Environmental Sensor System (ESS) telemetry from the EFD: air temperatures and their differences, Telescope Mount Assembly (TMA) truss temperatures, the four M1M3 bulk thermal gradients in degrees Celsius per metre, and inside- and outside-dome wind |
 | `FocalPlaneInterpolator.py` | focal-plane interpolation of a quantity sampled per detector |
 | `psf_moments_consdb.py` | Point Spread Function (PSF) moments read from ConsDB |
 | `psf_render.py` | PSF rendering helpers |

@@ -406,7 +406,7 @@ The result is four unreconciled padding conventions for the same job:
 
 | file | padding |
 |---|---|
-| `olr/code/telemetry.py` | `DEFAULT_TEMP_WINDOW = 0.2 s` |
+| `common/ess_telemetry.py` | `DEFAULT_TEMP_WINDOW = 0.2 s` |
 | `olr/code/nightly_table.py` | `time_window` and `temp_time_window` both 0.2 s |
 | `aos/code/run_backfill_camera_telemetry.py` | `--pad-sec`, default 120 s |
 | `aos/code/aos_trim.py` | `buffer_hours` plus a 60 s tail |

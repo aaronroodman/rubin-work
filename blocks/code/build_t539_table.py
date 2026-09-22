@@ -5,7 +5,7 @@ CLI port of ``blocks/t539_closedloop_aos.ipynb`` for the Snakemake pipeline.
 For each converged closed-loop in-focus image (the last of each contiguous run)
 it collects: ConsDB image quality, the aggregated DOF trim, the geom v-modes,
 per-corner retrieved wavefront Zernikes, and thermal + wind telemetry (via the
-shared ``olr/code/telemetry.py`` helper).
+shared ``common/ess_telemetry.py`` helper).
 
 Runs on the RSP (ConsDB + EFD access), Summit or USDF.
 """
@@ -18,7 +18,7 @@ import pandas as pd
 
 # Shared collector: DOF/LUT/v-modes/Zernikes/thermal/wind (aos + olr helpers).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import telemetry_pipeline    # noqa: E402  (adds aos/code + olr/code to sys.path)
+import telemetry_pipeline    # noqa: E402  (adds the repo root + aos/code to sys.path)
 import aos_trim              # noqa: E402
 
 

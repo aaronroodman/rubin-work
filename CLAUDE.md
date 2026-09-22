@@ -67,8 +67,9 @@ files in that subtree are touched:
 - `aos/CLAUDE.md` — MIW, FAM coadds, DZ fitting, sensitivity/v-modes
 - `guider/CLAUDE.md` — guider pipeline, `summit_utils` fork state, bias/streak work
 
-Shared code lives in **`common/`** (`utils.py`, `FocalPlaneInterpolator.py`,
-`psf_moments_consdb.py`, plus `common/scripts/`), imported by inserting the repo root on
+Shared code lives in **`common/`** (`utils.py`, `telemetry_clients.py`,
+`ess_telemetry.py`, `FocalPlaneInterpolator.py`, `psf_moments_consdb.py`, plus
+`common/scripts/`), imported by inserting the repo root on
 `sys.path`. Genuinely shared helpers belong there rather than being copied between
 topics.
 
