@@ -383,8 +383,16 @@ def run_bounce(fit_table, b, prefix, k_list, j_list, day_obs=None,
 
 def bounce_nights(fit_table, b, prefix, k_list, j_list, min_visits=3,
                   trim_segment=None):
-    """Distinct day_obs nights where both ref and (each) comparison have
-    >= min_visits, with per-night run_bounce results.
+    """Distinct day_obs nights where the reference and the comparison legs
+    present that night have >= min_visits, with per-night run_bounce results.
+
+    A night qualifies on the comparison legs it actually populates, not on
+    every leg the bounce defines: a multi-leg bounce need not exercise every
+    leg every night (e.g. the BLOCK-T720 elevation sweep throws to 40 deg in
+    April/May and to 60 / 50 / 30 / 75 deg on individual July nights).  At
+    least one leg must be populated, and every populated leg must clear
+    min_visits; legs with no visits that night are simply absent from the
+    per-night result.
 
     Returns {night: run_bounce_result} for qualifying nights (sorted).
     """
@@ -398,8 +406,10 @@ def bounce_nights(fit_table, b, prefix, k_list, j_list, min_visits=3,
     for d in nights:
         rb = run_bounce(fit_table, b, prefix, k_list, j_list, day_obs=d,
                         trim_segment=trim_segment)
-        ok = rb['ref_n'] >= min_visits and all(
-            c['comp_n'] >= min_visits for c in rb['comparisons'].values())
+        present = [c['comp_n'] for c in rb['comparisons'].values()
+                   if c['comp_n'] > 0]
+        ok = (rb['ref_n'] >= min_visits and bool(present)
+              and all(n >= min_visits for n in present))
         if ok:
             out[d] = rb
     return out

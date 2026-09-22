@@ -126,6 +126,51 @@ overrides:
           - [55.0, 65.0]
 
   fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
+    # ---- bounce: the BLOCK-T720 elevation test is an elevation SWEEP ----
+    # Set at the param_set level, not per mi_name, so every fit table analysed
+    # for this param_set (measured-intrinsic refit or the phase-1 batoid fit)
+    # uses the identical bounce definitions and the results are comparable.
+    #
+    # Reference leg: elevation 70 deg, present on all six BLOCK-T720 nights.
+    # Each comparison leg is a +-3 deg window about a measured elevation, and
+    # the legs are populated by different nights, so a night contributes only
+    # to the leg(s) it actually throws to:
+    #   Elev=40 deg   20260418, 20260419, 20260513
+    #   Elev=60 deg   20260709
+    #   Elev=50 deg   20260711
+    #   Elev=30 deg   20260713
+    #   Elev=75 deg   20260713  (UPWARD throw from the 70 deg reference, so its
+    #                            Delta is expected small -- a near-null control)
+    # The `bounces` list REPLACES the script default wholesale (mi_config
+    # _deep_merge replaces lists rather than merging them), so BLOCK-T724 is
+    # repeated here unchanged, including camera_hexapod_only.
+    bounce:
+      # The phase-1 fits.parquet carries no `nollIndices` column, so the pupil-j
+      # list is stated explicitly.  These are the 21 Noll indices the measured-
+      # intrinsic refit table carries, so both tables are fit on one grid.
+      pupil_j_range: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+                      22, 23, 24, 25, 26]
+      bounces:
+        - name: T720_elevation
+          description: Elevation sweep 30-75 deg against a 70 deg reference, rotator ~ 0 deg
+          program: BLOCK-T720
+          reference: {label: 'Elev=70', alt_range: [67.0, 73.0], rotator_range: [-3.0, 3.0]}
+          comparisons:
+            - {label: 'Elev=40', alt_range: [37.0, 43.0], rotator_range: [-3.0, 3.0]}
+            - {label: 'Elev=60', alt_range: [57.0, 63.0], rotator_range: [-3.0, 3.0]}
+            - {label: 'Elev=50', alt_range: [47.0, 53.0], rotator_range: [-3.0, 3.0]}
+            - {label: 'Elev=30', alt_range: [27.0, 33.0], rotator_range: [-3.0, 3.0]}
+            - {label: 'Elev=75', alt_range: [73.0, 78.0], rotator_range: [-3.0, 3.0]}
+        - name: T724_rotator
+          description: Rotator 60 - 0 deg, elevation ~ 70 deg
+          program: BLOCK-T724
+          # rotator bounce: only the camera hexapod moves, so also evaluate a
+          # 5-DOF / 5-v-mode (camera-hexapod-only) correction alongside the 50/34.
+          camera_hexapod_only: true
+          reference: {label: 'Rot=0', rotator_range: [-3.0, 3.0], alt_range: [67.0, 73.0]}
+          comparisons:
+            - {label: 'Rot=60', rotator_range: [57.0, 63.0], alt_range: [67.0, 73.0]}
+
     pathA_50_34_i_5rot:
       wfs_mimic:
         # same 5 rotator bins as the MIW 5rot decomposition
