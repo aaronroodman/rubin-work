@@ -7,7 +7,7 @@ metadata:
   originSessionId: 9325d2f9-106f-4f9c-9a8a-9af33e47c0f5
 ---
 
-AOS v-mode computation in rubin-work (established July 2026, documented in `rubin-work/olr/docs/vmode_normalization.md`):
+AOS v-mode computation in rubin-work (established July 2026, documented in `rubin-work/smatrix/docs/vmode_normalization.md`):
 
 - **Canonical normalization = geom_mean** `n_j = r_j^0.5 * f_j^-0.5`. It is stored in the OFC config's `normalization_weights` (v13: `ts_config_mttcs/MTAOS/v13/ofc`). The yaml is named `range0.5_fwhm-0.15.yaml` while its header says `alpha=0.5, beta=-0.5`. This is **not** a typo to correct for: measured, `range0.5_fwhm-0.5.yaml` (on `ts_ofc` branch `tickets/DM-54762`, commit `76764fe`) holds weights numerically identical to `range0.5_fwhm-0.15.yaml` — ratio exactly 1.0, both spanning 0.02701 to 6869 in per-DOF weight units. The exponent in the filename does not describe the contents, so seeing either name does not imply a different normalization. Get it by `OFCData("lsst", config_dir=<v13>)` — **never** bare `OFCData()` (loads an old NON-geom default → v1 becomes the M2-tilt mode ~1e-4 at convergence instead of focus). Do NOT recompute `sqrt(r/f)` from `compute_normalization_components` (that uses corner-point FWHM, ~sqrt(2) off from the config's field-averaged FWHM).
 - **Two v-mode engines, both geom-normalized, used for different cases (both needed):**

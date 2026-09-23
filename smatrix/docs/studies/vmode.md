@@ -1,6 +1,6 @@
 # Study: `vmode` — sensitivity matrix and mode structure
 
-> **Status:** current · **Last updated:** 2026-09-19 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
 
 > **Code:** `code/vmode/` · **Notebooks:** `notebooks/vmode/`
 > **Output:** `output/vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
@@ -21,14 +21,14 @@ study is about using and diagnosing the matrix that construction produces.
 
 | file | role |
 |---|---|
-| `plot_vmode_dof_matrix.py` | five-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/vmode/vmode_dof_matrix_<scheme>.pdf` |
+| `plot_vmode_dof_matrix.py` | six-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/vmode/vmode_dof_matrix_<scheme>.pdf` |
 | `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/vmode/sparse_fit_study.pdf` |
 
 This study is diagnostics of the matrix itself. The consumer that *builds a product* from
 the same SVD is [`lut`](../../../aos/docs/studies/lut.md), which projects the FAM Double Zernike fits onto it to
 recover degrees of freedom.
 
-### `plot_vmode_dof_matrix.py` — the five pages
+### `plot_vmode_dof_matrix.py` — the six pages
 
 1. **V matrix**, the dimensionless per-DOF composition of each v-mode, drawn with square
    cells. All v-modes are shown with a line marking the `n_keep` truncation, so the
@@ -46,6 +46,25 @@ recover degrees of freedom.
 5. **Normalization weights** — the per-DOF weight `w_i` applied, decomposed into its
    range factor `r_i` (DOF-units of stroke) and FWHM factor `f_i` (arcsec of PSF width
    per DOF-unit), since `w_i = r_i^0.5 * f_i^-0.5`.
+6. **DOF-per-v-mode conversion against the allowed range** — `N.V = w_i * V[i,m]`, the
+   same composition as page 1 but in the DOF's own physical unit (µm of translation or
+   bending-mode amplitude, arcsec of hexapod rotation), so it is the conversion constant
+   from v-mode amplitude to physical DOF and can be drawn against the `+r_i` / `-r_i`
+   envelope. Page 1 is dimensionless and cannot be compared to a stroke limit.
+
+   A unit v-mode amplitude is a yardstick, not an expected value — real v-mode amplitudes
+   are far from 1 — so the page carries the *shape* of the conversion. The lower panel
+   summarizes it as `min_m r_i / |N.V|_im` (dimensionless), the v-mode amplitude that
+   would exhaust each DOF's range through its steepest retained mode, which ranks the DOF
+   by how weakly the fit constrains them.
+
+   The ranking is the useful output. Under 50 DOF / 34 v-modes the six most weakly
+   constrained are B1_19 at 0.044, B1_15 at 0.061, B2_16 at 0.063, B1_16 at 0.067, B1_20
+   at 0.071 and B2_17 at 0.122 (all dimensionless v-mode amplitude), against 22 DOF /
+   12 v-modes where the weakest is B2_4 at 0.418 — about a factor of 9.5 (dimensionless,
+   the 22/12 weakest over the 50/34 weakest) better conditioned. The high-order mirror
+   bending modes that the `aos` `bounce` study recovers past their range — B1_20, B2_17,
+   B2_12 — are all in the 50/34 top eight here, which is what connects the two.
 
 `--check` runs a regression test instead of plotting: it asserts `build_ofc_svd`
 reproduces ts_ofc's `StateEstimator.get_dofs_from_vmodes` (DOF-per-v-mode = `N.V`) on
@@ -164,7 +183,7 @@ pairs (visible as steps at m = 2/3, 4/5, 6/7, 8/9, 10/11 in the spectrum), so in
 v-mode *vectors* within a pair are basis-dependent — only v1 and the pair magnitudes are
 unique. That is the second reason all code must share one `Vh`. Read
 `../../../notes/claude-memory/aos-vmode-normalization.md` and
-[`../../../olr/docs/vmode_normalization.md`](../../../olr/docs/vmode_normalization.md)
+[`../vmode_normalization.md`](../vmode_normalization.md)
 before comparing v-modes computed two ways.
 
 The scripts here take the normalization weights from a ts_config_mttcs yaml rather than

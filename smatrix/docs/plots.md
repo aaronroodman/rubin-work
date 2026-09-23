@@ -1,6 +1,6 @@
 # smatrix — plots & outputs index
 
-> **Status:** current · **Last updated:** 2026-09-19 · **Kind:** reference (output index)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (output index)
 
 All outputs live in `output/` (gitignored; rsync-synced). Regenerate from `code/`,
 except the `vmode` study in [section 10](#10-vmode-study--svd-mode-structure-and-the-sparse-fit-question),
@@ -172,8 +172,8 @@ cd ~/notebooks/rubin-work/smatrix
 
 | output | what | regenerate |
 |---|---|---|
-| `vmode/vmode_dof_matrix_22_12.pdf` | 5 pages for the 22-DOF / 12-v-mode scheme: V matrix (dimensionless DOF composition per v-mode), singular-value spectrum, double Zernike (DZ) per unit v-mode (µm wavefront), per-DZ-term reachability f_kj and residual 1-f_kj (both dimensionless), and the per-DOF normalization weights w_i with their range r_i and FWHM f_i factors | `python code/vmode/plot_vmode_dof_matrix.py --scheme 22_12` |
-| `vmode/vmode_dof_matrix_50_34.pdf` | the same 5 pages for the 50-DOF / 34-v-mode scheme | `python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34` |
+| `vmode/vmode_dof_matrix_22_12.pdf` | 6 pages for the 22-DOF / 12-v-mode scheme: V matrix (dimensionless DOF composition per v-mode), singular-value spectrum, double Zernike (DZ) per unit v-mode (µm wavefront), per-DZ-term reachability f_kj and residual 1-f_kj (both dimensionless), the per-DOF normalization weights w_i with their range r_i and FWHM f_i factors, and the DOF-per-v-mode conversion N.V in DOF units against the +/-r_i allowed-range envelope | `python code/vmode/plot_vmode_dof_matrix.py --scheme 22_12` |
+| `vmode/vmode_dof_matrix_50_34.pdf` | the same 6 pages for the 50-DOF / 34-v-mode scheme | `python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34` |
 | `vmode/sparse_fit_study.pdf` | 10 pages: sensitivity population per pupil Noll, then 1 page per azimuthal family (astigmatism m=2, coma m=1, trefoil m=3, tetrafoil m=4, spherical m=0) giving per-DOF field response by radial order and the primary↔secondary field correlation; then 4 observability pages (22/12 and 50/34 schemes × 4-corner-WFS and field-complete sampling) comparing the primary-only singular values, per-v-mode and per-DOF observability against the full matrix | `python code/vmode/analyze_sparse_fit.py` |
 
 Two predecessor PDFs sit alongside them, from before the two driver scripts were

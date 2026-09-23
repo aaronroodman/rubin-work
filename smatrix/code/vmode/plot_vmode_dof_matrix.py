@@ -21,6 +21,15 @@ figure per page:
   5  **Normalization weights** — a table of the per-DOF weight ``w_i`` applied,
      decomposed into its range factor ``r_i`` (DOF-units of stroke) and FWHM factor
      ``f_i`` (arcsec of PSF width per DOF-unit), since ``w_i = r_i^0.5 * f_i^-0.5``.
+  6  **DOF-per-v-mode conversion against the allowed range** — ``N.V = w_i * V[i,m]``,
+     the conversion constant from v-mode amplitude to the DOF's own physical unit (µm
+     of translation or bending-mode amplitude, arcsec of hexapod rotation), drawn with
+     the ``+r_i`` / ``-r_i`` envelope. Page 1 is dimensionless and so cannot be
+     compared to a stroke limit; this page can. A unit v-mode amplitude is only a
+     yardstick — real amplitudes are far from 1 — so what the page carries is the
+     *shape* of the conversion, summarized by ``min_m r_i / |N.V|_im``, the v-mode
+     amplitude that would exhaust each DOF's range. Small values mark the weakly
+     constrained directions. Omitted if the weights cannot be decomposed.
 
 Data-independent apart from the pupil-Zernike set, which defaults to the standard
 Z4-Z26 (omitting Z20, Z21) and is identical in every param_set built to date.
@@ -164,6 +173,25 @@ def main():
     import matplotlib.transforms as mtransforms
     from matplotlib.backends.backend_pdf import PdfPages
 
+    # ---- Decompose the normalization weights into range and FWHM ----
+    # w_i = r_i^0.5 * f_i^-0.5 (alpha=0.5, beta=-0.5 for range0.5_fwhm-0.15).
+    # f_i is recomputed from the sensitivity matrix as the field-averaged quadrature
+    # PSF width per DOF-unit (arcsec/DOF-unit); r_i then follows as w_i^2 * f_i, in
+    # DOF-units of usable stroke. Done here rather than at its table page because the
+    # DOF-per-v-mode page needs r_i to draw the allowed-range lines.
+    nw = np.asarray(svd.normalization_weights, float)
+    f_i = r_i = None
+    try:
+        import normalization_weights as NW
+        from lsst.ts.ofc import OFCData
+        sens = np.asarray(OFCData(args.instrument).sensitivity_matrix)
+        f_full = NW.compute_f_quadrature(sens, rings=5, spokes=6, znmin=4, znmax=22)
+        f_i = f_full[list(svd.dof_idx)]
+        r_i = nw ** 2 * f_i
+    except Exception as e:                                      # noqa: BLE001
+        print(f'note: could not decompose the weights ({type(e).__name__}: {e});'
+              ' showing the combined weight only, and omitting the range lines')
+
     scheme_txt = args.scheme.replace('_', ' DoF / ') + ' v-modes'
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f'vmode_dof_matrix_{args.scheme}.pdf'
@@ -275,24 +303,7 @@ def main():
                      fontsize=11)
         fig.tight_layout(rect=[0, 0, 1, 0.93]); pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 5: normalization weights, decomposed into range and FWHM ----
-        # w_i = r_i^0.5 * f_i^-0.5 (alpha=0.5, beta=-0.5 for range0.5_fwhm-0.15).
-        # f_i is recomputed from the sensitivity matrix as the field-averaged
-        # quadrature PSF width per DOF-unit (arcsec/DOF-unit); r_i then follows as
-        # w_i^2 * f_i, in DOF-units of usable stroke.
-        nw = np.asarray(svd.normalization_weights, float)
-        f_i = r_i = None
-        try:
-            import normalization_weights as NW
-            from lsst.ts.ofc import OFCData
-            sens = np.asarray(OFCData(args.instrument).sensitivity_matrix)
-            f_full = NW.compute_f_quadrature(sens, rings=5, spokes=6, znmin=4, znmax=22)
-            f_i = f_full[list(svd.dof_idx)]
-            r_i = nw ** 2 * f_i
-        except Exception as e:                                  # noqa: BLE001
-            print(f'note: could not decompose the weights ({type(e).__name__}: {e});'
-                  ' showing the combined weight only')
-
+        # ---- Page 5: normalization weights table (range and FWHM) ----
         print(f'\nOFC per-DOF normalization weights ({args.scheme}, '
               f'{DEFAULT_NORM_YAML}):')
         hdr = f'  {"DOF":22s} {"w_i":>13s}'
@@ -330,9 +341,89 @@ def main():
                      fontsize=10)
         fig.tight_layout(rect=[0, 0, 1, 0.93]); pdf.savefig(fig); plt.close(fig)
 
-    print(f'wrote {out}  (5 pages: V {n_d}x{n_all} with {n_kept} kept; '
+        # ---- Page 6: DOF-per-v-mode conversion, scaled by the allowed range ----
+        # The V matrix of page 1 is dimensionless, so it cannot be compared to a
+        # stroke limit. N.V = w_i * V[i, m] is the same composition in the DOF's own
+        # physical unit -- µm of hexapod translation or mirror bending-mode amplitude,
+        # arcsec of hexapod rotation -- so it is the conversion constant from v-mode
+        # amplitude to physical DOF, and is directly comparable to r_i.
+        #
+        # A unit v-mode amplitude is NOT a physical expectation -- real v-mode
+        # amplitudes are nowhere near 1 -- so this page is about the *shape* of that
+        # conversion, not about any solution. The +-r_i envelope makes the steepness
+        # readable: |N.V|_im / r_i is how many ranges of DOF i one unit of v-mode m
+        # buys, so its reciprocal is the v-mode amplitude that would exhaust the DOF's
+        # stroke. Large ratio = a weakly-constrained direction that costs little
+        # v-mode amplitude to drive out of range; it ranks DOF by conditioning.
+        if r_i is not None:
+            M_phys = nw[:, None] * V_all                # (n_dof, n_all), DOF units
+            frac = np.abs(M_phys) / r_i[:, None]        # dimensionless, |N.V| / r_i
+            frac_kept = frac[:, :n_kept]
+            worst = frac_kept.max(axis=1)
+            # The v-mode amplitude that exhausts this DOF's range, via its steepest
+            # retained mode. Dimensionless, in the same arbitrary v-mode units.
+            amp_to_range = 1.0 / worst
+            fig, axes = plt.subplots(2, 1, figsize=(max(9, 0.30 * n_d + 3), 9.5),
+                                     dpi=150)
+
+            # Upper: every retained v-mode's commanded DOF, with the +-r_i envelope.
+            # The mode responsible for the worst range fraction anywhere is drawn
+            # solid, since it is the one the lower panel's minimum comes from.
+            ax = axes[0]
+            xs = np.arange(n_d)
+            m_worst = int(np.unravel_index(np.argmax(frac_kept), frac_kept.shape)[1])
+            for m in range(n_kept):
+                if m == m_worst:
+                    continue
+                ax.plot(xs, M_phys[:, m], '-', lw=0.6, alpha=0.40,
+                        color=plt.cm.viridis(m / max(1, n_kept - 1)))
+            ax.plot(xs, M_phys[:, m_worst], 'k-', lw=1.3, alpha=0.9,
+                    label=f'v-mode {m_worst + 1}, the steepest relative to $r_i$')
+            ax.plot(xs, r_i, 'r-', lw=1.8, label=r'$+r_i$ (allowed range)')
+            ax.plot(xs, -r_i, 'r-', lw=1.8, label=r'$-r_i$')
+            ax.fill_between(xs, -r_i, r_i, color='red', alpha=0.10)
+            ax.set_yscale('symlog', linthresh=1e-3)
+            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=5, rotation=90)
+            ax.set_ylabel('DOF per unit v-mode amplitude\n'
+                          '[µm, or arcsec for hexapod rotation]')
+            ax.set_title(f'DOF-per-v-mode conversion ($N\\cdot V$) against the allowed '
+                         f'range ({scheme_txt})\n'
+                         f'one faint line per retained v-mode (m = 1 to {n_kept}); '
+                         f'symlog y, linear below 1e-3. A unit v-mode amplitude is a '
+                         f'yardstick, not an expected value.')
+            ax.legend(fontsize=8, loc='upper left'); ax.grid(alpha=0.25)
+
+            # Lower: the v-mode amplitude that would exhaust each DOF's range, through
+            # its steepest retained mode. Small bar = cheap to drive out of stroke.
+            ax = axes[1]
+            ax.bar(xs, amp_to_range, color='tab:blue')
+            ax.set_yscale('log')
+            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=5, rotation=90)
+            ax.set_ylabel('v-mode amplitude that exhausts $r_i$\n'
+                          r'$\min_m\, r_i / |N\cdot V|_{im}$  (dimensionless)')
+            ax.set_title('Cost in v-mode amplitude of running each DOF to its range '
+                         f'limit, over the {n_kept} retained modes — lower is more '
+                         'weakly constrained')
+            ax.grid(alpha=0.25, axis='y', which='both')
+            for i in np.argsort(amp_to_range)[:6]:
+                ax.text(i, amp_to_range[i] * 1.15,
+                        f'{labels[i]}\n{amp_to_range[i]:.3f}',
+                        ha='center', va='bottom', fontsize=5.5)
+            fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
+
+            print(f'\nv-mode amplitude that exhausts each DOF\'s range r_i, through '
+                  f'its steepest retained mode (dimensionless, {n_kept} modes); '
+                  f'most weakly constrained first:')
+            for i in np.argsort(amp_to_range)[:12]:
+                print(f'  {labels[i]:10s} amplitude {amp_to_range[i]:8.4f}  '
+                      f'(max|N.V|/r_i = {worst[i]:7.2f} dimensionless, '
+                      f'r_i = {r_i[i]:.5g})')
+
+    n_pages = 6 if r_i is not None else 5
+    print(f'\nwrote {out}  ({n_pages} pages: V {n_d}x{n_all} with {n_kept} kept; '
           f'singular values; DZ-per-v-mode {n_kj}x{n_kept} µm; '
-          f'reachability; {len(nw)} DOF normalization table)')
+          f'reachability; {len(nw)} DOF normalization table'
+          + ('; DOF-per-v-mode vs allowed range)' if r_i is not None else ')'))
 
 
 if __name__ == '__main__':

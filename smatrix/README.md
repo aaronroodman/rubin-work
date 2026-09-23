@@ -131,6 +131,7 @@ Reference docs in `docs/`; transient working state in `docs/status/`; per-study 
 | doc | what it holds |
 |---|---|
 | [`docs/conventions.md`](docs/conventions.md) | the convention choices (ZCS, bending-mode flips, degree angle units, the y-sign patch) — prepared for review by Josh Meyers / Guillem Megias-Homar |
+| [`docs/vmode_normalization.md`](docs/vmode_normalization.md) | the per-DOF SVD normalization weights `w_j = r_j^0.5 f_j^-0.5`, how the range `r_j` and PSF-width sensitivity `f_j` are defined, and why the weight choice changes which mode is v1 |
 | [`docs/miw_astig_coma_investigation.md`](docs/miw_astig_coma_investigation.md) | what can produce the observed high-field-order Z5–Z8 in the MIW that the batoid design model does not predict |
 | [`docs/plots.md`](docs/plots.md) | index of the plots/outputs in `output/` and how to regenerate each |
 | [`docs/status/future_issues.md`](docs/status/future_issues.md) | running list of open issues and follow-ups |

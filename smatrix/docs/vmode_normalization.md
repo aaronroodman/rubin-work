@@ -1,6 +1,6 @@
 # V-mode normalization: default vs geom_mean (why v1 differs)
 
-> **Status:** current · **Last updated:** 2026-07-27 · **Kind:** investigation
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (normalization conventions)
 
 **Date:** 2026-07-08
 **Author:** Aaron Roodman (analysis with Claude)
@@ -161,7 +161,17 @@ f^-0.5`, field-averaged FWHM), the one to use. The `geom sqrt(r/f)` column is th
 hand-computed `sqrt(r_j/f_j)` using `compute_normalization_components`'
 corner-point `f_j`; it is ~√2 smaller than the official geom and should **not**
 be used. (The `f_j` column shown is therefore the corner-point FWHM; the
-field-averaged FWHM implied by the config is ≈ `f_j / 2`.)
+field-averaged FWHM implied by the config is ≈ `f_j / 2`.) The field-averaged
+split is available machine-readable in
+`aos/output/bounce/dof_normalization_split.parquet` — 50 rows (one per DOF) with
+columns `index, label, unit, range, fwhm_per_unit_arcsec, weight, group`, where
+`fwhm_per_unit_arcsec` is the **correct field-averaged** `f_j` in arcsec of PSF
+FWHM per DOF unit, back-derived as `f_j = r_j / w_j^2` from the shipped weights;
+it reconstructs `w_j = sqrt(r_j / f_j)` to a maximum relative error of 2.2e-16
+(dimensionless). `smatrix/code/normalization_weights.py:compute_f_quadrature`
+computes the field-averaged `f_j` (arcsec of PSF width per DOF unit) directly,
+and is the function `smatrix/code/vmode/plot_vmode_dof_matrix.py` uses for its
+page-5 table.
 
 | DOF | r_j | f_j | geom sqrt(r/f) | default |
 |-----|-----|-----|----------------|---------|

@@ -49,7 +49,7 @@ Note that ``range-fwhm.yaml`` is reachable *inside* the v13 config directory too
 ``default.yaml``. So the config directory alone does not settle it, which is why
 ``make_state_estimator`` asserts the resolved filename.
 
-See ``olr/docs/vmode_normalization.md`` and ``smatrix/docs/studies/vmode.md``.
+See ``smatrix/docs/vmode_normalization.md`` and ``smatrix/docs/studies/vmode.md``.
 """
 import os
 
