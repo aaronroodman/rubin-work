@@ -17,17 +17,18 @@ The focus error is measured as v-mode 1, the amplitude of the first singular vec
 sensitivity matrix, which is essentially uniform defocus, and is reported in µm of equivalent
 hexapod dz: the total defocus travel, shared as 0.5 µm on each hexapod. Five thermal channels —
 the TMA truss temperature and the four M1M3 bulk thermal gradients — fitted with one
-band-independent Huber robust linear model predict it to 60.1 µm of equivalent hexapod dz from an
-uncorrected 337.0 µm, over 68,296 science visits across 149 nights. The truss temperature carries
-most of it, at +124.49 µm of equivalent hexapod dz per °C.
+band-independent Huber robust linear model predict it to 59.9 µm of equivalent hexapod dz from an
+uncorrected 336.8 µm, over 68,079 science visits across 147 nights. The truss temperature carries
+most of it, at +125.09 µm of equivalent hexapod dz per °C.
 
 Two limits on where that correction applies are part of the result. It is fitted and scored
 **between whole nights**, holding nights out, because within a night the thermal telemetry barely
 moves and a visit-level split lets a model recall the night instead of predicting it. And it does
-**not** work inside a single Full Array Mode (FAM) observing block: there the truss temperature
-moves by hundredths of a °C, which is telemetry noise, and the between-night coefficients turn that
-noise into a prediction swing as large as the drift being corrected, making within-block scatter
-worse rather than better.
+**not** work inside a single Full Array Mode (FAM) observing block. The focus error being modelled
+is the difference between what the AOS has commanded and what the wavefront sensors measure, and
+between nights the commanded part dominates it; inside a block the AOS does not re-command, so the
+part the model predicts is frozen and only the measured part is left, with the opposite sign.
+Applying the correction there makes within-block scatter worse rather than better.
 
 ## Studies
 

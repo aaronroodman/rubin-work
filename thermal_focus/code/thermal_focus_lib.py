@@ -56,6 +56,14 @@ MEASURED_SIGN = -1.0
 LUT_EPOCH_OFFSET_NIGHTS = (20251102, 20251210, 20251211, 20251212,
                            20251218, 20251219, 20260115, 20260116)
 
+#: Upper limit on the mean TMA truss temperature admitted to any fit [°C]. Two nights,
+#: ``day_obs`` 20251118 and 20251119, carry 217 visits between +22.88 and +25.07 °C, detached
+#: from the rest of the sample by an empty interval of 5.1792 °C — the largest gap anywhere above
+#: +14 °C runs from +17.7016 to +22.8808 °C. A 20 °C cut sits in the middle of that gap and
+#: removes exactly those 217 visits, with no boundary sensitivity: nothing else in the sample
+#: lies within 2.3 °C of the threshold.
+TRUSS_TEMP_MAX_C = 20.0
+
 #: Equivalent hexapod dz per µm of wavefront defocus [µm of equivalent hexapod dz per µm of
 #: wavefront]. Derived in ``smatrix/notebooks/vmode/ofc_conversion_constants.ipynb`` by the
 #: full 50-DOF pseudo-inverse. Negative: positive hexapod dz produces negative defocus. The

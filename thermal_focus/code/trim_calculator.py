@@ -50,12 +50,13 @@ the wavefront and does not know what the AOS has already commanded, so it is a f
 term, not a replacement for the closed loop. Applied blind on top of an already-converged loop
 it would double-count the correction.
 
-The coefficients are fitted **between nights**, where the truss temperature moves by degrees.
-Within a single observing block it moves by a median of 0.0658 °C, which is telemetry noise, and
-feeding that noise through a coefficient of +124.49 µm of equivalent hexapod dz per °C produces
-a prediction that swings almost as much as the drift it would be correcting — over 45 Full Array
-Mode blocks the median within-block peak-to-peak is 34.9 µm of equivalent hexapod dz of real
-drift against a 20.8 µm prediction swing, and subtracting the prediction makes the within-block
+The coefficients are fitted **between nights**, and the response they were fitted on is
+dominated there by the commanded Trim rather than by the measured wavefront — a between-night
+variance fraction of 91.2% against 25.0% (both dimensionless, between-night over total). Inside a
+single observing block the Active Optics System does not re-command Trim, so the quantity this
+model predicts is frozen and the remaining focus drift is the measured term alone, entering with
+the opposite sign. Over 45 Full Array Mode blocks the median within-block peak-to-peak is 34.9 µm
+of equivalent hexapod dz of real drift, and subtracting the prediction makes the within-block
 scatter *worse*, 46.9 µm, a ratio of 1.35 (dimensionless, corrected over uncorrected), improving
 only 5 of the 45 blocks. So do not use this to chase focus within a block; it is a
 night-to-night term.
@@ -66,7 +67,7 @@ import numpy as np
 
 # --------------------------------------------------------------------------------- constants
 #
-# Fitted with a Huber robust linear model on 68,296 ordinary science visits over 149 nights,
+# Fitted with a Huber robust linear model on 68,079 ordinary science visits over 147 nights,
 # day_obs 20251103 to 20260713, holding whole nights out of the fit. The response is
 #
 #     (v1_trim - v1_measured) / V1_PER_UM_DZ
@@ -79,43 +80,48 @@ import numpy as np
 #: Response with every feature at zero [µm of equivalent hexapod dz]. This is a long
 #: extrapolation from the sample, whose feature means are given in `SAMPLE_FEATURE_MEANS`, so it
 #: is not a physically meaningful standalone offset — only the whole equation is.
-INTERCEPT_UM = -1385.31
+INTERCEPT_UM = -1392.01
 
 #: Coefficient on the TMA truss temperature [µm of equivalent hexapod dz per °C].
-TRUSS_UM_PER_C = +124.49
+TRUSS_UM_PER_C = +125.09
 
 #: Coefficients on the four M1M3 bulk thermal gradients
 #: [µm of equivalent hexapod dz per (°C per m)].
-Z_GRADIENT_UM_PER_C_PER_M = -805.99
-Y_GRADIENT_UM_PER_C_PER_M = -1271.73
-RADIAL_GRADIENT_UM_PER_C_PER_M = -946.57
-X_GRADIENT_UM_PER_C_PER_M = -3414.66
+Z_GRADIENT_UM_PER_C_PER_M = -811.32
+Y_GRADIENT_UM_PER_C_PER_M = -1254.02
+RADIAL_GRADIENT_UM_PER_C_PER_M = -949.08
+X_GRADIENT_UM_PER_C_PER_M = -3374.73
 
 #: Feature means over the fitted sample, for judging whether an input is an extrapolation.
 #: Truss temperature in °C, the four gradients in °C per m.
-SAMPLE_FEATURE_MEANS = {'truss_temp_c': 11.31893,
-                        'z_gradient_c_per_m': -0.06559,
-                        'y_gradient_c_per_m': -0.01959,
-                        'radial_gradient_c_per_m': -0.01678,
+SAMPLE_FEATURE_MEANS = {'truss_temp_c': 11.27844,
+                        'z_gradient_c_per_m': -0.06471,
+                        'y_gradient_c_per_m': -0.01958,
+                        'radial_gradient_c_per_m': -0.01672,
                         'x_gradient_c_per_m': +0.00168}
 
 #: Full observed range of each feature over the fitted sample, as ``(low, high)``. Outside this
 #: the prediction is an extrapolation and `predict_focus_error_um` says so. These are the actual
 #: minimum and maximum, not a percentile clip; note how narrow the x gradient is — it spans
 #: 0.064 °C per m in total, so its large coefficient acts over a small lever arm.
-SAMPLE_FEATURE_RANGE = {'truss_temp_c': (3.87652, 25.07418),
+#:
+#: The truss upper limit is +17.702 °C, not the warmest night the observatory has had: an
+#: isolated population of 217 visits on two nights between +22.88 and +25.07 °C is excluded from
+#: the fit, detached from the rest of the sample by an empty 5.1792 °C interval. Above about
+#: +18 °C this calculator is extrapolating.
+SAMPLE_FEATURE_RANGE = {'truss_temp_c': (3.87652, 17.70163),
                         'z_gradient_c_per_m': (-0.76917, +0.68002),
-                        'y_gradient_c_per_m': (-0.14575, +0.04549),
+                        'y_gradient_c_per_m': (-0.14575, +0.03320),
                         'radial_gradient_c_per_m': (-0.23442, +0.13742),
                         'x_gradient_c_per_m': (-0.01793, +0.04637)}
 
 #: Night-grouped residual scatter of the fit [µm of equivalent hexapod dz, normalized median
 #: absolute deviation]. The uncertainty on any single prediction is about this, against an
 #: uncorrected scatter of `UNCORRECTED_NMAD_UM`.
-RESIDUAL_NMAD_UM = 60.1
+RESIDUAL_NMAD_UM = 59.9
 
 #: Scatter of the uncorrected focus error over the same sample [µm of equivalent hexapod dz].
-UNCORRECTED_NMAD_UM = 337.0
+UNCORRECTED_NMAD_UM = 336.8
 
 #: v-mode-1 amplitude per µm of total hexapod dz travel [dimensionless per µm], at the
 #: 10-degree-of-freedom, 1-mode projection, which is the one the online Optical Feedback Control
@@ -250,27 +256,27 @@ TEST_CASES = (
     ('the sample mean, all five features',
      dict(truss_temp_c=11.31893, z_gradient_c_per_m=-0.06559, y_gradient_c_per_m=-0.01959,
           radial_gradient_c_per_m=-0.01678, x_gradient_c_per_m=0.00168),
-     +111.71),
+     +111.91),
     ('a cold night, gradients at zero',
      dict(truss_temp_c=5.0, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
-     -762.86),
+     -766.56),
     ('a warm night, gradients at zero',
-     dict(truss_temp_c=20.0, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
+     dict(truss_temp_c=17.0, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
-     +1104.49),
+     +734.52),
     ('the truss at its mean, a strong z gradient only',
      dict(truss_temp_c=11.31893, z_gradient_c_per_m=-0.50, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
-     +426.77),
+     +429.53),
     ('the truss at its mean, a strong y gradient only',
      dict(truss_temp_c=11.31893, z_gradient_c_per_m=0.0, y_gradient_c_per_m=-0.10,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
-     +150.96),
+     +149.28),
     ('the truss at its mean, the x gradient at its upper edge',
      dict(truss_temp_c=11.31893, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.03),
-     -78.66),
+     -77.37),
 )
 
 

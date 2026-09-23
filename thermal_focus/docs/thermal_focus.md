@@ -14,12 +14,12 @@ rather than the few hundred dedicated Full Array Mode (FAM) visits.
 
 **Result.** Five thermal channels — the Telescope Mount Assembly (TMA) truss temperature and the
 four M1M3 bulk thermal gradients — fitted jointly with one band-independent Huber robust linear
-model predict the focus error to **60.1 µm of equivalent hexapod dz** from an uncorrected
-**337.0 µm**, which is 18% of the original scatter (dimensionless, residual normalized median
+model predict the focus error to **59.9 µm of equivalent hexapod dz** from an uncorrected
+**336.8 µm**, which is 18% of the original scatter (dimensionless, residual normalized median
 absolute deviation (nMAD) over uncorrected nMAD). The truss temperature carries most of it at
-**+124.49 µm of equivalent hexapod dz per °C**. After that correction **no elevation dependence
+**+125.09 µm of equivalent hexapod dz per °C**. After that correction **no elevation dependence
 remains**, so temperature alone sets the table. The correction works night to night and **not
-within an observing block**, where the thermal inputs move by telemetry noise.
+within an observing block**, where the commanded Trim the model is really predicting is frozen.
 
 ## The response
 
@@ -91,7 +91,7 @@ four-corner mean Z4 instead, and is kept as the independent route to the same ph
 
 ## Sample
 
-68,296 visits over 149 nights, `day_obs` 20251103 to 20260713, bands u g r i z y. The selection
+68,079 visits over 147 nights, `day_obs` 20251103 to 20260713, bands u g r i z y. The selection
 funnel, printed by the build stage rather than summarised, because every stage of it has cost a
 real misunderstanding at some point:
 
@@ -102,25 +102,35 @@ real misunderstanding at some point:
 | `img_type = 'science'` | 70,769 |
 | in bands u g r i z y | 70,769 |
 | excluding 7 LUT-epoch nights | −1,204 visits |
-| with a finite response | 69,565 |
-| **with all five thermal features** | **68,296** |
+| excluding truss temperature above +20 °C | −217 visits on 2 nights |
+| with a finite response | 69,348 |
+| **with all five thermal features** | **68,079** |
 
 The LUT-epoch nights (`LUT_EPOCH_OFFSET_NIGHTS`) ran a different hexapod LUT configuration; their
 per-night offsets sit far from the rest because the commanded baseline itself changed.
 
-The uncorrected response has median +173.4 µm and nMAD 341.3 µm of equivalent hexapod dz over the
-69,565 visits with a finite response, and nMAD 337.0 µm over the 68,296 with all five features.
-The truss temperature is filled by within-night interpolation for 6,254 of 69,565 visits (9.0%);
+The truss cut (`TRUSS_TEMP_MAX_C = 20.0` °C) removes an isolated warm population: 217 visits on
+`day_obs` 20251118 and 20251119, spanning +22.88 to +25.07 °C. They are detached from the rest of
+the sample by an empty interval of **5.1792 °C** — the largest gap anywhere above +14 °C runs from
++17.7016 to +22.8808 °C — so the 20 °C threshold sits mid-gap and the cut has no boundary
+sensitivity. Removing them shifts the truss coefficient by 0.48% (dimensionless) and the
+night-grouped residual nMAD from 60.1 to 59.9 µm of equivalent hexapod dz, so no conclusion turns
+on it; the cross-validated R² improves from 0.474 to 0.518 (dimensionless) because the warm
+outliers were inflating the variance being explained rather than being predicted.
+
+The uncorrected response has median +172.2 µm and nMAD 341.2 µm of equivalent hexapod dz over the
+69,348 visits with a finite response, and nMAD 336.8 µm over the 68,079 with all five features.
+The truss temperature is filled by within-night interpolation for 6,254 of 69,348 visits (9.0%);
 `truss_temp_mean_c_interpolated` is carried so the analysis can cut on it.
 
 Feature ranges over the fitted sample, which bound where the model may be used:
 
 | feature | mean | minimum | maximum | unit |
 |---|---|---|---|---|
-| `truss_temp_mean_c` | +11.319 | +3.877 | +25.074 | °C |
-| `m1m3_z_gradient_c_per_m` | −0.0656 | −0.7692 | +0.6800 | °C per m |
-| `m1m3_y_gradient_c_per_m` | −0.0196 | −0.1458 | +0.0455 | °C per m |
-| `m1m3_radial_gradient_c_per_m` | −0.0168 | −0.2344 | +0.1374 | °C per m |
+| `truss_temp_mean_c` | +11.278 | +3.877 | +17.702 | °C |
+| `m1m3_z_gradient_c_per_m` | −0.0647 | −0.7692 | +0.6800 | °C per m |
+| `m1m3_y_gradient_c_per_m` | −0.0196 | −0.1458 | +0.0332 | °C per m |
+| `m1m3_radial_gradient_c_per_m` | −0.0167 | −0.2344 | +0.1374 | °C per m |
 | `m1m3_x_gradient_c_per_m` | +0.0017 | −0.0179 | +0.0464 | °C per m |
 
 The x gradient spans only 0.064 °C per m in total, so its large coefficient acts over a narrow
@@ -131,55 +141,55 @@ lever arm.
 One Huber robust linear model, band independent, on five thermal features. The pipeline is a
 median imputer, a standardizing scaler, then `HuberRegressor`; the coefficients below are the
 physical ones, recovered from the standardized fit and verified to reproduce the pipeline's own
-prediction to 9.1e-13 µm of equivalent hexapod dz over all 68,296 visits.
+prediction to 1.0e-12 µm of equivalent hexapod dz over all 68,079 visits.
 
 ```
 response [um of equivalent hexapod dz, 0.5 um on each hexapod]
 
-  = -1385.31
-    +  124.49 * truss_temp_mean_c              [per deg C]
-    -  805.99 * m1m3_z_gradient_c_per_m        [per deg C per m]
-    - 1271.73 * m1m3_y_gradient_c_per_m        [per deg C per m]
-    -  946.57 * m1m3_radial_gradient_c_per_m   [per deg C per m]
-    - 3414.66 * m1m3_x_gradient_c_per_m        [per deg C per m]
+  = -1392.01
+    +  125.09 * truss_temp_mean_c              [per deg C]
+    -  811.32 * m1m3_z_gradient_c_per_m        [per deg C per m]
+    - 1254.02 * m1m3_y_gradient_c_per_m        [per deg C per m]
+    -  949.08 * m1m3_radial_gradient_c_per_m   [per deg C per m]
+    - 3374.73 * m1m3_x_gradient_c_per_m        [per deg C per m]
 ```
 
 The intercept is the response at zero in every feature. That is a long extrapolation from the
 sample means above, so it is not a physically meaningful offset on its own, only the constant that
 makes the five slopes land on the data.
 
-Night-grouped residual nMAD is **60.1 µm of equivalent hexapod dz**, and the per-fold coefficients
+Night-grouped residual nMAD is **59.9 µm of equivalent hexapod dz**, and the per-fold coefficients
 are all sign-stable. The truss term is the stable one; the three weaker gradients scatter more
 across folds, the radial term's scatter being comparable to its own magnitude.
 
 ### Night-grouped evaluation is required
 
 Within a night the thermal telemetry drifts slowly, so consecutive visits are near-duplicates in
-feature space: only **1.9%** of the truss temperature's variance is within-night, while **83.8%**
+feature space: only **2.7%** of the truss temperature's variance is within-night, while **90.7%**
 of the response variance is between nights. A visit-level train/test split therefore lets a model
 identify the night from its temperature and recall that night's offset, and every score here comes
 from `GroupKFold` grouped on `day_obs`. The size of the trap depends on model capacity — a factor
-of 3.1 (dimensionless, visit-level nMAD over night-grouped nMAD) for boosted trees, and 1.03 for
+of 1.25 (dimensionless, visit-level nMAD over night-grouped nMAD) for boosted trees, and 1.03 for
 the five-coefficient linear fit actually used. The visit-level number is reported for comparison;
 it is not a performance estimate.
 
-The same reasoning applies within the sample itself: the per-night offset nMAD of 53.5 µm against
-a within-night residual nMAD of 32.8 µm is a ratio of 1.63 (dimensionless, offset nMAD over
+The same reasoning applies within the sample itself: the per-night offset nMAD of 50.1 µm against
+a within-night residual nMAD of 32.7 µm is a ratio of 1.53 (dimensionless, offset nMAD over
 residual nMAD), so night-to-night offset variation is the larger of the two and is what a held-out
 night must be predicted through.
 
 ### Model choice
 
 Night-grouped 5-fold, truss plus the four M1M3 gradients, against the uncorrected baseline of
-337.0 µm of equivalent hexapod dz:
+336.8 µm of equivalent hexapod dz:
 
-| model | residual nMAD [µm equiv hexapod dz] |
-|---|---|
-| **Huber linear** | **60.1** |
-| Ridge linear | 77.6 |
-| RandomForest | 92.4 |
-| HistGB | 100.4 |
-| uncorrected | 337.0 |
+| model | residual nMAD [µm equiv hexapod dz] | cross-validated R² [dimensionless] |
+|---|---|---|
+| **Huber linear** | **59.9** | 0.518 |
+| Ridge linear | 66.4 | 0.484 |
+| RandomForest | 92.4 | 0.152 |
+| HistGB | 99.4 | 0.254 |
+| uncorrected | 336.8 | 0.000 |
 
 The response is close to linear and the trees are worse, fitting night-specific structure that
 does not transfer to held-out nights. The linear fit is kept because it is interpretable as a
@@ -196,7 +206,8 @@ add nothing measurable. This is the result that justifies a five-channel linear 
 `FAM_TRUSS_SLOPE = 0.09634` (dimensionless v-mode-1 amplitude per °C) from the FAM Double Zernike
 (DZ) fits is a slope of the **commanded Trim**, not of the response. The like-for-like science-image
 test is therefore `v1_trim` against truss temperature, and it gives a pooled
-**+0.09709 ± 0.00020 per °C**, consistent with the FAM value. Per-band slopes spread more widely
+**+0.09850 ± 0.00021 per °C**, consistent with the FAM value to within the study's 0.03 per °C
+tolerance. Per-band slopes spread more widely
 around it; a single band is not an independent measurement of this slope.
 
 Comparing the fitted **response** coefficient against `FAM_TRUSS_SLOPE` instead is not a valid
@@ -205,10 +216,13 @@ that means nothing.
 
 ### Camera-body temperature
 
-The camera-body `AverageTemp` from `lsst.MTCamera.utiltrunk_body` resolves 98.29% of visits against
+The camera-body `AverageTemp` from `lsst.MTCamera.utiltrunk_body` resolves 98.28% of visits against
 the truss temperature's 100.00%, and is indistinguishable from the truss as a regressor. The two
-thermometers correlate at **Pearson r +0.9688, Spearman rho +0.9919**, with a Huber slope of
-**+0.8827 °C camera-body per °C truss**. The truss stays primary on physical grounds — it is the
+thermometers correlate at **Pearson r +0.9943, Spearman rho +0.9928** over 66,908 visits, with a
+Huber slope of **+0.8850 °C camera-body per °C truss**. Against the response the truss gives
+**+109.16 ± 0.25 µm of equivalent hexapod dz per °C** (Pearson r +0.6328, Spearman rho +0.8190,
+n = 68,079) and the camera body **+126.78 ± 0.27 µm per °C** (Pearson r +0.6271, Spearman rho
++0.8283, n = 66,908). The truss stays primary on physical grounds — it is the
 load path setting the M1M3-to-camera spacing — and the camera-body channel is excluded because its
 collinearity with the truss destabilises the truss coefficient.
 
@@ -234,26 +248,26 @@ tests exactly that claim:
 
 | correction | band change [µm equiv hexapod dz] | same band | ratio [dimensionless] |
 |---|---|---|---|
-| uncorrected | 18.4 (n = 1,138) | 8.7 (n = 67,009) | 2.12 |
-| **per-band models** | **26.4** | 8.8 | 3.00 |
-| shared thermal model | 18.9 | 8.8 | 2.16 |
+| uncorrected | 18.3 (n = 1,132) | 8.7 (n = 66,800) | 2.12 |
+| **per-band models** | **25.7** | 8.8 | 2.94 |
+| shared thermal model | 18.8 | 8.7 | 2.15 |
 
-Per-band fitting makes the band-change step **worse**, 26.4 against 18.4 µm uncorrected, while the
-shared model leaves it essentially unchanged at 18.9 µm. The shared model is the right choice. A
+Per-band fitting makes the band-change step **worse**, 25.7 against 18.3 µm uncorrected, while the
+shared model leaves it essentially unchanged at 18.8 µm. The shared model is the right choice. A
 band-independent correction cannot remove a real per-band focus offset, and a small one remains;
 it would have to be added separately.
 
 ## Elevation: nothing remains
 
 Once the thermal correction is applied, the residual carries no useful elevation dependence. Over
-**127 nights** with enough visits to fit, the median per-night residual-against-elevation slope is
-**−0.010 µm of equivalent hexapod dz per deg** with nMAD **0.772 µm per deg**, scattering about
-zero against a median formal error of 0.166 µm per deg. The per-night offset at 60 deg elevation
-has median −2.6 µm and nMAD 53.5 µm.
+**125 nights** with enough visits to fit, the median per-night residual-against-elevation slope is
+**−0.005 µm of equivalent hexapod dz per deg** with nMAD **0.782 µm per deg**, scattering about
+zero against a median formal error of 0.162 µm per deg. The per-night offset at 60 deg elevation
+has median −1.8 µm and nMAD 50.1 µm.
 
-Splitting each night into rising and falling legs over the 110 nights with both, the median
-rising-minus-falling slope difference is **+0.241 µm per deg** with nMAD **0.884 µm per deg**, and
-the rising leg is steeper on 64 of 110 nights (sign-test p = 0.105, dimensionless) — **no
+Splitting each night into rising and falling legs over the 109 nights with both, the median
+rising-minus-falling slope difference is **+0.254 µm per deg** with nMAD **0.878 µm per deg**, and
+the rising leg is steeper on 64 of 109 nights (sign-test p = 0.084, dimensionless) — **no
 consistent direction dependence**, so no hysteresis term is warranted. The slew direction is taken
 from a **centred 21-visit rolling median of elevation with a deadband**, not from the sign of the
 per-visit elevation difference, which is dominated by pointing jitter.
@@ -282,17 +296,52 @@ Of 326 blocks, 45 hold exactly 12 triplets with a constant step of 3 — 540 vis
 | quantity | median within-set peak-to-peak | unit |
 |---|---|---|
 | uncorrected response | **34.9** | µm equiv hexapod dz |
-| thermally corrected | **46.9** | µm equiv hexapod dz |
+| thermally corrected | **47.0** | µm equiv hexapod dz |
 | the prediction's own swing | 20.8 | µm equiv hexapod dz |
 | truss temperature | 0.0658 | °C |
 
 **The thermal correction makes within-block scatter worse**, a ratio of **1.35 (dimensionless,
-corrected over uncorrected)**, improving only **5 of 45** sets. The model's coefficients are large
-because they were fitted between nights, where the truss temperature moves degrees. Inside one
-block the truss moves by a median of 0.0658 °C, which is telemetry noise, so those coefficients
-turn minutes-timescale noise into a prediction swing of the same order as the drift being measured,
-uncorrelated with it. The model describes night-to-night thermal drift, which is what it was built
-for; applying it inside a block is not a correction but an addition of noise.
+corrected over uncorrected)**, improving only **5 of 45** sets.
+
+### Why: inside a block the commanded term is frozen
+
+The response is `(v1_trim + MEASURED_SIGN * v1) / v1_per_um_dz` with `MEASURED_SIGN = -1.0`
+(dimensionless), so it carries a commanded term and a measured term of opposite sign. Between
+nights the **commanded** term dominates: `v1_trim` carries a between-night variance fraction of
+**91.2%** (dimensionless, between-night over total) against **25.0%** for the measured `v1`. The
+fitted model is therefore, to a good approximation, a model of what the AOS commanded.
+
+**Inside a FAM block the Trim is exactly constant.** Its within-set peak-to-peak is identically
+zero in **44 of the 45** clean sets; the one exception steps by 7.6e-03 (dimensionless v-mode-1
+amplitude). The AOS does not re-command Trim while a ladder runs. So within a block the response
+reduces to `-v1 / v1_per_um_dz` — the measured term alone, entering with the opposite sign from the
+one the model was fitted on.
+
+That is what reverses the slope against truss temperature:
+
+| slope of response against truss temperature | value [µm equiv hexapod dz per °C] |
+|---|---|
+| science, between nights | +124.38 |
+| science, within a night (n = 68,079) | +78.69 ± 0.62 |
+| FAM, within a 12-triplet set (n = 540) | **−81.10 ± 17.58** |
+
+The reversal is neither a sign error nor telemetry noise. The truss temperature is genuinely
+resolved inside a block — 12 distinct values per 12-visit set, monotonic in 26 of the 45 sets, with
+the within-night interpolation flag raised on only 50 of 540 rows (9.3%) — and a within-set
+permutation test puts the observed slope about 4 null-sigma out: the shuffled null is
++0.01 ± 20.61 µm equiv hexapod dz per °C, with 0 of 200 draws reaching the observed magnitude. The
+within-set slope of response against prediction is **−0.7207 ± 0.0458** (dimensionless, Huber),
+where a correct correction would give ≈ +1.
+
+**Do not flip the sign to repair this.** Subtracting the prediction gives 46.7 µm of within-set
+peak-to-peak and improves 6 of 45 sets; adding it gives 32.7 µm and improves 27 of 45, against
+34.9 µm uncorrected. The improvement is real but meaningless: it fits the measured term with a
+model of the commanded term, and the agreement would not survive a block in which the AOS did
+re-command Trim.
+
+The model describes night-to-night thermal drift, which is what it was built for and what the
+open-loop feed-forward term needs. It cannot describe a block over which the quantity it actually
+models does not move.
 
 The result is not an artifact of the 12-triplet floor. Relaxing it:
 
@@ -372,8 +421,8 @@ This topic imports `aos_state` from `aos/code` for the v-modes and the DOF sets,
 `trim_calculator.py` imports numpy and argparse and nothing else, so it can be copied to a summit
 machine and run there. Every coefficient is inlined with its units and provenance, and it carries
 worked test cases. Inlining can drift from the fit silently, so section 11 of the analysis checks
-the calculator against the pipeline it fitted: **max |difference| 0.0071 µm of equivalent hexapod
-dz** over 68,296 visits, which is the two-decimal rounding of the inlined coefficients.
+the calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod
+dz** over 68,079 visits, which is the two-decimal rounding of the inlined coefficients.
 
 The calculator is a **night-to-night feed-forward term**. It does not read the wavefront and does
 not know what the AOS has already commanded, so applying it blind on top of an already-converged
@@ -423,10 +472,12 @@ are separate outputs and neither consumes the other.
 
 ## Outstanding work
 
-Two follow-ups are known and not attempted here:
+One follow-up is known and not attempted here:
 
-- Re-evaluate the thermal prediction under the 10 DOF / 1 mode projection rather than 50/34, and
-  try the 22/12 v1 term, to confirm the fitted coefficients are insensitive to the projection as
-  the conversion table suggests.
 - Collect all M1M3 cell temperature values to form separate M1 and M3 focus variables, looking for
   an r²-like radial thermal mode the four bulk gradients cannot express.
+
+The comparison of the 50 DOF / 34 mode, 22/12 and 10/1 projections is **done** — the three
+`v1_per_um_dz` values agree to 0.108% (dimensionless, spread over the 50/34 value), far below the
+fit's own uncertainty, so no refit under another projection is needed. The conversion section above
+carries the table.

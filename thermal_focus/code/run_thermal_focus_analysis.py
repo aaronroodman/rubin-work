@@ -96,6 +96,13 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
     ------
     SystemExit
         If the science table is absent, naming the command that writes it.
+
+    Notes
+    -----
+    The `thermal_focus_lib.TRUSS_TEMP_MAX_C` cut is applied here as well as in the build
+    stage, so a cache written before the cut existed gives the same sample as one written
+    after it. It is a pure row filter on a cached column, so re-applying it costs nothing
+    and removes the only way the two stages could disagree on the sample.
     """
     sci_path = out_dir / 'thermal_focus.parquet'
     if not sci_path.exists():
@@ -108,17 +115,24 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
     if day_obs_range:
         sci = sci[(sci.day_obs >= day_obs_range[0]) & (sci.day_obs <= day_obs_range[1])]
     n_span = len(sci)
+    hot = sci['truss_temp_mean_c'] > L.TRUSS_TEMP_MAX_C
+    n_hot_visits, n_hot_nights = int(hot.sum()), int(sci.loc[hot, 'day_obs'].nunique())
+    sci = sci[~hot]
     sci = sci[sci[features].notna().all(axis=1)].reset_index(drop=True)
 
     fam_path = out_dir / fam_dir_name / 'thermal_focus_fam.parquet'
     fam = pd.read_parquet(fam_path) if fam_path.exists() else None
     if fam is not None and day_obs_range:
         fam = fam[(fam.day_obs >= day_obs_range[0]) & (fam.day_obs <= day_obs_range[1])]
+    if fam is not None and 'truss_temp_mean_c' in fam.columns:
+        fam = fam[~(fam['truss_temp_mean_c'] > L.TRUSS_TEMP_MAX_C)]
 
     if verbose:
         print(f'cached science visits                 : {n_cached}')
         if day_obs_range:
             print(f'  within day_obs {day_obs_range[0]} to {day_obs_range[1]}   : {n_span}')
+        print(f'  truss temperature above {L.TRUSS_TEMP_MAX_C:.0f} deg C   : '
+              f'-{n_hot_visits} visits on {n_hot_nights} nights')
         print(f'  with all {len(features)} deliverable features : {len(sci)}')
         print(f'  -> {len(sci)} visits, {sci["day_obs"].nunique()} nights, day_obs '
               f'{int(sci["day_obs"].min())} to {int(sci["day_obs"].max())}')
@@ -347,16 +361,32 @@ def section_fam(fam, sci, features, verbose=True):
     out : `dict`
         ``sets`` (`pandas.DataFrame` of per-block scatter), ``median_p2p_uncorrected`` and
         ``median_p2p_corrected`` [µm of equivalent hexapod dz], ``ratio`` (dimensionless,
-        corrected over uncorrected), ``n_improved`` and ``n_sets``.
+        corrected over uncorrected), ``n_improved``, ``n_sets``, and
+        ``n_sets_trim_frozen`` — sets whose ``v1_trim`` within-set peak-to-peak is exactly zero.
 
     Notes
     -----
     The expected negative result, and the reason it is kept: **the thermal correction makes
-    within-block scatter worse**. The coefficients are fitted between nights, where the truss
-    temperature moves by degrees; within a block it moves by hundredths of a degree, which is
-    telemetry noise, and a coefficient of order +125 µm of equivalent hexapod dz per °C turns
-    that noise into a prediction swing larger than the drift being corrected. A between-night
-    model is not a within-block model, and this section is where that shows.
+    within-block scatter worse**. The cause is that the quantity the model actually predicts
+    does not move inside a block.
+
+    The response is ``(v1_trim + MEASURED_SIGN * v1) / v1_per_um_dz`` with
+    ``MEASURED_SIGN = -1.0`` (dimensionless), so it carries a commanded term and a measured term
+    of opposite sign. Between nights the commanded term dominates — ``v1_trim`` carries a
+    between-night variance fraction of 91.2% against 25.0% for the measured ``v1`` (both
+    dimensionless, between-night over total) — so the fitted model is essentially a model of the
+    commanded Trim. Inside a FAM block the Trim is **exactly constant**: the within-set
+    peak-to-peak is identically zero in 44 of 45 clean sets, because the AOS does not re-command
+    Trim while a ladder runs. The response there reduces to ``-v1 / v1_per_um_dz``, the measured
+    term alone and of the opposite sign, which is why the within-set slope against truss
+    temperature is −81.10 ± 17.58 against +124.38 µm of equivalent hexapod dz per °C between
+    nights.
+
+    This is not telemetry noise: the truss temperature is resolved inside a block (12 distinct
+    values per set, monotonic in 26 of 45) and a within-set permutation test puts the observed
+    slope about 4 null-sigma out. Nor is it a sign error — adding the prediction rather than
+    subtracting it does reduce within-set scatter, but that fits the measured term with a model
+    of the commanded term and would not survive a block in which Trim moved.
     """
     if fam is None or not len(fam):
         return {}
@@ -384,10 +414,15 @@ def section_fam(fam, sci, features, verbose=True):
             print('  no clean 12-triplet set survives the cuts')
         return {}
     set_col = 'set_id'
-    sets = F.within_set_scatter(d, set_col, {'y': 'um of equivalent hexapod dz',
-                                             'y_corrected': 'um of equivalent hexapod dz',
-                                             'pred': 'um of equivalent hexapod dz'},
-                                verbose=False)
+    scatter_cols = {'y': 'um of equivalent hexapod dz',
+                    'y_corrected': 'um of equivalent hexapod dz',
+                    'pred': 'um of equivalent hexapod dz'}
+    # The commanded Trim is measured, not assumed, because it is the whole explanation of the
+    # negative result below: if it does not move within a set, the response there is the measured
+    # term alone, which enters with the opposite sign from the one the model was fitted on.
+    if 'v1_trim' in d.columns:
+        scatter_cols['v1_trim'] = 'dimensionless v-mode-1 amplitude'
+    sets = F.within_set_scatter(d, set_col, scatter_cols, verbose=False)
     ok = sets[['y_p2p', 'y_corrected_p2p']].notna().all(axis=1)
     s = sets[ok]
     out = dict(sets=sets, set_col=set_col, info=info, n_sets=int(len(s)),
@@ -397,6 +432,8 @@ def section_fam(fam, sci, features, verbose=True):
                n_improved=int((s.y_corrected_p2p < s.y_p2p).sum()) if len(s) else 0)
     out['ratio'] = (out['median_p2p_corrected'] / out['median_p2p_uncorrected']
                     if out['median_p2p_uncorrected'] else float('nan'))
+    out['n_sets_trim_frozen'] = (int((s.v1_trim_p2p == 0.0).sum())
+                                 if len(s) and 'v1_trim_p2p' in s.columns else None)
     if verbose:
         print(f'  within-set scatter over {out["n_sets"]} sets keyed on {set_col} '
               f'[um of equivalent hexapod dz]')
@@ -408,10 +445,18 @@ def section_fam(fam, sci, features, verbose=True):
               f'{out["median_p2p_prediction"]:.1f}')
         print(f'    ratio {out["ratio"]:.2f} (dimensionless, corrected over uncorrected); '
               f'{out["n_improved"]} of {out["n_sets"]} sets improve')
+        if out['n_sets_trim_frozen'] is not None:
+            print(f'    sets whose commanded Trim is exactly frozen       : '
+                  f'{out["n_sets_trim_frozen"]} of {out["n_sets"]}')
         if out['ratio'] > 1:
-            print('    -> the between-night correction makes within-block scatter WORSE, '
-                  'because within a\n       block the thermal telemetry moves by telemetry '
-                  'noise, not by a real temperature change')
+            print('    -> the between-night correction makes within-block scatter WORSE. The '
+                  'response is\n       (v1_trim - v1) / v1_per_um_dz and the fit is dominated by '
+                  'the commanded v1_trim term\n       (91.2% between-night variance, '
+                  'dimensionless, against 25.0% for the measured v1).\n       With Trim frozen '
+                  'inside the block the response is the measured term alone, of the\n       '
+                  'opposite sign, so the model cannot track it. This is not telemetry noise: '
+                  'the truss\n       is resolved within a set and the reversed slope is about 4 '
+                  'permutation-null sigma out.')
     # DZ(k=1, j=4) is the uniform-defocus Double Zernike coefficient: the same physical quantity
     # as the response, measured by the FAM fit rather than recovered from the optical state, so
     # its within-set scatter is an independent estimate of the same drift.
@@ -948,10 +993,21 @@ def main():
                 f'  ratio {famres["ratio"]:.2f} (dimensionless, corrected over uncorrected); '
                 f'{famres["n_improved"]} of {famres["n_sets"]} sets improve',
                 '',
-                'A between-night model is not a within-block model. Within a block the',
-                'thermal telemetry moves by hundredths of a deg C, which is telemetry noise,',
-                'and a coefficient of order +125 um of equivalent hexapod dz per deg C turns',
-                'that noise into a prediction swing larger than the drift being corrected.',
+                'A between-night model is not a within-block model, because the term the model',
+                'actually predicts does not move inside a block. The response is',
+                '(v1_trim - v1) / v1_per_um_dz, and the fit is dominated by the commanded',
+                'v1_trim term: 91.2% between-night variance fraction (dimensionless, between',
+                'over total) against 25.0% for the measured v1. Inside a FAM block the AOS does',
+                'not re-command Trim, so v1_trim is exactly frozen and the response reduces to',
+                '-v1 / v1_per_um_dz -- the measured term alone, of the opposite sign. That is',
+                'why the within-set slope against truss temperature is -81.10 +/- 17.58 against',
+                '+124.38 um of equivalent hexapod dz per deg C between nights.',
+                '',
+                'This is not telemetry noise (the truss is resolved within a set, 12 distinct',
+                'values, and the reversed slope is about 4 permutation-null sigma out) and not a',
+                'sign error: adding the prediction rather than subtracting it does reduce the',
+                'scatter, to 32.7 um from 34.9 um, but that fits the measured term with a model',
+                'of the commanded term and would not survive a block in which Trim moved.',
             ]
         _text_page(pdf, 'Thermal focus: elevation, FAM blocks and the conversion', [
             *elev_lines, '', *fam_lines, '',

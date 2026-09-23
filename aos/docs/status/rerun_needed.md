@@ -191,10 +191,14 @@ diagnosis of "+63.9902" was wrong.
 within-block peak-to-peak response is 34.9 µm of equivalent hexapod dz against a 20.8 µm
 prediction swing, and subtracting the prediction *raises* the within-block scatter to 46.9 µm,
 a ratio of 1.35 (dimensionless, corrected over uncorrected), improving only 5 of the 45 sets.
-The cause is measured rather than inferred: within a block the truss temperature moves by a
-median of 0.0658 °C, which is telemetry noise, and the between-night coefficient of
-+124.49 µm of equivalent hexapod dz per °C turns that noise into a prediction swing comparable
-to the drift. The thermal correction is a night-to-night term, not a within-block one.
+The cause is measured rather than inferred, and is **not** telemetry noise: the fit is dominated
+by the commanded `v1_trim` term (91.2% between-night variance fraction, dimensionless, against
+25.0% for the measured `v1`), and inside a block `v1_trim` is exactly frozen — within-set
+peak-to-peak identically zero in 44 of the 45 sets. The response there is the measured term
+alone and of the opposite sign, which reverses the slope against truss temperature to
+−81.10 ± 17.58 from +124.38 µm of equivalent hexapod dz per °C. The truss is genuinely resolved
+within a set and the reversal sits about 4 permutation-null sigma out. The thermal correction is
+a night-to-night term, not a within-block one.
 
 Still unresolved, and not to be settled by picking the sign that makes a plot agree: the FAM
 DZ series sits at Pearson r −0.558 (dimensionless, n = 870) against the `acq` response. The
@@ -220,7 +224,7 @@ reports a v-mode **amplitude**, whose sign moves:
 |---|---|
 | `fam_dz.v_modes` (all rows) | `value_added/code/build_fam_dz.py` |
 | all three `optical_state` variants' `v_modes`, `v1_lut`, `v1_trim` | `value_added/code/build_optical_state.py` |
-| `thermal_focus.{parquet,pdf}`, `thermal_focus_fam.parquet` | `../../../thermal_focus/code/` — refitted from the current basis; the truss coefficient is +124.49 µm of equivalent hexapod dz per °C |
+| `thermal_focus.{parquet,pdf}`, `thermal_focus_fam.parquet` | `../../../thermal_focus/code/` — refitted from the current basis; the truss coefficient is +125.09 µm of equivalent hexapod dz per °C |
 | `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `code/correlations/run_vmode_correlations.py:71` |
 | `dz_correlations` v-mode outputs | `code/correlations/run_dz_correlations.py:220` |
 | `thermal_correlations` v-mode outputs | `code/correlations/run_thermal_correlations.py:183` |

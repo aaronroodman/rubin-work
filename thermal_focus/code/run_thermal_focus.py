@@ -148,6 +148,12 @@ def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
     n_lut_visits = int(drop.sum())
     df = df[~drop]
 
+    # An isolated warm population, detached from the sample by an empty 5.1792 deg C interval.
+    hot = df['truss_temp_mean_c'] > L.TRUSS_TEMP_MAX_C
+    n_hot_nights = int(df.loc[hot, 'day_obs'].nunique())
+    n_hot_visits = int(hot.sum())
+    df = df[~hot]
+
     df = L.attach_response(df, v1_per_um_dz)
     df = df[np.isfinite(df['y'])]
     n_resp = len(df)
@@ -170,6 +176,8 @@ def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
         print(f'  band in {BANDS}   : {n_band}')
         print(f'  dropping {n_lut_nights} LUT-epoch nights        : '
               f'-{n_lut_visits} visits')
+        print(f'  truss temperature above {L.TRUSS_TEMP_MAX_C:.0f} deg C     : '
+              f'-{n_hot_visits} visits on {n_hot_nights} nights')
         print(f'  with a finite response              : {n_resp}')
         print(f'  with all five thermal features      : {n_feat}')
         print(f'  -> {len(df)} visits, {df["day_obs"].nunique()} nights, '
@@ -233,6 +241,8 @@ def load_fam(fam_variant, variant, day_obs_range, v1_per_um_dz, verbose=True):
                   on='acq_visit_id', how='left')
     df = efd_db.join_consdb(df, groups=CONSDB_GROUPS)
     df = df[~df['day_obs'].isin(L.LUT_EPOCH_OFFSET_NIGHTS)]
+    if 'truss_temp_mean_c' in df.columns:
+        df = df[~(df['truss_temp_mean_c'] > L.TRUSS_TEMP_MAX_C)]
     df = L.attach_response(df, v1_per_um_dz)
     df = df[np.isfinite(df['y'])]
 
