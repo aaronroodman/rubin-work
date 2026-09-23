@@ -70,7 +70,19 @@ does run in batch. **Submitting a batch job is a must-ask** — see the root `CL
 | `code/backfill_commanded_vmodes.py` | fills commanded v-modes for visits built before they were stored |
 | `code/merge_db_shards.py` | merges shard databases into the main one |
 | `code/run_build.sh` | shard planner and launcher, local or Slurm batch |
+| `notebooks/value_added_db_validation.ipynb` | validation plots and worked examples, readable by anyone with the stack |
 | `output/` | the database, its archives, and the shard directory (not in git) |
+
+## Notebooks
+
+[`notebooks/value_added_db_validation.ipynb`](notebooks/value_added_db_validation.ipynb)
+validates every table and demonstrates how to use the database. It deliberately imports no
+`rubin-work` code — the LSST Science Pipelines stack plus `duckdb` (`pip install --user
+duckdb`) is all it needs — so it can be shared with anyone who has read access to the
+database file. It plots each quantity against time and as a histogram, checks
+`into_wind_deg` against a recomputation from `wind_dir_deg` and `azimuth_deg`, and works
+through which DOF each sensitivity-matrix block perturbed by combining the block identity
+from ConsDB with the per-event DOF step (Tweak) held here.
 
 ## Docs
 
