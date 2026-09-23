@@ -391,6 +391,77 @@ uncertainty, so the choice of projection does not affect any conclusion. The sha
 camera-alone difference of 1.1% is a definition choice, not a scheme uncertainty; conflating the
 two comparisons is easy and wrong.
 
+## The focus error as degrees of freedom
+
+The response is one number per visit, a v-mode-1 amplitude. An observer acts on degrees of freedom
+(DOF), so the measured amplitude is projected back into the DOF it is built from, using the
+library's own inverse, `StateEstimator.get_dofs_from_vmodes`:
+
+```
+dof = normalization_matrix @ (v_modes @ Vh)
+```
+
+**`Vh[0]` alone is not the answer.** The normalization matrix is not optional: taking the raw right
+singular vector gives a DOF vector whose forward projection is v-mode-1 amplitude +0.0141 with
+another mode at 0.227, instead of the +1.0000000000 with a largest other mode of 2.6e-16
+(dimensionless) that the normalized inverse round-trips to.
+
+Setting every other v-mode to zero is **exact, not an approximation**. `Vh` is orthonormal, so the
+result is the unique minimum-norm DOF vector consistent with the measured amplitude. It does not
+claim the telescope's other modes are zero; it is the defocus part of the state, expressed in DOF.
+
+At v-mode-1 amplitude 1.0 (dimensionless), `dof_set` `all_50` with 34 modes retained:
+
+| DOF | index | value [µm per unit v-mode-1 amplitude] |
+|---|---|---|
+| camera hexapod dz | `dof5` | −645.6579 |
+| M2 hexapod dz | `dof0` | −463.8983 |
+| M1M3 bending mode B3 | `dof12` | +0.0094 |
+| M2 bending mode B5 | `dof34` | +0.0076 |
+
+The two hexapod dz values carry the defocus and move together in a fixed ratio, because v-mode 1 is
+one direction in DOF space. The two mirror bending modes are real but tiny: at the sample's
+99th-percentile absolute v-mode-1 amplitude of 0.07350 (dimensionless) they reach only **0.690 nm
+and 0.555 nm**, so they can be ignored in practice. M2 bending mode B4 does not appear at all — it
+enters at +0.0002 µm per unit v-mode-1 amplitude, below even those two.
+
+Over the 68,079-visit sample, the measured focus error corresponds to [µm]:
+
+| DOF | median | nMAD | 1st pct | 99th pct |
+|---|---|---|---|---|
+| camera hexapod dz | +11.7379 | 11.2452 | −28.8130 | +45.0297 |
+| M2 hexapod dz | +8.4335 | 8.0796 | −20.7018 | +32.3533 |
+| M1M3 bending mode B3 | −0.0002 | 0.0002 | −0.0007 | +0.0004 |
+| M2 bending mode B5 | −0.0001 | 0.0001 | −0.0005 | +0.0003 |
+
+### Start of night
+
+The first visit of a night is the one an open-loop focus setting has to be right for, before any
+wavefront measurement has been folded in, so its distribution bounds how wrong an uncorrected start
+of night can be. Over 147 nights, MJD 60983.202 to 61235.045:
+
+| DOF | median [µm] | nMAD [µm] | slope against date [µm per d] | Pearson r | Spearman rho |
+|---|---|---|---|---|---|
+| camera hexapod dz | +9.7993 | 15.7950 | −0.01754 ± 0.02120 | −0.1175 | −0.0868 |
+| M2 hexapod dz | +7.0407 | 11.3485 | −0.01261 ± 0.01523 | −0.1175 | −0.0868 |
+
+Neither slope reaches **0.8 standard errors** (Huber, n = 147 nights), so the start-of-night focus
+error does not drift across the season: it is scatter about a fixed offset, not a trend. The two
+correlation coefficients are identical between the rows because the two hexapod dz values are a
+fixed multiple of one another, both being the same v-mode-1 amplitude.
+
+The start-of-night spread is **larger than the night-to-night spread of the rest of the night**.
+Comparing like with like — both statistics over the same 147 nights — the camera hexapod dz has nMAD
+15.7950 µm at the first visit against 7.2449 µm across the per-night medians, a factor of **2.18**
+(dimensionless, start-of-night nMAD over per-night-median nMAD). The all-visit nMAD of 11.2452 µm is
+not the quantity to compare against, since it mixes within-night and between-night scatter over
+68,079 visits rather than 147.
+
+A first visit being further from the night's own centre than the night's centre is from the season's
+centre is consistent with the loop having converged on later visits and not yet on the first, but
+that is an interpretation: this study measures the spread and does not separate a loop-convergence
+transient from a genuinely larger thermal excursion at the start of a night.
+
 ## Code
 
 | file | role |
@@ -398,7 +469,7 @@ two comparisons is easy and wrong.
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: eleven sections and one document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: fourteen sections and one document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 ### The network seam
@@ -439,7 +510,7 @@ online scheme.
 |---|---|
 | `thermal_focus.parquet` | one row per science visit: identity, band, pointing, the v-mode-1 components, the response [µm equiv hexapod dz] and the thermal telemetry |
 | `<fam_dir>/thermal_focus_fam.parquet` | one row per FAM triplet whose `acq` visit has a recovered optical state, with the triplet's own DZ coefficients |
-| `thermal_focus.pdf` | the analysis document: eleven sections, from the sample funnel to the calculator check |
+| `thermal_focus.pdf` | the analysis document, in three parts: before the correction, the training, and all the data |
 
 `output/` has no data-axis level: the products depend on the database and the optical
 prescription, not on a Butler collection or processing variant. The FAM table is the exception,

@@ -43,7 +43,7 @@ Applying the correction there makes within-block scatter worse rather than bette
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
-| `code/run_thermal_focus_analysis.py` | the analysis: eleven sections and one document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: fourteen sections and one document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 The build stage is the only one that needs the network, because the mean TMA truss temperature is

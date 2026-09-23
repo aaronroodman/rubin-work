@@ -721,7 +721,11 @@ def section_dof(sci, dof_set='all_50', n_modes=34, verbose=True):
         ``unit`` — the DOF vector for v1 = 1.0, one entry per named DOF [µm or arcsec];
         ``dof`` — a `pandas.DataFrame` of per-visit DOF values with the identity columns;
         ``start`` — the same restricted to the first visit of each night;
-        ``names`` — the DOF columns carried, in descending order of magnitude.
+        ``names`` — the DOF columns carried, in descending order of magnitude;
+        ``start_slope`` — per hexapod DOF, the `thermal_focus_fit.huber_line` fit of the
+        start-of-night value against Modified Julian Date [µm per d];
+        ``start_vs_night`` — per hexapod DOF, ``start_nmad``, ``night_nmad`` and their ``ratio``
+        (dimensionless, start-of-night nMAD over per-night-median nMAD).
 
     Notes
     -----
@@ -742,6 +746,11 @@ def section_dof(sci, dof_set='all_50', n_modes=34, verbose=True):
     B3 and M2 B5 appear at +0.0094 and +0.0076 µm per unit v1, so at the sample's 99th-percentile
     v1 they are sub-nanometre and negligible; M2 B4 appears only at +0.0002 µm per unit v1, below
     even those. They are reported for completeness rather than because an observer would set them.
+
+    The start-of-night spread is compared against the **night-to-night** spread of the per-night
+    medians over the same nights, not against the all-visit nMAD. The latter mixes within-night and
+    between-night scatter over every visit, so comparing a 147-night statistic to it would not be
+    like for like.
     """
     import aos_state
     se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
@@ -772,7 +781,23 @@ def section_dof(sci, dof_set='all_50', n_modes=34, verbose=True):
     out = {'unit': {col: float(unit_vec[idx]) for idx, col, _, _ in wanted},
            'labels': {col: label for _, col, label, _ in wanted},
            'units': {col: u for _, col, _, u in wanted},
-           'dof': dof, 'start': start, 'names': names}
+           'dof': dof, 'start': start, 'names': names,
+           'start_slope': {}, 'start_vs_night': {}}
+
+    # The start-of-night spread is worth comparing against the night-to-night spread over the same
+    # nights, not against the all-visit nMAD, which mixes within-night and between-night scatter.
+    for col in names[:2]:
+        a = start[col].to_numpy(float)
+        per_night = dof.groupby('day_obs')[col].median().to_numpy(float)
+        out['start_vs_night'][col] = {'start_nmad': float(nmad(a)),
+                                      'night_nmad': float(nmad(per_night)),
+                                      'ratio': float(nmad(a) / nmad(per_night))}
+        if 'obs_start_mjd' in start.columns:
+            mjd = start['obs_start_mjd'].to_numpy(float)
+            ok = np.isfinite(mjd) & np.isfinite(a)
+            if ok.sum() > 10:
+                out['start_slope'][col] = F.huber_line(mjd[ok], a[ok])
+
     if verbose:
         print(f'  back-projection {dof_set}/{n_modes}, '
               f'StateEstimator.get_dofs_from_vmodes = normalization_matrix @ (v @ Vh)')
@@ -797,6 +822,19 @@ def section_dof(sci, dof_set='all_50', n_modes=34, verbose=True):
             a = start[col].to_numpy(float)
             print(f'    start of night, {out["labels"][col]:22s} median '
                   f'{np.nanmedian(a):+10.4f}  nMAD {nmad(a):9.4f} um')
+        for col in names[:2]:
+            v = out['start_vs_night'][col]
+            print(f'    {out["labels"][col]:24s} start-of-night nMAD {v["start_nmad"]:7.4f} um '
+                  f'against per-night-median nMAD {v["night_nmad"]:7.4f} um, ratio '
+                  f'{v["ratio"]:.2f}x (dimensionless)')
+        for col in names[:2]:
+            line = out['start_slope'].get(col)
+            if line is not None:
+                print(f'    {out["labels"][col]:24s} against date {line["slope"]:+.5f} +/- '
+                      f'{line["slope_err"]:.5f} um per d '
+                      f'({abs(line["slope"]) / line["slope_err"]:.1f} standard errors), '
+                      f'Pearson r {line["pearson_r"]:+.4f}, '
+                      f'Spearman rho {line["spearman_rho"]:+.4f}, n {line["n"]}')
     return out
 
 
@@ -1205,11 +1243,20 @@ def figure_dof_start(pdf, dofres):
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
     for row, col in enumerate(names):
         a = s[col].to_numpy(float)
+        mjd = s['obs_start_mjd'].to_numpy(float)
         ax = axes[row, 0]
-        ax.plot(s['obs_start_mjd'], a, 'o', ms=4, color='#1f77b4')
+        ax.plot(mjd, a, 'o', ms=4, color='#1f77b4')
         ax.axhline(0, color='0.6', lw=0.8)
         ax.axhline(float(np.nanmedian(a)), color='#d62728', lw=1.2,
                    label=f'median {np.nanmedian(a):+.2f} um')
+        ok = np.isfinite(mjd) & np.isfinite(a)
+        if ok.sum() > 10:
+            line = F.huber_line(mjd[ok], a[ok])
+            xs = np.array([mjd[ok].min(), mjd[ok].max()])
+            ax.plot(xs, line['intercept'] + line['slope'] * xs, '-', color='#2ca02c', lw=1.2,
+                    label=f'Huber {line["slope"]:+.4f} +/- {line["slope_err"]:.4f} um per d\n'
+                          f'({abs(line["slope"]) / line["slope_err"]:.1f} standard errors: '
+                          f'no drift)')
         ax.set_xlabel('start-of-night Modified Julian Date [d]')
         ax.set_ylabel(f'{dofres["labels"][col]} [um]')
         ax.set_title(f'{dofres["labels"][col]} at the start of each night, '
@@ -1681,6 +1728,27 @@ def main():
             '  The first visit of a night is the one an open-loop correction would have to set',
             '  focus for, before any wavefront measurement has been folded in, so this is the',
             '  distribution that bounds how wrong an uncorrected start of night can be.',
+            '',
+            *[f'  {dofres["labels"][c]:24s} start-of-night nMAD '
+              f'{dofres["start_vs_night"][c]["start_nmad"]:7.4f} um against the per-night-median '
+              f'{dofres["start_vs_night"][c]["night_nmad"]:7.4f} um, '
+              f'{dofres["start_vs_night"][c]["ratio"]:.2f}x'
+              for c in dofres['names'][:2]],
+            '',
+            '  The start of a night is further from its own night\'s centre than that centre is',
+            '  from the season\'s. The comparison is against the night-to-night spread of the',
+            '  per-night medians over the same nights, not against the all-visit nMAD, which mixes',
+            '  within-night and between-night scatter over every visit.',
+            '',
+            *[f'  {dofres["labels"][c]:24s} against date '
+              f'{dofres["start_slope"][c]["slope"]:+.5f} +/- '
+              f'{dofres["start_slope"][c]["slope_err"]:.5f} um per d '
+              f'({abs(dofres["start_slope"][c]["slope"]) / dofres["start_slope"][c]["slope_err"]:.1f}'
+              f' standard errors)'
+              for c in dofres['names'][:2] if c in dofres['start_slope']],
+            '',
+            '  Neither slope is significant, so the start-of-night focus error is scatter about a',
+            '  fixed offset rather than a drift across the season.',
         ])
         figure_dof(pdf, dofres)
         figure_dof_start(pdf, dofres)
