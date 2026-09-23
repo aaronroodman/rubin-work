@@ -167,12 +167,16 @@ legend and an A/B bounce-position table per bounce.
 With `add_dof_trim` enabled the run additionally queries the EFD live for the MTAOS Trim
 overlay, so that mode needs RSP/EFD access.
 
-Three output directories, so none shadows another:
+Two live output directories, so neither shadows the other:
 `output/bounce/danish_1_2_A_50_34_i_5rot_july/` from the MIW-referenced fit over all six nights
-(the lead result, every number in the note), `output/bounce/danish_1_2_A_50_34_i_5rot/` from the
-same MIW build over April/May only (superseded), and `output/bounce/danish_1_2_batoid/` from the
-Phase-1 batoid-intrinsic fit (the intrinsic-choice comparison). All are hand-run with
+(the lead result, every number in the note), and `output/bounce/danish_1_2_batoid/` from the
+Phase-1 batoid-intrinsic fit (the intrinsic-choice comparison). Both are hand-run with
 `--out-dir`, `--fits` and `--min-detectors 160`, matching the `bounce` rule.
+
+The same MIW build over April/May nights only, and the earlier non-rotated `pathA_50_34_i`
+build, are superseded and parked under `output/archive/bounce/` — see that tree's `README.md`.
+Note `output/miw/danish_1_2_A_50_34_i_5rot/` is a different path and is current: it is the MIW
+fit table this study reads.
 
 These PDFs currently share `<mi>/plots/` with three other studies' output; splitting
 them per study is outstanding work.
@@ -203,8 +207,8 @@ unphysically large**, and increasingly so with throw. Counting only DOF at over 
 
 The ratio is `abs(delta)/r_j`, dimensionless, the recovered amplitude over the allowed range. B2_12 reaches
 −0.0612 ± 0.0032 µm at elevation 30 deg against a range of 0.01447 µm, a ratio of 4.2, at
-significance 19.2; B1_20 reaches −0.0258 ± 0.0032 µm against a range of 0.00221 µm, a ratio of
-11.7. Since a mirror physically cannot exceed its actuator-force-limited range, these
+significance 19.2; B1_20 reaches −0.0258 ± 0.0032 µm of mode amplitude against a range of
+0.00221 µm, a ratio of 11.7, at significance 8.0. Since a mirror physically cannot exceed its actuator-force-limited range, these
 amplitudes are not real mirror figure changes. The monotonic growth with throw — ratios
 dropping to about 1 on the near-null upward 75 deg leg — points to the unconstrained recovery
 absorbing something that scales with the bounce signal into the weakly-constrained high-order

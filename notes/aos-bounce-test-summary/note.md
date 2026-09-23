@@ -1,6 +1,6 @@
 # Rubin AOS bounce tests: elevation sweep 30–75 deg and rotator 0→60 deg
 
-> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** outward-facing note (results summary)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** outward-facing note (results summary)
 
 **Summary** A *bounce test* slews the telescope away from a reference position and back, so
 that the difference between the two Full Array Mode (FAM) wavefront measurements isolates
@@ -17,6 +17,14 @@ uncorrectable residual. The rotator bounce gives 0.2082 arcsec FWHM before corre
 0.0191 arcsec FWHM after. So the bounce signal is large, highly significant, and almost
 entirely correctable by the active optics system — which is what a Look-Up Table (LUT)
 needs in order to remove it feed-forward.
+
+One qualification, which turns out not to weaken that conclusion. The default truncated recovery
+returns mirror bending-mode amplitudes up to 11.9 times the range the mirrors can physically
+apply (dimensionless, recovered amplitude over allowed range). Re-inverting the same data with a
+penalty that bounds every degree of freedom to its range costs a median of only 0.0027 arcsec
+FWHM, within a range of −0.0002 to +0.0158 arcsec over the nine (leg, night) measurements. The
+unphysical amplitudes therefore carry almost none of the wavefront: the correction the bounce
+calls for is not merely correctable in principle but **physically reachable**.
 
 ## What is measured
 
@@ -196,6 +204,97 @@ camera-hexapod part of the rotator bounce is robust to how many DOF the recovery
 What the 5/5 scheme cannot capture is the rest — hence the larger `fwhm_after_5_5` residual
 above.
 
+### The recovered bending-mode amplitudes exceed what the mirrors can apply
+
+Each degree of freedom has an allowed range `r_j` — the actuator-force-limited stroke for a
+mirror bending mode, the `rb_stroke` limit for a hexapod axis — and it enters the recovery only
+through the normalization weight `w_j = sqrt(r_j / f_j)`, where `f_j` is the full width at half
+maximum (FWHM) response in arcsec per unit of that degree of freedom. That puts the range into
+the *metric* of the fit but never into the *feasible set*: nothing in a truncated singular value
+decomposition (SVD) stops it returning an amplitude a mirror physically cannot reach.
+
+It does. Taking the ratio `abs(Δ)/r_j` (dimensionless, recovered amplitude over allowed range)
+over all 50 degrees of freedom, per (leg, night):
+
+| leg | night | largest ratio | DOF over range, of 50 |
+|---|---|---|---|
+| elev 30 deg | 20260713 | 11.70 | 15 |
+| elev 40 deg | 20260418 | 11.93 | 16 |
+| elev 40 deg | 20260419 | 10.63 | 14 |
+| elev 40 deg | 20260513 | 5.95 | 14 |
+| elev 50 deg | 20260711 | 5.46 | 13 |
+| elev 60 deg | 20260709 | 3.15 | 8 |
+| elev 75 deg | 20260713 | 1.40 | 3 |
+| rotator 60 deg | 20260420 | 3.77 | 12 |
+| rotator 60 deg | 20260513 | 3.15 | 11 |
+
+The excursions sit in the high-order bending modes, not the rigid-body axes: B1_20 reaches
+−0.0258 ± 0.0032 µm of mode amplitude against a range of 0.00221 µm at elevation 30 deg, at
+significance 8.0, while the hexapod terms that dominate the wavefront stay far inside their
+ranges. B1_20 is the largest excursion on the elevation 30, 40 and 75 deg legs; the rotator
+bounce's is B1_11 at −0.0415 ± 0.0022 µm, significance 19.0, against a range of 0.01320 µm. The ratio grows
+monotonically with throw and falls to about 1 on the near-null upward 75 deg leg, which is the
+signature of an inversion artifact that scales with the signal rather than of a real mirror figure
+change.
+
+### Range-Bounded Recovery bounds them at a small cost in image quality
+
+To settle whether those amplitudes carry any wavefront, the same Δ is inverted a second way.
+**Range-Bounded Recovery (RBR)** keeps the least-squares fit but adds a per-degree-of-freedom
+penalty that is negligible inside the range and climbs steeply as an amplitude approaches and
+passes it:
+
+```
+||dW - S x||^2  +  sum_j ( |d_j| / (kappa * r_j) ) ^ (2 p)
+```
+
+with `d` the physical degrees of freedom, `x = d / w` the normalized ones the SVD is taken in,
+`S` the rank-34 forward operator in µm of wavefront per unit normalized DOF, and `dW` the
+measured DZ Δ in µm of wavefront. Both knobs are dimensionless: `kappa = 4` is the ratio
+`abs(d_j)/r_j` at which the penalty reaches unit weight, and `p = 3` sets how fast it climbs. RBR
+is nonlinear, so it is applied to each (reference, comparison) pair separately and reduced with
+the same median and error definition as the default recovery.
+
+The comparison is scored on the residual the correction **achieves**, `dW − S·(d/w)`, rather than
+on the correctable-subspace projection used for `fwhm_after_50_34` in the table above — the
+projection does not depend on the recovered amplitudes at all, which is why the over-range
+amplitudes never showed up in the FWHM numbers. The two agree to 1.7e-16 arcsec FWHM for the
+truncated solution, so the default column below reproduces the earlier result.
+
+| leg | night | largest ratio, default → RBR | DOF over range, default → RBR | achieved FWHM, default → RBR (arcsec) | FWHM cost (arcsec) |
+|---|---|---|---|---|---|
+| elev 30 deg | 20260713 | 11.70 → 1.16 | 15 → 2 | 0.0598 → 0.0756 | +0.0158 |
+| elev 40 deg | 20260418 | 11.93 → 1.04 | 16 → 1 | 0.0463 → 0.0489 | +0.0027 |
+| elev 40 deg | 20260419 | 10.63 → 1.04 | 14 → 1 | 0.0487 → 0.0492 | +0.0005 |
+| elev 40 deg | 20260513 | 5.95 → 1.03 | 14 → 1 | 0.0354 → 0.0459 | +0.0105 |
+| elev 50 deg | 20260711 | 5.46 → 0.98 | 13 → 0 | 0.0664 → 0.0715 | +0.0052 |
+| elev 60 deg | 20260709 | 3.15 → 0.76 | 8 → 0 | 0.0326 → 0.0357 | +0.0032 |
+| elev 75 deg | 20260713 | 1.40 → 0.56 | 3 → 0 | 0.0153 → 0.0151 | −0.0002 |
+| rotator 60 deg | 20260420 | 3.77 → 1.11 | 12 → 2 | 0.0247 → 0.0273 | +0.0026 |
+| rotator 60 deg | 20260513 | 3.15 → 0.88 | 11 → 0 | 0.0185 → 0.0199 | +0.0014 |
+
+Over the nine (leg, night) points the cost in achieved correctable FWHM has a median of
++0.0027 arcsec, within a range of −0.0002 to +0.0158 arcsec. Counting per-(leg, night) rows
+across all legs, 106 of 450 degrees of freedom exceed their range under the default recovery
+against 7 under RBR.
+
+**So the over-range amplitudes carry almost none of the wavefront.** Removing them entirely costs
+a few percent of the correction residual and well under 2% of the uncorrected FWHM the bounce
+produces — they are an ill-conditioning artifact of the unconstrained inversion, not a real
+high-order mirror figure change. A physically reachable correction for these bounce flexures
+exists and delivers essentially the same image quality. The worst case is the largest throw
+(elevation 30 deg, +0.0158 arcsec) and the near-null upward 75 deg leg is very slightly *better*
+under RBR, which is what one expects when the discarded amplitude was noise.
+
+Since the penalty is smooth rather than a hard bound, a few amplitudes still finish just outside
+range — by at most a factor of 1.157. One caveat on reading individual axes: RBR biases toward
+zero by construction and the rigid-body split is not uniquely pinned by these data (M2_dz can
+flip sign between the two solutions, while the rigid-body *wavefront* is preserved to within a few
+percent). **An RBR rigid-body amplitude is a constrained estimate and should not be quoted as a
+measurement of hexapod motion.** For a look-up-table fit, which wants the amplitudes themselves,
+the default recovery remains the estimator; RBR answers whether a reachable correction exists and
+what image quality it delivers.
+
 ### Night-to-night repeatability
 
 Only the elevation 40 deg leg is exercised on more than one night: each July night throws to a
@@ -289,15 +388,23 @@ leg taken alone.
 | OFC subspace | 50 DOF, 34 v-modes kept; sensitivity matrix evaluated at camera rotator angle 0.0 deg |
 | quality cut | at least 160 CCDs with enough donuts per visit, and `median_blur_arcsec` at most 1.2 arcsec |
 | thresholds | significance 3.5 (dimensionless) with 0.1 µm of wavefront, or significance 5.0 alone |
+| Range-Bounded Recovery | `kappa = 4.0`, `power = 3`, both dimensionless; solver in `smatrix/code/regularized_inversion/`, allowed range `r_j` back-derived from the shipped OFC normalization weights |
 | code | `aos/code/bounce/run_bounce.py`, `aos/code/bounce/bounce_lib.py`; config in `aos/analysis_config.yaml` under `bounce` |
 
-The earlier `aos/output/bounce/danish_1_2_A_50_34_i_5rot/` covers the April/May nights only and
-is superseded by the `_july` directory, which uses the same MIW build over more nights.
+Two earlier bounce output directories are superseded and were moved to
+`aos/output/archive/bounce/` on 2026-09-23: `danish_1_2_A_50_34_i_5rot` (the same MIW build over
+April/May nights only) and `danish_1_2_A_50_34_i` (the earlier non-rotated MIW build). Note
+`aos/output/miw/danish_1_2_A_50_34_i_5rot/` is a different path and is current — it is the MIW fit
+table this note's lead result reads.
 
 See [`../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md) for the study
-reference. The tables behind these numbers are `bounce_kj_stats.parquet` (per-(k, j) Δ),
-`bounce_dof_stats.parquet` (per-DOF and per-v-mode Δ, all four schemes) and
-`bounce_fwhm_metric.parquet`; the figures are `bounce_summary.pdf`, `bounce_fwhm_metric.pdf`,
-`bounce_dof_night_scatter.pdf`, `bounce_dof_night_values.pdf`, `bounce_dz_vs_ordinal.pdf`,
-`bounce_vmode_vs_ordinal.pdf`, `bounce_dof_vs_ordinal.pdf` and
+reference, and
+[`../../smatrix/docs/studies/regularized_inversion.md`](../../smatrix/docs/studies/regularized_inversion.md)
+for the derivation and validation of Range-Bounded Recovery. The tables behind these numbers are
+`bounce_kj_stats.parquet` (per-(k, j) Δ), `bounce_dof_stats.parquet` (per-DOF and per-v-mode Δ in
+all four schemes, with the RBR Δ, the allowed range and the ratios beside the default recovery),
+`bounce_fwhm_metric.parquet` and `bounce_fwhm_vs_bvalue.parquet` (the three FWHM series per
+(night, leg)); the figures are `bounce_summary.pdf`, `bounce_fwhm_metric.pdf`,
+`bounce_fwhm_vs_bvalue.pdf`, `bounce_dof_night_scatter.pdf`, `bounce_dof_night_values.pdf`,
+`bounce_dz_vs_ordinal.pdf`, `bounce_vmode_vs_ordinal.pdf`, `bounce_dof_vs_ordinal.pdf` and
 `bounce_5x5_camera_hexapod.pdf`.

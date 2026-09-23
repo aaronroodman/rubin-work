@@ -1,6 +1,6 @@
 # Provenance — `aos-bounce-test-summary`
 
-> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** reference (provenance)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (provenance)
 
 Everything needed to reproduce the numbers in [`note.md`](note.md).
 
@@ -8,7 +8,7 @@ Everything needed to reproduce the numbers in [`note.md`](note.md).
 
 | item | value |
 |---|---|
-| `rubin-work` git SHA | `04d2bf5` |
+| `rubin-work` git SHA | `96b4be6` (the RBR results; `04d2bf5` for the pre-RBR numbers) |
 | `ts_intrinsic_wavefront` | `v2.1-6-gf4f23b6`, at `~/u/LSST/packages/ts_intrinsic_wavefront` |
 | environment | Aaron's AOS/CWFS environment on the USDF (needs `lsst.ts.ofc`, which is not in `lsst_distrib`) |
 
@@ -24,13 +24,16 @@ Everything needed to reproduce the numbers in [`note.md`](note.md).
 | quality cut | `--min-detectors 160` (CCDs with enough donuts per visit), matching the Snakefile `bounce` rule |
 | per-night floor | `night_min_visits: 3` |
 | thresholds | `pass_nsigma_threshold: 3.5` (dimensionless) with `pass_delta_threshold_um: 0.1` µm of wavefront, or `pass_sigma_only_threshold: 5.0` (dimensionless) alone |
+| Range-Bounded Recovery | `rbr_enable: true`, `rbr_kappa: 4.0` (dimensionless, the ratio `abs(d_j)/r_j` at which the penalty reaches unit weight), `rbr_power: 3` (dimensionless), giving a penalty proportional to `(abs(d_j)/(kappa·r_j))**6` |
+| RBR allowed range | `r_j` from `smatrix/code/regularized_inversion/regularized_inversion.dof_range_vector`, back-derived as `w_j**2 · f_j` from the shipped `range0.5_fwhm-0.15.yaml` normalization; hexapod ranges are the `rb_stroke` literals, bending-mode ranges `(force_range/20)/max_force_per_um` |
 
 ## Inputs
 
 | table | visits | day_obs range | mtime |
 |---|---|---|---|
+| `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet` (MIW refit, lead input) | 3385 | 20250415–20260713 | 2026-09-22 |
 | `aos/output/fam_processing/danish_1_2/fits.parquet` (batoid intrinsic) | 2528 over 98 nights | 20250415–20260713 | 2026-08-24 |
-| `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet` (MIW refit) | 1126 | 20260315–20260513 | 2026-07-07 |
+| `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet` (earlier MIW refit, April/May only) | 1126 | 20260315–20260513 | 2026-07-07 |
 
 Butler collection for the FAM processing: Danish 1.2,
 `wep_17_6_1` with refit WCS and 2×2 binning, in `/repo/main`.
@@ -39,21 +42,42 @@ Butler collection for the FAM processing: Danish 1.2,
 
 | directory | intrinsic | coverage |
 |---|---|---|
-| `aos/output/bounce/danish_1_2_A_50_34_i_5rot/` | measured intrinsic wavefront (MIW) | April/May nights only — lead result for the 40 deg elevation leg and the rotator bounce |
-| `aos/output/bounce/danish_1_2_batoid/` | batoid design intrinsic | all six BLOCK-T720 nights including July — the only source for the 60/50/30/75 deg legs |
+| `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` | measured intrinsic wavefront (MIW) | all six BLOCK-T720 nights plus both BLOCK-T724 nights — **the lead result, and every number in the note** |
+| `aos/output/bounce/danish_1_2_batoid/` | batoid design intrinsic | the same nights against the batoid design intrinsic — the intrinsic-choice comparison |
 
-Each holds `bounce_kj_stats.parquet`, `bounce_fwhm_metric.parquet` and `plots/bounce_*.pdf`.
-DOF and v-mode Δ are rendered into the PDFs only; they are not persisted to a parquet, so the
-DOF table in the note was recomputed from the fits table with the same `ofc_svd` projection the
-script uses.
+Each holds `bounce_kj_stats.parquet`, `bounce_dof_stats.parquet`,
+`bounce_fwhm_metric.parquet`, `bounce_fwhm_vs_bvalue.parquet` and `plots/bounce_*.pdf`.
+
+`bounce_dof_stats.parquet` carries the per-DOF and per-v-mode Δ directly, so the DOF numbers in
+the note are read from it rather than recomputed. It also carries the Range-Bounded Recovery
+(RBR) columns `delta_rbr` and `delta_rbr_err` in each DOF's own unit (µm for translations and
+bending-mode amplitudes, arcsec for hexapod rotations), the allowed range `dof_range` in the same
+unit, and the dimensionless ratios `ratio_to_range` and `ratio_to_range_rbr`.
+
+Superseded, and moved to `aos/output/archive/bounce/` on 2026-09-23:
+`danish_1_2_A_50_34_i_5rot` (the same MIW build over April/May nights only) and
+`danish_1_2_A_50_34_i` (the earlier non-rotated MIW build `pathA_50_34_i`). Nothing reads
+either. Note `aos/output/miw/danish_1_2_A_50_34_i_5rot/` is a different path and is current.
 
 ## How the two runs were produced
 
 Both are **hand-run**, not Snakemake — every input already existed, and no pipeline rule was
-re-triggered (the MIW `fits.parquet` kept its 2026-07-07 mtime through both runs). Each was
-invoked as `python code/bounce/run_bounce.py` with the fits table above, `--min-detectors 160`,
-and an explicit `--out-dir`, since the script otherwise derives its output path from
-`--param-set` / `--mi-name` and the two intrinsic legs would collide.
+re-triggered. Each was invoked as `python code/bounce/run_bounce.py` with the fits table above,
+`--min-detectors 160`, and an explicit `--out-dir`, since the script otherwise derives its output
+path from `--param-set` / `--mi-name` and the two intrinsic legs would collide. The lead run:
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/bounce/run_bounce.py \
+  --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+  --mi-name pathA_50_34_i_5rot \
+  --fits output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet \
+  --out-dir output/bounce/danish_1_2_A_50_34_i_5rot_july \
+  --min-detectors 160
+```
+
+RBR is on by default; `--no-rbr` skips it and `--rbr-kappa` / `--rbr-power` change the penalty
+shape.
 
 ## Caveats carried into the note
 
@@ -73,7 +97,28 @@ and an explicit `--out-dir`, since the script otherwise derives its output path 
 4. **Small pair counts on the new legs** — 4 to 6 pairs per July leg. The quoted errors reflect
    this; the monotonic throw trend across legs is stronger evidence than any single leg.
 
-## Code change behind this analysis
+## Code changes behind this analysis
+
+### Range-Bounded Recovery
+
+The RBR solver is **not** in `aos/code/bounce/`: it lives in the `smatrix`
+`regularized_inversion` study (`smatrix/code/regularized_inversion/regularized_inversion.py`,
+`invert_range_penalty`) and is imported from there by a path insert, so it cannot drift from the
+study that derived and validated it. `bounce_lib.rbr_dof_per_pair` / `rbr_deltas` wrap it.
+
+Two properties of that wrapping determine how the RBR numbers should be read:
+
+- RBR is nonlinear, so it does not commute with the median over pairs. It is applied to each
+  (reference, comparison) pair's Δ wavefront separately and reduced with the same median and
+  SEM-of-a-median (`1.2533 · 1.4826 · MAD / sqrt(n)`) used for the default recovery, so the two
+  errors mean the same thing.
+- The RBR-vs-default FWHM comparison scores the **achieved** residual `dW − S·(d/w)`, not the
+  subspace projection `(I − U·Uᵀ)·dW` that `fwhm_after_50_34` uses. The projection is
+  independent of the recovered amplitudes and so cannot see a regularizer trade wavefront for
+  amplitude. The two agree to 1.7e-16 arcsec FWHM for the truncated solution, so the default
+  series still reproduces `fwhm_after_50_34`.
+
+### Per-night gate
 
 `bounce_lib.bounce_nights` previously required **every** configured comparison leg to clear
 `night_min_visits` for a night to enter the per-night breakdown. With five legs no night can
