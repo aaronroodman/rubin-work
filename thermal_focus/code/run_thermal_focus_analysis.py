@@ -5,7 +5,7 @@ headline is that the telescope's uniform-defocus error is predictable from five 
 channels — the Telescope Mount Assembly (TMA) truss temperature and the four M1M3 bulk
 thermal gradients — with one band-independent Huber robust linear model.
 
-Sections, in the order they appear in the PDF:
+Computed sections, in the order they are printed:
 
 1. The response and the sample — the selection funnel and per-band coverage.
 2. The thermal model — the deliverable fit, with whole nights held out.
@@ -23,6 +23,21 @@ Sections, in the order they appear in the PDF:
     including the 10-degree-of-freedom/1-mode case the online system would use.
 11. The standalone calculator — ``trim_calculator.py``, which inlines the fitted coefficients,
     checked against the pipeline fitted here so the two cannot drift apart unnoticed.
+12. The truss temperature alone — the one-thermometer correction the five-channel model must
+    beat, scored the same night-grouped way.
+13. One night-level train/test split — a single explicit holdout, so the training page can show
+    the same fit on nights it saw beside nights it never saw.
+14. The focus error as degrees of freedom — each visit's measured v-mode 1 back-projected into
+    the camera and M2 hexapod dz it is built from, over all visits and at the start of each night.
+
+The PDF is organised into three parts rather than following that numbering:
+
+* **Part 1, before the correction** — what the focus error is, what the truss temperature alone
+  achieves, and where the signal lives.
+* **Part 2, training** — the vocabulary (night-grouped, out-of-fold, per-fold) in plain language,
+  the train/test holdout, the fitted model, and what each extra channel buys.
+* **Part 3, all the data** — elevation, FAM blocks, the conversion table, the calculator check,
+  and the degrees of freedom the measured focus error corresponds to.
 
 Invocation::
 
@@ -553,6 +568,238 @@ def section_calculator(sci, features, full, verbose=True):
     return out
 
 
+def section_trussonly(sci, model='huber', verbose=True):
+    """Fit the truss temperature alone, night-grouped, as the correction to beat.
+
+    Parameters
+    ----------
+    sci : `pandas.DataFrame`
+        Science table, as loaded.
+    model : `str`, optional
+        Key for `thermal_focus_fit.make_model`.
+    verbose : `bool`, optional
+        Print the comparison against the uncorrected response.
+
+    Returns
+    -------
+    out : `dict`
+        ``resid`` and ``pred`` [µm of equivalent hexapod dz], ``nmad``, ``r2``, ``slope`` and
+        ``slope_err`` [µm of equivalent hexapod dz per °C], ``pearson_r`` and ``spearman_rho``
+        (all dimensionless), and ``uncorrected_nmad``.
+
+    Notes
+    -----
+    This is the one-feature correction an observer could apply from a single thermometer, and it
+    is what the four M1M3 gradients have to improve on to earn their place. Reported next to the
+    truss scatter plot rather than only as a table row, so the residual it leaves is visible as a
+    distribution and not just as one number.
+    """
+    cv = F.evaluate(sci, ['truss_temp_mean_c'], model=model, verbose=False)
+    line = F.huber_line(sci['truss_temp_mean_c'], sci['y'])
+    out = {'resid': cv['resid'], 'pred': cv['pred'], 'nmad': float(cv['nmad']),
+           'r2': float(cv['r2']), 'slope': float(line['slope']),
+           'slope_err': float(line.get('slope_err', np.nan)),
+           'pearson_r': float(line['pearson_r']), 'spearman_rho': float(line['spearman_rho']),
+           'uncorrected_nmad': float(nmad(sci['y'].to_numpy(float)))}
+    if verbose:
+        print(f'  truss temperature alone, night-grouped: residual nMAD {out["nmad"]:.1f} um of '
+              f'equivalent hexapod dz, R2 {out["r2"]:+.3f} (dimensionless)')
+        print(f'  against the uncorrected {out["uncorrected_nmad"]:.1f} um, an improvement of '
+              f'{out["uncorrected_nmad"] / out["nmad"]:.2f}x (dimensionless, uncorrected nMAD '
+              f'over residual nMAD)')
+        print(f'  the fitted line is {out["slope"]:+.2f} um of equivalent hexapod dz per deg C, '
+              f'Pearson r {out["pearson_r"]:+.4f}, Spearman rho {out["spearman_rho"]:+.4f}, '
+              f'n {len(sci)}')
+    return out
+
+
+def section_holdout(sci, features, model='huber', frac_test=0.2, verbose=True):
+    """One night-level train/test split, so train and test can be shown side by side.
+
+    Parameters
+    ----------
+    sci : `pandas.DataFrame`
+        Science table, as loaded.
+    features : `list` [`str`]
+        Feature column names.
+    model : `str`, optional
+        Key for `thermal_focus_fit.make_model`.
+    frac_test : `float`, optional
+        Fraction of **nights** held out [dimensionless].
+    verbose : `bool`, optional
+        Print both scores.
+
+    Returns
+    -------
+    out : `dict`
+        ``train`` and ``test``, each a dict of ``y``, ``pred`` and ``resid`` [µm of equivalent
+        hexapod dz] plus ``nmad``, ``r2``, ``r2_robust``, ``n_visits`` and ``n_nights``; and
+        ``optimism`` (dimensionless, test nMAD over train nMAD).
+
+    Notes
+    -----
+    The 5-fold `sklearn.model_selection.GroupKFold` used everywhere else predicts every visit
+    exactly once with its own night held out, so there is no single train set and no single test
+    set to plot. This section makes one explicit split instead, purely so the training page can
+    show the fit on the nights it saw beside the same fit on nights it never saw. The nights are
+    split by a hash of ``day_obs`` rather than by date, so the test nights are spread across the
+    season instead of being the last few weeks — a date split would confound held-out with late.
+
+    The headline score in this document remains the night-grouped cross-validated one, which uses
+    every night: this split is a demonstration, and its test score is noisier because it rests on
+    a fifth of the nights.
+
+    Both R² values are formed against the **whole sample's** response variance rather than each
+    subset's own, so that they are comparable. Scoring each subset against its own variance makes
+    the test R² look better than the train R² whenever the held-out nights happen to span a wider
+    range of response — a property of which nights were drawn, not of the fit. The nMAD values,
+    being absolute, need no such care and are the ones to compare.
+
+    Even shared-denominator R² is misleading here, and by a large factor. The train residual has
+    nMAD 57.6 µm but standard deviation 317.6 µm of equivalent hexapod dz: a handful of visits
+    with enormous focus errors, which the Huber loss correctly refuses to chase, dominate the
+    variance. Those visits happen to fall on nights that landed in the train set, so the
+    variance-based R² is far worse on train than on test for a reason that has nothing to do with
+    generalisation. ``r2_robust`` therefore replaces both variances with squared nMAD, which is
+    the quantity the robust fit actually minimises the scale of, and it is what the training page
+    shows. ``r2`` is retained only so the discrepancy between the two is visible.
+    """
+    nights = np.sort(sci['day_obs'].unique())
+    rng = np.random.default_rng(0)
+    test_nights = set(rng.choice(nights, size=max(1, int(round(frac_test * len(nights)))),
+                                 replace=False).tolist())
+    is_test = sci['day_obs'].isin(test_nights).to_numpy()
+
+    X = sci[features].to_numpy(float)
+    y = sci['y'].to_numpy(float)
+    m = F.make_model(model)
+    m.fit(X[~is_test], y[~is_test])
+
+    out = {}
+    var_all = float(np.nanvar(y))
+    nmad_all = float(nmad(y))
+    for name, sel in (('train', ~is_test), ('test', is_test)):
+        p = m.predict(X[sel])
+        r = y[sel] - p
+        out[name] = {'y': y[sel], 'pred': p, 'resid': r, 'nmad': float(nmad(r)),
+                     'r2': float(1.0 - np.nanvar(r) / var_all),
+                     'r2_robust': float(1.0 - (nmad(r) / nmad_all) ** 2),
+                     'n_visits': int(sel.sum()),
+                     'n_nights': int(sci.loc[sel, 'day_obs'].nunique())}
+    out['optimism'] = out['test']['nmad'] / out['train']['nmad']
+    if verbose:
+        for name in ('train', 'test'):
+            d = out[name]
+            print(f'  {name:5s}: {d["n_visits"]:6d} visits over {d["n_nights"]:3d} nights, '
+                  f'residual nMAD {d["nmad"]:.1f} um of equivalent hexapod dz, '
+                  f'robust R2 {d["r2_robust"]:+.3f}, variance R2 {d["r2"]:+.3f} (dimensionless)')
+        print(f'  test over train nMAD {out["optimism"]:.2f}x (dimensionless): the price of '
+              f'predicting a night the fit never saw')
+        print(f'  the two R2 columns disagree because a few extreme-focus visits dominate the '
+              f'variance; the nMAD pair is the comparison to read')
+    return out
+
+
+def section_dof(sci, dof_set='all_50', n_modes=34, verbose=True):
+    """Convert each visit's measured v-mode 1 into the degrees of freedom it is built from.
+
+    Parameters
+    ----------
+    sci : `pandas.DataFrame`
+        Science table, carrying the measured ``v1`` [dimensionless v-mode-1 amplitude] and the
+        identity columns ``day_obs``, ``seq_num`` and ``obs_start_mjd``.
+    dof_set : `str`, optional
+        ts_ofc degree-of-freedom (DOF) set name for the projection.
+    n_modes : `int`, optional
+        Number of v-modes retained.
+    verbose : `bool`, optional
+        Print the per-DOF content and the resulting distributions.
+
+    Returns
+    -------
+    out : `dict`
+        ``unit`` — the DOF vector for v1 = 1.0, one entry per named DOF [µm or arcsec];
+        ``dof`` — a `pandas.DataFrame` of per-visit DOF values with the identity columns;
+        ``start`` — the same restricted to the first visit of each night;
+        ``names`` — the DOF columns carried, in descending order of magnitude.
+
+    Notes
+    -----
+    The back-projection is `lsst.ts.ofc`'s own inverse, ``StateEstimator.get_dofs_from_vmodes``,
+    which is ``normalization_matrix @ (v_modes @ Vh)``. The normalization matrix is **not**
+    optional: projecting with ``Vh[0]`` alone gives a DOF vector whose forward projection is
+    v1 = +0.0141 with another mode at 0.227, rather than the v1 = +1.0000000000 with a largest
+    other mode of 2.6e-16 that the normalized inverse round-trips to.
+
+    Setting every other v-mode to zero is not an approximation to be apologised for. ``Vh`` is
+    orthonormal, so the zero-other-modes vector is the exact minimum-norm DOF vector consistent
+    with the measured v1 — the unique answer with no component in any other mode. What it does
+    **not** claim is that the telescope's other modes were actually zero; it is the defocus part
+    of the state, expressed in DOF.
+
+    Only two DOF carry the defocus: camera hexapod dz and M2 hexapod dz, which move together in
+    a fixed ratio because v-mode 1 is one direction in DOF space. The mirror bending modes M1M3
+    B3 and M2 B5 appear at +0.0094 and +0.0076 µm per unit v1, so at the sample's 99th-percentile
+    v1 they are sub-nanometre and negligible; M2 B4 appears only at +0.0002 µm per unit v1, below
+    even those. They are reported for completeness rather than because an observer would set them.
+    """
+    import aos_state
+    se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
+    v = np.zeros(se.truncate_index)
+    v[0] = 1.0
+    unit_vec = np.asarray(se.get_dofs_from_vmodes(v), float)
+
+    # The four DOF v-mode 1 actually contains, largest first. The hexapod dz pair carries it;
+    # the two bending modes are kept so the document can say how small they are rather than
+    # leaving a reader to wonder whether they were dropped.
+    wanted = ((5, 'cam_hex_dz_um', 'camera hexapod dz', 'um'),
+              (0, 'm2_hex_dz_um', 'M2 hexapod dz', 'um'),
+              (12, 'm1m3_b3_um', 'M1M3 bending mode B3', 'um'),
+              (34, 'm2_b5_um', 'M2 bending mode B5', 'um'))
+
+    v1 = sci['v1'].to_numpy(float)
+    keep = [c for c in ('visit_id', 'day_obs', 'seq_num', 'obs_start_mjd', 'band',
+                        'truss_temp_mean_c') if c in sci.columns]
+    dof = sci[keep].copy()
+    names = []
+    for idx, col, _, _ in wanted:
+        dof[col] = unit_vec[idx] * v1
+        names.append(col)
+
+    order = ['day_obs'] + [c for c in ('seq_num', 'visit_id') if c in dof.columns]
+    start = dof.sort_values(order).groupby('day_obs', as_index=False).first()
+
+    out = {'unit': {col: float(unit_vec[idx]) for idx, col, _, _ in wanted},
+           'labels': {col: label for _, col, label, _ in wanted},
+           'units': {col: u for _, col, _, u in wanted},
+           'dof': dof, 'start': start, 'names': names}
+    if verbose:
+        print(f'  back-projection {dof_set}/{n_modes}, '
+              f'StateEstimator.get_dofs_from_vmodes = normalization_matrix @ (v @ Vh)')
+        print(f'  DOF content of v-mode 1 at v1 = 1.0 (dimensionless):')
+        for _, col, label, u in wanted:
+            print(f'    {label:24s} {out["unit"][col]:+12.4f} {u} per unit v1')
+        p99 = float(np.nanpercentile(np.abs(v1), 99))
+        print(f'  measured |v1| 99th percentile {p99:.5f} (dimensionless), so the two bending '
+              f'modes reach at most {abs(out["unit"]["m1m3_b3_um"]) * p99 * 1e3:.4f} and '
+              f'{abs(out["unit"]["m2_b5_um"]) * p99 * 1e3:.4f} nm -- negligible')
+        print(f'  per-visit DOF over {len(dof)} visits [um]')
+        for col in names:
+            a = dof[col].to_numpy(float)
+            print(f'    {out["labels"][col]:24s} median {np.nanmedian(a):+10.4f}  '
+                  f'nMAD {nmad(a):9.4f}  p1 {np.nanpercentile(a, 1):+10.4f}  '
+                  f'p99 {np.nanpercentile(a, 99):+10.4f}')
+        print(f'  start-of-night visits: {len(start)} nights, MJD '
+              f'{start["obs_start_mjd"].min():.3f} to {start["obs_start_mjd"].max():.3f}'
+              if 'obs_start_mjd' in start.columns else
+              f'  start-of-night visits: {len(start)} nights')
+        for col in names[:2]:
+            a = start[col].to_numpy(float)
+            print(f'    start of night, {out["labels"][col]:22s} median '
+                  f'{np.nanmedian(a):+10.4f}  nMAD {nmad(a):9.4f} um')
+    return out
+
+
 # ------------------------------------------------------------------------------------ figures
 
 def _text_page(pdf, title, lines):
@@ -575,47 +822,156 @@ def _text_page(pdf, title, lines):
 
 
 def figure_sample(pdf, sci, samp):
-    """Sample coverage: the response per band and the per-night medians against night."""
+    """Sample coverage: where the focus error sits night by night, and where the signal lives.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    sci : `pandas.DataFrame`
+        Science table, as loaded.
+    samp : `dict`
+        Result of `section_sample`, whose ``per_night`` frame holds the per-night medians.
+
+    Notes
+    -----
+    The right-hand panel is the whole case for night-grouped scoring in one plot: collapsing each
+    night to its median leaves a clean temperature relation, which is to say the signal is a
+    between-night one. The per-visit scatter around it is what the four gradients then address.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4))
+    pn = samp['per_night']
+    ax = axes[0]
+    ax.plot(np.arange(len(pn)), pn['median'], '.', ms=5, color='#1f77b4')
+    ax.set_xlabel('night index, in day_obs order')
+    ax.set_ylabel('night median focus error\n[um of equivalent hexapod dz]')
+    ax.set_title(f'Per-night median over {len(pn)} nights')
+    ax.axhline(0, color='0.6', lw=0.8)
+
+    ax = axes[1]
+    ax.plot(pn['truss'], pn['median'], 'o', ms=4, color='#2ca02c')
+    ax.set_xlabel('night median TMA truss temperature [deg C]')
+    ax.set_ylabel('night median focus error\n[um of equivalent hexapod dz]')
+    ax.set_title('Between nights, where the signal lives')
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_before(pdf, sci, trussonly):
+    """Before any correction: what the truss temperature alone can and cannot do.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    sci : `pandas.DataFrame`
+        Science table, as loaded.
+    trussonly : `dict`
+        Result of `section_trussonly`.
+
+    Notes
+    -----
+    Pairs the truss scatter with the residual the truss-only correction leaves, so the reader sees
+    the one-thermometer correction as a distribution rather than as one nMAD in a table. That
+    residual, not the uncorrected response, is what the four M1M3 gradients have to improve on.
+    """
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
     ax = axes[0, 0]
+    ax.plot(sci['truss_temp_mean_c'], sci['y'], ',', color='0.5', alpha=0.5)
+    xx = np.linspace(sci['truss_temp_mean_c'].min(), sci['truss_temp_mean_c'].max(), 10)
+    line = F.huber_line(sci['truss_temp_mean_c'], sci['y'])
+    ax.plot(xx, line['intercept'] + line['slope'] * xx, '-', color='#d62728', lw=1.8,
+            label=f'Huber {line["slope"]:+.1f} um per deg C')
+    ax.set_xlabel('TMA truss temperature [deg C]')
+    ax.set_ylabel('uncorrected response\n[um of equivalent hexapod dz]')
+    ax.set_ylim(-800, 1200)
+    ax.set_title(f'Truss temperature alone: Pearson r {line["pearson_r"]:+.3f}, '
+                 f'Spearman rho {line["spearman_rho"]:+.3f}')
+    ax.legend(fontsize=8)
+
+    ax = axes[0, 1]
+    bins = np.linspace(-800, 1200, 120)
+    ax.hist(sci['y'], bins=bins, histtype='step', color='0.4',
+            label=f'uncorrected, nMAD {trussonly["uncorrected_nmad"]:.1f} um')
+    ax.hist(trussonly['resid'], bins=bins, histtype='step', color='#1f77b4',
+            label=f'truss only, nMAD {trussonly["nmad"]:.1f} um')
+    ax.set_xlabel('[um of equivalent hexapod dz]')
+    ax.set_ylabel('visits')
+    ax.set_title('What a truss-only correction leaves')
+    ax.legend(fontsize=7.5)
+
+    ax = axes[1, 0]
     for b, c in BAND_COLOUR.items():
         v = sci.loc[sci.band == b, 'y'].to_numpy(float)
         if len(v) > 50:
             ax.hist(v, bins=np.linspace(-800, 1200, 80), histtype='step', color=c,
                     label=f'{b} (n {len(v)})')
-    ax.set_xlabel('response [um of equivalent hexapod dz]')
+    ax.set_xlabel('uncorrected response [um of equivalent hexapod dz]')
     ax.set_ylabel('visits')
     ax.set_title('Uncorrected response per band')
     ax.legend(fontsize=7)
 
-    ax = axes[0, 1]
-    pn = samp['per_night']
-    ax.plot(np.arange(len(pn)), pn['median'], '.', ms=4, color='#1f77b4')
-    ax.set_xlabel('night index, in day_obs order')
-    ax.set_ylabel('night median response\n[um of equivalent hexapod dz]')
-    ax.set_title(f'Per-night median, {len(pn)} nights')
-    ax.axhline(0, color='0.6', lw=0.8)
-
-    ax = axes[1, 0]
-    ax.plot(sci['truss_temp_mean_c'], sci['y'], ',', color='0.5', alpha=0.5)
-    r = F.huber_line(sci['truss_temp_mean_c'], sci['y'])
-    xx = np.linspace(sci['truss_temp_mean_c'].min(), sci['truss_temp_mean_c'].max(), 10)
-    ax.plot(xx, r['intercept'] + r['slope'] * xx, '-', color='#d62728', lw=1.6,
-            label=f'Huber {r["slope"]:+.1f} um per deg C')
-    ax.set_xlabel('TMA truss temperature [deg C]')
-    ax.set_ylabel('response [um of equivalent hexapod dz]')
-    ax.set_title(f'Truss temperature, Pearson r {r["pearson_r"]:+.3f}, '
-                 f'Spearman rho {r["spearman_rho"]:+.3f}')
-    ax.set_ylim(-800, 1200)
-    ax.legend(fontsize=8)
-
     ax = axes[1, 1]
-    pn = samp['per_night']
-    ax.plot(pn['truss'], pn['median'], 'o', ms=3.5, color='#2ca02c')
-    ax.set_xlabel('night median TMA truss temperature [deg C]')
-    ax.set_ylabel('night median response\n[um of equivalent hexapod dz]')
-    ax.set_title('Between-night, where the signal lives')
-    fig.tight_layout()
+    ax.plot(sci['truss_temp_mean_c'], trussonly['resid'], ',', color='#1f77b4', alpha=0.5)
+    ax.axhline(0, color='#d62728', lw=1.2)
+    ax.set_xlabel('TMA truss temperature [deg C]')
+    ax.set_ylabel('truss-only residual\n[um of equivalent hexapod dz]')
+    ax.set_ylim(-800, 1200)
+    ax.set_title('The truss relation is removed; the scatter is not')
+    fig.suptitle('Before the correction: the truss temperature carries most of the focus error',
+                 fontsize=11, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.965))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_training(pdf, hold):
+    """The training itself: the same fit on nights it saw and on nights it never saw.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    hold : `dict`
+        Result of `section_holdout`.
+
+    Notes
+    -----
+    Two scatter plots and two residual histograms, train above test, on the axes the training is
+    judged on: predicted focus error against measured focus error. The point of the page is that
+    the two look the same — the fit does not degrade on nights it never saw, which is what makes
+    the correction usable tonight on a night that is not in the fit.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
+    lo, hi = -800, 1200
+    bins = np.linspace(-500, 500, 100)
+    for row, name, col in ((0, 'train', '#1f77b4'), (1, 'test', '#d62728')):
+        d = hold[name]
+        lab = ('nights used to fit the model' if name == 'train'
+               else 'nights held out, never seen by the fit')
+        ax = axes[row, 0]
+        ax.plot(d['pred'], d['y'], ',', color=col, alpha=0.5)
+        ax.plot([lo, hi], [lo, hi], '-', color='0.3', lw=1.2, label='perfect prediction')
+        ax.set_xlim(lo, hi)
+        ax.set_ylim(lo, hi)
+        ax.set_xlabel('predicted focus error [um of equivalent hexapod dz]')
+        ax.set_ylabel('measured focus error\n[um of equivalent hexapod dz]')
+        ax.set_title(f'{name.upper()}: {lab}\n{d["n_visits"]} visits over {d["n_nights"]} '
+                     f'nights, robust R2 {d["r2_robust"]:+.3f} (dimensionless)', fontsize=9)
+        ax.legend(fontsize=7.5, loc='upper left')
+
+        ax = axes[row, 1]
+        ax.hist(d['resid'], bins=bins, histtype='step', color=col,
+                label=f'measured minus predicted\nnMAD {d["nmad"]:.1f} um')
+        ax.axvline(0, color='0.5', lw=0.8)
+        ax.set_xlabel('measured minus predicted [um of equivalent hexapod dz]')
+        ax.set_ylabel('visits')
+        ax.set_title(f'{name.upper()} residual', fontsize=9)
+        ax.legend(fontsize=7.5)
+    fig.suptitle(f'Training: one split of whole nights, test over train nMAD '
+                 f'{hold["optimism"]:.2f}x (dimensionless)', fontsize=11, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.955))
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -626,35 +982,53 @@ def figure_model(pdf, sci, cv, full):
     ax = axes[0, 0]
     ax.plot(cv['pred'], sci['y'], ',', color='0.5', alpha=0.5)
     lo, hi = -800, 1200
-    ax.plot([lo, hi], [lo, hi], '-', color='#d62728', lw=1.2)
+    ax.plot([lo, hi], [lo, hi], '-', color='#d62728', lw=1.2, label='perfect prediction')
     ax.set_xlim(lo, hi)
     ax.set_ylim(lo, hi)
-    ax.set_xlabel('out-of-fold prediction [um of equivalent hexapod dz]')
-    ax.set_ylabel('response [um of equivalent hexapod dz]')
-    ax.set_title(f'Night-grouped, R2 {cv["r2"]:+.3f} (dimensionless)')
+    ax.set_xlabel('predicted focus error [um of equivalent hexapod dz]\n'
+                  '(each visit predicted with its own night held out)')
+    ax.set_ylabel('measured focus error\n[um of equivalent hexapod dz]')
+    ax.set_title(f'Final prediction against measurement, all {len(sci)} visits\n'
+                 f'R2 {cv["r2"]:+.3f} (dimensionless), residual nMAD {cv["nmad"]:.1f} um',
+                 fontsize=9.5)
+    ax.legend(fontsize=7.5, loc='upper left')
 
     ax = axes[0, 1]
     ax.hist(sci['y'], bins=np.linspace(-800, 1200, 120), histtype='step', color='0.4',
             label=f'uncorrected, nMAD {nmad(sci["y"].to_numpy()):.1f} um')
     ax.hist(cv['resid'], bins=np.linspace(-800, 1200, 120), histtype='step', color='#d62728',
-            label=f'residual, nMAD {cv["nmad"]:.1f} um')
-    ax.set_xlabel('[um of equivalent hexapod dz]')
+            label=f'corrected, nMAD {cv["nmad"]:.1f} um')
+    ax.axvline(0, color='0.5', lw=0.8)
+    ax.set_xlabel('focus error [um of equivalent hexapod dz]')
     ax.set_ylabel('visits')
-    ax.set_title('Before and after the thermal correction')
+    ax.set_title('Focus error before and after the correction')
     ax.legend(fontsize=7.5)
 
     ax = axes[1, 0]
     if cv['coefs'] is not None:
+        # Each fold's coefficient as a fraction of the five-fold mean, so all five features share
+        # one axis. Plotting the raw values instead needs a symlog axis spanning four decades, on
+        # which the fold-to-fold spread -- the whole point of the panel -- is narrower than the
+        # marker and the reader sees five bare dots.
         c = cv['coefs']
+        mean = c.mean(axis=0)
         pos = np.arange(c.shape[1])
-        ax.errorbar(c.mean(axis=0), pos, xerr=c.std(axis=0), fmt='o', ms=4, color='#1f77b4')
+        for k in range(c.shape[0]):
+            ax.plot(c[k] / mean, pos, 'o', ms=4, mfc='none', color='#1f77b4',
+                    label='one fold' if k == 0 else None)
+        ax.errorbar(np.ones_like(mean), pos, xerr=c.std(axis=0) / np.abs(mean),
+                    fmt='|', ms=10, lw=1.4, color='#d62728',
+                    label='mean +/- spread over folds')
         ax.set_yticks(pos)
-        ax.set_yticklabels([f.replace('_c_per_m', '').replace('_', ' ')
-                            for f in full['features']], fontsize=7.5)
-        ax.axvline(0, color='0.6', lw=0.8)
-        ax.set_xscale('symlog', linthresh=100)
-        ax.set_xlabel('coefficient [um of equivalent hexapod dz per feature unit]')
-        ax.set_title(f'Per-fold coefficients, {c.shape[0]} folds')
+        ax.set_yticklabels([f'{f.replace("_c_per_m", "").replace("_", " ")}\n{m:+.1f}'
+                            for f, m in zip(full['features'], mean)], fontsize=7)
+        ax.axvline(1.0, color='0.6', lw=0.8)
+        ax.set_xlabel('fold coefficient / five-fold mean coefficient [dimensionless]\n'
+                      '(the mean itself, in um of equivalent hexapod dz per feature unit, '
+                      'is under each label)')
+        ax.set_title(f'Coefficient stability: each of the {c.shape[0]} fits leaves out a\n'
+                     f'different fifth of the nights and is refitted on the rest', fontsize=9.5)
+        ax.legend(fontsize=7)
 
     ax = axes[1, 1]
     r = np.asarray(cv['resid'], float)
@@ -752,6 +1126,107 @@ def figure_fam(pdf, famres):
     ax.set_title('The prediction swings more than the drift')
     ax.legend(fontsize=7)
     fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_dof(pdf, dofres):
+    """The measured focus error expressed as degrees of freedom, over all visits.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    dofres : `dict`
+        Result of `section_dof`.
+
+    Notes
+    -----
+    The top row is the two hexapod dz values, which carry the whole defocus. The bottom row shows
+    the two bending modes on their own axis in nm, because at 0.0094 and 0.0076 µm per unit v-mode
+    1 they never leave the sub-nanometre range and would be invisible on a µm axis — the point of
+    plotting them is to show that they are negligible, not to read a value off them.
+
+    All four axes are binned over the 1st to 99th percentile rather than the full range, with
+    everything beyond piled into the end bins, so no visit is dropped from the count. On the full
+    range the distribution is a single spike: the extreme tail runs several times further out than
+    the body, which is the same handful of very large focus errors that forces the robust fits
+    used throughout. The annotated median and nMAD are computed on every finite value, not on the
+    clipped range.
+    """
+    d = dofres['dof']
+    names = dofres['names']
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
+    for ax, col, scale, unit in ((axes[0, 0], names[0], 1.0, 'um'),
+                                 (axes[0, 1], names[1], 1.0, 'um'),
+                                 (axes[1, 0], names[2], 1e3, 'nm'),
+                                 (axes[1, 1], names[3], 1e3, 'nm')):
+        a = d[col].to_numpy(float) * scale
+        a = a[np.isfinite(a)]
+        lo, hi = np.percentile(a, [1.0, 99.0])
+        bins = np.linspace(lo, hi, 100)
+        ax.hist(np.clip(a, lo, hi), bins=bins, histtype='step', color='#1f77b4')
+        ax.axvline(float(np.median(a)), color='#d62728', lw=1.2,
+                   label=f'median {np.median(a):+.4g} {unit}\nnMAD {nmad(a):.4g} {unit}\n'
+                         f'axis clipped to 1st-99th percentile')
+        ax.set_xlabel(f'{dofres["labels"][col]} [{unit}]')
+        ax.set_ylabel('visits')
+        ax.set_title(f'{dofres["labels"][col]}: '
+                     f'{dofres["unit"][col]:+.4g} um per unit v-mode 1', fontsize=9.5)
+        ax.legend(fontsize=7.5)
+    fig.suptitle(f'The measured focus error as degrees of freedom, {len(d)} visits '
+                 f'(all other v-modes set to zero)', fontsize=11, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.955))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_dof_start(pdf, dofres):
+    """Start-of-night degrees of freedom against Modified Julian Date, and their distributions.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    dofres : `dict`
+        Result of `section_dof`, whose ``start`` frame holds the first visit of each night.
+
+    Notes
+    -----
+    The first visit of a night is the one the open-loop correction would have to set focus for,
+    before any wavefront measurement has been folded in, so its distribution is the one that
+    bounds how wrong an uncorrected start of night can be. Only the two hexapod dz values are
+    shown: the bending modes are sub-nanometre and carry no information at this scale.
+    """
+    s = dofres['start']
+    if 'obs_start_mjd' not in s.columns or not len(s):
+        return
+    names = dofres['names'][:2]
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
+    for row, col in enumerate(names):
+        a = s[col].to_numpy(float)
+        ax = axes[row, 0]
+        ax.plot(s['obs_start_mjd'], a, 'o', ms=4, color='#1f77b4')
+        ax.axhline(0, color='0.6', lw=0.8)
+        ax.axhline(float(np.nanmedian(a)), color='#d62728', lw=1.2,
+                   label=f'median {np.nanmedian(a):+.2f} um')
+        ax.set_xlabel('start-of-night Modified Julian Date [d]')
+        ax.set_ylabel(f'{dofres["labels"][col]} [um]')
+        ax.set_title(f'{dofres["labels"][col]} at the start of each night, '
+                     f'{len(s)} nights', fontsize=9.5)
+        ax.legend(fontsize=7.5)
+
+        ax = axes[row, 1]
+        ax.hist(a[np.isfinite(a)], bins=40, histtype='step', color='#1f77b4')
+        ax.axvline(float(np.nanmedian(a)), color='#d62728', lw=1.2,
+                   label=f'median {np.nanmedian(a):+.2f} um\nnMAD {nmad(a):.2f} um')
+        ax.set_xlabel(f'{dofres["labels"][col]} [um]')
+        ax.set_ylabel('nights')
+        ax.set_title(f'{dofres["labels"][col]}, start of night', fontsize=9.5)
+        ax.legend(fontsize=7.5)
+    fig.suptitle('Start of night: the focus error open-loop focus setting would have to remove',
+                 fontsize=11, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.955))
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -856,22 +1331,141 @@ def main():
     print('\n=== 11. the standalone calculator against this fit ===')
     calc = section_calculator(sci, features, full)
 
+    print('\n=== 12. the truss temperature alone, as the correction to beat ===')
+    trussonly = section_trussonly(sci, model=args.model)
+
+    print('\n=== 13. one night-level train/test split, for the training page ===')
+    hold = section_holdout(sci, features, model=args.model)
+
+    print('\n=== 14. the focus error as degrees of freedom ===')
+    dofres = section_dof(sci)
+
     if args.no_pdf:
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = out_dir / args.pdf_name
     with PdfPages(pdf_path) as pdf:
-        _text_page(pdf, 'Thermal focus: the fitted model', [
+        # ---------------------------------------------------------- group 1: before correction
+        _text_page(pdf, 'Part 1 of 3 - Before the correction: what is being predicted', [
             f'Sample      {len(sci)} science visits over {sci["day_obs"].nunique()} nights, '
             f'day_obs {int(sci.day_obs.min())} to {int(sci.day_obs.max())}',
-            f'Response    (v1_trim + {L.MEASURED_SIGN:+.1f} * v1) / '
-            f'{L.v1_per_um_dz_value(verbose=False):.5e}',
-            '            [um of equivalent hexapod dz, 0.5 um on each hexapod]',
-            f'Uncorrected median {sci["y"].median():+.1f}, '
-            f'nMAD {nmad(sci["y"].to_numpy()):.1f} um of equivalent hexapod dz',
             '',
-            'The fitted equation, response in um of equivalent hexapod dz:',
+            'THE QUANTITY BEING PREDICTED, called the focus error throughout:',
+            '',
+            f'  focus error = (v1_trim + {L.MEASURED_SIGN:+.1f} * v1) / '
+            f'{L.v1_per_um_dz_value(verbose=False):.5e}',
+            '              [um of equivalent hexapod dz, 0.5 um on each hexapod]',
+            '',
+            '  v1       v-mode 1 of the state the corner wavefront sensors MEASURED',
+            '  v1_trim  v-mode 1 of the correction the Active Optics System had COMMANDED',
+            '',
+            '  v-mode 1 is the first singular vector of the AOS sensitivity matrix, which is',
+            '  essentially uniform defocus. The difference between commanded and measured is',
+            '  the focus error the closed loop had accumulated but not yet removed, and it is',
+            '  what an open-loop correction from a temperature table would have to supply.',
+            '',
+            f'  Uncorrected: median {sci["y"].median():+.1f}, '
+            f'nMAD {nmad(sci["y"].to_numpy()):.1f} um of equivalent hexapod dz.',
+            '',
+            'THE ONE-THERMOMETER CORRECTION, which everything later has to beat:',
+            '',
+            f'  Fitting the TMA truss temperature alone leaves a residual nMAD of '
+            f'{trussonly["nmad"]:.1f} um',
+            f'  of equivalent hexapod dz, against the uncorrected '
+            f'{trussonly["uncorrected_nmad"]:.1f} um -- an improvement of',
+            f'  {trussonly["uncorrected_nmad"] / trussonly["nmad"]:.2f}x (dimensionless, '
+            f'uncorrected nMAD over residual nMAD).',
+            f'  The fitted line is {trussonly["slope"]:+.2f} um of equivalent hexapod dz per '
+            f'deg C,',
+            f'  Pearson r {trussonly["pearson_r"]:+.4f}, Spearman rho '
+            f'{trussonly["spearman_rho"]:+.4f}, n {len(sci)}.',
+            '',
+            '  The four M1M3 bulk thermal gradients are added because that residual is still',
+            f'  large. With all five channels it falls to {cv["nmad"]:.1f} um; the next part '
+            f'shows how.',
+            '',
+            'Feature means over the sample:',
+            *[f'  {c:32s} {sci[c].mean():+12.5f} [{F.FEATURE_UNITS.get(c, "?")}]'
+              for c in features],
+        ])
+        figure_before(pdf, sci, trussonly)
+        figure_sample(pdf, sci, samp)
+
+        # ------------------------------------------------- group 2: process and results of training
+        _text_page(pdf, 'Part 2 of 3 - Training: the words used, and what they mean', [
+            'Three terms appear on every plot in this part. Each names one precaution against',
+            'the same trap: a model that recalls which night a visit came from instead of',
+            'predicting focus from temperature.',
+            '',
+            'WHY THE TRAP EXISTS',
+            '',
+            '  Within one night the thermal telemetry barely moves: only 2.7% of the truss',
+            '  temperature variance is within-night (dimensionless, within-night over total),',
+            '  while 90.7% of the focus-error variance is between nights. Consecutive visits',
+            '  are therefore near-duplicates in temperature but carry that night\'s own focus',
+            '  offset. A model given some visits from a night and asked about others from the',
+            '  same night can look up the offset rather than derive it, and would then fail on',
+            '  a new night -- which is the only case that matters in operation.',
+            '',
+            'NIGHT-GROUPED',
+            '',
+            '  Whole nights are kept together. Every visit from one night is either all in the',
+            '  training set or all in the test set, never split between them. The grouping is',
+            '  on day_obs, through sklearn GroupKFold. This is not one variant among several:',
+            '  it is the only scoring in this document that means anything.',
+            '',
+            'OUT-OF-FOLD PREDICTION',
+            '',
+            '  The nights are divided into 5 folds. The model is fitted 5 times, each time on',
+            '  4 folds and used to predict the 5th. Every visit therefore ends up with exactly',
+            '  one prediction, made by a fit that never saw that visit\'s night. Stacking those',
+            '  5 sets of predictions gives one prediction per visit over the whole sample --',
+            '  that stack is what "out-of-fold prediction" means, and it is what the summary',
+            '  plots in Part 3 show. It is an honest prediction for all 68,000 visits at once,',
+            '  which no single train/test split can give.',
+            '',
+            'PER-FOLD COEFFICIENTS',
+            '',
+            '  Those 5 fits each produce their own 5 coefficients. Comparing them says whether',
+            '  the relation is a property of the telescope or of a particular set of nights:',
+            '  a coefficient that keeps its sign and magnitude across all 5 fits is real, and',
+            '  one that swings or changes sign is fitting whichever nights it was given.',
+            '',
+            'THE TRAIN/TEST PAGE THAT FOLLOWS',
+            '',
+            f'  The next page does something simpler, to show the mechanism directly: one',
+            f'  single split, {hold["train"]["n_nights"]} nights to fit on and '
+            f'{hold["test"]["n_nights"]} nights held out entirely. The nights are drawn at',
+            '  random rather than by date, so the held-out nights are spread across the season',
+            '  instead of being the last few weeks -- a date split would confound "held out"',
+            '  with "late in the season".',
+            '',
+            f'  Fitted on the {hold["train"]["n_nights"]} training nights: residual nMAD '
+            f'{hold["train"]["nmad"]:.1f} um of equivalent hexapod dz',
+            f'  On the {hold["test"]["n_nights"]} held-out nights:        residual nMAD '
+            f'{hold["test"]["nmad"]:.1f} um of equivalent hexapod dz',
+            f'  Test over train {hold["optimism"]:.2f}x (dimensionless) -- the price of a night '
+            f'the fit never saw.',
+            '',
+            '  The nMAD pair above is the comparison to read. The page quotes a ROBUST R2, formed',
+            '  from squared nMAD rather than variance, because a few visits with very large focus',
+            f'  errors dominate the variance: the training residual has nMAD '
+            f'{hold["train"]["nmad"]:.1f} um but standard',
+            f'  deviation {float(np.nanstd(hold["train"]["resid"])):.1f} um of equivalent hexapod '
+            f'dz. Those visits fall on training nights, so an',
+            f'  ordinary variance R2 reads {hold["train"]["r2"]:+.3f} on train against '
+            f'{hold["test"]["r2"]:+.3f} on test -- worse on the nights',
+            '  the model was fitted to, for a reason that is about which nights hold the outliers',
+            f'  and not about the fit. The robust values are {hold["train"]["r2_robust"]:+.3f} '
+            f'train and {hold["test"]["r2_robust"]:+.3f} test, which agree with',
+            '  the nMAD ratio. Both are computed against the whole sample, not each subset\'s own',
+            '  spread, so that train and test are on one scale.',
+        ])
+        figure_training(pdf, hold)
+
+        _text_page(pdf, 'Part 2 of 3 - Training: the fitted model', [
+            'The fitted equation, focus error in um of equivalent hexapod dz:',
             '',
             f'  = {full["intercept"]:+.2f}',
             *[f'    {c:+10.2f} * {f:32s} [per {F.FEATURE_UNITS.get(f, "?")}]'
@@ -905,10 +1499,9 @@ def main():
             '  value is a slope of the COMMANDED Trim, while the response is Trim minus the',
             '  measured state and so a different quantity.',
         ])
-        figure_sample(pdf, sci, samp)
         figure_model(pdf, sci, cv, full)
 
-        _text_page(pdf, 'Thermal focus: what the model does and does not buy', [
+        _text_page(pdf, 'Part 2 of 3 - Training: what the model does and does not buy', [
             'Feature ablation, night-grouped [residual nMAD in um of equivalent hexapod dz]:',
             *[f'  {r.groups:44s} {int(r.n_features):2d} feat  nMAD {r.resid_nmad:6.1f}  '
               f'R2 {r.r2:+.3f}' + (f'  gain {r.gain:.3f}x' if 'gain' in ablation.columns else '')
@@ -1009,7 +1602,8 @@ def main():
                 'scatter, to 32.7 um from 34.9 um, but that fits the measured term with a model',
                 'of the commanded term and would not survive a block in which Trim moved.',
             ]
-        _text_page(pdf, 'Thermal focus: elevation, FAM blocks and the conversion', [
+        # -------------------------------------------- group 3: summary over all the data
+        _text_page(pdf, 'Part 3 of 3 - All the data: elevation, FAM blocks and the conversion', [
             *elev_lines, '', *fam_lines, '',
             'v-mode-1 to hexapod dz conversion, per projection scheme',
             '[dimensionless v-mode-1 amplitude per um; um of hexapod dz per unit v1]',
@@ -1034,6 +1628,62 @@ def main():
         ])
         figure_elevation(pdf, nights)
         figure_fam(pdf, famres)
+
+        _text_page(pdf, 'Part 3 of 3 - All the data: the focus error as degrees of freedom', [
+            'The focus error above is one number per visit, a v-mode-1 amplitude. An observer',
+            'acts on degrees of freedom (DOF), so this part converts each visit\'s MEASURED',
+            'v-mode 1 back into the DOF it is built from.',
+            '',
+            'HOW THE CONVERSION IS DONE',
+            '',
+            '  dof = normalization_matrix @ (v_modes @ Vh), which is ts_ofc\'s own inverse,',
+            '  StateEstimator.get_dofs_from_vmodes, at dof_set all_50 with 34 modes retained.',
+            '  The normalization matrix is not optional: using Vh[0] alone gives a DOF vector',
+            '  whose forward projection is v1 = +0.0141 with another mode at 0.227, instead of',
+            '  the v1 = +1.0000000000 with a largest other mode of 2.6e-16 that the normalized',
+            '  inverse round-trips to.',
+            '',
+            '  All other v-modes are set to zero. Vh is orthonormal, so that is not an',
+            '  approximation but the exact minimum-norm DOF vector consistent with the measured',
+            '  v1 -- the unique answer with no component in any other mode. It does not claim',
+            '  the telescope\'s other modes were zero; it is the defocus part of the state,',
+            '  expressed in DOF.',
+            '',
+            'WHAT v-MODE 1 CONTAINS, at v1 = 1.0 (dimensionless)',
+            '',
+            *[f'  {dofres["labels"][c]:24s} {dofres["unit"][c]:+14.4f} um per unit v1'
+              for c in dofres['names']],
+            '',
+            '  Two DOF carry the defocus, the camera and M2 hexapod dz, and they move together',
+            '  in a fixed ratio because v-mode 1 is one direction in DOF space. The two mirror',
+            '  bending modes are real but tiny: at the sample\'s 99th-percentile |v1| they reach',
+            f'  {abs(dofres["unit"][dofres["names"][2]]) * float(np.nanpercentile(np.abs(sci["v1"]), 99)) * 1e3:.3f} nm and '
+            f'{abs(dofres["unit"][dofres["names"][3]]) * float(np.nanpercentile(np.abs(sci["v1"]), 99)) * 1e3:.3f} nm, '
+            f'so they can be ignored in practice. M2 bending mode B4',
+            '  does not appear at all: it enters at +0.0002 um per unit v1, below even those.',
+            '',
+            'PER-VISIT DISTRIBUTIONS [um]',
+            '',
+            *[f'  {dofres["labels"][c]:24s} median '
+              f'{np.nanmedian(dofres["dof"][c].to_numpy(float)):+10.4f}  nMAD '
+              f'{nmad(dofres["dof"][c].to_numpy(float)):9.4f}  '
+              f'p1 {np.nanpercentile(dofres["dof"][c].to_numpy(float), 1):+10.4f}  '
+              f'p99 {np.nanpercentile(dofres["dof"][c].to_numpy(float), 99):+10.4f}'
+              for c in dofres['names']],
+            '',
+            f'START OF NIGHT, the first visit of each of {len(dofres["start"])} nights [um]',
+            '',
+            *[f'  {dofres["labels"][c]:24s} median '
+              f'{np.nanmedian(dofres["start"][c].to_numpy(float)):+10.4f}  nMAD '
+              f'{nmad(dofres["start"][c].to_numpy(float)):9.4f}'
+              for c in dofres['names'][:2]],
+            '',
+            '  The first visit of a night is the one an open-loop correction would have to set',
+            '  focus for, before any wavefront measurement has been folded in, so this is the',
+            '  distribution that bounds how wrong an uncorrected start of night can be.',
+        ])
+        figure_dof(pdf, dofres)
+        figure_dof_start(pdf, dofres)
     print(f'\nwrote {pdf_path}')
 
 
