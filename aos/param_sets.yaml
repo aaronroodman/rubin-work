@@ -129,3 +129,26 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
 # visits, and the 2026 refitWcs variant finds none for 2025):
 #   refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Danish 1.3 "blitz" unpaired FAM (Josh Meyers).  The blitz pipeline writes one
+# donutBlitzFamResults table per visit holding one row per donut per EXPOSURE, so
+# both sides of focus sit in the same table, distinguished by its visit_id column.
+# code/fam_processing/run_blitz_mktable.py recasts that into the paired Danish 1.2
+# donuts/visits schema — joining the two sides on the Gaia source id and averaging
+# the wavefront — so the existing DZ fit runs on it unchanged.  Short lowercase
+# name per the convention above.  No wfs_collections: the sibling corner product
+# u/jmeyers3/t614_corner_unpaired is a different dataset type (donutBlitzResults)
+# that run_wfs_mktable cannot read yet.
+# ---------------------------------------------------------------------------
+danish_1_3_test:
+  dir_name: danish_1_3_test
+  description: "Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED; default Batoid intrinsics from the dataset type"
+  butler_repo: /repo/main
+  fam_programs: [T614]
+  fam_collections:
+    - u/jmeyers3/t614_fam_unpaired
+  # Collection name has slashes — set an explicit filename-safe phrase
+  collection_phrase: aos_fam_danish_1_3_blitz_unpaired
+  day_obs_min: 20260315
+  day_obs_max: 20260619

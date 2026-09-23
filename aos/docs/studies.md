@@ -17,14 +17,14 @@ shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 Counts are of files and lines in `aos/code/`, including the shared modules that stay
 flat there, and of Snakemake rules driving each study. Of
-the 78 Python files, 18 are referenced by the Snakefile and the rest are standalone. The
+the 90 Python files, 18 are referenced by the Snakefile and the rest are standalone. The
 `science_lut` count is of its two current scripts; the `(+4)` marks four superseded ones still
 present on disk.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
 | [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
-| [`fam_processing`](studies/fam_processing.md) | 5 | 1411 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, and an all-chunks status roll-up |
+| [`fam_processing`](studies/fam_processing.md) | 9 | 3389 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, an all-chunks status roll-up, and the recast of Danish 1.3 unpaired output into the paired Danish 1.2 table schema |
 | [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
 | [`correlations`](studies/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
@@ -81,7 +81,8 @@ Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
 | `notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb` | Danish versus TARTS on one day_obs |
 | `notebooks/processing_compare/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | per-visit telemetry time histories and distributions, one quantity per group |
-| `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | Danish 1.3 blitz unpaired output against Danish 1.2 on one FAM triplet: column census, Noll basis, matched-donut Zernike comparison |
+| `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | Danish 1.3 blitz unpaired output against Danish 1.2 on one FAM triplet: column census, table metadata and Butler input provenance, Noll basis, matched-donut Zernike and blur comparison per side of focus and averaged over the two sides |
+| `notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb` | the same comparison on the corner wavefront sensors, where Danish 1.2 pairs two different stars across the SW0 and SW1 half-sensors and Danish 1.3 fits each side separately: one reference visit in detail, then all 62 visits of the night pooled for the per-Noll Zernike statistics |
 
 `snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
 untracked scratch, gitignored, and belong to no study.
@@ -160,7 +161,16 @@ Carried here so they are visible in one place; detail in each study doc.
 - **`cwfs`** — `run_wfs_refit_ensemble.py` and `run_wfs_fam_refit_compare.py` are
   **parked** pending Danish-1.2 FAM reprocessing.
 - **`cwfs`** — the Z11/Z14 intra- vs extra-focal split is **unexplained** and is not a
-  known instrumental effect.
+  known instrumental effect. It appears in the Danish 1.3 unpaired corner output too: over
+  `day_obs` 20260315 the two half-sensors straddle the Danish 1.2 joint fit on 14 of 21 Noll
+  terms, most strongly on Z11 and Z14. See [`fam_processing`](studies/fam_processing.md).
+- **`fam_processing`** — the Danish 1.3 blitz Double Zernike fits carry a real per-Noll mean
+  offset against Danish 1.2 on the astigmatism and coma terms, largest on Z7 Coma_y and Z6
+  Astig0. Whether that is a Danish version difference or a convention difference is
+  unresolved.
+- **`fam_processing`** — on the corner sensors, whether the mean of the two unpaired halves
+  or the extra-focal half alone is the better estimator of the Danish 1.2 joint fit depends
+  on the metric and on Noll order; neither is uniformly better at n = 1215 pairs.
 - **`miw`** — 83 % of MIW **power** sits above the `k<=6` focal orders the build fits,
   which reframes any DZ-subspace analysis.
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
