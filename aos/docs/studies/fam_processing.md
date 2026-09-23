@@ -135,6 +135,7 @@ ConsDB access:
 |---|---|
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | time history and distribution of one representative quantity per telemetry group in the combined `visits.parquet`: M1M3 gradients, air and structure temperatures, camera body, wind and airflow, Trim and Tweak, mirror LUT forces, pointing and donut blur |
 | `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | column-by-column review of the Danish 1.3 "blitz" unpaired output (`donutBlitzFamResults`, `donutBlitzResults`) against the Danish 1.2 `aggregateAOSVisitTableRaw` and the processed `donuts.parquet`, on one FAM triplet; donuts matched per CCD on detector pixel position separately for each side of focus, and the deviation and intrinsic Zernikes compared in micrometres of wavefront, both per side of focus and as the mean of the two unpaired sides against the Danish 1.2 joint fit; per-donut blur compared the same two ways; and the blitz table metadata read, cross-checked against what the column contents alone imply, and rolled up to the Butler input provenance |
+| `notebooks/fam_processing/wavefront_outliers.ipynb` | development of a cut removing individual bad donut wavefront fits in FAM science-CCD data. Per Charge-Coupled Device (CCD) per visit, the median and normalized median absolute deviation (nMAD) of the per-donut wavefront deviation, per Noll Zernike; the distribution of that nMAD per term; then two candidate per-donut flags — a robust z-score against the donut's own CCD median, and a fixed absolute wavefront threshold — with the fit diagnostics of the worst outliers tabulated against the donuts that pass |
 | `notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb` | the same comparison for the Corner Wavefront Sensors (CWFS), where the dataset type is `donutBlitzResults` and the pairing differs: Danish 1.2 pairs a star on the extra-focal SW0 half-sensor with a *different* star on the intra-focal SW1 half, while Danish 1.3 fits each side separately. Each Danish 1.2 pair is matched back to its two unpaired results and the deviation and intrinsic Zernikes compared three ways — each half alone and the mean of the two — against the Danish 1.2 joint fit. One in-focus reference visit is carried as a deep dive, then all 62 visits of `day_obs` 20260315 present in both collections are pooled for the per-Noll statistics |
 
 ## Output
@@ -150,6 +151,11 @@ row group per visit), `visits.parquet` (one row per visit, the 19 columns `mktab
 produces before any telemetry is attached), `fits.parquet` (the k=1..3 and k=1..6 DZ fit
 results) and `provenance.yaml` (the collection, dataset type, intrinsic calibration run and
 pipeline versions).
+
+`wavefront_outliers.parquet`, beside those tables, carries one row per flagged donut: its
+`day_obs`, `seq_num` and detector, the two flags, the robust z-score (dimensionless), the
+largest absolute wavefront deviation in micrometres of wavefront and the Noll term
+responsible, plus the per-donut fit diagnostics.
 
 ## Running
 
@@ -275,6 +281,39 @@ has the same restriction.
 - The two CWFS half-sensors see **zero shared stars** — SW0 and SW1 are different CCDs — so
   any gain from averaging the two halves is evidence about the wavefront being common across
   the raft, not noise averaging over repeated measurements of one star.
+- A small number of **individual donut fits are catastrophically wrong**, and they are what
+  produced the isolated dots on the Danish 1.3 focal-plane residual maps. Over all 966 visits
+  of `danish_1_3_test`, 3155734 donut fits, the per-donut wavefront deviation reaches 7704
+  micrometres of wavefront on Z5 Astig45 and 152 donuts exceed 100 micrometres on that term
+  alone. The bulk of the sample is unaffected and in fact tighter than Danish 1.2: the nMAD of
+  the per-donut deviation is smaller on every one of Z4 to Z11, by factors of 0.54 (Z11
+  Spherical) to 0.96 (Z10 Trefoil_x), while the non-robust standard deviation is 1.4 to 8.5
+  times *larger*. The two statistics disagree in direction because unpairing tightened the core
+  and the moderate tail — 536 donuts above 10 micrometres of wavefront on Z5 against Danish
+  1.2's 4944 — at the cost of a few hundred extreme failures.
+- Within one CCD in one visit the donut fits agree closely, which is what makes a cut
+  possible: the median over 169787 (visit, CCD) pairs of the per-CCD nMAD is 0.0198
+  micrometres of wavefront on Z4 Defocus and 0.0556 on Z5 Astig45, 15 to 20 times smaller
+  than the same quantity over the whole focal plane, because the CCD-level median absorbs the
+  field dependence. The per-CCD nMAD **cannot itself find** the outliers — being robust, it
+  barely moves when one of the ~19 fits on a CCD is wrong by thousands of micrometres — so it
+  sets the scale and a per-donut robust z-score against the CCD median does the finding.
+  Flagging a z-score above 20 (dimensionless) selects 1.535e-02 of donuts and catches 96.4 per
+  cent of what an absolute 5 micrometre-of-wavefront threshold selects. Blur and
+  signal-to-noise alone are not sufficient: `blur > 2.0 arcsec` catches only 0.183 of the
+  flagged donuts. `chi2` is NaN on every row of these tables and `lstsq_status` uniformly −1,
+  so neither can contribute to a cut.
+- The focal-plane residual maps in `code/dzfit/run_dz_fit_check.py` now reduce each cell with
+  a **median** rather than the running `ssum / scnt` mean they used through 2026-09-22. The
+  mean let a single catastrophic donut displace its whole cell: over the same binning the
+  cell-to-cell spread falls by factors of 1.0 to 5.8 when the median is used, worst on Z6
+  Astig0 (3.363 to 0.582 micrometres of wavefront) and Z10 Trefoil_x (1.749 to 0.346), with
+  individual cells moving by up to 2.774. The per-visit residual metrics in
+  `dz_fit_check.parquet` are unchanged, since they already used `nmad`. The trio plots in
+  `code/dz_plotting.py` were never affected — they bin with a median — though the `Data σ`
+  values that function prints are a plain `np.nanstd` over the raw per-donut cloud rather than
+  over the binned medians it draws, so those printed numbers are inflated by the same
+  outliers and do not describe the maps above them.
 - The mirror LUT is stored as axial **forces**; converting to bending amplitudes assumes
   the EFD force arrays share the actuator order of the ts_ofc influence matrix, which
   `common/dof_telemetry.py` flags as unverified in `bending_modes_from_forces`.

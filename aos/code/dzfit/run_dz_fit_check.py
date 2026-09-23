@@ -163,9 +163,11 @@ def stream_residual_metrics(donuts_path, coord_sys, iZs, iZidx, coeffs_by_visit,
     print(f'  deviation column: {dev_col if use_dev else f"{zk_col} - {in_col}"}')
 
     edges = np.linspace(-MAP_RADIUS_DEG, MAP_RADIUS_DEG, n_map_bins + 1)
-    maps = {(p, iZ): [np.zeros((n_map_bins, n_map_bins)),
-                      np.zeros((n_map_bins, n_map_bins))]
-            for p in prefixes for iZ in iZs}
+    # Per focal-plane cell the residuals are reduced with a median, which a running sum
+    # cannot produce, so the values themselves are retained: one float32 array of cell
+    # indices and one of residuals per (prefix, pupil Zernike). At ~2.9e6 donuts, 2
+    # prefixes and 21 Zernikes that is about 0.5 GB, inside the rule's mem_mb budget.
+    maps = {(p, iZ): [[], []] for p in prefixes for iZ in iZs}
 
     rows = []
     # A visit's donuts can straddle row groups, so buffer per visit and flush a visit
@@ -213,8 +215,11 @@ def stream_residual_metrics(donuts_path, coord_sys, iZs, iZidx, coeffs_by_visit,
                     dev_nmad_um=nmad(d[np.isfinite(d)]),
                 ))
                 sel = good & inside
-                np.add.at(maps[(prefix, iZ)][0], (ix[sel], iy[sel]), resid[sel])
-                np.add.at(maps[(prefix, iZ)][1], (ix[sel], iy[sel]), 1.0)
+                # Flat cell index keeps one array rather than a pair, and float32
+                # halves the retained residuals at well under their own precision.
+                flat = (ix[sel] * n_map_bins + iy[sel]).astype(np.int32)
+                maps[(prefix, iZ)][0].append(flat)
+                maps[(prefix, iZ)][1].append(resid[sel].astype(np.float32))
         n_visits_done += 1
         if n_visits_done % 200 == 0:
             print(f'    ...{n_visits_done} visits')
@@ -265,6 +270,49 @@ def stream_residual_metrics(donuts_path, coord_sys, iZs, iZidx, coeffs_by_visit,
 def _pupil_label(iZ):
     name = NOLL_NAMES.get(iZ)
     return f'Z{iZ} ({name})' if name else f'Z{iZ}'
+
+
+def map_median(entry, n_map_bins, min_count=5):
+    """Median fit residual per focal-plane cell.
+
+    A median rather than a mean, because a handful of catastrophic per-donut fits —
+    wrong by up to thousands of micrometres of wavefront — otherwise displace the cells
+    they land in and appear as isolated dots on the map.
+
+    Parameters
+    ----------
+    entry : `list` of two `list` of `numpy.ndarray`
+        The retained ``(flat_cell_index, residual)`` chunks for one
+        ``(prefix, pupil Zernike)``, as accumulated in `residual_metrics`. Residuals
+        are in micrometres of wavefront.
+    n_map_bins : `int`
+        Number of bins per focal-plane axis; the map is ``n_map_bins`` square.
+    min_count : `int`, optional
+        Cells with fewer donuts than this are returned as NaN.
+
+    Returns
+    -------
+    med : `numpy.ndarray`, (n_map_bins, n_map_bins)
+        Median residual per cell, in micrometres of wavefront, NaN where
+        under-occupied.
+    """
+    med = np.full((n_map_bins, n_map_bins), np.nan)
+    if not entry[0]:
+        return med
+    flat = np.concatenate(entry[0])
+    val = np.concatenate(entry[1]).astype(float)
+    if flat.size == 0:
+        return med
+    # Sort once by cell, then reduce each contiguous run: far cheaper than masking the
+    # full array per cell, of which there are n_map_bins**2.
+    order = np.argsort(flat, kind='stable')
+    flat, val = flat[order], val[order]
+    bounds = np.flatnonzero(np.diff(flat)) + 1
+    flat_med = med.reshape(-1)
+    for lo, hi in zip(np.r_[0, bounds], np.r_[bounds, flat.size]):
+        if hi - lo >= min_count:
+            flat_med[flat[lo]] = np.median(val[lo:hi])
+    return med
 
 
 def page_summary(pdf, met, iZs, prefixes):
@@ -437,9 +485,12 @@ def page_coeff_hist(pdf, fits_df, names, iZs, prefix, max_k):
         plt.close(fig)
 
 
-def page_residual_maps(pdf, maps, edges, iZs, prefix, min_count=5):
-    """Mean residual over the focal plane, one panel per pupil Zernike."""
+def page_residual_maps(pdf, maps, edges, iZs, prefix, min_count=5, n_map_bins=None):
+    """Median residual over the focal plane, one panel per pupil Zernike."""
     import matplotlib.pyplot as plt
+
+    if n_map_bins is None:
+        n_map_bins = len(edges) - 1
 
     ncol = 4
     n = min(len(iZs), 12)
@@ -454,33 +505,33 @@ def page_residual_maps(pdf, maps, edges, iZs, prefix, min_count=5):
             ax.set_visible(False)
             continue
         iZ = sel[ai]
-        ssum, scnt = maps[(prefix, iZ)]
-        with np.errstate(invalid='ignore', divide='ignore'):
-            mean = np.where(scnt >= min_count, ssum / scnt, np.nan)
-        fin = mean[np.isfinite(mean)]
+        med = map_median(maps[(prefix, iZ)], n_map_bins, min_count=min_count)
+        fin = med[np.isfinite(med)]
         if len(fin) == 0:
             ax.set_visible(False)
             continue
         v = np.percentile(np.abs(fin), 98)
-        im = ax.imshow(mean.T, origin='lower', extent=ext, cmap='RdBu_r',
+        im = ax.imshow(med.T, origin='lower', extent=ext, cmap='RdBu_r',
                        vmin=-v, vmax=v, interpolation='none', aspect='equal')
         plt.colorbar(im, ax=ax, shrink=0.8, label='µm')
         ax.set_title(f'{_pupil_label(iZ)}\nnMAD {nmad(fin):.4f} µm', fontsize=9)
         ax.set_xlabel(f'thx [deg]', fontsize=8)
         ax.set_ylabel(f'thy [deg]', fontsize=8)
         ax.tick_params(labelsize=7)
-    fig.suptitle(f'{prefix} (k<={PREFIX_MAX_K[prefix]}) mean fit residual over the '
-                 f'focal plane, averaged over visits', fontsize=13)
+    fig.suptitle(f'{prefix} (k<={PREFIX_MAX_K[prefix]}) median fit residual over the '
+                 f'focal plane, over all visits', fontsize=13)
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close(fig)
 
 
 def page_residual_map_compare(pdf, maps, edges, iZs, prefixes, min_count=5,
-                              n_show=6):
+                              n_show=6, n_map_bins=None):
     """k<=3 and k<=6 residual maps side by side for the low pupil Zernikes."""
     import matplotlib.pyplot as plt
 
+    if n_map_bins is None:
+        n_map_bins = len(edges) - 1
     sel = iZs[:n_show]
     ncol = len(prefixes) + 1
     fig, axes = plt.subplots(len(sel), ncol, figsize=(4.2 * ncol, 3.6 * len(sel)),
@@ -488,11 +539,9 @@ def page_residual_map_compare(pdf, maps, edges, iZs, prefixes, min_count=5,
     ext = [edges[0], edges[-1], edges[0], edges[-1]]
     order = list(prefixes)
     for ri, iZ in enumerate(sel):
-        means = {}
-        for prefix in order:
-            ssum, scnt = maps[(prefix, iZ)]
-            with np.errstate(invalid='ignore', divide='ignore'):
-                means[prefix] = np.where(scnt >= min_count, ssum / scnt, np.nan)
+        means = {prefix: map_median(maps[(prefix, iZ)], n_map_bins,
+                                    min_count=min_count)
+                 for prefix in order}
         allfin = np.concatenate([m[np.isfinite(m)] for m in means.values()]) \
             if any(np.isfinite(m).any() for m in means.values()) else np.array([])
         if len(allfin) == 0:

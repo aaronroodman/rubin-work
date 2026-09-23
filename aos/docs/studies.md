@@ -83,6 +83,7 @@ Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | per-visit telemetry time histories and distributions, one quantity per group |
 | `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | Danish 1.3 blitz unpaired output against Danish 1.2 on one FAM triplet: column census, table metadata and Butler input provenance, Noll basis, matched-donut Zernike and blur comparison per side of focus and averaged over the two sides |
 | `notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb` | the same comparison on the corner wavefront sensors, where Danish 1.2 pairs two different stars across the SW0 and SW1 half-sensors and Danish 1.3 fits each side separately: one reference visit in detail, then all 62 visits of the night pooled for the per-Noll Zernike statistics |
+| `notebooks/fam_processing/wavefront_outliers.ipynb` | a cut for catastrophically bad individual donut fits: the median and normalized median absolute deviation (nMAD) of the per-donut wavefront deviation within each science CCD of each visit, the nMAD distribution per Noll term, and two candidate per-donut flags — a robust z-score against the CCD median, and a fixed threshold in micrometres of wavefront |
 
 `snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
 untracked scratch, gitignored, and belong to no study.
@@ -174,6 +175,13 @@ Carried here so they are visible in one place; detail in each study doc.
   unpaired fit does not. What remains open is only that the blitz collection also changes the
   code version, so these tables cannot separate pairing from version — blitz run in paired
   mode on the same visits would.
+- **`fam_processing`** — the Danish 1.3 blitz tables carry a few hundred catastrophically bad
+  individual donut fits, reaching 7704 µm of wavefront on Z5 Astig45 against a normalized
+  median absolute deviation (nMAD) of 0.32 µm of wavefront. Blitz is **better** than Danish 1.2
+  on every robust per-Noll width and **worse** on every standard deviation, so the difference is
+  entirely in the tail. A robust z-score against the per-CCD median flags 1.535e-02 of donuts on
+  `danish_1_3_test`; which threshold to adopt, and whether the cut belongs in the table build
+  rather than downstream, is open. Neither `blur` nor `chi2` identifies these fits on its own.
 - **`fam_processing`** — comparisons of the unpaired corner estimators against the Danish 1.2
   joint fit measure agreement with a **biased** reference, so they cannot rank the unpaired
   estimators by accuracy. Doing that needs an external reference.
