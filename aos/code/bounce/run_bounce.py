@@ -9,6 +9,15 @@ significance / pass heatmaps; DZ / v-mode / DOF vs ordinal-image pages;
 per-night cross-scatter; and DOF night-vs-night scatter.  All analysis/plot
 logic lives in code/bounce_lib.py (verbatim from the notebook).
 
+The recovered DOF are reported two ways: the default truncated 50-DOF /
+34-v-mode recovery, and Range-Bounded Recovery (RBR), which adds a per-DOF
+penalty that grows steeply as a recovered amplitude approaches the range the
+telescope can physically apply.  The default recovery exceeds that range on
+these bounce legs by up to a factor of 11.27 (dimensionless, recovered
+amplitude over allowed range); RBR bounds it at a small cost in corrected
+FWHM.  The method is derived in the smatrix `regularized_inversion` study and
+imported from there.
+
 Writes, under the directory given by --out-dir (the pipeline passes
 output/bounce/<P>_<M>/) :
     bounce/bounce_summary.pdf             Δ / significance / pass heatmaps + cross-scatter
@@ -16,13 +25,22 @@ output/bounce/<P>_<M>/) :
     bounce/bounce_vmode_vs_ordinal.pdf    v-mode amplitude vs ordinal
     bounce/bounce_dof_vs_ordinal.pdf      physical DOF vs ordinal (+ Trim sum if enabled)
     bounce/bounce_dof_night_scatter.pdf   DOF night-A vs night-B 5-panel scatter
-    bounce/bounce_dof_night_values.pdf    FAM DOF median per night
+    bounce/bounce_dof_night_values.pdf    paired-Δ DOF vs B-set position, default
+                                         recovery with the RBR overlay and the
+                                         allowed-range band
     bounce/bounce_5x5_camera_hexapod.pdf  5/5 Camera-hexapod-only v-mode + DOF plots
                                          (camera_hexapod_only bounces, e.g. rotator)
     bounce/bounce_fwhm_metric.pdf         differential correctable-FWHM bar (before vs
-                                         50/34 [vs 5/5]) per bounce
+                                         50/34 [vs 5/5] [vs RBR]) per bounce
+    bounce/bounce_fwhm_vs_bvalue.pdf      correctable FWHM vs B-set elevation or
+                                         rotator angle — uncorrected, default
+                                         50/34, and RBR — one point per (night, leg)
     bounce_kj_stats.parquet              long-format Δ table (combined + per night)
     bounce_fwhm_metric.parquet           correctable-FWHM metric per bounce comparison
+    bounce_fwhm_vs_bvalue.parquet        the same three FWHM series per (night, leg)
+    bounce_dof_stats.parquet             per-DOF and per-v-mode Δ, with the RBR Δ
+                                         (delta_rbr, delta_rbr_err) and the allowed
+                                         range beside the default recovery's
 
 Knobs (bounce specs, thresholds, n_dof/n_keep, add_dof_trim) come from
 analysis_config.yaml (section ``bounce``).  RSP-only (DOF recovery via
@@ -73,7 +91,74 @@ DEFAULT = dict(
     vmode_ncols=5, vmode_rows_per_page=7, dof_ncols=5, dof_rows_per_page=10,
     add_dof_trim=False, trim_efd_topic='lsst.sal.MTAOS.logevent_degreeOfFreedom',
     trim_consdb_url='http://consdb-pq.consdb:8080/consdb',
-    trim_time_col='mjd', trim_mjd_scale='tai')
+    trim_time_col='mjd', trim_mjd_scale='tai',
+    # Range-Bounded Recovery (RBR): the range-penalized alternative to the
+    # truncated recovery, reported alongside it.  kappa is the ratio
+    # |d_j| / r_j (dimensionless, recovered amplitude over allowed range) at
+    # which the penalty reaches unit weight; power sets how fast it climbs
+    # (penalty ~ ratio ** (2 * power)).  The defaults are the setting the
+    # smatrix `regularized_inversion` study found best or near-best on five of
+    # the six bounce legs.
+    rbr_enable=True, rbr_kappa=4.0, rbr_power=3)
+
+
+# ---- FWHM of the residual actually left by a recovered DOF correction ----
+# `aos_fwhm.residual_dW` returns the *subspace projection* residual, which is
+# independent of the recovered amplitudes and so cannot see a regularizer trade
+# wavefront for amplitude.  Comparing the default recovery against RBR needs the
+# achieved residual dW - S (d / w) instead.  The two agree exactly for the
+# truncated solution, so the achieved-residual default series reproduces
+# `fwhm_after_50_34`.
+def _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw):
+    """Correctable FWHM in arcsec of the residual left by applying DOF `d`.
+
+    Parameters
+    ----------
+    dW : `numpy.ndarray`
+        Measured DZ wavefront, µm of wavefront, on `svd.kj_grid`.
+    d : `numpy.ndarray`
+        Recovered DOF, each in its own unit (µm or arcsec).
+    svd : `OFCSvd`
+        The decomposition supplying the forward operator and the weights.
+    iZs : `list` [`int`]
+        Pupil Noll indices of the DZ grid.
+    grid : `numpy.ndarray`
+        Focal-plane sample positions from `aos_fwhm.fp_grid`.
+    conv : `callable`
+        `lsst.ts.wep.utils.convertZernikesToPsfWidth`.
+    afw : `module`
+        `aos_fwhm`.
+
+    Returns
+    -------
+    fwhm : `float`
+        Median correctable FWHM over the focal plane, arcsec.
+    """
+    ri = bl.rbr_module()
+    return afw.fp_fwhm(svd, iZs, ri.achieved_residual(dW, d, svd), grid, conv)
+
+
+def _ri_invert_truncated(svd, dW):
+    """DOF from the default truncated recovery, in each DOF's own unit."""
+    return bl.rbr_module().invert_truncated(dW, svd)
+
+
+def _rbr_fwhm(dW, svd, ranges, cfg, iZs, grid, conv, afw):
+    """Correctable FWHM in arcsec left after Range-Bounded Recovery.
+
+    Notes
+    -----
+    Returns NaN rather than raising if the RBR solve fails, so one bad leg
+    cannot take down the whole run.
+    """
+    ri = bl.rbr_module()
+    try:
+        d = ri.invert_range_penalty(dW, svd, ranges, kappa=cfg['rbr_kappa'],
+                                    power=cfg['rbr_power'])
+    except Exception as e:
+        print(f'        (RBR FWHM failed [{type(e).__name__}: {e}])')
+        return float('nan')
+    return _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw)
 
 
 def main():
@@ -98,11 +183,29 @@ def main():
                          'CCD-count cut; blur cut kept). fits.parquet now holds all '
                          'visits, so the cut is applied here. Default: None -> use '
                          'the precomputed visit_quality_pass (nd>=170).')
+    ap.add_argument('--rbr-kappa', type=float, default=None,
+                    help='Range-Bounded Recovery: ratio |d_j|/r_j '
+                         '(dimensionless, recovered amplitude over allowed '
+                         'range) at which the penalty reaches unit weight. '
+                         'Default from config (4.0).')
+    ap.add_argument('--rbr-power', type=int, default=None,
+                    help='Range-Bounded Recovery: penalty exponent; the penalty '
+                         'goes as the ratio to the 2*power. Default from '
+                         'config (3).')
+    ap.add_argument('--no-rbr', action='store_true',
+                    help='Skip Range-Bounded Recovery and report only the '
+                         'default truncated recovery.')
     args = ap.parse_args()
 
     cfg = {**DEFAULT, **mc.analysis_section(
         'bounce', args.param_set, args.mi_name,
         config_path=(Path(args.analysis_config) if args.analysis_config else None))}
+    if args.rbr_kappa is not None:
+        cfg['rbr_kappa'] = float(args.rbr_kappa)
+    if args.rbr_power is not None:
+        cfg['rbr_power'] = int(args.rbr_power)
+    if args.no_rbr:
+        cfg['rbr_enable'] = False
     prefix = cfg['fit_prefix']
     bounces = cfg['bounces']
 
@@ -198,6 +301,29 @@ def main():
     except Exception as e:
         print(f'  (correctable-FWHM metric disabled: {type(e).__name__}: {e})')
     fwhm_rows = []
+    fwhm_bvalue_rows = []
+
+    # ---- Range-Bounded Recovery (RBR) tooling ----
+    # The allowed range r_j per DOF is back-derived from the same SVD
+    # normalization weights the recovery already uses, so no new input is
+    # introduced.  RBR is reported alongside the default recovery everywhere
+    # the per-night DOF Δ appears; if the solver or the range vector is
+    # unavailable the default products are unaffected.
+    dof_ranges = None
+    if cfg['rbr_enable'] and _svd_ok and svd is not None:
+        try:
+            _ri = bl.rbr_module()
+            dof_ranges = _ri.dof_range_vector(svd)
+            print(f'  RBR: {bl.RBR_METHOD_NAME}, kappa='
+                  f'{cfg["rbr_kappa"]} (dimensionless, |d_j|/r_j at unit '
+                  f'penalty weight), power={cfg["rbr_power"]}; '
+                  f'allowed range r_j spans '
+                  f'{np.nanmin(dof_ranges):.4g} to {np.nanmax(dof_ranges):.4g} '
+                  f'(µm or arcsec, per DOF unit)')
+        except Exception as e:
+            print(f'  (RBR unavailable [{type(e).__name__}: {e}]; '
+                  f'default recovery only)')
+            dof_ranges = None
 
     # ---- optional AOS Trim (aggregatedDoF) (cell 14) ----
     DOFSUM_all = TRIM_segment = None
@@ -248,6 +374,8 @@ def main():
             vmode_deltas_by_night = dof_deltas_by_night = {}
             vmode5_deltas = dof5_deltas = None
             vmode5_deltas_by_night = dof5_deltas_by_night = {}
+            rbr_deltas = None
+            rbr_deltas_by_night = {}
             if _svd_ok and C_all is not None:
                 vmode_deltas = bl.paired_deltas_matrix(C_all, pairs_all)
                 dof_deltas = bl.paired_deltas_matrix(DOF_all, pairs_all)
@@ -269,6 +397,20 @@ def main():
                         d: bl.paired_deltas_matrix(DOF5_all, nights[d]['comparisons'][label]['pairs'],
                                                    keys=CAM_HEX_DOF)
                         for d in leg_nights}
+            # RBR Δ, from the same pairs and the same median / median-SEM
+            # reduction as the default recovery above.  It is applied per pair
+            # (the inversion is nonlinear, so it does not commute with the
+            # median) on the paired Δ wavefront.
+            if dof_ranges is not None and _W is not None:
+                rbr_deltas = bl.rbr_deltas(
+                    _W, pairs_all, svd, dof_ranges,
+                    kappa=cfg['rbr_kappa'], power=cfg['rbr_power'])
+                rbr_deltas_by_night = {
+                    d: bl.rbr_deltas(
+                        _W, nights[d]['comparisons'][label]['pairs'], svd,
+                        dof_ranges, kappa=cfg['rbr_kappa'],
+                        power=cfg['rbr_power'])
+                    for d in leg_nights}
             br['comparisons'][label] = {
                 'comp_stats': cblock['comp_stats'], 'comp_n': cblock['comp_n'],
                 'deltas': cblock['deltas'], 'pairs': pairs_all,
@@ -286,7 +428,9 @@ def main():
                 'cam_only': cam_only,
                 'vmode5_deltas': vmode5_deltas, 'dof5_deltas': dof5_deltas,
                 'vmode5_deltas_by_night': vmode5_deltas_by_night,
-                'dof5_deltas_by_night': dof5_deltas_by_night}
+                'dof5_deltas_by_night': dof5_deltas_by_night,
+                'rbr_deltas': rbr_deltas,
+                'rbr_deltas_by_night': rbr_deltas_by_night}
             print(f'      comp "{label}": n={cblock["comp_n"]}, '
                   f'{len(pairs_all)} pairs')
 
@@ -303,10 +447,45 @@ def main():
                 if cam_only and svd5 is not None:
                     row['fwhm_after_5_5'] = _afw.fp_fwhm(
                         svd5, iZs, _afw.residual_dW(svd5, med_dW), fwhm_grid, fwhm_conv)
+                if dof_ranges is not None:
+                    row['fwhm_after_rbr'] = _rbr_fwhm(
+                        med_dW, svd, dof_ranges, cfg, iZs, fwhm_grid, fwhm_conv,
+                        _afw)
                 fwhm_rows.append(row)
                 _extra = (f", 5/5={row['fwhm_after_5_5']:.4f}" if 'fwhm_after_5_5' in row else "")
+                _extra += (f", RBR={row['fwhm_after_rbr']:.4f}"
+                           if 'fwhm_after_rbr' in row else "")
                 print(f"        correctable FWHM [arcsec]: before={row['fwhm_before']:.4f}, "
                       f"after 50/34={row['fwhm_after_50_34']:.4f}{_extra}")
+
+                # Per-(night, leg) FWHM, the form the vs-B-value plot needs.
+                # Every series here is the *achieved* residual dW - S (d/w), so
+                # the default and RBR numbers are directly comparable; for the
+                # truncated solution the achieved residual equals the subspace
+                # projection that `fwhm_after_50_34` reports.
+                bval = bl.leg_b_value(label)
+                for d in leg_nights:
+                    npairs = nights[d]['comparisons'][label]['pairs']
+                    if not npairs:
+                        continue
+                    _pd = bl.paired_deltas_matrix(_W, npairs)
+                    _dW = np.array([_pd[i]['delta'] for i in range(_W.shape[1])],
+                                   float)
+                    if not np.all(np.isfinite(_dW)):
+                        continue
+                    frow = {'bounce': name, 'comparison': label,
+                            'night': int(d), 'b_value': bval,
+                            'n_pairs': len(npairs),
+                            'fwhm_before': _afw.fp_fwhm(svd, iZs, _dW, fwhm_grid,
+                                                        fwhm_conv),
+                            'fwhm_after_default': _achieved_fwhm(
+                                _dW, _ri_invert_truncated(svd, _dW), svd, iZs,
+                                fwhm_grid, fwhm_conv, _afw)}
+                    if dof_ranges is not None:
+                        frow['fwhm_after_rbr'] = _rbr_fwhm(
+                            _dW, svd, dof_ranges, cfg, iZs, fwhm_grid,
+                            fwhm_conv, _afw)
+                    fwhm_bvalue_rows.append(frow)
             long_dfs.append(bl.to_long_df(
                 cblock['deltas'], name, br['reference_label'], label,
                 combined['ref_stats'], cblock['comp_stats'], night='all'))
@@ -464,13 +643,23 @@ def main():
                 entries = []
                 for clabel, cb in br['comparisons'].items():
                     bval = bl.leg_b_value(clabel)
+                    rbn = cb.get('rbr_deltas_by_night') or {}
                     for nt, dd in (cb.get(key) or {}).items():
                         entries.append({'night': int(nt), 'b_value': bval,
-                                        'label': clabel, 'dof_deltas': dd})
+                                        'label': clabel, 'dof_deltas': dd,
+                                        'rbr_deltas': rbn.get(nt)})
                 if not entries:
                     print(f'  (dof_night_values: {name} has no per-night DOF Δ)')
                     continue
+                # RBR is a 50-DOF recovery, so it is overlaid only on the 50/34
+                # scheme; a camera-hexapod-only bounce shows its 5/5 Δ alone.
+                show_rbr = (dof_ranges is not None and not cam_only
+                            and any(e.get('rbr_deltas') for e in entries))
                 axis = bl.leg_axis_name(b)
+                sub = (f'\nOverlay: {bl.RBR_METHOD_NAME}, kappa='
+                       f'{cfg["rbr_kappa"]:g}, power={cfg["rbr_power"]} — '
+                       f'shaded band is the allowed range ±r_j'
+                       if show_rbr else '')
                 fig = bl.plot_dof_vs_b_value_panels(
                     entries, LABELS_50DOF, DOF_UNITS_50,
                     dof_indices=(list(CAM_HEX_DOF) if cam_only else None),
@@ -478,7 +667,10 @@ def main():
                     title=f'{name}: paired Δ DOF vs B-set {axis.lower()} '
                           f'({scheme})\n'
                           f'Δ = comparison − {br["reference_label"]}, '
-                          f'one point per (night, B set)')
+                          f'one point per (night, B set){sub}',
+                    overlay_key=('rbr_deltas' if show_rbr else None),
+                    overlay_label='RBR',
+                    ranges=(dof_ranges if show_rbr else None))
                 if fig is not None:
                     pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
 
@@ -540,9 +732,11 @@ def main():
         fdf.to_parquet(tbl_dir / 'bounce_fwhm_metric.parquet')
         print('  correctable-FWHM metric [arcsec, median over focal plane]:')
         print('   ' + fdf.to_string(index=False).replace('\n', '\n   '))
-        bar_cols = [c for c in ('fwhm_before', 'fwhm_after_50_34', 'fwhm_after_5_5')
+        bar_cols = [c for c in ('fwhm_before', 'fwhm_after_50_34',
+                                'fwhm_after_rbr', 'fwhm_after_5_5')
                     if c in fdf.columns]
         lab = {'fwhm_before': 'no correction', 'fwhm_after_50_34': '50/34',
+               'fwhm_after_rbr': 'RBR (range-bounded)',
                'fwhm_after_5_5': '5/5 Cam-hex'}
         with PdfPages(str(out_dir / 'bounce_fwhm_metric.pdf')) as pdf:
             fig, ax = plt.subplots(figsize=(1.8 * len(fdf) + 3, 5), constrained_layout=True)
@@ -558,6 +752,45 @@ def main():
             ax.legend(); ax.grid(axis='y', alpha=0.3)
             pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
         print('  wrote bounce_fwhm_metric.pdf + .parquet')
+
+    # ---- correctable FWHM vs B-set position, per (night, leg) ----
+    # The image-quality question the RBR comparison exists to answer: what does
+    # bounding the recovered DOF to the allowed range cost in delivered FWHM,
+    # as a function of the throw.  One page per bounce, one point per
+    # (night, B set), three series (uncorrected / default 50-34 / RBR).
+    if fwhm_bvalue_rows:
+        bdf = pd.DataFrame(fwhm_bvalue_rows)
+        bdf.to_parquet(tbl_dir / 'bounce_fwhm_vs_bvalue.parquet')
+        with PdfPages(str(out_dir / 'bounce_fwhm_vs_bvalue.pdf')) as pdf:
+            for b in bounces:
+                name = b['name']
+                sub = bdf[bdf['bounce'] == name]
+                if sub.empty:
+                    continue
+                axis = bl.leg_axis_name(b)
+                ttl = (f'{name}: correctable FWHM of the bounce optical-state '
+                       f'change vs B-set {axis.lower()}\n'
+                       f'one point per (night, B set); residuals are the '
+                       f'achieved dW − S·(d/w)')
+                if dof_ranges is not None:
+                    ttl += (f'\nRBR: kappa={cfg["rbr_kappa"]:g}, '
+                            f'power={cfg["rbr_power"]} '
+                            f'(penalty ~ (|d_j|/(kappa·r_j))^{2 * cfg["rbr_power"]})')
+                fig = bl.plot_fwhm_vs_b_value(
+                    sub.to_dict('records'), x_label=f'B set {axis} [deg]',
+                    title=ttl)
+                if fig is not None:
+                    pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+        print(f'  wrote bounce_fwhm_vs_bvalue.pdf + .parquet '
+              f'({len(bdf)} rows)')
+        if 'fwhm_after_rbr' in bdf.columns:
+            _c = bdf.dropna(subset=['fwhm_after_default', 'fwhm_after_rbr'])
+            if len(_c):
+                _cost = (_c['fwhm_after_rbr'] - _c['fwhm_after_default'])
+                print(f'  RBR FWHM cost over default [arcsec]: '
+                      f'median={_cost.median():.5f}, '
+                      f'min={_cost.min():.5f}, max={_cost.max():.5f} '
+                      f'over {len(_c)} (night, leg) points')
 
     # ---- per-DOF and per-v-mode Δ table ----
     # The DOF Δ was previously visible only inside the PDFs, so any number
@@ -586,6 +819,13 @@ def main():
                         _cache[night] = (cp, rp)
                     return _cache[night]
 
+                # RBR Δ, keyed the same way, so the `dof` rows can carry it as
+                # two extra columns beside the default recovery's Δ rather than
+                # as a separate `kind` a reader would have to pivot.
+                rbr_blocks = {'all': cb.get('rbr_deltas') or {}}
+                rbr_blocks.update({str(int(d)): (v or {}) for d, v
+                                   in (cb.get('rbr_deltas_by_night') or {}).items()})
+
                 for kind, pooled, by_night, labels, units in (
                         ('dof', cb.get('dof_deltas'), cb.get('dof_deltas_by_night'),
                          LABELS_50DOF, DOF_UNITS_50),
@@ -602,7 +842,12 @@ def main():
                     blocks.update({str(int(d)): v for d, v in (by_night or {}).items()})
                     for night, block in blocks.items():
                         cp, rp = _pointing(night)
+                        # Only the 50-DOF `dof` kind has an RBR counterpart:
+                        # RBR is a 50-DOF recovery, and v-modes are the step it
+                        # replaces rather than a quantity it produces.
+                        rb = rbr_blocks.get(night, {}) if kind == 'dof' else {}
                         for q, v in (block or {}).items():
+                            rv = rb.get(int(q)) or {}
                             dof_rows.append({
                                 'bounce': name, 'comparison': clabel,
                                 'reference': br['reference_label'],
@@ -624,13 +869,49 @@ def main():
                                          else 'dimensionless'),
                                 'delta': float(v.get('delta', np.nan)),
                                 'delta_err': float(v.get('err', np.nan)),
+                                # Range-Bounded Recovery Δ for the same DOF,
+                                # same unit and same median / median-SEM error
+                                # definition; NaN for the v-mode kinds.
+                                'delta_rbr': float(rv.get('delta', np.nan)),
+                                'delta_rbr_err': float(rv.get('err', np.nan)),
                             })
         if dof_rows:
             ddf = pd.DataFrame(dof_rows)
             ddf['significance'] = (ddf['delta'].abs() / ddf['delta_err']).replace(
                 [np.inf, -np.inf], np.nan)
+            # Allowed range and the two amplitude-over-range ratios, so a reader
+            # can see which recovery exceeds what the telescope can apply
+            # without having to re-derive r_j from the normalization weights.
+            if dof_ranges is not None:
+                is_dof = ddf['kind'].isin(['dof', 'dof5'])
+                rj = ddf['index'].map(
+                    lambda i: (float(dof_ranges[int(i)])
+                               if 0 <= int(i) < len(dof_ranges) else np.nan))
+                ddf['dof_range'] = rj.where(is_dof)
+                ddf['ratio_to_range'] = (ddf['delta'].abs() / ddf['dof_range']
+                                         ).replace([np.inf, -np.inf], np.nan)
+                ddf['ratio_to_range_rbr'] = (
+                    ddf['delta_rbr'].abs() / ddf['dof_range']
+                ).replace([np.inf, -np.inf], np.nan)
             ddf.to_parquet(tbl_dir / 'bounce_dof_stats.parquet')
             print(f'  wrote bounce_dof_stats.parquet ({len(ddf)} rows)')
+            if 'ratio_to_range' in ddf.columns:
+                _d = ddf[(ddf['kind'] == 'dof') & ddf['ratio_to_range'].notna()]
+                if len(_d):
+                    # Split per-night from leg-pooled rows: they describe the
+                    # same physics, so a single total double-counts it.
+                    print('    DOF over allowed range (|Δ|/r_j > 1, '
+                          'dimensionless), default vs RBR:')
+                    for _lab, _s in (
+                            ('per (leg, night)',
+                             _d[_d['night'].astype(str) != 'all']),
+                            ('leg-pooled    ',
+                             _d[_d['night'].astype(str) == 'all'])):
+                        if len(_s):
+                            print(f'      {_lab}: '
+                                  f'{int((_s["ratio_to_range"] > 1).sum())} vs '
+                                  f'{int((_s["ratio_to_range_rbr"] > 1).sum())}'
+                                  f' of {len(_s)} rows')
 
     # ---- long-format table (cell 28) ----
     df_kj.to_parquet(tbl_dir / 'bounce_kj_stats.parquet')

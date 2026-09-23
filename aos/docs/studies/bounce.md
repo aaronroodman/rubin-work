@@ -1,6 +1,6 @@
 # Study: `bounce` — elevation and rotator bounce tests
 
-> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
 
 > **Code:** `code/bounce/` · **Notebooks:** `notebooks/bounce/`
 > **Output:** `output/bounce/<P>_<M>/bounce_*.pdf`, `output/bounce/<P>_<M>/bounce_kj_stats.parquet`, `output/bounce/<P>_<M>/bounce_dof_stats.parquet`, `output/bounce/<P>_<M>/bounce_fwhm_metric.parquet`, `output/bounce/bending_mode_test_meta.parquet`
@@ -66,8 +66,9 @@ written up in [`../../../notes/aos-bounce-test-summary/note.md`](../../../notes/
 
 | file | role |
 |---|---|
-| `bounce_lib.py` | library: pairing, per-(k,j) statistics, significance, leg-night coverage, plotting |
-| `run_bounce.py` | pipeline `bounce` rule — paired Δ for DZ coefficients, OFC v-modes, and physical DOF, with vs-ordinal pages, night cross-scatter and the per-DOF-vs-B-set panels |
+| `bounce_lib.py` | library: pairing, per-(k,j) statistics, significance, leg-night coverage, plotting, and the RBR wrappers `rbr_dof_per_pair` / `rbr_deltas` |
+| `run_bounce.py` | pipeline `bounce` rule — paired Δ for DZ coefficients, OFC v-modes, and physical DOF, with vs-ordinal pages, night cross-scatter, the per-DOF-vs-B-set panels and the achieved-FWHM-vs-B-set comparison; `--rbr-kappa`, `--rbr-power` and `--no-rbr` control the RBR overlay |
+| `../../../smatrix/code/regularized_inversion/regularized_inversion.py` | the RBR solver itself, imported from the study that validated it rather than copied |
 
 ## Notebooks
 
@@ -138,13 +139,14 @@ results note.
 
 ## Outputs
 
-Three parquet tables and eight PDFs per run.
+Four parquet tables and nine PDFs per run.
 
 | product | content |
 |---|---|
 | `bounce_kj_stats.parquet` | per-(k, j) Δ in µm of wavefront, its error and significance, per night and pooled |
-| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` of `dof`, `vmode`, `dof5` or `vmode5` and a `unit` column — µm for translations and bending-mode amplitudes, arcsec for hexapod rotations, dimensionless for v-modes. Carries the *measured* `elevation_deg` and `rot_angle_deg` of the comparison leg and `ref_elevation_deg` / `ref_rot_angle_deg` of the reference, plus `day_obs`, `block`, `n_visits` and `n_pairs`, so it reproduces `bounce_dof_night_values.pdf` and can be shared standalone |
-| `bounce_fwhm_metric.parquet` | `fwhm_before`, `fwhm_after_50_34`, `fwhm_after_5_5`, all arcsec FWHM, per leg |
+| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` of `dof`, `vmode`, `dof5` or `vmode5` and a `unit` column — µm for translations and bending-mode amplitudes, arcsec for hexapod rotations, dimensionless for v-modes. Carries the *measured* `elevation_deg` and `rot_angle_deg` of the comparison leg and `ref_elevation_deg` / `ref_rot_angle_deg` of the reference, plus `day_obs`, `block`, `n_visits` and `n_pairs`, so it reproduces `bounce_dof_night_values.pdf` and can be shared standalone. For `kind = dof` rows it also carries the Range-Bounded Recovery (RBR) result — `delta_rbr` and `delta_rbr_err` in the row's own unit — alongside `dof_range` (the allowed range `r_j`, same unit) and the two dimensionless ratios `ratio_to_range` and `ratio_to_range_rbr` |
+| `bounce_fwhm_metric.parquet` | `fwhm_before`, `fwhm_after_50_34`, `fwhm_after_rbr`, `fwhm_after_5_5`, all arcsec FWHM, per leg, pooled over nights |
+| `bounce_fwhm_vs_bvalue.parquet` | one row per (bounce, leg, night), with `b_value` (elevation or camera rotator angle in deg), `n_pairs`, and the three achieved-residual FWHM values `fwhm_before`, `fwhm_after_default` and `fwhm_after_rbr` in arcsec |
 
 `bounce_summary.pdf` opens with a leg-night coverage table — which nights back each leg and how
 many night-pair scatter pages follow — then the night-vs-night Δ cross-scatter, wide and
@@ -153,7 +155,13 @@ the same coverage table and the per-DOF night-pair scatter. `bounce_dof_night_va
 the paired Δ DOF as small per-DOF panels against the B-set position — elevation in deg for
 BLOCK-T720, camera rotator angle in deg for BLOCK-T724 — with one point per (night, leg); for a
 `camera_hexapod_only` bounce only the 5-DOF / 5-v-mode camera-hexapod scheme is drawn, since
-that is the scheme the result is used in. `bounce_dz_vs_ordinal.pdf` opens with the marker
+that is the scheme the result is used in. Each panel carries the default recovery as a filled
+circle, the RBR recovery as an open square in the same night colour, and the allowed range ±`r_j`
+as a shaded band; where the band is wider than the data it is annotated as a value in the corner
+instead of being allowed to set the y scale. `bounce_fwhm_vs_bvalue.pdf` is one page per bounce
+of the three achieved-residual FWHM series against the B-set position, one point per (night, B
+set), with the nights at a shared B set fanned out in x for legibility and the trend line drawn
+through the per-B-set median over nights. `bounce_dz_vs_ordinal.pdf` opens with the marker
 legend and an A/B bounce-position table per bounce.
 
 With `add_dof_trim` enabled the run additionally queries the EFD live for the MTAOS Trim
@@ -198,14 +206,137 @@ The ratio is `abs(delta)/r_j`, dimensionless, the recovered amplitude over the a
 significance 19.2; B1_20 reaches −0.0258 ± 0.0032 µm against a range of 0.00221 µm, a ratio of
 11.7. Since a mirror physically cannot exceed its actuator-force-limited range, these
 amplitudes are not real mirror figure changes. The monotonic growth with throw — ratios
-dropping to about 1 on the near-null upward 75 deg leg — indicates the unconstrained recovery
-is absorbing something that scales with the bounce signal into the weakly-constrained
-high-order modes, rather than the modes themselves being excited. The rigid-body terms, which
-dominate the Δ in FWHM terms, stay far inside their ranges.
+dropping to about 1 on the near-null upward 75 deg leg — points to the unconstrained recovery
+absorbing something that scales with the bounce signal into the weakly-constrained high-order
+modes, rather than the modes themselves being excited. The rigid-body terms, which dominate the
+Δ in FWHM terms, stay far inside their ranges. The next section measures that interpretation
+rather than leaving it as a reading of the pattern.
 
 This is a property of the open-loop recovery, not of the bounce measurement: the DZ Δ itself
 (`bounce_kj_stats.parquet`) and the correctable-FWHM metric are unaffected, since the FWHM
 metric projects onto the correctable subspace rather than reading individual amplitudes.
+
+**Which count.** The table above pools each leg over its nights and counts only DOF significant
+at over 3σ; the next section counts all 50 DOF, per (leg, night). Both are correct under their
+own definition — the second is the larger set, so its counts and largest ratios are higher, and
+neither is a correction of the other.
+
+## Range-Bounded Recovery (RBR) — the same Δ, bounded to what the telescope can apply
+
+### What the method does
+
+The default recovery inverts the measured wavefront onto DOF with a truncated SVD, keeping
+34 of 50 singular modes. Truncation is its only regularizer, and it is a blunt one — a mode
+is either fully trusted or fully discarded. The normalization weight `w_j = sqrt(r_j / f_j)`
+puts the allowed range into the *metric* of the fit, but nothing puts it into the *feasible
+set*, which is why the amplitudes above are free to run past what the mirror can reach.
+
+RBR adds a penalty on each DOF's physical amplitude that is negligible while the amplitude
+stays well inside its range and climbs steeply as it approaches and passes it. Writing `d` for
+the physical DOF, `x = d / w` for the normalized DOF the SVD is taken in, `S` for the rank-34
+forward operator in µm of wavefront per unit normalized DOF, and `dW` for the measured DZ
+wavefront in µm of wavefront, RBR minimizes
+
+```
+||dW - S x||^2  +  sum_j ( |d_j| / (kappa * r_j) ) ^ (2 p)
+```
+
+Two knobs, both dimensionless. `kappa` is the amplitude-over-range ratio at which the penalty
+reaches unit weight, and `p` sets how fast it climbs. The bounce runs use `kappa = 4`,
+`p = 3` — the setting the [`regularized_inversion`](../../../smatrix/docs/studies/regularized_inversion.md)
+study found best or near-best on five of the six legs. `kappa` is deliberately well above 1:
+the penalty only has to bound the largest amplitude, and putting the knee at the range itself
+taxes the other 49 DOF for no gain.
+
+The penalty is smooth, not a hard bound, so a recovered amplitude can still finish slightly
+outside its range — it does, by at most a factor of 1.157 on these legs. Preferring a hard
+constraint (`scipy.optimize.lsq_linear` with `bounds=(-r, r)`) is a reasonable alternative
+that has not been run.
+
+### How it is applied here
+
+Two points that matter for reading the numbers:
+
+- **Per pair, not once on the median.** RBR is nonlinear, so it does not commute with the
+  median over pairs, and inverting a single median wavefront would give no error bar. Each
+  (reference, comparison) pair's Δ wavefront is inverted on its own, and the same
+  median / median-SEM-of-a-median reduction used everywhere else in this study is applied to
+  the resulting DOF. The RBR error therefore means the same thing as the default recovery's.
+- **The FWHM comparison uses the achieved residual, not the subspace projection.**
+  `fwhm_after_50_34` comes from `aos_fwhm.residual_dW`, which is the projection
+  `(I - U U^T) dW` — independent of the recovered amplitudes, and so structurally unable to
+  see a regularizer trade wavefront for amplitude. The RBR comparison scores
+  `dW - S (d / w)` for both recoveries instead. The two agree exactly for the truncated
+  solution (measured: 1.7e-16 arcsec FWHM), so the default series still reproduces
+  `fwhm_after_50_34`.
+
+### The code
+
+The solver lives in the `regularized_inversion` study
+(`smatrix/code/regularized_inversion/regularized_inversion.py`) and is imported from there
+rather than copied, so it cannot drift from the study that validated it. `bounce_lib.py`
+supplies the bounce-side wrapper:
+
+```python
+import bounce_lib as bl
+
+ri = bl.rbr_module()                       # the smatrix solver
+r_j = ri.dof_range_vector(svd)             # allowed range per DOF, µm or arcsec
+
+# One DOF vector from one Δ wavefront (µm of wavefront -> µm / arcsec of DOF):
+d_default = ri.invert_truncated(dW, svd)
+d_rbr = ri.invert_range_penalty(dW, svd, r_j, kappa=4.0, power=3)
+
+# Or, over a bounce leg's pairs, with the median / median-SEM reduction:
+rbr = bl.rbr_deltas(W_all, pairs, svd, r_j, kappa=4.0, power=3)
+#   -> {dof_index: {'delta', 'err', 'sig', 'n'}}, same form as paired_deltas_matrix
+```
+
+`run_bounce.py` does this for every leg and night; `--rbr-kappa`, `--rbr-power` and
+`--no-rbr` override the config. The IRLS solve needs a backtracking line search to converge
+at `p >= 3` and must be restricted to the retained mode coefficients; both are handled inside
+the solver and are documented in the `regularized_inversion` study, which is where to look
+before changing them.
+
+### Result: RBR bounds the amplitudes at a small cost in FWHM
+
+Per (leg, night), from `bounce_dof_stats.parquet` and `bounce_fwhm_vs_bvalue.parquet`. FWHM
+values are the achieved correctable FWHM in arcsec, median over the focal plane; ratios are
+dimensionless, recovered amplitude over allowed range, maximized over the 50 DOF.
+
+| leg | night | n pairs | max ratio default | max ratio RBR | n over range default | n over range RBR | FWHM default | FWHM RBR | FWHM cost |
+|---|---|---|---|---|---|---|---|---|---|
+| elev 30 deg | 20260713 | 5 | 11.70 | 1.16 | 15 | 2 | 0.0598 | 0.0756 | +0.0158 |
+| elev 40 deg | 20260418 | 6 | 11.93 | 1.04 | 16 | 1 | 0.0463 | 0.0489 | +0.0027 |
+| elev 40 deg | 20260419 | 8 | 10.63 | 1.04 | 14 | 1 | 0.0487 | 0.0492 | +0.0005 |
+| elev 40 deg | 20260513 | 8 | 5.95 | 1.03 | 14 | 1 | 0.0354 | 0.0459 | +0.0105 |
+| elev 50 deg | 20260711 | 6 | 5.46 | 0.98 | 13 | 0 | 0.0664 | 0.0715 | +0.0052 |
+| elev 60 deg | 20260709 | 4 | 3.15 | 0.76 | 8 | 0 | 0.0326 | 0.0357 | +0.0032 |
+| elev 75 deg | 20260713 | 6 | 1.40 | 0.56 | 3 | 0 | 0.0153 | 0.0151 | −0.0002 |
+| rotator 60 deg | 20260420 | 12 | 3.77 | 1.11 | 12 | 2 | 0.0247 | 0.0273 | +0.0026 |
+| rotator 60 deg | 20260513 | 19 | 3.15 | 0.88 | 11 | 0 | 0.0185 | 0.0199 | +0.0014 |
+
+Across the nine (leg, night) points the FWHM cost has a median of +0.0027 arcsec and a range
+of −0.0002 to +0.0158 arcsec. Counting `kind = dof` rows, 106 of the 450 per-(leg, night) rows
+exceed their range under the default recovery against 7 under RBR; on the leg-pooled rows it is
+61 of 300 against 2. The run prints those two counts separately, since a single total would
+double-count the same physics.
+
+**This measures what the section above could only infer.** The over-range amplitudes carry
+almost no wavefront: removing them entirely costs a median 0.0027 arcsec FWHM, a few percent of
+the residual and well under 2% of the uncorrected FWHM the bounce produces. They are an
+ill-conditioning artifact of the unconstrained inversion, not a real high-order mirror figure
+change. The elevation 30 deg leg — largest throw, most extreme excursion — is the worst case at
++0.0158 arcsec, and the near-null upward 75 deg leg is very slightly *better* under RBR, which
+is what one expects when the discarded amplitude was noise.
+
+**Caveat on individual rigid-body DOF.** RBR biases toward zero by construction, and the
+reshuffling is not confined to the bending modes: the `regularized_inversion` study measures
+the M2-versus-camera hexapod split moving (M2_dz can flip sign) while the rigid-body *wavefront*
+is preserved to within a few percent. An RBR rigid-body amplitude is a constrained estimate and
+should not be quoted as a measurement of hexapod motion; for the LUT fit, which wants the
+amplitudes themselves, the default recovery remains the estimator. RBR answers whether a
+physically reachable correction exists and what image quality it delivers.
 
 ## Statistics note — SEM of a median
 
@@ -222,11 +353,32 @@ cd ~/notebooks/rubin-work/aos
 ./run_snake.sh --until bounce
 ```
 
-Knobs in `analysis_config.yaml` under `bounce`.
+Knobs in `analysis_config.yaml` under `bounce`, including `rbr_enable`, `rbr_kappa` and
+`rbr_power`.
+
+The lead result here is hand-run against the July fit table, which the Snakemake `bounce` rule
+does not target:
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/bounce/run_bounce.py \
+  --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+  --mi-name pathA_50_34_i_5rot \
+  --fits output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet \
+  --out-dir output/bounce/danish_1_2_A_50_34_i_5rot_july \
+  --min-detectors 160
+```
+
+Add `--no-rbr` to skip the range-bounded overlay, or `--rbr-kappa 5 --rbr-power 2` to change the
+penalty shape. RBR needs `smatrix/code/regularized_inversion/` on disk; the run prints
+`(RBR unavailable [...])` and drops the overlay rather than failing if the import does not
+resolve.
 
 ## See also
 
 - [`../miw_pipeline.md`](../miw_pipeline.md) — the `bounce` rule in context
 - [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — where the v-modes and DOF come from
+- [`../../../smatrix/docs/studies/regularized_inversion.md`](../../../smatrix/docs/studies/regularized_inversion.md) — the RBR solver, the `(p, kappa)` sweep behind the setting used here, and the damped-SVD alternative it was chosen over
+- [`../../../smatrix/docs/vmode_normalization.md`](../../../smatrix/docs/vmode_normalization.md) — where the allowed range `r_j` and the FWHM response `f_j` come from
 - [`../../../notes/aos-bounce-test-summary/note.md`](../../../notes/aos-bounce-test-summary/note.md) — results summary: elevation sweep 30–75 deg and rotator 0→60 deg
 - `../../../notes/claude-memory/apr-2026-50dof-lut.md` — the fixed 50-DOF LUT on sky Apr 24–28 2026, which explains the 20260424/28 anomaly

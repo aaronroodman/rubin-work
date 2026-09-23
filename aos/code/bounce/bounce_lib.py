@@ -911,6 +911,139 @@ def paired_deltas_matrix(value_matrix, pairs, keys=None):
     return {ks[i]: paired_delta(M[:, i], pairs) for i in range(nq)}
 
 
+# ==================================================================
+# Range-Bounded Recovery (RBR) of the paired-difference optical state
+# ==================================================================
+# The default recovery inverts the measured wavefront onto DOF with a
+# truncated SVD (50 DOF, 34 v-modes kept).  Truncation is its only
+# regularizer, and it leaves the recovered mirror bending-mode amplitudes
+# free to exceed the stroke the mirror can physically reach — on these
+# bounce legs by up to a factor of 11.27 (dimensionless, recovered
+# amplitude over allowed range).  RBR adds a penalty that is negligible
+# while |d_j| / r_j stays well under `kappa` and rises steeply as it
+# approaches and passes it, so the recovered state stays inside the
+# allowed range at a small cost in corrected image quality.
+#
+# The solver lives in smatrix/code/regularized_inversion/ (the
+# `regularized_inversion` study, where the method is derived and its FWHM
+# cost measured); this module only applies it to the bounce paired Δ.
+#
+# Why per pair and not once on the median: RBR is *nonlinear*, so it does
+# not commute with the median over pairs, and inverting a single median
+# wavefront would give no error bar.  Each (ref, comp) pair's Δ wavefront
+# is inverted on its own and the same median / median-SEM reduction used
+# everywhere else in this module is applied to the resulting DOF.  That
+# keeps the RBR error definition identical to the default one and lets the
+# nonlinearity show up in the scatter rather than being averaged away.
+RBR_METHOD_NAME = 'Range-Bounded Recovery (RBR)'
+RBR_DEFAULTS = {'kappa': 4.0, 'power': 3}
+
+
+def rbr_module():
+    """Import the RBR solver from the `regularized_inversion` study.
+
+    Returns
+    -------
+    mod : `module`
+        `smatrix/code/regularized_inversion/regularized_inversion.py`.
+
+    Notes
+    -----
+    A cross-topic reach into `smatrix/`, done by path insert because the repo
+    is not an installed package.  The solver is deliberately *not* copied
+    here: the method is derived and validated in that study, and a second
+    copy would be free to drift from it.
+    """
+    sm = Path(__file__).resolve().parents[3] / 'smatrix' / 'code'
+    # Both levels: the study dir for the solver itself, and smatrix/code for
+    # the bare-name `normalization_weights` the range vector imports.
+    for p in (sm / 'regularized_inversion', sm):
+        if str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    import regularized_inversion as ri
+    return ri
+
+
+def rbr_dof_per_pair(W_all, pairs, svd, ranges, *, kappa=None, power=None):
+    """Recover DOF from each pair's Δ wavefront with RBR.
+
+    Parameters
+    ----------
+    W_all : `numpy.ndarray`, (n_visits, n_kj)
+        Per-visit DZ wavefront in µm of wavefront, row-aligned to the
+        fit_table the pairs index into (the `_W` from `project_dz_table`).
+    pairs : `list` of `tuple`
+        `(ref_row, comp_row)` index pairs.
+    svd : `OFCSvd`
+        The 50-DOF / 34-v-mode decomposition the default recovery uses.
+    ranges : `array_like`, (n_dof,)
+        Allowed range `r_j` per DOF, each in that DOF's own unit (µm for
+        translations and bending-mode amplitudes, arcsec for rotations).
+    kappa : `float`, optional
+        Ratio `|d_j| / r_j` at which the penalty reaches unity weight.
+        Defaults to `RBR_DEFAULTS['kappa']`.
+    power : `int`, optional
+        Penalty exponent; the penalty goes as the ratio to the `2 * power`.
+        Defaults to `RBR_DEFAULTS['power']`.
+
+    Returns
+    -------
+    D : `numpy.ndarray`, (n_pairs, n_dof)
+        RBR-recovered DOF for each pair's Δ wavefront, in each DOF's own
+        unit.  Rows whose Δ wavefront is not finite are NaN.
+
+    Notes
+    -----
+    Each pair is inverted independently, so cost is one IRLS solve per pair
+    (a few tens of iterations on a 126 x 50 system — negligible here).
+    """
+    ri = rbr_module()
+    kap = float(RBR_DEFAULTS['kappa'] if kappa is None else kappa)
+    pw = int(RBR_DEFAULTS['power'] if power is None else power)
+    W = np.asarray(W_all, dtype=float)
+    r = np.asarray(ranges, dtype=float)
+    out = np.full((len(pairs), int(svd.V.shape[0])), np.nan)
+    for i, (ref, comp) in enumerate(pairs):
+        dW = W[comp] - W[ref]
+        if not np.all(np.isfinite(dW)):
+            continue
+        out[i] = ri.invert_range_penalty(dW, svd, r, kappa=kap, power=pw)
+    return out
+
+
+def rbr_deltas(W_all, pairs, svd, ranges, *, kappa=None, power=None,
+               keys=None):
+    """Median / median-SEM RBR DOF Δ over pairs.
+
+    Same return form and same error definition as `paired_deltas_matrix`, so
+    an RBR Δ is directly comparable to the default recovery's Δ.
+
+    Returns
+    -------
+    deltas : `dict`
+        `{dof_index: {'delta', 'err', 'sig', 'n'}}`, `delta` in each DOF's own
+        unit (µm or arcsec), `err` the SEM of the median over pairs.
+    """
+    if not pairs:
+        return {}
+    D = rbr_dof_per_pair(W_all, pairs, svd, ranges, kappa=kappa, power=power)
+    ks = list(range(D.shape[1])) if keys is None else list(keys)
+    out = {}
+    for i in range(D.shape[1]):
+        v = D[:, i]
+        v = v[np.isfinite(v)]
+        n = int(v.size)
+        if n < 1:
+            out[ks[i]] = {'delta': np.nan, 'err': np.nan, 'sig': np.nan, 'n': 0}
+            continue
+        delta = float(np.median(v))
+        sigma_mad = 1.4826 * float(np.median(np.abs(v - delta)))
+        err = 1.2533 * sigma_mad / np.sqrt(n)    # SEM of a median, as elsewhere
+        out[ks[i]] = {'delta': delta, 'err': float(err),
+                      'sig': (delta / err if err > 0 else np.nan), 'n': n}
+    return out
+
+
 # OFC v-mode / DOF recovery (LABELS_50DOF, DOF_UNITS_50,
 # recover_dof_per_visit) now live in code/ofc_svd.py — imported above.
 
@@ -1330,7 +1463,8 @@ def plot_dof_night_scatter(dof_deltas_by_night, labels, units=None,
 def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                                dof_indices=None, x_label='Elevation [deg]',
                                title='', ncols=5, panel_size=(2.6, 2.1),
-                               annotate=True):
+                               annotate=True, overlay_key=None,
+                               overlay_label='RBR', ranges=None):
     """Small per-DOF panels of the paired-Δ DOF against the B-set position.
 
     One panel per degree of freedom (DOF); within a panel each point is one
@@ -1370,6 +1504,18 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         Per-panel (width, height) in inches.
     annotate : `bool`, optional
         Annotate each point with `day_obs` and the B value in deg.
+    overlay_key : `str`, optional
+        Entry key holding a second `{dof_index: {'delta','err'}}` dict to
+        overlay on the same panels, in the same units — used to show the
+        Range-Bounded Recovery (RBR) Δ against the default recovery's.  When
+        `None` only the default Δ is drawn, which is the original behaviour.
+    overlay_label : `str`, optional
+        Legend label for the overlay series.
+    ranges : `array_like`, optional
+        Allowed range `r_j` per DOF, indexed by global DOF index, in that
+        DOF's own unit.  When given, each panel gets a shaded band at
+        ±`r_j` so a point outside the physically reachable range is visible
+        by eye.
 
     Returns
     -------
@@ -1411,6 +1557,13 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                              squeeze=False)
     for pi, q in enumerate(dof_indices):
         ax = axes[pi // ncols][pi % ncols]
+        # Allowed-range band first, so the points draw over it.  Drawn with
+        # the y limits frozen to the data afterwards, because the rigid-body
+        # ranges (thousands of µm) are orders of magnitude wider than their Δ
+        # and would otherwise set the scale and flatten the points to a line.
+        band = None
+        if ranges is not None and q < len(ranges) and np.isfinite(ranges[q]):
+            band = float(ranges[q])
         xs, ys, es, cs, labs = [], [], [], [], []
         for e in ents:
             v = e['dof_deltas'].get(q)
@@ -1422,6 +1575,25 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
             es.append(v.get('err', np.nan))
             cs.append(ncol[nt])
             labs.append(f"{nt % 10000}/{e['b_value']:g}")
+        # Overlay series (RBR), same night colours, open square markers so the
+        # two recoveries are distinguishable in greyscale as well as colour.
+        if overlay_key is not None:
+            oxs, oys, oes, ocs = [], [], [], []
+            for e in ents:
+                v = (e.get(overlay_key) or {}).get(q)
+                if v is None or not np.isfinite(v.get('delta', np.nan)):
+                    continue
+                nt = int(e['night'])
+                oxs.append(e['b_value'] + x_jit.get((e['b_value'], nt), 0.0))
+                oys.append(v['delta'])
+                oes.append(v.get('err', np.nan))
+                ocs.append(ncol[nt])
+            if oxs:
+                ax.errorbar(oxs, oys, yerr=np.nan_to_num(np.asarray(oes, float)),
+                            fmt='none', ecolor='#888888', elinewidth=0.8,
+                            capsize=2, zorder=4)
+                ax.scatter(oxs, oys, s=34, facecolors='none', edgecolors=ocs,
+                           linewidths=1.3, marker='s', zorder=5)
         if xs:
             xs = np.asarray(xs, float); ys = np.asarray(ys, float)
             es = np.nan_to_num(np.asarray(es, float))
@@ -1443,6 +1615,19 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                                 fontsize=4.5, color='#333333')
             ax.margins(x=0.18)
         ax.axhline(0, color='gray', lw=0.5, alpha=0.8)
+        if band is not None:
+            # Keep the data's own y scale; the band is context, not a series.
+            lo, hi = ax.get_ylim()
+            ax.axhspan(-band, band, color='#f2c9d4', alpha=0.45, zorder=0,
+                       lw=0)
+            if band > max(abs(lo), abs(hi)):
+                # Range far wider than the Δ: the band covers the panel, so
+                # say so in the corner instead of rescaling away the data.
+                ax.set_ylim(lo, hi)
+                ax.text(0.02, 0.04, f'±r_j = {band:.3g}', transform=ax.transAxes,
+                        fontsize=5, color='#9c3b57', va='bottom')
+            else:
+                ax.set_ylim(min(lo, -1.15 * band), max(hi, 1.15 * band))
         ax.set_title(f'{dof_labels[q]}  [{dof_units[q]}]', fontsize=8)
         ax.tick_params(labelsize=7)
         ax.grid(alpha=0.3)
@@ -1456,7 +1641,131 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                           label=str(nt)) for nt in nights]
     fig.legend(handles=handles, loc='outside lower center', ncol=min(len(nights), 8),
                fontsize=8, title='day_obs', title_fontsize=8, frameon=False)
+    if overlay_key is not None or ranges is not None:
+        style = []
+        if overlay_key is not None:
+            style += [
+                plt.Line2D([], [], marker='o', ls='', color='0.35',
+                           markeredgecolor='black', markeredgewidth=0.4,
+                           label='default 50/34 (filled circle)'),
+                plt.Line2D([], [], marker='s', ls='', markerfacecolor='none',
+                           markeredgecolor='0.35', markeredgewidth=1.3,
+                           label=f'{overlay_label} (open square)')]
+        if ranges is not None:
+            style.append(plt.Rectangle((0, 0), 1, 1, color='#f2c9d4', alpha=0.45,
+                                       label='allowed range ±r_j'))
+        fig.legend(handles=style, loc='outside upper right', fontsize=7.5,
+                   frameon=False)
     fig.suptitle(title, fontsize=12)
+    return fig
+
+
+def plot_fwhm_vs_b_value(rows, x_label='Elevation [deg]', title='',
+                         annotate=True, ax=None):
+    """Correctable FWHM against the B-set position, one point per (night, leg).
+
+    Three series per panel, all in arcsec FWHM (median over the focal plane):
+    the uncorrected differential FWHM of the bounce optical-state change, the
+    residual after the default truncated 50-DOF / 34-v-mode recovery, and the
+    residual after Range-Bounded Recovery (RBR).  The vertical gap between the
+    last two is the image-quality price of keeping the recovered DOF inside
+    the range the telescope can actually apply.
+
+    Nights sharing a B set are fanned out in x by a few percent of the B-set
+    span so their points do not stack; the x axis is still the B-set position,
+    so the offset is cosmetic.  The connecting line joins the per-B-set median
+    over nights rather than the individual points.
+
+    Parameters
+    ----------
+    rows : `list` [`dict`]
+        One entry per (night, comparison leg), each with `night` (`int`
+        day_obs), `b_value` (`float`, deg), `label` (`str`, leg label),
+        `n_pairs` (`int`), and the three FWHM values in arcsec:
+        `fwhm_before`, `fwhm_after_default`, `fwhm_after_rbr`.  A missing or
+        non-finite value is skipped for that series only.
+    x_label : `str`, optional
+        X-axis label including the unit — elevation or camera-rotator angle
+        in deg, whichever is the B-set axis of the bounce.
+    title : `str`, optional
+        Axes title.
+    annotate : `bool`, optional
+        Annotate the uncorrected points with `day_obs`.
+    ax : `matplotlib.axes.Axes`, optional
+        Axes to draw on; a new figure is made when omitted.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure` or `None`
+        The figure drawn on, or `None` if no row carries a finite FWHM.
+    """
+    ents = sorted(rows, key=lambda r: (r['b_value'], r['night']))
+    series = [('fwhm_before', 'no correction', '#444444', 'o', '--'),
+              ('fwhm_after_default', 'default 50/34', '#1f77b4', 'o', '-'),
+              ('fwhm_after_rbr', 'RBR (range-bounded)', '#d62728', 's', '-')]
+    if not ents or not any(np.isfinite(e.get(k, np.nan))
+                           for e in ents for k, *_ in series):
+        return None
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7.2, 5.0), layout='constrained')
+    else:
+        fig = ax.figure
+
+    # Several nights can throw to the same B set (three nights to elevation
+    # 40 deg, both rotator nights to 60 deg), which stacks their points on one
+    # x and makes a connecting line meaningless.  Fan the nights out in x by a
+    # small fraction of the B-set span, and join only the night-median at each
+    # B set so the trend line still reads as a trend.
+    bvals = sorted({e['b_value'] for e in ents})
+    span = (max(bvals) - min(bvals)) if len(bvals) > 1 else 1.0
+    x_jit = {}
+    for bv in bvals:
+        at_bv = sorted({int(e['night']) for e in ents if e['b_value'] == bv})
+        for i, nt in enumerate(at_bv):
+            x_jit[(bv, nt)] = (i - (len(at_bv) - 1) / 2) * 0.035 * span
+
+    for key, lab, col, mk, ls in series:
+        pts = [(e['b_value'] + x_jit.get((e['b_value'], int(e['night'])), 0.0),
+                e[key], e['b_value'])
+               for e in ents if np.isfinite(e.get(key, np.nan))]
+        if not pts:
+            continue
+        ax.scatter([p[0] for p in pts], [p[1] for p in pts], s=42, color=col,
+                   marker=mk, edgecolors='black', linewidths=0.4, label=lab,
+                   zorder=3, alpha=0.95)
+        # Trend through the per-B-set median over nights.
+        med = {}
+        for _, y, bv in pts:
+            med.setdefault(bv, []).append(y)
+        bx = sorted(med)
+        ax.plot(bx, [float(np.median(med[b])) for b in bx], ls=ls, color=col,
+                lw=1.2, alpha=0.65, zorder=2)
+    if annotate:
+        for e in ents:
+            v = e.get('fwhm_before', np.nan)
+            if np.isfinite(v):
+                ax.annotate(f"{int(e['night']) % 10000}",
+                            (e['b_value'] + x_jit.get(
+                                (e['b_value'], int(e['night'])), 0.0), v),
+                            textcoords='offset points', xytext=(4, 4),
+                            fontsize=6, color='#333333')
+    # With a single B set the jitter span has no scale to work from, so the tick
+    # labels spread over a fraction of a degree and invite reading the nights as
+    # sitting at different B values.  Pin the axis to the B set and say so.
+    if len(bvals) == 1:
+        jmax = max((abs(v) for v in x_jit.values()), default=0.0)
+        ax.set_xticks(list(bvals))
+        ax.set_xlim(bvals[0] - 3.0 * max(jmax, 1e-3),
+                    bvals[0] + 3.0 * max(jmax, 1e-3))
+        x_label = f'{x_label} (nights offset in x for legibility only)'
+    elif any(v != 0.0 for v in x_jit.values()):
+        x_label = f'{x_label} (nights at one B set offset in x for legibility)'
+    ax.set_xlabel(x_label)
+    ax.set_ylabel('differential correctable FWHM [arcsec]\n(median over focal plane)')
+    ax.set_title(title, fontsize=10)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8)
     return fig
 
 
