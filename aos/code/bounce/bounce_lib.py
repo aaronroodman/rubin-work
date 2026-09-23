@@ -18,7 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 
 try:
-    from lsst.ts.intrinsic.wavefront.intrinsics_lib import classify_visit, visit_marker_style
+    from lsst.ts.intrinsic.wavefront.intrinsics_lib import (
+        classify_visit, visit_marker_style, plot_visit_point)
     _marker_ok = True
 except Exception as _e:   # pragma: no cover - RSP-only marker scheme
     print(f'(bounce_lib: intrinsics_lib marker scheme unavailable: '
@@ -176,6 +177,13 @@ def plot_kj_heatmap(stats, k_list, j_list, *, value_key='delta',
     optionally `value\n±err` in each cell.
 
     Returns the figure.
+
+    Notes
+    -----
+    Not called by `run_bounce.py`: the per-(k, j) panels were dropped from
+    `bounce_summary.pdf` in favour of the night-vs-night cross-scatter, the same
+    numbers being available in `bounce_kj_stats.parquet`.  Kept for interactive
+    use from a notebook.
     """
     Z = _kj_to_array(stats, k_list, j_list, value_key)
     Errs = (_kj_to_array(stats, k_list, j_list, err_key)
@@ -265,6 +273,12 @@ def plot_kj_pass_heatmap(deltas, k_list, j_list, *,
     cells stay white with no annotation.
 
     Returns the figure.
+
+    Notes
+    -----
+    Not called by `run_bounce.py` — see `plot_kj_heatmap`.  The pass/fail
+    decision itself is still used, via `passing_terms`, to pick which (k, j)
+    terms the night-vs-night cross-scatter draws.
     """
     from matplotlib.colors import ListedColormap
 
@@ -336,6 +350,234 @@ def bounce_program_mask(fit_table, b):
     else:
         return np.ones(len(fit_table), dtype=bool)
     return filter_visits(fit_table, program=progs)
+
+
+def ab_position_table(fit_table, b, elev_halfwidth_deg=None,
+                      rot_halfwidth_deg=None, min_block=2):
+    """Identify the A and B telescope positions of a bounce, per night.
+
+    A bounce alternates between a reference position **A** (BLOCK-T720:
+    elevation 70 deg, rotator 0 deg) and a comparison position **B**. This
+    walks each night's visits in `seq_num` order, groups them into contiguous
+    blocks of one classified (elevation, rotator) position, and reports the
+    block's extent. A night may contain more than one distinct B position —
+    20260713 throws to elevation 75 deg and then to 30 deg, each interleaved
+    with its own elevation 70 deg reference block.
+
+    Positions are classified onto the `intrinsics_lib` grid: elevation
+    centers (30, 40, 50, 60, 70, 75) deg and rotator centers (-60 … 60) deg in
+    15 deg steps. A visit further than the half-width from every center is
+    reported as `unclassified`, which is what flags a contiguous block with no
+    clear value for the B set.
+
+    Parameters
+    ----------
+    fit_table : `astropy.table.Table`
+        Fit table with `day_obs`, `seq_num`, `alt` (deg or rad),
+        `rotator_angle` (deg), and optionally `band`.
+    b : `dict`
+        Bounce definition; only `program` is used, to select the visits.
+    elev_halfwidth_deg : `float`, optional
+        Elevation acceptance half-width in degrees. Defaults to the
+        `intrinsics_lib` value (2.0 deg). Values for BLOCK-T720 / T724 sit
+        within 0.3 deg of a center, so 2 deg is comfortable.
+    rot_halfwidth_deg : `float`, optional
+        Rotator acceptance half-width in degrees. Default 2.0 deg.
+    min_block : `int`, optional
+        A (night, position) set holding fewer than this many visits is still
+        reported but marked `short`.
+
+    Returns
+    -------
+    rows : `list` of `dict`
+        One row per (day_obs, position) set, in (day_obs, seq_lo) order, with
+        keys day_obs, position, elev_deg, rot_deg, seq_lo, seq_hi, n, n_blocks,
+        band, alt_min_deg, alt_max_deg, rot_min_deg, rot_max_deg,
+        unclassified, short, and `role` ('A' for the night's most-populated
+        position, else 'B').
+
+    Notes
+    -----
+    A bounce alternates A/B on consecutive visits, so the contiguous-block
+    walk finds many single-visit blocks. Those are aggregated into one row per
+    distinct (night, position); `n_blocks` records how many times the
+    telescope returned to that position during the night.
+    """
+    hw_e = 2.0 if elev_halfwidth_deg is None else float(elev_halfwidth_deg)
+    hw_r = 2.0 if rot_halfwidth_deg is None else float(rot_halfwidth_deg)
+    rot_centers = np.arange(-60.0, 60.0 + 1e-9, 15.0)
+    elev_centers = np.array([30.0, 40.0, 50.0, 60.0, 70.0, 75.0])
+
+    def _snap(val, centers, hw):
+        if not np.isfinite(val):
+            return None
+        d = np.abs(centers - val)
+        i = int(np.argmin(d))
+        return float(centers[i]) if d[i] <= hw else None
+
+    pmask = bounce_program_mask(fit_table, b)
+    if not np.any(pmask):
+        return []
+    ft = fit_table[pmask]
+    dobs = np.asarray(ft['day_obs']).astype(int)
+    snum = np.asarray(ft['seq_num']).astype(int)
+    alt = _alt_to_deg(ft['alt'])
+    rot = (np.asarray(ft['rotator_angle'], dtype=float)
+           if 'rotator_angle' in ft.colnames else np.full(len(ft), np.nan))
+    band = (np.asarray(ft['band']).astype(str) if 'band' in ft.colnames
+            else np.full(len(ft), ''))
+
+    rows = []
+    for d in sorted(set(dobs.tolist())):
+        sel = np.where(dobs == d)[0]
+        sel = sel[np.argsort(snum[sel])]
+        cur = None
+        for i in sel:
+            e = _snap(float(alt[i]), elev_centers, hw_e)
+            r = _snap(float(rot[i]), rot_centers, hw_r)
+            key = (e, r)
+            if cur is not None and cur['key'] == key:
+                cur['idx'].append(i)
+                continue
+            if cur is not None:
+                rows.append(cur)
+            cur = {'day_obs': d, 'key': key, 'idx': [i]}
+        if cur is not None:
+            rows.append(cur)
+
+    # Aggregate the contiguous blocks into one row per (night, position): the
+    # bounce alternates A/B every visit, so the raw blocks are the alternation
+    # pattern, not the positions.
+    agg = {}
+    for blk in rows:
+        e, r = blk['key']
+        key = (blk['day_obs'], e, r)
+        rec = agg.setdefault(key, {'idx': [], 'n_blocks': 0})
+        rec['idx'].extend(blk['idx'])
+        rec['n_blocks'] += 1
+
+    out = []
+    for (d, e, r), rec in agg.items():
+        idx = np.array(sorted(rec['idx']))
+        unclass = (e is None) or (r is None)
+        pos = 'unclassified' if unclass else f'{int(e)}/{int(r)}'
+        bands = sorted(set(band[idx].tolist()))
+        out.append({
+            'day_obs': d, 'position': pos,
+            'elev_deg': e, 'rot_deg': r,
+            'seq_lo': int(snum[idx].min()), 'seq_hi': int(snum[idx].max()),
+            'n': int(len(idx)), 'n_blocks': int(rec['n_blocks']),
+            'band': ','.join(b0 for b0 in bands if b0),
+            'alt_min_deg': float(np.nanmin(alt[idx])),
+            'alt_max_deg': float(np.nanmax(alt[idx])),
+            'rot_min_deg': float(np.nanmin(rot[idx])),
+            'rot_max_deg': float(np.nanmax(rot[idx])),
+            'unclassified': bool(unclass),
+            'short': bool(len(idx) < min_block),
+        })
+    out.sort(key=lambda row: (row['day_obs'], row['seq_lo']))
+
+    # Role: per night, the position holding the most visits is the reference A.
+    for d in sorted(set(row['day_obs'] for row in out)):
+        nres = {}
+        for row in out:
+            if row['day_obs'] == d and not row['unclassified']:
+                nres[row['position']] = nres.get(row['position'], 0) + row['n']
+        a_pos = max(nres, key=nres.get) if nres else None
+        for row in out:
+            if row['day_obs'] == d:
+                row['role'] = ('A' if row['position'] == a_pos
+                               else ('?' if row['unclassified'] else 'B'))
+    return out
+
+
+def plot_ab_position_table(rows, title='', figsize=(11, 8.5), max_rows=34):
+    """Render `ab_position_table` rows as table page(s) for a PDF.
+
+    Contiguous blocks with no clear classified position are highlighted, so a
+    reader can see immediately whether every A/B set resolved.
+
+    Parameters
+    ----------
+    rows : `list` of `dict`
+        Output of `ab_position_table`.
+    title : `str`, optional
+        Figure title.
+    figsize : `tuple`, optional
+        Figure size in inches.
+    max_rows : `int`, optional
+        Rows per page; longer tables spill onto further pages.
+
+    Returns
+    -------
+    figs : `list`
+        Matplotlib figures, one per page (empty list if `rows` is empty).
+    """
+    if not rows:
+        return []
+    cols = ['day_obs', 'role', 'position\nelev/rot (deg)', 'seq range',
+            'n visits', 'n blocks', 'band', 'elev range\n(deg)',
+            'rot range\n(deg)']
+    figs = []
+    for pg in range(0, len(rows), max_rows):
+        chunk = rows[pg:pg + max_rows]
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
+        ax.set_axis_off()
+        head = title if title else 'A/B bounce positions'
+        if len(rows) > max_rows:
+            head = f'{head}  (rows {pg + 1}–{pg + len(chunk)} of {len(rows)})'
+        fig.suptitle(head, fontsize=12, y=0.96)
+        def _rng(lo, hi):
+            # A single value when the spread is below the printed precision,
+            # so a constant position does not read as a range; ' to ' rather
+            # than an en dash keeps negatives legible (-0.7 to -0.7).
+            if abs(hi - lo) < 0.05:
+                return f'{lo:.1f}'
+            return f'{lo:.1f} to {hi:.1f}'
+
+        cells, colors = [], []
+        for row in chunk:
+            cells.append([
+                str(row['day_obs']), row.get('role', ''), row['position'],
+                f"{row['seq_lo']}–{row['seq_hi']}", str(row['n']),
+                str(row.get('n_blocks', '')), row['band'] or '—',
+                _rng(row['alt_min_deg'], row['alt_max_deg']),
+                _rng(row['rot_min_deg'], row['rot_max_deg']),
+            ])
+            if row['unclassified']:
+                colors.append(['#ffd6d6'] * len(cols))
+            elif row['short']:
+                colors.append(['#fff4cc'] * len(cols))
+            else:
+                colors.append(['white'] * len(cols))
+        # Height tracks the row count so a short table does not float in the
+        # middle of an otherwise empty page.
+        frac = min(0.88, 0.10 + 0.032 * (len(chunk) + 1))
+        ax.set_position([0.04, max(0.06, 0.90 - frac), 0.92, frac])
+        tab = ax.table(cellText=cells, colLabels=cols, cellColours=colors,
+                       bbox=[0, 0, 1, 1], cellLoc='center')
+        tab.auto_set_font_size(False)
+        tab.set_fontsize(8)
+        for ci in range(len(cols)):
+            tab[0, ci].set_facecolor('#dddddd')
+            tab[0, ci].set_text_props(weight='bold')
+        n_un = sum(1 for row in rows if row['unclassified'])
+        n_sh = sum(1 for row in rows if row['short'])
+        note = ('Position is elevation/rotator in deg, snapped to the marker '
+                'grid.  A = the night\'s most-populated position (reference), '
+                'B = the throw.')
+        if n_un:
+            note += (f'  {n_un} contiguous block(s) shaded red have no clear '
+                     'position — check these.')
+        else:
+            note += '  Every contiguous block resolved to a grid position.'
+        if n_sh:
+            note += f'  {n_sh} block(s) shaded amber are shorter than min_block.'
+        fig.text(0.5, 0.025, note, ha='center', va='bottom', fontsize=8,
+                 color='#333333', wrap=True)
+        figs.append(fig)
+    return figs
 
 
 def run_bounce(fit_table, b, prefix, k_list, j_list, day_obs=None,
@@ -433,39 +675,22 @@ def diff_of_deltas(deltas_a, deltas_b):
 
 
 def plot_dz_vs_ordinal_pages(fit_table, prefix, k_list, j_list,
-                             j_per_page=7, title_prefix=''):
+                             j_per_page=7, title_prefix='',
+                             elev_halfwidth_deg=None):
     """Pages of DZ_kj vs ordinal image number (rows = focal k, cols =
     pupil j).  Points use the standard intrinsics_lib marker scheme
-    (elevation -> colour, rotator angle -> arrow); dotted vertical lines
-    mark day_obs changes.  Returns a list of figures.
+    (elevation -> colour, rotator angle -> arrow, filter band -> dot on
+    the arrow shaft); dotted vertical lines mark day_obs changes.
+    Returns a list of figures.
+
+    `elev_halfwidth_deg` is the elevation bucket half-width in degrees,
+    passed through to `_ordinal_setup`.
     """
-    dobs = np.asarray(fit_table['day_obs']).astype(int)
-    snum = np.asarray(fit_table['seq_num']).astype(int)
-    order = np.lexsort((snum, dobs))
-    ft = fit_table[order]
-    dobs = dobs[order]
-    n = len(ft)
-    ordinal = np.arange(n)
-    alt = (_alt_to_deg(ft['alt']) if 'alt' in ft.colnames
-           else np.full(n, np.nan))
-    rot = (np.asarray(ft['rotator_angle'], dtype=float)
-           if 'rotator_angle' in ft.colnames else np.full(n, np.nan))
-    has_band = 'band' in ft.colnames
-    band = np.asarray(ft['band']).astype(str) if has_band else None
-
-    styles = []
-    for i in range(n):
-        if _marker_ok:
-            cls = classify_visit(alt_deg=alt[i], rot_deg=rot[i],
-                                 band=(band[i] if has_band else None))
-            styles.append(visit_marker_style(elev=cls['elev'], rot=cls['rot'],
-                                             band=cls['band'], base_size=4))
-        else:
-            styles.append(dict(marker='o', color='steelblue',
-                               markersize=3, linestyle=''))
-
-    changes = [i for i in range(1, n) if dobs[i] != dobs[i - 1]]
-    day_labels = [(i, int(dobs[i])) for i in [0] + changes]
+    s = _ordinal_setup(fit_table, base_size=4,
+                       elev_halfwidth_deg=elev_halfwidth_deg)
+    ft, n, ordinal = s['ft'], s['n'], s['ordinal']
+    styles, bands = s['styles'], s['bands']
+    changes, day_labels = s['changes'], s['day_labels']
 
     figs = []
     for pg in range(0, len(j_list), j_per_page):
@@ -485,7 +710,8 @@ def plot_dz_vs_ordinal_pages(fit_table, prefix, k_list, j_list,
                 y = np.asarray(ft[col], dtype=float)
                 for i in range(n):
                     if np.isfinite(y[i]):
-                        ax.plot(ordinal[i], y[i], **styles[i])
+                        draw_visit_point(ax, ordinal[i], y[i], styles[i],
+                                         band=bands[i])
                 for ch in changes:
                     ax.axvline(ch - 0.5, color='gray', ls=':', lw=0.6,
                                alpha=0.7)
@@ -692,10 +918,61 @@ def paired_deltas_matrix(value_matrix, pairs, keys=None):
 # ==================================================================
 # Generic <quantity> vs ordinal-image plotting (marker scheme shared)
 # ==================================================================
-def _ordinal_setup(fit_table, base_size=4):
+def draw_visit_point(ax, x, y, style, band=None, **kwargs):
+    """Draw one visit marker plus its filter-band dot.
+
+    Thin wrapper over `intrinsics_lib.plot_visit_point` that degrades to a
+    plain `ax.plot` when the marker scheme is unavailable. Every per-visit
+    plot in this module goes through here, so the band encoding stays
+    consistent across the vs-ordinal DZ, v-mode and DOF products.
+
+    Parameters
+    ----------
+    ax : `matplotlib.axes.Axes`
+        Axes to draw on.
+    x, y : `float`
+        Point position in data coordinates.
+    style : `dict`
+        Marker kwargs from `visit_marker_style`.
+    band : `str`, optional
+        Filter band; the dot is skipped when None or unrecognized.
+    **kwargs
+        Extra kwargs for the marker (e.g. `zorder`, `alpha`).
+
+    Returns
+    -------
+    lines : `list`
+        The Line2D objects drawn.
+    """
+    if _marker_ok:
+        return plot_visit_point(ax, x, y, style, band=band, **kwargs)
+    st = dict(style)
+    st.update(kwargs)
+    return list(ax.plot([x], [y], **st))
+
+
+def _ordinal_setup(fit_table, base_size=4, elev_halfwidth_deg=None):
     """Time-sort a fit_table and build the shared per-visit marker
     styles, day_obs change indices and day labels for vs-ordinal plots.
-    Returns a dict with order/ft/n/ordinal/styles/changes/day_labels."""
+
+    Parameters
+    ----------
+    fit_table : `astropy.table.Table`
+        Fit table with `day_obs`, `seq_num`, and optionally `alt` (deg or
+        rad), `rotator_angle` (deg) and `band`.
+    base_size : `float`, optional
+        Marker size in points.
+    elev_halfwidth_deg : `float`, optional
+        Elevation bucket half-width in degrees for the marker colors.
+        Defaults to the `intrinsics_lib` value (2.0 deg).
+
+    Returns
+    -------
+    setup : `dict`
+        Keys order/ft/n/ordinal/styles/bands/changes/day_labels. `bands` is
+        the per-visit one-character band (or None), aligned to `styles`, for
+        passing to `draw_visit_point`.
+    """
     dobs = np.asarray(fit_table['day_obs']).astype(int)
     snum = np.asarray(fit_table['seq_num']).astype(int)
     order = np.lexsort((snum, dobs))
@@ -708,33 +985,42 @@ def _ordinal_setup(fit_table, base_size=4):
            if 'rotator_angle' in ft.colnames else np.full(n, np.nan))
     has_band = 'band' in ft.colnames
     band = np.asarray(ft['band']).astype(str) if has_band else None
-    styles = []
+    styles, bands = [], []
     for i in range(n):
+        b = (band[i] if has_band else None)
         if _marker_ok:
-            cls = classify_visit(alt_deg=alt[i], rot_deg=rot[i],
-                                 band=(band[i] if has_band else None))
+            cls = classify_visit(alt_deg=alt[i], rot_deg=rot[i], band=b,
+                                 elev_halfwidth_deg=elev_halfwidth_deg)
             styles.append(visit_marker_style(
                 elev=cls['elev'], rot=cls['rot'], band=cls['band'],
                 base_size=base_size))
+            bands.append(cls['band'])
         else:
             styles.append(dict(marker='o', color='steelblue',
                                markersize=3, linestyle=''))
+            bands.append(None)
     changes = [i for i in range(1, n) if dobs[i] != dobs[i - 1]]
     day_labels = [(i, int(dobs[i])) for i in [0] + changes]
     return {'order': order, 'ft': ft, 'n': n, 'ordinal': np.arange(n),
-            'styles': styles, 'changes': changes, 'day_labels': day_labels}
+            'styles': styles, 'bands': bands,
+            'changes': changes, 'day_labels': day_labels}
 
 
 def plot_values_vs_ordinal_pages(fit_table, value_matrix, labels,
                                  units=None, title_root='', ncols=5,
-                                 rows_per_page=7):
+                                 rows_per_page=7, elev_halfwidth_deg=None):
     """Pages of <quantity> vs ordinal image number, one panel per column
     of `value_matrix` (aligned row-for-row to `fit_table`).  Standard
-    marker scheme; dotted day_obs lines; day_obs annotated on the first
-    panel.  Returns a list of figures.
+    marker scheme (elevation -> colour, rotator angle -> arrow, filter
+    band -> dot on the arrow shaft); dotted day_obs lines; day_obs
+    annotated on the first panel.  Returns a list of figures.
+
+    `elev_halfwidth_deg` is the elevation bucket half-width in degrees,
+    passed through to `_ordinal_setup`.
     """
-    s = _ordinal_setup(fit_table)
+    s = _ordinal_setup(fit_table, elev_halfwidth_deg=elev_halfwidth_deg)
     order, ordinal, styles = s['order'], s['ordinal'], s['styles']
+    bands = s['bands']
     changes, day_labels, n = s['changes'], s['day_labels'], s['n']
     M = np.asarray(value_matrix, dtype=float)[order]
     nq = M.shape[1]
@@ -751,7 +1037,8 @@ def plot_values_vs_ordinal_pages(fit_table, value_matrix, labels,
             y = M[:, q]
             for i in range(n):
                 if np.isfinite(y[i]):
-                    ax.plot(ordinal[i], y[i], **styles[i])
+                    draw_visit_point(ax, ordinal[i], y[i], styles[i],
+                                     band=bands[i])
             for ch in changes:
                 ax.axvline(ch - 0.5, color='gray', ls=':', lw=0.6, alpha=0.7)
             ax.axhline(0, color='k', lw=0.4, alpha=0.4)
@@ -784,6 +1071,149 @@ DOF_PANELS = [
     ('M1M3 bending modes',    DOF_GROUPS['m1m3_bending']),
     ('M2 bending modes',      DOF_GROUPS['m2_bending']),
 ]
+
+
+def leg_b_value(label):
+    """Numeric B-set position parsed out of a comparison-leg label, in deg.
+
+    Leg labels are written `Elev=40` or `Rot=60`, i.e. the axis name and the
+    nominal B position in degrees.  Returns the number so a leg can be used as
+    an x-axis coordinate rather than only as a categorical label.
+
+    Parameters
+    ----------
+    label : `str`
+        Comparison-leg label, e.g. `'Elev=40'` or `'Rot=60'`.
+
+    Returns
+    -------
+    value : `float`
+        The B-set elevation or camera-rotator angle in deg, or NaN if the
+        label does not carry a number.
+    """
+    import re
+    m = re.search(r'(-?\d+(?:\.\d+)?)', str(label))
+    return float(m.group(1)) if m else float('nan')
+
+
+def leg_axis_name(bounce):
+    """Which telescope axis a bounce throws along — 'Elevation' or
+    'Rotator angle' — inferred from its comparison-leg labels.
+
+    Parameters
+    ----------
+    bounce : `dict`
+        One bounce config entry, with a `comparisons` list of labelled legs.
+
+    Returns
+    -------
+    name : `str`
+        Axis name for an x-axis label; `'B set'` if the labels are not
+        recognized.  The unit is deg in every case.
+    """
+    labs = ' '.join(str(c.get('label', '')) for c in bounce.get('comparisons', []))
+    low = labs.lower()
+    if 'elev' in low or 'alt' in low:
+        return 'Elevation'
+    if 'rot' in low:
+        return 'Rotator angle'
+    return 'B set'
+
+
+def leg_night_coverage(bounce_results):
+    """Which nights back each (bounce, comparison leg), as table rows.
+
+    Answers "which nights have results for each value of the B conditions" —
+    the precondition for a night-vs-night comparison, which needs 2 or more
+    nights on the same leg.
+
+    Parameters
+    ----------
+    bounce_results : `dict`
+        `{bounce_name: bounce_result}` as assembled by `run_bounce.py`, whose
+        per-leg blocks carry `deltas_by_night` and `comp_n`.
+
+    Returns
+    -------
+    rows : `list` [`dict`]
+        One row per (bounce, leg) with keys `bounce`, `comparison`,
+        `b_value_deg`, `n_visits`, `n_nights`, `nights`, `n_pairs` and
+        `scatter_pages` — the latter the number of night pairs
+        `n_nights * (n_nights - 1) / 2` that a night-vs-night scatter can
+        draw, which is 0 when only one night is available.
+    """
+    rows = []
+    for name, br in bounce_results.items():
+        for clabel, cb in br['comparisons'].items():
+            nts = sorted(int(d) for d in cb.get('deltas_by_night', {}))
+            n_nt = len(nts)
+            rows.append({
+                'bounce': name, 'comparison': clabel,
+                'b_value_deg': leg_b_value(clabel),
+                'n_visits': int(cb.get('comp_n', 0)),
+                'n_pairs': len(cb.get('pairs', [])),
+                'n_nights': n_nt,
+                'nights': ', '.join(str(d) for d in nts) if nts else '-',
+                'scatter_pages': n_nt * (n_nt - 1) // 2,
+            })
+    return rows
+
+
+def plot_leg_night_coverage(rows, title='', figsize=(11, 4.2)):
+    """Render `leg_night_coverage` rows as a one-page table figure.
+
+    Legs with fewer than 2 qualifying nights are shaded amber, since no
+    night-vs-night scatter is drawn for them.
+
+    Parameters
+    ----------
+    rows : `list` [`dict`]
+        Output of `leg_night_coverage`.
+    title : `str`, optional
+        Page title.
+    figsize : `tuple` [`float`], optional
+        Figure size in inches.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure` or `None`
+        `None` if `rows` is empty.
+    """
+    if not rows:
+        return None
+    cols = ['bounce', 'leg\n(B set)', 'B value\n[deg]', 'n\nvisits', 'n\npairs',
+            'n\nnights', 'nights with results', 'night-pair\nscatter pages']
+    # Column widths as fractions of the page: the night list needs the room, the
+    # counts do not.
+    widths = [0.15, 0.09, 0.08, 0.07, 0.07, 0.07, 0.36, 0.11]
+    body, shade = [], []
+    for r in rows:
+        bv = r['b_value_deg']
+        body.append([r['bounce'], r['comparison'],
+                     ('' if not np.isfinite(bv) else f'{bv:g}'),
+                     str(r['n_visits']), str(r['n_pairs']),
+                     str(r['n_nights']), r['nights'],
+                     str(r['scatter_pages'])])
+        shade.append(r['n_nights'] < 2)
+    fig = plt.figure(figsize=(figsize[0],
+                              max(1.6, 0.40 * (len(body) + 2)) + 0.9))
+    ax = fig.add_axes([0.02, 0.02, 0.96, 0.80]); ax.axis('off')
+    tab = ax.table(cellText=body, colLabels=cols, cellLoc='center',
+                   colWidths=widths, bbox=[0, 0, 1, 1])
+    tab.auto_set_font_size(False); tab.set_fontsize(8)
+    for ci in range(len(cols)):
+        tab[(0, ci)].set_facecolor('#dddddd')
+        tab[(0, ci)].set_text_props(weight='bold')
+    for ri, bad in enumerate(shade, start=1):
+        if bad:
+            for ci in range(len(cols)):
+                tab[(ri, ci)].set_facecolor('#fdf0d5')
+    if title:
+        fig.suptitle(title, fontsize=12, y=0.985)
+    fig.text(0.02, 0.86,
+             'Amber: only one night on this leg, so no night-vs-night '
+             'scatter page is drawn.', fontsize=8, color='#7a5c00')
+    return fig
 
 
 def plot_dof_night_scatter(dof_deltas_by_night, labels, units=None,
@@ -851,6 +1281,139 @@ def plot_dof_night_scatter(dof_deltas_by_night, labels, units=None,
                      fontsize=13)
         figs.append(fig)
     return figs
+
+
+def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
+                               dof_indices=None, x_label='Elevation [deg]',
+                               title='', ncols=5, panel_size=(2.6, 2.1),
+                               annotate=True):
+    """Small per-DOF panels of the paired-Δ DOF against the B-set position.
+
+    One panel per degree of freedom (DOF); within a panel each point is one
+    (night, B set) entry, plotted at its B-set position on the x axis with the
+    paired-Δ error as a y error bar.  This is the form in which a Look-Up Table
+    (LUT) reads the bounce: how each DOF's change grows with the throw.
+
+    Points are drawn in increasing B-set order, so the BLOCK-T720 elevation
+    sweep reads left to right in elevation and BLOCK-T724 left to right in
+    camera-rotator angle.  Colour encodes the night; the optional annotation
+    gives `day_obs` and the B value in deg, so a point is identifiable without
+    the legend.
+
+    Parameters
+    ----------
+    entries : `list` [`dict`]
+        One entry per (night, comparison leg), each with keys `night`
+        (`int` day_obs), `b_value` (`float`, deg), `label` (`str`, the leg
+        label) and `dof_deltas` — the `{dof_index: {'delta','err'}}` dict from
+        `paired_deltas_matrix`, in µm for translations and bending-mode
+        amplitudes and arcsec for hexapod rotations.
+    dof_labels : `list` [`str`]
+        DOF names, indexed by global DOF index (`LABELS_50DOF`).
+    dof_units : `list` [`str`]
+        Per-DOF units, indexed the same way (`DOF_UNITS_50`) — µm or arcsec.
+    dof_indices : `list` [`int`], optional
+        Which DOF to panel.  Defaults to every DOF that any entry populates
+        with a finite Δ, which keeps a camera-hexapod-only bounce to its five
+        panels instead of drawing 45 empty ones.
+    x_label : `str`, optional
+        X-axis label, including the unit.
+    title : `str`, optional
+        Figure title.
+    ncols : `int`, optional
+        Panels per row.
+    panel_size : `tuple` [`float`], optional
+        Per-panel (width, height) in inches.
+    annotate : `bool`, optional
+        Annotate each point with `day_obs` and the B value in deg.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure` or `None`
+        `None` if no entry carries a finite Δ.
+    """
+    ents = sorted(entries, key=lambda e: (e['b_value'], e['night']))
+    if dof_indices is None:
+        seen = set()
+        for e in ents:
+            for q, v in e['dof_deltas'].items():
+                if np.isfinite(v.get('delta', np.nan)):
+                    seen.add(int(q))
+        dof_indices = sorted(seen)
+    if not dof_indices or not ents:
+        return None
+
+    nights = sorted({int(e['night']) for e in ents})
+    cmap = plt.get_cmap('viridis')(np.linspace(0.08, 0.88, max(len(nights), 1)))
+    ncol = {nt: cmap[i] for i, nt in enumerate(nights)}
+
+    # Several nights can share one B set (five nights throw to elevation 40 deg),
+    # which would stack their points and annotations on top of each other.  Fan
+    # them out in x by a fraction of the B-set spacing; the x axis stays the
+    # B-set position, so the jitter is cosmetic and small.
+    bvals = sorted({e['b_value'] for e in ents})
+    span = (max(bvals) - min(bvals)) if len(bvals) > 1 else 1.0
+    x_jit = {}
+    for bv in bvals:
+        at_bv = sorted({int(e['night']) for e in ents if e['b_value'] == bv})
+        step = 0.030 * span
+        for i, nt in enumerate(at_bv):
+            x_jit[(bv, nt)] = (i - (len(at_bv) - 1) / 2) * step
+
+    nrows = int(np.ceil(len(dof_indices) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, layout='constrained',
+                             figsize=(panel_size[0] * ncols + 1.2,
+                                      panel_size[1] * nrows + 1.2),
+                             squeeze=False)
+    for pi, q in enumerate(dof_indices):
+        ax = axes[pi // ncols][pi % ncols]
+        xs, ys, es, cs, labs = [], [], [], [], []
+        for e in ents:
+            v = e['dof_deltas'].get(q)
+            if v is None or not np.isfinite(v.get('delta', np.nan)):
+                continue
+            nt = int(e['night'])
+            xs.append(e['b_value'] + x_jit.get((e['b_value'], nt), 0.0))
+            ys.append(v['delta'])
+            es.append(v.get('err', np.nan))
+            cs.append(ncol[nt])
+            labs.append(f"{nt % 10000}/{e['b_value']:g}")
+        if xs:
+            xs = np.asarray(xs, float); ys = np.asarray(ys, float)
+            es = np.nan_to_num(np.asarray(es, float))
+            ax.errorbar(xs, ys, yerr=es, fmt='none', ecolor='gray',
+                        elinewidth=0.8, capsize=2, zorder=2)
+            ax.scatter(xs, ys, s=30, c=cs, edgecolors='black',
+                       linewidths=0.4, zorder=3)
+            if annotate:
+                # Alternate the label side so neighbouring points in a crowded
+                # B set do not overwrite one another, and keep labels inside
+                # the axes by flipping those near the right edge.
+                xmid = 0.5 * (xs.min() + xs.max())
+                for i, (x, y, l) in enumerate(zip(xs, ys, labs)):
+                    right = x > xmid
+                    ax.annotate(l, (x, y), textcoords='offset points',
+                                xytext=(-4 if right else 4,
+                                        4 if i % 2 == 0 else -8),
+                                ha='right' if right else 'left',
+                                fontsize=4.5, color='#333333')
+            ax.margins(x=0.18)
+        ax.axhline(0, color='gray', lw=0.5, alpha=0.8)
+        ax.set_title(f'{dof_labels[q]}  [{dof_units[q]}]', fontsize=8)
+        ax.tick_params(labelsize=7)
+        ax.grid(alpha=0.3)
+        if pi // ncols == nrows - 1:
+            ax.set_xlabel(x_label, fontsize=7)
+    for pi in range(len(dof_indices), nrows * ncols):
+        axes[pi // ncols][pi % ncols].axis('off')
+
+    handles = [plt.Line2D([], [], marker='o', ls='', color=ncol[nt],
+                          markeredgecolor='black', markeredgewidth=0.4,
+                          label=str(nt)) for nt in nights]
+    fig.legend(handles=handles, loc='outside lower center', ncol=min(len(nights), 8),
+               fontsize=8, title='day_obs', title_fontsize=8, frameon=False)
+    fig.suptitle(title, fontsize=12)
+    return fig
 
 
 def plot_dof_per_night_summary(dof_by_night, dof_labels, dof_units, title=''):

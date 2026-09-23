@@ -66,6 +66,10 @@ DEFAULT = dict(
     pass_nsigma_threshold=3.5, pass_delta_threshold_um=0.1,
     pass_sigma_only_threshold=5.0, cross_scatter_zoom_um=0.1,
     ordinal_j_per_page=7, night_min_visits=3,
+    # A/B position identification tolerances, in deg. Elevation centers 70 and
+    # 75 are only 5 deg apart, so the half-width must stay below 2.5 deg;
+    # measured BLOCK-T720/T724 positions sit within 0.3 deg of a center.
+    ab_elev_halfwidth_deg=2.0, ab_rot_halfwidth_deg=2.0,
     vmode_ncols=5, vmode_rows_per_page=7, dof_ncols=5, dof_rows_per_page=10,
     add_dof_trim=False, trim_efd_topic='lsst.sal.MTAOS.logevent_degreeOfFreedom',
     trim_consdb_url='http://consdb-pq.consdb:8080/consdb',
@@ -229,7 +233,15 @@ def main():
             label = comp['label']
             cblock = combined['comparisons'][label]
             pairs_all = cblock['pairs']
-            deltas_by_night = {d: nights[d]['comparisons'][label]['deltas'] for d in nights}
+            # Only the nights that actually populated *this* leg.  A qualifying
+            # night carries a block for every leg the bounce defines, but with
+            # zero pairs on the legs it never visited (the BLOCK-T720 sweep
+            # throws to a different elevation on each July night), and an empty
+            # leg must not count as a night with a result.
+            leg_nights = [d for d in nights
+                          if len(nights[d]['comparisons'][label]['pairs'])]
+            deltas_by_night = {d: nights[d]['comparisons'][label]['deltas']
+                               for d in leg_nights}
             cam_only = bool(b.get('camera_hexapod_only', False))
             vmode_deltas = dof_deltas = None
             vmode_deltas_by_night = dof_deltas_by_night = {}
@@ -240,10 +252,10 @@ def main():
                 dof_deltas = bl.paired_deltas_matrix(DOF_all, pairs_all)
                 vmode_deltas_by_night = {
                     d: bl.paired_deltas_matrix(C_all, nights[d]['comparisons'][label]['pairs'])
-                    for d in nights}
+                    for d in leg_nights}
                 dof_deltas_by_night = {
                     d: bl.paired_deltas_matrix(DOF_all, nights[d]['comparisons'][label]['pairs'])
-                    for d in nights}
+                    for d in leg_nights}
                 if cam_only and C5_all is not None:      # 5/5 Camera-hexapod-only
                     # DOF5_all has 5 cols (Cam hex); key them by their global DOF
                     # indices so the DOF plots' 50-DOF panel layout places them right.
@@ -251,11 +263,11 @@ def main():
                     dof5_deltas = bl.paired_deltas_matrix(DOF5_all, pairs_all, keys=CAM_HEX_DOF)
                     vmode5_deltas_by_night = {
                         d: bl.paired_deltas_matrix(C5_all, nights[d]['comparisons'][label]['pairs'])
-                        for d in nights}
+                        for d in leg_nights}
                     dof5_deltas_by_night = {
                         d: bl.paired_deltas_matrix(DOF5_all, nights[d]['comparisons'][label]['pairs'],
                                                    keys=CAM_HEX_DOF)
-                        for d in nights}
+                        for d in leg_nights}
             br['comparisons'][label] = {
                 'comp_stats': cblock['comp_stats'], 'comp_n': cblock['comp_n'],
                 'deltas': cblock['deltas'], 'pairs': pairs_all,
@@ -303,13 +315,25 @@ def main():
         if _marker_ok:
             leg = markers_legend_figure(show_iter_distinction=False)
             pdf.savefig(leg, bbox_inches='tight'); plt.close(leg)
+        # A/B position table: what elevation/rotator each night's reference (A)
+        # and throw (B) sets actually sat at, and whether every contiguous
+        # block resolved to a grid position.
+        for b in bounces:
+            ab_rows = bl.ab_position_table(
+                fit_table, b,
+                elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg'),
+                rot_halfwidth_deg=cfg.get('ab_rot_halfwidth_deg'))
+            for f in bl.plot_ab_position_table(
+                    ab_rows, title=f'{b["name"]}: A/B bounce positions'):
+                pdf.savefig(f, bbox_inches='tight'); plt.close(f)
         for b in bounces:
             ftb = fit_table[bl.bounce_program_mask(fit_table, b)]
             if len(ftb) == 0:
                 continue
             for f in bl.plot_dz_vs_ordinal_pages(ftb, prefix, k_list, iZs,
                                                  j_per_page=cfg['ordinal_j_per_page'],
-                                                 title_prefix=f'{b["name"]}: '):
+                                                 title_prefix=f'{b["name"]}: ',
+                                                 elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg')):
                 pdf.savefig(f, bbox_inches='tight'); plt.close(f)
 
     # ---- v-mode + DOF vs ordinal (cell 20) ----
@@ -325,7 +349,8 @@ def main():
                 for f in bl.plot_values_vs_ordinal_pages(
                         fit_table[m], C_all[m], vmode_labels, units=None,
                         title_root=f'{b["name"]}: OFC v-mode amplitude c_i',
-                        ncols=cfg['vmode_ncols'], rows_per_page=cfg['vmode_rows_per_page']):
+                        ncols=cfg['vmode_ncols'], rows_per_page=cfg['vmode_rows_per_page'],
+                        elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg')):
                     pdf.savefig(f, bbox_inches='tight'); plt.close(f)
         with PdfPages(str(out_dir / 'bounce_dof_vs_ordinal.pdf')) as pdf:
             if _marker_ok:
@@ -338,7 +363,8 @@ def main():
                 for f in bl.plot_values_vs_ordinal_pages(
                         fit_table[m], DOF_all[m], LABELS_50DOF, units=DOF_UNITS_50,
                         title_root=f'{b["name"]}: Physical DOF (FAM analysis)',
-                        ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page']):
+                        ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page'],
+                        elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg')):
                     pdf.savefig(f, bbox_inches='tight'); plt.close(f)
             if DOFSUM_all is not None:
                 for b in bounces:
@@ -348,50 +374,37 @@ def main():
                     for f in bl.plot_values_vs_ordinal_pages(
                             fit_table[m], DOFSUM_all[m], LABELS_50DOF, units=DOF_UNITS_50,
                             title_root=f'{b["name"]}: Physical DOF + AOS Trim',
-                            ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page']):
+                            ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page'],
+                        elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg')):
                         pdf.savefig(f, bbox_inches='tight'); plt.close(f)
 
-    # ---- summary heatmaps + cross-scatter (cell 22) ----
+    # ---- summary: per-night Δ DZ_kj cross-comparison (cell 22) ----
+    # The per-(k, j) Δ and significance heatmaps are dropped: the same numbers
+    # are in bounce_kj_stats.parquet, and the night-vs-night cross-scatter is
+    # the product that actually answers the repeatability question.  It is
+    # drawn for every comparison leg that has 2 or more qualifying nights,
+    # wide and zoomed.
     with PdfPages(str(out_dir / 'bounce_summary.pdf')) as pdf:
+        cov = bl.leg_night_coverage(bounce_results)
+        f = bl.plot_leg_night_coverage(
+            cov, title='Nights with results per bounce leg (B set)')
+        if f is not None:
+            pdf.savefig(f, bbox_inches='tight'); plt.close(f)
         for name, br in bounce_results.items():
             for clabel, cb in br['comparisons'].items():
-                deltas = cb['deltas']
-                pdf.savefig(bl.plot_kj_heatmap(
-                    deltas, k_list, iZs, value_key='delta', err_key='err',
-                    title=f'{name}: Δ DZ_kj = {clabel} − {br["reference_label"]}\n'
-                          f'{br["description"]} (n_ref={br["reference_n"]}, n_comp={cb["comp_n"]})',
-                    cbar_label='Δ DZ [μm]', cmap='RdBu_r', vlim=cfg['heatmap_vlim_um'],
-                    value_fmt='{:+.3f}', err_fmt='±{:.3f}',
-                    cell_fontsize=cfg['heatmap_cell_fontsize']), bbox_inches='tight')
-                pdf.savefig(bl.plot_kj_heatmap(
-                    deltas, k_list, iZs, value_key='sig', err_key=None,
-                    title=f'{name}: significance = Δ / σ (capped ±{cfg["sig_vlim"]:g}σ)',
-                    cbar_label='Δ / σ', cmap='RdBu_r', vlim=cfg['sig_vlim'],
-                    value_fmt='{:+.1f}', err_fmt='',
-                    cell_fontsize=cfg['heatmap_cell_fontsize']), bbox_inches='tight')
-                pdf.savefig(bl.plot_kj_pass_heatmap(
-                    deltas, k_list, iZs, nsigma_threshold=cfg['pass_nsigma_threshold'],
-                    delta_threshold_um=cfg['pass_delta_threshold_um'],
-                    sigma_only_threshold=cfg['pass_sigma_only_threshold'],
-                    title=f'{name}: significant Δ DZ_kj cells (all nights)',
-                    cell_fontsize=cfg['heatmap_cell_fontsize']), bbox_inches='tight')
-                plt.close('all')
                 dbn = cb.get('deltas_by_night', {})
-                passing = bl.passing_terms(deltas, cfg['pass_delta_threshold_um'],
-                                           cfg['pass_nsigma_threshold'],
-                                           sigma_only_th=cfg['pass_sigma_only_threshold'])
+                if len(dbn) < 2:
+                    print(f'  (bounce_summary: {name} {clabel} has '
+                          f'{len(dbn)} night(s) — no cross-scatter page)')
+                    continue
+                passing = bl.passing_terms(
+                    cb['deltas'], cfg['pass_delta_threshold_um'],
+                    cfg['pass_nsigma_threshold'],
+                    sigma_only_th=cfg['pass_sigma_only_threshold'])
                 for _d in dbn.values():
                     passing |= bl.passing_terms(_d, cfg['pass_delta_threshold_um'],
                                                 cfg['pass_nsigma_threshold'],
                                                 sigma_only_th=cfg['pass_sigma_only_threshold'])
-                for nt in sorted(dbn):
-                    pdf.savefig(bl.plot_kj_pass_heatmap(
-                        dbn[nt], k_list, iZs, nsigma_threshold=cfg['pass_nsigma_threshold'],
-                        delta_threshold_um=cfg['pass_delta_threshold_um'],
-                        sigma_only_threshold=cfg['pass_sigma_only_threshold'],
-                        title=f'{name}: significant Δ DZ_kj cells — night {nt}',
-                        cell_fontsize=cfg['heatmap_cell_fontsize']), bbox_inches='tight')
-                    plt.close('all')
                 for f in bl.plot_night_cross_scatter(
                         dbn, sorted(passing),
                         title_root=f'{name}: per-night Δ DZ_kj cross-comparison '
@@ -400,35 +413,66 @@ def main():
                     pdf.savefig(f, bbox_inches='tight'); plt.close(f)
 
     # ---- DOF night-vs-night scatter (cell 24) ----
+    # One page per (comparison leg, night pair), for every leg with 2 or more
+    # qualifying nights; a leg exercised on a single night gets no page.
     if _svd_ok and C_all is not None:
         with PdfPages(str(out_dir / 'bounce_dof_night_scatter.pdf')) as pdf:
+            f = bl.plot_leg_night_coverage(
+                bl.leg_night_coverage(bounce_results),
+                title='Nights with results per bounce leg (B set)')
+            if f is not None:
+                pdf.savefig(f, bbox_inches='tight'); plt.close(f)
             for name, br in bounce_results.items():
                 for clabel, cb in br['comparisons'].items():
                     dbn = cb.get('dof_deltas_by_night', {})
                     if len(dbn) < 2:
+                        print(f'  (dof_night_scatter: {name} {clabel} has '
+                              f'{len(dbn)} night(s) — no page)')
                         continue
                     for f in bl.plot_dof_night_scatter(
                             dbn, LABELS_50DOF, units=DOF_UNITS_50,
                             title_root=f'{name}: DOF Δ ({clabel} - {br["reference_label"]})'):
                         pdf.savefig(f, bbox_inches='tight'); plt.close(f)
 
-    # ---- DOF per-night median values (cell 26) ----
+    # ---- DOF Δ per (night, B set), as small per-DOF panels (cell 26) ----
+    # x is the B-set position: elevation in deg for the BLOCK-T720 sweep,
+    # camera-rotator angle in deg for BLOCK-T724.  Each point is one
+    # (night, leg) paired Δ, labelled with its day_obs and B value.  For a
+    # camera_hexapod_only bounce only the 5-DOF / 5-v-mode camera-hexapod
+    # scheme is shown, because that is the scheme in which the result is used:
+    # with only the camera rotator moving, only camera-hexapod corrections are
+    # applied.
     if _svd_ok and DOF_all is not None:
-        dobs = np.asarray(fit_table['day_obs']).astype(int)
         with PdfPages(str(out_dir / 'bounce_dof_night_values.pdf')) as pdf:
             for b in bounces:
-                m = bl.bounce_program_mask(fit_table, b)
-                if int(m.sum()) == 0:
+                name = b['name']
+                br = bounce_results.get(name)
+                if br is None:
                     continue
-                dof_by_night = {int(nt): DOF_all[m & (dobs == nt)]
-                                for nt in sorted(set(dobs[m].tolist()))
-                                if int((m & (dobs == nt)).sum()) > 0}
-                if dof_by_night:
-                    pdf.savefig(bl.plot_dof_per_night_summary(
-                        dof_by_night, LABELS_50DOF, DOF_UNITS_50,
-                        title=f'{b["name"]}: FAM DOF median per night '
-                              f'({len(dof_by_night)} nights)'), bbox_inches='tight')
-                    plt.close('all')
+                cam_only = bool(b.get('camera_hexapod_only', False))
+                key = 'dof5_deltas_by_night' if cam_only else 'dof_deltas_by_night'
+                scheme = ('5 DOF / 5 v-modes, camera hexapod only' if cam_only
+                          else f'{cfg["n_dof"]} DOF / {cfg["n_keep"]} v-modes')
+                entries = []
+                for clabel, cb in br['comparisons'].items():
+                    bval = bl.leg_b_value(clabel)
+                    for nt, dd in (cb.get(key) or {}).items():
+                        entries.append({'night': int(nt), 'b_value': bval,
+                                        'label': clabel, 'dof_deltas': dd})
+                if not entries:
+                    print(f'  (dof_night_values: {name} has no per-night DOF Δ)')
+                    continue
+                axis = bl.leg_axis_name(b)
+                fig = bl.plot_dof_vs_b_value_panels(
+                    entries, LABELS_50DOF, DOF_UNITS_50,
+                    dof_indices=(list(CAM_HEX_DOF) if cam_only else None),
+                    x_label=f'B set {axis} [deg]',
+                    title=f'{name}: paired Δ DOF vs B-set {axis.lower()} '
+                          f'({scheme})\n'
+                          f'Δ = comparison − {br["reference_label"]}, '
+                          f'one point per (night, B set)')
+                if fig is not None:
+                    pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
 
     # ---- 5/5 Camera-hexapod-only plots (camera_hexapod_only bounces, e.g. rotator) ----
     if _svd_ok and C5_all is not None:
@@ -449,12 +493,14 @@ def main():
                     for f in bl.plot_values_vs_ordinal_pages(          # (1) v-mode vs ordinal
                             fit_table[m], C5_all[m], vmode5_labels, units=None,
                             title_root=f'{name} [5/5 Cam-hex]: OFC v-mode amplitude c_i',
-                            ncols=cfg['vmode_ncols'], rows_per_page=cfg['vmode_rows_per_page']):
+                            ncols=cfg['vmode_ncols'], rows_per_page=cfg['vmode_rows_per_page'],
+                        elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg')):
                         pdf.savefig(f, bbox_inches='tight'); plt.close(f)
                     for f in bl.plot_values_vs_ordinal_pages(          # (2) DOF vs ordinal
                             fit_table[m], DOF5_all[m], cam_labels, units=cam_units,
                             title_root=f'{name} [5/5 Cam-hex]: Camera-hexapod DOF',
-                            ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page']):
+                            ncols=cfg['dof_ncols'], rows_per_page=cfg['dof_rows_per_page'],
+                        elev_halfwidth_deg=cfg.get('ab_elev_halfwidth_deg')):
                         pdf.savefig(f, bbox_inches='tight'); plt.close(f)
                     for clabel, cb in br['comparisons'].items():       # (3) DOF night-vs-night scatter
                         dbn5 = cb.get('dof5_deltas_by_night', {})
@@ -504,6 +550,49 @@ def main():
             ax.legend(); ax.grid(axis='y', alpha=0.3)
             pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
         print('  wrote bounce_fwhm_metric.pdf + .parquet')
+
+    # ---- per-DOF and per-v-mode Δ table ----
+    # The DOF Δ was previously visible only inside the PDFs, so any number
+    # quoted from it had to be read off a plot.  One row per (bounce, leg,
+    # night, quantity); `unit` is µm for translations and bending-mode
+    # amplitudes, arcsec for hexapod rotations, and dimensionless for v-modes.
+    if _svd_ok and DOF_all is not None:
+        dof_rows = []
+        for name, br in bounce_results.items():
+            for clabel, cb in br['comparisons'].items():
+                for kind, pooled, by_night, labels, units in (
+                        ('dof', cb.get('dof_deltas'), cb.get('dof_deltas_by_night'),
+                         LABELS_50DOF, DOF_UNITS_50),
+                        ('vmode', cb.get('vmode_deltas'), cb.get('vmode_deltas_by_night'),
+                         None, None),
+                        # The 5-DOF / 5-v-mode camera-hexapod-only scheme, present
+                        # only on a camera_hexapod_only bounce.  Its DOF indices are
+                        # the camera-hexapod entries of the same 50-DOF labelling.
+                        ('dof5', cb.get('dof5_deltas'), cb.get('dof5_deltas_by_night'),
+                         LABELS_50DOF, DOF_UNITS_50),
+                        ('vmode5', cb.get('vmode5_deltas'),
+                         cb.get('vmode5_deltas_by_night'), None, None)):
+                    blocks = {'all': pooled} if pooled else {}
+                    blocks.update({str(int(d)): v for d, v in (by_night or {}).items()})
+                    for night, block in blocks.items():
+                        for q, v in (block or {}).items():
+                            dof_rows.append({
+                                'bounce': name, 'comparison': clabel,
+                                'reference': br['reference_label'], 'night': night,
+                                'kind': kind, 'index': int(q),
+                                'label': (labels[int(q)] if labels is not None
+                                          else f'v{int(q) + 1}'),
+                                'unit': (units[int(q)] if units is not None
+                                         else 'dimensionless'),
+                                'delta': float(v.get('delta', np.nan)),
+                                'delta_err': float(v.get('err', np.nan)),
+                            })
+        if dof_rows:
+            ddf = pd.DataFrame(dof_rows)
+            ddf['significance'] = (ddf['delta'].abs() / ddf['delta_err']).replace(
+                [np.inf, -np.inf], np.nan)
+            ddf.to_parquet(tbl_dir / 'bounce_dof_stats.parquet')
+            print(f'  wrote bounce_dof_stats.parquet ({len(ddf)} rows)')
 
     # ---- long-format table (cell 28) ----
     df_kj.to_parquet(tbl_dir / 'bounce_kj_stats.parquet')

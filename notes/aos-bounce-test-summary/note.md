@@ -10,9 +10,9 @@ nights, three of them from July 2026, together make an elevation *sweep* against
 reference at elevation 70 deg, with downward throws to 60, 50, 40 and 30 deg and one upward
 throw to 75 deg. The wavefront change grows monotonically with throw: expressed as the
 equivalent point-spread-function (PSF) full width at half maximum (FWHM), the elevation
-throw produces 0.0915 arcsec FWHM at a 5 deg throw rising to 0.3958 arcsec FWHM at a 40 deg
+throw produces 0.0908 arcsec FWHM at a 5 deg throw rising to 0.3987 arcsec FWHM at a 40 deg
 throw. In every case the Optical Feedback Control (OFC) 50-degree-of-freedom /
-34-v-mode correctable subspace removes most of it, leaving 0.0159 to 0.0674 arcsec FWHM of
+34-v-mode correctable subspace removes most of it, leaving 0.0153 to 0.0664 arcsec FWHM of
 uncorrectable residual. The rotator bounce gives 0.2082 arcsec FWHM before correction and
 0.0191 arcsec FWHM after. So the bounce signal is large, highly significant, and almost
 entirely correctable by the active optics system — which is what a Look-Up Table (LUT)
@@ -64,18 +64,26 @@ also evaluated as `fwhm_after_5_5`.
 ## The data
 
 Six BLOCK-T720 nights and two BLOCK-T724 nights, all from the Danish 1.2 FAM processing.
-Visit counts are after the quality cut of at least 160 CCDs with enough donuts.
+Visit counts are from the MIW-referenced fit, after the per-visit quality cut: at least 160
+CCDs carrying enough donuts, and `median_blur_arcsec` at most 1.2 arcsec.
 
 | day_obs | BLOCK | reference leg | comparison legs present | n visits |
 |---|---|---|---|---|
 | 20260418 | T720 | elev 70 deg (6) | elev 40 deg (6) | 12 |
-| 20260419 | T720 | elev 70 deg (9) | elev 40 deg (2 in the batoid fit, 12 in the MIW refit) | 11 (batoid), 24 (MIW refit) |
-| 20260513 | T720 | elev 70 deg (8) | elev 40 deg (2 in the batoid fit, 8 in the MIW refit) | 10 (batoid), 16 (MIW refit) |
+| 20260419 | T720 | elev 70 deg (9) | elev 40 deg (8) | 17 |
+| 20260513 | T720 | elev 70 deg (8) | elev 40 deg (8) | 16 |
 | 20260709 | T720 | elev 70 deg (6) | elev 60 deg (4) | 10 |
 | 20260711 | T720 | elev 70 deg (8) | elev 50 deg (6) | 14 |
 | 20260713 | T720 | elev 70 deg (12) | elev 30 deg (5), elev 75 deg (6) | 23 |
 | 20260420 | T724 | rotator −1 deg (12) | rotator 59 deg (12) | 24 |
-| 20260513 | T724 | rotator −1 deg (17 batoid, 19 MIW refit) | rotator 59 deg (16 batoid, 19 MIW refit) | 33 (batoid), 38 (MIW refit) |
+| 20260513 | T724 | rotator −1 deg (19) | rotator 59 deg (19) | 38 |
+
+The elevation 30 deg leg is a single-night measurement on 20260713. 20260711 also pointed to
+elevation 30 deg for two visits, but both fail the blur cut at `median_blur_arcsec` of 1.525
+and 1.934 arcsec, so the 30 deg leg carries no 20260711 pair at all. That is atmospheric
+seeing, not a donut-count problem: both visits have 178 CCDs above the donut threshold. One of
+20260713's six 30 deg visits fails the same cut at 1.799 arcsec, which is why that leg shows 5
+comparison visits rather than 6.
 
 Two features of this table drive the analysis:
 
@@ -94,24 +102,25 @@ All wavefronts are in the Optical Coordinate System (OCS), the telescope-fixed f
 
 ### Correctable FWHM per leg
 
-Elevation legs from the batoid-intrinsic fit, which is the only table covering July; the
-rotator leg from the measured-intrinsic-wavefront (MIW) refit, which has more pairs. All
-values are PSF FWHM in arcsec.
+All legs from the measured-intrinsic-wavefront (MIW) referenced fit, which now covers the July
+nights and has the most pairs on every leg. All values are PSF FWHM in arcsec. The
+batoid-intrinsic values are within 0.002 arcsec FWHM on every leg except the 40 deg one, where
+the two tables select different visit sets (see Caveats).
 
 | bounce | leg | throw (deg) | n pairs | FWHM before | FWHM after 50/34 | FWHM after 5/5 |
 |---|---|---|---|---|---|---|
-| T720 elevation | elev 75 deg | +5 (upward) | 6 | 0.0915 | 0.0159 | — |
-| T720 elevation | elev 60 deg | −10 | 4 | 0.1402 | 0.0317 | — |
-| T720 elevation | elev 50 deg | −20 | 6 | 0.2524 | 0.0674 | — |
-| T720 elevation | elev 40 deg | −30 | 10 | 0.2964 | 0.0456 | — |
-| T720 elevation | elev 30 deg | −40 | 5 | 0.3958 | 0.0596 | — |
+| T720 elevation | elev 75 deg | +5 (upward) | 6 | 0.0908 | 0.0153 | — |
+| T720 elevation | elev 60 deg | −10 | 4 | 0.1409 | 0.0326 | — |
+| T720 elevation | elev 50 deg | −20 | 6 | 0.2516 | 0.0664 | — |
+| T720 elevation | elev 40 deg | −30 | 22 | 0.2986 | 0.0381 | — |
+| T720 elevation | elev 30 deg | −40 | 5 | 0.3987 | 0.0598 | — |
 | T724 rotator | rotator 60 deg | 60 deg in rotator | 31 | 0.2082 | 0.0191 | 0.0482 |
 
 The FWHM before correction rises monotonically with the magnitude of the elevation throw,
-from 0.0915 arcsec FWHM at 5 deg to 0.3958 arcsec FWHM at 40 deg — the behaviour expected of
+from 0.0908 arcsec FWHM at 5 deg to 0.3987 arcsec FWHM at 40 deg — the behaviour expected of
 a gravity-driven flexure that grows with the change in the gravity vector. The correctable
-subspace removes 73% to 85% of it in FWHM terms across the elevation legs (least on the
-50 deg leg, most on the 30 and 40 deg legs), and 91% on the rotator leg.
+subspace removes 74% to 87% of it in FWHM terms across the elevation legs (least on the
+50 deg leg, most on the 40 and 30 deg legs), and 91% on the rotator leg.
 
 The rotator bounce is instructive on the 5-DOF question: allowing all 50 DOF leaves 0.0191
 arcsec FWHM, while restricting the correction to the five camera-hexapod DOF that actually
@@ -123,16 +132,21 @@ full 50-DOF residual)`.
 ### Significance and the largest coefficients
 
 Number of DZ coefficients failing the null out of 126, and the largest individual Δ, per leg
-(batoid-intrinsic fit):
+(MIW-referenced fit). Significance is dimensionless, `|Δ| / error`.
 
 | leg | n fail / 126 | RMS(Δ) over (k, j) (µm) | largest Δ (µm of wavefront) |
 |---|---|---|---|
-| elev 75 deg | 11 | 0.0156 | k=1 j=6 (astigmatism) −0.1281 ± 0.0238, significance 5.4 |
-| elev 60 deg | 10 | 0.0247 | k=1 j=6 (astigmatism) +0.1876 ± 0.0374, significance 5.0 |
-| elev 50 deg | 14 | 0.0379 | k=1 j=4 (defocus) +0.1922 ± 0.0635, significance 3.0 |
-| elev 40 deg | 26 | 0.0389 | k=1 j=7 (coma) +0.3088 ± 0.0155, significance 19.9 |
-| elev 30 deg | 40 | 0.0498 | k=1 j=4 (defocus) +0.3134 ± 0.0160, significance 19.6 |
-| rotator 60 deg | 31 | 0.0265 | k=1 j=8 (coma) −0.1805 ± 0.0068, significance 26.5 |
+| elev 75 deg | 7 | 0.0155 | k=1 j=6 (astigmatism) −0.1273 ± 0.0256, significance 5.0 |
+| elev 60 deg | 9 | 0.0247 | k=1 j=6 (astigmatism) +0.1897 ± 0.0368, significance 5.2 |
+| elev 50 deg | 15 | 0.0378 | k=1 j=6 (astigmatism) +0.2482 ± 0.1380, significance 1.8 |
+| elev 40 deg | 37 | 0.0410 | k=1 j=7 (coma) +0.3012 ± 0.0115, significance 26.3 |
+| elev 30 deg | 42 | 0.0499 | k=1 j=4 (defocus) +0.3146 ± 0.0170, significance 18.5 |
+| rotator 60 deg | 30 | 0.0260 | k=1 j=8 (coma) −0.1837 ± 0.0049, significance 37.3 |
+
+The 50 deg leg is the one case where the largest Δ is not itself significant: its
+astigmatism error of 0.1380 µm of wavefront is an order of magnitude larger than on the
+other legs, from only 6 pairs on a single night with unusually large pair-to-pair scatter.
+Its 15 failing coefficients come from smaller, better-determined terms.
 
 The number of significant coefficients and the RMS of Δ both grow with throw. The signal is
 concentrated in the **field-constant term `k = 1`**, i.e. a change uniform across the focal
@@ -148,24 +162,45 @@ camera hexapod rigid-body axes (indices 0–9), `B1_*` are the 20 M1M3 bending m
 `B2_*` the 20 M2 bending modes (30–49). Hexapod translations and bending-mode amplitudes are
 µm; hexapod rotations are arcsec.
 
-| leg | dominant DOF changes |
-|---|---|
-| elev 30 deg | M2_dy +979 ± 60 µm, Cam_dy −808 ± 48 µm, Cam_dx −672 ± 40 µm |
-| elev 40 deg | M2_dy +767 ± 73 µm, Cam_dy −616 ± 34 µm, Cam_dx −402 ± 64 µm |
-| elev 50 deg | M2_dy +849 ± 134 µm, M2 bending B2_2 +0.120 ± 0.028 µm |
-| elev 60 deg | M2_dy +342 ± 71 µm, M2 bending B2_12 −0.019 ± 0.005 µm |
-| elev 75 deg | M2_dy −246 ± 27 µm, M2 bending B2_1 +0.046 ± 0.013 µm |
+| leg | n DOF over 3σ / 50 | three largest DOF changes |
+|---|---|---|
+| elev 30 deg | 27 | M2_dy +981 ± 65 µm, Cam_dy −802 ± 52 µm, Cam_dx −684 ± 42 µm |
+| elev 40 deg | 29 | M2_dy +764 ± 44 µm, Cam_dy −561 ± 39 µm, Cam_dx −491 ± 34 µm |
+| elev 50 deg | 10 | M2_dy +841 ± 149 µm, B2_2 +0.1201 ± 0.0243 µm, B2_4 +0.0527 ± 0.0082 µm |
+| elev 60 deg | 7 | M2_dy +349 ± 65 µm, B2_17 +0.0223 ± 0.0063 µm, B2_12 −0.0187 ± 0.0043 µm |
+| elev 75 deg | 11 | M2_dy −242 ± 23 µm, Cam_dy +236 ± 74 µm, B2_1 +0.0424 ± 0.0126 µm |
+| rotator 60 deg | 31 | Cam_dx +951 ± 24 µm, Cam_dy +616 ± 35 µm, M2_dx +269 ± 24 µm |
 
-The recovered M2 and camera hexapod lateral decentres are the largest terms and **change sign
-between the downward throws and the upward 75 deg throw**, as a gravity-driven decentre must.
-Their magnitudes are large in µm but this is the *recovered optical state* of an open-loop
+The recovered M2 and camera hexapod lateral decentres are the largest terms on every elevation
+leg, and **M2_dy changes sign between the downward throws and the upward 75 deg throw** —
++981 µm at elevation 30 deg against −242 µm at 75 deg, as a gravity-driven decentre must. Their
+magnitudes are large in µm but this is the *recovered optical state* of an open-loop
 measurement, not a commanded motion; the correctable-FWHM numbers above are the statement of
 how much image quality is at stake.
 
+For the rotator bounce the same Δ restricted to the 5-DOF / 5-v-mode camera-hexapod-only
+scheme — the scheme in which this result is used, since only the camera rotator moved — gives
+all five camera-hexapod axes significant:
+
+| DOF | Δ | significance |
+|---|---|---|
+| Cam_dx | +998.1 ± 31.7 µm | 31.5 |
+| Cam_dy | +648.6 ± 34.8 µm | 18.6 |
+| Cam_dz | −7.352 ± 0.603 µm | 12.2 |
+| Cam_ry | −0.003517 ± 0.000105 arcsec | 33.5 |
+| Cam_rx | +0.000389 ± 0.000098 arcsec | 4.0 |
+
+The lateral decentres Cam_dx and Cam_dy dominate, and the recovered values agree with the
+full 50-DOF solution to within about 5% in amplitude (+951 versus +998 µm in Cam_dx), so the
+camera-hexapod part of the rotator bounce is robust to how many DOF the recovery is allowed.
+What the 5/5 scheme cannot capture is the rest — hence the larger `fwhm_after_5_5` residual
+above.
+
 ### Night-to-night repeatability
 
-Only the elevation 40 deg leg is exercised on more than one night, and only in the MIW refit
-(see the caveat below). Comparing the 126 per-(k, j) Δ values night against night:
+Only the elevation 40 deg leg is exercised on more than one night: each July night throws to a
+different elevation, so the 30, 50, 60 and 75 deg legs are each a single-night measurement.
+Comparing the 126 per-(k, j) Δ values night against night on the 40 deg leg:
 
 | night pair | median difference (µm) | nmad (µm) | Pearson r | Spearman rho |
 |---|---|---|---|---|
@@ -188,42 +223,52 @@ large coefficients repeat much better than the ensemble correlation suggests.
 
 ## Caveats
 
-**The July numbers come from the batoid intrinsic, not the measured intrinsic.** The MIW
-refit table is deliberately frozen at `day_obs` 20260513 and has no July rows. The July
-results above therefore come from the Phase-1 DZ fit table, which fits against the *batoid*
-design intrinsic. Any intrinsic that is fixed in the fitting frame cancels exactly in a
+**The intrinsic choice is measured on every leg, and is not a limiting systematic.** Two DZ
+fit tables are available: the Phase-1 table, fit against the *batoid* design intrinsic, and a
+MIW-referenced table. Any intrinsic that is fixed in the fitting frame cancels exactly in a
 paired Δ, so the telescope-fixed **O** component of the intrinsic drops out and only the
 camera-fixed **C** component, which rotates with the camera rotator, can bias a result. For
 an elevation bounce at fixed rotator near 0 deg, C is essentially static within a pair, so the
 choice should barely matter.
 
-That argument is now a measurement. On 20260418 elevation 40 deg, where both tables select an
-identical set of visits, the difference in Δ between the two intrinsics has median
-−0.0001 µm of wavefront and nmad 0.0003 µm of wavefront, against a Δ signal of 0.0370 µm RMS
-over (k, j) — a ratio of about
-`nmad(intrinsic difference)/RMS(Δ) = 0.008 (dimensionless; intrinsic-choice scatter over
-signal amplitude)`, i.e. roughly 120× smaller than the signal — with Pearson r = 1.000 and
-Spearman rho = 0.983 between the two sets of Δ. On the BLOCK-T724 rotator bounce, where C
-*does* rotate within a pair, the difference is larger but still small: nmad 0.0010–0.0015 µm
-of wavefront against signals of 0.0238–0.0264 µm RMS, Pearson r ≈ 0.981. The intrinsic choice
-is therefore not a limiting systematic for either bounce at present precision. When the MIW
-refit is next carried past 20260513 for other reasons, re-running the elevation legs against
-it would upgrade the July numbers; nothing in the conclusions above should change.
+That argument is now a measurement on all six legs, the MIW-referenced fits having been
+extended over the July nights (the MIW *build* stays frozen at `day_obs` 20260513; only the
+fit that references it was run over the wider night range). Comparing the two tables' Δ per
+(k, j), with `n = 126` DZ coefficients on each leg:
+
+| leg | median difference (µm) | nmad (µm) | RMS(Δ), MIW (µm) | nmad/RMS | Pearson r | Spearman rho |
+|---|---|---|---|---|---|---|
+| elev 75 deg | −0.00002 | 0.00024 | 0.0155 | 0.016 | 0.9994 | 0.969 |
+| elev 60 deg | +0.00006 | 0.00038 | 0.0247 | 0.015 | 0.9995 | 0.989 |
+| elev 50 deg | −0.00003 | 0.00034 | 0.0378 | 0.009 | 0.9998 | 0.992 |
+| elev 40 deg | +0.00012 | 0.00128 | 0.0410 | 0.031 | 0.9224 | 0.887 |
+| elev 30 deg | +0.00002 | 0.00043 | 0.0499 | 0.009 | 0.9998 | 0.986 |
+| rotator 60 deg | −0.00007 | 0.00135 | 0.0260 | 0.052 | 0.9811 | 0.797 |
+
+The `nmad/RMS` column is
+`nmad(intrinsic difference)/RMS(Δ) (dimensionless; intrinsic-choice scatter over per-leg
+signal amplitude)`. On the four single-night elevation legs, where both tables select the same
+visits, the intrinsic contributes 0.9% to 1.6% of the signal amplitude with Pearson
+r ≥ 0.999. The 40 deg leg is larger at 3.1% only because the two tables select *different*
+visit sets there — the MIW fit retains 22 visits against the Phase-1 table's 10 — so that row
+mixes the intrinsic choice with a genuine change in sample. On the BLOCK-T724 rotator bounce,
+where C *does* rotate within a pair, the difference is largest at 5.2%, as expected, and still
+well below the signal. The intrinsic choice is therefore not a limiting systematic for either
+bounce at present precision, and the elevation-sweep conclusions hold under both intrinsics.
 
 **The 75 deg leg is an upward throw and acts as a near-null control.** It moves only 5 deg
-from the reference, and upward rather than downward. Its 0.0915 arcsec FWHM before correction
+from the reference, and upward rather than downward. Its 0.0908 arcsec FWHM before correction
 is the smallest of the five legs and its DOF changes carry the opposite sign, both as
 expected. It is useful as a consistency check, not as a measurement of flexure at high
 elevation.
 
-**Two nights drop out of the per-night breakdown of the batoid-intrinsic 40 deg leg.** On
-20260419 and 20260513 the Phase-1 table retains only 2 visits at elevation 40 deg (at 170–172
-CCDs with enough donuts) where the MIW refit retains 12 and 8 respectively (down to 29 CCDs),
-because the MIW refit is run with the quality cut relaxed while the Phase-1 table was cut
-upstream. With only 2 visits those nights fall below the 3-visit-per-night floor and are
-excluded from the batoid per-night breakdown. This does **not** affect July: all 47 July BLOCK-T720 visits sit at
-176–180 CCDs with enough donuts and pass the quality cut, so no July visit is lost. It is the
-reason the repeatability table above is quoted from the MIW refit.
+**The blur cut, not the donut count, is what removes visits.** The per-visit quality cut has two
+active parts, and on these nights it is the seeing that bites. Every BLOCK-T720 visit on all six
+nights has 176–180 CCDs carrying enough donuts, comfortably above the 160-CCD floor, so nothing
+is lost to donut counts. What is lost is three visits above `median_blur_arcsec` of 1.2 arcsec:
+both of 20260711's excursions to elevation 30 deg (1.525 and 1.934 arcsec) and one of
+20260713's six (1.799 arcsec). The visible consequence is that the 30 deg leg is a single-night
+measurement with 5 pairs rather than a two-night one with 8.
 
 **Pair counts are small on the new legs** — 4 to 6 pairs per July leg, against 22 pairs on the
 pooled 40 deg leg. The errors quoted already reflect this, but a single night's leg is not a
@@ -236,15 +281,23 @@ leg taken alone.
 |---|---|
 | FAM processing | Danish 1.2, `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` |
 | batoid-intrinsic fits | `aos/output/fam_processing/danish_1_2/fits.parquet` |
-| MIW refit fits | `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet` (MIW build `pathA_50_34_i_5rot`, frozen at `day_obs` 20260513) |
-| bounce outputs | `aos/output/bounce/danish_1_2_batoid/`, `aos/output/bounce/danish_1_2_A_50_34_i_5rot/` |
-| DZ grid | focal `k = 1…6`, pupil Noll `j = 4…19, 22…26`, fit prefix `z1toz6` |
+| MIW-referenced fits (lead result) | `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet` — 3385 visits, `day_obs` 20250415–20260713, against MIW build `pathA_50_34_i_5rot` |
+| MIW build | frozen at `day_obs` 20260513; the fit above references it over the wider night range without rebuilding it |
+| bounce outputs, MIW | `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` — every number in this note |
+| bounce outputs, batoid | `aos/output/bounce/danish_1_2_batoid/` — the intrinsic-choice comparison |
+| DZ grid | focal `k = 1…6`, pupil Noll `j = 4…19, 22…26`, fit prefix `z1toz6`, 126 coefficients |
 | OFC subspace | 50 DOF, 34 v-modes kept; sensitivity matrix evaluated at camera rotator angle 0.0 deg |
-| quality cut | at least 160 CCDs with enough donuts per visit |
+| quality cut | at least 160 CCDs with enough donuts per visit, and `median_blur_arcsec` at most 1.2 arcsec |
 | thresholds | significance 3.5 (dimensionless) with 0.1 µm of wavefront, or significance 5.0 alone |
 | code | `aos/code/bounce/run_bounce.py`, `aos/code/bounce/bounce_lib.py`; config in `aos/analysis_config.yaml` under `bounce` |
 
+The earlier `aos/output/bounce/danish_1_2_A_50_34_i_5rot/` covers the April/May nights only and
+is superseded by the `_july` directory, which uses the same MIW build over more nights.
+
 See [`../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md) for the study
-reference, and `aos/output/bounce/*/plots/bounce_summary.pdf`,
-`bounce_fwhm_metric.pdf`, `bounce_dof_night_scatter.pdf` and `bounce_dof_night_values.pdf`
-for the figures behind these numbers.
+reference. The tables behind these numbers are `bounce_kj_stats.parquet` (per-(k, j) Δ),
+`bounce_dof_stats.parquet` (per-DOF and per-v-mode Δ, all four schemes) and
+`bounce_fwhm_metric.parquet`; the figures are `bounce_summary.pdf`, `bounce_fwhm_metric.pdf`,
+`bounce_dof_night_scatter.pdf`, `bounce_dof_night_values.pdf`, `bounce_dz_vs_ordinal.pdf`,
+`bounce_vmode_vs_ordinal.pdf`, `bounce_dof_vs_ordinal.pdf` and
+`bounce_5x5_camera_hexapod.pdf`.

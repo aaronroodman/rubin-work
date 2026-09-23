@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-22 · **Kind:** reference (study)
 
 > **Code:** `code/bounce/` · **Notebooks:** `notebooks/bounce/`
-> **Output:** `output/bounce/<P>_<M>/bounce_*.pdf`, `output/bounce/<P>_<M>/bounce_kj_stats.parquet`, `output/bounce/bending_mode_test_meta.parquet`
+> **Output:** `output/bounce/<P>_<M>/bounce_*.pdf`, `output/bounce/<P>_<M>/bounce_kj_stats.parquet`, `output/bounce/<P>_<M>/bounce_dof_stats.parquet`, `output/bounce/<P>_<M>/bounce_fwhm_metric.parquet`, `output/bounce/bending_mode_test_meta.parquet`
 
 Analysis of elevation and rotator bounce test data, for Look-Up-Table (LUT)
 development. A bounce test moves the telescope to a position and back; a repeatable
@@ -20,18 +20,32 @@ BLOCK-T720 carries **one reference leg at elevation 70 deg and five comparison l
 ±3 deg window about a measured elevation. Different nights throw to different elevations, so a
 night contributes only to the leg(s) it actually exercises:
 
-| comparison leg | throw from 70 deg (deg) | nights |
-|---|---|---|
-| elev 40 deg | −30 | 20260418, 20260419, 20260513 |
-| elev 60 deg | −10 | 20260709 |
-| elev 50 deg | −20 | 20260711 |
-| elev 30 deg | −40 | 20260713 |
-| elev 75 deg | +5 (upward) | 20260713 |
+| comparison leg | throw from 70 deg (deg) | nights with pairs | n pairs |
+|---|---|---|---|
+| elev 40 deg | −30 | 20260418, 20260419, 20260513 | 22 |
+| elev 60 deg | −10 | 20260709 | 4 |
+| elev 50 deg | −20 | 20260711 | 6 |
+| elev 30 deg | −40 | 20260713 | 5 |
+| elev 75 deg | +5 (upward) | 20260713 | 6 |
+
+Only the 40 deg leg has more than one night, so it is the only leg carrying a night-to-night
+repeatability measurement; the night-pair products are drawn only where 2 or more nights
+qualify.
 
 The 75 deg leg uses `alt_range: [73.0, 78.0]` deg so it does not overlap the 67–73 deg
 reference window; being a small *upward* throw it serves as a near-null control rather than a
 flexure measurement. BLOCK-T724 has **no July nights**, so the rotator bounce carries its
-single `Rot=60` leg unchanged, with `camera_hexapod_only: true`.
+single `Rot=60` leg unchanged, with `camera_hexapod_only: true`, over nights 20260420 and
+20260513 with 31 pairs.
+
+**The per-visit quality cut has two active parts**, and the blur one is what removes visits
+here. `quality_visit_mask` applies a donut-count floor (`--min-detectors 160`) *and*
+`median_blur_arcsec <= 1.2` arcsec, the latter at its library default
+`DEFAULT_MAX_MEDIAN_BLUR_ARCSEC`. Every BLOCK-T720 visit on all six nights clears the CCD
+floor at 176–180 CCDs, so relaxing `--min-detectors` changes nothing; three visits fail the
+blur cut, both of 20260711's elevation 30 deg visits at 1.525 and 1.934 arcsec and one of
+20260713's at 1.799 arcsec. That is why the 30 deg leg is a single-night 5-pair leg rather
+than a two-night 8-pair one, and it is a seeing limitation, not a processing one.
 
 Because a multi-leg bounce need not exercise every leg on every night, `bounce_lib.bounce_nights`
 qualifies a night on the legs it actually has — at least one populated leg, and every populated
@@ -52,8 +66,8 @@ written up in [`../../../notes/aos-bounce-test-summary/note.md`](../../../notes/
 
 | file | role |
 |---|---|
-| `bounce_lib.py` | library: pairing, per-(k,j) statistics, significance, plotting (894 lines) |
-| `run_bounce.py` | pipeline `bounce` rule — paired Δ for DZ coefficients, OFC v-modes, and physical DOF, with significance/pass heatmaps, vs-ordinal pages, night cross-scatter |
+| `bounce_lib.py` | library: pairing, per-(k,j) statistics, significance, leg-night coverage, plotting |
+| `run_bounce.py` | pipeline `bounce` rule — paired Δ for DZ coefficients, OFC v-modes, and physical DOF, with vs-ordinal pages, night cross-scatter and the per-DOF-vs-B-set panels |
 
 ## Notebooks
 
@@ -79,6 +93,29 @@ and the LUT axis order is documented at `common/dof_telemetry.py:fetch_hexapod_l
 One unit trap: the LUT angular axes are **deg**, as the hexapod reports them, while the
 Trim rotations are **arcsec**, the OFC convention. Translations are µm in both.
 
+## The vs-ordinal marker scheme
+
+The three vs-ordinal PDFs encode three visit properties in one marker, defined in
+`lsst.ts.intrinsic.wavefront.intrinsics_lib` (the external package, not `aos/code/`) so that
+every study drawing these pages shares one scheme:
+
+| property | encoding |
+|---|---|
+| elevation | marker **colour**, one per grid centre at 30, 40, 50, 60, 70, 75 deg |
+| camera rotator angle | marker **shape** — an arrow whose direction gives the rotator angle |
+| filter band | a small **dot overlaid at the centre of the arrow shaft**, in the band's colour |
+
+A visit is assigned to the nearest grid centre within a half-width, `ELEV_HALFWIDTH_DEG = 2.0`
+deg in elevation, tightened from 5 deg so that the 70 and 75 deg legs separate. The half-width
+is a parameter (`elev_halfwidth_deg` / `ab_elev_halfwidth_deg`, and the rotator equivalent)
+rather than a constant.
+
+The band is a dot rather than the marker edge because the edge colour competes with the
+elevation fill: at plotted marker sizes an edge-encoded band makes the elevation unreadable.
+Band colours come live from `lsst.utils.plotting.get_band_dicts()['colors']`, the canonical
+Rubin palette (DM-51122, revised DM-51690), with the current hex values kept as a fallback for
+environments where `lsst.utils.plotting` is unavailable.
+
 ## Why the O/C split matters here
 
 Any intrinsic that is **fixed in the fitting frame cancels in a Δ**. So the
@@ -86,32 +123,48 @@ telescope-fixed **O** term drops out, and it is the **rotating camera term C** t
 changes a rotator-bounce result. This is precisely why the MIW's O + C decomposition
 matters — a bounce analysis run against a frame-fixed intrinsic would show an artifact.
 
-That cancellation is now measured, not just argued. Running the same bounce against the
-batoid design intrinsic (`output/fam_processing/danish_1_2/fits.parquet`) and against the MIW
-refit (`output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet`) on 20260418 `Elev=40`, where both
-tables select an identical visit set, the two Δ sets differ by median −0.0001 µm of wavefront
-with `nmad` 0.0003 µm of wavefront, against a Δ signal of 0.0370 µm RMS over the 126 (k, j)
-coefficients — Pearson r = 1.000, Spearman rho = 0.983, n = 126. On the BLOCK-T724 rotator
-bounce, where C *does* rotate within a pair, the difference is larger but still small:
-`nmad` 0.0010–0.0015 µm of wavefront against signals of 0.0238–0.0264 µm RMS, Pearson
-r ≈ 0.981. So at present precision the intrinsic choice is not a limiting systematic for
-either bounce, which is what makes the batoid-intrinsic July elevation legs trustworthy while
-the MIW build stays frozen at `day_obs` 20260513.
+That cancellation is now measured on **every leg**, not just argued. The MIW-referenced fit was
+run over the July nights as well (`output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet`),
+which needed no MIW rebuild — the build stays frozen at `day_obs` 20260513 and the fit merely
+references it. Comparing its Δ against the batoid design intrinsic
+(`output/fam_processing/danish_1_2/fits.parquet`) per (k, j), with n = 126 DZ coefficients on
+each leg, the `nmad` of the difference over the leg's own RMS(Δ) is 0.9% to 1.6% on the four
+single-night elevation legs (Pearson r ≥ 0.999), 3.1% on the 40 deg leg — where the two tables
+select different visit sets, 22 pairs against 10, so that row mixes intrinsic choice with a
+genuine sample change — and 5.2% on the BLOCK-T724 rotator bounce, where C *does* rotate
+within a pair and the difference is expected to be largest. So at present precision the
+intrinsic choice is not a limiting systematic for either bounce. The full table is in the
+results note.
 
 ## Outputs
 
-`<mi>/plots/bounce_*.pdf`, `<mi>/bounce_kj_stats.parquet` (per-(k,j) Δ, its error and
-significance, per night and pooled) and `<mi>/bounce_fwhm_metric.parquet` (`fwhm_before`,
-`fwhm_after_50_34`, `fwhm_after_5_5`, all arcsec FWHM, per leg). The DOF and v-mode Δ are
-computed in memory and rendered into the PDFs only — they are **not** persisted to a parquet.
-With `add_dof_trim` enabled it additionally queries the EFD live for the MTAOS Trim overlay,
-so that mode needs RSP/EFD access.
+Three parquet tables and eight PDFs per run.
 
-Two output directories hold the two intrinsic choices, so neither shadows the other:
-`output/bounce/danish_1_2_A_50_34_i_5rot/` from the MIW refit (April/May only, the lead result
-for the 40 deg leg and the rotator bounce) and `output/bounce/danish_1_2_batoid/` from the
-Phase-1 batoid-intrinsic fit (the only table covering the July elevation legs). Both are
-hand-run with `--out-dir` and `--min-detectors 160`, matching the `bounce` rule.
+| product | content |
+|---|---|
+| `bounce_kj_stats.parquet` | per-(k, j) Δ in µm of wavefront, its error and significance, per night and pooled |
+| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` of `dof`, `vmode`, `dof5` or `vmode5` and a `unit` column — µm for translations and bending-mode amplitudes, arcsec for hexapod rotations, dimensionless for v-modes |
+| `bounce_fwhm_metric.parquet` | `fwhm_before`, `fwhm_after_50_34`, `fwhm_after_5_5`, all arcsec FWHM, per leg |
+
+`bounce_summary.pdf` opens with a leg-night coverage table — which nights back each leg and how
+many night-pair scatter pages follow — then the night-vs-night Δ cross-scatter, wide and
+zoomed, for every leg with 2 or more qualifying nights. `bounce_dof_night_scatter.pdf` carries
+the same coverage table and the per-DOF night-pair scatter. `bounce_dof_night_values.pdf` shows
+the paired Δ DOF as small per-DOF panels against the B-set position — elevation in deg for
+BLOCK-T720, camera rotator angle in deg for BLOCK-T724 — with one point per (night, leg); for a
+`camera_hexapod_only` bounce only the 5-DOF / 5-v-mode camera-hexapod scheme is drawn, since
+that is the scheme the result is used in. `bounce_dz_vs_ordinal.pdf` opens with the marker
+legend and an A/B bounce-position table per bounce.
+
+With `add_dof_trim` enabled the run additionally queries the EFD live for the MTAOS Trim
+overlay, so that mode needs RSP/EFD access.
+
+Three output directories, so none shadows another:
+`output/bounce/danish_1_2_A_50_34_i_5rot_july/` from the MIW-referenced fit over all six nights
+(the lead result, every number in the note), `output/bounce/danish_1_2_A_50_34_i_5rot/` from the
+same MIW build over April/May only (superseded), and `output/bounce/danish_1_2_batoid/` from the
+Phase-1 batoid-intrinsic fit (the intrinsic-choice comparison). All are hand-run with
+`--out-dir`, `--fits` and `--min-detectors 160`, matching the `bounce` rule.
 
 These PDFs currently share `<mi>/plots/` with three other studies' output; splitting
 them per study is outstanding work.
