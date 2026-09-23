@@ -651,15 +651,27 @@ def main():
                 if not entries:
                     print(f'  (dof_night_values: {name} has no per-night DOF Δ)')
                     continue
-                # RBR is a 50-DOF recovery, so it is overlaid only on the 50/34
-                # scheme; a camera-hexapod-only bounce shows its 5/5 Δ alone.
-                show_rbr = (dof_ranges is not None and not cam_only
+                # RBR is a 50-DOF recovery, so on a camera_hexapod_only bounce
+                # the filled circles (its 5/5 Δ) and the open squares (the
+                # 50-DOF RBR Δ) come from *different* schemes and only the five
+                # camera-hexapod panels are in common.  Both series and the
+                # allowed-range band are still shown there, for consistency with
+                # the elevation page: the camera-hexapod DOF sit far inside
+                # their range, so the two recoveries are expected to agree, and
+                # seeing that agreement is the point.
+                show_rbr = (dof_ranges is not None
                             and any(e.get('rbr_deltas') for e in entries))
                 axis = bl.leg_axis_name(b)
-                sub = (f'\nOverlay: {bl.RBR_METHOD_NAME}, kappa='
-                       f'{cfg["rbr_kappa"]:g}, power={cfg["rbr_power"]} — '
-                       f'shaded band is the allowed range ±r_j'
-                       if show_rbr else '')
+                sub = ''
+                if show_rbr:
+                    # On a camera_hexapod_only page the two series come from
+                    # different schemes, so say which is which.
+                    whose = (f', recovered in the {cfg["n_dof"]} DOF / '
+                             f'{cfg["n_keep"]} v-mode scheme rather than the 5/5'
+                             if cam_only else '')
+                    sub = (f'\nOverlay: {bl.RBR_METHOD_NAME}, kappa='
+                           f'{cfg["rbr_kappa"]:g}, power={cfg["rbr_power"]}'
+                           f'{whose} — shaded band is the allowed range ±r_j')
                 fig = bl.plot_dof_vs_b_value_panels(
                     entries, LABELS_50DOF, DOF_UNITS_50,
                     dof_indices=(list(CAM_HEX_DOF) if cam_only else None),
@@ -670,7 +682,9 @@ def main():
                           f'one point per (night, B set){sub}',
                     overlay_key=('rbr_deltas' if show_rbr else None),
                     overlay_label='RBR',
-                    ranges=(dof_ranges if show_rbr else None))
+                    ranges=(dof_ranges if show_rbr else None),
+                    base_label=('5/5 camera hexapod' if cam_only
+                                else f'default {cfg["n_dof"]}/{cfg["n_keep"]}'))
                 if fig is not None:
                     pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
 

@@ -1464,7 +1464,8 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                                dof_indices=None, x_label='Elevation [deg]',
                                title='', ncols=5, panel_size=(2.6, 2.1),
                                annotate=True, overlay_key=None,
-                               overlay_label='RBR', ranges=None):
+                               overlay_label='RBR', ranges=None,
+                               base_label='default 50/34'):
     """Small per-DOF panels of the paired-Δ DOF against the B-set position.
 
     One panel per degree of freedom (DOF); within a panel each point is one
@@ -1516,6 +1517,11 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         DOF's own unit.  When given, each panel gets a shaded band at
         ±`r_j` so a point outside the physically reachable range is visible
         by eye.
+    base_label : `str`, optional
+        Legend label for the filled-circle series in `dof_deltas`. Name the
+        recovery scheme it came from; on a camera-hexapod-only bounce that is
+        the 5 DOF / 5 v-mode scheme while the overlay is the 50 DOF / 34
+        v-mode one, so the two differ and the legend must say so.
 
     Returns
     -------
@@ -1549,6 +1555,18 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         step = 0.030 * span
         for i, nt in enumerate(at_bv):
             x_jit[(bv, nt)] = (i - (len(at_bv) - 1) / 2) * step
+
+    # With a single B set the jitter has no B-set spacing to scale against, so
+    # the tick labels spread over a hundredth of a degree and invite reading the
+    # nights as sitting at different B values.  Pin x to the B set and say so.
+    # The note goes in the suptitle rather than the x label: the per-panel x
+    # labels sit side by side and a long qualifier on each would overrun its
+    # neighbours.
+    single_b = len(bvals) == 1
+    if single_b:
+        jmax = max((abs(v) for v in x_jit.values()), default=0.0)
+        title = (f'{title}\nOne B set only — nights offset in x for '
+                 f'legibility; all sit at {bvals[0]:g} deg')
 
     nrows = int(np.ceil(len(dof_indices) / ncols))
     fig, axes = plt.subplots(nrows, ncols, layout='constrained',
@@ -1628,6 +1646,10 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                         fontsize=5, color='#9c3b57', va='bottom')
             else:
                 ax.set_ylim(min(lo, -1.15 * band), max(hi, 1.15 * band))
+        if single_b:
+            ax.set_xticks(list(bvals))
+            ax.set_xlim(bvals[0] - 3.0 * max(jmax, 1e-3),
+                        bvals[0] + 3.0 * max(jmax, 1e-3))
         ax.set_title(f'{dof_labels[q]}  [{dof_units[q]}]', fontsize=8)
         ax.tick_params(labelsize=7)
         ax.grid(alpha=0.3)
@@ -1647,7 +1669,7 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
             style += [
                 plt.Line2D([], [], marker='o', ls='', color='0.35',
                            markeredgecolor='black', markeredgewidth=0.4,
-                           label='default 50/34 (filled circle)'),
+                           label=f'{base_label} (filled circle)'),
                 plt.Line2D([], [], marker='s', ls='', markerfacecolor='none',
                            markeredgecolor='0.35', markeredgewidth=1.3,
                            label=f'{overlay_label} (open square)')]
