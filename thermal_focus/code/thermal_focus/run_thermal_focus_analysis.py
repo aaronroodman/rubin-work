@@ -21,6 +21,8 @@ Sections, in the order they appear in the PDF:
 9. FAM blocks — within-block focus drift, and whether the thermal correction helps.
 10. The conversion table — the v-mode-1 to hexapod dz factor across projection schemes,
     including the 10-degree-of-freedom/1-mode case the online system would use.
+11. The standalone calculator — ``trim_calculator.py``, which inlines the fitted coefficients,
+    checked against the pipeline fitted here so the two cannot drift apart unnoticed.
 
 Invocation::
 
@@ -52,6 +54,7 @@ sys.path.insert(0, str(_ROOT))
 
 import thermal_focus_fit as F                                     # noqa: E402
 import thermal_focus_lib as L                                     # noqa: E402
+import trim_calculator as T                                       # noqa: E402
 from common.utils import nmad                                     # noqa: E402
 
 #: Bands in plotting order, bluest first, with a colour each.
@@ -450,6 +453,61 @@ def section_fam(fam, sci, features, verbose=True):
     return out
 
 
+def section_calculator(sci, features, full, verbose=True):
+    """Check the standalone calculator against the fitted pipeline.
+
+    Parameters
+    ----------
+    sci : `pandas.DataFrame`
+        Science table, as loaded.
+    features : `list` [`str`]
+        Deliverable feature columns, in fitted order.
+    full : `dict`
+        Result of `thermal_focus_fit.fit_full`, carrying the fitted pipeline under ``model``.
+    verbose : `bool`, optional
+        Print the comparison.
+
+    Returns
+    -------
+    out : `dict`
+        ``max_abs_diff_um`` and ``median_diff_um`` over the sample, ``worked_max_abs_diff_um``
+        over `trim_calculator.TEST_CASES`, and ``n`` — all µm of equivalent hexapod dz.
+
+    Notes
+    -----
+    `trim_calculator` is a standalone copy with every coefficient inlined to two decimals, so
+    that it can be run on a summit machine with nothing but numpy. Inlining means it can drift
+    from the fit silently, which is exactly what this section exists to catch: if a coefficient
+    here is re-fitted and the calculator is not updated, ``max_abs_diff_um`` grows from rounding
+    noise to something that matters.
+    """
+    cols = ['truss_temp_mean_c', 'm1m3_z_gradient_c_per_m', 'm1m3_y_gradient_c_per_m',
+            'm1m3_radial_gradient_c_per_m', 'm1m3_x_gradient_c_per_m']
+    if any(c not in sci.columns for c in cols) or list(features) != cols:
+        if verbose:
+            print('  the fitted feature set is not the calculator\'s five channels, so the '
+                  'calculator is not comparable here; skipped')
+        return {}
+    calc = T.predict_focus_error_um(*[sci[c].to_numpy(float) for c in cols],
+                                   warn_extrapolation=False)
+    diff = calc - np.asarray(full['pred'], float)
+    worked = max(abs(T.predict_focus_error_um(**inp, warn_extrapolation=False) - exp)
+                 for _, inp, exp in T.TEST_CASES)
+    out = {'n': int(len(sci)),
+           'max_abs_diff_um': float(np.nanmax(np.abs(diff))),
+           'median_diff_um': float(np.nanmedian(diff)),
+           'worked_max_abs_diff_um': float(worked)}
+    if verbose:
+        print(f'  calculator against the fitted pipeline over {out["n"]} visits: '
+              f'max |difference| {out["max_abs_diff_um"]:.4f}, median '
+              f'{out["median_diff_um"]:+.4f} um of equivalent hexapod dz')
+        print(f'  its {len(T.TEST_CASES)} worked cases agree with their stated values to '
+              f'{out["worked_max_abs_diff_um"]:.4f} um of equivalent hexapod dz')
+        print(f'  inlined coefficients: intercept {T.INTERCEPT_UM:+.2f} um, truss '
+              f'{T.TRUSS_UM_PER_C:+.2f} um per deg C')
+    return out
+
+
 # ------------------------------------------------------------------------------------ figures
 
 def _text_page(pdf, title, lines):
@@ -750,6 +808,9 @@ def main():
     print('\n=== 10. the v1 to hexapod dz conversion, per projection scheme ===')
     conv = L.v1_per_um_dz_table()
 
+    print('\n=== 11. the standalone calculator against this fit ===')
+    calc = section_calculator(sci, features, full)
+
     if args.no_pdf:
         return
 
@@ -903,6 +964,17 @@ def main():
             'The shared and camera-alone columns are two definitions of "equivalent dz", not',
             'two estimates of one number: shared splits the motion between the camera and M2',
             'hexapods, camera-alone holds M2 still. The study reports the shared convention.',
+            '',
+            *([f'Standalone calculator (trim_calculator.py, numpy only) against this fit, over',
+               f'{calc["n"]} visits: max |difference| {calc["max_abs_diff_um"]:.4f}, median '
+               f'{calc["median_diff_um"]:+.4f} um of equivalent hexapod dz.',
+               f'Its {len(T.TEST_CASES)} worked test cases agree with their stated values to '
+               f'{calc["worked_max_abs_diff_um"]:.4f} um.',
+               'The difference is rounding: the calculator inlines each coefficient to two',
+               'decimals so it can be copied to a summit machine and read by eye.']
+              if calc else
+              ['The standalone calculator was not compared: the fitted feature set here is not',
+               'its five thermal channels.']),
         ])
         figure_elevation(pdf, nights)
         figure_fam(pdf, famres)
