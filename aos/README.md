@@ -113,7 +113,7 @@ structure are the `vmode` study in the `smatrix` topic
 
 Prediction of the uniform-defocus error from thermal telemetry — the focus look-up table from
 science exposures, and focus drift within a FAM block — is the `thermal_focus` topic
-([`../thermal_focus/docs/studies/thermal_focus.md`](../thermal_focus/docs/studies/thermal_focus.md)).
+([`../thermal_focus/docs/thermal_focus.md`](../thermal_focus/docs/thermal_focus.md)).
 
 | study | content |
 |---|---|

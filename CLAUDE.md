@@ -25,7 +25,7 @@ AOS / wavefront:
   rebuild of the old PIFF `optatmo3` ideas
 - `thermal_focus/` — prediction of the uniform-defocus error from thermal telemetry, so
   focus can be set open-loop; includes a standalone numpy-only online calculator
-  (`docs/studies/thermal_focus.md`)
+  (`docs/thermal_focus.md`)
 
 Image quality / PSF / instrument:
 - `psf/`, `guider/`, `camera/`, `nightlyiq/` (image quality image-by-image for a

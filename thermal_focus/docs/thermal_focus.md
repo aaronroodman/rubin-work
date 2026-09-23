@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
 
-> **Code:** `code/thermal_focus/` · **Notebooks:** `notebooks/thermal_focus/`
-> **Output:** `output/thermal_focus/` (`thermal_focus.pdf`, `thermal_focus.parquet`,
+> **Code:** `code/` · **Notebooks:** `notebooks/`
+> **Output:** `output/` (`thermal_focus.pdf`, `thermal_focus.parquet`,
 > `<fam_dir>/thermal_focus_fam.parquet`)
 
 Prediction of the Rubin telescope's uniform-defocus error from thermal telemetry alone, so that
@@ -86,7 +86,7 @@ evaluated at the corner field points) and OPD version. The deliverable model is 
 `v50_34__batoid__consdb_v1`, which is the only variant with rows; the other two are registered and
 unpopulated.
 
-The notebook `notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb` uses the
+The notebook `notebooks/corner_z4_vs_temperature_science.ipynb` uses the
 four-corner mean Z4 instead, and is kept as the independent route to the same physical question.
 
 ## Sample
@@ -346,11 +346,11 @@ two comparisons is easy and wrong.
 
 | file | role |
 |---|---|
-| `code/thermal_focus/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
-| `code/thermal_focus/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
-| `code/thermal_focus/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/thermal_focus/run_thermal_focus_analysis.py` | the analysis: eleven sections and one document, no network |
-| `code/thermal_focus/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
+| `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
+| `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
+| `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
+| `code/run_thermal_focus_analysis.py` | the analysis: eleven sections and one document, no network |
+| `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 ### The network seam
 
@@ -392,14 +392,14 @@ online scheme.
 | `<fam_dir>/thermal_focus_fam.parquet` | one row per FAM triplet whose `acq` visit has a recovered optical state, with the triplet's own DZ coefficients |
 | `thermal_focus.pdf` | the analysis document: eleven sections, from the sample funnel to the calculator check |
 
-`output/thermal_focus/` has no data-axis level: the products depend on the database and the optical
+`output/` has no data-axis level: the products depend on the database and the optical
 prescription, not on a Butler collection or processing variant. The FAM table is the exception,
 depending on which reduction produced the DZ coefficients, so it sits under the FAM variant's short
 directory name.
 
 ## Notebook
 
-`notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb` asks the same physical question
+`notebooks/corner_z4_vs_temperature_science.ipynb` asks the same physical question
 from the four-corner mean Z4 rather than the recovered optical state, assembling
 
 ```

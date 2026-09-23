@@ -14,9 +14,9 @@ Two tables are written:
 
 Invocation::
 
-    python code/thermal_focus/run_thermal_focus.py
-    python code/thermal_focus/run_thermal_focus.py --day-obs-range 20251103 20260713
-    python code/thermal_focus/run_thermal_focus.py --no-fam
+    python code/run_thermal_focus.py
+    python code/run_thermal_focus.py --day-obs-range 20251103 20260713
+    python code/run_thermal_focus.py --no-fam
 
 Notes
 -----
@@ -40,7 +40,7 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_focus_lib
-_ROOT = _HERE.parents[2]
+_ROOT = _HERE.parents[1]
 sys.path.insert(0, str(_ROOT))                                   # repo root -> common/
 sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))           # -> efd_db
 
@@ -259,14 +259,14 @@ def main():
     ap.add_argument('--n-modes', type=int, default=34,
                     help='v-modes retained in the conversion')
     ap.add_argument('--output-dir', default=None,
-                    help='where to write; default thermal_focus/output/thermal_focus')
+                    help='where to write; default thermal_focus/output')
     ap.add_argument('--fam-dir-name', default='fam_danish_1_2',
                     help='short directory name for the FAM variant')
     ap.add_argument('--no-fam', action='store_true', help='skip the FAM table')
     args = ap.parse_args()
 
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
-               else _ROOT / 'thermal_focus' / 'output' / 'thermal_focus')
+               else _ROOT / 'thermal_focus' / 'output')
     out_dir.mkdir(parents=True, exist_ok=True)
 
     day_obs_range = tuple(args.day_obs_range) if args.day_obs_range else None

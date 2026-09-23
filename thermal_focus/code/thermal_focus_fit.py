@@ -20,7 +20,7 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[2]
+_ROOT = _HERE.parents[1]
 sys.path.insert(0, str(_ROOT))
 
 import thermal_focus_lib as L                                    # noqa: E402

@@ -139,7 +139,7 @@ half is **open**. Read this before touching anything that reports a v-mode ampli
 
 The deliverable is a thermal estimate of v-mode 1 for use at Rubin, to set the camera- and
 M2-hexapod dz Trim to an optimal start-of-night value, and it now lives in the
-[`thermal_focus`](../../../thermal_focus/docs/studies/thermal_focus.md) topic. A sign error
+[`thermal_focus`](../../../thermal_focus/docs/thermal_focus.md) topic. A sign error
 there drives focus the wrong way, so the open problem below must be asserted against before
 any number is delivered. Note the convention: **DZ** is the Double Zernike basis, **dz** is
 hexapod delta-z travel.
@@ -159,7 +159,7 @@ the magnitude is the intended return: `thermal_focus_lib` carries the sign separ
 `MEASURED_SIGN = -1.0` (dimensionless), and `|c5 + c0| / mean = 2.00000` exactly, which is
 what makes the unit *total* dz travel — 0.5 µm on each hexapod — rather than one axis. The
 response definition and both conversions are stated once, in
-`thermal_focus/code/thermal_focus/thermal_focus_lib.py`.
+`thermal_focus/code/thermal_focus_lib.py`.
 
 **Open — the two v-mode engines disagree on the sign of v1.** `optical_state` and
 `fam_dz` are built by different engines and are therefore **not in the same basis** despite
@@ -220,7 +220,7 @@ reports a v-mode **amplitude**, whose sign moves:
 |---|---|
 | `fam_dz.v_modes` (all rows) | `value_added/code/build_fam_dz.py` |
 | all three `optical_state` variants' `v_modes`, `v1_lut`, `v1_trim` | `value_added/code/build_optical_state.py` |
-| `thermal_focus.{parquet,pdf}`, `thermal_focus_fam.parquet` | `../../../thermal_focus/code/thermal_focus/` — refitted from the current basis; the truss coefficient is +124.49 µm of equivalent hexapod dz per °C |
+| `thermal_focus.{parquet,pdf}`, `thermal_focus_fam.parquet` | `../../../thermal_focus/code/` — refitted from the current basis; the truss coefficient is +124.49 µm of equivalent hexapod dz per °C |
 | `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `code/correlations/run_vmode_correlations.py:71` |
 | `dz_correlations` v-mode outputs | `code/correlations/run_dz_correlations.py:220` |
 | `thermal_correlations` v-mode outputs | `code/correlations/run_thermal_correlations.py:183` |
@@ -268,7 +268,7 @@ Aaron's intent is that **every** visit of `img_type` science, `acq` or cwfs carr
 so the backfill covers all three.
 
 The current Full Array Mode focus-drift sample in
-[`thermal_focus`](../../../thermal_focus/docs/studies/thermal_focus.md) is unaffected — it
+[`thermal_focus`](../../../thermal_focus/docs/thermal_focus.md) is unaffected — it
 starts at `day_obs` 20251104, inside the covered range, and all five thermal model features are
 finite on all 984 visits. Filling the gap extends the FAM DZ sample from 62 complete sets
 toward the full 2025 range.
@@ -284,7 +284,7 @@ and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are
 
 - **Four superseded `science_lut` scripts** await explicit deletion approval. Deleting files is
   a MUST-ASK; they are still on disk.
-- **`../../../thermal_focus/notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb`**
+- **`../../../thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb`**
   has three uncommitted cells that are Aaron's own work, deliberately left for him to decide
   on.
 - **Two untracked scratch notebooks**: `notebooks/correlations/querying_efd_consdb.ipynb` and

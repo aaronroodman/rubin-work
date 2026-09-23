@@ -31,7 +31,7 @@ worse rather than better.
 
 ## Studies
 
-- [`thermal_focus`](docs/studies/thermal_focus.md) — the response definition, the fitted thermal
+- [`thermal_focus`](docs/thermal_focus.md) — the response definition, the fitted thermal
   model and its night-grouped evaluation, the elevation null result, the FAM within-block drift,
   the Double Zernike (DZ) cross-check, and the v-mode-1 conversion across projection schemes.
 
@@ -39,19 +39,19 @@ worse rather than better.
 
 | file | role |
 |---|---|
-| `code/thermal_focus/thermal_focus_lib.py` | the response definition, the conversions and the feature groups |
-| `code/thermal_focus/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
-| `code/thermal_focus/thermal_focus_fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
-| `code/thermal_focus/run_thermal_focus_analysis.py` | the analysis: eleven sections and one document, no network |
-| `code/thermal_focus/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
+| `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups |
+| `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
+| `code/thermal_focus_fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
+| `code/run_thermal_focus_analysis.py` | the analysis: eleven sections and one document, no network |
+| `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 The build stage is the only one that needs the network, because the mean TMA truss temperature is
 derived on a ConsDB join rather than stored. It caches to parquet, so the analysis runs offline:
 
 ```bash
-python code/thermal_focus/run_thermal_focus.py
-python code/thermal_focus/run_thermal_focus_analysis.py
-python code/thermal_focus/trim_calculator.py --self-test
+python code/run_thermal_focus.py
+python code/run_thermal_focus_analysis.py
+python code/trim_calculator.py --self-test
 ```
 
 The calculator imports numpy and argparse and nothing else, so it can be copied to a summit machine
@@ -64,13 +64,13 @@ reads the value-added DuckDB through `value_added/code/efd_db.py`.
 
 ## Notebooks
 
-- `notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb` — the four-corner mean Z4 of the
+- `notebooks/corner_z4_vs_temperature_science.ipynb` — the four-corner mean Z4 of the
   total optical state against truss, outside-air and camera-body temperature, an independent route
   to the same physical question from a different and noisier estimator of the measured wavefront.
   Needs ConsDB and the Engineering Facility Database (EFD).
 
 ## Output
 
-`output/thermal_focus/` holds `thermal_focus.parquet` (one row per science visit),
+`output/` holds `thermal_focus.parquet` (one row per science visit),
 `thermal_focus.pdf` (the analysis document) and, under the FAM variant's short directory name,
 `thermal_focus_fam.parquet` (one row per FAM triplet).

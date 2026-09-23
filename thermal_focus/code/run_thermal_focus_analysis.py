@@ -26,9 +26,9 @@ Sections, in the order they appear in the PDF:
 
 Invocation::
 
-    python code/thermal_focus/run_thermal_focus_analysis.py
-    python code/thermal_focus/run_thermal_focus_analysis.py --day-obs-range 20251103 20260713
-    python code/thermal_focus/run_thermal_focus_analysis.py --no-pdf
+    python code/run_thermal_focus_analysis.py
+    python code/run_thermal_focus_analysis.py --day-obs-range 20251103 20260713
+    python code/run_thermal_focus_analysis.py --no-pdf
 
 Notes
 -----
@@ -49,7 +49,7 @@ from matplotlib.backends.backend_pdf import PdfPages              # noqa: E402
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[2]
+_ROOT = _HERE.parents[1]
 sys.path.insert(0, str(_ROOT))
 
 import thermal_focus_fit as F                                     # noqa: E402
@@ -100,7 +100,7 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
     sci_path = out_dir / 'thermal_focus.parquet'
     if not sci_path.exists():
         raise SystemExit(f'{sci_path} is absent; build it with\n  python '
-                         f'code/thermal_focus/run_thermal_focus.py')
+                         f'code/run_thermal_focus.py')
     sci = pd.read_parquet(sci_path)
     features = L.resolve_features(L.DELIVERABLE_GROUPS)
 
@@ -716,7 +716,7 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--output-dir', default=None,
                     help='directory holding the cached tables; default '
-                         'thermal_focus/output/thermal_focus')
+                         'thermal_focus/output')
     ap.add_argument('--fam-dir-name', default='fam_danish_1_2',
                     help='subdirectory holding the FAM table')
     ap.add_argument('--day-obs-range', nargs=2, type=int, default=None,
@@ -729,7 +729,7 @@ def main():
     args = ap.parse_args()
 
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
-               else _ROOT / 'thermal_focus' / 'output' / 'thermal_focus')
+               else _ROOT / 'thermal_focus' / 'output')
     day_obs_range = tuple(args.day_obs_range) if args.day_obs_range else None
 
     print('=== 1. the response and the sample ===')

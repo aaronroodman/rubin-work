@@ -296,13 +296,13 @@ separately.
 The four-corner mean Z4 of the total optical state against truss, outside-air and camera-body
 temperature is part of the `thermal_focus` topic, which holds all of the focus-against-temperature
 work:
-[`../../../thermal_focus/notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb`](../../../thermal_focus/notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb),
+[`../../../thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb`](../../../thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb),
 described in
-[`../../../thermal_focus/docs/studies/thermal_focus.md`](../../../thermal_focus/docs/studies/thermal_focus.md).
+[`../../../thermal_focus/docs/thermal_focus.md`](../../../thermal_focus/docs/thermal_focus.md).
 
 ## See also
 
-- [`../../../thermal_focus/docs/studies/thermal_focus.md`](../../../thermal_focus/docs/studies/thermal_focus.md) — prediction of the uniform-defocus error from thermal telemetry
+- [`../../../thermal_focus/docs/thermal_focus.md`](../../../thermal_focus/docs/thermal_focus.md) — prediction of the uniform-defocus error from thermal telemetry
 - [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — where the v-modes come from
 - [`telemetry.md`](../telemetry.md) — where the temperature columns come from
 - [`../miw_pipeline.md`](../miw_pipeline.md#phase-3--analyses-on-the-mi-refit-fits-per-param_set--mi_name)
