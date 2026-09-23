@@ -163,14 +163,20 @@ Carried here so they are visible in one place; detail in each study doc.
 - **`cwfs`** — the Z11/Z14 intra- vs extra-focal split is **unexplained** and is not a
   known instrumental effect. It appears in the Danish 1.3 unpaired corner output too: over
   `day_obs` 20260315 the two half-sensors straddle the Danish 1.2 joint fit on 14 of 21 Noll
-  terms, most strongly on Z11 and Z14. See [`fam_processing`](studies/fam_processing.md).
+  terms, most strongly on Z11 and Z14. That the two sides differ this much is also what makes
+  a paired fit biased — see [`fam_processing`](studies/fam_processing.md) — so the size of the
+  split explains the paired-versus-unpaired offset, while the **origin** of the split stays
+  open.
 - **`fam_processing`** — the Danish 1.3 blitz Double Zernike fits carry a real per-Noll mean
   offset against Danish 1.2 on the astigmatism and coma terms, largest on Z7 Coma_y and Z6
-  Astig0. Whether that is a Danish version difference or a convention difference is
-  unresolved.
-- **`fam_processing`** — on the corner sensors, whether the mean of the two unpaired halves
-  or the extra-focal half alone is the better estimator of the Danish 1.2 joint fit depends
-  on the metric and on Noll order; neither is uniformly better at n = 1215 pairs.
+  Astig0. This is understood as the consequence of dropping the pairing: a paired fit imposes
+  one solution on two donuts that differ in blur and in Z11, so it carries a bias that the
+  unpaired fit does not. What remains open is only that the blitz collection also changes the
+  code version, so these tables cannot separate pairing from version — blitz run in paired
+  mode on the same visits would.
+- **`fam_processing`** — comparisons of the unpaired corner estimators against the Danish 1.2
+  joint fit measure agreement with a **biased** reference, so they cannot rank the unpaired
+  estimators by accuracy. Doing that needs an external reference.
 - **`miw`** — 83 % of MIW **power** sits above the `k<=6` focal orders the build fits,
   which reframes any DZ-subspace analysis.
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting

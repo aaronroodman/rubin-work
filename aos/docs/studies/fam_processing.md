@@ -200,8 +200,17 @@ has the same restriction.
   is dominated by mean offsets rather than scatter on Z7 Coma_y (+0.1388 micrometres of
   wavefront mean offset against an nMAD of 0.0553) and Z6 Astig0 (−0.1116 against 0.0462),
   which are the same terms the one-visit format review already identified as differing
-  between the two reductions. Whether that offset is a Danish version difference or a
-  convention difference is unresolved.
+  between the two reductions. That offset is understood to be **the consequence of dropping
+  the pairing**, not a convention error. A paired fit forces one wavefront solution onto two
+  donuts that measurably differ — on the corner sensors the same pair differs by 1.0022
+  against 0.8045 arcsec in `group_fwhm` and by +0.2924 against +0.0115 micrometres of
+  wavefront in Z11 Spherical — so the joint solution lands between the two sides and carries
+  a bias that survives averaging over donuts. Fitting each side separately removes that
+  bias, which is why the unpaired result differs systematically rather than just noisily. Two
+  limits on the evidence: the straddling is 14 of 21 Noll terms rather than universal, and
+  the blitz collection changes the code version (ts_wep 16.6.0, danish 1.2.1) at the same
+  time as the pairing, so these tables cannot separate the two causes. Running blitz in
+  paired mode on the same visits would isolate pairing from version.
 - On the CWFS, the Danish 1.2 per-pair **intrinsic** wavefront is exactly the arithmetic mean
   of the two donuts' own field-position evaluations. Pooled over `day_obs` 20260315 — 62
   visits, 1215 matched pairs, 21 Noll terms, 25515 entries — the mean of the two unpaired
@@ -229,6 +238,12 @@ has the same restriction.
   noise; that is suggestive, not established. **A conclusion drawn from the single reference
   visit alone — that the mean of the two halves beats both halves, Pearson r = 0.9035 against
   0.8516 and 0.7052 at n = 15 pairs — does not survive at n = 1215 and is withdrawn.**
+  Note what this comparison can and cannot settle: it measures agreement **with the Danish 1.2
+  paired fit**, and that fit is itself biased by pairing two donuts that differ in blur and in
+  Z11. Closer agreement with it is therefore not evidence of a better wavefront estimate, so
+  "which unpaired estimator best reproduces Danish 1.2" is not the same question as "which is
+  more accurate". Establishing the latter needs an external reference rather than the paired
+  fit.
 - The CWFS match yield is 58.0 per cent (dimensionless): of 2095 Danish 1.2 rows with
   `used == True` over the night, 1346 match on the intra side, 1377 on the extra, 1215 on
   both, a median of 20 pairs per visit. The blitz-to-Danish-1.2 centroid offset must be
@@ -243,7 +258,8 @@ has the same restriction.
 - The blitz pairing keeps the stars fitted successfully on **both** sides of focus, which is
   roughly 96.8% of the per-side fitted rows on the visits examined (3353 paired from 3465
   intra and 3466 extra on `day_obs` 20260315 `seq_num` 122). The donuts lost are those
-  fitted on one side only; whether they are a biased subset has not been checked.
+  fitted on one side only. At a few per cent of several thousand donuts per visit this is not
+  expected to matter for any result drawn from these tables.
 - The blitz `group_fit_cost` and `group_fit_optimality` are per fit **group**, not per donut,
   and populate the Danish 1.2 `lstsq_cost` and `lstsq_optimality` columns under those names.
   On the visits examined every group is a singleton, so the distinction is currently moot; it
