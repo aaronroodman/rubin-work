@@ -82,7 +82,14 @@ duckdb`) is all it needs — so it can be shared with anyone who has read access
 database file. It plots each quantity against time and as a histogram, checks
 `into_wind_deg` against a recomputation from `wind_dir_deg` and `azimuth_deg`, and works
 through which DOF each sensitivity-matrix block perturbed by combining the block identity
-from ConsDB with the per-event DOF step (Tweak) held here.
+from ConsDB with the commanded DOF (Trim) held here.
+
+That last example turns on the structure of the FAM observing pattern. A **triplet** is
+three exposures — two defocused, one in focus — in which camera hexapod dz is offset by
+±1500 micron about the in-focus position, and a **ladder** is five triplets stepping one
+other DOF through `-Delta, -Delta/2, 0, +Delta/2, +Delta`. The perturbed DOF is then the
+one with the largest Trim range across a ladder, and the recovered index is cross-checked
+against the intent ConsDB records in `observation_reason`.
 
 ## Docs
 
