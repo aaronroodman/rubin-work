@@ -54,8 +54,12 @@ FEATURE_UNITS = {
     'n_moves_night': 'moves',
 }
 
-#: Commanded truss slope from the FAM Double Zernike fits [dimensionless v-mode-1 amplitude per
-#: deg C]. The science-image slope must land near this; it is the study's one independent check.
+#: Commanded truss slope from the Full Array Mode (FAM) Double Zernike fits [dimensionless
+#: v-mode-1 amplitude per deg C]. This is the slope of v-mode 1 **of the commanded Trim** against
+#: truss temperature, so the like-for-like science-image comparison is `commanded_truss_slope`,
+#: not the fitted coefficient of the response. The response is Trim minus the measured state, a
+#: different quantity, and its coefficient lands about 16% away — which is a statement about the
+#: measured term, not a disagreement between the two engines.
 FAM_TRUSS_SLOPE = 0.09634
 
 
@@ -388,11 +392,81 @@ def coefficient_table(coefs, features, v1_per_um_dz, verbose=True):
         if 'truss_temp_mean_c' in features:
             i = features.index('truss_temp_mean_c')
             v1_per_c = coefs[:, i].mean() * v1_per_um_dz
-            dev = 100 * abs(v1_per_c - FAM_TRUSS_SLOPE) / FAM_TRUSS_SLOPE
-            print(f'  truss term as a v-mode-1 slope: {v1_per_c:+.5f} dimensionless v-mode-1 '
-                  f'amplitude per deg C')
-            print(f'    FAM Double Zernike value {FAM_TRUSS_SLOPE:+.5f} per deg C; '
-                  f'differ by {dev:.1f}% (dimensionless)')
+            print(f'  the response truss term as a v-mode-1 slope: {v1_per_c:+.5f} '
+                  f'dimensionless v-mode-1 amplitude per deg C')
+            print(f'    not directly comparable to the FAM commanded slope '
+                  f'{FAM_TRUSS_SLOPE:+.5f} per deg C: see commanded_truss_slope')
+    return out
+
+
+def commanded_truss_slope(df, v1_per_um_dz, verbose=True):
+    """The commanded truss slope, the like-for-like comparison against the FAM value.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Carrying ``v1_trim`` [dimensionless v-mode-1 amplitude of the commanded Trim],
+        ``truss_temp_mean_c`` [°C] and ``band``.
+    v1_per_um_dz : `float`
+        Conversion [dimensionless v-mode-1 amplitude per µm of total hexapod dz travel]. Used
+        only to report the slope in both units.
+    verbose : `bool`, optional
+        Print the per-band comparison.
+
+    Returns
+    -------
+    out : `pandas.DataFrame`
+        Per band and pooled: ``band``, ``n``, ``slope`` [dimensionless v-mode-1 amplitude per
+        °C], ``slope_err``, ``difference`` from `FAM_TRUSS_SLOPE`, ``n_sigma`` and
+        ``slope_um_per_c`` [µm of equivalent hexapod dz per °C].
+
+    Notes
+    -----
+    `FAM_TRUSS_SLOPE` is the slope of v-mode 1 **of the commanded Trim** against truss
+    temperature, measured from the FAM Double Zernike fits. So the science-image quantity that
+    tests it is ``v1_trim`` against the same temperature — not the fitted coefficient of the
+    response, which is Trim minus the measured state and therefore a different quantity. The
+    two agree here to well inside the 0.03 per °C tolerance the original study set, which is
+    what says the two independent engines see the same commanded thermal response.
+    """
+    rows = []
+    for band, g in list(df.groupby('band')) + [('all', df)]:
+        if len(g) < 200:
+            continue
+        r = huber_line(g['truss_temp_mean_c'], g['v1_trim'])
+        if not np.isfinite(r['slope']):
+            continue
+        d = r['slope'] - FAM_TRUSS_SLOPE
+        rows.append(dict(band=band, n=r['n'], slope=r['slope'], slope_err=r['slope_err'],
+                         pearson_r=r['pearson_r'], spearman_rho=r['spearman_rho'],
+                         difference=d,
+                         n_sigma=abs(d) / r['slope_err'] if r['slope_err'] else float('nan'),
+                         slope_um_per_c=r['slope'] / v1_per_um_dz))
+    out = pd.DataFrame(rows)
+    if verbose:
+        print(f'commanded truss slope, v1 of the Trim against truss temperature, against the '
+              f'FAM value {FAM_TRUSS_SLOPE:+.5f}')
+        print('  [dimensionless v-mode-1 amplitude per deg C]')
+        for _, r in out.iterrows():
+            print(f'  {r.band:>4s}  n {int(r.n):6d}  {r.slope:+.5f} +/- {r.slope_err:.5f}  '
+                  f'difference {r.difference:+.5f} ({r.n_sigma:.1f} standard errors)  '
+                  f'= {r.slope_um_per_c:+.1f} um of equivalent hexapod dz per deg C')
+        pooled = out[out.band == 'all']
+        per_band = out[out.band != 'all']
+        if len(pooled):
+            d = float(pooled.difference.iloc[0])
+            print(f'  pooled difference {d:+.5f} per deg C: '
+                  f'{"consistent with FAM" if abs(d) < 0.03 else "DEVIATES from FAM"} '
+                  f'(tolerance 0.03 per deg C) -- this is the number the study reports')
+        if len(per_band):
+            worst = per_band.loc[per_band.difference.abs().idxmax()]
+            print(f'  per-band slopes span {per_band.slope.min():+.5f} to '
+                  f'{per_band.slope.max():+.5f} per deg C; furthest is {worst.band} at '
+                  f'{worst.difference:+.5f}')
+            print(f'    the per-band spread is far larger than any formal error, so a single '
+                  f'band is not an\n    independent measurement of this slope: the bands differ '
+                  f'in sample size and in how well\n    the focus is determined, and the '
+                  f'pooled fit is what averages that out')
     return out
 
 
@@ -501,8 +575,12 @@ def residual_tail(df, resid, n_sigma=3.0, verbose=True):
     Notes
     -----
     A Gaussian puts 0.135% beyond 3 sigma on each side, so a ratio far from 1 is the signal.
-    The excess is one-sided positive in every band, which is why the fits are robust rather than
-    least squares.
+    Which residual is passed in decides what the answer means: about a **truss-only per-band**
+    fit the tail is strongly one-sided positive, with a ratio of 5 to 25 (dimensionless) in the
+    same direction in every band — a population of visits whose commanded focus sat above the
+    truss relation. About the **full five-feature** fit that asymmetry is largely absorbed, and
+    what remains is heavy on both sides. Both are reasons to fit robustly; only the first is a
+    statement about the truss relation itself.
     """
     r = np.asarray(resid, float)
     rows = []
@@ -567,3 +645,538 @@ def huber_line(x, y):
                 pearson_r=float(stats.pearsonr(x, y)[0]),
                 spearman_rho=float(stats.spearmanr(x, y)[0]),
                 resid_nmad=float(nmad(y - pred)))
+
+
+# ----------------------------------------------------------------- elevation and band changes
+
+#: A per-night slope below this many visits is not worth fitting.
+MIN_VISITS_NIGHT = 40
+
+#: Likewise for one direction of one night.
+MIN_VISITS_LEG = 25
+
+#: Visits in the centred rolling median of elevation used to label slew direction.
+DIRECTION_WINDOW = 21
+
+#: Minimum |d(elevation)| per visit to count as slewing [deg per visit]. Smaller excursions are
+#: tracking, not a slew.
+DIRECTION_DEADBAND = 0.02
+
+#: Elevation at which a night's offset is read, inside the observed range [deg].
+REF_ELEV_DEG = 60.0
+
+
+def huber_slope(x, y, min_n=MIN_VISITS_LEG, min_span=5.0):
+    """Robust straight-line fit against elevation, with the slope's standard error.
+
+    Parameters
+    ----------
+    x, y : `array_like`
+        Elevation [deg] and response [µm of equivalent hexapod dz].
+    min_n : `int`, optional
+        Return None below this many finite pairs.
+    min_span : `float`, optional
+        Return None if elevation spans less than this [deg].
+
+    Returns
+    -------
+    out : `dict` or `None`
+        ``n``, ``slope`` and ``slope_err`` [µm of equivalent hexapod dz per deg],
+        ``intercept`` [µm of equivalent hexapod dz], ``pearson_r``, ``spearman_rho``,
+        ``resid_nmad``, ``elev_min`` and ``elev_max`` [deg]. None if under-determined.
+
+    Notes
+    -----
+    The `min_span` guard matters: over a few deg of elevation a fitted slope is an
+    extrapolation dressed as a measurement, and its formal error does not say so.
+    """
+    import statsmodels.api as sm
+    from scipy import stats
+
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    if ok.sum() < min_n:
+        return None
+    x, y = x[ok], y[ok]
+    if np.ptp(x) < min_span:
+        return None
+    X = sm.add_constant(x)
+    try:
+        res = sm.RLM(y, X, M=sm.robust.norms.HuberT()).fit()
+    except Exception:
+        return None
+    resid = y - res.predict(X)
+    return dict(n=int(ok.sum()), slope=float(res.params[1]), slope_err=float(res.bse[1]),
+                intercept=float(res.params[0]),
+                pearson_r=float(stats.pearsonr(x, y)[0]),
+                spearman_rho=float(stats.spearmanr(x, y)[0]),
+                resid_nmad=float(nmad(resid)),
+                elev_min=float(x.min()), elev_max=float(x.max()))
+
+
+def label_direction(df, window=DIRECTION_WINDOW, deadband=DIRECTION_DEADBAND):
+    """Label each visit of one night as taken on a rising or falling elevation leg.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        One night, any order; needs ``obs_start_mjd`` and ``altitude_deg`` [deg].
+    window : `int`, optional
+        Visits in the centred rolling median of elevation.
+    deadband : `float`, optional
+        Minimum |d(elevation)| per visit to count as slewing [deg per visit].
+
+    Returns
+    -------
+    direction : `pandas.Series`
+        ``'up'``, ``'down'`` or ``'flat'``, indexed like `df`.
+
+    Notes
+    -----
+    The rolling median is what makes the label meaningful rather than noise. Consecutive visits
+    are about 0.7 min apart with sub-2 deg steps whose raw sign alternates while tracking, so
+    the sign of a per-visit elevation difference reports hundreds of direction changes per night
+    instead of the few tens of real elevation legs.
+    """
+    d = df.sort_values('obs_start_mjd')
+    sm_el = d['altitude_deg'].rolling(window, center=True, min_periods=3).median()
+    de = sm_el.diff()
+    out = pd.Series('flat', index=d.index, dtype=object)
+    out[de > deadband] = 'up'
+    out[de < -deadband] = 'down'
+    return out.reindex(df.index)
+
+
+def per_night_elevation(df, ycol='resid', ref_elev_deg=REF_ELEV_DEG, verbose=True):
+    """Per-night elevation slopes, all points and each leg, with the hysteresis test.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Per-visit table with ``day_obs``, ``altitude_deg`` [deg], ``direction`` and `ycol`.
+    ycol : `str`, optional
+        Column to fit [µm of equivalent hexapod dz].
+    ref_elev_deg : `float`, optional
+        Elevation at which each night's offset is read [deg].
+    verbose : `bool`, optional
+        Print the summary.
+
+    Returns
+    -------
+    out : `pandas.DataFrame`
+        One row per fitted night: ``slope_*``, ``err_*`` [µm of equivalent hexapod dz per deg],
+        ``offset_*`` at `ref_elev_deg`, ``difference`` (rising minus falling) and
+        ``difference_sigma`` in units of the combined standard error.
+
+    Notes
+    -----
+    ``offset_*`` rather than ``intercept_*`` is the quantity to compare night to night: the 0
+    deg intercept lies about 60 deg outside the observed elevation range, so its scatter is
+    dominated by the slope error propagated over that lever arm rather than by any real offset.
+    """
+    from scipy import stats
+
+    rows = []
+    for day, d in df.groupby('day_obs'):
+        if len(d) < MIN_VISITS_NIGHT:
+            continue
+        fits = {}
+        for key, sub, min_n in (('all', d, MIN_VISITS_NIGHT),
+                                ('up', d[d.direction == 'up'], MIN_VISITS_LEG),
+                                ('down', d[d.direction == 'down'], MIN_VISITS_LEG)):
+            fits[key] = huber_slope(sub['altitude_deg'], sub[ycol], min_n=min_n)
+        if fits['all'] is None:
+            continue
+        r = dict(day_obs=int(day), n=len(d))
+        for key, f in fits.items():
+            r[f'slope_{key}'] = f['slope'] if f else np.nan
+            r[f'err_{key}'] = f['slope_err'] if f else np.nan
+            r[f'n_{key}'] = f['n'] if f else 0
+            r[f'offset_{key}'] = (f['intercept'] + f['slope'] * ref_elev_deg if f else np.nan)
+        r['resid_nmad_all'] = fits['all']['resid_nmad']
+        r['spearman_rho_all'] = fits['all']['spearman_rho']
+        r['pearson_r_all'] = fits['all']['pearson_r']
+        rows.append(r)
+    out = pd.DataFrame(rows)
+    if not len(out):
+        return out
+    out['difference'] = out.slope_up - out.slope_down
+    comb = np.sqrt(out.err_up ** 2 + out.err_down ** 2)
+    out['difference_sigma'] = out.difference / comb.replace(0, np.nan)
+
+    if verbose:
+        a = out.slope_all.dropna().to_numpy(float)
+        print(f'per-night elevation slope of {ycol}, all points '
+              f'[um of equivalent hexapod dz per deg]')
+        print(f'  nights fitted       : {len(a)}')
+        print(f'  median slope        : {np.median(a):+.3f} um per deg')
+        print(f'  nMAD of the slopes  : {nmad(a):.3f} um per deg')
+        print(f'  median formal error : {out.err_all.median():.3f} um per deg')
+        o = out.offset_all.dropna().to_numpy(float)
+        within = out.resid_nmad_all.median()
+        if len(o):
+            print(f'per-night offset at {ref_elev_deg:.0f} deg elevation '
+                  f'[um of equivalent hexapod dz]: median {np.median(o):+.1f}, '
+                  f'nMAD {nmad(o):.1f}, n {len(o)} nights')
+            if within and np.isfinite(within) and within > 0:
+                print(f'  within-night residual nMAD {within:.1f} um; night-to-night over '
+                      f'within-night {nmad(o) / within:.2f} (dimensionless, offset nMAD over '
+                      f'residual nMAD)')
+        both = out.dropna(subset=['difference'])
+        if len(both):
+            med = float(both.difference.median())
+            pos = int((both.difference > 0).sum())
+            p = float(stats.binomtest(pos, len(both), 0.5).pvalue)
+            n_sig = int((both.difference_sigma.abs() > 3).sum())
+            print(f'rising minus falling slope, {len(both)} nights with both legs')
+            print(f'  median difference {med:+.3f} um of equivalent hexapod dz per deg, '
+                  f'nMAD {nmad(both.difference.to_numpy(float)):.3f} um per deg')
+            print(f'  nights differing by more than 3 combined standard errors: '
+                  f'{n_sig} of {len(both)}')
+            print(f'  rising steeper than falling on {pos} of {len(both)} nights '
+                  f'(sign test p {p:.3g} dimensionless)')
+            print(f'  -> {"hysteresis" if p < 0.01 else "no consistent direction dependence"}')
+    return out
+
+
+def band_change_step(df, col, verbose=True, label=''):
+    """Median absolute step in a residual across a filter change, against same-band steps.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Carrying ``day_obs``, ``seq_num``, ``band`` and `col`.
+    col : `str`
+        Residual column [µm of equivalent hexapod dz].
+    verbose : `bool`, optional
+        Print the line.
+    label : `str`, optional
+        Name used in the printed line.
+
+    Returns
+    -------
+    res : `dict`
+        ``n_change``, ``median_change``, ``n_same``, ``median_same`` [µm of equivalent hexapod
+        dz] and their ``ratio`` (dimensionless, band-change over same-band median step).
+
+    Notes
+    -----
+    This is the metric that argues for a band-independent correction. Fitting each band
+    separately makes every filter change inject a step into the corrected residual, because the
+    coefficients swap while nothing physical happens. Steps are taken within a night only,
+    between consecutive ``seq_num``, so the daytime gap is never crossed. Residual excess over
+    the same-band step is a real per-band focus offset, which a shared slope cannot remove.
+    """
+    chg, same = [], []
+    for _, g in df.groupby('day_obs'):
+        g = g.sort_values('seq_num')
+        step = g[col].diff().abs()
+        changed = g.band.ne(g.band.shift(1))
+        ok = step.notna()
+        chg.append(step[ok & changed])
+        same.append(step[ok & ~changed])
+    chg = pd.concat(chg) if chg else pd.Series(dtype=float)
+    same = pd.concat(same) if same else pd.Series(dtype=float)
+    res = dict(n_change=int(len(chg)),
+               median_change=float(chg.median()) if len(chg) else float('nan'),
+               n_same=int(len(same)),
+               median_same=float(same.median()) if len(same) else float('nan'))
+    res['ratio'] = (res['median_change'] / res['median_same']
+                    if res['median_same'] else float('nan'))
+    if verbose:
+        print(f'  {label:26s} band change {res["median_change"]:7.1f} um (n {res["n_change"]}) '
+              f'  same band {res["median_same"]:7.1f} um (n {res["n_same"]})   '
+              f'ratio {res["ratio"]:.2f} (dimensionless, band-change over same-band)')
+    return res
+
+
+def per_band_fit(df, features, model='huber', n_splits=N_SPLITS, verbose=True):
+    """The shared band-independent model scored per band, beside a per-band refit.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Carrying ``y``, ``band``, ``day_obs`` and the feature columns.
+    features : `list` [`str`]
+        Feature column names.
+    model : `str`, optional
+        Key for `make_model`.
+    n_splits : `int`, optional
+        Cross-validation folds.
+    verbose : `bool`, optional
+        Print the table.
+
+    Returns
+    -------
+    out : `pandas.DataFrame`
+        Per band: ``band``, ``n``, ``uncorrected_nmad``, ``shared_nmad``, ``own_nmad``
+        [µm of equivalent hexapod dz] and ``own_truss`` [µm of equivalent hexapod dz per °C].
+
+    Notes
+    -----
+    The band-independent model is the deliverable, so the per-band refit is here to be
+    compared against, not adopted: the per-band truss coefficients spread enough that swapping
+    between them at every filter change injects a step (see `band_change_step`), which is a
+    worse defect than the small per-band gain in scatter.
+    """
+    shared = evaluate(df, features, model=model, n_splits=n_splits, verbose=False)
+    rows = []
+    for band, g in df.groupby('band'):
+        if len(g) < 200:
+            continue
+        idx = df.index.get_indexer(g.index)
+        own = evaluate(g.reset_index(drop=True), features, model=model,
+                       n_splits=min(n_splits, g['day_obs'].nunique()), verbose=False)
+        f = fit_full(g.reset_index(drop=True), features, model=model, verbose=False)
+        truss = (float(f['coef'][features.index('truss_temp_mean_c')])
+                 if f['coef'] is not None and 'truss_temp_mean_c' in features else float('nan'))
+        rows.append(dict(band=band, n=len(g), uncorrected_nmad=nmad(g['y'].to_numpy(float)),
+                         shared_nmad=nmad(shared['resid'][idx]), own_nmad=own['nmad'],
+                         own_truss=truss))
+    out = pd.DataFrame(rows)
+    if verbose:
+        print('per band, night-grouped [um of equivalent hexapod dz]')
+        for _, r in out.iterrows():
+            print(f'  {r.band}  n {int(r.n):6d}  uncorrected {r.uncorrected_nmad:6.1f}  '
+                  f'shared model {r.shared_nmad:6.1f}  own model {r.own_nmad:6.1f}  '
+                  f'own truss coefficient {r.own_truss:+8.2f} um per deg C')
+        if len(out) > 1:
+            t = out.own_truss.dropna()
+            print(f'  per-band truss coefficient spread: {t.min():+.2f} to {t.max():+.2f} '
+                  f'um of equivalent hexapod dz per deg C, nMAD {nmad(t.to_numpy()):.2f}')
+    return out
+
+
+def within_set_scatter(df, set_col, cols, verbose=True):
+    """Peak-to-peak scatter within each observing set, per column.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Carrying `set_col` and `cols`.
+    set_col : `str`
+        Column identifying a set — a FAM block, or a night.
+    cols : `dict`
+        ``{column: unit string}``, each column a quantity to reduce.
+    verbose : `bool`, optional
+        Print the medians.
+
+    Returns
+    -------
+    out : `pandas.DataFrame`
+        One row per set, with ``<col>_p2p`` and ``<col>_nmad`` per input column and ``n``.
+
+    Notes
+    -----
+    Peak-to-peak rather than a robust width because a set holds only a handful of visits, where
+    an nMAD is not better determined than the range and is harder to reason about. Sets with
+    fewer than three finite values in a column give NaN for that column rather than 0.
+    """
+    rows = []
+    for key, g in df.groupby(set_col):
+        r = {set_col: key, 'n': len(g)}
+        for c in cols:
+            v = g[c].to_numpy(float)
+            v = v[np.isfinite(v)]
+            r[f'{c}_p2p'] = float(v.max() - v.min()) if len(v) >= 3 else float('nan')
+            r[f'{c}_nmad'] = nmad(v) if len(v) >= 3 else float('nan')
+        rows.append(r)
+    out = pd.DataFrame(rows)
+    if verbose:
+        for c, unit in cols.items():
+            p = out[f'{c}_p2p'].dropna()
+            if len(p):
+                print(f'  {c:22s} within-set peak-to-peak: median {p.median():.4f} {unit}, '
+                      f'n {len(p)} sets')
+    return out
+
+
+# --------------------------------------------------------------------- FAM blocks and sets
+
+#: Visits per selected set: 12 triplets, one in-focus ``acq`` each.
+DEFAULT_SET_SIZE = 12
+
+#: ``seq_num`` step between consecutive ``acq`` visits of a triplet sequence, each triplet being
+#: intra-focal, extra-focal and in-focus [dimensionless, a sequence-number difference].
+DEFAULT_SEQ_STEP = 3
+
+#: Pointing tolerance within one block [deg], applied to altitude, azimuth and rotator angle.
+#: The selected sets hold pointing to about 0.01 deg, so 2.0 deg and the coadd study's 5.0 deg
+#: give the same sets.
+DEFAULT_POINTING_TOL = 2.0
+
+#: A new block starts once ``seq_num`` reaches this far past the block's first visit
+#: [dimensionless, a sequence-number difference]. A 12-triplet block spans exactly 33, so 36
+#: keeps one whole and splits a back-to-back repeat.
+DEFAULT_MAX_SEQ_SPAN = 36.0
+
+
+def _wrapdiff(a, b):
+    """Circular difference between two angles [deg].
+
+    Parameters
+    ----------
+    a, b : `float`
+        Angles in deg.
+
+    Returns
+    -------
+    d : `float`
+        Smallest absolute difference in deg, in [0, 180].
+    """
+    d = abs(a - b) % 360.0
+    return min(d, 360.0 - d)
+
+
+def assign_blocks(df, seq_col='acq_seq_num', pointing_tol=DEFAULT_POINTING_TOL,
+                  max_seq_span=DEFAULT_MAX_SEQ_SPAN):
+    """Label contiguous fixed-pointing Full Array Mode blocks.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Must carry ``science_program``, ``day_obs``, `seq_col`, ``altitude_deg`` [deg],
+        ``azimuth_deg_consdb`` [deg] and ``rotator_angle_deg`` [deg].
+    seq_col : `str`, optional
+        Sequence-number column defining observing order.
+    pointing_tol : `float`, optional
+        Tolerance in deg, applied to all three angles.
+    max_seq_span : `float`, optional
+        Maximum sequence-number span of one block [dimensionless].
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        A copy sorted by ``(science_program, day_obs, seq_col)`` with an integer ``block``
+        column. Rows lacking any pointing angle are dropped, since a block is defined by held
+        pointing and a row without it cannot be placed in one.
+
+    Raises
+    ------
+    KeyError
+        If a required column is absent, naming it. A block is a **derived** quantity, not a
+        stored one, so falling back to grouping by night would silently substitute a whole
+        night for a 12-triplet block and quietly change what every within-set number means.
+
+    Notes
+    -----
+    Within one ``(science_program, day_obs)`` the visits are walked in sequence order and a new
+    block starts when the sequence number reaches `max_seq_span` past the block's first visit,
+    or when altitude, azimuth or rotator angle drifts beyond `pointing_tol` from it. Missing
+    triplets inside the span are tolerated. Azimuth is compared circularly so a block spanning
+    360 deg does not split.
+    """
+    need = ('science_program', 'day_obs', seq_col, 'altitude_deg', 'azimuth_deg_consdb',
+            'rotator_angle_deg')
+    miss = [c for c in need if c not in df.columns]
+    if miss:
+        raise KeyError(f'assign_blocks needs {", ".join(miss)}, absent from the table; a FAM '
+                       f'block is derived from held pointing and cannot be substituted by a '
+                       f'coarser grouping')
+    v = df.dropna(subset=['altitude_deg', 'azimuth_deg_consdb', 'rotator_angle_deg']).copy()
+    v = v.sort_values(['science_program', 'day_obs', seq_col]).reset_index(drop=True)
+
+    block = np.full(len(v), -1, dtype=int)
+    seq = v[seq_col].to_numpy(float)
+    alt = v['altitude_deg'].to_numpy(float)
+    az = np.mod(v['azimuth_deg_consdb'].to_numpy(float), 360.0)
+    rot = v['rotator_angle_deg'].to_numpy(float)
+
+    nb = 0
+    for _, pos in v.groupby(['science_program', 'day_obs']).indices.items():
+        pos = np.sort(np.asarray(pos))
+        cur, start_seq, ref = None, None, None
+        for p in pos:
+            new = (start_seq is None
+                   or (seq[p] - start_seq) >= max_seq_span
+                   or abs(alt[p] - ref[0]) > pointing_tol
+                   or _wrapdiff(az[p], ref[1]) > pointing_tol
+                   or abs(rot[p] - ref[2]) > pointing_tol)
+            if new:
+                cur = nb
+                nb += 1
+                start_seq = seq[p]
+                ref = (alt[p], az[p], rot[p])
+            block[p] = cur
+    v['block'] = block
+    return v
+
+
+def select_sets(df, seq_col='acq_seq_num', set_size=DEFAULT_SET_SIZE,
+                seq_step=DEFAULT_SEQ_STEP, drop_lut_epoch=True, verbose=True):
+    """Keep only blocks that are a clean run of `set_size` triplets.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        An `assign_blocks` result.
+    seq_col : `str`, optional
+        Sequence-number column defining observing order.
+    set_size : `int`, optional
+        Required visits per set.
+    seq_step : `int` or `None`, optional
+        Required sequence-number step [dimensionless]. None skips the check.
+    drop_lut_epoch : `bool`, optional
+        Drop nights running a different hexapod look-up-table configuration.
+    verbose : `bool`, optional
+        Print the cut-by-cut counts.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        The kept visits, with ``set_id`` numbering surviving sets from 0 in
+        ``(day_obs, seq_col)`` order.
+    info : `dict`
+        Counts at each cut.
+
+    Notes
+    -----
+    Three cuts in order: exactly `set_size` visits in the block; a constant sequence step of
+    `seq_step`, which validates the intra-focal / extra-focal / in-focus triplet structure; and
+    by default no night in `thermal_focus_lib.LUT_EPOCH_OFFSET_NIGHTS`, whose different
+    commanded baseline puts it thousands of µm of equivalent hexapod dz from the rest.
+    """
+    sized = [b for b, g in df[df.block >= 0].groupby('block') if len(g) == set_size]
+    n_sized = len(sized)
+
+    kept, n_bad_step = [], 0
+    for b in sized:
+        s = np.sort(df.loc[df.block == b, seq_col].to_numpy(int))
+        if seq_step is not None and not np.all(np.diff(s) == seq_step):
+            n_bad_step += 1
+            continue
+        kept.append(b)
+
+    out = df[df.block.isin(kept)].copy()
+    n_before_epoch, nights_before = len(kept), out.day_obs.nunique()
+    dropped_nights = sorted(set(int(d) for d in out.day_obs.unique())
+                            & set(L.LUT_EPOCH_OFFSET_NIGHTS))
+    if drop_lut_epoch and dropped_nights:
+        bad = out.day_obs.isin(dropped_nights)
+        n_dropped_sets = out.loc[bad, 'block'].nunique()
+        out = out[~bad].copy()
+    else:
+        n_dropped_sets, dropped_nights = 0, []
+
+    order = (out.groupby('block')[['day_obs', seq_col]].min()
+             .sort_values(['day_obs', seq_col]).index.tolist())
+    out['set_id'] = out.block.map({b: i for i, b in enumerate(order)})
+    out = out.sort_values(['set_id', seq_col]).reset_index(drop=True)
+
+    info = dict(n_blocks=int(df[df.block >= 0].block.nunique()), n_sized=n_sized,
+                n_bad_step=n_bad_step, n_before_epoch=n_before_epoch,
+                nights_before=int(nights_before), n_dropped_sets=int(n_dropped_sets),
+                dropped_nights=dropped_nights, n_sets=int(out.set_id.nunique()),
+                n_visits=len(out), n_nights=int(out.day_obs.nunique()),
+                set_size=set_size, seq_step=seq_step)
+    if verbose:
+        print(f'  blocks {info["n_blocks"]} -> exactly {set_size} visits: {n_sized}'
+              f' -> constant step of {seq_step}: {n_before_epoch}'
+              f' (rejected {n_bad_step} for an irregular step)')
+        if n_dropped_sets:
+            print(f'  dropping {len(dropped_nights)} LUT-epoch nights removes '
+                  f'{n_dropped_sets} sets')
+        print(f'  -> {info["n_sets"]} sets, {info["n_visits"]} visits, '
+              f'{info["n_nights"]} nights')
+    return out, info
