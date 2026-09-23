@@ -1120,6 +1120,50 @@ def leg_axis_name(bounce):
     return 'B set'
 
 
+def leg_pointing(fit_table, mask, day_obs=None):
+    """Median measured pointing of the visits selected by a mask.
+
+    The configured leg windows give only nominal positions, so the actual
+    telescope position is taken from the visits themselves.  Restricting to one
+    `day_obs` gives that night's position on the leg, which is what a per-night
+    row should carry.
+
+    Parameters
+    ----------
+    fit_table : `astropy.table.Table`
+        The DZ fit table, carrying `alt`, `rotator_angle`, `day_obs` and
+        (optionally) `science_program`.
+    mask : `array_like` of `bool`
+        Selects the visits on one leg.
+    day_obs : `int`, optional
+        Restrict to this night.  `None` pools every night on the leg.
+
+    Returns
+    -------
+    pointing : `dict`
+        `elevation_deg` and `rot_angle_deg` as medians in deg, `n_visits` as an
+        `int`, and `block` as the `science_program` string (or a `+`-joined list
+        if the selection spans more than one, which should not happen).  The
+        angles are NaN when the selection is empty.
+    """
+    m = np.asarray(mask, dtype=bool).copy()
+    if day_obs is not None and 'day_obs' in fit_table.colnames:
+        m &= np.asarray(fit_table['day_obs']).astype(int) == int(day_obs)
+    out = {'elevation_deg': float('nan'), 'rot_angle_deg': float('nan'),
+           'n_visits': int(m.sum()), 'block': ''}
+    if not m.any():
+        return out
+    if 'alt' in fit_table.colnames:
+        out['elevation_deg'] = float(np.median(_alt_to_deg(fit_table['alt'])[m]))
+    if 'rotator_angle' in fit_table.colnames:
+        out['rot_angle_deg'] = float(np.median(
+            np.asarray(fit_table['rotator_angle'], dtype=float)[m]))
+    if 'science_program' in fit_table.colnames:
+        progs = sorted(set(np.asarray(fit_table['science_program']).astype(str)[m]))
+        out['block'] = '+'.join(progs)
+    return out
+
+
 def leg_night_coverage(bounce_results):
     """Which nights back each (bounce, comparison leg), as table rows.
 

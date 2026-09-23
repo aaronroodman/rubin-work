@@ -143,7 +143,7 @@ Three parquet tables and eight PDFs per run.
 | product | content |
 |---|---|
 | `bounce_kj_stats.parquet` | per-(k, j) Δ in µm of wavefront, its error and significance, per night and pooled |
-| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` of `dof`, `vmode`, `dof5` or `vmode5` and a `unit` column — µm for translations and bending-mode amplitudes, arcsec for hexapod rotations, dimensionless for v-modes |
+| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` of `dof`, `vmode`, `dof5` or `vmode5` and a `unit` column — µm for translations and bending-mode amplitudes, arcsec for hexapod rotations, dimensionless for v-modes. Carries the *measured* `elevation_deg` and `rot_angle_deg` of the comparison leg and `ref_elevation_deg` / `ref_rot_angle_deg` of the reference, plus `day_obs`, `block`, `n_visits` and `n_pairs`, so it reproduces `bounce_dof_night_values.pdf` and can be shared standalone |
 | `bounce_fwhm_metric.parquet` | `fwhm_before`, `fwhm_after_50_34`, `fwhm_after_5_5`, all arcsec FWHM, per leg |
 
 `bounce_summary.pdf` opens with a leg-night coverage table — which nights back each leg and how
@@ -168,6 +168,44 @@ Phase-1 batoid-intrinsic fit (the intrinsic-choice comparison). All are hand-run
 
 These PDFs currently share `<mi>/plots/` with three other studies' output; splitting
 them per study is outstanding work.
+
+## Recovered bending-mode amplitudes exceed their allowed range
+
+The S-matrix SVD normalization weight is `w_j = r_j^0.5 * f_j^-0.5`, with `r_j` the allowed
+range of degree of freedom `j` — µm for translations and bending-mode amplitudes, arcsec for
+hexapod rotations — and `f_j` the FWHM response in arcsec per DOF unit. The shipped
+`range0.5_fwhm-0.15.yaml` stores only the product, so `output/bounce/dof_normalization_split.parquet`
+records the split: `range`, `fwhm_per_unit_arcsec` back-derived as `r_j / w_j^2`, and `weight`.
+The hexapod ranges are the `rb_stroke` literals (M2 5900/6700/6700 µm and 0.12 arcsec, camera
+8700/7600/7600 µm and 0.24 arcsec); the 40 bending-mode ranges are
+`(force_range / 20) / max|force per µm|` from the 134 N M1M3 and 45 N M2 force ranges over a
+20-mode budget. Reconstruction satisfies `w_j = sqrt(r_j / f_j)` to machine precision.
+
+Compared against those ranges, **the recovered high-order bending-mode amplitudes are
+unphysically large**, and increasingly so with throw. Counting only DOF at over 3σ:
+
+| leg | n DOF over 3σ | n exceeding full range | largest ratio |
+|---|---|---|---|
+| elev 30 deg | 27 | 10 | 11.7 (B1_20) |
+| elev 40 deg | 29 | 10 | 7.3 (B1_20) |
+| elev 50 deg | 10 | 2 | 2.8 (B2_12) |
+| elev 60 deg | 7 | 3 | 3.1 (B2_17) |
+| elev 75 deg | 11 | 1 | 1.4 (B1_20) |
+| rotator 60 deg | 31 | 8 | 3.1 (B1_11) |
+
+The ratio is `abs(delta)/r_j`, dimensionless, the recovered amplitude over the allowed range. B2_12 reaches
+−0.0612 ± 0.0032 µm at elevation 30 deg against a range of 0.01447 µm, a ratio of 4.2, at
+significance 19.2; B1_20 reaches −0.0258 ± 0.0032 µm against a range of 0.00221 µm, a ratio of
+11.7. Since a mirror physically cannot exceed its actuator-force-limited range, these
+amplitudes are not real mirror figure changes. The monotonic growth with throw — ratios
+dropping to about 1 on the near-null upward 75 deg leg — indicates the unconstrained recovery
+is absorbing something that scales with the bounce signal into the weakly-constrained
+high-order modes, rather than the modes themselves being excited. The rigid-body terms, which
+dominate the Δ in FWHM terms, stay far inside their ranges.
+
+This is a property of the open-loop recovery, not of the bounce measurement: the DZ Δ itself
+(`bounce_kj_stats.parquet`) and the correctable-FWHM metric are unaffected, since the FWHM
+metric projects onto the correctable subspace rather than reading individual amplitudes.
 
 ## Statistics note — SEM of a median
 

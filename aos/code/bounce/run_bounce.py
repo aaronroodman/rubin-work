@@ -226,7 +226,8 @@ def main():
         br = {'description': b.get('description', ''),
               'reference_label': b['reference']['label'],
               'reference_stats': combined['ref_stats'],
-              'reference_n': combined['ref_n'], 'comparisons': {}}
+              'reference_n': combined['ref_n'],
+              'reference_mask': combined['ref_mask'], 'comparisons': {}}
         print(f'  === {name} ===  ref "{b["reference"]["label"]}" '
               f'n={combined["ref_n"]}; nights={sorted(nights.keys())}')
         for comp in b['comparisons']:
@@ -271,6 +272,13 @@ def main():
             br['comparisons'][label] = {
                 'comp_stats': cblock['comp_stats'], 'comp_n': cblock['comp_n'],
                 'deltas': cblock['deltas'], 'pairs': pairs_all,
+                # Kept so the DOF table can report the *measured* elevation and
+                # rotator angle of each leg, per night, rather than the nominal
+                # window from the config.
+                'comp_mask': cblock['comp_mask'],
+                'n_pairs_by_night': {
+                    str(d): len(nights[d]['comparisons'][label]['pairs'])
+                    for d in leg_nights},
                 'deltas_by_night': deltas_by_night,
                 'vmode_deltas': vmode_deltas, 'dof_deltas': dof_deltas,
                 'vmode_deltas_by_night': vmode_deltas_by_night,
@@ -556,10 +564,28 @@ def main():
     # quoted from it had to be read off a plot.  One row per (bounce, leg,
     # night, quantity); `unit` is µm for translations and bending-mode
     # amplitudes, arcsec for hexapod rotations, and dimensionless for v-modes.
+    # This table is what reproduces bounce_dof_night_values.pdf, and is the
+    # form shared externally, so it carries the *measured* elevation and
+    # rotator angle of both legs rather than the nominal config window.
     if _svd_ok and DOF_all is not None:
         dof_rows = []
         for name, br in bounce_results.items():
+            ref_pt_all = bl.leg_pointing(fit_table, br['reference_mask'])
             for clabel, cb in br['comparisons'].items():
+                # Pointing per (leg, night), plus the pooled 'all' row.
+                pt_cache = {}
+
+                def _pointing(night, _cb=cb, _br=br, _cache=pt_cache,
+                              _ref_all=ref_pt_all):
+                    if night not in _cache:
+                        d = None if night == 'all' else int(night)
+                        cp = bl.leg_pointing(fit_table, _cb['comp_mask'], day_obs=d)
+                        rp = (_ref_all if night == 'all'
+                              else bl.leg_pointing(fit_table, _br['reference_mask'],
+                                                   day_obs=d))
+                        _cache[night] = (cp, rp)
+                    return _cache[night]
+
                 for kind, pooled, by_night, labels, units in (
                         ('dof', cb.get('dof_deltas'), cb.get('dof_deltas_by_night'),
                          LABELS_50DOF, DOF_UNITS_50),
@@ -575,10 +601,22 @@ def main():
                     blocks = {'all': pooled} if pooled else {}
                     blocks.update({str(int(d)): v for d, v in (by_night or {}).items()})
                     for night, block in blocks.items():
+                        cp, rp = _pointing(night)
                         for q, v in (block or {}).items():
                             dof_rows.append({
                                 'bounce': name, 'comparison': clabel,
-                                'reference': br['reference_label'], 'night': night,
+                                'reference': br['reference_label'],
+                                'block': cp['block'] or rp['block'],
+                                'night': night,
+                                'day_obs': (pd.NA if night == 'all' else int(night)),
+                                'elevation_deg': cp['elevation_deg'],
+                                'rot_angle_deg': cp['rot_angle_deg'],
+                                'ref_elevation_deg': rp['elevation_deg'],
+                                'ref_rot_angle_deg': rp['rot_angle_deg'],
+                                'n_visits': cp['n_visits'],
+                                'n_pairs': (len(cb.get('pairs', [])) if night == 'all'
+                                            else cb.get('n_pairs_by_night', {}).get(
+                                                night, 0)),
                                 'kind': kind, 'index': int(q),
                                 'label': (labels[int(q)] if labels is not None
                                           else f'v{int(q) + 1}'),
