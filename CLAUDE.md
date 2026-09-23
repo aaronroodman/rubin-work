@@ -23,6 +23,9 @@ AOS / wavefront:
   WFS wavefront for a night of AOS operations
 - `optatmo/` — standalone Optics+Atmosphere PSF moment tools; a differentiable
   rebuild of the old PIFF `optatmo3` ideas
+- `thermal_focus/` — prediction of the uniform-defocus error from thermal telemetry, so
+  focus can be set open-loop; includes a standalone numpy-only online calculator
+  (`docs/studies/thermal_focus.md`)
 
 Image quality / PSF / instrument:
 - `psf/`, `guider/`, `camera/`, `nightlyiq/` (image quality image-by-image for a
@@ -79,7 +82,8 @@ Two cross-topic couplings are real and intentional — know them before refactor
 - `guider/code/` imports `moments_hsm.measure_hsm_moments` from **`optatmo/code`**, so
   that both sides of the guider-vs-science-CCD moment comparison use the same
   galsim-HSM estimator. Changing that estimator changes guider results.
-- `blocks/`, `olr/`, `optatmo/`, `smatrix/` and `value_added/` import `aos_state` from
+- `blocks/`, `olr/`, `optatmo/`, `smatrix/`, `thermal_focus/` and `value_added/` import
+  `aos_state` from
   **`aos/code`** for the v-modes, the DOF sets and the per-corner Zernike recovery. That is
   AOS physics and stays in `aos/`; the engineering telemetry those topics also need was
   moved to `common/` so `aos_state` is the only remaining reach into `aos/code`.

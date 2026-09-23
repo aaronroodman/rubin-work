@@ -1,6 +1,6 @@
 # Outputs that need regenerating
 
-> **Status:** current · **Last updated:** 2026-09-18 · **Kind:** working state (rerun list)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** working state (rerun list)
 
 Products on disk that predate a code change and no longer match what the current code
 would produce. Kept here so a stale plot is not mistaken for a current result.
@@ -122,8 +122,8 @@ table are in
 [`corner_recovery_route_comparison.md`](corner_recovery_route_comparison.md).
 
 **Affected:** all three `optical_state` variants (`v50_34__batoid__consdb_v1`,
-`v50_34__miw__consdb_v1`, `v22_12__batoid__consdb_v1`); `science_lut.parquet`,
-`science_lut_fits.parquet` and `science_lut_results.pdf`; `olr/` nightly tables carrying
+`v50_34__miw__consdb_v1`, `v22_12__batoid__consdb_v1`); the `thermal_focus` tables and
+document; `olr/` nightly tables carrying
 `vmodes_optical_state`; and
 `notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb`, whose stored v-mode
 cells and PDFs predate the basis change — it now calls `make_state_estimator` and runs, but
@@ -132,35 +132,36 @@ needs re-executing.
 The 50/34 `optical_state` rebuild also gains modes: `truncate_index` was capping the
 commanded projection at 12 modes regardless of the scheme, and now returns 34.
 
-### Two v-mode sign errors, blocking the thermal focus delivery — do these first
+### The two v-mode engines disagree on the sign of v1
 
-**Status:** diagnosed 2026-09-18, **nothing fixed or rerun yet**. Read this before touching
-`science_lut`, `fam_focus`, or anything that reports a v-mode amplitude.
+**Status:** diagnosed 2026-09-18; the `v1_per_um_dz` half is **resolved**, the engine-basis
+half is **open**. Read this before touching anything that reports a v-mode amplitude.
 
-The intended deliverable is a thermal estimate of v-mode 1 for use at Rubin, to set the
-camera- and M2-hexapod dz Trim to an optimal start-of-night value. A sign error there drives
-focus the wrong way, so both problems below must be fixed and asserted against before any
-number is delivered.
+The deliverable is a thermal estimate of v-mode 1 for use at Rubin, to set the camera- and
+M2-hexapod dz Trim to an optimal start-of-night value, and it now lives in the
+[`thermal_focus`](../../../thermal_focus/docs/studies/thermal_focus.md) topic. A sign error
+there drives focus the wrong way, so the open problem below must be asserted against before
+any number is delivered. Note the convention: **DZ** is the Double Zernike basis, **dz** is
+hexapod delta-z travel.
 
-Both were found while putting the FAM Double Zernike (DZ) term DZ(k=1, j=4) and the in-focus
-corner-sensor response on one axis in the [`fam_focus`](../studies/fam_focus.md) study. Note the
-convention: **DZ** is the Double Zernike basis, **dz** is hexapod delta-z travel.
-
-**Problem 1 — `v1_per_um_dz` discards the sign.**
-`science_lut/run_science_lut_analysis.py:v1_per_um_dz_value` ends with
+**Resolved — `v1_per_um_dz` returns a magnitude by design.** The function was read as
+discarding a sign it should carry:
 
 ```python
-val = 0.5 * (abs(c[5]) + abs(c[0]))     # returns +9.008514e-04
+val = 0.5 * (abs(c[5]) + abs(c[0]))     # returns +9.008514e-04 (dimensionless per µm)
 ```
 
-taking absolute values of two coefficients that are both **negative**: v1 per µm is
-−8.9144254e-04 for camera-hexapod dz (degree of freedom, DOF, 5) and −9.1026032e-04 for M2 dz
-(DOF 0), both dimensionless v-mode-1 amplitude per µm. The forward maps are unambiguous — a
-**positive** dz move produces a **negative** v1 and a **negative** DZ(k=1, j=4) wavefront
-(−1.5913716e-02 µm of wavefront per µm of camera dz). So the constant must be
-**−9.008514e-04**, and the sign must be carried rather than re-derived from a magnitude.
+Both coefficients are indeed negative — v1 per µm is −8.9144254e-04 for camera-hexapod dz
+(degree of freedom, DOF, 5) and −9.1026032e-04 for M2 dz (DOF 0), both dimensionless v-mode-1
+amplitude per µm — and a **positive** dz move does produce a **negative** v1 and a
+**negative** DZ(k=1, j=4) wavefront (−1.5913716e-02 µm of wavefront per µm of camera dz). But
+the magnitude is the intended return: `thermal_focus_lib` carries the sign separately in
+`MEASURED_SIGN = -1.0` (dimensionless), and `|c5 + c0| / mean = 2.00000` exactly, which is
+what makes the unit *total* dz travel — 0.5 µm on each hexapod — rather than one axis. The
+response definition and both conversions are stated once, in
+`thermal_focus/code/thermal_focus/thermal_focus_lib.py`.
 
-**Problem 2 — the two v-mode engines disagree on the sign of v1.** `optical_state` and
+**Open — the two v-mode engines disagree on the sign of v1.** `optical_state` and
 `fam_dz` are built by different engines and are therefore **not in the same basis** despite
 both columns being called v-modes:
 
@@ -179,38 +180,37 @@ of the SVD's `V` column differs between the two engines.
 `aos_state.make_state_estimator` is the sanctioned engine, so **`build_fam_dz.py` is the side
 to change**, not `aos_state`.
 
-**The DZ conversion constant was right.** `fam_focus.DZ_UM_PER_UM_WF = -63.9902` µm of
-equivalent hexapod dz per µm of wavefront is **correct and stays negative**. All three inverse
-routes agree in sign once the signed v1 is used: SVD minimum-norm total −63.2195, the 0.5 µm
-on each hexapod split −63.9902, and the via-v1 route −63.6905. An intermediate diagnosis of
-"+63.9902" was wrong — it was silently compensating for Problem 1, two errors cancelling in
-the FAM-versus-`acq` comparison.
+**The DZ conversion constant was right.** `DZ_UM_PER_UM_WF = -63.9902` µm of equivalent
+hexapod dz per µm of wavefront is **correct and stays negative**. All three inverse routes
+agree in sign: SVD minimum-norm total −63.2195, the 0.5 µm on each hexapod split −63.9902, and
+the via-v1 route −63.6905, all µm of equivalent hexapod dz per µm of wavefront. An intermediate
+diagnosis of "+63.9902" was wrong.
 
-**What the errors were hiding.** Within a set, the response and the thermal prediction
-correlate at Pearson r −0.450 (dimensionless, n = 984 visits) and `y − pred` *raises* the
-median within-set standard deviation from 11.23 to 14.09 µm of equivalent hexapod dz. With the
-signed constant, `y − pred` *lowers* it to 10.58 and improves 43 of 77 sets. The
-[`fam_focus`](../studies/fam_focus.md) conclusion that "the thermal correction makes within-block
-scatter worse" is therefore **suspect and must be re-derived**, not quoted.
+**The within-block result has been re-derived and stands.** With the response defined as
+`(v1_trim + MEASURED_SIGN * v1) / v1_per_um_dz`, over 45 Full Array Mode sets the median
+within-block peak-to-peak response is 34.9 µm of equivalent hexapod dz against a 20.8 µm
+prediction swing, and subtracting the prediction *raises* the within-block scatter to 46.9 µm,
+a ratio of 1.35 (dimensionless, corrected over uncorrected), improving only 5 of the 45 sets.
+The cause is measured rather than inferred: within a block the truss temperature moves by a
+median of 0.0658 °C, which is telemetry noise, and the between-night coefficient of
++124.49 µm of equivalent hexapod dz per °C turns that noise into a prediction swing comparable
+to the drift. The thermal correction is a night-to-night term, not a within-block one.
 
-Also unresolved, and not to be settled by picking the sign that makes a plot agree: with the
-signed constant the FAM DZ series still sits at Pearson r −0.558 (dimensionless, n = 870)
-against the `acq` response. Problem 2 is the likely cause, since `fam_dz.v_modes` is the
-flipped basis; confirm after the rebuild rather than assuming.
+Still unresolved, and not to be settled by picking the sign that makes a plot agree: the FAM
+DZ series sits at Pearson r −0.558 (dimensionless, n = 870) against the `acq` response. The
+engine-basis disagreement above is the likely cause, since `fam_dz.v_modes` is the flipped
+basis; confirm after a rebuild rather than assuming.
 
 **The fix, in order:**
 
-1. `v1_per_um_dz_value` returns the **signed** mean, −9.008514e-04. Keep the magnitude
-   available if a caller needs it, but make the signed value the default return.
-2. `build_fam_dz.py` projects through `aos_state.make_state_estimator` /
+1. `build_fam_dz.py` projects through `aos_state.make_state_estimator` /
    `vmodes_from_dofs` instead of `svd.vmodes()`, so `fam_dz.v_modes` and
    `optical_state.v_modes` share one basis. `svd.dof()` is **unaffected** — it round-trips
    correctly — so only the v-mode column changes.
-3. Add a **sign-convention assertion** (Aaron asked for this explicitly): a test that a
-   positive camera-hexapod dz yields a **negative** v1, that `aos_state` and `ofc_svd` agree
-   in sign, and that `v1_per_um_dz_value` returns a negative number. This is the guard that
-   keeps a Trim delivery from silently inverting.
-4. Rerun, then re-derive the `fam_focus` and `science_lut` conclusions from the new output.
+2. Add a **sign-convention assertion** (Aaron asked for this explicitly): a test that a
+   positive camera-hexapod dz yields a **negative** v1 and that `aos_state` and `ofc_svd`
+   agree in sign. This is the guard that keeps a Trim delivery from silently inverting.
+3. Rerun, then re-check the `thermal_focus` DZ(1,4) cross-check against the new output.
 
 **What to rerun — DZ coefficients do not change, only derived v-modes.** The DZ fit itself is
 untouched, so `fits.parquet` and every DZ coefficient stay valid. Everything below stores or
@@ -220,8 +220,7 @@ reports a v-mode **amplitude**, whose sign moves:
 |---|---|
 | `fam_dz.v_modes` (all rows) | `value_added/code/build_fam_dz.py` |
 | all three `optical_state` variants' `v_modes`, `v1_lut`, `v1_trim` | `value_added/code/build_optical_state.py` |
-| `science_lut.parquet`, `science_lut_fits.parquet`, `science_lut_results.pdf` | `code/science_lut/` — **the fit must be redone**, since the response changes sign; the truss coefficient becomes −124.64 µm of equivalent hexapod dz per °C |
-| `fam_focus.{pdf,parquet}` | `code/fam_focus/run_fam_focus.py` — after `science_lut` |
+| `thermal_focus.{parquet,pdf}`, `thermal_focus_fam.parquet` | `../../../thermal_focus/code/thermal_focus/` — refitted from the current basis; the truss coefficient is +124.49 µm of equivalent hexapod dz per °C |
 | `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `code/correlations/run_vmode_correlations.py:71` |
 | `dz_correlations` v-mode outputs | `code/correlations/run_dz_correlations.py:220` |
 | `thermal_correlations` v-mode outputs | `code/correlations/run_thermal_correlations.py:183` |
@@ -268,10 +267,11 @@ purely a date-range gap — the backfill to 20250415 was never run.
 Aaron's intent is that **every** visit of `img_type` science, `acq` or cwfs carries telemetry,
 so the backfill covers all three.
 
-The current [`fam_focus`](../studies/fam_focus.md) sample is unaffected — it starts at
-`day_obs` 20251104, inside the covered range, and all five thermal model features are finite on
-all 984 visits. Filling the gap extends the FAM DZ sample from 62 complete sets toward the
-full 2025 range.
+The current Full Array Mode focus-drift sample in
+[`thermal_focus`](../../../thermal_focus/docs/studies/thermal_focus.md) is unaffected — it
+starts at `day_obs` 20251104, inside the covered range, and all five thermal model features are
+finite on all 984 visits. Filling the gap extends the FAM DZ sample from 62 complete sets
+toward the full 2025 range.
 
 Per-night `build_efd_db.py --day-obs <night>` over the 49 missing nights, which needs ConsDB
 and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are, in order:
@@ -284,8 +284,9 @@ and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are
 
 - **Four superseded `science_lut` scripts** await explicit deletion approval. Deleting files is
   a MUST-ASK; they are still on disk.
-- **`notebooks/correlations/corner_z4_vs_temperature_science.ipynb`** has three uncommitted
-  cells that are Aaron's own work, deliberately left for him to decide on.
+- **`../../../thermal_focus/notebooks/thermal_focus/corner_z4_vs_temperature_science.ipynb`**
+  has three uncommitted cells that are Aaron's own work, deliberately left for him to decide
+  on.
 - **Two untracked scratch notebooks**: `notebooks/correlations/querying_efd_consdb.ipynb` and
   `notebooks/smatrix_vmode/vmode_dof_ts_ofc-13Aug2026.ipynb`.
 
