@@ -85,6 +85,9 @@ FEATURE_GROUPS = {
     'grads': ['m1m3_z_gradient_c_per_m', 'm1m3_y_gradient_c_per_m',
               'm1m3_radial_gradient_c_per_m', 'm1m3_x_gradient_c_per_m'],
     'zgrad': ['m1m3_z_gradient_c_per_m'],
+    'r2grads': ['m1m3_r2_coeff_c', 'm1_r2_coeff_c', 'm3_r2_coeff_c'],
+    'r2all': ['m1m3_r2_coeff_c'],
+    'r2split': ['m1_r2_coeff_c', 'm3_r2_coeff_c'],
     'camtemp': ['cam_AverageTemp'],
     'wind': ['wind_speed_ms', 'into_wind_deg'],
     'hexhist': ['cum_hex_dz_um', 'recent_hex_dz_um', 'n_moves_night'],
@@ -99,6 +102,17 @@ GRAD_COLS = (('m1m3_z_gradient_c_per_m', 'M1M3 z thermal gradient'),
              ('m1m3_radial_gradient_c_per_m', 'M1M3 radial thermal gradient'),
              ('m1m3_x_gradient_c_per_m', 'M1M3 x thermal gradient'),
              ('m1m3_y_gradient_c_per_m', 'M1M3 y thermal gradient'))
+
+#: Quadratic-in-radius M1M3 thermal columns and their labels [°C per unit normalized radius-
+#: squared amplitude]. Built by ``value_added/code/m1m3_thermal_r2.py`` over three thermocouple
+#: populations — the whole mirror, the M1 annulus and the M3 inner disc. The quadratic shape is
+#: Gram-Schmidt orthogonalized against the constant, linear-radius and depth terms over each
+#: population's own sensor positions and scaled to unit root-mean-square, so the coefficient is
+#: the radial curvature those terms cannot express and is not a °C/m² curvature; see
+#: ``m1m3_thermal_r2.R2_SHAPE_RMS_M2`` for the conversion back.
+R2_COLS = (('m1m3_r2_coeff_c', 'M1M3 quadratic radial thermal term'),
+           ('m1_r2_coeff_c', 'M1 quadratic radial thermal term'),
+           ('m3_r2_coeff_c', 'M3 quadratic radial thermal term'))
 
 #: Default recovered-optical-state variant. The only one populated in the value-added database;
 #: ``v22_12__batoid__consdb_v1`` and ``v50_34__miw__consdb_v1`` are registered in

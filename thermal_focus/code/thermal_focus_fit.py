@@ -46,6 +46,9 @@ FEATURE_UNITS = {
     'm1m3_y_gradient_c_per_m': 'deg C per m',
     'm1m3_x_gradient_c_per_m': 'deg C per m',
     'm1m3_radial_gradient_c_per_m': 'deg C per m',
+    'm1m3_r2_coeff_c': 'deg C per unit norm r2',
+    'm1_r2_coeff_c': 'deg C per unit norm r2',
+    'm3_r2_coeff_c': 'deg C per unit norm r2',
     'wind_speed_ms': 'm per s',
     'into_wind_deg': 'deg',
     'altitude_deg': 'deg',
@@ -645,6 +648,127 @@ def huber_line(x, y):
                 pearson_r=float(stats.pearsonr(x, y)[0]),
                 spearman_rho=float(stats.spearmanr(x, y)[0]),
                 resid_nmad=float(nmad(y - pred)))
+
+
+def partial_correlation(df, ycol, xcol, controls, model='huber'):
+    """Correlation of one candidate feature with the response, both stripped of the controls.
+
+    Each of the response and the candidate is regressed on the control features and replaced by
+    its residual; the two residuals are then correlated. What survives is the part of the
+    relation the controls cannot already account for, which is the "above and beyond the
+    gradients we already have" question stated as a number.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Carrying `ycol`, `xcol` and every entry of `controls`.
+    ycol : `str`
+        Response column [µm of equivalent hexapod dz].
+    xcol : `str`
+        Candidate feature column, in its own units.
+    controls : `list` [`str`]
+        Features already in the model, partialled out of both sides.
+    model : `str`, optional
+        Key for `make_model`, used for both nuisance regressions.
+
+    Returns
+    -------
+    res : `dict`
+        ``n``, ``raw_pearson_r`` and ``raw_spearman_rho`` (candidate against the response with
+        nothing removed), ``partial_pearson_r`` and ``partial_spearman_rho`` (both sides
+        stripped of the controls), and ``slope`` [µm of equivalent hexapod dz per unit of
+        `xcol`] from a Huber line on the two residuals, with ``slope_err``. All correlations are
+        dimensionless.
+
+    Notes
+    -----
+    Both nuisance regressions use the same robust model as the study's fits, so a heavy
+    residual tail does not let one outlying night set the partial correlation. The partial
+    statistic is computed in-sample, not out of fold: it is a measure of shared information
+    between columns, not a performance estimate, and `nested_comparison` is what answers whether
+    the extra information survives held-out nights.
+    """
+    from scipy import stats
+
+    cols = [ycol, xcol] + list(controls)
+    d = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
+    if len(d) < 50:
+        return dict(n=len(d), raw_pearson_r=float('nan'), raw_spearman_rho=float('nan'),
+                    partial_pearson_r=float('nan'), partial_spearman_rho=float('nan'),
+                    slope=float('nan'), slope_err=float('nan'))
+    C = d[list(controls)].to_numpy(float)
+    resids = {}
+    for col in (ycol, xcol):
+        v = d[col].to_numpy(float)
+        m = make_model(model)
+        m.fit(C, v)
+        resids[col] = v - m.predict(C)
+    line = huber_line(resids[xcol], resids[ycol])
+    return dict(n=len(d),
+                raw_pearson_r=float(stats.pearsonr(d[xcol], d[ycol])[0]),
+                raw_spearman_rho=float(stats.spearmanr(d[xcol], d[ycol])[0]),
+                partial_pearson_r=float(stats.pearsonr(resids[xcol], resids[ycol])[0]),
+                partial_spearman_rho=float(stats.spearmanr(resids[xcol], resids[ycol])[0]),
+                slope=line['slope'], slope_err=line['slope_err'])
+
+
+def nested_comparison(df, base_features, add_features, model='huber', n_splits=N_SPLITS,
+                      verbose=True):
+    """Score a baseline feature set against the same set plus candidates, on identical rows.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        Carrying ``y``, ``day_obs`` and every feature of both sets.
+    base_features : `list` [`str`]
+        The incumbent model's features.
+    add_features : `list` [`str`]
+        Candidates appended to the baseline.
+    model : `str`, optional
+        Key for `make_model`.
+    n_splits : `int`, optional
+        Night-grouped folds.
+    verbose : `bool`, optional
+        Print the comparison.
+
+    Returns
+    -------
+    res : `dict`
+        ``n`` (visits), ``n_nights``, ``base`` and ``extended`` (each the `evaluate` result),
+        ``nmad_base`` and ``nmad_extended`` [µm of equivalent hexapod dz], ``gain``
+        (dimensionless, baseline nMAD over extended nMAD), ``delta_r2`` (dimensionless) and
+        ``replaced`` (the `evaluate` result for the candidates substituted for `add_features`'
+        counterparts, or `None` when no substitution was requested).
+
+    Notes
+    -----
+    The two fits are scored on **exactly the same rows** -- the intersection where every feature
+    of both sets is finite -- because a candidate with sparser coverage would otherwise be
+    credited with the easier sample it implies rather than with the information it adds. Folds
+    are `sklearn.model_selection.GroupKFold` on ``day_obs``; a visit-level split would let both
+    models memorise the night and compress the difference between them.
+    """
+    ext = list(base_features) + [c for c in add_features if c not in base_features]
+    d = df[['y', 'day_obs'] + ext].replace([np.inf, -np.inf], np.nan).dropna()
+    d = d.reset_index(drop=True)
+    base = evaluate(d, list(base_features), model=model, n_splits=n_splits, verbose=False)
+    extd = evaluate(d, ext, model=model, n_splits=n_splits, verbose=False)
+    res = dict(n=len(d), n_nights=int(d['day_obs'].nunique()), base=base, extended=extd,
+               nmad_base=base['nmad'], nmad_extended=extd['nmad'],
+               gain=base['nmad'] / extd['nmad'] if extd['nmad'] else float('nan'),
+               delta_r2=extd['r2'] - base['r2'], replaced=None)
+    if verbose:
+        print(f'nested comparison on {res["n"]} visits over {res["n_nights"]} nights, '
+              f'{model}, {n_splits}-fold night-grouped on day_obs')
+        print(f'  baseline  {len(base_features):2d} features: residual nMAD '
+              f'{res["nmad_base"]:6.1f} um of equivalent hexapod dz, '
+              f'R2 {base["r2"]:+.4f} (dimensionless)')
+        print(f'  extended  {len(ext):2d} features: residual nMAD '
+              f'{res["nmad_extended"]:6.1f} um of equivalent hexapod dz, '
+              f'R2 {extd["r2"]:+.4f} (dimensionless)')
+        print(f'  gain {res["gain"]:.4f} (dimensionless, baseline nMAD over extended nMAD), '
+              f'delta R2 {res["delta_r2"]:+.4f} (dimensionless)')
+    return res
 
 
 # ----------------------------------------------------------------- elevation and band changes

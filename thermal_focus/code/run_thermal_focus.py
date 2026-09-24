@@ -96,6 +96,37 @@ def _telemetry(day_obs_range):
     return vis[['visit_id'] + [c for c in TELEMETRY_COLS if c in vis.columns]]
 
 
+def _r2_terms(day_obs_range):
+    """Read the quadratic-in-radius M1M3 thermal terms, keyed on ``visit_id`` alone.
+
+    Parameters
+    ----------
+    day_obs_range : `tuple` [`int`] or `None`
+        Inclusive night range as ``YYYYMMDD``.
+
+    Returns
+    -------
+    r2 : `pandas.DataFrame`
+        ``visit_id`` plus the three coefficient columns of `thermal_focus_lib.R2_COLS` [°C per
+        unit normalized radius-squared amplitude] and the residual scatter of the whole-mirror
+        fit ``m1m3_rms_c`` [°C]. Empty with the right columns if the table does not exist yet,
+        so the build runs before the quadratic table is populated.
+
+    Notes
+    -----
+    ``day_obs`` and ``seq_num`` are dropped for the same reason as in `_telemetry`: the caller
+    already carries them, and a second copy renames both and breaks the ConsDB join.
+    """
+    cols = [c for c, _ in L.R2_COLS] + ['m1m3_rms_c']
+    try:
+        r2 = efd_db.m1m3_thermal_r2(day_obs_range=day_obs_range, columns=cols)
+    except Exception as exc:
+        print(f'  m1m3_thermal_r2 unavailable ({type(exc).__name__}: {exc}); the quadratic '
+              'radial terms will be absent from the table')
+        return pd.DataFrame(columns=['visit_id'] + cols)
+    return r2[['visit_id'] + [c for c in cols if c in r2.columns]]
+
+
 def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
     """Build the per-visit science table: response, thermal features and pointing.
 
@@ -131,6 +162,10 @@ def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
     vis = _telemetry(day_obs_range)
     df = st.merge(vis, on='visit_id', how='left')
     n_joined = int(df['m1m3_z_gradient_c_per_m'].notna().sum())
+
+    r2 = _r2_terms(day_obs_range)
+    df = df.merge(r2, on='visit_id', how='left')
+    n_r2 = int(df['m1m3_r2_coeff_c'].notna().sum()) if 'm1m3_r2_coeff_c' in df.columns else 0
 
     # The truss temperature is derived on the join, not stored, so this is the network step.
     df = efd_db.join_consdb(df, groups=CONSDB_GROUPS)
@@ -170,6 +205,8 @@ def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
         print(f'optical_state {variant}: {n_state} visits with a recovered state')
         print(f'  joined to visit_telemetry gradients : {n_joined} '
               f'({100 * n_joined / max(n_state, 1):.1f}%)')
+        print(f'  joined to the quadratic radial terms: {n_r2} '
+              f'({100 * n_r2 / max(n_state, 1):.1f}%)')
         print(f'  after ConsDB join                   : {n_all} visits, '
               f'{nights_all} nights')
         print(f'  img_type in {SCIENCE_IMG_TYPES}            : {n_science}')
@@ -238,6 +275,9 @@ def load_fam(fam_variant, variant, day_obs_range, v1_per_um_dz, verbose=True):
 
     vis = _telemetry(day_obs_range)
     df = df.merge(vis.rename(columns={'visit_id': 'acq_visit_id'}),
+                  on='acq_visit_id', how='left')
+    r2 = _r2_terms(day_obs_range)
+    df = df.merge(r2.rename(columns={'visit_id': 'acq_visit_id'}),
                   on='acq_visit_id', how='left')
     df = efd_db.join_consdb(df, groups=CONSDB_GROUPS)
     df = df[~df['day_obs'].isin(L.LUT_EPOCH_OFFSET_NIGHTS)]

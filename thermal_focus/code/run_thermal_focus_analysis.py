@@ -13,6 +13,11 @@ Computed sections, in the order they are printed:
    per-fold coefficients and the Full Array Mode (FAM) cross-check of the truss slope.
 4. Camera-body temperature — an alternative thermometer, indistinguishable as a regressor.
 5. What adds nothing — the channels whose gain does not exceed the across-band scatter.
+5b. The quadratic radial M1M3 terms — three temperature fields going as radius squared, over the
+   whole mirror, the M1 annulus and the M3 inner disc, tested for focus information the four
+   bulk gradients cannot express: raw correlation, partial correlation with the deliverable
+   features stripped from both sides, a night-grouped nested model comparison, and the
+   substitution case a decision to switch from the gradients would rest on.
 6. Residual shape — the one-sided positive tail that makes the fits robust rather than least
    squares.
 7. Within-night behaviour — per-night elevation slopes and the rising-against-falling
@@ -79,6 +84,8 @@ BAND_COLOUR = {'u': '#3b4cc0', 'g': '#4fa845', 'r': '#d62728',
 #: Feature groups tried in the ablation, beyond the deliverable set. Each is scored
 #: night-grouped against the deliverable so a gain has to beat the across-band scatter.
 ABLATION_GROUPS = (('truss',), ('zgrad',), ('truss', 'zgrad'), ('truss', 'grads'),
+                   ('truss', 'r2grads'), ('truss', 'grads', 'r2all'),
+                   ('truss', 'grads', 'r2split'), ('truss', 'grads', 'r2grads'),
                    ('truss', 'grads', 'camtemp'), ('truss', 'grads', 'wind'),
                    ('truss', 'grads', 'elev'), ('truss', 'grads', 'hexhist'),
                    ('truss', 'grads', 'camtemp', 'wind', 'elev', 'hexhist'))
@@ -258,6 +265,141 @@ def section_ablation(sci, verbose=True):
         if 'gain' in out.columns:
             print('  gain is dimensionless, deliverable-set nMAD over this set nMAD; '
                   'above 1 is better')
+    return out
+
+
+def section_r2grads(sci, features, model='huber', verbose=True):
+    """The quadratic-in-radius M1M3 thermal terms, above and beyond the four bulk gradients.
+
+    A temperature field going as radius squared bends the mirror into a shape much closer to
+    pure defocus than a linear radial ramp does, so it is the term most likely to move focus.
+    Three such terms are available -- over the whole mirror, over the M1 annulus alone and over
+    the M3 inner disc alone. The question is not whether each correlates with focus, since the
+    whole thermal field does, but whether any of them carries focus information the four bulk
+    gradients already in the model cannot express.
+
+    Parameters
+    ----------
+    sci : `pandas.DataFrame`
+        Science visits, carrying the columns of `thermal_focus_lib.R2_COLS`.
+    features : `list` [`str`]
+        The deliverable model's features, used as the baseline and as the controls partialled
+        out of each candidate.
+    model : `str`, optional
+        Key for `thermal_focus_fit.make_model`.
+    verbose : `bool`, optional
+        Print the tables.
+
+    Returns
+    -------
+    out : `dict`
+        ``available`` (`list` of the quadratic columns present), ``coverage`` (per cent of
+        visits each resolves), ``lines`` (per column, `F.huber_line` against the response, slope
+        in µm of equivalent hexapod dz per unit normalized radius-squared amplitude),
+        ``partial`` (per column, `F.partial_correlation` against the deliverable features),
+        ``nested`` (per candidate set, `F.nested_comparison`), ``redundancy`` (per column, the
+        `F.huber_line` against ``m1m3_radial_gradient_c_per_m``) and ``swap`` (the nested result
+        for the quadratic terms **substituted for** the four gradients rather than added to
+        them). `None` for any entry the sample cannot support.
+
+    Notes
+    -----
+    Three things are reported because they answer three different questions and routinely
+    disagree. The raw correlation says the term tracks focus; the partial correlation says
+    whether it still does once the incumbent gradients have had their share; and the
+    night-grouped nested comparison says whether that surviving information generalises to
+    nights the fit never saw. Only the third is a performance claim.
+
+    The substitution row is what a decision to switch would rest on: it fits the truss
+    temperature plus the three quadratic terms in place of the truss plus the four bulk
+    gradients, on the same rows, so a smaller feature set is not credited for the easier sample.
+    """
+    cols = [c for c, _ in L.R2_COLS if c in sci.columns]
+    out = {'available': cols, 'coverage': {}, 'lines': {}, 'partial': {}, 'nested': {},
+           'redundancy': {}, 'swap': None}
+    if not cols:
+        if verbose:
+            print('  no quadratic radial columns in the table; run '
+                  'value_added/code/build_m1m3_thermal_r2.py, then rebuild the cached table')
+        return out
+    for c in cols:
+        out['coverage'][c] = 100.0 * float(sci[c].notna().mean())
+        out['lines'][c] = F.huber_line(sci[c], sci['y'])
+        out['partial'][c] = F.partial_correlation(sci, 'y', c, features, model=model)
+        if 'm1m3_radial_gradient_c_per_m' in sci.columns:
+            out['redundancy'][c] = F.huber_line(sci['m1m3_radial_gradient_c_per_m'], sci[c])
+
+    candidates = [('r2all', ['m1m3_r2_coeff_c']),
+                  ('r2split', ['m1_r2_coeff_c', 'm3_r2_coeff_c']),
+                  ('r2grads', cols)]
+    for name, add in candidates:
+        add = [c for c in add if c in cols]
+        if not add:
+            continue
+        out['nested'][name] = F.nested_comparison(sci, features, add, model=model,
+                                                  n_splits=F.N_SPLITS, verbose=False)
+
+    truss = L.resolve_features(('truss',))
+    swap_features = truss + cols
+    ext = list(features) + [c for c in cols if c not in features]
+    d = sci[['y', 'day_obs'] + ext].replace([np.inf, -np.inf], np.nan).dropna()
+    if len(d) > 1000:
+        d = d.reset_index(drop=True)
+        out['swap'] = {
+            'n': len(d), 'n_nights': int(d['day_obs'].nunique()),
+            'gradients': F.evaluate(d, features, model=model, verbose=False),
+            'quadratic': F.evaluate(d, swap_features, model=model, verbose=False)}
+
+    if verbose:
+        print('coverage and the raw relation to the response')
+        for c, label in L.R2_COLS:
+            if c not in cols:
+                continue
+            r = out['lines'][c]
+            print(f'  {label:36s} resolves {out["coverage"][c]:5.2f}% of visits; slope '
+                  f'{r["slope"]:+8.1f} +/- {r["slope_err"]:6.1f} um of equivalent hexapod dz '
+                  f'per unit normalized r^2 amplitude, Pearson r {r["pearson_r"]:+.4f}, '
+                  f'Spearman rho {r["spearman_rho"]:+.4f}, n {r["n"]}')
+        if out['redundancy']:
+            print('\nhow much each duplicates the existing M1M3 radial gradient')
+            for c, label in L.R2_COLS:
+                r = out['redundancy'].get(c)
+                if not r:
+                    continue
+                print(f'  {label:36s} against the radial gradient: Pearson r '
+                      f'{r["pearson_r"]:+.4f}, Spearman rho {r["spearman_rho"]:+.4f}, '
+                      f'n {r["n"]} (both dimensionless)')
+            print('  a high value here is why the partial correlation below is the test that '
+                  'matters, not the raw one')
+        print('\npartial correlation with the response, both sides stripped of the '
+              f'{len(features)} deliverable features')
+        for c, label in L.R2_COLS:
+            p = out['partial'].get(c)
+            if not p:
+                continue
+            print(f'  {label:36s} raw Pearson r {p["raw_pearson_r"]:+.4f} -> partial '
+                  f'{p["partial_pearson_r"]:+.4f}, partial Spearman rho '
+                  f'{p["partial_spearman_rho"]:+.4f}, residual slope {p["slope"]:+8.1f} +/- '
+                  f'{p["slope_err"]:6.1f} um of equivalent hexapod dz per unit normalized '
+                  f'r^2 amplitude, n {p["n"]} (correlations dimensionless)')
+        print('\nnight-grouped nested comparison: does the surviving information generalise')
+        for name, res in out['nested'].items():
+            print(f'  baseline + {name:8s} on {res["n"]:6d} visits over {res["n_nights"]:3d} '
+                  f'nights: nMAD {res["nmad_base"]:6.1f} -> {res["nmad_extended"]:6.1f} um of '
+                  f'equivalent hexapod dz, gain {res["gain"]:.4f} (dimensionless, baseline '
+                  f'over extended), delta R2 {res["delta_r2"]:+.4f} (dimensionless)')
+        s = out['swap']
+        if s:
+            g, q = s['gradients'], s['quadratic']
+            print(f'\nsubstitution rather than addition, on the same {s["n"]} visits over '
+                  f'{s["n_nights"]} nights')
+            print(f'  truss + four bulk gradients   ({len(features):2d} features): nMAD '
+                  f'{g["nmad"]:6.1f} um of equivalent hexapod dz, R2 {g["r2"]:+.4f}')
+            print(f'  truss + three quadratic terms ({len(swap_features):2d} features): nMAD '
+                  f'{q["nmad"]:6.1f} um of equivalent hexapod dz, R2 {q["r2"]:+.4f}')
+            better = g['nmad'] / q['nmad'] if q['nmad'] else float('nan')
+            print(f'  ratio {better:.4f} (dimensionless, gradient nMAD over quadratic nMAD); '
+                  'above 1 favours switching to the quadratic terms')
     return out
 
 
@@ -925,6 +1067,75 @@ def figure_sample(pdf, sci, samp):
     plt.close(fig)
 
 
+def figure_r2(pdf, sci, r2res, features):
+    """The three quadratic radial terms against the focus error, raw and partialled.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    sci : `pandas.DataFrame`
+        Science table.
+    r2res : `dict`
+        Result of `section_r2grads`.
+    features : `list` [`str`]
+        The deliverable features, named in the axis labels as what was partialled out.
+
+    Notes
+    -----
+    Top row raw, bottom row partialled. The comparison between the two rows is the point: a raw
+    relation that survives partialling carries focus information the incumbent gradients do not,
+    and one that collapses was the gradients' signal seen twice. Night medians are plotted rather
+    than every visit because the relation being tested is a between-night one; the fitted line is
+    the Huber fit to all visits, not to the medians.
+    """
+    cols = r2res['available']
+    lab = dict(L.R2_COLS)
+    fig, axes = plt.subplots(2, len(cols), figsize=(4.1 * len(cols), 8.0), squeeze=False)
+    for j, c in enumerate(cols):
+        ax = axes[0][j]
+        d = sci[[c, 'y', 'day_obs']].dropna()
+        pn = d.groupby('day_obs').median()
+        ax.plot(pn[c], pn['y'], 'o', ms=3.5, color='#1f77b4')
+        r = r2res['lines'][c]
+        xs = np.linspace(pn[c].min(), pn[c].max(), 20)
+        ax.plot(xs, r['intercept'] + r['slope'] * xs, '-', color='#d62728', lw=1.2)
+        ax.set_xlabel(f'{lab[c]}\n[deg C per unit normalized r^2 amplitude]', fontsize=8)
+        ax.set_ylabel('night median focus error\n[um of equivalent hexapod dz]', fontsize=8)
+        ax.set_title(f'raw: Pearson r {r["pearson_r"]:+.3f}, '
+                     f'Spearman rho {r["spearman_rho"]:+.3f}', fontsize=9)
+
+        ax = axes[1][j]
+        ctrl = [f for f in features if f in sci.columns]
+        d = sci[[c, 'y', 'day_obs'] + ctrl].replace([np.inf, -np.inf], np.nan).dropna()
+        if len(d) > 100:
+            C = d[ctrl].to_numpy(float)
+            res = {}
+            for col in (c, 'y'):
+                m = F.make_model('huber')
+                v = d[col].to_numpy(float)
+                m.fit(C, v)
+                res[col] = v - m.predict(C)
+            e = pd.DataFrame({'x': res[c], 'y': res['y'], 'day_obs': d['day_obs'].to_numpy()})
+            pe = e.groupby('day_obs').median()
+            ax.plot(pe['x'], pe['y'], 'o', ms=3.5, color='#7f4fa8')
+            p = r2res['partial'][c]
+            xs = np.linspace(pe['x'].min(), pe['x'].max(), 20)
+            ax.plot(xs, p['slope'] * xs, '-', color='#d62728', lw=1.2)
+            ax.axhline(0, color='0.7', lw=0.7)
+            ax.axvline(0, color='0.7', lw=0.7)
+            ax.set_title(f'partialled: Pearson r {p["partial_pearson_r"]:+.3f}, '
+                         f'Spearman rho {p["partial_spearman_rho"]:+.3f}', fontsize=9)
+        ax.set_xlabel(f'{lab[c]} residual\nafter the {len(ctrl)} deliverable features',
+                      fontsize=8)
+        ax.set_ylabel('focus error residual\n[um of equivalent hexapod dz]', fontsize=8)
+    fig.suptitle('Quadratic radial M1M3 thermal terms, raw (top) and above and beyond the '
+                 'bulk gradients (bottom)', fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
 def figure_before(pdf, sci, trussonly):
     """Before any correction: what the truss temperature alone can and cannot do.
 
@@ -1373,6 +1584,9 @@ def main():
     print('\n=== 5. what adds nothing ===')
     ablation = section_ablation(sci)
 
+    print('\n=== 5b. the quadratic radial M1M3 terms, beyond the bulk gradients ===')
+    r2res = section_r2grads(sci, features, model=args.model)
+
     print('\n=== 6. residual shape ===')
     # Two residuals, two questions. About a truss-only per-band fit the tail is the published
     # one-sided positive excess, which says the truss relation alone leaves a population of
@@ -1638,6 +1852,71 @@ def main():
               for k, n in (('truss_line', 'TMA truss temperature'),
                            ('cam_line', 'camera-body AverageTemp')) if cam.get(k)],
         ])
+
+        r2_lines = ['Quadratic radial section skipped: the cached table carries none of the '
+                    'm1m3_r2_coeff_c, m1_r2_coeff_c or m3_r2_coeff_c columns. Run',
+                    'value_added/code/build_m1m3_thermal_r2.py, then rebuild the cached table.']
+        if r2res['available']:
+            lab = dict(L.R2_COLS)
+            r2_lines = [
+                'A temperature field going as radius squared bends the mirror much closer to',
+                'pure defocus than a linear radial ramp does, so it is the term most likely to',
+                'move focus. Three are fitted, over three thermocouple populations: the whole',
+                'mirror, the M1 annulus alone and the M3 inner disc alone. The unit is deg C per',
+                'unit normalized radius-squared amplitude -- the quadratic shape is orthogonal',
+                'to the constant, linear-radius and depth terms and scaled to unit',
+                'root-mean-square over each population\'s own sensors, so it carries only the',
+                'curvature those terms cannot express.',
+                '',
+                'Raw relation to the focus error:',
+                *[f'  {lab[c]:36s} {r2res["coverage"][c]:5.2f}% of visits  slope '
+                  f'{r2res["lines"][c]["slope"]:+8.1f} +/- '
+                  f'{r2res["lines"][c]["slope_err"]:6.1f} um per unit amplitude  '
+                  f'Pearson r {r2res["lines"][c]["pearson_r"]:+.4f}  '
+                  f'Spearman rho {r2res["lines"][c]["spearman_rho"]:+.4f}'
+                  for c in r2res['available']],
+                '',
+                'How much each duplicates the existing M1M3 radial gradient (dimensionless):',
+                *[f'  {lab[c]:36s} Pearson r {r2res["redundancy"][c]["pearson_r"]:+.4f}  '
+                  f'Spearman rho {r2res["redundancy"][c]["spearman_rho"]:+.4f}  '
+                  f'n {r2res["redundancy"][c]["n"]}'
+                  for c in r2res['available'] if r2res['redundancy'].get(c)],
+                '',
+                'Partial correlation with the focus error, both sides stripped of the truss',
+                'temperature and the four bulk gradients -- the "above and beyond" test:',
+                *[f'  {lab[c]:36s} raw r {r2res["partial"][c]["raw_pearson_r"]:+.4f} -> '
+                  f'partial r {r2res["partial"][c]["partial_pearson_r"]:+.4f}  '
+                  f'partial rho {r2res["partial"][c]["partial_spearman_rho"]:+.4f}  '
+                  f'slope {r2res["partial"][c]["slope"]:+8.1f} +/- '
+                  f'{r2res["partial"][c]["slope_err"]:6.1f} um per unit amplitude'
+                  for c in r2res['available'] if r2res['partial'].get(c)],
+                '',
+                'Night-grouped nested comparison -- does the surviving information generalise',
+                'to nights the fit never saw [residual nMAD in um of equivalent hexapod dz]:',
+                *[f'  baseline + {n:8s} n {r["n"]:6d} over {r["n_nights"]:3d} nights  '
+                  f'nMAD {r["nmad_base"]:6.1f} -> {r["nmad_extended"]:6.1f}  '
+                  f'gain {r["gain"]:.4f}  delta R2 {r["delta_r2"]:+.4f}'
+                  for n, r in r2res['nested'].items()],
+                '  gain and delta R2 are dimensionless; gain is baseline nMAD over extended',
+            ]
+            if r2res['swap']:
+                s = r2res['swap']
+                ratio = (s['gradients']['nmad'] / s['quadratic']['nmad']
+                         if s['quadratic']['nmad'] else float('nan'))
+                r2_lines += [
+                    '',
+                    f'Substitution rather than addition, on the same {s["n"]} visits over '
+                    f'{s["n_nights"]} nights:',
+                    f'  truss + four bulk gradients   nMAD {s["gradients"]["nmad"]:6.1f} um of '
+                    f'equivalent hexapod dz  R2 {s["gradients"]["r2"]:+.4f}',
+                    f'  truss + three quadratic terms nMAD {s["quadratic"]["nmad"]:6.1f} um of '
+                    f'equivalent hexapod dz  R2 {s["quadratic"]["r2"]:+.4f}',
+                    f'  ratio {ratio:.4f} (dimensionless, gradient nMAD over quadratic nMAD); '
+                    'above 1 favours switching',
+                ]
+        _text_page(pdf, 'Part 2 of 3 - Training: the quadratic radial M1M3 terms', r2_lines)
+        if r2res['available']:
+            figure_r2(pdf, sci, r2res, features)
 
         elev_lines = ['Elevation section skipped: the cached table lacks altitude_deg or '
                       'obs_start_mjd']

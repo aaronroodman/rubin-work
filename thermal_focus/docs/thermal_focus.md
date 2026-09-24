@@ -201,6 +201,61 @@ No feature set beats truss + the four gradients by more than 0.2% (dimensionless
 the deliverable nMAD). Elevation, wind, camera-body temperature and hexapod motion history each
 add nothing measurable. This is the result that justifies a five-channel linear model.
 
+### Quadratic radial M1M3 terms
+
+The four bulk gradients are all **linear**: the temperature field is fitted as
+`T = a0 + a1·x + a2·y + a3·z` and as `T = a0 + a1·r + a3·z` over the 146 thermocouples in the
+mirror glass. A field going as radius squared bends the mirror into a shape much closer to pure
+defocus than a linear radial ramp does, and so is the term most likely to move focus — but no
+linear gradient can express it. Three such terms are therefore computed and tested here, over
+three thermocouple populations: the whole mirror, the M1 annulus alone (80 thermocouples, 2.997
+to 4.197 m) and the M3 inner disc alone (66 thermocouples, 0.555 to 2.533 m). M1 and M3 are one
+monolithic blank but two optical surfaces at different radii and curvatures, so a thermal
+expansion confined to one of them is a different optical perturbation than the same expansion
+over both.
+
+They live in the value-added database's `m1m3_thermal_r2` table, built by
+`value_added/code/build_m1m3_thermal_r2.py`; the reduction and the mirror split are documented in
+[`value_added/docs/schema.md`](../../value_added/docs/schema.md). Two points about the unit matter
+for reading a coefficient here:
+
+- The coefficient is **°C per unit normalized radius-squared amplitude**, not °C/m². The
+  quadratic shape is Gram-Schmidt orthogonalized against the constant, linear-radius and depth
+  terms over each population's own sensor positions and scaled to unit root-mean-square. Fitting
+  raw `r²` beside the linear terms is not viable: over M1's narrow annulus `r²` is 99.875%
+  explained by them, a variance inflation factor of 801.8 (dimensionless).
+- Because of that orthogonalization the coefficient carries **only** the radial curvature the
+  linear terms cannot express, which is what makes it the right variable for an "above and beyond
+  the gradients we already have" test rather than a second copy of the radial gradient.
+
+Orthogonalizing against sensor *positions* fixes the design matrix, not the time series. The
+quadratic terms remain strongly correlated with the existing radial gradient over time — on a
+single test night, Pearson r +0.9656 for the whole-mirror term, +0.8472 for M1 and +0.1232 for M3
+(dimensionless, n = 518 visits) — because the upstream radial gradient is itself fitted with no
+quadratic term and so absorbs whatever curvature exists. That redundancy is a question for the
+regression, not for the reduction, which is why it is answered here by partial correlation and a
+nested model comparison rather than by trying to remove it upstream.
+
+Section 5b of the analysis reports four things, in increasing strength of claim:
+
+1. the **raw** Huber relation of each term to the focus error, with Pearson r and Spearman rho;
+2. how much each **duplicates** the existing M1M3 radial gradient;
+3. the **partial** correlation, with the truss temperature and the four bulk gradients regressed
+   out of both the candidate and the response — the "above and beyond" test;
+4. a **night-grouped nested** comparison, `GroupKFold` on `day_obs`, of the five-feature
+   deliverable against the same features plus the candidates, scored on identical rows so a
+   sparser candidate is not credited with an easier sample. Only this one is a performance claim.
+
+A fifth row covers **substitution** rather than addition: the truss temperature plus the three
+quadratic terms fitted in place of the truss plus the four bulk gradients, on the same rows. That
+is the comparison a decision to switch from the gradients would rest on, and it is reported
+separately because a term can add information without being a better replacement.
+
+One property of the reduction is worth knowing when the sample sizes differ: its coverage is
+**higher** than the bulk gradients'. The upstream reduction NaNs an entire time sample if any one
+thermocouple dropped out, while this fit groups samples by their finite pattern and reuses one
+pseudo-inverse per pattern — 720 finite samples of 720 on a test night, against the upstream 518.
+
 ### The FAM truss cross-check compares commanded slopes
 
 `FAM_TRUSS_SLOPE = 0.09634` (dimensionless v-mode-1 amplitude per °C) from the FAM Double Zernike
@@ -540,7 +595,7 @@ from a genuinely larger thermal excursion.
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: fourteen sections and one document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: fifteen sections and one document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 ### The network seam
@@ -614,10 +669,11 @@ are separate outputs and neither consumes the other.
 
 ## Outstanding work
 
-One follow-up is known and not attempted here:
+Both known follow-ups are now closed.
 
-- Collect all M1M3 cell temperature values to form separate M1 and M3 focus variables, looking for
-  an r²-like radial thermal mode the four bulk gradients cannot express.
+The r²-like radial thermal mode is **done**: three quadratic radial terms over the whole mirror,
+the M1 annulus and the M3 inner disc are built into the value-added database and tested in the
+section above.
 
 The comparison of the 50 DOF / 34 mode, 22/12 and 10/1 projections is **done** — the three
 `v1_per_um_dz` values agree to 0.108% (dimensionless, spread over the 50/34 value), far below the
