@@ -1,6 +1,6 @@
 # Study: `thermal_focus` — the focus error as a function of temperature
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-24 · **Kind:** reference (study)
 
 > **Code:** `code/` · **Notebooks:** `notebooks/`
 > **Output:** `output/` (`thermal_focus.pdf`, `thermal_focus.parquet`,
@@ -97,11 +97,12 @@ real misunderstanding at some point:
 
 | step | count |
 |---|---|
-| visits with a recovered `v50_34__batoid__consdb_v1` optical state | 85,386 |
-| joined to `visit_telemetry` gradients | 85,280 (99.9%) |
-| `img_type = 'science'` | 70,769 |
-| in bands u g r i z y | 70,769 |
-| excluding 7 LUT-epoch nights | −1,204 visits |
+| visits with a recovered `v50_34__batoid__consdb_v1` optical state | 85,819 |
+| joined to `visit_telemetry` gradients | 85,713 (99.9%) |
+| joined to the quadratic radial terms | 85,819 (100.0%) |
+| `img_type = 'science'` | 71,069 |
+| in bands u g r i z y | 71,069 |
+| excluding 8 LUT-epoch nights | −1,504 visits |
 | excluding truss temperature above +20 °C | −217 visits on 2 nights |
 | with a finite response | 69,348 |
 | **with all five thermal features** | **68,079** |
@@ -229,12 +230,13 @@ for reading a coefficient here:
   the gradients we already have" test rather than a second copy of the radial gradient.
 
 Orthogonalizing against sensor *positions* fixes the design matrix, not the time series. The
-quadratic terms remain strongly correlated with the existing radial gradient over time — on a
-single test night, Pearson r +0.9656 for the whole-mirror term, +0.8472 for M1 and +0.1232 for M3
-(dimensionless, n = 518 visits) — because the upstream radial gradient is itself fitted with no
-quadratic term and so absorbs whatever curvature exists. That redundancy is a question for the
-regression, not for the reduction, which is why it is answered here by partial correlation and a
-nested model comparison rather than by trying to remove it upstream.
+quadratic terms remain correlated with the existing radial gradient over time — over the science
+sample, Pearson r +0.8991 for the whole-mirror term, +0.4301 for M1 and +0.5571 for M3
+(dimensionless, n = 68,079 visits; Spearman rho +0.7607, +0.3692, +0.4051) — because the upstream
+radial gradient is itself fitted with no quadratic term and so absorbs whatever curvature exists.
+That redundancy is a question for the regression, not for the reduction, which is why it is
+answered here by partial correlation and a nested model comparison rather than by trying to remove
+it upstream.
 
 Section 5b of the analysis reports four things, in increasing strength of claim:
 
@@ -251,10 +253,52 @@ quadratic terms fitted in place of the truss plus the four bulk gradients, on th
 is the comparison a decision to switch from the gradients would rest on, and it is reported
 separately because a term can add information without being a better replacement.
 
+#### What the quadratic terms are worth
+
+Measured over 68,079 science visits on 147 nights, `day_obs` 20251103 to 20260713. Raw and
+partial Huber relations to the focus error, the partial being with the truss temperature and the
+four bulk gradients regressed out of both sides:
+
+| term | raw Pearson r | partial Pearson r | partial Spearman rho | partial slope [µm equiv hexapod dz per unit normalized r² amplitude] |
+|---|---|---|---|---|
+| whole-mirror `m1m3_r2_coeff_c` | −0.1306 | −0.0715 | −0.0689 | −115.4 ± 16.3 |
+| M1 `m1_r2_coeff_c` | −0.2235 | −0.0641 | −0.2043 | −1992.2 ± 30.4 |
+| M3 `m3_r2_coeff_c` | −0.1490 | −0.1342 | −0.0870 | −377.1 ± 14.4 |
+
+All three correlations are dimensionless; the raw Huber slopes are −1515.7 ± 33.1, −5586.5 ± 75.1
+and −2278.9 ± 53.3 µm of equivalent hexapod dz per unit normalized r² amplitude. Every partial
+slope is many times its formal error, so the information is real, but every partial correlation is
+small: the quadratic curvature is a **weak** predictor once the bulk gradients are in the model.
+
+The night-grouped nested comparison is the performance claim, baseline residual nMAD 59.9 µm of
+equivalent hexapod dz on the same 68,079 visits:
+
+| added to the five deliverable features | residual nMAD [µm equiv hexapod dz] | gain [dimensionless, baseline nMAD over extended nMAD] | ΔR² [dimensionless] |
+|---|---|---|---|
+| whole-mirror term alone | 60.0 | 0.9988 | +0.0004 |
+| M1 and M3 terms | 57.1 | **1.0484** | +0.0011 |
+| all three terms | 57.8 | 1.0356 | −0.0001 |
+
+The whole-mirror term adds nothing — it is the one most nearly duplicated by the existing radial
+gradient, at Pearson r +0.8991. **The M1 and M3 split is what carries the new information**, a
+4.8% reduction in robust residual scatter, and adding the whole-mirror term back on top of the
+split makes it slightly worse, which is what redundancy looks like in a cross-validated score.
+Splitting the mirror was therefore the part of the design that mattered, not the quadratic radial
+shape by itself.
+
+Substitution goes the other way. On the same 68,079 visits over 147 nights, the truss temperature
+plus the four bulk gradients gives residual nMAD 59.9 µm of equivalent hexapod dz at R² +0.5181,
+while the truss temperature plus the three quadratic terms gives 72.4 µm at R² +0.5008 — a ratio
+of **0.8269** (dimensionless, gradient nMAD over quadratic nMAD), where above 1 would favour
+switching. **The quadratic terms do not replace the bulk gradients**; the deliverable feature set
+is unchanged, and the useful form of this result is the M1-plus-M3 pair added to the existing five
+features.
+
 One property of the reduction is worth knowing when the sample sizes differ: its coverage is
 **higher** than the bulk gradients'. The upstream reduction NaNs an entire time sample if any one
 thermocouple dropped out, while this fit groups samples by their finite pattern and reuses one
-pseudo-inverse per pattern — 720 finite samples of 720 on a test night, against the upstream 518.
+pseudo-inverse per pattern. On the science sample the quadratic terms resolve **100.0%** of visits
+against 99.9% for the bulk gradients.
 
 ### The FAM truss cross-check compares commanded slopes
 
@@ -673,7 +717,10 @@ Both known follow-ups are now closed.
 
 The r²-like radial thermal mode is **done**: three quadratic radial terms over the whole mirror,
 the M1 annulus and the M3 inner disc are built into the value-added database and tested in the
-section above.
+section above. The result is that the M1 and M3 pair adds a real but modest 4.8% reduction in
+robust residual scatter on top of the five deliverable features, while the whole-mirror term adds
+nothing and no quadratic set replaces the bulk gradients. Whether to adopt the M1 and M3 pair into
+the deliverable feature set is a decision left open; the deliverable is unchanged pending it.
 
 The comparison of the 50 DOF / 34 mode, 22/12 and 10/1 projections is **done** — the three
 `v1_per_um_dz` values agree to 0.108% (dimensionless, spread over the 50/34 value), far below the

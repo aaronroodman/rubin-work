@@ -1126,8 +1126,8 @@ def figure_r2(pdf, sci, r2res, features):
             ax.axvline(0, color='0.7', lw=0.7)
             ax.set_title(f'partialled: Pearson r {p["partial_pearson_r"]:+.3f}, '
                          f'Spearman rho {p["partial_spearman_rho"]:+.3f}', fontsize=9)
-        ax.set_xlabel(f'{lab[c]} residual\nafter the {len(ctrl)} deliverable features',
-                      fontsize=8)
+        ax.set_xlabel(f'{lab[c]} residual after the {len(ctrl)} deliverable features\n'
+                      '[deg C per unit normalized r^2 amplitude]', fontsize=8)
         ax.set_ylabel('focus error residual\n[um of equivalent hexapod dz]', fontsize=8)
     fig.suptitle('Quadratic radial M1M3 thermal terms, raw (top) and above and beyond the '
                  'bulk gradients (bottom)', fontsize=10)
@@ -1857,7 +1857,10 @@ def main():
                     'm1m3_r2_coeff_c, m1_r2_coeff_c or m3_r2_coeff_c columns. Run',
                     'value_added/code/build_m1m3_thermal_r2.py, then rebuild the cached table.']
         if r2res['available']:
-            lab = dict(L.R2_COLS)
+            # Short population names, not the full R2_COLS labels: the full ones pad to 36
+            # characters and would push these rows past the right edge of the page.
+            lab = {'m1m3_r2_coeff_c': 'whole mirror', 'm1_r2_coeff_c': 'M1 annulus',
+                   'm3_r2_coeff_c': 'M3 inner disc'}
             r2_lines = [
                 'A temperature field going as radius squared bends the mirror much closer to',
                 'pure defocus than a linear radial ramp does, so it is the term most likely to',
@@ -1868,27 +1871,29 @@ def main():
                 'root-mean-square over each population\'s own sensors, so it carries only the',
                 'curvature those terms cannot express.',
                 '',
-                'Raw relation to the focus error:',
-                *[f'  {lab[c]:36s} {r2res["coverage"][c]:5.2f}% of visits  slope '
+                'Raw relation to the focus error [slope in um of equivalent hexapod dz per unit',
+                'normalized radius-squared amplitude; correlations dimensionless]:',
+                *[f'  {lab[c]:14s} {r2res["coverage"][c]:6.2f}% of visits  slope '
                   f'{r2res["lines"][c]["slope"]:+8.1f} +/- '
-                  f'{r2res["lines"][c]["slope_err"]:6.1f} um per unit amplitude  '
+                  f'{r2res["lines"][c]["slope_err"]:6.1f}  '
                   f'Pearson r {r2res["lines"][c]["pearson_r"]:+.4f}  '
                   f'Spearman rho {r2res["lines"][c]["spearman_rho"]:+.4f}'
                   for c in r2res['available']],
                 '',
                 'How much each duplicates the existing M1M3 radial gradient (dimensionless):',
-                *[f'  {lab[c]:36s} Pearson r {r2res["redundancy"][c]["pearson_r"]:+.4f}  '
+                *[f'  {lab[c]:14s} Pearson r {r2res["redundancy"][c]["pearson_r"]:+.4f}  '
                   f'Spearman rho {r2res["redundancy"][c]["spearman_rho"]:+.4f}  '
                   f'n {r2res["redundancy"][c]["n"]}'
                   for c in r2res['available'] if r2res['redundancy'].get(c)],
                 '',
                 'Partial correlation with the focus error, both sides stripped of the truss',
-                'temperature and the four bulk gradients -- the "above and beyond" test:',
-                *[f'  {lab[c]:36s} raw r {r2res["partial"][c]["raw_pearson_r"]:+.4f} -> '
+                'temperature and the four bulk gradients -- the "above and beyond" test',
+                '[slope in um of equivalent hexapod dz per unit normalized amplitude]:',
+                *[f'  {lab[c]:14s} raw r {r2res["partial"][c]["raw_pearson_r"]:+.4f} -> '
                   f'partial r {r2res["partial"][c]["partial_pearson_r"]:+.4f}  '
                   f'partial rho {r2res["partial"][c]["partial_spearman_rho"]:+.4f}  '
                   f'slope {r2res["partial"][c]["slope"]:+8.1f} +/- '
-                  f'{r2res["partial"][c]["slope_err"]:6.1f} um per unit amplitude'
+                  f'{r2res["partial"][c]["slope_err"]:6.1f}'
                   for c in r2res['available'] if r2res['partial'].get(c)],
                 '',
                 'Night-grouped nested comparison -- does the surviving information generalise',

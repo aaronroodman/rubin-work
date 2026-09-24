@@ -1,9 +1,9 @@
 # Value-added database schema
 
-> **Status:** current · **Last updated:** 2026-09-18 · **Kind:** reference (schema)
+> **Status:** current · **Last updated:** 2026-09-24 · **Kind:** reference (schema)
 
 The eight tables of the value-added database, what each holds, and where every column comes
-from. Row counts were read from the live database on 2026-09-18 and are indicative of scale,
+from. Row counts were read from the live database on 2026-09-24 and are indicative of scale,
 not fixed; for what is currently built and what is sparse, see
 [`status/build_progress.md`](status/build_progress.md).
 
@@ -37,17 +37,24 @@ them in would only create a second, staler copy of something already cheap to re
 
 | table | rows | columns | shape |
 |---|---|---|---|
-| `visit_telemetry` | 129,242 | 194 | wide — one row per exposure |
+| `visit_telemetry` | 213,704 | 194 | wide — one row per exposure |
+| `m1m3_thermal_r2` | 211,922 | 19 | wide — one row per exposure |
 | `optical_state` | 90,695 | 10 | long — keyed `(visit_id, variant_id)` |
 | `fam_dz` | 2,528 | 16 | long — keyed `(visit_id, fam_variant_id)` |
 | `state_variant` | 3 | 11 | registry for `optical_state` |
 | `fam_variant` | 1 | 14 | registry for `fam_dz` |
 | `column_coverage` | 193 | 8 | units and provenance registry |
-| `fetch_log` | 1,696 | 6 | build bookkeeping |
+| `fetch_log` | 2,928 | 6 | build bookkeeping |
 
-`visit_telemetry` covers `day_obs` 20251102 to 20260714; `optical_state` 20251102 to 20260713;
-`fam_dz` 20250415 to 20260713. Note the earlier FAM start: a join of `fam_dz` to
-`visit_telemetry` on `visit_id` drops the 2025 FAM visits, which have no telemetry rows.
+`visit_telemetry` covers `day_obs` 20250415 to 20260714, 366 nights; `m1m3_thermal_r2` the same
+span over 365 of those nights; `optical_state` 20251102 to 20260713, 181 nights; `fam_dz`
+20250415 to 20260713, 98 nights. A join of `fam_dz` to `visit_telemetry` on `visit_id` keeps
+every FAM visit, but the recovered optical state starts only in November 2025, so a join
+through `optical_state` drops the 2025 FAM visits.
+
+Of the 211,922 `m1m3_thermal_r2` rows, 192,079 carry a fit. The 19,843 NaN rows fall on 34
+nights, 32 of them the contiguous block 20250415 to 20250518 where the M1M3 thermocouple
+telemetry does not exist at all, plus 20250610 (9 exposures) and 20250713 (839 exposures).
 
 ## Two schema idioms
 
@@ -221,7 +228,8 @@ Two properties worth knowing before joining:
 - **Coverage is higher than the bulk gradients'.** The upstream reduction returns NaN for a whole
   time sample if any thermocouple dropped out; this fit groups samples by their finite pattern
   and reuses one pseudo-inverse per pattern, so on a test night it produced 720 finite samples of
-  720 against the upstream 518.
+  720 against the upstream 518. On the thermal-focus science sample the quadratic terms resolve
+  100.0% of visits against 99.9% for the bulk gradients.
 - **The interpolation is TAI-to-UTC corrected.** `visit_telemetry.obs_start` is International
   Atomic Time while the thermocouple index is UTC, a 37 s offset at present, which exceeds the
   30 s binning.
@@ -265,7 +273,7 @@ SELECT column_name, units, source, n_non_null
 FROM column_coverage WHERE group_name = 'gradients';
 ```
 
-**`fetch_log`** holds 1,696 rows, one per `(day_obs, group)` outcome, which makes an
+**`fetch_log`** holds 2,928 rows, one per `(day_obs, group)` outcome, which makes an
 interrupted backfill resumable.
 
 Nights are independent and every `(day_obs, group)` outcome is logged, so `--resume` skips

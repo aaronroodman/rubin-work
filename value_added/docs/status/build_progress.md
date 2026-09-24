@@ -1,9 +1,9 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-09-22 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-09-24 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
-Read from the live database's `fetch_log` and `column_coverage` on 2026-09-22.
+Read from the live database's `fetch_log` and `column_coverage` on 2026-09-24.
 
 ## Contents
 
@@ -12,6 +12,7 @@ Read from the live database's `fetch_log` and `column_coverage` on 2026-09-22.
 - [Sparse columns to check before using](#sparse-columns-to-check-before-using)
 - [`optical_state` and `fam_dz`](#optical_state-and-fam_dz)
 - [Mirror LUT zero-fill on a dropped actuator](#mirror-lut-zero-fill-on-a-dropped-actuator)
+- [`m1m3_thermal_r2` coverage](#m1m3_thermal_r2-coverage)
 - [Rebuilding](#rebuilding)
 
 ## `visit_telemetry` coverage
@@ -140,6 +141,46 @@ biased on exposures with a dropped actuator, by an amount that has not been quan
 Modelling the redistribution, and rebuilding the affected `lut_dof10` to `lut_dof49` values,
 is outstanding work. The alternative considered and rejected was propagating NaN, which
 would discard every visit with one dead actuator.
+
+## `m1m3_thermal_r2` coverage
+
+**365 nights**, `day_obs` 20250415 to 20260714, 211,922 exposures, of which **192,079 carry a
+fit**. Built by `code/build_m1m3_thermal_r2.py` over 331 nights with usable M1M3 thermocouple
+telemetry; the remaining 34 nights hold NaN.
+
+The NaN nights are 32 contiguous nights `day_obs` 20250415 to 20250518 (18,995 exposures),
+where the in-glass thermocouple grid was not publishing at all, plus two isolated nights,
+20250610 (9 exposures) and 20250713 (839 exposures). The reason is logged per night as the
+build runs.
+
+**The quadratic terms cover more exposures than the bulk gradients do** — 192,079 against
+193,154 over the whole database, but on the thermal-focus science sample 100.0% of visits
+against 99.9%. The bulk gradients come from
+`lsst.ts.m1m3.utils.ThermocoupleAnalysis.calculate_gradients_xyz_r`, which returns NaN for a
+whole time bin if any one thermocouple dropped out; the quadratic fit instead groups the time
+bins by their unique finite-sensor pattern and fits each group against the sensors it actually
+has, so a single dropped thermocouple costs one column of the design matrix rather than the
+row. The two nights 20260217 and 20260221, which the bulk gradients lose to a missing
+cold-junction reference channel, are for the same reason still absent here: that channel is
+needed to convert any thermocouple at all.
+
+Two nights failed transiently during the first pass, `day_obs` 20260424 and 20260628, both
+with `ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)` out of the
+Engineering Facility Database (EFD) query. Each night is wrapped in its own `try`/`except`
+so one bad night does not stop the build, and both succeeded on a `--refetch` retry — 822 and
+958 exposures fitted respectively. No nights remain failed.
+
+Rebuilding is per night, and one night per EFD query is a hard constraint rather than a tuning
+choice, since a multi-night thermocouple span times out:
+
+```bash
+cd ~/notebooks/rubin-work
+python -u value_added/code/build_m1m3_thermal_r2.py --day-obs 20250415-20260714 --resume
+python -u value_added/code/build_m1m3_thermal_r2.py --day-obs 20260424 --refetch
+```
+
+Redirect the output and Python buffers it, so use `python -u` or the per-night progress lines
+do not appear until the run ends.
 
 ## Rebuilding
 
