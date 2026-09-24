@@ -384,6 +384,33 @@ def create_schema(con):
           computed_at     TIMESTAMP,
           PRIMARY KEY (visit_id, fam_variant_id)
         )""")
+    # Quadratic-in-radius M1M3 thermal terms. A separate table rather than more
+    # visit_telemetry columns: the reduction is a per-population fit with its own diagnostics
+    # (formal error, residual scatter, sensor count) that only mean something together, and a
+    # study asking whether the quadratic beats the existing linear gradients wants those
+    # diagnostics beside the coefficient rather than three bare columns on the spine.
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS m1m3_thermal_r2 (
+          visit_id              BIGINT PRIMARY KEY,
+          day_obs               INTEGER,
+          seq_num               INTEGER,
+          m1m3_r2_coeff_c       DOUBLE,   -- deg C per unit normalized r^2 amplitude
+          m1m3_r2_coeff_c_err   DOUBLE,
+          m1m3_r_coeff_c_per_m  DOUBLE,   -- deg C/m, linear ramp fitted beside the quadratic
+          m1m3_rms_c            DOUBLE,   -- deg C, residual scatter of the fit
+          m1m3_n_sensors        INTEGER,  -- dimensionless (thermocouples used)
+          m1_r2_coeff_c         DOUBLE,
+          m1_r2_coeff_c_err     DOUBLE,
+          m1_r_coeff_c_per_m    DOUBLE,
+          m1_rms_c              DOUBLE,
+          m1_n_sensors          INTEGER,
+          m3_r2_coeff_c         DOUBLE,
+          m3_r2_coeff_c_err     DOUBLE,
+          m3_r_coeff_c_per_m    DOUBLE,
+          m3_rms_c              DOUBLE,
+          m3_n_sensors          INTEGER,
+          computed_at           TIMESTAMP
+        )""")
     con.execute("""
         CREATE TABLE IF NOT EXISTS column_coverage (
           column_name    VARCHAR PRIMARY KEY,
@@ -406,6 +433,7 @@ def create_schema(con):
           PRIMARY KEY (day_obs, group_name)
         )""")
     con.execute('CREATE INDEX IF NOT EXISTS vt_day_obs ON visit_telemetry (day_obs)')
+    con.execute('CREATE INDEX IF NOT EXISTS r2_day_obs ON m1m3_thermal_r2 (day_obs)')
     con.execute('CREATE INDEX IF NOT EXISTS os_variant ON optical_state (variant_id)')
     con.execute('CREATE INDEX IF NOT EXISTS fd_variant ON fam_dz (fam_variant_id)')
     con.execute('CREATE INDEX IF NOT EXISTS fd_day_obs ON fam_dz (day_obs)')
@@ -869,6 +897,85 @@ def visits(day_obs_range=None, columns=None, con=None, db_path=None):
             sel = ', '.join(want)
         where, params = _day_obs_clause(day_obs_range)
         return con.execute(f'SELECT {sel} FROM visit_telemetry{where} '
+                           f'ORDER BY day_obs, seq_num', params).df()
+    finally:
+        if own:
+            con.close()
+
+
+#: Coefficient / diagnostic columns of `m1m3_thermal_r2`, excluding the identity block.
+R2_TABLE_COLS = tuple(
+    f'{p}_{suffix}' for p in ('m1m3', 'm1', 'm3')
+    for suffix in ('r2_coeff_c', 'r2_coeff_c_err', 'r_coeff_c_per_m', 'rms_c', 'n_sensors'))
+
+
+def upsert_m1m3_thermal_r2(con, df):
+    """Insert or replace quadratic M1M3 thermal terms for a set of visits.
+
+    Parameters
+    ----------
+    con : `duckdb.DuckDBPyConnection`
+        Writable connection.
+    df : `pandas.DataFrame`
+        Must carry ``visit_id``, ``day_obs``, ``seq_num`` and the columns of
+        `R2_TABLE_COLS`; any missing coefficient column is written as NULL.
+
+    Returns
+    -------
+    n : `int`
+        Rows written.
+    """
+    if df is None or not len(df):
+        return 0
+    cols = ['visit_id', 'day_obs', 'seq_num'] + list(R2_TABLE_COLS)
+    out = pd.DataFrame({c: (df[c] if c in df.columns else np.nan) for c in cols})
+    out['computed_at'] = pd.Timestamp.utcnow().tz_localize(None)
+    con.register('_r2_tmp', out)
+    con.execute('DELETE FROM m1m3_thermal_r2 WHERE visit_id IN '
+                '(SELECT visit_id FROM _r2_tmp)')
+    con.execute('INSERT INTO m1m3_thermal_r2 SELECT '
+                + ', '.join(cols + ['computed_at']) + ' FROM _r2_tmp')
+    con.unregister('_r2_tmp')
+    return len(out)
+
+
+def m1m3_thermal_r2(day_obs_range=None, columns=None, con=None, db_path=None):
+    """Read the quadratic-in-radius M1M3 thermal terms.
+
+    Parameters
+    ----------
+    day_obs_range : `tuple`, optional
+        ``(first, last)`` inclusive; either may be None for an open end.
+    columns : `iterable` [`str`], optional
+        Coefficient columns to read, from `R2_TABLE_COLS`. Defaults to all. ``visit_id``,
+        ``day_obs`` and ``seq_num`` are always included.
+    con : `duckdb.DuckDBPyConnection`, optional
+        Existing connection; one is opened read-only if omitted.
+    db_path : `str` or `pathlib.Path`, optional
+        Database file, when `con` is omitted.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        One row per exposure that has a fit, ordered by ``day_obs``, ``seq_num``. The three
+        coefficient columns are in °C per unit normalized quadratic amplitude; see
+        `m1m3_thermal_r2.py` for what the normalization is and how to convert to °C/m².
+
+    Notes
+    -----
+    Join to `visits` on ``visit_id``. The coefficient is the radial curvature the constant,
+    linear and depth terms of the same fit cannot express, so it is **not** a replacement for
+    ``m1m3_radial_gradient_c_per_m`` -- the two answer different questions and the study
+    compares them rather than substituting one for the other.
+    """
+    own = con is None
+    con = con or open_db(db_path, readonly=True)
+    try:
+        want = ['visit_id', 'day_obs', 'seq_num']
+        want += [c for c in (columns if columns is not None else R2_TABLE_COLS)
+                 if c not in want]
+        where, params = _day_obs_clause(day_obs_range)
+        return con.execute(f'SELECT {", ".join(want)} FROM m1m3_thermal_r2{where} '
                            f'ORDER BY day_obs, seq_num', params).df()
     finally:
         if own:

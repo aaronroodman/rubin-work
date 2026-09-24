@@ -93,7 +93,7 @@ against the intent ConsDB records in `observation_reason`.
 
 ## Docs
 
-- [`docs/schema.md`](docs/schema.md) — the seven tables, every column group, its source and
+- [`docs/schema.md`](docs/schema.md) — the eight tables, every column group, its source and
   its units
 - [`docs/status/build_progress.md`](docs/status/build_progress.md) — what has been built,
   which columns are sparse, and the nights that failed

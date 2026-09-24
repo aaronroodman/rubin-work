@@ -2,7 +2,7 @@
 
 > **Status:** current · **Last updated:** 2026-09-18 · **Kind:** reference (schema)
 
-The seven tables of the value-added database, what each holds, and where every column comes
+The eight tables of the value-added database, what each holds, and where every column comes
 from. Row counts were read from the live database on 2026-09-18 and are indicative of scale,
 not fixed; for what is currently built and what is sparse, see
 [`status/build_progress.md`](status/build_progress.md).
@@ -24,15 +24,16 @@ them in would only create a second, staler copy of something already cheap to re
 
 ## Contents
 
-- [The seven tables](#the-seven-tables)
+- [The eight tables](#the-eight-tables)
 - [Two schema idioms](#two-schema-idioms)
 - [Both intrinsic routes, side by side](#both-intrinsic-routes-side-by-side)
 - [`fam_dz` — the Full Array Mode Double Zernike fits](#fam_dz--the-full-array-mode-double-zernike-fits)
+- [`m1m3_thermal_r2` — the quadratic radial thermal terms](#m1m3_thermal_r2--the-quadratic-radial-thermal-terms)
 - [The registries](#the-registries)
 - [`column_coverage` and `fetch_log`](#column_coverage-and-fetch_log)
 - [Units](#units)
 
-## The seven tables
+## The eight tables
 
 | table | rows | columns | shape |
 |---|---|---|---|
@@ -162,6 +163,72 @@ Two bookkeeping tables: **`column_coverage`** gives each column's first and last
 and non-null count, so a reader can tell "never deployed at that epoch" from "fetch failed"
 from "genuinely NaN"; **`fetch_log`** records one row per `(day_obs, group)`, which makes an
 interrupted backfill resumable.
+
+## `m1m3_thermal_r2` — the quadratic radial thermal terms
+
+One row per exposure, keyed `visit_id`, holding the **quadratic-in-radius** component of the
+M1M3 temperature field. `visit_telemetry`'s `gradients` group already carries the four bulk
+gradients `lsst.ts.m1m3.utils.ThermocoupleAnalysis` reduces the 146 thermocouples to — along the
+x, y and z axes and linearly in radius. A temperature field going as radius squared bends the
+mirror into a shape much closer to pure defocus than a linear radial ramp does, and so is the
+term most likely to move focus, but no linear gradient can express it.
+
+Three coefficients are fitted, over three thermocouple populations:
+
+| prefix | population | thermocouples | radial span |
+|---|---|---|---|
+| `m1m3` | the whole mirror | 146 | 0.555 to 4.197 m |
+| `m1` | the M1 annulus alone | 80 | 2.997 to 4.197 m |
+| `m3` | the M3 inner disc alone | 66 | 0.555 to 2.533 m |
+
+M1 and M3 are one monolithic blank but two optical surfaces at different radii and curvatures,
+so a thermal expansion confined to one is a different optical perturbation than the same
+expansion over both. The split radius is 2.75 m, placed in the empty 0.464 m gap between the
+outermost M3 thermocouple ring at 2.533 m and the innermost M1 ring at 2.997 m, so the
+assignment does not depend on where in the gap the boundary sits. The boundary is *not* the
+optical edge radius: batoid's `LSST_r.yaml` puts M3's polished surface out to 2.508 m, and 26
+thermocouples sit just beyond it at 2.510 to 2.533 m, because a thermocouple is drilled into the
+blank rather than into the optical surface.
+
+Per prefix the table holds five columns:
+
+| column | units | meaning |
+|---|---|---|
+| `<p>_r2_coeff_c` | °C per unit normalized r² amplitude | the quadratic coefficient |
+| `<p>_r2_coeff_c_err` | same | its formal error from the temperature residual |
+| `<p>_r_coeff_c_per_m` | °C/m | the linear ramp fitted beside the quadratic |
+| `<p>_rms_c` | °C | residual scatter of the fit |
+| `<p>_n_sensors` | dimensionless | thermocouples that reported |
+
+**The coefficient is not a °C/m² curvature.** The model is
+`T = a0 + a1·r + a3·z + a2·q(r)`, where `q(r)` is `r²` Gram-Schmidt orthogonalized against
+`[1, r, z]` over the population's own sensor positions and then scaled to unit root-mean-square.
+Fitting raw `r²` beside the linear terms is not viable: over the M1 annulus, spanning only
+2.997 to 4.197 m, `r²` is 99.875% explained by `[1, r, z]`, a variance inflation factor of 801.8
+(dimensionless), so its coefficient would be nearly pure noise amplification. Orthogonalizing
+drops the design-matrix condition number from 2070.7 to 36.2 (dimensionless) on M1, and leaves
+`a2` carrying exactly the radial curvature the linear terms cannot express.
+`m1m3_thermal_r2.R2_SHAPE_RMS_M2` records the m² scale divided out per population, so a
+coefficient converts back to °C/m² by multiplying by it.
+
+`<p>_r_coeff_c_per_m` is **not** the same quantity as `visit_telemetry.m1m3_radial_gradient_c_per_m`:
+the latter comes from a fit with no quadratic term, so it carries whatever curvature exists,
+while this one is the ramp with the curvature removed. Both are kept so an analysis can show how
+much of the linear term the quadratic absorbs.
+
+Two properties worth knowing before joining:
+
+- **Coverage is higher than the bulk gradients'.** The upstream reduction returns NaN for a whole
+  time sample if any thermocouple dropped out; this fit groups samples by their finite pattern
+  and reuses one pseudo-inverse per pattern, so on a test night it produced 720 finite samples of
+  720 against the upstream 518.
+- **The interpolation is TAI-to-UTC corrected.** `visit_telemetry.obs_start` is International
+  Atomic Time while the thermocouple index is UTC, a 37 s offset at present, which exceeds the
+  30 s binning.
+
+Built by `code/build_m1m3_thermal_r2.py`, one night per Engineering Facility Database query, the
+same hard constraint the bulk gradients carry. Read it with `efd_db.m1m3_thermal_r2()` and join
+to `visits` on `visit_id`.
 
 ## The registries
 
