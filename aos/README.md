@@ -229,6 +229,7 @@ status + last-updated line under its title.
 | [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic; what the `zk_*` columns mean |
 | [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions, vs GalSim and `ts_ofc` |
 | [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
+| [`docs/status/miw_danish_1_3_proposal.md`](docs/status/miw_danish_1_3_proposal.md) | what the Danish 1.3 MIW build needs, which columns its narrow visits table does and does not carry, and the rotator-bin visit counts against Danish 1.2 |
 | [`docs/status/rerun_needed.md`](docs/status/rerun_needed.md) | outputs that predate a code change and need regenerating |
 | [`docs/status/corner_recovery_route_comparison.md`](docs/status/corner_recovery_route_comparison.md) | the three routes from measured corner Zernikes to DOF, the measurements between them, and the hybrid that was adopted |
 | [`docs/status/code_review_backlog.md`](docs/status/code_review_backlog.md) | open review items: non-equivalent duplicate helpers, confirmed live defects, `common/` candidates |

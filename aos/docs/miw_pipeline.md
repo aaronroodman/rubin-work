@@ -1,6 +1,6 @@
 # MIW pipeline — step-by-step reference
 
-> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (pipeline)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (pipeline)
 
 The Snakemake pipeline that produces the FAM donut tables, the Double-Zernike (DZ)
 fits, and the Measured Intrinsic Wavefront (MIW), plus the analyses that hang off it.
@@ -297,6 +297,16 @@ CWFS−FAM offsets applied) or `_nooffset.pdf` (`--no-offsets`).
 | `snake_config.yaml` | Which param_sets to build, their date chunks, and `coord_sys` |
 | `mi_config.yaml` | Measured-intrinsic entries per param_set: path, `n_dof`/`n_keep` (scalar or explicit index list), band/program/elevation selection, rotator bins, build + split parameters. `defaults:` block applies to every entry |
 | `analysis_config.yaml` | Analysis-only knobs (`lut`, `aberration_pairs`, `dz_correlations`, `thermal_correlations`, `bounce`), deep-merged: `defaults` ← per-param_set ← per-(param_set, mi_name) overrides. Kept separate from `mi_config.yaml` so editing analysis knobs never re-triggers the slow intrinsic builds |
+
+A param_set may appear in `mi_config.yaml` **without** appearing in
+`snake_config.yaml`. That is the case when its combined
+`output/fam_processing/<P>/{donuts,visits,fits}.parquet` were written outside this
+pipeline — as `danish_1_3_test` was, by the Danish 1.3 recast. Those tables are then
+terminal inputs: the param_set declares no chunks, so `combine_*` and `mktable` have
+nothing to build, and any rule that fans out over chunks (`residual_movie_chunk`) cannot
+be requested for it. The measured-intrinsic rules read the combined tables directly and
+work unchanged. Snakemake reports such tables as having "missing provenance/metadata",
+which is expected and not an error.
 
 Rules consume the **resolved per-entry config as a Snakemake `params` value**,
 not the config *file* as an input. The `params` rerun-trigger then fires only

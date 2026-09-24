@@ -1,6 +1,6 @@
 # Study: `miw` — the Measured Intrinsic Wavefront
 
-> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
 
 > **Code:** `code/miw/` · **Notebooks:** `notebooks/miw/`
 > **Output:** `output/miw/<P>_<M>/intrinsic_split_{maps,decomp,rms}.parquet`, `output/miw/<P>_<M>/intrinsic_split.pdf`, `output/miw/<P>_<M>/study_radialbins.pdf`, `output/miw/<P>_<M>/fits.parquet`
@@ -38,6 +38,31 @@ grids come from the package's `build_intrinsic`. Writes `study_radialbins.pdf` a
 
 The **canonical MIW product** for downstream use is the `_5rot` `intrinsic_split_maps`
 (OCS columns) — see `../../../notes/claude-memory/miw-products-and-m3-backprojection.md`.
+
+## Which builds exist
+
+Each MIW build is one `(param_set, mi_name)` pair from `mi_config.yaml`, written to the
+joined directory `output/miw/<P>_<M>/`. Two wavefront versions are configured, with
+identical knobs so that they differ only in the wavefronts they were built from:
+
+| param_set | wavefront version | entries |
+|---|---|---|
+| `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` | Danish 1.2.0_alpha0, paired | `A_50_34_i`, `A_50_34_i_5rot` |
+| `danish_1_3_test` | Danish 1.3 "blitz", unpaired | `A_50_34_i`, `A_50_34_i_5rot` |
+
+In each pair the `_5rot` entry carries `build_from`, reusing the parent's nine
+per-rotator-bin grids and re-running only the OCS/CCS split over the five in-family
+rotator bins — so it has no `build/` directory of its own and the parent is a required
+input.
+
+The Danish 1.3 pair is requested **by explicit target path, not through `rule all`**: its
+`visits.parquet` carries only 19 columns and none of the engineering telemetry, so the
+`correlations` and `bounce` targets that `rule all` expands over every pair have no
+thermal or Trim columns to read. The MIW chain itself reads eleven visits columns, all
+present. The comparison of the two builds rests on 182 `(day_obs, seq_num)` visits common
+to both processings inside the five rotator bins. Detail, including the per-bin visit
+counts and the column audit, is in
+[`../status/miw_danish_1_3_proposal.md`](../status/miw_danish_1_3_proposal.md).
 
 ## Running
 

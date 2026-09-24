@@ -156,3 +156,39 @@ measured_intrinsics:
           - [10.0, 20.0]
           - [55.0, 65.0]
         split_js: [4]
+
+  # Danish 1.3 "blitz" UNPAIRED wavefronts, built with the same knobs as the
+  # danish_1_2 pair above so the two MIW versions differ only in the wavefronts
+  # and can be compared directly.  Every other setting comes from `defaults:`.
+  # The default cuts select 275 visits over the same five nights as danish_1_2
+  # (20260315/16/17/24 and 20260409), 197 of them in the 5 rotator bins below
+  # against danish_1_2's 189, with 182 (day_obs, seq_num) visits common to both.
+  # Requested by explicit target path, NOT via `rule all`: this param_set's
+  # visits.parquet carries no engineering telemetry, so the correlations and
+  # bounce targets that `rule all` expands over every (param_set, mi_name) pair
+  # have no thermal or Trim columns to read.  The MIW chain itself needs none of
+  # them.
+  danish_1_3_test:
+    - name: pathA_50_34_i
+      dir_name: A_50_34_i
+      n_dof: 50
+      n_keep: 34
+      # No day_obs_max: unlike danish_1_2 this param_set is a single collection
+      # with no later reprocessing to exclude, so there is nothing to freeze out.
+    # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
+    # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
+    # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
+    # Z9+ approximated as OCS-only.
+    - name: pathA_50_34_i_5rot
+      dir_name: A_50_34_i_5rot
+      n_dof: 50
+      n_keep: 34
+      build_from: pathA_50_34_i
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4]

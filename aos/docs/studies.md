@@ -23,7 +23,7 @@ present on disk.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data; the build itself is in the external `ts_intrinsic_wavefront` package |
+| [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, built separately from the paired Danish 1.2 and the unpaired Danish 1.3 wavefronts so the two can be compared; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`fam_processing`](studies/fam_processing.md) | 9 | 3389 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, an all-chunks status roll-up, and the recast of Danish 1.3 unpaired output into the paired Danish 1.2 table schema |
 | [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
@@ -187,6 +187,13 @@ Carried here so they are visible in one place; detail in each study doc.
   estimators by accuracy. Doing that needs an external reference.
 - **`miw`** — 83 % of MIW **power** sits above the `k<=6` focal orders the build fits,
   which reframes any DZ-subspace analysis.
+- **`miw`** — a second MIW built from the Danish 1.3 unpaired wavefronts,
+  `danish_1_3_test_A_50_34_i_5rot`, is configured with knobs identical to the Danish 1.2
+  build so the two differ only in the wavefronts. Whether the per-Noll pairing bias seen in
+  the Double Zernike fits propagates into the MIW field maps, and by how much in µm of
+  wavefront, is open until both exist. The convex-hull defect in the split is present in
+  both and is carried deliberately, so it affects the comparison equally. See
+  [`status/miw_danish_1_3_proposal.md`](status/miw_danish_1_3_proposal.md).
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
   it to a pipeline script is a standing TODO.
 

@@ -101,9 +101,16 @@ def mi_dir(ps, mi):
 # visits.  All chunks of a param_set land in the SAME output/fam_processing/<P>/
 # area (combine concatenates them), so a newer disjoint reprocessing can be
 # folded in as one extra chunk without a new param_set or output dir.
+# A param_set absent from snake_config.yaml declares no chunks: its combined
+# tables were produced outside this pipeline (the Danish 1.3 blitz recast writes
+# output/fam_processing/<P>/{donuts,visits,fits}.parquet directly).  Those tables
+# are then TERMINAL inputs -- there is nothing for combine_* or mktable to build
+# -- so return no chunk entries rather than raising KeyError while the DAG is
+# planned.  Requesting a chunk-fanout target for such a param_set still fails,
+# correctly, on the empty input list.
 def _chunk_entries(ps):
     out = []
-    for c in CFG[ps]["chunks"]:
+    for c in (CFG.get(ps) or {}).get("chunks", []):
         if isinstance(c, dict):
             a, b = c["day_obs"]
             out.append(dict(dmin=int(a), dmax=int(b), collection=c.get("collection"),
@@ -116,10 +123,13 @@ def _chunk_entries(ps):
     return out
 
 def chunks(ps):  return [(c["dmin"], c["dmax"]) for c in _chunk_entries(ps)]
-def coord(ps):   return CFG[ps].get("coord_sys", "OCS")
+def coord(ps):   return (CFG.get(ps) or {}).get("coord_sys", "OCS")
 def chunk_files(psd, name):
+    # PS_BY_DIR covers only the param_sets snake_config.yaml drives; fall back to
+    # the dir_name itself for one built outside the pipeline, which then resolves
+    # to no chunks (see _chunk_entries).
     return [f"output/fam_processing/{psd}/chunks/{a}_{b}/{name}"
-            for a, b in chunks(PS_BY_DIR[psd])]
+            for a, b in chunks(PS_BY_DIR.get(psd, psd))]
 
 def _chunk_at(ps, dmin, dmax):
     for c in _chunk_entries(ps):
