@@ -85,7 +85,29 @@ case "$mode" in
         # memory so the summed per-rule mem_mb fits the node allocation.
         # Telemetry attachment needs the EFD/ConsDB, which do not resolve on a
         # compute node; attach it afterwards with a local run.
-        smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going --config attach_telemetry=0 ${passthru[*]}"
+        # --config is variadic, so an explicit target path passed through would be
+        # read as another name=value config entry and abort the run.  `--` closes
+        # the list, but then EVERY later token is a target -- so hoist the flags
+        # ahead of --config and leave only the paths behind `--`.  A flag taking a
+        # separate value (--until plots) keeps that value with it.
+        pt_flags=(); pt_targets=()
+        i=0
+        while [ $i -lt ${#passthru[@]} ]; do
+            tok="${passthru[$i]}"
+            case "$tok" in
+                -*) pt_flags+=("$tok")
+                    nxt="${passthru[$((i+1))]:-}"
+                    # a following bare word belongs to this flag, not to the targets
+                    if [ -n "$nxt" ] && [ "${nxt#-}" = "$nxt" ] \
+                       && [ "${nxt%/*}" = "$nxt" ] && [[ "$tok" != *=* ]]; then
+                        pt_flags+=("$nxt"); i=$((i+2))
+                    else
+                        i=$((i+1))
+                    fi;;
+                *)  pt_targets+=("$tok"); i=$((i+1));;
+            esac
+        done
+        smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going ${pt_flags[*]} --config attach_telemetry=0 -- ${pt_targets[*]}"
         "${sb[@]}" --wrap "cd '$PWD' && ${smk}"
         echo "submitted batch job -> '$part' acct=$acct qos=$qos (${cpus} cpus, ${mem}, ${tlim})${dep:+ dep=$dep}"
         echo "  snakemake: ${smk}"
