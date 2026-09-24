@@ -103,17 +103,25 @@ have `turb123_speed_mag_ms`, because 1,000 of them fall in the pre-20251102 era 
 anemometers were not reporting. See
 [What the 2025 nights do and do not carry](#what-the-2025-nights-do-and-do-not-carry).
 
-**A known defect affects the v-modes here, found 2026-09-18 and not yet fixed.**
-`fam_dz.v_modes` is built by a different engine than `optical_state.v_modes`, and the two
-disagree on the **sign of v-mode 1**: `ofc_svd.vmodes()` divides by the positive singular
-values, while the arbitrary per-mode sign convention on the other route comes out opposite.
-Do not compare or combine v-mode 1 across the two tables without resolving the sign first.
-The diagnosis and the fix are in
-[`../../aos/docs/status/rerun_needed.md`](../../aos/docs/status/rerun_needed.md) under "Two
-v-mode sign errors"; `aos/docs/studies/fam_focus.md` carries the same warning.
+**The apparent v-mode-1 sign error is resolved.** Both hexapod dz axes of v-mode 1 are
+genuinely negative — camera degree of freedom (DOF) 5 is −8.9144254e-04 and M2 DOF 0 is
+−9.1026032e-04, both dimensionless v-mode-1 amplitude per µm of hexapod dz — and the helper
+that returns the conversion constant returns a magnitude only, 0.5 × (|c5| + |c0|), by
+design: the sign is carried separately by a `MEASURED_SIGN = -1.0` (dimensionless) constant.
+There was no sign error in that helper.
+
+**One sign disagreement remains genuinely unverified.** `fam_dz.v_modes` is built by a
+different engine than `optical_state.v_modes`, and the two disagree on the **sign of
+v-mode 1**: `ofc_svd.vmodes()` divides by the positive singular values, while the arbitrary
+per-mode sign convention on the other route comes out opposite. Do not compare or combine
+v-mode 1 across the two tables without resolving the sign first. The diagnosis is in
+[`../../aos/docs/status/rerun_needed.md`](../../aos/docs/status/rerun_needed.md) under "The
+two v-mode engines disagree on the sign of v1";
+[`../../thermal_focus/docs/thermal_focus.md`](../../thermal_focus/docs/thermal_focus.md)
+carries the resolved half of this history.
 
 A separate, earlier change to the v-mode basis also flips v1 for **every stored** `v1`,
-`v1_lut` and `v1_trim` — see the same document. Stored v-mode values therefore need
+`v1_lut` and `v1_trim` — see `rerun_needed.md`. Stored v-mode values therefore need
 regenerating, not just reinterpreting.
 
 ## Mirror LUT zero-fill on a dropped actuator

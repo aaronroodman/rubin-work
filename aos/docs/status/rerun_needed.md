@@ -228,7 +228,6 @@ reports a v-mode **amplitude**, whose sign moves:
 | `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `code/correlations/run_vmode_correlations.py:71` |
 | `dz_correlations` v-mode outputs | `code/correlations/run_dz_correlations.py:220` |
 | `thermal_correlations` v-mode outputs | `code/correlations/run_thermal_correlations.py:183` |
-| `dz14_truss` | `code/correlations/run_dz14_truss.py:437` |
 | `bounce_*` v-mode panels and `bounce_kj_stats.parquet` | `code/bounce/run_bounce.py:158` — paired Δ, so a global flip cancels in the difference, but the plotted sign and any single-visit v-mode reverse |
 | `wfs_dof_compare` v-mode comparison | `code/cwfs/run_wfs_dof_compare.py:509` |
 | `lut` products | `code/lut/run_build_lut.py:162` — takes `dof` from `project_dz_table` and discards `_vmodes`, so **likely unaffected**; verify before rerunning |
@@ -286,8 +285,6 @@ and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are
 
 ## Carried over from earlier sessions
 
-- **Four superseded `science_lut` scripts** await explicit deletion approval. Deleting files is
-  a MUST-ASK; they are still on disk.
 - **`../../../thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb`**
   has three uncommitted cells that are Aaron's own work, deliberately left for him to decide
   on.

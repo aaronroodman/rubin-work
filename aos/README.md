@@ -186,8 +186,6 @@ output/
   wfs_fam_compare/<P>/
   wfs_dof_compare/<P>_<M>/<cwfs>/   # recovered optical state, needs the MIW
   camera_gravity/                   # static_optics, no data dependence
-  science_lut/                      # science-exposure focus LUT, from the value-added database
-  fam_focus/                        # focus drift within a FAM block, same database
   archive/                          # superseded param_sets, old layout
 ```
 

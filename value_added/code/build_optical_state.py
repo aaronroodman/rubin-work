@@ -277,10 +277,11 @@ def measured_deviation(cdb, visit_ids, bands, rot_angles, intrinsic_route,
     elif intrinsic_route == 'miw':
         if miw_lookup is None:
             raise RuntimeError(
-                "intrinsic_route='miw' needs a miw_lookup; build the Measured Intrinsic "
-                "Wavefront at the corner field points first with "
-                "run_make_intrinsic_sidecar.py (see the science_lut study), then pass a "
-                "lookup over its zk_intrinsic_MI column")
+                "intrinsic_route='miw' needs a miw_lookup; construct one with "
+                "aos/code/miw_corner_intrinsic.py's MiwCornerLookup, which evaluates an "
+                "existing Measured Intrinsic Wavefront decomposition at the four corner "
+                "field points. Running this module as a script does that for you: pass "
+                "--intrinsic miw --intrinsic-ref <MIW build name>")
         intr = np.asarray(miw_lookup(visit_ids, rot_angles, zk_noll), float)
         if intr.shape != opd.shape:
             raise ValueError(f'miw_lookup returned {intr.shape}, expected {opd.shape}')

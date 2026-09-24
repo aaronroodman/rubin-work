@@ -358,7 +358,7 @@ output/
     chunk_status.{parquet,pdf}  visits_check.pdf  telemetry_attached.txt
   dzfit/<P>/                                             # trio validation, dz_fit_check
   dzfit/<P>/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4   # one per chunk
-  correlations/<P>/                                      # aberration_pairs, dz14_truss
+  correlations/<P>/                                      # aberration_pairs
   processing_compare/<P>/ compare_vs_*.pdf
   coadd/<P>/{50_34,50_34_v2}/ blocks_summary.parquet  coadd_metrics.parquet
   wfs_ingest/<P>/<cwfs>/ {donuts,visits}.parquet  wfs_mktable_validation.pdf

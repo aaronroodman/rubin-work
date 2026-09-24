@@ -140,7 +140,7 @@ The FAM triplet is **intra-focal cwfs, extra-focal cwfs, in-focus acq** in ascen
 on, so each row also stores `intra_seq_num = seq_num - 1`, `acq_seq_num = seq_num + 1` and the
 matching `acq_visit_id`. That makes the join to the in-focus visit's corner-sensor
 `optical_state` a key lookup rather than a search — the comparison
-`aos/docs/studies/fam_focus.md` draws.
+[`../../thermal_focus/docs/thermal_focus.md`](../../thermal_focus/docs/thermal_focus.md) draws.
 
 ```bash
 python common/scripts/build_fam_dz.py \

@@ -13,8 +13,11 @@ What follows is only the things that are easy to get wrong.
 `code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
 `code/static_optics/`, `code/correlations/`, `code/bounce/`,
 `code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`,
-`code/science_lut/`, `code/fam_focus/`, `code/fam_processing/`, `code/infra/`.
+`code/smatrix_vmode/`, `code/fam_processing/`, `code/infra/`.
 See `docs/studies.md`.
+
+The focus-from-temperature work is **not here**: it lives in the top-level `thermal_focus/`
+topic, which reads the value-added database rather than `aos/` output.
 
 Nine modules stay **flat at `code/`** on purpose:
 
