@@ -214,6 +214,61 @@ Comparing the fitted **response** coefficient against `FAM_TRUSS_SLOPE` instead 
 cross-check — it compares two different quantities and produces an apparent 16.5% disagreement
 that means nothing.
 
+#### Where `FAM_TRUSS_SLOPE` comes from, and the truss expansion it implies
+
+The constant is the Huber slope of v-mode 1 of the Trim against truss temperature over the
+FAM DZ fits on the `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` param_set. Two properties of that
+measurement are load-bearing and are the reason the constant is a slope of the commanded Trim.
+
+**The Trim falls into two populations that must be fitted separately.** v-mode 1 from the Trim
+alone against truss temperature forms two bands of similar slope separated by an offset of
+**+2.545** (dimensionless v-mode-1 amplitude) at fixed temperature, across an empty gap of 1.871
+in the residual about a common line. Pooling them reverses the apparent correlation — a
+Simpson's-paradox artefact:
+
+| population | n [visits] | Huber slope [dimensionless per °C] | intercept [dimensionless] | Pearson r | Spearman rho |
+|---|---|---|---|---|---|
+| pooled (misleading) | 1,591 | +0.0799 ± 0.0017 | −2.105 | −0.051 | +0.425 |
+| upper | 224 | +0.0740 ± 0.0036 | +0.204 | +0.734 | +0.726 |
+| lower | 1,367 | +0.0963 ± 0.0013 | −2.342 | +0.902 | +0.869 |
+
+`FAM_TRUSS_SLOPE` is the **lower** population's slope. The split is mostly but not purely
+temporal — the upper covers 14 nights (day_obs 20251023 to 20251219), the lower 44 nights
+(20251103 to 20260713), and three nights carry visits from both — so no single date boundary
+defines it.
+
+**The slope is what a thermally expanding steel truss predicts, to 14%.** Three conversions
+chain together:
+
+| quantity | value | source |
+|---|---|---|
+| d(v1) / d(truss T) | +0.09634 per °C (dimensionless v-mode-1 amplitude per °C) | Huber slope of the lower Trim population, n = 1,367 visits |
+| v1 per hexapod dz | 9.0095 × 10⁻⁴ per µm | mean of the camera- and M2-hexapod dz coefficients of v-mode 1 |
+| DZ(1,4) to hexapod dz | −1110.0 µm of hexapod dz per µm of wavefront | `U_eff[(1,4),0]` = −0.999919 (dimensionless) |
+
+Dividing the first by the second gives **106.9 µm of hexapod dz per °C**, equivalently 0.0963 µm
+of wavefront of DZ(k=1, j=4) per °C. A steel truss of the LTS-213 length — 7,835 mm from the
+elevation axis to the top of the lower top-end right light baffle — expands **94 µm per °C** at a
+coefficient of thermal expansion of 12 ppm per °C. The ratio is **1.14** (dimensionless, measured
+over predicted). Attributing the excess to geometry alone would need an effective length of
+8,911 mm; to material alone, 13.6 ppm per °C at the LTS-213 length. The LTS-213 assembly drawing
+is at <https://docushare.lsst.org/docushare/dsweb/Get/LTS-213> and is not kept in this repository.
+
+This is the *commanded* sensitivity. It does not conflict with the measured DZ(1,4) being nearly
+uncorrelated with truss temperature (Huber slope −0.0330 ± 0.0052 µm of wavefront per °C, Pearson
+r −0.124, Spearman rho −0.108, n = 1,591 visits): the hexapod is driven as though the truss were
+expanding thermally, and what survives that correction is the response this study models.
+
+**The hexapod LUT is two-dimensional**, in elevation and camera rotator angle, so neither
+one-dimensional projection is a single curve and structure against rotator angle is not a defect.
+v1 from the LUT against elevation traces parallel branches, one per LUT version, with the last LUT
+change on or about day_obs 20251209. Restricting to day_obs ≥ 20251209 so one version is in force
+gives a single-valued map over 5 deg × 10 deg bins in (elevation, camera rotator angle): 1,267
+visits, 56 of 180 bins occupied, elevation 22.9 to 75.0 deg, rotator angle −70.1 to +60.2 deg.
+The uniform defocus is no quieter after that change — median per-night nMAD 0.1670 µm of wavefront
+over the 65 nights before against 0.2258 µm of wavefront over the 32 nights on and after — so the
+intra-night focus excursions are not an artefact of an unsettled LUT version.
+
 ### Camera-body temperature
 
 The camera-body `AverageTemp` from `lsst.MTCamera.utiltrunk_body` resolves 98.28% of visits against
@@ -391,7 +446,7 @@ uncertainty, so the choice of projection does not affect any conclusion. The sha
 camera-alone difference of 1.1% is a definition choice, not a scheme uncertainty; conflating the
 two comparisons is easy and wrong.
 
-## The focus error as degrees of freedom
+## The correction as degrees of freedom
 
 The response is one number per visit, a v-mode-1 amplitude. An observer acts on degrees of freedom
 (DOF), so the measured amplitude is projected back into the DOF it is built from, using the
@@ -407,8 +462,8 @@ another mode at 0.227, instead of the +1.0000000000 with a largest other mode of
 (dimensionless) that the normalized inverse round-trips to.
 
 Setting every other v-mode to zero is **exact, not an approximation**. `Vh` is orthonormal, so the
-result is the unique minimum-norm DOF vector consistent with the measured amplitude. It does not
-claim the telescope's other modes are zero; it is the defocus part of the state, expressed in DOF.
+result is the unique minimum-norm DOF vector consistent with the amplitude being projected — the
+smallest motion that delivers the required defocus, which is what an observer wants.
 
 At v-mode-1 amplitude 1.0 (dimensionless), `dof_set` `all_50` with 34 modes retained:
 
@@ -420,47 +475,63 @@ At v-mode-1 amplitude 1.0 (dimensionless), `dof_set` `all_50` with 34 modes reta
 | M2 bending mode B5 | `dof34` | +0.0076 |
 
 The two hexapod dz values carry the defocus and move together in a fixed ratio, because v-mode 1 is
-one direction in DOF space. The two mirror bending modes are real but tiny: at the sample's
-99th-percentile absolute v-mode-1 amplitude of 0.07350 (dimensionless) they reach only **0.690 nm
-and 0.555 nm**, so they can be ignored in practice. M2 bending mode B4 does not appear at all — it
-enters at +0.0002 µm per unit v-mode-1 amplitude, below even those two.
+one direction in DOF space. The two mirror bending modes are real but tiny: at the 99th-percentile
+absolute amplitude the correction asks for, 0.71968 (dimensionless), they reach only **6.7576 nm and
+5.4340 nm**, so an observer applying this correction can leave them alone. M2 bending mode B4 does not
+appear at all — it enters at +0.0002 µm per unit v-mode-1 amplitude, below even those two.
 
-Over the 68,079-visit sample, the measured focus error corresponds to [µm]:
+### The Trim the correction would command
 
-| DOF | median | nMAD | 1st pct | 99th pct |
-|---|---|---|---|---|
-| camera hexapod dz | +11.7379 | 11.2452 | −28.8130 | +45.0297 |
-| M2 hexapod dz | +8.4335 | 8.0796 | −20.7018 | +32.3533 |
-| M1M3 bending mode B3 | −0.0002 | 0.0002 | −0.0007 | +0.0004 |
-| M2 bending mode B5 | −0.0001 | 0.0001 | −0.0005 | +0.0003 |
+The quantity worth tabulating is the motion an observer would command, not what is left over after
+commanding it. The predicted focus error is converted back to an amplitude,
+`v1_applied = predicted focus error × v1_per_um_dz`, and back-projected. The commanded Trim term
+enters the response with a positive sign, so the amplitude needed in the Trim to cancel a predicted
+error is that error in v-mode-1 units, with **no sign flip**. Over the 68,079-visit sample:
+
+| DOF | median | nMAD | 1st pct | 99th pct | unit |
+|---|---|---|---|---|---|
+| camera hexapod dz | −86.6304 | 189.1334 | −432.5783 | +425.6159 | µm |
+| M2 hexapod dz | −62.2430 | 135.8903 | −310.8029 | +305.8005 | µm |
+| M1M3 bending mode B3 | +1.2599 | 2.7505 | −6.1897 | +6.2909 | nm |
+| M2 bending mode B5 | +1.0131 | 2.2118 | −4.9773 | +5.0587 | nm |
+
+The correction asks for **hundreds of µm** of hexapod dz and **single-digit nm** of either bending
+mode, which is the practical statement: this is a two-axis hexapod correction and the mirror figure
+can be left alone. How well the correction works, rather than how large it is, is what the training
+section measures.
 
 ### Start of night
 
 The first visit of a night is the one an open-loop focus setting has to be right for, before any
-wavefront measurement has been folded in, so its distribution bounds how wrong an uncorrected start
-of night can be. Over 147 nights, MJD 60983.202 to 61235.045:
+wavefront measurement has been folded in, so the Trim the correction asks for there is the size of
+the motion that matters most. Over 147 nights, MJD 60983.202 to 61235.045:
 
-| DOF | median [µm] | nMAD [µm] | slope against date [µm per d] | Pearson r | Spearman rho |
-|---|---|---|---|---|---|
-| camera hexapod dz | +9.7993 | 15.7950 | −0.01754 ± 0.02120 | −0.1175 | −0.0868 |
-| M2 hexapod dz | +7.0407 | 11.3485 | −0.01261 ± 0.01523 | −0.1175 | −0.0868 |
+| DOF | median | nMAD | slope against date, per d | unit |
+|---|---|---|---|---|
+| camera hexapod dz | −107.0654 | 190.0861 | +0.52648 ± 0.21942 | µm |
+| M2 hexapod dz | −76.9254 | 136.5748 | +0.37827 ± 0.15765 | µm |
+| M1M3 bending mode B3 | +1.5570 | 2.7644 | −0.00766 ± 0.00319 | nm |
+| M2 bending mode B5 | +1.2521 | 2.2229 | −0.00616 ± 0.00257 | nm |
 
-Neither slope reaches **0.8 standard errors** (Huber, n = 147 nights), so the start-of-night focus
-error does not drift across the season: it is scatter about a fixed offset, not a trend. The two
-correlation coefficients are identical between the rows because the two hexapod dz values are a
-fixed multiple of one another, both being the same v-mode-1 amplitude.
+Every row gives the same significance, **2.4 standard errors** (Huber, n = 147 nights), the same
+Pearson r **+0.1840** and the same Spearman rho **+0.2224** — with the sign reversed on the two
+bending modes — because all four DOF are a fixed multiple of the one v-mode-1 amplitude. That is a
+property of the projection, not four independent measurements.
+
+At 2.4 standard errors over 147 nights this is a **weak positive trend, not a detection**: the Trim
+the correction asks for at the start of a night is mostly scatter about a fixed offset. It is worth
+re-testing as the season lengthens rather than quoting as a measured drift.
 
 The start-of-night spread is **larger than the night-to-night spread of the rest of the night**.
 Comparing like with like — both statistics over the same 147 nights — the camera hexapod dz has nMAD
-15.7950 µm at the first visit against 7.2449 µm across the per-night medians, a factor of **2.18**
-(dimensionless, start-of-night nMAD over per-night-median nMAD). The all-visit nMAD of 11.2452 µm is
-not the quantity to compare against, since it mixes within-night and between-night scatter over
-68,079 visits rather than 147.
+190.0861 µm at the first visit against 164.9279 µm across the per-night medians, a factor of
+**1.15** (dimensionless, start-of-night nMAD over per-night-median nMAD). The ratio is the same
+1.15 for all four DOF, for the same reason the correlation coefficients are.
 
-A first visit being further from the night's own centre than the night's centre is from the season's
-centre is consistent with the loop having converged on later visits and not yet on the first, but
-that is an interpretation: this study measures the spread and does not separate a loop-convergence
-transient from a genuinely larger thermal excursion at the start of a night.
+A first visit needing a larger correction than the night's own centre is consistent with the
+telescope being furthest from thermal equilibrium at the start of a night, but that is an
+interpretation: this study measures the spread and does not separate a loop-convergence transient
+from a genuinely larger thermal excursion.
 
 ## Code
 
