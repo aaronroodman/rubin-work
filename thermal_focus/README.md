@@ -34,7 +34,9 @@ Applying the correction there makes within-block scatter worse rather than bette
 
 - [`thermal_focus`](docs/thermal_focus.md) — the response definition, the fitted thermal
   model and its night-grouped evaluation, the elevation null result, the FAM within-block drift,
-  the Double Zernike (DZ) cross-check, and the v-mode-1 conversion across projection schemes.
+  the Double Zernike (DZ) cross-check, the v-mode-1 conversion across projection schemes, the
+  correction expressed as degrees of freedom (DOF), and the comparison against the Trim the
+  observatory's initial alignment block settles on at the start of each night.
 
 ## Code
 
@@ -43,7 +45,7 @@ Applying the correction there makes within-block scatter worse rather than bette
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
-| `code/run_thermal_focus_analysis.py` | the analysis: fourteen sections and one document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 The build stage is the only one that needs the network, because the mean TMA truss temperature is
@@ -73,5 +75,6 @@ reads the value-added DuckDB through `value_added/code/efd_db.py`.
 ## Output
 
 `output/` holds `thermal_focus.parquet` (one row per science visit),
+`thermal_focus_t539.parquet` (one row per night of the initial alignment block),
 `thermal_focus.pdf` (the analysis document) and, under the FAM variant's short directory name,
 `thermal_focus_fam.parquet` (one row per FAM triplet).

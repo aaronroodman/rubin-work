@@ -19,11 +19,15 @@ Invocation, as a command::
 
 or as a function::
 
-    from trim_calculator import predict_focus_error_um, trim_adjustment
+    from trim_calculator import predict_focus_error_um, trim_adjustment, dof_trim
     dz = predict_focus_error_um(truss_temp_c=11.3, z_gradient_c_per_m=-0.0656,
                                y_gradient_c_per_m=-0.0196,
                                radial_gradient_c_per_m=-0.0168,
                                x_gradient_c_per_m=0.0017)
+
+`dof_trim` is the form to command online: it returns the correction as the degrees of freedom
+(DOF) the Optical Feedback Control system sets — the camera and M2 hexapod dz plus the two
+mirror figure bending modes v-mode 1 contains — rather than as a single focus number.
 
 Where the inputs come from
 --------------------------
@@ -145,6 +149,33 @@ UM_CAMERA_ALONE_PER_UM_SHARED = 1120.559 / 1108.859
 #: prediction can be quoted as a wavefront amplitude.
 DZ_UM_PER_UM_WF = -63.9902
 
+#: Degree-of-freedom (DOF) content of one unit of v-mode-1 amplitude [µm per unit v-mode-1
+#: amplitude], at the 50-DOF, 34-mode projection. Derived from the AOS sensitivity matrix by
+#: setting v-mode 1 to unity and back-projecting to DOF, which needs the basis normalization
+#: matrix and not just the raw right singular vector — using the singular vector alone gives a
+#: v-mode-1 amplitude of +0.0141 instead of +1.
+#:
+#: The `ts_ofc` DOF ordering is M2 hexapod first: dof0-4 are the M2 hexapod (dz, dx, dy, ru, rv),
+#: dof5-9 the camera hexapod, dof10-29 the M1M3 bending modes and dof30-49 the M2 bending modes.
+#: Only these four entries carry meaningful v-mode-1 content; every other DOF is below 2e-04 µm
+#: per unit amplitude.
+#:
+#: The two hexapod dz entries sum to -1109.556 µm per unit amplitude, which is the same total
+#: travel `V1_PER_UM_DZ` inverts — so v-mode 1 splits focus **unevenly**, 58.2% of the travel on
+#: the camera hexapod against 41.8% on M2, not the even half-and-half `trim_adjustment` applies.
+#: `dof_trim` below uses this uneven split, which is what the optical mode actually is.
+V1_DOF_UM_PER_UNIT = {'dof5': -645.657870,       # camera hexapod dz
+                      'dof0': -463.898287,       # M2 hexapod dz
+                      'dof12': +0.009390,        # M1M3 bending mode B3
+                      'dof34': +0.007551}        # M2 bending mode B5
+
+#: Human-readable name and unit for each entry of `V1_DOF_UM_PER_UNIT`, in the order `dof_trim`
+#: reports them.
+V1_DOF_LABELS = (('dof5', 'camera hexapod dz', 'um'),
+                 ('dof0', 'M2 hexapod dz', 'um'),
+                 ('dof12', 'M1M3 bending mode B3', 'um'),
+                 ('dof34', 'M2 bending mode B5', 'um'))
+
 
 def predict_focus_error_um(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
                            radial_gradient_c_per_m, x_gradient_c_per_m,
@@ -248,6 +279,71 @@ def trim_adjustment(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
     return out
 
 
+def dof_trim(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
+             radial_gradient_c_per_m, x_gradient_c_per_m, warn_extrapolation=True):
+    """The full degree-of-freedom trim vector that cancels the predicted focus error.
+
+    This is the form to command online: the predicted focus error is converted back to a
+    v-mode-1 amplitude and that amplitude is back-projected into degrees of freedom (DOF), so
+    the correction is expressed in exactly the quantities the Optical Feedback Control system
+    sets rather than as a single focus number.
+
+    Parameters
+    ----------
+    truss_temp_c : `float` or `array_like`
+        TMA truss temperature: the mean of ``tma_truss_temp_pxpy`` and ``tma_truss_temp_mxmy``,
+        interpolated within the night [°C].
+    z_gradient_c_per_m, y_gradient_c_per_m, radial_gradient_c_per_m, x_gradient_c_per_m : \
+            `float` or `array_like`
+        M1M3 bulk thermal gradients [°C per m].
+    warn_extrapolation : `bool`, optional
+        Passed to `predict_focus_error_um`.
+
+    Returns
+    -------
+    out : `dict`
+        ``focus_error_um`` [µm of equivalent hexapod dz] and ``v1_amplitude`` [dimensionless
+        v-mode-1 amplitude] as computed, plus one entry per DOF keyed as in
+        `V1_DOF_UM_PER_UNIT` — ``dof5`` and ``dof0`` the camera and M2 hexapod dz [µm],
+        ``dof12`` the M1M3 bending mode B3 and ``dof34`` the M2 bending mode B5 [µm] — and
+        ``uncertainty_um``, the scatter on the focus error itself.
+
+    Notes
+    -----
+    **Sign convention.** The commanded term enters the wavefront response with a positive sign,
+    so the amplitude needed in the Trim to cancel a predicted error is that error expressed in
+    v-mode-1 units, with **no sign flip**: ``v1 = focus_error_um * V1_PER_UM_DZ``, then each DOF
+    is ``V1_DOF_UM_PER_UNIT[dof] * v1``. That is why the hexapod dz values returned here come out
+    opposite in sign to ``trim_adjustment``'s ``trim_dz_um``, which negates the error explicitly:
+    the sign reversal is already carried by the negative v-mode-1 DOF content.
+
+    **The hexapod split is uneven**, 58.2% of the travel on the camera hexapod against 41.8% on
+    M2, because that is the shape of the optical mode. `trim_adjustment` instead splits evenly by
+    construction, so the two functions give the same total travel but different per-hexapod
+    numbers — 1.1638 (dimensionless, back-projected camera dz over even-split camera dz).
+
+    **The two bending-mode amplitudes are negligible.** v-mode 1 contains only 0.009390 µm of
+    M1M3 B3 and 0.007551 µm of M2 B5 per unit amplitude, so across the whole fitted sample they
+    stay below about 7 nm — far under the scatter of the mirror figure Trim the observatory
+    actually runs, which is 253.5 nm and 178.6 nm respectively. They are reported for
+    completeness; commanding them changes nothing measurable.
+    """
+    err = predict_focus_error_um(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
+                                 radial_gradient_c_per_m, x_gradient_c_per_m,
+                                 warn_extrapolation=warn_extrapolation)
+    # No sign flip: the commanded term enters the response positively, so the Trim amplitude
+    # that cancels a predicted error is that error in v-mode-1 units.
+    v1 = np.asarray(err, float) * V1_PER_UM_DZ
+    scalar = np.ndim(v1) == 0
+    out = dict(focus_error_um=err,
+               v1_amplitude=float(v1) if scalar else v1,
+               uncertainty_um=RESIDUAL_NMAD_UM)
+    for dof, unit_content in V1_DOF_UM_PER_UNIT.items():
+        val = unit_content * v1
+        out[dof] = float(val) if scalar else val
+    return out
+
+
 #: Worked test cases, each ``(label, inputs, expected focus error in µm of equivalent hexapod
 #: dz)``. The expected values are the fitted equation evaluated by hand, so they verify the
 #: constants above have been transcribed correctly. The analysis stage reproduces them from the
@@ -313,6 +409,25 @@ def self_test(tol_um=0.05, verbose=True):
     if verbose:
         print(f'  all {len(TEST_CASES)} cases agree to {worst:.3f} um of equivalent hexapod dz '
               f'(tolerance {tol_um})')
+
+    # The DOF back-projection has one internal consistency check that does not need an
+    # independently computed expectation: the two hexapod dz entries must sum to the total travel
+    # V1_PER_UM_DZ inverts, since that is the convention the fitted coefficients are in.
+    label, inputs, _ = TEST_CASES[0]
+    dofs = dof_trim(**inputs, warn_extrapolation=False)
+    total = dofs['dof5'] + dofs['dof0']
+    expect_total = -dofs['focus_error_um']
+    rel = abs(total - expect_total) / max(abs(expect_total), 1e-12)
+    if verbose:
+        print(f'  DOF back-projection on "{label}":')
+        for dof, name, unit in V1_DOF_LABELS:
+            print(f'    {name:24s} {dofs[dof]:+12.6f} {unit}')
+        print(f'    hexapod dz sum {total:+.4f} um against the total travel the focus error '
+              f'implies {expect_total:+.4f} um')
+        print(f'    relative disagreement {rel:.2e} (dimensionless, difference over total)')
+    assert rel < 1e-3, (f'the v-mode-1 DOF content is inconsistent with V1_PER_UM_DZ: the two '
+                        f'hexapod dz sum to {total:+.4f} um against {expect_total:+.4f} um '
+                        f'expected, a relative disagreement of {rel:.2e}')
     return worst
 
 
@@ -355,6 +470,15 @@ def main():
     print(f'trim adjustment to apply {out["trim_dz_um"]:+9.1f} um of hexapod dz ({conv})')
     print(f'  camera hexapod dz      {out["camera_hexapod_dz_um"]:+9.1f} um')
     print(f'  M2 hexapod dz          {out["m2_hexapod_dz_um"]:+9.1f} um')
+
+    dofs = dof_trim(args.truss_temp_c, args.z_gradient_c_per_m, args.y_gradient_c_per_m,
+                    args.radial_gradient_c_per_m, args.x_gradient_c_per_m,
+                    warn_extrapolation=False)
+    print('as a degree-of-freedom trim vector, v-mode 1 back-projected to DOF')
+    print('  (the hexapod split is uneven here, 58.2% camera against 41.8% M2, because that is '
+          'the shape of the optical mode)')
+    for dof, name, unit in V1_DOF_LABELS:
+        print(f'  {dof:6s} {name:24s} {dofs[dof]:+12.6f} {unit}')
 
 
 if __name__ == '__main__':

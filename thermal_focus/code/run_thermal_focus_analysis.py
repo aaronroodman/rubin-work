@@ -111,6 +111,8 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
         Science visits with all five deliverable features present.
     fam : `pandas.DataFrame` or `None`
         FAM triplets, or None when the file is absent.
+    t539 : `pandas.DataFrame` or `None`
+        One row per night of the initial alignment block, or None when the file is absent.
     features : `list` [`str`]
         The deliverable feature column names.
 
@@ -149,6 +151,14 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
     if fam is not None and 'truss_temp_mean_c' in fam.columns:
         fam = fam[~(fam['truss_temp_mean_c'] > L.TRUSS_TEMP_MAX_C)]
 
+    # The build stage already applied the LUT-epoch and truss-temperature cuts to this table, and
+    # the features it carries are suffixed `_first`, so the row filter above does not apply here.
+    t539_path = out_dir / 'thermal_focus_t539.parquet'
+    t539 = pd.read_parquet(t539_path) if t539_path.exists() else None
+    if t539 is not None and day_obs_range:
+        t539 = t539[(t539.day_obs >= day_obs_range[0])
+                    & (t539.day_obs <= day_obs_range[1])].reset_index(drop=True)
+
     if verbose:
         print(f'cached science visits                 : {n_cached}')
         if day_obs_range:
@@ -165,7 +175,10 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
                                       if b in per_band.index))
         if fam is not None:
             print(f'FAM triplets: {len(fam)} over {fam["day_obs"].nunique()} nights')
-    return sci, fam, features
+        if t539 is not None:
+            print(f'initial alignment runs: {len(t539)} nights, day_obs '
+                  f'{int(t539["day_obs"].min())} to {int(t539["day_obs"].max())}')
+    return sci, fam, t539, features
 
 
 # ------------------------------------------------------------------------------- the sections
@@ -1009,6 +1022,130 @@ def section_dof(sci, pred, v1_per_um_dz, dof_set='all_50', n_modes=34, verbose=T
     return out
 
 
+def section_t539(t539, full, features, dof_set='all_50', n_modes=34, verbose=True):
+    """Compare the predicted degree-of-freedom trim against what the initial alignment settled on.
+
+    Every other measure of this model is a residual against the recovered optical state — the same
+    quantity the model was fitted to. This one is independent: the initial alignment block converges
+    the commanded Trim at the start of each night without reference to the thermal telemetry, so the
+    Trim it arrives at is a separate measurement of the focus the telescope actually needed.
+
+    Parameters
+    ----------
+    t539 : `pandas.DataFrame`
+        The initial-alignment table from ``run_thermal_focus.load_t539``: thermal features suffixed
+        ``_first``, Trim degrees of freedom (DOF) suffixed ``_last``.
+    full : `dict`
+        Result of `thermal_focus_fit.fit_full`, carrying the fitted pipeline under ``model``.
+    features : `list` [`str`]
+        Feature columns of the deliverable model, in fit order.
+    dof_set : `str`, optional
+        `ts_ofc` DOF set for the back-projection.
+    n_modes : `int`, optional
+        v-modes retained.
+    verbose : `bool`, optional
+        Print the comparison.
+
+    Returns
+    -------
+    out : `dict`
+        ``table`` — per-night predicted and actual trim per DOF; ``rows`` — the plotted quantities
+        as ``(key, label, unit, scale)``; ``fits`` — per quantity, the
+        `thermal_focus_fit.huber_line` result of actual against predicted; ``diff`` — per
+        quantity, ``median`` and ``nmad`` of actual minus predicted; ``unit`` — the DOF content
+        of one unit of v-mode-1 amplitude.
+
+    Notes
+    -----
+    **The two epochs are not simultaneous.** The prediction uses the telemetry at the run's first
+    visit, the Trim comes from its last, and the run spans 10 exposures on a typical night and up
+    to 45. Perfect agreement is therefore not expected; the question is whether the two track each
+    other.
+
+    **The hexapod split varies between nights.** The alignment is free to put focus on either
+    hexapod, and does: each of the two is left at exactly zero on a handful of nights. So the
+    per-hexapod comparison is degraded by a split that carries no optical meaning,
+    while the v-mode-1 projection of the pair — the last row — is insensitive to it. That row is
+    the one that answers the physical question; the two hexapod rows are kept so the split stays
+    visible rather than hidden inside the combination.
+
+    Pearson and Spearman are both reported, and here they genuinely disagree: the relation is far
+    more monotonic than it is linear, because a few nights with large commanded Trim dominate a
+    least-squares view of it. That is also why every fit is Huber rather than ordinary least
+    squares.
+    """
+    import aos_state
+    se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
+    v = np.zeros(se.truncate_index)
+    v[0] = 1.0
+    unit_vec = np.asarray(se.get_dofs_from_vmodes(v), float)
+
+    wanted = ((5, 'dof5', 'camera hexapod dz', 'um', 1.0),
+              (0, 'dof0', 'M2 hexapod dz', 'um', 1.0),
+              (12, 'dof12', 'M1M3 bending mode B3', 'nm', 1e3),
+              (34, 'dof34', 'M2 bending mode B5', 'nm', 1e3))
+
+    df = t539.copy()
+    X = np.column_stack([df[f'{c}_first'].to_numpy(float) for c in features])
+    pred_um = np.asarray(full['model'].predict(X), float)
+
+    # The commanded term enters the response positively, so the Trim amplitude that cancels a
+    # predicted error is that error in v-mode-1 units, with no sign flip. Same rule as
+    # `section_dof`.
+    v1_pred = pred_um * L.v1_per_um_dz_value(dof_set=dof_set, n_modes=n_modes, verbose=False)
+    df['focus_error_um'] = pred_um
+    df['v1_pred'] = v1_pred
+
+    rows, fits, diff = [], {}, {}
+    for idx, key, label, unit, scale in wanted:
+        df[f'{key}_pred'] = unit_vec[idx] * v1_pred
+        rows.append((key, label, unit, scale))
+
+    # The physical quantity: the v-mode-1 amplitude the commanded Trim pair actually carries,
+    # as a least-squares projection onto the v-mode-1 direction in the two hexapod dz. This is
+    # insensitive to how a given night split focus between the two hexapods.
+    u5, u0 = float(unit_vec[5]), float(unit_vec[0])
+    df['v1_actual'] = ((df['dof5_last'].to_numpy(float) * u5
+                        + df['dof0_last'].to_numpy(float) * u0) / (u5 ** 2 + u0 ** 2))
+    rows.append(('v1', 'v-mode-1 amplitude of the pair', 'dimensionless', 1.0))
+
+    for key, label, unit, scale in rows:
+        if key == 'v1':
+            p, a = df['v1_pred'].to_numpy(float), df['v1_actual'].to_numpy(float)
+        else:
+            p, a = df[f'{key}_pred'].to_numpy(float), df[f'{key}_last'].to_numpy(float)
+        fits[key] = F.huber_line(p * scale, a * scale)
+        d = (a - p) * scale
+        d = d[np.isfinite(d)]
+        diff[key] = {'median': float(np.median(d)), 'nmad': float(nmad(d)),
+                     'n': int(len(d))}
+
+    out = {'table': df, 'rows': rows, 'fits': fits, 'diff': diff,
+           'unit': {key: float(unit_vec[idx]) for idx, key, _, _, _ in wanted},
+           'zero_nights': {'dof5': int((df['dof5_last'] == 0).sum()),
+                           'dof0': int((df['dof0_last'] == 0).sum())}}
+
+    if verbose:
+        print(f'  {len(df)} nights, day_obs {int(df["day_obs"].min())} to '
+              f'{int(df["day_obs"].max())}')
+        print(f'  run length [exposures]: median {df["n_run"].median():.0f}, '
+              f'min {int(df["n_run"].min())}, max {int(df["n_run"].max())}')
+        print(f'  nights leaving the camera hexapod dz Trim at exactly zero: '
+              f'{out["zero_nights"]["dof5"]}; the M2 hexapod: {out["zero_nights"]["dof0"]}')
+        print('  DOF content of v-mode 1 [um per unit amplitude]: '
+              + ', '.join(f'{label} {out["unit"][key]:+.4f}'
+                          for _, key, label, _, _ in wanted))
+        for key, label, unit, scale in rows:
+            ln, d = fits[key], diff[key]
+            print(f'    {label:32s} n {ln["n"]:3d}  Pearson r {ln["pearson_r"]:+.4f}  '
+                  f'Spearman rho {ln["spearman_rho"]:+.4f}')
+            print(f'    {"":32s} slope {ln["slope"]:+.4f} +/- {ln["slope_err"]:.4f} '
+                  f'({unit} actual per {unit} predicted)')
+            print(f'    {"":32s} actual minus predicted: median {d["median"]:+.4f} {unit}, '
+                  f'nMAD {d["nmad"]:.4f} {unit}')
+    return out
+
+
 # ------------------------------------------------------------------------------------ figures
 
 def _text_page(pdf, title, lines):
@@ -1536,6 +1673,89 @@ def figure_dof_start(pdf, dofres):
     plt.close(fig)
 
 
+def figure_t539(pdf, t539res):
+    """Predicted against actual Trim from the initial alignment block, per degree of freedom.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open PDF to append to.
+    t539res : `dict`
+        Result of `section_t539`.
+
+    Notes
+    -----
+    One row per quantity: on the left the Trim the alignment block settled on against the Trim the
+    thermal telemetry at the run's start predicts, with the Huber line and a dashed line of exact
+    agreement; on the right the histogram of actual minus predicted. Every row is drawn the same
+    way, so the correlation each carries is read off the same axes rather than from framing.
+
+    The two hexapods are in µm, the two mirror bending modes in nm, and the combined row is the
+    dimensionless v-mode-1 amplitude — a shared axis would put the bending modes on zero.
+    """
+    if not t539res:
+        return
+    df, rows = t539res['table'], t539res['rows']
+    fig, axes = plt.subplots(len(rows), 2, figsize=(11, 3.4 * len(rows)))
+    for row, (key, label, unit, scale) in enumerate(rows):
+        if key == 'v1':
+            p = df['v1_pred'].to_numpy(float) * scale
+            a = df['v1_actual'].to_numpy(float) * scale
+        else:
+            p = df[f'{key}_pred'].to_numpy(float) * scale
+            a = df[f'{key}_last'].to_numpy(float) * scale
+        line, d = t539res['fits'][key], t539res['diff'][key]
+
+        ax = axes[row, 0]
+        ax.plot(p, a, 'o', ms=4, color='#1f77b4')
+        # Each axis is scaled to its own variable rather than to a shared range. Forcing a square
+        # range would compress the two bending-mode rows into a vertical stripe at x = 0, because
+        # the predicted amplitude there is a few nm against an actual Trim of hundreds -- which is
+        # the point those rows make, but it would also hide the predicted spread and the fitted
+        # line entirely. The line of exact agreement is still drawn, and runs off the panel where
+        # the two ranges genuinely differ by that much.
+        lo = float(np.nanmin(np.concatenate([p, a])))
+        hi = float(np.nanmax(np.concatenate([p, a])))
+        ends = np.array([lo, hi])
+        ax.plot(ends, ends, '--', color='0.5', lw=1.0, label='exact agreement')
+        xs = np.array([np.nanmin(p), np.nanmax(p)])
+        ax.plot(xs, line['intercept'] + line['slope'] * xs, '-', color='#2ca02c', lw=1.2,
+                label=f'Huber slope {line["slope"]:+.4g} +/- {line["slope_err"]:.4g}\n'
+                      f'({unit} actual per {unit} predicted)\n'
+                      f'Pearson r {line["pearson_r"]:+.4f}, '
+                      f'Spearman rho {line["spearman_rho"]:+.4f}')
+        ax.axhline(0, color='0.85', lw=0.8, zorder=0)
+        ax.axvline(0, color='0.85', lw=0.8, zorder=0)
+        # Set the limits last: the line of exact agreement spans both variables' combined range and
+        # would otherwise autoscale the panel back to a square.
+        xpad = 0.06 * (xs[1] - xs[0]) if xs[1] > xs[0] else 1.0
+        ax.set_xlim(xs[0] - xpad, xs[1] + xpad)
+        ylo, yhi = float(np.nanmin(a)), float(np.nanmax(a))
+        ypad = 0.06 * (yhi - ylo) if yhi > ylo else 1.0
+        ax.set_ylim(ylo - ypad, yhi + ypad)
+        ax.set_xlabel(f'predicted {label} from the thermal telemetry\nat the run\'s first '
+                      f'visit [{unit}]')
+        ax.set_ylabel(f'actual {label} Trim\nat the run\'s last visit [{unit}]')
+        ax.set_title(f'{label}: actual against predicted, {line["n"]} nights', fontsize=9.5)
+        ax.legend(fontsize=7.5)
+
+        ax = axes[row, 1]
+        diff = a - p
+        ax.hist(diff[np.isfinite(diff)], bins=30, histtype='step', color='#1f77b4')
+        ax.axvline(0, color='0.6', lw=0.8)
+        ax.axvline(d['median'], color='#d62728', lw=1.2,
+                   label=f'median {d["median"]:+.4g} {unit}\nnMAD {d["nmad"]:.4g} {unit}')
+        ax.set_xlabel(f'actual minus predicted {label} [{unit}]')
+        ax.set_ylabel('nights')
+        ax.set_title(f'{label}: actual minus predicted', fontsize=9.5)
+        ax.legend(fontsize=7.5)
+    fig.suptitle('The initial alignment block: predicted Trim against what it settled on',
+                 fontsize=11, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.985))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1558,7 +1778,7 @@ def main():
     day_obs_range = tuple(args.day_obs_range) if args.day_obs_range else None
 
     print('=== 1. the response and the sample ===')
-    sci, fam, features = load(out_dir, args.fam_dir_name, day_obs_range)
+    sci, fam, t539, features = load(out_dir, args.fam_dir_name, day_obs_range)
     samp = section_sample(sci, features)
 
     print('\n=== 2. the thermal model ===')
@@ -1647,6 +1867,14 @@ def main():
 
     print('\n=== 14. the focus error as degrees of freedom ===')
     dofres = section_dof(sci, cv['pred'], L.v1_per_um_dz_value(verbose=False))
+
+    print('\n=== 15. against the Trim the initial alignment block settled on ===')
+    if t539 is None or not len(t539):
+        print('  thermal_focus_t539.parquet is absent; build it with\n'
+              '    python code/run_thermal_focus.py')
+        t539res = {}
+    else:
+        t539res = section_t539(t539, full, features)
 
     if args.no_pdf:
         return
@@ -2103,6 +2331,97 @@ def main():
         ])
         figure_dof(pdf, dofres)
         figure_dof_start(pdf, dofres)
+
+        # ------------------------------------- group 4: against what the observatory actually did
+        if t539res:
+            _t = t539res['table']
+            _u = t539res['unit']
+            # `section_t539` already reports each difference in the row's own unit, so no further
+            # scaling is applied here -- the nm rows would otherwise read a factor of 1000 high.
+            _fmt = {'dof5': ('camera hexapod dz', 'um'),
+                    'dof0': ('M2 hexapod dz', 'um'),
+                    'dof12': ('M1M3 bending B3', 'nm'),
+                    'dof34': ('M2 bending B5', 'nm'),
+                    'v1': ('v-mode-1 of the pair', 'dimensionless')}
+            _text_page(pdf, 'Part 3 of 3 - Against the Trim the initial alignment block settled '
+                            'on', [
+                f'Sample      {len(_t)} nights of the initial alignment block BLOCK-T539, '
+                f'day_obs {int(_t.day_obs.min())} to {int(_t.day_obs.max())}',
+                '',
+                'WHY THIS COMPARISON IS DIFFERENT FROM EVERY OTHER NUMBER IN THIS DOCUMENT:',
+                '',
+                '  Every residual so far is against the optical state recovered from the corner',
+                '  wavefront sensors, which is the quantity the model was fitted to. The initial',
+                '  alignment block converges the commanded Trim at the start of each night without',
+                '  reference to the thermal telemetry, so the Trim it arrives at is an independent',
+                '  measurement of the focus the telescope actually needed.',
+                '',
+                'HOW THE TWO EPOCHS ARE PICKED:',
+                '',
+                '  Per night, the exposures of img_type science or acq are sorted by seq_num and',
+                '  the first 10 are taken, those with a BLOCK-T539 program are selected, and the',
+                '  run is extended through the contiguous seq_num from the lowest of them. The',
+                '  prediction uses the thermal telemetry at the run\'s FIRST visit; the Trim comes',
+                '  from its LAST. So the two are separated by the whole run, not simultaneous.',
+                '',
+                f'  Run length [exposures]: median {_t["n_run"].median():.0f}, '
+                f'min {int(_t["n_run"].min())}, max {int(_t["n_run"].max())}. The block is not a',
+                '  fixed 10 exposures, so the separation between the two epochs varies by night.',
+                '',
+                'ACTUAL TRIM AT THE RUN\'S END AGAINST THE PREDICTED TRIM:',
+                '',
+                *[f'  {_fmt[k][0]:21s} [{_fmt[k][1]:13s}] '
+                  f'r {t539res["fits"][k]["pearson_r"]:+.4f}  '
+                  f'rho {t539res["fits"][k]["spearman_rho"]:+.4f}  slope '
+                  f'{t539res["fits"][k]["slope"]:+7.3f}  diff median '
+                  f'{t539res["diff"][k]["median"]:+8.3f}  nMAD '
+                  f'{t539res["diff"][k]["nmad"]:7.3f}'
+                  for k, _, _, _ in t539res['rows']],
+                '  (the bracketed unit applies to the two diff columns; r is Pearson and rho is',
+                f'   Spearman over {len(_t)} nights; the slope is dimensionless, actual per',
+                '   predicted in that same unit; diff is actual minus predicted)',
+                '',
+                *[f'  {_fmt[k][0]:21s} Huber slope {t539res["fits"][k]["slope"]:+7.3f} +/- '
+                  f'{t539res["fits"][k]["slope_err"]:6.3f} (dimensionless), '
+                  f'{abs(t539res["fits"][k]["slope"]) / t539res["fits"][k]["slope_err"]:4.1f} '
+                  f'std err'
+                  for k, _, _, _ in t539res['rows']],
+                '',
+                '  Pearson and Spearman disagree, and the Spearman value is the one to read: the',
+                '  relation is far more monotonic than it is linear, because a few nights with',
+                '  large commanded Trim dominate a least-squares view of it. Every fit above is',
+                '  Huber for the same reason.',
+                '',
+                'WHY THE PER-HEXAPOD ROWS ARE THE WEAKER ONES:',
+                '',
+                '  The alignment is free to put focus on either hexapod, and does: it leaves the',
+                f'  camera hexapod dz Trim at exactly zero on '
+                f'{t539res["zero_nights"]["dof5"]} of {len(_t)} nights and the M2 hexapod on '
+                f'{t539res["zero_nights"]["dof0"]}.',
+                '  That split carries no optical meaning, and it degrades the two hexapod rows',
+                '  while leaving the combined v-mode-1 projection of the pair unaffected. The',
+                '  combined row is what answers the physical question; the two hexapod rows are',
+                '  kept so the split stays visible rather than hidden inside the combination.',
+                '',
+                f'  combined projection = (dof5 * {_u["dof5"]:.4f} + dof0 * {_u["dof0"]:.4f}) / '
+                f'({_u["dof5"]:.4f}^2 + {_u["dof0"]:.4f}^2)',
+                '',
+                'THE MIRROR FIGURE DEGREES OF FREEDOM, AS MEASURED QUANTITIES:',
+                '',
+                f'  v-mode 1 contains {_u["dof12"] * 1e3:+.3f} nm of M1M3 bending B3 and '
+                f'{_u["dof34"] * 1e3:+.3f} nm of M2 bending B5 per unit',
+                f'  amplitude, against {_u["dof5"]:+.1f} and {_u["dof0"]:+.1f} um for the two '
+                f'hexapod dz. The predicted bending Trim',
+                f'  therefore spans {np.nanmax(np.abs(_t["dof12_pred"])) * 1e3:.3f} nm and '
+                f'{np.nanmax(np.abs(_t["dof34_pred"])) * 1e3:.3f} nm over these nights, while the '
+                f'actual Trim',
+                f'  has a standard deviation of {_t["dof12_last"].std() * 1e3:.1f} nm and '
+                f'{_t["dof34_last"].std() * 1e3:.1f} nm -- larger by factors of '
+                f'{_t["dof12_last"].std() / np.nanmax(np.abs(_t["dof12_pred"])):.1f} and '
+                f'{_t["dof34_last"].std() / np.nanmax(np.abs(_t["dof34_pred"])):.1f}',
+                '  (dimensionless, actual standard deviation over predicted span).',
+            ])
+            figure_t539(pdf, t539res)
     print(f'\nwrote {pdf_path}')
 
 

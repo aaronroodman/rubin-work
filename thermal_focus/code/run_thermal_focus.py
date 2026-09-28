@@ -5,12 +5,16 @@ DuckDB except the Telescope Mount Assembly (TMA) truss temperature, which the Co
 Database (ConsDB) serves and `efd_db.join_consdb` derives on the fly, so the table is cached to
 parquet and the analysis stage runs offline from it.
 
-Two tables are written:
+Three tables are written:
 
 * ``thermal_focus.parquet`` -- ordinary science visits, the sample the focus model is fitted on.
 * ``<fam_dir>/thermal_focus_fam.parquet`` -- the in-focus ``acq`` visit of each Full Array Mode
   (FAM) triplet, joined to the Double Zernike (DZ) fit of its own defocused pair. Keyed by the
   FAM variant because the DZ coefficients depend on which reduction produced them.
+* ``thermal_focus_t539.parquet`` -- one row per night for the initial alignment block run at the
+  start of the night, carrying the thermal telemetry at the run's first visit and the commanded
+  Trim degrees of freedom at its last. These visits are ``acq``, so they are absent from the
+  science table above, which keeps ``science`` exposures only.
 
 Invocation::
 
@@ -68,7 +72,28 @@ TELEMETRY_COLS = (
     'cam_AverageTemp', 'cam_AmbAirtemp', 'cam_n_samp',
     'wind_dir_deg', 'wind_speed_ms', 'azimuth_deg', 'into_wind_deg',
     'cum_hex_dz_um', 'recent_hex_dz_um', 'n_moves_night',
+    # The commanded Trim in the four degrees of freedom v-mode 1 contains, as of obs_start.
+    # ts_ofc ordering: dof0-4 are the M2 hexapod, dof5-9 the camera hexapod, dof10-29 the M1M3
+    # bending modes and dof30-49 the M2 bending modes. Carried for the BLOCK-T539 comparison,
+    # which needs the Trim the initial alignment actually settled on.
+    'dof0', 'dof5', 'dof12', 'dof34',
 )
+
+#: Science programs of the initial alignment block. Two labels appear in the Consolidated
+#: Database over the covered span and both are the same block: the bare one and a
+#: ``_hexapods`` suffixed variant used on 12 nights in the 2025 November era.
+T539_PROGRAM_PREFIX = 'BLOCK-T539'
+
+#: Image types that count as "the observing night has started", for finding the initial
+#: alignment run. Biases, darks and flats are taken before the block and must not consume the
+#: start-of-night window; ``cwfs`` is excluded because a wavefront pair is not the alignment
+#: exposure itself.
+NIGHT_START_IMG_TYPES = ('science', 'acq')
+
+#: How many exposures of `NIGHT_START_IMG_TYPES` count as "the start of the night". The initial
+#: alignment block is looked for inside this window, so a later re-run of the same block on the
+#: same night is not picked up.
+NIGHT_START_WINDOW = 10
 
 
 def _telemetry(day_obs_range):
@@ -295,6 +320,216 @@ def load_fam(fam_variant, variant, day_obs_range, v1_per_um_dz, verbose=True):
     return df
 
 
+def _exposure_inventory(day_obs_range, cdb=None, instrument='lsstcam'):
+    """Read ``science_program``, ``img_type`` and ``seq_num`` for every exposure in a night range.
+
+    Parameters
+    ----------
+    day_obs_range : `tuple` [`int`]
+        Inclusive ``(lo, hi)`` night range as ``YYYYMMDD``.
+    cdb : `lsst.summit.utils.ConsDbClient`, optional
+        Existing client; one is made if omitted.
+    instrument : `str`, optional
+        ConsDB instrument schema.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        ``visit_id``, ``day_obs``, ``seq_num``, ``img_type``, ``science_program``.
+
+    Notes
+    -----
+    The query is issued **one calendar month at a time**. A single request spanning the whole
+    survey returns HTTP 500 from the ConsDB server rather than a result, and so does any
+    ``SELECT DISTINCT`` combined with a ``LIKE`` filter, so the program filter is applied here in
+    pandas rather than in SQL.
+    """
+    sys.path.insert(0, str(_ROOT))
+    from common.telemetry_clients import make_consdb_client       # noqa: E402
+    cdb = cdb or make_consdb_client()
+
+    lo, hi = int(day_obs_range[0]), int(day_obs_range[1])
+    # Month boundaries as YYYYMM01, inclusive of the month hi falls in.
+    edges, y, m = [], lo // 10000, (lo // 100) % 100
+    while y * 10000 + m * 100 + 1 <= hi:
+        edges.append(y * 10000 + m * 100 + 1)
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    edges = [lo] + [e for e in edges if e > lo] + [hi + 1]
+
+    parts = []
+    for a, b in zip(edges[:-1], edges[1:]):
+        q = (f'SELECT exposure_id AS visit_id, day_obs, seq_num, img_type, science_program '
+             f'FROM cdb_{instrument}.exposure '
+             f'WHERE day_obs >= {a} AND day_obs < {b}')
+        parts.append(cdb.query(q).to_pandas())
+    df = pd.concat(parts, ignore_index=True)
+    return df.sort_values(['day_obs', 'seq_num']).reset_index(drop=True)
+
+
+def _t539_runs(inv, verbose=True):
+    """Find the start-of-night initial alignment run on each night.
+
+    Parameters
+    ----------
+    inv : `pandas.DataFrame`
+        Output of `_exposure_inventory`.
+    verbose : `bool`, optional
+        Print the run-length distribution.
+
+    Returns
+    -------
+    runs : `pandas.DataFrame`
+        One row per night: ``day_obs``, ``science_program``, ``seq_num_first``, ``seq_num_last``,
+        ``n_run`` (exposures in the run), ``n_night`` (all alignment-block exposures that night),
+        ``visit_id_first`` and ``visit_id_last``.
+
+    Notes
+    -----
+    The rule is: among the first `NIGHT_START_WINDOW` exposures of `NIGHT_START_IMG_TYPES` on the
+    night — so biases, darks and flats taken before the block do not consume the window — keep
+    those belonging to the alignment block, then extend from the lowest such ``seq_num`` through
+    the **contiguous** ``seq_num`` run.
+
+    The run length is *not* fixed. Over the covered span the modal length is 10 exposures but
+    runs of 20 and 24 are common and the longest reaches 45, all of them a single program label
+    running consecutively rather than two blocks chained. So the run is taken as contiguous and
+    its length reported per night rather than assumed.
+
+    Most nights also have further alignment-block exposures later on, which is why the
+    start-of-night window exists: ``n_night`` against ``n_run`` shows how many were set aside.
+    """
+    inv = inv.assign(
+        _is_block=inv['science_program'].astype(str).str.startswith(T539_PROGRAM_PREFIX),
+        _started=inv['img_type'].isin(NIGHT_START_IMG_TYPES))
+
+    rows = []
+    for night, g in inv.groupby('day_obs'):
+        night_start = g[g['_started']].sort_values('seq_num').head(NIGHT_START_WINDOW)
+        opening = night_start[night_start['_is_block']]
+        if not len(opening):
+            continue
+        block = g[g['_is_block'] & g['_started']].sort_values('seq_num')
+        seq = block['seq_num'].to_numpy()
+        i0 = int(np.flatnonzero(seq == int(opening['seq_num'].min()))[0])
+        j = i0
+        while j + 1 < len(seq) and seq[j + 1] == seq[j] + 1:
+            j += 1
+        rows.append({'day_obs': int(night),
+                     'science_program': block['science_program'].iloc[i0],
+                     'seq_num_first': int(seq[i0]), 'seq_num_last': int(seq[j]),
+                     'n_run': j - i0 + 1, 'n_night': len(block),
+                     'visit_id_first': int(block['visit_id'].iloc[i0]),
+                     'visit_id_last': int(block['visit_id'].iloc[j])})
+    runs = pd.DataFrame(rows)
+    if verbose and len(runs):
+        n_extra = int((runs['n_night'] > runs['n_run']).sum())
+        print(f'  nights with a start-of-night {T539_PROGRAM_PREFIX} run: {len(runs)}')
+        print(f'    run length [exposures]: median {runs["n_run"].median():.0f}, '
+              f'min {runs["n_run"].min()}, max {runs["n_run"].max()}')
+        print('    program labels: '
+              + ', '.join(f'{k} {v}' for k, v in
+                          runs['science_program'].value_counts().items()))
+        print(f'    nights with further block exposures later in the night: {n_extra} '
+              f'of {len(runs)}')
+    return runs
+
+
+def load_t539(day_obs_range, verbose=True):
+    """Build the initial-alignment comparison table: prediction at the start, Trim at the end.
+
+    One row per night. The thermal telemetry is taken at the **first** visit of the start-of-night
+    initial alignment run, which is what an open-loop prediction would have had available, and the
+    commanded Trim at the **last** visit of the same run, which is what the alignment converged
+    to. Comparing them tests the prediction against an independent measurement rather than against
+    the fit's own residual.
+
+    Parameters
+    ----------
+    day_obs_range : `tuple` [`int`] or `None`
+        Inclusive night range as ``YYYYMMDD``. Defaults to the span over which both the Trim and
+        the M1M3 gradients exist.
+    verbose : `bool`, optional
+        Print the selection funnel.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        One row per usable night: the run identification from `_t539_runs`, the five thermal
+        features suffixed ``_first``, and the four Trim degrees of freedom suffixed ``_last``
+        [µm].
+
+    Notes
+    -----
+    The two epochs are deliberately given distinct column suffixes. They are separated by the
+    whole alignment run — typically 10 exposures but up to 45 — so they are not simultaneous, and
+    a column name that did not say which epoch it came from would invite exactly that confusion.
+
+    The same cuts as `load_science` are applied, so the comparison sample is a subset of the
+    fitted one: the look-up-table epoch nights and nights above
+    `thermal_focus_lib.TRUSS_TEMP_MAX_C`.
+    """
+    if day_obs_range is None:
+        day_obs_range = (20251102, 20260714)
+
+    if verbose:
+        print(f'  reading the ConsDB exposure inventory, day_obs {day_obs_range[0]} to '
+              f'{day_obs_range[1]}, one month per query')
+    inv = _exposure_inventory(day_obs_range)
+    if verbose:
+        print(f'    {len(inv)} exposures over {inv["day_obs"].nunique()} nights')
+    runs = _t539_runs(inv, verbose=verbose)
+    if not len(runs):
+        return runs
+    n_selected = len(runs)
+
+    tel_cols = [c for c in L.resolve_features(L.DELIVERABLE_GROUPS) if c != 'truss_temp_mean_c']
+    trim_cols = ['dof5', 'dof0', 'dof12', 'dof34']
+
+    # The truss temperature is derived on the ConsDB join and interpolated within the night, so
+    # the whole night must be passed through `join_consdb`, not just the two visits of interest.
+    vis = efd_db.visits(day_obs_range=day_obs_range,
+                        columns=['visit_id', 'day_obs', 'seq_num'] + tel_cols + trim_cols)
+    vis = vis[vis['day_obs'].isin(runs['day_obs'])]
+    vis = efd_db.join_consdb(vis, groups=('meta', 'thermal'))
+
+    first = vis[['visit_id'] + tel_cols + ['truss_temp_mean_c',
+                                           'truss_temp_mean_c_interpolated']].copy()
+    first = first.rename(columns={c: f'{c}_first' for c in first.columns if c != 'visit_id'})
+    last = vis[['visit_id'] + trim_cols].copy()
+    last = last.rename(columns={c: f'{c}_last' for c in last.columns if c != 'visit_id'})
+
+    df = runs.merge(first, left_on='visit_id_first', right_on='visit_id', how='left') \
+             .drop(columns='visit_id')
+    df = df.merge(last, left_on='visit_id_last', right_on='visit_id', how='left') \
+           .drop(columns='visit_id')
+
+    feat_first = [f'{c}_first' for c in tel_cols] + ['truss_temp_mean_c_first']
+    n_feat = int(df[feat_first].notna().all(axis=1).sum())
+    n_trim = int(df[[f'{c}_last' for c in trim_cols]].notna().all(axis=1).sum())
+
+    drop = df['day_obs'].isin(L.LUT_EPOCH_OFFSET_NIGHTS)
+    n_lut = int(drop.sum())
+    df = df[~drop]
+    hot = df['truss_temp_mean_c_first'] > L.TRUSS_TEMP_MAX_C
+    n_hot = int(hot.sum())
+    df = df[~hot]
+    df = df[df[feat_first].notna().all(axis=1)
+            & df[[f'{c}_last' for c in trim_cols]].notna().all(axis=1)]
+
+    if verbose:
+        print(f'    with all five thermal features at the first visit: {n_feat} of {n_selected}')
+        print(f'    with all four Trim DOF at the last visit          : {n_trim} of {n_selected}')
+        print(f'    dropping LUT-epoch nights                        : -{n_lut}')
+        print(f'    truss temperature above {L.TRUSS_TEMP_MAX_C:.0f} deg C              : -{n_hot}')
+        print(f'  -> {len(df)} nights, day_obs {int(df["day_obs"].min())} to '
+              f'{int(df["day_obs"].max())}')
+        n_interp = int(df['truss_temp_mean_c_interpolated_first'].fillna(False).sum())
+        print(f'     truss temperature filled by interpolation: {n_interp} of {len(df)} nights')
+        print(f'     camera hexapod dz Trim at the run end [um]: median '
+              f'{df["dof5_last"].median():+.1f}, nMAD {nmad(df["dof5_last"].to_numpy()):.1f}')
+    return df
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -313,6 +548,8 @@ def main():
     ap.add_argument('--fam-dir-name', default='fam_danish_1_2',
                     help='short directory name for the FAM variant')
     ap.add_argument('--no-fam', action='store_true', help='skip the FAM table')
+    ap.add_argument('--no-t539', action='store_true',
+                    help='skip the initial-alignment comparison table')
     args = ap.parse_args()
 
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
@@ -338,6 +575,16 @@ def main():
         fam_path = fam_dir / 'thermal_focus_fam.parquet'
         fam.to_parquet(fam_path, index=False)
         print(f'wrote {fam_path} ({len(fam)} rows)')
+
+    if not args.no_t539:
+        print('\n=== initial alignment block, start-of-night runs ===')
+        t539 = load_t539(day_obs_range)
+        if len(t539):
+            t539_path = out_dir / 'thermal_focus_t539.parquet'
+            t539.to_parquet(t539_path, index=False)
+            print(f'wrote {t539_path} ({len(t539)} rows)')
+        else:
+            print('no start-of-night alignment runs found; no table written')
 
 
 if __name__ == '__main__':

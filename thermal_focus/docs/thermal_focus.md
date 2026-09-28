@@ -4,7 +4,7 @@
 
 > **Code:** `code/` · **Notebooks:** `notebooks/`
 > **Output:** `output/` (`thermal_focus.pdf`, `thermal_focus.parquet`,
-> `<fam_dir>/thermal_focus_fam.parquet`)
+> `thermal_focus_t539.parquet`, `<fam_dir>/thermal_focus_fam.parquet`)
 
 Prediction of the Rubin telescope's uniform-defocus error from thermal telemetry alone, so that
 focus can be set open-loop from a table instead of being driven by the wavefront sensors. The
@@ -632,6 +632,79 @@ telescope being furthest from thermal equilibrium at the start of a night, but t
 interpretation: this study measures the spread and does not separate a loop-convergence transient
 from a genuinely larger thermal excursion.
 
+### Against the Trim the initial alignment block settled on
+
+Every residual above is against the optical state recovered from the corner wavefront sensors, which
+is the quantity the model was fitted to. `BLOCK-T539` is the initial alignment block run at the start
+of each night, and it converges the commanded Trim without reference to the thermal telemetry, so the
+Trim it arrives at is an **independent** measurement of the focus the telescope actually needed.
+
+The two epochs compared are the **first** visit of the block's start-of-night run, whose thermal
+telemetry feeds the prediction, and the **last** visit of that run, whose Trim is the settled value.
+Per night, the exposures of `img_type` `science` or `acq` are sorted by `seq_num`, the first 10 are
+taken, those carrying a `BLOCK-T539` program are selected, and the run is extended through the
+contiguous `seq_num` from the lowest of them. Biases and darks are skipped by the `img_type` filter,
+and `cwfs` is excluded because a wavefront pair is not the alignment exposure itself.
+
+Two properties of the block that the selection has to accommodate:
+
+- **Two program labels exist** — `BLOCK-T539` (166 nights) and `BLOCK-T539_hexapods` (12 nights), the
+  latter a November 2025-era label — so the match is on the `BLOCK-T539` prefix.
+- **The run is not a fixed 10 exposures.** Over the 178 selected nights the median is 17, the
+  minimum 2 and the maximum 45 exposures (16 as the median over the 163 that survive the cuts);
+  long runs are one label running 20 or more contiguous `acq`, not two chained. So the
+  separation between the two epochs varies by night, and the run length is carried per night rather
+  than assumed. 118 of 178 nights also have further block exposures later in the night, which is what
+  the start-of-night restriction excludes.
+
+The block is genuinely converging the Trim across the run: the camera hexapod dz Trim changes by a
+median of **−253.9 µm** over it, and 170 of 178 nights move it by more than 1 µm.
+
+Of 178 nights with a start-of-night run over `day_obs` 20251102 to 20260714, **163** survive the same
+cuts the science sample takes — 8 LUT-epoch nights and 2 nights above 20 °C truss temperature. On
+those 163 nights, with the prediction back-projected through v-mode 1 and every fit Huber:
+
+| quantity | Pearson r | Spearman rho | Huber slope | actual − predicted, median | nMAD | unit |
+|---|---|---|---|---|---|---|
+| camera hexapod dz | +0.1123 | +0.2701 | +0.445 ± 0.105 | −99.763 | 239.279 | µm |
+| M2 hexapod dz | +0.5819 | +0.7120 | +1.406 ± 0.100 | +77.599 | 140.011 | µm |
+| M1M3 bending mode B3 | +0.0840 | +0.1022 | +3.530 ± 5.981 | −67.368 | 148.561 | nm |
+| M2 bending mode B5 | +0.0914 | +0.1115 | +3.642 ± 5.209 | −48.458 | 107.824 | nm |
+| v-mode-1 amplitude of the pair | +0.3870 | +0.7375 | +0.874 ± 0.041 | +0.052 | 0.139 | dimensionless |
+
+The slope is dimensionless in every row, actual per predicted in that row's own unit.
+
+**Pearson and Spearman disagree, and the Spearman value is the one to read.** The relation is far
+more monotonic than it is linear, because a few nights with large commanded Trim dominate a
+least-squares view of it. That gap is why every fit here is Huber rather than ordinary least squares,
+and why both statistics are reported.
+
+**The per-hexapod rows are the weaker ones because of how the alignment splits focus**, not because
+the prediction is worse for one hexapod. The alignment is free to put focus on either, and does: it
+leaves the camera hexapod dz Trim at exactly zero on 8 of the 163 nights and the M2 hexapod on
+another 8. That split carries no optical meaning. Projecting the pair onto the v-mode-1 direction,
+
+```
+combined v-mode-1 amplitude = (dof5 × u5 + dof0 × u0) / (u5² + u0²)
+```
+
+with `u5` and `u0` the unit content from the table above, is insensitive to the split, and it is that
+combined row — Spearman rho **+0.7375** over 163 nights — that answers the physical question. The two
+hexapod rows are kept so the split stays visible rather than hidden inside the combination.
+
+The agreement is not expected to be exact: the two epochs are separated by the whole run, so the
+telescope's thermal state has moved between them, and the block's own convergence is not error-free.
+The **correlation**, not the offset, is what this comparison establishes.
+
+**The two mirror figure DOF cannot show a correlation at this amplitude.** v-mode 1 contains
+**+9.390 nm** of M1M3 bending mode B3 and **+7.551 nm** of M2 bending mode B5 per unit amplitude,
+against −645.7 µm and −463.9 µm for the two hexapod dz, so over these nights the predicted bending
+Trim spans only **8.485 nm** and **6.823 nm** while the actual Trim has a standard deviation of
+**242.6 nm** and **170.7 nm** — larger by factors of **28.6** and **25.0** (dimensionless, actual
+standard deviation over predicted span). Whatever sets the mirror figure Trim, it is not this focus
+correction, and the Huber slopes of +3.530 and +3.642 are consistent with zero at well under one
+standard error of unity.
+
 ## Code
 
 | file | role |
@@ -639,7 +712,7 @@ from a genuinely larger thermal excursion.
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: fifteen sections and one document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 ### The network seam
@@ -665,6 +738,26 @@ worked test cases. Inlining can drift from the fit silently, so section 11 of th
 the calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod
 dz** over 68,079 visits, which is the two-decimal rounding of the inlined coefficients.
 
+`dof_trim` is the form to command online. It returns the correction as the degrees of freedom the
+Optical Feedback Control system sets — the camera and M2 hexapod dz plus the two mirror figure
+bending modes v-mode 1 contains — rather than as a single focus number:
+
+```python
+from trim_calculator import dof_trim
+out = dof_trim(truss_temp_c=8.4, z_gradient_c_per_m=0.10, y_gradient_c_per_m=-0.05,
+               radial_gradient_c_per_m=0.02, x_gradient_c_per_m=0.01)
+out['dof5'], out['dof0'], out['dof12'], out['dof34']   # um, ts_ofc DOF ordering
+```
+
+**Two split conventions coexist and must not be confused.** `trim_adjustment` splits the predicted
+travel **evenly**, half on each hexapod, which is what the dz-equivalent unit means. `dof_trim`
+back-projects through v-mode 1, which splits it **unevenly** — 58.2% of the travel on the camera
+hexapod against 41.8% on M2, a ratio of 1.1638 (dimensionless, back-projected camera dz over
+even-split camera dz) — because that is the shape of the optical mode. The two hexapod dz entries sum
+to −1109.556 µm per unit v-mode-1 amplitude, the same total travel the dz-equivalent conversion
+inverts, so the conventions agree on the total and differ only on the split. Both are printed side by
+side by the module's command line.
+
 The calculator is a **night-to-night feed-forward term**. It does not read the wavefront and does
 not know what the AOS has already commanded, so applying it blind on top of an already-converged
 loop would double-count the correction; and it must not be used to chase focus within a block, for
@@ -679,6 +772,7 @@ online scheme.
 | product | content |
 |---|---|
 | `thermal_focus.parquet` | one row per science visit: identity, band, pointing, the v-mode-1 components, the response [µm equiv hexapod dz] and the thermal telemetry |
+| `thermal_focus_t539.parquet` | one row per night of the initial alignment block: the run's first and last visit, the thermal telemetry at the first suffixed `_first`, and the Trim DOF at the last suffixed `_last` |
 | `<fam_dir>/thermal_focus_fam.parquet` | one row per FAM triplet whose `acq` visit has a recovered optical state, with the triplet's own DZ coefficients |
 | `thermal_focus.pdf` | the analysis document, in three parts: before the correction, the training, and all the data |
 
