@@ -5,6 +5,8 @@ shape, ISR-processed image inspection, and related AOS diagnostics.
 
 ## Notebooks
 
+In `notebooks/`.
+
 | Notebook | Description | Created | Last Modified |
 |----------|-------------|---------|---------------|
 | `wfs_corner_postisr_visualize.ipynb` | Locate and visualize ISR-processed (`post_isr_image`) frames for the eight corner-WFS half-chips. Lists available exposures/nights in the AOS `cwfs` collection, then plots all eight half-chips for a chosen exposure with a sky-foreground-tuned stretch (sigma-clipped / ZScale / percentile + asinh) and writes a multi-page PDF (one page per visit). Start of a sky-foreground-shape study. | 2026-06-12 | 2026-06-12 |

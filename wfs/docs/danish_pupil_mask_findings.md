@@ -248,7 +248,7 @@ print("giant", compare([("LSSTCamera", -8.0)]))      # ~0.960
 ```
 
 Full notebook (figures, edge-vs-azimuth, per-surface attribution, intra/extra,
-model-version sweep, ellipse test): `rubin-work/wfs/wfs_batoid_pupil_compare.ipynb`
+model-version sweep, ellipse test): `rubin-work/wfs/notebooks/wfs_batoid_pupil_compare.ipynb`
 (§5–§11).
 
 ---
