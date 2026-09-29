@@ -15,15 +15,18 @@ shared inputs is documented in [`miw_pipeline.md`](miw_pipeline.md).
 
 ## The studies
 
-Counts are of files and lines in `aos/code/`, including the shared modules that stay
-flat there, and of Snakemake rules driving each study. Of
-the 90 Python files, 18 are referenced by the Snakefile and the rest are standalone. The
-`science_lut` count is of its two current scripts; the `(+4)` marks four superseded ones still
-present on disk.
+Counts are of files and lines in `aos/code/`, excluding `__init__.py`, and of Snakemake
+rules driving each study. `aos/code/` currently holds 68 Python files, 11 of them the
+shared modules that stay flat there.
+
+> **Stale counts:** only the `miw` row is current as of 2026-09-28. The other rows predate
+> the retirement of `science_lut`, `fam_focus` and `dz14_truss` and drifted with later
+> edits, so the per-study file and line figures are approximate — the study names, rule
+> counts and content descriptions are accurate. A recount is outstanding work.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`miw`](studies/miw.md) | 1 | 219 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, built separately from the paired Danish 1.2 and the unpaired Danish 1.3 wavefronts so the two can be compared; the build itself is in the external `ts_intrinsic_wavefront` package |
+| [`miw`](studies/miw.md) | 2 | 510 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, built separately from the paired Danish 1.2 and the unpaired Danish 1.3 wavefronts and compared term by term; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`fam_processing`](studies/fam_processing.md) | 9 | 3389 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, an all-chunks status roll-up, and the recast of Danish 1.3 unpaired output into the paired Danish 1.2 table schema |
 | [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
@@ -187,12 +190,17 @@ Carried here so they are visible in one place; detail in each study doc.
   estimators by accuracy. Doing that needs an external reference.
 - **`miw`** — 83 % of MIW **power** sits above the `k<=6` focal orders the build fits,
   which reframes any DZ-subspace analysis.
-- **`miw`** — a second MIW built from the Danish 1.3 unpaired wavefronts,
-  `danish_1_3_test_A_50_34_i_5rot`, is configured with knobs identical to the Danish 1.2
-  build so the two differ only in the wavefronts. Whether the per-Noll pairing bias seen in
-  the Double Zernike fits propagates into the MIW field maps, and by how much in µm of
-  wavefront, is open until both exist. The convex-hull defect in the split is present in
-  both and is carried deliberately, so it affects the comparison equally. See
+- **`miw`** — the MIW built from the Danish 1.3 unpaired wavefronts,
+  `danish_1_3_test_A_50_34_i_5rot`, agrees with the Danish 1.2 build to within about 9 % of
+  amplitude in root-mean-square on astigmatism Z5–Z6 and coma Z7–Z8, so the high-field-order
+  astigmatism and coma excess survives the change of wavefront version. The trefoil terms do
+  not: Z9 and Z10 are larger in the unpaired build by factors of 1.76 and 1.50 of amplitude
+  (Z9 OCS 0.0683 against 0.0388 µm of wavefront), concentrated in an outer field annulus
+  rather than spread over the field. Whether that is a real difference or follows from the
+  two builds' partly different visit sets — 182 of 197 and 189 visits are common — is open.
+  The convex-hull edge defect is present in both and is carried deliberately, so it affects
+  the comparison equally. Per-term maps are in
+  `output/miw/danish_1_2_vs_1_3/`; see [`studies/miw.md`](studies/miw.md) and
   [`status/miw_danish_1_3_proposal.md`](status/miw_danish_1_3_proposal.md).
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
   it to a pipeline script is a standing TODO.

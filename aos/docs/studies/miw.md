@@ -22,6 +22,7 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 | file | role |
 |---|---|
 | `run_study_radialbins.py` | pipeline `study_radialbins` rule — OCS measured intrinsic in four WFS radial shells, overlaid by rotator bin |
+| `compare_miw_versions.py` | two MIW builds term by term as a PDF — one page per Noll term holding both field maps on a shared colour scale and their difference on its own |
 
 The build itself is in the external `ts_intrinsic_wavefront` package
 (`measured_intrinsic.build_measured_intrinsic_uconstrained`, driven by the
@@ -63,6 +64,35 @@ present. The comparison of the two builds rests on 182 `(day_obs, seq_num)` visi
 to both processings inside the five rotator bins. Detail, including the per-bin visit
 counts and the column audit, is in
 [`../status/miw_danish_1_3_proposal.md`](../status/miw_danish_1_3_proposal.md).
+
+### Comparing two builds
+
+`compare_miw_versions.py` writes one page per pupil Zernike Noll term with three field
+maps: build A, build B on the **same** colour scale, and B minus A on its own scale set
+from the 2nd to 98th percentile of the difference. Both builds must sit on the same field
+grid, which two builds sharing a `rotator_select` do; the script checks that row-for-row
+rather than interpolating.
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/miw/compare_miw_versions.py \
+  --miw-a output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_maps.parquet \
+  --miw-b output/miw/danish_1_3_test_A_50_34_i_5rot/intrinsic_split_maps.parquet \
+  --label-a "Danish 1.2 (paired)" \
+  --label-b "Danish 1.3 blitz (unpaired)" \
+  --out-dir output/miw/danish_1_2_vs_1_3 \
+  --out-name miw_danish_1_2_vs_1_3_OCS
+```
+
+Colour scales are computed inside a field radius of 1.70 deg, set by
+`--scale-r-max-deg`. The outermost ring carries the convex-hull edge defect — across the
+1.70 to 1.75 deg step the Z5 OCS difference root-mean-square rises from 0.0499 to 0.1109
+µm of wavefront and reaches 0.6441 µm — and would otherwise set the range and flatten the
+real structure. Those 240 of 3985 field points are still plotted, and saturate.
+
+Alongside the PDF the script writes a `_summary.parquet` carrying, per Noll term, the
+root-mean-square of each build and of the difference in µm of wavefront, the difference
+normalized median absolute deviation, and both colour limits.
 
 ## Running
 
