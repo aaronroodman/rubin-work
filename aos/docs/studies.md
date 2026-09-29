@@ -26,7 +26,7 @@ shared modules that stay flat there.
 
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
-| [`miw`](studies/miw.md) | 2 | 510 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, built separately from the paired Danish 1.2 and the unpaired Danish 1.3 wavefronts and compared term by term; the build itself is in the external `ts_intrinsic_wavefront` package |
+| [`miw`](studies/miw.md) | 3 | 887 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, built separately from the paired Danish 1.2 and the unpaired Danish 1.3 wavefronts and compared term by term, and a check of whether the optical state the build subtracts is physically reachable; the build itself is in the external `ts_intrinsic_wavefront` package |
 | [`fam_processing`](studies/fam_processing.md) | 9 | 3389 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, an all-chunks status roll-up, and the recast of Danish 1.3 unpaired output into the paired Danish 1.2 table schema |
 | [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](studies/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
@@ -202,6 +202,16 @@ Carried here so they are visible in one place; detail in each study doc.
   the comparison equally. Per-term maps are in
   `output/miw/danish_1_2_vs_1_3/`; see [`studies/miw.md`](studies/miw.md) and
   [`status/miw_danish_1_3_proposal.md`](status/miw_danish_1_3_proposal.md).
+- **`miw`** — the optical state the build subtracts is **not physically reachable**, and
+  the same is true of both wavefront versions. Over the five in-family rotator bins, 33 of
+  50 DOF have at least 5 % of visits outside ±`r_j` — all of them bending modes, 17 of 20
+  on M1M3 and 16 of 20 on M2, with all ten rigid-body DOF inside range on every visit. The
+  worst reach a median `|d_j| / r_j` of 41.55 (dimensionless, B1_20, Danish 1.3). The
+  over-range part of the state carries 0.0315 µm of wavefront against the full state's
+  0.0587 µm (median over visits of the RMS over the DZ `(k, j)` grid), a ratio of 0.4753
+  of amplitude. Whether and how to add a penalty term to the MIW optical state fitting is
+  open; the measurement is `code/miw/check_dof_ranges.py` and
+  [`studies/miw.md`](studies/miw.md).
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
   it to a pipeline script is a standing TODO.
 

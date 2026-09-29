@@ -23,6 +23,7 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 |---|---|
 | `run_study_radialbins.py` | pipeline `study_radialbins` rule — OCS measured intrinsic in four WFS radial shells, overlaid by rotator bin |
 | `compare_miw_versions.py` | two MIW builds term by term as a PDF — one page per Noll term holding both field maps on a shared colour scale and their difference on its own |
+| `check_dof_ranges.py` | the build's per-visit recovered degrees of freedom (DOF) against the allowed range `r_j`, per DOF and as the wavefront the over-range amplitudes carry |
 
 The build itself is in the external `ts_intrinsic_wavefront` package
 (`measured_intrinsic.build_measured_intrinsic_uconstrained`, driven by the
@@ -93,6 +94,52 @@ real structure. Those 240 of 3985 field points are still plotted, and saturate.
 Alongside the PDF the script writes a `_summary.parquet` carrying, per Noll term, the
 root-mean-square of each build and of the difference in µm of wavefront, the difference
 normalized median absolute deviation, and both colour limits.
+
+### Whether the subtracted optical state is physically reachable
+
+The build recovers a 50-DOF optical state per visit with a truncated SVD keeping 34
+v-modes, and truncation is that recovery's only regularizer — nothing holds a recovered
+amplitude inside the stroke the mirror or hexapod can reach. `check_dof_ranges.py`
+compares those states against the allowed range `r_j` that the
+[`regularized_inversion`](../../../smatrix/docs/studies/regularized_inversion.md) study
+defines, reading the build's own per-visit DOF from `build/rot_*/dz_fits.parquet` and
+back-deriving `r_j` from the same SVD normalization weights the recovery already uses, so
+no new input enters.
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/miw/check_dof_ranges.py \
+  --build-dir output/miw/danish_1_3_test_A_50_34_i/build \
+  --label "Danish 1.3 blitz (unpaired)" \
+  --build-dir output/miw/danish_1_2_A_50_34_i/build \
+  --label "Danish 1.2 (paired)" \
+  --out-dir output/miw/dof_ranges
+```
+
+It is not reachable, and the two wavefront versions agree closely on that. Over the five
+in-family rotator bins — 205 visits for Danish 1.3, 193 for Danish 1.2 — **33 of 50 DOF
+have at least 5 % of visits outside ±`r_j`** in both builds, and the same 33: every one is
+a bending mode, 17 of 20 on M1M3 and 16 of 20 on M2. All ten rigid-body DOF are inside
+range on every visit, by a wide margin — the hexapod ranges are thousands of µm against
+recovered amplitudes of hundreds. The worst modes are outside on essentially every visit:
+on Danish 1.3, B1_20 (`r_j` = 0.002206 µm) has a median `|d_j| / r_j` of 41.55
+(dimensionless) reaching 61.14, and B1_12 (`r_j` = 0.009088 µm) a median of 24.43 reaching
+54.31.
+
+Clipping each amplitude into ±`r_j` and forward-propagating both states through the same
+rank-limited sensitivity matrix puts a wavefront scale on it: the over-range part of the
+subtracted state carries 0.0315 µm of wavefront against the full state's 0.0587 µm (median
+over visits of the RMS over the DZ `(k, j)` grid, Danish 1.3), a ratio of 0.4753
+(dimensionless, both amplitudes); Danish 1.2 gives 0.0269 against 0.0567 µm and 0.4378.
+That clipped state is an accounting of the wavefront at stake, not a proposed MIW —
+clipping is not what Range-Bounded Recovery does.
+
+Absolute states violate the range harder than the paired differences the `bounce` study
+inverts, which reach `|d_j| / r_j` of 8.59 to 11.27 over all 50 DOF: a difference between
+two visits cancels the common part of the state, and these do not. The two measurements
+are consistent, not in conflict.
+
+Whether and how to add a penalty term to the MIW optical state fitting is open.
 
 ## Running
 
