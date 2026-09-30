@@ -21,6 +21,7 @@ follow.
 | [4](#4-confluence-page-documenting-the-aos-production-runs-in-repomain) | Confluence page documenting the AOS production runs in `/repo/main` | probe done, page not written |
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
 | [6](#6-rebuild-the-miw-under-three-correction-schemes-and-compare) | Rebuild the MIW under three correction schemes and compare | not started |
+| [7](#7-reorganize-the-thermal_focus-analysis-and-its-pdf-report) | Reorganize the `thermal_focus` analysis and its PDF report | not started |
 
 Recently closed and moved out: the Danish 1.3 blitz Full Array Mode (FAM) processing, the
 July bounce test and its note for Guillem, the `thermal_focus` study, and the
@@ -819,6 +820,186 @@ applied DOF instead.
 **Q6. Does the k-truncation of the MIW basis interact with the scheme change?** The build
 runs `k_min = 1` to `k_max = 6`, and the existing leakage analysis
 (`aos/calibration/miw/umode_k_leakage_50_34.npy`) is specific to 50/34.
+
+**A:** _unanswered_
+
+</details>
+
+---
+
+## 7. Reorganize the `thermal_focus` analysis and its PDF report
+
+**Status:** not started · **Blocked on:** nothing
+
+Restructure the `thermal_focus` PDF so it opens with the study description and the summary
+plots, then moves through the telemetry-term comparisons to the resulting trims. Settle the
+model by evaluating the candidate telemetry terms in a controlled sequence against a mean
+truss temperature baseline, and drop the material the study has outgrown.
+
+**Goals:** Make the report read in the order a reader needs it, and establish which telemetry
+terms the deliverable model carries.
+
+<details>
+<summary>The current report, the terms to evaluate, scope and open questions</summary>
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the report builder, one page per `figure_*` or `_text_page` call | [thermal_focus/code/run_thermal_focus_analysis.py](../../thermal_focus/code/run_thermal_focus_analysis.py), `main()` |
+| the fitting engine, `huber_line`, `evaluate`, `model_comparison`, `nested_comparison`, `per_band_fit` | [thermal_focus/code/thermal_focus_fit.py](../../thermal_focus/code/thermal_focus_fit.py) |
+| the feature groups and `resolve_features` | [thermal_focus/code/thermal_focus_lib.py](../../thermal_focus/code/thermal_focus_lib.py), `FEATURE_GROUPS`, `DELIVERABLE_GROUPS` |
+| the standalone online calculator | [thermal_focus/code/trim_calculator.py](../../thermal_focus/code/trim_calculator.py) |
+| the network and DuckDB stage | [thermal_focus/code/run_thermal_focus.py](../../thermal_focus/code/run_thermal_focus.py) |
+| the study doc | [thermal_focus/docs/thermal_focus.md](../../thermal_focus/docs/thermal_focus.md) |
+
+The report is 18 pages, built in `main()` inside `with PdfPages(pdf_path)`, currently ordered
+as three parts: before the correction, training, then all the data. The pages to keep, and
+where they are now:
+
+| page | what it is |
+| --- | --- |
+| 2 | `figure_before` — focus error against truss temperature, by band, and the residual |
+| 3 | `figure_sample` — the per-night medians |
+| 7 | `figure_model` — before and after the correction, coefficient stability, residual by band |
+| 12 | `figure_elevation` — elevation slopes and the hysteresis test |
+| 14 | `_text_page`, "the correction as degrees of freedom" — the conversion explainer and the per-visit and start-of-night trim tables |
+| 15 | `figure_dof` — the trim to command per visit |
+| 16 | `figure_dof_start` — the trim at the start of each night |
+| 18 | `figure_t539` — predicted trim against what the initial alignment block settled on |
+
+`huber_line` already returns both `pearson_r` and `spearman_rho`, so both correlations are
+computed wherever it is used; several display sites print only Pearson, among them the panel
+titles at `figure_before` and the camera-temperature rows on page 8.
+
+The axis clipping to the 1st and 99th percentiles is a single site in `figure_dof`, with the
+percentiles also written into the legend string and the docstring.
+
+The feature groups, with the column names as they appear in the code:
+
+| group | columns | unit |
+| --- | --- | --- |
+| `truss` | `truss_temp_mean_c` | deg C |
+| `grads` | `m1m3_z_gradient_c_per_m`, `m1m3_y_gradient_c_per_m`, `m1m3_radial_gradient_c_per_m`, `m1m3_x_gradient_c_per_m` | deg C per m |
+| `r2grads` | `m1m3_r2_coeff_c`, `m1_r2_coeff_c`, `m3_r2_coeff_c` | deg C per unit norm r2 |
+| `camtemp` | `cam_AverageTemp` | deg C |
+
+`DELIVERABLE_GROUPS` is currently `('truss', 'grads')`. The r2 terms and camera temperature
+are analysed but not in the deliverable set.
+
+`truss_temp_mean_c` is not stored in the DuckDB. It is derived on the ConsDB join in
+`value_added/code/efd_db.py` as the mean of the two ConsDB thermometers
+`tma_truss_temp_pxpy` and `tma_truss_temp_mxmy`, then interpolated within each night, with a
+companion `truss_temp_mean_c_interpolated` flag. The M1M3 gradients and `cam_AverageTemp`
+are stored and come from `visit_telemetry`. `run_thermal_focus.py` is the only stage that
+touches the network or the DuckDB; the analysis script reads only parquet.
+
+There is no neural-network material in the topic or its doc. The lengthy explanation to
+remove is the out-of-fold and train/test justification on pages 4 and 6, with the holdout
+split coming from `section_holdout` and its figure being `figure_training` on page 5.
+
+The hysteresis test currently concludes no consistent direction dependence, at a sign-test
+p = 0.084 dimensionless, so keeping it retains a null result rather than a positive one.
+
+### Scope
+
+- Reorder the report to open with the study description and the summary plots, then the
+  model comparisons, then the resulting trims.
+- Write the opening study description: predict start-of-night focus, expressed as the degrees
+  of freedom contributing to v-mode 1, from telemetry including the Telescope Mount Assembly
+  (TMA) truss temperatures and the M1M3 thermal gradients, working in v-mode space.
+- Explain the focus conversion in the opening: v-mode 1 to approximate equivalent hexapod dz
+  in µm, via the factor relating it to camera or M2 defocus, stating that the conversion is
+  not exact at the percent level but gives a physical sense of the focus change.
+- State in the opening that the analysis uses ConsDB-derived Zernikes because they are the
+  consistent and comprehensive data set, that the selected sample is the day_obs with a
+  consistent look-up table, and what was excluded, including the hotter data.
+- Rename "uncorrected response" to "open-loop focus" throughout, and label the error quantity
+  "focus error".
+- Keep and improve the opening summary plots: open-loop focus by band, open-loop focus
+  against mean truss temperature, and before and after the linear correction, showing the
+  residual after the Huber robust fit and the fitted coefficient.
+- Show both the Pearson and the Spearman correlation coefficients at every display site,
+  including the panel titles that currently print Pearson alone.
+- Add a database-wide plot of mean TMA truss temperature over all data in the database.
+- Keep the nightly-median plots: median open-loop focus error per night, median truss
+  temperature per night, and the relation between them.
+- Identify the outlier nights in the nightly medians and report where they fall in focus.
+- Replace the training and validation discussion with a short statement: splitting by visit
+  is inappropriate because images within a night are strongly correlated, so a split must be
+  by night; and since the model is a low-dimensional linear Huber fit, a train/test or
+  fold-based approach is not needed.
+- Remove the fold analysis from the report: the out-of-fold and per-fold blocks on pages 4
+  and 6, and the coefficient-stability panel in `figure_model`.
+- Evaluate the candidate terms in sequence: mean truss temperature as the baseline, then
+  truss temperature plus each of the four M1M3 gradients, the M1 and M3 r2 terms and camera
+  temperature individually; rank the individual terms; then add them cumulatively, strongest
+  first after truss temperature.
+- Show each model with two plots: predicted against measured open-loop focus, and a
+  one-dimensional residual histogram annotated with its NMAD in µm.
+- Report the final model, expected to be truss temperature plus the four M1M3 gradients, with
+  the remaining focus error by band.
+- Keep the hysteresis study, comparing the rising and falling legs.
+- Widen the `figure_dof` axis clipping from the 1st and 99th to the 0.25th and 99.75th
+  percentiles, updating the legend string and the docstring with it.
+- Show the applied-trim plots for all visits, and add the equivalent plots for the first
+  visit of each night, selected on telemetry.
+- Keep the four start-of-night comparison plots against the trim the closed-loop alignment
+  blocks settled on, the correction size against Modified Julian Date (MJD) with its
+  distribution, and the predicted against applied correction including its outliers.
+- Identify the day_obs of the large outliers on the applied-correction axis of the final
+  comparison.
+- Update `thermal_focus/docs/thermal_focus.md` to match the new report order and the settled
+  feature set.
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. Where does the database-wide truss-temperature plot get its data?** `truss_temp_mean_c`
+is not stored in the DuckDB — it is derived on the ConsDB join from the two thermometers and
+interpolated within each night. So a database-wide plot needs either a live ConsDB pass in
+`run_thermal_focus.py`, which is the network stage, or a new `value_added` builder that
+materializes the column into `aos_efd.duckdb`. The latter makes it available to every other
+study; the former is a smaller change confined to this topic.
+
+**A:** _unanswered_
+
+**Q2. Does the rename reach the dict keys, or only the display strings?** Roughly 15
+user-visible strings carry "uncorrected", but so do about 8 dict keys and the module constant
+`trim_calculator.UNCORRECTED_NMAD_UM`, which crosses into `thermal_focus_fit.py` and the
+standalone calculator. Renaming only the display strings leaves the code and the report using
+different vocabulary.
+
+**A:** _unanswered_
+
+**Q3. Does the report keep reporting a cross-validated NMAD after the fold presentation is
+removed?** `GroupKFold` in `thermal_focus_fit.evaluate` is what produces every NMAD the
+report currently quotes, so dropping the fold *presentation* is separable from dropping the
+mechanism. Either the quoted NMAD becomes an in-sample number, or the folds keep running
+unseen.
+
+**A:** _unanswered_
+
+**Q4. Is the page-14 material to retain the DOF conversion explainer, or the fitted-model
+summary?** Page 14 is the text page "the correction as degrees of freedom", holding the
+conversion explainer and the per-visit and start-of-night trim tables. The fitted-model
+summary is page 6, which is also where the per-fold table to be removed sits.
+
+**A:** _unanswered_
+
+**Q5. Does the hysteresis test stay as a null result, or get a decision?** It currently
+reports no consistent direction dependence at a sign-test p = 0.084 dimensionless. Keeping it
+preserves the evidence; the alternative is to state the conclusion in the text and drop the
+page.
+
+**A:** _unanswered_
+
+**Q6. What decides "useful" when adding terms cumulatively?** A reduction in residual NMAD in
+µm by some threshold, coefficient sign stability, or physical interpretability. The r2 terms
+were previously measured at a 4.8% reduction in robust residual scatter and their adoption was
+left open.
 
 **A:** _unanswered_
 

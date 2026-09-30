@@ -397,6 +397,8 @@ The two follow-ups, both now closed:
 
 **One decision left open, carried in the study doc:** whether to adopt the M1 and M3
 quadratic pair into the deliverable feature set. The deliverable is unchanged pending it.
+That decision is now part of the controlled term-by-term comparison in
+[todo-ideas.md](todo-ideas.md) item 7, which reorganizes this study's report.
 
 <details>
 <summary>Promotion state before the work, the sign-convention resolution, and the original scope</summary>
