@@ -47,6 +47,18 @@ and working state that span the whole repo — and so belong to no single topic 
 
 Topic-specific docs stay in their topic (`<topic>/docs/`), not here.
 
+## `notes/todos/` — the Active Optics System (AOS) idea queue
+
+Aaron's own queue of AOS work: items he intends to do, written as an idea plus collapsed
+detail rather than as a specification. Distinct from `notes/status/todo.md`, which indexes
+work already specified elsewhere in the repository.
+
+| doc | what it holds |
+|---|---|
+| [`todos/todo-ideas.md`](todos/todo-ideas.md) | new and in-process items, each with goals, known collections, scope and answerable open questions |
+| [`todos/completed-todos.md`](todos/completed-todos.md) | items delivered, with what was delivered and the original scope retained |
+| [`todos/todo-style.md`](todos/todo-style.md) | how an item in the queue is written |
+
 ## Conventions
 
 - **Draft in plain Markdown.** Do NOT use MyST directives (` ```{figure} `, `{cite}`,

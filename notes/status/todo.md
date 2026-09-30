@@ -11,6 +11,10 @@ A/B/C, labelled `A1`…`C4`), [`step1_structure_decisions.md`](step1_structure_d
 (the numbered step-1 queue), [`memory_cleanup_plan.md`](memory_cleanup_plan.md), and the
 per-topic `<topic>/docs/status/` docs.
 
+Aaron's own queue of AOS ideas is separate, in
+[`notes/todos/todo-ideas.md`](../todos/todo-ideas.md): items he intends to do, not yet
+specified as repository work.
+
 ## Blocked on a decision from Aaron
 
 Nothing below can start until the question is answered. These are the bottleneck.
