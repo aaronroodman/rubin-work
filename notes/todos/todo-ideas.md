@@ -22,6 +22,8 @@ follow.
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
 | [6](#6-rebuild-the-miw-under-three-correction-schemes-and-compare) | Rebuild the MIW under three correction schemes and compare | not started |
 | [7](#7-reorganize-the-thermal_focus-analysis-and-its-pdf-report) | Reorganize the `thermal_focus` analysis and its PDF report | not started |
+| [8](#8-promote-the-regularized-inversions-to-shared-code) | Promote the regularized inversions to shared code | not started |
+| [9](#9-extend-the-bounce-test-to-four-recovery-schemes) | Extend the bounce test to four recovery schemes | not started, needs item 8 |
 
 Recently closed and moved out: the Danish 1.3 blitz Full Array Mode (FAM) processing, the
 July bounce test and its note for Guillem, the `thermal_focus` study, and the
@@ -462,23 +464,23 @@ updating a page in the Rubin Confluence space is an outward-facing action. Eithe
 deliverable is a local file to paste in, or the page is created through the API — and if the
 latter, which space and parent page. Nothing gets published without confirmation.
 
-**A:** _unanswered_
+**A:** _I will cut and paste into an existing Confluence page_
 
 **Q2. Does an existing Confluence page cover this and need updating** rather than a new one
 created? "Up to date" in the request suggests there may be a stale one.
 
-**A:** _unanswered_
+**A:** _yes_
 
 **Q3. Is `/repo/embargo` in scope,** or is `/repo/main` the whole story for production?
 Embargo may hold recent runs not yet in main.
 
-**A:** _unanswered_
+**A:** _previously we were using both but right now we only have ouput in /repo/main_
 
 **Q4. Which product do the night counts refer to?** They come from the aggregate visit
 tables here. If a run's `zernikes` or donut-level products have different coverage, the page
 should say so — worth one spot-check before publishing.
 
-**A:** _unanswered_
+**A:** _just using the aggregate visit tables is fine, except for the blitz processing  which has different output_
 
 </details>
 
@@ -764,9 +766,10 @@ outside the allowed range `r_j` and changes nothing.
 
 - Add `mi_config.yaml` entries for the 50/34 with RBR and the 22/12 builds alongside the
   existing 50/34, and run all three over the same visits, rotator bins and filter.
-- Apply the RBR penalty inside the MIW build's per-visit optical-state recovery, importing
-  the solver from `smatrix/` rather than copying it.
-- Compare the residual MIW between the three builds, term by term and as field maps.
+- Apply the RBR penalty inside the MIW build's per-visit optical-state recovery, calling the
+  shared solver from item 8 rather than copying it.
+- Compare the residual MIW between the three builds, term by term and as field maps, using
+  the achieved residual `dW - S (d / w)` rather than the subspace projection.
 - Convert each residual MIW to an inferred full width at half maximum (FWHM) in arcsec over
   the focal plane, and report the three.
 - Report the size of the corrected v-modes in each build: all 34 in full 50/34, the 34 under
@@ -787,41 +790,41 @@ here as the record of the decision.
 run. Using Danish 1.2 gives an existing baseline; using Danish 1.3 folds in the newer
 retrieval but means building all three from scratch.
 
-**A:** _unanswered_
+**A:** _lets move to Danish 1.3 for this study_
 
 **Q2. What `kappa` and `power` does the MIW RBR use?** The bounce study uses `kappa = 4` and
 `power = 3` dimensionless. Whether those transfer to the MIW recovery, where the wavefront
 being inverted is a per-visit deviation rather than a bounce-leg difference, needs checking
 rather than assuming.
 
-**A:** _unanswered_
+**A:** _I want to use those same parameters to begin with_
 
 **Q3. Is 22/12 built with `standard_22` at 12 modes, or at its `N_MODES` default?**
 `aos_state.DOF_SETS["standard_22"]` is the 22-index set and `N_MODES` gives it 12, but the
 mode count is set independently by `n_modes` and the scalar 22 silently picks DOF 0 to 21,
 which is the wrong set.
 
-**A:** _unanswered_
+**A:** _22/12 uses the standard_22 and not the first 22 DoF, those 22 Dof are the 10 hexapod, the first 7 M1M3 and the first 5 M2 _
 
 **Q4. Does RBR belong in the MIW build, or only as a diagnostic on top of it?** The bounce
 note records that an RBR amplitude is a constrained estimate rather than a measurement, and
 that the default recovery remains the estimator. If that holds for the MIW, the RBR build is
 a comparison arm rather than a candidate replacement.
 
-**A:** _unanswered_
+**A:** _The RBR's constrained DoF results are a candidate replacement for unconstrained 50/34 and not merely a comparison, and the estimator should be the constrained DoF and constrained v-mode values. This is the achieved_residual. _
 
 **Q5. Which residual is compared?** The subspace-projection residual from
 `aos_fwhm.residual_dW` cannot see a regularizer that trades wavefront against amplitude, so
 it will not show what RBR costs. The bounce study uses `achieved_residual` against the
 applied DOF instead.
 
-**A:** _unanswered_
+**A:** Use the achieved residual, `regularized_inversion.achieved_residual(dW, d, svd)`.
 
 **Q6. Does the k-truncation of the MIW basis interact with the scheme change?** The build
 runs `k_min = 1` to `k_max = 6`, and the existing leakage analysis
 (`aos/calibration/miw/umode_k_leakage_50_34.npy`) is specific to 50/34.
 
-**A:** _unanswered_
+**A:** _I do not need to repeat that leakage analysis and I expect the k=1..6 is still sufficient to capture the optical state_
 
 </details>
 
@@ -964,7 +967,7 @@ interpolated within each night. So a database-wide plot needs either a live Cons
 materializes the column into `aos_efd.duckdb`. The latter makes it available to every other
 study; the former is a smaller change confined to this topic.
 
-**A:** _unanswered_
+**A:** _Access of the ConsDB is fast enough that the existing code that gets the mean truss temp is fine and we don't need this ithe duckdb_
 
 **Q2. Does the rename reach the dict keys, or only the display strings?** Roughly 15
 user-visible strings carry "uncorrected", but so do about 8 dict keys and the module constant
@@ -972,7 +975,7 @@ user-visible strings carry "uncorrected", but so do about 8 dict keys and the mo
 standalone calculator. Renaming only the display strings leaves the code and the report using
 different vocabulary.
 
-**A:** _unanswered_
+**A:** _Only need to change names in the PDF file not in the code or parquet files_
 
 **Q3. Does the report keep reporting a cross-validated NMAD after the fold presentation is
 removed?** `GroupKFold` in `thermal_focus_fit.evaluate` is what produces every NMAD the
@@ -980,26 +983,207 @@ report currently quotes, so dropping the fold *presentation* is separable from d
 mechanism. Either the quoted NMAD becomes an in-sample number, or the folds keep running
 unseen.
 
-**A:** _unanswered_
+**A:** _I still want the robust RMS (which I assume is what NMAD means here) for the residual of the Trim-Deviation v1's equivalent dz (v1_dz) around the prediction.  That doesn't need the KFold analysis I believe._
 
 **Q4. Is the page-14 material to retain the DOF conversion explainer, or the fitted-model
 summary?** Page 14 is the text page "the correction as degrees of freedom", holding the
 conversion explainer and the per-visit and start-of-night trim tables. The fitted-model
 summary is page 6, which is also where the per-fold table to be removed sits.
 
-**A:** _unanswered_
+**A:** _page 14 is the 'correction as degrees of freedom'_
 
 **Q5. Does the hysteresis test stay as a null result, or get a decision?** It currently
 reports no consistent direction dependence at a sign-test p = 0.084 dimensionless. Keeping it
 preserves the evidence; the alternative is to state the conclusion in the text and drop the
 page.
 
-**A:** _unanswered_
+**A:** _Keep the plots and as a null result we just show the plots, which I want to keep_
 
 **Q6. What decides "useful" when adding terms cumulatively?** A reduction in residual NMAD in
 µm by some threshold, coefficient sign stability, or physical interpretability. The r2 terms
 were previously measured at a 4.8% reduction in robust residual scatter and their adoption was
 left open.
+
+**A:** _I will look by eye at the results, since I am weighing the NMAD residuals with the overhead of adding the r2 variables_
+
+</details>
+
+---
+
+## 8. Promote the regularized inversions to shared code
+
+**Status:** not started · **Blocked on:** nothing
+
+Move the Range-Bounded Recovery (RBR) solver and the Optimal Integral Controller (OIC) style
+quadratic penalty term into shared code, so every study that applies a regularized recovery of
+the optical state calls the same implementation.
+
+**Goals:** Have one implementation of each inversion, used by the bounce test, the Measured
+Intrinsic Wavefront (MIW) build and any later study, so no second copy can drift from the
+study that validated it.
+
+<details>
+<summary>What exists, scope and open questions</summary>
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the solvers | [smatrix/code/regularized_inversion/regularized_inversion.py](../../smatrix/code/regularized_inversion/regularized_inversion.py) — `forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`, `achieved_residual`, `dof_range_vector` |
+| the OIC-style penalty, reimplemented for comparison | [smatrix/code/regularized_inversion/run_oic_compare.py](../../smatrix/code/regularized_inversion/run_oic_compare.py) — `oic_authority`, `invert_oic` |
+| the derivation and validation | `smatrix/docs/studies/regularized_inversion.md` |
+| the shared accessor the bounce study uses | `aos/code/bounce/bounce_lib.py`, `rbr_module` |
+| a second, duplicated bootstrap | `aos/code/miw/check_dof_ranges.py` |
+
+The module already has two callers outside its own study and in a different topic,
+`aos/code/bounce/` and `aos/code/miw/`, each reaching across the topic boundary by a
+hardcoded `parents[3] / 'smatrix' / 'code'` path insert. `bounce_lib.rbr_module()` is the
+considered version of that reach and says so; `check_dof_ranges.py` duplicates the bootstrap
+rather than calling it.
+
+`invert_oic` currently lives in `run_oic_compare.py`, which is a hand-run print-only script
+wired into no Snakefile, so the OIC penalty is not importable as a solver today.
+
+Two snags for the move. `dof_range_vector` imports `normalization_weights` by bare name from
+`smatrix/code`, which is why `rbr_module()` inserts both directories, so that module has to
+move or stay reachable. And in `aos/code/`, `common` in an import almost always means the
+external `lsst.ts.intrinsic.wavefront.common`, so a `common.`-prefixed import needs care in
+that topic.
+
+### Scope
+
+- Move the solvers to shared code under `common/`, keeping the public API
+  (`forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`,
+  `achieved_residual`, `dof_range_vector`).
+- Resolve the `normalization_weights` dependency so the moved module imports cleanly.
+- Promote the OIC-style quadratic penalty out of `run_oic_compare.py` into the same module as
+  a first-class solver alongside `invert_range_penalty`.
+- Repoint `aos/code/bounce/bounce_lib.py` and `aos/code/miw/check_dof_ranges.py` at the shared
+  module and delete the duplicated path-insert bootstrap.
+- Keep `smatrix/docs/studies/regularized_inversion.md` as the derivation, cross-referenced
+  from the new location.
+- Update `common/README.md` and the affected study docs.
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. Does `normalization_weights` move to `common/` too, or stay in `smatrix/code`?** Moving
+it makes the shared module self-contained; leaving it means the shared module still reaches
+into `smatrix/`, which is the coupling the move is meant to remove.
+
+**A:** _unanswered_
+
+**Q2. How do the `aos/code/` callers import it?** A `common.`-prefixed import is the repo
+convention but collides with the external `lsst.ts.intrinsic.wavefront.common` that `common`
+usually means in that topic. The existing pattern there is a bare-name import after a path
+insert.
+
+**A:** _unanswered_
+
+**Q3. Does the OIC solver keep the reimplementation, or call `ts_ofc`?** `invert_oic` mirrors
+`OICController.authority` rather than importing it, which keeps the comparison in one metric
+and one subspace. Calling `ts_ofc` directly would track the deployed controller but brings its
+`xref` variants and its own normalization.
+
+**A:** _unanswered_
+
+</details>
+
+---
+
+## 9. Extend the bounce test to four recovery schemes
+
+**Status:** not started · **Blocked on:** the shared RBR and OIC code in item 8
+
+Compare four recoveries of the optical state at each bounce point: the full 50 degree-of-freedom
+/ 34 v-mode (50/34) scheme, 50/34 with the Range-Bounded Recovery (RBR) constraint, the 22/12
+scheme, and 50/34 with the Optimal Integral Controller (OIC) style quadratic penalty. Report
+the degree-of-freedom (DOF) values per point and the image-quality impact per point for each.
+
+**Goals:** Determine how the recovered rigid-body and bending-mode amplitudes and the resulting
+image quality differ between the four schemes, across the bounce legs.
+
+<details>
+<summary>What exists, the plot layout, scope and open questions</summary>
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the bounce driver | [aos/code/bounce/run_bounce.py](../../aos/code/bounce/run_bounce.py) |
+| its plotting library | [aos/code/bounce/bounce_lib.py](../../aos/code/bounce/bounce_lib.py) |
+| the study doc and the July results | `aos/docs/studies/bounce.md`, `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` |
+| the solvers | `smatrix/code/regularized_inversion/regularized_inversion.py`, moving to shared code in item 8 |
+| the OIC-style penalty | `smatrix/code/regularized_inversion/run_oic_compare.py`, `invert_oic` |
+
+The run builds two SVDs today, both through
+`build_ofc_svd(iZs, k_min, k_max, n_keep, n_dof=...)`: the 50/34 default, and a 5 DOF / 5
+v-mode camera-hexapod-only SVD for the rotator bounce, whose `n_dof=CAM_HEX_DOF` shows that
+`n_dof` accepts an index list rather than only a count. There is no 22/12 in
+`aos/code/bounce/` at all.
+
+The RBR arm does use the achieved residual, as assumed: `_rbr_fwhm` calls
+`invert_range_penalty` then `_achieved_fwhm`, which is
+`fp_fwhm(svd, iZs, achieved_residual(dW, d, svd), ...)`. The per-(night, leg) series
+`fwhm_after_default` and `fwhm_after_rbr` are both achieved residuals and so directly
+comparable.
+
+One inconsistency to fix while here: the per-bounce bar chart plots
+`fwhm_after_50_34` and `fwhm_after_5_5`, which are subspace-projection residuals from
+`aos_fwhm.residual_dW`, on the same axis as `fwhm_after_rbr`, which is an achieved residual.
+The code's own comment says that comparison needs the achieved residual.
+
+The per-DOF panel figure `plot_dof_vs_b_value_panels` currently computes
+`nrows = ceil(n_panels / ncols)` with `ncols=5` and `panel_size=(2.6, 2.1)` inches and emits
+**all** panels on one figure — 50 DOF becomes a single 10 by 5 page at 14.2 by 22.2 inches.
+`plot_values_vs_ordinal_pages` in the same file already paginates with
+`per_page = ncols * rows_per_page`, so the pattern to copy is local. `cfg` already carries
+`dof_ncols` and `dof_rows_per_page`, which this function does not read.
+
+### Scope
+
+- Build the 22/12 and the OIC-penalty recoveries alongside the existing 50/34 and 50/34 RBR,
+  so four schemes are recovered at every bounce point.
+- Use the 22 DOF index set for 22/12 rather than the first 22 DOF indices.
+- Report the DOF value per point per scheme, in each DOF's own unit, against the allowed
+  range `r_j`.
+- Report the image-quality impact per point per scheme as an inferred full width at half
+  maximum (FWHM) in arcsec, using the achieved residual `dW - S (d / w)` for every scheme so
+  the four are comparable.
+- Change the per-DOF panel layout to 2 columns by 5 rows per page, paginating across pages,
+  with panels enlarged to suit.
+- Fix the per-bounce bar chart to use the achieved residual for every series rather than
+  mixing it with the subspace projection.
+- Update `aos/docs/studies/bounce.md` with the four-scheme comparison.
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. What `rho` does the OIC arm use?** `ts_ofc` ships `motion_penalty = 0.0` dimensionless,
+at which the penalty is inactive, and the only non-zero values in that package are 1e-4 and
+1e-5 in its tests. `run_oic_compare.py` sweeps 0 to 1e-1. So the arm needs a chosen value, or
+a sweep, rather than the shipped default.
+
+**A:** _unanswered_
+
+**Q2. Does the 5/5 camera-hexapod arm stay?** The rotator bounce currently adds it as a fifth
+recovery. Keeping it makes five schemes on the rotator legs while the other legs carry four.
+
+**A:** _unanswered_
+
+**Q3. Do all four schemes appear in one panel per DOF, or one panel per scheme?** Four series
+on a shared panel keeps the comparison in one place but crowds it; the enlarged 2 by 5 layout
+was chosen for the four-series case.
+
+**A:** _unanswered_
+
+**Q4. Which bounce and param set does this run on?** The July results are Danish 1.2 at
+`A_50_34_i_5rot`. Item 6 moves the MIW work to Danish 1.3, so the two studies would sit on
+different retrievals unless this moves too.
 
 **A:** _unanswered_
 

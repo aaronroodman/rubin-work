@@ -231,7 +231,8 @@ Possible bugs (worth flagging separately from format):
 
 ## 2. Finish the bounce test with the July data, then summarize for Guillem
 
-**Status:** complete 2026-09-23 — July nights in, note written
+**Status:** complete 2026-09-23 — July nights in, note written · extended by
+[todo-ideas.md](todo-ideas.md) item 9
 
 The MIW refit was carried forward past 20260513 and the bounce rerun, and the result
 became an outward-facing note for Guillem. Along the way the elevation bounce turned out
