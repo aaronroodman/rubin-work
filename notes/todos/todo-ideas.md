@@ -22,7 +22,7 @@ follow.
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
 | [6](#6-rebuild-the-miw-under-three-correction-schemes-and-compare) | Rebuild the MIW under three correction schemes and compare | not started |
 | [7](#7-reorganize-the-thermal_focus-analysis-and-its-pdf-report) | Reorganize the `thermal_focus` analysis and its PDF report | not started |
-| [8](#8-promote-the-regularized-inversions-to-shared-code) | Promote the regularized inversions to shared code | not started |
+| [8](#8-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode) | Consolidate the regularized inversions as shared OFC code in `smatrix/code` | not started |
 | [9](#9-extend-the-bounce-test-to-four-recovery-schemes) | Extend the bounce test to four recovery schemes | not started, needs item 8 |
 
 Recently closed and moved out: the Danish 1.3 blitz Full Array Mode (FAM) processing, the
@@ -1010,13 +1010,14 @@ left open.
 
 ---
 
-## 8. Promote the regularized inversions to shared code
+## 8. Consolidate the regularized inversions as shared OFC code in `smatrix/code`
 
 **Status:** not started · **Blocked on:** nothing
 
-Move the Range-Bounded Recovery (RBR) solver and the Optimal Integral Controller (OIC) style
-quadratic penalty term into shared code, so every study that applies a regularized recovery of
-the optical state calls the same implementation.
+Make the Range-Bounded Recovery (RBR) solver and the Optimal Integral Controller (OIC) style
+quadratic penalty term shared code in `smatrix/code`, alongside the other Optical Feedback
+Control (OFC) code that uses the state estimator, so every study applying a regularized
+recovery of the optical state calls the same implementation.
 
 **Goals:** Have one implementation of each inversion, used by the bounce test, the Measured
 Intrinsic Wavefront (MIW) build and any later study, so no second copy can drift from the
@@ -1052,17 +1053,18 @@ that topic.
 
 ### Scope
 
-- Move the solvers to shared code under `common/`, keeping the public API
+- Place the solvers as shared OFC code in `smatrix/code`, keeping the public API
   (`forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`,
-  `achieved_residual`, `dof_range_vector`).
-- Resolve the `normalization_weights` dependency so the moved module imports cleanly.
+  `achieved_residual`, `dof_range_vector`), so `normalization_weights` stays reachable as it
+  is today.
 - Promote the OIC-style quadratic penalty out of `run_oic_compare.py` into the same module as
-  a first-class solver alongside `invert_range_penalty`.
-- Repoint `aos/code/bounce/bounce_lib.py` and `aos/code/miw/check_dof_ranges.py` at the shared
-  module and delete the duplicated path-insert bootstrap.
-- Keep `smatrix/docs/studies/regularized_inversion.md` as the derivation, cross-referenced
-  from the new location.
-- Update `common/README.md` and the affected study docs.
+  a first-class solver alongside `invert_range_penalty`, mirroring `OICController` rather than
+  importing `ts_ofc`.
+- Give `aos/code/bounce/bounce_lib.py` and `aos/code/miw/check_dof_ranges.py` one shared
+  accessor instead of two duplicated path-insert bootstraps.
+- Keep `smatrix/docs/studies/regularized_inversion.md` as the derivation, and index the
+  promoted OIC solver there.
+- Update `smatrix/README.md` and the affected study docs.
 
 ### Open questions
 
@@ -1073,21 +1075,21 @@ here as the record of the decision.
 it makes the shared module self-contained; leaving it means the shared module still reaches
 into `smatrix/`, which is the coupling the move is meant to remove.
 
-**A:** _unanswered_
+**A:** _By common I meant shared code in the appropriate place.  Here that is in the smatrix/code area not common.  I believe all such OFC code, ie. using state_estimator, is in smatrix/code, so thats where this should go.  So NOT into common/_
 
 **Q2. How do the `aos/code/` callers import it?** A `common.`-prefixed import is the repo
 convention but collides with the external `lsst.ts.intrinsic.wavefront.common` that `common`
 usually means in that topic. The existing pattern there is a bare-name import after a path
 insert.
 
-**A:** _unanswered_
+**A:** _I am not sure_
 
 **Q3. Does the OIC solver keep the reimplementation, or call `ts_ofc`?** `invert_oic` mirrors
 `OICController.authority` rather than importing it, which keeps the comparison in one metric
 and one subspace. Calling `ts_ofc` directly would track the deployed controller but brings its
 `xref` variants and its own normalization.
 
-**A:** _unanswered_
+**A:** _Lets just mirror the OICController code_
 
 </details>
 
@@ -1147,6 +1149,12 @@ The per-DOF panel figure `plot_dof_vs_b_value_panels` currently computes
 - Build the 22/12 and the OIC-penalty recoveries alongside the existing 50/34 and 50/34 RBR,
   so four schemes are recovered at every bounce point.
 - Use the 22 DOF index set for 22/12 rather than the first 22 DOF indices.
+- Devise a study over the bounce data that sweeps the OIC penalty `rho` and picks the value
+  holding the recovered DOF roughly inside their allowed range `r_j` without degrading the
+  inferred FWHM too far, then adopt that `rho` for the four-scheme comparison.
+- Keep the 5 DOF / 5 v-mode camera-hexapod recovery as the only scheme plotted for the rotator
+  bounce, since the camera alone should correct a rotator-induced misalignment.
+- Plot all four schemes in each per-DOF panel.
 - Report the DOF value per point per scheme, in each DOF's own unit, against the allowed
   range `r_j`.
 - Report the image-quality impact per point per scheme as an inferred full width at half
@@ -1168,23 +1176,23 @@ at which the penalty is inactive, and the only non-zero values in that package a
 1e-5 in its tests. `run_oic_compare.py` sweeps 0 to 1e-1. So the arm needs a chosen value, or
 a sweep, rather than the shipped default.
 
-**A:** _unanswered_
+**A:** _The value of this term needs some study, so please devise a study using the bounce test data to pick a value of rho that limits the DoF to roughly inside their range while not degrading the image quality too much.  Then lets use that rho value afterwards._
 
 **Q2. Does the 5/5 camera-hexapod arm stay?** The rotator bounce currently adds it as a fifth
 recovery. Keeping it makes five schemes on the rotator legs while the other legs carry four.
 
-**A:** _unanswered_
+**A:** _Yes, this stays and for the rotator bounce it remains the only scheme to plot.  Reason is that for the rotator we only want to move the Camera since it should be able to fully correct for any Camera rotator induced misalignment.  We don't want any of the other schemes for the Rotator_
 
 **Q3. Do all four schemes appear in one panel per DOF, or one panel per scheme?** Four series
 on a shared panel keeps the comparison in one place but crowds it; the enlarged 2 by 5 layout
 was chosen for the four-series case.
 
-**A:** _unanswered_
+**A:** _All 4 schemes in each DoF panel, to make easy comparisons_
 
 **Q4. Which bounce and param set does this run on?** The July results are Danish 1.2 at
 `A_50_34_i_5rot`. Item 6 moves the MIW work to Danish 1.3, so the two studies would sit on
 different retrievals unless this moves too.
 
-**A:** _unanswered_
+**A:** _Stick with Danish 1.2 here_
 
 </details>
