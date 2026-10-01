@@ -28,11 +28,18 @@ RSP/USDF-only):
       --mi-name pathA_50_34_i_5rot \
       --min-detectors 160
 
-With `--rho-scan` it instead prints one compact row per bounce leg giving, for the
-truncated and RBR recoveries and for each `rho`, the median over pairs of
-`max_j |d_j| / r_j` (dimensionless) and of the achieved-residual full width at half
-maximum (FWHM) in arcsec. That is the table the adopted `rho` is chosen from, and it is
-recorded in `smatrix/docs/studies/regularized_inversion.md`.
+With `--rho-scan` it instead reports one compact row per bounce leg and recovery giving,
+for the truncated and RBR recoveries and for each `rho`, the median over pairs of
+`max_j |d_j| / r_j` (dimensionless), the achieved-residual full width at half maximum
+(FWHM) in arcsec, and the **amplitude retention** of the rigid-body and bending-mode
+blocks against the unregularized truncated recovery (dimensionless). That is the scan the
+adopted `rho` is chosen from; it is recorded in
+`smatrix/docs/studies/regularized_inversion.md`, and with `--out-dir` it is also written
+as `oic_rho_scan.parquet` and `oic_rho_scan.pdf`.
+
+The retention columns are what make the scan a validation rather than a feasibility
+check: the rigid-body degrees of freedom sit far inside their ranges, so a penalty that
+suppresses them twentyfold does not move `max_j |d_j| / r_j` at all.
 
 The solvers themselves live in `smatrix/code/regularized_inversion.py`, shared with the
 `aos` bounce study; this script only exercises and reports on them.
@@ -147,15 +154,39 @@ def report_curvature(kappa, power):
           f'(dimensionless); the OIC is exactly 1.0\n')
 
 
-def report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
-                    kappa, power, rhos):
-    """Print the feasibility-and-image-quality table behind the adopted OIC `rho`.
+#: Index groups the rho scan reports amplitude retention over, because the OIC
+#: authority `a_j` spans five orders of magnitude between them: the 10 rigid-body
+#: DOF sit at `a_j` of order 1 while the 40 bending modes run to 9.1e4.  A single
+#: scalar rho therefore cannot be read as "the penalty strength" — it acts on the
+#: two groups with wildly different force, which is the whole point of the scan.
+SCAN_GROUPS = (('rigid body', list(range(0, 10))),
+               ('bending', list(range(10, 50))))
 
-    One row per bounce leg, giving for the truncated and RBR recoveries and for each
-    `rho`: the median over the leg's pairs of `max_j |d_j| / r_j` (dimensionless,
-    recovered amplitude over allowed range) and of the achieved-residual full width at
-    half maximum (FWHM) in arcsec. Reading down a `rho` column says which value brings
-    every leg to a feasible solution, and at what image-quality cost.
+
+def report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
+                    kappa, power, rhos, out_dir=None, adopted_rho=None):
+    """Print the table behind the adopted OIC `rho`: feasibility, image quality *and*
+    amplitude retention.
+
+    One row per bounce leg and recovery, giving the median over the leg's pairs of
+    `max_j |d_j| / r_j` (dimensionless, recovered amplitude over allowed range), the
+    achieved-residual full width at half maximum (FWHM) in arcsec, and the **amplitude
+    retention** of each `SCAN_GROUPS` group against the unregularized truncated
+    recovery.
+
+    Retention is the regression slope of the penalized amplitudes on the truncated ones
+    over all of the leg's pairs and the group's DOF, `sum(d_pen · d_trunc) /
+    sum(d_trunc²)`, dimensionless. 1.0 means the penalty left the group's amplitudes
+    alone; 0.05 means it suppressed them twentyfold. It is reported per group because
+    the OIC authority differs by five orders of magnitude between rigid body and
+    bending modes (see `SCAN_GROUPS`), so one rho can leave the bending modes barely
+    touched while crushing the rigid body, or the reverse.
+
+    Feasibility and FWHM alone cannot detect that: the rigid-body DOF sit far inside
+    their ranges, so suppressing them does not move `max |d_j| / r_j`, and they are
+    partly degenerate in wavefront, so it moves the FWHM much less than it moves the
+    amplitudes. Choosing rho on feasibility alone selects a value that silently
+    destroys the rigid-body solution, which is why retention is scanned alongside.
 
     Parameters
     ----------
@@ -179,6 +210,22 @@ def report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
         RBR penalty exponent p, dimensionless.
     rhos : `list` of `float`
         OIC `motion_penalty` values to scan, dimensionless.
+    out_dir : `str` or `pathlib.Path`, optional
+        When given, also write the scan as `oic_rho_scan.parquet` (one row per
+        leg and recovery) and `oic_rho_scan.pdf` (feasibility and retention
+        against rho, one panel per leg) — the durable record validating the
+        adopted value, rather than a table that exists only in a terminal.
+    adopted_rho : `float`, optional
+        The rho carried in `aos/analysis_config.yaml`, dimensionless, marked on
+        the plot so the trade-off at the adopted value is visible.
+
+    Returns
+    -------
+    rows : `list` [`dict`]
+        One row per (leg, recovery), with `leg`, `n_pairs`, `recovery`, `rho`
+        (dimensionless, NaN for the non-OIC recoveries), `ratio` (dimensionless),
+        `fwhm_arcsec`, and one retention column per `SCAN_GROUPS` group
+        (dimensionless).
     """
     import aos_fwhm as _afw
     import bounce_lib as _bl
@@ -186,22 +233,42 @@ def report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
 
     grid = _afw.fp_grid()
 
-    def _score(dWs, sols):
+    def _retention(sols, ref):
+        """Regression slope of penalized on truncated amplitudes, per group."""
+        out = []
+        for _nm, idx in SCAN_GROUPS:
+            a = np.asarray([s[idx] for s in sols], float).ravel()
+            b = np.asarray([s[idx] for s in ref], float).ravel()
+            den = float(b @ b)
+            out.append(float(a @ b) / den if den > 0 else np.nan)
+        return out
+
+    def _score(dWs, sols, ref):
         mr = np.median([np.max(np.abs(s) / ranges) for s in sols])
         fw = np.median([_afw.fp_fwhm(svd, pupil_j,
                                      ri.achieved_residual(d, s, svd), grid, _conv)
                         for d, s in zip(dWs, sols)])
-        return mr, fw
+        return (mr, fw, *_retention(sols, ref))
 
-    print('=== OIC motion penalty rho: feasibility and image quality per bounce leg ===')
-    print('  each cell is "max|d_j|/r_j / FWHM": the median over the leg pairs of the')
-    print('  dimensionless max recovered-amplitude-over-allowed-range, and of the')
-    print('  achieved-residual FWHM in arcsec. A ratio at or below 1 is feasible.\n')
-    head = (f'  {"leg":16s} {"n":>3s} {"trunc":>14s} '
-            f'{f"RBR k={kappa:g} p={power:d}":>14s}')
-    for rho in rhos:
-        head += f' {f"rho={rho:.2e}":>14s}'
+    gnames = [nm for nm, _ in SCAN_GROUPS]
+    print('=== OIC motion penalty rho: feasibility, image quality and amplitude '
+          'retention ===')
+    print('  ratio  = median over the leg pairs of max_j |d_j|/r_j, dimensionless '
+          '(<= 1 is feasible)')
+    print('  FWHM   = median achieved-residual FWHM, arcsec')
+    for nm, idx in SCAN_GROUPS:
+        print(f'  {nm:10s} = amplitude retention over DOF {idx[0]}-{idx[-1]}, '
+              f'dimensionless: regression slope of the penalized amplitudes on the')
+        print('               unregularized truncated ones (1.0 = untouched, '
+              '0.05 = suppressed 20x)')
+    print('  The OIC authority a_j spans 0.68 to 9.1e4 in inverse DOF units, so one '
+          'rho acts')
+    print('  on the two groups with vastly different strength — read both retention '
+          'columns.\n')
+    head = (f'  {"leg":16s} {"n":>3s} {"recovery":>22s} {"ratio":>8s} {"FWHM":>7s}'
+            + ''.join(f' {nm:>11s}' for nm in gnames))
     print(head)
+    out_rows = []
     for bounce in cfg['bounces']:
         res = _bl.run_bounce(tab, bounce, 'z1toz6', k_list, pupil_j)
         for label, comp in res['comparisons'].items():
@@ -209,18 +276,114 @@ def report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
             if not pairs:
                 continue
             dWs = [np.nan_to_num(W[c] - W[r]) for (r, c) in pairs]
-            cols = [_score(dWs, [ri.invert_truncated(d, svd) for d in dWs]),
-                    _score(dWs, [ri.invert_range_penalty(d, svd, ranges, kappa=kappa,
-                                                         power=power) for d in dWs])]
-            cols += [_score(dWs, [invert_oic(d, svd, authority, rho) for d in dWs])
+            trunc = [ri.invert_truncated(d, svd) for d in dWs]
+            recs = [('truncated', np.nan, trunc),
+                    (f'RBR k={kappa:g} p={power:d}', np.nan,
+                     [ri.invert_range_penalty(d, svd, ranges, kappa=kappa,
+                                              power=power) for d in dWs])]
+            recs += [(f'OIC rho={rho:.2e}', rho,
+                      [invert_oic(d, svd, authority, rho) for d in dWs])
                      for rho in rhos]
-            row = f'  {label:16s} {len(pairs):3d}'
-            for mr, fw in cols:
-                row += f' {mr:7.3f}/{fw:6.4f}'
-            print(row)
+            for i, (tag, rho, sols) in enumerate(recs):
+                mr, fw, *ret = _score(dWs, sols, trunc)
+                lead = (f'  {label:16s} {len(pairs):3d}' if i == 0
+                        else f'  {"":16s} {"":3s}')
+                print(f'{lead} {tag:>22s} {mr:8.3f} {fw:7.4f}'
+                      + ''.join(f' {v:11.4f}' for v in ret))
+                row = {'bounce': bounce['name'], 'leg': label,
+                       'n_pairs': len(pairs), 'recovery': tag, 'rho': rho,
+                       'ratio': mr, 'fwhm_arcsec': fw}
+                row.update({f'retention_{nm.replace(" ", "_")}': v
+                            for nm, v in zip(gnames, ret)})
+                out_rows.append(row)
     print('\n  The adopted value is recorded in '
           'smatrix/docs/studies/regularized_inversion.md and consumed by '
           'aos/analysis_config.yaml as bounce: oic_rho.\n')
+    if out_dir is not None:
+        _write_rho_scan(out_rows, gnames, pathlib.Path(out_dir), adopted_rho)
+    return out_rows
+
+
+def _write_rho_scan(rows, gnames, out_dir, adopted_rho):
+    """Write the rho scan as a parquet table and a per-leg plot.
+
+    Parameters
+    ----------
+    rows : `list` [`dict`]
+        The scan rows from `report_rho_scan`.
+    gnames : `list` [`str`]
+        `SCAN_GROUPS` names, naming the retention columns.
+    out_dir : `pathlib.Path`
+        Directory to write `oic_rho_scan.parquet` and `oic_rho_scan.pdf` into.
+    adopted_rho : `float` or `None`
+        Adopted `rho`, dimensionless, marked with a vertical line when given.
+    """
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(rows)
+    df.to_parquet(out_dir / 'oic_rho_scan.parquet')
+
+    rcols = [f'retention_{nm.replace(" ", "_")}' for nm in gnames]
+    legs = list(dict.fromkeys(df['leg']))
+    oic = df[np.isfinite(df['rho'])]
+    with PdfPages(str(out_dir / 'oic_rho_scan.pdf')) as pdf:
+        ncols = 3
+        nrows = int(np.ceil(len(legs) / ncols))
+        fig, axes = plt.subplots(nrows, ncols, layout='constrained',
+                                 figsize=(4.6 * ncols, 3.6 * nrows),
+                                 squeeze=False)
+        for i, leg in enumerate(legs):
+            ax = axes[i // ncols][i % ncols]
+            g = oic[oic['leg'] == leg].sort_values('rho')
+            t = df[(df['leg'] == leg) & (df['recovery'] == 'truncated')]
+            ax.plot(g['rho'], g['ratio'], 'o-', color='#1f77b4',
+                    label='max_j |d_j|/r_j [dimensionless]')
+            for rc, col, mk in zip(rcols, ('#d62728', '#2ca02c'), ('s', '^')):
+                ax.plot(g['rho'], g[rc], mk + '-', color=col,
+                        label=f'{rc.replace("retention_", "").replace("_", " ")} '
+                              f'retention [dimensionless]')
+            ax.axhline(1.0, color='gray', lw=0.6, ls=':')
+            if len(t):
+                ax.axhline(float(t['ratio'].iloc[0]), color='#1f77b4', lw=0.6,
+                           ls='--', alpha=0.6)
+            if adopted_rho is not None:
+                ax.axvline(adopted_rho, color='black', lw=1.0, ls='-.',
+                           alpha=0.7)
+            ax.set_xscale('log'); ax.set_yscale('log')
+            ax.set_ylim(1e-4, 50.0)
+            ax.set_xlabel('OIC rho [dimensionless]', fontsize=9)
+            ax.set_title(f'{leg}  (n_pairs = {int(g["n_pairs"].iloc[0])})',
+                         fontsize=10)
+            ax.grid(alpha=0.3, which='both')
+            ax.tick_params(labelsize=8)
+        for i in range(len(legs), nrows * ncols):
+            axes[i // ncols][i % ncols].axis('off')
+        h, l = axes[0][0].get_legend_handles_labels()
+        extra = [plt.Line2D([], [], color='gray', ls=':',
+                            label='unity: feasibility limit and untouched '
+                                  'retention'),
+                 plt.Line2D([], [], color='#1f77b4', ls='--', alpha=0.6,
+                            label='unregularized truncated ratio')]
+        if adopted_rho is not None:
+            extra.append(plt.Line2D([], [], color='black', ls='-.', alpha=0.7,
+                                    label=f'adopted rho = {adopted_rho:g} '
+                                          f'[dimensionless]'))
+        fig.legend(handles=h + extra, loc='outside lower center', ncol=2,
+                   fontsize=9, frameon=False)
+        fig.suptitle(
+            'OIC motion penalty: feasibility against amplitude retention '
+            'versus rho\n'
+            'Feasibility (blue) reaches unity only where rigid-body retention '
+            '(red) has already collapsed,\n'
+            'so no rho is both feasible and faithful — the adopted value buys '
+            'feasibility by suppressing the rigid body',
+            fontsize=12)
+        pdf.savefig(fig); plt.close(fig)
+    print(f'  wrote {out_dir / "oic_rho_scan.parquet"}')
+    print(f'  wrote {out_dir / "oic_rho_scan.pdf"}')
 
 
 def main():
@@ -235,11 +398,17 @@ def main():
                     help='RBR knee, dimensionless |d_j|/r_j at unit penalty weight')
     ap.add_argument('--power', type=int, default=3, help='RBR penalty exponent p')
     ap.add_argument('--rhos', type=float, nargs='+',
-                    default=[0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1],
+                    default=[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0],
                     help='OIC motion_penalty values to scan, dimensionless')
     ap.add_argument('--rho-scan', action='store_true',
-                    help='one compact row per leg: feasibility and FWHM against rho, '
-                         'the table behind the adopted rho')
+                    help='one compact row per leg: feasibility, FWHM and amplitude '
+                         'retention against rho, the table behind the adopted rho')
+    ap.add_argument('--out-dir',
+                    help='with --rho-scan, also write oic_rho_scan.parquet and '
+                         'oic_rho_scan.pdf here')
+    ap.add_argument('--adopted-rho', type=float, default=1e-3,
+                    help='rho carried in aos/analysis_config.yaml, dimensionless, '
+                         'marked on the scan plot')
     args = ap.parse_args()
 
     from astropy.table import Table
@@ -247,7 +416,6 @@ def main():
     from lsst.ts.intrinsic.wavefront.mi_config import analysis_section
     from lsst.ts.intrinsic.wavefront.ofc_svd import (LABELS_50DOF, build_ofc_svd,
                                                      project_dz_table)
-    import aos_fwhm as afw
     import bounce_lib as bl
 
     pupil_j = list(range(4, 20)) + list(range(22, 27))
@@ -282,7 +450,8 @@ def main():
 
     if args.rho_scan:
         report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
-                        args.kappa, args.power, args.rhos)
+                        args.kappa, args.power, args.rhos,
+                        out_dir=args.out_dir, adopted_rho=args.adopted_rho)
         return 0
 
     print('=== Both inversions on the same per-pair bounce Delta wavefronts ===')

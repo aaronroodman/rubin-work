@@ -298,6 +298,10 @@ that only needed bounding by a factor of a few.
 meaningful for the penalty as a whole. The one exact correspondence worth recording is the
 rigid-body range, where `a_j = rb_stroke[0] / r_j` and the two schemes coincide.
 
+The wavefront residual is not the whole cost. The `rho` scan below adds the amplitude
+retention the residual cannot see, and shows that the `rho` bringing the OIC to RBR's
+feasibility also suppresses the recovered rigid-body amplitudes by a factor of 14 to 22.
+
 ### An RBR that would fit in ts_ofc
 
 The OIC's structure accommodates RBR with no change to its interface, because the IRLS
@@ -373,7 +377,7 @@ of `smatrix/code`. The runners that exercise and validate them stay here.
 |---|---|
 | `../regularized_inversion.py` | shared library: the rank-limited forward operator, the allowed-range vector, the four inversions (truncated, damped, range penalty, OIC quadratic) and the OIC authority vector, plus the achieved residual |
 | `run_regularized_compare.py` | sweeps `lambda`, `kappa` and `p` over every bounce leg, scores IQ and feasibility, and writes the tables and the comparison PDF |
-| `run_oic_compare.py` | compares the ts_ofc OIC controller's quadratic motion penalty against the range penalty — the authority-versus-`r_j` decomposition, the penalty-curvature table, both inversions on the same per-pair bounce Δ, and with `--rho-scan` the feasibility-against-`rho` table below. Prints only; writes no output files |
+| `run_oic_compare.py` | compares the ts_ofc OIC controller's quadratic motion penalty against the range penalty — the authority-versus-`r_j` decomposition, the penalty-curvature table, both inversions on the same per-pair bounce Δ, and with `--rho-scan` the feasibility-FWHM-retention scan below. With `--out-dir` the scan is also written as `oic_rho_scan.parquet` and `oic_rho_scan.pdf`; the other reports print only |
 
 Both comparison scripts reuse the bounce leg definitions and pairing from
 `aos/code/bounce/`, so the median paired-difference Δ they score is the same quantity the
@@ -385,37 +389,127 @@ also the bounce's — the `z1toz6_bad_fit` drop then `quality_visit_mask` at
 
 The OIC's `motion_penalty` ships at **0.0 dimensionless**, so the penalty is inactive as
 delivered and any nonzero value is a choice. The `aos` bounce study scores the OIC as one of
-its four recovery schemes and needs one value. Scanning `rho` over every leg with
-`run_oic_compare.py --rho-scan`, each cell the median over the leg's pairs of
-`max_j |d_j| / r_j` (dimensionless, recovered amplitude over allowed range) and of the
-achieved-residual FWHM in arcsec:
+its four recovery schemes and needs one value.
 
-| leg | n pairs | truncated | RBR kappa=4 p=3 | rho=3e-4 | rho=6e-4 | **rho=1e-3** | rho=1.3e-3 | rho=2e-3 | rho=3e-3 |
-|---|---|---|---|---|---|---|---|---|---|
-| elev 40 deg | 22 | 9.160 / 0.0482 | 1.040 / 0.0543 | 5.884 / 0.1002 | 2.544 / 0.1304 | **1.017 / 0.1545** | 0.618 / 0.1678 | 0.407 / 0.1933 | 0.272 / 0.2199 |
-| elev 60 deg | 4 | 10.629 / 0.0473 | 1.067 / 0.0518 | 3.755 / 0.0732 | 2.134 / 0.0926 | **1.298 / 0.1080** | 1.025 / 0.1168 | 0.602 / 0.1343 | 0.319 / 0.1500 |
-| elev 50 deg | 6 | 10.919 / 0.0829 | 1.213 / 0.1003 | 4.235 / 0.1350 | 2.040 / 0.1525 | **1.126 / 0.1672** | 0.951 / 0.1763 | 0.704 / 0.1934 | 0.401 / 0.2088 |
-| elev 30 deg | 5 | 11.705 / 0.0686 | 1.195 / 0.0806 | 8.995 / 0.1435 | 3.874 / 0.2011 | **1.590 / 0.2330** | 0.953 / 0.2490 | 0.383 / 0.2761 | 0.223 / 0.2982 |
-| elev 75 deg | 6 | 2.928 / 0.0284 | 0.791 / 0.0301 | 1.970 / 0.0404 | 0.917 / 0.0522 | **0.405 / 0.0612** | 0.251 / 0.0664 | 0.129 / 0.0752 | 0.072 / 0.0839 |
-| rotator 60 deg | 31 | 5.120 / 0.0310 | 0.990 / 0.0326 | 6.126 / 0.0907 | 3.071 / 0.1240 | **1.336 / 0.1455** | 0.821 / 0.1546 | 0.355 / 0.1683 | 0.166 / 0.1796 |
+### What the scan measures, and why feasibility alone is not enough
+
+`run_oic_compare.py --rho-scan` scans `rho` over all six bounce legs and reports, per leg and
+recovery, the median over the leg's pairs of three quantities:
+
+- **ratio** — `max_j |d_j| / r_j`, dimensionless, recovered amplitude over allowed range.
+  At or below 1.0 the recovery is physically applicable. This is *feasibility*.
+- **FWHM** — the achieved-residual full width at half maximum in arcsec, median over the
+  focal plane. This is the *image-quality* cost.
+- **amplitude retention**, dimensionless, reported separately for the 10 rigid-body DOF and
+  the 40 bending modes: the regression slope of the penalized amplitudes on the
+  unregularized truncated ones, `sum(d_pen · d_trunc) / sum(d_trunc²)`, over all of the
+  leg's pairs and the group's DOF. A retention of 1.0 means the penalty left that group's
+  amplitudes alone; 0.05 means it suppressed them twentyfold.
+
+The retention columns are the point. **Feasibility and FWHM between them cannot detect that
+a penalty has destroyed the rigid-body solution**, for two independent reasons: the
+rigid-body DOF sit far inside their ranges (camera `dx` has `r_j = 7.6e3` µm against a
+measured Δ of order 7e2 µm), so suppressing them does not move `max_j |d_j| / r_j` at all;
+and they are partly degenerate against the bending modes in wavefront, so the fit
+compensates and the FWHM rises far less than the amplitudes fall. A `rho` chosen on
+feasibility alone therefore selects a value that silently returns near-zero rigid-body
+amplitudes — which is exactly what the bounce study is trying to measure.
+
+### The scan
+
+Medians over each leg's pairs, from `oic_rho_scan.parquet`:
+
+| leg | n pairs | recovery | ratio | FWHM [arcsec] | retention, rigid body | retention, bending |
+|---|---|---|---|---|---|---|
+| elev 40 deg | 22 | truncated | 9.160 | 0.0482 | 1.0000 | 1.0000 |
+| | | RBR kappa=4 p=3 | 1.040 | 0.0543 | 0.9184 | 0.4011 |
+| | | OIC rho=1e-5 | 8.354 | 0.0486 | 0.9775 | 0.9754 |
+| | | OIC rho=1e-4 | 7.536 | 0.0709 | 0.5545 | 0.5713 |
+| | | **OIC rho=1e-3** | **1.017** | **0.1545** | **0.0725** | **0.2272** |
+| | | OIC rho=1e-2 | 0.057 | 0.2774 | 0.0029 | 0.1110 |
+| | | OIC rho=1.0 | 0.000 | 0.3018 | 0.0000 | 0.0000 |
+| elev 60 deg | 4 | truncated | 10.629 | 0.0473 | 1.0000 | 1.0000 |
+| | | RBR kappa=4 p=3 | 1.067 | 0.0518 | 0.8576 | 0.2183 |
+| | | **OIC rho=1e-3** | **1.298** | **0.1080** | **0.0556** | **0.1334** |
+| elev 50 deg | 6 | truncated | 10.919 | 0.0829 | 1.0000 | 1.0000 |
+| | | RBR kappa=4 p=3 | 1.213 | 0.1003 | 0.7336 | 0.3523 |
+| | | **OIC rho=1e-3** | **1.126** | **0.1672** | **0.0451** | **0.2723** |
+| elev 30 deg | 5 | truncated | 11.705 | 0.0686 | 1.0000 | 1.0000 |
+| | | RBR kappa=4 p=3 | 1.195 | 0.0806 | 0.9255 | 0.2443 |
+| | | **OIC rho=1e-3** | **1.590** | **0.2330** | **0.0614** | **0.1057** |
+| elev 75 deg | 6 | truncated | 2.928 | 0.0284 | 1.0000 | 1.0000 |
+| | | RBR kappa=4 p=3 | 0.791 | 0.0301 | 0.9204 | 0.5448 |
+| | | **OIC rho=1e-3** | **0.405** | **0.0612** | **0.0677** | **0.2438** |
+| rotator 60 deg | 31 | truncated | 5.120 | 0.0310 | 1.0000 | 1.0000 |
+| | | RBR kappa=4 p=3 | 0.990 | 0.0326 | 0.9884 | 0.2960 |
+| | | **OIC rho=1e-3** | **1.336** | **0.1455** | **0.0471** | **0.1220** |
+
+The full seven-value `rho` scan on every leg is in `oic_rho_scan.parquet` and plotted in
+`oic_rho_scan.pdf`; the elevation 40 deg leg above carries the whole scan as the example.
+
+### No `rho` is both feasible and faithful
+
+Reading the elevation 40 deg scan down the `rho` axis:
+
+| `rho` [dimensionless] | feasibility | rigid-body retention | verdict |
+|---|---|---|---|
+| 1e-6 to 1e-5 | ratio 8.4 to 9.2 — no better than unregularized | 0.98 to 1.00 | faithful, useless |
+| 1e-4 | ratio 7.5 (and 11.5 on the elev 30 deg leg) | 0.41 to 0.71 | neither |
+| **1e-3** | ratio 0.41 to 1.59 — RBR's own range | **0.045 to 0.073** | feasible, rigid body crushed 14 to 22× |
+| 1e-2 | ratio 0.02 to 0.10 | 0.0005 to 0.003 | over-damped |
+| 1e-1 to 1.0 | ratio 0.000 to 0.004 | 0.0000 | correction annihilated |
+
+Two conclusions follow, and both are results of this study rather than incidental:
+
+1. **The quadratic penalty cannot reach feasibility without destroying the rigid-body
+   amplitudes.** Feasibility only arrives at `rho` where rigid-body retention has already
+   fallen below 0.08 dimensionless. There is no intermediate `rho`: the two transitions sit
+   within a factor of 10 of each other. A scale argument says why. Camera `dx` has OIC
+   authority `a_j = 0.7763` per µm and a measured Δ of order 684 µm on the steepest leg, so
+   the penalty term `rho² a_j² d_j²` equals 0.282 µm² of wavefront-equivalent cost at
+   `rho = 1e-3`, against a total wavefront misfit of order 0.3 µm² (126 DZ coefficients at
+   roughly 0.05 µm of wavefront each). **The penalty on that single DOF equals the entire
+   misfit at `rho ≈ 1.03e-3`** — precisely where the rigid body dies.
+2. **An intuition that the five-decade authority spread would separate the two groups is
+   wrong, and the scan refutes it.** `a_j` runs from 0.678 to 9.1e4 in inverse DOF units
+   between the rigid body and the bending modes, which looks as though one `rho` could bound
+   the bending modes while sparing the rigid body. It does not: retention falls on *both*
+   groups together, because the quadratic form is applied in the retained-mode subspace `V_r`
+   and every mode mixes the two blocks. At `rho = 1e-4` the two retentions agree to within
+   0.03 dimensionless on four of the six legs.
+
+A `rho` of 1.0 or larger, the value a reading of `J = x^T Q x + rho u^T H u` would suggest as
+natural, is roughly **10⁶ times too strong** here: it gives retention 0.0000 on both groups
+and an achieved-residual FWHM of 0.3018 arcsec against the uncorrected 0.2986 arcsec, i.e. it
+returns `d = 0` and applies no correction at all. The reason is that `H = diag(a_j²)` is not
+dimensionless — it carries inverse-DOF-unit squared — so `rho` is not a pure ratio of cost
+terms and has no natural scale of 1.
+
+### The adopted value, and how to read the OIC arm
 
 **`rho = 1e-3` dimensionless is the adopted value**, on the criterion of matching RBR's
-feasibility rather than guaranteeing it: at this value the legs land at 0.405 to 1.590
-dimensionless, a spread straddling RBR's own 0.791 to 1.213, with two legs over range by 13
-and 59 percent. Pushing to `rho = 1.3e-3` would bring every leg to 1.025 or below, at 2 to 9
-percent more FWHM; that tighter choice was considered and not taken, because matching RBR's
-compliance is what makes the two penalties comparable on equal footing in the bounce
-comparison, and a scheme that is feasible on every leg by construction would be answering a
-different question.
+feasibility: at this value the legs land at 0.405 to 1.590 dimensionless, straddling RBR's
+own 0.791 to 1.213, with two legs over range by 13 and 59 percent. It is kept — rather than
+retreating to a retention-preserving `rho` that reduces to the truncated solution, or
+dropping the arm — because the comparison the bounce study is making is between penalties at
+matched compliance, and the OIC's behaviour at matched compliance is the finding.
 
-What the column shows either way is the gap the earlier sections quantify: at the `rho` that
-matches RBR's feasibility the quadratic penalty costs 2.0× to 4.5× the achieved-residual FWHM
-that RBR does on the same legs — 0.1455 against 0.0326 arcsec on the rotator bounce, 0.1545
-against 0.0543 arcsec at elevation 40 deg. A fixed-curvature penalty cannot bound the one
-runaway amplitude without taxing the other 49 DOF, and this is the price of that.
+But the OIC arm's **rigid-body amplitudes must not be read as DOF measurements.** At
+`rho = 1e-3` they are suppressed by a factor of 14 to 22 relative to the truncated recovery,
+which is visible directly in the bounce per-DOF panels as the OIC series sitting near zero
+where the other three schemes show a substantial trend with elevation — camera `dx` runs
+−50.3 to −684.2 µm across the elevation legs under the truncated recovery and −3.2 to
+−38.9 µm under the OIC. That near-zero trend is the penalty, not the telescope.
+
+The FWHM cost is the other half of the finding: at the `rho` that matches RBR's feasibility
+the quadratic penalty costs 2.0× to 4.5× the achieved-residual FWHM that RBR does on the same
+legs — 0.1455 against 0.0326 arcsec on the rotator bounce, 0.1545 against 0.0543 arcsec at
+elevation 40 deg. A fixed-curvature penalty cannot bound the one runaway amplitude without
+taxing the other 49 DOF, and the suppressed rigid body and the inflated FWHM are the same
+price paid twice.
 
 `aos/analysis_config.yaml` carries the value as `bounce: oic_rho`, a **consumed** number whose
-derivation is this table; `aos/` does not re-derive it.
+derivation is this section; `aos/` does not re-derive it.
 
 ## Outputs
 
@@ -428,6 +522,8 @@ measured-intrinsic-wavefront-referenced fit over all six bounce legs:
 | `regularized_inversion_dof.parquet` | per-DOF recovered amplitude, unit, range and ratio for every (leg, method setting) |
 | `regularized_inversion_best_feasible.parquet` | the cheapest feasible setting per (leg, family) with its FWHM cost in arcsec |
 | `regularized_inversion_compare.pdf` | the IQ-against-feasibility trade-off curve, the per-leg bar comparison, and one per-DOF-against-range page per leg |
+| `oic_rho_scan.parquet` | the OIC `rho` scan, one row per (leg, recovery), 54 rows: `ratio` and the two retention columns (dimensionless), `fwhm_arcsec` in arcsec FWHM, `rho` (dimensionless, NaN for the truncated and RBR reference rows) and `n_pairs` |
+| `oic_rho_scan.pdf` | feasibility and both retentions against `rho`, one panel per leg, with the adopted `rho` marked — the figure showing that the feasibility crossing and the rigid-body collapse coincide |
 
 ## Running
 
@@ -456,7 +552,7 @@ python run_oic_compare.py \
   --min-detectors 160
 ```
 
-The `rho` table above is regenerated with `--rho-scan`:
+The `rho` scan above, and both of its output products, are regenerated with `--rho-scan`:
 
 ```bash
 cd ~/notebooks/rubin-work/smatrix/code/regularized_inversion
@@ -465,7 +561,9 @@ python run_oic_compare.py --rho-scan \
   --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
   --mi-name pathA_50_34_i_5rot \
   --min-detectors 160 \
-  --rhos 3e-4 6e-4 1e-3 1.3e-3 2e-3 3e-3
+  --rhos 1e-6 1e-5 1e-4 1e-3 1e-2 1e-1 1.0 \
+  --adopted-rho 1e-3 \
+  --out-dir /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/smatrix/output/regularized_inversion/danish_1_2_A_50_34_i_5rot_july
 ```
 
 ## Outstanding

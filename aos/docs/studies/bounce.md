@@ -163,14 +163,18 @@ the paired Δ DOF as per-DOF panels against the B-set position — elevation in 
 camera rotator angle in deg for BLOCK-T724 — with one point per (night, leg), laid out **2
 columns × 5 rows per page and paginated** across pages so the overlaid schemes stay readable
 (`dof_ncols` and `dof_rows_per_page` in `analysis_config.yaml`). The 50 DOF therefore take five
-pages per bounce. Each panel carries the 50/34 recovery as a filled circle and every other
-scheme as an open marker in the same night colour — square for RBR, triangle for 22/12, diamond
-for OIC, inverted triangle for 5/5, with the shape named in the legend — plus the allowed range
-±`r_j` as a shaded band; where the band is wider than the data it is annotated as a value in the
-corner instead of being allowed to set the y scale. A scheme is simply absent from the panels of
-DOF it does not solve for: 22/12 from the 28 DOF outside its index set, 5/5 from the 45 DOF
-outside the camera hexapod. Only the base series is annotated with its `day_obs` and B value, so
-the text does not stack. `bounce_fwhm_vs_bvalue.pdf` is one page per bounce of the
+pages per bounce. **Colour and marker both encode the recovery scheme**, which is what has to be
+separable at a glance: the 50/34 recovery is a filled blue circle, and each other scheme an open
+marker of its own colour — red square for RBR, green triangle for 22/12, purple diamond for OIC,
+orange inverted triangle for 5/5, matching the colours used for the same schemes in
+`bounce_fwhm_vs_bvalue.pdf` so a scheme looks the same in every product. The night is **not** on
+colour; nights sharing a B set are fanned out in x instead and named by the per-point annotation
+on the base series (`day_obs` and B value in deg), with the full night list in the figure title.
+Each panel also carries the allowed range ±`r_j` as a shaded band; where the band is wider than
+the data it is annotated as a value in the corner instead of being allowed to set the y scale. A
+scheme is simply absent from the panels of DOF it does not solve for: 22/12 from the 28 DOF
+outside its index set, 5/5 from the 45 DOF outside the camera hexapod. The scheme legend sits
+below the panels rather than in a corner, so it cannot overlap the multi-line title. `bounce_fwhm_vs_bvalue.pdf` is one page per bounce of the
 achieved-residual FWHM series against the B-set position, one point per (night, B set), with the
 nights at a shared B set fanned out in x for legibility and the trend line drawn through the
 per-B-set median over nights. `bounce_dz_vs_ordinal.pdf` opens with the marker legend and an A/B
@@ -261,10 +265,25 @@ all DOF.
 
 The OIC penalty weight is `oic_rho = 1e-3`, dimensionless, read from `analysis_config.yaml`.
 `ts_ofc` ships `motion_penalty = 0.0`, so the penalty is inactive as delivered and a value has to
-be chosen; this study **consumes** the value and does not derive it. The feasibility and
-image-quality scan over rho that produced it is in the
+be chosen; this study **consumes** the value and does not derive it. The scan over rho that
+produced it — feasibility, image quality *and* amplitude retention — is in the
 [`regularized_inversion`](../../../smatrix/docs/studies/regularized_inversion.md) study, and the
 criterion was to match RBR's feasibility while accepting a few legs slightly over range.
+
+**The OIC arm's rigid-body amplitudes are suppressed and are not measurements.** That scan shows
+no rho reaches feasibility without crushing them. At `rho = 1e-3` the rigid-body amplitude
+retention — the dimensionless regression slope of the penalized amplitudes on the truncated ones
+— is 0.045 to 0.073 across the six legs, a suppression by a factor of 14 to 22. Retention only
+recovers to 0.98 at `rho = 1e-5`, where feasibility is no better than unregularized
+(`max_j |d_j|/r_j` of 2.8 to 11.0 dimensionless), and the two transitions sit within a factor of
+ten of each other because the penalty on camera `dx` alone equals the entire wavefront misfit at
+`rho ≈ 1.03e-3`. The suppression is visible directly in `bounce_dof_night_values.pdf`: the OIC
+series sits near zero on the rigid-body panels where the other three schemes show a substantial
+trend with elevation — camera `dx` runs −50.3 to −684.2 µm of hexapod translation across the
+elevation legs under the truncated recovery but only −3.2 to −38.9 µm under the OIC. That
+near-zero trend is the penalty, not the telescope. The arm is kept at this rho because the
+comparison being made is between penalties at *matched compliance*, and the OIC's behaviour at
+matched compliance is the finding.
 
 ### What RBR does
 
@@ -447,9 +466,12 @@ feasibility, the OIC costs +0.095 arcsec FWHM median — 36 times RBR — and st
 over range against RBR's 7 at a fifth the cost, with the worst leg at `max |Δ_j|/r_j = 1.590`
 against RBR's 1.157. A quadratic penalty cannot distinguish "comfortably inside the range" from
 "nowhere near it", so it taxes all 50 DOF to bound the few that need bounding; RBR's superlinear
-penalty is near-zero until a DOF approaches its own range. This is a measured statement about the
-knob `ts_ofc` already ships, and it is the argument for the `range_authority` proposal written up
-in the `regularized_inversion` study.
+penalty is near-zero until a DOF approaches its own range. The FWHM understates the damage: the
+same indiscriminate tax drives rigid-body amplitude retention to 0.045 to 0.073 dimensionless
+against RBR's 0.73 to 0.99, so the OIC reaches feasibility largely by *not recovering* the
+hexapod motion rather than by bounding it. This is a measured statement about the knob `ts_ofc`
+already ships, and it is the argument for the `range_authority` proposal written up in the
+`regularized_inversion` study.
 
 *The camera-hexapod-only recovery loses little on the rotator bounce.* On BLOCK-T724, 5/5 costs
 +0.033 arcsec FWHM over the full 50/34 recovery (0.0482 against 0.0191 arcsec on the pooled leg)
@@ -469,14 +491,23 @@ is what one expects when the discarded amplitude was noise.
 **Caveat on individual rigid-body DOF.** Both penalized schemes bias toward zero by construction,
 and the reshuffling is not confined to the bending modes: the `regularized_inversion` study
 measures the M2-versus-camera hexapod split moving (M2_dz can flip sign) while the rigid-body
-*wavefront* is preserved to within a few percent. This applies to the OIC solution as well as to
-RBR — the quadratic penalty acts on all 50 DOF, so it moves the rigid-body split more, not less. A
-penalized rigid-body amplitude is a constrained estimate and should not be quoted as a measurement
-of hexapod motion; for the LUT fit, which wants the amplitudes themselves, the default recovery
-remains the estimator. RBR and the OIC answer whether a physically reachable correction exists and
-what image quality it delivers. The 22/12 and 5/5 schemes are unpenalized truncated inversions, so
-their amplitudes are ordinary least-squares estimates over a restricted DOF set and carry no such
-bias — but they are estimates of a *different* quantity, the best fit available within that set.
+*wavefront* is preserved to within a few percent. A penalized rigid-body amplitude is a
+constrained estimate and should not be quoted as a measurement of hexapod motion; for the LUT fit,
+which wants the amplitudes themselves, the default recovery remains the estimator. RBR and the OIC
+answer whether a physically reachable correction exists and what image quality it delivers.
+
+**The two penalties are not equally biased, and the difference is large.** RBR's superlinear
+penalty is near-zero until a DOF approaches its own range, so it leaves the rigid body almost
+intact: measured amplitude retention 0.73 to 0.99 dimensionless across the six legs. The OIC's
+fixed quadratic curvature taxes every DOF regardless of how far inside its range it sits, so at
+the adopted `rho = 1e-3` it returns rigid-body retention of 0.045 to 0.073 dimensionless — a
+suppression by 14 to 22×. **An OIC rigid-body amplitude is therefore not usable even as a
+constrained estimate**; read the OIC arm for its feasibility and FWHM only. This is quantified in
+the `regularized_inversion` study's rho scan.
+
+The 22/12 and 5/5 schemes are unpenalized truncated inversions, so their amplitudes are ordinary
+least-squares estimates over a restricted DOF set and carry no such bias — but they are estimates
+of a *different* quantity, the best fit available within that set.
 
 ## Statistics note — SEM of a median
 

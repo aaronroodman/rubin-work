@@ -70,9 +70,16 @@ defaults:
     # The quadratic motion penalty the ts_ofc Optimal Integral Controller (OIC)
     # already carries.  oic_rho is the OIC's `motion_penalty`, dimensionless.
     # ts_ofc ships 0.0, so the penalty is inactive as delivered and a value must
-    # be chosen; this one is *consumed* here.  Its derivation -- the feasibility
-    # and image-quality scan over rho on every bounce leg -- is in
-    # smatrix/docs/studies/regularized_inversion.md.  Do not re-derive it here.
+    # be chosen; this one is *consumed* here.  Its derivation -- the scan over rho
+    # on every bounce leg of feasibility, image quality and amplitude retention --
+    # is in smatrix/docs/studies/regularized_inversion.md.  Do not re-derive it
+    # here.
+    #
+    # Read the OIC arm for feasibility and FWHM only.  At this rho the recovered
+    # rigid-body amplitudes are suppressed by 14x to 22x relative to the truncated
+    # recovery (retention 0.045 to 0.073, dimensionless), because no rho reaches
+    # feasibility without doing that -- the scan documents why.  A larger rho is
+    # worse, not better: at rho = 1.0 the solve returns d = 0 and corrects nothing.
     oic_enable: true
     oic_rho: 1.0e-3
     # Per-DOF panel layout of bounce_dof_night_values.pdf, paginated across

@@ -1534,11 +1534,14 @@ def plot_dof_night_scatter(dof_deltas_by_night, labels, units=None,
     return figs
 
 
-# Marker style per overlay series in `plot_dof_vs_b_value_panels`, in the order
-# the series are given.  All are open markers so the filled-circle base series
-# stays the distinguishable one, and the shapes differ so the schemes are
-# separable in greyscale as well as in colour.
-OVERLAY_MARKERS = ('s', '^', 'D', 'v', 'P', 'X')
+# (colour, marker) per overlay series in `plot_dof_vs_b_value_panels`, in the
+# order the series are given.  Marker *and* colour both vary, so the schemes are
+# separable in greyscale as well as in colour; the shapes and colours match
+# `FWHM_SERIES_DEFAULT` so a scheme wears the same style in every bounce PDF.
+# The base series takes `BASE_STYLE`.
+OVERLAY_STYLES = (('#d62728', 's'), ('#2ca02c', '^'), ('#9467bd', 'D'),
+                  ('#ff7f0e', 'v'), ('#8c564b', 'P'), ('#17becf', 'X'))
+BASE_STYLE = ('#1f77b4', 'o')
 
 
 def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
@@ -1560,9 +1563,10 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
 
     Points are drawn in increasing B-set order, so the BLOCK-T720 elevation
     sweep reads left to right in elevation and BLOCK-T724 left to right in
-    camera-rotator angle.  Colour encodes the night; the optional annotation
-    gives `day_obs` and the B value in deg, so a point is identifiable without
-    the legend.
+    camera-rotator angle.  **Colour and marker both encode the recovery
+    scheme**, which is what the eye needs to separate here — nights sharing a
+    B set are instead fanned out in x and named by the per-point annotation
+    (`day_obs` and the B value in deg).
 
     Parameters
     ----------
@@ -1596,9 +1600,9 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
     overlay_series : `sequence` [`tuple`], optional
         `(entry_key, label)` per overlay, each `entry_key` holding a second
         `{dof_index: {'delta','err'}}` dict in the same units as the base
-        series — the other recovery schemes.  Drawn as open markers from
-        `OVERLAY_MARKERS` in the order given.  Empty draws the base series
-        alone.
+        series — the other recovery schemes.  Drawn as open markers taking
+        colour and shape from `OVERLAY_STYLES` in the order given.  Empty draws
+        the base series alone.
     ranges : `array_like`, optional
         Allowed range `r_j` per DOF, indexed by global DOF index, in that
         DOF's own unit.  When given, each panel gets a shaded band at
@@ -1616,12 +1620,12 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         One figure per page, empty if no entry carries a finite Δ.
     """
     ents = sorted(entries, key=lambda e: (e['b_value'], e['night']))
-    overlays = [(k, lab, OVERLAY_MARKERS[i % len(OVERLAY_MARKERS)])
+    overlays = [(k, lab) + OVERLAY_STYLES[i % len(OVERLAY_STYLES)]
                 for i, (k, lab) in enumerate(overlay_series)]
     if dof_indices is None:
         seen = set()
         for e in ents:
-            for key in ['dof_deltas'] + [k for k, _, _ in overlays]:
+            for key in ['dof_deltas'] + [k for k, _, _, _ in overlays]:
                 for q, v in (e.get(key) or {}).items():
                     if np.isfinite(v.get('delta', np.nan)):
                         seen.add(int(q))
@@ -1630,8 +1634,6 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         return []
 
     nights = sorted({int(e['night']) for e in ents})
-    cmap = plt.get_cmap('viridis')(np.linspace(0.08, 0.88, max(len(nights), 1)))
-    ncol = {nt: cmap[i] for i, nt in enumerate(nights)}
 
     # Several nights can share one B set (five nights throw to elevation 40 deg),
     # which would stack their points and annotations on top of each other.  Fan
@@ -1659,13 +1661,13 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                  f'legibility; all sit at {bvals[0]:g} deg')
 
     def _collect(e, key, q):
-        """x, y, yerr and night colour of one entry's Δ for DOF `q`, or None."""
+        """x, y, yerr and night of one entry's Δ for DOF `q`, or None."""
         v = (e.get(key) or {}).get(q)
         if v is None or not np.isfinite(v.get('delta', np.nan)):
             return None
         nt = int(e['night'])
         return (e['b_value'] + x_jit.get((e['b_value'], nt), 0.0),
-                v['delta'], v.get('err', np.nan), ncol[nt], nt)
+                v['delta'], v.get('err', np.nan), nt)
 
     per_page = int(ncols) * int(rows_per_page)
     figs = []
@@ -1686,28 +1688,29 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
             if ranges is not None and q < len(ranges) and np.isfinite(ranges[q]):
                 band = float(ranges[q])
             # Overlay series first, so the filled base series draws over them.
-            for okey, _olab, omark in overlays:
+            for okey, _olab, ocol, omark in overlays:
                 pts = [p for p in (_collect(e, okey, q) for e in ents)
                        if p is not None]
                 if not pts:
                     continue
-                oxs, oys, oes, ocs, _ = map(list, zip(*pts))
+                oxs, oys, oes, _ = map(list, zip(*pts))
                 ax.errorbar(oxs, oys,
                             yerr=np.nan_to_num(np.asarray(oes, float)),
-                            fmt='none', ecolor='#888888', elinewidth=0.8,
+                            fmt='none', ecolor=ocol, elinewidth=0.8, alpha=0.6,
                             capsize=2, zorder=4)
-                ax.scatter(oxs, oys, s=44, facecolors='none', edgecolors=ocs,
+                ax.scatter(oxs, oys, s=44, facecolors='none', edgecolors=ocol,
                            linewidths=1.3, marker=omark, zorder=5)
             pts = [p for p in (_collect(e, 'dof_deltas', q) for e in ents)
                    if p is not None]
             if pts:
-                xs, ys, es, cs, nts = map(list, zip(*pts))
+                xs, ys, es, nts = map(list, zip(*pts))
                 xs = np.asarray(xs, float); ys = np.asarray(ys, float)
                 es = np.nan_to_num(np.asarray(es, float))
                 labs = [f"{nt % 10000}/{x:g}" for nt, x in zip(nts, xs)]
-                ax.errorbar(xs, ys, yerr=es, fmt='none', ecolor='gray',
-                            elinewidth=0.8, capsize=2, zorder=2)
-                ax.scatter(xs, ys, s=40, c=cs, edgecolors='black',
+                ax.errorbar(xs, ys, yerr=es, fmt='none', ecolor=BASE_STYLE[0],
+                            elinewidth=0.8, alpha=0.6, capsize=2, zorder=2)
+                ax.scatter(xs, ys, s=40, c=BASE_STYLE[0],
+                           marker=BASE_STYLE[1], edgecolors='black',
                            linewidths=0.4, zorder=3)
                 if annotate:
                     # Alternate the label side so neighbouring points in a
@@ -1752,33 +1755,28 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         for pi in range(len(page), nrows * ncols):
             axes[pi // ncols][pi % ncols].axis('off')
 
-        handles = [plt.Line2D([], [], marker='o', ls='', color=ncol[nt],
-                              markeredgecolor='black', markeredgewidth=0.4,
-                              label=str(nt)) for nt in nights]
-        fig.legend(handles=handles, loc='outside lower center',
-                   ncol=min(len(nights), 8), fontsize=8, title='day_obs',
-                   title_fontsize=8, frameon=False)
-        if overlays or ranges is not None:
-            style = []
-            if overlays:
-                style.append(
-                    plt.Line2D([], [], marker='o', ls='', color='0.35',
-                               markeredgecolor='black', markeredgewidth=0.4,
-                               label=f'{base_label} (filled circle)'))
-                style += [
-                    plt.Line2D([], [], marker=omark, ls='',
-                               markerfacecolor='none', markeredgecolor='0.35',
-                               markeredgewidth=1.3, label=olab)
-                    for _okey, olab, omark in overlays]
-            if ranges is not None:
-                style.append(plt.Rectangle((0, 0), 1, 1, color='#f2c9d4',
-                                           alpha=0.45,
-                                           label='allowed range ±r_j'))
-            fig.legend(handles=style, loc='outside upper right', fontsize=8,
-                       frameon=False)
+        # One legend, below the panels.  It must not go at the top: the title is
+        # up to four lines and an upper-corner legend overlaps it.
+        style = [plt.Line2D([], [], marker=BASE_STYLE[1], ls='',
+                            color=BASE_STYLE[0], markeredgecolor='black',
+                            markeredgewidth=0.4, label=base_label)]
+        style += [plt.Line2D([], [], marker=omark, ls='',
+                             markerfacecolor='none', markeredgecolor=ocol,
+                             markeredgewidth=1.3, label=olab)
+                  for _okey, olab, ocol, omark in overlays]
+        if ranges is not None:
+            style.append(plt.Rectangle((0, 0), 1, 1, color='#f2c9d4',
+                                       alpha=0.45,
+                                       label='allowed range ±r_j'))
+        fig.legend(handles=style, loc='outside lower center',
+                   ncol=min(len(style), 3), fontsize=9,
+                   title='recovery scheme', title_fontsize=9, frameon=False)
         pg_lab = (f'DOF {page[0]}–{page[-1]} '
                   f'(panels {pg0 + 1}–{pg0 + len(page)} of {len(dof_indices)})')
-        fig.suptitle(f'{title}\n{pg_lab}', fontsize=12)
+        night_lab = (f'{len(nights)} nights: '
+                     + ', '.join(str(nt) for nt in nights)
+                     + ' — named per point as day_obs/B value in deg')
+        fig.suptitle(f'{title}\n{pg_lab}\n{night_lab}', fontsize=12)
         figs.append(fig)
     return figs
 

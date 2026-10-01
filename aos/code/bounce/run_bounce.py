@@ -864,20 +864,19 @@ def main():
                                                   for e in entries):
                     overlay.append(('rbr_deltas',
                                     f'RBR 50/34, kappa={cfg["rbr_kappa"]:g} '
-                                    f'power={cfg["rbr_power"]} (both '
-                                    f'dimensionless; open square)'))
+                                    f'power={cfg["rbr_power"]} '
+                                    f'(both dimensionless)'))
                 if any(e.get('dof22_deltas') for e in entries):
                     overlay.append(('dof22_deltas',
                                     f'{len(DOF22)}/{cfg["n_keep_reduced"]} '
-                                    f'reduced DOF set (open triangle)'))
+                                    f'reduced DOF set'))
                 if any(e.get('dof_oic_deltas') for e in entries):
                     overlay.append(('dof_oic_deltas',
                                     f'OIC 50/34, rho={cfg["oic_rho"]:g} '
-                                    f'dimensionless (open diamond)'))
+                                    f'dimensionless (rigid body suppressed, '
+                                    f'see study doc)'))
                 if cam_only and any(e.get('dof5_deltas') for e in entries):
-                    overlay.append(('dof5_deltas',
-                                    '5/5 camera hexapod (open inverted '
-                                    'triangle)'))
+                    overlay.append(('dof5_deltas', '5/5 camera hexapod'))
                 axis = bl.leg_axis_name(b)
                 sub = ''
                 if dof_ranges is not None:
