@@ -5,7 +5,7 @@ DuckDB except the Telescope Mount Assembly (TMA) truss temperature, which the Co
 Database (ConsDB) serves and `efd_db.join_consdb` derives on the fly, so the table is cached to
 parquet and the analysis stage runs offline from it.
 
-Three tables are written:
+Four tables are written:
 
 * ``thermal_focus.parquet`` -- ordinary science visits, the sample the focus model is fitted on.
 * ``<fam_dir>/thermal_focus_fam.parquet`` -- the in-focus ``acq`` visit of each Full Array Mode
@@ -15,12 +15,19 @@ Three tables are written:
   start of the night, carrying the thermal telemetry at the run's first visit and the commanded
   Trim degrees of freedom at its last. These visits are ``acq``, so they are absent from the
   science table above, which keeps ``science`` exposures only.
+* ``thermal_focus_truss_all.parquet`` -- the mean TMA truss temperature for **every** exposure in
+  the value-added database, with no image-type, band, LUT-epoch or temperature cut, so the report
+  can show where the fitted sample sits within the full range of conditions the telescope has
+  seen. This is the most expensive stage, one ConsDB round trip per night, and is the reason
+  ``--only-truss-all`` exists.
 
 Invocation::
 
     python code/run_thermal_focus.py
     python code/run_thermal_focus.py --day-obs-range 20251103 20260713
     python code/run_thermal_focus.py --no-fam
+    python code/run_thermal_focus.py --no-truss-all
+    python code/run_thermal_focus.py --only-truss-all
 
 Notes
 -----
@@ -320,6 +327,85 @@ def load_fam(fam_variant, variant, day_obs_range, v1_per_um_dz, verbose=True):
     return df
 
 
+def load_truss_all(day_obs_range=None, verbose=True):
+    """Mean TMA truss temperature for every exposure in the database, night by night.
+
+    Parameters
+    ----------
+    day_obs_range : `tuple` [`int`] or `None`, optional
+        Inclusive ``(lo, hi)`` night range as ``YYYYMMDD``, or `None` for the whole database.
+    verbose : `bool`, optional
+        Print per-night progress and the closing summary.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        One row per exposure with ``visit_id``, ``day_obs``, ``seq_num``, ``obs_start_mjd`` [d],
+        ``img_type``, ``truss_temp_mean_c`` [°C] and ``truss_temp_mean_c_interpolated``.
+
+    Notes
+    -----
+    The loop over nights is a **correctness requirement, not an optimisation**.
+    `efd_db.join_consdb` derives ``truss_temp_mean_c`` as the mean of the two truss thermometers
+    and then interpolates it over the exposures it is given; handed the whole survey at once it
+    would interpolate across night boundaries, filling a gap at the end of one night from the
+    start of the next. One night per call confines the interpolation to where it is physically
+    defensible. The ``meta`` group is fetched alongside ``thermal`` because it supplies
+    ``obs_start_mjd``, the numerical axis that interpolation runs on.
+
+    No cut of any kind is applied: this table is deliberately the whole population, including
+    biases, darks and flats, because its purpose is to show what the fitted sample excluded.
+    ``img_type`` is therefore carried, and any plot drawn from this table must say which
+    population it shows.
+
+    A night that fails -- a ConsDB hiccup, a night with no truss telemetry at all -- is reported
+    and skipped rather than being allowed to lose a pass that costs several hundred queries.
+    """
+    keys = ['visit_id', 'day_obs', 'seq_num']
+    nights = sorted(int(d) for d in
+                    efd_db.visits(day_obs_range=day_obs_range, columns=keys)['day_obs'].unique())
+    if verbose:
+        print(f'  mean truss temperature over {len(nights)} nights, day_obs {nights[0]} to '
+              f'{nights[-1]}, one ConsDB round trip per night')
+
+    want = keys + ['obs_start_mjd', 'img_type', 'truss_temp_mean_c',
+                   'truss_temp_mean_c_interpolated']
+    frames, failed = [], []
+    for i, d in enumerate(nights, start=1):
+        try:
+            vis = efd_db.visits(day_obs_range=(d, d), columns=keys)
+            vis = efd_db.join_consdb(vis, groups=('meta', 'thermal'))
+            frames.append(vis[[c for c in want if c in vis.columns]])
+        except Exception as exc:                                  # noqa: BLE001 - see Notes
+            failed.append(d)
+            print(f'    day_obs {d}: skipped, {type(exc).__name__}: {exc}')
+        if verbose and (i % 25 == 0 or i == len(nights)):
+            print(f'    {i} of {len(nights)} nights, '
+                  f'{sum(len(f) for f in frames)} exposures so far')
+
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=want)
+
+    if verbose and len(df):
+        t = df['truss_temp_mean_c']
+        n_night_nan = int(df.groupby('day_obs')['truss_temp_mean_c']
+                          .apply(lambda s: s.notna().sum() == 0).sum())
+        n_interp = int(df['truss_temp_mean_c_interpolated'].fillna(False).sum()) \
+            if 'truss_temp_mean_c_interpolated' in df.columns else 0
+        print(f'  -> {len(df)} exposures over {df["day_obs"].nunique()} nights, '
+              f'{len(failed)} nights skipped on error')
+        print(f'     truss temperature resolved      : {int(t.notna().sum())} exposures '
+              f'({100 * t.notna().mean():.1f}%)')
+        print(f'     of those, filled by interpolation: {n_interp}')
+        print(f'     nights with no truss sample at all: {n_night_nan}')
+        print(f'     mean truss temperature [deg C]: median {t.median():+.2f}, '
+              f'nMAD {nmad(t.to_numpy()):.2f}, range {t.min():+.2f} to {t.max():+.2f}, '
+              f'n {int(t.notna().sum())}')
+        if 'img_type' in df.columns:
+            counts = df['img_type'].value_counts()
+            print('     img_type: ' + ', '.join(f'{k} {v}' for k, v in counts.items()))
+    return df
+
+
 def _exposure_inventory(day_obs_range, cdb=None, instrument='lsstcam'):
     """Read ``science_program``, ``img_type`` and ``seq_num`` for every exposure in a night range.
 
@@ -550,6 +636,11 @@ def main():
     ap.add_argument('--no-fam', action='store_true', help='skip the FAM table')
     ap.add_argument('--no-t539', action='store_true',
                     help='skip the initial-alignment comparison table')
+    ap.add_argument('--no-truss-all', action='store_true',
+                    help='skip the database-wide mean truss temperature table')
+    ap.add_argument('--only-truss-all', action='store_true',
+                    help='write only the database-wide truss table, skipping the other three; '
+                         'this stage is one ConsDB query per night and is worth running alone')
     args = ap.parse_args()
 
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
@@ -558,16 +649,17 @@ def main():
 
     day_obs_range = tuple(args.day_obs_range) if args.day_obs_range else None
 
-    print('=== v1 to equivalent hexapod dz conversion ===')
-    v1_per_um_dz = L.v1_per_um_dz_value(dof_set=args.dof_set, n_modes=args.n_modes)
+    if not args.only_truss_all:
+        print('=== v1 to equivalent hexapod dz conversion ===')
+        v1_per_um_dz = L.v1_per_um_dz_value(dof_set=args.dof_set, n_modes=args.n_modes)
 
-    print('\n=== science visits ===')
-    sci = load_science(args.variant, day_obs_range, v1_per_um_dz)
-    sci_path = out_dir / 'thermal_focus.parquet'
-    sci.to_parquet(sci_path, index=False)
-    print(f'wrote {sci_path} ({len(sci)} rows)')
+        print('\n=== science visits ===')
+        sci = load_science(args.variant, day_obs_range, v1_per_um_dz)
+        sci_path = out_dir / 'thermal_focus.parquet'
+        sci.to_parquet(sci_path, index=False)
+        print(f'wrote {sci_path} ({len(sci)} rows)')
 
-    if not args.no_fam:
+    if not args.no_fam and not args.only_truss_all:
         print('\n=== FAM triplets ===')
         fam = load_fam(args.fam_variant, args.variant, day_obs_range, v1_per_um_dz)
         fam_dir = out_dir / args.fam_dir_name
@@ -576,7 +668,7 @@ def main():
         fam.to_parquet(fam_path, index=False)
         print(f'wrote {fam_path} ({len(fam)} rows)')
 
-    if not args.no_t539:
+    if not args.no_t539 and not args.only_truss_all:
         print('\n=== initial alignment block, start-of-night runs ===')
         t539 = load_t539(day_obs_range)
         if len(t539):
@@ -585,6 +677,16 @@ def main():
             print(f'wrote {t539_path} ({len(t539)} rows)')
         else:
             print('no start-of-night alignment runs found; no table written')
+
+    if not args.no_truss_all:
+        print('\n=== mean truss temperature, every exposure in the database ===')
+        truss = load_truss_all(day_obs_range)
+        if len(truss):
+            truss_path = out_dir / 'thermal_focus_truss_all.parquet'
+            truss.to_parquet(truss_path, index=False)
+            print(f'wrote {truss_path} ({len(truss)} rows)')
+        else:
+            print('no exposures returned; no table written')
 
 
 if __name__ == '__main__':

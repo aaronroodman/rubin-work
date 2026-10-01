@@ -1,10 +1,11 @@
 # Study: `thermal_focus` — the focus error as a function of temperature
 
-> **Status:** current · **Last updated:** 2026-09-24 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-01 · **Kind:** reference (study)
 
 > **Code:** `code/` · **Notebooks:** `notebooks/`
 > **Output:** `output/` (`thermal_focus.pdf`, `thermal_focus.parquet`,
-> `thermal_focus_t539.parquet`, `<fam_dir>/thermal_focus_fam.parquet`)
+> `thermal_focus_t539.parquet`, `thermal_focus_truss_all.parquet`,
+> `<fam_dir>/thermal_focus_fam.parquet`)
 
 Prediction of the Rubin telescope's uniform-defocus error from thermal telemetry alone, so that
 focus can be set open-loop from a table instead of being driven by the wavefront sensors. The
@@ -14,9 +15,12 @@ rather than the few hundred dedicated Full Array Mode (FAM) visits.
 
 **Result.** Five thermal channels — the Telescope Mount Assembly (TMA) truss temperature and the
 four M1M3 bulk thermal gradients — fitted jointly with one band-independent Huber robust linear
-model predict the focus error to **59.9 µm of equivalent hexapod dz** from an uncorrected
-**336.8 µm**, which is 18% of the original scatter (dimensionless, residual normalized median
-absolute deviation (nMAD) over uncorrected nMAD). The truss temperature carries most of it at
+model predict the focus error to **58.2 µm of equivalent hexapod dz** from an open-loop focus
+nMAD of **336.8 µm**, which is 17% of the original scatter (dimensionless, residual normalized
+median absolute deviation (nMAD) over open-loop focus nMAD). That residual is **in sample**,
+fitted on every night; the 5-fold `day_obs`-grouped value is 59.9 µm, an optimism of 1.04
+(dimensionless, night-grouped nMAD over in-sample nMAD) — see
+[Why there are no folds](#why-there-are-no-folds). The truss temperature carries most of it at
 **+125.09 µm of equivalent hexapod dz per °C**. After that correction **no elevation dependence
 remains**, so temperature alone sets the table. The correction works night to night and **not
 within an observing block**, where the commanded Trim the model is really predicting is frozen.
@@ -48,6 +52,14 @@ The response is expressed throughout as **equivalent hexapod dz [µm]**: the tot
 shared as 0.5 µm on the camera hexapod and 0.5 µm on the M2 hexapod. The conversion is
 `v1_per_um_dz = 9.00851e-04` dimensionless v-mode-1 amplitude per µm of total dz travel, the mean
 magnitude of camera degree of freedom (DOF) 5 and M2 DOF 0.
+
+**The conversion is not exact at the percent level**, and is quoted to give a physical sense of the
+size of a focus change rather than as a calibration. Three independent routes to it — the
+camera-only inverse at −62.8389, the singular-value-decomposition minimum-norm solution at −63.2195
+and the full 50-DOF pseudo-inverse at −63.9902 µm of equivalent hexapod dz per µm of wavefront —
+agree only to 1.2% (dimensionless, spread over mean). The shared and camera-alone conventions
+differ by a further 1.1% (dimensionless), 1110.1 µm against 1121.8 µm of hexapod dz per unit
+v-mode-1 amplitude. Nothing in the study depends on the factor to better than that.
 
 Both axes are genuinely **negative** — v-mode 1 per µm is −8.9144254e-04 for the camera hexapod
 (DOF 5) and −9.1026032e-04 for M2 (DOF 0) — and `v1_per_um_dz_value` returns the magnitude
@@ -107,8 +119,11 @@ real misunderstanding at some point:
 | with a finite response | 69,348 |
 | **with all five thermal features** | **68,079** |
 
-The LUT-epoch nights (`LUT_EPOCH_OFFSET_NIGHTS`) ran a different hexapod LUT configuration; their
-per-night offsets sit far from the rest because the commanded baseline itself changed.
+The `day_obs` span is **set by the LUT epoch**, not chosen for convenience: the commanded baseline
+has to mean the same thing on every night in the fit, and 20251103 to 20260713 is the range over
+which one consistent hexapod LUT was in force. The eight excluded nights inside that range
+(`LUT_EPOCH_OFFSET_NIGHTS`) ran a different hexapod LUT configuration; their per-night offsets sit
+far from the rest because the commanded baseline itself changed.
 
 The truss cut (`TRUSS_TEMP_MAX_C = 20.0` °C) removes an isolated warm population: 217 visits on
 `day_obs` 20251118 and 20251119, spanning +22.88 to +25.07 °C. They are detached from the rest of
@@ -119,7 +134,7 @@ night-grouped residual nMAD from 60.1 to 59.9 µm of equivalent hexapod dz, so n
 on it; the cross-validated R² improves from 0.474 to 0.518 (dimensionless) because the warm
 outliers were inflating the variance being explained rather than being predicted.
 
-The uncorrected response has median +172.2 µm and nMAD 341.2 µm of equivalent hexapod dz over the
+The open-loop focus has median +172.2 µm and nMAD 341.2 µm of equivalent hexapod dz over the
 69,348 visits with a finite response, and nMAD 336.8 µm over the 68,079 with all five features.
 The truss temperature is filled by within-night interpolation for 6,254 of 69,348 visits (9.0%);
 `truss_temp_mean_c_interpolated` is carried so the analysis can cut on it.
@@ -159,30 +174,44 @@ The intercept is the response at zero in every feature. That is a long extrapola
 sample means above, so it is not a physically meaningful offset on its own, only the constant that
 makes the five slopes land on the data.
 
-Night-grouped residual nMAD is **59.9 µm of equivalent hexapod dz**, and the per-fold coefficients
-are all sign-stable. The truss term is the stable one; the three weaker gradients scatter more
-across folds, the radial term's scatter being comparable to its own magnitude.
+The residual nMAD is **58.2 µm of equivalent hexapod dz**, fitted **in sample** on all 147 nights —
+which is also the model an observer would be handed. The 5-fold `day_obs`-grouped value is 59.9 µm,
+an optimism of 1.04 (dimensionless, night-grouped nMAD over in-sample nMAD).
 
-### Night-grouped evaluation is required
+### Why there are no folds
 
-Within a night the thermal telemetry drifts slowly, so consecutive visits are near-duplicates in
-feature space: only **2.7%** of the truss temperature's variance is within-night, while **90.7%**
-of the response variance is between nights. A visit-level train/test split therefore lets a model
-identify the night from its temperature and recall that night's offset, and every score here comes
-from `GroupKFold` grouped on `day_obs`. The size of the trap depends on model capacity — a factor
-of 1.25 (dimensionless, visit-level nMAD over night-grouped nMAD) for boosted trees, and 1.03 for
-the five-coefficient linear fit actually used. The visit-level number is reported for comparison;
-it is not a performance estimate.
+Any split of this sample **must be by night, never by visit**. Within a night the thermal telemetry
+drifts slowly, so consecutive visits are near-duplicates in feature space: only **2.7%** of the
+truss temperature's variance is within-night (dimensionless, within-night over total), while
+**90.7%** of the open-loop focus variance is between nights. A visit-level split therefore lets a
+model identify the night from its temperature and recall that night's offset, and would report a
+number far better than the telescope would deliver on a new night.
 
-The same reasoning applies within the sample itself: the per-night offset nMAD of 50.1 µm against
-a within-night residual nMAD of 32.7 µm is a ratio of 1.53 (dimensionless, offset nMAD over
-residual nMAD), so night-to-night offset variation is the larger of the two and is what a held-out
-night must be predicted through.
+**But the deliverable needs no split at all.** It is a low-dimensional linear Huber fit — one slope
+per telemetry quantity plus an intercept, five slopes over 68,079 visits — and a model of that form
+has no capacity to memorise a night, because there is nowhere for a night's identity to be stored.
+In-sample and night-grouped residuals come out at 58.2 and 59.9 µm of equivalent hexapod dz, an
+optimism of **1.04** (dimensionless). Every nMAD in the report is in sample, with that one number
+quoted as the check; the fold machinery the study once carried has been removed.
+
+The size of the trap is a statement about **model capacity, not about the sample**: the same
+measurement on gradient-boosted trees over these same visits gives 3.1 (dimensionless), so a model
+with the capacity to memorise a night does memorise it and would need the folds this linear fit
+does not. That is why [Model choice](#model-choice) below is the one table still reported
+night-grouped.
+
+The sample's own structure is consistent with this: the per-night offset nMAD of 50.1 µm against a
+within-night residual nMAD of 32.7 µm is a ratio of 1.53 (dimensionless, offset nMAD over residual
+nMAD), so night-to-night offset variation is the larger of the two and is what a new night must be
+predicted through. That is a property of the data, not a fold result.
 
 ### Model choice
 
-Night-grouped 5-fold, truss plus the four M1M3 gradients, against the uncorrected baseline of
-336.8 µm of equivalent hexapod dz:
+Night-grouped 5-fold, truss plus the four M1M3 gradients, against the open-loop focus baseline of
+336.8 µm of equivalent hexapod dz. **This is the one table in the study still reported
+night-grouped, deliberately**: comparing a tree with a linear fit is exactly the case where the
+grouping changes the answer, because the tree has the capacity to memorise a night and the linear
+fit does not.
 
 | model | residual nMAD [µm equiv hexapod dz] | cross-validated R² [dimensionless] |
 |---|---|---|
@@ -190,17 +219,32 @@ Night-grouped 5-fold, truss plus the four M1M3 gradients, against the uncorrecte
 | Ridge linear | 66.4 | 0.484 |
 | RandomForest | 92.4 | 0.152 |
 | HistGB | 99.4 | 0.254 |
-| uncorrected | 336.8 | 0.000 |
+| no model (open-loop focus itself) | 336.8 | 0.000 |
 
 The response is close to linear and the trees are worse, fitting night-specific structure that
 does not transfer to held-out nights. The linear fit is kept because it is interpretable as a
 coefficient per °C and is what a look-up table needs.
 
-### What adds nothing
+### Settling the feature set
 
-No feature set beats truss + the four gradients by more than 0.2% (dimensionless, nMAD gain over
-the deliverable nMAD). Elevation, wind, camera-body temperature and hexapod motion history each
-add nothing measurable. This is the result that justifies a five-channel linear model.
+The primary evidence is the **controlled term sequence** on pages 6 to 8 of the report: each
+candidate is added to a mean-truss-temperature baseline on its own and ranked by the residual nMAD
+it leaves, then the same terms are added cumulatively strongest-first. All models in the sequence
+are fitted and scored on the same 66,908 visits of 68,079 — the subset where the baseline and every
+candidate are finite — so a term with sparser telemetry coverage is not credited with the easier
+sample that implies. Ranking is on residual nMAD rather than a coefficient's formal significance,
+because the scatter is what an open-loop correction is judged on.
+
+The sequence presents the numbers and **does not pick a winner**. The choice weighs the residual
+nMAD a term buys against the operational cost of carrying another telemetry channel: the quadratic
+radial terms require `value_added/code/build_m1m3_thermal_r2.py` to have been run over the night,
+and the camera-body temperature can drop out of the telemetry stream entirely. Changing the
+delivered set is a deliberate hand edit of `thermal_focus_lib.DELIVERABLE_GROUPS`.
+
+Beyond the thermal candidates, no feature set beats truss + the four gradients by more than 0.2%
+(dimensionless, nMAD gain over the deliverable nMAD). Elevation, wind, camera-body temperature and
+hexapod motion history each add nothing measurable — null results the analysis still prints from
+`section_ablation`, though they no longer occupy a page of the report.
 
 ### Quadratic radial M1M3 terms
 
@@ -285,6 +329,12 @@ gradient, at Pearson r +0.8991. **The M1 and M3 split is what carries the new in
 split makes it slightly worse, which is what redundancy looks like in a cross-validated score.
 Splitting the mirror was therefore the part of the design that mattered, not the quadratic radial
 shape by itself.
+
+Whether to adopt the pair is **left to the reader by design**. The report's cumulative term sequence
+shows the M1 quadratic radial term ranking second of the seven candidates on its own, and the
+by-eye judgement weighs that against the operational cost: the terms exist only once
+`value_added/code/build_m1m3_thermal_r2.py` has been run over the night, which the four bulk
+gradients do not require. See [Settling the feature set](#settling-the-feature-set).
 
 Substitution goes the other way. On the same 68,079 visits over 147 nights, the truss temperature
 plus the four bulk gradients gives residual nMAD 59.9 µm of equivalent hexapod dz at R² +0.5181,
@@ -402,12 +452,13 @@ tests exactly that claim:
 
 | correction | band change [µm equiv hexapod dz] | same band | ratio [dimensionless] |
 |---|---|---|---|
-| uncorrected | 18.3 (n = 1,132) | 8.7 (n = 66,800) | 2.12 |
-| **per-band models** | **25.7** | 8.8 | 2.94 |
+| open-loop focus | 18.3 (n = 1,132) | 8.7 (n = 66,800) | 2.12 |
+| **per-band models** | **23.6** | 8.8 | 2.69 |
 | shared thermal model | 18.8 | 8.7 | 2.15 |
 
-Per-band fitting makes the band-change step **worse**, 25.7 against 18.3 µm uncorrected, while the
-shared model leaves it essentially unchanged at 18.8 µm. The shared model is the right choice. A
+Per-band fitting makes the band-change step **worse**, 23.6 against 18.3 µm of the open-loop focus
+with no correction applied, while the shared model leaves it essentially unchanged at 18.8 µm. The
+shared model is the right choice. A
 band-independent correction cannot remove a real per-band focus offset, and a small one remains;
 it would have to be added separately.
 
@@ -415,14 +466,18 @@ it would have to be added separately.
 
 Once the thermal correction is applied, the residual carries no useful elevation dependence. Over
 **125 nights** with enough visits to fit, the median per-night residual-against-elevation slope is
-**−0.005 µm of equivalent hexapod dz per deg** with nMAD **0.782 µm per deg**, scattering about
-zero against a median formal error of 0.162 µm per deg. The per-night offset at 60 deg elevation
-has median −1.8 µm and nMAD 50.1 µm.
+**−0.001 µm of equivalent hexapod dz per deg** with nMAD **0.777 µm per deg**, scattering about
+zero against a median formal error of 0.165 µm per deg. The per-night offset at 60 deg elevation
+has median +1.0 µm and nMAD 48.0 µm. These are measured on the in-sample residual, like every other
+residual in the study.
 
 Splitting each night into rising and falling legs over the 109 nights with both, the median
-rising-minus-falling slope difference is **+0.254 µm per deg** with nMAD **0.878 µm per deg**, and
-the rising leg is steeper on 64 of 109 nights (sign-test p = 0.084, dimensionless) — **no
-consistent direction dependence**, so no hysteresis term is warranted. The slew direction is taken
+rising-minus-falling slope difference is **+0.259 µm per deg** with nMAD **0.862 µm per deg**, and
+the rising leg is steeper on 66 of 109 nights (sign-test p = 0.035, dimensionless) — **no
+consistent direction dependence** large enough to correct for, so no hysteresis term is warranted.
+The comparison and its plots are **kept as a null result**: a real elevation hysteresis, the truss
+settling differently going up than coming down, would show here, and the record of its absence is
+worth as much as a detection would have been. The slew direction is taken
 from a **centred 21-visit rolling median of elevation with a deadband**, not from the sign of the
 per-visit elevation difference, which is dominated by pointing jitter.
 
@@ -449,7 +504,7 @@ Of 326 blocks, 45 hold exactly 12 triplets with a constant step of 3 — 540 vis
 
 | quantity | median within-set peak-to-peak | unit |
 |---|---|---|
-| uncorrected response | **34.9** | µm equiv hexapod dz |
+| open-loop focus | **34.9** | µm equiv hexapod dz |
 | thermally corrected | **47.0** | µm equiv hexapod dz |
 | the prediction's own swing | 20.8 | µm equiv hexapod dz |
 | truss temperature | 0.0658 | °C |
@@ -489,9 +544,9 @@ where a correct correction would give ≈ +1.
 
 **Do not flip the sign to repair this.** Subtracting the prediction gives 46.7 µm of within-set
 peak-to-peak and improves 6 of 45 sets; adding it gives 32.7 µm and improves 27 of 45, against
-34.9 µm uncorrected. The improvement is real but meaningless: it fits the measured term with a
-model of the commanded term, and the agreement would not survive a block in which the AOS did
-re-command Trim.
+34.9 µm with no correction applied. The improvement is real but meaningless: it fits the measured
+term with a model of the commanded term, and the agreement would not survive a block in which the
+AOS did re-command Trim.
 
 The model describes night-to-night thermal drift, which is what it was built for and what the
 open-loop feed-forward term needs. It cannot describe a block over which the quantity it actually
@@ -575,8 +630,8 @@ At v-mode-1 amplitude 1.0 (dimensionless), `dof_set` `all_50` with 34 modes reta
 
 The two hexapod dz values carry the defocus and move together in a fixed ratio, because v-mode 1 is
 one direction in DOF space. The two mirror bending modes are real but tiny: at the 99th-percentile
-absolute amplitude the correction asks for, 0.71968 (dimensionless), they reach only **6.7576 nm and
-5.4340 nm**, so an observer applying this correction can leave them alone. M2 bending mode B4 does not
+absolute amplitude the correction asks for, 0.71710 (dimensionless), they reach only **6.7333 nm and
+5.4145 nm**, so an observer applying this correction can leave them alone. M2 bending mode B4 does not
 appear at all — it enters at +0.0002 µm per unit v-mode-1 amplitude, below even those two.
 
 ### The Trim the correction would command
@@ -589,15 +644,20 @@ error is that error in v-mode-1 units, with **no sign flip**. Over the 68,079-vi
 
 | DOF | median | nMAD | 1st pct | 99th pct | unit |
 |---|---|---|---|---|---|
-| camera hexapod dz | −86.6304 | 189.1334 | −432.5783 | +425.6159 | µm |
-| M2 hexapod dz | −62.2430 | 135.8903 | −310.8029 | +305.8005 | µm |
-| M1M3 bending mode B3 | +1.2599 | 2.7505 | −6.1897 | +6.2909 | nm |
-| M2 bending mode B5 | +1.0131 | 2.2118 | −4.9773 | +5.0587 | nm |
+| camera hexapod dz | −85.1908 | 188.2473 | −433.7871 | +425.2838 | µm |
+| M2 hexapod dz | −61.2087 | 135.2537 | −311.6714 | +305.5618 | µm |
+| M1M3 bending mode B3 | +1.2389 | 2.7376 | −6.1848 | +6.3085 | nm |
+| M2 bending mode B5 | +0.9962 | 2.2014 | −4.9734 | +5.0728 | nm |
+
+These are the predicted correction, so they move with the fit: the values above come from the
+**in-sample** prediction on every night, not from an out-of-fold stack. The histograms in the report
+clip their axes to the **0.25th to 99.75th percentile** rather than the 1st to 99th, so the tails
+that matter operationally — the nights asking for the largest motion — stay visible.
 
 The correction asks for **hundreds of µm** of hexapod dz and **single-digit nm** of either bending
 mode, which is the practical statement: this is a two-axis hexapod correction and the mirror figure
-can be left alone. How well the correction works, rather than how large it is, is what the training
-section measures.
+can be left alone. How well the correction works, rather than how large it is, is what
+[The fitted model](#the-fitted-model) measures.
 
 ### Start of night
 
@@ -607,13 +667,13 @@ the motion that matters most. Over 147 nights, MJD 60983.202 to 61235.045:
 
 | DOF | median | nMAD | slope against date, per d | unit |
 |---|---|---|---|---|
-| camera hexapod dz | −107.0654 | 190.0861 | +0.52648 ± 0.21942 | µm |
-| M2 hexapod dz | −76.9254 | 136.5748 | +0.37827 ± 0.15765 | µm |
-| M1M3 bending mode B3 | +1.5570 | 2.7644 | −0.00766 ± 0.00319 | nm |
-| M2 bending mode B5 | +1.2521 | 2.2229 | −0.00616 ± 0.00257 | nm |
+| camera hexapod dz | −106.0251 | 192.7906 | +0.52602 ± 0.21974 | µm |
+| M2 hexapod dz | −76.1779 | 138.5180 | +0.37794 ± 0.15788 | µm |
+| M1M3 bending mode B3 | +1.5419 | 2.8037 | −0.00765 ± 0.00320 | nm |
+| M2 bending mode B5 | +1.2399 | 2.2545 | −0.00615 ± 0.00257 | nm |
 
 Every row gives the same significance, **2.4 standard errors** (Huber, n = 147 nights), the same
-Pearson r **+0.1840** and the same Spearman rho **+0.2224** — with the sign reversed on the two
+Pearson r **+0.1834** and the same Spearman rho **+0.2214** — with the sign reversed on the two
 bending modes — because all four DOF are a fixed multiple of the one v-mode-1 amplitude. That is a
 property of the projection, not four independent measurements.
 
@@ -623,9 +683,9 @@ re-testing as the season lengthens rather than quoting as a measured drift.
 
 The start-of-night spread is **larger than the night-to-night spread of the rest of the night**.
 Comparing like with like — both statistics over the same 147 nights — the camera hexapod dz has nMAD
-190.0861 µm at the first visit against 164.9279 µm across the per-night medians, a factor of
-**1.15** (dimensionless, start-of-night nMAD over per-night-median nMAD). The ratio is the same
-1.15 for all four DOF, for the same reason the correlation coefficients are.
+192.7906 µm at the first visit against 165.4082 µm across the per-night medians, a factor of
+**1.17** (dimensionless, start-of-night nMAD over per-night-median nMAD). The ratio is the same
+1.17 for all four DOF, for the same reason the correlation coefficients are.
 
 A first visit needing a larger correction than the night's own centre is consistent with the
 telescope being furthest from thermal equilibrium at the start of a night, but that is an
@@ -696,6 +756,26 @@ The agreement is not expected to be exact: the two epochs are separated by the w
 telescope's thermal state has moved between them, and the block's own convergence is not error-free.
 The **correlation**, not the offset, is what this comparison establishes.
 
+**The outlier nights on the actual-Trim axis.** Over these 163 nights the camera hexapod dz Trim the
+block settled on has median −249.78 µm and nMAD 261.83 µm. Six nights lie beyond 4 nMAD of that, all
+on the large-negative side, and they are the points far down the vertical axis of the plots:
+
+| `day_obs` | camera hexapod dz Trim [µm] | M2 hexapod dz Trim [µm] | predicted focus error [µm equiv hexapod dz] | z [dimensionless] |
+|---|---|---|---|---|
+| 20260424 | −2417.36 | +484.78 | −53.9 | −8.3 |
+| 20260428 | −2143.36 | +77.48 | +57.8 | −7.2 |
+| 20251217 | −1976.96 | −1210.09 | +289.9 | −6.6 |
+| 20251216 | −1779.12 | −1101.05 | +23.1 | −5.8 |
+| 20251215 | −1670.94 | −1045.55 | −206.7 | −5.4 |
+| 20251214 | −1659.09 | −916.47 | −210.8 | −5.4 |
+
+z is the night's deviation over the nMAD of the nights. Four of the six are consecutive nights in
+mid-December 2025, and 20251214 and 20251216 are also the two outlier nights in the per-night median
+open-loop focus, so that week is an excursion of the telescope rather than of one measurement. An
+outlier here is a night on which the alignment block asked for an unusual amount of focus, which is
+not by itself a failure of the thermal prediction; the predicted focus error on the same row says
+whether the model saw it coming, and on these nights it largely did not.
+
 **The two mirror figure DOF cannot show a correlation at this amplitude.** v-mode 1 contains
 **+9.390 nm** of M1M3 bending mode B3 and **+7.551 nm** of M2 bending mode B5 per unit amplitude,
 against −645.7 µm and −463.9 µm for the two hexapod dz, so over these nights the predicted bending
@@ -710,9 +790,9 @@ standard error of unity.
 | file | role |
 |---|---|
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
-| `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
+| `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing four cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: fourteen sections and one 21-page document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 ### The network seam
@@ -723,6 +803,16 @@ computed inside `value_added/code/efd_db.py` (`join_consdb`) as the mean of the
 night, so there is no offline route to the study's headline regressor. That is why the build and
 analysis stages are separate: the build pays the network cost once and caches to parquet, and the
 analysis needs no network at all, which is what makes iterating on a fit cheap.
+
+The seam is load-bearing, and the database-wide truss-temperature page in the report does not
+breach it. That page shows the mean truss temperature on every exposure in the database, which needs
+the same ConsDB-derived column over 366 nights rather than the fitted 147 — so it is served by a
+**fourth build-stage cache**, `thermal_focus_truss_all.parquet`, written by
+`run_thermal_focus.load_truss_all`. The analysis reads the parquet and makes no call of its own. That
+stage queries **one night at a time**, which is a correctness requirement and not an optimisation:
+`interpolate_within_night` must not interpolate across a night boundary, so a single query spanning
+the survey would give wrong values. It is the most expensive stage in the build, which is why
+`--only-truss-all` exists.
 
 The DuckDB file lock is process-wide and excludes readers as well as writers, so every connection
 is read-only; a stray read-write connection blocks every other process, including a running build.
@@ -737,6 +827,10 @@ machine and run there. Every coefficient is inlined with its units and provenanc
 worked test cases. Inlining can drift from the fit silently, so section 11 of the analysis checks
 the calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod
 dz** over 68,079 visits, which is the two-decimal rounding of the inlined coefficients.
+
+Its `UNCORRECTED_NMAD_UM` keeps that name deliberately, even though the report now calls the
+quantity open-loop focus: the rename is a display change, and renaming a constant a summit copy of
+this file may already carry would break that copy for no gain.
 
 `dof_trim` is the form to command online. It returns the correction as the degrees of freedom the
 Optical Feedback Control system sets — the camera and M2 hexapod dz plus the two mirror figure
@@ -774,7 +868,8 @@ online scheme.
 | `thermal_focus.parquet` | one row per science visit: identity, band, pointing, the v-mode-1 components, the response [µm equiv hexapod dz] and the thermal telemetry |
 | `thermal_focus_t539.parquet` | one row per night of the initial alignment block: the run's first and last visit, the thermal telemetry at the first suffixed `_first`, and the Trim DOF at the last suffixed `_last` |
 | `<fam_dir>/thermal_focus_fam.parquet` | one row per FAM triplet whose `acq` visit has a recovered optical state, with the triplet's own DZ coefficients |
-| `thermal_focus.pdf` | the analysis document, in three parts: before the correction, the training, and all the data |
+| `thermal_focus_truss_all.parquet` | one row per exposure in the database, science and calibration alike: identity, `obs_start_mjd` [d], `img_type` and the mean TMA truss temperature [°C] with its interpolation flag |
+| `thermal_focus.pdf` | the analysis document, 21 pages in one linear order: the study description, the open-loop focus by band and against truss temperature, the truss temperature over the whole database, the nightly medians, how the model is settled, the individual and cumulative telemetry-term grids, the term summary, the fitted model, the quadratic radial terms, elevation and hysteresis, FAM blocks, and the resulting trims |
 
 `output/` has no data-axis level: the products depend on the database and the optical
 prescription, not on a Butler collection or processing variant. The FAM table is the exception,
@@ -813,8 +908,12 @@ The r²-like radial thermal mode is **done**: three quadratic radial terms over 
 the M1 annulus and the M3 inner disc are built into the value-added database and tested in the
 section above. The result is that the M1 and M3 pair adds a real but modest 4.8% reduction in
 robust residual scatter on top of the five deliverable features, while the whole-mirror term adds
-nothing and no quadratic set replaces the bulk gradients. Whether to adopt the M1 and M3 pair into
-the deliverable feature set is a decision left open; the deliverable is unchanged pending it.
+nothing and no quadratic set replaces the bulk gradients. The M1 quadratic radial term also ranks
+second of the seven candidates in the term sequence, behind the M1M3 z gradient. Adopting it is
+**not** an open task: the report presents the residual nMAD every candidate leaves and names no
+winner by design, because the choice weighs that scatter against the operational cost of another
+telemetry channel. `DELIVERABLE_GROUPS` in `thermal_focus_lib.py` is the single place that choice
+is recorded, and changing it is a hand edit informed by those pages.
 
 The comparison of the 50 DOF / 34 mode, 22/12 and 10/1 projections is **done** — the three
 `v1_per_um_dz` values agree to 0.108% (dimensionless, spread over the 50/34 value), far below the
