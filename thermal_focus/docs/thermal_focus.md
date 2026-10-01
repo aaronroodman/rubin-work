@@ -1,6 +1,11 @@
 # Study: `thermal_focus` — the focus error as a function of temperature
 
 > **Status:** current · **Last updated:** 2026-10-01 · **Kind:** reference (study)
+>
+> The elevation-hysteresis test and the within-FAM-block argument that earlier versions of this
+> document carried have been **dropped from the study**, not merely from the report. The hysteresis
+> result was a null one resting on a misreading of how the hexapod LUT handles elevation, and the
+> within-block comparison measured the frozen commanded Trim rather than a focus prediction.
 
 > **Code:** `code/` · **Notebooks:** `notebooks/`
 > **Output:** `output/` (`thermal_focus.pdf`, `thermal_focus.parquet`,
@@ -21,9 +26,14 @@ median absolute deviation (nMAD) over open-loop focus nMAD). That residual is **
 fitted on every night; the 5-fold `day_obs`-grouped value is 59.9 µm, an optimism of 1.04
 (dimensionless, night-grouped nMAD over in-sample nMAD) — see
 [Why there are no folds](#why-there-are-no-folds). The truss temperature carries most of it at
-**+125.09 µm of equivalent hexapod dz per °C**. After that correction **no elevation dependence
-remains**, so temperature alone sets the table. The correction works night to night and **not
-within an observing block**, where the commanded Trim the model is really predicting is frozen.
+**+125.09 µm of equivalent hexapod dz per °C**.
+
+The same five coefficients, applied unchanged to the in-focus acquisition visits of the FAM blocks
+on the Danish 1.2 wavefront retrieval, cut the scatter by **3.39x** (dimensionless, open-loop focus
+nMAD 282.2 µm over residual nMAD 83.3 µm of equivalent hexapod dz, n = 1,346 visits over 43 nights)
+— an independent sample through an independent retrieval. At the first visit after the initial
+alignment block the predicted and settled focus agree with a difference of median **+57.3 µm** and
+nMAD **153.8 µm of equivalent hexapod dz** over 163 nights.
 
 ## The response
 
@@ -243,8 +253,8 @@ delivered set is a deliberate hand edit of `thermal_focus_lib.DELIVERABLE_GROUPS
 
 Beyond the thermal candidates, no feature set beats truss + the four gradients by more than 0.2%
 (dimensionless, nMAD gain over the deliverable nMAD). Elevation, wind, camera-body temperature and
-hexapod motion history each add nothing measurable — null results the analysis still prints from
-`section_ablation`, though they no longer occupy a page of the report.
+hexapod motion history each add nothing measurable as **regressors** — null results the analysis
+still prints from `section_ablation`, though they no longer occupy a page of the report.
 
 ### Quadratic radial M1M3 terms
 
@@ -430,7 +440,7 @@ n = 68,079) and the camera body **+126.78 ± 0.27 µm per °C** (Pearson r +0.62
 load path setting the M1M3-to-camera spacing — and the camera-body channel is excluded because its
 collinearity with the truss destabilises the truss coefficient.
 
-### Residual shape
+### Residual shape, and where the model fails
 
 The residual has a heavy, one-sided positive tail, which is why every fit here is robust rather
 than least squares. Two residuals answer two different questions, and the study reports both:
@@ -438,12 +448,59 @@ about a **truss-only per-band** fit the positive excess is large, saying the tru
 leaves a population of visits above it; about the **full five-feature** fit that asymmetry is
 largely absorbed, saying the gradients account for much of it.
 
+The operationally useful form of the tail is **where it falls in time**, not which band carries it.
+Beyond 3 nMAD of the residual — a threshold of **174.5 µm of equivalent hexapod dz** — lie
+**3.15%** of all visits against the 0.27% a Gaussian would put there, and that excess is not spread
+evenly over the survey. Counted per night it concentrates on a handful of nights that the model
+simply did not see:
+
+| `day_obs` | visits beyond 3 nMAD | visits in the night | fraction [percent] |
+|---|---|---|---|
+| 20251214 | 314 | 314 | 100.0 |
+| 20251216 | 251 | 251 | 100.0 |
+| 20251220 | 162 | 192 | 84.4 |
+| 20251124 | 95 | 162 | 58.6 |
+| 20260424 | 231 | 521 | 44.3 |
+| 20251117 | 34 | 98 | 34.7 |
+| 20251108 | 109 | 338 | 32.2 |
+| 20260524 | 180 | 710 | 25.4 |
+
+Ranked over nights carrying at least 50 visits, since a night of a dozen visits reaches a high
+fraction on one outlier and says nothing about the model. Two of the worst are the mid-December 2025
+nights that are also outliers in the per-night median open-loop focus and in the Trim the alignment
+block settled on, so that week is an excursion of the telescope rather than of one measurement.
+
 An earlier one-sided-tail result quoted in the `correlations` study (beyond +3 nMAD 2.38/2.01/3.04/
 0.88% against 0.25/0.38/0.34/0.04% below −3 nMAD) is **a different statistic** — measured on
 `v1_total`, which includes the LUT, in dimensionless v-mode units over four bands, about a
 truss-only per-band fit. It is not restated here as reproduced.
 
-### Band independence and filter changes
+### Closed-loop performance: the measured deviation alone
+
+The number the open-loop prediction is judged against is what the closed loop already achieves. That
+is the measured v-mode-1 deviation on its own — no commanded Trim term and no thermal model — in the
+same focus units:
+
+```
+closed-loop focus deviation [um of equivalent hexapod dz] = v1 / v1_per_um_dz
+```
+
+Over the 68,079 fitted visits its median is **−20.18 µm** and its nMAD **19.33 µm of equivalent
+hexapod dz**, with the 1st to 99th percentile running −77.4 to +49.5 µm. Per night the median is
+−17.76 µm with nMAD 12.46 µm over the 147 nights, and the typical within-night nMAD is 15.89 µm.
+
+The standing offset of about −20 µm is not noise: it is the residual defocus the loop holds rather
+than drives to zero. It is **stable over the season** — the nightly median against date has Huber
+slope −0.01045 ± 0.01396 µm of equivalent hexapod dz per d, 0.7 standard errors, Pearson r −0.0504
+and Spearman rho −0.0145 over n = 147 nights — so nothing is drifting that an open-loop term would
+have to track.
+
+The comparison that matters is one of **size**: the closed loop holds focus to about 19 µm of
+equivalent hexapod dz once it has converged, while the open-loop focus the telescope starts a night
+with scatters by 336.8 µm and the thermal model predicts it to 58.2 µm. The thermal term is for
+getting close before the loop has anything to work with, not for competing with a converged loop.
+
+### Band independence and the filter look-up table
 
 The model is fitted once for all bands. Fitting per band would let the coefficients change at every
 filter change, injecting a step into the corrected residual where nothing physical has happened.
@@ -458,126 +515,97 @@ tests exactly that claim:
 
 Per-band fitting makes the band-change step **worse**, 23.6 against 18.3 µm of the open-loop focus
 with no correction applied, while the shared model leaves it essentially unchanged at 18.8 µm. The
-shared model is the right choice. A
-band-independent correction cannot remove a real per-band focus offset, and a small one remains;
-it would have to be added separately.
+shared model is the right choice.
 
-## Elevation: nothing remains
+#### How well the filter LUT is working
 
-Once the thermal correction is applied, the residual carries no useful elevation dependence. Over
-**125 nights** with enough visits to fit, the median per-night residual-against-elevation slope is
-**−0.001 µm of equivalent hexapod dz per deg** with nMAD **0.777 µm per deg**, scattering about
-zero against a median formal error of 0.165 µm per deg. The per-night offset at 60 deg elevation
-has median +1.0 µm and nMAD 48.0 µm. These are measured on the in-sample residual, like every other
-residual in the study.
+That a filter change costs more than a same-band step is a statement about the **filter LUT**, which
+is a separate question from the thermal model and is measured on the open-loop focus with no
+correction applied. An exact filter LUT would move focus by zero on a filter change, so the signed
+step across one is the LUT's own error.
 
-Splitting each night into rising and falling legs over the 109 nights with both, the median
-rising-minus-falling slope difference is **+0.259 µm per deg** with nMAD **0.862 µm per deg**, and
-the rising leg is steeper on 66 of 109 nights (sign-test p = 0.035, dimensionless) — **no
-consistent direction dependence** large enough to correct for, so no hysteresis term is warranted.
-The comparison and its plots are **kept as a null result**: a real elevation hysteresis, the truss
-settling differently going up than coming down, would show here, and the record of its absence is
-worth as much as a detection would have been. The slew direction is taken
-from a **centred 21-visit rolling median of elevation with a deadband**, not from the sign of the
-per-visit elevation difference, which is dominated by pointing jitter.
-
-The reason nothing remains is that the hexapod LUT already handles elevation: fitted on its own
-against elevation the LUT term has a slope two orders of magnitude larger than what survives in
-the residual. No elevation stage is therefore subtracted, and the diagnostic showing that nothing
-is left is the result.
-
-## FAM blocks: the correction does not work within a block
-
-A FAM block is a run of triplets taken at one fixed pointing over tens of minutes. The in-focus
-`acq` visit of each triplet carries a CWFS optical state, so the same response can be read per
-triplet and followed across the block. This is a timescale the model was never fitted on.
-
-**A FAM block is derived, not stored.** `assign_blocks` is a greedy fixed-pointing walk over
-`(science_program, day_obs)` in `acq_seq_num` order: a new block starts when the `seq_num` span
-reaches 36, or when altitude, azimuth or camera rotator angle drifts beyond 2.0 deg (azimuth
-compared circularly). `select_sets` then requires exactly 12 visits and a constant `seq_num` step
-of 3. Grouping by night instead would substitute a whole night for a 12-triplet block and silently
-change what every within-set number means, so `assign_blocks` **raises** rather than falling back
-to a coarser grouping when a pointing column is absent.
-
-Of 326 blocks, 45 hold exactly 12 triplets with a constant step of 3 — 540 visits over 18 nights.
-
-| quantity | median within-set peak-to-peak | unit |
-|---|---|---|
-| open-loop focus | **34.9** | µm equiv hexapod dz |
-| thermally corrected | **47.0** | µm equiv hexapod dz |
-| the prediction's own swing | 20.8 | µm equiv hexapod dz |
-| truss temperature | 0.0658 | °C |
-
-**The thermal correction makes within-block scatter worse**, a ratio of **1.35 (dimensionless,
-corrected over uncorrected)**, improving only **5 of 45** sets.
-
-### Why: inside a block the commanded term is frozen
-
-The response is `(v1_trim + MEASURED_SIGN * v1) / v1_per_um_dz` with `MEASURED_SIGN = -1.0`
-(dimensionless), so it carries a commanded term and a measured term of opposite sign. Between
-nights the **commanded** term dominates: `v1_trim` carries a between-night variance fraction of
-**91.2%** (dimensionless, between-night over total) against **25.0%** for the measured `v1`. The
-fitted model is therefore, to a good approximation, a model of what the AOS commanded.
-
-**Inside a FAM block the Trim is exactly constant.** Its within-set peak-to-peak is identically
-zero in **44 of the 45** clean sets; the one exception steps by 7.6e-03 (dimensionless v-mode-1
-amplitude). The AOS does not re-command Trim while a ladder runs. So within a block the response
-reduces to `-v1 / v1_per_um_dz` — the measured term alone, entering with the opposite sign from the
-one the model was fitted on.
-
-That is what reverses the slope against truss temperature:
-
-| slope of response against truss temperature | value [µm equiv hexapod dz per °C] |
-|---|---|
-| science, between nights | +124.38 |
-| science, within a night (n = 68,079) | +78.69 ± 0.62 |
-| FAM, within a 12-triplet set (n = 540) | **−81.10 ± 17.58** |
-
-The reversal is neither a sign error nor telemetry noise. The truss temperature is genuinely
-resolved inside a block — 12 distinct values per 12-visit set, monotonic in 26 of the 45 sets, with
-the within-night interpolation flag raised on only 50 of 540 rows (9.3%) — and a within-set
-permutation test puts the observed slope about 4 null-sigma out: the shuffled null is
-+0.01 ± 20.61 µm equiv hexapod dz per °C, with 0 of 200 draws reaching the observed magnitude. The
-within-set slope of response against prediction is **−0.7207 ± 0.0458** (dimensionless, Huber),
-where a correct correction would give ≈ +1.
-
-**Do not flip the sign to repair this.** Subtracting the prediction gives 46.7 µm of within-set
-peak-to-peak and improves 6 of 45 sets; adding it gives 32.7 µm and improves 27 of 45, against
-34.9 µm with no correction applied. The improvement is real but meaningless: it fits the measured
-term with a model of the commanded term, and the agreement would not survive a block in which the
-AOS did re-command Trim.
-
-The model describes night-to-night thermal drift, which is what it was built for and what the
-open-loop feed-forward term needs. It cannot describe a block over which the quantity it actually
-models does not move.
-
-The result is not an artifact of the 12-triplet floor. Relaxing it:
-
-| floor | sets | nights | median within-set peak-to-peak [µm equiv hexapod dz] |
+| consecutive-visit pair | median signed step [µm equiv hexapod dz] | nMAD | n [pairs] |
 |---|---|---|---|
-| at least 12 triplets | 45 | 18 | 34.9 |
-| at least 8 | 64 | 22 | 34.4 |
-| at least 6 | 70 | 22 | 33.5 |
+| across a filter change | +0.80 | 26.8 | 1,132 |
+| same band | −0.09 | 12.8 | 66,800 |
 
-### DZ(k=1, j=4) cross-check
+**The LUT carries no systematic offset in the mean** — the median step across a change is +0.80 µm,
+within noise of zero — but it costs **2.09x the same-band scatter** (dimensionless, band-change nMAD
+over same-band nMAD). So the error is per-transition rather than a single bias.
+
+**Antisymmetry is what separates a filter offset from a focus drift.** A real difference in focus
+between two filters reverses sign on the reverse transition, so the two legs of an ordered pair sum
+to zero; two legs of the *same* sign are a focus drift that happens to straddle the change and would
+have occurred without it. Over the pairs carrying at least 20 transitions in both directions:
+
+| pair | forward [µm equiv hexapod dz] | reverse | sum |
+|---|---|---|---|
+| g↔i | −5.9 (n = 56) | −5.5 (n = 66) | **−11.5** |
+| g↔r | +2.8 (n = 55) | −1.0 (n = 38) | +1.8 |
+| g↔u | −1.3 (n = 20) | −4.7 (n = 24) | **−6.0** |
+| i↔r | +3.4 (n = 67) | −6.6 (n = 109) | −3.2 |
+| i↔z | +2.1 (n = 104) | +7.4 (n = 85) | **+9.5** |
+| r↔u | −3.7 (n = 27) | +0.5 (n = 29) | −3.2 |
+| r↔z | −3.0 (n = 32) | +5.3 (n = 56) | +2.3 |
+| y↔z | −11.1 (n = 86) | +8.1 (n = 81) | −3.0 |
+
+Five of the eight pairs sum to within about 3 µm of equivalent hexapod dz of zero, which is a real
+antisymmetric filter offset the LUT is not applying. Three do not: g↔i at −11.5 µm, i↔z at +9.5 µm
+and g↔u at −6.0 µm are the pairs whose steps go the **same** way in both directions, meaning the
+step is a focus drift over the time a filter change takes rather than a property of the filters. The
+measurement cannot say more than that on this sample — the rarer pairs carry a few dozen transitions
+each, and nothing here separates the drift from the exchange mechanics.
+
+The per-band median open-loop focus spans **−87.4 µm** (u, n = 2,285) to **+261.1 µm** (y,
+n = 9,956) of equivalent hexapod dz, but that spread is not a filter offset: the bands are not
+observed at the same times of night or the same temperatures, so it is largely the thermal variation
+the model removes.
+
+## FAM blocks: an independent sample and an independent retrieval
+
+The in-focus `acq` visit of each Full Array Mode (FAM) triplet carries its own recovered optical
+state, so the same open-loop focus can be read there. That sample is independent of the science
+visits twice over: a different set of exposures, and the **Danish 1.2** wavefront retrieval
+(`fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) rather than the ConsDB corner-sensor Zernikes the
+model was fitted on. It is therefore the strongest check the study has that the five coefficients
+describe the telescope rather than one retrieval's quirks.
+
+The science-visit coefficients are applied **unchanged** — nothing is refitted — to 1,346 in-focus
+acquisition visits over 43 nights, `day_obs` 20251103 to 20260713:
+
+| quantity | median | nMAD | unit |
+|---|---|---|---|
+| open-loop focus | +245.0 | 282.2 | µm equiv hexapod dz |
+| after the thermal correction | +13.1 | **83.3** | µm equiv hexapod dz |
+
+That is an improvement of **3.39x** (dimensionless, open-loop focus nMAD over residual nMAD), and
+the residual median of +13.1 µm says the coefficients carry across to this retrieval with no
+refitted offset. The residual nMAD of 83.3 µm is larger than the science visits' 58.2 µm, which is
+expected: a different retrieval on a different sample.
+
+Predicted against measured, the Huber slope is **+0.1163 ± 0.0143** (dimensionless, predicted per
+measured) with Pearson r +0.1924 and Spearman rho **+0.7208** over n = 1,346 visits. The two
+correlations disagree sharply and **the Spearman value is the one to read** — the relation is far
+more monotonic than linear, and the slope well below unity reflects the few visits with large
+measured focus dominating a least-squares view. The scatter reduction, not the slope, is the claim.
+
+### DZ(k=1, j=4): the conversion, and a comparison not made
 
 The defocused pair of each triplet carries its own measurement of the same physical quantity: the
-DZ fit's term at focal (field) Zernike order k=1 and pupil Noll index j=4, read from the `fam_dz`
-table as `dz_k1_j4` [µm of wavefront]. Its within-set peak-to-peak is median **0.3286 µm of
-wavefront** over 45 sets, which is **21.0 µm of equivalent hexapod dz** through
+Double Zernike (DZ) fit's term at focal (field) Zernike order k=1 and pupil Noll index j=4, read
+from the `fam_dz` table as `dz_k1_j4` [µm of wavefront]. The conversion to focus units is
 
 ```
 DZ_UM_PER_UM_WF = -63.9902 um of equivalent hexapod dz per um of wavefront
 ```
 
-against the response's **34.9 µm**. The in-focus corner-sensor state swings about 1.7 times as much
-as the FAM pair's own defocus over the same set.
-
-Two readings of that difference are open and this measurement does not separate them: the FAM pair
-is a defocused exposure pair whose fit spans the whole focal plane while the `acq` v-mode 1 comes
-from the four corner sensors at best focus, so they differ in both what they average over and how
-they are retrieved; and DZ(k=1, j=4) is one term of the FAM wavefront rather than the whole of it.
+The analysis **does not compare the two**. The comparison the study once made was of their scatter
+*within* one FAM block, which measured a timescale over which the quantity the model predicts does
+not move, and it has been dropped along with the rest of the within-block material. A like-for-like
+comparison of the FAM pair's defocus against the `acq` visit's recovered v-mode 1 would be worth
+making, but it is a different measurement than the one that was there: the two differ in what they
+average over — the whole focal plane against the four corner sensors — and in how they are
+retrieved, and nothing here separates those two effects.
 
 **Still unverified:** `fam_dz.v_modes` is built by a different engine than
 `optical_state.v_modes`, and the two carry **opposite v-mode-1 sign conventions**. The DZ
@@ -600,7 +628,7 @@ uncertainty, so the choice of projection does not affect any conclusion. The sha
 camera-alone difference of 1.1% is a definition choice, not a scheme uncertainty; conflating the
 two comparisons is easy and wrong.
 
-## The correction as degrees of freedom
+## DoF Trim from the thermal focus prediction
 
 The response is one number per visit, a v-mode-1 amplitude. An observer acts on degrees of freedom
 (DOF), so the measured amplitude is projected back into the DOF it is built from, using the
@@ -679,7 +707,10 @@ property of the projection, not four independent measurements.
 
 At 2.4 standard errors over 147 nights this is a **weak positive trend, not a detection**: the Trim
 the correction asks for at the start of a night is mostly scatter about a fixed offset. It is worth
-re-testing as the season lengthens rather than quoting as a measured drift.
+re-testing as the season lengthens rather than quoting as a measured drift. The report's
+start-of-night panels therefore show the points alone, with no median line and no fitted line drawn
+over them — a drawn line at 2.4 standard errors reads as a result the measurement does not support.
+The slopes stay in this table, where their errors are visible beside them.
 
 The start-of-night spread is **larger than the night-to-night spread of the rest of the night**.
 Comparing like with like — both statistics over the same 147 nights — the camera hexapod dz has nMAD
@@ -724,7 +755,58 @@ Of 178 nights with a start-of-night run over `day_obs` 20251102 to 20260714, **1
 cuts the science sample takes — 8 LUT-epoch nights and 2 nights above 20 °C truss temperature. On
 those 163 nights, with the prediction back-projected through v-mode 1 and every fit Huber:
 
-| quantity | Pearson r | Spearman rho | Huber slope | actual − predicted, median | nMAD | unit |
+**Prediction quality at the first visit after the initial alignment.** The quantity the comparison
+turns on is one number per night, not four: the v-mode-1 amplitude the block settled on, converted to
+microns of equivalent hexapod dz — `v1_dz`, actual against predicted. Over the 163 nights:
+
+| quantity | median | nMAD | unit |
+|---|---|---|---|
+| actual `v1_dz`, from the settled Trim | +250.2 | 332.9 | µm equiv hexapod dz |
+| predicted `v1_dz`, from the thermal telemetry at the run's first visit | +170.6 | 313.0 | µm equiv hexapod dz |
+| **actual − predicted** | **+57.3** | **153.8** | µm equiv hexapod dz |
+
+with Huber slope **+0.578 ± 0.025** (dimensionless, predicted per actual), Pearson r +0.387 and
+Spearman rho **+0.737** over n = 163 nights. The nMAD of the difference, 153.8 µm, is the figure to
+quote for how well focus can be set at the start of a night from telemetry alone — larger than the
+58.2 µm the model reaches on the science sample, because the two epochs are separated by the whole
+alignment run and the block's own convergence is not error-free.
+
+**Pearson and Spearman disagree, and the Spearman value is the one to read.** The relation is far
+more monotonic than it is linear, because a few nights with large commanded Trim dominate a
+least-squares view of it. That gap is why every fit here is Huber rather than ordinary least squares,
+and why both statistics are reported.
+
+**The outlier nights.** Over these 163 nights the camera hexapod dz Trim the block settled on has
+median −249.78 µm and nMAD 261.83 µm. Six nights lie beyond 4 nMAD of that, all on the large-negative
+side, and they carry the table the report gives them its own page:
+
+| `day_obs` | seq_num first | seq_num after | truss temp first [°C] | truss temp after [°C] | predicted `v1_dz` [µm] | actual `v1_dz` [µm] | Camera dz Trim after [µm] | M2 dz Trim after [µm] | z [dimensionless] |
+|---|---|---|---|---|---|---|---|---|---|
+| 20251214 | 720 | 743 | +8.72 | +8.45 | −210.8 | +2627.9 | −1659.1 | −916.5 | −5.4 |
+| 20251215 | 7 | 30 | +10.73 | +10.70 | −206.7 | +2746.5 | −1670.9 | −1045.5 | −5.4 |
+| 20251216 | 9 | 36 | +12.67 | +12.73 | +23.1 | +2914.4 | −1779.1 | −1101.1 | −5.8 |
+| 20251217 | 17 | 40 | +13.28 | +13.23 | +289.9 | +3227.6 | −1977.0 | −1210.1 | −6.6 |
+| 20260424 | 43 | 72 | +10.60 | +10.29 | −53.9 | +2346.1 | −2417.4 | +484.8 | −8.3 |
+| 20260428 | 7 | 16 | +10.91 | +10.93 | +57.8 | +2367.3 | −2143.4 | +77.5 | −7.2 |
+
+Every `v1_dz` column is µm of equivalent hexapod dz; `z` is the night's deviation over the nMAD of the
+163 nights, on the camera hexapod dz Trim axis. The two truss columns say how far the thermal state
+moved while the block ran — on these nights, by less than 0.35 °C, so the prediction is not stale.
+
+The actual `v1_dz` on these nights runs **+2346 to +3228 µm of equivalent hexapod dz** against a
+predicted **−211 to +290 µm**: the model did not see any of them coming. Four of the six are
+consecutive nights in mid-December 2025, and 20251214 and 20251216 are also the two worst nights in
+the per-night residual outlier count, so that week is an excursion of the telescope rather than of one
+measurement. An outlier here is a night on which the alignment block asked for an unusual amount of
+focus, which is not by itself a failure of the thermal prediction; the predicted column on the same
+row says whether the model saw it coming, and on these nights it did not.
+
+**The per-hexapod split carries no optical meaning.** The alignment is free to put focus on either
+hexapod, and does: it leaves the camera hexapod dz Trim at exactly zero on 8 of the 163 nights and the
+M2 hexapod on another 8. That is why the comparison is made on `v1_dz` and not per hexapod. For the
+record, the per-DOF rows over the same 163 nights:
+
+| DOF | Pearson r | Spearman rho | Huber slope | actual − predicted, median | nMAD | unit |
 |---|---|---|---|---|---|---|
 | camera hexapod dz | +0.1123 | +0.2701 | +0.445 ± 0.105 | −99.763 | 239.279 | µm |
 | M2 hexapod dz | +0.5819 | +0.7120 | +1.406 ± 0.100 | +77.599 | 140.011 | µm |
@@ -732,49 +814,15 @@ those 163 nights, with the prediction back-projected through v-mode 1 and every 
 | M2 bending mode B5 | +0.0914 | +0.1115 | +3.642 ± 5.209 | −48.458 | 107.824 | nm |
 | v-mode-1 amplitude of the pair | +0.3870 | +0.7375 | +0.874 ± 0.041 | +0.052 | 0.139 | dimensionless |
 
-The slope is dimensionless in every row, actual per predicted in that row's own unit.
-
-**Pearson and Spearman disagree, and the Spearman value is the one to read.** The relation is far
-more monotonic than it is linear, because a few nights with large commanded Trim dominate a
-least-squares view of it. That gap is why every fit here is Huber rather than ordinary least squares,
-and why both statistics are reported.
-
-**The per-hexapod rows are the weaker ones because of how the alignment splits focus**, not because
-the prediction is worse for one hexapod. The alignment is free to put focus on either, and does: it
-leaves the camera hexapod dz Trim at exactly zero on 8 of the 163 nights and the M2 hexapod on
-another 8. That split carries no optical meaning. Projecting the pair onto the v-mode-1 direction,
+The slope is dimensionless in every row, actual per predicted in that row's own unit. The combined
+row projects the pair onto the v-mode-1 direction,
 
 ```
-combined v-mode-1 amplitude = (dof5 × u5 + dof0 × u0) / (u5² + u0²)
+combined v-mode-1 amplitude = (dof5 x u5 + dof0 x u0) / (u5^2 + u0^2)
 ```
 
-with `u5` and `u0` the unit content from the table above, is insensitive to the split, and it is that
-combined row — Spearman rho **+0.7375** over 163 nights — that answers the physical question. The two
-hexapod rows are kept so the split stays visible rather than hidden inside the combination.
-
-The agreement is not expected to be exact: the two epochs are separated by the whole run, so the
-telescope's thermal state has moved between them, and the block's own convergence is not error-free.
-The **correlation**, not the offset, is what this comparison establishes.
-
-**The outlier nights on the actual-Trim axis.** Over these 163 nights the camera hexapod dz Trim the
-block settled on has median −249.78 µm and nMAD 261.83 µm. Six nights lie beyond 4 nMAD of that, all
-on the large-negative side, and they are the points far down the vertical axis of the plots:
-
-| `day_obs` | camera hexapod dz Trim [µm] | M2 hexapod dz Trim [µm] | predicted focus error [µm equiv hexapod dz] | z [dimensionless] |
-|---|---|---|---|---|
-| 20260424 | −2417.36 | +484.78 | −53.9 | −8.3 |
-| 20260428 | −2143.36 | +77.48 | +57.8 | −7.2 |
-| 20251217 | −1976.96 | −1210.09 | +289.9 | −6.6 |
-| 20251216 | −1779.12 | −1101.05 | +23.1 | −5.8 |
-| 20251215 | −1670.94 | −1045.55 | −206.7 | −5.4 |
-| 20251214 | −1659.09 | −916.47 | −210.8 | −5.4 |
-
-z is the night's deviation over the nMAD of the nights. Four of the six are consecutive nights in
-mid-December 2025, and 20251214 and 20251216 are also the two outlier nights in the per-night median
-open-loop focus, so that week is an excursion of the telescope rather than of one measurement. An
-outlier here is a night on which the alignment block asked for an unusual amount of focus, which is
-not by itself a failure of the thermal prediction; the predicted focus error on the same row says
-whether the model saw it coming, and on these nights it largely did not.
+with `u5` and `u0` the unit content from the table above, and is the row the `v1_dz` comparison is
+built from.
 
 **The two mirror figure DOF cannot show a correlation at this amplitude.** v-mode 1 contains
 **+9.390 nm** of M1M3 bending mode B3 and **+7.551 nm** of M2 bending mode B5 per unit amplitude,
@@ -792,7 +840,7 @@ standard error of unity.
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing four cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: fourteen sections and one 21-page document, no network |
+| `code/run_thermal_focus_analysis.py` | the analysis: fifteen sections and one 20-page document, no network |
 | `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
 
 ### The network seam
@@ -854,8 +902,9 @@ side by the module's command line.
 
 The calculator is a **night-to-night feed-forward term**. It does not read the wavefront and does
 not know what the AOS has already commanded, so applying it blind on top of an already-converged
-loop would double-count the correction; and it must not be used to chase focus within a block, for
-the reason the FAM section gives.
+loop would double-count the correction. Its use is to set focus **before** the first wavefront
+measurement of a night, which is the one place a telemetry-only term has information the loop does
+not.
 
 Keep two conversions distinct: the dz-equivalent conversion is a one-hexapod-motion equivalent,
 fine for reading v1 physically, and is **not** the trim-adjustment code, which must resemble the
@@ -869,7 +918,7 @@ online scheme.
 | `thermal_focus_t539.parquet` | one row per night of the initial alignment block: the run's first and last visit, the thermal telemetry at the first suffixed `_first`, and the Trim DOF at the last suffixed `_last` |
 | `<fam_dir>/thermal_focus_fam.parquet` | one row per FAM triplet whose `acq` visit has a recovered optical state, with the triplet's own DZ coefficients |
 | `thermal_focus_truss_all.parquet` | one row per exposure in the database, science and calibration alike: identity, `obs_start_mjd` [d], `img_type` and the mean TMA truss temperature [°C] with its interpolation flag |
-| `thermal_focus.pdf` | the analysis document, 21 pages in one linear order: the study description, the open-loop focus by band and against truss temperature, the truss temperature over the whole database, the nightly medians, how the model is settled, the individual and cumulative telemetry-term grids, the term summary, the fitted model, the quadratic radial terms, elevation and hysteresis, FAM blocks, and the resulting trims |
+| `thermal_focus.pdf` | the analysis document, 20 pages in one linear order: (1) the study, its goal, method and sample; (2) the open-loop focus by band and against truss temperature; (3) the truss temperature over the whole database; (4) the nightly medians with the outlier nights named; (5-6) the individual and cumulative telemetry-term grids; (7) the term summary; (8-9) the deliverable model and its plots; (10) the quadratic radial terms; (11) the FAM in-focus comparison; (12-14) the correction as degrees of freedom, over all visits and at the start of each night; (15) closed-loop performance; (16) the filter LUT; (17) the outlier-night counts; (18-20) the initial alignment block -- its outlier nights as a table, the prediction at the first visit of the night, and the settled Trim per degree of freedom |
 
 `output/` has no data-axis level: the products depend on the database and the optical
 prescription, not on a Butler collection or processing variant. The FAM table is the exception,
@@ -895,14 +944,22 @@ the EFD, so it runs on the Rubin Science Platform or USDF.
 |---|---|---|---|
 | [`lut`](../../../aos/docs/studies/lut.md) | FAM DZ fits over 189 detectors, collapsed to one static DOF vector | static | dedicated FAM visits |
 | [`correlations`](../../../aos/docs/studies/correlations.md) | DZ and v-mode correlations against telemetry on the MI-refit residual | per visit | FAM visits |
-| `thermal_focus` | the temperature-dependent focus surface from the CWFS optical state | night to night, and within a block | all science visits, and FAM `acq` visits |
+| `thermal_focus` | the temperature-dependent focus surface from the CWFS optical state | night to night | all science visits, and FAM `acq` visits |
 
 The `lut` study produces one static vector; this study produces a dependence on temperature. They
 are separate outputs and neither consumes the other.
 
 ## Outstanding work
 
-Both known follow-ups are now closed.
+**The filter LUT's per-transition error is unexplained.** A filter change costs 2.09x the same-band
+focus scatter (dimensionless, band-change nMAD over same-band nMAD) with no systematic offset in the
+mean, and five of the eight well-sampled band pairs are antisymmetric at the few-µm level while three
+are not. That is a measurement of the filter LUT, not of the thermal model, and this study takes it
+no further: separating a real per-filter focus offset from a drift over the exchange time would need
+either more transitions per pair or a dedicated sequence that changes filter without letting the
+telescope drift. Nothing in the thermal correction depends on the answer.
+
+The other two known follow-ups are closed.
 
 The r²-like radial thermal mode is **done**: three quadratic radial terms over the whole mirror,
 the M1 annulus and the M3 inner disc are built into the value-added database and tested in the

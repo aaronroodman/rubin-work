@@ -13,8 +13,10 @@ Four tables are written:
   FAM variant because the DZ coefficients depend on which reduction produced them.
 * ``thermal_focus_t539.parquet`` -- one row per night for the initial alignment block run at the
   start of the night, carrying the thermal telemetry at the run's first visit and the commanded
-  Trim degrees of freedom at its last. These visits are ``acq``, so they are absent from the
-  science table above, which keeps ``science`` exposures only.
+  Trim degrees of freedom at its last. The mean truss temperature is carried at **both** epochs,
+  so how far the thermal state moved while the block converged is visible. These visits are
+  ``acq``, so they are absent from the science table above, which keeps ``science`` exposures
+  only.
 * ``thermal_focus_truss_all.parquet`` -- the mean TMA truss temperature for **every** exposure in
   the value-added database, with no image-type, band, LUT-epoch or temperature cut, so the report
   can show where the fitted sample sits within the full range of conditions the telescope has
@@ -28,6 +30,7 @@ Invocation::
     python code/run_thermal_focus.py --no-fam
     python code/run_thermal_focus.py --no-truss-all
     python code/run_thermal_focus.py --only-truss-all
+    python code/run_thermal_focus.py --only-t539
 
 Notes
 -----
@@ -541,8 +544,9 @@ def load_t539(day_obs_range, verbose=True):
     -------
     df : `pandas.DataFrame`
         One row per usable night: the run identification from `_t539_runs`, the five thermal
-        features suffixed ``_first``, and the four Trim degrees of freedom suffixed ``_last``
-        [µm].
+        features suffixed ``_first``, the four Trim degrees of freedom suffixed ``_last``
+        [µm], and the mean TMA truss temperature at both epochs — ``truss_temp_mean_c_first``
+        and ``truss_temp_mean_c_last`` [°C].
 
     Notes
     -----
@@ -581,7 +585,11 @@ def load_t539(day_obs_range, verbose=True):
     first = vis[['visit_id'] + tel_cols + ['truss_temp_mean_c',
                                            'truss_temp_mean_c_interpolated']].copy()
     first = first.rename(columns={c: f'{c}_first' for c in first.columns if c != 'visit_id'})
-    last = vis[['visit_id'] + trim_cols].copy()
+    # The truss temperature is carried at BOTH epochs. The telemetry at the run's first visit is
+    # what the prediction is made from; the value at its last says how far the telescope's thermal
+    # state moved while the alignment block converged, which is the leading reason the two epochs
+    # are not expected to agree exactly.
+    last = vis[['visit_id'] + trim_cols + ['truss_temp_mean_c']].copy()
     last = last.rename(columns={c: f'{c}_last' for c in last.columns if c != 'visit_id'})
 
     df = runs.merge(first, left_on='visit_id_first', right_on='visit_id', how='left') \
@@ -641,6 +649,8 @@ def main():
     ap.add_argument('--only-truss-all', action='store_true',
                     help='write only the database-wide truss table, skipping the other three; '
                          'this stage is one ConsDB query per night and is worth running alone')
+    ap.add_argument('--only-t539', action='store_true',
+                    help='write only the initial-alignment table, skipping the other three')
     args = ap.parse_args()
 
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
@@ -649,7 +659,9 @@ def main():
 
     day_obs_range = tuple(args.day_obs_range) if args.day_obs_range else None
 
-    if not args.only_truss_all:
+    _only = args.only_truss_all or args.only_t539
+
+    if not _only:
         print('=== v1 to equivalent hexapod dz conversion ===')
         v1_per_um_dz = L.v1_per_um_dz_value(dof_set=args.dof_set, n_modes=args.n_modes)
 
@@ -659,7 +671,7 @@ def main():
         sci.to_parquet(sci_path, index=False)
         print(f'wrote {sci_path} ({len(sci)} rows)')
 
-    if not args.no_fam and not args.only_truss_all:
+    if not args.no_fam and not _only:
         print('\n=== FAM triplets ===')
         fam = load_fam(args.fam_variant, args.variant, day_obs_range, v1_per_um_dz)
         fam_dir = out_dir / args.fam_dir_name
@@ -669,6 +681,8 @@ def main():
         print(f'wrote {fam_path} ({len(fam)} rows)')
 
     if not args.no_t539 and not args.only_truss_all:
+        # `load_t539` needs no v1 conversion: it compares commanded Trim against the model's own
+        # prediction, both formed in the analysis stage, so --only-t539 can skip the science load.
         print('\n=== initial alignment block, start-of-night runs ===')
         t539 = load_t539(day_obs_range)
         if len(t539):
@@ -678,7 +692,7 @@ def main():
         else:
             print('no start-of-night alignment runs found; no table written')
 
-    if not args.no_truss_all:
+    if not args.no_truss_all and not args.only_t539:
         print('\n=== mean truss temperature, every exposure in the database ===')
         truss = load_truss_all(day_obs_range)
         if len(truss):
