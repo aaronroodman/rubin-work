@@ -40,13 +40,12 @@ import pandas as pd
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))  # aos/code
 
-# The allowed-range vector and the RBR solver live in the `regularized_inversion` study
-# under smatrix/, where the method is derived.  Reached by path insert, as bounce_lib
-# does, rather than copied -- a second copy would be free to drift.
+# The allowed-range vector and the regularized solvers are shared code under smatrix/,
+# beside the `regularized_inversion` study that derives them.  Reached by path insert, as
+# bounce_lib does, rather than copied -- a second copy would be free to drift.
 _SM = pathlib.Path(__file__).resolve().parents[3] / "smatrix" / "code"
-for _p in (_SM / "regularized_inversion", _SM):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(_SM) not in sys.path:
+    sys.path.insert(0, str(_SM))
 
 # Noll indices the FAM build fits: Z4-Z26 omitting Z20 and Z21.
 from miw_io import JS_DEFAULT  # noqa: E402

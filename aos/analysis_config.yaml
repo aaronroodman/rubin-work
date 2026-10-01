@@ -53,6 +53,32 @@ defaults:
     fit_prefix: z1toz6
     n_dof: 50
     n_keep: 34
+    # The other recovery schemes scored at every bounce point beside the 50/34
+    # truncated one.  rbr_* is Range-Bounded Recovery: kappa is the
+    # dimensionless |d_j|/r_j (recovered amplitude over allowed range) at which
+    # the penalty reaches unit weight, power sets how fast it climbs past that
+    # (penalty ~ ratio ** (2 * power)).
+    rbr_enable: true
+    rbr_kappa: 4.0
+    rbr_power: 3
+    # The 22-DOF / 12-v-mode reduced scheme the AOS is expected to operate in.
+    # Only the mode count lives here: the 22 DOF are an *index set* (10 rigid
+    # body, M1M3 bending 1-7, M2 bending 1-5) fixed in run_bounce.py as DOF22,
+    # not a count that could be read from a config.
+    reduced_enable: true
+    n_keep_reduced: 12
+    # The quadratic motion penalty the ts_ofc Optimal Integral Controller (OIC)
+    # already carries.  oic_rho is the OIC's `motion_penalty`, dimensionless.
+    # ts_ofc ships 0.0, so the penalty is inactive as delivered and a value must
+    # be chosen; this one is *consumed* here.  Its derivation -- the feasibility
+    # and image-quality scan over rho on every bounce leg -- is in
+    # smatrix/docs/studies/regularized_inversion.md.  Do not re-derive it here.
+    oic_enable: true
+    oic_rho: 1.0e-3
+    # Per-DOF panel layout of bounce_dof_night_values.pdf, paginated across
+    # pages: enlarged panels so the overlaid schemes stay readable.
+    dof_ncols: 2
+    dof_rows_per_page: 5
     night_min_visits: 3
     pass_nsigma_threshold: 3.5
     pass_delta_threshold_um: 0.1

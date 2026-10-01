@@ -9,7 +9,7 @@ Truncation is a blunt 0/1 regularizer. The per-DOF normalization weights
 but never into the *feasible set*, so a recovered bending-mode amplitude is free to
 exceed the actuator-force-limited range ``r_j`` that the mirror can physically reach.
 
-This module provides three inversions over one design matrix, all returning DOF in
+This module provides four inversions over one design matrix, all returning DOF in
 the mixed physical units of ``DOF_UNITS_50`` (µm for translations and bending-mode
 amplitudes, arcsec for hexapod rotations):
 
@@ -24,12 +24,17 @@ amplitudes, arcsec for hexapod rotations):
     ``kappa`` and grows superlinearly past it, solved by iteratively reweighted least
     squares (IRLS). This is the method that targets the over-range amplitudes
     directly.
+``invert_oic``
+    The quadratic motion penalty the Optimal Integral Controller (OIC) in `ts_ofc`
+    already carries, ``rho^2 sum_j a_j^2 d_j^2``, with the per-DOF authority ``a_j``
+    built by `oic_authority`. Included so the range penalty can be scored against the
+    penalty that already ships rather than against no penalty at all.
 
-All three solve in the *normalized* DOF variable ``x = d / w``, which is the variable
-the SVD is taken in, so the v-mode machinery is untouched. Method B's penalty is
-expressed on the physical ``d = w * x``; penalizing a function of ``d`` while fitting
-in ``x`` is a change of variables, not a new basis, so `aos_state` remains the sole
-owner of the SVD (see ``svd-use-state-estimator``).
+All four solve in the *normalized* DOF variable ``x = d / w``, which is the variable
+the SVD is taken in, so the v-mode machinery is untouched. Methods B and the OIC
+express their penalty on the physical ``d = w * x``; penalizing a function of ``d``
+while fitting in ``x`` is a change of variables, not a new basis, so `aos_state`
+remains the sole owner of the SVD (see ``svd-use-state-estimator``).
 
 Notes
 -----
@@ -43,12 +48,21 @@ correct one.
 The penalty in method B is a *regularizer*, not a likelihood: it encodes the prior
 that the mirror cannot exceed its force-limited stroke. It therefore biases the
 estimate toward zero, and a resulting amplitude is a constrained estimate rather than
-an unbiased measurement of mirror figure.
+an unbiased measurement of mirror figure. The same caveat applies to the OIC penalty.
+
+This module sits flat at ``smatrix/code/`` rather than inside the study directory
+because it is consumed from outside that study: ``aos/code/bounce/bounce_lib.py``
+(through ``rbr_module``) and ``aos/code/miw/check_dof_ranges.py`` both import it by
+bare module name after a single ``sys.path`` insert of ``smatrix/code``, which is also
+where the ``normalization_weights`` that `dof_range_vector` needs lives. The runners
+that exercise and validate these solvers stay in
+``smatrix/code/regularized_inversion/``.
 """
 import numpy as np
 
 __all__ = ['forward_operator', 'invert_truncated', 'invert_damped',
-           'invert_range_penalty', 'achieved_residual', 'dof_range_vector']
+           'invert_range_penalty', 'invert_oic', 'oic_authority',
+           'achieved_residual', 'dof_range_vector']
 
 
 def forward_operator(svd, rank=None):
@@ -367,6 +381,101 @@ def invert_range_penalty(dW, svd, ranges, *, kappa=0.5, power=2, lam0=0.0,
         return d, dict(n_iter=used, converged=converged, delta=rel,
                        max_ratio=float(np.max(np.abs(d) / r_j)))
     return d
+
+
+def oic_authority():
+    """The OIC controller's authority vector, reproduced from `ts_ofc`.
+
+    Mirrors ``lsst.ts.ofc.controllers.oic_controller.OICController.authority``: a
+    reciprocal rigid-body stroke normalized to ``M2_dz``, then the actuator-force
+    standard deviation per bending mode scaled by the per-mirror actuator penalty. It
+    is reproduced rather than imported so that this module does not depend on
+    constructing a controller, and so the construction is visible where it is scored.
+
+    Returns
+    -------
+    authority : `numpy.ndarray`
+        ``(50,)`` authority ``a_j``, in inverse DOF units — per µm for translations
+        and bending-mode amplitudes, per arcsec for hexapod rotations. The OIC's
+        penalty matrix is ``H = diag(a**2)``.
+    parts : `dict`
+        The pieces the range comparison needs: ``rb_stroke`` (µm for translations,
+        arcsec for rotations), ``m1m3_force_per_um`` and ``m2_force_per_um`` (N per µm
+        of mode amplitude, actuators by mode), the two actuator penalties and
+        ``motion_penalty`` (all dimensionless).
+
+    Notes
+    -----
+    `ts_ofc` ships ``motion_penalty = 0.0`` dimensionless, so the OIC's motion penalty
+    is **inactive as delivered**; only its unit tests set a nonzero value. Any `rho`
+    passed to `invert_oic` is therefore a choice made here, not the operational
+    setting.
+
+    Requires `lsst.ts.ofc`, which is not in ``lsst_distrib``.
+    """
+    from lsst.ts.ofc import BendModeToForce, OFCData
+
+    data = OFCData('lsst')
+    m1m3 = BendModeToForce('M1M3', data)
+    m2 = BendModeToForce('M2', data)
+    rbs = data.rb_stroke[0] / data.rb_stroke
+    a1 = data.m1m3_actuator_penalty * np.std(m1m3.rot_mat, axis=0)
+    a2 = data.m2_actuator_penalty * np.std(m2.rot_mat, axis=0)
+    parts = {'rb_stroke': np.asarray(data.rb_stroke, float),
+             'm1m3_force_per_um': np.asarray(m1m3.rot_mat, float),
+             'm2_force_per_um': np.asarray(m2.rot_mat, float),
+             'm1m3_actuator_penalty': float(data.m1m3_actuator_penalty),
+             'm2_actuator_penalty': float(data.m2_actuator_penalty),
+             'motion_penalty': float(data.motion_penalty)}
+    return np.concatenate((rbs, a1, a2)), parts
+
+
+def invert_oic(dW, svd, authority, rho, rank=None):
+    """The OIC's quadratic motion penalty, in the retained-mode subspace.
+
+    Minimizes ``||dW - S x||^2 + rho^2 * d^T diag(a^2) d`` with ``d = w x``,
+    restricted to ``x = V_r b`` exactly as `invert_range_penalty` is, so that the only
+    difference between the two is the penalty itself: a quadratic of fixed curvature
+    here against the superlinear range penalty there.
+
+    Parameters
+    ----------
+    dW : `numpy.ndarray`
+        Measured DZ wavefront in µm of wavefront, over ``svd.kj_grid`` order.
+    svd : `lsst.ts.intrinsic.wavefront.ofc_svd.OFCSvd`
+        The sensitivity-matrix SVD.
+    authority : `numpy.ndarray`
+        ``(n_dof,)`` authority ``a_j`` in inverse DOF units, as returned by
+        `oic_authority`. Must be subset to ``svd.dof_idx`` by the caller when the SVD
+        carries fewer than 50 DOF.
+    rho : `float`
+        The OIC ``motion_penalty``, dimensionless.
+    rank : `int`, optional
+        Modes retained; default ``svd.U_eff.shape[1]``.
+
+    Returns
+    -------
+    d : `numpy.ndarray`
+        Physical DOF, ``(n_dof,)``, µm and arcsec per ``DOF_UNITS_50``.
+
+    Notes
+    -----
+    With ``rho = 0`` this reduces exactly to `invert_truncated`, since the penalty
+    term vanishes and the normal equations leave ``b = A / sigma``. The penalty's
+    curvature does not depend on the amplitude, which is the structural difference
+    from `invert_range_penalty`: it taxes a DOF sitting at a tenth of its range as
+    hard, per unit amplitude, as one sitting past it.
+    """
+    w = np.asarray(svd.normalization_weights, float)
+    n_keep = int(svd.U_eff.shape[1])
+    r = n_keep if rank is None else int(rank)
+    U = np.asarray(svd.U_eff, float)[:, :r]
+    sig = np.asarray(svd.Sigma, float)[:r]
+    V_r = np.asarray(svd.V, float)[:, :r]
+    WV = w[:, None] * V_r
+    a2 = np.asarray(authority, float) ** 2
+    mat = np.diag(sig ** 2) + rho ** 2 * (WV.T @ (a2[:, None] * WV))
+    return WV @ np.linalg.solve(mat, sig * (U.T @ np.nan_to_num(dW)))
 
 
 def achieved_residual(dW, d, svd, rank=None):

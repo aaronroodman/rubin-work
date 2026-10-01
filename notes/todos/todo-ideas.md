@@ -737,7 +737,7 @@ reachable state without degrading the MIW.
 | the MIW build entries | `aos/mi_config.yaml`, `measured_intrinsics:` keyed by param set |
 | two-build term-by-term comparison | [aos/code/miw/compare_miw_versions.py](../../aos/code/miw/compare_miw_versions.py) |
 | how far the current build's states sit outside the allowed range | [aos/code/miw/check_dof_ranges.py](../../aos/code/miw/check_dof_ranges.py) |
-| the RBR solver | [smatrix/code/regularized_inversion/regularized_inversion.py](../../smatrix/code/regularized_inversion/regularized_inversion.py), `dof_range_vector` and `invert_range_penalty` |
+| the RBR solver | [smatrix/code/regularized_inversion.py](../../smatrix/code/regularized_inversion.py), `dof_range_vector` and `invert_range_penalty` |
 | the AOS-side RBR wrappers | `aos/code/bounce/bounce_lib.py`, `rbr_module`, `rbr_dof_per_pair`, `rbr_deltas` |
 | residual wavefront to FWHM | [aos/code/aos_fwhm.py](../../aos/code/aos_fwhm.py), `residual_dW`, `zj_to_fwhm`, `fp_fwhm` |
 | v-mode engine and DOF sets | `aos/code/aos_state.py`, `make_state_estimator`, `vmodes_from_dofs`, `recover_optical_state`, `DOF_SETS`, `N_MODES` |
@@ -1012,7 +1012,17 @@ left open.
 
 ## 8. Consolidate the regularized inversions as shared OFC code in `smatrix/code`
 
-**Status:** not started · **Blocked on:** nothing
+**Status:** done 2026-10-01 · **Blocked on:** nothing
+
+**Outcome:** the solvers are shared code at `smatrix/code/regularized_inversion.py`, flat beside
+the `normalization_weights` they read, so both `aos` callers collapsed to one path insert. The
+OIC-style quadratic penalty is a first-class solver there (`oic_authority`, `invert_oic`),
+mirroring `OICController`'s authority construction rather than importing it. `run_oic_compare.py`
+gained a `--rho-scan` and now applies the bounce's own visit selection, so its tables agree with
+`aos`'s. `smatrix/docs/studies/regularized_inversion.md` carries the derivation and the rho scan;
+the runners stay in `smatrix/code/regularized_inversion/`. The move changed no number — the bounce
+run reproduces `bounce_kj_stats.parquet` and every pre-existing `bounce_dof_stats.parquet` column
+bit-identically (max abs diff 0.000e+00 on every column).
 
 Make the Range-Bounded Recovery (RBR) solver and the Optimal Integral Controller (OIC) style
 quadratic penalty term shared code in `smatrix/code`, alongside the other Optical Feedback
@@ -1030,7 +1040,7 @@ study that validated it.
 
 | piece | path |
 | --- | --- |
-| the solvers | [smatrix/code/regularized_inversion/regularized_inversion.py](../../smatrix/code/regularized_inversion/regularized_inversion.py) — `forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`, `achieved_residual`, `dof_range_vector` |
+| the solvers | [smatrix/code/regularized_inversion.py](../../smatrix/code/regularized_inversion.py) — `forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`, `invert_oic`, `oic_authority`, `achieved_residual`, `dof_range_vector` (shared code since item 8; this row described the pre-move path) |
 | the OIC-style penalty, reimplemented for comparison | [smatrix/code/regularized_inversion/run_oic_compare.py](../../smatrix/code/regularized_inversion/run_oic_compare.py) — `oic_authority`, `invert_oic` |
 | the derivation and validation | `smatrix/docs/studies/regularized_inversion.md` |
 | the shared accessor the bounce study uses | `aos/code/bounce/bounce_lib.py`, `rbr_module` |
@@ -1097,7 +1107,20 @@ and one subspace. Calling `ts_ofc` directly would track the deployed controller 
 
 ## 9. Extend the bounce test to four recovery schemes
 
-**Status:** not started · **Blocked on:** the shared RBR and OIC code in item 8
+**Status:** done 2026-10-01 · **Blocked on:** the shared RBR and OIC code in item 8 (done)
+
+**Outcome:** every bounce point now carries four recoveries, five on BLOCK-T724 (the extra one
+being the camera-hexapod-only 5/5, kept alongside the others so what is lost by not using all DOF
+is visible). The 22 DOF are the index set `DOF22` in `run_bounce.py`, not the first 22 indices.
+Every FWHM series is the achieved residual `dW − S·(d/w)` in its own scheme's SVD, so the four are
+comparable; that changed no existing number, since the achieved residual and the subspace
+projection agree for a truncated solution to 1.7e-16 arcsec FWHM. The per-DOF panels paginate at 2
+columns × 5 rows. Results, including the per-leg tables and the FWHM cost of each scheme, are in
+`aos/docs/studies/bounce.md`. The headline: the 22/12 reduced set is feasible with no penalty at
+all (0 of 198 DOF rows over range, worst `max |Δ_j|/r_j = 0.367` dimensionless) but costs +0.042
+arcsec FWHM median, about sixteen times RBR's +0.0027 arcsec; the OIC at the rho matching RBR's
+feasibility costs +0.095 arcsec FWHM median, 36 times RBR, because a quadratic penalty taxes all
+50 DOF to bound the few that need it.
 
 Compare four recoveries of the optical state at each bounce point: the full 50 degree-of-freedom
 / 34 v-mode (50/34) scheme, 50/34 with the Range-Bounded Recovery (RBR) constraint, the 22/12
@@ -1117,7 +1140,7 @@ image quality differ between the four schemes, across the bounce legs.
 | the bounce driver | [aos/code/bounce/run_bounce.py](../../aos/code/bounce/run_bounce.py) |
 | its plotting library | [aos/code/bounce/bounce_lib.py](../../aos/code/bounce/bounce_lib.py) |
 | the study doc and the July results | `aos/docs/studies/bounce.md`, `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` |
-| the solvers | `smatrix/code/regularized_inversion/regularized_inversion.py`, moving to shared code in item 8 |
+| the solvers | `smatrix/code/regularized_inversion.py`, shared code since item 8 |
 | the OIC-style penalty | `smatrix/code/regularized_inversion/run_oic_compare.py`, `invert_oic` |
 
 The run builds two SVDs today, both through

@@ -1,8 +1,9 @@
 # Study: `regularized_inversion` — bounding the recovered optical state to the allowed range
 
-> **Status:** current · **Last updated:** 2026-09-28 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-01 · **Kind:** reference (study)
 
-> **Code:** `code/regularized_inversion/` · **Output:** `output/regularized_inversion/<data>/`
+> **Solvers:** `code/regularized_inversion.py` (shared) · **Runners:**
+> `code/regularized_inversion/` · **Output:** `output/regularized_inversion/<data>/`
 
 The Optical Feedback Control (OFC) open-loop recovery inverts a measured Double Zernike
 (DZ) wavefront onto degrees of freedom (DOF) by a truncated singular value decomposition
@@ -361,15 +362,60 @@ one-line change to `authority()` and removes the 28–280× inconsistency betwee
 
 ## Code
 
+The **solvers are shared code at `smatrix/code/regularized_inversion.py`**, one level above
+this study's directory, because they are consumed from outside it: `aos/code/bounce/` draws
+all four inversions for its four-scheme comparison, and `aos/code/miw/check_dof_ranges.py`
+uses the allowed-range vector. They sit beside `normalization_weights.py`, which
+`dof_range_vector` imports by bare module name, so a caller needs a single `sys.path` insert
+of `smatrix/code`. The runners that exercise and validate them stay here.
+
 | file | role |
 |---|---|
-| `regularized_inversion.py` | library: the rank-limited forward operator, the allowed-range vector, and the three inversions (truncated, damped, range penalty), plus the achieved residual |
+| `../regularized_inversion.py` | shared library: the rank-limited forward operator, the allowed-range vector, the four inversions (truncated, damped, range penalty, OIC quadratic) and the OIC authority vector, plus the achieved residual |
 | `run_regularized_compare.py` | sweeps `lambda`, `kappa` and `p` over every bounce leg, scores IQ and feasibility, and writes the tables and the comparison PDF |
-| `run_oic_compare.py` | compares the ts_ofc OIC controller's quadratic motion penalty against the range penalty — the authority-versus-`r_j` decomposition, the penalty-curvature table, and both inversions on the same per-pair bounce Δ. Prints only; writes no output files |
+| `run_oic_compare.py` | compares the ts_ofc OIC controller's quadratic motion penalty against the range penalty — the authority-versus-`r_j` decomposition, the penalty-curvature table, both inversions on the same per-pair bounce Δ, and with `--rho-scan` the feasibility-against-`rho` table below. Prints only; writes no output files |
 
-The comparison script reuses the bounce leg definitions and pairing from
-`aos/code/bounce/`, so the median paired-difference Δ it scores is the same quantity the
-committed bounce products report rather than a restatement of it.
+Both comparison scripts reuse the bounce leg definitions and pairing from
+`aos/code/bounce/`, so the median paired-difference Δ they score is the same quantity the
+committed bounce products report rather than a restatement of it. Their visit selection is
+also the bounce's — the `z1toz6_bad_fit` drop then `quality_visit_mask` at
+`min_detectors_per_visit = 160` — so the pair counts match across the two topics.
+
+## The OIC penalty weight used downstream: `rho = 1e-3` (dimensionless)
+
+The OIC's `motion_penalty` ships at **0.0 dimensionless**, so the penalty is inactive as
+delivered and any nonzero value is a choice. The `aos` bounce study scores the OIC as one of
+its four recovery schemes and needs one value. Scanning `rho` over every leg with
+`run_oic_compare.py --rho-scan`, each cell the median over the leg's pairs of
+`max_j |d_j| / r_j` (dimensionless, recovered amplitude over allowed range) and of the
+achieved-residual FWHM in arcsec:
+
+| leg | n pairs | truncated | RBR kappa=4 p=3 | rho=3e-4 | rho=6e-4 | **rho=1e-3** | rho=1.3e-3 | rho=2e-3 | rho=3e-3 |
+|---|---|---|---|---|---|---|---|---|---|
+| elev 40 deg | 22 | 9.160 / 0.0482 | 1.040 / 0.0543 | 5.884 / 0.1002 | 2.544 / 0.1304 | **1.017 / 0.1545** | 0.618 / 0.1678 | 0.407 / 0.1933 | 0.272 / 0.2199 |
+| elev 60 deg | 4 | 10.629 / 0.0473 | 1.067 / 0.0518 | 3.755 / 0.0732 | 2.134 / 0.0926 | **1.298 / 0.1080** | 1.025 / 0.1168 | 0.602 / 0.1343 | 0.319 / 0.1500 |
+| elev 50 deg | 6 | 10.919 / 0.0829 | 1.213 / 0.1003 | 4.235 / 0.1350 | 2.040 / 0.1525 | **1.126 / 0.1672** | 0.951 / 0.1763 | 0.704 / 0.1934 | 0.401 / 0.2088 |
+| elev 30 deg | 5 | 11.705 / 0.0686 | 1.195 / 0.0806 | 8.995 / 0.1435 | 3.874 / 0.2011 | **1.590 / 0.2330** | 0.953 / 0.2490 | 0.383 / 0.2761 | 0.223 / 0.2982 |
+| elev 75 deg | 6 | 2.928 / 0.0284 | 0.791 / 0.0301 | 1.970 / 0.0404 | 0.917 / 0.0522 | **0.405 / 0.0612** | 0.251 / 0.0664 | 0.129 / 0.0752 | 0.072 / 0.0839 |
+| rotator 60 deg | 31 | 5.120 / 0.0310 | 0.990 / 0.0326 | 6.126 / 0.0907 | 3.071 / 0.1240 | **1.336 / 0.1455** | 0.821 / 0.1546 | 0.355 / 0.1683 | 0.166 / 0.1796 |
+
+**`rho = 1e-3` dimensionless is the adopted value**, on the criterion of matching RBR's
+feasibility rather than guaranteeing it: at this value the legs land at 0.405 to 1.590
+dimensionless, a spread straddling RBR's own 0.791 to 1.213, with two legs over range by 13
+and 59 percent. Pushing to `rho = 1.3e-3` would bring every leg to 1.025 or below, at 2 to 9
+percent more FWHM; that tighter choice was considered and not taken, because matching RBR's
+compliance is what makes the two penalties comparable on equal footing in the bounce
+comparison, and a scheme that is feasible on every leg by construction would be answering a
+different question.
+
+What the column shows either way is the gap the earlier sections quantify: at the `rho` that
+matches RBR's feasibility the quadratic penalty costs 2.0× to 4.5× the achieved-residual FWHM
+that RBR does on the same legs — 0.1455 against 0.0326 arcsec on the rotator bounce, 0.1545
+against 0.0543 arcsec at elevation 40 deg. A fixed-curvature penalty cannot bound the one
+runaway amplitude without taxing the other 49 DOF, and this is the price of that.
+
+`aos/analysis_config.yaml` carries the value as `bounce: oic_rho`, a **consumed** number whose
+derivation is this table; `aos/` does not re-derive it.
 
 ## Outputs
 
@@ -408,6 +454,18 @@ python run_oic_compare.py \
   --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
   --mi-name pathA_50_34_i_5rot \
   --min-detectors 160
+```
+
+The `rho` table above is regenerated with `--rho-scan`:
+
+```bash
+cd ~/notebooks/rubin-work/smatrix/code/regularized_inversion
+python run_oic_compare.py --rho-scan \
+  --fits /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet \
+  --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+  --mi-name pathA_50_34_i_5rot \
+  --min-detectors 160 \
+  --rhos 3e-4 6e-4 1e-3 1.3e-3 2e-3 3e-3
 ```
 
 ## Outstanding

@@ -25,7 +25,7 @@ Everything needed to reproduce the numbers in [`note.md`](note.md).
 | per-night floor | `night_min_visits: 3` |
 | thresholds | `pass_nsigma_threshold: 3.5` (dimensionless) with `pass_delta_threshold_um: 0.1` µm of wavefront, or `pass_sigma_only_threshold: 5.0` (dimensionless) alone |
 | Range-Bounded Recovery | `rbr_enable: true`, `rbr_kappa: 4.0` (dimensionless, the ratio `abs(d_j)/r_j` at which the penalty reaches unit weight), `rbr_power: 3` (dimensionless), giving a penalty proportional to `(abs(d_j)/(kappa·r_j))**6` |
-| RBR allowed range | `r_j` from `smatrix/code/regularized_inversion/regularized_inversion.dof_range_vector`, back-derived as `w_j**2 · f_j` from the shipped `range0.5_fwhm-0.15.yaml` normalization; hexapod ranges are the `rb_stroke` literals, bending-mode ranges `(force_range/20)/max_force_per_um` |
+| RBR allowed range | `r_j` from `smatrix/code/regularized_inversion.dof_range_vector`, back-derived as `w_j**2 · f_j` from the shipped `range0.5_fwhm-0.15.yaml` normalization; hexapod ranges are the `rb_stroke` literals, bending-mode ranges `(force_range/20)/max_force_per_um` |
 
 ## Inputs
 
@@ -101,10 +101,11 @@ shape.
 
 ### Range-Bounded Recovery
 
-The RBR solver is **not** in `aos/code/bounce/`: it lives in the `smatrix`
-`regularized_inversion` study (`smatrix/code/regularized_inversion/regularized_inversion.py`,
-`invert_range_penalty`) and is imported from there by a path insert, so it cannot drift from the
-study that derived and validated it. `bounce_lib.rbr_dof_per_pair` / `rbr_deltas` wrap it.
+The RBR solver is **not** in `aos/code/bounce/`: it is shared code in the `smatrix` topic
+(`smatrix/code/regularized_inversion.py`, `invert_range_penalty`) and is imported from there by a
+path insert, so it cannot drift from the `regularized_inversion` study that derived and validated
+it. `bounce_lib.rbr_dof_per_pair` / `rbr_deltas` wrap it, as thin bindings of the solver-agnostic
+`solver_dof_per_pair` / `solver_deltas`.
 
 Two properties of that wrapping determine how the RBR numbers should be read:
 

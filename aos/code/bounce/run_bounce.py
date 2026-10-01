@@ -77,6 +77,11 @@ DEFAULT_BOUNCES = [
 ]
 # Camera-hexapod DOF indices in LABELS_50DOF (Cam_dz/dx/dy/rx/ry) for the 5/5 scheme.
 CAM_HEX_DOF = [5, 6, 7, 8, 9]
+# The AOS reduced DOF set for the 22/12 scheme: 10 rigid-body, the first 7 M1M3
+# bending modes, the first 5 M2 bending modes.  An *index set*, NOT the first 22
+# contiguous indices -- see `aos-22dof-reduced-set` in notes/claude-memory/.
+# Passed to build_ofc_svd as an explicit list, which carries it on OFCSvd.dof_idx.
+DOF22 = list(range(0, 10)) + list(range(10, 17)) + list(range(30, 35))
 DEFAULT = dict(
     fit_prefix='z1toz6', focal_k_range=[1, 2, 3, 4, 5, 6], pupil_j_range=None,
     bounces=DEFAULT_BOUNCES, n_dof=50, n_keep=34, ofc_normalization_yaml=None,
@@ -88,7 +93,7 @@ DEFAULT = dict(
     # 75 are only 5 deg apart, so the half-width must stay below 2.5 deg;
     # measured BLOCK-T720/T724 positions sit within 0.3 deg of a center.
     ab_elev_halfwidth_deg=2.0, ab_rot_halfwidth_deg=2.0,
-    vmode_ncols=5, vmode_rows_per_page=7, dof_ncols=5, dof_rows_per_page=10,
+    vmode_ncols=5, vmode_rows_per_page=7, dof_ncols=2, dof_rows_per_page=5,
     add_dof_trim=False, trim_efd_topic='lsst.sal.MTAOS.logevent_degreeOfFreedom',
     trim_consdb_url='http://consdb-pq.consdb:8080/consdb',
     trim_time_col='mjd', trim_mjd_scale='tai',
@@ -99,7 +104,18 @@ DEFAULT = dict(
     # (penalty ~ ratio ** (2 * power)).  The defaults are the setting the
     # smatrix `regularized_inversion` study found best or near-best on five of
     # the six bounce legs.
-    rbr_enable=True, rbr_kappa=4.0, rbr_power=3)
+    rbr_enable=True, rbr_kappa=4.0, rbr_power=3,
+    # The 22-DOF / 12-v-mode reduced scheme the AOS is expected to operate in.
+    # Only the mode count is configurable: the 22 DOF are an *index set*, fixed in
+    # code as `DOF22`, not a count that could be read from here.
+    reduced_enable=True, n_keep_reduced=12,
+    # The quadratic motion penalty the ts_ofc Optimal Integral Controller (OIC)
+    # already carries, scored as a fourth scheme.  `oic_rho` is the OIC's
+    # `motion_penalty`, dimensionless.  ts_ofc ships 0.0, i.e. the penalty is
+    # inactive as delivered, so a value must be chosen; this one is *consumed*,
+    # and the scan it comes from is in
+    # smatrix/docs/studies/regularized_inversion.md.  Do not re-derive it here.
+    oic_enable=True, oic_rho=1.0e-3)
 
 
 # ---- FWHM of the residual actually left by a recovered DOF correction ----
@@ -138,11 +154,6 @@ def _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw):
     return afw.fp_fwhm(svd, iZs, ri.achieved_residual(dW, d, svd), grid, conv)
 
 
-def _ri_invert_truncated(svd, dW):
-    """DOF from the default truncated recovery, in each DOF's own unit."""
-    return bl.rbr_module().invert_truncated(dW, svd)
-
-
 def _rbr_fwhm(dW, svd, ranges, cfg, iZs, grid, conv, afw):
     """Correctable FWHM in arcsec left after Range-Bounded Recovery.
 
@@ -157,6 +168,49 @@ def _rbr_fwhm(dW, svd, ranges, cfg, iZs, grid, conv, afw):
                                     power=cfg['rbr_power'])
     except Exception as e:
         print(f'        (RBR FWHM failed [{type(e).__name__}: {e}])')
+        return float('nan')
+    return _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw)
+
+
+def _scheme_fwhm(dW, svd, solver, iZs, grid, conv, afw, tag):
+    """Correctable FWHM in arcsec left after one recovery scheme.
+
+    Parameters
+    ----------
+    dW : `numpy.ndarray`
+        Measured DZ wavefront, µm of wavefront, on `svd.kj_grid`.
+    svd : `OFCSvd`
+        The scheme's own decomposition; the residual is scored in it.
+    solver : `callable`
+        Maps ``(dW, svd)`` to recovered DOF in each DOF's own unit (µm or arcsec).
+    iZs : `list` [`int`]
+        Pupil Noll indices of the DZ grid.
+    grid : `numpy.ndarray`
+        Focal-plane sample positions from `aos_fwhm.fp_grid`.
+    conv : `callable`
+        `lsst.ts.wep.utils.convertZernikesToPsfWidth`.
+    afw : `module`
+        `aos_fwhm`.
+    tag : `str`
+        Scheme name, used only in the failure message.
+
+    Returns
+    -------
+    fwhm : `float`
+        Median achieved correctable FWHM over the focal plane, arcsec, or NaN if
+        the solve failed.
+
+    Notes
+    -----
+    Always the *achieved* residual ``dW - S (d / w)``, for every scheme, so the
+    schemes are comparable: the subspace projection cannot see a regularizer
+    trading wavefront for amplitude.  For the unregularized truncated recoveries
+    the two coincide.
+    """
+    try:
+        d = solver(dW, svd)
+    except Exception as e:
+        print(f'        ({tag} FWHM failed [{type(e).__name__}: {e}])')
         return float('nan')
     return _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw)
 
@@ -268,7 +322,8 @@ def main():
     # ---- OFC SVD + per-visit v-mode / DOF projection (cell 12) ----
     C_all = DOF_all = None
     svd = svd5 = C5_all = DOF5_all = None
-    vmode_labels = vmode5_labels = []
+    svd22 = C22_all = None
+    vmode_labels = vmode5_labels = vmode22_labels = []
     try:
         from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, project_dz_table
         svd = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
@@ -286,6 +341,23 @@ def main():
         vmode5_labels = svd5.vmode_labels
         C5_all, DOF5_all, _A5, _W5 = project_dz_table(fit_table, prefix, svd5)
         print(f'  5/5 Camera-hex SVD: n_keep={svd5.n_keep_eff}, n_dof={svd5.n_dof}')
+        # 22/12 reduced-DOF SVD (shares kj_grid): the set the AOS is expected to
+        # operate in, evaluated on every bounce so the cost of dropping the other
+        # 28 DOF is visible.  n_dof is the explicit DOF22 index set.
+        if cfg['reduced_enable']:
+            svd22 = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
+                                  cfg['n_keep_reduced'], n_dof=DOF22,
+                                  ofc_normalization_yaml=cfg['ofc_normalization_yaml'])
+            vmode22_labels = svd22.vmode_labels
+            # The per-visit DOF matrix is not kept: the 22/12 DOF Δ is solved per
+            # *pair* on the Δ wavefront, as every regularized scheme is, so that
+            # all four share one reduction.  C22_all is kept because the v-mode
+            # Δ is linear in the visit amplitudes and so can be paired directly.
+            C22_all, _D22, _A22, _W22 = project_dz_table(fit_table, prefix, svd22)
+            print(f'  22/{svd22.n_keep_eff} reduced SVD: '
+                  f'n_keep={svd22.n_keep_eff}, n_dof={svd22.n_dof}; '
+                  f'DOF indices {DOF22}; v-modes '
+                  f'{vmode22_labels[0]}..{vmode22_labels[-1]}')
     except Exception as e:
         print(f'  (OFC SVD unavailable [{type(e).__name__}: {e}]; '
               f'v-mode/DOF sections skipped)')
@@ -324,6 +396,70 @@ def main():
             print(f'  (RBR unavailable [{type(e).__name__}: {e}]; '
                   f'default recovery only)')
             dof_ranges = None
+
+    # ---- the OIC authority, and the reduced schemes' range consistency ----
+    # Every DOF row of every scheme is reported against the same 50-DOF r_j,
+    # indexed by its *global* DOF index.  That is only legitimate because
+    # dof_range_vector indexes the shipped quadrature f_j by svd.dof_idx, so a
+    # reduced scheme's own range vector is exactly the matching entries of the
+    # 50-DOF one.  Assert it rather than assume it: a mismatch would silently
+    # compare a 22/12 amplitude against the wrong DOF's range.
+    oic_authority = None
+    if _svd_ok:
+        _ri_mod = None
+        try:
+            _ri_mod = bl.rbr_module()
+        except Exception as e:
+            print(f'  (regularized_inversion unavailable [{type(e).__name__}: {e}]; '
+                  f'22/12 and OIC range reporting skipped)')
+        if _ri_mod is not None:
+            if dof_ranges is not None:
+                for _tag, _s in (('22/12', svd22), ('5/5', svd5)):
+                    if _s is None:
+                        continue
+                    _own = np.asarray(_ri_mod.dof_range_vector(_s), float)
+                    _sub = np.asarray(dof_ranges, float)[
+                        np.asarray(_s.dof_idx, int)]
+                    if not np.allclose(_own, _sub, rtol=1e-12, atol=0.0):
+                        raise RuntimeError(
+                            f'{_tag} allowed range r_j does not match the '
+                            f'50-DOF vector subset to its DOF indices; the '
+                            f'per-DOF range reporting would be wrong')
+            if cfg['oic_enable']:
+                try:
+                    _auth50, _auth_parts = _ri_mod.oic_authority()
+                    oic_authority = _auth50
+                    print(f'  OIC: motion penalty rho={cfg["oic_rho"]:g} '
+                          f'(dimensionless; ts_ofc ships '
+                          f'{_auth_parts["motion_penalty"]:g}, so the penalty is '
+                          f'inactive as delivered). Value consumed from config; '
+                          f'its derivation is in '
+                          f'smatrix/docs/studies/regularized_inversion.md')
+                except Exception as e:
+                    print(f'  (OIC authority unavailable [{type(e).__name__}: '
+                          f'{e}]; OIC scheme skipped)')
+                    oic_authority = None
+
+    # ---- the recovery schemes, as (dW, svd) -> DOF callables ----
+    # One closure per scheme, so the per-pair Δ reduction and the achieved-FWHM
+    # metric take the same object and differ only in which solver they call.
+    def _solve_trunc(dW, s):
+        """DOF from the truncated recovery in `s`'s own subspace, own units."""
+        return bl.rbr_module().invert_truncated(dW, s)
+
+    def _solve_oic(dW, s):
+        """DOF from the OIC quadratic motion penalty at `cfg['oic_rho']`.
+
+        Notes
+        -----
+        The authority vector is built over all 50 DOF, so it is subset to
+        `s.dof_idx` before the solve; applied here only to the 50-DOF SVD, where
+        that subset is the identity.
+        """
+        a = np.asarray(oic_authority, float)[np.asarray(s.dof_idx, int)]
+        return bl.rbr_module().invert_oic(dW, s, a, float(cfg['oic_rho']))
+
+    oic_ok = bool(cfg['oic_enable']) and oic_authority is not None
 
     # ---- optional AOS Trim (aggregatedDoF) (cell 14) ----
     DOFSUM_all = TRIM_segment = None
@@ -376,6 +512,10 @@ def main():
             vmode5_deltas_by_night = dof5_deltas_by_night = {}
             rbr_deltas = None
             rbr_deltas_by_night = {}
+            vmode22_deltas = dof22_deltas = None
+            vmode22_deltas_by_night = dof22_deltas_by_night = {}
+            dof_oic_deltas = None
+            dof_oic_deltas_by_night = {}
             if _svd_ok and C_all is not None:
                 vmode_deltas = bl.paired_deltas_matrix(C_all, pairs_all)
                 dof_deltas = bl.paired_deltas_matrix(DOF_all, pairs_all)
@@ -411,6 +551,33 @@ def main():
                         dof_ranges, kappa=cfg['rbr_kappa'],
                         power=cfg['rbr_power'])
                     for d in leg_nights}
+            # 22/12 and OIC Δ, the same way: one solve per pair, then the same
+            # median / median-SEM reduction.  The 22/12 result is keyed by its
+            # *global* DOF index (svd22.dof_idx) so it lands on the right panels
+            # of the 50-DOF layout, exactly as the 5/5 result is keyed by
+            # CAM_HEX_DOF.
+            if svd22 is not None and _W is not None:
+                dof22_deltas = bl.solver_deltas(_W, pairs_all, svd22,
+                                                _solve_trunc,
+                                                keys=list(svd22.dof_idx))
+                vmode22_deltas = bl.paired_deltas_matrix(C22_all, pairs_all)
+                dof22_deltas_by_night = {
+                    d: bl.solver_deltas(
+                        _W, nights[d]['comparisons'][label]['pairs'], svd22,
+                        _solve_trunc, keys=list(svd22.dof_idx))
+                    for d in leg_nights}
+                vmode22_deltas_by_night = {
+                    d: bl.paired_deltas_matrix(
+                        C22_all, nights[d]['comparisons'][label]['pairs'])
+                    for d in leg_nights}
+            if oic_ok and _svd_ok and svd is not None and _W is not None:
+                dof_oic_deltas = bl.solver_deltas(_W, pairs_all, svd,
+                                                  _solve_oic)
+                dof_oic_deltas_by_night = {
+                    d: bl.solver_deltas(
+                        _W, nights[d]['comparisons'][label]['pairs'], svd,
+                        _solve_oic)
+                    for d in leg_nights}
             br['comparisons'][label] = {
                 'comp_stats': cblock['comp_stats'], 'comp_n': cblock['comp_n'],
                 'deltas': cblock['deltas'], 'pairs': pairs_all,
@@ -430,7 +597,12 @@ def main():
                 'vmode5_deltas_by_night': vmode5_deltas_by_night,
                 'dof5_deltas_by_night': dof5_deltas_by_night,
                 'rbr_deltas': rbr_deltas,
-                'rbr_deltas_by_night': rbr_deltas_by_night}
+                'rbr_deltas_by_night': rbr_deltas_by_night,
+                'vmode22_deltas': vmode22_deltas, 'dof22_deltas': dof22_deltas,
+                'vmode22_deltas_by_night': vmode22_deltas_by_night,
+                'dof22_deltas_by_night': dof22_deltas_by_night,
+                'dof_oic_deltas': dof_oic_deltas,
+                'dof_oic_deltas_by_night': dof_oic_deltas_by_night}
             print(f'      comp "{label}": n={cblock["comp_n"]}, '
                   f'{len(pairs_all)} pairs')
 
@@ -440,21 +612,38 @@ def main():
             if fwhm_conv is not None and _svd_ok and _W is not None and len(pairs_all):
                 pd_dz = bl.paired_deltas_matrix(_W, pairs_all)
                 med_dW = np.array([pd_dz[i]['delta'] for i in range(_W.shape[1])], float)
+                # Every "after" series is the *achieved* residual dW - S (d / w)
+                # of its own scheme, so the five are directly comparable.  For
+                # the unregularized truncated schemes (50/34, 22/12, 5/5) the
+                # achieved residual equals the subspace projection, so this
+                # reproduces the numbers the projection metric gave.
                 row = {'bounce': name, 'comparison': label, 'n_pairs': len(pairs_all),
                        'fwhm_before': _afw.fp_fwhm(svd, iZs, med_dW, fwhm_grid, fwhm_conv),
-                       'fwhm_after_50_34': _afw.fp_fwhm(
-                           svd, iZs, _afw.residual_dW(svd, med_dW), fwhm_grid, fwhm_conv)}
-                if cam_only and svd5 is not None:
-                    row['fwhm_after_5_5'] = _afw.fp_fwhm(
-                        svd5, iZs, _afw.residual_dW(svd5, med_dW), fwhm_grid, fwhm_conv)
+                       'fwhm_after_50_34': _scheme_fwhm(
+                           med_dW, svd, _solve_trunc, iZs, fwhm_grid, fwhm_conv,
+                           _afw, '50/34')}
                 if dof_ranges is not None:
                     row['fwhm_after_rbr'] = _rbr_fwhm(
                         med_dW, svd, dof_ranges, cfg, iZs, fwhm_grid, fwhm_conv,
                         _afw)
+                if svd22 is not None:
+                    row['fwhm_after_22_12'] = _scheme_fwhm(
+                        med_dW, svd22, _solve_trunc, iZs, fwhm_grid, fwhm_conv,
+                        _afw, '22/12')
+                if oic_ok:
+                    row['fwhm_after_oic'] = _scheme_fwhm(
+                        med_dW, svd, _solve_oic, iZs, fwhm_grid, fwhm_conv,
+                        _afw, 'OIC')
+                if cam_only and svd5 is not None:
+                    row['fwhm_after_5_5'] = _scheme_fwhm(
+                        med_dW, svd5, _solve_trunc, iZs, fwhm_grid, fwhm_conv,
+                        _afw, '5/5')
                 fwhm_rows.append(row)
-                _extra = (f", 5/5={row['fwhm_after_5_5']:.4f}" if 'fwhm_after_5_5' in row else "")
-                _extra += (f", RBR={row['fwhm_after_rbr']:.4f}"
-                           if 'fwhm_after_rbr' in row else "")
+                _extra = ''.join(
+                    f", {tag}={row[k]:.4f}" for k, tag in
+                    (('fwhm_after_rbr', 'RBR'), ('fwhm_after_22_12', '22/12'),
+                     ('fwhm_after_oic', 'OIC'), ('fwhm_after_5_5', '5/5'))
+                    if k in row)
                 print(f"        correctable FWHM [arcsec]: before={row['fwhm_before']:.4f}, "
                       f"after 50/34={row['fwhm_after_50_34']:.4f}{_extra}")
 
@@ -478,13 +667,25 @@ def main():
                             'n_pairs': len(npairs),
                             'fwhm_before': _afw.fp_fwhm(svd, iZs, _dW, fwhm_grid,
                                                         fwhm_conv),
-                            'fwhm_after_default': _achieved_fwhm(
-                                _dW, _ri_invert_truncated(svd, _dW), svd, iZs,
-                                fwhm_grid, fwhm_conv, _afw)}
+                            'fwhm_after_default': _scheme_fwhm(
+                                _dW, svd, _solve_trunc, iZs, fwhm_grid,
+                                fwhm_conv, _afw, '50/34')}
                     if dof_ranges is not None:
                         frow['fwhm_after_rbr'] = _rbr_fwhm(
                             _dW, svd, dof_ranges, cfg, iZs, fwhm_grid,
                             fwhm_conv, _afw)
+                    if svd22 is not None:
+                        frow['fwhm_after_22_12'] = _scheme_fwhm(
+                            _dW, svd22, _solve_trunc, iZs, fwhm_grid,
+                            fwhm_conv, _afw, '22/12')
+                    if oic_ok:
+                        frow['fwhm_after_oic'] = _scheme_fwhm(
+                            _dW, svd, _solve_oic, iZs, fwhm_grid, fwhm_conv,
+                            _afw, 'OIC')
+                    if cam_only and svd5 is not None:
+                        frow['fwhm_after_5_5'] = _scheme_fwhm(
+                            _dW, svd5, _solve_trunc, iZs, fwhm_grid, fwhm_conv,
+                            _afw, '5/5')
                     fwhm_bvalue_rows.append(frow)
             long_dfs.append(bl.to_long_df(
                 cblock['deltas'], name, br['reference_label'], label,
@@ -621,14 +822,20 @@ def main():
                             title_root=f'{name}: DOF Δ ({clabel} - {br["reference_label"]})'):
                         pdf.savefig(f, bbox_inches='tight'); plt.close(f)
 
-    # ---- DOF Δ per (night, B set), as small per-DOF panels (cell 26) ----
+    # ---- DOF Δ per (night, B set), as per-DOF panels (cell 26) ----
     # x is the B-set position: elevation in deg for the BLOCK-T720 sweep,
     # camera-rotator angle in deg for BLOCK-T724.  Each point is one
-    # (night, leg) paired Δ, labelled with its day_obs and B value.  For a
-    # camera_hexapod_only bounce only the 5-DOF / 5-v-mode camera-hexapod
-    # scheme is shown, because that is the scheme in which the result is used:
-    # with only the camera rotator moving, only camera-hexapod corrections are
-    # applied.
+    # (night, leg) paired Δ, labelled with its day_obs and B value.
+    #
+    # Every recovery scheme the run computed appears on the same panels, so the
+    # DOF value a scheme asks for can be read against the allowed range r_j and
+    # against what the other schemes ask for.  The base (filled-circle) series
+    # is the 50/34 recovery on both bounces; on a camera_hexapod_only bounce the
+    # 5/5 scheme — the one the result is actually used in, since with only the
+    # rotator moving only camera-hexapod corrections are applied — is an overlay
+    # on its own five panels.  A scheme that does not reach a DOF simply has no
+    # marker there: 22/12 is absent on the 28 DOF outside its index set, and 5/5
+    # on the 45 DOF outside the camera hexapod.
     if _svd_ok and DOF_all is not None:
         with PdfPages(str(out_dir / 'bounce_dof_night_values.pdf')) as pdf:
             for b in bounces:
@@ -637,55 +844,58 @@ def main():
                 if br is None:
                     continue
                 cam_only = bool(b.get('camera_hexapod_only', False))
-                key = 'dof5_deltas_by_night' if cam_only else 'dof_deltas_by_night'
-                scheme = ('5 DOF / 5 v-modes, camera hexapod only' if cam_only
-                          else f'{cfg["n_dof"]} DOF / {cfg["n_keep"]} v-modes')
                 entries = []
                 for clabel, cb in br['comparisons'].items():
                     bval = bl.leg_b_value(clabel)
-                    rbn = cb.get('rbr_deltas_by_night') or {}
-                    for nt, dd in (cb.get(key) or {}).items():
-                        entries.append({'night': int(nt), 'b_value': bval,
-                                        'label': clabel, 'dof_deltas': dd,
-                                        'rbr_deltas': rbn.get(nt)})
+                    _by = {k: (cb.get(f'{k}_by_night') or {})
+                           for k in ('rbr_deltas', 'dof22_deltas',
+                                     'dof_oic_deltas', 'dof5_deltas')}
+                    for nt, dd in (cb.get('dof_deltas_by_night') or {}).items():
+                        e = {'night': int(nt), 'b_value': bval,
+                             'label': clabel, 'dof_deltas': dd}
+                        for k, bn in _by.items():
+                            e[k] = bn.get(nt)
+                        entries.append(e)
                 if not entries:
                     print(f'  (dof_night_values: {name} has no per-night DOF Δ)')
                     continue
-                # RBR is a 50-DOF recovery, so on a camera_hexapod_only bounce
-                # the filled circles (its 5/5 Δ) and the open squares (the
-                # 50-DOF RBR Δ) come from *different* schemes and only the five
-                # camera-hexapod panels are in common.  Both series and the
-                # allowed-range band are still shown there, for consistency with
-                # the elevation page: the camera-hexapod DOF sit far inside
-                # their range, so the two recoveries are expected to agree, and
-                # seeing that agreement is the point.
-                show_rbr = (dof_ranges is not None
-                            and any(e.get('rbr_deltas') for e in entries))
+                overlay = []
+                if dof_ranges is not None and any(e.get('rbr_deltas')
+                                                  for e in entries):
+                    overlay.append(('rbr_deltas',
+                                    f'RBR 50/34, kappa={cfg["rbr_kappa"]:g} '
+                                    f'power={cfg["rbr_power"]} (both '
+                                    f'dimensionless; open square)'))
+                if any(e.get('dof22_deltas') for e in entries):
+                    overlay.append(('dof22_deltas',
+                                    f'{len(DOF22)}/{cfg["n_keep_reduced"]} '
+                                    f'reduced DOF set (open triangle)'))
+                if any(e.get('dof_oic_deltas') for e in entries):
+                    overlay.append(('dof_oic_deltas',
+                                    f'OIC 50/34, rho={cfg["oic_rho"]:g} '
+                                    f'dimensionless (open diamond)'))
+                if cam_only and any(e.get('dof5_deltas') for e in entries):
+                    overlay.append(('dof5_deltas',
+                                    '5/5 camera hexapod (open inverted '
+                                    'triangle)'))
                 axis = bl.leg_axis_name(b)
                 sub = ''
-                if show_rbr:
-                    # On a camera_hexapod_only page the two series come from
-                    # different schemes, so say which is which.
-                    whose = (f', recovered in the {cfg["n_dof"]} DOF / '
-                             f'{cfg["n_keep"]} v-mode scheme rather than the 5/5'
-                             if cam_only else '')
-                    sub = (f'\nOverlay: {bl.RBR_METHOD_NAME}, kappa='
-                           f'{cfg["rbr_kappa"]:g}, power={cfg["rbr_power"]}'
-                           f'{whose} — shaded band is the allowed range ±r_j')
-                fig = bl.plot_dof_vs_b_value_panels(
+                if dof_ranges is not None:
+                    sub = ('\nShaded band is the allowed range ±r_j, in each '
+                           'DOF\'s own unit')
+                figs = bl.plot_dof_vs_b_value_panels(
                     entries, LABELS_50DOF, DOF_UNITS_50,
-                    dof_indices=(list(CAM_HEX_DOF) if cam_only else None),
                     x_label=f'B set {axis} [deg]',
-                    title=f'{name}: paired Δ DOF vs B-set {axis.lower()} '
-                          f'({scheme})\n'
+                    ncols=int(cfg['dof_ncols']),
+                    rows_per_page=int(cfg['dof_rows_per_page']),
+                    title=f'{name}: paired Δ DOF vs B-set {axis.lower()}, '
+                          f'all recovery schemes\n'
                           f'Δ = comparison − {br["reference_label"]}, '
                           f'one point per (night, B set){sub}',
-                    overlay_key=('rbr_deltas' if show_rbr else None),
-                    overlay_label='RBR',
-                    ranges=(dof_ranges if show_rbr else None),
-                    base_label=('5/5 camera hexapod' if cam_only
-                                else f'default {cfg["n_dof"]}/{cfg["n_keep"]}'))
-                if fig is not None:
+                    overlay_series=overlay,
+                    ranges=dof_ranges,
+                    base_label=f'default {cfg["n_dof"]}/{cfg["n_keep"]}')
+                for fig in figs:
                     pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
 
     # ---- 5/5 Camera-hexapod-only plots (camera_hexapod_only bounces, e.g. rotator) ----
@@ -746,12 +956,21 @@ def main():
         fdf.to_parquet(tbl_dir / 'bounce_fwhm_metric.parquet')
         print('  correctable-FWHM metric [arcsec, median over focal plane]:')
         print('   ' + fdf.to_string(index=False).replace('\n', '\n   '))
+        # Every "after" bar is the achieved residual dW − S·(d/w) of its own
+        # scheme, so the bars within a group are a like-for-like comparison.
         bar_cols = [c for c in ('fwhm_before', 'fwhm_after_50_34',
-                                'fwhm_after_rbr', 'fwhm_after_5_5')
+                                'fwhm_after_rbr', 'fwhm_after_22_12',
+                                'fwhm_after_oic', 'fwhm_after_5_5')
                     if c in fdf.columns]
-        lab = {'fwhm_before': 'no correction', 'fwhm_after_50_34': '50/34',
-               'fwhm_after_rbr': 'RBR (range-bounded)',
-               'fwhm_after_5_5': '5/5 Cam-hex'}
+        lab = {'fwhm_before': 'no correction',
+               'fwhm_after_50_34': '50/34 truncated',
+               'fwhm_after_rbr': f'RBR 50/34 (kappa={cfg["rbr_kappa"]:g}, '
+                                 f'power={cfg["rbr_power"]}; both dimensionless)',
+               'fwhm_after_22_12': f'{len(DOF22)}/{cfg["n_keep_reduced"]} '
+                                   f'reduced DOF set',
+               'fwhm_after_oic': f'OIC 50/34 (rho={cfg["oic_rho"]:g} '
+                                 f'dimensionless)',
+               'fwhm_after_5_5': '5/5 camera hexapod'}
         with PdfPages(str(out_dir / 'bounce_fwhm_metric.pdf')) as pdf:
             fig, ax = plt.subplots(figsize=(1.8 * len(fdf) + 3, 5), constrained_layout=True)
             x = np.arange(len(fdf)); w = 0.8 / max(len(bar_cols), 1)
@@ -762,16 +981,18 @@ def main():
                                fontsize=8)
             ax.set_ylabel('differential FWHM [arcsec]  (median over FP)')
             ax.set_title('Bounce optical-state change — correctable FWHM\n'
-                         '(RSS of median Δ-DZ aberrations; residual after OFC projection)')
+                         'RSS of median Δ-DZ aberrations; every "after" bar is '
+                         'the achieved residual dW − S·(d/w) of its own scheme')
             ax.legend(); ax.grid(axis='y', alpha=0.3)
             pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
         print('  wrote bounce_fwhm_metric.pdf + .parquet')
 
     # ---- correctable FWHM vs B-set position, per (night, leg) ----
-    # The image-quality question the RBR comparison exists to answer: what does
-    # bounding the recovered DOF to the allowed range cost in delivered FWHM,
-    # as a function of the throw.  One page per bounce, one point per
-    # (night, B set), three series (uncorrected / default 50-34 / RBR).
+    # The image-quality question the scheme comparison exists to answer: what
+    # does each recovery cost in delivered FWHM as a function of the throw — for
+    # RBR the cost of bounding the recovered DOF to the allowed range, for 22/12
+    # the cost of dropping to the reduced operational DOF set.  One page per
+    # bounce, one point per (night, B set), one series per scheme.
     if fwhm_bvalue_rows:
         bdf = pd.DataFrame(fwhm_bvalue_rows)
         bdf.to_parquet(tbl_dir / 'bounce_fwhm_vs_bvalue.parquet')
@@ -790,6 +1011,9 @@ def main():
                     ttl += (f'\nRBR: kappa={cfg["rbr_kappa"]:g}, '
                             f'power={cfg["rbr_power"]} '
                             f'(penalty ~ (|d_j|/(kappa·r_j))^{2 * cfg["rbr_power"]})')
+                if oic_ok:
+                    ttl += (f'; OIC: rho={cfg["oic_rho"]:g} (dimensionless '
+                            f'motion-penalty weight)')
                 fig = bl.plot_fwhm_vs_b_value(
                     sub.to_dict('records'), x_label=f'B set {axis} [deg]',
                     title=ttl)
@@ -797,14 +1021,26 @@ def main():
                     pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
         print(f'  wrote bounce_fwhm_vs_bvalue.pdf + .parquet '
               f'({len(bdf)} rows)')
-        if 'fwhm_after_rbr' in bdf.columns:
-            _c = bdf.dropna(subset=['fwhm_after_default', 'fwhm_after_rbr'])
-            if len(_c):
-                _cost = (_c['fwhm_after_rbr'] - _c['fwhm_after_default'])
-                print(f'  RBR FWHM cost over default [arcsec]: '
-                      f'median={_cost.median():.5f}, '
-                      f'min={_cost.min():.5f}, max={_cost.max():.5f} '
-                      f'over {len(_c)} (night, leg) points')
+        # Image-quality cost of each scheme relative to the unregularized 50/34
+        # recovery, as the difference of two achieved-residual FWHM in arcsec.
+        for _col, _tag in (('fwhm_after_rbr',
+                            f'RBR 50/34 (kappa={cfg["rbr_kappa"]:g}, '
+                            f'power={cfg["rbr_power"]}; both dimensionless)'),
+                           ('fwhm_after_22_12',
+                            f'{len(DOF22)}/{cfg["n_keep_reduced"]} reduced'),
+                           ('fwhm_after_oic',
+                            f'OIC 50/34 (rho={cfg["oic_rho"]:g} dimensionless)'),
+                           ('fwhm_after_5_5', '5/5 camera hexapod')):
+            if _col not in bdf.columns:
+                continue
+            _c = bdf.dropna(subset=['fwhm_after_default', _col])
+            if not len(_c):
+                continue
+            _cost = _c[_col] - _c['fwhm_after_default']
+            print(f'  {_tag} FWHM cost over the 50/34 truncated recovery '
+                  f'[arcsec]: median={_cost.median():.5f}, '
+                  f'min={_cost.min():.5f}, max={_cost.max():.5f} '
+                  f'over {len(_c)} (night, leg) points')
 
     # ---- per-DOF and per-v-mode Δ table ----
     # The DOF Δ was previously visible only inside the PDFs, so any number
@@ -851,7 +1087,24 @@ def main():
                         ('dof5', cb.get('dof5_deltas'), cb.get('dof5_deltas_by_night'),
                          LABELS_50DOF, DOF_UNITS_50),
                         ('vmode5', cb.get('vmode5_deltas'),
-                         cb.get('vmode5_deltas_by_night'), None, None)):
+                         cb.get('vmode5_deltas_by_night'), None, None),
+                        # The 22-DOF / 12-v-mode reduced set, the scheme the AOS
+                        # is expected to operate in.  Its DOF rows are keyed by
+                        # global DOF index (DOF22), so they share the 50-DOF
+                        # labelling; its v-mode rows are its own 12 v-modes and
+                        # are *not* the first 12 of the 50/34 scheme's.
+                        ('dof22', cb.get('dof22_deltas'),
+                         cb.get('dof22_deltas_by_night'),
+                         LABELS_50DOF, DOF_UNITS_50),
+                        ('vmode22', cb.get('vmode22_deltas'),
+                         cb.get('vmode22_deltas_by_night'), None, None),
+                        # The 50-DOF recovery with the ts_ofc OIC quadratic
+                        # motion penalty at cfg['oic_rho'].  No v-mode kind:
+                        # like RBR it is solved in the retained-mode
+                        # coefficients but reported as DOF.
+                        ('dof_oic', cb.get('dof_oic_deltas'),
+                         cb.get('dof_oic_deltas_by_night'),
+                         LABELS_50DOF, DOF_UNITS_50)):
                     blocks = {'all': pooled} if pooled else {}
                     blocks.update({str(int(d)): v for d, v in (by_night or {}).items()})
                     for night, block in blocks.items():
@@ -897,7 +1150,7 @@ def main():
             # can see which recovery exceeds what the telescope can apply
             # without having to re-derive r_j from the normalization weights.
             if dof_ranges is not None:
-                is_dof = ddf['kind'].isin(['dof', 'dof5'])
+                is_dof = ddf['kind'].isin(['dof', 'dof5', 'dof22', 'dof_oic'])
                 rj = ddf['index'].map(
                     lambda i: (float(dof_ranges[int(i)])
                                if 0 <= int(i) < len(dof_ranges) else np.nan))
@@ -910,22 +1163,40 @@ def main():
             ddf.to_parquet(tbl_dir / 'bounce_dof_stats.parquet')
             print(f'  wrote bounce_dof_stats.parquet ({len(ddf)} rows)')
             if 'ratio_to_range' in ddf.columns:
-                _d = ddf[(ddf['kind'] == 'dof') & ddf['ratio_to_range'].notna()]
-                if len(_d):
-                    # Split per-night from leg-pooled rows: they describe the
-                    # same physics, so a single total double-counts it.
-                    print('    DOF over allowed range (|Δ|/r_j > 1, '
-                          'dimensionless), default vs RBR:')
+                # One line per recovery scheme: how many of its DOF rows ask for
+                # more than the telescope can apply.  Per-night and leg-pooled
+                # rows are split because they describe the same physics and a
+                # single total would double-count it.  The `dof` kind also
+                # carries RBR as columns, so RBR is counted from
+                # `ratio_to_range_rbr` on those rows.
+                print('    DOF rows over the allowed range (|Δ|/r_j > 1, '
+                      'dimensionless), per scheme:')
+                _schemes = [('50/34 truncated', 'dof', 'ratio_to_range'),
+                            (f'RBR 50/34 (kappa={cfg["rbr_kappa"]:g}, '
+                             f'power={cfg["rbr_power"]}; both dimensionless)',
+                             'dof', 'ratio_to_range_rbr'),
+                            (f'{len(DOF22)}/{cfg["n_keep_reduced"]} reduced',
+                             'dof22', 'ratio_to_range'),
+                            (f'OIC 50/34 (rho={cfg["oic_rho"]:g} '
+                             f'dimensionless)',
+                             'dof_oic', 'ratio_to_range'),
+                            ('5/5 camera hexapod', 'dof5', 'ratio_to_range')]
+                for _tag, _kind, _col in _schemes:
+                    if _col not in ddf.columns:
+                        continue
+                    _d = ddf[(ddf['kind'] == _kind) & ddf[_col].notna()]
+                    if not len(_d):
+                        continue
+                    _parts = []
                     for _lab, _s in (
                             ('per (leg, night)',
                              _d[_d['night'].astype(str) != 'all']),
-                            ('leg-pooled    ',
+                            ('leg-pooled',
                              _d[_d['night'].astype(str) == 'all'])):
                         if len(_s):
-                            print(f'      {_lab}: '
-                                  f'{int((_s["ratio_to_range"] > 1).sum())} vs '
-                                  f'{int((_s["ratio_to_range_rbr"] > 1).sum())}'
-                                  f' of {len(_s)} rows')
+                            _parts.append(f'{_lab} {int((_s[_col] > 1).sum())} '
+                                          f'of {len(_s)}')
+                    print(f'      {_tag:42s} ' + '; '.join(_parts))
 
     # ---- long-format table (cell 28) ----
     df_kj.to_parquet(tbl_dir / 'bounce_kj_stats.parquet')
