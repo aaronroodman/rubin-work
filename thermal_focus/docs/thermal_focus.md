@@ -871,8 +871,8 @@ This topic imports `aos_state` from `aos/code` for the v-modes and the DOF sets,
 ### The standalone calculator
 
 `trim_calculator.py` imports numpy and argparse and nothing else, so it can be copied to a summit
-machine and run there. Every coefficient is inlined with its units and provenance, and it carries
-worked test cases. Inlining can drift from the fit silently, so section 11 of the analysis checks
+machine and run there. Every coefficient is inlined with its units, and it carries worked test
+cases. Inlining can drift from the fit silently, so section 11 of the analysis checks
 the calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod
 dz** over 68,079 visits, which is the two-decimal rounding of the inlined coefficients.
 
@@ -880,25 +880,28 @@ Its `UNCORRECTED_NMAD_UM` keeps that name deliberately, even though the report n
 quantity open-loop focus: the rename is a display change, and renaming a constant a summit copy of
 this file may already carry would break that copy for no gain.
 
-`dof_trim` is the form to command online. It returns the correction as the degrees of freedom the
-Optical Feedback Control system sets — the camera and M2 hexapod dz plus the two mirror figure
-bending modes v-mode 1 contains — rather than as a single focus number:
+It exposes two functions. `predict_focus_error` takes the five telemetry values and returns the
+predicted `v1` (dimensionless) and `v1_dz` (µm of equivalent hexapod dz). `predict_trim` calls it
+and returns the four DOF Trim values the Optical Feedback Control system sets, alongside both
+prediction forms:
 
 ```python
-from trim_calculator import dof_trim
-out = dof_trim(truss_temp_c=8.4, z_gradient_c_per_m=0.10, y_gradient_c_per_m=-0.05,
-               radial_gradient_c_per_m=0.02, x_gradient_c_per_m=0.01)
+from trim_calculator import predict_trim
+out = predict_trim(truss_temp_c=8.4, z_gradient_c_per_m=0.10, y_gradient_c_per_m=-0.05,
+                   radial_gradient_c_per_m=0.02, x_gradient_c_per_m=0.01)
+out['v1'], out['v1_dz']                                # dimensionless, um of equivalent hexapod dz
 out['dof5'], out['dof0'], out['dof12'], out['dof34']   # um, ts_ofc DOF ordering
 ```
 
-**Two split conventions coexist and must not be confused.** `trim_adjustment` splits the predicted
-travel **evenly**, half on each hexapod, which is what the dz-equivalent unit means. `dof_trim`
-back-projects through v-mode 1, which splits it **unevenly** — 58.2% of the travel on the camera
-hexapod against 41.8% on M2, a ratio of 1.1638 (dimensionless, back-projected camera dz over
-even-split camera dz) — because that is the shape of the optical mode. The two hexapod dz entries sum
-to −1109.556 µm per unit v-mode-1 amplitude, the same total travel the dz-equivalent conversion
-inverts, so the conventions agree on the total and differ only on the split. Both are printed side by
-side by the module's command line.
+A telemetry value outside `SAMPLE_FEATURE_RANGE` raises a `UserWarning` and the prediction is
+returned regardless — the caller decides whether an extrapolation is acceptable.
+
+**The DOF split is uneven.** The back-projection through v-mode 1 puts 58.2% of the travel on the
+camera hexapod against 41.8% on M2, because that is the shape of the optical mode, not the even
+half-and-half the dz-equivalent unit is defined on. The two hexapod dz entries still sum to the
+total travel that conversion inverts — the `--self-test` checks exactly this, to a relative
+disagreement of 4.6e-04 (dimensionless, difference over total) — so the two conventions agree on
+the total and differ only on the split.
 
 The calculator is a **night-to-night feed-forward term**. It does not read the wavefront and does
 not know what the AOS has already commanded, so applying it blind on top of an already-converged

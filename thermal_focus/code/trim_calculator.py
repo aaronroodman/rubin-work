@@ -1,13 +1,12 @@
-"""Standalone thermal-focus trim calculator: predict the focus correction from temperatures.
+"""Standalone thermal-focus trim calculator: predict the focus degree-of-freedom Trim.
 
-Given the Telescope Mount Assembly (TMA) truss temperature and the four M1M3 bulk thermal
-gradients, this returns the uniform-defocus error the Active Optics System (AOS) is expected to
-have accumulated, and the hexapod trim adjustment that cancels it.
+Goal: determine the degree-of-freedom (DOF) Trim values that set the focus v-mode (v1) from
+thermal telemetry. Method: v1 is predicted from five thermal telemetry values with a Huber robust
+linear fit, converted to microns of equivalent hexapod dz at 1110.1 um of hexapod dz per unit v1,
+and back-projected into the four DOF that v-mode 1 contains.
 
 **This file deliberately imports nothing but numpy.** It is meant to be copied to a summit
-machine and run there, so every constant is inlined below with its units and its provenance.
-There is no database, no Engineering Facilities Database (EFD) client and no repository
-dependency; the caller supplies the five numbers.
+machine and run there, so every constant is inlined below.
 
 Invocation, as a command::
 
@@ -19,157 +18,82 @@ Invocation, as a command::
 
 or as a function::
 
-    from trim_calculator import predict_focus_error_um, trim_adjustment, dof_trim
-    dz = predict_focus_error_um(truss_temp_c=11.3, z_gradient_c_per_m=-0.0656,
-                               y_gradient_c_per_m=-0.0196,
-                               radial_gradient_c_per_m=-0.0168,
-                               x_gradient_c_per_m=0.0017)
+    from trim_calculator import predict_focus_error, predict_trim
+    v1, v1_dz = predict_focus_error(11.3, -0.0656, -0.0196, -0.0168, 0.0017)
+    out = predict_trim(11.3, -0.0656, -0.0196, -0.0168, 0.0017)
 
-`dof_trim` is the form to command online: it returns the correction as the degrees of freedom
-(DOF) the Optical Feedback Control system sets — the camera and M2 hexapod dz plus the two
-mirror figure bending modes v-mode 1 contains — rather than as a single focus number.
-
-Where the inputs come from
---------------------------
-``truss_temp_c`` is the **mean of two thermometers**, ``tma_truss_temp_pxpy`` and
-``tma_truss_temp_mxmy``, from the TMA thermal telemetry, interpolated in time within the night
-to the exposure midpoint. It is not a single stored channel — a consumer that reads one
-thermometer and calls it the truss temperature will be offset from the value these coefficients
-were fitted against.
-
-The four gradients are bulk linear fits to the M1M3 thermocouple field in °C per m, along the
-mirror x, y and z axes and radially. They are derived quantities too, not raw channels.
-
-What the output means
----------------------
-The returned focus error is in **µm of equivalent hexapod dz, split evenly between the camera
-and M2 hexapods** — 1 µm means 0.5 µm on each. That convention is baked into the fitted
-coefficients through the v-mode-1 projection, so a consumer that moves only the camera hexapod
-must scale by the factor `UM_CAMERA_ALONE_PER_UM_SHARED` below.
-
-Notes
------
-This is a prediction of the *uncorrected* focus error from temperatures alone. It does not read
-the wavefront and does not know what the AOS has already commanded, so it is a feed-forward
-term, not a replacement for the closed loop. Applied blind on top of an already-converged loop
-it would double-count the correction.
-
-The coefficients are fitted **between nights**, and the response they were fitted on is
-dominated there by the commanded Trim rather than by the measured wavefront — a between-night
-variance fraction of 91.2% against 25.0% (both dimensionless, between-night over total). Inside a
-single observing block the Active Optics System does not re-command Trim, so the quantity this
-model predicts is frozen and the remaining focus drift is the measured term alone, entering with
-the opposite sign. Over 45 Full Array Mode blocks the median within-block peak-to-peak is 34.9 µm
-of equivalent hexapod dz of real drift, and subtracting the prediction makes the within-block
-scatter *worse*, 46.9 µm, a ratio of 1.35 (dimensionless, corrected over uncorrected), improving
-only 5 of the 45 blocks. So do not use this to chase focus within a block; it is a
-night-to-night term.
+``truss_temp_c`` is the mean of the two TMA truss thermometers ``tma_truss_temp_pxpy`` and
+``tma_truss_temp_mxmy``, interpolated within the night to the exposure midpoint; the four
+gradients are bulk linear fits to the M1M3 thermocouple field. All five are derived quantities,
+not raw telemetry channels.
 """
 import argparse
+import warnings
 
 import numpy as np
 
 # --------------------------------------------------------------------------------- constants
-#
-# Fitted with a Huber robust linear model on 68,079 ordinary science visits over 147 nights,
-# day_obs 20251103 to 20260713, holding whole nights out of the fit. The response is
-#
-#     (v1_trim - v1_measured) / V1_PER_UM_DZ
-#
-# where v1 is the amplitude of the first singular vector of the AOS sensitivity matrix, which is
-# essentially uniform defocus. The hexapod look-up-table (LUT) term is excluded: it is a known
-# commanded function of elevation, so including it would inject an elevation dependence that is
-# not a focus error.
 
-#: Response with every feature at zero [µm of equivalent hexapod dz]. This is a long
-#: extrapolation from the sample, whose feature means are given in `SAMPLE_FEATURE_MEANS`, so it
-#: is not a physically meaningful standalone offset — only the whole equation is.
+#: Response with every feature at zero [um of equivalent hexapod dz].
 INTERCEPT_UM = -1392.01
 
-#: Coefficient on the TMA truss temperature [µm of equivalent hexapod dz per °C].
+#: Coefficient on the TMA truss temperature [um of equivalent hexapod dz per deg C].
 TRUSS_UM_PER_C = +125.09
 
 #: Coefficients on the four M1M3 bulk thermal gradients
-#: [µm of equivalent hexapod dz per (°C per m)].
+#: [um of equivalent hexapod dz per (deg C per m)].
 Z_GRADIENT_UM_PER_C_PER_M = -811.32
 Y_GRADIENT_UM_PER_C_PER_M = -1254.02
 RADIAL_GRADIENT_UM_PER_C_PER_M = -949.08
 X_GRADIENT_UM_PER_C_PER_M = -3374.73
 
-#: Feature means over the fitted sample, for judging whether an input is an extrapolation.
-#: Truss temperature in °C, the four gradients in °C per m.
-SAMPLE_FEATURE_MEANS = {'truss_temp_c': 11.27844,
-                        'z_gradient_c_per_m': -0.06471,
-                        'y_gradient_c_per_m': -0.01958,
-                        'radial_gradient_c_per_m': -0.01672,
-                        'x_gradient_c_per_m': +0.00168}
+#: Mean of each feature over the fitted sample. Truss temperature in deg C, the four gradients
+#: in deg C per m.
+SAMPLE_FEATURE_MEANS = {'truss_temp_c': +11.27840,
+                        'z_gradient_c_per_m': -0.06474,
+                        'y_gradient_c_per_m': -0.01964,
+                        'radial_gradient_c_per_m': -0.01671,
+                        'x_gradient_c_per_m': +0.00169}
 
-#: Full observed range of each feature over the fitted sample, as ``(low, high)``. Outside this
-#: the prediction is an extrapolation and `predict_focus_error_um` says so. These are the actual
-#: minimum and maximum, not a percentile clip; note how narrow the x gradient is — it spans
-#: 0.064 °C per m in total, so its large coefficient acts over a small lever arm.
-#:
-#: The truss upper limit is +17.702 °C, not the warmest night the observatory has had: an
-#: isolated population of 217 visits on two nights between +22.88 and +25.07 °C is excluded from
-#: the fit, detached from the rest of the sample by an empty 5.1792 °C interval. Above about
-#: +18 °C this calculator is extrapolating.
-SAMPLE_FEATURE_RANGE = {'truss_temp_c': (3.87652, 17.70163),
+#: Full observed range of each feature over the fitted sample, as ``(low, high)``. Truss
+#: temperature in deg C, the four gradients in deg C per m.
+SAMPLE_FEATURE_RANGE = {'truss_temp_c': (+3.87652, +17.70162),
                         'z_gradient_c_per_m': (-0.76917, +0.68002),
-                        'y_gradient_c_per_m': (-0.14575, +0.03320),
+                        'y_gradient_c_per_m': (-0.14575, +0.03324),
                         'radial_gradient_c_per_m': (-0.23442, +0.13742),
                         'x_gradient_c_per_m': (-0.01793, +0.04637)}
 
-#: Night-grouped residual scatter of the fit [µm of equivalent hexapod dz, normalized median
-#: absolute deviation]. The uncertainty on any single prediction is about this, against an
-#: uncorrected scatter of `UNCORRECTED_NMAD_UM`.
-RESIDUAL_NMAD_UM = 59.9
+#: Residual scatter of the fit [um of equivalent hexapod dz, normalized median absolute
+#: deviation], the uncertainty on a single prediction.
+RESIDUAL_NMAD_UM = 58.2
 
-#: Scatter of the uncorrected focus error over the same sample [µm of equivalent hexapod dz].
+#: Scatter of the open-loop focus over the same sample, before the correction
+#: [um of equivalent hexapod dz].
 UNCORRECTED_NMAD_UM = 336.8
 
-#: v-mode-1 amplitude per µm of total hexapod dz travel [dimensionless per µm], at the
-#: 10-degree-of-freedom, 1-mode projection, which is the one the online Optical Feedback Control
-#: system uses. Derived from the AOS sensitivity matrix rather than assumed to carry over from
-#: the projection the fit was done at: the full 50-degree-of-freedom, 34-mode projection gives
-#: 9.00851e-04 and the 22/12 projection 9.00942e-04, so the three agree to 0.108%
-#: (dimensionless, spread over the 50/34 value). That spread is far below the fit's own
-#: uncertainty, so the choice of projection does not matter here.
-V1_PER_UM_DZ = 9.018277e-04
+#: v-mode-1 amplitude per um of total hexapod dz travel, split evenly between the camera and M2
+#: hexapods [dimensionless per um]. The inverse is 1110.1 um of hexapod dz per unit v1.
+V1_PER_UM_DZ = 9.00851e-04
 
-#: Ratio of the two "equivalent dz" conventions [dimensionless, camera-alone µm over shared µm].
-#: The fitted coefficients are in the shared convention, 0.5 µm on each hexapod. A consumer that
-#: holds M2 still and moves only the camera hexapod must multiply the predicted dz by this. At
-#: the 10/1 projection one unit of v-mode-1 amplitude is 1108.859 µm of shared travel against
-#: 1120.559 µm of camera-alone travel, both derived from the sensitivity matrix. This is a
-#: definition choice between two ways of expressing the same optical state, not an uncertainty.
-UM_CAMERA_ALONE_PER_UM_SHARED = 1120.559 / 1108.859
+#: Ratio of the two equivalent-dz conventions [dimensionless, camera-alone um over shared um].
+#: A consumer that holds M2 still and moves only the camera hexapod multiplies the predicted dz
+#: by this, 1121.8 um camera-alone against 1110.1 um shared per unit v1.
+UM_CAMERA_ALONE_PER_UM_SHARED = 1121.8 / 1110.1
 
-#: Equivalent hexapod dz per µm of wavefront defocus [µm of equivalent hexapod dz per µm of
-#: wavefront]. Negative because positive hexapod dz produces negative defocus. Provided so a
-#: prediction can be quoted as a wavefront amplitude.
+#: Equivalent hexapod dz per um of wavefront defocus [um of equivalent hexapod dz per um of
+#: wavefront].
 DZ_UM_PER_UM_WF = -63.9902
 
-#: Degree-of-freedom (DOF) content of one unit of v-mode-1 amplitude [µm per unit v-mode-1
-#: amplitude], at the 50-DOF, 34-mode projection. Derived from the AOS sensitivity matrix by
-#: setting v-mode 1 to unity and back-projecting to DOF, which needs the basis normalization
-#: matrix and not just the raw right singular vector — using the singular vector alone gives a
-#: v-mode-1 amplitude of +0.0141 instead of +1.
-#:
-#: The `ts_ofc` DOF ordering is M2 hexapod first: dof0-4 are the M2 hexapod (dz, dx, dy, ru, rv),
-#: dof5-9 the camera hexapod, dof10-29 the M1M3 bending modes and dof30-49 the M2 bending modes.
-#: Only these four entries carry meaningful v-mode-1 content; every other DOF is below 2e-04 µm
-#: per unit amplitude.
-#:
-#: The two hexapod dz entries sum to -1109.556 µm per unit amplitude, which is the same total
-#: travel `V1_PER_UM_DZ` inverts — so v-mode 1 splits focus **unevenly**, 58.2% of the travel on
-#: the camera hexapod against 41.8% on M2, not the even half-and-half `trim_adjustment` applies.
-#: `dof_trim` below uses this uneven split, which is what the optical mode actually is.
+#: DOF content of one unit of v-mode-1 amplitude [um per unit v1], at the 50-DOF, 34-mode
+#: projection. The ts_ofc DOF ordering is M2 hexapod first: dof0-4 are the M2 hexapod, dof5-9 the
+#: camera hexapod, dof10-29 the M1M3 bending modes and dof30-49 the M2 bending modes. Every DOF
+#: not listed carries below 2e-04 um per unit v1.
 V1_DOF_UM_PER_UNIT = {'dof5': -645.657870,       # camera hexapod dz
                       'dof0': -463.898287,       # M2 hexapod dz
                       'dof12': +0.009390,        # M1M3 bending mode B3
                       'dof34': +0.007551}        # M2 bending mode B5
 
-#: Human-readable name and unit for each entry of `V1_DOF_UM_PER_UNIT`, in the order `dof_trim`
+#: Name and reporting unit for each entry of `V1_DOF_UM_PER_UNIT`, in the order `predict_trim`
 #: reports them.
 V1_DOF_LABELS = (('dof5', 'camera hexapod dz', 'um'),
                  ('dof0', 'M2 hexapod dz', 'um'),
@@ -177,33 +101,33 @@ V1_DOF_LABELS = (('dof5', 'camera hexapod dz', 'um'),
                  ('dof34', 'M2 bending mode B5', 'um'))
 
 
-def predict_focus_error_um(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
-                           radial_gradient_c_per_m, x_gradient_c_per_m,
-                           warn_extrapolation=True):
-    """Predicted uniform-defocus error from the five thermal inputs.
+def predict_focus_error(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
+                        radial_gradient_c_per_m, x_gradient_c_per_m, warn_extrapolation=True):
+    """Predict the focus v-mode from the five thermal telemetry values.
 
     Parameters
     ----------
     truss_temp_c : `float` or `array_like`
-        TMA truss temperature: the mean of ``tma_truss_temp_pxpy`` and ``tma_truss_temp_mxmy``,
-        interpolated within the night [°C].
+        TMA truss temperature, the mean of the two thermometers [deg C].
     z_gradient_c_per_m, y_gradient_c_per_m, radial_gradient_c_per_m, x_gradient_c_per_m : \
             `float` or `array_like`
-        M1M3 bulk thermal gradients [°C per m].
+        M1M3 bulk thermal gradients [deg C per m].
     warn_extrapolation : `bool`, optional
-        Print a warning for any input outside `SAMPLE_FEATURE_RANGE`.
+        Issue a `UserWarning` for any input outside `SAMPLE_FEATURE_RANGE`. The prediction is
+        returned either way.
 
     Returns
     -------
-    dz_um : `float` or `numpy.ndarray`
-        Predicted focus error [µm of equivalent hexapod dz, split evenly between the camera and
-        M2 hexapods]. Positive means the telescope has drifted in the direction a positive
-        hexapod dz would produce.
+    v1 : `float` or `numpy.ndarray`
+        Predicted v-mode-1 amplitude [dimensionless].
+    v1_dz : `float` or `numpy.ndarray`
+        The same prediction as focus [um of equivalent hexapod dz, split evenly between the
+        camera and M2 hexapods].
 
     Notes
     -----
-    The uncertainty on one prediction is about `RESIDUAL_NMAD_UM`, from an uncorrected scatter of
-    `UNCORRECTED_NMAD_UM` — a factor of 5.6 (dimensionless, uncorrected over residual scatter).
+    The uncertainty on one prediction is `RESIDUAL_NMAD_UM`, against an open-loop scatter of
+    `UNCORRECTED_NMAD_UM`.
     """
     vals = {'truss_temp_c': np.asarray(truss_temp_c, float),
             'z_gradient_c_per_m': np.asarray(z_gradient_c_per_m, float),
@@ -214,145 +138,73 @@ def predict_focus_error_um(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
         for name, v in vals.items():
             lo, hi = SAMPLE_FEATURE_RANGE[name]
             if np.any(v < lo) or np.any(v > hi):
-                print(f'WARNING: {name} outside the fitted range {lo} to {hi}; the prediction '
-                      f'is an extrapolation')
-    dz_um = (INTERCEPT_UM
+                warnings.warn(f'{name} is outside the fitted range {lo:+.5f} to {hi:+.5f}; the '
+                              f'prediction is an extrapolation', UserWarning, stacklevel=2)
+    v1_dz = (INTERCEPT_UM
              + TRUSS_UM_PER_C * vals['truss_temp_c']
              + Z_GRADIENT_UM_PER_C_PER_M * vals['z_gradient_c_per_m']
              + Y_GRADIENT_UM_PER_C_PER_M * vals['y_gradient_c_per_m']
              + RADIAL_GRADIENT_UM_PER_C_PER_M * vals['radial_gradient_c_per_m']
              + X_GRADIENT_UM_PER_C_PER_M * vals['x_gradient_c_per_m'])
-    return float(dz_um) if dz_um.ndim == 0 else dz_um
+    v1 = v1_dz * V1_PER_UM_DZ
+    if v1_dz.ndim == 0:
+        return float(v1), float(v1_dz)
+    return v1, v1_dz
 
 
-def trim_adjustment(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
-                    radial_gradient_c_per_m, x_gradient_c_per_m, camera_alone=False,
-                    warn_extrapolation=True):
-    """The hexapod trim adjustment that cancels the predicted focus error.
-
-    Parameters
-    ----------
-    truss_temp_c : `float` or `array_like`
-        TMA truss temperature [°C].
-    z_gradient_c_per_m, y_gradient_c_per_m, radial_gradient_c_per_m, x_gradient_c_per_m : \
-            `float` or `array_like`
-        M1M3 bulk thermal gradients [°C per m].
-    camera_alone : `bool`, optional
-        Return the motion for the camera hexapod holding M2 still, instead of the shared
-        convention. Scales by `UM_CAMERA_ALONE_PER_UM_SHARED`.
-    warn_extrapolation : `bool`, optional
-        Passed to `predict_focus_error_um`.
-
-    Returns
-    -------
-    out : `dict`
-        ``focus_error_um`` (the prediction), ``trim_dz_um`` (the correction, its negative),
-        ``camera_hexapod_dz_um`` and ``m2_hexapod_dz_um`` (how to split it) — all in µm — plus
-        ``v1_amplitude`` (dimensionless v-mode-1 amplitude), ``wavefront_um``
-        (µm of wavefront defocus) and ``uncertainty_um``.
-
-    Notes
-    -----
-    The correction is the negative of the error, so applying ``trim_dz_um`` is what removes it.
-    In the shared convention the total travel is split evenly, so each hexapod moves half.
-    """
-    err = predict_focus_error_um(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
-                                 radial_gradient_c_per_m, x_gradient_c_per_m,
-                                 warn_extrapolation=warn_extrapolation)
-    trim = -np.asarray(err, float)
-    if camera_alone:
-        cam = trim * UM_CAMERA_ALONE_PER_UM_SHARED
-        m2 = np.zeros_like(cam)
-    else:
-        cam = trim / 2.0
-        m2 = trim / 2.0
-    scalar = np.ndim(trim) == 0
-    out = dict(focus_error_um=err,
-               trim_dz_um=float(trim) if scalar else trim,
-               camera_hexapod_dz_um=float(cam) if scalar else cam,
-               m2_hexapod_dz_um=float(m2) if scalar else m2,
-               v1_amplitude=float(np.asarray(err) * V1_PER_UM_DZ) if scalar
-               else np.asarray(err) * V1_PER_UM_DZ,
-               wavefront_um=float(np.asarray(err) / DZ_UM_PER_UM_WF) if scalar
-               else np.asarray(err) / DZ_UM_PER_UM_WF,
-               uncertainty_um=RESIDUAL_NMAD_UM)
-    return out
-
-
-def dof_trim(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
-             radial_gradient_c_per_m, x_gradient_c_per_m, warn_extrapolation=True):
-    """The full degree-of-freedom trim vector that cancels the predicted focus error.
-
-    This is the form to command online: the predicted focus error is converted back to a
-    v-mode-1 amplitude and that amplitude is back-projected into degrees of freedom (DOF), so
-    the correction is expressed in exactly the quantities the Optical Feedback Control system
-    sets rather than as a single focus number.
+def predict_trim(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
+                 radial_gradient_c_per_m, x_gradient_c_per_m, warn_extrapolation=True):
+    """The four DOF Trim values that set the predicted focus v-mode.
 
     Parameters
     ----------
     truss_temp_c : `float` or `array_like`
-        TMA truss temperature: the mean of ``tma_truss_temp_pxpy`` and ``tma_truss_temp_mxmy``,
-        interpolated within the night [°C].
+        TMA truss temperature, the mean of the two thermometers [deg C].
     z_gradient_c_per_m, y_gradient_c_per_m, radial_gradient_c_per_m, x_gradient_c_per_m : \
             `float` or `array_like`
-        M1M3 bulk thermal gradients [°C per m].
+        M1M3 bulk thermal gradients [deg C per m].
     warn_extrapolation : `bool`, optional
-        Passed to `predict_focus_error_um`.
+        Passed to `predict_focus_error`.
 
     Returns
     -------
     out : `dict`
-        ``focus_error_um`` [µm of equivalent hexapod dz] and ``v1_amplitude`` [dimensionless
-        v-mode-1 amplitude] as computed, plus one entry per DOF keyed as in
-        `V1_DOF_UM_PER_UNIT` — ``dof5`` and ``dof0`` the camera and M2 hexapod dz [µm],
-        ``dof12`` the M1M3 bending mode B3 and ``dof34`` the M2 bending mode B5 [µm] — and
-        ``uncertainty_um``, the scatter on the focus error itself.
+        ``v1`` [dimensionless v-mode-1 amplitude] and ``v1_dz`` [um of equivalent hexapod dz]
+        from `predict_focus_error`, one entry per DOF keyed as in `V1_DOF_UM_PER_UNIT` —
+        ``dof5`` and ``dof0`` the camera and M2 hexapod dz, ``dof12`` the M1M3 bending mode B3
+        and ``dof34`` the M2 bending mode B5, all [um] — and ``uncertainty_um``, the scatter on
+        ``v1_dz`` [um of equivalent hexapod dz].
 
     Notes
     -----
-    **Sign convention.** The commanded term enters the wavefront response with a positive sign,
-    so the amplitude needed in the Trim to cancel a predicted error is that error expressed in
-    v-mode-1 units, with **no sign flip**: ``v1 = focus_error_um * V1_PER_UM_DZ``, then each DOF
-    is ``V1_DOF_UM_PER_UNIT[dof] * v1``. That is why the hexapod dz values returned here come out
-    opposite in sign to ``trim_adjustment``'s ``trim_dz_um``, which negates the error explicitly:
-    the sign reversal is already carried by the negative v-mode-1 DOF content.
+    Each DOF is ``V1_DOF_UM_PER_UNIT[dof] * v1``, with no sign flip: the commanded term enters
+    the wavefront response positively, so the Trim amplitude that sets a predicted v1 is that v1
+    itself. The hexapod split in the back-projection is uneven, 58.2% of the travel on the camera
+    hexapod against 41.8% on M2, because that is the shape of the optical mode.
 
-    **The hexapod split is uneven**, 58.2% of the travel on the camera hexapod against 41.8% on
-    M2, because that is the shape of the optical mode. `trim_adjustment` instead splits evenly by
-    construction, so the two functions give the same total travel but different per-hexapod
-    numbers — 1.1638 (dimensionless, back-projected camera dz over even-split camera dz).
-
-    **The two bending-mode amplitudes are negligible.** v-mode 1 contains only 0.009390 µm of
-    M1M3 B3 and 0.007551 µm of M2 B5 per unit amplitude, so across the whole fitted sample they
-    stay below about 7 nm — far under the scatter of the mirror figure Trim the observatory
-    actually runs, which is 253.5 nm and 178.6 nm respectively. They are reported for
-    completeness; commanding them changes nothing measurable.
+    The two bending-mode amplitudes stay below about 7 nm over the fitted sample, far under the
+    scatter of the mirror figure Trim the observatory runs. They are reported for completeness.
     """
-    err = predict_focus_error_um(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
-                                 radial_gradient_c_per_m, x_gradient_c_per_m,
-                                 warn_extrapolation=warn_extrapolation)
-    # No sign flip: the commanded term enters the response positively, so the Trim amplitude
-    # that cancels a predicted error is that error in v-mode-1 units.
-    v1 = np.asarray(err, float) * V1_PER_UM_DZ
-    scalar = np.ndim(v1) == 0
-    out = dict(focus_error_um=err,
-               v1_amplitude=float(v1) if scalar else v1,
-               uncertainty_um=RESIDUAL_NMAD_UM)
+    v1, v1_dz = predict_focus_error(truss_temp_c, z_gradient_c_per_m, y_gradient_c_per_m,
+                                    radial_gradient_c_per_m, x_gradient_c_per_m,
+                                    warn_extrapolation=warn_extrapolation)
+    v1_arr = np.asarray(v1, float)
+    scalar = v1_arr.ndim == 0
+    out = dict(v1=v1, v1_dz=v1_dz, uncertainty_um=RESIDUAL_NMAD_UM)
     for dof, unit_content in V1_DOF_UM_PER_UNIT.items():
-        val = unit_content * v1
+        val = unit_content * v1_arr
         out[dof] = float(val) if scalar else val
     return out
 
 
-#: Worked test cases, each ``(label, inputs, expected focus error in µm of equivalent hexapod
-#: dz)``. The expected values are the fitted equation evaluated by hand, so they verify the
-#: constants above have been transcribed correctly. The analysis stage reproduces them from the
-#: fitted pipeline itself.
+#: Worked test cases, each ``(label, inputs, expected v1_dz in um of equivalent hexapod dz)``.
+#: The expected values are the fitted equation evaluated independently, so they verify the
+#: constants above have been transcribed correctly.
 TEST_CASES = (
     ('the sample mean, all five features',
-     dict(truss_temp_c=11.31893, z_gradient_c_per_m=-0.06559, y_gradient_c_per_m=-0.01959,
-          radial_gradient_c_per_m=-0.01678, x_gradient_c_per_m=0.00168),
-     +111.91),
+     dict(truss_temp_c=11.27840, z_gradient_c_per_m=-0.06474, y_gradient_c_per_m=-0.01964,
+          radial_gradient_c_per_m=-0.01671, x_gradient_c_per_m=0.00169),
+     +106.11),
     ('a cold night, gradients at zero',
      dict(truss_temp_c=5.0, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
@@ -362,43 +214,44 @@ TEST_CASES = (
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
      +734.52),
     ('the truss at its mean, a strong z gradient only',
-     dict(truss_temp_c=11.31893, z_gradient_c_per_m=-0.50, y_gradient_c_per_m=0.0,
+     dict(truss_temp_c=11.27840, z_gradient_c_per_m=-0.50, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
-     +429.53),
+     +424.47),
     ('the truss at its mean, a strong y gradient only',
-     dict(truss_temp_c=11.31893, z_gradient_c_per_m=0.0, y_gradient_c_per_m=-0.10,
+     dict(truss_temp_c=11.27840, z_gradient_c_per_m=0.0, y_gradient_c_per_m=-0.10,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.0),
-     +149.28),
+     +144.21),
     ('the truss at its mean, the x gradient at its upper edge',
-     dict(truss_temp_c=11.31893, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
+     dict(truss_temp_c=11.27840, z_gradient_c_per_m=0.0, y_gradient_c_per_m=0.0,
           radial_gradient_c_per_m=0.0, x_gradient_c_per_m=0.03),
-     -77.37),
+     -82.43),
 )
 
 
 def self_test(tol_um=0.05, verbose=True):
-    """Check the inlined constants against the worked test cases.
+    """Check the inlined constants and the DOF back-projection.
 
     Parameters
     ----------
     tol_um : `float`, optional
-        Tolerance [µm of equivalent hexapod dz].
+        Tolerance on each worked case [um of equivalent hexapod dz].
     verbose : `bool`, optional
         Print each case.
 
     Returns
     -------
     max_abs_diff : `float`
-        Largest disagreement over `TEST_CASES` [µm of equivalent hexapod dz].
+        Largest disagreement over `TEST_CASES` [um of equivalent hexapod dz].
 
     Raises
     ------
     AssertionError
-        If any case disagrees by more than `tol_um`, which means a constant was mistyped.
+        If any case disagrees by more than `tol_um`, or if the two hexapod dz entries of the DOF
+        back-projection do not sum to the total travel `V1_PER_UM_DZ` inverts.
     """
     worst = 0.0
     for label, inputs, expected in TEST_CASES:
-        got = predict_focus_error_um(**inputs, warn_extrapolation=False)
+        _, got = predict_focus_error(**inputs, warn_extrapolation=False)
         diff = abs(got - expected)
         worst = max(worst, diff)
         if verbose:
@@ -410,24 +263,34 @@ def self_test(tol_um=0.05, verbose=True):
         print(f'  all {len(TEST_CASES)} cases agree to {worst:.3f} um of equivalent hexapod dz '
               f'(tolerance {tol_um})')
 
-    # The DOF back-projection has one internal consistency check that does not need an
-    # independently computed expectation: the two hexapod dz entries must sum to the total travel
-    # V1_PER_UM_DZ inverts, since that is the convention the fitted coefficients are in.
+    # The two hexapod dz entries must sum to the total travel V1_PER_UM_DZ inverts, since that is
+    # the convention the fitted coefficients are in.
     label, inputs, _ = TEST_CASES[0]
-    dofs = dof_trim(**inputs, warn_extrapolation=False)
-    total = dofs['dof5'] + dofs['dof0']
-    expect_total = -dofs['focus_error_um']
+    out = predict_trim(**inputs, warn_extrapolation=False)
+    total = out['dof5'] + out['dof0']
+    expect_total = -out['v1_dz']
     rel = abs(total - expect_total) / max(abs(expect_total), 1e-12)
     if verbose:
-        print(f'  DOF back-projection on "{label}":')
+        print(f'  DOF Trim on "{label}":')
+        print(f'    v1 {out["v1"]:+.6f} (dimensionless), v1_dz {out["v1_dz"]:+.2f} um of '
+              f'equivalent hexapod dz')
         for dof, name, unit in V1_DOF_LABELS:
-            print(f'    {name:24s} {dofs[dof]:+12.6f} {unit}')
-        print(f'    hexapod dz sum {total:+.4f} um against the total travel the focus error '
-              f'implies {expect_total:+.4f} um')
-        print(f'    relative disagreement {rel:.2e} (dimensionless, difference over total)')
+            print(f'    {name:24s} {out[dof]:+12.6f} {unit}')
+        print(f'    hexapod dz sum {total:+.4f} um against the total travel v1_dz implies '
+              f'{expect_total:+.4f} um, relative disagreement {rel:.2e} (dimensionless)')
     assert rel < 1e-3, (f'the v-mode-1 DOF content is inconsistent with V1_PER_UM_DZ: the two '
                         f'hexapod dz sum to {total:+.4f} um against {expect_total:+.4f} um '
                         f'expected, a relative disagreement of {rel:.2e}')
+
+    # Array input must give the same numbers as the scalar path, element by element.
+    arr = predict_trim(np.array([11.27840, 5.0]), np.array([-0.06474, 0.0]),
+                       np.array([-0.01964, 0.0]), np.array([-0.01671, 0.0]),
+                       np.array([0.00169, 0.0]), warn_extrapolation=False)
+    assert np.allclose(arr['v1_dz'], [TEST_CASES[0][2], TEST_CASES[1][2]], atol=tol_um), \
+        'the array path disagrees with the scalar worked cases'
+    if verbose:
+        print(f'  the array path reproduces the scalar cases to {tol_um} um of equivalent '
+              f'hexapod dz')
     return worst
 
 
@@ -445,8 +308,6 @@ def main():
                     help='M1M3 radial thermal gradient [deg C per m]')
     ap.add_argument('--x-gradient-c-per-m', type=float, default=0.0,
                     help='M1M3 x thermal gradient [deg C per m]')
-    ap.add_argument('--camera-alone', action='store_true',
-                    help='report the camera hexapod moving alone, M2 held still')
     ap.add_argument('--self-test', action='store_true',
                     help='check the inlined constants against the worked test cases and exit')
     args = ap.parse_args()
@@ -458,27 +319,14 @@ def main():
     if args.truss_temp_c is None:
         ap.error('--truss-temp-c is required; or pass --self-test')
 
-    out = trim_adjustment(args.truss_temp_c, args.z_gradient_c_per_m, args.y_gradient_c_per_m,
-                          args.radial_gradient_c_per_m, args.x_gradient_c_per_m,
-                          camera_alone=args.camera_alone)
-    conv = 'camera hexapod alone, M2 held still' if args.camera_alone else \
-        'split evenly between the camera and M2 hexapods'
-    print(f'predicted focus error   {out["focus_error_um"]:+9.1f} +/- {out["uncertainty_um"]:.1f}'
-          f' um of equivalent hexapod dz')
-    print(f'  as a v-mode-1 amplitude {out["v1_amplitude"]:+9.5f} (dimensionless)')
-    print(f'  as wavefront defocus    {out["wavefront_um"]:+9.4f} um of wavefront')
-    print(f'trim adjustment to apply {out["trim_dz_um"]:+9.1f} um of hexapod dz ({conv})')
-    print(f'  camera hexapod dz      {out["camera_hexapod_dz_um"]:+9.1f} um')
-    print(f'  M2 hexapod dz          {out["m2_hexapod_dz_um"]:+9.1f} um')
-
-    dofs = dof_trim(args.truss_temp_c, args.z_gradient_c_per_m, args.y_gradient_c_per_m,
-                    args.radial_gradient_c_per_m, args.x_gradient_c_per_m,
-                    warn_extrapolation=False)
-    print('as a degree-of-freedom trim vector, v-mode 1 back-projected to DOF')
-    print('  (the hexapod split is uneven here, 58.2% camera against 41.8% M2, because that is '
-          'the shape of the optical mode)')
+    out = predict_trim(args.truss_temp_c, args.z_gradient_c_per_m, args.y_gradient_c_per_m,
+                       args.radial_gradient_c_per_m, args.x_gradient_c_per_m)
+    print(f'predicted v1     {out["v1"]:+12.6f} (dimensionless)')
+    print(f'predicted v1_dz  {out["v1_dz"]:+12.1f} +/- {out["uncertainty_um"]:.1f} um of '
+          f'equivalent hexapod dz')
+    print('DOF Trim to apply')
     for dof, name, unit in V1_DOF_LABELS:
-        print(f'  {dof:6s} {name:24s} {dofs[dof]:+12.6f} {unit}')
+        print(f'  {dof:6s} {name:24s} {out[dof]:+12.6f} {unit}')
 
 
 if __name__ == '__main__':

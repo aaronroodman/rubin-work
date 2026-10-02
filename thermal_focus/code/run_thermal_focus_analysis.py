@@ -1077,10 +1077,10 @@ def section_calculator(sci, features, full, verbose=True):
             print('  the fitted feature set is not the calculator\'s five channels, so the '
                   'calculator is not comparable here; skipped')
         return {}
-    calc = T.predict_focus_error_um(*[sci[c].to_numpy(float) for c in cols],
-                                   warn_extrapolation=False)
+    _, calc = T.predict_focus_error(*[sci[c].to_numpy(float) for c in cols],
+                                    warn_extrapolation=False)
     diff = calc - np.asarray(full['pred'], float)
-    worked = max(abs(T.predict_focus_error_um(**inp, warn_extrapolation=False) - exp)
+    worked = max(abs(T.predict_focus_error(**inp, warn_extrapolation=False)[1] - exp)
                  for _, inp, exp in T.TEST_CASES)
     out = {'n': int(len(sci)),
            'max_abs_diff_um': float(np.nanmax(np.abs(diff))),
