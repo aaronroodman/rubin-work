@@ -16,7 +16,7 @@ follow.
 | # | item | status |
 | --- | --- | --- |
 | [1](#1-compare-different-wavefront-retrieval-methods-using-visits-from-several-nights) | Compare different wavefront retrieval methods using visits from several nights | not started, waiting for CWFS processing |
-| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started |
+| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started, scope settled |
 | [3](#3-extend-the-miw-grid-so-the-interpolation-hull-covers-the-full-field-of-view) | Extend the MIW grid so the interpolation hull covers the full field of view | diagnosed, Guillem has the fix |
 | [4](#4-confluence-page-documenting-the-aos-production-runs-in-repomain) | Confluence page documenting the AOS production runs in `/repo/main` | probe done, page not written |
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
@@ -160,16 +160,20 @@ compared do not share a ts_wep or donut_viz version.
 
 ## 2. Open-loop and deviation-recovered optical state for science visits, three schemes
 
-**Status:** not started · **Blocked on:** nothing
+**Status:** not started, scope settled 2026-10-02 · **Blocked on:** nothing (Q11 and Q12
+shape the build but do not block starting the code move)
 
 For all science and acquisition visits, compute and store two optical states per correction
-scheme: the **open-loop** one, which is the Trim degree-of-freedom (DOF) state and its
-v-modes together with the corner wavefront sensor (CWFS) Zernikes it implies — that is the
-Open Loop Reproduction (OLR) — and the **deviation-recovered** one, the DOF and v-modes
-recovered from that visit's measured deviation alone. Do both for the 22 DOF / 12 v-mode
-(22/12) scheme, the 50/34 scheme, and 50/34 with the Range-Bounded Recovery (RBR)
-constraint, from the Consolidated Database (ConsDB) Zernike values, and land the results in
-the value-added database.
+scheme: the **open-loop** one, which is the Trim minus Deviation degree-of-freedom (DOF)
+state with corresponding v-modes and Double Zernikes (DZ), where the Deviation is from the
+corner wavefront sensor (CWFS) Zernikes — that is the Open Loop Reproduction (OLR) — and the
+**deviation-recovered** one, the DOF and v-modes recovered from that visit's measured
+deviation alone. Do both for the 22 DOF / 12 v-mode (22/12) scheme, the 50/34 scheme, and
+50/34 with the Range-Bounded Recovery (RBR) constraint, from the Consolidated Database
+(ConsDB) Zernike values, and land the results in the value-added database.
+
+Collect the Trim-minus-Deviation code in one shared place first — pulled out of `olr/`, which
+is then repurposed for analysis of the OLR as stored in the database.
 
 **Goals:** Assess the 22/12 versus 50/34 correction schemes on real science visits, with a
 50/34 implementation that obeys the mirror force limits, and make the per-visit open-loop and
@@ -181,7 +185,7 @@ recomputation.
 
 ### Known collections
 
-The measured corner Zernikes come from ConsDB live at build time, not from the database:
+The measured CWFS Zernikes come from ConsDB as they are measured online in the AOS:
 `aos_state.fetch_corner_zernikes_consdb` against `consdb_ccdvisit1_quicklook`, which is the
 `opd_source` recorded on every variant. The Trim DOF come from the database's own
 `visit_telemetry.trim` columns, 50 of them, from `MTAOS.logevent_degreeOfFreedom` as of
@@ -189,11 +193,20 @@ The measured corner Zernikes come from ConsDB live at build time, not from the d
 
 ### Data selection
 
-- **After 20260419** — the Singular Value Decomposition (SVD) normalization fix.
-- Danish 1.2 plus Refit WCS went online later; the earlier processing is probably acceptable
-  (Q4). The day_obs of that changeover still needs finding.
+**No cut: fill every science and acquisition visit** (Q2, Q4, Q7). The subsample for a given
+study is chosen later, at read time, which is what the variant-plus-join layout is for. So
+the dates below are provenance to record, not filters to apply:
 
-### The OLR is Trim minus deviation
+- **20260419** — the Singular Value Decomposition (SVD) normalization fix. Visits before it
+  are still built; an analysis sensitive to it cuts on `day_obs` itself.
+- Danish 1.2 plus Refit WCS went online later. That day_obs still needs finding, but it
+  gates interpretation, not the build.
+
+This extends the build back to where the ConsDB Zernikes start, 20250415 — about 2.4x the
+span of the one populated variant today (see below), and it means rebuilding that variant
+rather than only adding new ones.
+
+### The OLR is Trim minus Deviation
 
 This is what collapses the two halves of this item into one build. The open-loop state is
 just the Trim DOF; its v-modes are the forward projection `aos_state.vmodes_from_dofs(trim,
@@ -203,16 +216,30 @@ through the sensitivity matrix, which is the OLR. So OLR and deviation recovery 
 forward and inverse directions of one operator, computed per scheme in the same pass, and
 the comparison between them is the thing worth looking at.
 
+One sign convention to carry over exactly. In `olr/code/olr.py` the OLR **adds the applied
+correction back** to the measured wavefront, recovering what would have been seen with the
+loop open — `apply_trim(..., subtract=False)`, i.e. `olr_opd[c] = zk_opd[c] + z_change[c]`
+with `z_change = sens_mat @ trim` reshaped to the four corners and Z20/Z21 zero-padded.
+"Trim minus Deviation" is the DOF-space statement of the same operation; the Zernike-space
+code adds. Only 22 of the 50 DOF enter `sens_mat` there, which matters for the 50/34 schemes
+(see Q11).
+
 `run_olr.py` already asserts the identity `olr_deviation == olr_opd - intrinsic` on every
 corner row and prints the check into its log, so the forward direction has a verified
-reference implementation to reproduce or reuse.
+reference implementation to move and reuse.
 
 **`build_optical_state.py` already stores the open-loop v-modes.** `make_commanded_projector`
 projects both the hexapod lookup-table DOF and the Trim DOF through `vmodes_from_dofs`, and
 `upsert_optical_state` writes them as `v_modes_lut` and `v_modes_trim` alongside the
-deviation-recovered `v_modes`. What is missing from the open-loop side is the implied CWFS
-Zernikes, and the Trim DOF themselves are already in `visit_telemetry` rather than in
-`optical_state`.
+deviation-recovered `v_modes`. The Trim DOF themselves are already in `visit_telemetry`
+rather than in `optical_state`.
+
+The CWFS Zernikes are **not stored** (Q6). They are already in ConsDB as OPD Zernikes for
+all four corners, present for every science and acq visit whether the loop was open or
+closed, so the build queries them live and the database holds no copy. What ConsDB does not
+have is the **intrinsic** wavefront, which is why the intrinsic route — batoid or MIW — is a
+variant axis: the intrinsic is what turns an OPD into the deviation that defines the optical
+state. A Butler processing will eventually replace the ConsDB values, but not yet.
 
 ### Existing machinery to build on
 
@@ -243,9 +270,12 @@ and `ok`.
 
 **The RBR arm is the part that does not exist.** Three consequences:
 
-- There is no regularizer axis in the variant name. `efd_db.variant_id(scheme,
-  intrinsic_route, opd_version)` builds `v50_34__batoid__consdb_v1` from exactly three parts,
-  and `state_variant` has no column for a solver or a penalty. See Q5.
+- RBR rides in the `scheme` field as the pseudo-scheme `50_34_rbr`, giving the variant
+  `v50_34_rbr__batoid__consdb_v1` (Q5). No schema change and no fourth axis, but it does
+  mean `build_optical_state.SCHEMES` needs a third entry mapping `50_34_rbr` to the same
+  `('all_50', 50, 34)` DOF set as `50_34`, so `scheme` no longer determines `n_dof` and
+  `n_modes` uniquely — two schemes now share them and differ only by solver. Record the
+  penalty and its parameters in `state_variant.notes`, since no column describes them.
 - `recover_optical_state` is the OFC state-estimator path, while `invert_range_penalty` takes
   `(dW, svd, ranges)` against an `ofc_svd` SVD. Whether the two share a forward operator
   closely enough for the RBR DOF to be comparable to the truncated DOF needs checking before
@@ -265,7 +295,9 @@ and `ok`.
 
 Row counts are from `build_progress.md`, read on 2026-09-24. `visit_telemetry` covers 366
 nights and 213,704 exposures over `day_obs` 20250415 to 20260714, so the recovered optical
-state covers a visibly narrower span than the telemetry it joins to.
+state covers a visibly narrower span than the telemetry it joins to. Closing that gap is now
+in scope: the no-cut answer means every variant should reach the full telemetry span, which
+is roughly 2.4x the nights and a rebuild of the one populated variant.
 
 The empty-but-registered variants are a live trap worth not reproducing:
 `efd_db.optical_state('v50_34__miw__consdb_v1')` returns an empty DataFrame rather than
@@ -273,23 +305,42 @@ raising, so an analysis naming an unbuilt variant gets zero rows and no error.
 
 ### Scope
 
+- **First, consolidate the Trim-minus-Deviation code in one place** (Q10): move the OLR
+  calculation for DOF, v-modes and DZ out of `olr/code/` into `aos/code` (the v-modes, DOF
+  sets and per-corner recovery already live there) or `common/code`, and delete the moved
+  code from `olr/` so there is one implementation, not two. `olr/` is then repurposed for
+  analysis of the OLR as stored in the database. Deleting those files needs Aaron's go-ahead
+  at the time.
 - For each of the three schemes (22/12, 50/34, 50/34 plus RBR), compute and store both
-  states per visit: the open-loop DOF and v-modes with their implied CWFS Zernikes (the
-  OLR), and the DOF and v-modes recovered from the visit's deviation alone.
+  states per visit: the open-loop DOF and v-modes, and the DOF and v-modes recovered from
+  the visit's deviation alone. The CWFS Zernikes stay in ConsDB and are queried live, not
+  copied (Q6).
+- Cover **all science and acq visits** (Q2, Q4, Q7) — no date cut. This extends back to
+  20250415 and therefore includes rebuilding the already-populated
+  `v50_34__batoid__consdb_v1` over the wider span, not just building the empty variants.
 - Build `v22_12__batoid__consdb_v1`, which is a run of the existing builder rather than new
   code.
-- Add an RBR variant: extend the variant naming and `state_variant` with a regularizer axis,
-  then build 50/34 with the RBR penalty, calling the shared solver in
+- Add the RBR variant as the pseudo-scheme `50_34_rbr` (Q5), with `kappa = 4` and
+  `power = 3`, both dimensionless, matching the bounce test (Q8). Call the shared solver in
   `smatrix/code/regularized_inversion.py` rather than copying it.
+- Build the MIW intrinsic route with the existing MIW (Q9), filling the registered-but-empty
+  `v50_34__miw__consdb_v1`. This needs `--intrinsic miw --intrinsic-ref <the MIW build
+  name>` plus a `MiwCornerLookup` from `aos/code/miw_corner_intrinsic.py`; the builder
+  raises rather than guessing if the ref is missing. Which MIW build is "the existing" one
+  is Q12.
 - Check, before building, that the RBR solver's forward operator and the state estimator's
   agree closely enough that the RBR and truncated DOF are comparable per visit; report the
   discrepancy rather than assuming it is zero.
 - Store the achieved residual `dW - S (d / w)` for the RBR variant, not the subspace
   residual, and record on the variant which residual its `resid_rms_um` column holds.
-- Reproduce `run_olr.py`'s identity check `olr_deviation == olr_opd - intrinsic` on the
-  stored open-loop Zernikes, so a sign or basis error in the forward direction fails loudly.
+- Carry `run_olr.py`'s identity check `olr_deviation == olr_opd - intrinsic` into the moved
+  code and run it per visit at build time, so a sign or basis error in the forward direction
+  fails loudly. Since the Zernikes are not stored, this is a build-time assertion in the
+  log, not something a later query can re-derive from the database alone.
 - Keep every scheme as rows under its own variant, never as new columns, so a comparison
-  stays a self-join on `visit_id` through `efd_db.compare_variants`.
+  stays a self-join on `visit_id` through `efd_db.compare_variants`. With three schemes over
+  two intrinsic routes that is up to six variants; the four batoid-route and MIW-route
+  combinations actually wanted are worth naming before building (Q12).
 - Run the builds as sharded batch jobs through `run_build.sh --what state --mode batch`,
   which Aaron submits.
 - Compare the schemes on image quality over the science sample, using the open-loop versus
@@ -312,17 +363,18 @@ here as the record of the decision.
 **Q2. How large is a "large sample" of science visits,** and does the 20260419 cut leave
 enough once the Danish 1.2 and refit WCS cut is also applied?
 
-**A:** Yes, post 20260419 should be sufficient
+**A:** _Lets fill these tables for all science and acq visits, and I cut later on which
+subsamples to use for various studies._
 
 **Q3. Does the OLR table live in the existing `aos_efd.duckdb` or its own database file?**
 
-**A:** I am not sure, but this table will also need to be keyed off the nDof/nVmode scheme and perhaps also the wavefront retrieval
+**A:** I am not sure, but this table will also need to be keyed off the nDof/nVmode scheme and perhaps also the wavefront retrieval,so I guess it will want its own table
 
 **Q4. Is 20260419 the right single cut?** It is the SVD normalization fix date and appears
 to be the Danish 1.2 changeover date too, but refit WCS may have gone online on a
 different day. Needs confirming against the online collection provenance.
 
-**A:** The Danish 1.2 and Refit WCS was definitely later, but it may be ok to use the earlier processing
+**A:** Again for the value added duckdb lets just fill this for all visits
 
 **Q5. How does RBR enter the variant name?** The name is three parts today
 (`v50_34__batoid__consdb_v1`) and nothing in `state_variant` describes the solver. Either add
@@ -333,7 +385,10 @@ the pseudo-scheme is less code but overloads a field that means DOF count and v-
 everywhere else. Q3's answer already says the keying must cover the scheme and perhaps the
 retrieval, so this is the same decision made concrete.
 
-**A:** _unanswered_
+**A:** _`v50_34_rbr` will encode the scheme._ So the pseudo-scheme option, not a fourth axis:
+no schema change, and `SCHEMES` gains a `50_34_rbr` entry pointing at the same `all_50` DOF
+set. Consequence to accept: `scheme` no longer implies `n_dof`/`n_modes` uniquely, and the
+penalty parameters live only in `state_variant.notes`.
 
 **Q6. Where do the open-loop CWFS Zernikes live?** The Trim DOF are already in
 `visit_telemetry` and the Trim v-modes are already in `optical_state.v_modes_trim`, but the
@@ -342,7 +397,11 @@ columns on `optical_state` next to the v-modes; a separate long table keyed the 
 not stored at all, recomputed on read from the stored Trim v-modes, since the forward
 projection is cheap.
 
-**A:** _unanswered_
+**A:** _The CWFS Zernikes are currently in the ConsDB, with OPD Zernikes for all four
+corners. Note that these are present for all science and acq visits independent of open or
+closed loop. We can get these quantities as needed from the ConsDB. What isn't in the ConsDB
+is the intrinsic wavefront, and so we need to use either Batoid intrinsic or MIW. Eventually
+we'll have a processing in the Butler to replace the ConsDB values, but not yet._
 
 **Q7. Which span does the build cover?** The existing 50/34 variant runs `day_obs` 20251102
 to 20260713, and the data-selection cut above says after 20260419. Options: match the
@@ -350,7 +409,7 @@ existing variant's span so the three schemes join visit-for-visit; restrict to p
 where the SVD normalization is fixed; or extend all three back to 20250415 where ConsDB
 Zernikes exist, which means also rebuilding the populated 50/34 variant.
 
-**A:** _unanswered_
+**A:** _See above, I want to fill all science and acq visits_
 
 **Q8. What RBR `kappa` and `power`?** The bounce test used `kappa = 4` and `power = 3`, both
 dimensionless, while `invert_range_penalty` defaults to `kappa = 0.5, power = 2`. Science
@@ -358,7 +417,7 @@ visits sit near the nominal optical state rather than at a deliberately bounced 
 penalty may rarely bind. Either adopt the bounce values for continuity, or sweep on a sample
 of nights and pick for the science-visit regime.
 
-**A:** _unanswered_
+**A:** _Use kappa=4 and power=3_
 
 **Q9. Does the MIW intrinsic route come along?** Item 6 rebuilds the Measured Intrinsic
 Wavefront (MIW) under three correction schemes, and `v50_34__miw__consdb_v1` is registered
@@ -366,12 +425,35 @@ but empty. Building the MIW route here would double the variant count; deferring
 item to the batoid route and leaves the MIW variants to item 6, where the MIW builds are
 decided.
 
-**A:** _unanswered_
+**A:** _For now lets use the existing MIW_
 
 **Q10. Does `olr/` stay a separate topic?** Its pipeline writes `olr.parquet` per night with
 the open-loop OPD and deviation Zernikes. If the open-loop state is built into the
 value-added database per visit, `olr/` either becomes the reference implementation this build
 is verified against and is then left alone, or it is retired in favour of the database.
+
+**A:** _Lets pull code from the olr topic or reproduce it in the aos/code area (or in the
+rubin-work/common/code area) to calculate the OLR Trim-Deviation for DOF, v-modes and DZ
+optical state. All of that code should move to one common place, and I will repurpose the
+rubin-work/olr topic for analysis of the OLR in the duckdb. So please remove the code from
+rubin-work/olr that moves over._
+
+**Q11. Does the OLR sensitivity matrix cover 22 DOF or 50?** `olr/code/olr.py` builds
+`sens_mat` with 22 columns and slices the Trim with `dof_state[indices]`, so the OLR Zernikes
+it produces are the 22 DOF subset of the applied correction. For the 50/34 schemes the
+open-loop Zernikes should arguably use all 50. Either extend the matrix to 50 columns for
+those schemes, or keep 22 everywhere and accept that the open-loop Zernikes are a projection
+of the correction rather than all of it. This decides whether the moved code is a copy or a
+generalization.
+
+**A:** _unanswered_
+
+**Q12. Which MIW build, and which of the six variants get built?** Q9 says "the existing
+MIW", but `--intrinsic miw` needs `--intrinsic-ref` naming a specific build and a
+`MiwCornerLookup`, and the builder raises rather than defaulting. Three schemes over two
+intrinsic routes is six variants; the natural subset is the three batoid ones plus 50/34 MIW
+(the one already registered), which is four. Worth fixing the list and the MIW build name
+before any batch submission, since each variant is a full-span build.
 
 **A:** _unanswered_
 
