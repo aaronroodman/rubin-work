@@ -1,6 +1,6 @@
 # Rubin AOS — TODO / Ideas
 
-> **Status:** current · **Last updated:** 2026-09-30 · **Kind:** working state (queue)
+> **Status:** current · **Last updated:** 2026-10-02 · **Kind:** working state (queue)
 
 Open ideas and todo items for future Claude Code sessions to work on in
 `~/notebooks/rubin-work` (mostly `aos/`). New and in-process items only — items that are
@@ -16,14 +16,15 @@ follow.
 | # | item | status |
 | --- | --- | --- |
 | [1](#1-compare-different-wavefront-retrieval-methods-using-visits-from-several-nights) | Compare different wavefront retrieval methods using visits from several nights | not started, waiting for CWFS processing |
-| [2](#2-assess-the-5034-correction-scheme-for-science-visits) | Assess the 50/34 correction scheme for science visits | not started |
+| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started |
 | [3](#3-extend-the-miw-grid-so-the-interpolation-hull-covers-the-full-field-of-view) | Extend the MIW grid so the interpolation hull covers the full field of view | diagnosed, Guillem has the fix |
 | [4](#4-confluence-page-documenting-the-aos-production-runs-in-repomain) | Confluence page documenting the AOS production runs in `/repo/main` | probe done, page not written |
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
 | [6](#6-rebuild-the-miw-under-three-correction-schemes-and-compare) | Rebuild the MIW under three correction schemes and compare | not started |
 | [7](#7-reorganize-the-thermal_focus-analysis-and-its-pdf-report) | Reorganize the `thermal_focus` analysis and its PDF report | not started |
-| [8](#8-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode) | Consolidate the regularized inversions as shared OFC code in `smatrix/code` | not started |
-| [9](#9-extend-the-bounce-test-to-four-recovery-schemes) | Extend the bounce test to four recovery schemes | not started, needs item 8 |
+| [8](#8-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode) | Consolidate the regularized inversions as shared OFC code in `smatrix/code` | done 2026-10-01, awaiting move out |
+| [9](#9-extend-the-bounce-test-to-four-recovery-schemes) | Extend the bounce test to four recovery schemes | done 2026-10-01, awaiting move out |
+| [10](#10-guider-star-second-moments-image-and-centroid-motion-into-the-value-added-db) | Guider star second moments, image and centroid motion, into the value-added DB | not started |
 
 Recently closed and moved out: the Danish 1.3 blitz Full Array Mode (FAM) processing, the
 July bounce test and its note for Guillem, the `thermal_focus` study, and the
@@ -157,44 +158,146 @@ compared do not share a ts_wep or donut_viz version.
 
 ---
 
-## 2. Assess the 50/34 correction scheme for science visits
+## 2. Open-loop and deviation-recovered optical state for science visits, three schemes
 
-**Status:** not started · **Blocked on:** decide on approach and then implement the corresponding OLR 
+**Status:** not started · **Blocked on:** nothing
 
-Compare the current 22 degree-of-freedom / 12 v-mode (22/12) correction scheme against 50/34 for regular science images by using the Open Loop Reproduction (OLR). 
+For all science and acquisition visits, compute and store two optical states per correction
+scheme: the **open-loop** one, which is the Trim degree-of-freedom (DOF) state and its
+v-modes together with the corner wavefront sensor (CWFS) Zernikes it implies — that is the
+Open Loop Reproduction (OLR) — and the **deviation-recovered** one, the DOF and v-modes
+recovered from that visit's measured deviation alone. Do both for the 22 DOF / 12 v-mode
+(22/12) scheme, the 50/34 scheme, and 50/34 with the Range-Bounded Recovery (RBR)
+constraint, from the Consolidated Database (ConsDB) Zernike values, and land the results in
+the value-added database.
 
-**Goals:** Determine how to implement a 50/34 scheme so that Mirror force limits are obeyed, and assess the IQ performance. 
+**Goals:** Assess the 22/12 versus 50/34 correction schemes on real science visits, with a
+50/34 implementation that obeys the mirror force limits, and make the per-visit open-loop and
+deviation-recovered DOF and v-modes available to every later analysis as a join rather than a
+recomputation.
 
 <details>
-<summary>Existing machinery, data selection, scope and open questions</summary>
+<summary>What exists, what the OLR is, what is populated, scope and open questions</summary>
 
+### Known collections
+
+The measured corner Zernikes come from ConsDB live at build time, not from the database:
+`aos_state.fetch_corner_zernikes_consdb` against `consdb_ccdvisit1_quicklook`, which is the
+`opd_source` recorded on every variant. The Trim DOF come from the database's own
+`visit_telemetry.trim` columns, 50 of them, from `MTAOS.logevent_degreeOfFreedom` as of
+`obs_start` [µm, arcsec].
+
+### Data selection
+
+- **After 20260419** — the Singular Value Decomposition (SVD) normalization fix.
+- Danish 1.2 plus Refit WCS went online later; the earlier processing is probably acceptable
+  (Q4). The day_obs of that changeover still needs finding.
+
+### The OLR is Trim minus deviation
+
+This is what collapses the two halves of this item into one build. The open-loop state is
+just the Trim DOF; its v-modes are the forward projection `aos_state.vmodes_from_dofs(trim,
+state_estimator, n_modes=...)`, which is `StateEstimator.get_vmodes_from_dofs` — the basis
+the Main Telescope AOS reports on the summit. Its CWFS Zernikes are that state pushed
+through the sensitivity matrix, which is the OLR. So OLR and deviation recovery are the
+forward and inverse directions of one operator, computed per scheme in the same pass, and
+the comparison between them is the thing worth looking at.
+
+`run_olr.py` already asserts the identity `olr_deviation == olr_opd - intrinsic` on every
+corner row and prints the check into its log, so the forward direction has a verified
+reference implementation to reproduce or reuse.
+
+**`build_optical_state.py` already stores the open-loop v-modes.** `make_commanded_projector`
+projects both the hexapod lookup-table DOF and the Trim DOF through `vmodes_from_dofs`, and
+`upsert_optical_state` writes them as `v_modes_lut` and `v_modes_trim` alongside the
+deviation-recovered `v_modes`. What is missing from the open-loop side is the implied CWFS
+Zernikes, and the Trim DOF themselves are already in `visit_telemetry` rather than in
+`optical_state`.
 
 ### Existing machinery to build on
 
 | piece | path |
 | --- | --- |
+| the optical-state builder | [value_added/code/build_optical_state.py](../../value_added/code/build_optical_state.py) |
+| its batch wrapper, sharded by night | [value_added/code/run_build.sh](../../value_added/code/run_build.sh) |
+| the table, registry and readers | [value_added/code/efd_db.py](../../value_added/code/efd_db.py) |
+| the schema reference | [value_added/docs/schema.md](../../value_added/docs/schema.md) |
+| what is built and what is sparse | [value_added/docs/status/build_progress.md](../../value_added/docs/status/build_progress.md) |
 | the OLR pipeline | [olr/code/run_olr.py](../../olr/code/run_olr.py) |
-| its nightly table | [olr/code/nightly_table.py](../../olr/code/nightly_table.py) |
-| parquet combine | [olr/code/combine_parquets.py](../../olr/code/combine_parquets.py) |
+| its nightly table and parquet combine | [olr/code/nightly_table.py](../../olr/code/nightly_table.py), [olr/code/combine_parquets.py](../../olr/code/combine_parquets.py) |
 | topic Snakefile and config | `olr/Snakefile`, `olr/config.yaml` |
-| the DuckDB machinery to copy | [value_added/code/](../../value_added/code/), read through `value_added/code/efd_db.py` |
-| v-modes and DOF sets | `aos/code/aos_state.py`, imported by `olr/` |
+| v-modes, DOF sets, per-corner recovery | `aos/code/aos_state.py`, imported by both `olr/` and `value_added/` |
+| the solvers, shared since item 8 | `smatrix/code/regularized_inversion.py` |
 
-`run_olr.py` writes `olr.parquet` per night, one row per usable seq, carrying the
-open-loop-reproduced Optical Path Difference (OPD) and deviation Zernikes alongside the
-original measured values and the intrinsic. `olr/` is its own top-level topic with its own
-Snakefile and config.
+Most of this exists. `build_optical_state.py` takes `--scheme` (`22_12` or `50_34` in its
+`SCHEMES` dict, mapping to the `ts_ofc` DOF-set names `standard_22` and `all_50`),
+`--intrinsic`, `--opd-version` and `--img-type science,acq`; `run_build.sh --what state`
+shards it by night, resolves each variant's defining flags out of the main database so every
+shard registers the identical variant, and merges the shards. The 22/12 deviation build is
+therefore a run, not new code.
 
-### Data selection
+`recover_night` calls `aos_state.recover_optical_state(row, state_estimator,
+n_modes=n_modes)` per visit — the plain truncated recovery — and stores `dof` (50 elements,
+µm and deg), `v_modes` (`n_modes` dimensionless amplitudes), `resid_rms_um` [µm of wavefront]
+and `ok`.
 
-- **After 20260419** — the Singular Value Decomposition (SVD) normalization fix.
-- **Probably also after** the point where Danish 1.2 plus Refit WCS went online. Need to find what day_obs this occurred.
+**The RBR arm is the part that does not exist.** Three consequences:
+
+- There is no regularizer axis in the variant name. `efd_db.variant_id(scheme,
+  intrinsic_route, opd_version)` builds `v50_34__batoid__consdb_v1` from exactly three parts,
+  and `state_variant` has no column for a solver or a penalty. See Q5.
+- `recover_optical_state` is the OFC state-estimator path, while `invert_range_penalty` takes
+  `(dW, svd, ranges)` against an `ofc_svd` SVD. Whether the two share a forward operator
+  closely enough for the RBR DOF to be comparable to the truncated DOF needs checking before
+  the build, not after.
+- `resid_rms_um` as stored is `z_dev - zk_constrained`, the subspace residual. For the RBR
+  variant that is the wrong metric, for the reason settled in items 6 and 9: it cannot see a
+  regularizer trading wavefront for amplitude. The achieved residual `dW - S (d / w)` is what
+  the RBR row should carry.
+
+### What is populated today
+
+| variant_id | rows | state |
+| --- | --- | --- |
+| `v50_34__batoid__consdb_v1` | 90,695 | built, `day_obs` 20251102 to 20260713, 181 nights |
+| `v22_12__batoid__consdb_v1` | 0 | registered, never built |
+| `v50_34__miw__consdb_v1` | 0 | registered, never built |
+
+Row counts are from `build_progress.md`, read on 2026-09-24. `visit_telemetry` covers 366
+nights and 213,704 exposures over `day_obs` 20250415 to 20260714, so the recovered optical
+state covers a visibly narrower span than the telemetry it joins to.
+
+The empty-but-registered variants are a live trap worth not reproducing:
+`efd_db.optical_state('v50_34__miw__consdb_v1')` returns an empty DataFrame rather than
+raising, so an analysis naming an unbuilt variant gets zero rows and no error.
 
 ### Scope
 
-- Write the OLR results for a large sample of science visits into a DuckDB table.
-- Define the reduced-gain vector over the 34 kept v-modes, or implement and use the RBR.
-- Run the 22/12 versus 50/34 comparison on the wavefront measurements in the ConsDB (or with reprocessed CWFS).
+- For each of the three schemes (22/12, 50/34, 50/34 plus RBR), compute and store both
+  states per visit: the open-loop DOF and v-modes with their implied CWFS Zernikes (the
+  OLR), and the DOF and v-modes recovered from the visit's deviation alone.
+- Build `v22_12__batoid__consdb_v1`, which is a run of the existing builder rather than new
+  code.
+- Add an RBR variant: extend the variant naming and `state_variant` with a regularizer axis,
+  then build 50/34 with the RBR penalty, calling the shared solver in
+  `smatrix/code/regularized_inversion.py` rather than copying it.
+- Check, before building, that the RBR solver's forward operator and the state estimator's
+  agree closely enough that the RBR and truncated DOF are comparable per visit; report the
+  discrepancy rather than assuming it is zero.
+- Store the achieved residual `dW - S (d / w)` for the RBR variant, not the subspace
+  residual, and record on the variant which residual its `resid_rms_um` column holds.
+- Reproduce `run_olr.py`'s identity check `olr_deviation == olr_opd - intrinsic` on the
+  stored open-loop Zernikes, so a sign or basis error in the forward direction fails loudly.
+- Keep every scheme as rows under its own variant, never as new columns, so a comparison
+  stays a self-join on `visit_id` through `efd_db.compare_variants`.
+- Run the builds as sharded batch jobs through `run_build.sh --what state --mode batch`,
+  which Aaron submits.
+- Compare the schemes on image quality over the science sample, using the open-loop versus
+  deviation-recovered difference per v-mode and per DOF.
+- Update `value_added/docs/schema.md` and `status/build_progress.md` with the new axis, the
+  new columns, and the realized row counts and spans.
+- Spot-check against a night already analysed elsewhere, so a build error shows up as a
+  disagreement with a known result rather than passing silently.
 
 ### Open questions
 
@@ -220,6 +323,57 @@ to be the Danish 1.2 changeover date too, but refit WCS may have gone online on 
 different day. Needs confirming against the online collection provenance.
 
 **A:** The Danish 1.2 and Refit WCS was definitely later, but it may be ok to use the earlier processing
+
+**Q5. How does RBR enter the variant name?** The name is three parts today
+(`v50_34__batoid__consdb_v1`) and nothing in `state_variant` describes the solver. Either add
+a fourth axis — say `v50_34__batoid__consdb_v1__rbr`, with the unregularized builds taking an
+implicit or explicit `trunc` — or encode it in the `scheme` field as a pseudo-scheme like
+`50_34_rbr`. The fourth axis is cleaner and matches how `fam_variant` already carries four;
+the pseudo-scheme is less code but overloads a field that means DOF count and v-mode count
+everywhere else. Q3's answer already says the keying must cover the scheme and perhaps the
+retrieval, so this is the same decision made concrete.
+
+**A:** _unanswered_
+
+**Q6. Where do the open-loop CWFS Zernikes live?** The Trim DOF are already in
+`visit_telemetry` and the Trim v-modes are already in `optical_state.v_modes_trim`, but the
+implied Zernikes are 21 coefficients per corner per visit and exist nowhere. Options: list
+columns on `optical_state` next to the v-modes; a separate long table keyed the same way; or
+not stored at all, recomputed on read from the stored Trim v-modes, since the forward
+projection is cheap.
+
+**A:** _unanswered_
+
+**Q7. Which span does the build cover?** The existing 50/34 variant runs `day_obs` 20251102
+to 20260713, and the data-selection cut above says after 20260419. Options: match the
+existing variant's span so the three schemes join visit-for-visit; restrict to post-20260419
+where the SVD normalization is fixed; or extend all three back to 20250415 where ConsDB
+Zernikes exist, which means also rebuilding the populated 50/34 variant.
+
+**A:** _unanswered_
+
+**Q8. What RBR `kappa` and `power`?** The bounce test used `kappa = 4` and `power = 3`, both
+dimensionless, while `invert_range_penalty` defaults to `kappa = 0.5, power = 2`. Science
+visits sit near the nominal optical state rather than at a deliberately bounced one, so the
+penalty may rarely bind. Either adopt the bounce values for continuity, or sweep on a sample
+of nights and pick for the science-visit regime.
+
+**A:** _unanswered_
+
+**Q9. Does the MIW intrinsic route come along?** Item 6 rebuilds the Measured Intrinsic
+Wavefront (MIW) under three correction schemes, and `v50_34__miw__consdb_v1` is registered
+but empty. Building the MIW route here would double the variant count; deferring keeps this
+item to the batoid route and leaves the MIW variants to item 6, where the MIW builds are
+decided.
+
+**A:** _unanswered_
+
+**Q10. Does `olr/` stay a separate topic?** Its pipeline writes `olr.parquet` per night with
+the open-loop OPD and deviation Zernikes. If the open-loop state is built into the
+value-added database per visit, `olr/` either becomes the reference implementation this build
+is verified against and is then left alone, or it is retired in favour of the database.
+
+**A:** _unanswered_
 
 </details>
 
@@ -1217,5 +1371,137 @@ was chosen for the four-series case.
 different retrievals unless this moves too.
 
 **A:** _Stick with Danish 1.2 here_
+
+</details>
+---
+
+## 10. Guider star second moments, image and centroid motion, into the value-added DB
+
+**Status:** not started · **Blocked on:** nothing
+
+Calculate the guider star second moments — both of the images themselves and of the centroid
+motion — run that over all guider stars in batch, and add a set of this information to the
+value-added database. The per-exposure measurement code exists and produces both moment
+kinds; what is missing is the full-survey batch run and a home for the results in the
+database.
+
+**Goals:** Have per-visit guider image-quality and image-motion measures available for every
+guider exposure, joinable to the telemetry and recovered optical state already in the
+database, so that atmospheric and tracking contributions to the point spread function (PSF)
+can be separated from the optical ones.
+
+<details>
+<summary>What exists, the two moment kinds, scope and open questions</summary>
+
+### Known collections
+
+Guider raws come from `/repo/main`, collections `LSSTCam/raw/guider` and `LSSTCam/raw/all`,
+as defaulted in `run_guider_moments.py`. The nights to process are discovered by
+`list_guider_exposures.py` rather than listed by hand.
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the moment decomposition | [guider/code/guiderMoments.py](../../guider/code/guiderMoments.py) |
+| the per-exposure driver | [guider/code/run_guider_moments.py](../../guider/code/run_guider_moments.py) |
+| per-night combination | [guider/code/combine_moments.py](../../guider/code/combine_moments.py) |
+| exposure discovery | [guider/code/list_guider_exposures.py](../../guider/code/list_guider_exposures.py) |
+| the pipeline, rules `moments` and `combine` | [guider/Snakefile](../../guider/Snakefile), [guider/run_snake.sh](../../guider/run_snake.sh) |
+| the weighting study | [guider/docs/moment_weighting_analysis.md](../../guider/docs/moment_weighting_analysis.md) |
+| the session handoff | [guider/docs/status/handoff_guider_session_2026-09.md](../../guider/docs/status/handoff_guider_session_2026-09.md) |
+| the database, registry pattern and readers | [value_added/code/efd_db.py](../../value_added/code/efd_db.py) |
+
+**Both moment kinds already exist**, which is the main thing this item does not have to
+build. `guiderMoments.decomposeDetector` returns a `DetectorMoments` holding, per detector:
+the moments of the mean coadd centered on the mean weighted centroid; the flux-weighted
+covariance of the per-stamp weighted centroids, which is the image motion, with the
+centroid-noise floor `<err**2>` subtracted; and the per-stamp moments and centroids kept for
+time-series and power-spectral-density work. All moments are in arcsec², in a `ShapeMoments`
+symmetric second-moment matrix.
+
+The measurement is a fixed-width Gaussian weighted centroid, iterated, then unweighted
+second moments about that centroid within an aperture — deliberately a minimum-variance
+centroid rather than an adaptive one. Hartmann-sensor-manager (HSM) moments are recorded
+alongside under `hsm_*` in the PIFF naming (`e0 = M11 = T`, `e1 = M20 = Q1`,
+`e2 = M02 = Q2`, normalized as `e1n`/`e2n`). A v6 config note in the module records that the
+centroid variance is already split fast/slow by a Gaussian smooth at 1.6 s full width at half
+maximum (FWHM), which is a ready-made decomposition of the motion into tracking and
+atmospheric timescales.
+
+The pipeline writes three parquets per exposure into
+`output/night_<dayObs>/seq/<seqNum>_{moments,stars,metrics}.parquet` and combines them to
+`guider_moments_<dayObs>.parquet` per night. So the per-night product exists; the gap is
+running it over the whole survey and landing a summary in the database.
+
+**The database has no guider table.** The eight tables are `visit_telemetry`,
+`m1m3_thermal_r2`, `optical_state`, `fam_dz`, two registries, `column_coverage` and
+`fetch_log`. A guider table is new, and the schema doc states the rule it has to satisfy: the
+database holds only quantities expensive to fetch or intricate to compute, never a ConsDB
+mirror. Guider moments qualify on the compute side.
+
+The two schema idioms to choose between are documented and both have a precedent here:
+`visit_telemetry` is wide, one row per exposure, where the quantity set is genuinely fixed;
+`fam_dz` and `optical_state` are long, keyed `(visit_id, variant_id)` with a registry table,
+where the quantity set is a family of variants along several axes. A guider measurement has
+at least a config axis (`MomentConfig`, already versioned to v6) and a per-detector axis, so
+the long idiom with a registry is the closer match — see Q1.
+
+### Scope
+
+- Run the existing moments pipeline over all guider exposures in the survey, as sharded
+  batch jobs, which Aaron submits.
+- Discover the nights to process rather than listing them, and record which nights have
+  guider data at all, so coverage is known rather than assumed.
+- Add a guider moments table to the value-added database, with its registry if the long
+  idiom is chosen, following the existing table and registry pattern in `efd_db.py` rather
+  than inventing a new one.
+- Store both moment kinds: the image second moments of the coadd, and the second moments of
+  the centroid motion, keeping the noise-floor subtraction and the fast/slow split, with
+  every column in arcsec² and registered in `column_coverage` with its units.
+- Decide and document the per-detector aggregation: whether the database holds one row per
+  (visit, detector) or a per-visit summary over the guider detectors.
+- Write the builder to the `build_*.py` plus `run_build.sh --what` pattern the other
+  value-added builders use, so sharding, registration and merging work the same way.
+- Verify a night in the database against its `guider_moments_<dayObs>.parquet` before
+  declaring the build good.
+- Update `value_added/docs/schema.md` and `status/build_progress.md` with the new table, its
+  coverage and its sparse columns.
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. Wide or long?** Wide means one fixed set of guider moment columns per exposure, like
+`visit_telemetry` — simplest to query, but a changed `MomentConfig` has nowhere to go except
+new columns or an overwrite. Long means `(visit_id, guider_variant_id)` with a registry
+naming the config version and the measurement choices, like `fam_dz` — a reprocessing becomes
+rows rather than schema, at the cost of requiring a variant filter on every read.
+
+**A:** _unanswered_
+
+**Q2. One row per visit, or per visit and detector?** There are a handful of guider detectors
+per exposure, each with its own moments and its own centroid motion. Per-(visit, detector)
+keeps everything and lets a later analysis aggregate; per-visit is smaller and joins directly
+to the other tables, but discards the per-detector spatial information that makes a guider
+measurement useful for field-dependent PSF work.
+
+**A:** _unanswered_
+
+**Q3. Which subset of the per-stamp data, if any, goes in?** `DetectorMoments` keeps the full
+per-stamp moments and centroids for time-series and PSD analysis. At 5 Hz over a full
+exposure that is a large array per detector. Options: summary statistics only in the
+database with the per-stamp series left in the night parquets; a stored power-spectral
+summary such as a few band-integrated powers; or the full series as list columns.
+
+**A:** _unanswered_
+
+**Q4. What span does the batch run cover?** The whole guider era, or the span that matches
+`optical_state` (`day_obs` 20251102 onward) so the guider moments join to a recovered optical
+state on every row. Guider data likely predates that, and the earlier nights would have
+moments but no optical state to join to.
+
+**A:** _unanswered_
 
 </details>
