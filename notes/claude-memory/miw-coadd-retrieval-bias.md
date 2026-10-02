@@ -8,7 +8,7 @@ metadata:
   modified: 2026-09-04T18:17:23.962Z
 ---
 
-**Primary reference: `rubin-work/aos/MIW_COADD_EQUATIONS.md`** — equation-level
+**Primary reference: `rubin-work/aos/docs/miw_coadd_equations.md`** — equation-level
 nomenclature + derivation for the coadd-vs-MIW study. The *iterative MIW method*
 itself was already written up in `rubin-work/notes/aos-measured-intrinsics/note.md`
 §"MIW method" (steps 1-6) — don't duplicate it. ts_intrinsic_wavefront has no

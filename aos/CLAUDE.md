@@ -45,8 +45,9 @@ study subdirectory (`parents[2]` from `code/` itself).
 
 ## Read these before working on the physics
 
-Do not re-derive what is already settled in these documents, and do not duplicate them
-into new files:
+When a task touches one of these subjects, grep for the relevant section rather than
+reading the whole document up front. Do not re-derive what is settled in them, and do not
+duplicate them into new files:
 
 | doc | what it settles |
 |---|---|
@@ -88,8 +89,7 @@ the repo root). Do not "consolidate" the two — they are unrelated.
 
 - **OCS vs CCS is load-bearing.** The telescope-fixed component **O** is OCS; the
   camera-fixed component **C** is CCS and rotates with the rotator. Always state which
-  frame a field angle or Zernike is in. See `frame-conventions-ccs-ocs` in
-  `../notes/claude-memory/`.
+  frame a field angle or Zernike is in.
 - Camera rotator angle comes from the ConsDB `physical_rotator_angle`, **not**
   `boresightRotAngle`.
 - **v-modes come only from `aos_state.make_state_estimator`** — never write
@@ -98,8 +98,7 @@ the repo root). Do not "consolidate" the two — they are unrelated.
   add a rotation-angle argument. Wavefronts entering `recover_optical_state` must therefore
   be **OCS** (`aos_state.ZK_FRAME`), which is what all work here assumes — note ts_ofc's own
   `dof_state` wants the opposite pairing (CCS plus the angle). `truncate_index` sets the mode
-  count, so pass `n_modes`. See `svd-use-state-estimator` in `../notes/claude-memory/` and
-  `docs/status/corner_recovery_route_comparison.md`.
+  count, so pass `n_modes`. See `docs/status/corner_recovery_route_comparison.md`.
 - The retired `build_geom_svd` and `project_dofs_to_vmodes` are **guarded**: a module-level
   `__getattr__` in `aos_state.py` raises an `AttributeError` naming the replacement, on both
   `aos_state.build_geom_svd` and `from aos_state import build_geom_svd`. Do not re-add either
@@ -128,9 +127,8 @@ Report both Pearson r and Spearman rho for correlations.
 `./run_snake.sh` from `aos/`; `-n` for a dry run. See `README.md` for targets and the
 `mem_mb` throttling. Two things that are not in the README:
 
-- **Batch submission is a hard MUST-ASK.** `./run_snake.sh --mode batch` submits one
-  `sbatch` job to s3df. Never submit it — hand Aaron the command. Batch must go from an
-  s3df node (`slacrd`), not an RSP pod, which has no Slurm.
+- **Batch submission is a hard MUST-ASK** — see the root `CLAUDE.md` for the submit and
+  monitor commands.
 - `mktable` is the expensive Butler step and is *deliberately* not re-triggered by code
   edits (see the Snakefile comments). If you change extraction logic, the stale outputs
   will not rebuild on their own — that is intended, so say so rather than forcing a
@@ -152,16 +150,29 @@ editing a shared `defaults:` block propagates to every entry.
 
 ## Terminology
 
-`optical_state` vs Tweak vs Trim are different things and are not interchangeable; see
-`aos-dof-terminology` in `../notes/claude-memory/`. The 22-DOF reduced set has specific
-indices (`aos-22dof-reduced-set`) — do not infer them.
+Aaron's names for the degree-of-freedom (DOF) quantities are not interchangeable:
+
+- **optical_state** — DOF obtained by passing the measured Zernike deviations (OPD minus
+  intrinsic) through the sensitivity-matrix SVD to v-modes to DOF, for a given
+  (NDoF, n_keep). The current best estimate of the optical state.
+- **Tweak** = `PID(optical_state)` — the per-iteration correction the controller emits.
+- **Trim** — accumulated offset from the LUT, `Trim_(i+1) = Trim_i + Tweak`; this is what
+  EFD `lsst.sal.MTAOS.logevent_degreeOfFreedom` `aggregatedDoF0..49` reports.
+
+The controllable wavefront (`zk_constrained`) is reconstructed from the **optical_state**,
+not the Trim.
+
+The **22-DOF reduced set** is 10 rigid-body + first 7 M1M3 bending + first 5 M2 bending.
+In the ts_ofc 50-DOF ordering (0–4 M2 rigid, 5–9 camera rigid, 10–29 M1M3 bending 1–20,
+30–49 M2 bending 1–20) that is `list(range(0,10)) + list(range(10,17)) + list(range(30,35))`
+— **not** the first 22 contiguous indices. Pass it as an explicit list.
 
 ## Open questions — do not present as settled
 
 - **Z11/Z14 intra- vs extra-focal split** in the Danish unpaired CWFS is *unexplained*
-  and is not a known instrumental effect (`z11-intra-extra-mystery`).
+  and is not a known instrumental effect.
 - 83% of MIW power sits above the `k<=6` focal orders the build actually fits, which
-  reframes any DZ-subspace analysis (`miw-focal-order-truncation`).
+  reframes any DZ-subspace analysis.
 
 ## Code review state
 

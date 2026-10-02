@@ -5,7 +5,8 @@ the root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply h
 
 **`docs/status/handoff_guider_session_2026-09.md` is the reference for the state of this work** —
 the `summit_utils` branch contents, the bias/streak plan, the centroid-timescale result,
-the mosaic geometry, and the open follow-ups. Read it before starting. `README.md` is
+the mosaic geometry, and the open follow-ups. Grep it for the section the task needs
+(e.g. §5 mosaic numbers, §6 command forms) rather than reading it whole. `README.md` is
 thin (it documents one notebook) and does not reflect the current scope. This file
 carries only the things that are easy to get wrong.
 
@@ -59,7 +60,7 @@ frame, neither rotated to OCS**. Therefore:
 
 Existing plots show Q1/Q2 unrotated "for scale/pattern only" — do not read them as a 1:1
 test, and do not describe them as one. Adding an OCS-rotated Q1/Q2 panel is a known open
-follow-up. See `guider-vs-ccd-hsm-frames` in `../notes/claude-memory/`.
+follow-up.
 
 Also: the guider moments are Aaron's own `guiderMoments` pipeline, **not** summit_utils
 moments — summit_utils supplies only the raw stamps and the star tracker. The science-CCD
@@ -100,11 +101,11 @@ reads them and gets nulls, that is why; do not treat it as a bug in the analysis
 The centroid timescale is a *fixed chosen* 1.6 s FWHM (= 8 stamps at 5 Hz), not a fitted
 break. Centroid motion is **scale-free** — no knee, featureless PSD, consistent with
 Kolmogorov; the `tau ~ 0.5 s` figure is an integral time, **not** a break frequency. Do
-not describe it as a measured knee (`guider-centroid-timescale`).
+not describe it as a measured knee.
 
 ## Mosaic geometry
 
 Star and full-frame views use **independent** geometry (`positions` vs `positionsFull`)
 with separate tunables — changing one does not change the other. The star view masks
 pixels outside the 2″ circle to NaN so pairs never visually overlap. Numbers are in the
-HANDOFF §5 and `guider-mosaic-layout`; do not re-derive them by eye.
+HANDOFF §5; do not re-derive them by eye.
