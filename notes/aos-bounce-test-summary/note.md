@@ -1,6 +1,6 @@
 # Rubin AOS bounce tests: elevation sweep 30–75 deg and rotator 0→60 deg
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** outward-facing note (results summary)
+> **Status:** current · **Last updated:** 2026-10-02 · **Kind:** outward-facing note (results summary)
 
 **Summary** A *bounce test* slews the telescope away from a reference position and back, so
 that the difference between the two Full Array Mode (FAM) wavefront measurements isolates
@@ -61,13 +61,21 @@ wavefront, or `|Δ| / error > 5.0` (dimensionless) on its own.
 
 ### The correctable-FWHM metric
 
-The single most quotable number. The median Δ-DZ vector is converted to an equivalent PSF
-FWHM in arcsec by root-sum-square over the DZ coefficients with the standard per-term
-wavefront-to-FWHM weights; this is `fwhm_before`. The Δ is then projected onto the OFC
-correctable subspace and the residual re-converted, giving `fwhm_after_50_34` — the part of
-the bounce the active optics system could *not* remove. For the rotator bounce, where only
-the camera hexapod physically moves, a 5-DOF / 5-v-mode camera-hexapod-only correction is
-also evaluated as `fwhm_after_5_5`.
+The single most quotable number. The median Δ-DZ vector is evaluated at field points across
+the focal plane; at each point the resulting pupil-Zernike vector is converted to a
+per-Zernike arcsec PSF FWHM contribution (Noll 4 and up) and those are quadrature-summed, and
+the median over the focal plane is reported. Applied to the Δ itself this is `fwhm_before`.
+Applied to the residual a correction leaves behind it gives `fwhm_after_50_34` — the part of
+the bounce the active optics system could *not* remove. For the rotator bounce, where only the
+camera hexapod physically moves, a 5-DOF / 5-v-mode camera-hexapod-only correction is also
+evaluated as `fwhm_after_5_5`.
+
+**Zero means no differential aberration**, not a perfect PSF and not the seeing floor: these
+numbers are the AOS wavefront term only, and add in quadrature on top of the delivered image
+quality. Full definition, including why the "after" series use the achieved residual
+`dW − S·(d/w)` rather than the subspace projection, in
+`aos/docs/studies/bounce.md`, section "How the correctable FWHM is computed, and what zero
+means".
 
 ## The data
 
@@ -136,6 +144,25 @@ moved leaves 0.0482 arcsec FWHM. The rotator bounce therefore changes the wavefr
 the camera hexapod alone cannot undo, by a factor
 `fwhm_after_5_5 / fwhm_after_50_34 = 2.53 (dimensionless; camera-hexapod-only residual over
 full 50-DOF residual)`.
+
+Achieved correctable FWHM in arcsec per leg, pooled over nights, for all the recovery schemes
+evaluated — the 50-DOF / 34-v-mode default, Range-Bounded Recovery (RBR), the reduced
+22-DOF / 12-v-mode set, the quadratic motion penalty `ts_ofc` ships (OIC), and the
+camera-hexapod-only 5-DOF / 5-v-mode scheme on the rotator bounce:
+
+| leg | before | 50/34 | RBR | 22/12 | OIC | 5/5 |
+|---|---|---|---|---|---|---|
+| elev 75 deg | 0.0908 | 0.0153 | 0.0151 | 0.0302 | 0.0457 | — |
+| elev 60 deg | 0.1409 | 0.0326 | 0.0357 | 0.0563 | 0.0666 | — |
+| elev 50 deg | 0.2516 | 0.0664 | 0.0715 | 0.1193 | 0.1347 | — |
+| elev 40 deg | 0.2986 | 0.0381 | 0.0414 | 0.0933 | 0.1519 | — |
+| elev 30 deg | 0.3987 | 0.0598 | 0.0756 | 0.1344 | 0.2169 | — |
+| rotator 60 deg | 0.2082 | 0.0191 | 0.0203 | 0.0446 | 0.1417 | 0.0482 |
+
+The ordering is the same on every leg: the unconstrained 50/34 recovery is best, RBR costs
+almost nothing over it, and both restricting the DOF set (22/12) and the quadratic penalty
+(OIC) cost substantially more. What each scheme costs and why is in
+`aos/docs/studies/bounce.md`, section "Four recovery schemes at every bounce point".
 
 ### Significance and the largest coefficients
 
@@ -241,19 +268,10 @@ change.
 
 To settle whether those amplitudes carry any wavefront, the same Δ is inverted a second way.
 **Range-Bounded Recovery (RBR)** keeps the least-squares fit but adds a per-degree-of-freedom
-penalty that is negligible inside the range and climbs steeply as an amplitude approaches and
-passes it:
-
-```
-||dW - S x||^2  +  sum_j ( |d_j| / (kappa * r_j) ) ^ (2 p)
-```
-
-with `d` the physical degrees of freedom, `x = d / w` the normalized ones the SVD is taken in,
-`S` the rank-34 forward operator in µm of wavefront per unit normalized DOF, and `dW` the
-measured DZ Δ in µm of wavefront. Both knobs are dimensionless: `kappa = 4` is the ratio
-`abs(d_j)/r_j` at which the penalty reaches unit weight, and `p = 3` sets how fast it climbs. RBR
-is nonlinear, so it is applied to each (reference, comparison) pair separately and reduced with
-the same median and error definition as the default recovery.
+penalty that is negligible inside the allowed range and climbs steeply as an amplitude
+approaches and passes it, with two dimensionless knobs set to `kappa = 4` and `p = 3`. The
+penalty form, the choice of knobs and why RBR is applied per pair rather than to the median are
+in `aos/docs/studies/bounce.md`, section "What RBR does".
 
 The comparison is scored on the residual the correction **achieves**, `dW − S·(d/w)`, rather than
 on the correctable-subspace projection used for `fwhm_after_50_34` in the table above — the

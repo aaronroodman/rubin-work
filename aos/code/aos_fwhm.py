@@ -8,6 +8,25 @@ vector z_j = sum_k dW_{k,j} Z_k(pos), which converts to an arcsec FWHM
 contribution (Z4+ quadrature).  The projection residual (I - U_eff U_eff^T)dW
 is the part an OFC correction of that scheme cannot remove.
 
+The four steps `fp_fwhm` performs, for one dW in µm of wavefront:
+
+1. `focal_basis` builds B at an area-uniform grid of field points inside
+   FP_RADIUS = 1.75 deg (`fp_grid`, step 0.35 deg), so z_j(pos) = (B @ dW).
+2. `zj_to_fwhm` pads z_j onto a contiguous Noll-4-start vector (Noll 1-3 are
+   dropped: piston and tilt do not broaden the PSF) and calls ts_wep
+   convertZernikesToPsfWidth, which returns an arcsec FWHM contribution per
+   Zernike.
+3. Those per-Zernike contributions are **quadrature-summed** at each field
+   point, giving one arcsec FWHM per position.
+4. `reduce` (median by default) collapses the grid to a single arcsec number.
+
+What zero means on such an axis: no residual wavefront, so this term adds
+nothing.  It is **not** a perfect PSF and not the seeing floor — the number is
+only the AOS wavefront contribution, which adds in quadrature on top of the
+delivered image quality.  In run_bounce.py the dW is itself a paired
+difference (comp - ref), so zero there means the two bounce legs share the
+same optical state.
+
 Needs lsst.ts.intrinsic.wavefront.ofc_svd (focal_zernike_at_points) and, for
 the FWHM conversion, lsst.ts.wep.utils.convertZernikesToPsfWidth.  RSP-only.
 """

@@ -1,6 +1,6 @@
 # Study: `bounce` — elevation and rotator bounce tests
 
-> **Status:** current · **Last updated:** 2026-10-01 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-02 · **Kind:** reference (study)
 
 > **Code:** `code/bounce/` · **Notebooks:** `notebooks/bounce/`
 > **Output:** `output/bounce/<P>_<M>/bounce_*.pdf`, `output/bounce/<P>_<M>/bounce_kj_stats.parquet`, `output/bounce/<P>_<M>/bounce_dof_stats.parquet`, `output/bounce/<P>_<M>/bounce_fwhm_metric.parquet`, `output/bounce/bending_mode_test_meta.parquet`
@@ -143,6 +143,38 @@ genuine sample change — and 5.2% on the BLOCK-T724 rotator bounce, where C *do
 within a pair and the difference is expected to be largest. So at present precision the
 intrinsic choice is not a limiting systematic for either bounce. The full table is in the
 results note.
+
+## How the correctable FWHM is computed, and what zero means
+
+Every FWHM in this study is a **differential** quantity in arcsec — the FWHM contribution of
+the *change* in optical state between the two legs of a bounce. It is not the FWHM of any
+image. The chain, per (night, leg), from `bounce_lib.paired_delta` into `aos/code/aos_fwhm.py`:
+
+1. **Paired Δ wavefront.** For each time-ordered (ref, comp) visit pair, Δ = comp − ref on
+   every double-Zernike (DZ) coefficient; the median over the leg's pairs gives `dW`, a vector
+   over the sensitivity-matrix `kj_grid` (focal order k × pupil Noll j) in µm of wavefront.
+2. **Evaluate across the focal plane.** On an area-uniform grid of field points inside
+   1.75 deg (step 0.35 deg), `z_j(pos) = Σ_k dW_{k,j} Z_k(pos)` gives a pupil-Zernike vector in
+   µm of wavefront at each field point.
+3. **µm of wavefront → arcsec FWHM.** `ts_wep convertZernikesToPsfWidth` returns an arcsec
+   FWHM contribution per Zernike (Noll 4 and up; piston and tilt are dropped because they
+   shift the PSF rather than broaden it), and those contributions are **quadrature-summed** at
+   each field point.
+4. **Reduce.** The **median over the field-point grid** is the reported number.
+
+`fwhm_before` applies that chain to `dW` itself. Each "after" series applies it to the
+*achieved residual* `dW − S·(d/w)` of its own recovery scheme — what that scheme's correction
+would actually leave behind — so the five are directly comparable and the vertical gap between
+two of them is the image-quality price of the difference between the schemes, in arcsec FWHM.
+For the unregularized truncated schemes the achieved residual equals the subspace projection
+`(I − U_eff U_effᵀ)dW`; for RBR and OIC it does not, which is why the achieved form is used
+throughout.
+
+**Zero on a FWHM axis means no differential aberration** — the optical state at the B position
+is identical to the reference, so the bounce induced no wavefront change. Zero is *not* a
+perfect PSF and *not* the atmospheric seeing floor: the axis carries only the AOS wavefront
+term, which adds in quadrature on top of the delivered image quality. A residual series near
+zero means that scheme removes essentially all of the bounce-induced wavefront.
 
 ## Outputs
 
@@ -380,27 +412,16 @@ regularizers only the penalty differs.
 
 ### Result: RBR bounds the amplitudes at a small cost in FWHM
 
-Per (leg, night), from `bounce_dof_stats.parquet` and `bounce_fwhm_vs_bvalue.parquet`. FWHM
-values are the achieved correctable FWHM in arcsec, median over the focal plane; ratios are
-dimensionless, recovered amplitude over allowed range, maximized over the 50 DOF.
+RBR brings every leg's worst amplitude ratio back to about 1 at a median cost of +0.0027 arcsec
+FWHM (range −0.0002 to +0.0158 arcsec over the nine (leg, night) points), so the over-range
+amplitudes carry almost none of the wavefront. Counting `kind = dof` rows, 106 of the 450
+per-(leg, night) rows exceed their range under the default recovery against 7 under RBR; on the
+leg-pooled rows it is 61 of 300 against 2. The run prints those two counts separately, since a
+single total would double-count the same physics.
 
-| leg | night | n pairs | max ratio default | max ratio RBR | n over range default | n over range RBR | FWHM default | FWHM RBR | FWHM cost |
-|---|---|---|---|---|---|---|---|---|---|
-| elev 30 deg | 20260713 | 5 | 11.70 | 1.16 | 15 | 2 | 0.0598 | 0.0756 | +0.0158 |
-| elev 40 deg | 20260418 | 6 | 11.93 | 1.04 | 16 | 1 | 0.0463 | 0.0489 | +0.0027 |
-| elev 40 deg | 20260419 | 8 | 10.63 | 1.04 | 14 | 1 | 0.0487 | 0.0492 | +0.0005 |
-| elev 40 deg | 20260513 | 8 | 5.95 | 1.03 | 14 | 1 | 0.0354 | 0.0459 | +0.0105 |
-| elev 50 deg | 20260711 | 6 | 5.46 | 0.98 | 13 | 0 | 0.0664 | 0.0715 | +0.0052 |
-| elev 60 deg | 20260709 | 4 | 3.15 | 0.76 | 8 | 0 | 0.0326 | 0.0357 | +0.0032 |
-| elev 75 deg | 20260713 | 6 | 1.40 | 0.56 | 3 | 0 | 0.0153 | 0.0151 | −0.0002 |
-| rotator 60 deg | 20260420 | 12 | 3.77 | 1.11 | 12 | 2 | 0.0247 | 0.0273 | +0.0026 |
-| rotator 60 deg | 20260513 | 19 | 3.15 | 0.88 | 11 | 0 | 0.0185 | 0.0199 | +0.0014 |
-
-Across the nine (leg, night) points the FWHM cost has a median of +0.0027 arcsec and a range
-of −0.0002 to +0.0158 arcsec. Counting `kind = dof` rows, 106 of the 450 per-(leg, night) rows
-exceed their range under the default recovery against 7 under RBR; on the leg-pooled rows it is
-61 of 300 against 2. The run prints those two counts separately, since a single total would
-double-count the same physics.
+The per-(leg, night) table of ratios and achieved FWHM is in the results note,
+`notes/aos-bounce-test-summary/note.md`, which owns the numbers; it reads from
+`bounce_dof_stats.parquet` and `bounce_fwhm_vs_bvalue.parquet`.
 
 ### Result: what each of the four schemes costs
 
@@ -419,14 +440,8 @@ uncorrected Δ.
 | elev 75 deg | 6 | 1.403 | 0.563 | 0.053 | 0.316 | — |
 | rotator 60 deg | 31 | 3.147 | 0.920 | 0.138 | 1.336 | 0.131 |
 
-| leg | FWHM before | 50/34 | RBR | 22/12 | OIC | 5/5 |
-|---|---|---|---|---|---|---|
-| elev 40 deg | 0.2986 | 0.0381 | 0.0414 | 0.0933 | 0.1519 | — |
-| elev 60 deg | 0.1409 | 0.0326 | 0.0357 | 0.0563 | 0.0666 | — |
-| elev 50 deg | 0.2516 | 0.0664 | 0.0715 | 0.1193 | 0.1347 | — |
-| elev 30 deg | 0.3987 | 0.0598 | 0.0756 | 0.1344 | 0.2169 | — |
-| elev 75 deg | 0.0908 | 0.0153 | 0.0151 | 0.0302 | 0.0457 | — |
-| rotator 60 deg | 0.2082 | 0.0191 | 0.0203 | 0.0446 | 0.1417 | 0.0482 |
+The matching per-leg achieved FWHM in arcsec for all six series is in the results note,
+`notes/aos-bounce-test-summary/note.md`, which owns the per-leg numbers.
 
 FWHM cost over the 50/34 truncated recovery, in arcsec, over the nine (leg, night) points — two
 of them for 5/5, which only BLOCK-T724 populates:
