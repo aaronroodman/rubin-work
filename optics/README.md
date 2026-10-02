@@ -9,6 +9,24 @@ pupil geometry, and other prescription-level questions that do not need data.
 |---|---|
 | `code/telecentricity.py` | library — chief-ray and flux-weighted-cone tracing, radial/tangential tilt decomposition |
 | `code/run_telecentricity.py` | driver — makes the figures and the `.npz` in `output/` |
+| `code/fresnel/fresnel_donut.py` | library — NUFFT Huygens/Debye donut images, Debye ray weights, `fftPSF` and geometric wrappers, semi-analytic references |
+| `notebooks/optics_fresnel_analytic_benchmark_v1.ipynb` | diffraction models of a defocused annular paraboloid against the semi-analytic Debye integral and HCIPy |
+| `notebooks/optics_fresnel_rubin_onaxis_v1.ipynb` | Rubin on-axis donuts with the camera pistoned ±1.5 mm: geometric, `fftPSF`, and Huygens/Debye diffraction |
+| `notebooks/optics_fresnel_rubin_seeing_v1.ipynb` | the same donuts with 0.7″ von Kármán seeing: separable versus ray-kick seeing, intra/extra comparison, Danish apparent Zernikes and FWHM |
+| `notebooks/optics_fresnel_sensor_iband_v1.ipynb` | i-band silicon-sensor effects (conversion depth, diffusion) on intra- and extra-focal donuts, via GalSim `SiliconSensor` |
+| `code/fresnel/donut_sensor.py` | library — bandpass photon tracing, Snell refraction into silicon, sensor accumulation |
+| `code/fresnel/donut_seeing.py` | library — von Kármán kernel, defocused plate scale, per-ray atmospheric kicks, Danish fit wrapper |
+| `docs/studies/fresnel_donuts.md` | study writeup for the Fresnel, seeing and sensor notebooks |
+
+## Diffraction of defocused donuts
+
+A comparison of geometric ray tracing, batoid's `fftPSF`, and Huygens/Debye
+diffraction for defocused star images (donuts) at the ±1.5 mm defocus used for
+wavefront sensing. The comparison tests batoid's Huygens algorithm against a
+semi-analytic reference and measures how large diffraction is at the 10 µm pixel
+scale. A seeing extension tests separable versus per-ray atmospheric blurring, and
+compares the apparent seeing and Zernike coefficients of intra- and extra-focal
+donuts; a sensor extension does the same for i-band CCD effects. See [docs/studies/fresnel_donuts.md](docs/studies/fresnel_donuts.md).
 
 Run it with:
 
