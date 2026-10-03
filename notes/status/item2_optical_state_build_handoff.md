@@ -24,27 +24,28 @@ files; none belong to this item.
 
 ## Next concrete action
 
-Confirm the principal-angle claim (next section) on the as-built state estimators. It is
-step 0 because the DOF-versus-v-mode decision rests on it. Then the build order in the
-item's scope: move the two `olr/` functions into `aos/code/`, write the corner-basis shim,
-add the guarded `50_34_rbr` entry to `SCHEMES`, write the DZ optical state, cost one night,
-hand Aaron the three batch submissions.
+Start the build order in the item's scope: move the two `olr/` functions into `aos/code/`,
+write the corner-basis shim, add the guarded `50_34_rbr` entry to `SCHEMES`, write the DZ
+optical state, cost one night, hand Aaron the three batch submissions. Nothing gates this.
 
-## Three findings to verify, not trust
+## Three code findings
 
-These came from reading code during scoping. Each one is load-bearing for a decision
-already written into the item, and each is worth re-checking rather than inherited.
+These came from reading code during scoping. The first is context; the second and third are
+load-bearing for correctness and worth re-checking rather than inherited.
 
-**1. The principal angle is quoted, not measured.** The item's caveat section says a
-22/12-versus-50/34 comparison read off `v_modes` is not like-for-like, because the
+**1. The 22/12 and 50/34 v-mode subspaces differ a lot, and that is expected.** The
 principal angle between the retained degree-of-freedom (DOF) subspaces is 4.768 deg for
-`standard_22`/12 but 89.951 deg for `all_50`/34 — effectively orthogonal. Both numbers come
-from a **docstring in `aos/code/aos_state.py`**, not from a measurement made during
-scoping. The decision to compare on DOF and image quality (Aaron, 2026-10-02) follows from
-them. Measure the angle on the estimators as actually built. If it does not reproduce, stop
-and raise it rather than proceeding, because the metric of record changes.
+`standard_22`/12 but 89.951 deg for `all_50`/34 — effectively orthogonal. Both numbers are
+quoted from a docstring in `aos/code/aos_state.py` rather than measured during scoping.
 
-The underlying reason the angle is large: `recover_optical_state` is **hybrid by design**.
+**This does not gate anything.** Aaron's decision (2026-10-02) is to compare the schemes on
+**recovered image quality first and DOF values second**, which are the quantities he cares
+about; the schemes' v-mode subspaces being different is fine and is the reason v-modes are
+not the metric of record. Report v-modes for continuity with what the summit reports. If
+you want the angle as a descriptive number on the as-built estimators, it is cheap to
+compute, but no decision waits on it and a different value changes nothing.
+
+The reason the angle is large: `recover_optical_state` is **hybrid by design**.
 It inverts in the basis from `corner_recovery_basis` — the singular value decomposition
 (SVD) of the 84-row corner-evaluated, Zernike-selected sensitivity matrix — but reports
 v-modes in the `make_state_estimator` basis, which is `StateEstimator.Vh` over the full

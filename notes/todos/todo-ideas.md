@@ -335,10 +335,11 @@ principal angle between the retained DOF subspaces is 4.768 deg for `standard_22
 **89.951 deg for `all_50`/34** — effectively orthogonal. So the stored `v_modes` stand in a
 radically different relation to the recovered DOF under 50/34 than under 22/12, and a
 22/12-versus-50/34 comparison read off `v_modes` alone is not comparing like with like.
-This item's stated goal is exactly that comparison, so **the comparison is done on the DOF
-and on image quality** (decided 2026-10-02), with v-modes used for continuity with what the
-summit reports rather than as the metric of record. Worth confirming the angle on the
-as-built estimators rather than trusting the number quoted in the docstring.
+That the two schemes span different v-mode subspaces is expected, not a problem. It is the
+reason the comparison is made elsewhere: **on recovered image quality first and on the DOF
+values second** (decided 2026-10-02), with v-modes reported for continuity with what the
+summit reports rather than as the metric of record. The angles above are quoted from the
+`aos_state` docstring; they describe the situation and gate nothing.
 
 ### Scope
 
@@ -405,9 +406,10 @@ as-built estimators rather than trusting the number quoted in the docstring.
   a short-lived estimator per scheme could in principle return another scheme's basis from
   the cache. With three schemes live in one build this is worth an explicit check rather
   than an assumption.
-- Compare the schemes **on the DOF and on image quality**, using the open-loop versus
-  deviation-recovered difference per DOF over the science sample. Report v-modes alongside
-  for continuity with the summit, but not as the metric of record — see the caveat above.
+- Compare the schemes **on recovered image quality first, and on the DOF values second**,
+  using the open-loop versus deviation-recovered difference per DOF over the science sample.
+  Report v-modes alongside for continuity with the summit, but not as the metric of
+  record — see the caveat above.
 - Update `value_added/docs/schema.md` and `status/build_progress.md` with the new axis, the
   new columns, and the realized row counts and spans.
 - Spot-check against a night already analysed elsewhere, so a build error shows up as a
