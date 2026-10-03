@@ -80,10 +80,25 @@ from common.telemetry_clients import make_consdb_client              # noqa: E40
 INSTRUMENT = 'lsstcam'
 
 #: scheme -> (ts_ofc DOF-set name, n_dof, n_modes)
+#:
+#: ``50_34_rbr`` is a **pseudo-scheme** (Q5): it shares the ``all_50`` DOF set and the 34
+#: retained modes with ``50_34`` and differs only in the solver, so ``scheme`` no longer
+#: determines ``n_dof`` and ``n_modes`` uniquely. The penalty parameters live in
+#: `state_variant.notes`, there being no column for them. `RBR_SCHEMES` is what makes the
+#: difference operative — without it, ``--scheme 50_34_rbr`` would build the ``all_50``
+#: estimator, run the **truncated** solver, and store a silent duplicate of ``50_34``
+#: under the RBR variant name.
 SCHEMES = {
     '22_12': ('standard_22', 22, 12),
     '50_34': ('all_50', 50, 34),
+    '50_34_rbr': ('all_50', 50, 34),
 }
+
+#: Schemes solved by Range-Bounded Recovery instead of the truncated SVD, with their
+#: penalty parameters [both dimensionless]. kappa = 4 and power = 3 match the bounce test
+#: (Q8). The guard in `resolve_solver` refuses any scheme named here whose solver path is
+#: not importable, so an RBR variant cannot quietly become a truncated one.
+RBR_SCHEMES = {'50_34_rbr': dict(kappa=4, power=3)}
 
 DEFAULT_OFC_VERSION = 'v13'
 
@@ -119,6 +134,90 @@ def build_state_estimator(scheme, ofc_version=DEFAULT_OFC_VERSION):
         raise RuntimeError(f'scheme {scheme} wants {n_modes} modes but {dof_set!r} '
                            f'offers only {avail}')
     return se, n_modes
+
+
+def resolve_solver(scheme, state_estimator, n_modes):
+    """The recovery solver for one scheme, with the RBR guard.
+
+    Parameters
+    ----------
+    scheme : `str`
+        Key into `SCHEMES`.
+    state_estimator : `lsst.ts.ofc.state_estimator.StateEstimator`
+    n_modes : `int`
+
+    Returns
+    -------
+    recover : `callable`
+        ``recover(z_dev)`` -> ``(dof_full, v_modes, zk_model, resid_rms_um)`` for one
+        visit's 84-value deviation wavefront. ``zk_model`` is the wavefront the recovered
+        DOF reproduce, so ``z_dev - zk_model`` is the residual the image-quality metric
+        consumes.
+    notes : `str`
+        One line describing the solver and its parameters, for `state_variant.notes`.
+
+    Raises
+    ------
+    RuntimeError
+        If `scheme` is in `RBR_SCHEMES` but the shared solver or the corner shim cannot be
+        imported. **This guard is the point of the function**: `SCHEMES` maps
+        ``50_34_rbr`` to the same DOF set as ``50_34``, so without it the builder would
+        happily run the truncated solver and write a silent duplicate of the ``50_34``
+        variant under the RBR name.
+
+    Notes
+    -----
+    The two arms store **different residuals**, and the variant's `notes` records which.
+    The truncated arm stores the subspace residual ``z_dev - zk_constrained``. The RBR arm
+    stores the **achieved** residual ``dW - S (d / w)``, because the subspace residual
+    cannot see a regularizer trading wavefront for amplitude (settled in items 6 and 9) —
+    it is independent of the recovered amplitudes, so for a regularized solve it would
+    report the truncated arm's number.
+    """
+    import aos_state
+
+    if scheme not in RBR_SCHEMES:
+        def recover(z_dev):
+            dof, v, zk_con = aos_state.recover_optical_state(
+                z_dev, state_estimator, n_modes=n_modes)
+            resid = float(np.sqrt(np.mean((z_dev - zk_con) ** 2)))
+            return dof, v, zk_con, resid
+        return recover, (f'truncated SVD at {n_modes} modes; resid_rms_um is the '
+                         f'subspace residual z_dev - zk_constrained [µm of wavefront]')
+
+    params = RBR_SCHEMES[scheme]
+    try:
+        sys.path.insert(0, str(_ROOT / 'smatrix' / 'code'))
+        import regularized_inversion as RI
+        shim = aos_state.CornerSvdShim(state_estimator, n_keep=n_modes)
+        ranges = RI.dof_range_vector(shim)
+    except Exception as exc:
+        raise RuntimeError(
+            f'scheme {scheme!r} is a Range-Bounded Recovery variant but its solver path '
+            f'is unavailable ({type(exc).__name__}: {exc}). Refusing to fall back to the '
+            f'truncated solver: that would write rows indistinguishable from the 50_34 '
+            f'variant under the RBR variant name. Fix the import or build 50_34 instead.'
+        ) from exc
+    if not (np.isfinite(ranges).all() and (ranges > 0).all()):
+        raise RuntimeError(
+            f'scheme {scheme!r}: dof_range_vector returned non-positive or non-finite '
+            f'ranges, which invert_range_penalty rejects')
+    idx = shim.dof_idx
+
+    def recover(z_dev):
+        d_active = RI.invert_range_penalty(z_dev, shim, ranges, rank=n_modes, **params)
+        dof_full = np.zeros(50)
+        dof_full[idx] = d_active
+        v = np.asarray(state_estimator.get_vmodes_from_dofs(dof_full), dtype=float)
+        res = RI.achieved_residual(z_dev, d_active, shim, rank=n_modes)
+        return dof_full, v, z_dev - res, float(np.sqrt(np.mean(res ** 2)))
+
+    notes = (f'range-bounded recovery (RBR): invert_range_penalty, kappa='
+             f'{params["kappa"]}, power={params["power"]} (both dimensionless), '
+             f'{n_modes} modes, via aos_state.CornerSvdShim; resid_rms_um is the '
+             f'ACHIEVED residual dW - S (d / w) [µm of wavefront], not the subspace '
+             f'residual')
+    return recover, notes
 
 
 def visit_metadata(cdb, day_obs):
@@ -243,6 +342,9 @@ def measured_deviation(cdb, visit_ids, bands, rot_angles, intrinsic_route,
         or the intrinsic is unavailable.
     n_opd : `int`
         Visits with a complete measured OPD.
+    opd : `numpy.ndarray`
+        The raw measured OPD, same shape and units — returned so the build-time OLR
+        identity check has the intrinsic available as ``opd - z_dev``.
 
     Notes
     -----
@@ -287,7 +389,7 @@ def measured_deviation(cdb, visit_ids, bands, rot_angles, intrinsic_route,
             raise ValueError(f'miw_lookup returned {intr.shape}, expected {opd.shape}')
     else:
         raise ValueError(f'unknown intrinsic_route {intrinsic_route!r}')
-    return opd - intr, n_opd
+    return opd - intr, n_opd, opd
 
 
 def make_commanded_projector(state_estimator, n_modes):
@@ -305,9 +407,11 @@ def make_commanded_projector(state_estimator, n_modes):
     Returns
     -------
     project : `callable`
-        ``project(con, visit_ids)`` -> ``(v_lut, v_trim)``, each shaped
-        ``(len(visit_ids), n_modes)`` of dimensionless v-mode amplitudes, NaN for any visit
-        with no `visit_telemetry` row or a non-finite active DOF.
+        ``project(con, visit_ids)`` -> ``(v_lut, v_trim, trim_dof)``. The two v-mode
+        blocks are shaped ``(len(visit_ids), n_modes)`` of dimensionless amplitudes, NaN
+        for any visit with no `visit_telemetry` row or a non-finite active DOF;
+        ``trim_dof`` is ``(len(visit_ids), 50)`` of raw Trim DOF [µm, arcsec], which the
+        open-loop reconstruction needs in DOF space rather than as v-modes.
 
     Notes
     -----
@@ -335,7 +439,7 @@ def make_commanded_projector(state_estimator, n_modes):
             f'SELECT {sel} FROM visit_telemetry WHERE visit_id IN '
             f'({",".join(str(int(v)) for v in vids)})').df() if len(vids) else None
         if tel is None or not len(tel):
-            return out_lut, out_trim
+            return out_lut, out_trim, np.full((len(vids), 50), np.nan)
         tel = tel.set_index('visit_id').reindex(index=vids)
         lut_dof = np.zeros((len(vids), 50))
         lut_dof[:, :10] = tel[lut_cols].to_numpy(float)
@@ -343,15 +447,25 @@ def make_commanded_projector(state_estimator, n_modes):
         trim_dof = tel[trim_cols].to_numpy(float)
         out_lut = aos_state.vmodes_from_dofs(lut_dof, state_estimator, n_modes=n_modes)
         out_trim = aos_state.vmodes_from_dofs(trim_dof, state_estimator, n_modes=n_modes)
-        return out_lut, out_trim
+        return out_lut, out_trim, trim_dof
 
     return project
 
 
+def _empty_night(n_modes):
+    """The `recover_night` result for a night with nothing to recover."""
+    return dict(visit_ids=np.array([], 'int64'),
+                v_modes=np.zeros((0, n_modes)), dof=np.zeros((0, 50)),
+                resid_rms_um=np.array([]), ok=np.array([], bool),
+                v_modes_olr=np.zeros((0, n_modes)), dof_olr=np.zeros((0, 50)),
+                fwhm_cwfs_arcsec=np.array([]), n_opd=0)
+
+
 def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_noll,
                   ofc_version=DEFAULT_OFC_VERSION, cache=None, miw_lookup=None,
-                  img_type=None, verbose=True):
-    """Recover the optical state for every visit of one night.
+                  img_type=None, verbose=True, recover=None, trim_dof=None,
+                  fwhm_conv=None, sens_mat=None):
+    """Recover the optical state, and the open-loop state, for every visit of one night.
 
     Parameters
     ----------
@@ -370,56 +484,123 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
         Restrict to these ConsDB ``img_type`` values. Default is every exposure that has
         corner Zernikes.
     verbose : `bool`, optional
+    recover : `callable`, optional
+        From `resolve_solver`. Default is the plain truncated recovery, so the
+        signature stays usable from a notebook.
+    trim_dof : `numpy.ndarray` or `callable`, optional
+        Commanded Trim per visit, ``(n_visits_of_the_night, 50)`` [µm, arcsec], aligned to
+        this night's visits in `visit_metadata` order — or a callable taking this night's
+        ``visit_ids`` and returning that array, since the visit list is determined here.
+        Required for the open-loop columns; omitted, they come back NaN.
+    fwhm_conv : `callable`, optional
+        From `open_loop.make_fwhm_converter`. Omitted, the image-quality column is NaN.
+    sens_mat : `numpy.ndarray`, optional
+        From `open_loop.olr_sensitivity_matrix`, used only for the per-visit forward
+        identity check.
 
     Returns
     -------
-    visit_ids : `numpy.ndarray`
-    v_modes : `numpy.ndarray`
-        Shape ``(n, n_modes)``, µm of wavefront.
-    dof : `numpy.ndarray`
-        Shape ``(n, 50)``, µm and deg.
-    resid_rms_um : `numpy.ndarray`
-        Per-visit root-mean-square of ``z_dev - zk_constrained`` [µm of wavefront] — the
-        part of the measured deviation the retained subspace cannot reproduce.
-    ok : `numpy.ndarray` [`bool`]
+    out : `dict`
+        ``visit_ids`` ``(n,)``; ``v_modes`` and ``v_modes_olr`` ``(n, n_modes)``
+        [dimensionless]; ``dof`` and ``dof_olr`` ``(n, 50)`` [µm, arcsec];
+        ``resid_rms_um`` ``(n,)`` [µm of wavefront]; ``fwhm_cwfs_arcsec`` ``(n,)``
+        [arcsec]; ``ok`` ``(n,)``; ``n_opd`` `int`.
+
+    Notes
+    -----
+    ``dof`` and ``v_modes`` are the **deviation-recovered** state — from this visit's
+    measured deviation alone. ``dof_olr`` and ``v_modes_olr`` are the **open-loop**
+    state, ``Deviation - Trim``, which is what would have been present with the loop open;
+    the optical state ``Trim - Deviation`` is its negative. See `open_loop`.
+
+    ``fwhm_cwfs_arcsec`` is the median over the **four corner sensors**, not over the
+    focal plane, and describes the deviation-recovered arm. See `open_loop.cwfs_fwhm` for
+    why, and note it is not interchangeable with `aos_fwhm.fp_fwhm`.
     """
     import aos_state
+    import open_loop
     meta = visit_metadata(cdb, day_obs)
     if meta.empty:
-        return (np.array([], 'int64'), np.zeros((0, n_modes)), np.zeros((0, 50)),
-                np.array([]), np.array([], bool))
+        return _empty_night(n_modes)
     if img_type is not None:
         want = [img_type] if isinstance(img_type, str) else list(img_type)
         meta = meta[meta['img_type'].isin(want)]
         if meta.empty:
             if verbose:
                 print(f'{day_obs}: no {",".join(want)} exposures')
-            return (np.array([], 'int64'), np.zeros((0, n_modes)), np.zeros((0, 50)),
-                    np.array([]), np.array([], bool))
+            return _empty_night(n_modes)
     vids = meta['visit_id'].to_numpy('int64')
-    z_dev, n_opd = measured_deviation(
+    z_dev, n_opd, zk_opd = measured_deviation(
         cdb, vids, meta['band'].tolist(), meta['rotator_angle_deg'].to_numpy(float),
         intrinsic_route, zk_noll, ofc_version, cache, miw_lookup)
+
+    if recover is None:
+        def recover(z):
+            d, v, zk_con = aos_state.recover_optical_state(
+                z, state_estimator, n_modes=n_modes)
+            return d, v, zk_con, float(np.sqrt(np.mean((z - zk_con) ** 2)))
 
     n = len(vids)
     v_modes = np.full((n, n_modes), np.nan)
     dof = np.full((n, 50), np.nan)
     resid = np.full(n, np.nan)
+    zk_resid = np.full_like(z_dev, np.nan)
     ok = np.zeros(n, bool)
     for i in range(n):
         row = z_dev[i]
         if not np.isfinite(row).all():
             continue
-        d, v, zk_con = aos_state.recover_optical_state(
-            row, state_estimator, n_modes=n_modes)
+        d, v, zk_model, r = recover(row)
         dof[i] = d
         v_modes[i] = v
-        resid[i] = float(np.sqrt(np.mean((row - zk_con) ** 2)))
+        resid[i] = r
+        zk_resid[i] = row - zk_model
         ok[i] = True
+
+    # The open-loop state: Deviation - Trim, in DOF and v-mode space. NaN where the Trim
+    # is unavailable, which leaves the deviation-recovered state intact.
+    v_olr = np.full((n, n_modes), np.nan)
+    dof_olr = np.full((n, 50), np.nan)
+    if trim_dof is not None:
+        trim = np.asarray(trim_dof(vids) if callable(trim_dof) else trim_dof, float)
+        if trim.shape != (n, 50):
+            raise ValueError(f'trim_dof has shape {trim.shape}, expected {(n, 50)}; it '
+                             f'must be aligned to this night\'s visits')
+        good = ok & np.isfinite(trim).all(axis=1)
+        if good.any():
+            d_o, v_o = open_loop.open_loop_state(dof[good], trim[good],
+                                                 state_estimator, n_modes)
+            dof_olr[good] = d_o
+            v_olr[good] = v_o
+            # The forward identity, carried over from run_olr.py: the open-loop deviation
+            # and the open-loop OPD differ by exactly the intrinsic, because the same Trim
+            # wavefront is removed from each. Run against the real intrinsic (z_opd -
+            # z_dev), not a zero placeholder, or the check is vacuous. It is insensitive
+            # to the OLR sign (the intrinsic cancels), so it catches basis, corner-order
+            # and Zernike-alignment errors; the sign is pinned by the open_loop tests.
+            if sens_mat is not None and zk_opd is not None:
+                intr = zk_opd[good] - z_dev[good]
+                zk_olr_dev = open_loop.olr_zernikes(z_dev[good], trim[good],
+                                                    sens_mat, state_estimator)
+                zk_olr_opd = open_loop.olr_zernikes(zk_opd[good], trim[good],
+                                                    sens_mat, state_estimator)
+                open_loop.check_olr_identity(zk_olr_dev, zk_olr_opd, intr, atol=1e-6)
+
+    fwhm = np.full(n, np.nan)
+    if fwhm_conv is not None and ok.any():
+        fwhm[ok] = open_loop.cwfs_fwhm(zk_resid[ok], fwhm_conv)
+
     if verbose:
-        print(f'{day_obs}: {n} exposures, {n_opd} with complete corner OPD, '
-              f'{int(ok.sum())} recovered')
-    return vids, v_modes, dof, resid, ok
+        n_iq = int(np.isfinite(fwhm).sum())
+        msg = (f'{day_obs}: {n} exposures, {n_opd} with complete corner OPD, '
+               f'{int(ok.sum())} recovered, {int(np.isfinite(dof_olr[:, 0]).sum())} '
+               f'open-loop')
+        if n_iq:
+            msg += (f'; median CWFS FWHM contribution '
+                    f'{np.nanmedian(fwhm):.4f} arcsec over {n_iq} visits')
+        print(msg)
+    return dict(visit_ids=vids, v_modes=v_modes, dof=dof, resid_rms_um=resid, ok=ok,
+                v_modes_olr=v_olr, dof_olr=dof_olr, fwhm_cwfs_arcsec=fwhm, n_opd=n_opd)
 
 
 def main(argv=None):
@@ -456,6 +637,11 @@ def main(argv=None):
     p.add_argument('--list', action='store_true',
                    help='list registered variants with their row counts and exit')
     p.add_argument('--db', default=None)
+    p.add_argument('--telemetry-db', default=None,
+                   help='database to read visit_telemetry (the Trim and hexapod LUT) from, '
+                        'when it is not the --db being written. Required for a sharded '
+                        'build: a shard writes its own empty database, so without this the '
+                        'commanded and open-loop columns are silently all NaN')
     p.add_argument('--consdb-url', default='auto')
     p.add_argument('--quiet', action='store_true')
     a = p.parse_args(argv)
@@ -499,18 +685,40 @@ def main(argv=None):
         if route == 'miw' and not intrinsic_ref:
             con.close()
             p.error('--intrinsic miw needs --intrinsic-ref naming the MIW build')
-        _dof_set, n_dof, n_modes = SCHEMES[scheme]
-        vid = efd_db.register_variant(
-            con, scheme, route, opd_version, n_dof, n_modes,
-            intrinsic_ref=intrinsic_ref, ofc_config_version=ofc_version)
-        print(f'registered variant {vid}')
+        vid = None      # registered below, once the solver notes are known
 
     import aos_state
+    import open_loop
     zk_noll = aos_state.ZK_NOLL
     se, n_modes = build_state_estimator(scheme, ofc_version)
+
+    # Resolve the solver BEFORE registering, so the variant's notes record which solver
+    # and which residual its rows hold -- no column describes either. The RBR guard lives
+    # here, so a 50_34_rbr run with a broken solver path fails before it writes anything.
+    recover, solver_notes = resolve_solver(scheme, se, n_modes)
+
+    if vid is None:
+        _dof_set, n_dof, _nm = SCHEMES[scheme]
+        vid = efd_db.register_variant(
+            con, scheme, route, opd_version, n_dof, n_modes,
+            intrinsic_ref=intrinsic_ref, ofc_config_version=ofc_version,
+            notes=solver_notes)
+        print(f'registered variant {vid}')
+    else:
+        con.execute('UPDATE state_variant SET notes = ? WHERE variant_id = ?',
+                    [solver_notes, vid])
+
     print(f'variant {vid}: scheme {scheme} ({n_modes} v-modes), intrinsic {route}'
           + (f' [{intrinsic_ref}]' if intrinsic_ref else '')
           + f', OPD {opd_version}, {len(zk_noll)} Zernike terms')
+    print(f'  solver: {solver_notes}')
+
+    sens_mat = open_loop.olr_sensitivity_matrix(se)
+    print(f'  OLR sensitivity matrix {sens_mat.shape} '
+          f'(rows = 4 corners x {len(zk_noll)} Zernikes, cols = active DOF)')
+    fwhm_conv = open_loop.make_fwhm_converter()
+    if fwhm_conv is None:
+        print('  warning: ts_wep unavailable, so fwhm_cwfs_arcsec stays NaN')
 
     # The MIW route needs its intrinsic evaluated at the corner field points. The build named
     # in the variant's intrinsic_ref is the intrinsic, so a different build is a different
@@ -534,10 +742,13 @@ def main(argv=None):
     cdb = make_consdb_client(a.consdb_url)
     days = parse_day_obs(a.day_obs, cdb=cdb)
     if a.resume:
+        # day_obs comes from visit_id rather than from a join on visit_telemetry: a shard's
+        # own visit_telemetry is empty, so the join would find no populated nights and
+        # --resume would silently rebuild everything. Verified over all 213,704
+        # visit_telemetry rows that visit_id // 100000 == day_obs.
         have = {int(d) for d in con.execute(
-            'SELECT DISTINCT v.day_obs FROM optical_state o '
-            'JOIN visit_telemetry v USING (visit_id) WHERE o.variant_id = ?',
-            [vid]).df()['day_obs']}
+            'SELECT DISTINCT visit_id // 100000 AS day_obs FROM optical_state '
+            'WHERE variant_id = ?', [vid]).df()['day_obs']}
         skip = [d for d in days if d in have]
         days = [d for d in days if d not in have]
         if skip:
@@ -553,30 +764,69 @@ def main(argv=None):
     # keeps its measured state.
     project_commanded = make_commanded_projector(se, n_modes)
 
+    # A shard writes its own database, whose visit_telemetry is empty, so the Trim must be
+    # read from elsewhere or every commanded and open-loop column comes back NaN without
+    # any error. Fail loudly on an empty telemetry source rather than building NaN columns.
+    tel_con = con
+    if a.telemetry_db:
+        tel_con = efd_db.open_db(a.telemetry_db, readonly=True)
+    n_tel = tel_con.execute('SELECT COUNT(*) FROM visit_telemetry').fetchone()[0]
+    if not n_tel:
+        con.close()
+        if tel_con is not con:
+            tel_con.close()
+        p.error(
+            'visit_telemetry is empty in the database the Trim is read from, so the '
+            'commanded v-modes and the entire open-loop arm would be silently NaN. Pass '
+            '--telemetry-db pointing at the main database (this is required for every '
+            'sharded build, since a shard writes its own empty database).')
+    print(f'  Trim and hexapod LUT read from {a.telemetry_db or "the output database"} '
+          f'({n_tel} visit_telemetry rows)')
+
     img_types = ([t.strip() for t in a.img_type.split(',') if t.strip()]
                  if a.img_type else None)
-    cache, total, total_ok, total_cmd = {}, 0, 0, 0
+    cache, total, total_ok, total_cmd, total_olr = {}, 0, 0, 0, 0
     for day in days:
-        vids, v_modes, dof, resid, ok = recover_night(
+        # The Trim is needed inside recover_night for the open-loop state, but the visit
+        # list comes from recover_night itself, so the commanded terms are fetched through
+        # a callback on that list rather than afterwards. One query per night either way.
+        fetched = {}
+
+        def _trim_for(visit_ids):
+            v_lut, v_trim, trim_dof = project_commanded(tel_con, visit_ids)
+            fetched['lut'], fetched['trim'] = v_lut, v_trim
+            return trim_dof
+
+        res = recover_night(
             cdb, day, se, n_modes, route, zk_noll, ofc_version, cache,
-            miw_lookup=miw_lookup, img_type=img_types, verbose=not a.quiet)
+            miw_lookup=miw_lookup, img_type=img_types, verbose=not a.quiet,
+            recover=recover, trim_dof=_trim_for, fwhm_conv=fwhm_conv,
+            sens_mat=sens_mat)
+        vids = res['visit_ids']
         if not len(vids):
             continue
-        v_lut, v_trim = project_commanded(con, vids)
+        v_lut, v_trim = fetched['lut'], fetched['trim']
         n_cmd = int(np.isfinite(v_lut[:, 0]).sum())
+        n_olr = int(np.isfinite(res['dof_olr'][:, 0]).sum())
         if not a.quiet:
             print(f'{day}: {n_cmd} of {len(vids)} with commanded v-modes '
                   f'(hexapod LUT and Trim, dimensionless)')
-        efd_db.upsert_optical_state(con, vid, vids, v_modes, dof, resid, ok,
-                                    v_modes_lut=v_lut, v_modes_trim=v_trim)
+        efd_db.upsert_optical_state(
+            con, vid, vids, res['v_modes'], res['dof'], res['resid_rms_um'], res['ok'],
+            v_modes_lut=v_lut, v_modes_trim=v_trim,
+            v_modes_olr=res['v_modes_olr'], dof_olr=res['dof_olr'],
+            fwhm_cwfs_arcsec=res['fwhm_cwfs_arcsec'])
         total += len(vids)
-        total_ok += int(ok.sum())
+        total_ok += int(res['ok'].sum())
         total_cmd += n_cmd
+        total_olr += n_olr
     n_rows = con.execute('SELECT COUNT(*) FROM optical_state WHERE variant_id = ?',
                          [vid]).fetchone()[0]
     con.close()
+    if tel_con is not con:
+        tel_con.close()
     print(f'\n{total} visits this run, {total_ok} recovered, {total_cmd} with commanded '
-          f'v-modes; {n_rows} rows for variant {vid}')
+          f'v-modes, {total_olr} with open-loop state; {n_rows} rows for variant {vid}')
     return 0
 
 

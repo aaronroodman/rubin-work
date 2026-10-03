@@ -75,7 +75,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import aos_state  # noqa: E402
 
 __all__ = ['olr_sensitivity_matrix', 'olr_zernikes', 'open_loop_state',
-           'optical_state_dofs', 'check_olr_identity']
+           'optical_state_dofs', 'check_olr_identity', 'cwfs_fwhm',
+           'make_fwhm_converter']
 
 
 def olr_sensitivity_matrix(state_estimator):
@@ -240,6 +241,80 @@ def open_loop_state(dof_recovered, dof_trim, state_estimator, n_modes):
     dof_olr = rec - trim
     v_olr = aos_state.vmodes_from_dofs(dof_olr, state_estimator, n_modes=n_modes)
     return dof_olr, v_olr
+
+
+def make_fwhm_converter():
+    """The ts_wep per-Zernike FWHM conversion, or `None` if ts_wep is unavailable.
+
+    Returns
+    -------
+    conv : `callable` or `None`
+        ``lsst.ts.wep.utils.convertZernikesToPsfWidth``, to be passed to `cwfs_fwhm`.
+        `None` when ts_wep is not importable, so a build can proceed with the IQ column
+        left NaN rather than failing outright.
+    """
+    try:
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth
+    except ImportError:
+        return None
+    return convertZernikesToPsfWidth
+
+
+def cwfs_fwhm(zk_residual, conv, reduce=np.nanmedian):
+    """PSF FWHM contribution of a corner residual wavefront, median over the four CWFS.
+
+    Parameters
+    ----------
+    zk_residual : `numpy.ndarray`
+        Residual wavefront, ``(84,)`` or ``(n, 84)``, µm of wavefront, corner-major in
+        `aos_state.SENSOR_NAMES` order — typically the achieved residual left after a
+        scheme's correction.
+    conv : `callable`
+        From `make_fwhm_converter`.
+    reduce : `callable`, optional
+        Reduction over the four corners. Default `numpy.nanmedian`.
+
+    Returns
+    -------
+    fwhm : `numpy.ndarray`
+        ``(n,)`` arcsec FWHM contribution, one per visit.
+
+    Notes
+    -----
+    **Evaluated at the four corner sensors only, not over the focal plane**, and this is
+    deliberate (decided 2026-10-02). This work uses the CWFS with no Full Array Mode, and
+    four corner field points do not uniquely determine a Double Zernike field, so there is
+    no DZ state to evaluate on a focal-plane grid. The optical state in the science
+    sensors is not well known; extrapolating there would fold that uncertainty into the
+    image-quality estimate, so the metric is evaluated only where the wavefront is
+    actually measured.
+
+    **Not interchangeable with `aos_fwhm.fp_fwhm`**, which every other wavefront
+    image-quality number in this repository uses: that evaluates a DZ field on an
+    area-uniform focal-plane grid out to ``FP_RADIUS`` = 1.75 deg and takes the median
+    over *that grid*. The ts_wep conversion and the Z4+ quadrature sum are shared; the
+    evaluation domain is not. Do not substitute one for the other.
+
+    Zero means no residual wavefront, so this term adds nothing. It is **not** a total
+    PSF width and not the seeing floor — it is the AOS wavefront contribution alone, which
+    adds in quadrature on top of the delivered image quality.
+    """
+    import aos_fwhm
+    z = np.atleast_2d(np.asarray(zk_residual, dtype=float))
+    n_z = len(aos_state.ZK_NOLL)
+    n_corners = len(aos_state.SENSOR_NAMES)
+    if z.shape[1] != n_corners * n_z:
+        raise ValueError(
+            f'zk_residual has {z.shape[1]} values per visit; expected '
+            f'{n_corners * n_z} ({n_corners} corners x {n_z} Zernikes, corner-major).')
+    out = np.full(len(z), np.nan)
+    for i, row in enumerate(z):
+        if not np.isfinite(row).all():
+            continue
+        per_corner = aos_fwhm.zj_to_fwhm(row.reshape(n_corners, n_z),
+                                         aos_state.ZK_NOLL, conv)
+        out[i] = float(reduce(per_corner))
+    return out
 
 
 def check_olr_identity(zk_olr_deviation, zk_olr_opd, zk_intrinsic, atol=1e-9):

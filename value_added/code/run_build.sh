@@ -54,6 +54,9 @@ topic=$PWD
 
 what=""; day_obs=""; chunk=24; mode=local; variant=""; img_type=""
 groups="all"; resume=0; shard_dir="output/shards"; dry=0
+# The merged database, and the source of visit_telemetry for every state shard. Absolute,
+# because a batch shard cds into $topic but the builder may resolve relative paths itself.
+main_db="$topic/output/aos_efd.duckdb"
 while [ $# -gt 0 ]; do
     case "$1" in
         --what)       what="$2"; shift 2;;
@@ -180,6 +183,10 @@ for ((s = 0; s < n_shards; s++)); do
         cmd+=(--groups "$groups")
     else
         cmd+=("${variant_flags[@]}")
+        # A shard writes its own database, whose visit_telemetry is empty, so the Trim and
+        # hexapod LUT must be read from the main database or the commanded v-modes and the
+        # whole open-loop arm come back NaN. The builder refuses an empty telemetry source.
+        cmd+=(--telemetry-db "$main_db")
         [ -n "$img_type" ] && cmd+=(--img-type "$img_type")
     fi
     [ "$resume" = 1 ] && cmd+=(--resume)

@@ -336,17 +336,24 @@ def create_schema(con):
           resid_rms_um  DOUBLE,     -- um of wavefront
           ok            BOOLEAN,
           computed_at   TIMESTAMP,
+          v_modes_olr   DOUBLE[],   -- open loop (Deviation - Trim), n_modes, dimensionless
+          dof_olr       DOUBLE[],   -- open loop (Deviation - Trim), length 50, um / arcsec
+          fwhm_cwfs_arcsec DOUBLE,  -- arcsec, median over the 4 CWFS (NOT focal plane)
           PRIMARY KEY (visit_id, variant_id)
         )""")
     # Additive migration, as for visit_telemetry: v_modes_lut and v_modes_trim were added
     # after the table was first created, so that all three v-mode terms are projected in the
     # variant's own scheme rather than the commanded pair being reprojected per analysis.
+    # v_modes_olr, dof_olr and fwhm_cwfs_arcsec came later still, with item 2's open-loop
+    # arm and its image-quality metric.
     have_os = {r[0] for r in con.execute(
         "SELECT column_name FROM information_schema.columns "
         "WHERE table_name = 'optical_state'").fetchall()}
-    for n in ('v_modes_lut', 'v_modes_trim'):
+    for n in ('v_modes_lut', 'v_modes_trim', 'v_modes_olr', 'dof_olr'):
         if n not in have_os:
             con.execute(f'ALTER TABLE optical_state ADD COLUMN {n} DOUBLE[]')
+    if 'fwhm_cwfs_arcsec' not in have_os:
+        con.execute('ALTER TABLE optical_state ADD COLUMN fwhm_cwfs_arcsec DOUBLE')
     con.execute("""
         CREATE TABLE IF NOT EXISTS fam_variant (
           fam_variant_id   VARCHAR PRIMARY KEY,
@@ -601,7 +608,8 @@ def register_variant(con, scheme, intrinsic_route, opd_version, n_dof, n_modes,
 
 
 def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, ok=None,
-                         v_modes_lut=None, v_modes_trim=None):
+                         v_modes_lut=None, v_modes_trim=None, v_modes_olr=None,
+                         dof_olr=None, fwhm_cwfs_arcsec=None):
     """Write one variant's recovered state for a set of visits.
 
     Parameters
@@ -626,6 +634,14 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
         shape (n, n_modes) [dimensionless]. NULL where not supplied.
     v_modes_trim : `numpy.ndarray`, optional
         Trim commanded state in the same scheme and units.
+    v_modes_olr : `numpy.ndarray`, optional
+        Open-loop v-modes, ``(n, n_modes)`` [dimensionless] — the state that would have
+        been present with the loop open, ``Deviation - Trim``.
+    dof_olr : `numpy.ndarray`, optional
+        Open-loop DOF, ``(n, 50)`` [µm, arcsec], same sign convention.
+    fwhm_cwfs_arcsec : `array_like` [`float`], optional
+        PSF FWHM contribution of the residual wavefront left by this scheme's correction,
+        median over the **four corner sensors** [arcsec].
 
     Returns
     -------
@@ -634,9 +650,23 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
 
     Notes
     -----
-    All three v-mode terms are stored in the variant's own scheme, so an analysis forming
+    All v-mode terms are stored in the variant's own scheme, so an analysis forming
     ``LUT + Trim - measured`` never mixes projection bases. `ok` describes the measured
     recovery only; the commanded terms are NULL rather than false when unavailable.
+
+    Two sign conventions coexist and must not be confused. ``dof`` and ``v_modes`` are the
+    deviation-recovered state; ``dof_olr`` and ``v_modes_olr`` are the **open-loop** state
+    ``Deviation - Trim``. The visit's *optical state* is ``Trim - Deviation``, the
+    negative of the stored OLR columns. See `aos/code/open_loop.py`.
+
+    ``fwhm_cwfs_arcsec`` is a median over the four corner wavefront sensors, **not** over
+    the focal plane, because four corners do not determine a Double Zernike field. It is
+    therefore not comparable with any `aos_fwhm.fp_fwhm` number, which medians a DZ field
+    over a focal-plane grid to 1.75 deg.
+
+    ``resid_rms_um`` means different things per variant — the subspace residual for the
+    truncated schemes, the achieved residual for the range-bounded one. The variant's
+    `state_variant.notes` records which.
     """
     v_modes = np.atleast_2d(np.asarray(v_modes, float))
     dof = np.atleast_2d(np.asarray(dof, float))
@@ -659,23 +689,42 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
 
     lut_rows = _opt(v_modes_lut, 'v_modes_lut')
     trim_rows = _opt(v_modes_trim, 'v_modes_trim')
+    olr_rows = _opt(v_modes_olr, 'v_modes_olr')
+    if dof_olr is None:
+        dof_olr_rows = [None] * n
+    else:
+        d_olr = np.atleast_2d(np.asarray(dof_olr, float))
+        if d_olr.shape != (n, 50):
+            raise ValueError(f'dof_olr has shape {d_olr.shape}, expected {(n, 50)}')
+        dof_olr_rows = [d_olr[i].tolist() for i in range(n)]
+    if fwhm_cwfs_arcsec is None:
+        fwhm_rows = [None] * n
+    else:
+        f = np.asarray(fwhm_cwfs_arcsec, float).ravel()
+        if len(f) != n:
+            raise ValueError(f'fwhm_cwfs_arcsec has {len(f)} values, expected {n}')
+        fwhm_rows = [None if not np.isfinite(f[i]) else float(f[i]) for i in range(n)]
     if ok is None:
         ok = np.isfinite(v_modes).all(axis=1)
     if resid_rms_um is None:
         resid_rms_um = np.full(n, np.nan)
     now = datetime.now(timezone.utc)
     rows = [(int(visit_ids[i]), vid, v_modes[i].tolist(), lut_rows[i], trim_rows[i],
-             dof[i].tolist(), int(n_modes), float(resid_rms_um[i]), bool(ok[i]), now)
+             dof[i].tolist(), int(n_modes), float(resid_rms_um[i]), bool(ok[i]), now,
+             olr_rows[i], dof_olr_rows[i], fwhm_rows[i])
             for i in range(n)]
     con.executemany(
         'INSERT INTO optical_state (visit_id, variant_id, v_modes, v_modes_lut, '
-        'v_modes_trim, dof, n_modes, resid_rms_um, ok, computed_at) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'v_modes_trim, dof, n_modes, resid_rms_um, ok, computed_at, v_modes_olr, '
+        'dof_olr, fwhm_cwfs_arcsec) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
         'ON CONFLICT (visit_id, variant_id) DO UPDATE SET v_modes = excluded.v_modes, '
         'v_modes_lut = excluded.v_modes_lut, v_modes_trim = excluded.v_modes_trim, '
         'dof = excluded.dof, n_modes = excluded.n_modes, '
         'resid_rms_um = excluded.resid_rms_um, ok = excluded.ok, '
-        'computed_at = excluded.computed_at', rows)
+        'computed_at = excluded.computed_at, v_modes_olr = excluded.v_modes_olr, '
+        'dof_olr = excluded.dof_olr, '
+        'fwhm_cwfs_arcsec = excluded.fwhm_cwfs_arcsec', rows)
     return n
 
 
@@ -1031,6 +1080,11 @@ def optical_state(variant, day_obs_range=None, wide=True, ok_only=True,
     The ``_lut`` and ``_trim`` columns are absent for variants built before the commanded
     terms were stored. When present they are projected in the variant's own scheme, so
     `v1 - v1_lut - v1_trim` mixes no bases; see `upsert_optical_state`.
+
+    The ``_olr`` columns (``v1_olr``…, ``dof0_olr``…) are the **open-loop** state
+    ``Deviation - Trim``; the visit's optical state is their negative. ``fwhm_cwfs_arcsec``
+    is a median over the four corner sensors, not the focal plane. Both are absent for
+    variants built before item 2 added them.
     """
     own = con is None
     con = con or open_db(db_path, readonly=True)
@@ -1046,8 +1100,8 @@ def optical_state(variant, day_obs_range=None, wide=True, ok_only=True,
             clause += ' AND s.ok'
         df = con.execute(
             'SELECT s.visit_id, v.day_obs, v.seq_num, s.v_modes, s.v_modes_lut, '
-            's.v_modes_trim, s.dof, s.n_modes, '
-            's.resid_rms_um, s.ok FROM optical_state s '
+            's.v_modes_trim, s.v_modes_olr, s.dof, s.dof_olr, s.n_modes, '
+            's.fwhm_cwfs_arcsec, s.resid_rms_um, s.ok FROM optical_state s '
             'JOIN visit_telemetry v USING (visit_id) '
             f'{clause} AND s.variant_id = ? ORDER BY v.day_obs, v.seq_num',
             params + [variant]).df()
@@ -1066,7 +1120,8 @@ def optical_state(variant, day_obs_range=None, wide=True, ok_only=True,
     # The commanded terms are NULL for variants built before they were stored, so expand them
     # only where present and leave the columns absent otherwise rather than fabricating NaNs
     # that would look like a failed projection.
-    for src, tag in (('v_modes_lut', 'lut'), ('v_modes_trim', 'trim')):
+    for src, tag in (('v_modes_lut', 'lut'), ('v_modes_trim', 'trim'),
+                     ('v_modes_olr', 'olr')):
         present = df[src].notna()
         if not present.any():
             continue
@@ -1075,7 +1130,15 @@ def optical_state(variant, day_obs_range=None, wide=True, ok_only=True,
             [np.asarray(x, float) for x in df.loc[present, src]])
         for j in range(nm):
             df[f'v{j + 1}_{tag}'] = arr[:, j]
-    return df.drop(columns=['v_modes', 'v_modes_lut', 'v_modes_trim', 'dof'])
+    present = df['dof_olr'].notna()
+    if present.any():
+        arr = np.full((len(df), 50), np.nan)
+        arr[present.to_numpy()] = np.vstack(
+            [np.asarray(x, float) for x in df.loc[present, 'dof_olr']])
+        for j in range(50):
+            df[f'dof{j}_olr'] = arr[:, j]
+    return df.drop(columns=['v_modes', 'v_modes_lut', 'v_modes_trim', 'v_modes_olr',
+                            'dof', 'dof_olr'])
 
 
 def fam_variants(con=None, db_path=None):
