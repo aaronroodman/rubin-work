@@ -1,33 +1,58 @@
-# Item 2, open-loop and deviation-recovered optical state: handoff to the implementing session
+# Item 2, open-loop and deviation-recovered optical state: handoff
 
-> **Status:** current · **Last updated:** 2026-10-02 · **Kind:** handoff (scoping session → implementing session)
+> **Status:** current · **Last updated:** 2026-10-03 · **Kind:** handoff (implementing session → batch submission)
 
 The specification is **item 2 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md)** —
-read the whole item, not a summary. All 13 of its open questions are answered and the item
-is unblocked. This document holds only what the scoping conversation established that the
-item itself does not say: the findings behind three of its decisions, so the implementing
-session does not re-derive them or quietly contradict them.
+read the whole item, not a summary. All 13 of its open questions are answered.
+
+**The code is done and verified on one night; the full-span batch builds are what remain.**
+This document holds what the code and git history do not say: the three decisions Aaron took
+at implementation kickoff that override the written spec, the findings behind the scoping
+decisions, what was found during implementation, and what was tried and rejected. Read the
+kickoff decisions first — a reader of the older spec text would otherwise assume the opposite
+sign and the wrong image-quality metric.
 
 ## Done and committed
 
-No implementation has started. Two commits, both to the specification only:
+The code is **complete and verified on one night**. Only the full-span batch builds remain,
+and they need Aaron to submit them.
 
 | commit | what |
 | --- | --- |
 | `bbc0f64` | answered Q11, added Q13 for the RBR measurement-space mismatch, corrected item 2's scope |
 | `cfedee2` | batoid-only variant list, comparison on DOF and image quality, full rerun of the 50/34 variant |
+| `196d930` | **spec corrections**: the OLR sign, the CWFS-median image-quality metric, no DZ state |
+| `9d8e39d` | `aos/code/open_loop.py` + `aos_state.CornerSvdShim` + `test_open_loop.py` (10 tests) |
+| `ce6b5b6` | the builder: `50_34_rbr` with its guard, the `_olr` and `fwhm_cwfs_arcsec` columns, `--telemetry-db` |
+| `a0096de` | archived the superseded `olr/code/olr.py`, left a guard module in its place |
+| `eef744a` | same-file `--telemetry-db` fix; `schema.md` and `build_progress.md` |
+| `c426a8f` | `olr/docs/scheme_comparison.md`; fixed the sign in `olr/README.md` |
 
 ## In progress
 
-Nothing. The working tree carries unrelated `thermal_focus/` modifications and untracked
-files; none belong to this item.
+Nothing uncommitted of this item's. The working tree carries unrelated `thermal_focus/`
+modifications and untracked files, plus `notes/README.md`; none belong here.
+
+Two things sit in the data area, outside git:
+
+- `value_added/output/scratch/archive/v50_34__batoid__consdb_v1_pre_item2.parquet` — all
+  90,695 pre-item-2 rows, count-verified, 95 MB. **Delete when this work closes.**
+- `value_added/output/scratch/item2_cost_{22_12,50_34,50_34_rbr}.duckdb` and
+  `item2_5034.duckdb` — the costing databases behind every number in
+  `olr/docs/scheme_comparison.md`. Disposable once the full-span build lands.
+
+`v50_34_rbr__batoid__consdb_v1` is registered in the **main** database and holds one real
+night (20260318, 916 rows) from the costing run. The full-span rerun will overwrite it.
 
 ## Next concrete action
 
-Start the build order in the item's scope: move the two `olr/` functions into `aos/code/`
-(fixing the sign, see below), write the corner-basis shim, add the guarded `50_34_rbr` entry
-to `SCHEMES`, add the CWFS-median IQ column, cost one night, hand Aaron the three batch
-submissions. Nothing gates this.
+**Hand Aaron the three batch submissions** (commands are in the session summary; regenerate
+with `--dry-run` if lost). Before the `50_34` one, get his go-ahead to delete the 90,695
+archived rows. Then merge the shards, refresh `build_progress.md` with realized counts, and
+redo `olr/docs/scheme_comparison.md` on the full sample — it is one night today.
+
+Order matters only for `50_34`: the other two variants are empty, so they can go first or in
+parallel.
 
 ## Three decisions taken at the start of the implementing session, 2026-10-02
 
@@ -148,6 +173,69 @@ estimators for the life of each shard and check it explicitly. The cache exists 
 reason — `get_sensitivity_matrix` costs about 270 ms per call, so rebuilding per visit would
 cost roughly 5.8 hours over 76,577 visits — so do not simply remove it.
 
+## Found during implementation — non-obvious, and not in the specification
+
+Five things the spec did not anticipate. The first two were silent-wrong-answer bugs.
+
+**1. A shard has no `visit_telemetry`, so the whole open-loop arm was NaN.** The builder
+reads the Trim from the same connection it writes to, and `run_build.sh` gives each shard its
+own fresh database. So a sharded build would have produced NaN in every `_olr` column *and*
+in `v_modes_lut` / `v_modes_trim`, with no error. (The existing 90,695 rows have commanded
+terms, so the original build cannot have been sharded.) Fixed with `--telemetry-db`, which
+`run_build.sh` now always passes for `--what state`, and the builder **refuses to run** on an
+empty telemetry source rather than writing NaN columns.
+
+Consequence worth knowing: `--resume` used to find populated nights by joining
+`visit_telemetry`, which in a shard is empty, so it would silently rebuild everything. It now
+derives `day_obs` as `visit_id // 100000`, verified to hold for all 213,704 rows.
+
+**2. `--telemetry-db` pointing at the database already open raises.** DuckDB refuses a second
+connection to one file under a different read-only setting. The telemetry reader reuses the
+write connection when the paths resolve equal (`_same_db`). This bites only in the
+non-sharded case, which is how a by-hand single-night run is done.
+
+**3. The solver needs `U_eff` sliced, not the full `U`.** `regularized_inversion` takes
+`n_kept = U_eff.shape[1]` as the retained-mode count and raises on `rank > n_kept`. Handing
+over the corner basis's full `U` (84 x 50) would have made the penalty-off limit a full-rank
+solve rather than the truncated one the comparison needs — a plausible-looking wrong answer,
+not a crash. `CornerSvdShim` slices to `n_keep`.
+
+The handoff's `kj_grid` claim re-verified: it appears in that module in **docstrings only**,
+never as a code read, across all of `invert_range_penalty`, `dof_range_vector` and
+`achieved_residual`. `n_keep_eff` likewise — the solvers compute the default from
+`U_eff.shape[1]` rather than reading the attribute. Only those three functions were audited;
+`invert_oic` and the damped route were not.
+
+**4. The carried-over identity check was vacuous as first written.** Running
+`check_olr_identity(x, x + 0, 0)` with a zero intrinsic placeholder passes unconditionally. It
+now runs against the real intrinsic, recovered as `opd - z_dev`, which is why
+`measured_deviation` returns the raw OPD as a third value.
+
+**5. A module-level `__getattr__` guard loses its message on `from X import Y`.** CPython
+converts the `AttributeError` into an `ImportError` and discards the text, so the caller sees
+only "cannot import name". Measured on this interpreter — and it applies to the **existing**
+`aos_state` guard for `build_geom_svd` / `project_dofs_to_vmodes`, whose docstring claims the
+message survives. That docstring is wrong; left alone rather than changed as a side effect of
+this item, but worth a separate fix. The new `olr/code/olr.py` guard binds real callables
+instead, so the import succeeds and the error arrives at the call site where it is actionable.
+
+## Results so far, one night
+
+`day_obs` 20260318, 915 of 916 visits recovered in all three schemes. Full tables in
+[`olr/docs/scheme_comparison.md`](../../olr/docs/scheme_comparison.md).
+
+| scheme | CWFS-median FWHM [arcsec] | median max `\|d_j\|/r_j` (dimensionless) | s/night (916 exp) |
+| --- | --- | --- | --- |
+| `22_12` | 0.4372 | — | 39.8 |
+| `50_34` | 0.2428 | 52.44 | 39.1 |
+| `50_34_rbr` | 0.2650 | 2.33 | 59.0 |
+
+The physics headline: 22/12 to 50/34 buys 0.1929 arcsec on 99.9% of visits, but unconstrained
+50/34 asks for DOF at a **median 52x and up to 227x the force-limited range**, so that image
+quality belongs to a correction that cannot be applied. RBR bounds it to 2.33x for 0.0281
+arcsec, about 15% of the gain. `kappa = 4` was taken from the bounce test for continuity, not
+tuned for science visits — the parameter most worth revisiting on the full sample.
+
 ## Tried and rejected, and why
 
 - **Projecting the corner measurement into DZ space** to reach `invert_range_penalty`
@@ -173,6 +261,23 @@ cost roughly 5.8 hours over 76,577 visits — so do not simply remove it.
 - **Extending `v50_34__batoid__consdb_v1` night-by-night.** Rejected in favour of a complete
   rerun, so all three variants come from identical code against identical inputs and a
   scheme-to-scheme difference cannot be a build-vintage artifact.
+
+## Rejected during implementation
+
+- **Archiving `run_olr.py` along with `olr.py`.** `olr/Snakefile` has a live rule depending on
+  both, so moving the driver would break the pipeline, and repurposing `olr/` is separate
+  scope. Only the superseded functions moved; the module stayed as a guard, and the pipeline
+  now fails loudly at the first call instead of emitting wrong-sign output.
+- **Deleting rather than archiving.** Aaron's instruction (2026-10-03): move superseded things
+  to an archive for later deletion. No archive directory existed, so `scratch/archive/item2/`
+  was created for code and `value_added/output/scratch/archive/` for the row export.
+- **Changing `aos_state.resolve_ofc_config_dir` for batch safety.** Unnecessary:
+  `$TS_CONFIG_MTTCS_DIR` resolves to `/sdf/home/r/roodman/u/...`, and `/sdf/home/r/roodman/u`
+  symlinks to `/sdf/group/rubin/u/roodman`, a real shared path. The `CLAUDE.md` warning is
+  about the RSP-internal `/home/r/roodman/u/...` form.
+- **Storing the image quality as a focal-plane median via `aos_fwhm.fp_fwhm`.** This is where
+  the implementation was heading before Aaron's correction. It needs a DZ field, which four
+  corners do not determine. See decision B.
 
 ## Two constraints that will interrupt the work
 
