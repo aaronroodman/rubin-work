@@ -22,13 +22,12 @@ follow.
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
 | [6](#6-rebuild-the-miw-under-three-correction-schemes-and-compare) | Rebuild the MIW under three correction schemes and compare | not started |
 | [7](#7-reorganize-the-thermal_focus-analysis-and-its-pdf-report) | Reorganize the `thermal_focus` analysis and its PDF report | not started |
-| [8](#8-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode) | Consolidate the regularized inversions as shared OFC code in `smatrix/code` | done 2026-10-01, awaiting move out |
-| [9](#9-extend-the-bounce-test-to-four-recovery-schemes) | Extend the bounce test to four recovery schemes | done 2026-10-01, awaiting move out |
-| [10](#10-guider-star-second-moments-image-and-centroid-motion-into-the-value-added-db) | Guider star second moments, image and centroid motion, into the value-added DB | not started |
+| [8](#8-guider-star-second-moments-image-and-centroid-motion-into-the-value-added-db) | Guider star second moments, image and centroid motion, into the value-added DB | not started |
 
 Recently closed and moved out: the Danish 1.3 blitz Full Array Mode (FAM) processing, the
-July bounce test and its note for Guillem, the `thermal_focus` study, and the
-`visit_telemetry` backfill to 20250415. See [completed-todos.md](completed-todos.md).
+July bounce test and its note for Guillem, the `thermal_focus` study, the `visit_telemetry`
+backfill to 20250415, the shared regularized-inversion solvers, and the four-scheme bounce
+test. See [completed-todos.md](completed-todos.md).
 
 ---
 
@@ -268,7 +267,7 @@ state. A Butler processing will eventually replace the ConsDB values, but not ye
 | its nightly table and parquet combine | [olr/code/nightly_table.py](../../olr/code/nightly_table.py), [olr/code/combine_parquets.py](../../olr/code/combine_parquets.py) |
 | topic Snakefile and config | `olr/Snakefile`, `olr/config.yaml` |
 | v-modes, DOF sets, per-corner recovery | `aos/code/aos_state.py`, imported by both `olr/` and `value_added/` |
-| the solvers, shared since item 8 | `smatrix/code/regularized_inversion.py` — the **module**, not the `smatrix/code/regularized_inversion/` directory of compare drivers next to it |
+| the solvers, shared code since [completed item 5](completed-todos.md#5-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode) | `smatrix/code/regularized_inversion.py` — the **module**, not the `smatrix/code/regularized_inversion/` directory of compare drivers next to it |
 
 Most of this exists. `build_optical_state.py` takes `--scheme` (`22_12` or `50_34` in its
 `SCHEMES` dict, mapping to the `ts_ofc` DOF-set names `standard_22` and `all_50`),
@@ -305,7 +304,8 @@ and `ok`.
   until an adapter exists. Q13 settles the adapter: shim `corner_recovery_basis` into the
   solver's interface, which is the standard way the optical state is found from the CWFS.
 - `resid_rms_um` as stored is `z_dev - zk_constrained`, the subspace residual. For the RBR
-  variant that is the wrong metric, for the reason settled in items 6 and 9: it cannot see a
+  variant that is the wrong metric, for the reason settled in item 6 and in the completed
+  four-scheme bounce test ([completed item 6](completed-todos.md#6-extend-the-bounce-test-to-four-recovery-schemes)): it cannot see a
   regularizer trading wavefront for amplitude. The achieved residual `dW - S (d / w)` is what
   the RBR row should carry.
 
@@ -1114,7 +1114,7 @@ outside the allowed range `r_j` and changes nothing.
 - Add `mi_config.yaml` entries for the 50/34 with RBR and the 22/12 builds alongside the
   existing 50/34, and run all three over the same visits, rotator bins and filter.
 - Apply the RBR penalty inside the MIW build's per-visit optical-state recovery, calling the
-  shared solver from item 8 rather than copying it.
+  shared solver in `smatrix/code/regularized_inversion.py` rather than copying it.
 - Compare the residual MIW between the three builds, term by term and as field maps, using
   the achieved residual `dW - S (d / w)` rather than the subspace projection.
 - Convert each residual MIW to an inferred full width at half maximum (FWHM) in arcsec over
@@ -1357,218 +1357,7 @@ left open.
 
 ---
 
-## 8. Consolidate the regularized inversions as shared OFC code in `smatrix/code`
-
-**Status:** done 2026-10-01 · **Blocked on:** nothing
-
-**Outcome:** the solvers are shared code at `smatrix/code/regularized_inversion.py`, flat beside
-the `normalization_weights` they read, so both `aos` callers collapsed to one path insert. The
-OIC-style quadratic penalty is a first-class solver there (`oic_authority`, `invert_oic`),
-mirroring `OICController`'s authority construction rather than importing it. `run_oic_compare.py`
-gained a `--rho-scan` and now applies the bounce's own visit selection, so its tables agree with
-`aos`'s. `smatrix/docs/studies/regularized_inversion.md` carries the derivation and the rho scan;
-the runners stay in `smatrix/code/regularized_inversion/`. The move changed no number — the bounce
-run reproduces `bounce_kj_stats.parquet` and every pre-existing `bounce_dof_stats.parquet` column
-bit-identically (max abs diff 0.000e+00 on every column).
-
-Make the Range-Bounded Recovery (RBR) solver and the Optimal Integral Controller (OIC) style
-quadratic penalty term shared code in `smatrix/code`, alongside the other Optical Feedback
-Control (OFC) code that uses the state estimator, so every study applying a regularized
-recovery of the optical state calls the same implementation.
-
-**Goals:** Have one implementation of each inversion, used by the bounce test, the Measured
-Intrinsic Wavefront (MIW) build and any later study, so no second copy can drift from the
-study that validated it.
-
-<details>
-<summary>What exists, scope and open questions</summary>
-
-### Existing machinery to build on
-
-| piece | path |
-| --- | --- |
-| the solvers | [smatrix/code/regularized_inversion.py](../../smatrix/code/regularized_inversion.py) — `forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`, `invert_oic`, `oic_authority`, `achieved_residual`, `dof_range_vector` (shared code since item 8; this row described the pre-move path) |
-| the OIC-style penalty, reimplemented for comparison | [smatrix/code/regularized_inversion/run_oic_compare.py](../../smatrix/code/regularized_inversion/run_oic_compare.py) — `oic_authority`, `invert_oic` |
-| the derivation and validation | `smatrix/docs/studies/regularized_inversion.md` |
-| the shared accessor the bounce study uses | `aos/code/bounce/bounce_lib.py`, `rbr_module` |
-| a second, duplicated bootstrap | `aos/code/miw/check_dof_ranges.py` |
-
-The module already has two callers outside its own study and in a different topic,
-`aos/code/bounce/` and `aos/code/miw/`, each reaching across the topic boundary by a
-hardcoded `parents[3] / 'smatrix' / 'code'` path insert. `bounce_lib.rbr_module()` is the
-considered version of that reach and says so; `check_dof_ranges.py` duplicates the bootstrap
-rather than calling it.
-
-`invert_oic` currently lives in `run_oic_compare.py`, which is a hand-run print-only script
-wired into no Snakefile, so the OIC penalty is not importable as a solver today.
-
-Two snags for the move. `dof_range_vector` imports `normalization_weights` by bare name from
-`smatrix/code`, which is why `rbr_module()` inserts both directories, so that module has to
-move or stay reachable. And in `aos/code/`, `common` in an import almost always means the
-external `lsst.ts.intrinsic.wavefront.common`, so a `common.`-prefixed import needs care in
-that topic.
-
-### Scope
-
-- Place the solvers as shared OFC code in `smatrix/code`, keeping the public API
-  (`forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`,
-  `achieved_residual`, `dof_range_vector`), so `normalization_weights` stays reachable as it
-  is today.
-- Promote the OIC-style quadratic penalty out of `run_oic_compare.py` into the same module as
-  a first-class solver alongside `invert_range_penalty`, mirroring `OICController` rather than
-  importing `ts_ofc`.
-- Give `aos/code/bounce/bounce_lib.py` and `aos/code/miw/check_dof_ranges.py` one shared
-  accessor instead of two duplicated path-insert bootstraps.
-- Keep `smatrix/docs/studies/regularized_inversion.md` as the derivation, and index the
-  promoted OIC solver there.
-- Update `smatrix/README.md` and the affected study docs.
-
-### Open questions
-
-Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
-here as the record of the decision.
-
-**Q1. Does `normalization_weights` move to `common/` too, or stay in `smatrix/code`?** Moving
-it makes the shared module self-contained; leaving it means the shared module still reaches
-into `smatrix/`, which is the coupling the move is meant to remove.
-
-**A:** _By common I meant shared code in the appropriate place.  Here that is in the smatrix/code area not common.  I believe all such OFC code, ie. using state_estimator, is in smatrix/code, so thats where this should go.  So NOT into common/_
-
-**Q2. How do the `aos/code/` callers import it?** A `common.`-prefixed import is the repo
-convention but collides with the external `lsst.ts.intrinsic.wavefront.common` that `common`
-usually means in that topic. The existing pattern there is a bare-name import after a path
-insert.
-
-**A:** _I am not sure_
-
-**Q3. Does the OIC solver keep the reimplementation, or call `ts_ofc`?** `invert_oic` mirrors
-`OICController.authority` rather than importing it, which keeps the comparison in one metric
-and one subspace. Calling `ts_ofc` directly would track the deployed controller but brings its
-`xref` variants and its own normalization.
-
-**A:** _Lets just mirror the OICController code_
-
-</details>
-
----
-
-## 9. Extend the bounce test to four recovery schemes
-
-**Status:** done 2026-10-01 · **Blocked on:** the shared RBR and OIC code in item 8 (done)
-
-**Outcome:** every bounce point now carries four recoveries, five on BLOCK-T724 (the extra one
-being the camera-hexapod-only 5/5, kept alongside the others so what is lost by not using all DOF
-is visible). The 22 DOF are the index set `DOF22` in `run_bounce.py`, not the first 22 indices.
-Every FWHM series is the achieved residual `dW − S·(d/w)` in its own scheme's SVD, so the four are
-comparable; that changed no existing number, since the achieved residual and the subspace
-projection agree for a truncated solution to 1.7e-16 arcsec FWHM. The per-DOF panels paginate at 2
-columns × 5 rows. Results, including the per-leg tables and the FWHM cost of each scheme, are in
-`aos/docs/studies/bounce.md`. The headline: the 22/12 reduced set is feasible with no penalty at
-all (0 of 198 DOF rows over range, worst `max |Δ_j|/r_j = 0.367` dimensionless) but costs +0.042
-arcsec FWHM median, about sixteen times RBR's +0.0027 arcsec; the OIC at the rho matching RBR's
-feasibility costs +0.095 arcsec FWHM median, 36 times RBR, because a quadratic penalty taxes all
-50 DOF to bound the few that need it.
-
-Compare four recoveries of the optical state at each bounce point: the full 50 degree-of-freedom
-/ 34 v-mode (50/34) scheme, 50/34 with the Range-Bounded Recovery (RBR) constraint, the 22/12
-scheme, and 50/34 with the Optimal Integral Controller (OIC) style quadratic penalty. Report
-the degree-of-freedom (DOF) values per point and the image-quality impact per point for each.
-
-**Goals:** Determine how the recovered rigid-body and bending-mode amplitudes and the resulting
-image quality differ between the four schemes, across the bounce legs.
-
-<details>
-<summary>What exists, the plot layout, scope and open questions</summary>
-
-### Existing machinery to build on
-
-| piece | path |
-| --- | --- |
-| the bounce driver | [aos/code/bounce/run_bounce.py](../../aos/code/bounce/run_bounce.py) |
-| its plotting library | [aos/code/bounce/bounce_lib.py](../../aos/code/bounce/bounce_lib.py) |
-| the study doc and the July results | `aos/docs/studies/bounce.md`, `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` |
-| the solvers | `smatrix/code/regularized_inversion.py`, shared code since item 8 |
-| the OIC-style penalty | `smatrix/code/regularized_inversion/run_oic_compare.py`, `invert_oic` |
-
-The run builds two SVDs today, both through
-`build_ofc_svd(iZs, k_min, k_max, n_keep, n_dof=...)`: the 50/34 default, and a 5 DOF / 5
-v-mode camera-hexapod-only SVD for the rotator bounce, whose `n_dof=CAM_HEX_DOF` shows that
-`n_dof` accepts an index list rather than only a count. There is no 22/12 in
-`aos/code/bounce/` at all.
-
-The RBR arm does use the achieved residual, as assumed: `_rbr_fwhm` calls
-`invert_range_penalty` then `_achieved_fwhm`, which is
-`fp_fwhm(svd, iZs, achieved_residual(dW, d, svd), ...)`. The per-(night, leg) series
-`fwhm_after_default` and `fwhm_after_rbr` are both achieved residuals and so directly
-comparable.
-
-One inconsistency to fix while here: the per-bounce bar chart plots
-`fwhm_after_50_34` and `fwhm_after_5_5`, which are subspace-projection residuals from
-`aos_fwhm.residual_dW`, on the same axis as `fwhm_after_rbr`, which is an achieved residual.
-The code's own comment says that comparison needs the achieved residual.
-
-The per-DOF panel figure `plot_dof_vs_b_value_panels` currently computes
-`nrows = ceil(n_panels / ncols)` with `ncols=5` and `panel_size=(2.6, 2.1)` inches and emits
-**all** panels on one figure — 50 DOF becomes a single 10 by 5 page at 14.2 by 22.2 inches.
-`plot_values_vs_ordinal_pages` in the same file already paginates with
-`per_page = ncols * rows_per_page`, so the pattern to copy is local. `cfg` already carries
-`dof_ncols` and `dof_rows_per_page`, which this function does not read.
-
-### Scope
-
-- Build the 22/12 and the OIC-penalty recoveries alongside the existing 50/34 and 50/34 RBR,
-  so four schemes are recovered at every bounce point.
-- Use the 22 DOF index set for 22/12 rather than the first 22 DOF indices.
-- Devise a study over the bounce data that sweeps the OIC penalty `rho` and picks the value
-  holding the recovered DOF roughly inside their allowed range `r_j` without degrading the
-  inferred FWHM too far, then adopt that `rho` for the four-scheme comparison.
-- Keep the 5 DOF / 5 v-mode camera-hexapod recovery as the only scheme plotted for the rotator
-  bounce, since the camera alone should correct a rotator-induced misalignment.
-- Plot all four schemes in each per-DOF panel.
-- Report the DOF value per point per scheme, in each DOF's own unit, against the allowed
-  range `r_j`.
-- Report the image-quality impact per point per scheme as an inferred full width at half
-  maximum (FWHM) in arcsec, using the achieved residual `dW - S (d / w)` for every scheme so
-  the four are comparable.
-- Change the per-DOF panel layout to 2 columns by 5 rows per page, paginating across pages,
-  with panels enlarged to suit.
-- Fix the per-bounce bar chart to use the achieved residual for every series rather than
-  mixing it with the subspace projection.
-- Update `aos/docs/studies/bounce.md` with the four-scheme comparison.
-
-### Open questions
-
-Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
-here as the record of the decision.
-
-**Q1. What `rho` does the OIC arm use?** `ts_ofc` ships `motion_penalty = 0.0` dimensionless,
-at which the penalty is inactive, and the only non-zero values in that package are 1e-4 and
-1e-5 in its tests. `run_oic_compare.py` sweeps 0 to 1e-1. So the arm needs a chosen value, or
-a sweep, rather than the shipped default.
-
-**A:** _The value of this term needs some study, so please devise a study using the bounce test data to pick a value of rho that limits the DoF to roughly inside their range while not degrading the image quality too much.  Then lets use that rho value afterwards._
-
-**Q2. Does the 5/5 camera-hexapod arm stay?** The rotator bounce currently adds it as a fifth
-recovery. Keeping it makes five schemes on the rotator legs while the other legs carry four.
-
-**A:** _Yes, this stays and for the rotator bounce it remains the only scheme to plot.  Reason is that for the rotator we only want to move the Camera since it should be able to fully correct for any Camera rotator induced misalignment.  We don't want any of the other schemes for the Rotator_
-
-**Q3. Do all four schemes appear in one panel per DOF, or one panel per scheme?** Four series
-on a shared panel keeps the comparison in one place but crowds it; the enlarged 2 by 5 layout
-was chosen for the four-series case.
-
-**A:** _All 4 schemes in each DoF panel, to make easy comparisons_
-
-**Q4. Which bounce and param set does this run on?** The July results are Danish 1.2 at
-`A_50_34_i_5rot`. Item 6 moves the MIW work to Danish 1.3, so the two studies would sit on
-different retrievals unless this moves too.
-
-**A:** _Stick with Danish 1.2 here_
-
-</details>
----
-
-## 10. Guider star second moments, image and centroid motion, into the value-added DB
+## 8. Guider star second moments, image and centroid motion, into the value-added DB
 
 **Status:** not started · **Blocked on:** nothing
 
