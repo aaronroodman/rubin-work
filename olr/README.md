@@ -1,22 +1,31 @@
 # olr — Open Loop Reproduction (OLR) pipeline
 
-A Snakemake pipeline that reproduces the **open-loop** WFS wavefront from a
-night of Rubin AOS operations, as the starting point for a revised AOS analysis.
+> **The Zernike-space pipeline described below is superseded, and its sign was wrong.**
+> The open-loop state for every science and acquisition visit is now built into the
+> value-added database by `value_added/code/build_optical_state.py`, with the calculation in
+> `aos/code/open_loop.py`. This topic is being repurposed for **analysis of that stored
+> OLR** — see [`docs/scheme_comparison.md`](docs/scheme_comparison.md). `code/olr.py` is now
+> a guard that raises with the replacement named; the original is archived at
+> `scratch/archive/item2/olr_superseded.py`.
 
 During the night the Active Optics System (AOS) runs closed-loop: it measures
 corner-WFS Zernikes and applies a correction (the *trim*, an aggregated 50-DOF
-offset) to the mirrors/hexapods. The OLR **adds that correction back** to the
-measured wavefront, recovering what would have been seen had the loop been open:
+offset) to the mirrors/hexapods. The OLR removes that correction from the measured
+wavefront, recovering what would have been seen had the loop been open:
 
 ```
-z_change          = (sens_mat @ trim) reshaped to the 4 corners, Z20/Z21 zeroed
-olr_opd[c]        = zk_opd[c]        + z_change[c]
-olr_deviation[c]  = zk_deviation[c]  + z_change[c]
+z_change          = (sens_mat @ trim) over the 4 corners x 21 Zernikes
+olr_deviation[c]  = zk_deviation[c]  - z_change[c]
 ```
 
-`zk_intrinsic` is unchanged, so `olr_deviation == olr_opd - zk_intrinsic` still
-holds. We carry the **OPD** (not just the deviation, as in the source notebooks)
-because the downstream measured-intrinsic-wavefront (MIW) analysis needs it.
+The **subtraction** is the sign correction. The trim is applied with the *opposite* sign to
+drive the measured deviation toward zero, so `Trim - Deviation` is the visit's optical state
+and the open-loop reconstruction is its negative, `Deviation - Trim`. The superseded code
+added `z_change` instead.
+
+Note that `olr_deviation == olr_opd - zk_intrinsic` holds under **either** sign, the
+intrinsic cancelling from both sides, so that identity never caught the error. It is carried
+into the replacement as a basis and corner-ordering check only.
 
 ## Stages
 
