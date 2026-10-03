@@ -49,6 +49,16 @@ sides, to 0.0 arcsec. Pixel-position matching is deliberately not used, because 
 star lands up to 34.7 pixels apart on the two sides — the two exposures point slightly
 differently — so any tolerance tight enough to be safe would reject real pairs.
 
+Beyond the Danish 1.2 schema the donut table also carries the **per-side** quantities the
+mean would otherwise destroy, listed in `blitz_reader.SIDE_COLUMNS`: `blur_intra` /
+`blur_extra` in arcsec, the per-side fit cost and optimality, and the per-side Zernike
+vectors in both OCS and CCS (total, intrinsic and deviation) in micrometres of wavefront.
+`visits.parquet` likewise carries `median_blur_intra_arcsec` and
+`median_blur_extra_arcsec`. The paired columns keep their names and their meaning, so a
+Danish 1.2 reader is unaffected; these are additions. They exist so a side-of-focus
+question needs no second pass over the Butler collection, which is expensive: 966 visits
+take about half an hour and the donut table is 13 GB.
+
 The paired row's wavefront is the **arithmetic mean of the two unpaired sides**, in
 micrometres of wavefront, which is the like-for-like counterpart of a Danish 1.2 joint
 intra+extra fit. Every other paired scalar is likewise the mean of its two sides, matching
@@ -137,6 +147,7 @@ ConsDB access:
 | `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | column-by-column review of the Danish 1.3 "blitz" unpaired output (`donutBlitzFamResults`, `donutBlitzResults`) against the Danish 1.2 `aggregateAOSVisitTableRaw` and the processed `donuts.parquet`, on one FAM triplet; donuts matched per CCD on detector pixel position separately for each side of focus, and the deviation and intrinsic Zernikes compared in micrometres of wavefront, both per side of focus and as the mean of the two unpaired sides against the Danish 1.2 joint fit; per-donut blur compared the same two ways; and the blitz table metadata read, cross-checked against what the column contents alone imply, and rolled up to the Butler input provenance |
 | `notebooks/fam_processing/wavefront_outliers.ipynb` | development of a cut removing individual bad donut wavefront fits in FAM science-CCD data. Per Charge-Coupled Device (CCD) per visit, the median and normalized median absolute deviation (nMAD) of the per-donut wavefront deviation, per Noll Zernike; the distribution of that nMAD per term; then two candidate per-donut flags — a robust z-score against the donut's own CCD median, and a fixed absolute wavefront threshold — with the fit diagnostics of the worst outliers tabulated against the donuts that pass |
 | `notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb` | the same comparison for the Corner Wavefront Sensors (CWFS), where the dataset type is `donutBlitzResults` and the pairing differs: Danish 1.2 pairs a star on the extra-focal SW0 half-sensor with a *different* star on the intra-focal SW1 half, while Danish 1.3 fits each side separately. Each Danish 1.2 pair is matched back to its two unpaired results and the deviation and intrinsic Zernikes compared three ways — each half alone and the mean of the two — against the Danish 1.2 joint fit. One in-focus reference visit is carried as a deep dive, then all 62 visits of `day_obs` 20260315 present in both collections are pooled for the per-Noll statistics |
+| `notebooks/fam_processing/blur_intra_extra_offset.ipynb` | median donut blur per side of focus against FAM ordinal number over the whole Danish 1.3 blitz unpaired ensemble, intra-focal and extra-focal drawn with a separate marker and colour, with night boundaries marked so within-night seeing drift is separable by eye. Then three one-parameter models of the intra/extra relation — constant offset in arcsec, fractional ratio dimensionless, and quadrature difference in arcsec**2 — each fitted by a median and compared on robust residual scatter, with a Huber fit of the difference against extra blur as the discriminator between them |
 
 ## Output
 

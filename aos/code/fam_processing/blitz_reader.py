@@ -133,6 +133,26 @@ DONUT_COLUMNS = (
     'intra_extra_offset_x_arcsec', 'intra_extra_offset_y_arcsec',
 )
 
+# Per-side columns this reader adds beyond the Danish 1.2 schema, so a question about one
+# side of focus does not require another Butler pass over the blitz collection. The
+# paired columns above keep their names and their meaning (the mean of the two sides), so
+# a Danish 1.2 reader is unaffected; these are additions, not replacements.
+#
+# `blur_intra` / `blur_extra` are the per-side `group_fwhm` in arcsec, the quantity the
+# paired `blur` averages away. The Zernike vectors are the per-side counterparts of
+# `zk_*`: the same 21 fitted Noll terms in micrometres of wavefront, before the mean.
+SIDE_COLUMNS = (
+    'blur_intra', 'blur_extra',
+    'lstsq_cost_intra', 'lstsq_cost_extra',
+    'lstsq_optimality_intra', 'lstsq_optimality_extra',
+    'zk_OCS_intra', 'zk_OCS_extra',
+    'zk_intrinsic_OCS_intra', 'zk_intrinsic_OCS_extra',
+    'zk_deviation_OCS_intra', 'zk_deviation_OCS_extra',
+    'zk_CCS_intra', 'zk_CCS_extra',
+    'zk_intrinsic_CCS_intra', 'zk_intrinsic_CCS_extra',
+    'zk_deviation_CCS_intra', 'zk_deviation_CCS_extra',
+)
+
 
 def _bare(column):
     """Strip an `astropy.units.Quantity` down to a plain float array.
@@ -407,10 +427,11 @@ def donut_table(table, meta, day_obs, seq_num, mode='mean'):
     Returns
     -------
     arrow_table : `pyarrow.Table`
-        One row per paired donut, columns exactly `DONUT_COLUMNS`. Zernike columns are
-        ``list<double>`` of the 21 fitted Noll terms in micrometres of wavefront; field
-        angles ``thx_*`` / ``thy_*`` are `double` in **radians**; centroids are `double`
-        in detector pixels of the binned image; ``blur`` is `double` in arcsec.
+        One row per paired donut, columns exactly `DONUT_COLUMNS` followed by
+        `SIDE_COLUMNS`. Zernike columns are ``list<double>`` of the 21 fitted Noll terms
+        in micrometres of wavefront; field angles ``thx_*`` / ``thy_*`` are `double` in
+        **radians**; centroids are `double` in detector pixels of the binned image;
+        ``blur``, ``blur_intra`` and ``blur_extra`` are `double` in arcsec.
     stats : `dict`
         The counts from `pair_sides`, plus ``n_donuts`` (the output row count,
         dimensionless) and ``n_detectors`` (distinct detectors present, dimensionless).
@@ -424,6 +445,11 @@ def donut_table(table, meta, day_obs, seq_num, mode='mean'):
 
     Notes
     -----
+    Beyond the Danish 1.2 schema the table also carries `SIDE_COLUMNS`: the per-side
+    ``blur``, fit-cost and Zernike vectors, before the mean over the two sides. They
+    exist so a side-of-focus question — the intra/extra blur difference, or the
+    side-dependent Zernike bias — is answerable from the parquet alone.
+
     Columns the blitz product has no counterpart for are filled with NaN rather than
     guessed: ``chi2``, ``lstsq_status``, ``model_dx``, ``model_dy``, ``model_flux``. The
     blitz ``group_fit_cost`` and ``group_fit_optimality`` are per fit *group* rather than
@@ -556,15 +582,43 @@ def donut_table(table, meta, day_obs, seq_num, mode='mean'):
         'intra_extra_offset_y_arcsec': pa.array(off_y),
     }
 
-    missing = [c for c in DONUT_COLUMNS if c not in columns]
-    extra = [c for c in columns if c not in DONUT_COLUMNS]
+    # The per-side columns, kept so a side-of-focus question needs no second Butler pass.
+    # In the single-side modes idx_i and idx_e are the same rows, so both sides of each
+    # pair carry that one side's value, consistent with the paired columns above.
+    fwhm_all = _bare(table['group_fwhm'])
+    cost_all = _bare(table['group_fit_cost'])
+    opt_all = _bare(table['group_fit_optimality'])
+    columns.update({
+        'blur_intra': pa.array(fwhm_all[idx_i]),
+        'blur_extra': pa.array(fwhm_all[idx_e]),
+        'lstsq_cost_intra': pa.array(cost_all[idx_i]),
+        'lstsq_cost_extra': pa.array(cost_all[idx_e]),
+        'lstsq_optimality_intra': pa.array(opt_all[idx_i]),
+        'lstsq_optimality_extra': pa.array(opt_all[idx_e]),
+        'zk_OCS_intra': _rows(dev_ocs_all[idx_i] + int_ocs_all[idx_i]),
+        'zk_OCS_extra': _rows(dev_ocs_all[idx_e] + int_ocs_all[idx_e]),
+        'zk_intrinsic_OCS_intra': _rows(int_ocs_all[idx_i]),
+        'zk_intrinsic_OCS_extra': _rows(int_ocs_all[idx_e]),
+        'zk_deviation_OCS_intra': _rows(dev_ocs_all[idx_i]),
+        'zk_deviation_OCS_extra': _rows(dev_ocs_all[idx_e]),
+        'zk_CCS_intra': _rows(dev_ccs_all[idx_i] + int_ccs_all[idx_i]),
+        'zk_CCS_extra': _rows(dev_ccs_all[idx_e] + int_ccs_all[idx_e]),
+        'zk_intrinsic_CCS_intra': _rows(int_ccs_all[idx_i]),
+        'zk_intrinsic_CCS_extra': _rows(int_ccs_all[idx_e]),
+        'zk_deviation_CCS_intra': _rows(dev_ccs_all[idx_i]),
+        'zk_deviation_CCS_extra': _rows(dev_ccs_all[idx_e]),
+    })
+
+    all_columns = tuple(DONUT_COLUMNS) + tuple(SIDE_COLUMNS)
+    missing = [c for c in all_columns if c not in columns]
+    extra = [c for c in columns if c not in all_columns]
     if missing or extra:
         raise ValueError(f'donut column set mismatch: missing {missing}, extra {extra}')
 
     stats['n_donuts'] = n_out
     stats['n_detectors'] = int(len(np.unique(det[idx_e]))) if n_out else 0
-    arrow_table = pa.Table.from_arrays([columns[c] for c in DONUT_COLUMNS],
-                                       names=list(DONUT_COLUMNS))
+    arrow_table = pa.Table.from_arrays([columns[c] for c in all_columns],
+                                       names=list(all_columns))
     return arrow_table, stats
 
 
@@ -583,7 +637,9 @@ def visit_metrics(arrow_table, min_donuts_per_detector=3):
     -------
     metrics : `dict`
         ``n_donuts``, ``n_detectors``, ``n_detectors_with_min_donuts`` (all dimensionless
-        counts) and ``median_blur_arcsec`` (arcsec, NaN when no donut has a finite blur).
+        counts), ``median_blur_arcsec`` (arcsec, NaN when no donut has a finite blur) and
+        the per-side ``median_blur_intra_arcsec`` / ``median_blur_extra_arcsec`` (arcsec,
+        same NaN convention).
 
     Notes
     -----
@@ -592,17 +648,22 @@ def visit_metrics(arrow_table, min_donuts_per_detector=3):
     the median over finite blur values only.
     """
     detector = np.asarray(arrow_table.column('detector').to_pylist(), dtype=str)
-    blur = np.asarray(arrow_table.column('blur').to_pylist(), dtype=float)
     names, counts = (np.unique(detector, return_counts=True) if len(detector)
                      else (np.array([]), np.array([])))
-    with np.errstate(invalid='ignore'):
-        median_blur = (float(np.nanmedian(blur))
-                       if np.isfinite(blur).any() else float('nan'))
+
+    def _median_blur(column):
+        values = np.asarray(arrow_table.column(column).to_pylist(), dtype=float)
+        with np.errstate(invalid='ignore'):
+            return (float(np.nanmedian(values))
+                    if np.isfinite(values).any() else float('nan'))
+
     return {
         'n_donuts': int(arrow_table.num_rows),
         'n_detectors': int(len(names)),
         'n_detectors_with_min_donuts': int((counts >= min_donuts_per_detector).sum()),
-        'median_blur_arcsec': median_blur,
+        'median_blur_arcsec': _median_blur('blur'),
+        'median_blur_intra_arcsec': _median_blur('blur_intra'),
+        'median_blur_extra_arcsec': _median_blur('blur_extra'),
     }
 
 

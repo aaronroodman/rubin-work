@@ -104,6 +104,9 @@ VISITS_COLUMNS = (
     'nollIndices', 'n_donuts', 'n_detectors', 'n_detectors_with_min_donuts',
     'median_blur_arcsec', 'science_program', 'rotator_angle', 'rotator_flagged',
     'visit_quality_pass',
+    # Beyond the run_mktable schema: the per-side blur medians, so the intra/extra
+    # difference is available per visit without re-reading the blitz collection.
+    'median_blur_intra_arcsec', 'median_blur_extra_arcsec',
 )
 
 
