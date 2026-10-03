@@ -45,6 +45,7 @@ and working state that span the whole repo — and so belong to no single topic 
 | [`status/parallel_claude_sessions.md`](status/parallel_claude_sessions.md) | running several Claude Code sessions on one working tree: what collides, git worktrees, subagents |
 | [`status/step1_structure_decisions.md`](status/step1_structure_decisions.md) | step 1 of the reorganization: the agreed directory structure for code and output, the reusability tiers, and the queued moves |
 | [`status/todo.md`](status/todo.md) | one-line index of open work across the whole repository, each row pointing at the document that specifies it |
+| [`status/item2_optical_state_build_handoff.md`](status/item2_optical_state_build_handoff.md) | handoff for implementing item 2 of `todos/todo-ideas.md`: the three code findings behind its decisions, and what was rejected |
 
 Topic-specific docs stay in their topic (`<topic>/docs/`), not here.
 
