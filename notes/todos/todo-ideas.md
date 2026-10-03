@@ -16,7 +16,7 @@ follow.
 | # | item | status |
 | --- | --- | --- |
 | [1](#1-compare-different-wavefront-retrieval-methods-using-visits-from-several-nights) | Compare different wavefront retrieval methods using visits from several nights | not started, waiting for CWFS processing |
-| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started, scope settled |
+| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started; two arms ready, RBR arm blocked on Q13 |
 | [3](#3-extend-the-miw-grid-so-the-interpolation-hull-covers-the-full-field-of-view) | Extend the MIW grid so the interpolation hull covers the full field of view | diagnosed, Guillem has the fix |
 | [4](#4-confluence-page-documenting-the-aos-production-runs-in-repomain) | Confluence page documenting the AOS production runs in `/repo/main` | probe done, page not written |
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
@@ -160,8 +160,9 @@ compared do not share a ts_wep or donut_viz version.
 
 ## 2. Open-loop and deviation-recovered optical state for science visits, three schemes
 
-**Status:** not started, scope settled 2026-10-02 · **Blocked on:** nothing (Q11 and Q12
-shape the build but do not block starting the code move)
+**Status:** not started, scope settled 2026-10-02 · **Blocked on:** the RBR arm only — the
+`50_34_rbr` variant needs Q13 settled before it can be built (Q11 answered; Q12 shapes the
+MIW variant list). The 22/12 and 50/34 arms and the code move are unblocked.
 
 For all science and acquisition visits, compute and store two optical states per correction
 scheme: the **open-loop** one, which is the Trim minus Deviation degree-of-freedom (DOF)
@@ -228,6 +229,19 @@ code adds. Only 22 of the 50 DOF enter `sens_mat` there, which matters for the 5
 corner row and prints the check into its log, so the forward direction has a verified
 reference implementation to move and reuse.
 
+**What is actually in `olr/code/` is narrower than "the OLR calculation".** It is Zernike
+space only: `build_olr_sensitivity_matrix`, `apply_trim` and the corner stacking, plus the
+pipeline around them. There is no DOF recovery, no v-mode projection and **no DZ code at
+all** there. So the move is `build_olr_sensitivity_matrix` + `apply_trim` generalized over
+the DOF set, and nothing more; the v-mode half already lives where it belongs (next
+paragraph), and the DZ optical state Q10 asks for has to be **written**, not moved. Two
+defects to fix in the same move: `build_olr_sensitivity_matrix` constructs a bare
+`OFCData(name='lsst')` with **no normalization assertion**, which is exactly the obsolete-
+normalization path `make_state_estimator` raises on and which *rotates* the v-mode basis
+rather than rescaling it; and its field angles are named `field_angles_ccs` while
+`aos_state` requires OCS at rotator zero, so the frame has to be settled explicitly rather
+than inherited from the variable name.
+
 **`build_optical_state.py` already stores the open-loop v-modes.** `make_commanded_projector`
 projects both the hexapod lookup-table DOF and the Trim DOF through `vmodes_from_dofs`, and
 `upsert_optical_state` writes them as `v_modes_lut` and `v_modes_trim` alongside the
@@ -254,7 +268,7 @@ state. A Butler processing will eventually replace the ConsDB values, but not ye
 | its nightly table and parquet combine | [olr/code/nightly_table.py](../../olr/code/nightly_table.py), [olr/code/combine_parquets.py](../../olr/code/combine_parquets.py) |
 | topic Snakefile and config | `olr/Snakefile`, `olr/config.yaml` |
 | v-modes, DOF sets, per-corner recovery | `aos/code/aos_state.py`, imported by both `olr/` and `value_added/` |
-| the solvers, shared since item 8 | `smatrix/code/regularized_inversion.py` |
+| the solvers, shared since item 8 | `smatrix/code/regularized_inversion.py` — the **module**, not the `smatrix/code/regularized_inversion/` directory of compare drivers next to it |
 
 Most of this exists. `build_optical_state.py` takes `--scheme` (`22_12` or `50_34` in its
 `SCHEMES` dict, mapping to the `ts_ofc` DOF-set names `standard_22` and `all_50`),
@@ -276,10 +290,19 @@ and `ok`.
   `('all_50', 50, 34)` DOF set as `50_34`, so `scheme` no longer determines `n_dof` and
   `n_modes` uniquely — two schemes now share them and differ only by solver. Record the
   penalty and its parameters in `state_variant.notes`, since no column describes them.
-- `recover_optical_state` is the OFC state-estimator path, while `invert_range_penalty` takes
-  `(dW, svd, ranges)` against an `ofc_svd` SVD. Whether the two share a forward operator
-  closely enough for the RBR DOF to be comparable to the truncated DOF needs checking before
-  the build, not after.
+  Adding the entry is enough to make `--scheme 50_34_rbr` selectable, because the argparse
+  choices are `sorted(SCHEMES)`; `build_state_estimator` will then happily build the
+  `all_50` estimator and `recover_night` will run the **truncated** solver under the RBR
+  variant name. Guard explicitly: the builder must refuse `50_34_rbr` unless the RBR solver
+  path is wired, or that variant silently becomes a duplicate of `50_34`.
+- **The two solvers read different measurement spaces, so the RBR call cannot be made at
+  all today.** `recover_optical_state` takes 84 corner values (4 corners x 21 Noll, µm of
+  wavefront) and inverts the corner-evaluated, Zernike-selected SVD from
+  `corner_recovery_basis`. `invert_range_penalty(dW, svd, ranges)` takes `dW` over
+  `svd.kj_grid` — DZ coefficients over the full field, µm of wavefront — against an
+  `OFCSvd` from `build_ofc_svd`. A science visit supplies the former. This is not a
+  "how closely do the operators agree" tolerance to measure; there is no number to report
+  until an adapter exists. Q13 settles which adapter.
 - `resid_rms_um` as stored is `z_dev - zk_constrained`, the subspace residual. For the RBR
   variant that is the wrong metric, for the reason settled in items 6 and 9: it cannot see a
   regularizer trading wavefront for amplitude. The achieved residual `dW - S (d / w)` is what
@@ -303,14 +326,32 @@ The empty-but-registered variants are a live trap worth not reproducing:
 `efd_db.optical_state('v50_34__miw__consdb_v1')` returns an empty DataFrame rather than
 raising, so an analysis naming an unbuilt variant gets zero rows and no error.
 
+### One caveat on comparing the schemes through v-modes
+
+`recover_optical_state` is hybrid: it inverts in `corner_recovery_basis` and reports
+v-modes in the `make_state_estimator` basis. Those are different bases, and the measured
+principal angle between the retained DOF subspaces is 4.768 deg for `standard_22`/12 but
+**89.951 deg for `all_50`/34** — effectively orthogonal. So the stored `v_modes` stand in a
+radically different relation to the recovered DOF under 50/34 than under 22/12, and a
+22/12-versus-50/34 comparison read off `v_modes` alone is not comparing like with like.
+This item's stated goal is exactly that comparison, so the comparison should be done on the
+**DOF** and on image quality, with v-modes used for continuity with what the summit
+reports rather than as the metric of record. Worth confirming the angle on the as-built
+estimators rather than trusting the number quoted in the docstring.
+
 ### Scope
 
-- **First, consolidate the Trim-minus-Deviation code in one place** (Q10): move the OLR
-  calculation for DOF, v-modes and DZ out of `olr/code/` into `aos/code` (the v-modes, DOF
-  sets and per-corner recovery already live there) or `common/code`, and delete the moved
-  code from `olr/` so there is one implementation, not two. `olr/` is then repurposed for
-  analysis of the OLR as stored in the database. Deleting those files needs Aaron's go-ahead
-  at the time.
+- **First, consolidate the Trim-minus-Deviation code in one place** (Q10), which is a
+  smaller and differently shaped job than it first looks (see "What is actually in
+  `olr/code/`" above). Concretely: move `build_olr_sensitivity_matrix` and `apply_trim`
+  from `olr/code/olr.py` into `aos/code/` — where the v-modes, DOF sets and per-corner
+  recovery already live — taking the state estimator as an argument so the DOF set decides
+  the column count (Q11), asserting the required normalization, and naming the Zernike
+  frame as OCS. The v-mode and DOF half needs no move: it is already in
+  `build_optical_state.py` and `aos_state.py`. The DZ optical state is new code. Then
+  delete the superseded functions from `olr/code/olr.py` so there is one implementation,
+  not two, and repurpose `olr/` for analysis of the OLR as stored in the database.
+  Deleting anything needs Aaron's go-ahead at the time.
 - For each of the three schemes (22/12, 50/34, 50/34 plus RBR), compute and store both
   states per visit: the open-loop DOF and v-modes, and the DOF and v-modes recovered from
   the visit's deviation alone. The CWFS Zernikes stay in ConsDB and are queried live, not
@@ -328,9 +369,15 @@ raising, so an analysis naming an unbuilt variant gets zero rows and no error.
   name>` plus a `MiwCornerLookup` from `aos/code/miw_corner_intrinsic.py`; the builder
   raises rather than guessing if the ref is missing. Which MIW build is "the existing" one
   is Q12.
-- Check, before building, that the RBR solver's forward operator and the state estimator's
-  agree closely enough that the RBR and truncated DOF are comparable per visit; report the
-  discrepancy rather than assuming it is zero.
+- **Before any RBR build, write the corner-basis adapter (Q13).** The preferred form is a
+  small shim object built from `corner_recovery_basis` that presents the six attributes the
+  solver module actually reads — `U_eff`, `Sigma`, `V`, `n_keep_eff`,
+  `normalization_weights`, `dof_idx` — mapping one-to-one onto the basis dict's `U`, `s`,
+  `V`, `n_modes`, `norm_vector`, `dof_indices`. With that, `invert_range_penalty`,
+  `dof_range_vector` and `achieved_residual` all run against the corner problem unchanged,
+  and the RBR DOF are comparable to the truncated DOF by construction rather than by
+  measured agreement — which is what the old "check the forward operators agree" bullet was
+  reaching for. Assert that the shim's weights are the `REQUIRED_NORM_YAML` ones.
 - Store the achieved residual `dW - S (d / w)` for the RBR variant, not the subspace
   residual, and record on the variant which residual its `resid_rms_um` column holds.
 - Carry `run_olr.py`'s identity check `olr_deviation == olr_opd - intrinsic` into the moved
@@ -342,7 +389,15 @@ raising, so an analysis naming an unbuilt variant gets zero rows and no error.
   two intrinsic routes that is up to six variants; the four batoid-route and MIW-route
   combinations actually wanted are worth naming before building (Q12).
 - Run the builds as sharded batch jobs through `run_build.sh --what state --mode batch`,
-  which Aaron submits.
+  which Aaron submits. Size it honestly first: with Q12's four-variant list this is **four
+  full-span builds over 366 nights**, one of which replaces the existing 181-night
+  `v50_34__batoid__consdb_v1`, not "2.4x the nights" of a single build. Measure the
+  per-night cost on one night before submitting the set.
+- Confirm the state estimators are held for the life of each shard. `corner_recovery_basis`
+  caches on `id(state_estimator)`, and CPython reuses an `id` after garbage collection, so
+  a short-lived estimator per scheme could in principle return another scheme's basis from
+  the cache. With three schemes live in one build this is worth an explicit check rather
+  than an assumption.
 - Compare the schemes on image quality over the science sample, using the open-loop versus
   deviation-recovered difference per v-mode and per DOF.
 - Update `value_added/docs/schema.md` and `status/build_progress.md` with the new axis, the
@@ -369,6 +424,11 @@ subsamples to use for various studies._
 **Q3. Does the OLR table live in the existing `aos_efd.duckdb` or its own database file?**
 
 **A:** I am not sure, but this table will also need to be keyed off the nDof/nVmode scheme and perhaps also the wavefront retrieval,so I guess it will want its own table
+
+**Superseded 2026-10-02** by the merge with the value-added build. There is no separate OLR
+table: the open-loop and deviation-recovered states are rows in the existing
+`optical_state`, keyed by `variant_id`, with the scheme and the retrieval route carried as
+variant axes exactly as this answer asked for. Kept as the record of the keying decision.
 
 **Q4. Is 20260419 the right single cut?** It is the SVD normalization fix date and appears
 to be the Danish 1.2 changeover date too, but refit WCS may have gone online on a
@@ -446,7 +506,16 @@ those schemes, or keep 22 everywhere and accept that the open-loop Zernikes are 
 of the correction rather than all of it. This decides whether the moved code is a copy or a
 generalization.
 
-**A:** _unanswered_
+**A:** _Use the scheme's own DOF set, so 50/34 gets 50 columns._ There is nothing to
+generalize: `olr/code/olr.py` gets its 22 columns only by hand-masking `comp_dof_idx`
+(`M1M3Bend[7:] = False`, `M2Bend[5:] = False`), which is precisely what
+`make_state_estimator(dof_set=...)` already does via `_comp_dof_idx(DOF_SETS[dof_set])`. So
+the moved function takes the state estimator as an argument and reads the column count off
+it. `DEFAULT_DOF_INDICES` (`range(0,17) + range(30,35)`) goes away — it is a hand-written
+duplicate of `DOF_SETS['standard_22']` that can drift from it silently. Keeping 22
+everywhere is rejected on its merits, not on cost: it would put the 50/34 open-loop state
+and its deviation-recovered state in different subspaces, which defeats the comparison this
+item exists for.
 
 **Q12. Which MIW build, and which of the six variants get built?** Q9 says "the existing
 MIW", but `--intrinsic miw` needs `--intrinsic-ref` naming a specific build and a
@@ -455,7 +524,35 @@ intrinsic routes is six variants; the natural subset is the three batoid ones pl
 (the one already registered), which is four. Worth fixing the list and the MIW build name
 before any batch submission, since each variant is a full-span build.
 
-**A:** _unanswered_
+**A:** _Batoid intrinsic to start_
+
+**Q13. How does the RBR solver reach a corner measurement?** This is the one thing blocking
+the `50_34_rbr` variant. `invert_range_penalty` wants `dW` over `svd.kj_grid` — DZ
+coefficients over the full field — while a science visit gives 84 corner Zernike values and
+`recover_optical_state` inverts the corner-evaluated SVD. Three options:
+
+1. **Shim `corner_recovery_basis` into the solver's interface.** The solver module reads
+   only `U_eff`, `Sigma`, `V`, `n_keep_eff`, `normalization_weights` and `dof_idx` (and
+   `kj_grid`, which the three functions needed here never touch). The basis dict already
+   carries all six under the names `U`, `s`, `V`, `n_modes`, `norm_vector`,
+   `dof_indices`, so this is a small dataclass in `aos/code/aos_state.py` and no solver
+   change. `dW` becomes the 84-value `z_dev`. `dof_range_vector` still works, because its
+   `f_j` is the field-averaged quadrature over the full 50 DOF and does not depend on which
+   rows the sensitivity was evaluated at — provided `dof_idx` is the corner basis's
+   `dof_indices`. **Preferred**; cheapest and keeps one solver.
+2. **Project the corner measurement into DZ space,** fitting a DZ field to the four corner
+   vectors and then running the existing path. Rejected: four field points cannot constrain
+   the focal-plane DZ orders `build_ofc_svd` uses, so a regularized fit feeds a regularized
+   solve and the RBR-versus-truncated DOF difference then has two inseparable causes.
+3. **Write a corner-space range-penalty solver.** Duplicates the IRLS and contradicts the
+   scope line about calling the shared solver rather than copying it. Only if option 1 needs
+   real surgery.
+
+If option 1 turns out not to work, drop `50_34_rbr` from this item, build the two real
+schemes full-span, and move RBR to its own item with the shim as its first task — the
+22/12-versus-50/34 comparison is the stated goal and does not need RBR.
+
+**A:** _option 1 which is the standard approach for finding the optical state from the CWFS_
 
 </details>
 
