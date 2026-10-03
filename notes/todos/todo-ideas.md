@@ -208,25 +208,41 @@ rerun complete over the wider span, not extended.
 
 ### The OLR is Trim minus Deviation
 
-This is what collapses the two halves of this item into one build. The open-loop state is
-just the Trim DOF; its v-modes are the forward projection `aos_state.vmodes_from_dofs(trim,
-state_estimator, n_modes=...)`, which is `StateEstimator.get_vmodes_from_dofs` — the basis
-the Main Telescope AOS reports on the summit. Its CWFS Zernikes are that state pushed
-through the sensitivity matrix, which is the OLR. So OLR and deviation recovery are the
-forward and inverse directions of one operator, computed per scheme in the same pass, and
-the comparison between them is the thing worth looking at.
+This is what collapses the two halves of this item into one build. Deviation recovery is the
+inverse direction of the sensitivity operator and the OLR is the forward direction, so both
+are computed per scheme in the same pass, and the comparison between them is the thing worth
+looking at.
 
-One sign convention to carry over exactly. In `olr/code/olr.py` the OLR **adds the applied
-correction back** to the measured wavefront, recovering what would have been seen with the
-loop open — `apply_trim(..., subtract=False)`, i.e. `olr_opd[c] = zk_opd[c] + z_change[c]`
-with `z_change = sens_mat @ trim` reshaped to the four corners and Z20/Z21 zero-padded.
-"Trim minus Deviation" is the DOF-space statement of the same operation; the Zernike-space
-code adds. Only 22 of the 50 DOF enter `sens_mat` there, which matters for the 50/34 schemes
-(see Q11).
+#### The two signed quantities, settled 2026-10-02
 
-`run_olr.py` already asserts the identity `olr_deviation == olr_opd - intrinsic` on every
-corner row and prints the check into its log, so the forward direction has a verified
-reference implementation to move and reuse.
+Two different quantities differ only by an overall sign, and conflating them is the failure
+mode this section exists to prevent. Both are built; they are not alternatives.
+
+- **optical state** = `Trim − Deviation`. This is the DOF vector that defines the visit's
+  optical state, and it is the `thermal_focus` convention generalized from v-mode 1 to all
+  v-modes: `thermal_focus_lib` computes `v1_trim + MEASURED_SIGN * v1` with
+  `MEASURED_SIGN = -1.0`, which is literally Trim minus the measured state.
+- **OLR output** = `−Trim + Deviation` = `Deviation − Trim`. The wavefront, DOF and v-modes
+  that *would have been present had the loop been open*. This is what "Open Loop
+  Reconstruction" names, so this is the sign the OLR columns carry, in DOF, v-mode and
+  Zernike space alike.
+
+The reasoning, which settles the sign without appeal to any existing implementation: a
+wavefront deviation is equivalent to some DOF vector, and the Trim is applied with the
+**opposite** sign in order to push that deviation toward zero. Hence `Trim − Deviation` is
+the optical state, and the open-loop reconstruction is its negative.
+
+**`olr/code/olr.py` has this sign wrong.** It does
+`olr_opd[c] = zk_opd[c] + z_change[c]` with `z_change = sens_mat @ trim`
+(`apply_trim(..., subtract=False)`), which adds the correction rather than removing it. So
+the move into `aos/code/` is a **sign fix, not a port**, and `run_olr.py`'s identity check
+`olr_deviation == olr_opd - intrinsic` is not evidence the sign is right — that identity is
+insensitive to it, holding for either sign because `intrinsic` is carried through unchanged
+and cancels. Carry the identity check across anyway (it still catches a basis or padding
+error), but do not treat it as validating the sign.
+
+Only 22 of the 50 DOF enter `sens_mat` in `olr/code/olr.py`, which matters for the 50/34
+schemes (see Q11).
 
 **What is actually in `olr/code/` is narrower than "the OLR calculation".** It is Zernike
 space only: `build_olr_sensitivity_matrix`, `apply_trim` and the corner stacking, plus the
@@ -348,16 +364,24 @@ summit reports rather than as the metric of record. The angles above are quoted 
   `olr/code/`" above). Concretely: move `build_olr_sensitivity_matrix` and `apply_trim`
   from `olr/code/olr.py` into `aos/code/` — where the v-modes, DOF sets and per-corner
   recovery already live — taking the state estimator as an argument so the DOF set decides
-  the column count (Q11), asserting the required normalization, and naming the Zernike
-  frame as OCS. The v-mode and DOF half needs no move: it is already in
-  `build_optical_state.py` and `aos_state.py`. The DZ optical state is new code. Then
+  the column count (Q11), asserting the required normalization, naming the Zernike
+  frame as OCS, and **fixing the sign** (see "The two signed quantities" above — the move
+  is a sign fix, not a port). The v-mode and DOF half needs no move: it is already in
+  `build_optical_state.py` and `aos_state.py`. Then
   delete the superseded functions from `olr/code/olr.py` so there is one implementation,
   not two, and repurpose `olr/` for analysis of the OLR as stored in the database.
   Deleting anything needs Aaron's go-ahead at the time.
+- **No DZ optical state** (decided 2026-10-02, superseding Q10's "DZ optical state" phrase
+  and the earlier scope line calling it new code). This work is CWFS-only with no FAM, and
+  four corner wavefronts do not uniquely map to a DZ field, so the optical state is
+  evaluated from the corner wavefronts directly. Nothing in this item constructs,
+  stores or fits a DZ state. The one place DZ-shaped machinery is still touched is the RBR
+  solver, and the Q13 shim exists precisely so the solver runs against the corner problem
+  without a DZ field.
 - For each of the three schemes (22/12, 50/34, 50/34 plus RBR), compute and store both
-  states per visit: the open-loop DOF and v-modes, and the DOF and v-modes recovered from
-  the visit's deviation alone. The CWFS Zernikes stay in ConsDB and are queried live, not
-  copied (Q6).
+  states per visit: the open-loop (OLR) DOF and v-modes carrying the `Deviation − Trim`
+  sign, and the DOF and v-modes recovered from the visit's deviation alone. The CWFS
+  Zernikes stay in ConsDB and are queried live, not copied (Q6).
 - Cover **all science and acq visits** (Q2, Q4, Q7) — no date cut. This extends back to
   20250415 and therefore includes rerunning the already-populated
   `v50_34__batoid__consdb_v1` over the wider span, not just building the empty variants.
@@ -410,6 +434,32 @@ summit reports rather than as the metric of record. The angles above are quoted 
   using the open-loop versus deviation-recovered difference per DOF over the science sample.
   Report v-modes alongside for continuity with the summit, but not as the metric of
   record — see the caveat above.
+- **The image-quality metric is the median over the four CWFS, not over the focal plane**
+  (decided 2026-10-02). It applies to the **deviation-recovered** arm, not the OLR arm.
+  Rationale: this work uses the CWFS only, with no Full Array Mode (FAM), so the optical
+  state is evaluated from the four corner wavefronts **directly, without passing through a
+  Double Zernike (DZ) state** — four corners do not uniquely determine a DZ field. The
+  optical state in the science sensors is not well known, and extrapolating there would fold
+  that uncertainty into the IQ estimate; evaluating where the wavefront is actually measured
+  avoids it.
+
+  Concretely, per visit per scheme: take the achieved residual wavefront at the four corner
+  field points, convert each corner's 21-Zernike vector with ts_wep
+  `convertZernikesToPsfWidth`, quadrature-sum over Zernikes within each corner, then take
+  the **median over the four corners** [arcsec FWHM contribution].
+
+  **This differs from every other wavefront-IQ number in the repository**, which all go
+  through `aos/code/aos_fwhm.py`: `fp_grid` / `focal_basis` / `fp_fwhm` evaluate a DZ field
+  on an area-uniform focal-plane grid out to `FP_RADIUS = 1.75 deg` at 0.35 deg steps and
+  take the median over **that grid**. Its callers (`run_bounce.py`,
+  `run_wfs_dof_compare.py`) have a DZ `dW` in hand because they come from FAM or a fitted DZ
+  field, which is unavailable here. The conversion step is shared; the evaluation domain is
+  not. The two numbers are **not interchangeable** — label the stored column so no later
+  analysis substitutes one for the other.
+- Store the recovered CWFS-median FWHM as a **column on `optical_state`** (decided
+  2026-10-02), computed in the build, so the scheme comparison stays a self-join through
+  `efd_db.compare_variants` with no recomputation. Additive schema migration, as
+  `v_modes_lut` / `v_modes_trim` already were.
 - Update `value_added/docs/schema.md` and `status/build_progress.md` with the new axis, the
   new columns, and the realized row counts and spans.
 - Spot-check against a night already analysed elsewhere, so a build error shows up as a

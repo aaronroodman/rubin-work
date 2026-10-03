@@ -24,9 +24,59 @@ files; none belong to this item.
 
 ## Next concrete action
 
-Start the build order in the item's scope: move the two `olr/` functions into `aos/code/`,
-write the corner-basis shim, add the guarded `50_34_rbr` entry to `SCHEMES`, write the DZ
-optical state, cost one night, hand Aaron the three batch submissions. Nothing gates this.
+Start the build order in the item's scope: move the two `olr/` functions into `aos/code/`
+(fixing the sign, see below), write the corner-basis shim, add the guarded `50_34_rbr` entry
+to `SCHEMES`, add the CWFS-median IQ column, cost one night, hand Aaron the three batch
+submissions. Nothing gates this.
+
+## Three decisions taken at the start of the implementing session, 2026-10-02
+
+These came from Aaron during implementation kickoff and **override the specification where
+they conflict**. Item 2's text has been updated to match; they are repeated here because
+each reverses or narrows something a reader of the older text would otherwise assume.
+
+**A. The OLR sign. `olr/code/olr.py` is wrong, so the move is a sign fix, not a port.**
+Two quantities differ by an overall sign and both are built:
+
+| quantity | value | what it is |
+| --- | --- | --- |
+| optical state | `Trim − Deviation` | the DOF defining the visit's optical state; the `thermal_focus` convention (`MEASURED_SIGN = -1.0`) generalized from v1 to all v-modes |
+| **OLR output** | `Deviation − Trim` | what would have been present with the loop open — the sign the OLR columns carry, in DOF, v-mode and Zernike space alike |
+
+Aaron's reasoning, which settles it without reference to any implementation: a deviation is
+equivalent to some DOF vector, and the Trim is applied with the **opposite** sign to drive
+that deviation toward zero. So `Trim − Deviation` is the optical state and the open-loop
+reconstruction is its negative. `olr/code/olr.py` instead *adds* the correction
+(`zk_opd + sens_mat @ trim`).
+
+**Do not take `run_olr.py`'s identity check as validating the sign.** The identity
+`olr_deviation == olr_opd - intrinsic` holds for *either* sign, because `intrinsic` is
+carried through unchanged and cancels. It still catches basis and zero-padding errors, so
+carry it across — but it is not sign evidence, and the earlier handoff text implying the
+forward direction was "verified" was wrong on this point.
+
+**B. The image-quality metric is the median over the four CWFS, not over the focal plane.**
+Applies to the **deviation-recovered** arm only, not the OLR arm. This work is CWFS-only
+with no FAM, and four corners do not uniquely determine a DZ field, so the optical state is
+evaluated from the corner wavefronts directly with **no DZ state anywhere in the item** —
+which also retires the old scope line about "the DZ optical state is new code". Rationale:
+the optical state in the science sensors is poorly known, and extrapolating there would fold
+that uncertainty into the IQ number, so it is evaluated only where the wavefront is measured.
+
+This is **not** the metric any other wavefront-IQ number in the repository uses. All of
+those go through `aos/code/aos_fwhm.py`, whose `fp_grid` / `focal_basis` / `fp_fwhm`
+evaluate a DZ field on a focal-plane grid to `FP_RADIUS = 1.75 deg` and median over *that
+grid*; its callers (`run_bounce.py`, `run_wfs_dof_compare.py`) have a DZ `dW` from FAM or a
+fitted field. The ts_wep `convertZernikesToPsfWidth` conversion is shared, the evaluation
+domain is not, and the two numbers must not be substituted for each other. Stored as a
+column on `optical_state` (additive migration, as `v_modes_lut`/`v_modes_trim` were) so the
+comparison stays a self-join.
+
+**C. `$TS_CONFIG_MTTCS_DIR` is fine in batch — no change needed.** It resolves to
+`/sdf/home/r/roodman/u/LSST/packages/ts_config_mttcs`, and `/sdf/home/r/roodman/u` is a
+symlink to `/sdf/group/rubin/u/roodman` (→ `/sdf/data/rubin/user/roodman`), a real shared
+path visible on batch nodes. The root `CLAUDE.md` warning concerns the RSP-internal
+`/home/r/roodman/u/...` form, not this one. `aos_state.resolve_ofc_config_dir` stays as is.
 
 ## Three code findings
 
@@ -140,12 +190,12 @@ Both are standing rules in `CLAUDE.md`, repeated here because this item hits the
 `olr/code/` is **Zernike space only**: `build_olr_sensitivity_matrix`, `apply_trim`, the
 corner stacking, and the pipeline around them. There is no DOF recovery, no v-mode
 projection and **no DZ code at all**. So the move is those two functions and nothing more;
-the v-mode half already lives in `build_optical_state.py` and `aos_state.py`, and the DZ
-optical state Q10 asks for has to be written from scratch. Two defects to fix in the same
-move: the bare `OFCData(name='lsst')` with no normalization assertion, and field angles
-named `field_angles_ccs` where `aos_state` requires the Optical Coordinate System (OCS) at
-rotator zero.
+the v-mode half already lives in `build_optical_state.py` and `aos_state.py`. Per decision
+B above there is **no DZ optical state to write** — the earlier claim that Q10 required one
+is retired. Three defects to fix in the same move: the bare `OFCData(name='lsst')` with no
+normalization assertion; field angles named `field_angles_ccs` where `aos_state` requires
+the Optical Coordinate System (OCS) at rotator zero; and the **sign** (decision A).
 
-One reference implementation is worth keeping: `olr/code/run_olr.py` asserts the identity
-`olr_deviation == olr_opd - intrinsic` on every corner row and prints the check into its
-log. Carry that assertion into the moved code and run it per visit at build time.
+Carry `olr/code/run_olr.py`'s identity assertion `olr_deviation == olr_opd - intrinsic`
+into the moved code and run it per visit at build time — but see decision A: it is
+insensitive to the sign, so it is a basis-and-padding check, not a sign check.
