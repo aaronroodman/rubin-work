@@ -91,7 +91,7 @@ __all__ = [
     "REQUIRED_NORM_YAML", "OBSOLETE_NORM_YAML", "SMATRIX_ROTATION_ANGLE_DEG",
     "ZK_FRAME",
     "resolve_ofc_config_dir", "make_state_estimator", "vmodes_from_dofs",
-    "corner_recovery_basis", "recover_optical_state",
+    "corner_recovery_basis", "CornerSvdShim", "recover_optical_state",
     "fetch_corner_zernikes_consdb",
 ]
 
@@ -363,6 +363,95 @@ def corner_recovery_basis(state_estimator):
                  rotation_angle=SMATRIX_ROTATION_ANGLE_DEG)
     _CORNER_BASIS_CACHE[key] = basis
     return basis
+
+
+class CornerSvdShim:
+    """`corner_recovery_basis` presented through the regularized solvers' interface.
+
+    ``smatrix/code/regularized_inversion.py`` is written against an
+    `lsst.ts.intrinsic.wavefront.ofc_svd.OFCSvd`, whose ``dW`` lives over a Double Zernike
+    (DZ) ``kj_grid`` spanning the focal plane. A science visit supplies no such thing: it
+    gives 84 corner values (4 corners x 21 Noll, µm of wavefront), and four field points do
+    not uniquely determine a DZ field. This adapter lets the shared solvers run against the
+    corner problem unchanged, so Range-Bounded Recovery (RBR) DOF are comparable to the
+    truncated DOF *by construction* rather than by measured agreement.
+
+    The mapping is one-to-one onto the basis dict:
+
+    ==========================  =============================
+    solver attribute            `corner_recovery_basis` key
+    ==========================  =============================
+    ``U_eff``                   ``U``, sliced to ``n_keep``
+    ``Sigma``                   ``s``
+    ``V``                       ``V``
+    ``n_keep_eff``              ``n_modes``
+    ``normalization_weights``   ``norm_vector``
+    ``dof_idx``                 ``dof_indices``
+    ``kj_grid``                 none — stays `None`
+    ==========================  =============================
+
+    Parameters
+    ----------
+    state_estimator : `lsst.ts.ofc.state_estimator.StateEstimator`
+        From `make_state_estimator`.
+    n_keep : `int`, optional
+        Singular modes retained, i.e. the scheme's v-mode count. Default is the
+        estimator's `truncate_index`.
+
+    Raises
+    ------
+    RuntimeError
+        If the estimator's resolved normalization is not `REQUIRED_NORM_YAML`. The
+        obsolete weights *rotate* the v-mode basis rather than rescaling it, and
+        `dof_range_vector` back-derives the allowed range as ``r_j = w_j^2 f_j`` directly
+        from these weights, so wrong weights would silently produce wrong ranges and
+        therefore a wrong penalty.
+    ValueError
+        If `n_keep` exceeds the modes the corner basis offers.
+
+    Notes
+    -----
+    ``U_eff`` is **sliced to `n_keep`**, not handed over whole. The solvers take
+    ``n_kept = U_eff.shape[1]`` as the retained-mode count and raise on
+    ``rank > n_kept``, so passing the full ``U`` would silently make the penalty-off limit
+    a full-rank solve instead of the truncated one the comparison needs.
+
+    ``kj_grid`` stays `None`, which is sound **only** because `invert_range_penalty`,
+    `dof_range_vector` and `achieved_residual` never read it — verified by grepping
+    ``svd\\.[A-Za-z_]*`` across that module, where ``kj_grid`` appears in docstrings
+    alone. Re-run that grep before relying on this with any other solver; `invert_oic`
+    and the damped route were not audited.
+
+    ``dof_range_vector`` works unchanged against this shim because its ``f_j`` is the
+    field-averaged quadrature over the full 50 DOF and does not depend on which field rows
+    the sensitivity was evaluated at — provided `dof_idx` is this basis's own
+    ``dof_indices``, which it is.
+    """
+
+    def __init__(self, state_estimator, n_keep=None):
+        basis = corner_recovery_basis(state_estimator)
+        got = state_estimator.ofc_data.controller.get('normalization_weights_filename')
+        if got != REQUIRED_NORM_YAML:
+            raise RuntimeError(
+                f'refusing to build a CornerSvdShim with normalization {got!r}: the '
+                f'range penalty needs {REQUIRED_NORM_YAML!r}. dof_range_vector '
+                f'back-derives the allowed range as r_j = w_j^2 * f_j straight from '
+                f'these weights, so the obsolete {OBSOLETE_NORM_YAML!r} would give '
+                f'silently wrong ranges and a wrong penalty.')
+        n_avail = int(basis['n_modes'])
+        k = n_avail if n_keep is None else int(n_keep)
+        if k > n_avail:
+            raise ValueError(
+                f'CornerSvdShim got n_keep={k} but the corner basis offers only '
+                f'{n_avail} modes')
+        self.U_eff = np.asarray(basis['U'], dtype=float)[:, :k]
+        self.Sigma = np.asarray(basis['s'], dtype=float)[:k]
+        self.V = np.asarray(basis['V'], dtype=float)[:, :k]
+        self.n_keep_eff = k
+        self.normalization_weights = np.asarray(basis['norm_vector'], dtype=float)
+        self.dof_idx = list(basis['dof_indices'])
+        self.kj_grid = None
+        self.rotation_angle = basis['rotation_angle']
 
 
 def recover_optical_state(z_dev, state_estimator, n_modes=None, zk_frame=ZK_FRAME):
