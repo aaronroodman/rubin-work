@@ -136,6 +136,20 @@ def build_state_estimator(scheme, ofc_version=DEFAULT_OFC_VERSION):
     return se, n_modes
 
 
+def _same_db(a_path, b_path):
+    """Whether two ``--db``-style arguments resolve to the same file.
+
+    `None` means `efd_db.default_db_path`, and either side may be relative or carry
+    symlinks, so both are resolved before comparing. DuckDB refuses a second connection to
+    one file under a different read-only setting, so this decides whether the telemetry
+    reader can simply reuse the write connection.
+    """
+    def _r(p):
+        return (pathlib.Path(p) if p is not None
+                else pathlib.Path(efd_db.default_db_path())).expanduser().resolve()
+    return _r(a_path) == _r(b_path)
+
+
 def resolve_solver(scheme, state_estimator, n_modes):
     """The recovery solver for one scheme, with the RBR guard.
 
@@ -767,8 +781,10 @@ def main(argv=None):
     # A shard writes its own database, whose visit_telemetry is empty, so the Trim must be
     # read from elsewhere or every commanded and open-loop column comes back NaN without
     # any error. Fail loudly on an empty telemetry source rather than building NaN columns.
+    # Reuse the write connection when --telemetry-db names the database already open:
+    # DuckDB refuses a second connection to one file under a different read-only setting.
     tel_con = con
-    if a.telemetry_db:
+    if a.telemetry_db and not _same_db(a.telemetry_db, a.db):
         tel_con = efd_db.open_db(a.telemetry_db, readonly=True)
     n_tel = tel_con.execute('SELECT COUNT(*) FROM visit_telemetry').fetchone()[0]
     if not n_tel:

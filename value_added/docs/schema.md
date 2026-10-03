@@ -39,7 +39,7 @@ them in would only create a second, staler copy of something already cheap to re
 |---|---|---|---|
 | `visit_telemetry` | 213,704 | 194 | wide — one row per exposure |
 | `m1m3_thermal_r2` | 211,922 | 19 | wide — one row per exposure |
-| `optical_state` | 90,695 | 10 | long — keyed `(visit_id, variant_id)` |
+| `optical_state` | 90,695 | 13 | long — keyed `(visit_id, variant_id)` |
 | `fam_dz` | 2,528 | 16 | long — keyed `(visit_id, fam_variant_id)` |
 | `state_variant` | 3 | 11 | registry for `optical_state` |
 | `fam_variant` | 1 | 14 | registry for `fam_dz` |
@@ -76,11 +76,55 @@ from the same per-night fetch, and none has variants.
 **`optical_state` is long** — keyed `(visit_id, variant_id)`, with DuckDB `DOUBLE[]` list
 columns for `v_modes` and `dof`. The recovered optical state is not one column set but a
 family of variants along three independent axes, each of which will gain members: the DOF
-scheme (`22_12`, `50_34`), the intrinsic-wavefront route (`batoid`, `miw`), and the optical
+scheme (`22_12`, `50_34`, `50_34_rbr`), the intrinsic-wavefront route (`batoid`, `miw`), and
+the optical
 path difference (OPD) version. A new variant is therefore **rows, not schema**, and comparing
 two variants is a self-join on `visit_id`. `state_variant` is the registry saying what each
 variant is; a reprocessing of the measured Zernikes arrives as a new `opd_version` rather
 than overwriting existing numbers.
+
+### The open-loop columns and the two sign conventions
+
+Each row carries both arms of the per-visit state, and **they differ by an overall sign**:
+
+| columns | quantity | meaning |
+|---|---|---|
+| `v_modes`, `dof` | deviation-recovered | inverted from this visit's measured deviation alone |
+| `v_modes_olr`, `dof_olr` | **open loop**, `Deviation − Trim` | what would have been present with the loop open |
+| `v_modes_lut`, `v_modes_trim` | commanded | hexapod look-up table and Trim, projected in this variant's scheme |
+
+The visit's **optical state is `Trim − Deviation`**, which is the *negative* of the stored
+`_olr` columns — the convention `thermal_focus` uses for v-mode 1 (`v1_trim + MEASURED_SIGN *
+v1`, `MEASURED_SIGN = -1.0`). Read `dof_olr` when you want the open-loop reconstruction;
+negate it when you want the optical state. `aos/code/open_loop.py` owns both.
+
+### `fwhm_cwfs_arcsec` is a corner median, not a focal-plane median
+
+The PSF FWHM contribution [arcsec] of the residual wavefront this scheme's correction leaves,
+**medianed over the four corner wavefront sensors**. It describes the deviation-recovered arm.
+
+This is **not** comparable with any image-quality number produced through
+`aos/code/aos_fwhm.py` (`fp_fwhm`), which evaluates a Double Zernike field on a focal-plane
+grid out to 1.75 deg and medians over *that grid*. The ts_wep `convertZernikesToPsfWidth`
+conversion is shared; the evaluation domain is not. The corner domain is used here because
+this work is corner-sensor-only with no Full Array Mode, and four field points do not
+uniquely determine a DZ field — extrapolating to the science sensors would fold the
+poorly-known optical state there into the number.
+
+### `resid_rms_um` means different things per variant
+
+The truncated schemes store the **subspace** residual `z_dev − zk_constrained`. The
+range-bounded scheme stores the **achieved** residual `dW − S (d / w)`, because the subspace
+residual is independent of the recovered amplitudes and so cannot see a regularizer trading
+wavefront for amplitude. `state_variant.notes` records which, per variant — check it before
+comparing the column across variants.
+
+### `50_34_rbr` is a pseudo-scheme
+
+Range-Bounded Recovery rides in the `scheme` field rather than as a fourth name axis, so
+`scheme` **no longer determines `n_dof` and `n_modes` uniquely**: `50_34` and `50_34_rbr`
+share `all_50` and 34 modes and differ only in the solver. The penalty parameters
+(`kappa = 4`, `power = 3`, both dimensionless) live only in `state_variant.notes`.
 
 The one failure mode this introduces is a forgotten variant filter, which would silently
 multiply the sample by the variant count. So `efd_db.optical_state(variant, ...)` requires
@@ -244,7 +288,13 @@ Each long table has a registry describing what its variants mean.
 
 `state_variant` (3 rows) — `variant_id`, `scheme` (e.g. `50_34`), `n_dof`, `n_modes`,
 `intrinsic_route` (`batoid` or `miw`), `intrinsic_ref` (for the MIW route, the MIW build name,
-e.g. `pathA_50_34_i_5rot`), `opd_source`, `opd_version`, `ofc_config_version`.
+e.g. `pathA_50_34_i_5rot`), `opd_source`, `opd_version`, `ofc_config_version`, `notes`.
+
+`notes` is **load-bearing, not commentary**: it is the only record of which solver a variant
+used, which residual its `resid_rms_um` holds, and the range penalty's parameters. Nothing
+else in the schema distinguishes `v50_34__batoid__consdb_v1` from
+`v50_34_rbr__batoid__consdb_v1`, whose `scheme`, `n_dof` and `n_modes` differ only in the
+first field.
 
 `fam_variant` (1 row) — `fam_variant_id`, `param_set`, `intrinsic_route`, `intrinsic_ref`,
 `prefix`, `k_min`, `k_max`, `pupil_j`, `scheme`, `n_dof`, `n_modes`, `fits_path`.
