@@ -16,7 +16,7 @@ follow.
 | # | item | status |
 | --- | --- | --- |
 | [1](#1-compare-different-wavefront-retrieval-methods-using-visits-from-several-nights) | Compare different wavefront retrieval methods using visits from several nights | not started, waiting for CWFS processing |
-| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started; two arms ready, RBR arm blocked on Q13 |
+| [2](#2-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes) | Open-loop and deviation-recovered optical state for science visits, three schemes | not started, scope settled and unblocked |
 | [3](#3-extend-the-miw-grid-so-the-interpolation-hull-covers-the-full-field-of-view) | Extend the MIW grid so the interpolation hull covers the full field of view | diagnosed, Guillem has the fix |
 | [4](#4-confluence-page-documenting-the-aos-production-runs-in-repomain) | Confluence page documenting the AOS production runs in `/repo/main` | probe done, page not written |
 | [5](#5-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
@@ -160,9 +160,9 @@ compared do not share a ts_wep or donut_viz version.
 
 ## 2. Open-loop and deviation-recovered optical state for science visits, three schemes
 
-**Status:** not started, scope settled 2026-10-02 · **Blocked on:** the RBR arm only — the
-`50_34_rbr` variant needs Q13 settled before it can be built (Q11 answered; Q12 shapes the
-MIW variant list). The 22/12 and 50/34 arms and the code move are unblocked.
+**Status:** not started, scope settled 2026-10-02 · **Blocked on:** nothing. All 13 open
+questions are answered, so the whole item — both arms, the RBR arm included — is ready to
+build.
 
 For all science and acquisition visits, compute and store two optical states per correction
 scheme: the **open-loop** one, which is the Trim minus Deviation degree-of-freedom (DOF)
@@ -204,8 +204,8 @@ the dates below are provenance to record, not filters to apply:
   gates interpretation, not the build.
 
 This extends the build back to where the ConsDB Zernikes start, 20250415 — about 2.4x the
-span of the one populated variant today (see below), and it means rebuilding that variant
-rather than only adding new ones.
+span of the one populated variant today (see below), and it means the populated variant is
+rerun complete over the wider span, not extended.
 
 ### The OLR is Trim minus Deviation
 
@@ -302,7 +302,8 @@ and `ok`.
   `svd.kj_grid` — DZ coefficients over the full field, µm of wavefront — against an
   `OFCSvd` from `build_ofc_svd`. A science visit supplies the former. This is not a
   "how closely do the operators agree" tolerance to measure; there is no number to report
-  until an adapter exists. Q13 settles which adapter.
+  until an adapter exists. Q13 settles the adapter: shim `corner_recovery_basis` into the
+  solver's interface, which is the standard way the optical state is found from the CWFS.
 - `resid_rms_um` as stored is `z_dev - zk_constrained`, the subspace residual. For the RBR
   variant that is the wrong metric, for the reason settled in items 6 and 9: it cannot see a
   regularizer trading wavefront for amplitude. The achieved residual `dW - S (d / w)` is what
@@ -320,7 +321,7 @@ Row counts are from `build_progress.md`, read on 2026-09-24. `visit_telemetry` c
 nights and 213,704 exposures over `day_obs` 20250415 to 20260714, so the recovered optical
 state covers a visibly narrower span than the telemetry it joins to. Closing that gap is now
 in scope: the no-cut answer means every variant should reach the full telemetry span, which
-is roughly 2.4x the nights and a rebuild of the one populated variant.
+is roughly 2.4x the nights and a complete rerun of the one populated variant.
 
 The empty-but-registered variants are a live trap worth not reproducing:
 `efd_db.optical_state('v50_34__miw__consdb_v1')` returns an empty DataFrame rather than
@@ -334,10 +335,10 @@ principal angle between the retained DOF subspaces is 4.768 deg for `standard_22
 **89.951 deg for `all_50`/34** — effectively orthogonal. So the stored `v_modes` stand in a
 radically different relation to the recovered DOF under 50/34 than under 22/12, and a
 22/12-versus-50/34 comparison read off `v_modes` alone is not comparing like with like.
-This item's stated goal is exactly that comparison, so the comparison should be done on the
-**DOF** and on image quality, with v-modes used for continuity with what the summit
-reports rather than as the metric of record. Worth confirming the angle on the as-built
-estimators rather than trusting the number quoted in the docstring.
+This item's stated goal is exactly that comparison, so **the comparison is done on the DOF
+and on image quality** (decided 2026-10-02), with v-modes used for continuity with what the
+summit reports rather than as the metric of record. Worth confirming the angle on the
+as-built estimators rather than trusting the number quoted in the docstring.
 
 ### Scope
 
@@ -357,19 +358,21 @@ estimators rather than trusting the number quoted in the docstring.
   the visit's deviation alone. The CWFS Zernikes stay in ConsDB and are queried live, not
   copied (Q6).
 - Cover **all science and acq visits** (Q2, Q4, Q7) — no date cut. This extends back to
-  20250415 and therefore includes rebuilding the already-populated
+  20250415 and therefore includes rerunning the already-populated
   `v50_34__batoid__consdb_v1` over the wider span, not just building the empty variants.
 - Build `v22_12__batoid__consdb_v1`, which is a run of the existing builder rather than new
   code.
 - Add the RBR variant as the pseudo-scheme `50_34_rbr` (Q5), with `kappa = 4` and
   `power = 3`, both dimensionless, matching the bounce test (Q8). Call the shared solver in
   `smatrix/code/regularized_inversion.py` rather than copying it.
-- Build the MIW intrinsic route with the existing MIW (Q9), filling the registered-but-empty
-  `v50_34__miw__consdb_v1`. This needs `--intrinsic miw --intrinsic-ref <the MIW build
-  name>` plus a `MiwCornerLookup` from `aos/code/miw_corner_intrinsic.py`; the builder
-  raises rather than guessing if the ref is missing. Which MIW build is "the existing" one
-  is Q12.
-- **Before any RBR build, write the corner-basis adapter (Q13).** The preferred form is a
+- **Batoid intrinsic only** (Q12). Three variants, all on the batoid route:
+  `v22_12__batoid__consdb_v1`, `v50_34__batoid__consdb_v1` and
+  `v50_34_rbr__batoid__consdb_v1`. The MIW route is deferred: the registered-but-empty
+  `v50_34__miw__consdb_v1` stays empty here and is built by item 6, where the MIW builds are
+  decided. When it is built it needs `--intrinsic miw --intrinsic-ref <the MIW build name>`
+  plus a `MiwCornerLookup` from `aos/code/miw_corner_intrinsic.py`; the builder raises
+  rather than guessing if the ref is missing.
+- **Before any RBR build, write the corner-basis adapter (Q13, answered).** It is a
   small shim object built from `corner_recovery_basis` that presents the six attributes the
   solver module actually reads — `U_eff`, `Sigma`, `V`, `n_keep_eff`,
   `normalization_weights`, `dof_idx` — mapping one-to-one onto the basis dict's `U`, `s`,
@@ -385,21 +388,26 @@ estimators rather than trusting the number quoted in the docstring.
   fails loudly. Since the Zernikes are not stored, this is a build-time assertion in the
   log, not something a later query can re-derive from the database alone.
 - Keep every scheme as rows under its own variant, never as new columns, so a comparison
-  stays a self-join on `visit_id` through `efd_db.compare_variants`. With three schemes over
-  two intrinsic routes that is up to six variants; the four batoid-route and MIW-route
-  combinations actually wanted are worth naming before building (Q12).
+  stays a self-join on `visit_id` through `efd_db.compare_variants`. Three schemes on the
+  batoid route is **three variants** here (Q12); the MIW route would double that and is
+  deferred to item 6.
 - Run the builds as sharded batch jobs through `run_build.sh --what state --mode batch`,
-  which Aaron submits. Size it honestly first: with Q12's four-variant list this is **four
-  full-span builds over 366 nights**, one of which replaces the existing 181-night
-  `v50_34__batoid__consdb_v1`, not "2.4x the nights" of a single build. Measure the
+  which Aaron submits. Size it honestly first: with Q12's batoid-only list this is **three
+  full-span builds over 366 nights**, not "2.4x the nights" of a single build. Measure the
   per-night cost on one night before submitting the set.
+- **Replace `v50_34__batoid__consdb_v1` with a complete rerun** (decided 2026-10-02) rather
+  than extending it night-by-night. Its existing 90,695 rows over 181 nights are discarded
+  and rebuilt over the full 366-night span, so the three variants are built by identical code
+  against identical inputs and a scheme-to-scheme difference cannot be an artifact of build
+  vintage. Dropping those rows needs Aaron's go-ahead at the time.
 - Confirm the state estimators are held for the life of each shard. `corner_recovery_basis`
   caches on `id(state_estimator)`, and CPython reuses an `id` after garbage collection, so
   a short-lived estimator per scheme could in principle return another scheme's basis from
   the cache. With three schemes live in one build this is worth an explicit check rather
   than an assumption.
-- Compare the schemes on image quality over the science sample, using the open-loop versus
-  deviation-recovered difference per v-mode and per DOF.
+- Compare the schemes **on the DOF and on image quality**, using the open-loop versus
+  deviation-recovered difference per DOF over the science sample. Report v-modes alongside
+  for continuity with the summit, but not as the metric of record — see the caveat above.
 - Update `value_added/docs/schema.md` and `status/build_progress.md` with the new axis, the
   new columns, and the realized row counts and spans.
 - Spot-check against a night already analysed elsewhere, so a build error shows up as a
@@ -524,7 +532,11 @@ intrinsic routes is six variants; the natural subset is the three batoid ones pl
 (the one already registered), which is four. Worth fixing the list and the MIW build name
 before any batch submission, since each variant is a full-span build.
 
-**A:** _Batoid intrinsic to start_
+**A:** _Batoid intrinsic to start._ So **three variants, not four**:
+`v22_12__batoid__consdb_v1`, `v50_34__batoid__consdb_v1` and `v50_34_rbr__batoid__consdb_v1`.
+No MIW build name is needed here, and `v50_34__miw__consdb_v1` stays registered-but-empty
+until item 6 builds it — which leaves the empty-variant trap above live, so an analysis must
+not name it meanwhile.
 
 **Q13. How does the RBR solver reach a corner measurement?** This is the one thing blocking
 the `50_34_rbr` variant. `invert_range_penalty` wants `dW` over `svd.kj_grid` — DZ
