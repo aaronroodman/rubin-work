@@ -355,8 +355,8 @@ suffix.
 
 The suffix is the **pupil model**, not a code version: `_legacy` is the pre-pupil-work
 danish model, `_v3.14` the Batoid as-built model, `_v1000` as-built plus updated M1M3
-measurements and the M1 baffles. The unsuffixed collections are believed to be `legacy`
-too — unconfirmed, and tracked as Q7 of
+measurements and the M1 baffles. The unsuffixed collections are `legacy` too — confirmed
+2026-10-04 by flattening the chains, see Q7 of
 [item 5](#5-rebuild-the-miw-on-the-v1000-pupil-model-then-under-the-rbr-constraint).
 
 `t614_fam_unpaired` is the Danish 1.3 blitz FAM processing the existing 50/34 MIW is built
@@ -679,7 +679,7 @@ pixels, lower contrast — or may be real M2-baffle structure.
 
 ## 5. Rebuild the MIW on the v1000 pupil model, then under the RBR constraint
 
-**Status:** in process, first build done · **Blocked on:** nothing
+**Status:** in process, first build done, Q7 resolved 2026-10-04 · **Blocked on:** nothing
 
 Two sequential steps on the Measured Intrinsic Wavefront (MIW), in this order (settled
 2026-10-04). **Step A, next:** rebuild the 50 DOF / 34 v-mode (50/34) MIW on the
@@ -718,14 +718,14 @@ work; `_v3.14` is the Batoid as-built model; `_v1000` is as-built plus the updat
 measurements and the M1 outer and inner baffles — see
 [item 4](#4-pupil-measure-the-donut-pupil-geometry-data-against-model) for what v1000
 changes, including the `M1Baffle1`/`M1Baffle2` `ClearCircle` surfaces at radius 4.165 m
-that sit 15 mm inside M1's 4.18 m rim. The unsuffixed collections are **believed** to be
-`legacy` as well, pointing at danish's current default pupil, but that is not confirmed —
-see Q7.
+that sit 15 mm inside M1's 4.18 m rim. The unsuffixed collections are **`legacy` as well** —
+confirmed 2026-10-04, not assumed: the unsuffixed and `_legacy` chains share 12 of their 13
+flattened RUN children, differing only in their own output RUN. See Q7.
 
-**What is already built:** the existing 50/34 MIW uses `t614_fam_unpaired`, believed
-identical to `t614_fam_unpaired_legacy` (Q7). **Step A builds the same 50/34 MIW on
-`t614_fam_unpaired_v1000`** and compares the two, which is a pupil-model comparison with
-the scheme held fixed.
+**What is already built:** the existing 50/34 MIW uses `t614_fam_unpaired`, which is the
+same legacy configuration as `t614_fam_unpaired_legacy` (Q7, confirmed). **Step A builds the
+same 50/34 MIW on `t614_fam_unpaired_v1000`** and compares the two — a pupil-model
+comparison, legacy against v1000, with the scheme held fixed.
 
 ### Existing machinery to build on
 
@@ -783,8 +783,9 @@ that item are reusable — see
 
 **Step A — the v1000 pupil model (do this next).**
 
-- Confirm what pupil model the unsuffixed `t614_fam_unpaired` actually used, so the existing
-  build's baseline is known rather than assumed (Q7).
+- Optionally make Q7 airtight by reading the pupil-model task config out of both output RUNs.
+  The chain comparison already shows the unsuffixed collection is legacy; this would confirm
+  the two runs differ *only* in the pupil model.
 - Add a `mi_config.yaml` param set for `u/jmeyers3/t614_fam_unpaired_v1000`, with
   `pathA_50_34_i` and `pathA_50_34_i_5rot` entries matching the `danish_1_3_test` knobs
   exactly, so the only difference from the existing build is the pupil model.
@@ -884,12 +885,24 @@ comparison. Note `RubinObsc.yaml` in danish is a symlink to the v1000 file (item
 "danish's default" is not obviously legacy. Resolvable by reading the task configuration out
 of the collection, or by asking Josh.
 
-**A:** _unanswered_ — but partly resolved from danish's side, 2026-10-04: in danish 1.3.0 as
-shipped in `w_2026_39`, `RubinObsc.yaml` is **byte-identical** to
-`RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml` by checksum, so danish's own default pupil is
-v1000. "No suffix = legacy" therefore cannot be inferred from danish's default, and what
-remains is what Josh's unsuffixed task configuration actually set. See
+**A:** **Legacy — Aaron's reading was right.** Measured 2026-10-04 from the Butler, not
+assumed: `u/jmeyers3/t614_fam_unpaired` and `u/jmeyers3/t614_fam_unpaired_legacy` flatten to
+13 RUN children each and **share 12 of them**. The 12 shared ones are inputs
+(`LSSTCam/raw/all`, calibs, refcats); each chain then has exactly one output RUN of its own,
+`t614_fam_unpaired/20260912T224304Z` against
+`t614_fam_unpaired_legacy/20260930T165721Z`. So they are two separate runs of the same
+legacy configuration, 18 days apart, and **step A is legacy-against-v1000** as planned. The
+existing 50/34 MIW's baseline is legacy.
+
+Worth keeping in mind as the reason this needed checking at all: in danish 1.3.0 as shipped
+in `w_2026_39`, `RubinObsc.yaml` is **byte-identical** to
+`RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml` by checksum, so danish's *own* default pupil is
+v1000. "No suffix = legacy" is therefore true of Josh's collections but is **not** a general
+rule and cannot be inferred from danish's default. See
 [item 7](#7-giant-donuts-pupil-models-spiders-and-the-intraextra-z11-split).
+
+Not yet confirmed: whether the one output RUN in each chain differs *only* in the pupil
+model. Reading the task config out of both would make that airtight.
 
 **Q8. Which build or builds does step B apply RBR to?** Aaron's phrasing is "one or more of
 these MIW", to be decided after the step A comparison. If step A shows the pupil model barely
@@ -1224,21 +1237,21 @@ single-sided fit. Blitz is a monolithic fitter with its own detection, so it may
 entirely. This decides whether the item is a pipeline run or a notebook study, and it is the
 first thing to check.
 
-**A:** _unanswered_
+**A:** _I think so but this needs to be checked_
 
 **Q2. How many giant donuts, over how many nights?** A pupil-model ranking needs enough
 donuts to separate the models but could run on a few exposures. The thermal-correlation arm
 needs a spread of truss temperature, so many nights. These may be two different samples
 rather than one.
 
-**A:** _unanswered_
+**A:** _lets start with just a single night with decent intra and extra focal giant donuts.  We need to do some exploration of the Consdb and DuckDb to select according to the program for blocks with Giant donuts and then make sure both sides of focus are present and also the crowding isn't too bad and that the seeing is decent. Bryce used 20250520_
 
 **Q3. Paired or unpaired fits?** The intra/extra Z11 split is only visible in **separate
 (unpaired)** fits — the paired fit averages it to about +0.01 µm of wavefront, as `wfs/`
 found. So the metric of record here requires unpaired fits, and the paired fit is the
 cross-check that the averaging still happens on real giant donuts.
 
-**A:** _unanswered_
+**A:** _unpaired_
 
 **Q4. What happens to the superseded `wfs/` material?** The three notebooks and
 `danish_pupil_mask_findings.md` hold results this item depends on and should not simply be
@@ -1246,7 +1259,7 @@ deleted. Options: leave them and add a status line pointing here; move the findi
 the new study and keep the notebooks as provenance; or keep `wfs/` as the geometry topic and
 put only the data fits in the new study. Deleting any file needs Aaron's go-ahead regardless.
 
-**A:** _unanswered_
+**A:** _move the findings doc into the new study to be updated as learn more and lets put the current notebooks into an archive area for the moment_
 
 **Q5. Does the fitted blur stay bounded, or pinned?** `wfs_giant_donut_fit.ipynb` pins FWHM
 at 1 arcsec by default because a floating blur runs to about 3 arcsec and hides pupil
@@ -1255,7 +1268,7 @@ softened rim. A pinned blur may force the mismatch into Z11, which is the metric
 blur may absorb the very effect being measured. The production blitz config bounds it to
 0.5 to 1.5 arcsec.
 
-**A:** _unanswered_
+**A:** _We will want to _
 
 **Q6. Which field positions?** The `wfs/` diffraction test was on-axis while the measured
 split is at off-axis WFS field positions, where spherical aberration is larger — a known gap
