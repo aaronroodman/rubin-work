@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-10-03 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Row counts and spans read from the live database's `fetch_log` and `column_coverage` on
@@ -80,56 +80,73 @@ ORDER BY n_non_null;
 
 ## `optical_state` and `fam_dz`
 
-`optical_state` holds 90,695 rows, `day_obs` 20251102 to 20260713 — a genuinely narrower
-span than `visit_telemetry`, which reaches back to 20250415. The 2025 nights have telemetry
-but no recovered optical state, so a join of the two drops them. Four variants are
-**registered** in `state_variant`:
+`optical_state` holds 307,389 rows over three built variants, `day_obs` 20250724 to
+20260714, 231 nights — a genuinely narrower span than `visit_telemetry`, which reaches back
+to 20250415. Nights before 20250724 have telemetry but no corner-WFS quicklook in ConsDB, so
+there is no wavefront to invert and they carry no optical state; a join of the two tables
+drops them. Four variants are **registered** in `state_variant`:
 
 | variant_id | rows | state |
 |---|---|---|
-| `v50_34__batoid__consdb_v1` | 90,695 | built, but **pre-item-2 vintage**: no `_olr` or `fwhm_cwfs_arcsec` columns. Awaiting the full-span rerun |
-| `v50_34_rbr__batoid__consdb_v1` | 916 | one night (20260318), built as the costing check |
-| `v22_12__batoid__consdb_v1` | 0 | registered, never built |
+| `v22_12__batoid__consdb_v1` | 102,463 | built full span, item 2 vintage |
+| `v50_34__batoid__consdb_v1` | 102,463 | built full span, item 2 vintage; replaced the 90,695 pre-item-2 rows |
+| `v50_34_rbr__batoid__consdb_v1` | 102,463 | built full span, item 2 vintage |
 | `v50_34__miw__consdb_v1` | 0 | registered, never built |
+
+96,278 rows per variant (94.0%) carry a recovered optical state and so a
+`fwhm_cwfs_arcsec`; the other 6,185 are per-visit recovery failures. The **same** visits
+succeed and fail in all three variants, so cross-scheme comparisons are paired without
+further filtering — but `fwhm_cwfs_arcsec IS NOT NULL` is still the screen to apply, since
+an unrecovered row stores NaN rather than NULL in the array columns.
 
 The **Measured Intrinsic Wavefront (MIW) route is not built**, only the batoid-design route.
 This is the trap in this table: `efd_db.optical_state('v50_34__miw__consdb_v1')` returns an
 empty DataFrame rather than raising, so an analysis that names the MIW variant gets zero rows
 and no error. Building it is outstanding work, deferred to todo item 6.
 
-### Item 2 full-span build, pending submission
+### Item 2 full-span build, done 2026-10-03
 
-Three batoid variants are to be built over the full 366-night span, replacing the existing
-`v50_34__batoid__consdb_v1` rows rather than extending them, so all three come from identical
-code against identical inputs. **Measured** on `day_obs` 20260318 (916 exposures, 915
-recovered — near the busiest night; the mean is 584 exposures/night):
+Three batoid variants built over the full span, 16 shards each at 24 nights per shard, 48
+jobs. All three come from identical code against identical inputs. The results are in
+[`../../../olr/docs/scheme_comparison.md`](../../../olr/docs/scheme_comparison.md); measured
+wall clock on `day_obs` 20260318 (916 exposures, near the busiest night; the mean is 584)
+was 39.8 / 39.1 / 59.0 s per night for `22_12` / `50_34` / `50_34_rbr`.
 
-| scheme | median CWFS FWHM contribution [arcsec] | wall clock [s/night, 916 exposures] | median `resid_rms_um` [µm of wavefront] |
-|---|---|---|---|
-| `22_12` | 0.4372 | 39.8 | 0.1165 |
-| `50_34` | 0.2428 | 39.1 | 0.0587 |
-| `50_34_rbr` | 0.2650 | 59.0 | 0.0812 |
-
-Note the `resid_rms_um` column means different things across those rows — subspace residual
-for the two truncated schemes, achieved residual for the range-bounded one. See
+`resid_rms_um` means different things across the variants — subspace residual for the two
+truncated schemes, achieved residual for the range-bounded one. See
 [`../schema.md`](../schema.md).
 
-At 24 nights per shard that is 16 shards per variant, 48 jobs in all; a mean shard runs about
-10 min (15 min for RBR) and the worst-case night-heavy shard about twice that, inside the
-1 h default `SB_TIME`.
+**Twelve of the 48 jobs failed, all in the pre-20250724 era, and the fix was to skip it.**
+Shards 01–04 of each variant covered `day_obs` 20250415–20250723, where ConsDB has exposures
+but no corner-WFS quicklook. Two defects surfaced there, neither visible on any later night:
 
-Two verifications already done, both on 20260318:
+- `get_intrinsic_zernikes` raised `RuntimeError: Invalid filter name OTHER:PINHOLE` on
+  engineering-mask exposures, crashing shards 01 and 04.
+- A night with zero complete corner OPD still wrote rows whose recovered and open-loop
+  columns were all NaN — shards 02 and 03 exited 0 having written 11,562 such rows.
 
-- The rebuilt `50_34` deviation-recovered state reproduces the existing variant to
+Fixed in `80b5578`: the band is screened against `OFCData.intrinsic_zk` rather than an
+enumeration of known-bad values, and a night with no complete corner OPD records `empty`.
+Those 12 shard files were discarded rather than rerun, since with the fix every night in
+their range yields zero rows. Covered by `code/test_build_optical_state.py`.
+
+Three verifications:
+
+- The rebuilt `50_34` deviation-recovered state reproduces the pre-item-2 variant to
   **6.0e-14** (dimensionless v-mode amplitude) and **3.4e-11** µm/arcsec in DOF across all
-  915 matched visits, so the rerun changes nothing but the added columns.
+  915 matched visits of 20260318, so the rerun changed nothing but the added columns.
 - `v_modes_olr = v_modes − v_modes_trim` to **1.3e-15** (dimensionless), and the optical
   state `Trim − Deviation` is its exact negative, matching the `thermal_focus`
   `MEASURED_SIGN = -1.0` convention.
+- 20260318 reproduces its single-night costing values exactly in the full build, so that run
+  was arithmetically sound — but it was a favourable night, and overstated the 50/34 image
+  quality gain by about 50% against the full sample.
 
-The pre-item-2 rows are archived at
+The pre-item-2 `v50_34__batoid__consdb_v1` rows are archived at
 `output/scratch/archive/v50_34__batoid__consdb_v1_pre_item2.parquet` (90,695 rows verified,
-95 MB, gitignored) pending their removal before the rerun.
+95 MB, gitignored). The merge overwrote all of them in place — the new build is a strict
+superset, with **0** rows left stale — so the archive is a rollback copy only and can be
+deleted once the merged table has been checked.
 
 `fam_dz` holds 2,528 visits over `day_obs` 20250415 to 20260713, under one registered
 `fam_variant_id`. All 2,528 join to `visit_telemetry` on `visit_id`, and all 2,528 carry a
