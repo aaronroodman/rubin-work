@@ -1050,7 +1050,9 @@ moments but no optical state to join to.
 
 ## 7. Giant donuts: pupil models, spiders, and the intra/extra Z11 split
 
-**Status:** not started · **Blocked on:** nothing
+**Status:** not started, scope settled 2026-10-04 · **Blocked on:** nothing. All 7 open
+questions are answered. Scoped to one night, on-axis, unpaired; the thermal arm is a later
+pass.
 
 Fit the giant (8 mm defocus) donuts on both sides of focus with the `donut_blitz_v2` tag of
 ts_wep and its blitz pipeline, on Danish 1.3. Compare the several available donut pupil
@@ -1184,21 +1186,39 @@ Two practical findings from `wfs_giant_donut_fit.ipynb` that will bite again:
 
 ### Scope
 
+Scoped down to **one night, on-axis, unpaired** by the answers of 2026-10-04. The
+thermal-correlation arm needs many nights and so is explicitly a later pass, not part of
+this first one.
+
 - Establish what `donut_blitz_v2` produces for giant donuts: whether the blitz pipeline
-  detects and fits them at 8 mm defocus at all, and what dataset types come out (Q1).
-- Select a giant-donut sample on both sides of focus, same stars where possible. The known
-  starting point is `day_obs` 20251023 `seq_num` 340 (`intra_8mm`) against 337 and 338
-  (`extra_8mm`), on R30_S21.
+  detects and fits them at 8 mm defocus at all, and what dataset types come out (Q1). This
+  is the first thing to check, because it decides whether the rest is a pipeline run or a
+  notebook study.
+- Select the night by exploring ConsDB and the value-added DuckDB (Q2): filter on the
+  program/block for giant donuts, require **both sides of focus present**, and check that
+  crowding is not too bad and the seeing is decent. Report the per-candidate numbers the
+  choice was made on, not just the chosen night.
+- Read the camera and M2 hexapod dz Trim for the chosen exposures and record **how the 8 mm
+  was apportioned** between the two (Q7). This is needed to model the pupil at all, and it
+  doubles as the check that the selected exposures really are giant donuts.
+- Prefer donuts **as close to on-axis as possible** to start (Q6), rather than the off-axis
+  corner positions `wfs/` used.
 - Fit every selected donut with each pupil model — v3.14 and v1000 at minimum — holding the
-  pipeline tag, Danish version, binning and blur bounds fixed, so the pupil model is the only
-  thing varying.
+  pipeline tag, Danish version, binning and blur treatment fixed, so the pupil model is the
+  only thing varying.
+- Fit **unpaired** (single-sided), which is the only configuration in which the metric is
+  visible at all (Q3), and run the paired fit alongside purely as the cross-check that the
+  averaging to about +0.01 µm of wavefront still happens on real giant donuts.
 - Score each pupil model on **intra minus extra Z11 in µm of wavefront**, as the primary
   metric, reported as a distribution over donuts and field positions rather than a single
   number. Report the other Zernike terms alongside, since a model that fixes Z11 by moving
   coma is not a better model.
-- Report the fitted blur FWHM in arcsec per model and per side of focus. The `wfs/`
-  diffraction work found danish absorbing a softened rim into blur plus spherical, so blur is
-  part of the result and not a nuisance parameter.
+- **Let the blur float** rather than pinning it (Q5), and report the fitted FWHM in arcsec
+  per model and per side of focus. The `wfs/` diffraction work found danish absorbing a
+  softened rim into blur plus spherical, so blur is part of the result and not a nuisance
+  parameter. Keep a bound on it even when unpinned — see the warning above about the galsim
+  FFT — and report the bound used alongside the fitted value, since a value sitting at its
+  bound is not a measurement.
 - Fit with spiders off and on — `spider_angle` unset against set from the ConsDB
   `physical_rotator_angle` — and report whether the residual at the strut shadows improves,
   whether the intra/extra Z11 split changes, and whether the fit stays stable.
@@ -1213,16 +1233,20 @@ Two practical findings from `wfs_giant_donut_fit.ipynb` that will bite again:
   looks like, rather than reporting Z11 alone.
 - Test the mirror figure roll-off hypothesis: whether the intra/extra Z11 split correlates
   with the pupil-edge radius, and whether an edge-weighted OPD term absorbs it.
-- Test the thermal hypothesis: whether the split correlates with the thermal telemetry
-  already in the value-added database — the mean Telescope Mount Assembly truss temperature
-  and the M1M3 bulk and quadratic radial gradients, read through
-  `value_added/code/efd_db.py`. This is the one arm that needs more than a handful of
-  visits, so it decides the sample size (Q2).
+- **Later pass, not this one:** test the thermal hypothesis — whether the split correlates
+  with the thermal telemetry already in the value-added database, the mean Telescope Mount
+  Assembly truss temperature and the M1M3 bulk and quadratic radial gradients, read through
+  `value_added/code/efd_db.py`. A single night cannot support this: within one night the
+  truss temperature barely moves, and the whole point is a spread across nights. Q2 chose one
+  night deliberately, so this arm waits. Record the thermal telemetry for the chosen night
+  anyway, so the first night is already a usable point when the sample grows.
 - Account for the known partial cause: state how much of the measured split the roughly
   0.10 µm of wavefront diffraction term explains at these field positions, so the remainder
   is what the thermal and figure arms are being asked to explain.
-- Write the study up in a new topic doc, and retire or repoint the superseded `wfs/` material
-  (Q4).
+- Move [wfs/docs/danish_pupil_mask_findings.md](../../wfs/docs/danish_pupil_mask_findings.md)
+  into the new study and keep updating it as more is learned, and move the three superseded
+  notebooks into an archive area (Q4). Both are file moves, so confirm with Aaron before
+  doing them; nothing gets deleted.
 
 ### Open questions
 
@@ -1246,6 +1270,17 @@ rather than one.
 
 **A:** _lets start with just a single night with decent intra and extra focal giant donuts.  We need to do some exploration of the Consdb and DuckDb to select according to the program for blocks with Giant donuts and then make sure both sides of focus are present and also the crowding isn't too bad and that the seeing is decent. Bryce used 20250520_
 
+**Check 20250520 before committing to it.** A Butler probe on 2026-10-04 did not find giant
+donuts there: `day_obs` 20250520 has 12 `intra` and 12 `extra` exposures, all BLOCK-T417,
+`i_39`, 30 s, and **none carry an `8mm` label**, which is consistent with ordinary Full Array
+Mode (FAM) at about ±1.5 mm rather than 8 mm. The night that does carry explicit giant
+exposures is `day_obs` 20251023, BLOCK-T626, `r_57`, 60 s: `seq_num` 337, 338, 349, 350
+`extra_8mm` and 340, 341 `intra_8mm`, plus 351 and 352 `intra_8mm_m1m3_b4`. That is also the
+night the `wfs/` notebook used. Either Bryce's 20250520 work was not the 8 mm giant donuts,
+or the giant exposures there are labelled some other way — resolve it by reading the camera
+and M2 hexapod dz Trim (Q7), which settles what the actual defocus was regardless of label.
+The observation reason is a free-text field and is not a reliable filter on its own.
+
 **Q3. Paired or unpaired fits?** The intra/extra Z11 split is only visible in **separate
 (unpaired)** fits — the paired fit averages it to about +0.01 µm of wavefront, as `wfs/`
 found. So the metric of record here requires unpaired fits, and the paired fit is the
@@ -1268,14 +1303,22 @@ softened rim. A pinned blur may force the mismatch into Z11, which is the metric
 blur may absorb the very effect being measured. The production blitz config bounds it to
 0.5 to 1.5 arcsec.
 
-**A:** _We will want to _
+**A:** _We will want to unpin the blur_
+
+Keep a **bound** on it even so. Unpinned is not unbounded: `wfs/` found a floating FWHM
+running to about 3 arcsec, which both over-blurs to hide pupil mismatch and blows up the
+galsim FFT so unbinned giant donuts fail outright. The production blitz config bounds it to
+0.5 to 1.5 arcsec. Report the bound with the fitted value, since a fit sitting at its bound
+is not a measurement. Note this interacts with Q1: if blitz does the fitting, the blur
+treatment is whatever that pipeline's config does, so unpinning may mean overriding a
+pipeline config rather than setting a notebook argument.
 
 **Q6. Which field positions?** The `wfs/` diffraction test was on-axis while the measured
 split is at off-axis WFS field positions, where spherical aberration is larger — a known gap
 in the existing work. Giant donuts are FAM-style full-focal-plane images, so field position
 is selectable over the whole focal plane rather than fixed at the four corners.
 
-**A:** _unanswered_
+**A:** _start with donuts as close to on-axis as possible_
 
 **Q7. Is the 8 mm defocus apportioned between the camera and M2 hexapods?** `wfs/` found that
 camera-only 8 mm and a 4 mm + 4 mm camera-plus-M2 split give different pupils, donut span
@@ -1283,6 +1326,13 @@ camera-only 8 mm and a 4 mm + 4 mm camera-plus-M2 split give different pupils, d
 between the two. Which the data used has to be known to model it, and the effective defocus
 is about 7.6 mm rather than the labelled 8 mm anyway.
 
-**A:** _unanswered_
+**A:** _need to look at the Cam and M2 hexapod dz trim (in duckdb) to see what was used_
+
+The columns are the Trim `dof0..49` in the value-added database, read through
+`value_added/code/efd_db.py`. **`dof0` is M2 hexapod dz and `dof5` is camera hexapod dz**,
+both in µm — that ordering is the opposite of what people assume, and it is documented in
+`common/dof_telemetry.py`. So the apportionment is read off `dof0` against `dof5` directly.
+This also serves as the label-independent test of which exposures are really giant donuts,
+which is what Q2's 20250520 question needs.
 
 </details>
