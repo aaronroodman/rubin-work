@@ -18,6 +18,7 @@ pupil geometry, and other prescription-level questions that do not need data.
 | `code/fresnel/time_fftpsf_vs_debye.py` | driver — wall-clock times of `fftPSF` and the Debye-weighted Huygens sum, in focus and for a 1.5 mm donut |
 | `code/fresnel/donut_seeing.py` | library — von Kármán kernel, defocused plate scale, per-ray atmospheric kicks, Danish fit wrapper |
 | `docs/studies/fresnel_donuts.md` | study writeup for the Fresnel, seeing and sensor notebooks |
+| `docs/status/batoid_pr_debye_huygens.md` | draft text of a batoid pull request adding NUFFT evaluation and Debye weights to `huygensPSF` |
 | `docs/studies/intra_extra_phase_strip.md` | symmetry constraint on intra/extra donut differences, and the static phase-strip hypothesis for the larger intra-focal Danish kernel |
 
 ## Diffraction of defocused donuts
