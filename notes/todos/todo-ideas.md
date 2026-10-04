@@ -21,6 +21,7 @@ follow.
 | [4](#4-pupil-measure-the-donut-pupil-geometry-data-against-model) | `pupil` — measure the donut pupil geometry, data against model | not started |
 | [5](#5-rebuild-the-miw-on-the-v1000-pupil-model-then-under-the-rbr-constraint) | Rebuild the MIW on the v1000 pupil model, then under the RBR constraint | in process, first build done |
 | [6](#6-guider-star-second-moments-image-and-centroid-motion-into-the-value-added-db) | Guider star second moments, image and centroid motion, into the value-added DB | not started |
+| [7](#7-giant-donuts-pupil-models-spiders-and-the-intraextra-z11-split) | Giant donuts: pupil models, spiders, and the intra/extra Z11 split | not started, supersedes the `wfs/` giant-donut work |
 
 Recently closed and moved out: the Danish 1.3 blitz Full Array Mode (FAM) processing, the
 July bounce test and its note for Guillem, the `thermal_focus` study, the `visit_telemetry`
@@ -883,7 +884,12 @@ comparison. Note `RubinObsc.yaml` in danish is a symlink to the v1000 file (item
 "danish's default" is not obviously legacy. Resolvable by reading the task configuration out
 of the collection, or by asking Josh.
 
-**A:** _unanswered_
+**A:** _unanswered_ — but partly resolved from danish's side, 2026-10-04: in danish 1.3.0 as
+shipped in `w_2026_39`, `RubinObsc.yaml` is **byte-identical** to
+`RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml` by checksum, so danish's own default pupil is
+v1000. "No suffix = legacy" therefore cannot be inferred from danish's default, and what
+remains is what Josh's unsuffixed task configuration actually set. See
+[item 7](#7-giant-donuts-pupil-models-spiders-and-the-intraextra-z11-split).
 
 **Q8. Which build or builds does step B apply RBR to?** Aaron's phrasing is "one or more of
 these MIW", to be decided after the step A comparison. If step A shows the pupil model barely
@@ -1022,6 +1028,247 @@ summary such as a few band-integrated powers; or the full series as list columns
 `optical_state` (`day_obs` 20251102 onward) so the guider moments join to a recovered optical
 state on every row. Guider data likely predates that, and the earlier nights would have
 moments but no optical state to join to.
+
+**A:** _unanswered_
+
+</details>
+
+---
+
+## 7. Giant donuts: pupil models, spiders, and the intra/extra Z11 split
+
+**Status:** not started · **Blocked on:** nothing
+
+Fit the giant (8 mm defocus) donuts on both sides of focus with the `donut_blitz_v2` tag of
+ts_wep and its blitz pipeline, on Danish 1.3. Compare the several available donut pupil
+models and rank them on which delivers the closest agreement in spherical aberration
+(Noll Z11) between the intra-focal and extra-focal fits. Separately, test whether the
+spiders can be included in the fit with good fidelity. The intra/extra Z11 split is being
+used as the **diagnostic of residual optical path difference (OPD)**, not merely as a
+pupil-model scorecard — candidate causes include thermal effects and mirror figure roll-off
+at the pupil edge, which would move flux differently on the two sides of focus.
+
+**Goals:** Pick the pupil model that best describes real giant-donut data, learn whether
+modelling the spider shadows improves the fit, and get at the sources of the intra/extra Z11
+disagreement that are not diffraction. Supersedes the giant-donut and pupil-mask work in
+`wfs/`, which was a geometry comparison rather than a fit to data — see below for what it
+settled and what it did not.
+
+<details>
+<summary>What `wfs/` already settled, the pupil models, scope and open questions</summary>
+
+### What this supersedes, and what of it still stands
+
+This item supersedes the giant-donut and pupil-mask line in [wfs/](../../wfs/) — the
+notebooks `wfs_giant_donut_fit.ipynb`, `wfs_batoid_pupil_compare.ipynb` and
+`wfs_diffraction.ipynb`, and the writeup
+[wfs/docs/danish_pupil_mask_findings.md](../../wfs/docs/danish_pupil_mask_findings.md).
+Those were a **geometry comparison against batoid and a synthetic-donut study**, with no fit
+to real giant-donut data through a production pipeline. **Do not re-derive the following —
+they are settled and are inputs here:**
+
+| settled in `wfs/` | the result |
+| --- | --- |
+| danish's circle mask against the true batoid boundary, matched model and configuration | 99.50% agreement; inner edge exact; the residual +3 mm outer term is a finite-ray-grid artifact converging to about +1.0 mm at `nrad = 1600`, not a mask error |
+| the corner WFS case | already correct — the defocus is a detector piston, so the camera apertures do not move and the intra and extra masks are identical by construction |
+| the giant case, 8 mm camera-hexapod defocus | this is where the fixed mask fails. Agreement 95.97% intra and 96.79% extra, with the intra outer edge over-extended by a mean +55 mm and up to +261 mm, dominated by the **filter** |
+| why | the filter, L1 and L2 ride with the camera hexapod, so off-axis they clip the pupil differently intra against extra, while M1/M2/M3 do not move. A single defocus-independent mask sits between the two |
+| a per-element ellipse edge model | tested and does **not** help; M1 and M2 already project as circles, and a closed ellipse over-clips the far camera-borne elements. Refitting the **circle** at the camera position recovers giant-intra from 96.0% to 99.5% |
+| the design-against-as-built optical model | danish/ts_wep used the design `LSST_r` (about v3.3); against as-built the filter alone moves the outer edge about +16 mm |
+| diffraction as a cause of the Z11 split | real but **partial**. On-axis Fraunhofer-FFT donuts fitted in the production config give about **+0.10 µm of wavefront** Z11 intra/extra split in separate (unpaired) fits, the same sign as data and about one third the magnitude, and it averages away to about +0.01 µm in the paired fit |
+| chromaticity and static pupil/model mismatch as causes | ruled out — about 0.002 µm and about 0.003 µm of wavefront Z11 respectively, roughly 100x too small |
+
+The observation that drives this item, from data: **intra and extra Z11 differ by about
+0.3 µm of wavefront** when fitted separately, with rim residuals worse intra and struts
+sharper extra.
+
+**The question this item opens that `wfs/` did not close.** Diffraction accounts for roughly
+a third of the 0.3 µm of wavefront. The rest is unexplained, and the `wfs/` work only ever
+tested *static, perfect-optics* causes. Two candidate physical sources are now on the table
+(Aaron, 2026-10-04) and neither has been looked at:
+
+- **thermal effects** — a time-varying OPD, so a cause the static pupil comparison could not
+  have seen;
+- **mirror figure roll-off at the edges of the pupil** — a real OPD error concentrated
+  exactly where the rim residuals appear, and exactly where intra and extra donuts weight
+  the pupil differently.
+
+Both would move flux differently on the two sides of focus, which is what the Z11 split
+measures. Giant donuts are the probe because 8 mm of defocus spreads the pupil over far more
+pixels than FAM's 1.5 mm, so a pupil-edge OPD term is resolved rather than buried in the rim.
+
+Two further `wfs/` leads not yet followed: the pure **Fresnel near-field** term beyond the
+Fraunhofer approximation, and that the diffraction test was run **on-axis** while the real
+split is measured at off-axis WFS field positions where spherical aberration is larger.
+
+### The pupil models available
+
+danish 1.3.0 is in the current stack
+(`w_2026_39`, `lsst-scipipe-13.1.0-exact`) and ships three pupil files in
+`danish/data/`:
+
+| file | what it is |
+| --- | --- |
+| `RubinObsc_v3.14_r_rtpp0_azp45_pp0d0.yaml` | the Batoid as-built model |
+| `RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml` | as-built plus updated M1M3 measurements and the M1 outer and inner baffles |
+| `RubinObsc.yaml` | **byte-identical to the v1000 file** (verified by checksum 2026-10-04), so danish 1.3's default *is* v1000 |
+
+These are the same models as the suffixes on Josh's T614 collections, so this item and
+[item 5](#5-rebuild-the-miw-on-the-v1000-pupil-model-then-under-the-rbr-constraint) are
+testing the same pupil question from two directions — item 5 through the MIW, this item
+through single-donut fits. The checksum result also answers item 5's Q7 on danish's side:
+danish's default is v1000, **not** legacy, so "no suffix = legacy" cannot be assumed from
+danish's default alone.
+
+What v1000 changes, in full, is in
+[item 4](#4-pupil-measure-the-donut-pupil-geometry-data-against-model): M1 inner radius
+2.558 m to 2.5833 m, M3 outer 2.508 m to 2.48511 m, M3 inner 0.55 m to 0.52735 m, plus
+`M1Baffle1` and `M1Baffle2` as `ClearCircle` surfaces at radius 4.165 m — 15 mm inside M1's
+unchanged 4.18 m rim — and a `CameraBody` obscuration. `pupilSize` is 8.33 m in v1000
+against 8.36 m in v3.14.
+
+### Spiders are already modelled — the fit just does not switch them on
+
+The pupil YAMLs carry a `Spider_3D` block of **12 vanes**, each with a 3D position `r0`,
+direction `v0`, `width = 0.05 m`, `length` and `angle`, which `danish/factory.py` projects
+onto the entrance pupil per field angle (`_project_spider_vane`, about line 524). This is
+the real double-bladed LSST spider, not the single-blade radial approximation that
+`wfs_diffraction.ipynb` had to fall back on.
+
+`DonutFactory` and the model classes take `spider_angle`, documented as "additional rotation
+for spider struts around the optic axis in degrees. **If None, spider shadows are not
+modelled**". So including the spiders is **switching on existing capability and supplying
+the right rotator angle**, not writing new pupil code. The angle is the camera rotator
+angle, which in this repository comes from the ConsDB `physical_rotator_angle` and not
+`boresightRotAngle`. The `rtpp0_azp45` in the filenames says the shipped files were built at
+rotator-telescope-position 0 deg and azimuth 45 deg.
+
+That the data shows **struts sharper extra-focally** is the observation to explain, and it is
+the reason the spider arm is in this item rather than a separate one: a spider that is
+modelled at the wrong effective width or angle would itself bias the intra/extra comparison.
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the interactive single giant-donut fitter — click a donut, single-sided Z4-only Danish fit, data/model/residual, row-slice and pie-slice grids, sky subtraction | `wfs/notebooks/wfs_giant_donut_fit.ipynb` |
+| the batoid/danish pupil comparison and the synthetic-donut fit tooling | `wfs/notebooks/wfs_batoid_pupil_compare.ipynb`, sections 10, 13 |
+| the diffraction donut generator and the production-config fit | `wfs/notebooks/wfs_diffraction.ipynb` |
+| the ts_wep corner dataflow, and the selected/fit/used stage definitions | [wfs/docs/ts_wep_cwfs_dataflow.md](../../wfs/docs/ts_wep_cwfs_dataflow.md) |
+| per-pixel focal-plane radius, for the radial sky model | `common/camera_utils.py`, `pixel_to_focal` |
+
+Two practical findings from `wfs_giant_donut_fit.ipynb` that will bite again:
+
+- The giant donuts in the existing data have **no donut tables and no pipeline fits** — that
+  notebook runs minimal in-notebook ISR on the raw. Whether `donut_blitz_v2` changes this is
+  Q1.
+- The fit **must** pass bounds on the blur. Left unbounded the fitted full width at half
+  maximum (FWHM) runs to about 3 arcsec, over-blurring to hide pupil mismatch, and a runaway
+  FWHM blows up the galsim fast Fourier transform so that unbinned giant corner donuts fail
+  outright. The notebook pins FWHM at 1 arcsec by default.
+- The labelled 8 mm defocus is not the effective one: the donut in the default exposure sits
+  at about **7.6 mm**, tuned by driving the fitted Z4 toward zero.
+
+### Scope
+
+- Establish what `donut_blitz_v2` produces for giant donuts: whether the blitz pipeline
+  detects and fits them at 8 mm defocus at all, and what dataset types come out (Q1).
+- Select a giant-donut sample on both sides of focus, same stars where possible. The known
+  starting point is `day_obs` 20251023 `seq_num` 340 (`intra_8mm`) against 337 and 338
+  (`extra_8mm`), on R30_S21.
+- Fit every selected donut with each pupil model — v3.14 and v1000 at minimum — holding the
+  pipeline tag, Danish version, binning and blur bounds fixed, so the pupil model is the only
+  thing varying.
+- Score each pupil model on **intra minus extra Z11 in µm of wavefront**, as the primary
+  metric, reported as a distribution over donuts and field positions rather than a single
+  number. Report the other Zernike terms alongside, since a model that fixes Z11 by moving
+  coma is not a better model.
+- Report the fitted blur FWHM in arcsec per model and per side of focus. The `wfs/`
+  diffraction work found danish absorbing a softened rim into blur plus spherical, so blur is
+  part of the result and not a nuisance parameter.
+- Fit with spiders off and on — `spider_angle` unset against set from the ConsDB
+  `physical_rotator_angle` — and report whether the residual at the strut shadows improves,
+  whether the intra/extra Z11 split changes, and whether the fit stays stable.
+- Check the spider fidelity directly against the data rather than only through Z11: the
+  residual along the strut shadows, and whether the modelled width reproduces the observed
+  one, given the shipped `width = 0.05 m` and the files being built at a fixed rotator and
+  azimuth.
+- Separate the pupil-geometry effect from an OPD effect. A pupil-model error is a **mask
+  boundary** error and should show at the rim and scale with the camera-borne element
+  clipping; a thermal or figure roll-off term is an **OPD** error and should show as a
+  smooth phase term weighted toward the pupil edge. Report which of the two the residual
+  looks like, rather than reporting Z11 alone.
+- Test the mirror figure roll-off hypothesis: whether the intra/extra Z11 split correlates
+  with the pupil-edge radius, and whether an edge-weighted OPD term absorbs it.
+- Test the thermal hypothesis: whether the split correlates with the thermal telemetry
+  already in the value-added database — the mean Telescope Mount Assembly truss temperature
+  and the M1M3 bulk and quadratic radial gradients, read through
+  `value_added/code/efd_db.py`. This is the one arm that needs more than a handful of
+  visits, so it decides the sample size (Q2).
+- Account for the known partial cause: state how much of the measured split the roughly
+  0.10 µm of wavefront diffraction term explains at these field positions, so the remainder
+  is what the thermal and figure arms are being asked to explain.
+- Write the study up in a new topic doc, and retire or repoint the superseded `wfs/` material
+  (Q4).
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. Does the `donut_blitz_v2` blitz pipeline detect and fit 8 mm giant donuts, or does this
+item still have to cut its own stamps?** The existing giant-donut data carries no donut
+tables and no fits, which is why `wfs_giant_donut_fit.ipynb` runs its own minimal ISR and
+single-sided fit. Blitz is a monolithic fitter with its own detection, so it may handle them
+— or its detection may be tuned for FAM and corner donut sizes and miss an 8 mm donut
+entirely. This decides whether the item is a pipeline run or a notebook study, and it is the
+first thing to check.
+
+**A:** _unanswered_
+
+**Q2. How many giant donuts, over how many nights?** A pupil-model ranking needs enough
+donuts to separate the models but could run on a few exposures. The thermal-correlation arm
+needs a spread of truss temperature, so many nights. These may be two different samples
+rather than one.
+
+**A:** _unanswered_
+
+**Q3. Paired or unpaired fits?** The intra/extra Z11 split is only visible in **separate
+(unpaired)** fits — the paired fit averages it to about +0.01 µm of wavefront, as `wfs/`
+found. So the metric of record here requires unpaired fits, and the paired fit is the
+cross-check that the averaging still happens on real giant donuts.
+
+**A:** _unanswered_
+
+**Q4. What happens to the superseded `wfs/` material?** The three notebooks and
+`danish_pupil_mask_findings.md` hold results this item depends on and should not simply be
+deleted. Options: leave them and add a status line pointing here; move the findings doc into
+the new study and keep the notebooks as provenance; or keep `wfs/` as the geometry topic and
+put only the data fits in the new study. Deleting any file needs Aaron's go-ahead regardless.
+
+**A:** _unanswered_
+
+**Q5. Does the fitted blur stay bounded, or pinned?** `wfs_giant_donut_fit.ipynb` pins FWHM
+at 1 arcsec by default because a floating blur runs to about 3 arcsec and hides pupil
+mismatch. But blur is part of the result — the diffraction work found it absorbing the
+softened rim. A pinned blur may force the mismatch into Z11, which is the metric; a floating
+blur may absorb the very effect being measured. The production blitz config bounds it to
+0.5 to 1.5 arcsec.
+
+**A:** _unanswered_
+
+**Q6. Which field positions?** The `wfs/` diffraction test was on-axis while the measured
+split is at off-axis WFS field positions, where spherical aberration is larger — a known gap
+in the existing work. Giant donuts are FAM-style full-focal-plane images, so field position
+is selectable over the whole focal plane rather than fixed at the four corners.
+
+**A:** _unanswered_
+
+**Q7. Is the 8 mm defocus apportioned between the camera and M2 hexapods?** `wfs/` found that
+camera-only 8 mm and a 4 mm + 4 mm camera-plus-M2 split give different pupils, donut span
+7.0 mm against 6.7 mm, because M2 is powered — and that ts_wep could not apportion the offset
+between the two. Which the data used has to be known to model it, and the effective defocus
+is about 7.6 mm rather than the labelled 8 mm anyway.
 
 **A:** _unanswered_
 

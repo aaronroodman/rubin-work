@@ -1,6 +1,17 @@
 # Batoid ↔ danish pupil-mask comparison for the LSST Camera
 
-> **Status:** current · **Last updated:** 2026-06-16 · **Kind:** investigation
+> **Status:** superseded for the giant-donut question 2026-10-04 · **Last updated:** 2026-10-04 · **Kind:** investigation
+
+**The giant-donut line of this work continues in item 7 of
+[`notes/todos/todo-ideas.md`](../../notes/todos/todo-ideas.md)**, which fits real giant
+donuts through the `donut_blitz_v2` blitz pipeline on Danish 1.3 rather than comparing mask
+geometry against batoid. The findings below stand as measured and are inputs there — in
+particular the 95.97% giant-intra mask agreement, the +261 mm filter-dominated outer-edge
+error, and that a defocal-refit circle recovers 99.5% while an ellipse does not help. What
+has changed since: danish 1.3 now ships the v3.14 and v1000 pupil models and its default is
+v1000, so proposal 2 below is largely delivered upstream; and the intra/extra Z11 split is
+now understood to be only about one third diffraction, with thermal effects and mirror
+figure roll-off at the pupil edge as the open candidates.
 
 **Findings and proposed improvements, for danish / ts_wep.**
 Aaron Roodman, 2026-06-15. Worked example: corner-WFS / giant-donut study, field point

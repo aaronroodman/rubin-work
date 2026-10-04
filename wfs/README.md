@@ -74,6 +74,14 @@ In `notebooks/`.
 
 ## Reference
 
+**The giant-donut work here is superseded** (2026-10-04) by item 7 of
+[`notes/todos/todo-ideas.md`](../notes/todos/todo-ideas.md), which fits real giant donuts
+through the `donut_blitz_v2` blitz pipeline on Danish 1.3 and compares the v3.14 and v1000
+pupil models on the intra/extra Z11 agreement. That covers `wfs_giant_donut_fit.ipynb`,
+`wfs_batoid_pupil_compare.ipynb`, `wfs_diffraction.ipynb` and the mask findings doc. Their
+measured results stand and are inputs there; the sky-foreground, post-ISR and
+donut-selection notebooks are not affected.
+
 - [`docs/danish_pupil_mask_findings.md`](docs/danish_pupil_mask_findings.md) — writeup of the
   batoid↔danish pupil-mask comparison for Josh Meyers / danish: method (stop-surface
   frame), the three-case findings (WFS exact; camera-hexapod filter/L1/L2 mismatch;
