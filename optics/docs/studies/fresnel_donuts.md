@@ -1,6 +1,6 @@
 # Diffraction models of defocused Rubin donuts
 
-> **Status:** current · **Last updated:** 2026-09-30 · **Kind:** reference (investigation writeup)
+> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** reference (investigation writeup)
 
 Comparison of geometric ray tracing, batoid's Fourier-transform point-spread function
 (`fftPSF`), and Huygens/Debye diffraction for defocused star images ("donuts") in the
@@ -67,6 +67,24 @@ Conclusions:
   (−0.125 / +0.229 µm for a detector-only shift). The difference is defocus-induced
   spherical aberration from the fast beam.
 
+## Timing
+
+`code/fresnel/time_fftpsf_vs_debye.py` times `fftPSF` and the Debye-weighted Huygens
+sum on the same pupil grid and output lattice (Rubin r band, on axis, Apple M3 Max,
+best of three runs):
+
+| Case | Pupil grid | Lattice | `fftPSF` | Debye-Huygens (trace + weights + NUFFT) | Σ\|Δ\| (fraction of flux) |
+|---|---|---|---|---|---|
+| In focus | 256² | 512², 0.381 µm | 0.08 s | 0.10 s (0.07 + < 0.01 + 0.03) | 9.7×10⁻⁵ |
+| In focus | 512² | 1024², 0.382 µm | 0.33 s | 0.46 s (0.32 + < 0.01 + 0.14) | 1.2×10⁻⁴ |
+| +1.5 mm, `sphereRadius` 20 m | 2560² | 2560², 0.767 µm | 7.1 s | 7.5 s (6.75 + 0.05 + 0.69) | 9.8×10⁻⁴ |
+
+The ray trace is 70–95% of the time for both methods. The ray count is set by
+aliasing: the pupil grid spacing sets an image period λ/Δ(sin θ) ≈ 1.96 mm that must
+exceed the 1.3 mm donut. The NUFFT step computes two transforms (field and energy
+flux); for an optic obeying the sine condition one transform is enough. On a
+pixel-commensurate 0.5 µm × 3200² grid the NUFFT step takes 0.93 s.
+
 ## Seeing
 
 `optics_fresnel_rubin_seeing_v1.ipynb` adds long-exposure von Kármán seeing (0.7″
@@ -125,7 +143,8 @@ the directions are Snell-refracted first: the 14–24° air incidence angles bec
   decomposition (poke) is needed as the check.
 - The origin of the observed intra/extra difference in fitted donut blur, which is
   seen consistently in both CWFS and FAM data and is not reproduced here by scalar
-  diffraction or by errors in the reference TA.
+  diffraction or by errors in the reference TA. A symmetry constraint and a static
+  phase-strip hypothesis are in [intra_extra_phase_strip.md](intra_extra_phase_strip.md).
 - Broadband (r-band) images, to see which fringes survive bandwidth averaging.
 - The bias that a geometric forward model (as in Danish or ts_wep) produces in fitted
   Zernikes when applied to diffraction-limited donuts.
@@ -145,6 +164,8 @@ the directions are Snell-refracted first: the 14–24° air incidence angles bec
   silicon, sensor accumulation.
 - `code/fresnel/fresnel_donut.py`: NUFFT Huygens sum, Debye weights, `fftPSF` and
   geometric wrappers, semi-analytic references.
+- `code/fresnel/time_fftpsf_vs_debye.py`: wall-clock comparison of `fftPSF` and the
+  Debye-weighted Huygens sum.
 - Figures: `output/fresnel/optics_fresnel_*_<date>.png`.
 
 Dependencies beyond batoid: `finufft` and `hcipy` (installed with

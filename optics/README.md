@@ -15,8 +15,10 @@ pupil geometry, and other prescription-level questions that do not need data.
 | `notebooks/optics_fresnel_rubin_seeing_v1.ipynb` | the same donuts with 0.7″ von Kármán seeing: separable versus ray-kick seeing, intra/extra comparison, Danish apparent Zernikes and FWHM |
 | `notebooks/optics_fresnel_sensor_iband_v1.ipynb` | i-band silicon-sensor effects (conversion depth, diffusion) on intra- and extra-focal donuts, via GalSim `SiliconSensor` |
 | `code/fresnel/donut_sensor.py` | library — bandpass photon tracing, Snell refraction into silicon, sensor accumulation |
+| `code/fresnel/time_fftpsf_vs_debye.py` | driver — wall-clock times of `fftPSF` and the Debye-weighted Huygens sum, in focus and for a 1.5 mm donut |
 | `code/fresnel/donut_seeing.py` | library — von Kármán kernel, defocused plate scale, per-ray atmospheric kicks, Danish fit wrapper |
 | `docs/studies/fresnel_donuts.md` | study writeup for the Fresnel, seeing and sensor notebooks |
+| `docs/studies/intra_extra_phase_strip.md` | symmetry constraint on intra/extra donut differences, and the static phase-strip hypothesis for the larger intra-focal Danish kernel |
 
 ## Diffraction of defocused donuts
 
@@ -26,7 +28,7 @@ wavefront sensing. The comparison tests batoid's Huygens algorithm against a
 semi-analytic reference and measures how large diffraction is at the 10 µm pixel
 scale. A seeing extension tests separable versus per-ray atmospheric blurring, and
 compares the apparent seeing and Zernike coefficients of intra- and extra-focal
-donuts; a sensor extension does the same for i-band CCD effects. See [docs/studies/fresnel_donuts.md](docs/studies/fresnel_donuts.md).
+donuts; a sensor extension does the same for i-band CCD effects. See [docs/studies/fresnel_donuts.md](docs/studies/fresnel_donuts.md). The larger Danish kernel fitted to intra-focal donuts in data is analysed in [docs/studies/intra_extra_phase_strip.md](docs/studies/intra_extra_phase_strip.md).
 
 Run it with:
 
