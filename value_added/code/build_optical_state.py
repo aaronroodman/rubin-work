@@ -308,12 +308,16 @@ def intrinsic_batoid(bands, rot_angles, zk_noll, ofc_version=DEFAULT_OFC_VERSION
     n_z = len(zk_noll)
     out = np.full((len(rot_angles), 4 * n_z), np.nan)
     cols = [z - ofcd.znmin for z in zk_noll]
+    # ConsDB reports a filter string for every exposure, including ones ts_ofc has no
+    # intrinsic wavefront for: the literal 'none' for flats, darks, biases and CBP, and
+    # names like 'OTHER:PINHOLE' for engineering masks. get_intrinsic_zernikes raises on
+    # any of them, so screen against the set it does know rather than enumerating the
+    # ones it does not. Science exposures always carry a real band.
+    # intrinsic_zk also carries an '' key, a degenerate no-filter entry rather than a
+    # real band, so drop it: an exposure with an empty band gets no intrinsic.
+    known = {str(k).lower() for k in ofcd.intrinsic_zk} - {''}
     for i, (band, rot) in enumerate(zip(bands, rot_angles)):
-        # ConsDB reports the literal string 'none' for exposures taken with no filter --
-        # flats, darks, biases and CBP -- rather than a null, and 'none'.upper() is not a
-        # filter ts_ofc knows, so it must be screened here with the empty and null cases.
-        # Science exposures always carry a real band, so this only skips calibration rows.
-        if (not isinstance(band, str) or band.lower() in ('', 'none')
+        if (not isinstance(band, str) or band.lower() not in known
                 or not np.isfinite(rot)):
             continue
         key = (band.lower(), round(float(rot) * 2.0) / 2.0)
@@ -547,6 +551,17 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
     z_dev, n_opd, zk_opd = measured_deviation(
         cdb, vids, meta['band'].tolist(), meta['rotator_angle_deg'].to_numpy(float),
         intrinsic_route, zk_noll, ofc_version, cache, miw_lookup)
+
+    # No exposure has a complete set of corner Zernikes, so there is no optical state to
+    # recover for any visit of this night. Record it empty rather than writing rows whose
+    # recovered and open-loop columns are all NaN: those carry no information, and a
+    # query that forgets to screen them gets NaN with no error. The whole pre-20251102
+    # era is like this -- ConsDB has the exposures but no corner-WFS quicklook.
+    if n_opd == 0:
+        if verbose:
+            print(f'{day_obs}: {len(vids)} exposures, none with complete corner OPD; '
+                  f'no optical state for this night')
+        return _empty_night(n_modes)
 
     if recover is None:
         def recover(z):
