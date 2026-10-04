@@ -24,8 +24,8 @@ donut rows, 66 columns, 966 row groups, 13.3 GB).
 
 Output at `aos/output/fam_processing/blur_intra_extra/`: `blur_vs_fam_ordinal.pdf`,
 `blur_offset_models.pdf`, `blur_diff_vs_thermal.pdf`,
-`blur_diff_thermal_raw_vs_within_night.pdf`, and the cached `thermal_join.parquet`
-(966 rows, the per-triplet thermal telemetry).
+`blur_diff_thermal_raw_vs_within_night.pdf`, `blur_diff_vs_joint_thermal_fit.pdf`, and
+the cached `thermal_join.parquet` (966 rows, the per-triplet thermal telemetry).
 
 Second pass the same day added the `day_obs` annotations and per-night medians to the
 ordinal plot, and the thermal section below.
@@ -132,6 +132,18 @@ n = 793 triplets over 14 nights:
 Within-night robust scatter falls from 0.07194 to 0.06239 arcsec, a reduction of 0.1327
 (dimensionless, fraction of robust scatter in arcsec — **not** of variance). Joint
 prediction versus the residual: Pearson r = +0.4592, Spearman rho = +0.4604, n = 793.
+
+`blur_diff_vs_joint_thermal_fit.pdf` plots the observed quadrature residual against this
+joint prediction. Left panel, both axes de-meaned by night: the Huber slope of observed
+on predicted is +1.0000 ± 0.0661 (dimensionless) by construction — the prediction is a
+Huber fit of the same points, so that slope tests nothing and only the scatter about the
+line carries information. Right panel adds each night's mean residual back to the
+prediction, which is the honest picture of the total: its Pearson r = +0.8944 is
+**circular** and must not be quoted as a figure of merit, since the night mean then sits
+on both axes. The useful numbers are the three robust scatters in arcsec: 0.18369 raw,
+0.07194 after removing the night mean, 0.06239 after also removing the thermal model.
+That ordering is the finding — the night level dominates and the thermal term is a small
+correction on top of it.
 
 So Aaron's thermal suspicion is **supported but is not the whole story**. The signal is
 real — four quantities survive the night de-meaning, two at |rho| > 0.31, and the M1M3
