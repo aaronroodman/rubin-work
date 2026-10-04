@@ -38,7 +38,7 @@ them in would only create a second, staler copy of something already cheap to re
 | table | rows | columns | shape |
 |---|---|---|---|
 | `visit_telemetry` | 213,704 | 194 | wide — one row per exposure |
-| `m1m3_thermal_r2` | 211,922 | 19 | wide — one row per exposure |
+| `m1m3_thermal_r2` | 211,922 | 28 | wide — one row per exposure |
 | `optical_state` | 90,695 | 13 | long — keyed `(visit_id, variant_id)` |
 | `fam_dz` | 2,528 | 16 | long — keyed `(visit_id, fam_variant_id)` |
 | `state_variant` | 3 | 11 | registry for `optical_state` |
@@ -241,7 +241,7 @@ optical edge radius: batoid's `LSST_r.yaml` puts M3's polished surface out to 2.
 thermocouples sit just beyond it at 2.510 to 2.533 m, because a thermocouple is drilled into the
 blank rather than into the optical surface.
 
-Per prefix the table holds five columns:
+Per prefix the table holds eight columns:
 
 | column | units | meaning |
 |---|---|---|
@@ -250,6 +250,23 @@ Per prefix the table holds five columns:
 | `<p>_r_coeff_c_per_m` | °C/m | the linear ramp fitted beside the quadratic |
 | `<p>_rms_c` | °C | residual scatter of the fit |
 | `<p>_n_sensors` | dimensionless | thermocouples that reported |
+| `<p>_mean_temp_c` | °C | bulk glass temperature, the mean over the population |
+| `<p>_std_temp_c` | °C | sensor-to-sensor standard deviation about a flat field |
+| `<p>_range_temp_c` | °C | max minus min over the population |
+
+**The mean is the M1M3 glass temperature**, and it is the only column here that sees a
+uniformly warm or cold mirror. The fit carries a constant term, so adding the same
+temperature to every thermocouple leaves every gradient and the quadratic coefficient exactly
+unchanged — a bulk offset is invisible in the shape terms by construction. Subtract
+`visit_telemetry.m1m3_air_temp` for the glass-minus-air difference that drives how fast the
+mirror is exchanging heat with the dome air.
+
+The three bulk columns are **not** gated by the fit's minimum sensor count: a mean over a
+handful of thermocouples is still a mean, whereas a 4-parameter fit over the same handful is
+not, so a row can carry a finite `<p>_mean_temp_c` next to a NULL `<p>_r2_coeff_c`. Do not read
+`<p>_std_temp_c` as a fit quality — it is the scatter about a *flat* field, so any real gradient
+inflates it; `<p>_rms_c` is the scatter about the fitted shape. Definitions match the stack's
+`ThermocoupleAnalysis.compute_temp_stats_and_rate`; the standard deviation uses `ddof=1`.
 
 **The coefficient is not a °C/m² curvature.** The model is
 `T = a0 + a1·r + a3·z + a2·q(r)`, where `q(r)` is `r²` Gram-Schmidt orthogonalized against

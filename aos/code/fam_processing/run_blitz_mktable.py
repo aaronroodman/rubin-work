@@ -98,7 +98,8 @@ DEFAULT_ROTATOR_THRESHOLD_DEG = 90.0
 DEFAULT_CONSDB_URL = 'https://usdf-rsp.slac.stanford.edu/consdb'
 
 # The 19 columns run_mktable writes into visits.parquet before any telemetry is attached,
-# in its order.  run_attach_telemetry.py adds the rest later.
+# in its order, followed by this reader's additions.  run_attach_telemetry.py adds the
+# rest later.
 VISITS_COLUMNS = (
     'day_obs', 'seq_num', 'visit', 'skyAngle', 'ra', 'dec', 'az', 'alt', 'band', 'mjd',
     'nollIndices', 'n_donuts', 'n_detectors', 'n_detectors_with_min_donuts',
@@ -107,6 +108,9 @@ VISITS_COLUMNS = (
     # Beyond the run_mktable schema: the per-side blur medians, so the intra/extra
     # difference is available per visit without re-reading the blitz collection.
     'median_blur_intra_arcsec', 'median_blur_extra_arcsec',
+    # The two exposure ids of the FAM pair. `visit` is the extra-focal one, so without
+    # `intra_visit` there is no key to join per-side telemetry on.
+    'intra_visit', 'extra_visit',
 )
 
 

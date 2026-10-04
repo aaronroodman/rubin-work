@@ -406,16 +406,25 @@ def create_schema(con):
           m1m3_r_coeff_c_per_m  DOUBLE,   -- deg C/m, linear ramp fitted beside the quadratic
           m1m3_rms_c            DOUBLE,   -- deg C, residual scatter of the fit
           m1m3_n_sensors        INTEGER,  -- dimensionless (thermocouples used)
+          m1m3_mean_temp_c      DOUBLE,   -- deg C, bulk glass temperature
+          m1m3_std_temp_c       DOUBLE,   -- deg C, sensor-to-sensor scatter about a flat field
+          m1m3_range_temp_c     DOUBLE,   -- deg C, max minus min over the thermocouples
           m1_r2_coeff_c         DOUBLE,
           m1_r2_coeff_c_err     DOUBLE,
           m1_r_coeff_c_per_m    DOUBLE,
           m1_rms_c              DOUBLE,
           m1_n_sensors          INTEGER,
+          m1_mean_temp_c        DOUBLE,
+          m1_std_temp_c         DOUBLE,
+          m1_range_temp_c       DOUBLE,
           m3_r2_coeff_c         DOUBLE,
           m3_r2_coeff_c_err     DOUBLE,
           m3_r_coeff_c_per_m    DOUBLE,
           m3_rms_c              DOUBLE,
           m3_n_sensors          INTEGER,
+          m3_mean_temp_c        DOUBLE,
+          m3_std_temp_c         DOUBLE,
+          m3_range_temp_c       DOUBLE,
           computed_at           TIMESTAMP
         )""")
     con.execute("""
@@ -439,6 +448,16 @@ def create_schema(con):
           attempted_at TIMESTAMP,
           PRIMARY KEY (day_obs, group_name)
         )""")
+    # Additive migration for m1m3_thermal_r2, as for visit_telemetry: the bulk glass
+    # temperature columns were added after the table was first built.
+    have_r2 = {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'm1m3_thermal_r2'").fetchall()}
+    for _c in R2_TABLE_COLS:
+        if _c not in have_r2:
+            con.execute(f'ALTER TABLE m1m3_thermal_r2 ADD COLUMN {_c} '
+                        + ('INTEGER' if _c.endswith('_n_sensors') else 'DOUBLE'))
+
     con.execute('CREATE INDEX IF NOT EXISTS vt_day_obs ON visit_telemetry (day_obs)')
     con.execute('CREATE INDEX IF NOT EXISTS r2_day_obs ON m1m3_thermal_r2 (day_obs)')
     con.execute('CREATE INDEX IF NOT EXISTS os_variant ON optical_state (variant_id)')
@@ -953,9 +972,13 @@ def visits(day_obs_range=None, columns=None, con=None, db_path=None):
 
 
 #: Coefficient / diagnostic columns of `m1m3_thermal_r2`, excluding the identity block.
+#: The order must match the table's column order: `upsert_m1m3_thermal_r2` builds a
+#: positional ``INSERT ... SELECT``, so a suffix added here must be added to the DDL in
+#: `create_schema` at the same place within each population's block.
 R2_TABLE_COLS = tuple(
     f'{p}_{suffix}' for p in ('m1m3', 'm1', 'm3')
-    for suffix in ('r2_coeff_c', 'r2_coeff_c_err', 'r_coeff_c_per_m', 'rms_c', 'n_sensors'))
+    for suffix in ('r2_coeff_c', 'r2_coeff_c_err', 'r_coeff_c_per_m', 'rms_c', 'n_sensors',
+                   'mean_temp_c', 'std_temp_c', 'range_temp_c'))
 
 
 def upsert_m1m3_thermal_r2(con, df):
@@ -982,8 +1005,12 @@ def upsert_m1m3_thermal_r2(con, df):
     con.register('_r2_tmp', out)
     con.execute('DELETE FROM m1m3_thermal_r2 WHERE visit_id IN '
                 '(SELECT visit_id FROM _r2_tmp)')
-    con.execute('INSERT INTO m1m3_thermal_r2 SELECT '
-                + ', '.join(cols + ['computed_at']) + ' FROM _r2_tmp')
+    # Name the target columns explicitly. A bare ``INSERT ... SELECT`` matches by position,
+    # and an additive migration appends new columns after ``computed_at``, so the physical
+    # order of a migrated table is not the DDL order.
+    named = cols + ['computed_at']
+    con.execute(f'INSERT INTO m1m3_thermal_r2 ({", ".join(named)}) SELECT '
+                + ', '.join(named) + ' FROM _r2_tmp')
     con.unregister('_r2_tmp')
     return len(out)
 
@@ -1338,6 +1365,12 @@ def fetch_status(day_obs_range=None, con=None, db_path=None):
 CONSDB_GROUPS = ('meta', 'thermal', 'wind', 'iq')
 
 
+#: Air temperatures `join_consdb` fills with `interpolate_within_night` [°C]. These are
+#: the sensors that enter the temperature *differences* studies ask for, where a single
+#: missing sensor costs the whole difference.
+INTERPOLATED_AIR_COLS = ('m1m3_air_temp', 'm2_air_temp', 'cam_air_temp', 'outside_temp')
+
+
 def join_consdb(df, groups=CONSDB_GROUPS, cdb=None, consdb_url='auto',
                 instrument='lsstcam'):
     """Attach live ConsDB columns to a `visits` result, merging on `visit_id`.
@@ -1362,7 +1395,8 @@ def join_consdb(df, groups=CONSDB_GROUPS, cdb=None, consdb_url='auto',
         `df` with the requested ConsDB columns added, plus the derived
         ``truss_temp_mean_c`` [°C] where its two inputs are present, and
         ``truss_temp_mean_c_interpolated`` marking the visits where that value was
-        filled by interpolation.
+        filled by interpolation. Each column of `INTERPOLATED_AIR_COLS` is filled the
+        same way and carries its own ``<col>_interpolated`` flag.
 
     Notes
     -----
@@ -1372,7 +1406,10 @@ def join_consdb(df, groups=CONSDB_GROUPS, cdb=None, consdb_url='auto',
     analysis it is compared against. Both thermometers drop out together on about 11% of
     science exposures, so the column is then filled by `interpolate_within_night`, which
     interpolates in time inside one ``day_obs`` and leaves a night with no valid sample
-    entirely NaN.
+    entirely NaN. The four ESS air temperatures are filled the same way, because a
+    difference between two of them is lost whenever either sensor drops out and the
+    losses compound. An interpolated air temperature is **inferred, not measured** —
+    check the ``_interpolated`` flag before treating one as an observation.
 
     Image-quality columns arrive from ConsDB as object dtype and are coerced with
     `pandas.to_numeric`; a non-numeric entry becomes NaN rather than propagating as a
@@ -1455,6 +1492,12 @@ def join_consdb(df, groups=CONSDB_GROUPS, cdb=None, consdb_url='auto',
         out['truss_temp_mean_c'] = 0.5 * (pd.to_numeric(out[a], errors='coerce')
                                           + pd.to_numeric(out[b], errors='coerce'))
         out = interpolate_within_night(out, 'truss_temp_mean_c')
+    # The ESS air sensors drop out on roughly a tenth of exposures, and any difference
+    # formed from two of them loses a visit when either side is missing, so the losses
+    # compound. Filled the same way as the truss, with the same provenance flag.
+    for _c in INTERPOLATED_AIR_COLS:
+        if _c in out.columns:
+            out = interpolate_within_night(out, _c)
     return out
 
 

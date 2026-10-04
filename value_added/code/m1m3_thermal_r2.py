@@ -12,9 +12,15 @@ the M1 annulus alone and the M3 inner disc alone. M1 and M3 are one monolithic b
 optical surfaces at different radii and different curvatures, so a thermal expansion confined
 to one of them is a different optical perturbation than the same expansion over both.
 
+It also records the **bulk** glass temperature per population -- the mean, standard deviation
+and range over the thermocouples. The shape coefficients are blind to it by construction (the
+fit carries a constant term), so the mean is the only place a uniformly warm or cold mirror
+shows up, and it is what a glass-minus-air temperature difference needs.
+
 Provided:
   - ``THERMOCOUPLE_GEOMETRY`` -- name, x, y, radius and mirror assignment per thermocouple.
-  - ``fit_r2_terms`` -- the quadratic coefficients for one table of thermocouple temperatures.
+  - ``fit_r2_terms`` -- the quadratic coefficients, and the bulk glass temperature, for one
+    table of thermocouple temperatures.
   - ``r2_terms_for_span`` -- load one time span from the Engineering Facility Database (EFD)
     and reduce it, returning a time-indexed frame ready to interpolate onto visits.
 
@@ -207,7 +213,9 @@ def fit_r2_terms(temperatures, geom=None, use_z=True, min_sensors=8):
         [°C per unit normalized quadratic amplitude], its formal error ``<col>_err`` in the
         same unit, the linear term fitted beside it ``<population>_r_coeff_c_per_m`` [°C/m],
         the residual scatter ``<population>_rms_c`` [°C] and the sensor count
-        ``<population>_n_sensors`` (dimensionless).
+        ``<population>_n_sensors`` (dimensionless); plus the bulk temperature of the glass
+        over the population, ``<population>_mean_temp_c``, ``<population>_std_temp_c`` and
+        ``<population>_range_temp_c``, all [°C].
 
     Notes
     -----
@@ -220,6 +228,19 @@ def fit_r2_terms(temperatures, geom=None, use_z=True, min_sensors=8):
     sensors reading a smooth physical field, and a thermocouple either reports or does not;
     the repository's robust-fit preference applies to the study-level regressions against
     focus, which are Huber.
+
+    The ``_mean_temp_c`` / ``_std_temp_c`` / ``_range_temp_c`` columns carry information the
+    coefficients cannot: the design matrix includes a constant column, so adding the same
+    temperature to every thermocouple leaves every gradient and the quadratic term exactly
+    unchanged. A bulk warm or cold mirror is therefore invisible in the shape terms and
+    visible only in the mean. Definitions match
+    `ThermocoupleAnalysis.compute_temp_stats_and_rate` so the two agree where both are
+    available; the standard deviation uses ``ddof=1``. They are **not** restricted by
+    `min_sensors` — a mean over a handful of sensors is still a mean, whereas a 4-parameter
+    fit over the same handful is not meaningful — so a sample can carry a finite
+    ``_mean_temp_c`` next to a NaN coefficient. ``_std_temp_c`` over the whole mirror is the
+    scatter about a *flat* field, so it is inflated by any real gradient; it is not a
+    substitute for ``_rms_c``, which is the scatter about the fitted shape.
     """
     if geom is None:
         geom = THERMOCOUPLE_GEOMETRY
@@ -242,6 +263,9 @@ def fit_r2_terms(temperatures, geom=None, use_z=True, min_sensors=8):
             out[f'{prefix}_r_coeff_c_per_m'] = np.nan
             out[f'{prefix}_rms_c'] = np.nan
             out[f'{prefix}_n_sensors'] = 0
+            out[f'{prefix}_mean_temp_c'] = np.nan
+            out[f'{prefix}_std_temp_c'] = np.nan
+            out[f'{prefix}_range_temp_c'] = np.nan
             continue
         r = geom.loc[names, 'radius_m'].to_numpy(float)
         z = geom.loc[names, 'z_rel'].to_numpy(float)
@@ -284,6 +308,19 @@ def fit_r2_terms(temperatures, geom=None, use_z=True, min_sensors=8):
         out[f'{prefix}_r_coeff_c_per_m'] = a1
         out[f'{prefix}_rms_c'] = rms
         out[f'{prefix}_n_sensors'] = n_used
+        # Bulk temperature of the glass over this population, which the shape coefficients
+        # above deliberately discard: the design matrix carries a constant column, so a
+        # uniform offset of the whole mirror leaves every gradient and the quadratic term
+        # unchanged. The mean is the M1M3 glass temperature wanted for a glass-minus-air
+        # difference. Unlike the fit, these need no minimum sensor count and no design
+        # matrix, so they are taken row-wise over whatever reported.
+        with warnings.catch_warnings():
+            # An all-NaN row is a telemetry gap, not an error; it yields NaN here.
+            warnings.simplefilter('ignore', RuntimeWarning)
+            out[f'{prefix}_mean_temp_c'] = np.nanmean(temps, axis=1)
+            out[f'{prefix}_std_temp_c'] = np.nanstd(temps, axis=1, ddof=1)
+            out[f'{prefix}_range_temp_c'] = (np.nanmax(temps, axis=1)
+                                             - np.nanmin(temps, axis=1))
     return out
 
 
