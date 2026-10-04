@@ -1,9 +1,19 @@
 # Item 2, open-loop and deviation-recovered optical state: handoff
 
-> **Status:** current · **Last updated:** 2026-10-03 · **Kind:** handoff (implementing session → batch submission)
+> **Status:** historical, work complete 2026-10-04 · **Last updated:** 2026-10-04 · **Kind:** handoff (implementing session → batch submission)
 
-The specification is **item 2 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md)** —
-read the whole item, not a summary. All 13 of its open questions are answered.
+**The work this handoff was written for is done.** All three variants are built over the full
+span; the results are in
+[`olr/docs/scheme_comparison.md`](../../olr/docs/scheme_comparison.md) and the build log in
+[`value_added/docs/status/build_progress.md`](../../value_added/docs/status/build_progress.md),
+and the item is now
+[completed item 7](../todos/completed-todos.md#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes).
+This document is kept for the three code findings and the rejected approaches below, which
+item 5 of `todo-ideas.md` reuses when it applies RBR to the MIW build. Everything written in
+the present tense below describes the state on 2026-10-03, before the builds ran.
+
+The specification was **item 2 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md)**,
+now completed item 7 of `completed-todos.md`. All 13 of its open questions were answered.
 
 **The code is done and verified on one night; the full-span batch builds are what remain.**
 This document holds what the code and git history do not say: the three decisions Aaron took

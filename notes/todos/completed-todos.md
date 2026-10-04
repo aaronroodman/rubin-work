@@ -1,6 +1,6 @@
 # Rubin AOS — completed TODO items
 
-> **Status:** current · **Last updated:** 2026-10-02 · **Kind:** working state (closed queue)
+> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** working state (closed queue)
 
 Items moved out of [todo-ideas.md](todo-ideas.md) once mostly or fully delivered. Each
 entry keeps the original scope statement so the record of what was asked for survives
@@ -15,6 +15,8 @@ collapsed.
 - [4. Backfill `visit_telemetry` to the start of LSSTCam images (20250415)](#4-backfill-visit_telemetry-to-the-start-of-lsstcam-images-20250415)
 - [5. Consolidate the regularized inversions as shared OFC code in `smatrix/code`](#5-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode)
 - [6. Extend the bounce test to four recovery schemes](#6-extend-the-bounce-test-to-four-recovery-schemes)
+- [7. Open-loop and deviation-recovered optical state for science visits, three schemes](#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes)
+- [8. Reorganize the `thermal_focus` analysis and its PDF report](#8-reorganize-the-thermal_focus-analysis-and-its-pdf-report)
 
 ---
 
@@ -813,3 +815,752 @@ different retrievals unless this moves too.
 **A:** _Stick with Danish 1.2 here_
 
 </details>
+## 7. Open-loop and deviation-recovered optical state for science visits, three schemes
+
+**Status:** complete 2026-10-04 — `9d8e39d`, `ce6b5b6`, `eef744a`, `80b5578`, `0ed11ff`
+
+All three variants built over the full span and compared. Implemented in a separate Claude
+session from the handoff at
+[`notes/status/item2_optical_state_build_handoff.md`](../status/item2_optical_state_build_handoff.md).
+
+Delivered:
+
+- Three batoid variants in the value-added database's `optical_state` table —
+  `v22_12__batoid__consdb_v1`, `v50_34__batoid__consdb_v1` and
+  `v50_34_rbr__batoid__consdb_v1` — 307,389 rows over `day_obs` 20250724 to 20260714,
+  231 nights, built in 16 shards of 24 nights each, 48 batch jobs.
+- 96,278 rows per variant (94.0%) carry a recovered optical state and a
+  `fwhm_cwfs_arcsec`; the **same** visits succeed and fail in all three, so every
+  cross-scheme comparison is paired.
+- `aos/code/open_loop.py` and the RBR corner-basis shim (`9d8e39d`), then the open-loop and
+  RBR arms inside `value_added/code/build_optical_state.py` (`ce6b5b6`).
+- The write-up, [`olr/docs/scheme_comparison.md`](../../olr/docs/scheme_comparison.md), and
+  the build log in
+  [`value_added/docs/status/build_progress.md`](../../value_added/docs/status/build_progress.md).
+- `value_added/code/test_build_optical_state.py`, 4 tests, covering nights with no corner
+  wavefront among other cases.
+
+The results, on the metric ordering Aaron set — image quality first, DOF second:
+
+| comparison | median difference in residual wavefront FWHM [arcsec] | visits improved (dimensionless) |
+| --- | --- | --- |
+| 22/12 to 50/34 | −0.1270 | 96.6% |
+| 50/34 to 50/34 + RBR | +0.025, about 19% given back | — |
+
+**The finding that matters is the range result, not the image quality.** Unconstrained 50/34
+asks a median **33x the force-limited allowed range**, with a tail to **7613x**
+(dimensionless, recovered amplitude over allowed range). So 50/34's 0.2673 arcsec is the
+image quality of a correction that cannot be applied; 50/34 + RBR's 0.2905 arcsec is the
+image quality of one that can. RBR at a median 2.16x range excess is still not strictly
+inside the range, the penalty being smooth rather than a hard bound.
+
+Verified: the rebuilt 50/34 deviation-recovered state reproduces the pre-item-2 variant to
+6.0e-14 (dimensionless v-mode amplitude) and 3.4e-11 µm/arcsec in DOF across all 915 matched
+visits of `day_obs` 20260318, so the full rerun changed nothing but the added columns. The
+stored sign convention `v_modes_olr = v_modes − v_modes_trim` holds to 1.3e-15.
+
+**One costing lesson.** The single costing night overstated the 50/34 image-quality gain by
+about 50% — −0.1929 arcsec on 20260318 against −0.1270 arcsec over 214 nights — because that
+night sits at the p10 of the per-night distribution. The scheme *ordering* held.
+
+Open caveat carried forward: no date cut, so the sample mixes pre- and post-20260419
+SVD-normalization nights. The registered-but-empty `v50_34__miw__consdb_v1` variant stays
+empty and is built by item 6; naming it in an analysis returns an empty DataFrame rather
+than raising.
+
+For all science and acquisition visits, compute and store two optical states per correction
+scheme: the **open-loop** one, which is the Trim minus Deviation degree-of-freedom (DOF)
+state with corresponding v-modes and Double Zernikes (DZ), where the Deviation is from the
+corner wavefront sensor (CWFS) Zernikes — that is the Open Loop Reproduction (OLR) — and the
+**deviation-recovered** one, the DOF and v-modes recovered from that visit's measured
+deviation alone. Do both for the 22 DOF / 12 v-mode (22/12) scheme, the 50/34 scheme, and
+50/34 with the Range-Bounded Recovery (RBR) constraint, from the Consolidated Database
+(ConsDB) Zernike values, and land the results in the value-added database.
+
+Collect the Trim-minus-Deviation code in one shared place first — pulled out of `olr/`, which
+is then repurposed for analysis of the OLR as stored in the database.
+
+**Goals:** Assess the 22/12 versus 50/34 correction schemes on real science visits, with a
+50/34 implementation that obeys the mirror force limits, and make the per-visit open-loop and
+deviation-recovered DOF and v-modes available to every later analysis as a join rather than a
+recomputation.
+
+<details>
+<summary>What exists, what the OLR is, what is populated, scope and open questions</summary>
+
+### Known collections
+
+The measured CWFS Zernikes come from ConsDB as they are measured online in the AOS:
+`aos_state.fetch_corner_zernikes_consdb` against `consdb_ccdvisit1_quicklook`, which is the
+`opd_source` recorded on every variant. The Trim DOF come from the database's own
+`visit_telemetry.trim` columns, 50 of them, from `MTAOS.logevent_degreeOfFreedom` as of
+`obs_start` [µm, arcsec].
+
+### Data selection
+
+**No cut: fill every science and acquisition visit** (Q2, Q4, Q7). The subsample for a given
+study is chosen later, at read time, which is what the variant-plus-join layout is for. So
+the dates below are provenance to record, not filters to apply:
+
+- **20260419** — the Singular Value Decomposition (SVD) normalization fix. Visits before it
+  are still built; an analysis sensitive to it cuts on `day_obs` itself.
+- Danish 1.2 plus Refit WCS went online later. That day_obs still needs finding, but it
+  gates interpretation, not the build.
+
+This extends the build back to where the ConsDB Zernikes start, 20250415 — about 2.4x the
+span of the one populated variant today (see below), and it means the populated variant is
+rerun complete over the wider span, not extended.
+
+### The OLR is Trim minus Deviation
+
+This is what collapses the two halves of this item into one build. Deviation recovery is the
+inverse direction of the sensitivity operator and the OLR is the forward direction, so both
+are computed per scheme in the same pass, and the comparison between them is the thing worth
+looking at.
+
+#### The two signed quantities, settled 2026-10-02
+
+Two different quantities differ only by an overall sign, and conflating them is the failure
+mode this section exists to prevent. Both are built; they are not alternatives.
+
+- **optical state** = `Trim − Deviation`. This is the DOF vector that defines the visit's
+  optical state, and it is the `thermal_focus` convention generalized from v-mode 1 to all
+  v-modes: `thermal_focus_lib` computes `v1_trim + MEASURED_SIGN * v1` with
+  `MEASURED_SIGN = -1.0`, which is literally Trim minus the measured state.
+- **OLR output** = `−Trim + Deviation` = `Deviation − Trim`. The wavefront, DOF and v-modes
+  that *would have been present had the loop been open*. This is what "Open Loop
+  Reconstruction" names, so this is the sign the OLR columns carry, in DOF, v-mode and
+  Zernike space alike.
+
+The reasoning, which settles the sign without appeal to any existing implementation: a
+wavefront deviation is equivalent to some DOF vector, and the Trim is applied with the
+**opposite** sign in order to push that deviation toward zero. Hence `Trim − Deviation` is
+the optical state, and the open-loop reconstruction is its negative.
+
+**`olr/code/olr.py` has this sign wrong.** It does
+`olr_opd[c] = zk_opd[c] + z_change[c]` with `z_change = sens_mat @ trim`
+(`apply_trim(..., subtract=False)`), which adds the correction rather than removing it. So
+the move into `aos/code/` is a **sign fix, not a port**, and `run_olr.py`'s identity check
+`olr_deviation == olr_opd - intrinsic` is not evidence the sign is right — that identity is
+insensitive to it, holding for either sign because `intrinsic` is carried through unchanged
+and cancels. Carry the identity check across anyway (it still catches a basis or padding
+error), but do not treat it as validating the sign.
+
+Only 22 of the 50 DOF enter `sens_mat` in `olr/code/olr.py`, which matters for the 50/34
+schemes (see Q11).
+
+**What is actually in `olr/code/` is narrower than "the OLR calculation".** It is Zernike
+space only: `build_olr_sensitivity_matrix`, `apply_trim` and the corner stacking, plus the
+pipeline around them. There is no DOF recovery, no v-mode projection and **no DZ code at
+all** there. So the move is `build_olr_sensitivity_matrix` + `apply_trim` generalized over
+the DOF set, and nothing more; the v-mode half already lives where it belongs (next
+paragraph), and the DZ optical state Q10 asks for has to be **written**, not moved. Two
+defects to fix in the same move: `build_olr_sensitivity_matrix` constructs a bare
+`OFCData(name='lsst')` with **no normalization assertion**, which is exactly the obsolete-
+normalization path `make_state_estimator` raises on and which *rotates* the v-mode basis
+rather than rescaling it; and its field angles are named `field_angles_ccs` while
+`aos_state` requires OCS at rotator zero, so the frame has to be settled explicitly rather
+than inherited from the variable name.
+
+**`build_optical_state.py` already stores the open-loop v-modes.** `make_commanded_projector`
+projects both the hexapod lookup-table DOF and the Trim DOF through `vmodes_from_dofs`, and
+`upsert_optical_state` writes them as `v_modes_lut` and `v_modes_trim` alongside the
+deviation-recovered `v_modes`. The Trim DOF themselves are already in `visit_telemetry`
+rather than in `optical_state`.
+
+The CWFS Zernikes are **not stored** (Q6). They are already in ConsDB as OPD Zernikes for
+all four corners, present for every science and acq visit whether the loop was open or
+closed, so the build queries them live and the database holds no copy. What ConsDB does not
+have is the **intrinsic** wavefront, which is why the intrinsic route — batoid or MIW — is a
+variant axis: the intrinsic is what turns an OPD into the deviation that defines the optical
+state. A Butler processing will eventually replace the ConsDB values, but not yet.
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the optical-state builder | [value_added/code/build_optical_state.py](../../value_added/code/build_optical_state.py) |
+| its batch wrapper, sharded by night | [value_added/code/run_build.sh](../../value_added/code/run_build.sh) |
+| the table, registry and readers | [value_added/code/efd_db.py](../../value_added/code/efd_db.py) |
+| the schema reference | [value_added/docs/schema.md](../../value_added/docs/schema.md) |
+| what is built and what is sparse | [value_added/docs/status/build_progress.md](../../value_added/docs/status/build_progress.md) |
+| the OLR pipeline | [olr/code/run_olr.py](../../olr/code/run_olr.py) |
+| its nightly table and parquet combine | [olr/code/nightly_table.py](../../olr/code/nightly_table.py), [olr/code/combine_parquets.py](../../olr/code/combine_parquets.py) |
+| topic Snakefile and config | `olr/Snakefile`, `olr/config.yaml` |
+| v-modes, DOF sets, per-corner recovery | `aos/code/aos_state.py`, imported by both `olr/` and `value_added/` |
+| the solvers, shared code since [completed item 5](completed-todos.md#5-consolidate-the-regularized-inversions-as-shared-ofc-code-in-smatrixcode) | `smatrix/code/regularized_inversion.py` — the **module**, not the `smatrix/code/regularized_inversion/` directory of compare drivers next to it |
+
+Most of this exists. `build_optical_state.py` takes `--scheme` (`22_12` or `50_34` in its
+`SCHEMES` dict, mapping to the `ts_ofc` DOF-set names `standard_22` and `all_50`),
+`--intrinsic`, `--opd-version` and `--img-type science,acq`; `run_build.sh --what state`
+shards it by night, resolves each variant's defining flags out of the main database so every
+shard registers the identical variant, and merges the shards. The 22/12 deviation build is
+therefore a run, not new code.
+
+`recover_night` calls `aos_state.recover_optical_state(row, state_estimator,
+n_modes=n_modes)` per visit — the plain truncated recovery — and stores `dof` (50 elements,
+µm and deg), `v_modes` (`n_modes` dimensionless amplitudes), `resid_rms_um` [µm of wavefront]
+and `ok`.
+
+**The RBR arm is the part that does not exist.** Three consequences:
+
+- RBR rides in the `scheme` field as the pseudo-scheme `50_34_rbr`, giving the variant
+  `v50_34_rbr__batoid__consdb_v1` (Q5). No schema change and no fourth axis, but it does
+  mean `build_optical_state.SCHEMES` needs a third entry mapping `50_34_rbr` to the same
+  `('all_50', 50, 34)` DOF set as `50_34`, so `scheme` no longer determines `n_dof` and
+  `n_modes` uniquely — two schemes now share them and differ only by solver. Record the
+  penalty and its parameters in `state_variant.notes`, since no column describes them.
+  Adding the entry is enough to make `--scheme 50_34_rbr` selectable, because the argparse
+  choices are `sorted(SCHEMES)`; `build_state_estimator` will then happily build the
+  `all_50` estimator and `recover_night` will run the **truncated** solver under the RBR
+  variant name. Guard explicitly: the builder must refuse `50_34_rbr` unless the RBR solver
+  path is wired, or that variant silently becomes a duplicate of `50_34`.
+- **The two solvers read different measurement spaces, so the RBR call cannot be made at
+  all today.** `recover_optical_state` takes 84 corner values (4 corners x 21 Noll, µm of
+  wavefront) and inverts the corner-evaluated, Zernike-selected SVD from
+  `corner_recovery_basis`. `invert_range_penalty(dW, svd, ranges)` takes `dW` over
+  `svd.kj_grid` — DZ coefficients over the full field, µm of wavefront — against an
+  `OFCSvd` from `build_ofc_svd`. A science visit supplies the former. This is not a
+  "how closely do the operators agree" tolerance to measure; there is no number to report
+  until an adapter exists. Q13 settles the adapter: shim `corner_recovery_basis` into the
+  solver's interface, which is the standard way the optical state is found from the CWFS.
+- `resid_rms_um` as stored is `z_dev - zk_constrained`, the subspace residual. For the RBR
+  variant that is the wrong metric, for the reason settled in item 6 and in the completed
+  four-scheme bounce test ([completed item 6](completed-todos.md#6-extend-the-bounce-test-to-four-recovery-schemes)): it cannot see a
+  regularizer trading wavefront for amplitude. The achieved residual `dW - S (d / w)` is what
+  the RBR row should carry.
+
+### What is populated today
+
+| variant_id | rows | state |
+| --- | --- | --- |
+| `v50_34__batoid__consdb_v1` | 90,695 | built, `day_obs` 20251102 to 20260713, 181 nights |
+| `v22_12__batoid__consdb_v1` | 0 | registered, never built |
+| `v50_34__miw__consdb_v1` | 0 | registered, never built |
+
+Row counts are from `build_progress.md`, read on 2026-09-24. `visit_telemetry` covers 366
+nights and 213,704 exposures over `day_obs` 20250415 to 20260714, so the recovered optical
+state covers a visibly narrower span than the telemetry it joins to. Closing that gap is now
+in scope: the no-cut answer means every variant should reach the full telemetry span, which
+is roughly 2.4x the nights and a complete rerun of the one populated variant.
+
+The empty-but-registered variants are a live trap worth not reproducing:
+`efd_db.optical_state('v50_34__miw__consdb_v1')` returns an empty DataFrame rather than
+raising, so an analysis naming an unbuilt variant gets zero rows and no error.
+
+### One caveat on comparing the schemes through v-modes
+
+`recover_optical_state` is hybrid: it inverts in `corner_recovery_basis` and reports
+v-modes in the `make_state_estimator` basis. Those are different bases, and the measured
+principal angle between the retained DOF subspaces is 4.768 deg for `standard_22`/12 but
+**89.951 deg for `all_50`/34** — effectively orthogonal. So the stored `v_modes` stand in a
+radically different relation to the recovered DOF under 50/34 than under 22/12, and a
+22/12-versus-50/34 comparison read off `v_modes` alone is not comparing like with like.
+That the two schemes span different v-mode subspaces is expected, not a problem. It is the
+reason the comparison is made elsewhere: **on recovered image quality first and on the DOF
+values second** (decided 2026-10-02), with v-modes reported for continuity with what the
+summit reports rather than as the metric of record. The angles above are quoted from the
+`aos_state` docstring; they describe the situation and gate nothing.
+
+### Scope
+
+- **First, consolidate the Trim-minus-Deviation code in one place** (Q10), which is a
+  smaller and differently shaped job than it first looks (see "What is actually in
+  `olr/code/`" above). Concretely: move `build_olr_sensitivity_matrix` and `apply_trim`
+  from `olr/code/olr.py` into `aos/code/` — where the v-modes, DOF sets and per-corner
+  recovery already live — taking the state estimator as an argument so the DOF set decides
+  the column count (Q11), asserting the required normalization, naming the Zernike
+  frame as OCS, and **fixing the sign** (see "The two signed quantities" above — the move
+  is a sign fix, not a port). The v-mode and DOF half needs no move: it is already in
+  `build_optical_state.py` and `aos_state.py`. Then
+  delete the superseded functions from `olr/code/olr.py` so there is one implementation,
+  not two, and repurpose `olr/` for analysis of the OLR as stored in the database.
+  Deleting anything needs Aaron's go-ahead at the time.
+- **No DZ optical state** (decided 2026-10-02, superseding Q10's "DZ optical state" phrase
+  and the earlier scope line calling it new code). This work is CWFS-only with no FAM, and
+  four corner wavefronts do not uniquely map to a DZ field, so the optical state is
+  evaluated from the corner wavefronts directly. Nothing in this item constructs,
+  stores or fits a DZ state. The one place DZ-shaped machinery is still touched is the RBR
+  solver, and the Q13 shim exists precisely so the solver runs against the corner problem
+  without a DZ field.
+- For each of the three schemes (22/12, 50/34, 50/34 plus RBR), compute and store both
+  states per visit: the open-loop (OLR) DOF and v-modes carrying the `Deviation − Trim`
+  sign, and the DOF and v-modes recovered from the visit's deviation alone. The CWFS
+  Zernikes stay in ConsDB and are queried live, not copied (Q6).
+- Cover **all science and acq visits** (Q2, Q4, Q7) — no date cut. This extends back to
+  20250415 and therefore includes rerunning the already-populated
+  `v50_34__batoid__consdb_v1` over the wider span, not just building the empty variants.
+- Build `v22_12__batoid__consdb_v1`, which is a run of the existing builder rather than new
+  code.
+- Add the RBR variant as the pseudo-scheme `50_34_rbr` (Q5), with `kappa = 4` and
+  `power = 3`, both dimensionless, matching the bounce test (Q8). Call the shared solver in
+  `smatrix/code/regularized_inversion.py` rather than copying it.
+- **Batoid intrinsic only** (Q12). Three variants, all on the batoid route:
+  `v22_12__batoid__consdb_v1`, `v50_34__batoid__consdb_v1` and
+  `v50_34_rbr__batoid__consdb_v1`. The MIW route is deferred: the registered-but-empty
+  `v50_34__miw__consdb_v1` stays empty here and is built by item 6, where the MIW builds are
+  decided. When it is built it needs `--intrinsic miw --intrinsic-ref <the MIW build name>`
+  plus a `MiwCornerLookup` from `aos/code/miw_corner_intrinsic.py`; the builder raises
+  rather than guessing if the ref is missing.
+- **Before any RBR build, write the corner-basis adapter (Q13, answered).** It is a
+  small shim object built from `corner_recovery_basis` that presents the six attributes the
+  solver module actually reads — `U_eff`, `Sigma`, `V`, `n_keep_eff`,
+  `normalization_weights`, `dof_idx` — mapping one-to-one onto the basis dict's `U`, `s`,
+  `V`, `n_modes`, `norm_vector`, `dof_indices`. With that, `invert_range_penalty`,
+  `dof_range_vector` and `achieved_residual` all run against the corner problem unchanged,
+  and the RBR DOF are comparable to the truncated DOF by construction rather than by
+  measured agreement — which is what the old "check the forward operators agree" bullet was
+  reaching for. Assert that the shim's weights are the `REQUIRED_NORM_YAML` ones.
+- Store the achieved residual `dW - S (d / w)` for the RBR variant, not the subspace
+  residual, and record on the variant which residual its `resid_rms_um` column holds.
+- Carry `run_olr.py`'s identity check `olr_deviation == olr_opd - intrinsic` into the moved
+  code and run it per visit at build time, so a sign or basis error in the forward direction
+  fails loudly. Since the Zernikes are not stored, this is a build-time assertion in the
+  log, not something a later query can re-derive from the database alone.
+- Keep every scheme as rows under its own variant, never as new columns, so a comparison
+  stays a self-join on `visit_id` through `efd_db.compare_variants`. Three schemes on the
+  batoid route is **three variants** here (Q12); the MIW route would double that and is
+  deferred to item 6.
+- Run the builds as sharded batch jobs through `run_build.sh --what state --mode batch`,
+  which Aaron submits. Size it honestly first: with Q12's batoid-only list this is **three
+  full-span builds over 366 nights**, not "2.4x the nights" of a single build. Measure the
+  per-night cost on one night before submitting the set.
+- **Replace `v50_34__batoid__consdb_v1` with a complete rerun** (decided 2026-10-02) rather
+  than extending it night-by-night. Its existing 90,695 rows over 181 nights are discarded
+  and rebuilt over the full 366-night span, so the three variants are built by identical code
+  against identical inputs and a scheme-to-scheme difference cannot be an artifact of build
+  vintage. Dropping those rows needs Aaron's go-ahead at the time.
+- Confirm the state estimators are held for the life of each shard. `corner_recovery_basis`
+  caches on `id(state_estimator)`, and CPython reuses an `id` after garbage collection, so
+  a short-lived estimator per scheme could in principle return another scheme's basis from
+  the cache. With three schemes live in one build this is worth an explicit check rather
+  than an assumption.
+- Compare the schemes **on recovered image quality first, and on the DOF values second**,
+  using the open-loop versus deviation-recovered difference per DOF over the science sample.
+  Report v-modes alongside for continuity with the summit, but not as the metric of
+  record — see the caveat above.
+- **The image-quality metric is the median over the four CWFS, not over the focal plane**
+  (decided 2026-10-02). It applies to the **deviation-recovered** arm, not the OLR arm.
+  Rationale: this work uses the CWFS only, with no Full Array Mode (FAM), so the optical
+  state is evaluated from the four corner wavefronts **directly, without passing through a
+  Double Zernike (DZ) state** — four corners do not uniquely determine a DZ field. The
+  optical state in the science sensors is not well known, and extrapolating there would fold
+  that uncertainty into the IQ estimate; evaluating where the wavefront is actually measured
+  avoids it.
+
+  Concretely, per visit per scheme: take the achieved residual wavefront at the four corner
+  field points, convert each corner's 21-Zernike vector with ts_wep
+  `convertZernikesToPsfWidth`, quadrature-sum over Zernikes within each corner, then take
+  the **median over the four corners** [arcsec FWHM contribution].
+
+  **This differs from every other wavefront-IQ number in the repository**, which all go
+  through `aos/code/aos_fwhm.py`: `fp_grid` / `focal_basis` / `fp_fwhm` evaluate a DZ field
+  on an area-uniform focal-plane grid out to `FP_RADIUS = 1.75 deg` at 0.35 deg steps and
+  take the median over **that grid**. Its callers (`run_bounce.py`,
+  `run_wfs_dof_compare.py`) have a DZ `dW` in hand because they come from FAM or a fitted DZ
+  field, which is unavailable here. The conversion step is shared; the evaluation domain is
+  not. The two numbers are **not interchangeable** — label the stored column so no later
+  analysis substitutes one for the other.
+- Store the recovered CWFS-median FWHM as a **column on `optical_state`** (decided
+  2026-10-02), computed in the build, so the scheme comparison stays a self-join through
+  `efd_db.compare_variants` with no recomputation. Additive schema migration, as
+  `v_modes_lut` / `v_modes_trim` already were.
+- Update `value_added/docs/schema.md` and `status/build_progress.md` with the new axis, the
+  new columns, and the realized row counts and spans.
+- Spot-check against a night already analysed elsewhere, so a build error shows up as a
+  disagreement with a known result rather than passing silently.
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. What does "lower gains for higher v-modes" mean concretely?** A gain vector over the
+34 kept modes, a roll-off function of mode index, or a per-mode fit.
+
+**A:** A vector of gains over the DoF.  Starting value might be a gain of 0.3 for the 22 DoF currently used and a lower value of 0.1 for the remaining mirror modes. 
+
+**Q2. How large is a "large sample" of science visits,** and does the 20260419 cut leave
+enough once the Danish 1.2 and refit WCS cut is also applied?
+
+**A:** _Lets fill these tables for all science and acq visits, and I cut later on which
+subsamples to use for various studies._
+
+**Q3. Does the OLR table live in the existing `aos_efd.duckdb` or its own database file?**
+
+**A:** I am not sure, but this table will also need to be keyed off the nDof/nVmode scheme and perhaps also the wavefront retrieval,so I guess it will want its own table
+
+**Superseded 2026-10-02** by the merge with the value-added build. There is no separate OLR
+table: the open-loop and deviation-recovered states are rows in the existing
+`optical_state`, keyed by `variant_id`, with the scheme and the retrieval route carried as
+variant axes exactly as this answer asked for. Kept as the record of the keying decision.
+
+**Q4. Is 20260419 the right single cut?** It is the SVD normalization fix date and appears
+to be the Danish 1.2 changeover date too, but refit WCS may have gone online on a
+different day. Needs confirming against the online collection provenance.
+
+**A:** Again for the value added duckdb lets just fill this for all visits
+
+**Q5. How does RBR enter the variant name?** The name is three parts today
+(`v50_34__batoid__consdb_v1`) and nothing in `state_variant` describes the solver. Either add
+a fourth axis — say `v50_34__batoid__consdb_v1__rbr`, with the unregularized builds taking an
+implicit or explicit `trunc` — or encode it in the `scheme` field as a pseudo-scheme like
+`50_34_rbr`. The fourth axis is cleaner and matches how `fam_variant` already carries four;
+the pseudo-scheme is less code but overloads a field that means DOF count and v-mode count
+everywhere else. Q3's answer already says the keying must cover the scheme and perhaps the
+retrieval, so this is the same decision made concrete.
+
+**A:** _`v50_34_rbr` will encode the scheme._ So the pseudo-scheme option, not a fourth axis:
+no schema change, and `SCHEMES` gains a `50_34_rbr` entry pointing at the same `all_50` DOF
+set. Consequence to accept: `scheme` no longer implies `n_dof`/`n_modes` uniquely, and the
+penalty parameters live only in `state_variant.notes`.
+
+**Q6. Where do the open-loop CWFS Zernikes live?** The Trim DOF are already in
+`visit_telemetry` and the Trim v-modes are already in `optical_state.v_modes_trim`, but the
+implied Zernikes are 21 coefficients per corner per visit and exist nowhere. Options: list
+columns on `optical_state` next to the v-modes; a separate long table keyed the same way; or
+not stored at all, recomputed on read from the stored Trim v-modes, since the forward
+projection is cheap.
+
+**A:** _The CWFS Zernikes are currently in the ConsDB, with OPD Zernikes for all four
+corners. Note that these are present for all science and acq visits independent of open or
+closed loop. We can get these quantities as needed from the ConsDB. What isn't in the ConsDB
+is the intrinsic wavefront, and so we need to use either Batoid intrinsic or MIW. Eventually
+we'll have a processing in the Butler to replace the ConsDB values, but not yet._
+
+**Q7. Which span does the build cover?** The existing 50/34 variant runs `day_obs` 20251102
+to 20260713, and the data-selection cut above says after 20260419. Options: match the
+existing variant's span so the three schemes join visit-for-visit; restrict to post-20260419
+where the SVD normalization is fixed; or extend all three back to 20250415 where ConsDB
+Zernikes exist, which means also rebuilding the populated 50/34 variant.
+
+**A:** _See above, I want to fill all science and acq visits_
+
+**Q8. What RBR `kappa` and `power`?** The bounce test used `kappa = 4` and `power = 3`, both
+dimensionless, while `invert_range_penalty` defaults to `kappa = 0.5, power = 2`. Science
+visits sit near the nominal optical state rather than at a deliberately bounced one, so the
+penalty may rarely bind. Either adopt the bounce values for continuity, or sweep on a sample
+of nights and pick for the science-visit regime.
+
+**A:** _Use kappa=4 and power=3_
+
+**Q9. Does the MIW intrinsic route come along?** Item 6 rebuilds the Measured Intrinsic
+Wavefront (MIW) under three correction schemes, and `v50_34__miw__consdb_v1` is registered
+but empty. Building the MIW route here would double the variant count; deferring keeps this
+item to the batoid route and leaves the MIW variants to item 6, where the MIW builds are
+decided.
+
+**A:** _For now lets use the existing MIW_
+
+**Q10. Does `olr/` stay a separate topic?** Its pipeline writes `olr.parquet` per night with
+the open-loop OPD and deviation Zernikes. If the open-loop state is built into the
+value-added database per visit, `olr/` either becomes the reference implementation this build
+is verified against and is then left alone, or it is retired in favour of the database.
+
+**A:** _Lets pull code from the olr topic or reproduce it in the aos/code area (or in the
+rubin-work/common/code area) to calculate the OLR Trim-Deviation for DOF, v-modes and DZ
+optical state. All of that code should move to one common place, and I will repurpose the
+rubin-work/olr topic for analysis of the OLR in the duckdb. So please remove the code from
+rubin-work/olr that moves over._
+
+**Q11. Does the OLR sensitivity matrix cover 22 DOF or 50?** `olr/code/olr.py` builds
+`sens_mat` with 22 columns and slices the Trim with `dof_state[indices]`, so the OLR Zernikes
+it produces are the 22 DOF subset of the applied correction. For the 50/34 schemes the
+open-loop Zernikes should arguably use all 50. Either extend the matrix to 50 columns for
+those schemes, or keep 22 everywhere and accept that the open-loop Zernikes are a projection
+of the correction rather than all of it. This decides whether the moved code is a copy or a
+generalization.
+
+**A:** _Use the scheme's own DOF set, so 50/34 gets 50 columns._ There is nothing to
+generalize: `olr/code/olr.py` gets its 22 columns only by hand-masking `comp_dof_idx`
+(`M1M3Bend[7:] = False`, `M2Bend[5:] = False`), which is precisely what
+`make_state_estimator(dof_set=...)` already does via `_comp_dof_idx(DOF_SETS[dof_set])`. So
+the moved function takes the state estimator as an argument and reads the column count off
+it. `DEFAULT_DOF_INDICES` (`range(0,17) + range(30,35)`) goes away — it is a hand-written
+duplicate of `DOF_SETS['standard_22']` that can drift from it silently. Keeping 22
+everywhere is rejected on its merits, not on cost: it would put the 50/34 open-loop state
+and its deviation-recovered state in different subspaces, which defeats the comparison this
+item exists for.
+
+**Q12. Which MIW build, and which of the six variants get built?** Q9 says "the existing
+MIW", but `--intrinsic miw` needs `--intrinsic-ref` naming a specific build and a
+`MiwCornerLookup`, and the builder raises rather than defaulting. Three schemes over two
+intrinsic routes is six variants; the natural subset is the three batoid ones plus 50/34 MIW
+(the one already registered), which is four. Worth fixing the list and the MIW build name
+before any batch submission, since each variant is a full-span build.
+
+**A:** _Batoid intrinsic to start._ So **three variants, not four**:
+`v22_12__batoid__consdb_v1`, `v50_34__batoid__consdb_v1` and `v50_34_rbr__batoid__consdb_v1`.
+No MIW build name is needed here, and `v50_34__miw__consdb_v1` stays registered-but-empty
+until item 6 builds it — which leaves the empty-variant trap above live, so an analysis must
+not name it meanwhile.
+
+**Q13. How does the RBR solver reach a corner measurement?** This is the one thing blocking
+the `50_34_rbr` variant. `invert_range_penalty` wants `dW` over `svd.kj_grid` — DZ
+coefficients over the full field — while a science visit gives 84 corner Zernike values and
+`recover_optical_state` inverts the corner-evaluated SVD. Three options:
+
+1. **Shim `corner_recovery_basis` into the solver's interface.** The solver module reads
+   only `U_eff`, `Sigma`, `V`, `n_keep_eff`, `normalization_weights` and `dof_idx` (and
+   `kj_grid`, which the three functions needed here never touch). The basis dict already
+   carries all six under the names `U`, `s`, `V`, `n_modes`, `norm_vector`,
+   `dof_indices`, so this is a small dataclass in `aos/code/aos_state.py` and no solver
+   change. `dW` becomes the 84-value `z_dev`. `dof_range_vector` still works, because its
+   `f_j` is the field-averaged quadrature over the full 50 DOF and does not depend on which
+   rows the sensitivity was evaluated at — provided `dof_idx` is the corner basis's
+   `dof_indices`. **Preferred**; cheapest and keeps one solver.
+2. **Project the corner measurement into DZ space,** fitting a DZ field to the four corner
+   vectors and then running the existing path. Rejected: four field points cannot constrain
+   the focal-plane DZ orders `build_ofc_svd` uses, so a regularized fit feeds a regularized
+   solve and the RBR-versus-truncated DOF difference then has two inseparable causes.
+3. **Write a corner-space range-penalty solver.** Duplicates the IRLS and contradicts the
+   scope line about calling the shared solver rather than copying it. Only if option 1 needs
+   real surgery.
+
+If option 1 turns out not to work, drop `50_34_rbr` from this item, build the two real
+schemes full-span, and move RBR to its own item with the shim as its first task — the
+22/12-versus-50/34 comparison is the stated goal and does not need RBR.
+
+**A:** _option 1 which is the standard approach for finding the optical state from the CWFS_
+
+</details>
+
+---
+
+## 8. Reorganize the `thermal_focus` analysis and its PDF report
+
+**Status:** complete 2026-10-04 — `3a025a8`, `96f6817`, `119533c`
+
+Delivered:
+
+- The report restructured to the requested order — study description and summary plots, then
+  the telemetry-term comparisons, then the resulting trims, then the independent checks
+  (`3a025a8`).
+- Then reworked again around 19 further changes Aaron asked for, going from 21 pages to 20
+  (`96f6817`), and the standalone calculator trimmed to two methods with the current
+  coefficients (`119533c`).
+- The feature set settled. `DELIVERABLE_GROUPS` is mean truss temperature plus the four M1M3
+  gradients, as the scope expected.
+- "Open-loop focus" throughout, replacing "uncorrected response"; both Pearson r and
+  Spearman rho at every display site.
+- `thermal_focus/docs/thermal_focus.md` updated to match.
+
+**Four scope bullets were deliberately not met** — the analyses were dropped, not just their
+pages, on review during `96f6817`:
+
+- **The elevation slopes and the rising/falling hysteresis test.** Q5 had said to keep these
+  as a null result. They were dropped instead: the result rested on a misreading of how the
+  hexapod look-up table handles elevation, so it was a null result about the wrong thing.
+- **The within-FAM-block comparison.** Inside a block the commanded Trim is frozen, so the
+  comparison measured the measured term alone against a model of the commanded term — not a
+  focus prediction. Consistent with the memory note on frozen Trim within a block.
+- **The Huber-versus-trees model comparison and the per-band remaining-error table.**
+- **The "how the model is settled, why there are no folds" page** and the commanded
+  truss-slope cross-check plot. The fold *presentation* removal was in scope (Q3); this went
+  further and dropped the page explaining its absence.
+
+Four pages were added that the original scope did not ask for, answering what the study is
+for:
+
+- Closed-loop performance from the measured v-mode-1 deviation alone: median −20.18 µm,
+  nMAD 19.33 µm of equivalent hexapod dz over 68,079 visits. The per-night median is flat
+  against date at −0.01045 ± 0.01396 µm of equivalent hexapod dz per day, 0.7 standard
+  errors — so no drift.
+- The filter look-up table, reframed as a test of the filter LUT rather than of the thermal
+  model. A filter change costs 2.09x the same-band scatter (dimensionless, band-change nMAD
+  26.8 µm over same-band nMAD 12.8 µm of equivalent hexapod dz) at a median signed step of
+  only +0.80 µm, so the error is per-transition rather than a bias. Five of the eight
+  well-sampled band pairs are antisymmetric, a real filter offset; three are not, a focus
+  drift straddling the change.
+- Outlier nights: visits beyond 3 nMAD = 174.5 µm of equivalent hexapod dz, per night against
+  MJD. 3.15% of visits lie beyond it against a Gaussian 0.27%, and the excess concentrates on
+  a handful of nights rather than spreading over the survey.
+- The FAM in-focus acquisition visits as an independent check, on the Danish 1.2 retrieval
+  with the science coefficients applied unchanged: open-loop focus nMAD 282.2 µm improving to
+  residual nMAD 83.3 µm of equivalent hexapod dz, a factor 3.39 (dimensionless), n = 1,346
+  visits over 43 nights.
+- Prediction quality at the first visit after initial alignment, in `v1_dz`: actual minus
+  predicted median +57.3 µm, nMAD 153.8 µm of equivalent hexapod dz over 163 BLOCK-T539
+  nights, Spearman rho +0.737.
+
+**Later work on this topic is uncommitted and is not part of this item.** The working tree
+carries a refactor moving the calculator's coefficients out to
+`thermal_focus/code/trim_coefficients.yaml` with `test_trim_calculator.py` and
+`trim_test_cases.yaml` alongside. That is a separate change, begun after this item closed.
+
+Restructure the `thermal_focus` PDF so it opens with the study description and the summary
+plots, then moves through the telemetry-term comparisons to the resulting trims. Settle the
+model by evaluating the candidate telemetry terms in a controlled sequence against a mean
+truss temperature baseline, and drop the material the study has outgrown.
+
+**Goals:** Make the report read in the order a reader needs it, and establish which telemetry
+terms the deliverable model carries.
+
+<details>
+<summary>The current report, the terms to evaluate, scope and open questions</summary>
+
+### Existing machinery to build on
+
+| piece | path |
+| --- | --- |
+| the report builder, one page per `figure_*` or `_text_page` call | [thermal_focus/code/run_thermal_focus_analysis.py](../../thermal_focus/code/run_thermal_focus_analysis.py), `main()` |
+| the fitting engine, `huber_line`, `evaluate`, `model_comparison`, `nested_comparison`, `per_band_fit` | [thermal_focus/code/thermal_focus_fit.py](../../thermal_focus/code/thermal_focus_fit.py) |
+| the feature groups and `resolve_features` | [thermal_focus/code/thermal_focus_lib.py](../../thermal_focus/code/thermal_focus_lib.py), `FEATURE_GROUPS`, `DELIVERABLE_GROUPS` |
+| the standalone online calculator | [thermal_focus/code/trim_calculator.py](../../thermal_focus/code/trim_calculator.py) |
+| the network and DuckDB stage | [thermal_focus/code/run_thermal_focus.py](../../thermal_focus/code/run_thermal_focus.py) |
+| the study doc | [thermal_focus/docs/thermal_focus.md](../../thermal_focus/docs/thermal_focus.md) |
+
+The report is 18 pages, built in `main()` inside `with PdfPages(pdf_path)`, currently ordered
+as three parts: before the correction, training, then all the data. The pages to keep, and
+where they are now:
+
+| page | what it is |
+| --- | --- |
+| 2 | `figure_before` — focus error against truss temperature, by band, and the residual |
+| 3 | `figure_sample` — the per-night medians |
+| 7 | `figure_model` — before and after the correction, coefficient stability, residual by band |
+| 12 | `figure_elevation` — elevation slopes and the hysteresis test |
+| 14 | `_text_page`, "the correction as degrees of freedom" — the conversion explainer and the per-visit and start-of-night trim tables |
+| 15 | `figure_dof` — the trim to command per visit |
+| 16 | `figure_dof_start` — the trim at the start of each night |
+| 18 | `figure_t539` — predicted trim against what the initial alignment block settled on |
+
+`huber_line` already returns both `pearson_r` and `spearman_rho`, so both correlations are
+computed wherever it is used; several display sites print only Pearson, among them the panel
+titles at `figure_before` and the camera-temperature rows on page 8.
+
+The axis clipping to the 1st and 99th percentiles is a single site in `figure_dof`, with the
+percentiles also written into the legend string and the docstring.
+
+The feature groups, with the column names as they appear in the code:
+
+| group | columns | unit |
+| --- | --- | --- |
+| `truss` | `truss_temp_mean_c` | deg C |
+| `grads` | `m1m3_z_gradient_c_per_m`, `m1m3_y_gradient_c_per_m`, `m1m3_radial_gradient_c_per_m`, `m1m3_x_gradient_c_per_m` | deg C per m |
+| `r2grads` | `m1m3_r2_coeff_c`, `m1_r2_coeff_c`, `m3_r2_coeff_c` | deg C per unit norm r2 |
+| `camtemp` | `cam_AverageTemp` | deg C |
+
+`DELIVERABLE_GROUPS` is currently `('truss', 'grads')`. The r2 terms and camera temperature
+are analysed but not in the deliverable set.
+
+`truss_temp_mean_c` is not stored in the DuckDB. It is derived on the ConsDB join in
+`value_added/code/efd_db.py` as the mean of the two ConsDB thermometers
+`tma_truss_temp_pxpy` and `tma_truss_temp_mxmy`, then interpolated within each night, with a
+companion `truss_temp_mean_c_interpolated` flag. The M1M3 gradients and `cam_AverageTemp`
+are stored and come from `visit_telemetry`. `run_thermal_focus.py` is the only stage that
+touches the network or the DuckDB; the analysis script reads only parquet.
+
+There is no neural-network material in the topic or its doc. The lengthy explanation to
+remove is the out-of-fold and train/test justification on pages 4 and 6, with the holdout
+split coming from `section_holdout` and its figure being `figure_training` on page 5.
+
+The hysteresis test currently concludes no consistent direction dependence, at a sign-test
+p = 0.084 dimensionless, so keeping it retains a null result rather than a positive one.
+
+### Scope
+
+- Reorder the report to open with the study description and the summary plots, then the
+  model comparisons, then the resulting trims.
+- Write the opening study description: predict start-of-night focus, expressed as the degrees
+  of freedom contributing to v-mode 1, from telemetry including the Telescope Mount Assembly
+  (TMA) truss temperatures and the M1M3 thermal gradients, working in v-mode space.
+- Explain the focus conversion in the opening: v-mode 1 to approximate equivalent hexapod dz
+  in µm, via the factor relating it to camera or M2 defocus, stating that the conversion is
+  not exact at the percent level but gives a physical sense of the focus change.
+- State in the opening that the analysis uses ConsDB-derived Zernikes because they are the
+  consistent and comprehensive data set, that the selected sample is the day_obs with a
+  consistent look-up table, and what was excluded, including the hotter data.
+- Rename "uncorrected response" to "open-loop focus" throughout, and label the error quantity
+  "focus error".
+- Keep and improve the opening summary plots: open-loop focus by band, open-loop focus
+  against mean truss temperature, and before and after the linear correction, showing the
+  residual after the Huber robust fit and the fitted coefficient.
+- Show both the Pearson and the Spearman correlation coefficients at every display site,
+  including the panel titles that currently print Pearson alone.
+- Add a database-wide plot of mean TMA truss temperature over all data in the database.
+- Keep the nightly-median plots: median open-loop focus error per night, median truss
+  temperature per night, and the relation between them.
+- Identify the outlier nights in the nightly medians and report where they fall in focus.
+- Replace the training and validation discussion with a short statement: splitting by visit
+  is inappropriate because images within a night are strongly correlated, so a split must be
+  by night; and since the model is a low-dimensional linear Huber fit, a train/test or
+  fold-based approach is not needed.
+- Remove the fold analysis from the report: the out-of-fold and per-fold blocks on pages 4
+  and 6, and the coefficient-stability panel in `figure_model`.
+- Evaluate the candidate terms in sequence: mean truss temperature as the baseline, then
+  truss temperature plus each of the four M1M3 gradients, the M1 and M3 r2 terms and camera
+  temperature individually; rank the individual terms; then add them cumulatively, strongest
+  first after truss temperature.
+- Show each model with two plots: predicted against measured open-loop focus, and a
+  one-dimensional residual histogram annotated with its NMAD in µm.
+- Report the final model, expected to be truss temperature plus the four M1M3 gradients, with
+  the remaining focus error by band.
+- Keep the hysteresis study, comparing the rising and falling legs.
+- Widen the `figure_dof` axis clipping from the 1st and 99th to the 0.25th and 99.75th
+  percentiles, updating the legend string and the docstring with it.
+- Show the applied-trim plots for all visits, and add the equivalent plots for the first
+  visit of each night, selected on telemetry.
+- Keep the four start-of-night comparison plots against the trim the closed-loop alignment
+  blocks settled on, the correction size against Modified Julian Date (MJD) with its
+  distribution, and the predicted against applied correction including its outliers.
+- Identify the day_obs of the large outliers on the applied-correction axis of the final
+  comparison.
+- Update `thermal_focus/docs/thermal_focus.md` to match the new report order and the settled
+  feature set.
+
+### Open questions
+
+Answer by replacing the `_unanswered_` on the `**A:**` line. An answered question stays
+here as the record of the decision.
+
+**Q1. Where does the database-wide truss-temperature plot get its data?** `truss_temp_mean_c`
+is not stored in the DuckDB — it is derived on the ConsDB join from the two thermometers and
+interpolated within each night. So a database-wide plot needs either a live ConsDB pass in
+`run_thermal_focus.py`, which is the network stage, or a new `value_added` builder that
+materializes the column into `aos_efd.duckdb`. The latter makes it available to every other
+study; the former is a smaller change confined to this topic.
+
+**A:** _Access of the ConsDB is fast enough that the existing code that gets the mean truss temp is fine and we don't need this ithe duckdb_
+
+**Q2. Does the rename reach the dict keys, or only the display strings?** Roughly 15
+user-visible strings carry "uncorrected", but so do about 8 dict keys and the module constant
+`trim_calculator.UNCORRECTED_NMAD_UM`, which crosses into `thermal_focus_fit.py` and the
+standalone calculator. Renaming only the display strings leaves the code and the report using
+different vocabulary.
+
+**A:** _Only need to change names in the PDF file not in the code or parquet files_
+
+**Q3. Does the report keep reporting a cross-validated NMAD after the fold presentation is
+removed?** `GroupKFold` in `thermal_focus_fit.evaluate` is what produces every NMAD the
+report currently quotes, so dropping the fold *presentation* is separable from dropping the
+mechanism. Either the quoted NMAD becomes an in-sample number, or the folds keep running
+unseen.
+
+**A:** _I still want the robust RMS (which I assume is what NMAD means here) for the residual of the Trim-Deviation v1's equivalent dz (v1_dz) around the prediction.  That doesn't need the KFold analysis I believe._
+
+**Q4. Is the page-14 material to retain the DOF conversion explainer, or the fitted-model
+summary?** Page 14 is the text page "the correction as degrees of freedom", holding the
+conversion explainer and the per-visit and start-of-night trim tables. The fitted-model
+summary is page 6, which is also where the per-fold table to be removed sits.
+
+**A:** _page 14 is the 'correction as degrees of freedom'_
+
+**Q5. Does the hysteresis test stay as a null result, or get a decision?** It currently
+reports no consistent direction dependence at a sign-test p = 0.084 dimensionless. Keeping it
+preserves the evidence; the alternative is to state the conclusion in the text and drop the
+page.
+
+**A:** _Keep the plots and as a null result we just show the plots, which I want to keep_
+
+**Q6. What decides "useful" when adding terms cumulatively?** A reduction in residual NMAD in
+µm by some threshold, coefficient sign stability, or physical interpretability. The r2 terms
+were previously measured at a 4.8% reduction in robust residual scatter and their adoption was
+left open.
+
+**A:** _I will look by eye at the results, since I am weighing the NMAD residuals with the overhead of adding the r2 variables_
+
+</details>
+
+---
+
