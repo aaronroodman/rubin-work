@@ -1,9 +1,9 @@
 # Draft batoid PR: NUFFT evaluation and Debye weights for huygensPSF
 
-> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** status (draft PR text, not yet opened)
+> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** status (PR text; opened as jmeyers314/batoid#127)
 
 Local branch `debye-huygens` in `~/Software/batoid`, one commit on top of `main`
-(a923c3e, which is also `releases/0.9`). Target: `jmeyers314/batoid:main`. The text
+(a923c3e, which is also `releases/0.9`). Opened 2026-10-04 as https://github.com/jmeyers314/batoid/pull/127, from the fork `aaronroodman/batoid`, against `jmeyers314/batoid:main`. The text
 below the line is the PR body.
 
 ---
