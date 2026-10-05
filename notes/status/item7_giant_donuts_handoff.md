@@ -1,7 +1,7 @@
 # Item 7 — giant donuts, pupil models and the intra/extra Z11 split
 
-> **Status:** fact-finding done, blocked on two decisions · **Last updated:** 2026-10-05 ·
-> **Kind:** handoff
+> **Status:** radial profiles measured, blocked on the ts_wep checkout · **Last updated:**
+> 2026-10-05 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
 lives in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05).
@@ -98,6 +98,59 @@ if item 5 goes through ts_wep rather than danish directly, it faces the same mis
 `maskParams`. Worth noting there. (Another session has `aos/code/miw/compare_pupil_models.py`
 in progress, untouched here.)
 
+## The physics result so far
+
+**Josh's ring is real, it is extra-focal, and it looks like an OPD term rather than a
+pupil-model error.** Measured on seq 337 (extra) and 340 (intra), R22_S10, field radius
+0.235 deg:
+
+| zone (normalised radius) | extra | intra | extra − intra |
+| --- | --- | --- | --- |
+| inner ring, 0.62–0.70 | 1.019 | 0.879 | **+0.140** |
+| outer, 0.94–1.00 | 0.897 | 0.990 | **−0.094** |
+
+All dimensionless normalised flux, relative to the mean over the illuminated annulus. The
+intra-minus-extra difference peaks at **−0.314 at normalised radius 0.640**, just outside
+the inner pupil edge (0.612 v3.14, 0.620 v1000) and **not** at the rim.
+
+Flux is conserved and redistributed radially in **opposite directions on the two sides of
+focus**. That is the OPD signature from the item's step 7: a mask boundary error would move
+an edge *position* the same way on both sides rather than swap the flux balance between
+zones. The location at the inner edge is consistent with a turned-down edge inside M1 —
+which is also where v1000 moves the inner radius, outward by 25.3 mm.
+
+**Independent confirmation of the 4+4 mm split, from the images.** Donut diameters measure
+**6.85 mm extra and 6.72 mm intra**, against `wfs/`'s prediction of 6.7 mm for a 4+4 mm
+camera-plus-M2 split and 7.0 mm for camera-only 8 mm. The images agree with the Trim.
+
+**Caveats.** One donut per side, one sensor, one night — the item asks for a distribution.
+The profile is azimuthally averaged, so a localised figure error is diluted; an azimuthal
+cut is the obvious next step. The 0.13 mm size difference between the two donuts is removed
+by the normalisation and has not been separated from the effect. No wavefront fit has run,
+so the amplitude in µm of wavefront is unknown and cannot yet be set against the 0.3 µm Z11
+split or the 0.10 µm diffraction term.
+
+## v1000 maskParams: generated
+
+`wfs/output/giant_donuts/maskParams_v1000.yaml` (not committed, `*/output/*` is ignored).
+Validated by regenerating v3.14 and recovering the shipped coefficients: **M1 outer to
+0.42 mm on 4.18 m, M1 inner to 0.02 mm on 2.558 m**. Generated v1000 values against the
+batoid model: M1 inner 2.58397 against 2.5833 m (+0.7 mm), M1Baffle1 4.16479 and M1Baffle2
+4.16460 against 4.165 m (−0.2 and −0.4 mm).
+
+Two things to know about it:
+
+- **Only M1 is refitted.** M3's aperture also differs between the models (outer 2.508 to
+  2.48511 m, inner 0.55 to 0.52735 m) but it sits inside M1's inner shadow and **never sets
+  the boundary** — traced on-axis through the full system, the surviving annulus is
+  2.5580–4.1796 m in v3.14 and 2.5840–4.1650 m in v1000, with the inner edge tracking M1's
+  annulus to within the ray grid's 0.4 mm. M2, L1 and the filter are byte-identical between
+  the models and are copied through.
+- **M1's outer coefficient is redundant in v1000.** The generated 4.17247 m is 7.5 mm off
+  M1's 4.18 m rim because the new baffles at 4.165 m now clip inside it, so the measured
+  outer edge is the baffle. Physically right, but it means the v1000 outer edge is the
+  baffle entry, not M1's.
+
 ## In progress
 
 `wfs/code/giant_donuts/select_exposures.py` — written and verified. Selects a night's clean
@@ -107,28 +160,43 @@ giant donuts from the Trim, label-independently: `baseline_trim`, `classify_defo
 
 ## Next concrete action
 
-Blocked on two decisions, below. Once they are made, in order:
-
-1. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
-2. Run blitz v2 on seq 337/340 with `cameraOffset = 4.0e-3` and `m2Offset = 4.0e-3`, Danish
-   1.3, `binning = 2`, spiders off, unpaired, to confirm it detects and fits the giant
-   donuts end to end. This is the real Q1 test — the source read above says it should work,
-   but it has not been run.
-3. Patch the fwhm upper bound to 1.5 arcsec and record the bound with every fitted value.
-4. Generate v1000 `maskParams` and only then start the pupil comparison of steps 4 and 5.
+1. Re-clone `ts_wep_blitz` with the LFS smudge skipped — see the blocker below.
+2. Run blitz v2 on seq 337/340, R22_S10, with `cameraOffset = 4.0e-3` and
+   `m2Offset = 4.0e-3`, Danish 1.3, `binning = 2`, spiders off, unpaired, to confirm it
+   detects and fits the giant donuts end to end. This is the real Q1 test; the source read
+   says it should work, but it has not been run.
+3. Patch the fwhm upper bound from 5.0 to 1.5 arcsec in `wavefrontFittingTask` and record
+   the bound with every fitted value.
+4. Run the pupil comparison with `Instrument.maskParams` set from the generated v1000 file
+   against the shipped v3.14, holding everything else fixed. The setter exists, so this can
+   be injected at runtime without editing the policy YAML.
+5. Convert the radial-profile zone statistics into an implied wavefront amplitude in µm, so
+   the OPD result can be compared against the 0.3 µm Z11 split and the 0.10 µm diffraction
+   term.
+6. Extend to the other donuts on seq 338 and 341 and to more sensors, to make the result a
+   distribution rather than one pair; add an azimuthal cut, since the azimuthal average
+   dilutes a localised figure error.
+7. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
 
 ## Decisions needed from Aaron
 
-1. **ts_wep checkout.** `blitz-prototype-v2` is a side branch, **not** merged into
-   `develop` (`develop` HEAD `1ea1ae1d`, 2026-09-28; v2 `9651cd23`, 2026-09-11). The local
-   checkout `~/u/LSST/packages/ts_wep` is on `develop` and is **shared** — switching it
-   changes the ts_wep every other topic's pipeline runs against. Options: switch it and
-   accept that; make a second checkout for this study; or cherry-pick the blitz directory.
-   Not touched pending the call.
-2. **v1000 `maskParams`.** Confirm the comparison should be done by generating them, rather
-   than by dropping blitz and fitting with danish directly where the YAMLs *are* selectable.
-   Generating keeps the production pipeline in the loop; going direct is faster but stops
-   being a blitz result.
+**Both earlier decisions are made** (2026-10-05): a second ts_wep checkout for the blitz
+side branch, and generate the v1000 `maskParams` (done, above).
+
+**One blocker remains.** The second checkout at
+`/sdf/home/r/roodman/u/LSST/packages/ts_wep_blitz` **failed to complete**: git-LFS aborted
+the clone on `tests/testData/gen3TestRepo/gen3.sqlite3`, leaving HEAD on `develop`'s
+`1ea1ae1d` rather than the blitz tag, so the tree is untrustworthy. The LFS payload is test
+data only and is irrelevant here, so the fix is to skip the smudge filter. **Removing the
+broken directory needs Aaron's go-ahead** (deleting is a hard must-ask), then:
+
+```bash
+cd /sdf/home/r/roodman/u/LSST/packages && \
+GIT_LFS_SKIP_SMUDGE=1 git clone --reference ts_wep \
+  --branch blitz-prototype-v2 ts_wep ts_wep_blitz
+```
+
+The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
 
 ## Tried and rejected, and why
 
@@ -152,6 +220,27 @@ Blocked on two decisions, below. Once they are made, in order:
   filename. The item's note that danish 1.3's default *is* v1000 remains true but is
   irrelevant inside blitz.
 - **20250520 — rejected as a giant-donut night**, on the Trim, not the label.
+- **A smoothed-peak donut finder — tried and rejected.** `uniform_filter` at a 200 pixel
+  scale landed about 80 pixels off the true centre, which truncated the stamp and put the
+  fitted outer edge at 157 pixels instead of the true 343, making the profile meaningless.
+  Replaced by connected-region labelling above sky, which finds the giant donut directly
+  and returns its diameter as a by-product. **`stamp_half_pix` must exceed about 347
+  pixels**; the first attempt used 320 and silently cut the donut off.
+- **Refitting M3's `maskParams` — attempted, then dropped as unnecessary.** Neither the
+  surface nor the pupil frame reproduced the shipped M3 coefficients (best residual 1.04 m
+  on the outer edge), because the shipped non-M1 radii are back-projected along the chief
+  ray with per-element magnifications (measured about 2.63 for M3, 2.21 for L1, 20.2 for the
+  filter). Rather than reproduce that convention, note that M3 never sets the pupil
+  boundary, so it does not need refitting. **Do not spend time on the general frame
+  convention** unless an element other than M1 starts to matter.
+- **`ring_excess` referenced across the inner edge — rejected, it was measuring the wrong
+  thing.** Differencing the band outside the edge against the band inside put the reference
+  in the central hole, so the statistic read +0.83 on a ring-free synthetic donut. Now
+  referenced to a local baseline further out in the annulus: reads +0.0001 with no ring and
+  responds linearly to injected amplitude.
+- **`common/camera_utils.py` does not exist.** The item cites it for `pixel_to_focal`; that
+  helper was defined inline in the archived notebook. Use the camera geometry API
+  (`getTransform(PIXELS, FIELD_ANGLE)`) directly.
 - **Re-deriving the `wfs/` geometry results — deliberately not done**, per the item. The
   99.50% matched-config agreement, 95.97% giant-intra, +261 mm filter-dominated intra outer
   edge, the circle-refit recovery to 99.5%, and the ~100x-too-small chromaticity and static
