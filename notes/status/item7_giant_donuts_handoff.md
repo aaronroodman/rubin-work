@@ -1,6 +1,6 @@
 # Item 7 — giant donuts, pupil models and the intra/extra Z11 split
 
-> **Status:** radial profiles measured, blocked on the ts_wep checkout · **Last updated:**
+> **Status:** Q1 answered, steps 4-6 run; no blocker · **Last updated:**
 > 2026-10-05 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
@@ -130,6 +130,58 @@ by the normalisation and has not been separated from the effect. No wavefront fi
 so the amplitude in µm of wavefront is unknown and cannot yet be set against the 0.3 µm Z11
 split or the 0.10 µm diffraction term.
 
+## The fit result: v1000 halves the Z11 split
+
+Committed in `449d928`. `wfs/code/giant_donuts/fit_giant_donut.py` drives blitz's own
+factory and danish model directly on stamps cut from the raws, rather than running the
+butler pipeline — this engineering night has no reference catalog or matched calibs, and
+the question is about the forward model. The blitz checkout is
+`/sdf/home/r/roodman/u/LSST/packages/ts_wep_blitz` at `blitz-prototype-v2`, branch
+`giant-donuts-study`.
+
+**Q1 is answered: yes.** blitz detects, cuts and fits the 8 mm donuts end to end with the
+4+4 mm split configured (`cameraOffset` and `m2Offset` both 4.0e-3 m, signed per side).
+Both sides report `fit_success`.
+
+R22_S10, seq 337/340, binning 2, unpaired, field angle (−0.263, −0.062) deg:
+
+| pupil model | spiders | chi2/dof extra | chi2/dof intra | Z11 split [µm wf] |
+| --- | --- | --- | --- | --- |
+| v3.14 | off | 14.994 | 7.132 | **+0.8037** |
+| v3.14 | on | 12.004 | 6.033 | +0.7838 |
+| v1000 | off | 14.891 | 7.141 | **+0.3669** |
+| v1000 | on | 11.819 | 6.017 | +0.3511 |
+
+dof is 184015 for every row. Z11 split is intra minus extra, in µm of wavefront.
+
+**The two effects are orthogonal, which is the useful part.** The pupil model moves the
+Z11 split (0.80 to 0.37 µm, a 54.3 per cent reduction) and barely moves `chi2/dof`.
+Modelling the spiders moves `chi2/dof` (about −19 per cent extra, −16 per cent intra) and
+barely moves Z11. So v1000 is the better pupil *geometry* for the Z11 diagnostic, and
+spiders are a genuine image-fidelity improvement that does not confound it.
+
+**Step 6 is answered:** spiders can be included with good fidelity. `modelSpiderShadows`
+is a plain config toggle and switching it on improves the fit at both sides of focus.
+
+**This does not close item 7's physics question.** v1000's 0.3669 µm still exceeds the
+0.10 µm diffraction term by 0.267 µm, and the observed split is about 0.30 µm. So a
+residual OPD term remains after the best pupil model and the spiders, which is what the
+radial profiles independently point at.
+
+**Z11 is robust; Z4 is not. Do not report Z4 from these fits.** Z11 moves less than
+0.005 µm across loosened blur bound (1.5 to 5.0 arcsec), tightened tolerance (1e-3 to
+1e-8) and the radius-consistency choice below. Z4 instead swings from +0.64 to −1.54 µm
+between pupil configurations: the v1000 annulus is narrower at *both* ends (width 1581.0
+against 1621.6 mm), so the modelled donut is smaller than the data's and the defocus term
+stretches to compensate. That is the standard pupil-scale/defocus degeneracy, and Z11's
+different radial shape is why it survives it.
+
+**The blur hits its bound on the intra side, and that is real, not a bound artifact.**
+Released to a 5.0 arcsec ceiling the intra blur fits 1.509 arcsec while Z11 moves
+0.0005 µm. So the 1.5 arcsec bound is doing no harm here, but it is *active*, and every
+fitted value should be reported with the bound alongside it. `fwhm_at_bound` flags this
+within 2 per cent of the bound range.
+
 ## v1000 maskParams: generated
 
 `wfs/output/giant_donuts/maskParams_v1000.yaml` (not committed, `*/output/*` is ignored).
@@ -153,48 +205,46 @@ Two things to know about it:
 
 ## In progress
 
-`wfs/code/giant_donuts/select_exposures.py` — written and verified. Selects a night's clean
-giant donuts from the Trim, label-independently: `baseline_trim`, `classify_defocus`,
-`select_giant_donuts`. Reproduces the four exposures above and correctly rejects 339 and
-351/352. Not yet committed.
+Nothing uncommitted in this repo. Commits: `fe9fa1a` (selection module, file moves, todo
+edits), `1f37ac1` (maskParams generator, radial profiles), `8f79f50` (the profile
+measurement), `ee07cc6` (profile result in this handoff), `449d928` (fit driver and image
+helpers). In the blitz checkout, `ab85fc3d` on branch `giant-donuts-study`.
+
+The notebook does not yet show the fit results — it still carries only the radial
+profiles. See next action 7.
 
 ## Next concrete action
 
-1. Re-clone `ts_wep_blitz` with the LFS smudge skipped — see the blocker below.
-2. Run blitz v2 on seq 337/340, R22_S10, with `cameraOffset = 4.0e-3` and
-   `m2Offset = 4.0e-3`, Danish 1.3, `binning = 2`, spiders off, unpaired, to confirm it
-   detects and fits the giant donuts end to end. This is the real Q1 test; the source read
-   says it should work, but it has not been run.
-3. Patch the fwhm upper bound from 5.0 to 1.5 arcsec in `wavefrontFittingTask` and record
-   the bound with every fitted value.
-4. Run the pupil comparison with `Instrument.maskParams` set from the generated v1000 file
-   against the shipped v3.14, holding everything else fixed. The setter exists, so this can
-   be injected at runtime without editing the policy YAML.
-5. Convert the radial-profile zone statistics into an implied wavefront amplitude in µm, so
-   the OPD result can be compared against the 0.3 µm Z11 split and the 0.10 µm diffraction
-   term.
-6. Extend to the other donuts on seq 338 and 341 and to more sensors, to make the result a
-   distribution rather than one pair; add an azimuthal cut, since the azimuthal average
-   dilutes a localised figure error.
-7. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
+1. **Explain the `chi2/dof` of 14.9 and 7.1.** The fits are converged, so this is model
+   mismatch, and it is the most direct handle on the residual OPD. Look at the
+   data-minus-model residual image radially: if it peaks just outside the inner pupil edge
+   with opposite sign on the two sides, it is the same term the radial profiles found. The
+   fitter already returns `model_img`; the driver does not yet save it.
+2. **Why is `chi2/dof` twice as large extra-focally as intra-focally?** Consistent across
+   all four configurations (about 12-15 against 6-7). An asymmetry that large is itself a
+   diagnostic and is unexplained.
+3. Convert the radial-profile zone statistics into an implied wavefront amplitude in µm, so
+   the 0.140 normalised-flux ring can be set against the 0.267 µm of unexplained Z11 split.
+   These are currently two separate pieces of evidence for the same thing in different
+   units.
+4. Extend to seq 338 and 341 and to more sensors for a distribution rather than one pair;
+   add an azimuthal cut, since the azimuthal average dilutes a localised figure error.
+   `fit_giant_donut.py --detector` already takes any sensor.
+5. Test the figure roll-off hypothesis directly (item 7 step 7) by perturbing M1's inner
+   edge in the batoid model and refitting, to see whether it absorbs the residual Z11.
+6. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
+7. Fold the fit results into the notebook alongside the radial profiles, so the two lines
+   of evidence sit together.
 
 ## Decisions needed from Aaron
 
-**Both earlier decisions are made** (2026-10-05): a second ts_wep checkout for the blitz
-side branch, and generate the v1000 `maskParams` (done, above).
+**None.** All three earlier decisions are made and done: the second ts_wep checkout
+(2026-10-05, re-cloned with `GIT_LFS_SKIP_SMUDGE=1`, confirmed on `blitz-prototype-v2`
+at `9651cd23`), the v1000 `maskParams`, and the file moves.
 
-**One blocker remains.** The second checkout at
-`/sdf/home/r/roodman/u/LSST/packages/ts_wep_blitz` **failed to complete**: git-LFS aborted
-the clone on `tests/testData/gen3TestRepo/gen3.sqlite3`, leaving HEAD on `develop`'s
-`1ea1ae1d` rather than the blitz tag, so the tree is untrustworthy. The LFS payload is test
-data only and is irrelevant here, so the fix is to skip the smudge filter. **Removing the
-broken directory needs Aaron's go-ahead** (deleting is a hard must-ask), then:
-
-```bash
-cd /sdf/home/r/roodman/u/LSST/packages && \
-GIT_LFS_SKIP_SMUDGE=1 git clone --reference ts_wep \
-  --branch blitz-prototype-v2 ts_wep ts_wep_blitz
-```
+The blur-bound patch is committed **in the blitz checkout, not this repo**:
+`ab85fc3d` on branch `giant-donuts-study`, adding `fwhmMin`/`fwhmMax` config fields in
+place of the hardcoded `fwhm=[0.1, 5.0]`. Worth upstreaming if the blitz authors want it.
 
 The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
 
@@ -241,6 +291,48 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
 - **`common/camera_utils.py` does not exist.** The item cites it for `pixel_to_focal`; that
   helper was defined inline in the archived notebook. Use the camera geometry API
   (`getTransform(PIXELS, FIELD_ANGLE)`) directly.
+- **Swapping only `maskParams` to change the pupil model — rejected, it is half the
+  swap.** blitz carries the pupil **twice**: the analytic mask danish uses
+  (`Instrument.radius`, `Instrument.obscuration`, `Instrument.maskParams`) *and* a real
+  batoid telescope, `LSST_{band}.yaml`, hardcoded as an f-string in `donutBlitzFamTask`
+  and `donutBlitzMonolithTask` with no config field. The telescope supplies the reference
+  wavefront via `batoid.zernikeTA` and is z-shifted by `withGloballyShiftedOptic` to apply
+  the defocus. Changing only the mask leaves the reference wavefront on the old model.
+  `pupil_override` changes both together and clears the `telescope_by_offsets` memo, which
+  would otherwise hand back shifted telescopes built from the previous model.
+- **`LSST_r.yaml` is byte-equivalent to `Rubin_v3.14_r.yaml` in pupil geometry**
+  (`pupilSize` 8.36 m, `pupilObscuration` 0.612). So blitz today is self-consistently
+  v3.14 across both representations — worth knowing before assuming the two disagree.
+- **Trusting v1000's `pupilObscuration` — rejected.** v1000 keeps the nominal 0.612 even
+  though its traced inner edge moves outward by 26.0 mm, giving a true obscuration of
+  0.6204. Use the traced boundary, which is what `gen_mask_params` fits.
+- **Leaving `Instrument.radius`/`obscuration` at the v3.14 values while injecting v1000
+  `maskParams` — rejected as an inconsistency, but note it barely matters for Z11.** It
+  hands danish `R_outer`/`R_inner` from one model and mask circles from another; Z4
+  absorbed the mismatch (extra-focal +1.44 against +0.64 µm). Setting both from the traced
+  M1 edges fixes the inconsistency, and Z11 moves only 0.002 µm either way. Z4 gets
+  *worse* (±4.11 µm), which is the degeneracy above, not a regression.
+- **Blaming the loose solver tolerance for the poor `chi2/dof` — rejected.** blitz's
+  `lstsqKwargs` default of `xtol=ftol=gtol=1e-3` stops a giant-donut fit after about 5
+  function evaluations, which looked like the cause. Tightening to 1e-8 raised `nfev` to
+  13-20 and moved Z11 by 0.001 µm. `chi2/dof` stayed at 14.99 and 7.13, so the fit is at a
+  genuine local minimum and the high `chi2/dof` is **model mismatch, not non-convergence**
+  — consistent with a residual OPD term. `--tol` is exposed to re-check this cheaply.
+- **A late `sys.path.insert` to pick up the blitz checkout — rejected, it silently fails.**
+  `lsst` and `lsst.ts` are namespace packages: the first import of `lsst.ts` freezes its
+  `__path__` from whatever `sys.path` held then, and the shared EUPS `ts_wep` (on
+  `develop`, no `blitz` subpackage) is already on `PYTHONPATH`. A later insert is ignored
+  and `lsst.ts.wep.blitz` raises `ModuleNotFoundError`. **Deleting the `lsst.ts.wep`
+  entries from `sys.modules` does not help** — the finder consults the frozen parent
+  `__path__`. The insert must happen before *any* `lsst` import, so it sits at module
+  scope. `_import_blitz` then asserts the imported file really is under the checkout,
+  comparing **resolved** paths because `~/u` is a symlink to `/sdf/data/rubin/user/roodman`
+  and a literal substring check fails.
+- **Running the butler blitz pipeline for Q1 — deliberately not done.** It needs a
+  reference catalog and matched calibrations this engineering night does not have, and the
+  question is about the forward model. Driving blitz's own factory and danish model gives
+  the same answer with no pipeline infrastructure. A pipeline run is still the right test
+  for the detection and pairing stages if those ever matter here.
 - **Re-deriving the `wfs/` geometry results — deliberately not done**, per the item. The
   99.50% matched-config agreement, 95.97% giant-intra, +261 mm filter-dominated intra outer
   edge, the circle-refit recovery to 99.5%, and the ~100x-too-small chromaticity and static
