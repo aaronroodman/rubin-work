@@ -26,6 +26,7 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 | `check_dof_ranges.py` | the build's per-visit recovered degrees of freedom (DOF) against the allowed range `r_j`, per DOF and as the wavefront the over-range amplitudes carry |
 | `compare_pupil_models.py` | two builds as inferred full width at half maximum (FWHM) in arcsec, by field annulus, and by pupil Zernike term — the image-quality and localization half of a pupil-model comparison |
 | `compare_build_dof.py` | two builds' recovered DOF and v-modes, differenced per visit on the visits common to both |
+| `test_rbr_against_prototype.py` | cross-checks the `ts_ofc` Range-Bounded Recovery against the `smatrix` prototype, and the two independent routes to the allowed range `r_j` |
 
 The build itself is in the external `ts_intrinsic_wavefront` package
 (`measured_intrinsic.build_measured_intrinsic_uconstrained`, driven by the
@@ -269,6 +270,54 @@ two visits cancels the common part of the state, and these do not. The two measu
 are consistent, not in conflict.
 
 Whether and how to add a penalty term to the MIW optical state fitting is open.
+
+### Range-Bounded Recovery: where the code lives
+
+Range-Bounded Recovery (RBR) is the penalty that answers the reachability problem
+above. It is implemented in **`ts_ofc`**, not in this repository:
+`lsst.ts.ofc.range_bounded_recovery`, on branch `tickets/RSO-1007`. That is
+deliberate — RBR would ultimately be used by MTAOS, and `ts_ofc` already holds the
+quadratic `motion_penalty`, so a second home would drift. The prototype at
+`smatrix/code/regularized_inversion.py` remains the derivation and the cross-check
+reference, not the implementation.
+
+The penalty, over normalized DOF `x` with physical `d = w * x`:
+
+```
+min_d  || dW - S x ||^2  +  sum_j ( |d_j| / (kappa * r_j) ) ^ (2 * power)
+```
+
+with `kappa` = 4.0 and `power` = 3, so the penalty equals unity at
+`|d_j| = 4 r_j` and grows as the sixth power of the amplitude. It is a **barrier,
+not a shrinkage term**: a DOF comfortably inside its range is left essentially
+untouched, unlike a quadratic penalty which pulls on every DOF everywhere. Solved
+by iteratively reweighted least squares in the retained mode coefficients, with a
+backtracking line search — a fixed step size enters a limit cycle at `power` 3.
+
+`r_j` now comes from **`OFCData.dof_ranges()`**, added on the same branch, which
+builds it from the configured hexapod strokes and mirror force ranges. Two
+independent routes to `r_j` agree to 1.5e-15 relative: that one, and the
+prototype's back-derivation `r_j = w_j^2 f_j` from the shipped normalization
+weights. The agreement holds only under `w_j = r_j^0.5 f_j^-0.5` — note the
+shipped weights file `range0.5_fwhm-0.15.yaml` is **misnamed**, the exponent being
+-0.5 rather than -0.15.
+
+On a representative DZ wavefront, RBR takes the worst DOF from 59.30 to 1.28 of
+its allowed range (dimensionless, `|d_j| / r_j`) for a 5.5e-02 fractional increase
+in the achieved residual.
+
+The MIW build reaches this through `ts_intrinsic_wavefront`, whose `build_ofc_svd`
+now delegates its decomposition to `lsst.ts.ofc.DoubleZernikeStateEstimator`
+(branch `tickets/RSO-809`), so **`ts_ofc` holds the only sensitivity-matrix SVD in
+the code base**. That delegation is verified bit for bit, including an end-to-end
+rebuild of a `danish_1_3_v1000` rotator-bin grid.
+
+A caution on relating the two estimators: `DoubleZernikeStateEstimator` and
+`StateEstimator` decompose the same matrix — the DZ slab omits 1.0e-05 of its
+power — but their **individual v-modes past about mode 9 are not comparable**,
+because the singular values cluster and the truncation at 34 modes cuts through a
+cluster. The leading-34 subspaces overlap at 0.9156 (dimensionless) while
+individual vectors can agree at `|dot|` of 2e-04. Compare subspaces, not vectors.
 
 ## Running
 

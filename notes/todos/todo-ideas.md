@@ -690,7 +690,8 @@ pixels, lower contrast — or may be real M2-baffle structure.
 
 ## 5. Rebuild the MIW on the v1000 pupil model, then under the RBR constraint
 
-**Status:** step A complete 2026-10-05, Q7 and Q8 resolved; step B next · **Blocked on:** nothing
+**Status:** step A complete 2026-10-05; step B's RBR implemented in ts_ofc, constrained
+build not yet run · **Blocked on:** nothing
 
 **Step A result, 2026-10-05.** The v1000 pupil moves the MIW by 0.0053 µm of wavefront
 against the legacy build's own 0.0518 µm — 0.1027 of amplitude — and the inferred FWHM from
@@ -834,10 +835,18 @@ that item are reusable — see
 **Step B — RBR on the MIW (after the step A comparison).**
 
 - Carry **`danish_1_3_v1000` alone** forward (Q8, answered 2026-10-05).
-- Apply the RBR penalty inside the MIW build's per-visit optical-state recovery, calling the
-  shared solver in `smatrix/code/regularized_inversion.py` rather than copying it.
+- **Done 2026-10-05:** RBR implemented in **`ts_ofc`** on `tickets/RSO-1007` (`979ec73`) —
+  `range_bounded_recovery`, a `DoubleZernikeStateEstimator` so the DZ basis is a first-class
+  ts_ofc capability, and `OFCData.dof_ranges`. `ts_intrinsic_wavefront` takes its SVD from
+  ts_ofc on `tickets/RSO-809` (`957a54f`), bit-for-bit verified, so ts_ofc holds the only
+  SVD and state estimator in the code base. `smatrix/code/regularized_inversion.py` is now
+  the derivation and cross-check reference, not the implementation. Neither branch pushed.
+- Apply the RBR penalty inside the MIW build's per-visit optical-state recovery: the runner
+  calls `svd.dof(...)` and needs `dof_range_bounded(wavefront)`, plus an `mi_config.yaml`
+  knob. **Still to write.**
 - Compare constrained against unconstrained for each build carried forward, using the
-  achieved residual `dW - S (d / w)` rather than the subspace projection (Q5).
+  achieved residual `dW - S (d / w)` rather than the subspace projection (Q5) — now
+  `lsst.ts.ofc.achieved_residual`.
 - Report the MIW as an inferred FWHM in arcsec over the focal plane for each arm.
 - Report the recovered DOF values against the allowed range `r_j`, in µm and arcsec as
   appropriate per DOF, and the corrected v-mode sizes — the comparison with the median 33x
