@@ -337,23 +337,28 @@ def create_schema(con):
           ok            BOOLEAN,
           computed_at   TIMESTAMP,
           v_modes_olr   DOUBLE[],   -- open loop (Deviation - Trim), n_modes, dimensionless
-          dof_olr       DOUBLE[],   -- open loop (Deviation - Trim), length 50, um / arcsec
+          dof_olr       DOUBLE[],   -- open loop (Deviation - Trim), length 50, um / deg
           fwhm_cwfs_arcsec DOUBLE,  -- arcsec, median over the 4 CWFS (NOT focal plane)
+          elevation_deg    DOUBLE,  -- deg, ConsDB exposure.altitude
+          rotator_angle_deg DOUBLE, -- deg, ConsDB visit1_quicklook.physical_rotator_angle
           PRIMARY KEY (visit_id, variant_id)
         )""")
     # Additive migration, as for visit_telemetry: v_modes_lut and v_modes_trim were added
     # after the table was first created, so that all three v-mode terms are projected in the
     # variant's own scheme rather than the commanded pair being reprojected per analysis.
     # v_modes_olr, dof_olr and fwhm_cwfs_arcsec came later still, with item 2's open-loop
-    # arm and its image-quality metric.
+    # arm and its image-quality metric. elevation_deg and rotator_angle_deg came last, for
+    # the look-up-table dependence study: they are properties of the visit, not of the
+    # variant, so they repeat across variants rather than being a separate table.
     have_os = {r[0] for r in con.execute(
         "SELECT column_name FROM information_schema.columns "
         "WHERE table_name = 'optical_state'").fetchall()}
     for n in ('v_modes_lut', 'v_modes_trim', 'v_modes_olr', 'dof_olr'):
         if n not in have_os:
             con.execute(f'ALTER TABLE optical_state ADD COLUMN {n} DOUBLE[]')
-    if 'fwhm_cwfs_arcsec' not in have_os:
-        con.execute('ALTER TABLE optical_state ADD COLUMN fwhm_cwfs_arcsec DOUBLE')
+    for n in ('fwhm_cwfs_arcsec', 'elevation_deg', 'rotator_angle_deg'):
+        if n not in have_os:
+            con.execute(f'ALTER TABLE optical_state ADD COLUMN {n} DOUBLE')
     con.execute("""
         CREATE TABLE IF NOT EXISTS fam_variant (
           fam_variant_id   VARCHAR PRIMARY KEY,
@@ -628,7 +633,8 @@ def register_variant(con, scheme, intrinsic_route, opd_version, n_dof, n_modes,
 
 def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, ok=None,
                          v_modes_lut=None, v_modes_trim=None, v_modes_olr=None,
-                         dof_olr=None, fwhm_cwfs_arcsec=None):
+                         dof_olr=None, fwhm_cwfs_arcsec=None, elevation_deg=None,
+                         rotator_angle_deg=None):
     """Write one variant's recovered state for a set of visits.
 
     Parameters
@@ -657,10 +663,14 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
         Open-loop v-modes, ``(n, n_modes)`` [dimensionless] — the state that would have
         been present with the loop open, ``Deviation - Trim``.
     dof_olr : `numpy.ndarray`, optional
-        Open-loop DOF, ``(n, 50)`` [µm, arcsec], same sign convention.
+        Open-loop DOF, ``(n, 50)`` [µm, deg], same sign convention.
     fwhm_cwfs_arcsec : `array_like` [`float`], optional
         PSF FWHM contribution of the residual wavefront left by this scheme's correction,
         median over the **four corner sensors** [arcsec].
+    elevation_deg : `array_like` [`float`], optional
+        Telescope elevation [deg], ConsDB ``exposure.altitude``.
+    rotator_angle_deg : `array_like` [`float`], optional
+        Camera rotator angle [deg], ConsDB ``visit1_quicklook.physical_rotator_angle``.
 
     Returns
     -------
@@ -669,9 +679,22 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
 
     Notes
     -----
+    **The four hexapod tilt entries of ``dof`` and ``dof_olr`` are in deg, not arcsec**
+    — DOF 3, 4 (M2 hexapod rx, ry) and 8, 9 (camera hexapod rx, ry). That is the unit the
+    shipped normalization weights use, so the allowed range `r_j` is 0.12 deg for M2 and
+    0.24 deg for the camera. `lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50` labels the
+    same entries arcsec, so a comparison against anything built on that convention — the
+    bounce-test results in particular — must scale these four by 3600 arcsec/deg. The other
+    46 entries are µm in both conventions.
+
     All v-mode terms are stored in the variant's own scheme, so an analysis forming
     ``LUT + Trim - measured`` never mixes projection bases. `ok` describes the measured
     recovery only; the commanded terms are NULL rather than false when unavailable.
+
+    ``elevation_deg`` and ``rotator_angle_deg`` are properties of the visit rather than of
+    the variant, so they carry the same value in every variant's row for a given visit.
+    They are stored here, not in `visit_telemetry`, because they come from ConsDB alongside
+    the wavefront rather than from the Engineering Facility Database.
 
     Two sign conventions coexist and must not be confused. ``dof`` and ``v_modes`` are the
     deviation-recovered state; ``dof_olr`` and ``v_modes_olr`` are the **open-loop** state
@@ -716,13 +739,18 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
         if d_olr.shape != (n, 50):
             raise ValueError(f'dof_olr has shape {d_olr.shape}, expected {(n, 50)}')
         dof_olr_rows = [d_olr[i].tolist() for i in range(n)]
-    if fwhm_cwfs_arcsec is None:
-        fwhm_rows = [None] * n
-    else:
-        f = np.asarray(fwhm_cwfs_arcsec, float).ravel()
-        if len(f) != n:
-            raise ValueError(f'fwhm_cwfs_arcsec has {len(f)} values, expected {n}')
-        fwhm_rows = [None if not np.isfinite(f[i]) else float(f[i]) for i in range(n)]
+    def _scalar(a, name):
+        """Validate an optional per-visit scalar, NULL where non-finite."""
+        if a is None:
+            return [None] * n
+        v = np.asarray(a, float).ravel()
+        if len(v) != n:
+            raise ValueError(f'{name} has {len(v)} values, expected {n}')
+        return [None if not np.isfinite(x) else float(x) for x in v]
+
+    fwhm_rows = _scalar(fwhm_cwfs_arcsec, 'fwhm_cwfs_arcsec')
+    elev_rows = _scalar(elevation_deg, 'elevation_deg')
+    rot_rows = _scalar(rotator_angle_deg, 'rotator_angle_deg')
     if ok is None:
         ok = np.isfinite(v_modes).all(axis=1)
     if resid_rms_um is None:
@@ -730,20 +758,22 @@ def upsert_optical_state(con, vid, visit_ids, v_modes, dof, resid_rms_um=None, o
     now = datetime.now(timezone.utc)
     rows = [(int(visit_ids[i]), vid, v_modes[i].tolist(), lut_rows[i], trim_rows[i],
              dof[i].tolist(), int(n_modes), float(resid_rms_um[i]), bool(ok[i]), now,
-             olr_rows[i], dof_olr_rows[i], fwhm_rows[i])
+             olr_rows[i], dof_olr_rows[i], fwhm_rows[i], elev_rows[i], rot_rows[i])
             for i in range(n)]
     con.executemany(
         'INSERT INTO optical_state (visit_id, variant_id, v_modes, v_modes_lut, '
         'v_modes_trim, dof, n_modes, resid_rms_um, ok, computed_at, v_modes_olr, '
-        'dof_olr, fwhm_cwfs_arcsec) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'dof_olr, fwhm_cwfs_arcsec, elevation_deg, rotator_angle_deg) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
         'ON CONFLICT (visit_id, variant_id) DO UPDATE SET v_modes = excluded.v_modes, '
         'v_modes_lut = excluded.v_modes_lut, v_modes_trim = excluded.v_modes_trim, '
         'dof = excluded.dof, n_modes = excluded.n_modes, '
         'resid_rms_um = excluded.resid_rms_um, ok = excluded.ok, '
         'computed_at = excluded.computed_at, v_modes_olr = excluded.v_modes_olr, '
         'dof_olr = excluded.dof_olr, '
-        'fwhm_cwfs_arcsec = excluded.fwhm_cwfs_arcsec', rows)
+        'fwhm_cwfs_arcsec = excluded.fwhm_cwfs_arcsec, '
+        'elevation_deg = excluded.elevation_deg, '
+        'rotator_angle_deg = excluded.rotator_angle_deg', rows)
     return n
 
 
@@ -1128,7 +1158,8 @@ def optical_state(variant, day_obs_range=None, wide=True, ok_only=True,
         df = con.execute(
             'SELECT s.visit_id, v.day_obs, v.seq_num, s.v_modes, s.v_modes_lut, '
             's.v_modes_trim, s.v_modes_olr, s.dof, s.dof_olr, s.n_modes, '
-            's.fwhm_cwfs_arcsec, s.resid_rms_um, s.ok FROM optical_state s '
+            's.fwhm_cwfs_arcsec, s.elevation_deg, s.rotator_angle_deg, '
+            's.resid_rms_um, s.ok FROM optical_state s '
             'JOIN visit_telemetry v USING (visit_id) '
             f'{clause} AND s.variant_id = ? ORDER BY v.day_obs, v.seq_num',
             params + [variant]).df()

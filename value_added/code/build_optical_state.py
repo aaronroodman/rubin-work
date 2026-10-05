@@ -102,9 +102,11 @@ RBR_SCHEMES = {'50_34_rbr': dict(kappa=4, power=3)}
 
 DEFAULT_OFC_VERSION = 'v13'
 
-#: hexapod-LUT entries carrying a tilt, in the 50-element DOF vector: camera and M2 rx/ry.
-HEX_TILT_LUT = [3, 4, 8, 9]
-DEG_TO_ARCSEC = 3600.0
+#: Tilt entries of the 50-element DOF vector: M2 hexapod rx/ry then camera hexapod rx/ry.
+#: Stored in deg, which is what the v-mode basis expects. `ofc_svd.DOF_UNITS_50` labels the
+#: same four arcsec, so scale by 3600 arcsec/deg before comparing against anything built on
+#: that convention -- the bounce-test tables in particular.
+HEX_TILT_DOF = [3, 4, 8, 9]
 
 
 def build_state_estimator(scheme, ofc_version=DEFAULT_OFC_VERSION):
@@ -428,15 +430,23 @@ def make_commanded_projector(state_estimator, n_modes):
         ``project(con, visit_ids)`` -> ``(v_lut, v_trim, trim_dof)``. The two v-mode
         blocks are shaped ``(len(visit_ids), n_modes)`` of dimensionless amplitudes, NaN
         for any visit with no `visit_telemetry` row or a non-finite active DOF;
-        ``trim_dof`` is ``(len(visit_ids), 50)`` of raw Trim DOF [µm, arcsec], which the
+        ``trim_dof`` is ``(len(visit_ids), 50)`` of raw Trim DOF [µm, deg], which the
         open-loop reconstruction needs in DOF space rather than as v-modes.
 
     Notes
     -----
-    The hexapod LUT is read from `visit_telemetry` as ``lut_dof0..9`` [µm, deg] and the Trim
-    as ``dof0..49`` [µm, arcsec]. The LUT's four tilt entries are converted deg -> arcsec and
-    its 40 mirror-bending entries are set to zero rather than NaN, since the hexapods command
-    no bending; leaving them NaN would poison every projection.
+    The hexapod LUT is read from `visit_telemetry` as ``lut_dof0..9`` and the Trim as
+    ``dof0..49``, both [µm, deg]. The LUT's 40 mirror-bending entries are set to zero rather
+    than NaN, since the hexapods command no bending; leaving them NaN would poison every
+    projection.
+
+    **No deg -> arcsec conversion is applied to either vector**, because the v-mode basis
+    expects the four hexapod tilt entries in deg: one unit of DOF 3 moves the v-modes by
+    22.74 (dimensionless v-mode norm per unit DOF 3) against an allowed range of 0.12, which
+    is one degree of tilt rather than one arcsec. This function used to scale the LUT tilts
+    by 3600 arcsec/deg, which inflated the projected `v_modes_lut` norm by about 1082x
+    (dimensionless, as-built over correct); v1 was nearly unaffected, at 1.9%, since v1 is
+    almost pure defocus and barely responds to tilt.
 
     The projection is `aos_state.vmodes_from_dofs`, i.e. ``StateEstimator``'s own
     ``get_vmodes_from_dofs`` — the basis the Main Telescope AOS reports on the summit. The
@@ -461,7 +471,6 @@ def make_commanded_projector(state_estimator, n_modes):
         tel = tel.set_index('visit_id').reindex(index=vids)
         lut_dof = np.zeros((len(vids), 50))
         lut_dof[:, :10] = tel[lut_cols].to_numpy(float)
-        lut_dof[:, HEX_TILT_LUT] *= DEG_TO_ARCSEC
         trim_dof = tel[trim_cols].to_numpy(float)
         out_lut = aos_state.vmodes_from_dofs(lut_dof, state_estimator, n_modes=n_modes)
         out_trim = aos_state.vmodes_from_dofs(trim_dof, state_estimator, n_modes=n_modes)
@@ -476,7 +485,8 @@ def _empty_night(n_modes):
                 v_modes=np.zeros((0, n_modes)), dof=np.zeros((0, 50)),
                 resid_rms_um=np.array([]), ok=np.array([], bool),
                 v_modes_olr=np.zeros((0, n_modes)), dof_olr=np.zeros((0, 50)),
-                fwhm_cwfs_arcsec=np.array([]), n_opd=0)
+                fwhm_cwfs_arcsec=np.array([]), elevation_deg=np.array([]),
+                rotator_angle_deg=np.array([]), n_opd=0)
 
 
 def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_noll,
@@ -629,7 +639,10 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
                     f'{np.nanmedian(fwhm):.4f} arcsec over {n_iq} visits')
         print(msg)
     return dict(visit_ids=vids, v_modes=v_modes, dof=dof, resid_rms_um=resid, ok=ok,
-                v_modes_olr=v_olr, dof_olr=dof_olr, fwhm_cwfs_arcsec=fwhm, n_opd=n_opd)
+                v_modes_olr=v_olr, dof_olr=dof_olr, fwhm_cwfs_arcsec=fwhm,
+                elevation_deg=meta['altitude_deg'].to_numpy(float),
+                rotator_angle_deg=meta['rotator_angle_deg'].to_numpy(float),
+                n_opd=n_opd)
 
 
 def main(argv=None):
@@ -846,7 +859,9 @@ def main(argv=None):
             con, vid, vids, res['v_modes'], res['dof'], res['resid_rms_um'], res['ok'],
             v_modes_lut=v_lut, v_modes_trim=v_trim,
             v_modes_olr=res['v_modes_olr'], dof_olr=res['dof_olr'],
-            fwhm_cwfs_arcsec=res['fwhm_cwfs_arcsec'])
+            fwhm_cwfs_arcsec=res['fwhm_cwfs_arcsec'],
+            elevation_deg=res['elevation_deg'],
+            rotator_angle_deg=res['rotator_angle_deg'])
         total += len(vids)
         total_ok += int(res['ok'].sum())
         total_cmd += n_cmd

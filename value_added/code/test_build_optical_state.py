@@ -69,6 +69,7 @@ def test_night_with_no_complete_corner_opd_writes_no_rows(monkeypatch):
     meta = pd.DataFrame({'visit_id': [2025051100001, 2025051100002],
                          'band': ['r', 'r'],
                          'rotator_angle_deg': [0.0, 0.0],
+                         'altitude_deg': [70.0, 70.0],
                          'img_type': ['science', 'science']})
     _patch(monkeypatch.setattr, meta, opd_complete=False)
 
@@ -86,7 +87,8 @@ def test_night_with_complete_corner_opd_still_recovers(monkeypatch):
     """The n_opd == 0 shortcut must not swallow a night that does have data."""
     meta = pd.DataFrame({'visit_id': [2026031800001, 2026031800002],
                          'band': ['r', 'r'],
-                         'rotator_angle_deg': [0.0, 0.0],
+                         'rotator_angle_deg': [0.0, 59.5],
+                         'altitude_deg': [70.0, 40.0],
                          'img_type': ['science', 'science']})
     _patch(monkeypatch.setattr, meta, opd_complete=True)
 
@@ -99,6 +101,72 @@ def test_night_with_complete_corner_opd_still_recovers(monkeypatch):
     assert len(res['visit_ids']) == 2
     assert res['n_opd'] == 2
     assert res['ok'].all()
+    # Pointing travels with the visit, in the row order the recovery used: the look-up-table
+    # study reads these against the open-loop DOF, so a transposition would be silent.
+    assert res['elevation_deg'].tolist() == [70.0, 40.0]
+    assert res['rotator_angle_deg'].tolist() == [0.0, 59.5]
+
+
+def test_hexapod_tilt_range_is_deg_not_arcsec():
+    """The four hexapod tilt DOF are deg, which `ofc_svd.DOF_UNITS_50` calls arcsec.
+
+    Stored `dof` and `dof_olr` inherit whatever unit the shipped normalization weights
+    use, and that is deg: the M2 hexapod rx/ry range is 0.12 deg (432 arcsec), not
+    0.12 arcsec. Anything compared against the bounce-test tables, which follow the
+    arcsec convention, needs these four entries scaled by 3600 arcsec/deg.
+    """
+    root = pathlib.Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / 'aos' / 'code'))
+    sys.path.insert(0, str(root / 'smatrix' / 'code'))
+    import aos_state
+    import regularized_inversion as RI
+
+    se = aos_state.make_state_estimator(dof_set='all_50', n_modes=34)
+    r = np.asarray(RI.dof_range_vector(aos_state.CornerSvdShim(se)), float)
+
+    assert r.shape == (50,)
+    # M2 hexapod rx, ry then camera hexapod rx, ry.
+    np.testing.assert_allclose(r[[3, 4]], 0.12, rtol=1e-6)
+    np.testing.assert_allclose(r[[8, 9]], 0.24, rtol=1e-6)
+    # The decentres are µm in both conventions, and are the scale that makes the tilt
+    # entries unambiguous: a 0.12 arcsec tilt range alongside a 6700 µm decentre range
+    # would be physically absurd.
+    np.testing.assert_allclose(r[[1, 2]], 6700.0, rtol=1e-6)
+
+
+def test_commanded_projector_leaves_lut_tilts_in_deg():
+    """The hexapod LUT must reach the v-mode basis in deg, unscaled.
+
+    This function used to multiply the four tilt entries by 3600 arcsec/deg, inflating the
+    projected ``v_modes_lut`` norm by about 1082x. v1 hid the bug, moving only 1.9%, since
+    v1 is almost pure defocus.
+    """
+    root = pathlib.Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / 'aos' / 'code'))
+    import aos_state
+
+    se = aos_state.make_state_estimator(dof_set='all_50', n_modes=34)
+    n_modes = 34
+    lut = {f'lut_dof{k}': [0.0] for k in range(10)}
+    lut['lut_dof3'] = [0.01]          # deg of M2 hexapod rx, a typical LUT tilt
+    row = dict(visit_id=[2026031800001], **lut,
+               **{f'dof{k}': [0.0] for k in range(50)})
+
+    class _Con:
+        """Stand in for the DuckDB connection the projector queries."""
+        def execute(self, sql):
+            class _R:
+                def df(_self):
+                    return pd.DataFrame(row)
+            return _R()
+
+    project = bos.make_commanded_projector(se, n_modes)
+    v_lut, _, _ = project(_Con(), np.array([2026031800001], 'int64'))
+
+    want = aos_state.vmodes_from_dofs(
+        np.array([[0.0, 0.0, 0.0, 0.01] + [0.0] * 46]), se, n_modes=n_modes)
+    np.testing.assert_allclose(v_lut, want, rtol=1e-12, atol=0,
+                               err_msg='LUT tilt was rescaled on its way to the basis')
 
 
 def _main():
@@ -118,7 +186,9 @@ def _main():
     tests = [test_intrinsic_skips_filters_ofc_does_not_know,
              test_intrinsic_skips_nonfinite_rotator_angle,
              test_night_with_no_complete_corner_opd_writes_no_rows,
-             test_night_with_complete_corner_opd_still_recovers]
+             test_night_with_complete_corner_opd_still_recovers,
+             test_hexapod_tilt_range_is_deg_not_arcsec,
+             test_commanded_projector_leaves_lut_tilts_in_deg]
     bad = 0
     for t in tests:
         m = _M()
