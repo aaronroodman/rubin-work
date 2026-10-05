@@ -1,6 +1,6 @@
 # Study: `miw` — the Measured Intrinsic Wavefront
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-05 · **Kind:** reference (study)
 
 > **Code:** `code/miw/` · **Notebooks:** `notebooks/miw/`
 > **Output:** `output/miw/<P>_<M>/intrinsic_split_{maps,decomp,rms}.parquet`, `output/miw/<P>_<M>/intrinsic_split.pdf`, `output/miw/<P>_<M>/study_radialbins.pdf`, `output/miw/<P>_<M>/fits.parquet`
@@ -170,6 +170,59 @@ python code/miw/compare_build_dof.py \
   --label-b "v1000 pupil" \
   --out-dir output/miw/danish_1_3_legacy_vs_v1000
 ```
+
+#### What the comparison found
+
+Both builds select the **same 205 visits** in the five in-family rotator bins — identical
+`(day_obs, seq_num)`, on a field grid identical to 1e-12 deg — so the comparison runs on the
+full common set with no sample caveat. Products are in
+`output/miw/danish_1_3_legacy_vs_v1000/`; the term-by-term pages are
+`miw_legacy_vs_v1000_OCS.pdf`. The CCS pages are near-empty by construction: this split
+forces the camera-fixed component to zero on every term except Z4.
+
+The pupil model moves the MIW, by a small amount:
+
+| quantity | legacy | v1000 | difference |
+|---|---|---|---|
+| wavefront RMS inside the hull, µm of wavefront | 0.0518 | 0.0528 | 0.0053 |
+| inferred FWHM, arcsec | 0.1645 | 0.1678 | +0.0033 |
+
+The difference RMS over build-A's RMS is 0.1027 (dimensionless, both amplitudes) — about a
+third the size of the Danish 1.2-to-1.3 paired-to-unpaired retrieval change, which moved the
+same quantity by 0.0156 µm of wavefront and −0.0146 arcsec.
+
+**The signature is not the one a baffle predicts, and that is the result.** An axisymmetric
+change to the pupil radius should load the spherical terms. It does not: Noll 11 and 22
+together carry **0.0143 of the difference power** (dimensionless), *less* than the 0.0609 the
+Danish 1.2-vs-1.3 retrieval change carried — the deliberate baseline for this test. The
+difference is instead 0.70 of its power in astigmatism, Noll 6 at 0.4032 and Noll 5 at
+0.2969, with coma Noll 7 and 8 a further 0.105.
+
+Nor is it cleanly at the field edge. The difference rises outward from 0.0020 µm of wavefront
+inside 0.60 deg to 0.0077 µm at 1.55–1.70 deg, a factor of 3.9, but non-monotonically — it
+dips to 0.0040 µm at 1.35–1.55 deg. The 0.0204 µm in the 1.70–1.75 deg ring is the convex-hull
+edge defect present in both builds, reported as its own annulus and excluded from every number
+above.
+
+The subtracted optical state moves too, so part of the pupil change is being absorbed by the
+fit rather than appearing in the MIW. Per visit on the 205 common visits, median difference
+v1000 minus legacy: M2_dy −139.1 µm (nMAD 60.88 µm) and M2_dx +53.48 µm, both mechanically
+trivial against their ±6700 µm range, 0.0208 and 0.0080 of it. The bending modes are the ones
+that matter relative to range — B1_16 moves 1.1276 of its allowed `r_j`, B1_12 0.4968 — and
+they are the same modes already known to sit far outside range in both builds. In the v-modes,
+29 and 31 move by −0.0742 and +0.0574 (dimensionless), roughly twice their own nMAD scatter.
+
+Two readings fit this, and these products cannot separate them: either the baffle's effect is
+absorbed into the fitted optical state rather than the MIW, or the astigmatism shift is the
+confounded **code-version** change (`danish` `5037d9f3` to `ca41ae8c`) rather than the pupil
+model. The second is live, since astigmatism is also where the paired-to-unpaired change was
+largest. Treat the astigmatism-led difference as unexplained rather than attributed to the
+pupil. `u/jmeyers3/t614_fam_unpaired_legacy` is the clean discriminator — one config line
+apart from v1000 — at the cost of a third build, which has not been done.
+
+Consequence for Range-Bounded Recovery (RBR): because the two MIW agree to 0.1027 of
+amplitude, RBR carries forward on **`danish_1_3_v1000` only** (Aaron, 2026-10-05); two arms
+would buy little.
 
 ### Whether the subtracted optical state is physically reachable
 

@@ -665,7 +665,18 @@ co-registered.
 enough to change the model image shape independently of the aperture edges? If so the two
 effects need separating.
 
-**A:** _unanswered_
+**A: partial, from item 5 step A, 2026-10-05 — and the answer leans yes.** Rebuilding the
+MIW on v1000 against the legacy pupil moved it by 0.1027 of amplitude, but the difference
+is **astigmatism-led**: Noll 6 and 5 carry 0.4032 and 0.2969 of the difference power while
+the spherical terms Noll 11 and 22 carry only 0.0143 (dimensionless) — less than a pure
+retrieval change carries. An axisymmetric aperture-edge change should load spherical, so
+whatever dominates that difference is **not** the baffle. A non-axisymmetric M1M3 surface
+update is one candidate; the confounded `danish` code-version change
+(`5037d9f3` to `ca41ae8c`) is the other, and the MIW products cannot separate them. Caveat
+for reading this across: that measurement is at the **MIW** level, after a per-visit
+optical-state fit that partly absorbs the change, not at the single-donut model-image level
+this item works at. See [item 5](#5-rebuild-the-miw-on-the-v1000-pupil-model-then-under-the-rbr-constraint)
+and `aos/docs/studies/miw.md`.
 
 **Q8. Does the inner ring behave differently from the outer?** The inner half-flux radius
 scatter is 0.326 binned pixels against 0.208 for the outer, which may be intrinsic — fewer
@@ -679,7 +690,16 @@ pixels, lower contrast — or may be real M2-baffle structure.
 
 ## 5. Rebuild the MIW on the v1000 pupil model, then under the RBR constraint
 
-**Status:** in process, first build done, Q7 resolved 2026-10-04 · **Blocked on:** nothing
+**Status:** step A complete 2026-10-05, Q7 and Q8 resolved; step B next · **Blocked on:** nothing
+
+**Step A result, 2026-10-05.** The v1000 pupil moves the MIW by 0.0053 µm of wavefront
+against the legacy build's own 0.0518 µm — 0.1027 of amplitude — and the inferred FWHM from
+0.1645 to 0.1678 arcsec (+0.0033 arcsec). But the signature is **not** the one a baffle
+predicts: the spherical terms Noll 11 and 22 carry only 0.0143 of the difference power
+(dimensionless), *less* than the 0.0609 the Danish 1.2-vs-1.3 retrieval change carried, while
+astigmatism Noll 6 and 5 carry 0.4032 and 0.2969. Unexplained, and confounded with the code
+version — see [the handoff](../status/item5_miw_pupil_model_handoff.md) for the two readings
+and why `_legacy` would be the clean discriminator.
 
 **From item 7, 2026-10-05 — relevant if step A goes through ts_wep.** ts_wep's blitz builds
 its donut pupil from `_INSTRUMENT.maskParams` (a singleton loaded from
@@ -813,8 +833,7 @@ that item are reusable — see
 
 **Step B — RBR on the MIW (after the step A comparison).**
 
-- Decide from step A which build or builds carry forward into step B (Q8); the plan is one
-  or more of them, not necessarily all.
+- Carry **`danish_1_3_v1000` alone** forward (Q8, answered 2026-10-05).
 - Apply the RBR penalty inside the MIW build's per-visit optical-state recovery, calling the
   shared solver in `smatrix/code/regularized_inversion.py` rather than copying it.
 - Compare constrained against unconstrained for each build carried forward, using the
@@ -946,7 +965,9 @@ these MIW", to be decided after the step A comparison. If step A shows the pupil
 moves the MIW, one build suffices; if it moves it, RBR on both separates the pupil effect
 from the constraint effect.
 
-**A:** _unanswered, decide after step A_
+**A: `danish_1_3_v1000` only — Aaron, 2026-10-05.** Step A found the two MIW agree to
+0.1027 of amplitude (difference RMS over build-A RMS), so maintaining two RBR arms buys
+little. Step B runs on the v1000 build alone.
 
 </details>
 

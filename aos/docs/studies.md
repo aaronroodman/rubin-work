@@ -202,6 +202,16 @@ Carried here so they are visible in one place; detail in each study doc.
   the comparison equally. Per-term maps are in
   `output/miw/danish_1_2_vs_1_3/`; see [`studies/miw.md`](studies/miw.md) and
   [`status/miw_danish_1_3_proposal.md`](status/miw_danish_1_3_proposal.md).
+- **`miw`** — the v1000 pupil model moves the MIW by only 0.1027 of amplitude (difference
+  root-mean-square over the legacy build's own, 0.0053 against 0.0518 µm of wavefront;
+  inferred FWHM 0.1645 to 0.1678 arcsec), on the 205 visits common to both builds — but
+  **the difference does not have a pupil-rim signature**. The spherical terms Noll 11 and 22
+  carry 0.0143 of the difference power (dimensionless), *less* than the 0.0609 of a pure
+  retrieval change, while astigmatism Noll 6 and 5 carry 0.4032 and 0.2969. Either the
+  baffle is being absorbed into the fitted optical state — which does move, B1_16 by 1.1276
+  of its allowed range `r_j` — or the shift is the confounded `danish` code-version change.
+  Open; `u/jmeyers3/t614_fam_unpaired_legacy` would separate them. See
+  [`studies/miw.md`](studies/miw.md).
 - **`miw`** — the optical state the build subtracts is **not physically reachable**, and
   the same is true of both wavefront versions. Over the five in-family rotator bins, 33 of
   50 DOF have at least 5 % of visits outside ±`r_j` — all of them bending modes, 17 of 20

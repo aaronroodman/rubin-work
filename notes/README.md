@@ -46,7 +46,7 @@ and working state that span the whole repo — and so belong to no single topic 
 | [`status/step1_structure_decisions.md`](status/step1_structure_decisions.md) | step 1 of the reorganization: the agreed directory structure for code and output, the reusability tiers, and the queued moves |
 | [`status/todo.md`](status/todo.md) | one-line index of open work across the whole repository, each row pointing at the document that specifies it |
 | [`status/item2_optical_state_build_handoff.md`](status/item2_optical_state_build_handoff.md) | the handoff that drove the three-scheme optical-state build, now [completed item 7](todos/completed-todos.md#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes): the three code findings behind its decisions, and what was rejected |
-| [`status/item5_miw_pupil_model_handoff.md`](status/item5_miw_pupil_model_handoff.md) | [item 5](todos/todo-ideas.md) step A, the MIW on the v1000 pupil model: the configs and recast tables that are done, the batch build that is the next action, and why the `_legacy` baseline was proposed and declined |
+| [`status/item5_miw_pupil_model_handoff.md`](status/item5_miw_pupil_model_handoff.md) | [item 5](todos/todo-ideas.md) step A, the MIW on the v1000 pupil model: complete — the build, why the difference has no pupil-rim signature, what step B should expect, and why the `_legacy` baseline was proposed and declined |
 | [`status/item7_giant_donuts_handoff.md`](status/item7_giant_donuts_handoff.md) | [item 7](todos/todo-ideas.md), giant donuts and the pupil models: state of the single-donut intra/extra Z11 test |
 
 Topic-specific docs stay in their topic (`<topic>/docs/`), not here.

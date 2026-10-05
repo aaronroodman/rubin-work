@@ -22,6 +22,11 @@
 #   ./run_snake.sh --until combine_donuts # local, partial
 #   ./run_snake.sh --mode batch           # batch on milano (32 cpus, 96G, 8h)
 #   ./run_snake.sh --mode batch -n        # batch dry-run (validates submission)
+#   ./run_snake.sh --mode batch output/miw/<P>_<M>/intrinsic_split_maps.parquet
+#                                         # batch, explicit target -- pass the path
+#                                         # bare, with NO `--`: batch mode inserts its
+#                                         # own (see the --config note below), and a
+#                                         # passed-through `--` becomes a target
 #
 # Batch tunables (env vars; defaults in parens):
 #   SB_PARTITION (milano)  SB_CPUS (32)  SB_MEM (96G)  SB_TIME (08:00:00)

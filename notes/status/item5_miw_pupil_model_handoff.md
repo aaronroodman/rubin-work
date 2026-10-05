@@ -7,9 +7,9 @@ rebuild the 50 degree-of-freedom / 34 v-mode (50/34) Measured Intrinsic Wavefron
 on Josh Meyers' v1000 pupil-model processing and compare it against the existing build on
 the legacy pupil model. Scheme held fixed at 50/34; only the pupil model varies.
 
-**Where it stands:** the input tables are built and the configs are in. The MIW build
-itself is a batch job and has **not** been submitted — that is a hard MUST-ASK and is the
-next action, below. Nothing is blocked otherwise.
+**Where it stands:** **step A is complete.** The build ran 2026-10-05 and all three
+comparisons are done; the result is below. Step B (RBR) is next and Q8 is answered — it
+runs on `danish_1_3_v1000` only.
 
 ## Done and committed
 
@@ -54,40 +54,57 @@ Data products, gitignored by design:
 
 The recast took about 33 min wall clock on an s3df interactive node.
 
+- `aos/output/miw/danish_1_3_v1000_A_50_34_i/build/rot_*/` — the nine per-rotator-bin
+  grids, and `aos/output/miw/danish_1_3_v1000_A_50_34_i_5rot/` — the four split products
+  including a 64-page `intrinsic_split.pdf`. Batch log
+  `aos/logs/batch_20261005_094450.out`, rule log
+  `aos/logs/danish_1_3_v1000_A_50_34_i_5rot.intrinsic_split.log`.
+- `aos/output/miw/danish_1_3_legacy_vs_v1000/` — the eight comparison products listed
+  above.
+
+## The build, and the step A result
+
+The build ran in batch 2026-10-05 09:45 to 09:51, 10 of 10 steps, no errors: 9
+`build_intrinsic` grids plus 1 `intrinsic_split`, no `combine_*` (the hand-built tables are
+terminal inputs, as the Snakefile documents). Products in
+`output/miw/danish_1_3_v1000_A_50_34_i_5rot/`, 3985 field-point rows x 44 columns, |O|
+telescope-fixed RMS 0.0534 µm of wavefront and |C| camera-fixed 0.0106 µm.
+
+Both builds select the **same 205 visits** in the five rotator bins, on a field grid
+identical to 1e-12 deg. Per-bin counts 36/48/49/36/36.
+
+The numbers, the two readings of them, and the per-annulus and per-term breakdowns are
+written up in **[`aos/docs/studies/miw.md`](../../aos/docs/studies/miw.md)**, section "What
+the comparison found" — not duplicated here. The short form: the pupil model moves the MIW
+by 0.1027 of amplitude and the inferred FWHM by +0.0033 arcsec, but the difference is
+astigmatism-led (Noll 6 and 5 carrying 0.4032 and 0.2969 of its power) with the spherical
+terms carrying only 0.0143 — *less* than a pure retrieval change does, so **it is not a
+pupil-rim signature**. The subtracted optical state moves as well. Either the baffle is
+being absorbed into the fit or the shift is the confounded `danish` version change; these
+products cannot separate the two.
+
+Products: `output/miw/danish_1_3_legacy_vs_v1000/` — `miw_legacy_vs_v1000_OCS.pdf` (21
+pages, one per Noll term), the matching `_CCS.pdf` (near-empty by construction, see below),
+two `_summary.parquet`, `pupil_radial_profile_OCS.parquet`,
+`pupil_term_share_OCS.parquet`, `build_dof_compare.parquet`,
+`build_vmode_compare.parquet`.
+
 ## Next concrete action
 
-**Submit the MIW build — batch, so Aaron starts it.** The dry run is clean: 10 jobs, 9
-`build_intrinsic` grids plus 1 `intrinsic_split`, no `combine_*` (the hand-built tables
-are terminal inputs, as the Snakefile documents).
+**Step B — RBR on the MIW, `danish_1_3_v1000` only** (Q8, answered by Aaron 2026-10-05:
+the two MIW agree too closely for two arms to be worth it). The scope is the step B bullet
+list in [item 5](../todos/todo-ideas.md). Key constraints already settled by the item's
+answered questions: call the shared solver in
+`smatrix/code/regularized_inversion.py` rather than copying it, use
+`RBR_DEFAULTS = {'kappa': 4.0, 'power': 3}` to begin with (Q2), and compare arms on the
+achieved residual `regularized_inversion.achieved_residual(dW, d, svd)` rather than the
+subspace projection (Q5). The RBR penalty goes inside the build's per-visit optical-state
+recovery, which lives in the **external** `ts_intrinsic_wavefront` package, not in
+`aos/code/` — so it needs a `scons` re-run after editing.
 
-```bash
-cd ~/notebooks/rubin-work/aos && ./run_snake.sh --mode batch -- \
-  output/miw/danish_1_3_v1000_A_50_34_i_5rot/intrinsic_split_maps.parquet
-```
-
-Monitor:
-
-```bash
-tail -f "$(ls -t ~/notebooks/rubin-work/aos/logs/batch_*.out | head -1)"
-```
-
-Then, once it finishes, the three comparisons — all three commands are in
-`aos/docs/studies/miw.md`, and `compare_miw_versions.py` is the third:
-
-```bash
-cd ~/notebooks/rubin-work/aos
-python code/miw/compare_miw_versions.py \
-  --miw-a output/miw/danish_1_3_test_A_50_34_i_5rot/intrinsic_split_maps.parquet \
-  --miw-b output/miw/danish_1_3_v1000_A_50_34_i_5rot/intrinsic_split_maps.parquet \
-  --label-a "Danish 1.3 legacy pupil" \
-  --label-b "Danish 1.3 v1000 pupil" \
-  --out-dir output/miw/danish_1_3_legacy_vs_v1000 \
-  --out-name miw_legacy_vs_v1000_OCS
-```
-
-Report, per the item's scope: the common visit count, the term-by-term and field-map
-comparison, both MIW as inferred FWHM in arcsec, whether the difference concentrates at
-the field edge and the pupil edge, and each build's recovered DOF and v-modes.
+Optional and not required: the `_legacy` third build would separate the pupil model from the
+code version. Aaron declined it once (below); only revisit if step B produces a result that
+actually turns on the attribution.
 
 ## Tried and rejected, and why
 
@@ -119,6 +136,18 @@ the field edge and the pupil edge, and each build's recovered DOF and v-modes.
   and not a `build_from`.
 - **Running the recast in batch.** It needs the Consolidated Database (ConsDB), so it is
   interactive-only — its own docstring says so.
+- **Passing the target path behind `--` in batch mode.** Dies on
+  `MissingRuleException: No rule to produce --config`. In **batch** mode `run_snake.sh`
+  already hoists flags ahead of its own `--config` and appends the `--` itself, so a
+  passed-through `--` lands as a positional target. Pass the path bare:
+  `./run_snake.sh --mode batch output/miw/<P>_<M>/intrinsic_split_maps.parquet`. Local mode
+  is the opposite — it passes everything straight through, so there a target *does* need its
+  own `--`. The script's usage header now says so.
+- **Reading the CCS comparison as a result.** `compare_miw_versions.py --coord CCS` returns
+  0.0000 µm of wavefront on all 20 terms except Z4. That is not a null result: the split
+  log's `OCS-only (C forced to 0)` line lists exactly those terms, so this build
+  configuration permits a camera-fixed component only on Z4. OCS is the informative product
+  for this pair; do not quote the CCS zeros as agreement.
 
 ## Non-obvious constraints found
 
@@ -147,7 +176,20 @@ the field edge and the pupil edge, and each build's recovered DOF and v-modes.
 
 ## Step B is not started
 
-Step B — Range-Bounded Recovery (RBR) on the MIW — waits on step A's comparison, per the
-item. Q8 (which build or builds RBR applies to) is to be answered from the step A result.
-`aos/code/miw/check_dof_ranges.py` already measures how far the existing build's states
-fall outside `r_j` and changes nothing.
+Step B — Range-Bounded Recovery (RBR) on the MIW — is now unblocked, and runs on
+`danish_1_3_v1000` only (Q8). See **Next concrete action** above for the settled
+constraints. `aos/code/miw/check_dof_ranges.py` already measures how far a build's states
+fall outside `r_j` and changes nothing; it is the before-picture for step B.
+
+## Expectations to carry into step B
+
+The step A result sets up two things worth knowing before RBR runs:
+
+- The bending modes that move most between the two pupil models — B1_16 at 1.1276 of its
+  allowed range `r_j`, B1_12 at 0.4968 — are the same modes `check_dof_ranges.py` finds
+  sitting far outside range in both builds. RBR acts hardest exactly where the two builds
+  disagree most, so a step B "improvement" could partly be RBR suppressing the pupil-model
+  sensitivity rather than a real gain. Report both arms on the same visits.
+- The 0.0033 arcsec of inferred FWHM between the pupil models is the scale any RBR-induced
+  FWHM change should be compared against. A change much below it is not separable from the
+  pupil-model choice.
