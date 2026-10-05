@@ -13,7 +13,7 @@ next action, below. Nothing is blocked otherwise.
 
 ## Done and committed
 
-Commit SHA: _see below, committed in this session_
+Commit `7e82312`.
 
 - **`aos/param_sets.yaml`** — new param set `danish_1_3_v1000` on
   `u/jmeyers3/t614_fam_unpaired_v1000`, matching `danish_1_3_test` in every field except
