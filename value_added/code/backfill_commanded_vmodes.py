@@ -29,6 +29,7 @@ import pathlib
 import sys
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'aos' / 'code'))
@@ -123,9 +124,16 @@ def backfill_variant(con, variant, scheme, ofc_version, chunk=5000, dry_run=Fals
         payload = [[v_lut[j].tolist(), v_trim[j].tolist(), int(batch[j])]
                    for j in range(len(batch)) if good[j]]
         if payload:
-            con.executemany(
-                'UPDATE optical_state SET v_modes_lut = ?, v_modes_trim = ? '
-                'WHERE visit_id = ? AND variant_id = ' + f"'{variant}'", payload)
+            # One set-based UPDATE joined against a staged batch, not one statement per
+            # visit: optical_state carries no index on visit_id alone, so per-row updates
+            # rewrite the list-column row groups each time and the whole table takes hours.
+            stage = pd.DataFrame(payload, columns=['lut', 'trim', 'visit_id'])
+            con.register('_stage', stage)
+            con.execute(
+                'UPDATE optical_state AS o SET v_modes_lut = s.lut, '
+                'v_modes_trim = s.trim FROM _stage AS s '
+                'WHERE o.visit_id = s.visit_id AND o.variant_id = ?', [variant])
+            con.unregister('_stage')
     verb = 'would fill' if dry_run else 'filled'
     print(f'  {variant}: {verb} {n_filled} of {len(vids)} candidate row(s), '
           f'{n_modes} v-modes each (dimensionless)')
