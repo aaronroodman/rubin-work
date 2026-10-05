@@ -681,6 +681,14 @@ pixels, lower contrast — or may be real M2-baffle structure.
 
 **Status:** in process, first build done, Q7 resolved 2026-10-04 · **Blocked on:** nothing
 
+**From item 7, 2026-10-05 — relevant if step A goes through ts_wep.** ts_wep's blitz builds
+its donut pupil from `_INSTRUMENT.maskParams` (a singleton loaded from
+`policy/instruments/LsstCam.yaml`), **not** from danish's pupil YAMLs. Those shipped
+`maskParams` are v3.14 (`diameter: 8.36 m`, M1 inner `2.558 m`) and there is **no v1000
+variant of them**, so selecting v1000 inside blitz is not a file swap — it needs v1000
+`maskParams` polynomials generated from the v1000 batoid model. Confirm which code path this
+item's rebuild actually takes before assuming the pupil model can be chosen by filename.
+
 Two sequential steps on the Measured Intrinsic Wavefront (MIW), in this order (settled
 2026-10-04). **Step A, next:** rebuild the 50 DOF / 34 v-mode (50/34) MIW on the
 `v1000` pupil model and compare it against the existing Danish 1.3 blitz build, which
@@ -901,8 +909,37 @@ v1000. "No suffix = legacy" is therefore true of Josh's collections but is **not
 rule and cannot be inferred from danish's default. See
 [item 7](#7-giant-donuts-pupil-models-spiders-and-the-intraextra-z11-split).
 
-Not yet confirmed: whether the one output RUN in each chain differs *only* in the pupil
-model. Reading the task config out of both would make that airtight.
+**Now confirmed, 2026-10-04, and the answer is NO — it does not differ only in the pupil
+model.** Read from the task configs on disk (the Butler `get` fails in `w_2026_39`, which
+lacks `lsst.ts.wep.blitz`, so read `<run>/donutBlitzFam*_config/*.py` directly). The
+unsuffixed baseline is an older code version as well as an older pupil model:
+
+| | `t614_fam_unpaired` | `t614_fam_unpaired_v1000` |
+| --- | --- | --- |
+| pupil mask | no `maskModel` field — the older task predates it | `RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml` |
+| `danish` | `5037d9f3` | `ca41ae8c` |
+| `ts_wep` | `9651cd23` | `639a89d9` |
+| task label | `donutBlitzFamTask` | `donutBlitzFam` |
+| visits | 966 over 15 nights | 966 over the same 15 nights |
+
+**`_legacy` against `_v1000` IS airtight**, and is the cleaner pair: same `danish` commit
+`ca41ae8c`, same task label, and their config assignment lines differ in **exactly one
+line** —
+
+```
+config.wavefrontFit.maskModel='policy:masks/LsstCamLegacy.yaml'           # _legacy
+config.wavefrontFit.maskModel='RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml'  # _v1000
+```
+
+Aaron's call 2026-10-04: **use the existing build as the baseline anyway** — "I know that
+the existing danish 1.3 used an older code version, but there were only small changes
+since then. So v1000 against the existing build is fine." So the pupil model is the
+leading term and the version change is a stated caveat, not a third build. `_legacy`
+stays available if a result ever needs the airtight pair.
+
+All three collections cover **identical visits** (966 `donutBlitzFamResults`, the same 15
+nights), so `day_obs_min/max` copy across unchanged and the common-visit set is not
+limited by coverage.
 
 **Q8. Which build or builds does step B apply RBR to?** Aaron's phrasing is "one or more of
 these MIW", to be decided after the step A comparison. If step A shows the pupil model barely
@@ -1135,6 +1172,16 @@ through single-donut fits. The checksum result also answers item 5's Q7 on danis
 danish's default is v1000, **not** legacy, so "no suffix = legacy" cannot be assumed from
 danish's default alone.
 
+**How to read a processed run's pupil model back** (found while doing item 5's step A, and
+useful here): the blitz task records it as `config.wavefrontFit.maskModel` in its
+`*_config` dataset — `'policy:masks/LsstCamLegacy.yaml'` for legacy against
+`'RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml'` for v1000. Read the file off disk at
+`<run>/donutBlitzFam*_config/*.py` rather than through `butler.get`, which raises
+`ModuleNotFoundError: lsst.ts.wep.blitz` in `w_2026_39`. Older runs predate the field
+entirely: `u/jmeyers3/t614_fam_unpaired` has no `maskModel` line and nests its config
+under `wfFittingTask` rather than `wavefrontFit`, so absence of the key means an older
+task, not a default.
+
 What v1000 changes, in full, is in
 [item 4](#4-pupil-measure-the-donut-pupil-geometry-data-against-model): M1 inner radius
 2.558 m to 2.5833 m, M3 outer 2.508 m to 2.48511 m, M3 inner 0.55 m to 0.52735 m, plus
@@ -1263,6 +1310,42 @@ first thing to check.
 
 **A:** _I think so but this needs to be checked_
 
+**Checked 2026-10-05 by reading the source — the answer is mostly yes, and the tag name in
+this item is wrong.** The real tags are **`blitz-prototype-v1` and `blitz-prototype-v2`**;
+there is no tag named `donut_blitz_v2` and no v3. v2 (`9651cd23`, 2026-09-11) is the newest
+and is what this study uses.
+
+- Detection is **size-agnostic**: `blindDetectTask` builds an annular template from
+  `donutRadius` and scales `min_distance` / `exclude_border` by it, with an override
+  argument, so an 8 mm donut is a parameter change rather than a code change.
+- `cameraOffset` and `m2Offset` are separate config fields, in meters and signed per
+  exposure, so the measured 4+4 mm split (Q7) is directly modellable.
+- `modelSpiderShadows` is already a config field, defaulting False. It gates `rtp`, which
+  gates danish's `spider_angle`, so the spider arm is a toggle as hoped.
+- The fitted blur is bounded at `fwhm = [0.1, 5.0]` arcsec, **hardcoded in
+  `wavefrontFittingTask` rather than exposed as config** — not the 0.5 to 1.5 arcsec of the
+  production config assumed in Q5. The 5.0 arcsec ceiling is the runaway regime `wfs/`
+  warned about, so bounding it means patching the task. `binning` defaults to 2.
+
+Still to do: an actual end-to-end run on `seq_num` 337 and 340 to confirm the pipeline
+detects and fits them. **But see the blocker below** — blitz builds its pupil from
+ts_wep's `maskParams`, not from danish's pupil YAMLs, so the v3.14/v1000 comparison is not a
+file swap.
+
+**Blocker found 2026-10-05: ts_wep's blitz never reads danish's pupil YAMLs.** The donut
+factory is built with `mask_params=_INSTRUMENT.maskParams`, where `_INSTRUMENT` is a
+module-level singleton loaded from `policy/instruments/LsstCam.yaml`. That file carries
+`diameter: 8.36 m` and M1 inner `2.558 m` — **v3.14 numbers** — and there is no v1000
+variant of ts_wep's `maskParams`. So the pupil-model comparison requires generating v1000
+`maskParams` polynomials (cubic-in-θ centre and radius per element edge) from the v1000
+batoid model, which is the one place this item needs genuinely new code. The archived
+`wfs_batoid_pupil_compare.ipynb` has the batoid-boundary tooling to build them from. The
+alternative is to fit with danish directly, where the YAMLs *are* selectable, at the cost of
+no longer being a blitz result. This also bears on
+[item 5](#5-rebuild-the-miw-on-the-v1000-pupil-model-then-under-the-rbr-constraint) if it
+goes through ts_wep. Note that danish 1.3's default being v1000 is still true but is
+irrelevant inside blitz.
+
 **Q2. How many giant donuts, over how many nights?** A pupil-model ranking needs enough
 donuts to separate the models but could run on a few exposures. The thermal-correlation arm
 needs a spread of truss temperature, so many nights. These may be two different samples
@@ -1270,16 +1353,28 @@ rather than one.
 
 **A:** _lets start with just a single night with decent intra and extra focal giant donuts.  We need to do some exploration of the Consdb and DuckDb to select according to the program for blocks with Giant donuts and then make sure both sides of focus are present and also the crowding isn't too bad and that the seeing is decent. Bryce used 20250520_
 
-**Check 20250520 before committing to it.** A Butler probe on 2026-10-04 did not find giant
-donuts there: `day_obs` 20250520 has 12 `intra` and 12 `extra` exposures, all BLOCK-T417,
-`i_39`, 30 s, and **none carry an `8mm` label**, which is consistent with ordinary Full Array
-Mode (FAM) at about ±1.5 mm rather than 8 mm. The night that does carry explicit giant
-exposures is `day_obs` 20251023, BLOCK-T626, `r_57`, 60 s: `seq_num` 337, 338, 349, 350
-`extra_8mm` and 340, 341 `intra_8mm`, plus 351 and 352 `intra_8mm_m1m3_b4`. That is also the
-night the `wfs/` notebook used. Either Bryce's 20250520 work was not the 8 mm giant donuts,
-or the giant exposures there are labelled some other way — resolve it by reading the camera
-and M2 hexapod dz Trim (Q7), which settles what the actual defocus was regardless of label.
-The observation reason is a free-text field and is not a reliable filter on its own.
+**Resolved 2026-10-05: the night is `day_obs` 20251023, not 20250520.** Aaron corrected the
+answer above — Bryce used 20251023, `seq_num` 337 and 340. The Trim settles it
+label-independently (Q7): 20250520 has the camera dz Trim spanning 12000 µm with 15 DOF
+moving, including bending modes 30–34, which is an active-optics night with no ±4000 µm
+plateau and no giant donuts. The chosen sample is BLOCK-T626, `r` band, 60 s, **extra 337,
+338 and intra 340, 341**.
+
+Two exposures were rejected, and both show why selection must be Trim-first rather than
+label-first:
+
+- `seq_num` 339 sits at the giant intra Trim state but is 30 s with `science_program`
+  "unknown", so it is not part of the T626 giant sequence.
+- `seq_num` 351 and 352, labelled `intra_8mm_m1m3_b4`, show **no bending-mode motion in the
+  Trim at all** — across `seq_num` 330–354 only `dof0` and `dof5` ever move. Either the b4
+  mode was commanded to M1M3 as forces outside the OFC aggregated DOF, or it was never
+  applied; the aggregated Trim cannot tell these apart, so they are excluded pending a check
+  of the M1M3 applied forces.
+
+The same night also carries ordinary FAM at camera-only ±1500 µm (`seq_num` 334/335 and
+346/347), giving a built-in camera-only against 4+4 split contrast. Selection is implemented
+in `wfs/code/giant_donuts/select_exposures.py`. The observation reason is free text and was
+wrong in both directions here, so it is not a reliable filter on its own.
 
 **Q3. Paired or unpaired fits?** The intra/extra Z11 split is only visible in **separate
 (unpaired)** fits — the paired fit averages it to about +0.01 µm of wavefront, as `wfs/`
@@ -1334,5 +1429,14 @@ both in µm — that ordering is the opposite of what people assume, and it is d
 `common/dof_telemetry.py`. So the apportionment is read off `dof0` against `dof5` directly.
 This also serves as the label-independent test of which exposures are really giant donuts,
 which is what Q2's 20250520 question needs.
+
+**Answered 2026-10-05: a symmetric 4 + 4 mm split, not camera-only 8 mm.** Against the
+bracketing in-focus exposure (`seq_num` 336, M2 dz Trim −1288.6 µm, camera dz Trim
+−1168.9 µm), the giant exposures sit at **±4000 µm on the M2 hexapod and ±4000 µm on the
+camera hexapod**, an 8000 µm throw on each. This is the configuration `wfs/` predicted gives
+a different pupil — donut span 6.7 mm rather than 7.0 mm, because M2 is powered — so the
+pupil model must carry both hexapod offsets. blitz v2 can: `cameraOffset` and `m2Offset` are
+separate config fields in meters, which also retires the note that ts_wep could not
+apportion the offset.
 
 </details>
