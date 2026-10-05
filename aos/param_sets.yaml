@@ -152,3 +152,40 @@ danish_1_3_test:
   collection_phrase: aos_fam_danish_1_3_blitz_unpaired
   day_obs_min: 20260315
   day_obs_max: 20260619
+
+# ---------------------------------------------------------------------------
+# The same Danish 1.3 blitz unpaired FAM retrieval on the v1000 PUPIL MODEL:
+# the Batoid as-built model plus the updated M1M3 measurements and the M1 outer
+# and inner baffles, whose M1Baffle1/M1Baffle2 ClearCircle surfaces at radius
+# 4.165 m sit 15 mm inside M1's 4.18 m rim.  Josh's suffix IS the pupil model.
+# Paired with danish_1_3_test above to measure what the baffle does to the MIW.
+#
+# Coverage is identical to danish_1_3_test — 966 donutBlitzFamResults over the
+# same 15 nights — so day_obs_min/max carry over unchanged.
+#
+# What differs from danish_1_3_test, measured from the Butler 2026-10-04 rather
+# than assumed.  Its collection u/jmeyers3/t614_fam_unpaired is the LEGACY pupil
+# model, but it is ALSO an older code version, so the pair is not a pure
+# pupil-model difference:
+#   pupil mask   policy:masks/LsstCamLegacy.yaml -> RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml
+#   danish       5037d9f3 -> ca41ae8c
+#   ts_wep       9651cd23 -> 639a89d9
+#   task label   donutBlitzFamTask -> donutBlitzFam (the config field maskModel
+#                did not exist in the older task at all)
+# Accepted deliberately: the code changes between those commits are small, so
+# the pupil model is the leading term.  u/jmeyers3/t614_fam_unpaired_legacy is
+# the airtight baseline if one is ever wanted — it differs from the v1000 run in
+# exactly one config line, maskModel, on the same danish commit — but it costs a
+# third build and is not needed for the leading-term result.
+# ---------------------------------------------------------------------------
+danish_1_3_v1000:
+  dir_name: danish_1_3_v1000
+  description: "Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED, v1000 pupil model (as-built + M1M3 + M1 baffles); default Batoid intrinsics from the dataset type"
+  butler_repo: /repo/main
+  fam_programs: [T614]
+  fam_collections:
+    - u/jmeyers3/t614_fam_unpaired_v1000
+  # Collection name has slashes — set an explicit filename-safe phrase
+  collection_phrase: aos_fam_danish_1_3_blitz_unpaired_v1000
+  day_obs_min: 20260315
+  day_obs_max: 20260619

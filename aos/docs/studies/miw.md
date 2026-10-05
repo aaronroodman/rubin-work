@@ -24,6 +24,8 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 | `run_study_radialbins.py` | pipeline `study_radialbins` rule — OCS measured intrinsic in four WFS radial shells, overlaid by rotator bin |
 | `compare_miw_versions.py` | two MIW builds term by term as a PDF — one page per Noll term holding both field maps on a shared colour scale and their difference on its own |
 | `check_dof_ranges.py` | the build's per-visit recovered degrees of freedom (DOF) against the allowed range `r_j`, per DOF and as the wavefront the over-range amplitudes carry |
+| `compare_pupil_models.py` | two builds as inferred full width at half maximum (FWHM) in arcsec, by field annulus, and by pupil Zernike term — the image-quality and localization half of a pupil-model comparison |
+| `compare_build_dof.py` | two builds' recovered DOF and v-modes, differenced per visit on the visits common to both |
 
 The build itself is in the external `ts_intrinsic_wavefront` package
 (`measured_intrinsic.build_measured_intrinsic_uconstrained`, driven by the
@@ -50,7 +52,8 @@ identical knobs so that they differ only in the wavefronts they were built from:
 | param_set | wavefront version | entries |
 |---|---|---|
 | `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` | Danish 1.2.0_alpha0, paired | `A_50_34_i`, `A_50_34_i_5rot` |
-| `danish_1_3_test` | Danish 1.3 "blitz", unpaired | `A_50_34_i`, `A_50_34_i_5rot` |
+| `danish_1_3_test` | Danish 1.3 "blitz", unpaired, legacy pupil model | `A_50_34_i`, `A_50_34_i_5rot` |
+| `danish_1_3_v1000` | Danish 1.3 "blitz", unpaired, **v1000 pupil model** | `A_50_34_i`, `A_50_34_i_5rot` |
 
 In each pair the `_5rot` entry carries `build_from`, reusing the parent's nine
 per-rotator-bin grids and re-running only the OCS/CCS split over the five in-family
@@ -94,6 +97,79 @@ real structure. Those 240 of 3985 field points are still plotted, and saturate.
 Alongside the PDF the script writes a `_summary.parquet` carrying, per Noll term, the
 root-mean-square of each build and of the difference in µm of wavefront, the difference
 normalized median absolute deviation, and both colour limits.
+
+### The pupil model: legacy against v1000
+
+The `danish_1_3_v1000` build is the same Danish 1.3 blitz unpaired retrieval on the
+**v1000 pupil model** — the Batoid as-built model plus the updated M1M3 measurements and
+the M1 outer and inner baffles, whose `M1Baffle1`/`M1Baffle2` `ClearCircle` surfaces at
+radius 4.165 m sit 15 mm inside M1's 4.18 m rim. Paired against `danish_1_3_test` it
+measures what modelling that baffle does to the measured intrinsic. The scheme is held
+fixed at 50/34; only the pupil model varies.
+
+In Josh Meyers' T614 collections **the suffix is the pupil model**, and the unsuffixed
+`u/jmeyers3/t614_fam_unpaired` that `danish_1_3_test` reads is the *legacy* model. That is
+measured, not assumed: the unsuffixed and `_legacy` chains share 12 of their 13 flattened
+RUN children, each having one output RUN of its own. Note this does **not** generalize —
+danish 1.3.0's own default `RubinObsc.yaml` is byte-identical to the v1000 file, so
+danish's default *is* v1000.
+
+The pair is not a pure pupil-model difference, and the size of the confound is known.
+Reading the task configuration out of both output RUNs:
+
+| | `t614_fam_unpaired` (baseline) | `t614_fam_unpaired_v1000` |
+|---|---|---|
+| pupil mask | no `maskModel` field — predates it | `RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml` |
+| `danish` | `5037d9f3` | `ca41ae8c` |
+| `ts_wep` | `9651cd23` | `639a89d9` |
+| task label | `donutBlitzFamTask` | `donutBlitzFam` |
+| visits | 966 over 15 nights | 966 over the same 15 nights |
+
+So the baseline is an older code version as well as an older pupil model. Carried
+deliberately: the code changes between those commits are small, so the pupil model is the
+leading term. `u/jmeyers3/t614_fam_unpaired_legacy` is the airtight baseline if one is
+ever wanted — it differs from the v1000 run in **exactly one config line**, `maskModel`,
+on the same `danish` commit — at the cost of a third build.
+
+The v1000 tables are built by hand, not by `rule all`, because this param_set declares no
+chunks in `snake_config.yaml`: the blitz recast writes
+`output/fam_processing/<P>/{donuts,visits,fits}.parquet` directly and Snakemake then
+treats them as terminal inputs.
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/fam_processing/run_blitz_mktable.py \
+  --param-set danish_1_3_v1000 \
+  --fit \
+  --overwrite
+```
+
+Two scripts compare the builds beyond `compare_miw_versions.py`'s term-by-term maps.
+`compare_pupil_models.py` converts each MIW to an inferred FWHM in arcsec with ts_wep
+`convertZernikesToPsfWidth`, splits the difference by field annulus, and gives each pupil
+Zernike term's share of the difference power — the spherical terms Noll 11 and 22 being
+the pupil-rim diagnostic a field-map product can offer. `compare_build_dof.py` differences
+the two builds' recovered DOF and v-modes **per visit on the visits common to both**,
+since a pupil change that moves the MIW but leaves the subtracted optical state alone is
+acting on the static wavefront, while one that moves both is partly being absorbed by the
+fit.
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python code/miw/compare_pupil_models.py \
+  --miw-a output/miw/danish_1_3_test_A_50_34_i_5rot/intrinsic_split_maps.parquet \
+  --miw-b output/miw/danish_1_3_v1000_A_50_34_i_5rot/intrinsic_split_maps.parquet \
+  --label-a "legacy pupil" \
+  --label-b "v1000 pupil" \
+  --out-dir output/miw/danish_1_3_legacy_vs_v1000
+
+python code/miw/compare_build_dof.py \
+  --build-a output/miw/danish_1_3_test_A_50_34_i/build \
+  --build-b output/miw/danish_1_3_v1000_A_50_34_i/build \
+  --label-a "legacy pupil" \
+  --label-b "v1000 pupil" \
+  --out-dir output/miw/danish_1_3_legacy_vs_v1000
+```
 
 ### Whether the subtracted optical state is physically reachable
 

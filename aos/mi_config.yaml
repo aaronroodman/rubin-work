@@ -192,3 +192,42 @@ measured_intrinsics:
           - [10.0, 20.0]
           - [55.0, 65.0]
         split_js: [4]
+
+  # The v1000 PUPIL MODEL arm, knobs copied from danish_1_3_test above so the two
+  # MIW differ only in the wavefronts they were built from — and those differ by
+  # the pupil model (see param_sets.yaml for the code versions that also differ,
+  # and why that is accepted).  The scheme is held fixed at 50/34; this is a
+  # pupil-model comparison, not a scheme comparison.
+  #
+  # A FRESH build, deliberately NOT a build_from on danish_1_3_test: build_from
+  # reuses the parent's per-rotator-bin grids and re-runs only the split, but
+  # here the wavefronts themselves differ, so the grids must be rebuilt.
+  #
+  # Requested by explicit target path, NOT via `rule all`, for the same reason as
+  # danish_1_3_test: this param_set's visits.parquet carries no engineering
+  # telemetry, so the correlations and bounce targets that `rule all` expands
+  # over every (param_set, mi_name) pair have no thermal or Trim columns to read.
+  # The MIW chain itself needs none of them.
+  danish_1_3_v1000:
+    - name: pathA_50_34_i
+      dir_name: A_50_34_i
+      n_dof: 50
+      n_keep: 34
+      # No day_obs_max, matching danish_1_3_test.
+    # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
+    # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
+    # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
+    # Z9+ approximated as OCS-only.
+    - name: pathA_50_34_i_5rot
+      dir_name: A_50_34_i_5rot
+      n_dof: 50
+      n_keep: 34
+      build_from: pathA_50_34_i
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4]
