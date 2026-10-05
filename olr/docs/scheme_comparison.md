@@ -101,6 +101,11 @@ Deviation-recovered DOF, median ± nMAD. The ts_ofc layout is **DOF 0–4 M2 hex
 camera hexapod**, each as (dz, dx, dy, rx, ry) — so DOF 1–2 are decenters in µm and DOF 3–4
 are tilts in deg, not the reverse.
 
+The four tilt entries (DOF 3, 4, 8, 9) are in **deg**, the unit the v-mode basis expects.
+`lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50` labels the same four arcsec, and the
+bounce-test results follow that convention, so comparing the two needs 3600 arcsec/deg on
+those four entries and nothing on the other 46.
+
 | DOF | `22_12` | `50_34` | `50_34_rbr` |
 |---|---|---|---|
 | M2 hexapod dz [µm] | +67.37 ± 203.85 | +100.13 ± 402.52 | +72.23 ± 197.87 |

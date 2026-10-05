@@ -88,10 +88,16 @@ The sign of the measured term is a convention fixed by observation, not by a fit
 error with −119.7 µm of camera hexapod dz, so the commanded motion opposes the measured Z4 and a
 surviving measured residual enters the sum with the sign that cancels it.
 
-Two unit traps apply when commanded vectors are added: `lut_dof3/4/8/9` are hexapod tilts in
-**deg** as `MTHexapod` reports them, while the Trim `dof3/4/8/9` are in **arcsec** following the
-Optical Feedback Control (OFC) convention; and the LUT covers only the 10 hexapod DOF, so the
-mirror bending entries are zero rather than absent.
+Two unit traps apply when commanded vectors are added. The hexapod tilts `lut_dof3/4/8/9` and
+the Trim `dof3/4/8/9` are **both in deg**, which is also what the v-mode basis expects — one
+unit of DOF 3 moves the v-modes by 22.74 (dimensionless v-mode norm per unit DOF 3) against an
+allowed range of 0.12, i.e. one degree rather than one arcsec. An earlier version of this
+paragraph called the Trim arcsec, and `build_optical_state.make_commanded_projector` scaled the
+LUT tilts by 3600 arcsec/deg to match; both were wrong, fixed in `090b185`.
+`lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50` does label those four arcsec, so a
+comparison against anything built on that convention — the bounce-test tables in particular —
+needs the 3600 arcsec/deg scaling applied there instead. And the LUT covers only the 10
+hexapod DOF, so the mirror bending entries are zero rather than absent.
 
 ### The measured term: recovered optical state, not four-corner mean Z4
 

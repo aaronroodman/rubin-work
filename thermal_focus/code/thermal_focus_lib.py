@@ -25,11 +25,14 @@ not a focus error at all. What remains is what the closed loop and the wavefront
 their own.
 
 Two unit traps live in the commanded vectors, and matter to anything that rebuilds a DOF vector
-from telemetry rather than reading it from the value-added database. ``lut_dof3/4/8/9`` are the
-hexapod tilts in **deg**, as ``MTHexapod`` reports them, while the Trim ``dof3/4/8/9`` are in
-**arcsec** following the Optical Feedback Control (OFC) convention. The hexapod LUT covers only
-the 10 hexapod DOF, so the mirror-bending entries must be set to zero rather than left NaN, or
-`aos_state.vmodes_from_dofs` rejects every row on the inactive indices.
+from telemetry rather than reading it from the value-added database. The hexapod tilts
+``lut_dof3/4/8/9`` and the Trim ``dof3/4/8/9`` are **both in deg**, which is what
+`aos_state.vmodes_from_dofs` expects: one unit of DOF 3 moves the v-modes by 22.74
+(dimensionless v-mode norm per unit DOF 3) against an allowed range of 0.12, so the unit is a
+degree. ``lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50`` labels those four arcsec, so a
+comparison against results built on that convention needs 3600 arcsec/deg. The hexapod LUT
+covers only the 10 hexapod DOF, so the mirror-bending entries must be set to zero rather than
+left NaN, or `aos_state.vmodes_from_dofs` rejects every row on the inactive indices.
 """
 import pathlib
 import sys

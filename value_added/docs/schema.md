@@ -39,18 +39,19 @@ them in would only create a second, staler copy of something already cheap to re
 |---|---|---|---|
 | `visit_telemetry` | 213,704 | 194 | wide — one row per exposure |
 | `m1m3_thermal_r2` | 211,922 | 28 | wide — one row per exposure |
-| `optical_state` | 90,695 | 13 | long — keyed `(visit_id, variant_id)` |
+| `optical_state` | 307,389 | 15 | long — keyed `(visit_id, variant_id)` |
 | `fam_dz` | 2,528 | 16 | long — keyed `(visit_id, fam_variant_id)` |
-| `state_variant` | 3 | 11 | registry for `optical_state` |
+| `state_variant` | 4 | 11 | registry for `optical_state` |
 | `fam_variant` | 1 | 14 | registry for `fam_dz` |
 | `column_coverage` | 193 | 8 | units and provenance registry |
 | `fetch_log` | 2,928 | 6 | build bookkeeping |
 
 `visit_telemetry` covers `day_obs` 20250415 to 20260714, 366 nights; `m1m3_thermal_r2` the same
-span over 365 of those nights; `optical_state` 20251102 to 20260713, 181 nights; `fam_dz`
+span over 365 of those nights; `optical_state` 20250724 to 20260714, 231 nights; `fam_dz`
 20250415 to 20260713, 98 nights. A join of `fam_dz` to `visit_telemetry` on `visit_id` keeps
-every FAM visit, but the recovered optical state starts only in November 2025, so a join
-through `optical_state` drops the 2025 FAM visits.
+every FAM visit, but the recovered optical state starts only on 20250724 — before that
+ConsDB has the exposures and no corner-WFS quicklook — so a join through `optical_state`
+drops the earlier FAM visits.
 
 Of the 211,922 `m1m3_thermal_r2` rows, 192,079 carry a fit. The 19,843 NaN rows fall on 34
 nights, 32 of them the contiguous block 20250415 to 20250518 where the M1M3 thermocouple
@@ -97,6 +98,33 @@ The visit's **optical state is `Trim − Deviation`**, which is the *negative* o
 `_olr` columns — the convention `thermal_focus` uses for v-mode 1 (`v1_trim + MEASURED_SIGN *
 v1`, `MEASURED_SIGN = -1.0`). Read `dof_olr` when you want the open-loop reconstruction;
 negate it when you want the optical state. `aos/code/open_loop.py` owns both.
+
+### DOF units: the four hexapod tilts are deg, not arcsec
+
+`dof` and `dof_olr` are both **µm and deg**: µm for the six hexapod translations and the 40
+mirror bending amplitudes, **deg** for the four hexapod tilts, DOF 3, 4 (M2 rx, ry) and 8, 9
+(camera rx, ry). That is the unit the v-mode basis expects — one unit of DOF 3 moves the
+v-modes by 22.74 (dimensionless v-mode norm per unit DOF 3) against an allowed range of 0.12,
+so the unit is a degree.
+
+**`lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50` labels those same four arcsec**, and the
+AOS bounce-test results follow that convention. Comparing stored DOF against a bounce-test
+number therefore needs 3600 arcsec/deg applied to those four entries and nothing to the other
+46 — a mismatch that is silent, since it leaves the dominant decentre and bending terms right
+and only corrupts the tilts.
+
+### Pointing: `elevation_deg` and `rotator_angle_deg`
+
+Both come from ConsDB — `exposure.altitude` and `visit1_quicklook.physical_rotator_angle` —
+and are properties of the **visit**, so a given `visit_id` carries the same pair in every
+variant's row. They are stored here rather than in `visit_telemetry` because they arrive with
+the wavefront rather than from the EFD.
+
+All 307,389 rows carry an elevation; 296,337 carry a rotator angle. The 11,052-row shortfall
+is 3,684 visits × 3 variants whose `visit1_quicklook` row is absent, and **every one of them
+also has no recovered optical state**, so a screen on `fwhm_cwfs_arcsec IS NOT NULL` already
+excludes them. The sample spans elevation 17.11 to 83.19 deg and rotator angle −79.87 to
++79.51 deg.
 
 ### `fwhm_cwfs_arcsec` is a corner median, not a focal-plane median
 

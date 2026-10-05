@@ -39,7 +39,7 @@ from build_optical_state import (build_state_estimator, make_commanded_projector
                                  DEFAULT_OFC_VERSION)
 
 
-def missing_counts(con, variant=None):
+def missing_counts(con, variant=None, force=False):
     """Rows per variant whose commanded v-modes are absent, and how many could be filled.
 
     Parameters
@@ -48,6 +48,9 @@ def missing_counts(con, variant=None):
         Connection to the merged database.
     variant : `str`, optional
         Restrict to this variant id.
+    force : `bool`, optional
+        Count every row rather than only those missing the commanded terms, for
+        re-projecting rows whose stored values were built by superseded code.
 
     Returns
     -------
@@ -58,6 +61,7 @@ def missing_counts(con, variant=None):
     """
     where = 'AND o.variant_id = ?' if variant else ''
     args = [variant] if variant else []
+    have = 'TRUE' if force else '(o.v_modes_lut IS NULL OR isnan(o.v_modes_lut[1]))'
     return con.execute(
         'SELECT o.variant_id, s.scheme, s.ofc_config_version, COUNT(*) AS n_missing, '
         '       SUM(CASE WHEN t.visit_id IS NOT NULL AND t.lut_dof0 IS NOT NULL '
@@ -65,12 +69,13 @@ def missing_counts(con, variant=None):
         'FROM optical_state o '
         'JOIN state_variant s USING (variant_id) '
         'LEFT JOIN visit_telemetry t USING (visit_id) '
-        'WHERE (o.v_modes_lut IS NULL OR isnan(o.v_modes_lut[1])) '
+        f'WHERE {have} '
         f'{where} '
         'GROUP BY 1, 2, 3 ORDER BY 1', args).fetchall()
 
 
-def backfill_variant(con, variant, scheme, ofc_version, chunk=5000, dry_run=False):
+def backfill_variant(con, variant, scheme, ofc_version, chunk=5000, dry_run=False,
+                     force=False):
     """Project and store the commanded v-modes for one variant.
 
     Parameters
@@ -96,7 +101,8 @@ def backfill_variant(con, variant, scheme, ofc_version, chunk=5000, dry_run=Fals
     vids = [int(v) for (v,) in con.execute(
         'SELECT o.visit_id FROM optical_state o '
         'JOIN visit_telemetry t USING (visit_id) '
-        'WHERE o.variant_id = ? AND (o.v_modes_lut IS NULL OR isnan(o.v_modes_lut[1])) '
+        f'WHERE o.variant_id = ? AND '
+        f'{"TRUE" if force else "(o.v_modes_lut IS NULL OR isnan(o.v_modes_lut[1]))"} '
         '  AND t.lut_dof0 IS NOT NULL '
         'ORDER BY o.visit_id', [variant]).fetchall()]
     if not vids:
@@ -108,7 +114,8 @@ def backfill_variant(con, variant, scheme, ofc_version, chunk=5000, dry_run=Fals
     n_filled = 0
     for i in range(0, len(vids), chunk):
         batch = vids[i:i + chunk]
-        v_lut, v_trim = project(con, batch)
+        # The third return is the raw Trim DOF, which only the open-loop arm needs.
+        v_lut, v_trim, _ = project(con, batch)
         good = np.isfinite(v_lut[:, 0]) & np.isfinite(v_trim[:, 0])
         n_filled += int(good.sum())
         if dry_run:
@@ -132,27 +139,30 @@ def main(argv=None):
     p.add_argument('--db', default=None, help='database path')
     p.add_argument('--chunk', type=int, default=5000, help='visits per UPDATE batch')
     p.add_argument('--dry-run', action='store_true', help='report only, write nothing')
+    p.add_argument('--force', action='store_true',
+                   help='re-project rows that already carry commanded v-modes, for values '
+                        'built by superseded code')
     a = p.parse_args(argv)
 
     con = efd_db.open_db(a.db, readonly=a.dry_run)
-    todo = missing_counts(con, a.variant)
+    todo = missing_counts(con, a.variant, force=a.force)
     if not todo:
         print('no rows are missing commanded v-modes')
         con.close()
         return 0
 
-    print('rows missing commanded v-modes:')
+    print('rows to re-project:' if a.force else 'rows missing commanded v-modes:')
     for vid, scheme, _ofc, n_missing, n_fillable in todo:
-        print(f'  {vid}: {n_missing} missing, {n_fillable} with telemetry')
+        print(f'  {vid}: {n_missing} selected, {n_fillable} with telemetry')
     print()
 
     total = 0
     for vid, scheme, ofc, _n_missing, n_fillable in todo:
         if not n_fillable:
-            print(f'  {vid}: no telemetry for any missing row, skipped')
+            print(f'  {vid}: no telemetry for any selected row, skipped')
             continue
         total += backfill_variant(con, vid, scheme, ofc, chunk=a.chunk,
-                                  dry_run=a.dry_run)
+                                  dry_run=a.dry_run, force=a.force)
     if not a.dry_run:
         con.execute('CHECKPOINT')
     con.close()
