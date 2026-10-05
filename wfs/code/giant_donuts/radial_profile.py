@@ -46,7 +46,7 @@ INNER_EDGE_NORM = {'v3.14': 0.6120, 'v1000': 0.6204}
 
 __all__ = [
     'INNER_EDGE_NORM', 'donut_centroid', 'radial_profile', 'normalise_profile',
-    'profile_difference', 'ring_excess',
+    'profile_difference', 'ring_excess', 'azimuthal_profile',
 ]
 
 
@@ -237,6 +237,91 @@ def profile_difference(r_norm_intra, flux_intra, r_norm_extra, flux_extra,
         return np.interp(r_grid, r[good], f[good], left=np.nan, right=np.nan)
 
     return r_grid, _interp(r_norm_intra, flux_intra) - _interp(r_norm_extra, flux_extra)
+
+
+def azimuthal_profile(image, center=None, n_bins=72, r_range_norm=(0.65, 0.95),
+                      r_edge_pix=None, mask=None):
+    """Azimuthal flux profile over an annulus, at fixed radius range.
+
+    The radial profile averages over azimuth, so it dilutes anything localised:
+    a figure error on one sector of M1, or the spider vanes, average away. This
+    is the complementary cut, averaging over radius instead.
+
+    Two features are expected and are worth telling apart. The **spiders** give
+    narrow, deep, regularly spaced dips whose count and spacing are set by the
+    vane geometry, and they sit at the same azimuth on both sides of focus. A
+    **localised figure error** gives a broader modulation at one azimuth, and like
+    any OPD term it should reverse sign between intra and extra.
+
+    The annulus deliberately excludes both edges by default, so the profile is
+    not dominated by edge roll-off or by a small centring error.
+
+    Parameters
+    ----------
+    image : `numpy.ndarray`
+        Donut stamp, background-subtracted, in arbitrary flux units.
+    center : `tuple` [`float`], optional
+        ``(x0, y0)`` centre in pixels. Defaults to `donut_centroid`.
+    n_bins : `int`, optional
+        Number of azimuthal bins over the full turn.
+    r_range_norm : `tuple` [`float`], optional
+        Radial range of the annulus, as a fraction of the outer edge,
+        dimensionless.
+    r_edge_pix : `float`, optional
+        Outer edge in pixels, as returned by `normalise_profile`. Required to
+        interpret `r_range_norm`; without it the largest radius fully inside the
+        stamp is used, which is only correct if the donut fills the stamp.
+    mask : `numpy.ndarray`, optional
+        Boolean, True for pixels to use.
+
+    Returns
+    -------
+    angle_deg : `numpy.ndarray`
+        Bin centre azimuth, in degrees, measured counterclockwise from the +x
+        pixel axis.
+    flux : `numpy.ndarray`
+        Mean flux per pixel in each bin, in the image's flux units.
+    flux_err : `numpy.ndarray`
+        Standard error on the mean in each bin, same units. `numpy.nan` where a
+        bin holds fewer than two pixels.
+    n_pix : `numpy.ndarray`
+        Pixel count per bin.
+    """
+    if center is None:
+        center = donut_centroid(image, mask=mask)
+    x0, y0 = center
+
+    ny, nx = image.shape
+    yy, xx = np.mgrid[0:ny, 0:nx]
+    r = np.hypot(xx - x0, yy - y0)
+
+    if r_edge_pix is None or not np.isfinite(r_edge_pix) or r_edge_pix <= 0:
+        r_edge_pix = min(x0, y0, nx - 1 - x0, ny - 1 - y0)
+
+    use = (np.isfinite(image)
+           & (r >= r_range_norm[0] * r_edge_pix)
+           & (r <= r_range_norm[1] * r_edge_pix))
+    if mask is not None:
+        use &= mask
+
+    angle = np.degrees(np.arctan2(yy - y0, xx - x0)) % 360.0
+    edges = np.linspace(0.0, 360.0, n_bins + 1)
+    which = np.digitize(angle[use], edges) - 1
+    values = image[use]
+
+    flux = np.full(n_bins, np.nan)
+    flux_err = np.full(n_bins, np.nan)
+    n_pix = np.zeros(n_bins, dtype=int)
+    for b in range(n_bins):
+        sel = which == b
+        n = int(np.count_nonzero(sel))
+        n_pix[b] = n
+        if n:
+            flux[b] = float(values[sel].mean())
+        if n > 1:
+            flux_err[b] = float(values[sel].std(ddof=1) / np.sqrt(n))
+
+    return 0.5 * (edges[:-1] + edges[1:]), flux, flux_err, n_pix
 
 
 def ring_excess(r_norm, flux_norm, edge_norm, width=0.06, baseline_gap=0.02,

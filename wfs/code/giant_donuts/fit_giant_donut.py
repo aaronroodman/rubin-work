@@ -107,22 +107,64 @@ def _import_blitz(blitz_python=BLITZ_PYTHON):
     -------
     modules : `tuple`
         ``(utils, wavefrontFittingTask)`` modules.
+
+    Notes
+    -----
+    Getting this import right is fiddly, and getting it *wrong* can silently mix
+    two ts_wep versions, so the steps are deliberate.
+
+    ``lsst`` and ``lsst.ts`` are namespace packages, but ``lsst.ts.wep`` is a
+    regular package with an ``__init__.py``. So once anything imports
+    ``lsst.ts.wep`` -- and importing ``lsst.daf.butler`` is enough to freeze
+    ``lsst.ts`` -- the shared EUPS checkout on ``PYTHONPATH`` wins, its
+    ``__path__`` is fixed to a single directory, and no later `sys.path` insert
+    or `importlib.invalidate_caches` can displace it. In a Jupyter kernel that
+    has already happened before the first cell runs.
+
+    Inserting the checkout into ``lsst.ts.wep.__path__`` makes ``blitz``
+    importable, but on its own it would leave `Instrument` and the rest of
+    ts_wep coming from the *shared* checkout while ``blitz`` comes from this one.
+    That mix is worse than an ImportError, because it is silent. So the
+    sibling modules blitz depends on are dropped from `sys.modules` and the
+    checkout is put first, and the result is then verified to come from here.
     """
     if blitz_python not in sys.path:
         sys.path.insert(0, blitz_python)
+
+    wep_dir = str(pathlib.Path(blitz_python) / 'lsst' / 'ts' / 'wep')
+
+    # Drop the already-imported ts_wep tree so blitz's sibling imports resolve
+    # against this checkout rather than being inherited from the shared one.
+    for name in [m for m in sys.modules if m.startswith('lsst.ts.wep')]:
+        del sys.modules[name]
+
+    # Re-resolving is not enough on its own: `lsst.ts` is a namespace package
+    # whose __path__ was frozen by the first `lsst` import, and that frozen list
+    # -- not sys.path -- is what the finder searches for `wep`. Put this
+    # checkout's `lsst/ts` at the front of it.
+    # `__path__` here is a `_NamespacePath`, which has no `insert`, so assign a
+    # plain list. That also pins it: it stops being recomputed from `sys.path`,
+    # which is what we want, since recomputation is what kept restoring the
+    # shared checkout.
+    import lsst.ts as ts_pkg
+    ts_dir = str(pathlib.Path(blitz_python) / 'lsst' / 'ts')
+    if ts_dir not in list(ts_pkg.__path__):
+        ts_pkg.__path__ = [ts_dir] + list(ts_pkg.__path__)
 
     from lsst.ts.wep.blitz import utils as blitz_utils
     from lsst.ts.wep.blitz import wavefrontFittingTask as wf_task
 
     # Compare resolved paths: ~/u is a symlink to /sdf/data/rubin/user/roodman, so
     # the imported file's real path does not contain `blitz_python` literally.
-    got = pathlib.Path(blitz_utils.__file__).resolve()
     want = pathlib.Path(blitz_python).resolve()
-    if want not in got.parents:
-        raise RuntimeError(
-            f'blitz imported from {got}, not from {blitz_python}. Another ts_wep '
-            'is shadowing it on sys.path, so the fit would not be the blitz one.'
-        )
+    for module in (blitz_utils, wf_task, sys.modules['lsst.ts.wep.instrument']):
+        got = pathlib.Path(module.__file__).resolve()
+        if want not in got.parents:
+            raise RuntimeError(
+                f'{module.__name__} imported from {got}, not from {blitz_python}. '
+                'Mixing two ts_wep checkouts would make the fit unattributable, '
+                'so this is fatal.'
+            )
     return blitz_utils, wf_task
 
 
@@ -228,7 +270,9 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
     Returns
     -------
     result : `dict`
-        ``zk_dev_um`` (Noll-indexed wavefront deviation, um), ``fwhm_arcsec``,
+        ``img`` and ``model_img`` (the binned stamp and its best-fit model, in
+        electrons, on the same grid), ``zk_dev_um`` (Noll-indexed wavefront
+        deviation, um), ``fwhm_arcsec``,
         ``fwhm_at_bound`` (`bool`), ``cost``, ``nfev``, ``success``, and the
         fitted ``flux_electrons``, ``dx_pix`` and ``dy_pix``.
     """
@@ -301,10 +345,22 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
     unpacked = model.unpack_params(fit.x)
     fwhm = float(np.atleast_1d(unpacked['fwhm'])[0])
 
+    # The best-fit model image, on the same binned pixel grid as `img`.  Returned
+    # so the fit can be profiled the same way the data is: a radial or azimuthal
+    # profile of data minus model localises where the forward model fails, which
+    # a single chi2/dof cannot.
+    model_img = np.asarray(model.model(
+        unpacked['fluxes'], unpacked['dxs'], unpacked['dys'],
+        fwhm=unpacked['fwhm'], wavefront_params=unpacked['wavefront_params'],
+        bkgs=unpacked['bkgs'], sky_levels=[0.0],
+    )[0], dtype=float)
+
     zk_dev_um = {int(j): float(v * 1e6)
                  for j, v in zip(noll_indices, unpacked['wavefront_params'])}
 
     return {
+        'img': img,
+        'model_img': model_img,
         'zk_dev_um': zk_dev_um,
         'fwhm_arcsec': fwhm,
         'fwhm_bound_arcsec': (fwhm_min, fwhm_max),
