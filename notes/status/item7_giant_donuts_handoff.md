@@ -106,12 +106,17 @@ pupil-model error.** Measured on seq 337 (extra) and 340 (intra), R22_S10, field
 
 | zone (normalised radius) | extra | intra | extra − intra |
 | --- | --- | --- | --- |
-| inner ring, 0.62–0.70 | 1.019 | 0.879 | **+0.140** |
-| outer, 0.94–1.00 | 0.897 | 0.990 | **−0.094** |
+| inner ring, 0.62–0.70 | 1.0161 | 0.8836 | **+0.1326** |
+| outer, 0.94–1.00 | 0.8754 | 0.9960 | **−0.1206** |
 
 All dimensionless normalised flux, relative to the mean over the illuminated annulus. The
-intra-minus-extra difference peaks at **−0.314 at normalised radius 0.640**, just outside
+intra-minus-extra difference peaks at **−0.3392 at normalised radius 0.640**, just outside
 the inner pupil edge (0.612 v3.14, 0.620 v1000) and **not** at the rim.
+
+`ring_excess` also discriminates the two inner radii from the images alone: referenced to
+v1000's 0.6204 edge the extra-focal ring reads **+0.0248**, referenced to v3.14's 0.6120 it
+reads **−0.1181** because the band lands partly in the central hole. Independent support
+for v1000's inner radius, separate from the fits.
 
 Flux is conserved and redistributed radially in **opposite directions on the two sides of
 focus**. That is the OPD signature from the item's step 7: a mask boundary error would move
@@ -119,16 +124,19 @@ an edge *position* the same way on both sides rather than swap the flux balance 
 zones. The location at the inner edge is consistent with a turned-down edge inside M1 —
 which is also where v1000 moves the inner radius, outward by 25.3 mm.
 
-**Independent confirmation of the 4+4 mm split, from the images.** Donut diameters measure
-**6.85 mm extra and 6.72 mm intra**, against `wfs/`'s prediction of 6.7 mm for a 4+4 mm
-camera-plus-M2 split and 7.0 mm for camera-only 8 mm. The images agree with the Trim.
+**The donut sizes do NOT confirm the 4+4 mm split — an earlier claim here was wrong.**
+Measured diameters are **6.95 mm extra and 6.85 mm intra** (bounding box), with the
+profile's fitted outer edge at 342.9 and 335.3 pixel, i.e. 6.86 and 6.71 mm. `wfs/`
+predicts 6.7 mm for a 4+4 mm split and 7.0 mm for camera-only 8 mm, so the measurements sit
+between the two and nearer the camera-only value. The images do not discriminate on size
+alone; **the Trim is the evidence for 4+4 mm.** A previous version of this handoff quoted
+6.85/6.72 mm and called it independent confirmation — those numbers were not reproducible
+and the conclusion did not follow.
 
 **Caveats.** One donut per side, one sensor, one night — the item asks for a distribution.
 The profile is azimuthally averaged, so a localised figure error is diluted; an azimuthal
-cut is the obvious next step. The 0.13 mm size difference between the two donuts is removed
-by the normalisation and has not been separated from the effect. No wavefront fit has run,
-so the amplitude in µm of wavefront is unknown and cannot yet be set against the 0.3 µm Z11
-split or the 0.10 µm diffraction term.
+cut is the obvious next step. The 7.6 pixel (0.08 mm) outer-edge difference between the two
+donuts is removed by the normalisation and has not been separated from the effect.
 
 ## The fit result: v1000 halves the Z11 split
 
@@ -333,6 +341,25 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
   question is about the forward model. Driving blitz's own factory and danish model gives
   the same answer with no pipeline infrastructure. A pipeline run is still the right test
   for the detection and pairing stages if those ever matter here.
+- **Reporting numbers from a throwaway shell as if the notebook had produced them —
+  a real mistake, corrected 2026-10-05.** The radial-profile results were first obtained by
+  running the profiling code in a scratch process and were written into the notebook's
+  Interpretation cell and this handoff, but **the notebook itself was committed unexecuted**
+  (every `execution_count` null, no outputs, no PDF). On finally executing it, most zone
+  statistics shifted in the third decimal and the donut diameters were wrong by 0.10 and
+  0.13 mm, which killed the "images independently confirm the 4+4 mm split" claim. The
+  physics conclusion survived; one supporting claim did not. **Execute a notebook before
+  quoting its numbers, and check `execution_count` is non-null before committing.**
+- **The notebook was not runnable as first committed**, two separate bugs. It called
+  `repo_root()` imported *from* `common.utils` before the repo root was on `sys.path` —
+  chicken-and-egg, `ModuleNotFoundError`. The repo's established notebook idiom (see
+  `aos/notebooks/fam_processing/*.ipynb`) walks up to the topic dir and inserts paths before
+  any repo import; use that, not `repo_root()`. It also called `fig.tight_layout()` after
+  creating a colorbar, which `setup_plotting()`'s constrained layout engine rejects with
+  `RuntimeError`.
+- **The template's `lsst` kernel does not exist in the USDF terminal**, only `python3`
+  (same interpreter). Execute with `--ExecutePreprocessor.kernel_name=python3` and leave the
+  committed metadata alone, so the notebook still opens correctly on the RSP.
 - **Re-deriving the `wfs/` geometry results — deliberately not done**, per the item. The
   99.50% matched-config agreement, 95.97% giant-intra, +261 mm filter-dominated intra outer
   edge, the circle-refit recovery to 99.5%, and the ~100x-too-small chromaticity and static
