@@ -1,7 +1,7 @@
 # Item 7 — giant donuts, pupil models and the intra/extra Z11 split
 
-> **Status:** Q1 answered, steps 4-6 run; no blocker · **Last updated:**
-> 2026-10-05 · **Kind:** handoff
+> **Status:** Q1 answered, steps 4-6 run; notebook complete; no blocker ·
+> **Last updated:** 2026-10-05 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
 lives in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05).
@@ -106,16 +106,17 @@ pupil-model error.** Measured on seq 337 (extra) and 340 (intra), R22_S10, field
 
 | zone (normalised radius) | extra | intra | extra − intra |
 | --- | --- | --- | --- |
-| inner ring, 0.62–0.70 | 1.0161 | 0.8836 | **+0.1326** |
-| outer, 0.94–1.00 | 0.8754 | 0.9960 | **−0.1206** |
+| inner ring, 0.62–0.70 | 1.0073 | 0.8532 | **+0.1541** |
+| outer, 0.94–1.00 | 0.8803 | 0.9760 | **−0.0957** |
 
-All dimensionless normalised flux, relative to the mean over the illuminated annulus. The
-intra-minus-extra difference peaks at **−0.3392 at normalised radius 0.640**, just outside
-the inner pupil edge (0.612 v3.14, 0.620 v1000) and **not** at the rim.
+All dimensionless normalised flux, relative to the mean over the illuminated annulus,
+at the converged 1.5 pixel per bin. The intra-minus-extra difference peaks at **−0.3330
+at normalised radius 0.648**, just outside the inner pupil edge (0.612 v3.14, 0.620
+v1000) and **not** at the rim.
 
 `ring_excess` also discriminates the two inner radii from the images alone: referenced to
-v1000's 0.6204 edge the extra-focal ring reads **+0.0248**, referenced to v3.14's 0.6120 it
-reads **−0.1181** because the band lands partly in the central hole. Independent support
+v1000's 0.6204 edge the extra-focal ring reads **+0.0132**, referenced to v3.14's 0.6120 it
+reads **−0.0626** because the band lands partly in the central hole. Independent support
 for v1000's inner radius, separate from the fits.
 
 Flux is conserved and redistributed radially in **opposite directions on the two sides of
@@ -126,7 +127,7 @@ which is also where v1000 moves the inner radius, outward by 25.3 mm.
 
 **The donut sizes do NOT confirm the 4+4 mm split — an earlier claim here was wrong.**
 Measured diameters are **6.95 mm extra and 6.85 mm intra** (bounding box), with the
-profile's fitted outer edge at 342.9 and 335.3 pixel, i.e. 6.86 and 6.71 mm. `wfs/`
+profile's fitted outer edge at 341.5 and 335.7 pixel, i.e. 6.83 and 6.71 mm. `wfs/`
 predicts 6.7 mm for a 4+4 mm split and 7.0 mm for camera-only 8 mm, so the measurements sit
 between the two and nearer the camera-only value. The images do not discriminate on size
 alone; **the Trim is the evidence for 4+4 mm.** A previous version of this handoff quoted
@@ -134,9 +135,60 @@ alone; **the Trim is the evidence for 4+4 mm.** A previous version of this hando
 and the conclusion did not follow.
 
 **Caveats.** One donut per side, one sensor, one night — the item asks for a distribution.
-The profile is azimuthally averaged, so a localised figure error is diluted; an azimuthal
-cut is the obvious next step. The 7.6 pixel (0.08 mm) outer-edge difference between the two
-donuts is removed by the normalisation and has not been separated from the effect.
+The 5.8 pixel (0.06 mm) outer-edge difference between the two donuts is removed by the
+normalisation and has not been separated from the effect.
+
+## Binning: both projections are resolution-limited, not noise-limited
+
+Chosen by convergence scan (`rp.bin_convergence`), not by rule of thumb. Per-pixel noise
+is 47.7 electrons against an annulus signal of 1485.6 electrons per pixel, so even a
+1 pixel radial bin reaches a signal-to-noise ratio of about 1268 (dimensionless) per bin.
+Shrinking bins therefore costs nothing but resolution gains are real.
+
+- **Radial: 1.5 pixel per bin** (287 bins over the 430 pixel stamp half-size). The
+  ring-zone mean converges there and holds at 1.0 and 0.5 pixel. Coarser bins are
+  actively wrong: 2.15 pixel per bin reads the ring excess about 12 per cent high, and
+  3.6 pixel per bin collapses it to +0.054 (dimensionless) and mislocates the peak to the
+  outer edge. The 90–10 per cent outer-edge roll-off width, 12.9 pixel, also stops
+  shrinking here.
+- **Azimuthal: 0.25 deg per bin** (1440 bins). A 0.05 m spider vane at 0.8 of the pupil
+  radius subtends only 0.86 deg, so 1.0 deg resolves a vane with a *single* bin;
+  0.25 deg puts about 3.4 bins across it and so resolves its profile. Peak-to-peak has
+  converged — 1.0150 at 0.25 deg against 1.0182 at 0.20 deg (dimensionless, extra-focal)
+  — and at 122 pixels per bin peak-to-peak over median-error is still 82 (dimensionless).
+
+The **lag-1 autocorrelation is diagnostic azimuthally only.** Radially it reads 0.98–1.00
+at every bin width, because a smooth monotonic curve always correlates between neighbours;
+an earlier version of this scan reported it and it was useless. The radial discriminator is
+the edge roll-off width, validated on a synthetic donut with a known 13.0 pixel edge
+(reads 16.1 pixel at 5.4 pixel per bin, converges to 12.9 pixel by 1.5 pixel per bin).
+
+## Azimuthal profiles: the extra-focal donut is far more structured
+
+At 0.25 deg per bin, peak-to-peak normalised flux is **1.0150 extra-focal against 0.5711
+intra-focal** (dimensionless) — against 0.4392 and 0.2632 at the 5 deg bins this study
+started with, so coarse bins were hiding most of the structure. The intra-minus-extra
+difference peaks at **+0.5920 (dimensionless) at 140.4 deg** (counterclockwise from the
++x pixel axis) against a robust scatter of 0.0543. Localising that to a sector of M1 needs
+more than one donut pair.
+
+## The 2-D residual images: the sign flip, measured directly
+
+Per pupil zone, as a fraction of the model's annulus level (dimensionless), ranges over
+the four fit configurations:
+
+| zone (normalised radius) | extra, signed mean | intra, signed mean |
+| --- | --- | --- |
+| inner, 0.62–0.70 | +0.033 to +0.047 | −0.030 to −0.035 |
+| flat, 0.70–0.94 | −0.032 to −0.035 | −0.003 to −0.001 |
+| outer, 0.94–1.00 | −0.006 to +0.009 | −0.002 to +0.009 |
+
+The inner zone is positive extra-focally and negative intra-focally in **every** case,
+with the flat zone taking the compensating deficit on the extra side. Neither the pupil
+model nor the spiders shifts it — which is what makes it a residual OPD term rather than
+mask geometry, and it answers next-action 1 below for the radial direction. The nMAD is
+largest at **both** pupil boundaries (about 0.19 inner, 0.17 outer) and smallest in the
+flat middle (about 0.12), so the forward model fails hardest at the edges.
 
 ## The fit result: v1000 halves the Z11 split
 
@@ -176,10 +228,15 @@ is a plain config toggle and switching it on improves the fit at both sides of f
 residual OPD term remains after the best pupil model and the spiders, which is what the
 radial profiles independently point at.
 
+**Z22 splits far less than Z11, and in the opposite sign.** Secondary spherical splits
+−0.0738 µm wf under v3.14 and −0.0125 µm wf under v1000 (spiders off), against Z11's
++0.8037 and +0.3669 µm wf. So the Z11 split is not a general spherical-family mismatch;
+the v1000 pupil improves both, but Z11 is where the residual lives.
+
 **Z11 is robust; Z4 is not. Do not report Z4 from these fits.** Z11 moves less than
 0.005 µm across loosened blur bound (1.5 to 5.0 arcsec), tightened tolerance (1e-3 to
-1e-8) and the radius-consistency choice below. Z4 instead swings from +0.64 to −1.54 µm
-between pupil configurations: the v1000 annulus is narrower at *both* ends (width 1581.0
+1e-8) and the radius-consistency choice below. Z4 instead swings from +0.6439 to −1.5361 µm wf extra-focally
+between pupil configurations, and its *split* from −0.2151 to +4.1147 µm wf: the v1000 annulus is narrower at *both* ends (width 1581.0
 against 1621.6 mm), so the modelled donut is smaller than the data's and the defocus term
 stretches to compensate. That is the standard pupil-scale/defocus degeneracy, and Z11's
 different radial shape is why it survives it.
@@ -213,36 +270,41 @@ Two things to know about it:
 
 ## In progress
 
-Nothing uncommitted in this repo. Commits: `fe9fa1a` (selection module, file moves, todo
-edits), `1f37ac1` (maskParams generator, radial profiles), `8f79f50` (the profile
-measurement), `ee07cc6` (profile result in this handoff), `449d928` (fit driver and image
-helpers). In the blitz checkout, `ab85fc3d` on branch `giant-donuts-study`.
+Nothing uncommitted in this repo. Commits in order: `fe9fa1a` (selection module, file
+moves, todo edits), `1f37ac1` (maskParams generator, radial profiles), `8f79f50` (the
+profile measurement), `ee07cc6` (profile result in this handoff), `449d928` (fit driver
+and image helpers), `6369dc9` (the four fits and azimuthal profiles in the notebook),
+`05ac889` (bin sizes by convergence, table of contents, residual images). In the blitz
+checkout, `ab85fc3d` on branch `giant-donuts-study`.
 
-The notebook does not yet show the fit results — it still carries only the radial
-profiles. See next action 7.
+`wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb` is complete and fully
+executed: 22 code cells, 6 embedded figures, 12-entry table of contents with working
+anchors, and five PDFs written to `wfs/output/giant_donuts/` (`radial_profiles_`,
+`radial_fits_`, `azimuthal_profiles_`, `azimuthal_fits_`, `residual_images_`, all
+suffixed `R22_S10`).
 
 ## Next concrete action
 
-1. **Explain the `chi2/dof` of 14.9 and 7.1.** The fits are converged, so this is model
-   mismatch, and it is the most direct handle on the residual OPD. Look at the
-   data-minus-model residual image radially: if it peaks just outside the inner pupil edge
-   with opposite sign on the two sides, it is the same term the radial profiles found. The
-   fitter already returns `model_img`; the driver does not yet save it.
-2. **Why is `chi2/dof` twice as large extra-focally as intra-focally?** Consistent across
-   all four configurations (about 12-15 against 6-7). An asymmetry that large is itself a
-   diagnostic and is unexplained.
-3. Convert the radial-profile zone statistics into an implied wavefront amplitude in µm, so
-   the 0.140 normalised-flux ring can be set against the 0.267 µm of unexplained Z11 split.
-   These are currently two separate pieces of evidence for the same thing in different
-   units.
-4. Extend to seq 338 and 341 and to more sensors for a distribution rather than one pair;
-   add an azimuthal cut, since the azimuthal average dilutes a localised figure error.
+1. **Why is `chi2/dof` twice as large extra-focally as intra-focally?** Consistent across
+   all four configurations (about 12-15 against 6-7). The residual images now localise the
+   *radial* part to both pupil boundaries, with the inner zone flipping sign between
+   sides, but they do not explain the extra/intra magnitude asymmetry itself. Note the
+   extra-focal donut is also the azimuthally more structured one (peak-to-peak 1.0150
+   against 0.5711, dimensionless) — the two asymmetries may be the same thing.
+2. **Convert the radial-profile zone statistics into an implied wavefront amplitude in
+   µm**, so the +0.1541 (dimensionless) normalised-flux ring can be set against the
+   0.251 µm of Z11 split that v1000-with-spiders leaves unexplained (0.3511 µm measured
+   less about 0.10 µm from diffraction). These are currently two pieces of evidence for
+   the same thing in different units, and this is the step that joins them.
+3. Extend to seq 338 and 341 and to more sensors for a distribution rather than one pair.
    `fit_giant_donut.py --detector` already takes any sensor.
-5. Test the figure roll-off hypothesis directly (item 7 step 7) by perturbing M1's inner
+4. Test the figure roll-off hypothesis directly (item 7 step 7) by perturbing M1's inner
    edge in the batoid model and refitting, to see whether it absorbs the residual Z11.
+   This is the main remaining physics step.
+5. Explain the intra/extra **blur** asymmetry: intra pins on its bound (1.509 arcsec when
+   released to 5.0) in all four configurations while extra fits 0.98 to 1.02 arcsec. It
+   survives every pupil model and is unexplained.
 6. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
-7. Fold the fit results into the notebook alongside the radial profiles, so the two lines
-   of evidence sit together.
 
 ## Decisions needed from Aaron
 
@@ -364,3 +426,18 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
   99.50% matched-config agreement, 95.97% giant-intra, +261 mm filter-dominated intra outer
   edge, the circle-refit recovery to 99.5%, and the ~100x-too-small chromaticity and static
   mismatch terms are taken as inputs.
+- **Coarse bins were quietly corrupting the results, in both projections.** Numbers quoted
+  from 2.15 pixel radial bins read the ring excess about 12 per cent high, and the 5 deg
+  azimuthal bins the study started with reported peak-to-peak 0.4392 where the resolved
+  binning gives 1.0150 (dimensionless, extra-focal) — more than half the structure was
+  being averaged away. Set bin width from a convergence scan on the sharpest feature
+  present, not from a default. Here that is the 12.9 pixel edge roll-off radially and the
+  0.86 deg spider vane azimuthally, and the vane needs several bins across it, not one.
+- **The lag-1 autocorrelation is not a resolution diagnostic for a monotonic profile.**
+  It reads 0.98–1.00 at every radial bin width, because neighbouring bins on a smooth
+  curve always correlate. It *is* diagnostic azimuthally, where the structure is not
+  monotonic. The radial substitute is the 90–10 per cent edge roll-off width.
+- **Z4 was nearly reported as a result.** Its split swings from −0.2151 to +4.1147 µm wf
+  between pupil configurations, purely from the pupil-scale/defocus degeneracy. Keep it in
+  the output table as a diagnostic of that degeneracy, labelled as such, and never as a
+  measurement of the telescope's defocus.

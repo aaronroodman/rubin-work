@@ -64,16 +64,16 @@ __all__ = [
 # edge entirely.
 RADIAL_BIN_PIX = 1.5
 
-# Azimuthal, 1.0 deg per bin. The spider vanes are the sharpest azimuthal
+# Azimuthal, 0.25 deg per bin. The spider vanes are the sharpest azimuthal
 # feature: a 0.05 m vane at 0.8 of the pupil radius subtends only 0.86 deg, so
-# the 5 deg bins this study started with washed them out completely. Diagnosed
-# with the lag-1 autocorrelation of the profile about its median, which says
-# whether neighbouring bins are tracking the same feature: it is -0.21 at 5 deg
-# per bin (oversmoothed, adjacent bins anti-correlated), crosses zero near 3 deg,
-# and reaches 0.67 at 1 deg where the structure is genuinely resolved. Past about
-# 0.75 deg it saturates toward 1.0, which is subdividing an already-resolved
-# curve, and the peak-to-peak over median-error ratio falls away.
-AZIMUTHAL_BIN_DEG = 1.0
+# the 5 deg bins this study started with washed them out completely, and 1.0 deg
+# resolves a vane with a single bin. 0.25 deg puts about 3.4 bins across a vane,
+# which is what it takes to see its profile rather than just its presence.
+# Peak-to-peak has converged by then -- 1.0150 at 0.25 deg against 1.0182 at
+# 0.20 deg (dimensionless, extra-focal) -- while 122 pixels per bin still leave
+# peak-to-peak over median-error at 82 (dimensionless), so the vanes are far
+# above the noise.
+AZIMUTHAL_BIN_DEG = 0.25
 
 # Spider vane width, in meters, from policy/instruments/LsstCam.yaml.  Used to
 # state the angular scale the azimuthal binning has to resolve.
@@ -409,7 +409,7 @@ def bin_convergence(image, kind='radial', n_bins_grid=None, r_edge_pix=None,
     if kind == 'radial':
         grid = n_bins_grid or (80, 120, 172, 200, 286, 430, 860)
     else:
-        grid = n_bins_grid or (72, 120, 180, 240, 360, 480, 720, 1080)
+        grid = n_bins_grid or (72, 180, 360, 720, 1440, 1800, 2880)
 
     for n_bins in grid:
         if kind == 'radial':
