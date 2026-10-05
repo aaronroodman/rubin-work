@@ -205,14 +205,27 @@ Both sides report `fit_success`.
 
 R22_S10, seq 337/340, binning 2, unpaired, field angle (−0.263, −0.062) deg:
 
+Free blur, bound 0.1 to 3.0 arcsec:
+
 | pupil model | spiders | chi2/dof extra | chi2/dof intra | Z11 split [µm wf] |
 | --- | --- | --- | --- | --- |
-| v3.14 | off | 14.994 | 7.132 | **+0.8037** |
-| v3.14 | on | 12.004 | 6.033 | +0.7838 |
-| v1000 | off | 14.891 | 7.141 | **+0.3669** |
-| v1000 | on | 11.819 | 6.017 | +0.3511 |
+| v3.14 | off | 14.994 | 7.132 | **+0.8043** |
+| v3.14 | on | 12.004 | 6.005 | +0.7914 |
+| v1000 | off | 14.895 | 7.141 | **+0.3618** |
+| v1000 | on | 11.822 | 5.984 | +0.3515 |
+
+Blur fixed at the measured seeing, 0.7 arcsec:
+
+| pupil model | spiders | chi2/dof extra | chi2/dof intra | Z11 split [µm wf] |
+| --- | --- | --- | --- | --- |
+| v3.14 | off | 15.184 | 7.954 | +0.7782 |
+| v3.14 | on | 12.259 | 7.745 | +0.7556 |
+| v1000 | off | 15.098 | 8.022 | +0.3323 |
+| v1000 | on | 12.077 | 7.764 | **+0.3119** |
 
 dof is 184015 for every row. Z11 split is intra minus extra, in µm of wavefront.
+**The Z11 split is robust to the blur treatment** — it moves 0.026 to 0.040 µm wf
+between the two, against the 0.21 to 0.25 µm wf that remains unexplained.
 
 **The two effects are orthogonal, which is the useful part.** The pupil model moves the
 Z11 split (0.80 to 0.37 µm, a 54.3 per cent reduction) and barely moves `chi2/dof`.
@@ -229,23 +242,73 @@ residual OPD term remains after the best pupil model and the spiders, which is w
 radial profiles independently point at.
 
 **Z22 splits far less than Z11, and in the opposite sign.** Secondary spherical splits
-−0.0738 µm wf under v3.14 and −0.0125 µm wf under v1000 (spiders off), against Z11's
-+0.8037 and +0.3669 µm wf. So the Z11 split is not a general spherical-family mismatch;
+−0.0737 µm wf under v3.14 and −0.0137 µm wf under v1000 (spiders off, free blur), against
+Z11's +0.8043 and +0.3618 µm wf. So the Z11 split is not a general spherical-family mismatch;
 the v1000 pupil improves both, but Z11 is where the residual lives.
 
-**Z11 is robust; Z4 is not. Do not report Z4 from these fits.** Z11 moves less than
-0.005 µm across loosened blur bound (1.5 to 5.0 arcsec), tightened tolerance (1e-3 to
-1e-8) and the radius-consistency choice below. Z4 instead swings from +0.6439 to −1.5361 µm wf extra-focally
-between pupil configurations, and its *split* from −0.2151 to +4.1147 µm wf: the v1000 annulus is narrower at *both* ends (width 1581.0
-against 1621.6 mm), so the modelled donut is smaller than the data's and the defocus term
-stretches to compensate. That is the standard pupil-scale/defocus degeneracy, and Z11's
-different radial shape is why it survives it.
+**Z11 is robust; Z4 was corrupted by a basis bug, now fixed.** Z11 moves less than
+0.005 µm across loosened blur bound, tightened tolerance (1e-3 to 1e-8), the
+radius-consistency choice below, and the ε fix. See the ε-basis bug section below for Z4.
 
-**The blur hits its bound on the intra side, and that is real, not a bound artifact.**
-Released to a 5.0 arcsec ceiling the intra blur fits 1.509 arcsec while Z11 moves
-0.0005 µm. So the 1.5 arcsec bound is doing no harm here, but it is *active*, and every
-fitted value should be reported with the bound alongside it. `fwhm_at_bound` flags this
-within 2 per cent of the bound range.
+## The ε-basis bug: Z4 was not a degeneracy, it was wrong
+
+**A previous version of this handoff reported a v1000 Z4 split of +4.1147 µm wf and
+explained it as a pupil-scale/defocus degeneracy. That explanation was wrong; it was a
+bug.** `fit_stamp` called `batoid.zernikeTA` with `eps=telescope.pupilObscuration`, and
+**both** YAML models carry that as the nominal 0.612 — v1000 keeps 0.612 even though its
+traced inner edge is at 0.6204. danish meanwhile got `R_inner/R_outer = 0.6204` from the
+traced mask. So under v1000 the reference wavefront and the fitted deviation sat on
+**different annular Zernike bases**, and Z4, the term most sensitive to annulus width,
+absorbed the entire mismatch. Under v3.14 the two bases agree exactly, which is precisely
+why only v1000 looked broken and the artifact was mistaken for physics.
+
+Fix: take ε from `Instrument.obscuration`, the same number danish uses. The v1000 Z4 split
+collapses from **+4.1147 to +0.0205 µm wf**. Z11 moves 0.005 µm wf (+0.3669 to
++0.3618), so no Z11 conclusion changes.
+
+**Lesson for item 5 and anything else swapping pupil models:** swapping a pupil model in
+blitz is *three* things, not two — the analytic mask, the batoid telescope, **and** the ε
+of the annular Zernike basis. A YAML's `pupilObscuration` is a nominal label, not the
+traced boundary, and the two disagree by 8.4e-3 (dimensionless) for v1000.
+
+Z4 is still not a measurement of the telescope's defocus: these fits are unpaired and
+single-sided, so Z4 trades against flux, centroid and blur. Report it as a consistency
+check on the pupil basis.
+
+## The blur: relaxed to 3.0 arcsec, then fixed at the DIMM seeing
+
+**Relaxing the ceiling from 1.5 to 3.0 arcsec did not resolve the intra/extra asymmetry —
+the pinning was a symptom, not the cause.** Off the bound the intra fits sit at 1.509 to
+1.662 arcsec against 0.984 to 1.018 arcsec extra-focally, in every pupil configuration.
+The intra donut genuinely prefers about 60 per cent more blur.
+
+That is roughly twice the measured seeing: the DIMM read 0.65 to 0.80 arcsec on these
+visits and nearby in-focus acquisition images had about 0.9 arcsec. So a second full set
+of fits holds the blur **fixed at 0.7 arcsec** (`fit_stamp(fwhm_fixed=...)`, imposed as a
+degenerate bound so danish's parameter packing is untouched).
+
+**Fixing the blur costs the intra side 30 per cent in `chi2/dof` and the extra side 2 per
+cent** (v1000 spiders on: 5.984 → 7.764 intra, 11.822 → 12.077 extra). The excess blur the
+intra fit wants is therefore real unmodelled structure on that side, and it is not
+representable by the fitted Zernikes through Z26.
+
+## Spider depth: modelled vanes are about half as deep as the data's
+
+Deepest azimuthal dip below the profile median (dimensionless), at 0.25 deg per bin:
+
+| | extra-focal | intra-focal |
+| --- | --- | --- |
+| data | **0.7648** | **0.4612** |
+| spiders on, free blur | 0.3439–0.3545 | 0.3051–0.3107 |
+| spiders on, blur fixed 0.7 arcsec | 0.3609–0.3710 | 0.3872–0.4055 |
+| spiders off | 0.0433–0.0883 | 0.0740–0.0743 |
+
+Spiders on recovers most of the depth (about 0.05 → about 0.35), so the shadow is in
+roughly the right place with roughly the right strength — **step 6's "good fidelity" holds
+in position but only partly in depth.** With the blur fixed, the intra vanes come within
+12 per cent of the data (0.4055 against 0.4612); extra-focally the data are still about
+2.1 times deeper than the best model. The free-blur fits were partly using blur to smear
+the vanes, which the fixed-blur set exposes.
 
 ## v1000 maskParams: generated
 
@@ -301,10 +364,16 @@ suffixed `R22_S10`).
 4. Test the figure roll-off hypothesis directly (item 7 step 7) by perturbing M1's inner
    edge in the batoid model and refitting, to see whether it absorbs the residual Z11.
    This is the main remaining physics step.
-5. Explain the intra/extra **blur** asymmetry: intra pins on its bound (1.509 arcsec when
-   released to 5.0) in all four configurations while extra fits 0.98 to 1.02 arcsec. It
-   survives every pupil model and is unexplained.
-6. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
+5. Explain the intra/extra **blur** asymmetry. Now better characterised and still
+   unexplained: 1.51 to 1.66 arcsec intra against 0.98 to 1.02 arcsec extra with a
+   3.0 arcsec ceiling, i.e. not a bound artifact, and forcing both to the measured
+   0.7 arcsec costs intra 30 per cent in `chi2/dof` against extra 2 per cent.
+6. **Why are the extra-focal spider vanes about 2.1 times shallower in the model than in
+   the data** (0.3710 against 0.7648, dimensionless) when the intra-focal ones come within
+   12 per cent at fixed blur? Candidates: the vane width in `LsstCam.yaml` (0.05 m), the
+   spider's axial position relative to the pupil, and diffraction at the vane edges, which
+   the geometric shadow model omits.
+7. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
 
 ## Decisions needed from Aaron
 
@@ -441,3 +510,14 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
   between pupil configurations, purely from the pupil-scale/defocus degeneracy. Keep it in
   the output table as a diagnostic of that degeneracy, labelled as such, and never as a
   measurement of the telescope's defocus.
+- **A nominal `pupilObscuration` in a batoid YAML is not the traced pupil boundary, and
+  trusting it produced a fake physics result.** v1000 carries 0.612 while its traced inner
+  edge is 0.6204; using the nominal for the annular-Zernike ε while danish used the traced
+  value put reference and deviation on different bases and inflated the Z4 split to
+  +4.1147 µm wf. It was explained away as a pupil-scale/defocus degeneracy for a full
+  session. When one coefficient moves by 20x and its neighbours do not, suspect the basis
+  before the physics.
+- **Relaxing the blur bound from 1.5 to 3.0 arcsec did not fix the intra/extra blur
+  asymmetry.** The hypothesis that the bound was biasing the fits is **rejected**: the
+  intra blur simply moves to 1.51-1.66 arcsec. Do not revisit this by loosening the bound
+  further.

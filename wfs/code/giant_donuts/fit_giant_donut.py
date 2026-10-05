@@ -240,7 +240,8 @@ def pupil_override(blitz_utils, model, mask_params_file=None):
 
 def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
               noll_indices=None, binning=2, fwhm_max=1.5, fwhm_min=0.1,
-              spiders=False, rtp_deg=0.0, max_nfev=200, tol=1e-3):
+              fwhm_fixed=None, spiders=False, rtp_deg=0.0, max_nfev=200,
+              tol=1e-3):
     """Fit one donut stamp with danish, through blitz's forward model.
 
     Parameters
@@ -260,6 +261,13 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
     fwhm_max, fwhm_min : `float`, optional
         Bounds on the fitted blur FWHM, in arcsec. Reported with the result,
         because a fit that lands on the bound has not measured the blur.
+        Ignored when `fwhm_fixed` is given.
+    fwhm_fixed : `float`, optional
+        Hold the blur FWHM at this value, in arcsec, instead of fitting it.
+        Imposed as a degenerate bound rather than by repacking danish's
+        parameter vector, so the forward model is untouched. Use when the seeing
+        is known independently: a free blur can absorb real wavefront error, and
+        on these donuts the intra-focal blur runs to its upper bound.
     spiders : `bool`, optional
         Model the spider shadows.
     rtp_deg : `float`, optional
@@ -273,8 +281,9 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
         ``img`` and ``model_img`` (the binned stamp and its best-fit model, in
         electrons, on the same grid), ``zk_dev_um`` (Noll-indexed wavefront
         deviation, um), ``fwhm_arcsec``,
-        ``fwhm_at_bound`` (`bool`), ``cost``, ``nfev``, ``success``, and the
-        fitted ``flux_electrons``, ``dx_pix`` and ``dy_pix``.
+        ``fwhm_at_bound`` (`bool`), ``fwhm_was_fixed`` (`bool`), ``cost``,
+        ``nfev``, ``success``, and the fitted ``flux_electrons``, ``dx_pix`` and
+        ``dy_pix``.
     """
     import batoid
     import danish
@@ -291,9 +300,16 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
     wavelength_by_band = {b.value: w for b, w in instrument.wavelength.items()}
     wavelength_m = wavelength_by_band[BAND]
 
-    telescope = blitz_utils._CALIB_STORE['telescope']
     telescope_dz = blitz_utils._telescope_for_offsets(tuple(offsets_m))
-    eps = telescope.pupilObscuration
+    # The annular-Zernike obscuration must be the one danish uses for the fitted
+    # deviation, not the batoid model's nominal `pupilObscuration`.  v1000 keeps
+    # the nominal at 0.612 while its traced inner edge is at 0.6204, so taking it
+    # from the telescope put the reference wavefront and the fitted deviation on
+    # *different* annular bases.  Z4 is the term most sensitive to annulus width
+    # and absorbed the whole mismatch: its intra-minus-extra split read +4.11 um
+    # of wavefront under v1000 against -0.22 um under v3.14, where the two bases
+    # happen to agree.  Z11 moved only 0.002 um, which is why it survived.
+    eps = instrument.obscuration
     nrad = 10
     zk_ref = batoid.zernikeTA(
         telescope_dz, thx_rad, thy_rad, wavelength_m,
@@ -318,14 +334,24 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
         thxs=[thx_rad], thys=[thy_rad], npix=img.shape[0], bkg_order=0,
     )
 
+    # A fixed blur is a degenerate bound. least_squares rejects lb == ub, so the
+    # interval is opened by a hair; the width is far below the 0.001 arcsec the
+    # blur is reported to, so the value is fixed for every practical purpose.
+    if fwhm_fixed is not None:
+        fwhm_lo, fwhm_hi = fwhm_fixed - 1e-9, fwhm_fixed + 1e-9
+        fwhm_start = float(fwhm_fixed)
+    else:
+        fwhm_lo, fwhm_hi = fwhm_min, fwhm_max
+        fwhm_start = 1.0
+
     x0 = model.pack_params(
         fluxes=[float(np.clip(np.sum(img), 1e3, 1e9))], dxs=[0.0], dys=[0.0],
-        fwhm=1.0, bkgs=[[0.0] * model.nbkg],
+        fwhm=fwhm_start, bkgs=[[0.0] * model.nbkg],
         wavefront_params=[0.0] * len(dz_terms),
     )
     bounds = model.pack_params(
         fluxes=[[0.0, np.inf]], dxs=[[-np.inf, np.inf]], dys=[[-np.inf, np.inf]],
-        fwhm=[fwhm_min, fwhm_max], bkgs=[[[-np.inf, np.inf]] * model.nbkg],
+        fwhm=[fwhm_lo, fwhm_hi], bkgs=[[[-np.inf, np.inf]] * model.nbkg],
         wavefront_params=[[-np.inf, np.inf]] * len(dz_terms),
     )
     bounds = [list(b) for b in zip(*bounds)]
@@ -363,12 +389,14 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
         'model_img': model_img,
         'zk_dev_um': zk_dev_um,
         'fwhm_arcsec': fwhm,
-        'fwhm_bound_arcsec': (fwhm_min, fwhm_max),
+        'fwhm_bound_arcsec': (fwhm_lo, fwhm_hi),
+        'fwhm_was_fixed': fwhm_fixed is not None,
         # 2 per cent of the bound range: a fit that lands this close has not
         # measured the blur, it has been stopped by the bound, and its wavefront
         # has absorbed whatever the blur could not.
-        'fwhm_at_bound': bool(min(abs(fwhm - fwhm_min), abs(fwhm - fwhm_max))
-                              < 0.02 * (fwhm_max - fwhm_min)),
+        'fwhm_at_bound': (False if fwhm_fixed is not None else bool(
+            min(abs(fwhm - fwhm_lo), abs(fwhm - fwhm_hi))
+            < 0.02 * (fwhm_hi - fwhm_lo))),
         'flux_electrons': float(np.atleast_1d(unpacked['fluxes'])[0]),
         'dx_pix': float(np.atleast_1d(unpacked['dxs'])[0]),
         'dy_pix': float(np.atleast_1d(unpacked['dys'])[0]),
@@ -390,6 +418,9 @@ def main():
                     default='wfs/output/giant_donuts/maskParams_v1000.yaml')
     ap.add_argument('--fwhm-max', type=float, default=1.5,
                     help='upper bound on fitted blur FWHM, in arcsec')
+    ap.add_argument('--fwhm-fixed', type=float, default=None,
+                    help='hold the blur FWHM at this value, in arcsec, instead '
+                         'of fitting it')
     ap.add_argument('--binning', type=int, default=2)
     ap.add_argument('--tol', type=float, default=1e-3,
                     help="least_squares xtol/ftol/gtol; blitz's default is 1e-3")
@@ -416,7 +447,7 @@ def main():
     butler = dafButler.Butler(BUTLER_REPO)
 
     print(f'\nfitting {args.detector}, binning {args.binning}, '
-          f'fwhm bound 0.1 to {args.fwhm_max} arcsec, '
+          f'fwhm {f"fixed {args.fwhm_fixed}" if args.fwhm_fixed is not None else f"bound 0.1 to {args.fwhm_max}"} arcsec, '
           f'spiders {"on" if args.spiders else "off"}')
     results = {}
     for side, exposure in EXPOSURES.items():
@@ -435,7 +466,8 @@ def main():
         out = fit_stamp(
             stamp, np.deg2rad(ax_deg), np.deg2rad(ay_deg), offsets,
             blitz_utils, wf_task, binning=args.binning,
-            fwhm_max=args.fwhm_max, spiders=args.spiders,
+            fwhm_max=args.fwhm_max, fwhm_fixed=args.fwhm_fixed,
+            spiders=args.spiders,
             tol=args.tol, max_nfev=args.max_nfev,
         )
         results[side] = out
