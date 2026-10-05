@@ -45,9 +45,39 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 INNER_EDGE_NORM = {'v3.14': 0.6120, 'v1000': 0.6204}
 
 __all__ = [
-    'INNER_EDGE_NORM', 'donut_centroid', 'radial_profile', 'normalise_profile',
+    'INNER_EDGE_NORM', 'RADIAL_BIN_PIX', 'AZIMUTHAL_BIN_DEG', 'SPIDER_WIDTH_M',
+    'donut_centroid', 'radial_profile', 'normalise_profile',
     'profile_difference', 'ring_excess', 'azimuthal_profile',
+    'bin_convergence',
 ]
+
+# Bin sizes chosen by measuring where the features stop changing, not by rule of
+# thumb; `bin_convergence` reproduces the scans these came from.
+#
+# Radial, 1.5 pixel per bin. Photon noise is irrelevant here -- even 1 pixel bins
+# reach a signal-to-noise per bin of order 1000 -- so the limit is resolution.
+# The sharpest radial feature is the intra-focal outer edge, whose 90 to 10 per
+# cent roll-off spans 9.0 pixel, and the inner-edge ring excess converges to
+# +0.136 (dimensionless) for bins of 1.5 pixel and finer. Coarser bins average
+# the ring down: 2.15 pixel per bin reads +0.153, about 12 per cent high, and
+# 3.58 pixel per bin collapses to +0.054 and mislocates the peak to the outer
+# edge entirely.
+RADIAL_BIN_PIX = 1.5
+
+# Azimuthal, 1.0 deg per bin. The spider vanes are the sharpest azimuthal
+# feature: a 0.05 m vane at 0.8 of the pupil radius subtends only 0.86 deg, so
+# the 5 deg bins this study started with washed them out completely. Diagnosed
+# with the lag-1 autocorrelation of the profile about its median, which says
+# whether neighbouring bins are tracking the same feature: it is -0.21 at 5 deg
+# per bin (oversmoothed, adjacent bins anti-correlated), crosses zero near 3 deg,
+# and reaches 0.67 at 1 deg where the structure is genuinely resolved. Past about
+# 0.75 deg it saturates toward 1.0, which is subdividing an already-resolved
+# curve, and the peak-to-peak over median-error ratio falls away.
+AZIMUTHAL_BIN_DEG = 1.0
+
+# Spider vane width, in meters, from policy/instruments/LsstCam.yaml.  Used to
+# state the angular scale the azimuthal binning has to resolve.
+SPIDER_WIDTH_M = 0.05
 
 
 def donut_centroid(image, mask=None):
@@ -322,6 +352,114 @@ def azimuthal_profile(image, center=None, n_bins=72, r_range_norm=(0.65, 0.95),
             flux_err[b] = float(values[sel].std(ddof=1) / np.sqrt(n))
 
     return 0.5 * (edges[:-1] + edges[1:]), flux, flux_err, n_pix
+
+
+def bin_convergence(image, kind='radial', n_bins_grid=None, r_edge_pix=None,
+                    r_range_norm=(0.65, 0.95), zone=(0.62, 0.70)):
+    """Scan bin count to find where a profile's features stop changing.
+
+    Both profiles here are resolution-limited rather than noise-limited, so "more
+    bins" is not automatically worse and "fewer bins" is not automatically safer.
+    The right bin size is the largest one that does not yet distort the feature
+    being measured, and this finds it by measuring rather than asserting.
+
+    Two statistics do the work:
+
+    * ``amplitude`` -- the feature's measured size. Too-coarse bins average it
+      down, so it rises as bins shrink and then plateaus. The plateau is the
+      answer.
+    * ``autocorr`` -- lag-1 autocorrelation of the profile about its median,
+      dimensionless. Negative means oversmoothed, with adjacent bins
+      anti-correlated. Rising through about 0.5 to 0.7 means neighbouring bins
+      are tracking the same real feature. Saturating toward 1.0 means the curve
+      is already resolved and further bins only subdivide it. **Only meaningful
+      for the azimuthal profile**: the radial profile is a smooth monotonic
+      curve, so adjacent bins correlate at better than 0.98 regardless of bin
+      width and the statistic cannot discriminate.
+    * ``edge_width`` -- for the radial profile instead, the 90 to 10 per cent
+      roll-off width of the outer edge in pixels. This is the sharpest radial
+      feature, so it is what sets the resolution limit: as bins shrink the
+      measured width falls to the true value and then stops. `numpy.nan` for the
+      azimuthal profile.
+
+    Parameters
+    ----------
+    image : `numpy.ndarray`
+        Donut stamp, background-subtracted, in arbitrary flux units.
+    kind : {'radial', 'azimuthal'}, optional
+        Which profile to scan.
+    n_bins_grid : `sequence` [`int`], optional
+        Bin counts to try. Defaults span the useful range for each kind.
+    r_edge_pix : `float`, optional
+        Outer edge in pixels, required for ``'azimuthal'``.
+    r_range_norm : `tuple` [`float`], optional
+        Annulus for the azimuthal profile, dimensionless.
+    zone : `tuple` [`float`], optional
+        Normalised-radius zone whose mean flux is the radial amplitude statistic.
+
+    Returns
+    -------
+    report : `list` [`dict`]
+        Per bin count: ``n_bins``, ``bin_size`` (pixels for radial, degrees for
+        azimuthal), ``amplitude`` (dimensionless), ``median_err``
+        (dimensionless), ``autocorr`` (dimensionless), ``edge_width`` (pixels,
+        radial only).
+    """
+    report = []
+    if kind == 'radial':
+        grid = n_bins_grid or (80, 120, 172, 200, 286, 430, 860)
+    else:
+        grid = n_bins_grid or (72, 120, 180, 240, 360, 480, 720, 1080)
+
+    for n_bins in grid:
+        if kind == 'radial':
+            r_pix, flux, flux_err, _ = radial_profile(image, n_bins=n_bins)
+            r_norm, flux_norm, edge = normalise_profile(r_pix, flux)
+            if not np.isfinite(edge):
+                continue
+            sel = np.isfinite(flux_norm) & (r_norm >= zone[0]) & (r_norm < zone[1])
+            amplitude = float(np.mean(flux_norm[sel])) if sel.any() else np.nan
+            err_norm = flux_err / np.nanmean(flux[np.isfinite(flux)])
+            bin_size = (image.shape[0] / 2.0) / n_bins
+            values = flux_norm
+
+            # 90 to 10 per cent roll-off width of the outer edge, the sharpest
+            # radial feature and so the one that sets the resolution limit.
+            near_edge = (np.isfinite(flux_norm) & (r_norm > 0.90)
+                         & (r_norm < 1.10))
+            edge_width = np.nan
+            if near_edge.sum() > 3:
+                rr, ff = r_norm[near_edge], flux_norm[near_edge]
+                r90 = rr[np.argmin(np.abs(ff - 0.9))]
+                r10 = rr[np.argmin(np.abs(ff - 0.1))]
+                edge_width = float(abs(r10 - r90) * edge)
+        else:
+            _, flux, flux_err, _ = azimuthal_profile(
+                image, n_bins=n_bins, r_range_norm=r_range_norm,
+                r_edge_pix=r_edge_pix)
+            scale = np.nanmean(flux)
+            values = flux / scale
+            err_norm = flux_err / scale
+            amplitude = float(np.nanmax(values) - np.nanmin(values))
+            bin_size = 360.0 / n_bins
+            edge_width = np.nan
+
+        deviation = values - np.nanmedian(values)
+        good = np.isfinite(deviation)
+        autocorr = np.nan
+        if good.sum() > 8:
+            a, b = deviation[good][:-1], deviation[good][1:]
+            if a.std() > 0 and b.std() > 0:
+                autocorr = float(np.corrcoef(a, b)[0, 1])
+
+        report.append({
+            'n_bins': int(n_bins), 'bin_size': float(bin_size),
+            'amplitude': amplitude,
+            'median_err': float(np.nanmedian(err_norm)),
+            'autocorr': autocorr,
+            'edge_width': edge_width,
+        })
+    return report
 
 
 def ring_excess(r_norm, flux_norm, edge_norm, width=0.06, baseline_gap=0.02,
