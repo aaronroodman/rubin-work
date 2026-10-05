@@ -36,6 +36,8 @@
 #   --chunk N                nights per shard (default 24, about 20 min for telemetry)
 #   --mode local|batch       default local; 'batch' is rejected for --what telemetry
 #   --variant ID             registered variant id, for --what state
+#   --miw-param-set NAME     param_set dir under aos/output holding the MIW build;
+#                            required when the variant's intrinsic_route is miw
 #   --img-type LIST          ConsDB img_types, comma separated, for --what state
 #   --groups LIST            EFD/value-added groups, for --what telemetry (default all)
 #   --resume                 pass --resume to the builder (skip what is already done)
@@ -53,7 +55,7 @@ cd "$(dirname "$0")/.."             # value_added topic directory
 topic=$PWD
 
 what=""; day_obs=""; chunk=24; mode=local; variant=""; img_type=""
-groups="all"; resume=0; shard_dir="output/shards"; dry=0
+groups="all"; resume=0; shard_dir="output/shards"; dry=0; miw_param_set=""
 # The merged database, and the source of visit_telemetry for every state shard. Absolute,
 # because a batch shard cds into $topic but the builder may resolve relative paths itself.
 main_db="$topic/output/aos_efd.duckdb"
@@ -69,6 +71,8 @@ while [ $# -gt 0 ]; do
         --mode=*)     mode="${1#*=}"; shift;;
         --variant)    variant="$2"; shift 2;;
         --variant=*)  variant="${1#*=}"; shift;;
+        --miw-param-set)   miw_param_set="$2"; shift 2;;
+        --miw-param-set=*) miw_param_set="${1#*=}"; shift;;
         --img-type)   img_type="$2"; shift 2;;
         --img-type=*) img_type="${1#*=}"; shift;;
         --groups)     groups="$2"; shift 2;;
@@ -136,6 +140,15 @@ PY
                    --opd-version "${vrow[2]}")
     [ -n "${vrow[3]}" ] && variant_flags+=(--intrinsic-ref "${vrow[3]}")
     [ -n "${vrow[4]}" ] && variant_flags+=(--ofc-version "${vrow[4]}")
+    # state_variant has no column for the MIW param_set, and the module default does not
+    # exist on disk, so the miw route needs this passed explicitly or every shard dies on
+    # FileNotFoundError.
+    [ -n "$miw_param_set" ] && variant_flags+=(--miw-param-set "$miw_param_set")
+    if [ "${vrow[1]}" = miw ] && [ -z "$miw_param_set" ]; then
+        echo "error: --intrinsic miw needs --miw-param-set (the directory under" >&2
+        echo "       aos/output holding the build named by intrinsic_ref)" >&2
+        exit 2
+    fi
     echo "variant $variant -> ${variant_flags[*]}"
 fi
 
