@@ -83,7 +83,8 @@ def decomp_path(mi_name=DEFAULT_MI_NAME, param_set=DEFAULT_PARAM_SET, output_roo
         The ``intrinsic_split_decomp.parquet`` for that build.
     """
     if output_root is None:
-        output_root = pathlib.Path(__file__).resolve().parents[1] / 'aos' / 'output'
+        # parents[1] is already the aos topic directory, so only 'output' is appended.
+        output_root = pathlib.Path(__file__).resolve().parents[1] / 'output'
     return (pathlib.Path(output_root) / param_set / mi_name
             / 'intrinsic_split_decomp.parquet')
 
