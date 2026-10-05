@@ -60,33 +60,46 @@ bug is reintroduced.
 **`thermal_focus`'s published result is unaffected.** It excludes the LUT by design and uses
 `v1_trim` and `v1` only, both in deg and both untouched.
 
+**`v_modes_lut` re-projected over the live database**, `3ac0a92`. Median |v2| dropped from
+1783.75 to 0.44 (dimensionless v-mode amplitude) in all three variants, and |v1| held at
+1.92 — as predicted, since v1 is almost pure defocus. Zero inflated rows remain.
+
+`backfill_commanded_vmodes.py` needed two fixes to get there:
+
+- It unpacked 2 values from `make_commanded_projector`, which has returned 3 since item 2
+  added `trim_dof`, so **any run raised `ValueError`** — broken before this session.
+- The per-row `executemany` never finished: `optical_state` has no index on `visit_id`
+  alone, so each of 307,029 statements rewrote the list-column row groups. It was still on
+  its first variant after 85 minutes and was interrupted, leaving `v22_12` partly
+  re-projected — a mixed state worse than uniformly wrong. Replaced with a staged batch and
+  one set-based `UPDATE ... FROM`, which completed the whole table in under an hour. **If
+  this is ever rerun, keep the set-based form.**
+
+One visit, `2026010600012`, has no Trim telemetry at all (all 10 `dof` NaN), so its
+commanded v-modes cannot be projected. Its stale `v_modes_lut` is set NULL rather than left
+holding a superseded value, which is why `v_modes_lut` is 307,386 and not 307,389.
+
+Final live state: 307,389 rows, 231 nights, 96,278 paired-recovery visits, all pointing and
+open-loop columns populated.
+
 ## In progress
 
-- **`v_modes_lut` re-projection over the live database.** `backfill_commanded_vmodes.py
-  --force` (new flag, re-projects rows that already carry values rather than only NULL ones).
-  307,029 of 307,389 rows are re-projectable; the other 360 lack finite hexapod LUT telemetry.
-  Slow — 307,029 single-row UPDATEs on DuckDB list columns, over 25 min and still running at
-  167% CPU. **Confirm it reached its summary line before trusting `v_modes_lut`.**
-- Uncommitted, staged: the unit-doc corrections in `value_added/docs/schema.md`,
-  `olr/docs/scheme_comparison.md`, `thermal_focus/docs/thermal_focus.md`,
-  `thermal_focus/code/thermal_focus_lib.py`, and the `--force` flag plus a 3-value unpack fix
-  in `backfill_commanded_vmodes.py`.
-
-**`backfill_commanded_vmodes.py` was broken before this session** and silently so: it
-unpacked 2 values from `make_commanded_projector`, which has returned 3 since item 2 added
-`trim_dof`. Any run would have raised `ValueError`. Fixed in the staged change.
+Nothing uncommitted. All of step 0 is on `main`: `090b185`, `35bb61f`, `3ac0a92`.
 
 ## Next concrete action
 
-1. Verify the `v_modes_lut` re-projection finished and its norms dropped by about 1082x.
-2. Commit the staged doc and `--force` changes.
-3. **Submit the MIW build** — approved, not yet submitted. `v50_34__miw__consdb_v1` is
+1. **Submit the MIW build** — approved, not yet submitted. `v50_34__miw__consdb_v1` is
    registered with 0 rows; the route is fully plumbed and needs only
    `--intrinsic miw --intrinsic-ref <MIW build name>`. 16 shards, roughly 2.5 h total compute
    at the measured 39 s/night. **The `<MIW build name>` has not been chosen yet** — pick it
-   before writing the submit command.
-4. Then the two studies, in either order. Both need a study directory, a detail doc and a
+   before writing the submit command. Batch submission is a hard must-ask: hand over the
+   submit command and a monitoring command, never submit.
+2. Then the two studies, in either order. Both need a study directory, a detail doc and a
    `README.md` entry per the `rubin-new-study` skill; neither has one yet.
+
+Also worth doing while in this code: `optical_state` has no index on `visit_id` alone, only
+the `(visit_id, variant_id)` primary key and `os_variant` on `variant_id`. Any per-visit
+update or join pays for that. Adding one would make the next bulk correction cheap.
 
 ## Decisions taken, and what was rejected
 
