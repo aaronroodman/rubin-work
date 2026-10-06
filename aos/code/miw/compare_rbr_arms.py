@@ -37,21 +37,33 @@ log.
 `r_j` comes from `lsst.ts.ofc.OFCData.dof_ranges`, and the solvers and the
 forward map from `lsst.ts.ofc`, which owns RBR.  Nothing is re-derived here.
 
+With `--plots` the same comparison is drawn to a PDF: the MIW field maps per
+arm and their difference for the terms carrying the difference power, the
+per-DOF amplitude against `r_j`, and the per-v-mode coefficient shift.  The
+per-arm build PDFs that `intrinsic_build_plots.py` already writes show each arm
+on its own; these show the two against each other.
+
 Usage
 -----
     python code/miw/compare_rbr_arms.py \
         --unconstrained output/miw/danish_1_3_v1000_A_50_34_i/build \
         --rbr output/miw/danish_1_3_v1000_A_50_34_i_rbr/build \
         --label "Danish 1.3 blitz, v1000 pupil model" \
-        --out-dir output/miw/danish_1_3_v1000_rbr_arms
+        --out-dir output/miw/danish_1_3_v1000_rbr_arms \
+        --plots
 """
 
 import argparse
 import pathlib
 import sys
 
+import matplotlib
 import numpy as np
 import pandas as pd
+
+matplotlib.use("Agg")   # headless: this runs under Snakemake and over ssh
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))  # aos/code
@@ -305,6 +317,244 @@ def miw_table(grid_a, grid_b):
     return summary, per_term
 
 
+def _field_map(ax, thx, thy, values, title, clabel, cmap="RdBu_r",
+               vlim=None):
+    """One field map, OCS field angle in deg, as a scatter of grid points."""
+    if vlim is None:
+        vlim = float(np.nanpercentile(np.abs(values), 99.0)) or 1.0
+    im = ax.scatter(thx, thy, c=values, s=7, cmap=cmap,
+                    vmin=-vlim, vmax=vlim, linewidths=0)
+    ax.set_aspect("equal")
+    ax.set_title(title, fontsize=8)
+    ax.set_xlabel("thx (deg, OCS)", fontsize=7)
+    ax.set_ylabel("thy (deg, OCS)", fontsize=7)
+    ax.tick_params(labelsize=6)
+    cb = ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cb.set_label(clabel, fontsize=7)
+    cb.ax.tick_params(labelsize=6)
+
+
+def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label, n_terms=6):
+    """MIW field maps for both arms and their difference.
+
+    One page of inferred FWHM, then one page per pupil Noll term carrying the
+    most difference power: unconstrained, RBR, and RBR minus unconstrained on a
+    shared symmetric colour scale so the difference is read against the signal.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open PDF to append pages to.
+    grid_a, grid_b : `str` or `pathlib.Path`
+        ``intrinsic_grid.parquet`` for the unconstrained and RBR arms.
+    miw_terms : `pandas.DataFrame`
+        Per-term table from `miw_table`, used to order the term pages.
+    label : `str`
+        Build label for the page titles.
+    n_terms : `int`
+        How many pupil terms to draw, highest difference power first.
+    """
+    from lsst.ts.wep.utils import convertZernikesToPsfWidth
+
+    df_a = pd.read_parquet(grid_a)
+    df_b = pd.read_parquet(grid_b)
+    noll = np.asarray(df_a["nollIndices"].iloc[0], dtype=int)
+    zk_a = np.stack(df_a["zk"].values)
+    zk_b = np.stack(df_b["zk"].values)
+    thx = np.asarray(df_a["thx_deg"], dtype=float)
+    thy = np.asarray(df_a["thy_deg"], dtype=float)
+
+    good = np.isfinite(zk_a).all(axis=1) & np.isfinite(zk_b).all(axis=1)
+    zk_a, zk_b, thx, thy = zk_a[good], zk_b[good], thx[good], thy[good]
+
+    fwhm_a = np.sqrt((np.stack(
+        [convertZernikesToPsfWidth(z, jmin=int(noll[0])) for z in zk_a]) ** 2
+    ).sum(axis=1))
+    fwhm_b = np.sqrt((np.stack(
+        [convertZernikesToPsfWidth(z, jmin=int(noll[0])) for z in zk_b]) ** 2
+    ).sum(axis=1))
+
+    # FWHM is positive, so it reads better on a sequential scale than on the
+    # diverging one the signed Zernike maps use.
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4.0))
+    fwhm_hi = float(np.nanpercentile(np.r_[fwhm_a, fwhm_b], 99.0))
+    for ax, vals, name in ((axes[0], fwhm_a, "unconstrained"),
+                           (axes[1], fwhm_b, "RBR")):
+        im = ax.scatter(thx, thy, c=vals, s=7, cmap="viridis",
+                        vmin=0.0, vmax=fwhm_hi, linewidths=0)
+        ax.set_aspect("equal")
+        ax.set_title(f"MIW inferred FWHM, {name}\nmedian "
+                     f"{np.median(vals):.4f} arcsec", fontsize=8)
+        ax.set_xlabel("thx (deg, OCS)", fontsize=7)
+        ax.set_ylabel("thy (deg, OCS)", fontsize=7)
+        ax.tick_params(labelsize=6)
+        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cb.set_label("inferred FWHM (arcsec)", fontsize=7)
+        cb.ax.tick_params(labelsize=6)
+    _field_map(axes[2], thx, thy, fwhm_b - fwhm_a,
+               "RBR minus unconstrained\nmedian "
+               f"{np.median(fwhm_b - fwhm_a):+.4f} arcsec",
+               "d(inferred FWHM) (arcsec)")
+    fig.suptitle(f"MIW inferred FWHM, both arms — {label}", fontsize=10)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+    order = [int(j) for j in miw_terms["noll"].head(n_terms)]
+    for j in order:
+        col = int(np.where(noll == j)[0][0])
+        a, b = zk_a[:, col], zk_b[:, col]
+        # Shared scale across all three panels: the difference has to be read
+        # against the size of the signal, not auto-scaled to fill its own panel.
+        vlim = float(np.nanpercentile(np.abs(np.r_[a, b]), 99.0)) or 1.0
+        share = float(miw_terms.loc[miw_terms["noll"] == j,
+                                    "share_of_difference_power"].iloc[0])
+        fig, axes = plt.subplots(1, 3, figsize=(13, 4.0))
+        _field_map(axes[0], thx, thy, a,
+                   f"Z{j} unconstrained\nRMS {np.sqrt((a ** 2).mean()):.4f} um",
+                   "Zernike coefficient (um of wavefront)", vlim=vlim)
+        _field_map(axes[1], thx, thy, b,
+                   f"Z{j} RBR\nRMS {np.sqrt((b ** 2).mean()):.4f} um",
+                   "Zernike coefficient (um of wavefront)", vlim=vlim)
+        _field_map(axes[2], thx, thy, b - a,
+                   f"Z{j} RBR minus unconstrained\nRMS "
+                   f"{np.sqrt(((b - a) ** 2).mean()):.4f} um",
+                   "Zernike difference (um of wavefront)", vlim=vlim)
+        fig.suptitle(f"MIW pupil Noll Z{j} — {share:.4f} of the difference "
+                     f"power (dimensionless) — {label}", fontsize=10)
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+
+def plot_dof_ranges(pdf, dof_df, label):
+    """Per-DOF recovered amplitude against `r_j`, both arms.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open PDF to append the page to.
+    dof_df : `pandas.DataFrame`
+        Table from `dof_range_table`.
+    label : `str`
+        Build label for the page title.
+    """
+    df = dof_df
+    med_a, med_b = "median_ratio_unconstrained", "median_ratio_rbr"
+    x = np.arange(len(df))
+
+    fig, axes = plt.subplots(2, 1, figsize=(13, 7.5))
+    ax = axes[0]
+    ax.semilogy(x, np.maximum(df[med_a], 1e-6), "o-", ms=3, lw=0.8,
+                color="tab:red", label="unconstrained")
+    ax.semilogy(x, np.maximum(df[med_b], 1e-6), "s-", ms=3, lw=0.8,
+                color="tab:blue", label="RBR")
+    ax.axhline(1.0, color="k", ls="--", lw=0.8,
+               label="allowed range r_j (|d_j|/r_j = 1)")
+    ax.set_ylabel("median |d_j| / r_j\n(dimensionless)", fontsize=8)
+    ax.set_title("Recovered DOF amplitude against the allowed range, "
+                 "median over visits", fontsize=9)
+    ax.legend(fontsize=7)
+    ax.grid(alpha=0.3, which="both")
+
+    ax = axes[1]
+    ratio = np.asarray(df[med_b]) / np.maximum(np.asarray(df[med_a]), 1e-12)
+    ax.semilogy(x, np.maximum(ratio, 1e-4), "o-", ms=3, lw=0.8, color="k")
+    ax.axhline(1.0, color="tab:gray", ls="--", lw=0.8)
+    ax.set_ylabel("RBR / unconstrained\n(dimensionless)", fontsize=8)
+    ax.set_xlabel("degree of freedom", fontsize=8)
+    ax.set_title("Factor by which RBR pulls each DOF in "
+                 "(below 1 means pulled in)", fontsize=9)
+    ax.grid(alpha=0.3, which="both")
+
+    for ax in axes:
+        ax.set_xticks(x)
+        ax.set_xticklabels(df["dof"], rotation=90, fontsize=5)
+        ax.tick_params(labelsize=6)
+    fig.suptitle(f"Recovered optical state against range — {label}",
+                 fontsize=10)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def plot_vmode_shift(pdf, vmode_df, label):
+    """Per-v-mode coefficient shift against the mode's singular value.
+
+    RBR acts on the poorly-conditioned directions, so the shift is expected to
+    rise as sigma falls -- that is the mechanism, drawn.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open PDF to append the page to.
+    vmode_df : `pandas.DataFrame`
+        Table from `vmode_table`.
+    label : `str`
+        Build label for the page title.
+    """
+    df = vmode_df
+    sig_col, shift_col = "sigma", "median_abs_change"
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.4))
+    x = np.asarray(df["vmode"])
+    ax = axes[0]
+    ax.semilogy(x, np.maximum(np.abs(df[shift_col]), 1e-6), "o-", ms=3,
+                lw=0.8, color="tab:purple")
+    ax.set_xlabel("retained v-mode index", fontsize=8)
+    ax.set_ylabel("median |RBR - unconstrained|\n(v-mode coefficient, "
+                  "normalized DOF units)", fontsize=8)
+    ax.set_title("v-mode coefficient shift, RBR minus unconstrained",
+                 fontsize=9)
+    ax.grid(alpha=0.3, which="both")
+    ax.tick_params(labelsize=6)
+
+    ax = axes[1]
+    ax.loglog(np.maximum(df[sig_col], 1e-12),
+              np.maximum(np.abs(df[shift_col]), 1e-6), "o", ms=4,
+              color="tab:purple")
+    ax.set_xlabel("singular value sigma (um of wavefront per DOF unit)",
+                  fontsize=8)
+    ax.set_ylabel("median |RBR - unconstrained|\n(v-mode coefficient, "
+                  "normalized DOF units)", fontsize=8)
+    ax.set_title("The shift concentrates at small sigma:\nthe "
+                 "poorly-conditioned directions", fontsize=9)
+    ax.grid(alpha=0.3, which="both")
+    ax.tick_params(labelsize=6)
+
+    fig.suptitle(f"Where RBR moves the recovery — {label}", fontsize=10)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def write_plots(out_pdf, label, dof_df, vmode_df, miw_terms,
+                grid_a=None, grid_b=None):
+    """Write the arm-comparison PDF.
+
+    Parameters
+    ----------
+    out_pdf : `str` or `pathlib.Path`
+        Destination PDF.
+    label : `str`
+        Build label for the page titles.
+    dof_df, vmode_df : `pandas.DataFrame`
+        Tables from `dof_range_table` and `vmode_table`.
+    miw_terms : `pandas.DataFrame` or `None`
+        Per-term table from `miw_table`; the MIW pages are skipped without it.
+    grid_a, grid_b : `str` or `pathlib.Path`, optional
+        The two arms' ``intrinsic_grid.parquet``, for the field maps.
+    """
+    out_pdf = pathlib.Path(out_pdf)
+    out_pdf.parent.mkdir(parents=True, exist_ok=True)
+    with PdfPages(out_pdf) as pdf:
+        if miw_terms is not None and grid_a and grid_b:
+            plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label)
+        plot_dof_ranges(pdf, dof_df, label)
+        plot_vmode_shift(pdf, vmode_df, label)
+    print(f"  wrote plots to {out_pdf}")
+
+
 def report(label, n_visits, dof_df, resid_df, vmode_df, miw_summary, miw_terms):
     """Print the comparison."""
     print(f"\nRBR arm comparison: {label}")
@@ -391,7 +641,11 @@ def main():
                     help="intrinsic_grid.parquet of the RBR arm")
     ap.add_argument("--ofc-normalization-yaml", default=None,
                     help="override the build's normalization weights file")
+    ap.add_argument("--plots", action="store_true",
+                    help="also write rbr_arms_plots.pdf under --out-dir")
     args = ap.parse_args()
+    if args.plots and not args.out_dir:
+        ap.error("--plots needs --out-dir to write the PDF into")
 
     rot = ROT_5 if args.rotator_select == "5rot" else None
     estimator = build_estimator(ofc_normalization_yaml=args.ofc_normalization_yaml)
@@ -424,6 +678,11 @@ def main():
             pd.DataFrame([miw_summary]).to_parquet(
                 out_dir / "rbr_arms_miw_summary.parquet")
         print(f"\n  wrote tables to {out_dir}")
+        if args.plots:
+            write_plots(out_dir / "rbr_arms_plots.pdf", args.label,
+                        dof_df, vmode_df, miw_terms,
+                        grid_a=args.grid_unconstrained,
+                        grid_b=args.grid_rbr)
 
 
 if __name__ == "__main__":
