@@ -292,23 +292,70 @@ cent** (v1000 spiders on: 5.984 → 7.764 intra, 11.822 → 12.077 extra). The e
 intra fit wants is therefore real unmodelled structure on that side, and it is not
 representable by the fitted Zernikes through Z26.
 
-## Spider depth: modelled vanes are about half as deep as the data's
+## Spiders: the azimuthal projection was the wrong cut
 
-Deepest azimuthal dip below the profile median (dimensionless), at 0.25 deg per bin:
+**Superseded result.** An earlier pass measured vane depth as the deepest azimuthal dip
+below the profile median and concluded the modelled vanes were about half as deep as the
+data's. That conclusion was an artifact of the projection, not a statement about the
+optical model.
+
+The vanes run from M2's support ring outward, so each shadow is a **chord offset from the
+pupil centre**, not a radial spoke, and its azimuth drifts with radius. Measured drift
+between normalised radius 0.68 and 0.92 is **1.62–2.16 deg extra-focally and 1.21–2.28 deg
+intra-focally**, against the **0.86 deg** a vane subtends at 0.8 of the pupil radius. The
+drift is 2–3 times the vane width, so a fixed-annulus azimuthal projection averages each
+vane across its own drift and cannot resolve it at *any* azimuthal bin size. Fitted impact
+parameters are **21–34 pixel**, confirming offset chords rather than spokes.
+
+`wfs/code/giant_donuts/spider_trajectory.py` replaces the projection: trace each shadow's
+centre at seven narrow radii, fit a total-least-squares line, then profile perpendicular to
+that line. Validated by `test_spider_trajectory.py` on a synthetic pupil with known vane
+geometry — depth recovered as 1.0000 (dimensionless) exactly, impact parameter to 0.9 pixel
+of truth with 1.7 pixel spread among the eight shadows, direction with a **common**
++0.32 deg bias that cancels in model-minus-data differences.
+
+### Depth and width along the shadow
+
+Fractional flux deficit referenced to the unobscured shoulder 10–20 pixel either side
+(dimensionless), mean over eight shadows:
 
 | | extra-focal | intra-focal |
 | --- | --- | --- |
-| data | **0.7648** | **0.4612** |
-| spiders on, free blur | 0.3439–0.3545 | 0.3051–0.3107 |
-| spiders on, blur fixed 0.7 arcsec | 0.3609–0.3710 | 0.3872–0.4055 |
-| spiders off | 0.0433–0.0883 | 0.0740–0.0743 |
+| data | **0.8603 ± 0.0114** | **0.5264 ± 0.0223** |
+| spiders on, free blur | 0.5790–0.5798 | 0.3938–0.3953 |
+| spiders on, blur fixed 0.7 arcsec | 0.7016–0.7029 | 0.6946–0.7031 |
+| spiders off | 0.0119–0.0151 | 0.0105–0.0146 |
 
-Spiders on recovers most of the depth (about 0.05 → about 0.35), so the shadow is in
-roughly the right place with roughly the right strength — **step 6's "good fidelity" holds
-in position but only partly in depth.** With the blur fixed, the intra vanes come within
-12 per cent of the data (0.4055 against 0.4612); extra-focally the data are still about
-2.1 times deeper than the best model. The free-blur fits were partly using blur to smear
-the vanes, which the fixed-blur set exposes.
+**The real discrepancy is width, not depth.** Data shadow FWHM is **11.35 ± 0.43 pixel
+extra and 10.11 ± 0.33 pixel intra**; the fixed-blur models give **2.79 and 2.76 pixel**, a
+factor of about 3.7 too narrow. A wide, nearly opaque shadow is what a vane plus its
+diffraction skirt looks like, and the geometric shadow model has no diffraction in it. With
+blur fixed at 0.7 arcsec the depth comes out about right (0.702 extra, 0.695 intra) —
+within 19 per cent of the data extra-focally but **overshooting intra-focally by 32 per
+cent** — so the free-blur fits were using inflated blur to pad a too-sharp vane out to
+roughly the right depth.
+
+### The spiders are misplaced by about 11 pixel, radially
+
+The most actionable result for the optical model. In **all eight** spiders-on
+configurations the model's shadows sit closer to the donut centre than the data's:
+
+| | d angle [deg] | d \|impact\| [pixel] | d azimuth [deg] |
+| --- | --- | --- | --- |
+| extra, spiders on, four configs | +0.276 to +0.358 | −10.70 to −11.16 | −0.010 to −0.018 |
+| intra, spiders on, four configs | −0.196 to −0.344 | −11.10 to −11.93 | −0.009 to −0.031 |
+
+Model minus data, median over eight shadows. Spiders-off configurations are flagged rather
+than tabulated: with no vanes the dip finder returns noise (mean depth along trajectory
+0.011–0.015, dimensionless).
+
+**Not a rotation and not an azimuth error — a pure radial offset.** Direction agrees to
+0.20–0.36 deg and azimuth to 0.031 deg, while the impact parameter is off by 11 pixel the
+same way on both sides of focus and under both pupil models. That is 0.11 mm at the 10 µm
+detector pixel, or about **0.135 m at the pupil** (11 pixel / 341.5 pixel outer edge ×
+4.18 m pupil radius) — six times the method's own 1.7 pixel spread, in the same direction
+in all sixteen measurements. This is a genuine vane-geometry discrepancy to feed back into
+the optical model.
 
 ## v1000 maskParams: generated
 
@@ -337,14 +384,26 @@ Nothing uncommitted in this repo. Commits in order: `fe9fa1a` (selection module,
 moves, todo edits), `1f37ac1` (maskParams generator, radial profiles), `8f79f50` (the
 profile measurement), `ee07cc6` (profile result in this handoff), `449d928` (fit driver
 and image helpers), `6369dc9` (the four fits and azimuthal profiles in the notebook),
-`05ac889` (bin sizes by convergence, table of contents, residual images). In the blitz
-checkout, `ab85fc3d` on branch `giant-donuts-study`.
+`05ac889` (bin sizes by convergence, table of contents, residual images), `d235b9a` (the
+ε-basis fix and the fixed-blur fits). In the blitz checkout, `ab85fc3d` on branch
+`giant-donuts-study`.
 
 `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb` is complete and fully
-executed: 22 code cells, 6 embedded figures, 12-entry table of contents with working
-anchors, and five PDFs written to `wfs/output/giant_donuts/` (`radial_profiles_`,
-`radial_fits_`, `azimuthal_profiles_`, `azimuthal_fits_`, `residual_images_`, all
-suffixed `R22_S10`).
+executed: 0 unexecuted code cells, 0 error outputs, 13 embedded figures, a 13-entry table
+of contents with every anchor resolving. Twelve PDFs in `wfs/output/giant_donuts/`
+(gitignored): `radial_profiles_`, `azimuthal_profiles_`, the blur-suffixed
+`{radial,azimuthal}_fits_{free,fixed}blur_` and `residual_images_{free,fixed}blur_`, and
+the spider set `spider_trajectories_data_`, `spider_placement_`,
+`spider_cross_profiles_{extra,intra}_`, all suffixed `R22_S10`.
+
+The study's code is `wfs/code/giant_donuts/`: `donut_images.py` (ISR, donut finding,
+stamps), `radial_profile.py` (radial and azimuthal projections, bin convergence),
+`fit_giant_donut.py` (the blitz/danish driver and pupil override), `spider_trajectory.py`
+(shadow tracing and cross-vane profiles) with `test_spider_trajectory.py`, and
+`gen_mask_params.py`.
+
+Run the notebook with `--ExecutePreprocessor.kernel_name=python3`: its stored kernelspec
+is `lsst`, which is not registered on s3df.
 
 ## Next concrete action
 
@@ -368,12 +427,17 @@ suffixed `R22_S10`).
    unexplained: 1.51 to 1.66 arcsec intra against 0.98 to 1.02 arcsec extra with a
    3.0 arcsec ceiling, i.e. not a bound artifact, and forcing both to the measured
    0.7 arcsec costs intra 30 per cent in `chi2/dof` against extra 2 per cent.
-6. **Why are the extra-focal spider vanes about 2.1 times shallower in the model than in
-   the data** (0.3710 against 0.7648, dimensionless) when the intra-focal ones come within
-   12 per cent at fixed blur? Candidates: the vane width in `LsstCam.yaml` (0.05 m), the
-   spider's axial position relative to the pupil, and diffraction at the vane edges, which
-   the geometric shadow model omits.
-7. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
+6. **Chase the 11 pixel radial spider misplacement in the batoid model.** The vanes'
+   impact parameter is about 0.135 m too small at the pupil in every configuration, with
+   direction and azimuth correct. Check the spider geometry in `LsstCam.yaml` / the Rubin
+   YAMLs: the vane mount radius on M2's support ring, and the spider's axial position,
+   which sets how the vane projects into the pupil.
+7. **The model's spider shadow is about 3.7 times too narrow** (2.79 pixel FWHM against the
+   data's 11.35 pixel extra-focally) while the fixed-blur depth is roughly right. Candidates
+   are the 0.05 m vane width in `LsstCam.yaml` and, more likely, diffraction at the vane
+   edges, which the geometric shadow model omits. This is probably the same deficiency that
+   forces the fitted blur up, so it couples to action 5.
+8. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
 
 ## Decisions needed from Aaron
 
@@ -389,6 +453,23 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
 
 ## Tried and rejected, and why
 
+- **Measuring spider depth from a fixed-annulus azimuthal projection — rejected.** The
+  vanes are offset chords, so a shadow's azimuth drifts 1.2–2.3 deg across the annulus
+  against the 0.86 deg it subtends. No azimuthal bin size fixes this: the smearing comes
+  from averaging over radius, not from the binning. It made the data's vanes look 0.76 deep
+  when they are 0.86, and made the models look uniformly too shallow when in fact their
+  depth at fixed blur is roughly right and their *width* is the problem. Profile along the
+  fitted shadow trajectory instead (`spider_trajectory.py`).
+- **Widening the trace radii to 0.64–0.96 to beat down the impact-parameter error —
+  rejected, it made things worse.** The outermost radius lands in the edge roll-off, which
+  biases the dip centroid; the common direction bias grew from +0.32 to +0.39 deg. The
+  bias is common to both vane families so it cancels in model-minus-data differences, which
+  is all the placement numbers are used for. Trace radii stay inside 0.68–0.92.
+- **Gating "no vanes found" on the trace-time dip depth — rejected.** A spiders-off model
+  still has diffraction rings and Zernike modulation for the dip finder to latch onto, so it
+  reports several per cent of depth on a pupil with no vanes. Gate on the depth measured
+  *along the fitted trajectory*, which reads 0.011–0.015 (dimensionless) when there is no
+  vane.
 - **Taking the `8mm` labels at face value — rejected.** `observation_reason` is free text
   and wrong in both directions here: seq 339 has the giant Trim state without being a giant
   exposure, and 351/352 claim a bending mode the Trim does not show. Select on Trim first,
