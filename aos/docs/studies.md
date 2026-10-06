@@ -34,6 +34,7 @@ shared modules that stay flat there.
 | [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
 | [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
 | [`lut`](studies/lut.md) | 1 | 308 | 1 | Averaged DOF look-up table from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
+| [`cwfs_lut`](studies/cwfs_lut.md) | 2 | 489 | 0 | Elevation and rotator-angle dependence of the open-loop optical state measured from the corner sensors over the science survey, on both intrinsic routes, for LUT development |
 | [`science_lut`](studies/science_lut.md) | 2 (+4) | 4459 | 0 | Focus look-up table from science exposures: the uniform-defocus error of the CWFS optical state predicted from thermal telemetry alone, its per-band calibration, and the absence of any remaining elevation dependence |
 | [`fam_focus`](studies/fam_focus.md) | 1 | 1353 | 0 | Focus drift — v-mode 1 — against exposure sequence number within contiguous FAM blocks at fixed pointing, raw and corrected by the `science_lut` thermal model, and against the DZ defocus term of each triplet's own FAM pair |
 | [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
@@ -48,7 +49,7 @@ Every file in `aos/code/` belongs to exactly one study.
 
 `aos/code/` is organized by study, one subdirectory each, listed here in the same
 general-to-specialized order as `../README.md`: `miw/`, `dzfit/`,
-`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `lut/`, `fam_processing/`, `psf/`,
+`coadd/`, `correlations/`, `cwfs/`, `bounce/`, `lut/`, `cwfs_lut/`, `fam_processing/`, `psf/`,
 `processing_compare/`,
 `static_optics/`, `closed_loop/`, `infra/`.
 
@@ -121,6 +122,7 @@ output/
   archive/                                # superseded param_sets
   camera_gravity/                         # static_optics; no param_set dependence
   science_lut/                            # science-exposure focus LUT; reads the value-added DB
+  cwfs_lut/                               # open-loop state vs elevation and rotator; reads the value-added DB
   danish_tarts_compare_<day_obs>/         # dated processing comparison
 ```
 

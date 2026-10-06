@@ -162,7 +162,7 @@ def _r2_terms(day_obs_range):
     return r2[['visit_id'] + [c for c in cols if c in r2.columns]]
 
 
-def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
+def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True, keep_extra=()):
     """Build the per-visit science table: response, thermal features and pointing.
 
     Parameters
@@ -176,6 +176,11 @@ def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
         amplitude per µm of total hexapod dz travel].
     verbose : `bool`, optional
         Print the selection funnel.
+    keep_extra : `iterable` [`str`], optional
+        Further `optical_state` columns to carry through, for a caller modelling something
+        other than v-mode 1 -- `thermal_vmodes.response_columns` for the all-mode study.
+        Columns absent from the read are ignored. The ``y`` column is always v-mode 1, so a
+        caller using these sets its own response afterwards.
 
     Returns
     -------
@@ -192,6 +197,7 @@ def load_science(variant, day_obs_range, v1_per_um_dz, verbose=True):
     st = efd_db.optical_state(variant, day_obs_range=day_obs_range, wide=True, ok_only=True)
     n_state = len(st)
     keep = ['visit_id', 'day_obs', 'seq_num', 'resid_rms_um', 'v1', 'v1_lut', 'v1_trim']
+    keep += [c for c in keep_extra if c not in keep]
     st = st[[c for c in keep if c in st.columns]].copy()
 
     vis = _telemetry(day_obs_range)

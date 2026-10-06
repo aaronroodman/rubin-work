@@ -117,9 +117,10 @@ R2_COLS = (('m1m3_r2_coeff_c', 'M1M3 quadratic radial thermal term'),
            ('m1_r2_coeff_c', 'M1 quadratic radial thermal term'),
            ('m3_r2_coeff_c', 'M3 quadratic radial thermal term'))
 
-#: Default recovered-optical-state variant. The only one populated in the value-added database;
-#: ``v22_12__batoid__consdb_v1`` and ``v50_34__miw__consdb_v1`` are registered in
-#: ``state_variant`` but carry no rows.
+#: Default recovered-optical-state variant, kept for continuity with the published v-mode-1
+#: result. All four registered variants now carry rows, including the range-bounded recovery and
+#: the measured-intrinsic-wavefront route; ``thermal_vmodes.PRIMARY_VARIANT`` prefers the
+#: range-bounded one, which is physically realizable.
 DEFAULT_VARIANT = 'v50_34__batoid__consdb_v1'
 
 #: Default FAM Double Zernike (DZ) variant, the only one populated.
