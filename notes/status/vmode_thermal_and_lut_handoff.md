@@ -1,6 +1,6 @@
 # All-v-mode thermal and LUT-dependence studies: step 0 and plan
 
-> **Status:** current · **Last updated:** 2026-10-05 · **Kind:** working state (handoff)
+> **Status:** current · **Last updated:** 2026-10-06 · **Kind:** working state (handoff)
 
 Two studies off the stored open-loop reconstruction (OLR) columns of `optical_state`:
 
@@ -82,20 +82,79 @@ holding a superseded value, which is why `v_modes_lut` is 307,386 and not 307,38
 Final live state: 307,389 rows, 231 nights, 96,278 paired-recovery visits, all pointing and
 open-loop columns populated.
 
+## The MIW variant is built
+
+`v50_34__miw__consdb_v1` ran as 12 Slurm shards on 2026-10-06 and merged clean. The MIW
+build used is **`danish_1_2_A_50_34_i_5rot`**, `param_set` `miw`, chosen because
+`aos/docs/studies/miw.md` names the `_5rot` the canonical product for downstream use.
+
+| variant | rows | recovered | elevation | rotator angle | nights |
+|---|---|---|---|---|---|
+| `v22_12__batoid__consdb_v1` | 102,463 | 96,278 | 102,463 | 98,779 | 231 |
+| `v50_34__batoid__consdb_v1` | 102,463 | 96,278 | 102,463 | 98,779 | 231 |
+| `v50_34__miw__consdb_v1` | 98,831 | 96,282 | 98,831 | 97,899 | 214 |
+| `v50_34_rbr__batoid__consdb_v1` | 102,463 | 96,278 | 102,463 | 98,779 | 231 |
+
+**Part 2's comparison is fully paired**: all 96,278 batoid-recovered visits also recover
+under MIW, plus 4 that recover only under MIW. The MIW variant's lower row and night counts
+are visits and nights with no recovered state — the build filtered on `img_type`
+`science,acq` and skipped nights with no such exposures, where the batoid variants store an
+unrecovered row anyway. Recovered coverage is complete.
+
+Two things came through the shards directly and need no backfill: the pointing columns
+(`elevation_deg` on all 98,831 rows) and the commanded v-modes, built from the corrected
+`make_commanded_projector` — median |v2| of `v_modes_lut` is 0.4357 (dimensionless v-mode
+amplitude), matching the batoid variants and not the pre-fix 1783.75.
+
+Three defects had to be fixed first, all committed:
+
+- **`2b344b1`** — `miw_corner_intrinsic.decomp_path` built `parents[1]/'aos'/'output'`, but
+  `parents[1]` is already `aos/`, so every default lookup resolved to `aos/aos/output`. The
+  documented `--intrinsic miw` route could not run at all.
+- **`6be1089`** — `run_build.sh` read `intrinsic_ref` from the registry but never passed
+  `--miw-param-set`, and the module default `param_set` does not exist on disk. Every shard
+  would have died on `FileNotFoundError`.
+- The registry had `intrinsic_ref = pathA_50_34_i_5rot`, a stale default with no directory.
+  Repointed; the variant had 0 rows so nothing was overwritten.
+
+`DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` in `aos/code/miw_corner_intrinsic.py` are **both
+still stale** and name nothing on disk. Always pass `--intrinsic-ref` and `--miw-param-set`
+explicitly.
+
+### The MIW-vs-batoid difference is large, as Aaron predicted
+
+Measured on `day_obs` 20260318, 915 paired visits:
+
+| quantity | MIW | batoid | difference |
+|---|---|---|---|
+| median FWHM_cwfs [arcsec] | 0.3035 | 0.2428 | +0.0553 |
+| open-loop M2 hexapod dz [µm] | +704.23 | +676.86 | +31.74 |
+| open-loop M2 hexapod dx [µm] | +487.58 | +251.04 | **+236.57** |
+| open-loop camera hexapod dz [µm] | −361.77 | −335.78 | −28.33 |
+| open-loop camera hexapod dx [µm] | +12.68 | +95.58 | **−82.65** |
+
+The lateral decentres — the bounce test's dominant terms and what a LUT must predict —
+shift by more than their own value. The intrinsic difference at the corner field points is
+0.0547 µm of wavefront at rotator angle 0 deg, rising to 0.0708 at +30, 0.0796 at +60 and
+0.0742 at −45 deg: a genuine static offset plus a rotator-dependent part. Building both
+routes is a prerequisite, not a refinement.
+
 ## In progress
 
-Nothing uncommitted. All of step 0 is on `main`: `090b185`, `35bb61f`, `3ac0a92`.
+Nothing uncommitted of this work. Step 0 is complete on `main`: `090b185`, `35bb61f`,
+`3ac0a92`, `30b915f`, `2b344b1`, `6be1089`.
+
+Note `thermal_focus/` carries **pre-existing uncommitted work from before this session**
+(`trim_calculator.py`, `README.md`, `run_thermal_focus_analysis.py`, plus untracked
+`test_trim_calculator.py`, `trim_coefficients.yaml`, `trim_test_cases.yaml`). Do not sweep
+it into a commit.
 
 ## Next concrete action
 
-1. **Submit the MIW build** — approved, not yet submitted. `v50_34__miw__consdb_v1` is
-   registered with 0 rows; the route is fully plumbed and needs only
-   `--intrinsic miw --intrinsic-ref <MIW build name>`. 16 shards, roughly 2.5 h total compute
-   at the measured 39 s/night. **The `<MIW build name>` has not been chosen yet** — pick it
-   before writing the submit command. Batch submission is a hard must-ask: hand over the
-   submit command and a monitoring command, never submit.
-2. Then the two studies, in either order. Both need a study directory, a detail doc and a
-   `README.md` entry per the `rubin-new-study` skill; neither has one yet.
+The two studies, in either order. Both need a study directory, a
+`<topic>/docs/studies/<study>.md` detail doc and a `README.md` entry per the
+`rubin-new-study` skill; neither has one yet, and which topic each belongs to is still an
+open question to settle with Aaron before writing code.
 
 Also worth doing while in this code: `optical_state` has no index on `visit_id` alone, only
 the `(visit_id, variant_id)` primary key and `os_variant` on `variant_id`. Any per-visit

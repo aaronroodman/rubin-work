@@ -199,9 +199,11 @@ to all v-modes.
 - `resid_rms_um` is **not** comparable across these variants: subspace residual for the two
   truncated schemes, achieved residual for RBR. Medians were 0.1103, 0.0628 and 0.0832 µm of
   wavefront respectively, but the third measures a different thing.
-- Batoid intrinsic throughout. The Measured Intrinsic Wavefront route is deferred to item 6,
-  and `v50_34__miw__consdb_v1` stays registered-but-empty — an analysis naming it gets zero
-  rows and no error.
+- Batoid intrinsic throughout. The Measured Intrinsic Wavefront (MIW) route is now built as
+  `v50_34__miw__consdb_v1` (build `danish_1_2_A_50_34_i_5rot`, 96,282 recovered visits,
+  pairing with all 96,278 here), but every number above is batoid and the MIW route changes
+  them: on `day_obs` 20260318 the median CWFS FWHM contribution is 0.3035 arcsec under MIW
+  against 0.2428 under batoid, and the open-loop M2 hexapod dx median moves by +236.57 µm.
 - No date cut, so the sample mixes pre- and post-20260419 SVD-normalization nights and
   whatever Danish 1.2 / refit-WCS changeover applies. It spans both eras and no attempt is
   made here to split them; a per-era read is outstanding.
