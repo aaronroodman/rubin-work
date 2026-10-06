@@ -1,4 +1,4 @@
-# Item 5 step A — MIW on the v1000 pupil model
+# Item 5 — MIW on the v1000 pupil model, then under the RBR constraint
 
 > **Status:** current · **Last updated:** 2026-10-05 · **Kind:** status (handoff)
 
@@ -7,9 +7,9 @@ rebuild the 50 degree-of-freedom / 34 v-mode (50/34) Measured Intrinsic Wavefron
 on Josh Meyers' v1000 pupil-model processing and compare it against the existing build on
 the legacy pupil model. Scheme held fixed at 50/34; only the pupil model varies.
 
-**Where it stands:** **step A is complete.** The build ran 2026-10-05 and all three
-comparisons are done; the result is below. Step B (RBR) is next and Q8 is answered — it
-runs on `danish_1_3_v1000` only.
+**Where it stands:** **step A is complete** (build 2026-10-05, all three comparisons done).
+**Step B is wired and measured on one rotator bin**; what remains is the nine-bin batch
+build, after deciding `n_iter`. Q8 is answered — RBR runs on `danish_1_3_v1000` only.
 
 ## Done and committed
 
@@ -114,25 +114,57 @@ non-contiguous-keep and 22-DOF configurations; rebuilding the `danish_1_3_v1000`
 RBR agrees with the prototype to 1.7e-13; the pre-existing `ts_ofc` suite passes untouched
 (73 tests, 87 subtests).
 
-**What remains is the science run, not the code.** Specifically:
+**What remains is the full nine-bin build.** Steps 1, 3 and 4 below are done (see "Step B"
+further down); step 2 is not, and it is a batch job.
 
-1. Decide how the build requests RBR. `run_build_intrinsic.py` calls `svd.dof(...)`; RBR
-   needs `dof_range_bounded(wavefront)` instead, which takes the wavefront rather than
-   u-mode amplitudes because the penalty acts on physical DOF. A small change to the runner
-   plus an `mi_config.yaml` knob, both still to write. `scons` must be re-run after editing
-   `ts_intrinsic_wavefront`.
-2. Build a `danish_1_3_v1000` RBR arm as a **new `mi_name`**, so the unconstrained build's
-   outputs stay. Batch, so a hard MUST-ASK.
-3. Compare arms on the achieved residual (Q5), now `lsst.ts.ofc.achieved_residual`, not the
-   prototype's.
-4. Report the MIW as inferred FWHM in arcsec per arm, the recovered DOF against `r_j`, and
-   how the subtracted correction changes per DOF and per v-mode.
+1. ~~Decide how the build requests RBR.~~ Done: `build.range_bounded_recovery` in
+   `mi_config.yaml`, entering at `_apply_uconstraint`.
+2. **Build the `danish_1_3_v1000` RBR arm over all nine rotator bins.** Batch, so a hard
+   MUST-ASK — hand Aaron the submit and monitor commands. **Raise `n_iter` first:** the RBR
+   arm does not converge at 3 (see the convergence caveat below).
+3. ~~Compare arms on the achieved residual.~~ Done, `compare_rbr_arms.py`, using
+   `lsst.ts.ofc.achieved_residual`.
+4. ~~Report the MIW as inferred FWHM, DOF against `r_j`, and the change per DOF and
+   v-mode.~~ Done on one bin; rerun on nine.
+
+**The convergence caveat is the live issue.** RBR converges much more slowly than the
+unconstrained recovery. At the configured `n_iter` 3 the unconstrained arm had settled to
+8.92e-04 µm of wavefront between iterations (inside the 1.0e-03 µm tolerance) while the RBR
+arm was still moving by 5.42e-03 µm. At `n_iter` 8 it was at 1.37e-03 µm, decaying roughly
+as 1/iteration, having moved the MIW a further 0.0483 µm of wavefront (inferred FWHM to
+0.3550 arcsec). The effect's direction and scale are robust — 0.3077 µm between arms
+against 0.0483 µm of drift — but the RBR arm's exact numbers are an iterate. Decide
+`n_iter` before the nine-bin run; 8 is not enough for the stated tolerance, and each
+iteration costs about 15 s per bin for the solve plus the binning, so a larger `n_iter` is
+affordable.
 
 Optional and not required: the `_legacy` third build would separate the pupil model from the
 code version. Aaron declined it once (below); only revisit if step B produces a result that
 actually turns on the attribution.
 
 ## Tried and rejected, and why
+
+- **Putting RBR at the runner's `svd.dof(A_last)` call.** That was the plan, and it is the
+  wrong place: the runner's DOF are a *diagnostic* written to `dz_fits.parquet` and never
+  fed back into the build. The wavefront the build subtracts is formed inside
+  `_apply_uconstraint`, per visit per iteration, as `U_eff @ (U_eff.T @ w)`. Changing only
+  the runner would have reported range-bounded DOF beside an unchanged MIW.
+- **Routing the unconstrained path through the new forward map.** Mathematically it is the
+  same thing — `wavefront_from_dof(invert_truncated(w))` equals `U_eff @ (U_eff.T @ w)`, and
+  that identity is now a `ts_ofc` test — but only to 9e-15 µm of wavefront, not bit for bit,
+  because the round trip through physical DOF associates the products differently. Sharing
+  the expression would have broken reproducibility of the committed build for no gain, so
+  `_apply_uconstraint` keeps the direct projection when RBR is off.
+- **Reading `dz_raw_*` columns from `dz_fits.parquet`.** There are none. The table has
+  `dz_corr_*` (the subtracted fit) and `dz_resid_* = raw - corr`; the raw fitted wavefront
+  is their sum. Stacking a non-existent prefix silently yields zeros, which made the first
+  achieved-residual comparison measure everything against a zero reference and report RBR as
+  *improving* the residual by 0.1216. Confirmed the reconstruction by checking the
+  unconstrained arm satisfies `dz_corr == U U^T raw` to 1e-15 µm of wavefront.
+- **Comparing both arms' residuals against one shared raw wavefront.** They do not have one.
+  The build iterates, re-interpolating the MIW onto the donuts each pass, so the arms' fitted
+  wavefronts diverge after iteration 1 — by up to 0.1174 µm of wavefront on `rot_-3_3`. Each
+  arm's residual is now evaluated against its own fit, and reported as a fraction of it.
 
 - **Swapping `OFCSvd` for `ts_ofc`'s existing `StateEstimator`.** The goal was one SVD in
   the code base, and the two looked equivalent. They are not interchangeable: `OFCSvd`
@@ -232,12 +264,53 @@ actually turns on the attribution.
   difference power (dimensionless). A pupil-rim change should carry a larger share than
   that; it is the number the v1000 result gets compared against.
 
-## Step B: implementation done, science run outstanding
+## Step B: wired, measured on one bin, full build outstanding
 
-The RBR code is written, committed and verified on two branches (above); what has not run
-is the constrained build and the arm comparison. `aos/code/miw/check_dof_ranges.py`
+The RBR code is written, committed and verified (branches above). The build can now
+request it, and it has been run on one rotator bin. `aos/code/miw/check_dof_ranges.py`
 measures how far a build's states fall outside `r_j` and changes nothing; it is the
-before-picture for step B.
+before-picture.
+
+**How the build requests RBR** (answers step 1 of the previous "next concrete action"):
+`mi_config.yaml` gained `build.range_bounded_recovery`, with `build.rbr_kappa` and
+`build.rbr_power`, **default off**. Two new `mi_name` entries on `danish_1_3_v1000`,
+`pathA_50_34_i_rbr` and `pathA_50_34_i_rbr_5rot`, so the unconstrained arm's outputs
+stay. Snakemake picks them up with no Snakefile change — a dry run plans the same 10 jobs
+(9 `build_intrinsic` + 1 `intrinsic_split`) as step A.
+
+RBR enters at `_apply_uconstraint` in `measured_intrinsic.py`, **not** at the
+`svd.dof(A_last)` diagnostic in the runner. That diagnostic is written to
+`dz_fits.parquet` and never fed back; the wavefront the build actually subtracts is
+`U_eff @ (U_eff.T @ w)`, formed per visit per iteration. RBR replaces it with
+`wavefront_from_dof(dof_range_bounded(w))` — a new `ts_ofc` forward map, commit
+`6e61aa4`. The runner's diagnostic DOF now also report the range-bounded state when RBR
+is on, so the table matches the MIW.
+
+Verified RBR-off is a true no-op: rebuilding `rot_-3_3` reproduces the committed
+`intrinsic_grid.parquet` bit for bit, and `dz_fits.parquet` on 671 of 682 numeric
+columns, the other 11 being the same Z16/Z19 `_err` columns as the RSO-809 test at
+5.4e-20 µm of wavefront (one ULP on error bars of order 1e-04 µm; the coefficients are
+exact). This is pre-existing fit non-determinism, not from the RBR change.
+
+**The result on `rot_-3_3`, 49 visits** — written up in
+[`aos/docs/studies/miw.md`](../../aos/docs/studies/miw.md), "What RBR does to the MIW",
+not duplicated here. Short form: RBR works (worst `|d_j|/r_j` 60.25 → 1.713, B1_20's
+median 47.28 → 0.881) and the MIW grows a lot — 0.2764 µm of wavefront RMS over the
+field, inferred FWHM 0.1774 → 0.3147 arcsec, which is **50 times the 0.0053 µm the pupil
+model moved it**. So the recovery constraint dominates the pupil-model choice, and step
+A's attribution caveat is not the limiting uncertainty for step B. Mechanism: RBR moves
+the smallest-sigma retained v-modes (v33 at sigma 0.0231 by a median 3.85), subtracts
+0.8784 of the amplitude the unconstrained arm removed, and leaves the rest in the MIW.
+
+New code: `aos/code/miw/compare_rbr_arms.py`, the arm comparison — DOF against `r_j`,
+achieved residual, MIW as inferred FWHM, and the change per DOF and per v-mode.
+
+### Carried commits for step B
+
+| repo | branch | commit | what |
+|---|---|---|---|
+| `ts_ofc` | `tickets/RSO-1007` | `6e61aa4` | `wavefront_from_dof` + estimator method, 5 tests |
+| `ts_intrinsic_wavefront` | `tickets/RSO-809` | `a4716a4` | the build can subtract a range-bounded state |
 
 ## Expectations to carry into step B
 

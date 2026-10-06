@@ -214,6 +214,23 @@ measured_intrinsics:
       n_dof: 50
       n_keep: 34
       # No day_obs_max, matching danish_1_3_test.
+
+    # Range-Bounded Recovery (RBR) arm, a SEPARATE mi_name so the unconstrained
+    # build's outputs above stay on disk for the arm comparison.  Knobs
+    # identical to pathA_50_34_i except for the recovery: the subtracted
+    # optical state is the one RBR recovers, which keeps every degree of
+    # freedom (DOF) near its allowed range r_j, instead of the unconstrained
+    # truncated-SVD state.  The unconstrained build leaves bending modes far
+    # outside range (B1_20 at a median |d_j|/r_j of 41.55), which is what this
+    # tests.  Implementation in lsst.ts.ofc.range_bounded_recovery.
+    - name: pathA_50_34_i_rbr
+      dir_name: A_50_34_i_rbr
+      n_dof: 50
+      n_keep: 34
+      build:
+        range_bounded_recovery: true
+        rbr_kappa: 4.0    # knee at |d_j| = kappa * r_j
+        rbr_power: 3      # penalty grows as |d_j|**(2*power)
     # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
     # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
     # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
@@ -223,6 +240,26 @@ measured_intrinsics:
       n_dof: 50
       n_keep: 34
       build_from: pathA_50_34_i
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4]
+
+    # The RBR arm's split, on the same five in-family rotator bins so the two
+    # arms' split products compare term by term.
+    - name: pathA_50_34_i_rbr_5rot
+      dir_name: A_50_34_i_rbr_5rot
+      n_dof: 50
+      n_keep: 34
+      build_from: pathA_50_34_i_rbr
+      build:
+        range_bounded_recovery: true
+        rbr_kappa: 4.0
+        rbr_power: 3
       split:
         rotator_select:
           - [-65.0, -55.0]

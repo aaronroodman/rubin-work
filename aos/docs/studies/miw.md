@@ -26,6 +26,7 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 | `check_dof_ranges.py` | the build's per-visit recovered degrees of freedom (DOF) against the allowed range `r_j`, per DOF and as the wavefront the over-range amplitudes carry |
 | `compare_pupil_models.py` | two builds as inferred full width at half maximum (FWHM) in arcsec, by field annulus, and by pupil Zernike term — the image-quality and localization half of a pupil-model comparison |
 | `compare_build_dof.py` | two builds' recovered DOF and v-modes, differenced per visit on the visits common to both |
+| `compare_rbr_arms.py` | an unconstrained build against its Range-Bounded Recovery arm — recovered DOF against `r_j`, achieved residual, the MIW as inferred FWHM in arcsec, and the change per DOF and per v-mode |
 | `test_rbr_against_prototype.py` | cross-checks the `ts_ofc` Range-Bounded Recovery against the `smatrix` prototype, and the two independent routes to the allowed range `r_j` |
 
 The build itself is in the external `ts_intrinsic_wavefront` package
@@ -318,6 +319,58 @@ power — but their **individual v-modes past about mode 9 are not comparable**,
 because the singular values cluster and the truncation at 34 modes cuts through a
 cluster. The leading-34 subspaces overlap at 0.9156 (dimensionless) while
 individual vectors can agree at `|dot|` of 2e-04. Compare subspaces, not vectors.
+
+### What RBR does to the MIW
+
+Measured on the `danish_1_3_v1000` `rot_-3_3` bin, 49 visits, `kappa` 4.0 and
+`power` 3, against the unconstrained arm on the same visits
+(`compare_rbr_arms.py`). **This is one rotator bin of nine, and the RBR arm is not
+converged — read the caveat below before using these numbers.**
+
+RBR does what it was built to do. The recovered state comes inside range:
+
+| quantity (dimensionless, `|d_j| / r_j`) | unconstrained | RBR |
+|---|---|---|
+| worst over all DOF and visits | 60.25 | 1.713 |
+| median for B1_20 | 47.28 | 0.881 |
+| median for B1_12 | 32.69 | 1.038 |
+| fraction of (visit, DOF) pairs outside range | 0.4645 | 0.0939 |
+
+The cost is modest in the fit and large in the MIW. The achieved residual, each
+arm against its own fitted wavefront, rises from 0.1131 to 0.1744 as a fraction
+of that wavefront (dimensionless, amplitude). But the MIW itself moves by 0.2764
+µm of wavefront RMS over the field, and the inferred FWHM goes from 0.1774 to
+0.3147 arcsec.
+
+That is a factor of 50 larger than the 0.0053 µm the pupil model moved the MIW,
+so **the recovery constraint matters far more to the MIW than the pupil model
+does** — which also means step A's attribution question is not the limiting
+uncertainty here.
+
+The mechanism is visible in the v-modes. RBR moves the *smallest*-singular-value
+retained modes: v33 (`sigma` 0.0231) by a median 3.85 in its coefficient, v21
+(0.0965) by 1.855, v34 (0.0228) by 1.632. Those are the poorly-conditioned
+directions where a small wavefront signal implies enormous mirror motion, which
+is exactly where the unconstrained recovery was placing unreachable amplitudes.
+RBR subtracts 0.8784 of the wavefront amplitude the unconstrained arm removed,
+and the remaining 0.1216 stays in the MIW.
+
+So the MIW grows because RBR **declines to attribute wavefront to motion the
+mirrors cannot make**. Whether that larger MIW is the better estimate of the
+telescope's intrinsic wavefront is the open question: the unconstrained MIW is
+smaller because it absorbed real aberration into a physically impossible state,
+but RBR's residual now contains whatever that aberration actually was.
+
+**Convergence caveat.** The build iterates, feeding the MIW grid back onto the
+donuts, and RBR converges markedly more slowly. At the configured `n_iter` 3 the
+unconstrained arm had settled to 8.92e-04 µm of wavefront between iterations
+(inside the 1.0e-03 µm tolerance) while the RBR arm was still moving by 5.42e-03
+µm. Raising `n_iter` to 8 left it at 1.37e-03 µm, decaying roughly as
+1/iteration, and moved the MIW a further 0.0483 µm of wavefront — to an inferred
+FWHM of 0.3550 arcsec. The direction and the scale of the effect are therefore
+robust (0.3077 µm between arms against 0.0483 µm of convergence drift), but the
+RBR arm's exact numbers are an iterate, not a settled value, and the full
+nine-bin arm will need a larger `n_iter`.
 
 ## Running
 
