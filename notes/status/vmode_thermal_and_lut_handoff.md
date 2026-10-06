@@ -1,17 +1,19 @@
-# All-v-mode thermal and LUT-dependence studies: step 0 and plan
+# All-v-mode thermal and LUT-dependence studies
 
 > **Status:** current · **Last updated:** 2026-10-06 · **Kind:** working state (handoff)
 
 Two studies off the stored open-loop reconstruction (OLR) columns of `optical_state`:
 
-1. **`thermal_vmodes`** — extend the `thermal_focus` v-mode-1 result to all 34 v-modes and
-   ask which others carry a thermal component.
-2. **`lut_dependence`** — the open-loop `Deviation − Trim` against telescope elevation and
+1. **`thermal_vmodes`** (`thermal_focus/`) — extend the `thermal_focus` v-mode-1 result to all
+   34 v-modes and ask which others carry a thermal component.
+2. **`cwfs_lut`** (`aos/`) — the open-loop `Deviation − Trim` against telescope elevation and
    camera rotator angle, for look-up-table (LUT) development, compared with the AOS bounce
    test, on **both** the batoid and Measured Intrinsic Wavefront (MIW) intrinsic routes.
 
-Neither study's analysis code is written yet. What is done is step 0, the database and
-unit work both studies depend on.
+Both have run over the full sample and their results are written up in their own study docs —
+`thermal_focus/docs/thermal_vmodes.md` and `aos/docs/studies/cwfs_lut.md`. This file holds the
+decisions, the database work underneath them, and what was ruled out. One piece of the original
+specification is outstanding: the overlay against the measured bounce-test slopes.
 
 ## Done and committed
 
@@ -189,20 +191,74 @@ Verified on real data, not just synthetically:
   (M2 hexapod dz +11.47 µm/deg of rotator against −0.54 µm/deg of elevation), and the MIW route
   shifts the rotator dz slopes by about 23% (dimensionless, MIW over batoid).
 
+## Both studies have run over the full sample
+
+`e32e839`. Drivers are `thermal_focus/code/run_thermal_vmodes.py` and
+`aos/code/cwfs_lut/run_cwfs_lut.py`; both take `--day-obs-range` and `--output-dir`. Results
+are written up in the two study docs, which are now **current** rather than in progress.
+
+**Part 1: v-mode 1 is the only thermal mode.** 72,835 visits, 175 nights, one of 34 modes
+survives the FDR cut at `q = 0.05`. The gap is wide: skill +0.808 for v1 against +0.243 for
+v10, the next highest (dimensionless). The truss coefficient is +0.1132 (dimensionless v-mode-1
+amplitude per °C), the same channel and sign the deliverable reports. **The published v-mode-1
+correction is the whole thermal feed-forward available from these five channels** — there is no
+second mode to add.
+
+The cluster of modes at skill +0.15 to +0.25 is not a weak signal to chase. They set the
+empirical null's own scale, so they define the noise rather than stand out from it, and their
+absolute residual nMAD is an order of magnitude above v1's (0.49–0.52 against 0.059,
+dimensionless v-mode amplitude).
+
+The two intrinsic routes agree on 32 of 34 modes, median |skill difference| 0.0016
+(dimensionless). Both disagreements are threshold artefacts: v3 scores +0.172 on both routes
+and lands on opposite sides of the cut; v18 differs by 0.030 with neither route calling it
+thermal in the primary result.
+
+**Part 2: one rigid-body term dominates.** M2 hexapod dx against rotator angle,
+**+20.39 µm/deg of rotator**, Pearson r = +0.718, Spearman rho = +0.759 over 96,278 visits and
+214 nights. It is the only rigid-body trend in either angle above r = 0.6. Second is M2 hexapod
+ry against rotator at −1.701e-4 deg/deg (−0.612 arcsec/deg), r = −0.525.
+
+**Elevation carries no trend above r = 0.09** in any rigid-body DOF. Presumably the
+gravity-driven elevation terms are already removed by the hexapod LUT in force during the
+survey, which is what the open-loop residual is measured against.
+
+## Two results that corrected earlier claims from this work
+
+**The intrinsic route barely moves the trends.** MIW−batoid slope differences are sub-percent on
+every large term — M2 dx against rotator differs by −0.024 µm/deg out of +8.79. **The 23%
+figure recorded earlier in this handoff came from `day_obs` 20260713 alone and does not survive
+the full sample.** One night does not constrain a slope well enough to compare routes. The
+intrinsic still matters for the *absolute* open-loop state (lateral decentres shift by more than
+their own value) but not for the *trends* a LUT is built from — which is what a static offset
+moving an intercept rather than a slope predicts.
+
+**The solver matters far more than the intrinsic, and this was not anticipated.** The headline
+M2 dx term is +20.39 µm/deg under RBR and +8.79 µm/deg unconstrained, a factor of 2.3
+(dimensionless, RBR over unconstrained) — and its Pearson r goes from +0.218 to +0.718. The
+range-bounded solution is not a scaled version of the unconstrained one; it is a far tighter
+function of rotator angle. Expected in direction, since the unconstrained solution spends
+amplitude on unreachable states, but not in size. **A LUT term must state which recovery it was
+fitted on.** The primary result is RBR.
+
+**The noise floor is not monotonic in mode index.** 19 of 34 modes carry between-night structure
+at more than twice their within-night scatter; the 15 that do not are v6, v11, v12, v17, v18 and
+v23–v32. So v34 (ratio 5.15) is better determined night to night than v11 (0.96) or v12 (1.02).
+`WELL_CONSTRAINED_MAX = 12` is still a useful flag for the recovery's conditioning but is **not**
+the same statement as this ratio; the table reports both and the doc says so.
+
 ## Next concrete action
 
-Run both studies over the full sample — neither has a result yet, only a tested pipeline.
+**Overlay the measured bounce-test slopes on part 2.** `bounce_comparable_<angle>.parquet` holds
+the science-survey side — all ten rigid-body axes in the bounce test's own units, with a
+`comparable` flag marking the six decentres. The bounce side is
+`notes/aos-bounce-test-summary/note.md` under "Physical degrees of freedom". Compare on the six
+decentres only; the tilts are converted and present but the two retrievals sample the field
+differently.
 
-1. `thermal_vmodes.mode_table` on the 214-night sample via
-   `run_thermal_focus.load_science(..., keep_extra=thermal_vmodes.response_columns())`, then
-   `noise_floor_table` to mark where the four-corner floor sits, then `intrinsic_comparison`.
-2. `cwfs_lut.trend_table` against both angles on all three variants, then `intrinsic_spread`,
-   then the bounce-test overlay restricted to `BOUNCE_COMPARABLE_DOF` with `to_bounce_units`
-   applied.
-
-Each needs a `run_*.py` driver and an output directory; `cwfs_lut` writes to
-`aos/output/cwfs_lut/`, the topic-output level, because it reads the value-added database and
-has no `param_set` or MIW-build dependence (the rule is at `aos/docs/studies.md`).
+Watch the solver when doing it. The bounce note's own range-penalty result is the matching arm —
+comparing an RBR survey slope against an unconstrained bounce slope would mix a factor of 2.3
+into the answer.
 
 Also worth doing while in this code: `optical_state` has no index on `visit_id` alone, only
 the `(visit_id, variant_id)` primary key and `os_variant` on `variant_id`. Any per-visit
@@ -275,7 +331,15 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
 - `aos/code/miw_corner_intrinsic.py`'s `DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` name nothing
   on disk. Always pass `--intrinsic-ref` and `--miw-param-set` explicitly.
 - `thermal_focus/` carries Aaron's uncommitted `trim_calculator` work. `thermal_focus/README.md`
-  has edits from both of us interleaved and is deliberately left unstaged.
+  has edits from both of us interleaved and is deliberately left unstaged — mine are a
+  `thermal_vmodes` studies entry and two Code-table rows.
+- **`bh_threshold`'s null is the mode sample itself**, so the `thermal` flag is meaningless on a
+  run with `n_modes` far below 34: a handful of low modes all carry signal, the median and nMAD
+  are then set by signal rather than noise, and the threshold lands arbitrarily high. A 4-mode
+  smoke test put the cut at +0.859 and rejected v4. Docstring now says so.
+- **Do not characterize a slope from one night.** The 23% MIW-vs-batoid figure in this handoff
+  was a single-night artefact and the full sample gives sub-percent. Same trap as the 20260318
+  entry above, different quantity.
 
 ## Reference
 
