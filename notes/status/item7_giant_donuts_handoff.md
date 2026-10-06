@@ -464,9 +464,10 @@ is `lsst`, which is not registered on s3df.
    replaced. If a second sensor confirms it, the places to look are the vane mount radius
    on M2's support ring and the spider's axial position in `LsstCam.yaml` / the Rubin
    YAMLs, which set how the vane projects into the pupil.
-7. **Test Aaron's refraction-near-the-vanes hypothesis against the extra-focal lip. This is
-   now the most promising thread in the spider work, and it supersedes "the shadow is
-   2.0-2.2 times too narrow" as the way to frame the problem.** Measured on the data
+7. **Aaron's refraction-near-the-vanes hypothesis is the most promising thread in the
+   spider work, and it supersedes "the shadow is 2.0-2.2 times too narrow" as the way to
+   frame the problem. The measurement supports it and the energetics work out at 0.2-1.0 K;
+   what remains is a ray calculation to check the magnitudes.** Measured on the data
    stamps, 2026-10-06, mean over 8 shadows, cross-vane profile normalised to a far
    25-40 pixel shoulder so the lip is entirely outside the reference band:
 
@@ -509,6 +510,67 @@ is `lsst`, which is not registered on s3df.
    picture. Quantify the Fresnel edge for a 0.05 m obstruction at this defocus and confirm
    it cannot produce a one-sided lip, then look for a thermal correlate (this is the natural
    bridge to the thermal arm of item 7).
+
+   **Order-of-magnitude check, 2026-10-06: thermal refraction supplies enough optical path
+   difference, at a temperature contrast of 0.2 to 1.0 K.** The hypothesis is comfortable,
+   not strained. Three inputs, two of them corrections Aaron supplied to a first attempt
+   that had wrongly concluded the mechanism fell 7x short:
+
+   - **Lever arm from the spider to the focal plane, `L = 18 m`.** The deflection is
+     imparted at the spider, so it acts over the whole remaining path: about 8 m down to M1
+     plus about 10 m of focal length back up through the camera. The first attempt used the
+     focal length alone (10.30 m), which is only the second leg. Gains 1.75x.
+     With `L = 18 m`, **1 pixel of displacement in the donut = 0.556 µrad = 0.115 arcsec**
+     of deflection at the pupil. This is the conversion to reuse; do not re-derive it from
+     the focal length.
+   - **Path length through the heated air, `Lp = 0.70 m`.** Each member is about 0.35 m
+     thick along the optical axis and there are two members per spider, so a ray passing
+     the spider traverses 0.70 m of plume. The first attempt guessed a 0.1 m boundary-layer
+     thickness. Gains 7x. Together the two corrections gain **12.2x** in displacement for a
+     given temperature contrast.
+   - **The lip light comes from the shadow EDGE, not the shadow centre.** Aaron asked this
+     and it matters, because it lowers the displacement the mechanism has to produce. The
+     extra-minus-intra profile difference changes sign at |offset| 7.0 pixel and the flux
+     balances across that crossover: −3.493 inside (|offset| < 7 pixel) against +2.634
+     outside (7-22 pixel), in pixel of normalised flux. So flux moved outward and was
+     conserved; the core was not evacuated. The flux-weighted origin is |offset|
+     **2.84 pixel**, essentially the geometric shadow edge at 2.04 pixel, landing at
+     11.80 pixel — a mean displacement of **8.97 pixel of edge light**. Independent
+     confirmation that the edge itself barely moves: the half-depth radius is 5.52 pixel
+     extra-focally against 5.17 pixel intra-focally. What changes is the flux thrown just
+     past the edge.
+
+   Air refractivity at Cerro Pachón (P = 730 hPa, T = 283 K, λ = 622 nm):
+   `n − 1 = 2.00e-4`, so `dn/dT = −(n−1)/T = −0.707 ppm per K`. A plume of path length
+   `Lp` with transverse contrast `dT` over distance `dx` deflects a ray by
+   `eps = Lp · |dn/dT| · dT/dx`. Required contrast at `Lp = 0.70 m`:
+
+   | displacement [pixel] | eps [µrad] | eps [arcsec] | dT at dx = 0.05 m [K] | dT at dx = 0.10 m [K] |
+   |---|---|---|---|---|
+   | 3.00 (lip onset past the edge) | 1.667 | 0.344 | **0.168** | 0.337 |
+   | 6.00 (mid) | 3.333 | 0.688 | 0.337 | 0.673 |
+   | 8.97 (flux-weighted) | 4.983 | 1.028 | **0.503** | 1.007 |
+
+   **0.2 to 1.0 K across the member width is the scale Rubin's thermal control normally
+   operates at, not a failure mode.** As an OPD the required tilt across a 4-10 pixel pupil
+   zone is 0.08 to 0.61 µm of wavefront, at or below the 0.36 µm Z11 split rather than well
+   above it. For scale, the superseded version of this estimate demanded 6.7 K at
+   dx = 0.05 m, which would have been a thermal-control failure.
+
+   **Two things this does not yet explain, and they should not get buried by the good news.**
+   First, the total deficit exceeds the geometric block on both sides: integrating to
+   22 pixel gives net missing 6.924 (extra) and 5.913 (intra) pixel of normalised flux
+   against 4.085 for a fully opaque 0.05 m member. Pure refraction conserves flux, so
+   something also genuinely broadens the obstruction — though this may be the same effect as
+   the known 2x width excess rather than a second one. Second, the lip amplitude is
+   asymmetric by a factor of 250 (lip excess 2.025 extra against 0.008 intra, pixel of
+   normalised flux). A static refractive structure deflects light the same way whichever
+   side of focus you observe from; the geometry reverses, so filled-inside on one side and
+   piled-outside on the other is expected, but of *comparable* magnitude. The intra-focal
+   trough is indeed filled (the 3.493 inner deficit difference), so the sign reversal is
+   real; whether the magnitudes are consistent needs an actual ray calculation rather than
+   this scaling argument. **That is the next real test, and it is what would turn this from
+   plausible into established.**
 
    Couples to action 5: the free-blur fits return 1.51-1.69 arcsec intra against
    0.99-1.02 arcsec extra, and if the intra/extra difference is this deviation rather than
@@ -586,6 +648,25 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
   projected impact by 0.37 pixel at this field angle. Note the two files disagree on
   heights — batoid puts the spider planes at `z = 8.618 m` and `7.418 m`, danish's
   `Spider_3D` uses 6.98 m and 8.13 m. Worth resolving, but sub-pixel here.
+- **Concluding that thermal refraction near the vanes falls short by 7x — rejected,
+  2026-10-06, it was wrong on three inputs at once and reversed the conclusion.** Recorded
+  because each wrong input is an easy one to repeat:
+  - **Using the focal length as the lever arm from a pupil-plane deflection to a detector
+    displacement.** The deflection happens at the spider, so it acts over the spider → M1
+    → focal plane path, about 18 m, not the 10.30 m focal length. Correct conversion:
+    1 pixel of donut displacement = 0.556 µrad = 0.115 arcsec.
+  - **Guessing the plume path length from a boundary-layer scale.** The members are about
+    0.35 m thick along the optical axis, two per spider, so `Lp = 0.70 m`, not 0.1 m.
+    Geometry of the obstruction sets this, not fluid dynamics.
+  - **Assuming the lip light came from the shadow centre.** It comes from the edge: the
+    flux-weighted origin is |offset| 2.84 pixel against a geometric edge at 2.04 pixel, so
+    the required displacement is a displaced edge, not an evacuated core.
+
+  Those three together moved the required contrast from 6.7 K — a thermal-control failure —
+  to 0.2-1.0 K, which is normal operation. See action 7 for the corrected numbers. The
+  general lesson: for an order-of-magnitude feasibility check, get the lever arm and the
+  interaction path length from the hardware geometry before concluding anything, because
+  both enter linearly and a wrong guess in each compounds.
 - **Measuring spider depth from a fixed-annulus azimuthal projection — rejected.** The
   vanes are offset chords, so a shadow's azimuth drifts 1.2–2.3 deg across the annulus
   against the 0.86 deg it subtends. No azimuthal bin size fixes this: the smearing comes
