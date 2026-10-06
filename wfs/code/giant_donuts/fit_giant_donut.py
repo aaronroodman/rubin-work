@@ -257,7 +257,10 @@ def fit_stamp(stamp, thx_rad, thy_rad, offsets_m, blitz_utils, wf_task,
     noll_indices : `list` [`int`], optional
         Noll indices to fit. Defaults to `NOLL_INDICES`.
     binning : `int`, optional
-        Stamp binning before fitting, as blitz's config default.
+        Stamp binning before fitting; 2 is blitz's config default. ``img`` and
+        ``model_img`` come back on the binned grid, so anything measured on them
+        in pixels is on a `binning` x 10 um pixel. Use 1 to keep them on the
+        native detector pixel and directly comparable with the unbinned stamp.
     fwhm_max, fwhm_min : `float`, optional
         Bounds on the fitted blur FWHM, in arcsec. Reported with the result,
         because a fit that lands on the bound has not measured the blur.

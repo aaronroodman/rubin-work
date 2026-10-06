@@ -1,7 +1,7 @@
 # Item 7 — giant donuts, pupil models and the intra/extra Z11 split
 
-> **Status:** Q1 answered, steps 4-6 run; notebook complete; no blocker ·
-> **Last updated:** 2026-10-05 · **Kind:** handoff
+> **Status:** Q1 answered, steps 4-6 run; notebook complete at `binning = 1`; no blocker ·
+> **Last updated:** 2026-10-06 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
 lives in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05).
@@ -72,7 +72,8 @@ start value at 1.0, **not** the 0.5–1.5 arcsec of the production config the it
 5.0 arcsec ceiling is exactly the runaway regime `wfs/` warned about. It is a literal in
 the source, not a config field, so bounding it means patching the task — the "overriding a
 pipeline config" case the item anticipated. `binning` defaults to 2, which also keeps the
-galsim FFT out of trouble.
+galsim FFT out of trouble — but **the notebook now runs at `fit_binning = 1`** so the model
+images share the data stamp's 10 µm pixel; see the Tried-and-rejected entry on binning.
 
 **Thermal telemetry for the later pass**, recorded now as the item asks: camera average
 temperature ≈ 9.01 to 9.06 °C across the four exposures; M1M3 radial gradient ≈ −0.0017 to
@@ -203,47 +204,52 @@ the question is about the forward model. The blitz checkout is
 4+4 mm split configured (`cameraOffset` and `m2Offset` both 4.0e-3 m, signed per side).
 Both sides report `fit_success`.
 
-R22_S10, seq 337/340, binning 2, unpaired, field angle (−0.263, −0.062) deg:
+R22_S10, seq 337/340, **binning 1**, unpaired, field angle (−0.263, −0.062) deg:
 
 Free blur, bound 0.1 to 3.0 arcsec:
 
 | pupil model | spiders | chi2/dof extra | chi2/dof intra | Z11 split [µm wf] |
 | --- | --- | --- | --- | --- |
-| v3.14 | off | 14.994 | 7.132 | **+0.8043** |
-| v3.14 | on | 12.004 | 6.005 | +0.7914 |
-| v1000 | off | 14.895 | 7.141 | **+0.3618** |
-| v1000 | on | 11.822 | 5.984 | +0.3515 |
+| v3.14 | off | 8.850 | 4.418 | **+0.8145** |
+| v3.14 | on | 7.117 | 3.775 | +0.7972 |
+| v1000 | off | 8.797 | 4.423 | **+0.3725** |
+| v1000 | on | 7.018 | 3.764 | +0.3593 |
 
 Blur fixed at the measured seeing, 0.7 arcsec:
 
 | pupil model | spiders | chi2/dof extra | chi2/dof intra | Z11 split [µm wf] |
 | --- | --- | --- | --- | --- |
-| v3.14 | off | 15.184 | 7.954 | +0.7782 |
-| v3.14 | on | 12.259 | 7.745 | +0.7556 |
-| v1000 | off | 15.098 | 8.022 | +0.3323 |
-| v1000 | on | 12.077 | 7.764 | **+0.3119** |
+| v3.14 | off | 8.937 | 4.817 | +0.8144 |
+| v3.14 | on | 7.294 | 4.687 | +0.7953 |
+| v1000 | off | 8.890 | 4.853 | +0.3690 |
+| v1000 | on | 7.195 | 4.700 | **+0.3522** |
 
-dof is 184015 for every row. Z11 split is intra minus extra, in µm of wavefront.
-**The Z11 split is robust to the blur treatment** — it moves 0.026 to 0.040 µm wf
-between the two, against the 0.21 to 0.25 µm wf that remains unexplained.
+dof is 741295 for every row. Z11 split is intra minus extra, in µm of wavefront.
+**The Z11 split is robust to the blur treatment** — it moves 0.0001 to 0.007 µm wf
+between the two, against the 0.25 µm wf that remains unexplained.
+
+These replace the earlier binning-2 table, where `chi2/dof` ran 12–15 extra and 6–8 intra
+on dof 184015. Going to `binning = 1` cut `chi2/dof` by about 40 per cent at four times
+the pixels and moved the Z11 splits by 0.01 µm wf at most, so **the physics conclusions
+are unchanged by the binning**; only the pixel-frame spider numbers were.
 
 **The two effects are orthogonal, which is the useful part.** The pupil model moves the
-Z11 split (0.80 to 0.37 µm, a 54.3 per cent reduction) and barely moves `chi2/dof`.
-Modelling the spiders moves `chi2/dof` (about −19 per cent extra, −16 per cent intra) and
+Z11 split (0.81 to 0.37 µm, a 54.3 per cent reduction) and barely moves `chi2/dof`.
+Modelling the spiders moves `chi2/dof` (about −20 per cent extra, −15 per cent intra) and
 barely moves Z11. So v1000 is the better pupil *geometry* for the Z11 diagnostic, and
 spiders are a genuine image-fidelity improvement that does not confound it.
 
 **Step 6 is answered:** spiders can be included with good fidelity. `modelSpiderShadows`
 is a plain config toggle and switching it on improves the fit at both sides of focus.
 
-**This does not close item 7's physics question.** v1000's 0.3669 µm still exceeds the
-0.10 µm diffraction term by 0.267 µm, and the observed split is about 0.30 µm. So a
+**This does not close item 7's physics question.** v1000's 0.3593 µm still exceeds the
+0.10 µm diffraction term by 0.26 µm, and the observed split is about 0.30 µm. So a
 residual OPD term remains after the best pupil model and the spiders, which is what the
 radial profiles independently point at.
 
 **Z22 splits far less than Z11, and in the opposite sign.** Secondary spherical splits
-−0.0737 µm wf under v3.14 and −0.0137 µm wf under v1000 (spiders off, free blur), against
-Z11's +0.8043 and +0.3618 µm wf. So the Z11 split is not a general spherical-family mismatch;
+−0.0744 µm wf under v3.14 and −0.0147 µm wf under v1000 (spiders off, free blur), against
+Z11's +0.8145 and +0.3725 µm wf. So the Z11 split is not a general spherical-family mismatch;
 the v1000 pupil improves both, but Z11 is where the residual lives.
 
 **Z11 is robust; Z4 was corrupted by a basis bug, now fixed.** Z11 moves less than
@@ -278,8 +284,8 @@ check on the pupil basis.
 ## The blur: relaxed to 3.0 arcsec, then fixed at the DIMM seeing
 
 **Relaxing the ceiling from 1.5 to 3.0 arcsec did not resolve the intra/extra asymmetry —
-the pinning was a symptom, not the cause.** Off the bound the intra fits sit at 1.509 to
-1.662 arcsec against 0.984 to 1.018 arcsec extra-focally, in every pupil configuration.
+the pinning was a symptom, not the cause.** Off the bound the intra fits sit at 1.512 to
+1.691 arcsec against 0.992 to 1.020 arcsec extra-focally, in every pupil configuration.
 The intra donut genuinely prefers about 60 per cent more blur.
 
 That is roughly twice the measured seeing: the DIMM read 0.65 to 0.80 arcsec on these
@@ -287,8 +293,8 @@ visits and nearby in-focus acquisition images had about 0.9 arcsec. So a second 
 of fits holds the blur **fixed at 0.7 arcsec** (`fit_stamp(fwhm_fixed=...)`, imposed as a
 degenerate bound so danish's parameter packing is untouched).
 
-**Fixing the blur costs the intra side 30 per cent in `chi2/dof` and the extra side 2 per
-cent** (v1000 spiders on: 5.984 → 7.764 intra, 11.822 → 12.077 extra). The excess blur the
+**Fixing the blur costs the intra side 25 per cent in `chi2/dof` and the extra side 3 per
+cent** (v1000 spiders on: 3.764 → 4.700 intra, 7.018 → 7.195 extra). The excess blur the
 intra fit wants is therefore real unmodelled structure on that side, and it is not
 representable by the fitted Zernikes through Z26.
 
@@ -304,8 +310,9 @@ pupil centre**, not a radial spoke, and its azimuth drifts with radius. Measured
 between normalised radius 0.68 and 0.92 is **1.62–2.16 deg extra-focally and 1.21–2.28 deg
 intra-focally**, against the **0.86 deg** a vane subtends at 0.8 of the pupil radius. The
 drift is 2–3 times the vane width, so a fixed-annulus azimuthal projection averages each
-vane across its own drift and cannot resolve it at *any* azimuthal bin size. Fitted impact
-parameters are **21–34 pixel**, confirming offset chords rather than spokes.
+vane across its own drift and cannot resolve it at *any* azimuthal bin size. The data's
+fitted impact parameters run **19.2–33.2 pixel**, confirming offset chords rather than
+spokes, with the two vane families at line directions near 44.9/135.0 deg extra-focally.
 
 `wfs/code/giant_donuts/spider_trajectory.py` replaces the projection: trace each shadow's
 centre at seven narrow radii, fit a total-least-squares line, then profile perpendicular to
@@ -319,43 +326,54 @@ of truth with 1.7 pixel spread among the eight shadows, direction with a **commo
 Fractional flux deficit referenced to the unobscured shoulder 10–20 pixel either side
 (dimensionless), mean over eight shadows:
 
+Models and data are both on the native 10 µm detector pixel (`fit_binning = 1`), so the
+pixel numbers compare directly:
+
 | | extra-focal | intra-focal |
 | --- | --- | --- |
 | data | **0.8603 ± 0.0114** | **0.5264 ± 0.0223** |
-| spiders on, free blur | 0.5790–0.5798 | 0.3938–0.3953 |
-| spiders on, blur fixed 0.7 arcsec | 0.7016–0.7029 | 0.6946–0.7031 |
-| spiders off | 0.0119–0.0151 | 0.0105–0.0146 |
+| spiders on, free blur | 0.5878–0.5891 | 0.3919–0.3943 |
+| spiders on, blur fixed 0.7 arcsec | 0.7427–0.7458 | 0.7422–0.7452 |
 
-**The real discrepancy is width, not depth.** Data shadow FWHM is **11.35 ± 0.43 pixel
-extra and 10.11 ± 0.33 pixel intra**; the fixed-blur models give **2.79 and 2.76 pixel**, a
-factor of about 3.7 too narrow. A wide, nearly opaque shadow is what a vane plus its
+Spiders-off fits are not traced at all — with no vanes in the pupil there is nothing to
+follow, and the dip finder latches onto diffraction rings and Zernike modulation instead.
+
+**The discrepancy is width, not depth.** Data shadow FWHM is **11.35 ± 0.43 pixel extra
+and 10.11 ± 0.33 pixel intra**; the fixed-blur models give **5.10 and 5.13 pixel**, a
+factor of 2.0–2.2 too narrow. A wide, nearly opaque shadow is what a vane plus its
 diffraction skirt looks like, and the geometric shadow model has no diffraction in it. With
-blur fixed at 0.7 arcsec the depth comes out about right (0.702 extra, 0.695 intra) —
-within 19 per cent of the data extra-focally but **overshooting intra-focally by 32 per
-cent** — so the free-blur fits were using inflated blur to pad a too-sharp vane out to
-roughly the right depth.
+blur fixed at 0.7 arcsec the depth comes out roughly right (0.743–0.746 extra,
+0.742–0.745 intra) — 13 per cent shallow against the data extra-focally but
+**overshooting intra-focally by 41 per cent** — so the free-blur fits were using inflated
+blur to pad a too-sharp vane out toward the right depth.
 
-### The spiders are misplaced by about 11 pixel, radially
+### The spiders sit 4–6 pixel too far out in the model
 
-The most actionable result for the optical model. In **all eight** spiders-on
-configurations the model's shadows sit closer to the donut centre than the data's:
+In every spiders-on configuration the model's shadows sit **further** from the donut centre
+than the data's:
 
 | | d angle [deg] | d \|impact\| [pixel] | d azimuth [deg] |
 | --- | --- | --- | --- |
-| extra, spiders on, four configs | +0.276 to +0.358 | −10.70 to −11.16 | −0.010 to −0.018 |
-| intra, spiders on, four configs | −0.196 to −0.344 | −11.10 to −11.93 | −0.009 to −0.031 |
+| extra, spiders on, four configs | +0.315 to +0.380 | +4.25 to +5.45 | −0.012 to +0.001 |
+| intra, spiders on, four configs | −0.266 to −0.395 | +5.19 to +6.40 | −0.042 to +0.009 |
 
-Model minus data, median over eight shadows. Spiders-off configurations are flagged rather
-than tabulated: with no vanes the dip finder returns noise (mean depth along trajectory
-0.011–0.015, dimensionless).
+Model minus data, median over eight shadows. v1000 is about 1 pixel closer to the data than
+v3.14 in every pairing, consistent with its wider inner obscuration.
 
-**Not a rotation and not an azimuth error — a pure radial offset.** Direction agrees to
-0.20–0.36 deg and azimuth to 0.031 deg, while the impact parameter is off by 11 pixel the
-same way on both sides of focus and under both pupil models. That is 0.11 mm at the 10 µm
-detector pixel, or about **0.135 m at the pupil** (11 pixel / 341.5 pixel outer edge ×
-4.18 m pupil radius) — six times the method's own 1.7 pixel spread, in the same direction
-in all sixteen measurements. This is a genuine vane-geometry discrepancy to feed back into
-the optical model.
+**Not a rotation and not an azimuth error — a radial offset.** Direction agrees to
+0.27–0.40 deg and azimuth to 0.042 deg, while the impact parameter is off by 4–6 pixel the
+same sign on both sides of focus and under both pupil models. At the 10 µm detector pixel
+5 pixel is 0.05 mm, or about **0.06 m at the pupil** (5 pixel / 341.5 pixel outer edge ×
+4.18 m pupil radius) — about three times the method's own 1.7 pixel spread.
+
+**This supersedes an earlier "11 pixel inward" reading, which was a binning artifact.**
+The fits ran at blitz's default `binning = 2`, so the model images were on a 20 µm pixel
+while the data stamp stayed on 10 µm; the comparison differed by a factor of two for that
+reason alone. `fit_binning = 1` puts every image on one grid. The sign also flipped —
+inward became outward — which the binning factor alone would not do, so the earlier
+reading was wrong about direction as well as magnitude. At three times the method's spread
+the surviving offset is weaker evidence than 11 pixel appeared to be, and wants a second
+sensor before it is used to change the vane geometry.
 
 ## v1000 maskParams: generated
 
@@ -379,6 +397,13 @@ Two things to know about it:
   baffle entry, not M1's.
 
 ## In progress
+
+**Uncommitted, the `binning = 1` pass.** `fit_binning` is now a notebook parameter set to
+1, so the fitted stamps and model images share the data stamp's native 10 µm detector
+pixel. The spider section skips `spiders = False` fits. Every fit number in this handoff
+and in the notebook's interpretation has been regenerated; the figures and PDFs are rerun.
+Modified: `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb`,
+`wfs/code/giant_donuts/fit_giant_donut.py` (docstring only), this file.
 
 Nothing uncommitted in this repo. Commits in order: `fe9fa1a` (selection module, file
 moves, todo edits), `1f37ac1` (maskParams generator, radial profiles), `8f79f50` (the
@@ -408,14 +433,15 @@ is `lsst`, which is not registered on s3df.
 ## Next concrete action
 
 1. **Why is `chi2/dof` twice as large extra-focally as intra-focally?** Consistent across
-   all four configurations (about 12-15 against 6-7). The residual images now localise the
+   all four configurations (about 7-9 against 3.8-4.9 at `binning = 1`). The residual
+   images now localise the
    *radial* part to both pupil boundaries, with the inner zone flipping sign between
    sides, but they do not explain the extra/intra magnitude asymmetry itself. Note the
    extra-focal donut is also the azimuthally more structured one (peak-to-peak 1.0150
    against 0.5711, dimensionless) — the two asymmetries may be the same thing.
 2. **Convert the radial-profile zone statistics into an implied wavefront amplitude in
    µm**, so the +0.1541 (dimensionless) normalised-flux ring can be set against the
-   0.251 µm of Z11 split that v1000-with-spiders leaves unexplained (0.3511 µm measured
+   0.26 µm of Z11 split that v1000-with-spiders leaves unexplained (0.3593 µm measured
    less about 0.10 µm from diffraction). These are currently two pieces of evidence for
    the same thing in different units, and this is the step that joins them.
 3. Extend to seq 338 and 341 and to more sensors for a distribution rather than one pair.
@@ -424,16 +450,18 @@ is `lsst`, which is not registered on s3df.
    edge in the batoid model and refitting, to see whether it absorbs the residual Z11.
    This is the main remaining physics step.
 5. Explain the intra/extra **blur** asymmetry. Now better characterised and still
-   unexplained: 1.51 to 1.66 arcsec intra against 0.98 to 1.02 arcsec extra with a
+   unexplained: 1.51 to 1.69 arcsec intra against 0.99 to 1.02 arcsec extra with a
    3.0 arcsec ceiling, i.e. not a bound artifact, and forcing both to the measured
-   0.7 arcsec costs intra 30 per cent in `chi2/dof` against extra 2 per cent.
-6. **Chase the 11 pixel radial spider misplacement in the batoid model.** The vanes'
-   impact parameter is about 0.135 m too small at the pupil in every configuration, with
-   direction and azimuth correct. Check the spider geometry in `LsstCam.yaml` / the Rubin
-   YAMLs: the vane mount radius on M2's support ring, and the spider's axial position,
-   which sets how the vane projects into the pupil.
-7. **The model's spider shadow is about 3.7 times too narrow** (2.79 pixel FWHM against the
-   data's 11.35 pixel extra-focally) while the fixed-blur depth is roughly right. Candidates
+   0.7 arcsec costs intra 25 per cent in `chi2/dof` against extra 3 per cent.
+6. **Get a second sensor before acting on the 4-6 pixel outward spider offset.** The
+   model's vanes sit about 0.06 m too far out at the pupil in every configuration, with
+   direction and azimuth correct, but that is only about three times the method's own
+   1.7 pixel spread — much weaker evidence than the 11 pixel binning artifact it
+   replaced. If a second sensor confirms it, the places to look are the vane mount radius
+   on M2's support ring and the spider's axial position in `LsstCam.yaml` / the Rubin
+   YAMLs, which set how the vane projects into the pupil.
+7. **The model's spider shadow is about 2.0-2.2 times too narrow** (5.10 pixel FWHM against
+   the data's 11.35 pixel extra-focally) while the fixed-blur depth is roughly right. Candidates
    are the 0.05 m vane width in `LsstCam.yaml` and, more likely, diffraction at the vane
    edges, which the geometric shadow model omits. This is probably the same deficiency that
    forces the fitted blur up, so it couples to action 5.
@@ -453,6 +481,17 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
 
 ## Tried and rejected, and why
 
+- **Fitting at blitz's default `binning = 2` while measuring the data stamp unbinned —
+  rejected, it produced a wrong result that survived a full write-up.** `fit_stamp` returns
+  `img` and `model_img` on the binned grid, so the model images were on a 20 µm pixel while
+  the stamp the spider tracing measured stayed on 10 µm. Everything expressed in normalised
+  radius was fine; everything in pixels was not. It reported the model's vanes as 11 pixel
+  **inward** of the data's and 3.7× too narrow; at `binning = 1` they are 4–6 pixel
+  **outward** and 2.0–2.2× too narrow. The sign flip is the warning: a factor of two alone
+  would not reverse a direction, so the comparison was not merely mis-scaled. Aaron spotted
+  it from the placement plot. `binning = 1` costs four times the pixels per fit (about
+  25 min for all sixteen fits) and moves the Z11 splits by at most 0.01 µm wf, so there is
+  no reason to go back. Anything quoted in pixels must come from one grid.
 - **Measuring spider depth from a fixed-annulus azimuthal projection — rejected.** The
   vanes are offset chords, so a shadow's azimuth drifts 1.2–2.3 deg across the annulus
   against the 0.86 deg it subtends. No azimuthal bin size fixes this: the smearing comes
@@ -465,11 +504,13 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
   biases the dip centroid; the common direction bias grew from +0.32 to +0.39 deg. The
   bias is common to both vane families so it cancels in model-minus-data differences, which
   is all the placement numbers are used for. Trace radii stay inside 0.68–0.92.
-- **Gating "no vanes found" on the trace-time dip depth — rejected.** A spiders-off model
-  still has diffraction rings and Zernike modulation for the dip finder to latch onto, so it
-  reports several per cent of depth on a pupil with no vanes. Gate on the depth measured
-  *along the fitted trajectory*, which reads 0.011–0.015 (dimensionless) when there is no
-  vane.
+- **Tracing spiders in the spiders-off models at all — rejected, and the gating that
+  propped it up with it.** The first attempt gated on the trace-time dip depth, which does
+  not work: a vane-free model still has diffraction rings and Zernike modulation for the dip
+  finder to latch onto, so it reports several per cent of depth. A second gate on the depth
+  measured *along the fitted trajectory* did work (0.011–0.015, dimensionless, with no
+  vane), but the whole exercise is pointless — a pupil with no vanes has no vane placement
+  to compare. The spider section now skips `spiders = False` fits outright.
 - **Taking the `8mm` labels at face value — rejected.** `observation_reason` is free text
   and wrong in both directions here: seq 339 has the giant Trim state without being a giant
   exposure, and 351/352 claim a bending mode the Trim does not show. Select on Trim first,
