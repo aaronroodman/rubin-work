@@ -1,6 +1,6 @@
 # Status: intra vs extra donut blur in the Danish 1.3 blitz FAM ensemble
 
-> **Status:** current · **Last updated:** 2026-10-03 · **Kind:** status (handoff)
+> **Status:** current · **Last updated:** 2026-10-06 · **Kind:** status (handoff)
 
 ## Done and committed
 
@@ -23,9 +23,11 @@ Tables rebuilt at `aos/output/fam_processing/danish_1_3_test/` (966 visits, 3,15
 donut rows, 66 columns, 966 row groups, 13.3 GB).
 
 Output at `aos/output/fam_processing/blur_intra_extra/`: `blur_vs_fam_ordinal.pdf`,
-`blur_offset_models.pdf`, `quad_diff_thermal_cumulative.pdf`,
-`quad_diff_thermal_final.pdf`, and the cached `thermal_join_per_side.parquet` (966 rows,
-the per-exposure thermal telemetry for both sides).
+`blur_offset_models.pdf`, `blur_diff_thermal_cumulative.pdf`,
+`blur_diff_thermal_final.pdf`, `blur_diff_resid_vs_extra_blur.pdf`, and the cached
+`thermal_join_per_side_cam.parquet` (966 rows, the per-exposure thermal telemetry for both
+sides). The 2026-10-06 rewrite renamed the two `quad_diff_*` PDFs and superseded the
+`thermal_join_per_side.parquet` cache, so those three are orphaned too.
 
 Three PDFs in that directory are **orphaned** by the 2026-10-04 rewrite and no cell
 produces them any more: `blur_diff_vs_thermal.pdf`,
@@ -297,11 +299,13 @@ therefore resolved and closed.
 3. ~~**Per-side telemetry would be a genuine test.**~~ **Done and answered negatively** on
    2026-10-04 — see "The per-side test" above. The two exposures see the same thermal
    state to a few parts in a thousand, so there is no per-side difference to find.
-4. **Run the full glass-temperature backfill.** Only 20260315–20260619 is done. The rest
-   of `m1m3_thermal_r2` has NULL glass columns, so any other study reading
-   `m1m3_mean_temp_c` outside that range gets nothing. This is a batch job and **Aaron
-   submits it**; the commands are in the chat reply that accompanied this update. ~450
-   nights at roughly 25 s each.
+4. ~~**Run the full glass-temperature backfill.**~~ **Done** on 2026-10-04. It is *not* a
+   batch job — `run_build.sh` rejects `--what telemetry` in batch because the EFD does not
+   resolve from a Slurm compute node, so it ran local and detached on an interactive node
+   over 2 h 48 m. `m1m3_thermal_r2` now holds `m1m3_mean_temp_c` on 190,146 of 192,079
+   fitted exposures across 329 nights, 20250519–20260714. Two nights (20260628, 20260629)
+   failed on an EFD `TaskGroup` error and still need a `--refetch`; 34 nights
+   (20250415–20250713) have no M1M3 thermocouple telemetry at all and will stay NULL.
 5. **Check the defocal offsets per side.** `blitz_reader.focus_side` already reads the
    varying element of `defocal_offsets` from the table metadata and validates its sign
    against `visit_id`. Whether the two sides have equal *magnitude* is not checked, and an
@@ -384,9 +388,68 @@ therefore resolved and closed.
   `pgrep -f run_blitz_mktable` before launching. Note the wrapper exits 0 even when the
   Python process fails, so the log must be read rather than the exit code trusted.
 
+## 2026-10-06: arithmetic difference, camera body temperature, extra-blur residual
+
+Three changes to the thermal section, all at Aaron's direction.
+
+**Target switched from the quadrature difference to the arithmetic difference.** Section 6
+found little to choose between the constant and quadrature models, so the simpler one is
+used: `blur_diff_arcsec = b_intra - b_extra`, in arcsec, nothing subtracted. Median
++0.34395 arcsec, range −0.11160 to +0.93080 arcsec, robust scatter (nMAD) 0.20379 arcsec
+over 873 triplets, 4 of them negative and kept. The ranking and the cumulative build-up
+were left to re-choose their variables from scratch rather than being handed the
+quadrature version's set.
+
+**Camera body temperature added**, two quantities: `cam_AverageTemp`, the camera's own
+housekeeping average over its body thermometers in °C, and `cam_body_minus_m1m3_air_c`,
+that minus the M1M3 air. Both come from `visit_telemetry`, not from ConsDB. Note
+`cam_AverageTemp` and the pre-existing `cam_air_temp` are **different quantities** — the
+latter is the ESS air sensor beside the camera. Coverage on the FAM exposures is 855 and
+853 of 873 triplets.
+
+**Camera body − M1M3 air is now the strongest single quantity in the whole ranking**, and
+by a clear margin: Spearman rho = −0.7828 full sample, −0.2934 within night, Huber slope
+−0.23819 ± 0.00723 arcsec per °C, n = 853 triplets. It displaced truss − M1M3 air
+(−0.6990 full sample, −0.3566 within night), which had led the quadrature version. Unlike
+most of the top of the table it keeps a substantial within-night correlation, so it is not
+merely night-level covariance. `cam_AverageTemp` on its own ranks tenth (+0.4778 full
+sample, −0.0267 within night) and is excluded from the joint fit by an infinite variance
+inflation factor, being exactly `cam_body_minus_m1m3_air_c` plus `m1m3_air_temp`.
+
+**The build-up now keeps 9 quantities** (it kept 4 on the quadrature target), n = 853
+triplets: camera body − M1M3 air, truss − M1M3 air, M1M3 air temperature, M1M3 y gradient,
+M2 air − M1M3 air, M1M3 thermocouple range, M1M3 quadratic-in-radius, M1M3 thermocouple
+scatter, M1M3 radial gradient. Robust scatter falls 0.20405 → 0.07212 arcsec, prediction
+against observed Spearman rho = +0.8697, Pearson r = +0.8899. Two caveats on that: the
+residual is in-sample, and the camera-body slope decays from −0.23819 to +0.01216 arcsec
+per °C as correlated variables enter, so the later steps are redistributing one signal
+rather than adding nine independent ones.
+
+**The extra-blur residual test (section 8) came out positive.** Aaron's observation that
+`intra - extra` correlates with the extra-focal blur itself is confirmed, and removing the
+thermal model flattens it substantially:
+
+| quantity on the vertical axis | Huber slope (arcsec per arcsec) | Spearman rho | nMAD (arcsec) |
+|---|---|---|---|
+| observed `(intra − extra)` | −0.57879 ± 0.03444 | −0.4870 | 0.20405 |
+| residual, model removed | −0.08679 ± 0.01711 | −0.1844 | 0.07212 |
+
+n = 853 triplets over 14 nights, against extra-focal median blur in arcsec. The slope
+shrinks by a factor of 6.7 (dimensionless) and |Spearman rho| by 0.3026, so the thermal
+model accounts for most — not all — of the trend with extra-focal blur. A residual slope
+of −0.08679 ± 0.01711 arcsec per arcsec is still 5.1 sigma from zero, so something
+blur-dependent survives the thermal model. The scatter reduction is partly in-sample and
+should not be read as a 65% improvement in predictive power.
+
+Plot: `blur_diff_resid_vs_extra_blur.pdf`, two panels sharing both axes so the narrowing
+is visible directly.
+
 ## Leftovers to clean up
 
 - `aos/output/fam_processing/danish_1_3_test/archive_pre_side_columns/` — the pre-rebuild
   `donuts.parquet` (5.06 GB) and `visits.parquet`, kept deliberately for comparison.
   Delete when no longer wanted.
 - `aos/output/fam_processing/_timing_probe/` — 8-visit probe output. Safe to delete.
+- Orphaned by the 2026-10-06 rewrite, in `aos/output/fam_processing/blur_intra_extra/`:
+  `quad_diff_thermal_cumulative.pdf`, `quad_diff_thermal_final.pdf` and
+  `thermal_join_per_side.parquet`. No cell writes or reads them now.
