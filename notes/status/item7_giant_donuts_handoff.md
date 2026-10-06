@@ -1,6 +1,7 @@
 # Item 7 — giant donuts, pupil models and the intra/extra Z11 split
 
-> **Status:** Q1 answered, steps 4-6 run; notebook complete at `binning = 1`; no blocker ·
+> **Status:** Q1 answered, steps 4-6 run; notebook complete at `binning = 1`; spider
+> projection chain traced and an intra/extra lip asymmetry found in the data; no blocker ·
 > **Last updated:** 2026-10-06 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
@@ -452,7 +453,10 @@ is `lsst`, which is not registered on s3df.
 5. Explain the intra/extra **blur** asymmetry. Now better characterised and still
    unexplained: 1.51 to 1.69 arcsec intra against 0.99 to 1.02 arcsec extra with a
    3.0 arcsec ceiling, i.e. not a bound artifact, and forcing both to the measured
-   0.7 arcsec costs intra 25 per cent in `chi2/dof` against extra 3 per cent.
+   0.7 arcsec costs intra 25 per cent in `chi2/dof` against extra 3 per cent. **Action 7
+   now offers a mechanism:** the two visits are minutes apart, so a 60 per cent seeing
+   difference is implausible, and the intra/extra lip asymmetry suggests the fitter is
+   absorbing a deviation near the vanes into the blur parameter.
 6. **Get a second sensor before acting on the 4-6 pixel outward spider offset.** The
    model's vanes sit about 0.06 m too far out at the pupil in every configuration, with
    direction and azimuth correct, but that is only about three times the method's own
@@ -460,11 +464,57 @@ is `lsst`, which is not registered on s3df.
    replaced. If a second sensor confirms it, the places to look are the vane mount radius
    on M2's support ring and the spider's axial position in `LsstCam.yaml` / the Rubin
    YAMLs, which set how the vane projects into the pupil.
-7. **The model's spider shadow is about 2.0-2.2 times too narrow** (5.10 pixel FWHM against
-   the data's 11.35 pixel extra-focally) while the fixed-blur depth is roughly right. Candidates
-   are the 0.05 m vane width in `LsstCam.yaml` and, more likely, diffraction at the vane
-   edges, which the geometric shadow model omits. This is probably the same deficiency that
-   forces the fitted blur up, so it couples to action 5.
+7. **Test Aaron's refraction-near-the-vanes hypothesis against the extra-focal lip. This is
+   now the most promising thread in the spider work, and it supersedes "the shadow is
+   2.0-2.2 times too narrow" as the way to frame the problem.** Measured on the data
+   stamps, 2026-10-06, mean over 8 shadows, cross-vane profile normalised to a far
+   25-40 pixel shoulder so the lip is entirely outside the reference band:
+
+   | quantity | extra | intra |
+   |---|---|---|
+   | trough depth [dimensionless, fraction of shoulder flux removed] | 0.8495 | 0.5211 |
+   | FWHM at half depth [pixel] | 11.36 ± 0.53 | 10.16 ± 0.40 |
+   | peak normalised flux in the lip [dimensionless] | **1.2228** | 0.9903 |
+   | radius of the lip peak [pixel of \|offset\|] | 10.0 | — |
+   | wing excess / trough deficit [dimensionless] | **+0.228** | −0.105 |
+
+   The shape of this is the argument. The depths differ by a factor 1.63 while the widths
+   differ by only 1.12 — so a blur kernel cannot be what separates the two sides, because
+   a wider kernel would shallow *and* broaden together. Extra-focally there is a 22 per cent
+   **lip**, flux above the unobscured shoulder, peaking 10 pixel out from the shadow centre;
+   intra-focally there is none (0.9903, flat within the 0.028 scatter) and in fact a small
+   deficit in the wing. Integrating the profile, the extra-focal wing carries back
+   +22.8 per cent of the flux missing from the trough, while the intra-focal wing carries
+   −10.5 per cent, i.e. the intra-focal trough is *filled in* rather than its flux being
+   piled outside.
+
+   That is exactly the signature of light being deviated near the vane: inside the trough
+   intra-focally (reducing the depth to 0.52) and outside it extra-focally (producing the
+   lip and keeping the depth near 0.85), with the sign reversing through focus because the
+   two sides sample opposite sides of the caustic. A static width error or a wider blur
+   kernel cannot do this — both are symmetric through focus. Thermally induced turbulence
+   near the vanes acting like a turned-down mirror edge is the candidate.
+
+   Two checks already done that keep the finding alive: the asymmetry survives
+   re-normalising to a far 25-40 pixel shoulder, so it is not an artifact of the default
+   10-20 pixel shoulder band sitting on top of the lip (depth 0.8609 → 0.8495 extra,
+   0.5244 → 0.5211 intra); and the lip is symmetric *across* the vane — 1.2511 on the
+   increasing-radius side against 1.2203 on the decreasing-radius side — so it is not a
+   radial edge-roll-off effect but is tied to the vane itself.
+
+   The discriminating next step is that vane-edge **diffraction** predicts a lip on *both*
+   sides of focus, since a Fresnel edge is symmetric through focus. The measurement says
+   the lip is on one side only. So diffraction alone is already in tension with the data,
+   which is a real narrowing of the candidate list and the reason to prefer the refraction
+   picture. Quantify the Fresnel edge for a 0.05 m obstruction at this defocus and confirm
+   it cannot produce a one-sided lip, then look for a thermal correlate (this is the natural
+   bridge to the thermal arm of item 7).
+
+   Couples to action 5: the free-blur fits return 1.51-1.69 arcsec intra against
+   0.99-1.02 arcsec extra, and if the intra/extra difference is this deviation rather than
+   seeing, then that fitted blur difference is the fitter absorbing it into the only
+   parameter it has. The two visits are minutes apart, so the atmosphere should not differ
+   by 60 per cent.
 8. Check the M1M3 applied forces for seq 351/352 to settle whether the b4 mode was applied.
 
 ## Decisions needed from Aaron
@@ -492,6 +542,50 @@ The shared `~/u/LSST/packages/ts_wep` on `develop` has **not** been touched.
   it from the placement plot. `binning = 1` costs four times the pixels per fit (about
   25 min for all sixteen fits) and moves the Z11 splits by at most 0.01 µm wf, so there is
   no reason to go back. Anything quoted in pixels must come from one grid.
+- **Blaming the spider offset on the batoid optic file, or on the two members of a spider
+  separating off-axis — both rejected, 2026-10-06, by reading the projection chain.**
+  Three things came out of it, all worth not re-deriving:
+  - **The batoid optic file is not in the chain.** `Rubin_v3.14_*.yaml` and
+    `Rubin_v1000_*.yaml` contain no `ObscRectangle` at all — only `ClearAnnulus` on
+    M1/M2/M3, so no spiders. danish gets the vanes from a separate pre-computed mask file,
+    `danish/data/RubinObsc_<version>_r_rtpp0_azp45_pp0d0.yaml`, under the top-level key
+    `Spider_3D`. The circular obscurations in that file are field-angle polynomial fits
+    traced from batoid offline; the spiders are raw 3D geometry. Editing a Rubin batoid
+    YAML would not move a vane.
+  - **The spider geometry is byte-identical between v3.14 and v1000.** So the roughly
+    1 pixel of the 4–6 pixel offset that tracks the pupil model comes from the annulus
+    edges, i.e. the normalisation radius, not from the vanes.
+  - **All 16 members are modelled, at impact parameter ±0.400 m exactly.** 12 YAML entries,
+    not 16, because the four `length: 10.0 m`, `z0 = 6.98 m` members normal to the axis are
+    coded as full-diameter bars that each cast two shadows (4 bars → 8 members); the eight
+    `length: 5.0 m`, `z0 = 8.13 m` entries are the tilted members, one per side
+    (8 members). 8 + 8 = 2 spiders × 4 quadrants × 2 members. The tilt is
+    `arcsin(1/sqrt(2.792² + 1)) = 19.7 deg` from the plane normal to the axis, and the
+    member runs from radius 0.43 m at `z = 8.97 m` to radius 4.87 m at `z = 7.29 m` —
+    behind M2 out to the aperture ring. All 16 are `width: 0.05 m`. The ±0.400 m agrees
+    with batoid's own spider description in `ComCamSpiders_r.yaml`, where the rectangles
+    sit at `y = 0.5656854 m` and `theta = 45 deg`, and `0.5656854/sqrt(2) = 0.400000 m`.
+
+  The projection, `__project_spider_vane` at `danish/factory.py:480`, is exact ray geometry
+  rather than a parametrization: offset the 3D centreline by `±perp·width/2`, rotate about
+  z, then project each edge along the gnomonic direction to the `z = 0` entrance-pupil
+  plane via `t = -edge_z/vproj_z`. The off-axis walk is the honest `z·tan(theta)` lever arm.
+
+  **So the off-axis member separation is real but far too small here.** It grows as
+  `(z_B - z_A)·tan(theta) = 1.15 m × tan(theta)`, which at R22_S10's 0.235 deg field angle
+  is **0.46 pixel**, against a single-member geometric width of
+  `0.05 m / 0.01224 m per pixel = 4.08 pixel`. The union is 4.55 pixel against 4.08 — it
+  closes 0.5 of the 7.3 pixel width gap, about 7 per cent. It is **not** the explanation
+  of the too-narrow shadow on-axis. Two caveats to carry forward: at the CWFS corners
+  (1.75 deg) the separation reaches 3.73 pixel, comparable to the member width itself, so
+  a corner shadow genuinely is about 1.9× wider than one member — already modelled, so not
+  an error, but worth knowing for CWFS work. And the model's predicted impact parameter at
+  R22_S10, ±31.1 pixel, lies *inside* the data's measured 19.2–33.2 pixel range, so the
+  vane mount radius is not obviously wrong. The axial positions are only weakly constrained
+  by this measurement: moving member A from `z = 6.98 m` to batoid's own 8.618 m shifts the
+  projected impact by 0.37 pixel at this field angle. Note the two files disagree on
+  heights — batoid puts the spider planes at `z = 8.618 m` and `7.418 m`, danish's
+  `Spider_3D` uses 6.98 m and 8.13 m. Worth resolving, but sub-pixel here.
 - **Measuring spider depth from a fixed-annulus azimuthal projection — rejected.** The
   vanes are offset chords, so a shadow's azimuth drifts 1.2–2.3 deg across the annulus
   against the 0.86 deg it subtends. No azimuthal bin size fixes this: the smearing comes
