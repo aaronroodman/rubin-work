@@ -231,6 +231,12 @@ measured_intrinsics:
         range_bounded_recovery: true
         rbr_kappa: 4.0    # knee at |d_j| = kappa * r_j
         rbr_power: 3      # penalty grows as |d_j|**(2*power)
+        # RBR converges much more slowly than the truncated recovery: the
+        # between-iteration change decays as n_iter**-1.066 (measured on
+        # rot_-3_3 over 8 iterations), crossing the 1.0e-03 um of wavefront
+        # tolerance near n_iter 10 where the unconstrained arm clears it at 3.
+        # 15 reaches 6.2e-04 um with margin.
+        n_iter: 15
     # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
     # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
     # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
@@ -260,6 +266,7 @@ measured_intrinsics:
         range_bounded_recovery: true
         rbr_kappa: 4.0
         rbr_power: 3
+        n_iter: 15
       split:
         rotator_select:
           - [-65.0, -55.0]

@@ -369,8 +369,14 @@ unconstrained arm had settled to 8.92e-04 µm of wavefront between iterations
 1/iteration, and moved the MIW a further 0.0483 µm of wavefront — to an inferred
 FWHM of 0.3550 arcsec. The direction and the scale of the effect are therefore
 robust (0.3077 µm between arms against 0.0483 µm of convergence drift), but the
-RBR arm's exact numbers are an iterate, not a settled value, and the full
-nine-bin arm will need a larger `n_iter`.
+numbers above are an iterate, not a settled value.
+
+The change decays as `n_iter` to the power −1.066 (fitted over 8 iterations), so
+it crosses the 1.0e-03 µm tolerance near `n_iter` 10. The RBR `mi_name` entries
+therefore set **`n_iter: 15`** (predicted 6.2e-04 µm), while the unconstrained
+arm keeps 3 — it already converged there, and changing it would invalidate its
+cached grids. Expect the nine-bin RBR numbers to differ from the one-bin figures
+above for that reason as well as the extra bins.
 
 ## Running
 

@@ -120,8 +120,10 @@ further down); step 2 is not, and it is a batch job.
 1. ~~Decide how the build requests RBR.~~ Done: `build.range_bounded_recovery` in
    `mi_config.yaml`, entering at `_apply_uconstraint`.
 2. **Build the `danish_1_3_v1000` RBR arm over all nine rotator bins.** Batch, so a hard
-   MUST-ASK — hand Aaron the submit and monitor commands. **Raise `n_iter` first:** the RBR
-   arm does not converge at 3 (see the convergence caveat below).
+   MUST-ASK — the submit and monitor commands are ready and were handed over 2026-10-05.
+   `n_iter` is already set to 15 on the RBR entries (see the caveat below); the
+   unconstrained arm stays at 3 so its cached grids remain valid. A dry run plans 10 jobs
+   and leaves the unconstrained arm alone.
 3. ~~Compare arms on the achieved residual.~~ Done, `compare_rbr_arms.py`, using
    `lsst.ts.ofc.achieved_residual`.
 4. ~~Report the MIW as inferred FWHM, DOF against `r_j`, and the change per DOF and
@@ -133,10 +135,11 @@ unconstrained recovery. At the configured `n_iter` 3 the unconstrained arm had s
 arm was still moving by 5.42e-03 µm. At `n_iter` 8 it was at 1.37e-03 µm, decaying roughly
 as 1/iteration, having moved the MIW a further 0.0483 µm of wavefront (inferred FWHM to
 0.3550 arcsec). The effect's direction and scale are robust — 0.3077 µm between arms
-against 0.0483 µm of drift — but the RBR arm's exact numbers are an iterate. Decide
-`n_iter` before the nine-bin run; 8 is not enough for the stated tolerance, and each
-iteration costs about 15 s per bin for the solve plus the binning, so a larger `n_iter` is
-affordable.
+against 0.0483 µm of drift — but the one-bin numbers are an iterate. The change decays as
+`n_iter**-1.066` (fitted over 8 iterations), crossing the 1.0e-03 µm tolerance near 10, so
+the RBR entries are set to **`n_iter: 15`** (predicted 6.2e-04 µm). The unconstrained arm
+stays at 3: it converged there, and raising it would invalidate its cached grids and the
+step A comparison. Each iteration costs roughly 15 s per bin, so 15 is affordable.
 
 Optional and not required: the `_legacy` third build would separate the pupil model from the
 code version. Aaron declined it once (below); only revisit if step B produces a result that
