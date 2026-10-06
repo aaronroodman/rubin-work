@@ -120,14 +120,25 @@ further down); step 2 is not, and it is a batch job.
 1. ~~Decide how the build requests RBR.~~ Done: `build.range_bounded_recovery` in
    `mi_config.yaml`, entering at `_apply_uconstraint`.
 2. **Build the `danish_1_3_v1000` RBR arm over all nine rotator bins.** Batch, so a hard
-   MUST-ASK — the submit and monitor commands are ready and were handed over 2026-10-05.
+   MUST-ASK — the submit and monitor commands are handed over, awaiting Aaron.
    `n_iter` is already set to 15 on the RBR entries (see the caveat below); the
-   unconstrained arm stays at 3 so its cached grids remain valid. A dry run plans 10 jobs
-   and leaves the unconstrained arm alone.
+   unconstrained arm stays at 3 so its cached grids remain valid. A dry run of the
+   `_rbr_5rot` split plus `study_radialbins` plans 11 jobs (9 builds + split +
+   radialbins), all in the RBR directory, and leaves the unconstrained arm alone.
 3. ~~Compare arms on the achieved residual.~~ Done, `compare_rbr_arms.py`, using
    `lsst.ts.ofc.achieved_residual`.
 4. ~~Report the MIW as inferred FWHM, DOF against `r_j`, and the change per DOF and
    v-mode.~~ Done on one bin; rerun on nine.
+5. ~~Plot the arm comparison.~~ Done, `compare_rbr_arms.py --plots` (commit `ea73fbb`):
+   a 9-page PDF of the MIW field maps per arm and their difference, the per-DOF
+   amplitude against `r_j`, and the per-v-mode shift against sigma. Verified on
+   `rot_-3_3`. The per-arm build PDFs that `intrinsic_build_plots.py` already writes
+   cover each arm alone, so only the cross-arm view was missing.
+
+**The unconstrained arm's MIW plots are built.**
+`output/miw/danish_1_3_v1000_A_50_34_i_5rot/study_radialbins.pdf` (2026-10-06), alongside
+the `intrinsic_split.pdf` the split step already wrote. The RBR arm's equivalents come
+from the batch build.
 
 **The convergence caveat is the live issue.** RBR converges much more slowly than the
 unconstrained recovery. At the configured `n_iter` 3 the unconstrained arm had settled to
@@ -147,6 +158,19 @@ actually turns on the attribution.
 
 ## Tried and rejected, and why
 
+- **Letting Snakemake rebuild the nine unconstrained grids.** Editing
+  `measured_intrinsic.py` and `run_build_intrinsic.py` changed their mtime, and both are
+  declared inputs to `build_intrinsic`, so every cached unconstrained grid went stale and
+  a dry run planned 9 needless rebuilds — which would also have overwritten the committed
+  step A grids. Resolved by `./run_snake.sh --touch` on the unconstrained target, which is
+  sound only because the RBR-off path is bit-exact (the `rot_-3_3` rebuild matched the
+  committed grid at max |diff| = 0.0 µm of wavefront). **Expect this again** after any
+  further edit to those two files: touch, do not rebuild, and re-verify bit-exactness
+  first if the RBR-off path was touched.
+- **Probing the comparison tables' column names with `next(c for c in ...)` in the
+  plotting code.** Fragile — it silently picks the wrong column or returns `None` and
+  skips a page. The names are fixed by `dof_range_table` and `vmode_table` in the same
+  file, so they are pinned as literals instead.
 - **Putting RBR at the runner's `svd.dof(A_last)` call.** That was the plan, and it is the
   wrong place: the runner's DOF are a *diagnostic* written to `dz_fits.parquet` and never
   fed back into the build. The wavefront the build subtracts is formed inside

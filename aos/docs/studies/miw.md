@@ -26,7 +26,7 @@ builds the MIW is **not here** — it is in the external `ts_intrinsic_wavefront
 | `check_dof_ranges.py` | the build's per-visit recovered degrees of freedom (DOF) against the allowed range `r_j`, per DOF and as the wavefront the over-range amplitudes carry |
 | `compare_pupil_models.py` | two builds as inferred full width at half maximum (FWHM) in arcsec, by field annulus, and by pupil Zernike term — the image-quality and localization half of a pupil-model comparison |
 | `compare_build_dof.py` | two builds' recovered DOF and v-modes, differenced per visit on the visits common to both |
-| `compare_rbr_arms.py` | an unconstrained build against its Range-Bounded Recovery arm — recovered DOF against `r_j`, achieved residual, the MIW as inferred FWHM in arcsec, and the change per DOF and per v-mode |
+| `compare_rbr_arms.py` | an unconstrained build against its Range-Bounded Recovery arm — recovered DOF against `r_j`, achieved residual, the MIW as inferred FWHM in arcsec, and the change per DOF and per v-mode. `--plots` adds the MIW field maps, the per-DOF ranges and the per-v-mode shift as a PDF |
 | `test_rbr_against_prototype.py` | cross-checks the `ts_ofc` Range-Bounded Recovery against the `smatrix` prototype, and the two independent routes to the allowed range `r_j` |
 
 The build itself is in the external `ts_intrinsic_wavefront` package
@@ -346,6 +346,12 @@ That is a factor of 50 larger than the 0.0053 µm the pupil model moved the MIW,
 so **the recovery constraint matters far more to the MIW than the pupil model
 does** — which also means step A's attribution question is not the limiting
 uncertainty here.
+
+The increase is not uniform over the field. The `--plots` difference map shows it
+concentrated at positive thy, reaching about +0.25 arcsec of inferred FWHM in the
+upper field against near zero at the lower edge, on a field median of +0.1265
+arcsec. Whatever the unconstrained arm was absorbing into out-of-range motion had
+field structure, so the median understates the change where it is worst.
 
 The mechanism is visible in the v-modes. RBR moves the *smallest*-singular-value
 retained modes: v33 (`sigma` 0.0231) by a median 3.85 in its coefficient, v21
