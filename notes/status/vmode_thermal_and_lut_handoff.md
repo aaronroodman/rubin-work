@@ -149,12 +149,60 @@ Note `thermal_focus/` carries **pre-existing uncommitted work from before this s
 `test_trim_calculator.py`, `trim_coefficients.yaml`, `trim_test_cases.yaml`). Do not sweep
 it into a commit.
 
+## Both studies are scaffolded and tested
+
+`ebadc79`. Placement settled with Aaron: part 1 into the existing `thermal_focus` topic,
+part 2 as a **new `aos` study called `cwfs_lut`**. The old `aos` `lut` study is FAM-averaged
+with no pointing dependence — Aaron's instruction was explicitly that `cwfs_lut` need not
+mimic it.
+
+| study | code | doc | tests |
+|---|---|---|---|
+| `thermal_vmodes` | `thermal_focus/code/thermal_vmodes.py` | `thermal_focus/docs/thermal_vmodes.md` | 8 |
+| `cwfs_lut` | `aos/code/cwfs_lut/cwfs_lut_lib.py` | `aos/docs/studies/cwfs_lut.md` | 18 |
+
+29 tests pass across both topics, including Aaron's 3 pre-existing `test_trim_calculator.py`.
+
+**Variants settled.** `thermal_vmodes` primary is `v50_34_rbr__batoid__consdb_v1` — the
+range-bounded recovery, physically realizable, where the unconstrained 50/34 asks a median
+33x the actuator stroke on every visit. Its intrinsic cross-check uses the two **unconstrained**
+50/34 variants, batoid and MIW, because there is **no RBR arm on the MIW route**: Aaron asked
+for RBR *and* both intrinsics, which cannot both hold, so the primary result is RBR+batoid and
+the intrinsic question is answered separately at fixed solver. Building an RBR+MIW variant is
+one more 12-shard batch (~15 min) if that compromise is not wanted.
+
+**`load_science` gained `keep_extra`** to carry the 34 `v*_olr` columns through the existing
+selection funnel, so part 1 reuses the published sample — LUT-epoch exclusion, 20 °C truss cut
+and all — rather than duplicating 80 lines. Default behaviour unchanged.
+
+Verified on real data, not just synthetically:
+
+- `-v{k}_olr == v{k}_trim - v{k}` to **6.7e-16** (dimensionless v-mode amplitude) for modes 1,
+  2, 5 and 34, so `thermal_focus`'s `MEASURED_SIGN` convention generalizes to all 34 exactly.
+- `optical_state(..., wide=True)` already yields 34 `v*_olr`, 50 `dof*_olr` and both pointing
+  columns — no new read path was needed for either study.
+- The FDR screening rule recovers a single planted thermal mode out of 34 and calls nothing on
+  pure noise; the noise-floor estimator picks out exactly the 6 modes given between-night
+  structure.
+- `cwfs_lut` runs on `day_obs` 20260713 (716 visits, elevation 23.68–82.43 deg, rotator
+  −79.43 to +78.52 deg): rotator trends are an order of magnitude larger than elevation ones
+  (M2 hexapod dz +11.47 µm/deg of rotator against −0.54 µm/deg of elevation), and the MIW route
+  shifts the rotator dz slopes by about 23% (dimensionless, MIW over batoid).
+
 ## Next concrete action
 
-The two studies, in either order. Both need a study directory, a
-`<topic>/docs/studies/<study>.md` detail doc and a `README.md` entry per the
-`rubin-new-study` skill; neither has one yet, and which topic each belongs to is still an
-open question to settle with Aaron before writing code.
+Run both studies over the full sample — neither has a result yet, only a tested pipeline.
+
+1. `thermal_vmodes.mode_table` on the 214-night sample via
+   `run_thermal_focus.load_science(..., keep_extra=thermal_vmodes.response_columns())`, then
+   `noise_floor_table` to mark where the four-corner floor sits, then `intrinsic_comparison`.
+2. `cwfs_lut.trend_table` against both angles on all three variants, then `intrinsic_spread`,
+   then the bounce-test overlay restricted to `BOUNCE_COMPARABLE_DOF` with `to_bounce_units`
+   applied.
+
+Each needs a `run_*.py` driver and an output directory; `cwfs_lut` writes to
+`aos/output/cwfs_lut/`, the topic-output level, because it reads the value-added database and
+has no `param_set` or MIW-build dependence (the rule is at `aos/docs/studies.md`).
 
 Also worth doing while in this code: `optical_state` has no index on `visit_id` alone, only
 the `(visit_id, variant_id)` primary key and `os_variant` on `variant_id`. Any per-visit
@@ -183,6 +231,25 @@ uses full-focal-plane FAM/Danish Double Zernike wavefronts; this uses 4 corner s
 Different field sampling and retrieval. The decentres are the bounce's dominant terms and the
 testable claim; high-order bending modes are not comparable.
 
+**`cwfs_lut` does not mimic the old `lut` study.** Aaron's instruction, stated directly: the
+old `aos` `lut` study was a product of the FAM and averages over all pointings, so it carries
+no pointing dependence at all. Do not try to align the two.
+
+**Part 1's response is left dimensionless.** The v-mode-1 deliverable divides by
+`DZ_UM_PER_UM_WF` into µm of equivalent hexapod dz, but that conversion is specific to
+defocus. No single physical axis stands in for the higher modes, so a per-mode conversion
+would be invented rather than derived. Rejected.
+
+**The FDR cut is a screening rule, not a significance claim.** Skill has no analytic null here
+— the response is correlated between modes and the folds are not independent — so the
+empirical null comes from the 34 modes themselves. A mode near the threshold must be confirmed
+with `thermal_focus_fit.nested_comparison` on that mode alone before it is called thermal in
+prose.
+
+**`aos/docs/studies.md` lists `science_lut` and `fam_focus` with no doc and no code.** Both
+look like work that became the `thermal_focus` topic. Aaron's call was to leave the index
+alone, so those two rows are knowingly stale.
+
 **Part 1 must split by night, never by visit.** `thermal_focus` established that only 2.7% of
 the truss temperature's variance is within-night (dimensionless, within-night over total), so
 consecutive visits are near-duplicates in feature space and a visit-level split leaks.
@@ -202,6 +269,13 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
   all 34 but say where the measurement noise floor sits.
 - `olr/Snakefile` still references `run_olr.py`, which now fails loudly. Unrelated to these
   two studies but it will surface if the pipeline is invoked.
+- **`efd_db.optical_state(wide=True)` emits one pandas fragmentation warning per expanded
+  column** — hundreds of lines that bury real output. Filter warnings before calling it, or the
+  signal is lost. The expansion itself is correct.
+- `aos/code/miw_corner_intrinsic.py`'s `DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` name nothing
+  on disk. Always pass `--intrinsic-ref` and `--miw-param-set` explicitly.
+- `thermal_focus/` carries Aaron's uncommitted `trim_calculator` work. `thermal_focus/README.md`
+  has edits from both of us interleaved and is deliberately left unstaged.
 
 ## Reference
 
