@@ -1,8 +1,9 @@
 # Thermal response of all 34 v-modes
 
-> **Status:** in progress · **Last updated:** 2026-10-06 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-06 · **Kind:** reference (study)
 
-> **Code:** `code/thermal_vmodes.py`, `code/test_thermal_vmodes.py`
+> **Code:** `code/thermal_vmodes.py`, `code/run_thermal_vmodes.py`, `code/test_thermal_vmodes.py`
+> **Output:** `output/thermal_vmodes/`
 > **Notebooks:** `notebooks/`
 
 Extends the [thermal-focus](thermal_focus.md) deliverable from v-mode 1 to every v-mode the
@@ -100,6 +101,7 @@ its default behaviour is unchanged.
 
 | function | what it does |
 |---|---|
+| `run_thermal_vmodes.py` | the run: the per-mode table, the noise floor, both intrinsic routes |
 | `attach_mode_response` | sets `y` to one mode's optical state from the stored open-loop column |
 | `null_nmad` | out-of-fold residual nMAD of a median-intercept null, nights held out |
 | `fit_mode` | night-grouped Huber fit and null for one mode |
@@ -115,9 +117,59 @@ nothing must be.
 
 ## Results
 
-Not yet produced over the full sample. The screening rule is verified on synthetic data
-(recovers a single planted mode out of 34, calls nothing on pure noise) but has not been run
-against the 214-night sample.
+**V-mode 1 is the only thermal mode.** Over 72,835 science visits across 175 nights on
+`v50_34_rbr__batoid__consdb_v1`, one mode of 34 survives the false-discovery-rate cut at
+`q = 0.05` (dimensionless), and it is the defocus mode the thermal-focus deliverable already
+models. The gap below it is wide, not marginal: v1 scores a skill of +0.808 and the next mode,
+v10, scores +0.243 (both dimensionless, fractional reduction in out-of-fold residual nMAD).
+
+| mode | skill | nMAD null | nMAD fit | between/within | well constrained | thermal |
+|---|---|---|---|---|---|---|
+| v1 | +0.808 | 0.3092 | 0.0593 | 37.07 | yes | **yes** |
+| v10 | +0.243 | 0.6818 | 0.5162 | 4.01 | yes | no |
+| v18 | +0.222 | 0.1870 | 0.1455 | 1.78 | no | no |
+| v15 | +0.219 | 0.6605 | 0.5161 | 9.72 | no | no |
+| v19 | +0.208 | 0.6168 | 0.4888 | 3.75 | no | no |
+| v13 | +0.169 | 0.5766 | 0.4794 | 8.68 | no | no |
+| v22 | +0.160 | 0.1648 | 0.1384 | 2.70 | no | no |
+| v3 | +0.152 | 0.0741 | 0.0628 | 5.74 | yes | no |
+
+Skill and the between/within ratio are dimensionless; the nMAD columns are dimensionless v-mode
+amplitude. The v1 truss coefficient is +0.1132 (dimensionless v-mode-1 amplitude per °C of mean
+TMA truss temperature), the same channel and sign the deliverable reports.
+
+The modes scoring between +0.15 and +0.25 are **not** a weak thermal signal to be chased. Three
+things place them: none survives the multiple-comparison cut; the empirical null's own scale is
+set by that cluster, so they define the noise rather than stand out from it; and the residual
+nMAD they leave is an order of magnitude larger than v1's in absolute terms (0.49 to 0.52
+against 0.059 dimensionless v-mode amplitude), so even taken at face value they would predict
+little of what is there.
+
+**The noise floor is not monotonic in mode index**, which is why the ratio is measured rather
+than assumed. 19 of 34 modes carry between-night structure at more than twice their own
+within-night scatter; the 15 that do not are v6, v11, v12, v17, v18 and v23 through v32. So v34
+(ratio 5.15) is better determined night to night than v11 (ratio 0.96) or v12 (ratio 1.02).
+`WELL_CONSTRAINED_MAX = 12` remains a useful flag for the recovery's conditioning, but it is not
+the same statement as this ratio and the table reports both.
+
+**The two intrinsic routes agree, as predicted.** On the unconstrained 50/34 pair, 32 of 34
+modes get the same thermal flag and the median absolute skill difference is 0.0016
+(dimensionless). Both disagreements are threshold artefacts rather than physics: v3 scores
++0.172 on both routes to three decimals and falls on opposite sides of the cut, and v18 differs
+by 0.030 (dimensionless) with neither route calling it thermal in the primary result. Neither
+route finds a thermal mode the other misses.
+
+The practical consequence: the published v-mode-1 correction is the whole thermal feed-forward
+available from these five channels. There is no second mode to add to it.
+
+Reproduce with:
+
+```bash
+python code/run_thermal_vmodes.py
+```
+
+Products in `output/thermal_vmodes/`: `mode_table_<variant>.parquet`, `noise_floor.parquet`,
+`intrinsic_comparison.parquet`.
 
 ## Reference
 

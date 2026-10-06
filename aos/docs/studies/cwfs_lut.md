@@ -1,6 +1,6 @@
 # Study: `cwfs_lut` — pointing dependence of the open-loop state, from science visits
 
-> **Status:** in progress · **Last updated:** 2026-10-06 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-06 · **Kind:** reference (study)
 
 > **Code:** `code/cwfs_lut/` · **Notebooks:** `notebooks/cwfs_lut/`
 > **Output:** `output/cwfs_lut/`
@@ -94,6 +94,7 @@ test's dominant terms and the testable claim.
 | module | what it does |
 |---|---|
 | `cwfs_lut_lib.py` | DOF labels and units, the arcsec/deg conversion, Huber trend fits, per-DOF trend tables, intrinsic-route comparison |
+| `run_cwfs_lut.py` | the run: both angles on three variants, the intrinsic comparison, the bounce-units table |
 | `test_cwfs_lut_lib.py` | 18 tests; the one that matters pins the tilt conversion to the four tilt DOF alone |
 
 Fits are Huber robust linear (`statsmodels.RLM` with `HuberT`), the repository default for
@@ -105,12 +106,66 @@ true uncertainty**: successive visits are correlated, so the effective sample is
 
 ## Results
 
-Not yet produced over the full sample. A single-night check on `day_obs` 20260713 (716 visits,
-unconstrained 50/34) shows rotator-angle trends an order of magnitude larger than elevation
-trends — M2 hexapod dz at +11.47 µm/deg of rotator against −0.54 µm/deg of elevation — and
-the MIW route shifting the rotator dz slopes by about 23% (dimensionless, MIW over batoid),
-consistent with the rotator-dependent part of the MIW−batoid intrinsic difference entering the
-trend. One night is not a result; the 214-night fit is.
+96,278 visits across 214 nights on the range-bounded recovery, elevation spanning 17.11 to
+83.19 deg and rotator angle −79.87 to +79.51 deg.
+
+**One term dominates: M2 hexapod dx against rotator angle, +20.39 µm/deg of rotator**, with
+Pearson r = +0.718 and Spearman rho = +0.759 (both dimensionless, n = 96,278 visits). That is
+the only rigid-body trend in either angle with a correlation above 0.6, and it is a clean
+candidate for a LUT term. Second is M2 hexapod ry against rotator angle at
+−1.701e-4 deg/deg (−0.612 arcsec/deg), r = −0.525, rho = −0.656.
+
+| DOF | vs elevation [unit/deg] | Pearson r | vs rotator [unit/deg] | Pearson r | unit |
+|---|---|---|---|---|---|
+| M2 hexapod dz | +1.570 | +0.011 | −0.684 | −0.030 | µm |
+| M2 hexapod dx | +5.937 | +0.083 | **+20.39** | **+0.718** | µm |
+| M2 hexapod dy | −7.586 | −0.068 | −4.860 | −0.111 | µm |
+| M2 hexapod rx | −9.981e-5 | −0.104 | −4.428e-5 | −0.105 | deg |
+| M2 hexapod ry | −4.850e-5 | −0.054 | **−1.701e-4** | **−0.525** | deg |
+| camera hexapod dz | −0.879 | +0.008 | +1.039 | +0.066 | µm |
+| camera hexapod dx | +3.957 | +0.042 | +2.981 | +0.051 | µm |
+| camera hexapod dy | +0.979 | −0.003 | −0.246 | −0.022 | µm |
+| camera hexapod rx | +1.371e-5 | +0.033 | +2.681e-5 | +0.125 | deg |
+| camera hexapod ry | −2.677e-6 | −0.003 | +4.799e-6 | −0.007 | deg |
+
+**Elevation carries no strong trend.** No elevation slope reaches r = 0.09 (dimensionless), and
+the largest in magnitude — camera hexapod dy at −14.59 µm/deg on the two-night smoke test —
+drops to +0.979 µm/deg over the full sample. A trend that changes sign when the sample grows
+from 2 nights to 214 is a per-night offset being read as a slope, not elevation dependence.
+Gravity-driven elevation terms are presumably already removed by the hexapod LUT in force during
+the survey, which is what the open-loop residual is measured against.
+
+**The two intrinsic routes agree far better than the single-night check suggested.** On the
+unconstrained 50/34 pair the MIW−batoid slope differences are sub-percent on every large term:
+M2 hexapod dx against rotator angle differs by −0.024 µm/deg out of +8.79 (0.3%, dimensionless
+MIW over batoid), and the largest absolute difference anywhere is camera hexapod dy at
++0.290 µm/deg. The earlier 23% figure came from `day_obs` 20260713 alone and does not survive
+the full sample — a single night does not constrain a slope well enough to compare routes.
+
+So the intrinsic route matters for the **absolute** open-loop state, where the lateral decentres
+shift by more than their own value, but not for the **trends** a LUT is built from. A static
+intrinsic offset moves an intercept and not a slope, and that is what the data shows.
+
+**The solver matters much more than the intrinsic.** The headline M2 dx term against rotator
+angle is +20.39 µm/deg under the range-bounded recovery and +8.79 µm/deg unconstrained — a
+factor of 2.3 (dimensionless, RBR over unconstrained) — and its Pearson r goes from +0.218 to
++0.718 (dimensionless, n = 96,278 visits both). The range-bounded solution is not merely scaled;
+it is a far tighter function of rotator angle. That is the expected direction, since the
+unconstrained solution spends amplitude on states the actuators cannot reach, but the size of it
+means a LUT term must state which recovery it was fitted on. The primary result here is RBR.
+
+Reproduce with:
+
+```bash
+python code/cwfs_lut/run_cwfs_lut.py
+```
+
+Products in `aos/output/cwfs_lut/`: `trend_<variant>_<angle>.parquet` for three variants and two
+angles, `intrinsic_spread_<angle>.parquet`, and `bounce_comparable_<angle>.parquet` — the ten
+rigid-body axes in the bounce test's units, with a `comparable` flag marking the six decentres.
+
+Not yet done: the overlay against the measured bounce-test slopes. These are the science-survey
+side of that comparison.
 
 ## Reference
 

@@ -226,6 +226,11 @@ def bh_threshold(stats, q=FDR_Q):
     a screening rule for which modes deserve a closer look, **not** a calibrated significance
     claim. A mode near the threshold should be confirmed by `thermal_focus_fit.nested_comparison`
     on that mode alone.
+
+    Because the null is the sample of modes itself, the rule needs the full set to be meaningful.
+    Run on a handful of low modes -- which all carry signal -- the median and nMAD are set by
+    signal rather than noise and the threshold lands arbitrarily high. Do not read the flag from
+    a run with ``n_modes`` much below `N_MODES`.
     """
     from scipy.stats import norm
 
