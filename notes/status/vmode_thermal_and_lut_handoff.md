@@ -1,6 +1,6 @@
 # All-v-mode thermal and LUT-dependence studies
 
-> **Status:** current · **Last updated:** 2026-10-06 · **Kind:** working state (handoff)
+> **Status:** current · **Last updated:** 2026-10-07 · **Kind:** working state (handoff)
 
 Two studies off the stored open-loop reconstruction (OLR) columns of `optical_state`:
 
@@ -49,10 +49,12 @@ the documentation was wrong in both directions.
    `dof`. Proven from the data: `dof` and `dof_olr` agree to within 10% on DOF 3
    (0.0117 against 0.0128 deg), where an arcsec/deg mismatch would show 3600x.
 
-`ofc_svd.DOF_UNITS_50` genuinely does label those four arcsec, and **the bounce-test results
-follow that convention** — so part 2's comparison needs 3600 arcsec/deg on DOF 3, 4, 8, 9 and
-nothing on the other 46. That mismatch is silent: it leaves the dominant decentre and bending
-terms correct and corrupts only the tilts.
+`ofc_svd.DOF_UNITS_50` genuinely does label those four arcsec. **The claim that followed here —
+that the bounce-test results follow that convention, so the comparison needs 3600 arcsec/deg —
+was wrong, and is retracted.** The bounce test stores the tilts in **deg**, exactly as the
+survey side does, and nothing in either pipeline ever scales a value to match the arcsec label.
+See "The units defect" below for the five checks that settle it. The conversion was implemented
+in `cwfs_lut_lib` on the strength of this paragraph and has been removed.
 
 Two tests pin it, in `value_added/code/test_build_optical_state.py` (6 tests, all passing):
 `test_hexapod_tilt_range_is_deg_not_arcsec` and
@@ -285,22 +287,143 @@ Two corrections to what this handoff and `thermal_vmodes.md` previously said: th
 residual nMAD was given as 0.49–0.52 (dimensionless v-mode amplitude); the true range over those
 eight modes is **0.063 to 0.516**. And the solver scatter claim, above.
 
+## The bounce comparison is done, and it found a units defect
+
+Code is `aos/code/cwfs_lut/bounce_compare.py`, four new figure pages in `cwfs_lut_figures.py`,
+21 tests in `test_bounce_compare.py`. Products are five `bounce_compare_*.parquet` under
+`aos/output/cwfs_lut/`, and `cwfs_lut.pdf` is now ten pages. `--no-bounce` skips it; it also
+skips itself with a message when the bounce run is absent, since that is another study's output.
+
+### The units defect
+
+`cwfs_lut_lib` applied **3600 arcsec/deg to DOF 3, 4, 8, 9** believing the bounce test reported
+arcsec. It does not — both sides store **deg** — so that conversion was a factor-3600 error
+waiting in exactly the four axes it touched. Removed, along with `DEG_TO_ARCSEC`,
+`to_bounce_units` and the `bounce_units` keywords. Five checks, any one sufficient:
+
+| check | value | reading |
+|---|---|---|
+| ts_ofc `default_rb_stroke()` and `OFCData('lsst').rb_stroke` | tilts 0.12, 0.24 | 0.12 deg = 432 arcsec is a real hexapod stroke; 0.12 arcsec is not |
+| ts_ofc sensitivity matrix, tilt over decentre column | 5.6 m lever arm as deg | as arcsec it implies 20 km |
+| `bounce_dof_stats.parquet` `dof_range` | 0.12, 0.24 | the bounce's own range, in its own stored unit |
+| controller `max_integral` | 0.01 on tilts vs 500/100 µm | 0.01 deg = 36 arcsec is a sane clamp |
+| `grep 3600` in bounce, `ofc_svd`, `regularized_inversion` | no matches | no conversion exists to have been applied |
+
+Root cause is `ofc_svd.DOF_UNITS_50`, which mislabels those four `arcsec`; the bounce `unit`
+column is a bare copy of that label (`run_bounce.py:1134`) with no value ever scaled.
+`load_bounce_stats` **drops that column** and reattaches units from `dof_label`, so the mislabel
+structurally cannot reach a comparison. Two tests fail if the factor returns, and I verified
+both fail by reintroducing it in a scratch copy — only those two, so they are specific rather
+than brittle.
+
+The two `bounce_comparable_*.parquet` on disk had 3600×-inflated tilt slopes; the rerun
+overwrote them. Nothing had consumed them.
+
+### Two findings that changed the comparison's design
+
+**The arm matters more than the solver, and this was not anticipated.** The bounce Δ is a paired
+difference of the recovered **deviation** (`bounce_lib.paired_delta`) and never subtracts the
+Trim, while `dof*_olr` is `Deviation − Trim`. The handoff's original instruction compared one
+against the other. Matching arms properly, on the M2+camera dx sum in µm per deg of rotator:
+bounce +20.33, survey deviation **+21.15 (4.0%)**, survey open loop +17.17 (15.6%). The arm is
+now an explicit axis and defaults to deviation.
+
+**Per-DOF comparison is degenerate; the aggregate is the result.** Cosine similarity over the
+rotator leg, bounce unconstrained against survey deviation:
+
+| subspace | significant | batoid | MIW | RBR |
+|---|---|---|---|---|
+| 6 hexapod translations | 3 of 6 | **+0.829** | +0.840 | +0.524 |
+| 4 hexapod tilts | 3 of 4 | +0.815 | +0.827 | +0.638 |
+| 40 bending modes | 25 of 40 | **+0.093** | +0.021 | −0.200 |
+| 34 v-modes | 19 of 34 | −0.225 | −0.185 | +0.261 |
+
+The hexapod rigid-body terms agree; the bending modes do not, despite 25 of 40 being
+individually significant on the bounce side. **That measures the field-sampling limit the study
+previously only asserted** — four corner points against a full-focal-plane DZ retrieval.
+
+Individually, M2 dx is +4.48 bounce against +8.08 survey and camera dx is +15.85 against +12.91
+(µm per deg) — wrong in opposite directions — while the sum agrees to 4%. The bounce note says
+the same from its own side: the rigid-body split is not uniquely pinned, while the rigid-body
+wavefront is preserved.
+
+**RBR degrades the agreement** (+0.829 → +0.524 on the translations), consistent with the bounce
+note's warning that an RBR rigid-body amplitude is a constrained estimate, not a measurement of
+hexapod motion. So the headline is the **unconstrained** arm on both sides — which supersedes
+this file's earlier "RBR-to-RBR is the matching arm" instruction.
+
+### The open question this leaves
+
+The survey elevation trends are near-flat (|Pearson r| ≤ 0.09) while the bounce elevation legs
+are large: M2 dy −26.77 ± 1.04 µm per deg over the five legs. **Both sides ran with the hexapod
+LUT active** (Aaron confirmed), so both measure LUT *residual* and the comparison is
+like-for-like. That makes it a real disagreement, not two different quantities, and it is
+unexplained. The dy lateral sum disagrees on the rotator leg too (+10.21 bounce against +0.38
+survey), so dy may be the common thread.
+
+## The per-channel thermal screen is done
+
+`e0b6e91`. Every v-mode against every thermal telemetry channel: 28 channels × 34 modes = 952
+single-channel Huber fits, with a Spearman colour map, and for any mode reaching |rho| >= 0.4 a
+combined fit on its leading 4 distinct channels. Code is
+`thermal_focus/code/thermal_vmodes_channels.py` and `thermal_vmodes_channel_figures.py` (11
+pages); 12 tests in `test_thermal_vmodes_channels.py`.
+
+**Seven modes reach |rho| >= 0.4**, against the one the five-channel joint screen found:
+
+| mode | strongest channel | rho | skill single -> combined | gain |
+|---|---|---|---|---|
+| v1 | TMA truss mean | +0.789 | +0.553 -> +0.656 | +24.9% |
+| v18 | M1M3 z gradient | −0.511 | +0.204 -> +0.225 | +1.9% |
+| v15 | truss − ambient | +0.456 | +0.172 -> +0.275 | +11.6% |
+| v10 | M1M3 quadratic radial | +0.449 | +0.182 -> +0.187 | +1.1% |
+| v19 | M1M3 z gradient | +0.421 | +0.131 -> +0.183 | +5.9% |
+| v13 | truss − ambient | +0.405 | +0.121 -> +0.166 | +5.1% |
+| v21 | L2 lens X+ | −0.405 | +0.151 -> +0.180 | +8.1% |
+
+(rho is Spearman, dimensionless; skill is the fractional reduction in out-of-fold residual nMAD
+against a median-intercept null, dimensionless)
+
+**Only v-mode 1 has a thermal origin, and Aaron has agreed that conclusion.** For the other six
+the out-of-fold prediction cannot reproduce the mode's range — v18's prediction spans 0.0 to
++0.6 against a response spanning −0.5 to +1.0 — and the combination buys as little as 1.1%.
+Verified on the per-mode figure pages, not from the table alone.
+
+**v-mode index is not the aberration, and the stated expectation was wrong.** v12 is **not**
+spherical — it is dominated by Noll Z15. Spherical Z11 lives in v21 (0.338) and v16 (0.250);
+Z22 in v14 (0.104) and v31 (0.096). Computed from `aos_state.corner_recovery_basis`, with the
+corner-major row order verified empirically (v1 carries 0.500 of Z4 at all four corners) rather
+than trusted from a docstring. Tested on the modes that actually carry each Zernike, **1 of 15
+predicted pairs holds**: spherical Z11 from the M1M3 z-gradient on v18 at rho −0.511, which is
+also the strongest non-v1 correlation anywhere in the grid. The Z22-from-radial-gradient
+prediction fails on all three carriers (v14 −0.069, v31 +0.168, v28 +0.008) and Z4 shows no
+z-gradient response even on v1 (−0.153) — v1's thermal signal is truss bulk temperature, not a
+gradient. What this does **not** test: the prediction is about mirror figure response, while the
+measured quantity is the open-loop state after AOS correction, so a gradient term the loop
+removes well would be absent regardless.
+
+Sample-size caveat, so the two tables are not read as contradictory: v1's skill is +0.656 in the
+channel table against +0.808 in the primary one because the combined fit leads with
+`truss_minus_ambient_c`, which needs `cam_AmbAirtemp` and drops the sample to 67,519 visits from
+68,690.
+
 ## Next concrete action
 
-**Overlay the measured bounce-test slopes on part 2.** `bounce_comparable_<angle>.parquet` holds
-the science-survey side — all ten rigid-body axes in the bounce test's own units, with a
-`comparable` flag marking the six decentres. The bounce side is
-`notes/aos-bounce-test-summary/note.md` under "Physical degrees of freedom". Compare on the six
-decentres only; the tilts are converted and present but the two retrievals sample the field
-differently.
+The bounce comparison is built and has run (see below). What is left:
 
-Watch the solver when doing it. The bounce note's own range-penalty result is the matching arm —
-comparing an RBR survey slope against an unconstrained bounce slope would mix a factor of 2.3
-into the answer.
-
-Also worth doing while in this code: `optical_state` has no index on `visit_id` alone, only
-the `(visit_id, variant_id)` primary key and `os_variant` on `variant_id`. Any per-visit
-update or join pays for that. Adding one would make the next bulk correction cheap.
+1. **Inspect every page of the new `cwfs_lut.pdf` as a rendered PNG** before quoting it. Nine
+   pages now. Use PyMuPDF (`import fitz`) — `pypdf` and `pdftoppm` are not available here. The
+   last round of figure work is where the broken solver page and four label overflows were
+   caught, and only by looking.
+2. **`value_added` is a cross-topic follow-up, not for an `aos/` session.**
+   `value_added/docs/schema.md` (the "DOF units" section) and
+   `value_added/code/build_optical_state.py:109` both carry the same retracted "needs 3600
+   arcsec/deg to compare against the bounce test" claim. The schema doc already says the stored
+   tilts are deg, so only its remedy sentence is wrong. Topic independence says fix it from a
+   `value_added` session.
+3. Still open from before: `optical_state` has no index on `visit_id` alone, only the
+   `(visit_id, variant_id)` primary key and `os_variant` on `variant_id`. Any per-visit update
+   or join pays for that.
 
 ## Decisions taken, and what was rejected
 
@@ -389,6 +512,29 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
 - **Do not read a thermal relation off skill alone.** V-modes 3 and 18 score positive skill and
   correlate negatively with truss temperature. Check the sign of Pearson r before calling
   anything thermal; the per-mode table does not carry it, the figures do.
+- **`ofc_svd.DOF_UNITS_50` is wrong about the four hexapod tilts** and so is anything that
+  copies it, including the bounce `unit` column and `aos/docs/studies/bounce.md`. They are
+  **deg** everywhere. Do not "fix" a comparison by applying 3600 arcsec/deg; that was tried and
+  removed. `cwfs_lut_lib.HEX_TILT_UNIT` is the greppable statement.
+- **The v-mode index is not the aberration.** v12 is Z15, not spherical. Get the mapping from
+  `aos_state.corner_recovery_basis` and verify the row order empirically — `U` is
+  (84, 50) = 4 corners × 21 Noll, **corner-major**, which v1 confirms by carrying 0.500 of Z4 at
+  all four corners.
+- **Near-collinear telemetry channels lose skill when combined.** The 24 camera temperatures are
+  nearly one signal (mutual |rho| 0.92–0.95), so a naive top-4-by-rho gave four thermometers on
+  the same structure and *lost* skill against the single best channel. `CHANNEL_DUP_RHO = 0.9`
+  plus `select_lead` fixes it; all seven modes then gain.
+- **A comparison table stacking several variants needs an explicit variant selection** before
+  plotting. The bounce pages silently averaged three variants on a first pass, which hid the
+  unconstrained result behind RBR. `cwfs_lut_figures._headline_rows` does the selection and
+  `HEADLINE_VARIANT` names it in every subtitle.
+- **Do not annotate a horizontal categorical axis by data coordinate.** On the subspace page the
+  "N of M significant" labels drifted one row from their ticks and one hid behind the legend.
+  Putting the count in the tick label itself cannot drift.
+- **`bounce_slope` returns one row per leg per entry.** The elevation program has five legs, so
+  `set_index('index')` has duplicates and `.get(j)` returns a Series — which crashed
+  `errorbar` with "too many values to unpack". For a single comparable slope per axis use the
+  weighted fit from `compare_elevation_legs`, not one arbitrary leg.
 
 ## Reference
 

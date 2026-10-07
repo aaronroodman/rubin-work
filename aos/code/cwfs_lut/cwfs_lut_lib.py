@@ -25,21 +25,35 @@ prediction by 0.0547 µm of wavefront at the corners even at rotator angle 0 deg
 than the term's own value. Neither route is the reference; the spread between them is part of
 the result.
 
-Units, and the one trap in this study
--------------------------------------
+Units: the four hexapod tilts are deg, on both sides
+----------------------------------------------------
 The 50-element DOF vector is stored with **the four hexapod tilts (DOF 3, 4, 8, 9) in deg** and
 everything else in µm. `lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50` labels those same four
-**arcsec**, and the bounce-test tables follow that convention. So any comparison against the
-bounce test needs 3600 arcsec/deg applied to exactly those four entries and nothing on the other
-46. `to_bounce_units` does this; the mismatch is otherwise silent, leaving the dominant decentre
-and bending terms correct and corrupting only the tilts.
+**arcsec**, and the bounce-test tables copy that label — but neither side ever scales a value to
+match it, so **both are deg and no conversion exists in either direction**. The label is wrong,
+not the numbers.
+
+The ts_ofc sensitivity matrix settles it: the ratio of a tilt column to its matching decentre
+column is that tilt's lever arm, 5.6 m for M2 read as deg against 20 km read as arcsec. The
+allowed tilt stroke agrees — ts_ofc's `rb_stroke` gives 0.12 and 0.24, which are degrees (432 and
+864 arcsec) of hexapod travel.
+
+The real trap: match the arm, not just the solver
+-------------------------------------------------
+The bounce test's Δ is a paired difference of the recovered **deviation**, and never subtracts
+the Trim. The stored ``dof*_olr`` is the **open-loop** state, ``Deviation - Trim``. Comparing one
+against the other mixes two quantities that differ by the Trim, and it costs real agreement: the
+lateral M2-plus-camera dx sum matches the bounce to 3% on the deviation arm and to 17% on the
+open-loop arm. `bounce_compare` carries the arm as an explicit axis for this reason.
 
 Scope of the bounce-test comparison
 -----------------------------------
-Limited to the **hexapod decentres**. The bounce test retrieves a full-focal-plane Double
-Zernike field from FAM data; this study has four corner field points. Different field sampling
-and a different retrieval, so the high-order mirror bending modes are not comparable. The
-decentres are the bounce test's dominant terms and the testable claim.
+The quantitative claim is limited to the **six hexapod translations**, and that limit is now
+measured rather than argued. Over the rotator leg the two retrievals agree at cosine similarity
++0.827 (dimensionless) on the translation subspace and +0.057 on the 40 bending modes, even
+though 25 of those 40 are individually significant above 3 sigma on the bounce side. The bounce
+test retrieves a full-focal-plane Double Zernike field; this study has four corner field points,
+which cannot constrain mirror figure the same way.
 """
 import pathlib
 import sys
@@ -54,12 +68,18 @@ sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))
 
 from common.utils import nmad                                    # noqa: E402
 
-#: Tilt entries of the 50-element DOF vector: M2 hexapod rx/ry then camera hexapod rx/ry. Stored
-#: in deg; `ofc_svd.DOF_UNITS_50` and the bounce test call the same four arcsec.
+#: Tilt entries of the 50-element DOF vector: M2 hexapod rx/ry then camera hexapod rx/ry. Kept
+#: as a group because they need their own plot panel -- a tilt slope in deg per deg and a
+#: decentre slope in µm per deg cannot share an axis -- not because they need converting.
 HEX_TILT_DOF = (3, 4, 8, 9)
 
-#: arcsec per deg, applied to `HEX_TILT_DOF` alone when comparing against the bounce test.
-DEG_TO_ARCSEC = 3600.0
+#: Unit of the four `HEX_TILT_DOF` entries, here and in the bounce-test tables alike.
+#:
+#: `ofc_svd.DOF_UNITS_50` labels them arcsec and the bounce `unit` column copies that label
+#: without scaling any value, so nothing converts in either direction. Read as arcsec, the
+#: ts_ofc tilt sensitivity implies a 20 km lever arm on M2; read as deg it implies 5.6 m, which
+#: is the real M2-to-M1M3 vertex spacing. Named so the convention is greppable and testable.
+HEX_TILT_UNIT = 'deg'
 
 #: The ts_ofc 50-DOF layout: DOF 0-4 are the M2 hexapod, DOF 5-9 the camera hexapod, each as
 #: (dz, dx, dy, rx, ry). DOF 10-29 are M1M3 bending, 30-49 M2 bending.
@@ -88,59 +108,29 @@ RBR_VARIANT = 'v50_34_rbr__batoid__consdb_v1'
 MIN_VISITS = 200
 
 
-def dof_label(j, bounce_units=False):
+def dof_label(j, n_dof=50):
     """Name and unit of one DOF entry.
 
     Parameters
     ----------
     j : `int`
         DOF index, 0-based in the ts_ofc 50-element layout.
-    bounce_units : `bool`, optional
-        Report the tilts in arcsec, the bounce-test convention, rather than the stored deg.
+    n_dof : `int`, optional
+        Length of the layout `j` indexes into, for the bending-mode naming.
 
     Returns
     -------
     name : `str`
     unit : `str`
+        ``'µm'`` for translations and bending amplitudes, `HEX_TILT_UNIT` for the four
+        hexapod tilts. There is no second unit convention to ask for -- see the module
+        docstring.
     """
     if j in DOF_LABELS:
-        name, unit = DOF_LABELS[j]
-        if bounce_units and j in HEX_TILT_DOF:
-            unit = 'arcsec'
-        return name, unit
+        return DOF_LABELS[j]
     if j < 30:
         return f'M1M3 bending {j - 9}', 'µm'
     return f'M2 bending {j - 29}', 'µm'
-
-
-def to_bounce_units(dof, copy=True):
-    """Convert a stored DOF vector or array into the bounce test's units.
-
-    Parameters
-    ----------
-    dof : `numpy.ndarray`
-        Shape ``(50,)`` or ``(n, 50)``, stored units: µm, with `HEX_TILT_DOF` in deg.
-    copy : `bool`, optional
-        Work on a copy, the default.
-
-    Returns
-    -------
-    out : `numpy.ndarray`
-        Same shape, with `HEX_TILT_DOF` scaled by `DEG_TO_ARCSEC` and the other 46 untouched.
-
-    Raises
-    ------
-    ValueError
-        If the last axis is not 50 long -- a 34-element v-mode vector passed here by mistake
-        would otherwise be silently mangled.
-    """
-    a = np.asarray(dof, float)
-    if a.shape[-1] != 50:
-        raise ValueError(f'expected a 50-element DOF axis, got {a.shape[-1]}; the v-mode '
-                         f'vectors are 34 long and must not be scaled')
-    out = a.copy() if copy else a
-    out[..., list(HEX_TILT_DOF)] *= DEG_TO_ARCSEC
-    return out
 
 
 def olr_columns(n_dof=50):
@@ -211,7 +201,7 @@ def huber_trend(x, y, min_n=MIN_VISITS, min_span=5.0):
                 spearman_rho=float(spearmanr(xa, ya)[0]))
 
 
-def trend_table(df, angle_col, dof_indices=None, bounce_units=False, verbose=True):
+def trend_table(df, angle_col, dof_indices=None, verbose=True):
     """Open-loop DOF trend against one pointing angle, per DOF.
 
     Parameters
@@ -222,9 +212,6 @@ def trend_table(df, angle_col, dof_indices=None, bounce_units=False, verbose=Tru
         ``'elevation_deg'`` or ``'rotator_angle_deg'``.
     dof_indices : `iterable` [`int`], optional
         DOF to fit, defaulting to the ten rigid-body entries.
-    bounce_units : `bool`, optional
-        Report the four tilt DOF in arcsec rather than the stored deg, for comparison against
-        the bounce test.
     verbose : `bool`, optional
 
     Returns
@@ -245,12 +232,10 @@ def trend_table(df, angle_col, dof_indices=None, bounce_units=False, verbose=Tru
         col = f'dof{j}_olr'
         if col not in df.columns:
             continue
-        y = df[col].to_numpy(float)
-        if bounce_units and j in HEX_TILT_DOF:
-            y = y * DEG_TO_ARCSEC
-        name, unit = dof_label(j, bounce_units=bounce_units)
+        name, unit = dof_label(j)
         rows.append(dict(dof=j, name=name, unit=unit,
-                         **huber_trend(df[angle_col].to_numpy(float), y)))
+                         **huber_trend(df[angle_col].to_numpy(float),
+                                       df[col].to_numpy(float))))
     tab = pd.DataFrame(rows)
 
     if verbose:

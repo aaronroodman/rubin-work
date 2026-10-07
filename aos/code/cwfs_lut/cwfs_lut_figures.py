@@ -44,6 +44,8 @@ _HEADLINE_COLOR = '#d62728'
 _BINNED_COLOR = '#2ca02c'
 _RBR_COLOR = '#d62728'
 _UNCON_COLOR = '#1f77b4'
+_BOUNCE_COLOR = '#ff7f0e'
+_SURVEY_COLOR = '#1f77b4'
 
 
 def _angle_label(angle):
@@ -345,8 +347,8 @@ def figure_angle_grid(pdf, df, angle, variant='', dof_indices=RIGID_BODY_DOF):
     plt.close(fig)
 
 
-def figure_slope_summary(pdf, tabs, angle, bounce_units=True, dof_indices=RIGID_BODY_DOF):
-    """Slope per rigid-body axis, all three variants together, in the bounce test's units.
+def figure_slope_summary(pdf, tabs, angle, dof_indices=RIGID_BODY_DOF, bounce=None):
+    """Slope per rigid-body axis, every variant together, with the bounce test overlaid.
 
     Parameters
     ----------
@@ -356,22 +358,25 @@ def figure_slope_summary(pdf, tabs, angle, bounce_units=True, dof_indices=RIGID_
         `cwfs_lut_lib.trend_table` results keyed ``(variant, angle)``.
     angle : `str`
         Pointing-angle column.
-    bounce_units : `bool`, optional
-        Plot the four tilt axes in arcsec rather than deg, matching the bounce test.
     dof_indices : `tuple` [`int`], optional
+    bounce : `pandas.DataFrame`, optional
+        `bounce_compare.bounce_slope` result for this angle, drawn as a fourth marker per
+        axis. Omitted when the bounce run is not on disk.
 
     Notes
     -----
     The two results of the study in one panel: the two intrinsic routes sit on top of each other
-    while the two solvers separate. Split into a µm panel and an arcsec panel because mixing a
-    decentre slope in µm/deg with a tilt slope in arcsec/deg on one axis would be meaningless.
+    while the two solvers separate. Split into a µm panel and a deg panel because mixing a
+    decentre slope in µm per deg with a tilt slope in deg per deg on one axis would be
+    meaningless. No unit conversion is applied to either -- the bounce test stores the same
+    units this study does, which is what the module docstring of `cwfs_lut_lib` settles.
 
-    Error bars are the **formal** RLM standard errors and are known to understate the truth --
-    successive visits are correlated, so the effective sample is smaller than ``n``. They are
-    drawn to compare variants against each other, not as confidence intervals.
-
-    The bounce-test slopes drop onto this page as a fourth marker per axis when that comparison
-    is done; the axes and units are already the bounce test's.
+    Error bars are the **formal** RLM standard errors on the survey arms and are known to
+    understate the truth -- successive visits are correlated, so the effective sample is
+    smaller than ``n``. They are drawn to compare arms against each other, not as confidence
+    intervals. The bounce marker's bars are the per-leg median standard error divided by the
+    throw and are not the same kind of quantity; the per-DOF comparison page is where the two
+    are put on a common footing.
     """
     arms = [(C.RBR_VARIANT, 'RBR, batoid', _RBR_COLOR, 'o'),
             (C.INTRINSIC_VARIANTS['batoid'], 'SVD, batoid', _UNCON_COLOR, 's'),
@@ -379,12 +384,12 @@ def figure_slope_summary(pdf, tabs, angle, bounce_units=True, dof_indices=RIGID_
     arms = [a for a in arms if (a[0], angle) in tabs]
     if not arms:
         return
+    n_markers = len(arms) + (1 if bounce is not None and len(bounce) else 0)
 
     tilt = [j for j in dof_indices if j in C.HEX_TILT_DOF]
     lin = [j for j in dof_indices if j not in C.HEX_TILT_DOF]
     groups = [(lin, 'µm', 'slope [µm per deg]'),
-              (tilt, 'arcsec' if bounce_units else 'deg',
-               f'slope [{"arcsec" if bounce_units else "deg"} per deg]')]
+              (tilt, C.HEX_TILT_UNIT, f'slope [{C.HEX_TILT_UNIT} per deg]')]
 
     fig, axes = plt.subplots(
         1, 2, figsize=(14, 5.6),
@@ -395,18 +400,22 @@ def figure_slope_summary(pdf, tabs, angle, bounce_units=True, dof_indices=RIGID_
             continue
         pos = np.arange(len(idx), dtype=float)
         for k, (variant, label, color, marker) in enumerate(arms):
-            tab = tabs[(variant, angle)]
-            if bounce_units:
-                tab = tab.copy()
-                scale = np.where(tab['dof'].isin(C.HEX_TILT_DOF), C.DEG_TO_ARCSEC, 1.0)
-                tab['slope'] = tab['slope'].to_numpy(float) * scale
-                tab['slope_err'] = tab['slope_err'].to_numpy(float) * scale
-            by = tab.set_index('dof')
+            by = tabs[(variant, angle)].set_index('dof')
             s = [by['slope'].get(j, np.nan) for j in idx]
             e = [by['slope_err'].get(j, np.nan) for j in idx]
-            off = (k - (len(arms) - 1) / 2) * 0.22
+            off = (k - (n_markers - 1) / 2) * 0.22
             ax.errorbar(pos + off, s, yerr=e, fmt=marker, ms=6, lw=1.2, capsize=2.5,
                         color=color, label=label)
+        if bounce is not None and len(bounce):
+            # One slope per axis. A multi-leg bounce program (the five elevation legs) carries
+            # one row per leg, so the weighted fit across them is the single comparable number
+            # and `slope` alone would be whichever leg sorted first.
+            by = bounce.drop_duplicates('index').set_index('index')
+            s = [by['slope'].get(j, np.nan) for j in idx]
+            e = [by['slope_err'].get(j, np.nan) for j in idx]
+            off = (len(arms) - (n_markers - 1) / 2) * 0.22
+            ax.errorbar(pos + off, s, yerr=e, fmt='D', ms=6, lw=1.2, capsize=2.5,
+                        color=_BOUNCE_COLOR, label='bounce test')
         ax.axhline(0, color='0.6', lw=0.8)
         ax.set_xticks(pos)
         # A star on the tick marks the axes the bounce test can be compared against, which keeps
@@ -416,12 +425,14 @@ def figure_slope_summary(pdf, tabs, angle, bounce_units=True, dof_indices=RIGID_
                             for j in idx], fontsize=7.5)
         ax.set_ylabel(ylabel)
         n_cmp = sum(1 for j in idx if j in C.BOUNCE_COMPARABLE_DOF)
+        # The bounce slopes are drawn on both panels, but only the starred axes are the ones
+        # the quantitative comparison claims; the tilts are shown for completeness.
         note = (f'* = bounce-test comparable ({n_cmp} of {len(idx)})' if n_cmp else
-                'none bounce-test comparable -- different field sampling')
+                'bounce slopes shown; these axes are not part of the quantitative comparison')
         ax.set_title(f'{unit} axes\n{note}', fontsize=9.0)
         ax.legend(fontsize=7.5)
 
-    _title(fig, f'Slope per rigid-body axis against {_angle_label(angle)}, three variants',
+    _title(fig, f'Slope per rigid-body axis against {_angle_label(angle)}',
            'intrinsic routes overlap, solvers separate; bars are formal RLM errors and '
            'understate the truth', sub_y=0.925)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
@@ -429,7 +440,321 @@ def figure_slope_summary(pdf, tabs, angle, bounce_units=True, dof_indices=RIGID_
     plt.close(fig)
 
 
-def write_pdf(path, frames, tabs, angles, headline_dof=1, headline_angle='rotator_angle_deg'):
+#: Survey variant the bounce-comparison pages draw. The unconstrained batoid recovery, because
+#: the bounce note is explicit that for a look-up-table fit the default recovery is the
+#: estimator and an RBR rigid-body amplitude is a constrained estimate -- and because RBR
+#: measurably degrades the agreement (translation cosine +0.52 against +0.83).
+HEADLINE_VARIANT = C.INTRINSIC_VARIANTS['batoid']
+
+
+def _headline_rows(tab, headline, variant=None):
+    """One row per entry: the named arm pairing on one variant.
+
+    The comparison tables hold every (bounce arm, survey arm, variant) pairing stacked, so a
+    page that forgets to select gets a silent average over three variants -- which is how the
+    RBR arm hid the unconstrained result on a first pass.
+    """
+    if tab is None or not len(tab):
+        return None
+    b_arm, s_arm = headline
+    sel = tab[(tab['bounce_arm'] == b_arm) & (tab['survey_arm'] == s_arm)]
+    if 'variant' in sel.columns:
+        want = variant or HEADLINE_VARIANT
+        pick = sel[sel['variant'] == want]
+        sel = pick if len(pick) else sel[sel['variant'] == sorted(sel['variant'].unique())[0]]
+    return sel if len(sel) else None
+
+
+def figure_bounce_subspace(pdf, subspace, angle, headline=('svd', 'deviation')):
+    """Agreement per subspace, as a cosine similarity -- the headline comparison page.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    subspace : `pandas.DataFrame`
+        `bounce_compare.compare_subspaces` rows, carrying ``bounce_arm``, ``survey_arm`` and
+        ``variant``.
+    angle : `str`
+        Pointing-angle column.
+    headline : `tuple` [`str`], optional
+        ``(bounce_arm, survey_arm)`` drawn solid; the other pairings are drawn faint.
+
+    Notes
+    -----
+    The page the quantitative scope of the whole comparison rests on. The hexapod translations
+    agree and the bending modes do not, which is why the per-DOF claim is restricted to the six
+    translations -- a limit now measured rather than argued from field sampling.
+
+    Only bounce terms above `bounce_compare.MIN_SIGNIFICANCE` enter each bar, and the count that
+    survived is printed on it: the bending disagreement is not an absence of signal, since most
+    of those modes are individually significant on the bounce side.
+    """
+    if subspace is None or not len(subspace):
+        return
+    order = ['hexapod_translation', 'hexapod_tilt', 'bending', 'all_dof', 'vmode']
+    names = [s for s in order if s in set(subspace['subspace'])]
+    pairings = (subspace[['bounce_arm', 'survey_arm']].drop_duplicates()
+                .itertuples(index=False, name=None))
+    pairings = sorted(pairings, key=lambda p: (p != tuple(headline), p))
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.0))
+    pos = np.arange(len(names), dtype=float)
+    counts = {}
+    for k, (b_arm, s_arm) in enumerate(pairings):
+        is_head = (b_arm, s_arm) == tuple(headline)
+        off = (k - (len(pairings) - 1) / 2) * 0.17
+        sel = _headline_rows(subspace, (b_arm, s_arm))
+        if sel is None:
+            continue
+        by = sel.drop_duplicates('subspace').set_index('subspace')
+        cos = [by['cosine_similarity'].get(s, np.nan) for s in names]
+        scale = [by['scale'].get(s, np.nan) for s in names]
+        style = dict(color=_BOUNCE_COLOR if is_head else '0.65',
+                     marker='D' if is_head else 'o',
+                     ms=8 if is_head else 5, lw=0,
+                     label=f'bounce {b_arm} vs survey {s_arm}'
+                           + (' (headline)' if is_head else ''),
+                     zorder=3 if is_head else 2)
+        axes[0].plot(cos, pos + off, **style)
+        axes[1].plot(scale, pos + off, **style)
+        if is_head:
+            counts = {s: (by['n_significant'].get(s, np.nan), by['n_terms'].get(s, np.nan))
+                      for s in names}
+
+    for ax, (xl, ref) in zip(axes, [('cosine similarity (dimensionless)', 1.0),
+                                    ('scale = survey / bounce (dimensionless)', 1.0)]):
+        ax.axvline(ref, color='0.5', lw=0.9, ls='--')
+        ax.axvline(0.0, color='0.75', lw=0.8)
+        ax.set_yticks(pos)
+        # The significant-term count rides in the tick label rather than as an annotation, so
+        # it cannot drift away from the row it describes.
+        ax.set_yticklabels(
+            [s.replace('_', ' ')
+             + (f'\n{int(counts[s][0])} of {int(counts[s][1])} significant'
+                if counts.get(s) and np.isfinite(counts[s][0]) else '')
+             for s in names], fontsize=8)
+        ax.set_xlabel(xl, fontsize=9)
+        ax.grid(axis='x', alpha=0.25)
+    axes[0].set_title('do the two retrievals point the same way?', fontsize=9.5)
+    axes[1].set_title('and by how much?', fontsize=9.5)
+    axes[0].legend(fontsize=7, loc='lower right')
+
+    _title(fig, f'Bounce test against survey, agreement by subspace, {_angle_label(angle)}',
+           f'the hexapod translations agree and the bending modes do not, which is what limits '
+           f'the comparison; survey variant {HEADLINE_VARIANT}, dashed line is exact agreement',
+           sub_y=0.915)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_bounce_per_dof(pdf, per_dof, lateral, angle, headline=('svd', 'deviation')):
+    """Per-axis slopes side by side, and the lateral sums that survive the degeneracy.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    per_dof : `pandas.DataFrame`
+        `bounce_compare.compare_per_dof` rows.
+    lateral : `pandas.DataFrame`
+        `bounce_compare.compare_lateral_sums` rows.
+    angle : `str`
+        Pointing-angle column.
+    headline : `tuple` [`str`], optional
+        ``(bounce_arm, survey_arm)`` to draw.
+
+    Notes
+    -----
+    Left panel is the literal per-axis claim and right panel is the same information summed over
+    the two hexapods. The pair is the argument: individual axes disagree by factors of a few
+    while their sum agrees, which is the signature of a retrieval degeneracy rather than of one
+    method being wrong.
+    """
+    b_arm, s_arm = headline
+    sel = _headline_rows(per_dof, headline)
+    if sel is None:
+        return
+    sel = sel[sel['index'].isin(C.BOUNCE_COMPARABLE_DOF)].drop_duplicates('index')
+    sel = sel.sort_values('index')
+    if not len(sel):
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2),
+                             gridspec_kw={'width_ratios': [len(sel), 3]})
+    pos = np.arange(len(sel), dtype=float)
+    axes[0].errorbar(pos - 0.11, sel['slope_bounce'], yerr=sel['slope_bounce_err'],
+                     fmt='D', ms=6, lw=1.2, capsize=2.5, color=_BOUNCE_COLOR,
+                     label='bounce test')
+    axes[0].errorbar(pos + 0.11, sel['slope_survey'], yerr=sel['slope_survey_err'],
+                     fmt='o', ms=6, lw=1.2, capsize=2.5, color=_SURVEY_COLOR,
+                     label='survey')
+    axes[0].axhline(0, color='0.6', lw=0.8)
+    axes[0].set_xticks(pos)
+    axes[0].set_xticklabels([n.replace(' hexapod ', '\n') for n in sel['label']], fontsize=8)
+    axes[0].set_ylabel('slope [µm per deg]')
+    axes[0].set_title('per axis: the split between the two hexapods disagrees', fontsize=9.5)
+    axes[0].legend(fontsize=8)
+
+    lat = _headline_rows(lateral, headline)
+    if lat is not None:
+        lat = lat.drop_duplicates('axis')
+        lpos = np.arange(len(lat), dtype=float)
+        axes[1].errorbar(lpos - 0.11, lat['slope_bounce'], yerr=lat['slope_bounce_err'],
+                         fmt='D', ms=6, lw=1.2, capsize=2.5, color=_BOUNCE_COLOR,
+                         label='bounce test')
+        axes[1].errorbar(lpos + 0.11, lat['slope_survey'], yerr=lat['slope_survey_err'],
+                         fmt='o', ms=6, lw=1.2, capsize=2.5, color=_SURVEY_COLOR,
+                         label='survey')
+        axes[1].axhline(0, color='0.6', lw=0.8)
+        axes[1].set_xticks(lpos)
+        axes[1].set_xticklabels([f'M2 + camera\n{a}' for a in lat['axis']], fontsize=8)
+        axes[1].set_ylabel('slope [µm per deg]')
+        axes[1].set_title('summed over both hexapods', fontsize=9.5)
+        axes[1].legend(fontsize=8)
+
+    _title(fig, f'Bounce test against survey per rigid-body axis, {_angle_label(angle)}',
+           f'bounce {b_arm} against survey {s_arm} on {HEADLINE_VARIANT}; bounce bars are the '
+           f'per-leg median standard error over the throw, survey bars are formal RLM errors',
+           sub_y=0.915)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_bounce_vmode(pdf, vmode, angle, headline=('svd', 'deviation'),
+                        min_significance=3.0):
+    """V-mode slopes, the space that exposes the bending disagreement.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    vmode : `pandas.DataFrame`
+        `bounce_compare.compare_per_dof` rows built on ``kind='vmode'``.
+    angle : `str`
+        Pointing-angle column.
+    headline : `tuple` [`str`], optional
+    min_significance : `float`, optional
+        Bounce |Δ|/error above which a mode is drawn filled.
+
+    Notes
+    -----
+    Included because v-mode space looks like the natural retrieval-independent comparison and
+    is not: the basis is bending-dominated, so it inherits the bending disagreement and buries
+    the translation agreement. Modes scatter about the y = x line rather than following it.
+    """
+    sel = _headline_rows(vmode, headline)
+    if sel is None:
+        return
+    sel = sel.drop_duplicates('index').sort_values('index')
+    sig = sel['significance'].abs() >= min_significance
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2))
+    ax = axes[0]
+    ax.errorbar(sel.loc[sig, 'slope_bounce'], sel.loc[sig, 'slope_survey'],
+                xerr=sel.loc[sig, 'slope_bounce_err'], yerr=sel.loc[sig, 'slope_survey_err'],
+                fmt='o', ms=5, lw=0.9, capsize=2, color=_SURVEY_COLOR,
+                label=f'|significance| >= {min_significance:g}')
+    ax.plot(sel.loc[~sig, 'slope_bounce'], sel.loc[~sig, 'slope_survey'], 'o', ms=4,
+            mfc='none', color='0.6', label='below threshold')
+    lim = np.nanmax(np.abs(np.concatenate([sel['slope_bounce'].to_numpy(float),
+                                           sel['slope_survey'].to_numpy(float)])))
+    if np.isfinite(lim) and lim > 0:
+        ax.plot([-lim, lim], [-lim, lim], ls='--', color='0.5', lw=0.9, label='y = x')
+        ax.set_xlim(-1.1 * lim, 1.1 * lim)
+        ax.set_ylim(-1.1 * lim, 1.1 * lim)
+    for _, r in sel[sig].iterrows():
+        ax.annotate(r['label'], (r['slope_bounce'], r['slope_survey']), fontsize=6.5,
+                    xytext=(3, 3), textcoords='offset points', color='0.3')
+    ax.set_xlabel('bounce slope [dimensionless v-mode amplitude per deg]', fontsize=9)
+    ax.set_ylabel('survey slope [dimensionless v-mode amplitude per deg]', fontsize=9)
+    ax.set_title('mode by mode, against exact agreement', fontsize=9.5)
+    ax.legend(fontsize=7.5)
+
+    ax = axes[1]
+    ax.errorbar(sel['index'] + 1, sel['slope_bounce'], yerr=sel['slope_bounce_err'],
+                fmt='D', ms=4, lw=0.9, color=_BOUNCE_COLOR, label='bounce test')
+    ax.errorbar(sel['index'] + 1, sel['slope_survey'], yerr=sel['slope_survey_err'],
+                fmt='o', ms=4, lw=0.9, color=_SURVEY_COLOR, label='survey')
+    ax.axhline(0, color='0.6', lw=0.8)
+    ax.set_xlabel('v-mode index', fontsize=9)
+    ax.set_ylabel('slope [dimensionless v-mode amplitude per deg]', fontsize=9)
+    ax.set_title('where the disagreement sits', fontsize=9.5)
+    ax.legend(fontsize=7.5)
+
+    _title(fig, f'Bounce test against survey in v-mode space, {_angle_label(angle)}',
+           'the v-mode basis is bending-dominated, so this space inherits the bending '
+           'disagreement rather than avoiding the hexapod degeneracy', sub_y=0.915)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_bounce_elevation(pdf, legs, fits, dof_indices=(1, 2, 6, 7)):
+    """The five elevation legs, with the first-order linear fit through them.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    legs : `pandas.DataFrame`
+        Per-(leg, DOF) rows from `bounce_compare.compare_elevation_legs`.
+    fits : `pandas.DataFrame`
+        Per-DOF fit rows from the same call.
+    dof_indices : `tuple` [`int`], optional
+        DOF to panel; the four lateral decentres by default.
+
+    Notes
+    -----
+    A chi2/dof above 1 on these panels is **not** grounds to reject the linear form. The bounce
+    test carries atmospheric turbulence and other stochastic terms the per-leg error bars do not
+    capture, so a perfect chi2/dof is not expected. The linear fit is a first-order
+    approximation to a dependence that is physically closer to cos(elevation), and it is much
+    better than no correction -- which is why the slope is drawn as the deliverable and the
+    cosine fit beside it as the comparison.
+    """
+    if legs is None or not len(legs) or fits is None or not len(fits):
+        return
+    idx = [j for j in dof_indices if j in set(fits['index'])]
+    if not idx:
+        return
+    by_fit = fits.set_index('index')
+
+    n = len(idx)
+    fig, axes = plt.subplots(1, n, figsize=(3.6 * n, 4.4), squeeze=False)
+    for ax, j in zip(axes[0], idx):
+        g = legs[legs['index'] == j].sort_values('throw_deg')
+        f = by_fit.loc[j]
+        ax.errorbar(g['throw_deg'], g['delta'], yerr=g['delta_err'], fmt='o', ms=5,
+                    lw=1.1, capsize=2.5, color=_BOUNCE_COLOR, label='bounce leg', zorder=3)
+        xs = np.linspace(min(g['throw_deg'].min(), 0.0), max(g['throw_deg'].max(), 0.0), 50)
+        if np.isfinite(f['slope_linear']):
+            ax.plot(xs, f['slope_linear'] * xs, '-', color='0.35', lw=1.2,
+                    label=(f'WLS {f["slope_linear"]:+.2f} {f["unit"]}/deg\n'
+                           f'chi2/dof {f["chi2_linear"]:.2f} (dof {int(f["dof_linear"])})'))
+        if np.isfinite(f['slope_survey']):
+            ax.plot(xs, f['slope_survey'] * xs, '--', color=_SURVEY_COLOR, lw=1.2,
+                    label=f'survey {f["slope_survey"]:+.2f} {f["unit"]}/deg')
+        ax.axhline(0, color='0.75', lw=0.8)
+        ax.axvline(0, color='0.75', lw=0.8)
+        ax.set_xlabel('elevation throw from the 70 deg reference [deg]', fontsize=8.5)
+        ax.set_ylabel(f'recovered change [{f["unit"]}]', fontsize=8.5)
+        ax.set_title(f'{f["label"]}\ncos fit chi2/dof {f["chi2_cos"]:.2f}', fontsize=9)
+        ax.legend(fontsize=6.5)
+
+    _title(fig, 'Bounce elevation legs against the survey elevation trend',
+           'the linear term is a first-order approximation and much better than no correction; '
+           'chi2/dof above 1 reflects turbulence the per-leg errors do not capture',
+           sub_y=0.905)
+    fig.tight_layout(rect=(0, 0, 1, 0.87))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def write_pdf(path, frames, tabs, angles, headline_dof=1, headline_angle='rotator_angle_deg',
+              bounce=None):
     """Assemble every page into one document.
 
     Parameters
@@ -445,6 +770,11 @@ def write_pdf(path, frames, tabs, angles, headline_dof=1, headline_angle='rotato
     headline_dof : `int`, optional
         Degree of freedom for the headline and solver pages.
     headline_angle : `str`, optional
+    bounce : `dict`, optional
+        Bounce comparison products, as `run_cwfs_lut` assembles them: ``slopes`` keyed by
+        angle for the slope-summary overlay, plus ``per_dof``, ``lateral_sum``, ``subspace``,
+        ``vmode``, ``elevation_legs`` and ``elevation_fits``. Omitted when the bounce run is
+        not on disk, in which case the comparison pages are skipped.
 
     Returns
     -------
@@ -454,6 +784,8 @@ def write_pdf(path, frames, tabs, angles, headline_dof=1, headline_angle='rotato
     from matplotlib.backends.backend_pdf import PdfPages
 
     primary = C.RBR_VARIANT if C.RBR_VARIANT in frames else next(iter(frames))
+    bounce = bounce or {}
+    slopes = bounce.get('slopes', {})
     path = pathlib.Path(path)
     with PdfPages(path) as pdf:
         figure_headline(pdf, frames[primary], angle=headline_angle, dof=headline_dof,
@@ -462,5 +794,12 @@ def write_pdf(path, frames, tabs, angles, headline_dof=1, headline_angle='rotato
         for angle in angles:
             figure_angle_grid(pdf, frames[primary], angle, variant=primary)
         for angle in angles:
-            figure_slope_summary(pdf, tabs, angle)
+            figure_slope_summary(pdf, tabs, angle, bounce=slopes.get(angle))
+        if bounce:
+            angle = bounce.get('angle', headline_angle)
+            figure_bounce_subspace(pdf, bounce.get('subspace'), angle)
+            figure_bounce_per_dof(pdf, bounce.get('per_dof'), bounce.get('lateral_sum'), angle)
+            figure_bounce_vmode(pdf, bounce.get('vmode'), angle)
+            figure_bounce_elevation(pdf, bounce.get('elevation_legs'),
+                                    bounce.get('elevation_fits'))
     return path

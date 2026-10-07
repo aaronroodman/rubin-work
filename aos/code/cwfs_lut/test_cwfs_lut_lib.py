@@ -2,10 +2,14 @@
 
 Run with ``pytest aos/code/cwfs_lut/test_cwfs_lut_lib.py``.
 
-The one that matters most is `test_only_the_four_tilts_convert_to_arcsec`: the stored tilts are
-deg and the bounce test's are arcsec, and getting that wrong corrupts only the tilt entries
-while leaving the decentres and bending modes correct, so nothing downstream would complain.
+The ones that matter most are the unit guards. This study used to apply 3600 arcsec/deg to the
+four hexapod tilt DOF, believing the bounce test reported arcsec; it does not -- both sides
+store deg, and `ofc_svd.DOF_UNITS_50` mislabels them. Reintroducing that conversion would
+corrupt only the tilt entries while leaving the decentres and bending modes correct, so nothing
+downstream would complain. `test_trend_table_leaves_the_tilt_slopes_in_deg` and
+`test_no_arcsec_conversion_survives_in_the_module` are what catch it.
 """
+import inspect
 import pathlib
 import sys
 
@@ -20,36 +24,6 @@ sys.path.insert(0, str(_HERE.parents[2]))
 import cwfs_lut_lib as C
 
 
-def test_only_the_four_tilts_convert_to_arcsec():
-    """DOF 3, 4, 8, 9 scale by 3600 arcsec/deg; the other 46 are untouched."""
-    v = np.arange(50, dtype=float) + 1.0
-    out = C.to_bounce_units(v)
-    tilts = list(C.HEX_TILT_DOF)
-    others = [j for j in range(50) if j not in tilts]
-    np.testing.assert_allclose(out[tilts], v[tilts] * 3600.0)
-    np.testing.assert_allclose(out[others], v[others])
-
-
-def test_to_bounce_units_does_not_mutate_the_input():
-    v = np.ones(50)
-    C.to_bounce_units(v)
-    np.testing.assert_allclose(v, np.ones(50))
-
-
-def test_to_bounce_units_handles_a_stack():
-    a = np.ones((7, 50))
-    out = C.to_bounce_units(a)
-    assert out.shape == (7, 50)
-    np.testing.assert_allclose(out[:, 3], 3600.0)
-    np.testing.assert_allclose(out[:, 0], 1.0)
-
-
-def test_to_bounce_units_rejects_a_vmode_vector():
-    """A 34-element v-mode vector passed here would be silently mangled, so it must raise."""
-    with pytest.raises(ValueError, match='50-element'):
-        C.to_bounce_units(np.zeros(34))
-
-
 def test_dof_labels_cover_the_whole_vector():
     """Every index 0 to 49 has a name, and the bending-mode numbering starts at 1."""
     for j in range(50):
@@ -61,11 +35,33 @@ def test_dof_labels_cover_the_whole_vector():
     assert C.dof_label(49)[0] == 'M2 bending 20'
 
 
-def test_dof_label_reports_arcsec_only_in_bounce_units():
-    assert C.dof_label(3)[1] == 'deg'
-    assert C.dof_label(3, bounce_units=True)[1] == 'arcsec'
-    # A decentre is µm either way.
-    assert C.dof_label(1, bounce_units=True)[1] == 'µm'
+def test_dof_label_reports_the_tilts_in_deg():
+    """Both this study and the bounce test store the tilts in deg, so there is one answer."""
+    for j in C.HEX_TILT_DOF:
+        assert C.dof_label(j)[1] == 'deg'
+    assert C.dof_label(1)[1] == 'µm'
+
+
+def test_hex_tilt_unit_constant_says_deg():
+    """One greppable assertion of the convention the whole comparison rests on."""
+    assert C.HEX_TILT_UNIT == 'deg'
+
+
+def test_no_arcsec_conversion_survives_in_the_module():
+    """The spurious 3600 arcsec/deg must not come back under any name.
+
+    A grep-as-test, which is the honest way to pin a deletion: it fails the moment the
+    constant reappears, however it is spelled.
+    """
+    assert not hasattr(C, 'DEG_TO_ARCSEC')
+    assert not hasattr(C, 'to_bounce_units')
+    assert '3600' not in inspect.getsource(C)
+
+
+def test_bounce_units_kwarg_is_gone():
+    """Catches a half-done revert where a caller still passes the removed keyword."""
+    assert 'bounce_units' not in inspect.signature(C.trend_table).parameters
+    assert 'bounce_units' not in inspect.signature(C.dof_label).parameters
 
 
 def test_ofc_dof_ordering_is_m2_then_camera():
@@ -143,18 +139,18 @@ def test_trend_table_recovers_the_planted_dof_slope():
     assert row['unit'] == 'µm'
 
 
-def test_trend_table_reports_tilt_slopes_in_arcsec_when_asked():
-    """The tilt slope must scale by 3600 arcsec/deg and the decentre slope must not."""
-    df = _frame()
-    deg = C.trend_table(df, 'elevation_deg', verbose=False)
-    arc = C.trend_table(df, 'elevation_deg', bounce_units=True, verbose=False)
-    s_deg = deg[deg['dof'] == 3]['slope'].iloc[0]
-    s_arc = arc[arc['dof'] == 3]['slope'].iloc[0]
-    assert abs(s_arc / s_deg - 3600.0) < 1e-6
-    assert arc[arc['dof'] == 3]['unit'].iloc[0] == 'arcsec'
-    # DOF 1 is a decentre and is identical in both.
-    np.testing.assert_allclose(deg[deg['dof'] == 1]['slope'].iloc[0],
-                               arc[arc['dof'] == 1]['slope'].iloc[0])
+def test_trend_table_leaves_the_tilt_slopes_in_deg():
+    """The planted tilt slope comes back unscaled, in deg per deg.
+
+    `_frame` plants ``1e-4 * elevation`` on DOF 3. Reintroducing the 3600 arcsec/deg
+    conversion would read 0.36 here instead, which is what makes this the guard on the units
+    fix rather than a restatement of `huber_trend`.
+    """
+    tab = C.trend_table(_frame(), 'elevation_deg', verbose=False)
+    row = tab[tab['dof'] == 3].iloc[0]
+    assert row['unit'] == 'deg'
+    assert abs(row['slope'] - 1e-4) < 5e-6
+    assert tab[tab['dof'] == 1].iloc[0]['unit'] == 'µm'
 
 
 def test_trend_table_rejects_a_missing_angle_column():
