@@ -80,6 +80,14 @@ TELEMETRY_COLS = (
     'm1m3_x_gradient_c_per_m', 'm1m3_y_gradient_c_per_m',
     'm1m3_z_gradient_c_per_m', 'm1m3_radial_gradient_c_per_m',
     'cam_AverageTemp', 'cam_AmbAirtemp', 'cam_n_samp',
+    # Camera structure and lens temperatures, for the per-channel v-mode screen in
+    # `thermal_vmodes`. The air-handling channels (shroud ring, plenum, shutter, charger) are
+    # left out: they track cam_AverageTemp and carry no separate optical structure.
+    'cam_CamBodyXPlusTemp', 'cam_CamBodyYPlusTemp', 'cam_CamBodyYMinusTemp',
+    'cam_CamHousXPlusTemp', 'cam_CamHousXMinusTemp',
+    'cam_CamHousYPlusTemp', 'cam_CamHousYMinusTemp',
+    'cam_L1XMinusTemp', 'cam_L1YMinusTemp',
+    'cam_L2XPlusTemp', 'cam_L2XMinusTemp', 'cam_L2YPlusTemp',
     'wind_dir_deg', 'wind_speed_ms', 'azimuth_deg', 'into_wind_deg',
     'cum_hex_dz_um', 'recent_hex_dz_um', 'n_moves_night',
     # The commanded Trim in the four degrees of freedom v-mode 1 contains, as of obs_start.

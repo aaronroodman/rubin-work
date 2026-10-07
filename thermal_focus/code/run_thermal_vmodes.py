@@ -43,6 +43,8 @@ sys.path.insert(0, str(_ROOT))                                   # repo root -> 
 import run_thermal_focus as RTF                                  # noqa: E402
 import thermal_focus_lib as L                                    # noqa: E402
 import thermal_vmodes as TV                                      # noqa: E402
+import thermal_vmodes_channel_figures as TVCF                    # noqa: E402
+import thermal_vmodes_channels as TVC                            # noqa: E402
 import thermal_vmodes_figures as TVF                             # noqa: E402
 
 # optical_state(wide=True) inserts one column at a time, so pandas warns once per expanded
@@ -86,7 +88,18 @@ def main():
     ap.add_argument('--no-intrinsic', action='store_true',
                     help='skip the batoid-against-MIW comparison')
     ap.add_argument('--no-figures', action='store_true', help='write the tables only')
+    ap.add_argument('--no-channels', action='store_true',
+                    help='skip the per-channel screen over the full thermal telemetry set')
+    ap.add_argument('--rho-strong', type=float, default=TVC.RHO_STRONG,
+                    help='|Spearman rho| at which a mode gets a combined follow-up fit')
+    ap.add_argument('--n-lead', type=int, default=TVC.N_LEAD,
+                    help='channels combined for a mode that clears --rho-strong')
+    ap.add_argument('--dup-rho', type=float, default=TVC.CHANNEL_DUP_RHO,
+                    help='|rho| between channels above which the weaker is skipped as a '
+                         'duplicate when assembling a leading set')
     ap.add_argument('--pdf-name', default='thermal_vmodes.pdf', help='PDF filename')
+    ap.add_argument('--channel-pdf-name', default='thermal_vmodes_channels.pdf',
+                    help='PDF filename for the per-channel screen')
     ap.add_argument('--output-dir', default=None,
                     help='where to write; default thermal_focus/output/thermal_vmodes')
     args = ap.parse_args()
@@ -131,6 +144,58 @@ def main():
         print('\n=== figures ===')
         pdf_path = TVF.write_pdf(out_dir / args.pdf_name, df, tab, floor, cmp=cmp)
         print(f'wrote {pdf_path}')
+
+    if not args.no_channels:
+        print('\n=== per-channel screen over the full thermal telemetry set ===')
+        dfc = TVC.attach_differences(df)
+        grid = TVC.channel_grid(dfc, n_modes=args.n_modes)
+        grid_path = out_dir / f'channel_grid_{args.variant}.parquet'
+        grid.to_parquet(grid_path, index=False)
+        print(f'wrote {grid_path}')
+
+        print('\n=== M1M3 shape channels against the S-matrix prediction ===')
+        exp = TVC.expectation_check(grid)
+        if len(exp):
+            exp_path = out_dir / 'channel_expectation.parquet'
+            exp.to_parquet(exp_path, index=False)
+            print(f'wrote {exp_path}')
+
+        # Which v-mode carries which Zernike is not the mode index -- v12 is Z15, not spherical
+        # -- so the prediction is tested against the modes that actually hold Z4, Z11 and Z22.
+        print()
+        try:
+            content = TVC.vmode_zernike_content(n_modes=args.n_modes)
+            pred = TVC.prediction_table(grid, content)
+            cpath = out_dir / 'vmode_zernike_content.parquet'
+            content.to_parquet(cpath)
+            print(f'wrote {cpath}')
+            ppath = out_dir / 'channel_prediction.parquet'
+            pred.to_parquet(ppath, index=False)
+            print(f'wrote {ppath}')
+        except Exception as exc:                                  # noqa: BLE001
+            print(f'v-mode Zernike content unavailable ({type(exc).__name__}: {exc}); '
+                  f'skipping the prediction test')
+            content, pred = None, None
+
+        print(f'\n=== combined fits for modes past |rho| {args.rho_strong} ===')
+        comb, results = TVC.combined_table(dfc, grid, rho_strong=args.rho_strong,
+                                           n_lead=args.n_lead, dup_rho=args.dup_rho)
+        if len(comb):
+            comb_path = out_dir / 'channel_combined.parquet'
+            comb.to_parquet(comb_path, index=False)
+            print(f'wrote {comb_path}')
+            summary = TVC.nmad_summary(results)
+            sum_path = out_dir / 'channel_nmad_summary.parquet'
+            summary.to_parquet(sum_path, index=False)
+            print(f'wrote {sum_path}')
+        else:
+            print(f'no mode reaches |Spearman rho| {args.rho_strong} on any channel; '
+                  f'no combined fit to do')
+
+        if not args.no_figures:
+            cpdf = TVCF.write_pdf(out_dir / args.channel_pdf_name, grid, results,
+                                  exp=exp, df=dfc, pred=pred, content=content)
+            print(f'wrote {cpdf}')
 
 
 if __name__ == '__main__':
