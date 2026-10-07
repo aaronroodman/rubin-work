@@ -9,16 +9,19 @@ Three products, written to ``thermal_focus/output/thermal_vmodes/``:
   says where a fitted slope stops being interpretable.
 * ``intrinsic_comparison.parquet`` -- per-mode skill on the two unconstrained 50/34 variants,
   batoid against the measured intrinsic wavefront (MIW), with the solver held fixed.
+* ``thermal_vmodes.pdf`` -- the figures, one page per `thermal_vmodes_figures` function.
 
 The sample is `run_thermal_focus.load_science`, so the selection funnel is the published one --
-LUT-epoch night exclusion, 20 degC truss cut, science exposures in the fitted bands. ``load_science``
-carries the 34 ``v*_olr`` columns through via ``keep_extra``; the ``y`` it sets is v-mode 1 in
-physical units and is overwritten per mode by `thermal_vmodes.attach_mode_response`.
+LUT-epoch night exclusion, 20 degC truss cut, science exposures in the fitted bands.
+``load_science`` carries the 34 ``v*_olr`` columns through via ``keep_extra``; the ``y`` it sets
+is v-mode 1 in physical units and is overwritten per mode by
+`thermal_vmodes.attach_mode_response`.
 
 Invocation::
 
     python code/run_thermal_vmodes.py
     python code/run_thermal_vmodes.py --no-intrinsic
+    python code/run_thermal_vmodes.py --no-figures
     python code/run_thermal_vmodes.py --day-obs-range 20251103 20260713
 
 This stage needs the network: the truss temperature is derived on a ConsDB join rather than
@@ -40,6 +43,7 @@ sys.path.insert(0, str(_ROOT))                                   # repo root -> 
 import run_thermal_focus as RTF                                  # noqa: E402
 import thermal_focus_lib as L                                    # noqa: E402
 import thermal_vmodes as TV                                      # noqa: E402
+import thermal_vmodes_figures as TVF                             # noqa: E402
 
 # optical_state(wide=True) inserts one column at a time, so pandas warns once per expanded
 # column -- hundreds of lines that bury the result.
@@ -81,6 +85,8 @@ def main():
     ap.add_argument('--n-modes', type=int, default=TV.N_MODES)
     ap.add_argument('--no-intrinsic', action='store_true',
                     help='skip the batoid-against-MIW comparison')
+    ap.add_argument('--no-figures', action='store_true', help='write the tables only')
+    ap.add_argument('--pdf-name', default='thermal_vmodes.pdf', help='PDF filename')
     ap.add_argument('--output-dir', default=None,
                     help='where to write; default thermal_focus/output/thermal_vmodes')
     args = ap.parse_args()
@@ -106,6 +112,7 @@ def main():
     floor.to_parquet(floor_path, index=False)
     print(f'wrote {floor_path}')
 
+    cmp = None
     if not args.no_intrinsic:
         tabs = {}
         for variant in TV.INTRINSIC_PAIR:
@@ -119,6 +126,11 @@ def main():
         cmp_path = out_dir / 'intrinsic_comparison.parquet'
         cmp.to_parquet(cmp_path, index=False)
         print(f'wrote {cmp_path}')
+
+    if not args.no_figures:
+        print('\n=== figures ===')
+        pdf_path = TVF.write_pdf(out_dir / args.pdf_name, df, tab, floor, cmp=cmp)
+        print(f'wrote {pdf_path}')
 
 
 if __name__ == '__main__':

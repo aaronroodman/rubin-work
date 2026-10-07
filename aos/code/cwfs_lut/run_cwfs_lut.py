@@ -9,6 +9,7 @@ Products, written to ``aos/output/cwfs_lut/``:
   side, batoid against the measured intrinsic wavefront (MIW), with the solver held fixed.
 * ``bounce_comparable_<angle>.parquet`` -- the subset a bounce test can be compared against,
   in the bounce test's own units.
+* ``cwfs_lut.pdf`` -- the figures, one page per `cwfs_lut_figures` function.
 
 The quantity fitted is the stored open-loop state ``Deviation - Trim``, which is what a look-up
 table has to supply. Trends are **absolute**, not within-night paired differences: a typical
@@ -25,6 +26,7 @@ wrong is silent -- it leaves the dominant decentre terms correct and corrupts on
 Invocation::
 
     python code/cwfs_lut/run_cwfs_lut.py
+    python code/cwfs_lut/run_cwfs_lut.py --no-figures
     python code/cwfs_lut/run_cwfs_lut.py --day-obs-range 20260101 20260713
     python code/cwfs_lut/run_cwfs_lut.py --variants v50_34_rbr__batoid__consdb_v1
 
@@ -43,6 +45,7 @@ _ROOT = _HERE.parents[2]                                         # repo root
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))           # -> efd_db
 
+import cwfs_lut_figures as CF                                    # noqa: E402
 import cwfs_lut_lib as C                                         # noqa: E402
 import efd_db                                                    # noqa: E402
 
@@ -95,6 +98,8 @@ def main():
                     help='variant ids; default the RBR variant plus both intrinsic routes')
     ap.add_argument('--day-obs-range', nargs=2, type=int, default=None,
                     metavar=('LO', 'HI'), help='inclusive night range YYYYMMDD')
+    ap.add_argument('--no-figures', action='store_true', help='write the tables only')
+    ap.add_argument('--pdf-name', default='cwfs_lut.pdf', help='PDF filename')
     ap.add_argument('--output-dir', default=None,
                     help='where to write; default aos/output/cwfs_lut')
     args = ap.parse_args()
@@ -141,6 +146,25 @@ def main():
         path = out_dir / f'bounce_comparable_{angle}.parquet'
         tab.to_parquet(path, index=False)
         print(f'wrote {path}')
+
+    if not args.no_figures:
+        print('\n=== figures ===')
+        # The headline panels take the strongest rigid-body trend from the data rather than a
+        # fixed DOF, so the page stays the headline if the dominant term ever changes.
+        primary = C.RBR_VARIANT if C.RBR_VARIANT in frames else variants[0]
+        strongest = max(
+            ((abs(r['pearson_r']), int(r['dof']), angle)
+             for angle in ANGLES if (primary, angle) in tabs
+             for _, r in tabs[(primary, angle)].iterrows()
+             if int(r['dof']) in CF.RIGID_BODY_DOF and pd.notna(r['pearson_r'])),
+            default=(0.0, 1, ANGLES[1]))
+        _, dof, angle = strongest
+        name, _unit = C.dof_label(dof)
+        print(f'headline panels: {name} against {angle}, '
+              f'|Pearson r| {strongest[0]:.3f} (dimensionless)')
+        pdf_path = CF.write_pdf(out_dir / args.pdf_name, frames, tabs, ANGLES,
+                                headline_dof=dof, headline_angle=angle)
+        print(f'wrote {pdf_path}')
 
 
 if __name__ == '__main__':

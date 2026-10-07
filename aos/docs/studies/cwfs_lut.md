@@ -94,7 +94,8 @@ test's dominant terms and the testable claim.
 | module | what it does |
 |---|---|
 | `cwfs_lut_lib.py` | DOF labels and units, the arcsec/deg conversion, Huber trend fits, per-DOF trend tables, intrinsic-route comparison |
-| `run_cwfs_lut.py` | the run: both angles on three variants, the intrinsic comparison, the bounce-units table |
+| `run_cwfs_lut.py` | the run: both angles on three variants, the intrinsic comparison, the bounce-units table, the figures |
+| `cwfs_lut_figures.py` | the five figure pages, one function each |
 | `test_cwfs_lut_lib.py` | 18 tests; the one that matters pins the tilt conversion to the four tilt DOF alone |
 
 Fits are Huber robust linear (`statsmodels.RLM` with `HuberT`), the repository default for
@@ -135,6 +136,15 @@ from 2 nights to 214 is a per-night offset being read as a slope, not elevation 
 Gravity-driven elevation terms are presumably already removed by the hexapod LUT in force during
 the survey, which is what the open-loop residual is measured against.
 
+**The camera hexapod decentres are far noisier than M2's, which is why none of them trends.**
+Against rotator angle the robust residual scatter is 1,290 µm for camera hexapod dy and 681 µm
+for camera hexapod dx, against 504 µm for the M2 hexapod dx term that does trend and 429 to
+483 µm for the other M2 axes. On the figures the four camera-hexapod panels are vertical smears
+at every rotator angle. So the absence of a camera-hexapod LUT term here is a statement about
+what four corner sensors can constrain, not a claim that the camera hexapod has no pointing
+dependence; a term as large as M2 dx's +20.39 µm/deg would still be visible, but a term a few
+times smaller would not be.
+
 **The two intrinsic routes agree far better than the single-night check suggested.** On the
 unconstrained 50/34 pair the MIW−batoid slope differences are sub-percent on every large term:
 M2 hexapod dx against rotator angle differs by −0.024 µm/deg out of +8.79 (0.3%, dimensionless
@@ -149,10 +159,16 @@ intrinsic offset moves an intercept and not a slope, and that is what the data s
 **The solver matters much more than the intrinsic.** The headline M2 dx term against rotator
 angle is +20.39 µm/deg under the range-bounded recovery and +8.79 µm/deg unconstrained — a
 factor of 2.3 (dimensionless, RBR over unconstrained) — and its Pearson r goes from +0.218 to
-+0.718 (dimensionless, n = 96,278 visits both). The range-bounded solution is not merely scaled;
-it is a far tighter function of rotator angle. That is the expected direction, since the
++0.718 (dimensionless, n = 96,278 visits both). That is the expected direction, since the
 unconstrained solution spends amplitude on states the actuators cannot reach, but the size of it
 means a LUT term must state which recovery it was fitted on. The primary result here is RBR.
+
+The correlation gap comes from the **signal**, not from extra noise: the robust residual scatter
+is 503.6 µm under RBR against 509.0 µm unconstrained, near-identical. So the range-bounded
+recovery recovers a rotator dependence 2.3 times larger over the same per-visit scatter, rather
+than recovering the same dependence more cleanly. On the figure the unconstrained panel looks
+visibly broader, but that is its longer outlier tail, which the nMAD ignores and the eye does
+not — the slope ratio and the correlation ratio are the same statement.
 
 Reproduce with:
 
@@ -162,10 +178,33 @@ python code/cwfs_lut/run_cwfs_lut.py
 
 Products in `aos/output/cwfs_lut/`: `trend_<variant>_<angle>.parquet` for three variants and two
 angles, `intrinsic_spread_<angle>.parquet`, and `bounce_comparable_<angle>.parquet` — the ten
-rigid-body axes in the bounce test's units, with a `comparable` flag marking the six decentres.
+rigid-body axes in the bounce test's units, with a `comparable` flag marking the six decentres —
+plus `cwfs_lut.pdf`.
 
 Not yet done: the overlay against the measured bounce-test slopes. These are the science-survey
 side of that comparison.
+
+## Figures
+
+`cwfs_lut.pdf`, five pages, written by the same run. `--no-figures` writes the tables alone.
+Per-visit points are drawn as hexbin rather than scatter: near 100,000 visits across ten axes
+and two angles would be unreadable as points and would make a very large vector PDF.
+
+| page | what it shows |
+|---|---|
+| the headline term | the strongest rigid-body trend, picked from the data rather than hardcoded, with its residual against the same angle beside it. Curvature in that residual would mean a straight line is the wrong LUT form |
+| solver against solver | the same term under the range-bounded and unconstrained recoveries, shared y axis, both on the batoid intrinsic. The slopes differ by a factor near 2.3 and the correlations by much more, so the range-bounded solution is visibly the tighter function rather than a scaled copy |
+| every axis against elevation | all ten rigid-body axes in one 2×5 grid, Huber line and Pearson r on each. This is how the elevation null is *shown* — every panel is flat and a reader can see none was omitted |
+| every axis against rotator | the same grid for rotator angle; panels clearing \|r\| = 0.6 are outlined, so the one real term does not hide among the ten |
+| slope summary | slope per axis for all three variants with formal error bars, split into a µm panel and an arcsec panel. The two results in one view: the intrinsic routes overlap while the solvers separate |
+
+The slope-summary page uses the bounce test's units — arcsec on the four tilts, via
+`cwfs_lut_lib.to_bounce_units` — so the measured bounce slopes drop onto it as a fourth marker
+per axis when that comparison is done.
+
+Error bars throughout are the **formal** RLM standard errors and understate the true
+uncertainty, since successive visits are correlated; the page says so. They are there to compare
+variants against each other, not as confidence intervals.
 
 ## Reference
 

@@ -2,7 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-10-06 · **Kind:** reference (study)
 
-> **Code:** `code/thermal_vmodes.py`, `code/run_thermal_vmodes.py`, `code/test_thermal_vmodes.py`
+> **Code:** `code/thermal_vmodes.py`, `code/run_thermal_vmodes.py`,
+> `code/thermal_vmodes_figures.py`, `code/test_thermal_vmodes.py`
 > **Output:** `output/thermal_vmodes/`
 > **Notebooks:** `notebooks/`
 
@@ -101,7 +102,8 @@ its default behaviour is unchanged.
 
 | function | what it does |
 |---|---|
-| `run_thermal_vmodes.py` | the run: the per-mode table, the noise floor, both intrinsic routes |
+| `run_thermal_vmodes.py` | the run: the per-mode table, the noise floor, both intrinsic routes, the figures |
+| `thermal_vmodes_figures.py` | the five figure pages, one function each |
 | `attach_mode_response` | sets `y` to one mode's optical state from the stored open-loop column |
 | `null_nmad` | out-of-fold residual nMAD of a median-intercept null, nights held out |
 | `fit_mode` | night-grouped Huber fit and null for one mode |
@@ -138,12 +140,39 @@ Skill and the between/within ratio are dimensionless; the nMAD columns are dimen
 amplitude. The v1 truss coefficient is +0.1132 (dimensionless v-mode-1 amplitude per °C of mean
 TMA truss temperature), the same channel and sign the deliverable reports.
 
-The modes scoring between +0.15 and +0.25 are **not** a weak thermal signal to be chased. Three
+The modes scoring between +0.15 and +0.25 are **not** a weak thermal signal to be chased. Four
 things place them: none survives the multiple-comparison cut; the empirical null's own scale is
-set by that cluster, so they define the noise rather than stand out from it; and the residual
-nMAD they leave is an order of magnitude larger than v1's in absolute terms (0.49 to 0.52
-against 0.059 dimensionless v-mode amplitude), so even taken at face value they would predict
-little of what is there.
+set by that cluster, so they define the noise rather than stand out from it; most of them leave
+a residual an order of magnitude larger than v1's in absolute terms (v10 at 0.516, v15 at
+0.516, v13 at 0.479 against v1's 0.059, dimensionless v-mode amplitude), so taken at face value
+they would predict little of what is there; and their skill does not come from a temperature
+relation at all.
+
+The absolute-residual argument does not cover the whole cluster, and saying it did would be
+wrong: across the eight modes scoring +0.15 to +0.25 the fitted residual spans 0.063 to 0.516
+(dimensionless v-mode amplitude), so v3 at 0.063 and v18 at 0.146 are not large-residual modes.
+For those two the other three arguments carry the case — in particular the next one.
+
+That last point is visible on the figures and is the clearest of the four. Per-visit
+correlations against mean TMA truss temperature, over the same 68,690 visits (all dimensionless):
+
+| mode | skill | Pearson r | Spearman rho |
+|---|---|---|---|
+| v1 | +0.808 | **+0.529** | **+0.789** |
+| v10 | +0.243 | −0.057 | −0.090 |
+| v18 | +0.222 | −0.178 | −0.170 |
+| v3 | +0.152 | −0.171 | −0.223 |
+
+V-mode 10 has no temperature relation at all. V-modes 3 and 18 — the two cluster modes whose
+absolute residuals are small, so the argument above does not reach them — correlate *negatively*
+with truss temperature, the opposite sign to v-mode 1. A mode that anti-correlates with
+temperature while scoring positive skill is not a thermal mode on any reading.
+
+So a mode can post a moderate grouped skill with no thermal relation, because holding out whole
+nights lets a night-level offset be partly predicted by whatever the features happen to do that
+night. Skill against a median-intercept null is the right statistic for *ranking* modes, but it
+is not by itself evidence of a thermal relation. The sign and the scatter are what settle it,
+which is why the figures carry both.
 
 **The noise floor is not monotonic in mode index**, which is why the ratio is measured rather
 than assumed. 19 of 34 modes carry between-night structure at more than twice their own
@@ -169,7 +198,24 @@ python code/run_thermal_vmodes.py
 ```
 
 Products in `output/thermal_vmodes/`: `mode_table_<variant>.parquet`, `noise_floor.parquet`,
-`intrinsic_comparison.parquet`.
+`intrinsic_comparison.parquet`, `thermal_vmodes.pdf`.
+
+## Figures
+
+`thermal_vmodes.pdf`, five pages, written by the same run. `--no-figures` writes the tables
+alone.
+
+| page | what it shows |
+|---|---|
+| skill per mode | every mode's skill with the false-discovery-rate cut drawn on it, and the same values as a rank plot beside it — the cut comes from the median and nMAD of those very points, so the distribution it was taken from is on the page |
+| absolute residual | residual nMAD per mode, null against fit, log scale. Skill is a *fraction*, so this is the page that shows the +0.15 to +0.25 cluster leaving an order of magnitude more residual than v-mode 1 |
+| noise floor | within-night and between-night scatter per mode, and their ratio against the ratio-2 line. The ratio is not monotonic in mode index, which is why it is measured; `WELL_CONSTRAINED_MAX` is drawn for contrast and is deliberately a different line |
+| the relation | v-mode-1 optical state against mean truss temperature as a per-visit hexbin with night medians over it, beside the highest-skill mode the cut rejects. Signal against best non-signal at matched scale |
+| intrinsic routes | per-mode skill on one route against the other with the 1:1 line, flag disagreements circled and labelled; a threshold artefact sits *on* the line, a real disagreement does not |
+
+The Huber line on the fourth page is fitted on the per-visit points, which is **not** the
+night-grouped out-of-fold number the skill column reports. Each panel title carries the grouped
+skill alongside it so the two are not read as the same quantity.
 
 ## Reference
 
