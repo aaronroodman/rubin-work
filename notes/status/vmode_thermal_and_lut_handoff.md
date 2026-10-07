@@ -205,9 +205,11 @@ correction is the whole thermal feed-forward available from these five channels*
 second mode to add.
 
 The cluster of modes at skill +0.15 to +0.25 is not a weak signal to chase. They set the
-empirical null's own scale, so they define the noise rather than stand out from it, and their
-absolute residual nMAD is an order of magnitude above v1's (0.49–0.52 against 0.059,
-dimensionless v-mode amplitude).
+empirical null's own scale, so they define the noise rather than stand out from it; most leave a
+residual an order of magnitude above v1's (v10 and v15 at 0.516, v13 at 0.479 against v1's
+0.059, dimensionless v-mode amplitude); and **none of them correlates with truss temperature in
+the right direction** — see the figures section below, which is what finally settles the two
+modes the residual argument misses.
 
 The two intrinsic routes agree on 32 of 34 modes, median |skill difference| 0.0016
 (dimensionless). Both disagreements are threshold artefacts: v3 scores +0.172 on both routes
@@ -236,16 +238,52 @@ moving an intercept rather than a slope predicts.
 **The solver matters far more than the intrinsic, and this was not anticipated.** The headline
 M2 dx term is +20.39 µm/deg under RBR and +8.79 µm/deg unconstrained, a factor of 2.3
 (dimensionless, RBR over unconstrained) — and its Pearson r goes from +0.218 to +0.718. The
-range-bounded solution is not a scaled version of the unconstrained one; it is a far tighter
-function of rotator angle. Expected in direction, since the unconstrained solution spends
-amplitude on unreachable states, but not in size. **A LUT term must state which recovery it was
-fitted on.** The primary result is RBR.
+range-bounded solution recovers a much larger rotator dependence. Expected in direction, since
+the unconstrained solution spends amplitude on unreachable states, but not in size. **A LUT term
+must state which recovery it was fitted on.** The primary result is RBR.
+
+Refined in `e7bfe51`: the correlation gap is **signal, not noise**. Robust residual scatter is
+503.6 µm under RBR against 509.0 µm unconstrained — near-identical — so RBR recovers a
+2.3x larger dependence over the same per-visit scatter rather than recovering the same
+dependence more cleanly. The slope ratio and the correlation ratio are one statement, not two.
+The solver page's hexbin *looks* much broader on the unconstrained arm, but that is its longer
+outlier tail, which nMAD ignores and the eye does not — I initially misread the figure this way
+before checking the numbers.
 
 **The noise floor is not monotonic in mode index.** 19 of 34 modes carry between-night structure
 at more than twice their within-night scatter; the 15 that do not are v6, v11, v12, v17, v18 and
 v23–v32. So v34 (ratio 5.15) is better determined night to night than v11 (0.96) or v12 (1.02).
 `WELL_CONSTRAINED_MAX = 12` is still a useful flag for the recovery's conditioning but is **not**
 the same statement as this ratio; the table reports both and the doc says so.
+
+## Both studies now have figures, and they changed two conclusions
+
+`e7bfe51`. Five pages each, written by the same drivers into
+`thermal_focus/output/thermal_vmodes/thermal_vmodes.pdf` and `aos/output/cwfs_lut/cwfs_lut.pdf`.
+Figure code is `thermal_focus/code/thermal_vmodes_figures.py` and
+`aos/code/cwfs_lut/cwfs_lut_figures.py`, one function per page, assembled with `PdfPages` as
+`run_thermal_focus_analysis.py` does. `--no-figures` restores the table-only behaviour. Per-visit
+points are **hexbin, not scatter** — 96,278 visits over ten axes and two angles.
+
+Three things the tables alone did not show:
+
+- **V-modes 3 and 18 correlate *negatively* with truss temperature** — Pearson r −0.171 and
+  −0.178 (dimensionless, n = 68,690 visits) — while scoring positive skill. These are exactly
+  the two cluster modes whose absolute residual is *small* (0.063 and 0.146), so the
+  residual-scale argument never reached them. The sign does, and cleanly: a mode that
+  anti-correlates with temperature is not thermal on any reading. V-mode 10 shows no relation at
+  all (r −0.057, rho −0.090) despite skill +0.243. **Skill against a median-intercept null ranks
+  modes; it is not by itself evidence of a thermal relation**, because holding out whole nights
+  lets a night-level offset be partly predicted by whatever the features do that night.
+- **The camera hexapod decentres are far noisier than M2's**: robust residual scatter 681 µm
+  (dx) and 1,290 µm (dy) against 429–504 µm for the M2 axes. So the absence of a camera-hexapod
+  LUT term is a statement about what four corner sensors constrain, not about the hexapod. A term
+  the size of M2 dx's +20.39 µm/deg would still show; one a few times smaller would not.
+- **The solver's correlation gap is signal, not scatter** — see the correction above.
+
+Two corrections to what this handoff and `thermal_vmodes.md` previously said: the cluster's
+residual nMAD was given as 0.49–0.52 (dimensionless v-mode amplitude); the true range over those
+eight modes is **0.063 to 0.516**. And the solver scatter claim, above.
 
 ## Next concrete action
 
@@ -332,7 +370,8 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
   on disk. Always pass `--intrinsic-ref` and `--miw-param-set` explicitly.
 - `thermal_focus/` carries Aaron's uncommitted `trim_calculator` work. `thermal_focus/README.md`
   has edits from both of us interleaved and is deliberately left unstaged — mine are a
-  `thermal_vmodes` studies entry and two Code-table rows.
+  `thermal_vmodes` studies entry and three Code-table rows (`thermal_vmodes.py`,
+  `run_thermal_vmodes.py`, `thermal_vmodes_figures.py`).
 - **`bh_threshold`'s null is the mode sample itself**, so the `thermal` flag is meaningless on a
   run with `n_modes` far below 34: a handful of low modes all carry signal, the median and nMAD
   are then set by signal rather than noise, and the threshold lands arbitrarily high. A 4-mode
@@ -340,6 +379,16 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
 - **Do not characterize a slope from one night.** The 23% MIW-vs-batoid figure in this handoff
   was a single-night artefact and the full sample gives sub-percent. Same trap as the 20260318
   entry above, different quantity.
+- **Do not read scatter off a hexbin.** The open-loop DOF carry a long outlier tail — up to
+  100,000 µm on the unconstrained solver against a trend of order 1,000 µm — so a hexbin's
+  apparent width tracks that tail, not the robust scatter. The solver page looked like a large
+  scatter difference and is a near-zero one (503.6 against 509.0 µm). I wrote the wrong reading
+  into a doc and caught it only by querying `resid_nmad`. Both figure modules now set robust y
+  limits (`_robust_ylim`, 8 nMAD about the median), which fixes the *view* and not the fit —
+  `huber_trend` still sees every point.
+- **Do not read a thermal relation off skill alone.** V-modes 3 and 18 score positive skill and
+  correlate negatively with truss temperature. Check the sign of Pearson r before calling
+  anything thermal; the per-mode table does not carry it, the figures do.
 
 ## Reference
 
