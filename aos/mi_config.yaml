@@ -215,6 +215,12 @@ measured_intrinsics:
       n_keep: 34
       # No day_obs_max, matching danish_1_3_test.
 
+    # SUPERSEDED by pathA_50_50_i_rbr below -- kept because its outputs are on
+    # disk and the arm comparison documents why it fails.  Confining the
+    # barrier to the 34 retained modes couples the DOF, so this entry destroys
+    # the Z11 correction it was meant to preserve.  Do not build new work from
+    # it; see the 50/50 RBR entry for the numbers.
+    #
     # Range-Bounded Recovery (RBR) arm, a SEPARATE mi_name so the unconstrained
     # build's outputs above stay on disk for the arm comparison.  Knobs
     # identical to pathA_50_34_i except for the recovery: the subtracted
@@ -237,6 +243,43 @@ measured_intrinsics:
         # tolerance near n_iter 10 where the unconstrained arm clears it at 3.
         # 15 reaches 6.2e-04 um with margin.
         n_iter: 15
+    # 50/50 RBR: every mode retained, with the Range-Bounded Recovery barrier
+    # as the ONLY regularizer.  This supersedes the 50/34 RBR entry above,
+    # which does not work: confining the barrier to the 34 retained modes
+    # couples the degrees of freedom (DOF), so bounding the bending modes that
+    # sit tens of times outside their range also crushes the camera and M2
+    # piston that correct Z11 -- Cam_dz fell from -930.67 to -6.67 um while
+    # sitting at only 0.107 of its own allowed range, and the corrected
+    # DZ(k=1, j=11) collapsed from 0.18896 to 0.00075 um of wavefront.
+    #
+    # Solving over all 50 DOF instead leaves each one free: on rot_-3_3 the
+    # largest |d_j|/r_j is 1.43 (dimensionless, against 47.28 for 50/34
+    # unconstrained) while the corrected DZ(1,11) holds at 0.11307 um of
+    # wavefront, 0.60 of what 50/34 reaches with a physically unreachable
+    # state.  Hexapods stay free at a largest ratio of 0.53.
+    #
+    # rbr_penalty_weight is the barrier weight lambda in um^2 of wavefront,
+    # which is what makes the dimensionless barrier commensurate with the
+    # data term.  It had been implicitly 1.0 and unnamed.  lambda is a weak
+    # knob here: over 0.01 to 100 the corrected DZ(1,11) moves only 0.1296 to
+    # 0.1061 um of wavefront while the largest ratio moves 3.16 to 0.65, so it
+    # sets how strictly in-range the state is rather than trading away physics.
+    - name: pathA_50_50_i_rbr
+      dir_name: A_50_50_i_rbr
+      n_dof: 50
+      n_keep: 50
+      build:
+        range_bounded_recovery: true
+        rbr_full_dof: true
+        rbr_kappa: 4.0
+        rbr_power: 3
+        rbr_penalty_weight: 1.0
+        # Converges in about 14 iterations of the inner IRLS solve per visit;
+        # n_iter is the OUTER MIW iteration, which the per-Noll pages of
+        # measured_intrinsic_*_comparison.pdf show converging.  Held at 15 to
+        # match the 50/34 RBR arm until those pages are read.
+        n_iter: 15
+
     # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
     # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
     # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
@@ -246,6 +289,28 @@ measured_intrinsics:
       n_dof: 50
       n_keep: 34
       build_from: pathA_50_34_i
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4]
+
+    # The 50/50 RBR arm's split, on the same five in-family rotator bins.
+    - name: pathA_50_50_i_rbr_5rot
+      dir_name: A_50_50_i_rbr_5rot
+      n_dof: 50
+      n_keep: 50
+      build_from: pathA_50_50_i_rbr
+      build:
+        range_bounded_recovery: true
+        rbr_full_dof: true
+        rbr_kappa: 4.0
+        rbr_power: 3
+        rbr_penalty_weight: 1.0
+        n_iter: 15
       split:
         rotator_select:
           - [-65.0, -55.0]
