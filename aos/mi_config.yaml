@@ -274,11 +274,11 @@ measured_intrinsics:
         rbr_kappa: 4.0
         rbr_power: 3
         rbr_penalty_weight: 1.0
-        # Converges in about 14 iterations of the inner IRLS solve per visit;
-        # n_iter is the OUTER MIW iteration, which the per-Noll pages of
-        # measured_intrinsic_*_comparison.pdf show converging.  Held at 15 to
-        # match the 50/34 RBR arm until those pages are read.
-        n_iter: 15
+        # n_iter is the OUTER MIW iteration (the inner IRLS solve converges in
+        # about 14 steps per visit, separately).  3 matches the 50/34 arm and is
+        # what the per-Noll pages of measured_intrinsic_*_comparison.pdf show:
+        # the maps are indistinguishable from iteration 3 on.
+        n_iter: 3
 
     # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
     # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
@@ -310,7 +310,41 @@ measured_intrinsics:
         rbr_kappa: 4.0
         rbr_power: 3
         rbr_penalty_weight: 1.0
-        n_iter: 15
+        n_iter: 3
+      split:
+        rotator_select:
+          - [-65.0, -55.0]
+          - [-20.0, -10.0]
+          - [-3.0, 3.0]
+          - [10.0, 20.0]
+          - [55.0, 65.0]
+        split_js: [4]
+
+    # The canonical reduced scheme: the 22-DOF set (10 rigid body + M1M3
+    # bending 1-7 + M2 bending 1-5) with 12 v-modes.  The DOF indices are
+    # given explicitly because the 22-DOF set is NOT the first 22 contiguous
+    # indices -- in the ts_ofc 50-DOF ordering the M2 bending modes start at
+    # 30, so a scalar 22 would silently take M1M3 bending 1-12 and no M2
+    # bending at all.  Matches aos_state.DOF22 and the 22/12 scheme already
+    # used by the v-mode correlation and bounce studies.
+    #
+    # No Range-Bounded Recovery: with only the first 7 M1M3 and first 5 M2
+    # bending modes available, the recovered state is expected to stay inside
+    # the allowed ranges r_j, so the barrier has nothing to do.  That
+    # expectation is checked against the built DOF rather than assumed.
+    - name: pathA_22_12_i
+      dir_name: A_22_12_i
+      n_dof: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+              30, 31, 32, 33, 34]
+      n_keep: 12
+
+    # The 22/12 arm's split, on the same five in-family rotator bins.
+    - name: pathA_22_12_i_5rot
+      dir_name: A_22_12_i_5rot
+      n_dof: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+              30, 31, 32, 33, 34]
+      n_keep: 12
+      build_from: pathA_22_12_i
       split:
         rotator_select:
           - [-65.0, -55.0]
