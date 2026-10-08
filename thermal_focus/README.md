@@ -37,6 +37,10 @@ Applying the correction there makes within-block scatter worse rather than bette
   the Double Zernike (DZ) cross-check, the v-mode-1 conversion across projection schemes, the
   correction expressed as degrees of freedom (DOF), and the comparison against the Trim the
   observatory's initial alignment block settles on at the start of each night.
+- [`thermal_vmodes`](docs/thermal_vmodes.md) — the same question asked of all 34 v-modes
+  rather than v-mode 1 alone: per-mode skill against an intercept-only null, a
+  false-discovery-rate cut over the 34 simultaneous tests, where the four-corner measurement
+  noise floor sits, and whether the two intrinsic routes agree on which modes are thermal.
 
 ## Code
 
@@ -46,7 +50,14 @@ Applying the correction there makes within-block scatter worse rather than bette
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
 | `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
-| `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
+| `code/thermal_vmodes.py` | the all-34-v-mode study: per-mode fits, the null, the FDR cut, the noise floor |
+| `code/run_thermal_vmodes.py` | the all-34-v-mode run: the per-mode table, the noise floor, both intrinsic routes, the figures |
+| `code/thermal_vmodes_figures.py` | the all-34-v-mode figures: five pages, one function each |
+| `code/thermal_vmodes_channels.py` | the per-channel thermal screen: every v-mode against every telemetry line, and the v-mode Zernike content |
+| `code/thermal_vmodes_channel_figures.py` | the screen's figures: the correlation heatmaps and one page per responding mode |
+| `code/trim_calculator.py` | the standalone online calculator: numpy and pyyaml only, no repository imports |
+| `code/trim_coefficients.yaml` | the fitted coefficients the calculator reads, with units and provenance |
+| `code/test_trim_calculator.py` | the calculator's tests, data in `code/trim_test_cases.yaml` |
 
 The build stage is the only one that needs the network, because the mean TMA truss temperature is
 derived on a ConsDB join rather than stored. It caches to parquet, so the analysis runs offline:
@@ -54,12 +65,13 @@ derived on a ConsDB join rather than stored. It caches to parquet, so the analys
 ```bash
 python code/run_thermal_focus.py
 python code/run_thermal_focus_analysis.py
-python code/trim_calculator.py --self-test
+python code/test_trim_calculator.py
 ```
 
-The calculator imports numpy and argparse and nothing else, so it can be copied to a summit machine
-and run there; every coefficient is inlined with its units and provenance, and the analysis checks
-it against the pipeline it fitted.
+The calculator imports numpy, pyyaml and argparse and nothing else, so it can be copied to a summit
+machine and run there; every coefficient lives in `code/trim_coefficients.yaml` with its units and
+provenance, so copy both files together. The analysis checks the calculator against the pipeline it
+fitted.
 
 This topic imports `aos_state` from `aos/code` for the v-modes and the degree-of-freedom sets,
 through `sys.path.insert`, as `blocks/`, `olr/`, `optatmo/`, `smatrix/` and `value_added/` do. It

@@ -1,0 +1,57 @@
+# Worked test cases for the thermal-focus trim calculator, used by test_trim_calculator.py.
+#
+# Each expected value is the fitted equation evaluated independently of trim_calculator.py, so the
+# cases verify that trim_coefficients.yaml was transcribed correctly.
+
+# Tolerance on each worked case [um of equivalent hexapod dz].
+tolerance_um: 0.05
+
+test_cases:
+  - label: the sample mean, all five features
+    inputs:
+      truss_temp_c: 11.27840
+      z_gradient_c_per_m: -0.06474
+      y_gradient_c_per_m: -0.01964
+      radial_gradient_c_per_m: -0.01671
+      x_gradient_c_per_m: 0.00169
+    expected_v1_dz_um: 106.11
+  - label: a cold night, gradients at zero
+    inputs:
+      truss_temp_c: 5.0
+      z_gradient_c_per_m: 0.0
+      y_gradient_c_per_m: 0.0
+      radial_gradient_c_per_m: 0.0
+      x_gradient_c_per_m: 0.0
+    expected_v1_dz_um: -766.56
+  - label: a warm night, gradients at zero
+    inputs:
+      truss_temp_c: 17.0
+      z_gradient_c_per_m: 0.0
+      y_gradient_c_per_m: 0.0
+      radial_gradient_c_per_m: 0.0
+      x_gradient_c_per_m: 0.0
+    expected_v1_dz_um: 734.52
+  - label: the truss at its mean, a strong z gradient only
+    inputs:
+      truss_temp_c: 11.27840
+      z_gradient_c_per_m: -0.50
+      y_gradient_c_per_m: 0.0
+      radial_gradient_c_per_m: 0.0
+      x_gradient_c_per_m: 0.0
+    expected_v1_dz_um: 424.47
+  - label: the truss at its mean, a strong y gradient only
+    inputs:
+      truss_temp_c: 11.27840
+      z_gradient_c_per_m: 0.0
+      y_gradient_c_per_m: -0.10
+      radial_gradient_c_per_m: 0.0
+      x_gradient_c_per_m: 0.0
+    expected_v1_dz_um: 144.21
+  - label: the truss at its mean, the x gradient at its upper edge
+    inputs:
+      truss_temp_c: 11.27840
+      z_gradient_c_per_m: 0.0
+      y_gradient_c_per_m: 0.0
+      radial_gradient_c_per_m: 0.0
+      x_gradient_c_per_m: 0.03
+    expected_v1_dz_um: -82.43
