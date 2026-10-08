@@ -47,6 +47,10 @@ Groups
 ``hexhist``
     Value-added: hexapod motion history within the night — cumulative and trailing-30-min
     ``|delta dz|`` [µm] and the commanded-move count. Requires ``lut`` and ``trim``.
+``twilight``
+    Value-added: minutes after evening twilight at 0 deg and at -18 deg solar altitude, and
+    the solar altitude at the exposure [deg]. Needs no query of its own — it is a function of
+    ``day_obs`` and the exposure time — but is stored so consumers do not each re-solve it.
 
 Notes
 -----
@@ -71,6 +75,7 @@ sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))     # value_added/code
 
 import efd_db                                                       # noqa: E402
+import common.utils as common_utils                                 # noqa: E402
 from common.ess_telemetry import get_m1m3_gradients_sync            # noqa: E402
 from common.telemetry_clients import make_consdb_client, make_efd_client  # noqa: E402
 
@@ -406,6 +411,41 @@ def derive_hexhist(spine, ctx):
     return out
 
 
+def derive_twilight(spine, ctx):
+    """Time of each exposure relative to the night's evening twilight.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        ``min_after_twilight`` — minutes after geometric sunset, the 0 deg solar altitude an
+        observer times the start of the night against [min]; ``min_after_twilight_18deg`` — the
+        same against astronomical twilight at -18 deg [min]; ``sun_alt_deg`` — the Sun's
+        apparent altitude at the exposure start [deg].
+
+    Notes
+    -----
+    Derived, not fetched: this is a function of `day_obs` and the exposure time alone, so it
+    needs no EFD or ConsDB query beyond the spine already in hand. It is stored anyway because
+    every consumer otherwise recomputes it, and because the window used to bracket the evening
+    crossing is easy to get wrong — see `common.utils.evening_twilight_mjd`, which solves it.
+
+    The twilight crossing is solved once per night and subtracted from each exposure, so every
+    exposure on a night shares one reference epoch.
+
+    The spine's ``mjd`` is TAI while the solar ephemeris is evaluated against UTC, so these
+    columns carry the current 37 s TAI-minus-UTC offset. That is 0.6 per cent of a minute and
+    these are reported in minutes, so it is left uncorrected — but do not read sub-minute
+    meaning into them.
+    """
+    out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
+    mjd = spine['mjd'].to_numpy(float)
+    night = spine['day_obs'].to_numpy(int)
+    for col, alt in (('min_after_twilight', 0.0), ('min_after_twilight_18deg', -18.0)):
+        out[col] = (mjd - common_utils.evening_twilight_mjd(night, alt_deg=alt)) * 1440.0
+    out['sun_alt_deg'] = common_utils.sun_altitude_deg(mjd)
+    return out
+
+
 #: Group name -> (callable, needs_efd). Order matters: `derive_tweak_group` and
 #: `derive_hexhist` consume what `fetch_trim` / `fetch_lut` leave on the context.
 FETCHERS = {
@@ -417,6 +457,7 @@ FETCHERS = {
     'tweak': (derive_tweak_group, False),
     'wind_derived': (derive_wind, False),
     'hexhist': (derive_hexhist, False),
+    'twilight': (derive_twilight, False),
 }
 
 
@@ -516,7 +557,10 @@ def main(argv=None):
     days = parse_day_obs(a.day_obs, cdb=cdb)
     if not days:
         p.error(f'no nights matched --day-obs {a.day_obs}')
-    efd = make_efd_client()
+    # Only connect to the EFD if a requested group actually reads it. The derived groups do
+    # not, and the EFD does not resolve from a batch compute node, so a derive-only backfill
+    # runs anywhere rather than failing on a client it would never use.
+    efd = make_efd_client() if any(FETCHERS[g][1] for g in groups) else None
 
     con = efd_db.open_db(a.db, create=True)
     done = efd_db.done_pairs(con) if a.resume else set()

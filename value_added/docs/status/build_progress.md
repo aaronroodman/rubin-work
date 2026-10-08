@@ -14,13 +14,16 @@ Row counts and spans read from the live database's `fetch_log` and `column_cover
 - [`optical_state` and `fam_dz`](#optical_state-and-fam_dz)
 - [Mirror LUT zero-fill on a dropped actuator](#mirror-lut-zero-fill-on-a-dropped-actuator)
 - [`m1m3_thermal_r2` coverage](#m1m3_thermal_r2-coverage)
+- [Corrupt `vt_day_obs` index, open](#corrupt-vt_day_obs-index-open)
 - [Rebuilding](#rebuilding)
 
 ## `visit_telemetry` coverage
 
 **366 nights**, `day_obs` 20250415 to 20260714, 213,704 exposures — every night that has
-`lsstcam` exposures in the Consolidated Database (ConsDB) over that span. All eight groups
-are recorded `ok` for all 366 nights, with no night in `fetch_log` in the `error` state.
+`lsstcam` exposures in the Consolidated Database (ConsDB) over that span. The eight original
+groups are recorded `ok` for all 366 nights, with no night in `fetch_log` in the `error`
+state. The ninth group, `twilight`, covers 365 of them: `day_obs` 20260620 is blocked by a
+[corrupt `vt_day_obs` index](#corrupt-vt_day_obs-index-open).
 
 `ok` means the fetch ran to completion, **not** that the telemetry existed: a group whose
 source topic was not yet reporting stores NaN and is still `ok`. The next section gives the
@@ -234,6 +237,63 @@ python -u value_added/code/build_m1m3_thermal_r2.py --day-obs 20260424 --refetch
 
 Redirect the output and Python buffers it, so use `python -u` or the per-night progress lines
 do not appear until the run ends.
+
+## Corrupt `vt_day_obs` index, open
+
+**Status as of 2026-10-08: open, one night affected, no data lost.** The equality index on
+`visit_telemetry(day_obs)` is corrupt for `day_obs` 20260620. The symptom is that the two
+query paths disagree:
+
+```sql
+SELECT COUNT(*) FROM visit_telemetry WHERE day_obs = 20260620;                      -- 0
+SELECT COUNT(*) FROM visit_telemetry WHERE day_obs BETWEEN 20260620 AND 20260620;   -- 1782
+```
+
+The equality predicate uses the index and returns nothing; the range scan bypasses it and
+finds all 1,782 rows. The rows are intact — the archive copy agrees, and `fetch_log` records
+all eight original groups `ok` at 1,782 rows. **Only the index is wrong.**
+
+A write that touches the night fails with
+
+```
+FATAL Error: Invalid Input Error: Failed to delete all rows from index.
+Only deleted 0 out of 561 rows.
+```
+
+because `upsert_visits` deletes before inserting and the delete matches nothing. That is why
+the `twilight` backfill covers 365 of 366 nights: 20260620 is the one it could not write.
+
+The fix is to rebuild the index, which needs a write handle and is a DDL change on the shared
+database, so it has not been run:
+
+```bash
+cd ~/notebooks/rubin-work/value_added && \
+    python -c "
+import sys; sys.path.insert(0, 'code')
+import efd_db
+con = efd_db.open_db(None, readonly=False)
+con.execute('DROP INDEX vt_day_obs')
+con.execute('CREATE INDEX vt_day_obs ON visit_telemetry(day_obs)')
+con.execute('FORCE CHECKPOINT')
+print('20260620 rows:', con.execute('SELECT COUNT(*) FROM visit_telemetry WHERE day_obs = 20260620').fetchone()[0])
+con.close()"
+```
+
+Then fill the night's twilight columns:
+
+```bash
+cd ~/notebooks/rubin-work/value_added && \
+    python code/build_efd_db.py --day-obs 20260620 --groups twilight
+```
+
+Most likely cause, not proven: 20260620 is a 1,782-exposure night, among the largest in the
+span, and the `trim` group on a night that size has taken close to an hour. An interrupted
+write on such a night is the documented hazard in [Rebuilding](#rebuilding) — the rollback
+leaves no committed rows, and here it appears to have left the index inconsistent with the
+rows instead.
+
+**It is the only affected night.** All 366 were checked by comparing the equality count
+against the range-scan count per night; 20260620 is the single disagreement.
 
 ## Rebuilding
 

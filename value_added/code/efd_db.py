@@ -174,12 +174,20 @@ GROUPS = {
         ('into_wind_deg', 'DOUBLE', 'deg (0 = pointing into the wind)',
          'derived_wrap180_winddir_minus_az'),
     ],
+    'twilight': [
+        ('min_after_twilight', 'DOUBLE', 'min (after 0 deg solar altitude, evening)',
+         'derived_solar_ephemeris'),
+        ('min_after_twilight_18deg', 'DOUBLE',
+         'min (after -18 deg solar altitude, evening)', 'derived_solar_ephemeris'),
+        ('sun_alt_deg', 'DOUBLE', 'deg (apparent solar altitude at exposure start)',
+         'derived_solar_ephemeris'),
+    ],
 }
 
 #: Groups whose columns live in ``visit_telemetry``, in build order. ``hexhist``
 #: depends on ``lut``/``trim`` already being present, so it is last.
 GROUP_ORDER = ('trim', 'lut', 'camera', 'turbulence', 'gradients', 'tweak',
-               'wind_derived', 'hexhist')
+               'wind_derived', 'hexhist', 'twilight')
 
 
 def group_columns(group):

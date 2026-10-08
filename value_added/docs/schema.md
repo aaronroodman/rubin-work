@@ -37,13 +37,13 @@ them in would only create a second, staler copy of something already cheap to re
 
 | table | rows | columns | shape |
 |---|---|---|---|
-| `visit_telemetry` | 213,704 | 194 | wide — one row per exposure |
+| `visit_telemetry` | 213,704 | 197 | wide — one row per exposure |
 | `m1m3_thermal_r2` | 211,922 | 28 | wide — one row per exposure |
 | `optical_state` | 307,389 | 15 | long — keyed `(visit_id, variant_id)` |
 | `fam_dz` | 2,528 | 16 | long — keyed `(visit_id, fam_variant_id)` |
 | `state_variant` | 4 | 11 | registry for `optical_state` |
 | `fam_variant` | 1 | 14 | registry for `fam_dz` |
-| `column_coverage` | 193 | 8 | units and provenance registry |
+| `column_coverage` | 196 | 8 | units and provenance registry |
 | `fetch_log` | 2,928 | 6 | build bookkeeping |
 
 `visit_telemetry` covers `day_obs` 20250415 to 20260714, 366 nights; `m1m3_thermal_r2` the same
@@ -59,7 +59,7 @@ telemetry does not exist at all, plus 20250610 (9 exposures) and 20250713 (839 e
 
 ## Two schema idioms
 
-**`visit_telemetry` is wide** — one row per exposure, keyed `visit_id`, 194 columns. The EFD
+**`visit_telemetry` is wide** — one row per exposure, keyed `visit_id`, 197 columns. The EFD
 groups genuinely are fixed: each is one value per visit per quantity, they arrive together
 from the same per-night fetch, and none has variants.
 
@@ -73,6 +73,36 @@ from the same per-night fetch, and none has variants.
 | `tweak` | 50 | value-added | per-iteration DOF correction, differenced from `trim` |
 | `wind_derived` | 4 | value-added | `into_wind_deg` [deg] and its inputs, kept for provenance |
 | `hexhist` | 3 | value-added | hexapod motion history [µm, count] |
+| `twilight` | 3 | value-added | time after evening twilight [min] and solar altitude [deg] |
+
+### `twilight`: time referenced to sunset, not to the first exposure
+
+`min_after_twilight` [min] is minutes after the evening 0 deg solar-altitude crossing —
+geometric sunset, the "0 degree twilight" an observer times the start of the night against.
+`min_after_twilight_18deg` [min] is the same against astronomical twilight at -18 deg, and
+`sun_alt_deg` [deg] is the Sun's apparent altitude at the exposure start. All three come from
+astropy's built-in solar ephemeris through `common.utils.evening_twilight_mjd` and
+`common.utils.sun_altitude_deg`; no network and no JPL kernel.
+
+Stored rather than left to each consumer for two reasons. Sunset moves by about 1.9 h over a
+season at Cerro Pachon, so a time-of-night axis referenced to the night's **first exposure**
+smears any real time-of-night effect by that much — the `thermal_focus` intra-night result is
+a step in the first 3 h, which is the same size as the smear. And the evening crossing has to
+be bracketed before it can be solved: a window opening at 18:00 local sits below sunset in
+June and July and silently returns its own edge, which is the bug `evening_twilight_mjd`'s
+window is sized to avoid.
+
+The columns carry the 37 s TAI-minus-UTC offset, since the spine's `mjd` is TAI and the
+ephemeris is evaluated against UTC. That is 0.6 per cent of a minute and these are minutes,
+so it is left uncorrected — but do not read sub-minute meaning into them.
+
+`sun_alt_deg` is positive for daytime calibration exposures, which the table contains; it
+reaches +80.6 deg. Filtering to on-sky exposures is the consumer's job, as it already is for
+`img_type`.
+
+Coverage is 211,922 of 213,704 rows over 365 of 366 nights. The gap is `day_obs` 20260620,
+whose 1,782 rows are blocked by a corrupt `vt_day_obs` index — see
+`docs/status/build_progress.md`.
 
 **`optical_state` is long** — keyed `(visit_id, variant_id)`, with DuckDB `DOUBLE[]` list
 columns for `v_modes` and `dof`. The recovered optical state is not one column set but a
@@ -354,7 +384,7 @@ silently breaks the join between the database and the files.
 
 ## `column_coverage` and `fetch_log`
 
-**`column_coverage`** holds 193 rows, one per column of `visit_telemetry`, and is the single
+**`column_coverage`** holds 196 rows, one per column of `visit_telemetry`, and is the single
 source of truth for units. Columns: `column_name`, `group_name`, `source`, `units`,
 `first_day_obs`, `last_day_obs`, `n_non_null`, `updated_at`. It lets a reader tell "never
 deployed at that epoch" from "fetch failed" from "genuinely NaN".

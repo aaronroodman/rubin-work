@@ -203,6 +203,121 @@ def alt_to_deg(alt):
     return a
 
 
+#: Rubin Observatory on Cerro Pachon: geodetic latitude [deg], longitude [deg] east of
+#: Greenwich, and height above the WGS84 ellipsoid [m]. The values `lsst.obs.lsst` carries for
+#: the Simonyi Survey Telescope.
+RUBIN_SITE_LAT_DEG = -30.244639
+RUBIN_SITE_LON_DEG = -70.749417
+RUBIN_SITE_HEIGHT_M = 2663.0
+
+
+def rubin_site_location():
+    """The Simonyi Survey Telescope site as an astropy location.
+
+    Returns
+    -------
+    location : `astropy.coordinates.EarthLocation`
+        Cerro Pachon, from `RUBIN_SITE_LAT_DEG`, `RUBIN_SITE_LON_DEG` and
+        `RUBIN_SITE_HEIGHT_M`.
+
+    Notes
+    -----
+    Built from stored constants rather than `EarthLocation.of_site`, which reaches the network
+    for its site registry and so fails in a batch job with no outbound route.
+    """
+    import astropy.units as u
+    from astropy.coordinates import EarthLocation
+    return EarthLocation(lat=RUBIN_SITE_LAT_DEG * u.deg, lon=RUBIN_SITE_LON_DEG * u.deg,
+                         height=RUBIN_SITE_HEIGHT_M * u.m)
+
+
+def sun_altitude_deg(mjd, location=None):
+    """Apparent altitude of the Sun at a set of times.
+
+    Parameters
+    ----------
+    mjd : `array_like`
+        Modified Julian Date, UTC [d].
+    location : `astropy.coordinates.EarthLocation`, optional
+        Observing site. Defaults to `rubin_site_location`.
+
+    Returns
+    -------
+    alt_deg : `numpy.ndarray`
+        Sun altitude [deg], negative below the horizon.
+
+    Notes
+    -----
+    Uses astropy's built-in low-precision solar ephemeris, good to about 0.01 deg, which is far
+    inside what any twilight-referenced timing needs. No network and no JPL kernel.
+    """
+    import astropy.units as u
+    from astropy.coordinates import AltAz, get_sun
+    from astropy.time import Time
+    loc = rubin_site_location() if location is None else location
+    m = np.atleast_1d(np.asarray(mjd, dtype=float))
+    out = np.full(m.shape, np.nan)
+    ok = np.isfinite(m)
+    if ok.any():
+        t = Time(m[ok], format='mjd', scale='utc')
+        out[ok] = get_sun(t).transform_to(AltAz(obstime=t, location=loc)).alt.to_value(u.deg)
+    return out
+
+
+def evening_twilight_mjd(day_obs, alt_deg=0.0, location=None):
+    """When the Sun sets through a given altitude on the evening of each `day_obs`.
+
+    Parameters
+    ----------
+    day_obs : `array_like`
+        Observation night as the integer ``YYYYMMDD`` of its evening, the Rubin convention.
+    alt_deg : `float`, optional
+        Sun altitude defining the crossing [deg]. The default of 0 deg is geometric sunset,
+        the "0 degree twilight" an observer refers to; -12 and -18 deg are nautical and
+        astronomical twilight.
+    location : `astropy.coordinates.EarthLocation`, optional
+        Observing site. Defaults to `rubin_site_location`.
+
+    Returns
+    -------
+    mjd : `numpy.ndarray`
+        MJD of the evening descending crossing, one per input night [d]. NaN where no crossing
+        is found, which at this latitude does not happen.
+
+    Notes
+    -----
+    Solved by bisection on the sun altitude over the 15:00-03:00 local-clock window after the
+    night's calendar date. That brackets the evening crossing year-round at Cerro Pachon with
+    margin: geometric sunset runs from about 17:50 in June to about 20:15 in January, local
+    standard time, and astronomical twilight at -18 deg trails it by up to about 1.6 h. The
+    altitude falls monotonically from local mid-afternoon to local midnight, so 40 bisection
+    steps converge to well under a second of time.
+
+    A window that opened at 18:00 local would sit **below** geometric sunset in June and July
+    and silently return the window edge, so the margin is load-bearing rather than cautious.
+
+    Returned per night rather than per visit so a long visit list costs 147 ephemeris solves
+    rather than 68000, and so every visit on a night shares one reference epoch.
+    """
+    import pandas as pd
+    nights = np.atleast_1d(np.asarray(day_obs)).astype(int)
+    uniq = np.unique(nights)
+    # Local standard time at Cerro Pachon is UTC-4, so 15:00 local on the evening of `day_obs`
+    # is 19:00 UTC of that same calendar date.
+    start = (pd.to_datetime(uniq.astype(str), format='%Y%m%d').values.astype('datetime64[s]')
+             .astype('float64') / 86400.0 + 40587.0)
+    lo = start + 19.0 / 24.0
+    hi = start + 31.0 / 24.0
+    loc = rubin_site_location() if location is None else location
+    for _ in range(40):
+        mid = 0.5 * (lo + hi)
+        above = sun_altitude_deg(mid, location=loc) > alt_deg
+        lo = np.where(above, mid, lo)
+        hi = np.where(above, hi, mid)
+    solved = pd.Series(0.5 * (lo + hi), index=uniq)
+    return solved.reindex(nights).to_numpy(float)
+
+
 def fixed_width_edges(lo, hi, width):
     """Bin edges of fixed `width` spanning [lo, hi], aligned to multiples of width
     (bin *edges* fall on 0, width, 2*width, ...)."""
