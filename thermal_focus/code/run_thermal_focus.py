@@ -537,7 +537,85 @@ def _t539_runs(inv, verbose=True):
     return runs
 
 
-def load_t539(day_obs_range, verbose=True):
+def _attach_first_science_visit(df, vis, variant, v1_per_um_dz, day_obs_range, tel_cols,
+                                verbose=True):
+    """Attach the first science visit after each alignment run, suffixed ``_sci1``.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        The per-night run table, carrying ``day_obs``, ``seq_num_last``, ``obs_start_mjd_last``
+        and ``exp_time_sec_last``.
+    vis : `pandas.DataFrame`
+        Every visit of those nights, already through `efd_db.join_consdb`, so it carries
+        ``img_type``, ``band``, ``obs_start_mjd`` [d] and the thermal columns.
+    variant : `str` or `None`
+        Recovered-optical-state variant id. When `None`, the response columns are omitted.
+    v1_per_um_dz : `float` or `None`
+        Conversion from `thermal_focus_lib.v1_per_um_dz_value`. When `None`, as for `variant`.
+    day_obs_range : `tuple` [`int`]
+        Inclusive night range, for the `efd_db.optical_state` read.
+    tel_cols : `list` [`str`]
+        Thermal feature columns other than the truss temperature, carried at this epoch too.
+    verbose : `bool`, optional
+        Print how many nights got a visit and how close it was.
+
+    Returns
+    -------
+    df : `pandas.DataFrame`
+        `df` with the ``_sci1`` columns added. Nights with no qualifying visit keep NaN there and
+        are otherwise untouched.
+
+    Notes
+    -----
+    The visit is the lowest ``seq_num`` above the run's last that passes the same ``img_type`` and
+    ``band`` filters as `load_science`, so it is a visit the fitted sample contains. The gap to it
+    is reported rather than bounded here: the cut belongs to the consumer, which is why
+    ``gap_to_sci1_min`` is a column.
+    """
+    cand = vis[vis['img_type'].isin(SCIENCE_IMG_TYPES) & vis['band'].isin(BANDS)]
+
+    pick = []
+    for night, g in cand.groupby('day_obs'):
+        row = df[df['day_obs'] == night]
+        if not len(row):
+            continue
+        after = g[g['seq_num'] > int(row['seq_num_last'].iloc[0])]
+        if not len(after):
+            continue
+        pick.append(after.loc[after['seq_num'].idxmin(), 'visit_id'])
+
+    keep = ['visit_id', 'day_obs', 'seq_num', 'obs_start_mjd', 'truss_temp_mean_c'] + list(tel_cols)
+    sci1 = vis[vis['visit_id'].isin(pick)][[c for c in keep if c in vis.columns]].copy()
+
+    if variant is not None and v1_per_um_dz is not None:
+        st = efd_db.optical_state(variant, day_obs_range=day_obs_range, wide=True, ok_only=True)
+        st = st[['visit_id', 'v1', 'v1_trim']]
+        sci1 = sci1.merge(st, on='visit_id', how='left')
+        sci1 = L.attach_response(sci1, v1_per_um_dz)
+
+    # Suffixed on everything but `day_obs`, which is the key: the pick is one visit per night and
+    # `df` is one row per night, so the merge is on the night.
+    sci1 = sci1.rename(columns={c: f'{c}_sci1' for c in sci1.columns if c != 'day_obs'})
+    df = df.merge(sci1, on='day_obs', how='left')
+
+    df['gap_to_sci1_min'] = ((df['obs_start_mjd_sci1'] - df['obs_start_mjd_last']) * 1440.0
+                             - df['exp_time_sec_last'] / 60.0)
+
+    if verbose:
+        n = int(df['visit_id_sci1'].notna().sum())
+        print(f'    first science visit after the run: found on {n} of {len(df)} nights')
+        if n:
+            gap = df['gap_to_sci1_min'].dropna()
+            print(f'      gap from run end to that visit [min]: median {gap.median():.1f}, '
+                  f'{int((gap < 5.0).sum())} of {len(gap)} nights under 5.0')
+            if 'y_sci1' in df.columns:
+                ny = int(df['y_sci1'].notna().sum())
+                print(f'      with a recovered open-loop focus at that visit: {ny} of {n}')
+    return df
+
+
+def load_t539(day_obs_range, variant=None, v1_per_um_dz=None, verbose=True):
     """Build the initial-alignment comparison table: prediction at the start, Trim at the end.
 
     One row per night. The thermal telemetry is taken at the **first** visit of the start-of-night
@@ -546,11 +624,23 @@ def load_t539(day_obs_range, verbose=True):
     to. Comparing them tests the prediction against an independent measurement rather than against
     the fit's own residual.
 
+    A third epoch is carried alongside those two: the **first science visit after the run ends**,
+    suffixed ``_sci1``. Against that visit the prediction is near-simultaneous rather than
+    separated by the whole alignment block, which is the leading systematic in the ``_first``
+    against ``_last`` comparison.
+
     Parameters
     ----------
     day_obs_range : `tuple` [`int`] or `None`
         Inclusive night range as ``YYYYMMDD``. Defaults to the span over which both the Trim and
         the M1M3 gradients exist.
+    variant : `str` or `None`, optional
+        Recovered-optical-state variant id, for the open-loop response at the first science visit
+        after the run. The ``_sci1`` response columns are omitted when this or `v1_per_um_dz` is
+        `None`; every other column is unaffected.
+    v1_per_um_dz : `float` or `None`, optional
+        Conversion from `thermal_focus_lib.v1_per_um_dz_value` [dimensionless v-mode-1 amplitude
+        per µm of total hexapod dz travel].
     verbose : `bool`, optional
         Print the selection funnel.
 
@@ -560,13 +650,39 @@ def load_t539(day_obs_range, verbose=True):
         One row per usable night: the run identification from `_t539_runs`, the five thermal
         features suffixed ``_first``, the four Trim degrees of freedom suffixed ``_last``
         [µm], and the mean TMA truss temperature at both epochs — ``truss_temp_mean_c_first``
-        and ``truss_temp_mean_c_last`` [°C].
+        and ``truss_temp_mean_c_last`` [°C]. Plus the timing of the run and the visit that
+        follows it:
+
+        ``obs_start_mjd_first``, ``obs_start_mjd_last``
+            Exposure start of the run's first and last visit [d].
+        ``exp_time_sec_last``
+            Integration time of the run's last visit [s].
+        ``run_duration_min``
+            First exposure start to last exposure end — the wall-clock span of the block [min].
+        ``visit_id_sci1``, ``seq_num_sci1``, ``obs_start_mjd_sci1``
+            Identification of the first science visit after the run ends.
+        ``gap_to_sci1_min``
+            Run end to the start of that visit [min].
+        ``y_sci1``
+            Open-loop focus at that visit [µm of equivalent hexapod dz], from
+            `thermal_focus_lib.attach_response`, with ``v1_sci1`` and ``v1_trim_sci1``
+            [dimensionless] behind it.
+        ``truss_temp_mean_c_sci1`` and the four M1M3 gradients suffixed ``_sci1``
+            The thermal telemetry at that visit [°C and °C/m], so how far the thermal state moved
+            over the gap can be checked rather than assumed.
 
     Notes
     -----
-    The two epochs are deliberately given distinct column suffixes. They are separated by the
-    whole alignment run — typically 10 exposures but up to 45 — so they are not simultaneous, and
-    a column name that did not say which epoch it came from would invite exactly that confusion.
+    The epochs are deliberately given distinct column suffixes. ``_first`` and ``_last`` are
+    separated by the whole alignment run — typically 10 exposures but up to 45 — so they are not
+    simultaneous, and a column name that did not say which epoch it came from would invite exactly
+    that confusion.
+
+    The ``_sci1`` visit is required to pass the same ``img_type`` and ``band`` filters as
+    `load_science`, so it is a visit the fitted sample contains. It is **not** required to be the
+    immediately next exposure: on most nights it is, but other blocks can intervene, which is what
+    ``gap_to_sci1_min`` is for. A consumer wanting a near-simultaneous comparison should cut on
+    that gap.
 
     The same cuts as `load_science` are applied, so the comparison sample is a subset of the
     fitted one: the look-up-table epoch nights and nights above
@@ -597,19 +713,28 @@ def load_t539(day_obs_range, verbose=True):
     vis = efd_db.join_consdb(vis, groups=('meta', 'thermal'))
 
     first = vis[['visit_id'] + tel_cols + ['truss_temp_mean_c',
-                                           'truss_temp_mean_c_interpolated']].copy()
+                                           'truss_temp_mean_c_interpolated',
+                                           'obs_start_mjd']].copy()
     first = first.rename(columns={c: f'{c}_first' for c in first.columns if c != 'visit_id'})
     # The truss temperature is carried at BOTH epochs. The telemetry at the run's first visit is
     # what the prediction is made from; the value at its last says how far the telescope's thermal
     # state moved while the alignment block converged, which is the leading reason the two epochs
     # are not expected to agree exactly.
-    last = vis[['visit_id'] + trim_cols + ['truss_temp_mean_c']].copy()
+    last = vis[['visit_id'] + trim_cols + ['truss_temp_mean_c', 'obs_start_mjd',
+                                           'exp_time_sec']].copy()
     last = last.rename(columns={c: f'{c}_last' for c in last.columns if c != 'visit_id'})
 
     df = runs.merge(first, left_on='visit_id_first', right_on='visit_id', how='left') \
              .drop(columns='visit_id')
     df = df.merge(last, left_on='visit_id_last', right_on='visit_id', how='left') \
            .drop(columns='visit_id')
+
+    # The span of the block, first exposure start to last exposure end. The run length varies from
+    # 10 exposures to 45, so this is measured per night rather than inferred from the count.
+    df['run_duration_min'] = ((df['obs_start_mjd_last'] - df['obs_start_mjd_first']) * 1440.0
+                              + df['exp_time_sec_last'] / 60.0)
+    df = _attach_first_science_visit(df, vis, variant, v1_per_um_dz, day_obs_range,
+                                     tel_cols, verbose=verbose)
 
     feat_first = [f'{c}_first' for c in tel_cols] + ['truss_temp_mean_c_first']
     n_feat = int(df[feat_first].notna().all(axis=1).sum())
@@ -695,10 +820,15 @@ def main():
         print(f'wrote {fam_path} ({len(fam)} rows)')
 
     if not args.no_t539 and not args.only_truss_all:
-        # `load_t539` needs no v1 conversion: it compares commanded Trim against the model's own
-        # prediction, both formed in the analysis stage, so --only-t539 can skip the science load.
+        # The Trim comparison itself needs no conversion -- it is commanded Trim against the
+        # model's own prediction, both formed in the analysis stage. The conversion is for the
+        # open-loop focus at the first science visit after the run, so --only-t539 computes it
+        # here rather than skipping the whole step as it used to.
         print('\n=== initial alignment block, start-of-night runs ===')
-        t539 = load_t539(day_obs_range)
+        _conv = (v1_per_um_dz if not _only
+                 else L.v1_per_um_dz_value(dof_set=args.dof_set, n_modes=args.n_modes,
+                                           verbose=False))
+        t539 = load_t539(day_obs_range, variant=args.variant, v1_per_um_dz=_conv)
         if len(t539):
             t539_path = out_dir / 'thermal_focus_t539.parquet'
             t539.to_parquet(t539_path, index=False)

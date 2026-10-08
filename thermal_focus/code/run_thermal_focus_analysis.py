@@ -33,8 +33,9 @@ Computed sections, in the order they are printed:
    test the science-visit pages make, on an independent sample and an independent retrieval.
 10. The conversion table — the v-mode-1 to hexapod dz factor across projection schemes,
     including the 10-degree-of-freedom/1-mode case the online system would use.
-11. The standalone calculator — ``trim_calculator.py``, which inlines the fitted coefficients,
-    checked against the pipeline fitted here so the two cannot drift apart unnoticed.
+11. The standalone calculator — ``trim_calculator.py``, which reads the fitted coefficients from
+    ``trim_coefficients.yaml``, checked against the pipeline fitted here so the two cannot drift
+    apart unnoticed.
 12. The truss temperature alone — the one-thermometer correction the five-channel model must beat.
 13. The focus correction as degrees of freedom — each visit's measured v-mode 1 back-projected into
     the camera and M2 hexapod dz it is built from, over all visits and at the start of each night.
@@ -86,6 +87,8 @@ sys.path.insert(0, str(_ROOT))
 import thermal_focus_fit as F                                     # noqa: E402
 import thermal_focus_lib as L                                     # noqa: E402
 import trim_calculator as T                                       # noqa: E402
+import test_trim_calculator as TT                                 # noqa: E402
+import common.utils as U                                          # noqa: E402
 from common.utils import nmad                                     # noqa: E402
 
 #: Bands in plotting order, bluest first, with a colour each.
@@ -105,6 +108,26 @@ ABLATION_GROUPS = (('truss',), ('zgrad',), ('truss', 'zgrad'), ('truss', 'grads'
 #: over the nMAD of the night medians]. Used for the per-night open-loop focus and for the
 #: BLOCK-T539 Trim, so the two pages name outliers on one definition.
 OUTLIER_NIGHT_Z = 4.0
+
+#: Initial-alignment block duration taken to be the normal, converged length of the shortened
+#: post-`T539_SHORT_EPOCH_DAY_OBS` block [min]. Nights outside this band are tabulated, since the
+#: block is nominally a fixed sequence and a long one means it struggled to converge.
+T539_NOMINAL_DURATION_MIN = (6.0, 9.0)
+
+#: First `day_obs` of the shortened initial-alignment block. The block's median duration drops
+#: from 23.1 min to 8.0 min across this date, so the two epochs are tabulated separately rather
+#: than pooled into one bimodal distribution.
+T539_SHORT_EPOCH_DAY_OBS = 20260201
+
+#: Sun altitude defining the night's reference epoch [deg]. 0 deg is geometric sunset, the
+#: "0 degree twilight" an observer times the start of the night against.
+TWILIGHT_REF_ALT_DEG = 0.0
+
+#: Hours after `TWILIGHT_REF_ALT_DEG` twilight separating the early part of the night from the
+#: rest [h]. The residual's degradation is a transient confined to the first few hours rather
+#: than a drift across the night, so a single split reports it better than a linear slope does:
+#: the nMAD is flat either side of 3 h and steps across it.
+EARLY_NIGHT_SPLIT_H = 3.0
 
 #: Robust deviations beyond which a single VISIT is called an outlier of the fitted model
 #: [dimensionless, residual over the nMAD of the residual]. Looser than `OUTLIER_NIGHT_Z`
@@ -274,7 +297,9 @@ def section_sample(sci, features, verbose=True):
     -------
     out : `dict`
         ``per_band`` (`pandas.DataFrame`), ``per_night`` (`pandas.DataFrame`),
-        ``feature_means`` (`dict`), ``interp_frac`` (per cent of visits whose truss
+        ``per_night_band`` (`pandas.DataFrame`: visits per night per band, indexed by date over
+        every calendar day of the span so unobserved nights are gaps, columns in `BAND_COLOUR`
+        order), ``feature_means`` (`dict`), ``interp_frac`` (per cent of visits whose truss
         temperature was filled by within-night interpolation), ``night_line``
         (`thermal_focus_fit.huber_line` of night-median open-loop focus against night-median truss
         temperature) and ``outlier_nights`` (`pandas.DataFrame`: the nights whose median
@@ -297,6 +322,15 @@ def section_sample(sci, features, verbose=True):
                  .agg(n=('y', 'size'), median=('y', 'median'),
                       truss=('truss_temp_mean_c', 'median'))
                  .reset_index())
+
+    # Visits per night per band, as a date-indexed count table. Reindexed over every calendar date
+    # from the first night to the last, so a night the survey did not observe shows as a gap
+    # rather than being closed up against its neighbour.
+    pnb = (sci.pivot_table(index='day_obs', columns='band', values='y', aggfunc='size')
+           .reindex(columns=[b for b in BAND_COLOUR if b in sci['band'].unique()])
+           .fillna(0.0))
+    pnb.index = pd.to_datetime(pnb.index.astype(int).astype(str), format='%Y%m%d')
+    per_night_band = pnb.reindex(pd.date_range(pnb.index.min(), pnb.index.max(), freq='D'))
 
     # Robust z of each night median against the spread of the night medians themselves -- not
     # against the all-visit nMAD, which mixes within-night and between-night scatter.
@@ -331,8 +365,9 @@ def section_sample(sci, features, verbose=True):
             print(f'  day_obs {int(r.day_obs)}  n {int(r.n):5d}  median open-loop focus '
                   f'{r["median"]:+8.1f} um of equivalent hexapod dz  truss {r.truss:+6.2f} deg C  '
                   f'z {r.z:+.1f} (dimensionless)')
-    return dict(per_band=per_band, per_night=per_night, feature_means=means,
-                interp_frac=interp, night_line=night_line, outlier_nights=outliers)
+    return dict(per_band=per_band, per_night=per_night, per_night_band=per_night_band,
+                feature_means=means, interp_frac=interp, night_line=night_line,
+                outlier_nights=outliers)
 
 
 def section_terms(sci, model='huber', verbose=True):
@@ -736,7 +771,8 @@ def section_closed_loop(sci, verbose=True):
     out : `dict`
         ``dz`` -- per-visit measured focus [µm of equivalent hexapod dz]; ``median`` and ``nmad``
         of it [µm]; ``p1`` and ``p99``, the 1st and 99th percentiles [µm], which bound the
-        plotted range; ``n``; ``nightly`` -- per-night ``median``, ``nmad`` [µm], ``n`` and
+        plotted range; ``p_lo``, ``p_hi``, ``min`` and ``max`` [µm], which bound the full-range
+        page; ``n``; ``nightly`` -- per-night ``median``, ``nmad`` [µm], ``n`` and
         ``obs_start_mjd`` [d]; ``drift`` -- the `thermal_focus_fit.huber_line` of nightly median
         against date, or ``None`` when there are too few nights.
 
@@ -752,7 +788,11 @@ def section_closed_loop(sci, verbose=True):
     d['meas_dz_um'] = d['v1'].to_numpy(float) / conv
     a = d['meas_dz_um'].to_numpy(float)
     out = {'dz': a, 'median': float(np.median(a)), 'nmad': float(nmad(a)), 'n': int(len(a)),
-           'p1': float(np.percentile(a, 1)), 'p99': float(np.percentile(a, 99))}
+           'p1': float(np.percentile(a, 1)), 'p99': float(np.percentile(a, 99)),
+           # The far tails, for the full-range page: the distribution reaches several hundred
+           # microns either side, which the 1st-to-99th view deliberately crops away.
+           'p_lo': float(np.percentile(a, 0.1)), 'p_hi': float(np.percentile(a, 99.9)),
+           'min': float(a.min()), 'max': float(a.max())}
 
     g = d.groupby('day_obs')
     nightly = pd.DataFrame({'median': g['meas_dz_um'].median(),
@@ -785,6 +825,130 @@ def section_closed_loop(sci, verbose=True):
                   f'({abs(dr["slope"]) / dr["slope_err"]:.1f} standard errors), '
                   f'Pearson r {dr["pearson_r"]:+.4f}, Spearman rho {dr["spearman_rho"]:+.4f}, '
                   f'n {dr["n"]} nights')
+    return out
+
+
+def section_intranight(sci, resid, n_bins=10, split_h=EARLY_NIGHT_SPLIT_H, verbose=True):
+    """Does the prediction's quality change over the course of a night?
+
+    The model carries no time-of-night term: it sees the thermal telemetry and nothing else. So
+    if its residual has a systematic shape against time since sunset, some part of the focus
+    drift is being driven by something the thermal channels do not capture — most plausibly a
+    thermal lag, where a structure's temperature at a given moment does not yet reflect the heat
+    already moving through it.
+
+    Parameters
+    ----------
+    sci : `pandas.DataFrame`
+        Science visits, needing ``day_obs`` and ``obs_start_mjd`` [d].
+    resid : `array_like`
+        Actual minus predicted open-loop focus, positionally aligned with `sci`
+        [µm of equivalent hexapod dz].
+    n_bins : `int`, optional
+        Equal-count bins in time since twilight used for the binned median and nMAD.
+    split_h : `float`, optional
+        Hours after twilight separating the early night from the rest [h].
+    verbose : `bool`, optional
+        Print the per-bin table, the trend fits and the early-against-late split.
+
+    Returns
+    -------
+    out : `dict` or `None`
+        ``hours`` and ``resid`` (per visit, hours since the night's `TWILIGHT_REF_ALT_DEG`
+        sunset and the residual [µm of equivalent hexapod dz]); ``bins``
+        (`pandas.DataFrame` with ``centre`` [h], ``lo`` and ``hi`` [h], ``median`` and ``nmad``
+        [µm], ``n``); ``median_trend`` and ``nmad_trend`` (`thermal_focus_fit.huber_line` of the
+        binned median and binned nMAD against bin centre, so the slope is µm per h); ``split``
+        (``split_h`` [h], and ``early``/``late`` each with ``median``, ``nmad`` [µm] and ``n``,
+        plus ``nmad_ratio``, dimensionless, early over late); ``p1`` and ``p99`` of ``hours``;
+        ``n``. `None` when the timing columns are absent.
+
+    Notes
+    -----
+    Time is measured from the night's own geometric sunset rather than from its first exposure,
+    so the zero means the same physical thing in June as in December. Over this season sunset
+    moves by about 1.9 h, which is large enough that a first-exposure reference would smear any
+    real time-of-night effect.
+
+    The bins hold equal visit counts rather than equal widths, so the nMAD of each is estimated
+    from the same number of visits and the late-night bins — which are thinly populated, since
+    not every night runs to dawn — are widened rather than left noisy.
+
+    **The effect is a transient, not a drift,** which is why the split is reported alongside the
+    linear trends. The residual nMAD is roughly flat from 3 h after sunset to dawn and steps up
+    sharply before it, and the median carries a positive bias over the same early window. A
+    straight line through the whole night therefore understates it: the line is pulled down by a
+    long flat tail and comes out at only about 2 standard errors on the median, while the step
+    across `split_h` is unambiguous. Physically this is what a thermal lag looks like — early in
+    the night the structure is still shedding the day's heat, so a temperature read at that
+    moment does not yet describe the focus the glass is heading for.
+    """
+    if 'obs_start_mjd' not in sci.columns or 'day_obs' not in sci.columns:
+        return None
+    r = np.asarray(resid, float)
+    mjd = sci['obs_start_mjd'].to_numpy(float)
+    tw = U.evening_twilight_mjd(sci['day_obs'].to_numpy(int), alt_deg=TWILIGHT_REF_ALT_DEG)
+    hours = (mjd - tw) * 24.0
+    ok = np.isfinite(hours) & np.isfinite(r)
+    if ok.sum() < 10 * n_bins:
+        return None
+    hours, r = hours[ok], r[ok]
+
+    # Equal-count edges via quantiles; `np.unique` guards the degenerate case of a quantile
+    # repeating, which would otherwise make an empty bin.
+    edges = np.unique(np.quantile(hours, np.linspace(0.0, 1.0, n_bins + 1)))
+    idx = np.clip(np.digitize(hours, edges[1:-1]), 0, len(edges) - 2)
+    rows = []
+    for b in range(len(edges) - 1):
+        m = idx == b
+        if m.sum() < 10:
+            continue
+        rows.append({'centre': float(np.median(hours[m])), 'lo': float(edges[b]),
+                     'hi': float(edges[b + 1]), 'median': float(np.median(r[m])),
+                     'nmad': float(nmad(r[m])), 'n': int(m.sum())})
+    bins = pd.DataFrame(rows)
+    out = {'hours': hours, 'resid': r, 'bins': bins, 'n': int(len(r)),
+           'p1': float(np.percentile(hours, 1)), 'p99': float(np.percentile(hours, 99)),
+           'median_trend': None, 'nmad_trend': None}
+    if len(bins) > 3:
+        out['median_trend'] = F.huber_line(bins['centre'].to_numpy(float),
+                                           bins['median'].to_numpy(float))
+        out['nmad_trend'] = F.huber_line(bins['centre'].to_numpy(float),
+                                         bins['nmad'].to_numpy(float))
+
+    early, late = hours < split_h, hours >= split_h
+    sp = {'split_h': float(split_h)}
+    for key, m in (('early', early), ('late', late)):
+        sp[key] = ({'median': float(np.median(r[m])), 'nmad': float(nmad(r[m])),
+                    'n': int(m.sum())} if m.sum() > 10 else None)
+    sp['nmad_ratio'] = (sp['early']['nmad'] / sp['late']['nmad']
+                        if sp['early'] and sp['late'] and sp['late']['nmad'] > 0 else np.nan)
+    out['split'] = sp
+
+    if verbose:
+        print(f'  residual against time since {TWILIGHT_REF_ALT_DEG:.0f} deg twilight, '
+              f'{out["n"]} visits in {len(bins)} equal-count bins')
+        print('    hours since twilight   median [um]   nMAD [um]   n visits')
+        for _, b in bins.iterrows():
+            print(f'    {b["lo"]:5.2f} to {b["hi"]:5.2f} h       '
+                  f'{b["median"]:+7.2f}      {b["nmad"]:7.2f}     {int(b["n"]):6d}')
+        for key, what, unit in (('median_trend', 'binned median', 'um'),
+                                ('nmad_trend', 'binned nMAD', 'um')):
+            t = out[key]
+            if t:
+                print(f'    {what} against hours since twilight: slope {t["slope"]:+.3f} '
+                      f'+/- {t["slope_err"]:.3f} {unit} of equivalent hexapod dz per h '
+                      f'({abs(t["slope"]) / t["slope_err"]:.1f} standard errors), '
+                      f'Pearson r {t["pearson_r"]:+.3f}, Spearman rho '
+                      f'{t["spearman_rho"]:+.3f}, n {t["n"]} bins')
+        if sp['early'] and sp['late']:
+            print(f'    the effect is a step, not a drift -- split at {split_h:.0f} h after '
+                  f'twilight [um of equivalent hexapod dz]:')
+            print(f'      earlier: median {sp["early"]["median"]:+.2f}, nMAD '
+                  f'{sp["early"]["nmad"]:.2f}, n {sp["early"]["n"]} visits')
+            print(f'      later  : median {sp["late"]["median"]:+.2f}, nMAD '
+                  f'{sp["late"]["nmad"]:.2f}, n {sp["late"]["n"]} visits')
+            print(f'      nMAD ratio {sp["nmad_ratio"]:.2f} (dimensionless, early over late)')
     return out
 
 
@@ -1060,15 +1224,15 @@ def section_calculator(sci, features, full, verbose=True):
     -------
     out : `dict`
         ``max_abs_diff_um`` and ``median_diff_um`` over the sample, ``worked_max_abs_diff_um``
-        over `trim_calculator.TEST_CASES`, and ``n`` — all µm of equivalent hexapod dz.
+        over the worked cases in ``trim_test_cases.yaml``, and ``n`` — all µm of equivalent
+        hexapod dz — plus ``n_worked_cases``.
 
     Notes
     -----
-    `trim_calculator` is a standalone copy with every coefficient inlined to two decimals, so
-    that it can be run on a summit machine with nothing but numpy. Inlining means it can drift
-    from the fit silently, which is exactly what this section exists to catch: if a coefficient
-    here is re-fitted and the calculator is not updated, ``max_abs_diff_um`` grows from rounding
-    noise to something that matters.
+    `trim_calculator` is a standalone copy that reads its coefficients, rounded to two decimals,
+    from ``trim_coefficients.yaml``. That copy can drift from the fit silently, which is exactly
+    what this section exists to catch: if a coefficient here is re-fitted and the calculator's
+    file is not updated, ``max_abs_diff_um`` grows from rounding noise to something that matters.
     """
     cols = ['truss_temp_mean_c', 'm1m3_z_gradient_c_per_m', 'm1m3_y_gradient_c_per_m',
             'm1m3_radial_gradient_c_per_m', 'm1m3_x_gradient_c_per_m']
@@ -1077,23 +1241,27 @@ def section_calculator(sci, features, full, verbose=True):
             print('  the fitted feature set is not the calculator\'s five channels, so the '
                   'calculator is not comparable here; skipped')
         return {}
-    _, calc = T.predict_focus_error(*[sci[c].to_numpy(float) for c in cols],
-                                    warn_extrapolation=False)
-    diff = calc - np.asarray(full['pred'], float)
-    worked = max(abs(T.predict_focus_error(**inp, warn_extrapolation=False)[1] - exp)
-                 for _, inp, exp in T.TEST_CASES)
+    calculator = T.TrimCalculator()
+    _, pred_um, _ = calculator.predict_trim(*[sci[c].to_numpy(float) for c in cols],
+                                            warn_extrapolation=False)
+    diff = pred_um - np.asarray(full['pred'], float)
+    _, test_cases = TT.load_test_cases()
+    worked = max(abs(calculator.predict_trim(**inp, warn_extrapolation=False)[1] - exp)
+                 for _, inp, exp in test_cases)
     out = {'n': int(len(sci)),
            'max_abs_diff_um': float(np.nanmax(np.abs(diff))),
            'median_diff_um': float(np.nanmedian(diff)),
-           'worked_max_abs_diff_um': float(worked)}
+           'worked_max_abs_diff_um': float(worked),
+           'n_worked_cases': len(test_cases)}
     if verbose:
         print(f'  calculator against the fitted pipeline over {out["n"]} visits: '
               f'max |difference| {out["max_abs_diff_um"]:.4f}, median '
               f'{out["median_diff_um"]:+.4f} um of equivalent hexapod dz')
-        print(f'  its {len(T.TEST_CASES)} worked cases agree with their stated values to '
+        print(f'  its {len(test_cases)} worked cases agree with their stated values to '
               f'{out["worked_max_abs_diff_um"]:.4f} um of equivalent hexapod dz')
-        print(f'  inlined coefficients: intercept {T.INTERCEPT_UM:+.2f} um, truss '
-              f'{T.TRUSS_UM_PER_C:+.2f} um per deg C')
+        print(f'  coefficients from {calculator.path.name}: intercept '
+              f'{calculator.intercept_um:+.2f} um, truss {calculator.truss_um_per_c:+.2f} um '
+              f'per deg C')
     return out
 
 
@@ -1309,6 +1477,171 @@ def section_dof(sci, pred, v1_per_um_dz, dof_set='all_50', n_modes=34, verbose=T
     return out
 
 
+def _t539_duration(df):
+    """Summarise the wall-clock span of the initial alignment run, night by night.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        The t539 table, needing ``run_duration_min`` [min] and ``day_obs``.
+
+    Returns
+    -------
+    out : `dict` or `None`
+        ``minutes`` (`numpy.ndarray`, per night [min]), ``day_obs`` (`numpy.ndarray`, aligned with
+        it), ``median``, ``p16``, ``p84``, ``min`` and ``max`` [min], and ``n`` nights. `None` when
+        the column is absent, which is the case for a table written before it existed.
+
+    Notes
+    -----
+    This is the delay the run-first against run-last comparison carries: the prediction is made at
+    the start of the span and the Trim is read at its end. The spread matters more than the median,
+    because the run length is not fixed.
+    """
+    if 'run_duration_min' not in df.columns:
+        return None
+    d = df[['day_obs', 'run_duration_min']].dropna()
+    if not len(d):
+        return None
+    m = d['run_duration_min'].to_numpy(float)
+    return {'minutes': m, 'day_obs': d['day_obs'].to_numpy(int),
+            'median': float(np.median(m)), 'p16': float(np.percentile(m, 16)),
+            'p84': float(np.percentile(m, 84)), 'min': float(m.min()), 'max': float(m.max()),
+            'n': int(len(m))}
+
+
+def _t539_long_runs(df, nominal=T539_NOMINAL_DURATION_MIN, since=T539_SHORT_EPOCH_DAY_OBS):
+    """Tabulate the shortened-epoch nights whose alignment block was not the nominal length.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        The t539 table, needing ``day_obs``, ``run_duration_min`` [min], ``n_run`` [exposures]
+        and ``obs_start_mjd_first`` [d].
+    nominal : `tuple` [`float`], optional
+        Low and high duration bounds taken to be a normal, converged block [min]. A night inside
+        this band is not listed.
+    since : `int`, optional
+        First `day_obs` considered, the date the block was shortened.
+
+    Returns
+    -------
+    out : `dict` or `None`
+        ``table`` (`pandas.DataFrame`, one row per listed night, sorted by duration, with
+        ``day_obs``, ``run_duration_min`` [min], ``n_run`` [exposures],
+        ``min_after_twilight`` [min after the night's 0 deg sunset] and ``min_per_visit`` [min]),
+        ``n_epoch`` nights in the epoch, ``n_nominal`` of them inside the band, ``n_short`` below
+        it, ``n_long`` above it, ``nominal`` and ``since`` as given. `None` when the columns are
+        absent.
+
+    Notes
+    -----
+    The block is nominally a fixed sequence, so after it was shortened its duration should be
+    close to constant. It is not: a tail runs to several times the nominal length. Two
+    explanations separate on this table. If the long nights also carry more exposures, the block
+    iterated further to converge; if they carry the nominal exposure count spread over a longer
+    time, the delay is between exposures and so is readout, slew or an operator pause rather than
+    the alignment itself. ``min_per_visit`` is the discriminator and is why the exposure count is
+    tabulated beside the duration.
+
+    Time after 0 deg twilight is included because the other candidate explanation is thermal: a
+    block run early, while the dome is still dumping the day's heat, has further to converge. It
+    is computed here from `common.utils.evening_twilight_mjd` rather than read from the
+    value-added database, which does not carry it.
+    """
+    need = ('day_obs', 'run_duration_min', 'n_run', 'obs_start_mjd_first')
+    if any(c not in df.columns for c in need):
+        return None
+    d = df[list(need)].dropna(subset=['run_duration_min'])
+    d = d[d['day_obs'].astype(int) >= int(since)]
+    if not len(d):
+        return None
+
+    lo, hi = float(nominal[0]), float(nominal[1])
+    dur = d['run_duration_min'].to_numpy(float)
+    out = d[(dur < lo) | (dur > hi)].copy()
+    tw = U.evening_twilight_mjd(out['day_obs'].to_numpy(int), alt_deg=TWILIGHT_REF_ALT_DEG)
+    out['min_after_twilight'] = (out['obs_start_mjd_first'].to_numpy(float) - tw) * 1440.0
+    out['min_per_visit'] = out['run_duration_min'] / out['n_run'].clip(lower=1)
+    out = (out[['day_obs', 'run_duration_min', 'n_run', 'min_after_twilight', 'min_per_visit']]
+           .sort_values('run_duration_min', ascending=False).reset_index(drop=True))
+    return {'table': out, 'n_epoch': int(len(d)),
+            'n_nominal': int(((dur >= lo) & (dur <= hi)).sum()),
+            'n_short': int((dur < lo).sum()), 'n_long': int((dur > hi).sum()),
+            'nominal': (lo, hi), 'since': int(since)}
+
+
+def _t539_sci1(df, full, features):
+    """The prediction against the open-loop focus of the first science visit after the run.
+
+    Parameters
+    ----------
+    df : `pandas.DataFrame`
+        The t539 table, needing ``y_sci1`` [µm of equivalent hexapod dz], ``gap_to_sci1_min``
+        [min] and every feature in `features` suffixed ``_sci1``.
+    full : `dict`
+        Result of `thermal_focus_fit.fit_full`, carrying the fitted pipeline under ``model``.
+    features : `list` [`str`]
+        Feature columns of the deliverable model, in fit order.
+
+    Returns
+    -------
+    out : `dict` or `None`
+        ``actual`` and ``pred`` [µm of equivalent hexapod dz], ``day_obs``, ``gap_min`` [min],
+        ``fit`` (`thermal_focus_fit.huber_line` of actual against predicted), ``diff_median`` and
+        ``diff_nmad`` [µm], ``n`` nights, and ``outliers`` (`pandas.DataFrame` of the nights whose
+        difference exceeds `OUTLIER_NIGHT_Z` robust deviations, with ``day_obs``, ``actual``,
+        ``pred``, ``diff`` [µm], ``gap_min`` and ``z``). `None` when the columns are absent or
+        nothing is finite.
+
+    Notes
+    -----
+    This removes the one systematic the run-first against run-last comparison cannot avoid: those
+    two epochs are separated by the whole alignment block, so the telescope's thermal state moves
+    between them.
+
+    **Both sides are evaluated at the same visit.** The prediction is made from the thermal
+    telemetry of the first science visit after the block, not from the telemetry at the block's
+    start, so there is no time gap left to correct for and no nights need be cut. An earlier
+    version predicted at the block's first visit and kept only nights whose block-to-science gap
+    was under `T539_SCI1_MAX_GAP_MIN`, which cost 130 of 149 nights to buy an approximation of
+    what this does exactly.
+
+    ``gap_min`` is carried through anyway, as a diagnostic: it no longer selects nights, but a
+    long gap still means the block's converged Trim is stale by the time the science visit is
+    taken, which is a property of the night rather than of the prediction.
+    """
+    need = ['y_sci1', 'gap_to_sci1_min'] + [f'{c}_sci1' for c in features]
+    if any(c not in df.columns for c in need):
+        return None
+    actual_all = df['y_sci1'].to_numpy(float)
+    X = np.column_stack([df[f'{c}_sci1'].to_numpy(float) for c in features])
+    # The model cannot score a row with a missing feature, so those rows are predicted as NaN
+    # rather than being dropped before the call, which would misalign the result with `df`.
+    pred_all = np.full(len(df), np.nan)
+    rows_ok = np.isfinite(X).all(axis=1)
+    if rows_ok.any():
+        pred_all[rows_ok] = np.asarray(full['model'].predict(X[rows_ok]), float)
+
+    keep = np.isfinite(actual_all) & np.isfinite(pred_all)
+    if not keep.any():
+        return None
+
+    actual, pred = actual_all[keep], pred_all[keep]
+    day_obs = df['day_obs'].to_numpy(int)[keep]
+    gap = df['gap_to_sci1_min'].to_numpy(float)[keep]
+    diff = actual - pred
+    centre, spread = float(np.median(diff)), float(nmad(diff))
+    z = (diff - centre) / spread if spread > 0 else np.full(len(diff), np.nan)
+    o = pd.DataFrame({'day_obs': day_obs, 'actual': actual, 'pred': pred, 'diff': diff,
+                      'gap_min': gap, 'z': z})
+    o = (o[np.abs(o['z']) > OUTLIER_NIGHT_Z]
+         .sort_values('z', key=abs, ascending=False).reset_index(drop=True))
+    return {'actual': actual, 'pred': pred, 'day_obs': day_obs, 'gap_min': gap,
+            'fit': F.huber_line(actual, pred), 'diff_median': centre, 'diff_nmad': spread,
+            'n': int(keep.sum()), 'outliers': o}
+
+
 def section_t539(t539, full, features, dof_set='all_50', n_modes=34, verbose=True):
     """Compare the predicted degree-of-freedom trim against what the initial alignment settled on.
 
@@ -1344,7 +1677,12 @@ def section_t539(t539, full, features, dof_set='all_50', n_modes=34, verbose=Tru
         Trim lies more than `OUTLIER_NIGHT_Z` nMAD from the median of the nights, with ``day_obs``,
         the two hexapod dz Trim values [µm], the predicted focus error [µm of equivalent hexapod
         dz] and the robust ``dof5_last_z`` [dimensionless, deviation over the nMAD of the nights];
-        ``dof5_last_center_um`` and ``dof5_last_nmad_um`` — that median and nMAD [µm].
+        ``dof5_last_center_um`` and ``dof5_last_nmad_um`` — that median and nMAD [µm];
+        ``duration`` — `_t539_duration`, the wall-clock span of the run per night [min];
+        ``sci1`` — `_t539_sci1`, the prediction evaluated at the first science visit after the
+        run against that visit's own open-loop focus, which removes the delay the two epochs
+        below carry; ``long_runs`` — `_t539_long_runs`, the shortened-block nights whose duration
+        falls outside `T539_NOMINAL_DURATION_MIN`.
 
     Notes
     -----
@@ -1432,6 +1770,9 @@ def section_t539(t539, full, features, dof_set='all_50', n_modes=34, verbose=Tru
            'unit': {key: float(unit_vec[idx]) for idx, key, _, _, _ in wanted},
            'outliers': t539_outliers,
            'dof5_last_center_um': c5, 'dof5_last_nmad_um': s5,
+           'duration': _t539_duration(df),
+           'sci1': _t539_sci1(df, full, features),
+           'long_runs': _t539_long_runs(df),
            'zero_nights': {'dof5': int((df['dof5_last'] == 0).sum()),
                            'dof0': int((df['dof0_last'] == 0).sum())}}
 
@@ -1470,6 +1811,41 @@ def section_t539(t539, full, features, dof_set='all_50', n_modes=34, verbose=Tru
                   f'M2 hexapod dz Trim {r.dof0_last:+9.2f} um, predicted focus error '
                   f'{r.focus_error_um:+8.1f} um of equivalent hexapod dz, '
                   f'z {r.dof5_last_z:+.1f} (dimensionless)')
+        du = out['duration']
+        if du:
+            print(f'  run duration, first exposure start to last exposure end [min]: median '
+                  f'{du["median"]:.1f}, 16th to 84th percentile {du["p16"]:.1f} to '
+                  f'{du["p84"]:.1f}, range {du["min"]:.1f} to {du["max"]:.1f}, n {du["n"]} nights')
+        s1 = out['sci1']
+        if s1:
+            ln = s1['fit']
+            print(f'  prediction and measurement both at the first science visit after the run, '
+                  f'no time gap: {s1["n"]} nights')
+            print(f'    open-loop focus at that visit against the prediction: Huber slope '
+                  f'{ln["slope"]:+.3f} +/- {ln["slope_err"]:.3f} (dimensionless, predicted per '
+                  f'actual),')
+            print(f'    Pearson r {ln["pearson_r"]:+.4f}, Spearman rho '
+                  f'{ln["spearman_rho"]:+.4f}, n {ln["n"]} nights')
+            print(f'    actual minus predicted: median {s1["diff_median"]:+.1f}, nMAD '
+                  f'{s1["diff_nmad"]:.1f} um of equivalent hexapod dz')
+            print(f'    nights beyond {OUTLIER_NIGHT_Z:.0f} nMAD of that difference: '
+                  f'{len(s1["outliers"])}')
+            for _, r in s1['outliers'].iterrows():
+                print(f'      day_obs {int(r.day_obs)}  actual {r.actual:+8.1f}, predicted '
+                      f'{r.pred:+8.1f}, difference {r["diff"]:+8.1f} um of equivalent hexapod '
+                      f'dz, gap {r.gap_min:.1f} min, z {r.z:+.1f} (dimensionless)')
+        lr = out['long_runs']
+        if lr:
+            lo, hi = lr['nominal']
+            print(f'  block duration outside {lo:.0f} to {hi:.0f} min, day_obs >= '
+                  f'{lr["since"]}: {len(lr["table"])} of {lr["n_epoch"]} nights '
+                  f'({lr["n_short"]} under, {lr["n_long"]} over; {lr["n_nominal"]} nominal)')
+            print('    day_obs   duration [min]  visits  min after 0 deg twilight  '
+                  'min per visit')
+            for _, r in lr['table'].iterrows():
+                print(f'    {int(r.day_obs)}      {r.run_duration_min:8.1f}    '
+                      f'{int(r.n_run):4d}          {r.min_after_twilight:8.1f}'
+                      f'          {r.min_per_visit:6.2f}')
     return out
 
 
@@ -2091,12 +2467,21 @@ def _actual_vs_predicted_pair(axes, y, pred, what, nbins=60, clip_pct=(0.5, 99.5
 
     ax = axes[1]
     dlo, dhi = np.percentile(diff, clip_pct)
+    # A percentile clip cannot exclude a lone outlier from a sample of a few tens -- the 98th
+    # percentile of 33 points still sits above it -- so the range is also held to a robust span
+    # about the median. Whichever is tighter wins; the overflow piles into the end bin.
+    _c, _s = float(np.median(diff)), float(nmad(diff))
+    if _s > 0:
+        dlo, dhi = max(dlo, _c - 6.0 * _s), min(dhi, _c + 6.0 * _s)
     dpad = 0.05 * (dhi - dlo)
     bins = np.linspace(dlo - dpad, dhi + dpad, nbins)
     ax.hist(np.clip(diff, bins[0], bins[-1]), bins=bins, histtype='step', color='#1f77b4')
     ax.axvline(float(np.median(diff)), color='#d62728', lw=1.3,
                label=f'median {np.median(diff):+.1f} um\nnMAD {nmad(diff):.1f} um')
     ax.axvline(0, color='0.5', lw=0.8)
+    # Held to the binned range, so a point outside it piles into the end bin instead of
+    # stretching the axis and squashing the core -- which it does on a sample of a few tens.
+    ax.set_xlim(bins[0], bins[-1])
     ax.set_xlabel('actual minus predicted v1_dz\n[um of equivalent hexapod dz]')
     ax.set_ylabel('visits')
     ax.set_title(f'The difference, {what.lower()}', fontsize=8.5)
@@ -2404,6 +2789,403 @@ def figure_t539_first_visit(pdf, t539res):
     plt.close(fig)
 
 
+def figure_visits_per_night(pdf, sci, samp):
+    """Visits per night per band over the season, and the per-band totals.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    sci : `pandas.DataFrame`
+        Science table, as loaded.
+    samp : `dict`
+        Result of `section_sample`, whose ``per_night_band`` frame holds the counts.
+
+    Notes
+    -----
+    What the sample is made of, which the opening page states only as a total. One bar per
+    ``day_obs``, bands stacked in wavelength order and coloured by `BAND_COLOUR`. Nights the
+    survey did not observe are gaps rather than being closed up, so the bar chart reads as a
+    calendar.
+
+    The band mix is strongly uneven — i and z carry most of the sample — which is why the model is
+    fitted band-independent and checked per band rather than fitted per band: the thin bands would
+    otherwise be fitted on far too little.
+    """
+    pnb = samp.get('per_night_band')
+    if pnb is None or not len(pnb):
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(15, 4.6), width_ratios=(3.0, 1.0))
+
+    ax = axes[0]
+    bottom = np.zeros(len(pnb), float)
+    for b in pnb.columns:
+        v = pnb[b].to_numpy(float)
+        ax.bar(pnb.index, v, bottom=bottom, width=1.0, color=BAND_COLOUR.get(b, '0.5'),
+               label=f'{b}  {int(np.nansum(v))}', linewidth=0)
+        bottom = bottom + np.nan_to_num(v)
+    ax.set_xlabel('day_obs')
+    ax.set_ylabel('science visits in the sample [visits per night]')
+    # Outside the axes: the busiest nights reach the top of the frame, so an inset legend would
+    # sit on top of the data.
+    ax.legend(fontsize=7.5, title='band, total visits', title_fontsize=7.5, ncol=6,
+              loc='lower center', bbox_to_anchor=(0.5, 1.0), frameon=False)
+    for lab in ax.get_xticklabels():
+        lab.set_rotation(30)
+        lab.set_horizontalalignment('right')
+
+    ax = axes[1]
+    tot = pnb.sum(axis=0)
+    ypos = np.arange(len(tot))[::-1]
+    ax.barh(ypos, tot.to_numpy(float),
+            color=[BAND_COLOUR.get(b, '0.5') for b in tot.index])
+    for yy, b in zip(ypos, tot.index):
+        ax.text(tot[b], yy, f'  {int(tot[b])}', va='center', fontsize=8)
+    ax.set_yticks(ypos)
+    ax.set_yticklabels(list(tot.index))
+    ax.set_xlim(0, 1.18 * float(tot.max()))
+    ax.set_xlabel('science visits in the sample [visits]')
+    ax.set_ylabel('band')
+    ax.set_title(f'Per-band totals, {int(tot.sum())} visits', fontsize=9.5)
+
+    _busy = bottom[bottom > 0]
+    fig.suptitle(f'The sample night by night: {len(sci)} science visits over '
+                 f'{sci["day_obs"].nunique()} nights, day_obs {int(sci.day_obs.min())} to '
+                 f'{int(sci.day_obs.max())}\nnight median {int(np.median(_busy))} visits, '
+                 f'busiest {int(_busy.max())}, one bar per day_obs',
+                 fontsize=10, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_measured_v1(pdf, closed):
+    """The focus actually achieved in closed loop: the measured v-mode 1, over its full range.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    closed : `dict`
+        Result of `section_closed_loop`.
+
+    Notes
+    -----
+    The measured term alone — no commanded Trim, no thermal model — so this is the focus error the
+    closed loop actually left on the telescope, visit by visit.
+
+    Two views of one distribution. The left panel is the **full** range on a logarithmic count
+    axis, which is the only way the tails are visible at all: they reach several hundred microns
+    either side of a core a few tens of microns wide. The right is the same distribution linear
+    over its 0.1st to 99.9th percentile, which is the shape of the core. The closed-loop page
+    elsewhere in this document crops to the 1st to 99th percentile, so the extent shown here is
+    deliberately wider than anything else in the report.
+    """
+    if not closed:
+        return
+    a = np.asarray(closed['dz'], float)
+    a = a[np.isfinite(a)]
+    if not len(a):
+        return
+    med, nm = closed['median'], closed['nmad']
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.6))
+
+    ax = axes[0]
+    bins = np.linspace(a.min(), a.max(), 160)
+    ax.hist(a, bins=bins, histtype='step', color='#1f77b4')
+    ax.set_yscale('log')
+    ax.axvline(med, color='#d62728', lw=1.3,
+               label=f'median {med:+.2f} um\nnMAD {nm:.2f} um')
+    ax.axvline(0, color='0.5', lw=0.8)
+    ax.set_xlabel('measured v1_dz, achieved in closed loop\n[um of equivalent hexapod dz]')
+    ax.set_ylabel('visits per bin')
+    ax.set_title(f'Full range, {len(a)} visits\n{a.min():+.0f} to {a.max():+.0f} um of '
+                 f'equivalent hexapod dz', fontsize=9)
+    ax.legend(fontsize=8)
+
+    ax = axes[1]
+    lo, hi = closed['p_lo'], closed['p_hi']
+    core = a[(a >= lo) & (a <= hi)]
+    ax.hist(core, bins=np.linspace(lo, hi, 100), histtype='step', color='#1f77b4')
+    ax.axvline(med, color='#d62728', lw=1.3, label=f'median {med:+.2f} um')
+    ax.axvline(0, color='0.5', lw=0.8)
+    ax.set_xlabel('measured v1_dz, achieved in closed loop\n[um of equivalent hexapod dz]')
+    ax.set_ylabel('visits per bin')
+    ax.set_title(f'The core, 0.1st to 99.9th percentile\n{lo:+.0f} to {hi:+.0f} um, '
+                 f'{len(core)} of {len(a)} visits', fontsize=9)
+    ax.legend(fontsize=8)
+
+    fig.suptitle('Closed-loop focus achieved: the measured v-mode 1 alone, with no commanded '
+                 'Trim and no thermal model', fontsize=10.5, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.91))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_t539_duration(pdf, t539res):
+    """How long the initial alignment run takes, night by night.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    t539res : `dict`
+        Result of `section_t539`, whose ``duration`` holds the per-night span.
+
+    Notes
+    -----
+    This is the delay inside the run-first against run-last comparison: the prediction is made
+    from the telemetry at the first exposure of the block and the Trim is read at the last, so
+    this histogram is how far apart those two epochs are in time.
+
+    Measured as first exposure start to last exposure end. The run length is not fixed — from a
+    couple of exposures to 45 — so the spread is wide and the second panel carries it against
+    date, where a change in how the block is run over the season would show.
+    """
+    du = (t539res or {}).get('duration')
+    if not du:
+        return
+    m, nights = du['minutes'], du['day_obs']
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.4))
+
+    ax = axes[0]
+    hi = float(np.percentile(m, 98))
+    bins = np.linspace(0.0, max(hi, du['median'] * 2.0), 40)
+    ax.hist(np.clip(m, bins[0], bins[-1]), bins=bins, histtype='step', color='#1f77b4')
+    ax.axvline(du['median'], color='#d62728', lw=1.3,
+               label=f'median {du["median"]:.1f} min\n16th to 84th {du["p16"]:.1f} to '
+                     f'{du["p84"]:.1f} min')
+    ax.set_xlabel('initial alignment run duration\n[min, first exposure start to last '
+                  'exposure end]')
+    ax.set_ylabel('nights')
+    ax.set_title(f'How long the alignment block runs, {du["n"]} nights\nrange '
+                 f'{du["min"]:.1f} to {du["max"]:.1f} min; the last bin holds the overflow',
+                 fontsize=9)
+    ax.legend(fontsize=8)
+
+    ax = axes[1]
+    dates = pd.to_datetime(nights.astype(str), format='%Y%m%d')
+    ax.plot(dates, m, 'o', ms=4, color='#1f77b4')
+    ax.axhline(du['median'], color='#d62728', lw=1.2,
+               label=f'median {du["median"]:.1f} min')
+    ax.set_yscale('log')
+    ax.set_xlabel('day_obs')
+    ax.set_ylabel('run duration [min]')
+    ax.set_title('Run duration night by night, logarithmic', fontsize=9)
+    ax.legend(fontsize=8)
+    for lab in ax.get_xticklabels():
+        lab.set_rotation(30)
+        lab.set_horizontalalignment('right')
+
+    fig.suptitle('The delay inside the initial-alignment comparison: the span the block covers '
+                 'between its first and last exposure', fontsize=10, weight='bold')
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_t539_sci1(pdf, t539res):
+    """The prediction against the first science visit after the alignment run, near-simultaneous.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    t539res : `dict`
+        Result of `section_t539`, whose ``sci1`` holds the comparison.
+
+    Notes
+    -----
+    A better-matched comparison than the page before: both the prediction and the measurement are
+    taken at the **same visit**, the first science exposure after the block ends. The thermal
+    drift across the alignment run — the leading systematic in the run-first against run-last
+    comparison — is therefore absent by construction rather than suppressed by a cut, and every
+    night with a following science visit is kept.
+
+    This is still the start-of-night question, and the one the page before answers badly. The
+    telescope is at its least thermally settled then, so this is where an open-loop focus
+    prediction has to work if it is to replace the alignment block.
+
+    Outlier nights are labelled with their ``day_obs`` on the scatter, the same convention as
+    `figure_sample`.
+    """
+    s1 = (t539res or {}).get('sci1')
+    if not s1:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
+    # A 2nd-to-98th clip rather than the usual 0.5-to-99.5: the sample is a few tens of nights,
+    # so the standard clip cannot exclude a single far outlier and one night would otherwise set
+    # the scale of both panels and squash the rest into a corner.
+    _actual_vs_predicted_pair(axes, s1['actual'], s1['pred'],
+                              'First science visit after the run',
+                              nbins=36, clip_pct=(2.0, 98.0))
+
+    # Labelled at the point, or pinned just inside the frame with an arrow when the clip above
+    # has put the night off-axis, so a labelled outlier is never invisible.
+    ax = axes[0]
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    for _, r in s1['outliers'].iterrows():
+        inside = x0 <= r.actual <= x1 and y0 <= r.pred <= y1
+        if inside:
+            ax.plot([r.actual], [r.pred], 'o', ms=8, mfc='none', color='#d62728')
+            ax.annotate(f'{int(r.day_obs)}', (r.actual, r.pred), fontsize=6, color='#d62728',
+                        xytext=(5, 0), textcoords='offset points', va='center')
+        else:
+            ax.annotate(f'{int(r.day_obs)}\nactual {r.actual:+.0f} um, off scale',
+                        (min(max(r.actual, x0), x1), min(max(r.pred, y0), y1)),
+                        fontsize=6, color='#d62728', ha='right', va='bottom',
+                        xytext=(-6, 6), textcoords='offset points',
+                        arrowprops=dict(arrowstyle='->', color='#d62728', lw=0.8))
+
+    fig.suptitle(f'Simultaneous test: prediction and measurement both at the first science visit '
+                 f'after the block\n{s1["n"]} nights, no time gap between the two sides; '
+                 f'{len(s1["outliers"])} night{"" if len(s1["outliers"]) == 1 else "s"} beyond '
+                 f'{OUTLIER_NIGHT_Z:.0f} nMAD labelled', fontsize=9)
+    fig.tight_layout(rect=(0, 0, 1, 0.89))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_intranight(pdf, intra):
+    """The residual against time since sunset: does the prediction decay over a night?
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    intra : `dict`
+        Result of `section_intranight`.
+
+    Notes
+    -----
+    Three panels. The scatter carries every visit with the binned median over it, so a shape is
+    visible against the spread it has to beat. The two lower panels separate the two ways the
+    prediction could be time-dependent: a drift in the binned **median** is a bias the model
+    could absorb with a time term, while a change in the binned **nMAD** is a change in how
+    predictable focus is at all, which a time term cannot fix.
+
+    The model has no time-of-night input, so any structure here is a statement about the
+    telemetry, not about the fit.
+
+    The early-against-late split from `section_intranight` is drawn over the two lower panels and
+    stated in the page title, because the effect is a step in the first few hours rather than a
+    drift and the fitted line alone would understate it.
+    """
+    if not intra:
+        return
+    bins = intra['bins']
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7.6))
+
+    ax = axes[0][0]
+    h, r = intra['hours'], intra['resid']
+    ax.plot(h, r, '.', ms=1.0, color='#1f77b4', alpha=0.18, rasterized=True)
+    ax.plot(bins['centre'], bins['median'], 'o-', ms=5, color='#d62728', lw=1.4,
+            label='binned median')
+    ax.axhline(0, color='0.4', lw=0.8)
+    rlo, rhi = np.percentile(r, (0.5, 99.5))
+    ax.set_ylim(rlo, rhi)
+    ax.set_xlim(intra['p1'], intra['p99'])
+    ax.set_xlabel(f'time since {TWILIGHT_REF_ALT_DEG:.0f} deg twilight [h]')
+    ax.set_ylabel('actual minus predicted v1_dz\n[um of equivalent hexapod dz]')
+    ax.set_title(f'Every visit, n {intra["n"]} (0.5th to 99.5th percentile shown)', fontsize=8.5)
+    ax.legend(fontsize=7.5)
+
+    ax = axes[0][1]
+    ax.bar(bins['centre'], bins['n'], width=0.85 * (bins['hi'] - bins['lo']),
+           color='#7f7f7f', edgecolor='none')
+    ax.set_xlabel(f'time since {TWILIGHT_REF_ALT_DEG:.0f} deg twilight [h]')
+    ax.set_ylabel('visits')
+    ax.set_title('Visits per bin (equal-count bins, so this shows the bin widths)',
+                 fontsize=8.5)
+
+    for ax, key, trend, label, colour in (
+            (axes[1][0], 'median', 'median_trend', 'median residual', '#d62728'),
+            (axes[1][1], 'nmad', 'nmad_trend', 'residual nMAD', '#2ca02c')):
+        ax.errorbar(bins['centre'], bins[key],
+                    xerr=[bins['centre'] - bins['lo'], bins['hi'] - bins['centre']],
+                    fmt='o', ms=5, color=colour, lw=1.0, capsize=0)
+        t = intra[trend]
+        if t:
+            xs = np.array([bins['centre'].min(), bins['centre'].max()])
+            ax.plot(xs, t['intercept'] + t['slope'] * xs, '-', color='0.3', lw=1.2,
+                    label=f'Huber slope {t["slope"]:+.2f} +/- {t["slope_err"]:.2f} um per h\n'
+                          f'({abs(t["slope"]) / t["slope_err"]:.1f} standard errors), '
+                          f'Spearman rho {t["spearman_rho"]:+.2f}')
+            ax.legend(fontsize=7.5)
+        if key == 'median':
+            ax.axhline(0, color='0.6', lw=0.8)
+        sp = intra.get('split') or {}
+        if sp.get('early') and sp.get('late'):
+            ax.axvline(sp['split_h'], color='#9467bd', lw=1.0, ls='--')
+            for part, ha in (('early', 'right'), ('late', 'left')):
+                ax.axhline(sp[part][key], color='#9467bd', lw=0.9, ls=':')
+                ax.text(sp['split_h'] + (-0.3 if ha == 'right' else 0.3), sp[part][key],
+                        f'{sp[part][key]:+.1f}' if key == 'median' else f'{sp[part][key]:.1f}',
+                        color='#9467bd', fontsize=7, ha=ha, va='bottom')
+        ax.set_xlabel(f'time since {TWILIGHT_REF_ALT_DEG:.0f} deg twilight [h]')
+        ax.set_ylabel(f'{label} [um of equivalent hexapod dz]')
+        ax.set_title(f'Binned {label}; horizontal bars are the bin widths, dashed line the '
+                     f'early/late split', fontsize=8.5)
+
+    sp = intra.get('split') or {}
+    extra = ''
+    if sp.get('early') and sp.get('late'):
+        extra = (f'\nthe effect is a step, not a drift: residual nMAD '
+                 f'{sp["early"]["nmad"]:.1f} um before {sp["split_h"]:.0f} h after sunset '
+                 f'against {sp["late"]["nmad"]:.1f} um after it '
+                 f'({sp["nmad_ratio"]:.2f}x, dimensionless), with a '
+                 f'{sp["early"]["median"]:+.1f} um median bias early')
+    fig.suptitle('Intra-night behaviour of the prediction: residual against time since sunset\n'
+                 'the model has no time-of-night term, so structure here is a property of the '
+                 'telemetry' + extra, fontsize=9.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def figure_t539_long_runs(pdf, t539res):
+    """The shortened-epoch nights whose alignment block was not the nominal length.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open document.
+    t539res : `dict`
+        Result of `section_t539`, whose ``long_runs`` holds the table.
+
+    Notes
+    -----
+    A table rather than a plot, because the question is which specific nights misbehaved and what
+    they have in common. The duration, the exposure count and the time after sunset are side by
+    side so the two candidate explanations separate: more exposures means the block iterated
+    further to converge, while the nominal count spread over longer means the delay was between
+    exposures and so is not the alignment.
+    """
+    lr = (t539res or {}).get('long_runs')
+    if not lr:
+        return
+    lo, hi = lr['nominal']
+    t = lr['table']
+    lines = [f'Nights on or after day_obs {lr["since"]}, when the block was shortened, whose '
+             f'duration is outside {lo:.0f} to {hi:.0f} min.',
+             f'{len(t)} of {lr["n_epoch"]} nights in the epoch: {lr["n_short"]} under '
+             f'{lo:.0f} min, {lr["n_long"]} over {hi:.0f} min, {lr["n_nominal"]} nominal.',
+             '',
+             'day_obs    duration   visits   after 0 deg twilight   per visit',
+             '              [min]              [min]                  [min]',
+             '-' * 68]
+    for _, r in t.iterrows():
+        lines.append(f'{int(r.day_obs)}   {r.run_duration_min:8.1f}   {int(r.n_run):5d}   '
+                     f'{r.min_after_twilight:17.1f}   {r.min_per_visit:9.2f}')
+    nom = t[t['run_duration_min'] > hi]
+    if len(nom):
+        lines += ['', f'Over-length nights only, n {len(nom)}: median {nom["n_run"].median():.1f} '
+                      f'exposures, median {nom["min_per_visit"].median():.2f} min per exposure, '
+                      f'median {nom["min_after_twilight"].median():+.1f} min after twilight.']
+    _text_page(pdf, f'Initial alignment block duration outside {lo:.0f} to {hi:.0f} min, '
+                    f'day_obs >= {lr["since"]}', lines)
+
 
 def figure_dof(pdf, dofres):
     """The Trim degrees of freedom that would apply the thermal correction, over all visits.
@@ -2666,6 +3448,9 @@ def main():
     print('\n=== 7. closed-loop focus performance, the measured v1 alone ===')
     closed = section_closed_loop(sci)
 
+    print('\n=== 7b. intra-night variation of the prediction, against time since twilight ===')
+    intra = section_intranight(sci, full['resid'])
+
     print('\n=== 8. the filter look-up table: focus steps across a filter change ===')
     # The claim being tested is that fitting each band separately injects a step at every filter
     # change, because the coefficients swap while nothing physical happens. That needs the
@@ -2755,6 +3540,7 @@ def main():
             print('  thermal_focus_truss_all.parquet is absent; the database-wide truss page is '
                   'skipped. Build it with\n    python code/run_thermal_focus.py --only-truss-all')
         figure_sample(pdf, sci, samp)
+        figure_visits_per_night(pdf, sci, samp)
 
         figure_terms_individual(pdf, terms)
         figure_terms_cumulative(pdf, terms)
@@ -2816,12 +3602,13 @@ def main():
             *[f'    {c:+10.2f} * {f:32s} [per {F.FEATURE_UNITS.get(f, "?")}]'
               for f, c in zip(full['features'], full['coef'])],
             '',
-            *(['The standalone calculator trim_calculator.py inlines these coefficients to two',
-               'decimals so it can be copied to a summit machine and read by eye. Against this',
+            *(['The standalone calculator trim_calculator.py stores these coefficients to two',
+               'decimals in trim_coefficients.yaml, so it can be copied to a summit machine and',
+               'read by eye. Against this',
                f'fit over {calc["n"]} visits: max |difference| '
                f'{calc["max_abs_diff_um"]:.4f} um of equivalent hexapod dz,',
-               f'and its {len(T.TEST_CASES)} worked test cases agree with their stated values to '
-               f'{calc["worked_max_abs_diff_um"]:.4f} um.']
+               f'and its {calc["n_worked_cases"]} worked test cases agree with their stated '
+               f'values to {calc["worked_max_abs_diff_um"]:.4f} um.']
               if calc else []),
         ])
         figure_model(pdf, sci, full)
@@ -2844,6 +3631,8 @@ def main():
         figure_dof_start(pdf, dofres)
 
         figure_closed_loop(pdf, closed)
+        figure_measured_v1(pdf, closed)
+        figure_intranight(pdf, intra)
         figure_filter_lut(pdf, filt)
         figure_outlier_nights(pdf, outl)
 
@@ -2903,6 +3692,9 @@ def main():
                 'split in a way',
                 'that carries no optical meaning; the v1_dz columns are the physical comparison.',
             ])
+            figure_t539_duration(pdf, t539res)
+            figure_t539_long_runs(pdf, t539res)
+            figure_t539_sci1(pdf, t539res)
             figure_t539_first_visit(pdf, t539res)
             figure_t539(pdf, t539res)
     print(f'\nwrote {pdf_path}')

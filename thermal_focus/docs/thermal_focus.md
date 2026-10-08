@@ -1,6 +1,6 @@
 # Study: `thermal_focus` — the focus error as a function of temperature
 
-> **Status:** current · **Last updated:** 2026-10-01 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-08 · **Kind:** reference (study)
 >
 > The elevation-hysteresis test and the within-FAM-block argument that earlier versions of this
 > document carried have been **dropped from the study**, not merely from the report. The hysteresis
@@ -33,7 +33,16 @@ on the Danish 1.2 wavefront retrieval, cut the scatter by **3.39x** (dimensionle
 nMAD 282.2 µm over residual nMAD 83.3 µm of equivalent hexapod dz, n = 1,346 visits over 43 nights)
 — an independent sample through an independent retrieval. At the first visit after the initial
 alignment block the predicted and settled focus agree with a difference of median **+57.3 µm** and
-nMAD **153.8 µm of equivalent hexapod dz** over 163 nights.
+nMAD **153.8 µm of equivalent hexapod dz** over 163 nights; evaluating both the prediction and the
+measurement at the first science visit after the block, which removes the alignment run's 17 min
+delay entirely, that nMAD falls to **103.4 µm** over 145 nights.
+
+**The one systematic the model does not capture is the start of the night.** The residual nMAD is
+**84.9 µm of equivalent hexapod dz before 3 h after sunset against 54.9 µm after it** (a ratio of
+1.55, dimensionless), with a +23.3 µm median bias early. It is a step, not a drift — flat from 3 h
+to dawn — and it reads as thermal lag, the structure still shedding the day's heat while the
+thermal channels report an instantaneous temperature. This is why every start-of-night number above
+is worse than the whole-sample 58.2 µm, and it is the most promising place to improve the model.
 
 ## The response
 
@@ -134,6 +143,13 @@ real misunderstanding at some point:
 | excluding truss temperature above +20 °C | −217 visits on 2 nights |
 | with a finite response | 69,348 |
 | **with all five thermal features** | **68,079** |
+
+Per band the sample is strongly uneven: i 26,763 visits, z 14,364, y 9,956, r 9,329, g 5,382 and
+u 2,285. The report carries this night by night as a stacked bar chart, one bar per `day_obs`
+coloured by band, which also shows the coverage: the nights are not evenly spread, the median night
+contributes 482 visits and the busiest 905, and there is a gap through February 2026. The band mix
+is why the model is fitted band-independent and then checked per band — u and g alone would be far
+too thin to fit on.
 
 The `day_obs` span is **set by the LUT epoch**, not chosen for convenience: the commanded baseline
 has to mean the same thing on every night in the fit, and 20251103 to 20260713 is the range over
@@ -506,6 +522,12 @@ equivalent hexapod dz once it has converged, while the open-loop focus the teles
 with scatters by 336.8 µm and the thermal model predicts it to 58.2 µm. The thermal term is for
 getting close before the loop has anything to work with, not for competing with a converged loop.
 
+The report carries this distribution over its **full** range on a separate page, which the summary
+above crops: the measured `v1_dz` reaches −683.3 to +922.4 µm of equivalent hexapod dz across the
+68,079 visits. On a logarithmic count axis those tails are visible against a core a few tens of
+microns wide — the loop holds focus tightly almost always, and the rare visits where it does not
+miss by hundreds of microns.
+
 ### Band independence and the filter look-up table
 
 The model is fitted once for all bands. Fitting per band would let the coefficients change at every
@@ -757,6 +779,38 @@ Two properties of the block that the selection has to accommodate:
 The block is genuinely converging the Trim across the run: the camera hexapod dz Trim changes by a
 median of **−253.9 µm** over it, and 170 of 178 nights move it by more than 1 µm.
 
+**How long the block takes, measured rather than assumed.** The separation between the two epochs is
+a wall-clock delay, so the report measures it: first exposure start to last exposure end,
+`run_duration_min`. Over the 163 nights the median is **17.2 min**, the 16th to 84th percentile
+7.4 to 31.1 min, and the range 1.1 to 274.0 min. The distribution is **bimodal, and the split is by
+date**: the median is 23.1 min over the 58 nights before 2026-02-01 and 8.0 min over the 105 nights
+from then on, so the block was shortened partway through the season. That delay is the leading
+systematic in the comparison below, which is why the next subsection removes it.
+
+**The shortened block is not reliably short, and the reason is not the alignment.** After
+2026-02-01 the block should run close to a fixed length, and the report tabulates every night of
+that epoch falling outside `T539_NOMINAL_DURATION_MIN = (6.0, 9.0)` min: **42 of 105 nights**, 3
+under and 39 over, against 63 nominal. Tabulating the exposure count beside the duration separates
+the two candidate explanations, and the answer is clear from minutes per exposure:
+
+| `day_obs` | duration [min] | exposures | min per exposure | min after 0 deg twilight |
+|---|---|---|---|---|
+| 20260602 | 274.0 | 24 | 11.42 | 94.3 |
+| 20260302 | 144.7 | 20 | 7.23 | 66.5 |
+| 20260709 | 110.1 | 32 | 3.44 | 50.7 |
+| 20260515 | 87.3 | 6 | 14.56 | 82.6 |
+| 20260528 | 66.1 | 36 | 1.83 | 82.3 |
+
+A nominal night runs about **0.9 min per exposure**. The long nights do not carry more exposures —
+20260602 takes 274 min over just 24 exposures and 20260515 takes 87 min over 6 — so the block is
+**not iterating further to converge**; the delay sits *between* exposures and is readout, slew or
+an operator pause. That makes the long tail an operations artifact rather than an AOS convergence
+problem, and it means the block's length is not a usable proxy for how hard the alignment was.
+
+Time after sunset does not explain it either: most of these nights start 45–95 min after the 0 deg
+crossing, the same as normal ones. The three 1.1 min / 2-exposure nights (20260705, 20260527,
+20260714) are truncated blocks that never really ran.
+
 Of 178 nights with a start-of-night run over `day_obs` 20251102 to 20260714, **163** survive the same
 cuts the science sample takes — 8 LUT-epoch nights and 2 nights above 20 °C truss temperature. On
 those 163 nights, with the prediction back-projected through v-mode 1 and every fit Huber:
@@ -781,6 +835,102 @@ alignment run and the block's own convergence is not error-free.
 more monotonic than it is linear, because a few nights with large commanded Trim dominate a
 least-squares view of it. That gap is why every fit here is Huber rather than ordinary least squares,
 and why both statistics are reported.
+
+#### Removing the delay: the first science visit after the block
+
+The comparison above pays for the delay twice — the prediction is made at the run's start and the
+Trim is read 17 min later on a typical night, and the actual side is the block's own convergence
+rather than a measured wavefront. Both go away if the prediction is compared instead against the
+**open-loop focus of the first science visit after the block ends**, which is a recovered optical
+state like every other row in this study.
+
+The matching visit is the lowest `seq_num` after the run that passes the same `img_type` and `band`
+filters as the science sample, so it is a visit the fitted sample contains.
+
+**Both sides are evaluated at that same visit.** The prediction is formed from the thermal telemetry
+of the science visit itself, not from the telemetry at the block's start, so there is no time gap
+left to correct for and no nights need be cut. The gap from the block's end to the visit,
+`gap_to_sci1_min`, is still carried, but as a diagnostic rather than a selection: a long gap means
+the block's converged Trim is stale by the time the science exposure is taken, which is a property
+of the night and not of the prediction.
+
+Over the **145** nights that have such a visit with a recovered state:
+
+| quantity | value | unit |
+|---|---|---|
+| Huber slope, predicted per actual | +0.814 ± 0.016 | dimensionless |
+| Pearson r | +0.598 | dimensionless |
+| Spearman rho | +0.856 | dimensionless |
+| actual − predicted, median | +22.6 | µm equiv hexapod dz |
+| **actual − predicted, nMAD** | **103.4** | **µm equiv hexapod dz** |
+
+Against the 153.8 µm the delayed comparison leaves, removing the delay **cuts the residual scatter
+by a third**, and the slope moves from +0.578 ± 0.025 to +0.814 ± 0.016 — much closer to unity, so
+the prediction is not just correlated with the focus needed but close to the right size. Spearman
+rises from +0.737 to +0.856. The remaining 103.4 µm is still well above the 58.2 µm the model
+reaches across the science sample, which is the expected direction and is quantified in
+[the intra-night section](#intra-night-variation-the-prediction-is-worse-early): the start of a
+night is where this prediction is at its worst.
+
+**An earlier version of this comparison cut on the gap instead, and the cut was not worth it.** It
+predicted at the block's first visit and kept only the nights whose block-to-science gap was under
+5 min. That cost 112 of the 145 nights — the block is normally followed by a slew and a filter
+change, so the median gap is 12.3 min and even on the 79 nights where the science exposure is the
+very next `seq_num` the median gap is 5.8 min. The 33 survivors gave a lower residual nMAD, 91.1 µm
+against 103.4 µm, and a slope of +0.866 ± 0.029. That looks better and is worse evidence: the cut
+selects thermally still nights (truss drift nMAD 0.131 °C against 0.205 °C uncut), which is the very
+condition the prediction is being tested under, so the 91.1 µm is a best case rather than an
+expectation. Predicting at the visit gets the delay to exactly zero on 4.4× the nights, so it
+replaced the cut and `T539_SCI1_MAX_GAP_MIN` was retired.
+
+Six nights lie beyond 4 robust deviations of the difference and are labelled on the report's
+scatter. The worst two, **20251214** (+2808.8 µm) and **20251216** (+2733.1 µm), carry gaps of 32.7
+and 70.8 min and are also outliers of the settled-Trim comparison below, where the block drove the
+camera hexapod dz Trim past −1600 µm. **20260424** (+2058.1 µm, gap 4.6 min) is the one that fails
+with no delay to blame. These are nights the telescope was far from its usual state and the thermal
+model did not see it coming, not failures of the matching.
+
+#### Intra-night variation: the prediction is worse early
+
+The model carries no time-of-night term — it sees five thermal channels and nothing else. So a
+systematic shape in its residual against time of night is a statement about the telemetry, and the
+report plots one: the residual against hours since the night's own **geometric sunset**, the 0 deg
+solar altitude crossing. Sunset is used rather than the night's first exposure because it moves by
+about 1.9 h over the season, which is the same size as the effect below; a first-exposure reference
+would smear it away.
+
+**The prediction is markedly worse in the first few hours**, and this is a step rather than a drift.
+Over the 68,079 science visits in 10 equal-count bins:
+
+| hours after sunset | residual median [µm equiv hexapod dz] | residual nMAD [µm equiv hexapod dz] | n visits |
+|---|---|---|---|
+| 0.98 – 2.70 | **+24.4** | **87.6** | 6,808 |
+| 2.70 – 3.75 | +2.4 | 68.1 | 6,808 |
+| 3.75 – 4.79 | −0.5 | 57.0 | 6,808 |
+| 4.79 – 5.77 | +1.6 | 54.2 | 6,808 |
+| 5.77 – 6.71 | −3.6 | 59.2 | 6,807 |
+| 6.71 – 7.60 | −6.8 | 54.6 | 6,808 |
+| 7.60 – 8.43 | −4.7 | 57.1 | 6,808 |
+| 8.43 – 9.37 | −3.3 | 54.1 | 6,808 |
+| 9.37 – 10.60 | −3.8 | 47.6 | 6,808 |
+| 10.60 – 12.93 | +0.9 | 48.3 | 6,808 |
+
+Split at `EARLY_NIGHT_SPLIT_H = 3.0` h after sunset: residual nMAD **84.9 µm** before against
+**54.9 µm** after, a ratio of **1.55** (dimensionless, early over late), with a median bias of
+**+23.3 µm** early against −2.4 µm late. Both the bias and the scatter are flat from 3 h to dawn.
+
+**Report the step, not the slope.** A straight line through the whole night gives −0.98 ± 0.47 µm of
+equivalent hexapod dz per h on the binned median — only 2.1 standard errors — and −2.48 ± 0.55 µm
+per h on the binned nMAD. The line is pulled down by the long flat tail and badly understates a
+transient confined to the first 3 h, which is why the report states the split.
+
+This is what a **thermal lag** looks like: early in the night the structure is still shedding the
+day's heat, so a temperature read at that moment does not yet describe the focus the glass is
+heading for. It also explains why the start-of-night comparisons above land at 103–154 µm while the
+whole-sample model reaches 58.2 µm — the start of night is not a harder epoch by accident, it is the
+epoch where the model's one assumption, that instantaneous temperature determines focus, is least
+true. The obvious things to try are a time-since-sunset term or a truss-temperature **rate**; see
+[Outstanding work](#outstanding-work).
 
 **The outlier nights.** Over these 163 nights the camera hexapod dz Trim the block settled on has
 median −249.78 µm and nMAD 261.83 µm. Six nights lie beyond 4 nMAD of that, all on the large-negative
@@ -846,8 +996,10 @@ standard error of unity.
 | `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
 | `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing four cached tables |
 | `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: fifteen sections and one 20-page document, no network |
-| `code/trim_calculator.py` | the standalone online calculator: numpy only, no repository imports |
+| `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one 26-page document, no network |
+| `code/trim_calculator.py` | the standalone online calculator: numpy and pyyaml only, no repository imports |
+| `code/trim_coefficients.yaml` | the fitted coefficients the calculator reads, with units and provenance |
+| `code/test_trim_calculator.py` | the calculator's tests, data in `code/trim_test_cases.yaml` |
 
 ### The network seam
 
@@ -868,6 +1020,18 @@ stage queries **one night at a time**, which is a correctness requirement and no
 the survey would give wrong values. It is the most expensive stage in the build, which is why
 `--only-truss-all` exists.
 
+**The intra-night page does not breach the seam either, and needs no cache.** Time since sunset is a
+function of `day_obs` and `obs_start_mjd`, both already in the cached parquet, so the analysis
+solves it locally through `common.utils.evening_twilight_mjd` — astropy's built-in solar ephemeris,
+no network and no JPL kernel. The crossing is solved once per night rather than once per visit, so
+the whole 68,079-visit sample costs 147 ephemeris solves.
+
+The same quantity is also now a **stored column** of `visit_telemetry` (`min_after_twilight`,
+`min_after_twilight_18deg`, `sun_alt_deg`; see
+[the value-added schema](../../value_added/docs/schema.md)). This study computes it rather than
+reading it, because the cached parquet predates the column and recomputing costs nothing; a future
+rebuild could take it from the join instead.
+
 The DuckDB file lock is process-wide and excludes readers as well as writers, so every connection
 is read-only; a stray read-write connection blocks every other process, including a running build.
 
@@ -876,28 +1040,36 @@ This topic imports `aos_state` from `aos/code` for the v-modes and the DOF sets,
 
 ### The standalone calculator
 
-`trim_calculator.py` imports numpy and argparse and nothing else, so it can be copied to a summit
-machine and run there. Every coefficient is inlined with its units, and it carries worked test
-cases. Inlining can drift from the fit silently, so section 11 of the analysis checks
-the calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod
-dz** over 68,079 visits, which is the two-decimal rounding of the inlined coefficients.
+`trim_calculator.py` imports numpy, pyyaml and argparse and nothing else, so it can be copied to a
+summit machine and run there. Every coefficient lives in `trim_coefficients.yaml` beside it, with
+units and provenance, so **copy both files together**. A copied coefficient file can drift from the fit silently, so section 11 of the analysis checks the
+calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod dz**
+over 68,079 visits, which is the two-decimal rounding of the stored coefficients.
 
-Its `UNCORRECTED_NMAD_UM` keeps that name deliberately, even though the report now calls the
-quantity open-loop focus: the rename is a display change, and renaming a constant a summit copy of
-this file may already carry would break that copy for no gain.
-
-It exposes two functions. `predict_focus_error` takes the five telemetry values and returns the
-predicted `v1` (dimensionless) and `v1_dz` (µm of equivalent hexapod dz). `predict_trim` calls it
-and returns the four DOF Trim values the Optical Feedback Control system sets, alongside both
-prediction forms:
+It exposes one class. `TrimCalculator` reads the coefficient file at construction and holds every
+coefficient as a data member, so nothing lives in module globals. Its one prediction method,
+`predict_trim`, takes the five telemetry values and returns the predicted `v1` (dimensionless),
+`v1_dz` (µm of equivalent hexapod dz), and a dict of the four DOF Trim values the Optical Feedback
+Control system sets, keyed by DOF name:
 
 ```python
-from trim_calculator import predict_trim
-out = predict_trim(truss_temp_c=8.4, z_gradient_c_per_m=0.10, y_gradient_c_per_m=-0.05,
-                   radial_gradient_c_per_m=0.02, x_gradient_c_per_m=0.01)
-out['v1'], out['v1_dz']                                # dimensionless, um of equivalent hexapod dz
-out['dof5'], out['dof0'], out['dof12'], out['dof34']   # um, ts_ofc DOF ordering
+from trim_calculator import TrimCalculator
+calc = TrimCalculator()                      # or TrimCalculator('refit_coefficients.yaml')
+v1, v1_dz, dof_dict = calc.predict_trim(truss_temp_c=8.4, z_gradient_c_per_m=0.10,
+                                        y_gradient_c_per_m=-0.05, radial_gradient_c_per_m=0.02,
+                                        x_gradient_c_per_m=0.01)
+v1, v1_dz                                                        # dimensionless, um of dz
+dof_dict['M2_dz'], dof_dict['Cam_dz']                            # um
+dof_dict['B1_3'], dof_dict['B2_5']                               # um
 ```
+
+`--coefficients` selects a refitted file from the command line. The five telemetry arguments each
+accept a scalar or an array; scalars come back as floats, arrays as `numpy.ndarray` of the same
+length, which is how section 11 checks the whole sample in one call.
+
+The tests are separate, in `code/test_trim_calculator.py` with their data in
+`code/trim_test_cases.yaml`, so the calculator itself carries only the prediction. Run them with
+`python code/test_trim_calculator.py` or under pytest.
 
 A telemetry value outside `SAMPLE_FEATURE_RANGE` raises a `UserWarning` and the prediction is
 returned regardless — the caller decides whether an extrapolation is acceptable.
@@ -905,7 +1077,7 @@ returned regardless — the caller decides whether an extrapolation is acceptabl
 **The DOF split is uneven.** The back-projection through v-mode 1 puts 58.2% of the travel on the
 camera hexapod against 41.8% on M2, because that is the shape of the optical mode, not the even
 half-and-half the dz-equivalent unit is defined on. The two hexapod dz entries still sum to the
-total travel that conversion inverts — the `--self-test` checks exactly this, to a relative
+total travel that conversion inverts — `test_trim_calculator.py` checks exactly this, to a relative
 disagreement of 4.6e-04 (dimensionless, difference over total) — so the two conventions agree on
 the total and differ only on the split.
 
@@ -924,10 +1096,10 @@ online scheme.
 | product | content |
 |---|---|
 | `thermal_focus.parquet` | one row per science visit: identity, band, pointing, the v-mode-1 components, the response [µm equiv hexapod dz] and the thermal telemetry |
-| `thermal_focus_t539.parquet` | one row per night of the initial alignment block: the run's first and last visit, the thermal telemetry at the first suffixed `_first`, and the Trim DOF at the last suffixed `_last` |
+| `thermal_focus_t539.parquet` | one row per night of the initial alignment block: the run's first and last visit, the thermal telemetry at the first suffixed `_first`, the Trim DOF at the last suffixed `_last`, the run's wall-clock span `run_duration_min` [min], and the first science visit after the run suffixed `_sci1` — its open-loop focus `y_sci1` [µm equiv hexapod dz], its thermal telemetry, and `gap_to_sci1_min` [min] |
 | `<fam_dir>/thermal_focus_fam.parquet` | one row per FAM triplet whose `acq` visit has a recovered optical state, with the triplet's own DZ coefficients |
 | `thermal_focus_truss_all.parquet` | one row per exposure in the database, science and calibration alike: identity, `obs_start_mjd` [d], `img_type` and the mean TMA truss temperature [°C] with its interpolation flag |
-| `thermal_focus.pdf` | the analysis document, 20 pages in one linear order: (1) the study, its goal, method and sample; (2) the open-loop focus by band and against truss temperature; (3) the truss temperature over the whole database; (4) the nightly medians with the outlier nights named; (5-6) the individual and cumulative telemetry-term grids; (7) the term summary; (8-9) the deliverable model and its plots; (10) the quadratic radial terms; (11) the FAM in-focus comparison; (12-14) the correction as degrees of freedom, over all visits and at the start of each night; (15) closed-loop performance; (16) the filter LUT; (17) the outlier-night counts; (18-20) the initial alignment block -- its outlier nights as a table, the prediction at the first visit of the night, and the settled Trim per degree of freedom |
+| `thermal_focus.pdf` | the analysis document, 26 pages in one linear order: (1) the study, its goal, method and sample; (2) the open-loop focus by band and against truss temperature; (3) the truss temperature over the whole database; (4) the nightly medians with the outlier nights named; (5) the visits per night by band; (6-7) the individual and cumulative telemetry-term grids; (8) the term summary; (9-10) the deliverable model and its plots; (11) the quadratic radial terms; (12) the FAM in-focus comparison; (13-15) the correction as degrees of freedom, over all visits and at the start of each night; (16) closed-loop performance; (17) the measured `v1_dz` over its full range; (18) the residual against time since sunset; (19) the filter LUT; (20) the outlier-night counts; (21-26) the initial alignment block -- its outlier nights as a table, how long the block runs, the shortened-epoch nights outside the nominal duration as a table, the prediction against the first science visit after it, the prediction at the first visit of the night, and the settled Trim per degree of freedom |
 
 `output/` has no data-axis level: the products depend on the database and the optical
 prescription, not on a Butler collection or processing variant. The FAM table is the exception,
@@ -960,6 +1132,26 @@ are separate outputs and neither consumes the other.
 
 ## Outstanding work
 
+**Thermal lag at the start of the night is the largest unmodelled term, and the most promising one.**
+The residual nMAD is 84.9 µm of equivalent hexapod dz before 3 h after sunset against 54.9 µm after
+it, with a +23.3 µm median bias early — see
+[the intra-night section](#intra-night-variation-the-prediction-is-worse-early). The five features
+are all instantaneous temperatures, so the model cannot express a structure that is still
+equilibrating. Two things to try, in order of cheapness:
+
+1. **A truss-temperature rate.** `d(truss_temp_mean_c)/dt` over a trailing window, which the
+   value-added database can supply from `visit_telemetry` with no new EFD fetch. If the lag is a
+   single-pole response to air temperature, the rate is the term that captures it, and it costs one
+   column.
+2. **A time-since-sunset term.** Now cheap: `min_after_twilight` is a stored column of
+   `visit_telemetry` (the `twilight` group). This is the more honest diagnostic but the less
+   physical fix — it would absorb the bias without saying why, and would not transfer to a night
+   with an unusual thermal history.
+
+The split is reported rather than fitted on purpose. Adding either term changes the deliverable
+model, and that is a decision about how many channels the online calculator should carry, not a
+fit-quality question.
+
 **The filter LUT's per-transition error is unexplained.** A filter change costs 2.09x the same-band
 focus scatter (dimensionless, band-change nMAD over same-band nMAD) with no systematic offset in the
 mean, and five of the eight well-sampled band pairs are antisymmetric at the few-µm level while three
@@ -968,7 +1160,7 @@ no further: separating a real per-filter focus offset from a drift over the exch
 either more transitions per pair or a dedicated sequence that changes filter without letting the
 telescope drift. Nothing in the thermal correction depends on the answer.
 
-The other two known follow-ups are closed.
+The two older known follow-ups are closed.
 
 The r²-like radial thermal mode is **done**: three quadratic radial terms over the whole mirror,
 the M1 annulus and the M3 inner disc are built into the value-added database and tested in the
