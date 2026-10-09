@@ -74,7 +74,7 @@ def index_code_references():
     """Map each data-file name mentioned in code (generic form) to the code units citing it."""
     index = collections.defaultdict(set)
     for p in REPO.rglob('*'):
-        if p.suffix not in CODE_EXT or '.git' in p.parts or 'output' in p.parts:
+        if p.suffix not in CODE_EXT or {'.git', 'output', '.ipynb_checkpoints'} & set(p.parts):
             continue
         try:
             text = p.read_text(errors='ignore')
