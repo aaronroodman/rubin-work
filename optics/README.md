@@ -13,6 +13,7 @@ pupil geometry, and other prescription-level questions that do not need data.
 | `notebooks/optics_fresnel_analytic_benchmark_v1.ipynb` | diffraction models of a defocused annular paraboloid against the semi-analytic Debye integral and HCIPy |
 | `notebooks/optics_fresnel_rubin_onaxis_v1.ipynb` | Rubin on-axis donuts with the camera pistoned ±1.5 mm: geometric, `fftPSF`, and Huygens/Debye diffraction |
 | `notebooks/optics_fresnel_rubin_seeing_v1.ipynb` | the same donuts with 0.7″ von Kármán seeing: separable versus ray-kick seeing, intra/extra comparison, Danish apparent Zernikes and FWHM |
+| `notebooks/optics_fresnel_hexapods_4mm_v1.ipynb` | on-axis geometric donuts with camera and M2 both pistoned ∓4 mm (about 8 mm equivalent defocus), with and without 0.7″ Kolmogorov seeing |
 | `notebooks/optics_fresnel_sensor_iband_v1.ipynb` | i-band silicon-sensor effects (conversion depth, diffusion) on intra- and extra-focal donuts, via GalSim `SiliconSensor` |
 | `code/fresnel/donut_sensor.py` | library — bandpass photon tracing, Snell refraction into silicon, sensor accumulation |
 | `code/fresnel/time_fftpsf_vs_debye.py` | driver — wall-clock times of `fftPSF` and the Debye-weighted Huygens sum, in focus and for a 1.5 mm donut |
