@@ -40,6 +40,7 @@ and working state that span the whole repo — and so belong to no single topic 
 
 | doc | what it holds |
 |---|---|
+| [`status/organization_plan.md`](status/organization_plan.md) | the plan for reorganizing the repo around products, libraries and studies: decisions, target layout, version naming, migration phases |
 | [`status/memory_cleanup_plan.md`](status/memory_cleanup_plan.md) | the phased `CLAUDE.md` / memory / code-cleanup plan for this repo |
 | [`status/parallel_claude_sessions.md`](status/parallel_claude_sessions.md) | running several Claude Code sessions on one working tree: what collides, git worktrees, subagents |
 | [`status/item2_optical_state_build_handoff.md`](status/item2_optical_state_build_handoff.md) | the handoff that drove the three-scheme optical-state build, now [completed item 7](todos/completed-todos.md#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes): the three code findings behind its decisions, and what was rejected |
