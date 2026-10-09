@@ -123,6 +123,104 @@ def chief_ray_point(optic, wavelength, theta_x=0.0, theta_y=0.0):
     return np.array([ray.x[0], ray.y[0]])
 
 
+def shift_hexapods(optic, piston, camera='LSST.LSSTCamera', m2='LSST.M2'):
+    """Return `optic` with the camera and M2 both moved `piston` m along global z.
+
+    For the Rubin prescriptions in batoid, negative `piston` is intra-focal and
+    positive is extra-focal; 4 mm on both hexapods gives about the defocus of an
+    8 mm camera piston.
+    """
+    return optic.withGloballyShiftedOptic(camera, [0.0, 0.0, piston]) \
+        .withGloballyShiftedOptic(m2, [0.0, 0.0, piston])
+
+
+def turned_down_edge(depth, width, r_edge=2.558, half_size=4.25, spacing=5e-3):
+    """Bicubic surface perturbation for a turned-down inner edge of M1.
+
+    The perturbation is ``-depth * exp(-(r - r_edge) / width)`` for
+    ``r >= r_edge`` and ``-depth`` inside the edge, in the surface's own z
+    (negative is away from the incoming light). It steepens the concave surface
+    near the edge, so reflected rays there are deflected toward the axis by up
+    to ``2 * depth / width`` rad. Add it with
+    ``optic.withPerturbedSurface('M1', turned_down_edge(...))``.
+
+    Parameters
+    ----------
+    depth : `float`
+        Surface depression at the edge, m.
+    width : `float`
+        Exponential roll-off scale outward from the edge, m.
+    r_edge : `float`
+        Edge radius, m (the M1 inner clear-aperture radius by default).
+    half_size : `float`
+        Half-width of the square interpolation grid, m.
+    spacing : `float`
+        Grid spacing, m; must be well below `width`.
+
+    Returns
+    -------
+    surface : `batoid.Bicubic`
+    """
+    xs = np.arange(-half_size, half_size + spacing / 2, spacing)
+    X, Y = np.meshgrid(xs, xs)
+    r = np.hypot(X, Y)
+    dz = -depth * np.exp(-np.clip(r - r_edge, 0.0, None) / width)
+    return batoid.Bicubic(xs, xs, dz)
+
+
+def accumulate_donut(optic, wavelength, n_rays, center, sample, npix, r_edges,
+                     seed=1, batch=4_000_000):
+    """On-axis geometric donut from rays drawn uniformly over the entrance pupil.
+
+    The same `seed`, `n_rays` and `batch` give the same pupil samples, so two
+    optics traced this way differ only through the optics.
+
+    Parameters
+    ----------
+    center : `array_like`
+        Image centre (x, y) on the detector, m.
+    sample : `float`
+        Image sample size, m.
+    npix : `int`
+        Image size, samples per side.
+    r_edges : `numpy.ndarray`
+        Edges of the radial annuli about `center`, m.
+
+    Returns
+    -------
+    image : `numpy.ndarray`
+        Ray counts per sample [y, x], normalised to unit sum.
+    counts : `numpy.ndarray`
+        Ray counts per annulus.
+    radii : `numpy.ndarray`
+        0.01 and 99.99 percentile ray radii of the first batch, m.
+    """
+    rng = np.random.default_rng(seed)
+    half = optic.pupilSize / 2
+    edges = (np.arange(npix + 1) - npix / 2) * sample
+    image = np.zeros((npix, npix))
+    counts = np.zeros(len(r_edges) - 1)
+    radii = None
+    remaining = n_rays
+    while remaining > 0:
+        n = min(batch, remaining)
+        u = rng.uniform(-half, half, n)
+        v = rng.uniform(-half, half, n)
+        rv = batoid.RayVector.fromStop(u, v, optic=optic, wavelength=wavelength,
+                                       dirCos=dircos(0.0, 0.0))
+        optic.trace(rv)
+        ok = ~rv.vignetted & ~rv.failed
+        dx = rv.x[ok] - center[0]
+        dy = rv.y[ok] - center[1]
+        image += np.histogram2d(dy, dx, bins=[edges, edges])[0]
+        r = np.hypot(dx, dy)
+        counts += np.histogram(r, r_edges)[0]
+        if radii is None:
+            radii = np.percentile(r, [0.01, 99.99])
+        remaining -= n
+    return image / image.sum(), counts, radii
+
+
 # ---------------------------------------------------------------------------
 # Ray grids and Debye weights
 # ---------------------------------------------------------------------------
