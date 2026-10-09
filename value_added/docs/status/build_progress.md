@@ -240,9 +240,9 @@ do not appear until the run ends.
 
 ## Corrupt `vt_day_obs` index, open
 
-**Status as of 2026-10-08: open, one night affected, no data lost.** The equality index on
-`visit_telemetry(day_obs)` is corrupt for `day_obs` 20260620. The symptom is that the two
-query paths disagree:
+**Status as of 2026-10-08: open, one night affected, no data lost, low priority.** The equality
+index on `visit_telemetry(day_obs)` is corrupt for `day_obs` 20260620. The symptom is that the
+two query paths disagree:
 
 ```sql
 SELECT COUNT(*) FROM visit_telemetry WHERE day_obs = 20260620;                      -- 0
@@ -262,6 +262,18 @@ Only deleted 0 out of 561 rows.
 
 because `upsert_visits` deletes before inserting and the delete matches nothing. That is why
 the `twilight` backfill covers 365 of 366 nights: 20260620 is the one it could not write.
+
+**Why this is low priority.** Two things limit the damage. The reader API builds range
+predicates — `_day_obs_clause` emits `day_obs >= ? AND day_obs <= ?` — so `efd_db.visits()` and
+everything downstream of it already return this night correctly; that is why
+`thermal_focus_truss_all.parquet` carries all 1,782 rows. And the night is **all calibration**
+(1,766 cbp, 10 dark, 3 bias, 3 flat, no science, acq or cwfs), so the columns it is missing are
+meaningless for it anyway.
+
+What remains is a latent trap rather than an active bug: hand-written SQL of the form
+`WHERE day_obs = 20260620` returns 0 rows with no error, so a loop over nights would skip it
+silently. Prefer a range predicate over an equality one when scanning nights, which the reader
+API already does.
 
 The fix is to rebuild the index, which needs a write handle and is a DDL change on the shared
 database, so it has not been run:
@@ -294,6 +306,15 @@ rows instead.
 
 **It is the only affected night.** All 366 were checked by comparing the equality count
 against the range-scan count per night; 20260620 is the single disagreement.
+
+**The rows belong in the table even though the night is all calibration.** `visit_spine` applies
+no `img_type` filter by design, so the table is one row per exposure and selecting on-sky types
+is the consumer's job — which is how a 68,079-visit science sample comes out of 213,704 rows.
+Calibration is not a special case here: 54 of the 366 nights carry no science, acq or cwfs
+exposure at all, and calibration is about 32 per cent of the table (flat 36,364, dark 16,929,
+bias 13,081, cbp 2,248 over the span). Those rows also carry real telemetry — the truss has a
+temperature whether or not the shutter is open on sky, and 20260620 sits at 6.68 to 8.65 °C —
+which is what the database-wide truss page of the `thermal_focus` report plots.
 
 ## Rebuilding
 

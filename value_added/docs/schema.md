@@ -102,7 +102,10 @@ reaches +80.6 deg. Filtering to on-sky exposures is the consumer's job, as it al
 
 Coverage is 211,922 of 213,704 rows over 365 of 366 nights. The gap is `day_obs` 20260620,
 whose 1,782 rows are blocked by a corrupt `vt_day_obs` index — see
-`docs/status/build_progress.md`.
+`docs/status/build_progress.md`. That night is **all calibration** (1,766 cbp, 10 dark, 3 bias,
+3 flat, no science, acq or cwfs), so the missing columns are of no consequence: time after
+twilight is meaningless for a Collimated Beam Projector sequence. Treat the twilight coverage as
+complete.
 
 **`optical_state` is long** — keyed `(visit_id, variant_id)`, with DuckDB `DOUBLE[]` list
 columns for `v_modes` and `dof`. The recovered optical state is not one column set but a
