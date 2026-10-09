@@ -41,10 +41,7 @@ and working state that span the whole repo — and so belong to no single topic 
 | doc | what it holds |
 |---|---|
 | [`status/memory_cleanup_plan.md`](status/memory_cleanup_plan.md) | the phased `CLAUDE.md` / memory / code-cleanup plan for this repo |
-| [`status/reorg_review_plan_2026-09.md`](status/reorg_review_plan_2026-09.md) | assessment of code, notebook and output organization across all topics, with the plan for organization, documentation and systematic code review |
 | [`status/parallel_claude_sessions.md`](status/parallel_claude_sessions.md) | running several Claude Code sessions on one working tree: what collides, git worktrees, subagents |
-| [`status/step1_structure_decisions.md`](status/step1_structure_decisions.md) | step 1 of the reorganization: the agreed directory structure for code and output, the reusability tiers, and the queued moves |
-| [`status/todo.md`](status/todo.md) | one-line index of open work across the whole repository, each row pointing at the document that specifies it |
 | [`status/item2_optical_state_build_handoff.md`](status/item2_optical_state_build_handoff.md) | the handoff that drove the three-scheme optical-state build, now [completed item 7](todos/completed-todos.md#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes): the three code findings behind its decisions, and what was rejected |
 | [`status/item5_miw_pupil_model_handoff.md`](status/item5_miw_pupil_model_handoff.md) | [item 5](todos/todo-ideas.md) step A, the MIW on the v1000 pupil model: complete — the build, why the difference has no pupil-rim signature, what step B should expect, and why the `_legacy` baseline was proposed and declined |
 | [`status/item7_giant_donuts_handoff.md`](status/item7_giant_donuts_handoff.md) | [item 7](todos/todo-ideas.md), giant donuts and the pupil models: state of the single-donut intra/extra Z11 test |
@@ -54,8 +51,7 @@ Topic-specific docs stay in their topic (`<topic>/docs/`), not here.
 ## `notes/todos/` — the Active Optics System (AOS) idea queue
 
 Aaron's own queue of AOS work: items he intends to do, written as an idea plus collapsed
-detail rather than as a specification. Distinct from `notes/status/todo.md`, which indexes
-work already specified elsewhere in the repository.
+detail rather than as a specification.
 
 | doc | what it holds |
 |---|---|
