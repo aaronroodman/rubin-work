@@ -72,6 +72,60 @@ def variant_config(variant):
     return entries[variant]
 
 
+def variant_for_param_set(param_set):
+    """The variant whose entry carries this long ``param_set`` key.
+
+    The two names differ: ``danish_1_2`` is the variant of param_set
+    ``fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x``. They coincide for the
+    ``danish_1_3`` variants, so a caller must not assume either way.
+
+    Parameters
+    ----------
+    param_set : `str`
+        A long ``param_set`` key, or a variant name (returned unchanged).
+
+    Returns
+    -------
+    variant : `str`
+        The variant name.
+
+    Raises
+    ------
+    `KeyError`
+        If no variant carries this ``param_set`` and it is not itself a variant.
+    """
+    entries = _variants_doc().get("variants") or {}
+    if param_set in entries:
+        return param_set
+    for name, cfg in entries.items():
+        if (cfg or {}).get("param_set") == param_set:
+            return name
+    raise KeyError(
+        f"{param_set!r} is neither a fam_tables variant nor a registered "
+        f"param_set; variants: {sorted(entries)}")
+
+
+def build_dir(variant, build):
+    """Where a build of `variant` is written, whether or not it exists yet.
+
+    `rubinwork.products.catalog.path` resolves only builds already on disk; a
+    builder needs the path to write into.
+
+    Parameters
+    ----------
+    variant : `str`
+        Variant name.
+    build : `str`
+        Build name, usually the date the data is produced (``"20261010"``).
+
+    Returns
+    -------
+    build_dir : `pathlib.Path`
+        The build directory under the products root. Not created.
+    """
+    return catalog.products_root() / PRODUCT / variant / build
+
+
 def load_table(table, variant, build=catalog.CURRENT):
     """Read one table of a build.
 

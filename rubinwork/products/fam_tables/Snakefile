@@ -1,0 +1,275 @@
+# ----------------------------------------------------------------------
+# fam_tables product build (Snakemake).  Per date chunk: mktable (Butler) ->
+# fit -> combine the chunks -> attach telemetry.
+#
+# Moved out of aos/Snakefile in phase 2 of notes/status/organization_plan.md.
+# The rules are unchanged: mktable, fit and combine_* still call the
+# $TS_INTRINSIC_WAVEFRONT_DIR runners, with the same arguments.  What changed is
+# where the output lands and where the configuration comes from.
+#
+#   snakemake -s rubinwork/products/fam_tables/Snakefile -n
+#   snakemake -s rubinwork/products/fam_tables/Snakefile -j4 \
+#       --config variant=danish_1_2 build=20261010
+#
+# Run from the REPOSITORY ROOT, so that `aos/param_sets.yaml` resolves for the
+# mktable rule (see MKTABLE_CWD below).
+#
+# Output, under the product catalog's data root:
+#   <products>/fam_tables/<variant>/<build>/_work/chunks/<dmin>_<dmax>/{donuts,visits,fits}.parquet
+#   <products>/fam_tables/<variant>/<build>/{donuts,visits,fits}.parquet
+#
+# The per-chunk tables are intermediates, so they sit in `_work/`, which
+# catalog._names() hides.  A build directory is never edited after it completes
+# (rule 5 of the plan's section 2); a rerun makes a new build.
+#
+# The blitz variants have no chunks: run_blitz_mktable writes their combined
+# tables in one pass, so they are not buildable here.  Build one with
+#   python -m rubinwork.products.fam_tables.builders.run_blitz_mktable \
+#       --param-set <variant> --fit --build <YYYYMMDD>
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+# Deterministic threading regardless of how the launching terminal set these.
+# A NUMEXPR_MAX_THREADS pinned to 1 (some JupyterHub sessions) crashes mktable;
+# force a safe cap.  One thread per job — parallelism comes from `snakemake -j`.
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+from rubinwork.common.utils import repo_root
+from rubinwork.products import catalog, fam_tables
+
+REPO = repo_root(os.getcwd())
+
+# run_mktable.py --param-set reaches param_sets.yaml through
+# intrinsics_lib.load_param_sets(), which opens Path('param_sets.yaml') relative
+# to the CURRENT WORKING DIRECTORY and has no other candidate.  So mktable runs
+# with aos/ as its cwd, exactly as aos/Snakefile did.  param_sets.yaml there is
+# generated from this product's variants.yaml (gen_param_sets.py).
+MKTABLE_CWD = REPO / 'aos'
+
+# Package runner (bin/) dir, from the eups setup.  The eups table exports
+# TS_INTRINSIC_WAVEFRONT_DIR; the bin/ shims are built by `scons` (bin/ is NOT
+# auto-added to PATH, so reference it explicitly).
+WF_BIN = f"{os.environ['TS_INTRINSIC_WAVEFRONT_DIR']}/bin"
+
+# Which variant and build to produce.  One at a time: a build is a dated
+# directory, so there is no sensible fan-out over variants here.
+VARIANT = config.get('variant', 'danish_1_2')
+# str(): snakemake parses --config build=20261010 into an int.
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CFG = fam_tables.variant_config(VARIANT)
+PARAM_SET = CFG['param_set']
+COORD = CFG.get('coord_sys', 'OCS')
+
+# Telemetry attachment needs the EFD and ConsDB to resolve, which they do not on a
+# Slurm compute node, so a batch run passes --config attach_telemetry=0 and the
+# target drops out of `rule all`.  Attach it afterwards with a local run.  Every
+# EFD-querying group (gradients, camera, hexlut, trim) lives inside that one rule,
+# so this switch is the single point that keeps EFD access out of batch.
+ATTACH_TELEMETRY = str(config.get('attach_telemetry', 1)).lower() not in ('0', 'false', 'no')
+
+# run_mktable speed knobs: parallelize the per-visit Butler donut reads, and
+# optionally skip the slow per-visit ESS-temperature loop.
+MKT_WORKERS = int(config.get('mktable_workers', 8))
+MKT_NO_THERMAL = str(config.get('mktable_no_thermal', 0)).lower() not in ('0', 'false', 'no')
+
+BUILD_DIR = fam_tables.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+if CFG.get('builder') != 'snakemake':
+    raise ValueError(
+        f"variant {VARIANT!r} has builder {CFG.get('builder')!r}: only the "
+        "'snakemake' variants are built here; the blitz recast writes its "
+        'combined tables directly (see run_blitz_mktable)')
+
+
+# A chunk is a finite SET OF VISITS, not necessarily one collection.  Each
+# variants.yaml chunk is {day_obs: [dmin, dmax]} and may override the collection,
+# the Butler repo and the program filter for that set of visits.  All chunks of a
+# variant land in the same build directory (combine concatenates them), so a newer
+# disjoint reprocessing folds in as one extra chunk without a new variant.
+def _chunk_entries():
+    out = []
+    for c in CFG.get('chunks', []):
+        a, b = c['day_obs']
+        out.append(dict(dmin=int(a), dmax=int(b), collection=c.get('collection'),
+                        phrase=c.get('phrase'), butler_repo=c.get('butler_repo'),
+                        programs=c.get('programs')))
+    return out
+
+
+CHUNKS = _chunk_entries()
+CHUNK_NAMES = [f"{c['dmin']}_{c['dmax']}" for c in CHUNKS]
+
+
+def variant_phrase():
+    """The collection phrase, as run_pipeline / intrinsics_lib derive it."""
+    if CFG.get('collection_phrase'):
+        return CFG['collection_phrase']
+    parts = CFG['fam_collections'][0].split('/')
+    return parts[2] if (parts[0] == 'u' and len(parts) > 2) else CFG['fam_collections'][0]
+
+
+def _chunk_at(dmin, dmax):
+    for c in CHUNKS:
+        if c['dmin'] == int(dmin) and c['dmax'] == int(dmax):
+            return c
+    return dict(collection=None, phrase=None, butler_repo=None, programs=None)
+
+
+def chunk_phrase(dmin, dmax):
+    # phrase drives run_mktable's output filename ({phrase}_{dmin}_{dmax}.parquet)
+    return _chunk_at(dmin, dmax)['phrase'] or variant_phrase()
+
+
+def chunk_mktable_extra(dmin, dmax):
+    # CLI overrides for a per-chunk collection; empty string for a chunk that uses
+    # the variant-level collection, so its mktable command — and Butler query — is
+    # identical to what aos/Snakefile issued.
+    c = _chunk_at(dmin, dmax)
+    if not c['collection']:
+        return ''
+    parts = ['--collections', c['collection'],
+             '--collection-phrase', chunk_phrase(dmin, dmax)]
+    if c['butler_repo']:
+        parts += ['--butler-repo', c['butler_repo']]
+    if c['programs']:
+        parts += ['--programs', *[str(p) for p in c['programs']]]
+    return ' '.join(parts)
+
+
+def chunk_files(name):
+    return [str(WORK / 'chunks' / c / name) for c in CHUNK_NAMES]
+
+
+# The shell commands, built here rather than inline: snakemake's own parser
+# mishandles a multi-line f-string inside a rule, so the rules below use plain
+# format placeholders only.
+COMBINE_PARQUETS = f'{WF_BIN}/combine_parquets.py'
+COMBINE_CMD = ('mkdir -p $(dirname {log}) && '
+               f'python {COMBINE_PARQUETS} ' + '{input.chunks} --output {output} '
+               '> {log} 2>&1')
+FIT_CMD = ('mkdir -p $(dirname {log}) && '
+           f'python {WF_BIN}/run_dz_fit.py ' + '{input.donuts} '
+           f'--coord-sys {COORD} ' + '--visits {input.visits} --output {output} '
+           '> {log} 2>&1')
+ATTACH_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.fam_tables.builders.run_attach_telemetry '
+    f'--param-set {PARAM_SET} --out-dir {BUILD_DIR} '
+    f"--chunks-dir {WORK / 'chunks'} " + '--all-chunks --merge > {log} 2>&1 && '
+    "date -u +'%Y-%m-%dT%H:%M:%SZ attached' > {output.stamp}")
+MKTABLE_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {MKTABLE_CWD} && python {WF_BIN}/run_mktable.py --param-set {PARAM_SET}'
+    ' --day-obs-min {wildcards.dmin} --day-obs-max {wildcards.dmax}'
+    ' --workers {params.workers} {params.nothermal} --overwrite'
+    ' {params.extra} --output-dir {params.cdir} > {log} 2>&1\n'
+    'mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}.parquet'
+    ' {output.donuts}\n'
+    'mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}_visits.parquet'
+    ' {output.visits}\n')
+
+
+wildcard_constraints:
+    dmin = r"\d{8}",
+    dmax = r"\d{8}",
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'donuts.parquet'),
+        str(BUILD_DIR / 'fits.parquet'),
+        str(BUILD_DIR / 'visits.parquet'),
+        # telemetry attachment: skipped in batch mode, where the EFD does not resolve
+        [str(WORK / 'telemetry_attached.txt')] if ATTACH_TELEMETRY else [],
+
+
+# ---- per chunk: mktable (Butler) -> donuts + visits ----
+rule mktable:
+    output:
+        donuts = str(WORK / 'chunks' / '{dmin}_{dmax}' / 'donuts.parquet'),
+        visits = str(WORK / 'chunks' / '{dmin}_{dmax}' / 'visits.parquet'),
+    params:
+        cdir  = lambda w: str(WORK / 'chunks' / f'{w.dmin}_{w.dmax}'),
+        ph    = lambda w: chunk_phrase(w.dmin, w.dmax),
+        extra = lambda w: chunk_mktable_extra(w.dmin, w.dmax),
+        workers   = MKT_WORKERS,
+        nothermal = '--no-thermal' if MKT_NO_THERMAL else '',
+    # Declare the REAL cost so Snakemake self-throttles: each mktable spawns
+    # `workers` donut-reading processes.  threads=workers makes -j cap the number
+    # of concurrent chunks, and mem_mb scales so the --resources mem_mb budget
+    # does too.  ~3 GB/worker is a conservative bin-x2 donut estimate.
+    threads: MKT_WORKERS
+    resources: mem_mb=3000 * MKT_WORKERS
+    log: str(LOGS / '{dmin}_{dmax}.mktable.log')
+    shell: MKTABLE_CMD
+
+
+# ---- per chunk: Double-Zernike fit ----
+rule fit:
+    input:
+        donuts = str(WORK / 'chunks' / '{dmin}_{dmax}' / 'donuts.parquet'),
+        visits = str(WORK / 'chunks' / '{dmin}_{dmax}' / 'visits.parquet'),
+    output: str(WORK / 'chunks' / '{dmin}_{dmax}' / 'fits.parquet')
+    resources: mem_mb=4000
+    log: str(LOGS / '{dmin}_{dmax}.fit.log')
+    shell: FIT_CMD
+
+
+# ---- combine chunks -> one build-level table each ----
+# The called script is declared as an input so editing it triggers a re-run
+# (Snakemake's code-change trigger only watches a rule's shell command, not the
+# external scripts it calls).  mktable deliberately does NOT track its script —
+# it would force expensive Butler re-queries on any intrinsics_lib edit.
+rule combine_donuts:
+    input:
+        chunks = chunk_files('donuts.parquet'),
+        script = f"{WF_BIN}/combine_parquets.py",
+    output: str(BUILD_DIR / 'donuts.parquet')
+    resources: mem_mb=3000
+    log:    str(LOGS / 'combine_donuts.log')
+    shell:  COMBINE_CMD
+
+
+rule combine_fits:
+    input:
+        chunks = chunk_files('fits.parquet'),
+        script = f"{WF_BIN}/combine_parquets.py",
+    output: str(BUILD_DIR / 'fits.parquet')
+    resources: mem_mb=2000
+    log:    str(LOGS / 'combine_fits.log')
+    shell:  COMBINE_CMD
+
+
+rule combine_visits:
+    input:
+        chunks = chunk_files('visits.parquet'),
+        script = f"{WF_BIN}/combine_parquets.py",
+    output: str(BUILD_DIR / 'visits.parquet')
+    resources: mem_mb=2000
+    log:    str(LOGS / 'combine_visits.log')
+    shell:  COMBINE_CMD
+
+
+# ---- attach all per-visit telemetry, then merge into the visits tables ----
+# One pass over every chunk: thermal, M1M3 gradients, wind, camera body, mirror LUT,
+# hexapod LUT, Trim and a derived Tweak.  Each chunk gets a telemetry.parquet, which
+# --merge joins into both the per-chunk and the combined visits.parquet.  Because the
+# sidecars are the source of truth, re-running combine_visits and then this rule's
+# --merge restores the columns.
+rule attach_telemetry:
+    input:
+        visits = str(BUILD_DIR / 'visits.parquet'),
+        script = str(REPO / 'rubinwork' / 'products' / 'fam_tables' / 'builders'
+                     / 'run_attach_telemetry.py'),
+    output:
+        stamp = str(WORK / 'telemetry_attached.txt'),
+    resources: mem_mb=4000
+    log: str(LOGS / 'attach_telemetry.log')
+    shell: ATTACH_CMD

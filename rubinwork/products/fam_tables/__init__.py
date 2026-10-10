@@ -28,6 +28,8 @@ Build one with the module's command line, which drives the same steps the
     python -m rubinwork.products.fam_tables.build --variant danish_1_2 --chunk 20251116_20251130
 """
 
-from .reader import TABLES, load, load_table, variant_config, variants
+from .reader import (TABLES, build_dir, load, load_table, variant_config, variants,
+                     variant_for_param_set)
 
-__all__ = ["TABLES", "load", "load_table", "variant_config", "variants"]
+__all__ = ["TABLES", "build_dir", "load", "load_table", "variant_config", "variants",
+           "variant_for_param_set"]
