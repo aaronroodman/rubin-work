@@ -36,14 +36,17 @@ git show pre-products-reorg-2026-10-09:notes/status/reorg_review_plan_2026-09.md
 | products | 9: value-added database, FAM tables, CWFS tables, MIW and sidecar, coadds, guider moments, HSM moments, DOF LUT, bounce tables |
 | libraries | `common`, `aos_state`, `smatrix` (sensitivity matrix, v-modes, regularized inversion), `open_loop` |
 | package | one installable package `rubinwork/` at the repo root, `pip install -e .`, holding all libraries and all product code |
-| data root | `/sdf/group/rubin/u/roodman/LSST/rubin-work/` with `products/`, `studies/`, `archive/`; not in git |
+| data root | `/sdf/group/rubin/u/roodman/LSST/rubin-work/` with `products/` and `studies/`; not in git |
 | laptop data | syncs chosen parts of `studies/` only, never `products/` |
 | version naming | `<product>/<variant>/<build>`; variant = named configuration; build = date `YYYYMMDD` |
 | derived products | variant name prefixed by the short code of its main upstream variant, e.g. `d12-A_50_34_i_5rot` |
 | incremental products | value-added database and guider moments: `v<schema>`, provenance per night |
 | official MIW | Guillem's `ts_intrinsic_wavefront` calibrations registered in the catalog as external variants |
 | MIW sidecar | anything the official MIW needs stays in `ts_intrinsic_wavefront` and its sidecar, which cannot depend on the private database; per-donut data stays in parquet |
-| old output | left untouched during the reorg; Aaron zips it for temporary backup afterwards |
+| old output | left untouched during the reorg; in-use builds are **copied** into the new tree, so the old tree stays whole; Aaron zips it for temporary backup afterwards |
+| obsolete builds | not copied and not registered ("virtual archive"): they stay only in the old tree. Includes FAM `danish_1_0`, `danish_1_1_1`, `danish_1_2_0_wep17_7_0_2025` |
+| package name | `rubinwork`: personal use only; anything Rubin adopts officially moves to a `ts_*` package |
+| HSM moments | product deferred until its study restarts |
 | code review | after the reorg; a reference-run check guards each move |
 
 Acronyms: Full Array Mode (FAM), Corner Wavefront Sensor (CWFS), Measured Intrinsic
@@ -134,7 +137,6 @@ Imports become `from rubinwork.common import utils` and
     guider_moments/v6/nights/<YYYYMMDD>/
     ...
   studies/<topic>/<study>/<YYYYMMDD>_<label>/   PDFs, PNGs, run.json, study-only scratch
-  archive/                                      old trees, unchanged, until Aaron decides
 ```
 
 This is a new tree, separate from today's `.../LSST/notebooks/rubin-work/<topic>/output/`
@@ -150,7 +152,7 @@ so the two layouts never mix.
 | `miw` | snapshot + external | `aos/code/miw/`, rules `build_intrinsic`, `intrinsic_split`, `intrinsic_sidecar`; `ts_intrinsic_wavefront` | `aos/output/miw/<param_set>_<mi_name>/` | `mi_config.yaml` entries, prefixed: `d12-A_50_34_i_5rot`, `d13v1000-A_50_50_i_rbr`, ... |
 | `coadds` | snapshot | `aos/code/coadd/` | `aos/output/coadd/<param_set>/50_34*/` | `d12-50_34`, `d12-50_34_v2` |
 | `guider_moments` | incremental | `guider/code/`, `guider/Snakefile` | per-night `<seq>_moments`, `_stars`, `_metrics` parquet (4,763 files each) | `v6` (current `guiderMoments` schema) |
-| `hsm_moments` | to define | `optatmo/code/moments_hsm.py` | not identified; see open questions | |
+| `hsm_moments` | deferred | `optatmo/code/moments_hsm.py` | none yet: the study has not started | defined when the study restarts |
 | `dof_lut` | snapshot | `aos/code/lut/` | `lut`, `lut_dz`, `lut_by_rotbin` parquet | per MIW variant |
 | `bounce_tables` | snapshot | `aos/code/bounce/` (table-writing part) | `bounce_fwhm_metric`, `bounce_dof_stats` parquet | per MIW variant |
 
@@ -236,9 +238,10 @@ products/value_added/v1/
   It is a new snapshot, not a new schema version, unless the schema changed.
 - Nightly job, once observing resumes: process the previous `day_obs` with `--resume`,
   then redo the 2–3 nights before it to catch late ConsDB and quicklook data. The state
-  builder can run under Slurm `scrontab`. The telemetry builder reaches the EFD only from
-  interactive nodes (`slacrd`, `sdfiana*`), so it needs a scheduled job there; whether
-  S3DF allows that is to be checked with S3DF support.
+  builder can run under Slurm `scrontab`. The telemetry builder today reaches the EFD only
+  from interactive nodes (`slacrd`, `sdfiana*`). Aaron has been told the EFD can be reached
+  from batch nodes after some setup; if so, both builders run under `scrontab`. Otherwise
+  the telemetry builder needs a scheduled job on an interactive node. To be checked.
 
 ## 7. Studies and the logbook skills
 
@@ -300,9 +303,11 @@ sessions until its phase is pushed (see `notes/status/parallel_claude_sessions.m
 2. Move the code and the Snakefile rules into `rubinwork/products/fam_tables/`;
    `variants.yaml` from `param_sets.yaml`.
 3. Rerun the reference build and compare row counts and column values with the reference.
-4. Register the existing builds: move each in-use build into the new tree (same filesystem,
-   so the move is instant), leave a symlink at the old path so old code keeps working, and
-   write its manifest.
+4. Register the existing builds: copy each in-use build into the new tree and write its
+   manifest. The old tree is not touched, so old code keeps working until phase 5. Obsolete
+   builds are not copied. Copy cost: the in-use `danish_1_2` FAM tables are the bulk;
+   `donuts.parquet` over all 24 copies on disk is 64.09 GB, and only the in-use ones are
+   copied.
 5. Update readers to use `load()`.
 
 **Phase 3 — the other products**, same steps, in dependency order: `cwfs_tables`; `miw`
@@ -324,8 +329,9 @@ Retire or document the empty topics (`camera`, `des`, `starcolor`, `survey`, `wc
 (MIW, guider, Z11 intra/extra, CCD height map, frame conventions) into the matching study
 or product docs, so S3DF sessions see them.
 
-**Phase 7 — cleanup, Aaron's call.** Old output trees hold only unused data; Aaron zips
-them. The laptop's synced output copies (about 60 GB) can go.
+**Phase 7 — cleanup, Aaron's call.** The old output trees are whole copies of the
+pre-reorg state; Aaron zips them for temporary backup and removes them when satisfied.
+The laptop's synced output copies (about 60 GB) can go.
 
 **Phase 8 — code review.** Part C of the old plan (C1–C4, at the tag), applied to the new
 layout. The reference runs from phases 2–3 are its first regression tests.
@@ -338,16 +344,16 @@ distinct file names, 110.2 GB in total. To be checked by Aaron before phase 2.
 | today (under `aos/output/` unless noted) | becomes | note |
 |---|---|---|
 | `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/` donuts, visits, fits | `fam_tables/danish_1_2/<build>/` | build date from file mtime |
-| `fam_danish_1_0_wep17_3_0_bin2x/`, `archive/fam_danish_1_0_*` | `fam_tables/danish_1_0/` or `archive/` | in use? |
-| `fam_danish_1_1_1_*`, `fam_danish_1_2_0_wep17_7_0_2025/` | `fam_tables/<variant>/` or `archive/` | in use? |
+| `fam_danish_1_0_wep17_3_0_bin2x/`, `archive/fam_danish_1_0_*` | not copied | obsolete, virtual archive |
+| `fam_danish_1_1_1_*`, `fam_danish_1_2_0_wep17_7_0_2025/` | not copied | obsolete, virtual archive |
 | `fam_danish_v1_triplets_bin_1x/`, `_bin_2x/`, `output-archive-2026-06-11/` | stay, zipped later | read by no code |
 | `.../wfs/<wep version>/` donuts, visits | `cwfs_tables/<variant>/<build>/` | |
 | `miw/danish_1_2_A_50_34_i*/` intrinsic_grid, intrinsic_split_*, zk_intrinsic | `miw/d12-A_50_34_i*/<build>/` | sidecar stays with its MIW build |
 | `coadd/danish_1_2/50_34*/` block_grids | `coadds/d12-50_34*/<build>/` | |
 | `lut/danish_1_2_A_50_34_i/` | `dof_lut/d12-A_50_34_i/<build>/` | |
 | `bounce/danish_1_2_A_50_34_i_5rot_july/` tables | `bounce_tables/d12-A_50_34_i_5rot/<build>/` | plots go to the bounce study |
-| `value_added/output/aos_efd.duckdb`, `shards/` | `value_added/v1/live/`, `_work/shards/` | `aos_efd_archive_*_pre_vmode_rebuild.duckdb` (0.54 GB) to `archive/` |
-| guider per-night parquet | `guider_moments/v6/nights/<night>/` | `old/` night dirs to `archive/` |
+| `value_added/output/aos_efd.duckdb`, `shards/` | `value_added/v1/live/`, `_work/shards/` | `aos_efd_archive_*_pre_vmode_rebuild.duckdb` (0.54 GB) not copied |
+| guider per-night parquet | `guider_moments/v6/nights/<night>/` | `old/` night dirs not copied |
 | every PDF and PNG | `studies/<topic>/<study>/<YYYYMMDD>_<label>/` | or left in the old tree |
 
 505 file names (23.0 GB) are read by no code. Most are old FAM table formats in
@@ -372,12 +378,9 @@ get a `study.md`, and the item number is recorded in its front matter.
 
 ## 11. Open questions
 
-1. **HSM moments**: which files are the HSM-moment product that the star astrometry
-   studies use? The inventory found no file of its own.
-2. **Existing builds**: move into the new tree with a symlink left behind (proposed in
-   phase 2), or copy and leave the old tree whole until zipping?
-3. **Which FAM variants are in use**: `danish_1_0`, `danish_1_1_1` and
-   `danish_1_2_0_wep17_7_0_2025` — register them, or archive them?
-4. **Nightly job on an interactive node**: ask S3DF support whether a scheduled job on
-   `sdfiana`/`slacrd` is allowed for the EFD-bound telemetry builder.
-5. **Package name**: `rubinwork` (proposed) or another.
+Resolved 2026-10-09: HSM moments deferred; existing builds copied, not moved; obsolete FAM
+variants left in the old tree only; package name `rubinwork`.
+
+1. **Nightly job**: can the EFD be reached from S3DF batch nodes after setup? If not, is a
+   scheduled job on `sdfiana`/`slacrd` allowed for the telemetry builder? Needed before
+   observing resumes, not before phase 1.
