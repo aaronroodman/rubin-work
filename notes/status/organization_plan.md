@@ -287,16 +287,100 @@ sessions until its phase is pushed (see `notes/status/parallel_claude_sessions.m
 
 **Phase 0 — done 2026-10-09.** Tag `pre-products-reorg-2026-10-09`; old plan docs removed.
 
-**Phase 1 — package skeleton and libraries.**
-1. `pyproject.toml`; `rubinwork/` with `common/` moved in; shims left at `common/` so old
-   imports keep working until phase 5.
-2. Move `aos_state`, `smatrix` library modules and `open_loop` into `rubinwork/`, with
-   shims at the old paths.
-3. `catalog.py` and `manifest.py`, with tests.
-4. Create the data root on S3DF.
-5. Check `pip install -e .`: laptop (`/opt/local/bin/pip3`), RSP notebook and terminal, and
-   a Slurm batch node (`pip install --user -e .` into the stack environment). Done when
-   `python -c "import rubinwork"` works in all four.
+**Phase 1 — package skeleton and libraries. Done 2026-10-09**, commits `c932808`,
+`ee89a96`, `30502ae`, `547fc63`, `2918a2b`, `cee055e`.
+
+1. `pyproject.toml` — `rubinwork`, setuptools, `requires-python = ">=3.11"`, no
+   dependencies (everything comes from the stack environment). `packages.find` includes
+   only `rubinwork*` and excludes its `tests`, so the topic directories that carry an
+   `__init__.py` (`aos/`) do not install. (`c932808`)
+2. `common/` moved to `rubinwork/common/` (`ee89a96`); `aos_state`, `open_loop` and three
+   `smatrix` modules moved into `rubinwork/` (`30502ae`). Shims at every old path.
+3. `rubinwork/products/catalog.py` and `manifest.py`, 26 tests passing against a pytest
+   `tmp_path` data root. (`547fc63`)
+4. Data root created: `/sdf/group/rubin/u/roodman/LSST/rubin-work/{products,studies}`,
+   both empty; `catalog.list_products()` reads them and returns `[]`.
+5. Installed with `pip install --user -e .` in the stack environment (`w_2026_39`, Python
+   3.13.15). `import rubinwork, rubinwork.common, rubinwork.products.catalog` verified in
+   the USDF terminal. A batch-node check is written but **not submitted**
+   (`rubinwork/common/scripts/check_batch_import.sl`, commit `2918a2b`); its body passes
+   when run with the stack sourced the way the job will source it. The laptop install is
+   not done.
+
+**Which `smatrix/code` modules are libraries.** The three that code outside the smatrix
+study imports, and that are import-safe (constants and functions, work behind
+`__main__`):
+
+| module | imported by |
+|---|---|
+| `compute_smatrix.py` | `aos/code/static_optics/camera_gravity.py`, `smatrix/code/thermal_sensitivity.py`, three smatrix plot scripts (for `CONFIG_TAG`) |
+| `normalization_weights.py` | `regularized_inversion.py`, `make_normalization.py`, `full_normalization.py`, `validate_normalization.py`, `vmode/plot_vmode_dof_matrix.py` |
+| `regularized_inversion.py` | `value_added/code/build_optical_state.py` (and its test), `aos/code/test_open_loop.py`, `aos/code/bounce/bounce_lib.py`, `aos/code/miw/{check_dof_ranges,test_rbr_against_prototype}.py` |
+
+Everything else in `smatrix/code/` is a study script and stayed: the `plot_*` and
+`mode_gallery*` scripts, `compare_ofc.py`, `detailed_comparison.py`,
+`demo_field_order.py`, `full_mode_analysis.py`, `miw_ocs_analysis.py`,
+`pupil_zernike_study.py`, `thermal_sensitivity.py`, `thermal_study.py`,
+`build_full_modes.py`, `validate_normalization.py`, and the `vmode/` and
+`regularized_inversion/` subdirectories.
+
+The **v-modes library named in section 3 does not exist in `smatrix/code`**:
+`smatrix/code/vmode/` is a study (two analysis scripts, `docs/studies/vmode.md`), and the
+v-mode code other topics actually import is `aos_state`, already moved. `optatmo` imports
+`vmode_fit`, which is in `optatmo/code/`. Nothing extra to move.
+`make_normalization.py` and `full_normalization.py` *write* `normalization_all.npz`, so
+they are product builders for a later phase, not libraries.
+
+**How the shims work.** `common/__init__.py` imports `rubinwork.common`, copies its
+`__path__`, and registers each submodule in `sys.modules` under the old `common.*` name,
+so `common.utils is rubinwork.common.utils`. The five bare-name libraries
+(`aos/code/aos_state.py`, `aos/code/open_loop.py`, and three in `smatrix/code/`) are
+module files that bind the real module's namespace and then set
+`sys.modules[__name__] = _real`, since every caller imports them by bare name after a
+`sys.path.insert`. No shim holds a copy of anything.
+
+**Regression smoke test** (`rubinwork/common/scripts/import_smoke_test.py`, committed in
+`c932808`): imports every repo module that touches a moved library, one per subprocess, in
+script mode. Before: 72 modules, 69 ok. After: 64 modules, 64 ok. **No module's import
+regressed.** Accounting for the renames, two outcomes changed, both improvements:
+`aos/code/bounce/{bounce_lib,run_bounce}.py` went from timeout to ok (warm caches, not the
+move). The 8 modules that dropped out of the match set are the moved files themselves,
+whose imports became intra-package; each was verified to import directly.
+
+**Fixed in passing, not planned.** `rubinwork/common/psf_moments_consdb.py` imported
+`common.telemetry_clients` by absolute name, which failed before the move too
+(`ModuleNotFoundError`); it is a relative import now and the module imports.
+`rubinwork/common/FocalPlaneInterpolator.py` still fails on `numpy.lib.index_tricks`,
+removed in numpy 2 — a pre-existing break, untouched, and the shim propagates it
+unchanged.
+
+**Tried and rejected.**
+- *Making the shim a one-line `from rubinwork.common import *`.* It does not give module
+  identity: `common.utils` would be a different object from `rubinwork.common.utils`, so
+  monkeypatching or module-level state would silently split. The `sys.modules`
+  registration is what keeps them the same object.
+- *Keeping the `sys.path.insert` + `parents[1]` hack inside the moved `common` modules.*
+  `parents[1]` is one level too shallow after the move. The three intra-package sibling
+  imports (`consdb_efd`, `dof_telemetry`, `visit_telemetry`) became relative instead,
+  which is correct inside an installed package and removes the hack.
+- *Letting `packages.find` default.* It picks up `aos/`, which has an `__init__.py`, and
+  would install a topic directory as a package. `include = ["rubinwork*"]` is required,
+  not cosmetic.
+- *Naming the catalog listing function `list`.* Section 5 calls it `list()`; it is
+  defined as `list_products` and aliased, so the builtin is not shadowed for callers of
+  the module's other functions.
+
+**Left open.**
+- The laptop `pip install -e .` with `/opt/local/bin/pip3` is not done (this session is on
+  S3DF).
+- The batch-node check is written but not submitted; see the submit command in the
+  session handoff.
+- `smatrix/code/regularized_inversion/` is a namespace package (no `__init__.py`) sitting
+  next to `regularized_inversion.py`. The `.py` wins, so imports resolve to the module —
+  but that was already true before the move and is worth removing in phase 5 when the
+  study directories are reshaped.
+- `common/notebook_template.ipynb` and `common/output/` stayed at the old path, since
+  `CLAUDE.md` and the output-layout convention point at them. They move in phase 5.
 
 **Phase 2 — pilot product: `fam_tables`, end to end.**
 1. Reference run before the move: build one variant over a few nights and keep the output.
