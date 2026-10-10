@@ -44,7 +44,9 @@ Support:
   derived quantities and recovered optical state, plus the builders that maintain it. A
   **service topic**: it maintains a product other topics consume, read through
   `value_added/code/efd_db.py` (`docs/schema.md`, `docs/status/build_progress.md`)
-- `common/` — shared utility functions used across topics
+- `rubinwork/` — the installable package: `common/` (shared utilities), the libraries
+  moved out of the topics (`aos_state`, `open_loop`, `smatrix`), and `products/` (the
+  catalog and manifest writer). A shim remains at the old `common/` path
 - `notes/` — working notes for Slack posts and Summit-Operations tech notes; each
   note is a self-contained dated directory, drafted in plain Markdown.
   `notes/claude-memory/` is an **archive** of old Claude notes-to-self. The rules in
@@ -68,26 +70,37 @@ files in that subtree are touched:
 - `aos/CLAUDE.md` — MIW, FAM coadds, DZ fitting, sensitivity/v-modes
 - `guider/CLAUDE.md` — guider pipeline, `summit_utils` fork state, bias/streak work
 
-Shared code lives in **`common/`** (`utils.py`, `telemetry_clients.py`,
+Shared code lives in **`rubinwork/common/`** (`utils.py`, `telemetry_clients.py`,
 `ess_telemetry.py`, `dof_telemetry.py`, `consdb_efd.py`, `visit_telemetry.py`,
 `FocalPlaneInterpolator.py`, `psf_moments_consdb.py`, plus
-`common/scripts/`), imported by inserting the repo root on
-`sys.path`. Genuinely shared helpers belong there rather than being copied between
-topics.
+`rubinwork/common/scripts/`). Genuinely shared helpers belong there rather than being
+copied between topics.
 
-Two cross-topic couplings are real and intentional — know them before refactoring:
+**`rubinwork` is an installed package** (`pip install --user -e .` from the repo root,
+`pyproject.toml`). New code imports `from rubinwork.common import utils`, with no
+`sys.path` work. Alongside `common/` it holds the libraries moved in phase 1 of the
+reorganization — `rubinwork.aos_state`, `rubinwork.open_loop` and
+`rubinwork.smatrix` (`compute_smatrix`, `normalization_weights`,
+`regularized_inversion`) — and `rubinwork.products` (`catalog`, `manifest`), the only
+sanctioned way to reach product data.
+
+Compatibility shims remain at every old path (`common/`, `aos/code/aos_state.py`,
+`aos/code/open_loop.py`, and the three in `smatrix/code/`), so existing
+`sys.path.insert` + bare-name imports keep working. They are removed in phase 5
+(`notes/status/organization_plan.md`); do not add new imports through them.
+
+One cross-topic coupling is real and intentional — know it before refactoring:
 
 - `guider/code/` imports `moments_hsm.measure_hsm_moments` from **`optatmo/code`**, so
   that both sides of the guider-vs-science-CCD moment comparison use the same
-  galsim-HSM estimator. Changing that estimator changes guider results.
-- `blocks/`, `olr/`, `optatmo/`, `smatrix/`, `thermal_focus/` and `value_added/` import
-  `aos_state` from
-  **`aos/code`** for the v-modes, the DOF sets and the per-corner Zernike recovery. That is
-  AOS physics and stays in `aos/`; the engineering telemetry those topics also need was
-  moved to `common/` so `aos_state` is the only remaining reach into `aos/code`.
+  galsim-HSM estimator. Changing that estimator changes guider results. It goes through
+  `sys.path.insert`, not a real package, so the coupling is invisible to static import
+  checks.
 
-Both go through `sys.path.insert`, not real packages, so the coupling is invisible to
-static import checks.
+`aos_state` used to be the other one: `blocks/`, `olr/`, `optatmo/`, `smatrix/`,
+`thermal_focus/` and `value_added/` all reached into `aos/code` for the v-modes, the DOF
+sets and the per-corner Zernike recovery. It is now `rubinwork.aos_state`, a library, so
+that is no longer a cross-topic reach.
 
 Beware one naming collision: in `aos/code/`, `common` in an import almost always means
 `lsst.ts.intrinsic.wavefront.common` — an **external** package — not this repo's
@@ -247,26 +260,36 @@ notebooks live in `<topic>/notebooks/<study>/`; docs describe content, define ac
 and carry a status line.
 
 ### Imports and `sys.path`
-The repo is **not** an installed package, and scripts are run as `python code/x.py`
-(script mode), so relative imports (`from ..other import x`) do not work — Python
-leaves `__package__` unset and raises `ImportError`. Use exactly one idiom, at the top
-of the file, before any repo import:
+**New code imports the installed package directly, with no `sys.path` work:**
+
+```python
+from rubinwork.common.utils import nmad
+from rubinwork.products import catalog
+```
+
+This works in a script, a notebook and a batch job alike, as long as
+`pip install --user -e .` has been run from the repo root once per environment.
+
+The topic directories are **not** a package, and their scripts are run as
+`python code/x.py` (script mode), so relative imports (`from ..other import x`) do not
+work there — Python leaves `__package__` unset and raises `ImportError`. Code that still
+needs to reach a sibling module inside the same topic uses one idiom, at the top of the
+file:
 
 ```python
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))  # repo root
-from common.utils import nmad
 ```
 
 `N` counts directories up to the repo root: **2** for `<topic>/code/x.py`, **3** for
 `<topic>/code/<study>/x.py`. In a **notebook** there is no `__file__` — use
-`common.utils.repo_root()`, which walks up from the working directory instead.
+`rubinwork.common.utils.repo_root()`, which walks up from the working directory instead.
 
 Rules:
 - **Never hardcode `/home/r/roodman/...` or `/sdf/...` in import bootstrapping.** The
   `/home/...` form is RSP-only and fails silently in a Slurm job;
   `parents[N]` is correct in every environment.
-- Genuinely shared helpers belong in `common/`, not copied between topics.
+- Genuinely shared helpers belong in `rubinwork/common/`, not copied between topics.
 - Reaching into a sibling topic's `code/` is a real dependency — see
   Topic independence above before adding one.
 
