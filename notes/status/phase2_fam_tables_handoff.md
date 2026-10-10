@@ -234,6 +234,65 @@ with a documented exception; (b) change `snake_config.yaml` too and accept the 2
 build. Not resolved — (a) is the only one that touches no output tree, and the A3 work
 below makes it moot if `snake_config.yaml` reads its chunks from `variants.yaml`.
 
+### A3 — one source of truth for variants: decided, not yet implemented (2026-10-10)
+
+**Decision (Aaron, 2026-10-10): `rubinwork/products/fam_tables/variants.yaml` carries both
+the FAM and the WFS/CWFS information, and `aos/param_sets.yaml` is generated from it.**
+
+The reason the CWFS half cannot wait for phase 3: `param_sets.yaml` is what links the FAM
+intra/extra pair to the in-focus corner-WFS member of the **same triplet** (FAM key = the
+extra exposure; in-focus = FAM seq + 1). That pairing is one fact about the observation,
+so it needs one home. Splitting it between `fam_tables/variants.yaml` and a phase-3
+`cwfs_tables/variants.yaml` would leave the link with no single owner. The MIW is built
+from the FAM tables alone, so `ts_intrinsic_wavefront` needs only the FAM half.
+
+It lives in `fam_tables/variants.yaml` (not a new shared `products/variants.yaml`) because
+the triplet is FAM-anchored; phase-3 `cwfs_tables` reads `wfs_collections` through
+`fam_tables.variant_config()`. Promote to a shared observing-set file later only if
+`cwfs_tables` turns out to need more than this.
+
+Why `param_sets.yaml` must keep existing rather than be deleted, now or in phase 5:
+
+- **An external package reads it by name from the current working directory.**
+  `lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets()` resolves
+  `Path('param_sets.yaml')` relative to the cwd (its only candidate path). Called by
+  `aos/code/cwfs/run_wfs_mktable.py`, `run_wfs_fam_compare.py`,
+  `run_wfs_refit_ensemble.py` and `aos/code/fam_processing/check_chunk.py`. We do not
+  modify that package for this.
+
+What the Snakefile actually takes from it — smaller than it looks. All four uses of
+`PARAM_SETS`: `phrase()` (line 71), `ps_dir()` (line 92), and `wfs_variants()` /
+`wfs_collection()` (lines 170–172). FAM **chunks come from `snake_config.yaml`**, not from
+`param_sets.yaml`.
+
+Two things the generator must handle, both found by reading the file rather than assumed:
+
+1. **`wfs_collections` is not a plain name → collection map.** An entry is either a bare
+   collection string or a dict carrying `seq_offset` (+1 in-focus default, 0 extra, -1
+   intra), `dataset_type` (`aggregateZernikesRaw`, `aggregateAOSVisitTableAvg`) and
+   `reader` (`unpaired`). Five such variants exist on `danish_1_2` alone: `refitWcs`,
+   `refitWcs_2025`, `paired_3mm`, `ai_donut`, `tarts`.
+2. **68% of the file is documentation.** 130 comment lines vs 55 data lines out of 191.
+   `yaml.safe_load` + `safe_dump` **loses every comment**, and those comments encode real
+   decisions (the TARTS Noll remap, the `ai_donut` reader path, why 2025 CWFS is a separate
+   collection, why `danish_1_0` is frozen provenance). So the prose **moves into
+   `variants.yaml`**, and the generated `param_sets.yaml` gets only a "GENERATED — do not
+   edit" header plus data. Nothing is lost because `variants.yaml` becomes the documented
+   file. (`ruamel.yaml` 0.19.1 is installed if comment-preserving round-trip is ever
+   wanted; this split means it is not needed.)
+
+Also keep in mind: `danish_1_0` stays in the generated output — it is frozen MIW
+provenance, disabled in `snake_config.yaml` — while `variants.yaml` deliberately does not
+*register* it as a buildable variant. The generator needs a flag for "emit but do not
+register".
+
+**Not implemented in this session.** Remaining work: migrate the 130 comment lines and the
+`wfs_collections` blocks into `variants.yaml`; write the generator; regenerate
+`param_sets.yaml`; verify `snakemake -n` from `aos/` gives a byte-identical job list
+(baseline captured this session: **212 jobs**, with `mktable` showing no pending job).
+This also subsumes the A2 `snake_config.yaml` question, since chunks can then be generated
+into `snake_config.yaml` from the same source.
+
 ## Open, not yet resolved
 
 - The reference covers **one chunk of ten, one variant of three**. It does not exercise the
