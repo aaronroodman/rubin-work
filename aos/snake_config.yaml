@@ -36,7 +36,12 @@ param_sets:
     chunks:
       - [20260315, 20260327]
       - [20260331, 20260409]
-      - [20260418, 20260513]
+      # Kept at 20260531 on purpose: this is the OLD output tree, whose chunk
+      # directory is named 20260418_20260531.  The narrowed [20260418, 20260513]
+      # range lives only in rubinwork/products/fam_tables/variants.yaml, which
+      # the new product tree uses.  Narrowing here would rename the chunk and
+      # make snakemake rebuild its 219 visits through mktable.
+      - [20260418, 20260531]
       # Newer, DISJOINT visits (post May 13; extra elevation/rotator points) from
       # the danish_1_2_0 wep 17.7.0 reprocessing.  This chunk targets its OWN
       # collection, so the three chunks above keep reading the 17.6.1 collection.

@@ -112,11 +112,26 @@ def test_chunks_match_snake_config():
     snake = yaml.safe_load((REPO_ROOT / "aos" / "snake_config.yaml").read_text())
     configured = snake["param_sets"]
 
+    # One deliberate difference, A2 (2026-10-10).  variants.yaml narrows the third
+    # danish_1_2 chunk to [20260418, 20260513] for the new product tree; the old
+    # aos/ tree keeps [20260418, 20260531], the name of the directory it already
+    # built, so a routine `snakemake` run there does not rebuild 219 visits
+    # through mktable.  Both ranges hold the same 219 visits (max day_obs 20260513).
+    known_diffs = [(((20260418, 20260513), None, None, None, None),
+                    ((20260418, 20260531), None, None, None, None))]
+
     def norm(chunk):
         if not isinstance(chunk, dict):
-            return (list(chunk), None, None, None, None)
-        return (chunk["day_obs"], chunk.get("collection"), chunk.get("phrase"),
+            return (tuple(chunk), None, None, None, None)
+        return (tuple(chunk["day_obs"]), chunk.get("collection"), chunk.get("phrase"),
                 chunk.get("butler_repo"), chunk.get("programs"))
+
+    def reconcile(mine, theirs):
+        """``mine`` with each known allowed difference rewritten to ``theirs``."""
+        out = []
+        for m, t in zip(mine, theirs):
+            out.append(t if (m, t) in known_diffs else m)
+        return out
 
     for name in fam_tables.variants():
         cfg = fam_tables.variant_config(name)
@@ -129,7 +144,9 @@ def test_chunks_match_snake_config():
             continue
         mine = [norm(c) for c in cfg.get("chunks", [])]
         theirs = [norm(c) for c in entry.get("chunks", [])]
-        assert mine == theirs, f"{name} chunks differ from snake_config.yaml"
+        assert len(mine) == len(theirs), f"{name} chunk count differs from snake_config.yaml"
+        assert reconcile(mine, theirs) == theirs, \
+            f"{name} chunks differ from snake_config.yaml"
         assert cfg["coord_sys"] == entry.get("coord_sys", "OCS")
 
 
