@@ -28,7 +28,7 @@ import pathlib
 import subprocess
 import sys
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # Modules whose imports are rewritten or shimmed by phase 1.
 MOVED_NAMES = [

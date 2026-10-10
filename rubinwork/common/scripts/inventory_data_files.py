@@ -20,7 +20,7 @@ import pathlib
 import re
 import time
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
+REPO = pathlib.Path(__file__).resolve().parents[3]
 DATA_EXT = {'.parquet', '.duckdb', '.db', '.npz', '.npy', '.fits', '.h5', '.hdf5', '.csv', '.pkl'}
 CODE_EXT = {'.py', '.ipynb', '.yaml', '.yml', '.sh'}
 SDF_ROOT = pathlib.Path('/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work')

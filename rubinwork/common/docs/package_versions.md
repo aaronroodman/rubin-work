@@ -18,7 +18,7 @@ This note describes the lockfile mechanism that fixes that, and what Rubin does 
 
 ## The tool
 
-`common/scripts/package_versions.py` writes and compares *lockfiles*: one line per
+`rubinwork/common/scripts/package_versions.py` writes and compares *lockfiles*: one line per
 repository giving branch, full commit, `git describe`, last-commit date and a count of
 uncommitted files.
 
@@ -26,13 +26,13 @@ uncommitted files.
 cd ~/notebooks/rubin-work
 
 # Record the current state of every cloned package.
-python common/scripts/package_versions.py snapshot -o common/output/packages.lock.txt
+python rubinwork/common/scripts/package_versions.py snapshot -o common/output/packages.lock.txt
 
 # What has moved since a snapshot, and what landed in between?
-python common/scripts/package_versions.py diff common/output/packages.lock.txt --log
+python rubinwork/common/scripts/package_versions.py diff common/output/packages.lock.txt --log
 
 # Put the working trees back to what a lockfile names (dry run without --apply).
-python common/scripts/package_versions.py checkout common/output/packages.lock.txt
+python rubinwork/common/scripts/package_versions.py checkout common/output/packages.lock.txt
 ```
 
 `diff` exits non-zero when anything moved, so a build script can gate on it.

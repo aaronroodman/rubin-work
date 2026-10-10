@@ -49,14 +49,11 @@ The force -> bending-mode conversion is shared with the raw-EFD route and lives 
 ``common.dof_telemetry.bending_modes_from_forces``, so both paths derive the mirror
 LUT DOF identically.
 """
-import pathlib
-import sys
 
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))   # repo root
-from common.dof_telemetry import bending_modes_from_forces    # noqa: E402
+from .dof_telemetry import bending_modes_from_forces
 
 # --- unpivoted array properties -> (out_prefix, axial field-name, length) -----
 UNPIVOT_PROPS = {

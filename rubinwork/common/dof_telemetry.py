@@ -46,8 +46,6 @@ module imports cleanly without the LSST stack.
 """
 from __future__ import annotations
 
-import pathlib
-import sys
 
 import numpy as np
 
@@ -58,8 +56,7 @@ N_DOF = 50
 # common/telemetry_clients.py. The names are used throughout this module and re-exported
 # unchanged, so that the aos/code/aos_trim.py shim can keep offering the surface untracked
 # notebooks expect. New code should take them from common.telemetry_clients directly.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))   # repo root
-from common.telemetry_clients import (            # noqa: E402
+from .telemetry_clients import (
     IN_POD_CONSDB_URL, EXTERNAL_CONSDB_URL, DEFAULT_CONSDB_URL,
     DEFAULT_EXPOSURE_TABLE, in_rsp, make_efd_client, make_consdb_client, efd_window,
     PAD_SEC,

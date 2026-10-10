@@ -1,10 +1,14 @@
-# common
+# rubinwork.common
 
 Shared utility code used across the topic directories, plus the repository's value-added
-telemetry database. The repository is not an installed package, so these modules are
-imported by inserting the repository root on `sys.path` — `parents[2]` from
-`<topic>/code/x.py`, `parents[3]` from `<topic>/code/<study>/x.py`, and
-`common.utils.repo_root()` from a notebook, which has no `__file__`.
+telemetry database. Import these modules as `from rubinwork.common import utils`, with
+the `rubinwork` package installed editable from the repository root
+(`pip install --user -e .`).
+
+A shim package remains at the old `common/` path, so existing
+`from common.X import Y` imports still work, as long as the repository root is on
+`sys.path`. The shim is removed in phase 5 of the reorganization
+(`notes/status/organization_plan.md`).
 
 ## Modules
 
