@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rubinwork"
+version = "0.1.0"
+description = "Libraries and data products for Vera C. Rubin Observatory AOS and image-quality work"
+requires-python = ">=3.11"
+# No dependencies are declared: every import comes from the LSST Science
+# Pipelines stack environment this package is installed into.
+dependencies = []
+
+[tool.setuptools.packages.find]
+# Only rubinwork/ is a package. The topic directories (aos/, guider/, ...) are
+# studies and scripts, some of which carry an __init__.py; none should install.
+include = ["rubinwork*"]
+namespaces = false
