@@ -433,9 +433,10 @@ class FocalPlaneInterpolator:
             self.interp_values = self._interp_tmean * np.ones((n, n))
 
         elif method == "bmedian":
-            bmed = np.zeros((n, n))
+            # Empty cells are NaN, not 0: a 0 reads as a measured value.
+            bmed = np.full((n, n), np.nan)
             bnentry = np.zeros((n, n))
-            bmad = np.zeros((n, n))
+            bmad = np.full((n, n), np.nan)
             xbin = np.digitize(x_data, x_edge[0, :]) - 1
             ybin = np.digitize(y_data, y_edge[:, 0]) - 1
             for i in range(n):
@@ -487,7 +488,9 @@ class FocalPlaneInterpolator:
         Returns
         -------
         numpy.ndarray
-            Interpolated values at the query locations.
+            Interpolated values at the query locations. NaN where the method
+            has no value: an empty ``bmedian`` cell, or outside the convex
+            hull of the points for ``grid``.
         """
         x = np.atleast_1d(np.asarray(x, dtype=np.float64))
         y = np.atleast_1d(np.asarray(y, dtype=np.float64))
@@ -563,25 +566,31 @@ class FocalPlaneInterpolator:
 
         Notes
         -----
+        Points where this mesh has no value (NaN: an empty ``bmedian`` cell,
+        or outside the ``grid`` convex hull) are left out of the fit.
+
         When ``method='RLM'``, the robust weights from the fit are written
-        into ``other.w``.
+        into ``other.w``; left-out points get weight 0.
         """
         interp_at_other = self.do_interp(other.x, other.y)
         z_diff = other.z - interp_at_other
         x_col = other.x.copy()
         y_col = other.y.copy()
 
-        npts = len(z_diff)
+        # NaN where this mesh has no value (empty bmedian cell, outside the
+        # griddata hull); those points cannot enter the fit.
+        finite = np.isfinite(z_diff)
+        npts = int(finite.sum())
         if npts <= 3:
             return None, z_diff, x_col, y_col
 
         # Design matrix: z_diff = thetax*y + thetay*x + delta
-        a_matrix = np.column_stack([y_col, x_col, np.ones(npts)])
+        a_matrix = np.column_stack([y_col, x_col, np.ones(len(z_diff))])[finite]
 
         if method == "OLS":
-            model = sm.OLS(z_diff, a_matrix)
+            model = sm.OLS(z_diff[finite], a_matrix)
         elif method == "RLM":
-            model = sm.RLM(z_diff, a_matrix)
+            model = sm.RLM(z_diff[finite], a_matrix)
         else:
             raise ValueError(f"Unknown fit method '{method}'; use 'OLS' or 'RLM'.")
 
@@ -591,7 +600,8 @@ class FocalPlaneInterpolator:
             results = None
 
         if results is not None and method == "RLM":
-            other.w = results.weights.copy()
+            other.w = np.zeros_like(other.z)
+            other.w[finite] = results.weights
 
         return results, z_diff, x_col, y_col
 
@@ -695,6 +705,10 @@ class FocalPlaneInterpolator:
         z_self = self.do_interp(xx, yy)
         z_other = other.do_interp(xx, yy)
         z_diff = z_self - z_other
+        # Drop cells where either mesh has no value, so NaN does not spread
+        # through the triangulation.
+        finite = np.isfinite(z_diff)
+        xx, yy, z_diff = xx[finite], yy[finite], z_diff[finite]
         return FocalPlaneInterpolator(
             xx, yy, z_diff,
             radius=self.radius,
