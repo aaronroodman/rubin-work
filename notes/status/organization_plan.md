@@ -163,8 +163,12 @@ products are written elsewhere and only registered.
 ## 5. Versions, manifests and the catalog
 
 **Variant.** A named configuration, defined in the product's `variants.yaml`. Lowercase,
-at most 24 characters, never reused for a different configuration. Changing the
+at most 32 characters, never reused for a different configuration. Changing the
 configuration (collections, programs, rotator bins, correction scheme) makes a new variant.
+(Raised from 24 on 2026-10-10: two `miw` variants are 27 —
+`d13v1000-A_50_34_i_rbr_5rot` and `d13v1000-A_50_50_i_rbr_5rot` — and they have to
+round-trip to their `mi_config.yaml` `dir_name`, so shortening them would break the
+mapping.)
 
 **Build.** One run of a variant, named by date (`20261007`, then `20261007b` for a second
 run that day). A code change that alters results, run on the same configuration, makes a
@@ -418,10 +422,10 @@ unchanged.
 register" to three passes over all products. State in
 `notes/status/phase3_products_handoff.md`, which holds the measured 3c feasibility numbers.
 
-*3a. Move the code, mechanically.* In dependency order: `cwfs_tables`; `miw` (plus the
-official-MIW registrations, which are manifests only); `coadds`; `dof_lut` and
-`bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout comes with the
-rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
+*3a. Move the code, mechanically.* In dependency order: `cwfs_tables` (**done**); `miw`
+(**done**, plus the official-MIW registrations, which are manifests only); `coadds`;
+`dof_lut` and `bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout
+comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
 checked by a small reference build made with the unmoved code and reproduced with the
 moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
 test. Every builder writes its manifest. Split the shared `aos/Snakefile` as each
@@ -441,6 +445,26 @@ rule and the other 5 are the never-built `refitWcs_2025` variant's study jobs, w
 their producer — see the phase 3 handoff, which records the `wfs_variants()` filter that
 fixes it and warns that `miw` and `coadds` should expect the same. Two items deferred to
 3b: folding `d12-refitWcs_2025` into `d12-refitWcs`, and retiring `danish_1_0` whole.
+
+**`miw` done 2026-10-10**, commits `d81cc3d` (reference build) and `b9756aa` (the move).
+Five rules moved — `build_intrinsic`, `intrinsic_split`, `intrinsic_sidecar`,
+`wfs_intrinsic_sidecar` and `refit_mi`, the last because its `fits.parquet` is a function
+of the MIW variant alone while `fam_tables` owns the plain `fit`. No builder code moved:
+the runners are external, in `ts_intrinsic_wavefront/bin/`. `miw/variants.yaml` owns the
+twelve measured-intrinsic configurations and **generates `aos/mi_config.yaml`**, whose body
+is byte-identical, because the external package opens `Path('mi_config.yaml')` relative to
+the working directory and ten things read it that way. The configuration is held as
+**literal text blocks** rather than parsed data: `safe_dump` discards the comments inside
+entries and a `ruamel` round-trip through a reshaped structure moves them, so
+concatenating text makes identity true by construction. `aos/code/miw_io.py` became the
+product reader and `aos/code/miw_corner_intrinsic.py` the `rubinwork.miw_corner` library,
+with shims at both old paths; `decomp_path` was **broken** before the move (it joined the
+two long keys as a layout the tree lost when `dir_name` arrived) and is fixed. The official
+MIW and the staged in-repo copy are three **external** variants — manifests with a
+`location` and no files. The reference reproduced exactly: **0 differing columns across 12
+tables** at zero tolerance. `snakemake -n` in `aos/` went 189 -> 37 jobs; 77 are the moved
+rules and the other 75 are nine incomplete MIW builds and `tarts`'s missing corner sidecar
+losing their study jobs, every one enumerated in the phase 3 handoff.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
