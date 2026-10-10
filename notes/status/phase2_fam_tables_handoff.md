@@ -118,11 +118,87 @@ of the 53 minutes.
   expected and non-fatal: a visit in ConsDB but absent from the Butler collection, which
   is what `aos/code/fam_processing/check_chunk.py` exists to find.
 
+### A1 — `rotator_angle`: resolved, and the right source is `rotTelPos` (2026-10-10)
+
+The 0.188 deg discrepancy is **explained and is not a bug in either build**. Neither run
+read the angle from the sidecar.
+
+`intrinsics_lib.get_rotator_data` (lines 1421–1513) resolves `rotator_angle` (deg) in
+three tiers: ConsDB `physical_rotator_angle`, else the **mean of EFD
+`MTRotator.rotation.actualPosition` over the exposure window**, else
+`calc_rotator_from_visitinfo(parallactic, boresightRot)` from Butler `raw.visitInfo`.
+
+Reference chunk `20251116_20251130`, 53 visits joined on (day_obs, seq_num), reference vs
+August build:
+
+| quantity | value |
+|---|---|
+| visits compared | 53 |
+| visits with \|difference\| > 1e-6 deg | 19 |
+| median \|difference\|, all visits | 0.000000 deg |
+| max \|difference\| | 0.188062 deg |
+
+Per night, max \|difference\| (deg): 20251116 → 0.000000 (n=5), 20251117 → 0.188062
+(n=15), 20251126 → 0.000000 (n=6), 20251127 → 0.000000 (n=8), 20251128 → 0.103675 (n=8),
+20251129 → 0.000000 (n=11). **Not a constant offset** — it varies per visit, both signs.
+
+Against ConsDB: 34 of 53 visits have a non-null `physical_rotator_angle`, and on those
+**both builds match ConsDB to 0.000000000 deg** (max \|residual\|, n=34). The 19 differing
+visits are *exactly* the 19 where ConsDB is NULL, so both runs fell through to the EFD
+window-mean, which is not reproducible between runs. That is the whole discrepancy.
+
+**The camera rotator angle is `rotTelPos`, and it is in both table families.** Confirmed
+on day_obs=20260420, seq_num=89 (BLOCK-T724), ConsDB `physical_rotator_angle` =
+59.427156 deg, cross-checked by Aaron against RubinTV (59 deg). Fitting the rotation that
+maps (`thx_CCS`, `thy_CCS`) → (`thx_OCS`, `thy_OCS`) over 2972 used donuts gives
+59.397229 deg; max \|residual\| in field angle per candidate angle:
+
+| candidate | where | units | max \|residual\| vs the table's own rotation |
+|---|---|---|---|
+| ConsDB `physical_rotator_angle` | ConsDB `visit1_quicklook` | deg | 1.57e-05 deg |
+| `rotTelPos` | `aggregateAOSVisitTableRaw.meta` | **rad** | 9.22e-05 deg |
+| `rotAngle` | same meta | rad | 5.17e-03 deg — **wrong quantity** |
+
+`meta['rotAngle']` is `visitInfo.boresightRotAngle` (`donut_viz/aggregate_visit.py:478`),
+69.265555 deg on this visit, 9.84 deg from the rotator angle — excluded by 330× in the
+residual. `rotTelPos` is exactly `parallacticAngle - rotAngle - 90 deg` (identity verified).
+
+Blitz path (`donutBlitzFamResults`, `danish_1_3_v1000`): `rot_tel_pos` is in the meta **in
+degrees** as an astropy `Quantity`, and reproduces the table's own CCS→OCS rotation to
+**+0.0000 deg exactly** on 6 of 6 visits checked — it is the angle the pipeline used. On
+those visits ConsDB sits **+0.30 deg** away (drifting +0.015 deg over 6 consecutive
+visits, i.e. tracking during the sequence), so for the blitz path the meta value is better
+than ConsDB.
+
+Three traps recorded:
+
+1. **Units differ between the two families** — `aggregateAOSVisitTableRaw.meta['rotTelPos']`
+   is radians (bare float), `donutBlitzFamResults.meta['rot_tel_pos']` is degrees
+   (`Quantity`). Convert explicitly; never sniff the magnitude.
+2. **Reading blitz `.meta` needs `parameters={'strip_astropy_meta_yaml': False}`** or it
+   returns 0 keys — already documented at `blitz_reader.py:81–84`.
+3. Passing a `DatasetRef` to `butler.get` forbids extra dataId kwargs such as
+   `instrument='LSSTCam'`.
+
+**`skyAngle` is a mislabel.** `intrinsics_lib.py:641` sets
+`'skyAngle': meta.get('rotAngle', ...)` and copies it into `visit_info` at lines 1110 and
+1201. It is **never read** anywhere in the package — write-only. It is neither a sky angle
+nor the rotator angle. `rotTelPos` is the established name across `donut_viz`, `ts_wep`
+and `ts_intrinsic_wavefront/bin/ingest_calib_tables.py`; `intrinsics_lib.py` is the only
+outlier.
+
+**Proposed fix, deliberately NOT yet applied** (Aaron's call on sequencing): in
+`ts_intrinsic_wavefront`, keep ConsDB as the primary source, and replace the EFD and
+visitInfo fallbacks with `meta['rotTelPos']`; rename `skyAngle` to `rotTelPos` and read
+the right key. That makes `rotator_angle` reproducible and would have made these two
+builds agree exactly on all 53 visits. Recommended **after** phase 2 step 3, because step
+3 expects exact matches and changing the angle mid-move makes a bad code move
+indistinguishable from the intended new value. It needs `scons` re-run and updates the
+convention line in `aos/CLAUDE.md` ("ConsDB `physical_rotator_angle`, not
+`boresightRotAngle`") plus the `rotator_angle` docs.
+
 ## Open, not yet resolved
 
-- **`rotator_angle` differs by 0.188 deg** between the reference and the August build. It
-  should come from ConsDB `physical_rotator_angle`, not the sidecar; one of the two runs
-  took it from elsewhere. Worth a look before any study reads it from `visits.parquet`.
 - The reference covers **one chunk of ten, one variant of three**. It does not exercise the
   blitz recast path (`run_blitz_mktable.py`, which builds both `danish_1_3` variants and
   writes the combined tables directly, bypassing `mktable` and `combine_*`), and
