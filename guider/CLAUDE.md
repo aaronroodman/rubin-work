@@ -86,10 +86,11 @@ with `snakemake`, or use the per-visit runners (`run_guider_rubintv_plots.py`,
 `run_guider_movie.py`) with `--day-obs` / `--seq-num`. Full command forms are in
 `docs/status/handoff_guider_session_2026-09.md` §6.
 
-**Batch submission is a hard MUST-ASK** — hand Aaron the command instead. Note the
-difference from `aos/`: here `--mode batch` submits **one sbatch job per night**, so
-`--day-obs A,B,C` is three independent submissions, not one. Submit from an s3df node
-(`slacrd`), never an RSP pod.
+**Batch submission needs Aaron's explicit OK first** — show him the command, then submit
+it yourself (see the root `CLAUDE.md`). Note the difference from `aos/`: here
+`--mode batch` submits **one sbatch job per night**, so `--day-obs A,B,C` is three
+independent submissions, not one, and needs an OK covering all three. Submit from an
+s3df node (`slacrd`), never an RSP pod.
 
 ## Schema version
 

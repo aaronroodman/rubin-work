@@ -127,8 +127,8 @@ Report both Pearson r and Spearman rho for correlations.
 `./run_snake.sh` from `aos/`; `-n` for a dry run. See `README.md` for targets and the
 `mem_mb` throttling. Two things that are not in the README:
 
-- **Batch submission is a hard MUST-ASK** — see the root `CLAUDE.md` for the submit and
-  monitor commands.
+- **Batch submission needs Aaron's explicit OK first**, then you submit it — see the
+  root `CLAUDE.md` for the submit and monitor commands.
 - `mktable` is the expensive Butler step and is *deliberately* not re-triggered by code
   edits (see the Snakefile comments). If you change extraction logic, the stale outputs
   will not rebuild on their own — that is intended, so say so rather than forcing a

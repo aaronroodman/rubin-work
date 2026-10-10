@@ -143,30 +143,48 @@ are hard MUST-ASK rules, no exceptions:
 
 1. **Deleting any files** — ask first, always.
 2. **Submitting any batch job** — Slurm `sbatch` / `condor_submit` on S3DF, in
-   practice `run_snake.sh --mode batch`. **Ask Aaron to start it**, and give him two
-   commands: the full submit command *and* the command to monitor its progress. Batch
-   must be submitted from an s3df node (`slacrd`), never from an RSP pod (no Slurm
-   there). See Batch jobs below for the exact forms.
+   practice `run_snake.sh --mode batch`. Never submit unasked; **show Aaron the exact
+   submit command and get his explicit OK first**. With that OK, submit it yourself.
+   See Batch jobs below.
 3. **Connecting to SLAC / USDF from the laptop** — `ssh slacrd`, USDF,
    `/repo/main` Butler. Ask before opening the connection, or hand Aaron a
    runnable snippet to execute himself (his established preference). Local work in
    `rubin-work/` needs no permission.
 
 ### Batch jobs
-Never submit one. Hand Aaron the submit command **plus a monitoring command**, both
-copy-paste-ready. The log path depends on the topic:
+**Ask, then submit.** Show Aaron the exact submit command and wait for his explicit OK;
+with that OK, run it yourself. Then give him the monitoring command. Both commands are
+copy-paste-ready even when you are the one running the submit, so he can follow the job
+or rerun it himself.
+
+Scope of an OK: it covers the job you showed. A **stated set** covers itself — if he
+OKs "submit all three nights", submit all three without asking again. Anything he did
+not picture when he said go is a new ask: a different script, different arguments, a
+resubmit after a failure, or a job you thought of afterwards.
+
+Submit only from an s3df node (`slacrd`), never from an RSP pod — there is no Slurm
+there. Check first if unsure: `command -v sbatch`.
+
+After submitting, report the job ID and the log path. The log path depends on the topic:
 
 - **`aos/`** — one job per invocation, log `aos/logs/batch_<timestamp>.out`. The script
-  does *not* print the path, so monitor the newest log:
+  does *not* print the path, so monitor the newest log. Submit:
   ```bash
   cd ~/notebooks/rubin-work/aos && ./run_snake.sh --mode batch
+  ```
+  Monitor:
+  ```bash
   tail -f "$(ls -t ~/notebooks/rubin-work/aos/logs/batch_*.out | head -1)"
   ```
-- **`guider/`** — **one job per night**, so `--day-obs A,B,C` is three submissions.
-  Logs are `guider/logs/batch_<night>_<timestamp>.out`, and the script prints each
-  path as it submits:
+- **`guider/`** — **one job per night**, so `--day-obs A,B,C` is three submissions and
+  three asks unless Aaron OKs the set. Logs are
+  `guider/logs/batch_<night>_<timestamp>.out`, and the script prints each path as it
+  submits. Submit:
   ```bash
   cd ~/notebooks/rubin-work/guider && ./run_snake.sh --day-obs 20260706 --mode batch
+  ```
+  Monitor:
+  ```bash
   tail -f "$(ls -t ~/notebooks/rubin-work/guider/logs/batch_20260706_*.out | head -1)"
   ```
 
