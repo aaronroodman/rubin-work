@@ -383,19 +383,25 @@ unchanged.
 
 **Phase 2 — pilot product: `fam_tables`, end to end.** State in
 `notes/status/phase2_fam_tables_handoff.md`.
-1. **Done.** Reference run before the move: `danish_1_2`, chunk `20251116_20251130`, 6
-   nights, built with the unmoved code. A second reference for the **blitz** path
-   (`danish_1_3_v1000`, one night) is proposed and awaiting an OK.
-2. Move the code and the Snakefile rules into `rubinwork/products/fam_tables/`;
-   `variants.yaml` from `param_sets.yaml`. **Direction decided 2026-10-10:**
+1. **Done.** Two reference runs before the move, one per builder: `danish_1_2`, chunk
+   `20251116_20251130`, 6 nights (Snakemake path), and `danish_1_3_v1000`,
+   `day_obs=20260428` (blitz path). Both built with the unmoved code.
+2. **Done.** The four builders moved into `rubinwork/products/fam_tables/builders/` with
+   shims at the old paths, and the six build rules into the product's own `Snakefile`.
    `variants.yaml` carries both the FAM and the WFS/CWFS halves — the FAM/CWFS triplet
-   link is one fact and needs one home — and `aos/param_sets.yaml` becomes a **generated**
+   link is one fact and needs one home — and `aos/param_sets.yaml` is a **generated**
    file. It cannot be deleted, even in phase 5: the external
-   `intrinsics_lib.load_param_sets()` reads it by name from the cwd.
-3. Rerun the reference build and compare row counts and column values with the reference.
-   `mktable` is deliberately **not** rerun (it stays in `ts_intrinsic_wavefront`, and its
-   EFD thermal loop is 47 of the reference's 53 min).
-4. Register the existing builds: copy each in-use build into the new tree and write its
+   `intrinsics_lib.load_param_sets()` reads it by name from the cwd, which is also why the
+   product's `mktable` rule runs with `aos/` as its cwd. `snakemake -n` in `aos/` went
+   212 → 199 jobs, the drop being exactly the four moved rules' 13 pending jobs.
+3. **Done, exact match.** Both references reproduced with the moved code and compared at
+   zero tolerance: **0 differing columns** of 48/600/653 (Snakemake path) and 66/23/448
+   (blitz path). `mktable` was deliberately **not** rerun (it stays in
+   `ts_intrinsic_wavefront`, and its EFD thermal loop is 47 of the reference's 53 min), so
+   the known `rotator_angle` non-reproducibility could not surface — a future comparison
+   that does rerun it will see up to 0.188 deg of camera rotator angle differ on the 19
+   visits where ConsDB `physical_rotator_angle` is NULL.
+4. **Next.** Register the existing builds: copy each in-use build into the new tree and write its
    manifest. The old tree is not touched, so old code keeps working until phase 5. Obsolete
    builds are not copied. Copy cost: the in-use `danish_1_2` FAM tables are the bulk;
    `donuts.parquet` over all 24 copies on disk is 64.09 GB, and only the in-use ones are

@@ -18,12 +18,15 @@ cleared. A fresh session re-reads this file and the plan's sections 2–5, not a
 | `cbe3b12` | **A1**: `rotator_angle` resolved; `rotTelPos` identified as the right source |
 | `c757462` | **A2**: `danish_1_2` chunk narrowed to `20260418_20260513` in `variants.yaml` |
 | `29dbebc` | **A3** decision: `variants.yaml` carries FAM+WFS and generates `param_sets.yaml` |
+| `ed3417f` | **A3** implemented: `aos/param_sets.yaml` generated from `variants.yaml` |
+| `26dd61c` | **A4** blitz reference built |
+| `7137ea3` | **B0**: the old `aos/` tree keeps the old chunk range; test allows that one difference |
+| `06039ab` | **Step 2**: the four builders and the six build rules moved into the product |
+| (this session) | **Step 3**: both reference builds reproduced exactly with the moved code |
 
-**Test status: 17 of 18 pass.** `test_chunks_match_snake_config` **fails on purpose** after
-A2 — `variants.yaml` now says `[20260418, 20260513]` while `aos/snake_config.yaml` still
-says `[20260418, 20260531]`. The failure is the open A2 decision made visible; do not
-"fix" it by editing the test. It clears when `snake_config.yaml` is generated from the same
-source (A3) or when Aaron picks an A2 option.
+**Test status: 21 of 21 pass**, plus 26 catalog tests (47 under `rubinwork/products/`).
+The import smoke test is 63 of 63 modules ok (one fewer than phase 1's 64 because
+`blitz_reader` became an intra-package import).
 
 ### Step 1 — reference build (done)
 
@@ -57,76 +60,171 @@ or wavefront column differs.**
 ### Step 5, partly done ahead of its turn
 
 `reader.py` gives `load(variant, build="current")` returning `(donuts, visits, fits)`,
-plus `load_table`, `variants` and `variant_config`. 18 tests pass; 44 with the catalog's
-own. What remains for step 5 is switching the **build** code to the catalog.
+plus `load_table`, `variants`, `variant_config` and — added in step 2 —
+`variant_for_param_set` and `build_dir`. The **build** code now goes through the catalog:
+the product Snakefile and `run_blitz_mktable`'s `--out-dir` default both resolve paths
+through `build_dir`. What remains for step 5 is switching the repo's **readers** (the
+study code that opens `output/fam_processing/<P>/...` by path) to `load()`.
 
 ## Next concrete action
 
-**Part A is complete** — A1, A2, A3 and A4 are all done and pushed; see their sections
-below. Both reference builds exist, which is what step 2 was gated on.
+**Steps 2 and 3 are complete.** B0, step 2 and step 3 are committed and pushed; the
+sections below record what the move changed and what the comparison showed.
 
-**Step 2 is next, and needs Aaron's go** (he asked to be consulted before it starts).
+**Step 4 is next: register the existing builds.** Copy each in-use build into the new
+tree under `/sdf/group/rubin/u/roodman/LSST/rubin-work/products/fam_tables/<variant>/<build>/`
+and write its `manifest.json` with `rubinwork.products.manifest`. The old tree is not
+touched, so old code keeps working until phase 5. See "Step 4 requirements, to carry
+forward" below — three things the manifests and READMEs must say — and the copy budget in
+"Decisions taken" (56.44 GB apparent, 727 GB of 932 GB free on the target filesystem).
 
-**Step 2: move the FAM-table build code into `rubinwork/products/fam_tables/`.** Nothing
-is moved yet. The move is four files, by `git mv` into a new `builders/` subdirectory:
+The build directory layout step 2 settled, which step 4 should follow:
 
 ```
-aos/code/fam_processing/run_attach_telemetry.py   -> builders/run_attach_telemetry.py
-aos/code/fam_processing/run_blitz_mktable.py      -> builders/run_blitz_mktable.py
-aos/code/fam_processing/blitz_reader.py           -> builders/blitz_reader.py
-aos/code/fam_processing/backfill_visit_sides.py   -> builders/backfill_visit_sides.py
+products/fam_tables/<variant>/<build>/{donuts,visits,fits}.parquet   the tables
+products/fam_tables/<variant>/<build>/manifest.json
+products/fam_tables/<variant>/<build>/_work/chunks/<dmin>_<dmax>/    intermediates
+products/fam_tables/<variant>/<build>/_work/logs/
 ```
 
-Then: leave shims at the four old paths; move the Snakefile rules `mktable`, `fit`,
-`combine_donuts`, `combine_fits`, `combine_visits`, `attach_telemetry` (lines 303–400) into
-a Snakefile under the product, keeping the remaining `aos/Snakefile` rules working; and fix
-`run_blitz_mktable.py`'s `from output_paths import study_dir` (its only use is the default
-`--out-dir` at line 412, which becomes a catalog path).
+`_work/` holds the per-chunk tables and the telemetry sidecars. `catalog._names()` hides
+any entry starting with `_`, so it does not appear as a build or a variant.
 
-Then step 3: rerun `fit` + `combine_*` + `attach_telemetry` from the existing chunk donuts
-and compare with `compare_builds.py`. Aaron's decision: **do not** rerun `mktable` — it
-stays in `ts_intrinsic_wavefront`, the move cannot touch it, and its EFD thermal loop is 47
-of the 53 minutes.
+### Step 2 — the move: DONE (commit `06039ab`)
 
-Three things this session added to step 2/3 that the text above predates:
+The four builders moved by `git mv` into `rubinwork/products/fam_tables/builders/`, with
+shims at the four old `aos/code/fam_processing/` paths. Each shim binds the real module's
+namespace and sets `sys.modules[__name__] = _real`, so a bare-name import after a
+`sys.path.insert` gives the **same module object**, not a copy — verified for all four.
+The three runnable ones also still work when invoked by their old path.
 
-1. **There are now TWO reference builds to compare against, one per builder.**
-   - Snakemake path: `_phase2_refbuild/danish_1_2/` (chunk `20251116_20251130`) — rerun
-     `fit` + `combine_*` + `attach_telemetry` from its existing chunk donuts.
-   - Blitz path: `_phase2_refbuild/danish_1_3_v1000/` (`day_obs=20260428`, 48 s) — rerun
-     the whole A4 command with the moved code, since the blitz builder does mktable, fit
-     and combine in one pass.
+Six Snakefile rules (`mktable`, `fit`, `combine_donuts`, `combine_fits`, `combine_visits`,
+`attach_telemetry`) moved into **`rubinwork/products/fam_tables/Snakefile`**, which reads
+`variants.yaml` and writes under the catalog's products root. It builds **one variant and
+one build at a time**:
 
-   Compare both with `compare_builds.py`, keyed on
-   `day_obs, seq_num, detector, extra_donut_id`. Expect exact matches apart from telemetry
-   fetched at a different time; report every differing column and by how much. Expected
-   blitz counts: donuts 40,548 × 66, visits 12 × 23, fits 12 × 448.
+```bash
+snakemake -s rubinwork/products/fam_tables/Snakefile -n \
+    --config variant=danish_1_2 build=20261010
+```
 
-2. **`run_blitz_mktable.py` breaks in four places on the move, not the one the text above
-   names.** All four assume the file sits at `aos/code/fam_processing/`, verified
-   2026-10-10:
+Run it from the **repository root**, because `mktable` runs with `aos/` as its cwd (see
+below).
 
-   | line | code | why it breaks |
-   |---|---|---|
-   | 79 | `sys.path.insert(0, parents[3])` — repo root | `parents[3]` is no longer the repo root |
-   | 80 | `sys.path.insert(0, parents[1])` — `aos/code` flat modules | points into the product |
-   | 83 | `from output_paths import study_dir` | reaches `aos/code/output_paths.py` by bare name |
-   | 86 | `TOPIC = parents[2]` → `aos/` | becomes `rubinwork/` |
+Four things found or decided during the move, each of which would otherwise be
+rediscovered:
 
-   `TOPIC` is then used at **line 201** (`yaml.safe_load((TOPIC /
-   'param_sets.yaml').read_text())`) and **line 412** (`TOPIC / study_dir(...)`, the
-   `--out-dir` default). Since A3 made `param_sets.yaml` generated, the moved copy should
-   read `rubinwork.products.fam_tables.variant_config()` rather than re-open the YAML, and
-   take its `--out-dir` default from a catalog path.
+1. **`mktable` must run with `aos/` as its cwd.** `run_mktable.py --param-set` reaches the
+   configuration through `intrinsics_lib.load_param_sets()`, which opens
+   `Path('param_sets.yaml')` relative to the **current working directory** and has no
+   other candidate path. So the product's `mktable` rule does
+   `cd <repo>/aos && python $WF_BIN/run_mktable.py ...`. That is not a workaround to
+   remove: the external package owns that lookup, and `aos/param_sets.yaml` is generated
+   from `variants.yaml` (A3), so the two cannot disagree.
+2. **Snakemake's own parser mishandles a multi-line f-string inside a rule.** Writing the
+   `shell:` body as a parenthesized multi-line f-string raises
+   `UnboundLocalError: cannot access local variable 't1'` from `snakemake/parser.py`. The
+   product Snakefile therefore builds each shell command into a module-level variable
+   (`MKTABLE_CMD`, `FIT_CMD`, `COMBINE_CMD`, `ATTACH_CMD`) and the rules say
+   `shell: MKTABLE_CMD`. Do not "tidy" these back inline.
+3. **`--config build=20261010` arrives as an `int`.** Snakemake parses a bare digit string
+   as a number, so `BUILD` is wrapped in `str()`; without it `build_dir` raises
+   `unsupported operand type(s) for /: 'PosixPath' and 'int'`.
+4. **`run_attach_telemetry` needed a new `--chunks-dir`.** It located the per-chunk
+   directories as `<out-dir>/chunks`, which forced the intermediates to sit beside the
+   tables. The flag defaults to exactly that, so existing behavior is unchanged, and the
+   product Snakefile passes `--chunks-dir <build>/_work/chunks`.
 
-   Watch the key: the variant name and the `param_set` key **differ** for `danish_1_2`
-   (`danish_1_2` vs `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) but **coincide** for both
-   `danish_1_3` variants — so the A4 blitz rerun, which uses `danish_1_3_v1000`, will
-   **not** catch a variant-vs-param_set mix-up. Test `danish_1_2` resolution separately.
+Two small additions to the product's reader, both needed by the moved builder:
 
-3. **Do not fold in the `rotTelPos` change.** It alters `visits.parquet` values, so
-   landing it before step 3's comparison makes a bad code move indistinguishable from the
-   intended new angle. See the A1 section.
+- **`variant_for_param_set(name)`** accepts either the long `param_set` key or the short
+  variant name and returns the variant. `run_blitz_mktable --param-set` historically takes
+  the long key, and the two differ for `danish_1_2`.
+- **`build_dir(variant, build)`** gives the write path for a build whether or not it
+  exists; `catalog.path()` resolves only builds already on disk.
+
+`run_blitz_mktable`'s `--out-dir` default is now that catalog build directory, with a new
+`--build` flag naming the build (default: today's UTC date).
+
+**What `aos/Snakefile` lost, and what it kept.** The six rules and the FAM-table targets
+in `rule all` are gone. The surviving study rules read the FAM tables **at the paths they
+always did** — `output/fam_processing/<P>/{donuts,visits,fits}.parquet` in the old tree —
+so those three files are now inputs that Snakefile does not build. The config-reading
+helpers (`chunks`, `chunk_files`, `coord`, `_chunk_entries`) stay: `rule residual_movies`
+and others still use them. `ATTACH_TELEMETRY` is gone, since its only rule left;
+`run_snake.sh --mode batch` still passes `--config attach_telemetry=0`, which snakemake
+accepts and nothing reads.
+
+**Verification.** `snakemake -n` from `aos/` went **212 -> 199 jobs**, and the drop is
+exactly the four moved rules that had pending work: `fit` 10, `combine_donuts` 1,
+`combine_fits` 1, `attach_telemetry` 1 (13 jobs, counts dimensionless). Every surviving
+rule's count is identical, `diff` on the sorted job-stats table showing only those four
+lines and the total. The product Snakefile plans **25 jobs** for `danish_1_2` — `mktable`
+10, `fit` 10, `combine_*` 3, `attach_telemetry` 1, `all` 1 — over its ten chunks including
+the A2-narrowed `20260418_20260513`, and raises a `ValueError` naming
+`run_blitz_mktable` if asked for a `blitz` variant. The `mktable` commands it issues are
+identical to the old ones apart from `--output-dir`: same `--param-set`, `--workers 8`,
+`--overwrite` and the same per-chunk `--collections` / `--collection-phrase` /
+`--programs` overrides.
+
+### Step 3 — comparison against both references: DONE, exact match
+
+Run with the moved code at commit `06039ab`. `compare_builds.py` runs at **zero
+tolerance** (`rtol=0.0, atol=0.0`), so "identical" means bit-identical.
+
+**Snakemake path**, reference `_phase2_refbuild/danish_1_2/` (chunk `20251116_20251130`).
+`fit` + `combine_donuts` + `combine_fits` + `combine_visits` + `attach_telemetry` rerun
+from the reference's existing chunk donuts; `mktable` deliberately **not** rerun. `fit`
+28.7 s, `attach_telemetry` 2 min 39 s. Output under
+`_phase2_refbuild/_scratch/products/fam_tables/danish_1_2/moved/`.
+
+| table | rows | columns compared | columns only in one side | differing columns |
+|---|---|---|---|---|
+| `donuts.parquet` | 145,264 | 48 | 0 | **0** |
+| `visits.parquet` | 53 | 600 | 0 | **0** |
+| `fits.parquet` | 47 | 653 | 0 | **0** |
+
+**Blitz path**, reference `_phase2_refbuild/danish_1_3_v1000/` (`day_obs=20260428`). The
+whole A4 command rerun with the moved builder, 43 s (reference 48 s). Output
+`_phase2_refbuild/danish_1_3_v1000_moved/`.
+
+| table | rows | columns compared | columns only in one side | differing columns |
+|---|---|---|---|---|
+| `donuts.parquet` | 40,548 | 66 | 0 | **0** |
+| `visits.parquet` | 12 | 23 | 0 | **0** |
+| `fits.parquet` | 12 | 448 | 0 | **0** |
+
+**Nothing differs — not one column in either build.** The two differences the step-2/3
+plan predicted did not appear, and the reason matters for reading any future comparison:
+
+- **Telemetry fetched at a different time came back the same.** The EFD and ConsDB queries
+  are window means over fixed exposure windows on nights eight months past, so the values
+  are settled; a later fetch returns the same numbers. All 385 telemetry columns over 53
+  visits are bit-identical.
+- **`rotator_angle` could not differ, because `mktable` was not rerun.** It is written by
+  `mktable` (confirmed: `rotator_angle` is in the staged pre-merge chunk `visits.parquet`
+  and **not** in `telemetry.parquet`), and the A1 non-reproducibility is in `mktable`'s
+  EFD window-mean fallback on the 19 visits where ConsDB `physical_rotator_angle` is NULL.
+  Step 3 reuses the reference's `mktable` output, so that code path never ran twice. A
+  future comparison that **does** rerun `mktable` will see those 19 visits differ by up to
+  0.188 deg of camera rotator angle until the `rotTelPos` fix lands.
+
+**How the pre-merge chunk `visits.parquet` was reconstructed**, since this is not obvious
+and a future rerun needs it. The reference's chunk `visits.parquet` was merged **in place**
+by its own `attach_telemetry` (mtime 00:47:50, after `fits.parquet` at 00:45:10), so it is
+not the file the reference's `fit` saw. Reconstruction: drop the sidecar columns the merge
+added, but **keep the 13 that `mktable` itself writes** — the ones that also appear in the
+pre-merge `fits.parquet` (`cam_air_temp`, `cam_m1m3_delta_t`, `dome_delta_t`,
+`m1m3_air_temp`, `m2_air_temp`, `m2_delta_t`, `outside_temp` in deg C;
+`x_gradient`, `y_gradient`, `z_gradient`, `radial_gradient` in deg C/m;
+`tma_truss_temp_mxmy`, `tma_truss_temp_pxpy` in deg C). Those 13 were verified
+bit-identical between the pre-merge `fits.parquet` and the post-merge `visits.parquet`
+(max |difference| = 0.000e+00 on all 13, n=47 joined rows), so the merge did not change
+them and dropping them would have been wrong. Result: 53 rows x 228 columns, down from 600.
+
+**Leftover to clean up when convenient:** `_phase2_refbuild/danish_1_2_moved/` is an empty
+directory from staging (`_work/logs/` only); the real output went to `_scratch/`. Not
+deleted — file deletion needs Aaron's OK.
 
 ## Decisions taken
 
@@ -266,13 +364,19 @@ old tree keeps `20260418_20260531` and is not touched. The new tree is written f
 step 4, so there is no directory to rename — the step-4 copy just lands under
 `20260418_20260513`. No manifest carve-out for an old directory name is needed.
 
-`aos/snake_config.yaml` is updated to match, so the two configs agree and
-`test_chunks_match_snake_config` passes. Consequence to know: the **old** tree's chunk
-directory no longer matches the config, so `snakemake -n` run against the old tree asks to
-rebuild those **219 visits through `mktable`** (212 → 214 jobs, the extra being that
-`mktable` plus a `combine_visits`). That is expected and harmless as long as the old tree
-is not rebuilt — `mktable` is deliberately not re-triggered by code edits, and phase 5
-retires the old tree. Do **not** run `snakemake` against the old tree to "fix" this.
+**Superseded by B0 (commit `7137ea3`).** A2 had also narrowed `aos/snake_config.yaml`,
+which renamed the chunk directory the old tree already built and made `snakemake -n` in
+`aos/` ask to rebuild those **219 visits through `mktable`** (212 → 214 jobs, the extra
+being that `mktable` plus a `combine_visits`). Since the old study rules stay in use until
+phase 5, any routine run would have triggered it.
+
+B0 settled it: **`aos/snake_config.yaml` keeps `[20260418, 20260531]`** — the name of the
+directory the old tree holds — and the narrowed `[20260418, 20260513]` lives only in
+`variants.yaml`, which the product Snakefile uses. `test_chunks_match_snake_config` allows
+exactly this one difference, with a comment naming it; the lists are otherwise compared
+element by element, so a second divergence still fails the test. Both ranges cover the same
+219 visits (max day_obs 20260513). With that, `snakemake -n` in `aos/` is back to 212 jobs
+with **no `mktable` job**.
 
 ### A3 — one source of truth for variants: DONE (2026-10-10)
 
@@ -468,13 +572,23 @@ Two things the manifests and READMEs must say when the existing builds are regis
 
 ## Open, not yet resolved
 
-- The reference covers **one chunk of ten, one variant of three**. It does not exercise the
-  blitz recast path (`run_blitz_mktable.py`, which builds both `danish_1_3` variants and
-  writes the combined tables directly, bypassing `mktable` and `combine_*`), and
-  `combine_*` only trivially, with a single chunk.
+- **The blitz path IS covered** — A4 built its own reference (`danish_1_3_v1000`,
+  `day_obs=20260428`) and step 3 reproduced it exactly, so the two references together
+  cover both builders. What remains thin: the Snakemake reference is **one chunk of ten**,
+  so `combine_*` is exercised only trivially, over a single chunk, and `mktable` was never
+  rerun. The first real multi-chunk exercise is step 4's registration, or the first full
+  `danish_1_2` build in the new tree.
 - `backfill_visit_sides.py` is a one-off migration that **mutates a product table in
   place**, which rule 5 of the plan's section 2 forbids. Moved with the builders for now;
-  decide in phase 3 whether it becomes a build step or is retired.
+  decide in phase 3 whether it becomes a build step or is retired. It still targets the
+  **old** `aos/output/fam_processing/<dir_name>/visits.parquet`, deliberately, since that
+  is the tree it was written to repair.
+- **The five `wfs_collections` entries in `variants.yaml` become `cwfs_tables` variants in
+  phase 3.** They live in `fam_tables/variants.yaml` today because the FAM/CWFS triplet
+  link needs one home (A3), and phase-3 `cwfs_tables` reads them through
+  `fam_tables.variant_config()`. Deciding then whether they are promoted into a
+  `cwfs_tables/variants.yaml` of their own, or stay here and are only *read* from there, is
+  part of phase 3 — the triplet link must keep a single owner either way.
 - The sidecar/EFD review item is recorded in the plan's section 10 (carried-over open
   items), per Aaron on 2026-10-10: the MIW needs only elevation, camera rotator angle and
   filter band, all ConsDB; the sidecar's eight EFD groups exist for downstream studies that
