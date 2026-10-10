@@ -382,7 +382,9 @@ unchanged.
 - `common/notebook_template.ipynb` and `common/output/` stayed at the old path, since
   `CLAUDE.md` and the output-layout convention point at them. They move in phase 5.
 
-**Phase 2 — pilot product: `fam_tables`, end to end.** State in
+**Phase 2 — pilot product: `fam_tables`, end to end. Done 2026-10-10**, commits `58a6606`,
+`b355446`, `d3f44a5`, `cbe3b12`, `c757462`, `29dbebc`, `ed3417f`, `26dd61c`, `7137ea3`,
+`06039ab`, `0781229`, `f33b0ab`, `2b50ed0`, `04a8871`. State in
 `notes/status/phase2_fam_tables_handoff.md`.
 1. **Done.** Two reference runs before the move, one per builder: `danish_1_2`, chunk
    `20251116_20251130`, 6 nights (Snakemake path), and `danish_1_3_v1000`,
@@ -404,14 +406,17 @@ unchanged.
    visits where ConsDB `physical_rotator_angle` is NULL.
 4. **Dropped 2026-10-10** (revised route): existing builds are not copied or registered;
    every product is rebuilt fresh in phase 3c.
-5. **Next: manifests and the catalog rule.** Both FAM builders write `manifest.json`
-   (`status: complete`, expanded config with per-chunk collections) as their last step;
-   the catalog skips builds without a complete manifest; `current` moves only through an
-   explicit `set-current` command, never as a side effect of a build. Studies switch to
-   `load()` in phase 5, once rebuilt products exist.
+5. **Done.** Both FAM builders write `manifest.json` (`status: complete`, expanded config
+   with per-chunk collections) as their last step, through the shared
+   `fam_tables/write_manifest.py`; the catalog skips builds without a complete manifest;
+   `current` moves only through `python -m rubinwork.products.catalog set-current`, never
+   as a side effect of a build. Both references rerun with the final code and still match
+   at zero tolerance: **0 differing columns** on all three tables of both paths. Studies
+   switch to `load()` in phase 5, once rebuilt products exist.
 
 **Phase 3 — the other products: move, fix, rebuild.** Revised 2026-10-10 from "copy and
-register" to three passes over all products.
+register" to three passes over all products. State in
+`notes/status/phase3_products_handoff.md`, which holds the measured 3c feasibility numbers.
 
 *3a. Move the code, mechanically.* In dependency order: `cwfs_tables`; `miw` (plus the
 official-MIW registrations, which are manifests only); `coadds`; `dof_lut` and
@@ -440,10 +445,14 @@ the reference builds:
 and `cwfs_tables` → `miw` and its sidecar → `coadds`, `dof_lut`, `bounce_tables` → the
 `value_added` rows that depend on them (`fam_dz` and the MIW-route `optical_state`
 variants), either rebuilt from the new FAM fits or checked to give the same results.
-Before starting: confirm every Butler collection in `variants.yaml` still resolves — the
-20260713 embargo chunk may have moved from `/repo/embargo` to `/repo/main` — and get the
-visit count per variant to size the run (the reference chunk ran at about 6 min for 53
-visits without the EFD thermal loop). Each rebuilt product is compared with its old-tree
+**Pre-flight done 2026-10-10** (`refbuild/check_collections.py`, commit `f7985db`): all 15
+`fam_tables` collections resolve and hold data; the 20260713 chunk is **still only in
+`/repo/embargo`** (24 datasets there, 0 in `/repo/main`), so no `variants.yaml` change.
+Sizes: `danish_1_2` 3,523 Butler visits over ten chunks, both blitz variants 966 each.
+`mktable` costs 258 s fixed per chunk plus 39.1 s/visit, so `danish_1_2` is 39 h of serial
+CPU with an 8.9 h wall-clock floor from its largest chunk; the blitz variants are about an
+hour each. The thermal loop costs **2.5 s/visit, not the 19 s/visit in section 10** — see
+the phase 3 handoff. Each rebuilt product is compared with its old-tree
 build, and every difference is explained (expected: `rotator_angle` on visits where
 ConsDB is NULL, the dropped sidecar columns, the restored `cam_*` columns). Then
 `set-current`.
@@ -525,10 +534,12 @@ What that means for the two build halves:
   still reads from `visits.parquet` rather than from DuckDB, and the sidecar keeps only
   those.
 - `run_mktable.py` takes `--no-thermal`, and with `no_thermal: false` (today's
-  `snake_config.yaml`) its per-visit ESS-temperature loop queries the EFD and dominates the
-  chunk build: about 19 s/visit, roughly 17 min of the phase 2 reference build's 54 visits.
-  If the MIW needs only the three ConsDB columns, this loop is a candidate for removal
-  rather than for re-sourcing.
+  `snake_config.yaml`) its per-visit ESS-temperature loop queries the EFD. **Measured
+  2026-10-10 at 2.5 s/visit**, from 466 s against 453 s over the same 5 visits — not the
+  19 s/visit estimated earlier, which this supersedes. It is about 6% of a chunk's cost;
+  the 39.1 s/visit donut read dominates. If the MIW needs only the three ConsDB columns,
+  the loop is still a candidate for removal, but **because it is what keeps the EFD in
+  `mktable` and so keeps the chunk out of batch**, not because it is slow.
 
 Why it matters beyond width and speed: the EFD resolves only from interactive nodes, which
 is why the Snakefile drops `attach_telemetry` under `--mode batch`

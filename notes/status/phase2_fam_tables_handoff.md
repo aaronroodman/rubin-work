@@ -1,6 +1,6 @@
 # Phase 2 handoff: the fam_tables pilot product
 
-> **Status:** in progress · **Last updated:** 2026-10-10 · **Kind:** working state (handoff)
+> **Status:** complete · **Last updated:** 2026-10-10 · **Kind:** working state (handoff)
 
 Phase 2 of `notes/status/organization_plan.md`: `fam_tables` end to end. Read the Phase 2
 part of section 8 there for the step list; this file holds the state between sessions.
@@ -22,9 +22,12 @@ cleared. A fresh session re-reads this file and the plan's sections 2–5, not a
 | `26dd61c` | **A4** blitz reference built |
 | `7137ea3` | **B0**: the old `aos/` tree keeps the old chunk range; test allows that one difference |
 | `06039ab` | **Step 2**: the four builders and the six build rules moved into the product |
-| (this session) | **Step 3**: both reference builds reproduced exactly with the moved code |
+| `0781229` | **Step 3**: both reference builds reproduced exactly with the moved code |
+| `f33b0ab` | **Step 5a**: catalog skips incomplete builds; `current` moves only by hand |
+| `2b50ed0` | **Step 5b**: both builders write `manifest.json` as their last step |
+| `04a8871` | **Step 5c**: both references rerun with the final code, still exact |
 
-**Test status: 21 of 21 pass**, plus 26 catalog tests (47 under `rubinwork/products/`).
+**Test status: 64 pass under `rubinwork/products/`** (28 fam_tables, 36 catalog/manifest).
 The import smoke test is 63 of 63 modules ok (one fewer than phase 1's 64 because
 `blitz_reader` became an intra-package import).
 
@@ -57,7 +60,7 @@ thermocouple columns the August run lacks (its node could not reach the EFD:
 `rotator_angle` values, and 412 `fits` columns at float round-off below 1e-12. **No DZ-fit
 or wavefront column differs.**
 
-### Step 5, partly done ahead of its turn
+### Step 5's reader half, done ahead of its turn in step 2
 
 `reader.py` gives `load(variant, build="current")` returning `(donuts, visits, fits)`,
 plus `load_table`, `variants`, `variant_config` and — added in step 2 —
@@ -68,17 +71,53 @@ study code that opens `output/fam_processing/<P>/...` by path) to `load()`.
 
 ## Next concrete action
 
-**Steps 2 and 3 are complete.** B0, step 2 and step 3 are committed and pushed; the
-sections below record what the move changed and what the comparison showed.
+**Phase 2 is complete.** Nothing is left in it. Continue in
+`notes/status/phase3_products_handoff.md`, whose next action is phase 3a, `cwfs_tables`.
 
-**Step 4 is next: register the existing builds.** Copy each in-use build into the new
-tree under `/sdf/group/rubin/u/roodman/LSST/rubin-work/products/fam_tables/<variant>/<build>/`
-and write its `manifest.json` with `rubinwork.products.manifest`. The old tree is not
-touched, so old code keeps working until phase 5. See "Step 4 requirements, to carry
-forward" below — three things the manifests and READMEs must say — and the copy budget in
-"Decisions taken" (56.44 GB apparent, 727 GB of 932 GB free on the target filesystem).
+**Step 4 was dropped on 2026-10-10** by the revised route: no existing build is copied or
+registered, every product is rebuilt fresh in phase 3c. The "Step 4 requirements" section
+below is kept because two of its three points are **3c** requirements now — the composite
+`danish_1_2` manifest (done: `write_manifest` records the per-chunk collections) and the
+362 lost `cam_*` columns (still open). The copy budget in "Decisions taken" no longer
+applies.
 
-The build directory layout step 2 settled, which step 4 should follow:
+### Step 5 — manifests and the catalog rule: DONE
+
+- **Both builders write `manifest.json` last.** New
+  `rubinwork/products/fam_tables/write_manifest.py`, shared by the product Snakefile's
+  final `manifest` rule and by `run_blitz_mktable`. `config` is the expanded
+  `variants.yaml` entry, so `danish_1_2` records its **per-chunk** collections, Butler
+  repos and program filters; row counts are read back off the parquet files, not taken
+  from a builder's counter. Without `--fit` the blitz build gets status `tables-only` and
+  the catalog skips it.
+- **The catalog sees only complete builds.** No manifest, an unparseable manifest, or
+  `status != "complete"` means the build is skipped when `current` is resolved and left
+  out of `list_products()`; asking for it by name raises `ProductNotFound` saying which of
+  those it was. A `current` symlink left pointing at a build that later failed is refused
+  too.
+- **No build moves `current`.** `manifest.write()` and `catalog.register()` no longer
+  touch it. `python -m rubinwork.products.catalog set-current <product> <variant> <build>`
+  does, and refuses a build that is not complete (exit status 1).
+- **Both references rerun with the final code, both still exact at zero tolerance.** New
+  `refbuild/stage_reference_chunk.py` makes the Snakemake-path rerun reproducible: it
+  copies the reference chunk's `mktable` output and reconstructs the pre-merge
+  `visits.parquet` (53 rows x 228 columns, down from 600, by dropping the merged sidecar
+  while keeping the 13 columns `mktable` itself writes). The Snakefile gained
+  `--config chunks=<dmin>_<dmax>` to build one chunk of ten.
+
+  | path | build | donuts | visits | fits | differing columns |
+  |---|---|---|---|---|---|
+  | Snakemake | `_scratch_step5/products/fam_tables/danish_1_2/20261010` | 145,264 rows x 48 cols | 53 x 600 | 47 x 653 | **0 / 0 / 0** |
+  | blitz | `_scratch_step5/danish_1_3_v1000_final` | 40,548 x 66 | 12 x 23 | 12 x 448 | **0 / 0 / 0** |
+
+  Both manifests written, `status: complete`, `git_commit 2b50ed0`. The Snakemake one
+  carries all ten chunks in `config.chunks` including the `/repo/embargo` override, and
+  `build_options.chunks_built = 20251116_20251130` recording that this build is one chunk
+  of ten. Tests: 64 under `rubinwork/products/`; import smoke test 63 of 63.
+- **What is left for phase 5, as before:** switching the repo's *readers* — the study code
+  that opens `output/fam_processing/<P>/...` by path — to `load()`.
+
+The build directory layout step 2 settled:
 
 ```
 products/fam_tables/<variant>/<build>/{donuts,visits,fits}.parquet   the tables
