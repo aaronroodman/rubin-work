@@ -22,6 +22,8 @@
 # mi_config.yaml), not the param_set / mi_name keys; see the resolvers below.
 # ----------------------------------------------------------------------
 import os
+import sys
+
 import yaml
 
 # Deterministic threading regardless of how the launching terminal set these.
@@ -169,15 +171,40 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 # the variants that are actually ingested; `refitWcs_2025` has never been built.  Build a
 # missing one with the product Snakefile (see the note where rule wfs_mktable used to be),
 # and it reappears here.
+#
+# Silently dropping a variant would silently drop its study jobs, so every skip is
+# reported once while the DAG is built.  wfs_variants() is called several times (WFS_PSETS
+# and the two *_DVARIANTS lists below), so the skips are accumulated and printed from
+# _report_wfs_skips() after the last call rather than per call.
+_WFS_SKIPPED = {}
 def wfs_variants(ps):
     defined = list(PARAM_SETS.get(ps, {}).get("wfs_collections", {}))
     d = ps_dir(ps)
-    return [cw for cw in defined
-            if os.path.exists(f"output/wfs_ingest/{d}/{cw}/donuts.parquet")]
+    have = []
+    for cw in defined:
+        table = f"output/wfs_ingest/{d}/{cw}/donuts.parquet"
+        if os.path.exists(table):
+            have.append(cw)
+        else:
+            _WFS_SKIPPED[(d, cw)] = table
+    return have
 def wfs_collection(ps, cw):                       # entry is a str or {collection, ...}
     e = PARAM_SETS[ps]["wfs_collections"][cw]
     return e["collection"] if isinstance(e, dict) else e
 WFS_PSETS = [ps for ps in PSETS if wfs_variants(ps)]
+
+def _report_wfs_skips():
+    if not _WFS_SKIPPED:
+        return
+    n = len(_WFS_SKIPPED)
+    print(f"[Snakefile] skipping {n} CWFS variant(s) with no donuts.parquet on disk; "
+          "their wfs_corner_compare / wfs_dof_compare / wfs_intrinsic_sidecar jobs are "
+          "NOT planned. Build each with "
+          "`snakemake -s rubinwork/products/cwfs_tables/Snakefile "
+          "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
+          file=sys.stderr)
+    for (d, cw), table in sorted(_WFS_SKIPPED.items()):
+        print(f"[Snakefile]   {d}/{cw}: missing {table}", file=sys.stderr)
 
 # ---- the data-axis directory names, and the inverse maps back to the keys ----
 # Rules see only the short names (they come out of the output paths), so every
@@ -210,6 +237,7 @@ def d_wfs(d, cwfs):                    # ingested CWFS dir for a joined dtag
 WFS_DVARIANTS    = [(ps_dir(ps), cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
 WFS_MI_DVARIANTS = [(dtag(ps, mi), cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
                     for cw in wfs_variants(ps)]
+_report_wfs_skips()          # after the last wfs_variants() call, so the list is complete
 
 def mi_bin_grids(d):
     # grids come from the build SOURCE entry; bins are the source's bins so the
