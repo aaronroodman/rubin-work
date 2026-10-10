@@ -6,6 +6,7 @@ files, to check that the variant definitions still agree with ``aos/param_sets.y
 ``aos/snake_config.yaml`` — the sources they were transcribed from in phase 2.
 """
 
+import json
 import pathlib
 import sys
 
@@ -277,3 +278,90 @@ def test_generated_param_sets_carry_the_wfs_half():
     assert wfs["paired_3mm"]["seq_offset"] == 0
     assert wfs["ai_donut"]["dataset_type"] == "aggregateZernikesRaw"
     assert wfs["tarts"]["reader"] == "unpaired"
+
+
+# ---- write_manifest ------------------------------------------------------------
+
+def test_manifest_records_the_per_chunk_collections(data_root):
+    """danish_1_2 is composite: one `collections` field would be wrong for most visits."""
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    build_dir = make_fam_build(data_root, build="20261010", current=False)
+    wm.write("danish_1_2", build="20261010")
+    man = catalog.manifest("fam_tables", "danish_1_2", "20261010")
+    assert man["status"] == "complete"
+    assert man["variant"] == "danish_1_2"
+    chunks = man["config"]["chunks"]
+    assert len(chunks) == 10
+    assert {c["day_obs"][0] for c in chunks} >= {20260315, 20260713, 20251116}
+    embargo = [c for c in chunks if c.get("butler_repo") == "/repo/embargo"]
+    assert [c["day_obs"] for c in embargo] == [[20260713, 20260713]]
+    assert man["config"]["param_set"] == "fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x"
+    # Row counts read back off disk, not from a builder's counter.
+    assert man["files"]["donuts.parquet"]["rows"] == 4
+    assert set(man["files"]) == {"donuts.parquet", "visits.parquet", "fits.parquet"}
+    assert (build_dir / "manifest.json").is_file()
+
+
+def test_manifest_does_not_move_current(data_root):
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    make_fam_build(data_root, build="20261009")
+    make_fam_build(data_root, build="20261010", current=False)
+    wm.write("danish_1_2", build="20261010")
+    assert catalog.path("fam_tables", "danish_1_2").name == "20261009"
+
+
+def test_manifest_takes_the_long_param_set_key(data_root):
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    make_fam_build(data_root, build="20261010", current=False)
+    wm.write("fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x", build="20261010")
+    assert catalog.manifest("fam_tables", "danish_1_2", "20261010")["variant"] \
+        == "danish_1_2"
+
+
+def test_manifest_records_build_options(data_root):
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    make_fam_build(data_root, build="20261010", current=False)
+    wm.write("danish_1_2", build="20261010",
+             build_options={"builder": "snakemake", "mktable_no_thermal": "1"})
+    config = catalog.manifest("fam_tables", "danish_1_2", "20261010")["config"]
+    assert config["build_options"]["mktable_no_thermal"] == "1"
+
+
+def test_manifest_into_an_out_of_tree_build_dir(tmp_path, data_root):
+    """The reference builds live outside the data tree, under --out-dir."""
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    out = tmp_path / "refbuild" / "danish_1_3_v1000" / "moved"
+    out.mkdir(parents=True)
+    pd.DataFrame({"visit": [1, 2]}).to_parquet(out / "donuts.parquet", index=False)
+    path = wm.write("danish_1_3_v1000", build_dir=out)
+    man = json.loads(path.read_text())
+    assert man["build"] == "moved"
+    assert man["variant"] == "danish_1_3_v1000"
+    assert man["files"]["donuts.parquet"]["rows"] == 2
+
+
+def test_manifest_cli(data_root, capsys):
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    make_fam_build(data_root, build="20261010", current=False)
+    assert wm.main(["--variant", "danish_1_2", "--build", "20261010",
+                    "--option", "builder=snakemake"]) == 0
+    man = catalog.manifest("fam_tables", "danish_1_2", "20261010")
+    assert man["config"]["build_options"] == {"builder": "snakemake"}
+    assert "wrote" in capsys.readouterr().out
+
+
+def test_manifest_cli_status_keeps_a_build_out_of_the_catalog(data_root):
+    from rubinwork.products.fam_tables import write_manifest as wm
+
+    make_fam_build(data_root, build="20261010", current=False)
+    wm.main(["--variant", "danish_1_2", "--build", "20261010",
+             "--status", "tables-only"])
+    assert catalog.list_products("fam_tables") == []
+    with pytest.raises(catalog.ProductNotFound, match="tables-only"):
+        catalog.path("fam_tables", "danish_1_2", "20261010")

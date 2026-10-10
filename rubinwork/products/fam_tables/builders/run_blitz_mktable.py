@@ -27,12 +27,18 @@ provenance to the ``intrinsicZernikes`` calibration run. No Measured Intrinsic W
 straight from the donut table. The calibration run collection is recorded in
 ``provenance.yaml`` beside the output tables.
 
-Outputs, under ``aos/output/fam_processing/<dir_name>/``:
+Outputs, in the catalog build directory
+``<products>/fam_tables/<variant>/<build>/`` unless ``--out-dir`` says otherwise:
 
   ``donuts.parquet``     one row per paired donut, one row group per visit
   ``visits.parquet``     one row per visit, the 19 columns ``run_mktable`` produces
   ``fits.parquet``       the k=1..3 and k=1..6 DZ fit results (with ``--fit``)
   ``provenance.yaml``    collection, dataset type, intrinsic calibration run, versions
+  ``manifest.json``      written last; what puts the build in the catalog
+
+``manifest.json`` does not move the variant's ``current`` symlink -- that is
+``python -m rubinwork.products.catalog set-current`` -- and without ``--fit`` it
+records status ``tables-only``, which the catalog skips.
 
 Usage:
   # One visit, to validate
@@ -628,6 +634,64 @@ def run_fits(donuts_file, visits_file, coord_sys='OCS'):
     return fits_file
 
 
+def write_build_manifest(args, result):
+    """Write the build's ``manifest.json``, as the last step of the run.
+
+    Parameters
+    ----------
+    args : `argparse.Namespace`
+        Parsed command line.
+    result : `dict`
+        What `build_tables` returned.
+
+    Returns
+    -------
+    manifest_path : `pathlib.Path`
+        The manifest that was written.
+
+    Notes
+    -----
+    Without ``--fit`` the build has no ``fits.parquet``, so it is not a usable
+    `fam_tables` build; the manifest is then written with status
+    ``"tables-only"`` and the catalog skips it.
+
+    The manifest does not move the variant's ``current`` symlink. Point it with
+    ``python -m rubinwork.products.catalog set-current fam_tables <variant>
+    <build>`` once the build has been looked at.
+    """
+    from ..write_manifest import write as write_manifest
+
+    out_dir = result['out_dir']
+    status = 'complete' if args.fit else 'tables-only'
+    options = {
+        'builder': 'blitz',
+        'mode': args.mode,
+        'coord_sys': args.coord_sys,
+        'dataset_type': args.dataset_type,
+        'fit': args.fit,
+        'no_consdb': args.no_consdb,
+        'min_donuts_per_visit': args.min_donuts_per_visit,
+        'min_donuts_per_detector': args.min_donuts_per_detector,
+        'min_detectors_per_visit': args.min_detectors_per_visit,
+        'max_median_blur_arcsec': args.max_median_blur_arcsec,
+        'rotator_threshold_deg': args.rotator_threshold_deg,
+        'day_obs': args.day_obs,
+        'visits': args.visits,
+        'max_visits': args.max_visits,
+        'input_run_collections': result['provenance']['input_run_collections'],
+        'ts_wep_version': result['provenance']['ts_wep_version'],
+        'danish_version': result['provenance']['danish_version'],
+        'batoid_version': result['provenance']['batoid_version'],
+    }
+    path = write_manifest(args.param_set, build_dir=out_dir, status=status,
+                          build_options=options)
+    print(f'  manifest  : {path} (status {status})')
+    if status != 'complete':
+        print('  NOTE: no --fit, so there is no fits.parquet and the catalog '
+              'skips this build')
+    return path
+
+
 def main(argv=None):
     """Entry point."""
     args = parse_args(argv)
@@ -635,6 +699,7 @@ def main(argv=None):
     if args.fit:
         run_fits(result['donuts_file'], result['visits_file'],
                  coord_sys=args.coord_sys)
+    write_build_manifest(args, result)
     return 0
 
 

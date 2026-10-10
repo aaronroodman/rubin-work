@@ -17,6 +17,7 @@
 # Output, under the product catalog's data root:
 #   <products>/fam_tables/<variant>/<build>/_work/chunks/<dmin>_<dmax>/{donuts,visits,fits}.parquet
 #   <products>/fam_tables/<variant>/<build>/{donuts,visits,fits}.parquet
+#   <products>/fam_tables/<variant>/<build>/manifest.json   written last
 #
 # The per-chunk tables are intermediates, so they sit in `_work/`, which
 # catalog._names() hides.  A build directory is never edited after it completes
@@ -164,6 +165,15 @@ ATTACH_CMD = (
     f'--param-set {PARAM_SET} --out-dir {BUILD_DIR} '
     f"--chunks-dir {WORK / 'chunks'} " + '--all-chunks --merge > {log} 2>&1 && '
     "date -u +'%Y-%m-%dT%H:%M:%SZ attached' > {output.stamp}")
+MANIFEST_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.fam_tables.write_manifest '
+    f'--variant {VARIANT} --build {BUILD} '
+    f'--option builder=snakemake --option attach_telemetry={int(ATTACH_TELEMETRY)} '
+    f'--option mktable_workers={MKT_WORKERS} '
+    f'--option mktable_no_thermal={int(MKT_NO_THERMAL)} '
+    f'--option coord_sys={COORD} '
+    '> {log} 2>&1')
 MKTABLE_CMD = (
     'mkdir -p $(dirname {log})\n'
     f'cd {MKTABLE_CWD} && python {WF_BIN}/run_mktable.py --param-set {PARAM_SET}'
@@ -183,11 +193,7 @@ wildcard_constraints:
 
 rule all:
     input:
-        str(BUILD_DIR / 'donuts.parquet'),
-        str(BUILD_DIR / 'fits.parquet'),
-        str(BUILD_DIR / 'visits.parquet'),
-        # telemetry attachment: skipped in batch mode, where the EFD does not resolve
-        [str(WORK / 'telemetry_attached.txt')] if ATTACH_TELEMETRY else [],
+        str(BUILD_DIR / 'manifest.json'),
 
 
 # ---- per chunk: mktable (Butler) -> donuts + visits ----
@@ -273,3 +279,22 @@ rule attach_telemetry:
     resources: mem_mb=4000
     log: str(LOGS / 'attach_telemetry.log')
     shell: ATTACH_CMD
+
+
+# ---- last step: the manifest, which is what puts the build in the catalog ----
+# Depends on every table, and on the telemetry stamp when telemetry is attached,
+# so an interrupted build has no manifest and the catalog does not see it.  The
+# manifest records the expanded variants.yaml entry — per-chunk collections for a
+# composite variant such as danish_1_2 — and the row counts read back off disk.
+# It does NOT move `current`: see `catalog set-current`.
+rule manifest:
+    input:
+        str(BUILD_DIR / 'donuts.parquet'),
+        str(BUILD_DIR / 'fits.parquet'),
+        str(BUILD_DIR / 'visits.parquet'),
+        # telemetry attachment: skipped in batch mode, where the EFD does not resolve
+        [str(WORK / 'telemetry_attached.txt')] if ATTACH_TELEMETRY else [],
+    output: str(BUILD_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell: MANIFEST_CMD
