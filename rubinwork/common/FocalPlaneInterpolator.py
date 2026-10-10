@@ -27,7 +27,6 @@ import bisect
 from typing import Optional, Sequence, Tuple
 
 import numpy as np
-import numpy.lib.index_tricks as itricks
 from scipy.interpolate import SmoothBivariateSpline, RBFInterpolator, griddata
 from scipy.spatial import cKDTree
 from scipy import stats
@@ -339,11 +338,11 @@ class FocalPlaneInterpolator:
         cen_lo = lo + 0.5 * delta
         cen_hi = hi - 0.5 * delta
 
-        y_grid, x_grid = itricks.mgrid[
+        y_grid, x_grid = np.mgrid[
             cen_lo : cen_hi : 1j * n_bins,
             cen_lo : cen_hi : 1j * n_bins,
         ]
-        y_edge, x_edge = itricks.mgrid[
+        y_edge, x_edge = np.mgrid[
             lo : hi : 1j * (n_bins + 1),
             lo : hi : 1j * (n_bins + 1),
         ]
