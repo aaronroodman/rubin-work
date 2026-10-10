@@ -94,13 +94,32 @@ if CFG.get('builder') != 'snakemake':
 # the Butler repo and the program filter for that set of visits.  All chunks of a
 # variant land in the same build directory (combine concatenates them), so a newer
 # disjoint reprocessing folds in as one extra chunk without a new variant.
+#
+# --config chunks=<dmin>_<dmax>[,...] builds only those chunks, which is how a
+# reference check reruns one chunk of a ten-chunk variant.  A build so restricted
+# is NOT the whole variant, so give it its own build name.
+#
+# Snakemake EVALS a --config value, so `20251116_20251130` arrives as the int
+# 2025111620251130 — Python reads the underscore as a numeric separator.  Matching
+# with the underscores stripped accepts the value either way.
+ONLY_CHUNKS = [s.replace('_', '')
+               for s in str(config.get('chunks', '')).split(',') if s]
+
+
 def _chunk_entries():
     out = []
     for c in CFG.get('chunks', []):
         a, b = c['day_obs']
+        if ONLY_CHUNKS and f'{int(a)}{int(b)}' not in ONLY_CHUNKS:
+            continue
         out.append(dict(dmin=int(a), dmax=int(b), collection=c.get('collection'),
                         phrase=c.get('phrase'), butler_repo=c.get('butler_repo'),
                         programs=c.get('programs')))
+    if ONLY_CHUNKS and not out:
+        defined = [f"{int(c['day_obs'][0])}_{int(c['day_obs'][1])}"
+                   for c in CFG.get('chunks', [])]
+        raise ValueError(f'chunks={ONLY_CHUNKS} match none of {VARIANT}; '
+                         f'defined chunks: {defined}')
     return out
 
 
@@ -173,6 +192,7 @@ MANIFEST_CMD = (
     f'--option mktable_workers={MKT_WORKERS} '
     f'--option mktable_no_thermal={int(MKT_NO_THERMAL)} '
     f'--option coord_sys={COORD} '
+    f"--option chunks_built={','.join(CHUNK_NAMES)} "
     '> {log} 2>&1')
 MKTABLE_CMD = (
     'mkdir -p $(dirname {log})\n'
