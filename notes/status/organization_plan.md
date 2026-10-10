@@ -457,6 +457,13 @@ build, and every difference is explained (expected: `rotator_angle` on visits wh
 ConsDB is NULL, the dropped sidecar columns, the restored `cam_*` columns). Then
 `set-current`.
 
+Decided 2026-10-10: `danish_1_2` is rebuilt in full (option 1), with `mktable` run as
+Slurm jobs **split by night** (`--no-thermal`, after 3b), then `fit`, `combine_*` and
+`attach_telemetry` interactively, and the manifest written only after `attach_telemetry`.
+Measured costs: 258 s fixed per `mktable` run, 39.1 s/visit donut reading, 3.0 s/visit
+`attach_telemetry`; 3,523 Butler visits. Reusing the old chunk donuts was the rejected
+alternative. Confirm `/repo/embargo` is readable from batch nodes before submitting.
+
 **Phase 4 — skills and generators.** `/start-study`, `/wrap`, `/review`, the `STUDIES.md`
 and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`.
 
