@@ -26,29 +26,19 @@
 #
 #     python -m rubinwork.products.fam_tables.gen_param_sets
 #
-# Edit this file, never the generated one.  Decided 2026-10-10 (Aaron): the FAM
-# intra/extra pair and the in-focus corner-WFS (CWFS) member of the same triplet are one
-# fact about the observation, so both halves live here rather than being split between
-# this file and a phase-3 cwfs_tables/variants.yaml.  The measured intrinsic wavefront
-# (MIW) is built from the FAM tables alone, so ts_intrinsic_wavefront needs only the FAM
-# half.  Phase-3 cwfs_tables reads `wfs_collections` through variant_config().
+# Edit this file, never the generated one.  This file owns the Full Array Mode (FAM) half
+# only.  The in-focus corner-wavefront-sensor (CWFS) member of the same triplet moved to
+# rubinwork/products/cwfs_tables/variants.yaml in phase 3a, and gen_param_sets.py merges
+# the two back into the generated file; the `wfs_collections` maps that used to sit in the
+# entries below are there now.  The measured intrinsic wavefront (MIW) is built from the
+# FAM tables alone, so ts_intrinsic_wavefront needs only this half.
 #
 # aos/param_sets.yaml cannot simply be deleted, now or in phase 5: the EXTERNAL package
 # lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets() opens
 # Path('param_sets.yaml') relative to the current working directory, and
-# aos/code/cwfs/run_wfs_mktable.py, run_wfs_fam_compare.py, run_wfs_refit_ensemble.py and
-# aos/code/fam_processing/check_chunk.py all call it.
+# run_wfs_mktable.py (now in cwfs_tables), aos/code/cwfs/run_wfs_fam_compare.py,
+# run_wfs_refit_ensemble.py and aos/code/fam_processing/check_chunk.py all call it.
 # ---------------------------------------------------------------------------
-#
-# wfs_collections: descriptive-name -> in-focus corner-WFS (CWFS) Butler collection.
-# The name is filename-safe and becomes the output subdir  output/<ps>/wfs/<name>/ , so
-# several CWFS variants can be analysed side by side.  Triplet order is intra, extra,
-# in-focus and the FAM key is the EXTRA exposure, so the in-focus exposure is FAM_seq+1.
-# An entry is either a bare collection string or a dict carrying:
-#   seq_offset   added to the FAM seq_num (the extra exposure): +1 = in-focus (the
-#                default), 0 = extra, -1 = intra
-#   dataset_type aggregate to read, when it is not aggregateAOSVisitTableRaw
-#   reader       `unpaired` to read the singular-position table
 
 variants:
 
@@ -80,8 +70,6 @@ variants:
     collection_phrase: aos_fam_danish_1_0_wep17_3_0_bin2x
     day_obs_min: 20260315
     day_obs_max: 20260531
-    wfs_collections:
-      wep17_3_0: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2
 
   # ---------------------------------------------------------------------------
   # danish_1_2 folds in the 2025 FAM reprocessing (Danish 1.2.0, wep 17.7.0, dviz 4.7.0,
@@ -116,34 +104,6 @@ variants:
     collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
     day_obs_min: 20260315
     day_obs_max: 20260531
-    wfs_collections:
-      refitWcs: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
-      # 2025 in-focus corners (Chris's 17.7.0 reprocessing).  A SEPARATE collection from
-      # the 17.6.1 refitWcs above: it matches only the 2025 FAM chunks, and 2026 visits
-      # find no aggregate here just as the 17.6.1 refitWcs finds none for 2025.  In-focus
-      # exposure = FAM extra + 1, so seq_offset takes its +1 default.
-      refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
-      paired_3mm:
-        # Bryce's paired 3mm-defocus corner donuts, wep 17.8.0 / donut_viz 4.7.0.
-        collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_8_0/donut_viz_4_7_0/danish_v1_2_0/bin2x
-        seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
-      ai_donut:
-        # No joined aggregateAOSVisitTableRaw, so run_wfs_mktable's aggregateZernikesRaw
-        # reader joins zk from aggregateZernikesRaw with positions from the per-detector
-        # `zernikes` (field deg, x<->y swap -> CCS, then R(rotTelPos) -> OCS).
-        collection: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
-        dataset_type: aggregateZernikesRaw
-      tarts:
-        # TARTS in-focus analysis of the triplet (peterma2).  Uses the Avg aggregate:
-        # aggregateAOSVisitTableAvg is TARTS's ML-combined per-detector value, one row per
-        # corner half-sensor with all 8 in the single in-focus exposure, verified equal to
-        # the `zernikes` label=='average' row in zk_CCS.  The aggregate also carries the
-        # rotated zk_OCS and thx_OCS/thy_OCS, all in microns.  With one row per detector
-        # the unpaired reader needs no combine_offsets or defocused_only.  TARTS Noll
-        # (Z4-Z28) is remapped to the FAM Noll in run_wfs_mktable.
-        collection: u/peterma2/tarts_fam_acq_stability_infocus
-        reader: unpaired
-        dataset_type: aggregateAOSVisitTableAvg
     # Date chunks, from aos/snake_config.yaml.  A chunk may override the collection,
     # the Butler repo and the program filter; the three bare ranges read the
     # param_set-level 17.6.1 collection.  All chunks combine into one set of tables.

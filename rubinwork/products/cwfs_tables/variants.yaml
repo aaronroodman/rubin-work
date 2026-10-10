@@ -1,0 +1,102 @@
+# ---------------------------------------------------------------------------
+# cwfs_tables variants: the in-focus corner-wavefront-sensor (CWFS) tables, paired to the
+# Full Array Mode (FAM) triplets.
+#
+# SOURCE OF TRUTH for the FAM/CWFS triplet link. These entries were the
+# `wfs_collections` maps of rubinwork/products/fam_tables/variants.yaml until phase 3a of
+# notes/status/organization_plan.md; that file no longer carries them.
+# rubinwork/products/fam_tables/gen_param_sets.py merges this file back into the generated
+# aos/param_sets.yaml, which must stay byte-identical, because the EXTERNAL package
+# lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets() is what the builder reads
+# its collection through.
+#
+# The variant name is the upstream FAM variant's short code, `d12` for `danish_1_2`, then
+# the name the entry had in `wfs_collections` -- which is also the output subdirectory in
+# the old tree, aos/output/wfs_ingest/<P>/<name>/, so the two stay traceable.
+#
+# Triplet order is intra, extra, in-focus, and the FAM key is the EXTRA exposure, so the
+# in-focus exposure is FAM_seq + 1. Per-entry fields:
+#
+#   fam_variant   the fam_tables variant whose visits.parquet drives the walk (required)
+#   upstream_name the key this entry had in that variant's wfs_collections map, which is
+#                 the name the generated aos/param_sets.yaml must still use (required)
+#   collection    the Butler collection (required)
+#   seq_offset    added to the FAM seq_num (the extra exposure): +1 = in-focus (the
+#                 default), 0 = extra, -1 = intra
+#   dataset_type  aggregate to read, when it is not aggregateAOSVisitTableRaw
+#   reader        `unpaired` to read the singular-position table
+#
+# `upstream_name` is explicit rather than derived by stripping the `d12-` prefix, so the
+# mapping back to the generated file is one-way and auditable.
+# ---------------------------------------------------------------------------
+
+variants:
+
+  d12-refitWcs:
+    fam_variant: danish_1_2
+    upstream_name: refitWcs
+    collection: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
+
+  # 2025 in-focus corners (Chris's 17.7.0 reprocessing).  A SEPARATE collection from the
+  # 17.6.1 refitWcs above: it matches only the 2025 FAM chunks, and 2026 visits find no
+  # aggregate here just as the 17.6.1 refitWcs finds none for 2025.  In-focus exposure =
+  # FAM extra + 1, so seq_offset takes its +1 default.
+  #
+  # TO BE FOLDED INTO d12-refitWcs IN PHASE 3b (Aaron, 2026-10-10): this is the same
+  # variant, just the collection that covers 2025, exactly as the FAM danish_1_2 carries a
+  # per-chunk collection override for its 2025 chunks.  The two collections are disjoint in
+  # day_obs (refitWcs 20260315..20260513, refitWcs_2025 20250415..20251231), so a
+  # date-keyed collection list is the shape.  Not done in 3a because run_wfs_mktable opens
+  # ONE Butler(repo, collections=...) per --wfs-name, so merging them is a builder change
+  # rather than an imports-and-paths move.
+  d12-refitWcs_2025:
+    fam_variant: danish_1_2
+    upstream_name: refitWcs_2025
+    collection: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
+
+  # Bryce's paired 3mm-defocus corner donuts, wep 17.8.0 / donut_viz 4.7.0.
+  d12-paired_3mm:
+    fam_variant: danish_1_2
+    upstream_name: paired_3mm
+    collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_8_0/donut_viz_4_7_0/danish_v1_2_0/bin2x
+    seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
+
+  # No joined aggregateAOSVisitTableRaw, so run_wfs_mktable's aggregateZernikesRaw reader
+  # joins zk from aggregateZernikesRaw with positions from the per-detector `zernikes`
+  # (field deg, x<->y swap -> CCS, then R(rotTelPos) -> OCS).
+  d12-ai_donut:
+    fam_variant: danish_1_2
+    upstream_name: ai_donut
+    collection: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
+    dataset_type: aggregateZernikesRaw
+
+  # TARTS in-focus analysis of the triplet (peterma2).  Uses the Avg aggregate:
+  # aggregateAOSVisitTableAvg is TARTS's ML-combined per-detector value, one row per corner
+  # half-sensor with all 8 in the single in-focus exposure, verified equal to the
+  # `zernikes` label=='average' row in zk_CCS.  The aggregate also carries the rotated
+  # zk_OCS and thx_OCS/thy_OCS, all in microns.  With one row per detector the unpaired
+  # reader needs no combine_offsets or defocused_only.  TARTS Noll (Z4-Z28) is remapped to
+  # the FAM Noll in run_wfs_mktable.
+  d12-tarts:
+    fam_variant: danish_1_2
+    upstream_name: tarts
+    collection: u/peterma2/tarts_fam_acq_stability_infocus
+    reader: unpaired
+    dataset_type: aggregateAOSVisitTableAvg
+
+  # ---------------------------------------------------------------------------
+  # Never built, and kept only so the generated aos/param_sets.yaml stays byte-identical:
+  # its FAM variant danish_1_0 is itself `registered: false` there, held for the recorded
+  # provenance of the staged MIW build and the two-epochs tech note.
+  #
+  # TO BE RETIRED WITH danish_1_0 IN PHASE 3b (Aaron, 2026-10-10). Retiring the FAM half
+  # breaks four live things, which is why it is not done here: the staged-MIW provenance
+  # chain (aos/calibration/), the aos-measured-intrinsics tech note's make_figures.py, a
+  # live overrides: block in aos/analysis_config.yaml keyed on the long param_set, and a
+  # fam_tables test.
+  # ---------------------------------------------------------------------------
+  d10-wep17_3_0:
+    fam_variant: danish_1_0
+    upstream_name: wep17_3_0
+    registered: false
+    collection: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2

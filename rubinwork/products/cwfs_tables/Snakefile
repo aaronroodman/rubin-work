@@ -1,0 +1,127 @@
+# ----------------------------------------------------------------------
+# cwfs_tables product build (Snakemake).  One rule: wfs_mktable reads the paired
+# in-focus corner-wavefront-sensor (CWFS) aggregates for every visit of one
+# fam_tables build, then the manifest closes the build.
+#
+# Moved out of aos/Snakefile in phase 3a of notes/status/organization_plan.md.
+# The rule is unchanged apart from where its input comes from and where its
+# output lands: the same script, the same --coord-sys, the same validation plot.
+#
+#   snakemake -s rubinwork/products/cwfs_tables/Snakefile -n \
+#       --config variant=d12-refitWcs build=20261010 fam_build=20260920
+#
+# Run from the REPOSITORY ROOT, so that `aos/param_sets.yaml` resolves (see
+# MKTABLE_CWD below).
+#
+# Output, under the product catalog's data root:
+#   <products>/cwfs_tables/<variant>/<build>/{donuts,visits}.parquet
+#   <products>/cwfs_tables/<variant>/<build>/wfs_mktable_validation.pdf
+#   <products>/cwfs_tables/<variant>/<build>/manifest.json   written last
+#
+# A build directory is never edited after it completes (rule 5 of the plan's
+# section 2); a rerun makes a new build.
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+# Deterministic threading regardless of how the launching terminal set these.
+# A NUMEXPR_MAX_THREADS pinned to 1 (some JupyterHub sessions) breaks the Butler
+# reads; force a safe cap.
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+from rubinwork.common.utils import repo_root
+from rubinwork.products import catalog, cwfs_tables, fam_tables
+
+REPO = repo_root(os.getcwd())
+
+# run_wfs_mktable resolves its collection through the EXTERNAL package's
+# intrinsics_lib.load_param_sets(), which opens Path('param_sets.yaml') relative
+# to the CURRENT WORKING DIRECTORY and has no other candidate.  So the rule runs
+# with aos/ as its cwd, exactly as aos/Snakefile did.  param_sets.yaml there is
+# generated from this product's variants.yaml plus fam_tables' (gen_param_sets.py).
+MKTABLE_CWD = REPO / 'aos'
+
+VARIANT = config.get('variant', 'd12-refitWcs')
+# str(): snakemake parses --config build=20261010 into an int.
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CFG = cwfs_tables.variant_config(VARIANT)
+
+# Checked before anything resolves a path, so an unbuildable variant says why rather
+# than failing later on its FAM build's absence.
+if not CFG.get('registered', True):
+    raise ValueError(
+        f"variant {VARIANT!r} is registered: false -- it is carried for recorded "
+        'provenance only and has no build')
+
+FAM_VARIANT = CFG['fam_variant']
+
+# Which fam_tables build to pair against.  `current` by default, resolved to its real
+# build name so the manifest records what was actually read rather than a moving target.
+FAM_BUILD = str(config.get('fam_build') or catalog.CURRENT)
+FAM_DIR = catalog.path('fam_tables', FAM_VARIANT, build=FAM_BUILD)
+FAM_BUILD_NAME = FAM_DIR.name
+
+COORD = fam_tables.variant_config(FAM_VARIANT).get('coord_sys', 'OCS')
+DZ_PREFIX = str(config.get('dz_prefix', 'z1toz6'))
+
+BUILD_DIR = cwfs_tables.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+# The shell commands, built here rather than inline: snakemake's own parser
+# mishandles a multi-line f-string inside a rule, so the rules below use plain
+# format placeholders only.
+MKTABLE_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {MKTABLE_CWD} && python -m '
+    'rubinwork.products.cwfs_tables.builders.run_wfs_mktable'
+    f' --variant {VARIANT} --coord-sys {COORD} --dz-prefix {DZ_PREFIX}'
+    f' --tables-dir {FAM_DIR} --out-dir {BUILD_DIR}' + ' > {log} 2>&1\n')
+MANIFEST_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.cwfs_tables.write_manifest '
+    f'--variant {VARIANT} --build {BUILD} --fam-build {FAM_BUILD_NAME} '
+    f'--option coord_sys={COORD} --option dz_prefix={DZ_PREFIX} '
+    '> {log} 2>&1')
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+# ---- ingest the in-focus CWFS aggregates for every visit of the FAM build ----
+# The FAM donuts.parquet is an input because the validation plot takes the FAM
+# donut median in the corner-WFS radial shell; fits.parquet supplies the k=1
+# field-mean overlay.
+rule wfs_mktable:
+    input:
+        visits     = str(FAM_DIR / 'visits.parquet'),
+        fits       = str(FAM_DIR / 'fits.parquet'),
+        fam_donuts = str(FAM_DIR / 'donuts.parquet'),
+    output:
+        donuts = str(BUILD_DIR / 'donuts.parquet'),
+        visits = str(BUILD_DIR / 'visits.parquet'),
+        plot   = str(BUILD_DIR / 'wfs_mktable_validation.pdf'),
+    resources: mem_mb=10000
+    log: str(LOGS / 'wfs_mktable.log')
+    shell: MKTABLE_CMD
+
+
+# ---- last step: the manifest, which is what puts the build in the catalog ----
+# Depends on both tables and the plot, so an interrupted build has no manifest and
+# the catalog does not see it.  It records the fam_tables build read under `inputs`.
+# It does NOT move `current`: see `catalog set-current`.
+rule manifest:
+    input:
+        str(BUILD_DIR / 'donuts.parquet'),
+        str(BUILD_DIR / 'visits.parquet'),
+        str(BUILD_DIR / 'wfs_mktable_validation.pdf'),
+    output: str(BUILD_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell: MANIFEST_CMD

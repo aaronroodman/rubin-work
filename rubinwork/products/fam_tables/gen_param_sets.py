@@ -1,9 +1,18 @@
-"""Generate ``aos/param_sets.yaml`` from the product's ``variants.yaml``.
+"""Generate ``aos/param_sets.yaml`` from the two products' ``variants.yaml`` files.
 
-``variants.yaml`` is the source of truth for both the focal-plane-and-mirror (FAM)
-configuration and the in-focus corner-wavefront-sensor (CWFS) collections; see its header
-for why both halves live there. This script writes the legacy ``aos/param_sets.yaml`` view
-of the same data, keyed by the long ``param_set`` name.
+The generated file is a merge of two sources of truth, each owning its own half:
+
+``rubinwork/products/fam_tables/variants.yaml``
+    the Full Array Mode (FAM) configuration -- collections, programs, date chunks.
+``rubinwork/products/cwfs_tables/variants.yaml``
+    the in-focus corner-wavefront-sensor (CWFS) collections, which were the
+    ``wfs_collections`` maps here until phase 3a of
+    ``notes/status/organization_plan.md``.
+
+This script writes the legacy ``aos/param_sets.yaml`` view of both, keyed by the long
+``param_set`` name. The CWFS half comes back through
+`rubinwork.products.cwfs_tables.wfs_collections_for`, keyed by each CWFS variant's
+``upstream_name``, so the generated file is unchanged by the move.
 
 The legacy file cannot be retired, now or in phase 5: the external package
 ``lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets`` opens
@@ -31,16 +40,25 @@ from .reader import variant_config, variants
 # `dir_name` is derived from the variant name instead, and the product-only keys
 # (`param_set`, `builder`, `chunks`, `coord_sys`, `registered`) are dropped: chunks live in
 # aos/snake_config.yaml and coord_sys is read from there too.
+#
+# `wfs_collections` is NOT here: it is owned by the cwfs_tables product and injected at
+# its historical position, between `fam_collections` and `collection_phrase`.
 PASSTHROUGH = (
     "description",
     "butler_repo",
     "fam_programs",
     "fam_collections",
-    "wfs_collections",
     "collection_phrase",
     "day_obs_min",
     "day_obs_max",
 )
+
+WFS_AFTER = "fam_collections"
+"""The generated entry writes ``wfs_collections`` immediately after this field.
+
+Its position has to be preserved, not merely its content: ``aos/param_sets.yaml`` is
+compared byte for byte across the phase 3a move.
+"""
 
 HEADER = """\
 # GENERATED FILE — DO NOT EDIT BY HAND.
@@ -76,13 +94,19 @@ def _entry(variant):
     param_set : `str`
         The long key the entry is filed under.
     entry : `dict`
-        The entry body, with ``dir_name`` first.
+        The entry body, with ``dir_name`` first and the ``cwfs_tables``-owned
+        ``wfs_collections`` map at its historical position.
     """
+    from rubinwork.products import cwfs_tables
+
     cfg = variant_config(variant)
+    wfs = cwfs_tables.wfs_collections_for(variant)
     entry = {"dir_name": variant}
     for key in PASSTHROUGH:
         if key in cfg:
             entry[key] = cfg[key]
+        if key == WFS_AFTER and wfs:
+            entry["wfs_collections"] = wfs
     return cfg["param_set"], entry
 
 

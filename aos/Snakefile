@@ -162,7 +162,18 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
 # carry several CWFS variants (wfs_collections: name -> Butler collection); the
 # name is the {cwfs} wildcard and nests one level under the joined data dir,
 # e.g.  output/wfs_ingest/<P>/<name>/ .
-def wfs_variants(ps):    return list(PARAM_SETS.get(ps, {}).get("wfs_collections", {}))
+#
+# Since phase 3a moved `wfs_mktable` into the cwfs_tables product, these tables are
+# INPUTS this Snakefile does not build, so a variant with no tables on disk has no
+# producer here and would abort the whole DAG with MissingInputException.  Enumerate only
+# the variants that are actually ingested; `refitWcs_2025` has never been built.  Build a
+# missing one with the product Snakefile (see the note where rule wfs_mktable used to be),
+# and it reappears here.
+def wfs_variants(ps):
+    defined = list(PARAM_SETS.get(ps, {}).get("wfs_collections", {}))
+    d = ps_dir(ps)
+    return [cw for cw in defined
+            if os.path.exists(f"output/wfs_ingest/{d}/{cw}/donuts.parquet")]
 def wfs_collection(ps, cw):                       # entry is a str or {collection, ...}
     e = PARAM_SETS[ps]["wfs_collections"][cw]
     return e["collection"] if isinstance(e, dict) else e
@@ -268,8 +279,6 @@ rule all:
         expand("output/correlations/{ps}/aberration_pairs.pdf", ps=PS_DIRS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
         expand("output/miw/{d}/study_radialbins.pdf", d=MI_DTAGS),
-        # in-focus corner-WFS ingestion (per ps, cwfs variant)
-        [f"output/wfs_ingest/{p}/{cw}/donuts.parquet" for p, cw in WFS_DVARIANTS],
         # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps, cwfs)
         [f"output/wfs_corner_compare/{p}/{cw}/wfs_corner_compare.pdf"
          for p, cw in WFS_DVARIANTS],
@@ -723,29 +732,17 @@ rule bounce:
 # Runs AFTER Phase 1 (needs the combined FAM visits/fits).  RSP-only (Butler).
 # ======================================================================
 
-# ---- ingest the in-focus cwfs aggregate tables (per param_set) ----
-rule wfs_mktable:
-    input:
-        visits = "output/fam_processing/{ps}/visits.parquet",
-        fits   = "output/fam_processing/{ps}/fits.parquet",   # FAM k=1 overlay in validation
-        fam_donuts = "output/fam_processing/{ps}/donuts.parquet",  # FAM median at WFS radius
-        script = "code/cwfs/run_wfs_mktable.py",
-        lib    = f"{WF_LIB}/intrinsics_lib.py",
-    output:
-        donuts = "output/wfs_ingest/{ps}/{cwfs}/donuts.parquet",
-        visits = "output/wfs_ingest/{ps}/{cwfs}/visits.parquet",
-        plot   = "output/wfs_ingest/{ps}/{cwfs}/wfs_mktable_validation.pdf",
-    params:
-        real_ps = lambda w: PS_BY_DIR[w.ps],
-        coord   = lambda w: coord(PS_BY_DIR[w.ps]),
-        coll    = lambda w: wfs_collection(PS_BY_DIR[w.ps], w.cwfs),   # rerun-trigger
-    resources: mem_mb=10000
-    log: "logs/{ps}.{cwfs}.wfs_mktable.log"
-    shell:
-        "python code/cwfs/run_wfs_mktable.py --param-set {params.real_ps} "
-        "--wfs-name {wildcards.cwfs} --coord-sys {params.coord} "
-        "--tables-dir output/fam_processing/{wildcards.ps} "
-        "--out-dir output/wfs_ingest/{wildcards.ps}/{wildcards.cwfs} > {log} 2>&1"
+# `rule wfs_mktable` moved to rubinwork/products/cwfs_tables/Snakefile in phase 3a of
+# notes/status/organization_plan.md, with the builder.  The study rules below still read
+# the ingested tables at the paths they always did —
+# output/wfs_ingest/<ps>/<cwfs>/donuts.parquet — so those are now inputs this Snakefile
+# does not build, exactly as the FAM tables became in phase 2.  Build them with:
+#
+#   snakemake -s rubinwork/products/cwfs_tables/Snakefile \
+#       --config variant=d12-refitWcs build=<YYYYMMDD> fam_build=<YYYYMMDD>
+#
+# The wfs_variants / wfs_collection / WFS_*DVARIANTS helpers stay: the study rules use
+# them to enumerate the cwfs variants.
 
 
 # ---- coadded FAM MIW-subtracted Z5-Z8 focal-plane maps (one PDF, per-term
