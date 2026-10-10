@@ -450,7 +450,7 @@ From the removed `todo.md` and `reorg_review_plan_2026-09.md`:
 |---|---|
 | outputs that predate a code change and need regenerating | `aos/docs/status/rerun_needed.md`; fold into the phase 2–3 rebuilds |
 | `blocks/` rerun (rules `build_table`, `night_table`, `plots`) after the ESS and DOF telemetry moves | phase 5, `blocks` |
-| `FocalPlaneInterpolator.py`: delete, or keep and demonstrate | Aaron; phase 1 (decides whether it moves into `rubinwork.common`) |
+| `FocalPlaneInterpolator.py`: delete, or keep | kept in `rubinwork.common`, fixed for numpy 2 (`0aea305`) |
 | empty topics: retire or document | phase 5 |
 | output provenance helper (old A1) | replaced by `manifest.py` and `run.json` |
 | per-study logbook (old B5) | replaced by `study.md` and `/wrap` |
