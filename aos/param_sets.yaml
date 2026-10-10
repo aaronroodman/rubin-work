@@ -1,191 +1,99 @@
-# Parameter sets for AOS FAM wavefront analysis
+# GENERATED FILE — DO NOT EDIT BY HAND.
 #
-# Each entry defines a dataset processed by Bryce Kalmbach's Butler pipelines.
-# Referenced by name in runs.yaml and by --param-set in run_mktable.py.
+# Source of truth: rubinwork/products/fam_tables/variants.yaml
+# Regenerate with:
 #
-# Fields:
-#   butler_repo:      Butler repository path
-#   fam_collections:  Butler collection name(s)
-#   fam_programs:     Science program names (test blocks)
-#   day_obs_min/max:  Date range covered by the collection (optional)
-#   dir_name:         Short name used for this param_set's OUTPUT DIRECTORY only
-#                     (optional; absent -> the entry key).  The key remains the
-#                     identity: it is what --param-set takes, what the
-#                     value_added DB rows carry, and what the frozen provenance
-#                     files resolve against.  Only the path component is
-#                     shortened, so output/correlations/danish_1_2_A_50_34_i/
-#                     stays readable while the key keeps its recorded form.
+#     python -m rubinwork.products.fam_tables.gen_param_sets
 #
-# Naming: new param_sets get a SHORT name — `danish_1_3`, not
-# `fam_danish_1_3_0_wep17_8_0_refitWCS_bin2x`.  The name appears in value_added DB rows
-# (fam_variant.fam_variant_id / .param_set / .fits_path, state_variant.intrinsic_ref) and
-# in every script and doc that names a param_set, so a long one is expensive to carry and
-# expensive to change.  Put the wep / donut_viz / bin detail in `description` and
-# `fam_collections`, which is where it is actually read from.
-# The two names below predate this convention and keep their long form: renaming them
-# would touch 71 references across five topics plus a DB UPDATE pass, and
-# fam_danish_1_0_wep17_3_0_bin2x is frozen provenance (see below).  They instead carry a
-# `dir_name`, which keeps the long key out of the output paths without renaming anything.
+# Every comment explaining these entries lives in variants.yaml. This file exists because
+# the external package lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets() opens
+# Path('param_sets.yaml') relative to the current working directory, and
+# aos/code/cwfs/run_wfs_mktable.py, run_wfs_fam_compare.py, run_wfs_refit_ensemble.py and
+# aos/code/fam_processing/check_chunk.py all call it. Editing this file instead of
+# variants.yaml means the next regeneration silently discards the change.
+#
+# The key is the long param_set name, which stays the identity for everything that
+# recorded it: the value-added DB rows, the frozen provenance files, and --param-set on
+# the command line. `dir_name` is the short output-directory name.
 
-# SUPERSEDED as a working param_set by fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x, but kept
-# and NOT renamed: this name is the recorded provenance of the local MIW build staged at
-# aos/calibration/miw/intrinsic_split_maps_v1.parquet (see its .provenance.yaml, tracked in
-# git) and of the two-epochs tech note (notes/aos-measured-intrinsics/provenance.md).  Both
-# must keep resolving to this collection.  The official MIW is Guillem's, built by
-# ts_intrinsic_wavefront and read from the Butler, not this one.  Its chunks are disabled in
-# snake_config.yaml and its output sits in output/archive/, so nothing rebuilds it.
 fam_danish_1_0_wep17_3_0_bin2x:
   dir_name: danish_1_0
-  description: "Mar-May 2026, /repo/main, Danish 1.0 wep 17.3.0 dv 4.2.0 bin x2 paired"
+  description: Mar-May 2026, /repo/main, Danish 1.0 wep 17.3.0 dv 4.2.0 bin x2 paired
   butler_repo: /repo/main
-  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
+  fam_programs:
+  - T278
+  - T381
+  - T492
+  - T539
+  - T614
+  - T710
+  - T717
+  - T720
+  - T724
   fam_collections:
-    - LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired
-  # In-focus corner-WFS (cwfs) collections paired with this FAM run; the in-focus
-  # exposure is FAM_seq+1 (triplet order intra, extra, in-focus; FAM key = extra).
-  # Map of descriptive-name -> Butler collection.  The name is filename-safe and
-  # becomes the output subdir  output/<ps>/wfs/<name>/ .  Add further CWFS
-  # variants as extra keys to repeat the WFS analysis side by side.
+  - LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired
   wfs_collections:
     wep17_3_0: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2
-  # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_0_wep17_3_0_bin2x
   day_obs_min: 20260315
   day_obs_max: 20260531
 
 fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   dir_name: danish_1_2
-  description: "Mar-May 2026, /repo/main, Danish 1.2.0_alpha wep 17.6.1 dv 4.5.0 bin x2 paired; refitWCS stamps"
+  description: Mar-May 2026 plus the 2025 reprocessing, /repo/main, Danish 1.2.0_alpha wep 17.6.1 dv 4.5.0
+    bin x2 paired; refitWCS stamps
   butler_repo: /repo/main
-  fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
+  fam_programs:
+  - T278
+  - T381
+  - T492
+  - T539
+  - T614
+  - T710
+  - T717
+  - T720
+  - T724
   fam_collections:
-    - LSSTCam/runs/aos/fam/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/paired/refitWcs
-  # In-focus corner-WFS (cwfs) collections: descriptive-name -> Butler collection.
-  # The name is filename-safe and becomes  output/<ps>/wfs/<name>/ .  Add further
-  # CWFS variants as extra keys to repeat the WFS analysis side by side, e.g.
-  #   noRefit: LSSTCam/runs/aos/fam_cwfs_triplet/.../bin_x2/noRefit
-  # Entry is either a bare collection string (in-focus corner WFS, seq = FAM
-  # extra + 1) or a dict {collection, seq_offset} when the aggregate is keyed to
-  # a different exposure of the triplet.  seq_offset is added to the FAM seq_num
-  # (the extra exposure): +1 = in-focus (default), 0 = extra, -1 = intra.
+  - LSSTCam/runs/aos/fam/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/paired/refitWcs
   wfs_collections:
-    refitWcs:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
-    # 2025 in-focus corners (Chris's 17.7.0 reprocessing).  SEPARATE collection from
-    # the 17.6.1 refitWcs above; it matches only the 2025 FAM chunks (2026 visits find
-    # no aggregate here, and the 17.6.1 refitWcs finds none for 2025).  In-focus
-    # exposure = FAM extra + 1 (seq_offset default +1, like refitWcs).  Lands in
-    # output/<ps>/wfs/refitWcs_2025/.
+    refitWcs: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
     refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
     paired_3mm:
-      # Bryce's paired 3mm-defocus corner donuts, wep 17.8.0 / donut_viz 4.7.0.
       collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_8_0/donut_viz_4_7_0/danish_v1_2_0/bin2x
-      seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
+      seq_offset: 0
     ai_donut:
-      # No joined aggregateAOSVisitTableRaw; run_wfs_mktable's aggregateZernikesRaw
-      # reader joins zk from aggregateZernikesRaw + positions from per-detector
-      # `zernikes` (field deg, x<->y swap -> CCS, R(rotTelPos) -> OCS).  seq_offset
-      # default +1 (in-focus fam+1).
-      collection:   LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
+      collection: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
       dataset_type: aggregateZernikesRaw
     tarts:
-      # TARTS in-focus analysis of the triplet (peterma2).  IN-FOCUS exposure =
-      # FAM seq + 1 (seq_offset default +1, like refitWcs).
-      # Use the Avg aggregate: aggregateAOSVisitTableAvg is TARTS's ML-combined
-      # per-detector value (one row per corner half-sensor; all 8 in the single
-      # in-focus exposure), verified == the `zernikes` label=='average' row (in
-      # zk_CCS; the aggregate also carries the rotated zk_OCS + thx_OCS/thy_OCS,
-      # all in microns).  reader: unpaired reads the singular-position table; with
-      # the Avg (one row/detector) no combine_offsets / defocused_only is needed.
-      # TARTS Noll (Z4-Z28) is remapped to the FAM Noll in run_wfs_mktable.
-      collection:   u/peterma2/tarts_fam_acq_stability_infocus
-      reader:       unpaired
+      collection: u/peterma2/tarts_fam_acq_stability_infocus
+      reader: unpaired
       dataset_type: aggregateAOSVisitTableAvg
-  # Collection name has slashes — set an explicit filename-safe phrase
   collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
   day_obs_min: 20260315
   day_obs_max: 20260531
-  
 
-# ---------------------------------------------------------------------------
-# 2025 FAM reprocessing — Danish 1.2.0, wep 17.7.0, dviz 4.7.0, bin x2, paired,
-# refitWcs (Chris's run).  The 17.7.0 base FAM collection spans 2025-04..2026-07,
-# so the 2025 FAM is folded into fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x as five
-# extra date-chunks (see snake_config.yaml), combining into that param_set's
-# output/<ps>/ table so the coadd runs over 2025+2026 together.  Those chunks carry
-# their own per-chunk collection + phrase + programs=[BLOCK,CWFS,AOSSEQUENCE]
-# (all 2243 2025 FAM visits), so no standalone param_set is needed here.
-#   FAM base : LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
-#
-# Canonical 2025 program groups (substring-matched; filter at coadd time via
-# run_fam_coadd_miw --programs, or when building a stable-only MIW/sidecar —
-# the MIW build has NO program filter, so its source must be stable-only):
-#   STABLE   (1204): T278 T381 T393 T395 T475 T492 T539 T559 T614 T717 T720 T724
-#   S-MATRIX (837) : T197 T377 T378 T379 T380 T503 T598 T606
-#   other    (202) : T417 T459 T460 T519 T609 T615 T626 T630 CWFS AOSSEQUENCE
-#
-# 2025 corner-WFS is a SEPARATE collection and wfs_collections is param_set-level,
-# so the merge above does NOT ingest 2025 CWFS.  To add it, extend this param_set's
-# wfs_collections with a 2025 variant (its ingestion just finds no match for 2026
-# visits, and the 2026 refitWcs variant finds none for 2025):
-#   refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Danish 1.3 "blitz" unpaired FAM (Josh Meyers).  The blitz pipeline writes one
-# donutBlitzFamResults table per visit holding one row per donut per EXPOSURE, so
-# both sides of focus sit in the same table, distinguished by its visit_id column.
-# code/fam_processing/run_blitz_mktable.py recasts that into the paired Danish 1.2
-# donuts/visits schema — joining the two sides on the Gaia source id and averaging
-# the wavefront — so the existing DZ fit runs on it unchanged.  Short lowercase
-# name per the convention above.  No wfs_collections: the sibling corner product
-# u/jmeyers3/t614_corner_unpaired is a different dataset type (donutBlitzResults)
-# that run_wfs_mktable cannot read yet.
-# ---------------------------------------------------------------------------
 danish_1_3_test:
   dir_name: danish_1_3_test
-  description: "Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED; default Batoid intrinsics from the dataset type"
+  description: Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED; default
+    Batoid intrinsics from the dataset type
   butler_repo: /repo/main
-  fam_programs: [T614]
+  fam_programs:
+  - T614
   fam_collections:
-    - u/jmeyers3/t614_fam_unpaired
-  # Collection name has slashes — set an explicit filename-safe phrase
+  - u/jmeyers3/t614_fam_unpaired
   collection_phrase: aos_fam_danish_1_3_blitz_unpaired
   day_obs_min: 20260315
   day_obs_max: 20260619
 
-# ---------------------------------------------------------------------------
-# The same Danish 1.3 blitz unpaired FAM retrieval on the v1000 PUPIL MODEL:
-# the Batoid as-built model plus the updated M1M3 measurements and the M1 outer
-# and inner baffles, whose M1Baffle1/M1Baffle2 ClearCircle surfaces at radius
-# 4.165 m sit 15 mm inside M1's 4.18 m rim.  Josh's suffix IS the pupil model.
-# Paired with danish_1_3_test above to measure what the baffle does to the MIW.
-#
-# Coverage is identical to danish_1_3_test — 966 donutBlitzFamResults over the
-# same 15 nights — so day_obs_min/max carry over unchanged.
-#
-# What differs from danish_1_3_test, measured from the Butler 2026-10-04 rather
-# than assumed.  Its collection u/jmeyers3/t614_fam_unpaired is the LEGACY pupil
-# model, but it is ALSO an older code version, so the pair is not a pure
-# pupil-model difference:
-#   pupil mask   policy:masks/LsstCamLegacy.yaml -> RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml
-#   danish       5037d9f3 -> ca41ae8c
-#   ts_wep       9651cd23 -> 639a89d9
-#   task label   donutBlitzFamTask -> donutBlitzFam (the config field maskModel
-#                did not exist in the older task at all)
-# Accepted deliberately: the code changes between those commits are small, so
-# the pupil model is the leading term.  u/jmeyers3/t614_fam_unpaired_legacy is
-# the airtight baseline if one is ever wanted — it differs from the v1000 run in
-# exactly one config line, maskModel, on the same danish commit — but it costs a
-# third build and is not needed for the leading-term result.
-# ---------------------------------------------------------------------------
 danish_1_3_v1000:
   dir_name: danish_1_3_v1000
-  description: "Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED, v1000 pupil model (as-built + M1M3 + M1 baffles); default Batoid intrinsics from the dataset type"
+  description: Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED, v1000
+    pupil model (as-built + M1M3 + M1 baffles); default Batoid intrinsics from the dataset type
   butler_repo: /repo/main
-  fam_programs: [T614]
+  fam_programs:
+  - T614
   fam_collections:
-    - u/jmeyers3/t614_fam_unpaired_v1000
-  # Collection name has slashes — set an explicit filename-safe phrase
+  - u/jmeyers3/t614_fam_unpaired_v1000
   collection_phrase: aos_fam_danish_1_3_blitz_unpaired_v1000
   day_obs_min: 20260315
   day_obs_max: 20260619

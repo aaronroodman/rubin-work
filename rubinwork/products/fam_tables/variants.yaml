@@ -8,11 +8,7 @@
 # the frozen provenance files, and `--param-set` on the command line.  Keeping both
 # means registering a build does not rename anything.
 #
-# Only the in-use variants are registered.  `danish_1_0` (param_set
-# fam_danish_1_0_wep17_3_0_bin2x) is obsolete: it is disabled in aos/snake_config.yaml and
-# its output sits in aos/output/archive/.  It is kept in param_sets.yaml because it is the
-# recorded provenance of the staged v1 MIW and the two-epochs tech note, so it must keep
-# resolving there; it is not a product build.  `danish_1_1_1` and
+# Only the in-use variants are registered.  `danish_1_1_1` and
 # `danish_1_2_0_wep17_7_0_2025` are not param_sets at all — the first is gone from
 # param_sets.yaml, and the second is a per-chunk `phrase` of the five 2025 chunks that
 # fold into danish_1_2.
@@ -21,9 +17,91 @@
 #   snakemake -- mktable + fit + combine_* + attach_telemetry, per date chunk
 #   blitz     -- run_blitz_mktable recasts unpaired donutBlitzFamResults into this
 #                schema and writes the combined tables directly, so there are no chunks
+#
+# registered: false means "emit into the generated param_sets.yaml, but this is not a
+# product build".  Used only by danish_1_0 — see its entry.
+#
+# ---------------------------------------------------------------------------
+# THIS FILE IS THE SOURCE OF TRUTH.  aos/param_sets.yaml is GENERATED from it:
+#
+#     python -m rubinwork.products.fam_tables.gen_param_sets
+#
+# Edit this file, never the generated one.  Decided 2026-10-10 (Aaron): the FAM
+# intra/extra pair and the in-focus corner-WFS (CWFS) member of the same triplet are one
+# fact about the observation, so both halves live here rather than being split between
+# this file and a phase-3 cwfs_tables/variants.yaml.  The measured intrinsic wavefront
+# (MIW) is built from the FAM tables alone, so ts_intrinsic_wavefront needs only the FAM
+# half.  Phase-3 cwfs_tables reads `wfs_collections` through variant_config().
+#
+# aos/param_sets.yaml cannot simply be deleted, now or in phase 5: the EXTERNAL package
+# lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets() opens
+# Path('param_sets.yaml') relative to the current working directory, and
+# aos/code/cwfs/run_wfs_mktable.py, run_wfs_fam_compare.py, run_wfs_refit_ensemble.py and
+# aos/code/fam_processing/check_chunk.py all call it.
+# ---------------------------------------------------------------------------
+#
+# wfs_collections: descriptive-name -> in-focus corner-WFS (CWFS) Butler collection.
+# The name is filename-safe and becomes the output subdir  output/<ps>/wfs/<name>/ , so
+# several CWFS variants can be analysed side by side.  Triplet order is intra, extra,
+# in-focus and the FAM key is the EXTRA exposure, so the in-focus exposure is FAM_seq+1.
+# An entry is either a bare collection string or a dict carrying:
+#   seq_offset   added to the FAM seq_num (the extra exposure): +1 = in-focus (the
+#                default), 0 = extra, -1 = intra
+#   dataset_type aggregate to read, when it is not aggregateAOSVisitTableRaw
+#   reader       `unpaired` to read the singular-position table
 
 variants:
 
+  # ---------------------------------------------------------------------------
+  # SUPERSEDED as a working param_set by danish_1_2, but kept and NOT renamed: the long
+  # param_set name below is the recorded provenance of the local MIW build staged at
+  # aos/calibration/miw/intrinsic_split_maps_v1.parquet (see its .provenance.yaml, tracked
+  # in git) and of the two-epochs tech note (notes/aos-measured-intrinsics/provenance.md).
+  # Both must keep resolving to this collection.  The official MIW is Guillem's, built by
+  # ts_intrinsic_wavefront and read from the Butler, not this one.  Its chunks are disabled
+  # in aos/snake_config.yaml and its output sits in aos/output/archive/, so nothing
+  # rebuilds it.
+  #
+  # registered: false — it is emitted into the generated param_sets.yaml so the frozen
+  # provenance keeps resolving, but it is NOT a product build and variants()/load() do not
+  # return it.
+  # ---------------------------------------------------------------------------
+  danish_1_0:
+    param_set: fam_danish_1_0_wep17_3_0_bin2x
+    registered: false
+    builder: snakemake
+    description: >-
+      Mar-May 2026, /repo/main, Danish 1.0 wep 17.3.0 dv 4.2.0 bin x2 paired
+    butler_repo: /repo/main
+    coord_sys: OCS
+    fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
+    fam_collections:
+      - LSSTCam/runs/aos/fam/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2/paired
+    collection_phrase: aos_fam_danish_1_0_wep17_3_0_bin2x
+    day_obs_min: 20260315
+    day_obs_max: 20260531
+    wfs_collections:
+      wep17_3_0: LSSTCam/runs/aos/cwfs/danish_1_0/wep_17_3_0/dv_4_2_0/bin_x2
+
+  # ---------------------------------------------------------------------------
+  # danish_1_2 folds in the 2025 FAM reprocessing (Danish 1.2.0, wep 17.7.0, dviz 4.7.0,
+  # bin x2, paired, refitWcs — Chris's run).  The 17.7.0 base FAM collection spans
+  # 2025-04..2026-07, so the 2025 FAM arrives as five extra date chunks below rather than
+  # a standalone variant; they carry their own collection, phrase and
+  # programs: [BLOCK, CWFS, AOSSEQUENCE] (all 2243 2025 FAM visits) and combine into this
+  # variant's tables so the coadd runs over 2025+2026 together.
+  #
+  # Canonical 2025 program groups (substring-matched; filter at coadd time via
+  # run_fam_coadd_miw --programs, or when building a stable-only MIW/sidecar — the MIW
+  # build has NO program filter, so its source must be stable-only):
+  #   STABLE   (1204): T278 T381 T393 T395 T475 T492 T539 T559 T614 T717 T720 T724
+  #   S-MATRIX (837) : T197 T377 T378 T379 T380 T503 T598 T606
+  #   other    (202) : T417 T459 T460 T519 T609 T615 T626 T630 CWFS AOSSEQUENCE
+  #
+  # 2025 corner-WFS is a SEPARATE collection and wfs_collections is variant-level, so the
+  # 2025 chunks do NOT pull in 2025 CWFS by themselves — that is what the refitWcs_2025
+  # entry in wfs_collections is for.
+  # ---------------------------------------------------------------------------
   danish_1_2:
     param_set: fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
     builder: snakemake
@@ -38,6 +116,34 @@ variants:
     collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
     day_obs_min: 20260315
     day_obs_max: 20260531
+    wfs_collections:
+      refitWcs: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs
+      # 2025 in-focus corners (Chris's 17.7.0 reprocessing).  A SEPARATE collection from
+      # the 17.6.1 refitWcs above: it matches only the 2025 FAM chunks, and 2026 visits
+      # find no aggregate here just as the 17.6.1 refitWcs finds none for 2025.  In-focus
+      # exposure = FAM extra + 1, so seq_offset takes its +1 default.
+      refitWcs_2025: LSSTCam/runs/aos/cwfs/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025
+      paired_3mm:
+        # Bryce's paired 3mm-defocus corner donuts, wep 17.8.0 / donut_viz 4.7.0.
+        collection: LSSTCam/runs/aos/paired_cwfs_3mm_donuts/wep_v17_8_0/donut_viz_4_7_0/danish_v1_2_0/bin2x
+        seq_offset: 0   # aggregate keyed to the FAM extra exposure (= FAM seq), not in-focus fam+1
+      ai_donut:
+        # No joined aggregateAOSVisitTableRaw, so run_wfs_mktable's aggregateZernikesRaw
+        # reader joins zk from aggregateZernikesRaw with positions from the per-detector
+        # `zernikes` (field deg, x<->y swap -> CCS, then R(rotTelPos) -> OCS).
+        collection: LSSTCam/runs/aos/fam_cwfs_triplet/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/ai_donut/binned
+        dataset_type: aggregateZernikesRaw
+      tarts:
+        # TARTS in-focus analysis of the triplet (peterma2).  Uses the Avg aggregate:
+        # aggregateAOSVisitTableAvg is TARTS's ML-combined per-detector value, one row per
+        # corner half-sensor with all 8 in the single in-focus exposure, verified equal to
+        # the `zernikes` label=='average' row in zk_CCS.  The aggregate also carries the
+        # rotated zk_OCS and thx_OCS/thy_OCS, all in microns.  With one row per detector
+        # the unpaired reader needs no combine_offsets or defocused_only.  TARTS Noll
+        # (Z4-Z28) is remapped to the FAM Noll in run_wfs_mktable.
+        collection: u/peterma2/tarts_fam_acq_stability_infocus
+        reader: unpaired
+        dataset_type: aggregateAOSVisitTableAvg
     # Date chunks, from aos/snake_config.yaml.  A chunk may override the collection,
     # the Butler repo and the program filter; the three bare ranges read the
     # param_set-level 17.6.1 collection.  All chunks combine into one set of tables.
@@ -76,6 +182,18 @@ variants:
         phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
         programs: [BLOCK, CWFS, AOSSEQUENCE]
 
+  # ---------------------------------------------------------------------------
+  # Danish 1.3 "blitz" unpaired FAM (Josh Meyers).  The blitz pipeline writes one
+  # donutBlitzFamResults table per visit holding one row per donut per EXPOSURE, so both
+  # sides of focus sit in the same table, distinguished by its visit_id column.
+  # run_blitz_mktable.py recasts that into the paired Danish 1.2 donuts/visits schema —
+  # joining the two sides on the Gaia source id and averaging the wavefront — so the
+  # existing DZ fit runs on it unchanged.
+  #
+  # No wfs_collections for either 1.3 variant: the sibling corner product
+  # u/jmeyers3/t614_corner_unpaired is a different dataset type (donutBlitzResults) that
+  # run_wfs_mktable cannot read yet.
+  # ---------------------------------------------------------------------------
   danish_1_3_test:
     param_set: danish_1_3_test
     builder: blitz
@@ -91,6 +209,30 @@ variants:
     day_obs_min: 20260315
     day_obs_max: 20260619
 
+  # ---------------------------------------------------------------------------
+  # The same blitz unpaired FAM retrieval on the v1000 PUPIL MODEL: the Batoid as-built
+  # model plus the updated M1M3 measurements and the M1 outer and inner baffles, whose
+  # M1Baffle1/M1Baffle2 ClearCircle surfaces at radius 4.165 m sit 15 mm inside M1's
+  # 4.18 m rim.  Josh's collection suffix IS the pupil model.  Paired with
+  # danish_1_3_test to measure what the baffle does to the MIW.
+  #
+  # Coverage is identical to danish_1_3_test — 966 donutBlitzFamResults over the same 15
+  # nights — so day_obs_min/max carry over unchanged.
+  #
+  # What differs from danish_1_3_test, measured from the Butler 2026-10-04 rather than
+  # assumed.  danish_1_3_test's collection is the LEGACY pupil model but is ALSO an older
+  # code version, so the pair is not a pure pupil-model difference:
+  #   pupil mask   policy:masks/LsstCamLegacy.yaml -> RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml
+  #   danish       5037d9f3 -> ca41ae8c
+  #   ts_wep       9651cd23 -> 639a89d9
+  #   task label   donutBlitzFamTask -> donutBlitzFam (the config field maskModel did not
+  #                exist in the older task at all)
+  # Accepted deliberately: the code changes between those commits are small, so the pupil
+  # model is the leading term.  u/jmeyers3/t614_fam_unpaired_legacy is the airtight
+  # baseline if one is ever wanted — it differs from the v1000 run in exactly one config
+  # line, maskModel, on the same danish commit — but it costs a third build and is not
+  # needed for the leading-term result.
+  # ---------------------------------------------------------------------------
   danish_1_3_v1000:
     param_set: danish_1_3_v1000
     builder: blitz

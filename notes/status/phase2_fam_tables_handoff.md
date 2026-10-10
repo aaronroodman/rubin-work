@@ -241,7 +241,53 @@ rebuild those **219 visits through `mktable`** (212 → 214 jobs, the extra bein
 is not rebuilt — `mktable` is deliberately not re-triggered by code edits, and phase 5
 retires the old tree. Do **not** run `snakemake` against the old tree to "fix" this.
 
-### A3 — one source of truth for variants: decided, not yet implemented (2026-10-10)
+### A3 — one source of truth for variants: DONE (2026-10-10)
+
+Implemented as decided. `rubinwork/products/fam_tables/variants.yaml` is the source of
+truth for both halves, and `aos/param_sets.yaml` is generated from it by
+`rubinwork/products/fam_tables/gen_param_sets.py`:
+
+```bash
+python -m rubinwork.products.fam_tables.gen_param_sets          # write
+python -m rubinwork.products.fam_tables.gen_param_sets --check   # exit 1 if stale
+```
+
+**Verification: `snakemake -n` from `aos/` is byte-identical before and after** — 214
+jobs, 427 rule+output lines, `diff` empty on both the job-count table and the full
+rule/output list. (The baseline is 214, not the 212 quoted earlier, because
+`snake_config.yaml` now carries the A2-narrowed chunk.)
+
+One intended data difference: `danish_1_2`'s `description` gains "plus the 2025
+reprocessing", which `variants.yaml` already said and the old `param_sets.yaml` did not.
+Safe — `intrinsics_lib.py:110` explicitly strips `description` as "not a pipeline
+parameter", and no other code reads it. Every other field of all four param_sets is
+unchanged, compared by parsing both files.
+
+Checked against the real consumers, not just the tests: the external
+`intrinsics_lib.load_param_sets()` returns all four param_sets and all five
+`wfs_collections` entries, and `output_paths.ps_dir()` resolves every `dir_name`
+unchanged.
+
+What moved into `variants.yaml`: the five `wfs_collections` entries with their
+`seq_offset` / `dataset_type` / `reader` fields, the `danish_1_0` entry (carrying
+`registered: false`), and the prose — the frozen-provenance warning, the 2025 program
+groups, the blitz recast explanation and the v1000-vs-legacy pupil-model comparison.
+`variants.yaml` grew by 152 lines; the generated `param_sets.yaml` shrank from 191 to 99.
+
+`registered: false` is the "emit but do not register" flag: `variants()` hides
+`danish_1_0` while `variant_config('danish_1_0')` still resolves it, so the frozen MIW
+provenance keeps working without `danish_1_0` appearing as a product build.
+`variants(registered_only=False)` returns it.
+
+Tests: **21 pass** (18 before, plus staleness of the generated file, the unregistered
+variant, and the survival of the WFS half with its per-entry fields).
+
+Note this subsumes the A2 `snake_config.yaml` question only partly: chunks still live in
+`snake_config.yaml`, not in `variants.yaml`. Generating those too is a later step — the
+`chunks` key in `variants.yaml` and the one in `snake_config.yaml` are kept in agreement
+by `test_chunks_match_snake_config`.
+
+### A3 — the original analysis, for the record
 
 **Decision (Aaron, 2026-10-10): `rubinwork/products/fam_tables/variants.yaml` carries both
 the FAM and the WFS/CWFS information, and `aos/param_sets.yaml` is generated from it.**

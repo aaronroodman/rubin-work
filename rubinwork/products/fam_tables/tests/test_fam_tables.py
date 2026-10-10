@@ -214,3 +214,40 @@ def test_product_name_is_registered_under(data_root):
     assert ft_load.PRODUCT == "fam_tables"
     listed = catalog.list_products("fam_tables")
     assert [b["variant"] for b in listed] == ["danish_1_2"]
+
+
+# ---- generated aos/param_sets.yaml ---------------------------------------------
+
+def test_param_sets_yaml_is_up_to_date():
+    """aos/param_sets.yaml matches what variants.yaml generates.
+
+    It is a generated view of variants.yaml, so a hand edit to it, or a change to
+    variants.yaml without regenerating, would silently diverge.
+    """
+    from rubinwork.products.fam_tables import gen_param_sets
+    path = gen_param_sets.default_path()
+    if not path.exists():
+        pytest.skip(f"{path} not present")
+    assert path.read_text() == gen_param_sets.render(), (
+        "aos/param_sets.yaml is stale; regenerate with "
+        "python -m rubinwork.products.fam_tables.gen_param_sets")
+
+
+def test_unregistered_variant_is_hidden_but_resolvable():
+    """danish_1_0 is emitted for frozen provenance but is not a product build."""
+    assert "danish_1_0" not in fam_tables.variants()
+    assert "danish_1_0" in fam_tables.reader.variants(registered_only=False)
+    cfg = fam_tables.variant_config("danish_1_0")
+    assert cfg["param_set"] == "fam_danish_1_0_wep17_3_0_bin2x"
+
+
+def test_generated_param_sets_carry_the_wfs_half():
+    """The FAM/CWFS triplet link survives generation, with its per-entry fields."""
+    import yaml
+    from rubinwork.products.fam_tables import gen_param_sets
+    doc = yaml.safe_load(gen_param_sets.render())
+    wfs = doc["fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x"]["wfs_collections"]
+    assert set(wfs) == {"refitWcs", "refitWcs_2025", "paired_3mm", "ai_donut", "tarts"}
+    assert wfs["paired_3mm"]["seq_offset"] == 0
+    assert wfs["ai_donut"]["dataset_type"] == "aggregateZernikesRaw"
+    assert wfs["tarts"]["reader"] == "unpaired"

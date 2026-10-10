@@ -23,8 +23,15 @@ def _variants_doc():
         return yaml.safe_load(f) or {}
 
 
-def variants():
+def variants(registered_only=True):
     """Names of every defined variant.
+
+    Parameters
+    ----------
+    registered_only : `bool`, optional
+        Omit entries carrying ``registered: false`` (the default). Those are
+        emitted into the generated ``aos/param_sets.yaml`` so recorded
+        provenance keeps resolving, but they are not product builds.
 
     Returns
     -------
@@ -32,7 +39,11 @@ def variants():
         Variant names, sorted. A defined variant need not have a build on disk;
         use `rubinwork.products.catalog.list_products` for what is built.
     """
-    return sorted((_variants_doc().get("variants") or {}))
+    entries = _variants_doc().get("variants") or {}
+    if registered_only:
+        entries = {k: v for k, v in entries.items()
+                   if (v or {}).get("registered", True)}
+    return sorted(entries)
 
 
 def variant_config(variant):
