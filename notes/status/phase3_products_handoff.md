@@ -18,23 +18,148 @@ comparison, manifest.
 | commit | what |
 |---|---|
 | `f7985db` | `rubinwork/products/fam_tables/refbuild/check_collections.py`, the 3c pre-flight |
-| (this file) | the 3c rebuild-feasibility results below |
-
-Nothing in phase 3 proper has started. The results below are **queries only** — no build
-ran, no `variants.yaml` entry changed, and the old output trees were not touched.
+| `9392f9b` | the 3c rebuild-feasibility results below |
+| (step 1) | `cwfs_tables` reference build with the unmoved code, below |
 
 ## Next concrete action
 
-**Phase 3a, `cwfs_tables`.** The first product to move after the `fam_tables` pilot. Its
-five variants are the `wfs_collections` entries of `fam_tables/variants.yaml`, all five of
-which resolve with content (table below). Open question, carried from phase 2: whether
-they are promoted into a `cwfs_tables/variants.yaml` of their own or stay in
-`fam_tables/variants.yaml` and are only *read* from there — the FAM/CWFS triplet link must
-keep a single owner either way.
+**Phase 3a, `cwfs_tables`, step 2: the move.** Step 1 (the reference build) is done; see
+"3a step 1" below for the command and the counts.
 
-Follow phase 2's shape: a small reference build with the unmoved code, the `git mv` plus
-shims, the zero-tolerance comparison, `snakemake -n` job-list identity, the import smoke
-test, then the manifest.
+## 3a, `cwfs_tables` — the move
+
+### Scope, agreed 2026-10-10
+
+Moves: `aos/code/cwfs/run_wfs_mktable.py` only, to
+`rubinwork/products/cwfs_tables/builders/`, with a shim at the old path. Snakefile rule
+`wfs_mktable` only. The other five `aos/code/cwfs/` scripts (`corner_compare`,
+`dof_compare`, `mimic`, `refit_ensemble`, `fam_compare`) are the CWFS-vs-FAM **study** and
+stay; `wfs_intrinsic_sidecar` belongs to the `miw` product and is left alone.
+
+Everything that reads the CWFS tables keeps reading the **old tree**
+(`aos/output/wfs_ingest/<P>/<cwfs>/`) until phase 5. Each consumer reaches them through a
+`--wfs-dir` argument or a literal old-tree path, and none of them imports
+`run_wfs_mktable`, so the move cannot break them: `rule all`, `wfs_corner_compare`,
+`wfs_dof_compare` and `wfs_intrinsic_sidecar` in `aos/Snakefile`; `run_wfs_fam_compare.py`;
+`run_wfs_corner_compare.py` and `run_wfs_dof_compare.py` (both via `--wfs-dir`);
+`aos/code/infra/migrate_output_layout.py`; `aos/snippets.ipynb`. As in phase 2, the three
+table targets become inputs `aos/Snakefile` no longer builds.
+
+### Variants: six entries, `aos/param_sets.yaml` stays byte-identical
+
+`cwfs_tables/variants.yaml` owns them, each naming its `fam_variant` and carrying the
+`collection`, `dataset_type`, `reader` and `seq_offset` fields that were in
+`fam_tables/variants.yaml` `wfs_collections`. `fam_tables/variants.yaml` drops
+`wfs_collections`; `gen_param_sets.py` merges both files back into `aos/param_sets.yaml`.
+
+| variant | fam_variant | registered | fields beyond `collection` |
+|---|---|---|---|
+| `d12-refitWcs` | `danish_1_2` | true | — |
+| `d12-refitWcs_2025` | `danish_1_2` | true | — |
+| `d12-paired_3mm` | `danish_1_2` | true | `seq_offset: 0` |
+| `d12-ai_donut` | `danish_1_2` | true | `dataset_type: aggregateZernikesRaw` |
+| `d12-tarts` | `danish_1_2` | true | `reader: unpaired`, `dataset_type: aggregateAOSVisitTableAvg` |
+| `d10-wep17_3_0` | `danish_1_0` | **false** | provenance only; never built |
+
+`aos/param_sets.yaml` is md5 `0f72da651cf9319cc283754c614051fd` before the move and must
+stay so — that is the acceptance test, checked with `--check` and a byte `diff`.
+
+**Two decisions deferred to 3b**, both Aaron's calls on 2026-10-10:
+
+1. **`d12-refitWcs_2025` folds into `d12-refitWcs`.** They are the same variant; the 2025
+   visits just need a different collection, exactly as the FAM `danish_1_2` carries a
+   per-chunk collection override for its 2025 chunks. The two CWFS collections are
+   disjoint in `day_obs` (`refitWcs` 20260315..20260513, `refitWcs_2025`
+   20250415..20251231), so a date-keyed collection list is the shape. Deferred because
+   `run_wfs_mktable` opens **one** `Butler(repo, collections=...)` per `--wfs-name`, so
+   merging them is a builder change, not an imports-and-paths move; 3a stays mechanical.
+2. **`danish_1_0` is retired whole, both halves.** Dropping only the CWFS half would make
+   the generated `aos/param_sets.yaml` lose two lines, and dropping the FAM half in 3a
+   would break four live things: the staged-MIW provenance chain
+   (`aos/calibration/miw/intrinsic_split_maps_v1.provenance.yaml`, `stage_miw.py`,
+   `calibration/README.md`), the `aos-measured-intrinsics` tech note's
+   `make_figures.py:23` and `provenance.md:5`, a **live** `overrides:` block at
+   `aos/analysis_config.yaml:148` keyed on the long param_set, and
+   `test_fam_tables.py:263`. That is a `fam_tables`/`miw` change with its own before/after
+   check. So `d10-wep17_3_0` is carried as `registered: false` for now.
+
+### 3a step 1 — reference build with the unmoved code: DONE
+
+Built at commit `9392f9b` (clean tree), interactive on `sdfiana`, **65.3 s wall clock**.
+
+Variant `refitWcs_2025` under param_set `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`, one
+night, `day_obs = 20251126`. That variant has **no old-tree build**, so the reference
+cannot touch one.
+
+Input: one night of the phase-2 FAM reference, staged by
+`rubinwork/products/cwfs_tables/refbuild/stage_fam_night.py` because `run_wfs_mktable` has
+no `--day-obs` filter and would otherwise walk all 53 visits of the chunk:
+
+```bash
+python -m rubinwork.products.cwfs_tables.refbuild.stage_fam_night \
+    --reference /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/danish_1_2 \
+    --day-obs 20251126 \
+    --out /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/cwfs_tables/_fam_20251126
+```
+
+Staged FAM slice: `visits.parquet` 6 rows x 600 columns, `fits.parquet` 5 rows x 653
+columns, `donuts.parquet` 17,019 rows x 48 columns (all counts dimensionless).
+
+**Night choice matters.** 20251116, the chunk's first night, has 6 FAM visits but **0**
+`fits.parquet` rows — the DZ fit's `median_blur_arcsec <= 1.2 arcsec` quality cut drops all
+of them — which makes the validation plot's FAM k=1 overlay all-NaN and the reference
+degenerate. 20251126 is the smallest night that does not. The staging script warns on an
+empty `fits.parquet`.
+
+The build command, run from `aos/` (the unmoved script's own path):
+
+```bash
+cd ~/notebooks/rubin-work/aos && python code/cwfs/run_wfs_mktable.py \
+    --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+    --wfs-name refitWcs_2025 \
+    --coord-sys OCS \
+    --tables-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/cwfs_tables/_fam_20251126 \
+    --out-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/cwfs_tables/refitWcs_2025_20251126
+```
+
+Output, in `_phase2_refbuild/cwfs_tables/refitWcs_2025_20251126/`:
+
+| file | rows | columns | bytes |
+|---|---|---|---|
+| `donuts.parquet` | 171 | 20 | 95,409 |
+| `visits.parquet` | 6 | 8 | 6,000 |
+| `wfs_mktable_validation.pdf` | — | — | 106,605 |
+
+All 6 FAM visits found an in-focus CWFS table (0 missing). Per-visit donut counts
+(count, dimensionless): 28, 28, 26, 36, 21, 32, band `i` throughout.
+`donuts.meta['nollIndices']` is the 21-term Noll set
+`[4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,22,23,24,25,26]`.
+
+**Comparison key, verified unique.** `run_wfs_mktable` writes **no donut-id column**, so
+the `fam_tables` key `(day_obs, seq_num, detector, extra_donut_id)` does not exist here.
+The CWFS key is **`(day_obs, seq_num, detector, thx_OCS, thy_OCS)`**, where `thx/thy_OCS`
+are field angles in radians (OCS). Uniqueness, checked on the reference and on all three
+built old-tree variants (unique rows of total rows, counts dimensionless):
+
+| table | `day_obs, seq_num, detector` | plus `thx_OCS, thy_OCS` |
+|---|---|---|
+| reference `refitWcs_2025` (171 rows) | — | **171 / 171 unique** |
+| old-tree `refitWcs` (34,631 rows) | 4,485 — not unique | **34,631 / 34,631 unique** |
+| old-tree `paired_3mm` (1,223 rows) | 515 — not unique | **1,223 / 1,223 unique** |
+| old-tree `tarts` (7,813 rows) | 7,813 — unique | **7,813 / 7,813 unique** |
+
+The detector-only key fails on the paired variants (several donuts per corner sensor per
+exposure). Adding the centroids also works, but `tarts` has no centroid columns, so the
+field-angle key is the only one that covers every variant. `visits.parquet` keys on
+`(day_obs, seq_num)`. The comparison asserts uniqueness so a future variant that breaks it
+fails loudly instead of mis-aligning.
+
+The validation PDF is **not** byte-comparable (matplotlib embeds a creation timestamp), so
+step 4 compares the two parquet tables at zero tolerance and checks only that the PDF is
+produced at a comparable size.
+
+`rotator_angle` and `alt` in the CWFS tables are **copied from the FAM `visits.parquet`**,
+not re-derived, so the A1 `rotTelPos` non-reproducibility cannot affect this comparison.
 
 ## 3c rebuild feasibility, measured 2026-10-10
 
