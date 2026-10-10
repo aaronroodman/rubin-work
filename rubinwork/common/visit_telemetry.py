@@ -15,7 +15,7 @@ Import from the repo root::
 
     import sys, pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))
-    from common.visit_telemetry import fetch_wind, fetch_camera
+    from rubinwork.common.visit_telemetry import fetch_wind, fetch_camera
 """
 import pathlib
 import sys

@@ -83,13 +83,18 @@ def import_one(path, timeout=120):
         ``detail`` is the first line of the exception message, or ``""``.
     """
     full = REPO_ROOT / path
-    code = (
-        "import importlib.util, sys\n"
-        f"spec = importlib.util.spec_from_file_location('_smoke', r'{full}')\n"
-        "mod = importlib.util.module_from_spec(spec)\n"
-        "sys.modules['_smoke'] = mod\n"
-        "spec.loader.exec_module(mod)\n"
-    )
+    if path.parts[0] == "rubinwork":
+        # A package module: import it by dotted name so relative imports work.
+        dotted = ".".join(path.with_suffix("").parts)
+        code = f"import {dotted}\n"
+    else:
+        code = (
+            "import importlib.util, sys\n"
+            f"spec = importlib.util.spec_from_file_location('_smoke', r'{full}')\n"
+            "mod = importlib.util.module_from_spec(spec)\n"
+            "sys.modules['_smoke'] = mod\n"
+            "spec.loader.exec_module(mod)\n"
+        )
     try:
         proc = subprocess.run(
             [sys.executable, "-c", code],
@@ -143,7 +148,7 @@ def compare(before_path, after_path):
         print(f"n_changed = {len(changed)} (count, dimensionless)")
         for mod, b, a in changed:
             print(f"  {mod}\n      before: {b}\n      after:  {a}")
-            if a not in ("ok", b):
+            if a not in ("ok", b, "<absent>"):
                 print(f"      {after[mod]['detail']}")
     return len(changed)
 

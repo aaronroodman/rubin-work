@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 from astropy.table import Table
-from common.telemetry_clients import make_consdb_client
+from .telemetry_clients import make_consdb_client
 
 __all__ = ["PSFMomentsTable"]
 

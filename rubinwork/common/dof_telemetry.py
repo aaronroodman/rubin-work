@@ -55,7 +55,7 @@ N_DOF = 50
 # Client construction, endpoint selection and token handling live in
 # common/telemetry_clients.py. The names are used throughout this module and re-exported
 # unchanged, so that the aos/code/aos_trim.py shim can keep offering the surface untracked
-# notebooks expect. New code should take them from common.telemetry_clients directly.
+# notebooks expect. New code should take them from rubinwork.common.telemetry_clients directly.
 from .telemetry_clients import (
     IN_POD_CONSDB_URL, EXTERNAL_CONSDB_URL, DEFAULT_CONSDB_URL,
     DEFAULT_EXPOSURE_TABLE, in_rsp, make_efd_client, make_consdb_client, efd_window,

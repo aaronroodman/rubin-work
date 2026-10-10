@@ -7,11 +7,9 @@ and a time window in which to query. Before this module those were reimplemented
 topic — 16 files constructed their own client, 12 hardcoded a ConsDB URL literal in one of
 two forms, and 5 reimplemented token-file handling.
 
-Import from the repo root::
+Import it as::
 
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))
-    from common.telemetry_clients import make_consdb_client, make_efd_client
+    from rubinwork.common.telemetry_clients import make_consdb_client, make_efd_client
 
 Notes
 -----

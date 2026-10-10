@@ -20,7 +20,7 @@ Import from the repo root::
 
     import sys, pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))
-    from common.ess_telemetry import fetch_thermal_telemetry_sync
+    from rubinwork.common.ess_telemetry import fetch_thermal_telemetry_sync
 
 The core functions are ``async`` (they await the ``lsst_efd_client`` EfdClient);
 ``*_sync`` wrappers are provided for notebooks and sync callers.
