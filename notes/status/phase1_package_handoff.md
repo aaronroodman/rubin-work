@@ -14,42 +14,26 @@ approaches and the smoke-test numbers are recorded in the Phase 1 section of
 | `ee89a96` | `common/` → `rubinwork/common/`, shim at `common/` |
 | `30502ae` | `aos_state`, `open_loop`, 3 smatrix libraries → `rubinwork/`, shims at old paths |
 | `547fc63` | `rubinwork/products/{catalog,manifest}.py`, 26 tests passing |
-| `2918a2b` | `rubinwork/common/scripts/check_batch_import.sl` (not submitted) |
+| `2918a2b` | `rubinwork/common/scripts/check_batch_import.sl` (run as job 40395908, pass) |
 | `cee055e` | `CLAUDE.md` points at the package |
 | `4f0dffb` | Phase 1 marked done in the plan |
 
 Working tree clean, pushed to `origin/main`.
 
-## Next concrete actions, for Aaron
+## Install verified in three of four environments
 
-**1. RSP notebook check.** One cell:
+- **USDF terminal** — `import rubinwork, rubinwork.common, rubinwork.products.catalog`.
+- **RSP notebook** — the same imports in a cell. Note the path prints as
+  `/home/r/roodman/...`, the pod's alias for `/sdf/home/r/roodman/...`; the same
+  checkout, resolved at import time, so nothing to fix.
+- **Slurm batch node** — job 40395908 on `sdfmilan257`,
+  `RESULT: pass (package and shim both import on the batch node)`, log
+  `logs/rubinwork_import_40395908.log`. It also exercised the `common` and `aos_state`
+  shims there.
 
-```python
-import rubinwork, rubinwork.common, rubinwork.products.catalog; from rubinwork.products import catalog; print(rubinwork.__file__, catalog.data_root(), catalog.list_products())
-```
+## Next concrete action, for Aaron
 
-Expected: the repo path, `/sdf/group/rubin/u/roodman/LSST/rubin-work`, and `[]`.
-If it raises `ModuleNotFoundError`, the notebook kernel is a different environment than
-the terminal; run `%pip install --user -e /sdf/home/r/roodman/notebooks/rubin-work` in a
-cell once and restart the kernel.
-
-**2. Batch-node check.** Submit from an s3df node (`slacrd`), not an RSP pod:
-
-```bash
-cd ~/notebooks/rubin-work && \
-sbatch rubinwork/common/scripts/check_batch_import.sl
-```
-
-Monitor it:
-
-```bash
-squeue -u roodman && \
-tail -f "$(ls -t ~/notebooks/rubin-work/logs/rubinwork_import_*.log | head -1)"
-```
-
-Expected last line: `RESULT: pass (package and shim both import on the batch node)`.
-
-**3. Laptop install**, when next on the laptop:
+**Laptop install**, when next on the laptop — the only part of step 5 still open:
 
 ```bash
 cd ~/notebooks/rubin-work && \

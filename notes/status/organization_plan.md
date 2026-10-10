@@ -302,10 +302,10 @@ sessions until its phase is pushed (see `notes/status/parallel_claude_sessions.m
    both empty; `catalog.list_products()` reads them and returns `[]`.
 5. Installed with `pip install --user -e .` in the stack environment (`w_2026_39`, Python
    3.13.15). `import rubinwork, rubinwork.common, rubinwork.products.catalog` verified in
-   the USDF terminal. A batch-node check is written but **not submitted**
-   (`rubinwork/common/scripts/check_batch_import.sl`, commit `2918a2b`); its body passes
-   when run with the stack sourced the way the job will source it. The laptop install is
-   not done.
+   **three of the four** environments: the USDF terminal, an RSP notebook cell, and a
+   Slurm batch node (`rubinwork/common/scripts/check_batch_import.sl`, commit `2918a2b`,
+   job 40395908 on `sdfmilan257`, `RESULT: pass`, which also checked the `common` and
+   `aos_state` shims there). The laptop install is not done.
 
 **Which `smatrix/code` modules are libraries.** The three that code outside the smatrix
 study imports, and that are import-safe (constants and functions, work behind
@@ -372,9 +372,7 @@ unchanged.
 
 **Left open.**
 - The laptop `pip install -e .` with `/opt/local/bin/pip3` is not done (this session is on
-  S3DF).
-- The batch-node check is written but not submitted; see the submit command in the
-  session handoff.
+  S3DF). It is the only part of step 5 still open.
 - `smatrix/code/regularized_inversion/` is a namespace package (no `__init__.py`) sitting
   next to `regularized_inversion.py`. The `.py` wins, so imports resolve to the module —
   but that was already true before the move and is worth removing in phase 5 when the
