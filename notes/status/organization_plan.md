@@ -455,6 +455,36 @@ From the removed `todo.md` and `reorg_review_plan_2026-09.md`:
 | output provenance helper (old A1) | replaced by `manifest.py` and `run.json` |
 | per-study logbook (old B5) | replaced by `study.md` and `/wrap` |
 | systematic code review (old Part C1–C4) | phase 8 |
+| **The FAM sidecar carries telemetry the build does not need** — see below | phase 3, after `value_added` is registered |
+
+**Shrink the FAM telemetry sidecar; let the downstream studies read ConsDB and DuckDB.**
+Aaron's position, recorded 2026-10-10: building the measured intrinsic wavefront (MIW)
+needs only **elevation (deg), camera rotator angle (deg) and filter band** — all ConsDB
+quantities. So neither `ts_intrinsic_wavefront` nor the MIW build needs the EFD. Everything
+else in the sidecar is there to serve *downstream* studies, and those studies could query
+ConsDB and the value-added DuckDB themselves instead of having the telemetry baked into
+`visits.parquet`.
+
+What that means for the two build halves:
+
+- `run_attach_telemetry.py` attaches eight groups — `thermal`, `gradients`, `wind`,
+  `camera`, `lut`, `hexlut`, `trim`, `tweak` — which is why `danish_1_2`'s `visits.parquet`
+  is 405 columns against 23 for the blitz variants that never had it run. None of those
+  groups is needed to build the MIW. The question for phase 3 is which of them any study
+  still reads from `visits.parquet` rather than from DuckDB, and the sidecar keeps only
+  those.
+- `run_mktable.py` takes `--no-thermal`, and with `no_thermal: false` (today's
+  `snake_config.yaml`) its per-visit ESS-temperature loop queries the EFD and dominates the
+  chunk build: about 19 s/visit, roughly 17 min of the phase 2 reference build's 54 visits.
+  If the MIW needs only the three ConsDB columns, this loop is a candidate for removal
+  rather than for re-sourcing.
+
+Why it matters beyond width and speed: the EFD resolves only from interactive nodes, which
+is why the Snakefile drops `attach_telemetry` under `--mode batch`
+(`attach_telemetry=0`). A sidecar that needs no EFD is what would let the whole FAM build
+run in batch. Blocked until `value_added` is a registered product (phase 3), so DuckDB
+coverage can be checked per group rather than assumed, and so the studies have a sanctioned
+path to read instead.
 
 `notes/todos/todo-ideas.md` stays as Aaron's idea queue. Items there that become studies
 get a `study.md`, and the item number is recorded in its front matter.
