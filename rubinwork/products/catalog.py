@@ -2,7 +2,19 @@
 
 A product build lives at ``<data root>/products/<product>/<variant>/<build>/`` and
 carries a ``manifest.json`` written by `rubinwork.products.manifest`. The default
-build of a variant is the one ``current`` points at, a symlink the build writes.
+build of a variant is the one ``current`` points at.
+
+A build is in the catalog only once its manifest says ``status: "complete"``. A
+directory with no manifest, or one whose build was interrupted, is skipped when
+``current`` is resolved and left out of `list_products`; asking for it by name
+raises `ProductNotFound` saying why.
+
+**No build moves ``current``.** A finished build is just another dated directory
+until someone points ``current`` at it::
+
+    python -m rubinwork.products.catalog set-current fam_tables danish_1_2 20261010
+
+so a rerun cannot silently change what every reader sees.
 
 This module is the only sanctioned way to reach product data. Building a path by
 hand couples a reader to a layout that the reorganization is replacing; going
@@ -31,7 +43,7 @@ import pathlib
 __all__ = [
     "DATA_ROOT_DEFAULT", "data_root", "products_root", "studies_root",
     "path", "manifest", "load", "list_products", "list", "register",
-    "ProductNotFound",
+    "set_current", "is_complete", "ProductNotFound",
 ]
 
 DATA_ROOT_DEFAULT = "/sdf/group/rubin/u/roodman/LSST/rubin-work"
@@ -41,6 +53,10 @@ CURRENT = "current"
 """Name of the symlink in a variant directory naming its default build."""
 
 MANIFEST_NAME = "manifest.json"
+
+
+COMPLETE = "complete"
+"""The only manifest ``status`` that puts a build in the catalog."""
 
 
 class ProductNotFound(FileNotFoundError):
@@ -81,6 +97,81 @@ def studies_root():
     return data_root() / "studies"
 
 
+def _read_manifest(build_dir):
+    """The manifest of a build directory, or `None` if it has none to read.
+
+    Parameters
+    ----------
+    build_dir : `pathlib.Path`
+        A build directory.
+
+    Returns
+    -------
+    manifest : `dict` or `None`
+        The parsed manifest, or `None` when the file is absent or not valid
+        JSON. A half-written manifest is treated as no manifest: the build is
+        then simply not in the catalog.
+    """
+    manifest_path = build_dir / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        with open(manifest_path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def is_complete(build_dir):
+    """Whether a build directory is a complete, catalogued build.
+
+    Parameters
+    ----------
+    build_dir : `str` or `pathlib.Path`
+        A build directory.
+
+    Returns
+    -------
+    complete : `bool`
+        `True` only if the directory holds a readable ``manifest.json`` whose
+        ``status`` is ``"complete"``.
+    """
+    man = _read_manifest(pathlib.Path(build_dir))
+    return bool(man) and man.get("status") == COMPLETE
+
+
+def _why_not_complete(build_dir):
+    """One clause saying why a build directory is not in the catalog.
+
+    Returns
+    -------
+    reason : `str` or `None`
+        The reason, or `None` if the build is complete.
+    """
+    man = _read_manifest(build_dir)
+    if man is None:
+        return (f"it has no readable {MANIFEST_NAME}, so it is an incomplete or "
+                "hand-made directory, not a build")
+    status = man.get("status")
+    if status != COMPLETE:
+        return (f"its manifest status is {status!r}, not {COMPLETE!r}; only a "
+                "complete build is in the catalog")
+    return None
+
+
+def _complete_builds(variant_dir):
+    """Names of the complete builds in a variant directory, sorted.
+
+    Returns
+    -------
+    builds : `list` [`str`]
+        Build names whose manifest says ``status: "complete"``.
+    """
+    return [b for b in _names(variant_dir)
+            if b != CURRENT and (variant_dir / b).is_dir()
+            and is_complete(variant_dir / b)]
+
+
 def _resolve_build(product, variant, build):
     """Return the build directory for one variant, resolving ``"current"``.
 
@@ -102,7 +193,9 @@ def _resolve_build(product, variant, build):
     Raises
     ------
     `ProductNotFound`
-        If the product, variant or build directory does not exist.
+        If the product, variant or build directory does not exist, if
+        ``"current"`` is asked for and no complete build is current, or if the
+        named build is not complete.
     """
     variant_dir = products_root() / product / variant
     if not variant_dir.is_dir():
@@ -117,10 +210,22 @@ def _resolve_build(product, variant, build):
             f"known variants: {known or 'none'}")
     build_dir = variant_dir / build
     if not build_dir.exists():
+        if build == CURRENT:
+            complete = _complete_builds(variant_dir)
+            raise ProductNotFound(
+                f"{product}/{variant} has no {CURRENT} build; point it at one "
+                f"with `python -m rubinwork.products.catalog set-current "
+                f"{product} {variant} <build>`. Complete builds: "
+                f"{complete or 'none'}")
         known = _names(variant_dir)
         raise ProductNotFound(
             f"no build {build!r} of {product}/{variant}; "
             f"known builds: {known or 'none'}")
+    reason = _why_not_complete(build_dir)
+    if reason:
+        named = build if build != CURRENT else f"{CURRENT} -> {build_dir.resolve().name}"
+        raise ProductNotFound(
+            f"{product}/{variant}/{named} is not in the catalog: {reason}")
     return build_dir
 
 
@@ -266,11 +371,16 @@ def list_products(product=None):
     Returns
     -------
     builds : `list` [`dict`]
-        One entry per build, sorted by product, variant then build, each with
-        keys ``product``, ``variant``, ``build``, ``current`` (`bool`, whether
-        the variant's ``current`` symlink points here), ``status``, ``created``,
-        ``git_commit`` and ``n_files`` (count, dimensionless). A build with an
-        unreadable manifest gets ``status`` ``"no-manifest"``.
+        One entry per **complete** build, sorted by product, variant then build,
+        each with keys ``product``, ``variant``, ``build``, ``current`` (`bool`,
+        whether the variant's ``current`` symlink points here), ``status``,
+        ``created``, ``git_commit`` and ``n_files`` (count, dimensionless).
+
+    Notes
+    -----
+    A directory with no manifest, or whose manifest is not ``"complete"``, is
+    not a build and is left out, so an interrupted or in-flight build never
+    appears alongside finished ones. `path` and `load` refuse it too.
     """
     root = products_root()
     names = [product] if product else _names(root)
@@ -284,10 +394,9 @@ def list_products(product=None):
                 build_dir = variant_dir / build
                 if build == CURRENT or not build_dir.is_dir():
                     continue
-                try:
-                    man = manifest(prod, variant, build)
-                except (ProductNotFound, json.JSONDecodeError):
-                    man = {"status": "no-manifest"}
+                man = _read_manifest(build_dir)
+                if not man or man.get("status") != COMPLETE:
+                    continue
                 builds.append({
                     "product": prod,
                     "variant": variant,
@@ -306,13 +415,46 @@ def list_products(product=None):
 list = list_products  # noqa: A001
 
 
+def set_current(product, variant, build):
+    """Point a variant's ``current`` symlink at one build.
+
+    The only way ``current`` moves: a build never repoints it as a side effect,
+    so a rerun cannot change what readers see until someone says so.
+
+    Parameters
+    ----------
+    product : `str`
+        Product name.
+    variant : `str`
+        Variant name.
+    build : `str`
+        Build to make current. Must be a complete build.
+
+    Returns
+    -------
+    link : `pathlib.Path`
+        The ``current`` symlink.
+
+    Raises
+    ------
+    `ProductNotFound`
+        If the build does not exist, or is not complete.
+    """
+    # Resolving first is the refusal: an incomplete build raises here.
+    build_dir = _resolve_build(product, variant, build)
+    import importlib
+    manifest_module = importlib.import_module("rubinwork.products.manifest")
+    return manifest_module.set_current_build(build_dir.parent, build_dir.name)
+
+
 def register(product, variant, build, location=None, config=None, inputs=None,
-             status="complete", set_current=True):
+             status=COMPLETE):
     """Register a build that exists outside the product tree, or on disk already.
 
     Used for an external variant -- an official release, a Butler collection -- and
     for a pre-reorganization build copied into the new tree. The build directory
     is created if needed and given a manifest; no data is copied or moved.
+    ``current`` is not moved; call `set_current` for that.
 
     Parameters
     ----------
@@ -332,8 +474,6 @@ def register(product, variant, build, location=None, config=None, inputs=None,
         Upstream builds, as ``{product: "variant@build"}``.
     status : `str`, optional
         Manifest ``status``, ``"complete"`` by default.
-    set_current : `bool`, optional
-        Whether to point the variant's ``current`` symlink at this build.
 
     Returns
     -------
@@ -350,6 +490,62 @@ def register(product, variant, build, location=None, config=None, inputs=None,
     manifest_module.write(
         build_dir, product=product, variant=variant, build=build,
         config=config, inputs=inputs, location=location, status=status,
-        set_current=set_current,
     )
     return build_dir
+
+
+def _main(argv=None):
+    """Command line: ``set-current`` and ``list``.
+
+    Parameters
+    ----------
+    argv : `list` [`str`], optional
+        Arguments, ``sys.argv[1:]`` by default.
+
+    Returns
+    -------
+    status : `int`
+        Process exit status, 0 on success.
+    """
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        prog="python -m rubinwork.products.catalog",
+        description="Inspect the product catalog and move `current`.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    set_cur = sub.add_parser(
+        "set-current",
+        help="point a variant's `current` symlink at one complete build")
+    set_cur.add_argument("product")
+    set_cur.add_argument("variant")
+    set_cur.add_argument("build")
+
+    listing = sub.add_parser("list", help="every complete build")
+    listing.add_argument("product", nargs="?", default=None)
+
+    args = parser.parse_args(argv)
+    if args.command == "set-current":
+        try:
+            link = set_current(args.product, args.variant, args.build)
+        except ProductNotFound as exc:
+            print(f"refusing to move current: {exc}", file=sys.stderr)
+            return 1
+        print(f"{link} -> {args.build}")
+        return 0
+
+    rows = list_products(args.product)
+    if not rows:
+        print(f"no complete builds under {products_root()}")
+        return 0
+    for row in rows:
+        mark = "*" if row["current"] else " "
+        print(f"{mark} {row['product']}/{row['variant']}/{row['build']}  "
+              f"{row['created']}  {row['git_commit']}  "
+              f"{row['n_files']} files")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

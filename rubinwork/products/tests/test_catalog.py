@@ -31,8 +31,17 @@ def data_root(tmp_path, monkeypatch):
     return tmp_path
 
 
-def make_build(data_root, product, variant, build, n_rows=3, **kwargs):
+def make_build(data_root, product, variant, build, n_rows=3, current=True,
+               **kwargs):
     """Write one parquet file and its manifest as a build.
+
+    Parameters
+    ----------
+    current : `bool`, optional
+        Point the variant's ``current`` symlink at this build afterwards,
+        which a real build never does for itself. On by default so that the
+        tests about something else can just read ``"current"``; the tests about
+        the rule pass ``current=False``.
 
     Returns
     -------
@@ -45,6 +54,8 @@ def make_build(data_root, product, variant, build, n_rows=3, **kwargs):
         build_dir / "table.parquet")
     manifest.write(build_dir, product=product, variant=variant, build=build,
                    **kwargs)
+    if current:
+        catalog.set_current(product, variant, build)
     return build_dir
 
 
@@ -65,17 +76,18 @@ def test_path_resolves_current(data_root):
     assert catalog.path("fam_tables", "danish_1_2", "20261005").name == "20261005"
 
 
-def test_current_follows_the_newest_build(data_root):
+def test_a_build_does_not_move_current(data_root):
     make_build(data_root, "fam_tables", "danish_1_2", "20261005")
-    make_build(data_root, "fam_tables", "danish_1_2", "20261006")
+    make_build(data_root, "fam_tables", "danish_1_2", "20261006", current=False)
+    assert catalog.path("fam_tables", "danish_1_2").name == "20261005"
+    catalog.set_current("fam_tables", "danish_1_2", "20261006")
     assert catalog.path("fam_tables", "danish_1_2").name == "20261006"
 
 
-def test_set_current_false_leaves_current_alone(data_root):
-    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
-    make_build(data_root, "fam_tables", "danish_1_2", "20261006",
-               set_current=False)
-    assert catalog.path("fam_tables", "danish_1_2").name == "20261005"
+def test_no_current_at_all_says_how_to_set_one(data_root):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005", current=False)
+    with pytest.raises(catalog.ProductNotFound, match="set-current"):
+        catalog.path("fam_tables", "danish_1_2")
 
 
 def test_manifest_contents(data_root):
@@ -176,7 +188,7 @@ def test_list_products(data_root):
         ("fam_tables", "danish_1_2", "20261006"),
         ("miw", "d12-A", "20261007"),
     ]
-    assert [r["current"] for r in rows] == [False, True, True]
+    assert [r["current"] for r in rows] == [False, True, True]  # make_build set each
     assert all(r["status"] == "complete" for r in rows)
     assert all(r["n_files"] == 1 for r in rows)
 
@@ -187,11 +199,25 @@ def test_list_products_one_product(data_root):
     assert [r["product"] for r in catalog.list_products("miw")] == ["miw"]
 
 
-def test_list_products_flags_a_missing_manifest(data_root):
+def test_list_products_skips_a_build_with_no_manifest(data_root):
     make_build(data_root, "miw", "v1", "20261007")
     (data_root / "products" / "miw" / "v1" / "20261008").mkdir()
     statuses = {r["build"]: r["status"] for r in catalog.list_products("miw")}
-    assert statuses == {"20261007": "complete", "20261008": "no-manifest"}
+    assert statuses == {"20261007": "complete"}
+
+
+def test_list_products_skips_an_incomplete_build(data_root):
+    make_build(data_root, "miw", "v1", "20261007")
+    make_build(data_root, "miw", "v1", "20261008", current=False,
+               status="failed")
+    assert [r["build"] for r in catalog.list_products("miw")] == ["20261007"]
+
+
+def test_list_products_skips_a_corrupt_manifest(data_root):
+    make_build(data_root, "miw", "v1", "20261007")
+    broken = make_build(data_root, "miw", "v1", "20261008", current=False)
+    (broken / "manifest.json").write_text("{not json")
+    assert [r["build"] for r in catalog.list_products("miw")] == ["20261007"]
 
 
 def test_list_products_empty_root(data_root):
@@ -207,6 +233,7 @@ def test_register_external_variant(data_root):
         "miw", "official-w_2026_40", "20261001",
         location="/sdf/group/rubin/shared/official/miw/w_2026_40",
         config={"release": "w_2026_40"})
+    catalog.set_current("miw", "official-w_2026_40", "20261001")
     man = catalog.manifest("miw", "official-w_2026_40")
     assert man["location"].endswith("w_2026_40")
     assert man["files"] == {}
@@ -219,8 +246,14 @@ def test_register_an_existing_directory_records_its_files(data_root):
     build_dir.mkdir(parents=True)
     pd.DataFrame({"visit": [1, 2, 3, 4, 5]}).to_parquet(build_dir / "donuts.parquet")
     catalog.register("fam_tables", "danish_1_2", "20250901")
-    man = catalog.manifest("fam_tables", "danish_1_2")
+    man = catalog.manifest("fam_tables", "danish_1_2", "20250901")
     assert man["files"]["donuts.parquet"]["rows"] == 5
+
+
+def test_register_does_not_move_current(data_root):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
+    catalog.register("fam_tables", "danish_1_2", "20261006")
+    assert catalog.path("fam_tables", "danish_1_2").name == "20261005"
 
 
 def test_file_stats_skips_work_dirs_and_the_manifest(data_root):
@@ -239,11 +272,76 @@ def test_current_symlink_is_relative(data_root):
     assert str(pathlib.Path(link).readlink()) == "20261007"
 
 
-def test_incomplete_build_does_not_become_current(data_root):
+def test_set_current_refuses_an_incomplete_build(data_root):
     make_build(data_root, "miw", "v1", "20261007")
-    make_build(data_root, "miw", "v1", "20261008", status="failed")
+    make_build(data_root, "miw", "v1", "20261008", current=False,
+               status="failed")
+    with pytest.raises(catalog.ProductNotFound, match="'failed'"):
+        catalog.set_current("miw", "v1", "20261008")
     assert catalog.path("miw", "v1").name == "20261007"
-    assert catalog.manifest("miw", "v1", "20261008")["status"] == "failed"
+
+
+def test_set_current_refuses_a_build_with_no_manifest(data_root):
+    make_build(data_root, "miw", "v1", "20261007")
+    (data_root / "products" / "miw" / "v1" / "20261008").mkdir()
+    with pytest.raises(catalog.ProductNotFound, match="manifest.json"):
+        catalog.set_current("miw", "v1", "20261008")
+    assert catalog.path("miw", "v1").name == "20261007"
+
+
+def test_asking_for_an_incomplete_build_says_why(data_root):
+    make_build(data_root, "miw", "v1", "20261008", current=False,
+               status="interrupted")
+    with pytest.raises(catalog.ProductNotFound, match="'interrupted'"):
+        catalog.path("miw", "v1", "20261008")
+    with pytest.raises(catalog.ProductNotFound, match="'interrupted'"):
+        catalog.load("miw", "v1", "20261008")
+
+
+def test_a_current_symlink_at_an_incomplete_build_is_refused(data_root):
+    # A build completed, became current, and was later reran into failure in
+    # place.  Nothing should read it just because the symlink survived.
+    make_build(data_root, "miw", "v1", "20261007")
+    build_dir = data_root / "products" / "miw" / "v1" / "20261007"
+    manifest.write(build_dir, product="miw", variant="v1", build="20261007",
+                   status="failed")
+    with pytest.raises(catalog.ProductNotFound, match="'failed'"):
+        catalog.path("miw", "v1")
+
+
+def test_is_complete(data_root):
+    good = make_build(data_root, "miw", "v1", "20261007")
+    bad = make_build(data_root, "miw", "v1", "20261008", current=False,
+                     status="failed")
+    nothing = data_root / "products" / "miw" / "v1" / "20261009"
+    nothing.mkdir()
+    assert catalog.is_complete(good)
+    assert not catalog.is_complete(bad)
+    assert not catalog.is_complete(nothing)
+
+
+def test_cli_set_current(data_root, capsys):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
+    make_build(data_root, "fam_tables", "danish_1_2", "20261006", current=False)
+    assert catalog._main(
+        ["set-current", "fam_tables", "danish_1_2", "20261006"]) == 0
+    assert catalog.path("fam_tables", "danish_1_2").name == "20261006"
+
+
+def test_cli_set_current_refuses_and_exits_nonzero(data_root, capsys):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
+    make_build(data_root, "fam_tables", "danish_1_2", "20261006", current=False,
+               status="failed")
+    assert catalog._main(
+        ["set-current", "fam_tables", "danish_1_2", "20261006"]) == 1
+    assert "refusing to move current" in capsys.readouterr().err
+    assert catalog.path("fam_tables", "danish_1_2").name == "20261005"
+
+
+def test_cli_list(data_root, capsys):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
+    assert catalog._main(["list"]) == 0
+    assert "fam_tables/danish_1_2/20261005" in capsys.readouterr().out
 
 
 def test_git_state_outside_a_repo(tmp_path):

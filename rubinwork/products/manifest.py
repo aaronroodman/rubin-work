@@ -5,8 +5,13 @@ the build is, what configuration produced it, which upstream builds it read and
 what it wrote, so two builds of one variant that disagree can be told apart
 without rerunning either.
 
-A build directory with no manifest is not in the catalog: that is what makes an
-interrupted build invisible rather than silently half-read.
+A build directory with no manifest, or one whose ``status`` is not
+``"complete"``, is not in the catalog: that is what makes an interrupted build
+invisible rather than silently half-read.
+
+Writing a manifest does not move the variant's ``current`` symlink. That is
+`rubinwork.products.catalog.set_current`, called by hand once the build has been
+looked at.
 
 Examples
 --------
@@ -106,9 +111,8 @@ def file_stats(build_dir, files=None):
 
 
 def write(build_dir, product, variant, build, config=None, inputs=None,
-          files=None, location=None, status="complete", set_current=True,
-          extra=None):
-    """Write ``manifest.json`` for one build, and optionally point ``current`` at it.
+          files=None, location=None, status="complete", extra=None):
+    """Write ``manifest.json`` for one build.
 
     Parameters
     ----------
@@ -132,10 +136,8 @@ def write(build_dir, product, variant, build, config=None, inputs=None,
         For an external variant whose data lives elsewhere: the path or
         collection name. A build with a ``location`` records no files.
     status : `str`, optional
-        ``"complete"`` by default. Any other value marks the build as not for
-        general use.
-    set_current : `bool`, optional
-        Whether to repoint the variant's ``current`` symlink at this build.
+        ``"complete"`` by default. Any other value keeps the build out of the
+        catalog.
     extra : `dict`, optional
         Additional top-level keys to merge into the manifest.
 
@@ -169,14 +171,14 @@ def write(build_dir, product, variant, build, config=None, inputs=None,
     tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
     # Rename, so a reader never sees a half-written manifest.
     os.replace(tmp, manifest_path)
-
-    if set_current and status == "complete":
-        set_current_build(build_dir.parent, build)
     return manifest_path
 
 
 def set_current_build(variant_dir, build):
-    """Point a variant's ``current`` symlink at one build.
+    """Repoint a variant's ``current`` symlink, atomically and with no checks.
+
+    The mechanism only. `rubinwork.products.catalog.set_current` is the entry
+    point, and it is what refuses a build that is not complete.
 
     Parameters
     ----------

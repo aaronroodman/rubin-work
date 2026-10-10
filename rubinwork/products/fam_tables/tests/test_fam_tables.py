@@ -38,8 +38,14 @@ def data_root(tmp_path, monkeypatch):
 
 
 def make_fam_build(data_root, variant="danish_1_2", build="20261009", n_rows=4,
-                   tables=fam_tables.TABLES):
+                   tables=fam_tables.TABLES, current=True):
     """Write a fake ``fam_tables`` build: one parquet per table, plus its manifest.
+
+    Parameters
+    ----------
+    current : `bool`, optional
+        Point ``current`` at this build afterwards, which a real build never
+        does for itself.
 
     Returns
     -------
@@ -53,6 +59,8 @@ def make_fam_build(data_root, variant="danish_1_2", build="20261009", n_rows=4,
         pd.DataFrame({"visit": range(n_rows), f"{table}_col": [i] * n_rows}).to_parquet(
             build_dir / f"{table}.parquet", index=False)
     manifest.write(build_dir, "fam_tables", variant, build)
+    if current:
+        catalog.set_current("fam_tables", variant, build)
     return build_dir
 
 
@@ -162,19 +170,20 @@ def test_load_returns_three_tables_in_order(data_root):
 
 
 def test_load_resolves_current(data_root):
-    """``manifest.write`` sets ``current``, so the default build needs no name."""
+    """Once ``current`` is set, the default build needs no name."""
     make_fam_build(data_root, build="20261009")
     donuts, visits, fits = fam_tables.load("danish_1_2")
     assert len(donuts) == 4
 
 
-def test_load_current_follows_the_newer_build(data_root):
+def test_load_current_stays_put_until_set_current(data_root):
     make_fam_build(data_root, build="20261008", n_rows=2)
-    make_fam_build(data_root, build="20261009", n_rows=7)
+    make_fam_build(data_root, build="20261009", n_rows=7, current=False)
     donuts, _, _ = fam_tables.load("danish_1_2")
-    assert len(donuts) == 7, "current should point at the build registered last"
-    donuts_old, _, _ = fam_tables.load("danish_1_2", build="20261008")
-    assert len(donuts_old) == 2
+    assert len(donuts) == 2, "a new build must not move current"
+    catalog.set_current("fam_tables", "danish_1_2", "20261009")
+    donuts, _, _ = fam_tables.load("danish_1_2")
+    assert len(donuts) == 7
 
 
 def test_load_subset_of_tables(data_root):
