@@ -60,7 +60,7 @@ Seven modules stay flat at `aos/code/`:
 | `aos_state.py` | **15 references from other topics** by bare module name |
 | `aos_fwhm.py` | used by `cwfs` and `correlations` |
 | `fam_selection.py` | FAM visit selection + DZ column helper; used by all four `correlations` scripts |
-| `miw_io.py` | reads the MIW parquet field maps; used by `static_optics` |
+| `miw_io.py` | shim; the reader moved to `rubinwork.products.miw` in phase 3a. Used by `static_optics` through the shim |
 | `dz_plotting.py` | used by `dzfit` and `correlations` |
 | `psf_maps_lib.py` | star sampling, MIW lookup, DZ residuals, page layout; used by `psf` and `closed_loop` |
 | `test_m1m3.py` | manual EFD probe belonging to no single study |

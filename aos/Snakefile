@@ -158,7 +158,43 @@ def mi_rotbins(ps, mi): return _mc.rotator_bins(_mc.load_mi_config(ps, mi, doc=M
 def mi_build_src(ps, mi):
     # entry whose build grids to read (build_from -> reuse a parent's grids)
     return _mc.build_source(_mc.load_mi_config(ps, mi, doc=MI_DOC), mi)
-MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)]
+
+# Since phase 3a moved build_intrinsic, intrinsic_split, intrinsic_sidecar,
+# wfs_intrinsic_sidecar and refit_mi into the miw product, the MIW tables are INPUTS this
+# Snakefile does not build.  A (param_set, mi_name) pair whose build is absent therefore
+# has no producer here and would abort the WHOLE DAG with MissingInputException, exactly as
+# the never-built refitWcs_2025 CWFS variant did -- but for nine of the twelve pairs, since
+# most were only ever taken as far as the split.  So enumerate only the pairs whose MIW is
+# complete, and REPORT every skip: a dropped pair silently drops its study jobs.
+#
+# `fits.parquet` and `zk_intrinsic.parquet` are the gate because every study rule here
+# reads one or the other.  A pair with a split but no sidecar is incomplete, not partially
+# usable.  Build a missing one with the product Snakefile:
+#
+#   snakemake -s rubinwork/products/miw/Snakefile \
+#       --config variant=<v> build=<YYYYMMDD> fam_build=<FAM build>
+#
+# and it reappears here.
+MI_REQUIRED = ("fits.parquet", "zk_intrinsic.parquet")
+_MI_SKIPPED = {}
+def _mi_complete(ps, mi):
+    d = f"{ps_dir(ps)}_{mi_dir(ps, mi)}"
+    missing = [f for f in MI_REQUIRED if not os.path.exists(f"output/miw/{d}/{f}")]
+    if missing:
+        _MI_SKIPPED[d] = missing
+        return False
+    return True
+MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)
+            if _mi_complete(ps, mi)]
+if _MI_SKIPPED:
+    print(f"[Snakefile] skipping {len(_MI_SKIPPED)} MIW build(s) with no complete output "
+          "on disk; their study jobs (study_radialbins, wfs_dof_compare, wfs_mimic, "
+          "build_lut, the four correlations rules, bounce, fam_coadd_miw) are NOT "
+          "planned. Build each with `snakemake -s rubinwork/products/miw/Snakefile "
+          "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
+          file=sys.stderr)
+    for d, missing in sorted(_MI_SKIPPED.items()):
+        print(f"[Snakefile]   {d}: missing {', '.join(missing)}", file=sys.stderr)
 
 # param_sets with paired in-focus corner-WFS (cwfs) collections.  Each ps may
 # carry several CWFS variants (wfs_collections: name -> Butler collection); the
@@ -198,9 +234,8 @@ def _report_wfs_skips():
         return
     n = len(_WFS_SKIPPED)
     print(f"[Snakefile] skipping {n} CWFS variant(s) with no donuts.parquet on disk; "
-          "their wfs_corner_compare / wfs_dof_compare / wfs_intrinsic_sidecar jobs are "
-          "NOT planned. Build each with "
-          "`snakemake -s rubinwork/products/cwfs_tables/Snakefile "
+          "their wfs_corner_compare and wfs_dof_compare jobs are NOT planned. Build each "
+          "with `snakemake -s rubinwork/products/cwfs_tables/Snakefile "
           "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
           file=sys.stderr)
     for (d, cw), table in sorted(_WFS_SKIPPED.items()):
@@ -235,9 +270,29 @@ def d_wfs(d, cwfs):                    # ingested CWFS dir for a joined dtag
     return f"output/wfs_ingest/{d_ps_dir(d)}/{cwfs}"
 
 WFS_DVARIANTS    = [(ps_dir(ps), cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
-WFS_MI_DVARIANTS = [(dtag(ps, mi), cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
-                    for cw in wfs_variants(ps)]
 _report_wfs_skips()          # after the last wfs_variants() call, so the list is complete
+
+# wfs_dof_compare reads the CWFS MIW corner sidecar, whose producer
+# (wfs_intrinsic_sidecar) moved into the miw product in phase 3a, so that sidecar is now an
+# INPUT this Snakefile does not build -- and `tarts` never had one built, though its CWFS
+# donuts exist.  Filter on the sidecar as well, and report, for the same reason as above.
+_SIDECAR_SKIPPED = {}
+def _has_corner_sidecar(d, cw):
+    path = f"output/wfs_dof_compare/{d}/{cw}/zk_intrinsic.parquet"
+    if os.path.exists(path):
+        return True
+    _SIDECAR_SKIPPED[(d, cw)] = path
+    return False
+WFS_MI_DVARIANTS = [(dtag(ps, mi), cw) for ps, mi in MI_PAIRS if ps in WFS_PSETS
+                    for cw in wfs_variants(ps)
+                    if _has_corner_sidecar(dtag(ps, mi), cw)]
+if _SIDECAR_SKIPPED:
+    print(f"[Snakefile] skipping {len(_SIDECAR_SKIPPED)} wfs_dof_compare job(s) with no "
+          "CWFS MIW corner sidecar on disk. Build it with the miw product Snakefile, "
+          "which writes <products>/miw/<v>/<build>/wfs/<cwfs>/zk_intrinsic.parquet.",
+          file=sys.stderr)
+    for (d, cw), path in sorted(_SIDECAR_SKIPPED.items()):
+        print(f"[Snakefile]   {d}/{cw}: missing {path}", file=sys.stderr)
 
 def mi_bin_grids(d):
     # grids come from the build SOURCE entry; bins are the source's bins so the
@@ -437,55 +492,24 @@ rule aberration_pairs:
 # RSP-only (needs lsst.ts.ofc/wep + TS_CONFIG_MTTCS_DIR + batoid height maps).
 # ======================================================================
 
-# ---- per rotator bin: build the Path-A measured-intrinsic grid ----
-rule build_intrinsic:
-    input:
-        donuts = lambda w: f"{d_tables(w.d)}/donuts.parquet",
-        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        fits   = lambda w: f"{d_tables(w.d)}/fits.parquet",
-        script = f"{WF_BIN}/run_build_intrinsic.py",
-        lib    = f"{WF_LIB}/measured_intrinsic.py",
-        plots  = f"{WF_LIB}/intrinsic_build_plots.py",
-    output: "output/miw/{d}/build/rot_{lo}_{hi}/intrinsic_grid.parquet"
-    params:
-        real_ps = lambda w: MI_BY_DTAG[w.d][0],
-        real_mi = lambda w: MI_BY_DTAG[w.d][1],
-        tdir    = lambda w: d_tables(w.d),
-        cfg     = lambda w: mi_cfg_json(w.d),          # rerun-trigger only
-    resources: mem_mb=8000
-    log: "logs/{d}.build_rot_{lo}_{hi}.log"
-    shell:
-        f"python {WF_BIN}/run_build_intrinsic.py --param-set {{params.real_ps}} "
-        "--mi-name {params.real_mi} --rot-min {wildcards.lo} --rot-max {wildcards.hi} "
-        "--tables-dir {params.tdir} "
-        "--out-dir output/miw/{wildcards.d}/build/rot_{wildcards.lo}_{wildcards.hi} "
-        "> {log} 2>&1"
+# ---- MIW build rules moved out: build_intrinsic / intrinsic_split /
+# ---- intrinsic_sidecar / wfs_intrinsic_sidecar / refit_mi -------------------
+# Phase 3a of notes/status/organization_plan.md moved these five rules into the miw
+# product, rubinwork/products/miw/Snakefile, which writes into the product data root.
+# The study rules below still READ the MIW at the paths they always did --
+# output/miw/<P>_<M>/{intrinsic_split_*,zk_intrinsic,fits}.parquet and
+# output/miw/<P>_<M>/build/rot_<lo>_<hi>/intrinsic_grid.parquet in this old tree -- so
+# those files are now INPUTS this Snakefile does not build.  Rebuild one with the product
+# Snakefile, or (until phase 5 retires the old tree) leave the existing output in place.
+#
+# `refit_mi` went with them: its fits.parquet is a function of the MIW variant alone, and
+# fam_tables already owns the plain `fit` rule that calls the same run_dz_fit.py without a
+# sidecar.  So the two fits live in the two products whose configuration each belongs to.
+#
+# Only three of the twelve (param_set, mi_name) pairs have a COMPLETE MIW on disk, so
+# MI_PAIRS above filters on what exists and reports the rest -- see the comment there.
 
-# ---- decompose the per-bin grids into OCS + CCS ----
-rule intrinsic_split:
-    input:
-        grids  = lambda w: mi_bin_grids(w.d),
-        script = f"{WF_BIN}/run_intrinsic_split.py",
-        lib    = f"{WF_LIB}/intrinsic_split.py",
-    output:
-        maps   = "output/miw/{d}/intrinsic_split_maps.parquet",
-        decomp = "output/miw/{d}/intrinsic_split_decomp.parquet",
-        rms    = "output/miw/{d}/intrinsic_split_rms.parquet",
-        plots  = "output/miw/{d}/intrinsic_split.pdf",
-    params:
-        real_ps = lambda w: MI_BY_DTAG[w.d][0],
-        real_mi = lambda w: MI_BY_DTAG[w.d][1],
-        # differs from --out-dir only for a build_from entry, which reads its
-        # parent's already-built grids
-        sdir    = lambda w: src_miw_dir(w.d),
-        fits    = lambda w: f"{d_tables(w.d)}/fits.parquet",
-        cfg     = lambda w: mi_cfg_json(w.d),          # rerun-trigger only
-    resources: mem_mb=4000
-    log: "logs/{d}.intrinsic_split.log"
-    shell:
-        f"python {WF_BIN}/run_intrinsic_split.py --param-set {{params.real_ps}} "
-        "--mi-name {params.real_mi} --out-dir output/miw/{wildcards.d} "
-        "--src-dir {params.sdir} --fits {params.fits} > {log} 2>&1"
+# (rule intrinsic_split moved to rubinwork/products/miw/Snakefile -- see above)
 
 # ---- OCS measured intrinsic at the WFS radius, per rotator bin (pre-split) ----
 rule study_radialbins:
@@ -531,27 +555,7 @@ rule wfs_corner_compare:
         "> {log} 2>&1"
 
 # ---- CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi) ----
-# ---- CWFS MIW sidecar (reconstruct_at at the corner donuts + SW1/SW0 half-sensor Z4 height) ----
-rule wfs_intrinsic_sidecar:
-    input:
-        decomp = "output/miw/{d}/intrinsic_split_decomp.parquet",
-        wfs    = lambda w: f"{d_wfs(w.d, w.cwfs)}/donuts.parquet",
-        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script = f"{WF_BIN}/run_make_intrinsic_sidecar.py",
-        lib    = f"{WF_LIB}/intrinsic_split.py",
-    output: "output/wfs_dof_compare/{d}/{cwfs}/zk_intrinsic.parquet"
-    params:
-        real_ps = lambda w: MI_BY_DTAG[w.d][0],
-        real_mi = lambda w: MI_BY_DTAG[w.d][1],
-        tdir    = lambda w: d_tables(w.d),
-        cfg     = lambda w: mi_cfg_json(w.d),                  # rerun-trigger only
-    resources: mem_mb=8000
-    log: "logs/{d}.{cwfs}.wfs_intrinsic_sidecar.log"
-    shell:
-        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{params.real_ps}} "
-        "--mi-name {params.real_mi} --mi-dir output/miw/{wildcards.d} "
-        "--tables-dir {params.tdir} --donuts {input.wfs} "
-        "--output {output} --wfs-corner-height > {log} 2>&1"
+# (rule wfs_intrinsic_sidecar moved to rubinwork/products/miw/Snakefile -- see above)
 
 rule wfs_dof_compare:
     input:
@@ -583,26 +587,7 @@ rule wfs_dof_compare:
         "--wfs-dir {params.wdir} "
         "--out-dir output/wfs_dof_compare/{wildcards.d}/{wildcards.cwfs} > {log} 2>&1"
 
-# ---- per-donut measured-intrinsic sidecar (row-aligned to donuts.parquet) ----
-rule intrinsic_sidecar:
-    input:
-        decomp = "output/miw/{d}/intrinsic_split_decomp.parquet",
-        donuts = lambda w: f"{d_tables(w.d)}/donuts.parquet",
-        visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script = f"{WF_BIN}/run_make_intrinsic_sidecar.py",
-        lib    = f"{WF_LIB}/intrinsic_split.py",
-    output: "output/miw/{d}/zk_intrinsic.parquet"
-    params:
-        real_ps = lambda w: MI_BY_DTAG[w.d][0],
-        real_mi = lambda w: MI_BY_DTAG[w.d][1],
-        tdir    = lambda w: d_tables(w.d),
-        cfg     = lambda w: mi_cfg_json(w.d),          # rerun-trigger only
-    resources: mem_mb=8000
-    log: "logs/{d}.intrinsic_sidecar.log"
-    shell:
-        f"python {WF_BIN}/run_make_intrinsic_sidecar.py --param-set {{params.real_ps}} "
-        "--mi-name {params.real_mi} --mi-dir output/miw/{wildcards.d} "
-        "--tables-dir {params.tdir} > {log} 2>&1"
+# (rule intrinsic_sidecar moved to rubinwork/products/miw/Snakefile -- see above)
 
 # ---- FAM-derived corner-WFS covariance of the measured-intrinsic deviation ----
 rule wfs_mimic:
@@ -632,26 +617,7 @@ rule wfs_mimic:
         "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
         "--out-dir output/wfs_mimic/{wildcards.d} > {log} 2>&1"
 
-# ---- refit the Double Zernikes using the measured intrinsic ----
-rule refit_mi:
-    input:
-        donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
-        visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        sidecar = "output/miw/{d}/zk_intrinsic.parquet",
-        script  = f"{WF_BIN}/run_dz_fit.py",
-        lib     = f"{WF_LIB}/dz_fitting.py",
-    output: "output/miw/{d}/fits.parquet"
-    params: coord = lambda w: coord(MI_BY_DTAG[w.d][0])
-    resources: mem_mb=4000
-    log: "logs/{d}.refit_mi.log"
-    shell:
-        # --no-quality-cut: fit ALL visits into <mi>/fits.parquet (metric columns
-        # travel with it); each consumer applies its own cut (bounce nd>=160, the
-        # others visit_quality_pass nd>=170).  MIW is built from the Phase-1
-        # fits.parquet (still filtered), so it is unaffected.
-        f"python {WF_BIN}/run_dz_fit.py {{input.donuts}} --coord-sys {{params.coord}} "
-        "--visits {input.visits} --intrinsic-sidecar {input.sidecar} "
-        "--no-quality-cut --output {output} > {log} 2>&1"
+# (rule refit_mi moved to rubinwork/products/miw/Snakefile -- see above)
 
 # ---- averaged-DOF LUT (n_dof/n_keep settable; collapses elev+rotator) ----
 rule build_lut:

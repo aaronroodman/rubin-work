@@ -1,21 +1,3 @@
-# GENERATED FILE — DO NOT EDIT BY HAND.
-#
-# Source of truth: rubinwork/products/miw/variants.yaml
-# Regenerate with:
-#
-#     python -m rubinwork.products.miw.gen_mi_config
-#
-# This file exists because lsst.ts.intrinsic.wavefront.mi_config.default_config_path()
-# returns Path('mi_config.yaml') relative to the current working directory, and the three
-# ts_intrinsic_wavefront build runners plus seven aos/code scripts read it through that
-# default. Editing this file instead of variants.yaml means the next regeneration
-# silently discards the change.
-#
-# The key is the long param_set name and `name` is the mi_name; both stay the identity for
-# everything that recorded them: the value-added DB rows, the frozen provenance files, and
-# --param-set / --mi-name on the command line. `dir_name` is the short output-directory
-# name.
-
 defaults:
   path: A
   filter: [i]

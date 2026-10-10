@@ -41,6 +41,21 @@ Phase 3 — analyses (per param_set × mi_name)│
                                                       correlations
 ```
 
+**Which Snakefile each step is in.** The reorganization
+(`notes/status/organization_plan.md`) is moving the product builders out of
+`aos/Snakefile` into one Snakefile per product; the step names, their arguments and their
+outputs are unchanged, only the file they live in and the root they write into. The steps
+below run from `aos/Snakefile` except:
+
+| step | now in |
+|---|---|
+| `mktable`, `fit`, `combine_*`, `attach_telemetry` | `rubinwork/products/fam_tables/Snakefile` (phase 2) |
+| `wfs_mktable` | `rubinwork/products/cwfs_tables/Snakefile` (phase 3a) |
+| `build_intrinsic`, `intrinsic_split`, `intrinsic_sidecar`, `wfs_intrinsic_sidecar`, `refit_mi` | `rubinwork/products/miw/Snakefile` (phase 3a) |
+
+Their outputs are then **inputs** `aos/Snakefile` does not build. It enumerates only the
+param_sets and MIW builds whose product output is on disk, and reports every one it skips.
+
 | Phase | Step | Granularity | Short description |
 |-------|------|-------------|-------------------|
 | 1 | `mktable` | per chunk | Butler → per-donut Zernike table + per-visit table |

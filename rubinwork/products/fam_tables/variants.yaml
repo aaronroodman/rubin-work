@@ -58,6 +58,7 @@ variants:
   # ---------------------------------------------------------------------------
   danish_1_0:
     param_set: fam_danish_1_0_wep17_3_0_bin2x
+    short_code: d10
     registered: false
     builder: snakemake
     description: >-
@@ -92,6 +93,7 @@ variants:
   # ---------------------------------------------------------------------------
   danish_1_2:
     param_set: fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
+    short_code: d12
     builder: snakemake
     description: >-
       Mar-May 2026 plus the 2025 reprocessing, /repo/main, Danish 1.2.0_alpha
@@ -156,6 +158,7 @@ variants:
   # ---------------------------------------------------------------------------
   danish_1_3_test:
     param_set: danish_1_3_test
+    short_code: d13t
     builder: blitz
     description: >-
       Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2
@@ -195,6 +198,7 @@ variants:
   # ---------------------------------------------------------------------------
   danish_1_3_v1000:
     param_set: danish_1_3_v1000
+    short_code: d13v1000
     builder: blitz
     description: >-
       Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2

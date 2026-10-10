@@ -1,0 +1,289 @@
+# ----------------------------------------------------------------------
+# miw product build (Snakemake).  The Measured Intrinsic Wavefront chain over one
+# fam_tables build: build_intrinsic per camera rotator angle bin -> intrinsic_split ->
+# intrinsic_sidecar -> refit_mi, plus wfs_intrinsic_sidecar per paired
+# corner-wavefront-sensor (CWFS) variant, then the manifest closes the build.
+#
+# Moved out of aos/Snakefile in phase 3a of notes/status/organization_plan.md.  The rules
+# are unchanged apart from where their inputs come from and where their outputs land: the
+# same external runners, the same --coord-sys, the same per-entry config.
+#
+#   snakemake -s rubinwork/products/miw/Snakefile -n \
+#       --config variant=d12-A_50_34_i_5rot build=20261010 fam_build=20260920
+#
+# Run from the REPOSITORY ROOT, so that aos/mi_config.yaml resolves (see RUN_CWD below).
+#
+# Output, under the product catalog's data root:
+#   <products>/miw/<variant>/<build>/build/rot_<lo>_<hi>/intrinsic_grid.parquet
+#   <products>/miw/<variant>/<build>/intrinsic_split_{maps,decomp,rms}.parquet
+#   <products>/miw/<variant>/<build>/intrinsic_split.pdf
+#   <products>/miw/<variant>/<build>/zk_intrinsic.parquet
+#   <products>/miw/<variant>/<build>/wfs/<cwfs variant>/zk_intrinsic.parquet
+#   <products>/miw/<variant>/<build>/fits.parquet
+#   <products>/miw/<variant>/<build>/manifest.json   written last
+#
+# A build directory is never edited after it completes (rule 5 of the plan's section 2);
+# a rerun makes a new build.
+#
+# A build_from variant reuses its PARENT's per-rotator-bin grids and runs no
+# build_intrinsic, so it needs the parent build on disk; name it with
+# --config src_build=<build> (default `current`).  The manifest records it under inputs.
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+# Deterministic threading regardless of how the launching terminal set these.  A
+# NUMEXPR_MAX_THREADS pinned to 1 (some JupyterHub sessions) crashes the build; force a
+# safe cap.  One thread per job -- parallelism comes from `snakemake -j`.
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+from rubinwork.common.utils import repo_root
+from rubinwork.products import catalog, cwfs_tables, fam_tables, miw
+
+REPO = repo_root(os.getcwd())
+
+# The external runners resolve their configuration through
+# lsst.ts.intrinsic.wavefront.mi_config.load_mi_config, whose default_config_path() is
+# Path('mi_config.yaml') relative to the CURRENT WORKING DIRECTORY, and
+# intrinsics_lib.load_param_sets() does the same for param_sets.yaml.  So the rules run
+# with aos/ as their cwd, exactly as aos/Snakefile did.  Both files there are generated
+# from the products' variants.yaml (gen_mi_config.py, gen_param_sets.py).
+RUN_CWD = REPO / 'aos'
+
+# The package runners and library, from the eups setup.  `scons` builds the bin/ shims and
+# bin/ is NOT on PATH, so reference them explicitly.
+WF_DIR = os.environ['TS_INTRINSIC_WAVEFRONT_DIR']
+WF_BIN = f'{WF_DIR}/bin'
+WF_LIB = f'{WF_DIR}/python/lsst/ts/intrinsic/wavefront'
+
+VARIANT = config.get('variant', 'd12-A_50_34_i_5rot')
+# str(): snakemake parses --config build=20261010 into an int.
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CFG = miw.variant_config(VARIANT)
+
+# Checked before anything resolves a path, so an unbuildable variant says why rather than
+# failing later on its FAM build's absence.
+if not CFG.get('registered', True):
+    raise ValueError(
+        f"variant {VARIANT!r} is registered: false -- it is carried for recorded "
+        'provenance only and has no build')
+if VARIANT in miw.external_variants():
+    raise ValueError(
+        f"variant {VARIANT!r} is EXTERNAL: its data is written outside this repository "
+        'and it is registered as a manifest only. Register it with '
+        '`python -m rubinwork.products.miw.write_manifest --register-external '
+        f'{VARIANT}`')
+
+PARAM_SET, MI_NAME = miw.mi_keys(VARIANT)
+FAM_VARIANT = miw.fam_variant(VARIANT)
+
+# Which fam_tables build to build from.  `current` by default, resolved to its real build
+# name so the manifest records what was actually read rather than a moving target.
+FAM_BUILD = str(config.get('fam_build') or catalog.CURRENT)
+FAM_DIR = catalog.path('fam_tables', FAM_VARIANT, build=FAM_BUILD)
+FAM_BUILD_NAME = FAM_DIR.name
+
+COORD = fam_tables.variant_config(FAM_VARIANT).get('coord_sys', 'OCS')
+
+BUILD_DIR = miw.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+# ---- where the per-rotator-bin grids come from -----------------------------------
+# A build_from entry reads its PARENT's already-built grids and runs no build_intrinsic,
+# so SRC_DIR is a different build directory and the grids are inputs this Snakefile does
+# not produce.  For a self-building variant SRC_DIR is BUILD_DIR and the grids are built
+# here.
+SRC_VARIANT = miw.build_source(VARIANT)
+IS_DERIVED = SRC_VARIANT != VARIANT
+if IS_DERIVED:
+    SRC_BUILD = str(config.get('src_build') or catalog.CURRENT)
+    SRC_DIR = catalog.path('miw', SRC_VARIANT, build=SRC_BUILD)
+    SRC_BUILD_NAME = SRC_DIR.name
+else:
+    SRC_DIR = BUILD_DIR
+    SRC_BUILD_NAME = BUILD
+
+# The bins whose grids the split reads: the source variant's own bins, restricted by this
+# entry's split.rotator_select when it sets one.
+SPLIT_BINS = miw.split_rotator_bins(VARIANT)
+GRIDS = [str(SRC_DIR / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet')
+         for lo, hi in SPLIT_BINS]
+
+# ---- the paired CWFS variants this build makes a corner sidecar for --------------
+# One per cwfs_tables variant of the same FAM variant that has a build to read.  A variant
+# with no build is skipped and reported, so a missing CWFS table never silently drops a
+# sidecar (the lesson of the cwfs_tables move).
+CWFS_VARIANTS = {}
+_cwfs_skipped = {}
+for _cv in cwfs_tables.variants():
+    if cwfs_tables.fam_variant(_cv) != FAM_VARIANT:
+        continue
+    _cbuild = str(config.get('cwfs_build') or catalog.CURRENT)
+    try:
+        CWFS_VARIANTS[_cv] = catalog.path('cwfs_tables', _cv, build=_cbuild)
+    except Exception as exc:
+        _cwfs_skipped[_cv] = str(exc)
+if _cwfs_skipped:
+    print(f'[miw] skipping {len(_cwfs_skipped)} CWFS sidecar(s) with no cwfs_tables '
+          'build to read; build each with '
+          '`snakemake -s rubinwork/products/cwfs_tables/Snakefile '
+          '--config variant=<v> build=<YYYYMMDD>`')
+    for _cv, _why in sorted(_cwfs_skipped.items()):
+        print(f'[miw]   {_cv}: {_why}')
+
+# The shell commands, built here rather than inline: snakemake's own parser mishandles a
+# multi-line f-string inside a rule, so the rules below use plain format placeholders only.
+BUILD_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python {WF_BIN}/run_build_intrinsic.py'
+    f' --param-set {PARAM_SET} --mi-name {MI_NAME}'
+    ' --rot-min {wildcards.lo} --rot-max {wildcards.hi}'
+    f' --tables-dir {FAM_DIR}'
+    f' --out-dir {BUILD_DIR}/build/' + 'rot_{wildcards.lo}_{wildcards.hi}'
+    ' > {log} 2>&1\n')
+SPLIT_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python {WF_BIN}/run_intrinsic_split.py'
+    f' --param-set {PARAM_SET} --mi-name {MI_NAME}'
+    f' --out-dir {BUILD_DIR} --src-dir {SRC_DIR}'
+    f" --fits {FAM_DIR / 'fits.parquet'}" + ' > {log} 2>&1\n')
+SIDECAR_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python {WF_BIN}/run_make_intrinsic_sidecar.py'
+    f' --param-set {PARAM_SET} --mi-name {MI_NAME}'
+    f' --mi-dir {BUILD_DIR} --tables-dir {FAM_DIR}' + ' > {log} 2>&1\n')
+WFS_SIDECAR_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python {WF_BIN}/run_make_intrinsic_sidecar.py'
+    f' --param-set {PARAM_SET} --mi-name {MI_NAME}'
+    f' --mi-dir {BUILD_DIR} --tables-dir {FAM_DIR}'
+    ' --donuts {input.wfs} --output {output} --wfs-corner-height > {log} 2>&1\n')
+# --no-quality-cut: fit ALL visits into the build's fits.parquet (metric columns travel
+# with it); each consumer applies its own cut (bounce n_donuts >= 160, the others
+# visit_quality_pass n_donuts >= 170).  The MIW itself is built from the fam_tables
+# fits.parquet, which IS filtered, so this does not feed back into the intrinsic.
+REFIT_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python {WF_BIN}/run_dz_fit.py'
+    f" {FAM_DIR / 'donuts.parquet'} --coord-sys {COORD}"
+    f" --visits {FAM_DIR / 'visits.parquet'}"
+    f" --intrinsic-sidecar {BUILD_DIR / 'zk_intrinsic.parquet'}"
+    f" --no-quality-cut --output {BUILD_DIR / 'fits.parquet'}" + ' > {log} 2>&1\n')
+MANIFEST_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.miw.write_manifest '
+    f'--variant {VARIANT} --build {BUILD} --fam-build {FAM_BUILD_NAME} '
+    f'--option coord_sys={COORD} --option src_build={SRC_BUILD_NAME} '
+    '> {log} 2>&1')
+
+wildcard_constraints:
+    lo = r'-?\d+(\.\d+)?',
+    hi = r'-?\d+(\.\d+)?',
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+# ---- per rotator bin: build the Path-A measured-intrinsic grid ----
+# Not defined for a build_from variant: it reuses its parent's grids, which are then
+# inputs this Snakefile does not build.
+if not IS_DERIVED:
+    rule build_intrinsic:
+        input:
+            donuts = str(FAM_DIR / 'donuts.parquet'),
+            visits = str(FAM_DIR / 'visits.parquet'),
+            fits   = str(FAM_DIR / 'fits.parquet'),
+            script = f'{WF_BIN}/run_build_intrinsic.py',
+            lib    = f'{WF_LIB}/measured_intrinsic.py',
+            plots  = f'{WF_LIB}/intrinsic_build_plots.py',
+        output:
+            str(BUILD_DIR / 'build' / 'rot_{lo}_{hi}' / 'intrinsic_grid.parquet')
+        resources: mem_mb=8000
+        log: str(LOGS / 'build_rot_{lo}_{hi}.log')
+        shell: BUILD_CMD
+
+
+# ---- decompose the per-bin grids into OCS + CCS ----
+rule intrinsic_split:
+    input:
+        grids  = GRIDS,
+        fits   = str(FAM_DIR / 'fits.parquet'),
+        script = f'{WF_BIN}/run_intrinsic_split.py',
+        lib    = f'{WF_LIB}/intrinsic_split.py',
+    output:
+        maps   = str(BUILD_DIR / 'intrinsic_split_maps.parquet'),
+        decomp = str(BUILD_DIR / 'intrinsic_split_decomp.parquet'),
+        rms    = str(BUILD_DIR / 'intrinsic_split_rms.parquet'),
+        plots  = str(BUILD_DIR / 'intrinsic_split.pdf'),
+    resources: mem_mb=4000
+    log: str(LOGS / 'intrinsic_split.log')
+    shell: SPLIT_CMD
+
+
+# ---- per-donut measured-intrinsic sidecar (row-aligned to the FAM donuts.parquet) ----
+rule intrinsic_sidecar:
+    input:
+        decomp = str(BUILD_DIR / 'intrinsic_split_decomp.parquet'),
+        donuts = str(FAM_DIR / 'donuts.parquet'),
+        visits = str(FAM_DIR / 'visits.parquet'),
+        script = f'{WF_BIN}/run_make_intrinsic_sidecar.py',
+        lib    = f'{WF_LIB}/intrinsic_split.py',
+    output: str(BUILD_DIR / 'zk_intrinsic.parquet')
+    resources: mem_mb=8000
+    log: str(LOGS / 'intrinsic_sidecar.log')
+    shell: SIDECAR_CMD
+
+
+# ---- the same sidecar at the corner-WFS donuts, plus the SW1/SW0 half-sensor Z4 height ----
+rule wfs_intrinsic_sidecar:
+    input:
+        decomp = str(BUILD_DIR / 'intrinsic_split_decomp.parquet'),
+        wfs    = lambda w: str(CWFS_VARIANTS[w.cwfs] / 'donuts.parquet'),
+        visits = str(FAM_DIR / 'visits.parquet'),
+        script = f'{WF_BIN}/run_make_intrinsic_sidecar.py',
+        lib    = f'{WF_LIB}/intrinsic_split.py',
+    output: str(BUILD_DIR / 'wfs' / '{cwfs}' / 'zk_intrinsic.parquet')
+    resources: mem_mb=8000
+    log: str(LOGS / '{cwfs}.wfs_intrinsic_sidecar.log')
+    shell: WFS_SIDECAR_CMD
+
+
+# ---- refit the Double Zernikes using this measured intrinsic ----
+rule refit_mi:
+    input:
+        donuts  = str(FAM_DIR / 'donuts.parquet'),
+        visits  = str(FAM_DIR / 'visits.parquet'),
+        sidecar = str(BUILD_DIR / 'zk_intrinsic.parquet'),
+        script  = f'{WF_BIN}/run_dz_fit.py',
+        lib     = f'{WF_LIB}/dz_fitting.py',
+    output: str(BUILD_DIR / 'fits.parquet')
+    resources: mem_mb=4000
+    log: str(LOGS / 'refit_mi.log')
+    shell: REFIT_CMD
+
+
+# ---- last step: the manifest, which is what puts the build in the catalog ----
+# Depends on every table and the split plot, so an interrupted build leaves no manifest and
+# the catalog does not see it.  It records the fam_tables build read, and the parent miw
+# build for a build_from variant, under `inputs`.  It does NOT move `current`: see
+# `catalog set-current`.
+rule manifest:
+    input:
+        str(BUILD_DIR / 'intrinsic_split_maps.parquet'),
+        str(BUILD_DIR / 'intrinsic_split_decomp.parquet'),
+        str(BUILD_DIR / 'intrinsic_split_rms.parquet'),
+        str(BUILD_DIR / 'intrinsic_split.pdf'),
+        str(BUILD_DIR / 'zk_intrinsic.parquet'),
+        str(BUILD_DIR / 'fits.parquet'),
+        [str(BUILD_DIR / 'wfs' / cv / 'zk_intrinsic.parquet') for cv in CWFS_VARIANTS],
+    output: str(BUILD_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell: MANIFEST_CMD

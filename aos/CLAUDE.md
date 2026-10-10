@@ -19,15 +19,28 @@ See `docs/studies.md`.
 The focus-from-temperature work is **not here**: it lives in the top-level `thermal_focus/`
 topic, which reads the value-added database rather than `aos/` output.
 
-Nine modules stay **flat at `code/`** on purpose:
+Seven modules stay **flat at `code/`** on purpose:
 
 | module | why |
 |---|---|
 | `aos_state.py` | imported **by bare module name from `blocks/` and `optatmo/`** via a hardcoded `sys.path.insert(.../aos/code)`. Moving it breaks those topics with no static-import warning. |
-| `aos_fwhm.py`, `fam_selection.py`, `miw_io.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
+| `aos_fwhm.py`, `fam_selection.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
 | `output_paths.py` | resolves `output/<study>/<P>[_<M>]/` from the long `param_set` and `mi_name` keys through their `dir_name` entries. For the **hand-run** scripts only — the Snakefile owns the layout for every rule it runs and passes `--out-dir`. |
-| `miw_corner_intrinsic.py` | supplies the `miw_lookup` callable that **`value_added/code/build_optical_state.py`** takes for `--intrinsic miw`, so it is consumed from a sibling topic rather than by a study here |
 | `test_m1m3.py` | manual EFD probe, no study of its own |
+
+Two of those modules left in phase 3a and only **shims** remain at their old paths, so
+the bare-name imports above keep resolving:
+
+| old path | now | why it moved |
+|---|---|---|
+| `miw_io.py` | `rubinwork.products.miw` (`reader.py`) | a pure reader of the MIW field maps, so it belongs to the product that writes them. `load_miw` is kept as an alias of `load_maps`. |
+| `miw_corner_intrinsic.py` | `rubinwork.miw_corner` | a **library**: it evaluates a MIW decomposition it is handed at the corner sample points and writes nothing. Still supplies the `miw_lookup` callable `value_added/code/build_optical_state.py` takes for `--intrinsic miw`. |
+
+`miw_corner.decomp_path` was **broken** before the move and is fixed: it joined the two
+long keys as `output/<param_set>/<mi_name>/`, a layout the tree has not had since
+`dir_name` was introduced, so every default lookup missed. The handoff note calling
+`DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` stale was reading that symptom — the keys were
+always right. New code passes `path=` resolved through the catalog.
 
 Do not "finish the job" by moving `aos_state.py` into `code/telemetry/`.
 
@@ -147,6 +160,21 @@ invalidate slow builds (`param_sets.yaml`, `snake_config.yaml`, `mi_config.yaml`
 the *resolved per-entry config* as a Snakemake `params` value, not the config file as an
 input, so editing one param_set does not invalidate another's cached outputs — but
 editing a shared `defaults:` block propagates to every entry.
+
+**Two of the four are now GENERATED — do not edit them.** The reorganization moved their
+source of truth into the products that own the configuration, and the generated files stay
+only because the external package opens both by a bare relative path:
+
+| generated file | edit instead | regenerate with |
+|---|---|---|
+| `param_sets.yaml` | `rubinwork/products/{fam_tables,cwfs_tables}/variants.yaml` | `python -m rubinwork.products.fam_tables.gen_param_sets` |
+| `mi_config.yaml` | `rubinwork/products/miw/variants.yaml` | `python -m rubinwork.products.miw.gen_mi_config` |
+
+Both generators take `--check`, which the product tests run. Editing a generated file
+means the next regeneration silently discards the change. In `miw/variants.yaml` the
+measured-intrinsic configuration is held as **literal text blocks** in the YAML it will
+appear as, so the comments inside entries survive and byte-identity is by construction —
+edit the `text:` block of the entry you mean.
 
 ## Terminology
 
