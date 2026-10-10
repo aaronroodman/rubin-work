@@ -88,6 +88,46 @@ and compare with `compare_builds.py`. Aaron's decision: **do not** rerun `mktabl
 stays in `ts_intrinsic_wavefront`, the move cannot touch it, and its EFD thermal loop is 47
 of the 53 minutes.
 
+Three things this session added to step 2/3 that the text above predates:
+
+1. **There are now TWO reference builds to compare against, one per builder.**
+   - Snakemake path: `_phase2_refbuild/danish_1_2/` (chunk `20251116_20251130`) — rerun
+     `fit` + `combine_*` + `attach_telemetry` from its existing chunk donuts.
+   - Blitz path: `_phase2_refbuild/danish_1_3_v1000/` (`day_obs=20260428`, 48 s) — rerun
+     the whole A4 command with the moved code, since the blitz builder does mktable, fit
+     and combine in one pass.
+
+   Compare both with `compare_builds.py`, keyed on
+   `day_obs, seq_num, detector, extra_donut_id`. Expect exact matches apart from telemetry
+   fetched at a different time; report every differing column and by how much. Expected
+   blitz counts: donuts 40,548 × 66, visits 12 × 23, fits 12 × 448.
+
+2. **`run_blitz_mktable.py` breaks in four places on the move, not the one the text above
+   names.** All four assume the file sits at `aos/code/fam_processing/`, verified
+   2026-10-10:
+
+   | line | code | why it breaks |
+   |---|---|---|
+   | 79 | `sys.path.insert(0, parents[3])` — repo root | `parents[3]` is no longer the repo root |
+   | 80 | `sys.path.insert(0, parents[1])` — `aos/code` flat modules | points into the product |
+   | 83 | `from output_paths import study_dir` | reaches `aos/code/output_paths.py` by bare name |
+   | 86 | `TOPIC = parents[2]` → `aos/` | becomes `rubinwork/` |
+
+   `TOPIC` is then used at **line 201** (`yaml.safe_load((TOPIC /
+   'param_sets.yaml').read_text())`) and **line 412** (`TOPIC / study_dir(...)`, the
+   `--out-dir` default). Since A3 made `param_sets.yaml` generated, the moved copy should
+   read `rubinwork.products.fam_tables.variant_config()` rather than re-open the YAML, and
+   take its `--out-dir` default from a catalog path.
+
+   Watch the key: the variant name and the `param_set` key **differ** for `danish_1_2`
+   (`danish_1_2` vs `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) but **coincide** for both
+   `danish_1_3` variants — so the A4 blitz rerun, which uses `danish_1_3_v1000`, will
+   **not** catch a variant-vs-param_set mix-up. Test `danish_1_2` resolution separately.
+
+3. **Do not fold in the `rotTelPos` change.** It alters `visits.parquet` values, so
+   landing it before step 3's comparison makes a bad code move indistinguishable from the
+   intended new angle. See the A1 section.
+
 ## Decisions taken
 
 - **Three variants registered**, the in-use ones: `danish_1_2` (build `20260920`),
