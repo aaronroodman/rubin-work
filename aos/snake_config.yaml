@@ -36,7 +36,7 @@ param_sets:
     chunks:
       - [20260315, 20260327]
       - [20260331, 20260409]
-      - [20260418, 20260531]
+      - [20260418, 20260513]
       # Newer, DISJOINT visits (post May 13; extra elevation/rotator points) from
       # the danish_1_2_0 wep 17.7.0 reprocessing.  This chunk targets its OWN
       # collection, so the three chunks above keep reading the 17.6.1 collection.

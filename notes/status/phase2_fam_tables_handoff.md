@@ -228,31 +228,18 @@ narrow. Done in `variants.yaml`: `[20260418, 20260531]` → `[20260418, 20260513
 visits (post May 13)", so 20260513 is the intended boundary and the `20260531` end was
 stale. The narrowing matches intent.
 
-**The existing build `20260920` keeps its old chunk directory name
-`20260418_20260531`.** No output tree is touched. Its manifest must therefore record the
-old directory name alongside the narrowed config range, or the chunk directory will not be
-found from the manifest in step 4. A fresh build writes `20260418_20260513`.
+**Aaron's call, 2026-10-10: the directory name changes in the NEW output tree only.** The
+old tree keeps `20260418_20260531` and is not touched. The new tree is written fresh in
+step 4, so there is no directory to rename — the step-4 copy just lands under
+`20260418_20260513`. No manifest carve-out for an old directory name is needed.
 
-**`aos/snake_config.yaml` was deliberately NOT changed — needs Aaron's call.** The chunk
-range appears in both files, and `snake_config.yaml` is what drives the pipeline. Making
-the same edit there was tested and reverted; `snakemake -n` from `aos/` goes from **212 to
-214 jobs** and adds
-
-```
-rule mktable:
-    output: output/fam_processing/danish_1_2/chunks/20260418_20260513/donuts.parquet, ...
-```
-
-i.e. the renamed chunk directory does not exist, so the pipeline wants to rebuild those
-**219 visits through `mktable`**, the expensive Butler step (47 of the 53 min in the
-reference build). The two added jobs are that `mktable` plus a `combine_visits`.
-
-Options: (a) leave `snake_config.yaml` at `20260531` and let `variants.yaml` carry the
-narrowed truth, accepting that the test `test_chunks_match_snake_config` must then compare
-with a documented exception; (b) change `snake_config.yaml` too and accept the 219-visit
-`mktable` rebuild; (c) change it and pre-seed the new directory name from the existing
-build. Not resolved — (a) is the only one that touches no output tree, and the A3 work
-below makes it moot if `snake_config.yaml` reads its chunks from `variants.yaml`.
+`aos/snake_config.yaml` is updated to match, so the two configs agree and
+`test_chunks_match_snake_config` passes. Consequence to know: the **old** tree's chunk
+directory no longer matches the config, so `snakemake -n` run against the old tree asks to
+rebuild those **219 visits through `mktable`** (212 → 214 jobs, the extra being that
+`mktable` plus a `combine_visits`). That is expected and harmless as long as the old tree
+is not rebuilt — `mktable` is deliberately not re-triggered by code edits, and phase 5
+retires the old tree. Do **not** run `snakemake` against the old tree to "fix" this.
 
 ### A3 — one source of truth for variants: decided, not yet implemented (2026-10-10)
 
@@ -313,7 +300,36 @@ register".
 This also subsumes the A2 `snake_config.yaml` question, since chunks can then be generated
 into `snake_config.yaml` from the same source.
 
-### A4 — blitz reference build: proposed, awaiting Aaron's OK (2026-10-10)
+### A4 — blitz reference build: DONE (2026-10-10)
+
+Built with the **unmoved** code at commit `5e793cb`, OK'd by Aaron. Output:
+`/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/danish_1_3_v1000/`.
+Ran locally, **48 s** (predicted ~25 s; the `--fit` step is the rest). No batch job.
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work/aos && \
+python code/fam_processing/run_blitz_mktable.py \
+  --param-set danish_1_3_v1000 \
+  --day-obs 20260428 \
+  --fit \
+  --out-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/danish_1_3_v1000
+```
+
+| table | rows | columns | vs existing build's 20260428 slice |
+|---|---|---|---|
+| `donuts.parquet` | 40,548 | 66 | rows and columns identical |
+| `visits.parquet` | 12 | 23 | identical |
+| `fits.parquet` | 12 | 448 | identical |
+
+12 of 12 visits pass every quality cut; 0 of 12 flagged `bad_fit` on both `z1toz3` and
+`z1toz6`. `provenance.yaml` written, recording calibration run
+`LSSTCam/calib/DM-55048/intrinsicZernikes.v1.0/intrinsicsGen.20260528a`. No `donut_blur`
+column, so the blur fit is skipped — same as the full build.
+
+This is the baseline for the step-2/3 comparison of the blitz path. The step-1 reference
+covers the Snakemake path; together they cover both builders.
+
+### A4 — the original proposal, for the record
 
 The blitz path (`run_blitz_mktable.py`, which builds both `danish_1_3` variants and writes
 the combined tables directly, bypassing `mktable` and `combine_*`) is not covered by the
@@ -367,8 +383,9 @@ Two things the manifests and READMEs must say when the existing builds are regis
   362 `cam_*` columns that a fresh `combine_fits` drops (the combined file was the only
   place they lived — see the sidecar constraint above). Its README **must say** that
   rebuilding loses them until the sidecar is reworked in phase 3.
-- The `20260920` build also keeps the **old chunk directory name** `20260418_20260531`
-  after the A2 narrowing, which its manifest must record.
+- The step-4 copy of `danish_1_2` writes the chunk as **`20260418_20260513`** (the
+  narrowed A2 name) in the new tree. The old tree keeps `20260418_20260531`; the two
+  differ by directory name only, over the same 219 visits.
 
 ## Open, not yet resolved
 
