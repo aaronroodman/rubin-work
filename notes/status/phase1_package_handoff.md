@@ -20,7 +20,7 @@ approaches and the smoke-test numbers are recorded in the Phase 1 section of
 
 Working tree clean, pushed to `origin/main`.
 
-## Install verified in three of four environments
+## Install verified in all four environments
 
 - **USDF terminal** — `import rubinwork, rubinwork.common, rubinwork.products.catalog`.
 - **RSP notebook** — the same imports in a cell. Note the path prints as
@@ -31,18 +31,12 @@ Working tree clean, pushed to `origin/main`.
   `logs/rubinwork_import_40395908.log`. It also exercised the `common` and `aos_state`
   shims there.
 
-## Next concrete action, for Aaron
+## Laptop install: done
 
-**Laptop install**, when next on the laptop — the only part of step 5 still open:
-
-```bash
-cd ~/notebooks/rubin-work && \
-/opt/local/bin/pip3 install --user -e . && \
-/opt/local/bin/python3 -c "import rubinwork, rubinwork.common; print(rubinwork.__file__)"
-```
-
-Note `rubinwork.products.catalog` will report the S3DF data root there and find nothing;
-set `RUBINWORK_DATA` to a local copy if a laptop session needs product data.
+`/opt/local/bin/pip3 install --user -e .` from `~/Astrophysics/Claude/rubin-work` (the
+laptop checkout path). `import rubinwork` resolves to the checkout from any directory.
+`rubinwork.products.catalog` reports the S3DF data root there and finds nothing; set
+`RUBINWORK_DATA` to a local copy if a laptop session needs product data.
 
 ## Then: phase 2
 
