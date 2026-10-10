@@ -197,6 +197,43 @@ indistinguishable from the intended new value. It needs `scons` re-run and updat
 convention line in `aos/CLAUDE.md` ("ConsDB `physical_rotator_angle`, not
 `boresightRotAngle`") plus the `rotator_angle` docs.
 
+### A2 — overlapping chunks: narrowed to 20260418–20260513 (2026-10-10)
+
+`danish_1_2` had two chunks overlapping on 20260514–20260531. The built chunk
+`20260418_20260531` holds **219 visits, min day_obs 20260418, max day_obs 20260513, and 0
+visits with day_obs > 20260513**, so the overlap carries no data and the range is safe to
+narrow. Done in `variants.yaml`: `[20260418, 20260531]` → `[20260418, 20260513]`.
+
+`aos/snake_config.yaml`'s own comment on the next chunk already reads "Newer, DISJOINT
+visits (post May 13)", so 20260513 is the intended boundary and the `20260531` end was
+stale. The narrowing matches intent.
+
+**The existing build `20260920` keeps its old chunk directory name
+`20260418_20260531`.** No output tree is touched. Its manifest must therefore record the
+old directory name alongside the narrowed config range, or the chunk directory will not be
+found from the manifest in step 4. A fresh build writes `20260418_20260513`.
+
+**`aos/snake_config.yaml` was deliberately NOT changed — needs Aaron's call.** The chunk
+range appears in both files, and `snake_config.yaml` is what drives the pipeline. Making
+the same edit there was tested and reverted; `snakemake -n` from `aos/` goes from **212 to
+214 jobs** and adds
+
+```
+rule mktable:
+    output: output/fam_processing/danish_1_2/chunks/20260418_20260513/donuts.parquet, ...
+```
+
+i.e. the renamed chunk directory does not exist, so the pipeline wants to rebuild those
+**219 visits through `mktable`**, the expensive Butler step (47 of the 53 min in the
+reference build). The two added jobs are that `mktable` plus a `combine_visits`.
+
+Options: (a) leave `snake_config.yaml` at `20260531` and let `variants.yaml` carry the
+narrowed truth, accepting that the test `test_chunks_match_snake_config` must then compare
+with a documented exception; (b) change `snake_config.yaml` too and accept the 219-visit
+`mktable` rebuild; (c) change it and pre-seed the new directory name from the existing
+build. Not resolved — (a) is the only one that touches no output tree, and the A3 work
+below makes it moot if `snake_config.yaml` reads its chunks from `variants.yaml`.
+
 ## Open, not yet resolved
 
 - The reference covers **one chunk of ten, one variant of three**. It does not exercise the

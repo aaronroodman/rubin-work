@@ -44,7 +44,10 @@ variants:
     chunks:
       - day_obs: [20260315, 20260327]
       - day_obs: [20260331, 20260409]
-      - day_obs: [20260418, 20260531]
+      # Range narrowed from 20260531 to 20260513 to stop overlapping the next chunk:
+      # the built chunk holds 219 visits with max day_obs 20260513 and none after it.
+      # The existing build 20260920 keeps the old directory name 20260418_20260531.
+      - day_obs: [20260418, 20260513]
       - day_obs: [20260514, 20260731]
         collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
         phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x
