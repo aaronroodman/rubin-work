@@ -62,17 +62,10 @@ own. What remains for step 5 is switching the **build** code to the catalog.
 
 ## Next concrete action
 
-Three things are **waiting on Aaron**, all recorded in full below:
+**Part A is complete** — A1, A2, A3 and A4 are all done and pushed; see their sections
+below. Both reference builds exist, which is what step 2 was gated on.
 
-1. **A4** — OK the proposed blitz reference build (`danish_1_3_v1000`, `day_obs=20260428`,
-   ~25 s, no batch job) and its exact command, then run it.
-2. **A3** — OK implementing the decided design: migrate the `wfs_collections` blocks and
-   the 130 comment lines into `variants.yaml`, write the generator, regenerate
-   `param_sets.yaml`, prove `snakemake -n` still gives 212 jobs.
-3. **A2** — pick an option for `aos/snake_config.yaml` (or let A3 subsume it).
-
-Then step 2, below. **Do not start step 2 before A4 is built** — it is the only
-before-the-move baseline for the blitz path, and once the code moves it cannot be made.
+**Step 2 is next, and needs Aaron's go** (he asked to be consulted before it starts).
 
 **Step 2: move the FAM-table build code into `rubinwork/products/fam_tables/`.** Nothing
 is moved yet. The move is four files, by `git mv` into a new `builders/` subdirectory:
