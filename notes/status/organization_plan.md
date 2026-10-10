@@ -428,6 +428,20 @@ test. Every builder writes its manifest. Split the shared `aos/Snakefile` as eac
 product's rules leave it; what remains are study rules, which move with their studies in
 phase 5. `hsm_moments` stays deferred.
 
+**`cwfs_tables` done 2026-10-10**, commits `71a345f` (reference build) and `b880f2d` (the
+move). `run_wfs_mktable.py` and the `wfs_mktable` rule moved; the other five
+`aos/code/cwfs/` scripts are the CWFS-vs-FAM study and stayed, as did
+`wfs_intrinsic_sidecar`, which is a `miw` rule. `cwfs_tables/variants.yaml` now owns the
+FAM/CWFS triplet link with five registered variants plus one provenance-only entry;
+`gen_param_sets.py` merges it with `fam_tables/variants.yaml` and `aos/param_sets.yaml` is
+**byte-identical** (md5 `0f72da651cf9319cc283754c614051fd`). The reference reproduced
+exactly: 0 differing columns of 20 in `donuts.parquet` and of 8 in `visits.parquet`, at
+zero tolerance. `snakemake -n` in `aos/` went 199 -> 189 jobs; 5 of the 10 are the moved
+rule and the other 5 are the never-built `refitWcs_2025` variant's study jobs, which lost
+their producer — see the phase 3 handoff, which records the `wfs_variants()` filter that
+fixes it and warns that `miw` and `coadds` should expect the same. Two items deferred to
+3b: folding `d12-refitWcs_2025` into `d12-refitWcs`, and retiring `danish_1_0` whole.
+
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
 - `rotator_angle`: ConsDB `physical_rotator_angle` first, then `meta['rotTelPos']`
@@ -440,6 +454,13 @@ the reference builds:
   camera rotator angle and band. This removes the EFD from the FAM build, so it runs in
   batch.
 - The `combine_fits` loss of the `cam_*` sidecar columns.
+- `cwfs_tables`: fold `d12-refitWcs_2025` into `d12-refitWcs` as a date-keyed collection
+  list, so one variant covers 2025 and 2026 as the FAM `danish_1_2` already does. Needs
+  the builder to open a Butler per collection instead of one per variant.
+- Retire `danish_1_0` whole — the FAM variant and the `d10-wep17_3_0` CWFS entry. Both are
+  `registered: false` today, kept so `aos/param_sets.yaml` stays byte-identical. Four live
+  references to the long param_set key must move in the same commit; the phase 3 handoff
+  lists them.
 
 *3c. Rebuild every product fresh into the new tree*, in dependency order: `fam_tables`
 and `cwfs_tables` → `miw` and its sidecar → `coadds`, `dof_lut`, `bounce_tables` → the

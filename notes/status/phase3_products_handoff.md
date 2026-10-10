@@ -19,12 +19,21 @@ comparison, manifest.
 |---|---|
 | `f7985db` | `rubinwork/products/fam_tables/refbuild/check_collections.py`, the 3c pre-flight |
 | `9392f9b` | the 3c rebuild-feasibility results below |
-| (step 1) | `cwfs_tables` reference build with the unmoved code, below |
+| `71a345f` | 3a step 1: the `cwfs_tables` reference build with the unmoved code |
+| `b880f2d` | 3a step 2: the move — builder, shim, `variants.yaml`, product Snakefile, tests |
+| (this file) | 3a steps 3 and 4: the verification and the zero-tolerance comparison |
+
+**Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
 ## Next concrete action
 
-**Phase 3a, `cwfs_tables`, step 2: the move.** Step 1 (the reference build) is done; see
-"3a step 1" below for the command and the counts.
+**Phase 3a, `miw`.** The next product in dependency order. It is a bigger move than
+`cwfs_tables`: `aos/code/miw/` plus the Snakefile rules `build_intrinsic`,
+`intrinsic_split` and `intrinsic_sidecar` — and `wfs_intrinsic_sidecar`, which is a `miw`
+rule that reads the CWFS donuts and was deliberately left in place by 3a. Its variants are
+the `mi_config.yaml` entries, prefixed with the upstream FAM short code
+(`d12-A_50_34_i_5rot`, `d13v1000-A_50_50_i_rbr`, ...), and the official-MIW registrations
+are manifests only. Follow the same five steps this product used.
 
 ## 3a, `cwfs_tables` — the move
 
@@ -160,6 +169,130 @@ produced at a comparable size.
 
 `rotator_angle` and `alt` in the CWFS tables are **copied from the FAM `visits.parquet`**,
 not re-derived, so the A1 `rotTelPos` non-reproducibility cannot affect this comparison.
+
+### 3a step 2 — the move: DONE (commit `b880f2d`)
+
+`run_wfs_mktable.py` moved by `git mv` into
+`rubinwork/products/cwfs_tables/builders/`, with a shim at
+`aos/code/cwfs/run_wfs_mktable.py` that binds the real module's namespace and sets
+`sys.modules[__name__] = _real`. Verified: a bare-name `import run_wfs_mktable` after a
+`sys.path.insert` of `aos/code/cwfs` gives the **same module object**, and all seven
+checked attributes (`main`, `get_aidonut_zernikes`, `get_unpaired_zernikes`, `_fam_noll`,
+`_validation_plot`, `_wfs_shell`, `AIDONUT_SW0`) are the same objects, not copies.
+
+New in the product: `__init__.py` (with `load`), `reader.py`, `variants.yaml`,
+`Snakefile`, `write_manifest.py`, `compare_builds.py`, `tests/test_cwfs_tables.py` (26
+tests) and `refbuild/stage_fam_night.py`.
+
+**The one builder change, and why it is not a results change.** The builder gained a
+`--variant` flag that resolves a `cwfs_tables` variant to its `(param_set, wfs_name)`
+pair; the original `--param-set` plus `--wfs-name` route is untouched and still reads the
+configuration through `intrinsics_lib.load_param_sets()`. Both routes end at the same
+`pset['wfs_collections'][name]` lookup, so they cannot disagree — and step 4's comparison
+is the unmoved `--param-set` route against the moved `--variant` route, which is the
+stronger check.
+
+Four things found or decided during the move:
+
+1. **`wfs_mktable` must run with `aos/` as its cwd**, for the same reason `fam_tables`'
+   `mktable` does: the external `intrinsics_lib.load_param_sets()` opens
+   `Path('param_sets.yaml')` relative to the working directory. The product Snakefile does
+   `cd <repo>/aos && python -m ...`.
+2. **`reader` must be written before `dataset_type`** in a generated `wfs_collections`
+   entry. `BUILDER_FIELDS` in `cwfs_tables/reader.py` fixes that order; with
+   `dataset_type` first, `aos/param_sets.yaml` differed by the two swapped lines of the
+   `tarts` entry and byte-identity failed.
+3. **An entry with only a collection must be emitted as a bare string**, not a
+   one-key dict, which is the shape `aos/param_sets.yaml` has today.
+   `_builder_entry()` does that.
+4. **`aos/Snakefile`'s `wfs_variants()` had to start filtering on what is on disk.** See
+   step 3 — this is the one non-obvious consequence of the move.
+
+The product Snakefile builds one variant and one build at a time, from the repository
+root:
+
+```bash
+snakemake -s rubinwork/products/cwfs_tables/Snakefile -n \
+    --config variant=d12-refitWcs build=20261010 fam_build=20260920
+```
+
+It takes `fam_build` (default `current`) and resolves it through the catalog, recording
+the real build name under the manifest's `inputs` as
+`{"fam_tables": "danish_1_2@20260920"}`. `manifest` depends on both tables **and** the
+validation PDF, so an interrupted build leaves no manifest and the catalog does not see
+it. A `registered: false` variant raises before any path resolves, naming the reason.
+
+### 3a step 3 — verification: DONE
+
+**`aos/param_sets.yaml` is byte-identical.** md5 `0f72da651cf9319cc283754c614051fd` before
+and after; `gen_param_sets --check` passes, a byte `diff` against the pre-move copy is
+empty, and `git diff 9392f9b -- aos/param_sets.yaml` is empty.
+
+**`snakemake -n` in `aos/`: 199 -> 189 jobs, a drop of 10 — not 5.** The moved rule
+accounts for 5; the other 5 are a real consequence that the next product's move will meet
+again:
+
+| rule | before | after | change | why |
+|---|---|---|---|---|
+| `wfs_mktable` | 5 | 0 | **-5** | moved to the product |
+| `wfs_corner_compare` | 5 | 4 | -1 | `refitWcs_2025` lost its producer |
+| `wfs_intrinsic_sidecar` | 10 | 8 | -2 | same |
+| `wfs_dof_compare` | 10 | 8 | -2 | same |
+| every other rule | | | **0** | unchanged |
+| **total** | **199** | **189** | **-10** | |
+
+All counts are jobs (dimensionless). **`refitWcs_2025` is the one CWFS variant with no
+old-tree build** — `aos/output/wfs_ingest/danish_1_2/` holds `refitWcs`, `paired_3mm`,
+`ai_donut` and `tarts`, but not it. Before the move, `wfs_mktable` was its producer, so
+its four downstream study jobs were plannable. After the move there is no producer in
+`aos/`, and a plain `snakemake -n` aborted the whole DAG with `MissingInputException`
+rather than listing jobs.
+
+So `wfs_variants()` now enumerates only the variants whose `donuts.parquet` exists. The
+four built variants are completely unaffected — post-move they still plan 16, 16, 16 and
+20 `wfs_corner_compare`/`wfs_dof_compare` output paths respectively — and zero
+`refitWcs_2025` jobs remain. Building that variant with the product Snakefile makes its
+study jobs reappear. **This is the step-3 criterion failing as literally written** ("the
+same job list apart from the moved rule's jobs"), and it is reported rather than hidden:
+the extra -5 is one never-built variant, enumerated exactly, not a side effect on anything
+that was working.
+
+**The product Snakefile plans the expected jobs**: 3 for one variant — `wfs_mktable` 1,
+`manifest` 1, `all` 1 — verified against a staged `fam_tables` build in a scratch data
+root (`_phase2_refbuild/_scratch_3a/`), never the real products tree. The `mktable`
+command it issues is the moved builder with `--variant`, `--coord-sys OCS`,
+`--dz-prefix z1toz6`, `--tables-dir <fam build>` and `--out-dir <cwfs build>`.
+
+**Import smoke test: no regressions.** 63 of 63 modules import before and after
+(`rubinwork/common/scripts/import_smoke_test.py --compare`), "all 63 module import
+outcomes identical".
+
+**Tests: 90 passed** across `rubinwork/products/` — the 26 new `cwfs_tables` tests plus
+all 64 pre-existing `fam_tables` and `catalog` tests, none of which needed changing.
+`test_generated_param_sets_carry_the_wfs_half` in `test_fam_tables.py` still passes
+untouched, because it asserts on the generated output rather than on where the data lives.
+
+### 3a step 4 — the comparison: DONE, exact match
+
+The reference rerun with the moved code at commit `b880f2d`, **51.0 s wall clock**
+(reference 65.3 s), same 6 in-focus exposures, same 171 donut rows, same 0 FAM visits
+missing a CWFS table, and the same fitted validation offsets to the printed precision.
+Output in `_phase2_refbuild/cwfs_tables/refitWcs_2025_20251126_moved/`.
+
+`python -m rubinwork.products.cwfs_tables.compare_builds` at **zero tolerance**
+(`rtol=0.0, atol=0.0`):
+
+| table | rows | columns compared | columns only in one side | differing columns |
+|---|---|---|---|---|
+| `donuts.parquet` | 171 | 20 | 0 | **0** |
+| `visits.parquet` | 6 | 8 | 0 | **0** |
+
+The key `(day_obs, seq_num, detector, thx_OCS, thy_OCS)` is unique on both sides (171 of
+171 rows), so the alignment is sound rather than accidentally agreeing. The validation PDF
+came out at 106,605 bytes on both sides (0.00% difference), though it is deliberately not
+byte-compared.
+
+**Nothing differs — not one column in either table.** `RESULT: builds match`, exit 0.
 
 ## 3c rebuild feasibility, measured 2026-10-10
 
@@ -320,6 +453,30 @@ command, per `CLAUDE.md`.
 - **`backfill_visit_sides.py` mutates a product table in place**, which rule 5 of the
   plan's section 2 forbids. Decide in 3a/3b whether it becomes a build step or is retired.
   It still targets the old tree, deliberately.
+- **3b: fold `d12-refitWcs_2025` into `d12-refitWcs`** as a date-keyed collection list.
+  Aaron, 2026-10-10: they are one variant, differing only in the collection that covers
+  2025. Needs a builder change — `run_wfs_mktable` opens one Butler per `--wfs-name` —
+  so it was out of scope for 3a's mechanical move. The two collections are disjoint in
+  `day_obs`, so the split is clean. Doing it also removes the never-built variant that
+  forced the `wfs_variants()` filter in step 3.
+- **3b: retire `danish_1_0` whole**, both the FAM variant and `d10-wep17_3_0`. Aaron,
+  2026-10-10. Four live things resolve the long param_set key and must be handled in the
+  same commit: the staged-MIW provenance chain
+  (`aos/calibration/miw/intrinsic_split_maps_v1.provenance.yaml`, `stage_miw.py`,
+  `calibration/README.md`), `notes/aos-measured-intrinsics/make_figures.py:23` and
+  `provenance.md:5`, the **live** `overrides:` block at `aos/analysis_config.yaml:148`,
+  and `test_fam_tables.py:263`. Both halves are carried as `registered: false` until then,
+  which is what keeps `aos/param_sets.yaml` byte-identical.
+- **A never-built variant breaks a plain `snakemake -n` in `aos/` once its producer
+  moves.** Met in 3a with `refitWcs_2025` and fixed by filtering `wfs_variants()` on what
+  is on disk. Expect the same for `miw` and `coadds`: check which of their variants have
+  no old-tree output **before** moving the rule.
 - The timing runs wrote throwaway output to
   `_phase2_refbuild/_timing_step5/{nothermal,thermal,n15}/`. Not deleted — file deletion
   needs Aaron's OK.
+- 3a left three directories under `_phase2_refbuild/cwfs_tables/`
+  (`_fam_20251126` the staged FAM night, `refitWcs_2025_20251126` the reference,
+  `refitWcs_2025_20251126_moved` the rerun) and a scratch data root at
+  `_phase2_refbuild/_scratch_3a/` holding a fake `fam_tables` manifest used only to plan
+  the product Snakefile. Keep the two reference builds until 3c; the rest is throwaway.
+  Not deleted — file deletion needs Aaron's OK.
