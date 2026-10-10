@@ -1,0 +1,105 @@
+# fam_tables variants: short variant name -> full configuration.
+#
+# Built from aos/param_sets.yaml during phase 2 of notes/status/organization_plan.md.
+# The variant name is today's `dir_name`, which is already short and is what the output
+# directories use.  `param_set` carries the long aos/param_sets.yaml key, which remains
+# the identity for everything that recorded it: the value-added DB rows
+# (fam_variant.fam_variant_id / .param_set / .fits_path, state_variant.intrinsic_ref),
+# the frozen provenance files, and `--param-set` on the command line.  Keeping both
+# means registering a build does not rename anything.
+#
+# Only the in-use variants are registered.  `danish_1_0` (param_set
+# fam_danish_1_0_wep17_3_0_bin2x) is obsolete: it is disabled in aos/snake_config.yaml and
+# its output sits in aos/output/archive/.  It is kept in param_sets.yaml because it is the
+# recorded provenance of the staged v1 MIW and the two-epochs tech note, so it must keep
+# resolving there; it is not a product build.  `danish_1_1_1` and
+# `danish_1_2_0_wep17_7_0_2025` are not param_sets at all — the first is gone from
+# param_sets.yaml, and the second is a per-chunk `phrase` of the five 2025 chunks that
+# fold into danish_1_2.
+#
+# builder: which build path produces the tables.
+#   snakemake -- mktable + fit + combine_* + attach_telemetry, per date chunk
+#   blitz     -- run_blitz_mktable recasts unpaired donutBlitzFamResults into this
+#                schema and writes the combined tables directly, so there are no chunks
+
+variants:
+
+  danish_1_2:
+    param_set: fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
+    builder: snakemake
+    description: >-
+      Mar-May 2026 plus the 2025 reprocessing, /repo/main, Danish 1.2.0_alpha
+      wep 17.6.1 dv 4.5.0 bin x2 paired; refitWCS stamps
+    butler_repo: /repo/main
+    coord_sys: OCS
+    fam_programs: [T278, T381, T492, T539, T614, T710, T717, T720, T724]
+    fam_collections:
+      - LSSTCam/runs/aos/fam/danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/paired/refitWcs
+    collection_phrase: aos_fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
+    day_obs_min: 20260315
+    day_obs_max: 20260531
+    # Date chunks, from aos/snake_config.yaml.  A chunk may override the collection,
+    # the Butler repo and the program filter; the three bare ranges read the
+    # param_set-level 17.6.1 collection.  All chunks combine into one set of tables.
+    chunks:
+      - day_obs: [20260315, 20260327]
+      - day_obs: [20260331, 20260409]
+      - day_obs: [20260418, 20260531]
+      - day_obs: [20260514, 20260731]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x
+      - day_obs: [20260713, 20260713]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_embargo0713
+        butler_repo: /repo/embargo
+      - day_obs: [20250415, 20250531]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20250601, 20250930]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20251001, 20251115]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20251116, 20251130]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+      - day_obs: [20251201, 20251231]
+        collection: LSSTCam/runs/aos/fam/danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs
+        phrase: aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025
+        programs: [BLOCK, CWFS, AOSSEQUENCE]
+
+  danish_1_3_test:
+    param_set: danish_1_3_test
+    builder: blitz
+    description: >-
+      Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2
+      UNPAIRED; default Batoid intrinsics from the dataset type
+    butler_repo: /repo/main
+    coord_sys: OCS
+    fam_programs: [T614]
+    fam_collections:
+      - u/jmeyers3/t614_fam_unpaired
+    collection_phrase: aos_fam_danish_1_3_blitz_unpaired
+    day_obs_min: 20260315
+    day_obs_max: 20260619
+
+  danish_1_3_v1000:
+    param_set: danish_1_3_v1000
+    builder: blitz
+    description: >-
+      Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2
+      UNPAIRED, v1000 pupil model (as-built + M1M3 + M1 baffles); default Batoid
+      intrinsics from the dataset type
+    butler_repo: /repo/main
+    coord_sys: OCS
+    fam_programs: [T614]
+    fam_collections:
+      - u/jmeyers3/t614_fam_unpaired_v1000
+    collection_phrase: aos_fam_danish_1_3_blitz_unpaired_v1000
+    day_obs_min: 20260315
+    day_obs_max: 20260619
