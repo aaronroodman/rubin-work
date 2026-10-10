@@ -43,8 +43,9 @@ git show pre-products-reorg-2026-10-09:notes/status/reorg_review_plan_2026-09.md
 | incremental products | value-added database and guider moments: `v<schema>`, provenance per night |
 | official MIW | Guillem's `ts_intrinsic_wavefront` calibrations registered in the catalog as external variants |
 | MIW sidecar | anything the official MIW needs stays in `ts_intrinsic_wavefront` and its sidecar, which cannot depend on the private database; per-donut data stays in parquet |
-| old output | left untouched during the reorg; in-use builds are **copied** into the new tree, so the old tree stays whole; Aaron zips it for temporary backup afterwards |
-| obsolete builds | not copied and not registered ("virtual archive"): they stay only in the old tree. Includes FAM `danish_1_0`, `danish_1_1_1`, `danish_1_2_0_wep17_7_0_2025` |
+| old output | left untouched during the reorg and kept as the "before" for comparing rebuilds; Aaron zips it for temporary backup afterwards |
+| populating the new tree | **revised 2026-10-10: rebuild, do not copy.** Code moves for all products first (mechanical, checked by small reference builds); then the intended fixes; then every product is rebuilt fresh into the new tree and compared with the old one. No existing build is copied or registered |
+| obsolete builds | never rebuilt or registered ("virtual archive"): they stay only in the old tree. Includes FAM `danish_1_0`, `danish_1_1_1`, `danish_1_2_0_wep17_7_0_2025` |
 | package name | `rubinwork`: personal use only; anything Rubin adopts officially moves to a `ts_*` package |
 | HSM moments | product deferred until its study restarts |
 | code review | after the reorg; a reference-run check guards each move |
@@ -401,18 +402,51 @@ unchanged.
    the known `rotator_angle` non-reproducibility could not surface — a future comparison
    that does rerun it will see up to 0.188 deg of camera rotator angle differ on the 19
    visits where ConsDB `physical_rotator_angle` is NULL.
-4. **Next.** Register the existing builds: copy each in-use build into the new tree and write its
-   manifest. The old tree is not touched, so old code keeps working until phase 5. Obsolete
-   builds are not copied. Copy cost: the in-use `danish_1_2` FAM tables are the bulk;
-   `donuts.parquet` over all 24 copies on disk is 64.09 GB, and only the in-use ones are
-   copied.
-5. Update readers to use `load()`.
+4. **Dropped 2026-10-10** (revised route): existing builds are not copied or registered;
+   every product is rebuilt fresh in phase 3c.
+5. **Next: manifests and the catalog rule.** Both FAM builders write `manifest.json`
+   (`status: complete`, expanded config with per-chunk collections) as their last step;
+   the catalog skips builds without a complete manifest; `current` moves only through an
+   explicit `set-current` command, never as a side effect of a build. Studies switch to
+   `load()` in phase 5, once rebuilt products exist.
 
-**Phase 3 — the other products**, same steps, in dependency order: `cwfs_tables`; `miw`
-(plus the official-MIW registrations); `coadds`; `dof_lut` and `bounce_tables`;
-`value_added` (switch to `v1/live` + snapshots, registry rows to catalog names);
-`guider_moments` and `hsm_moments`. Split the shared `aos/Snakefile` as each product's
-rules leave it; what remains are study rules, which move with their studies in phase 5.
+**Phase 3 — the other products: move, fix, rebuild.** Revised 2026-10-10 from "copy and
+register" to three passes over all products.
+
+*3a. Move the code, mechanically.* In dependency order: `cwfs_tables`; `miw` (plus the
+official-MIW registrations, which are manifests only); `coadds`; `dof_lut` and
+`bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout comes with the
+rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
+checked by a small reference build made with the unmoved code and reproduced with the
+moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
+test. Every builder writes its manifest. Split the shared `aos/Snakefile` as each
+product's rules leave it; what remains are study rules, which move with their studies in
+phase 5. `hsm_moments` stays deferred.
+
+*3b. Apply the intended fixes*, each as its own commit with its own before/after check on
+the reference builds:
+- `rotator_angle`: ConsDB `physical_rotator_angle` first, then `meta['rotTelPos']`
+  (radians in `aggregateAOSVisitTableRaw`, degrees in `donutBlitzFamResults`) instead of
+  the EFD window mean and `visitInfo` fallbacks; rename `skyAngle` to `rotTelPos` in
+  `intrinsics_lib.py`. In `ts_intrinsic_wavefront`, so `scons` and the `aos/CLAUDE.md`
+  convention line follow.
+- The FAM telemetry sidecar shrunk to what studies still read from `visits.parquet`
+  (section 10), and `mktable` run with `--no-thermal` if the MIW needs only elevation,
+  camera rotator angle and band. This removes the EFD from the FAM build, so it runs in
+  batch.
+- The `combine_fits` loss of the `cam_*` sidecar columns.
+
+*3c. Rebuild every product fresh into the new tree*, in dependency order: `fam_tables`
+and `cwfs_tables` → `miw` and its sidecar → `coadds`, `dof_lut`, `bounce_tables` → the
+`value_added` rows that depend on them (`fam_dz` and the MIW-route `optical_state`
+variants), either rebuilt from the new FAM fits or checked to give the same results.
+Before starting: confirm every Butler collection in `variants.yaml` still resolves — the
+20260713 embargo chunk may have moved from `/repo/embargo` to `/repo/main` — and get the
+visit count per variant to size the run (the reference chunk ran at about 6 min for 53
+visits without the EFD thermal loop). Each rebuilt product is compared with its old-tree
+build, and every difference is explained (expected: `rotator_angle` on visits where
+ConsDB is NULL, the dropped sidecar columns, the restored `cam_*` columns). Then
+`set-current`.
 
 **Phase 4 — skills and generators.** `/start-study`, `/wrap`, `/review`, the `STUDIES.md`
 and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`.
@@ -437,7 +471,9 @@ layout. The reference runs from phases 2–3 are its first regression tests.
 ## 9. Output mapping, first draft
 
 From the S3DF inventory of 2026-10-08 (`common/scripts/inventory_data_files.py`): 597
-distinct file names, 110.2 GB in total. To be checked by Aaron before phase 2.
+distinct file names, 110.2 GB in total. Since the revised route rebuilds rather than copies,
+this table now says which old-tree build each rebuilt product is compared against, and
+what is never rebuilt.
 
 | today (under `aos/output/` unless noted) | becomes | note |
 |---|---|---|
