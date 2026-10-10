@@ -15,4 +15,5 @@ dependencies = []
 # Only rubinwork/ is a package. The topic directories (aos/, guider/, ...) are
 # studies and scripts, some of which carry an __init__.py; none should install.
 include = ["rubinwork*"]
+exclude = ["rubinwork*.tests*"]
 namespaces = false
