@@ -381,11 +381,20 @@ unchanged.
 - `common/notebook_template.ipynb` and `common/output/` stayed at the old path, since
   `CLAUDE.md` and the output-layout convention point at them. They move in phase 5.
 
-**Phase 2 — pilot product: `fam_tables`, end to end.**
-1. Reference run before the move: build one variant over a few nights and keep the output.
+**Phase 2 — pilot product: `fam_tables`, end to end.** State in
+`notes/status/phase2_fam_tables_handoff.md`.
+1. **Done.** Reference run before the move: `danish_1_2`, chunk `20251116_20251130`, 6
+   nights, built with the unmoved code. A second reference for the **blitz** path
+   (`danish_1_3_v1000`, one night) is proposed and awaiting an OK.
 2. Move the code and the Snakefile rules into `rubinwork/products/fam_tables/`;
-   `variants.yaml` from `param_sets.yaml`.
+   `variants.yaml` from `param_sets.yaml`. **Direction decided 2026-10-10:**
+   `variants.yaml` carries both the FAM and the WFS/CWFS halves — the FAM/CWFS triplet
+   link is one fact and needs one home — and `aos/param_sets.yaml` becomes a **generated**
+   file. It cannot be deleted, even in phase 5: the external
+   `intrinsics_lib.load_param_sets()` reads it by name from the cwd.
 3. Rerun the reference build and compare row counts and column values with the reference.
+   `mktable` is deliberately **not** rerun (it stays in `ts_intrinsic_wavefront`, and its
+   EFD thermal loop is 47 of the reference's 53 min).
 4. Register the existing builds: copy each in-use build into the new tree and write its
    manifest. The old tree is not touched, so old code keeps working until phase 5. Obsolete
    builds are not copied. Copy cost: the in-use `danish_1_2` FAM tables are the bulk;

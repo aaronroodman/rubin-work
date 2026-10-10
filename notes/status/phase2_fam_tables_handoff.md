@@ -14,8 +14,16 @@ cleared. A fresh session re-reads this file and the plan's sections 2–5, not a
 |---|---|
 | `58a6606` | `aos/code/infra/phase2_reference_build.sh`; the sidecar/EFD review item in the plan |
 | `b355446` | Step 1 reference build recorded; `rubinwork/products/fam_tables/` with `variants.yaml`, `reader.py`, `compare_builds.py`, 18 tests |
+| `d3f44a5` | This handoff, after step 1 |
+| `cbe3b12` | **A1**: `rotator_angle` resolved; `rotTelPos` identified as the right source |
+| `c757462` | **A2**: `danish_1_2` chunk narrowed to `20260418_20260513` in `variants.yaml` |
+| `29dbebc` | **A3** decision: `variants.yaml` carries FAM+WFS and generates `param_sets.yaml` |
 
-Working tree clean at `b355446`. Not yet pushed.
+**Test status: 17 of 18 pass.** `test_chunks_match_snake_config` **fails on purpose** after
+A2 — `variants.yaml` now says `[20260418, 20260513]` while `aos/snake_config.yaml` still
+says `[20260418, 20260531]`. The failure is the open A2 decision made visible; do not
+"fix" it by editing the test. It clears when `snake_config.yaml` is generated from the same
+source (A3) or when Aaron picks an A2 option.
 
 ### Step 1 — reference build (done)
 
@@ -53,6 +61,18 @@ plus `load_table`, `variants` and `variant_config`. 18 tests pass; 44 with the c
 own. What remains for step 5 is switching the **build** code to the catalog.
 
 ## Next concrete action
+
+Three things are **waiting on Aaron**, all recorded in full below:
+
+1. **A4** — OK the proposed blitz reference build (`danish_1_3_v1000`, `day_obs=20260428`,
+   ~25 s, no batch job) and its exact command, then run it.
+2. **A3** — OK implementing the decided design: migrate the `wfs_collections` blocks and
+   the 130 comment lines into `variants.yaml`, write the generator, regenerate
+   `param_sets.yaml`, prove `snakemake -n` still gives 212 jobs.
+3. **A2** — pick an option for `aos/snake_config.yaml` (or let A3 subsume it).
+
+Then step 2, below. **Do not start step 2 before A4 is built** — it is the only
+before-the-move baseline for the blitz path, and once the code moves it cannot be made.
 
 **Step 2: move the FAM-table build code into `rubinwork/products/fam_tables/`.** Nothing
 is moved yet. The move is four files, by `git mv` into a new `builders/` subdirectory:
@@ -292,6 +312,63 @@ register".
 (baseline captured this session: **212 jobs**, with `mktable` showing no pending job).
 This also subsumes the A2 `snake_config.yaml` question, since chunks can then be generated
 into `snake_config.yaml` from the same source.
+
+### A4 — blitz reference build: proposed, awaiting Aaron's OK (2026-10-10)
+
+The blitz path (`run_blitz_mktable.py`, which builds both `danish_1_3` variants and writes
+the combined tables directly, bypassing `mktable` and `combine_*`) is not covered by the
+step-1 reference, and it moves in step 2. It needs its own before-the-move baseline.
+
+**Proposed: `danish_1_3_v1000`, `day_obs=20260428`.** The collection
+`u/jmeyers3/t614_fam_unpaired_v1000` holds 966 `donutBlitzFamResults` datasets over 15
+nights; the three smallest are 20260326 (6), 20260428 (12), 20260619 (24).
+
+| quantity | value |
+|---|---|
+| visits (`donutBlitzFamResults` datasets) | 12 |
+| expected `donuts.parquet` rows | 40,548 |
+| expected `visits.parquet` rows | 12 |
+| expected `fits.parquet` rows | 12 (12 of 12 fit) |
+| expected run time | ~25 s (2.0 s/visit) |
+
+Runtime per visit is from the full v1000 build log
+`aos/logs/blitz_mktable_v1000_20261005_000032.log`: 966 visits in ~33 min. Expected row
+counts are the per-night slices of the existing `danish_1_3_v1000` build.
+
+**Not 20260326**, the smallest night: 6 visits but only **1** produces a `fits.parquet`
+row, so the fit and combine steps would barely be exercised. 20260428 fits all 12 for
+~13 s more.
+
+**No batch job** — ~25 s runs locally.
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work/aos && \
+python code/fam_processing/run_blitz_mktable.py \
+  --param-set danish_1_3_v1000 \
+  --day-obs 20260428 \
+  --fit \
+  --out-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/danish_1_3_v1000
+```
+
+`--fit` is required: without it the run stops after donuts/visits and writes no
+`fits.parquet`, leaving the fit path untested. All flags verified against the script's
+argument parser. Command, commit, and the actual row/column counts go here once run.
+
+### Step 4 requirements, to carry forward
+
+Two things the manifests and READMEs must say when the existing builds are registered:
+
+- **`danish_1_2` is a composite variant.** Its chunks use different Danish and wep
+  versions and **two different Butler repos** (`/repo/main`, plus `/repo/embargo` for the
+  20260713 chunk), so a single `collections` field in the manifest would be wrong. Its
+  manifest **lists collections per chunk**. See the per-chunk `collection`, `phrase`,
+  `butler_repo` and `programs` overrides in `variants.yaml`.
+- **A rebuild of `danish_1_2` loses 362 columns.** The `20260920` `fits.parquet` carries
+  362 `cam_*` columns that a fresh `combine_fits` drops (the combined file was the only
+  place they lived — see the sidecar constraint above). Its README **must say** that
+  rebuilding loses them until the sidecar is reworked in phase 3.
+- The `20260920` build also keeps the **old chunk directory name** `20260418_20260531`
+  after the A2 narrowing, which its manifest must record.
 
 ## Open, not yet resolved
 
