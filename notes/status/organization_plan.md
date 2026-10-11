@@ -27,6 +27,7 @@ git show pre-products-reorg-2026-10-09:notes/status/reorg_review_plan_2026-09.md
 9. [Output mapping, first draft](#9-output-mapping-first-draft)
 10. [Carried-over open items](#10-carried-over-open-items)
 11. [Open questions](#11-open-questions)
+12. [Autonomy contract](#12-autonomy-contract)
 
 ## 1. Decisions
 
@@ -644,3 +645,57 @@ variants left in the old tree only; package name `rubinwork`.
 1. **Nightly job**: can the EFD be reached from S3DF batch nodes after setup? If not, is a
    scheduled job on `sdfiana`/`slacrd` allowed for the telemetry builder? Needed before
    observing resumes, not before phase 1.
+
+## 12. Autonomy contract
+
+Agreed 2026-10-11. Every session working on this plan reads this section. Its purpose is
+to let sessions run with as little of Aaron's time as possible, and to make the few
+places that need him explicit. The hard stops in `CLAUDE.md` apply on top of it and win
+any conflict.
+
+### Continue without asking
+
+- A step whose zero-tolerance comparison matches, or whose differences are all explained
+  and expected (listed in the handoff before the step ran).
+- A job-count change in `snakemake -n` that is accounted for rule by rule.
+- Any decision the rules of sections 2–7 already settle: product vs study, library vs
+  product, variant naming, shims, manifests, the old-tree-then-catalog resolver.
+- A choice that is easy to reverse and has a recommended default: take the default, mark
+  it **provisional** in the handoff's "Decisions for Aaron" list, and keep going.
+- The next step of the same phase, once the current one is committed, pushed and recorded
+  in the handoff. Clear-friendly: everything the next step needs is in the handoff.
+
+### Stop and wait for Aaron
+
+- A comparison difference that is not explained, or a test or import regression.
+- Deleting any file (list candidates in the handoff instead).
+- A batch job outside a set Aaron has approved by its exact submit command.
+- Any change to `ts_intrinsic_wavefront` or another external package, beyond what an
+  approved 3b item describes.
+- A change to science results outside phase 3b/3c, or a 3b/3c result that differs from
+  what the plan predicts.
+- Spend: stop at the end of the current step once a session has spent more than $50, or
+  when the month's total passes the pace that stays under budget (see the handoff's spend
+  note).
+
+### Queue, don't block
+
+Questions that need Aaron's judgment but do not block the rest of the step go into a
+**"Decisions for Aaron"** list at the top of the current handoff, each with the options,
+a recommendation, and what is waiting on it. The session continues with whatever does not
+depend on the answer. Aaron answers the list when available; answered items move to
+"Decisions taken".
+
+### Pre-approved, so they need no further ask
+
+- **Phase 3b approach**: the `rotTelPos` fix in `ts_intrinsic_wavefront` and the sidecar
+  shrink with `mktable --no-thermal`, as section 8 describes them. Show Aaron the diff
+  only if it departs from that description.
+- **Phase 3c batch set**: once 3b lands, the session writes one submit script for the
+  `danish_1_2` `mktable` jobs split by night and shows it once. Aaron's OK on that script
+  covers every job it submits, including resubmitting nights that failed for a transient
+  reason (node or filesystem error). Anything else is a new ask.
+- **Phase 5 triage**: per topic, the session proposes a status for every study (convert,
+  `done`, `dropped`) in one list. Aaron approves the list; only studies marked convert are
+  converted, and the others get a short `study.md` with their status and final answer.
+
