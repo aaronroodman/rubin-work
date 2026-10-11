@@ -30,7 +30,9 @@ comparison, manifest.
 | `3f607ab` | 3a step 1: the `coadds` reference build with the unmoved code |
 | `d0e4182` | 3a step 2: the `coadds` move — builder, shim, `variants.yaml`, product Snakefile, two-upstream manifest, npz comparison, tests |
 | `3d4f993` | 3a steps 3 and 4 for `coadds`: the verification and the zero-tolerance comparison |
-| (this file) | the coadd study scripts resolve the old tree before the catalog, as `aos/Snakefile` does |
+| `ceca01e` | the coadd study scripts resolve the old tree before the catalog, as `aos/Snakefile` does |
+| `d5eeba6` | `dof_lut`'s plain-FAM-DZ projection recorded as under review (Aaron's call) |
+| (this file) | 3a step 1 for `dof_lut` and `bounce_tables`: both reference builds, scope and variants |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -46,35 +48,33 @@ tree is visible to them before phase 5.
 
 ## Next concrete action
 
-**Phase 3a, `dof_lut` and `bounce_tables`.** The next two products in dependency order,
-taken together because they are the plan's two "small products" and both key on a MIW
-variant:
+**Phase 3a step 2 for `dof_lut` and `bounce_tables`: the move.** Step 1 is done — both
+reference builds exist, both are the full production run, and every comparison key is
+verified unique. Scope, variants and the three decisions Aaron made on 2026-10-11 are in
+the `dof_lut` and `bounce_tables` section below; read it before moving anything, since two
+of them supersede the plan.
 
-| product | code today | rule | output today | plan's first variants |
-|---|---|---|---|---|
-| `dof_lut` | `aos/code/lut/` | `build_lut`, 3 jobs | `output/lut/<P>_<M>/` (`lut`, `lut_dz`, `lut_by_rotbin` parquet) | per MIW variant |
-| `bounce_tables` | `aos/code/bounce/` (the table-writing part only) | `bounce`, 3 jobs | `output/bounce/<P>_<M>/` (`bounce_fwhm_metric`, `bounce_dof_stats` parquet) | per MIW variant |
+What the move commit has to do, beyond the mechanical pattern the three earlier products
+set:
 
-Both are in `rule all`, unlike `coadds`, so **this move WILL change the `aos/` job count**
-— expect −3 for each rule, and account for the drop rule by rule as the three earlier
-products did. Name the variants `d12-A_50_34_i_5rot` and so on, the same MIW-prefixed
-form `coadds` uses: these are also derived from a MIW, not from a FAM variant.
+1. **Split `run_bounce.py` at `:700`.** Everything to `:700` plus the four `to_parquet`
+   calls is the builder; the nine `PdfPages` blocks stay as the study. The table data all
+   comes from the `:479`-`:700` analysis block, so no physics moves.
+2. **`rubinwork.bounce`, a new library**, so the four `smatrix` imports stop reaching into
+   `aos/code/bounce/`. Three names are all they need. Fix `bounce_lib.rbr_module()`'s
+   `sys.path` insert in the same commit.
+3. **`bounce` keeps a rule in `aos/Snakefile`** — the plotting half. This is the first
+   product whose rule survives the move, so the −3 has to be accounted against a rule that
+   still exists.
+4. **Declare every output.** `build_lut` writes 5 files against 3 declared, `bounce` 13
+   against 2.
+5. `bounce_tables/variants.yaml` must keep resolving the live `bounce:` override at
+   `aos/analysis_config.yaml:180`, which is keyed on the long param_set and redefines the
+   T720 legs as a five-point sweep.
 
-Two things to settle before moving `bounce_tables`, both already known:
-
-- **The plan's section 2 lists a wrong-way import to remove here**:
-  `smatrix/code/regularized_inversion/` imports from `aos/code/bounce/` in four places.
-  Making the bounce tables a product is what the plan expects to fix it; decide whether the
-  shared code becomes a library in the same commit or whether the shim carries it.
-- **Only the table-writing part of `aos/code/bounce/` is the product.** `run_bounce.py`
-  also renders `bounce_summary.pdf` and the plan's section 9 says "plots go to the bounce
-  study", so the split is inside one script rather than between scripts — unlike `coadds`,
-  where it fell cleanly between files. Check with `rg` which outputs are read outside
-  `aos/code/bounce/` before deciding, as was done here.
-
-`build_lut` reads its `fits.parquet` from the **FAM** tables (`d_tables(w.d)`), not from
-`output/miw/<d>/` — worth confirming that is intended before the move rather than
-discovering it in the comparison.
+Then steps 3 and 4 per product, as `coadds` did: `snakemake -n` with every job-count
+change explained (expect 37 → 31), the catalog bridge extended to these products' study
+readers, the import smoke test, all product tests, then the zero-tolerance comparison.
 
 ## 3a, `cwfs_tables` — the move
 
@@ -1156,6 +1156,282 @@ holds only the `miw` product today):
 | `pytest rubinwork/products/` | 186 passed |
 
 All counts are jobs or tests (dimensionless).
+
+## 3a, `dof_lut` and `bounce_tables` — the move
+
+### Scope and decisions, agreed 2026-10-11
+
+Aaron's three calls, in answer to the investigation below:
+
+1. **`dof_lut` fits the plain FAM DZ, and that is recorded, not changed.** "I used the
+   plain FAM DZ then but may want to switch to using the post MIW DZ." Recorded in
+   `aos/docs/studies/lut.md` (commit `d5eeba6`); no code touched, no 3b fix applied.
+2. **The `_july` bounce run is its own variant**, so it can be reviewed later — not a
+   build of `d12-A_50_34_i_5rot` as the plan's section 9 says. "I don't recall what the
+   _july variant changed."
+3. **The bounce tables are promoted to a product, and the shared functions become a
+   library, in the move commit** — "when it is most convenient", which is this commit
+   because `run_bounce.DEFAULT` has to leave the builder either way.
+
+### `dof_lut` does NOT subtract the MIW: it fits the plain FAM DZ
+
+Established by reading `aos/code/lut/run_build_lut.py`, and the answer to the question
+the previous "next concrete action" raised:
+
+| file:line | what it does |
+|---|---|
+| `aos/Snakefile:794`-`:795`, `:405` | the rule's `fits`/`visits` inputs are `d_tables(w.d)` = `fam_dir(...)`, the **FAM** tables — not `output/miw/<d>/` |
+| `run_build_lut.py:132`, `:152` | reads `visits.parquet` and `fits.parquet` from `--tables-dir` |
+| `run_build_lut.py:165` | `osv.build_ofc_svd(iZs, k_min, k_max, n_keep_spec, n_dof=n_dof_spec, ...)` |
+| `run_build_lut.py:170` | `osv.project_dz_table(fits, prefix, svd)`, whose `W` is `dz_table_to_W(fit_table, ...)` — the **raw** DZ matrix of that table |
+| `run_build_lut.py:171`-`:172` | `W_fit = A @ U_eff.T`; `W_resid = W - W_fit`. The only subtraction is the SVD's own reconstruction |
+| `run_build_lut.py:99`-`:121`, `:191` | `mi_config` is read for **parameters only**: `n_dof`, `n_keep`, `k_min`/`k_max`, `coord_sys`, `filter`, `programs`, `ofc_normalization_yaml`, `mc.rotator_bins(cfg)` |
+
+No intrinsic map, no `zk_intrinsic`, no MIW path appears in the file. The docstring says
+it at `:5`-`:8` ("the **Phase-1** per-visit Double-Zernike fits").
+
+The reference build's own numbers show the consequence: `M2_dy = -2364 µm` of hexapod
+decentre (`lut.parquet`, `value` column), far outside any physical stroke, which is what
+fitting the **absolute** state without an intrinsic subtracted looks like.
+
+Two side findings, neither fixed:
+
+- The comment at `run_build_lut.py:180`-`:183` says "if MI subtraction leaves
+  rotator-coupled residual it gets averaged away here". That describes a MIW build, not
+  this script, and is misleading as written.
+- `aos/code/processing_compare/compare_fam_processings.py:101` is the one reader outside
+  `aos/code/lut/`, and it builds `<base>/<mi>/lut/lut.parquet` — the same dead-layout bug
+  class as the `coadds` and `decomp_path` ones. Broken today. Not a 3b fix; flagged.
+
+**Consequence for the variant keying.** `dof_lut`'s real upstream is a `fam_tables`
+variant; the MIW variant contributes only SVD and selection settings. The variants are
+still named with the MIW-prefixed form below, because a LUT is built per (param_set,
+mi_name) pair and the dtag is what the old tree uses — but `variants.yaml` names the
+`fam_tables` variant as the upstream the manifest records, with `mi_name` as a settings
+key. If Aaron switches to the post-MIW DZ, the upstream becomes `miw` and that is a
+variant-definition change, not just a builder change.
+
+### `bounce_tables`: five tables are the product, nine PDFs are the study
+
+`run_bounce.py` writes **5 parquet tables and 9 PDFs** into one directory (`tbl_dir` and
+`out_dir` are both `--out-dir` when it is given, `run_bounce.py:272`).
+
+Readers outside `aos/code/bounce/`, found with `rg`:
+
+| file | read by | where |
+|---|---|---|
+| `bounce_dof_stats.parquet` | `aos/code/cwfs_lut/bounce_compare.py` — a **different study** | `:132`, hardwired `aos/output/bounce/<run>/`; `DEFAULT_BOUNCE_RUN = 'danish_1_2_A_50_34_i_5rot_july'` at `:60` |
+| `bounce_fwhm_metric.parquet` | `smatrix/docs/studies/regularized_inversion.md:89` validates against it; the script **recomputes** rather than reads | docs only |
+| `bounce_kj_stats.parquet` | the `bounce` rule's declared output and `rule all` (`aos/Snakefile:548`) | no code reader |
+| `bounce_fwhm_vs_bvalue.parquet` | nothing | — |
+
+So there is exactly **one** cross-study code reader, and it is the plan's rule 3 case
+("a study never reads another study's output"). That is what justifies the product.
+`aos/output/bounce/{bending_mode_test_meta,dof_normalization_split}.parquet` sit at the
+tree's top level, come from other scripts, and have no code reader; they are not part of
+this product.
+
+**The split is inside one script, and the interleaving is worse than `coadds`'.** PDFs
+are written at `:702`, `:729`, `:743`, `:775`, `:807`, `:840`, `:907`; then
+`bounce_fwhm_metric.parquet` at `:955` with its PDF at `:973`,
+`bounce_fwhm_vs_bvalue.parquet` at `:997` with its PDF at `:998`,
+`bounce_dof_stats.parquet` at `:1162`, `bounce_kj_stats.parquet` at `:1201`. But **all
+the table data comes from one shared analysis block, `:479`-`:700`** — `fwhm_rows`,
+`fwhm_bvalue_rows`, the per-night deltas and `df_kj` accumulate there and the plot
+sections only consume them. So the builder is `:218`-`:700` plus the four `to_parquet`
+calls, the study is the nine `PdfPages` blocks, and no physics moves.
+
+**`bounce` therefore keeps a rule in `aos/Snakefile`**, unlike the three earlier
+products: `bounce_summary.pdf` is a study output, so the rule shrinks to its plotting
+half and reads the tables from the product. None of `cwfs_tables`, `miw` or `coadds` had
+that shape.
+
+### The four wrong-way imports need only three names
+
+`smatrix/code/regularized_inversion/` reaches into `aos/code/bounce/` in four places, and
+between them uses **three** names:
+
+| import | file:line | names used |
+|---|---|---|
+| `import bounce_lib as _bl` | `run_oic_compare.py:231` | `_bl.run_bounce` (`:273`) |
+| `import bounce_lib as bl` | `run_oic_compare.py:419` | `bl.run_bounce` (`:461`) |
+| `import bounce_lib as bl` | `run_regularized_compare.py:65` | `bl.run_bounce` (`:114`), `bl.paired_deltas_matrix` (`:120`) |
+| `import run_bounce` | `run_regularized_compare.py:66` | `run_bounce.DEFAULT` (`:205`) |
+
+**Fix: a library, `rubinwork.bounce`**, carrying the leg-definition and pairing layer
+only — `DEFAULT`, `DEFAULT_BOUNCES`, `DOF22`, `CAM_HEX_DOF`, `run_bounce()`,
+`form_pairs`, `paired_delta`, `paired_deltas_kj`, `paired_deltas_matrix`,
+`filter_visits`, `bounce_program_mask`. The ~20 `plot_*` functions of the 86 KB
+`bounce_lib.py` stay with the study.
+
+Why a library and not the product reader: these three callers never read the bounce
+*tables*. They recompute the Δ from a fits table to score alternative inversions against
+the bounce's own selection, which is library use — pairing logic — not product use.
+Routing it through the product reader would make a study import a product's internals to
+reach a pure function.
+
+Why not leave it behind the shim until phase 5: the shim preserves the *path*, not the
+*direction*. `run_bounce.DEFAULT` would still be a study importing a product **builder**,
+which is the thing `/review` is meant to catch, and `DEFAULT` has to leave the builder
+anyway.
+
+One wrinkle to fix in the same commit: `bounce_lib.rbr_module()` (`:942`) does a
+`sys.path` insert into `smatrix/code` to reach `regularized_inversion`, which is now the
+installed `rubinwork.smatrix.regularized_inversion`. The moved library imports it
+directly instead.
+
+### Variants: three `dof_lut`, four `bounce_tables`, checked for old-tree output first
+
+Checked before anything moved, as this handoff requires — every one of the twelve MIW
+variants, against both old trees:
+
+| product | variants WITH old-tree output | variants with none |
+|---|---|---|
+| `dof_lut` | `d12-A_50_34_i` (5 files), `d12-A_50_34_i_5rot` (5 files) | the other ten |
+| `bounce_tables` | **none, under any MIW-variant directory name** | all twelve |
+
+**`bounce_tables`** — four variants, keyed on the MIW variant **and** the fits table:
+
+| variant | miw_variant | `fits` | old-tree dir | old-tree output? |
+|---|---|---|---|---|
+| `d12-A_50_34_i_5rot_july` | `d12-A_50_34_i_5rot` | `fits_july.parquet` | `bounce/danish_1_2_A_50_34_i_5rot_july/` | **yes, 13 files** — the tech note's source |
+| `d12-A_50_34_i_5rot` | `d12-A_50_34_i_5rot` | `fits.parquet` | `bounce/danish_1_2_A_50_34_i_5rot/` | no |
+| `d12-A_50_34_i` | `d12-A_50_34_i` | `fits.parquet` | `bounce/danish_1_2_A_50_34_i/` | no |
+| `d13t-A_50_34_i_5rot` | `d13t-A_50_34_i_5rot` | `fits.parquet` | `bounce/danish_1_3_test_A_50_34_i_5rot/` | no |
+
+The last three are the three jobs `aos/Snakefile` plans today. The first is the only one
+with data, and **it is a separate variant rather than a build**, Aaron's call: its input
+is a different fits table, `output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet` at
+3,385 visits over day_obs 20250415–20260713, against the MIW build's own `fits.parquet`
+at 1,126 visits over 20260315–20260513. Section 5 says a changed configuration makes a
+new variant, and `aos/docs/status/miw_danish_1_3_proposal.md:116` calls `fits_july.parquet`
+a "hand-made extra" produced by no rule. The plan's section 9 maps it to
+`bounce_tables/d12-A_50_34_i_5rot/`, treating it as a build; that mapping is superseded.
+
+`notes/aos-bounce-test-summary/provenance.md:46` names
+`aos/output/bounce/danish_1_2_batoid/` as the intrinsic-choice comparison, but **that
+directory does not exist on disk** — so it gets no variant, and the provenance doc points
+at a path that is gone.
+
+**`dof_lut`** — three variants, matching the three planned jobs:
+
+| variant | fam_variant | mi_name | old-tree dir | old-tree output? |
+|---|---|---|---|---|
+| `d12-A_50_34_i_5rot` | `danish_1_2` | `pathA_50_34_i_5rot` | `lut/danish_1_2_A_50_34_i_5rot/` | **yes, 5 files** |
+| `d12-A_50_34_i` | `danish_1_2` | `pathA_50_34_i` | `lut/danish_1_2_A_50_34_i/` | **yes, 5 files** |
+| `d13t-A_50_34_i_5rot` | `danish_1_3_test` | `pathA_50_34_i_5rot` | `lut/danish_1_3_test_A_50_34_i_5rot/` | no |
+
+Both carry `dir_name` as a quoted string, as `coadds` does. The YAML-integer trap does
+not bite here (every name starts with a letter), but the field is quoted anyway and the
+`coadds` test is mirrored.
+
+**The `bounce` legs come from an `overrides:` block, not from the code defaults.**
+`aos/analysis_config.yaml:180` carries a live `bounce:` override for
+`fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` that redefines `bounces` as an elevation
+*sweep* (five T720 legs, not one). `DEFAULT_BOUNCES` in `run_bounce.py:65` is only the
+fallback. So the product's settings must come through `mc.analysis_section`, which does
+accept an explicit `config_path` — unlike `param_sets.yaml` and `mi_config.yaml`, no
+generated file is forced, but the override keyed on the **long** param_set key has to keep
+resolving.
+
+**Undeclared outputs, both rules.** `build_lut` declares 3 outputs
+(`aos/Snakefile:799`-`:801`) but the script writes **5** files: those plus
+`lut_by_rotbin.parquet` (`:205`, conditional on a rotator column) and `lut_config.yaml`
+(`:241`). `bounce` declares 2 (`:880`-`:881`) and writes **13**. Both get full output
+lists in the product Snakefiles.
+
+### 3a step 1 — reference builds with the unmoved code: DONE
+
+Built at commit `d5eeba6` (clean tree), interactive on `sdfiana`. **Neither product needed
+its input sliced** — unlike `miw` and `coadds`, the full production run IS the smallest
+thing that exercises the product code, so both references are the real thing:
+
+| product | wall clock | output |
+|---|---|---|
+| `dof_lut` | **8.99 s** | 5 files, in `_phase2_refbuild/dof_lut/ref/` |
+| `bounce_tables` | **167.6 s** | 13 files, in `_phase2_refbuild/bounce_tables/ref/` |
+
+```bash
+cd ~/notebooks/rubin-work/aos && python code/lut/run_build_lut.py \
+    --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+    --mi-name pathA_50_34_i_5rot \
+    --tables-dir output/fam_processing/danish_1_2 \
+    --out-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/dof_lut/ref
+```
+
+```bash
+cd ~/notebooks/rubin-work/aos && python code/bounce/run_bounce.py \
+    --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+    --mi-name pathA_50_34_i_5rot \
+    --fits output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet \
+    --out-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/bounce_tables/ref \
+    --min-detectors 160
+```
+
+**`dof_lut` reference.** 970 of 3,385 visits pass the band/program cut (band `i`,
+`BLOCK-T614_triplets`), 863 survive the good-fit cut (63 bad-fit dropped); SVD
+`U_eff = (126, 34)`, `n_dof = 50`, `n_keep_eff = 34`, `k = 1..6`.
+
+| file | rows x columns | note |
+|---|---|---|
+| `lut.parquet` | 50 x 7 | one row per DOF, plus 8 fields of parquet **schema metadata** |
+| `lut_dz.parquet` | 126 x 6 | one row per (focal k, pupil j) |
+| `lut_by_rotbin.parquet` | 450 x 7 | 9 rotator bins x 50 DOF |
+| `lut_config.yaml` | — | frozen provenance |
+| `lut.pdf` | 45,415 bytes | |
+
+Averaged DZ: raw RMS 0.0329 µm of wavefront, residual RMS 0.0109 µm of wavefront after
+the 34-mode reconstruction. Nine populated rotator bins, centres −60 to +60 deg (OCS) in
+15 deg steps, 16 to 254 visits per bin.
+
+**`bounce_tables` reference.** Six legs over seven nights — `T720_elevation` at Elev=30,
+40, 50, 60, 75 and `T724_rotator` at Rot=60 — with 7 `kind` values in `bounce_dof_stats`
+(`dof`, `dof22`, `dof5`, `dof_oic`, `vmode`, `vmode22`, `vmode5`), so all five recovery
+schemes are exercised.
+
+| file | rows x columns |
+|---|---|
+| `bounce_kj_stats.parquet` | 1,890 x 17 |
+| `bounce_dof_stats.parquet` | 2,550 x 24 |
+| `bounce_fwhm_metric.parquet` | 6 x 9 |
+| `bounce_fwhm_vs_bvalue.parquet` | 9 x 11 |
+| 9 PDFs | 84 kB to 4.6 MB |
+
+The reference **independently reproduces the published result**: on the `T720_elevation`
+`Elev=40` leg, `fwhm_before = 0.2986 arcsec` and `fwhm_after_50_34 = 0.0381 arcsec`,
+which is what `smatrix/docs/studies/regularized_inversion.md:89` quotes ("elevation 40
+deg at 0.2986 to 0.0381 arcsec"). A rerun against the committed `_july` build also gave
+identical shapes and column lists on all four tables.
+
+**Comparison keys, verified unique rather than assumed** — and the plan-shaped guess
+would have been wrong on the first table:
+
+| table | key | unique |
+|---|---|---|
+| `bounce_kj_stats` | `(bounce, night, comparison, k, j)` | **1,890 / 1,890** |
+| the same, without `night` | `(bounce, comparison, k, j)` | 756 / 1,890 — **NOT unique** |
+| `bounce_dof_stats` | `(bounce, comparison, night, kind, index)` | **2,550 / 2,550** |
+| `bounce_fwhm_metric` | `(bounce, comparison)` | **6 / 6** |
+| `bounce_fwhm_vs_bvalue` | `(bounce, comparison, night)` | **9 / 9** |
+| `lut` | `(dof_index)` | **50 / 50** |
+| `lut_dz` | `(k, j)` | **126 / 126** |
+| `lut_by_rotbin` | `(rotbin_center, dof_index)` | **450 / 450** |
+
+No key column holds a null on any table. Two schema facts the comparison has to carry:
+`night` is a **string** on `bounce_kj_stats` and `bounce_dof_stats` — with a literal
+`'all'` row for the pooled result — and an **int64** on `bounce_fwhm_vs_bvalue`; and
+`lut.parquet`'s 8 parquet schema-metadata fields (`param_set`, `mi_name`, `reduce`,
+`n_dof`, `n_keep`, `n_visits`, `k_min`, `k_max`) are part of the product and are compared
+too. No earlier product's comparison checked schema metadata.
+
+The PDFs are not byte-comparable (matplotlib embeds a creation timestamp), so step 4
+compares the parquet tables at zero tolerance and checks only that each PDF is produced
+at a comparable size.
+
+**Expected `aos/` job count after the move: 37 → 31**, −3 for `build_lut` and −3 for
+`bounce`, since both are in `rule all`. `rule all` loses `output/lut/{d}/lut.parquet` and
+`output/bounce/{d}/bounce_kj_stats.parquet` as targets it builds; the `bounce` rule itself
+survives as the plotting half, so the drop is accounted rule by rule in step 3.
 
 ## 3c rebuild feasibility, measured 2026-10-10
 
