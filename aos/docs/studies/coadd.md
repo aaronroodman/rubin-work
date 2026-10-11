@@ -1,9 +1,9 @@
 # Study: `coadd` — FAM coadd vs the MIW, and retrieval bias
 
-> **Status:** current · **Last updated:** 2026-09-14 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-10 · **Kind:** reference (study)
 
-> **Code:** `code/coadd/`
-> **Output:** `output/coadd/<P>/50_34/`, `output/coadd/<P>/50_34_v2/` (`blocks_summary.parquet`, `coadd_metrics.parquet`, `block_grids.npz`, `coadd_blocks_miw_*.pdf`)
+> **Code:** `code/coadd/` (study); the builder is `rubinwork.products.coadds`
+> **Output:** the `coadds` **product** — `<products>/coadds/<variant>/<build>/`, variants `d12-A_50_34_i_5rot` and `d12-A_50_34_i_5rot_v2`; the old tree is `output/coadd/<P>/{50_34,50_34_v2}/`
 
 Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias
 model developed to explain their disagreement.
@@ -55,7 +55,7 @@ series. It does not change with the band selection.
 
 | file | role |
 |---|---|
-| `run_coadd_blocks_miw.py` | per-FAM-block MIW-style Z5–Z8 maps (Path A, 50/34, 3 iterations); has an `.sbatch` |
+| `run_coadd_blocks_miw.py` | **moved** to `rubinwork/products/coadds/builders/` in phase 3a: the per-block grids and summaries it writes are the `coadds` product. A shim remains at the old path until phase 5. Build with the product Snakefile, or `aos/run_coadd_blocks_miw.sbatch` for a hand run against the old tree |
 | `recompute_coadd_metrics.py` | recompute coadd-vs-MIW metrics on rebinned grids **without overwriting** existing output; the native fine-grid Pearson r / residual RMS are noise-limited |
 | `run_fam_coadd_miw.py` | pipeline `fam_coadd_miw` rule — the coadd-vs-MIW map comparison |
 | `analyze_miw_bias_regression.py` | estimate the retrieval-bias operator **L** from the coadd-vs-MIW residual maps (§4.2) |
@@ -67,12 +67,13 @@ series. It does not change with the band selection.
 
 ## Inputs and outputs
 
-`run_coadd_blocks_miw.py` reads the per-chunk
-`output/fam_processing/<P>/chunks/*/visits.parquet` (per chunk rather than the combined
-table, so a chunk carrying thermal telemetry keeps it), `donuts.parquet`, and the MIW
-sidecar `output/miw/<P>_<M>/zk_intrinsic.parquet`, which must exist. It writes into the
-directory given by `--out-dir`, on disk `output/coadd/<P>/<out-name>/` with `<out-name>`
-naming the variant — `50_34`, `50_34_v2`:
+The builder reads the per-chunk `chunks/*/visits.parquet` of its `fam_tables` build
+(per chunk rather than the combined table, so a chunk carrying thermal telemetry keeps
+it), `donuts.parquet`, and the `miw` build's per-donut sidecar `zk_intrinsic.parquet`,
+which must exist. **Two upstreams, both recorded in the manifest** — the FAM build sets
+which visits exist and the MIW sets what is subtracted, so neither alone makes the
+numbers reproducible. The block-selection settings live in the product's `variants.yaml`.
+It writes into `--out-dir`, which the product Snakefile sets to the build directory:
 
 | product | content |
 |---|---|
@@ -90,15 +91,21 @@ derivable without the LSST stack.
 `blocks_summary.parquet` (for `program`, which the npz does not carry), so it runs on the
 laptop from synced output with nothing but numpy, pandas, matplotlib and scipy. It writes
 `coadd_metrics_rebin<f>.parquet` per `--rebin` factor and one combined
-`coadd_timeseries.pdf`. Rebinning matters because the native fine-grid Pearson r and
+`coadd_timeseries.pdf` — **study** outputs, not part of the build, so `--variant` requires
+`--out-dir` and will not write into the product directory it read. Rebinning matters because the native fine-grid Pearson r and
 residual RMS are noise-limited by the few donuts per cell and the large single-donut
 wavefront scatter, understating the real structural agreement — spatial Pearson r rises
 from 0.54 to 0.74 at 3×3 rebinning on a test block. `--analysis-rebin` (default: the
 coarsest factor) selects which metric set feeds the correlation, u-mode-displacement and
 machine-learning pages.
 
-The other scripts read `output/miw/<P>_<M>/fits.parquet` (the MI-refit DZ) and the
-`output/coadd/<P>/50_34/` products, and write per-analysis PDFs.
+The other scripts read the `miw` build's `fits.parquet` (the MI-refit DZ) and the coadd
+products, and write per-analysis PDFs. Three of them —
+`recompute_coadd_metrics.py`, `analyze_miw_bias_regression.py` and
+`analyze_miw_field_order.py` — built `output/<long param_set>/coadd_50_34/` before phase
+3a, a layout the tree lost when `dir_name` arrived, so they resolved nothing on disk; each
+now takes `--variant` (or `COADD_VARIANT`, in the one script with no argument parser) and
+resolves the build through the catalog.
 
 ## State and open questions
 

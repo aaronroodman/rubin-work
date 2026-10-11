@@ -8,7 +8,16 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/coadd_miw_%j.log
 #
-# Per-FAM-block MIW-style coadds (code/coadd/run_coadd_blocks_miw.py) on s3df.
+# Per-FAM-block MIW-style coadds on s3df.  The builder moved into the coadds product in
+# phase 3a of notes/status/organization_plan.md; this wrapper now calls it as a module,
+# and a shim remains at code/coadd/run_coadd_blocks_miw.py until phase 5.
+#
+# To build INTO the product tree instead, use the product Snakefile, which writes the
+# manifest and so puts the build in the catalog:
+#   snakemake -s rubinwork/products/coadds/Snakefile \
+#       --config variant=d12-A_50_34_i_5rot build=<YYYYMMDD> \
+#                fam_build=<build> miw_build=<build>
+# This wrapper is kept for a hand run against the old tree, which writes no manifest.
 #
 # Why batch: the job holds every block's donut table plus the stacked coadd/MIW
 # map arrays, and now also the DZ primitives and the extra secondary-Zernike
@@ -55,5 +64,6 @@ PY
 DEFAULTS=(--param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x
           --mi-name pathA_50_34_i_5rot
           --ext-terms secondary)
-echo "running: code/coadd/run_coadd_blocks_miw.py ${DEFAULTS[*]} $*"
-python code/coadd/run_coadd_blocks_miw.py "${DEFAULTS[@]}" "$@"
+MODULE=rubinwork.products.coadds.builders.run_coadd_blocks_miw
+echo "running: python -m $MODULE ${DEFAULTS[*]} $*"
+python -m "$MODULE" "${DEFAULTS[@]}" "$@"

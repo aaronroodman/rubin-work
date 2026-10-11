@@ -51,7 +51,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
 sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
 from recompute_coadd_metrics import (          # noqa: E402
-    coarsen, coarsen_centers, umode_reference, umode_features, _block_programs)
+    coarsen, coarsen_centers, umode_reference, umode_features, _block_programs,
+    resolve_coadd_dir)
 
 Z_TERMS = [5, 6, 7, 8]
 THERMAL = ["z_gradient", "y_gradient", "x_gradient", "radial_gradient",
@@ -96,6 +97,16 @@ def scan_lambda(X, Y, groups, lams):
 # ---------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
+    # See resolve_coadd_dir: the --output-root/--param-set/--out-name triple builds a
+    # stale path that names nothing on disk, so --variant through the product catalog is
+    # the route that resolves.  This script only READS the build.
+    ap.add_argument("--variant", default=None,
+                    help="coadds variant (e.g. d12-A_50_34_i_5rot); reads its catalog "
+                         "build instead of an --output-root path")
+    ap.add_argument("--build", default=None,
+                    help="coadds build to read with --variant (default: current)")
+    ap.add_argument("--coadd-dir", default=None,
+                    help="the coadd build directory, given directly")
     ap.add_argument("--param-set", default="fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x")
     ap.add_argument("--out-name", default="coadd_50_34")
     ap.add_argument("--output-root", default="output")
@@ -111,7 +122,7 @@ def main():
                     "(0.97 maximises cells x blocks for the 3x3 rebin)")
     args = ap.parse_args()
 
-    cdir = os.path.join(args.output_root, args.param_set, args.out_name)
+    cdir = resolve_coadd_dir(args)
     d = np.load(os.path.join(cdir, "block_grids.npz"), allow_pickle=True)
     f = args.rebin
 

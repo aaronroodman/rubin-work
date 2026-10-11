@@ -256,6 +256,80 @@ def _spear(x, y):
     return float(spearmanr(x[ok], y[ok]).correlation)
 
 
+def resolve_coadd_dir(args):
+    """The coadd build directory one of these study scripts should read.
+
+    Three of the coadd study scripts built ``<output_root>/<param_set>/<out_name>/`` from
+    the **long** param_set key -- a layout the output tree lost when ``dir_name`` was
+    introduced, so it named nothing on disk and all three were broken. Phase 3a of
+    ``notes/status/organization_plan.md`` made the coadd grids a product, so the build is
+    resolved through `rubinwork.products.catalog` instead.
+
+    Parameters
+    ----------
+    args : `argparse.Namespace`
+        Parsed arguments, carrying ``variant``, ``build`` and ``coadd_dir``, and the
+        older ``output_root``, ``param_set`` and ``out_name``.
+
+    Returns
+    -------
+    coadd_dir : `str`
+        The directory holding ``block_grids.npz`` and ``blocks_summary.parquet``.
+
+    Notes
+    -----
+    Precedence: an explicit ``--coadd-dir``, then ``--variant`` through the catalog, then
+    the old ``--output-root``/``--param-set``/``--out-name`` triple. The last is kept for
+    a hand run against a directory that is not a catalog build, but it is the one that
+    does not resolve for the production output.
+    """
+    if getattr(args, "coadd_dir", None):
+        return args.coadd_dir
+    if getattr(args, "variant", None):
+        from rubinwork.products import catalog
+        return str(catalog.path("coadds", args.variant,
+                                build=args.build or catalog.CURRENT))
+    return os.path.join(args.output_root, args.param_set, args.out_name)
+
+
+def resolve_visits_path(args, coadd_dir):
+    """The FAM ``visits.parquet`` the per-block camera-body temperatures come from.
+
+    Parameters
+    ----------
+    args : `argparse.Namespace`
+        Parsed arguments; ``visits`` wins when given.
+    coadd_dir : `str`
+        The resolved coadd build directory, used to find which ``fam_tables`` build the
+        coadd read when ``--variant`` named one.
+
+    Returns
+    -------
+    visits_path : `str`
+        Path to a FAM ``visits.parquet``. May not exist; the caller warns.
+
+    Notes
+    -----
+    With ``--variant`` this follows the coadd manifest's ``inputs`` to the exact
+    ``fam_tables`` build the coadd was made from, rather than guessing a path -- which is
+    the point of recording both upstreams in the manifest.
+    """
+    if getattr(args, "visits", None):
+        return args.visits
+    if getattr(args, "variant", None):
+        from rubinwork.products import catalog
+        inputs = (catalog.manifest("coadds", args.variant,
+                                   build=args.build or catalog.CURRENT).get("inputs")
+                  or {})
+        ref = inputs.get("fam_tables")
+        if ref:
+            fam_variant, _, fam_build = ref.partition("@")
+            return str(catalog.path("fam_tables", fam_variant,
+                                    build=fam_build or catalog.CURRENT)
+                       / "visits.parquet")
+    return os.path.join(args.output_root, args.param_set, "visits.parquet")
+
+
 def _block_programs(cdir, blocks, n):
     """Per-block science_program (BLOCK- prefix stripped) from blocks_summary.parquet.
 
@@ -510,6 +584,24 @@ def render_ml(pdf, Fdf, r, groups, build_used, f, env_cols, sn_cols, umode_cols=
 
 def main():
     ap = argparse.ArgumentParser()
+    # --variant resolves the coadd build through the product catalog, which is the only
+    # route that works: the --output-root/--param-set/--out-name default below builds
+    # output/<long param_set>/coadd_50_34/, a layout the tree lost when dir_name arrived,
+    # so it names nothing on disk.  The old flags are kept for a hand run against an
+    # explicit directory, and --coadd-dir supplies one directly.
+    ap.add_argument("--variant", default=None,
+                    help="coadds variant (e.g. d12-A_50_34_i_5rot); reads its catalog "
+                         "build instead of an --output-root path")
+    ap.add_argument("--build", default=None,
+                    help="coadds build to read with --variant (default: current)")
+    ap.add_argument("--coadd-dir", default=None,
+                    help="the coadd build directory, given directly")
+    ap.add_argument("--out-dir", default=None,
+                    help="where this script's own output goes (the rebinned metrics "
+                         "parquet and the time-series PDF). Required with --variant: a "
+                         "product build directory is never written into after it "
+                         "completes. Defaults to the coadd directory otherwise, which "
+                         "is what a hand run against the old tree did")
     ap.add_argument("--param-set", default="fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x")
     ap.add_argument("--out-name", default="coadd_50_34")
     ap.add_argument("--output-root", default="output")
@@ -559,7 +651,15 @@ def main():
                     help="skip the u-mode displacement pages and features")
     args = ap.parse_args()
 
-    cdir = os.path.join(args.output_root, args.param_set, args.out_name)
+    cdir = resolve_coadd_dir(args)
+    # Study output never lands in a product build directory (rule 5 of the plan's
+    # section 2: a build is not edited after it completes).  Reading one is fine.
+    if args.variant and not args.out_dir:
+        raise SystemExit(
+            "--variant reads a product build, which must not be written into; give "
+            "--out-dir for the rebinned metrics and the time-series PDF")
+    odir = args.out_dir or cdir
+    os.makedirs(odir, exist_ok=True)
     npz = args.npz or os.path.join(cdir, "block_grids.npz")
     d = np.load(npz, allow_pickle=True)
     grids, miw = d["grids"], d["miw"]
@@ -587,7 +687,7 @@ def main():
 
     # option-1: camera-body temps aggregated per block from the merged visits.parquet
     # (no coadd rebuild); added to the Spearman bars, scatter, and environmental ML.
-    vpath = args.visits or os.path.join(args.output_root, args.param_set, "visits.parquet")
+    vpath = resolve_visits_path(args, cdir)
     cam_means, cam_vars = _block_camera_means(
         cdir, vpath, np.asarray(d["block"]),
         ref=args.camera_ref, diff=not args.camera_raw,
@@ -631,7 +731,7 @@ def main():
         dfm["build_used"] = build_used
         for key in METS[fac][0]:
             dfm[key] = Mf(fac, key)
-        outpq = os.path.join(cdir, f"coadd_metrics_rebin{fac}.parquet")
+        outpq = os.path.join(odir, f"coadd_metrics_rebin{fac}.parquet")
         dfm.to_parquet(outpq, index=False)
         print(f"wrote {outpq}  ({n} coadds, rebin {fac}x{fac}"
               f"{' [analysis]' if fac == f else ''}; "
@@ -692,7 +792,7 @@ def main():
                 ax.text(i, 0.985, str(int(day[i])), transform=ax.get_xaxis_transform(),
                         rotation=90, fontsize=6, va="top", ha="left", color="0.35")
 
-    outpdf = args.out_pdf or os.path.join(cdir, "coadd_timeseries.pdf")
+    outpdf = args.out_pdf or os.path.join(odir, "coadd_timeseries.pdf")
     with PdfPages(outpdf) as pdf:
         # 1..k. metrics vs ordinal -- ONE PAGE PER REBIN FACTOR (native and rebinned
         #       are deliberately NOT overplotted: 10 curves on one axis is unreadable,

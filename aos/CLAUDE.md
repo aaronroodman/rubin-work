@@ -42,6 +42,16 @@ long keys as `output/<param_set>/<mi_name>/`, a layout the tree has not had sinc
 `DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` stale was reading that symptom — the keys were
 always right. New code passes `path=` resolved through the catalog.
 
+`code/coadd/run_coadd_blocks_miw.py` is a **shim** for the same reason — it moved to
+`rubinwork.products.coadds.builders` in phase 3a, because the per-block grids and
+summaries it writes are a product. The other eight scripts in `code/coadd/` are the
+coadd-against-MIW study and stayed. The same stale-path bug was in three of them
+(`recompute_coadd_metrics`, `analyze_miw_bias_regression`, `analyze_miw_field_order`
+built `output/<long param_set>/coadd_50_34/`, which names nothing on disk); each now
+resolves the build through the catalog, by `--variant` or by `COADD_VARIANT` where there
+is no argument parser. `recompute_coadd_metrics` needs `--out-dir` with `--variant`: it
+writes the rebinned metrics and its PDF, and a product build is never written into.
+
 Do not "finish the job" by moving `aos_state.py` into `code/telemetry/`.
 
 The engineering telemetry that used to sit beside it lives in `common/` — the degree-of-freedom

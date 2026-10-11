@@ -23,17 +23,35 @@ import galsim.zernike as gz
 from lsst.ts.intrinsic.wavefront import ofc_svd as osv
 from recompute_coadd_metrics import umode_reference  # noqa: E402
 
-# aos/output, relative to this file — works on RSP, s3df batch, and the laptop alike.
-_OUT = os.environ.get(
-    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[2] / "output"))
+from rubinwork.products import catalog  # noqa: E402
 
 ZK = [z for z in range(4, 27) if z not in (20, 21)]
 K_MIN, K_MAX, N_KEEP, K_ALL = 1, 6, 34, 30
 FP_R = 1.8                                   # fp_radius_basis (mi_config)
 Z_SHOW = [5, 6, 7, 8]
-MIW = (f"{_OUT}/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/"
-       "pathA_50_34_i_5rot/intrinsic_split_maps.parquet")
-CO = f"{_OUT}/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/coadd_50_34"
+
+# This script has no argument parser -- it runs top to bottom -- so the two builds it
+# reads are named by environment variable, defaulting to the production pair.  Before
+# phase 3a both were `<aos/output>/<long param_set>/...` paths built from the long key, a
+# layout the tree lost when dir_name arrived, so neither resolved; they go through the
+# product catalog now.
+MIW_VARIANT = os.environ.get("COADD_MIW_VARIANT", "d12-A_50_34_i_5rot")
+COADD_VARIANT = os.environ.get("COADD_VARIANT", "d12-A_50_34_i_5rot")
+MIW_BUILD = os.environ.get("COADD_MIW_BUILD", catalog.CURRENT)
+COADD_BUILD = os.environ.get("COADD_BUILD", catalog.CURRENT)
+
+MIW = str(catalog.path("miw", MIW_VARIANT, build=MIW_BUILD)
+          / "intrinsic_split_maps.parquet")
+CO = str(catalog.path("coadds", COADD_VARIANT, build=COADD_BUILD))
+
+# The rebinned metrics are a STUDY output of recompute_coadd_metrics.py, not part of the
+# coadd build, so they are not in CO.  COADD_STUDY_DIR says where that script wrote them.
+STUDY = os.environ.get("COADD_STUDY_DIR", CO)
+
+# Where this script's own plot goes: aos/output, relative to this file, which works on the
+# RSP, on an s3df batch node and on the laptop alike.
+_OUT = os.environ.get(
+    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[2] / "output"))
 
 S = np.nan_to_num(np.asarray(OFCData("lsst").sensitivity_matrix, float))[:, ZK, :]
 svd = osv.build_ofc_svd(ZK, K_MIN, K_MAX, N_KEEP)
@@ -41,7 +59,7 @@ V, Sig, N = svd.V, svd.Sigma, svd.normalization_weights
 
 # --- the build's own mean u-mode state -> DOF -> full 31-order wavefront ---
 _npz = f"{CO}/block_grids.npz"
-_metrics = f"{CO}/coadd_metrics_rebin3.parquet"
+_metrics = f"{STUDY}/coadd_metrics_rebin3.parquet"
 d = np.load(_npz, allow_pickle=True)
 mt = pd.read_parquet(_metrics)
 Um = np.asarray(d["umodes"], float)

@@ -1,0 +1,178 @@
+# ----------------------------------------------------------------------
+# coadds product build (Snakemake).  One rule: coadd_blocks detects the contiguous
+# Full Array Mode (FAM) blocks of one fam_tables build, runs the iterative
+# U-mode-constrained Measured Intrinsic Wavefront (MIW) build per block, and compares
+# each block's remnant to one miw build's per-donut sidecar.  Then the manifest closes
+# the build.
+#
+# Moved out of aos/ in phase 3a of notes/status/organization_plan.md.  The script had NO
+# Snakefile rule before: it was run only from aos/run_coadd_blocks_miw.sbatch, so this
+# rule is new, and `snakemake -n` in aos/ is unchanged by the move.
+#
+#   snakemake -s rubinwork/products/coadds/Snakefile -n \
+#       --config variant=d12-A_50_34_i_5rot build=20261010 \
+#                fam_build=20260920 miw_build=20261010
+#
+# Run from the REPOSITORY ROOT, so that aos/mi_config.yaml and aos/param_sets.yaml
+# resolve (see RUN_CWD below).
+#
+# TWO UPSTREAMS, which is what makes this product different from the three before it: a
+# fam_tables build supplies the donuts and visits, a miw build supplies the reference
+# sidecar.  Both are recorded in the manifest, and write_manifest refuses to record only
+# one.
+#
+# Output, under the product catalog's data root:
+#   <products>/coadds/<variant>/<build>/{blocks_summary,coadd_metrics}.parquet
+#   <products>/coadds/<variant>/<build>/{block_grids,block_grids_ext}.npz
+#   <products>/coadds/<variant>/<build>/coadd_blocks_miw_{perblock,timeseries}.pdf
+#   <products>/coadds/<variant>/<build>/manifest.json   written last
+#
+# A build directory is never edited after it completes (rule 5 of the plan's section 2);
+# a rerun makes a new build.
+#
+# Needs lsst.ts.ofc and TS_CONFIG_MTTCS_DIR for the residual subspace bases, so it is
+# RSP-only in the same sense the moved rules are.  The production run over every block is
+# a batch job (aos/run_coadd_blocks_miw.sbatch): 216 blocks took 3,991 s of wall clock at
+# a peak resident set size of 23.9 GB.
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+# Deterministic threading regardless of how the launching terminal set these.  A
+# NUMEXPR_MAX_THREADS pinned to 1 (some JupyterHub sessions) breaks the build; force a
+# safe cap.
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+from rubinwork.common.utils import repo_root
+from rubinwork.products import catalog, coadds, miw
+
+REPO = repo_root(os.getcwd())
+
+# The builder resolves its analysis configuration through
+# lsst.ts.intrinsic.wavefront.mi_config.load_mi_config, whose default_config_path() is
+# Path('mi_config.yaml') relative to the CURRENT WORKING DIRECTORY with no other
+# candidate.  So the rule runs with aos/ as its cwd, exactly as the moved rules do.  That
+# file is generated from the miw product's variants.yaml (gen_mi_config.py).
+RUN_CWD = REPO / 'aos'
+
+VARIANT = config.get('variant', 'd12-A_50_34_i_5rot')
+# str(): snakemake parses --config build=20261010 into an int.
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CFG = coadds.variant_config(VARIANT)
+
+# Checked before anything resolves a path, so an unbuildable variant says why rather than
+# failing later on an upstream build's absence.
+if not CFG.get('registered', True):
+    raise ValueError(
+        f"variant {VARIANT!r} is registered: false -- it is carried for recorded "
+        'provenance only and has no build')
+
+MIW_VARIANT = coadds.miw_variant(VARIANT)
+FAM_VARIANT = coadds.fam_variant(VARIANT)
+
+# Which upstream builds to read.  `current` by default, each resolved to its real build
+# name so the manifest records what was actually read rather than a moving target.
+FAM_BUILD = str(config.get('fam_build') or catalog.CURRENT)
+FAM_DIR = catalog.path('fam_tables', FAM_VARIANT, build=FAM_BUILD)
+FAM_BUILD_NAME = FAM_DIR.name
+
+MIW_BUILD = str(config.get('miw_build') or catalog.CURRENT)
+MIW_DIR = catalog.path('miw', MIW_VARIANT, build=MIW_BUILD)
+MIW_BUILD_NAME = MIW_DIR.name
+
+# An external MIW variant has no sidecar of its own, so it cannot be a coadd reference:
+# the comparison needs zk_intrinsic.parquet at every FAM donut, which only a built MIW
+# has.  Say so here rather than failing on a missing file.
+if MIW_VARIANT in miw.external_variants():
+    raise ValueError(
+        f"variant {VARIANT!r} names the EXTERNAL miw variant {MIW_VARIANT!r}, which is a "
+        'manifest with a location and no files. A coadd needs a built MIW with a '
+        'per-donut zk_intrinsic.parquet sidecar.')
+
+BUILD_DIR = coadds.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+# The variant's block-selection settings, as command-line flags.  variants.yaml holds
+# them; the builder's own argparse defaults stand in for anything a variant leaves null,
+# so only what the variant pins is passed.
+def _flags(settings):
+    parts = []
+    for key, value in settings.items():
+        flag = '--' + key.replace('_', '-')
+        if isinstance(value, (list, tuple)):
+            parts.append(flag + ' ' + ' '.join(str(v) for v in value))
+        else:
+            parts.append(f'{flag} {value}')
+    return ' '.join(parts)
+
+SETTINGS = coadds.build_settings(VARIANT)
+SETTING_FLAGS = _flags(SETTINGS)
+
+# The shell commands, built here rather than inline: snakemake's own parser mishandles a
+# multi-line f-string inside a rule, so the rules below use plain format placeholders.
+COADD_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python -m '
+    'rubinwork.products.coadds.builders.run_coadd_blocks_miw'
+    f' --variant {VARIANT} {SETTING_FLAGS}'
+    f' --tables-dir {FAM_DIR} --miw-dir {MIW_DIR} --out-dir {BUILD_DIR}'
+    + ' > {log} 2>&1\n')
+MANIFEST_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.coadds.write_manifest '
+    f'--variant {VARIANT} --build {BUILD} '
+    f'--fam-build {FAM_BUILD_NAME} --miw-build {MIW_BUILD_NAME} '
+    '> {log} 2>&1')
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+# ---- detect the blocks, build each one's remnant, compare to the MIW ----
+# One rule for all six output files: the script does block detection, the per-block
+# iterative build and both renders in one pass over the donut table, and splitting it
+# would mean reading that table more than once.  The MIW sidecar is an input this
+# Snakefile does not build -- the miw product does.
+rule coadd_blocks:
+    input:
+        donuts  = str(FAM_DIR / 'donuts.parquet'),
+        visits  = str(FAM_DIR / 'visits.parquet'),
+        sidecar = str(MIW_DIR / 'zk_intrinsic.parquet'),
+    output:
+        summary    = str(BUILD_DIR / 'blocks_summary.parquet'),
+        metrics    = str(BUILD_DIR / 'coadd_metrics.parquet'),
+        grids      = str(BUILD_DIR / 'block_grids.npz'),
+        grids_ext  = str(BUILD_DIR / 'block_grids_ext.npz'),
+        perblock   = str(BUILD_DIR / 'coadd_blocks_miw_perblock.pdf'),
+        timeseries = str(BUILD_DIR / 'coadd_blocks_miw_timeseries.pdf'),
+    # The job holds every block's donut table plus the stacked map arrays, the Double
+    # Zernike primitives and the extra-Zernike maps.  The measured peak over 216 blocks
+    # is 23.9 GB, so this is headroom for a full build rather than a guess.
+    resources: mem_mb=128000
+    log: str(LOGS / 'coadd_blocks.log')
+    shell: COADD_CMD
+
+
+# ---- last step: the manifest, which is what puts the build in the catalog ----
+# Depends on every output, so an interrupted build leaves no manifest and the catalog does
+# not see it.  It records BOTH upstreams under `inputs`.  It does NOT move `current`: see
+# `catalog set-current`.
+rule manifest:
+    input:
+        str(BUILD_DIR / 'blocks_summary.parquet'),
+        str(BUILD_DIR / 'coadd_metrics.parquet'),
+        str(BUILD_DIR / 'block_grids.npz'),
+        str(BUILD_DIR / 'block_grids_ext.npz'),
+        str(BUILD_DIR / 'coadd_blocks_miw_perblock.pdf'),
+        str(BUILD_DIR / 'coadd_blocks_miw_timeseries.pdf'),
+    output: str(BUILD_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell: MANIFEST_CMD

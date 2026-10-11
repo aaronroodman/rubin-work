@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------------
+# coadds variants: per-Full-Array-Mode-block Measured Intrinsic Wavefront (MIW)
+# remnant maps, one variant per block-selection and extra-Zernike configuration.
+#
+# A coadd has TWO upstreams: a fam_tables build (the donuts and visits it blocks up) and
+# a miw build (the per-donut sidecar it compares each block's remnant against).  The
+# variant name carries the MIW variant, because the product IS a per-block remnant
+# against a given MIW -- a different MIW is a different measurement, while the FAM
+# variant follows from it.  The fam_tables build read is recorded in the manifest.
+#
+# `dir_name` is the subdirectory this variant has in the old aos/output/coadd/<P>/ tree,
+# kept so the two stay traceable across phase 5.  It MUST be quoted: YAML reads an
+# unquoted 50_34 as the integer 5034, because an underscore is a numeric digit separator.
+#
+# BLOCK SELECTION LIVES HERE.  Before the phase 3a move these settings existed only as
+# argparse defaults in run_coadd_blocks_miw.py plus a DEFAULTS array in
+# aos/run_coadd_blocks_miw.sbatch; analysis_config.yaml's `fam_coadd_miw` section belongs
+# to the OTHER coadd script (run_fam_coadd_miw.py, a study rule that did not move).  The
+# builder's argparse defaults are unchanged, so a hand run with no --variant behaves
+# exactly as it did; the Snakefile passes these instead.
+#
+# No generated file.  Unlike param_sets.yaml and mi_config.yaml, nothing outside this
+# repository reads a coadd configuration by a bare relative path, so this file is the only
+# home the settings need.
+#
+# What the settings mean (the builder's own help text is the reference):
+#   bands            band whitelist; null -> the mi_config `filter` (today: i)
+#   min_visits       build and plot only blocks with at least this many visits; the
+#                    summary table still lists every detected block
+#   max_blur         drop visits with median_blur_arcsec above this, arcsec
+#   pointing_tol     tolerance on (alt, az, rotator) within a standard block, deg
+#   wide_tol         az/rotator tolerance for `wide_programs` (the T710 family), deg
+#   max_seq_span     a block breaks when seq_num reaches this far past its first visit,
+#                    so a 12-triplet run stays whole (count of seq_num, dimensionless)
+#   bounce_round     rounding used to separate the two bounced states, deg
+#   bounce_programs  programs split by bounced (alt, rotator) state rather than pointing
+#   wide_programs    programs with a drifting image plan, which get `wide_tol`
+#   ext_terms        extra pupil Noll maps written to block_grids_ext.npz: `secondary`
+#                    (the 2nd/3rd radial orders), `all`, `none`, or a comma list
+#   cwfs_inner       corner-wavefront-sensor annulus inner radius, deg; null -> the
+#                    cameraGeom SW0 extra-focal inner corner (about 1.5178 deg)
+#   cwfs_outer       the annulus outer radius, deg (1.725 is the AOS-online radial limit)
+#   n_bins, n_iter   focal-plane bins per axis and build iterations; null -> the
+#                    mi_config `build.n_bins` / `build.n_iter` of the MIW variant
+#   pct              percentile of |binned median| setting the per-term colour scale
+#   instrument       ts_ofc instrument name, for the residual subspace bases
+# ---------------------------------------------------------------------------
+
+variants:
+
+  # The production configuration: the 5rot 50/34 MIW, i-band, secondary extra Zernikes.
+  # This is what aos/run_coadd_blocks_miw.sbatch builds by default, and the only variant
+  # with a complete build in the old tree (aos/output/coadd/danish_1_2/50_34/, six files,
+  # newest 2026-09-14).
+  d12-A_50_34_i_5rot:
+    miw_variant: d12-A_50_34_i_5rot
+    dir_name: "50_34"
+    bands: null
+    min_visits: 6
+    max_blur: 1.4
+    pointing_tol: 5.0
+    wide_tol: 20.0
+    max_seq_span: 36.0
+    bounce_round: 10.0
+    bounce_programs: [BLOCK-T720, BLOCK-T724]
+    wide_programs: [BLOCK-T710, BLOCK-T710_v2]
+    ext_terms: secondary
+    cwfs_inner: null
+    cwfs_outer: 1.725
+    n_bins: null
+    n_iter: null
+    pct: 98.0
+    instrument: lsst
+
+  # The same block selection with every fitted pupil Noll mapped into
+  # block_grids_ext.npz.  Differs from the entry above ONLY in ext_terms, so
+  # block_grids.npz is identical between them -- the 2026-09-03 archive README records
+  # exactly that.  It has NO build in the old tree: aos/output/coadd/danish_1_2/50_34_v2/
+  # holds only archive/20260903_iband/ and its top level is empty.
+  d12-A_50_34_i_5rot_v2:
+    miw_variant: d12-A_50_34_i_5rot
+    dir_name: "50_34_v2"
+    bands: null
+    min_visits: 6
+    max_blur: 1.4
+    pointing_tol: 5.0
+    wide_tol: 20.0
+    max_seq_span: 36.0
+    bounce_round: 10.0
+    bounce_programs: [BLOCK-T720, BLOCK-T724]
+    wide_programs: [BLOCK-T710, BLOCK-T710_v2]
+    ext_terms: all
+    cwfs_inner: null
+    cwfs_outer: 1.725
+    n_bins: null
+    n_iter: null
+    pct: 98.0
+    instrument: lsst
