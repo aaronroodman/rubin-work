@@ -69,9 +69,15 @@ output is keyed by `mi_name` because `n_dof` and `n_keep` come from that build's
 
 ## State and open questions
 
-- `build_lut` projects the **Phase-1** `fits.parquet`, not the MI-refit one. Whether it
-  should use the MI-refit fits is an open question: the answer changes what the LUT
-  means, since the refit has the measured intrinsic already removed.
+- `build_lut` projects the **Phase-1** `fits.parquet`, not the MI-refit one, and
+  subtracts no intrinsic of its own — `mi_config` supplies only the SVD and selection
+  parameters (`run_build_lut.py:99`-`:121`, `:152`, `:165`-`:172`). **Aaron confirmed on
+  2026-10-11 that the plain FAM DZ is what was used at the time, and that he may want to
+  switch to the post-MIW DZ.** Not decided, and nothing has changed. The answer changes
+  what the LUT means, since the refit has the measured intrinsic already removed; it also
+  changes which product the LUT's variant keys on, `fam_tables` today against `miw`
+  after a switch. The comment at `run_build_lut.py:180`-`:183` mentioning "MI
+  subtraction" describes a MIW build, not this script, and is misleading as written.
 - This study and the [`bounce`](bounce.md) study both carry "LUT" in their descriptions
   but approach it from opposite directions: `bounce` measures how the optical state
   *varies* with elevation and rotator angle, while this one averages that variation away
