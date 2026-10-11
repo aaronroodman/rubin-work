@@ -159,6 +159,140 @@ def mi_build_src(ps, mi):
     # entry whose build grids to read (build_from -> reuse a parent's grids)
     return _mc.build_source(_mc.load_mi_config(ps, mi, doc=MI_DOC), mi)
 
+# ======================================================================
+# ---- the product-data resolver: old tree first, then the catalog -----
+# ======================================================================
+# Phases 2 and 3a moved the fam_tables, cwfs_tables and miw BUILD rules out of this
+# Snakefile.  The study rules below still read those three products, and until phase 5
+# they read them from the OLD tree (aos/output/...).  A product rebuilt into the new data
+# root is therefore invisible here -- which matters now, because 9 of the 12 MIW variants
+# have no complete old-tree build and so lose every study job.
+#
+# So every study-rule input that reads product data goes through one of the resolvers
+# below.  Each returns a DIRECTORY and resolves in this order:
+#
+#   1. the old-tree path, if its required files are all there -- unchanged behaviour, and
+#      what every existing output was built from;
+#   2. else the catalog's `current` build of the matching product variant, if that build
+#      exists and is complete;
+#   3. else the old-tree path anyway, so the existing filter-and-report gates
+#      (_mi_complete, wfs_variants, _has_corner_sidecar) see a missing file and skip the
+#      variant with a reported reason, exactly as today.
+#
+# No study OUTPUT path changes: the outputs stay keyed on the old-tree dir names ({ps},
+# {d}, {cwfs}), so nothing already built is invalidated or relocated.
+#
+# The variant names are recovered from the products' own index fields, not guessed from
+# the directory names: a fam_tables variant IS its param_sets.yaml dir_name, a
+# cwfs_tables variant carries the {cwfs} wildcard as its `upstream_name`, and a miw
+# variant carries the second half of {d} as its `dir_name`.  The maps come from the
+# products' variants.yaml, so a renamed variant stops resolving here instead of silently
+# resolving to a stale old-tree directory.
+from rubinwork.products import catalog as _catalog
+from rubinwork.products import cwfs_tables as _cwfs_product
+from rubinwork.products import fam_tables as _fam_product
+from rubinwork.products import miw as _miw_product
+
+# dir name -> product variant, for each of the three products.
+_FAM_VARIANT_BY_DIR = {v: v for v in _fam_product.variants(registered_only=False)}
+_CWFS_VARIANT_BY_DIR = {
+    (_cwfs_product.fam_variant(_cv),
+     _cwfs_product.variant_config(_cv)["upstream_name"]): _cv
+    for _cv in _cwfs_product.variants(registered_only=False)}
+_MIW_VARIANT_BY_DIR = {
+    f"{_miw_product.fam_variant(_v)}_{_miw_product.dir_name(_v)}": _v
+    for _v in _miw_product.variants(registered_only=False)}
+
+# Which source each resolution picked, reported once at DAG time.  Keyed on the required
+# file set as well as the variant, because the MIW build GRIDS resolve separately from the
+# tables (see src_miw_dir) and the two can legitimately land in different trees.
+_RESOLVED = {}       # (product, variant, required) -> "old tree ..." | "catalog ..."
+
+def _resolve(product, variant, old_dir, required):
+    """Old-tree directory if complete, else the catalog's `current` build, else old tree.
+
+    `required` are the file names (relative to the directory) that make the directory
+    usable; a directory missing any of them is not a build. Falling back to the old-tree
+    path on failure is deliberate: the caller's gate then sees a missing file and skips
+    the variant with a reported reason, as it did before the resolver existed.
+    """
+    key = (product, variant, tuple(required))
+    if all(os.path.exists(f"{old_dir}/{f}") for f in required):
+        _RESOLVED[key] = f"old tree {old_dir}"
+        return old_dir
+    if variant is not None:
+        try:
+            cat_dir = str(_catalog.path(product, variant, build=_catalog.CURRENT))
+        except Exception:
+            cat_dir = None
+        if cat_dir and all(os.path.exists(f"{cat_dir}/{f}") for f in required):
+            build = os.path.basename(os.path.realpath(cat_dir))
+            _RESOLVED[key] = f"catalog {variant}@{build} -> {cat_dir}"
+            return cat_dir
+    _RESOLVED[key] = f"UNRESOLVED, falling back to the old tree {old_dir}"
+    return old_dir
+
+# What makes each product's directory a usable build, from the point of view of the study
+# rules here.  MI_REQUIRED is also the gate _mi_complete() reports on below: fits.parquet
+# and zk_intrinsic.parquet, because every MIW study rule reads one or the other.
+FAM_REQUIRED  = ("donuts.parquet", "visits.parquet", "fits.parquet")
+CWFS_REQUIRED = ("donuts.parquet",)
+MI_REQUIRED   = ("fits.parquet", "zk_intrinsic.parquet")
+
+def fam_dir(psd):
+    """The FAM tables directory for a param_set dir name `psd`."""
+    return _resolve("fam_tables", _FAM_VARIANT_BY_DIR.get(psd),
+                    f"output/fam_processing/{psd}", FAM_REQUIRED)
+
+def cwfs_dir(psd, cw):
+    """The ingested CWFS tables directory for (param_set dir name, cwfs variant name)."""
+    return _resolve("cwfs_tables", _CWFS_VARIANT_BY_DIR.get((psd, cw)),
+                    f"output/wfs_ingest/{psd}/{cw}", CWFS_REQUIRED)
+
+def miw_dir_for(d):
+    """The MIW build directory for a joined param_set+mi_name dir name `d`."""
+    return _resolve("miw", _MIW_VARIANT_BY_DIR.get(d), f"output/miw/{d}", MI_REQUIRED)
+
+def miw_corner_sidecar(d, cw):
+    """The CWFS MIW corner sidecar for (joined dir name, cwfs variant name).
+
+    The old tree writes it under the CONSUMER's study directory,
+    ``output/wfs_dof_compare/<d>/<cwfs>/zk_intrinsic.parquet``; the product writes it
+    inside its own build, as ``wfs/<cwfs variant>/zk_intrinsic.parquet``, keyed on the
+    full cwfs_tables variant name rather than the bare wfs_name.
+    """
+    old = f"output/wfs_dof_compare/{d}/{cw}/zk_intrinsic.parquet"
+    if os.path.exists(old):
+        return old
+    miw_variant = _MIW_VARIANT_BY_DIR.get(d)
+    if miw_variant is None:
+        return old
+    cwfs_variant = _CWFS_VARIANT_BY_DIR.get(
+        (_miw_product.fam_variant(miw_variant), cw))
+    if cwfs_variant is None:
+        return old
+    cand = f"{miw_dir_for(d)}/wfs/{cwfs_variant}/zk_intrinsic.parquet"
+    return cand if os.path.exists(cand) else old
+
+def report_resolved():
+    """Print which source every product variant resolved to, once, at DAG time.
+
+    Called after the variant enumeration below, which touches every defined variant of
+    all three products, so the report is complete before the first rule is planned.
+    """
+    if not _RESOLVED:
+        return
+    n_cat = sum(1 for s in _RESOLVED.values() if s.startswith("catalog"))
+    n_un = sum(1 for s in _RESOLVED.values() if s.startswith("UNRESOLVED"))
+    n_old = len(_RESOLVED) - n_cat - n_un
+    print(f"[Snakefile] product data: {len(_RESOLVED)} resolution(s) -- {n_old} from the "
+          f"old aos/output tree, {n_cat} from the catalog's new tree, {n_un} unresolved "
+          "(counts are variant resolutions, dimensionless)", file=sys.stderr)
+    for (product, variant, required), src in sorted(
+            _RESOLVED.items(), key=lambda kv: (kv[0][0], str(kv[0][1]), kv[0][2])):
+        what = "grids" if any("intrinsic_grid" in f for f in required) else "tables"
+        print(f"[Snakefile]   {product}/{variant} ({what}): {src}", file=sys.stderr)
+
 # Since phase 3a moved build_intrinsic, intrinsic_split, intrinsic_sidecar,
 # wfs_intrinsic_sidecar and refit_mi into the miw product, the MIW tables are INPUTS this
 # Snakefile does not build.  A (param_set, mi_name) pair whose build is absent therefore
@@ -167,34 +301,37 @@ def mi_build_src(ps, mi):
 # most were only ever taken as far as the split.  So enumerate only the pairs whose MIW is
 # complete, and REPORT every skip: a dropped pair silently drops its study jobs.
 #
-# `fits.parquet` and `zk_intrinsic.parquet` are the gate because every study rule here
-# reads one or the other.  A pair with a split but no sidecar is incomplete, not partially
-# usable.  Build a missing one with the product Snakefile:
+# The gate is MI_REQUIRED, checked in the directory the RESOLVER picked -- so a pair with
+# no old-tree build but a complete build in the new tree is now planned, reading the
+# catalog's `current`.  A pair with a split but no sidecar is incomplete, not partially
+# usable, in either tree.  Build a missing one with the product Snakefile:
 #
 #   snakemake -s rubinwork/products/miw/Snakefile \
 #       --config variant=<v> build=<YYYYMMDD> fam_build=<FAM build>
 #
 # and it reappears here.
-MI_REQUIRED = ("fits.parquet", "zk_intrinsic.parquet")
 _MI_SKIPPED = {}
 def _mi_complete(ps, mi):
     d = f"{ps_dir(ps)}_{mi_dir(ps, mi)}"
-    missing = [f for f in MI_REQUIRED if not os.path.exists(f"output/miw/{d}/{f}")]
+    base = miw_dir_for(d)
+    missing = [f for f in MI_REQUIRED if not os.path.exists(f"{base}/{f}")]
     if missing:
-        _MI_SKIPPED[d] = missing
+        _MI_SKIPPED[d] = (base, missing)
         return False
     return True
 MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)
             if _mi_complete(ps, mi)]
 if _MI_SKIPPED:
     print(f"[Snakefile] skipping {len(_MI_SKIPPED)} MIW build(s) with no complete output "
-          "on disk; their study jobs (study_radialbins, wfs_dof_compare, wfs_mimic, "
-          "build_lut, the four correlations rules, bounce, fam_coadd_miw) are NOT "
-          "planned. Build each with `snakemake -s rubinwork/products/miw/Snakefile "
+          "in either the old tree or the catalog; their study jobs (study_radialbins, "
+          "wfs_dof_compare, wfs_mimic, build_lut, the four correlations rules, bounce, "
+          "fam_coadd_miw) are NOT planned. Build each with "
+          "`snakemake -s rubinwork/products/miw/Snakefile "
           "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
           file=sys.stderr)
-    for d, missing in sorted(_MI_SKIPPED.items()):
-        print(f"[Snakefile]   {d}: missing {', '.join(missing)}", file=sys.stderr)
+    for d, (base, missing) in sorted(_MI_SKIPPED.items()):
+        print(f"[Snakefile]   {d}: missing {', '.join(missing)} in {base}",
+              file=sys.stderr)
 
 # param_sets with paired in-focus corner-WFS (cwfs) collections.  Each ps may
 # carry several CWFS variants (wfs_collections: name -> Butler collection); the
@@ -218,7 +355,7 @@ def wfs_variants(ps):
     d = ps_dir(ps)
     have = []
     for cw in defined:
-        table = f"output/wfs_ingest/{d}/{cw}/donuts.parquet"
+        table = f"{cwfs_dir(d, cw)}/donuts.parquet"
         if os.path.exists(table):
             have.append(cw)
         else:
@@ -233,7 +370,8 @@ def _report_wfs_skips():
     if not _WFS_SKIPPED:
         return
     n = len(_WFS_SKIPPED)
-    print(f"[Snakefile] skipping {n} CWFS variant(s) with no donuts.parquet on disk; "
+    print(f"[Snakefile] skipping {n} CWFS variant(s) with no donuts.parquet in either the "
+          "old tree or the catalog; "
           "their wfs_corner_compare and wfs_dof_compare jobs are NOT planned. Build each "
           "with `snakemake -s rubinwork/products/cwfs_tables/Snakefile "
           "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
@@ -264,10 +402,10 @@ def d_ps_dir(d):                       # the param_set dir of a joined dtag
     return ps_dir(MI_BY_DTAG[d][0])
 
 def d_tables(d):                       # phase-1 tables dir for a joined dtag
-    return f"output/fam_processing/{d_ps_dir(d)}"
+    return fam_dir(d_ps_dir(d))
 
 def d_wfs(d, cwfs):                    # ingested CWFS dir for a joined dtag
-    return f"output/wfs_ingest/{d_ps_dir(d)}/{cwfs}"
+    return cwfs_dir(d_ps_dir(d), cwfs)
 
 WFS_DVARIANTS    = [(ps_dir(ps), cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
 _report_wfs_skips()          # after the last wfs_variants() call, so the list is complete
@@ -278,7 +416,7 @@ _report_wfs_skips()          # after the last wfs_variants() call, so the list i
 # donuts exist.  Filter on the sidecar as well, and report, for the same reason as above.
 _SIDECAR_SKIPPED = {}
 def _has_corner_sidecar(d, cw):
-    path = f"output/wfs_dof_compare/{d}/{cw}/zk_intrinsic.parquet"
+    path = miw_corner_sidecar(d, cw)
     if os.path.exists(path):
         return True
     _SIDECAR_SKIPPED[(d, cw)] = path
@@ -299,14 +437,38 @@ def mi_bin_grids(d):
     # paths point at already-built grids (a build_from entry triggers no build).
     ps, mi = MI_BY_DTAG[d]
     src = mi_build_src(ps, mi)
-    return [f"output/miw/{dtag(ps, src)}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
+    base = src_miw_dir(d)
+    return [f"{base}/build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
             for lo, hi in mi_rotbins(ps, src)]
 
 def src_miw_dir(d):
     # the MIW directory holding this entry's build grids (self, or its build_from
     # parent's) — what run_intrinsic_split reads via --src-dir.
+    #
+    # Resolved on the GRIDS, not on MI_REQUIRED: a build_from parent legitimately has
+    # per-bin grids and nothing else (that is the only reason several of them exist), so
+    # the fits/sidecar gate would send this back to the old tree for a parent that only
+    # the new tree has.
     ps, mi = MI_BY_DTAG[d]
-    return f"output/miw/{dtag(ps, mi_build_src(ps, mi))}"
+    src = mi_build_src(ps, mi)
+    src_d = dtag(ps, src)
+    grids = tuple(f"build/rot_{lo:g}_{hi:g}/intrinsic_grid.parquet"
+                  for lo, hi in mi_rotbins(ps, src))
+    return _resolve("miw", _MIW_VARIANT_BY_DIR.get(src_d),
+                    f"output/miw/{src_d}", grids)
+
+# Resolve the rest before reporting, so the report is the whole picture: the gates above
+# resolved every CWFS variant and every MIW pair's tables, this adds the FAM tables (whose
+# resolution the gates never needed) and the build grids (which src_miw_dir resolves on a
+# different file set).  The rule-input lambdas call the same resolvers later, on the same
+# arguments, and get the same answers.
+# PS_DIRS covers only the param_sets snake_config.yaml drives; a MIW study job reaches its
+# FAM tables through d_tables(), so add the param_set of every planned pair as well.
+for _psd in set(PS_DIRS) | {d_ps_dir(_d) for _d in MI_DTAGS}:
+    fam_dir(_psd)
+for _d in MI_DTAGS:
+    src_miw_dir(_d)
+report_resolved()
 
 # Config-as-params (not config-as-input): pass the RESOLVED per-(ps, mi) config
 # as a Snakemake `params` value rather than listing mi_config.yaml /
@@ -370,8 +532,10 @@ rule all:
          for d, cw in WFS_MI_DVARIANTS],
         # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per ps+mi
         expand("output/wfs_mimic/{d}/wfs_mimic_cov84.parquet", d=MI_DTAGS),
-        # Phase 2: measured-intrinsic refit per (param_set, mi_name)
-        expand("output/miw/{d}/fits.parquet", d=MI_DTAGS),
+        # Phase 2: measured-intrinsic refit per (param_set, mi_name).  Built by the miw
+        # product since phase 3a, so this is an input `rule all` requires rather than a
+        # target it builds; MI_DTAGS already holds only the pairs whose MIW resolved.
+        [f"{miw_dir_for(d)}/fits.parquet" for d in MI_DTAGS],
         # averaged-DOF LUT per (param_set, mi_name)
         expand("output/lut/{d}/lut.parquet", d=MI_DTAGS),
         # MI-refit analyses: DZ-DZ + DZ-temperature correlations, bounce tests
@@ -395,8 +559,8 @@ rule all:
 # ---- validation plots on the combined tables ----
 rule plots:
     input:
-        donuts = "output/fam_processing/{ps}/donuts.parquet",
-        fits   = "output/fam_processing/{ps}/fits.parquet",
+        donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
+        fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
         script = "code/dzfit/run_dz_plots.py",
     output: "output/dzfit/{ps}/trio_comparison_all.pdf"
     params: coord = lambda w: coord(PS_BY_DIR[w.ps])
@@ -445,9 +609,9 @@ rule residual_movies:
 # Streams donuts.parquet by row group, so it needs far less memory than `plots`.
 rule dz_fit_check:
     input:
-        donuts = "output/fam_processing/{ps}/donuts.parquet",
-        fits   = "output/fam_processing/{ps}/fits.parquet",
-        visits = "output/fam_processing/{ps}/visits.parquet",
+        donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
+        fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
+        visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
         script = "code/dzfit/run_dz_fit_check.py",
     output:
         pdf     = "output/dzfit/{ps}/dz_fit_check.pdf",
@@ -455,20 +619,21 @@ rule dz_fit_check:
     params:
         real_ps = lambda w: PS_BY_DIR[w.ps],
         coord   = lambda w: coord(PS_BY_DIR[w.ps]),
+        tdir    = lambda w: fam_dir(w.ps),
     resources: mem_mb=6000
     log: "logs/{ps}.dz_fit_check.log"
     shell:
         "python code/dzfit/run_dz_fit_check.py --param-set {params.real_ps} "
         "--coord-sys {params.coord} "
-        "--tables-dir output/fam_processing/{wildcards.ps} "
+        "--tables-dir {params.tdir} "
         "--output-dir output/dzfit/{wildcards.ps} > {log} 2>&1"
 
 # ---- per-donut primary->secondary aberration-pair analysis ----
 rule aberration_pairs:
     input:
-        donuts = "output/fam_processing/{ps}/donuts.parquet",
-        visits = "output/fam_processing/{ps}/visits.parquet",
-        fits   = "output/fam_processing/{ps}/fits.parquet",
+        donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
+        visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
+        fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
         script = "code/correlations/run_aberration_pairs.py",
     output: "output/correlations/{ps}/aberration_pairs.pdf"
     params:
@@ -534,9 +699,9 @@ rule study_radialbins:
 # ---- corner-by-corner CWFS vs FAM measured-OPD comparison (per ps) ----
 rule wfs_corner_compare:
     input:
-        wfs    = "output/wfs_ingest/{ps}/{cwfs}/donuts.parquet",
-        fam    = "output/fam_processing/{ps}/donuts.parquet",
-        visits = "output/fam_processing/{ps}/visits.parquet",
+        wfs    = lambda w: f"{cwfs_dir(w.ps, w.cwfs)}/donuts.parquet",
+        fam    = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
+        visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
         script = "code/cwfs/run_wfs_corner_compare.py",
     output:
         pdf     = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.pdf",
@@ -544,13 +709,15 @@ rule wfs_corner_compare:
     params:
         real_ps = lambda w: PS_BY_DIR[w.ps],
         coord   = lambda w: coord(PS_BY_DIR[w.ps]),
+        tdir    = lambda w: fam_dir(w.ps),
+        wdir    = lambda w: cwfs_dir(w.ps, w.cwfs),
     resources: mem_mb=8000
     log: "logs/{ps}.{cwfs}.wfs_corner_compare.log"
     shell:
         "python code/cwfs/run_wfs_corner_compare.py --param-set {params.real_ps} "
         "--wfs-name {wildcards.cwfs} --coord {params.coord} "
-        "--tables-dir output/fam_processing/{wildcards.ps} "
-        "--wfs-dir output/wfs_ingest/{wildcards.ps}/{wildcards.cwfs} "
+        "--tables-dir {params.tdir} "
+        "--wfs-dir {params.wdir} "
         "--out-dir output/wfs_corner_compare/{wildcards.ps}/{wildcards.cwfs} "
         "> {log} 2>&1"
 
@@ -561,13 +728,13 @@ rule wfs_dof_compare:
     input:
         wfs      = lambda w: f"{d_wfs(w.d, w.cwfs)}/donuts.parquet",
         # FAM MIW-subtracted DZ
-        fits     = "output/miw/{d}/fits.parquet",
+        fits     = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # CWFS MIW at the corner donuts
-        sidecar  = "output/wfs_dof_compare/{d}/{cwfs}/zk_intrinsic.parquet",
+        sidecar  = lambda w: miw_corner_sidecar(w.d, w.cwfs),
         # FAM donuts (MIW-FWHM field sampling)
         fam_don  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
         # FAM per-donut MIW (baseline FWHM)
-        fam_side = "output/miw/{d}/zk_intrinsic.parquet",
+        fam_side = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
         visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script   = "code/cwfs/run_wfs_dof_compare.py",
         lib      = f"{WF_LIB}/ofc_svd.py",
@@ -578,12 +745,13 @@ rule wfs_dof_compare:
         coord   = lambda w: coord(MI_BY_DTAG[w.d][0]),
         tdir    = lambda w: d_tables(w.d),
         wdir    = lambda w: d_wfs(w.d, w.cwfs),
+        mdir    = lambda w: miw_dir_for(w.d),
     resources: mem_mb=8000
     log: "logs/{d}.{cwfs}.wfs_dof_compare.log"
     shell:
         "python code/cwfs/run_wfs_dof_compare.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --wfs-name {wildcards.cwfs} --coord {params.coord} "
-        "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
+        "--tables-dir {params.tdir} --miw-dir {params.mdir} "
         "--wfs-dir {params.wdir} "
         "--out-dir output/wfs_dof_compare/{wildcards.d}/{wildcards.cwfs} > {log} 2>&1"
 
@@ -592,7 +760,7 @@ rule wfs_dof_compare:
 # ---- FAM-derived corner-WFS covariance of the measured-intrinsic deviation ----
 rule wfs_mimic:
     input:
-        sidecar = "output/miw/{d}/zk_intrinsic.parquet",
+        sidecar = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
         donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
         visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script  = "code/cwfs/run_wfs_mimic.py",
@@ -609,12 +777,13 @@ rule wfs_mimic:
         tdir    = lambda w: d_tables(w.d),
         cfg     = lambda w: mi_cfg_json(w.d),         # rerun-trigger only
         acfg    = lambda w: an_json_d("wfs_mimic", w.d),
+        mdir    = lambda w: miw_dir_for(w.d),
     resources: mem_mb=4000
     log: "logs/{d}.wfs_mimic.log"
     shell:
         "python code/cwfs/run_wfs_mimic.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --coord-sys {params.coord} "
-        "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
+        "--tables-dir {params.tdir} --miw-dir {params.mdir} "
         "--out-dir output/wfs_mimic/{wildcards.d} > {log} 2>&1"
 
 # (rule refit_mi moved to rubinwork/products/miw/Snakefile -- see above)
@@ -651,7 +820,7 @@ rule build_lut:
 # Needs ofc_svd (lsst.ts.ofc) for the correction -> RSP-only.
 rule dz_correlations:
     input:
-        fits   = "output/miw/{d}/fits.parquet",
+        fits   = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         script = "code/correlations/run_dz_correlations.py",
         lib    = "code/dz_plotting.py",
         ofc    = f"{WF_LIB}/ofc_svd.py",
@@ -676,7 +845,7 @@ rule dz_correlations:
 # ---- DZ-to-temperature correlations on the MI-refit fits ----
 rule thermal_correlations:
     input:
-        fits     = "output/miw/{d}/fits.parquet",
+        fits     = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # nollIndices for the OFC SVD
         visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script   = "code/correlations/run_thermal_correlations.py",
@@ -703,7 +872,7 @@ rule thermal_correlations:
 # points are kept.  Other consumers apply visit_quality_pass (nd>=170).
 rule bounce:
     input:
-        fits     = "output/miw/{d}/fits.parquet",
+        fits     = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         script   = "code/bounce/run_bounce.py",
         lib      = "code/bounce/bounce_lib.py",
         ofc      = f"{WF_LIB}/ofc_svd.py",
@@ -748,7 +917,7 @@ rule fam_coadd_miw:
     input:
         donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
         visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        sidecar = "output/miw/{d}/zk_intrinsic.parquet",
+        sidecar = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
         script  = "code/coadd/run_fam_coadd_miw.py",
     output: "output/coadd/{d}/fam_coadd_miw_maps.pdf"
     params:
@@ -759,13 +928,14 @@ rule fam_coadd_miw:
         mint    = lambda w: an_sec_d("fam_coadd_miw", w.d).get("min_triplets", 6),
         grid    = lambda w: an_sec_d("fam_coadd_miw", w.d).get("grid_n", 24),
         pct     = lambda w: an_sec_d("fam_coadd_miw", w.d).get("pct", 98.0),
+        mdir    = lambda w: miw_dir_for(w.d),
     resources: mem_mb=12000
     log: "logs/{d}.fam_coadd_miw.log"
     shell:
         "python code/coadd/run_fam_coadd_miw.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --bin-deg {params.bin_deg} "
         "--min-triplets {params.mint} --grid-n {params.grid} --pct {params.pct} "
-        "--tables-dir {params.tdir} --miw-dir output/miw/{wildcards.d} "
+        "--tables-dir {params.tdir} --miw-dir {params.mdir} "
         "--out-dir output/coadd/{wildcards.d} > {log} 2>&1"
 
 
@@ -773,7 +943,7 @@ rule fam_coadd_miw:
 #      Spearman rho + Theil-Sen), discrete -1..1 summary with significance ----
 rule vmode_correlations:
     input:
-        fits   = "output/miw/{d}/fits.parquet",
+        fits   = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # nollIndices for the OFC SVD
         visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script = "code/correlations/run_vmode_correlations.py",
@@ -800,7 +970,7 @@ rule vmode_correlations:
 # ---- per-visit fraction of the DZ explained by the 22/12 vs 50/34 subspace ----
 rule dz_explained:
     input:
-        fits   = "output/miw/{d}/fits.parquet",
+        fits   = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # nollIndices for the OFC SVD
         visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script = "code/correlations/run_dz_explained.py",
