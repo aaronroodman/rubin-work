@@ -707,6 +707,253 @@ at identical size (0.00% difference), though they are deliberately not byte-comp
 exit 0.
 
 
+## Bridging the study rules to the catalog (commit `fec3741`)
+
+Done before `coadds`, because after the `fam_tables`, `cwfs_tables` and `miw` moves the
+`aos/` study rules read product data only from the old tree, so a product rebuilt into the
+new tree stays invisible to them until phase 5 — and nine of the twelve MIW variants have
+no complete old-tree build, so their study jobs were simply gone.
+
+`aos/Snakefile` now has **one resolver**, used by every study-rule input that reads
+`fam_tables`, `cwfs_tables` or `miw` data and by every `--tables-dir` / `--miw-dir` /
+`--wfs-dir` argument those rules pass to a script. It returns a DIRECTORY, resolved:
+
+1. the old-tree path, if its required files are all there;
+2. else the catalog's `current` build of the matching product variant;
+3. else the old-tree path anyway, so the existing gates (`_mi_complete`, `wfs_variants`,
+   `_has_corner_sidecar`) see a missing file and skip the variant with a reported reason,
+   exactly as before.
+
+**No study output path changes** — outputs stay keyed on the old-tree dir names `{ps}`,
+`{d}` and `{cwfs}`, so nothing already built is invalidated or relocated.
+
+Three details that are not obvious:
+
+- **The variant names come from the products' own index fields, not from string surgery on
+  the directory names.** A `fam_tables` variant IS its `param_sets.yaml` `dir_name`; a
+  `cwfs_tables` variant carries the `{cwfs}` wildcard as its `upstream_name`; a `miw`
+  variant carries the second half of `{d}` as its `dir_name`. A renamed variant therefore
+  stops resolving instead of silently resolving to a stale old-tree directory.
+- **The MIW build grids resolve separately from the MIW tables.** A `build_from` parent
+  legitimately has per-bin grids and nothing else — that is the only reason several of them
+  exist — so gating the grids on `fits.parquet`/`zk_intrinsic.parquet` would send
+  `src_miw_dir` back to the old tree for a parent only the new tree has. `src_miw_dir`
+  resolves on the grid files themselves.
+- **The corner sidecar changes directory across the trees.** The old tree writes it under
+  the CONSUMER's study directory, `output/wfs_dof_compare/<d>/<cwfs>/zk_intrinsic.parquet`;
+  the product writes it inside its own build as `wfs/<cwfs variant>/zk_intrinsic.parquet`,
+  keyed on the full `cwfs_tables` variant name rather than the bare `wfs_name`.
+  `miw_corner_sidecar()` maps between them.
+
+`report_resolved()` prints which source every variant resolved to, once, at DAG time, after
+a sweep that resolves every param_set and every planned pair so the report is complete
+before the first rule is planned.
+
+**Verified both ways.**
+
+| | jobs | resolutions |
+|---|---|---|
+| `snakemake -n` in `aos/`, real data root | **37** — today's count, rule for rule | 21: 11 old tree, 0 catalog, 10 unresolved |
+| the same with `RUBINWORK_DATA=.../_scratch_3a` and a staged complete `miw/d13v1000-A_50_34_i_5rot@20261010` | **44** | 23: 13 old tree, **1 catalog**, 9 unresolved |
+
+All counts are jobs or variant resolutions (dimensionless). The +7 are exactly that
+variant's study jobs reappearing — one each of `bounce`, `build_lut`, `dz_correlations`,
+`dz_explained`, `thermal_correlations`, `vmode_correlations`, `wfs_mimic`.
+`study_radialbins` stays at 2 because its grids come from the `build_from` parent
+`d13v1000-A_50_34_i`, which has grids in neither tree. The planned `wfs_mimic` job reads
+its MIW from the catalog and its FAM tables from the old tree — the intended mixed
+resolution, since `danish_1_3_v1000`'s old-tree FAM tables are complete and win.
+
+146 product tests pass; the import smoke test is 63 of 63 ok, the same set and the same
+result as after the `miw` move.
+
+`aos/code/infra/stage_scratch_product.py` stages a placeholder build (one-row tables plus a
+complete manifest) into a scratch root, and **refuses any root not under a `_scratch_3a`
+directory** so it can never touch the real products tree.
+
+## 3a, `coadds` — the move
+
+### Scope, agreed 2026-10-10
+
+**The product is `run_coadd_blocks_miw.py` and its four data files.** Everything else in
+`aos/code/coadd/` is the coadd-vs-MIW study and stays.
+
+| moves to `rubinwork/products/coadds/builders/` | stays (study) |
+|---|---|
+| `run_coadd_blocks_miw.py` | `recompute_coadd_metrics`, `analyze_miw_bias_regression`, `analyze_miw_field_order`, `analyze_dz_goodness_of_fit`, `analyze_umode_null_coupling`, `analyze_miw_dz_full_k`, `check_k_truncation`, `run_fam_coadd_miw` |
+
+Product files: `blocks_summary.parquet`, `coadd_metrics.parquet`, `block_grids.npz`,
+`block_grids_ext.npz`, plus the two PDFs as build artifacts.
+
+**Every reader, found by grep rather than taken from the plan. There is no code reader
+outside `aos/code/coadd/` at all:**
+
+| reader | reads | where |
+|---|---|---|
+| `recompute_coadd_metrics.py` | `block_grids.npz` | `:563` |
+| same | `blocks_summary.parquet`, twice (`program`; then per-block camera temps) | `:264`, `:294` |
+| `analyze_miw_bias_regression.py` | `block_grids.npz` | `:115` |
+| `analyze_miw_field_order.py` | `block_grids.npz`, `coadd_metrics_rebin3.parquet` | `:43`-`:46`, **at import time** |
+| `analyze_dz_goodness_of_fit.py` | `blocks_summary.parquet` | `:107`, default at `:294` |
+| `analyze_umode_null_coupling.py` | `blocks_summary.parquet` via `assign_blocks` | `:69`, `:83` |
+| `aos/moresnippets.ipynb:5393` | `block_grids.npz` | scratch snippets notebook |
+
+`aos/Snakefile:922` declares `fam_coadd_miw_maps.pdf` as an **output**, not an input; no
+rule consumes any coadd file. `aos/code/infra/migrate_output_layout.py:145` only rewrites
+paths.
+
+**`fam_coadd_miw` is NOT part of this move, and the next-action note above was wrong about
+it.** That rule runs `run_fam_coadd_miw.py`, which writes only `fam_coadd_miw_maps.pdf` — a
+plot no code reads back — so it is a study rule and stays. The script that moves,
+`run_coadd_blocks_miw.py`, **has no Snakefile rule at all** today: it is run only from
+`aos/run_coadd_blocks_miw.sbatch`. So `snakemake -n` in `aos/` must be **unchanged at 37**
+across this move, and there is no `aos/`-side coadd target to plan.
+
+Three findings worth carrying forward, all Aaron's calls on 2026-10-10:
+
+1. **`block_grids_ext.npz` has no reader anywhere** — written at
+   `run_coadd_blocks_miw.py:911`, read by nothing, 66 MB in the production build. **Kept**
+   in the product: it is the extra-pupil-Zernike primitive the retrieval-bias work needs,
+   and it is what distinguishes the two variants.
+2. **`coadd_metrics.parquet` has no reader either.** The only metrics file anyone reads is
+   `coadd_metrics_rebin3.parquet`, which `recompute_coadd_metrics.py:634` writes — a
+   **study** output. **Kept**: it is the natural per-coadd table and the rebinned one is
+   conceptually derived from it.
+3. **Three study readers point at a stale path that does not exist on disk.**
+   `recompute_coadd_metrics.py:562`, `analyze_miw_bias_regression.py:114` and
+   `analyze_miw_field_order.py:36` build `output/<long param_set>/coadd_50_34/`, the layout
+   the tree lost when `dir_name` arrived — the same bug class as `miw_corner.decomp_path`.
+   `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/` does not exist, so **all three
+   are broken today**; two also hardwire `coadd_50_34` as a literal. **Fixed in the move
+   commit**, as the one behaviour change.
+
+### Variants: two, prefixed by the MIW upstream
+
+A coadd depends on a `fam_tables` variant **and** a `miw` variant. The MIW is the main
+upstream — the product is a per-block remnant *against* a given MIW — so the variant name
+carries the MIW variant, not the FAM one.
+
+| variant | fam_variant | miw_variant | `ext_terms` | old-tree dir | old-tree output? |
+|---|---|---|---|---|---|
+| `d12-A_50_34_i_5rot` | `danish_1_2` | `d12-A_50_34_i_5rot` | `secondary` | `coadd/danish_1_2/50_34/` | **yes**, 6 files, newest 2026-09-14 |
+| `d12-A_50_34_i_5rot_v2` | `danish_1_2` | `d12-A_50_34_i_5rot` | `all` | `coadd/danish_1_2/50_34_v2/` | **no — `archive/` only, top level empty** |
+
+**Checked before moving, as this handoff requires.** `aos/output/coadd/danish_1_2/50_34_v2/`
+holds only `archive/20260903_iband/`; its top level is empty. Nothing is currently planned
+for it (`run_coadd_blocks_miw` has no rule), so no job count changes — but the product
+Snakefile reports it as unbuilt.
+
+The plan's names `d12-50_34` and `d12-50_34_v2` are **not** used: `50_34` names the
+`n_dof`/`n_keep` pair, not the MIW, so they would be ambiguous as soon as a second MIW
+variant gets a coadd. The old-tree directory name (`50_34`, `50_34_v2`) is carried as a
+`dir_name` field, exactly as `miw` does.
+
+The two variants differ **only** in `ext_terms`, which changes nothing but
+`block_grids_ext.npz` and the per-block PDF page count — the archive README records
+`block_grids.npz` as byte-identical between the two 2026-09-03 runs.
+
+**Where the block-selection settings live.** Today they are argparse defaults plus a
+`DEFAULTS` array in `aos/run_coadd_blocks_miw.sbatch`; there is no config file, and
+`analysis_config.yaml`'s `fam_coadd_miw` section belongs to the *other* script.
+`coadds/variants.yaml` now owns them per variant (`bands`, `min_visits`, `max_blur`,
+`pointing_tol`, `wide_tol`, `max_seq_span`, `bounce_round`, `bounce_programs`,
+`wide_programs`, `ext_terms`, `cwfs_inner`/`cwfs_outer`, `n_bins`, `n_iter`, `pct`), with
+the argparse defaults left intact so a hand run is unchanged. **No generated file is
+needed** — unlike `param_sets.yaml` and `mi_config.yaml`, nothing external reads a coadd
+config by a bare relative path.
+
+### 3a step 1 — reference build with the unmoved code: DONE
+
+Built at commit `fec3741` (clean tree), interactive on `sdfiana`, **76.7 s wall clock**.
+
+**One night, 20260316, chosen to give three blocks.** `run_coadd_blocks_miw.py` has **no
+block-count limit flag**, so the reference is sized by staging the FAM nights, the same
+route `miw` took. Measured with the real `assign_blocks` on the three nights of the `miw`
+reference slice (counts are blocks, dimensionless):
+
+| night | FAM visits | blocks detected | built (`n_visits >= 6`) |
+|---|---|---|---|
+| 20260315 | 62 | 6 | 5 |
+| **20260316** | **35** | **3** | **3** |
+| 20260317 | 72 | 6 | 6 |
+| all three | 169 | 15 | 14 |
+
+Input, staged by the `miw` product's own script (it needed no change), 2.9 s:
+
+```bash
+python -m rubinwork.products.miw.refbuild.stage_fam_nights \
+    --reference aos/output/fam_processing/danish_1_2 \
+    --day-obs 20260316 \
+    --out /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/coadds/_fam_20260316
+```
+
+Staged slice: `visits.parquet` 35 rows x 405 columns, `fits.parquet` 35 rows x 456 columns,
+`donuts.parquet` 98,199 rows x 48 columns **in 35 row groups**. The row-group structure is
+load-bearing again: `run_coadd_blocks_miw._visit_row_groups` keys each group on its
+`day_obs`/`seq_num` column statistics, exactly as `run_build_intrinsic.load_kept_donuts`
+does, so one row group per visit is required.
+
+The MIW it compares against is the completed `miw` reference,
+`_phase2_refbuild/miw/ref/zk_intrinsic.parquet` (475,128 donuts over the three nights). The
+sidecar is indexed on `(day_obs, seq_num)`, not row position, so a three-night sidecar
+covers a one-night block set.
+
+The build command, run from `aos/` (the unmoved script's own path):
+
+```bash
+cd ~/notebooks/rubin-work/aos && python code/coadd/run_coadd_blocks_miw.py \
+    --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
+    --mi-name pathA_50_34_i_5rot \
+    --ext-terms secondary \
+    --tables-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/coadds/_fam_20260316 \
+    --miw-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/miw/ref \
+    --out-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/coadds/ref
+```
+
+Note `--out-dir` is **required**: without it the script builds
+`output/<long param_set>/<out-name>/`, the stale layout of finding 3 above.
+
+Output, in `_phase2_refbuild/coadds/ref/`, 6 files:
+
+| file | contents | bytes |
+|---|---|---|
+| `blocks_summary.parquet` | 3 rows x 26 columns | 15,653 |
+| `coadd_metrics.parquet` | 3 rows x 81 columns | 48,618 |
+| `block_grids.npz` | 42 arrays | 835,382 |
+| `block_grids_ext.npz` | 6 arrays | 943,315 |
+| `coadd_blocks_miw_perblock.pdf` | 3 blocks x [coadd/MIW/diff] | 3,716,991 |
+| `coadd_blocks_miw_timeseries.pdf` | metrics + corr-bars + scatter + 3 telemetry + u-mode heatmap, n=3 | 49,316 |
+
+The three blocks, all `T614_triplets` on 20260316, band `i`, elevation 69.8 deg, all
+in-family:
+
+| block | ordinal | seq range | visits | donuts | rotator angle (deg, OCS) | FWHM (arcsec) |
+|---|---|---|---|---|---|---|
+| 0 | 0 | 647-680 | 12 | 33,496 | +60.12 | 1.13 |
+| 1 | 1 | 693-726 | 12 | 33,762 | -59.89 | 1.00 |
+| 2 | 2 | 737-767 | 11 | 30,941 | +0.15 | 0.97 |
+
+Each block ran the full 3-iteration U-constrained build and converged: RMS change between
+iterations 1.24e-03 then 7.09e-04 µm of wavefront on block 1, 1.25e-03 then 7.27e-04 on
+block 2. Coadd-vs-MIW agreement, over the full focal plane:
+
+| block | `resid_rms_combined` (µm of wavefront) | `corr_combined` (Pearson r, dimensionless) |
+|---|---|---|
+| 0 | 0.0351 | 0.946 |
+| 1 | 0.0451 | 0.927 |
+| 2 | 0.0496 | 0.946 |
+
+So the reference exercises block detection, the iterative build, the MIW comparison, the
+per-Zernike and CWFS-annulus metrics, the u-modes, both npz files and both PDFs.
+
+**Comparison keys.** `block` is unique on both tables — 3 of 3 rows on
+`blocks_summary.parquet` and on `coadd_metrics.parquet`. The two npz files are compared
+array by array by name (42 and 6 arrays), with the per-block axis aligned on `block`.
+
+The PDFs are **not** byte-comparable (matplotlib embeds a creation timestamp), so step 4
+compares the two parquet tables and both npz files at zero tolerance and checks only that
+each PDF is produced at a comparable size.
+
 ## 3c rebuild feasibility, measured 2026-10-10
 
 ### Every collection resolves; the embargo chunk has not moved
