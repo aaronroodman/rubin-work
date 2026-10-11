@@ -25,29 +25,55 @@ comparison, manifest.
 | `34b9980` | `aos/Snakefile` reports the CWFS variants `wfs_variants()` skips |
 | `d81cc3d` | 3a step 1: the `miw` reference build with the unmoved code |
 | `b9756aa` | 3a step 2: the `miw` move — five rules, `variants.yaml` + generated `mi_config.yaml`, both readers, external registrations, tests |
-| (this file) | 3a steps 3 and 4 for `miw`: the verification and the zero-tolerance comparison |
+| `48258b2` | 3a steps 3 and 4 for `miw`: the verification and the zero-tolerance comparison |
+| `fec3741` | the resolver bridging the `aos/` study rules to the catalog |
+| `3f607ab` | 3a step 1: the `coadds` reference build with the unmoved code |
+| `d0e4182` | 3a step 2: the `coadds` move — builder, shim, `variants.yaml`, product Snakefile, two-upstream manifest, npz comparison, tests |
+| (this file) | 3a steps 3 and 4 for `coadds`: the verification and the zero-tolerance comparison |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
 **Phase 3a, `miw`, is DONE.** The moved code reproduces the reference exactly — 0 differing
 columns across 12 tables at zero tolerance.
 
+**Phase 3a, `coadds`, is DONE.** The moved code reproduces the reference exactly — 0
+differing columns across 2 tables (26 and 81 columns) and 0 differing arrays across 2 npz
+files (42 and 6 arrays), at zero tolerance.
+
+**The study rules now read the catalog too** (`fec3741`), so a product rebuilt into the new
+tree is visible to them before phase 5.
+
 ## Next concrete action
 
-**Phase 3a, `coadds`.** The next product in dependency order: `aos/code/coadd/` and the
-`fam_coadd_miw` rule, whose variants the plan's section 4 gives as `d12-50_34` and
-`d12-50_34_v2`. It reads both `fam_tables` and `miw`, so it is the first product with two
-real upstreams; `write_manifest` records both under `inputs` as `miw` already does for a
-`build_from` parent.
+**Phase 3a, `dof_lut` and `bounce_tables`.** The next two products in dependency order,
+taken together because they are the plan's two "small products" and both key on a MIW
+variant:
 
-**Check which coadd variants have no old-tree output before moving the rule.** That is now
-twice-proven: `cwfs_tables` lost 5 jobs to one never-built CWFS variant, and `miw` lost 75
-to nine incomplete MIW builds. `aos/Snakefile` has the filter-and-report idiom in two
-places to copy (`wfs_variants`/`_report_wfs_skips`, and `_mi_complete`).
+| product | code today | rule | output today | plan's first variants |
+|---|---|---|---|---|
+| `dof_lut` | `aos/code/lut/` | `build_lut`, 3 jobs | `output/lut/<P>_<M>/` (`lut`, `lut_dz`, `lut_by_rotbin` parquet) | per MIW variant |
+| `bounce_tables` | `aos/code/bounce/` (the table-writing part only) | `bounce`, 3 jobs | `output/bounce/<P>_<M>/` (`bounce_fwhm_metric`, `bounce_dof_stats` parquet) | per MIW variant |
 
-Note that `fam_coadd_miw` is **not in `rule all`** — it reads the full multi-GB
-`donuts.parquet` and is requested by explicit target — so its job count will not show up
-in a plain `snakemake -n` comparison. Plan its target explicitly on both sides.
+Both are in `rule all`, unlike `coadds`, so **this move WILL change the `aos/` job count**
+— expect −3 for each rule, and account for the drop rule by rule as the three earlier
+products did. Name the variants `d12-A_50_34_i_5rot` and so on, the same MIW-prefixed
+form `coadds` uses: these are also derived from a MIW, not from a FAM variant.
+
+Two things to settle before moving `bounce_tables`, both already known:
+
+- **The plan's section 2 lists a wrong-way import to remove here**:
+  `smatrix/code/regularized_inversion/` imports from `aos/code/bounce/` in four places.
+  Making the bounce tables a product is what the plan expects to fix it; decide whether the
+  shared code becomes a library in the same commit or whether the shim carries it.
+- **Only the table-writing part of `aos/code/bounce/` is the product.** `run_bounce.py`
+  also renders `bounce_summary.pdf` and the plan's section 9 says "plots go to the bounce
+  study", so the split is inside one script rather than between scripts — unlike `coadds`,
+  where it fell cleanly between files. Check with `rg` which outputs are read outside
+  `aos/code/bounce/` before deciding, as was done here.
+
+`build_lut` reads its `fits.parquet` from the **FAM** tables (`d_tables(w.d)`), not from
+`output/miw/<d>/` — worth confirming that is intended before the move rather than
+discovering it in the comparison.
 
 ## 3a, `cwfs_tables` — the move
 
@@ -954,6 +980,124 @@ The PDFs are **not** byte-comparable (matplotlib embeds a creation timestamp), s
 compares the two parquet tables and both npz files at zero tolerance and checks only that
 each PDF is produced at a comparable size.
 
+### 3a step 2 — the move: DONE (commit `d0e4182`)
+
+`run_coadd_blocks_miw.py` moved to `rubinwork/products/coadds/builders/`, with a shim at
+the old path. New in the product: `__init__.py` (with `load` and `load_grids`),
+`reader.py`, `variants.yaml`, `Snakefile`, `write_manifest.py`, `compare_builds.py`, and
+`tests/test_coadds.py` (40 tests).
+
+The builder needed **no import changes at all** — it imports only stdlib, third-party and
+the external package, with no `sys.path` work and no sibling imports. What was added is a
+`--variant` route, as `run_wfs_mktable` has: it resolves the param_set, the `mi_name` and
+the block-selection settings from `variants.yaml`, while `--param-set` plus `--mi-name`
+still works. A flag given explicitly on the command line still wins over the variant's
+setting, the sentinel for "not given" being the parser's own default.
+
+**The shim gives module identity**, verified: a bare-name import after a `sys.path`
+insert of `aos/code/coadd` returns the *same module object*, and `assign_blocks`,
+`block_summary`, `main` and `THERMAL_VARS` are the same objects, not copies. Those are
+what `analyze_miw_bias_regression.py`, `analyze_miw_field_order.py` and
+`aos/moresnippets.ipynb` import that way.
+
+Four things worth recording:
+
+1. **`dir_name` must be quoted in `variants.yaml`.** An unquoted `50_34` parses as the
+   **integer 5034** — YAML treats an underscore as a numeric digit separator. Caught by
+   printing the parsed value, and now a test (`test_dir_name_is_a_string_not_a_yaml_integer`).
+2. **`write_manifest` refuses to record only one upstream.** `--fam-build` and
+   `--miw-build` must come together: the FAM build sets which visits exist and the MIW
+   sets what is subtracted, so half the provenance recorded as though it were all of it
+   would make a build look reproducible when it is not.
+3. **The product Snakefile is one rule, not six.** The script does block detection, the
+   per-block iterative build and both renders in one pass over the donut table; splitting
+   it per output file would mean reading that multi-GB table more than once.
+4. **`recompute_coadd_metrics.py` now requires `--out-dir` with `--variant`.** It writes
+   `coadd_metrics_rebin<f>.parquet` and `coadd_timeseries.pdf` into the directory it read,
+   which with a catalog build would edit a completed product build — rule 5 of the plan's
+   section 2. Reading a build is fine; writing into it is not.
+
+`aos/run_coadd_blocks_miw.sbatch` calls the module rather than the old path, and points at
+the product Snakefile as the route that writes a manifest. The three stale-path study
+readers were fixed in the same commit, per finding 3 above; `analyze_miw_field_order.py`
+has no argument parser (110 lines, no functions, runs top to bottom), so its build is
+named by the environment variables `COADD_VARIANT`, `COADD_MIW_VARIANT` and
+`COADD_STUDY_DIR` instead.
+
+Planned job counts, verified against staged `fam_tables` and `miw` builds in the scratch
+data root (`_phase2_refbuild/_scratch_3a/`), never the real products tree:
+
+| variant | jobs | breakdown |
+|---|---|---|
+| `d12-A_50_34_i_5rot` | 3 | `coadd_blocks` 1, `manifest` 1, `all` 1 |
+| `d12-A_50_34_i_5rot_v2` | 3 | the same, with `--ext-terms all` |
+
+All counts are jobs (dimensionless). A missing upstream build names itself:
+`no build '29990101' of miw/d12-A_50_34_i_5rot; known builds: ['20261010', 'current']`.
+An external MIW variant is refused before any path resolves, since it has no per-donut
+sidecar to compare against.
+
+### 3a step 3 — verification: DONE
+
+**`snakemake -n` in `aos/`: 37 jobs, UNCHANGED**, rule for rule — `aberration_pairs` 1,
+`bounce` 3, `build_lut` 3, `dz_correlations` 3, `dz_explained` 3, `dz_fit_check` 1,
+`plots` 1, `study_radialbins` 2, `thermal_correlations` 3, `vmode_correlations` 3,
+`wfs_corner_compare` 4, `wfs_dof_compare` 6, `wfs_mimic` 3, `all` 1. **This is the first
+product whose move changes no job count**, and the reason is structural rather than
+lucky: the moved script never had a rule in `aos/Snakefile`, so there was nothing there to
+remove. `fam_coadd_miw`, the rule that *is* in that Snakefile, belongs to
+`run_fam_coadd_miw.py` and did not move.
+
+**The product Snakefile plans the expected jobs**: 3 and 3, as tabulated above.
+
+**Import smoke test: 63 of 63 import, and `--compare` against the pre-move run reports
+`no change: all 63 module import outcomes identical`.** No module's import regressed and
+none dropped out of the match set, because the moved file was not in it — it imports no
+moved library.
+
+All eight remaining `aos/code/coadd/` scripts were then imported directly in script mode:
+every one loads. `analyze_miw_field_order.py` is the exception by design — its reads are
+at module level, so with no coadd build in the catalog it now stops with
+`ProductNotFound: no variant 'd12-A_50_34_i_5rot' of product 'miw'`, a named error
+instead of the previous silent miss on a path that never existed.
+
+**Tests: 186 passed** across `rubinwork/products/` — the 40 new `coadds` tests plus all
+146 pre-existing `fam_tables`, `cwfs_tables`, `miw` and `catalog` tests, none of which
+needed changing.
+
+### 3a step 4 — the comparison: DONE, exact match
+
+The reference rerun with the moved code at commit `d0e4182`, **77.0 s wall clock**
+(reference 76.7 s), through the new `--variant d12-A_50_34_i_5rot` route so that the
+variant resolution itself is exercised rather than bypassed. Same 3 blocks, same visit and
+donut counts, same convergence (1.24e-03 then 7.09e-04 µm of wavefront on block 1,
+1.25e-03 then 7.27e-04 on block 2), same per-block `resid_rms` and Pearson r. Output in
+`_phase2_refbuild/coadds/moved/`.
+
+`python -m rubinwork.products.coadds.compare_builds` at **zero tolerance**
+(`rtol=0.0, atol=0.0`):
+
+| file | rows or blocks | columns or arrays compared | only in one side | differing |
+|---|---|---|---|---|
+| `blocks_summary.parquet` | 3 rows | 26 columns | 0 | **0** |
+| `coadd_metrics.parquet` | 3 rows | 81 columns | 0 | **0** |
+| `block_grids.npz` | 3 blocks | 42 arrays | 0 | **0** |
+| `block_grids_ext.npz` | 3 blocks | 6 arrays | 0 | **0** |
+
+`block` is unique on both sides of both tables (3 of 3), and both npz files hold the same
+blocks in the same order, so the alignment is sound rather than accidentally agreeing.
+Both PDFs came out at identical size (0.00% difference), though they are deliberately not
+byte-compared.
+
+**Nothing differs — not one column of either table, not one array of either npz.**
+`RESULT: builds match`, exit 0.
+
+The npz comparison is new and needed its own code: most of what this product carries is
+arrays, not table rows. `compare_npz` compares array by array **by name**, so an array
+added or removed is reported rather than skipped, and it **realigns the per-block axis on
+the `block` array** rather than assuming stored order — a test builds two archives holding
+the same blocks in different orders and asserts that only `block` itself differs.
+
 ## 3c rebuild feasibility, measured 2026-10-10
 
 ### Every collection resolves; the embargo chunk has not moved
@@ -1131,8 +1275,11 @@ command, per `CLAUDE.md`.
   Met twice now: `refitWcs_2025` cost 5 jobs in `cwfs_tables`, and nine incomplete MIW
   builds plus `tarts`'s missing corner sidecar cost 75 in `miw`. Both fixed by filtering on
   what is on disk and **reporting every skip**. `aos/Snakefile` has the idiom in three
-  places to copy. **Check `coadds` before moving its rule**, and remember `fam_coadd_miw` is
-  not in `rule all`, so its target must be planned explicitly to be compared at all.
+  places to copy. `coadds` did not hit it — the moved script had no rule there — but
+  `dof_lut` and `bounce_tables` both have rules in `rule all`, so they will.
+  **Largely superseded by `fec3741`**: a variant whose build exists in the NEW tree now
+  resolves through the catalog instead of being skipped, so the gates only drop a variant
+  that is built in neither tree. The skip-and-report idiom still matters for that case.
 - **Nine of the twelve MIW builds are incomplete in the old tree**, so the 3c rebuild has
   more to do for this product than a re-run: six have the split but no sidecar or refit,
   and three (`danish_1_3_test_A_50_34_i`, `danish_1_3_v1000_A_50_34_i`,
@@ -1158,8 +1305,36 @@ command, per `CLAUDE.md`.
     `_fam_20260315_20260317/` — the **first, unusable** staged slice, whose single-row-group
     donuts.parquet the builder cannot read. That one is pure waste; the rest should stay
     until 3c.
-  - `_scratch_3a/` the scratch data root, now holding fake `fam_tables`, `cwfs_tables` and
-    parent-`miw` manifests used only to plan the two product Snakefiles.
+  - `coadds/`: `_fam_20260316` the staged one-night FAM slice (129 MB), `ref` the
+    reference (5.4 MB), `moved` the rerun (5.4 MB).
+  - `_scratch_3a/` the scratch data root, now holding placeholder `fam_tables`,
+    `cwfs_tables`, `miw` and `coadds` manifests used only to plan the product Snakefiles
+    and to show the `aos/Snakefile` resolver picking up a new-tree build. Written by
+    `aos/code/infra/stage_scratch_product.py`, which refuses any root not under a
+    `_scratch_3a` directory.
 - `rubinwork/products/miw/tests/__init__.py` was added, which
-  `rubinwork/products/cwfs_tables/tests/` does not have. Harmless — pytest collects either
-  way — but inconsistent; remove it when a deletion is being approved anyway.
+  `rubinwork/products/{cwfs_tables,coadds}/tests/` do not have. Harmless — pytest collects
+  either way — but inconsistent; remove it when a deletion is being approved anyway.
+- **`block_grids_ext.npz` and `coadd_metrics.parquet` have no reader at all.** Kept in the
+  product on Aaron's call 2026-10-10 — the former is the extra-pupil-Zernike primitive the
+  retrieval-bias work needs and is what distinguishes the two coadd variants; the latter is
+  the natural per-coadd table, and the only metrics file anything reads
+  (`coadd_metrics_rebin3.parquet`) is a **study** output of `recompute_coadd_metrics.py`.
+  Worth revisiting in 3c: a full build's `block_grids_ext.npz` is 66 MB that nothing opens.
+- **`build_lut` reads its `fits.parquet` from the FAM tables, not from the MIW refit**
+  (`aos/Snakefile`, `fits = d_tables(w.d)/fits.parquet`), even though the rule is keyed on
+  the joined `{d}` and every other `{d}` rule reads `output/miw/<d>/fits.parquet`. Confirm
+  that is intended before moving `dof_lut`, rather than discovering it in the comparison.
+- **The coadd variants' `_v2` suffix is carried by `ext_terms` alone.** If
+  `block_grids_ext.npz` is ever dropped the two variants become identical and should
+  collapse into one.
+- **Two coadd study scripts still hardwire `output/coadd/danish_1_2/50_34/`** as a
+  `--blocks-summary` default (`analyze_dz_goodness_of_fit.py:293`,
+  `analyze_umode_null_coupling.py:68`). Left alone deliberately: that path **exists** and
+  works today, and both take the flag explicitly, so a catalog build is reachable by
+  passing its path. They need the catalog only when phase 5 retires the old tree.
+- **`analyze_miw_field_order.py` has no argument parser** — 110 lines, no functions, it
+  runs top to bottom and reads at module level, so merely importing it needs the products
+  on disk. Its builds are named by `COADD_VARIANT`, `COADD_MIW_VARIANT` and
+  `COADD_STUDY_DIR` because there was nowhere to put a flag. Give it a `main()` when the
+  coadd study is reshaped in phase 5.

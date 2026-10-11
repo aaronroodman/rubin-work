@@ -151,7 +151,7 @@ so the two layouts never mix.
 | `fam_tables` | snapshot | `aos/code/fam_processing/`, Snakefile rules `mktable`, `fit`, `combine_*`, `attach_telemetry` | `aos/output/<param_set dir>/` | today's `param_sets.yaml` `dir_name`s: `danish_1_0`, `danish_1_2`, `danish_1_3_test`, `danish_1_3_v1000`, ... |
 | `cwfs_tables` | snapshot | `aos/code/cwfs/run_wfs_mktable.py`, rule `wfs_mktable` | `.../wfs/<wep version>/` under each param_set | per param_set and CWFS collection |
 | `miw` | snapshot + external | `aos/code/miw/`, rules `build_intrinsic`, `intrinsic_split`, `intrinsic_sidecar`; `ts_intrinsic_wavefront` | `aos/output/miw/<param_set>_<mi_name>/` | `mi_config.yaml` entries, prefixed: `d12-A_50_34_i_5rot`, `d13v1000-A_50_50_i_rbr`, ... |
-| `coadds` | snapshot | `aos/code/coadd/` | `aos/output/coadd/<param_set>/50_34*/` | `d12-50_34`, `d12-50_34_v2` |
+| `coadds` | snapshot | `rubinwork/products/coadds/` (moved in 3a; the study stays in `aos/code/coadd/`) | `aos/output/coadd/<P>/50_34*/` | `d12-A_50_34_i_5rot`, `d12-A_50_34_i_5rot_v2` — named for the MIW upstream, not `50_34` |
 | `guider_moments` | incremental | `guider/code/`, `guider/Snakefile` | per-night `<seq>_moments`, `_stars`, `_metrics` parquet (4,763 files each) | `v6` (current `guiderMoments` schema) |
 | `hsm_moments` | deferred | `optatmo/code/moments_hsm.py` | none yet: the study has not started | defined when the study restarts |
 | `dof_lut` | snapshot | `aos/code/lut/` | `lut`, `lut_dz`, `lut_by_rotbin` parquet | per MIW variant |
@@ -423,8 +423,8 @@ register" to three passes over all products. State in
 `notes/status/phase3_products_handoff.md`, which holds the measured 3c feasibility numbers.
 
 *3a. Move the code, mechanically.* In dependency order: `cwfs_tables` (**done**); `miw`
-(**done**, plus the official-MIW registrations, which are manifests only); `coadds`;
-`dof_lut` and `bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout
+(**done**, plus the official-MIW registrations, which are manifests only); `coadds`
+(**done**); `dof_lut` and `bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout
 comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
 checked by a small reference build made with the unmoved code and reproduced with the
 moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
@@ -465,6 +465,39 @@ MIW and the staged in-repo copy are three **external** variants — manifests wi
 tables** at zero tolerance. `snakemake -n` in `aos/` went 189 -> 37 jobs; 77 are the moved
 rules and the other 75 are nine incomplete MIW builds and `tarts`'s missing corner sidecar
 losing their study jobs, every one enumerated in the phase 3 handoff.
+
+**The `aos/` study rules were bridged to the catalog 2026-10-10**, commit `fec3741`, before
+`coadds` and out of the step order above, because the three moves had left those rules
+reading product data only from the old tree — so a product rebuilt into the new tree stayed
+invisible to them until phase 5, and nine of the twelve MIW variants, having no complete
+old-tree build, had simply lost every study job. One resolver now serves every study-rule
+input and every `--tables-dir` / `--miw-dir` / `--wfs-dir` argument: old-tree path if its
+required files are there, else the catalog's `current` build of the matching variant, else
+the old-tree path so the existing gates skip and report it as before. Which source each
+variant resolved to is printed at DAG time. No study output path changes, and `snakemake
+-n` still plans exactly 37 jobs; with a staged complete `miw` build of
+`d13v1000-A_50_34_i_5rot` in a scratch data root it plans 44, that variant's seven study
+jobs reappearing.
+
+**`coadds` done 2026-10-10**, commits `3f607ab` (reference build) and `d0e4182` (the move).
+`run_coadd_blocks_miw.py` moved to `rubinwork/products/coadds/builders/` with a shim; the
+other eight `aos/code/coadd/` scripts are the coadd-against-MIW study and stayed, as did
+the `fam_coadd_miw` rule, which renders a plot no code reads back. **The moved script had
+no Snakefile rule at all** — it was run only from `aos/run_coadd_blocks_miw.sbatch` — so
+this is the first move that changes no `aos/` job count: still **37**. The variants are
+`d12-A_50_34_i_5rot` and `d12-A_50_34_i_5rot_v2`, named for the **MIW** upstream rather
+than the plan's `d12-50_34` pair, because `50_34` names the `n_dof`/`n_keep` setting rather
+than a MIW and would be ambiguous once a second MIW variant gets a coadd; `50_34_v2` has no
+build in the old tree (only an `archive/`). `coadds/variants.yaml` owns the
+block-selection settings, which previously existed only as argparse defaults plus a
+`DEFAULTS` array in the sbatch, and no generated file is needed because nothing external
+reads a coadd configuration by a bare relative path. This is the **first product with two
+real upstreams**: `write_manifest` records both the `fam_tables` and the `miw` build and
+refuses to record only one. The one behaviour change is the same bug class as `miw`'s
+`decomp_path`: three study scripts built `output/<long param_set>/coadd_50_34/`, a layout
+the tree lost when `dir_name` arrived, so all three resolved nothing on disk; each now
+reaches the build through the catalog. The reference reproduced exactly: **0 differing
+columns across 2 tables and 0 differing arrays across 2 npz files** at zero tolerance.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
@@ -544,7 +577,7 @@ what is never rebuilt.
 | `fam_danish_v1_triplets_bin_1x/`, `_bin_2x/`, `output-archive-2026-06-11/` | stay, zipped later | read by no code |
 | `.../wfs/<wep version>/` donuts, visits | `cwfs_tables/<variant>/<build>/` | |
 | `miw/danish_1_2_A_50_34_i*/` intrinsic_grid, intrinsic_split_*, zk_intrinsic | `miw/d12-A_50_34_i*/<build>/` | sidecar stays with its MIW build |
-| `coadd/danish_1_2/50_34*/` block_grids | `coadds/d12-50_34*/<build>/` | |
+| `coadd/danish_1_2/50_34*/` block_grids | `coadds/d12-A_50_34_i_5rot*/<build>/` | `50_34_v2` has only an `archive/`, no build to copy |
 | `lut/danish_1_2_A_50_34_i/` | `dof_lut/d12-A_50_34_i/<build>/` | |
 | `bounce/danish_1_2_A_50_34_i_5rot_july/` tables | `bounce_tables/d12-A_50_34_i_5rot/<build>/` | plots go to the bounce study |
 | `value_added/output/aos_efd.duckdb`, `shards/` | `value_added/v1/live/`, `_work/shards/` | `aos_efd_archive_*_pre_vmode_rebuild.duckdb` (0.54 GB) not copied |
