@@ -552,7 +552,7 @@ files, and `/wrap` backfill). Fix the wrong-way imports in section 2. Remove the
 Retire or document the empty topics (`camera`, `des`, `starcolor`, `survey`, `wcs`,
 `alerts`, `scratch`).
 
-**Phase 6 — memory into the repo.** Move the science facts in the laptop Claude memory
+**Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. Two items from it need a check: the CCD-height sign in `aos/docs/ts_wep_zernike_intrinsics.md` (ts_wep "extra +, intra −" against batoid's same sign on both sides, not reconciled), and the summit_utils branch state in `guider/docs/status/summit_utils_branch_state.md` (as of the clone's last fetch, 2026-09-03). Move the science facts in the laptop Claude memory
 (MIW, guider, Z11 intra/extra, CCD height map, frame conventions) into the matching study
 or product docs, so S3DF sessions see them.
 
