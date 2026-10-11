@@ -52,7 +52,7 @@ sys.path.insert(0, _HERE)                                  # same-study siblings
 sys.path.insert(0, os.path.dirname(_HERE))                 # aos/code (shared + other studies)
 from recompute_coadd_metrics import (          # noqa: E402
     coarsen, coarsen_centers, umode_reference, umode_features, _block_programs,
-    resolve_coadd_dir)
+    is_catalog_build, resolve_coadd_dir)
 
 Z_TERMS = [5, 6, 7, 8]
 THERMAL = ["z_gradient", "y_gradient", "x_gradient", "radial_gradient",
@@ -97,19 +97,17 @@ def scan_lambda(X, Y, groups, lams):
 # ---------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
-    # See resolve_coadd_dir: the --output-root/--param-set/--out-name triple builds a
-    # stale path that names nothing on disk, so --variant through the product catalog is
-    # the route that resolves.  This script only READS the build.
+    # See resolve_coadd_dir: --variant's build is found in the old aos/output tree first
+    # and in the catalog second.  The --output-root/--param-set/--out-name triple this
+    # script used to default to built a stale path that named nothing on disk.  This
+    # script only READS the build.
     ap.add_argument("--variant", default=None,
-                    help="coadds variant (e.g. d12-A_50_34_i_5rot); reads its catalog "
-                         "build instead of an --output-root path")
+                    help="coadds variant (e.g. d12-A_50_34_i_5rot); its build is found "
+                         "in the old aos/output tree, else through the catalog")
     ap.add_argument("--build", default=None,
                     help="coadds build to read with --variant (default: current)")
     ap.add_argument("--coadd-dir", default=None,
                     help="the coadd build directory, given directly")
-    ap.add_argument("--param-set", default="fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x")
-    ap.add_argument("--out-name", default="coadd_50_34")
-    ap.add_argument("--output-root", default="output")
     ap.add_argument("--rebin", type=int, default=3,
                     help="coarsen the maps before regressing (cuts per-cell noise)")
     ap.add_argument("--n-modes", type=int, default=34,
@@ -123,6 +121,13 @@ def main():
     args = ap.parse_args()
 
     cdir = resolve_coadd_dir(args)
+    # Checked before the regression runs, not at render time: this script's one output
+    # defaults beside the data it read, which a product build must not be (rule 5 of the
+    # plan's section 2).  The old aos/output tree is not a product build.
+    if not args.out and is_catalog_build(cdir):
+        raise SystemExit(
+            f"{cdir} is a product build, which must not be written into; give --out for "
+            "this script's PDF")
     d = np.load(os.path.join(cdir, "block_grids.npz"), allow_pickle=True)
     f = args.rebin
 

@@ -29,7 +29,8 @@ comparison, manifest.
 | `fec3741` | the resolver bridging the `aos/` study rules to the catalog |
 | `3f607ab` | 3a step 1: the `coadds` reference build with the unmoved code |
 | `d0e4182` | 3a step 2: the `coadds` move — builder, shim, `variants.yaml`, product Snakefile, two-upstream manifest, npz comparison, tests |
-| (this file) | 3a steps 3 and 4 for `coadds`: the verification and the zero-tolerance comparison |
+| `3d4f993` | 3a steps 3 and 4 for `coadds`: the verification and the zero-tolerance comparison |
+| (this file) | the coadd study scripts resolve the old tree before the catalog, as `aos/Snakefile` does |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -1097,6 +1098,64 @@ arrays, not table rows. `compare_npz` compares array by array **by name**, so an
 added or removed is reported rather than skipped, and it **realigns the per-block axis on
 the `block` array** rather than assuming stored order — a test builds two archives holding
 the same blocks in different orders and asserts that only `block` itself differs.
+
+### The coadd study scripts read the old tree again (2026-10-11)
+
+The `coadds` move left the three study scripts resolving their build **only** through the
+catalog, so until phase 3c they could not read the one complete coadd build that exists —
+`aos/output/coadd/danish_1_2/50_34/`, six files, newest 2026-09-14. They now follow the
+`aos/Snakefile` resolver's order instead, which is the order the study rules already use:
+
+1. an explicit `--coadd-dir` (or `COADD_DIR` / `MIW_DIR` in the parser-less script);
+2. else the old-tree directory built from the variant's **own index fields** —
+   `aos/output/coadd/<fam_variant>/<dir_name>/` for a coadd,
+   `aos/output/miw/<fam_variant>_<dir_name>/` for a MIW — if every required file is there;
+3. else the catalog's build of that variant;
+4. else `RuntimeError` naming both places tried.
+
+`resolve_product_dir(product, variant, old_dir, required, build)` in
+`recompute_coadd_metrics.py` is the one implementation; `resolve_coadd_dir` wraps it for
+the two scripts with a parser and `analyze_miw_field_order.py` calls it directly, twice,
+at module level. `COADD_REQUIRED` is `block_grids.npz` + `blocks_summary.parquet`; the MIW
+side needs only `intrinsic_split_maps.parquet`.
+
+**Unlike the Snakefile, a study script raises rather than falling back to the old-tree
+path.** The Snakefile's fallback exists so a downstream gate sees a missing file and skips
+the variant with a reason; a study script has no gate, so a silent bad path would surface
+as a `FileNotFoundError` on a path nobody chose.
+
+Two knock-on fixes the old-tree route forced, both in the same commit:
+
+- **The "product builds are not written into" guard moved off `--variant`.** It is now
+  `is_catalog_build(cdir)` — a `pathlib.relative_to` test against
+  `catalog.products_root()` — so `--out-dir` (`recompute_coadd_metrics`) and `--out`
+  (`analyze_miw_bias_regression`) are required only when the resolved directory really is
+  a product build. Writing beside the data in the old tree is what a hand run always did
+  and is allowed again. `analyze_miw_bias_regression` checks it immediately after
+  resolving, not at render time, so it fails before the regression runs.
+- **`resolve_visits_path` can no longer raise.** It called `catalog.manifest` whenever
+  `--variant` was given, which throws with no catalog build, and its caller only *warns*
+  on a missing file. It now takes the old `aos/output/fam_processing/<P>/visits.parquet`
+  first and swallows the manifest lookup's failure.
+
+The dead `--param-set` / `--out-name` / `--output-root` flags were dropped from both
+parsers — nothing read them after the move.
+
+**Verified on the real data root** (`/sdf/group/rubin/u/roodman/LSST/rubin-work`, which
+holds only the `miw` product today):
+
+| check | result |
+|---|---|
+| `resolve_coadd_dir('d12-A_50_34_i_5rot')` | `aos/output/coadd/danish_1_2/50_34`, `is_catalog_build` False |
+| `resolve_visits_path` for it | `aos/output/fam_processing/danish_1_2/visits.parquet` |
+| `resolve_coadd_dir('d12-A_50_34_i_5rot_v2')` | `RuntimeError` naming the absent old-tree dir **and** the absent catalog product — correct, it has a build in neither tree |
+| MIW resolution | `aos/output/miw/danish_1_2_A_50_34_i_5rot` |
+| `recompute_coadd_metrics.py --help`, `analyze_miw_bias_regression.py --help` | both exit 0 |
+| `analyze_miw_field_order.py`, module level | `MIW` and `CO` both resolve to the old tree; it stops only on `coadd_metrics_rebin3.parquet`, which is a **study** output `recompute_coadd_metrics` has not been run to produce |
+| `snakemake -n` in `aos/` | **37** jobs, unchanged |
+| `pytest rubinwork/products/` | 186 passed |
+
+All counts are jobs or tests (dimensionless).
 
 ## 3c rebuild feasibility, measured 2026-10-10
 

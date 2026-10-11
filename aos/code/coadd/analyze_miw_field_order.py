@@ -21,7 +21,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))      # aos/
 from lsst.ts.ofc import OFCData
 import galsim.zernike as gz
 from lsst.ts.intrinsic.wavefront import ofc_svd as osv
-from recompute_coadd_metrics import umode_reference  # noqa: E402
+from recompute_coadd_metrics import (          # noqa: E402
+    COADD_REQUIRED, old_tree_coadd_dir, old_tree_miw_dir, resolve_product_dir,
+    umode_reference)
 
 from rubinwork.products import catalog  # noqa: E402
 
@@ -33,16 +35,22 @@ Z_SHOW = [5, 6, 7, 8]
 # This script has no argument parser -- it runs top to bottom -- so the two builds it
 # reads are named by environment variable, defaulting to the production pair.  Before
 # phase 3a both were `<aos/output>/<long param_set>/...` paths built from the long key, a
-# layout the tree lost when dir_name arrived, so neither resolved; they go through the
-# product catalog now.
+# layout the tree lost when dir_name arrived, so neither resolved.  Each is now resolved
+# in the aos/Snakefile order: the old aos/output tree if its files are complete, else the
+# catalog's build, else a named error.  COADD_DIR and MIW_DIR override a resolution
+# outright, the equivalent of the sibling scripts' --coadd-dir.
 MIW_VARIANT = os.environ.get("COADD_MIW_VARIANT", "d12-A_50_34_i_5rot")
 COADD_VARIANT = os.environ.get("COADD_VARIANT", "d12-A_50_34_i_5rot")
 MIW_BUILD = os.environ.get("COADD_MIW_BUILD", catalog.CURRENT)
 COADD_BUILD = os.environ.get("COADD_BUILD", catalog.CURRENT)
+MIW_REQUIRED = ("intrinsic_split_maps.parquet",)
 
-MIW = str(catalog.path("miw", MIW_VARIANT, build=MIW_BUILD)
-          / "intrinsic_split_maps.parquet")
-CO = str(catalog.path("coadds", COADD_VARIANT, build=COADD_BUILD))
+_miw_dir = os.environ.get("MIW_DIR") or resolve_product_dir(
+    "miw", MIW_VARIANT, old_tree_miw_dir(MIW_VARIANT), MIW_REQUIRED, build=MIW_BUILD)
+MIW = os.path.join(_miw_dir, "intrinsic_split_maps.parquet")
+CO = os.environ.get("COADD_DIR") or resolve_product_dir(
+    "coadds", COADD_VARIANT, old_tree_coadd_dir(COADD_VARIANT), COADD_REQUIRED,
+    build=COADD_BUILD)
 
 # The rebinned metrics are a STUDY output of recompute_coadd_metrics.py, not part of the
 # coadd build, so they are not in CO.  COADD_STUDY_DIR says where that script wrote them.

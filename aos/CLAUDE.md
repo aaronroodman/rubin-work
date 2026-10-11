@@ -47,10 +47,17 @@ always right. New code passes `path=` resolved through the catalog.
 summaries it writes are a product. The other eight scripts in `code/coadd/` are the
 coadd-against-MIW study and stayed. The same stale-path bug was in three of them
 (`recompute_coadd_metrics`, `analyze_miw_bias_regression`, `analyze_miw_field_order`
-built `output/<long param_set>/coadd_50_34/`, which names nothing on disk); each now
-resolves the build through the catalog, by `--variant` or by `COADD_VARIANT` where there
-is no argument parser. `recompute_coadd_metrics` needs `--out-dir` with `--variant`: it
-writes the rebinned metrics and its PDF, and a product build is never written into.
+built `output/<long param_set>/coadd_50_34/`, which names nothing on disk). Each now
+resolves its build in the **same order as the `aos/Snakefile` resolver** — an explicit
+`--coadd-dir` (or `COADD_DIR`/`MIW_DIR` in the parser-less one), else the old
+`aos/output` directory from the variant's `dir_name` if its files are complete, else the
+catalog's `current` build, else a named error — so they still read the one complete
+coadd build, which until phase 3c exists only in the old tree. The variant comes from
+`--variant`, or from `COADD_VARIANT`/`COADD_MIW_VARIANT` where there is no argument
+parser. `recompute_coadd_metrics` and `analyze_miw_bias_regression` require `--out-dir` /
+`--out` only when the build resolves **into the products tree**: a product build is never
+written into, while writing beside the data in the old tree is what a hand run always
+did.
 
 Do not "finish the job" by moving `aos_state.py` into `code/telemetry/`.
 

@@ -50,6 +50,7 @@ Writes (new files; originals untouched):
 """
 import argparse
 import os
+import pathlib
 import warnings
 
 import numpy as np
@@ -256,40 +257,167 @@ def _spear(x, y):
     return float(spearmanr(x[ok], y[ok]).correlation)
 
 
-def resolve_coadd_dir(args):
-    """The coadd build directory one of these study scripts should read.
+COADD_REQUIRED = ("block_grids.npz", "blocks_summary.parquet")
+"""Files that make a coadd directory usable by these study scripts.
 
-    Three of the coadd study scripts built ``<output_root>/<param_set>/<out_name>/`` from
-    the **long** param_set key -- a layout the output tree lost when ``dir_name`` was
-    introduced, so it named nothing on disk and all three were broken. Phase 3a of
-    ``notes/status/organization_plan.md`` made the coadd grids a product, so the build is
-    resolved through `rubinwork.products.catalog` instead.
+``block_grids.npz`` carries the maps and ``blocks_summary.parquet`` the per-block
+program and thermal metadata; a directory missing either is not a build. The two PDFs
+and ``block_grids_ext.npz`` are not required -- no study script reads them.
+"""
+
+
+def old_tree_coadd_dir(variant):
+    """The variant's directory in the old ``aos/output/coadd/<P>/<dir>/`` tree.
 
     Parameters
     ----------
-    args : `argparse.Namespace`
-        Parsed arguments, carrying ``variant``, ``build`` and ``coadd_dir``, and the
-        older ``output_root``, ``param_set`` and ``out_name``.
+    variant : `str`
+        A ``coadds`` variant name, e.g. ``"d12-A_50_34_i_5rot"``.
 
     Returns
     -------
     coadd_dir : `str`
-        The directory holding ``block_grids.npz`` and ``blocks_summary.parquet``.
+        Absolute path. May not exist; the caller checks `COADD_REQUIRED`.
 
     Notes
     -----
-    Precedence: an explicit ``--coadd-dir``, then ``--variant`` through the catalog, then
-    the old ``--output-root``/``--param-set``/``--out-name`` triple. The last is kept for
-    a hand run against a directory that is not a catalog build, but it is the one that
-    does not resolve for the production output.
+    Built from the product's own index fields -- the FAM variant and the variant's
+    ``dir_name`` -- not by string surgery on the variant name, so a renamed variant
+    stops resolving here instead of silently finding a stale directory. Same rule as
+    ``aos/Snakefile``'s resolver.
+    """
+    from rubinwork.products import coadds as _coadds
+    aos_output = pathlib.Path(__file__).resolve().parents[2] / "output"
+    return str(aos_output / "coadd" / _coadds.fam_variant(variant)
+               / _coadds.dir_name(variant))
+
+
+def old_tree_miw_dir(variant):
+    """The MIW variant's directory in the old ``aos/output/miw/<P>_<dir>/`` tree.
+
+    Parameters
+    ----------
+    variant : `str`
+        A ``miw`` variant name, e.g. ``"d12-A_50_34_i_5rot"``.
+
+    Returns
+    -------
+    miw_dir : `str`
+        Absolute path. May not exist; the caller checks its required files.
+    """
+    from rubinwork.products import miw as _miw
+    aos_output = pathlib.Path(__file__).resolve().parents[2] / "output"
+    return str(aos_output / "miw"
+               / f"{_miw.fam_variant(variant)}_{_miw.dir_name(variant)}")
+
+
+def resolve_product_dir(product, variant, old_dir, required, build=None):
+    """A product build directory, old tree first, then the catalog.
+
+    Parameters
+    ----------
+    product : `str`
+        Product name, as the catalog knows it.
+    variant : `str`
+        Variant name.
+    old_dir : `str`
+        The variant's directory in the old ``aos/output`` tree.
+    required : `tuple` [`str`]
+        File names, relative to the directory, that make it a usable build.
+    build : `str`, optional
+        Catalog build to try; `rubinwork.products.catalog.CURRENT` by default.
+
+    Returns
+    -------
+    build_dir : `str`
+        A directory holding every file in `required`.
+
+    Raises
+    ------
+    RuntimeError
+        If the files are complete in neither tree, naming both places tried.
+
+    Notes
+    -----
+    Same precedence as ``aos/Snakefile``'s resolver, so a study script and a study rule
+    read the same build. Until phase 3c rebuilds the products, the old tree is the only
+    place a complete build exists -- resolving the catalog first would make these scripts
+    unable to read it. Unlike the Snakefile, which falls back to the old-tree path so a
+    downstream gate can skip the variant, a study script has no gate and raises instead.
+    """
+    tried = []
+    if all(os.path.exists(os.path.join(old_dir, f)) for f in required):
+        return old_dir
+    tried.append(f"old tree {old_dir} (incomplete or absent)")
+    from rubinwork.products import catalog
+    build = build or catalog.CURRENT
+    try:
+        cat_dir = str(catalog.path(product, variant, build=build))
+    except Exception as exc:
+        tried.append(f"catalog {product}/{variant}@{build}: {exc}")
+    else:
+        if all(os.path.exists(os.path.join(cat_dir, f)) for f in required):
+            return cat_dir
+        tried.append(f"catalog {cat_dir} (incomplete)")
+    raise RuntimeError(f"no complete {product} build of variant {variant!r} holding "
+                       f"{', '.join(required)}; tried: " + "; ".join(tried))
+
+
+def resolve_coadd_dir(args):
+    """The coadd build directory one of these study scripts should read.
+
+    Parameters
+    ----------
+    args : `argparse.Namespace`
+        Parsed arguments, carrying ``variant``, ``build`` and ``coadd_dir``.
+
+    Returns
+    -------
+    coadd_dir : `str`
+        The directory holding `COADD_REQUIRED`.
+
+    Raises
+    ------
+    RuntimeError
+        If nothing resolves: no ``--coadd-dir``, no ``--variant``, or a variant with a
+        complete build in neither tree.
+
+    Notes
+    -----
+    An explicit ``--coadd-dir`` wins; otherwise `resolve_product_dir` takes the old tree
+    before the catalog.
     """
     if getattr(args, "coadd_dir", None):
         return args.coadd_dir
-    if getattr(args, "variant", None):
-        from rubinwork.products import catalog
-        return str(catalog.path("coadds", args.variant,
-                                build=args.build or catalog.CURRENT))
-    return os.path.join(args.output_root, args.param_set, args.out_name)
+    variant = getattr(args, "variant", None)
+    if not variant:
+        raise RuntimeError(
+            "no coadd build named: give --variant (a coadds variant, e.g. "
+            "d12-A_50_34_i_5rot) or --coadd-dir (a directory holding "
+            f"{', '.join(COADD_REQUIRED)})")
+    return resolve_product_dir("coadds", variant, old_tree_coadd_dir(variant),
+                               COADD_REQUIRED, build=getattr(args, "build", None))
+
+
+def is_catalog_build(coadd_dir):
+    """Whether `coadd_dir` is inside the products tree, so must not be written into.
+
+    Parameters
+    ----------
+    coadd_dir : `str`
+        A resolved coadd directory.
+
+    Returns
+    -------
+    is_build : `bool`
+        True for a directory under `rubinwork.products.catalog.products_root`.
+    """
+    from rubinwork.products import catalog
+    try:
+        pathlib.Path(coadd_dir).resolve().relative_to(catalog.products_root().resolve())
+    except (ValueError, OSError):
+        return False
+    return True
 
 
 def resolve_visits_path(args, coadd_dir):
@@ -310,24 +438,36 @@ def resolve_visits_path(args, coadd_dir):
 
     Notes
     -----
-    With ``--variant`` this follows the coadd manifest's ``inputs`` to the exact
-    ``fam_tables`` build the coadd was made from, rather than guessing a path -- which is
-    the point of recording both upstreams in the manifest.
+    Resolved in the same order as `resolve_coadd_dir`: ``--visits``, else the old
+    ``aos/output/fam_processing/<P>/`` tree, else the coadd manifest's ``inputs``, which
+    name the exact ``fam_tables`` build the coadd was made from rather than a guessed
+    path -- the point of recording both upstreams. The last step is skipped silently when
+    the coadd has no catalog manifest, since the caller only warns on a missing file.
     """
     if getattr(args, "visits", None):
         return args.visits
-    if getattr(args, "variant", None):
-        from rubinwork.products import catalog
-        inputs = (catalog.manifest("coadds", args.variant,
-                                   build=args.build or catalog.CURRENT).get("inputs")
-                  or {})
+    variant = getattr(args, "variant", None)
+    if not variant:
+        return ""
+    from rubinwork.products import catalog
+    from rubinwork.products import coadds as _coadds
+    aos_output = pathlib.Path(__file__).resolve().parents[2] / "output"
+    old = aos_output / "fam_processing" / _coadds.fam_variant(variant) / "visits.parquet"
+    if old.exists():
+        return str(old)
+    try:
+        inputs = (catalog.manifest("coadds", variant,
+                                   build=getattr(args, "build", None) or catalog.CURRENT)
+                  .get("inputs") or {})
         ref = inputs.get("fam_tables")
         if ref:
             fam_variant, _, fam_build = ref.partition("@")
             return str(catalog.path("fam_tables", fam_variant,
                                     build=fam_build or catalog.CURRENT)
                        / "visits.parquet")
-    return os.path.join(args.output_root, args.param_set, "visits.parquet")
+    except Exception:
+        pass
+    return str(old)
 
 
 def _block_programs(cdir, blocks, n):
@@ -584,27 +724,25 @@ def render_ml(pdf, Fdf, r, groups, build_used, f, env_cols, sn_cols, umode_cols=
 
 def main():
     ap = argparse.ArgumentParser()
-    # --variant resolves the coadd build through the product catalog, which is the only
-    # route that works: the --output-root/--param-set/--out-name default below builds
+    # --variant names the coadd build; resolve_coadd_dir finds it in the old aos/output
+    # tree first and in the catalog second, the same order as aos/Snakefile.  The
+    # --output-root/--param-set/--out-name triple this script used to default to built
     # output/<long param_set>/coadd_50_34/, a layout the tree lost when dir_name arrived,
-    # so it names nothing on disk.  The old flags are kept for a hand run against an
-    # explicit directory, and --coadd-dir supplies one directly.
+    # so it named nothing on disk; --coadd-dir replaces it for a hand run.
     ap.add_argument("--variant", default=None,
-                    help="coadds variant (e.g. d12-A_50_34_i_5rot); reads its catalog "
-                         "build instead of an --output-root path")
+                    help="coadds variant (e.g. d12-A_50_34_i_5rot); its build is found "
+                         "in the old aos/output tree, else through the catalog")
     ap.add_argument("--build", default=None,
                     help="coadds build to read with --variant (default: current)")
     ap.add_argument("--coadd-dir", default=None,
                     help="the coadd build directory, given directly")
     ap.add_argument("--out-dir", default=None,
                     help="where this script's own output goes (the rebinned metrics "
-                         "parquet and the time-series PDF). Required with --variant: a "
-                         "product build directory is never written into after it "
-                         "completes. Defaults to the coadd directory otherwise, which "
-                         "is what a hand run against the old tree did")
-    ap.add_argument("--param-set", default="fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x")
-    ap.add_argument("--out-name", default="coadd_50_34")
-    ap.add_argument("--output-root", default="output")
+                         "parquet and the time-series PDF). Required when the coadd "
+                         "build resolves into the products tree: a product build "
+                         "directory is never written into after it completes. Defaults "
+                         "to the coadd directory otherwise, as a hand run against the "
+                         "old aos/output tree did")
     ap.add_argument("--npz", default=None, help="override path to block_grids.npz")
     ap.add_argument("--rebin", type=int, nargs="+", default=[1, 3],
                     help="rebin factor(s); the metric time series is rendered on a "
@@ -625,8 +763,8 @@ def main():
     ap.add_argument("--no-ml", action="store_true", help="skip the ML prediction pages")
     ap.add_argument("--visits", default=None,
                     help="combined visits.parquet carrying camera-body cam_<field> "
-                    "columns (from run_attach_telemetry --groups camera --merge); default: "
-                    "auto-detect <output_root>/<param_set>/visits.parquet")
+                    "columns (from run_attach_telemetry --groups camera --merge); "
+                    "default: the variant's FAM tables, old aos/output tree first")
     ap.add_argument("--camera-ref", default="cam_AmbAirtemp",
                     help="camera ambient reference for the temperature-gradient "
                     "features cam_<field>_dAmb (default: cam_AmbAirtemp)")
@@ -652,12 +790,14 @@ def main():
     args = ap.parse_args()
 
     cdir = resolve_coadd_dir(args)
-    # Study output never lands in a product build directory (rule 5 of the plan's
-    # section 2: a build is not edited after it completes).  Reading one is fine.
-    if args.variant and not args.out_dir:
+    # Study output never lands in a PRODUCT build directory (rule 5 of the plan's
+    # section 2: a build is not edited after it completes).  Reading one is fine.  The
+    # old aos/output tree is not a product build, so writing beside the data there is
+    # still allowed, as a hand run always did.
+    if not args.out_dir and is_catalog_build(cdir):
         raise SystemExit(
-            "--variant reads a product build, which must not be written into; give "
-            "--out-dir for the rebinned metrics and the time-series PDF")
+            f"{cdir} is a product build, which must not be written into; give --out-dir "
+            "for the rebinned metrics and the time-series PDF")
     odir = args.out_dir or cdir
     os.makedirs(odir, exist_ok=True)
     npz = args.npz or os.path.join(cdir, "block_grids.npz")
