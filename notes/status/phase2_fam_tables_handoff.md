@@ -379,7 +379,8 @@ outlier.
 
 **Proposed fix, deliberately NOT yet applied** (Aaron's call on sequencing): in
 `ts_intrinsic_wavefront`, keep ConsDB as the primary source, and replace the EFD and
-visitInfo fallbacks with `meta['rotTelPos']`; rename `skyAngle` to `rotTelPos` and read
+visitInfo fallbacks with `meta['rotTelPos']` (**superseded 2026-10-11**: Aaron chose
+`rotTelPos` first and ConsDB as the fallback; see the plan's 3b); rename `skyAngle` to `rotTelPos` and read
 the right key. That makes `rotator_angle` reproducible and would have made these two
 builds agree exactly on all 53 visits. Recommended **after** phase 2 step 3, because step
 3 expects exact matches and changing the angle mid-move makes a bad code move

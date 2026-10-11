@@ -502,11 +502,16 @@ columns across 2 tables and 0 differing arrays across 2 npz files** at zero tole
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
-- `rotator_angle`: ConsDB `physical_rotator_angle` first, then `meta['rotTelPos']`
-  (radians in `aggregateAOSVisitTableRaw`, degrees in `donutBlitzFamResults`) instead of
-  the EFD window mean and `visitInfo` fallbacks; rename `skyAngle` to `rotTelPos` in
-  `intrinsics_lib.py`. In `ts_intrinsic_wavefront`, so `scons` and the `aos/CLAUDE.md`
-  convention line follow.
+- `rotator_angle`: **the donut table's `rotTelPos` metadata first**, ConsDB
+  `physical_rotator_angle` as the fallback (Aaron, 2026-10-11: the column must hold the
+  angle the CCS → OCS rotation actually used). `rotTelPos` is radians in
+  `aggregateAOSVisitTableRaw.meta`, degrees (`Quantity`) in `donutBlitzFamResults.meta`
+  `rot_tel_pos`; convert explicitly. Drop the EFD window-mean and `visitInfo` fallbacks;
+  if both sources are missing, `rotator_angle` is NaN and the visit is reported. Record
+  the source per visit (`rotator_angle_source`). Rename `skyAngle` to `rotTelPos` in
+  `intrinsics_lib.py`. In `ts_intrinsic_wavefront`, so `scons` follows. Expected effect
+  in 3c: blitz visits move by about 0.30 deg of camera rotator angle, visits with ConsDB
+  agree to about 1e-5 deg, so only visits near a rotator-bin edge can change MIW bin.
 - The FAM telemetry sidecar shrunk to what studies still read from `visits.parquet`
   (section 10), and `mktable` run with `--no-thermal` if the MIW needs only elevation,
   camera rotator angle and band. This removes the EFD from the FAM build, so it runs in

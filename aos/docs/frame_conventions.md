@@ -83,8 +83,9 @@ rotator angle. It remains a good cross-check where it is non-NULL, and it is wha
 value-added database stores as `optical_state.rotator_angle_deg`
 ([`../../value_added/docs/schema.md`](../../value_added/docs/schema.md)).
 Phase 3b of [`../../notes/status/organization_plan.md`](../../notes/status/organization_plan.md)
-changes how the tables' `rotator_angle` column is filled: ConsDB first, then
-`rotTelPos` from the metadata, replacing the EFD window-mean and `visitInfo` fallbacks.
+changes how the tables' `rotator_angle` column is filled: `rotTelPos` from the
+metadata first, because it is the angle the CCS → OCS rotation used, and ConsDB only as
+the fallback, replacing the EFD window-mean and `visitInfo` fallbacks (Aaron, 2026-10-11).
 Until that lands, `rotator_angle` on visits with NULL ConsDB is not reproducible.
 
 Traps:
