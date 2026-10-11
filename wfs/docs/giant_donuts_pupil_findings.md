@@ -1,6 +1,6 @@
 # Batoid ↔ danish pupil-mask comparison for the LSST Camera
 
-> **Status:** superseded for the giant-donut question 2026-10-04 · **Last updated:** 2026-10-04 · **Kind:** investigation
+> **Status:** superseded for the giant-donut question 2026-10-04 · **Last updated:** 2026-10-11 · **Kind:** investigation
 
 **The giant-donut line of this work continues in item 7 of
 [`notes/todos/todo-ideas.md`](../../notes/todos/todo-ideas.md)**, which fits real giant
@@ -182,6 +182,40 @@ pupil. The decisive lever is **defocal-dependence**: a refit *circle* at the cam
 recovers giant-intra to 99.5%, while the ellipse adds nothing. Recommendation: keep the
 circle model and make it defocal-configuration-aware (improvement 1); the ellipse is not
 worth the extra parameter.
+
+### Intra/extra split in fitted giant donuts (2026-09-16)
+
+Danish fits of 6 giant donuts across the science rafts, intra-focal exposure 2025102300340
+and extra-focal exposure 2025102300337 (8 mm camera-hexapod defocus), with three pupil
+models. The split is open; none of this explains it.
+
+- **Z11 splits by side with the v3_14 and current-develop pupil models.** Every
+  extra-focal Z11 is negative (−58 to −242 nm of wavefront) and every intra-focal Z11
+  positive (+156 to +281 nm). Z22 splits the same way.
+- **The v1000 pupil model removes the Z11 split** (|Z11| ≤ 114 nm of wavefront on both
+  sides) but offsets Z4 by about +1.7 µm of wavefront.
+- **Z4 splits too, and the split depends on field.** Pearson r between
+  Z4_extra − Z4_intra (nm of wavefront) and ρ² (field radius squared, deg²) is −0.91
+  (develop) and −0.95 (v3_14), n = 5 pairs. A field-Zernike k = 4 term absorbs about 85% of
+  the variance of the half-difference, with coefficient −223 to −248 nm of wavefront. The
+  common mode (Z4_extra + Z4_intra)/2 is nearly field-flat: about 570 nm of wavefront of
+  piston, k = 4 coefficient only +21 to +25 nm.
+- **dZ4 and dZ11 correlate:** Pearson r ≈ −0.6 across donuts, slope ≈ −2.7
+  (dimensionless; nm of Z4 split per nm of Z11 split).
+- **Caveat on k = 4:** all 5 valid pairs lie along one radial line at −x, so field tilt
+  (k = 2) and field defocus (k = 4) are degenerate (r(k2, k4) = −0.97); residual RMS is
+  106 nm against 99 nm of wavefront. Donuts at +x, or spread in azimuth, are needed to
+  separate them.
+
+A static field-dependent wavefront and the CCD height both cancel in extra − intra (see
+`../../aos/docs/ts_wep_zernike_intrinsics.md`), so a nonzero, field-dependent split must
+come from the model or the fit. A field-dependent pupil-model error biasing the two sides
+differently was the first candidate, and would make the Z4 and Z11 splits one effect. The
+pupil-model dependence above supports that, but item 7 of `notes/todos/todo-ideas.md`
+finds diffraction gives about one third of the Z11 split and a static pupil-model mismatch
+about 0.003 µm of wavefront, roughly 100× too small; the matching blur asymmetry is also
+seen with DECam, which disfavours Rubin- or Danish-specific causes
+(`../../optics/docs/studies/intra_extra_phase_strip.md`).
 
 ---
 

@@ -3,15 +3,20 @@
 Scoping notes for the guider topic. Loads when files in `guider/` are touched, on top of
 the root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here).
 
-**`docs/status/handoff_guider_session_2026-09.md` is the reference for the state of this work** —
-the `summit_utils` branch contents, the bias/streak plan, the centroid-timescale result,
-the mosaic geometry, and the open follow-ups. Grep it for the section the task needs
-(e.g. §5 mosaic numbers, §6 command forms) rather than reading it whole. `README.md` is
-thin (it documents one notebook) and does not reflect the current scope. This file
-carries only the things that are easy to get wrong.
+Where the facts live (grep the doc the task needs rather than reading it whole):
 
-Note that the HANDOFF was written from the laptop and gives laptop paths
-(`~/Astrophysics/Claude/...`). On S3DF the repo is `~/notebooks/rubin-work`.
+| doc | holds |
+|---|---|
+| `docs/status/summit_utils_branch_state.md` | `summit_utils` `guider-fixes` vs `main` vs `deploy-summit`, git-verified |
+| `docs/status/bias_streak_plan.md` | blank-2-stamp bias + ROIROW streak plan, what is validated |
+| `docs/centroid_motion_timescale.md` | scale-free centroid motion, the 1.6 s split, schema v6 |
+| `docs/guider_vs_ccd_moments.md` | matched-HSM guider vs adjacent-CCD moments, frames |
+| `docs/mosaic_layout.md` | `MosaicLayout` geometry numbers |
+| `docs/pipeline_runbook.md` | full command forms |
+| `docs/status/handoff_guider_session_2026-09.md` | 2026-09 snapshot of all of the above + open follow-ups |
+
+The handoff gives laptop paths (`~/Astrophysics/Claude/...`). On S3DF the repo is
+`~/notebooks/rubin-work`. This file carries only the things that are easy to get wrong.
 
 ## Most of the code being changed is in summit_utils, not here
 
@@ -20,19 +25,25 @@ The guider *pipeline* is in `guider/code/`, but much of the active work edits th
 (pushes to `origin/u/aaronroodman/guider-fixes`). `plotting.py`, `reading.py`,
 `detection.py`, and `metrics.py` changes all live there.
 
-Two facts that matter before touching it:
+Facts that matter before touching it:
 
 - **The summit does not run `main`.** It runs `origin/deploy-summit`. The 8 Esteves
   guider commits (2–4 Mar 2026) were never merged to `main`. Inspect with
   `git log main..origin/deploy-summit -- python/lsst/summit/utils/guiders/`.
 - `guider-fixes` is **at or ahead of** the summit's deployed guider code — all 8
   `deploy-summit` commits are on it by patch-equivalence, so **no cherry-pick is
-  needed**. Do not "recover" them.
+  needed**. Do not "recover" them. Verified with `git cherry` on 2026-10-11 (remote refs
+  as of the 2026-09-03 fetch); `deploy-summit` has since been rebased, so its guider
+  commits carry different hashes from the copies on `guider-fixes`.
+- Local `main` is stale at the fork point `0959ea2`; `origin/main` is at `f50eea2` and
+  still lacks the `deploy-summit` guider commits. `0a211d2` (STDEVCLIP/sigma68 source
+  detection) is on `main`, not an extra commit on `guider-fixes`.
 
 `processStamps` still uses the 10th-percentile per-column bias. The blank-2-stamp bias +
 ROIROW streak rework is **deliberately not folded in** — Aaron's call was "too soon to
 modify processStamps", pending multi-night validation and a read-noise evaluation. Do not
-implement it into `processStamps` without asking.
+implement it into `processStamps` without asking. Plan and validation status:
+`docs/status/bias_streak_plan.md`.
 
 ## This topic imports from other topics
 
@@ -84,7 +95,7 @@ not to rule names — the Snakefile's rules are `moments`, `combine`, `psfmoment
 There is no single-seq option in `run_snake.sh` — target the per-seq output files directly
 with `snakemake`, or use the per-visit runners (`run_guider_rubintv_plots.py`,
 `run_guider_movie.py`) with `--day-obs` / `--seq-num`. Full command forms are in
-`docs/status/handoff_guider_session_2026-09.md` §6.
+`docs/pipeline_runbook.md`.
 
 **Batch submission needs Aaron's explicit OK first** — show him the command, then submit
 it yourself (see the root `CLAUDE.md`). Note the difference from `aos/`: here
@@ -108,5 +119,5 @@ not describe it as a measured knee.
 
 Star and full-frame views use **independent** geometry (`positions` vs `positionsFull`)
 with separate tunables — changing one does not change the other. The star view masks
-pixels outside the 2″ circle to NaN so pairs never visually overlap. Numbers are in the
-HANDOFF §5; do not re-derive them by eye.
+pixels outside the 2″ circle to NaN so pairs never visually overlap. Numbers are in
+`docs/mosaic_layout.md`; do not re-derive them by eye.

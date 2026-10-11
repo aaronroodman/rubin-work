@@ -1,6 +1,6 @@
 # Study: `miw` — the Measured Intrinsic Wavefront
 
-> **Status:** current · **Last updated:** 2026-10-05 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
 > **Code:** `code/miw/` · **Notebooks:** `notebooks/miw/`
 > **Output:** `output/miw/<P>_<M>/intrinsic_split_{maps,decomp,rms}.parquet`, `output/miw/<P>_<M>/intrinsic_split.pdf`, `output/miw/<P>_<M>/study_radialbins.pdf`, `output/miw/<P>_<M>/fits.parquet`
@@ -42,8 +42,31 @@ Reads the combined `output/fam_processing/<P>/{donuts,fits,visits}.parquet`; the
 grids come from the package's `build_intrinsic`. Writes `study_radialbins.pdf` and the
 `intrinsic_split_{maps,decomp,rms}.parquet` products that the other studies consume.
 
-The **canonical MIW product** for downstream use is the `_5rot` `intrinsic_split_maps`
-(OCS columns) — see `../../../notes/claude-memory/miw-products-and-m3-backprojection.md`.
+The **canonical MIW product** for downstream use is the `_5rot` `intrinsic_split_maps`,
+**OCS columns only**: for `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x` that is entry
+`A_50_34_i_5rot`. It has 3985 field cells to 1.73 deg and columns
+`thx_deg, thy_deg, Z{j}_OCS, Z{j}_CCS` for Z4–Z26 excluding Z20, Z21. It is the
+multi-rotator-bin OCS/CCS split, so the camera-fixed (CCS) part is nonzero **only for Z4**
+(CCD height plus a camera-moving defocus; CCS standard deviation 0.029 µm of wavefront),
+as expected. The plain `A_50_34_i` maps carry a nonzero CCS term in every Zernike
+(0.003–0.037 µm standard deviation) and are not the split to use.
+
+### Findings: frame and calibration copy
+
+- **The MIW OCS frame is the batoid frame, identity mapping** (validated 2026-08-20). Feed
+  `thx_deg → theta_x`, `thy_deg → theta_y` and the OCS annular-Noll pupil coefficients
+  straight into batoid. Validated by comparing batoid finite-difference sensitivities with
+  the ts_ofc double-Zernike (DZ) sensitivity
+  (`ts_config_mttcs/MTAOS/ofc/sensitivity_matrix/new_measured_lsst_sensitivity_dz_31_29_50.yaml`,
+  evaluated with `galsim.zernike.DoubleZernike`; field 0–1.75 deg, annular pupil 2.558–4.18 m):
+  no axis swap, no pupil rotation or parity flip. The dx↔ry and dy↔rx off-diagonals are the
+  physical M2 decenter/tilt degeneracy. The overall OPD sign is not pinned; it does not
+  affect consistency tests.
+- **`aos/calibration/miw/intrinsic_split_maps_v1.parquet` is not yet a usable calibration
+  product.** It was staged from the older `fam_danish_1_0_wep17_3_0_bin2x` /
+  `pathA_50_34_i_5rot` build (see its `.provenance.yaml`). Of its 3829 cells, 76 are NaN in
+  both Z4 and Z6 (OCS and CCS), and its CCS columns are nonzero for Z4–Z8, unlike the
+  current `_5rot` split. Aaron is to review it before it serves as the calibration MIW.
 
 ## Which builds exist
 

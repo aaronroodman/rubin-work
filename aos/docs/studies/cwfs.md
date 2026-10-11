@@ -1,6 +1,6 @@
 # Study: `cwfs` — FAM vs the corner wavefront sensors
 
-> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
 > **Code:** `code/cwfs/` · **Notebooks:** `notebooks/cwfs/`
 > **Output:** `output/wfs_ingest/<P>/<cwfs>/` (`donuts.parquet`, `visits.parquet`), `output/wfs_corner_compare/<P>/<cwfs>/`, `output/wfs_dof_compare/<P>_<M>/<cwfs>/`, `output/wfs_mimic/<P>_<M>/`
@@ -61,8 +61,21 @@ All four live in `notebooks/cwfs/`:
 ## State and open questions
 
 - **The Z11/Z14 intra- vs extra-focal split is unexplained** and is *not* a known
-  instrumental effect. Do not present it as one
-  (`../../../notes/claude-memory/z11-intra-extra-mystery.md`).
+  instrumental effect. Do not present it as one. In the Danish unpaired corner fits of
+  BLOCK-T668 (day_obs 20260713, the TARTS test) Z11 is about +0.15 µm of wavefront intra
+  and −0.10 µm extra, and Z14 splits the same way. Unpaired results are stable; the
+  paired-mode Z11 is negative and noisier. The 8 mm giant donuts show the same split, plus
+  a field-dependent Z4 split
+  ([`../../../wfs/docs/giant_donuts_pupil_findings.md`](../../../wfs/docs/giant_donuts_pupil_findings.md#intraextra-split-in-fitted-giant-donuts-2026-09-16)).
+- **A static aberration or a CCD height cannot explain an extra − intra difference.** Any
+  static field-dependent wavefront (any Double Zernike term) is common to both sides of
+  focus and cancels exactly in extra − intra; so does the detector height, except for the
+  height difference between the two half-sensors of a corner pair
+  ([`../ts_wep_zernike_intrinsics.md`](../ts_wep_zernike_intrinsics.md#the-batoid_rubin-ccd-height-map-2026-10-11)).
+  The split is therefore a model or algorithm asymmetry, or a static phase that changes
+  sign between the two sides
+  ([`../../../optics/docs/studies/intra_extra_phase_strip.md`](../../../optics/docs/studies/intra_extra_phase_strip.md)).
+  Diffraction accounts for about one third of it (`notes/todos/todo-ideas.md`, item 7).
 - Per-Zernike CWFS↔FAM offsets (Z11 spherical, Z14 tetrafoil, Z7 coma) **persist** under
   a radius-matched comparison — a real disagreement, not a field-mean artifact.
 - The refit-ensemble pair is **parked** pending Danish-1.2 FAM reprocessing.

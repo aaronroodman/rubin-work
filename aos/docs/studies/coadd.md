@@ -1,6 +1,6 @@
 # Study: `coadd` — FAM coadd vs the MIW, and retrieval bias
 
-> **Status:** current · **Last updated:** 2026-10-10 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
 > **Code:** `code/coadd/` (study); the builder is `rubinwork.products.coadds`
 > **Output:** the `coadds` **product** — `<products>/coadds/<variant>/<build>/`, variants `d12-A_50_34_i_5rot` and `d12-A_50_34_i_5rot_v2`; the old tree is `output/coadd/<P>/{50_34,50_34_v2}/`
@@ -119,6 +119,79 @@ resolves the build through the catalog.
   selection and block count.
 - **Never correlate against total `‖a‖`** — open-loop focus drift dominates it; use
   per-mode signed `a`. See the handoff.
+
+### Findings (2026-09-03)
+
+The headline results (focal-order truncation, the per-visit `L` test, the empirical
+covariance) are in the handoff §4.1–§4.7. These are the supporting results not
+recorded there.
+
+**Focal-order content of the MIW** (`analyze_miw_dz_full_k.py` →
+`output/miw_dz_full_k.pdf` and `miw_dz_full_k_coeffs.parquet`, the fitted coefficients
+`w_kj`, 21 pupil × 45 focal, µm of wavefront). Each OCS MIW map is fitted to focal Noll
+k=1..45 over the 3985 finite cells, focal radius 1.8 deg.
+- The k ≤ 30 boundary that ts_ofc imposes cuts focal radial order n=7 (k=29..36) in
+  half, so the boundary is slightly asymmetric.
+- The 0.079 of MIW power (dimensionless, power-weighted over the 21 pupil Zernikes)
+  left unfit even at k ≤ 45 is probably not smooth field structure, since 45 terms
+  over 3985 cells would capture that. Per-sensor or CCD-height-scale structure is the
+  likely carrier; untested.
+
+**Block-level regression of residual maps on Δa** (`analyze_miw_bias_regression.py`).
+Δa adds +0.028 in cross-validated (CV) R² over thermal alone (handoff §4.5). Per-mode
+drop-one ΔR² over the thermal model (dimensionless): u31 +0.014, u25 +0.011, u9 +0.010,
+u30/u29/u27/u33 ≈ +0.009 each. u9, u13 and u14 carry signal with near-zero k>6
+leakage. Under the unbiased model a low-leakage mode cannot drive the residual, so
+signal there beyond thermal favours retrieval bias.
+
+**Per-visit goodness of fit** (`analyze_dz_goodness_of_fit.py`). With the empirical
+covariance from the adjacent-consecutive-visit difference instead of the block mean,
+chi²_50/dof = 5.1 (dof = 76) and chi²_34/dof = 7.0 (dof = 92), against 4.2 and 5.2 from
+the block-mean covariance. Both are a real inconsistency.
+
+**Coadd-vs-MIW agreement.** Median spatial Pearson r between block coadd and MIW over
+blocks (dimensionless): 0.660 on the native grid, 0.739 at 3×3 rebinning. Environmental
+telemetry predicts per-block r with gradient-boosted-tree (GBT) CV R² = +0.619
+(leave-night-out GroupKFold, n = 123 non-build blocks after merging the camera-body
+temperatures); an earlier +0.68 on 127 blocks predates that merge. Signal-to-noise-only predictors
+(FWHM, donut count, visit count) give a negative CV R², and `z_gradient` (M1M3 vertical
+thermal gradient) dominates permutation importance, with r rising as `z_gradient` → 0,
+the build state.
+
+**Retracted.** `build_used` once flagged 81 blocks (in-family rotator and
+`day_obs >= 20260101`), ignoring band, program and elevation. The correct selection is
+the 16 blocks described above.
+
+**Practical points.**
+- No map cell is finite in every block, since per-block coverage differs. Keep cells with
+  coverage ≥ 0.97 (fraction of blocks) and impute the rest with the column mean
+  (`analyze_miw_bias_regression.py --min-cov`).
+- Each `d[key]` on a numpy `NpzFile` decompresses the whole array again; extract arrays
+  once before looping.
+
+### Camera temperature and MIW agreement (2026-08-25)
+
+Camera-body temperatures come from the raw Engineering Facility Database (EFD) topic
+`lsst.MTCamera.utiltrunk_body` ([`../telemetry.md`](../telemetry.md#where-camera-temperatures-come-from)).
+`recompute_coadd_metrics.py` averages them per block from the merged visits table.
+
+- **Absolute camera temperatures barely correlate with the coadd-vs-MIW Pearson r.** The
+  default feature is therefore the gradient against the camera ambient sensor,
+  `cam_<field>_dAmb = mean(cam_<field>) − mean(cam_AmbAirtemp)` per block (deg C), and only
+  `cam_AverageTemp_dAmb` is kept (`--camera-ref`, `--camera-raw`, `--camera-all` change this).
+- **`cam_AverageTemp_dAmb` mostly co-moves with `z_gradient`.** Over n = 176 non-build
+  blocks: Spearman rho(r, `cam_AverageTemp_dAmb`) = −0.49 (camera warmer than ambient,
+  worse agreement), but rho(`cam_AverageTemp_dAmb`, `z_gradient`) = −0.53. Partial
+  correlations: r with `cam_AverageTemp_dAmb` given `z_gradient` = −0.26 (p = 5e-4); r with
+  `z_gradient` given `cam_AverageTemp_dAmb` = +0.46 (p = 2e-10). Linear R² (dimensionless)
+  rises only from 0.372 (`z_gradient` alone) to 0.389 with the camera term added.
+- In the environmental GBT, `cam_AverageTemp_dAmb` has zero or negative permutation
+  importance and `z_gradient` about 0.70 (dimensionless, importance). Using all 23 camera
+  `_dAmb` sensors lowers the CV R² from 0.68 to 0.575 (collinear dilution); keeping only
+  `cam_AverageTemp_dAmb` gives 0.62.
+
+`z_gradient` remains the single dominant driver of coadd-vs-MIW agreement; the camera
+temperature is not an independent one.
 
 ## Running
 

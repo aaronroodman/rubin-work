@@ -1,6 +1,6 @@
 # Study: `vmode` — sensitivity matrix and mode structure
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
 > **Code:** `code/vmode/` · **Notebooks:** `notebooks/vmode/`
 > **Output:** `output/vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
@@ -292,10 +292,66 @@ not the other: at `n_keep` between 18 and 34 that makes "the retained v-modes" a
 the level of a 89.7 deg subspace rotation. **For the 22-DOF/12-v-mode scheme the effect is
 negligible** and no result here depends on the resolution.
 
+## Sparse-fit findings (2026-09-01)
+
+The Measured Intrinsic Wavefront (MIW) shows correlations between radial orders of the
+same azimuthal family: astigmatism Z5/6 ↔ Z12/13, coma Z7/8 ↔ Z16/17, tetrafoil
+(`optatmo/output/miw_radial_correlations.pdf`). Aaron's sparse proposal: fit only the
+primary aberrations in the donut fit and fix secondary and tertiary at the batoid
+intrinsic. Real secondary/tertiary content then lands in the primary, so using it needs
+(a) a sparse sensitivity matrix and (b) a model of that leakage.
+
+**Which matrix the OFC loads.** `OFCData("lsst", config_dir=$TS_CONFIG_MTTCS_DIR/MTAOS/v13/ofc)`
+globs `lsst_sensitivity*.yaml`, which resolves to `lsst_sensitivity_dz_31_29_50.yaml`.
+That file has every radial order populated (coma2, tref2, astig3, tet2; no NaN).
+`new_measured_lsst_sensitivity_dz_31_29_50.yaml`, which zeroes those orders, does not match
+the glob and is not loaded. `analyze_sparse_fit.py` loads through `OFCData`, as in
+`notebooks/vmode/vmode_dof_ts_ofc.ipynb`. Shape `S[k, j, d]`: 31 field Noll `k` (k=1
+field-constant), 29 pupil Noll `j`, 50 DOF in `state0_in_dof.yaml` order (0–4 M2 hexapod
+dZ, dX, dY, rX, rY; 5–9 camera hexapod; 10–29 M1M3 bending 1–20; 30–49 M2 bending 1–20).
+
+**Zernike packing.** The OFC measures 21 packed Zernikes, Z4–Z26 without Z20, Z21
+(`rubinwork.aos_state.ZK_NOLL`), set by `ofc.zn_selected = zn`, after which
+`ofc.zn_idx = zn − 4`. Without that assignment `zn_idx` defaults to `[0..18]`, which is
+wrong. The raw `ofc.sensitivity_matrix` pupil axis is Noll `j` (M2 tilt → Noll 7, coma);
+`SensitivityMatrix.evaluate(...)[:, zn_idx, :]` returns pupil index Noll − 4.
+
+**Results** (`sparse_fit_study.pdf`):
+1. Nearly every DOF, bending modes and hexapod tilts especially, drives the primary and
+   secondary of a family with field correlation ≈ ±1 (dimensionless): per DOF, the
+   secondary is a fixed multiple of the primary's field pattern. Primary and secondary
+   are therefore near-degenerate per DOF, their separation in the donut fit is
+   ill-conditioned, and a small fit bias can move power between orders — one route to
+   the MIW radial-order correlations. Astigmatism first↔second-order correlation from
+   the tilts is −0.44 to −0.95 (cos term) and −0.40 to −0.87 (sin term), bracketing the
+   MIW's −0.28 (cos) and −0.62 (sin); all Pearson r, dimensionless.
+2. Primary-only observability, with v-modes recomputed on the 21-packed set
+   (observability = primary-only over full-matrix, dimensionless; the primary-only fit
+   drops Z12, 13, 16, 17, 18, 19, 22–26):
+   - 22 DOF / 12 v-modes: all 12 controlled v-modes keep median 1.00, min 0.99, with
+     both the four corner wavefront sensors (R00/R04/R40/R44 SW0) and field-complete
+     sampling. The sparse fit loses nothing.
+   - 50 DOF / 34 v-modes: median 0.97 / min 0.36 field-complete, median 0.96 / min 0.44
+     at the corner sensors. The degraded DOF are the high-order M2 bending modes b10,
+     b11, b14, b15, b19, b20 (0.37–0.63), whose signal is in the dropped orders. This is
+     the no-leakage upper bound; real leakage returns some of it.
+
+**Outstanding.** Piece 2 is the leakage matrix `L[j_prim, j_sec]`, how a fixed secondary
+in the donut image projects onto the fitted primary; it needs the Danish donut forward
+model and injected-secondary simulations. Piece 3 is `A_sparse = A_prim + L @ A_sec`
+and a rebuilt sparse MIW.
+
+**Retracted claims.**
+- "Production zeroes coma2/tref2/astig3/tet2." That was the non-loaded `new_measured`
+  file.
+- An early observability run used the default `zn_idx` and the raw pupil axis including
+  piston and tilt (Noll 1–3), which produced a spurious degradation of the top modes.
+  Fixed by the packing above.
+
 ## State and open questions
 
-- The sparse-fit study found that **all DOF couple primary↔secondary at ±1**, and that
-  production zeroes coma2/tref2 — see `../../../notes/claude-memory/sparse-fit-sensitivity.md`.
+- The sparse-fit study found that **nearly every DOF couples primary↔secondary at field
+  correlation ≈ ±1**; findings below.
 - `svd._keep()` is used here and in `cwfs`. Its leading underscore is mislabelling
   rather than a stability boundary — it is `ts_intrinsic_wavefront`'s own function, used
   as public API in four call sites across two repositories. Left as-is deliberately; see

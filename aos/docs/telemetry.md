@@ -1,6 +1,6 @@
 # Telemetry inventory — what exists, where it comes from, and what reaches the tables
 
-> **Status:** current · **Last updated:** 2026-09-10 · **Kind:** reference (telemetry inventory)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (telemetry inventory)
 
 Every per-visit telemetry quantity used in the AOS work: its name in the Consolidated
 Database (ConsDB) transformed Engineering Facility Database (EFD) or in the raw EFD,
@@ -22,7 +22,7 @@ bug. Filling those visits with NaN is the intended behaviour.
 
 | what | source to use | why |
 |---|---|---|
-| ESS air temperatures | **ConsDB** | 88.6% on FAM exposures, one bulk query |
+| Environmental Sensor System (ESS) air temperatures | **ConsDB** | 88.6% on FAM exposures, one bulk query |
 | Wind and airflow | **ConsDB** | 88.6%; was unused, now fetched by `run_attach_telemetry.py` |
 | TMA truss temperatures | **ConsDB** | 88.6% |
 | M1M3 elevation LUT, M2 gravity LUT | **ConsDB** | 400/400 sampled FAM visits |
@@ -69,6 +69,33 @@ they have to be restored with `--merge --skip-produce`. The unified attach scrip
 One column is dead: **`cam_DomeXMinusTemp` is 0.0% finite** across all 3385 visits, while
 its sibling `cam_DomeYMinusTemp` is 98.6%. Either the sensor does not exist or the field
 name is wrong.
+
+### Where camera temperatures come from
+
+**ConsDB has no camera-interior temperatures.** Its two camera-related thermal sources are
+ESS air and structure sensors:
+
+- `mt_salindex111_temperature_0_mean` = `cam_air_temp` is the **camera inlet air** (ESS
+  Camera-ESS01, "Camera inlet plane"), not the camera body.
+- `mt_salindex1_temperature_0..7_mean` = `cam_hex_temp_0..7` are **camera hexapod struts
+  7–12 and rotator motors 1–2** (MTCameraAssembly-ESS01): mount and rotator, not camera body.
+
+The camera-body temperatures are **raw-EFD only**: measurement
+`lsst.MTCamera.utiltrunk_body` (no `sal` in the name) in the InfluxDB database
+`lsst.MTCamera`, not the main `efd` database, so they need a second client:
+`EfdClient("usdf_efd", db_name="lsst.MTCamera")`. Querying `lsst.sal.MTCamera.*` returns 0
+rows, and `EfdClient` then reports the misleading "Topic ... not in EFD schema" (it only
+validates when the result is empty). About 25 temperature fields, each with a `_state`
+flag, named in ts_xml `MTCamera/utiltrunk_body.avsc`: `CamBody{XPlus,YPlus,YMinus}Temp`,
+`CamHous*`, `BackFlng*`, `ShrdRng*`, `L1*` and `L2*` lens, `Dome*`, `VPPlenumInTemp`,
+shutter and charger return air, `AmbAirtemp`, and the aggregate `AverageTemp`, the most
+useful single value. `rubinwork/common/visit_telemetry.py` fetches them (`CAM_TOPIC`,
+`CAM_DB`).
+
+The camera-body sensors are strongly collinear with `AverageTemp`, so machine-learning
+permutation importance splits the credit and each one looks weak; per-sensor Spearman
+correlations rank them more cleanly. The result against the agreement of the FAM coadds with the Measured Intrinsic Wavefront (MIW) is in
+[`studies/coadd.md`](studies/coadd.md#camera-temperature-and-miw-agreement-2026-08-25).
 
 ## 2. ConsDB structure — pivoted versus unpivoted
 
@@ -129,6 +156,12 @@ list — no new query.
 
 The uniform 88.6% is the commissioning-history effect: these are present for recent
 visits and absent for the earliest ones.
+
+**ESS channel locations** are in `lsst-ts/ts_config_ocs`, `ESS/v8/_init.yaml` (`csc_name`
+and location per `sal_index`). **The `sal_index` values were renumbered in about
+February–March 2026:** old 1 → 121, 101 → 111, 102 → 112, 103 → 113, 205 → 110. The
+`mt_salindexN_*` column holding a given sensor therefore changes across that boundary,
+which matters for any query spanning it.
 
 ## 4. Commanded degrees of freedom
 
@@ -457,6 +490,14 @@ and `make_efd_client` / `make_consdb_client`. Re-export shims remain at
 `run_attach_telemetry.py` needs a node where the EFD and ConsDB resolve: the RSP terminal or
 a slaciana/slacrd interactive node, **not** a batch node. That is why `attach_telemetry` is
 excluded from the Snakemake batch mode.
+
+For batch jobs the EFD-only quantities — the M1M3 spatial gradients and the camera-body
+temperatures — are read from the value-added database instead (`visit_telemetry` groups
+`gradients` and `camera`, [`../../value_added/docs/schema.md`](../../value_added/docs/schema.md)),
+which is fetched once from an EFD-reachable node. That database supersedes the earlier plan
+for a private per-visit cache of EFD-only AOS quantities. The M1M3 gradients are expected in
+the official ConsDB transform eventually, but the stated plan as of 2026-08 was not to
+backfill earlier visits, so the value-added copy remains the only source for those.
 
 ## See also
 

@@ -224,6 +224,7 @@ status + last-updated line under its title.
 |---|---|
 | [`docs/studies.md`](docs/studies.md) | **inventory of the analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
+| [`docs/frame_conventions.md`](docs/frame_conventions.md) | the CCS, OCS and DVCS frames, which camera rotator angle to read (`rotTelPos`, not ConsDB alone, never `boresightRotAngle`), and why static optics follow OCS |
 | [`docs/telemetry.md`](docs/telemetry.md) | **telemetry inventory** — every quantity, its ConsDB/EFD name, measured coverage on FAM exposures, units, and which source to prefer |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
 | [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |

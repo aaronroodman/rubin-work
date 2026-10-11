@@ -1,6 +1,6 @@
 # ts_wep / Danish wavefront conventions: intrinsics, zernikeGQ vs zernikeTA, and the AOS visit table
 
-> **Status:** current · **Last updated:** 2026-06-26 · **Kind:** reference (external conventions)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (external conventions)
 
 Reference notes on how `ts_wep` + Danish compute the off-axis intrinsic wavefront, how
 `batoid.zernikeGQ` and `batoid.zernikeTA` are used, and exactly what the
@@ -99,8 +99,32 @@ zkRef[nollIndices] += zkStart            # zkStart = the intrinsic/deviation you
 - **CCD height map** = per-detector physical z-deviation of the CCD from the nominal focal
   surface (microns), a small additive correction (`HEIGHT_TO_Z4_UM_PER_MM = 15`) injected as
   `zkStart[Z4] += Z4_height` (extra +, intra −). Captures that the true intra↔extra ΔZ ≠
-  exactly 2×1.5 mm. ≈0 at field center (R22_S11), significant toward the corners (see
-  `code/ccd_height.py`).
+  exactly 2×1.5 mm. ≈0 at field center (R22_S11), significant toward the corners (the
+  corner-sensor diagnostic is `rubinwork/miw_corner.py`, `corner_z4_height_um`).
+
+### The batoid_rubin CCD height map (2026-10-11)
+
+- **File:** `ccd_height_map.fits.gz`, Zenodo record 18929776, in the `batoid_rubin_data`
+  directory `ccd_height_map/` (on S3DF under the `batoid_rubin_data` package). 205 HDUs,
+  one per detector, named by `DETNAME`; each a 100×100 float32 grid, `BUNIT` = mm, extent
+  in `XMIN/XMAX/YMIN/YMAX`. Read by `batoid_rubin.builder.det_height_maps()` and applied
+  in `Builder.build_det()` through `optic.withPerturbedSurface("Detector", ...)`.
+- **Axes are transposed against afw `FOCAL_PLANE`.** Header `XMID` is the detector's
+  focal-plane *y* centre and `YMID` its *x* centre, so interpolate at (fp_y, fp_x). The
+  wrong order extrapolates off the grid and returns heights of thousands of µm on chips
+  whose real range is a few µm, silently when `fill_value=None`. Use `bounds_error=True`.
+- **Scale:** global RMS height 4.3 µm; RMS of the per-CCD piston 3.1 µm; global
+  peak-to-valley 72 µm, dominated by one bad corner.
+- **Sensitivity:** dZ4/dh = 15.8 nm of wavefront per µm of detector height (batoid
+  `LSST_r.yaml`, annular Noll Zernikes, obscuration ε = 0.612, detector moved along local
+  +z). Nearly field independent: 15.76 nm/µm at field radius 0 deg to 15.94 nm/µm at
+  1.75 deg.
+- **It cancels in extra − intra.** In batoid a height h adds +15.8·h nm of Z4 to the
+  wavefront on *both* sides of focus, so Z4_extra − Z4_intra keeps only the height
+  *difference* between the two donut positions: below 0.25 nm of Z4 for the same star, but
+  about −72 nm for a corner pair whose halves are different sensors (e.g. R40_SW0 against
+  R00_SW1). The `zkStart` sign convention above (extra +, intra −) is a different
+  bookkeeping and is not reconciled with this batoid result here.
 
 ---
 

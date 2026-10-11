@@ -1,6 +1,6 @@
 # MIW investigation — portable handoff
 
-> **Status:** current · **Last updated:** 2026-09-04 · **Kind:** working state (handoff)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** working state (handoff)
 > Point-in-time snapshot, not a reference doc — it goes stale as the investigation moves.
 > The durable derivations live in [`../miw_coadd_equations.md`](../miw_coadd_equations.md).
 
@@ -265,6 +265,20 @@ while astigmatism's sits at k=15,22,23,25.
    fraction of total power (up to 0.18) — overstated it.
 6. Calling a mean-of-per-visit-norms an "RMS", and quoting "29× the null" (a bare
    ratio of two R² values) as though it were a statistic.
+7. **"The u-modes cancel at first order, so regress on (1−P)w instead of Δa."** True
+   only for an unbiased retrieval: it assumes the measurement error is zero-mean and
+   independent of the wavefront measured. A content-dependent fit bias violates exactly
+   that and makes Δa a first-order regressor (§4.4(b), `../miw_coadd_equations.md` §4.2).
+8. **Ledoit–Wolf covariance results** — inflation 41–49× (dimensionless,
+   sigma_emp/sigma_RLM), "~2 effective donuts", drift ratio 0.23–0.35 (dimensionless,
+   sigma_adjacent/sigma_block-mean). Artifacts of shrinking toward a scaled identity
+   (§4.6); the correct values are 8.5, ~39 of 2838, and 0.93.
+9. **"Production ts_ofc zeroes the coma2/tref2/astig3/tet2 sensitivities."** That is the
+   `new_measured_lsst_sensitivity_*` file, which the OFC does not load. The loaded
+   `lsst_sensitivity_dz_31_29_50.yaml` has every radial order populated. See
+   `../../../smatrix/docs/studies/vmode.md`.
+10. **`build_used` = in-family rotator and `day_obs >= 20260101`** (81 blocks). It ignored
+    band, program and elevation; the build set is the 16 blocks of §8.
 
 ---
 
@@ -281,8 +295,7 @@ Local (laptop, no LSST stack unless noted):
 | `code/coadd/recompute_coadd_metrics.py` | **the single** coadd time-series renderer; `--rebin 1 3` (one page per factor), u-mode pages, ML |
 | `code/coadd/check_k_truncation.py` | §4.7 checks (a) and (b) |
 | `code/coadd/analyze_miw_field_order.py` | is the MIW the un-subtracted k>6 term? (§4.7 shape test) |
-| `code/smatrix_vmode/analyze_sparse_observability.py` | sparse-mode DOF observability, both samplings |
-| `code/smatrix_vmode/analyze_sensitivity_sparse.py` | which DOF drive secondary/tertiary aberrations |
+| `../smatrix/code/vmode/analyze_sparse_fit.py` | sparse-fit study: which DOF drive secondary/tertiary aberrations (`--part sensitivity`) and sparse-mode DOF observability, both samplings (`--part observability`) |
 
 RSP-only: `code/coadd/run_coadd_blocks_miw.py` (+ `run_coadd_blocks_miw.sbatch` — roma,
 128 GB, 12 h; it OOMs a notebook pod). `--param-set` is **required**.

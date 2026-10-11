@@ -113,8 +113,11 @@ the repo root). Do not "consolidate" the two — they are unrelated.
 - **OCS vs CCS is load-bearing.** The telescope-fixed component **O** is OCS; the
   camera-fixed component **C** is CCS and rotates with the rotator. Always state which
   frame a field angle or Zernike is in.
-- Camera rotator angle comes from the ConsDB `physical_rotator_angle`, **not**
-  `boresightRotAngle`.
+- Camera rotator angle: to combine with a table's OCS/CCS coordinates, use the
+  table-metadata `rotTelPos` the pipeline rotated with. ConsDB `physical_rotator_angle`
+  is NULL on some visits and sits 0.30 deg off on the blitz path; the planned phase 3b fix
+  makes the `rotator_angle` column ConsDB-first with `rotTelPos` as the fallback. **Never**
+  `boresightRotAngle`. See `docs/frame_conventions.md`.
 - **v-modes come only from `aos_state.make_state_estimator`** — never write
   `np.linalg.svd` on a sensitivity matrix. The matrix is always evaluated at camera rotator
   angle **0.0 deg** (`aos_state.SMATRIX_ROTATION_ANGLE_DEG`), an AOS group decision; do not
