@@ -183,13 +183,110 @@ the code git commit and build time to `fetch_log`; this is the concrete reason i
 
 ## Next concrete action
 
-**Phase 3a for `value_added`, code only.** Every product before it is done. Scope,
-decisions and the checks are below in the `value_added` section; read that before moving
-anything. In outline: the builders (`build_efd_db`, `build_optical_state`, `build_fam_dz`,
-`build_m1m3_thermal_r2`, `merge_db_shards`, the backfill scripts, `run_build.sh`) move to
-`rubinwork/products/value_added/builders/` and `efd_db.py` becomes the product reader,
-with shims at every old path giving the same module objects. The `v1/live` + snapshots
-layout and the registry-row renaming wait for the rebuild in 3c.
+**Phase 3a step 1 for `value_added`: the reference build.** Every product before it is
+done, and the read-only `decomp_path` check it was gated on is done too (section above:
+no variant used the broken default, so nothing is blocked). Code only — the `v1/live` +
+snapshots layout and the registry-row renaming come with the rebuild in 3c.
+
+Make the reference build **before moving any code**, as every earlier product did. The
+smallest build that exercises each builder, into a scratch database under
+`_phase2_refbuild/value_added/`, **never the live database**:
+
+```bash
+cd ~/notebooks/rubin-work/value_added && \
+  AOS_EFD_DB=/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/value_added/ref/aos_efd.duckdb \
+  python code/build_efd_db.py --day-obs 20251116-20251117 --create
+```
+
+then `build_optical_state.py` for the same two nights on one variant, `build_fam_dz.py`
+for one FAM variant, and `build_m1m3_thermal_r2.py`. Work out each builder's exact flags
+from `run_build.sh`'s own invocations rather than from its usage comment — the script is
+what actually runs them. Nights well in the past, so ConsDB and the EFD are settled.
+
+What this session established that step 2 needs:
+
+- **The EFD resolves from `sdfiana*`** (this session ran on `sdfiana029`), and `sbatch`
+  is present, so the telemetry builder's reference build can be made interactively here.
+  It would fetch nothing from a milano/torino batch node — `run_build.sh` rejects
+  `--mode batch` for `--what telemetry` for exactly that reason.
+- **`efd_db.default_db_path()` resolves `parents[1] / 'output/aos_efd.duckdb'`**
+  (`efd_db.py:226`-`:246`), i.e. the `value_added` topic directory, overridable with
+  **`AOS_EFD_DB`**. That `parents[1]` is the one thing the move breaks: from
+  `rubinwork/products/value_added/` it names the wrong directory. Aaron's call: keep the
+  current default path until 3c and add the catalog route **alongside**, in the same
+  old-tree-then-catalog order the `aos/Snakefile` resolver uses. So the moved reader must
+  compute the old path from the **repo root** rather than from its own `parents[1]`.
+  `AOS_EFD_DB` is also how the reference build stays off the live database.
+- **Five code files reach `efd_db` by bare name** after a `sys.path.insert` of
+  `value_added/code`, so a shim at the old path keeps every one working:
+  `thermal_focus/code/run_thermal_focus.py:59`,
+  `thermal_focus/code/thermal_focus_lib.py:45`,
+  `wfs/code/giant_donuts/select_exposures.py:28`,
+  `aos/code/cwfs_lut/cwfs_lut_lib.py:67`, `aos/code/cwfs_lut/run_cwfs_lut.py:51`.
+  Three notebooks also import it (`aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb`,
+  `aos/notebooks/bounce/_exectest.ipynb`,
+  `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`), which is a second reason
+  the shim has to give the **same module object**, not a copy.
+- **Scope, 11 files and about 5,100 lines**, the largest move so far:
+  `build_efd_db.py` (582), `build_optical_state.py` (880), `build_fam_dz.py` (342),
+  `build_m1m3_thermal_r2.py` (273), `merge_db_shards.py` (213),
+  `backfill_commanded_vmodes.py` (182), `backfill_optical_state_pointing.py` (193),
+  `run_build.sh` (256), `test_build_optical_state.py` (208), plus the reader
+  `efd_db.py` (1,639) and `m1m3_thermal_r2.py` (370).
+- **`m1m3_thermal_r2.py` stays inside the product**, which answers the product-vs-library
+  question the task raised. It is pure computation (the M1M3 bulk thermal gradients from
+  raw thermocouple telemetry) and writes nothing, so by the section 2 rules it *could* be
+  a library — but it has exactly **one** importer, `build_m1m3_thermal_r2.py:51`, its own
+  builder. A library is code *other work* imports; nothing else does. `thermal_focus`
+  only *cites* it in a comment (`thermal_focus_lib.py:110`) and reads the **table**
+  through `efd_db.m1m3_thermal_r2`, which is product use, not library use. So it moves
+  beside its builder and is promoted only if a second importer appears.
+- **Five tables plus three registries** are what a comparison has to cover:
+  `visit_telemetry`, `optical_state`, `fam_dz`, `m1m3_thermal_r2`, `column_coverage`, and
+  `state_variant`, `fam_variant`, `fetch_log`. Current live contents, measured
+  2026-10-12, for a sanity check on any reference build (counts dimensionless):
+  `visit_telemetry` 213,704 rows, `optical_state` 406,220 over four variants,
+  `m1m3_thermal_r2` 211,922, `column_coverage` 196, `fam_dz` 2,528 over one
+  `fam_variant`, `fetch_log` 3,293 rows over nine EFD group names and 366 nights.
+
+Also in this step, from Aaron's 2026-10-11 rotator-angle decision: add to
+`value_added/docs/schema.md`, beside `optical_state.rotator_angle_deg`, that for FAM
+visits the FAM tables' `rotator_angle` is the donut metadata `rotTelPos` (after 3b) and
+can differ from the database's ConsDB `physical_rotator_angle` by up to about 0.30 deg of
+camera rotator angle on the blitz path, or be present where the database's is NULL; a
+study joining the two must say which it uses. Cite `aos/docs/frame_conventions.md`.
+And fix `value_added/docs/status/build_progress.md`, which is stale about the MIW variant
+(see the `decomp_path` section above).
+
+**Constraints found the hard way in the `bounce_tables` split, which the `value_added`
+move will meet too:**
+
+- **A declared conditional output fails a legitimate run.** `dof_lut` taught "declare
+  every output"; `bounce_tables` showed the limit — seven of its nine PDFs depend on what
+  the run finds, so declaring them would have turned a healthy build into a failure. Check
+  whether an output is unconditional before declaring it. `value_added` has the same shape:
+  a night with no corner-WFS quicklook yields no `optical_state` rows at all.
+- **Do not predict a job-count change from the product's name.** The handoff predicted
+  `aos/` 34 → 31 because every earlier product's rule left; `bounce`'s rule survived and
+  the count did not move. Run `snakemake -n` before and after and diff the job table, do
+  not reason about it. `value_added` has no `aos/Snakefile` rule at all, so the expected
+  change there is **zero jobs** — which still has to be shown, not assumed.
+- **Check an "unused import" against the pre-move state before fixing it.**
+  `bounce_lib.py` had five genuinely unused imports before the split; attributing them to
+  the move would have been wrong. `git stash` + `pyflakes` is the cheap way to tell.
+- **A re-export module reads as "unused import" to pyflakes** even with `# noqa: F401`.
+  That is expected for the shim and the re-export, not a defect to fix.
+- **A test that matches docstring prose breaks on correct code.** Three of the new tests
+  failed first because they grepped for `aos/code` and `bounce_kj_stats.parquet` in whole
+  files, where both legitimately appear in comments explaining the move. Assert on the
+  import lines or the non-comment lines instead.
+
+**Not attempted, deliberately:** `aos_fwhm.py` was left as a flat `aos/code/` module. It
+is a library by the section 2 rules — 88 lines, pure computation, writes nothing, already
+reached from `rubinwork.open_loop` — and `rubinwork/bounce/analysis.py` now reaches it by
+the same lazy path insert. Promoting it is a separate change to a sibling topic's flat
+modules, which the root `CLAUDE.md` pins, and was outside this step's scope. It is a
+candidate for whenever the flat `aos/code/` modules move.
 
 After `value_added`: **phase 3a for `guider_moments`**, the last product.
 
