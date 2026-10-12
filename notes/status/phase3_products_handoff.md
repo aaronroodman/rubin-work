@@ -131,6 +131,56 @@ What the split settled, in case a later product has the same shape:
 
 268 product tests pass (222 + 46); import smoke test unchanged at 63/63 modules.
 
+## `decomp_path` check for `value_added`: no variant went through the broken default
+
+Read-only, 2026-10-12, asked for before the `value_added` move because
+`miw_corner.decomp_path` was broken until the `miw` 3a move (it built
+`output/<long param_set>/<mi_name>/`, a layout the tree lost when `dir_name` arrived), so
+every **default** MIW lookup missed. The question was whether any `optical_state` variant
+with `intrinsic_route=miw` was built through that default, and what the builder did on a
+miss.
+
+**Answer: no variant did, and a miss is a loud error, not a silent fallback.** Nothing for
+"Decisions for Aaron"; no data changed.
+
+| variant | `intrinsic_route` | `intrinsic_ref` | rows built | how the MIW was resolved |
+|---|---|---|---|---|
+| `v50_34__miw__consdb_v1` | `miw` | `danish_1_2_A_50_34_i_5rot` | **98,831** | **explicit `--intrinsic-ref`**, all 12 shards |
+| `v50_34__batoid__consdb_v1` | `batoid` | `ofc_v13` | 102,463 | no MIW |
+| `v22_12__batoid__consdb_v1` | `batoid` | `ofc_v13` | 102,463 | no MIW |
+| `v50_34_rbr__batoid__consdb_v1` | `batoid` | `ofc_v13` | 102,463 | no MIW |
+
+Evidence, in the order it settles the question:
+
+- `state_variant` has exactly **one** `intrinsic_route=miw` row, and its `intrinsic_ref`
+  is a `dir_name`-form build name, not empty.
+- `build_optical_state.py:727`-`:729`: `--intrinsic miw` **without** `--intrinsic-ref` is
+  an **argparse error**, so the broken default could never be reached from the command
+  line for the MIW route at all.
+- `rubinwork/miw_corner.py:363`-`:365` (`MiwCornerLookup.__init__`): a non-existent
+  decomposition path **raises `FileNotFoundError`** naming the path. So even a path built
+  by the old broken `decomp_path` would have failed loudly rather than falling back.
+- The build logs, `value_added/logs/batch_state_20261006_001235_{01..12}.out`, all twelve
+  shards of the one MIW build (`state_variant.created_at` 2026-10-06 00:12:45), print one
+  line each: `intrinsic miw [danish_1_2_A_50_34_i_5rot]` and
+  `MIW intrinsic from .../aos/output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_decomp.parquet`
+  — the `dir_name` layout, which exists.
+
+**One stale doc found in passing, not yet fixed.**
+`value_added/docs/status/build_progress.md` says the MIW variant has **0 rows** and is
+"registered, never built", and warns that reading it "returns an empty DataFrame rather
+than raising". That was true when the doc was written for the 2026-10-03 batoid build; the
+MIW variant was built three days later and holds 98,831 rows over `day_obs` 20250728 to
+20260713. The doc also puts `optical_state` at 307,389 rows over three variants; it is
+**406,220 rows over four** (counts dimensionless). Fix it in the `value_added` 3a commit,
+since the move touches that doc anyway.
+
+Also noted: **`fetch_log` records only the telemetry builder's EFD groups** (nine group
+names, `camera` through `wind_derived`), not the state or FAM-DZ builds. So a state
+variant's provenance exists only as `state_variant.created_at` plus the batch log, which
+is what made the log the deciding evidence here. The plan's section 6 already lists adding
+the code git commit and build time to `fetch_log`; this is the concrete reason it matters.
+
 ## Next concrete action
 
 **Phase 3a for `value_added`, code only.** Every product before it is done. Scope,
