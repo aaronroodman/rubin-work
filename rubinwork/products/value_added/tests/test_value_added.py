@@ -1,0 +1,414 @@
+"""Tests for the ``value_added`` product: the reader's path resolution, the shims, the
+catalog route, the scratch-versus-catalog manifest rule, and the build comparison.
+
+The path tests are what matter most here. Before phase 3a the reader sat in
+``value_added/code/`` and resolved its default database from its own ``parents[1]``; from
+``rubinwork/products/value_added/`` that names the products package, so the anchor had to
+change to the repository root. A silent regression there would point every reader at a
+non-existent database, or worse at the wrong one.
+
+The shim tests assert **module identity**, not just importability: five scripts and three
+notebooks do a bare-name ``import efd_db`` after a ``sys.path`` insert, and two of them
+hand each other the connection it opens, which separate copies would break.
+
+Nothing here opens the live database.
+"""
+
+import pathlib
+import subprocess
+import sys
+
+import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
+
+from rubinwork.products import catalog, value_added  # noqa: E402
+from rubinwork.products.value_added import compare_builds  # noqa: E402
+from rubinwork.products.value_added import reader as va_reader  # noqa: E402
+from rubinwork.products.value_added import write_manifest  # noqa: E402
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
+
+EFD_DB_IMPORTERS = (
+    "thermal_focus/code/run_thermal_focus.py",
+    "thermal_focus/code/thermal_focus_lib.py",
+    "wfs/code/giant_donuts/select_exposures.py",
+    "aos/code/cwfs_lut/cwfs_lut_lib.py",
+    "aos/code/cwfs_lut/run_cwfs_lut.py",
+)
+"""Every code file that reaches ``efd_db`` by bare name after a ``sys.path`` insert."""
+
+EFD_DB_NOTEBOOKS = (
+    "aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb",
+    "aos/notebooks/bounce/_exectest.ipynb",
+    "aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb",
+)
+"""Notebooks that import ``efd_db`` the same way."""
+
+SHIMMED_BUILDERS = (
+    "build_efd_db", "build_optical_state", "build_fam_dz", "build_m1m3_thermal_r2",
+    "m1m3_thermal_r2", "merge_db_shards", "backfill_commanded_vmodes",
+    "backfill_optical_state_pointing",
+)
+"""Modules that moved into ``builders/`` and left a shim at the old path."""
+
+
+@pytest.fixture
+def data_root(tmp_path, monkeypatch):
+    """A temporary data root, with ``products/`` and ``studies/`` in place."""
+    monkeypatch.setenv("RUBINWORK_DATA", str(tmp_path))
+    (tmp_path / "products").mkdir()
+    (tmp_path / "studies").mkdir()
+    return tmp_path
+
+
+def _write_db(path, n_visits=3):
+    """Write a tiny database with the real schema and a few rows."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = va_reader.open_db(path, readonly=False, create=True)
+    try:
+        va_reader.create_schema(con)
+        con.execute(
+            "INSERT INTO visit_telemetry (visit_id, day_obs, seq_num) "
+            "VALUES " + ", ".join(f"({1000 + i}, 20251116, {i})"
+                                  for i in range(n_visits)))
+        con.commit()
+    finally:
+        con.close()
+    return path
+
+
+# ---- the default database path, the one thing the move breaks -------------------
+
+def test_old_tree_path_is_anchored_at_the_repo_root():
+    """Not at the reader's own parents[N], which the move changed."""
+    assert va_reader.old_tree_db_path() == (
+        REPO_ROOT / "value_added" / "output" / "aos_efd.duckdb")
+
+
+def test_old_tree_path_is_not_inside_the_products_package():
+    """The regression the move could have introduced: parents[1] of the moved reader is
+    ``rubinwork/products``, so a naive hop-count fix would have resolved there."""
+    path = va_reader.old_tree_db_path()
+    assert "rubinwork/products" not in str(path)
+    assert path.parent.parent.name == "value_added"
+
+
+def test_aos_efd_db_overrides_everything(monkeypatch, tmp_path):
+    scratch = tmp_path / "scratch" / "aos_efd.duckdb"
+    monkeypatch.setenv("AOS_EFD_DB", str(scratch))
+    assert va_reader.default_db_path() == scratch
+
+
+def test_default_path_prefers_the_old_tree_when_it_exists(monkeypatch):
+    """Old tree first, then the catalog -- the aos/Snakefile resolver's precedence."""
+    monkeypatch.delenv("AOS_EFD_DB", raising=False)
+    old = va_reader.old_tree_db_path()
+    if not old.exists():
+        pytest.skip("no old-tree database in this checkout")
+    assert va_reader.default_db_path() == old
+
+
+def test_default_path_falls_back_to_the_catalog(monkeypatch, data_root):
+    """With no old-tree database, a registered catalog build is used."""
+    monkeypatch.delenv("AOS_EFD_DB", raising=False)
+    monkeypatch.setattr(va_reader, "old_tree_db_path",
+                        lambda: data_root / "no_such_tree" / "aos_efd.duckdb")
+    build = data_root / "products" / "value_added" / "v1" / "20261013"
+    _write_db(build / va_reader.DB_FILE)
+    write_manifest.write("v1", build="20261013", build_dir=build)
+    catalog.set_current("value_added", "v1", "20261013")
+    assert va_reader.default_db_path() == build / va_reader.DB_FILE
+
+
+def test_default_path_falls_back_to_the_old_tree_path_when_nothing_exists(
+        monkeypatch, data_root):
+    """So a caller opening a missing database gets the familiar error and location."""
+    monkeypatch.delenv("AOS_EFD_DB", raising=False)
+    missing = data_root / "no_such_tree" / "aos_efd.duckdb"
+    monkeypatch.setattr(va_reader, "old_tree_db_path", lambda: missing)
+    assert va_reader.default_db_path() == missing
+
+
+def test_catalog_db_path_is_none_without_a_build(data_root):
+    assert va_reader.catalog_db_path() is None
+
+
+# ---- the catalog route ---------------------------------------------------------
+
+def test_connect_opens_a_catalog_build(data_root):
+    build = data_root / "products" / "value_added" / "v1" / "20261013"
+    _write_db(build / va_reader.DB_FILE, n_visits=5)
+    write_manifest.write("v1", build="20261013", build_dir=build)
+    catalog.set_current("value_added", "v1", "20261013")
+    con = value_added.connect()
+    try:
+        assert con.execute("SELECT COUNT(*) FROM visit_telemetry").fetchone()[0] == 5
+    finally:
+        con.close()
+
+
+def test_connect_raises_without_a_build(data_root):
+    with pytest.raises(catalog.ProductNotFound, match="no complete value_added build"):
+        value_added.connect()
+
+
+def test_load_is_an_alias_of_connect(data_root):
+    build = data_root / "products" / "value_added" / "v1" / "20261013"
+    _write_db(build / va_reader.DB_FILE)
+    write_manifest.write("v1", build="20261013", build_dir=build)
+    catalog.set_current("value_added", "v1", "20261013")
+    con = value_added.load()
+    try:
+        assert con.execute("SELECT COUNT(*) FROM visit_telemetry").fetchone()[0] == 3
+    finally:
+        con.close()
+
+
+def test_a_build_without_a_manifest_is_invisible(data_root):
+    build = data_root / "products" / "value_added" / "v1" / "20261013"
+    _write_db(build / va_reader.DB_FILE)
+    assert va_reader.catalog_db_path() is None
+
+
+def test_build_dir_is_under_the_products_root(data_root):
+    assert value_added.build_dir("v1", "20261013") == (
+        data_root / "products" / "value_added" / "v1" / "20261013")
+    assert value_added.build_dir("v1") == (
+        data_root / "products" / "value_added" / "v1")
+
+
+# ---- scratch builds write no manifest ------------------------------------------
+
+def test_a_catalog_path_is_a_catalog_build(data_root):
+    db = value_added.build_dir("v1", "20261013") / va_reader.DB_FILE
+    assert write_manifest.is_catalog_build(db)
+
+
+def test_a_scratch_path_is_not_a_catalog_build(data_root, tmp_path):
+    assert not write_manifest.is_catalog_build(tmp_path / "ref" / "aos_efd.duckdb")
+
+
+def test_the_old_tree_database_is_not_a_catalog_build(data_root):
+    """So the live database is never registered by accident."""
+    assert not write_manifest.is_catalog_build(va_reader.old_tree_db_path())
+
+
+def test_finish_build_writes_nothing_for_a_scratch_database(data_root, tmp_path):
+    db = _write_db(tmp_path / "ref" / va_reader.DB_FILE)
+    assert write_manifest.finish_build(db) is None
+    assert not (db.parent / "manifest.json").exists()
+
+
+def test_finish_build_writes_a_manifest_for_a_catalog_build(data_root):
+    build = value_added.build_dir("v1", "20261013")
+    db = _write_db(build / va_reader.DB_FILE)
+    path = write_manifest.finish_build(db, build_options={"what": "telemetry"})
+    assert path is not None and path.exists()
+    import json
+    doc = json.loads(path.read_text())
+    assert doc["product"] == "value_added"
+    assert doc["variant"] == "v1"
+    assert doc["config"]["build_options"] == {"what": "telemetry"}
+
+
+def test_manifest_records_the_registries_and_the_span(data_root):
+    build = value_added.build_dir("v1", "20261013")
+    _write_db(build / va_reader.DB_FILE, n_visits=4)
+    path = write_manifest.write("v1", build="20261013", build_dir=build)
+    import json
+    cfg = json.loads(path.read_text())["config"]
+    assert cfg["tables"] == list(value_added.TABLES)
+    assert cfg["registries"] == list(value_added.REGISTRIES)
+    assert cfg["day_obs_min"] == 20251116 and cfg["day_obs_max"] == 20251116
+    assert cfg["n_visit_telemetry_rows"] == 4
+
+
+def test_manifest_records_no_upstream_build(data_root):
+    """The telemetry comes from the EFD and ConsDB, which are external services, and the
+    per-variant repository upstreams are per row rather than per build."""
+    build = value_added.build_dir("v1", "20261013")
+    _write_db(build / va_reader.DB_FILE)
+    path = write_manifest.write("v1", build="20261013", build_dir=build)
+    import json
+    assert not json.loads(path.read_text()).get("inputs")
+
+
+def test_manifest_needs_a_build_or_a_build_dir():
+    with pytest.raises(ValueError, match="needs `build` or `build_dir`"):
+        write_manifest.write("v1")
+
+
+# ---- the shims -----------------------------------------------------------------
+
+def test_the_efd_db_shim_gives_the_same_module_object():
+    """Not a copy: two importers hand each other the connection it opens."""
+    sys.path.insert(0, str(REPO_ROOT / "value_added" / "code"))
+    import efd_db
+
+    assert efd_db is va_reader
+
+
+def test_every_builder_shim_gives_the_same_module_object():
+    """Checked in a **fresh interpreter** per shim.
+
+    In this one, several builders have already been imported as top-level modules by
+    their own siblings' ``sys.path`` bootstrap, so ``sys.modules`` legitimately holds two
+    entries for one file and an in-process check would compare the wrong pair. A
+    subprocess sees only the import under test.
+    """
+    for name in SHIMMED_BUILDERS:
+        script = (
+            "import sys\n"
+            "sys.path.insert(0, 'value_added/code')\n"
+            f"import {name} as shim\n"
+            f"import rubinwork.products.value_added.builders.{name} as pkg\n"
+            "assert shim is pkg, (shim, pkg)\n"
+            f"print('{name} ok')\n")
+        out = subprocess.run([sys.executable, "-c", script],
+                             cwd=REPO_ROOT, capture_output=True, text=True)
+        assert out.returncode == 0, f"{name}: {out.stderr[-2000:]}"
+        assert f"{name} ok" in out.stdout
+
+
+def test_a_shim_exists_for_every_moved_file():
+    code = REPO_ROOT / "value_added" / "code"
+    for name in SHIMMED_BUILDERS:
+        assert (code / f"{name}.py").exists(), name
+    assert (code / "efd_db.py").exists()
+    assert (code / "run_build.sh").exists()
+
+
+def test_the_shims_are_shims_and_not_copies():
+    """A shim is short and re-exports; a leftover copy would be hundreds of lines."""
+    code = REPO_ROOT / "value_added" / "code"
+    for name in SHIMMED_BUILDERS + ("efd_db",):
+        text = (code / f"{name}.py").read_text()
+        n_lines = len(text.splitlines())
+        assert n_lines < 60, f"{name}.py is {n_lines} lines; a shim should be short"
+        assert "sys.modules[__name__] = _real" in text, name
+
+
+def test_every_bare_name_importer_still_names_the_shim_path():
+    """The five importers are unchanged by this move, so their sys.path insert of
+    value_added/code must still be there for the shim to be found."""
+    for rel in EFD_DB_IMPORTERS:
+        text = (REPO_ROOT / rel).read_text()
+        assert "value_added" in text, rel
+        assert "efd_db" in text, rel
+
+
+def test_the_notebooks_still_import_efd_db_by_bare_name():
+    """Read as JSON rather than executed: the point is only that the import they contain
+    is one the shim satisfies."""
+    import json
+
+    for rel in EFD_DB_NOTEBOOKS:
+        path = REPO_ROOT / rel
+        if not path.exists():
+            pytest.skip(f"{rel} is not in this checkout")
+        doc = json.loads(path.read_text())
+        src = "\n".join("".join(c.get("source", [])) for c in doc["cells"]
+                        if c.get("cell_type") == "code")
+        assert "efd_db" in src, rel
+
+
+# ---- the moved builders --------------------------------------------------------
+
+def test_no_builder_imports_efd_db_by_bare_name():
+    """A moved builder's own directory no longer holds efd_db.py, so a bare-name import
+    would resolve to the shim only by accident of sys.path order."""
+    builders = REPO_ROOT / "rubinwork" / "products" / "value_added" / "builders"
+    for path in sorted(builders.glob("*.py")):
+        for line in path.read_text().splitlines():
+            stripped = line.strip()
+            assert stripped != "import efd_db", f"{path.name}: {line}"
+            assert not stripped.startswith("from common."), f"{path.name}: {line}"
+            assert not stripped.startswith("import common."), f"{path.name}: {line}"
+
+
+def test_every_builder_resolves_the_repo_root_at_parents_4():
+    """Was parents[2] from value_added/code/; the builders are two levels deeper now."""
+    builders = REPO_ROOT / "rubinwork" / "products" / "value_added" / "builders"
+    for path in sorted(builders.glob("*.py")):
+        text = path.read_text()
+        assert "parents[2]" not in text, f"{path.name} still resolves parents[2]"
+        if "parents[4]" in text:
+            assert path.resolve().parents[4] == REPO_ROOT
+
+
+def test_the_builders_help_runs():
+    """A smoke test that each builder imports under ``python -m`` and parses arguments."""
+    for name in ("build_efd_db", "build_optical_state", "build_fam_dz",
+                 "build_m1m3_thermal_r2", "merge_db_shards"):
+        out = subprocess.run(
+            [sys.executable, "-m",
+             f"rubinwork.products.value_added.builders.{name}", "--help"],
+            cwd=REPO_ROOT, capture_output=True, text=True)
+        assert out.returncode == 0, f"{name}: {out.stderr[-2000:]}"
+
+
+# ---- the comparison ------------------------------------------------------------
+
+def test_compare_keys_cover_every_table_and_registry():
+    assert set(compare_builds.TABLE_KEYS) == set(
+        value_added.TABLES) | set(value_added.REGISTRIES)
+
+
+def test_compare_keys_come_from_the_reader():
+    assert compare_builds.TABLE_KEYS == dict(value_added.TABLE_KEYS)
+
+
+def test_visit_telemetry_has_no_expected_difference():
+    """It carries no build-time timestamp, so it must match exactly."""
+    assert "visit_telemetry" not in compare_builds.EXPECTED_DIFF
+
+
+def test_every_expected_difference_is_a_timestamp():
+    """The list cannot be widened to hide a value difference."""
+    for table, cols in compare_builds.EXPECTED_DIFF.items():
+        assert table in compare_builds.TABLE_KEYS, table
+        for col in cols:
+            assert col in ("attempted_at", "updated_at", "created_at", "computed_at"), \
+                f"{table}.{col} is not a build-time timestamp"
+
+
+def test_compare_finds_identical_databases_identical(tmp_path, capsys):
+    a = _write_db(tmp_path / "a" / va_reader.DB_FILE)
+    b = _write_db(tmp_path / "b" / va_reader.DB_FILE)
+    assert compare_builds.main([str(a), str(b)]) == 0
+    assert "builds match" in capsys.readouterr().out
+
+
+def test_compare_catches_a_row_count_difference(tmp_path):
+    a = _write_db(tmp_path / "a" / va_reader.DB_FILE, n_visits=3)
+    b = _write_db(tmp_path / "b" / va_reader.DB_FILE, n_visits=4)
+    assert compare_builds.main([str(a), str(b)]) == 1
+
+
+def test_compare_catches_a_value_difference(tmp_path):
+    a = _write_db(tmp_path / "a" / va_reader.DB_FILE)
+    b = _write_db(tmp_path / "b" / va_reader.DB_FILE)
+    con = va_reader.open_db(b, readonly=False)
+    try:
+        con.execute("UPDATE visit_telemetry SET seq_num = 99 WHERE visit_id = 1000")
+        con.commit()
+    finally:
+        con.close()
+    assert compare_builds.main([str(a), str(b)]) == 1
+
+
+def test_compare_handles_list_columns(tmp_path):
+    """optical_state stores the 50 DOF and 34 v-modes as DuckDB LIST, which pandas holds
+    as object arrays that ``!=`` cannot compare elementwise."""
+    assert compare_builds._values_equal([1.0, 2.0], [1.0, 2.0])
+    assert not compare_builds._values_equal([1.0, 2.0], [1.0, 3.0])
+    assert not compare_builds._values_equal([1.0, 2.0], [1.0, 2.0, 3.0])
+    assert not compare_builds._values_equal([1.0], 1.0)
+
+
+def test_compare_treats_nan_as_equal_to_nan():
+    """An unrecovered visit stores NaN rather than NULL, so NaN must not read as a
+    difference between two identical builds."""
+    assert compare_builds._values_equal(float("nan"), float("nan"))
+    assert compare_builds._values_equal([float("nan"), 1.0], [float("nan"), 1.0])

@@ -83,7 +83,7 @@ ORDER BY n_non_null;
 
 ## `optical_state` and `fam_dz`
 
-`optical_state` holds 307,389 rows over three built variants, `day_obs` 20250724 to
+`optical_state` holds 406,220 rows over **four** built variants, `day_obs` 20250724 to
 20260714, 231 nights — a genuinely narrower span than `visit_telemetry`, which reaches back
 to 20250415. Nights before 20250724 have telemetry but no corner-WFS quicklook in ConsDB, so
 there is no wavefront to invert and they carry no optical state; a join of the two tables
@@ -94,18 +94,36 @@ drops them. Four variants are **registered** in `state_variant`:
 | `v22_12__batoid__consdb_v1` | 102,463 | built full span, item 2 vintage |
 | `v50_34__batoid__consdb_v1` | 102,463 | built full span, item 2 vintage; replaced the 90,695 pre-item-2 rows |
 | `v50_34_rbr__batoid__consdb_v1` | 102,463 | built full span, item 2 vintage |
-| `v50_34__miw__consdb_v1` | 0 | registered, never built |
+| `v50_34__miw__consdb_v1` | 98,831 | built 2026-10-06, `day_obs` 20250728 to 20260713 |
 
-96,278 rows per variant (94.0%) carry a recovered optical state and so a
+96,278 rows per batoid variant (94.0%) carry a recovered optical state and so a
 `fwhm_cwfs_arcsec`; the other 6,185 are per-visit recovery failures. The **same** visits
-succeed and fail in all three variants, so cross-scheme comparisons are paired without
-further filtering — but `fwhm_cwfs_arcsec IS NOT NULL` is still the screen to apply, since
+succeed and fail in all three batoid variants, so cross-scheme comparisons are paired
+without further filtering — but `fwhm_cwfs_arcsec IS NOT NULL` is still the screen to apply, since
 an unrecovered row stores NaN rather than NULL in the array columns.
 
-The **Measured Intrinsic Wavefront (MIW) route is not built**, only the batoid-design route.
-This is the trap in this table: `efd_db.optical_state('v50_34__miw__consdb_v1')` returns an
-empty DataFrame rather than raising, so an analysis that names the MIW variant gets zero rows
-and no error. Building it is outstanding work, deferred to todo item 6.
+**The Measured Intrinsic Wavefront (MIW) route IS built**, corrected 2026-10-12: it was
+built on 2026-10-06, three days after the paragraph above was written for the batoid
+build, in 12 shards over `day_obs` 20250728 to 20260713, and holds 98,831 rows. Its
+`intrinsic_ref` is the explicit build name `danish_1_2_A_50_34_i_5rot`; the logs are
+`logs/batch_state_20261006_001235_{01..12}.out`.
+
+Two things about it that still hold, and one that broke since:
+
+* The general trap is real for any **unbuilt** variant:
+  `efd_db.optical_state(<variant>)` returns an empty DataFrame rather than raising, so an
+  analysis that names a variant with no rows gets zero rows and no error.
+* Its span is 4 nights shorter at each end than the batoid variants'
+  (20250728–20260713 against 20250724–20260714), so a MIW-vs-batoid comparison must join
+  on `visit_id` rather than assume a common night list.
+* **`--intrinsic miw` does not run today**, found 2026-10-12 during the phase 3a move.
+  `build_optical_state` passes `intrinsic_ref` as `MiwCornerLookup`'s `mi_name`, but the
+  `miw` 3a move fixed `miw_corner.decomp_path` to take the **long** `(param_set, mi_name)`
+  keys and join their `dir_name`s, so a joined directory name like
+  `danish_1_2_A_50_34_i_5rot` now raises `KeyError`. Passing the long keys
+  (`--intrinsic-ref pathA_50_34_i_5rot --miw-param-set
+  fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) resolves to the same decomposition and
+  reproduces the stored result. Recorded, not fixed: a path fix is a phase 3b item.
 
 ### Item 2 full-span build, done 2026-10-03
 

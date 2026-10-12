@@ -12,7 +12,32 @@ between sessions.
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
 
-1. **`dof_lut`'s input, before it is rebuilt in 3c** (open, raised 2026-10-12). The LUT
+1. **The two `value_added` backfill scripts mutate product tables in place**, which rule
+   5 of the plan's section 2 forbids ("a product build directory is never edited after it
+   completes"). Raised 2026-10-12 by the `value_added` 3a move, which moved them beside
+   the builders and **changed nothing in them**, as was done for
+   `backfill_visit_sides.py`. Both are real fixes to real gaps, so neither is simply
+   wrong:
+   - `backfill_optical_state_pointing.py` fills `optical_state.elevation_deg` and
+     `rotator_angle_deg` from ConsDB. Both are properties of the **visit**, not the
+     variant, so one fetch per night fills every variant's row and no recovery is rerun.
+   - `backfill_commanded_vmodes.py` fills `v_modes_lut` and `v_modes_trim` for rows a
+     **sharded** build could not compute: a shard's own `visit_telemetry` is empty, so the
+     projector found no telemetry row and stored NaN. It runs over the merged database
+     using the same projector a non-sharded build uses, so a backfilled row is
+     indistinguishable from a directly built one.
+   Two routes, for 3c:
+   - **Turn both into build steps** (recommended): the pointing fetch folds into
+     `build_optical_state`, and the commanded-v-mode projection becomes a post-merge step
+     of `run_build.sh`, so a merged database is complete when the build finishes and
+     nothing edits a finished build. Costs one pass over the merge.
+   - **Retire both** and accept that a sharded build leaves those columns NaN until the
+     next full rebuild. Cheaper, but it makes the shard count visible in the data, which
+     is the thing an incremental product should hide.
+   Nothing is waiting on this now — the move is mechanical and both scripts still work
+   through their shims.
+
+2. **`dof_lut`'s input, before it is rebuilt in 3c** (open, raised 2026-10-12). The LUT
    fits the **plain FAM DZ**, so its DOF values are absolute — the reference shows
    `M2_dy = -2364 µm` of hexapod decentre, far outside any physical stroke. Choose before
    3c rebuilds it:

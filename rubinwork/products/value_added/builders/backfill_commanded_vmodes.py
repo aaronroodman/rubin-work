@@ -1,0 +1,182 @@
+"""Fill in the commanded hexapod LUT and Trim v-modes for `optical_state` rows that lack them.
+
+A sharded `build_optical_state.py` run cannot compute the commanded terms: each shard writes
+its own database, whose `visit_telemetry` table is created empty by the schema, so the
+projector finds no telemetry row for any visit and stores NaN. The measured state is
+unaffected -- only ``v_modes_lut`` and ``v_modes_trim`` are lost. This script runs over the
+merged database, where telemetry is present, and fills them in.
+
+The projection is `build_optical_state.make_commanded_projector`, i.e. the same code path a
+non-sharded build uses, so a backfilled row is indistinguishable from a directly built one.
+Each variant is projected in its own scheme, so all three v-mode terms of a visit share one
+basis and ``v1_lut + v1_trim - v1_meas`` mixes none.
+
+Usage
+-----
+    python value_added/code/backfill_commanded_vmodes.py
+    python value_added/code/backfill_commanded_vmodes.py --variant v50_34__batoid__consdb_v1
+    python value_added/code/backfill_commanded_vmodes.py --dry-run
+
+Options
+-------
+--variant ID    only this variant (default: every variant with missing commanded terms)
+--db PATH       database to update (default: the shared value-added database)
+--chunk N       visits per UPDATE batch (default 5000)
+--dry-run       report what would be filled, write nothing
+"""
+import argparse
+import pathlib
+import sys
+
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))  # repo root
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / 'aos' / 'code'))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from rubinwork.products.value_added import reader as efd_db
+from build_optical_state import (build_state_estimator, make_commanded_projector,  # noqa: E402
+                                 DEFAULT_OFC_VERSION)
+
+
+def missing_counts(con, variant=None, force=False):
+    """Rows per variant whose commanded v-modes are absent, and how many could be filled.
+
+    Parameters
+    ----------
+    con : `duckdb.DuckDBPyConnection`
+        Connection to the merged database.
+    variant : `str`, optional
+        Restrict to this variant id.
+    force : `bool`, optional
+        Count every row rather than only those missing the commanded terms, for
+        re-projecting rows whose stored values were built by superseded code.
+
+    Returns
+    -------
+    rows : `list` [`tuple`]
+        ``(variant_id, scheme, ofc_config_version, n_missing, n_fillable)`` -- `n_fillable`
+        counts only those with a `visit_telemetry` row carrying a finite hexapod LUT, so
+        `n_missing - n_fillable` is the irreducible remainder.
+    """
+    where = 'AND o.variant_id = ?' if variant else ''
+    args = [variant] if variant else []
+    have = 'TRUE' if force else '(o.v_modes_lut IS NULL OR isnan(o.v_modes_lut[1]))'
+    return con.execute(
+        'SELECT o.variant_id, s.scheme, s.ofc_config_version, COUNT(*) AS n_missing, '
+        '       SUM(CASE WHEN t.visit_id IS NOT NULL AND t.lut_dof0 IS NOT NULL '
+        '                THEN 1 ELSE 0 END) AS n_fillable '
+        'FROM optical_state o '
+        'JOIN state_variant s USING (variant_id) '
+        'LEFT JOIN visit_telemetry t USING (visit_id) '
+        f'WHERE {have} '
+        f'{where} '
+        'GROUP BY 1, 2, 3 ORDER BY 1', args).fetchall()
+
+
+def backfill_variant(con, variant, scheme, ofc_version, chunk=5000, dry_run=False,
+                     force=False):
+    """Project and store the commanded v-modes for one variant.
+
+    Parameters
+    ----------
+    con : `duckdb.DuckDBPyConnection`
+        Writable connection, unless `dry_run`.
+    variant : `str`
+        Variant id to fill.
+    scheme : `str`
+        ``'22_12'`` or ``'50_34'`` -- sets the v-mode count.
+    ofc_version : `str`
+        OFC config version, e.g. ``'v13'``.
+    chunk : `int`, optional
+        Visits per UPDATE batch.
+    dry_run : `bool`, optional
+        Compute and report, write nothing.
+
+    Returns
+    -------
+    n_filled : `int`
+        Rows given finite commanded v-modes.
+    """
+    vids = [int(v) for (v,) in con.execute(
+        'SELECT o.visit_id FROM optical_state o '
+        'JOIN visit_telemetry t USING (visit_id) '
+        f'WHERE o.variant_id = ? AND '
+        f'{"TRUE" if force else "(o.v_modes_lut IS NULL OR isnan(o.v_modes_lut[1]))"} '
+        '  AND t.lut_dof0 IS NOT NULL '
+        'ORDER BY o.visit_id', [variant]).fetchall()]
+    if not vids:
+        print(f'  {variant}: nothing fillable')
+        return 0
+
+    se, n_modes = build_state_estimator(scheme, ofc_version or DEFAULT_OFC_VERSION)
+    project = make_commanded_projector(se, n_modes)
+    n_filled = 0
+    for i in range(0, len(vids), chunk):
+        batch = vids[i:i + chunk]
+        # The third return is the raw Trim DOF, which only the open-loop arm needs.
+        v_lut, v_trim, _ = project(con, batch)
+        good = np.isfinite(v_lut[:, 0]) & np.isfinite(v_trim[:, 0])
+        n_filled += int(good.sum())
+        if dry_run:
+            continue
+        payload = [[v_lut[j].tolist(), v_trim[j].tolist(), int(batch[j])]
+                   for j in range(len(batch)) if good[j]]
+        if payload:
+            # One set-based UPDATE joined against a staged batch, not one statement per
+            # visit: optical_state carries no index on visit_id alone, so per-row updates
+            # rewrite the list-column row groups each time and the whole table takes hours.
+            stage = pd.DataFrame(payload, columns=['lut', 'trim', 'visit_id'])
+            con.register('_stage', stage)
+            con.execute(
+                'UPDATE optical_state AS o SET v_modes_lut = s.lut, '
+                'v_modes_trim = s.trim FROM _stage AS s '
+                'WHERE o.visit_id = s.visit_id AND o.variant_id = ?', [variant])
+            con.unregister('_stage')
+    verb = 'would fill' if dry_run else 'filled'
+    print(f'  {variant}: {verb} {n_filled} of {len(vids)} candidate row(s), '
+          f'{n_modes} v-modes each (dimensionless)')
+    return n_filled
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--variant', default=None, help='only this variant id')
+    p.add_argument('--db', default=None, help='database path')
+    p.add_argument('--chunk', type=int, default=5000, help='visits per UPDATE batch')
+    p.add_argument('--dry-run', action='store_true', help='report only, write nothing')
+    p.add_argument('--force', action='store_true',
+                   help='re-project rows that already carry commanded v-modes, for values '
+                        'built by superseded code')
+    a = p.parse_args(argv)
+
+    con = efd_db.open_db(a.db, readonly=a.dry_run)
+    todo = missing_counts(con, a.variant, force=a.force)
+    if not todo:
+        print('no rows are missing commanded v-modes')
+        con.close()
+        return 0
+
+    print('rows to re-project:' if a.force else 'rows missing commanded v-modes:')
+    for vid, scheme, _ofc, n_missing, n_fillable in todo:
+        print(f'  {vid}: {n_missing} selected, {n_fillable} with telemetry')
+    print()
+
+    total = 0
+    for vid, scheme, ofc, _n_missing, n_fillable in todo:
+        if not n_fillable:
+            print(f'  {vid}: no telemetry for any selected row, skipped')
+            continue
+        total += backfill_variant(con, vid, scheme, ofc, chunk=a.chunk,
+                                  dry_run=a.dry_run, force=a.force)
+    if not a.dry_run:
+        con.execute('CHECKPOINT')
+    con.close()
+    print(f'\n{"would fill" if a.dry_run else "filled"} {total} row(s) in total')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

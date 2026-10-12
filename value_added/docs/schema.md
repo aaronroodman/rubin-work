@@ -39,12 +39,12 @@ them in would only create a second, staler copy of something already cheap to re
 |---|---|---|---|
 | `visit_telemetry` | 213,704 | 197 | wide — one row per exposure |
 | `m1m3_thermal_r2` | 211,922 | 28 | wide — one row per exposure |
-| `optical_state` | 307,389 | 15 | long — keyed `(visit_id, variant_id)` |
+| `optical_state` | 406,220 | 15 | long — keyed `(visit_id, variant_id)` |
 | `fam_dz` | 2,528 | 16 | long — keyed `(visit_id, fam_variant_id)` |
 | `state_variant` | 4 | 11 | registry for `optical_state` |
 | `fam_variant` | 1 | 14 | registry for `fam_dz` |
 | `column_coverage` | 196 | 8 | units and provenance registry |
-| `fetch_log` | 2,928 | 6 | build bookkeeping |
+| `fetch_log` | 3,293 | 6 | build bookkeeping |
 
 `visit_telemetry` covers `day_obs` 20250415 to 20260714, 366 nights; `m1m3_thermal_r2` the same
 span over 365 of those nights; `optical_state` 20250724 to 20260714, 231 nights; `fam_dz`
@@ -153,11 +153,35 @@ and are properties of the **visit**, so a given `visit_id` carries the same pair
 variant's row. They are stored here rather than in `visit_telemetry` because they arrive with
 the wavefront rather than from the EFD.
 
-All 307,389 rows carry an elevation; 296,337 carry a rotator angle. The 11,052-row shortfall
-is 3,684 visits × 3 variants whose `visit1_quicklook` row is absent, and **every one of them
-also has no recovered optical state**, so a screen on `fwhm_cwfs_arcsec IS NOT NULL` already
-excludes them. The sample spans elevation 17.11 to 83.19 deg and rotator angle −79.87 to
-+79.51 deg.
+All 406,220 rows carry an elevation; 394,236 carry a rotator angle (counts
+dimensionless). The 11,984-row shortfall is 3,684 visits × 4 variants whose
+`visit1_quicklook` row is absent, and **every one of them also has no recovered optical
+state**, so a screen on `fwhm_cwfs_arcsec IS NOT NULL` already excludes them. The sample
+spans elevation 17.11 to 83.19 deg and camera rotator angle −79.87 to +79.51 deg
+(both OCS).
+
+#### This is ConsDB's angle, not the FAM tables' `rotTelPos` — say which you use
+
+`rotator_angle_deg` is ConsDB `physical_rotator_angle` and **stays** that way (Aaron,
+2026-10-11): science visits have no donut table, so ConsDB is the only per-visit source
+across the whole sample.
+
+The FAM tables' own `rotator_angle` column is a **different measurement of the same
+quantity**. After the phase 3b fix it is the donut metadata `rotTelPos` — the angle the
+CCD → OCS rotation actually used — with ConsDB only as a fallback. For a FAM visit the two
+can therefore disagree:
+
+| case | difference, camera rotator angle [deg] |
+|---|---|
+| blitz donut path | up to about **0.30** |
+| visits where ConsDB supplies both | about **1e-5** |
+| ConsDB `physical_rotator_angle` NULL | the FAM value exists, this column is **NULL** |
+
+So a study joining `optical_state` to a FAM table **must say which angle it uses**, and
+must not treat the two columns as interchangeable: only a visit near a rotator-bin edge
+changes bin at 0.30 deg, but which column decides that bin is a choice, not a detail. See
+[`../../aos/docs/frame_conventions.md`](../../aos/docs/frame_conventions.md) for the OCS
+and CCS conventions and why `boresightRotAngle` is never the right column.
 
 ### `fwhm_cwfs_arcsec` is a corner median, not a focal-plane median
 
