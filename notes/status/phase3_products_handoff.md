@@ -289,6 +289,172 @@ candidate for whenever the flat `aos/code/` modules move.
 
 After `value_added`: **phase 3a for `guider_moments`**, the last product.
 
+## 3a, `guider_moments` — the move
+
+The last product of 3a, and the **second incremental** one, so `value_added` is the worked
+example rather than the five snapshot products.
+
+### Scope: what is the product and what stays, agreed 2026-10-12
+
+**The product** is the per-night guider moment tables and the rules that build them:
+
+| file | role |
+|---|---|
+| `guider/code/run_guider_moments.py` | the builder: one exposure to `<seq>_{moments,stars,metrics}.parquet` |
+| `guider/code/combine_moments.py` | per-seq to per-night `guider_{moments,stars,metrics}_<night>.parquet` + `skipped_visits.txt` |
+| `guider/code/list_guider_exposures.py` | the Butler discovery that keys the night's partition |
+| `guider/code/guiderMoments.py` | the moment decomposition and **`SCHEMA_VERSION = 6`**, which *is* the variant |
+| rules `discover_night`, `moments`, `combine` | the three rules that write those files |
+
+**Stays in `guider/`** — study or tooling, every one of them: the RubinTV plots
+(`run_guider_rubintv_plots.py`, rules `rtvplot`/`rtvplots`), the movies
+(`run_guider_movie.py`, rules `movie`/`movies`), the per-day QA PDF
+(`run_guider_dayplots.py`, rule `plots`), the adjacent-CCD science side
+(`extract_adjacent_psf_moments.py`, rule `psfmoments`), the saturation study
+(`run_guider_saturation.py`), the atmosphere tracker and simulator (the eleven
+`guider_atmo_*.py`), `run_guider_whiskers.py`, `run_guider_validation.py`,
+`check_rotator_field.py`, `inspect_guider_outputs.py`, `guider_adjacent_ccds.py`,
+`guider_science_collections.py`, `fetch_cp_weather.py`, `guider_utils.py`,
+`test_galsim_centroid_convention.py` and the seven notebooks.
+
+**`guider_psfmoments_<night>.parquet` is NOT in this product.** It is the science-CCD side
+of the guider-vs-CCD comparison (`docs/guider_vs_ccd_moments.md`), read from
+`preliminary_visit_image` stamps rather than from guider data, and the plan's product table
+names only the three guider tables. Making it a product is a separate decision, not a 3a
+move.
+
+**`guiderEdgeRecovery.py` is a library by section 2**: `makeTrackerConfig` is imported by
+the builder *and* by two study runners (`run_guider_movie.py`,
+`run_guider_rubintv_plots.py`), and it writes nothing. It moves to `rubinwork/` with a
+shim, the same call as `rubinwork.bounce`.
+
+**`guiderMoments.py` goes into the product, not into `rubinwork/`**, even though one study
+(`guider_atmo_compare.py`) imports `measureStampMoments`, `MomentConfig` and
+`_FWHM_PER_SIGMA` from it. It carries `SCHEMA_VERSION`, which the plan's product table
+names as the variant (`v6` is "the current `guiderMoments` schema"), so the schema and the
+code that writes it stay together. The shim at the old path keeps the study working
+unchanged — the `value_added` precedent, where eight shimmed builders left five bare-name
+importers untouched.
+
+### Readers of the product files, found with `rg` 2026-10-12
+
+Few, and none outside `guider/`:
+
+| reader | reads | kind |
+|---|---|---|
+| `guider/code/combine_moments.py` | the per-seq `*_{moments,stars,metrics}.parquet` | **product** (the combine step) |
+| `guider/code/run_guider_dayplots.py` | `guider_moments_<night>.parquet`, as an argv path | study (rule `plots`) |
+| `guider/guider_moments_ensemble.ipynb` | `output/night_*/guider_moments_*.parquet` by glob, plus the psfmoments glob | study |
+| `guider/run_snake.sh` | names `guider_moments_<night>.parquet` as a target | pipeline driver |
+
+Nothing in another topic reads them. The `guider` hits in `nightlyiq/guider_iq.ipynb`,
+`blocks/camera_rotator_consdb_survey.ipynb` and `aos/snippets.ipynb` are ConsDB
+`visit1_quicklook` `guider_*` columns, a different thing entirely. The eleven
+`guider_atmo_*.py` scripts read `guider_atmo_moments.parquet` — **simulation** output, not
+this product. `astrometry/astrometry_residual_field_v1.ipynb` names `moments_hsm.py` only
+in a markdown provenance note; it does not import it.
+
+### The HSM estimator becomes `rubinwork.hsm_moments`
+
+`optatmo/code/moments_hsm.py` (157 lines, pure `numpy`/`galsim`, writes nothing) is
+imported by three scripts in two topics, so it is a **library** by section 2:
+
+| importer | how it reaches it today |
+|---|---|
+| `guider/code/run_guider_moments.py` | `sys.path.insert(__file__/../../optatmo/code)` inside `makeHsmFunc` |
+| `guider/code/extract_adjacent_psf_moments.py` | the same relative insert |
+| `optatmo/code/extract_psf_moments.py` | plain `sys.path` insert of its own directory |
+
+It moves to `rubinwork/hsm_moments.py` with a shim at `optatmo/code/moments_hsm.py` giving
+the same module object. This also removes the **relative-hop trap**, the import-side
+version of the default-path trap `value_added` hit: `makeHsmFunc`'s
+`__file__/../../optatmo/code` is exactly the kind of hop that breaks silently when a file
+moves. `guider/CLAUDE.md`'s cross-topic coupling table is updated to say the coupling is
+now a library import. The **`hsm_moments` data product stays deferred** — this moves the
+library only.
+
+### Variant and layout: `v6`, with nights as partitions
+
+Per plan sections 3 and 5: an incremental product carries a schema version rather than
+dated builds, so the variant is `v6` — `guiderMoments.SCHEMA_VERSION`, asserted by a test
+so the two can never drift — and nights are partitions under
+`products/guider_moments/v6/nights/<YYYYMMDD>/`, each with its own `manifest.json`
+recording that night's provenance. There is no single `current` build.
+
+Provenance per night, which this product has more of than `value_added` did: the builder
+already stamps `summit_utils_version`, `schema_version` and the seven tracker/moment
+settings into every row's `provenance`, so the night manifest records the same plus the
+**`summit_utils` git commit** — `e57e0f4` on branch `u/aaronroodman/guider-fixes` as of
+2026-10-12. `summit_utils` is **external and is not changed**.
+
+### Step 1 plan: the reference build, and what may differ between two builds
+
+Written **before** the reference build ran, so step 4 has a fixed list to check against.
+
+The smallest build that exercises all three product rules is **one night limited to a few
+exposures**, which is what `--limit` is for. `20260706` is a night already built in the old
+tree, so the discovery query is known to resolve:
+
+```bash
+cd ~/notebooks/rubin-work/guider
+REF=/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/guider_moments/ref
+mkdir -p $REF/night_20260706/seq
+python code/list_guider_exposures.py --day-obs 20260706 \
+    --repo main --collections LSSTCam/raw/guider LSSTCam/raw/all \
+    --image-types science --limit 3 --output $REF/night_20260706/exposures.txt
+# then, for each discovered seqNum S:
+python code/run_guider_moments.py --day-obs 20260706 --seq-num S \
+    --outdir $REF/night_20260706/seq \
+    --repo main --collections LSSTCam/raw/guider LSSTCam/raw/all \
+    --view dvcs --guider-hz 5.0 --min-snr 10.0 --max-ellipticity 0.7 \
+    --edge-margin 3 --min-finite-fraction 0.5 \
+    --ap-nsigma 4.0 --cen-niter 3 --residual-scale 10.0
+python code/combine_moments.py --seqdir $REF/night_20260706/seq \
+    --outdir $REF/night_20260706 --dayobs 20260706
+```
+
+Every flag value is `snake_config.yaml`'s, so the reference is the pipeline's own
+configuration rather than argparse defaults.
+
+**Expected differences between two builds — the fixed list.** Unlike `value_added`, this
+product stamps **no wall-clock timestamp at all**: the per-seq writers record only the
+provenance dict and the tables, and `combine_moments.py` concatenates. So the expectation
+is **zero differing columns in every table**, with two caveats that are about the
+comparison rather than about build-time variation:
+
+| table | caveat |
+|---|---|
+| `*_stars` | `timestamp` is converted from astropy `Time` to MJD floats by `parquetSafe`; it is exposure time, not build time, so it must match exactly |
+| all three | `provenance` carries `summit_utils_version`, which is a package version rather than a clock, so it must match between two runs in one environment |
+
+Any difference at all is therefore unexpected and stops the step.
+
+Comparison keys, to verify unique on the reference before comparing anything:
+
+| table | key |
+|---|---|
+| `<seq>_moments` / `guider_moments_<night>` | `(expId, detector)` |
+| `<seq>_stars` / `guider_stars_<night>` | to verify — likely `(expId, detector, starId, stamp)` |
+| `<seq>_metrics` / `guider_metrics_<night>` | to verify — likely `(expId, detector)` |
+
+The `stars` and `metrics` keys are **summit_utils**' tables, not this repository's, so they
+are read off the reference rather than assumed — the `bounce_kj_stats` lesson, where the
+plan-shaped guess at a key left only 756 of 1,890 rows distinct.
+
+### Baseline `snakemake -n` job counts, before the move (2026-10-12)
+
+| target | jobs | breakdown |
+|---|---|---|
+| no target (`rule all`, `nights: []`) | **1** | `all` only — the config lists no nights |
+| `output/night_20260706/guider_moments_20260706.parquet` | **899** | 898 `moments` + 1 `combine` |
+
+The 898 is a code-change provenance trigger over the night's 899 existing per-seq files,
+not new work. The number to hold constant across the move is the **job table**, rule by
+rule, not the total: the three product rules leave `guider/Snakefile`, so a per-night
+*moments* target will no longer plan in `guider/` at all, and that change is the move
+rather than a defect. Both counts are re-measured after the move and every change
+explained rule by rule.
+
 ## 3a, `value_added` — the move
 
 ### Step 1 plan: the exact commands, and what may differ between two builds
