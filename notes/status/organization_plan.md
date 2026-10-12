@@ -153,8 +153,8 @@ so the two layouts never mix.
 | `cwfs_tables` | snapshot | `aos/code/cwfs/run_wfs_mktable.py`, rule `wfs_mktable` | `.../wfs/<wep version>/` under each param_set | per param_set and CWFS collection |
 | `miw` | snapshot + external | `aos/code/miw/`, rules `build_intrinsic`, `intrinsic_split`, `intrinsic_sidecar`; `ts_intrinsic_wavefront` | `aos/output/miw/<param_set>_<mi_name>/` | `mi_config.yaml` entries, prefixed: `d12-A_50_34_i_5rot`, `d13v1000-A_50_50_i_rbr`, ... |
 | `coadds` | snapshot | `rubinwork/products/coadds/` (moved in 3a; the study stays in `aos/code/coadd/`) | `aos/output/coadd/<P>/50_34*/` | `d12-A_50_34_i_5rot`, `d12-A_50_34_i_5rot_v2` — named for the MIW upstream, not `50_34` |
-| `guider_moments` | incremental | `guider/code/`, `guider/Snakefile` | per-night `<seq>_moments`, `_stars`, `_metrics` parquet (4,763 files each) | `v6` (current `guiderMoments` schema) |
-| `hsm_moments` | deferred | `optatmo/code/moments_hsm.py` | none yet: the study has not started | defined when the study restarts |
+| `guider_moments` | incremental | `rubinwork/products/guider_moments/` (moved in 3a; the study rules stay in `guider/Snakefile`) | per-night `<seq>_moments`, `_stars`, `_metrics` parquet (4,763 files each) | `v6` (the `guiderMoments` schema version) |
+| `hsm_moments` | deferred | the estimator became the library `rubinwork.hsm_moments` in 3a; the product is not started | none yet | defined when the study restarts |
 | `dof_lut` | snapshot | `aos/code/lut/` | `lut`, `lut_dz`, `lut_by_rotbin` parquet | per MIW variant |
 | `bounce_tables` | snapshot | `aos/code/bounce/` (table-writing part) | `bounce_fwhm_metric`, `bounce_dof_stats` parquet | per MIW variant |
 
@@ -426,7 +426,8 @@ register" to three passes over all products. State in
 *3a. Move the code, mechanically.* In dependency order: `cwfs_tables` (**done**); `miw`
 (**done**, plus the official-MIW registrations, which are manifests only); `coadds`
 (**done**); `dof_lut` (**done**) and `bounce_tables` (**done**); `value_added` (**done**,
-code only; the `v1/live` + snapshots layout comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
+code only; the `v1/live` + snapshots layout comes with the rebuild); `guider_moments`
+(**done**). **3a is COMPLETE.** Imports and paths only, no change in results. Each product is
 checked by a small reference build made with the unmoved code and reproduced with the
 moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
 test. Every builder writes its manifest. Split the shared `aos/Snakefile` as each
@@ -570,15 +571,43 @@ differing columns across 8 tables and registries**, with only the seven build-ti
 timestamp columns differing, all on a list committed before the build ran; the merge path
 and both shards match too.
 
-Three **3b** items were discovered by this move, all the same class as `miw`'s
-`decomp_path` — a path built from the long `param_set` key, a layout the tree lost when
-`dir_name` arrived: `build_fam_dz.resolve_paths` names a directory that does not exist (so
-the registered `fam_variant` cannot be rebuilt as recorded), `fam_variant.fits_path`
-records that same dead path, and **`build_optical_state --intrinsic miw` has been broken
-since `b9756aa`** — it passes `intrinsic_ref` as `MiwCornerLookup`'s `mi_name`, but the
-`miw` move fixed `decomp_path` to take the long keys and join their `dir_name`s, so the
-joined name the registry holds now raises `KeyError`. The long keys resolve and reproduce
-the stored result, which is how the reference was built. All three recorded, none fixed.
+Three items were discovered by this move, all the same class as `miw`'s `decomp_path` — a
+path built from the long `param_set` key, a layout the tree lost when `dir_name` arrived.
+Two are **3b** items, recorded and not fixed: `build_fam_dz.resolve_paths` names a
+directory that does not exist (so the registered `fam_variant` cannot be rebuilt as
+recorded), and `fam_variant.fits_path` records that same dead path.
+
+The third, **`build_optical_state --intrinsic miw`**, was **fixed on 2026-10-12**
+(`6d6553a`) rather than deferred: it was a **regression of this reorganization**, broken by
+`b9756aa` making `decomp_path` take the long `(param_set, mi_name)` keys when the builder
+passes the joined `dir_name` the registry holds, so restoring it belongs to 3a's
+no-change-in-results contract. `decomp_path` now accepts the joined build directory name
+too. Verified by rerunning the step-1 MIW reference command as `run_build.sh` issues it:
+13 value columns over 1,017 `optical_state` rows match at zero tolerance, only
+`computed_at` differing.
+
+**`guider_moments` done 2026-10-12**, commits `b4ca14d` (reference build) and `8b488c9`
+(the move, verification and comparison) — the **last product of 3a**, and the second
+incremental one. Three builders plus `guiderMoments.py`, which carries `SCHEMA_VERSION`
+and so *is* the variant, moved to `rubinwork/products/guider_moments/`; the per-night
+layout is `v6/nights/<YYYYMMDD>/` with **one manifest per night**. Two modules became
+**libraries** rather than product code, both shared across topics by the section 2 test:
+`guiderEdgeRecovery.py` → `rubinwork.guider_edge_recovery` (the builder and two study
+runners) and `optatmo/code/moments_hsm.py` → `rubinwork.hsm_moments` (three scripts in two
+topics), which also removed a `sys.path.insert(__file__/../../optatmo/code)` relative hop
+that the move would have broken silently. `hsm_moments` the **data product stays
+deferred**. The three product rules — `discover_night`, `moments`, `combine` — left
+`guider/Snakefile`, where the remaining study rules now resolve the product old tree then
+catalog. Two consequences no earlier product had: moving a **checkpoint** moved the movie
+and rtvplot fan-out, which now reads the product's `exposures.txt` instead of re-querying
+the Butler, and `run_snake.sh --day-obs N` became two sequential runs — the product build
+from the repository root, then the study rules. `summit_utils` is external, unchanged, and
+its commit (`e57e0f4` on `u/aaronroodman/guider-fixes`) is recorded in each night's
+manifest. One shared-code change: `catalog.list_products` now descends into a partition
+layer, without which an incremental product's nights were invisible to `list()`. The
+reference reproduced exactly: **0 differing columns across 3 tables** (169, 52 and 50
+columns) at zero tolerance, both text sidecars and `exposures.txt` byte-identical, and all
+9 per-exposure files identical.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
@@ -792,7 +821,7 @@ depend on the answer. Aaron answers the list when available; answered items move
 - **Phase 3b approach**: the `rotTelPos` fix in `ts_intrinsic_wavefront` and the sidecar
   shrink with `mktable --no-thermal`, as section 8 describes them. Show Aaron the diff
   only if it departs from that description.
-- **Phase 3c batch set**: once 3b lands, the session writes one submit script for the
+**Phase 3c batch set**: once 3b lands, the session writes one submit script for the
   `danish_1_2` `mktable` jobs split by night and shows it once. Aaron's OK on that script
   covers every job it submits, including resubmitting nights that failed for a transient
   reason (node or filesystem error). Anything else is a new ask.

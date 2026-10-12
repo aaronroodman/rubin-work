@@ -1,6 +1,6 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** in progress · **Last updated:** 2026-10-11 · **Kind:** working state (handoff)
+> **Status:** 3a complete, 3b next · **Last updated:** 2026-10-12 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -12,30 +12,9 @@ between sessions.
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
 
-1. **The two `value_added` backfill scripts mutate product tables in place**, which rule
-   5 of the plan's section 2 forbids ("a product build directory is never edited after it
-   completes"). Raised 2026-10-12 by the `value_added` 3a move, which moved them beside
-   the builders and **changed nothing in them**, as was done for
-   `backfill_visit_sides.py`. Both are real fixes to real gaps, so neither is simply
-   wrong:
-   - `backfill_optical_state_pointing.py` fills `optical_state.elevation_deg` and
-     `rotator_angle_deg` from ConsDB. Both are properties of the **visit**, not the
-     variant, so one fetch per night fills every variant's row and no recovery is rerun.
-   - `backfill_commanded_vmodes.py` fills `v_modes_lut` and `v_modes_trim` for rows a
-     **sharded** build could not compute: a shard's own `visit_telemetry` is empty, so the
-     projector found no telemetry row and stored NaN. It runs over the merged database
-     using the same projector a non-sharded build uses, so a backfilled row is
-     indistinguishable from a directly built one.
-   Two routes, for 3c:
-   - **Turn both into build steps** (recommended): the pointing fetch folds into
-     `build_optical_state`, and the commanded-v-mode projection becomes a post-merge step
-     of `run_build.sh`, so a merged database is complete when the build finishes and
-     nothing edits a finished build. Costs one pass over the merge.
-   - **Retire both** and accept that a sharded build leaves those columns NaN until the
-     next full rebuild. Cheaper, but it makes the shard count visible in the data, which
-     is the thing an incremental product should hide.
-   Nothing is waiting on this now — the move is mechanical and both scripts still work
-   through their shims.
+1. ~~**The two `value_added` backfill scripts mutate product tables in place.**~~
+   **Answered 2026-10-12: route 1**, both become build steps in 3c. Moved to "Decisions
+   taken" below; nothing is waiting on it.
 
 2. **`dof_lut`'s input, before it is rebuilt in 3c** (open, raised 2026-10-12). The LUT
    fits the **plain FAM DZ**, so its DOF values are absolute — the reference shows
@@ -48,6 +27,15 @@ the step. Answered items move to "Decisions taken".
 
 ## Decisions taken
 
+- **The two `value_added` backfill scripts: route 1** (Aaron, 2026-10-12). Both become
+  **build steps in 3c**: the pointing fetch folds into `build_optical_state`, and the
+  commanded-v-mode projection becomes a post-merge step of `run_build.sh`. So a merged
+  database is complete when the build finishes and nothing edits a finished build, which
+  is rule 5 of the plan's section 2. **Nothing changes now** — the scripts stayed as they
+  were in the 3a move and still work through their shims. Item 1 of "Decisions for Aaron"
+  is answered by this and is kept there only for the reasoning.
+- **`value_added/code/run_build_PREMOVE_tmp.sh` deleted** with Aaron's OK, commit
+  `bc97ae1`. Nothing to do.
 - **`bounce_tables` split: route (a)**, the shared analysis as a library function both
   halves call (Aaron, 2026-10-12 — confirmed, no longer provisional). The builder calls
   it and writes the tables; the study rule calls it and renders, so all nine PDFs keep
@@ -100,6 +88,10 @@ comparison, manifest.
 | `fb14ab5` | `value_added` 3a step 1 plan: the exact commands and the expected-difference list, fixed before the build ran |
 | `102cef7` | `value_added` 3a step 2: the move, the product reader, the shims, the manifest rule and the doc fixes |
 | `21e8bf0` | `value_added` 3a step 3: the verification |
+| `6d6553a` | the MIW-route regression fixed: `decomp_path` takes the joined build name |
+| `e11e731` | `guider_moments` 3a step 1 plan: scope, readers, layout and the reference-build commands |
+| `b4ca14d` | `guider_moments` 3a step 1: the reference build with the unmoved code |
+| `8b488c9` | `guider_moments` 3a step 2-4: the move, the two libraries, the shims, verification and the zero-tolerance comparison |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -209,6 +201,17 @@ variant's provenance exists only as `state_variant.created_at` plus the batch lo
 is what made the log the deciding evidence here. The plan's section 6 already lists adding
 the code git commit and build time to `fetch_log`; this is the concrete reason it matters.
 
+**Phase 3a, `guider_moments`, is DONE** (`b4ca14d` the reference build, `8b488c9` the
+move, verification and comparison) — and with it **phase 3a is complete**. The moved code
+reproduces the reference exactly: **0 differing columns across 3 tables** (169, 52 and 50
+columns) at zero tolerance on verified-unique keys, both text sidecars and `exposures.txt`
+byte-identical, and all 9 per-exposure files identical. 350 product tests pass; import
+smoke test unchanged at 59/59 modules. `snakemake -n` in `guider/` is unchanged at 1 job
+for `rule all`, and every per-night job-table change is accounted for rule by rule.
+
+**The MIW route is fixed** (`6d6553a`), not deferred to 3b: it was a regression of the
+reorganization rather than a pre-existing defect. See "The MIW route regression" below.
+
 **Phase 3a, `value_added`, is DONE** (`102cef7` the move, `21e8bf0` the verification,
 and the step-4 comparison below). The moved code reproduces the reference exactly — **0
 unexpected differing columns across 8 tables and registries** (196, 13, 27, 14, 7, 10, 13
@@ -220,74 +223,88 @@ shard plan in both modes.
 
 ## Next concrete action
 
-**Phase 3a for `guider_moments`**, the last product. `value_added` is finished and
-pushed; every other product is done.
+**Phase 3b**, the intended fixes. **Phase 3a is COMPLETE**: every one of the eight
+products has moved, each verified by a zero-tolerance reference comparison, and
+`hsm_moments` stays deferred as the plan says.
 
-`guider_moments` is the second **incremental** product, so `value_added` is its worked
-example rather than any of the five snapshot products. What carried over, and what will
-differ:
+### The 3b items, and what each is checked against
 
-- **The default-path trap is the thing to look for first.** `value_added`'s reader
-  resolved its database from its own `parents[1]`; the move changed which directory that
-  named, so the anchor had to become the repository root rather than the hop count being
-  adjusted. Check `guider/code/` for the same shape — any `parents[N]` that means "my
-  topic directory" rather than "the repo root" breaks silently on the move.
-- **A shim must give the same module object**, `sys.modules[__name__] = _real`, not a
-  namespace copy. `value_added` has eight shimmed builders plus the reader, and the test
-  that proves it has to run **one fresh interpreter per shim**: in a single process a
-  sibling's `sys.path` bootstrap can legitimately load the same file twice, and an
-  in-process identity check then compares the wrong pair.
-- **A scratch build must write no manifest.** `write_manifest.is_catalog_build` decides by
-  **path**, not by a flag, so a reference build or a shard cannot be registered even if
-  the wrong argument is passed. `guider_moments` builds per night, so it needs the same
-  guard.
-- **`load()` can return a connection rather than data.** `value_added`'s build is one
-  2.8 GB DuckDB file and every read function already takes a `con`, so `load` is an alias
-  of `connect`. Decide what `guider_moments.load` should hand back before writing it.
-- **Expect a per-night provenance gap.** `fetch_log` records only the telemetry builder's
-  EFD groups, so a state build's provenance is its batch log plus
-  `state_variant.created_at`. Plan section 6 already lists adding the code git commit and
-  build time; check whether `guider_moments` has the same hole.
+Pre-approved by section 12 of the plan: the `rotTelPos` fix in `ts_intrinsic_wavefront`
+and the sidecar shrink. Show Aaron a diff only if the work departs from that description.
 
-Then phase 3a is complete and **3b** begins. Two 3b items were discovered by the
-`value_added` move and are recorded in its section below, both of the same class — a path
-built from the long `param_set` key, a layout the tree lost when `dir_name` arrived:
-`build_fam_dz.resolve_paths`, and `fam_variant.fits_path` pointing at a directory that does
-not exist. A third, `build_optical_state --intrinsic miw`, turned out to be a **regression
-of the reorganization** rather than pre-existing and was fixed on 2026-10-12 instead —
-see "The MIW route regression" below.
+| # | item | where it was found | the reference build it is checked against |
+|---|---|---|---|
+| 1 | **`rotTelPos`** in `ts_intrinsic_wavefront`: the donut-metadata rotator angle the FAM tables carry, differing from ConsDB `physical_rotator_angle` by up to about 0.30 deg of camera rotator angle on the blitz path | plan section 8, pre-approved | a `fam_tables` `danish_1_2` reference, then a `miw` rebuild on it: the DZ fits move, so the comparison is **expected to differ** and the check is that it differs *only* in the rotator-dependent terms |
+| 2 | **the sidecar shrink**, `mktable --no-thermal` | plan section 8, pre-approved | the `miw` 3a reference (`d81cc3d`): the sidecar's size drops, every other table identical at zero tolerance |
+| 3 | **`build_fam_dz.resolve_paths`** builds `<aos_output>/<param_set>/fits.parquet` from the **long** param_set key, and `fam_variant.fits_path` records a directory that does not exist | `value_added` 3a step 1 | the `value_added` 3a `fam_dz` reference: 2,528 FAM pairs, 14 columns. Today it is reachable only with `--aos-output ../aos/output/fam_processing --param-set danish_1_2`; after the fix the **registered variant's own `fits_path`** must resolve and give the same table |
+| 4 | **`fam_variant.fits_path`** itself, the registry row behind item 3 | the same | the same reference; the fix changes a registry row, so the check is that the row resolves and the rebuilt `fam_dz` matches at zero tolerance apart from `computed_at` |
+| 5 | **`d12-refitWcs_2025` folded into `d12-refitWcs`**, and **`danish_1_0` retired whole** | `cwfs_tables` 3a | the `cwfs_tables` 3a reference (`71a345f`): `aos/param_sets.yaml` must stay byte-identical except for the entries deliberately removed, and `snakemake -n` in `aos/` must lose exactly the retired variant's jobs |
 
-**Constraints found the hard way in the `bounce_tables` split, which the `value_added`
-move will meet too:**
+Two items are **decisions, not fixes**, and are in "Decisions for Aaron" above:
+`dof_lut`'s input before 3c rebuilds it, and the two `value_added` backfill scripts
+(answered: route 1, both become build steps in **3c** — nothing changes in 3b).
+
+### Where to start
+
+Items 1 and 2 are the pre-approved pair and touch the external package, so they go first
+and together: one `fam_tables` reference build, the `ts_intrinsic_wavefront` change, then
+a `miw` rebuild on it. Items 3 and 4 are one change to one builder plus its registry row
+and are independent of the rest. Item 5 is config-only.
+
+**Read before starting 3b**: the plan's section 8 Phase 3 part for the pre-approved
+description, and this file's `value_added` and `cwfs_tables` sections for the two
+references items 3 to 5 are measured against.
+
+## Constraints found the hard way in 3a, which 3b and 3c will meet too
+
+Carried forward from the `bounce_tables`, `value_added` and `guider_moments` moves.
 
 - **A declared conditional output fails a legitimate run.** `dof_lut` taught "declare
   every output"; `bounce_tables` showed the limit — seven of its nine PDFs depend on what
   the run finds, so declaring them would have turned a healthy build into a failure. Check
-  whether an output is unconditional before declaring it. `value_added` has the same shape:
-  a night with no corner-WFS quicklook yields no `optical_state` rows at all.
+  whether an output is unconditional before declaring it. `guider_moments`'
+  `detector_counts_<night>.txt` *is* unconditional, so it is declared.
 - **Do not predict a job-count change from the product's name.** The handoff predicted
   `aos/` 34 → 31 because every earlier product's rule left; `bounce`'s rule survived and
-  the count did not move. Run `snakemake -n` before and after and diff the job table, do
-  not reason about it. `value_added` has no `aos/Snakefile` rule at all, so the expected
-  change there is **zero jobs** — which still has to be shown, not assumed.
+  the count did not move. `guider_moments` moved a **checkpoint**, which changed *when*
+  the study fan-out is planned rather than how much work there is. Run `snakemake -n`
+  before and after and diff the job table, do not reason about it.
+- **Moving a checkpoint moves a fan-out.** Any study rule that fanned out from a product's
+  checkpoint loses its source. Have it read the product's own listing through the resolver
+  rather than re-deriving it — a second Butler query would be a second definition of the
+  same set and could disagree.
+- **A relative hop between topics breaks silently on a move.** `makeHsmFunc`'s
+  `sys.path.insert(__file__/../../optatmo/code)` would have resolved to a non-existent
+  path and returned `None`, dropping every `hsm_*` column with no error. The import-side
+  twin of `value_added`'s default-path trap. Grep a moving file for `..` in a path before
+  moving it.
+- **A shim must give the same module object**, `sys.modules[__name__] = _real`, not a
+  namespace copy, and the identity test needs **one fresh interpreter per shim**: in a
+  single process a sibling's `sys.path` bootstrap can legitimately load the same file
+  twice, and an in-process check then compares the wrong pair.
 - **Check an "unused import" against the pre-move state before fixing it.**
-  `bounce_lib.py` had five genuinely unused imports before the split; attributing them to
-  the move would have been wrong. `git stash` + `pyflakes` is the cheap way to tell.
-- **A re-export module reads as "unused import" to pyflakes** even with `# noqa: F401`.
-  That is expected for the shim and the re-export, not a defect to fix.
-- **A test that matches docstring prose breaks on correct code.** Three of the new tests
-  failed first because they grepped for `aos/code` and `bounce_kj_stats.parquet` in whole
-  files, where both legitimately appear in comments explaining the move. Assert on the
-  import lines or the non-comment lines instead.
+  `bounce_lib.py` had five genuinely unused imports before the split and
+  `guider/code/extract_adjacent_psf_moments.py` has four; attributing them to the move
+  would be wrong. `git stash` + `pyflakes` is the cheap way to tell. **Use `git stash` with
+  care when the move has left untracked files** — `git stash pop` refuses to overwrite an
+  untracked file of the same name, and the stash then has to be inspected rather than
+  trusted.
+- **A test that matches docstring prose breaks on correct code.** Assert on the import
+  lines, the declared rule outputs or the non-comment lines, not on whole-file text, where
+  the old name legitimately appears in a comment explaining the move.
+- **A wildcard must appear in every output and log of a rule.** A `{night}` wildcard beside
+  a fixed `skipped_visits.txt` output raises `RuleException`. A one-partition-per-invocation
+  Snakefile takes the partition from `--config` instead.
+- **`--config` and `--resources` are greedy.** A target after either is swallowed; put the
+  target last behind `--`, or before the greedy flag.
 
 **Not attempted, deliberately:** `aos_fwhm.py` was left as a flat `aos/code/` module. It
 is a library by the section 2 rules — 88 lines, pure computation, writes nothing, already
-reached from `rubinwork.open_loop` — and `rubinwork/bounce/analysis.py` now reaches it by
-the same lazy path insert. Promoting it is a separate change to a sibling topic's flat
-modules, which the root `CLAUDE.md` pins, and was outside this step's scope. It is a
-candidate for whenever the flat `aos/code/` modules move.
-
-After `value_added`: **phase 3a for `guider_moments`**, the last product.
+reached from `rubinwork.open_loop` — and `rubinwork/bounce/analysis.py` reaches it by a
+lazy path insert. Promoting it is a separate change to a sibling topic's flat modules,
+which the root `CLAUDE.md` pins. A candidate for whenever the flat `aos/code/` modules
+move. The same applies to `guider/code/guider_utils.py`, which only one notebook imports
+and which therefore is not yet a library by the section 2 test.
 
 ## 3a, `guider_moments` — the move
 
@@ -496,6 +513,124 @@ rule, not the total: the three product rules leave `guider/Snakefile`, so a per-
 *moments* target will no longer plan in `guider/` at all, and that change is the move
 rather than a defect. Both counts are re-measured after the move and every change
 explained rule by rule.
+
+### 3a step 2 — the move: DONE (commit `8b488c9`)
+
+What moved, and what each thing became:
+
+| from | to | shim at the old path |
+|---|---|---|
+| `guider/code/run_guider_moments.py` | `rubinwork/products/guider_moments/builders/` | yes |
+| `guider/code/combine_moments.py` | the same | yes |
+| `guider/code/list_guider_exposures.py` | the same | yes |
+| `guider/code/guiderMoments.py` | `rubinwork/products/guider_moments/` | yes |
+| `guider/code/guiderEdgeRecovery.py` | `rubinwork/guider_edge_recovery.py` (**library**) | yes |
+| `optatmo/code/moments_hsm.py` | `rubinwork/hsm_moments.py` (**library**) | yes |
+
+New in the product package: `__init__.py`, `reader.py`, `variants.yaml`,
+`write_manifest.py`, `compare_builds.py`, `Snakefile`, `builders/__init__.py` and
+`tests/test_guider_moments.py`.
+
+**Every shim registers the real module**, `sys.modules[__name__] = _real`, and the three
+builder shims also keep `python guider/code/<name>.py ...` working through
+`_real.main()`. Module identity is asserted in a **fresh interpreter per shim** — six of
+them — for the same reason `value_added` needed it.
+
+**`guider/Snakefile` keeps the study rules and resolves the product.** `momentsDir(night)`
+returns the old-tree `output/night_<night>/` when `guider_moments_<night>.parquet` is
+there, else the catalog's `v6/nights/<night>/` partition, else the old-tree path so a
+rule's own gate reports the missing file as before. An `onstart` handler prints which
+source each night resolved to, as `aos/Snakefile` does.
+
+Three things the move settled that the earlier products did not meet:
+
+1. **The study rules lost their fan-out source.** `movie`/`movies` and
+   `rtvplot`/`rtvplots` fanned out from the `discover_night` **checkpoint**, which is a
+   product rule and left with it. They now read the product's own `exposures.txt` through
+   the resolver (`nightSeqNums`) rather than re-querying the Butler — a second Butler
+   query would have been a second definition of "the night's guider exposures", and could
+   disagree with the one the product built from.
+2. **`run_snake.sh` had to become two runs, not one.** A whole night is the product build
+   (from the **repository root**) followed by the study rules (from `guider/`), so
+   `--day-obs N` now runs the product Snakefile for each night and then the study targets,
+   in order, inside the same local run or the same sbatch job. The per-night target list
+   lost `guider_moments_<night>.parquet`, which has no producer in `guider/` any more.
+3. **The product Snakefile takes the night from `--config`, not from a wildcard.** A
+   `{night}` wildcard made `rule combine` raise `RuleException`: `skipped_visits.txt` and
+   the rule's log carry no wildcard, and snakemake requires every output and log of a rule
+   to carry the same ones. `seqNum` is the only wildcard; a test asserts that.
+
+**The relative-hop trap, found and removed.** `makeHsmFunc` did
+`sys.path.insert(__file__/../../optatmo/code)` — the import-side version of the
+default-path trap `value_added` hit, and it would have resolved to
+`rubinwork/products/optatmo/code` after the move, silently returning `None` and dropping
+every `hsm_*` column with no error. The library import removes the hop; a test asserts the
+string `optatmo` no longer appears in the builder.
+
+**Two `optatmo/code/extract_psf_moments.py` imports became unused** (`os`, `sys`) and were
+removed. Checked against the pre-move state with `git stash` + `pyflakes` first, as the
+`bounce_tables` split taught: the four pyflakes warnings in
+`guider/code/extract_adjacent_psf_moments.py` are **pre-existing** and were left alone.
+
+**One shared-code change outside the product**: `catalog.list_products` descends one level
+into a partition layer, so a directory under a variant that carries no manifest but whose
+children do — the `nights/` layer — contributes one entry per child with ``build`` as
+`"nights/<night>"`, which is what `catalog.path` takes. Without it an incremental
+product's nights were invisible to `list()` and so to the generated `PRODUCTS.md`.
+
+### 3a step 3 — verification: DONE
+
+| check | result |
+|---|---|
+| import smoke test | **59 of 59 modules import**, and the inventory is **unchanged** — `--compare` reports "all 59 module import outcomes identical" |
+| product tests | **350 pass** (315 before this product + 35 new); no pre-existing test needed changing |
+| `pyflakes` on every new and moved file | clean |
+| `snakemake -n` in `guider/`, no target | **1 job** (`all`), unchanged — `nights: []` in the config |
+| `snakemake -n` in `guider/`, the moments target | `MissingRuleException`, **as intended**: that file is the product's now |
+| product Snakefile dry run | 4 jobs — `discover_night`, `combine`, `manifest`, `all` — plus the per-exposure fan-out the checkpoint adds |
+| `run_snake.sh --day-obs 20260706 --limit 3 -n` | runs both: 4 product jobs then 20 study jobs |
+
+**The `guider/` job-count change, rule by rule.** For the five per-night targets a
+pre-move run planned **6 jobs**: `discover_night` 1, `combine` 1, `psfmoments` 1,
+`movies` 1, `rtvplots` 1, `plots` 1 (the `moments` fan-out appears only after the
+checkpoint resolves). After the move the same work is **4 product jobs + 20 study jobs**:
+
+* `discover_night` and `combine` moved to the product, as did the `moments` fan-out: −2
+  planned jobs in `guider/`, and the product's own DAG gains them plus `manifest` and
+  `all`.
+* `plots` and `movies` are **absent** from the post-move study count because both outputs
+  already exist for this night and are up to date — not because they were lost. `plots`
+  now takes its input through the resolver.
+* `rtvplot` went from **0 planned to 18**, with `rtvplots` still 1. Same total work: the
+  18 were previously hidden behind the checkpoint and appeared only after it resolved,
+  whereas `nightSeqNums` reads `exposures.txt` directly and so plans them at DAG time.
+  18 = 899 discovered exposures strided by `movie_stride = 50`.
+
+### 3a step 4 — the comparison: DONE, exact match
+
+The reference built with the unmoved code, reproduced by running the **product Snakefile**
+end to end into a second scratch root, at zero tolerance on the keys verified unique on
+the reference:
+
+| table | rows | columns compared | result |
+|---|---|---|---|
+| `guider_moments` | 14 | **169** | **identical** |
+| `guider_stars` | 1,835 | **52** | **identical** |
+| `guider_metrics` | 3 | **50** | **identical** |
+
+271 columns compared in total (count, dimensionless), **0 differing**, and the expected
+difference list was **empty before the build ran** — this product writes no build-time
+timestamp anywhere, so there was nothing a second run could legitimately change.
+
+Also identical: both text sidecars **byte for byte** (`skipped_visits.txt` and
+`detector_counts_20260706.txt`), `exposures.txt` byte for byte — so the moved discovery
+query returns the same three exposures — and **all 9 per-exposure files** (3 exposures x 3
+tables), compared individually on the same keys.
+
+**No manifest was written anywhere under `_phase2_refbuild/`**: a `find` over the whole
+scratch tree returns nothing. `write_manifest.is_catalog_build` decides by path, so the
+`manifest` rule fails by design on a scratch `night_root`, and the reference build was run
+up to `combine`.
 
 ## 3a, `value_added` — the move
 
