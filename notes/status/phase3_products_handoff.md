@@ -589,6 +589,7 @@ product's nights were invisible to `list()` and so to the generated `PRODUCTS.md
 | `snakemake -n` in `guider/`, the moments target | `MissingRuleException`, **as intended**: that file is the product's now |
 | product Snakefile dry run | 4 jobs — `discover_night`, `combine`, `manifest`, `all` — plus the per-exposure fan-out the checkpoint adds |
 | `run_snake.sh --day-obs 20260706 --limit 3 -n` | runs both: 4 product jobs then 20 study jobs |
+| `snakemake -n` in `aos/` | **unchanged at 34 jobs** — nothing in `aos/` was touched, and the one shared-code change (`catalog.list_products`) is not on that Snakefile's path |
 
 **The `guider/` job-count change, rule by rule.** For the five per-night targets a
 pre-move run planned **6 jobs**: `discover_night` 1, `combine` 1, `psfmoments` 1,
