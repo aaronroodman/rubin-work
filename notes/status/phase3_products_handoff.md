@@ -69,6 +69,9 @@ comparison, manifest.
 | `7d23afd` | `dof_lut`'s plain-FAM-DZ projection recorded as under review (Aaron's call) |
 | `d54e5bd` | 3a step 1 for `dof_lut` and `bounce_tables`: both reference builds, scope and variants |
 | `ed53b39` | 3a steps 2-4 for `dof_lut`: the move, verification and the zero-tolerance comparison |
+| `26cbbfd` | the `run_bounce.py` split mapped section by section before cutting it |
+| `884fb18` | 3a step 2a for `bounce_tables`: `rubinwork.bounce`, the shared library, and the four `smatrix` imports |
+| `3adce0f` | 3a steps 2-4 for `bounce_tables`: the split, verification and the zero-tolerance comparison |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -87,48 +90,58 @@ exactly — 0 differing columns across 3 tables (7, 6 and 7 columns), 0 differin
 across 16 parquet schema-metadata fields and 11 provenance keys, at zero tolerance.
 `aos/` `snakemake -n` went 37 → 34 jobs, −3 for `build_lut` as predicted.
 
+**Phase 3a, `bounce_tables`, is DONE** (`884fb18` the library, `3adce0f` the split,
+verification and comparison). The split code reproduces the reference exactly — 0
+differing columns across 4 tables (17, 24, 9 and 11 columns) at zero tolerance on
+verified-unique keys, and all 9 study PDFs identical in size. `aos/` `snakemake -n` is
+**unchanged at 34 jobs**, not 31: the handoff's predicted −3 assumed `rule bounce` would
+go away, and it survives as the plotting half. Only the file `rule all` names changed,
+from `bounce_kj_stats.parquet` to `bounce_summary.pdf`; the rule still plans its 3 jobs.
+
+What the split settled, in case a later product has the same shape:
+
+- **Route (a), confirmed by Aaron 2026-10-12.** The reduction became
+  `rubinwork.bounce` — `legs` (the 24 pure functions, moved verbatim, plus `DEFAULT`,
+  `DEFAULT_BOUNCES`, `DOF22`, `CAM_HEX_DOF` and a new `resolve_config`) and
+  `analysis.run_analysis`, which returns a `BounceAnalysis` dataclass. Both halves call it.
+  `bounce_lib.py` keeps the ~20 plotters and **re-exports every moved name**, so its
+  existing callers are unaffected and no caller outside had to change.
+- **The manifest's one upstream is `miw`**, not `fam_tables` — the build reads the MIW
+  build's fit table. The opposite assignment from `dof_lut`, which reads the plain FAM
+  tables; `fam_variant` goes under `config` here. A test asserts `fam_tables` is not in
+  `inputs`.
+- **Two of the nine PDFs are declared in `aos/Snakefile`, not all nine.** Seven are
+  conditional on what the run finds — five on the OFC SVD building, one on a bounce having
+  a `camera_hexapod_only` leg, two on `lsst.ts.wep` — so declaring them would fail a
+  legitimate run. That is the opposite call from `dof_lut`'s `lut_by_rotbin.parquet`,
+  which was declared because every variant has the column it needs. The product Snakefile
+  declares all four tables.
+- **`bounce_kj_stats` needs `night` in its key.** Without it only 756 of the 1,890 rows
+  are distinct, so the plan-shaped guess would have compared the wrong rows. A test
+  asserts both halves of that.
+- **`key_is_unique` moved** from `dof_lut`'s `compare_builds` into `fam_tables`', the
+  shared comparison module both import. `bounce_tables` needs no mapping comparison: this
+  builder stamps no schema metadata and writes no frozen provenance file.
+- **`aos_fwhm` is reached lazily by path insert** from `rubinwork/bounce/analysis.py`,
+  inside a function, the same idiom `rubinwork.open_loop` already uses. It is a library by
+  the section 2 rules and should move into `rubinwork/` when the flat `aos/code/` modules
+  do; a copy would be a second definition of the one correctable-FWHM metric in the repo.
+- The one cross-study reader, `aos/code/cwfs_lut/bounce_compare.py`, resolves old tree then
+  catalog, keyed on the run directory name through `_bounce_variant`.
+
+268 product tests pass (222 + 46); import smoke test unchanged at 63/63 modules.
+
 ## Next concrete action
 
-**Phase 3a step 2 for `bounce_tables`: the move.** `dof_lut` is finished and pushed; only
-`bounce_tables` is left in this pair. Its step 1 is done — the reference build is the full
-production run (13 files, 167.6 s of wall clock) and every comparison key is verified
-unique. Scope, variants and the three decisions Aaron made on 2026-10-11 are in the
-`dof_lut` and `bounce_tables` section below; read it before moving anything, since two of
-them supersede the plan.
+**Phase 3a for `value_added`, code only.** Every product before it is done. Scope,
+decisions and the checks are below in the `value_added` section; read that before moving
+anything. In outline: the builders (`build_efd_db`, `build_optical_state`, `build_fam_dz`,
+`build_m1m3_thermal_r2`, `merge_db_shards`, the backfill scripts, `run_build.sh`) move to
+`rubinwork/products/value_added/builders/` and `efd_db.py` becomes the product reader,
+with shims at every old path giving the same module objects. The `v1/live` + snapshots
+layout and the registry-row renaming wait for the rebuild in 3c.
 
-What the `dof_lut` move settled, reusable here: each variant names one `miw` variant and
-the reader derives `param_set`, `mi_name` and `fam_variant` from it rather than copying
-the mapping out of the generated `mi_config.yaml`; a settings-only MIW entry goes under
-the manifest's `config`, not `inputs`; and `compare_builds` gained a mapping comparison
-(`compare_mappings`, `_report_mapping`) that `bounce_tables` does not need but which is
-the pattern for checking anything outside the table rows.
-
-What the `bounce_tables` move commit has to do, beyond the mechanical pattern the four
-earlier products set:
-
-1. **Split `run_bounce.py` at `:700`.** Everything to `:700` plus the four `to_parquet`
-   calls is the builder; the nine `PdfPages` blocks stay as the study. The table data all
-   comes from the `:479`-`:700` analysis block, so no physics moves.
-2. **`rubinwork.bounce`, a new library**, so the four `smatrix` imports stop reaching into
-   `aos/code/bounce/`. Three names are all they need. Fix `bounce_lib.rbr_module()`'s
-   `sys.path` insert in the same commit.
-3. **`bounce` keeps a rule in `aos/Snakefile`** — the plotting half. This is the first
-   product whose rule survives the move, so the −3 has to be accounted against a rule that
-   still exists.
-4. **Declare every output.** `bounce` writes 13 files against the 2 it declares. (Done for
-   `dof_lut`: 5 declared against 3 before.)
-5. `bounce_tables/variants.yaml` must keep resolving the live `bounce:` override at
-   `aos/analysis_config.yaml:180`, which is keyed on the long param_set and redefines the
-   T720 legs as a five-point sweep.
-
-Then steps 3 and 4, as `coadds` did: `snakemake -n` with every job-count change explained
-(**34 → 31 now**, since `dof_lut` already took its −3), the catalog bridge extended to the
-study readers, the import smoke test, all product tests, then the zero-tolerance
-comparison.
-
-The one `bounce_tables` cross-study reader is `aos/code/cwfs_lut/bounce_compare.py:132`,
-which hardwires `aos/output/bounce/<run>/` with `DEFAULT_BOUNCE_RUN` at `:60` — give it the
-old-tree-then-catalog resolver, as `dof_lut` did for `compare_fam_processings`' DOF page.
+After `value_added`: **phase 3a for `guider_moments`**, the last product.
 
 ## 3a, `cwfs_tables` — the move
 

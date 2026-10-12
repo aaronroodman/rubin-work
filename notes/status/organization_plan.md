@@ -80,7 +80,7 @@ Wrong-way imports found on 2026-10-08, to remove during migration:
 | importer | imports from | fix |
 |---|---|---|
 | `aos/code/psf_maps_lib.py` | `run_wfs_mimic._wedge_medians` (CWFS study) | move `_wedge_medians` into a library |
-| `smatrix/code/regularized_inversion/` | `aos/code/bounce/` (4 imports) | bounce tables become a product; shared code into a library |
+| ~~`smatrix/code/regularized_inversion/`~~ | ~~`aos/code/bounce/` (4 imports)~~ | **done 2026-10-12** (`884fb18`): the reduction is the library `rubinwork.bounce` and the tables are the `bounce_tables` product |
 | `aos/code/closed_loop/`, `aos/code/psf/` | `aos/code/cwfs/` | shared code into a library |
 | `optatmo` | reads `wfs_corner_compare.parquet` (CWFS study output) | promote to a small product or recompute |
 | `blocks` | reads `t<N>_closedloop_aos_*.parquet` from `aos` | same |
@@ -425,7 +425,7 @@ register" to three passes over all products. State in
 
 *3a. Move the code, mechanically.* In dependency order: `cwfs_tables` (**done**); `miw`
 (**done**, plus the official-MIW registrations, which are manifests only); `coadds`
-(**done**); `dof_lut` (**done**) and `bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout
+(**done**); `dof_lut` (**done**) and `bounce_tables` (**done**); `value_added` (code only; the `v1/live` + snapshots layout
 comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
 checked by a small reference build made with the unmoved code and reproduced with the
 moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
@@ -522,6 +522,30 @@ DOF page of `compare_fam_processings.py` built `output/<long param_set>/<mi>/lut
 same dead layout as `miw`'s `decomp_path`, and now resolves old tree then catalog. The
 reference reproduced exactly: **0 differing columns across 3 tables, 0 differing fields
 across 16 schema-metadata fields and 11 provenance keys** at zero tolerance.
+
+**`bounce_tables` done 2026-10-12**, commits `884fb18` (the shared library) and `3adce0f`
+(the split, verification and comparison). The only product that is **split** rather than
+moved: `run_bounce.py`'s four tables became the product and its nine PDFs stayed, so
+**`rule bounce` survives in `aos/Snakefile`** as the plotting half — the first moved
+product whose rule is not removed, and the reason `snakemake -n` in `aos/` is **unchanged
+at 34 jobs** rather than the predicted 31. Only the file `rule all` names changed, from
+`bounce_kj_stats.parquet` to `bounce_summary.pdf`. The reduction became the library
+`rubinwork.bounce` (`legs` plus `analysis.run_analysis`), which both halves call — route
+(a), confirmed by Aaron 2026-10-12, because three of the nine pages plot per-visit arrays
+no table carries; it costs a second 170 s run of the analysis when both halves are built,
+and writing those arrays as a fifth table is the recorded later option.
+`aos/code/bounce/bounce_lib.py` keeps the ~20 plotters and re-exports every moved name, so
+the four `smatrix/code/regularized_inversion/` imports — the last of the five wrong-way
+imports in section 2's table — now reach the library, and `rbr_module()`'s `sys.path`
+insert is gone. Four variants keyed on **(`miw_variant`, `fits`)**: `_july` is its own
+variant rather than a build, Aaron's call 2026-10-11, because its input is a different fit
+table. The manifest's one upstream is **`miw`**, not `fam_tables` — the opposite
+assignment from `dof_lut`, since this build reads the MIW build's fit table. Four table
+outputs are declared against the 2 of 13 files the `aos/` rule declared, but only **two of
+the nine PDFs** are declared by the surviving study rule: seven are conditional on what the
+run finds, so declaring them would fail a legitimate run. The reference reproduced exactly:
+**0 differing columns across 4 tables** (17, 24, 9 and 11 columns) at zero tolerance, and
+all nine PDFs identical in size.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
