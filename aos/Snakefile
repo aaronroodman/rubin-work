@@ -545,7 +545,11 @@ rule all:
         expand("output/correlations/{d}/vmode_correlations_50_34.pdf", d=MI_DTAGS),
         expand("output/correlations/{d}/vmode_correlations_22_12.pdf", d=MI_DTAGS),
         expand("output/correlations/{d}/dz_explained.pdf", d=MI_DTAGS),
-        expand("output/bounce/{d}/bounce_kj_stats.parquet", d=MI_DTAGS),
+        # The four bounce TABLES moved to the bounce_tables product in phase 3a; the
+        # nine PDFs are this study's half, so the rule survives and `rule all` now
+        # targets its summary figure instead of bounce_kj_stats.parquet.  See
+        # rubinwork/products/bounce_tables/Snakefile.
+        expand("output/bounce/{d}/bounce_summary.pdf", d=MI_DTAGS),
 
 # ---- FAM tables: mktable / fit / combine_* / attach_telemetry moved out ----
 # Phase 2 of notes/status/organization_plan.md moved these six rules into the
@@ -854,6 +858,21 @@ rule thermal_correlations:
 # fits.parquet now holds ALL visits (--no-quality-cut); the bounce applies a
 # relaxed CCD-count cut (--min-detectors 160) so marginal low-CCD elevation-40
 # points are kept.  Other consumers apply visit_quality_pass (nd>=170).
+#
+# THE PLOTTING HALF.  Phase 3a of notes/status/organization_plan.md split the four
+# tables this rule used to write into the bounce_tables product; the nine PDFs stay here,
+# because a figure no code reads back is a study output.  So unlike the cwfs_tables, miw,
+# coadds and dof_lut rules, this rule is not removed — it loses only the
+# bounce_kj_stats.parquet output.  Both halves call
+# rubinwork.bounce.analysis.run_analysis for the same reduction; see
+# rubinwork/products/bounce_tables/__init__.py for why.
+#
+# TWO of the nine PDFs are declared, not all nine.  Seven are CONDITIONAL on what the
+# run finds: five on the OFC SVD building (lsst.ts.ofc), one on a bounce having a
+# camera_hexapod_only leg, and the two FWHM figures on lsst.ts.wep.  Declaring a
+# conditional output makes a legitimate run fail, which is the opposite of the dof_lut
+# case where lut_by_rotbin.parquet was declared because every variant has the column it
+# needs.  bounce_dz_vs_ordinal.pdf and bounce_summary.pdf are written unconditionally.
 rule bounce:
     input:
         fits     = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
@@ -861,8 +880,8 @@ rule bounce:
         lib      = "code/bounce/bounce_lib.py",
         ofc      = f"{WF_LIB}/ofc_svd.py",
     output:
-        summary = "output/bounce/{d}/bounce_summary.pdf",
-        stats   = "output/bounce/{d}/bounce_kj_stats.parquet",
+        summary    = "output/bounce/{d}/bounce_summary.pdf",
+        dz_ordinal = "output/bounce/{d}/bounce_dz_vs_ordinal.pdf",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],

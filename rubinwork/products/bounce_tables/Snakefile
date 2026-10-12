@@ -1,0 +1,157 @@
+# ----------------------------------------------------------------------
+# bounce_tables product build (Snakemake).  One rule: build_bounce_tables reduces one
+# Double-Zernike (DZ) fit table into the time-ordered paired-difference optical-state
+# change across each full-array-mode telescope-position bounce leg, under five recovery
+# schemes.  Then the manifest closes the build.
+#
+# Split out of aos/ in phase 3a of notes/status/organization_plan.md, where
+# `rule bounce` wrote both the four tables and the nine PDFs.  THAT RULE SURVIVES in
+# aos/Snakefile as its PLOTTING half -- the first moved product whose aos/ rule is not
+# removed -- because a figure no code reads back is a study output, not product data.
+# So aos/ loses only the rule's 2 declared table outputs from `rule all`, not the rule.
+#
+#   snakemake -s rubinwork/products/bounce_tables/Snakefile -n \
+#       --config variant=d12-A_50_34_i_5rot_july build=20261012 miw_build=20261007
+#
+# Run from the REPOSITORY ROOT, so that aos/mi_config.yaml and aos/analysis_config.yaml
+# resolve (see RUN_CWD below).
+#
+# ONE UPSTREAM: a miw build supplies the fit table, whose name is the variant's `fits`
+# key -- fits.parquet for three variants, the hand-made fits_july.parquet for the fourth.
+# The fam_tables variant behind it is recorded under the manifest's `config`, not its
+# `inputs`, because the build reads the MIW build's fit table rather than the FAM tables.
+# That is the opposite assignment from dof_lut, which reads the plain FAM tables.
+#
+# THE CONFIGURATION IS NOT IN variants.yaml.  The builder resolves the bounce legs, the
+# mode counts and every scheme's settings from the `bounce:` section of
+# aos/analysis_config.yaml layered over rubinwork.bounce.legs.DEFAULT.  That override is
+# keyed on the LONG param_set, and for danish_1_2 it redefines the BLOCK-T720 legs as a
+# FIVE-POINT elevation sweep (Elev=30, 40, 50, 60, 75).  A build that failed to resolve
+# it would silently measure one leg instead of five, so the rule runs with aos/ as its
+# working directory exactly as the aos/ rule did, and a product test covers the
+# resolution.
+#
+# Output, under the product catalog's data root:
+#   <products>/bounce_tables/<variant>/<build>/bounce_kj_stats.parquet
+#   <products>/bounce_tables/<variant>/<build>/bounce_dof_stats.parquet
+#   <products>/bounce_tables/<variant>/<build>/bounce_fwhm_metric.parquet
+#   <products>/bounce_tables/<variant>/<build>/bounce_fwhm_vs_bvalue.parquet
+#   <products>/bounce_tables/<variant>/<build>/manifest.json   written last
+#
+# FOUR declared outputs.  The aos/ rule declared 2 of the 13 files it wrote: the other
+# 11 -- two tables and nine PDFs -- were written but undeclared, so an interrupted run
+# could leave a short directory that snakemake believed complete.  The four tables are
+# declared here and the nine PDFs are declared by the surviving aos/ study rule.
+#
+# A build directory is never edited after it completes (rule 5 of the plan's section 2);
+# a rerun makes a new build.
+#
+# Needs lsst.ts.ofc and TS_CONFIG_MTTCS_DIR for the sensitivity-matrix singular-value
+# decomposition and lsst.ts.wep for the FWHM conversion, so it is RSP-only in the same
+# sense the moved rules are.  The production build takes about 170 s of wall clock, so it
+# has no batch script.
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+from rubinwork.common.utils import repo_root
+from rubinwork.products import bounce_tables, catalog
+
+REPO = repo_root(os.getcwd())
+
+# The builder resolves its configuration through
+# lsst.ts.intrinsic.wavefront.mi_config.analysis_section, whose default path is relative
+# to the CURRENT WORKING DIRECTORY.  So the rule runs with aos/ as its cwd, exactly as
+# the moved rules do.  mi_config.yaml is generated from the miw product's variants.yaml
+# (gen_mi_config.py); analysis_config.yaml is hand-edited and holds the `bounce:`
+# override.
+RUN_CWD = REPO / 'aos'
+
+VARIANT = config.get('variant', 'd12-A_50_34_i_5rot_july')
+# str(): snakemake parses --config build=20261012 into an int.
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CFG = bounce_tables.variant_config(VARIANT)
+
+# Checked before anything resolves a path, so an unbuildable variant says why rather than
+# failing later on an upstream build's absence.
+if not CFG.get('registered', True):
+    raise ValueError(
+        f"variant {VARIANT!r} is registered: false -- it is carried for recorded "
+        'provenance only and has no build')
+
+MIW_VARIANT = bounce_tables.miw_variant(VARIANT)
+FITS_NAME = bounce_tables.fits_name(VARIANT)
+
+# Which upstream build to read.  `current` by default, resolved to its real build name so
+# the manifest records what was actually read rather than a moving target.
+MIW_BUILD = str(config.get('miw_build') or catalog.CURRENT)
+MIW_DIR = catalog.path('miw', MIW_VARIANT, build=MIW_BUILD)
+MIW_BUILD_NAME = MIW_DIR.name
+FITS = MIW_DIR / FITS_NAME
+
+BUILD_DIR = bounce_tables.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+# The per-visit quality cut.  --min-detectors relaxes ONLY the CCD-count cut, to recover
+# the marginal low-CCD elevation-40 points the bounce needs; the blur cut is kept.  160
+# is what the study ran and what the 3a reference build used, so it is the rule's default
+# rather than a value a caller has to remember.
+MIN_DETECTORS = int(config.get('min_detectors', 160))
+
+# The shell commands, built here rather than inline: snakemake's own parser mishandles a
+# multi-line f-string inside a rule, so the rules below use plain format placeholders.
+TABLES_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python -m '
+    'rubinwork.products.bounce_tables.builders.build_bounce_tables'
+    f' --variant {VARIANT}'
+    f' --fits {FITS} --out-dir {BUILD_DIR}'
+    f' --min-detectors {MIN_DETECTORS}'
+    + ' > {log} 2>&1\n')
+MANIFEST_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.bounce_tables.write_manifest '
+    f'--variant {VARIANT} --build {BUILD} '
+    f'--miw-build {MIW_BUILD_NAME} '
+    f'--option min_detectors={MIN_DETECTORS} '
+    '> {log} 2>&1')
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+# ---- reduce the fit table into the four paired-difference tables ----
+# One rule for all four output files: the analysis does the SVD, the per-visit
+# projection, the pair formation and every scheme's solve in one pass over the fit table,
+# and the four tables are four views of that one reduction.
+rule build_bounce_tables:
+    input:
+        fits = str(FITS),
+    output:
+        kj    = str(BUILD_DIR / 'bounce_kj_stats.parquet'),
+        dof   = str(BUILD_DIR / 'bounce_dof_stats.parquet'),
+        fwhm  = str(BUILD_DIR / 'bounce_fwhm_metric.parquet'),
+        bval  = str(BUILD_DIR / 'bounce_fwhm_vs_bvalue.parquet'),
+    # The job holds the per-visit DZ matrix, three SVDs and one solve per pair per
+    # scheme.  Carried over from the aos/ rule's 4000.
+    resources: mem_mb=4000
+    log: str(LOGS / 'build_bounce_tables.log')
+    shell: TABLES_CMD
+
+
+# ---- last step: the manifest, which is what puts the build in the catalog ----
+# Depends on every output, so an interrupted build leaves no manifest and the catalog does
+# not see it.  It does NOT move `current`: see `catalog set-current`.
+rule manifest:
+    input:
+        str(BUILD_DIR / 'bounce_kj_stats.parquet'),
+        str(BUILD_DIR / 'bounce_dof_stats.parquet'),
+        str(BUILD_DIR / 'bounce_fwhm_metric.parquet'),
+        str(BUILD_DIR / 'bounce_fwhm_vs_bvalue.parquet'),
+    output: str(BUILD_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell: MANIFEST_CMD

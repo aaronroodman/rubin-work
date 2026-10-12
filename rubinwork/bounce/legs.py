@@ -906,3 +906,54 @@ def leg_night_coverage(bounce_results):
                 'scatter_pages': n_nt * (n_nt - 1) // 2,
             })
     return rows
+
+
+def resolve_config(param_set, mi_name, *, analysis_config=None, rbr_kappa=None,
+                   rbr_power=None, no_rbr=False):
+    """The resolved bounce configuration: `DEFAULT` under the config overrides.
+
+    Parameters
+    ----------
+    param_set : `str`
+        The long FAM param_set key `analysis_config.yaml`'s ``bounce:`` section
+        is keyed on.
+    mi_name : `str`
+        The measured-intrinsic-wavefront settings entry name.
+    analysis_config : `str` or `pathlib.Path`, optional
+        Path to `analysis_config.yaml`.  `None` leaves
+        `lsst.ts.intrinsic.wavefront.mi_config.analysis_section` to its default,
+        which is relative to the current working directory.
+    rbr_kappa : `float`, optional
+        Override the Range-Bounded Recovery (RBR) ratio |d_j|/r_j (dimensionless)
+        at which the penalty reaches unit weight.
+    rbr_power : `int`, optional
+        Override the RBR penalty exponent (dimensionless).
+    no_rbr : `bool`, optional
+        Skip RBR and report only the default truncated recovery.
+
+    Returns
+    -------
+    cfg : `dict`
+        Every knob the analysis and the plotters read.
+
+    Notes
+    -----
+    `analysis_section` returns only the overrides, so `DEFAULT` carries the
+    unoverridden legs.  The live override for the `danish_1_2` param_set
+    redefines the BLOCK-T720 legs as a five-point elevation sweep, so a build
+    that failed to resolve it would silently run one leg instead of five.
+    """
+    from pathlib import Path
+
+    from lsst.ts.intrinsic.wavefront import mi_config as mc
+
+    cfg = {**DEFAULT, **mc.analysis_section(
+        'bounce', param_set, mi_name,
+        config_path=(Path(analysis_config) if analysis_config else None))}
+    if rbr_kappa is not None:
+        cfg['rbr_kappa'] = float(rbr_kappa)
+    if rbr_power is not None:
+        cfg['rbr_power'] = int(rbr_power)
+    if no_rbr:
+        cfg['rbr_enable'] = False
+    return cfg

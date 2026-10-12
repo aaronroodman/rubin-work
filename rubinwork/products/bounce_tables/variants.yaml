@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# bounce_tables variants: the paired-difference optical-state change measured across a
+# full-array-mode (FAM) telescope-position bounce, one variant per (measured-intrinsic
+# settings entry, Double-Zernike fit table) pair.
+#
+# WHAT A BOUNCE IS.  BLOCK-T720 and BLOCK-T724 throw the telescope between a reference
+# (A) set and a comparison (B) set within one night -- T720 in elevation at fixed
+# rotator angle, T724 in camera rotator angle at fixed elevation.  The optical-state
+# change between the two positions is measured as a TIME-ORDERED PAIRED DIFFERENCE, not
+# as a difference of nightly means, so that drift between the sets cancels.
+#
+# WHY A `fits` KEY AND NOT ONLY A MIW VARIANT.  Two variants can share a measured
+# intrinsic wavefront (MIW) settings entry and still be different measurements, because
+# the fit table the bounce reduces is a separate choice.  The `_july` variant is exactly
+# that case: Aaron's call, 2026-10-11 -- it is its OWN VARIANT rather than a build of
+# d12-A_50_34_i_5rot, so it can be reviewed later ("I don't recall what the _july
+# variant changed").  Its input, fits_july.parquet, is a hand-made extra produced by no
+# rule (see aos/docs/status/miw_danish_1_3_proposal.md), covering 3,385 visits over
+# day_obs 20250415-20260713, against the MIW build's own fits.parquet at 1,126 visits
+# over 20260315-20260513.  The plan's section 9 maps it to a build of the plain variant;
+# that mapping is SUPERSEDED.
+#
+# Each entry names TWO things: the `miw_variant` it takes its settings from, and the
+# `fits` file name within that MIW build's directory.  The reader derives `param_set`,
+# `mi_name` and `fam_variant` from the miw product, which already owns that mapping (its
+# variants.yaml generates aos/mi_config.yaml) -- the same reason dof_lut and coadds
+# derive theirs that way rather than restating them.
+#
+# `dir_name` is the subdirectory this variant has in the old aos/output/bounce/ tree.  It
+# MUST be quoted, as the coadds and dof_lut entries are: YAML reads an unquoted 50_34 as
+# the integer 5034, because an underscore is a numeric digit separator.
+#
+# WHERE THE SETTINGS COME FROM, and what is NOT restated here.  The builder resolves
+# every knob -- the bounce leg definitions, the mode counts n_dof / n_keep, the
+# Range-Bounded Recovery (RBR) kappa and power, the 22/12 reduced set's mode count and
+# the Optimal Integral Controller (OIC) motion penalty rho -- from the `bounce:` section
+# of aos/analysis_config.yaml layered over rubinwork.bounce.legs.DEFAULT.  That
+# override is keyed on the LONG param_set key, and for danish_1_2 it redefines the
+# BLOCK-T720 legs as a FIVE-POINT elevation sweep (Elev=30, 40, 50, 60, 75) rather than
+# the single leg DEFAULT_BOUNCES carries.  A build that failed to resolve it would
+# silently measure one leg instead of five, so the resolution is left exactly as it was
+# and is covered by a test.
+#
+# WHAT A BUILD WRITES.  Four parquet tables.  The nine PDFs the same analysis renders
+# are the `bounce` STUDY's half and stay in aos/, because a figure no code reads back is
+# not product data; the study's rule survives the move for that reason, unlike the
+# cwfs_tables, miw, coadds and dof_lut rules which left aos/Snakefile entirely.
+#
+# Every one of the twelve miw variants was checked against both old output trees before
+# anything moved; only `_july` has output there, 13 files.
+# `notes/aos-bounce-test-summary/provenance.md:46` names a
+# `aos/output/bounce/danish_1_2_batoid/` intrinsic-choice comparison, but that directory
+# DOES NOT EXIST on disk, so it gets no variant and that doc points at a path that is
+# gone.
+# ---------------------------------------------------------------------------
+
+variants:
+
+  # The tech note's source, and the variant the 3a reference build was made from: the
+  # danish_1_2 FAM tables reduced against the hand-made fits_july.parquet, 3,385 visits
+  # over day_obs 20250415-20260713.  Thirteen files in
+  # aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/.  Six legs over seven nights --
+  # T720_elevation at Elev=30, 40, 50, 60, 75 and T724_rotator at Rot=60 -- which is what
+  # exercises all five recovery schemes.
+  d12-A_50_34_i_5rot_july:
+    miw_variant: d12-A_50_34_i_5rot
+    fits: fits_july.parquet
+    dir_name: "danish_1_2_A_50_34_i_5rot_july"
+
+  # The same settings entry against the MIW build's own fits.parquet, 1,126 visits over
+  # day_obs 20260315-20260513.  Planned by aos/Snakefile, never built: no output in the
+  # old tree.
+  d12-A_50_34_i_5rot:
+    miw_variant: d12-A_50_34_i_5rot
+    fits: fits.parquet
+    dir_name: "danish_1_2_A_50_34_i_5rot"
+
+  # The single-rotator-bin settings entry.  Planned, never built.
+  d12-A_50_34_i:
+    miw_variant: d12-A_50_34_i
+    fits: fits.parquet
+    dir_name: "danish_1_2_A_50_34_i"
+
+  # The danish_1_3_test FAM tables.  Planned, never built.
+  d13t-A_50_34_i_5rot:
+    miw_variant: d13t-A_50_34_i_5rot
+    fits: fits.parquet
+    dir_name: "danish_1_3_test_A_50_34_i_5rot"

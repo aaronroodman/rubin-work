@@ -97,13 +97,73 @@ DOF_SUBSPACES = (('hexapod_translation', HEXAPOD_TRANSLATION_DOF),
 MIN_SIGNIFICANCE = 3.0
 
 
+def _bounce_variant(run):
+    """The ``bounce_tables`` variant whose old-tree directory is `run`, or `None`.
+
+    Parameters
+    ----------
+    run : `str`
+        A directory name under ``aos/output/bounce``.
+
+    Returns
+    -------
+    variant : `str` or `None`
+        The matching variant name, or `None` when no variant claims that directory.
+    """
+    from rubinwork.products import bounce_tables as _bt
+    for name in _bt.variants(registered_only=False):
+        if _bt.dir_name(name) == run:
+            return name
+    return None
+
+
+def _bounce_stats_path(run, root=None):
+    """The ``bounce_dof_stats.parquet`` to read: old tree first, then the catalog.
+
+    Parameters
+    ----------
+    run : `str`
+        A directory name under ``aos/output/bounce``.
+    root : `pathlib.Path`, optional
+        Repository root; defaults to the one this file sits under.
+
+    Returns
+    -------
+    path : `pathlib.Path` or `None`
+        The table, or `None` when neither tree holds one.
+
+    Notes
+    -----
+    Same precedence as ``aos/Snakefile``'s resolver, so this study and a product rule read
+    the same build: the old ``aos/output/bounce/<run>/`` tree, then the catalog's
+    ``current`` build of the matching variant. Until phase 3c rebuilds the products the
+    old tree is the only place a complete build exists -- and the only variant with one
+    there is ``d12-A_50_34_i_5rot_july``, which is `DEFAULT_BOUNCE_RUN`.
+    """
+    root = pathlib.Path(root) if root else _ROOT
+    old = root / 'aos' / 'output' / 'bounce' / run / 'bounce_dof_stats.parquet'
+    if old.exists():
+        return old
+    variant = _bounce_variant(run)
+    if variant is None:
+        return None
+    from rubinwork.products import catalog
+    try:
+        cat = catalog.path('bounce_tables', variant,
+                           build=catalog.CURRENT) / 'bounce_dof_stats.parquet'
+    except Exception:
+        return None
+    return cat if cat.exists() else None
+
+
 def load_bounce_stats(run=DEFAULT_BOUNCE_RUN, root=None):
     """Read the bounce test's per-DOF and per-v-mode delta table.
 
     Parameters
     ----------
     run : `str`, optional
-        Bounce run directory under ``aos/output/bounce``.
+        Bounce run directory under ``aos/output/bounce``, which is also the
+        ``bounce_tables`` variant's ``dir_name``.
     root : `pathlib.Path`, optional
         Repository root; defaults to the one this file sits under.
 
@@ -117,8 +177,8 @@ def load_bounce_stats(run=DEFAULT_BOUNCE_RUN, root=None):
     Raises
     ------
     FileNotFoundError
-        Naming the expected path. The bounce run is another study's product and may not exist
-        in a given checkout.
+        Naming both places looked in. The table is the bounce_tables product's, and a
+        variant may have no build in either tree.
 
     Notes
     -----
@@ -128,12 +188,12 @@ def load_bounce_stats(run=DEFAULT_BOUNCE_RUN, root=None):
     from `cwfs_lut_lib.dof_label`, so the mislabel cannot reach a comparison even though it
     remains in the file.
     """
-    root = pathlib.Path(root) if root else _ROOT
-    path = root / 'aos' / 'output' / 'bounce' / run / 'bounce_dof_stats.parquet'
-    if not path.exists():
+    path = _bounce_stats_path(run, root=root)
+    if path is None:
         raise FileNotFoundError(
-            f'bounce_dof_stats.parquet not found at {path}; the bounce study produces it, '
-            f'see aos/code/bounce/run_bounce.py')
+            f'bounce_dof_stats.parquet not found for run {run!r}, in either '
+            f'aos/output/bounce/{run}/ or the catalog; the bounce_tables product '
+            f'writes it, see rubinwork/products/bounce_tables/Snakefile')
     stats = pd.read_parquet(path)
     return stats.drop(columns=['unit'], errors='ignore')
 

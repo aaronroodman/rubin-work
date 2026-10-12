@@ -26,7 +26,7 @@ from rubinwork.bounce.legs import (  # noqa: F401,E402
     diff_of_deltas, diff_stats, filter_visits, form_pairs, leg_axis_name,
     leg_b_value, leg_night_coverage, leg_pointing, paired_delta,
     paired_deltas_kj, paired_deltas_matrix, passing_terms, rbr_deltas,
-    rbr_dof_per_pair, rbr_module, run_bounce, solver_deltas,
+    rbr_dof_per_pair, rbr_module, resolve_config, run_bounce, solver_deltas,
     solver_dof_per_pair, stats_per_kj, to_long_df, visit_list_str,
 )
 

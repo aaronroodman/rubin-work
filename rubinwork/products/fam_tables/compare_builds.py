@@ -31,6 +31,30 @@ TABLE_KEYS = {
 }
 """Row key per table: the columns that make a row unique, for alignment."""
 
+def key_is_unique(path, key):
+    """Whether `key` makes every row of a table unique.
+
+    Parameters
+    ----------
+    path : `pathlib.Path`
+        A parquet file.
+    key : `list` [`str`] or `tuple` [`str`]
+        Candidate key columns.
+
+    Returns
+    -------
+    unique : `bool`
+        `True` if the key columns present in the table separate every row.
+    n_unique : `int`
+        Distinct key tuples (count, dimensionless).
+    n_rows : `int`
+        Rows in the table (count, dimensionless).
+    """
+    usable = [k for k in key if k in pq.ParquetFile(str(path)).schema.names]
+    df = pq.read_table(path, columns=usable).to_pandas()
+    n_unique = len(df.drop_duplicates())
+    return n_unique == len(df), n_unique, len(df)
+
 
 def _column_values(series):
     """Values of one column as a comparable array.

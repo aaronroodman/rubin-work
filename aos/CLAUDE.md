@@ -53,6 +53,21 @@ bug as the coadd scripts (it built `output/<long param_set>/<mi>/lut/`) and now 
 through the old tree then the catalog, skipping the page when a reduction has no LUT
 variant — which the script's own default baseline, `danish_1_0`, does not.
 
+`code/bounce/` was **split**, not moved, in phase 3a. The four tables are the
+`bounce_tables` product (`rubinwork.products.bounce_tables`); `run_bounce.py` keeps the
+nine PDFs and `bounce_lib.py` keeps the ~20 plotters. The reduction is now
+`rubinwork.bounce` — `legs` (leg selection, A/B pairing, the paired Δ and the
+regularized-recovery solvers' Δ) and `analysis.run_analysis`, which both halves call.
+`bounce_lib` re-exports every moved name, so its existing callers are unaffected.
+**`rule bounce` survives in `Snakefile`** as the plotting half — the first moved product
+whose rule is not removed — so the job count is unchanged at 34; only the file `rule all`
+names changed, from `bounce_kj_stats.parquet` to `bounce_summary.pdf`. The study runs the
+analysis a second time (about 170 s of wall clock) rather than reading the tables back,
+because three of its pages plot per-visit arrays no table carries (Aaron, 2026-10-12).
+The four `smatrix/code/regularized_inversion/` imports now reach `rubinwork.bounce`, and
+`code/cwfs_lut/bounce_compare.py`, the one reader outside the study, resolves old tree
+then catalog.
+
 `code/coadd/run_coadd_blocks_miw.py` is a **shim** for the same reason — it moved to
 `rubinwork.products.coadds.builders` in phase 3a, because the per-block grids and
 summaries it writes are a product. The other eight scripts in `code/coadd/` are the
