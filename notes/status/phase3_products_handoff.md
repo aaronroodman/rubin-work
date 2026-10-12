@@ -441,6 +441,48 @@ The `stars` and `metrics` keys are **summit_utils**' tables, not this repository
 are read off the reference rather than assumed — the `bounce_kj_stats` lesson, where the
 plan-shaped guess at a key left only 756 of 1,890 rows distinct.
 
+### 3a step 1 — the reference build: DONE
+
+Built at commit `e11e731` (clean tree), interactive on `sdfiana029` so the Butler
+resolved. `--limit 3` on `day_obs` 20260706 discovered `seq_num` 44, 45 and 46.
+
+| build | wall clock | result |
+|---|---|---|
+| `list_guider_exposures.py`, one night, `--limit 3` | **5 s** | 3 guider science exposures |
+| `run_guider_moments.py`, 3 exposures | **~95 s** (about 32 s per exposure) | moments 5/4/5 rows, stars 664/529/642 rows, metrics 1/1/1 rows per exposure |
+| `combine_moments.py` | **2 s** | moments 14, stars 1,835, metrics 3 rows; 0 skipped visits |
+
+The night's 3 visits give a mean of 4.67 guiders per visit (dimensionless), all 3 partial
+(fewer than 8 guiders), which the combine step reports — the same shape the full night
+shows, so the small build exercises the partial-night path rather than only the happy one.
+
+**Table shapes:** `guider_moments` 14 rows x 169 columns, `guider_stars` 1,835 rows x 52
+columns, `guider_metrics` 3 rows x 50 columns (counts, dimensionless).
+
+**Keys verified unique on the reference**, which is what the comparison needs:
+
+| table | key | duplicate rows |
+|---|---|---|
+| `guider_moments` | `(expId, detector)` | 0 of 14 |
+| `guider_stars` | `(expid, detector, trackid)` | 0 of 1,835 |
+| `guider_metrics` | `(expId)` | 0 of 3 |
+
+Note the **case split**: this repository's moments table uses `expId` and summit_utils'
+stars table uses `expid`. Both are real and neither is renamed by the move.
+
+**Two things found in step 1, recorded:**
+
+1. **`combine_moments.py` writes an undeclared output.** It writes
+   `detector_counts_<night>.txt` beside the three parquet files and
+   `skipped_visits.txt`, and the `combine` rule declares only the latter four. Same class
+   as `dof_lut`'s `lut_by_rotbin.parquet`. It is unconditional — the combine always writes
+   it — so the product rule declares all five.
+2. **`guider_metrics` columns are a union across exposures.** The per-detector columns
+   (`R00_SG0`, ..., `R44_SG0`) exist only for the detectors a given exposure tracked, so
+   `R44_SG0` appears last in the combined table because only `seq_num` 46 has it. The
+   comparison matches columns **by name**, so column order carries no meaning and is not
+   compared.
+
 ### Baseline `snakemake -n` job counts, before the move (2026-10-12)
 
 | target | jobs | breakdown |
