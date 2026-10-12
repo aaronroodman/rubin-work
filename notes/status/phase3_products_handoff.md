@@ -434,6 +434,61 @@ Comparison keys, to verify unique on the reference before comparing anything:
 | `fam_variant` | `(fam_variant_id)` |
 | `fetch_log` | `(day_obs, group_name)` |
 
+### 3a step 3 — verification: DONE
+
+**Import smoke test: 59 of 59 import, and the 63 → 59 inventory change is accounted for
+file by file.** The inventory is discovered dynamically — "every `.py` importing a moved
+library" — so it shrinks when a file stops importing one:
+
+| direction | files | why |
+|---|---|---|
+| left (7) | the `value_added/code/` originals | their shims import `rubinwork.products.value_added...`, which is not a `MOVED_NAMES` library, so they no longer match the pattern |
+| entered (3) | `builders/{build_fam_dz,build_optical_state,test_build_optical_state}.py` | the moved copies still import `aos_state` / `regularized_inversion` |
+
+The other four moved files (`build_efd_db`, `build_m1m3_thermal_r2`, the reader,
+`backfill_optical_state_pointing`) import `rubinwork.common` rather than bare `common`
+now, so they correctly fall out of a "imports a moved library" inventory. **No module
+fails to import, before or after.**
+
+**Tests: 312 passed** across `rubinwork/products/` — the 44 new `value_added` tests plus
+all 268 from before.
+
+**Every bare-name importer and all three notebooks resolve the shim to the SAME module
+object**, checked from a fresh interpreter each:
+
+| caller | result |
+|---|---|
+| `thermal_focus/code/run_thermal_focus.py` | same module as `reader` |
+| `wfs/code/giant_donuts/select_exposures.py` | same module |
+| `aos/code/cwfs_lut/run_cwfs_lut.py` | same module |
+| `thermal_focus/code/thermal_focus_lib.py` | imports cleanly; it only *prepares the path* for its sibling and never imports `efd_db` itself |
+| `aos/code/cwfs_lut/cwfs_lut_lib.py` | same, path-only |
+| the three notebooks' idiom | same module, `visits` callable, default path = the live database |
+
+The two "path-only" files were worth checking rather than assuming: both carry a
+`sys.path.insert` of `value_added/code` with a `-> efd_db` comment, but neither imports it
+— the inserts exist for `run_thermal_focus.py` and `run_cwfs_lut.py`, which do.
+
+**`snakemake -n` in `aos/`: 34 jobs, unchanged, rule for rule.** `value_added` has no rule
+there, which is why this is the first move with no job-count change to explain — and it
+was measured rather than assumed, per the constraint the `bounce_tables` split added.
+
+**`run_build.sh --dry-run`: the same shard plan and the same arguments, only the script
+path differs.** Diffed against the pre-move script (`fb14ab5`) run from the same working
+directory, with the shard timestamp normalised:
+
+```diff
+-  cmd: python -u code/build_efd_db.py --day-obs 20251116 --db output/shards/telemetry_<TS>_01.duckdb --groups all
++  cmd: python -u -m rubinwork.products.value_added.builders.build_efd_db --day-obs 20251116 --db output/shards/telemetry_<TS>_01.duckdb --groups all
+```
+
+Night expansion, shard count, shard database paths and log paths are byte-identical. The
+`--what state` path was diffed too, and its variant-flag resolution out of the main
+database's `state_variant` still produces exactly
+`--scheme 50_34 --intrinsic batoid --opd-version consdb_v1 --intrinsic-ref ofc_v13
+--ofc-version v13 --telemetry-db <main db>` — so the moved script still reads the registry
+correctly, which is the part of that script most likely to have broken.
+
 ## 3a, `cwfs_tables` — the move
 
 ### Scope, agreed 2026-10-10
