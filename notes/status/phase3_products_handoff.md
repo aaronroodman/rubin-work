@@ -97,6 +97,9 @@ comparison, manifest.
 | `26cbbfd` | the `run_bounce.py` split mapped section by section before cutting it |
 | `884fb18` | 3a step 2a for `bounce_tables`: `rubinwork.bounce`, the shared library, and the four `smatrix` imports |
 | `3adce0f` | 3a steps 2-4 for `bounce_tables`: the split, verification and the zero-tolerance comparison |
+| `fb14ab5` | `value_added` 3a step 1 plan: the exact commands and the expected-difference list, fixed before the build ran |
+| `102cef7` | `value_added` 3a step 2: the move, the product reader, the shims, the manifest rule and the doc fixes |
+| `21e8bf0` | `value_added` 3a step 3: the verification |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -206,82 +209,52 @@ variant's provenance exists only as `state_variant.created_at` plus the batch lo
 is what made the log the deciding evidence here. The plan's section 6 already lists adding
 the code git commit and build time to `fetch_log`; this is the concrete reason it matters.
 
+**Phase 3a, `value_added`, is DONE** (`102cef7` the move, `21e8bf0` the verification,
+and the step-4 comparison below). The moved code reproduces the reference exactly — **0
+unexpected differing columns across 8 tables and registries** (196, 13, 27, 14, 7, 10, 13
+and 4 columns compared) at zero tolerance on verified-unique keys, with only the seven
+build-time timestamp columns differing, every one of them on a list committed **before**
+the reference build ran. The merge path and both individual shards match too. `aos/`
+`snakemake -n` is unchanged at 34 jobs, and `run_build.sh --dry-run` gives an identical
+shard plan in both modes.
+
 ## Next concrete action
 
-**Phase 3a step 1 for `value_added`: the reference build.** Every product before it is
-done, and the read-only `decomp_path` check it was gated on is done too (section above:
-no variant used the broken default, so nothing is blocked). Code only — the `v1/live` +
-snapshots layout and the registry-row renaming come with the rebuild in 3c.
+**Phase 3a for `guider_moments`**, the last product. `value_added` is finished and
+pushed; every other product is done.
 
-Make the reference build **before moving any code**, as every earlier product did. The
-smallest build that exercises each builder, into a scratch database under
-`_phase2_refbuild/value_added/`, **never the live database**:
+`guider_moments` is the second **incremental** product, so `value_added` is its worked
+example rather than any of the five snapshot products. What carried over, and what will
+differ:
 
-```bash
-cd ~/notebooks/rubin-work/value_added && \
-  AOS_EFD_DB=/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/value_added/ref/aos_efd.duckdb \
-  python code/build_efd_db.py --day-obs 20251116-20251117 --create
-```
+- **The default-path trap is the thing to look for first.** `value_added`'s reader
+  resolved its database from its own `parents[1]`; the move changed which directory that
+  named, so the anchor had to become the repository root rather than the hop count being
+  adjusted. Check `guider/code/` for the same shape — any `parents[N]` that means "my
+  topic directory" rather than "the repo root" breaks silently on the move.
+- **A shim must give the same module object**, `sys.modules[__name__] = _real`, not a
+  namespace copy. `value_added` has eight shimmed builders plus the reader, and the test
+  that proves it has to run **one fresh interpreter per shim**: in a single process a
+  sibling's `sys.path` bootstrap can legitimately load the same file twice, and an
+  in-process identity check then compares the wrong pair.
+- **A scratch build must write no manifest.** `write_manifest.is_catalog_build` decides by
+  **path**, not by a flag, so a reference build or a shard cannot be registered even if
+  the wrong argument is passed. `guider_moments` builds per night, so it needs the same
+  guard.
+- **`load()` can return a connection rather than data.** `value_added`'s build is one
+  2.8 GB DuckDB file and every read function already takes a `con`, so `load` is an alias
+  of `connect`. Decide what `guider_moments.load` should hand back before writing it.
+- **Expect a per-night provenance gap.** `fetch_log` records only the telemetry builder's
+  EFD groups, so a state build's provenance is its batch log plus
+  `state_variant.created_at`. Plan section 6 already lists adding the code git commit and
+  build time; check whether `guider_moments` has the same hole.
 
-then `build_optical_state.py` for the same two nights on one variant, `build_fam_dz.py`
-for one FAM variant, and `build_m1m3_thermal_r2.py`. Work out each builder's exact flags
-from `run_build.sh`'s own invocations rather than from its usage comment — the script is
-what actually runs them. Nights well in the past, so ConsDB and the EFD are settled.
-
-What this session established that step 2 needs:
-
-- **The EFD resolves from `sdfiana*`** (this session ran on `sdfiana029`), and `sbatch`
-  is present, so the telemetry builder's reference build can be made interactively here.
-  It would fetch nothing from a milano/torino batch node — `run_build.sh` rejects
-  `--mode batch` for `--what telemetry` for exactly that reason.
-- **`efd_db.default_db_path()` resolves `parents[1] / 'output/aos_efd.duckdb'`**
-  (`efd_db.py:226`-`:246`), i.e. the `value_added` topic directory, overridable with
-  **`AOS_EFD_DB`**. That `parents[1]` is the one thing the move breaks: from
-  `rubinwork/products/value_added/` it names the wrong directory. Aaron's call: keep the
-  current default path until 3c and add the catalog route **alongside**, in the same
-  old-tree-then-catalog order the `aos/Snakefile` resolver uses. So the moved reader must
-  compute the old path from the **repo root** rather than from its own `parents[1]`.
-  `AOS_EFD_DB` is also how the reference build stays off the live database.
-- **Five code files reach `efd_db` by bare name** after a `sys.path.insert` of
-  `value_added/code`, so a shim at the old path keeps every one working:
-  `thermal_focus/code/run_thermal_focus.py:59`,
-  `thermal_focus/code/thermal_focus_lib.py:45`,
-  `wfs/code/giant_donuts/select_exposures.py:28`,
-  `aos/code/cwfs_lut/cwfs_lut_lib.py:67`, `aos/code/cwfs_lut/run_cwfs_lut.py:51`.
-  Three notebooks also import it (`aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb`,
-  `aos/notebooks/bounce/_exectest.ipynb`,
-  `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`), which is a second reason
-  the shim has to give the **same module object**, not a copy.
-- **Scope, 11 files and about 5,100 lines**, the largest move so far:
-  `build_efd_db.py` (582), `build_optical_state.py` (880), `build_fam_dz.py` (342),
-  `build_m1m3_thermal_r2.py` (273), `merge_db_shards.py` (213),
-  `backfill_commanded_vmodes.py` (182), `backfill_optical_state_pointing.py` (193),
-  `run_build.sh` (256), `test_build_optical_state.py` (208), plus the reader
-  `efd_db.py` (1,639) and `m1m3_thermal_r2.py` (370).
-- **`m1m3_thermal_r2.py` stays inside the product**, which answers the product-vs-library
-  question the task raised. It is pure computation (the M1M3 bulk thermal gradients from
-  raw thermocouple telemetry) and writes nothing, so by the section 2 rules it *could* be
-  a library — but it has exactly **one** importer, `build_m1m3_thermal_r2.py:51`, its own
-  builder. A library is code *other work* imports; nothing else does. `thermal_focus`
-  only *cites* it in a comment (`thermal_focus_lib.py:110`) and reads the **table**
-  through `efd_db.m1m3_thermal_r2`, which is product use, not library use. So it moves
-  beside its builder and is promoted only if a second importer appears.
-- **Five tables plus three registries** are what a comparison has to cover:
-  `visit_telemetry`, `optical_state`, `fam_dz`, `m1m3_thermal_r2`, `column_coverage`, and
-  `state_variant`, `fam_variant`, `fetch_log`. Current live contents, measured
-  2026-10-12, for a sanity check on any reference build (counts dimensionless):
-  `visit_telemetry` 213,704 rows, `optical_state` 406,220 over four variants,
-  `m1m3_thermal_r2` 211,922, `column_coverage` 196, `fam_dz` 2,528 over one
-  `fam_variant`, `fetch_log` 3,293 rows over nine EFD group names and 366 nights.
-
-Also in this step, from Aaron's 2026-10-11 rotator-angle decision: add to
-`value_added/docs/schema.md`, beside `optical_state.rotator_angle_deg`, that for FAM
-visits the FAM tables' `rotator_angle` is the donut metadata `rotTelPos` (after 3b) and
-can differ from the database's ConsDB `physical_rotator_angle` by up to about 0.30 deg of
-camera rotator angle on the blitz path, or be present where the database's is NULL; a
-study joining the two must say which it uses. Cite `aos/docs/frame_conventions.md`.
-And fix `value_added/docs/status/build_progress.md`, which is stale about the MIW variant
-(see the `decomp_path` section above).
+Then phase 3a is complete and **3b** begins. Three 3b items were discovered by this move
+and are recorded in the `value_added` section below, all of the same class — a path built
+from the long `param_set` key, a layout the tree lost when `dir_name` arrived:
+`build_fam_dz.resolve_paths`, `build_optical_state --intrinsic miw` (broken since the
+`miw` move fixed `decomp_path`), and `fam_variant.fits_path` pointing at a directory that
+does not exist.
 
 **Constraints found the hard way in the `bounce_tables` split, which the `value_added`
 move will meet too:**
@@ -434,6 +407,61 @@ Comparison keys, to verify unique on the reference before comparing anything:
 | `fam_variant` | `(fam_variant_id)` |
 | `fetch_log` | `(day_obs, group_name)` |
 
+### 3a step 1 — the reference build: DONE, and two builders cannot run as registered
+
+Built at commit `fb14ab5` (clean tree), interactive on `sdfiana029` so the EFD resolved.
+Wall clock per builder:
+
+| build | wall clock | result |
+|---|---|---|
+| telemetry, both nights, all 9 groups | **171 s** | 1,017 exposures, 1,017 `visit_telemetry` rows, 196 `column_coverage` columns |
+| `m1m3_thermal_r2`, both nights | **73 s** | 1,017 rows, 1,017 with a fit; 1,573 and 1,558 time bins at 30 s |
+| `optical_state`, MIW route | **50 s** | 1,017 rows, 839 recovered, 1,012 with commanded v-modes |
+| `optical_state`, batoid route | **45 s** | 1,017 rows, 839 recovered, same visits |
+| `fam_dz`, one variant | **38 s** | 2,528 FAM pairs, 0 with a NaN DZ coefficient, `U_eff = (126, 34)` |
+| two shards + merge | **190 s** | 535 + 482 rows merged to 1,017; 18 `fetch_log` rows |
+
+**The reference reproduces the production numbers**, which is what shows it is the real
+measurement and not a differently-configured run: on 20251116 the MIW route gives a median
+CWFS FWHM contribution of **0.2546 arcsec** over 460 visits, exactly the figure in
+`logs/batch_state_20261006_001235_04.out` from the production build.
+
+**Two builders could not be run as their registry rows describe them.** Both are
+pre-existing defects of the same class — a path built from the **long** `param_set` key,
+a layout the tree lost when `dir_name` arrived — and both are **recorded, not fixed**,
+because 3a is mechanical and a path fix is a 3b item:
+
+1. **`build_fam_dz.py`**: `resolve_paths` (`:104`-`:106`) builds
+   `<aos_output>/<param_set>/fits.parquet`, and `fam_variant.fits_path` records
+   `aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/fits.parquet`. **No such
+   directory exists** — the tables are at `aos/output/fam_processing/danish_1_2/`. Worked
+   round with `--aos-output ../aos/output/fam_processing --param-set danish_1_2`, which
+   resolves; the consequence is that the reference registers
+   `fam__danish_1_2__batoid__z1toz6__50_34` rather than the live
+   `fam__fam_danish_1_2_0_..._bin2x__batoid__z1toz6__50_34`. Both sides of the comparison
+   do the same, so the comparison is unaffected.
+2. **`build_optical_state.py --intrinsic miw`**: it passes `intrinsic_ref` as
+   `MiwCornerLookup`'s `mi_name` (`:770`-`:772`), but the **`miw` 3a move fixed
+   `miw_corner.decomp_path`** to take the long `(param_set, mi_name)` keys and join their
+   `dir_name`s. So a joined directory name like `danish_1_2_A_50_34_i_5rot` — which is
+   exactly what `state_variant.intrinsic_ref` holds — now raises
+   `KeyError: MI config 'danish_1_2_A_50_34_i_5rot' not found`. **This route has been
+   broken since commit `b9756aa`.** Passing the long keys instead
+   (`--intrinsic-ref pathA_50_34_i_5rot --miw-param-set
+   fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) resolves to the same decomposition file and
+   reproduces the stored result to the printed precision, which is how the reference was
+   built. Noted in `value_added/docs/status/build_progress.md`.
+   **For 3b:** the fix is one of — have the builder resolve the build through the catalog
+   (`catalog.path('miw', variant) / miw_corner.DECOMP_FILE`, which is what
+   `decomp_path`'s own docstring now recommends), or change `state_variant.intrinsic_ref`
+   to a catalog name, which plan section 6 already schedules for 3c.
+
+A third, smaller one: **`build_m1m3_thermal_r2.py` has its own `parse_day_obs`** that
+takes a single night or a `A-B` range but **not** a comma list, unlike `build_efd_db`'s.
+`--day-obs 20251116,20251117` fails with `ValueError: invalid literal for int()`. Not a
+defect exactly — just an inconsistency between two builders in the same product worth
+knowing before writing a command.
+
 ### 3a step 3 — verification: DONE
 
 **Import smoke test: 59 of 59 import, and the 63 → 59 inventory change is accounted for
@@ -488,6 +516,43 @@ database's `state_variant` still produces exactly
 `--scheme 50_34 --intrinsic batoid --opd-version consdb_v1 --intrinsic-ref ofc_v13
 --ofc-version v13 --telemetry-db <main db>` — so the moved script still reads the registry
 correctly, which is the part of that script most likely to have broken.
+
+### 3a step 4 — the comparison: DONE, exact match
+
+Every table and registry, at zero tolerance, on the keys verified unique on both sides:
+
+| table | rows | columns compared | result |
+|---|---|---|---|
+| `visit_telemetry` | 1,017 | **196** | **identical** — no timestamp column, so nothing may differ |
+| `optical_state` | 2,034 | 13 | identical; `computed_at` differs as expected |
+| `m1m3_thermal_r2` | 1,017 | 27 | identical; `computed_at` differs as expected |
+| `fam_dz` | 2,528 | 14 | identical; `computed_at` differs as expected |
+| `column_coverage` | 196 | 7 | identical; `updated_at` differs as expected |
+| `state_variant` | 2 | 10 | identical; `created_at` differs as expected |
+| `fam_variant` | 1 | 13 | identical; `created_at` differs as expected |
+| `fetch_log` | 18 | 4 | identical; `attempted_at` differs as expected |
+
+**Nothing outside the pre-registered expected-difference list differs**, and that list was
+committed in `fb14ab5` before the reference build ran, so it could not be widened after
+seeing a result. `RESULT: builds match`, exit 0.
+
+The **merge path matches too**: two shards built separately and merged give 1,017
+`visit_telemetry` rows and 18 `fetch_log` rows, identical on both sides, and each
+individual shard compares clean as well.
+
+**No manifest was written anywhere under `_phase2_refbuild/`**, confirming the
+scratch-versus-catalog rule: `is_catalog_build` decides by path, so a build whose database
+comes from `--db` or `AOS_EFD_DB` outside the catalog build directory cannot be
+registered. A `find` for `manifest.json` over the whole scratch tree returns nothing.
+
+The comparison needed two things the parquet products' did not:
+
+* **List-valued columns.** `optical_state` and `fam_dz` store the 50 DOF and the 34
+  v-modes as DuckDB `LIST`, which pandas holds as object arrays that `!=` cannot compare
+  elementwise, so `_values_equal` compares them shape-first then elementwise.
+* **NaN equal to NaN.** An unrecovered visit stores NaN rather than NULL (178 of the 1,017
+  visits here), so a plain equality test would have reported every one of them as a
+  difference between two identical builds.
 
 ## 3a, `cwfs_tables` — the move
 

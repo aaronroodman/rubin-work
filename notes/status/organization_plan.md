@@ -425,8 +425,8 @@ register" to three passes over all products. State in
 
 *3a. Move the code, mechanically.* In dependency order: `cwfs_tables` (**done**); `miw`
 (**done**, plus the official-MIW registrations, which are manifests only); `coadds`
-(**done**); `dof_lut` (**done**) and `bounce_tables` (**done**); `value_added` (code only; the `v1/live` + snapshots layout
-comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
+(**done**); `dof_lut` (**done**) and `bounce_tables` (**done**); `value_added` (**done**,
+code only; the `v1/live` + snapshots layout comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
 checked by a small reference build made with the unmoved code and reproduced with the
 moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
 test. Every builder writes its manifest. Split the shared `aos/Snakefile` as each
@@ -547,6 +547,39 @@ run finds, so declaring them would fail a legitimate run. The reference reproduc
 **0 differing columns across 4 tables** (17, 24, 9 and 11 columns) at zero tolerance, and
 all nine PDFs identical in size.
 
+**`value_added` done 2026-10-12**, commits `fb14ab5` (the step-1 plan and the
+expected-difference list), `102cef7` (the move) and `21e8bf0` (the verification). The
+largest move of the phase — eleven files and about 5,100 lines — and the **first
+incremental product**. Nine builders plus `run_build.sh` moved to
+`rubinwork/products/value_added/builders/` and `efd_db.py` became the product reader, with
+shims at every old path that register the real module under the old name, so the five
+bare-name importers and three notebooks work unchanged; module **identity** is asserted in
+a fresh interpreter per shim, since in one process a sibling's path bootstrap can load the
+same file twice. The one thing the move genuinely broke was the **default database path**:
+the reader resolved `parents[1]` of its own file, which was the topic directory and from
+the products package is something else entirely, so the anchor became the **repository
+root** rather than the hop count being adjusted. `default_db_path` now resolves
+`AOS_EFD_DB`, then the old tree, then the catalog — the `aos/Snakefile` precedence — with
+`connect()` as the catalog route for after 3c. A **scratch build writes no manifest**:
+`is_catalog_build` decides by path, so a reference build or a shard cannot be registered.
+`snakemake -n` in `aos/` is **unchanged at 34 jobs** (this product has no rule there, the
+first move with no job-count change to explain) and `run_build.sh --dry-run` gives an
+identical shard plan in both telemetry and state mode, including the variant-flag
+resolution out of `state_variant`. The reference reproduced exactly: **0 unexpected
+differing columns across 8 tables and registries**, with only the seven build-time
+timestamp columns differing, all on a list committed before the build ran; the merge path
+and both shards match too.
+
+Three **3b** items were discovered by this move, all the same class as `miw`'s
+`decomp_path` — a path built from the long `param_set` key, a layout the tree lost when
+`dir_name` arrived: `build_fam_dz.resolve_paths` names a directory that does not exist (so
+the registered `fam_variant` cannot be rebuilt as recorded), `fam_variant.fits_path`
+records that same dead path, and **`build_optical_state --intrinsic miw` has been broken
+since `b9756aa`** — it passes `intrinsic_ref` as `MiwCornerLookup`'s `mi_name`, but the
+`miw` move fixed `decomp_path` to take the long keys and join their `dir_name`s, so the
+joined name the registry holds now raises `KeyError`. The long keys resolve and reproduce
+the stored result, which is how the reference was built. All three recorded, none fixed.
+
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
 - `rotator_angle`: **the donut table's `rotTelPos` metadata first**, ConsDB
@@ -573,6 +606,16 @@ the reference builds:
 - `cwfs_tables`: fold `d12-refitWcs_2025` into `d12-refitWcs` as a date-keyed collection
   list, so one variant covers 2025 and 2026 as the FAM `danish_1_2` already does. Needs
   the builder to open a Butler per collection instead of one per variant.
+- **The three `value_added` dead long-`param_set` paths**, found by the 3a move
+  2026-10-12 and all the same class as `miw`'s `decomp_path`:
+  `build_fam_dz.resolve_paths` builds `<aos_output>/<param_set>/fits.parquet`, which has
+  named nothing on disk since `dir_name` arrived; `fam_variant.fits_path` records that
+  same dead path for the one registered variant; and **`build_optical_state --intrinsic
+  miw` raises `KeyError`** because it passes `intrinsic_ref` as `MiwCornerLookup`'s
+  `mi_name` while the fixed `decomp_path` wants the long `(param_set, mi_name)` keys. The
+  cleanest fix for all three is to resolve the build through the catalog, which
+  `decomp_path`'s own docstring now recommends; the registry half of it is already
+  scheduled for 3c by section 6's move to catalog names.
 - Retire `danish_1_0` whole — the FAM variant and the `d10-wep17_3_0` CWFS entry. Both are
   `registered: false` today, kept so `aos/param_sets.yaml` stays byte-identical. Four live
   references to the long param_set key must move in the same commit; the phase 3 handoff
