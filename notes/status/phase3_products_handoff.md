@@ -7,6 +7,29 @@ apply the intended fixes (3b), then rebuild every product fresh into the new tre
 Read the Phase 3 part of section 8 there for the step list; this file holds the state
 between sessions.
 
+## Decisions for Aaron
+
+Per section 12 of the plan: questions needing your judgment that do not block the rest of
+the step. Answered items move to "Decisions taken".
+
+1. **How the `bounce` study half gets the analysis it needs** (`bounce_tables` 3a step 2,
+   open). Splitting `run_bounce.py` leaves the nine PDF sections needing `bounce_results`,
+   `fit_table`, the per-visit `DOF_all` and the SVD — most of the shared analysis, not just
+   the four tables. Two routes:
+   - **(a) The shared analysis becomes a library function both halves call.** The builder
+     calls it and writes the tables; the study rule calls it and renders. Honest about the
+     dependency, and the per-ordinal DZ pages keep working. Costs a second run of the
+     analysis (167.6 s of wall clock) when both are built.
+     **Recommended, and what I will take as the provisional default** — it is the only
+     route that keeps all nine PDFs working.
+   - **(b) The study reads the four product tables back.** Cheaper and a cleaner product
+     boundary, but `bounce_dz_vs_ordinal.pdf`, `bounce_vmode_vs_ordinal.pdf` and
+     `bounce_dof_vs_ordinal.pdf` need per-visit arrays that no table carries, so three of
+     the nine pages would have to be dropped or re-specified.
+   Nothing else in the move depends on the answer, so I proceed with (a) and mark it
+   provisional. Tell me if dropping those three pages is acceptable and (b) becomes
+   better.
+
 **Resume protocol.** Each step writes its state here and then stops, so the session can be
 cleared. A fresh session re-reads this file and the plan's sections 2–5, not a summary.
 Phase 2's own state is in `notes/status/phase2_fam_tables_handoff.md`, which is complete
@@ -1264,6 +1287,41 @@ calls, the study is the nine `PdfPages` blocks, and no physics moves.
 products: `bounce_summary.pdf` is a study output, so the rule shrinks to its plotting
 half and reads the tables from the product. None of `cwfs_tables`, `miw` or `coadds` had
 that shape.
+
+### The `run_bounce.py` split, mapped section by section (2026-10-11)
+
+Read off the file before touching it, so the next session does not re-derive it. `main()`
+runs `:218`-`:1206`; every one of these is a **top-level** (4-space) section comment inside
+it, so the split is by whole sections and no section straddles the boundary.
+
+| lines | section | goes to |
+|---|---|---|
+| `:218`-`:284` | argparse, config resolution, `out_dir`/`tbl_dir`, matplotlib import | **both** (the builder keeps it; the study rule needs its own copy of the config resolution) |
+| `:285`-`:478` | load, bad-fit drop, quality cut, OFC SVD, FWHM tooling, RBR tooling, OIC authority, scheme callables, AOS Trim | **builder** |
+| `:479`-`:700` | the bounce analysis loop — `fwhm_rows`, `fwhm_bvalue_rows`, `long_dfs`, `bounce_results`, ending with `df_kj` at `:701` | **builder** |
+| `:701`-`:951` | the nine `PdfPages` blocks: DZ vs ordinal, v-mode/DOF vs ordinal, summary, DOF night scatter, DOF per (night, B set), 5/5 camera hexapod | **study** |
+| `:952`-`:988` | `bounce_fwhm_metric.parquet` **plus** its own `PdfPages` at `:973` | **split inside**: table to the builder, the bar chart to the study |
+| `:989`-`:1043` | `bounce_fwhm_vs_bvalue.parquet` **plus** its own `PdfPages` at `:998` | **split inside**: same shape |
+| `:1044`-`:1199` | `bounce_dof_stats.parquet` — **no PDF anywhere in it**, pure table, reads only `bounce_results`, `fit_table`, `DOF_all`, `svd` | **builder** |
+| `:1200`-`:1203` | `bounce_kj_stats.parquet` from `df_kj` | **builder** |
+
+So the handoff's earlier "everything to `:700` plus the four `to_parquet` calls" is right in
+substance, with two refinements worth having before starting:
+
+- **`bounce_dof_stats` is not a `to_parquet` bolted onto a plot section.** It is a 156-line
+  table section of its own at `:1044`-`:1199`, the largest single table block in the file,
+  and it is already free of plotting. It moves whole.
+- **Only two sections need cutting internally**, `:952`-`:988` and `:989`-`:1043`, and in
+  both the table is written *before* its `PdfPages` opens, so the cut is at the `with`
+  statement in each.
+
+The state the study half needs from the builder is `bounce_results`, `fit_table`,
+`df_kj`, `fwhm_rows`, `fwhm_bvalue_rows`, `DOF_all`, `svd` and the derived tooling — which
+is most of the analysis. Plan for that: either the study rule reads the four product
+tables back (works for the night-values and FWHM pages, not for the per-ordinal DZ pages,
+which need the per-visit arrays), or the shared analysis becomes a library function both
+halves call. **Decide which before writing code**; it is the one design choice in this
+move that the four earlier products did not face.
 
 ### The four wrong-way imports need only three names
 
