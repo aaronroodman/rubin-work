@@ -42,6 +42,17 @@ long keys as `output/<param_set>/<mi_name>/`, a layout the tree has not had sinc
 `DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` stale was reading that symptom — the keys were
 always right. New code passes `path=` resolved through the catalog.
 
+`code/lut/run_build_lut.py` is a **shim** too: the averaged-DOF LUT it writes is read
+outside the study, so it moved to `rubinwork.products.dof_lut.builders` in phase 3a and
+`rule build_lut` left `aos/Snakefile`. The LUT fits the **plain FAM DZ** and subtracts no
+intrinsic — `--mi-name` supplies SVD and selection settings only — which is recorded, not
+changed (Aaron, 2026-10-11); see `docs/studies/lut.md`. Its mode counts live only in the
+parquet **schema metadata**, so read them with `dof_lut.build_metadata`.
+`code/processing_compare/compare_fam_processings.py`'s DOF page had the same stale-path
+bug as the coadd scripts (it built `output/<long param_set>/<mi>/lut/`) and now resolves
+through the old tree then the catalog, skipping the page when a reduction has no LUT
+variant — which the script's own default baseline, `danish_1_0`, does not.
+
 `code/coadd/run_coadd_blocks_miw.py` is a **shim** for the same reason — it moved to
 `rubinwork.products.coadds.builders` in phase 3a, because the per-block grids and
 summaries it writes are a product. The other eight scripts in `code/coadd/` are the

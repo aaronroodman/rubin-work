@@ -324,7 +324,7 @@ MI_PAIRS = [(ps, mi) for ps in MI_PSETS for mi in mi_names(ps)
 if _MI_SKIPPED:
     print(f"[Snakefile] skipping {len(_MI_SKIPPED)} MIW build(s) with no complete output "
           "in either the old tree or the catalog; their study jobs (study_radialbins, "
-          "wfs_dof_compare, wfs_mimic, build_lut, the four correlations rules, bounce, "
+          "wfs_dof_compare, wfs_mimic, the four correlations rules, bounce, "
           "fam_coadd_miw) are NOT planned. Build each with "
           "`snakemake -s rubinwork/products/miw/Snakefile "
           "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
@@ -536,8 +536,8 @@ rule all:
         # product since phase 3a, so this is an input `rule all` requires rather than a
         # target it builds; MI_DTAGS already holds only the pairs whose MIW resolved.
         [f"{miw_dir_for(d)}/fits.parquet" for d in MI_DTAGS],
-        # averaged-DOF LUT per (param_set, mi_name)
-        expand("output/lut/{d}/lut.parquet", d=MI_DTAGS),
+        # (the averaged-DOF LUT moved to the dof_lut product in phase 3a -- it is no
+        # longer a target here; see rubinwork/products/dof_lut/Snakefile)
         # MI-refit analyses: DZ-DZ + DZ-temperature correlations, bounce tests
         expand("output/correlations/{d}/dz_correlations.pdf", d=MI_DTAGS),
         expand("output/correlations/{d}/dz_correlations_optcorr.pdf", d=MI_DTAGS),
@@ -788,30 +788,14 @@ rule wfs_mimic:
 
 # (rule refit_mi moved to rubinwork/products/miw/Snakefile -- see above)
 
-# ---- averaged-DOF LUT (n_dof/n_keep settable; collapses elev+rotator) ----
-rule build_lut:
-    input:
-        fits     = lambda w: f"{d_tables(w.d)}/fits.parquet",
-        visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script   = "code/lut/run_build_lut.py",
-        lib      = f"{WF_LIB}/ofc_svd.py",
-    output:
-        lut    = "output/lut/{d}/lut.parquet",
-        lut_dz = "output/lut/{d}/lut_dz.parquet",
-        plots  = "output/lut/{d}/lut.pdf",
-    params:
-        real_ps = lambda w: MI_BY_DTAG[w.d][0],
-        real_mi = lambda w: MI_BY_DTAG[w.d][1],
-        tdir    = lambda w: d_tables(w.d),
-        # rerun-trigger only
-        cfg     = lambda w: mi_cfg_json(w.d),          # SVD params, n_dof/n_keep
-        acfg    = lambda w: an_json_d("lut", w.d),     # lut knobs
-    resources: mem_mb=4000
-    log: "logs/{d}.build_lut.log"
-    shell:
-        "python code/lut/run_build_lut.py --param-set {params.real_ps} "
-        "--mi-name {params.real_mi} --tables-dir {params.tdir} "
-        "--out-dir output/lut/{wildcards.d} > {log} 2>&1"
+# ---- averaged-DOF LUT: moved out in phase 3a ----
+# (rule build_lut moved to rubinwork/products/dof_lut/Snakefile.)  The averaged-DOF
+# look-up table is read outside the study that wrote it, so it is a product.  Build one
+# from the repository root with
+#   snakemake -s rubinwork/products/dof_lut/Snakefile \
+#       --config variant=<v> build=<YYYYMMDD> fam_build=<YYYYMMDD>
+# The product rule declares FIVE outputs against the three this rule declared:
+# lut_by_rotbin.parquet and lut_config.yaml were written here but undeclared.
 
 # ---- DZ-to-DZ correlations on the MI-refit fits (raw + optical-corrected) ----
 # One run emits BOTH PDFs from a shared (raw) selection: dz_correlations.pdf and

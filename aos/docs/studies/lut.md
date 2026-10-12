@@ -1,9 +1,11 @@
 # Study: `lut` — averaged degree-of-freedom look-up table
 
-> **Status:** current · **Last updated:** 2026-09-08 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
-> **Code:** `code/lut/`
-> **Output:** `output/lut/<P>_<M>/`
+> **Code:** `rubinwork/products/dof_lut/` (a product since phase 3a; a shim remains at
+> `code/lut/run_build_lut.py`)
+> **Output:** `<products>/dof_lut/<variant>/<build>/`, and the old
+> `output/lut/<P>_<M>/` until phase 3c rebuilds it
 
 Construction of a Look-Up Table (LUT) of telescope degrees of freedom (DOF) from Full
 Array Mode (FAM) wavefront measurements. The per-visit Double Zernike (DZ) fits are
@@ -31,21 +33,34 @@ count than the MIW build it sits beside.
 
 | file | role |
 |---|---|
-| `code/lut/run_build_lut.py` | pipeline rule `build_lut` — the whole study |
+| `rubinwork/products/dof_lut/builders/run_build_lut.py` | the builder — the whole study |
+| `code/lut/run_build_lut.py` | compatibility shim, removed in phase 5 |
 
-Reads `output/fam_processing/<P>/fits.parquet` and `visits.parquet`, the **Phase-1** per-visit
-DZ fits rather than the MI-refit ones, and writes under
-`output/lut/<P>_<M>/`:
+The averaged LUT is read outside the study that writes it, so phase 3a made it the
+**`dof_lut` product**: `rubinwork/products/dof_lut/`, with its own `variants.yaml`,
+Snakefile and reader. Three variants are defined, matching the three jobs `aos/Snakefile`
+planned before the move.
+
+Reads `fits.parquet` and `visits.parquet` from a `fam_tables` build — the **Phase-1**
+per-visit DZ fits rather than the MI-refit ones — and writes:
 
 | product | content |
 |---|---|
 | `lut.parquet` | one row per recovered DOF: index, label, unit, value (median by default), mean, robust scatter, `n_visits` |
 | `lut_dz.parquet` | one row per (focal `k`, pupil `j`): averaged raw DZ in µm of wavefront, the `n_keep`-mode SVD reconstruction, and the residual |
+| `lut_by_rotbin.parquet` | the same DOF medians per rotator bin — the diagnostic for whether the all-rotator median hides rotator-coupled structure. Written only when the fit table carries a rotator-angle column |
 | `lut.pdf` | summary plots |
 | `lut_config.yaml` | frozen provenance |
 
 DOF values carry the unit named in the `unit` column — µm for the hexapod translations,
 arcsec for the rotations, and dimensionless amplitude for the bending modes.
+
+`lut.parquet` and `lut_dz.parquet` also carry eight fields of **parquet schema
+metadata** — `param_set`, `mi_name`, `reduce`, `n_dof`, `n_keep`, `n_visits`, `k_min`,
+`k_max`. The mode counts and the visit count behind a LUT are recorded only there, so
+read them back with `rubinwork.products.dof_lut.build_metadata` rather than inferring
+them. The build comparison checks them, because a build with a different `n_keep` matches
+on every row while being a different measurement.
 
 ## Configuration
 
@@ -76,8 +91,9 @@ output is keyed by `mi_name` because `n_dof` and `n_keep` come from that build's
   switch to the post-MIW DZ.** Not decided, and nothing has changed. The answer changes
   what the LUT means, since the refit has the measured intrinsic already removed; it also
   changes which product the LUT's variant keys on, `fam_tables` today against `miw`
-  after a switch. The comment at `run_build_lut.py:180`-`:183` mentioning "MI
-  subtraction" describes a MIW build, not this script, and is misleading as written.
+  after a switch. The comment that mentioned "MI subtraction" in the per-rotator-bin
+  block described a MIW build rather than this script; it was corrected in the phase 3a
+  move.
 - This study and the [`bounce`](bounce.md) study both carry "LUT" in their descriptions
   but approach it from opposite directions: `bounce` measures how the optical state
   *varies* with elevation and rotator angle, while this one averages that variation away
@@ -86,10 +102,24 @@ output is keyed by `mi_name` because `n_dof` and `n_keep` come from that build's
 
 ## Running
 
+From the repository root, with the product's own Snakefile:
+
 ```bash
-cd ~/notebooks/rubin-work/aos
-./run_snake.sh --until build_lut
+cd ~/notebooks/rubin-work && \
+    snakemake -s rubinwork/products/dof_lut/Snakefile \
+    --config variant=d12-A_50_34_i_5rot build=20261011 fam_build=20260920
 ```
+
+Read a build with:
+
+```python
+from rubinwork.products.dof_lut import build_metadata, load
+lut, lut_dz, by_rotbin = load("d12-A_50_34_i_5rot")
+n_keep = build_metadata("d12-A_50_34_i_5rot")["n_keep"]
+```
+
+The production build takes about 9 s of wall clock over 863 visits, so it needs no batch
+job.
 
 Needs `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR` via `ofc_svd.build_ofc_svd`, so it needs
 the AOS/CWFS environment; `ts_ofc` is **not** in `lsst_distrib`.

@@ -96,11 +96,89 @@ def compare_split_ocs(baseA, baseB, mi, zks, pdf, per_page=3):
 
 
 # ---------------------------------------------------------------- dof
-def compare_dof(baseA, baseB, mi, pdf):
+LUT_REQUIRED = ('lut.parquet',)
+"""Files that make a LUT directory usable by this page: the per-DOF table, nothing else.
+
+``lut_dz.parquet``, ``lut_by_rotbin.parquet`` and ``lut_config.yaml`` are part of the
+product but this comparison reads only ``lut.parquet``.
+"""
+
+
+def _lut_variant(ps, mi):
+    """The ``dof_lut`` variant for a (param_set, mi_name) pair, or `None`.
+
+    Parameters
+    ----------
+    ps : `str`
+        The long ``aos/param_sets.yaml`` key.
+    mi : `str`
+        The ``mi_config.yaml`` entry name.
+
+    Returns
+    -------
+    variant : `str` or `None`
+        The matching variant name, or `None` when the pair has none defined -- this
+        script compares two arbitrary reductions and the baseline A is usually an old
+        param_set with no LUT variant at all.
+    """
+    from rubinwork.products import dof_lut as _dof_lut
+    for name in _dof_lut.variants(registered_only=False):
+        if _dof_lut.mi_keys(name) == (ps, mi):
+            return name
+    return None
+
+
+def _lut_dir(ps, mi):
+    """The LUT directory for a (param_set, mi_name) pair: old tree first, then catalog.
+
+    Parameters
+    ----------
+    ps : `str`
+        The long ``aos/param_sets.yaml`` key.
+    mi : `str`
+        The ``mi_config.yaml`` entry name.
+
+    Returns
+    -------
+    lut_dir : `pathlib.Path` or `None`
+        A directory holding `LUT_REQUIRED`, or `None` when neither tree has one.
+
+    Notes
+    -----
+    Same precedence as ``aos/Snakefile``'s resolver, so this page and a product rule read
+    the same build: the old ``aos/output/lut/<dir_name>/`` tree, then the catalog's
+    ``current``. Until phase 3c rebuilds the products the old tree is the only place a
+    complete build exists.
+
+    The path this function replaces was ``<output_root>/<param_set>/<mi>/lut/``, built
+    from the long param_set key -- a layout the tree lost when ``dir_name`` was
+    introduced, so it named nothing on disk and this page was already broken before the
+    phase 3a move. Returns `None` rather than raising, because comparing a reduction that
+    has no LUT is a skipped page, not an error.
+    """
+    variant = _lut_variant(ps, mi)
+    if variant is None:
+        return None
+    from rubinwork.products import catalog, dof_lut as _dof_lut
+    aos_output = Path(__file__).resolve().parents[2] / 'output'
+    old_dir = aos_output / 'lut' / _dof_lut.dir_name(variant)
+    if all((old_dir / f).exists() for f in LUT_REQUIRED):
+        return old_dir
+    try:
+        cat_dir = catalog.path('dof_lut', variant, build=catalog.CURRENT)
+    except Exception:
+        return None
+    return cat_dir if all((cat_dir / f).exists() for f in LUT_REQUIRED) else None
+
+
+def compare_dof(baseA, baseB, mi, pdf, psA=None, psB=None):
     import matplotlib.pyplot as plt
-    fa, fb = baseA / mi / 'lut' / 'lut.parquet', baseB / mi / 'lut' / 'lut.parquet'
-    if not (fa.exists() and fb.exists()):
-        print(f'[dof] missing lut.parquet for A or B (mi={mi})'); return
+    dirA, dirB = _lut_dir(psA or baseA.name, mi), _lut_dir(psB or baseB.name, mi)
+    if dirA is None or dirB is None:
+        side = 'A' if dirA is None else 'B'
+        print(f'[dof] no dof_lut build for side {side} (mi={mi}); skipping the DOF page')
+        return
+    fa, fb = dirA / 'lut.parquet', dirB / 'lut.parquet'
     A = pd.read_parquet(fa).set_index('dof_index')
     B = pd.read_parquet(fb).set_index('dof_index')
     fig, axes = plt.subplots(len(DOF_GROUPS), 1, figsize=(13, 11), constrained_layout=True)
@@ -341,7 +419,7 @@ def main():
         if do in ('all', 'split-ocs'):
             compare_split_ocs(baseA, baseB, args.split_mi, szks, pdf)
         if do in ('all', 'dof'):
-            compare_dof(baseA, baseB, args.mi, pdf)
+            compare_dof(baseA, baseB, args.mi, pdf, psA=args.ps_a, psB=args.ps_b)
         if do in ('all', 'visit-rms'):
             compare_visit_rms(baseA, baseB, args.coord, zks, pdf)
         if do in ('all', 'dz-ordinal'):

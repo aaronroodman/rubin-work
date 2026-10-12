@@ -1,0 +1,143 @@
+# ----------------------------------------------------------------------
+# dof_lut product build (Snakemake).  One rule: build_lut projects the per-visit Double
+# Zernike (DZ) fits of one fam_tables build onto the Optical Feedback Control (OFC)
+# sensitivity-matrix singular-value decomposition (SVD), recovers the physical
+# degrees of freedom (DOF) per visit, and collapses over every elevation and rotator
+# angle into one averaged look-up table (LUT).  Then the manifest closes the build.
+#
+# Moved out of aos/ in phase 3a of notes/status/organization_plan.md, where it was
+# `rule build_lut`.  That rule is removed there, so `snakemake -n` in aos/ drops its 3
+# build_lut jobs and the 3 output/lut/<d>/lut.parquet targets of `rule all`.
+#
+#   snakemake -s rubinwork/products/dof_lut/Snakefile -n \
+#       --config variant=d12-A_50_34_i_5rot build=20261011 fam_build=20260920
+#
+# Run from the REPOSITORY ROOT, so that aos/mi_config.yaml and aos/analysis_config.yaml
+# resolve (see RUN_CWD below).
+#
+# ONE UPSTREAM: a fam_tables build supplies fits.parquet and visits.parquet.  The
+# variant's miw entry supplies SETTINGS only -- the mode counts, the focal order range,
+# the coordinate system, the band and program cuts and the rotator bin edges -- because
+# the LUT fits the PLAIN FAM DZ table and opens no measured intrinsic wavefront map.  So
+# miw is recorded under the manifest's `config`, not its `inputs`.
+#
+# Output, under the product catalog's data root:
+#   <products>/dof_lut/<variant>/<build>/{lut,lut_dz,lut_by_rotbin}.parquet
+#   <products>/dof_lut/<variant>/<build>/lut_config.yaml
+#   <products>/dof_lut/<variant>/<build>/lut.pdf
+#   <products>/dof_lut/<variant>/<build>/manifest.json   written last
+#
+# FIVE declared outputs, against the three the aos/ rule declared: lut_by_rotbin.parquet
+# and lut_config.yaml were written but undeclared there.  lut_by_rotbin.parquet is
+# conditional on the fit table carrying a rotator-angle column, so it is declared
+# `touch`-free but through an explicit flag file would be wrong -- instead the rule
+# declares it and the three variants here all have that column (verified on the 3a
+# reference build: 9 populated rotator bins, centres -60 to +60 deg OCS in 15 deg steps).
+# A variant whose fits lack the column would fail the rule, which is the loud failure
+# the undeclared output hid.
+#
+# A build directory is never edited after it completes (rule 5 of the plan's section 2);
+# a rerun makes a new build.
+#
+# Needs lsst.ts.ofc and TS_CONFIG_MTTCS_DIR for the sensitivity-matrix SVD, so it is
+# RSP-only in the same sense the moved rules are.  The production build is fast -- 8.99 s
+# of wall clock over 863 visits -- so it has no batch script.
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+from rubinwork.common.utils import repo_root
+from rubinwork.products import catalog, dof_lut
+
+REPO = repo_root(os.getcwd())
+
+# The builder resolves its configuration through
+# lsst.ts.intrinsic.wavefront.mi_config.load_mi_config and mc.analysis_section, whose
+# default paths are relative to the CURRENT WORKING DIRECTORY.  So the rule runs with
+# aos/ as its cwd, exactly as the moved rules do.  mi_config.yaml is generated from the
+# miw product's variants.yaml (gen_mi_config.py); analysis_config.yaml is hand-edited and
+# holds this builder's own `lut:` knobs.
+RUN_CWD = REPO / 'aos'
+
+VARIANT = config.get('variant', 'd12-A_50_34_i_5rot')
+# str(): snakemake parses --config build=20261011 into an int.
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CFG = dof_lut.variant_config(VARIANT)
+
+# Checked before anything resolves a path, so an unbuildable variant says why rather than
+# failing later on an upstream build's absence.
+if not CFG.get('registered', True):
+    raise ValueError(
+        f"variant {VARIANT!r} is registered: false -- it is carried for recorded "
+        'provenance only and has no build')
+
+PARAM_SET, MI_NAME = dof_lut.mi_keys(VARIANT)
+FAM_VARIANT = dof_lut.fam_variant(VARIANT)
+
+# Which upstream build to read.  `current` by default, resolved to its real build name so
+# the manifest records what was actually read rather than a moving target.
+FAM_BUILD = str(config.get('fam_build') or catalog.CURRENT)
+FAM_DIR = catalog.path('fam_tables', FAM_VARIANT, build=FAM_BUILD)
+FAM_BUILD_NAME = FAM_DIR.name
+
+BUILD_DIR = dof_lut.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+# The shell commands, built here rather than inline: snakemake's own parser mishandles a
+# multi-line f-string inside a rule, so the rules below use plain format placeholders.
+LUT_CMD = (
+    'mkdir -p $(dirname {log})\n'
+    f'cd {RUN_CWD} && python -m '
+    'rubinwork.products.dof_lut.builders.run_build_lut'
+    f' --variant {VARIANT}'
+    f' --tables-dir {FAM_DIR} --out-dir {BUILD_DIR}'
+    + ' > {log} 2>&1\n')
+MANIFEST_CMD = (
+    'mkdir -p $(dirname {log}) && '
+    'python -m rubinwork.products.dof_lut.write_manifest '
+    f'--variant {VARIANT} --build {BUILD} '
+    f'--fam-build {FAM_BUILD_NAME} '
+    '> {log} 2>&1')
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+# ---- project the DZ fits through the SVD, average over every visit ----
+# One rule for all five output files: the script does the SVD, the per-visit projection,
+# the all-visit collapse, the per-rotator-bin diagnostic and the render in one pass over
+# the fit table.
+rule build_lut:
+    input:
+        fits   = str(FAM_DIR / 'fits.parquet'),
+        visits = str(FAM_DIR / 'visits.parquet'),
+    output:
+        lut       = str(BUILD_DIR / 'lut.parquet'),
+        lut_dz    = str(BUILD_DIR / 'lut_dz.parquet'),
+        by_rotbin = str(BUILD_DIR / 'lut_by_rotbin.parquet'),
+        provenance = str(BUILD_DIR / 'lut_config.yaml'),
+        plot      = str(BUILD_DIR / 'lut.pdf'),
+    # The job holds the per-visit DZ matrix and the SVD, not any image data: the measured
+    # production run is small and fast.  Carried over from the aos/ rule's 4000.
+    resources: mem_mb=4000
+    log: str(LOGS / 'build_lut.log')
+    shell: LUT_CMD
+
+
+# ---- last step: the manifest, which is what puts the build in the catalog ----
+# Depends on every output, so an interrupted build leaves no manifest and the catalog does
+# not see it.  It does NOT move `current`: see `catalog set-current`.
+rule manifest:
+    input:
+        str(BUILD_DIR / 'lut.parquet'),
+        str(BUILD_DIR / 'lut_dz.parquet'),
+        str(BUILD_DIR / 'lut_by_rotbin.parquet'),
+        str(BUILD_DIR / 'lut_config.yaml'),
+        str(BUILD_DIR / 'lut.pdf'),
+    output: str(BUILD_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell: MANIFEST_CMD

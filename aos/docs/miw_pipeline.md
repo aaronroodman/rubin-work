@@ -211,13 +211,16 @@ result, which is why the O + C split matters.
 `build_lut` currently projects the Phase-1 `fits.parquet`. Knobs in
 `analysis_config.yaml`.
 
-**`build_lut`** — `code/lut/run_build_lut.py` (library: `ofc_svd.py`). Averaged-DOF
-look-up table: projects the per-visit DZ fits onto the OFC sensitivity-matrix
-SVD (settable `n_dof`/`n_keep`), recovers DOF per visit, and collapses over
-**all** elevation and rotator angle (median by default) →
-`output/lut/<P>_<M>/lut.parquet` (per-DOF) + `lut_dz.parquet`
-(per-(k, j) raw/fit/residual DZ) + `lut.pdf`. (Supersedes the removed
-`study_50dofLUT.ipynb`. Uses the Phase-1 `fits.parquet`.)
+**`build_lut`** — **moved to the `dof_lut` product in phase 3a**
+(`rubinwork/products/dof_lut/Snakefile`); it is no longer a rule here, and the
+averaged-DOF LUT is no longer a `rule all` target. Averaged-DOF look-up table: projects
+the per-visit DZ fits onto the OFC sensitivity-matrix SVD (settable `n_dof`/`n_keep`),
+recovers DOF per visit, and collapses over **all** elevation and rotator angle (median by
+default) → `lut.parquet` (per-DOF) + `lut_dz.parquet` (per-(k, j) raw/fit/residual DZ) +
+`lut_by_rotbin.parquet` + `lut.pdf` + `lut_config.yaml`, under
+`<products>/dof_lut/<variant>/<build>/`. (Supersedes the removed `study_50dofLUT.ipynb`.
+Uses the Phase-1 `fits.parquet` of a `fam_tables` build.) See
+[`studies/lut.md`](studies/lut.md).
 
 **`dz_correlations`** — `code/correlations/run_dz_correlations.py` (port of
 `study_doublezernike.ipynb` §7–§10). DZ_kj ↔ DZ_k'j' Pearson heatmap, top-|r|
@@ -400,6 +403,7 @@ output/
                          vmode_correlations*,dz_explained}.{pdf,parquet}
   bounce/<P>_<M>/ bounce_kj_stats.parquet  bounce_*.pdf
   lut/<P>_<M>/ {lut,lut_dz,lut_by_rotbin}.parquet  lut.pdf  lut_config.yaml
+               # written here before phase 3a; now <products>/dof_lut/<variant>/<build>/
   psf/<P>_<M>/ psf_fp_maps_<case>_<band>.pdf
   closed_loop/<P>_<M>/ psf_fp_maps_loop*.pdf
   wfs_mimic/<P>_<M>/ wfs_mimic_cov{84,21}.parquet  wfs_mimic_cov_bins.parquet  wfs_mimic.pdf

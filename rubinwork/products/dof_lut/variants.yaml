@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------------------
+# dof_lut variants: the averaged degree-of-freedom (DOF) look-up table (LUT), one
+# variant per (fam_tables variant, measured-intrinsic-wavefront settings entry) pair.
+#
+# WHAT THE UPSTREAM IS.  Established on 2026-10-11 by reading the builder: this product
+# fits the PLAIN Full Array Mode (FAM) Double Zernike (DZ) table.  It reads
+# fits.parquet and visits.parquet from a `fam_tables` build and never opens a measured
+# intrinsic wavefront (MIW) map, so `fam_variant` is the real upstream and the one the
+# manifest records.  `mi_name` contributes SETTINGS only -- the singular-value
+# decomposition (SVD) mode counts, the focal order range, the coordinate system, the
+# band and program cuts, and the rotator bin edges -- which is why it is a settings key
+# here rather than a second upstream.  Aaron's call, same day: that is recorded, not
+# changed ("I used the plain FAM DZ then but may want to switch to using the post MIW
+# DZ"); see aos/docs/studies/lut.md.  Switching to the post-MIW DZ would make `miw` the
+# upstream, which is a variant-definition change and not just a builder change.
+#
+# The variant NAME still carries the MIW short code, because a LUT is built per
+# (param_set, mi_name) pair and that pairing is what the old aos/output/lut/ tree keys
+# on.  Keeping the name traceable across phase 5 matters more here than naming the
+# upstream twice.
+#
+# Each entry therefore names ONE thing, `miw_variant`, and the reader derives the rest
+# from the miw product: the `param_set` and `mi_name` the builder needs on its command
+# line, and the `fam_variant` the manifest records as the upstream.  The miw product
+# already owns that mapping (its variants.yaml generates aos/mi_config.yaml), and the
+# coadds reader resolves its FAM variant the same way, for the same reason -- a copy
+# here would be a second place to edit and could drift from the generated config without
+# anything noticing.
+#
+# `dir_name` is the subdirectory this variant has in the old aos/output/lut/ tree.  It
+# MUST be quoted, as the coadds entries are: YAML reads an unquoted 50_34 as the integer
+# 5034, because an underscore is a numeric digit separator.  No name here starts with a
+# digit, so the trap does not bite today; the field is quoted anyway so a later variant
+# cannot be bitten by it.
+#
+# WHERE THE SETTINGS COME FROM, and what is NOT restated here.  Unlike coadds, this
+# builder takes almost nothing on the command line: it resolves `n_dof`, `n_keep`,
+# `k_min`/`k_max`, `coord_sys`, `filter`, `programs`, `ofc_normalization_yaml` and the
+# rotator bin edges from aos/mi_config.yaml through
+# lsst.ts.intrinsic.wavefront.mi_config.load_mi_config, and its own knobs (`reduce`,
+# `use_alt_window`, `drop_bad_fit`, `prefix`, and optional n_dof/n_keep overrides) from
+# the `lut:` section of aos/analysis_config.yaml through mc.analysis_section.  Both of
+# those resolutions are left exactly as they were, so the moved builder reproduces the
+# reference byte for byte.  mi_config.yaml is itself generated from the miw product's
+# variants.yaml, so the MIW settings have a single source of truth already.
+#
+# That is why the entries below carry no copy of the `lut:` knobs.  Duplicating them
+# would create a second place to edit and a silent drift when the two disagree.  The
+# builder's resolution stays authoritative until the configuration moves wholesale in a
+# later phase; what this file pins is the IDENTITY of a variant -- which FAM tables,
+# which settings entry, which old-tree directory.
+#
+# Every one of the twelve miw variants was checked against both old output trees before
+# anything moved; only the two d12 entries below have output there.
+# ---------------------------------------------------------------------------
+
+variants:
+
+  # The production LUT: the danish_1_2 FAM tables with the 5-rotator-bin 50/34 settings
+  # entry.  Five files in aos/output/lut/danish_1_2_A_50_34_i_5rot/, and the variant the
+  # 3a reference build was made from.
+  d12-A_50_34_i_5rot:
+    miw_variant: d12-A_50_34_i_5rot
+    dir_name: "danish_1_2_A_50_34_i_5rot"
+
+  # The same FAM tables with the single-rotator-bin settings entry.  Five files in
+  # aos/output/lut/danish_1_2_A_50_34_i/.
+  d12-A_50_34_i:
+    miw_variant: d12-A_50_34_i
+    dir_name: "danish_1_2_A_50_34_i"
+
+  # The danish_1_3_test FAM tables.  Planned by aos/Snakefile but never built: no output
+  # in the old tree.
+  d13t-A_50_34_i_5rot:
+    miw_variant: d13t-A_50_34_i_5rot
+    dir_name: "danish_1_3_test_A_50_34_i_5rot"
