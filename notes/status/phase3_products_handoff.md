@@ -290,6 +290,125 @@ candidate for whenever the flat `aos/code/` modules move.
 
 After `value_added`: **phase 3a for `guider_moments`**, the last product.
 
+## 3a, `value_added` — the move
+
+### Step 1 plan: the exact commands, and what may differ between two builds
+
+Written **before** the reference build ran, so step 4 has a fixed list to check against.
+Nothing outside the expected-difference list below may differ.
+
+**Flags taken from `run_build.sh`'s own invocations**, not its usage comment, which is
+what the handoff's previous entry warned about. Five things the comment does not tell you:
+
+1. `run_build.sh` passes **`--db <path>`**, not `AOS_EFD_DB`. Both work; `--db` is what a
+   shard gets. This session sets `AOS_EFD_DB` as well, as a second guard against ever
+   touching the live database.
+2. **A state shard needs `--telemetry-db`.** Its own database's `visit_telemetry` is
+   empty, so without it the commanded v-modes and the whole open-loop arm come back NaN,
+   and the builder refuses an empty telemetry source. `run_build.sh` points it at the
+   **main** database; for a scratch build it must point at the **scratch telemetry
+   database**, or the reference reads live data.
+3. **The MIW route needs `--miw-param-set`**, because `state_variant` has no column for
+   it and the module default does not exist on disk. `run_build.sh` errors out without it.
+4. `run_build.sh` resolves a variant's defining flags (`--scheme`, `--intrinsic`,
+   `--opd-version`, `--intrinsic-ref`, `--ofc-version`) **out of the main database's
+   `state_variant`** and passes those instead of `--variant`, because a shard's own
+   registry starts empty. A scratch build must do the same, or the builder exits with
+   "variant is not registered".
+5. **`build_fam_dz.py` uses `--db-path`**, not `--db`.
+
+```bash
+REF=/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/value_added/ref
+cd ~/notebooks/rubin-work/value_added
+
+# 1. telemetry, both nights, all groups
+AOS_EFD_DB=$REF/aos_efd.duckdb python -u code/build_efd_db.py \
+    --day-obs 20251116,20251117 --groups all --db $REF/aos_efd.duckdb
+
+# 2. the M1M3 bulk thermal gradients, same nights
+AOS_EFD_DB=$REF/aos_efd.duckdb python -u code/build_m1m3_thermal_r2.py \
+    --day-obs 20251116,20251117 --db $REF/aos_efd.duckdb
+
+# 3. optical_state, the MIW route -- explicit --intrinsic-ref AND --miw-param-set
+AOS_EFD_DB=$REF/aos_efd.duckdb python -u code/build_optical_state.py \
+    --day-obs 20251116,20251117 --scheme 50_34 --intrinsic miw \
+    --opd-version consdb_v1 --intrinsic-ref danish_1_2_A_50_34_i_5rot \
+    --ofc-version v13 --miw-param-set danish_1_2_A_50_34_i_5rot \
+    --db $REF/aos_efd.duckdb --telemetry-db $REF/aos_efd.duckdb
+
+# 4. optical_state, the batoid route
+AOS_EFD_DB=$REF/aos_efd.duckdb python -u code/build_optical_state.py \
+    --day-obs 20251116,20251117 --scheme 50_34 --intrinsic batoid \
+    --opd-version consdb_v1 --intrinsic-ref ofc_v13 --ofc-version v13 \
+    --db $REF/aos_efd.duckdb --telemetry-db $REF/aos_efd.duckdb
+
+# 5. fam_dz, the one registered fam_variant
+AOS_EFD_DB=$REF/aos_efd.duckdb python -u code/build_fam_dz.py \
+    --param-set danish_1_2 --aos-output ../aos/output/fam_processing \
+    --prefix z1toz6 --scheme 50_34 --db-path $REF/aos_efd.duckdb
+```
+
+**`build_fam_dz.py` cannot run on its registered variant today** — a pre-existing defect
+of the same class as `miw_corner.decomp_path` and the three coadd scripts.
+`resolve_paths` (`build_fam_dz.py:104`-`:106`) builds
+`<aos_output>/<param_set>/fits.parquet` from the **long** param_set key, and
+`fam_variant.fits_path` records
+`aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/fits.parquet`. No such directory
+exists: the tables are at `aos/output/fam_processing/danish_1_2/`, the `dir_name` layout.
+So the reference build passes `--aos-output ../aos/output/fam_processing --param-set
+danish_1_2`, which resolves. **Recorded, not fixed** — a path fix is a 3b item, and 3a is
+mechanical. It does mean the `fam_dz` reference exercises the builder but not the
+registered variant's own `fits_path`.
+
+**The merge path, exercised as two shards merged into a second scratch database:**
+
+```bash
+SHARDS=/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/value_added/ref_shards
+MERGED=/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/value_added/ref_merged
+cd ~/notebooks/rubin-work/value_added
+for N in 20251116 20251117; do
+  AOS_EFD_DB=$SHARDS/telemetry_$N.duckdb python -u code/build_efd_db.py \
+      --day-obs $N --groups all --db $SHARDS/telemetry_$N.duckdb
+done
+AOS_EFD_DB=$MERGED/aos_efd.duckdb python -u code/merge_db_shards.py \
+    --shards $SHARDS/telemetry_20251116.duckdb $SHARDS/telemetry_20251117.duckdb \
+    --db $MERGED/aos_efd.duckdb
+```
+
+### Expected differences between two builds — the fixed list for step 4
+
+**Only these may differ.** Every one is a wall-clock timestamp written at build time, so
+two runs of identical code necessarily disagree; there is no other source of
+run-to-run variation in this product (no row order dependence — every table has a
+verified-unique key — and no randomness in any builder).
+
+| table | column | why it differs |
+|---|---|---|
+| `fetch_log` | `attempted_at` | `datetime.now(timezone.utc)` at each group fetch (`efd_db.py:538`) |
+| `column_coverage` | `updated_at` | `datetime.now(timezone.utc)` per coverage refresh (`efd_db.py:573`) |
+| `state_variant` | `created_at` | `datetime.now(timezone.utc)` at registration (`efd_db.py:638`) |
+| `fam_variant` | `created_at` | `datetime.now(timezone.utc)` at registration (`efd_db.py:859`) |
+| `optical_state` | `computed_at` | `datetime.now(timezone.utc)` per row batch (`efd_db.py:766`) |
+| `fam_dz` | `computed_at` | `datetime.now(timezone.utc)` per row batch (`efd_db.py:932`) |
+| `m1m3_thermal_r2` | `computed_at` | `pd.Timestamp.utcnow()` per row batch (`efd_db.py:1042`) |
+
+`visit_telemetry` carries **no** timestamp column, so it must match exactly, column for
+column. The two `optical_state` variants and `fam_dz` must match on every value column;
+only `computed_at` may move.
+
+Comparison keys, to verify unique on the reference before comparing anything:
+
+| table | key |
+|---|---|
+| `visit_telemetry` | `(visit_id)` |
+| `optical_state` | `(visit_id, variant_id)` |
+| `m1m3_thermal_r2` | `(visit_id)` |
+| `fam_dz` | `(visit_id, fam_variant_id)` |
+| `column_coverage` | `(column_name)` |
+| `state_variant` | `(variant_id)` |
+| `fam_variant` | `(fam_variant_id)` |
+| `fetch_log` | `(day_obs, group_name)` |
+
 ## 3a, `cwfs_tables` — the move
 
 ### Scope, agreed 2026-10-10
