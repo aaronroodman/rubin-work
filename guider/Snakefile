@@ -1,28 +1,41 @@
 # ----------------------------------------------------------------------
-# Guider moment-decomposition pipeline (Snakemake), per whole night.
+# Guider STUDY pipeline (Snakemake), per whole night.
 #
-# discover_night (Butler query, science-only) -> one job per exposure
-#   -> seq/<seqNum>_{moments,stars,metrics}.parquet
-#   -> combine into per-day single files + a per-day QA/summary PDF.
+# The three rules that BUILT the guider moment tables -- discover_night, moments and
+# combine -- moved to the `guider_moments` product in phase 3a of
+# notes/status/organization_plan.md:
+#
+#   snakemake -s ../rubinwork/products/guider_moments/Snakefile --config night=20260706
+#
+# What remains here reads that product and renders:
+#
+#   psfmoments   adjacent-CCD PSF star moments (the science side of the guider-vs-CCD
+#                comparison; independent of the guider data)
+#   movie(s)     RubinTV-style movies for every Nth visit
+#   rtvplot(s)   RubinTV-style review plots for every Nth visit
+#   plots        the per-day QA/summary PDF, from the product's moments table
 #
 #   snakemake -n                                        # dry-run
-#   snakemake output/night_20260709/guider_moments_20260709.parquet
+#   snakemake output/night_20260709/guider_plots_20260709.pdf
 #   ./run_snake.sh --day-obs 20260709[,20260710,...] [--mode batch] [--limit N]
 #
-# Per-day outputs (output/night_<dayObs>/):
-#   seq/<seqNum>_moments.parquet     NEW: unweighted moment decomposition
-#   seq/<seqNum>_stars.parquet       summit_utils per-stamp tracker table
-#   seq/<seqNum>_metrics.parquet     summit_utils per-exposure metrics
-#   guider_moments_<dayObs>.parquet  per-day combined (yours)
-#   guider_stars_<dayObs>.parquet    per-day combined (summit_utils stars)
-#   guider_metrics_<dayObs>.parquet  per-day combined (summit_utils metrics)
-#   guider_plots_<dayObs>.pdf        per-day QA/summary PDF
-#   movies/<seqNum>_{full,star}.mp4  RubinTV-style movies, every Nth visit
-#   guider_movies_<dayObs>.txt       movie manifest (movie_stride in config)
-#   skipped_visits.txt
+# Per-day study outputs (output/night_<dayObs>/):
+#   guider_psfmoments_<dayObs>.parquet  adjacent-CCD PSF star moments
+#   guider_plots_<dayObs>.pdf           per-day QA/summary PDF
+#   movies/<seqNum>_{full,star}.mp4     RubinTV-style movies, every Nth visit
+#   guider_movies_<dayObs>.txt          movie manifest (movie_stride in config)
+#   rtvplots/<seqNum>_rtvplots.pdf      RubinTV-style review plots
+#   guider_rtvplots_<dayObs>.txt        rtvplot manifest
+#
+# The product's own outputs (the three per-night tables and the per-exposure files) are
+# NOT written here; they are read through the resolver below, old tree first and then the
+# catalog, the same way aos/Snakefile reads its three moved products.
 # ----------------------------------------------------------------------
 import os
 import yaml
+
+from rubinwork.products import catalog as _catalog
+from rubinwork.products import guider_moments as _guider_moments
 
 os.environ["NUMEXPR_MAX_THREADS"] = "8"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
@@ -33,10 +46,8 @@ os.environ["MKL_NUM_THREADS"] = "1"
 CFG = yaml.safe_load(open("snake_config.yaml"))
 BUTLER = CFG["butler"]
 TRACKER = CFG["tracker"]
-MOMENTS = CFG["moments"]
 NIGHTS = [int(d) for d in CFG.get("nights", [])]
 COLLECTIONS = " ".join(BUTLER["collections"])
-GUIDER_HZ = CFG.get("guider_hz", 5.0)
 IMAGE_TYPES = " ".join(CFG.get("image_types", ["science"]))
 SCIENCE_REPO = CFG.get("science_repo", "/repo/main")
 LIMIT = int(config.get("limit", 0))   # CLI: --config limit=N (smoke test)
@@ -48,21 +59,71 @@ MOVIE_STRIDE = int(config.get("movie_stride", 50))  # movie for every Nth visit 
 RESIDUAL_SCALE = float(TRACKER.get("residual_scale", 5.0))  # trend outlier band (x mad_std)
 
 
-def nightMomentsFiles(wildcards):
-    """Per-seq moments files for a night, from the discovery checkpoint."""
-    dayObs = int(wildcards.dayObs)
-    manifest = checkpoints.discover_night.get(dayObs=wildcards.dayObs).output[0]
-    with open(manifest) as fh:
-        seqs = [int(x) for x in fh.read().split() if x.strip()]
-    return [f"output/night_{dayObs}/seq/{s}_moments.parquet" for s in seqs]
+# ======================================================================
+# ---- the product-data resolver: old tree first, then the catalog -----
+# ======================================================================
+# Phase 3a moved the guider_moments build rules out of this Snakefile. The study rules
+# below read that product, and until phase 5 they read it from the OLD tree
+# (output/night_<dayObs>/), which is where every existing night was built. A night
+# rebuilt into the new data root would otherwise be invisible here.
+#
+# So each night's product directory resolves in this order:
+#
+#   1. the old-tree path, if its required files are all there -- unchanged behaviour;
+#   2. the catalog's partition for that night;
+#   3. the old-tree path again, so a rule's own gate reports a missing file exactly as it
+#      did before the resolver existed.
+_RESOLVED = {}        # dayObs -> "old tree ..." | "catalog ..." | "UNRESOLVED ..."
+
+MOMENTS_REQUIRED = ("guider_moments_{d}.parquet",)
+"""What makes a night a usable build, from the study rules' point of view."""
+
+
+def momentsDir(dayObs):
+    """The guider_moments directory for one night: old tree, else the catalog."""
+    d = int(dayObs)
+    required = [f.format(d=d) for f in MOMENTS_REQUIRED]
+    old = f"output/night_{d}"
+    if all(os.path.exists(f"{old}/{f}") for f in required):
+        _RESOLVED[d] = f"old tree {old}"
+        return old
+    try:
+        cat = str(_catalog.path(_guider_moments.PRODUCT, _guider_moments.PRODUCT_VARIANT,
+                                f"{_guider_moments.NIGHTS_DIR}/{d}"))
+    except Exception:
+        cat = None
+    if cat and all(os.path.exists(f"{cat}/{f}") for f in required):
+        _RESOLVED[d] = f"catalog {_guider_moments.PRODUCT_VARIANT}/nights/{d} -> {cat}"
+        return cat
+    _RESOLVED[d] = f"UNRESOLVED, falling back to the old tree {old}"
+    return old
+
+
+def momentsTable(wildcards):
+    """The night's combined moments table, wherever it resolved."""
+    d = int(wildcards.dayObs)
+    return f"{momentsDir(d)}/guider_moments_{d}.parquet"
+
+
+def nightSeqNums(dayObs):
+    """The night's guider seqNums, from the product's own exposure listing.
+
+    The discovery checkpoint moved to the product, so the study rules read the listing it
+    wrote rather than querying the Butler again. A night with no listing yields no
+    strided movie or rtvplot jobs, which is the same "nothing to do" the checkpoint gave
+    for an empty night.
+    """
+    listing = f"{momentsDir(dayObs)}/exposures.txt"
+    if not os.path.exists(listing):
+        return []
+    with open(listing) as handle:
+        return sorted(int(x) for x in handle.read().split() if x.strip())
 
 
 def nightMovieFiles(wildcards):
     """RubinTV-style movies for every MOVIE_STRIDE-th visit of a night."""
     dayObs = int(wildcards.dayObs)
-    manifest = checkpoints.discover_night.get(dayObs=wildcards.dayObs).output[0]
-    with open(manifest) as fh:
-        seqs = sorted(int(x) for x in fh.read().split() if x.strip())
+    seqs = nightSeqNums(dayObs)
     picked = seqs[::MOVIE_STRIDE] if MOVIE_STRIDE > 0 else []
     return [f"output/night_{dayObs}/movies/{s}_{kind}.mp4"
             for s in picked for kind in ("full", "star")]
@@ -71,9 +132,7 @@ def nightMovieFiles(wildcards):
 def nightRtvPlotFiles(wildcards):
     """RubinTV-style review plots for every MOVIE_STRIDE-th visit of a night."""
     dayObs = int(wildcards.dayObs)
-    manifest = checkpoints.discover_night.get(dayObs=wildcards.dayObs).output[0]
-    with open(manifest) as fh:
-        seqs = sorted(int(x) for x in fh.read().split() if x.strip())
+    seqs = nightSeqNums(dayObs)
     picked = seqs[::MOVIE_STRIDE] if MOVIE_STRIDE > 0 else []
     return [f"output/night_{dayObs}/rtvplots/{s}_rtvplots.pdf" for s in picked]
 
@@ -85,81 +144,10 @@ wildcard_constraints:
 
 rule all:
     input:
-        [f"output/night_{d}/guider_moments_{d}.parquet" for d in NIGHTS]
-        + [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
+        [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
         + [f"output/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS]
         + [f"output/night_{d}/guider_movies_{d}.txt" for d in NIGHTS]
         + [f"output/night_{d}/guider_rtvplots_{d}.txt" for d in NIGHTS],
-
-
-checkpoint discover_night:
-    output:
-        "output/night_{dayObs}/exposures.txt",
-    params:
-        limit=LIMIT,
-        imageTypes=IMAGE_TYPES,
-    resources:
-        mem_mb=2000,
-    log:
-        "logs/night_{dayObs}.discover.log",
-    shell:
-        f"""
-        python {CODE}/list_guider_exposures.py --day-obs {{wildcards.dayObs}} \
-            --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
-            --image-types {{params.imageTypes}} --limit {{params.limit}} \
-            --output {{output}} > {{log}} 2>&1
-        """
-
-
-# ---- per exposure: 3 products (moments / stars / metrics) ----
-rule moments:
-    output:
-        moments="output/night_{dayObs}/seq/{seqNum}_moments.parquet",
-        stars="output/night_{dayObs}/seq/{seqNum}_stars.parquet",
-        metrics="output/night_{dayObs}/seq/{seqNum}_metrics.parquet",
-    params:
-        seqdir="output/night_{dayObs}/seq",
-        recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
-    resources:
-        mem_mb=4000,
-    log:
-        "logs/night_{dayObs}.{seqNum}.moments.log",
-    shell:
-        rf"""
-        python {CODE}/run_guider_moments.py \
-            --day-obs {{wildcards.dayObs}} --seq-num {{wildcards.seqNum}} \
-            --outdir {{params.seqdir}} \
-            --repo {BUTLER["repo"]} --collections {COLLECTIONS} \
-            --view {BUTLER["view"]} --guider-hz {GUIDER_HZ} \
-            --min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} \
-            --edge-margin {TRACKER["edge_margin"]} \
-            --min-finite-fraction {TRACKER["min_finite_fraction"]} {{params.recover}} \
-            --ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} \
-            --residual-scale {RESIDUAL_SCALE} \
-            > {{log}} 2>&1
-        """
-
-
-# ---- combine per-seq -> per-day single files (+ skip report) ----
-rule combine:
-    input:
-        nightMomentsFiles,
-    output:
-        moments="output/night_{dayObs}/guider_moments_{dayObs}.parquet",
-        stars="output/night_{dayObs}/guider_stars_{dayObs}.parquet",
-        metrics="output/night_{dayObs}/guider_metrics_{dayObs}.parquet",
-        skipped="output/night_{dayObs}/skipped_visits.txt",
-    resources:
-        mem_mb=3000,
-    log:
-        "logs/night_{dayObs}.combine.log",
-    shell:
-        f"""
-        python {CODE}/combine_moments.py \
-            --seqdir output/night_{{wildcards.dayObs}}/seq \
-            --outdir output/night_{{wildcards.dayObs}} --dayobs {{wildcards.dayObs}} \
-            > {{log}} 2>&1
-        """
 
 
 # ---- adjacent-CCD PSF star moments (science side; independent of guider) ----
@@ -254,10 +242,10 @@ rule rtvplots:
         "echo 'no rtvplots (movie_stride=0 or empty night)' > {output}"
 
 
-# ---- per-day QA/summary PDF ----
+# ---- per-day QA/summary PDF, from the guider_moments product ----
 rule plots:
     input:
-        "output/night_{dayObs}/guider_moments_{dayObs}.parquet",
+        momentsTable,
     output:
         "output/night_{dayObs}/guider_plots_{dayObs}.pdf",
     resources:
@@ -266,3 +254,8 @@ rule plots:
         "logs/night_{dayObs}.plots.log",
     shell:
         f"python {CODE}/run_guider_dayplots.py {{input}} --output {{output}} > {{log}} 2>&1"
+
+
+onstart:
+    for d, how in sorted(_RESOLVED.items()):
+        print(f"guider_moments night {d}: {how}")

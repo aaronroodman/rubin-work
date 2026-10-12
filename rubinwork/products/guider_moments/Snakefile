@@ -1,0 +1,175 @@
+# ----------------------------------------------------------------------
+# guider_moments product build (Snakemake).  One night per invocation.
+#
+#   discover_night (Butler query, science images only) -> one `moments` job per exposure
+#     -> seq/<seqNum>_{moments,stars,metrics}.parquet
+#     -> combine into the three per-night tables + two text sidecars
+#     -> manifest, which is what puts the night in the catalog.
+#
+# Moved out of guider/ in phase 3a of notes/status/organization_plan.md, where the three
+# rules were `discover_night`, `moments` and `combine`.  They are removed there, so a
+# per-night moments target no longer plans in guider/; the study rules that remain there
+# (psfmoments, movie(s), rtvplot(s), plots) read this product's output.
+#
+#   snakemake -s rubinwork/products/guider_moments/Snakefile -n --config night=20260706
+#   snakemake -s rubinwork/products/guider_moments/Snakefile --config night=20260706 limit=3
+#
+# Run from the REPOSITORY ROOT.
+#
+# AN INCREMENTAL PRODUCT (plan section 5): the variant is the SCHEMA VERSION, v6, and a
+# night is a PARTITION rather than a dated build, so the output is
+#
+#   <products>/guider_moments/v6/nights/<night>/
+#       seq/<seqNum>_{moments,stars,metrics}.parquet
+#       guider_{moments,stars,metrics}_<night>.parquet
+#       skipped_visits.txt  detector_counts_<night>.txt
+#       manifest.json       written last
+#
+# NO UPSTREAM PRODUCT: the inputs are Butler raw guider data and summit_utils, both
+# external to this repository, so they are recorded under the manifest's `config` -- the
+# Butler repository, the collections and the summit_utils commit -- rather than its
+# `inputs`.  summit_utils is NOT modified by a build.
+#
+# FIVE declared combine outputs, against the four the guider/ rule declared:
+# detector_counts_<night>.txt was written but undeclared there.  It is written
+# unconditionally, which is why it can be declared -- unlike bounce_tables' seven
+# conditional PDFs, where declaring them would fail a legitimate run.
+#
+# A night is never edited after it completes (rule 5 of the plan's section 2).
+# ----------------------------------------------------------------------
+import os
+import pathlib
+
+from rubinwork.products import guider_moments
+from rubinwork.products.guider_moments import reader
+
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+VARIANT = str(config.get('variant', reader.PRODUCT_VARIANT))
+NIGHT = str(config.get('night', '')).strip()
+if not NIGHT:
+    raise ValueError('this Snakefile builds one night: pass --config night=YYYYMMDD')
+LIMIT = int(config.get('limit', 0))        # smoke test: keep the first N exposures
+
+CFG = guider_moments.variant_config(VARIANT)
+BUTLER = CFG['butler']
+TRACKER = CFG['tracker']
+MOMENTS = CFG['moments']
+COLLECTIONS = ' '.join(BUTLER['collections'])
+IMAGE_TYPES = ' '.join(BUTLER['image_types'])
+RECOVER = '' if TRACKER.get('recover_edge_stars', True) else '--no-recover-edge-stars'
+
+# A scratch root keeps a reference build out of the catalog.  write_manifest decides by
+# PATH, not by a flag, so a night written anywhere else cannot be registered.
+NIGHT_DIR = (pathlib.Path(config['night_root']) if config.get('night_root')
+             else reader.night_dir(NIGHT, VARIANT))
+SEQ_DIR = NIGHT_DIR / 'seq'
+WORK = NIGHT_DIR / '_work'
+LOGS = WORK / 'logs'
+
+BUILDERS = 'rubinwork.products.guider_moments.builders'
+
+
+def nightMomentsFiles(wildcards):
+    """Per-exposure moments files for the night, from the discovery checkpoint.
+
+    One night per invocation, so the only wildcard in this workflow is `seqNum`: the night
+    comes from --config and is substituted into the paths above.
+    """
+    listing = checkpoints.discover_night.get().output[0]
+    with open(listing) as handle:
+        seqs = [int(x) for x in handle.read().split() if x.strip()]
+    return [str(SEQ_DIR / f'{s}_moments.parquet') for s in seqs]
+
+
+wildcard_constraints:
+    seqNum = r'\d+',
+
+
+rule all:
+    input:
+        str(NIGHT_DIR / 'manifest.json'),
+
+
+# ---- discover the night's guider exposures from the Butler ----
+checkpoint discover_night:
+    output:
+        str(NIGHT_DIR / 'exposures.txt'),
+    params:
+        limit=LIMIT,
+    resources: mem_mb=2000
+    log: str(LOGS / 'discover.log')
+    shell:
+        'mkdir -p $(dirname {log}) && '
+        f'python -m {BUILDERS}.list_guider_exposures '
+        f'--day-obs {NIGHT} '
+        f'--repo {BUTLER["repo"]} --collections {COLLECTIONS} '
+        f'--image-types {IMAGE_TYPES} '
+        '--limit {params.limit} --output {output} > {log} 2>&1'
+
+
+# ---- per exposure: the three tables ----
+rule moments:
+    output:
+        moments=str(SEQ_DIR / '{seqNum}_moments.parquet'),
+        stars=str(SEQ_DIR / '{seqNum}_stars.parquet'),
+        metrics=str(SEQ_DIR / '{seqNum}_metrics.parquet'),
+    resources: mem_mb=4000
+    log: str(LOGS / '{seqNum}.moments.log')
+    shell:
+        'mkdir -p $(dirname {log}) && '
+        f'python -m {BUILDERS}.run_guider_moments '
+        f'--day-obs {NIGHT} ' '--seq-num {wildcards.seqNum} '
+        f'--outdir {SEQ_DIR} '
+        f'--repo {BUTLER["repo"]} --collections {COLLECTIONS} '
+        f'--view {BUTLER["view"]} --guider-hz {CFG["guider_hz"]} '
+        f'--min-snr {TRACKER["min_snr"]} --max-ellipticity {TRACKER["max_ellipticity"]} '
+        f'--edge-margin {TRACKER["edge_margin"]} '
+        f'--min-finite-fraction {TRACKER["min_finite_fraction"]} {RECOVER} '
+        f'--ap-nsigma {MOMENTS["ap_nsigma"]} --cen-niter {MOMENTS["cen_niter"]} '
+        f'--residual-scale {TRACKER["residual_scale"]} '
+        '> {log} 2>&1'
+
+
+# ---- combine per-exposure -> the three per-night tables ----
+rule combine:
+    input:
+        nightMomentsFiles,
+    output:
+        moments=str(NIGHT_DIR / f'guider_moments_{NIGHT}.parquet'),
+        stars=str(NIGHT_DIR / f'guider_stars_{NIGHT}.parquet'),
+        metrics=str(NIGHT_DIR / f'guider_metrics_{NIGHT}.parquet'),
+        skipped=str(NIGHT_DIR / 'skipped_visits.txt'),
+        counts=str(NIGHT_DIR / f'detector_counts_{NIGHT}.txt'),
+    resources: mem_mb=3000
+    log: str(LOGS / 'combine.log')
+    shell:
+        'mkdir -p $(dirname {log}) && '
+        f'python -m {BUILDERS}.combine_moments '
+        f'--seqdir {SEQ_DIR} --outdir {NIGHT_DIR} '
+        f'--dayobs {NIGHT} ' '> {log} 2>&1'
+
+
+# ---- last step: the manifest, which is what puts the night in the catalog ----
+# Depends on every combine output, so an interrupted night leaves no manifest and the
+# catalog does not see it.  A scratch night_root makes this rule fail by design.
+rule manifest:
+    input:
+        str(NIGHT_DIR / f'guider_moments_{NIGHT}.parquet'),
+        str(NIGHT_DIR / f'guider_stars_{NIGHT}.parquet'),
+        str(NIGHT_DIR / f'guider_metrics_{NIGHT}.parquet'),
+        str(NIGHT_DIR / 'skipped_visits.txt'),
+        str(NIGHT_DIR / f'detector_counts_{NIGHT}.txt'),
+    output: str(NIGHT_DIR / 'manifest.json')
+    resources: mem_mb=1000
+    log: str(LOGS / 'manifest.log')
+    shell:
+        'mkdir -p $(dirname {log}) && '
+        'python -m rubinwork.products.guider_moments.write_manifest '
+        f'--night {NIGHT} --variant {VARIANT} '
+        + (f'--option limit={LIMIT} ' if LIMIT else '')
+        + '> {log} 2>&1'

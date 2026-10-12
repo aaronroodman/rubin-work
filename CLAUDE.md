@@ -89,13 +89,13 @@ Compatibility shims remain at every old path (`common/`, `aos/code/aos_state.py`
 `sys.path.insert` + bare-name imports keep working. They are removed in phase 5
 (`notes/status/organization_plan.md`); do not add new imports through them.
 
-One cross-topic coupling is real and intentional — know it before refactoring:
+One coupling is real and intentional — know it before refactoring:
 
-- `guider/code/` imports `moments_hsm.measure_hsm_moments` from **`optatmo/code`**, so
-  that both sides of the guider-vs-science-CCD moment comparison use the same
-  galsim-HSM estimator. Changing that estimator changes guider results. It goes through
-  `sys.path.insert`, not a real package, so the coupling is invisible to static import
-  checks.
+- The guider and the science-CCD sides of the moment comparison share one galsim-HSM
+  estimator, **`rubinwork.hsm_moments`**. Changing it changes guider results. It was
+  `moments_hsm` in `optatmo/code`, reached from `guider/code/` by `sys.path.insert` and so
+  invisible to static import checks; phase 3a made it a library, with a shim at the old
+  path. The sharing is deliberate — a second copy would confound the comparison.
 
 `aos_state` used to be the other one: `blocks/`, `olr/`, `optatmo/`, `smatrix/`,
 `thermal_focus/` and `value_added/` all reached into `aos/code` for the v-modes, the DOF

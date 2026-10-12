@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# Launch the guider moment pipeline, locally or as a Slurm batch job.
+# Launch the guider pipeline, locally or as a Slurm batch job.
+#
+# Phase 3a split it in two: the three guider moment tables are the `guider_moments`
+# PRODUCT, built by rubinwork/products/guider_moments/Snakefile from the repository root,
+# and what remains in this directory's Snakefile are the STUDY rules that read them
+# (psfmoments, movies, rtvplots, the per-day PDF).  A --day-obs run does both in order,
+# product first, within the same local run or the same sbatch job.
 #
 # Modes (--mode, default local):
 #   local  — run snakemake on THIS node, detached via nohup (survives a dropped
@@ -18,8 +24,8 @@
 #   --day-obs LIST      process whole nights: LIST is one dayObs or a
 #                       comma-separated list (YYYYMMDD[,YYYYMMDD...]).  Each
 #                       night's guider exposures are discovered from the Butler
-#                       and built into output/night_<dayObs>/ (partitioned
-#                       dataset + validation plot).
+#                       and built into the product's night partition, then the
+#                       study outputs into output/night_<dayObs>/.
 #   --limit N           smoke test: keep only the first N exposures per night
 #                       (0 = all).  Run limited first, then re-run without
 #                       --limit to build (and overwrite with) the full night(s).
@@ -65,14 +71,24 @@ if [ -n "$dayObs" ]; then
     done
 fi
 
-# The per-night targets (one night's full product set).
+# The per-night STUDY targets.  The three guider moment tables are no longer built here:
+# they are the `guider_moments` product, built by its own Snakefile (see product_cmd).
 day_targets() {
     local d="$1"
-    echo "output/night_${d}/guider_moments_${d}.parquet" \
-         "output/night_${d}/guider_psfmoments_${d}.parquet" \
+    echo "output/night_${d}/guider_psfmoments_${d}.parquet" \
          "output/night_${d}/guider_plots_${d}.pdf" \
          "output/night_${d}/guider_movies_${d}.txt" \
          "output/night_${d}/guider_rtvplots_${d}.txt"
+}
+
+# The product build for one night, run from the repository root.  Phase 3a moved
+# discover_night, moments and combine into rubinwork/products/guider_moments/, so a whole
+# night is the product build followed by the study rules here.
+product_cmd() {
+    local d="$1"
+    echo "snakemake -s rubinwork/products/guider_moments/Snakefile" \
+         "-j ${PRODUCT_JOBS:-4} --resources mem_mb=${PRODUCT_MEM:-14000} --keep-going" \
+         "--config night=${d}${limit:+ limit=${limit}}"
 }
 
 # All targets together (local mode / default rule all).
@@ -93,11 +109,20 @@ tag=$(echo "${dayObs:-all}" | tr ', ' '__')   # filename-safe tag for logs
 case "$mode" in
     local)
         log="logs/run_${tag}_${ts}.log"
+        # Each night: the guider_moments product build first (from the repository root),
+        # then the study rules here, which read it.  Sequential within one night because
+        # the study rules depend on the product's tables.
+        script="set -euo pipefail"
+        for d in "${days[@]}"; do
+            script="${script}; (cd .. && $(product_cmd "$d") ${passthru[*]})"
+        done
         # --config is greedy, so it must come last (after targets).
         args=(-j 4 --resources mem_mb=14000 --keep-going "${passthru[@]}" "${targets[@]}" "${cfg[@]}")
-        nohup snakemake "${args[@]}" > "$log" 2>&1 &
+        script="${script}; snakemake ${args[*]}"
+        nohup bash -c "$script" > "$log" 2>&1 &
         echo "snakemake (local) launched: pid $!"
-        echo "  targets: ${targets[*]:-<rule all>}"
+        echo "  product nights: ${days[*]:-<none>}"
+        echo "  study targets:  ${targets[*]:-<rule all>}"
         echo "  log:     $log   (tail -f $log)"
         ;;
     batch)
@@ -116,14 +141,20 @@ case "$mode" in
         # Submit ONE sbatch job per night (per-night isolation, parallel across
         # the cluster, easy re-submit of a single failed night). --config is
         # greedy, so it must come last (after targets).
+        # A night's job builds the guider_moments product first, from the repository
+        # root, then the study rules in this directory that read it.
         submit_one() {
-            local jtag="$1"; shift
+            local jtag="$1"; local night="$2"; shift 2
             local jlog="logs/batch_${jtag}_${ts}.out"
             local smk="snakemake -j ${cpus} --resources mem_mb=${resmem} --keep-going ${passthru[*]} $* ${cfg[*]}"
+            local pre=""
+            if [ -n "$night" ]; then
+                pre="(cd '$(dirname "$PWD")' && $(PRODUCT_JOBS=${cpus} PRODUCT_MEM=${resmem} product_cmd "$night") ${passthru[*]}) && "
+            fi
             sbatch --partition="$part" --account="$acct" --qos="$qos" \
                    --cpus-per-task="$cpus" --mem="$mem" --time="$tlim" \
                    --job-name="guider_${jtag}" --output="$jlog" \
-                   --wrap "cd '$PWD' && ${smk}"
+                   --wrap "cd '$PWD' && ${pre}${smk}"
             echo "  ${jtag}: job log $jlog"
         }
 
@@ -131,11 +162,11 @@ case "$mode" in
             echo "submitting ${#days[@]} job(s), one per night -> '$part'" \
                  "(${cpus} cpus, ${mem}, ${tlim} each)"
             for d in "${days[@]}"; do
-                submit_one "$d" $(day_targets "$d")
+                submit_one "$d" "$d" $(day_targets "$d")
             done
         else
             echo "submitting 1 job (rule all) -> '$part' (${cpus} cpus, ${mem}, ${tlim})"
-            submit_one "$tag" "${targets[@]}"
+            submit_one "$tag" "" "${targets[@]}"
         fi
         ;;
     *)

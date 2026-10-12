@@ -45,19 +45,20 @@ modify processStamps", pending multi-night validation and a read-noise evaluatio
 implement it into `processStamps` without asking. Plan and validation status:
 `docs/status/bias_streak_plan.md`.
 
-## This topic imports from other topics
+## The HSM estimator is now a library, not a cross-topic reach
 
-Unlike most of the repo, `guider/code/` genuinely depends on a sibling topic, via
-`sys.path.insert` rather than a real package:
+It used to be: `guider/code/` reached `moments_hsm` in `optatmo/code` through
+`sys.path.insert(__file__/../../optatmo/code)`. Phase 3a moved it to
+**`rubinwork.hsm_moments`**, so all three importers —
+`rubinwork/products/guider_moments/builders/run_guider_moments.py`,
+`extract_adjacent_psf_moments.py` and `optatmo/code/extract_psf_moments.py` — now do
+`from rubinwork.hsm_moments import measure_hsm_moments`. A shim remains at
+`optatmo/code/moments_hsm.py` and gives the same module object.
 
-| import | from | used by |
-|---|---|---|
-| `moments_hsm.measure_hsm_moments` | `optatmo/code` | `run_guider_moments.py`, `extract_adjacent_psf_moments.py`, `guiderMoments.py` |
-
-So a change to `optatmo/code/moments_hsm.py` can silently change guider moments. The
-matched-estimator property is the *point* — both sides of the guider-vs-CCD comparison
-must use the same galsim-HSM estimator, or the comparison is confounded. Preserve that
-if refactoring.
+A change to `rubinwork/hsm_moments.py` still silently changes guider moments, and that
+matched-estimator property is the *point*: both sides of the guider-vs-CCD comparison must
+use the same galsim-HSM estimator, or the comparison is confounded. Preserve it if
+refactoring.
 
 ## Frames — the recurring trap
 
@@ -78,24 +79,40 @@ moments — summit_utils supplies only the raw stamps and the star tracker. The 
 side is **not** ConsDB; it comes from `extract_adjacent_psf_moments.py` reading
 `preliminary_visit_image` stamps.
 
-## Running the pipeline
+## Running the pipeline: product first, then the studies
 
-From `guider/`. Whole nights:
+Phase 3a split the pipeline in two. The three guider moment tables are the
+**`guider_moments` product**, built from the **repository root**:
+
+```bash
+cd ~/notebooks/rubin-work
+snakemake -s rubinwork/products/guider_moments/Snakefile --config night=20260706
+snakemake -s rubinwork/products/guider_moments/Snakefile -n --config night=20260706 limit=3
+```
+
+What remains in `guider/Snakefile` are the **study** rules that read it: `psfmoments`,
+`movie`/`movies`, `rtvplot`/`rtvplots` and `plots`. `run_snake.sh` still does a whole
+night end to end — it runs the product build for each night first, then the study rules:
 
 ```bash
 ./run_snake.sh --day-obs 20260706                    # local, detached via nohup
 ./run_snake.sh --day-obs 20260706 --limit 5 -n       # dry-run, 5-exposure smoke test
 ```
 
-`--day-obs` expands to per-night **output files**
-(`output/night_<D>/guider_{moments,psfmoments,plots,movies,rtvplots}_<D>.{parquet,pdf,txt}`),
-not to rule names — the Snakefile's rules are `moments`, `combine`, `psfmoments`,
-`movie(s)`, `rtvplot(s)`, `plots`. Ask for a target by its file path.
+`--day-obs` expands to per-night **study output files**
+(`output/night_<D>/guider_{psfmoments,plots,movies,rtvplots}_<D>.{parquet,pdf,txt}`), not
+to rule names. Ask for a target by its file path. The product's own per-night tables are
+**not** targets here any more; they come from the product Snakefile.
 
-There is no single-seq option in `run_snake.sh` — target the per-seq output files directly
-with `snakemake`, or use the per-visit runners (`run_guider_rubintv_plots.py`,
-`run_guider_movie.py`) with `--day-obs` / `--seq-num`. Full command forms are in
-`docs/pipeline_runbook.md`.
+The study rules resolve the product **old tree first, then the catalog** — `output/night_<D>/`
+if `guider_moments_<D>.parquet` is there, else the catalog's `v6/nights/<D>/` partition —
+and print which source each night resolved to at DAG time, the same way `aos/Snakefile`
+does for its three moved products.
+
+There is no single-seq option in `run_snake.sh` — target the per-exposure product files
+directly with the product Snakefile, or use the per-visit runners
+(`run_guider_rubintv_plots.py`, `run_guider_movie.py`) with `--day-obs` / `--seq-num`.
+Full command forms are in `docs/pipeline_runbook.md`.
 
 **Batch submission needs Aaron's explicit OK first** — show him the command, then submit
 it yourself (see the root `CLAUDE.md`). Note the difference from `aos/`: here
@@ -105,7 +122,9 @@ s3df node (`slacrd`), never an RSP pod.
 
 ## Schema version
 
-`guiderMoments.py` is at **schema v6**, which added per-detector `cen_var_slow`,
+`guiderMoments.py` — now
+`rubinwork/products/guider_moments/guiderMoments.py`, with a shim at the old path — is at
+**schema v6**, which is also the product's **variant** (`v6`), and which added per-detector `cen_var_slow`,
 `cen_var_fast` (arcsec², noise-subtracted) and `cen_smooth_sec`. **These columns are
 unpopulated in already-processed nights** — they need a moments rerun. If an analysis
 reads them and gets nulls, that is why; do not treat it as a bug in the analysis.

@@ -360,6 +360,37 @@ def load(product, variant, build=CURRENT, file=None):
     return target.resolve()
 
 
+def _build_names(variant_dir):
+    """Build names under a variant, descending one level into a partition layer.
+
+    Parameters
+    ----------
+    variant_dir : `pathlib.Path`
+        A variant directory.
+
+    Returns
+    -------
+    names : `list` [`str`]
+        Build names relative to `variant_dir`. A directory that carries no manifest of its
+        own but whose children do -- an incremental product's ``nights/`` layer -- yields
+        ``"<layer>/<child>"`` for each child instead of itself.
+    """
+    names = []
+    for name in _names(variant_dir):
+        entry = variant_dir / name
+        if name == CURRENT or not entry.is_dir():
+            names.append(name)
+            continue
+        if _read_manifest(entry) is None and any(
+                (entry / child).is_dir() and _read_manifest(entry / child) is not None
+                for child in _names(entry)):
+            names.extend(f'{name}/{child}' for child in _names(entry)
+                         if (entry / child).is_dir())
+        else:
+            names.append(name)
+    return names
+
+
 def list_products(product=None):
     """Every registered build, read from the manifests.
 
@@ -381,6 +412,11 @@ def list_products(product=None):
     A directory with no manifest, or whose manifest is not ``"complete"``, is
     not a build and is left out, so an interrupted or in-flight build never
     appears alongside finished ones. `path` and `load` refuse it too.
+
+    An **incremental** product whose partitions sit one level deeper is listed too: a
+    directory under a variant that itself holds no manifest but whose children do -- the
+    ``nights/<YYYYMMDD>/`` layout of ``guider_moments`` -- contributes one entry per
+    child, with ``build`` as ``"<layer>/<name>"``, which is what `path` takes.
     """
     root = products_root()
     names = [product] if product else _names(root)
@@ -390,7 +426,7 @@ def list_products(product=None):
             variant_dir = root / prod / variant
             current = variant_dir / CURRENT
             current_target = current.resolve() if current.exists() else None
-            for build in _names(variant_dir):
+            for build in _build_names(variant_dir):
                 build_dir = variant_dir / build
                 if build == CURRENT or not build_dir.is_dir():
                     continue

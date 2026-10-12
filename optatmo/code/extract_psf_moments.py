@@ -11,16 +11,12 @@ Usage:
         [--out-dir data] [--max-per-ccd 45] [--snr-min 80]
 """
 import argparse
-import os
-import sys
 
 import numpy as np
 import pandas as pd
 import galsim
 
-# moments_hsm lives beside this script in code/
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from moments_hsm import measure_hsm_moments               # noqa: E402
+from rubinwork.hsm_moments import measure_hsm_moments     # noqa: E402
 from lsst.daf.butler import Butler                          # noqa: E402
 from lsst.obs.lsst import LsstCam                           # noqa: E402
 from lsst.afw.cameraGeom import PIXELS, FIELD_ANGLE         # noqa: E402

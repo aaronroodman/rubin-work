@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# guider_moments variants: the per-night guider moment tables.
+#
+# This is an INCREMENTAL product (plan section 5), so a variant is a SCHEMA VERSION
+# rather than a configuration, and nights are partitions beneath it:
+#
+#     products/guider_moments/<variant>/nights/<YYYYMMDD>/
+#
+# The variant name is `v<N>` where N is guiderMoments.SCHEMA_VERSION, and a test asserts
+# the two agree so they cannot drift.  A column renamed, removed or redefined starts a
+# new variant; added columns and appended nights do not.
+#
+# The tracker and moment settings below are NOT what makes the variant: they are the
+# pipeline's configured values, recorded here so a night's manifest can carry them and
+# so the reference build can be issued with the pipeline's own numbers instead of
+# argparse defaults.  They live in guider/snake_config.yaml, which the Snakefile reads,
+# and this file mirrors them.  If a settings change ever needs to produce a second
+# coexisting dataset, that is a second variant and the settings become defining.
+#
+# summit_utils is EXTERNAL -- a clone on branch u/aaronroodman/guider-fixes -- and
+# supplies the raw stamps, the star tracker and the per-exposure metrics.  It is not a
+# product of this repository, so it is recorded as a commit in each night's manifest
+# rather than as an upstream build.
+# ---------------------------------------------------------------------------
+
+variants:
+
+  v6:
+    schema_version: 6
+    description: >-
+      Schema v6: adds the per-detector centroid fast/slow variance split
+      (cen_var_slow, cen_var_fast in arcsec**2, noise-subtracted) and cen_smooth_sec on
+      top of v5's tracker flux/SNR columns.  The centroid timescale is a fixed chosen
+      1.6 s FWHM (8 stamps at 5 Hz), not a fitted break.
+    # The Butler query that discovers a night's exposures.
+    butler:
+      repo: main
+      collections:
+        - LSSTCam/raw/guider
+        - LSSTCam/raw/all
+      view: dvcs
+      image_types:
+        - science
+    guider_hz: 5.0          # guider readout rate, Hz
+    # Star-tracker settings, as guider/snake_config.yaml sets them.
+    tracker:
+      min_snr: 10.0                 # dimensionless
+      max_ellipticity: 0.7          # dimensionless
+      edge_margin: 3                # pix
+      min_finite_fraction: 0.5      # dimensionless; <1 enables edge-star recovery
+      recover_edge_stars: true
+      residual_scale: 10.0          # dimensionless, in units of mad_std of the residuals
+    # Moment-decomposition settings.
+    moments:
+      ap_nsigma: 4.0                # dimensionless, aperture in units of sigma
+      cen_niter: 3                  # count, dimensionless

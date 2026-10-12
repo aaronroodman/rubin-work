@@ -38,7 +38,6 @@ import yaml
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(_HERE, "..", "..", "optatmo", "code"))
 
 HALF = 16
 SCIENCE_PIXSCALE = 0.2   # arcsec/pixel; HSM image scale -> moments in arcsec**n
@@ -127,7 +126,7 @@ def main(argv=None):
     from lsst.obs.lsst import LsstCam
     from lsst.afw.cameraGeom import PIXELS, FIELD_ANGLE
     import lsst.geom as geom
-    from moments_hsm import measure_hsm_moments   # optatmo/code
+    from rubinwork.hsm_moments import measure_hsm_moments
 
     butler = Butler(args.repo)
     cam = LsstCam.getCamera()

@@ -1,104 +1,21 @@
-#!/usr/bin/env python3
-"""Combine per-seq guider products into per-day single-file parquets.
+"""Compatibility shim: ``combine_moments`` moved into the ``guider_moments`` product.
 
-Concatenates the per-seq tables in --seqdir into three per-day files under
---outdir:
+Phase 3a of the products/libraries/studies reorganization moved this builder to
+``rubinwork/products/guider_moments/builders/combine_moments.py``. The shim binds the
+real module's namespace here and registers the real module under this path's name, so a
+bare-name import after a ``sys.path`` insert of ``guider/code`` gives the same objects,
+not copies, and ``python guider/code/combine_moments.py ...`` still runs.
 
-  guider_moments_<dayObs>.parquet   (your decomposition, per detector)
-  guider_stars_<dayObs>.parquet     (summit_utils per-stamp tracker table)
-  guider_metrics_<dayObs>.parquet   (summit_utils per-exposure metrics)
-
-and writes skipped_visits.txt listing visits with missing data (from the
-per-seq SKIPPED markers) and visits with no tracked stars.
-
-    python combine_moments.py --seqdir <night>/seq --outdir <night> --dayobs 20260709
+Run it as ``python -m rubinwork.products.guider_moments.builders.combine_moments``.
+The shim is removed in phase 5 (``notes/status/organization_plan.md``).
 """
-from __future__ import annotations
+import sys
 
-import argparse
-import glob
-import os
+from rubinwork.products.guider_moments.builders import combine_moments as _real
 
-import pandas as pd
-
-PRODUCTS = ("moments", "stars", "metrics")
-
-
-def parseArgs(argv=None):
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--seqdir", required=True, help="Dir with per-seq <seqNum>_*.parquet.")
-    p.add_argument("--outdir", required=True, help="Per-day output dir.")
-    p.add_argument("--dayobs", type=int, required=True)
-    return p.parse_args(argv)
-
-
-def combineProduct(seqdir, product):
-    """Concat non-empty per-seq files for one product; return (df, empties)."""
-    files = sorted(glob.glob(os.path.join(seqdir, f"*_{product}.parquet")))
-    frames, empties = [], []
-    for f in files:
-        d = pd.read_parquet(f)
-        if d.empty:
-            empties.append(os.path.basename(f).split("_")[0])   # seqNum
-        else:
-            frames.append(d)
-    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    return df, empties
-
-
-def main(argv=None):
-    args = parseArgs(argv)
-    os.makedirs(args.outdir, exist_ok=True)
-
-    counts = {}
-    dfs = {}
-    for product in PRODUCTS:
-        df, _ = combineProduct(args.seqdir, product)
-        out = os.path.join(args.outdir, f"guider_{product}_{args.dayobs}.parquet")
-        df.to_parquet(out, index=False)
-        counts[product] = len(df)
-        dfs[product] = df
-
-    # skip report: missing-data markers vs no-star empties (from the moments product)
-    missing = []
-    for m in sorted(glob.glob(os.path.join(args.seqdir, "*_SKIPPED.txt"))):
-        missing.append(open(m).read().strip())
-    _, nostar = combineProduct(args.seqdir, "moments")
-    nostar = [s for s in nostar if s not in {mm.split("\t")[2] for mm in missing if "\t" in mm}]
-
-    lines = []
-    if missing:
-        lines.append(f"# {len(missing)} visit(s) SKIPPED -- missing/insufficient data:")
-        lines += [f"  {m}" for m in missing]
-    if nostar:
-        lines.append(f"# {len(nostar)} visit(s) with no tracked stars: {', '.join(sorted(nostar))}")
-    report = "\n".join(lines) if lines else "no skipped visits"
-    print(report)
-    with open(os.path.join(args.outdir, "skipped_visits.txt"), "w") as fh:
-        fh.write(report + "\n")
-
-    # per-night detector-count summary: how many guiders produced moments per visit
-    detReport = detectorCountReport(dfs["moments"], args.dayobs)
-    print(detReport)
-    with open(os.path.join(args.outdir, f"detector_counts_{args.dayobs}.txt"), "w") as fh:
-        fh.write(detReport + "\n")
-
-    print(f"dayObs {args.dayobs}: "
-          + ", ".join(f"{k}={counts[k]}" for k in PRODUCTS) + f" -> {args.outdir}")
-
-
-def detectorCountReport(moments, dayObs):
-    """Histogram of guiders-with-moments per visit (recovery visibility)."""
-    if moments.empty or "expId" not in moments or "detector" not in moments:
-        return f"dayObs {dayObs}: detector counts -- no moments rows"
-    perVisit = moments.groupby("expId")["detector"].nunique()
-    hist = perVisit.value_counts().sort_index(ascending=False)
-    dist = ", ".join(f"{n}guider={c}" for n, c in hist.items())
-    partial = int((perVisit < 8).sum())
-    return (f"dayObs {dayObs}: {len(perVisit)} visits with moments, "
-            f"mean {perVisit.mean():.2f} guiders/visit, {partial} partial (<8); "
-            f"distribution: {dist}")
-
+globals().update({k: v for k, v in vars(_real).items() if not k.startswith("__")})
+__all__ = getattr(_real, "__all__", [k for k in vars(_real) if not k.startswith("_")])
+sys.modules[__name__] = _real
 
 if __name__ == "__main__":
-    main()
+    _real.main()
