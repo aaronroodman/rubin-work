@@ -234,26 +234,63 @@ and the sidecar shrink. Show Aaron a diff only if the work departs from that des
 
 | # | item | where it was found | the reference build it is checked against |
 |---|---|---|---|
-| 1 | **`rotTelPos`** in `ts_intrinsic_wavefront`: the donut-metadata rotator angle the FAM tables carry, differing from ConsDB `physical_rotator_angle` by up to about 0.30 deg of camera rotator angle on the blitz path | plan section 8, pre-approved | a `fam_tables` `danish_1_2` reference, then a `miw` rebuild on it: the DZ fits move, so the comparison is **expected to differ** and the check is that it differs *only* in the rotator-dependent terms |
-| 2 | **the sidecar shrink**, `mktable --no-thermal` | plan section 8, pre-approved | the `miw` 3a reference (`d81cc3d`): the sidecar's size drops, every other table identical at zero tolerance |
+| 1 | **`rotTelPos`** in `ts_intrinsic_wavefront`: the donut-metadata rotator angle the FAM tables carry, differing from ConsDB `physical_rotator_angle` by up to about 0.30 deg of camera rotator angle on the blitz path | plan section 8, pre-approved | **both** phase 2 references: the `fam_tables` `danish_1_2` chunk `20251116_20251130` (rerun `mktable`, since `rotator_angle` is written there) and the blitz night `danish_1_3_v1000` `day_obs=20260428`. Then the `miw` 3a reference rebuilt on the new FAM slice. See the expected-difference list below |
+| 2 | **the FAM telemetry sidecar shrunk**, and `mktable --no-thermal` | plan section 10, pre-approved | the **`fam_tables`** `danish_1_2` reference (chunk `20251116_20251130`), not the `miw` one: exactly the removed columns disappear from `visits.parquet`, every other column identical at zero tolerance, and a `miw` rebuild on the shrunk slice is identical at zero tolerance |
 | 3 | **`build_fam_dz.resolve_paths`** builds `<aos_output>/<param_set>/fits.parquet` from the **long** param_set key, and `fam_variant.fits_path` records a directory that does not exist | `value_added` 3a step 1 | the `value_added` 3a `fam_dz` reference: 2,528 FAM pairs, 14 columns. Today it is reachable only with `--aos-output ../aos/output/fam_processing --param-set danish_1_2`; after the fix the **registered variant's own `fits_path`** must resolve and give the same table |
-| 4 | **`fam_variant.fits_path`** itself, the registry row behind item 3 | the same | the same reference; the fix changes a registry row, so the check is that the row resolves and the rebuilt `fam_dz` matches at zero tolerance apart from `computed_at` |
+| 4 | **`fam_variant.fits_path`** itself, the registry row behind item 3 | the same | the same reference; zero tolerance apart from `computed_at`. **The LIVE database registry is not changed in 3b** — a scratch database only; 3c rebuilds the rows |
 | 5 | **`d12-refitWcs_2025` folded into `d12-refitWcs`**, and **`danish_1_0` retired whole** | `cwfs_tables` 3a | the `cwfs_tables` 3a reference (`71a345f`): `aos/param_sets.yaml` must stay byte-identical except for the entries deliberately removed, and `snakemake -n` in `aos/` must lose exactly the retired variant's jobs |
+| 6 | **`combine_fits` drops the 362 `cam_*` sidecar columns**, so a rebuilt `fits.parquet` loses them — the combined file was the only place they lived | phase 2 handoff, "Step 4 requirements" | a rebuilt reference `fits.parquet` carries the `cam_*` columns and is otherwise identical at zero tolerance |
+
+**Item 2 is the FAM TELEMETRY sidecar, not the MIW `zk_intrinsic` sidecar.** What shrinks
+is `visits.parquet` in a `fam_tables` build: the eight `run_attach_telemetry` groups
+(`thermal`, `gradients`, `wind`, `camera`, `lut`, `hexlut`, `trim`, `tweak`,
+`GROUPS` at `run_attach_telemetry.py:90`), plus the thermal columns `mktable` itself
+writes unless `--no-thermal`. The `miw` product's `intrinsic_sidecar` /
+`wfs_intrinsic_sidecar` rules are a different thing and are untouched by item 2.
+
+**Item 1's expected-difference list.** The per-visit **DZ fits do not change**: the fit
+runs on OCS coordinates the pipeline had already rotated with `rotTelPos`, so changing
+which number the `rotator_angle` *column* reports does not move the fit. The expected
+differences are exactly:
+
+1. `visits.rotator_angle` (deg of camera rotator angle), on visits where the old value
+   came from the EFD window-mean fallback (ConsDB NULL) or where ConsDB differs from
+   `rotTelPos` — the 19 ConsDB-NULL visits of chunk `20251116_20251130`, and the blitz
+   night, where it moves by about 0.30 deg.
+2. `fits.rotator_angle` (deg), on the same visits, if `fits.parquet` carries the column.
+3. The new `rotator_angle_source` column (one of `rotTelPos`, `consdb`, missing).
+
+Downstream, a `miw` rebuild changes **only** through visits that switch rotator bin.
+Those visits and their old/new bins are listed explicitly below before the item is
+committed. Anything outside this list stops the item, per section 12.
 
 Two items are **decisions, not fixes**, and are in "Decisions for Aaron" above:
-`dof_lut`'s input before 3c rebuilds it, and the two `value_added` backfill scripts
-(answered: route 1, both become build steps in **3c** — nothing changes in 3b).
+`dof_lut`'s input before 3c rebuilds it (nothing in 3b depends on it), and the two
+`value_added` backfill scripts (answered: route 1, both become build steps in **3c** —
+nothing changes in 3b).
 
 ### Where to start
 
-Items 1 and 2 are the pre-approved pair and touch the external package, so they go first
-and together: one `fam_tables` reference build, the `ts_intrinsic_wavefront` change, then
-a `miw` rebuild on it. Items 3 and 4 are one change to one builder plus its registry row
-and are independent of the rest. Item 5 is config-only.
+Items in order: **1** (`rotTelPos`, in the external package), **2** (the sidecar shrink),
+**6** (`cam_*` in `combine_fits`), **3 and 4** (one builder plus its registry row),
+**5** (config only). Each is its own commit with its own before/after check, recorded
+here.
+
+Item 1 is in `ts_intrinsic_wavefront`, which lives at
+`/sdf/data/rubin/user/roodman/LSST/packages/ts_intrinsic_wavefront` (reached as
+`$TS_INTRINSIC_WAVEFRONT_DIR`). **Work on a new local branch there, commit, and do not
+push or open a PR** — the branch name, the diff summary and the push commands go to Aaron
+instead. Note its pre-existing state, which this work must not disturb: branch
+`tickets/RSO-809`, **7 commits ahead of `origin/tickets/RSO-809`**, with
+`python/lsst/ts/intrinsic/wavefront/intrinsic_build_plots.py` modified and uncommitted
+(18 insertions, 5 deletions).
 
 **Read before starting 3b**: the plan's section 8 Phase 3 part for the pre-approved
-description, and this file's `value_added` and `cwfs_tables` sections for the two
-references items 3 to 5 are measured against.
+description and section 10 for the sidecar item, this file's `value_added` and
+`cwfs_tables` sections for the references items 3 to 5 are measured against,
+`notes/status/phase2_fam_tables_handoff.md` sections "A1 — `rotator_angle`" and "Step 4
+requirements" for the rotator and `cam_*` background, and
+`aos/docs/frame_conventions.md`.
 
 ## Constraints found the hard way in 3a, which 3b and 3c will meet too
 

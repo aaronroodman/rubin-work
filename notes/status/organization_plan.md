@@ -621,16 +621,22 @@ the reference builds:
   `intrinsics_lib.py`. In `ts_intrinsic_wavefront`, so `scons` follows. Expected effect
   in 3c: blitz visits move by about 0.30 deg of camera rotator angle, visits with ConsDB
   agree to about 1e-5 deg, so only visits near a rotator-bin edge can change MIW bin.
+  The per-visit **DZ fits do not change**: they run on OCS coordinates the pipeline
+  already rotated with `rotTelPos`, so which number the `rotator_angle` column reports
+  does not move a fit. Only the column, the new `rotator_angle_source` column, and
+  bin-switching visits downstream.
   The value-added database **stays on ConsDB** `physical_rotator_angle` for
   `optical_state.rotator_angle_deg` (Aaron, 2026-10-11): science visits have no donut
   table, so ConsDB is the only per-visit source there. `value_added/docs/schema.md`
   documents the difference: for FAM visits the FAM tables' `rotator_angle` (`rotTelPos`)
   and the database's angle can differ by up to about 0.30 deg (blitz path) or be NULL in
   the database (ConsDB gaps); a study joining the two says which it uses.
-- The FAM telemetry sidecar shrunk to what studies still read from `visits.parquet`
-  (section 10), and `mktable` run with `--no-thermal` if the MIW needs only elevation,
-  camera rotator angle and band. This removes the EFD from the FAM build, so it runs in
-  batch.
+- The FAM **telemetry** sidecar — the eight `attach_telemetry` groups in a `fam_tables`
+  `visits.parquet`, plus the thermal columns `mktable` writes — shrunk to what studies
+  still read from `visits.parquet` (section 10), and `mktable` run with `--no-thermal`
+  if the MIW needs only elevation, camera rotator angle and band. Not the `miw`
+  `zk_intrinsic` sidecar, which is untouched. Checked against the **`fam_tables`**
+  phase 2 reference. This removes the EFD from the FAM build, so it runs in batch.
 - The `combine_fits` loss of the `cam_*` sidecar columns.
 - `cwfs_tables`: fold `d12-refitWcs_2025` into `d12-refitWcs` as a date-keyed collection
   list, so one variant covers 2025 and 2026 as the FAM `danish_1_2` already does. Needs
