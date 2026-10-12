@@ -1,6 +1,6 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** in progress · **Last updated:** 2026-10-10 · **Kind:** working state (handoff)
+> **Status:** in progress · **Last updated:** 2026-10-11 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -30,9 +30,10 @@ comparison, manifest.
 | `3f607ab` | 3a step 1: the `coadds` reference build with the unmoved code |
 | `d0e4182` | 3a step 2: the `coadds` move — builder, shim, `variants.yaml`, product Snakefile, two-upstream manifest, npz comparison, tests |
 | `3d4f993` | 3a steps 3 and 4 for `coadds`: the verification and the zero-tolerance comparison |
-| `ceca01e` | the coadd study scripts resolve the old tree before the catalog, as `aos/Snakefile` does |
-| `d5eeba6` | `dof_lut`'s plain-FAM-DZ projection recorded as under review (Aaron's call) |
-| (this file) | 3a step 1 for `dof_lut` and `bounce_tables`: both reference builds, scope and variants |
+| `581aa29` | the coadd study scripts resolve the old tree before the catalog, as `aos/Snakefile` does |
+| `7d23afd` | `dof_lut`'s plain-FAM-DZ projection recorded as under review (Aaron's call) |
+| `d54e5bd` | 3a step 1 for `dof_lut` and `bounce_tables`: both reference builds, scope and variants |
+| `ed53b39` | 3a steps 2-4 for `dof_lut`: the move, verification and the zero-tolerance comparison |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -46,16 +47,29 @@ files (42 and 6 arrays), at zero tolerance.
 **The study rules now read the catalog too** (`fec3741`), so a product rebuilt into the new
 tree is visible to them before phase 5.
 
+**Phase 3a, `dof_lut`, is DONE** (`ed53b39`). The moved code reproduces the reference
+exactly — 0 differing columns across 3 tables (7, 6 and 7 columns), 0 differing fields
+across 16 parquet schema-metadata fields and 11 provenance keys, at zero tolerance.
+`aos/` `snakemake -n` went 37 → 34 jobs, −3 for `build_lut` as predicted.
+
 ## Next concrete action
 
-**Phase 3a step 2 for `dof_lut` and `bounce_tables`: the move.** Step 1 is done — both
-reference builds exist, both are the full production run, and every comparison key is
-verified unique. Scope, variants and the three decisions Aaron made on 2026-10-11 are in
-the `dof_lut` and `bounce_tables` section below; read it before moving anything, since two
-of them supersede the plan.
+**Phase 3a step 2 for `bounce_tables`: the move.** `dof_lut` is finished and pushed; only
+`bounce_tables` is left in this pair. Its step 1 is done — the reference build is the full
+production run (13 files, 167.6 s of wall clock) and every comparison key is verified
+unique. Scope, variants and the three decisions Aaron made on 2026-10-11 are in the
+`dof_lut` and `bounce_tables` section below; read it before moving anything, since two of
+them supersede the plan.
 
-What the move commit has to do, beyond the mechanical pattern the three earlier products
-set:
+What the `dof_lut` move settled, reusable here: each variant names one `miw` variant and
+the reader derives `param_set`, `mi_name` and `fam_variant` from it rather than copying
+the mapping out of the generated `mi_config.yaml`; a settings-only MIW entry goes under
+the manifest's `config`, not `inputs`; and `compare_builds` gained a mapping comparison
+(`compare_mappings`, `_report_mapping`) that `bounce_tables` does not need but which is
+the pattern for checking anything outside the table rows.
+
+What the `bounce_tables` move commit has to do, beyond the mechanical pattern the four
+earlier products set:
 
 1. **Split `run_bounce.py` at `:700`.** Everything to `:700` plus the four `to_parquet`
    calls is the builder; the nine `PdfPages` blocks stay as the study. The table data all
@@ -66,15 +80,20 @@ set:
 3. **`bounce` keeps a rule in `aos/Snakefile`** — the plotting half. This is the first
    product whose rule survives the move, so the −3 has to be accounted against a rule that
    still exists.
-4. **Declare every output.** `build_lut` writes 5 files against 3 declared, `bounce` 13
-   against 2.
+4. **Declare every output.** `bounce` writes 13 files against the 2 it declares. (Done for
+   `dof_lut`: 5 declared against 3 before.)
 5. `bounce_tables/variants.yaml` must keep resolving the live `bounce:` override at
    `aos/analysis_config.yaml:180`, which is keyed on the long param_set and redefines the
    T720 legs as a five-point sweep.
 
-Then steps 3 and 4 per product, as `coadds` did: `snakemake -n` with every job-count
-change explained (expect 37 → 31), the catalog bridge extended to these products' study
-readers, the import smoke test, all product tests, then the zero-tolerance comparison.
+Then steps 3 and 4, as `coadds` did: `snakemake -n` with every job-count change explained
+(**34 → 31 now**, since `dof_lut` already took its −3), the catalog bridge extended to the
+study readers, the import smoke test, all product tests, then the zero-tolerance
+comparison.
+
+The one `bounce_tables` cross-study reader is `aos/code/cwfs_lut/bounce_compare.py:132`,
+which hardwires `aos/output/bounce/<run>/` with `DEFAULT_BOUNCE_RUN` at `:60` — give it the
+old-tree-then-catalog resolver, as `dof_lut` did for `compare_fam_processings`' DOF page.
 
 ## 3a, `cwfs_tables` — the move
 
@@ -1165,7 +1184,7 @@ Aaron's three calls, in answer to the investigation below:
 
 1. **`dof_lut` fits the plain FAM DZ, and that is recorded, not changed.** "I used the
    plain FAM DZ then but may want to switch to using the post MIW DZ." Recorded in
-   `aos/docs/studies/lut.md` (commit `d5eeba6`); no code touched, no 3b fix applied.
+   `aos/docs/studies/lut.md` (commit `7d23afd`); no code touched, no 3b fix applied.
 2. **The `_july` bounce run is its own variant**, so it can be reviewed later — not a
    build of `d12-A_50_34_i_5rot` as the plan's section 9 says. "I don't recall what the
    _july variant changed."
@@ -1342,7 +1361,7 @@ lists in the product Snakefiles.
 
 ### 3a step 1 — reference builds with the unmoved code: DONE
 
-Built at commit `d5eeba6` (clean tree), interactive on `sdfiana`. **Neither product needed
+Built at commit `7d23afd` (clean tree), interactive on `sdfiana`. **Neither product needed
 its input sliced** — unlike `miw` and `coadds`, the full production run IS the smallest
 thing that exercises the product code, so both references are the real thing:
 
@@ -1432,6 +1451,68 @@ at a comparable size.
 `bounce`, since both are in `rule all`. `rule all` loses `output/lut/{d}/lut.parquet` and
 `output/bounce/{d}/bounce_kj_stats.parquet` as targets it builds; the `bounce` rule itself
 survives as the plotting half, so the drop is accounted rule by rule in step 3.
+
+### `dof_lut` 3a steps 2-4 — the move, verification and comparison: DONE (`ed53b39`)
+
+**The move.** `run_build_lut.py` → `rubinwork/products/dof_lut/builders/`, with a shim at
+the old path. New: `variants.yaml` (3 variants), `reader.py`, `__init__.py`,
+`write_manifest.py`, `Snakefile`, `compare_builds.py`, `tests/test_dof_lut.py` (36 tests).
+`rule build_lut` and its `rule all` target left `aos/Snakefile`; the MIW-skip message no
+longer names `build_lut` as a planned study job.
+
+**Each variant names one thing, `miw_variant`.** The reader derives `param_set`, `mi_name`
+(through `miw.mi_keys`) and `fam_variant` (through `miw.fam_variant`) from it. Restating
+them per entry would have been a second place to edit and could drift from the generated
+`mi_config.yaml` silently; a test asserts no entry carries a builder knob. `dir_name` is
+quoted and a test checks it is `<fam dir_name>_<miw dir_name>`.
+
+**The manifest records one upstream, `fam_tables`.** The MIW entry is settings only, so it
+goes under `config` (with the derived `param_set`, `mi_name`, `fam_variant`) and a test
+asserts `miw` is *not* in `inputs` — recording it would claim a dependency the build does
+not have.
+
+**Two things the comparison checks that no earlier product's did**, both because the
+information lives nowhere else: the 8 parquet **schema-metadata** fields on `lut` and
+`lut_dz` (`param_set`, `mi_name`, `reduce`, `n_dof`, `n_keep`, `n_visits`, `k_min`,
+`k_max`) and the 11 keys of `lut_config.yaml`. A build with a different `n_keep` matches on
+every row while being a different measurement; a test builds exactly that case and
+confirms the comparison catches it.
+
+**`lut_by_rotbin.parquet` is conditional** on the fit table carrying a rotator-angle
+column. The product Snakefile declares it anyway (5 outputs against the 3 the `aos/` rule
+declared, which silently wrote 5), so a variant whose fits lack the column fails loudly
+instead of producing a short build. `load`'s default skips a missing one but an explicit
+`tables=("lut_by_rotbin",)` raises, so asking for it by name cannot silently return
+nothing. The comparison treats "absent from both" as agreement and "absent from one" as a
+difference.
+
+**The result.** Reference vs moved, at zero tolerance, both the full production run:
+
+| table | rows x columns | key | result |
+|---|---|---|---|
+| `lut` | 50 x 7 | `dof_index` | identical, incl. 8 metadata fields |
+| `lut_dz` | 126 x 6 | `(k, j)` | identical, incl. 8 metadata fields |
+| `lut_by_rotbin` | 450 x 7 | `(rotbin_center, dof_index)` | identical |
+| `lut_config.yaml` | 11 keys | — | identical |
+| `lut.pdf` | 45,415 bytes both sides | — | same size |
+
+Every selection number reproduced too: 970/3,385 visits passing the band/program cut, 863
+used after 63 bad-fit dropped, `U_eff = (126, 34)`, `n_dof = 50`, `n_keep_eff = 34`, 9
+populated rotator bins. `aos/` `snakemake -n` 37 → 34 jobs; 222 product tests pass (186 +
+36); import smoke test unchanged at 63/63 modules.
+
+**One pre-existing defect fixed in passing.**
+`aos/code/processing_compare/compare_fam_processings.py`'s DOF page built
+`<output_root>/<param_set>/<mi>/lut/lut.parquet` from the long param_set key — a layout the
+tree lost when `dir_name` was introduced, so the page was already broken. It now resolves
+old tree then catalog, keyed on the `(param_set, mi_name)` pair, and skips with a message
+when a reduction has no `dof_lut` variant. The script's own default baseline,
+`danish_1_0`, is such a reduction, so the page stays skipped for a default run — honestly
+this time, since that reduction never had a LUT built.
+
+**The misleading comment is corrected.** The per-rotator-bin block claimed "if MI
+subtraction leaves rotator-coupled residual"; it described a MIW build, not this script.
+Comment only — no output change.
 
 ## 3c rebuild feasibility, measured 2026-10-10
 
@@ -1656,10 +1737,12 @@ command, per `CLAUDE.md`.
   the natural per-coadd table, and the only metrics file anything reads
   (`coadd_metrics_rebin3.parquet`) is a **study** output of `recompute_coadd_metrics.py`.
   Worth revisiting in 3c: a full build's `block_grids_ext.npz` is 66 MB that nothing opens.
-- **`build_lut` reads its `fits.parquet` from the FAM tables, not from the MIW refit**
-  (`aos/Snakefile`, `fits = d_tables(w.d)/fits.parquet`), even though the rule is keyed on
-  the joined `{d}` and every other `{d}` rule reads `output/miw/<d>/fits.parquet`. Confirm
-  that is intended before moving `dof_lut`, rather than discovering it in the comparison.
+- ~~**`build_lut` reads its `fits.parquet` from the FAM tables, not from the MIW refit.**~~
+  **Resolved.** Aaron confirmed on 2026-10-11 that the plain FAM DZ is what was used and
+  that he may want to switch to the post-MIW DZ later; recorded, not changed. The
+  `dof_lut` move encodes it: `fam_variant` is the manifest's upstream, the `miw` entry is
+  settings only and sits under `config`, and switching would make `miw` the upstream — a
+  variant-definition change. See `aos/docs/studies/lut.md` and the product's `__init__`.
 - **The coadd variants' `_v2` suffix is carried by `ext_terms` alone.** If
   `block_grids_ext.npz` is ever dropped the two variants become identical and should
   collapse into one.

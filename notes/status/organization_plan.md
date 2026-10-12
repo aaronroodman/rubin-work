@@ -425,7 +425,7 @@ register" to three passes over all products. State in
 
 *3a. Move the code, mechanically.* In dependency order: `cwfs_tables` (**done**); `miw`
 (**done**, plus the official-MIW registrations, which are manifests only); `coadds`
-(**done**); `dof_lut` and `bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout
+(**done**); `dof_lut` (**done**) and `bounce_tables`; `value_added` (code only; the `v1/live` + snapshots layout
 comes with the rebuild); `guider_moments`. Imports and paths only, no change in results. Each product is
 checked by a small reference build made with the unmoved code and reproduced with the
 moved code at zero tolerance, plus `snakemake -n` job-list identity and the import smoke
@@ -499,6 +499,29 @@ refuses to record only one. The one behaviour change is the same bug class as `m
 the tree lost when `dir_name` arrived, so all three resolved nothing on disk; each now
 reaches the build through the catalog. The reference reproduced exactly: **0 differing
 columns across 2 tables and 0 differing arrays across 2 npz files** at zero tolerance.
+
+**`dof_lut` done 2026-10-11**, commits `d54e5bd` (reference builds, with
+`bounce_tables`') and `ed53b39` (the move). `run_build_lut.py` moved to
+`rubinwork/products/dof_lut/builders/` with a shim, and `rule build_lut` left
+`aos/Snakefile`: **37 → 34 jobs**, −3 for the rule, with the averaged LUT no longer a
+`rule all` target. Three variants, matching the three jobs the rule planned. Each entry
+names one thing, `miw_variant`, and the reader derives `param_set`, `mi_name` and
+`fam_variant` from it through the `miw` product, which already owns that mapping — copying
+it would be a second place to edit that could drift from the generated `mi_config.yaml`
+silently. **The LUT fits the plain FAM DZ**: it reads a `fam_tables` build and opens no
+intrinsic map, so `fam_tables` is the manifest's only upstream and the `miw` entry, which
+supplies SVD and selection settings only, sits under `config` rather than `inputs`.
+Recorded rather than changed, Aaron's call 2026-10-11; a later switch to the post-MIW DZ
+would make `miw` the upstream, which is a variant-definition change. The product rule
+declares **5 outputs against the 3 the `aos/` rule declared**, since
+`lut_by_rotbin.parquet` and `lut_config.yaml` were written but undeclared. The comparison
+is the first to check data **outside** the table rows: the 8 parquet schema-metadata
+fields, where a LUT's mode counts and visit count are recorded and nowhere else, and the
+11 keys of the frozen `lut_config.yaml`. One pre-existing defect fixed in passing — the
+DOF page of `compare_fam_processings.py` built `output/<long param_set>/<mi>/lut/`, the
+same dead layout as `miw`'s `decomp_path`, and now resolves old tree then catalog. The
+reference reproduced exactly: **0 differing columns across 3 tables, 0 differing fields
+across 16 schema-metadata fields and 11 provenance keys** at zero tolerance.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds:
