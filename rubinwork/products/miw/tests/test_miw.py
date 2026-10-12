@@ -490,3 +490,43 @@ def test_miw_corner_shim_gives_the_same_module_object():
                  "corner_field_points", "corner_z4_height_um", "DEFAULT_PARAM_SET",
                  "DEFAULT_MI_NAME"):
         assert getattr(miw_corner_intrinsic, name) is getattr(miw_corner, name)
+
+
+def test_decomp_path_accepts_the_joined_build_directory_name(tmp_path):
+    """A joined ``dir_name`` resolves without reading either configuration file.
+
+    ``value_added``'s ``state_variant.intrinsic_ref`` holds the joined form, so
+    `MiwCornerLookup` has to take it; the long-key route cannot, because the joined name
+    is not an ``mi_config.yaml`` entry.
+    """
+    from rubinwork import miw_corner
+
+    joined = "danish_1_2_A_50_34_i_5rot"
+    build = tmp_path / "miw" / joined
+    build.mkdir(parents=True)
+    (build / miw_corner.DECOMP_FILE).touch()
+
+    got = miw_corner.decomp_path(joined, param_set="no_such_param_set",
+                                 output_root=tmp_path)
+    assert got == build / miw_corner.DECOMP_FILE
+
+
+def test_decomp_path_both_forms_give_the_same_file():
+    """The long ``(param_set, mi_name)`` keys and the joined name agree, on the real tree."""
+    from rubinwork import miw_corner
+
+    joined = "danish_1_2_A_50_34_i_5rot"
+    if not (REPO_ROOT / "aos" / "output" / "miw" / joined).is_dir():
+        pytest.skip(f"no old-tree MIW build {joined}")
+    long_keys = miw_corner.decomp_path(miw_corner.DEFAULT_MI_NAME,
+                                       param_set=miw_corner.DEFAULT_PARAM_SET)
+    assert miw_corner.decomp_path(joined) == long_keys
+
+
+def test_decomp_path_unknown_joined_name_still_raises_on_the_long_keys(tmp_path):
+    """An unknown name is not silently treated as a build directory."""
+    from rubinwork import miw_corner
+
+    with pytest.raises(KeyError):
+        miw_corner.decomp_path("not_a_build_anywhere", param_set="no_such_param_set",
+                               output_root=tmp_path)

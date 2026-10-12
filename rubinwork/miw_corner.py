@@ -101,7 +101,10 @@ def decomp_path(mi_name=DEFAULT_MI_NAME, param_set=DEFAULT_PARAM_SET, output_roo
     Parameters
     ----------
     mi_name : `str`, optional
-        MIW entry name, e.g. ``'pathA_50_34_i_5rot'``.
+        MIW entry name, e.g. ``'pathA_50_34_i_5rot'``. The **joined build directory
+        name** is accepted too, e.g. ``'danish_1_2_A_50_34_i_5rot'``, which is the form
+        ``value_added``'s ``state_variant.intrinsic_ref`` holds; in that case
+        `param_set` is unused.
     param_set : `str`, optional
         The long ``aos/param_sets.yaml`` key.
     output_root : `str` or `pathlib.Path`, optional
@@ -117,11 +120,19 @@ def decomp_path(mi_name=DEFAULT_MI_NAME, param_set=DEFAULT_PARAM_SET, output_roo
     The old tree's MIW directory is ``output/miw/<param_set dir_name>_<mi dir_name>/``,
     the two *short* names joined -- not the long keys. The short names are read from
     ``aos/param_sets.yaml`` and ``aos/mi_config.yaml``, so this needs both to be present.
+    A `mi_name` that is already that joined directory name is used as it stands, so
+    callers holding only the build name need neither configuration file.
     """
     from rubinwork.common.utils import repo_root
 
     root = (pathlib.Path(output_root) if output_root
             else pathlib.Path(repo_root()) / 'aos' / 'output')
+    # A build directory of the joined name settles it: the long-key route would need
+    # mi_config.yaml to carry mi_name as an entry, and a joined name is not one, so it
+    # would raise KeyError instead of reporting a missing or incomplete build.
+    joined = root / 'miw' / str(mi_name)
+    if joined.is_dir():
+        return joined / DECOMP_FILE
     return root / 'miw' / f'{_ps_dir(param_set)}_{_mi_dir(param_set, mi_name)}' / DECOMP_FILE
 
 
@@ -318,7 +329,9 @@ class MiwCornerLookup:
     Parameters
     ----------
     mi_name : `str`, optional
-        MIW build name.
+        MIW build name, either the ``mi_config.yaml`` entry name (``'pathA_50_34_i_5rot'``,
+        with `param_set`) or the joined build directory name
+        (``'danish_1_2_A_50_34_i_5rot'``, which needs no `param_set`).
     param_set : `str`, optional
     output_root : `str` or `pathlib.Path`, optional
     ofc_version : `str`, optional

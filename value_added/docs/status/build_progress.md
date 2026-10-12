@@ -108,7 +108,7 @@ build, in 12 shards over `day_obs` 20250728 to 20260713, and holds 98,831 rows. 
 `intrinsic_ref` is the explicit build name `danish_1_2_A_50_34_i_5rot`; the logs are
 `logs/batch_state_20261006_001235_{01..12}.out`.
 
-Two things about it that still hold, and one that broke since:
+Two things about it that still hold, and one that broke and was fixed:
 
 * The general trap is real for any **unbuilt** variant:
   `efd_db.optical_state(<variant>)` returns an empty DataFrame rather than raising, so an
@@ -116,14 +116,17 @@ Two things about it that still hold, and one that broke since:
 * Its span is 4 nights shorter at each end than the batoid variants'
   (20250728–20260713 against 20250724–20260714), so a MIW-vs-batoid comparison must join
   on `visit_id` rather than assume a common night list.
-* **`--intrinsic miw` does not run today**, found 2026-10-12 during the phase 3a move.
-  `build_optical_state` passes `intrinsic_ref` as `MiwCornerLookup`'s `mi_name`, but the
-  `miw` 3a move fixed `miw_corner.decomp_path` to take the **long** `(param_set, mi_name)`
-  keys and join their `dir_name`s, so a joined directory name like
-  `danish_1_2_A_50_34_i_5rot` now raises `KeyError`. Passing the long keys
-  (`--intrinsic-ref pathA_50_34_i_5rot --miw-param-set
-  fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) resolves to the same decomposition and
-  reproduces the stored result. Recorded, not fixed: a path fix is a phase 3b item.
+* **`--intrinsic miw` was broken between 2026-10-10 and 2026-10-12, and is fixed.**
+  `build_optical_state` passes `intrinsic_ref` as `MiwCornerLookup`'s `mi_name`, and the
+  `miw` 3a move (`b9756aa`) made `miw_corner.decomp_path` take the **long**
+  `(param_set, mi_name)` keys and join their `dir_name`s, so the joined directory name
+  `state_variant.intrinsic_ref` actually holds — `danish_1_2_A_50_34_i_5rot` — raised
+  `KeyError`. A regression of the reorganization, not a pre-existing defect, so it was
+  fixed rather than deferred to 3b: `decomp_path` now also accepts the joined build
+  directory name and resolves it to the same decomposition file. Verified by rebuilding
+  the two-night `optical_state` reference with `--intrinsic-ref
+  danish_1_2_A_50_34_i_5rot`, as `run_build.sh` issues it: 13 value columns over 1,017
+  rows match the reference at zero tolerance, with only `computed_at` differing.
 
 ### Item 2 full-span build, done 2026-10-03
 

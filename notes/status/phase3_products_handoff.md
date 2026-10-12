@@ -249,12 +249,13 @@ differ:
   `state_variant.created_at`. Plan section 6 already lists adding the code git commit and
   build time; check whether `guider_moments` has the same hole.
 
-Then phase 3a is complete and **3b** begins. Three 3b items were discovered by this move
-and are recorded in the `value_added` section below, all of the same class — a path built
-from the long `param_set` key, a layout the tree lost when `dir_name` arrived:
-`build_fam_dz.resolve_paths`, `build_optical_state --intrinsic miw` (broken since the
-`miw` move fixed `decomp_path`), and `fam_variant.fits_path` pointing at a directory that
-does not exist.
+Then phase 3a is complete and **3b** begins. Two 3b items were discovered by the
+`value_added` move and are recorded in its section below, both of the same class — a path
+built from the long `param_set` key, a layout the tree lost when `dir_name` arrived:
+`build_fam_dz.resolve_paths`, and `fam_variant.fits_path` pointing at a directory that does
+not exist. A third, `build_optical_state --intrinsic miw`, turned out to be a **regression
+of the reorganization** rather than pre-existing and was fixed on 2026-10-12 instead —
+see "The MIW route regression" below.
 
 **Constraints found the hard way in the `bounce_tables` split, which the `value_added`
 move will meet too:**
@@ -440,21 +441,17 @@ because 3a is mechanical and a path fix is a 3b item:
    `fam__danish_1_2__batoid__z1toz6__50_34` rather than the live
    `fam__fam_danish_1_2_0_..._bin2x__batoid__z1toz6__50_34`. Both sides of the comparison
    do the same, so the comparison is unaffected.
-2. **`build_optical_state.py --intrinsic miw`**: it passes `intrinsic_ref` as
-   `MiwCornerLookup`'s `mi_name` (`:770`-`:772`), but the **`miw` 3a move fixed
-   `miw_corner.decomp_path`** to take the long `(param_set, mi_name)` keys and join their
-   `dir_name`s. So a joined directory name like `danish_1_2_A_50_34_i_5rot` — which is
-   exactly what `state_variant.intrinsic_ref` holds — now raises
-   `KeyError: MI config 'danish_1_2_A_50_34_i_5rot' not found`. **This route has been
-   broken since commit `b9756aa`.** Passing the long keys instead
-   (`--intrinsic-ref pathA_50_34_i_5rot --miw-param-set
-   fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`) resolves to the same decomposition file and
-   reproduces the stored result to the printed precision, which is how the reference was
-   built. Noted in `value_added/docs/status/build_progress.md`.
-   **For 3b:** the fix is one of — have the builder resolve the build through the catalog
-   (`catalog.path('miw', variant) / miw_corner.DECOMP_FILE`, which is what
-   `decomp_path`'s own docstring now recommends), or change `state_variant.intrinsic_ref`
-   to a catalog name, which plan section 6 already schedules for 3c.
+2. **`build_optical_state.py --intrinsic miw`** — **not pre-existing: a regression of the
+   reorganization, and FIXED 2026-10-12** (see "The MIW route regression" below). It
+   passes `intrinsic_ref` as `MiwCornerLookup`'s `mi_name` (`:770`-`:772`), and the
+   **`miw` 3a move (`b9756aa`) made `miw_corner.decomp_path`** take the long
+   `(param_set, mi_name)` keys and join their `dir_name`s, so the joined directory name
+   `state_variant.intrinsic_ref` holds — `danish_1_2_A_50_34_i_5rot` — raised
+   `KeyError: MI config 'danish_1_2_A_50_34_i_5rot' not found`. The reference build worked
+   round it by passing the long keys (`--intrinsic-ref pathA_50_34_i_5rot --miw-param-set
+   fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`), which resolve to the same decomposition
+   file. The earlier text here and in `value_added/docs/status/build_progress.md` called
+   it pre-existing and deferred it to 3b; both are corrected.
 
 A third, smaller one: **`build_m1m3_thermal_r2.py` has its own `parse_day_obs`** that
 takes a single night or a `A-B` range but **not** a comma list, unlike `build_efd_db`'s.
@@ -553,6 +550,49 @@ The comparison needed two things the parquet products' did not:
 * **NaN equal to NaN.** An unrecovered visit stores NaN rather than NULL (178 of the 1,017
   visits here), so a plain equality test would have reported every one of them as a
   difference between two identical builds.
+
+## The MIW route regression: fixed 2026-10-12
+
+**What it was.** `value_added`'s `optical_state` MIW route could not run. The builder
+passes `state_variant.intrinsic_ref` — a **joined build directory name** such as
+`danish_1_2_A_50_34_i_5rot` — as `MiwCornerLookup`'s `mi_name`, and the `miw` 3a move
+(`b9756aa`) had redefined `decomp_path` to take the long `(param_set, mi_name)` keys and
+join their `dir_name`s. A joined name is not an `mi_config.yaml` entry, so the lookup
+raised `KeyError: MI config 'danish_1_2_A_50_34_i_5rot' not found`. Broken 2026-10-10 to
+2026-10-12.
+
+**Why it was fixed now rather than in 3b.** The reorganization caused it, so restoring it
+is part of 3a's "no change in results" contract, not a 3b improvement. The earlier entry
+called it pre-existing, which was wrong.
+
+**The fix.** `decomp_path` (`rubinwork/miw_corner.py`) now resolves a `mi_name` that is
+itself a build directory under `aos/output/miw/` directly to that directory's
+`intrinsic_split_decomp.parquet`, and falls through to the long-key route otherwise.
+A **directory** of that name settles it rather than the file existing: the long-key route
+would raise `KeyError` for a joined name, which would hide an incomplete build behind the
+wrong error, where this way the missing-file `FileNotFoundError` names the path. The
+builder was not changed. Three tests: the joined form on a `tmp_path` tree with a
+deliberately invalid `param_set`, both forms giving the same file on the real tree, and an
+unknown name still raising `KeyError` on the long keys.
+
+**Verification.** The step-1 MIW-route reference command rerun exactly as `run_build.sh`
+issues it — `--intrinsic-ref danish_1_2_A_50_34_i_5rot`, with `--miw-param-set danish_1_2`,
+which is deliberately **not** a valid long `param_set` key, so the run only succeeds if
+the joined name resolves on its own — into a new scratch database
+(`_phase2_refbuild/value_added/miwfix/`). It read
+`aos/output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_decomp.parquet`, the same file
+the reference read, and reproduced the reference's numbers: 1,017 visits, 839 recovered,
+1,012 with commanded v-modes, and a median CWFS FWHM contribution of **0.2546 arcsec over
+460 visits** on `day_obs` 20251116.
+
+`optical_state` for `variant_id = v50_34__miw__consdb_v1` compares at zero tolerance on
+the verified-unique key `(visit_id, variant_id)`: 1,017 rows on both sides, **13 value
+columns compared, 0 unexpected differences**, only `computed_at` differing, which is on the
+list committed in `fb14ab5`. `state_variant.intrinsic_ref` differs by construction —
+`pathA_50_34_i_5rot` in the reference's long-key workaround against the joined name here —
+which is the point of the fix rather than a difference in results.
+
+315 product tests pass (312 + the 3 new); import smoke test unchanged at 59/59 modules.
 
 ## 3a, `cwfs_tables` — the move
 
