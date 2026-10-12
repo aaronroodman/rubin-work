@@ -60,7 +60,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))   # smatrix
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))       # this study
 _AOS = pathlib.Path(__file__).resolve().parents[3] / 'aos' / 'code'
 sys.path.insert(0, str(_AOS))              # aos_fwhm
-sys.path.insert(0, str(_AOS / 'bounce'))   # bounce_lib
 
 import regularized_inversion as ri   # noqa: E402
 from regularized_inversion import invert_oic, oic_authority   # noqa: E402
@@ -228,7 +227,7 @@ def report_rho_scan(tab, W, svd, ranges, authority, cfg, k_list, pupil_j,
         (dimensionless).
     """
     import aos_fwhm as _afw
-    import bounce_lib as _bl
+    from rubinwork.bounce import legs as _bl
     from lsst.ts.wep.utils import convertZernikesToPsfWidth as _conv
 
     grid = _afw.fp_grid()
@@ -416,7 +415,7 @@ def main():
     from lsst.ts.intrinsic.wavefront.mi_config import analysis_section
     from lsst.ts.intrinsic.wavefront.ofc_svd import (LABELS_50DOF, build_ofc_svd,
                                                      project_dz_table)
-    import bounce_lib as bl
+    from rubinwork.bounce import legs as bl
 
     pupil_j = list(range(4, 20)) + list(range(22, 27))
     k_list = list(range(1, 7))

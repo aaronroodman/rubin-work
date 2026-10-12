@@ -54,16 +54,15 @@ _HERE = Path(__file__).resolve()
 sys.path.insert(0, str(_HERE.parent))                 # same-study siblings
 sys.path.insert(0, str(_HERE.parents[1]))             # smatrix/code (normalization_weights)
 sys.path.insert(0, str(_HERE.parents[3]))             # repo root (common/)
-# The bounce leg definitions and the pairing live in the aos topic; this study reuses
-# them rather than restating the legs, so that the Δ scored here is byte-identical to
-# the Δ in the committed bounce products.
+# aos_fwhm is still a flat module in the aos topic.
 _AOS = _HERE.parents[3] / 'aos' / 'code'
 sys.path.insert(0, str(_AOS))
-sys.path.insert(0, str(_AOS / 'bounce'))
 
 import regularized_inversion as RI                                    # noqa: E402
-import bounce_lib as bl                                               # noqa: E402
-import run_bounce                                                     # noqa: E402
+# The bounce leg definitions and the pairing are a library, so this study reuses
+# them rather than restating the legs, and the Δ scored here is byte-identical to
+# the Δ in the committed bounce products.
+from rubinwork.bounce import legs as bl                               # noqa: E402
 import aos_fwhm as afw                                                # noqa: E402
 from lsst.ts.intrinsic.wavefront import mi_config as mc               # noqa: E402
 from lsst.ts.intrinsic.wavefront.ofc_svd import (                     # noqa: E402
@@ -198,11 +197,12 @@ def main():
 
     from lsst.ts.wep.utils import convertZernikesToPsfWidth as conv
     # The leg definitions come from the aos topic's bounce config, merged onto
-    # run_bounce.py's own defaults exactly as that script does -- analysis_section
-    # returns only the overrides, so the defaults carry the unoverridden legs.
+    # the bounce library's own defaults exactly as the builder does --
+    # analysis_section returns only the overrides, so the defaults carry the
+    # unoverridden legs.
     cfg_path = (Path(args.analysis_config) if args.analysis_config
                 else _HERE.parents[3] / 'aos' / 'analysis_config.yaml')
-    cfg = {**run_bounce.DEFAULT, **mc.analysis_section(
+    cfg = {**bl.DEFAULT, **mc.analysis_section(
         'bounce', args.param_set, args.mi_name, config_path=cfg_path)}
     prefix = cfg.get('fit_prefix', 'z1toz6')
     k_list = list(cfg.get('focal_k_range', [1, 2, 3, 4, 5, 6]))

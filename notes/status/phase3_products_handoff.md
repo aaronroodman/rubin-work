@@ -12,23 +12,35 @@ between sessions.
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
 
-1. **How the `bounce` study half gets the analysis it needs** (`bounce_tables` 3a step 2,
-   open). Splitting `run_bounce.py` leaves the nine PDF sections needing `bounce_results`,
-   `fit_table`, the per-visit `DOF_all` and the SVD — most of the shared analysis, not just
-   the four tables. Two routes:
-   - **(a) The shared analysis becomes a library function both halves call.** The builder
-     calls it and writes the tables; the study rule calls it and renders. Honest about the
-     dependency, and the per-ordinal DZ pages keep working. Costs a second run of the
-     analysis (167.6 s of wall clock) when both are built.
-     **Recommended, and what I will take as the provisional default** — it is the only
-     route that keeps all nine PDFs working.
-   - **(b) The study reads the four product tables back.** Cheaper and a cleaner product
-     boundary, but `bounce_dz_vs_ordinal.pdf`, `bounce_vmode_vs_ordinal.pdf` and
-     `bounce_dof_vs_ordinal.pdf` need per-visit arrays that no table carries, so three of
-     the nine pages would have to be dropped or re-specified.
-   Nothing else in the move depends on the answer, so I proceed with (a) and mark it
-   provisional. Tell me if dropping those three pages is acceptable and (b) becomes
-   better.
+1. **`dof_lut`'s input, before it is rebuilt in 3c** (open, raised 2026-10-12). The LUT
+   fits the **plain FAM DZ**, so its DOF values are absolute — the reference shows
+   `M2_dy = -2364 µm` of hexapod decentre, far outside any physical stroke. Choose before
+   3c rebuilds it:
+   - **plain FAM DZ** (today's behaviour): upstream stays `fam_tables`, nothing changes.
+   - **post-MIW (`refit_mi`) DZ**: the upstream becomes `miw`, which is a
+     variant-definition change, not just a builder change.
+   Nothing is waiting on it now; no code changed. See `aos/docs/studies/lut.md`.
+
+## Decisions taken
+
+- **`bounce_tables` split: route (a)**, the shared analysis as a library function both
+  halves call (Aaron, 2026-10-12 — confirmed, no longer provisional). The builder calls
+  it and writes the tables; the study rule calls it and renders, so all nine PDFs keep
+  working and the per-ordinal DZ pages keep their per-visit arrays. It costs a second run
+  of the analysis (167.6 s of wall clock) when both halves are built. Route (b), the
+  study reading the four product tables back, was rejected because three of the nine
+  pages need per-visit arrays no table carries.
+  **Later option, not now:** the builder could also write the per-visit arrays as a fifth
+  product table, after which the study would read only the product and the second
+  analysis run would go away.
+- **`dof_lut` fits the plain FAM DZ and that is recorded, not changed** (Aaron,
+  2026-10-11; restated 2026-10-12 with the absolute-DOF consequence). The choice of input
+  for the 3c rebuild is open above.
+- **The value-added database stays on ConsDB `physical_rotator_angle`** (Aaron,
+  2026-10-11) for `optical_state.rotator_angle_deg`. `value_added/docs/schema.md` records
+  that for FAM visits the FAM tables' `rotator_angle` is the donut metadata `rotTelPos`
+  (after 3b) and can differ by up to about 0.30 deg of camera rotator angle (blitz path),
+  or be present where the database's is NULL.
 
 **Resume protocol.** Each step writes its state here and then stops, so the session can be
 cleared. A fresh session re-reads this file and the plan's sections 2–5, not a summary.
