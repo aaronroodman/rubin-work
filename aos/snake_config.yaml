@@ -12,12 +12,16 @@
 # run_mktable speed knobs (applied to every mktable/chunk build):
 #   workers    -- parallel processes for the per-visit Butler donut/Zernike reads
 #                 (1 = serial; raise on a batch node, e.g. 8).
-#   no_thermal -- skip the per-visit ESS-temperature EFD loop (fast; leaves the
-#                 thermal columns empty). Use to get donuts quickly; bounce tests
-#                 don't need thermal (thermal_correlations does).
+#   no_thermal -- skip mktable's own per-visit ESS-temperature EFD loop. ON since
+#                 phase 3b: run_attach_telemetry fetches the same `thermal` and
+#                 `gradients` columns through its sidecar, so the loop only
+#                 duplicated them, and it was the last thing keeping the EFD inside
+#                 mktable -- which is what kept the expensive chunk off a batch node.
+#                 Turn it off only to build a chunk that will never have
+#                 attach_telemetry run on it.
 mktable:
   workers: 8
-  no_thermal: false
+  no_thermal: true
 
 param_sets:
 

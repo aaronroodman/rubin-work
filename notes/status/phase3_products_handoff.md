@@ -25,6 +25,22 @@ the step. Answered items move to "Decisions taken".
      variant-definition change, not just a builder change.
    Nothing is waiting on it now; no code changed. See `aos/docs/studies/lut.md`.
 
+3. **The five audit-only telemetry groups stay in `visits.parquet`** (open, raised
+   2026-10-12, taken **provisionally** per section 12 so item 2 could proceed). The
+   survey in "Item 2" below found `camera`, `thermal` and `gradients` are read as real
+   input — one of them by a **product builder** and one by a prefix-discovered ML feature
+   set — so they must stay. The other five (`wind`, `lut`, `hexlut`, `trim`, `tweak`,
+   228 + 8 + 10 + 51 + 50 columns) are read only by the `run_chunk_status.py` audit page
+   and the `fam_telemetry_history.ipynb` history plots, both **by prefix**. Options:
+   - **keep them** (what 3b did): `visits.parquet` stays ~405 columns wide, nothing
+     downstream changes, and `attach_telemetry` keeps needing the EFD. Reversible.
+   - **drop them and repoint the two readers at the DuckDB**: ~347 columns leave
+     `visits.parquet`, but both readers discover columns by prefix with hard-coded
+     expected counts, so each needs editing, and `fam_telemetry_history.ipynb` is a
+     notebook in a sibling study.
+   Nothing is waiting on it: `mktable --no-thermal` is what removes the EFD from the
+   expensive stage, and it landed either way.
+
 ## Decisions taken
 
 - **The two `value_added` backfill scripts: route 1** (Aaron, 2026-10-12). Both become
@@ -291,6 +307,63 @@ description and section 10 for the sidecar item, this file's `value_added` and
 `notes/status/phase2_fam_tables_handoff.md` sections "A1 — `rotator_angle`" and "Step 4
 requirements" for the rotator and `cam_*` background, and
 `aos/docs/frame_conventions.md`.
+
+### Item 2: which telemetry group any study still reads from `visits.parquet`
+
+Surveyed 2026-10-12 over `aos/`, `thermal_focus/`, `olr/`, `blocks/`, `value_added/`,
+`rubinwork/`, `smatrix/`, `optatmo/`, `guider/` and the notebooks. Reads of the
+value-added DuckDB, of the per-chunk `telemetry.parquet` sidecar, and of the EFD/ConsDB
+fetchers in `rubinwork/common/` do **not** count — those are other sources.
+
+| group | columns | still read from `visits.parquet`? | reader (file:line) | decision |
+|---|---|---|---|---|
+| `camera` | ~24 `cam_*Temp` + `cam_AmbAirtemp`, `cam_n_samp` | **yes, as science input** | `aos/code/coadd/recompute_coadd_metrics.py:511-513` discovers them by the `cam_` prefix and turns each into a per-block ML feature (`:545`, `:1198-1204`); also `aos/code/fam_processing/run_chunk_status.py:62,85-87` | **KEEP** |
+| `thermal` | `cam_air_temp`, `m2_air_temp`, `m1m3_air_temp`, `outside_temp`, `m2_delta_t`, `cam_m1m3_delta_t`, `dome_delta_t`, `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy` | **yes** | `rubinwork/products/coadds/builders/run_coadd_blocks_miw.py:108-113,760-765` (`THERMAL_VARS`, read per chunk); `run_chunk_status.py:54-57`; `recompute_coadd_metrics.py:68-71` uses the list to *exclude* these from `camcols`, so removing them would silently widen that ML feature set | **KEEP** |
+| `gradients` | `x_gradient`, `y_gradient`, `z_gradient`, `radial_gradient` | **yes** | `run_coadd_blocks_miw.py:111,117,585,770-772` (`z_gradient` is a `SCATTER_VARS` plot axis and NaN-checked); `run_chunk_status.py:56` | **KEEP** |
+| `wind` | 8 `wind_*` / `sonic_*` | audit only | `run_chunk_status.py:83-85` (prefix, schema-level presence count); `fam_telemetry_history.ipynb` | **KEEP provisionally** — see below |
+| `lut` | `m1m3elev_0..155`, `m2grav_0..71` (228 cols, N) | audit only | `run_chunk_status.py:76-82` (prefix, schema-level); `fam_telemetry_history.ipynb` | **KEEP provisionally** |
+| `trim` | `dof0..49`, `dof_event_id` | audit only | `run_chunk_status.py:70-72`; `fam_telemetry_history.ipynb`. Every science use goes through the DuckDB `visit_telemetry` table (`build_optical_state.py:459-470`) | **KEEP provisionally** |
+| `tweak` | `tweak_dof0..49` | audit only | `run_chunk_status.py:73-75`; `fam_telemetry_history.ipynb` | **KEEP provisionally** |
+| `hexlut` | `lut_dof0..9` | audit only | `fam_telemetry_history.ipynb` only. Science use is the DuckDB table, or a direct EFD fetch in `thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb` | **KEEP provisionally** |
+
+**Three things this survey changes about item 2 as the plan describes it.**
+
+1. **`camera`, `thermal` and `gradients` cannot be dropped.** The plan's premise was that
+   the eight groups serve only downstream studies that "could read ConsDB and the
+   value-added DuckDB instead". For these three the reader is not a study that could be
+   repointed cheaply: `recompute_coadd_metrics.py` discovers `cam_*` **by prefix** and
+   feeds it to a per-block ML fit, so dropping the group changes a science result, and
+   `run_coadd_blocks_miw.py` is a **product builder**, not a study.
+2. **`mktable --no-thermal` is still right, and is the part that buys the batch node.**
+   The 13 `thermal` and `gradients` columns are written by `run_attach_telemetry` from
+   **ConsDB and the EFD via the sidecar** as well — verified against the reference
+   chunk's `telemetry.parquet`, which carries all 13 — so `--no-thermal` does not lose
+   them. It is the loop keeping the EFD inside `mktable`, so it is what makes the
+   expensive chunk batch-runnable.
+
+   **What `--no-thermal` does drop, measured on the reference chunk:** the
+   **146 `m1m3_tc_*`** and **50 `m1m3_dt_*`** per-thermocouple and per-cell temperature
+   columns (deg C, and deg C per m for the `dt` family), 196 columns that only
+   `mktable`'s own loop writes — the sidecar does not supply them. No study reads them:
+   the only references are two **prefix-based audit views**
+   (`aos/notebooks/fam_processing/fam_telemetry_history.ipynb` code-line 133 and
+   `aos/snippets.ipynb` code-lines 265-266) and a note in
+   `aos/docs/status/dof_telemetry_availability.md` recording them as temperatures, not
+   DOF. So this is the one real shrink item 2 delivers: **196 columns of 600**, not a
+   group removal.
+3. **No `attach_telemetry` group is removed in 3b.** Five groups are
+   read only by an audit page (`run_chunk_status.py`) and a history notebook, both by
+   prefix with hard-coded expected counts — dropping them turns those pages into
+   mismatch reports rather than breaking a result, and repointing them at the DuckDB is a
+   real change to a sibling topic's code. Marked **provisional** per section 12 and
+   listed in "Decisions for Aaron": the cheap, reversible default is to keep them.
+
+So item 2 as executed is: **`mktable --no-thermal`** (`no_thermal: true` in
+`aos/snake_config.yaml`), `attach_telemetry` groups unchanged. It drops the 196
+`m1m3_tc_*` / `m1m3_dt_*` columns and removes the EFD from `mktable`.
+`attach_telemetry` still needs the EFD for `gradients`, `camera`, `hexlut` and `trim`, so
+**that stage stays interactive in 3c** — which is what the Snakefile already assumes
+(`attach_telemetry=0` under `--mode batch`).
 
 ## Constraints found the hard way in 3a, which 3b and 3c will meet too
 

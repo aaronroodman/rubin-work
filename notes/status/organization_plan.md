@@ -755,6 +755,18 @@ What that means for the two build halves:
   groups is needed to build the MIW. The question for phase 3 is which of them any study
   still reads from `visits.parquet` rather than from DuckDB, and the sidecar keeps only
   those.
+
+  **Surveyed 2026-10-12, and the answer is "most of them", so no group was dropped in
+  3b** (full table in the phase 3 handoff, "Item 2"). Three groups are read as real
+  input and must stay: `camera`, because `aos/code/coadd/recompute_coadd_metrics.py`
+  discovers `cam_*` **by prefix** and makes each a per-block ML feature; `thermal` and
+  `gradients`, because `run_coadd_blocks_miw.py` — a **product builder**, not a study —
+  reads them per chunk. The other five (`wind`, `lut`, `hexlut`, `trim`, `tweak`) are
+  read only by the `run_chunk_status.py` audit page and a history notebook, both by
+  prefix with hard-coded expected counts, and were **kept provisionally** rather than
+  dropped: it is the cheap reversible default, and repointing those two readers is a
+  change to a sibling study's code. So the width did not shrink; what 3b bought is
+  `mktable --no-thermal`.
 - `run_mktable.py` takes `--no-thermal`, and with `no_thermal: false` (today's
   `snake_config.yaml`) its per-visit ESS-temperature loop queries the EFD. **Measured
   2026-10-10 at 2.5 s/visit**, from 466 s against 453 s over the same 5 visits — not the
