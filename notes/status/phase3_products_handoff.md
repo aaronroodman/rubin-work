@@ -128,67 +128,62 @@ Answered 2026-10-13 on the two 3c defects:
   (`aos/logs/mktable_submit_20261013_96g.txt`,
   night list `aos/logs/mktable_todo_nights_20261013.txt`).
 
-### Defect B: the OOM was memory PRESSURE, not demand — measured 2026-10-13
+### Defect B: the `Snakefile`'s 3 GB/worker figure is 3x too low — measured 2026-10-13
 
-**The 32G and 64G `MaxRSS` figures were the ceiling being hit, not the working set.** The
-same night at 8 workers under a **96G** request peaks at **12.25 GB** of resident set size
-and completes in 22.5 min. Night 20251114, `danish_1_2`, 8 CPUs throughout:
+**The cause is mundane: `mktable` needs about 9 to 11 GB of resident set size per donut
+worker, not 3 GB.** At 8 workers that is ~74 GB, so a 32G request bought roughly 4
+GB/worker and killed 87 of 137 nights; the 50 that survived were the small ones. There is
+no allocator effect, no per-night fixed cost, and nothing peculiar about the per-night
+split.
 
-| run | memory request | workers | peak RSS | outcome |
-|---|---|---|---|---|
-| original set, job 40705xxx | 32G | 8 | **39.87 GB** | `OUT_OF_MEMORY` |
-| resubmission, job 40708xxx | 64G | 8 | ~62 GB (set median 62.5) | `OUT_OF_MEMORY` |
-| sweep `w8`, job 40711796 | **96G** | 8 | **12.25 GB** | **`COMPLETED`**, wall 22:29 |
+The worker-count scan that settles it — night 20251114, `danish_1_2`, 96G request, whole-job
+`MaxRSS` from `sacct`:
 
-Across the whole 64G set the same pattern holds, which is what rules out a per-night data
-explanation: `COMPLETED` peaked at min 35.6 / median 42.2 / max 57.1 GB and
-`OUT_OF_MEMORY` at min 39.9 / median 62.5 / max 65.8 GB — both distributions pinned under
-the limit, where the 32G set's `COMPLETED` jobs had peaked at only 10.3 GB max. Footprint
-rose with the ceiling and then fell to 12 GB once the ceiling was high enough never to
-bind.
-
-**Aaron's load-bearing fact: the `danish_1_2` tables have not changed** (2026-10-13). The
-`danish_1_3` blitz tables are larger, `danish_1_2`'s are not, so the input going into
-these jobs is the input that built fine at chunk level. That removes the data from the
-list of suspects and leaves only how the job is driven.
-
-**The worker count is also innocent**, which was the hypothesis the sweep was built to
-test: 8 workers is exactly the configuration that completes at 12.25 GB. So neither the
-per-night split's concurrency nor the bin-x1/bin-x2 collection question in the original
-defect B writeup is the cause.
-
-**The footprint is flat in worker count, which makes the `Snakefile` estimate wrong in
-form, not value.** Night 20251114 under a 96G request:
-
-| workers | peak RSS | wall | `Snakefile` budget `3000 * MKT_WORKERS` |
+| workers | `MaxRSS` | per worker | wall clock |
 |---|---|---|---|
-| 4 | **12.2 GB** | 38:03 | 12 GB |
-| 8 | **12.2 GB** | 22:30 | 24 GB |
+| 2 | 21.66 GB | 10.83 GB | 1:01:08 |
+| 4 | 40.69 GB | 10.17 GB | 0:38:04 |
+| 8 | 73.59 GB | 9.20 GB | 0:22:30 |
 
-Halving the workers leaves the peak unchanged and nearly doubles the wall clock, so the
-resident memory is held **per night**, not per worker — the night's donut set, read once.
-`mem_mb = 3000 * MKT_WORKERS` therefore scales with a quantity the footprint does not
-depend on: it only looked adequate at 8 workers by accident of the multiplication, and at
-4 workers its 12 GB budget sits exactly at the 12.2 GB measured peak. The replacement
-should be a **constant per-night term plus a small per-worker term**, fitted on the
-per-night table of step 3 with workers held at 8.
+Memory scales close to linearly in worker count and wall clock close to inversely, so
+`mem_mb = 3000 * MKT_WORKERS` has the **right form** and a **3x-too-low constant**. The
+"conservative bin-x2 donut estimate" in the comment at `Snakefile:265` is simply stale.
 
-What remains, and is **not** proven: the mechanism. Footprint tracking the limit, with a
-clean low peak when the limit is generous, is the signature of memory not being returned
-under pressure — an allocator or garbage-collector effect, where freed pages stay resident
-as the cgroup fills and the recorded peak climbs to the limit until the kill. Recorded as
-the working explanation, not a measured one; nothing downstream depends on which mechanism
-it is, only on the request being clear of the ~12 GB working set.
+**Read `MaxRSS` from `sacct`, never `/usr/bin/time -v`, for a multi-process job.** This
+section previously recorded a wrong conclusion — "footprint is flat in worker count at
+12.2 GB, so memory is held per night and the `Snakefile` form is wrong" — committed in
+`3c7258d` and corrected here. `/usr/bin/time -v`'s "Maximum resident set size" reports the
+**largest single process** in the tree, not the sum over it, and `sweep.sh` carried a
+comment asserting the opposite. The flat 12.25 / 12.27 / 12.44 GB across w8 / w4 / w2 was
+flat *per-process* memory — exactly what 8 workers each holding a similar slice looks
+like. Slurm's figure for the same sweep job (40711796) is **73.59 GB**, agreeing to within
+2.5% with the production run of the same night (40712965, **75.41 GB**), so there was never
+a path difference between `sweep.sh` and the production jobs either.
 
-**Consequence for the `Snakefile` estimate:** `mem_mb=3000 * MKT_WORKERS` (line 267) is
-**roughly right as a demand figure** — 24 GB budgeted at 8 workers against a 12.25 GB
-measured peak — so step 3's "correct the 3 GB figure" is likely to confirm it rather than
-raise it. The error was never the Snakefile's estimate; it was the Slurm `--mem` request
-being close enough to the working set for pressure to set in.
+**Memory does track night size, with a large fixed term.** Over the 55 nights of the 96G
+set that had completed when this was measured, 8 workers throughout:
 
-**What was spent learning this:** 87 jobs resubmitted at 64G before the 4-job sweep the
-previous session's "next step on B" had already prescribed. 20 of those 87 completed, so
-the spend was not total, but the measurement should have come first.
+| quantity | min | median | max |
+|---|---|---|---|
+| `MaxRSS` (GB) | 63.48 | 74.04 | 83.79 |
+| FAM visits per night (dimensionless count) | 8 | 20 | 40 |
+| donuts per night (dimensionless count) | 21,712 | 53,340 | 97,293 |
+
+Pearson r(`MaxRSS` GB, donuts) = **+0.727**, Spearman rho = **+0.726**, n = 55 nights;
+against FAM visits, r = +0.665 and rho = +0.681. A 4.5x range in donut count moves
+`MaxRSS` only from about 67 to 77 GB, so the night's own data is the minority of the
+footprint — roughly **60 GB fixed plus 0.15 GB per 1,000 donuts** at 8 workers. That fixed
+term is what the per-worker constant is really measuring.
+
+**Aaron's load-bearing fact, which held throughout: the `danish_1_2` tables have not
+changed** (2026-10-13) — the `danish_1_3` blitz tables are larger, `danish_1_2`'s are not.
+That correctly ruled out a change in the input, and left the request size as the cause.
+
+**What was spent learning this:** 87 jobs resubmitted at 64G before any measurement, which
+the previous session's "next step on B" had already prescribed; then two wrong intermediate
+conclusions drawn from the per-process `MaxRSS`, one of them committed. 20 of the 87
+completed, so the batch spend was not total, but the measurement should have come first and
+should have used `sacct`.
 
 ### Defect A verified against the old tree, 2026-10-13
 

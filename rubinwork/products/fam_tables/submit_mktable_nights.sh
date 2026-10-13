@@ -50,11 +50,13 @@ LOGDIR="$REPO/aos/logs"
 PARTITION="${PARTITION:-milano}"
 ACCOUNT="${ACCOUNT:-rubin:developers@milano}"
 WORKERS="${WORKERS:-8}"
-# Whole-job memory request, overridable: MEM=64G ./submit_mktable_nights.sh ...
-# 32G is 4 GB per donut-reading worker, above the Snakefile's 3 GB bin-x2 estimate.
-# Measured 2026-10-13: 87 of 137 nights exceed it, MaxRSS up to 33.9 GB of resident set
-# size, and memory does not track the night's FAM-pair count.
-MEM="${MEM:-32G}"
+# Whole-job memory request, overridable: MEM=128G ./submit_mktable_nights.sh ...
+# 96G is 12 GB per donut-reading worker at the default 8 workers.  Measured 2026-10-13 on
+# danish_1_2: mktable needs 9.2 to 10.8 GB per worker, so 32G killed 87 of 137 nights and
+# 64G killed 67 of 87, while at 96G the first 57 nights completed with no OOM at all,
+# MaxRSS 63.5 to 83.8 GB.  Raise it for a variant with larger stamps, such as the
+# danish_1_3 blitz.
+MEM="${MEM:-96G}"
 # The longest single night is well under this; the margin covers a cold Butler.
 TIME=08:00:00
 

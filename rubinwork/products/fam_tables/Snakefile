@@ -262,9 +262,18 @@ rule mktable:
     # Declare the REAL cost so Snakemake self-throttles: each mktable spawns
     # `workers` donut-reading processes.  threads=workers makes -j cap the number
     # of concurrent chunks, and mem_mb scales so the --resources mem_mb budget
-    # does too.  ~3 GB/worker is a conservative bin-x2 donut estimate.
+    # does too.
+    #
+    # 11 GB/worker, measured 2026-10-13 on the 3c per-night rebuild (danish_1_2,
+    # bin-x2) and not an estimate.  A worker-count scan on night 20251114 gave a
+    # whole-job MaxRSS of 21.66 / 40.69 / 73.59 GB at 2 / 4 / 8 workers -- 10.83,
+    # 10.17 and 9.20 GB per worker -- so the cost is linear in workers and the
+    # former 3 GB/worker figure killed 87 of 137 nights at a 32G request.  Rounded
+    # up from the 10.83 GB worst case for headroom on a large night: over the 96G
+    # set, MaxRSS correlates with donut count at Pearson r = +0.727 (n = 55
+    # nights, 8 workers), ranging 63.5 to 83.8 GB.
     threads: MKT_WORKERS
-    resources: mem_mb=3000 * MKT_WORKERS
+    resources: mem_mb=11000 * MKT_WORKERS
     log: str(LOGS / '{dmin}_{dmax}.mktable.log')
     shell: MKTABLE_CMD
 
