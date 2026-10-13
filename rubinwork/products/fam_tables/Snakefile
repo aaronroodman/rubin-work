@@ -283,15 +283,17 @@ rule combine_visits:
     shell:  COMBINE_CMD
 
 
-# ---- attach all per-visit telemetry, then merge into the visits tables ----
+# ---- attach all per-visit telemetry, then merge into the visits and fits tables ----
 # One pass over every chunk: thermal, M1M3 gradients, wind, camera body, mirror LUT,
 # hexapod LUT, Trim and a derived Tweak.  Each chunk gets a telemetry.parquet, which
-# --merge joins into both the per-chunk and the combined visits.parquet.  Because the
-# sidecars are the source of truth, re-running combine_visits and then this rule's
-# --merge restores the columns.
+# --merge joins into both the per-chunk and the combined visits.parquet AND
+# fits.parquet.  Because the sidecars are the source of truth, re-running
+# combine_visits or combine_fits and then this rule's --merge restores the columns;
+# fits.parquet is an input so this runs after combine_fits, which drops them.
 rule attach_telemetry:
     input:
         visits = str(BUILD_DIR / 'visits.parquet'),
+        fits = str(BUILD_DIR / 'fits.parquet'),
         script = str(REPO / 'rubinwork' / 'products' / 'fam_tables' / 'builders'
                      / 'run_attach_telemetry.py'),
     output:

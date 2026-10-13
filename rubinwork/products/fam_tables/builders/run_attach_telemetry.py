@@ -7,9 +7,13 @@ sidecars and merged only into the *combined* table). That split is why re-runnin
 ``combine_visits`` silently drops the 28 ``cam_*`` columns: the combined file was the only
 place they lived. Here every quantity lands in one per-chunk ``telemetry.parquet``
 sidecar, which is the single source of truth, and a merge step joins it into both the
-per-chunk and the combined ``visits.parquet``. A re-combine can then always be repaired by
-re-running ``--merge`` alone, and a failed fetch never damages an expensive ``mktable``
-output.
+per-chunk and the combined ``visits.parquet`` **and** ``fits.parquet``. A re-combine can
+then always be repaired by re-running ``--merge`` alone, and a failed fetch never damages
+an expensive ``mktable`` output.
+
+``fits.parquet`` became a merge target in phase 3b: it is keyed the same way, one row per
+visit, and a ``combine_fits`` re-run dropped its 362 ``cam_*`` columns on every rebuild
+because nothing restored them.
 
 Sources, ConsDB first and the EFD only where ConsDB cannot answer -- see
 ``docs/telemetry.md`` for the measurements behind each choice:
@@ -296,18 +300,66 @@ def _attach_thermal(out, keys, cdb, efd, groups, verbose):
         print(f'    thermal/gradients: {len(got)} cols')
 
 
+# Join keys, never treated as telemetry columns to copy.
+_JOIN_COLS = ('day_obs', 'seq_num', 'visit', 'mjd')
+
+# Per-visit tables the sidecar is merged into. `fits.parquet` is here because a
+# `combine_fits` re-run drops the telemetry the same way `combine_visits` does, and the
+# combined file used to be the only place those columns lived.
+MERGE_TARGETS = ('visits.parquet', 'fits.parquet')
+
+
+def _merge_into(table_path, tel, verbose_label=None):
+    """Left-join the telemetry columns of `tel` into the parquet at `table_path`.
+
+    Replaces any column of the same name already there, so re-running is idempotent.
+
+    Parameters
+    ----------
+    table_path : `pathlib.Path`
+        Per-visit parquet to rewrite; skipped if it does not exist.
+    tel : `pandas.DataFrame`
+        Telemetry sidecar rows, one per visit.
+    verbose_label : `str` or `None`, optional
+        Printed with the merged column count when not `None`.
+
+    Returns
+    -------
+    n_cols : `int`
+        Number of telemetry columns merged, dimensionless; 0 if skipped.
+    """
+    if not table_path.exists():
+        return 0
+    frame = pq.read_table(str(table_path)).to_pandas()
+    newc = [c for c in tel.columns if c not in _JOIN_COLS]
+    frame = frame.drop(columns=[c for c in newc if c in frame.columns],
+                       errors='ignore')
+    on = (['day_obs', 'seq_num'] if {'day_obs', 'seq_num'} <= set(frame.columns)
+          else ['visit'])
+    frame = frame.merge(tel[on + newc], on=on, how='left')
+    pq.write_table(pa.Table.from_pandas(frame, preserve_index=False),
+                   str(table_path))
+    if verbose_label:
+        print(f'  merged {len(newc)} cols into {verbose_label} '
+              f'({len(frame)} rows)')
+    return len(newc)
+
+
 def merge_sidecars(base, verbose=True, chunks_dir=None):
-    """Join every chunk's telemetry.parquet into the per-chunk and combined visits tables.
+    """Join every chunk's telemetry.parquet into the per-chunk and combined tables.
 
     The sidecars are the source of truth, so this is idempotent and is the repair step
-    after a ``combine_visits`` re-run drops the telemetry columns.
+    after a ``combine_visits`` or ``combine_fits`` re-run drops the telemetry columns.
+    Both ``visits.parquet`` and ``fits.parquet`` are targets: they are keyed the same
+    way, one row per visit, and ``fits.parquet`` lost its 362 ``cam_*`` columns on every
+    rebuild until this covered it.
 
     Parameters
     ----------
     base : `pathlib.Path`
-        Directory holding the combined ``visits.parquet``.
+        Directory holding the combined ``visits.parquet`` and ``fits.parquet``.
     verbose : `bool`, optional
-        Print one line per chunk merged.
+        Print one line per chunk table merged.
     chunks_dir : `pathlib.Path`, optional
         Directory holding the per-chunk subdirectories. Defaults to
         ``base / 'chunks'``.
@@ -317,34 +369,19 @@ def merge_sidecars(base, verbose=True, chunks_dir=None):
     frames = []
     for ch in chunks:
         sc = ch / 'telemetry.parquet'
-        vp = ch / 'visits.parquet'
-        if not sc.exists() or not vp.exists():
+        if not sc.exists():
             continue
         tel = pq.read_table(str(sc)).to_pandas()
         frames.append(tel)
-        # per-chunk visits.parquet
-        vis = pq.read_table(str(vp)).to_pandas()
-        newc = [c for c in tel.columns if c not in ('day_obs', 'seq_num', 'visit', 'mjd')]
-        vis = vis.drop(columns=[c for c in newc if c in vis.columns], errors='ignore')
-        on = ['day_obs', 'seq_num'] if {'day_obs', 'seq_num'} <= set(vis.columns) else ['visit']
-        vis = vis.merge(tel[on + newc], on=on, how='left')
-        pq.write_table(pa.Table.from_pandas(vis, preserve_index=False), str(vp))
-        if verbose:
-            print(f'  merged {len(newc)} cols into {ch.name}/visits.parquet')
+        for name in MERGE_TARGETS:
+            _merge_into(ch / name, tel,
+                        verbose_label=f'{ch.name}/{name}' if verbose else None)
     if not frames:
         print('  no sidecars found -- nothing to merge')
         return
     allt = pd.concat(frames, ignore_index=True)
-    cvp = base / 'visits.parquet'
-    if cvp.exists():
-        vis = pq.read_table(str(cvp)).to_pandas()
-        newc = [c for c in allt.columns if c not in ('day_obs', 'seq_num', 'visit', 'mjd')]
-        vis = vis.drop(columns=[c for c in newc if c in vis.columns], errors='ignore')
-        on = ['day_obs', 'seq_num'] if {'day_obs', 'seq_num'} <= set(vis.columns) else ['visit']
-        vis = vis.merge(allt[on + newc], on=on, how='left')
-        pq.write_table(pa.Table.from_pandas(vis, preserve_index=False), str(cvp))
-        print(f'  merged {len(newc)} cols into the combined visits.parquet '
-              f'({len(vis)} rows)')
+    for name in MERGE_TARGETS:
+        _merge_into(base / name, allt, verbose_label=f'the combined {name}')
 
 
 def main():

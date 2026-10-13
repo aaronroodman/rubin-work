@@ -365,6 +365,42 @@ So item 2 as executed is: **`mktable --no-thermal`** (`no_thermal: true` in
 **that stage stays interactive in 3c** — which is what the Snakefile already assumes
 (`attach_telemetry=0` under `--mode batch`).
 
+## 3b item 6 — `combine_fits` dropped the sidecar columns: DONE
+
+`merge_sidecars` now merges the telemetry sidecar into **`fits.parquet`** as well as
+`visits.parquet`, per chunk and combined, through one `_merge_into` helper
+(`MERGE_TARGETS`). `fits.parquet` became an **input of the `attach_telemetry` rule**, so
+the merge runs after `combine_fits`, which is the step that drops the columns. The
+sidecar was already the single source of truth; it simply had one target too few.
+
+**The check has to be read the other way round from the earlier items: the reference
+`fits.parquet` is the *broken* state.** It carries only 13 of the 385 sidecar columns and
+2 `cam_*`, which is the defect. So the check is (a) no pre-existing column changes, (b)
+the added columns equal the sidecar, (c) `visits.parquet` does not move.
+
+Measured on the `danish_1_2` chunk `20251116_20251130`, per-chunk and combined alike:
+
+| quantity | value |
+|---|---|
+| `fits.parquet` columns | 653 → **1025** (dimensionless counts) |
+| `cam_*` columns in `fits.parquet` | 2 → **27** |
+| columns lost | **0** |
+| pre-existing columns differing | **0 of 653**, zero tolerance |
+| added columns matching the sidecar on (`day_obs`, `seq_num`) | **372 of 372** |
+| `visits.parquet` columns / differing | 600 / **0**, zero tolerance |
+
+**372 added, not the 362 the phase 2 handoff predicted**, and that is expected: 362 was
+the `cam_*` count of the August build, while the sidecar now carries all eight groups, so
+`fits.parquet` gains every telemetry column rather than only the camera ones. Nothing is
+lost either way, which is what the item was about. The 196 `m1m3_tc_*` / `m1m3_dt_*`
+columns item 2 drops are **not** in this count — they are `mktable` output, not sidecar
+output, so they never reached `fits.parquet` through this path.
+
+Checker committed as
+`rubinwork/products/fam_tables/refbuild/check_sidecar_in_fits.py`, for re-use on the 3c
+rebuild; its scratch tree is `_phase2_refbuild/_scratch_3b/item6/`. The full `rubinwork`
+suite passes, **350 tests**.
+
 ## Constraints found the hard way in 3a, which 3b and 3c will meet too
 
 Carried forward from the `bounce_tables`, `value_added` and `guider_moments` moves.
