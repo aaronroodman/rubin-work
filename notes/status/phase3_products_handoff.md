@@ -157,6 +157,22 @@ test: 8 workers is exactly the configuration that completes at 12.25 GB. So neit
 per-night split's concurrency nor the bin-x1/bin-x2 collection question in the original
 defect B writeup is the cause.
 
+**The footprint is flat in worker count, which makes the `Snakefile` estimate wrong in
+form, not value.** Night 20251114 under a 96G request:
+
+| workers | peak RSS | wall | `Snakefile` budget `3000 * MKT_WORKERS` |
+|---|---|---|---|
+| 4 | **12.2 GB** | 38:03 | 12 GB |
+| 8 | **12.2 GB** | 22:30 | 24 GB |
+
+Halving the workers leaves the peak unchanged and nearly doubles the wall clock, so the
+resident memory is held **per night**, not per worker — the night's donut set, read once.
+`mem_mb = 3000 * MKT_WORKERS` therefore scales with a quantity the footprint does not
+depend on: it only looked adequate at 8 workers by accident of the multiplication, and at
+4 workers its 12 GB budget sits exactly at the 12.2 GB measured peak. The replacement
+should be a **constant per-night term plus a small per-worker term**, fitted on the
+per-night table of step 3 with workers held at 8.
+
 What remains, and is **not** proven: the mechanism. Footprint tracking the limit, with a
 clean low peak when the limit is generous, is the signature of memory not being returned
 under pressure — an allocator or garbage-collector effect, where freed pages stay resident
