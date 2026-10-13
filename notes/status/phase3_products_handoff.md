@@ -1,8 +1,8 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a complete; 3b items 2, 3, 4 and 6 done and pushed; **item 1 stopped on
-> its before-check, waiting on decision 4**; item 5 not started · **Last updated:**
-> 2026-10-12 · **Kind:** working state (handoff)
+> **Status:** 3a complete; **3b COMPLETE — all six items done and committed**; 3c
+> prepared and not started, waiting on Aaron's OK for the two submit commands ·
+> **Last updated:** 2026-10-12 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -321,35 +321,33 @@ shard plan in both modes.
 
 ## Next concrete action
 
-**Answer decision 4 above**, which is what item 1 is stopped on: `rotTelPos` moves
-**every** FAM visit by a median 0.129 deg of camera rotator angle, not the ~19 visits by
-up to 0.188 deg the plan predicted. The code for item 1 is written and verified on both
-sides but deliberately **not committed**; see "3b item 1" below for the measurement, the
-branch and the four steps to resume.
+**Start 3c, once Aaron OKs the two submit commands.** 3b is complete; nothing in this
+repo is uncommitted. The two commands waiting on him, both shown but neither run:
 
-Then **item 5**, the only 3b item not started: fold `d12-refitWcs_2025` into
-`d12-refitWcs` as a date-keyed collection list in `run_wfs_mktable`, and retire
-`danish_1_0`. Groundwork done this session, nothing changed yet:
+1. The **embargo readability probe**, one tiny read-only job, which 3c depends on because
+   one `danish_1_2` chunk (`day_obs` 20260713) exists only in `/repo/embargo`:
+   ```bash
+   sbatch --job-name=embargo_check --partition=roma \
+     --account='rubin:developers@roma' --qos=normal \
+     --cpus-per-task=1 --mem=4G --time=00:20:00 \
+     --output=/sdf/home/r/roodman/notebooks/rubin-work/aos/logs/embargo_check_%j.log \
+     --wrap 'cd /sdf/home/r/roodman/notebooks/rubin-work && python -m rubinwork.products.fam_tables.refbuild.check_embargo_from_batch'
+   ```
+   It opens the Butler, counts datasets and resolves one URI; it writes nothing. The
+   interactive run passes on `sdfiana029`: **24 of 24 datasets**, matching the 3c
+   pre-flight, with the URI resolving to `s3://embargo@rubin-summit-users/...`. The open
+   question is only whether a batch node carries the same embargo S3 credentials.
+2. The **per-night `mktable` set**, `submit_mktable_nights.sh` — see "3c groundwork"
+   below for the dry-run numbers and the one defect found in it this session (night
+   20260713 is planned twice; fix before submitting).
 
-- Before state recorded: `aos/param_sets.yaml` md5 **`0f72da651cf9319cc283754c614051fd`**,
-  `snakemake -n` in `aos/` plans **34 jobs** (job table at `/tmp/rotcheck/snake_before.txt`
-  — regenerate rather than trust it).
-- **All four live references to `danish_1_0` confirmed still present**:
-  `aos/calibration/miw/intrinsic_split_maps_v1.provenance.yaml:2,4` and
-  `aos/calibration/README.md:42,45`; the tech note's
-  `notes/aos-measured-intrinsics/make_figures.py:23` and `provenance.md:5-6`; the live
-  `overrides:` block at `aos/analysis_config.yaml:148`; and
-  `test_fam_tables.py:263` (`test_unregistered_variant_is_hidden_but_resolvable`).
-- **Recommended choice, not yet applied: keep `danish_1_0` as `registered: false`** and
-  retire only the CWFS half `d10-wep17_3_0`. That keeps the frozen provenance readable
-  and leaves all four references working, which is what the plan allows ("`registered:
-  false` is acceptable if removal would break it").
-- The fold is safe: nothing resolves `refitWcs_2025` as a build — it has never been
-  built — and the only code asserting the key is two tests
-  (`test_fam_tables.py:277`, `test_cwfs_tables.py:27,121`), which are part of the
-  deliberate change. The constraint to respect is that the generated `param_sets.yaml`
-  is what the **external** package reads collections through, so a folded entry must
-  still render a usable `wfs_collections` value.
+Then, after the batch jobs land, `finish_mktable_rebuild.sh` runs the interactive tail
+(`fit`, the three `combine_*`, `attach_telemetry`, `manifest`) and stops **before**
+`set-current`, which waits on the old-tree comparison.
+
+**Also worth settling before 3c rebuilds anything:** decision 5 above, the
+`visits.parquet` row-order defect that makes the stored `tweak_dof*` wrong. The fix is
+one sort in `run_attach_telemetry`, and doing it after 3c would mean rebuilding.
 
 **Phase 3a is COMPLETE**: every one of the eight products has moved, each verified by a
 zero-tolerance reference comparison, and `hsm_moments` stays deferred as the plan says.
@@ -551,6 +549,70 @@ What the script deliberately does **not** do: `fit`, the three `combine_*` rules
 `attach_telemetry` and `manifest` run afterwards and interactively, because
 `attach_telemetry` still needs the EFD (item 2). No manifest until it has run, so an
 interrupted rebuild stays invisible to the catalog.
+
+### Dry run re-measured 2026-10-12, and one defect to fix before submitting
+
+`./submit_mktable_nights.sh --dry-run` exits 0 and prints **138 `sbatch` lines**, 145
+lines of output in total — the 138 jobs the earlier session recorded, confirmed.
+
+| quantity | value |
+|---|---|
+| `sbatch` lines the script would submit | **138** (dimensionless count) |
+| **distinct** nights | **137** — see the defect below |
+| ConsDB `cwfs` visits over those nights | **7,232** (dimensionless count) |
+| visits per night | median **34**, max **291** (day_obs 20250913), min 2 |
+| longest job wall clock, at 258 s + 39.1 s/visit | **3.23 h** |
+| median job wall clock | **26.5 min** |
+| nights exceeding the 8 h `--time` limit | **0** |
+
+**The wall-clock figures are an upper bound, roughly 2x.** The 7,232 count is every
+ConsDB `cwfs` exposure in the chunk ranges, while `mktable` reads only the paired FAM
+visits that have donut datasets — the 3c pre-flight measured **3,523 Butler visits** for
+this variant. So the longest night is nearer 1.5 h than 3.2 h, and the whole set is about
+45 h of CPU spread over 138 jobs rather than 88 h. Either way every night fits the 8 h
+limit with room, and the wall clock is set by the longest night, not the sum.
+
+**Defect, found by this dry run and NOT yet fixed: night 20260713 is planned twice.** It
+falls in two chunk ranges — the broad `[20260514, 20260731]` (`/repo/main`) and its own
+single-night `[20260713, 20260713]`, which is the **`/repo/embargo`** chunk with phrase
+`aos_fam_danish_1_2_0_wep17_7_0_embargo0713`. `night_plan` emits one line per
+(night, chunk) pair, so both are submitted, and **both write into the same
+`_work/chunks/20260713_20260713/` directory** — two jobs racing on one output, with the
+`/repo/main` one finding no data there. Fix before submitting: have `night_plan` prefer
+the **most specific** chunk for a night (narrowest `day_obs` range wins), which also
+keeps the embargo repository and phrase correct for that night. Expected count after the
+fix: **137 jobs**.
+
+## 3c prep — the embargo probe and the post-batch script, both WRITTEN AND NOT RUN
+
+Commit `6dc9480`. Neither is a batch submission; both wait on Aaron.
+
+**`rubinwork/products/fam_tables/refbuild/check_embargo_from_batch.py`** — the read-only
+probe for the one chunk that lives only in `/repo/embargo` (`day_obs` 20260713). It opens
+the Butler, counts `aggregateAOSVisitTableRaw` datasets for that night, and resolves one
+dataset's URI, which is the step a credentialed-but-unreadable repository fails on. It
+writes nothing. **Interactive run passes** on `sdfiana029`: Butler opens, **24 of 24
+datasets** (matching the 3c pre-flight's count), URI resolving to
+`s3://embargo@rubin-summit-users/u/scichris/...`. What is unknown is only whether a Slurm
+node carries the same embargo S3 credentials, which is what the one-job `sbatch` in "Next
+concrete action" answers.
+
+**`rubinwork/products/fam_tables/finish_mktable_rebuild.sh`** — the interactive tail of
+the 3c `danish_1_2` rebuild, as one `snakemake` call on `rule all`. Since the per-night
+donuts and visits tables are already on disk, the only pending jobs are `fit`, the three
+`combine_*`, `attach_telemetry` and `manifest`, in dependency order. It runs interactively
+because `attach_telemetry` still needs the EFD (item 2), and the manifest is last so an
+interrupted run stays invisible to the catalog. Two guards worth keeping:
+
+- It **refuses to run** if any per-night chunk directory has no `donuts.parquet` — a
+  failed or still-running batch job — because the three `combine_*` rules would otherwise
+  silently combine an incomplete set.
+- It passes `nights=` listing exactly the nights found on disk, so Snakemake plans over
+  the per-night chunks the batch jobs produced rather than the ten parent chunks.
+
+It stops **before `catalog set-current`** and prints the compare and set-current commands
+instead: moving `current@` is what makes a build the default every study reads, and 3c
+does that only after the rebuilt product is compared with its old-tree build.
 
 ## 3b item 1 — `rotTelPos`: COMMITTED AND VERIFIED (2026-10-12)
 
@@ -777,6 +839,53 @@ this metadata cheaply**, which cost most of the session's wall clock to learn:
 ~60 `#` lines, as one-key maps; `yaml.safe_load` refuses it (`!!omap` and
 `!numpy.ndarray` tags), so match the scalars with a regex and stop once found. That reads
 all 53 visits in **5 s** instead of 5.8 h.
+
+## 3b item 5 — the `refitWcs` fold and the `danish_1_0` CWFS entry: DONE
+
+Commit `662f91a`. Two changes, exactly as Aaron scoped them on 2026-10-12.
+
+**The fold.** `d12-refitWcs` now carries a date-keyed `collections` list instead of one
+`collection`, so one variant covers both seasons as the FAM `danish_1_2` already does per
+chunk:
+
+| `day_obs` window | collection |
+|---|---|
+| [20260101, 20261231] | `.../danish_1_2_0_alpha0/wep_17_6_1/dv_4_5_0/bin_x2/refitWcs` |
+| [20250101, 20251231] | `.../danish_1_2_0/wep_17_7_0/dv_4_7_0/bin_x2/paired/refitWcs/2025` |
+
+Verified against the Butler: the 17.6.1 collection holds nights **20260315..20260513**
+and the 17.7.0 reprocessing **20250415..20251231** — both inside their windows and
+disjoint, so a night resolves unambiguously.
+
+What made this a builder change rather than a config change: `run_wfs_mktable` opened
+**one** `Butler(repo, collections=...)` per `--wfs-name`. It now resolves the collection
+per visit through two new helpers, `parse_collection_ranges` and
+`collection_for_day_obs`, and **caches a Butler per collection** (opening one costs
+seconds and the walk is per visit). A visit on a night no collection covers is **skipped
+and counted** (`n_no_coll`, reported in the summary line) rather than queried against the
+wrong collection. A bare-string `collection` still works through the same resolver, so
+the four unfolded variants are untouched.
+
+`cwfs_tables.reader` gained `collections` in `BUILDER_FIELDS`, and `_builder_entry`
+renders a folded entry as a dict (a bare-collection entry stays a bare string, which is
+what the other entries' byte-identity depends on).
+
+**The retirement.** `d10-wep17_3_0` is gone — never built, and nothing reads a CWFS table
+for `danish_1_0`. **The FAM variant `danish_1_0` stays** as `registered: false`, per
+Aaron: the four live references to its long param_set key all still resolve
+(`aos/calibration/miw/intrinsic_split_maps_v1.provenance.yaml:2,4` and
+`aos/calibration/README.md:42,45`; `notes/aos-measured-intrinsics/make_figures.py:23` and
+`provenance.md:5-6`; the `overrides:` block at `aos/analysis_config.yaml:148`; and a
+`fam_tables` test).
+
+**Checks.** `aos/param_sets.yaml` changes in **exactly the two intended places and
+nowhere else** (10 insertions, 4 deletions: the `danish_1_0` `wfs_collections` block
+removed, `refitWcs` folded, `refitWcs_2025` gone). Before state regenerated rather than
+trusted: md5 **`0f72da651cf9319cc283754c614051fd`** and **34 jobs**, both matching the
+recorded values. After the change `snakemake -n` in `aos/` is **unchanged at 34 jobs**,
+with a byte-identical job table — expected, since `refitWcs_2025` was never built and
+`d10-wep17_3_0` was unregistered, so neither had a study job to lose. The registered
+variant count goes 5 → 4. **352 tests pass** (350 before, plus two for the resolver).
 
 ## 3b items 3 and 4 — the dead long-`param_set` path in `fam_dz`: DONE
 

@@ -610,10 +610,26 @@ columns) at zero tolerance, both text sidecars and `exposures.txt` byte-identica
 9 per-exposure files identical.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
-the reference builds. **Status 2026-10-12: items 2, 3, 4 and 6 are DONE and pushed;
-item 1 is STOPPED on its before-check and waits on Aaron; item 5 is not started.** Each
-item, its measured numbers and the resume steps are in
-`notes/status/phase3_products_handoff.md`. The one result that departed from this
+the reference builds. **Status 2026-10-12: 3b is COMPLETE — all six items done and
+committed.** Item 1 is `a6394e7` on the `ts_intrinsic_wavefront` branch
+`tickets/rubinwork-rottelpos` (**not pushed**, Aaron's to push) plus `5bdd5f8`, `6dc9480`
+and `77eb9d6` here; item 5 is `662f91a`. Each item, its measured numbers and the two
+findings 3b turned up are in `notes/status/phase3_products_handoff.md`.
+
+Two results 3b produced that this section did not predict:
+
+- **No visit changes MIW rotator bin** — 0 of 169 on the `miw` reference nights and 0 of
+  53 on the `danish_1_2` chunk, with the minimum margin to a bin edge 2.631 deg against a
+  maximum change of 0.4446 deg of camera rotator angle. But the **per-bin split angle
+  theta** does move, by a median 0.3387 deg, because `run_intrinsic_split` sets it to the
+  mean `rotator_angle` of each bin's visits. That rotates the camera-fixed maps: CCS RMS
+  change 7.8e-5 to 9.2e-4 µm of wavefront (1.9 to 6.1% of each term's own RMS), OCS at
+  most 7e-6 µm (0.02%). Expected — O is theta-independent, C lives in the rotating frame.
+- **A pre-existing defect: `visits.parquet` row order is not deterministic**, and
+  `tweak_dof0..49` and `image_idx` are computed from it, so the stored Tweak is wrong
+  whenever the table is not time-ordered. The value-added database is unaffected (it
+  builds its spine with `ORDER BY`). Logged as a decision for Aaron, recommended fix one
+  sort in `run_attach_telemetry`, **before 3c** so the rebuilt column is right. The one result that departed from this
 section's prediction: `rotTelPos` moves **every** FAM visit of the reference chunk by a
 median 0.129 deg of camera rotator angle (max 0.456 deg), not the ~19 ConsDB-NULL visits
 by up to 0.188 deg — 0 of 53 visits agree with the old column to 1e-5 deg, and the stored
@@ -670,10 +686,13 @@ the exposure). The item list:
   cleanest fix for all three is to resolve the build through the catalog, which
   `decomp_path`'s own docstring now recommends; the registry half of it is already
   scheduled for 3c by section 6's move to catalog names.
-- Retire `danish_1_0` whole — the FAM variant and the `d10-wep17_3_0` CWFS entry. Both are
-  `registered: false` today, kept so `aos/param_sets.yaml` stays byte-identical. Four live
-  references to the long param_set key must move in the same commit; the phase 3 handoff
-  lists them.
+- ~~Retire `danish_1_0` whole~~ **Narrowed by Aaron 2026-10-12, and done (`662f91a`):
+  only the `d10-wep17_3_0` CWFS entry is retired. The FAM variant `danish_1_0` STAYS** as
+  `registered: false`, because the four live references to its long param_set key all
+  still resolve and the plan allows `registered: false` where removal would break a
+  reader. The `d12-refitWcs_2025` fold landed in the same commit as a date-keyed
+  `collections` list, which needed the builder to cache a Butler per collection and
+  resolve per visit's `day_obs`.
 
 *3c. Rebuild every product fresh into the new tree*, in dependency order: `fam_tables`
 and `cwfs_tables` → `miw` and its sidecar → `coadds`, `dof_lut`, `bounce_tables` → the
@@ -702,6 +721,16 @@ five of the ten chunks carry one.
 Measured costs: 258 s fixed per `mktable` run, 39.1 s/visit donut reading, 3.0 s/visit
 `attach_telemetry`; 3,523 Butler visits. Reusing the old chunk donuts was the rejected
 alternative. Confirm `/repo/embargo` is readable from batch nodes before submitting.
+
+**3c prepared 2026-10-12** (`6dc9480`), nothing submitted. The dry run reconfirms **138
+`sbatch` lines**, with a longest-night wall clock of at most 3.23 h and **0 nights over
+the 8 h limit**; the probe `refbuild/check_embargo_from_batch.py` passes interactively
+(24 of 24 datasets for the 20260713 chunk, URI resolving) and waits on one tiny batch job
+to prove the same from a `roma` node. `finish_mktable_rebuild.sh` holds the interactive
+tail and stops before `set-current`. **One defect to fix before submitting:** night
+20260713 is planned **twice**, once under the broad `[20260514, 20260731]` chunk and once
+under its own embargo chunk, and both target the same output directory — `night_plan`
+must prefer the narrowest matching chunk, giving 137 jobs.
 
 **Phase 4 — skills and generators.** `/start-study`, `/wrap`, `/review`, the `STUDIES.md`
 and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`.
