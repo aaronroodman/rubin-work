@@ -22,7 +22,13 @@
 #   ./submit_mktable_nights.sh --dry-run            # print every sbatch line, submit none
 #   ./submit_mktable_nights.sh                      # submit all nights
 #   ./submit_mktable_nights.sh --night 20251126     # one night, repeatable
+#   ./submit_mktable_nights.sh --nights 20251126,20251127   # a comma-separated list
+#   ./submit_mktable_nights.sh --nights-file nights.txt     # one night per line, # comments ok
 #   ./submit_mktable_nights.sh --chunk 20251116_20251130    # every night of one chunk
+#
+# Memory per job, 32G by default.  The 87 nights killed by the cgroup at 32G on
+# 2026-10-13 were resubmitted with:
+#   MEM=64G ./submit_mktable_nights.sh --nights-file aos/logs/mktable_oom_nights_20261013.txt
 #
 # Partition and account default to milano; set both to use roma instead:
 #   PARTITION=roma ACCOUNT='rubin:developers@roma' ./submit_mktable_nights.sh
@@ -43,9 +49,12 @@ LOGDIR="$REPO/aos/logs"
 #   PARTITION=roma ACCOUNT='rubin:developers@roma' ./submit_mktable_nights.sh
 PARTITION="${PARTITION:-milano}"
 ACCOUNT="${ACCOUNT:-rubin:developers@milano}"
-WORKERS=8
-# 3 GB per donut-reading worker, the bin-x2 estimate the Snakefile uses.
-MEM=32G
+WORKERS="${WORKERS:-8}"
+# Whole-job memory request, overridable: MEM=64G ./submit_mktable_nights.sh ...
+# 32G is 4 GB per donut-reading worker, above the Snakefile's 3 GB bin-x2 estimate.
+# Measured 2026-10-13: 87 of 137 nights exceed it, MaxRSS up to 33.9 GB of resident set
+# size, and memory does not track the night's FAM-pair count.
+MEM="${MEM:-32G}"
 # The longest single night is well under this; the margin covers a cold Butler.
 TIME=08:00:00
 
@@ -56,6 +65,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --night)   ONLY_NIGHTS+=("$2"); shift 2 ;;
+        --nights)  IFS=',' read -r -a _list <<< "$2"
+                   ONLY_NIGHTS+=("${_list[@]}"); shift 2 ;;
+        --nights-file)
+                   while read -r _line; do
+                       _line="${_line%%#*}"; _line="${_line//[[:space:]]/}"
+                       [[ -n "$_line" ]] && ONLY_NIGHTS+=("$_line")
+                   done < "$2"
+                   shift 2 ;;
         --chunk)   ONLY_CHUNK="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -137,6 +154,15 @@ for night in sorted(best):
 PYEOF
 }
 
+# Snakemake's own budget tracks the Slurm request, so raising MEM raises both.  Without
+# this the mem_mb ceiling stays at the Snakefile's estimate and throttles the workers
+# below what the job was granted.
+case "$MEM" in
+    *G|*g) MEM_MB=$(( ${MEM%[Gg]} * 1000 )) ;;
+    *M|*m) MEM_MB=${MEM%[Mm]} ;;
+    *)     echo "ERROR: cannot parse MEM=$MEM -- use e.g. 64G" >&2; exit 2 ;;
+esac
+
 FAM_BUILD_DIR="$(build_dir)"
 
 echo "repo      $REPO"
@@ -146,6 +172,7 @@ echo "resources partition=$PARTITION account=$ACCOUNT mem=$MEM time=$TIME worker
 echo
 
 n_submitted=0
+MATCHED=()
 while read -r night dmin dmax; do
     [[ -z "${night:-}" ]] && continue
     if [[ -n "$ONLY_CHUNK" && "${dmin}_${dmax}" != "$ONLY_CHUNK" ]]; then continue; fi
@@ -153,6 +180,7 @@ while read -r night dmin dmax; do
         found=0
         for want in "${ONLY_NIGHTS[@]}"; do [[ "$want" == "$night" ]] && found=1; done
         [[ $found -eq 0 ]] && continue
+        MATCHED+=("$night")
     fi
 
     # `nights=` makes this night its own chunk, inheriting its parent chunk's collection
@@ -172,7 +200,7 @@ while read -r night dmin dmax; do
          --output="$LOGDIR/mktable_${night}_%j.log"
          --wrap "export TS_INTRINSIC_WAVEFRONT_DIR=$TS_DIR && cd $REPO && \
 snakemake -s rubinwork/products/fam_tables/Snakefile \
---cores $WORKERS --resources mem_mb=$((3000 * WORKERS)) \
+--cores $WORKERS --resources mem_mb=$MEM_MB \
 --config variant=$VARIANT build=$FAM_BUILD mktable_workers=$WORKERS \
 mktable_no_thermal=1 nights=$night \
 -- $target")
@@ -184,6 +212,16 @@ mktable_no_thermal=1 nights=$night \
     fi
     n_submitted=$((n_submitted + 1))
 done < <(night_plan)
+
+# A night named on the command line but absent from the plan is a typo or a night with no
+# ConsDB cwfs visits; either way it would otherwise vanish without a word.
+if [[ ${#ONLY_NIGHTS[@]} -gt 0 ]]; then
+    for want in "${ONLY_NIGHTS[@]}"; do
+        found=0
+        for got in ${MATCHED[@]+"${MATCHED[@]}"}; do [[ "$got" == "$want" ]] && found=1; done
+        [[ $found -eq 0 ]] && echo "WARNING: night $want is not in the plan, not submitted" >&2
+    done
+fi
 
 echo
 if [[ $DRY_RUN -eq 1 ]]; then
