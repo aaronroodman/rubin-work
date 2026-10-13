@@ -62,7 +62,8 @@ Key arguments:
   ``--mode``        ``mean`` (default), ``intra`` or ``extra`` — see `blitz_reader`
   ``--fit``         run the DZ fit after writing the tables
   ``--no-consdb``   skip the ConsDB merge, leaving ``ra``/``dec``/``band``/
-                    ``science_program``/``rotator_angle`` unpopulated
+                    ``science_program`` unpopulated; ``rotator_angle`` still comes
+                    from the blitz ``rot_tel_pos``
 
 Notes
 -----
@@ -98,16 +99,24 @@ DEFAULT_MAX_MEDIAN_BLUR_ARCSEC = 1.2
 # Flag a visit whose camera rotator angle exceeds this, in deg, as run_mktable does.
 DEFAULT_ROTATOR_THRESHOLD_DEG = 90.0
 
+# Values of the rotator_angle_source column.  Kept in step with
+# `lsst.ts.intrinsic.wavefront.intrinsics_lib.ROTATOR_SOURCE_*`, which the Danish 1.2
+# path writes, rather than imported, so this module stays independent of that package
+# (the same reason `quality_mask` is duplicated below).
+ROTATOR_SOURCE_ROTTELPOS = 'rotTelPos'
+ROTATOR_SOURCE_CONSDB = 'consdb'
+ROTATOR_SOURCE_MISSING = 'missing'
+
 DEFAULT_CONSDB_URL = 'https://usdf-rsp.slac.stanford.edu/consdb'
 
 # The 19 columns run_mktable writes into visits.parquet before any telemetry is attached,
 # in its order, followed by this reader's additions.  run_attach_telemetry.py adds the
 # rest later.
 VISITS_COLUMNS = (
-    'day_obs', 'seq_num', 'visit', 'skyAngle', 'ra', 'dec', 'az', 'alt', 'band', 'mjd',
+    'day_obs', 'seq_num', 'visit', 'rotTelPos', 'ra', 'dec', 'az', 'alt', 'band', 'mjd',
     'nollIndices', 'n_donuts', 'n_detectors', 'n_detectors_with_min_donuts',
-    'median_blur_arcsec', 'science_program', 'rotator_angle', 'rotator_flagged',
-    'visit_quality_pass',
+    'median_blur_arcsec', 'science_program', 'rotator_angle', 'rotator_angle_source',
+    'rotator_flagged', 'visit_quality_pass',
     # Beyond the run_mktable schema: the per-side blur medians, so the intra/extra
     # difference is available per visit without re-reading the blitz collection.
     'median_blur_intra_arcsec', 'median_blur_extra_arcsec',
@@ -157,8 +166,9 @@ def parse_args(argv=None):
                         help='Coordinate system the DZ fit reads (default: OCS, which is '
                              'what the v-mode recovery requires)')
     parser.add_argument('--no-consdb', action='store_true',
-                        help='Skip the ConsDB merge; ra, dec, band, science_program and '
-                             'rotator_angle are left unpopulated')
+                        help='Skip the ConsDB merge; ra, dec, band and '
+                             'science_program are left unpopulated (rotator_angle '
+                             'comes from the blitz rot_tel_pos)')
     parser.add_argument('--consdb-url', default=DEFAULT_CONSDB_URL,
                         help=f'ConsDB URL (default: {DEFAULT_CONSDB_URL}; token read '
                              'from ~/.lsst/consdb_token)')
@@ -296,8 +306,10 @@ def query_consdb(day_obs_values, consdb_url):
     110.8294552 deg against a ConsDB ``s_ra`` of 110.8294610 deg. The conversion happens
     here.
 
-    ``rotator_angle`` is ConsDB ``physical_rotator_angle``, not the blitz ``rot_tel_pos``
-    and not ``boresightRotAngle``.
+    ``rotator_angle`` here is only the **fallback** source. Since phase 3b the column is
+    the blitz ``rot_tel_pos`` where the metadata has it, with this ConsDB
+    ``physical_rotator_angle`` used only where it does not; never ``boresightRotAngle``.
+    `resolve_rotator_angle` applies that order.
     """
     os.environ.setdefault('no_proxy', '')
     if '.consdb' not in os.environ['no_proxy']:
@@ -340,6 +352,54 @@ def query_consdb(day_obs_values, consdb_url):
                               else float('nan')),
         }
     return records
+
+
+def resolve_rotator_angle(records):
+    """Set ``rotator_angle`` and ``rotator_angle_source`` on each record, in place.
+
+    The blitz ``rot_tel_pos`` metadata comes first, because it is the angle the
+    pipeline used for its own Camera Coordinate System to Optical Coordinate System
+    rotation; on this path Consolidated Database (ConsDB) ``physical_rotator_angle``
+    sits about 0.30 deg of camera rotator angle away, drifting with tracking. ConsDB is
+    the fallback where the metadata has no ``rot_tel_pos``, and the angle is NaN where
+    neither source has a value.
+
+    Parameters
+    ----------
+    records : `list` [`dict`]
+        Per-visit records carrying ``rot_tel_pos_deg`` in deg and, where ConsDB was
+        queried, ``consdb_rotator_angle`` in deg.
+    """
+    counts = {ROTATOR_SOURCE_ROTTELPOS: 0, ROTATOR_SOURCE_CONSDB: 0,
+              ROTATOR_SOURCE_MISSING: 0}
+    missing = []
+    for record in records:
+        rot_tel_pos = float(record.get('rot_tel_pos_deg', float('nan')))
+        consdb = float(record.get('consdb_rotator_angle', float('nan')))
+        if np.isfinite(rot_tel_pos):
+            # The stored angle is not guaranteed wrapped -- on the Danish 1.2 path
+            # rotTelPos reads -359.82 deg where the rotator sits at +0.18 deg -- so wrap
+            # to (-180, 180] as `wcsutils.calc_rotator_from_visitinfo` does, or
+            # rotator_flagged trips on nearly every visit.
+            rot_tel_pos = (rot_tel_pos + 180.0) % 360.0 - 180.0
+            record['rotator_angle'] = rot_tel_pos
+            record['rotator_angle_source'] = ROTATOR_SOURCE_ROTTELPOS
+        elif np.isfinite(consdb):
+            record['rotator_angle'] = consdb
+            record['rotator_angle_source'] = ROTATOR_SOURCE_CONSDB
+        else:
+            record['rotator_angle'] = float('nan')
+            record['rotator_angle_source'] = ROTATOR_SOURCE_MISSING
+            missing.append((int(record['day_obs']), int(record['seq_num'])))
+        counts[record['rotator_angle_source']] += 1
+
+    print(f'  rotator_angle sources (dimensionless visit counts): '
+          f'rot_tel_pos={counts[ROTATOR_SOURCE_ROTTELPOS]}, '
+          f'ConsDB={counts[ROTATOR_SOURCE_CONSDB]}, '
+          f'missing={counts[ROTATOR_SOURCE_MISSING]}')
+    if missing:
+        print(f'  rotator_angle is NaN on {len(missing)} visit(s), neither '
+              f'rot_tel_pos nor ConsDB available: {missing}')
 
 
 def quality_mask(records, min_donuts_per_visit, min_detectors_per_visit,
@@ -501,8 +561,8 @@ def build_tables(args):
 
     # Fields the blitz metadata cannot supply.
     if args.no_consdb:
-        print('\n--consdb skipped: ra, dec, band, science_program, rotator_angle '
-              'left unpopulated')
+        print('\n--consdb skipped: ra, dec, band and science_program left '
+              'unpopulated; rotator_angle still comes from the blitz rot_tel_pos')
         consdb = {}
     else:
         print('\nQuerying ConsDB for ra, dec, band, science_program, rotator_angle')
@@ -512,14 +572,15 @@ def build_tables(args):
         extra = consdb.get(int(record['visit']))
         if extra is None:
             record.update(ra=float('nan'), dec=float('nan'), band='',
-                          science_program='', rotator_angle=float('nan'))
+                          science_program='',
+                          consdb_rotator_angle=float('nan'))
             continue
         n_matched += 1
         record['ra'] = extra['ra']
         record['dec'] = extra['dec']
         record['band'] = extra['band']
         record['science_program'] = extra['science_program']
-        record['rotator_angle'] = extra['rotator_angle']
+        record['consdb_rotator_angle'] = extra['rotator_angle']
         # ConsDB exp_midpt_mjd is the same quantity the Danish 1.2 visits table stores,
         # so prefer it over the blitz `date` for consistency across the two tables.
         if np.isfinite(extra['mjd']):
@@ -527,6 +588,8 @@ def build_tables(args):
     if not args.no_consdb:
         print(f'  matched {n_matched} of {len(records)} visits in ConsDB '
               '(dimensionless counts)')
+
+    resolve_rotator_angle(records)
 
     rotator = np.array([r['rotator_angle'] for r in records], dtype=float)
     with np.errstate(invalid='ignore'):

@@ -46,7 +46,8 @@ LUT axial forces and 110 the commanded degrees of freedom. Measured finite fract
 | M1M3 gradients | `x_gradient`, `y_gradient`, `z_gradient`, `radial_gradient` | 100% except the first chunk | deg C per m; **41%** in `20250415_20250531` |
 | TMA truss | `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy` | **0% in the two oldest 2025 chunks** | deg C |
 | camera body | 26 `cam_*Temp` columns | 98.6% | deg C; **combined table only** |
-| pointing | `alt`, `az`, `rotator_angle`, `ra`, `dec`, `skyAngle` | — | deg |
+| pointing | `alt`, `az`, `ra`, `dec`, `rotTelPos` | — | **rad** |
+| pointing | `rotator_angle`, `rotator_angle_source` | — | deg; source is `rotTelPos`, `consdb` or `missing` |
 | identity | `visit`, `day_obs`, `seq_num`, `band`, `science_program`, `mjd` | — | |
 | donut counts | `n_donuts`, `n_detectors`, `median_blur_arcsec`, `visit_quality_pass` | — | arcsec for the blur |
 | hexapod LUT | 10 `lut_dof0..9` | 100.0% camera, 98.5% M2 | µm (z, x, y), **deg** (u, v); see §4 |

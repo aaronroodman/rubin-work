@@ -684,7 +684,7 @@ def visit_meta_record(meta, day_obs, seq_num, visit):
     Returns
     -------
     record : `dict`
-        ``day_obs``, ``seq_num``, ``visit``; ``az``, ``alt``, ``skyAngle`` in **radians**
+        ``day_obs``, ``seq_num``, ``visit``; ``az``, ``alt``, ``rotTelPos`` in **radians**
         (the Danish 1.2 visits-table convention, converted here from the blitz
         `Quantity` in deg); ``mjd`` in days (TAI, mid-exposure); ``nollIndices`` as a
         list of dimensionless integers; ``rot_tel_pos_deg``, ``boresight_rot_angle_deg``
@@ -695,18 +695,23 @@ def visit_meta_record(meta, day_obs, seq_num, visit):
     Notes
     -----
     The Danish 1.2 ``visits.parquet`` stores ``ra``, ``dec``, ``az``, ``alt`` and
-    ``skyAngle`` as **bare floats in radians** with no unit attached, while the blitz
+    ``rotTelPos`` as **bare floats in radians** with no unit attached, while the blitz
     metadata stores angles as `astropy.units.Quantity` in deg. Confirmed on
     ``day_obs`` 20260315 ``seq_num`` 122: the Danish 1.2 ``az`` of 4.710581 rad is
-    269.89641441 deg, equal to the blitz ``boresight_az``, and the Danish 1.2
-    ``skyAngle`` of 0.196330 rad is 11.24885987 deg, equal to the blitz
-    ``boresight_rot_angle``. Getting this backwards would rotate every field angle.
+    269.89641441 deg, equal to the blitz ``boresight_az``. Getting this backwards would
+    rotate every field angle.
 
-    ``ra``, ``dec``, ``band``, ``science_program`` and ``rotator_angle`` are **not**
-    available from the blitz metadata and are merged in by the caller from the
-    Consolidated Database (ConsDB). In particular ``rot_tel_pos`` is *not* the rotator
-    angle the Danish 1.2 tables carry — that is ConsDB ``physical_rotator_angle``, which
-    reads -0.126907 deg on this visit against a ``rot_tel_pos`` of 0.176609 deg.
+    ``rotTelPos`` is the camera rotator angle the pipeline used for its own CCS -> OCS
+    rotation, and since phase 3b it is also what the ``rotator_angle`` column holds.
+    The column the old ``skyAngle`` held was ``boresight_rot_angle`` — the sky position
+    angle of the boresight, not the rotator — and it was never read.
+
+    ``ra``, ``dec``, ``band`` and ``science_program`` are **not** available from the
+    blitz metadata and are merged in by the caller from the Consolidated Database
+    (ConsDB), which also supplies the ``rotator_angle`` fallback for a visit whose
+    metadata lacks ``rot_tel_pos``. On ``day_obs`` 20260315 ``seq_num`` 122 ConsDB
+    ``physical_rotator_angle`` reads -0.126907 deg against a ``rot_tel_pos`` of
+    0.176609 deg; ``rot_tel_pos`` is the one the table's own rotation used.
     """
     def _deg(key):
         value = meta.get(key)
@@ -727,7 +732,7 @@ def visit_meta_record(meta, day_obs, seq_num, visit):
         'visit': int(visit),
         'az': _rad('boresight_az'),
         'alt': _rad('boresight_alt'),
-        'skyAngle': _rad('boresight_rot_angle'),
+        'rotTelPos': _rad('rot_tel_pos'),
         'mjd': mjd,
         'nollIndices': noll.tolist(),
         'rot_tel_pos_deg': _deg('rot_tel_pos'),
