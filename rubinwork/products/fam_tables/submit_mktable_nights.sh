@@ -105,6 +105,14 @@ if token.exists():
 client = ConsDbClient(url)
 
 doc = yaml.safe_load(open(repo / 'rubinwork/products/fam_tables/variants.yaml'))
+
+# One line per night, never per (night, chunk) pair. The chunk ranges of a composite
+# variant overlap -- day_obs 20260713 sits in both the broad [20260514, 20260731]
+# /repo/main chunk and its own single-night /repo/embargo chunk -- and both would write
+# into the same chunks/<night>_<night>/ directory, so two jobs would race on one output
+# and the /repo/main one would find no data. The narrowest matching range wins: it is the
+# chunk written for that night, and it carries the right repository and phrase.
+best = {}
 for chunk in doc['variants']['danish_1_2']['chunks']:
     lo, hi = chunk['day_obs']
     rows = client.query(
@@ -112,7 +120,13 @@ for chunk in doc['variants']['danish_1_2']['chunks']:
         f"WHERE day_obs >= {lo} AND day_obs <= {hi} AND img_type = 'cwfs' "
         "GROUP BY day_obs ORDER BY day_obs").to_pandas()
     for night in rows.day_obs:
-        print(f'{int(night)} {lo} {hi}')
+        night = int(night)
+        span = hi - lo
+        if night not in best or span < best[night][0]:
+            best[night] = (span, lo, hi)
+for night in sorted(best):
+    _, lo, hi = best[night]
+    print(f'{night} {lo} {hi}')
 PYEOF
 }
 

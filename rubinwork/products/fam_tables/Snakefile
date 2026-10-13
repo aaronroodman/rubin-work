@@ -116,6 +116,7 @@ ONLY_NIGHTS = [int(s) for s in str(config.get('nights', '')).split(',') if s]
 
 def _chunk_entries():
     out = []
+    by_night = {}
     for c in CFG.get('chunks', []):
         a, b = c['day_obs']
         if ONLY_CHUNKS and f'{int(a)}{int(b)}' not in ONLY_CHUNKS:
@@ -125,9 +126,22 @@ def _chunk_entries():
         if ONLY_NIGHTS:
             for night in ONLY_NIGHTS:
                 if int(a) <= night <= int(b):
-                    out.append(dict(dmin=night, dmax=night, **fields))
+                    # The narrowest matching range wins. Chunk ranges of a composite
+                    # variant overlap -- day_obs 20260713 is in both the broad
+                    # [20260514, 20260731] /repo/main chunk and its own single-night
+                    # /repo/embargo chunk -- and per-night chunks collapse both to the
+                    # same `<night>_<night>` name, so without this the first match's
+                    # collection and repository would silently win and the night would
+                    # be read from a repository that does not hold it.
+                    span = int(b) - int(a)
+                    prev = by_night.get(night)
+                    if prev is None or span < prev[0]:
+                        by_night[night] = (span,
+                                           dict(dmin=night, dmax=night, **fields))
         else:
             out.append(dict(dmin=int(a), dmax=int(b), **fields))
+    if ONLY_NIGHTS:
+        out = [by_night[n][1] for n in sorted(by_night)]
     if ONLY_CHUNKS and not out:
         defined = [f"{int(c['day_obs'][0])}_{int(c['day_obs'][1])}"
                    for c in CFG.get('chunks', [])]
