@@ -77,8 +77,15 @@ echo
 nights=$(find "$FAM_BUILD_DIR/_work/chunks" -mindepth 1 -maxdepth 1 -type d \
          -printf '%f\n' | sed 's/_.*//' | sort -u | paste -sd,)
 
+# --rerun-triggers mtime: modification time ONLY, not Snakemake's default set, which
+# includes the params and resources provenance triggers.  Raising rule mktable's mem_mb to
+# the measured 11 GB/worker (2026-10-13) counts as a params change, so the default triggers
+# would re-run mktable on every per-night chunk and redo the whole expensive Butler stage
+# that the batch jobs just produced.  The donuts on disk are current: mktable's own code
+# path did not change, only the memory declaration.  Aaron's call, 2026-10-13.
 cmd=(snakemake -s "$REPO/rubinwork/products/fam_tables/Snakefile"
      --cores "$CORES" --resources mem_mb=$((4000 * CORES))
+     --rerun-triggers mtime
      --config "variant=$VARIANT" "build=$FAM_BUILD" "nights=$nights")
 [[ $DRY_RUN -eq 1 ]] && cmd+=(-n -p)
 
