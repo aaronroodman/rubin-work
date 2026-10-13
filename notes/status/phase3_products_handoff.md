@@ -401,6 +401,44 @@ Checker committed as
 rebuild; its scratch tree is `_phase2_refbuild/_scratch_3b/item6/`. The full `rubinwork`
 suite passes, **350 tests**.
 
+## 3b items 3 and 4 — the dead long-`param_set` path in `fam_dz`: DONE
+
+One change fixes both. `build_fam_dz.resolve_paths` built
+`<aos_output>/<param_set>/fits.parquet` from the **long** param_set key, a layout the
+tree lost when `dir_name` arrived; it now maps the key to its `fam_tables` variant with
+`fam_tables.variant_for_param_set` — for `fam_tables` the variant name **is** the
+`dir_name` — and resolves **old tree, then the catalog's `current` build**, the same
+precedence as the `aos/Snakefile` resolver. Either name may be passed in, and the error
+names both places looked. Item 4 needed no separate change: `fam_variant.fits_path` is
+written from the resolved path (`build_fam_dz.py:373`), so it now records a path that
+resolves.
+
+A second defect fixed in passing: `DEFAULT_AOS_OUTPUT` was `aos/output`, missing the
+`fam_processing` level — `aos/output` is the parent of every study's output, and
+`--aos-output`'s own help text already said "the `aos/output/fam_processing`
+directory".
+
+**Check: the builder was run with no `--aos-output` override**, so it had to resolve the
+registered variant's own path — which is the thing that could not be done before.
+Against the `value_added` 3a reference, into a **scratch** database copy
+(`_phase2_refbuild/_scratch_3b/item34/`; the live database is untouched, 3c rebuilds it):
+
+| quantity | value |
+|---|---|
+| `fam_dz` rows | 2,528 reference, **2,528** rebuilt (dimensionless counts) |
+| FAM pairs read / with a NaN DZ coefficient | 2,528 / **0** |
+| SVD | `U_eff = (126, 34)`, `n_dof = 50`, `n_keep_eff = 34`, `n_kj = 126` |
+| `fam_dz` columns identical | **15 of 16**, zero tolerance |
+| columns differing | `computed_at` only — on the expected list |
+| `fam_variant` rows / columns differing beyond the expected | 1 / **none** |
+| `fam_variant.fits_path` | was `../aos/output/fam_processing/danish_1_2/fits.parquet` (relative, only valid from `value_added/`), now the absolute path, **resolves on disk** |
+
+The 3a table above records "14 columns" for `fam_dz`; that is the count of **value**
+columns, excluding the two key columns `visit_id` and `fam_variant_id`. The table has 16
+columns in total, so 15 identical plus `computed_at` is the same statement.
+
+Checker at `rubinwork/products/value_added/refbuild/check_fam_dz_paths.py`.
+
 ## Constraints found the hard way in 3a, which 3b and 3c will meet too
 
 Carried forward from the `bounce_tables`, `value_added` and `guider_moments` moves.

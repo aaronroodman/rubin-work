@@ -74,22 +74,34 @@ PREFIX_K_RANGE = {'z1toz3': (1, 3), 'z1toz6': (1, 6)}
 #: Degree-of-freedom and v-mode counts for each scheme name.
 SCHEMES = {'50_34': (50, 34), '22_12': (22, 12)}
 
-#: Default output root for the AOS param_set tables, relative to the repo root.
-DEFAULT_AOS_OUTPUT = 'aos/output'
+#: Default old-tree root for the FAM tables, relative to the repo root. The
+#: ``fam_processing`` level is part of the path: ``aos/output`` alone names the parent of
+#: every study's output, not the FAM tables.
+DEFAULT_AOS_OUTPUT = 'aos/output/fam_processing'
 
 
 def resolve_paths(aos_output, param_set, mi=None):
     """Locate the ``fits.parquet`` and ``visits.parquet`` for a param_set.
 
+    Resolves in the same order as the ``aos/Snakefile``: the **old tree** under
+    `aos_output` if its files are there, else the **catalog's** ``current`` build of the
+    matching `fam_tables` variant.
+
+    The old-tree directory is the variant's short ``dir_name``, which for `fam_tables`
+    **is** the variant name — ``danish_1_2``, not the long param_set key
+    ``fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x``. Building the path from the long key is
+    what made the registered variant unreachable: that layout has named nothing on disk
+    since ``dir_name`` arrived. Either name may be passed in.
+
     Parameters
     ----------
     aos_output : `pathlib.Path`
-        The ``aos/output`` directory.
+        The old-tree ``aos/output/fam_processing`` directory.
     param_set : `str`
-        Butler collection paired with a processing variant.
+        A long ``param_set`` key or a `fam_tables` variant name; both resolve.
     mi : `str`, optional
         Measured Intrinsic Wavefront build name. When given, the DZ fits come from
-        ``<param_set>/<mi>/fits.parquet`` — the refit against the MIW — while the visits
+        ``<dir_name>/<mi>/fits.parquet`` — the refit against the MIW — while the visits
         sidecar stays at the param_set level, since the pupil Noll set is a property of the
         donut extraction rather than of the intrinsic.
 
@@ -100,17 +112,45 @@ def resolve_paths(aos_output, param_set, mi=None):
     Raises
     ------
     FileNotFoundError
-        Naming the missing file and the param_set, rather than failing later inside pandas.
+        Naming the missing file, the param_set and both places looked, rather than
+        failing later inside pandas.
     """
-    base = pathlib.Path(aos_output) / param_set
-    visits_path = base / 'visits.parquet'
-    fits_path = (base / mi / 'fits.parquet') if mi else (base / 'fits.parquet')
-    for p, what in ((fits_path, 'DZ fits'), (visits_path, 'visits sidecar')):
-        if not p.exists():
-            raise FileNotFoundError(
-                f'{what} not found for param_set {param_set!r}'
-                + (f', mi {mi!r}' if mi else '') + f': {p}')
-    return fits_path, visits_path
+    from rubinwork.products import catalog
+    from rubinwork.products import fam_tables
+
+    try:
+        variant = fam_tables.variant_for_param_set(param_set)
+    except KeyError:
+        # Not a registered param_set or variant: fall back to using it as the directory
+        # name, which is what a hand-staged build directory needs.
+        variant = param_set
+
+    def _pair(base):
+        return ((base / mi / 'fits.parquet') if mi else (base / 'fits.parquet'),
+                base / 'visits.parquet')
+
+    looked = []
+    old_base = pathlib.Path(aos_output) / variant
+    fits_path, visits_path = _pair(old_base)
+    looked.append(str(old_base))
+    if fits_path.exists() and visits_path.exists():
+        return fits_path, visits_path
+
+    try:
+        cat_base = pathlib.Path(catalog.path('fam_tables', variant))
+    except Exception as exc:
+        looked.append(f'catalog fam_tables/{variant} ({type(exc).__name__})')
+    else:
+        looked.append(str(cat_base))
+        cfits, cvisits = _pair(cat_base)
+        if cfits.exists() and cvisits.exists():
+            return cfits, cvisits
+
+    missing = ('DZ fits' if not fits_path.exists() else 'visits sidecar')
+    raise FileNotFoundError(
+        f'{missing} not found for param_set {param_set!r} (variant {variant!r})'
+        + (f', mi {mi!r}' if mi else '')
+        + '; looked in ' + ', '.join(looked))
 
 
 def read_pupil_j(visits_path):
