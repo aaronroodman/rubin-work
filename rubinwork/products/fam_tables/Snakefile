@@ -270,12 +270,13 @@ rule mktable:
     # 10.17 and 9.20 GB per worker -- so the cost is linear in workers and the
     # former 3 GB/worker figure killed 87 of 137 nights at a 32G request.
     #
-    # The cost is mostly FIXED per worker, not per donut: over the 69 completed
-    # nights at 8 workers, MaxRSS = 69.6 GB + 0.052 GB per 1000 donuts (residual
-    # nMAD 4.10 GB), i.e. 8.70 GB/worker of intercept, and an 11.6x range in donut
-    # count buys only ~12 GB.  Rounded up to 11 GB from the 10.83 GB worst case of
-    # the scan, which also covers the one outlier night (20260713, the /repo/embargo
-    # night, 83.79 GB).  Per-night rows: aos/logs/mktable_memory_20261013.csv.
+    # The cost is mostly FIXED per worker, not per donut: over all 70 completed
+    # nights at 8 workers, MaxRSS = 70.4 GB + 0.041 GB per 1000 donuts (residual
+    # nMAD 4.04 GB), i.e. 8.80 GB/worker of intercept, and a 17.5x range in donut
+    # count buys only ~15 GB.  Rounded up to 11 GB from the 10.83 GB worst case of
+    # the scan, which also covers the largest single peak of the set (20260713, the
+    # /repo/embargo night, 83.79 GB = 10.47 GB/worker).
+    # Per-night rows: aos/logs/mktable_memory_20261013.csv.
     threads: MKT_WORKERS
     resources: mem_mb=11000 * MKT_WORKERS
     log: str(LOGS / '{dmin}_{dmax}.mktable.log')

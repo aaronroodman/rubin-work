@@ -1,9 +1,14 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a and 3b complete; **3c STARTED** — the row-order fix, the chunk-specificity
-> fix and the `dof_lut` input change are committed, the `ts_intrinsic_wavefront` branch is
-> pushed, and the embargo probe is queued. The per-night `mktable` set is **not submitted**:
-> it waits on that probe. · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
+> **Status:** 3a and 3b complete; **3c IN PROGRESS** — the row-order fix, the
+> chunk-specificity fix and the `dof_lut` input change are committed, the
+> `ts_intrinsic_wavefront` branch is pushed, and the embargo probe is GREEN. The per-night
+> `mktable` set is **DONE**: 137 nights submitted, **106 have `donuts.parquet` and
+> `visits.parquet`** and the other **31 are the verified-empty nights** of defect A. The
+> `danish_1_2` build `20261013` combines to **3,385 visits over 106 distinct nights**, the
+> same as the old tree. Still to do: the `finish_mktable_rebuild.sh` tail, the two blitz
+> variants, and the three-way comparison. **No `set-current` has run.**
+> · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -160,31 +165,55 @@ like. Slurm's figure for the same sweep job (40711796) is **73.59 GB**, agreeing
 2.5% with the production run of the same night (40712965, **75.41 GB**), so there was never
 a path difference between `sweep.sh` and the production jobs either.
 
-**Memory tracks night size only weakly: the footprint is mostly fixed per worker.** All 69
-`COMPLETED` nights of the 96G set, 8 workers throughout. Per-night rows are in
-`aos/logs/mktable_memory_20261013.csv` (night, FAM visits, donuts, `MaxRSS` GB, elapsed,
-OLS residual GB):
+**Memory tracks night size only weakly: the footprint is mostly fixed per worker.** All
+**70 of 70 `COMPLETED`** nights of the 96G set, 8 workers throughout (the table was first
+written at 69, before the largest night finished; regenerated at 70). Per-night rows are in
+`aos/logs/mktable_memory_20261013.csv` (night, FAM pairs, donuts, `MaxRSS` GB, elapsed,
+Slurm job ID):
 
 | quantity | min | 25% | median | 75% | max |
 |---|---|---|---|---|---|
-| `MaxRSS` (GB of resident set size) | 63.48 | 69.73 | 75.07 | 76.95 | 83.79 |
-| FAM visits per night (dimensionless count) | 8 | 15 | 25 | 34 | 93 |
-| donuts per night (dimensionless count) | 21,712 | 40,011 | 67,635 | 87,029 | 252,382 |
+| `MaxRSS` (GB of resident set size) | 63.48 | 69.74 | 75.24 | 77.05 | 83.79 |
+| FAM pairs per night (dimensionless count) | 8 | 15 | 25 | 34 | 145 |
+| donuts per night (dimensionless count) | 21,712 | 40,062 | 68,108 | 87,190 | 379,458 |
 
-Correlation of `MaxRSS` (GB) against night size, n = 69 nights:
+`MaxRSS` (GB of resident set size) against night size, in quintiles of donut count,
+n = 70 nights at 8 workers and a 96G request:
+
+| donuts per night (count) | nights | FAM pairs (count) | `MaxRSS` (GB) range | `MaxRSS` (GB) median |
+|---|---|---|---|---|
+| 21,712 – 37,101 | 14 | 8 – 13 | 63.48 – 70.79 | 66.58 |
+| 37,101 – 54,897 | 14 | 14 – 28 | 66.70 – 78.52 | 73.59 |
+| 54,897 – 77,304 | 14 | 20 – 30 | 72.36 – 83.79 | 76.72 |
+| 77,304 – 100,569 | 14 | 28 – 40 | 69.77 – 77.70 | 75.47 |
+| 100,569 – 379,458 | 14 | 48 – 145 | 75.60 – 79.35 | 77.73 |
+
+Correlation of `MaxRSS` (GB of resident set size) against night size, n = 70 nights:
 
 | against | Pearson r | Spearman rho |
 |---|---|---|
-| donuts per night | +0.587 | +0.741 |
-| FAM visits per night | +0.573 | +0.716 |
+| donuts per night (count) | +0.556 | +0.748 |
+| FAM pairs per night (count) | +0.542 | +0.724 |
 
 The rank correlation is the stronger of the two, so the relation is monotonic but not
 linear. OLS gives
-**`MaxRSS` (GB) = 69.6 + 0.0520 × (donuts / 1000)**, residual nMAD **4.10 GB**, max
-|residual| **10.60 GB**. So an 11.6x range in donut count (21,712 to 252,382) buys only
-about 12 GB, while the intercept is **69.6 GB — 8.70 GB per worker of fixed cost**. The
-per-worker constant, not the night's data, is what sets the request; this is why the
-worker-count scan above is the measurement that matters and why `mem_mb` scales on workers.
+**`MaxRSS` (GB) = 70.4 + 0.0410 × (donuts / 1000)**, residual nMAD **4.04 GB**, max
+|residual| **10.60 GB**. So a **17.5x** range in donut count (21,712 to 379,458) buys only
+about **15 GB**, while the intercept is **70.4 GB — 8.80 GB per worker of fixed cost**. The
+largest night of the whole set, 379,458 donuts over 145 FAM pairs, peaked at only
+**79.35 GB** — below three smaller nights — which is the clearest statement that night size
+is not what sets the request. The per-worker constant is; this is why the worker-count scan
+above is the measurement that matters and why `mem_mb` scales on workers.
+
+**The `Snakefile`'s `mem_mb = 3000 * MKT_WORKERS` is CORRECTED to 11000.** The form is
+right and the constant was 3x low. The measured per-worker figures, all at 8 workers unless
+stated: the worker-count scan gives **10.83 / 10.17 / 9.20 GB per worker** at 2 / 4 / 8
+workers, and the 70-night set's OLS intercept gives **8.80 GB per worker** of fixed cost
+with the largest single peak at **83.79 GB (10.47 GB per worker)**. **11 GB per worker**
+covers every one of those, including the 2-worker case where the per-worker figure is
+highest. At 8 workers it declares 88 GB, which is 4.2% above the largest measured peak —
+intentionally tight, because `mem_mb` is a Snakemake scheduling figure, not the batch
+request.
 
 **Three nights depart from the trend**, all explainable and none blocking:
 
@@ -197,6 +226,29 @@ worker-count scan above is the measurement that matters and why `mem_mb` scales 
 The two negative residuals are the floor of the fixed cost showing through on small nights,
 which the linear form over-predicts. Only 20260713 is a genuine outlier, and it is on the
 safe side.
+
+**Ruled out as a cause: `/tmp` is not tmpfs and the Butler cache is not in memory.**
+Probed on a milano node 2026-10-13 (`sdfmilan255`, a 1-CPU 1 GB `srun`, record-only):
+
+| quantity | value |
+|---|---|
+| `$TMPDIR` | `/lscratch/roodman` |
+| filesystem of `$TMPDIR` | **xfs** on `/dev/nvme2n1p1`, 6.0 TB total, 47 GB used |
+| filesystem of `/tmp` | **xfs** on `/dev/mapper/vg_raid-lv_tmp`, 20 GB total, 177 MB used |
+| `/dev/shm` (the only tmpfs) | 252 GB, 25 MB used — nothing writes here |
+| `$DAF_BUTLER_CACHE_DIRECTORY` | **unset**, and `submit_mktable_nights.sh` sets neither it nor `TMPDIR` |
+
+With `DAF_BUTLER_CACHE_DIRECTORY` and `DAF_BUTLER_CACHE_DIRECTORY_IF_UNSET` both unset,
+`daf_butler`'s cache manager falls back to `tempfile.mkdtemp(prefix="butler-cache-dir-")`
+(`cache_manager.py:553,598`), and `tempfile` honours `$TMPDIR` — verified, it returns
+`/lscratch/roodman`. So the datastore cache lands on **node-local NVMe disk**, not in
+memory.
+
+**So this cannot explain memory that tracks the cgroup limit.** A tmpfs or `/dev/shm`
+cache would be charged to the job's cgroup and would grow to fill whatever limit it was
+given, which is the signature that was worth excluding. Neither `/tmp` nor `$TMPDIR` is
+tmpfs here, so the cache is never charged to the memory cgroup, and the apparent
+limit-tracking was the per-process `MaxRSS` reading error above, not a cache effect.
 
 **Aaron's load-bearing fact, which held throughout: the `danish_1_2` tables have not
 changed** (2026-10-13) — the `danish_1_3` blitz tables are larger, `danish_1_2`'s are not.
@@ -513,12 +565,13 @@ the reference build ran. The merge path and both individual shards match too. `a
 `snakemake -n` is unchanged at 34 jobs, and `run_build.sh --dry-run` gives an identical
 shard plan in both modes.
 
-## STOPPED 2026-10-13: the per-night set was submitted and 118 of 137 jobs failed
+## RESOLVED: the first per-night submission, 118 of 137 jobs failed
 
-**Two defects, both caused by splitting the rebuild by night. Neither is transient, so
-neither is covered by Aaron's resubmit OK, and both need his decision before anything is
-resubmitted.** Nothing downstream ran: no `fit`, no `combine_*`, no `attach_telemetry`,
-no manifest, no `set-current`. The old tree and the live database are untouched.
+Kept for the two defects it found, both now settled — see "The per-night `mktable` set is
+COMPLETE" above for the final state. **Two defects, both caused by splitting the rebuild by
+night.** Neither was transient, so neither was covered by Aaron's resubmit OK; both have
+since been answered (defect A: not a data loss; defect B: the `mem_mb` constant was 3x
+low).
 
 Submitted as instructed: 137 jobs, IDs **40705595–40705733**, `FAM_BUILD=20261013`,
 partition `milano`, account `rubin:developers@milano`. Every job started **RUNNING
@@ -603,27 +656,54 @@ worker count. That is interactive work inside the approved scope, not a batch jo
 
 ### Where this leaves 3c
 
-Steps 1 to 3 of the session's instructions are **done and committed**; step 4 is where it
-stopped. The probe result stands and does not need redoing. Resuming needs Aaron's answer
-on defect A and the measurement on defect B; the 19 completed nights' tables are on disk
-and valid, so a corrected resubmission only needs the other 118 nights.
+Both defects are settled and **the `mktable` set is complete** — see "The per-night
+`mktable` set is COMPLETE" below. Defect A is not a data loss (verified against the old
+tree) and defect B was the 3x-low `mem_mb` constant, now corrected.
+
+## The per-night `mktable` set is COMPLETE, 2026-10-13
+
+**All 137 nights are accounted for, and the set reproduces the old tree's night and visit
+counts exactly.** The 70 nights resubmitted at 96G (jobs **40712911–40712982**, submit
+record `aos/logs/mktable_submit_20261013_96g.txt`, night list
+`aos/logs/mktable_todo_nights_20261013.txt`) all finished:
+
+| outcome | jobs | `MaxRSS` (GB of resident set size) |
+|---|---|---|
+| `COMPLETED` | **70 of 70** | min **63.48**, median **75.24**, max **83.79** |
+| `FAILED` | 0 | — |
+| `OUT_OF_MEMORY` | **0** | — |
+
+So **no 128G retry was needed** and Aaron's 128G fallback OK went unused. Tally by
+`JobName` matching `mkt_*`, never by ID range.
+
+The whole set, `FAM_BUILD=20261013`, `danish_1_2`:
+
+| check | result |
+|---|---|
+| distinct nights submitted across all attempts (32G, 64G, 96G) | **137** |
+| nights with both `donuts.parquet` and `visits.parquet` in `_work/chunks/<night>_<night>/` | **106** — and 106 of 106 have *both*, none has only one |
+| nights with no table, all `FAILED` with `No visit pairs remaining after filtering` | **31 of 31**, the verified-empty nights of defect A |
+| 106 + 31 against the 137 submitted | **exact partition** — 0 nights submitted without an outcome, 0 nights on disk that were never submitted |
+| combined `visits.parquet` | **3,385 visits over 106 distinct nights**, keys (`day_obs`, `seq_num`) unique on 3,385 of 3,385 |
+| the same, old tree `aos/output/fam_processing/danish_1_2/visits.parquet` | **3,385 visits over 106 distinct nights** — identical counts |
+
+The combine already ran (top-level `donuts.parquet` 12.36 GB and `visits.parquet` 735 kB,
+written 2026-10-13 12:58) during the `--rerun-triggers mtime` measurement.
 
 ## Next concrete action
 
-**Answer defect A, then measure defect B** — both in "STOPPED 2026-10-13" above. The
-per-night set has already run; do not resubmit it unchanged.
+**`set-current` for the three `fam_tables` builds, on Aaron's OK, then `cwfs_tables`.**
 
-1. **Aaron chooses on defect A** (the `< 5 visit_pairs` filter dropping 31 sparse
-   nights). Recommendation: option 1, group the sparse nights back into their parent
-   chunk and submit those chunk-level, keeping per-night jobs for nights with >= 5 pairs.
-2. **Measure defect B** before any resubmission: one OOM night interactively on an
-   sdfiana node at `--workers 1`, watching RSS, to separate per-worker footprint from
-   worker count, and check whether the OOM nights are the bin-x1 collections. Interactive,
-   no batch ask.
-3. Then resubmit only the **118** nights without tables, with the corrected grouping and
-   memory request, and continue from step 5 of the 2026-10-13 instructions
-   (`finish_mktable_rebuild.sh` for `danish_1_2`, then the two blitz variants, then the
-   three-way comparison). **No `set-current` without Aaron's OK.**
+1. **Aaron OKs `set-current`** for `danish_1_2@20261013` and the two rebuilt blitz
+   variants. Nothing has been promoted: every build is written and compared but no
+   `current@` moved, so the old tree is still what every reader resolves to.
+2. Then **`cwfs_tables`**, item 3 of the comparison plan: four variants, compared against
+   `aos/output/wfs_*/` per variant, expecting difference 1 only plus the
+   `d12-refitWcs_2025` fold. It has no dependency on the FAM rebuild and can run at once.
+3. Then items 4 to 8 of the plan in order: `miw`, `coadds`, `dof_lut`, `bounce_tables`,
+   `value_added`.
+
+**No `set-current` without Aaron's OK** (his instruction, 2026-10-13).
 
 The embargo probe does **not** need redoing. Its result, for the record:
 

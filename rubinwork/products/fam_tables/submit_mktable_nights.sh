@@ -26,9 +26,8 @@
 #   ./submit_mktable_nights.sh --nights-file nights.txt     # one night per line, # comments ok
 #   ./submit_mktable_nights.sh --chunk 20251116_20251130    # every night of one chunk
 #
-# Memory per job, 32G by default.  The 87 nights killed by the cgroup at 32G on
-# 2026-10-13 were resubmitted with:
-#   MEM=64G ./submit_mktable_nights.sh --nights-file aos/logs/mktable_oom_nights_20261013.txt
+# Memory per job, 176G by default (see MEM below).  To trade margin for queue time:
+#   MEM=96G ./submit_mktable_nights.sh --nights-file aos/logs/mktable_todo_nights_20261013.txt
 #
 # Partition and account default to milano; set both to use roma instead:
 #   PARTITION=roma ACCOUNT='rubin:developers@roma' ./submit_mktable_nights.sh
@@ -50,13 +49,17 @@ LOGDIR="$REPO/aos/logs"
 PARTITION="${PARTITION:-milano}"
 ACCOUNT="${ACCOUNT:-rubin:developers@milano}"
 WORKERS="${WORKERS:-8}"
-# Whole-job memory request, overridable: MEM=128G ./submit_mktable_nights.sh ...
-# 96G is 12 GB per donut-reading worker at the default 8 workers.  Measured 2026-10-13 on
-# danish_1_2: mktable needs 9.2 to 10.8 GB per worker, so 32G killed 87 of 137 nights and
-# 64G killed 70 of 87, while at 96G 69 of 70 nights completed with no OOM at all,
-# MaxRSS 63.5 to 83.8 GB over 21.7k to 252k donuts per night.  Raise it for a variant with larger stamps, such as the
-# danish_1_3 blitz.
-MEM="${MEM:-96G}"
+# Whole-job memory request, overridable: MEM=96G ./submit_mktable_nights.sh ...
+# 176G is 22 GB per donut-reading worker at the default 8 workers, and 2.1x the largest
+# measured peak.  Measured 2026-10-13 on danish_1_2, all 70 nights of the 96G set at 8
+# workers: MaxRSS 63.48 to 83.79 GB over 21,712 to 379,458 donuts per night, i.e. 9.2 to
+# 10.8 GB per worker, so 32G killed 87 of 137 nights and 64G killed 70 of 87 while 96G
+# killed none.  96G would be enough, but it clears the largest peak by only 14%, and the
+# whole 32G/64G episode cost two batch rounds; the 2x margin here is deliberately bought
+# with queue time rather than with another OOM round.  A variant with larger stamps, such
+# as the danish_1_3 blitz, needs at least this.
+# Per-night rows: aos/logs/mktable_memory_20261013.csv.
+MEM="${MEM:-176G}"
 # The longest single night is well under this; the margin covers a cold Butler.
 TIME=08:00:00
 
