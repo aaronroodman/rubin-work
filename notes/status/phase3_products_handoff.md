@@ -702,6 +702,73 @@ the old `rotator_angle` was **NaN on 12 of 12** visits (ConsDB has no
 to shift. 12 of 12 visits still pass every quality cut and 0 of 12 are flagged `bad_fit`,
 as in the reference.
 
+### Item 1 downstream: NO visit changes rotator bin, but the split angle moves
+
+The plan's remaining question was which visits change MIW rotator bin. **None do**, on
+either slice, and the margin is comfortable rather than lucky.
+
+Measured on the **`miw` 3a reference's own FAM slice** — nights 20260315/16/17, 169
+visits — by reading `rotTelPos` from each visit's metadata with the cheap header reader
+(107 s for 169 visits) and binning both the old and the new angle under the build's
+**half-open `[lo, hi)`** convention (`measured_intrinsic.py:1054-1056`; the closed
+interval is wrong):
+
+| quantity | value |
+|---|---|
+| visits read, `rotTelPos` missing | 169, **0 missing**; 60 of 169 needed the wrap |
+| median / max \|change\| | **0.4029 / 0.4446 deg** of camera rotator angle |
+| **visits changing rotator bin** | **0 of 169** |
+| bin occupancy, before and after | **identical**: bin 0 `[-65,-55)` 36, bin 3 `[-20,-10)` 24, bin 4 `[-3,3)` 37, bin 5 `[10,20)` 36, bin 8 `[55,65)` 36 (visit counts) |
+| min margin to a bin edge | **2.631 deg**, against a max change of 0.4446 deg — a factor of about 6 |
+
+Same on the `danish_1_2` reference chunk: **0 of 53** visits change bin, occupancy 52 in
+bin 4 and 1 in bin 5 before and after, min margin 0.990 deg against a max change of
+0.4558 deg. This is Aaron's reasoning confirmed numerically: the bins sit a few degrees
+clear of the nominal angles, so a few tenths of a degree cannot move a visit.
+
+**But the per-bin split angle theta does move, and that was not in the prediction.**
+`run_intrinsic_split` sets each bin's theta to the **mean `rotator_angle`** of that bin's
+visits (`intrinsic_split.mean_rotator`, called at `run_intrinsic_split.py:142`), and theta
+enters the decomposition as `C(r, phi - s*theta)`. So the visit sets are unchanged while
+the OCS/CCS split rotates:
+
+| bin | theta before | theta after | change |
+|---|---|---|---|
+| `[-65,-55)` | −60.0075 | −59.6435 | +0.3640 |
+| `[-20,-10)` | −15.0620 | −14.6620 | +0.4000 |
+| `[-3,3)` | −0.0063 | +0.3323 | +0.3387 |
+| `[10,20)` | +14.6683 | +14.9842 | +0.3158 |
+| `[55,65)` | +59.9963 | +60.3313 | +0.3350 |
+
+(deg of camera rotator angle; median \|change\| 0.3387 deg, max 0.4000 deg.)
+
+**Measured effect on the MIW maps**, by rerunning `run_intrinsic_split` twice against the
+3a reference's already-built per-bin grids — once with the reference `fits.parquet` and
+once with a copy carrying the new `rotator_angle` — so only theta differs. The before run
+reproduced the reference's thetas `[-0.01, 60.0]` exactly; the after run gave
+`[0.33, 60.33]`. The 3,985-point field grid is identical, so the maps compare point by
+point:
+
+| family | RMS change (µm of wavefront) | as a fraction of that term's own RMS |
+|---|---|---|
+| **OCS** (telescope-fixed), 21 terms | 1e-6 to **7e-6** | **0.00 to 0.02%** |
+| **CCS** (camera-fixed), 21 terms | 7.8e-5 to **9.2e-4** | **1.9 to 6.1%** |
+
+Largest absolute change **0.000919 µm of wavefront** (`Z6_CCS`, against its own RMS of
+0.033129 µm); largest fractional change `Z25_CCS` at 6.1%. The `intrinsic_split_rms`
+table agrees: `C_cam` moves 4.4e-5 µm of wavefront, `residRMS` 2.3e-5 µm, `O_tel` only
+7.8e-7 µm, and `intrinsic_split_decomp` is bit-identical in every structural column
+(`s`, `part`, `n_spin`, `n_r` all change by exactly 0).
+
+**This is the expected behaviour, not a defect.** O is theta-independent, so it does not
+move; C is defined in the rotating frame, so a common theta offset rotates it by that
+angle. The change is small in absolute terms — under 1e-3 µm of wavefront — and it is the
+*more correct* value, since theta is now the angle the pipeline actually rotated with.
+Nothing outside `rotator_angle`, `rotator_angle_source`, `rotTelPos` and the theta-driven
+CCS maps changed.
+
+Scratch tree for the two splits: `_phase2_refbuild/_scratch_3b/item1/split/{before,after}/`.
+
 Before-check script committed as
 `rubinwork/products/fam_tables/refbuild/read_rottelpos_meta.py` — **and note how to read
 this metadata cheaply**, which cost most of the session's wall clock to learn:
