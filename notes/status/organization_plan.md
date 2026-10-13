@@ -730,27 +730,39 @@ the post-MIW `refit_mi` DZ (`733c01d`, a variant-definition change; not rebuilt)
 `ts_intrinsic_wavefront` branch is pushed as `a6394e7`, the hash every 3c manifest
 records. The dry run is now **137 `sbatch` lines over 137 distinct nights**.
 
-**3c BLOCKED 2026-10-13, after the per-night set ran.** The batch partition moved to
+**3c: `fam_tables` REBUILT AND COMPARED, 2026-10-13.** The batch partition moved to
 `milano` (`8703074`) because `rubin:developers@roma` caps the account at 960 CPUs and had
 held the probe `PENDING` for 6.6 h; the milano association has no `GrpTRES` cap, the
 probe then **passed from a milano node in 11 s** (24 of 24 embargo datasets for `day_obs`
-20260713, URI resolving), and all 137 jobs started running with no queueing. **118 of
-137 failed**, for two defects that are both artifacts of splitting by night and so are
-**not** transient resubmits:
+20260713, URI resolving). The first 137-job set lost 118 jobs to two defects, both
+artifacts of splitting by night and both now settled:
 
 - **31 nights** have 1 to 4 FAM pairs and die on mktable's own per-`day_obs`
-  `< 5 visit_pairs` filter, which a ten-night chunk never triggered — **63 FAM pairs
-  (dimensionless count)** would be silently lost, including 11 nights of the phase 2
-  reference chunk `20251116_20251130`.
-- **87 nights** are killed `OUT_OF_MEMORY` at up to **33.9 GB** `MaxRSS` against a 32 GB
-  request, and memory does not track pair count — 6 pairs OOM at 33.9 GB while 74 pairs
-  complete under 10.3 GB — so the `3000 MB/worker` Snakefile budget is wrong for a reason
-  not yet identified.
+  `< 5 visit_pairs` filter. **Not a data loss** — verified against the old tree, which
+  holds **0 visits on all 31**. The filter applied inside the old chunk builds too.
+- **87 nights** killed `OUT_OF_MEMORY` because `mem_mb = 3000 * workers` was **3x too
+  low**: `mktable` needs **9.2 to 10.8 GB per donut worker**, measured by a worker-count
+  scan, so 8 workers need ~74 GB not 24 GB. Corrected to **11 GB/worker**. The earlier
+  "memory does not track pair count" reading came from `/usr/bin/time -v`, which reports
+  the **largest single process**, not the tree; use `sacct` for a multi-process job.
 
-19 nights completed and their tables are valid. Nothing downstream ran: no `fit`, no
-`combine_*`, no `attach_telemetry`, no manifest, no `set-current`. Both defects, the
-options for the first and the next measurement for the second are in the phase 3 handoff
-under "STOPPED 2026-10-13"; the first needs Aaron's choice.
+All 70 resubmitted nights then completed at 96G (`MaxRSS` 63.48 to 83.79 GB), so **106 of
+137 nights have tables and the other 31 are the verified-empty ones** — an exact
+partition. `finish_mktable_rebuild.sh` ran the interactive tail, and the two blitz
+variants were rebuilt with `run_blitz_mktable`. **All nine tables of the three variants
+match the old tree's row counts exactly** (`danish_1_2` 3,385 visits over 106 nights,
+2,528 fits; both blitz variants 966 visits, 873 fits), `donuts.parquet` is identical at
+zero tolerance for all three, and every DZ coefficient agrees to **1.5e-13 or better**, so
+the fits are unchanged. One difference was **not** predicted — the four M1M3 bulk thermal
+gradients and `lut_dof5..9`, a live-EFD-at-build-time change rather than a code change —
+and it is the one item awaiting Aaron's ruling. **No `set-current` has run.** Details,
+measurements and the exclusions behind that diagnosis are in the phase 3 handoff.
+
+A per-night split also made a **second** instance of the sparse-night mechanism reachable
+one stage later: the external `run_dz_fit.py` raises `IndexError` on a chunk where no
+visit passes the quality cut, which happens on **8 of the 106 nights**. Those nights
+contribute 0 fit rows to the old tree as well, so `run_fit_chunk.py` writes a 0-row
+sentinel for them and `fits.parquet` keeps its 2,528 rows.
 
 Two findings worth
 carrying: `image_idx` is **not** fixed by the row-order sort (it is written by the

@@ -690,9 +690,134 @@ The whole set, `FAM_BUILD=20261013`, `danish_1_2`:
 The combine already ran (top-level `donuts.parquet` 12.36 GB and `visits.parquet` 735 kB,
 written 2026-10-13 12:58) during the `--rerun-triggers mtime` measurement.
 
+## The three `fam_tables` builds are BUILT and COMPARED, 2026-10-13
+
+All three rebuilt into the products tree, build `20261013`, and compared with their
+old-tree builds using `compare_builds.py`, which keys on verified-unique
+(`day_obs`, `seq_num`) for the per-visit tables and
+(`day_obs`, `seq_num`, `detector`, `extra_donut_id`) for `donuts.parquet` — **never
+positionally**. **No `set-current` has run.**
+
+Row counts in and out, every table:
+
+| variant | `donuts.parquet` | `visits.parquet` | `fits.parquet` |
+|---|---|---|---|
+| `danish_1_2` | **9,083,526** rows, old = new | **3,385** rows over 106 nights, old = new | **2,528** rows, old = new |
+| `danish_1_3_test` | **3,155,734** rows, old = new | **966** rows, old = new | **873** rows, old = new |
+| `danish_1_3_v1000` | **3,155,836** rows, old = new | **966** rows, old = new | **873** rows, old = new |
+
+**Every row count is identical to the old tree on all nine tables**, so there is nothing
+to explain on rows in or out. In particular `danish_1_2` has the 3,385 visits over 106
+nights the old tree has, and `fits.parquet`'s 2,528 rows show the 8 sentinel nights of the
+fit-quality-cut fix cost nothing (they contribute 0 fit rows to the old tree too).
+
+`donuts.parquet` is **identical at zero tolerance** for all three variants — 48 of 48
+columns for `danish_1_2` and 66 of 66 for both blitz variants, 0 columns only on one side.
+
+### `danish_1_3_v1000` — fully explained, difference 1 only
+
+| table | columns only in old | columns only in new | differing columns |
+|---|---|---|---|
+| `donuts` | 0 | 0 | **0 of 66, identical** |
+| `visits` | `skyAngle` | `rotTelPos`, `rotator_angle_source` | **1**: `rotator_angle`, max **0.4446 deg** of camera rotator angle |
+| `fits` | `skyAngle` | `rotTelPos`, `rotator_angle_source` | **1**: `rotator_angle`, max **0.4446 deg** |
+
+Exactly expected difference **1**, including the `skyAngle` -> `rotTelPos` rename and the
+new `rotator_angle_source` column, and the 0.4446 deg max is the "about 0.30 deg blitz
+offset" the plan predicted, over 966 visits rather than one night. Nothing else differs.
+
+### `danish_1_3_test` — fully explained, differences 1 and 3
+
+Same as `v1000` on `donuts` (identical) and `visits` (`rotator_angle` only, max
+**0.4446 deg**). Its `fits.parquet` additionally gains **4 columns** —
+`intra_visit`, `extra_visit`, `median_blur_intra_arcsec`, `median_blur_extra_arcsec` —
+which is expected difference **3**, the restored sidecar columns, in this variant's
+smaller form: **both** trees' `visits.parquet` carry all four, and only the **new**
+`fits.parquet` does, which is precisely the `combine_fits` defect of 3b item 6.
+Its other 420 differing `fits` columns are the DZ coefficients at
+max **5.9e-14** (µm of wavefront and its fit units) — float round-off, so **the fits
+themselves are unchanged**, as item 1's prediction requires.
+
+### `danish_1_2` — differences 1, 3, 4 and 5 all confirmed, plus ONE class not on the list
+
+Confirmed and on the expected list:
+
+| # | difference | measured |
+|---|---|---|
+| 1 | `rotator_angle` (deg of camera rotator angle) | **3,016 of 3,385** visits differ, median **0.1124 deg**, max **0.8579 deg**. Plus `skyAngle` -> `rotTelPos` and the new `rotator_angle_source`. The plan predicted median 0.129 deg / max 0.456 deg from a **53-visit** chunk; a larger max over 3,385 visits is the same effect sampled 64x more |
+| 3 | the restored `cam_*` sidecar columns in `fits.parquet` | **375** columns present in the new `fits.parquet`, absent from the old |
+| 4 | the dropped thermal columns | `cam_DomeXMinusTemp` is the one column only in the old tree, and it was **all-NaN on 3,385 of 3,385 visits** — a deliberate removal recorded at `rubinwork/common/visit_telemetry.py:58` |
+| 5 | all 50 `tweak_dof*` (OFC DOF units) | **50 of 50** columns differ, max abs difference **4,740.9**, from the row-order fix. `image_idx` also differs and is known not to be fixed |
+
+The DZ coefficients in `fits.parquet` differ by at most **1.46e-13**, i.e. **all 420 DZ
+columns are float round-off**, so `danish_1_2`'s per-visit fits are unchanged too.
+
+**Not on the expected list: the four M1M3 bulk thermal gradients.** This is the one thing
+that needs Aaron's judgment before `set-current`.
+
+| column (degC per metre) | visits differing | max abs difference | RMS of the column | RMS(diff)/RMS(col) |
+|---|---|---|---|---|
+| `x_gradient` | **1,456 of 3,006** | 0.0261 | 0.00696 | 0.383 |
+| `y_gradient` | **1,456 of 3,006** | 0.6684 | 0.0194 | 0.672 |
+| `z_gradient` | **1,456 of 3,006** | 0.1123 | 0.1792 | 0.038 |
+| `radial_gradient` | **1,456 of 3,006** | 0.2642 | 0.0378 | 0.168 |
+
+Also off-list, and the same mechanism: **`lut_dof5..9` on 2 visits of one night**
+(20250903 seq_num 365 and 408), the largest being `lut_dof6` at **32.9** of a value of
+about **4,500** (0.7%, hexapod LUT axial-force units).
+
+**What it is NOT.** Four candidate causes were tested and excluded:
+
+- **Not the per-night split.** `get_thermal_data` already loops **per `day_obs`**
+  (`intrinsics_lib.py`), so a per-night build passes the same span a chunk build did.
+- **Not a changed visit set.** The (`day_obs`, `seq_num`) key sets of the two
+  `visits.parquet` are **identical**, 0 only-old and 0 only-new over 3,385.
+- **Not a span-dependent bin grid.** `ThermocoupleAnalysis.load(start, end, time_bin=30)`
+  returns samples on **absolute** 30-second boundaries (01:00:30, 01:01:00, ...), not
+  offsets from `start`, so the grid does not move with the span.
+- **Not non-determinism in the fetch.** Refetching night 20251128 **twice in one process**
+  gives **max|A-B| = 0.0** and both reproduce the **new** build exactly, not the old.
+
+**What it is: the EFD thermocouple telemetry itself has changed under us.** The old tree's
+`visits.parquet` was written **2026-09-09**; the gradients are recomputed from live EFD at
+build time. The gradient series is **noise-dominated at the 30-second bin scale** —
+consecutive samples on night 20251128 swing over **6.7e-4 degC/m**, which is the **same
+size as the old-vs-new differences on that night** (2.18e-04 and 1.80e-03 degC/m). So a
+thermocouple sample arriving, or being backfilled, into a different 30-second bin changes
+that bin's mean and hence the interpolated per-visit value. Every other telemetry column
+that comes from the **ConsDB transform** rather than live EFD is **bit-identical**:
+`cam_air_temp`, `m2_air_temp`, `m1m3_air_temp`, `outside_temp`, `m2_delta_t`,
+`cam_m1m3_delta_t`, `dome_delta_t`, `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy` — **0 of
+3,385 visits differ on all nine**. That isolates the change to the one live-EFD path.
+
+**A finding worth having: the OLD tree is internally inconsistent and the new one is not.**
+In the old `danish_1_2`, `fits.parquet` and `visits.parquet` disagree with **each other**
+on `cam_air_temp` for **867 of 2,291** shared visits, max **0.0283 degC** — the two tables
+got their telemetry from separate fetches at different times. In the new build, `fits` and
+`visits` agree at **0 differing of 2,291** on `cam_air_temp` and on every other column
+checked (`m2_air_temp`, `outside_temp`, `radial_gradient`, `x_gradient`, `rotator_angle`:
+0 differing each). This is why the `fits` comparison shows temperature differences the
+`visits` comparison does not — those are the **old** tree's defect, not the new build's.
+
+**Decision for Aaron (nothing else is blocked).** The gradients and `lut_dof5..9` are a
+live-telemetry-at-build-time difference, not a code difference, and they are not
+reproducible against a 2026-09-09 build by construction. Options:
+
+- **Accept and add it to the expected-difference list as difference 6** (recommended):
+  any product rebuilt from live EFD will carry it, so every later 3c comparison needs it
+  anyway. The new values are the better ones — they are self-consistent across `fits` and
+  `visits`, where the old tree's were not.
+- Pin the gradients by caching the thermocouple reduction per night, so a rebuild is
+  reproducible. A real change to the builder, outside 3c's scope.
+- Treat it as a stop and investigate the EFD backfill history for the 1,456 visits first.
+
 ## Next concrete action
 
 **`set-current` for the three `fam_tables` builds, on Aaron's OK, then `cwfs_tables`.**
+
+0. **Aaron rules on the M1M3-gradient difference** above (recommended: accept as expected
+   difference 6). It is the only comparison difference in the three builds that is not on
+   the plan's list; everything else is explained and measured.
 
 1. **Aaron OKs `set-current`** for `danish_1_2@20261013` and the two rebuilt blitz
    variants. Nothing has been promoted: every build is written and compared but no
@@ -838,11 +963,18 @@ unexplained difference stops the step).
    (decision 3, 2026-10-12), so `visits.parquet` keeps its ~405 telemetry columns.
 5. **All 50 `tweak_dof*` columns**, from the row-order fix committed today — and
    `image_idx` still permuted, which is not fixed (above).
+6. **The four M1M3 bulk thermal gradients** (`x_`, `y_`, `z_`, `radial_gradient`, degC per
+   metre) and `lut_dof5..9`, found by the `danish_1_2` comparison 2026-10-13 and **not
+   predicted**. A live-EFD-at-build-time difference, not a code difference: 1,456 of 3,006
+   visits, RMS(diff)/RMS(col) 0.038 to 0.672. **Awaiting Aaron's ruling** before it counts
+   as expected — see "`danish_1_2` — differences 1, 3, 4 and 5 all confirmed, plus ONE
+   class not on the list". Every ConsDB-transform telemetry column is bit-identical, so
+   only this one path carries it.
 
 | # | product / variant | compared against | expected differences | what blocks it |
 |---|---|---|---|---|
-| 1 | `fam_tables` **`danish_1_2`** | `aos/output/fam_processing/danish_1_2/`, and the phase 2 reference chunk `20251116_20251130` for the column-level check | 1, 3, 4, 5. Row **order** differs too (chunks are now per night, so `combine_*` concatenates 137 inputs rather than 10) — compare keyed on (`day_obs`, `seq_num`), never positionally | the embargo probe, then the 137-job set |
-| 2 | `fam_tables` **`danish_1_3_v1000`**, **`danish_1_3_test`** (blitz, `run_blitz_mktable`) | `aos/output/fam_processing/danish_1_3_v1000/`, and the phase 2 A4 blitz reference `day_obs=20260428` | 1 (about **0.30 deg** here, the larger blitz offset), 3, 5. About an hour each, so interactive — no batch ask | item 1 landing; independent of the embargo night |
+| 1 | **DONE 2026-10-13** `fam_tables` **`danish_1_2`** | `aos/output/fam_processing/danish_1_2/`, and the phase 2 reference chunk `20251116_20251130` for the column-level check | 1, 3, 4, 5. Row **order** differs too (chunks are now per night, so `combine_*` concatenates 137 inputs rather than 10) — compare keyed on (`day_obs`, `seq_num`), never positionally | the embargo probe, then the 137-job set |
+| 2 | **DONE 2026-10-13** `fam_tables` **`danish_1_3_v1000`**, **`danish_1_3_test`** (blitz, `run_blitz_mktable`) | `aos/output/fam_processing/danish_1_3_v1000/`, and the phase 2 A4 blitz reference `day_obs=20260428` | 1 (about **0.30 deg** here, the larger blitz offset), 3, 5. About an hour each, so interactive — no batch ask | item 1 landing; independent of the embargo night |
 | 3 | `cwfs_tables` (4 variants) | `aos/output/wfs_*/` per variant | 1 only, plus the **`d12-refitWcs_2025` fold** (3b item 5): one date-keyed variant now covers 2025 and 2026, so the 2025 rows appear under `d12-refitWcs` and the retired `d10-wep17_3_0` entry is gone | nothing — can run alongside item 1 |
 | 4 | `miw` (the 2 `d12` variants first; the 10 others have no complete old-tree build) | `aos/output/miw/<dir_name>/`, and the 3a reference in `_phase2_refbuild/miw/ref/` | 2 (the theta rotation, the headline number), and 1 carried through the visits it reads | items 1 and 3 |
 | 5 | `coadds` (`d12-A_50_34_i_5rot`; `_v2` has only an `archive/`) | `aos/output/coadd/<dir_name>/`, 2 tables + 2 npz | 2, through the MIW maps it coadds | item 4 |
