@@ -202,6 +202,18 @@ safe side.
 changed** (2026-10-13) — the `danish_1_3` blitz tables are larger, `danish_1_2`'s are not.
 That correctly ruled out a change in the input, and left the request size as the cause.
 
+**Raising `mem_mb` trips Snakemake's provenance trigger, so the interactive tail is pinned
+to `mtime`.** `resources` and `params` are part of Snakemake's default `--rerun-triggers`
+set, so changing `rule mktable`'s `mem_mb` marks it for re-run on every chunk. Measured on
+the 106-night build: the default triggers plan **106 `mktable` jobs (218 total)**, which
+would redo the whole ~45 h Butler stage; `--rerun-triggers mtime` plans **1 (113 total)**,
+that one being the night still running when it was measured. `finish_mktable_rebuild.sh`
+now passes the flag (commit `a0dd3d0`, Aaron's call 2026-10-13). The donuts on disk are
+current: only the memory declaration changed, not `mktable`'s code path. **Anyone editing
+a `resources` or `params` value on an expensive rule in this Snakefile hits the same
+trap** — the Snakefile's own comment at `rule combine_donuts` covers only the *script*
+trigger, which is a different mechanism.
+
 **What was spent learning this:** 87 jobs resubmitted at 64G before any measurement, which
 the previous session's "next step on B" had already prescribed; then two wrong intermediate
 conclusions drawn from the per-process `MaxRSS`, one of them committed. 17 of the 87
