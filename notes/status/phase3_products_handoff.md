@@ -116,7 +116,7 @@ Answered 2026-10-13 on the two 3c defects:
   "Defect A verified" below.** None of the three options in the defect A writeup is taken;
   the filter is left alone and the external package is untouched.
 - **Defect B: resubmit at 64G** (Aaron, 2026-10-13), 8 workers unchanged — then
-  **superseded the same day**. The 64G set failed 67 of 87, so on Aaron's "measure first"
+  **superseded the same day**. The 64G set failed 70 of 87, so on Aaron's "measure first"
   instruction the worker sweep ran and showed the OOM was memory *pressure*, not demand
   (see "Defect B: the OOM was memory PRESSURE" below). The 128G fallback in the original
   rule was **not used**: the remaining 70 nights went at **96G**, which the sweep measured
@@ -160,20 +160,43 @@ like. Slurm's figure for the same sweep job (40711796) is **73.59 GB**, agreeing
 2.5% with the production run of the same night (40712965, **75.41 GB**), so there was never
 a path difference between `sweep.sh` and the production jobs either.
 
-**Memory does track night size, with a large fixed term.** Over the 55 nights of the 96G
-set that had completed when this was measured, 8 workers throughout:
+**Memory tracks night size only weakly: the footprint is mostly fixed per worker.** All 69
+`COMPLETED` nights of the 96G set, 8 workers throughout. Per-night rows are in
+`aos/logs/mktable_memory_20261013.csv` (night, FAM visits, donuts, `MaxRSS` GB, elapsed,
+OLS residual GB):
 
-| quantity | min | median | max |
-|---|---|---|---|
-| `MaxRSS` (GB) | 63.48 | 74.04 | 83.79 |
-| FAM visits per night (dimensionless count) | 8 | 20 | 40 |
-| donuts per night (dimensionless count) | 21,712 | 53,340 | 97,293 |
+| quantity | min | 25% | median | 75% | max |
+|---|---|---|---|---|---|
+| `MaxRSS` (GB of resident set size) | 63.48 | 69.73 | 75.07 | 76.95 | 83.79 |
+| FAM visits per night (dimensionless count) | 8 | 15 | 25 | 34 | 93 |
+| donuts per night (dimensionless count) | 21,712 | 40,011 | 67,635 | 87,029 | 252,382 |
 
-Pearson r(`MaxRSS` GB, donuts) = **+0.727**, Spearman rho = **+0.726**, n = 55 nights;
-against FAM visits, r = +0.665 and rho = +0.681. A 4.5x range in donut count moves
-`MaxRSS` only from about 67 to 77 GB, so the night's own data is the minority of the
-footprint — roughly **60 GB fixed plus 0.15 GB per 1,000 donuts** at 8 workers. That fixed
-term is what the per-worker constant is really measuring.
+Correlation of `MaxRSS` (GB) against night size, n = 69 nights:
+
+| against | Pearson r | Spearman rho |
+|---|---|---|
+| donuts per night | +0.587 | +0.741 |
+| FAM visits per night | +0.573 | +0.716 |
+
+The rank correlation is the stronger of the two, so the relation is monotonic but not
+linear. OLS gives
+**`MaxRSS` (GB) = 69.6 + 0.0520 × (donuts / 1000)**, residual nMAD **4.10 GB**, max
+|residual| **10.60 GB**. So an 11.6x range in donut count (21,712 to 252,382) buys only
+about 12 GB, while the intercept is **69.6 GB — 8.70 GB per worker of fixed cost**. The
+per-worker constant, not the night's data, is what sets the request; this is why the
+worker-count scan above is the measurement that matters and why `mem_mb` scales on workers.
+
+**Three nights depart from the trend**, all explainable and none blocking:
+
+| night | donuts | `MaxRSS` (GB) | residual (GB) | note |
+|---|---|---|---|---|
+| 20260713 | 68,954 | 83.79 | **+10.60** | the **`/repo/embargo`** night — a different repository and S3 backend, so a larger read buffer is plausible. Highest `MaxRSS` of the whole set, and still 12 GB inside the 96G request |
+| 20250814 | 33,284 | 63.48 | −7.85 | lowest `MaxRSS` of the set, a small night |
+| 20251128 | 21,874 | 63.88 | −6.86 | smallest donut count of the set |
+
+The two negative residuals are the floor of the fixed cost showing through on small nights,
+which the linear form over-predicts. Only 20260713 is a genuine outlier, and it is on the
+safe side.
 
 **Aaron's load-bearing fact, which held throughout: the `danish_1_2` tables have not
 changed** (2026-10-13) — the `danish_1_3` blitz tables are larger, `danish_1_2`'s are not.
@@ -181,7 +204,7 @@ That correctly ruled out a change in the input, and left the request size as the
 
 **What was spent learning this:** 87 jobs resubmitted at 64G before any measurement, which
 the previous session's "next step on B" had already prescribed; then two wrong intermediate
-conclusions drawn from the per-process `MaxRSS`, one of them committed. 20 of the 87
+conclusions drawn from the per-process `MaxRSS`, one of them committed. 17 of the 87
 completed, so the batch spend was not total, but the measurement should have come first and
 should have used `sacct`.
 

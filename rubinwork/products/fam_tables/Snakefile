@@ -268,10 +268,14 @@ rule mktable:
     # bin-x2) and not an estimate.  A worker-count scan on night 20251114 gave a
     # whole-job MaxRSS of 21.66 / 40.69 / 73.59 GB at 2 / 4 / 8 workers -- 10.83,
     # 10.17 and 9.20 GB per worker -- so the cost is linear in workers and the
-    # former 3 GB/worker figure killed 87 of 137 nights at a 32G request.  Rounded
-    # up from the 10.83 GB worst case for headroom on a large night: over the 96G
-    # set, MaxRSS correlates with donut count at Pearson r = +0.727 (n = 55
-    # nights, 8 workers), ranging 63.5 to 83.8 GB.
+    # former 3 GB/worker figure killed 87 of 137 nights at a 32G request.
+    #
+    # The cost is mostly FIXED per worker, not per donut: over the 69 completed
+    # nights at 8 workers, MaxRSS = 69.6 GB + 0.052 GB per 1000 donuts (residual
+    # nMAD 4.10 GB), i.e. 8.70 GB/worker of intercept, and an 11.6x range in donut
+    # count buys only ~12 GB.  Rounded up to 11 GB from the 10.83 GB worst case of
+    # the scan, which also covers the one outlier night (20260713, the /repo/embargo
+    # night, 83.79 GB).  Per-night rows: aos/logs/mktable_memory_20261013.csv.
     threads: MKT_WORKERS
     resources: mem_mb=11000 * MKT_WORKERS
     log: str(LOGS / '{dmin}_{dmax}.mktable.log')
