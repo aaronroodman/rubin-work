@@ -274,7 +274,9 @@ def test_generated_param_sets_carry_the_wfs_half():
     from rubinwork.products.fam_tables import gen_param_sets
     doc = yaml.safe_load(gen_param_sets.render())
     wfs = doc["fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x"]["wfs_collections"]
-    assert set(wfs) == {"refitWcs", "refitWcs_2025", "paired_3mm", "ai_donut", "tarts"}
+    # refitWcs_2025 was folded into refitWcs as a date-keyed collection list in phase 3b.
+    assert set(wfs) == {"refitWcs", "paired_3mm", "ai_donut", "tarts"}
+    assert len(wfs["refitWcs"]["collections"]) == 2
     assert wfs["paired_3mm"]["seq_offset"] == 0
     assert wfs["ai_donut"]["dataset_type"] == "aggregateZernikesRaw"
     assert wfs["tarts"]["reader"] == "unpaired"

@@ -33,7 +33,7 @@ VARIANTS_FILE = pathlib.Path(__file__).with_name("variants.yaml")
 # the order that file has today; byte-identity across the phase 3a move depends on it.
 # `collection` is handled separately: an entry with no other field is emitted as a bare
 # collection string, which is also the shape that file has today.
-BUILDER_FIELDS = ("collection", "seq_offset", "reader", "dataset_type",
+BUILDER_FIELDS = ("collection", "collections", "seq_offset", "reader", "dataset_type",
                   "combine_offsets", "defocused_only")
 
 
@@ -115,11 +115,16 @@ def _builder_entry(cfg):
     A variant carrying only a collection becomes the bare collection string, which is
     the shape ``aos/param_sets.yaml`` has today; byte-identity of the generated file
     depends on it.
+
+    A variant whose collection differs by season carries ``collections`` instead -- a
+    list of ``{day_obs: [lo, hi], collection: name}`` entries -- and always renders as a
+    dict, since the builder resolves it per visit.
     """
-    extra = {k: cfg[k] for k in BUILDER_FIELDS if k != "collection" and k in cfg}
-    if not extra:
+    primary = "collections" if "collections" in cfg else "collection"
+    extra = {k: cfg[k] for k in BUILDER_FIELDS if k != primary and k in cfg}
+    if not extra and primary == "collection":
         return cfg["collection"]
-    return {"collection": cfg["collection"], **extra}
+    return {primary: cfg[primary], **extra}
 
 
 def wfs_collections_for(fam_variant_name):

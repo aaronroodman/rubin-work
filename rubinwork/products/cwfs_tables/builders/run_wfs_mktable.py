@@ -202,6 +202,62 @@ def _fam_noll(tables, prefix):
     return js or None
 
 
+def parse_collection_ranges(spec):
+    """Normalize a variant's collection specification to date-ranged entries.
+
+    A variant may name one collection for every night, or several keyed by
+    ``day_obs`` range when a reprocessing covers only part of the span -- the same
+    shape the FAM ``danish_1_2`` variant uses for its per-chunk collection overrides.
+
+    Parameters
+    ----------
+    spec : `str` or `list` [`dict`]
+        Either a bare collection name, or a list of
+        ``{'day_obs': [lo, hi], 'collection': name}`` entries. ``day_obs`` bounds are
+        inclusive, dimensionless date keys (``YYYYMMDD``).
+
+    Returns
+    -------
+    ranges : `list` [`tuple`]
+        ``(day_obs_min, day_obs_max, collection)``, with the bounds None where the
+        specification gives no limit. One entry with both bounds None for a bare string.
+    """
+    if isinstance(spec, str):
+        return [(None, None, spec)]
+    ranges = []
+    for item in spec:
+        if isinstance(item, str):
+            ranges.append((None, None, item))
+            continue
+        lo, hi = (item.get('day_obs') or [None, None])[:2]
+        ranges.append((None if lo is None else int(lo),
+                       None if hi is None else int(hi),
+                       item['collection']))
+    return ranges
+
+
+def collection_for_day_obs(ranges, day_obs):
+    """The first collection in `ranges` whose ``day_obs`` window contains `day_obs`.
+
+    Parameters
+    ----------
+    ranges : `list` [`tuple`]
+        As `parse_collection_ranges` returns.
+    day_obs : `int`
+        Night to resolve, a dimensionless ``YYYYMMDD`` date key.
+
+    Returns
+    -------
+    collection : `str` or `None`
+        None when no entry covers the night, which is how a visit outside every
+        reprocessing's span is skipped rather than queried against the wrong collection.
+    """
+    for lo, hi, coll in ranges:
+        if (lo is None or day_obs >= lo) and (hi is None or day_obs <= hi):
+            return coll
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -252,7 +308,7 @@ def main():
                          f'{wfs_name!r} (have: {list(wfs_map)})')
     entry = wfs_map[wfs_name]                       # str, or {collection, seq_offset, dataset_type, reader}
     if isinstance(entry, dict):
-        wfs_coll = entry['collection']
+        wfs_coll = entry.get('collection') or entry['collections']
         seq_offset = int(entry.get('seq_offset', 1))
         dataset_type = entry.get('dataset_type', 'aggregateAOSVisitTableRaw')
         reader = entry.get('reader')               # explicit reader override (e.g. 'unpaired')
@@ -269,10 +325,29 @@ def main():
     fam_visits = QTable.read(str(tables / 'visits.parquet'))
     print(f'[wfs_mktable] {param_set}: {len(fam_visits)} FAM visits; '
           f'cwfs collection {wfs_coll}')
+    if not isinstance(wfs_coll, str):
+        for lo, hi, coll in parse_collection_ranges(wfs_coll):
+            print(f'  day_obs [{lo}, {hi}] -> {coll}')
 
     from lsst.daf.butler import Butler
     from lsst.obs.lsst import LsstCam
-    butler = Butler(repo, collections=wfs_coll)
+    # One variant can carry several collections keyed by date range, as the FAM
+    # `danish_1_2` does per chunk: a reprocessing usually covers one season, and the
+    # collections are disjoint in day_obs, so which one holds a visit is a function of its
+    # night.  A Butler is opened per collection and cached, since opening one costs
+    # seconds and the walk is per visit.
+    coll_ranges = parse_collection_ranges(wfs_coll)
+    butlers = {}
+
+    def butler_for(day_obs):
+        """The Butler whose collection covers `day_obs`, or None if none does."""
+        coll = collection_for_day_obs(coll_ranges, day_obs)
+        if coll is None:
+            return None
+        if coll not in butlers:
+            butlers[coll] = Butler(repo, collections=coll)
+        return butlers[coll]
+
     camera = LsstCam.getCamera()
     has_rot = 'rotator_angle' in fam_visits.colnames
     has_alt = 'alt' in fam_visits.colnames
@@ -295,8 +370,12 @@ def main():
     fam_noll = _fam_noll(tables, args.dz_prefix)   # target Noll order for the zk remap
     zk_idx, out_noll = None, None                  # set from the first CWFS table's Noll
     donut_tabs, vrows, n_miss = [], [], 0
+    n_no_coll = 0
     for v in fam_visits:
         d = int(v['day_obs']); fam_s = int(v['seq_num']); infocus = fam_s + seq_offset
+        butler = butler_for(d)
+        if butler is None:          # no reprocessing covers this night
+            n_no_coll += 1; n_miss += 1; continue
         if reader == 'unpaired':                            # TARTS etc.: singular-position AOS table
             offs = combine if combine else [seq_offset]     # concat intra+extra to cover all corners
             parts, meta = [], None
@@ -354,7 +433,8 @@ def main():
     vdf['nollIndices'] = [list(noll) if noll else None] * len(vdf)
     vdf.to_parquet(out / 'visits.parquet')
     print(f'  {len(vrows)} in-focus exposures, {len(donuts)} WFS donuts '
-          f'({n_miss} FAM visits had no in-focus cwfs table); wrote '
+          f'({n_miss} FAM visits had no in-focus cwfs table, of which '
+          f'{n_no_coll} fell outside every collection\'s day_obs range); wrote '
           f'donuts.parquet + visits.parquet under {out}')
 
     if not args.no_plot:

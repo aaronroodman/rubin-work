@@ -24,9 +24,12 @@ from rubinwork.products.cwfs_tables import write_manifest  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
-EXPECTED_VARIANTS = {"d12-refitWcs", "d12-refitWcs_2025", "d12-paired_3mm",
-                     "d12-ai_donut", "d12-tarts"}
-"""The registered variants: the five that pair with the ``danish_1_2`` FAM build."""
+EXPECTED_VARIANTS = {"d12-refitWcs", "d12-paired_3mm", "d12-ai_donut", "d12-tarts"}
+"""The registered variants: the four that pair with the ``danish_1_2`` FAM build.
+
+``d12-refitWcs_2025`` was folded into ``d12-refitWcs`` as a date-keyed collection list in
+phase 3b, and the unregistered ``d10-wep17_3_0`` was retired in the same change.
+"""
 
 
 @pytest.fixture
@@ -63,11 +66,16 @@ def test_variants_are_the_registered_five():
     assert set(cwfs_tables.variants()) == EXPECTED_VARIANTS
 
 
-def test_unregistered_variant_is_hidden_but_resolvable():
-    """``d10-wep17_3_0`` is carried for byte-identity of the generated file only."""
-    assert "d10-wep17_3_0" not in cwfs_tables.variants()
-    assert "d10-wep17_3_0" in cw_reader.variants(registered_only=False)
-    assert cwfs_tables.variant_config("d10-wep17_3_0")["fam_variant"] == "danish_1_0"
+def test_the_danish_1_0_cwfs_entry_is_retired():
+    """``d10-wep17_3_0`` was retired in phase 3b: never built, and nothing read it.
+
+    Its FAM variant ``danish_1_0`` deliberately stays, as ``registered: false`` in the
+    ``fam_tables`` variants (Aaron, 2026-10-12) -- four live things still name its long
+    param_set key -- so this product has no ``danish_1_0`` entry at all.
+    """
+    assert "d10-wep17_3_0" not in cw_reader.variants(registered_only=False)
+    assert cwfs_tables.wfs_collections_for("danish_1_0") == {}
+    assert "danish_1_0" in fam_tables.reader.variants(registered_only=False)
 
 
 def test_variant_names_follow_the_rules():
@@ -81,8 +89,11 @@ def test_variant_names_follow_the_rules():
 def test_every_variant_has_the_required_fields():
     for name in cw_reader.variants(registered_only=False):
         cfg = cwfs_tables.variant_config(name)
-        for field in ("fam_variant", "upstream_name", "collection"):
+        for field in ("fam_variant", "upstream_name"):
             assert cfg.get(field), f"{name} is missing {field}"
+        # one collection, or several keyed by day_obs since the 3b fold
+        assert cfg.get("collection") or cfg.get("collections"), \
+            f"{name} names no collection"
 
 
 def test_every_fam_variant_is_a_real_fam_variant():
@@ -118,12 +129,36 @@ def test_fam_tables_no_longer_carries_wfs_collections():
 
 def test_wfs_collections_for_rebuilds_the_map():
     wfs = cwfs_tables.wfs_collections_for("danish_1_2")
-    assert set(wfs) == {"refitWcs", "refitWcs_2025", "paired_3mm", "ai_donut", "tarts"}
-    # An entry with only a collection is a bare string, which is the shape
-    # aos/param_sets.yaml has today.
-    assert isinstance(wfs["refitWcs"], str)
+    assert set(wfs) == {"refitWcs", "paired_3mm", "ai_donut", "tarts"}
+    # refitWcs carries two collections keyed by day_obs since the 3b fold, so it renders
+    # as a dict; an entry with only a bare collection stays a string.
+    assert [e["day_obs"] for e in wfs["refitWcs"]["collections"]] == [
+        [20260101, 20261231], [20250101, 20251231]]
+    assert isinstance(wfs["ai_donut"], dict)       # has dataset_type
     assert wfs["paired_3mm"]["seq_offset"] == 0
     assert wfs["tarts"]["reader"] == "unpaired"
+
+
+def test_folded_refitwcs_resolves_a_collection_per_night():
+    """The 3b fold: one variant covering 2025 and 2026, resolved by day_obs."""
+    from rubinwork.products.cwfs_tables.builders.run_wfs_mktable import (
+        collection_for_day_obs, parse_collection_ranges)
+    cfg = cwfs_tables.variant_config("d12-refitWcs")
+    ranges = parse_collection_ranges(cfg["collections"])
+    assert "wep_17_6_1" in collection_for_day_obs(ranges, 20260428)
+    assert "wep_17_7_0" in collection_for_day_obs(ranges, 20251126)
+    # A night outside both reprocessings resolves nothing, so its visits are skipped
+    # rather than queried against the wrong collection.
+    assert collection_for_day_obs(ranges, 20240101) is None
+
+
+def test_parse_collection_ranges_accepts_a_bare_string():
+    """An unfolded variant keeps working through the same resolver."""
+    from rubinwork.products.cwfs_tables.builders.run_wfs_mktable import (
+        collection_for_day_obs, parse_collection_ranges)
+    ranges = parse_collection_ranges("some/collection")
+    assert ranges == [(None, None, "some/collection")]
+    assert collection_for_day_obs(ranges, 20260428) == "some/collection"
 
 
 def test_wfs_collections_for_unknown_fam_variant_is_empty():
@@ -142,8 +177,12 @@ def test_generated_param_sets_match_the_variants():
         cfg = cwfs_tables.variant_config(name)
         fam_cfg = fam_tables.variant_config(cfg["fam_variant"])
         entry = param_sets[fam_cfg["param_set"]]["wfs_collections"][cfg["upstream_name"]]
-        collection = entry["collection"] if isinstance(entry, dict) else entry
-        assert collection == cfg["collection"], name
+        if not isinstance(entry, dict):
+            assert entry == cfg["collection"], name
+        elif "collections" in entry:
+            assert entry["collections"] == cfg["collections"], name
+        else:
+            assert entry["collection"] == cfg["collection"], name
 
 
 def test_param_sets_yaml_is_up_to_date():
