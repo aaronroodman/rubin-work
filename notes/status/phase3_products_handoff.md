@@ -115,11 +115,64 @@ Answered 2026-10-13 on the two 3c defects:
   difference to explain in the comparison. **Verified against the old tree — see
   "Defect A verified" below.** None of the three options in the defect A writeup is taken;
   the filter is left alone and the external package is untouched.
-- **Defect B: resubmit at 64G** (Aaron, 2026-10-13), 8 workers unchanged. This is a **new
-  OK**, since the failure was not transient. A night that OOMs again at 64G is resubmitted
-  once at **128G**; anything still failing after that is recorded and stops the step.
+- **Defect B: resubmit at 64G** (Aaron, 2026-10-13), 8 workers unchanged — then
+  **superseded the same day**. The 64G set failed 67 of 87, so on Aaron's "measure first"
+  instruction the worker sweep ran and showed the OOM was memory *pressure*, not demand
+  (see "Defect B: the OOM was memory PRESSURE" below). The 128G fallback in the original
+  rule was **not used**: the remaining 70 nights went at **96G**, which the sweep measured
+  as ~8x clear of the real 12.25 GB working set, on Aaron's OK of 2026-10-13.
   `MEM` is a variable in `submit_mktable_nights.sh` and an explicit night list can be
   passed (`--nights`, `--nights-file`), committed as `09eb0b8` before the resubmission.
+  Submissions: 87 nights at 64G as jobs **40708212–40708298**, then the 70 nights still
+  without tables at 96G as jobs **40712911–40712982**
+  (`aos/logs/mktable_submit_20261013_96g.txt`,
+  night list `aos/logs/mktable_todo_nights_20261013.txt`).
+
+### Defect B: the OOM was memory PRESSURE, not demand — measured 2026-10-13
+
+**The 32G and 64G `MaxRSS` figures were the ceiling being hit, not the working set.** The
+same night at 8 workers under a **96G** request peaks at **12.25 GB** of resident set size
+and completes in 22.5 min. Night 20251114, `danish_1_2`, 8 CPUs throughout:
+
+| run | memory request | workers | peak RSS | outcome |
+|---|---|---|---|---|
+| original set, job 40705xxx | 32G | 8 | **39.87 GB** | `OUT_OF_MEMORY` |
+| resubmission, job 40708xxx | 64G | 8 | ~62 GB (set median 62.5) | `OUT_OF_MEMORY` |
+| sweep `w8`, job 40711796 | **96G** | 8 | **12.25 GB** | **`COMPLETED`**, wall 22:29 |
+
+Across the whole 64G set the same pattern holds, which is what rules out a per-night data
+explanation: `COMPLETED` peaked at min 35.6 / median 42.2 / max 57.1 GB and
+`OUT_OF_MEMORY` at min 39.9 / median 62.5 / max 65.8 GB — both distributions pinned under
+the limit, where the 32G set's `COMPLETED` jobs had peaked at only 10.3 GB max. Footprint
+rose with the ceiling and then fell to 12 GB once the ceiling was high enough never to
+bind.
+
+**Aaron's load-bearing fact: the `danish_1_2` tables have not changed** (2026-10-13). The
+`danish_1_3` blitz tables are larger, `danish_1_2`'s are not, so the input going into
+these jobs is the input that built fine at chunk level. That removes the data from the
+list of suspects and leaves only how the job is driven.
+
+**The worker count is also innocent**, which was the hypothesis the sweep was built to
+test: 8 workers is exactly the configuration that completes at 12.25 GB. So neither the
+per-night split's concurrency nor the bin-x1/bin-x2 collection question in the original
+defect B writeup is the cause.
+
+What remains, and is **not** proven: the mechanism. Footprint tracking the limit, with a
+clean low peak when the limit is generous, is the signature of memory not being returned
+under pressure — an allocator or garbage-collector effect, where freed pages stay resident
+as the cgroup fills and the recorded peak climbs to the limit until the kill. Recorded as
+the working explanation, not a measured one; nothing downstream depends on which mechanism
+it is, only on the request being clear of the ~12 GB working set.
+
+**Consequence for the `Snakefile` estimate:** `mem_mb=3000 * MKT_WORKERS` (line 267) is
+**roughly right as a demand figure** — 24 GB budgeted at 8 workers against a 12.25 GB
+measured peak — so step 3's "correct the 3 GB figure" is likely to confirm it rather than
+raise it. The error was never the Snakefile's estimate; it was the Slurm `--mem` request
+being close enough to the working set for pressure to set in.
+
+**What was spent learning this:** 87 jobs resubmitted at 64G before the 4-job sweep the
+previous session's "next step on B" had already prescribed. 20 of those 87 completed, so
+the spend was not total, but the measurement should have come first.
 
 ### Defect A verified against the old tree, 2026-10-13
 
