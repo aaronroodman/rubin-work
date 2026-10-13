@@ -9,7 +9,7 @@
 # `gradients` columns come from `run_attach_telemetry`'s sidecar instead.
 #
 # Why per night rather than per chunk: the largest chunk alone is an 8.9 h wall-clock
-# floor.  One job per night turns that into 138 independent jobs, so the whole rebuild
+# floor.  One job per night turns that into 137 independent jobs, so the whole rebuild
 # finishes in the time of its longest night.
 #
 # What this does NOT do: `fit`, `combine_donuts`, `combine_fits`, `combine_visits`,
@@ -24,6 +24,9 @@
 #   ./submit_mktable_nights.sh --night 20251126     # one night, repeatable
 #   ./submit_mktable_nights.sh --chunk 20251116_20251130    # every night of one chunk
 #
+# Partition and account default to milano; set both to use roma instead:
+#   PARTITION=roma ACCOUNT='rubin:developers@roma' ./submit_mktable_nights.sh
+#
 # Submit only from an s3df node (slacrd / sdfiana); there is no Slurm on an RSP pod.
 
 set -euo pipefail
@@ -34,8 +37,12 @@ VARIANT=danish_1_2
 # ${BUILD:-default} would silently pick up as the build name.
 FAM_BUILD="${FAM_BUILD:-$(date -u +%Y%m%d)}"
 LOGDIR="$REPO/aos/logs"
-PARTITION=roma
-ACCOUNT='rubin:developers@roma'
+# milano by default: its `rubin:developers@milano` association has no GrpTRES cap, while
+# `rubin:developers@roma` caps the whole account at 960 CPUs, which other group members
+# saturate.  Override both together for roma:
+#   PARTITION=roma ACCOUNT='rubin:developers@roma' ./submit_mktable_nights.sh
+PARTITION="${PARTITION:-milano}"
+ACCOUNT="${ACCOUNT:-rubin:developers@milano}"
 WORKERS=8
 # 3 GB per donut-reading worker, the bin-x2 estimate the Snakefile uses.
 MEM=32G
@@ -135,7 +142,7 @@ FAM_BUILD_DIR="$(build_dir)"
 echo "repo      $REPO"
 echo "variant   $VARIANT   build $FAM_BUILD"
 echo "build dir $FAM_BUILD_DIR"
-echo "resources partition=$PARTITION mem=$MEM time=$TIME workers=$WORKERS"
+echo "resources partition=$PARTITION account=$ACCOUNT mem=$MEM time=$TIME workers=$WORKERS"
 echo
 
 n_submitted=0
