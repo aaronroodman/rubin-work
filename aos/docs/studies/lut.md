@@ -116,6 +116,16 @@ because that build also supplies the fit table.
   `|median|/scatter_mad` is 2.40 for `M2_dy` and between 0.37 and 2.06 for the other nine
   rigid-body DOF (dimensionless, both in the row's `dof_unit`). Open, and not addressed
   by the input change.
+
+- **Hypothesis to check: the largest values are a near-null lateral mode** (Aaron,
+  2026-10-13). They pair up as M2 against camera decentres in the same axis —
+  `M2_dy` −2407 µm against `Cam_dy` −1867 µm of hexapod decentre, and `M2_dx` +727 µm
+  against `Cam_dx` −286 µm — which is what a combined M2-plus-camera lateral motion that
+  the optics barely sees would look like: the inversion is free to put a large amplitude
+  there because it costs almost no wavefront. To check it: find that mode's singular
+  value in the sensitivity matrix, and whether `n_keep` or the normalization weights
+  admit it rather than suppressing it. If they do, the fix is the regularization, not the
+  input table.
 - This study and the [`bounce`](bounce.md) study both carry "LUT" in their descriptions
   but approach it from opposite directions: `bounce` measures how the optical state
   *varies* with elevation and rotator angle, while this one averages that variation away

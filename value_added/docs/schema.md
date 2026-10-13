@@ -183,6 +183,22 @@ changes bin at 0.30 deg, but which column decides that bin is a choice, not a de
 [`../../aos/docs/frame_conventions.md`](../../aos/docs/frame_conventions.md) for the OCS
 and CCS conventions and why `boresightRotAngle` is never the right column.
 
+#### The FAM tables' `tweak_dof*` is a different quantity from this database's Tweak
+
+The same warning applies to Tweak, and here the two definitions never coincide. This
+database differences Trim over **every exposure of the night** — 535 rows for `day_obs`
+20251116 — which is the true per-iteration correction the controller emitted. The
+`fam_tables` `visits.parquet` `tweak_dof0..49` columns difference Trim over only the
+**FAM-paired visits** of that night, 5 of those 535, so each value is the change since
+the previous FAM visit, not the per-exposure Tweak.
+
+Measured on the `danish_1_2` reference chunk `20251116_20251130`, 53 visits: no FAM visit
+has another FAM visit as its immediate database predecessor, so there is not even a subset
+of visits where the two agree. **A study must not join them as one column**, and must say
+which definition it means. Units are per-DOF, the row's own `dof_unit` (µm of hexapod
+motion or arcsec of hexapod tilt for the ten rigid-body DOF, dimensionless bending-mode
+amplitude for the forty others).
+
 ### `fwhm_cwfs_arcsec` is a corner median, not a focal-plane median
 
 The PSF FWHM contribution [arcsec] of the residual wavefront this scheme's correction leaves,

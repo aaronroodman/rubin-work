@@ -105,6 +105,28 @@ the step. Answered items move to "Decisions taken".
 
 Answered 2026-10-13, all five acted on in this session:
 
+- **Batch partition: `milano`, not `roma`** (Aaron, 2026-10-13), for throughput. Account
+  `rubin:developers@milano`, the form `rubinwork/common/scripts/check_batch_import.sl`
+  and `optatmo/pipelines/*.sbatch` already use. Measured cause: the
+  `rubin:developers@roma` association carries `GrpTRES cpu=960,mem=3840G` and the milano
+  association carries **no `GrpTRES` cap at all**, which is why the probe sat `PENDING`
+  on `AssocGrpCpuLimit`. Commit `8703074` makes `PARTITION`/`ACCOUNT` environment
+  variables in `submit_mktable_nights.sh` with the milano values as defaults, roma still
+  selectable. Aaron's earlier OKs on the probe and on the per-night set, including
+  transient resubmits, **carry over unchanged to milano**.
+- **`dof_lut`: the input switch stays** (Aaron, 2026-10-13). The implausible rigid-body
+  magnitudes are a **regularization** question, not a reorganization item, and are not in
+  3c's scope. Recorded in `aos/docs/studies/lut.md` as a hypothesis to check: the largest
+  values pair up as M2 against camera decentres in the same axis (`M2_dy` −2407 µm /
+  `Cam_dy` −1867 µm, `M2_dx` +727 µm / `Cam_dx` −286 µm of hexapod decentre), consistent
+  with a near-null M2-plus-camera lateral mode the inversion does not suppress; the check
+  is that mode's singular value and whether `n_keep` or the normalization weights admit
+  it.
+- **`value_added/docs/schema.md` gains the Tweak warning** (Aaron, 2026-10-13), beside
+  the existing `rotator_angle` note: `fam_tables` `visits.parquet` `tweak_dof*` is the
+  change since the **previous FAM visit**, not the per-exposure Tweak this database
+  stores, and a study must not join them as one column.
+
 - **Decision 5, `visits.parquet` row order: sort by (`day_obs`, `seq_num`) in
   `run_attach_telemetry` before deriving Tweak** (Aaron, 2026-10-13), done **before** any
   3c rebuild. Commit `83df1b4`. The sort is in `_visit_keys`, so every fetch and the Trim
@@ -358,21 +380,21 @@ shard plan in both modes.
 **Submit the per-night `mktable` set, as soon as the embargo probe reports 24 of 24
 datasets.** Everything else that gated it is done and committed.
 
-Probe job **40681922**, queued 2026-10-13 and still `PENDING` with reason
-`AssocGrpCpuLimit` — the `rubin:developers@roma` association caps the whole account at
-**960 CPUs**, and it was saturated by other group members, not by this work. Nothing is
-wrong with the job; it runs when capacity frees. Check and read it with:
+**The probe is GREEN, 2026-10-13.** Job **40681922** on `roma` never started — `PENDING`
+for 6.6 h on `AssocGrpCpuLimit`, the account's 960-CPU cap saturated by other group
+members — so it was cancelled (`CANCELLED`, exit 0:0) and resubmitted on `milano` as job
+**40705197**, identical but for `--partition=milano --account=rubin:developers@milano`.
+It **COMPLETED in 11 s** on `sdfmilan261`:
 
-```bash
-squeue -u roodman -j 40681922
-sacct -j 40681922 --format=JobID,State,Elapsed,ExitCode
-cat /sdf/home/r/roodman/notebooks/rubin-work/aos/logs/embargo_check_40681922.log
-```
+| check | result |
+|---|---|
+| Butler opens at `/repo/embargo` | OK |
+| `aggregateAOSVisitTableRaw` datasets, `day_obs` 20260713 | **24 of 24** (dimensionless count), matching the pre-flight |
+| first dataset URI resolves | `s3://embargo@rubin-summit-users/u/scichris/...` |
 
-It must report **24 of 24 datasets** for `day_obs` 20260713 and resolve one URI. If it
-fails on credentials rather than on a transient node error, 3c cannot read that night
-from a batch node and the `danish_1_2` rebuild needs that one chunk run interactively —
-a new ask, not covered by the set's OK.
+So a Slurm node does carry the embargo S3 credentials, and the `danish_1_2` rebuild needs
+no interactive chunk. Log:
+`/sdf/home/r/roodman/notebooks/rubin-work/aos/logs/embargo_check_40705197.log`.
 
 With the probe green, submit (Aaron's OK of 2026-10-13 covers every job it submits, and
 any resubmit of a night that fails transiently):
