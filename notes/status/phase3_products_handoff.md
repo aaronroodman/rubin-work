@@ -1,6 +1,8 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a complete, 3b next · **Last updated:** 2026-10-12 · **Kind:** working state (handoff)
+> **Status:** 3a complete; 3b items 2, 3, 4 and 6 done and pushed; **item 1 stopped on
+> its before-check, waiting on decision 4**; item 5 not started · **Last updated:**
+> 2026-10-12 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -40,6 +42,27 @@ the step. Answered items move to "Decisions taken".
      notebook in a sibling study.
    Nothing is waiting on it: `mktable --no-thermal` is what removes the EFD from the
    expensive stage, and it landed either way.
+
+4. **`rotTelPos` moves every visit, not 19 — confirm before item 1 commits** (open,
+   raised 2026-10-12, **blocking item 1**). The plan predicted that only the ~19
+   ConsDB-NULL visits of the reference chunk would move, by up to 0.188 deg of camera
+   rotator angle, because visits with ConsDB "agree to about 1e-5 deg". Measured on all
+   53 visits of chunk `20251116_20251130`: **0 of 53 agree to 1e-5 deg**, the median
+   change is **0.129 deg** and the max **0.456 deg**, and `rotTelPos` is present on all
+   53 so ConsDB is never used. The 1.57e-05 deg agreement in the phase 2 A1 table was
+   one visit of a different night and does not generalize.
+
+   The change still looks right: the identity
+   `rotTelPos = parallacticAngle − rotAngle − 90 deg` holds to **5.7e-14 deg** on 53 of
+   53, so `rotTelPos` is the angle the rotation used. Also found: the stored
+   `rotTelPos` is **not wrapped** — 32 of 53 visits read near ±360 deg — and the written
+   code wraps it to (−180, 180].
+
+   What I need: confirmation that a median 0.129 deg shift on **every** FAM visit is the
+   intended consequence, since it reaches every rotator-binned MIW product rather than a
+   handful of edge visits. If yes, I commit item 1 and measure the bin changes on the
+   `miw` rebuild. Nothing else in 3b is blocked by it — items 2, 3, 4 and 6 are done and
+   pushed.
 
 ## Decisions taken
 
@@ -239,9 +262,38 @@ shard plan in both modes.
 
 ## Next concrete action
 
-**Phase 3b**, the intended fixes. **Phase 3a is COMPLETE**: every one of the eight
-products has moved, each verified by a zero-tolerance reference comparison, and
-`hsm_moments` stays deferred as the plan says.
+**Answer decision 4 above**, which is what item 1 is stopped on: `rotTelPos` moves
+**every** FAM visit by a median 0.129 deg of camera rotator angle, not the ~19 visits by
+up to 0.188 deg the plan predicted. The code for item 1 is written and verified on both
+sides but deliberately **not committed**; see "3b item 1" below for the measurement, the
+branch and the four steps to resume.
+
+Then **item 5**, the only 3b item not started: fold `d12-refitWcs_2025` into
+`d12-refitWcs` as a date-keyed collection list in `run_wfs_mktable`, and retire
+`danish_1_0`. Groundwork done this session, nothing changed yet:
+
+- Before state recorded: `aos/param_sets.yaml` md5 **`0f72da651cf9319cc283754c614051fd`**,
+  `snakemake -n` in `aos/` plans **34 jobs** (job table at `/tmp/rotcheck/snake_before.txt`
+  — regenerate rather than trust it).
+- **All four live references to `danish_1_0` confirmed still present**:
+  `aos/calibration/miw/intrinsic_split_maps_v1.provenance.yaml:2,4` and
+  `aos/calibration/README.md:42,45`; the tech note's
+  `notes/aos-measured-intrinsics/make_figures.py:23` and `provenance.md:5-6`; the live
+  `overrides:` block at `aos/analysis_config.yaml:148`; and
+  `test_fam_tables.py:263` (`test_unregistered_variant_is_hidden_but_resolvable`).
+- **Recommended choice, not yet applied: keep `danish_1_0` as `registered: false`** and
+  retire only the CWFS half `d10-wep17_3_0`. That keeps the frozen provenance readable
+  and leaves all four references working, which is what the plan allows ("`registered:
+  false` is acceptable if removal would break it").
+- The fold is safe: nothing resolves `refitWcs_2025` as a build — it has never been
+  built — and the only code asserting the key is two tests
+  (`test_fam_tables.py:277`, `test_cwfs_tables.py:27,121`), which are part of the
+  deliberate change. The constraint to respect is that the generated `param_sets.yaml`
+  is what the **external** package reads collections through, so a folded entry must
+  still render a usable `wfs_collections` value.
+
+**Phase 3a is COMPLETE**: every one of the eight products has moved, each verified by a
+zero-tolerance reference comparison, and `hsm_moments` stays deferred as the plan says.
 
 ### The 3b items, and what each is checked against
 
@@ -400,6 +452,113 @@ Checker committed as
 `rubinwork/products/fam_tables/refbuild/check_sidecar_in_fits.py`, for re-use on the 3c
 rebuild; its scratch tree is `_phase2_refbuild/_scratch_3b/item6/`. The full `rubinwork`
 suite passes, **350 tests**.
+
+## 3b item 1 — `rotTelPos`: STOPPED on the before-check, needs Aaron
+
+**The code is written but NOT committed**, on either side. The before-check contradicts
+the expected-difference list in three ways, and section 12 says a 3b result that differs
+from what the plan predicts stops the item. Two findings are new facts about the data;
+the third is a question only Aaron can settle.
+
+### Measured on the `danish_1_2` reference chunk `20251116_20251130`, 53 visits
+
+`rotTelPos` read from each visit's `aggregateAOSVisitTableRaw` metadata, converted from
+rad to deg, against the `rotator_angle` the reference `visits.parquet` holds:
+
+| quantity | value |
+|---|---|
+| visits | 53 (dimensionless count) |
+| visits with `rotTelPos` present | **53 of 53** — never missing, so the ConsDB fallback never fires here |
+| visits needing the (−180, 180] wrap (\|raw\| > 180 deg) | **32 of 53** |
+| visits with \|difference\| ≤ 1e-5 deg of camera rotator angle | **0 of 53** |
+| visits with \|difference\| in (1e-5, 0.05] deg | 10 |
+| visits with \|difference\| > 0.05 deg | **43** |
+| median \|difference\| | **0.129 deg** of camera rotator angle |
+| max \|difference\| | **0.456 deg** (day_obs 20251126, seq_num 30) |
+| identity `rotTelPos = parallacticAngle − rotAngle − 90 deg`, wrapped | holds to **5.7e-14 deg**, 53 of 53 |
+
+### Three ways this departs from the prediction
+
+1. **`rotTelPos` is not wrapped in the metadata.** On day_obs 20251116 seq_num 455 it
+   reads **−359.824 deg** where the rotator sits at +0.18 deg; 32 of 53 visits are like
+   this. Left unwrapped it would trip `rotator_flagged` (threshold 90 deg) on nearly
+   every visit and corrupt any rotator binning. **Fixed in the written code** — wrapped
+   to (−180, 180] as `wcsutils.calc_rotator_from_visitinfo` does — and the identity above
+   confirms the wrapped value is the right quantity. This is a finding, not a blocker.
+2. **All 53 visits change, not 19.** The plan predicted that visits with ConsDB agree to
+   about 1e-5 deg, so only the 19 ConsDB-NULL visits would move. Measured: **0 of 53
+   agree to 1e-5 deg**, the median move is 0.129 deg and the max is 0.456 deg. So the
+   phase 2 A1 finding — "both builds match ConsDB to 0.000000000 deg on the 34 visits
+   that have it" — says ConsDB and the *old column* agree, which is true; it does not
+   say ConsDB agrees with `rotTelPos`. On this chunk they differ by 0.1 to 0.5 deg.
+   The 1.57e-05 deg agreement in A1's table was measured on **one** visit of a different
+   night (day_obs 20260420, seq_num 89) and does not generalize to this chunk.
+3. **So the "19 ConsDB-NULL visits" framing does not apply to this chunk at all.**
+   `rotTelPos` is present on all 53, so the new code uses it on all 53 and ConsDB is
+   never consulted. The old column used ConsDB on 34 and the EFD window-mean on 19; the
+   new one uses `rotTelPos` everywhere. Every visit's `rotator_angle` moves.
+
+The change is still **the right one** by Aaron's 2026-10-11 reasoning — the column must
+hold the angle the CCS → OCS rotation actually used, and the identity check confirms
+`rotTelPos` is that angle to 5.7e-14 deg. What changed is the **size and reach** of the
+effect: not 19 visits by up to 0.188 deg, but every visit by a median 0.129 deg.
+
+### What is waiting on Aaron
+
+**Decision 4 below.** The downstream question the plan framed as "only visits near a
+rotator-bin edge can change MIW bin" now has a much larger input: with every visit
+moving by a median 0.129 deg, how many change bin depends on the bin edges and is no
+longer a handful by inspection. I have not run the MIW rebuild, because committing the
+FAM-side change first is what the item order requires and that is the step now stopped.
+
+### Where the code sits
+
+Nothing committed. In `ts_intrinsic_wavefront`, local branch
+**`tickets/rubinwork-rottelpos`** (not pushed, no PR):
+
+- `visit_meta['skyAngle']` (which held `meta['rotAngle']`, the boresight sky angle) →
+  `rotTelPos` from `meta['rotTelPos']`, rad, in both table builders.
+- `get_rotator_data` is **ConsDB-only**; `get_efd_rotator_angles` and
+  `get_visitinfo_rotator_angles` stay as documented standalone cross-checks, out of the
+  chain. Exactly **one** `makeEfdClient()` remains in `intrinsics_lib.py`, inside
+  `if include_thermal:` — which is what item 2's `--no-thermal` turns off, so the mktable
+  path then creates no EFD client at all.
+- new `resolve_rotator_angle(table, rotator_df)`: `rotTelPos` wrapped to (−180, 180]
+  first, ConsDB `physical_rotator_angle` as the fallback, NaN plus a per-visit report
+  when both are missing, and a `rotator_angle_source` column
+  (`rotTelPos` / `consdb` / `missing`). Unit-tested, 3 of 3 source cases.
+- `scons` re-run: `version.py` and `bin/` regenerate; flake8 findings in
+  `intrinsics_lib.py` went **49 → 47** (the change removed two, added none). The one
+  failing linter test is pre-existing across the package.
+
+In this repo, uncommitted: the blitz half — `blitz_reader` record `skyAngle` →
+`rotTelPos` (rad from `rot_tel_pos`), `run_blitz_mktable.resolve_rotator_angle` with the
+same precedence, wrap and source column, and `VISITS_COLUMNS` updated. Unit-tested, 3 of
+3 cases; the full `rubinwork` suite passes, 350 tests. Docs updated and **also
+uncommitted**: `aos/CLAUDE.md`, `aos/docs/frame_conventions.md`, `aos/docs/telemetry.md`
+(whose pointing row also had `alt`/`az`/`ra`/`dec` mislabelled deg when they are rad —
+verified against the reference, max 6.28).
+
+### To resume
+
+1. Aaron answers decision 4.
+2. Commit the package branch, then the repo half, then rerun `mktable` for the chunk and
+   confirm the only columns that move are `rotator_angle`, `rotator_flagged`, the renamed
+   `rotTelPos` and the new `rotator_angle_source` — every other column identical at zero
+   tolerance.
+3. Then the blitz night `danish_1_3_v1000` `day_obs=20260428`, where `rotator_angle`
+   should move to `rot_tel_pos`, about 0.30 deg.
+4. Then the `miw` 3a reference on the new FAM slice, reporting which visits change
+   rotator bin.
+
+Before-check script committed as
+`rubinwork/products/fam_tables/refbuild/read_rottelpos_meta.py` — **and note how to read
+this metadata cheaply**, which cost most of the session's wall clock to learn:
+`aggregateAOSVisitTableRaw` is a **1.1 GB ECSV text file**, so `butler.get` costs
+**393 s per visit** (measured). The scalar metadata is a `meta: !!omap` block in the first
+~60 `#` lines, as one-key maps; `yaml.safe_load` refuses it (`!!omap` and
+`!numpy.ndarray` tags), so match the scalars with a regex and stop once found. That reads
+all 53 visits in **5 s** instead of 5.8 h.
 
 ## 3b items 3 and 4 — the dead long-`param_set` path in `fam_dz`: DONE
 
