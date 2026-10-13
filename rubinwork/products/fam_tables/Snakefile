@@ -206,10 +206,15 @@ COMBINE_PARQUETS = f'{WF_BIN}/combine_parquets.py'
 COMBINE_CMD = ('mkdir -p $(dirname {log}) && '
                f'python {COMBINE_PARQUETS} ' + '{input.chunks} --output {output} '
                '> {log} 2>&1')
+# Wrapped, not called directly: the external fitter raises IndexError on a chunk
+# where no visit passes the quality cut, which a per-night split makes reachable
+# (8 of 106 danish_1_2 nights).  Those nights contribute 0 fit rows to the old
+# tree too, so the wrapper writes a 0-row sentinel for them.
 FIT_CMD = ('mkdir -p $(dirname {log}) && '
-           f'python {WF_BIN}/run_dz_fit.py ' + '{input.donuts} '
+           'python -m rubinwork.products.fam_tables.builders.run_fit_chunk '
+           '{input.donuts} '
            f'--coord-sys {COORD} ' + '--visits {input.visits} --output {output} '
-           '> {log} 2>&1')
+           f'--fitter {WF_BIN}/run_dz_fit.py ' + '> {log} 2>&1')
 ATTACH_CMD = (
     'mkdir -p $(dirname {log}) && '
     'python -m rubinwork.products.fam_tables.builders.run_attach_telemetry '
