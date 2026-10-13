@@ -103,6 +103,45 @@ the step. Answered items move to "Decisions taken".
 
 ## Decisions taken
 
+Answered 2026-10-13 on the two 3c defects:
+
+- **Defect A is NOT a data loss** (Aaron, 2026-10-13). The `< 5 visit_pairs` cut in
+  `run_mktable.py` is per `day_obs`, so it applied inside the old chunk-level builds too:
+  the phase 2 reference chunk `20251116_20251130` had 74 Butler visits over 15 nights but
+  built **53 visits over 6 nights** (20251116, 17, 26, 27, 28, 29), and that chunk's 11
+  "lost" nights are exactly its missing nights. A per-night job with no surviving pairs
+  exits non-zero instead of silently producing nothing. The 31 `FAILED` jobs with
+  `No visit pairs remaining after filtering` are **expected empty nights**, not a
+  difference to explain in the comparison. **Verified against the old tree — see
+  "Defect A verified" below.** None of the three options in the defect A writeup is taken;
+  the filter is left alone and the external package is untouched.
+- **Defect B: resubmit at 64G** (Aaron, 2026-10-13), 8 workers unchanged. This is a **new
+  OK**, since the failure was not transient. A night that OOMs again at 64G is resubmitted
+  once at **128G**; anything still failing after that is recorded and stops the step.
+  `MEM` is a variable in `submit_mktable_nights.sh` and an explicit night list can be
+  passed (`--nights`, `--nights-file`), committed as `09eb0b8` before the resubmission.
+
+### Defect A verified against the old tree, 2026-10-13
+
+The check Aaron asked for: for each of the 31 `FAILED` nights, the old-tree
+`danish_1_2` `visits.parquet` (`aos/output/fam_processing/danish_1_2/visits.parquet`,
+**3,385 visits over 106 distinct nights**) must hold **0 visits**.
+
+**All 31 nights hold 0 visits in the old tree.** Nothing to report back, so nothing stops.
+Rather than 31 rows of zeros, the three set identities that make the point, each exact:
+
+| check | result |
+|---|---|
+| of the 31 `FAILED` nights, how many appear in the old-tree `visits.parquet` | **0 of 31** (dimensionless count) |
+| old-tree nights not in the `COMPLETED` ∪ `OUT_OF_MEMORY` set | **0 of 106** — every night the old build has, the per-night set also produced or will produce |
+| `COMPLETED` or `OUT_OF_MEMORY` nights absent from the old tree | **0 of 106** — the per-night set adds no night the old build lacks |
+| reference chunk `20251116_20251130` | **53 visits over 6 nights** (20251116, 17, 26, 27, 28, 29), exactly as Aaron stated |
+
+So the per-night split costs **0 FAM pairs (dimensionless count)**, not the 63 the earlier
+writeup feared: those 63 pairs were never in the old build either. The 19 `COMPLETED` plus
+87 `OUT_OF_MEMORY` nights partition the old build's 106 nights exactly, which is the
+strongest form of the check — it rules out both loss and gain, not just loss.
+
 Answered 2026-10-13, all five acted on in this session:
 
 - **Batch partition: `milano`, not `roma`** (Aaron, 2026-10-13), for throughput. Account
