@@ -375,10 +375,119 @@ the reference build ran. The merge path and both individual shards match too. `a
 `snakemake -n` is unchanged at 34 jobs, and `run_build.sh --dry-run` gives an identical
 shard plan in both modes.
 
+## STOPPED 2026-10-13: the per-night set was submitted and 118 of 137 jobs failed
+
+**Two defects, both caused by splitting the rebuild by night. Neither is transient, so
+neither is covered by Aaron's resubmit OK, and both need his decision before anything is
+resubmitted.** Nothing downstream ran: no `fit`, no `combine_*`, no `attach_telemetry`,
+no manifest, no `set-current`. The old tree and the live database are untouched.
+
+Submitted as instructed: 137 jobs, IDs **40705595–40705733**, `FAM_BUILD=20261013`,
+partition `milano`, account `rubin:developers@milano`. Every job started **RUNNING
+immediately** — the milano switch worked exactly as intended, no queueing at all against
+roma's 6.6 h hold on a 1-CPU probe. Submit record:
+`aos/logs/mktable_submit_20261013.txt`; per-job Slurm logs
+`aos/logs/mktable_<night>_<jobid>.log`; mktable's own logs
+`<build>/_work/logs/<night>_<night>.mktable.log`.
+
+| outcome | jobs | cause |
+|---|---|---|
+| `COMPLETED` | **19** | wrote `donuts.parquet` and `visits.parquet`; 19 of 23 chunk directories have tables |
+| `FAILED` | **31** | mktable's own `< 5 visit_pairs` per-night filter — see defect A |
+| `OUT_OF_MEMORY` | **87** | 8 donut workers exceed the 32 GB request — see defect B |
+
+Tally the job IDs from `aos/logs/mktable_submit_20261013.txt`, not from a
+`seq` range: the range 40705595–40705733 contains other users' jobs (two
+`4FGL_J*_daily_bin2*` entries appeared in a first pass and are not ours). Filter on
+`JobName` matching `mkt_*`.
+
+### Defect A — the `< 5 visit_pairs` filter discards sparse nights when run per night
+
+31 nights die on `ERROR: No visit pairs remaining after filtering!`, from
+`Removed 1 day_obs with < 5 visit_pairs`. Each of these nights has **1 to 4 FAM pairs**
+(10 nights with 1, 6 with 2, 7 with 3, 5 with 4, 3 with the count not parsed), totalling
+**63 FAM pairs (dimensionless count)** that the per-night run throws away.
+
+**This is an artifact of the per-night split, not of the data.** The filter is a
+per-`day_obs` cut inside the external package's `run_mktable.py`. In a ten-night chunk a
+sparse night's pairs are read alongside its neighbours' and the chunk still produces a
+table; driven one night per job, the same cut is applied to each night alone and the job
+exits non-zero with no output. So the phase 2 `danish_1_2` build contains these nights'
+visits and a per-night rebuild would **silently lose 63 FAM pairs** — exactly the kind of
+unexplained row-count difference the comparison plan says must stop the step.
+
+The nights: 20250425 20250427 20250507 20251022 20251030 20251031 20251115 20251118
+20251119 20251120 20251121 20251122 20251123 20251124 20251125 20251130 20251201 20251202
+20251203 20251204 20251206 20251208 20251209 20251210 20251217 20251220 20251229 20251231
+20260319 20260521 20260522.
+
+Note that chunk `20251116_20251130` — the phase 2 reference chunk, and the one every
+3b column-level check was measured on — loses **11 of its nights** this way.
+
+**Options for Aaron, none taken:**
+
+1. **Group the sparse nights back into their parent chunk** and submit those as
+   chunk-level jobs, keeping one-job-per-night only for nights with >= 5 pairs. Keeps the
+   external package untouched; the wall clock of a sparse-night chunk is small because it
+   has few pairs. **Recommended.**
+2. **Expose the threshold** as a `run_mktable.py` option and pass a lower value for
+   per-night runs. Touches `ts_intrinsic_wavefront`, so it needs its own OK beyond the
+   pre-approved 3b items, and it changes what the filter means for every caller.
+3. Accept the loss. **Not recommended** — it changes the product's row count for a
+   reason unrelated to any 3b fix, and would have to be added to the comparison plan's
+   expected list.
+
+### Defect B — 8 donut workers exceed the 32 GB request
+
+87 jobs are killed by the cgroup. The failure surfaces in mktable's log as
+`concurrent.futures.process.BrokenProcessPool: A process in the process pool was
+terminated abruptly`, and in Slurm as `OUT_OF_MEMORY`, exit `0:125`.
+
+| quantity | value |
+|---|---|
+| `MaxRSS` over the 87 OOM jobs | min **6.1**, median **17.3**, max **33.9** GB |
+| `MaxRSS` over the 19 COMPLETED jobs | max **10.3** GB |
+| requested per job | **32 GB** (`MEM=32G`) |
+| Snakefile budget | `mem_mb=3000 * 8 workers` = **24 GB** |
+
+So the 3 GB/worker estimate at `Snakefile:267` is too low, and 32 GB is not enough
+headroom either. **The scale is the puzzle, and it is why this is recorded rather than
+retried with a bigger `--mem`:** night 20250415 OOMs at **33.9 GB peak on only 6 FAM
+pairs**, while 20260315 completes on **74 FAM pairs under 10.3 GB**. Memory is not
+tracking the number of pairs, so simply raising `MEM` may only move the ceiling. What has
+not been checked: whether the OOM nights are the **bin-x1** collections (the Snakefile's
+3 GB figure is explicitly the "bin-x2 estimate") or whether something per-night in the
+Butler query holds the full night's data in one worker.
+
+**Next step on B: measure before resubmitting.** Run one OOM night interactively on an
+sdfiana node with `--workers 1` and watch RSS, to separate per-worker footprint from
+worker count. That is interactive work inside the approved scope, not a batch job.
+
+### Where this leaves 3c
+
+Steps 1 to 3 of the session's instructions are **done and committed**; step 4 is where it
+stopped. The probe result stands and does not need redoing. Resuming needs Aaron's answer
+on defect A and the measurement on defect B; the 19 completed nights' tables are on disk
+and valid, so a corrected resubmission only needs the other 118 nights.
+
 ## Next concrete action
 
-**Submit the per-night `mktable` set, as soon as the embargo probe reports 24 of 24
-datasets.** Everything else that gated it is done and committed.
+**Answer defect A, then measure defect B** — both in "STOPPED 2026-10-13" above. The
+per-night set has already run; do not resubmit it unchanged.
+
+1. **Aaron chooses on defect A** (the `< 5 visit_pairs` filter dropping 31 sparse
+   nights). Recommendation: option 1, group the sparse nights back into their parent
+   chunk and submit those chunk-level, keeping per-night jobs for nights with >= 5 pairs.
+2. **Measure defect B** before any resubmission: one OOM night interactively on an
+   sdfiana node at `--workers 1`, watching RSS, to separate per-worker footprint from
+   worker count, and check whether the OOM nights are the bin-x1 collections. Interactive,
+   no batch ask.
+3. Then resubmit only the **118** nights without tables, with the corrected grouping and
+   memory request, and continue from step 5 of the 2026-10-13 instructions
+   (`finish_mktable_rebuild.sh` for `danish_1_2`, then the two blitz variants, then the
+   three-way comparison). **No `set-current` without Aaron's OK.**
+
+The embargo probe does **not** need redoing. Its result, for the record:
 
 **The probe is GREEN, 2026-10-13.** Job **40681922** on `roma` never started — `PENDING`
 for 6.6 h on `AssocGrpCpuLimit`, the account's 960-CPU cap saturated by other group
@@ -396,15 +505,17 @@ So a Slurm node does carry the embargo S3 credentials, and the `danish_1_2` rebu
 no interactive chunk. Log:
 `/sdf/home/r/roodman/notebooks/rubin-work/aos/logs/embargo_check_40705197.log`.
 
-With the probe green, submit (Aaron's OK of 2026-10-13 covers every job it submits, and
-any resubmit of a night that fails transiently):
+The submit command, for when the two defects are settled (Aaron's OK of 2026-10-13 covers
+every job it submits, and any resubmit of a night that fails transiently; it does **not**
+cover a resubmission of the 118 failed nights, because neither failure was transient):
 
 ```bash
 cd /sdf/home/r/roodman/notebooks/rubin-work/rubinwork/products/fam_tables && \
-FAM_BUILD=$(date -u +%Y%m%d) ./submit_mktable_nights.sh
+FAM_BUILD=20261013 ./submit_mktable_nights.sh
 ```
 
-Set `FAM_BUILD` explicitly: the conda environment exports `BUILD=x86_64-conda-linux-gnu`
+Keep `FAM_BUILD=20261013` to reuse the 19 nights already on disk, or set a new date for a
+clean build. Set it explicitly either way: the conda environment exports `BUILD=x86_64-conda-linux-gnu`
 (see the two traps under "3c groundwork"). Then monitor:
 
 ```bash

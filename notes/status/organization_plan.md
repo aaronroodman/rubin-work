@@ -728,8 +728,31 @@ per-night chunk split preferring the narrowest matching chunk (`2f5da5c`, which 
 fixed in the Snakefile as well as the submit script), and `dof_lut`'s input switched to
 the post-MIW `refit_mi` DZ (`733c01d`, a variant-definition change; not rebuilt). The
 `ts_intrinsic_wavefront` branch is pushed as `a6394e7`, the hash every 3c manifest
-records. The dry run is now **137 `sbatch` lines over 137 distinct nights**. The embargo
-probe is submitted (job 40681922) and the per-night set waits on it. Two findings worth
+records. The dry run is now **137 `sbatch` lines over 137 distinct nights**.
+
+**3c BLOCKED 2026-10-13, after the per-night set ran.** The batch partition moved to
+`milano` (`8703074`) because `rubin:developers@roma` caps the account at 960 CPUs and had
+held the probe `PENDING` for 6.6 h; the milano association has no `GrpTRES` cap, the
+probe then **passed from a milano node in 11 s** (24 of 24 embargo datasets for `day_obs`
+20260713, URI resolving), and all 137 jobs started running with no queueing. **118 of
+137 failed**, for two defects that are both artifacts of splitting by night and so are
+**not** transient resubmits:
+
+- **31 nights** have 1 to 4 FAM pairs and die on mktable's own per-`day_obs`
+  `< 5 visit_pairs` filter, which a ten-night chunk never triggered — **63 FAM pairs
+  (dimensionless count)** would be silently lost, including 11 nights of the phase 2
+  reference chunk `20251116_20251130`.
+- **87 nights** are killed `OUT_OF_MEMORY` at up to **33.9 GB** `MaxRSS` against a 32 GB
+  request, and memory does not track pair count — 6 pairs OOM at 33.9 GB while 74 pairs
+  complete under 10.3 GB — so the `3000 MB/worker` Snakefile budget is wrong for a reason
+  not yet identified.
+
+19 nights completed and their tables are valid. Nothing downstream ran: no `fit`, no
+`combine_*`, no `attach_telemetry`, no manifest, no `set-current`. Both defects, the
+options for the first and the next measurement for the second are in the phase 3 handoff
+under "STOPPED 2026-10-13"; the first needs Aaron's choice.
+
+Two findings worth
 carrying: `image_idx` is **not** fixed by the row-order sort (it is written by the
 external fit, upstream of `attach_telemetry`), and the `dof_lut` switch does **not** make
 the recovered DOF physically plausible, because the plain FAM fit already subtracted the
