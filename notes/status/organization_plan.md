@@ -612,7 +612,7 @@ columns) at zero tolerance, both text sidecars and `exposures.txt` byte-identica
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
 the reference builds. **Status 2026-10-12: 3b is COMPLETE — all six items done and
 committed.** Item 1 is `a6394e7` on the `ts_intrinsic_wavefront` branch
-`tickets/rubinwork-rottelpos` (**not pushed**, Aaron's to push) plus `5bdd5f8`, `6dc9480`
+`tickets/rubinwork-rottelpos` (**pushed 2026-10-13**, no PR) plus `5bdd5f8`, `6dc9480`
 and `77eb9d6` here; item 5 is `662f91a`. Each item, its measured numbers and the two
 findings 3b turned up are in `notes/status/phase3_products_handoff.md`.
 
@@ -721,6 +721,20 @@ five of the ten chunks carry one.
 Measured costs: 258 s fixed per `mktable` run, 39.1 s/visit donut reading, 3.0 s/visit
 `attach_telemetry`; 3,523 Butler visits. Reusing the old chunk donuts was the rejected
 alternative. Confirm `/repo/embargo` is readable from batch nodes before submitting.
+
+**3c STARTED 2026-10-13.** Three fixes are committed before any rebuild: the
+`visits.parquet` row-order sort so the stored Tweak is time-ordered (`83df1b4`), the
+per-night chunk split preferring the narrowest matching chunk (`2f5da5c`, which had to be
+fixed in the Snakefile as well as the submit script), and `dof_lut`'s input switched to
+the post-MIW `refit_mi` DZ (`733c01d`, a variant-definition change; not rebuilt). The
+`ts_intrinsic_wavefront` branch is pushed as `a6394e7`, the hash every 3c manifest
+records. The dry run is now **137 `sbatch` lines over 137 distinct nights**. The embargo
+probe is submitted (job 40681922) and the per-night set waits on it. Two findings worth
+carrying: `image_idx` is **not** fixed by the row-order sort (it is written by the
+external fit, upstream of `attach_telemetry`), and the `dof_lut` switch does **not** make
+the recovered DOF physically plausible, because the plain FAM fit already subtracted the
+batoid design intrinsic — both measured, in the phase 3 handoff. The full 3c comparison
+plan, product by product with its expected differences, is in that handoff.
 
 **3c prepared 2026-10-12** (`6dc9480`), nothing submitted. The dry run reconfirms **138
 `sbatch` lines**, with a longest-night wall clock of at most 3.23 h and **0 nights over

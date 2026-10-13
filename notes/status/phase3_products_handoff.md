@@ -1,8 +1,9 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a complete; **3b COMPLETE — all six items done and committed**; 3c
-> prepared and not started, waiting on Aaron's OK for the two submit commands ·
-> **Last updated:** 2026-10-12 · **Kind:** working state (handoff)
+> **Status:** 3a and 3b complete; **3c STARTED** — the row-order fix, the chunk-specificity
+> fix and the `dof_lut` input change are committed, the `ts_intrinsic_wavefront` branch is
+> pushed, and the embargo probe is queued. The per-night `mktable` set is **not submitted**:
+> it waits on that probe. · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -102,6 +103,35 @@ the step. Answered items move to "Decisions taken".
 
 ## Decisions taken
 
+Answered 2026-10-13, all five acted on in this session:
+
+- **Decision 5, `visits.parquet` row order: sort by (`day_obs`, `seq_num`) in
+  `run_attach_telemetry` before deriving Tweak** (Aaron, 2026-10-13), done **before** any
+  3c rebuild. Commit `83df1b4`. The sort is in `_visit_keys`, so every fetch and the Trim
+  differencing run in time order; the sidecar joins back on (`day_obs`, `seq_num`), so no
+  stored table's row order changes. Measured against the phase 2 `fam_tables` reference
+  (chunk `20251116_20251130`, 53 visits): **550 of 550 other columns identical at zero
+  tolerance**, all **50 of 50 `tweak_dof*` changed**, and the new stored Tweak equals the
+  time-ordered Trim difference on **0 of 2,650 cells disagreeing**, against **584 of
+  2,650 cells by up to 410.6 (OFC DOF units)** for the reference.
+  **`image_idx` is NOT fixed by this** — see "What the row-order fix does not cover".
+  **The Tweak does not equal the value-added database's Tweak, and cannot** — see the
+  same section.
+- **Decision 2, `dof_lut`'s input: the post-MIW (`refit_mi`) DZ** (Aaron, 2026-10-13).
+  Commit `733c01d`. `dof_lut`'s upstream is now `miw` for the fits and `fam_tables` for
+  the visits, both under the manifest's `inputs`; the builder takes `--fits-dir`. **Not
+  rebuilt.** The old plain-FAM LUT stays only in the old tree.
+  **The switch does not deliver the physically plausible DOF it was meant to** — see
+  "`dof_lut`: the switch landed, the motivation did not".
+- **The embargo readability probe: submitted** as shown, job **40681922**.
+- **The per-night `mktable` set: OK'd**, covering every job `submit_mktable_nights.sh`
+  submits and any resubmit of a night that fails for a transient (node or filesystem)
+  reason. Not yet submitted — gated on the probe.
+- **`ts_intrinsic_wavefront` branch `tickets/rubinwork-rottelpos`: PUSHED** to
+  `origin` (`git@github.com:lsst-ts/ts_intrinsic_wavefront.git`) as a branch of the same
+  name, no pull request. **Pushed commit `a6394e709e624483e865c2b1358768b8e8dbecd0`
+  (`a6394e7`)** — this is the hash every 3c manifest records.
+
 - **`rotator_angle` = `rotTelPos` on every visit: CONFIRMED** (Aaron, 2026-10-12),
   unblocking item 1. His reasoning, which settles the size question: `rotator_angle` is
   used **only to select FAM visits within a degree or two of the nominal rotator angles**
@@ -190,6 +220,10 @@ comparison, manifest.
 | `e11e731` | `guider_moments` 3a step 1 plan: scope, readers, layout and the reference-build commands |
 | `b4ca14d` | `guider_moments` 3a step 1: the reference build with the unmoved code |
 | `8b488c9` | `guider_moments` 3a step 2-4: the move, the two libraries, the shims, verification and the zero-tolerance comparison |
+| `83df1b4` | **3c step 1**: `visits.parquet` sorted by (`day_obs`, `seq_num`) before Tweak is derived, with a shuffled-input test |
+| `2f5da5c` | **3c step 2**: the per-night chunk split prefers the narrowest matching chunk, in both the submit script and the Snakefile |
+| `733c01d` | **3c step 6**: `dof_lut` reads the post-MIW `refit_mi` fits; two manifest inputs, tests and `lut.md` updated. Not rebuilt |
+| `a6394e7` | **pushed to `lsst-ts/ts_intrinsic_wavefront`** as branch `tickets/rubinwork-rottelpos` (3b item 1). External repo, no pull request |
 
 **Phase 3a, `cwfs_tables`, is DONE.** The moved code reproduces the reference exactly.
 
@@ -321,36 +355,157 @@ shard plan in both modes.
 
 ## Next concrete action
 
-**Start 3c, once Aaron OKs the two submit commands.** 3b is complete; nothing in this
-repo is uncommitted. The two commands waiting on him, both shown but neither run:
+**Submit the per-night `mktable` set, as soon as the embargo probe reports 24 of 24
+datasets.** Everything else that gated it is done and committed.
 
-1. The **embargo readability probe**, one tiny read-only job, which 3c depends on because
-   one `danish_1_2` chunk (`day_obs` 20260713) exists only in `/repo/embargo`:
-   ```bash
-   sbatch --job-name=embargo_check --partition=roma \
-     --account='rubin:developers@roma' --qos=normal \
-     --cpus-per-task=1 --mem=4G --time=00:20:00 \
-     --output=/sdf/home/r/roodman/notebooks/rubin-work/aos/logs/embargo_check_%j.log \
-     --wrap 'cd /sdf/home/r/roodman/notebooks/rubin-work && python -m rubinwork.products.fam_tables.refbuild.check_embargo_from_batch'
-   ```
-   It opens the Butler, counts datasets and resolves one URI; it writes nothing. The
-   interactive run passes on `sdfiana029`: **24 of 24 datasets**, matching the 3c
-   pre-flight, with the URI resolving to `s3://embargo@rubin-summit-users/...`. The open
-   question is only whether a batch node carries the same embargo S3 credentials.
-2. The **per-night `mktable` set**, `submit_mktable_nights.sh` — see "3c groundwork"
-   below for the dry-run numbers and the one defect found in it this session (night
-   20260713 is planned twice; fix before submitting).
+Probe job **40681922**, queued 2026-10-13 and still `PENDING` with reason
+`AssocGrpCpuLimit` — the `rubin:developers@roma` association caps the whole account at
+**960 CPUs**, and it was saturated by other group members, not by this work. Nothing is
+wrong with the job; it runs when capacity frees. Check and read it with:
 
-Then, after the batch jobs land, `finish_mktable_rebuild.sh` runs the interactive tail
-(`fit`, the three `combine_*`, `attach_telemetry`, `manifest`) and stops **before**
-`set-current`, which waits on the old-tree comparison.
+```bash
+squeue -u roodman -j 40681922
+sacct -j 40681922 --format=JobID,State,Elapsed,ExitCode
+cat /sdf/home/r/roodman/notebooks/rubin-work/aos/logs/embargo_check_40681922.log
+```
 
-**Also worth settling before 3c rebuilds anything:** decision 5 above, the
-`visits.parquet` row-order defect that makes the stored `tweak_dof*` wrong. The fix is
-one sort in `run_attach_telemetry`, and doing it after 3c would mean rebuilding.
+It must report **24 of 24 datasets** for `day_obs` 20260713 and resolve one URI. If it
+fails on credentials rather than on a transient node error, 3c cannot read that night
+from a batch node and the `danish_1_2` rebuild needs that one chunk run interactively —
+a new ask, not covered by the set's OK.
 
-**Phase 3a is COMPLETE**: every one of the eight products has moved, each verified by a
-zero-tolerance reference comparison, and `hsm_moments` stays deferred as the plan says.
+With the probe green, submit (Aaron's OK of 2026-10-13 covers every job it submits, and
+any resubmit of a night that fails transiently):
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work/rubinwork/products/fam_tables && \
+FAM_BUILD=$(date -u +%Y%m%d) ./submit_mktable_nights.sh
+```
+
+Set `FAM_BUILD` explicitly: the conda environment exports `BUILD=x86_64-conda-linux-gnu`
+(see the two traps under "3c groundwork"). Then monitor:
+
+```bash
+squeue -u roodman
+tail -f "$(ls -t /sdf/home/r/roodman/notebooks/rubin-work/aos/logs/mktable_*.log | head -1)"
+```
+
+After the jobs land, `finish_mktable_rebuild.sh` runs the interactive tail and stops
+before `set-current`. **Do not run it, or anything downstream of it, until Aaron says
+so** (his instruction, 2026-10-13).
+
+### What the row-order fix does not cover
+
+Two things the decision-5 wording expected that the code cannot deliver, both measured
+2026-10-13. Neither blocks 3c.
+
+- **`image_idx` is still non-deterministic.** It is written by the **external** package's
+  fit (`dz_fitting.py`, `for img_idx, v in enumerate(visit_info)`), from the per-chunk
+  `visits.parquet` that `mktable` wrote — and the `fit` rule consumes that table **before**
+  `attach_telemetry` runs. A sort inside `run_attach_telemetry` therefore cannot reach it.
+  On the phase 2 reference `fits.parquet` the 47 `image_idx` values are a permutation of
+  0..46, not monotonic in (`day_obs`, `seq_num`). Fixing it needs either a sort in
+  `mktable` (external package) or a new repo-side step between `mktable` and `fit`;
+  neither was authorized. `image_idx` is a positional bookkeeping index, not a science
+  column, so this is recorded rather than fixed.
+- **The FAM tables' Tweak will never equal the value-added database's Tweak**, so the
+  "confirm it now matches" check cannot pass — and should not. They are **different
+  quantities**: the database differences Trim over **every exposure of the night** (535
+  rows for `day_obs` 20251116), while `visits.parquet` differences over only the **FAM-paired
+  visits** (5 that night). Measured: 72 of 50 comparisons differ for **both** the new and
+  the old build (50 value columns plus 22 NaN-pattern columns), and on this chunk **no
+  FAM visit has another FAM visit as its immediate database predecessor**, so there is not
+  even a subset where the two definitions coincide. The database's is the true
+  per-iteration correction; the FAM table's is the change since the previous FAM visit.
+  The fix makes the latter well-defined and time-ordered, which is all it can do.
+  **A study must not join the two as if they were the same column** — worth a line in
+  `value_added/docs/schema.md` beside the existing `rotator_angle` note.
+
+### `dof_lut`: the switch landed, the motivation did not
+
+Decision 2's reason was the production LUT's `M2_dy = -2364 µm` of M2 hexapod decentre,
+read as evidence that the plain-FAM LUT recovered absolute DOF including the as-built
+intrinsic. **That reading was wrong**, measured 2026-10-13 on the `miw` 3a reference
+(nights 20260315/16/17, 169 visits, variant `d12-A_50_34_i_5rot`, `n_dof=50`,
+`n_keep=34`, median over visits):
+
+| DOF | unit | plain FAM | post-MIW |
+|---|---|---|---|
+| `M2_dz` | µm of M2 hexapod piston | 545.28 | 551.32 |
+| `M2_dx` | µm of M2 hexapod decentre | 727.23 | 719.56 |
+| `M2_dy` | µm of M2 hexapod decentre | **−2407.11** | **−2407.34** |
+| `M2_rx` | arcsec of M2 hexapod tilt | −0.02 | −0.02 |
+| `M2_ry` | arcsec of M2 hexapod tilt | −0.01 | −0.01 |
+| `Cam_dz` | µm of camera hexapod piston | −508.84 | −522.93 |
+| `Cam_dx` | µm of camera hexapod decentre | −285.97 | −270.17 |
+| `Cam_dy` | µm of camera hexapod decentre | −1867.15 | −1878.14 |
+| `Cam_rx` | arcsec of camera hexapod tilt | −0.00 | −0.00 |
+| `Cam_ry` | arcsec of camera hexapod tilt | 0.00 | 0.00 |
+
+**Why it barely moves: the plain FAM fit already subtracts an intrinsic** — the tabulated
+batoid design `zk_intrinsic` — and `refit_mi` only **substitutes the measured one for
+it** (`dz_fitting.py`, `fit_focal_zernikes_streaming`, the `intrinsic_lookup` branch:
+with a sidecar it replaces `zk_intrinsic` rather than adding a subtraction). The two
+intrinsics differ by at most **0.022 µm of wavefront** on this slice, so the recovered
+DOF differ by at most about 16 µm of hexapod motion.
+
+What the switch does buy is **fit quality**: the averaged DZ residual over the 126
+(k, j) pairs falls from **0.01028 to 0.00172 µm of wavefront RMS**, a factor of 6, and
+one more visit survives (169 against 168).
+
+**The implausible magnitudes are an ill-conditioned inversion, and stay open.** The LUT
+inverts a DZ signal of only **0.037 µm of wavefront RMS** into thousands of µm of hexapod
+motion, and the robust scatter is as large as the value: `|median|/scatter_mad` is
+**2.40** for `M2_dy` and between **0.37 and 2.06** for the other nine rigid-body DOF
+(dimensionless, both in the row's `dof_unit`). Recorded in `aos/docs/studies/lut.md`.
+**For Aaron:** the input change is committed as instructed, but if the goal was physically
+meaningful hexapod numbers, the next thing to look at is the regularization (`n_keep`, or
+the normalization weights), not the input table.
+
+## The 3c comparison plan
+
+Written 2026-10-13 as instructed, before any product is rebuilt. Dependency order; each
+product is compared with its old-tree build using that product's `compare_builds.py`, and
+**every difference must be on this list before the comparison runs** (plan section 12: an
+unexplained difference stops the step).
+
+**Differences expected across every FAM-derived product**, from 3b:
+
+1. **`rotator_angle` on every FAM visit**, not just the ConsDB-NULL ones: median
+   **0.129 deg** and max **0.456 deg** of camera rotator angle (0 of 53 agree to 1e-5 deg
+   on the reference chunk), about **0.30 deg** on the blitz path. Plus the new
+   `rotator_angle_source` column, and `skyAngle` renamed to `rotTelPos` (now in rad).
+2. **The CCS-map rotation**, downstream of 1: no visit changes MIW rotator bin (0 of 169
+   and 0 of 53, minimum margin to a bin edge 2.631 deg), but the per-bin split angle
+   theta moves by a median **0.3387 deg**, rotating the camera-fixed maps — CCS RMS change
+   **7.8e-5 to 9.2e-4 µm of wavefront** (1.9 to 6.1% of each term's own RMS), OCS at most
+   **7e-6 µm** (0.02%). O is theta-independent; C lives in the rotating frame.
+3. **The restored 362 `cam_*` columns** in `fits.parquet` (3b item 6): present in the
+   rebuild, absent from any old-tree `fits.parquet` that was re-combined.
+4. **The dropped thermal columns**: `mktable --no-thermal` omits the thermal columns
+   `mktable` itself used to write. The eight `attach_telemetry` groups all **stay**
+   (decision 3, 2026-10-12), so `visits.parquet` keeps its ~405 telemetry columns.
+5. **All 50 `tweak_dof*` columns**, from the row-order fix committed today — and
+   `image_idx` still permuted, which is not fixed (above).
+
+| # | product / variant | compared against | expected differences | what blocks it |
+|---|---|---|---|---|
+| 1 | `fam_tables` **`danish_1_2`** | `aos/output/fam_processing/danish_1_2/`, and the phase 2 reference chunk `20251116_20251130` for the column-level check | 1, 3, 4, 5. Row **order** differs too (chunks are now per night, so `combine_*` concatenates 137 inputs rather than 10) — compare keyed on (`day_obs`, `seq_num`), never positionally | the embargo probe, then the 137-job set |
+| 2 | `fam_tables` **`danish_1_3_v1000`**, **`danish_1_3_test`** (blitz, `run_blitz_mktable`) | `aos/output/fam_processing/danish_1_3_v1000/`, and the phase 2 A4 blitz reference `day_obs=20260428` | 1 (about **0.30 deg** here, the larger blitz offset), 3, 5. About an hour each, so interactive — no batch ask | item 1 landing; independent of the embargo night |
+| 3 | `cwfs_tables` (4 variants) | `aos/output/wfs_*/` per variant | 1 only, plus the **`d12-refitWcs_2025` fold** (3b item 5): one date-keyed variant now covers 2025 and 2026, so the 2025 rows appear under `d12-refitWcs` and the retired `d10-wep17_3_0` entry is gone | nothing — can run alongside item 1 |
+| 4 | `miw` (the 2 `d12` variants first; the 10 others have no complete old-tree build) | `aos/output/miw/<dir_name>/`, and the 3a reference in `_phase2_refbuild/miw/ref/` | 2 (the theta rotation, the headline number), and 1 carried through the visits it reads | items 1 and 3 |
+| 5 | `coadds` (`d12-A_50_34_i_5rot`; `_v2` has only an `archive/`) | `aos/output/coadd/<dir_name>/`, 2 tables + 2 npz | 2, through the MIW maps it coadds | item 4 |
+| 6 | **`dof_lut`** (the 2 `d12` variants) | `aos/output/lut/<dir_name>/` | **differs from the old tree by design: absolute vs post-MIW DOF.** Not a zero-tolerance comparison at all — the input table changed (commit `733c01d`). Compare the *shape* instead: 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8 schema-metadata fields and the 11 `lut_config.yaml` keys all present and self-consistent. Measured on the 3a reference, the hexapod DOF move by at most about 16 µm of hexapod motion and the DZ residual improves 6x — see the section above | item 4 (it now reads a `miw` build) |
+| 7 | `bounce_tables` (4 variants) | `aos/output/bounce/<dir_name>/`, 4 tables | 2, through the `miw` fit table it reads (its upstream is `miw`, unlike `dof_lut`'s old assignment). The nine PDFs are the study half and are not part of the product comparison | item 4 |
+| 8 | `value_added` rows: `fam_dz`, and the MIW-route `optical_state` variants | the live database's existing rows, read-only | 1 and 2 reach `fam_dz` through the FAM fits. **`optical_state.rotator_angle_deg` stays on ConsDB** (decision, 2026-10-11), so it does **not** pick up difference 1 — a FAM visit's two angles legitimately differ by up to about 0.30 deg. Also in 3c: the two backfill scripts become build steps (route 1, 2026-10-12), and the registry rows move to catalog names (plan section 6) | items 1 and 4. **Writes to `v1/live` only, never to the current live database in place** |
+
+**Not in 3c:** `guider_moments` and `hsm_moments` (deferred), and the nine incomplete
+`miw` variants, which have no old-tree build to compare against and so are built fresh
+without a comparison.
+
+**Phases 3a and 3b are COMPLETE**: every one of the eight products has moved, each
+verified by a zero-tolerance reference comparison, `hsm_moments` stays deferred as the
+plan says, and all six 3b items are committed with the branch pushed.
 
 ### The 3b items, and what each is checked against
 
@@ -572,7 +727,21 @@ this variant. So the longest night is nearer 1.5 h than 3.2 h, and the whole set
 45 h of CPU spread over 138 jobs rather than 88 h. Either way every night fits the 8 h
 limit with room, and the wall clock is set by the longest night, not the sum.
 
-**Defect, found by this dry run and NOT yet fixed: night 20260713 is planned twice.** It
+**FIXED 2026-10-13, commit `2f5da5c`.** The dry run now prints **137 `sbatch` lines over
+137 distinct nights** (was 138 over 137), and night 20260713 resolves to `/repo/embargo`
+with phrase `aos_fam_danish_1_2_0_wep17_7_0_embargo0713`. The fix had to go in **two**
+places, not one: `night_plan` in the submit script **and** `_chunk_entries` in
+`rubinwork/products/fam_tables/Snakefile`, which had the same defect — with
+`nights=20260713` it emitted two entries collapsing to the same `20260713_20260713`
+chunk name, and the job resolved to the broad `/repo/main` phrase
+`aos_fam_danish_1_2_0_wep17_7_0_bin2x`, which holds no data for that night. Snakemake
+deduped the identical output paths to one job, so the script-only fix would have looked
+correct and still queried the wrong repository. Verified: a normal night (20251126) is
+unchanged at `..._bin2x_2025`, and the default plan with no `nights=` is still **26 jobs**.
+
+The original finding, kept for the reasoning:
+
+**Defect, found by this dry run: night 20260713 is planned twice.** It
 falls in two chunk ranges — the broad `[20260514, 20260731]` (`/repo/main`) and its own
 single-night `[20260713, 20260713]`, which is the **`/repo/embargo`** chunk with phrase
 `aos_fam_danish_1_2_0_wep17_7_0_embargo0713`. `night_plan` emits one line per
@@ -617,7 +786,7 @@ does that only after the rebuilt product is compared with its old-tree build.
 ## 3b item 1 — `rotTelPos`: COMMITTED AND VERIFIED (2026-10-12)
 
 Aaron confirmed decision 4 on 2026-10-12, so the item committed: `a6394e7` on the
-`ts_intrinsic_wavefront` branch `tickets/rubinwork-rottelpos` (**not pushed**) and
+`ts_intrinsic_wavefront` branch `tickets/rubinwork-rottelpos` (**pushed 2026-10-13**, no PR) and
 `5bdd5f8` in this repo. The after-check is in "Item 1 after-check" below; the
 before-check that stopped the item is kept here for the measurement.
 
@@ -678,7 +847,7 @@ FAM-side change first is what the item order requires and that is the step now s
 ### Where the code sits
 
 Nothing committed. In `ts_intrinsic_wavefront`, local branch
-**`tickets/rubinwork-rottelpos`** (not pushed, no PR):
+**`tickets/rubinwork-rottelpos`** (**pushed to `origin` 2026-10-13**, commit `a6394e709e624483e865c2b1358768b8e8dbecd0`, no PR):
 
 - `visit_meta['skyAngle']` (which held `meta['rotAngle']`, the boresight sky angle) →
   `rotTelPos` from `meta['rotTelPos']`, rad, in both table builders.
