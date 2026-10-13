@@ -610,7 +610,14 @@ columns) at zero tolerance, both text sidecars and `exposures.txt` byte-identica
 9 per-exposure files identical.
 
 *3b. Apply the intended fixes*, each as its own commit with its own before/after check on
-the reference builds:
+the reference builds. **Status 2026-10-12: items 2, 3, 4 and 6 are DONE and pushed;
+item 1 is STOPPED on its before-check and waits on Aaron; item 5 is not started.** Each
+item, its measured numbers and the resume steps are in
+`notes/status/phase3_products_handoff.md`. The one result that departed from this
+section's prediction: `rotTelPos` moves **every** FAM visit of the reference chunk by a
+median 0.129 deg of camera rotator angle (max 0.456 deg), not the ~19 ConsDB-NULL visits
+by up to 0.188 deg — 0 of 53 visits agree with the old column to 1e-5 deg, and the stored
+`rotTelPos` is **not wrapped** to (−180, 180]. The item list:
 - `rotator_angle`: **the donut table's `rotTelPos` metadata first**, ConsDB
   `physical_rotator_angle` as the fallback (Aaron, 2026-10-11: the column must hold the
   angle the CCS → OCS rotation actually used). `rotTelPos` is radians in
@@ -675,6 +682,11 @@ ConsDB is NULL, the dropped sidecar columns, the restored `cam_*` columns). Then
 Decided 2026-10-10: `danish_1_2` is rebuilt in full (option 1), with `mktable` run as
 Slurm jobs **split by night** (`--no-thermal`, after 3b), then `fit`, `combine_*` and
 `attach_telemetry` interactively, and the manifest written only after `attach_telemetry`.
+The submit script for that split is written and dry-run —
+`rubinwork/products/fam_tables/submit_mktable_nights.sh`, **138 jobs**, one per night
+with `cwfs` visits — and **not submitted**; Aaron has not seen it yet. It needed a
+`nights=` Snakefile override so each night inherits its parent chunk's collection, since
+five of the ten chunks carry one.
 Measured costs: 258 s fixed per `mktable` run, 39.1 s/visit donut reading, 3.0 s/visit
 `attach_telemetry`; 3,523 Butler visits. Reusing the old chunk donuts was the rejected
 alternative. Confirm `/repo/embargo` is readable from batch nodes before submitting.

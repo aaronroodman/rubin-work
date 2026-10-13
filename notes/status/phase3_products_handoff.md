@@ -453,6 +453,46 @@ Checker committed as
 rebuild; its scratch tree is `_phase2_refbuild/_scratch_3b/item6/`. The full `rubinwork`
 suite passes, **350 tests**.
 
+## 3c groundwork — the per-night `mktable` submit script, WRITTEN AND NOT SUBMITTED
+
+`rubinwork/products/fam_tables/submit_mktable_nights.sh`, with a `--dry-run` that prints
+every `sbatch` line and submits nothing. Per section 12, Aaron's OK on this script covers
+every job it submits, including resubmitting a night that failed for a transient reason.
+**Not submitted; he has not seen it yet.**
+
+It needed one Snakefile change: a **`nights=A,B,...`** config override that splits the
+chunks into one chunk per night, each **inheriting its parent chunk's collection
+override** — `danish_1_2` is a composite variant and five of its ten chunks carry one, so
+a night driven without it would query the wrong collection. Verified on night 20251126:
+the planned command carries `--collections .../wep_17_7_0/.../refitWcs`,
+`--collection-phrase aos_fam_danish_1_2_0_wep17_7_0_bin2x_2025`,
+`--programs BLOCK CWFS AOSSEQUENCE` and `--no-thermal`, into its own
+`chunks/20251126_20251126/` directory.
+
+| quantity | value |
+|---|---|
+| nights with `cwfs` visits in ConsDB, over the ten chunks | **138** (dimensionless count) |
+| jobs the script would submit | **138**, one per night |
+| default plan with no `nights=` | **unchanged**: 10 `mktable` + 10 `fit` + 3 `combine_*` + `attach_telemetry` + `manifest` + `all` = 26 jobs |
+| per job | partition `roma`, 8 cpus, 32 GB, 8 h limit |
+
+Two traps found while writing it, both worth keeping:
+
+- **The conda environment exports `BUILD=x86_64-conda-linux-gnu`**, so a
+  `BUILD="${BUILD:-$(date -u +%Y%m%d)}"` silently used it as the build name — the dry run
+  printed `build=x86_64-conda-linux-gnu` and a matching build directory. The variable is
+  `FAM_BUILD` now. Any script in this repo taking a `${BUILD:-...}` default has this bug.
+- **`$TS_INTRINSIC_WAVEFRONT_DIR` is set to the RSP-only `/sdf/home/r/roodman/u/...`
+  form**, which the root `CLAUDE.md` warns fails in a Slurm job. It is a symlink to
+  `/sdf/group/rubin/u/roodman`, so the script `readlink -f`s it and exports the resolved
+  `/sdf/data/rubin/user/roodman/...` path into each job rather than trusting the symlink
+  on a compute node.
+
+What the script deliberately does **not** do: `fit`, the three `combine_*` rules,
+`attach_telemetry` and `manifest` run afterwards and interactively, because
+`attach_telemetry` still needs the EFD (item 2). No manifest until it has run, so an
+interrupted rebuild stays invisible to the catalog.
+
 ## 3b item 1 — `rotTelPos`: STOPPED on the before-check, needs Aaron
 
 **The code is written but NOT committed**, on either side. The before-check contradicts

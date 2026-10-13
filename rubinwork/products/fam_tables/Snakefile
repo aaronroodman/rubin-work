@@ -105,6 +105,14 @@ if CFG.get('builder') != 'snakemake':
 ONLY_CHUNKS = [s.replace('_', '')
                for s in str(config.get('chunks', '')).split(',') if s]
 
+# `nights=A,B,...` splits the chunks into ONE CHUNK PER NIGHT, each inheriting its parent
+# chunk's collection override, so a night is `<night>_<night>`.  This is what lets the 3c
+# mktable rebuild run as one Slurm job per night (submit_mktable_nights.sh): the largest
+# real chunk is an 8.9 h wall-clock floor on its own.  A night outside every chunk range
+# is an error rather than a silent no-op.  Downstream rules see per-night chunks, so a
+# full build driven this way combines over nights instead of the declared chunks.
+ONLY_NIGHTS = [int(s) for s in str(config.get('nights', '')).split(',') if s]
+
 
 def _chunk_entries():
     out = []
@@ -112,14 +120,24 @@ def _chunk_entries():
         a, b = c['day_obs']
         if ONLY_CHUNKS and f'{int(a)}{int(b)}' not in ONLY_CHUNKS:
             continue
-        out.append(dict(dmin=int(a), dmax=int(b), collection=c.get('collection'),
-                        phrase=c.get('phrase'), butler_repo=c.get('butler_repo'),
-                        programs=c.get('programs')))
+        fields = dict(collection=c.get('collection'), phrase=c.get('phrase'),
+                      butler_repo=c.get('butler_repo'), programs=c.get('programs'))
+        if ONLY_NIGHTS:
+            for night in ONLY_NIGHTS:
+                if int(a) <= night <= int(b):
+                    out.append(dict(dmin=night, dmax=night, **fields))
+        else:
+            out.append(dict(dmin=int(a), dmax=int(b), **fields))
     if ONLY_CHUNKS and not out:
         defined = [f"{int(c['day_obs'][0])}_{int(c['day_obs'][1])}"
                    for c in CFG.get('chunks', [])]
         raise ValueError(f'chunks={ONLY_CHUNKS} match none of {VARIANT}; '
                          f'defined chunks: {defined}')
+    if ONLY_NIGHTS and not out:
+        ranges = [f"{int(c['day_obs'][0])}..{int(c['day_obs'][1])}"
+                  for c in CFG.get('chunks', [])]
+        raise ValueError(f'nights={ONLY_NIGHTS} fall outside every {VARIANT} chunk '
+                         f'range: {ranges}')
     return out
 
 
