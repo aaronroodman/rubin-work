@@ -29,11 +29,17 @@ METADATA -- param_set, mi_name, reduce, n_dof, n_keep, n_visits, k_min, k_max --
 which is the only place the mode counts and the visit count are recorded.  Read
 them back with rubinwork.products.dof_lut.build_metadata.
 
-The upstream is the PLAIN FAM DZ table: --tables-dir names a fam_tables build and
-no measured intrinsic wavefront map is opened, so nothing is subtracted but the
-SVD's own n_keep-mode reconstruction.  --mi-name supplies SETTINGS only (the mode
-counts, k range, coordinate system, band/program cuts, rotator bin edges).  See
-the product's __init__ and aos/docs/studies/lut.md.
+The upstream is the POST-MIW DZ table: --fits-dir names a `miw` build, whose
+fits.parquet is the `refit_mi` fit -- the Double Zernikes refitted with that
+build's measured intrinsic wavefront (MIW) substituted for the tabulated batoid
+design intrinsic the plain FAM fit subtracts.  Aaron's call 2026-10-13; the
+plain-FAM LUT stays only in the old aos/output/lut/ tree.  --tables-dir still
+names the fam_tables build, which is where visits.parquet lives; a miw build has
+no visits table of its own.
+
+--mi-name supplies SETTINGS as well (the mode counts, k range, coordinate system,
+band/program cuts, rotator bin edges).  See the product's __init__ and
+aos/docs/studies/lut.md.
 
 Moved out of aos/code/lut/ in phase 3a of notes/status/organization_plan.md.  Run
 as a module, from the repository root:
@@ -120,8 +126,14 @@ def main():
     # differently from the param_set key, so the phase-1 table location is
     # supplied directly rather than derived from it.
     ap.add_argument('--tables-dir', default=None,
-                    help='dir holding the phase-1 fits/visits.parquet '
-                         '(default: output/<ps>)')
+                    help='dir holding the phase-1 visits.parquet, and fits.parquet '
+                         'when --fits-dir is absent (default: output/<ps>)')
+    # The post-MIW fit lives in the miw build, not beside the visits: `refit_mi` writes
+    # its fits.parquet there and a miw build carries no visits table.
+    ap.add_argument('--fits-dir', default=None,
+                    help="dir holding the post-MIW fits.parquet (a miw build's "
+                         'refit_mi output); defaults to --tables-dir, which is the '
+                         'plain-FAM fit')
     args = ap.parse_args()
 
     # --variant fills in the param_set and the mi_name from variants.yaml, through the
@@ -162,6 +174,7 @@ def main():
 
     ps_base = Path(args.output_root) / args.param_set
     base = Path(args.tables_dir) if args.tables_dir else ps_base
+    fits_base = Path(args.fits_dir) if args.fits_dir else base
     out_dir = Path(args.out_dir) if args.out_dir else ps_base / args.mi_name / 'lut'
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f'[build_lut] {args.param_set} / {args.mi_name}  -> {out_dir}')
@@ -189,7 +202,7 @@ def main():
     iZs = [int(j) for j in np.asarray(visits['nollIndices'][0]).tolist()]
 
     # ---- per-visit DZ fits, restricted to kept + good-fit visits ----
-    fits = QTable.read(str(base / 'fits.parquet'))
+    fits = QTable.read(str(fits_base / 'fits.parquet'))
     fd = np.asarray(fits['day_obs']).astype(int)
     fs = np.asarray(fits['seq_num']).astype(int)
     in_kept = np.array([(int(d), int(s)) in kept for d, s in zip(fd, fs)])

@@ -110,7 +110,8 @@ def _write_build(root, variant="d12-A_50_34_i_5rot", build="20261011", n_dof=4,
     for plot in dof_lut.PLOTS:
         (d / plot).write_bytes(b"%PDF-1.4\n")
     if manifest:
-        write_manifest.write(variant, build=build, build_dir=d, fam_build="20260920")
+        write_manifest.write(variant, build=build, build_dir=d,
+                             fam_build="20260920", miw_build="20261007")
         # So `load(variant)` with no explicit build resolves, which is the normal route.
         catalog.set_current(dl_reader.PRODUCT, variant, build)
     return d
@@ -287,13 +288,14 @@ def test_build_dir_is_under_the_products_root(data_root):
 
 # ---- the manifest --------------------------------------------------------------
 
-def test_manifest_records_the_one_upstream(data_root):
-    """A LUT reads a fam_tables build and no MIW data, so inputs holds exactly one."""
+def test_manifest_records_both_upstreams(data_root):
+    """The miw build supplies the refit_mi fits, the fam_tables build the visits."""
     d = _write_build(data_root)
     import json
     with open(d / "manifest.json") as f:
         got = json.load(f)
-    assert got["inputs"] == {"fam_tables": "danish_1_2@20260920"}
+    assert got["inputs"] == {"fam_tables": "danish_1_2@20260920",
+                             "miw": "d12-A_50_34_i_5rot@20261007"}
 
 
 def test_manifest_config_records_the_derived_keys(data_root):
@@ -308,13 +310,28 @@ def test_manifest_config_records_the_derived_keys(data_root):
     assert config["miw_variant"] == "d12-A_50_34_i_5rot"
 
 
-def test_manifest_does_not_claim_miw_as_an_input(data_root):
-    """The MIW entry is settings, not data: recording it would claim a false dependency."""
+def test_manifest_claims_miw_as_an_input(data_root):
+    """Since 2026-10-13 the LUT fits the post-MIW DZ, so miw IS a real upstream.
+
+    Was ``test_manifest_does_not_claim_miw_as_an_input``: the plain-FAM LUT opened no
+    intrinsic map, so recording miw would have claimed a dependency the build did not
+    have. The post-MIW LUT reads that build's ``refit_mi`` fits.
+    """
     d = _write_build(data_root)
     import json
     with open(d / "manifest.json") as f:
         got = json.load(f)
-    assert "miw" not in (got.get("inputs") or {})
+    assert got["inputs"]["miw"] == "d12-A_50_34_i_5rot@20261007"
+
+
+def test_manifest_refuses_half_the_provenance(data_root):
+    """Both upstreams or neither, as the coadds manifest does."""
+    with pytest.raises(ValueError, match="together"):
+        write_manifest.write("d12-A_50_34_i_5rot", build="20261011",
+                             build_dir=data_root, fam_build="20260920")
+    with pytest.raises(ValueError, match="together"):
+        write_manifest.write("d12-A_50_34_i_5rot", build="20261011",
+                             build_dir=data_root, miw_build="20261007")
 
 
 def test_manifest_needs_a_build_or_a_build_dir():

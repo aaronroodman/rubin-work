@@ -41,8 +41,10 @@ The averaged LUT is read outside the study that writes it, so phase 3a made it t
 Snakefile and reader. Three variants are defined, matching the three jobs `aos/Snakefile`
 planned before the move.
 
-Reads `fits.parquet` and `visits.parquet` from a `fam_tables` build — the **Phase-1**
-per-visit DZ fits rather than the MI-refit ones — and writes:
+Reads `fits.parquet` from a `miw` build — the `refit_mi` per-visit DZ fits, with that
+build's measured intrinsic subtracted (Aaron's call 2026-10-13, before the phase 3c
+rebuild) — and `visits.parquet` from the `fam_tables` build, which is where the visits
+live. Writes:
 
 | product | content |
 |---|---|
@@ -78,22 +80,42 @@ does not re-trigger the expensive MI build. The knobs and the values currently s
 
 ## Output sits under `<mi_name>/`
 
-Even though the LUT reads the Phase-1 `fits.parquet` rather than an MI-refit one, its
-output is keyed by `mi_name` because `n_dof` and `n_keep` come from that build's
-`mi_config.yaml` — two MI configs over the same `param_set` give different LUTs.
+Keyed by `mi_name` because `n_dof` and `n_keep` come from that build's `mi_config.yaml`
+— two MI configs over the same `param_set` give different LUTs — and, since 2026-10-13,
+because that build also supplies the fit table.
 
 ## State and open questions
 
-- `build_lut` projects the **Phase-1** `fits.parquet`, not the MI-refit one, and
-  subtracts no intrinsic of its own — `mi_config` supplies only the SVD and selection
-  parameters (`run_build_lut.py:99`-`:121`, `:152`, `:165`-`:172`). **Aaron confirmed on
-  2026-10-11 that the plain FAM DZ is what was used at the time, and that he may want to
-  switch to the post-MIW DZ.** Not decided, and nothing has changed. The answer changes
-  what the LUT means, since the refit has the measured intrinsic already removed; it also
-  changes which product the LUT's variant keys on, `fam_tables` today against `miw`
-  after a switch. The comment that mentioned "MI subtraction" in the per-rotator-bin
-  block described a MIW build rather than this script; it was corrected in the phase 3a
-  move.
+- **The input switched to the post-MIW DZ on 2026-10-13** (Aaron), so the variant keys on
+  `miw` rather than `fam_tables` and both are recorded under the manifest's `inputs`. The
+  builder itself still subtracts nothing: what changed is which fit table it reads.
+  The old plain-FAM LUT stays only in the old `aos/output/lut/` tree.
+
+- **The switch did not make the recovered DOF physically plausible, which was its stated
+  motivation.** Measured on the `miw` 3a reference (nights 20260315/16/17, 169 visits,
+  variant `d12-A_50_34_i_5rot`, `n_dof=50`, `n_keep=34`):
+
+  | DOF | unit | plain FAM | post-MIW |
+  |---|---|---|---|
+  | `M2_dy` | µm of M2 hexapod decentre | −2407.11 | −2407.34 |
+  | `Cam_dy` | µm of camera hexapod decentre | −1867.15 | −1878.14 |
+
+  The reason: **the plain FAM fit already subtracts an intrinsic** — the tabulated
+  batoid design `zk_intrinsic` — and `refit_mi` only substitutes the *measured* one for
+  it (`dz_fitting.py`, `fit_focal_zernikes_streaming`, the `intrinsic_lookup` branch).
+  The two intrinsics differ by at most 0.022 µm of wavefront on this slice, so the
+  recovered DOF barely move. The −2364 µm `M2_dy` recorded on 2026-10-12 was never
+  evidence of an unsubtracted intrinsic.
+
+  What the switch does buy is fit quality: the averaged DZ residual falls from 0.01028 to
+  0.00172 µm of wavefront RMS over the 126 (k, j) pairs, a factor of 6.
+
+  The implausible magnitudes are an **ill-conditioned inversion**, not a missing
+  subtraction: the LUT inverts a 0.037 µm of wavefront RMS DZ signal into thousands of µm
+  of hexapod motion, and the robust scatter is as large as the value itself —
+  `|median|/scatter_mad` is 2.40 for `M2_dy` and between 0.37 and 2.06 for the other nine
+  rigid-body DOF (dimensionless, both in the row's `dof_unit`). Open, and not addressed
+  by the input change.
 - This study and the [`bounce`](bounce.md) study both carry "LUT" in their descriptions
   but approach it from opposite directions: `bounce` measures how the optical state
   *varies* with elevation and rotator angle, while this one averages that variation away

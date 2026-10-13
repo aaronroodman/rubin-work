@@ -1,23 +1,33 @@
 """The ``dof_lut`` product: the averaged degree-of-freedom (DOF) look-up table (LUT).
 
 Given a mode count ``n_dof`` and a kept-mode count ``n_keep``, a build projects the
-per-visit Double Zernike (DZ) fits of one ``fam_tables`` build onto the Optical Feedback
+per-visit Double Zernike (DZ) fits of one ``miw`` build onto the Optical Feedback
 Control (OFC) sensitivity-matrix singular-value decomposition (SVD), recovers the
 physical DOF per visit, and **collapses over every elevation and rotator angle** into one
 averaged LUT. Unlike the measured-intrinsic-wavefront (MIW) build it deliberately does
 not bin by rotator and by default applies no elevation window: it averages every visit
 passing the band, program and good-fit cuts.
 
-**The upstream is the plain FAM DZ table, not a MIW.** A build reads ``fits.parquet`` and
-``visits.parquet`` from a ``fam_tables`` build and opens no intrinsic map, so nothing is
-subtracted but the SVD's own ``n_keep``-mode reconstruction. The variant's ``miw``
-entry supplies *settings* only -- the mode counts, the focal order range ``k_min`` to
-``k_max``, the coordinate system, the band and program cuts, and the rotator bin edges.
-This is recorded rather than changed (Aaron, 2026-10-11): fitting the absolute state with
-no intrinsic subtracted is what the production variant's ``M2_dy = -2364 µm`` of hexapod
-decentre reflects, far outside any physical stroke. See ``aos/docs/studies/lut.md``.
-Switching to the post-MIW DZ would make ``miw`` the upstream, which is a
-variant-definition change and not only a builder change.
+**The upstream is the post-MIW DZ table** (Aaron, 2026-10-13, before the phase 3c
+rebuild). A build reads ``fits.parquet`` from a ``miw`` build -- its ``refit_mi`` output,
+the DZs refitted with that build's MIW subtracted -- and ``visits.parquet`` from the
+``fam_tables`` build, which is where the visits live. The recovered DOF are therefore
+**deviations from the as-built optics**, not absolute positions.
+
+The previous plain-FAM LUT stays only in the old ``aos/output/lut/`` tree: this is a
+variant-definition change, not a builder knob.
+
+**It does not fix the implausible DOF magnitudes**, which was the motivation. The plain
+FAM fit already subtracts the tabulated batoid design intrinsic, and ``refit_mi`` only
+substitutes the measured one for it, so ``M2_dy`` moves from -2407.11 to -2407.34 µm of
+M2 hexapod decentre on the ``miw`` 3a reference. What the switch buys is fit quality: the
+averaged DZ residual falls by a factor of 6, to 0.00172 µm of wavefront RMS. The
+magnitudes are an ill-conditioned inversion and remain open -- see
+``aos/docs/studies/lut.md``.
+
+The same ``miw`` entry also supplies the *settings* -- the mode counts, the focal order
+range ``k_min`` to ``k_max``, the coordinate system, the band and program cuts, and the
+rotator bin edges -- which stay under the manifest's ``config``.
 
 One rule, one script. ``run_build_lut`` writes:
 

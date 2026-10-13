@@ -15,11 +15,19 @@
 # Run from the REPOSITORY ROOT, so that aos/mi_config.yaml and aos/analysis_config.yaml
 # resolve (see RUN_CWD below).
 #
-# ONE UPSTREAM: a fam_tables build supplies fits.parquet and visits.parquet.  The
-# variant's miw entry supplies SETTINGS only -- the mode counts, the focal order range,
-# the coordinate system, the band and program cuts and the rotator bin edges -- because
-# the LUT fits the PLAIN FAM DZ table and opens no measured intrinsic wavefront map.  So
-# miw is recorded under the manifest's `config`, not its `inputs`.
+# TWO UPSTREAMS since 2026-10-13 (Aaron's call): the LUT fits the POST-MIW DZ table, so
+# the `miw` build supplies fits.parquet -- its `refit_mi` output, the Double Zernikes
+# refitted with that build's measured intrinsic wavefront subtracted -- and the
+# fam_tables build supplies visits.parquet, which a miw build does not carry.  Both are
+# recorded under the manifest's `inputs`.  The same miw entry still supplies the SETTINGS
+# (mode counts, focal order range, coordinate system, band and program cuts, rotator bin
+# edges), which stay under `config`.
+#
+# The previous plain-FAM LUT stays only in the old aos/output/lut/ tree -- this is a
+# variant-definition change, not a builder knob.  It does NOT fix the implausible DOF
+# magnitudes: the plain FAM fit already subtracts the tabulated batoid design intrinsic
+# and refit_mi only substitutes the measured one, so M2_dy moves from -2407.11 to
+# -2407.34 µm of M2 hexapod decentre.  See aos/docs/studies/lut.md.
 #
 # Output, under the product catalog's data root:
 #   <products>/dof_lut/<variant>/<build>/{lut,lut_dz,lut_by_rotbin}.parquet
@@ -80,6 +88,13 @@ FAM_BUILD = str(config.get('fam_build') or catalog.CURRENT)
 FAM_DIR = catalog.path('fam_tables', FAM_VARIANT, build=FAM_BUILD)
 FAM_BUILD_NAME = FAM_DIR.name
 
+# The post-MIW fit table.  `refit_mi` writes it into the miw build directory, so this is
+# the build whose intrinsic was subtracted and is recorded as an input.
+MIW_VARIANT = dof_lut.miw_variant(VARIANT)
+MIW_BUILD = str(config.get('miw_build') or catalog.CURRENT)
+MIW_DIR = catalog.path('miw', MIW_VARIANT, build=MIW_BUILD)
+MIW_BUILD_NAME = MIW_DIR.name
+
 BUILD_DIR = dof_lut.build_dir(VARIANT, BUILD)
 WORK = BUILD_DIR / '_work'
 LOGS = WORK / 'logs'
@@ -91,13 +106,13 @@ LUT_CMD = (
     f'cd {RUN_CWD} && python -m '
     'rubinwork.products.dof_lut.builders.run_build_lut'
     f' --variant {VARIANT}'
-    f' --tables-dir {FAM_DIR} --out-dir {BUILD_DIR}'
+    f' --tables-dir {FAM_DIR} --fits-dir {MIW_DIR} --out-dir {BUILD_DIR}'
     + ' > {log} 2>&1\n')
 MANIFEST_CMD = (
     'mkdir -p $(dirname {log}) && '
     'python -m rubinwork.products.dof_lut.write_manifest '
     f'--variant {VARIANT} --build {BUILD} '
-    f'--fam-build {FAM_BUILD_NAME} '
+    f'--fam-build {FAM_BUILD_NAME} --miw-build {MIW_BUILD_NAME} '
     '> {log} 2>&1')
 
 
@@ -112,7 +127,7 @@ rule all:
 # the fit table.
 rule build_lut:
     input:
-        fits   = str(FAM_DIR / 'fits.parquet'),
+        fits   = str(MIW_DIR / 'fits.parquet'),
         visits = str(FAM_DIR / 'visits.parquet'),
     output:
         lut       = str(BUILD_DIR / 'lut.parquet'),

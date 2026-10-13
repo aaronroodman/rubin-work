@@ -110,12 +110,16 @@ def variant_config(variant):
 
 
 def miw_variant(variant):
-    """The ``miw`` variant supplying this LUT's settings.
+    """The ``miw`` variant supplying this LUT's fits and its settings.
 
-    Settings only -- the singular-value-decomposition mode counts, the focal order
-    range, the coordinate system, the band and program cuts and the rotator bin edges.
-    The LUT fits the plain Full Array Mode (FAM) Double Zernike table and never reads a
-    measured intrinsic wavefront map, so this is not an upstream build.
+    The **main upstream** since 2026-10-13: the LUT averages the build's ``refit_mi``
+    ``fits.parquet``, the Double Zernikes refitted with that measured intrinsic
+    wavefront (MIW) substituted for the tabulated batoid design intrinsic the plain
+    Full Array Mode (FAM) fit subtracts.
+
+    The same entry also supplies the settings -- the singular-value-decomposition mode
+    counts, the focal order range, the coordinate system, the band and program cuts and
+    the rotator bin edges.
 
     Parameters
     ----------
@@ -131,11 +135,12 @@ def miw_variant(variant):
 
 
 def fam_variant(variant):
-    """The ``fam_tables`` variant whose DZ fits and visits the LUT averages.
+    """The ``fam_tables`` variant supplying the LUT's ``visits.parquet``.
 
-    The real upstream: a build reads ``fits.parquet`` and ``visits.parquet`` from a
-    ``fam_tables`` build, and this is what the manifest records under ``inputs``.
-    Derived through the MIW variant, since a MIW is built from one FAM variant.
+    The second upstream, and recorded under the manifest's ``inputs`` alongside
+    `miw_variant`: a ``miw`` build carries no visits table, so the band, program and
+    elevation cuts still read the FAM one. Derived through the MIW variant, since a MIW
+    is built from one FAM variant.
 
     Parameters
     ----------

@@ -2,17 +2,27 @@
 # dof_lut variants: the averaged degree-of-freedom (DOF) look-up table (LUT), one
 # variant per (fam_tables variant, measured-intrinsic-wavefront settings entry) pair.
 #
-# WHAT THE UPSTREAM IS.  Established on 2026-10-11 by reading the builder: this product
-# fits the PLAIN Full Array Mode (FAM) Double Zernike (DZ) table.  It reads
-# fits.parquet and visits.parquet from a `fam_tables` build and never opens a measured
-# intrinsic wavefront (MIW) map, so `fam_variant` is the real upstream and the one the
-# manifest records.  `mi_name` contributes SETTINGS only -- the singular-value
-# decomposition (SVD) mode counts, the focal order range, the coordinate system, the
-# band and program cuts, and the rotator bin edges -- which is why it is a settings key
-# here rather than a second upstream.  Aaron's call, same day: that is recorded, not
-# changed ("I used the plain FAM DZ then but may want to switch to using the post MIW
-# DZ"); see aos/docs/studies/lut.md.  Switching to the post-MIW DZ would make `miw` the
-# upstream, which is a variant-definition change and not just a builder change.
+# WHAT THE UPSTREAM IS.  Changed on 2026-10-13 (Aaron's call), before the phase 3c
+# rebuild: this product fits the POST-MIW Double Zernike (DZ) table.  It reads
+# fits.parquet from a measured-intrinsic-wavefront (`miw`) build -- the `refit_mi`
+# output, the DZs refitted with that build's MIW subtracted -- and visits.parquet from
+# the `fam_tables` build, which is where the visits live.  Both are upstreams the
+# manifest records; `miw` is the main one.
+#
+# WHY, and what it does NOT fix.  The motivation was the production variant's
+# M2_dy = -2364 µm of hexapod decentre, far outside any real stroke.  The switch does not
+# cure it: the plain FAM fit ALREADY subtracts the tabulated batoid design intrinsic, and
+# refit_mi only substitutes the measured one for it, so on the miw 3a reference M2_dy
+# moves from -2407.11 to -2407.34 µm.  What it buys is fit quality -- the averaged DZ
+# residual falls by a factor of 6, to 0.00172 µm of wavefront RMS.  The magnitudes are an
+# ill-conditioned inversion and stay open.  See aos/docs/studies/lut.md.
+#
+# This is a variant-definition change, not a builder knob: the old plain-FAM LUT stays
+# only in the old aos/output/lut/ tree and is not rebuilt.
+#
+# `mi_name` still contributes the SETTINGS as well -- the singular-value decomposition
+# (SVD) mode counts, the focal order range, the coordinate system, the band and program
+# cuts, and the rotator bin edges -- which stay under the manifest's `config`.
 #
 # The variant NAME still carries the MIW short code, because a LUT is built per
 # (param_set, mi_name) pair and that pairing is what the old aos/output/lut/ tree keys
@@ -21,7 +31,7 @@
 #
 # Each entry therefore names ONE thing, `miw_variant`, and the reader derives the rest
 # from the miw product: the `param_set` and `mi_name` the builder needs on its command
-# line, and the `fam_variant` the manifest records as the upstream.  The miw product
+# line, and the `fam_variant` the manifest records as the second upstream.  The miw product
 # already owns that mapping (its variants.yaml generates aos/mi_config.yaml), and the
 # coadds reader resolves its FAM variant the same way, for the same reason -- a copy
 # here would be a second place to edit and could drift from the generated config without

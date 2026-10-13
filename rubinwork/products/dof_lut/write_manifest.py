@@ -4,15 +4,17 @@ The last step of a build, so a build directory becomes a catalog entry only afte
 table, the provenance file and the plot are on disk. Nothing here moves the variant's
 ``current`` symlink; that is ``python -m rubinwork.products.catalog set-current``.
 
-**One upstream**, unlike ``coadds``: the ``fam_tables`` build whose Double Zernike fits
-and visits were averaged. The variant's ``miw`` entry contributes settings, not data --
-no measured intrinsic wavefront map is read -- so it goes under ``config``, not
-``inputs``. Recording it as an input would claim a dependency the build does not have.
+**Two upstreams** since 2026-10-13, as ``coadds`` has: the ``miw`` build whose
+``refit_mi`` Double Zernike fits were averaged, and the ``fam_tables`` build supplying
+``visits.parquet``, which a miw build does not carry. Both go under ``inputs``. The same
+miw entry also contributes the settings -- mode counts, focal order range, coordinate
+system, band and program cuts, rotator bin edges -- which stay under ``config``.
 
 Command line, used by the Snakefile rule::
 
     python -m rubinwork.products.dof_lut.write_manifest \\
-        --variant d12-A_50_34_i_5rot --build 20261011 --fam-build 20260920
+        --variant d12-A_50_34_i_5rot --build 20261011 \\
+        --fam-build 20260920 --miw-build 20261007
 """
 
 import argparse
@@ -56,7 +58,7 @@ def build_config(variant, extra=None):
 
 
 def write(variant, build=None, build_dir=None, status="complete",
-          build_options=None, fam_build=None, inputs=None):
+          build_options=None, fam_build=None, miw_build=None, inputs=None):
     """Write the manifest of one ``dof_lut`` build.
 
     Parameters
@@ -75,11 +77,14 @@ def write(variant, build=None, build_dir=None, status="complete",
     build_options : `dict`, optional
         Build-time settings, recorded under ``config.build_options``.
     fam_build : `str`, optional
-        The ``fam_tables`` build name averaged. Recorded under ``inputs`` as
-        ``{"fam_tables": "<fam_variant>@<fam_build>"}``.
+        The ``fam_tables`` build supplying ``visits.parquet``. Recorded under ``inputs``
+        as ``{"fam_tables": "<fam_variant>@<fam_build>"}``.
+    miw_build : `str`, optional
+        The ``miw`` build whose ``refit_mi`` fits were averaged. Recorded under
+        ``inputs`` as ``{"miw": "<miw_variant>@<miw_build>"}``.
     inputs : `dict`, optional
         Further upstream builds read, as ``{product: "variant@build"}``. Merged over the
-        entry `fam_build` produces.
+        two entries `fam_build` and `miw_build` produce.
 
     Returns
     -------
@@ -89,7 +94,8 @@ def write(variant, build=None, build_dir=None, status="complete",
     Raises
     ------
     `ValueError`
-        If `build_dir` and `build` are both absent.
+        If only one of `fam_build` and `miw_build` is given, or `build_dir` and `build`
+        are both absent. Half the provenance is not recorded as if it were all of it.
 
     Notes
     -----
@@ -104,9 +110,16 @@ def write(variant, build=None, build_dir=None, status="complete",
     build_dir = pathlib.Path(build_dir)
     build = build or build_dir.name
 
+    if bool(fam_build) != bool(miw_build):
+        raise ValueError(
+            "a dof_lut build reads the miw build's refit_mi fits and the fam_tables "
+            "build's visits; give --fam-build and --miw-build together (got "
+            f"fam_build={fam_build!r}, miw_build={miw_build!r})")
+
     all_inputs = {}
     if fam_build:
         all_inputs["fam_tables"] = f"{reader.fam_variant(variant)}@{fam_build}"
+        all_inputs["miw"] = f"{reader.miw_variant(variant)}@{miw_build}"
     if inputs:
         all_inputs.update(inputs)
 
@@ -134,7 +147,11 @@ def main(argv=None):
                         help="Build directory (default: the catalog directory of "
                              "<variant>/<build>)")
     parser.add_argument("--fam-build", default=None,
-                        help="The fam_tables build averaged, recorded under inputs")
+                        help="The fam_tables build supplying visits.parquet, recorded "
+                             "under inputs; give with --miw-build")
+    parser.add_argument("--miw-build", default=None,
+                        help="The miw build whose refit_mi fits were averaged, recorded "
+                             "under inputs; give with --fam-build")
     parser.add_argument("--status", default="complete",
                         help="Manifest status (default: complete)")
     parser.add_argument("--option", action="append", default=[], metavar="KEY=VALUE",
@@ -148,7 +165,7 @@ def main(argv=None):
         options[key] = value
     path = write(args.variant, build=args.build, build_dir=args.build_dir,
                  status=args.status, build_options=options or None,
-                 fam_build=args.fam_build)
+                 fam_build=args.fam_build, miw_build=args.miw_build)
     print(f"wrote {path}")
     return 0
 
