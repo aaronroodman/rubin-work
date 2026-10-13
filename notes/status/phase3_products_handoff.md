@@ -14,6 +14,39 @@ between sessions.
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
 
+5. **`visits.parquet` row order is not deterministic, and two stored columns depend on
+   it** (open, found 2026-10-12 by item 1's after-check; **nothing is waiting on it**).
+   `visits.parquet` is not sorted by (`day_obs`, `seq_num`) in either the phase 2
+   reference or a fresh rebuild, because the chunks are read in parallel. Two columns are
+   computed from the row order as stored:
+   - `tweak_dof0..49`, from `common.dof_telemetry.derive_tweak`, which differences
+     **consecutive rows**. Measured: Trim (`dof0..49`) and `dof_event_id` are identical
+     on 53 of 53 visits of the reference chunk, yet 22 of 50 `tweak_dof*` columns differ
+     by up to **313.9 (OFC DOF units)** on 29 of 53 visits between the two builds.
+     Recomputed in a common sorted order the two agree at **max abs difference 0**.
+   - `image_idx`, a positional index, permuted between builds (same value set 0..n).
+
+   So the **stored Tweak is wrong** whenever the table is not time-ordered, which it is
+   not — this is a science column, not a bookkeeping one. The options:
+   - **sort `visits.parquet` by (`day_obs`, `seq_num`) before deriving Tweak**
+     (recommended): one change in `run_attach_telemetry`, makes both columns
+     deterministic and Tweak correct. It changes `tweak_dof*` values in any rebuild, so
+     it belongs **before** 3c rather than after.
+   - sort the whole table at write time, which also makes every build byte-comparable but
+     touches more of the builder.
+   - leave it and have readers sort, which does not fix the stored values.
+
+   Not folded into item 1: it is outside that item's scope and moves a science column.
+
+   **The blast radius is small, checked 2026-10-12.** The value-added database computes
+   its own `tweak_dof*` with the same `derive_tweak`, but on a spine built with
+   `ORDER BY day_obs` / `ORDER BY seq_num` (`build_efd_db.py:131,159`), so **the
+   database's Tweak is correctly ordered**. Every science use of Tweak goes through that
+   table (the item 2 survey found `visits.parquet`'s `tweak` group is read only by
+   `run_chunk_status.py` and `fam_telemetry_history.ipynb`, both by prefix for an audit
+   count), so the defect appears not to have reached a result. The fix is still worth
+   making before 3c so the rebuilt column is right.
+
 1. ~~**The two `value_added` backfill scripts mutate product tables in place.**~~
    **Answered 2026-10-12: route 1**, both become build steps in 3c. Moved to "Decisions
    taken" below; nothing is waiting on it.
@@ -27,8 +60,10 @@ the step. Answered items move to "Decisions taken".
      variant-definition change, not just a builder change.
    Nothing is waiting on it now; no code changed. See `aos/docs/studies/lut.md`.
 
-3. **The five audit-only telemetry groups stay in `visits.parquet`** (open, raised
-   2026-10-12, taken **provisionally** per section 12 so item 2 could proceed). The
+3. ~~**The five audit-only telemetry groups stay in `visits.parquet`**~~ **Answered
+   2026-10-12: keep them, no longer provisional**, and repoint the two readers at the
+   value-added database in **phase 5**, after which they are dropped. Moved to
+   "Decisions taken"; kept here for the survey's reasoning. The
    survey in "Item 2" below found `camera`, `thermal` and `gradients` are read as real
    input — one of them by a **product builder** and one by a prefix-discovered ML feature
    set — so they must stay. The other five (`wind`, `lut`, `hexlut`, `trim`, `tweak`,
@@ -43,8 +78,9 @@ the step. Answered items move to "Decisions taken".
    Nothing is waiting on it: `mktable --no-thermal` is what removes the EFD from the
    expensive stage, and it landed either way.
 
-4. **`rotTelPos` moves every visit, not 19 — confirm before item 1 commits** (open,
-   raised 2026-10-12, **blocking item 1**). The plan predicted that only the ~19
+4. ~~**`rotTelPos` moves every visit, not 19 — confirm before item 1 commits**~~
+   **Answered 2026-10-12: CONFIRMED**, item 1 unblocked. Moved to "Decisions taken";
+   kept here for the measurement. The plan predicted that only the ~19
    ConsDB-NULL visits of the reference chunk would move, by up to 0.188 deg of camera
    rotator angle, because visits with ConsDB "agree to about 1e-5 deg". Measured on all
    53 visits of chunk `20251116_20251130`: **0 of 53 agree to 1e-5 deg**, the median
@@ -66,6 +102,29 @@ the step. Answered items move to "Decisions taken".
 
 ## Decisions taken
 
+- **`rotator_angle` = `rotTelPos` on every visit: CONFIRMED** (Aaron, 2026-10-12),
+  unblocking item 1. His reasoning, which settles the size question: `rotator_angle` is
+  used **only to select FAM visits within a degree or two of the nominal rotator angles**
+  (0, ±15, ±30 deg of camera rotator angle and similar), so a shift of a fraction of a
+  degree does not matter. Using the value the donut code itself used is right, and
+  fetching the angle from anywhere else is wasted effort. **Why the sources differ:** the
+  camera rotator turns during the exposure to keep the sky stationary on the focal plane,
+  so each source samples the angle at a different moment of the exposure — expected
+  tracking motion, **not a pipeline error**. The plan's 3b item and
+  `aos/docs/frame_conventions.md` both wrongly implied visits with ConsDB agree to about
+  1e-5 deg (that was one visit, day_obs 20260420 seq_num 89); both are corrected, and
+  `frame_conventions.md` now carries the rotator-tracking explanation.
+- **The five audit-only telemetry groups stay in `visits.parquet`** (Aaron, 2026-10-12 —
+  confirmed, no longer provisional). `wind`, `lut`, `hexlut`, `trim` and `tweak` (228 + 8
+  + 10 + 51 + 50 columns) keep being written by `attach_telemetry`. **In phase 5**,
+  `aos/code/fam_processing/run_chunk_status.py` and
+  `aos/notebooks/fam_processing/fam_telemetry_history.ipynb` are repointed at the
+  value-added database, and **then** the five groups are dropped from `visits.parquet`.
+  Nothing to do in 3b or 3c.
+- **Item 5's scope: keep `danish_1_0` as `registered: false`** (Aaron, 2026-10-12), and
+  retire **only** the CWFS half `d10-wep17_3_0`. So the FAM variant and its four live
+  references stay as they are, and item 5 is the `d12-refitWcs_2025` fold plus the one
+  CWFS entry.
 - **The two `value_added` backfill scripts: route 1** (Aaron, 2026-10-12). Both become
   **build steps in 3c**: the pointing fetch folds into `build_optical_state`, and the
   commanded-v-mode projection becomes a post-merge step of `run_build.sh`. So a merged
@@ -493,12 +552,15 @@ What the script deliberately does **not** do: `fit`, the three `combine_*` rules
 `attach_telemetry` still needs the EFD (item 2). No manifest until it has run, so an
 interrupted rebuild stays invisible to the catalog.
 
-## 3b item 1 — `rotTelPos`: STOPPED on the before-check, needs Aaron
+## 3b item 1 — `rotTelPos`: COMMITTED AND VERIFIED (2026-10-12)
 
-**The code is written but NOT committed**, on either side. The before-check contradicts
-the expected-difference list in three ways, and section 12 says a 3b result that differs
-from what the plan predicts stops the item. Two findings are new facts about the data;
-the third is a question only Aaron can settle.
+Aaron confirmed decision 4 on 2026-10-12, so the item committed: `a6394e7` on the
+`ts_intrinsic_wavefront` branch `tickets/rubinwork-rottelpos` (**not pushed**) and
+`5bdd5f8` in this repo. The after-check is in "Item 1 after-check" below; the
+before-check that stopped the item is kept here for the measurement.
+
+The before-check contradicted the expected-difference list in three ways. Two were new
+facts about the data; the third was the question Aaron answered.
 
 ### Measured on the `danish_1_2` reference chunk `20251116_20251130`, 53 visits
 
@@ -571,25 +633,74 @@ Nothing committed. In `ts_intrinsic_wavefront`, local branch
   `intrinsics_lib.py` went **49 → 47** (the change removed two, added none). The one
   failing linter test is pre-existing across the package.
 
-In this repo, uncommitted: the blitz half — `blitz_reader` record `skyAngle` →
+In this repo, commit `5bdd5f8`: the blitz half — `blitz_reader` record `skyAngle` →
 `rotTelPos` (rad from `rot_tel_pos`), `run_blitz_mktable.resolve_rotator_angle` with the
 same precedence, wrap and source column, and `VISITS_COLUMNS` updated. Unit-tested, 3 of
-3 cases; the full `rubinwork` suite passes, 350 tests. Docs updated and **also
-uncommitted**: `aos/CLAUDE.md`, `aos/docs/frame_conventions.md`, `aos/docs/telemetry.md`
-(whose pointing row also had `alt`/`az`/`ra`/`dec` mislabelled deg when they are rad —
-verified against the reference, max 6.28).
+3 cases; the full `rubinwork` suite passes, 350 tests. Docs in the same commit:
+`aos/CLAUDE.md`, `aos/docs/frame_conventions.md`, `aos/docs/telemetry.md` (whose pointing
+row also had `alt`/`az`/`ra`/`dec` mislabelled deg when they are rad — verified against
+the reference, max 6.28).
 
-### To resume
+### Item 1 after-check: the two references, 2026-10-12
 
-1. Aaron answers decision 4.
-2. Commit the package branch, then the repo half, then rerun `mktable` for the chunk and
-   confirm the only columns that move are `rotator_angle`, `rotator_flagged`, the renamed
-   `rotTelPos` and the new `rotator_angle_source` — every other column identical at zero
-   tolerance.
-3. Then the blitz night `danish_1_3_v1000` `day_obs=20260428`, where `rotator_angle`
-   should move to `rot_tel_pos`, about 0.30 deg.
-4. Then the `miw` 3a reference on the new FAM slice, reporting which visits change
-   rotator bin.
+**The Snakemake path**, `danish_1_2` chunk `20251116_20251130` rebuilt with thermal on,
+to match the phase 2 reference's configuration (so this isolates item 1 and item 6, not
+item 2). Scratch tree
+`_phase2_refbuild/_scratch_3b/item1/products/fam_tables/danish_1_2/ref_after/`.
+
+| table | rows | result |
+|---|---|---|
+| `donuts.parquet` | 145,264 | **identical**, 48 of 48 columns, zero tolerance |
+| `visits.parquet` | 53 | `skyAngle` → `rotTelPos`, `rotator_angle_source` added; `rotator_angle` and 50 `tweak_dof*` differ |
+| `fits.parquet` | 47 | 653 → **1026** columns (item 6's 372 sidecar columns + the 2 new); `rotator_angle` and `image_idx` differ |
+
+`rotator_angle` reproduces the before-check exactly, so the measurement is confirmed on a
+real build:
+
+| quantity | value |
+|---|---|
+| `rotator_angle_source` | **`rotTelPos` on 53 of 53** visits, ConsDB never used |
+| median \|change\| | **0.1287 deg** of camera rotator angle |
+| max \|change\| | **0.4558 deg** |
+| visits agreeing to 1e-5 deg | **0 of 53** |
+| `rotator_flagged` changed | **0 of 53** visits; 0 flagged before and after |
+| wrap works | raw `rotTelPos` reaches **−6.303 rad** (−361.1 deg); output stays in −1.132 to +14.779 deg |
+
+**Two differences are NOT item 1 and are a pre-existing defect, found here**
+(`tweak_dof*` on `visits`, `image_idx` on `fits`). Both are **row-order** artifacts:
+
+- Neither build's `visits.parquet` is sorted by (`day_obs`, `seq_num`) — the row order is
+  not stable between two runs of the same chunk, because the chunks are read in parallel.
+- `common.dof_telemetry.derive_tweak` differences **consecutive rows as stored**, and
+  `image_idx` is a positional index assigned in table order. So both depend on an order
+  that is not deterministic.
+- Proof it is only the order: **Trim** (`dof0..49`, read straight from the EFD) is
+  identical on 53 of 53 visits and `dof_event_id` on 53 of 53, yet 22 of 50 `tweak_dof*`
+  columns differ by up to 313.9 (OFC DOF units) on 29 of 53 visits. Recomputing
+  `derive_tweak` for **both** builds from their own identical Trim and event ids in a
+  common sorted order gives **max abs difference 0** across all 50 columns with matching
+  NaN patterns. `image_idx` likewise holds the same value set 0..n, permuted.
+
+So the stored Tweak is wrong whenever `visits.parquet` is not time-ordered, which it is
+not. **Not fixed here** — it is outside item 1 and changing it moves a science column, so
+it is logged as a new item below rather than folded into this commit.
+
+**The blitz path**, `danish_1_3_v1000` `day_obs=20260428`, 12 visits, rerun through the
+moved builder. Scratch tree `_phase2_refbuild/_scratch_3b/item1/blitz_after/`.
+
+| table | rows | result |
+|---|---|---|
+| `donuts.parquet` | 40,548 | **identical**, 66 of 66 columns, zero tolerance |
+| `visits.parquet` | 12 | `skyAngle` → `rotTelPos`, `rotator_angle_source` added, `rotator_angle` changed |
+| `fits.parquet` | 12 | same three changes, 447 other columns identical |
+
+**Better than the plan predicted, and the prediction's framing does not fit this night:**
+the old `rotator_angle` was **NaN on 12 of 12** visits (ConsDB has no
+`physical_rotator_angle` for them), and the new one is populated on 12 of 12 from
+`rot_tel_pos` (14.083 to 59.117 deg of camera rotator angle). So on this night the change
+**fills** the column rather than shifting it by about 0.30 deg — there was no old value
+to shift. 12 of 12 visits still pass every quality cut and 0 of 12 are flagged `bad_fit`,
+as in the reference.
 
 Before-check script committed as
 `rubinwork/products/fam_tables/refbuild/read_rottelpos_meta.py` — **and note how to read

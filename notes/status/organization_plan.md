@@ -617,7 +617,9 @@ item, its measured numbers and the resume steps are in
 section's prediction: `rotTelPos` moves **every** FAM visit of the reference chunk by a
 median 0.129 deg of camera rotator angle (max 0.456 deg), not the ~19 ConsDB-NULL visits
 by up to 0.188 deg — 0 of 53 visits agree with the old column to 1e-5 deg, and the stored
-`rotTelPos` is **not wrapped** to (−180, 180]. The item list:
+`rotTelPos` is **not wrapped** to (−180, 180]. **Aaron confirmed it 2026-10-12** and the
+item list below now records the measured numbers and the reason (rotator tracking during
+the exposure). The item list:
 - `rotator_angle`: **the donut table's `rotTelPos` metadata first**, ConsDB
   `physical_rotator_angle` as the fallback (Aaron, 2026-10-11: the column must hold the
   angle the CCS → OCS rotation actually used). `rotTelPos` is radians in
@@ -625,9 +627,19 @@ by up to 0.188 deg — 0 of 53 visits agree with the old column to 1e-5 deg, and
   `rot_tel_pos`; convert explicitly. Drop the EFD window-mean and `visitInfo` fallbacks;
   if both sources are missing, `rotator_angle` is NaN and the visit is reported. Record
   the source per visit (`rotator_angle_source`). Rename `skyAngle` to `rotTelPos` in
-  `intrinsics_lib.py`. In `ts_intrinsic_wavefront`, so `scons` follows. Expected effect
-  in 3c: blitz visits move by about 0.30 deg of camera rotator angle, visits with ConsDB
-  agree to about 1e-5 deg, so only visits near a rotator-bin edge can change MIW bin.
+  `intrinsics_lib.py`. In `ts_intrinsic_wavefront`, so `scons` follows. Measured effect,
+  **correcting this item's earlier prediction** (Aaron confirmed 2026-10-12): **every**
+  FAM visit moves, not only the ConsDB-NULL ones — median 0.129 deg and max 0.456 deg of
+  camera rotator angle over the 53 visits of the reference chunk, with 0 of 53 agreeing
+  with the old column to 1e-5 deg. The earlier "visits with ConsDB agree to about 1e-5
+  deg" came from **one** visit of another night and does not generalize. The sources
+  differ because the camera rotator turns during the exposure to keep the sky stationary
+  on the focal plane, so each source samples the angle at a different moment: expected
+  tracking motion, not a pipeline error. It does not matter downstream because
+  `rotator_angle` only selects FAM visits within a degree or two of the nominal angles
+  (0, ±15, ±30 deg and similar), so only a visit already at a rotator-bin edge can change
+  MIW bin. Using the value the donut code itself used is right, and fetching the angle
+  from elsewhere is wasted effort. Blitz visits still move by about 0.30 deg.
   The per-visit **DZ fits do not change**: they run on OCS coordinates the pipeline
   already rotated with `rotTelPos`, so which number the `rotator_angle` column reports
   does not move a fit. Only the column, the new `rotator_angle_source` column, and
