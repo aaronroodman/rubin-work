@@ -111,10 +111,23 @@ GRADIENT_COLS = ['x_gradient', 'y_gradient', 'z_gradient', 'radial_gradient']
 
 
 def _visit_keys(visits_path):
-    """Return the (day_obs, seq_num, visit, mjd) frame for a visits.parquet."""
+    """Return the (day_obs, seq_num, visit, mjd) frame for a visits.parquet.
+
+    Sorted by (``day_obs``, ``seq_num``). ``mktable`` reads its chunks' Butler visits in
+    parallel, so the stored row order is not time order and varies between builds, while
+    :func:`~rubinwork.common.dof_telemetry.derive_tweak` differences **consecutive rows**.
+    Fetching in sorted order is what makes ``tweak_dof0..49`` the real per-iteration
+    correction rather than a difference between two unrelated visits. The sidecar is
+    joined back on (``day_obs``, ``seq_num``), so this order does not reach any stored
+    table's row order.
+    """
     have = set(pq.ParquetFile(str(visits_path)).schema_arrow.names)
     cols = [c for c in ('day_obs', 'seq_num', 'visit', 'mjd') if c in have]
-    return pq.read_table(str(visits_path), columns=cols).to_pandas()
+    keys = pq.read_table(str(visits_path), columns=cols).to_pandas()
+    by = [c for c in ('day_obs', 'seq_num') if c in keys.columns]
+    if by:
+        keys = keys.sort_values(by, kind='mergesort').reset_index(drop=True)
+    return keys
 
 
 def _close_efd(efd):

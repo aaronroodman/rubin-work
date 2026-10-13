@@ -367,3 +367,84 @@ def test_manifest_cli_status_keeps_a_build_out_of_the_catalog(data_root):
     assert catalog.list_products("fam_tables") == []
     with pytest.raises(catalog.ProductNotFound, match="tables-only"):
         catalog.path("fam_tables", "danish_1_2", "20261010")
+
+
+# ---- attach_telemetry row order (3c) -------------------------------------------
+
+def _stub_trim_fetcher(monkeypatch, at):
+    """Make ``fetch_aggregated_dof_for_visits`` return a per-visit Trim and event id.
+
+    Keyed on ``seq_num`` so the stub itself is order-independent: the only way the
+    derived Tweak can depend on row order is through ``derive_tweak`` differencing
+    consecutive rows.
+    """
+    import numpy as np
+
+    def fake(visit_info, **kwargs):
+        snum = np.asarray(visit_info["seq_num"], dtype=float)
+        # Trim grows with seq_num, so a correct Tweak is a constant +1.0 per step.
+        trim = np.repeat(snum[:, None], 50, axis=1)
+        return trim, {"event_id": snum, "n_obs_start": len(snum), "n_mjd_fallback": 0}
+
+    monkeypatch.setattr(at, "fetch_aggregated_dof_for_visits", fake)
+
+
+def test_attach_telemetry_tweak_is_row_order_independent(tmp_path, monkeypatch):
+    """Shuffled input rows give identical ``tweak_dof*``, ``dof*`` and ``dof_event_id``.
+
+    ``mktable`` writes each chunk's ``visits.parquet`` in Butler-read order, which is not
+    time order and varies between builds, while ``derive_tweak`` differences consecutive
+    rows. Before the sort in ``_visit_keys``, two builds of one chunk disagreed on 22 of
+    50 ``tweak_dof*`` columns by up to 313.9 (OFC DOF units).
+    """
+    import numpy as np
+    import pyarrow.parquet as pq_
+    from rubinwork.products.fam_tables.builders import run_attach_telemetry as at
+
+    _stub_trim_fetcher(monkeypatch, at)
+    n = 12
+    visits = pd.DataFrame({
+        "day_obs": [20251116] * n,
+        "seq_num": list(range(10, 10 + n)),
+        "visit": [20251116000 + s for s in range(10, 10 + n)],
+        "mjd": [60000.0 + 0.001 * s for s in range(10, 10 + n)],
+    })
+
+    results = {}
+    for label, frame in (("sorted", visits),
+                         ("shuffled", visits.sample(frac=1.0, random_state=7))):
+        chunk = tmp_path / label
+        chunk.mkdir()
+        frame.reset_index(drop=True).to_parquet(chunk / "visits.parquet", index=False)
+        at.fetch_for_chunk(chunk, ("trim", "tweak"), None, None, "auto", verbose=False)
+        tel = pq_.read_table(str(chunk / "telemetry.parquet")).to_pandas()
+        results[label] = tel.sort_values(["day_obs", "seq_num"]).reset_index(drop=True)
+
+    cols = (["dof_event_id"] + [f"dof{k}" for k in range(50)]
+            + [f"tweak_dof{k}" for k in range(50)])
+    a, b = results["sorted"], results["shuffled"]
+    assert list(a.columns) == list(b.columns)
+    for c in cols:
+        assert np.array_equal(a[c].to_numpy(dtype=float),
+                              b[c].to_numpy(dtype=float),
+                              equal_nan=True), f"{c} depends on input row order"
+
+    # And the Tweak is the right value: a constant +1.0 (OFC DOF units) per visit after
+    # the first, which is NaN for having no predecessor.
+    tw0 = a["tweak_dof0"].to_numpy(dtype=float)
+    assert np.isnan(tw0[0])
+    assert np.allclose(tw0[1:], 1.0)
+
+
+def test_attach_telemetry_visit_keys_are_sorted(tmp_path):
+    """``_visit_keys`` returns (``day_obs``, ``seq_num``) order whatever is on disk."""
+    from rubinwork.products.fam_tables.builders import run_attach_telemetry as at
+
+    pd.DataFrame({
+        "day_obs": [20251117, 20251116, 20251117, 20251116],
+        "seq_num": [5, 9, 2, 3],
+        "visit": [4, 3, 2, 1],
+    }).to_parquet(tmp_path / "visits.parquet", index=False)
+    keys = at._visit_keys(tmp_path / "visits.parquet")
+    assert list(zip(keys["day_obs"], keys["seq_num"])) == [
+        (20251116, 3), (20251116, 9), (20251117, 2), (20251117, 5)]
