@@ -10,13 +10,18 @@
 > tolerance. **`cwfs_tables` is DONE**: all four variants compared clean and promoted to
 > `current@20261013`; the only differences are `rotator_angle` (max abs 0.4446 deg of
 > camera rotator angle on all four) and, on `d12-refitWcs`, the 2025 fold (+2,168 visit
-> and +62,554 donut rows, every old row kept). **`miw` (item 4) is STOPPED on an
-> unexplained comparison difference**, not on spend: `d12-A_50_34_i@20261014` is built as
-> far as the sidecars, is **not promoted**, and two things need Aaron — `d12-tarts` has no
-> intra-focal centroids so its corner sidecar fails and `refit_mi` never ran, and the
-> external builder's ring continuation added 154 valid field-grid cells (3,831 -> 3,985 of
-> 5,041) plus 4 `intrinsic_split_rms` columns, which is not on the expected-difference
-> list. Items 5 to 7 are blocked behind `miw`. Questions 6 and 7 in "Decisions for Aaron".
+> and +62,554 donut rows, every old row kept). **`miw` (item 4) now WAITS ON AARON'S
+> REVIEW**: the comparison difference that stopped it is **explained and measured** — it is
+> the field edge (`ts_intrinsic_wavefront` commit `3f66904`), the interior agrees to
+> 7.2e-04 µm of wavefront, and `vmode_13` is a degenerate-subspace rotation. Validation
+> PDFs and `summary.md` for both `danish_1_2` variants are in
+> `$RUBINWORK_DATA/studies/phase3c_validation/miw/`. `d12-A_50_34_i@20261014` is built as
+> far as the sidecars and `d12-A_50_34_i_5rot@20261014` through `intrinsic_split`; neither
+> is promoted and **no `miw` variant is `current`**. Two things still need Aaron —
+> `d12-tarts` has no intra-focal centroids so its corner sidecar fails and `refit_mi` never
+> ran, and whether the ring continuation is accepted new behaviour for the
+> expected-difference list. Items 5 to 7 are blocked behind `miw`. Questions 6 and 7 in
+> "Decisions for Aaron".
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-14 · **Kind:** working state (handoff)
 
@@ -51,10 +56,13 @@ the step. Answered items move to "Decisions taken".
    **3,985** of the 5,041 cells of the same 71x71 grid where the old kept **3,831** — 154
    more — and `intrinsic_split_rms` gains 4 columns that name the mechanism
    (`n_null_rings`, `n_continued_rings`, `min_ring_coverage_seen`, `max_null_dim`).
+   The commit is **identified** (`3f66904`, 2026-10-05) and the shared-cell comparison is
+   **done** — see the validation section; the difference is confined to r >= 1.729 deg and
+   the interior agrees to 7.2e-04 µm of wavefront.
    **Options:** (a) accepted new behaviour of `ts_intrinsic_wavefront`, written onto the
-   expected-difference list, after which the comparison is redone on the 3,831 shared cells
-   — recommended if you already know this change landed; (b) a regression, which means
-   finding the commit in the external package. **Waiting on it:** every `miw` `set-current`,
+   expected-difference list — recommended, since the commit is a deliberate fix with its
+   own tests and the interior is unchanged; (b) a regression. **Waiting on it:** every
+   `miw` `set-current`,
    and items 5 to 7. Numbers in "`miw` item 4" below.
 
 5. **`visits.parquet` row order is not deterministic, and two stored columns depend on
@@ -550,12 +558,78 @@ compare `zk_intrinsic` on the shared donut key; settle `d12-tarts`; and decide w
 ring-continuation change is an accepted new behaviour of the external builder, which makes
 it an expected difference to be written down, or a regression.
 
+## `miw` validation output for Aaron's review, 2026-10-14
+
+Validation only: **nothing promoted, no `set-current`, neither open question decided.**
+Script `rubinwork/products/miw/refbuild/compare_old_tree.py`. Output, outside every build
+directory and outside the old tree, one PDF plus `summary.md` each:
+
+- `$RUBINWORK_DATA/studies/phase3c_validation/miw/d12-A_50_34_i/` (13-page PDF)
+- `$RUBINWORK_DATA/studies/phase3c_validation/miw/d12-A_50_34_i_5rot/` (12-page PDF)
+
+`d12-A_50_34_i_5rot@20261014` was built through `intrinsic_split` only, in 1m40s of
+wall-clock time, by calling `run_intrinsic_split.py` directly with `--src-dir` at the
+parent build. The Snakefile route refuses it: `_5rot` is a `build_from` variant and
+`catalog.path` requires the parent to have a `manifest.json`, which
+`d12-A_50_34_i@20261014` does not have because it stopped before `refit_mi`.
+
+**The shared-cell result: `compare_builds`'s `intrinsic_split_maps` row key does not
+join.** The two builds lay their 71x71 lattice on different coordinates — old half-width
+`126/73 = 1.7260274 deg` of field angle, new `1.726 deg` exactly, offset at most
+**2.740e-05 deg**, a thousandth of the 0.0493 deg cell step. An exact float key matched
+**1 of 3,831 cells**, which is why the comparison reported 0 columns and a vacuous
+`values: identical`. On the **integer lattice index** the join is exact: **3,831 shared,
+154 new-only, 0 old-only** — a clean superset.
+
+| quantity | `d12-A_50_34_i` | `d12-A_50_34_i_5rot` |
+|---|---|---|
+| shared / new-only / old-only cells (dimensionless) | 3,831 / 154 / 0 | 3,985 / 0 / 0 |
+| max abs map difference, all columns (µm of wavefront) | 7.601e-01 | 8.163e-01 |
+| RMS map difference, all columns (µm of wavefront) | 9.543e-03 | 9.481e-03 |
+| max abs difference, interior r < 1.650 deg (µm of wavefront) | 7.179e-04 | 1.292e-03 |
+| max abs difference, r >= 1.729 deg (µm of wavefront) | 7.601e-01 | 8.163e-01 |
+| NaN map cells over all columns, old -> new (dimensionless) | 42 -> 0 | 888 -> 0 |
+| NaN cells in `Z4_OCS`, old -> new (dimensionless) | 1 -> 0 | 124 -> 0 |
+| `vmode_13` max abs difference (dimensionless amplitude) | 1.018 | 0.653 |
+| worst DOF difference on those same bins (µm) | 5.78e-11 | 5.78e-11 |
+| `intrinsic_split_rms` `C_cam` max abs difference (µm of wavefront) | — | 1.599e-05 |
+
+**What this settles, and what it does not.** The big differences are **entirely at the
+field edge**: the interior agrees to 7.2e-04 µm (9-bin) and 1.3e-03 µm (`_5rot`), against
+difference 2's CCS bound of 9.2e-04 µm, while r >= 1.729 deg reaches 0.76 to 0.82 µm — a
+factor 632 to 1,059. So the earlier worry is answered: the 0.84 µm `O_re` figure was a
+**flattened-map artifact of unjoined cell sets**, and the real interior change is at the
+expected scale. `vmode_13` is confirmed a **degenerate-subspace rotation**, not a changed
+fit — it moves by up to 1.018 on bins where every DOF agrees to 5.8e-11 µm.
+
+**The cause is one commit, and Aaron's hypothesis needs one correction.** `intrinsic_split.py`
+changed exactly once between the old builds (2026-07) and these:
+
+- **`3f66904`** (2026-10-05) *Fix the OCS/CCS null space at the field edge in the intrinsic
+  split* — stops skipping under-determined outer rings, continues rings below
+  `min_ring_coverage` radially, assigns unconstrained singular directions by
+  `degen_assignment` instead of 50/50, and adds the 4 `intrinsic_split_rms` columns.
+
+It is a **rim / NaN-ring fix, not a convex-hull or CWFS-outside-hull extension.** The
+evidence: the old `_5rot` map carries **124 NaN cells in `Z4_OCS`**, exactly the "124
+points" annulus at `r >= 1.729 deg` the commit message names, and the new build has 0. The
+CWFS corners sit near 1.19 deg of field angle, already well inside the old valid region, so
+nothing here makes MIW newly available outside a hull. The 9-bin variant's cell-count
+growth is **two effects stacked**: a lattice change (3,831-cell `126/73` grid -> 3,985-cell
+`1.726` grid, which `_5rot` already had in July) plus the rim fill.
+
+Still Aaron's call, unchanged: whether the ring continuation is accepted new behaviour for
+the expected-difference list or a regression, and what to do about `d12-tarts`.
+
 ## Next concrete action
 
-**STOPPED on `miw` item 4, 2026-10-14, on an unexplained comparison difference** (plan
-section 12), not on spend and not on a crash. Nothing is half-written: the
-`d12-A_50_34_i@20261014` build directory holds 15 of its 18 outputs and **no `miw` variant
-is `current`**. No process is running and the snakemake lock is free.
+**`miw` item 4 still WAITS ON AARON, 2026-10-14** — on the two questions below and on
+`d12-tarts`, not on a crash and not on spend. The comparison difference that caused the
+original stop is now **explained and measured** (section above): it is the field edge, from
+`ts_intrinsic_wavefront` commit `3f66904`. Nothing is half-written: the
+`d12-A_50_34_i@20261014` build directory holds 15 of its 18 outputs,
+`d12-A_50_34_i_5rot@20261014` holds its 4 `intrinsic_split` outputs and no manifest, and
+**no `miw` variant is `current`**. No process is running and the snakemake lock is free.
 
 **Two questions for Aaron, both in "Decisions for Aaron" above.** Items 5 to 7 (`coadds`,
 `dof_lut`, `bounce_tables`) all take `miw` as their upstream, so they are blocked behind
@@ -563,12 +637,14 @@ them.
 
 1. **`d12-tarts` has no intra-focal centroids**, so its corner sidecar cannot be built and
    `refit_mi` never ran. Exclude it from the corner-sidecar set, or add the columns?
-2. **The external builder's ring continuation changed**, adding 154 valid field-grid cells
-   (3,831 -> 3,985 of 5,041) and 4 new `intrinsic_split_rms` columns. Accepted new
-   behaviour, to be written onto the expected-difference list, or a regression?
+2. **The external builder's ring continuation changed** (`ts_intrinsic_wavefront` commit
+   `3f66904`), filling the NaN rim and, on the 9-bin variant, moving the lattice: 3,831 ->
+   3,985 cells, plus 4 new `intrinsic_split_rms` columns. Accepted new behaviour, to be
+   written onto the expected-difference list, or a regression?
 
-Once answered, the re-comparison to run first is in the section above: shared-cell
-`intrinsic_split_maps`, shared-key `zk_intrinsic`.
+The re-comparison is **done** — shared-cell `intrinsic_split_maps` and shared-key
+`zk_intrinsic`, both variants, numbers and PDFs in the validation section above. What is
+left is the judgement call, not the measurement.
 
 **Do not run this build under a forwarded X display.** The first attempt lost 8 of 9
 `build_intrinsic` jobs to `X connection to localhost:10.0 broken` plus a pybind11 GIL
