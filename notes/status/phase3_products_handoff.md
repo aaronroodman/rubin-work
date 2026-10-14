@@ -17,11 +17,12 @@
 > PDFs and `summary.md` for both `danish_1_2` variants are in
 > `$RUBINWORK_DATA/studies/phase3c_validation/miw/`. `d12-A_50_34_i@20261014` is built as
 > far as the sidecars and `d12-A_50_34_i_5rot@20261014` through `intrinsic_split`; neither
-> is promoted and **no `miw` variant is `current`**. Two things still need Aaron —
-> `d12-tarts` has no intra-focal centroids so its corner sidecar fails and `refit_mi` never
-> ran, and whether the ring continuation is accepted new behaviour for the
-> expected-difference list. Items 5 to 7 are blocked behind `miw`. Questions 6 and 7 in
-> "Decisions for Aaron".
+> is promoted and **no `miw` variant is `current`**. **Nothing in `miw` waits on Aaron:**
+> questions 6 and 7 are both answered (2026-10-14) — `d12-tarts` is excluded from the
+> corner-sidecar set, and the ring continuation / NaN-rim fill is **accepted new
+> behaviour**, now expected difference 7. What remains is mechanical: `refit_mi` for both
+> `d12-A_50_34_i` variants, then the `fits.parquet` comparisons Aaron reviews before any
+> `set-current`. Items 5 to 7 are blocked behind `miw`.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-14 · **Kind:** working state (handoff)
 
@@ -37,33 +38,6 @@ between sessions.
 
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
-
-6. **`d12-tarts` has no intra-focal centroid columns, so `miw` cannot build its corner
-   sidecar** (open, found 2026-10-14; **`miw` item 4 and therefore items 5 to 7 are
-   waiting on it**). `run_make_intrinsic_sidecar.py` raises
-   `ArrowInvalid: No match for FieldRef.Name(centroid_x_intra)`, and because the rule is
-   an input to `refit_mi` the whole build stops short of `fits.parquet`. The same defect is
-   already in "Open, not yet resolved" as `tarts`'s missing corner sidecar.
-   **Options:** (a) drop `d12-tarts` from the `miw` corner-sidecar set, by the same
-   skip-and-report idiom the Snakefile already uses for a variant with no build —
-   recommended, since neither the old tree nor the 3a reference has a `tarts` sidecar, so
-   nothing is lost against the comparison; (b) add the intra centroids to the `d12-tarts`
-   `cwfs_tables` build, which is a `cwfs_tables` rebuild and a bigger change.
-   **Waiting on it:** `miw`, and items 5 to 7 behind it.
-
-7. **The external builder's ring continuation changed the valid field-grid cell set**
-   (open, found 2026-10-14; **`miw` promotion is waiting on it**). The new build keeps
-   **3,985** of the 5,041 cells of the same 71x71 grid where the old kept **3,831** — 154
-   more — and `intrinsic_split_rms` gains 4 columns that name the mechanism
-   (`n_null_rings`, `n_continued_rings`, `min_ring_coverage_seen`, `max_null_dim`).
-   The commit is **identified** (`3f66904`, 2026-10-05) and the shared-cell comparison is
-   **done** — see the validation section; the difference is confined to r >= 1.729 deg and
-   the interior agrees to 7.2e-04 µm of wavefront.
-   **Options:** (a) accepted new behaviour of `ts_intrinsic_wavefront`, written onto the
-   expected-difference list — recommended, since the commit is a deliberate fix with its
-   own tests and the interior is unchanged; (b) a regression. **Waiting on it:** every
-   `miw` `set-current`,
-   and items 5 to 7. Numbers in "`miw` item 4" below.
 
 5. **`visits.parquet` row order is not deterministic, and two stored columns depend on
    it** (open, found 2026-10-12 by item 1's after-check; **nothing is waiting on it**).
@@ -152,6 +126,21 @@ the step. Answered items move to "Decisions taken".
    pushed.
 
 ## Decisions taken
+
+Answered 2026-10-14, both on `miw` item 4:
+
+- **Question 6, `d12-tarts`'s missing intra-focal centroids: option (a)** — `d12-tarts`
+  is dropped from the `miw` corner-sidecar set, by the Snakefile's existing
+  skip-and-report idiom. Nothing is lost: neither the old tree nor the 3a reference has a
+  `tarts` sidecar, `(day_obs, seq_num, detector)` is already unique on all 7,813 rows so
+  the centroids were only ever a key tie-breaker, and the planned TARTS-vs-Danish CWFS
+  comparison reads the donut tables. See "`d12-tarts`: SETTLED" below.
+- **Question 7, the ring continuation: option (a)** — the NaN-rim fill of
+  `ts_intrinsic_wavefront` commit `3f66904` is **accepted new behaviour**, now expected
+  difference 7 of the comparison plan: field-edge cells at **r >= 1.729 deg of field
+  angle** may differ, with the interior bounded at **9.2e-04 µm of wavefront**. Whether
+  the edge ring itself is trustworthy is the `miw_hull` study's question, not a 3c
+  blocker.
 
 Answered 2026-10-13 on the two 3c defects:
 
@@ -670,11 +659,11 @@ differs.
 
 ## Next concrete action
 
-**`refit_mi` for `d12-A_50_34_i@20261014` is the next step, and the submit was BLOCKED by
-the harness, 2026-10-14.** Aaron OK'd the exact sbatch command below and the submit was
-denied by the Claude Code auto-mode permission classifier ("Blind Apply"), not by Aaron and
-not by Slurm. **No job was submitted and no job ID exists.** A follow-up `snakemake -n`
-with the same arguments was blocked too, so nothing further ran this session.
+**`refit_mi` for `d12-A_50_34_i@20261014` is the next step.** Aaron has OK'd the exact
+sbatch command below twice (2026-10-14); the first attempt was denied by the Claude Code
+auto-mode permission classifier, not by Aaron and not by Slurm, so **no job was submitted
+and no job ID exists** from that attempt. Submit it as written; if the permission check
+blocks it again, stop and hand the command to Aaron.
 
 The build sits at **16 of 18 outputs**: all 9 `build_intrinsic` grids, `intrinsic_split`,
 the FAM `intrinsic_sidecar` and **3 of 3** corner sidecars (`d12-ai_donut`,
@@ -716,29 +705,7 @@ compare on the shared `(day_obs, seq_num)` key.
 
 ### Superseded by the above, kept so the next session does not re-ask
 
-**`miw` item 4 no longer waits on the two questions** — both are answered: the field-edge
-difference is explained and measured, and `d12-tarts` is settled. What remains is
-mechanical (`refit_mi`, then the `fits.parquet` comparison). The comparison difference that caused the
-original stop is now **explained and measured** (section above): it is the field edge, from
-`ts_intrinsic_wavefront` commit `3f66904`. Nothing is half-written: the
-`d12-A_50_34_i@20261014` build directory holds 15 of its 18 outputs,
-`d12-A_50_34_i_5rot@20261014` holds its 4 `intrinsic_split` outputs and no manifest, and
-**no `miw` variant is `current`**. No process is running and the snakemake lock is free.
-
-**Two questions for Aaron, both in "Decisions for Aaron" above.** Items 5 to 7 (`coadds`,
-`dof_lut`, `bounce_tables`) all take `miw` as their upstream, so they are blocked behind
-them.
-
-1. **`d12-tarts` has no intra-focal centroids**, so its corner sidecar cannot be built and
-   `refit_mi` never ran. Exclude it from the corner-sidecar set, or add the columns?
-2. **The external builder's ring continuation changed** (`ts_intrinsic_wavefront` commit
-   `3f66904`), filling the NaN rim and, on the 9-bin variant, moving the lattice: 3,831 ->
-   3,985 cells, plus 4 new `intrinsic_split_rms` columns. Accepted new behaviour, to be
-   written onto the expected-difference list, or a regression?
-
-The re-comparison is **done** — shared-cell `intrinsic_split_maps` and shared-key
-`zk_intrinsic`, both variants, numbers and PDFs in the validation section above. What is
-left is the judgement call, not the measurement.
+**Questions 6 and 7 are answered and `miw` item 4 waits on nothing** — `d12-tarts` is excluded from the corner-sidecar set and the ring continuation is accepted new behaviour (expected difference 7); the measurements are in the validation sections above, so do not re-ask or re-measure them.
 
 **Do not run this build under a forwarded X display.** The first attempt lost 8 of 9
 `build_intrinsic` jobs to `X connection to localhost:10.0 broken` plus a pybind11 GIL
@@ -951,12 +918,25 @@ unexplained difference stops the step).
    `danish_1_2@20261013` was promoted anyway on Aaron's 2026-10-13 decision. Every
    ConsDB-transform telemetry column is bit-identical, so only this one path carries it.
 
+7. **The `miw` field-edge ring continuation / NaN-rim fill** (`ts_intrinsic_wavefront`
+   commit `3f66904`, 2026-10-05; accepted new behaviour, Aaron 2026-10-14). Field-edge
+   cells of the 71x71 map grid at **r >= 1.729 deg of field angle** may differ: the new
+   build fills rim cells the old build left NaN (`_5rot` `Z4_OCS`: 124 NaN cells old, 0
+   new) and keeps **3,985** valid cells where the old kept **3,831**, with old-only = 0
+   cells, so the field extent does not grow. The **interior agrees to 9.2e-04 µm of
+   wavefront**, which is difference 2's own bound, and `intrinsic_split_rms` gains four
+   columns naming the mechanism (`n_null_rings`, `n_continued_rings`,
+   `min_ring_coverage_seen`, `max_null_dim`). Compare `intrinsic_split_maps` on the shared
+   cells; a flattened whole-map comparison is a mask-alignment artifact, not a result.
+   Whether the edge ring itself is trustworthy is the **`miw_hull` study's** question
+   (`aos/docs/status/miw_hull_scope.md`), not a 3c blocker.
+
 | # | product / variant | compared against | expected differences | what blocks it |
 |---|---|---|---|---|
 | 1 | **DONE 2026-10-13** `fam_tables` **`danish_1_2`** | `aos/output/fam_processing/danish_1_2/`, and the phase 2 reference chunk `20251116_20251130` for the column-level check | 1, 3, 4, 5. Row **order** differs too (chunks are now per night, so `combine_*` concatenates 137 inputs rather than 10) — compare keyed on (`day_obs`, `seq_num`), never positionally | the embargo probe, then the 137-job set |
 | 2 | **DONE 2026-10-13** `fam_tables` **`danish_1_3_v1000`**, **`danish_1_3_test`** (blitz, `run_blitz_mktable`) | `aos/output/fam_processing/danish_1_3_v1000/`, and the phase 2 A4 blitz reference `day_obs=20260428` | 1 (about **0.30 deg** here, the larger blitz offset), 3, 5. About an hour each, so interactive — no batch ask | item 1 landing; independent of the embargo night |
 | 3 | **DONE 2026-10-14** `cwfs_tables` (4 variants, all promoted) | `aos/output/wfs_ingest/danish_1_2/<upstream_name>/` per variant | 1 only, plus the **`d12-refitWcs_2025` fold** (3b item 5): one date-keyed variant now covers 2025 and 2026, so the 2025 rows appear under `d12-refitWcs` and the retired `d10-wep17_3_0` entry is gone | nothing — can run alongside item 1 |
-| 4 | `miw` (the 2 `d12` variants first; the 10 others have no complete old-tree build) | `aos/output/miw/<dir_name>/`, and the 3a reference in `_phase2_refbuild/miw/ref/` | 2 (the theta rotation, the headline number), and 1 carried through the visits it reads | items 1 and 3 |
+| 4 | `miw` (the 2 `d12` variants first; the 10 others have no complete old-tree build) | `aos/output/miw/<dir_name>/`, and the 3a reference in `_phase2_refbuild/miw/ref/` | 2 (the theta rotation, the headline number), 7 (the field-edge rim fill), and 1 carried through the visits it reads | items 1 and 3 |
 | 5 | `coadds` (`d12-A_50_34_i_5rot`; `_v2` has only an `archive/`) | `aos/output/coadd/<dir_name>/`, 2 tables + 2 npz | 2, through the MIW maps it coadds | item 4 |
 | 6 | **`dof_lut`** (the 2 `d12` variants) | `aos/output/lut/<dir_name>/` | **differs from the old tree by design: absolute vs post-MIW DOF.** Not a zero-tolerance comparison at all — the input table changed (commit `733c01d`). Compare the *shape* instead: 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8 schema-metadata fields and the 11 `lut_config.yaml` keys all present and self-consistent. Measured on the 3a reference, the hexapod DOF move by at most about 16 µm of hexapod motion and the DZ residual improves 6x — see the section above | item 4 (it now reads a `miw` build) |
 | 7 | `bounce_tables` (4 variants) | `aos/output/bounce/<dir_name>/`, 4 tables | 2, through the `miw` fit table it reads (its upstream is `miw`, unlike `dof_lut`'s old assignment). The nine PDFs are the study half and are not part of the product comparison | item 4 |
