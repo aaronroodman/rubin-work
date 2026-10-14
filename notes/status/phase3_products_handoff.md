@@ -19,12 +19,16 @@
 > at 18 of 18 and its `fits.parquet` is COMPARED** (960 shared visits of 3,385 new against
 > 960 old, every difference on the expected list, the DZ coefficients at max abs
 > **1.757e-03 µm of wavefront**); `d12-A_50_34_i_5rot@20261014` holds `intrinsic_split` and
-> needs 7 more jobs. Neither is promoted and **no `miw` variant is `current`**. **Nothing in `miw` waits on Aaron:**
-> questions 6 and 7 are both answered (2026-10-14) — `d12-tarts` is excluded from the
+> needs 7 more jobs. **Correction, 2026-10-14: `d12-A_50_34_i` IS `current@20261014`**
+> (symlink set Oct 14 10:25) — the earlier "no `miw` variant is `current`" was stale; only
+> `_5rot` has no current build. **`miw` waits on Aaron's choice among steps A1-A5**,
+> reviewed 2026-10-14 with nothing executed; the recommendation is A1 now (the only gate on
+> items 5-7), A3 with it, A2 already done, A4 after A3, A5 deferred. A new **expected
+> difference 8, the ESS telemetry window**, came out of that review.
+> Questions 6 and 7 are both answered (2026-10-14) — `d12-tarts` is excluded from the
 > corner-sidecar set, and the ring continuation / NaN-rim fill is **accepted new
-> behaviour**, now expected difference 7. What remains is mechanical: `refit_mi` for both
-> `d12-A_50_34_i` variants, then the `fits.parquet` comparisons Aaron reviews before any
-> `set-current`. Items 5 to 7 are blocked behind `miw`.
+> behaviour**, now expected difference 7. Items 5 to 7 are blocked behind `_5rot`'s
+> `refit_mi` and `set-current`: their Snakefiles cannot build a DAG without it.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-14 · **Kind:** working state (handoff)
 
@@ -659,10 +663,96 @@ corners sit near 1.19 deg of field angle, already well inside the old valid regi
 MIW becomes newly available outside any hull. The acceptance stands; only the label
 differs.
 
+## Review of the remaining `miw` steps A1-A5, 2026-10-14 — nothing executed
+
+Aaron asked whether the remaining `miw` steps are needed now. **Review only: no job was
+submitted, no comparison run, no `set-current`, no build.** Read-only checks only
+(`snakemake -n`, build-directory listings, parquet schema and column reads, `sacct`).
+
+| step | needed by | already known? | cost | recommendation |
+|---|---|---|---|---|
+| **A1** `refit_mi` for `_5rot@20261014` (7 jobs) | items 5, 6 and 7 — **all three default to the `_5rot` MIW variant** and their Snakefiles cannot even build a DAG without it | no | ~32 min wall-clock on 8 CPUs, ~4.2 CPU-hours; ~$2 of session spend to submit and check | **run now** — it is the single gate on items 5-7 |
+| **A2** re-attribute the 7 temperature and 2 `cam_*` columns; check the 4 gradients against the database | closing 3c's expected-difference list; no product | **yes, now settled below** — and the gradient half was already answered in this file's header | already spent, ~$1 | **done, drop** |
+| **A3** compare `_5rot` `fits.parquet` against the old tree | Aaron's review before `set-current` on `_5rot` | no | ~15 min, ~$2 | **run, but only after A1** |
+| **A4** `set-current` for both `miw` variants | items 5-7 resolve `miw` through the catalog | **partly done**: `d12-A_50_34_i/current` already points at `20261014` (set Oct 14 10:25). Only `_5rot` is missing | minutes, ~$0 | **defer to after A1+A3**; nothing is stale meanwhile |
+| **A5** items 5-7 (`coadds`, `dof_lut`, `bounce_tables`) | the reorganization's "every product rebuilt in the new tree" goal | no | hours of wall-clock each, the largest remaining block | **defer**; 2 of the 9 variants are registerable from the old tree instead of rebuilt |
+
+**A1.** Builds the `_5rot` MIW's `fits.parquet` (the post-MIW DZ refit) plus its donut and
+CWFS sidecars and manifest. Its `fits.parquet` is read by **`dof_lut` and
+`bounce_tables`**, and the MIW maps it completes are read by **`coadds`** — all three name
+`d12-A_50_34_i_5rot` as their default `miw_variant`, so `_5rot` *is* needed as a product,
+not just as a coadd input. Proof it is the hard gate: `snakemake -n` on
+`rubinwork/products/dof_lut/Snakefile` does not reach a job list at all, failing at
+`Snakefile:95` with `ProductNotFound: miw/d12-A_50_34_i_5rot has no current build`.
+Dry run confirmed at **7 jobs** today (`intrinsic_sidecar`, 3 `wfs_intrinsic_sidecar`,
+`refit_mi`, `manifest`, `all`), with `intrinsic_split` already built. Cost comes from the
+comparable `d12-A_50_34_i` run, Slurm job `40799253`: **00:31:33 elapsed on 8 allocated
+CPUs**.
+
+**A2 — settled from disk, no new computation needed, and the attribution is neither 6 nor
+4.** The 7 columns are `m1m3_air_temp`, `m2_air_temp`, `outside_temp`,
+`tma_truss_temp_mxmy`, `tma_truss_temp_pxpy`, `cam_air_temp` and `cam_m1m3_delta_t` — the
+2 `cam_*` are **2 of the same 7**, not a separate group, so the handoff's two rows are one
+row. These are `attach_telemetry` ESS columns, which **decision 3 (2026-10-12) keeps**, so
+difference 4 (`mktable --no-thermal`, which removes columns outright) is not their home
+either: the columns are present on both sides and NaN only on some visits. The NaN pattern
+is one-directional and identical on all 7 columns: **89 visits of the 960 shared have a
+finite old value and NaN new; 0 have the reverse; 871 are finite on both** (7 x 89 = the
+623 column-instance mismatches this file reported). The 89 are **scattered across all 15
+nights** and are a minority of each night (11 of 61 on `20260315`, 15 of 82 on `20260409`,
+1 of 11 on `20260419`), so it is per-visit, not per-night — consistent with a narrower EFD
+query window dropping visits near a telemetry gap, the same mechanism that shifts the
+surviving values by at most **0.2281 degC** (`outside_temp`, on the both-finite visits).
+**This is a new expected difference, not a re-filing of 6:** call it **difference 8, the
+ESS telemetry window** — 89 of 960 visits lose their ESS temperatures and the rest move by
+up to 0.2281 degC. The **4 M1M3 gradients** need no new check: this file's header already
+records them **equal to the value-added database at max abs 0.000e+00 degC/m on all 3,006
+visits that have them** for this exact build, `20261014`.
+
+**A3.** The same comparison A2 covers, on the `_5rot` side. Blocked on A1 and worth doing
+with it, since its differences should now be the known list plus difference 8 — if `_5rot`
+shows a *different* ESS pattern, difference 8's mechanism is wrong.
+
+**A4.** `d12-A_50_34_i` is already `current@20261014`; only `_5rot` lacks one. **Nothing
+breaks or goes stale while `miw` has no `current`:** a repo-wide search for
+`catalog.load`/`catalog.path` on `"miw"` finds hits **only** in `catalog.py`'s own
+docstring and in `products/tests/`. No notebook, no study and no other product reads `miw`
+through the catalog today — items 5-7 would be the first, which is why their Snakefiles
+are the only thing that fails.
+
+**A5.** Per item, with old-tree output counted on disk today:
+
+- **`coadds`** — 2 variants. `d12-A_50_34_i_5rot` has **7 files** in
+  `aos/output/coadd/danish_1_2/50_34/`; `d12-A_50_34_i_5rot_v2` has **1** entry, the
+  `archive/` directory only, so it has no comparable build and no rule plans it. Consumed
+  today by nothing in the catalog. Rebuild is for the reorganization's completeness, not
+  for a consumer.
+- **`dof_lut`** — 3 variants. `d12-A_50_34_i` and `d12-A_50_34_i_5rot` each have **5
+  files**; `d13t-A_50_34_i_5rot` has **0**. Its comparison is a *shape* check by design
+  (absolute vs post-MIW DOF), so a rebuild buys a shape check, not a numerical
+  verification.
+- **`bounce_tables`** — 4 variants. Only `d12-A_50_34_i_5rot_july` has output, **13
+  files**, and it is the tech note's source; the other 3 have none.
+- **Could any be skipped or registered rather than rebuilt?** Yes, two:
+  `coadds/d12-A_50_34_i_5rot_v2` and `bounce_tables/d12-A_50_34_i_5rot_july`. The `_v2`
+  variant differs from `_v2`'s sibling only in `ext_terms`, which changes nothing but
+  `block_grids_ext.npz` and a PDF page count, and the archive README records
+  `block_grids.npz` as byte-identical — so registering the old tree with a manifest loses
+  nothing. `_5rot_july` reads a **hand-made `fits_july.parquet` produced by no rule**, so
+  it cannot be rebuilt reproducibly at all; a manifest over the old tree is the only
+  honest option. The remaining 7 variants either have no old-tree output (so there is
+  nothing to register) or are the real rebuild targets.
+
 ## Next concrete action
 
-**`refit_mi` for `d12-A_50_34_i_5rot@20261014` is the next step, and it needs Aaron's OK on
-the sbatch command below.** The dry run reports **7 jobs**: `intrinsic_sidecar`,
+**Waiting on Aaron's choice among A1-A5.** The review above is the input; nothing is
+submitted or promoted until he picks. The recommendation in one line: **A1 now** (it is
+the only gate on items 5-7), **A3 with it**, **A2 is done**, **A4 after A3**, **A5
+deferred** with 2 of its 9 variants registered from the old tree rather than rebuilt.
+
+The sbatch command A1 needs Aaron's OK on is below; the dry run reports **7 jobs**:
+`intrinsic_sidecar`, 3 `wfs_intrinsic_sidecar` (`d12-tarts` correctly skipped),
+`refit_mi`, `manifest`, `all`. Confirmed still 7 on 2026-10-14.
 3 `wfs_intrinsic_sidecar` (`d12-tarts` correctly skipped), `refit_mi`, `manifest`, `all`.
 
 ```bash
@@ -967,6 +1057,17 @@ unexplained difference stops the step).
    cells; a flattened whole-map comparison is a mask-alignment artifact, not a result.
    Whether the edge ring itself is trustworthy is the **`miw_hull` study's** question
    (`aos/docs/status/miw_hull_scope.md`), not a 3c blocker.
+
+8. **The ESS telemetry window** (found 2026-10-14 in the `d12-A_50_34_i` `fits.parquet`
+   comparison, A2). The 7 `attach_telemetry` ESS columns — `m1m3_air_temp`,
+   `m2_air_temp`, `outside_temp`, `tma_truss_temp_mxmy`, `tma_truss_temp_pxpy`,
+   `cam_air_temp`, `cam_m1m3_delta_t` — are present on both sides but NaN on more visits
+   in the new build: **89 of the 960 shared visits go finite-old to NaN-new, 0 the
+   reverse**, the same 89 on all 7 columns, scattered across all 15 nights and a minority
+   of each. On the 871 both-finite visits the values move by at most **0.2281 degC**
+   (`outside_temp`). This is **not** difference 6 (gradients and `lut_dof5..9`) and **not**
+   difference 4 (which drops columns outright; decision 3 keeps these). Likely a narrower
+   EFD query window dropping visits near a telemetry gap. Not yet traced to a commit.
 
 | # | product / variant | compared against | expected differences | what blocks it |
 |---|---|---|---|---|
