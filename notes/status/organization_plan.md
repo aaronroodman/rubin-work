@@ -970,9 +970,10 @@ any conflict.
   approved 3b item describes.
 - A change to science results outside phase 3b/3c, or a 3b/3c result that differs from
   what the plan predicts.
-- Spend: stop at the end of the current step once a session has spent more than $50, or
-  when the month's total passes the pace that stays under budget (see the handoff's spend
-  note).
+- Spend: stop at the end of the current step once a session has spent more than $50.
+  The monthly-pace stop is suspended (Aaron, 2026-10-14: a quota increase is requested).
+  Keep sessions cheap: narrow reads, no re-reading of long handoff sections, terse
+  results.
 
 ### Queue, don't block
 
