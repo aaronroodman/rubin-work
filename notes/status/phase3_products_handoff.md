@@ -6,11 +6,12 @@
 > visits each). The **M1M3 gradient defect is FIXED** (commit `bef17ba`): the sidecar now
 > reads the four gradients from the value-added database, verified exact on one night, and
 > `danish_1_2@20261014` is staged to rebuild only the steps below `mktable`.
-> `cwfs_tables` is **2 of 4 variants compared and clean** (difference 1 only); `d12-refitWcs`
-> is **still building** in a surviving process from the cleared session, holding the
-> snakemake lock, with `d12-ai_donut` queued behind it. **Session stopped on the plan's
-> spend limit**, not on a problem. Next: finish those two, run `20261014`, then `miw`
-> (item 4 of the comparison plan) — the resume steps are in "Next concrete action".
+> `cwfs_tables` is **3 of 4 variants compared and clean**: differences 1 and, on
+> `d12-refitWcs`, the 2025 fold (+2,168 visit rows, every old row kept, shared 2026 rows
+> unchanged but for difference 1). `d12-ai_donut` is **still building** in a surviving
+> process from the cleared session, which holds the snakemake lock. **Session stopped on
+> the plan's spend limit**, not on a problem. Next: finish that variant, run `20261014`,
+> then `miw` (item 4) — resume steps in "Next concrete action".
 > · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
@@ -947,8 +948,8 @@ Item 3 of the comparison plan. Four registered variants, all keyed to `fam_table
 `donuts` and (`day_obs`, `seq_num`) for `visits` — uniqueness asserted on both sides by the
 tool and printed in each run below.
 
-**Two of the four are compared and clean.** `d12-refitWcs` and `d12-ai_donut` are still
-building; this table is completed when they land.
+**Three of the four are compared and clean.** `d12-ai_donut` was still building; this table
+is completed when it lands.
 
 | variant | table | rows old | rows new | cols | differing columns | the difference |
 |---|---|---|---|---|---|---|
@@ -956,13 +957,33 @@ building; this table is completed when they land.
 | `d12-tarts` | `visits` | 977 | 977 | 8 | 1 | same, max abs **0.4446 deg** |
 | `d12-paired_3mm` | `donuts` | 1,223 | 1,223 | 20 | 1 | same, max abs **0.4446 deg** |
 | `d12-paired_3mm` | `visits` | 134 | 134 | 8 | 1 | same, max abs **0.4446 deg** |
+| `d12-refitWcs` | `donuts` | 34,631 | **97,185** | 20 | 1 | +62,554 rows, all 2025 (the fold); on the shared 2026 rows, `rotator_angle` only, max abs **0.4446 deg** |
+| `d12-refitWcs` | `visits` | 1,122 | **3,290** | 8 | 1 | +2,168 rows, all 2025; same on the shared rows |
 
-Row counts in and out are **equal on every table**, and the column sets are identical —
-0 columns only in the old build, 0 only in the new. The one differing column is
-`rotator_angle`, which is **expected difference 1**, and its 0.4446 deg maximum sits just
-under the 0.456 deg maximum that difference predicts from the FAM reference chunk. No
-other column moved, so the 3b `rotTelPos` change reaches these tables through the FAM
-`visits.parquet` they read and nothing else.
+On `d12-tarts` and `d12-paired_3mm` the row counts are **equal on every table**. The one
+differing column is `rotator_angle`, which is **expected difference 1**, and its 0.4446 deg
+maximum sits just under the 0.456 deg maximum that difference predicts from the FAM
+reference chunk. No other column moved, so the 3b `rotTelPos` change reaches these tables
+through the FAM `visits.parquet` they read and nothing else. Column sets are identical on
+every variant — 0 columns only in the old build, 0 only in the new.
+
+**`d12-refitWcs` gains rows, and that is expected difference 5** (the `d12-refitWcs_2025`
+fold of 3b item 5: one date-keyed variant now covers 2025 and 2026, where the old tree's
+`refitWcs` directory held 2026 only). Checked explicitly rather than assumed, because
+`compare_builds` compares **no columns at all** when the row counts differ — its
+"values: identical" line on a row-count mismatch is vacuous and must not be read as a pass:
+
+- **Every old row survives**: 0 old-only keys on both tables, on the verified-unique key.
+- **Every added row is 2025**: 2,168 visit rows and 62,554 donut rows, all with `day_obs`
+  in 2025, against 0 added 2026 rows. Old by year: 2026 only (1,122 / 34,631). New by
+  year: 2025 (2,168 / 62,554) plus 2026 (1,122 / 34,631).
+- **The shared 2026 rows are unchanged** apart from difference 1: restricting the new build
+  to `day_obs // 10000 == 2026` and comparing column by column on the sorted key gives
+  **1 differing column of 8** (`visits`) and **1 of 20** (`donuts`), `rotator_angle` in
+  both at max abs **0.4446 deg** — the identical value the other two variants show.
+
+Its `wfs_mktable_validation.pdf` grew from 1,620,637 to 3,605,112 bytes (+122.45%), which
+is the extra year of data in the plot, not a defect.
 
 Two things these tables do **not** show, both expected: no `rotator_angle_source` column
 (the CWFS builder does not carry it, which is why the column sets match exactly), and no
@@ -1055,35 +1076,32 @@ Landing under needs **$44.63/day** ($798.82 remaining over 17.9 days). Nothing i
 and nothing is half-written; the stop is a budget stop, not a failure.
 
 **One process is still running and must be left alone:** the previous session's
-`/tmp/aos3c/build_cwfs.sh` (PID 2796951, with `snakemake` PID 2846113 and
-`run_wfs_mktable` PID 2846146) is building `cwfs_tables` `d12-refitWcs`, started 18:35 and
-**119 min in** at the stop, 11.7 GB read and climbing by about 0.55 GB per 5 min — it is
-progressing, not hung. It holds the **repository-root snakemake lock**, which is why the
-`20261014` rebuild could not start. `d12-ai_donut` is queued behind it in the same script.
-Expect refitWcs to take longer than the 17 min each of the two small variants: it has
-**34,631 donut rows** against 7,813, and it opens **two Butlers** for the 2025+2026 fold.
-Do not launch a second snakemake until that script exits — the lock will refuse it, as it
-already did once this session.
+`/tmp/aos3c/build_cwfs.sh` (PID 2796951) is now on its last variant, `d12-ai_donut`.
+`d12-refitWcs` **completed at 21:50**, after 3 h 15 min — far longer than the 17 min each of
+the two small variants, because it has 97,185 donut rows and opens **two Butlers** for the
+2025+2026 fold. Expect `d12-ai_donut` to be comparable: 37,198 donut rows in the old tree.
+The script holds the **repository-root snakemake lock**, which is why the `20261014` rebuild
+could not start. Do not launch a second snakemake until it exits — the lock will refuse it,
+as it already did once this session.
 
 **Resume here, in this order:**
 
-1. Confirm the script finished and both manifests exist:
+1. Confirm the script finished and all four manifests exist:
    ```bash
    ls /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/*/20261013/manifest.json
    ```
-2. Compare the two new `cwfs_tables` builds and complete the table in "`cwfs_tables`
-   rebuilt and compared". `d12-refitWcs` is the one that should **gain 2025 rows** from
-   the 3b fold, so its row counts will not match the old tree and that is expected
-   difference 5 of the comparison plan's item 3; `d12-ai_donut` should match exactly, with
-   `rotator_angle` the only differing column:
+2. Compare `d12-ai_donut` and complete the table in "`cwfs_tables` rebuilt and compared".
+   It should match the old tree row for row, with `rotator_angle` the only differing
+   column — unlike `d12-refitWcs`, it is not part of the 2025 fold:
    ```bash
    cd /sdf/home/r/roodman/notebooks/rubin-work && \
-   for v in refitWcs ai_donut; do \
-     python -m rubinwork.products.cwfs_tables.compare_builds \
-       aos/output/wfs_ingest/danish_1_2/$v \
-       /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/d12-$v/20261013; \
-   done
+   python -m rubinwork.products.cwfs_tables.compare_builds \
+     aos/output/wfs_ingest/danish_1_2/ai_donut \
+     /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/d12-ai_donut/20261013
    ```
+   **If its row counts differ, that is unexplained and stops the step** — only
+   `d12-refitWcs` was folded. And if any row count differs, do **not** read
+   `compare_builds`' "values: identical" as a pass; see the note in the comparison section.
 3. `set-current` each clean variant (pre-approved, section 12), then confirm `load()`:
    ```bash
    cd /sdf/home/r/roodman/notebooks/rubin-work && \
@@ -1163,6 +1181,12 @@ and is what is finishing the other two. State now:
 - **Night 20250417 as the gradient test case.** It has **0 of 55 visits with gradients** in
   either source — an early 2025 night with no M1M3 thermocouple coverage — so it proves
   nothing. Use **20250706**, the clearest case of the defect.
+- **Reading `cwfs_tables`/`fam_tables` `compare_builds` output on a row-count mismatch.**
+  It prints `columns compared: 0` and then **`values: identical`**, which is vacuous: with
+  unequal row counts it aligns nothing and compares no columns. `d12-refitWcs` hit this.
+  When counts differ, restrict to the shared subset and compare column by column yourself —
+  the 2025/2026 split and the per-column check in the comparison section are the pattern.
+  Worth fixing in the tool so the line cannot be misread.
 
 **`set-current` is pre-approved** for a 3c build whose comparison is clean (plan section
 12, Aaron 2026-10-13): every difference on the product's expected-difference list, written
