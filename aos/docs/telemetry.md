@@ -30,7 +30,7 @@ bug. Filling those visits with NaN is the intended behaviour.
 | **Trim (all 50 DOF)** | **EFD, as-of-time** | **0% on FAM exposures in ConsDB** — no ConsDB path exists |
 | **Compensation mode** | **EFD, as-of-time with a days-long lookback** | a state-change event, not per-exposure telemetry; says whether the LUT was actually applied |
 | Tweak | **derived** | no topic or property exists; difference consecutive Trim (0.0 where no correction was applied) |
-| M1M3 spatial gradients | **EFD** | not in the transform |
+| M1M3 spatial gradients | **value-added database** (`visit_telemetry`) | not in the transform, and the build-time plane fits were wrong on reduced-thermocouple visits |
 | Camera-body temperatures | **EFD** | not in ConsDB at all |
 | Mirror stress | neither | 0% in ConsDB on FAM exposures |
 
@@ -43,7 +43,7 @@ LUT axial forces and 110 the commanded degrees of freedom. Measured finite fract
 |---|---|---|---|
 | ESS air temps | `cam_air_temp`, `m2_air_temp`, `m1m3_air_temp`, `outside_temp` | 94.3% (`cam_air_temp`) | deg C |
 | derived deltas | `m2_delta_t`, `dome_delta_t`, `cam_m1m3_delta_t` | as above | deg C, differences of the four |
-| M1M3 gradients | `x_gradient`, `y_gradient`, `z_gradient`, `radial_gradient` | 100% except the first chunk | deg C per m; **41%** in `20250415_20250531` |
+| M1M3 gradients | `x_gradient`, `y_gradient`, `z_gradient`, `radial_gradient` | 3,006 of 3,385 visits (`danish_1_2@20261014`) | deg C per m; joined from the value-added database's `visit_telemetry`, not recomputed |
 | TMA truss | `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy` | **0% in the two oldest 2025 chunks** | deg C |
 | camera body | 26 `cam_*Temp` columns | 98.6% | deg C; **combined table only** |
 | pointing | `alt`, `az`, `ra`, `dec`, `rotTelPos` | — | **rad** |
@@ -492,10 +492,14 @@ and `make_efd_client` / `make_consdb_client`. Re-export shims remain at
 a slaciana/slacrd interactive node, **not** a batch node. That is why `attach_telemetry` is
 excluded from the Snakemake batch mode.
 
-For batch jobs the EFD-only quantities — the M1M3 spatial gradients and the camera-body
-temperatures — are read from the value-added database instead (`visit_telemetry` groups
-`gradients` and `camera`, [`../../value_added/docs/schema.md`](../../value_added/docs/schema.md)),
-which is fetched once from an EFD-reachable node. That database supersedes the earlier plan
+The M1M3 spatial gradients are read from the value-added database on **every** build, not
+only in batch (`visit_telemetry` group `gradients`,
+[`../../value_added/docs/schema.md`](../../value_added/docs/schema.md)): recomputing them
+per build fitted 30-second thermocouple bins that were badly constrained whenever a sensor
+was missing, which corrupted 1,539 of 3,006 visits with gradients in the
+`danish_1_2@20261013` build (Aaron, 2026-10-13). The camera-body temperatures are still
+fetched from the EFD, and are read from the database only in batch jobs, where the EFD does
+not resolve. That database supersedes the earlier plan
 for a private per-visit cache of EFD-only AOS quantities. The M1M3 gradients are expected in
 the official ConsDB transform eventually, but the stated plan as of 2026-08 was not to
 backfill earlier visits, so the value-added copy remains the only source for those.

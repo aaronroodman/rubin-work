@@ -22,7 +22,7 @@ Sources, ConsDB first and the EFD only where ConsDB cannot answer -- see
 group                 source    why
 ===================== ========= ==========================================================
 ``thermal``           ConsDB    ESS temps, deltas, TMA truss: 88.6% on FAM exposures
-``gradients``         EFD       M1M3 spatial gradients are not in the transform
+``gradients``         DuckDB    the value-added database's ``visit_telemetry``, not live EFD
 ``wind``              ConsDB    88.6% and currently thrown away entirely
 ``camera``            EFD       camera-body temperatures are not in ConsDB at all
 ``lut``               ConsDB    M1M3 elevation + M2 gravity LUT join 400/400 sampled
@@ -30,6 +30,15 @@ group                 source    why
 ``trim``              EFD       0% on FAM (cwfs) exposures in ConsDB -- no ConsDB path
 ``tweak``             derived   no topic and no property exists; differenced from Trim
 ===================== ========= ==========================================================
+
+**The four M1M3 bulk thermal gradients come from the value-added database, not from live
+EFD.** Recomputing them at build time called ``fit_plane_gradients`` on 30-second bins,
+which fits as soon as more than 4 thermocouples survive, so a bin with a reduced sensor
+set is fitted but badly constrained -- sign flips and 2.5x excursions. That corrupted
+1,539 of 3,006 visits of the ``danish_1_2@20261013`` build, every one of them with fewer
+than 146 of 146 sensors. The database's own gradients are correct, so the sidecar joins
+them on (``day_obs``, ``seq_num``) instead. A visit the database does not have gets NaN
+and is counted. Decided by Aaron 2026-10-13; see the plan's section 10.
 
 Three distinct DOF quantities are attached, and they are **not** interchangeable:
 
@@ -108,6 +117,46 @@ CORE_THERMAL = [
     'tma_truss_temp_pxpy', 'tma_truss_temp_mxmy',
 ]
 GRADIENT_COLS = ['x_gradient', 'y_gradient', 'z_gradient', 'radial_gradient']
+
+# Sidecar column -> the value-added database's `visit_telemetry` column it is read from.
+# Both are degC per metre, so the join copies values without conversion.
+GRADIENT_DB_COLS = {c: f'm1m3_{c}_c_per_m' for c in GRADIENT_COLS}
+
+
+def fetch_gradients(keys, verbose=True):
+    """Read the four M1M3 bulk thermal gradients from the value-added database.
+
+    Parameters
+    ----------
+    keys : `pandas.DataFrame`
+        Visit keys, with ``day_obs`` and ``seq_num`` columns.
+    verbose : `bool`, optional
+        Print the matched and missing counts.
+
+    Returns
+    -------
+    grad : `pandas.DataFrame`
+        ``day_obs``, ``seq_num`` and the four columns of `GRADIENT_COLS`, in degC per
+        metre, one row per row of `keys`. A visit the database has no row for, or whose
+        row has a NULL gradient, is NaN.
+
+    Notes
+    -----
+    Read-only, through `rubinwork.products.value_added.reader`. This replaces the
+    build-time recomputation from live EFD, whose 30-second plane fits were wrong on
+    every visit with a reduced thermocouple set -- see the module docstring.
+    """
+    from rubinwork.products.value_added import reader
+
+    db = reader.visits(columns=list(GRADIENT_DB_COLS.values()))
+    db = db[['day_obs', 'seq_num'] + list(GRADIENT_DB_COLS.values())]
+    grad = keys[['day_obs', 'seq_num']].merge(db, on=['day_obs', 'seq_num'], how='left')
+    grad = grad.rename(columns={v: k for k, v in GRADIENT_DB_COLS.items()})
+    if verbose:
+        n_finite = int(grad[GRADIENT_COLS[0]].notna().sum())
+        print(f'    gradients: {n_finite}/{len(grad)} visits from the value-added '
+              f'database, {len(grad) - n_finite} NaN')
+    return grad
 
 
 def _visit_keys(visits_path):
@@ -254,11 +303,19 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
         except Exception as e:
             print(f'    camera FAILED: {type(e).__name__}: {str(e)[:140]}')
 
-    if 'thermal' in groups or 'gradients' in groups:
+    if 'thermal' in groups:
         try:
-            _attach_thermal(out, keys, cdb, efd, groups, verbose)
+            _attach_thermal(out, keys, cdb, efd, verbose)
         except Exception as e:
             print(f'    thermal FAILED: {type(e).__name__}: {str(e)[:140]}')
+
+    if 'gradients' in groups:
+        try:
+            grad = fetch_gradients(keys, verbose)
+            for c in GRADIENT_COLS:
+                out[c] = grad[c].to_numpy()
+        except Exception as e:
+            print(f'    gradients FAILED: {type(e).__name__}: {str(e)[:140]}')
 
     # Preserve columns an earlier run fetched. `out` holds only the groups requested this
     # time, so writing it directly would drop every other group's columns from the
@@ -285,11 +342,14 @@ def fetch_for_chunk(chunk_dir, groups, cdb, efd, consdb_url, verbose=True):
     return len(out), cols
 
 
-def _attach_thermal(out, keys, cdb, efd, groups, verbose):
+def _attach_thermal(out, keys, cdb, efd, verbose):
     """Merge the package's thermal product into `out`, in place.
 
     Uses ``intrinsics_lib.get_thermal_data`` rather than reimplementing the query, so the
-    columns match what ``mktable`` itself would have written.
+    columns match what ``mktable`` itself would have written. Only `CORE_THERMAL` is taken
+    from it: the four gradients this product also returns are the badly constrained
+    build-time plane fits, and come from the value-added database instead
+    (`fetch_gradients`).
     """
     import asyncio
     from astropy.table import QTable
@@ -299,18 +359,12 @@ def _attach_thermal(out, keys, cdb, efd, groups, verbose):
     if df is None or not len(df):
         print('    thermal: no rows returned')
         return
-    want = []
-    if 'thermal' in groups:
-        want += CORE_THERMAL
-    if 'gradients' in groups:
-        want += GRADIENT_COLS
-    keep = ['day_obs', 'seq_num'] + [c for c in want if c in df.columns]
+    keep = ['day_obs', 'seq_num'] + [c for c in CORE_THERMAL if c in df.columns]
     merged = out.merge(df[keep], on=['day_obs', 'seq_num'], how='left')
     for c in keep[2:]:
         out[c] = merged[c].to_numpy()
     if verbose:
-        got = [c for c in want if c in out]
-        print(f'    thermal/gradients: {len(got)} cols')
+        print(f'    thermal: {len(keep) - 2} cols')
 
 
 # Join keys, never treated as telemetry columns to copy.
@@ -446,8 +500,9 @@ def main():
         print(f'[attach_telemetry] {args.param_set}: {len(chunks)} chunk(s), '
               f'groups={",".join(groups)}')
         cdb = make_consdb_client(args.consdb_url)
+        # `gradients` is not here: it reads the value-added database, not the EFD.
         efd = make_efd_client(args.efd) if (
-            {'trim', 'tweak', 'camera', 'gradients', 'thermal'} & set(groups)) else None
+            {'trim', 'tweak', 'camera', 'thermal'} & set(groups)) else None
         for ch in chunks:
             fetch_for_chunk(ch, groups, cdb, efd, args.consdb_url)
 
