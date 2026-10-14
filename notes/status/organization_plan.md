@@ -840,6 +840,7 @@ From the removed `todo.md` and `reorg_review_plan_2026-09.md`:
 | per-study logbook (old B5) | replaced by `study.md` and `/wrap` |
 | systematic code review (old Part C1–C4) | phase 8 |
 | **The FAM sidecar carries telemetry the build does not need** — see below | phase 3, after `value_added` is registered |
+| **The FAM sidecar must read the four M1M3 bulk thermal gradients from the value-added database** instead of recomputing them from live EFD at build time — see below | after 3c; required, not optional |
 
 **Shrink the FAM telemetry sidecar; let the downstream studies read ConsDB and DuckDB.**
 Aaron's position, recorded 2026-10-10: building the measured intrinsic wavefront (MIW)
@@ -883,6 +884,24 @@ is why the Snakefile drops `attach_telemetry` under `--mode batch`
 run in batch. Blocked until `value_added` is a registered product (phase 3), so DuckDB
 coverage can be checked per group rather than assumed, and so the studies have a sanctioned
 path to read instead.
+
+**The four M1M3 bulk thermal gradients must come from the value-added database.** Decided
+by Aaron 2026-10-13, after the 3c `danish_1_2` rebuild got them wrong. Today
+`rubinwork/common/ess_telemetry.get_m1m3_gradients` recomputes them at build time: it calls
+`ThermocoupleAnalysis.load(start, end, time_bin=30)` over the visits' span and interpolates
+`xyz_r_gradients` onto each `obs_start`. The per-bin plane fit
+(`ts_m1m3_utils`, `fit_plane_gradients`) drops non-finite sensors and fits as soon as more
+than 4 survive, so a 30-second bin with a reduced thermocouple set is fitted but badly
+constrained — sign flips and 2.5x excursions against the neighbouring full-complement bins.
+In the 3c build that corrupted **1,539 of 3,006** visits with gradients, every one of them
+a visit with fewer than 146 sensors, while the value-added database's own
+`visit_telemetry` gradients agree with the pre-3c values to 5.0e-05 to 3.0e-04 degC/m.
+Measured numbers in `notes/status/phase3_products_handoff.md`, "The three-way gradient
+check". So the sidecar should join
+`visit_telemetry.m1m3_{x,y,z,radial}_gradient_c_per_m` on (`day_obs`, `seq_num`) rather
+than recompute, which also removes one more live-EFD dependency from the FAM build and so
+serves the batch goal above. Until it lands, the gradient columns in any
+`fam_tables@20261013`-derived build are **known-bad**.
 
 `notes/todos/todo-ideas.md` stays as Aaron's idea queue. Items there that become studies
 get a `study.md`, and the item number is recorded in its front matter.

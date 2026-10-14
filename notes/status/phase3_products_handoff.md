@@ -779,14 +779,11 @@ about **4,500** (0.7%, hexapod LUT axial-force units).
 - **Not non-determinism in the fetch.** Refetching night 20251128 **twice in one process**
   gives **max|A-B| = 0.0** and both reproduce the **new** build exactly, not the old.
 
-**What it is: the EFD thermocouple telemetry itself has changed under us.** The old tree's
-`visits.parquet` was written **2026-09-09**; the gradients are recomputed from live EFD at
-build time. The gradient series is **noise-dominated at the 30-second bin scale** —
-consecutive samples on night 20251128 swing over **6.7e-4 degC/m**, which is the **same
-size as the old-vs-new differences on that night** (2.18e-04 and 1.80e-03 degC/m). So a
-thermocouple sample arriving, or being backfilled, into a different 30-second bin changes
-that bin's mean and hence the interpolated per-visit value. Every other telemetry column
-that comes from the **ConsDB transform** rather than live EFD is **bit-identical**:
+**The noise explanation above was WRONG, and the three-way check against the value-added
+database overturned it on 2026-10-13 — see "The three-way gradient check" below. The NEW
+build is the outlier.** What survives of this paragraph is only the observation that every
+telemetry column that comes from the **ConsDB transform** rather than live EFD is
+**bit-identical**:
 `cam_air_temp`, `m2_air_temp`, `m1m3_air_temp`, `outside_temp`, `m2_delta_t`,
 `cam_m1m3_delta_t`, `dome_delta_t`, `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy` — **0 of
 3,385 visits differ on all nine**. That isolates the change to the one live-EFD path.
@@ -800,36 +797,168 @@ checked (`m2_air_temp`, `outside_temp`, `radial_gradient`, `x_gradient`, `rotato
 0 differing each). This is why the `fits` comparison shows temperature differences the
 `visits` comparison does not — those are the **old** tree's defect, not the new build's.
 
-**Decision for Aaron (nothing else is blocked).** The gradients and `lut_dof5..9` are a
-live-telemetry-at-build-time difference, not a code difference, and they are not
-reproducible against a 2026-09-09 build by construction. Options:
+## The three-way gradient check: the NEW build is the outlier, 2026-10-13
 
-- **Accept and add it to the expected-difference list as difference 6** (recommended):
-  any product rebuilt from live EFD will carry it, so every later 3c comparison needs it
-  anyway. The new values are the better ones — they are self-consistent across `fits` and
-  `visits`, where the old tree's were not.
-- Pin the gradients by caching the thermocouple reduction per night, so a rebuild is
-  reproducible. A real change to the builder, outside 3c's scope.
-- Treat it as a stop and investigate the EFD backfill history for the 1,456 visits first.
+Aaron's condition of 2026-10-13: `set-current` for `danish_1_2@20261013` was OK **only if**
+the new M1M3 gradients agree with the value-added database. **They do not, so no
+`set-current` has run for `danish_1_2`.** He also rejected the noise explanation above on
+its face — `y_gradient` differs by up to 0.668 degC/m against a column RMS of 0.0194
+degC/m, which no 30-second-bin noise produces — and he was right.
+
+The check joined three sources on (`day_obs`, `seq_num`) for the **3,006** visits that have
+gradients in all three: the old tree
+(`aos/output/fam_processing/danish_1_2/visits.parquet`), the new build
+(`fam_tables/danish_1_2/20261013`), and `visit_telemetry` in the live value-added database
+(read-only connection, `m1m3_{x,y,z,radial}_gradient_c_per_m`).
+
+| column (degC/m) | RMS(new − DB) | RMS(old − DB) | RMS of the column | new is the outlier | old is the outlier |
+|---|---|---|---|---|---|
+| `x_gradient` | 2.663e-03 | **8.307e-05** | 6.962e-03 | 308 | 0 |
+| `y_gradient` | 1.304e-02 | **9.573e-05** | 1.941e-02 | 333 | 0 |
+| `z_gradient` | 6.766e-03 | **3.029e-04** | 1.792e-01 | 725 | 1 |
+| `radial_gradient` | 6.333e-03 | **5.048e-05** | 3.776e-02 | 513 | 0 |
+
+"Outlier" means that build differs from **both** of the other two by more than 5x the
+30-second-bin swing (5 x 6.7e-4 = 3.35e-03 degC/m) while those two agree within it.
+**RMS(old − DB) is 30x to 140x smaller than RMS(new − DB) on every column.** Per visit,
+with a 1e-9 degC/m tolerance (the median |new − old| is ~1e-15 degC/m, so almost every
+visit's "difference" in the earlier table is float round-off):
+
+| classification | visits of 3,006 |
+|---|---|
+| old agrees with the DB, new does not — **new is the outlier** | **1,373** |
+| new agrees with the DB, old does not | **0** |
+| all three agree | 1,467 |
+| no two of the three agree | 83 |
+
+**Zero visits** have the new build agreeing with the database where the old one does not.
+
+**The mechanism, and it is deterministic, not noise: the thermocouple count.** Joining
+`m1m3_thermal_r2.m1m3_n_sensors` (count of thermocouples, dimensionless) shows a clean
+split — **all 1,467 visits where the three builds agree have `m1m3_n_sensors = 146`**, the
+full complement, and **every one of the 1,539 visits where the new build disagrees with the
+database has fewer than 146** (median 125 of 146).
+Spearman rho(`m1m3_n_sensors` [count], max|new − DB| [degC/m]) = **−0.859**, p < 1e-300,
+n = 3,006. So the two builds disagree exactly when a thermocouple is missing, which is a
+difference in how the reduced sensor set is handled or in which sensors the EFD returned
+for the span — not a 30-second bin landing differently.
+
+**Refetching the gradients today reproduces the OLD tree and the database, not the new
+build.** `ess_telemetry.get_m1m3_gradients` rerun on five nights, max abs difference in
+degC/m:
+
+| night | max&#124;refetch − new&#124; | max&#124;refetch − old&#124; | max&#124;refetch − DB&#124; | max&#124;old − DB&#124; |
+|---|---|---|---|---|
+| 20250706 | 6.684e-01 | 5.523e-02 | 5.523e-02 | **3.219e-03** |
+| 20250813 | 1.046e-01 | 1.624e-02 | 1.624e-02 | **6.086e-04** |
+| 20250826 | 2.115e-02 | 8.388e-02 | 8.388e-02 | **1.146e-03** |
+| 20260402 | 2.494e-02 | 4.322e-02 | 4.322e-02 | **2.359e-03** |
+| 20251117 | 5.583e-02 | 2.919e-02 | 2.919e-02 | **5.830e-04** |
+
+`max|old − DB|` is the smallest entry on every night (6e-04 to 3.2e-03 degC/m). The
+refetch tracks old/DB on four of the five. The single clearest case is night **20250706**
+seq_num **662**: the new build has `y_gradient = +0.6198 degC/m` where today's refetch, the
+old tree and the database all give about **−0.0486 degC/m** — a sign flip and 13x the
+magnitude, which is a bad fit, not a bin shift.
+
+One earlier claim in "What it is NOT" above is now suspect: refetching night 20251128
+"reproduces the **new** build exactly, not the old". That night is one of the weakest cases
+(3 of 8 visits deviating) and the claim was not reproduced in this check.
+
+### Conclusion, one line
+
+**The new build is wrong and the old build is right: the old build agrees with the
+value-added database (RMS of old − DB, 5.0e-05 to 3.0e-04 degC/m, at the noise level) and
+the new build does not (2.7e-03 to 1.3e-02 degC/m), on exactly the visits that have fewer
+than 146 thermocouples.**
+
+### Why: reduced-sensor 30-second bins give badly constrained plane fits
+
+`fit_plane_gradients` (`ts_m1m3_utils/.../thermal_gradients.py`) drops non-finite sensors
+per time row and fits anyway as soon as more than 4 survive, so a bin with a reduced sensor
+set is fitted but poorly constrained. Night 20250706 refetched on its **true** span —
+08:12:21 to 08:37:29 UTC, 25.1 min, the span the build actually used, 49 bins — shows it
+directly:
+
+| bins with | y_gradient, degC/m |
+|---|---|
+| 146 finite thermocouples | about **−0.050**, steady |
+| 109–110 finite thermocouples | **−0.125** or **+0.050** — sign flips and 2.5x excursions |
+
+The reduced-sensor bins interleave with good bins every few samples, so whether a visit's
+interpolated value is sane depends on which bins bracket it. That is the whole 1,539-visit
+effect, and it is why the deviation tracks `m1m3_n_sensors` so tightly.
+
+### What is NOT explained, and is being left alone (Aaron, 2026-10-13)
+
+The single worst value, night 20250706 seq_num 662 at `y_gradient = +0.6198 degC/m`, is
+**5x larger than any bin on its own span** (max |y_gradient| over the 49 bins is 0.1252
+degC/m), so no refetch at any span reproduces it. Its `radial_gradient` is +0.6183 against
+an `x_gradient` of −0.0102 — radial tracking y almost exactly, the signature of a fit
+dominated by a few sensors along one axis. Consistent with a transient sparse EFD return
+during the build, which by its nature will not reproduce. It cannot be recomputed from the
+build's own stored temperatures because the 3b sidecar shrink dropped the 146
+per-thermocouple columns from `visits.parquet`. **Aaron's call 2026-10-13: stop here, do
+not chase this outlier.**
+
+### Hypotheses tested and EXCLUDED
+
+- **Fetch span.** Narrow (one night) and wide (two nights) agree to 2.1e-03 degC/m and
+  neither reproduces the new build — see the table below.
+- **Non-monotonic `np.interp` input.** The gradient index is strictly 30 s with 0 negative
+  steps and 0 duplicates, so `np.interp` gets a sorted x.
+- **`sort_values()[0]` / `[-1]` picking the wrong span bounds.** `data_times` is a
+  `DatetimeIndex`, not a Series, so positional indexing is correct; checked on three
+  nights, `s[0]` and `s[-1]` are the true min and max.
+- **Per-night vs per-chunk looping.** `attach_telemetry` logs "106 chunk(s)" and fetches
+  once per night, so the new build already fetched per night.
+- **A failed fetch silently writing bad values.** Only **14** nights logged a warning in
+  `attach_telemetry.log` (13 `'NoneType' object has no attribute 'index'`, 1
+  `"['coldJunction114'] not in index"`), and those yield NaN, not wrong numbers — they are
+  not the 92 deviating nights. Night 20250706 logged no warning at all.
+
+### What this changed, and what it did not
+
+**`set-current` for `danish_1_2@20261013` RAN anyway, on Aaron's decision of 2026-10-13**,
+taken after this result: the gradient columns are being replaced by the value-added
+database, so they will be dead rather than wrong, and holding the promotion buys nothing.
+Difference 6 is therefore recorded as a **known defect in the new build's gradient
+columns**, not as an expected difference — the distinction matters for later 3c
+comparisons, which must not treat a gradient difference as explained.
+
+**The real fix, and it is now a required follow-up rather than an option:** the FAM
+telemetry sidecar should read the four M1M3 gradients from the value-added database instead
+of recomputing them from live EFD at build time. Recorded in the plan's section 10.
+
+The span-width test, for the record — night 20250706 refetched over the night alone
+(6 visits) and the night plus its neighbour (18 visits), max abs difference in degC/m:
+narrow vs wide **2.1e-03**, narrow vs old tree 4.0e-03, wide vs old tree 4.0e-03, wide vs
+database 4.0e-03, narrow vs new build **6.68e-01**, wide vs new build **6.71e-01**.
 
 ## Next concrete action
 
-**`set-current` for the three `fam_tables` builds, on Aaron's OK, then `cwfs_tables`.**
+**`set-current` for `cwfs_tables` on Aaron's OK, then `miw` (item 4 of the plan).**
 
-0. **Aaron rules on the M1M3-gradient difference** above (recommended: accept as expected
-   difference 6). It is the only comparison difference in the three builds that is not on
-   the plan's list; everything else is explained and measured.
+`fam_tables` is **DONE**: all three variants built, compared and **promoted** to
+`current@20261013` on Aaron's OK of 2026-10-13 (`danish_1_2`, `danish_1_3_test`,
+`danish_1_3_v1000`), each confirmed resolving through `catalog.load()`.
 
-1. **Aaron OKs `set-current`** for `danish_1_2@20261013` and the two rebuilt blitz
-   variants. Nothing has been promoted: every build is written and compared but no
-   `current@` moved, so the old tree is still what every reader resolves to.
-2. Then **`cwfs_tables`**, item 3 of the comparison plan: four variants, compared against
-   `aos/output/wfs_*/` per variant, expecting difference 1 only plus the
-   `d12-refitWcs_2025` fold. It has no dependency on the FAM rebuild and can run at once.
-3. Then items 4 to 8 of the plan in order: `miw`, `coadds`, `dof_lut`, `bounce_tables`,
-   `value_added`.
+1. **`cwfs_tables` `set-current`** for the four `20261013` builds, which needs Aaron's OK
+   — it was explicitly excluded from the 2026-10-13 OK. The comparisons are done and
+   recorded below.
+2. Then **`miw`**, item 4 of the comparison plan: the two `d12` variants first, compared
+   against `aos/output/miw/<dir_name>/` and the 3a reference in
+   `_phase2_refbuild/miw/ref/`, expecting difference 2 (the theta rotation) and 1 carried
+   through the visits it reads. Its upstream `fam_tables` `current` is now the new build,
+   so no `--fam-build` override is needed.
+3. Then items 5 to 8 in order: `coadds`, `dof_lut`, `bounce_tables`, `value_added`.
 
 **No `set-current` without Aaron's OK** (his instruction, 2026-10-13).
+
+**Carry forward into every later 3c comparison:** the four M1M3 gradient columns in any
+FAM-derived build are a **known defect**, not an expected difference. A gradient difference
+downstream is this defect propagating, and must not be ticked off as explained. See "The
+three-way gradient check".
 
 The embargo probe does **not** need redoing. Its result, for the record:
 
@@ -965,12 +1094,18 @@ unexplained difference stops the step).
 5. **All 50 `tweak_dof*` columns**, from the row-order fix committed today — and
    `image_idx` still permuted, which is not fixed (above).
 6. **The four M1M3 bulk thermal gradients** (`x_`, `y_`, `z_`, `radial_gradient`, degC per
-   metre) and `lut_dof5..9`, found by the `danish_1_2` comparison 2026-10-13 and **not
-   predicted**. A live-EFD-at-build-time difference, not a code difference: 1,456 of 3,006
-   visits, RMS(diff)/RMS(col) 0.038 to 0.672. **Awaiting Aaron's ruling** before it counts
-   as expected — see "`danish_1_2` — differences 1, 3, 4 and 5 all confirmed, plus ONE
-   class not on the list". Every ConsDB-transform telemetry column is bit-identical, so
-   only this one path carries it.
+   metre) and `lut_dof5..9` — a **KNOWN DEFECT in the new build, NOT an expected
+   difference.** Found by the `danish_1_2` comparison 2026-10-13 and not predicted; the
+   three-way check against the value-added database the same day showed the **new build is
+   the wrong one** (RMS of new − DB 2.7e-03 to 1.3e-02 degC/m against old − DB 5.0e-05 to
+   3.0e-04 degC/m; 1,373 visits where old agrees with the database and new does not, 0 the
+   other way). Cause: reduced-thermocouple 30-second bins get badly constrained plane fits,
+   on exactly the visits with fewer than 146 sensors. See "The three-way gradient check".
+   **A gradient difference in any later 3c comparison is this defect propagating and does
+   not count as explained.** The fix is to read the gradients from the value-added database
+   (plan section 10); `danish_1_2` was promoted anyway on Aaron's 2026-10-13 decision,
+   because that fix makes these columns dead rather than wrong. Every ConsDB-transform
+   telemetry column is bit-identical, so only this one path carries it.
 
 | # | product / variant | compared against | expected differences | what blocks it |
 |---|---|---|---|---|
