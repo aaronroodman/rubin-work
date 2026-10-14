@@ -754,9 +754,19 @@ match the old tree's row counts exactly** (`danish_1_2` 3,385 visits over 106 ni
 2,528 fits; both blitz variants 966 visits, 873 fits), `donuts.parquet` is identical at
 zero tolerance for all three, and every DZ coefficient agrees to **1.5e-13 or better**, so
 the fits are unchanged. One difference was **not** predicted — the four M1M3 bulk thermal
-gradients and `lut_dof5..9`, a live-EFD-at-build-time change rather than a code change —
-and it is the one item awaiting Aaron's ruling. **No `set-current` has run.** Details,
-measurements and the exclusions behind that diagnosis are in the phase 3 handoff.
+gradients and `lut_dof5..9`, a live-EFD-at-build-time change rather than a code change.
+Aaron ruled on it 2026-10-13: all three variants were **promoted to `current@20261013`**
+anyway, and the gradients are fixed at source instead (section 10, commit `bef17ba`), with
+`danish_1_2@20261014` the corrected build. Details, measurements and the exclusions behind
+that diagnosis are in the phase 3 handoff.
+
+**3c: `cwfs_tables`, 2 of 4 variants compared and clean, 2026-10-13.** `d12-tarts` (7,813
+donut rows, 977 visits) and `d12-paired_3mm` (1,223, 134) reproduce the old tree with
+**equal row counts, identical column sets and exactly one differing column** —
+`rotator_angle`, max abs **0.4446 deg** of camera rotator angle, which is expected
+difference 1 and under its predicted 0.456 deg bound. `d12-refitWcs` and `d12-ai_donut`
+were still building when this was written. Per-variant numbers in the phase 3 handoff,
+"`cwfs_tables` rebuilt and compared".
 
 A per-night split also made a **second** instance of the sparse-night mechanism reachable
 one stage later: the external `run_dz_fit.py` raises `IndexError` on a chunk where no
@@ -840,7 +850,7 @@ From the removed `todo.md` and `reorg_review_plan_2026-09.md`:
 | per-study logbook (old B5) | replaced by `study.md` and `/wrap` |
 | systematic code review (old Part C1–C4) | phase 8 |
 | **The FAM sidecar carries telemetry the build does not need** — see below | phase 3, after `value_added` is registered |
-| **The FAM sidecar must read the four M1M3 bulk thermal gradients from the value-added database** instead of recomputing them from live EFD at build time — see below | after 3c; required, not optional |
+| ~~**The FAM sidecar must read the four M1M3 bulk thermal gradients from the value-added database**~~ | **DONE 2026-10-13**, commit `bef17ba`, in 3c rather than after it — see below |
 
 **Shrink the FAM telemetry sidecar; let the downstream studies read ConsDB and DuckDB.**
 Aaron's position, recorded 2026-10-10: building the measured intrinsic wavefront (MIW)
@@ -885,9 +895,23 @@ run in batch. Blocked until `value_added` is a registered product (phase 3), so 
 coverage can be checked per group rather than assumed, and so the studies have a sanctioned
 path to read instead.
 
-**The four M1M3 bulk thermal gradients must come from the value-added database.** Decided
-by Aaron 2026-10-13, after the 3c `danish_1_2` rebuild got them wrong. Today
-`rubinwork/common/ess_telemetry.get_m1m3_gradients` recomputes them at build time: it calls
+**The four M1M3 bulk thermal gradients come from the value-added database. DONE
+2026-10-13**, commit `bef17ba`, brought forward into 3c because the `coadds` rebuild reads
+the gradients as a prefix-discovered ML feature and would have baked the bad values in.
+`run_attach_telemetry.fetch_gradients` joins
+`visit_telemetry.m1m3_{x,y,z,radial}_gradient_c_per_m` on (`day_obs`, `seq_num`) through
+`rubinwork.products.value_added.reader`, read-only; a visit the database has no row for
+gets NaN and is counted. Coverage is unchanged — the database has gradients for exactly the
+same 3,006 of 3,385 `danish_1_2` visits, NaN pattern identical on all four columns — so
+only values move, and `gradients` is no longer an EFD-querying group. Verified on night
+20250706: new equals the database at **max abs difference 0.0 degC/m** on all four columns
+with **0 of 385 other sidecar columns differing**, where the old values were off by up to
+**0.668 degC/m** (`y_gradient`). Rebuilt as `danish_1_2@20261014`, which reuses
+`20261013`'s `mktable` and `fit` outputs by hard link and reruns only the six steps below
+them. Measured numbers in `notes/status/phase3_products_handoff.md`, "The gradient fix and
+the `20261014` rebuild". The problem it fixed, for the record:
+
+`rubinwork/common/ess_telemetry.get_m1m3_gradients` recomputed them at build time: it calls
 `ThermocoupleAnalysis.load(start, end, time_bin=30)` over the visits' span and interpolates
 `xyz_r_gradients` onto each `obs_start`. The per-bin plane fit
 (`ts_m1m3_utils`, `fit_plane_gradients`) drops non-finite sensors and fits as soon as more
@@ -897,11 +921,8 @@ In the 3c build that corrupted **1,539 of 3,006** visits with gradients, every o
 a visit with fewer than 146 sensors, while the value-added database's own
 `visit_telemetry` gradients agree with the pre-3c values to 5.0e-05 to 3.0e-04 degC/m.
 Measured numbers in `notes/status/phase3_products_handoff.md`, "The three-way gradient
-check". So the sidecar should join
-`visit_telemetry.m1m3_{x,y,z,radial}_gradient_c_per_m` on (`day_obs`, `seq_num`) rather
-than recompute, which also removes one more live-EFD dependency from the FAM build and so
-serves the batch goal above. Until it lands, the gradient columns in any
-`fam_tables@20261013`-derived build are **known-bad**.
+check". The gradient columns of `fam_tables@20261013`, and of anything derived from it,
+stay **known-bad**; `20261014` onward are correct.
 
 `notes/todos/todo-ideas.md` stays as Aaron's idea queue. Items there that become studies
 get a `study.md`, and the item number is recorded in its front matter.

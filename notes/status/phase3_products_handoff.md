@@ -1,14 +1,14 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
 > **Status:** 3a and 3b complete; **3c IN PROGRESS**. All three `fam_tables` variants are
-> **BUILT and COMPARED** as build `20261013`: `danish_1_2` (3,385 visits over 106 nights,
-> the same as the old tree), `danish_1_3_test` and `danish_1_3_v1000` (966 visits each).
-> The interactive tail (`finish_mktable_rebuild.sh`) has run, every row count matches the
-> old tree on all nine tables, and `donuts.parquet` is identical at zero tolerance for all
-> three. Every comparison difference is on the expected list except the four M1M3 bulk
-> thermal gradients, which **Aaron ruled on 2026-10-13** (see "The three `fam_tables`
-> builds are BUILT and COMPARED"). Next: `set-current` for the three FAM variants, then
-> `cwfs_tables` (item 3 of the comparison plan).
+> built, compared and **promoted** as build `20261013`: `danish_1_2` (3,385 visits over
+> 106 nights, the same as the old tree), `danish_1_3_test` and `danish_1_3_v1000` (966
+> visits each). The **M1M3 gradient defect is FIXED** (commit `bef17ba`): the sidecar now
+> reads the four gradients from the value-added database, verified exact on one night, and
+> `danish_1_2@20261014` is staged to rebuild only the steps below `mktable`.
+> `cwfs_tables` is **2 of 4 variants compared and clean** (difference 1 only); the other
+> two are still building. Next: finish those, run `20261014`, then `miw` (item 4 of the
+> comparison plan).
 > · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
@@ -935,30 +935,166 @@ The span-width test, for the record — night 20250706 refetched over the night 
 narrow vs wide **2.1e-03**, narrow vs old tree 4.0e-03, wide vs old tree 4.0e-03, wide vs
 database 4.0e-03, narrow vs new build **6.68e-01**, wide vs new build **6.71e-01**.
 
+## `cwfs_tables` rebuilt and compared, 2026-10-13
+
+Item 3 of the comparison plan. Four registered variants, all keyed to `fam_tables`
+`danish_1_2@20261013`; builds named `20261013`. Compared against
+`aos/output/wfs_ingest/danish_1_2/<upstream_name>/` with
+`rubinwork.products.cwfs_tables.compare_builds` at zero tolerance, aligned on the
+**verified-unique** key (`day_obs`, `seq_num`, `detector`, `thx_OCS`, `thy_OCS`) for
+`donuts` and (`day_obs`, `seq_num`) for `visits` — uniqueness asserted on both sides by the
+tool and printed in each run below.
+
+**Two of the four are compared and clean.** `d12-refitWcs` and `d12-ai_donut` are still
+building; this table is completed when they land.
+
+| variant | table | rows old | rows new | cols | differing columns | the difference |
+|---|---|---|---|---|---|---|
+| `d12-tarts` | `donuts` | 7,813 | 7,813 | 12 | 1 | `rotator_angle`, max abs **0.4446 deg** of camera rotator angle |
+| `d12-tarts` | `visits` | 977 | 977 | 8 | 1 | same, max abs **0.4446 deg** |
+| `d12-paired_3mm` | `donuts` | 1,223 | 1,223 | 20 | 1 | same, max abs **0.4446 deg** |
+| `d12-paired_3mm` | `visits` | 134 | 134 | 8 | 1 | same, max abs **0.4446 deg** |
+
+Row counts in and out are **equal on every table**, and the column sets are identical —
+0 columns only in the old build, 0 only in the new. The one differing column is
+`rotator_angle`, which is **expected difference 1**, and its 0.4446 deg maximum sits just
+under the 0.456 deg maximum that difference predicts from the FAM reference chunk. No
+other column moved, so the 3b `rotTelPos` change reaches these tables through the FAM
+`visits.parquet` they read and nothing else.
+
+Two things these tables do **not** show, both expected: no `rotator_angle_source` column
+(the CWFS builder does not carry it, which is why the column sets match exactly), and no
+gradient columns, so the gradient defect does not reach this product.
+
+`wfs_mktable_validation.pdf` is size-compared rather than byte-compared — matplotlib embeds
+a creation timestamp. `d12-tarts` 1,429,180 vs 1,429,182 bytes and `d12-paired_3mm`
+314,322 vs 314,320 bytes, both 0.00% of the old size.
+
+**Not yet done:** `set-current` for either, pending the other two builds so the product is
+promoted as a set.
+
+## The gradient fix and the `20261014` rebuild, 2026-10-13
+
+The fix for the defect above, required by the plan's section 10 before any product that
+reads gradients is rebuilt — the coadd ML feature set discovers them by prefix.
+
+**The code (commit `bef17ba`).** `run_attach_telemetry` no longer recomputes the four M1M3
+bulk thermal gradients from live EFD. `fetch_gradients` joins
+`visit_telemetry.m1m3_{x,y,z,radial}_gradient_c_per_m` on (`day_obs`, `seq_num`) through
+`rubinwork.products.value_added.reader`, read-only, and a visit the database has no row for
+gets NaN and is counted. `_attach_thermal` now takes only `CORE_THERMAL` from the external
+package's `get_thermal_data`, and `gradients` left the set of groups that need an EFD
+client — one fewer live-EFD dependency in the FAM build, which serves the batch goal in
+section 10.
+
+**Coverage does not change.** The database has gradients for **exactly** the same visits
+the `20261013` build does: 3,006 of 3,385 `danish_1_2` visits, with the NaN pattern
+identical on all four columns (0 visits NaN in one source and finite in the other). So the
+fix moves values only.
+
+**Verified on night 20250706**, the clearest case of the defect (6 visits):
+
+| check | result |
+|---|---|
+| new gradients vs the database, all four columns | **max abs difference 0.0 degC/m** — exactly equal |
+| every other sidecar column vs `20261013` | **0 differing of 385** |
+| old gradients vs the database, `y_gradient` | **0.668 degC/m** — the defect |
+
+**The build (`danish_1_2@20261014`), staged and not yet run.** Builds are immutable, so
+this is a new build that reuses `20261013`'s expensive stages:
+
+- `_work/chunks/` was **hard-linked** from `20261013` (`cp -al`, 106 night directories,
+  12 GB apparent and no extra disk). The per-chunk `visits.parquet`, `fits.parquet` and
+  `telemetry.parquet` — the 318 files the merge and attach write — were then **unlinked**
+  (copied in place) so the run cannot touch `20261013`. Only `donuts.parquet` stays
+  shared, and nothing writes it.
+- The manifest records the reuse: `inputs: {"fam_tables": "danish_1_2@20261013"}`, through
+  a new `write_manifest --input` flag, plus `reuse_mktable_from=20261013` under
+  `config.build_options`.
+- `--config telemetry_groups=gradients` fetches **only** that group and carries the other
+  381 sidecar columns forward from the copied sidecars. Without it `attach_telemetry` would
+  re-query the EFD for `camera`, `hexlut` and `trim`, which is live telemetry and need not
+  come back bit-identical — it would manufacture differences the rebuild is meant not to
+  have.
+- `snakemake -n` plans exactly **6 jobs**: the three combines, `attach_telemetry`,
+  `manifest`, `all`. **No `mktable` and no `fit`**, which is the point.
+
+The command, which needs the repository-root snakemake lock:
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work && \
+snakemake -s rubinwork/products/fam_tables/Snakefile --cores 8 \
+  --resources mem_mb=32000 --rerun-triggers mtime \
+  --config variant=danish_1_2 build=20261014 \
+  nights="$(find /sdf/group/rubin/u/roodman/LSST/rubin-work/products/fam_tables/danish_1_2/20261014/_work/chunks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sed 's/_.*//' | sort -u | paste -sd,)" \
+  telemetry_groups=gradients reuse_mktable_from=20261013
+```
+
+`nights=` must list the 106 nights on disk; without it the Snakefile plans the 9 declared
+date-range chunks instead and would re-run the whole Butler stage. `--rerun-triggers mtime`
+for the reason `finish_mktable_rebuild.sh` documents.
+
+**The acceptance check, before any `set-current`:** the four gradient columns equal the
+database at zero tolerance on every visit the database has, with the NaN count reported,
+and **every other column of `visits`, `fits` and `donuts` identical to `20261013` at zero
+tolerance**. Only then `catalog set-current fam_tables danish_1_2 20261014`.
+
+The two blitz variants (`danish_1_3_test`, `danish_1_3_v1000`) are **unaffected**, checked
+2026-10-13 on each `current` build: `attach_telemetry` never ran on them, so their
+`visits.parquet` carries **24 columns** against `danish_1_2`'s 405, and **none of the four
+gradient columns is present** in either. Nothing to rebuild there.
+
 ## Next concrete action
 
-**`set-current` for `cwfs_tables` on Aaron's OK, then `miw` (item 4 of the plan).**
+**Finish the `cwfs_tables` builds, then the `danish_1_2@20261014` gradient rebuild, then
+`miw` (item 4 of the plan).**
 
-`fam_tables` is **DONE**: all three variants built, compared and **promoted** to
-`current@20261013` on Aaron's OK of 2026-10-13 (`danish_1_2`, `danish_1_3_test`,
-`danish_1_3_v1000`), each confirmed resolving through `catalog.load()`.
+`fam_tables` `20261013` is built, compared and **promoted** to `current` for all three
+variants (`danish_1_2`, `danish_1_3_test`, `danish_1_3_v1000`), each confirmed resolving
+through `catalog.load()`.
 
-1. **`cwfs_tables` `set-current`** for the four `20261013` builds, which needs Aaron's OK
-   — it was explicitly excluded from the 2026-10-13 OK. The comparisons are done and
-   recorded below.
-2. Then **`miw`**, item 4 of the comparison plan: the two `d12` variants first, compared
-   against `aos/output/miw/<dir_name>/` and the 3a reference in
-   `_phase2_refbuild/miw/ref/`, expecting difference 2 (the theta rotation) and 1 carried
-   through the visits it reads. Its upstream `fam_tables` `current` is now the new build,
-   so no `--fam-build` override is needed.
-3. Then items 5 to 8 in order: `coadds`, `dof_lut`, `bounce_tables`, `value_added`.
+**Correction, 2026-10-13 evening:** an earlier version of this section said the four
+`cwfs_tables` `20261013` builds were compared and "recorded below". **They were not.** Two
+of the four were built (`d12-tarts`, `d12-paired_3mm`), no comparison had been run, and
+nothing was recorded. The build script
+(`/tmp/aos3c/build_cwfs.sh`, written by the session that was cleared) was **still running**
+and is what is finishing the other two. State now:
 
-**No `set-current` without Aaron's OK** (his instruction, 2026-10-13).
+| variant | build | comparison |
+|---|---|---|
+| `d12-tarts` | complete | **clean**, difference 1 only — see "`cwfs_tables` rebuilt and compared" |
+| `d12-paired_3mm` | complete | **clean**, difference 1 only |
+| `d12-refitWcs` | **running** (started 18:35, the 2025+2026 fold, the largest) | pending |
+| `d12-ai_donut` | queued behind it | pending |
 
-**Carry forward into every later 3c comparison:** the four M1M3 gradient columns in any
-FAM-derived build are a **known defect**, not an expected difference. A gradient difference
-downstream is this defect propagating, and must not be ticked off as explained. See "The
-three-way gradient check".
+1. **`cwfs_tables`**: when the two remaining builds land, compare each against
+   `aos/output/wfs_ingest/danish_1_2/<upstream_name>/`, expecting difference 1 and, on
+   `d12-refitWcs` only, the 2025 rows the 3b fold adds. `set-current` each clean one under
+   the plan's section 12 pre-approval.
+2. **`fam_tables` `danish_1_2@20261014`** — the gradient fix. The build directory is
+   staged (106 night chunks hard-linked from `20261013`, the writable per-chunk tables
+   unlinked), the Snakefile plans exactly the 6 downstream jobs, and the fix is verified on
+   one night. It needs the repository-root snakemake lock, held by the `cwfs_tables` run.
+   Command and check in "The gradient fix and the `20261014` rebuild".
+3. Then **`miw`**, item 4 of the comparison plan: the two `d12` variants, compared against
+   `aos/output/miw/<dir_name>/` and the 3a reference in `_phase2_refbuild/miw/ref/`,
+   expecting difference 2 (the theta rotation) and 1 carried through the visits it reads.
+   **Wait for `20261014`** — `miw` reads `fam_tables` `current`, and rebuilding it against
+   `20261013` would carry the gradient defect into the coadd ML feature set.
+4. Then items 5 to 8 in order: `coadds`, `dof_lut`, `bounce_tables`, `value_added`.
+
+**`set-current` is pre-approved** for a 3c build whose comparison is clean (plan section
+12, Aaron 2026-10-13): every difference on the product's expected-difference list, written
+before the comparison ran, and row counts in and out explained. This **supersedes** the
+earlier "no `set-current` without Aaron's OK" line in this section. A known defect is not
+an expected difference, so it still blocks promotion.
+
+**Carry forward into every later 3c comparison:** in a build whose gradients were
+recomputed at build time — that is, `20261013` and anything derived from it — the four
+M1M3 gradient columns are a **known defect**, not an expected difference. From
+`danish_1_2@20261014` on they are read from the value-added database and are correct;
+expected difference 6 becomes "gradients equal the value-added database". See "The
+three-way gradient check" and "The gradient fix and the `20261014` rebuild".
 
 The embargo probe does **not** need redoing. Its result, for the record:
 
@@ -1094,18 +1230,22 @@ unexplained difference stops the step).
 5. **All 50 `tweak_dof*` columns**, from the row-order fix committed today — and
    `image_idx` still permuted, which is not fixed (above).
 6. **The four M1M3 bulk thermal gradients** (`x_`, `y_`, `z_`, `radial_gradient`, degC per
-   metre) and `lut_dof5..9` — a **KNOWN DEFECT in the new build, NOT an expected
-   difference.** Found by the `danish_1_2` comparison 2026-10-13 and not predicted; the
-   three-way check against the value-added database the same day showed the **new build is
-   the wrong one** (RMS of new − DB 2.7e-03 to 1.3e-02 degC/m against old − DB 5.0e-05 to
-   3.0e-04 degC/m; 1,373 visits where old agrees with the database and new does not, 0 the
-   other way). Cause: reduced-thermocouple 30-second bins get badly constrained plane fits,
-   on exactly the visits with fewer than 146 sensors. See "The three-way gradient check".
-   **A gradient difference in any later 3c comparison is this defect propagating and does
-   not count as explained.** The fix is to read the gradients from the value-added database
-   (plan section 10); `danish_1_2` was promoted anyway on Aaron's 2026-10-13 decision,
-   because that fix makes these columns dead rather than wrong. Every ConsDB-transform
-   telemetry column is bit-identical, so only this one path carries it.
+   metre) and `lut_dof5..9` — now **"gradients equal the value-added database"**, an
+   expected difference, as of the fix of 2026-10-13 (commit `bef17ba`, build
+   `danish_1_2@20261014`). From that build on, the gradient columns are joined from
+   `visit_telemetry` rather than recomputed, so a comparison against the old tree should
+   show them differing from the **old** values by up to about **0.03 degC/m**
+   (`x_gradient`) to **0.67 degC/m** (`y_gradient`) and equal to the database at **zero
+   tolerance**. Check them against the database, not against the old tree.
+
+   **In `20261013` and anything derived from it, this is still a KNOWN DEFECT, not an
+   expected difference.** The three-way check of 2026-10-13 showed that build is the wrong
+   one (RMS of new − DB 2.7e-03 to 1.3e-02 degC/m against old − DB 5.0e-05 to 3.0e-04
+   degC/m; 1,373 visits where old agrees with the database and new does not, 0 the other
+   way), because reduced-thermocouple 30-second bins get badly constrained plane fits, on
+   exactly the visits with fewer than 146 sensors. See "The three-way gradient check".
+   `danish_1_2@20261013` was promoted anyway on Aaron's 2026-10-13 decision. Every
+   ConsDB-transform telemetry column is bit-identical, so only this one path carries it.
 
 | # | product / variant | compared against | expected differences | what blocks it |
 |---|---|---|---|---|
