@@ -13,6 +13,14 @@ status becomes `convert`.
 Agreed with Aaron: **robust fits** (Huber RLM, `nmad` for scatter) and the **`danish_1_2`
 variants only**.
 
+**The study does not recommend an `r_max`** (Aaron, 2026-10-14). The donut selection for
+wavefront has a settled field-radius limit of **1.725 deg of field angle**, and that limit
+is not this study's to move. The question becomes: **are MIW values at r <= 1.725 deg
+affected by the radial continuation of under-covered rim rings**, either through ring
+interpolation (the polar route) or through the 71x71 map grid whose cells reach
+**1.751 deg of field angle** (the Cartesian route)? Whether the rim ring itself carries
+signal stays a secondary question. Analysis 5 is a summary table, not a recommendation.
+
 ## Question
 
 The MIW is fit on polar rings whose azimuthal coverage thins toward the field edge.
@@ -114,9 +122,13 @@ the continued ring saw 11.67% azimuthal coverage.
    Deliberately the same two quantities `aos/docs/studies/miw.md` reports (its legacy-vs-v1000
    table gives 0.0518 / 0.0528 µm of wavefront and 0.1645 / 0.1678 arcsec), so the numbers
    are directly comparable to existing work.
-5. **The recommendation.** A defensible `r_max` in deg of field angle for MIW consumers,
-   and whether `miw.md`'s standing "exclude the 1.70-1.75 deg annulus" convention should
-   change. This is the output other studies consume.
+5. **The summary table.** Not a recommendation (Aaron, 2026-10-14: the 1.725 deg
+   selection limit is settled and the study does not move it). One table other studies can
+   read: per ring over the outer field, the coverage, the fitted/continued status, the
+   measured old-versus-new difference in µm of wavefront, and whether anything at
+   r <= 1.725 deg depends on it — plus a line on whether `miw.md`'s standing
+   "exclude the 1.70-1.75 deg annulus" convention is wider than the measurement
+   warrants.
 
 ## What this does NOT cover
 
@@ -161,9 +173,12 @@ Triage change: `miw_hull` **`parked` -> `convert`**, reason "Guillem's branch la
 
 ## Open scope questions for Aaron
 
-1. **Does the study own a recommendation, or just the measurement?** Analysis 5 proposes an
-   `r_max`. If you would rather the study stop at the numbers and leave `r_max` to a
-   separate product decision, say so and analysis 5 shrinks to a summary table.
+1. **ANSWERED 2026-10-14: just the measurement.** The study does not recommend an `r_max`.
+   The donut selection for wavefront has a settled limit of **1.725 deg of field angle**,
+   so analysis 5 is a summary table (rewritten above) and the study's question is whether
+   the continuation of the rim rings reaches inside that limit. **Measured in analysis 2:
+   it does not** — the last fitted ring is `r = 1.7286 deg`, outside the limit, and 0 of
+   the 3,833 map cells at r <= 1.725 deg lie outside it.
 2. **The `_5rot` MIW is the calibration source.** `3f66904`'s own note calls
    `pathA_50_34_i_5rot` "the v2 calib source", and `aos/calibration/` carries a staged MIW.
    If the answer changes `r_max`, the staged calibration is downstream of that. Worth

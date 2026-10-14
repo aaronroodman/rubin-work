@@ -15,9 +15,11 @@
 > the field edge (`ts_intrinsic_wavefront` commit `3f66904`), the interior agrees to
 > 7.2e-04 µm of wavefront, and `vmode_13` is a degenerate-subspace rotation. Validation
 > PDFs and `summary.md` for both `danish_1_2` variants are in
-> `$RUBINWORK_DATA/studies/phase3c_validation/miw/`. `d12-A_50_34_i@20261014` is built as
-> far as the sidecars and `d12-A_50_34_i_5rot@20261014` through `intrinsic_split`; neither
-> is promoted and **no `miw` variant is `current`**. **Nothing in `miw` waits on Aaron:**
+> `$RUBINWORK_DATA/studies/phase3c_validation/miw/`. **`d12-A_50_34_i@20261014` is COMPLETE
+> at 18 of 18 and its `fits.parquet` is COMPARED** (960 shared visits of 3,385 new against
+> 960 old, every difference on the expected list, the DZ coefficients at max abs
+> **1.757e-03 µm of wavefront**); `d12-A_50_34_i_5rot@20261014` holds `intrinsic_split` and
+> needs 7 more jobs. Neither is promoted and **no `miw` variant is `current`**. **Nothing in `miw` waits on Aaron:**
 > questions 6 and 7 are both answered (2026-10-14) — `d12-tarts` is excluded from the
 > corner-sidecar set, and the ring continuation / NaN-rim fill is **accepted new
 > behaviour**, now expected difference 7. What remains is mechanical: `refit_mi` for both
@@ -659,21 +661,9 @@ differs.
 
 ## Next concrete action
 
-**`refit_mi` for `d12-A_50_34_i@20261014` is the next step.** Aaron has OK'd the exact
-sbatch command below twice (2026-10-14); the first attempt was denied by the Claude Code
-auto-mode permission classifier, not by Aaron and not by Slurm, so **no job was submitted
-and no job ID exists** from that attempt. Submit it as written; if the permission check
-blocks it again, stop and hand the command to Aaron.
-
-The build sits at **16 of 18 outputs**: all 9 `build_intrinsic` grids, `intrinsic_split`,
-the FAM `intrinsic_sidecar` and **3 of 3** corner sidecars (`d12-ai_donut`,
-`d12-paired_3mm`, `d12-refitWcs` — `d12-tarts` is now correctly skipped, so the set is
-complete, not short). Only `refit_mi` and `manifest` remain. `d12-A_50_34_i_5rot@20261014`
-holds its 4 `intrinsic_split` outputs and no manifest. **No `miw` variant is `current`.**
-No process is running and the snakemake lock is free.
-
-**The validated submit command, to run as-is** (a prior identical `snakemake -n` reported
-`refit_mi 1`, `manifest 1`, `total 3`, with `d12-tarts` skipped by design):
+**`refit_mi` for `d12-A_50_34_i_5rot@20261014` is the next step, and it needs Aaron's OK on
+the sbatch command below.** The dry run reports **7 jobs**: `intrinsic_sidecar`,
+3 `wfs_intrinsic_sidecar` (`d12-tarts` correctly skipped), `refit_mi`, `manifest`, `all`.
 
 ```bash
 cd ~/notebooks/rubin-work && \
@@ -684,21 +674,68 @@ sbatch --partition=milano \
        --cpus-per-task=8 \
        --mem=96G \
        --time=04:00:00 \
-       --job-name=miw_refit_d12 \
-       --output=$HOME/notebooks/rubin-work/logs/miw_refit_d12_%j.out \
-       --wrap='cd $HOME/notebooks/rubin-work && env -u DISPLAY MPLBACKEND=Agg snakemake -s rubinwork/products/miw/Snakefile -j 1 --resources mem_mb=90000 --config variant=d12-A_50_34_i build=20261014 fam_build=20261014'
+       --job-name=miw_refit_d12_5rot \
+       --output=$HOME/notebooks/rubin-work/logs/miw_refit_d12_5rot_%j.out \
+       --wrap='cd $HOME/notebooks/rubin-work && env -u DISPLAY MPLBACKEND=Agg snakemake -s rubinwork/products/miw/Snakefile -j 1 --resources mem_mb=90000 --config variant=d12-A_50_34_i_5rot build=20261014 fam_build=20261014'
 ```
 
-96G rather than the rule's declared `mem_mb=4000`: `refit_mi` reads the 12.4 GB
-`fam_tables` `donuts.parquet`. Monitor with `squeue -u roodman` and
-`tail -f "$(ls -t ~/notebooks/rubin-work/logs/miw_refit_d12_*.out | head -1)"`.
+After it lands, compare its `fits.parquet` against
+`aos/output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet` on the shared
+(`day_obs`, `seq_num`) key, the same way `d12-A_50_34_i` was compared below. Note that old
+tree also holds a `fits_july.parquet`; the comparison target is `fits.parquet`.
 
-**After it lands, Aaron's standing instruction (2026-10-14):** compare the new
-`fits.parquet` against the old tree's
-(`aos/output/miw/danish_1_2_A_50_34_i/fits.parquet`) and **show him the numbers before any
-`set-current`**. He explicitly declined promote-on-completion. Remember `refit_mi` runs
-`--no-quality-cut`, so the new table holds all visits and the old-tree one may not —
-compare on the shared `(day_obs, seq_num)` key.
+**`d12-A_50_34_i@20261014` is COMPLETE at 18 of 18 and COMPARED, 2026-10-14.** A
+correction to this handoff's earlier state: the build was **already finished** before the
+2026-10-14 afternoon session. `refit_mi` and `manifest` landed at 10:02 that day
+(`fits.parquet` 3,385 rows x 830 columns, `manifest.json` present,
+`_work/logs/refit_mi.log` ending "Saved: ... 3385 rows x 830 columns"), so the handoff's
+"16 of 18" was stale. The resubmitted job **40807575** found "Nothing to be done (all
+requested files are present and up to date)" and exited without recomputing or writing
+anything. **Lesson:** check the build directory for the output file before resubmitting on
+a handoff's word.
+
+### The `d12-A_50_34_i` `fits.parquet` comparison, 2026-10-14
+
+New `20261014` against the old tree `aos/output/miw/danish_1_2_A_50_34_i/fits.parquet`.
+`refit_mi` runs `--no-quality-cut`, so the counts are given per side:
+
+| side | visits (rows) | unique (`day_obs`, `seq_num`) | nights | columns |
+|---|---|---|---|---|
+| new `20261014` | 3,385 | 3,385 | 106 | 830 |
+| old tree | 960 | 960 | 17 | 653 |
+| shared key | 960 | — | 17 | 456 shared |
+
+**All 960 old visits are in the new build; 0 old-only keys.** The new build adds 2,425
+visits over 89 more nights. Differences on the 960 shared visits, 451 numeric shared
+columns:
+
+| column group | cols | differing | max abs difference | max RMS difference | NaN-status mismatches | expected difference |
+|---|---|---|---|---|---|---|
+| `image_idx` (row-order index, dimensionless) | 1 | 1 | 2351 | 2240 | 0 | 5 (known, unfixed) |
+| `rotator_angle` (deg of camera rotator) | 1 | 1 | 0.4446 | 0.2132 | 0 | 1 |
+| ambient/structure temperature (degC) | 7 | 7 | 0.2281 | 0.0414 | 623 | 6 |
+| `cam_*` camera telemetry (degC) | 2 | 2 | 0.0683 | 0.0087 | 178 | 6 |
+| M1M3 thermal gradients (degC/m) | 4 | 4 | 0.005892 | 0.000356 | 0 | 6 |
+| DZ fit coefficients `z1toz*_*` (µm of wavefront; `*_scale` dimensionless) | 422 | 420 | 0.003857 | 0.000413 | 0 | 2 |
+| fit-quality summary (`n_donuts_1/2`, `n_detectors`, `n_detectors_with_min_donuts`, `bad_fit`, `median_blur_arcsec`) | 6 | **0** | 0 | 0 | 0 | — |
+| pointing / visit metadata (`visit`, `ra`, `dec`, `az`, `alt`, `mjd`) | 8 | **0** | 0 | 0 | 0 | — |
+
+Schema: the **197 old-only columns** are the dropped `m1m3_dt_MTC*` thermocouples
+(expected difference 4). The **374 new-only** are `dof0..49`, `tweak_dof0..49`,
+`lut_dof5..9`, 25 `cam_*` and the `m1m3elev_*` telemetry (expected differences 3, 5, 6).
+
+Two things to read correctly in the DZ row. The group's largest three entries are
+**dimensionless** `*_scale` columns, not µm; among the **µm-of-wavefront** coefficients the
+maximum is `z1toz6_z4_c5` at **1.757e-03 µm of wavefront**, within expected difference 2's
+own range. And **`fits.parquet` carries no recovered DOF or v-mode columns on either side**
+(`dof_event_id` is an event ID, not a DOF), so there is **no per-DOF axis in this
+comparison** — the recovered DOF and `vmode_*` live in `build/rot_*/dz_fits.parquet`, which
+the earlier `miw` item 4 section already compared (DOF agreeing to 4.2e-11 µm of wavefront,
+`vmode_13` the degenerate-subspace rotation).
+
+**Every difference is on the expected-difference list and nothing is off it.** No
+`set-current` has run; `miw` promotion still waits on Aaron's review of these numbers and
+on the `_5rot` comparison.
 
 **Then:** items 5 to 7 (`coadds`, `dof_lut`, `bounce_tables`) unblock once `miw` is
 `current`.

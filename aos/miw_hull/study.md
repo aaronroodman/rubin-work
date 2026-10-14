@@ -2,8 +2,8 @@
 study: miw_hull
 topic: aos
 status: active
-question: Out to what field radius is the MIW trustworthy, and does the continued outer annulus carry signal or artifact?
-answer: (open) Analysis 1 done — the coverage cliff is ONE ring wide, at r = 1.7500 deg of field angle, where union azimuthal coverage falls from 0.9333 to 0.1778 (9-bin) or 0.1167 (5-bin). Everything inside r <= 1.7286 deg is data-constrained. Whether that one ring carries signal is analysis 3.
+question: Are MIW values inside the settled 1.725 deg of field angle donut-selection limit affected by the radial continuation of under-covered rim rings, and does the continued rim ring itself carry signal or artifact?
+answer: (open on the rim) Analyses 1 and 2 done — the continuation is ONE ring, at r = 1.7500 deg of field angle, identical for all 21 Zernikes in both builds, and it does NOT reach inside the 1.725 deg selection limit: the last fitted ring is r = 1.7286 deg and 0 of the 3,833 map cells at r <= 1.725 deg lie outside it, by either consumer route. Both builds continue the same ring, so analysis 3's two-build contrast has no ring to work on and the rim question needs a different test.
 uses:
   fam_tables: danish_1_2@20261014
   miw: d12-A_50_34_i@20261014, d12-A_50_34_i_5rot@20261014
@@ -34,6 +34,16 @@ Scope (Aaron, 2026-10-14): robust fits (Huber RLM, `nmad`), `danish_1_2` variant
 Full scope in `aos/docs/status/miw_hull_scope.md`.
 
 ## Current answer
+
+**Nothing inside the 1.725 deg selection limit depends on a continued ring** (analysis 2).
+The builder continues exactly **one** ring, at `r = 1.7500 deg of field angle`, identically
+for all 21 Zernikes in both builds. The last **fitted** ring is `r = 1.7286 deg`, already
+outside the limit, so neither consumer route reaches the continuation: the polar route
+interpolates r = 1.725 deg between the fitted rings 1.7072 and 1.7286 deg, and **0 of the
+3,833 map cells at r <= 1.725 deg** lie outside the last fitted ring (the 152 cells that do
+are all outside the limit). The scope decision (Aaron, 2026-10-14) is that the study does
+not move the 1.725 deg limit, so **analyses 3 and 4 reduce to the rim only** — they no
+longer have work inside the selection limit.
 
 **Analysis 1 (coverage geometry) is done. The cliff is exactly one ring wide.**
 
@@ -87,6 +97,90 @@ is not constrained by its own data; it does not say the radial continuation from
 different coverage.
 
 ## Log
+
+### 2026-10-14 — analysis 2: continued versus fitted rings
+
+`code/continued_rings.py`, outputs `output/continued_rings.parquet`,
+`output/continued_rings_zernike.csv`, `output/continued_rings_summary.txt`,
+`figures/continued_rings.png`. It imports analysis 1's `ring_table`, `builder_flags` and
+`bin_dirs` rather than recomputing the geometry, so both analyses measure the same
+coverage.
+
+**Scope change recorded this day (Aaron):** the study does **not** recommend an `r_max`.
+The donut selection for wavefront has a settled limit of **1.725 deg of field angle**. The
+question is now whether the continuation of the rim rings reaches inside that limit.
+
+**How the builder decides, read from the code and not assumed.** In
+`ts_intrinsic_wavefront` (`3f66904` is an ancestor of the installed `a6394e7`),
+`intrinsic_split.decompose_spin_lsq` computes the coverage **once per decomposition** at
+line 453, `coverage = ring_coverage(valid)`; `ring_coverage` (line 331) is
+`np.any(v, axis=0).mean(axis=1)` (line 338), and `np.any` over axis 0 pools the rotator
+bins. The test is line 469, `if coverage[k] < min_coverage: continue`, and the skipped
+rings with data are continued from the nearest fitted ring at lines 500-508
+(`ring_filled[k] = True`). So the decision is on **union** coverage, not per bin, and it is
+one decision for the whole decomposition — identical for every Zernike. Per-bin coverage
+still limits the **rank** of a ring that is fit, which is why B2 reports it, but it does
+not enter the fit/continue decision.
+
+**B1 — per Zernike.** Uniform across all 21 Zernikes (Z4-Z19, Z22-Z26) in both builds, with
+**no Zernike off the 1-continued-ring-at-r=1.7500-deg pattern**:
+
+| build | rotator bins | n_continued_rings | continued ring radius (deg of field angle) | n_null_rings | min_ring_coverage_seen (fraction, dimensionless) | max_null_dim |
+|---|---|---|---|---|---|---|
+| `d12-A_50_34_i` | 9 | 1 | 1.7500 | 0 | 0.1778 | 0 |
+| `d12-A_50_34_i_5rot` | 5 | 1 | 1.7500 | 0 | 0.1167 | 0 |
+
+Uniformity is expected rather than surprising, given the decision rule above: coverage
+comes from donut support, which is Zernike-independent. That the builder's `max_null_dim`
+is **0** on every Zernike is the stronger statement — every ring it *did* fit was full
+rank, so the rim is the only place the fit gave up.
+
+**B2 — per rotator bin, outer 5 rings** (azimuthal coverage, fraction of the 180 nodes,
+dimensionless; 9-bin build):
+
+| r (deg of field angle) | union | per-bin min | per-bin median | bins | builder status |
+|---|---|---|---|---|---|
+| 1.6644 | 1.0000 | 0.9111 | 0.9222 | 9 | fitted |
+| 1.6858 | 1.0000 | 0.8889 | 0.9111 | 9 | fitted |
+| 1.7072 | 1.0000 | 0.8500 | 0.8889 | 9 | fitted |
+| 1.7286 | 0.9333 | 0.7111 | 0.7778 | 9 | fitted |
+| **1.7500** | **0.1778** | **0.0056** | **0.0278** | 9 | **continued** |
+
+The 5-bin build is the same four fitted rings and the same continued ring, at union 0.1167
+and an identical per-bin floor of 0.0056. Per-bin coverage at the rim is 0.0056 to 0.1000
+across the nine bins — no single bin comes near 0.5, so **no choice of bin pooling rescues
+this ring**. Full per-bin columns are in `continued_rings.parquet`.
+
+**B3 — the cross-check passes on both builds.** Continued rings above the 0.5 threshold:
+**0**. Rings below the threshold yet fitted: **0**. The builder's own reported counts equal
+the geometry's (continued 1 vs 1, null 0 vs 0). So the coverage quantity analysis 1
+measures is the quantity the builder decides on, and the two agree exactly.
+
+**B4 — the ring set analysis 3 needs is EMPTY.** Both builds fit the same 79 rings and
+continue the same one, at `r = 1.7500 deg`. **No ring is fitted in one build and continued
+in the other.** The 9-bin build pools more data (union 0.1778 against 0.1167) but not
+enough to cross 0.5, so the extra rotator bins change the coverage without changing any
+ring's status. Analysis 3 as scoped — "where one continues and the other fits, compare the
+maps" — therefore **has no ring to work on** and needs a different test for the rim.
+
+**B5 — relative to the 1.725 deg selection limit.** The limit falls between the fitted
+rings `r = 1.7072` and `r = 1.7286 deg`, and the single continued ring sits at
+`r = 1.7500 deg`, outside it. Neither consumer route reaches the continuation:
+
+| route | geometry checked | result |
+|---|---|---|
+| polar (ring interpolation) | the rings bracketing r = 1.725 deg | both **fitted** — does not draw on a continued ring |
+| Cartesian (71x71 map grid) | map cells at r <= 1.725 deg lying outside the last fitted ring r = 1.7286 deg | **0 of 3,833** cells |
+
+The 152 cells at r > 1.725 deg (of 3,985, the map reaching r = 1.7512 deg) are the only
+ones that can draw on the continuation, and 108 of them sit strictly between the last
+fitted ring and the continued ring.
+
+**In one line: analyses 3 and 4 have no work left inside the 1.725 deg selection limit, and
+reduce to the rim only.** Nothing a wavefront consumer reads at r <= 1.725 deg depends on
+the radial continuation, by either route. No fit or scatter is quoted in this analysis, so
+no robust estimator was needed; the one Huber RLM in the study is analysis 1's coverage
+trend.
 
 ### 2026-10-14 — analysis 1b: azimuthal probe at r = 1.725 deg (Aaron's request)
 
@@ -198,6 +292,5 @@ not widen** between the old and new builds. Old-only cells are 0, the half-width
 are cells the old grid also had but left NaN or dropped. The hull that matters is the
 donut-coverage hull measured here, not the map extent.
 
-**Next:** analysis 2 (continued versus fitted rings, per Zernike, from the four
-`intrinsic_split_rms` columns), then analysis 3 (the decisive signal-versus-artifact
-test).
+**Next:** analysis 2 — done the same day, see the entry above, which also records that its
+two-build contrast left analysis 3 without a ring to work on.
