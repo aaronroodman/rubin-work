@@ -6,9 +6,11 @@
 > visits each). The **M1M3 gradient defect is FIXED** (commit `bef17ba`): the sidecar now
 > reads the four gradients from the value-added database, verified exact on one night, and
 > `danish_1_2@20261014` is staged to rebuild only the steps below `mktable`.
-> `cwfs_tables` is **2 of 4 variants compared and clean** (difference 1 only); the other
-> two are still building. Next: finish those, run `20261014`, then `miw` (item 4 of the
-> comparison plan).
+> `cwfs_tables` is **2 of 4 variants compared and clean** (difference 1 only); `d12-refitWcs`
+> is **still building** in a surviving process from the cleared session, holding the
+> snakemake lock, with `d12-ai_donut` queued behind it. **Session stopped on the plan's
+> spend limit**, not on a problem. Next: finish those two, run `20261014`, then `miw`
+> (item 4 of the comparison plan) — the resume steps are in "Next concrete action".
 > · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
@@ -1046,8 +1048,61 @@ gradient columns is present** in either. Nothing to rebuild there.
 
 ## Next concrete action
 
-**Finish the `cwfs_tables` builds, then the `danish_1_2@20261014` gradient rebuild, then
-`miw` (item 4 of the plan).**
+**STOPPED ON SPEND, 2026-10-14 03:3x UTC.** Plan section 12: the month's total is past the
+pace that stays under budget — **$1,201.18 of $2,000.00 spent (60.1%)** over the 30-day
+period that resets 2026-11-01, a pace of **$98.88/day** projecting to **148% of budget**.
+Landing under needs **$44.63/day** ($798.82 remaining over 17.9 days). Nothing is broken
+and nothing is half-written; the stop is a budget stop, not a failure.
+
+**One process is still running and must be left alone:** the previous session's
+`/tmp/aos3c/build_cwfs.sh` (PID 2796951, with `snakemake` PID 2846113 and
+`run_wfs_mktable` PID 2846146) is building `cwfs_tables` `d12-refitWcs`, started 18:35 and
+**119 min in** at the stop, 11.7 GB read and climbing by about 0.55 GB per 5 min — it is
+progressing, not hung. It holds the **repository-root snakemake lock**, which is why the
+`20261014` rebuild could not start. `d12-ai_donut` is queued behind it in the same script.
+Expect refitWcs to take longer than the 17 min each of the two small variants: it has
+**34,631 donut rows** against 7,813, and it opens **two Butlers** for the 2025+2026 fold.
+Do not launch a second snakemake until that script exits — the lock will refuse it, as it
+already did once this session.
+
+**Resume here, in this order:**
+
+1. Confirm the script finished and both manifests exist:
+   ```bash
+   ls /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/*/20261013/manifest.json
+   ```
+2. Compare the two new `cwfs_tables` builds and complete the table in "`cwfs_tables`
+   rebuilt and compared". `d12-refitWcs` is the one that should **gain 2025 rows** from
+   the 3b fold, so its row counts will not match the old tree and that is expected
+   difference 5 of the comparison plan's item 3; `d12-ai_donut` should match exactly, with
+   `rotator_angle` the only differing column:
+   ```bash
+   cd /sdf/home/r/roodman/notebooks/rubin-work && \
+   for v in refitWcs ai_donut; do \
+     python -m rubinwork.products.cwfs_tables.compare_builds \
+       aos/output/wfs_ingest/danish_1_2/$v \
+       /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/d12-$v/20261013; \
+   done
+   ```
+3. `set-current` each clean variant (pre-approved, section 12), then confirm `load()`:
+   ```bash
+   cd /sdf/home/r/roodman/notebooks/rubin-work && \
+   for v in d12-tarts d12-paired_3mm d12-refitWcs d12-ai_donut; do \
+     python -m rubinwork.products.catalog set-current cwfs_tables $v 20261013; \
+   done
+   ```
+4. Run the `20261014` command in "The gradient fix and the `20261014` rebuild", then its
+   acceptance check:
+   ```bash
+   cd /sdf/home/r/roodman/notebooks/rubin-work && \
+   python -m rubinwork.products.fam_tables.refbuild.check_gradient_rebuild \
+     --variant danish_1_2 --reference 20261013 --build 20261014
+   ```
+   It must print `RESULT: gradients OK, other columns OK`. Run against `20261013` itself it
+   prints `gradients FAILED` — that is the defect, and is the check working.
+5. Then `set-current fam_tables danish_1_2 20261014`, then `miw` item 4.
+
+**Then the original plan:**
 
 `fam_tables` `20261013` is built, compared and **promoted** to `current` for all three
 variants (`danish_1_2`, `danish_1_3_test`, `danish_1_3_v1000`), each confirmed resolving
@@ -1082,6 +1137,32 @@ and is what is finishing the other two. State now:
    **Wait for `20261014`** — `miw` reads `fam_tables` `current`, and rebuilding it against
    `20261013` would carry the gradient defect into the coadd ML feature set.
 4. Then items 5 to 8 in order: `coadds`, `dof_lut`, `bounce_tables`, `value_added`.
+
+### Tried and rejected this session, so the next one does not redo it
+
+- **Launching a second `snakemake` for `d12-refitWcs`.** Done once, on the belief the
+  build had been interrupted by the `/clear`. It failed on the repository-root
+  `LockException` and **changed nothing**, which is the lock doing its job. The previous
+  session's shell script survives a `/clear` — check `pgrep -af snakemake` before
+  concluding a build is dead. A build log that stops 22 s in looks identical to an
+  interrupted one and is not evidence either way; the live evidence is the process state
+  and `/proc/<pid>/io`'s `rchar` climbing.
+- **Running `attach_telemetry` with all eight groups on the `20261014` rebuild.** Rejected:
+  `camera`, `hexlut` and `trim` would be re-fetched from the **live** EFD, which need not
+  return bit-identical values, so the rebuild would manufacture differences it is supposed
+  not to have and the "every other column identical at zero tolerance" check could not
+  pass. Hence `telemetry_groups=gradients` and the sidecar carry-forward.
+- **Letting the Snakefile plan the `20261014` chunks itself.** It plans the **9 declared
+  date-range chunks**, does not see the 106 per-night directories, and schedules 9
+  `mktable` plus 9 `fit` jobs — the whole expensive Butler stage. `nights=` is not
+  optional for any build made by the per-night route.
+- **Hard-linking the whole chunk tree and running.** The merge writes the per-chunk
+  `visits.parquet`, `fits.parquet` and `telemetry.parquet`, so those 318 files had to be
+  **unlinked** (copied in place) first or the run would have modified the immutable
+  `20261013`. Only `donuts.parquet` can stay shared, and it is 99% of the 12 GB.
+- **Night 20250417 as the gradient test case.** It has **0 of 55 visits with gradients** in
+  either source — an early 2025 night with no M1M3 thermocouple coverage — so it proves
+  nothing. Use **20250706**, the clearest case of the defect.
 
 **`set-current` is pre-approved** for a 3c build whose comparison is clean (plan section
 12, Aaron 2026-10-13): every difference on the product's expected-difference list, written
