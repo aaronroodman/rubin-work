@@ -73,12 +73,88 @@ Zernike in both, matching the 1-of-80 count here. The script calls the package's
 `make_polar_grid`, `sample_maps_polar` and `ring_coverage` rather than reimplementing the
 geometry, so this agreement is a real cross-check of the pipeline, not a tautology.
 
+**Analysis 1b (azimuthal probe at r = 1.725 deg) adds: the delivered maps are sound
+there.** Walking azimuth 0 to 360 deg in 1 deg steps returns **no NaN and no defective
+zeros** on any of the 21 OCS Zernikes or the Z4 CCS map, through either consumer route
+(the written-maps interpolator and the rotator-dependent `reconstruct_at`). It also found
+a consumer trap: on the **outermost** ring the polar grid's azimuthal node spacing is
+**2.0 deg**, so a finer probe step manufactures NaN from complete data (180 of 360 at
+r = 1.7500 deg) because there is no triangle beyond the last ring. See the log.
+
 **Still open:** whether the continued ring's values carry signal. Coverage says the ring
 is not constrained by its own data; it does not say the radial continuation from
 `r = 1.7286 deg` is wrong. Analysis 3 settles that by exploiting the two builds'
 different coverage.
 
 ## Log
+
+### 2026-10-14 — analysis 1b: azimuthal probe at r = 1.725 deg (Aaron's request)
+
+`code/azimuth_probe.py`, outputs `output/azimuth_probe.{parquet,pdf}`,
+`output/azimuth_probe_summary.csv`, `output/azimuth_probe_radius_scan.csv`.
+
+Aaron asked for: at radius exactly **1.725 deg of field angle**, step azimuth 0 to 360 deg
+in 1 deg steps, check the returned value of the OCS map for every Zernike and the CCS map
+for Z4, plot against azimuth, and flag any NaN or identically-zero return — exercising
+**`ts_intrinsic_wavefront`'s own interpolator and setup**, not an ad-hoc method.
+
+Both consumer routes are probed, each through its own package function:
+
+| route | function | what it represents |
+|---|---|---|
+| `maps` | `intrinsic_split.polar_field_to_points` on the decomposition's own `X`/`Y` grid, `nearest_within` = the radial step | the call that **wrote** `intrinsic_split_maps.parquet`, rim fill included |
+| `decomp` | `intrinsic_split.reconstruct_at` via `rubinwork.miw_corner.load_decomposition` | `value_added`'s `--intrinsic miw` path, at one camera rotator angle |
+
+**Result: no NaN and no defective zeros anywhere.** 360 azimuth samples x 21 Zernikes x 2
+components x 2 routes x 2 variants.
+
+| variant | NaN returns | identically zero, by design | identically zero, defect | partially zero |
+|---|---|---|---|---|
+| `d12-A_50_34_i` | none | 0 | none | none |
+| `d12-A_50_34_i_5rot` | none | 20 (CCS, `ocs_only`) | none | none |
+
+The 20 zero CCS series in `_5rot` are **correct**: `intrinsic_split_rms.ocs_only` is true
+for Z5-Z26 there, so the camera term is forced to 0 and **Z4 is the only meaningful CCS
+map** — which is exactly why Aaron's request named Z4 only. `d12-A_50_34_i` splits all 21,
+and none of its CCS columns is identically zero.
+
+OCS values at this radius, `maps` route, µm of wavefront:
+
+| variant | peak-to-peak over azimuth, min across Zernikes | max across Zernikes |
+|---|---|---|
+| `d12-A_50_34_i` | 1.4211e-02 | 4.6136e-01 |
+| `d12-A_50_34_i_5rot` | 3.7804e-02 | 4.5382e-01 |
+
+Every series varies smoothly. The spin-doublet pairs (5/6, 7/8, 9/10, 12/13, 14/15, 16/17,
+18/19, 23/24, 25/26) return **identical** min, max and RMS, the correct signature of a
+cos/sin doublet sampled around a full circle — an internal consistency check that came for
+free.
+
+**A trap worth knowing, found by the negative control.** A probe that reports "no NaN" is
+only meaningful if it can produce one, so `radius_scan` sweeps the probe radius. At
+**r = 1.7500 deg exactly, 180 of 360 azimuths return NaN** — and the rim fill is not the
+cause (identical count with it off). The reason is **probe geometry, not missing data**:
+the polar grid has `n_az = 180` nodes, i.e. **2.0 deg** azimuthal spacing, and on the
+*outermost* ring there is no triangle farther out to interpolate within, so every azimuth
+falling between two nodes is outside the convex hull. The stored polar field has **0 NaN**
+on that ring. Even azimuths (on-node) return fine.
+
+| r (deg of field angle) | NaN with rim fill | NaN without | polar field's own NaN on that ring |
+|---|---|---|---|
+| 1.7000 | 0 / 360 | 0 / 360 | 0 |
+| 1.7250 | 0 / 360 | 0 / 360 | 0 |
+| 1.7286 | 0 / 360 | 0 / 360 | 0 |
+| 1.7500 | 180 / 360 | 180 / 360 | 0 |
+| 1.7512 | 180 / 360 | 360 / 360 | 0 |
+| 1.7600 | 180 / 360 | 360 / 360 | 0 |
+
+Two things follow. **Any consumer sampling the MIW near the rim must not step finer than
+2.0 deg in azimuth on the outermost ring**, or it will manufacture NaN from complete data.
+And the rim fill is doing its job: at r = 1.7512 and 1.760 deg it recovers the 180 on-node
+azimuths that would otherwise all be NaN.
+
+Aaron's chosen r = 1.725 deg is inside the last interpolable band and returns 360/360
+finite on every series — a well-chosen radius for this test.
 
 ### 2026-10-14 — analysis 1: ring coverage geometry
 
