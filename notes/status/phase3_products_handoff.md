@@ -1,20 +1,19 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a and 3b complete; **3c IN PROGRESS**. All three `fam_tables` variants are
-> built, compared and **promoted** as build `20261013`: `danish_1_2` (3,385 visits over
-> 106 nights, the same as the old tree), `danish_1_3_test` and `danish_1_3_v1000` (966
-> visits each). The **M1M3 gradient defect is FIXED** (commit `bef17ba`): the sidecar now
-> reads the four gradients from the value-added database, verified exact on one night, and
-> `danish_1_2@20261014` is staged to rebuild only the steps below `mktable`.
-> `cwfs_tables` is **DONE**: all four variants compared clean and **promoted** to
-> `current@20261013`, each confirmed through `catalog.load()`. The only differences are
-> `rotator_angle` (max abs 0.4446 deg of camera rotator angle on all four) and, on
-> `d12-refitWcs`, the 2025 fold (+2,168 visit and +62,554 donut rows, every old row kept,
-> shared 2026 rows unchanged but for `rotator_angle`). **Session stopped on the plan's
-> spend limit** at the end of that step, not on a problem; no process is left running and
-> the snakemake lock is free. Next: run the staged `20261014`, then `miw` (item 4) —
-> resume steps in "Next concrete action".
-> · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
+> **Status:** 3a and 3b complete; **3c IN PROGRESS**, 3 of 8 comparison-plan items done.
+> **`fam_tables` is DONE**: `danish_1_2@20261014` (3,385 visits over 106 nights, the same
+> as the old tree) and `danish_1_3_{test,v1000}@20261013` (966 visits each) are all
+> `current`, each confirmed through `catalog.load()`. The **M1M3 gradient defect is FIXED
+> and the fix is promoted** (commit `bef17ba`, build `20261014`): the four gradients now
+> equal the value-added database at **max abs difference 0.000e+00 degC/m** on all 3,006
+> visits that have them, with every other column identical to `20261013` at zero
+> tolerance. **`cwfs_tables` is DONE**: all four variants compared clean and promoted to
+> `current@20261013`; the only differences are `rotator_angle` (max abs 0.4446 deg of
+> camera rotator angle on all four) and, on `d12-refitWcs`, the 2025 fold (+2,168 visit
+> and +62,554 donut rows, every old row kept). Next: **`miw`** (item 4), then items 5 to 7,
+> stopping at `value_added` (item 8). This file was pruned 2026-10-14; the 3a/3b narratives
+> are in commit `ebbc426`.
+> · **Last updated:** 2026-10-14 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -446,64 +445,55 @@ The two blitz variants (`danish_1_3_test`, `danish_1_3_v1000`) are **unaffected*
 `visits.parquet` carries **24 columns** against `danish_1_2`'s 405, and **none of the four
 gradient columns is present** in either. Nothing to rebuild there.
 
+## `fam_tables` `danish_1_2@20261014` BUILT, CHECKED and PROMOTED, 2026-10-14
+
+The staged rebuild ran in **about 8 minutes** of wall-clock time, 6 of 6 snakemake jobs,
+exit 0, no `mktable` and no `fit`. The acceptance check printed
+**`RESULT: gradients OK, other columns OK`**:
+
+| check | result |
+|---|---|
+| four gradient columns vs the value-added database | 3,006 visits each, **max abs difference 0.000e+00 degC/m**, exact; NaN 379 in build and 379 in database on all four |
+| `visits` vs `20261013` | 3,385 vs 3,385 rows, 405 columns, **0 non-gradient columns differing**; 4 gradient columns differ, max abs **6.681e-01 degC/m** |
+| `fits` vs `20261013` | 2,528 vs 2,528 rows, 830 columns, **0 non-gradient differing**; 4 gradient, max abs **6.681e-01 degC/m** |
+| `donuts` vs `20261013` | 9,083,526 vs 9,083,526 rows, 48 columns, **0 differing** |
+
+Every difference is expected difference 6 of the comparison plan and nothing else, so the
+comparison is **clean** under section 12 and `catalog set-current fam_tables danish_1_2
+20261014` ran: `current -> 20261014`. Confirmed through the catalog —
+`catalog.load('fam_tables', 'danish_1_2', file='visits.parquet')` gives **3,385 visits
+over 405 columns** with the four gradient columns present.
+
+`fam_tables` is now **DONE** for 3c: `danish_1_2@20261014` and
+`danish_1_3_{test,v1000}@20261013` are all `current`.
+
 ## Next concrete action
 
-**STOPPED ON SPEND, 2026-10-14 05:46 UTC, at the end of a completed step.** Plan section
-12: the month's total is past the pace that stays under budget — **$1,208.91 of $2,000.00
-spent (60.4%)** over the 30-day period that resets 2026-11-01, a pace of **$98.76/day**
-projecting to **148% of budget**. Landing under needs **$44.44/day** ($791.09 remaining
-over 17.8 days). Nothing is broken, nothing is half-written, and no process is left
-running; `cwfs_tables` finished and was promoted before the stop.
+**`miw`, item 4 of the comparison plan.** The two `d12` variants, `d12-A_50_34_i` and its
+`build_from` child `d12-A_50_34_i_5rot`, compared against
+`aos/output/miw/danish_1_2_A_50_34_i[_5rot]/` (both old-tree directories exist with all
+four product tables) and the 3a reference in `_phase2_refbuild/miw/ref/`. Expect
+difference **2** (the theta rotation of the CCS maps) and **1** carried through the visits
+it reads; `set-current` is pre-approved if the comparison is clean. Items 1 to 3 are all
+done, so nothing blocks it, and `fam_tables danish_1_2` is now `current@20261014`, so the
+gradient defect is **not** carried into the coadd ML feature set.
 
-The previous session's `/tmp/aos3c/build_cwfs.sh` has **exited**, so the repository-root
-snakemake lock is **free** and the `20261014` rebuild can start immediately. For the record
-of what that build cost: `d12-refitWcs` took **3 h 15 min** and `d12-ai_donut` about as
-long, against 17 min each for the two small variants — the two big ones have ~37,000 and
-97,000 donut rows, and refitWcs opens **two Butlers** for the 2025+2026 fold.
+Budget the time: `refit_mi` reads the whole FAM `donuts.parquet` (12.36 GB, 9,083,526
+rows), about **28 min per MIW variant** before `intrinsic_sidecar`'s share.
 
-**Resume here, in this order. Step 1 is the first real work:**
+Then items **5 to 7** in order while the comparisons stay clean — `coadds`, `dof_lut` (a
+**shape** check by design, not zero tolerance: the input table changed from plain-FAM to
+post-MIW DOF), `bounce_tables` — and **stop at `value_added`** (item 8), which writes the
+live database and needs its own plan and Aaron's OK.
 
-1. Run the `20261014` command in "The gradient fix and the `20261014` rebuild", then its
-   acceptance check:
-   ```bash
-   cd /sdf/home/r/roodman/notebooks/rubin-work && \
-   python -m rubinwork.products.fam_tables.refbuild.check_gradient_rebuild \
-     --variant danish_1_2 --reference 20261013 --build 20261014
-   ```
-   It must print `RESULT: gradients OK, other columns OK`. Run against `20261013` itself it
-   prints `gradients FAILED` — that is the defect, and is the check working.
-2. Then `set-current fam_tables danish_1_2 20261014` (pre-approved if the check passes),
-   and confirm `catalog.load()` resolves to it.
-3. Then **`miw`**, item 4 of the comparison plan: the two `d12` variants
-   (`d12-A_50_34_i` and its `build_from` child `d12-A_50_34_i_5rot`), compared against
-   `aos/output/miw/danish_1_2_A_50_34_i[_5rot]/` — both old-tree directories exist with all
-   four product tables — and the 3a reference in `_phase2_refbuild/miw/ref/`, expecting
-   difference 2 (the theta rotation of the CCS maps) and 1 carried through the visits it
-   reads. **Run it only after `20261014` is `current`**, or it carries the gradient defect
-   into the coadd ML feature set.
-4. Then items 5 to 8 in order: `coadds`, `dof_lut` (expected to differ **by design** —
-   post-MIW vs plain-FAM input, so a shape check rather than a zero-tolerance comparison),
-   `bounce_tables`, and **stop at `value_added`** (item 8), which writes the live database
-   and needs its own plan and Aaron's OK.
+**Spend rule, Aaron 2026-10-14:** the monthly-pace stop is **suspended** (a quota increase
+is requested). The **per-session $50 stop stays**. Keep sessions cheap: narrow reads, no
+re-reading of long handoff sections, terse results and handoff entries.
 
-**State of the two products 3c has finished:**
-
-`fam_tables` `20261013` is built, compared and **promoted** to `current` for all three
-variants (`danish_1_2`, `danish_1_3_test`, `danish_1_3_v1000`), each confirmed resolving
-through `catalog.load()`. `danish_1_2` will be superseded by `20261014`.
-
-`cwfs_tables` is **DONE**: all four variants built, compared clean and promoted to
-`current@20261013`. **A correction worth keeping**, because it is the kind of error that
-costs a session: an earlier version of this section claimed the four builds were compared
-and "recorded below". **They were not** — two were built, none compared, nothing recorded,
-and the build script from the cleared session was still running. Do not trust a "done and
-recorded" claim in a handoff without the numbers beside it; this file now carries them.
-
-**The `fam_tables` `danish_1_2@20261014` rebuild is staged and ready to run**: 106 night
-chunks hard-linked from `20261013`, the writable per-chunk tables unlinked, the Snakefile
-planning exactly the 6 downstream jobs, and the fix verified on one night. The lock is now
-free. Command, the reasoning behind each flag, and the acceptance check are in "The gradient
-fix and the `20261014` rebuild".
+**A correction worth keeping**, because it is the kind of error that costs a session: an
+earlier version of this section claimed four `cwfs_tables` builds were compared and
+"recorded below". **They were not** — two were built, none compared, nothing recorded. Do
+not trust a "done and recorded" claim in a handoff without the numbers beside it.
 
 ### Tried and rejected this session, so the next one does not redo it
 
