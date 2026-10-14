@@ -119,14 +119,24 @@ def main(argv=None):
     parser.add_argument("--option", action="append", default=[], metavar="KEY=VALUE",
                         help="Build-time setting to record under config.build_options; "
                              "repeatable")
+    # fam_tables reads no upstream product in a normal build, so `inputs` is normally
+    # empty. It is needed when a build REUSES another build's expensive mktable
+    # outputs instead of re-querying the Butler, which is a real provenance link.
+    parser.add_argument("--input", action="append", default=[], metavar="PRODUCT=REF",
+                        help="Upstream build read, as product=variant@build; repeatable")
     args = parser.parse_args(argv)
 
     options = {}
     for item in args.option:
         key, _, value = item.partition("=")
         options[key] = value
+    inputs = {}
+    for item in args.input:
+        key, _, value = item.partition("=")
+        inputs[key] = value
     path = write(args.variant, build=args.build, build_dir=args.build_dir,
-                 status=args.status, build_options=options or None)
+                 status=args.status, build_options=options or None,
+                 inputs=inputs or None)
     print(f"wrote {path}")
     return 0
 

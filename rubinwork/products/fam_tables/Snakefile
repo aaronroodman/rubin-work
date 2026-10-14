@@ -69,9 +69,22 @@ COORD = CFG.get('coord_sys', 'OCS')
 # Telemetry attachment needs the EFD and ConsDB to resolve, which they do not on a
 # Slurm compute node, so a batch run passes --config attach_telemetry=0 and the
 # target drops out of `rule all`.  Attach it afterwards with a local run.  Every
-# EFD-querying group (gradients, camera, hexlut, trim) lives inside that one rule,
-# so this switch is the single point that keeps EFD access out of batch.
+# EFD-querying group (camera, hexlut, trim) lives inside that one rule, so this
+# switch is the single point that keeps EFD access out of batch.  `gradients` reads
+# the value-added database rather than the EFD and needs no interactive node.
 ATTACH_TELEMETRY = str(config.get('attach_telemetry', 1)).lower() not in ('0', 'false', 'no')
+
+# `telemetry_groups=a,b` fetches only those groups and CARRIES FORWARD every other
+# column already in each chunk's telemetry.parquet sidecar.  For a build that reuses
+# another build's chunks to re-derive one group only: re-fetching the EFD groups would
+# re-query live topics and move columns the rebuild is meant to leave alone.
+TELEMETRY_GROUPS = str(config.get('telemetry_groups', '')).strip()
+
+# `reuse_mktable_from=<build>` records, in the manifest's `inputs`, the build whose
+# mktable and fit outputs this one reuses.  It changes nothing about what runs -- the
+# reuse is done by hard-linking the chunks into place before the build -- but without
+# it the manifest would claim the expensive stage was built here.
+REUSE_MKTABLE_FROM = str(config.get('reuse_mktable_from', '')).strip()
 
 # run_mktable speed knobs: parallelize the per-visit Butler donut reads, and
 # optionally skip the slow per-visit ESS-temperature loop.
@@ -219,7 +232,8 @@ ATTACH_CMD = (
     'mkdir -p $(dirname {log}) && '
     'python -m rubinwork.products.fam_tables.builders.run_attach_telemetry '
     f'--param-set {PARAM_SET} --out-dir {BUILD_DIR} '
-    f"--chunks-dir {WORK / 'chunks'} " + '--all-chunks --merge > {log} 2>&1 && '
+    + (f'--groups {TELEMETRY_GROUPS} ' if TELEMETRY_GROUPS else '')
+    + f"--chunks-dir {WORK / 'chunks'} " + '--all-chunks --merge > {log} 2>&1 && '
     "date -u +'%Y-%m-%dT%H:%M:%SZ attached' > {output.stamp}")
 MANIFEST_CMD = (
     'mkdir -p $(dirname {log}) && '
@@ -229,7 +243,11 @@ MANIFEST_CMD = (
     f'--option mktable_workers={MKT_WORKERS} '
     f'--option mktable_no_thermal={int(MKT_NO_THERMAL)} '
     f'--option coord_sys={COORD} '
-    f"--option chunks_built={','.join(CHUNK_NAMES)} "
+    + (f'--option telemetry_groups={TELEMETRY_GROUPS} ' if TELEMETRY_GROUPS else '')
+    + (f'--input fam_tables={VARIANT}@{REUSE_MKTABLE_FROM} '
+       f'--option reuse_mktable_from={REUSE_MKTABLE_FROM} '
+       if REUSE_MKTABLE_FROM else '')
+    + f"--option chunks_built={','.join(CHUNK_NAMES)} "
     '> {log} 2>&1')
 MKTABLE_CMD = (
     'mkdir -p $(dirname {log})\n'
