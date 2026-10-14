@@ -1,13 +1,14 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a and 3b complete; **3c IN PROGRESS** — the row-order fix, the
-> chunk-specificity fix and the `dof_lut` input change are committed, the
-> `ts_intrinsic_wavefront` branch is pushed, and the embargo probe is GREEN. The per-night
-> `mktable` set is **DONE**: 137 nights submitted, **106 have `donuts.parquet` and
-> `visits.parquet`** and the other **31 are the verified-empty nights** of defect A. The
-> `danish_1_2` build `20261013` combines to **3,385 visits over 106 distinct nights**, the
-> same as the old tree. Still to do: the `finish_mktable_rebuild.sh` tail, the two blitz
-> variants, and the three-way comparison. **No `set-current` has run.**
+> **Status:** 3a and 3b complete; **3c IN PROGRESS**. All three `fam_tables` variants are
+> **BUILT and COMPARED** as build `20261013`: `danish_1_2` (3,385 visits over 106 nights,
+> the same as the old tree), `danish_1_3_test` and `danish_1_3_v1000` (966 visits each).
+> The interactive tail (`finish_mktable_rebuild.sh`) has run, every row count matches the
+> old tree on all nine tables, and `donuts.parquet` is identical at zero tolerance for all
+> three. Every comparison difference is on the expected list except the four M1M3 bulk
+> thermal gradients, which **Aaron ruled on 2026-10-13** (see "The three `fam_tables`
+> builds are BUILT and COMPARED"). Next: `set-current` for the three FAM variants, then
+> `cwfs_tables` (item 3 of the comparison plan).
 > · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
