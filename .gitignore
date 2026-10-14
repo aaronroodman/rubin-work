@@ -24,6 +24,11 @@ env/
 # Products belong in <topic>/output/, but the pattern above needs a directory
 # component before output/, so a REPO-ROOT output/ would slip through untracked.
 /output/
+# A phase 5 study's `output@` sits one level deeper, at <topic>/<study>/output ->
+# studies/<topic>/<study>, which `*/output/*` does not match.  The symlink itself is
+# ignored, not just its contents: it points outside the repo and is recreated per
+# environment (notes/status/organization_plan.md section 5).
+*/*/output
 # NOTE: do NOT add a .gitkeep under aos/output, blocks/output, value_added/output,
 # guider/output or optatmo/output.  On the USDF RSP those output/ dirs are SYMLINKS to
 # /sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/<topic>/output (disk quota).

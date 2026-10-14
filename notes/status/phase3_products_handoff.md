@@ -621,10 +621,104 @@ growth is **two effects stacked**: a lattice change (3,831-cell `126/73` grid ->
 Still Aaron's call, unchanged: whether the ring continuation is accepted new behaviour for
 the expected-difference list or a regression, and what to do about `d12-tarts`.
 
+## `d12-tarts`: SETTLED — no MIW sidecar, by design (Aaron, 2026-10-14)
+
+**Decision: `d12-tarts` does not need an MIW corner sidecar at all.** Commit `b8ae9aa`
+skips every `reader: unpaired` CWFS variant in the `miw` Snakefile's `CWFS_VARIANTS` loop
+and prints why. The Snakefile comment already said "the **paired** CWFS variants"; only
+the filter was missing.
+
+**Why it was never a physics problem.** `d12-tarts` is TARTS's **in-focus** analysis
+(`u/peterma2/tarts_fam_acq_stability_infocus`, `aggregateAOSVisitTableAvg`) — one
+ML-combined row per corner half-sensor from a single exposure, 7,813 rows over 977 visits
+x 8 half-sensors. No intra/extra-focal pair exists, so `centroid_*_intra` is not missing
+by accident; it is meaningless for in-focus data.
+`run_make_intrinsic_sidecar.py` requests those columns unconditionally (line 115) and dies
+with `ArrowInvalid: No match for FieldRef.Name(centroid_x_intra)`.
+
+The centroids are **only a row key**: read at line 115, carried untouched, written back at
+lines 213-214. The reconstruction uses `thx_OCS`/`thy_OCS` and `rotator_angle` and nothing
+else. The extra centroids are in the key only to separate FAM donuts that share a detector
+in one exposure; on `d12-tarts`, `(day_obs, seq_num, detector)` is **already unique on all
+7,813 rows**. So "add the intra centroids" would have invented a meaningless column to
+rescue a key that needs no rescuing.
+
+Nothing reads such a sidecar either: `d12-tarts` donuts carry their own
+`zk_intrinsic_OCS`, and neither the old tree nor the 3a reference ever built one. Aaron's
+planned **TARTS-vs-Danish CWFS comparison** reads the donut tables, not a sidecar, so the
+exclusion does not foreclose it.
+
+**The alternative, not taken and still available:** make the sidecar runner's key adapt —
+include the centroid columns only when present, else fall back to
+`(day_obs, seq_num, detector)`. That fixes every unpaired variant but needs a change in
+`ts_intrinsic_wavefront`, which (b) keeps off phase 3c's critical path.
+
+## `miw` MIW VALIDATED by Aaron, 2026-10-14
+
+**Aaron reviewed the validation PDFs and accepted the `danish_1_2` MIW build**: "almost
+identical to the previous version, with the only change being the wider convex hull
+replacing some outlier and NAN values."
+
+**One correction to carry onto the expected-difference list.** The mechanism is a **NaN-rim
+fill, not a wider convex hull**. The field extent does not grow: the valid-cell mask shows
+**old-only = 0 cells**, and the added cells are rim points of the *same* 71x71 lattice.
+The old `_5rot` map holds **124 NaN cells in `Z4_OCS`** — exactly the "124 points" annulus
+at `r >= 1.729 deg` that commit `3f66904` names — and the new build holds **0**. The CWFS
+corners sit near 1.19 deg of field angle, already well inside the old valid region, so no
+MIW becomes newly available outside any hull. The acceptance stands; only the label
+differs.
+
 ## Next concrete action
 
-**`miw` item 4 still WAITS ON AARON, 2026-10-14** — on the two questions below and on
-`d12-tarts`, not on a crash and not on spend. The comparison difference that caused the
+**`refit_mi` for `d12-A_50_34_i@20261014` is the next step, and the submit was BLOCKED by
+the harness, 2026-10-14.** Aaron OK'd the exact sbatch command below and the submit was
+denied by the Claude Code auto-mode permission classifier ("Blind Apply"), not by Aaron and
+not by Slurm. **No job was submitted and no job ID exists.** A follow-up `snakemake -n`
+with the same arguments was blocked too, so nothing further ran this session.
+
+The build sits at **16 of 18 outputs**: all 9 `build_intrinsic` grids, `intrinsic_split`,
+the FAM `intrinsic_sidecar` and **3 of 3** corner sidecars (`d12-ai_donut`,
+`d12-paired_3mm`, `d12-refitWcs` — `d12-tarts` is now correctly skipped, so the set is
+complete, not short). Only `refit_mi` and `manifest` remain. `d12-A_50_34_i_5rot@20261014`
+holds its 4 `intrinsic_split` outputs and no manifest. **No `miw` variant is `current`.**
+No process is running and the snakemake lock is free.
+
+**The validated submit command, to run as-is** (a prior identical `snakemake -n` reported
+`refit_mi 1`, `manifest 1`, `total 3`, with `d12-tarts` skipped by design):
+
+```bash
+cd ~/notebooks/rubin-work && \
+mkdir -p logs && \
+sbatch --partition=milano \
+       --account=rubin:developers@milano \
+       --qos=normal \
+       --cpus-per-task=8 \
+       --mem=96G \
+       --time=04:00:00 \
+       --job-name=miw_refit_d12 \
+       --output=$HOME/notebooks/rubin-work/logs/miw_refit_d12_%j.out \
+       --wrap='cd $HOME/notebooks/rubin-work && env -u DISPLAY MPLBACKEND=Agg snakemake -s rubinwork/products/miw/Snakefile -j 1 --resources mem_mb=90000 --config variant=d12-A_50_34_i build=20261014 fam_build=20261014'
+```
+
+96G rather than the rule's declared `mem_mb=4000`: `refit_mi` reads the 12.4 GB
+`fam_tables` `donuts.parquet`. Monitor with `squeue -u roodman` and
+`tail -f "$(ls -t ~/notebooks/rubin-work/logs/miw_refit_d12_*.out | head -1)"`.
+
+**After it lands, Aaron's standing instruction (2026-10-14):** compare the new
+`fits.parquet` against the old tree's
+(`aos/output/miw/danish_1_2_A_50_34_i/fits.parquet`) and **show him the numbers before any
+`set-current`**. He explicitly declined promote-on-completion. Remember `refit_mi` runs
+`--no-quality-cut`, so the new table holds all visits and the old-tree one may not —
+compare on the shared `(day_obs, seq_num)` key.
+
+**Then:** items 5 to 7 (`coadds`, `dof_lut`, `bounce_tables`) unblock once `miw` is
+`current`.
+
+### Superseded by the above, kept so the next session does not re-ask
+
+**`miw` item 4 no longer waits on the two questions** — both are answered: the field-edge
+difference is explained and measured, and `d12-tarts` is settled. What remains is
+mechanical (`refit_mi`, then the `fits.parquet` comparison). The comparison difference that caused the
 original stop is now **explained and measured** (section above): it is the field edge, from
 `ts_intrinsic_wavefront` commit `3f66904`. Nothing is half-written: the
 `d12-A_50_34_i@20261014` build directory holds 15 of its 18 outputs,
