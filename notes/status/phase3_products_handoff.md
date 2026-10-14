@@ -10,9 +10,14 @@
 > tolerance. **`cwfs_tables` is DONE**: all four variants compared clean and promoted to
 > `current@20261013`; the only differences are `rotator_angle` (max abs 0.4446 deg of
 > camera rotator angle on all four) and, on `d12-refitWcs`, the 2025 fold (+2,168 visit
-> and +62,554 donut rows, every old row kept). Next: **`miw`** (item 4), then items 5 to 7,
-> stopping at `value_added` (item 8). This file was pruned 2026-10-14; the 3a/3b narratives
-> are in commit `ebbc426`.
+> and +62,554 donut rows, every old row kept). **`miw` (item 4) is STOPPED on an
+> unexplained comparison difference**, not on spend: `d12-A_50_34_i@20261014` is built as
+> far as the sidecars, is **not promoted**, and two things need Aaron — `d12-tarts` has no
+> intra-focal centroids so its corner sidecar fails and `refit_mi` never ran, and the
+> external builder's ring continuation added 154 valid field-grid cells (3,831 -> 3,985 of
+> 5,041) plus 4 `intrinsic_split_rms` columns, which is not on the expected-difference
+> list. Items 5 to 7 are blocked behind `miw`. Questions 6 and 7 in "Decisions for Aaron".
+> This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-14 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
@@ -27,6 +32,30 @@ between sessions.
 
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
+
+6. **`d12-tarts` has no intra-focal centroid columns, so `miw` cannot build its corner
+   sidecar** (open, found 2026-10-14; **`miw` item 4 and therefore items 5 to 7 are
+   waiting on it**). `run_make_intrinsic_sidecar.py` raises
+   `ArrowInvalid: No match for FieldRef.Name(centroid_x_intra)`, and because the rule is
+   an input to `refit_mi` the whole build stops short of `fits.parquet`. The same defect is
+   already in "Open, not yet resolved" as `tarts`'s missing corner sidecar.
+   **Options:** (a) drop `d12-tarts` from the `miw` corner-sidecar set, by the same
+   skip-and-report idiom the Snakefile already uses for a variant with no build —
+   recommended, since neither the old tree nor the 3a reference has a `tarts` sidecar, so
+   nothing is lost against the comparison; (b) add the intra centroids to the `d12-tarts`
+   `cwfs_tables` build, which is a `cwfs_tables` rebuild and a bigger change.
+   **Waiting on it:** `miw`, and items 5 to 7 behind it.
+
+7. **The external builder's ring continuation changed the valid field-grid cell set**
+   (open, found 2026-10-14; **`miw` promotion is waiting on it**). The new build keeps
+   **3,985** of the 5,041 cells of the same 71x71 grid where the old kept **3,831** — 154
+   more — and `intrinsic_split_rms` gains 4 columns that name the mechanism
+   (`n_null_rings`, `n_continued_rings`, `min_ring_coverage_seen`, `max_null_dim`).
+   **Options:** (a) accepted new behaviour of `ts_intrinsic_wavefront`, written onto the
+   expected-difference list, after which the comparison is redone on the 3,831 shared cells
+   — recommended if you already know this change landed; (b) a regression, which means
+   finding the commit in the external package. **Waiting on it:** every `miw` `set-current`,
+   and items 5 to 7. Numbers in "`miw` item 4" below.
 
 5. **`visits.parquet` row order is not deterministic, and two stored columns depend on
    it** (open, found 2026-10-12 by item 1's after-check; **nothing is waiting on it**).
@@ -467,24 +496,85 @@ over 405 columns** with the four gradient columns present.
 `fam_tables` is now **DONE** for 3c: `danish_1_2@20261014` and
 `danish_1_3_{test,v1000}@20261013` are all `current`.
 
+## `miw` item 4: BUILT but the comparison is NOT clean — STOPPED, 2026-10-14
+
+**`d12-A_50_34_i` build `20261014` is built as far as the sidecars and NOT promoted.**
+15 of 18 snakemake jobs done: all 9 `build_intrinsic` grids, `intrinsic_split`, the FAM
+`intrinsic_sidecar` and 3 of 4 corner sidecars. **No `set-current` has run for any `miw`
+variant**, and `d12-A_50_34_i_5rot` was not started.
+
+**Two blockers, in the order they matter.**
+
+**1. `d12-tarts`'s corner sidecar fails, so `refit_mi` never ran and `fits.parquet` is
+missing.** `run_make_intrinsic_sidecar.py` raises
+`pyarrow.lib.ArrowInvalid: No match for FieldRef.Name(centroid_x_intra)` — the
+`cwfs_tables` `d12-tarts` donut table has no intra-focal centroid columns. This is the
+**pre-existing `tarts` missing-corner-sidecar defect** already in "Open, not yet
+resolved", surfacing now because the `miw` Snakefile builds a corner sidecar for every
+`cwfs_tables` variant of the FAM variant. Neither the old tree nor the 3a reference has a
+`tarts` sidecar to compare against: the old tree has **no** `wfs/` sidecars at all for this
+variant, and the 3a reference built only `refitWcs`. Decide whether `d12-tarts` is excluded
+from the corner-sidecar set or the intra centroids are added to it.
+
+**2. The field-map grid gained 154 valid cells, which is a change in the EXTERNAL builder
+and is not on the expected-difference list.**
+
+| table | old rows | new rows | columns | differences |
+|---|---|---|---|---|
+| `intrinsic_split_maps` | 3,831 | **3,985** cells of the same 71x71 grid | — | row-count MISMATCH, so `compare_builds` compared 0 columns and its `values: identical` is vacuous |
+| `intrinsic_split_decomp` | 21 | 21 | 10 | `O_re` max abs **0.8405 µm of wavefront** (19.7x the map's own RMS of 0.0427 µm), `O_im` **0.4865 µm** (11.2x), `C_re` **1.007 µm** (50.1x), `C_im` **1.103 µm** (66.1x) |
+| `intrinsic_split_rms` | 21 | 21 | 8 | **4 columns only in the new build**: `n_null_rings`, `n_continued_rings`, `min_ring_coverage_seen`, `max_null_dim`. Values: `O_tel` max abs difference **2.524e-05 µm of wavefront** (max value 0.0895 µm), `C_cam` **5.484e-05 µm** (max 0.0305 µm), `residRMS` **4.605e-05 µm** (max 0.0767 µm), `dataRMS` **5.031e-16 µm** |
+| `build/rot_*/dz_fits`, 9 bins | match | match | 683 | 677 columns differ, but every DOF and `dz_corr` difference is float round-off (max abs **4.2e-11 µm** on `dof_M2_dy`). The real one is **`vmode_13`, max abs 0.431 to 1.018 (dimensionless v-mode amplitude) across the 9 bins** |
+| `build/rot_*/intrinsic_grid`, `intrinsic_cov_edge` | match | match | 9, 4 | round-off only (max abs **9.3e-15**) |
+| `zk_intrinsic` | 3,065,249 | 9,083,526 donut rows | — | row-count MISMATCH; the old sidecar covers a third of the new donut table, which now has all 9,083,526 rows of `fam_tables@20261014` |
+
+**Why this is a stop, not an expected difference.** The comparison plan's difference 2
+predicted a CCS-only change of **7.8e-05 to 9.2e-04 µm of wavefront** with OCS at most
+**7e-06 µm**, because O is theta-independent. Measured, **O changes too** and by 0.84 µm.
+The 4 new `rms` columns name the mechanism — the external builder's **ring continuation**
+now keeps rings the old build nulled, which is what adds the 154 cells — so the
+`O`/`C` max-abs figures are most likely a **mask-alignment artifact** of comparing
+flattened maps over different valid-cell sets, not a physics change. The summary RMS
+columns agreeing to **5.5e-05 µm of wavefront** supports that. **It is a hypothesis, not a
+result**: the comparison must be redone cell by cell on the shared (`thx_deg`, `thy_deg`)
+cells before any `set-current`.
+
+Likewise `vmode_13`: it is one v-mode of the recovered state, differing by up to 1.0
+(dimensionless amplitude) on bins whose DOF agree to 4e-11 µm, which is the signature of a
+near-null mode rotating within a degenerate subspace rather than a changed fit. Also
+unverified.
+
+**Next, before any `miw` promotion:** compare `intrinsic_split_maps` restricted to the
+3,831 shared cells, column by column (the pattern the `cwfs_tables` 2025/2026 split used);
+compare `zk_intrinsic` on the shared donut key; settle `d12-tarts`; and decide whether the
+ring-continuation change is an accepted new behaviour of the external builder, which makes
+it an expected difference to be written down, or a regression.
+
 ## Next concrete action
 
-**`miw`, item 4 of the comparison plan.** The two `d12` variants, `d12-A_50_34_i` and its
-`build_from` child `d12-A_50_34_i_5rot`, compared against
-`aos/output/miw/danish_1_2_A_50_34_i[_5rot]/` (both old-tree directories exist with all
-four product tables) and the 3a reference in `_phase2_refbuild/miw/ref/`. Expect
-difference **2** (the theta rotation of the CCS maps) and **1** carried through the visits
-it reads; `set-current` is pre-approved if the comparison is clean. Items 1 to 3 are all
-done, so nothing blocks it, and `fam_tables danish_1_2` is now `current@20261014`, so the
-gradient defect is **not** carried into the coadd ML feature set.
+**STOPPED on `miw` item 4, 2026-10-14, on an unexplained comparison difference** (plan
+section 12), not on spend and not on a crash. Nothing is half-written: the
+`d12-A_50_34_i@20261014` build directory holds 15 of its 18 outputs and **no `miw` variant
+is `current`**. No process is running and the snakemake lock is free.
 
-Budget the time: `refit_mi` reads the whole FAM `donuts.parquet` (12.36 GB, 9,083,526
-rows), about **28 min per MIW variant** before `intrinsic_sidecar`'s share.
+**Two questions for Aaron, both in "Decisions for Aaron" above.** Items 5 to 7 (`coadds`,
+`dof_lut`, `bounce_tables`) all take `miw` as their upstream, so they are blocked behind
+them.
 
-Then items **5 to 7** in order while the comparisons stay clean — `coadds`, `dof_lut` (a
-**shape** check by design, not zero tolerance: the input table changed from plain-FAM to
-post-MIW DOF), `bounce_tables` — and **stop at `value_added`** (item 8), which writes the
-live database and needs its own plan and Aaron's OK.
+1. **`d12-tarts` has no intra-focal centroids**, so its corner sidecar cannot be built and
+   `refit_mi` never ran. Exclude it from the corner-sidecar set, or add the columns?
+2. **The external builder's ring continuation changed**, adding 154 valid field-grid cells
+   (3,831 -> 3,985 of 5,041) and 4 new `intrinsic_split_rms` columns. Accepted new
+   behaviour, to be written onto the expected-difference list, or a regression?
+
+Once answered, the re-comparison to run first is in the section above: shared-cell
+`intrinsic_split_maps`, shared-key `zk_intrinsic`.
+
+**Do not run this build under a forwarded X display.** The first attempt lost 8 of 9
+`build_intrinsic` jobs to `X connection to localhost:10.0 broken` plus a pybind11 GIL
+abort, because `DISPLAY` was set and matplotlib opened an X-backed backend. Run every
+`miw` build as `env -u DISPLAY MPLBACKEND=Agg snakemake ...`; with that, all 9 grids built
+in about 12 min of wall-clock time.
 
 **Spend rule, Aaron 2026-10-14:** the monthly-pace stop is **suspended** (a quota increase
 is requested). The **per-session $50 stop stays**. Keep sessions cheap: narrow reads, no
