@@ -1,7 +1,16 @@
 # `miw_hull` study scope
 
-> **Status:** scope for Aaron's review, not yet a converted study · **Last updated:**
-> 2026-10-14 · **Kind:** working state (scope)
+> **Status:** CLOSED — the study is converted and **answered** (2026-10-14). Analyses 1,
+> 1b and 2 ran; **analyses 3, 4 and 5 were not run.** This file is kept as the scope of
+> record; the answer and the log live in `aos/miw_hull/study.md`, which is what to read
+> first. · **Last updated:** 2026-10-14 · **Kind:** working state (scope)
+
+**Outcome, in two sentences.** No MIW value inside the 1.725 deg of field angle selection
+limit depends on a continued ring: the builder continues exactly **one** ring, at
+`r = 1.7500 deg`, the last fitted ring is `r = 1.7286 deg`, and **0 of the 3,833 map cells
+at `r <= 1.725 deg`** lie outside it by either consumer route. Whether that one rim ring
+carries signal or artifact was **not pursued** — no consumer inside 1.725 deg depends on
+it, and both builds continue the same ring, so analysis 3's two-build contrast is empty.
 
 Scope for `miw_hull`, item 2 of the `aos` todo list and the **first phase 5 study
 conversion** (Aaron, 2026-10-14). The triage row
@@ -103,6 +112,12 @@ the continued ring saw 11.67% azimuthal coverage.
 
 ## Five analyses
 
+**As run: 1, 1b and 2 are DONE; 3, 4 and 5 were NOT RUN.** The reason for all three is the
+same — no consumer inside the 1.725 deg of field angle selection limit depends on the rim
+ring (analysis 2 measured 0 of 3,833 cells), and analysis 3's premise is false: both builds
+continue the **same** ring, so the two-build contrast has no ring to work on. Analyses 4
+and 5 reduce to the rim once the interior is clear, and inherit the reason.
+
 1. **The real coverage hull, per rotator bin.** Donut `(thx_OCS, thy_OCS)` convex hull and
    per-ring azimuthal coverage fraction against field radius, per bin, against the
    `min_ring_coverage = 0.5` threshold. Establishes where extrapolation begins **per bin**
@@ -110,19 +125,23 @@ the continued ring saw 11.67% azimuthal coverage.
 2. **Continued versus fitted rings.** Which radii were continued, at what coverage, per
    Zernike and per bin, from the four new `intrinsic_split_rms` columns. Pairs the
    builder's own bookkeeping against the geometry from analysis 1.
-3. **Is the continued annulus signal? (the decisive test.)** The 9-bin and `_5rot` builds
+3. **NOT RUN.** **Is the continued annulus signal? (the decisive test.)** Its premise is
+   false as measured: both builds continue the same ring, so there is no "one continues,
+   the other fits" ring set. The 9-bin and `_5rot` builds
    have **different** coverage, so they continue **different** rings. Where both ring-fit,
    the maps must agree; where one continues and the other fits, they need not. Agreement
    in the continued annulus argues signal; disagreement argues artifact. The 3c validation
    already shows max abs **7.601e-01 µm of wavefront** (9-bin) and **8.163e-01 µm**
    (`_5rot`) at `r >= 1.729 deg` against **7.179e-04** and **1.292e-03 µm** in the
    interior — suggestive, but not yet decomposed ring by ring, which is what settles it.
-4. **Does it matter downstream?** Propagate with and without the annulus: wavefront RMS
+4. **NOT RUN** (reduces to the rim; no consumer depends on it). **Does it matter
+   downstream?** Propagate with and without the annulus: wavefront RMS
    inside the hull versus including the rim, and the inferred FWHM difference in arcsec.
    Deliberately the same two quantities `aos/docs/studies/miw.md` reports (its legacy-vs-v1000
    table gives 0.0518 / 0.0528 µm of wavefront and 0.1645 / 0.1678 arcsec), so the numbers
    are directly comparable to existing work.
-5. **The summary table.** Not a recommendation (Aaron, 2026-10-14: the 1.725 deg
+5. **NOT RUN** (same reason; the result it would tabulate is the one line now in
+   `miw.md`). **The summary table.** Not a recommendation (Aaron, 2026-10-14: the 1.725 deg
    selection limit is settled and the study does not move it). One table other studies can
    read: per ring over the outer field, the coverage, the fitted/continued status, the
    measured old-versus-new difference in µm of wavefront, and whether anything at
@@ -152,7 +171,8 @@ aos/miw_hull/
     output@         gitignored symlink to studies/aos/miw_hull
 ```
 
-Front matter:
+Front matter, **as planned on 2026-10-14 — superseded**: the live front matter is in
+`aos/miw_hull/study.md`, where `status` is now `answered` and `answer` is filled in.
 
 ```yaml
 ---

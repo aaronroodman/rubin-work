@@ -1,9 +1,9 @@
 ---
 study: miw_hull
 topic: aos
-status: active
+status: answered
 question: Are MIW values inside the settled 1.725 deg of field angle donut-selection limit affected by the radial continuation of under-covered rim rings, and does the continued rim ring itself carry signal or artifact?
-answer: (open on the rim) Analyses 1 and 2 done — the continuation is ONE ring, at r = 1.7500 deg of field angle, identical for all 21 Zernikes in both builds, and it does NOT reach inside the 1.725 deg selection limit: the last fitted ring is r = 1.7286 deg and 0 of the 3,833 map cells at r <= 1.725 deg lie outside it, by either consumer route. Both builds continue the same ring, so analysis 3's two-build contrast has no ring to work on and the rim question needs a different test.
+answer: No MIW value inside the 1.725 deg of field angle selection limit depends on a continued ring — the builder continues exactly ONE ring, at r = 1.7500 deg, the last fitted ring is r = 1.7286 deg, and 0 of the 3,833 map cells at r <= 1.725 deg lie outside it by either consumer route. Whether that one rim ring carries signal or artifact was NOT pursued: no consumer inside 1.725 deg depends on it, and both builds continue the same ring so analysis 3's two-build contrast is empty.
 uses:
   fam_tables: danish_1_2@20261014
   miw: d12-A_50_34_i@20261014, d12-A_50_34_i_5rot@20261014
@@ -34,6 +34,16 @@ Scope (Aaron, 2026-10-14): robust fits (Huber RLM, `nmad`), `danish_1_2` variant
 Full scope in `aos/docs/status/miw_hull_scope.md`.
 
 ## Current answer
+
+**Closed answered, 2026-10-14 (Aaron).** Analyses 1, 1b and 2 answer the question;
+**analyses 3, 4 and 5 were not run** — see "Not pursued" below.
+
+**The consumer trap, carried up from analysis 1b because it is the one thing a consumer
+can get wrong.** On the **outermost** ring the polar grid's azimuthal node spacing is
+**2.0 deg**, so a probe finer than that **manufactures NaN from complete data** — 180 of
+360 azimuth samples at `r = 1.7500 deg` return NaN at a 1 deg step, because there is no
+interpolation triangle beyond the last ring. The data are not missing. Probe the rim at
+the grid's own 2.0 deg spacing, or accept NaN that means "between nodes", not "no data".
 
 **Nothing inside the 1.725 deg selection limit depends on a continued ring** (analysis 2).
 The builder continues exactly **one** ring, at `r = 1.7500 deg of field angle`, identically
@@ -91,12 +101,46 @@ a consumer trap: on the **outermost** ring the polar grid's azimuthal node spaci
 **2.0 deg**, so a finer probe step manufactures NaN from complete data (180 of 360 at
 r = 1.7500 deg) because there is no triangle beyond the last ring. See the log.
 
-**Still open:** whether the continued ring's values carry signal. Coverage says the ring
-is not constrained by its own data; it does not say the radial continuation from
-`r = 1.7286 deg` is wrong. Analysis 3 settles that by exploiting the two builds'
-different coverage.
+## Not pursued: is the rim ring signal or artifact?
+
+**Analyses 3, 4 and 5 were not run** (Aaron, 2026-10-14). Coverage says the one continued
+ring at `r = 1.7500 deg` is not constrained by its own data; it does not say the radial
+continuation from `r = 1.7286 deg` is wrong. That remains unmeasured, deliberately, for
+two reasons:
+
+1. **No consumer depends on it.** Every MIW consumer works inside the settled 1.725 deg
+   of field angle selection limit, and analysis 2 showed 0 of the 3,833 map cells at
+   `r <= 1.725 deg` lie outside the last fitted ring. So the answer would change no
+   number anyone reads.
+2. **The decisive test has no data.** Analysis 3 was scoped on the 9-bin and `_5rot`
+   builds continuing **different** rings. They do not — both fit the same 79 rings and
+   continue the same one (analysis 2, finding B4), so the two-build contrast is **empty**.
+   Settling the rim would need a different test (a held-out azimuth refit, or a
+   pupil-model contrast against `danish_1_3_v1000`, which this study's scope excludes).
+
+Analysis 4 (downstream propagation with and without the rim annulus) and analysis 5 (the
+per-ring summary table) both reduce to the rim once analysis 2 ruled the interior clear,
+so they inherit the same reason.
 
 ## Log
+
+### 2026-10-14 — closed, status answered
+
+Aaron closed the study on the strength of analyses 1, 1b and 2. The question as asked —
+does the rim continuation reach inside the 1.725 deg of field angle selection limit — is
+answered **no**, quantitatively: one continued ring at `r = 1.7500 deg`, last fitted ring
+`r = 1.7286 deg`, **0 of 3,833 map cells** at `r <= 1.725 deg` outside it by either
+consumer route.
+
+**Analyses 3, 4 and 5 not run**, reason recorded in "Not pursued" above: no consumer
+inside 1.725 deg depends on the rim ring, and analysis 3's two-build contrast is empty
+because both builds continue the same ring.
+
+**Downstream change:** `aos/docs/studies/miw.md` carried a standing convention to exclude
+the 1.70-1.75 deg annulus as a "convex-hull edge defect". That convention is **wider than
+the measurement warrants** — the defect is one ring at `r = 1.7500 deg`, not a 0.05 deg
+annulus, and inside 1.725 deg the maps are fitted from data. Replaced there with a pointer
+to this study.
 
 ### 2026-10-14 — analysis 2: continued versus fitted rings
 

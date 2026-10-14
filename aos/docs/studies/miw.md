@@ -114,10 +114,26 @@ python code/miw/compare_miw_versions.py \
 ```
 
 Colour scales are computed inside a field radius of 1.70 deg, set by
-`--scale-r-max-deg`. The outermost ring carries the convex-hull edge defect — across the
-1.70 to 1.75 deg step the Z5 OCS difference root-mean-square rises from 0.0499 to 0.1109
-µm of wavefront and reaches 0.6441 µm — and would otherwise set the range and flatten the
-real structure. Those 240 of 3985 field points are still plotted, and saturate.
+`--scale-r-max-deg`. The outermost ring would otherwise set the range and flatten the real
+structure — across the 1.70 to 1.75 deg step the Z5 OCS difference root-mean-square rises
+from 0.0499 to 0.1109 µm of wavefront and reaches 0.6441 µm. Those 240 of 3985 field points
+are still plotted, and saturate. On what that outer ring actually is, see the note below.
+
+**The outer field, measured: the `miw_hull` result (2026-10-14).** This document used to
+call the 1.70–1.75 deg annulus a "convex-hull edge defect" and exclude it from every number
+by convention. That convention was wider than the measurement warrants. The `miw_hull`
+study (`aos/miw_hull/study.md`, answered) measured the ring coverage directly: of the 80
+rings in the split's polar grid, exactly **one** falls below `min_ring_coverage = 0.5` — the
+outermost, at `r = 1.7500 deg of field angle`, at union azimuthal coverage 0.1778
+(dimensionless, 9-bin build) — and it is **radially continued** from the last fitted ring
+rather than fitted. The next ring in, `r = 1.7286 deg`, has union coverage 0.9333 and is
+well constrained. So **inside 1.725 deg of field angle the maps are fitted from data, and
+the only continued ring is at 1.7500 deg**: 0 of the 3,833 map cells at `r <= 1.725 deg`
+lie outside the last fitted ring, by either the polar or the Cartesian consumer route.
+Whether the one continued rim ring carries signal or artifact was not pursued, since no
+consumer inside 1.725 deg depends on it. One trap when reading the rim: on the outermost
+ring the azimuthal node spacing is **2.0 deg**, so a finer probe returns NaN from complete
+data.
 
 Alongside the PDF the script writes a `_summary.parquet` carrying, per Noll term, the
 root-mean-square of each build and of the difference in µm of wavefront, the difference
@@ -225,9 +241,10 @@ difference is instead 0.70 of its power in astigmatism, Noll 6 at 0.4032 and Nol
 
 Nor is it cleanly at the field edge. The difference rises outward from 0.0020 µm of wavefront
 inside 0.60 deg to 0.0077 µm at 1.55–1.70 deg, a factor of 3.9, but non-monotonically — it
-dips to 0.0040 µm at 1.35–1.55 deg. The 0.0204 µm in the 1.70–1.75 deg ring is the convex-hull
-edge defect present in both builds, reported as its own annulus and excluded from every number
-above.
+dips to 0.0040 µm at 1.35–1.55 deg. The 0.0204 µm in the 1.70–1.75 deg ring is reported as its own
+annulus and excluded from every number above, because that ring contains the single
+radially continued ring at `r = 1.7500 deg` (both builds continue it). Only that ring is
+continued, not the whole annulus — see the `miw_hull` note above.
 
 The subtracted optical state moves too, so part of the pupil change is being absorbed by the
 fit rather than appearing in the MIW. Per visit on the 205 common visits, median difference
