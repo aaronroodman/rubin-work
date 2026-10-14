@@ -760,16 +760,19 @@ anyway, and the gradients are fixed at source instead (section 10, commit `bef17
 `danish_1_2@20261014` the corrected build. Details, measurements and the exclusions behind
 that diagnosis are in the phase 3 handoff.
 
-**3c: `cwfs_tables`, 3 of 4 variants compared and clean, 2026-10-13.** `d12-tarts` (7,813
-donut rows, 977 visits) and `d12-paired_3mm` (1,223, 134) reproduce the old tree with
+**3c: `cwfs_tables` REBUILT, COMPARED AND PROMOTED, 2026-10-14.** All four variants are
+`current@20261013`, each confirmed resolving through `catalog.load()` (which needs `file=`
+here, a build holding three files). `d12-tarts` (7,813 donut rows, 977 visits),
+`d12-paired_3mm` (1,223, 134) and `d12-ai_donut` (37,198, 1,122) reproduce the old tree with
 **equal row counts, identical column sets and exactly one differing column** —
-`rotator_angle`, max abs **0.4446 deg** of camera rotator angle, which is expected
-difference 1 and under its predicted 0.456 deg bound. **`d12-refitWcs` grows**, as the 3b
-fold intends: 34,631 → **97,185** donut rows and 1,122 → **3,290** visits, with **every old
-row kept**, every added row in **2025** (+62,554 donut, +2,168 visit) and the shared 2026
-rows showing the same single `rotator_angle` difference. `d12-ai_donut` was still building.
-Per-variant numbers in the phase 3 handoff, "`cwfs_tables` rebuilt and compared", including
-the warning that `compare_builds` compares no columns when row counts differ.
+`rotator_angle`, max abs **0.4446 deg** of camera rotator angle on all four variants, which
+is expected difference 1 and under its predicted 0.456 deg bound. **`d12-refitWcs` grows**,
+as the 3b fold intends: 34,631 → **97,185** donut rows and 1,122 → **3,290** visits, with
+**every old row kept**, every added row in **2025** (+62,554 donut, +2,168 visit) and the
+shared 2026 rows showing the same single `rotator_angle` difference. Promotion is under the
+section 12 pre-approval. Per-variant numbers in the phase 3 handoff, "`cwfs_tables` rebuilt
+and compared", including the warning that `compare_builds` compares **no columns** when row
+counts differ, so its "values: identical" line is vacuous there.
 
 A per-night split also made a **second** instance of the sparse-night mechanism reachable
 one stage later: the external `run_dz_fit.py` raises `IndexError` on a chunk where no

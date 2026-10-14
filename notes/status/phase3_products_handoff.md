@@ -6,12 +6,14 @@
 > visits each). The **M1M3 gradient defect is FIXED** (commit `bef17ba`): the sidecar now
 > reads the four gradients from the value-added database, verified exact on one night, and
 > `danish_1_2@20261014` is staged to rebuild only the steps below `mktable`.
-> `cwfs_tables` is **3 of 4 variants compared and clean**: differences 1 and, on
-> `d12-refitWcs`, the 2025 fold (+2,168 visit rows, every old row kept, shared 2026 rows
-> unchanged but for difference 1). `d12-ai_donut` is **still building** in a surviving
-> process from the cleared session, which holds the snakemake lock. **Session stopped on
-> the plan's spend limit**, not on a problem. Next: finish that variant, run `20261014`,
-> then `miw` (item 4) — resume steps in "Next concrete action".
+> `cwfs_tables` is **DONE**: all four variants compared clean and **promoted** to
+> `current@20261013`, each confirmed through `catalog.load()`. The only differences are
+> `rotator_angle` (max abs 0.4446 deg of camera rotator angle on all four) and, on
+> `d12-refitWcs`, the 2025 fold (+2,168 visit and +62,554 donut rows, every old row kept,
+> shared 2026 rows unchanged but for `rotator_angle`). **Session stopped on the plan's
+> spend limit** at the end of that step, not on a problem; no process is left running and
+> the snakemake lock is free. Next: run the staged `20261014`, then `miw` (item 4) —
+> resume steps in "Next concrete action".
 > · **Last updated:** 2026-10-13 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
@@ -948,8 +950,10 @@ Item 3 of the comparison plan. Four registered variants, all keyed to `fam_table
 `donuts` and (`day_obs`, `seq_num`) for `visits` — uniqueness asserted on both sides by the
 tool and printed in each run below.
 
-**Three of the four are compared and clean.** `d12-ai_donut` was still building; this table
-is completed when it lands.
+**All four are compared, clean, and PROMOTED to `current@20261013`.** Each confirmed
+resolving through `catalog.load('cwfs_tables', <variant>, file=...)` — note `load()`
+requires `file=` here, because a `cwfs_tables` build holds three files. `cwfs_tables` is
+**DONE**; item 3 of the comparison plan is closed.
 
 | variant | table | rows old | rows new | cols | differing columns | the difference |
 |---|---|---|---|---|---|---|
@@ -959,6 +963,8 @@ is completed when it lands.
 | `d12-paired_3mm` | `visits` | 134 | 134 | 8 | 1 | same, max abs **0.4446 deg** |
 | `d12-refitWcs` | `donuts` | 34,631 | **97,185** | 20 | 1 | +62,554 rows, all 2025 (the fold); on the shared 2026 rows, `rotator_angle` only, max abs **0.4446 deg** |
 | `d12-refitWcs` | `visits` | 1,122 | **3,290** | 8 | 1 | +2,168 rows, all 2025; same on the shared rows |
+| `d12-ai_donut` | `donuts` | 37,198 | 37,198 | 20 | 1 | `rotator_angle`, max abs **0.4446 deg** |
+| `d12-ai_donut` | `visits` | 1,122 | 1,122 | 8 | 1 | same, max abs **0.4446 deg** |
 
 On `d12-tarts` and `d12-paired_3mm` the row counts are **equal on every table**. The one
 differing column is `rotator_angle`, which is **expected difference 1**, and its 0.4446 deg
@@ -1069,47 +1075,22 @@ gradient columns is present** in either. Nothing to rebuild there.
 
 ## Next concrete action
 
-**STOPPED ON SPEND, 2026-10-14 03:3x UTC.** Plan section 12: the month's total is past the
-pace that stays under budget — **$1,201.18 of $2,000.00 spent (60.1%)** over the 30-day
-period that resets 2026-11-01, a pace of **$98.88/day** projecting to **148% of budget**.
-Landing under needs **$44.63/day** ($798.82 remaining over 17.9 days). Nothing is broken
-and nothing is half-written; the stop is a budget stop, not a failure.
+**STOPPED ON SPEND, 2026-10-14 05:46 UTC, at the end of a completed step.** Plan section
+12: the month's total is past the pace that stays under budget — **$1,208.91 of $2,000.00
+spent (60.4%)** over the 30-day period that resets 2026-11-01, a pace of **$98.76/day**
+projecting to **148% of budget**. Landing under needs **$44.44/day** ($791.09 remaining
+over 17.8 days). Nothing is broken, nothing is half-written, and no process is left
+running; `cwfs_tables` finished and was promoted before the stop.
 
-**One process is still running and must be left alone:** the previous session's
-`/tmp/aos3c/build_cwfs.sh` (PID 2796951) is now on its last variant, `d12-ai_donut`.
-`d12-refitWcs` **completed at 21:50**, after 3 h 15 min — far longer than the 17 min each of
-the two small variants, because it has 97,185 donut rows and opens **two Butlers** for the
-2025+2026 fold. Expect `d12-ai_donut` to be comparable: 37,198 donut rows in the old tree.
-The script holds the **repository-root snakemake lock**, which is why the `20261014` rebuild
-could not start. Do not launch a second snakemake until it exits — the lock will refuse it,
-as it already did once this session.
+The previous session's `/tmp/aos3c/build_cwfs.sh` has **exited**, so the repository-root
+snakemake lock is **free** and the `20261014` rebuild can start immediately. For the record
+of what that build cost: `d12-refitWcs` took **3 h 15 min** and `d12-ai_donut` about as
+long, against 17 min each for the two small variants — the two big ones have ~37,000 and
+97,000 donut rows, and refitWcs opens **two Butlers** for the 2025+2026 fold.
 
-**Resume here, in this order:**
+**Resume here, in this order. Step 1 is the first real work:**
 
-1. Confirm the script finished and all four manifests exist:
-   ```bash
-   ls /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/*/20261013/manifest.json
-   ```
-2. Compare `d12-ai_donut` and complete the table in "`cwfs_tables` rebuilt and compared".
-   It should match the old tree row for row, with `rotator_angle` the only differing
-   column — unlike `d12-refitWcs`, it is not part of the 2025 fold:
-   ```bash
-   cd /sdf/home/r/roodman/notebooks/rubin-work && \
-   python -m rubinwork.products.cwfs_tables.compare_builds \
-     aos/output/wfs_ingest/danish_1_2/ai_donut \
-     /sdf/group/rubin/u/roodman/LSST/rubin-work/products/cwfs_tables/d12-ai_donut/20261013
-   ```
-   **If its row counts differ, that is unexplained and stops the step** — only
-   `d12-refitWcs` was folded. And if any row count differs, do **not** read
-   `compare_builds`' "values: identical" as a pass; see the note in the comparison section.
-3. `set-current` each clean variant (pre-approved, section 12), then confirm `load()`:
-   ```bash
-   cd /sdf/home/r/roodman/notebooks/rubin-work && \
-   for v in d12-tarts d12-paired_3mm d12-refitWcs d12-ai_donut; do \
-     python -m rubinwork.products.catalog set-current cwfs_tables $v 20261013; \
-   done
-   ```
-4. Run the `20261014` command in "The gradient fix and the `20261014` rebuild", then its
+1. Run the `20261014` command in "The gradient fix and the `20261014` rebuild", then its
    acceptance check:
    ```bash
    cd /sdf/home/r/roodman/notebooks/rubin-work && \
@@ -1118,43 +1099,38 @@ as it already did once this session.
    ```
    It must print `RESULT: gradients OK, other columns OK`. Run against `20261013` itself it
    prints `gradients FAILED` — that is the defect, and is the check working.
-5. Then `set-current fam_tables danish_1_2 20261014`, then `miw` item 4.
+2. Then `set-current fam_tables danish_1_2 20261014` (pre-approved if the check passes),
+   and confirm `catalog.load()` resolves to it.
+3. Then **`miw`**, item 4 of the comparison plan: the two `d12` variants
+   (`d12-A_50_34_i` and its `build_from` child `d12-A_50_34_i_5rot`), compared against
+   `aos/output/miw/danish_1_2_A_50_34_i[_5rot]/` — both old-tree directories exist with all
+   four product tables — and the 3a reference in `_phase2_refbuild/miw/ref/`, expecting
+   difference 2 (the theta rotation of the CCS maps) and 1 carried through the visits it
+   reads. **Run it only after `20261014` is `current`**, or it carries the gradient defect
+   into the coadd ML feature set.
+4. Then items 5 to 8 in order: `coadds`, `dof_lut` (expected to differ **by design** —
+   post-MIW vs plain-FAM input, so a shape check rather than a zero-tolerance comparison),
+   `bounce_tables`, and **stop at `value_added`** (item 8), which writes the live database
+   and needs its own plan and Aaron's OK.
 
-**Then the original plan:**
+**State of the two products 3c has finished:**
 
 `fam_tables` `20261013` is built, compared and **promoted** to `current` for all three
 variants (`danish_1_2`, `danish_1_3_test`, `danish_1_3_v1000`), each confirmed resolving
-through `catalog.load()`.
+through `catalog.load()`. `danish_1_2` will be superseded by `20261014`.
 
-**Correction, 2026-10-13 evening:** an earlier version of this section said the four
-`cwfs_tables` `20261013` builds were compared and "recorded below". **They were not.** Two
-of the four were built (`d12-tarts`, `d12-paired_3mm`), no comparison had been run, and
-nothing was recorded. The build script
-(`/tmp/aos3c/build_cwfs.sh`, written by the session that was cleared) was **still running**
-and is what is finishing the other two. State now:
+`cwfs_tables` is **DONE**: all four variants built, compared clean and promoted to
+`current@20261013`. **A correction worth keeping**, because it is the kind of error that
+costs a session: an earlier version of this section claimed the four builds were compared
+and "recorded below". **They were not** — two were built, none compared, nothing recorded,
+and the build script from the cleared session was still running. Do not trust a "done and
+recorded" claim in a handoff without the numbers beside it; this file now carries them.
 
-| variant | build | comparison |
-|---|---|---|
-| `d12-tarts` | complete | **clean**, difference 1 only — see "`cwfs_tables` rebuilt and compared" |
-| `d12-paired_3mm` | complete | **clean**, difference 1 only |
-| `d12-refitWcs` | **running** (started 18:35, the 2025+2026 fold, the largest) | pending |
-| `d12-ai_donut` | queued behind it | pending |
-
-1. **`cwfs_tables`**: when the two remaining builds land, compare each against
-   `aos/output/wfs_ingest/danish_1_2/<upstream_name>/`, expecting difference 1 and, on
-   `d12-refitWcs` only, the 2025 rows the 3b fold adds. `set-current` each clean one under
-   the plan's section 12 pre-approval.
-2. **`fam_tables` `danish_1_2@20261014`** — the gradient fix. The build directory is
-   staged (106 night chunks hard-linked from `20261013`, the writable per-chunk tables
-   unlinked), the Snakefile plans exactly the 6 downstream jobs, and the fix is verified on
-   one night. It needs the repository-root snakemake lock, held by the `cwfs_tables` run.
-   Command and check in "The gradient fix and the `20261014` rebuild".
-3. Then **`miw`**, item 4 of the comparison plan: the two `d12` variants, compared against
-   `aos/output/miw/<dir_name>/` and the 3a reference in `_phase2_refbuild/miw/ref/`,
-   expecting difference 2 (the theta rotation) and 1 carried through the visits it reads.
-   **Wait for `20261014`** — `miw` reads `fam_tables` `current`, and rebuilding it against
-   `20261013` would carry the gradient defect into the coadd ML feature set.
-4. Then items 5 to 8 in order: `coadds`, `dof_lut`, `bounce_tables`, `value_added`.
+**The `fam_tables` `danish_1_2@20261014` rebuild is staged and ready to run**: 106 night
+chunks hard-linked from `20261013`, the writable per-chunk tables unlinked, the Snakefile
+planning exactly the 6 downstream jobs, and the fix verified on one night. The lock is now
+free. Command, the reasoning behind each flag, and the acceptance check are in "The gradient
+fix and the `20261014` rebuild".
 
 ### Tried and rejected this session, so the next one does not redo it
 
@@ -1356,7 +1332,7 @@ unexplained difference stops the step).
 |---|---|---|---|---|
 | 1 | **DONE 2026-10-13** `fam_tables` **`danish_1_2`** | `aos/output/fam_processing/danish_1_2/`, and the phase 2 reference chunk `20251116_20251130` for the column-level check | 1, 3, 4, 5. Row **order** differs too (chunks are now per night, so `combine_*` concatenates 137 inputs rather than 10) — compare keyed on (`day_obs`, `seq_num`), never positionally | the embargo probe, then the 137-job set |
 | 2 | **DONE 2026-10-13** `fam_tables` **`danish_1_3_v1000`**, **`danish_1_3_test`** (blitz, `run_blitz_mktable`) | `aos/output/fam_processing/danish_1_3_v1000/`, and the phase 2 A4 blitz reference `day_obs=20260428` | 1 (about **0.30 deg** here, the larger blitz offset), 3, 5. About an hour each, so interactive — no batch ask | item 1 landing; independent of the embargo night |
-| 3 | `cwfs_tables` (4 variants) | `aos/output/wfs_*/` per variant | 1 only, plus the **`d12-refitWcs_2025` fold** (3b item 5): one date-keyed variant now covers 2025 and 2026, so the 2025 rows appear under `d12-refitWcs` and the retired `d10-wep17_3_0` entry is gone | nothing — can run alongside item 1 |
+| 3 | **DONE 2026-10-14** `cwfs_tables` (4 variants, all promoted) | `aos/output/wfs_ingest/danish_1_2/<upstream_name>/` per variant | 1 only, plus the **`d12-refitWcs_2025` fold** (3b item 5): one date-keyed variant now covers 2025 and 2026, so the 2025 rows appear under `d12-refitWcs` and the retired `d10-wep17_3_0` entry is gone | nothing — can run alongside item 1 |
 | 4 | `miw` (the 2 `d12` variants first; the 10 others have no complete old-tree build) | `aos/output/miw/<dir_name>/`, and the 3a reference in `_phase2_refbuild/miw/ref/` | 2 (the theta rotation, the headline number), and 1 carried through the visits it reads | items 1 and 3 |
 | 5 | `coadds` (`d12-A_50_34_i_5rot`; `_v2` has only an `archive/`) | `aos/output/coadd/<dir_name>/`, 2 tables + 2 npz | 2, through the MIW maps it coadds | item 4 |
 | 6 | **`dof_lut`** (the 2 `d12` variants) | `aos/output/lut/<dir_name>/` | **differs from the old tree by design: absolute vs post-MIW DOF.** Not a zero-tolerance comparison at all — the input table changed (commit `733c01d`). Compare the *shape* instead: 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8 schema-metadata fields and the 11 `lut_config.yaml` keys all present and self-consistent. Measured on the 3a reference, the hexapod DOF move by at most about 16 µm of hexapod motion and the DZ residual improves 6x — see the section above | item 4 (it now reads a `miw` build) |
