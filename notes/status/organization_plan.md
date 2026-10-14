@@ -964,6 +964,13 @@ depend on the answer. Aaron answers the list when available; answered items move
   `danish_1_2` `mktable` jobs split by night and shows it once. Aaron's OK on that script
   covers every job it submits, including resubmitting nights that failed for a transient
   reason (node or filesystem error). Anything else is a new ask.
+- **Phase 3c `set-current`** (Aaron, 2026-10-13): a rebuilt build may be promoted with
+  `catalog set-current` without asking when its comparison against the old tree is
+  **clean**: every difference is on that product's expected-difference list, written
+  before the comparison ran, and row counts in and out are explained. Record the
+  comparison and the promotion in the handoff. Any unexplained difference, or a
+  difference recorded as a known defect rather than an expected difference, means no
+  promotion and a stop.
 - **Phase 5 triage**: per topic, the session proposes a status for every study (convert,
   `done`, `dropped`) in one list. Aaron approves the list; only studies marked convert are
   converted, and the others get a short `study.md` with their status and final answer.
