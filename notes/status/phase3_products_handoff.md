@@ -10,7 +10,11 @@
 > **v4** is BUILT and Butler-ready at `$RUBINWORK_DATA/calibration/intrinsic_zernikes/v4/`
 > (207 files + QA PDF), deliberately **not ingested** and **not staged into git**. What
 > remains is items 5 to 7 — `coadds`, `dof_lut`, `bounce_tables` — which wait on the stack
-> and package upgrade, not on any 3c question.
+> and package upgrade. That upgrade is **authorized and IN PROGRESS** (decision 8): target
+> weekly `w_2026_41` / `lsst-scipipe-14.0.0-exact`. **Step 1 of 6 is done** —
+> `ts_intrinsic_wavefront` is committed, fast-forwarded onto `tickets/RSO-809`, tagged
+> `rubinwork-2026-10-15` and pushed; only its draft PR is outstanding, blocked on `gh`
+> auth. The stack is still `w_2026_39`.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
@@ -128,6 +132,23 @@ the step. Answered items move to "Decisions taken".
    pushed.
 
 ## Decisions taken
+
+**Decision 8 (Aaron, 2026-10-15) — the stack and package upgrade is AUTHORIZED, with
+these choices.** This supersedes the "PROPOSED, NOT EXECUTED" framing of the upgrade plan
+below; the plan's step 4 (ts_wep separately from the stack) is explicitly overridden.
+
+- **Weekly: `w_2026_41`**, the `lsst-scipipe-14.0.0-exact` env. The conda major bump and
+  scipy 1.16.3 to 1.18.1 are taken deliberately now.
+- **`ts_intrinsic_wavefront`:** commit the dirty file, roll **all** of Aaron's rubin-work
+  changes into his existing `tickets/RSO-*` branch, tag, push, and open **one draft PR**
+  from that branch. Aaron authorizes the push and the draft PR **for this repo only**.
+- **`ts_wep`:** pull `develop` and move the stack **in one step, not two.** The plan's
+  two-step attribution is given up on purpose; if the smoke test then differs, re-run with
+  `ts_wep` back at `1ea1ae1d` to separate the two causes.
+- **`summit_utils` and `ts_ofc`:** no PRs now; later.
+- **Manifest first:** `rubinwork/products/manifest.py` records the stack before any
+  rebuild, and a reference `dof_lut` build is made on `w_2026_39` first so the smoke test
+  has something to compare against at zero tolerance.
 
 Answered 2026-10-15, closing out `miw` and setting up the stack upgrade:
 
@@ -895,8 +916,21 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**Waiting on Aaron's OK for the package and stack upgrade plan below. Then items 5 to 7
-(`coadds`, `dof_lut`, `bounce_tables`) on the new stack.** Nothing else in 3c is blocked:
+**The upgrade is authorized (decision 8) and running. Step 1 of 6 is done; the next action
+is step 2 — extend `rubinwork/products/manifest.py` so every new manifest records the eups
+`lsst_distrib` tag, the conda env name, and the branch / commit / clean-dirty of each of
+the six `setup -r` packages, via the `extra` dict and with no schema migration, plus a
+test.** Then step 3 (the `w_2026_39` reference `dof_lut` build for
+`d12-A_50_34_i_5rot`, 3 jobs), step 4 (pull `ts_wep` `develop` and move to `w_2026_41` in
+one step, re-setup all six packages), step 5 (smoke test: 355 `pytest rubinwork` tests, then
+the zero-tolerance `dof_lut` rebuild comparison), step 6 (report and stop). Items 5 to 7
+of the comparison plan come the session after, on `w_2026_41`.
+
+One thing is outstanding from step 1 and needs Aaron: **the draft PR is not open**, because
+`gh` is unauthenticated on S3DF. The ready-to-run command and the body file are in the
+step 1 section below.
+
+Nothing else in 3c is blocked:
 `fam_tables`, `cwfs_tables` and `miw` are all done, compared and `current`, and the two
 old-tree variants are registered.
 
@@ -963,6 +997,65 @@ the earlier `miw` item 4 section already compared (DOF agreeing to 4.2e-11 µm o
 `miw` was validated by Aaron and both `d12` variants are now `current@20261014` —
 `d12-A_50_34_i_5rot` promoted 2026-10-15.
 
+## Upgrade step 1: `ts_intrinsic_wavefront` committed, rolled in, tagged, pushed, 2026-10-15
+
+Done on the **old** stack, `w_2026_39` / `lsst-scipipe-13.1.0-exact`, as the plan requires.
+
+- **The dirty file is committed:** `529713b` "plot_dof_median_summary: bucket DOF by label,
+  not global index", on `tickets/rubinwork-rottelpos`. The tree is clean;
+  `git describe` went from `v2.1-14-ga6394e7-dirty` to `v2.1-15-g529713b`.
+- **Tests: 10 passed, 0 failed** (`python -m pytest tests`, 1.1 s), run twice — before the
+  roll-in on `tickets/rubinwork-rottelpos`, and after it on `tickets/RSO-809`.
+- **The RSO branch is `tickets/RSO-809`, and it was the only candidate.** Local head was
+  `00d0920` (2026-10-07, "Merge origin/develop into tickets/RSO-809"), 29 commits ahead /
+  0 behind `origin/main`; `origin/tickets/RSO-809` was 7 commits behind local at `f4f23b6`
+  (2026-09-07). Both were **strict ancestors** of `tickets/rubinwork-rottelpos`, so the
+  roll-in was `git merge --ff-only` — **no merge commit, no conflicts, no rewriting.**
+  `tickets/RSO-809` moved `00d0920..529713b`. `tickets/rubinwork-rottelpos` is untouched
+  and sits at the same commit; no branch was deleted or reset.
+- **Tag: `rubinwork-2026-10-15`**, annotated, on the `tickets/RSO-809` head. **Not** a
+  version number. The reason differs from the plan's guess: `v2` and `v2.1` are *not*
+  default-branch tags — both were cut on the **`develop`** line — but they are still
+  mainline release numbers, and claiming a `v2.2` on an unreviewed ticket branch would be
+  wrong. `git describe` on the branch head now reads `rubinwork-2026-10-15`, clean.
+- **Pushed, no force:** branch `f4f23b6..529713b` and the new tag, both fast-forward.
+  `tickets/RSO-809` is in sync with its upstream. Nothing was pushed to `main` or
+  `develop`, and nothing was merged into either.
+- **Working branch for the stack move is `tickets/RSO-809`**, checked out, tree clean.
+
+### The default branch here is a trap: PR base is `develop`, not `main`
+
+`origin/HEAD` points at `main`, but **`main` is a single commit**, "Initial commit"
+(2026-06-26). All real work is on **`develop`**, which is 22+ commits beyond it, and that
+is where both release tags were cut. `tickets/RSO-809` is **14 ahead / 0 behind
+`origin/develop`** but 31 ahead of `main`, so a PR into `main` would be a whole-history
+diff. Aaron chose `develop` as the base.
+
+Four commits on the branch are what rubin-work depends on, all confirmed contained in it:
+`a6394e7` (rotTelPos first, ConsDB fallback, source column), `3f66904` (the field-edge
+OCS/CCS rim fill, arriving via the `00d0920` merge of `develop`), `f45bfbf` (the ESS
+temperature / TMA truss ConsDB source) and `529713b` (this plot fix).
+
+### The draft PR is NOT open: `gh` has no credentials on S3DF
+
+`gh` 2.101.0 is installed but unauthenticated — no `~/.config/gh`, no `GH_TOKEN` or
+`GITHUB_TOKEN` — and `gh auth login` is interactive, so Claude could not open it. Git over
+SSH works, which is why the branch and tag pushes succeeded. **The body is written and
+ready** at `notes/status/pr_bodies/ts_intrinsic_wavefront_RSO-809.md`; Aaron runs, after a
+one-time `gh auth login`:
+
+```bash
+cd /sdf/home/r/roodman/u/LSST/packages/ts_intrinsic_wavefront && \
+gh pr create --draft \
+  --base develop \
+  --head tickets/RSO-809 \
+  --title "RSO-809: MIW build support for the rubin-work AOS products" \
+  --body-file /sdf/home/r/roodman/notebooks/rubin-work/notes/status/pr_bodies/ts_intrinsic_wavefront_RSO-809.md
+```
+
+No PR list could be checked for an existing PR on this branch, for the same auth reason —
+if one already exists, update its description from that file instead of opening a second.
+
 ## The package and stack inventory, 2026-10-15 (read-only)
 
 Taken on S3DF with the environment the `20261013`/`20261014` builds ran in. Nothing was
@@ -1023,10 +1116,12 @@ rubin-work only** — `catalog.manifest()` returns no stack, eups-tag, conda-env
 external-package version at all. A build made on `w_2026_39` and a build made on a newer
 weekly are today indistinguishable from their manifests.
 
-## The upgrade plan, 2026-10-15 — PROPOSED, NOT EXECUTED
+## The upgrade plan, 2026-10-15 — AUTHORIZED; step 1 EXECUTED
 
-No command below was run. Nothing was committed, pushed, fetched or re-setup, and no
-external repo was touched.
+Kept as written for its reasoning and its "what could break" list. Two parts are now
+superseded by decision 8 above: the weekly is settled (**`w_2026_41`**), and step 4's
+"pull `ts_wep` separately from the stack move" is **overridden** — both happen in one step.
+Step 1 below is done; see the step 1 section above for what actually happened.
 
 ### Step 1 — the one dirty package
 
