@@ -960,11 +960,14 @@ Then **stop at item 8 (`value_added`)**. Section 12 permits `set-current` when a
 comparison is clean; **any difference not on the expected list is a stop.** Show Aaron the
 exact command for any batch job and wait for his OK.
 
-Two things need Aaron, neither blocking items 5 to 7:
+Three things need Aaron, none blocking items 5 to 7:
 
 - **The `ts_intrinsic_wavefront` draft PR is not open and is Aaron's to open** (`gh`
   unauthenticated on S3DF). Base is **`develop`, not `main`** — see the step 1 section for
   the ready-to-run command and the body file.
+- **The lint fix `f9bafa2` is committed but NOT pushed** (external repo). The push command
+  and the 63 remaining upstream-only findings are in "The `ts_intrinsic_wavefront` lint
+  failure".
 - **v4 Butler ingest** — still deferred, Aaron's call.
 
 Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
@@ -1385,6 +1388,117 @@ session should not redo it. This does *not* prove the donut-fitting path is unaf
 `dof_lut` consumes the already-built `fam_tables` and `miw` parquet, so it never calls
 `danish` or `ts_wep`'s FAM estimator. **Items 5 to 7 are where a scipy or `ts_wep`
 difference would actually show up**, item 5 (`coadds`) first.
+
+## The `ts_intrinsic_wavefront` lint failure: FIXED locally, NOT pushed, 2026-10-15
+
+Aaron found the GitHub **lint job red** on `tickets/RSO-809`. It was not on any list —
+the handoff recorded only the unopened draft PR. Now fixed, in local commit **`f9bafa2`**,
+which is **committed but NOT pushed** (an external repo, and decision 8's push
+authorization covered step 1's commit, not this one).
+
+### What was actually failing, which is not what it looked like
+
+"A few lines too long" was the right instinct for the cause but not the scale. The lint
+job runs `flake8` over the **whole repo**, and the limit doing the damage is
+**`max-doc-length = 79`** in `setup.cfg`, not `max-line-length = 110`. W505 applies only
+to **comments and docstrings**, so code may run to 110 columns while prose must wrap at
+79 — which is why the largest class was all prose.
+
+**The debt is almost entirely upstream's, not this branch's:**
+
+| scope | flake8 findings (count, dimensionless) |
+|---|---|
+| `origin/develop`, the same 11 files | 239 |
+| `tickets/RSO-809` before the fix, same 11 files | 249 |
+| net added by RSO-809's 15 commits | **+10**, all W505, in 2 files |
+| whole repo on `develop`, its own `setup.cfg` | 340 |
+| whole repo on `tickets/RSO-809` now | **63** |
+
+The +10 were new docstring prose in `dz_fitting.py` (+6) and `intrinsics_lib.py` (+6);
+`intrinsic_build_plots.py` was **−2**. RSO-809 introduced **no new violation type** —
+every code on the branch already occurred on `develop`. Aaron chose to clear **all 249**
+rather than only his own 10.
+
+### How each class was cleared
+
+- **W505 (76)** — reflowed **per paragraph**, not per line. See the warning below.
+- **E702/E701 (60)** — compound statements split with a tokenizer, so a `;` or `:` inside
+  a string literal is never mistaken for a separator.
+- **F401/F811 (23)** — unused imports, each confirmed dead by a usage grep first. The
+  `scipy.stats` and `Line2D` top-level imports were dead **because the same names are
+  re-imported inside the functions that use them** — removing the top-level ones also
+  cleared the 4 F811s.
+- **F841 (6)** — dead locals: `sigma`/`sigma_mad`/`std` left from an earlier annotation
+  that now shows only `med`, an unread colorbar handle, and an unused `camera_id_map`.
+- **F541 (7)** — `f"..."` with no placeholders turned into plain strings.
+- **W504 + E127/E128/E231/E302/E303/E305/E306/E731 (remainder)** — whitespace,
+  continuation indent, and one `lambda` assignment turned into a `def`.
+
+### Two `setup.cfg` decisions, deliberately not source edits
+
+`ignore` gains **E201, E221, E241, E272** and **E741**:
+
+- The first four flag **intentional column alignment** — the `DOF_GROUPS` table, the arrow
+  vertex coordinate list (whose leading spaces align `hw`/`sw` against `-sw`/`-hw` so the
+  shape reads), and the aligned unit comments. Flattening them to satisfy flake8 makes the
+  code worse, and they are upstream's lines. This silenced 55 of the 249 with no source
+  change. Aaron chose this over flattening.
+- **E741** is `O` and `C` in the intrinsic decomposition: the **OCS/CCS split**, not
+  stand-ins for 0 and 1. The one-letter names carry the physics.
+- **W503 was already ignored**, so W504 could not also be enforced — a line break has to
+  go somewhere. The `DOF_UNITS_50` `+` operators moved to line starts, consistent with
+  that existing choice. `DOF_UNITS_50` re-verified at **50 entries** afterwards.
+
+### The warning worth keeping: W505 needs PARAGRAPH reflow, not per-line wrapping
+
+The first attempt wrapped each flagged line **in isolation** and produced garbage —
+a long line became a short line plus an orphan (`(default)`, `is`, `set,`) on the next.
+The numpydoc blocks were left worse than the warning. **That attempt was reverted
+wholesale**; the working script collects the contiguous run of sibling lines at the same
+indent and reflows the whole paragraph, skipping aligned structure, numpydoc
+`name : type` headers and docstring quote lines. The helper scripts are in
+`scratch/lintfix/` (`fix_w505.py`, `fix_stmt.py`).
+
+**`black` was rejected**: not configured in this repo, and it would rewrite **6,430
+lines** across 11 files upstream never formatted with it. It also does not fix W505 at
+all.
+
+### Verification, and the functional-change question
+
+- `flake8` on the 11 changed files: **249 → 0**.
+- `pytest tests/`: **10 passed** (this package has only one test file, so it is thin cover
+  — hence the checks below).
+- All 8 modules import, including `intrinsic_split` and `calib_tables`.
+- `python -m pytest rubinwork`: **361 passed**, unchanged.
+- **The strongest check: a `dof_lut` rebuild (`20261015lint`) is bit-identical to the
+  `w_2026_39` reference on all three parquet md5 checksums.** The F401/F841 removals and
+  the statement splits changed no behaviour on that path.
+- A word-level prose audit of all 9 edited Python files confirms **no text was lost**:
+  every difference is an intended one (semicolon split, removed import, removed dead
+  statistic, dropped `f` prefix, or a deliberate reword). `combine_parquets.py` differs by
+  exactly one added `\` line continuation.
+
+**A `git diff -U0` reading of this change is misleading** — it interleaves `-` and `+`
+hunks so non-adjacent added lines look contiguous, which made one `combine_parquets.py`
+docstring appear to have lost a clause. It had not. Audit prose with a word-level
+comparison, not by eye on a zero-context diff.
+
+### What is left for Aaron
+
+1. **Push it** (external repo, so not done here):
+   ```bash
+   cd /sdf/home/r/roodman/u/LSST/packages/ts_intrinsic_wavefront && \
+   git push origin tickets/RSO-809
+   ```
+2. **The 63 remaining whole-repo findings** are in files this branch never touches
+   (`ingest_calib_tables.py`, `run_make_calib_tables.py`, `run_mktable.py`,
+   `batoid_intrinsic.py`, `calib_tables.py`, `ccd_height.py`, `zernike_names.py`,
+   `intrinsic_split.py`, `wcsutils.py`, `plot_calib_tables.py`,
+   `tests/test_intrinsic_split_nullspace.py`). **If the lint job gates on the whole repo,
+   it stays red until those are cleared too** — a separate decision, since it is pure
+   upstream cleanup.
+3. **Mention the shared-file churn in the PR description.** These files are shared with
+   upstream, so the next `develop` merge may conflict in the reflowed docstrings.
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
