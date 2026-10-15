@@ -1005,14 +1005,11 @@ item sections):
   not the top level — the top level is an all-bands run and the variant is i-band only.
 - **Item 6's "5 populated rotator bins" is 9.**
 
-Three things need Aaron, none blocking items 5 to 7:
+Two things need Aaron, neither blocking items 5 to 7:
 
 - **The `ts_intrinsic_wavefront` draft PR is not open and is Aaron's to open** (`gh`
   unauthenticated on S3DF). Base is **`develop`, not `main`** — see the step 1 section for
   the ready-to-run command and the body file.
-- **The 62 remaining upstream-only flake8 findings** — whether to clear them is Aaron's
-  call; one (`W605`, an invalid escape sequence) is arguably a real bug. The lint fix
-  itself is pushed. See "The `ts_intrinsic_wavefront` lint failure".
 - **v4 Butler ingest** — still deferred, Aaron's call.
 
 Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
