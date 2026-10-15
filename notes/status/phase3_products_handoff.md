@@ -972,10 +972,9 @@ compared clean and promoted to `current`. The next action is item 6, then item 7
    the expected list; the maps agree to **1.4e-13 µm of wavefront**, so **no scipy 1.18.1
    or `ts_wep` effect**. See "Item 5 `coadds`: BUILT and COMPARED CLEAN" — and note the
    reference trap recorded there before comparing any other `coadds` build.
-2. **Item 6 — `dof_lut`, both `d12` variants.** A **shape** check by design, not a
-   zero-tolerance comparison: the old tree is absolute DOF, the new is post-MIW
-   (`733c01d`). Check 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8
-   schema-metadata fields and the 11 `lut_config.yaml` keys.
+2. ~~Item 6 — `dof_lut`~~ **DONE 2026-10-15.** Both `d12` variants built locally (no batch),
+   shape check passes, both `set-current`. Note the plan's "5 populated rotator bins" is
+   **stale: it is 9**, confirmed against the `w_2026_39` reference. See "Item 6 `dof_lut`".
 3. **Item 7 — `bounce_tables`**, the variants with a rule. Expected difference **2**,
    through the `miw` fit table (its upstream is `miw`, not `dof_lut`). The nine PDFs are
    the study half, not part of the comparison. `_5rot_july` is **not** rebuilt — registered
@@ -1413,6 +1412,59 @@ session should not redo it. This does *not* prove the donut-fitting path is unaf
 `dof_lut` consumes the already-built `fam_tables` and `miw` parquet, so it never calls
 `danish` or `ts_wep`'s FAM estimator. **Items 5 to 7 are where a scipy or `ts_wep`
 difference would actually show up**, item 5 (`coadds`) first.
+
+## Item 6 `dof_lut`: BOTH `d12` VARIANTS BUILT, SHAPE-CHECKED and PROMOTED, 2026-10-15
+
+Local, 3 jobs and about 12 s each — **no batch job**. Both variants now `current`:
+
+| variant | build | `current` |
+|---|---|---|
+| `d12-A_50_34_i_5rot` | `20261015w42` | yes |
+| `d12-A_50_34_i` | `20261015` | yes |
+
+`_5rot` is promoted at **`20261015w42`**, the step 5 smoke-test build — the same build that
+compared bit-identical to the `w_2026_39` reference, so it is a legitimate `current`
+despite the `w42` suffix in its name. No separate rebuild was needed. The third variant
+`d13t-A_50_34_i_5rot` has no old-tree output and is not part of item 6.
+
+### The shape check passes on every criterion
+
+| criterion | expected | `_5rot` | `_i` |
+|---|---|---|---|
+| `lut.parquet` rows | 50 DOF | 50 | 50 |
+| `lut_dz.parquet` rows | 126 (k, j) | 126 | 126 |
+| `lut_config.yaml` keys | 11 | 11 | 11 |
+| `lut_by_rotbin` rows | — | 450 | 450 |
+| populated rotator bins | **plan says 5** | **9** | **9** |
+| manifest `status` | complete | complete | complete |
+
+**The plan's "5 populated rotator bins" is STALE — the correct number is 9, and this is
+not a defect.** All 9 bins are genuinely populated, 16 to 309 visits each, summing to
+exactly the 969 visits in `n_visits`; 450 rows = 50 DOF x 9 bins is self-consistent. The
+independent `w_2026_39` step 3 reference has the **same 9 bins and 450 rows**, so the grid
+is unchanged across the stack move. Bin centres: -60, -45, -30, -15, 0, +15, +30, +45,
++60 deg of camera rotator. **Fix the plan's item-6 row to say 9.**
+
+### Against the old tree: the by-design shift, confirmed
+
+Identical shape (50 x 7, same 7 columns) on both, and the DZ residual **improves**, which
+is the point of the absolute -> post-MIW change (`733c01d`):
+
+| variant | max DOF shift | median DOF shift | `dz_resid` RMS old -> new |
+|---|---|---|---|
+| `_5rot` | **60.8 µm** (`Cam_dz`, camera hexapod piston) | 0.003 µm | **0.0109 -> 0.0049 µm of wavefront** |
+| `_i` | **51.6 µm** (`Cam_dz`) | 0.002 µm | **0.0109 -> 0.0031 µm of wavefront** |
+
+Largest movers on both: `Cam_dz`, `M2_dy`, `M2_dz` — the hexapod rigid-body terms, as
+expected.
+
+**The plan's "at most about 16 µm of hexapod motion" is not contradicted.** That figure
+was measured on the **3a reference slice of 169 visits**; these builds cover **969
+visits**, a different and much larger sample, so a larger shift is consistent. The DZ
+residual improvement is the criterion that carries over, and it holds on both variants.
+**The ill-conditioned-inversion caveat from the 3a section still stands** and is untouched
+by this item: the LUT inverts a DZ signal of ~0.037 µm of wavefront RMS into thousands of
+µm of hexapod motion, which remains open and is not a 3c question.
 
 ## Item 5 `coadds`: BUILT and COMPARED CLEAN, 2026-10-15
 
