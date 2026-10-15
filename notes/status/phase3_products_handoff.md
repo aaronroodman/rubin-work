@@ -937,16 +937,20 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is DONE. The stack is `w_2026_42` (decision 9), validated, and the `dof_lut`
-smoke test is bit-identical to the `w_2026_39` reference — see "Upgrade step 5". The next
-action is comparison-plan items 5 to 7, in dependency order, on `w_2026_42`:**
+**The upgrade is DONE (stack `w_2026_42`, decision 9) and item 5 is RUNNING: `coadds`
+job 40920839, submitted on Aaron's OK. The next action is to check that job, compare it,
+then do items 6 and 7:**
 
-1. **Item 5 — `coadds` `d12-A_50_34_i_5rot`.** Rebuild and compare against
-   `aos/output/coadd/<dir_name>/` (2 tables + 2 npz). Expected difference: **2 only** (the
-   theta rotation, through the MIW maps it coadds). `_v2` is **not** rebuilt — it is a
-   registered old-tree variant with only an `archive/`.
+1. **Item 5 — `coadds` `d12-A_50_34_i_5rot`: job 40920839 SUBMITTED and running**, build
+   `20261015`, log `aos/logs/coadd_blocks_40920839.log`, ~66 min expected. **The
+   comparison is NOT done.** When it lands, compare against
+   `aos/output/coadd/danish_1_2/50_34/` (2 tables + 2 npz) with
+   `rubinwork.products.coadds.compare_builds` at zero tolerance. Expected difference:
+   **2 only** (the theta rotation, through the MIW maps it coadds). `_v2` is **not**
+   rebuilt — registered old-tree variant with only an `archive/`.
    **This is the first product where scipy 1.18.1 or the `ts_wep` pull could actually
    show** — `dof_lut` cannot, since it reads already-built parquet.
+   Full submit command, resources and the two submission traps: see "Item 5 `coadds`".
 2. **Item 6 — `dof_lut`, both `d12` variants.** A **shape** check by design, not a
    zero-tolerance comparison: the old tree is absolute DOF, the new is post-MIW
    (`733c01d`). Check 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8
@@ -965,9 +969,9 @@ Three things need Aaron, none blocking items 5 to 7:
 - **The `ts_intrinsic_wavefront` draft PR is not open and is Aaron's to open** (`gh`
   unauthenticated on S3DF). Base is **`develop`, not `main`** — see the step 1 section for
   the ready-to-run command and the body file.
-- **The lint fix `f9bafa2` is committed but NOT pushed** (external repo). The push command
-  and the 63 remaining upstream-only findings are in "The `ts_intrinsic_wavefront` lint
-  failure".
+- **The 62 remaining upstream-only flake8 findings** — whether to clear them is Aaron's
+  call; one (`W605`, an invalid escape sequence) is arguably a real bug. The lint fix
+  itself is pushed. See "The `ts_intrinsic_wavefront` lint failure".
 - **v4 Butler ingest** — still deferred, Aaron's call.
 
 Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
@@ -1389,12 +1393,67 @@ session should not redo it. This does *not* prove the donut-fitting path is unaf
 `danish` or `ts_wep`'s FAM estimator. **Items 5 to 7 are where a scipy or `ts_wep`
 difference would actually show up**, item 5 (`coadds`) first.
 
-## The `ts_intrinsic_wavefront` lint failure: FIXED locally, NOT pushed, 2026-10-15
+## Item 5 `coadds`: SUBMITTED on `w_2026_42`, job 40920839, 2026-10-15
+
+First of the three remaining comparison-plan items, and the first product rebuilt on
+`w_2026_42`. **Aaron OK'd the exact submit command**; the job is running, the comparison
+is not yet done.
+
+```bash
+sbatch --account=rubin:developers@milano --partition=milano --job-name=coadd_d12_5rot \
+  --cpus-per-task=8 --mem=128G --time=04:00:00 \
+  --output=/sdf/home/r/roodman/notebooks/rubin-work/aos/logs/coadd_blocks_%j.log \
+  --wrap='cd /sdf/home/r/roodman/notebooks/rubin-work && snakemake -s rubinwork/products/coadds/Snakefile --cores 8 --config variant=d12-A_50_34_i_5rot build=20261015'
+```
+
+- **Job 40920839**, `milano`, `sdfmilan019`, log
+  `aos/logs/coadd_blocks_40920839.log`. Build `20261015`, variant
+  `d12-A_50_34_i_5rot`. 3 jobs (`coadd_blocks`, `manifest`, `all`).
+- Upstreams resolved from `current`: `fam_tables danish_1_2@20261014` and
+  `miw d12-A_50_34_i_5rot@20261014` — the promoted builds, as intended.
+- Resources from the Snakefile's own `mem_mb=128000` and the header's measured figures
+  (216 blocks, 3,991 s wall clock, peak RSS 23.9 GB). 4 h is ~3.6x the measured time.
+
+### Two things that cost time here, so the next session does not repeat them
+
+1. **`sbatch` needs `--account=rubin:developers@milano` on this cluster.** Without it the
+   submission is rejected with "Invalid account or account/partition combination", after
+   two *non-fatal* warnings about qos and OS_VER that are easy to mistake for the cause.
+   The account was recovered from the precedent job's own record
+   (`sacct -j 40830071 --format=JobID,Account,QOS,Partition -P`), not guessed.
+2. **There is no saved submit script for the new-tree products.** The `miw` A1 precedent
+   (job 40830071, `miw_refit_d12_5rot`) was an inline `sbatch --wrap` from the repo root;
+   no file in the repo carries that job name. `rubinwork/products/fam_tables/`
+   has the only submit helper (`submit_mktable_nights.sh`), and it is per-night and
+   `fam_tables`-specific. Reuse the `--wrap` form above.
+
+### The comparison target, confirmed present before submitting
+
+**`aos/output/coadd/danish_1_2/50_34/`** — note the `dir_name` nests under the FAM
+variant, so `aos/output/coadd/50_34/` does not exist and looks like a missing build.
+
+| file | scale |
+|---|---|
+| `blocks_summary.parquet` | 698 rows x 26 columns |
+| `coadd_metrics.parquet` | 216 rows x 81 columns (one row per detected block) |
+| `block_grids.npz` | 42 arrays |
+| `block_grids_ext.npz` | 6 arrays |
+
+`rubinwork.products.coadds.compare_builds` keys both tables on **`block`**, aligns the
+per-block axis of stacked npz arrays on the `block` array rather than assuming order, and
+**excludes the two PDFs by design** (matplotlib embeds a creation timestamp, so identical
+code gives different bytes). Expected difference: **2 only** (the theta rotation, through
+the MIW maps it coadds). Anything else is a stop.
+
+**This is the first product where scipy 1.18.1 or the 28 `ts_wep` commits could actually
+show.** The step 5 `dof_lut` smoke test could not: it reads already-built parquet and
+never calls `danish` or the FAM estimator.
+
+## The `ts_intrinsic_wavefront` lint failure: FIXED and PUSHED, 2026-10-15
 
 Aaron found the GitHub **lint job red** on `tickets/RSO-809`. It was not on any list —
-the handoff recorded only the unopened draft PR. Now fixed, in local commit **`f9bafa2`**,
-which is **committed but NOT pushed** (an external repo, and decision 8's push
-authorization covered step 1's commit, not this one).
+the handoff recorded only the unopened draft PR. Fixed in commit **`f9bafa2`**, and
+**PUSHED** to `origin/tickets/RSO-809` on Aaron's OK (`529713b..f9bafa2`).
 
 ### What was actually failing, which is not what it looked like
 
@@ -1483,22 +1542,44 @@ hunks so non-adjacent added lines look contiguous, which made one `combine_parqu
 docstring appear to have lost a clause. It had not. Audit prose with a word-level
 comparison, not by eye on a zero-context diff.
 
-### What is left for Aaron
+### The 62 that remain: all upstream, itemised
 
-1. **Push it** (external repo, so not done here):
-   ```bash
-   cd /sdf/home/r/roodman/u/LSST/packages/ts_intrinsic_wavefront && \
-   git push origin tickets/RSO-809
-   ```
-2. **The 63 remaining whole-repo findings** are in files this branch never touches
-   (`ingest_calib_tables.py`, `run_make_calib_tables.py`, `run_mktable.py`,
-   `batoid_intrinsic.py`, `calib_tables.py`, `ccd_height.py`, `zernike_names.py`,
-   `intrinsic_split.py`, `wcsutils.py`, `plot_calib_tables.py`,
-   `tests/test_intrinsic_split_nullspace.py`). **If the lint job gates on the whole repo,
-   it stays red until those are cleared too** — a separate decision, since it is pure
-   upstream cleanup.
-3. **Mention the shared-file churn in the PR description.** These files are shared with
-   upstream, so the next `develop` merge may conflict in the reflowed docstrings.
+**62, not the 63 first reported** — the earlier count included a `SyntaxWarning` echo line
+that is not a finding. Every one is in a file `tickets/RSO-809` never touches, so none of
+it is this branch's debt.
+
+| code | count | what |
+|---|---|---|
+| W505 | 50 | doc/comment lines over the 79-column `max-doc-length` |
+| E702 | 11 | compound statements on one line (semicolons) |
+| W605 | 1 | invalid escape sequence `'\ '` |
+
+| file | findings |
+|---|---|
+| `python/lsst/ts/intrinsic/wavefront/intrinsic_split.py` | 17 |
+| `python/lsst/ts/intrinsic/wavefront/ccd_height.py` | 10 |
+| `bin.src/run_make_calib_tables.py` | 9 |
+| `python/lsst/ts/intrinsic/wavefront/batoid_intrinsic.py` | 7 |
+| `bin.src/ingest_calib_tables.py` | 6 |
+| `tests/test_intrinsic_split_nullspace.py` | 4 |
+| `python/lsst/ts/intrinsic/wavefront/calib_tables.py` | 4 |
+| `bin.src/run_mktable.py` | 2 |
+| `wcsutils.py`, `common/zernike_names.py`, `bin.src/plot_calib_tables.py` | 1 each |
+
+**The one that is arguably a real bug, not style: `W605` at
+`bin.src/ingest_calib_tables.py:29`.** `'\ '` is an invalid escape sequence — Python
+emits a `SyntaxWarning` for it today and it becomes an error in a future version. The
+other 61 are the same two cosmetic classes already cleared, same mechanical fixes.
+
+**Not done, and it is a decision rather than work:** if the lint job gates on the whole
+repo, it stays red until these are cleared too. Clearing them is pure upstream cleanup on
+files RSO-809 does not own, so it was left for Aaron to call. Scripts to do it are in
+`scratch/lintfix/`.
+
+### Also still for Aaron
+
+**Mention the shared-file churn in the PR description.** These 11 files are shared with
+upstream, so the next `develop` merge may conflict in the reflowed docstrings.
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
