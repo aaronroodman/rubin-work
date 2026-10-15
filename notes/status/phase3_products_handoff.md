@@ -1449,6 +1449,26 @@ the MIW maps it coadds). Anything else is a stop.
 show.** The step 5 `dof_lut` smoke test could not: it reads already-built parquet and
 never calls `danish` or the FAM estimator.
 
+### Predicted: the plan's "difference 2 only" is INCOMPLETE for this item
+
+Read before judging the comparison. The plan's item-5 row lists difference 2 alone, but
+`coadd_metrics.parquet` carries **telemetry columns joined from the same upstream that
+changed**, so differences 6 and 8 must reach it too. Measured on the old-tree build's
+81 columns:
+
+| column group in `coadd_metrics` | count | expected difference |
+|---|---|---|
+| ESS temperatures, degC (`cam_air_temp`, `m2_air_temp`, `m1m3_air_temp`, `outside_temp`, `cam_m1m3_delta_t`, `tma_truss_temp_pxpy`, `tma_truss_temp_mxmy`) | 7 | **8** (the ESS window: visits going finite-old to NaN-new, and up to 0.2281 degC on both-finite visits) |
+| M1M3 bulk thermal gradients, degC/m (`x_`, `y_`, `z_`, `radial_gradient`) | 4 | **6** (now joined from `visit_telemetry`; check against the value-added database at zero tolerance, not against the old tree) |
+| `resid_rms_z5..z8`, `corr_z5..z8`, the `cwfs_*` pair, `umode_1..34` | 34 + 20 | **2** (the theta rotation, through the MIW maps) |
+
+So a difference in those 11 telemetry columns is **on the expected list already** (6 and
+8), not a new finding — it is just recorded against `miw`/`fam_tables` rather than against
+`coadds`. A difference in the `resid_rms`/`corr`/`umode` columns beyond difference 2's own
+bound, or in `blocks_summary`'s block detection (698 rows, 216 blocks), **is** a stop.
+
+`block` is unique on all 216 rows of the old build, so the comparison key is sound.
+
 ## The `ts_intrinsic_wavefront` lint failure: FIXED and PUSHED, 2026-10-15
 
 Aaron found the GitHub **lint job red** on `tickets/RSO-809`. It was not on any list —
