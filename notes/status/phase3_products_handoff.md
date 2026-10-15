@@ -9,18 +9,23 @@
 > M1M3 gradient defect is fixed and promoted. The MIW calibration `intrinsic_zernikes`
 > **v4** is BUILT and Butler-ready at `$RUBINWORK_DATA/calibration/intrinsic_zernikes/v4/`
 > (207 files + QA PDF), deliberately **not ingested** and **not staged into git**. What
-> remains is items 5 to 7 — `coadds`, `dof_lut`, `bounce_tables` — which wait on the stack
-> and package upgrade. That upgrade is **authorized and IN PROGRESS** (decision 8): target
-> weekly `w_2026_41` / `lsst-scipipe-14.0.0-exact`. **Step 1 of 6 is done** —
-> `ts_intrinsic_wavefront` is committed, fast-forwarded onto `tickets/RSO-809`, tagged
-> `rubinwork-2026-10-15` and pushed (only its draft PR is outstanding, blocked on `gh`
-> auth), **step 2 is done** — every manifest now records the stack — and **step 3 is done**:
-> the reference `dof_lut` `d12-A_50_34_i_5rot@20261015w39` is built on `w_2026_39` and
-> snapshotted with checksums for the post-move comparison. **Step 4 is done except the
-> switch itself:** `ts_wep` is pulled to `0363c0c4` (28 commits, not the 9 the inventory
-> says) and `w_2026_41` is validated — all twelve `setup -r` packages set up and import on
-> it, `summit_utils` included, with no `scons` needed. **The stack is still `w_2026_39`**
-> and `~/u/LSST/setup.sh` still names it; the switch needs a Claude restart.
+> remains is items 5 to 7 — `coadds`, `dof_lut`, `bounce_tables`.
+> **The stack and package upgrade is COMPLETE, so items 5 to 7 are unblocked.** The live
+> weekly is **`w_2026_42`** / `lsst-scipipe-14.0.0-exact` — **42, not the 41 decision 8
+> named** (decision 9, Aaron, 2026-10-15; `~/u/LSST/setup.sh` reads `w_2026_42`, and Aaron
+> made that edit and the restart himself). Steps 1 to 5 are all done:
+> `ts_intrinsic_wavefront` committed, fast-forwarded onto `tickets/RSO-809`, tagged
+> `rubinwork-2026-10-15` and pushed; every manifest records the stack; the `w_2026_39`
+> reference `dof_lut` built and checksummed; `ts_wep` pulled to `0363c0c4` (28 commits, not
+> the 9 the inventory says); and on `w_2026_42` all twelve `setup -r` packages set up, the
+> five imports succeed, `pytest rubinwork` gives **361 passed** (not 358 — `ff2a8dd` added
+> 3) and the `dof_lut` smoke-test rebuild `20261015w42` is **bit-identical** to the
+> `w_2026_39` reference, all three md5 checksums equal. **No library moved from 41 to 42**,
+> and neither scipy 1.18.1 nor the 28 `ts_wep` commits reaches the `dof_lut` path, so **the
+> `ts_wep` rollback test was not needed and must not be redone**. See "Upgrade step 5".
+> **The `ts_intrinsic_wavefront` draft PR (`tickets/RSO-809` into `develop` — base is
+> `develop`, NOT `main`) is still not open, and it is Aaron's to open**, `gh` being
+> unauthenticated on S3DF; the ready-to-run command and body file are in the step 1 section.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
@@ -138,6 +143,16 @@ the step. Answered items move to "Decisions taken".
    pushed.
 
 ## Decisions taken
+
+**Decision 9 (Aaron, 2026-10-15) — the weekly is `w_2026_42`, not `w_2026_41`.** This
+amends decision 8's choice of weekly; everything else in decision 8 stands. `w_2026_42`
+was already on cvmfs when step 4 validated 41, and Aaron took the newer one rather than
+adopt a weekly that was already superseded. `~/u/LSST/setup.sh` line 3 now reads
+`weekly_version=w_2026_42` — **Aaron made that edit himself**, and started the session from
+a clean login shell, so the switch step 4 left open is **done**. The conda env is
+unchanged at `lsst-scipipe-14.0.0-exact`, and **every library version on 42 is identical to
+the ones measured on 41**, so the step 4 validation carries over rather than being redone
+from scratch. See "Upgrade step 5" for the validation and the smoke test on 42.
 
 **Decision 8 (Aaron, 2026-10-15) — the stack and package upgrade is AUTHORIZED, with
 these choices.** This supersedes the "PROPOSED, NOT EXECUTED" framing of the upgrade plan
@@ -922,34 +937,38 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is authorized (decision 8) and running. Steps 1 to 3 are done, and step 4 is
-done except the switch itself: `ts_wep` is pulled to `0363c0c4` and `w_2026_41` is
-validated (all twelve packages set up and import, `summit_utils` included, no `scons`
-needed). The next action is to make the switch and restart:**
+**The upgrade is DONE. The stack is `w_2026_42` (decision 9), validated, and the `dof_lut`
+smoke test is bit-identical to the `w_2026_39` reference — see "Upgrade step 5". The next
+action is comparison-plan items 5 to 7, in dependency order, on `w_2026_42`:**
 
-1. **Set line 3 of `/sdf/home/r/roodman/u/LSST/setup.sh` to
-   `weekly_version=w_2026_41`.** It still reads `w_2026_39`.
-2. **Exit Claude and start a new shell**, so `~/.bashrc` sources it. A running session
-   cannot adopt a new stack. Confirm with `eups list lsst_distrib` (expect `w_2026_41`) and
-   `echo $CONDA_DEFAULT_ENV` (expect `lsst-scipipe-14.0.0-exact`).
-3. **In a fresh session, do step 5** — `python -m pytest rubinwork` (expect **358** tests,
-   about 120 s), then rebuild the `dof_lut` and compare against the `w_2026_39` reference
-   at zero tolerance, column by column:
-   ```bash
-   cd ~/notebooks/rubin-work && \
-   snakemake -s rubinwork/products/dof_lut/Snakefile \
-     --cores 1 --config variant=d12-A_50_34_i_5rot build=20261015w41
-   ```
-   The reference and its md5 checksums are in the step 3 section below. **If anything
-   differs, attribute it before rebuilding anything else:** re-run with `ts_wep` back at
-   `1ea1ae1d` to separate the `ts_wep` pull from the stack move.
+1. **Item 5 — `coadds` `d12-A_50_34_i_5rot`.** Rebuild and compare against
+   `aos/output/coadd/<dir_name>/` (2 tables + 2 npz). Expected difference: **2 only** (the
+   theta rotation, through the MIW maps it coadds). `_v2` is **not** rebuilt — it is a
+   registered old-tree variant with only an `archive/`.
+   **This is the first product where scipy 1.18.1 or the `ts_wep` pull could actually
+   show** — `dof_lut` cannot, since it reads already-built parquet.
+2. **Item 6 — `dof_lut`, both `d12` variants.** A **shape** check by design, not a
+   zero-tolerance comparison: the old tree is absolute DOF, the new is post-MIW
+   (`733c01d`). Check 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8
+   schema-metadata fields and the 11 `lut_config.yaml` keys.
+3. **Item 7 — `bounce_tables`**, the variants with a rule. Expected difference **2**,
+   through the `miw` fit table (its upstream is `miw`, not `dof_lut`). The nine PDFs are
+   the study half, not part of the comparison. `_5rot_july` is **not** rebuilt — registered
+   old-tree variant.
 
-If the smoke test is clean, that is step 6: report and stop. Items 5 to 7 of the comparison
-plan (`coadds`, `dof_lut`, `bounce_tables`) come the session after, on `w_2026_41`.
+Then **stop at item 8 (`value_added`)**. Section 12 permits `set-current` when a
+comparison is clean; **any difference not on the expected list is a stop.** Show Aaron the
+exact command for any batch job and wait for his OK.
 
-One thing is outstanding from step 1 and needs Aaron: **the draft PR is not open**, because
-`gh` is unauthenticated on S3DF. The ready-to-run command and the body file are in the
-step 1 section below.
+Two things need Aaron, neither blocking items 5 to 7:
+
+- **The `ts_intrinsic_wavefront` draft PR is not open and is Aaron's to open** (`gh`
+  unauthenticated on S3DF). Base is **`develop`, not `main`** — see the step 1 section for
+  the ready-to-run command and the body file.
+- **v4 Butler ingest** — still deferred, Aaron's call.
+
+Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
+there is no difference to separate.
 
 Nothing else in 3c is blocked:
 `fam_tables`, `cwfs_tables` and `miw` are all done, compared and `current`, and the two
@@ -1269,6 +1288,103 @@ setup -r $P/ts_intrinsic_wavefront -j
 
 `ts_intrinsic_wavefront` must be on **`tickets/RSO-809`** at `529713b`
 (`git describe` = `rubinwork-2026-10-15`), which is where step 1 left it.
+
+## Upgrade step 5: `w_2026_42` is LIVE and VALIDATED, and the `dof_lut` smoke test is BIT-IDENTICAL, 2026-10-15
+
+The switch is made (decision 9) and the smoke test is clean, so **the upgrade is done** and
+items 5 to 7 are unblocked. No rollback test was needed.
+
+### The environment, confirmed before anything else
+
+- `eups list lsst_distrib` → `g00e868bf88+ec6e0cf799  w_latest current w_2026_42 setup`.
+- `CONDA_DEFAULT_ENV` = `lsst-scipipe-14.0.0-exact`; `EUPS_PATH` under the `w_2026_42`
+  cvmfs tree. **No `w_2026_39` and no `13.1.0` on `PATH`, `PYTHONPATH` or `EUPS_PATH`.**
+- `~/u/LSST/setup.sh` line 3 reads `weekly_version=w_2026_42`.
+- **All twelve `setup -r` packages are already set up in the login shell** (`eups list -s`),
+  so unlike step 4 **no throwaway clean shell was needed** — the live session *is* the test.
+- Package commits, all as step 1/4 left them: `ts_intrinsic_wavefront` `tickets/RSO-809`
+  `529713b0`, `ts_wep` `develop` `0363c0c4` (`v17.15.0-1-g0363c0c4`), `ts_ofc`
+  `tickets/RSO-1007` `ca1eb91e`, `summit_utils` `u/aaronroodman/guider-fixes` `e57e0f48`,
+  the other eight on `develop`. All tracked trees clean.
+- **One cosmetic exception:** `ts_observatory_control` reports dirty, but it is an
+  **untracked `guider_roi_extras/` directory only** — no tracked modification. The manifest
+  writer records it as clean because it does not see untracked files. Not a defect.
+
+### Library versions: NOTHING moved from 41 to 42
+
+| library | w_2026_41 | w_2026_42 | moved? |
+|---|---|---|---|
+| scipy | 1.18.1 | 1.18.1 | no |
+| numpy | 2.4.6 | 2.4.6 | no |
+| astropy | 8.0.1 | 8.0.1 | no |
+| pandas | 2.3.3 | 2.3.3 | no |
+| danish | 1.3.0 | 1.3.0 | no |
+| batoid | 0.9.0 | 0.9.0 | no |
+| galsim | 2.8.5 | 2.8.5 | no |
+| batoid_rubin | 0.7.0 | 0.7.0 | no |
+
+So **42 is numerically the same environment as the validated 41**; the scipy 1.16.3 →
+1.18.1 jump is still the only library change relative to `w_2026_39`. All five step 4
+imports succeed: `lsst.ts.wep`, `lsst.ts.ofc`, `lsst.summit.utils`,
+`lsst.ts.intrinsic.wavefront`, `rubinwork` 0.1.0 with its catalog and manifest.
+
+**A practical note for the next session:** the first import of the stack on a newly-mounted
+weekly took **over 2 minutes** (cold cvmfs cache) and tripped a 120 s command timeout. Run
+the first `python -c "import lsst..."` with a generous timeout, or in the background; it is
+not a hang.
+
+### The fresh manifest records the dated weekly
+
+`manifest.stack_state()` on the live stack gives `eups_tag: w_2026_42` and `conda_env:
+lsst-scipipe-14.0.0-exact`, with **all six recorded packages clean**. The `ff2a8dd` fix
+(match `w_\d{4}_\d{2}`, never the `w_latest` alias) **holds on 42**, where eups again lists
+the alias before the dated tag. The manifest records **6** packages, not 12 — that is the
+step 2 design (the products' direct dependencies), unchanged.
+
+### `python -m pytest rubinwork`: 361 passed, and why it is not 358
+
+**361 passed, 1 warning, 145 s.** The handoff expected **358**. The difference is fully
+accounted for and is **not** a new or missing test: `ff2a8dd` took
+`rubinwork/products/tests/test_catalog.py` to **42 tests** (the parametrised cases pinning
+both eups field orders) *after* the 358 figure was written. 358 + 3 = 361. The one warning
+is the pre-existing `asyncio` `DeprecationWarning` from `ts_ofc`'s `ofc_data.py:159`.
+**Expect 361 from now on.**
+
+### The smoke test: `dof_lut d12-A_50_34_i_5rot@20261015w42` is BIT-IDENTICAL to the w39 reference
+
+```bash
+cd ~/notebooks/rubin-work && \
+snakemake -s rubinwork/products/dof_lut/Snakefile \
+  --cores 1 --config variant=d12-A_50_34_i_5rot build=20261015w42
+```
+
+3 of 3 jobs, local, about 12 s. Build `20261015w42`, 6 files, `status: complete`, inputs
+`fam_tables: danish_1_2@20261014` and `miw: d12-A_50_34_i_5rot@20261014` — the same inputs
+as the reference. `stack` block reads `w_2026_42` / `lsst-scipipe-14.0.0-exact`. **No
+`set-current`**, deliberately: it is a smoke-test build, and the variant still has no
+`current` symlink.
+
+**All three md5 checksums match the `w_2026_39` reference exactly**, so the comparison is
+bit-for-bit and the column table is redundant — recorded anyway because the instruction
+asked for it column by column:
+
+| file | md5 (w39 and w42, identical) | columns compared | max abs difference |
+|---|---|---|---|
+| `lut.parquet` | `4a83304b369aa32f303ebe64a9da15f6` | 7 (50 rows) | 0 in all 5 numeric; 0 string mismatches in `dof_label`, `dof_unit` |
+| `lut_dz.parquet` | `54c6bcca9a88f56995a563a008a30536` | 6 (126 rows) | 0 in all 6 numeric (`dz_raw`, `dz_fit`, `dz_resid` in µm of wavefront) |
+| `lut_by_rotbin.parquet` | `1a3b451947d081dacacf9475aa0e3f78` | 7 (450 rows) | 0 in all 6 numeric; 0 string mismatches in `dof_label` |
+
+Attribution, per column: **none required — nothing differs.** The DOF values are unchanged
+to the last bit, e.g. `M2_dz` = 528.509872 µm, `M2_dx` = 363.139748 µm, `M2_dy` =
+-2348.677584 µm (hexapod rigid-body offsets, µm), exactly the reference figures.
+
+**What this rules out, and it is the useful result:** neither **scipy 1.18.1** nor the **28
+`ts_wep` commits** reaches the `dof_lut` code path. **The `ts_wep` rollback to `1ea1ae1d`
+was therefore NOT run and is not needed** — there is no difference to separate. The next
+session should not redo it. This does *not* prove the donut-fitting path is unaffected:
+`dof_lut` consumes the already-built `fam_tables` and `miw` parquet, so it never calls
+`danish` or `ts_wep`'s FAM estimator. **Items 5 to 7 are where a scipy or `ts_wep`
+difference would actually show up**, item 5 (`coadds`) first.
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
