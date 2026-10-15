@@ -144,6 +144,33 @@ the step. Answered items move to "Decisions taken".
 
 ## Decisions taken
 
+**Decision 10 (Aaron, 2026-10-15) — telemetry comes from the value-added catalog, and
+per-product re-derivation is the thing to get away from.** Two parts:
+
+1. **For item 5 now:** the ESS temperature and M1M3 gradient differences in
+   `coadd_metrics.parquet` are **expected**, not a stop. They are differences 6 and 8
+   reaching a new product, not new findings. Recorded against item 5 so the comparison is
+   not blocked on them.
+2. **As a direction for later:** Aaron's words — "I should have all the relevant
+   quantities in the value-added catalog, and I want to get away from having to find and
+   refind those telemetry values for each product." The value-added database is the
+   intended single source for per-exposure telemetry; products should **read** it rather
+   than each re-querying the EFD/ConsDB and each acquiring its own copy of the same
+   columns with its own window and its own bugs.
+
+**Why this matters beyond tidiness:** expected differences **6** and **8** both exist
+*because* the telemetry is re-derived per product. Difference 6 was a wrong-gradient
+defect fixed by joining from `visit_telemetry` instead of recomputing; difference 8 is an
+EFD query window that silently narrowed, costing ~9-10% of visits their ESS temperatures
+in every FAM-derived product. A single read of the value-added catalog removes the class.
+
+**Not scoped or scheduled**, and deliberately **not** done inside 3c — 3c is a
+move-and-rebuild phase, and changing where a product reads its telemetry changes its
+values. Item 8 (`value_added`) is where the database itself is addressed. Candidate
+follow-up work for after phase 3, to be sized then: audit which products re-derive which
+telemetry columns, then convert them to read `value_added` through
+`rubinwork.products.catalog`.
+
 **Decision 9 (Aaron, 2026-10-15) — the weekly is `w_2026_42`, not `w_2026_41`.** This
 amends decision 8's choice of weekly; everything else in decision 8 stands. `w_2026_42`
 was already on cvmfs when step 4 validated 41, and Aaron took the newer one rather than
@@ -1467,6 +1494,9 @@ So a difference in those 11 telemetry columns is **on the expected list already*
 `coadds`. A difference in the `resid_rms`/`corr`/`umode` columns beyond difference 2's own
 bound, or in `blocks_summary`'s block detection (698 rows, 216 blocks), **is** a stop.
 
+**Confirmed by Aaron 2026-10-15: treat the telemetry columns as expected** — and the
+per-product re-derivation that causes them is what he wants to remove. See decision 10.
+
 `block` is unique on all 216 rows of the old build, so the comparison key is sound.
 
 ## The `ts_intrinsic_wavefront` lint failure: FIXED and PUSHED, 2026-10-15
@@ -1562,11 +1592,55 @@ hunks so non-adjacent added lines look contiguous, which made one `combine_parqu
 docstring appear to have lost a clause. It had not. Audit prose with a word-level
 comparison, not by eye on a zero-context diff.
 
-### The 62 that remain: all upstream, itemised
+### The other 62 are now CLEARED too: the whole repo lints clean, `4c77b90`
 
-**62, not the 63 first reported** — the earlier count included a `SyntaxWarning` echo line
-that is not a finding. Every one is in a file `tickets/RSO-809` never touches, so none of
-it is this branch's debt.
+Aaron asked for them (2026-10-15), so `flake8 .` over the whole package now reports
+**0 findings**. Pushed as **`4c77b90`**. What they were, and the one that mattered:
+
+| code | count | disposition |
+|---|---|---|
+| W505 | 50 | paragraph reflow, plus 7 one-line docstrings shortened by hand |
+| E702 | 11 | compound statements split, all in `intrinsic_split.py` |
+| W605 | 1 | **a latent bug, not style** — see below |
+
+**The W605 was worth fixing on its own merits.** `bin.src/ingest_calib_tables.py`'s module
+docstring contained ``butler.put``\ s — a Sphinx escaped space — in a non-raw string, so
+`\ ` was an **invalid escape sequence**. Python emits a `SyntaxWarning` for it today and
+**will make it an error** in a future version. Fixed by making that docstring a raw
+string (`r"""`), which keeps the Sphinx markup intact. Nothing else in the package raises
+a `SyntaxWarning` now, verified with `python -W error::SyntaxWarning`.
+
+**The trap that cost the most here, and will recur: a prose reflow destroys a
+copy-pasteable example.** Four needed hand repair after the automated pass, because the
+reflow moved a **line-final `\` into the middle of a line** and **split an import after
+its comma**, leaving commands and an import that no longer run:
+
+- `ingest_calib_tables.py` — the `butler` ingest example (`-b /repo/main \ --tables-dir`)
+- `plot_calib_tables.py` — the plotting example
+- `run_mktable.py` — a 103-character single-line command, now broken with a `\`
+- `common/zernike_names.py` — `from ... import NOLL_NAMES,` split after the comma; now
+  parenthesised so it pastes
+
+All four are rewritten to stay valid **and** fit 79 columns. The reflow script's
+`is_structure` guard does not catch these: a `\`-continuation line has no multi-space run,
+so it reads as prose. **After any reflow pass, check every example block.** The check
+used: assert no `\` appears mid-line outside a string escape, and no `import`/`from` line
+ends in a comma.
+
+Verification: **0 flake8 findings** whole-repo, 10 tests pass, **all 12 modules import**
+(`intrinsic_split` and `calib_tables` included), `pytest rubinwork` unchanged at **361
+passed**, no `SyntaxWarning`, and a word-level prose audit showing every difference is
+intended. `intrinsic_split.py` took 11 statement splits and is on the MIW path, which is
+why the `rubinwork` suite was re-run rather than trusted.
+
+One harmless surprise: the fixer also edited `bin/` copies of two scripts. **`bin/` is
+gitignored** — scons generates it from `bin.src/` — and `setup.cfg` excludes `bin` from
+linting, so nothing was committed and the copies regenerate.
+
+### What the 62 were, before the fix (kept for the record)
+
+Every one was in a file `tickets/RSO-809` never touches, so none of it was this branch's
+debt.
 
 | code | count | what |
 |---|---|---|
@@ -1586,20 +1660,12 @@ it is this branch's debt.
 | `bin.src/run_mktable.py` | 2 |
 | `wcsutils.py`, `common/zernike_names.py`, `bin.src/plot_calib_tables.py` | 1 each |
 
-**The one that is arguably a real bug, not style: `W605` at
-`bin.src/ingest_calib_tables.py:29`.** `'\ '` is an invalid escape sequence — Python
-emits a `SyntaxWarning` for it today and it becomes an error in a future version. The
-other 61 are the same two cosmetic classes already cleared, same mechanical fixes.
+### Still for Aaron
 
-**Not done, and it is a decision rather than work:** if the lint job gates on the whole
-repo, it stays red until these are cleared too. Clearing them is pure upstream cleanup on
-files RSO-809 does not own, so it was left for Aaron to call. Scripts to do it are in
-`scratch/lintfix/`.
-
-### Also still for Aaron
-
-**Mention the shared-file churn in the PR description.** These 11 files are shared with
-upstream, so the next `develop` merge may conflict in the reflowed docstrings.
+**Mention the shared-file churn in the PR description.** The branch now touches **22**
+files across the two lint commits, all shared with upstream, so the next `develop` merge
+may conflict in the reflowed docstrings. The scripts used are in `scratch/lintfix/`
+(`fix_w505.py`, `fix_stmt.py`).
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
