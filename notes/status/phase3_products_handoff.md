@@ -16,8 +16,11 @@
 > `rubinwork-2026-10-15` and pushed (only its draft PR is outstanding, blocked on `gh`
 > auth), **step 2 is done** — every manifest now records the stack — and **step 3 is done**:
 > the reference `dof_lut` `d12-A_50_34_i_5rot@20261015w39` is built on `w_2026_39` and
-> snapshotted with checksums for the post-move comparison. The stack is still `w_2026_39`;
-> the move is step 4.
+> snapshotted with checksums for the post-move comparison. **Step 4 is done except the
+> switch itself:** `ts_wep` is pulled to `0363c0c4` (28 commits, not the 9 the inventory
+> says) and `w_2026_41` is validated — all twelve `setup -r` packages set up and import on
+> it, `summit_utils` included, with no `scons` needed. **The stack is still `w_2026_39`**
+> and `~/u/LSST/setup.sh` still names it; the switch needs a Claude restart.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
@@ -919,16 +922,30 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is authorized (decision 8) and running. Steps 1 to 3 of 6 are done; the next
-action is step 4 — the move itself: fetch and pull `ts_wep` `develop` (report the new
-commit and the commits pulled), switch to `w_2026_41`, and re-setup all six local packages
-(`ts_intrinsic_wavefront` on `tickets/RSO-809`, `ts_wep`, `ts_ofc`, `summit_utils`,
-`ts_config_mttcs`, `ts_aos_analysis`), running `scons` or a version build where a package
-needs one. Record the exact setup commands here. If `summit_utils` (cut from `w_2026_34`)
-or any other package fails to set up, report the error and STOP — do not patch an external
-package to make it pass.** Then step 5 (smoke test: `pytest rubinwork`, 358 tests in
-about 120 s, then the zero-tolerance `dof_lut` rebuild comparison), step 6 (report and
-stop). Items 5 to 7 of the comparison plan come the session after, on `w_2026_41`.
+**The upgrade is authorized (decision 8) and running. Steps 1 to 3 are done, and step 4 is
+done except the switch itself: `ts_wep` is pulled to `0363c0c4` and `w_2026_41` is
+validated (all twelve packages set up and import, `summit_utils` included, no `scons`
+needed). The next action is to make the switch and restart:**
+
+1. **Set line 3 of `/sdf/home/r/roodman/u/LSST/setup.sh` to
+   `weekly_version=w_2026_41`.** It still reads `w_2026_39`.
+2. **Exit Claude and start a new shell**, so `~/.bashrc` sources it. A running session
+   cannot adopt a new stack. Confirm with `eups list lsst_distrib` (expect `w_2026_41`) and
+   `echo $CONDA_DEFAULT_ENV` (expect `lsst-scipipe-14.0.0-exact`).
+3. **In a fresh session, do step 5** — `python -m pytest rubinwork` (expect **358** tests,
+   about 120 s), then rebuild the `dof_lut` and compare against the `w_2026_39` reference
+   at zero tolerance, column by column:
+   ```bash
+   cd ~/notebooks/rubin-work && \
+   snakemake -s rubinwork/products/dof_lut/Snakefile \
+     --cores 1 --config variant=d12-A_50_34_i_5rot build=20261015w41
+   ```
+   The reference and its md5 checksums are in the step 3 section below. **If anything
+   differs, attribute it before rebuilding anything else:** re-run with `ts_wep` back at
+   `1ea1ae1d` to separate the `ts_wep` pull from the stack move.
+
+If the smoke test is clean, that is step 6: report and stop. Items 5 to 7 of the comparison
+plan (`coadds`, `dof_lut`, `bounce_tables`) come the session after, on `w_2026_41`.
 
 One thing is outstanding from step 1 and needs Aaron: **the draft PR is not open**, because
 `gh` is unauthenticated on S3DF. The ready-to-run command and the body file are in the
@@ -1145,6 +1162,113 @@ quick eyeball after the move: `M2_dz` value = 528.509872 µm, `M2_dx` = 363.1397
 different upstream `miw`/`fam_tables` build, not a stack effect — the comment describes the
 20260920-era build. Step 5 compares **this** build against the `w_2026_41` rebuild, so the
 comment's value does not enter.
+
+## Upgrade step 4: `ts_wep` PULLED and `w_2026_41` VALIDATED; the switch is NOT made, 2026-10-15
+
+Two of the three parts are done. The stack itself is still `w_2026_39` in this session and
+in Aaron's login shell.
+
+### `ts_wep` is pulled: 28 commits, not the 9 the inventory says
+
+```bash
+cd /sdf/home/r/roodman/u/LSST/packages/ts_wep && git fetch origin && \
+  git merge --ff-only origin/develop
+```
+
+- `1ea1ae1d` → **`0363c0c4`** ("Merge pull request #182 from lsst-ts/main", 2026-10-14),
+  clean fast-forward, tree clean, in sync with `origin/develop`.
+- `git describe`: `v17.14.1-1-g1ea1ae1d` → **`v17.15.0-1-g0363c0c4`**. New tags `v17.14.2`
+  and `v17.15.0` arrived with the fetch.
+- **Correction to the inventory below: it was 28 commits behind, not 9.** `develop` moved
+  between the 2026-10-05 fetch the inventory used and this one. 49 files changed,
+  +1,121 / -205 lines.
+- Two of the 28 are worth knowing about beyond the saturated-image guard and the
+  `empty()` OOD-column crash fix the inventory already names:
+  - **`6253be3f` adds provenance for the intrinsic Zernikes calibration dataset** into the
+    zernikes tables metadata — the same calibration as `intrinsic_zernikes` v4. Check
+    whether it changes what a v5 ingest should write.
+  - `8843a486` "guard against saturated images" and `97cc05b9` "Handle batoid failures
+    without crashing task" both touch the FAM donut path.
+
+### `w_2026_41` is validated: all twelve packages set up and import, `summit_utils` included
+
+Tested in a **throwaway clean shell**, without touching Aaron's `setup.sh`. The technique
+matters, because it is not obvious: sourcing another weekly's `loadLSST.sh` from a shell
+that already has one active **silently fails** — `setup` ends up not found and
+`CONDA_DEFAULT_ENV` stays `base`. A clean environment is required:
+
+```bash
+timeout 580 env -i HOME=$HOME USER=$USER TERM=dumb PATH=/usr/bin:/bin \
+  bash --noprofile --norc ~/notebooks/rubin-work/scratch/w41_setup_test.sh
+```
+
+- `lsst_distrib` `g00e868bf88+e0f0dea02a`, tags `current w_latest w_2026_41`, conda env
+  `lsst-scipipe-14.0.0-exact`.
+- **All twelve `setup -r` packages set up with no output at all** — the six in the inventory
+  plus `ts_utils`, `ts_salobj`, `ts_idl`, `ts_observatory_control`, `ts_xml`,
+  `ts_m1m3_utils`. **No `scons` and no version build was needed for any of them.**
+  **`summit_utils`, the one the plan called the most likely failure** (branch cut from
+  `w_2026_34`, 7 weeklies back), set up clean.
+- Imports all succeed: `lsst.ts.wep`, `lsst.ts.ofc`, `lsst.summit.utils`,
+  `lsst.ts.intrinsic.wavefront`, and `rubinwork` 0.1.0 with its catalog and manifest.
+- Library versions on the new env, confirming the inventory's prediction: **scipy
+  1.18.1** (from 1.16.3 — the one real numerical change), numpy 2.4.6, astropy 8.0.1,
+  pandas 2.3.3 all unchanged, and **danish 1.3.0, batoid 0.9.0, batoid_rubin 0.7.0,
+  galsim 2.8.5** all unchanged.
+- `w_2026_42` also exists on cvmfs now. Decision 8 names **41**; 42 was not tested.
+
+### A step 2 defect the w_2026_41 test caught, fixed in `ff2a8dd`
+
+`stack_state` recorded **`eups_tag: w_latest`** on the new stack instead of `w_2026_41`.
+eups lists a package's tags **unordered**: `w_2026_39` lists as
+`"<hash> w_2026_39 w_latest current setup"` but `w_2026_41` lists as
+`"<hash> current w_latest w_2026_41 setup"`, so taking the first `w_`-prefixed field picked
+up the moving alias and named no weekly at all. Now matched against `w_\d{4}_\d{2}`.
+**Every manifest built after the move would have been mislabelled.** Re-verified live:
+`w_2026_39` on the old stack, `w_2026_41` on the new one. Tests are now **42 in
+`test_catalog.py`**, including a parametrised case pinning both field orders.
+
+### What is left of step 4: the switch itself
+
+**Not done, and it needs a Claude restart rather than an in-session change.** The weekly is
+set in **`~/u/LSST/setup.sh` line 3**, `weekly_version=w_2026_39`, which `~/.bashrc`
+sources for every login. A running session cannot adopt a new stack by re-sourcing it, so
+the sequence is:
+
+1. Change line 3 of `/sdf/home/r/roodman/u/LSST/setup.sh` to `weekly_version=w_2026_41`.
+2. Exit Claude, start a new shell (or `source ~/u/LSST/setup.sh`), confirm with
+   `eups list lsst_distrib` and `echo $CONDA_DEFAULT_ENV`.
+3. Start a fresh Claude session and do step 5 there.
+
+Aaron declined letting Claude edit `setup.sh` in this session and will handle the restart,
+so **as of this entry the file still reads `w_2026_39`.** Confirm it before trusting a
+shell to be on the new stack.
+
+**The exact setup commands, for reproducing the environment** (this is `~/u/LSST/setup.sh`
+with the weekly changed, and the `-j` flags matter — they stop eups pulling the stack's own
+copy of a package):
+
+```bash
+weekly_version=w_2026_41
+source /cvmfs/sw.lsst.eu/almalinux-x86_64/lsst_distrib/${weekly_version}/loadLSST.sh
+setup lsst_distrib
+P=/sdf/home/r/roodman/u/LSST/packages
+setup -r $P/summit_utils -j
+setup -r $P/ts_utils -j
+setup -r $P/ts_salobj -j
+setup -r $P/ts_idl -j
+setup -r $P/ts_observatory_control -j
+setup -r $P/ts_aos_analysis -j
+setup -r $P/ts_ofc -j
+setup -r $P/ts_wep -j
+setup -r $P/ts_xml -j
+setup -r $P/ts_config_mttcs -j
+setup -r $P/ts_m1m3_utils -j
+setup -r $P/ts_intrinsic_wavefront -j
+```
+
+`ts_intrinsic_wavefront` must be on **`tickets/RSO-809`** at `529713b`
+(`git describe` = `rubinwork-2026-10-15`), which is where step 1 left it.
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
