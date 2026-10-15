@@ -1,6 +1,14 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a and 3b complete; **3c IN PROGRESS**, 5 of 8 comparison-plan items done.
+> **Status:** 3a and 3b complete; **3c at 7 of 8 comparison-plan items** — only item 8
+> (`value_added`) remains, which is the agreed stop. Items 5 (`coadds`), 6 (`dof_lut`) and
+> 7 (`bounce_tables`) were all built on `w_2026_42`, compared clean and promoted to
+> `current` on 2026-10-15; every difference found is on the expected list. **The stack and
+> package upgrade is COMPLETE** and numerically transparent: the `coadds` maps agree with
+> the old tree to **1.4e-13 µm of wavefront**, so neither scipy 1.18.1 nor the 28 `ts_wep`
+> commits changes any product's numbers. `ts_intrinsic_wavefront` **now lints clean over
+> the whole repo** (`f9bafa2` + `4c77b90`, both pushed), including one latent W605 invalid
+> escape sequence.
 > `fam_tables`, `cwfs_tables` and `miw` are all DONE, compared clean against the old tree
 > and `current`: `fam_tables` at `danish_1_2@20261014` and `danish_1_3_{test,v1000}@20261013`,
 > all four `cwfs_tables` variants at `20261013`, and both `miw` `d12` variants at
@@ -8,12 +16,10 @@
 > read. Every difference found is on the expected-difference list (now 8 entries); the
 > M1M3 gradient defect is fixed and promoted. The MIW calibration `intrinsic_zernikes`
 > **v4** is BUILT and Butler-ready at `$RUBINWORK_DATA/calibration/intrinsic_zernikes/v4/`
-> (207 files + QA PDF), deliberately **not ingested** and **not staged into git**. What
-> remains is items 5 to 7 — `coadds`, `dof_lut`, `bounce_tables`.
-> **The stack and package upgrade is COMPLETE, so items 5 to 7 are unblocked.** The live
-> weekly is **`w_2026_42`** / `lsst-scipipe-14.0.0-exact` — **42, not the 41 decision 8
-> named** (decision 9, Aaron, 2026-10-15; `~/u/LSST/setup.sh` reads `w_2026_42`, and Aaron
-> made that edit and the restart himself). Steps 1 to 5 are all done:
+> (207 files + QA PDF), deliberately **not ingested** and **not staged into git**.
+> The live weekly is **`w_2026_42`** / `lsst-scipipe-14.0.0-exact` — **42, not the 41
+> decision 8 named** (decision 9, Aaron, 2026-10-15; `~/u/LSST/setup.sh` reads `w_2026_42`,
+> and Aaron made that edit and the restart himself). Steps 1 to 5 are all done:
 > `ts_intrinsic_wavefront` committed, fast-forwarded onto `tickets/RSO-809`, tagged
 > `rubinwork-2026-10-15` and pushed; every manifest records the stack; the `w_2026_39`
 > reference `dof_lut` built and checksummed; `ts_wep` pulled to `0363c0c4` (28 commits, not
@@ -964,8 +970,9 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is DONE (stack `w_2026_42`, decision 9) and item 5 `coadds` is DONE,
-compared clean and promoted to `current`. The next action is item 6, then item 7:**
+**Items 5, 6 and 7 are ALL DONE, compared clean and promoted on `w_2026_42`. 3c is at 8 of
+8 comparison-plan items bar item 8, which is the agreed stop. The next action is item 8
+(`value_added`) in a fresh session, with Aaron's go.**
 
 1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
    compared clean against the **i-band archive** and `set-current`. Every difference on
@@ -975,14 +982,28 @@ compared clean and promoted to `current`. The next action is item 6, then item 7
 2. ~~Item 6 — `dof_lut`~~ **DONE 2026-10-15.** Both `d12` variants built locally (no batch),
    shape check passes, both `set-current`. Note the plan's "5 populated rotator bins" is
    **stale: it is 9**, confirmed against the `w_2026_39` reference. See "Item 6 `dof_lut`".
-3. **Item 7 — `bounce_tables`**, the variants with a rule. Expected difference **2**,
-   through the `miw` fit table (its upstream is `miw`, not `dof_lut`). The nine PDFs are
-   the study half, not part of the comparison. `_5rot_july` is **not** rebuilt — registered
-   old-tree variant.
+3. ~~Item 7 — `bounce_tables`~~ **DONE 2026-10-15.** Both buildable variants built locally,
+   both `set-current`. A **real numerical comparison was possible** against the old-tree
+   `_july` build, which the plan did not expect, and **difference 1 accounts for all of
+   it**. `_july` stays registered-not-rebuilt; `d13t` cannot build (no `miw` build). See
+   "Item 7 `bounce_tables`".
 
-Then **stop at item 8 (`value_added`)**. Section 12 permits `set-current` when a
-comparison is clean; **any difference not on the expected list is a stop.** Show Aaron the
-exact command for any batch job and wait for his OK.
+**Item 8 (`value_added`) is the stop for this session, as instructed.** When it is picked
+up: it writes to **`v1/live` only, never to the current live database in place**, the live
+database is read-only, and its rows are `fam_dz` plus the MIW-route `optical_state`
+variants. `optical_state.rotator_angle_deg` **stays on ConsDB** (decision, 2026-10-11), so
+it does **not** pick up difference 1. Also in item 8: the two backfill scripts become build
+steps, and the registry rows move to catalog names.
+
+Section 12 permits `set-current` when a comparison is clean; **any difference not on the
+expected list is a stop.** Show Aaron the exact command for any batch job and wait for his
+OK.
+
+**Two plan corrections to fold in** (both found by doing the items, both recorded in the
+item sections):
+- **Item 5's comparison reference** must be `aos/output/coadd/danish_1_2/50_34/archive/20260903_iband/`,
+  not the top level — the top level is an all-bands run and the variant is i-band only.
+- **Item 6's "5 populated rotator bins" is 9.**
 
 Three things need Aaron, none blocking items 5 to 7:
 
@@ -1412,6 +1433,50 @@ session should not redo it. This does *not* prove the donut-fitting path is unaf
 `dof_lut` consumes the already-built `fam_tables` and `miw` parquet, so it never calls
 `danish` or `ts_wep`'s FAM estimator. **Items 5 to 7 are where a scipy or `ts_wep`
 difference would actually show up**, item 5 (`coadds`) first.
+
+## Item 7 `bounce_tables`: BOTH BUILDABLE VARIANTS BUILT, COMPARED CLEAN and PROMOTED, 2026-10-15
+
+Local, 3 jobs each, about a minute apiece — **no batch job**. This completes items 5 to 7.
+
+| variant | build | `current` | note |
+|---|---|---|---|
+| `d12-A_50_34_i_5rot` | `20261015` | yes | reads `miw d12-A_50_34_i_5rot@20261014` |
+| `d12-A_50_34_i` | `20261015` | yes | reads `miw d12-A_50_34_i@20261014` |
+| `d12-A_50_34_i_5rot_july` | — | — | **not rebuilt**, registered old-tree variant: its input `fits_july.parquet` is hand-made and produced by no rule |
+| `d13t-A_50_34_i_5rot` | — | — | **cannot build**: needs `miw` variant `d13t-A_50_34_i_5rot`, which has no build |
+
+`d13t` **fails loudly** rather than silently, which is the right behaviour:
+`ProductNotFound: no variant 'd13t-A_50_34_i_5rot' of product 'miw'`. It is one of the
+nine incomplete `miw` variants, so it is out of scope, not a defect.
+
+Both builds: 4 tables, `status: complete`, stack `w_2026_42`. Identical shapes on both
+variants (the table geometry comes from the recovery schemes, not the data):
+`bounce_dof_stats` 2550 x 24, `bounce_kj_stats` 1890 x 17, `bounce_fwhm_vs_bvalue` 9 x 11,
+`bounce_fwhm_metric` 6 x 9.
+
+### Better than the plan expected: a real numerical comparison was possible
+
+The plan treats the three non-`july` variants as having no old-tree build, so "built fresh
+without a comparison". **In fact the old-tree `_july` build is comparable**, because the
+bounce legs are **six legs over seven July nights** that *both* `fits_july.parquet` (3,385
+visits) and `fits.parquet` (1,126 visits) cover — the larger file only adds visits outside
+the bounce window. All four tables have **identical shapes** to the old `_july` build, and
+`n_pairs` matches leg for leg: **22, 4, 6, 5, 6, 31**.
+
+| table | rows | max abs difference | reading |
+|---|---|---|---|
+| `bounce_fwhm_metric` | 6 | **2.25e-04 arcsec** (`fwhm_after_rbr`) | FWHM reproduced |
+| `bounce_fwhm_vs_bvalue` | 9 | **2.25e-04 arcsec** (`fwhm_after_rbr`) | same |
+| `bounce_dof_stats` | 2550 | **1.038 µm** (`delta_rbr`) — but **1.04e-03 relative** to its own 1,002 µm scale | difference 1 |
+| `bounce_kj_stats` | 1890 | **1.364** (`significance`, dimensionless) — **5.5e-03 relative** to its 128.2 scale | difference 1 |
+
+**The order-1 absolute numbers are small fractions of large quantities — do not read them
+as a stop.** Attribution is unambiguous: `rot_angle_deg` differs on **all 2,550 rows**,
+median **0.0431 deg** and max **0.1688 deg** of camera rotator, inside difference 1's own
+bound (median 0.129, max 0.456 deg). `ref_rot_angle_deg` moves 0.198 deg. And the
+`delta_rbr` differences occur **only on the 750 rows where the rotator moved** — every
+other row is NaN on both sides. So **expected difference 1 fully accounts for item 7**;
+nothing else is needed.
 
 ## Item 6 `dof_lut`: BOTH `d12` VARIANTS BUILT, SHAPE-CHECKED and PROMOTED, 2026-10-15
 
