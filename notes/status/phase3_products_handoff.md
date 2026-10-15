@@ -27,6 +27,20 @@ between sessions.
 Per section 12 of the plan: questions needing your judgment that do not block the rest of
 the step. Answered items move to "Decisions taken".
 
+8. **The package and stack upgrade plan — waiting on your OK** (new 2026-10-15; **items 5
+   to 7 are sequenced behind it**). The inventory and the proposed order are in "The
+   package and stack inventory" and "The upgrade plan" below; nothing in either was
+   executed. The three calls that need you:
+   - **`w_2026_40` or `w_2026_41`?** 41 is recommended, but it is a conda-env major bump
+     (`lsst-scipipe-13.1.0-exact` to `14.0.0-exact`, scipy 1.16.3 to 1.18.1). 40 stays on
+     the current env.
+   - **Commit and tag `ts_intrinsic_wavefront`** on `tickets/rubinwork-rottelpos`, so a
+     future calibration's `git_sha` is not `-dirty`. It is the only dirty package, one
+     file, a self-contained bugfix. This would be a commit to an **external** repo, so it
+     needs your word.
+   - **Pull `ts_wep`'s 9 pending `develop` commits, before or after the stack move?** The
+     plan argues after, as a separate attributable step.
+
 5. **`visits.parquet` row order is not deterministic, and two stored columns depend on
    it** (open, found 2026-10-12 by item 1's after-check; **nothing is waiting on it**).
    `visits.parquet` is not sorted by (`day_obs`, `seq_num`) in either the phase 2
@@ -948,6 +962,219 @@ the earlier `miw` item 4 section already compared (DOF agreeing to 4.2e-11 µm o
 **Every difference is on the expected-difference list and nothing is off it.**
 `miw` was validated by Aaron and both `d12` variants are now `current@20261014` —
 `d12-A_50_34_i_5rot` promoted 2026-10-15.
+
+## The package and stack inventory, 2026-10-15 (read-only)
+
+Taken on S3DF with the environment the `20261013`/`20261014` builds ran in. Nothing was
+changed, fetched, committed or re-setup.
+
+**Stack in use now:** `lsst_distrib` **`w_2026_39`**, eups tag `g00e868bf88+054f4cc332`,
+conda env **`lsst-scipipe-13.1.0-exact`** (Python 3.13).
+
+**Latest weekly on S3DF cvmfs:** **`w_2026_41`**, conda env
+**`lsst-scipipe-14.0.0-exact`**. `w_2026_40` is the last weekly still on the 13.1.0 env, so
+moving past 40 is a **conda-environment major bump, not just a weekly tag**. The only
+numerical library that moves in it is **scipy, 1.16.3 to 1.18.1**; numpy 2.4.6, astropy
+8.0.1, pandas 2.3.3 and pybind11 3.0.4 are unchanged between the two envs.
+
+### Packages the products use
+
+All checkouts live under `/sdf/home/r/roodman/u/LSST/packages/`. "ahead/behind" is
+`git rev-list --left-right --count @{u}...HEAD`.
+
+| package | branch | commit | `git describe` | clean? | behind / ahead | in the stack |
+|---|---|---|---|---|---|---|
+| `ts_intrinsic_wavefront` | `tickets/rubinwork-rottelpos` | `a6394e7` | `v2.1-14-ga6394e7-dirty` | **DIRTY**, 1 file | 0 / 0 | not in `lsst_distrib`; local `setup -r` only |
+| `ts_wep` | `develop` | `1ea1ae1d` | `v17.14.1-1-g1ea1ae1d` | clean | **9 behind** / 0 | not in `lsst_distrib`; local `setup -r` only |
+| `ts_ofc` | `tickets/RSO-1007` | `ca1eb91` | `v4.8.1-11-gca1eb91` | clean | no upstream for this branch | not in `lsst_distrib`; local `setup -r` only |
+| `summit_utils` | `u/aaronroodman/guider-fixes` | `e57e0f4` | `w.2026.34-21-ge57e0f4` | clean | 0 / 0 | not in `lsst_distrib`; local `setup -r` only |
+| `ts_config_mttcs` | `develop` | `ae5cca1` | `v0.22.5-alpha.1-39-gae5cca1` | clean | 0 / 0 | not in `lsst_distrib`; local `setup -r` only |
+| `ts_aos_analysis` | `develop` | `b2a9d02` | `b2a9d02` (no tag) | clean | 0 / 0 | not in `lsst_distrib`; local `setup -r` only |
+| `rubin-work` (this repo) | `main` | `89d142f` at session start | `pre-products-reorg-2026-10-09-130-g89d142f` | clean at session start | 0 / 0 | `pip -e`, `rubinwork 0.1.0` |
+
+**`danish`, `batoid`, `batoid_rubin` and `galsim` are NOT local checkouts** — they come from
+the stack's conda env, so they move only when the weekly moves. Versions read from each
+package's `__version__` / `_version.py`, not from its `dist-info` directory — `batoid` and
+`batoid_rubin` both ship a `0.0.0` dist-info in **both** weeklies, a build-metadata
+artefact that is not the version:
+
+| package | version in `w_2026_39` (13.1.0 env) | version in `w_2026_41` (14.0.0 env) |
+|---|---|---|
+| `danish` | 1.3.0 | 1.3.0 |
+| `batoid` | 0.9.0 | 0.9.0 |
+| `batoid_rubin` | 0.7.0 | 0.7.0 |
+| `galsim` | 2.8.5 | 2.8.5 |
+
+**The only dirty package is `ts_intrinsic_wavefront`**, one file,
+`python/lsst/ts/intrinsic/wavefront/intrinsic_build_plots.py` (+18 / -5 lines): it rebuckets
+`plot_dof_median_summary` off the DOF **labels** instead of the global 50-DOF indices, so a
+reduced DOF set (22 or 12 DOF) no longer runs a global index off the end, plus an
+empty-panel guard. A self-contained bugfix with no caller-visible API change.
+
+**`ts_wep`'s 9 commits behind `develop`** are one merge plus bugfixes and timing logs,
+touching `calcZernikesNeuralTask.py` (+150 lines), `calcZernikesTask.py`,
+`generateDonutDirectDetectTask.py` and their tests — a saturated-image guard, an
+`empty()` OOD-column crash fix, and runtime logging. **No signature change is visible in
+the diffstat.** The checkout's last `git fetch` was **2026-10-05**, 10 days before this
+inventory, so `develop` may have moved further.
+
+**A gap worth naming:** a product manifest records `git_commit` and `git_dirty` **for
+rubin-work only** — `catalog.manifest()` returns no stack, eups-tag, conda-env or
+external-package version at all. A build made on `w_2026_39` and a build made on a newer
+weekly are today indistinguishable from their manifests.
+
+## The upgrade plan, 2026-10-15 — PROPOSED, NOT EXECUTED
+
+No command below was run. Nothing was committed, pushed, fetched or re-setup, and no
+external repo was touched.
+
+### Step 1 — the one dirty package
+
+`ts_intrinsic_wavefront`: **commit it**, do not stash and do not discard. It is a real
+bugfix, it is already needed by any reduced-DOF build, and a calibration built against a
+`-dirty` tree records a `git_sha` nobody can reproduce. Commit **on the current branch**,
+`tickets/rubinwork-rottelpos`, which is where the other 14 commits since `v2.1` already sit
+and which is 0 ahead / 0 behind its upstream. Then **tag** it, so the next
+`intrinsic_zernikes` version has a reproducible `git_sha` rather than
+`v2.1-14-ga6394e7-dirty`.
+
+Every other package is clean — nothing to stash or discard anywhere.
+
+### Step 2 — the order
+
+1. **Commit and tag `ts_intrinsic_wavefront`** on `tickets/rubinwork-rottelpos`. Do this
+   **first and on the current stack**, so the tag names a tree that is known to work.
+2. **Decide the weekly: `w_2026_40` or `w_2026_41`.** These are not equivalent risks.
+   `w_2026_40` keeps `lsst-scipipe-13.1.0-exact`, so it is a stack-code-only move with no
+   conda churn. `w_2026_41` brings `lsst-scipipe-14.0.0-exact` and scipy 1.16.3 to 1.18.1.
+   **Recommendation: `w_2026_41`**, taking the conda bump deliberately now rather than
+   hitting it unprepared on a later weekly — but `w_2026_40` is the low-risk option if
+   items 5 to 7 need to land first.
+3. **Re-setup the six local packages on the new weekly** (`ts_intrinsic_wavefront`,
+   `ts_wep`, `ts_ofc`, `summit_utils`, `ts_config_mttcs`, `ts_aos_analysis`). They are
+   `setup -r` checkouts, so each needs its eups table satisfied against the new stack; this
+   is where a dependency-version conflict surfaces, not at import time.
+4. **Decide `ts_wep` separately from the stack move.** Pulling its 9 commits and moving the
+   weekly at once makes a failure ambiguous. **Move the stack first, re-setup `ts_wep` at
+   `1ea1ae1d` unchanged, confirm the smoke test, then pull `develop`** and re-run the smoke
+   test. Two steps, two attributable outcomes.
+5. **Smoke test, in this order:**
+   - `python -m pytest rubinwork` — **355 tests** over 10 files
+     (`test_{bounce_tables,build_optical_state,catalog,coadds,cwfs_tables,dof_lut,fam_tables,guider_moments,miw,value_added}.py`),
+     collected clean this session in 0.99 s. Fast, no Butler, no EFD.
+   - **One small rebuild that must match an existing build at zero tolerance.**
+     `dof_lut` for `d12-A_50_34_i_5rot` is the right choice: its DAG is 3 jobs, it reads the
+     `miw` build through the catalog rather than recomputing it, and it now plans cleanly
+     (confirmed by `snakemake -n` this session). Build it under a new build name and
+     compare against the `20261015` DAG's declared outputs column by column. **A non-zero
+     difference here is the signal to stop and attribute it before rebuilding anything
+     else.**
+6. **Then items 5 to 7** — `coadds`, `dof_lut`, `bounce_tables` — all on the one new
+   environment, which is the whole reason for sequencing them after the upgrade.
+
+### What could break
+
+- **scipy 1.16.3 to 1.18.1 (`w_2026_41` only).** The real numerical risk in the move.
+  `danish`'s fitting and `rubinwork.smatrix.regularized_inversion` both sit on scipy
+  linear algebra and optimizers; a changed default (tolerance, LAPACK driver, or an
+  `optimize` method's convergence) shifts fit coefficients slightly without raising
+  anything. This is exactly what the zero-tolerance rebuild in step 5 is for.
+- **`ts_wep` against a newer stack.** Its tasks subclass `lsst.pipe.base` PipelineTask and
+  use `lsst.daf.butler` connections; a weekly can change a connection class or a task
+  config field and break `setup -r` or the first `runQuantum`. Its own 9 pending commits
+  touch `calcZernikesNeuralTask` and `generateDonutDirectDetectTask` — **the donut and
+  Zernike path the FAM products depend on** — so pull them separately as step 4 says.
+- **`danish` 1.3.0 is unchanged in version between the two weeklies**, so no danish API
+  change is expected from the move itself. The risk is indirect: danish on a new scipy, and
+  danish against a `ts_wep` that has moved. A same-version package on a different numerical
+  substrate can still change its output.
+- **`summit_utils` is on `w.2026.34-21-ge57e0f4`**, a branch cut from the `w_2026_34`
+  weekly. Moving the stack 7 weeklies forward is the most likely `setup -r` failure of the
+  six, since it is the one pinned closest to a specific weekly.
+- **`ts_ofc` is on `tickets/RSO-1007` with no upstream configured**, so there is no
+  remote to compare against and no way to tell from git whether it is current. Worth
+  resolving before it matters.
+
+### Products whose manifests should record the stack change
+
+Everything rebuilt after the move, which is **`coadds`, `dof_lut` and `bounce_tables`**
+(items 5 to 7). They would then be the only products in the tree built on a different stack
+from `fam_tables@20261014`, `cwfs_tables@20261013` and `miw@20261014` — and, per the gap
+named in the inventory above, **nothing in the manifest would say so**. Two things follow:
+
+1. **Add the stack to the manifest before the rebuilds**, not after: the eups `lsst_distrib`
+   tag, the conda env name, and the commit of each `setup -r` package. `manifest.write`
+   already takes an `extra` dict, so this is a small change in
+   `rubinwork/products/manifest.py` and needs no schema migration.
+2. **`intrinsic_zernikes` v4** is the other one. It was built on `w_2026_39` against
+   `ts_intrinsic_wavefront` `a6394e7-dirty`; if it is ever ingested or superseded by a v5
+   built after the upgrade, the stack and the package tag from step 1 are what make the two
+   comparable.
+
+## Expected difference 8, the ESS telemetry window: MECHANISM FOUND, 2026-10-15
+
+Read-only investigation, no rebuild. **The earlier guess in the A2 writeup — "a narrower
+EFD query window" — is wrong.** The window did not narrow. The ESS *source* changed, from a
+per-visit raw-EFD query to a bulk ConsDB-transform read, and the loss is NULL cells in the
+transform table.
+
+**Where.** Both builds call the same function,
+`lsst.ts.intrinsic.wavefront.intrinsics_lib.get_thermal_data`, reached through
+`rubinwork/products/fam_tables/builders/run_attach_telemetry.py:356` (`_attach_thermal`,
+which delegates rather than reimplementing the query). The change is **in the external
+package, not in rubin-work** — `ts_intrinsic_wavefront` commit **`f45bfbf`**, "mktable
+thermal: bulk ConsDB transform for ESS temps + TMA truss" (2026-07-28).
+
+| | old path | new path |
+|---|---|---|
+| function | `get_ess_temperature`, `intrinsics_lib.py:1500` | `_thermal_from_consdb_transform`, `intrinsics_lib.py:1659` |
+| source | raw EFD topic `lsst.sal.ESS.temperature`, field `temperatureItem0`, per SAL index | ConsDB `efd_lsstcam.exposure_efd`, columns `mt_salindex{111,112,113,301}_temperature_0_mean` |
+| granularity | one query per visit per sensor (4 ESS + 2 truss round-trips per visit) | one bulk query per 800 exposures, keyed on `exposure_id` |
+| window | `obs_start` to `obs_end`, `postPadding = DEFAULT_TEMP_TIME_WINDOW_SEC = 0.2 s`, then the mean over that window | whatever window the ConsDB transform used to form its per-exposure mean; not a parameter of this code |
+
+So the window start and end are the same exposure bounds on both sides; what changed is
+**who computes the mean** and **the 0.2 s post-padding, which the new path has no equivalent
+of**. The old path's padding let a visit whose ESS sample landed just after `obs_end` still
+return a value; the transform's per-exposure mean is NULL when no sample fell inside the
+exposure.
+
+**Measured on `d12-A_50_34_i`, 960 shared visits.** All four ESS columns lose the **same 89
+visits** and gain 0 — `cam_air_temp`, `m2_air_temp`, `m1m3_air_temp` and `outside_temp`
+alike (counts, dimensionless). An identical loss set across four independent sensors rules
+out a sensor-specific fault. The 89 are scattered over **15 nights** and are a minority of
+each (11, 5, 7, 12, 8, 6, 6, 5, 15, 1, 1, 2, 3, 2, 5 visits per night), so it is per-visit,
+not a date-range gap. Re-measured this session on `d12-A_50_34_i_5rot` as well: **111 of
+1,126 shared visits lost, 0 gained** (counts, dimensionless), the same pattern on an
+independent variant.
+
+**Probed against ConsDB directly** (read-only, `efd_lsstcam.exposure_efd`):
+
+| exposure set | exposures asked | `exposure_efd` rows returned | non-null `mt_salindex111_temperature_0_mean` |
+|---|---|---|---|
+| the 89 lost | 89 | 89 | **0** |
+| 200 kept, as a control | 200 | 200 | 200 |
+
+All counts dimensionless. Every lost exposure **has** a row in the transform table; the ESS
+mean column in it is simply NULL. The join is doing exactly what it should.
+
+**Deliberate change, not a regression.** `f45bfbf`'s own message states the reason: the
+per-visit loop "ran the batch `mktable` out of wall time on large chunks", and it kept the
+raw-EFD loops as a fallback. The intent was "same output columns and (`day_obs`,
+`seq_num`) keying", and that holds for the 871 of 960 visits the transform can answer. The
+89-visit coverage loss is an unintended side effect of a deliberate performance
+change — the kind worth recording, not reverting. One real defect is visible in the design,
+though: **the fallback is all-or-nothing.** `get_thermal_data` takes the transform path when
+`_thermal_from_consdb_transform` returns anything at all (`intrinsics_lib.py:1763`), so a
+visit with a NULL transform cell gets NaN and **never** gets a per-visit retry. A per-visit
+fallback for the NULL rows, rather than a whole-query one, would close the gap.
+
+**Recoverable without an EFD re-fetch? No — but the re-fetch is small and need not touch
+`mktable`.** The values are not anywhere in the new tree or the old build's inputs; the old
+tree's `fits.parquet` still *holds* them, so the cheapest repair is a join from the old
+table onto the 89 (and 111) keys, with no EFD traffic at all. If instead the values are to
+be re-derived, it is 89 visits x 4 sensors = 356 raw-EFD queries on
+`lsst.sal.ESS.temperature`, seconds of work, not a `mktable` rerun. **Neither was done this
+session** — difference 8 stays on the expected list as a known, bounded coverage loss.
 
 ### Standing warnings, kept so the next session does not relearn them
 
