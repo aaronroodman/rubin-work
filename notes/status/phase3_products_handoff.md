@@ -19,12 +19,15 @@
 > at 18 of 18 and its `fits.parquet` is COMPARED** (960 shared visits of 3,385 new against
 > 960 old, every difference on the expected list, the DZ coefficients at max abs
 > **1.757e-03 µm of wavefront**); `d12-A_50_34_i_5rot@20261014` holds `intrinsic_split` and
-> needs 7 more jobs. **Correction, 2026-10-14: `d12-A_50_34_i` IS `current@20261014`**
-> (symlink set Oct 14 10:25) — the earlier "no `miw` variant is `current`" was stale; only
-> `_5rot` has no current build. **`miw` waits on Aaron's choice among steps A1-A5**,
-> reviewed 2026-10-14 with nothing executed; the recommendation is A1 now (the only gate on
-> items 5-7), A3 with it, A2 already done, A4 after A3, A5 deferred. A new **expected
-> difference 8, the ESS telemetry window**, came out of that review.
+> needs 7 more jobs. **Superseded 2026-10-14: `_5rot` is now BUILT and COMPARED.** Job
+> **40830071** (00:38:38, 8 CPUs) ran all 7 jobs; `fits.parquet` is 3,385 rows x 830 columns
+> and **both `d12` variants now read `complete`** in the catalog. Its comparison is clean —
+> every difference on the expected list. **A1, A2 and A3 are DONE; A4 (`set-current`) and A5
+> (items 5-7) remain**, both needing Aaron. `d12-A_50_34_i` IS `current@20261014`; `_5rot`
+> has no `current` symlink. A new **expected difference 8, the ESS telemetry window**, is
+> confirmed on both variants. **The MIW calibration `intrinsic_zernikes` v4 is BUILT** and
+> Butler-ready at `$RUBINWORK_DATA/calibration/intrinsic_zernikes/v4/` (207 files + QA PDF),
+> **not ingested** — `/repo/main` is a hard stop.
 > Questions 6 and 7 are both answered (2026-10-14) — `d12-tarts` is excluded from the
 > corner-sidecar set, and the ring continuation / NaN-rim fill is **accepted new
 > behaviour**, now expected difference 7. Items 5 to 7 are blocked behind `_5rot`'s
@@ -663,7 +666,138 @@ corners sit near 1.19 deg of field angle, already well inside the old valid regi
 MIW becomes newly available outside any hull. The acceptance stands; only the label
 differs.
 
-## Review of the remaining `miw` steps A1-A5, 2026-10-14 — nothing executed
+## A1 and A3 DONE, and the MIW calibration v4 is BUILT, 2026-10-14
+
+Aaron gave advance permission for the batch submission after reviewing the A1-A5 assessment
+below, and asked for Butler-ready output plus the calibration-ready product.
+
+**A1 — `refit_mi` for `d12-A_50_34_i_5rot@20261014` is COMPLETE.** Slurm job **40830071**,
+elapsed **00:38:38** on 8 CPUs, peak RSS **11.1 GB** of the 96 GB requested. All 7 jobs ran.
+`fits.parquet` is **3,385 rows x 830 columns** — identical shape to the sibling
+`d12-A_50_34_i` — and `manifest.json` is written, so `catalog.list_products('miw')` now
+reports **both `d12` variants `complete`**. The manifest records `git_commit 3a4ae67`,
+`git_dirty false`, inputs `fam_tables: danish_1_2@20261014` and parent `miw:
+d12-A_50_34_i`, and 9,083,526 donut rows in `zk_intrinsic.parquet`.
+**No `set-current` was run** (hard stop), so `_5rot` still has no `current` symlink.
+
+**A3 — the `_5rot` `fits.parquet` comparison is CLEAN.** New `20261014` (3,385 rows over
+106 nights) against the old tree `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet`
+(1,126 rows over 19 nights); 456 shared columns, 374 new-only, 197 old-only — the same
+schema split as the sibling. **All 1,126 old visits are present, 0 old-only keys.**
+
+| column group | cols | differing | max abs difference | NaN-status mismatches | expected difference |
+|---|---|---|---|---|---|
+| `image_idx` (row-order index, dimensionless) | 1 | 1 | 2202 | 0 | 5 (known, unfixed) |
+| `rotator_angle` (deg of camera rotator) | 1 | 1 | 0.4446 | 0 | 1 |
+| ESS temperature (degC), 9 columns incl. the 2 `cam_*` | 9 | 9 | 0.2281 | 999 | **8** |
+| M1M3 thermal gradients (degC/m) | 4 | 4 | 0.005892 | 0 | 6 |
+| DZ fit coefficients (µm of wavefront; `*_scale` dimensionless) | 422 | 420 | 0.001803 | 0 | 2 |
+| pointing / visit metadata (`visit`, `ra`, `dec`, `az`, `alt`, `mjd`) | 6 | **0** | 0 | 0 | — |
+| fit quality (`n_donuts_1/2`, `n_detectors`, `n_detectors_with_min_donuts`, `bad_fit`, `median_blur_arcsec`) | 6 | **0** | 0 | 0 | — |
+
+The headline numbers match the sibling almost exactly (`rotator_angle` 0.4446 deg, ESS
+0.2281 degC, gradients 0.005892 degC/m), as they should: those come from the shared FAM
+input, not from the MIW variant. **Every difference is on the expected list.**
+
+**Expected difference 8 is CONFIRMED on a second, independent variant.** Here
+**111 of 1,126 visits** lose their ESS temperatures and **0 gain them**, the same 111 on
+every one of the 9 columns, over 16 of 19 nights (999 column-instance mismatches = 9 x 111).
+The sibling showed 89 of 960, same one-directional pattern — 9.9% against 9.3% of visits.
+Two variants with the same signature make this a systematic EFD-window change, not a
+one-build artifact. Still not traced to a commit.
+
+### The MIW calibration product: `intrinsic_zernikes` **v4** is BUILT (Butler-ready, NOT ingested)
+
+Aaron's "calibration ready output" = the MIW as an AOS calibration product, and the
+toolchain for it already exists in **`ts_intrinsic_wavefront`** — nothing new was written:
+
+1. `bin.src/run_make_calib_tables.py` — MIW maps -> `lsst.ip.isr.IntrinsicZernikes` source
+   tables + `provenance.yaml`
+2. `bin.src/plot_calib_tables.py` — QA PDF
+3. `bin.src/ingest_calib_tables.py` — Butler ingest as `intrinsicZernikes`, dimensioned
+   `(instrument, detector, physical_filter)`. **Defaults to `--dry-run`.**
+
+**The Butler MIW already in use is Guillem's v3**, recorded in this repo as the external
+variant `official-gmegias-v3`: repo `/repo/main`, dataset type `intrinsicZernikes`,
+collection `u/gmegias/calib/DM-55048/intrinsicZernikes.v3`, 1,230 datasets over six bands,
+ticket DM-55048. So v4 is a **new version of an existing dataset type**, not a new design.
+Version numbering: v1 is in `aos/calibration/miw/`, v2 is in Guillem's output root, v3 is
+the Butler collection — hence **v4** (Aaron's call; do not reuse v2 or v3).
+
+**Built to v2's exact recipe**, read off v2's own `provenance.yaml` rather than guessed:
+`--fill-ocs-from-batoid` with `Rubin_v3.14` band `i` `--batoid-fill-jmax 78`,
+`--height-source batoid_rubin`, `--height-to-z4-factor 15`, `--ccs-footprint-points 50`.
+v2 was itself built from `pathA_50_34_i_5rot`, the same `mi_name`, so v4 is the same recipe
+on the new data. Note the input is **`intrinsic_split_maps.parquet` only** — the calibration
+does **not** depend on `refit_mi`, so it was built in parallel with A1.
+
+Output: **`/sdf/group/rubin/u/roodman/LSST/rubin-work/calibration/intrinsic_zernikes/v4/`**
+
+| file | content |
+|---|---|
+| `intrinsic_aberrations_OCS.parquet` | 3,985 field points x 75 Zernikes (Noll 4-78) |
+| `intrinsic_aberrations_CCS_det<NNN>.parquet` | 205 per-detector tables, 7x7 = 49 footprint points each |
+| `provenance.yaml` | maps source, `git_sha a6394e7`, batoid backfill, height source, maps `.meta` |
+| `intrinsic_zernikes_v4_maps.pdf` | 76-page QA, representative detector 102 |
+
+**The height map question, settled (Aaron asked).** v2's provenance names Guillem's
+`/sdf/home/g/gmegias/aos/batoid_rubin/.../ccd_height_map`. v4 uses **Aaron's own**
+`$BATOID_RUBIN_DATA_DIR/ccd_height_map` instead, which is **byte-identical** — both
+7,549,578 bytes, both MD5 `8d8591031c27306121e3caa2e752fcc2`, differing only in mtime. So
+the heights are numerically identical to v2/v3 while the provenance points at Aaron's
+package rather than another user's home.
+
+**Validation against v2 on the 3,861 shared field points — the MIW fit did not change.**
+
+| Noll group | max abs difference, µm of wavefront | reading |
+|---|---|---|
+| 20 of the 21 measured (5-19, 22-26) | ~**1e-15** | bit-level identical; the fit is unchanged |
+| Noll 4 (defocus) | **4.19e-04** | real but tiny: 1.1% of Z4's own RMS of 0.0386 µm |
+| backfilled (20, 21, 27-78) | ~**1e-10** | both from batoid `Rubin_v3.14`, as expected |
+
+So despite v2 coming from a differently-named FAM param set three months earlier, the MIW
+solution for `pathA_50_34_i_5rot` is stable. What is genuinely new in v4:
+
+1. **+124 rim field points** (3,985 against v2's 3,861);
+2. **8 height-only field-edge detectors, down from v2's 16** — v4's fallback list
+   `[0, 20, 27, 65, 123, 161, 168, 188]` is exactly the first 8 of v2's, so detectors
+   189, 190, 193, 194, 197, 198, 201, 202 **recovered a real camera field**;
+3. Z4 moved by the 4.19e-04 µm above.
+
+All three trace to the rim fill (`ts_intrinsic_wavefront` commit `3f66904`): field-edge CCD
+footprints that used to fall past the data now land on it. **The +124 points are the same
+124 cells the `miw_hull` study measured** as NaN in the old `_5rot` `Z4_OCS` map — the two
+lines of work corroborate each other. Whether the Z4 shift is the rim fill perturbing the
+OCS/CCS degeneracy split is **not** established; it is far below any operational threshold.
+
+**Two provenance weaknesses to fix before this is deployed anywhere:**
+
+- `git_describe` is **`v2.1-14-ga6394e7-dirty`** — the `ts_intrinsic_wavefront` tree is
+  dirty, so the SHA does not pin the code. v2 was `-dirty` too, so this matches past
+  practice, but a clean commit and tag would be better for a calibration.
+- v4 exists **only in the data tree, not in git**. The repo convention
+  (`aos/calibration/README.md`, `stage_miw.py`) stages a versioned
+  `intrinsic_split_maps_v<N>.parquet` + provenance into git, but only `v1` is there — v2
+  and v3 were never staged. Not done here: it is a different artifact from the Butler
+  source tables (1 maps table against 206 per-detector tables) and adding a tracked
+  parquet is Aaron's call.
+
+**NOT DONE — needs Aaron, both hard stops:**
+
+- **No Butler ingest and no `/repo/main` connection, not even the dry run.** The command,
+  copy-paste ready (as written it is a dry run; add `--execute` to write):
+  ```bash
+  python $TS_INTRINSIC_WAVEFRONT_DIR/bin/ingest_calib_tables.py \
+      -b /repo/main \
+      --tables-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/calibration/intrinsic_zernikes/v4 \
+      --output-run u/roodman/calib/intrinsicZernikes.v4/run.20261014 \
+      --certify-into u/roodman/calib/intrinsicZernikes.v4
+  ```
+  The collection name is a **guess** — `u/roodman/...` rather than Guillem's
+  `u/gmegias/calib/DM-55048/...`. Confirm which before ingesting.
+- **No `set-current` for either `miw` variant.**
+
+## Review of the remaining `miw` steps A1-A5, 2026-10-14 — the assessment Aaron acted on
 
 Aaron asked whether the remaining `miw` steps are needed now. **Review only: no job was
 submitted, no comparison run, no `set-current`, no build.** Read-only checks only
@@ -671,9 +805,9 @@ submitted, no comparison run, no `set-current`, no build.** Read-only checks onl
 
 | step | needed by | already known? | cost | recommendation |
 |---|---|---|---|---|
-| **A1** `refit_mi` for `_5rot@20261014` (7 jobs) | items 5, 6 and 7 — **all three default to the `_5rot` MIW variant** and their Snakefiles cannot even build a DAG without it | no | ~32 min wall-clock on 8 CPUs, ~4.2 CPU-hours; ~$2 of session spend to submit and check | **run now** — it is the single gate on items 5-7 |
+| **A1** `refit_mi` for `_5rot@20261014` (7 jobs) | items 5, 6 and 7 — **all three default to the `_5rot` MIW variant** and their Snakefiles cannot even build a DAG without it | no | ~32 min wall-clock on 8 CPUs, ~4.2 CPU-hours; ~$2 of session spend to submit and check | **DONE 2026-10-14** (job 40830071, 00:38:38 actual) |
 | **A2** re-attribute the 7 temperature and 2 `cam_*` columns; check the 4 gradients against the database | closing 3c's expected-difference list; no product | **yes, now settled below** — and the gradient half was already answered in this file's header | already spent, ~$1 | **done, drop** |
-| **A3** compare `_5rot` `fits.parquet` against the old tree | Aaron's review before `set-current` on `_5rot` | no | ~15 min, ~$2 | **run, but only after A1** |
+| **A3** compare `_5rot` `fits.parquet` against the old tree | Aaron's review before `set-current` on `_5rot` | no | ~15 min, ~$2 | **DONE 2026-10-14** — clean, see the section above |
 | **A4** `set-current` for both `miw` variants | items 5-7 resolve `miw` through the catalog | **partly done**: `d12-A_50_34_i/current` already points at `20261014` (set Oct 14 10:25). Only `_5rot` is missing | minutes, ~$0 | **defer to after A1+A3**; nothing is stale meanwhile |
 | **A5** items 5-7 (`coadds`, `dof_lut`, `bounce_tables`) | the reorganization's "every product rebuilt in the new tree" goal | no | hours of wall-clock each, the largest remaining block | **defer**; 2 of the 9 variants are registerable from the old tree instead of rebuilt |
 
@@ -745,14 +879,21 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**Waiting on Aaron's choice among A1-A5.** The review above is the input; nothing is
-submitted or promoted until he picks. The recommendation in one line: **A1 now** (it is
-the only gate on items 5-7), **A3 with it**, **A2 is done**, **A4 after A3**, **A5
-deferred** with 2 of its 9 variants registered from the old tree rather than rebuilt.
+**Three decisions for Aaron, all hard stops; A1, A2 and A3 are done.**
 
-The sbatch command A1 needs Aaron's OK on is below; the dry run reports **7 jobs**:
-`intrinsic_sidecar`, 3 `wfs_intrinsic_sidecar` (`d12-tarts` correctly skipped),
-`refit_mi`, `manifest`, `all`. Confirmed still 7 on 2026-10-14.
+1. **The Butler collection name for the v4 ingest.** The dry-run command is in the v4
+   section above. `u/roodman/calib/intrinsicZernikes.v4` is a guess; Guillem's v3 sits at
+   `u/gmegias/calib/DM-55048/intrinsicZernikes.v3`, so the DM-55048 ticket collection may
+   be the right home. Nothing has touched `/repo/main` — not even the dry run.
+2. **`set-current` for `miw/d12-A_50_34_i_5rot@20261014`.** This is A4, and it is what
+   unblocks items 5 to 7 — their Snakefiles cannot build a DAG without it (`dof_lut`'s
+   fails at `Snakefile:95`). `d12-A_50_34_i` is already `current`.
+3. **Whether to stage v4 into git** under `aos/calibration/`, and whether to commit and tag
+   `ts_intrinsic_wavefront` first so the calibration's `git_sha` is not `-dirty`.
+
+After 2, items 5 to 7 (`coadds`, `dof_lut`, `bounce_tables`) are the remaining 3c work —
+see A5 in the review below, including the two variants that are better registered from the
+old tree than rebuilt.
 3 `wfs_intrinsic_sidecar` (`d12-tarts` correctly skipped), `refit_mi`, `manifest`, `all`.
 
 ```bash
@@ -1068,6 +1209,13 @@ unexplained difference stops the step).
    (`outside_temp`). This is **not** difference 6 (gradients and `lut_dof5..9`) and **not**
    difference 4 (which drops columns outright; decision 3 keeps these). Likely a narrower
    EFD query window dropping visits near a telemetry gap. Not yet traced to a commit.
+
+   **CONFIRMED on a second variant, 2026-10-14.** `d12-A_50_34_i_5rot` shows the identical
+   signature: **111 of 1,126 shared visits** lose their ESS temperatures, **0 gain them**,
+   the same 111 on every column, over 16 of 19 nights. Against the sibling's 89 of 960 that
+   is 9.9% versus 9.3% of visits — a systematic change, not one build's artifact. Treat the
+   9 columns as one group (the 2 `cam_*` are 2 of the 9), and expect the loss on any
+   FAM-derived product rebuilt from `danish_1_2@20261014`.
 
 | # | product / variant | compared against | expected differences | what blocks it |
 |---|---|---|---|---|
