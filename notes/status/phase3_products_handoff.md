@@ -14,8 +14,10 @@
 > weekly `w_2026_41` / `lsst-scipipe-14.0.0-exact`. **Step 1 of 6 is done** —
 > `ts_intrinsic_wavefront` is committed, fast-forwarded onto `tickets/RSO-809`, tagged
 > `rubinwork-2026-10-15` and pushed (only its draft PR is outstanding, blocked on `gh`
-> auth), and **step 2 is done** — every manifest now records the stack. The stack is still
-> `w_2026_39`.
+> auth), **step 2 is done** — every manifest now records the stack — and **step 3 is done**:
+> the reference `dof_lut` `d12-A_50_34_i_5rot@20261015w39` is built on `w_2026_39` and
+> snapshotted with checksums for the post-move comparison. The stack is still `w_2026_39`;
+> the move is step 4.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
@@ -917,14 +919,14 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is authorized (decision 8) and running. Steps 1 and 2 of 6 are done; the next
-action is step 3 — build the reference `dof_lut` for `d12-A_50_34_i_5rot` on the CURRENT
-stack `w_2026_39` (the dry run plans 3 jobs), so the smoke test has something to compare
-against at zero tolerance. Put it under
-`$RUBINWORK_DATA/studies/phase3c_validation/stack_move/w39/` if the Snakefile can write
-outside the products tree; otherwise build it as a normal dated build and do NOT
-`set-current`.** Then step 4 (pull `ts_wep` `develop` and move to `w_2026_41` in
-one step, re-setup all six packages), step 5 (smoke test: `pytest rubinwork`, 358 tests in
+**The upgrade is authorized (decision 8) and running. Steps 1 to 3 of 6 are done; the next
+action is step 4 — the move itself: fetch and pull `ts_wep` `develop` (report the new
+commit and the commits pulled), switch to `w_2026_41`, and re-setup all six local packages
+(`ts_intrinsic_wavefront` on `tickets/RSO-809`, `ts_wep`, `ts_ofc`, `summit_utils`,
+`ts_config_mttcs`, `ts_aos_analysis`), running `scons` or a version build where a package
+needs one. Record the exact setup commands here. If `summit_utils` (cut from `w_2026_34`)
+or any other package fails to set up, report the error and STOP — do not patch an external
+package to make it pass.** Then step 5 (smoke test: `pytest rubinwork`, 358 tests in
 about 120 s, then the zero-tolerance `dof_lut` rebuild comparison), step 6 (report and
 stop). Items 5 to 7 of the comparison plan come the session after, on `w_2026_41`.
 
@@ -1092,6 +1094,57 @@ at all, and `write` recording the stack and honoring an `extra` override).
   the `_real_stack_state` captured at import and call `cache_clear()`; a bare `lambda`
   replacement has no `cache_clear`, which is what broke the first attempt (37 teardown
   errors). `write` deep-copies the cached dict so a caller cannot mutate the cache.
+
+## Upgrade step 3: the `w_2026_39` reference `dof_lut` is BUILT, 2026-10-15
+
+The thing the stack-move smoke test compares against. Built on the **old** stack,
+`w_2026_39` / `lsst-scipipe-13.1.0-exact`, before the move.
+
+**It is a normal dated build with NO `set-current`**, not a build under
+`studies/`. The Snakefile **cannot** write outside the products tree: `BUILD_DIR` comes
+from `dof_lut.build_dir(VARIANT, BUILD)`, which is `catalog.products_root() / PRODUCT /
+variant / build` with no config knob (`rubinwork/products/dof_lut/reader.py:192`). So the
+step's fallback applies.
+
+```bash
+cd ~/notebooks/rubin-work && \
+snakemake -s rubinwork/products/dof_lut/Snakefile \
+  --cores 1 --config variant=d12-A_50_34_i_5rot build=20261015w39
+```
+
+- **3 of 3 jobs** (`build_lut`, `manifest`, `all`), as the dry run predicted. Local, about
+  12 s wall clock — **no batch job needed.**
+- Build `20261015w39` at
+  `products/dof_lut/d12-A_50_34_i_5rot/20261015w39/`, 6 files, `status: complete`.
+  **`dof_lut` had no directory in the new tree before this**; this is its first build there,
+  and the variant has **no `current` symlink**, deliberately.
+- Inputs recorded: `fam_tables: danish_1_2@20261014` and
+  `miw: d12-A_50_34_i_5rot@20261014`.
+- **It is the first product in the tree carrying the step 2 `stack` block**, reading
+  `w_2026_39` / `lsst-scipipe-13.1.0-exact` and `ts_intrinsic_wavefront` at
+  `rubinwork-2026-10-15`.
+
+### The reference copy and its checksums, for the step 5 comparison
+
+Copied out of the build directory so the comparison is against an immutable snapshot:
+`$RUBINWORK_DATA/studies/phase3c_validation/stack_move/w39/`.
+
+| file | md5 | rows (count, dimensionless) | columns (count, dimensionless) |
+|---|---|---|---|
+| `lut.parquet` | `4a83304b369aa32f303ebe64a9da15f6` | 50 | 7 |
+| `lut_dz.parquet` | `54c6bcca9a88f56995a563a008a30536` | 126 | 6 |
+| `lut_by_rotbin.parquet` | `1a3b451947d081dacacf9475aa0e3f78` | 450 | 7 |
+
+`lut.parquet` columns: `dof_index`, `dof_label`, `dof_unit`, `value`, `scatter_mad`,
+`mean`, `n_visits` — one row per DOF (50 DOF), `n_visits` = 969 visits. First rows, for a
+quick eyeball after the move: `M2_dz` value = 528.509872 µm, `M2_dx` = 363.139748 µm,
+`M2_dy` = -2348.677584 µm (hexapod rigid-body offsets, µm).
+
+**A number not to be alarmed by:** the Snakefile's header comment quotes `M2_dy` as
+-2407.34 µm. This build gives **-2348.677584 µm**, a difference of 58.7 µm. That is a
+different upstream `miw`/`fam_tables` build, not a stack effect — the comment describes the
+20260920-era build. Step 5 compares **this** build against the `w_2026_41` rebuild, so the
+comment's value does not enter.
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
