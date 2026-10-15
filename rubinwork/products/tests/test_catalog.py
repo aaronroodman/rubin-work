@@ -6,6 +6,7 @@ or writes the real data root on S3DF.
 
 import json
 import pathlib
+import subprocess
 import sys
 
 import pandas as pd
@@ -14,6 +15,26 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 from rubinwork.products import catalog, manifest  # noqa: E402
+
+# Captured before the autouse fixture patches the name on the module.
+_real_stack_state = manifest.stack_state
+
+
+@pytest.fixture(autouse=True)
+def _fake_stack(monkeypatch):
+    """Keep `manifest.write` from shelling out to eups and git in every test.
+
+    `stack_state` costs one ``eups list`` and four git commands per package,
+    which a test that only cares about catalog structure should not pay. A test
+    that exercises `stack_state` itself patches over this.
+    """
+    _real_stack_state.cache_clear()
+    monkeypatch.setattr(manifest, "stack_state",
+                        lambda *a, **k: {"eups_tag": "w_0000_00",
+                                         "conda_env": "test-env",
+                                         "packages": {}})
+    yield
+    _real_stack_state.cache_clear()
 
 
 @pytest.fixture
@@ -347,3 +368,78 @@ def test_cli_list(data_root, capsys):
 def test_git_state_outside_a_repo(tmp_path):
     commit, dirty = manifest.git_state(tmp_path)
     assert commit is None and dirty is None
+
+
+def test_stack_state_reads_the_eups_environment(monkeypatch, tmp_path):
+    """The weekly tag, the conda env and a package's git state are recorded."""
+    pkg = tmp_path / "ts_wep"
+    pkg.mkdir()
+    listing = (
+        "lsst_distrib          gdeadbeef+0123 \tw_2026_41 w_latest current setup\n"
+        f"ts_wep                LOCAL:{pkg} \tsetup\n"
+        "eups                  LOCAL:/cvmfs/somewhere/eups \tsetup\n"
+    )
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["eups", "list", "-s"]:
+            return subprocess.CompletedProcess(cmd, 0, listing, "")
+        args = cmd[3:]
+        if args[:1] == ["rev-parse"] and "--abbrev-ref" in args:
+            return subprocess.CompletedProcess(cmd, 0, "develop\n", "")
+        if args[:1] == ["rev-parse"]:
+            return subprocess.CompletedProcess(cmd, 0, "1ea1ae1d\n", "")
+        if args[:1] == ["status"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if args[:1] == ["describe"]:
+            return subprocess.CompletedProcess(cmd, 0, "v17.14.1-1-g1ea1ae1d\n", "")
+        return subprocess.CompletedProcess(cmd, 1, "", "no")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("CONDA_DEFAULT_ENV", "lsst-scipipe-14.0.0-exact")
+    # The autouse fixture patches `stack_state` out; this test wants the real one.
+    monkeypatch.setattr(manifest, "stack_state", _real_stack_state)
+    _real_stack_state.cache_clear()
+
+    state = manifest.stack_state(packages=("ts_wep", "ts_ofc"))
+    assert state["eups_tag"] == "w_2026_41"
+    assert state["conda_env"] == "lsst-scipipe-14.0.0-exact"
+    # A package that is not set up is absent, not present-and-null.
+    assert set(state["packages"]) == {"ts_wep"}
+    assert state["packages"]["ts_wep"] == {
+        "path": str(pkg),
+        "branch": "develop",
+        "commit": "1ea1ae1d",
+        "dirty": False,
+        "describe": "v17.14.1-1-g1ea1ae1d",
+    }
+
+
+def test_stack_state_survives_no_eups(monkeypatch):
+    """No eups on PATH leaves the fields null rather than raising."""
+    def fake_run(cmd, **kwargs):
+        raise OSError("no eups")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.delenv("CONDA_DEFAULT_ENV", raising=False)
+    monkeypatch.setattr(manifest, "stack_state", _real_stack_state)
+    _real_stack_state.cache_clear()
+    assert manifest.stack_state() == {
+        "eups_tag": None, "conda_env": None, "packages": {}}
+
+
+def test_write_records_the_stack(data_root, monkeypatch):
+    """Every manifest carries a stack block, and `extra` can override it."""
+    monkeypatch.setattr(manifest, "stack_state",
+                        lambda *a, **k: {"eups_tag": "w_2026_41",
+                                         "conda_env": "lsst-scipipe-14.0.0-exact",
+                                         "packages": {}})
+    build_dir = data_root / "products" / "dof_lut" / "v" / "20261015"
+    path = manifest.write(build_dir, product="dof_lut", variant="v",
+                          build="20261015")
+    man = json.loads(path.read_text())
+    assert man["stack"]["eups_tag"] == "w_2026_41"
+    assert man["stack"]["conda_env"] == "lsst-scipipe-14.0.0-exact"
+
+    path = manifest.write(build_dir, product="dof_lut", variant="v",
+                          build="20261015", extra={"stack": {"eups_tag": "w_2026_39"}})
+    assert json.loads(path.read_text())["stack"] == {"eups_tag": "w_2026_39"}

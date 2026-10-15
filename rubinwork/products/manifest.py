@@ -3,7 +3,10 @@
 Every product build calls `write` as its last step. The manifest records what
 the build is, what configuration produced it, which upstream builds it read and
 what it wrote, so two builds of one variant that disagree can be told apart
-without rerunning either.
+without rerunning either. The ``stack`` key records the environment as well —
+the eups ``lsst_distrib`` weekly tag, the conda environment, and the branch and
+commit of each locally set up package — so a difference that comes from a stack
+move rather than from a config change can be attributed to it.
 
 A build directory with no manifest, or one whose ``status`` is not
 ``"complete"``, is not in the catalog: that is what makes an interrupted build
@@ -23,18 +26,33 @@ At the end of a build::
                    inputs={"cwfs_tables": "danish_1_2@20260930"})
 """
 
+import copy
 import datetime
+import functools
 import json
 import os
 import pathlib
 import subprocess
 
-__all__ = ["write", "git_state", "file_stats", "set_current_build"]
+__all__ = ["write", "git_state", "stack_state", "file_stats",
+           "set_current_build"]
 
 MANIFEST_NAME = "manifest.json"
 CURRENT = "current"
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+# The locally set up packages whose version changes a product's numbers. Others
+# appear in `eups list -s` too; these are the ones the AOS products compute
+# with, so a build that differs is worth attributing to one of them first.
+STACK_PACKAGES = (
+    "ts_intrinsic_wavefront",
+    "ts_wep",
+    "ts_ofc",
+    "summit_utils",
+    "ts_config_mttcs",
+    "ts_aos_analysis",
+)
 
 
 def git_state(repo=None):
@@ -66,6 +84,101 @@ def git_state(repo=None):
         return head.stdout.strip(), bool(status.stdout.strip())
     except (OSError, subprocess.SubprocessError):
         return None, None
+
+
+def _git_out(repo, *args):
+    """One git command's stdout, or `None` if it cannot be run.
+
+    Parameters
+    ----------
+    repo : `str` or `pathlib.Path`
+        Repository to run in.
+    *args
+        Arguments after ``git -C <repo>``.
+
+    Returns
+    -------
+    out : `str` or `None`
+        Stripped stdout, or `None` on any failure or empty output.
+    """
+    try:
+        done = subprocess.run(["git", "-C", str(repo), *args],
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    return done.stdout.strip() or None
+
+
+@functools.lru_cache(maxsize=None)
+def stack_state(packages=STACK_PACKAGES):
+    """The stack and locally set up packages the build ran against.
+
+    Read from the eups environment, so it records what was actually set up
+    rather than what a config says should have been. A build made on one weekly
+    and a build made on another are otherwise indistinguishable from their
+    manifests.
+
+    Cached for the life of the process: it costs one ``eups list`` and four git
+    commands per package, and a build cannot change its own environment
+    mid-run. Call ``stack_state.cache_clear()`` in a test that patches what it
+    reads.
+
+    Parameters
+    ----------
+    packages : `tuple` [`str`], optional
+        eups package names to look for among the locally set up packages.
+        `STACK_PACKAGES` by default. Must be hashable, for the cache.
+
+    Returns
+    -------
+    state : `dict`
+        ``eups_tag`` is the ``lsst_distrib`` tag (``"w_2026_41"``), or `None` if
+        eups is unavailable or ``lsst_distrib`` is not set up; ``conda_env`` is
+        the conda environment name; ``packages`` maps each package found to
+        ``{"path", "branch", "commit", "dirty", "describe"}``, with `None` for
+        any field git could not supply. A package that is not set up is absent
+        rather than present-and-null, so its absence is visible.
+    """
+    state = {
+        "eups_tag": None,
+        "conda_env": os.environ.get("CONDA_DEFAULT_ENV"),
+        "packages": {},
+    }
+    try:
+        done = subprocess.run(["eups", "list", "-s"],
+                              capture_output=True, text=True, timeout=120)
+        listing = done.stdout if done.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        listing = ""
+
+    wanted = set(packages)
+    for line in listing.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        name = fields[0]
+        if name == "lsst_distrib":
+            # The weekly tag, not the build hash: "<hash> w_2026_39 ... setup".
+            tags = [f for f in fields[1:] if f.startswith("w_")]
+            state["eups_tag"] = tags[0] if tags else None
+            continue
+        if name not in wanted:
+            continue
+        local = [f for f in fields[1:] if f.startswith("LOCAL:")]
+        if not local:
+            continue
+        path = local[0][len("LOCAL:"):]
+        commit, dirty = git_state(path)
+        state["packages"][name] = {
+            "path": path,
+            "branch": _git_out(path, "rev-parse", "--abbrev-ref", "HEAD"),
+            "commit": commit,
+            "dirty": dirty,
+            "describe": _git_out(path, "describe", "--tags", "--dirty"),
+        }
+    return state
 
 
 def file_stats(build_dir, files=None):
@@ -139,7 +252,8 @@ def write(build_dir, product, variant, build, config=None, inputs=None,
         ``"complete"`` by default. Any other value keeps the build out of the
         catalog.
     extra : `dict`, optional
-        Additional top-level keys to merge into the manifest.
+        Additional top-level keys to merge into the manifest. Merged last, so a
+        key given here overrides one the writer computed, ``stack`` included.
 
     Returns
     -------
@@ -160,6 +274,8 @@ def write(build_dir, product, variant, build, config=None, inputs=None,
         "config": config or {},
         "inputs": inputs or {},
         "files": {} if location else file_stats(build_dir, files),
+        # Deep copy: `stack_state` is cached and hands back one shared dict.
+        "stack": copy.deepcopy(stack_state()),
     }
     if location:
         man["location"] = str(location)
