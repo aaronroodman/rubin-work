@@ -414,6 +414,28 @@ def test_stack_state_reads_the_eups_environment(monkeypatch, tmp_path):
     }
 
 
+@pytest.mark.parametrize("tags, expected", [
+    # w_2026_39 lists the weekly first, w_2026_41 lists `current w_latest` first.
+    ("w_2026_39 w_latest current setup", "w_2026_39"),
+    ("current w_latest w_2026_41 setup", "w_2026_41"),
+    ("current setup", None),
+])
+def test_stack_state_takes_the_dated_weekly_not_an_alias(monkeypatch, tags,
+                                                         expected):
+    """`w_latest` and `current` are moving aliases and name no weekly."""
+    listing = f"lsst_distrib          gdeadbeef+0123 \t{tags}\n"
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["eups", "list", "-s"]:
+            return subprocess.CompletedProcess(cmd, 0, listing, "")
+        return subprocess.CompletedProcess(cmd, 1, "", "no")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(manifest, "stack_state", _real_stack_state)
+    _real_stack_state.cache_clear()
+    assert manifest.stack_state()["eups_tag"] == expected
+
+
 def test_stack_state_survives_no_eups(monkeypatch):
     """No eups on PATH leaves the fields null rather than raising."""
     def fake_run(cmd, **kwargs):

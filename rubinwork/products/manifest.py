@@ -32,6 +32,7 @@ import functools
 import json
 import os
 import pathlib
+import re
 import subprocess
 
 __all__ = ["write", "git_state", "stack_state", "file_stats",
@@ -41,6 +42,9 @@ MANIFEST_NAME = "manifest.json"
 CURRENT = "current"
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+# A dated weekly, "w_2026_41". Excludes the aliases "w_latest" and "current".
+_WEEKLY_RE = re.compile(r"w_\d{4}_\d{2}")
 
 # The locally set up packages whose version changes a product's numbers. Others
 # appear in `eups list -s` too; these are the ones the AOS products compute
@@ -160,8 +164,12 @@ def stack_state(packages=STACK_PACKAGES):
             continue
         name = fields[0]
         if name == "lsst_distrib":
-            # The weekly tag, not the build hash: "<hash> w_2026_39 ... setup".
-            tags = [f for f in fields[1:] if f.startswith("w_")]
+            # The dated weekly, not the build hash and not a moving alias. The
+            # tag list is unordered and carries aliases: w_2026_39 lists as
+            # "<hash> w_2026_39 w_latest current setup" but w_2026_41 lists as
+            # "<hash> current w_latest w_2026_41 setup", so taking the first
+            # w_-prefixed field records "w_latest" and names no weekly at all.
+            tags = [f for f in fields[1:] if _WEEKLY_RE.fullmatch(f)]
             state["eups_tag"] = tags[0] if tags else None
             continue
         if name not in wanted:
