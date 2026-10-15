@@ -13,8 +13,9 @@
 > and package upgrade. That upgrade is **authorized and IN PROGRESS** (decision 8): target
 > weekly `w_2026_41` / `lsst-scipipe-14.0.0-exact`. **Step 1 of 6 is done** —
 > `ts_intrinsic_wavefront` is committed, fast-forwarded onto `tickets/RSO-809`, tagged
-> `rubinwork-2026-10-15` and pushed; only its draft PR is outstanding, blocked on `gh`
-> auth. The stack is still `w_2026_39`.
+> `rubinwork-2026-10-15` and pushed (only its draft PR is outstanding, blocked on `gh`
+> auth), and **step 2 is done** — every manifest now records the stack. The stack is still
+> `w_2026_39`.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
@@ -916,15 +917,16 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is authorized (decision 8) and running. Step 1 of 6 is done; the next action
-is step 2 — extend `rubinwork/products/manifest.py` so every new manifest records the eups
-`lsst_distrib` tag, the conda env name, and the branch / commit / clean-dirty of each of
-the six `setup -r` packages, via the `extra` dict and with no schema migration, plus a
-test.** Then step 3 (the `w_2026_39` reference `dof_lut` build for
-`d12-A_50_34_i_5rot`, 3 jobs), step 4 (pull `ts_wep` `develop` and move to `w_2026_41` in
-one step, re-setup all six packages), step 5 (smoke test: 355 `pytest rubinwork` tests, then
-the zero-tolerance `dof_lut` rebuild comparison), step 6 (report and stop). Items 5 to 7
-of the comparison plan come the session after, on `w_2026_41`.
+**The upgrade is authorized (decision 8) and running. Steps 1 and 2 of 6 are done; the next
+action is step 3 — build the reference `dof_lut` for `d12-A_50_34_i_5rot` on the CURRENT
+stack `w_2026_39` (the dry run plans 3 jobs), so the smoke test has something to compare
+against at zero tolerance. Put it under
+`$RUBINWORK_DATA/studies/phase3c_validation/stack_move/w39/` if the Snakefile can write
+outside the products tree; otherwise build it as a normal dated build and do NOT
+`set-current`.** Then step 4 (pull `ts_wep` `develop` and move to `w_2026_41` in
+one step, re-setup all six packages), step 5 (smoke test: `pytest rubinwork`, 358 tests in
+about 120 s, then the zero-tolerance `dof_lut` rebuild comparison), step 6 (report and
+stop). Items 5 to 7 of the comparison plan come the session after, on `w_2026_41`.
 
 One thing is outstanding from step 1 and needs Aaron: **the draft PR is not open**, because
 `gh` is unauthenticated on S3DF. The ready-to-run command and the body file are in the
@@ -1055,6 +1057,41 @@ gh pr create --draft \
 
 No PR list could be checked for an existing PR on this branch, for the same auth reason —
 if one already exists, update its description from that file instead of opening a second.
+
+## Upgrade step 2: the manifest records the stack, 2026-10-15 — DONE, `020fb55`
+
+Closes the gap named in the inventory below. Every manifest written from now on carries a
+**`stack`** key:
+
+- `eups_tag` — the `lsst_distrib` weekly (`"w_2026_39"` now), parsed as the `w_`-prefixed
+  tag from `eups list -s`, not the build hash.
+- `conda_env` — from `$CONDA_DEFAULT_ENV` (`"lsst-scipipe-13.1.0-exact"` now).
+- `packages` — for each of the six `setup -r` packages in `manifest.STACK_PACKAGES`:
+  `path`, `branch`, `commit`, `dirty` and `describe`. A package that is **not** set up is
+  **absent** from the dict rather than present-and-null, so its absence is visible.
+
+Implemented as `manifest.stack_state()` and merged in `write` via the `extra` mechanism, so
+**no schema migration** and `extra` still overrides (a caller can pin a `stack` block).
+Verified live: all six packages found, every field matching the inventory table below, with
+`ts_intrinsic_wavefront` correctly showing `tickets/RSO-809` / `529713b` /
+`rubinwork-2026-10-15`.
+
+**Tests: 358 passed, 0 failed** (`python -m pytest rubinwork`, 119.9 s) — the 355 baseline
+plus 3 net-new (`stack_state` against a faked eups environment, `stack_state` with no eups
+at all, and `write` recording the stack and honoring an `extra` override).
+
+### Two things the next session should not relearn
+
+- **The "355 tests in 0.99 s" in the old inventory was the COLLECTION time, not the run
+  time.** The suite takes about **120 s** wall clock. Budget for that, and do not read a
+  two-minute run as a hang.
+- **`stack_state` is `lru_cache`d, and the catalog tests patch it out through an autouse
+  fixture.** Both are load-bearing for speed, not tidiness: `write` costs one `eups list`
+  plus four git subprocesses per package, and without the cache and the fixture the suite
+  went **779 s** instead of 120 s. A test that wants the real function must restore it from
+  the `_real_stack_state` captured at import and call `cache_clear()`; a bare `lambda`
+  replacement has no `cache_clear`, which is what broke the first attempt (37 teardown
+  errors). `write` deep-copies the cached dict so a caller cannot mutate the cache.
 
 ## The package and stack inventory, 2026-10-15 (read-only)
 
