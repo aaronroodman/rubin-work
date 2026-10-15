@@ -4,8 +4,8 @@ RSO-809 — measured intrinsic wavefront (MIW) build support for the rubin-work 
 
 ## What this is
 
-The `tickets/RSO-809` branch, rolled forward to `529713b`. It is 14 commits ahead of
-`develop` and 0 behind. The last two commits are new; the other 12 were already on the
+The `tickets/RSO-809` branch, rolled forward to `4c77b90`. It is 16 commits ahead of
+`develop` and 0 behind. The last four commits are new; the other 12 were already on the
 branch and are included here because the branch has not been reviewed yet.
 
 Changes, oldest first:
@@ -24,18 +24,35 @@ Changes, oldest first:
 - `00d0920` Merge remote-tracking branch 'origin/develop' into tickets/RSO-809
 - `a6394e7` rotator_angle: rotTelPos first, ConsDB fallback, source column
 - `529713b` plot_dof_median_summary: bucket DOF by label, not global index
+- `f9bafa2` Fix flake8 lint across the files RSO-809 touches
+- `4c77b90` Clear the remaining flake8 findings: whole repo now lints clean
+
+The last two are lint-only and change no numerical result. `f9bafa2` covers the files this
+branch touches; `4c77b90` clears the rest of the repo, including one latent `W605` invalid
+escape sequence. `flake8 .` over the whole repo now reports **0 findings**.
 
 ## Tests
 
-`python -m pytest tests` in the package, on `lsst_distrib` `w_2026_39`
-(eups tag `g00e868bf88+054f4cc332`, conda env `lsst-scipipe-13.1.0-exact`, Python 3.13):
-**10 tests passed, 0 failed**, run twice — once before the roll-in on
-`tickets/rubinwork-rottelpos`, and once after the fast-forward on `tickets/RSO-809` at
-`529713b`.
+`python -m pytest tests` in the package: **10 tests passed, 0 failed** on every run below.
 
-The branch head is also tagged `rubinwork-2026-10-15` (annotated, non-release) as the
-reference point the rubin-work phase-3c products were built against, before that work
-moves to `w_2026_41`.
+- At the branch head `4c77b90`, on `lsst_distrib` `w_2026_42` (eups tag
+  `g00e868bf88+ec6e0cf799`, conda env `lsst-scipipe-14.0.0-exact`, Python 3.13.16):
+  **10 passed, 0 failed** in **1.5 s** of wall clock.
+- Earlier, at `529713b` on `lsst_distrib` `w_2026_39` (eups tag
+  `g00e868bf88+054f4cc332`, conda env `lsst-scipipe-13.1.0-exact`, Python 3.13):
+  **10 passed, 0 failed**, run twice — once before the roll-in on
+  `tickets/rubinwork-rottelpos`, and once after the fast-forward on `tickets/RSO-809`.
+
+So the suite passes both across the lint commits and across the stack move from
+`w_2026_39` to `w_2026_42`.
+
+## The tag marks `529713b`, not the branch head
+
+The annotated, non-release tag **`rubinwork-2026-10-15` marks `529713b`** — the tree the
+rubin-work phase-3c MIW product builds actually used. It is deliberately **not** moved onto
+the head: `f9bafa2` and `4c77b90` landed after those builds, so moving the tag would
+misstate which tree produced them. `git describe` on the head reads
+`rubinwork-2026-10-15-2-g4c77b90`.
 
 ## What rubin-work depends on
 
@@ -57,7 +74,9 @@ Four commits on this branch are load-bearing for the rubin-work AOS product buil
 
 - Base is `develop`, not `main`: `main` holds a single "Initial commit" and the `v2` and
   `v2.1` release tags were both cut on the `develop` line.
-- Draft, for review of the accumulated branch rather than of a single change.
+- This is review of the accumulated branch rather than of a single change. The PR title
+  still names only the first commit (the per-donut sidecar); the commit list above is the
+  actual scope.
 
 Generated with AI
 
