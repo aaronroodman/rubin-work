@@ -1,7 +1,9 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
 > **Status:** 3a and 3b complete; **3c at 7 of 8 comparison-plan items** — only item 8
-> (`value_added`) remains, which is the agreed stop. Items 5 (`coadds`), 6 (`dof_lut`) and
+> (`value_added`) remains, which is the agreed stop. **Item 8 is PLANNED, NOT BUILT**
+> (plan written 2026-10-15, "Item 8 plan"): nothing built, copied or written to any
+> database, and it is **waiting on Aaron's OK** and on five open questions. Items 5 (`coadds`), 6 (`dof_lut`) and
 > 7 (`bounce_tables`) were all built on `w_2026_42`, compared clean and promoted to
 > `current` on 2026-10-15; every difference found is on the expected list. **The stack and
 > package upgrade is COMPLETE** and numerically transparent: the `coadds` maps agree with
@@ -29,9 +31,13 @@
 > `w_2026_39` reference, all three md5 checksums equal. **No library moved from 41 to 42**,
 > and neither scipy 1.18.1 nor the 28 `ts_wep` commits reaches the `dof_lut` path, so **the
 > `ts_wep` rollback test was not needed and must not be redone**. See "Upgrade step 5".
-> **The `ts_intrinsic_wavefront` draft PR (`tickets/RSO-809` into `develop` — base is
-> `develop`, NOT `main`) is still not open, and it is Aaron's to open**, `gh` being
-> unauthenticated on S3DF; the ready-to-run command and body file are in the step 1 section.
+> **A PR on `tickets/RSO-809` ALREADY EXISTS and is OPEN: `lsst-ts/ts_intrinsic_wavefront`
+> PR #1**, base `develop` (correct), opened 2026-07-06, and **not a draft**. `gh` is now
+> authenticated on S3DF (account `aaronroodman`), so this was checkable for the first time;
+> **no second PR was opened**. The body file
+> `notes/status/pr_bodies/ts_intrinsic_wavefront_RSO-809.md` is updated to be true at the
+> branch head `4c77b90`, but **PR #1's description on GitHub has NOT been edited** — see
+> the step 1 section.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
@@ -968,11 +974,262 @@ are the only thing that fails.
   honest option. The remaining 7 variants either have no old-tree output (so there is
   nothing to register) or are the real rebuild targets.
 
+## Item 8 plan (`value_added`) — WRITTEN 2026-10-15, NOTHING BUILT
+
+Plan only, as instructed: nothing is built, copied, or written to any database. Every
+number below was measured through a **read-only** DuckDB connection, with no builder
+running. Awaiting Aaron's OK.
+
+### a. Current state
+
+**The live database:** `value_added/output/aos_efd.duckdb`, **2.80 GB of file size**
+(2,796,564,480 bytes), last written 2026-10-08. Two other files sit beside it and are
+**not** part of the product: `aos_efd_archive_20260916_pre_vmode_rebuild.duckdb`
+(0.54 GB of file size) and `aos_efd.duckdb.prev` (0.0058 GB of file size).
+
+**Eight tables** (row counts and DuckDB `estimated_size` in rows, both dimensionless
+counts of rows):
+
+| table | rows | columns | key |
+|---|---|---|---|
+| `visit_telemetry` | 213,704 | 197 | (`visit_id`) |
+| `optical_state` | 406,220 | 15 | (`visit_id`, `variant_id`) |
+| `m1m3_thermal_r2` | 211,922 | 28 | (`visit_id`) |
+| `fetch_log` | 3,293 | 6 | (`day_obs`, `group_name`) |
+| `fam_dz` | 2,528 | 16 | (`visit_id`, `fam_variant_id`) |
+| `column_coverage` | 196 | 8 | (`column_name`) |
+| `state_variant` | 4 | 11 | (`variant_id`) |
+| `fam_variant` | 1 | 14 | (`fam_variant_id`) |
+
+Coverage: `visit_telemetry` spans `day_obs` **20250415 to 20260714**, **366 distinct
+nights**. `fam_dz` spans **20250415 to 20260713**, **98 distinct nights**, one registered
+variant. `fetch_log` is **all `status='ok'`** over 9 groups x 366 nights (`twilight` has
+365, so 3,293 rows rather than 3,294).
+
+`optical_state` by variant, all four at scheme `consdb_v1` / `ofc_config_version` v13:
+
+| `variant_id` | rows | `intrinsic_route` | `intrinsic_ref` |
+|---|---|---|---|
+| `v50_34__batoid__consdb_v1` | 102,463 | batoid | `ofc_v13` |
+| `v22_12__batoid__consdb_v1` | 102,463 | batoid | `ofc_v13` |
+| `v50_34_rbr__batoid__consdb_v1` | 102,463 | batoid | `ofc_v13` |
+| `v50_34__miw__consdb_v1` | 98,831 | miw | `danish_1_2_A_50_34_i_5rot` |
+
+The MIW variant is the **only** one item 8 rebuilds, and it is 3,632 rows short of the
+batoid variants' 102,463 because the MIW build covers fewer nights. Of its 98,831 rows,
+**96,282 have `ok=true`** and **2,549 have `ok=false`** (dimensionless counts of rows).
+Across all variants **11,984 of 406,220 rows have a NULL `rotator_angle_deg`** and **0
+have a NULL `elevation_deg`**.
+
+**Readers today.** All go through `rubinwork.products.value_added.reader` (`open_db`
+defaults to `readonly=True`) or the `value_added/code/efd_db.py` shim:
+
+- *Products:* `fam_tables` — `builders/run_attach_telemetry.py` reads the four M1M3 bulk
+  thermal gradients from `visit_telemetry` (commit `bef17ba`, expected difference 6), and
+  `refbuild/check_gradient_rebuild.py` checks them.
+- *Studies / topic code:* `thermal_focus/code/thermal_focus_lib.py` (still reaches the
+  shim by `sys.path.insert` of `value_added/code`, not the installed package),
+  `olr/code/olr.py`, `aos/code/cwfs_lut/{cwfs_lut_lib,run_cwfs_lut}.py`,
+  `aos/code/miw_corner_intrinsic.py`, `rubinwork/miw_corner.py`,
+  `aos/miw_hull/code/azimuth_probe.py`, `rubinwork/common/dof_telemetry.py`.
+- *Notebooks (4):* `value_added/notebooks/value_added_db_validation.ipynb`,
+  `aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb`,
+  `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`, and
+  `aos/notebooks/bounce/_exectest.ipynb`.
+- `aos/Snakefile` references the database rows in its provenance comments.
+
+**Writers and schedule.** `rubinwork/products/value_added/builders/run_build.sh` (the
+`value_added/code/run_build.sh` shim forwards to it), driving `build_efd_db.py` (`--what
+telemetry`), `build_optical_state.py` (`--what state`), plus `build_fam_dz.py`,
+`build_m1m3_thermal_r2.py`, `merge_db_shards.py` and the two backfills. **There is no
+schedule at all:** `crontab` is forbidden for this account on this cluster
+("not allowed to use this program") and `scrontab` is **disabled cluster-wide**
+("scrontab is disabled on this cluster"); there is no `~/.config/systemd/user`. Every
+build to date has been launched by hand. **This kills plan section 6's "the state builder
+can run under Slurm `scrontab`" outright** — see open question 4.
+
+The sharding is not an optimization: DuckDB's file lock is process-wide and excludes
+readers as well as writers, so shards each write their own file and `merge_db_shards.py`
+combines them.
+
+### b. Target, per plan section 6
+
+```
+products/value_added/v1/
+  live/aos_efd.duckdb          builders only
+  snapshots/<YYYYMMDD>/aos_efd.duckdb
+  current@ -> snapshots/<latest>
+  _work/shards/
+```
+
+Under `catalog.products_root()` = `/sdf/group/rubin/u/roodman/LSST/rubin-work/products`.
+Space is not a constraint: **659 GB of free disk** on `/sdf/data/rubin` (932 GB total,
+30% used), against **2.80 GB per snapshot** — section 6's 7-nightly-plus-monthly
+retention is about **50 GB of disk**.
+
+**How `live` gets its first contents — two options.**
+
+*Option A, copy the current database (RECOMMENDED).* `cp` the 2.80 GB file into
+`v1/live/aos_efd.duckdb`, then rebuild **only** the two row sets item 8 actually changes
+(`fam_dz`, and the `v50_34__miw__consdb_v1` rows of `optical_state`) in place in the new
+`live`. Cost: the copy is **minutes of wall clock**, interactive; the `fam_dz` rebuild is
+**2,528 rows over 98 nights**, also interactive; the MIW `optical_state` rebuild is
+**98,831 rows over ~366 nights** and is the only part that is large — ConsDB-bound, so
+batch-capable at `--chunk 24` (about 16 shards), or interactive overnight.
+
+*Option B, a fresh full rebuild.* Rebuilds `visit_telemetry` (213,704 rows), 
+`m1m3_thermal_r2` (211,922 rows) and all four `optical_state` variants from scratch.
+**This is the expensive one and it cannot be batched:** `--what telemetry` is EFD-bound,
+and per `run_build.sh`'s own header the EFD **resolves from the RSP and from s3df
+interactive nodes (`slacrd`, `sdfiana*`) but NOT from the milano/torino/roma batch compute
+nodes**, so `--mode batch` is rejected for it and would fetch nothing. At the documented
+~20 minutes per 24-night shard, 366 nights is roughly **5 hours of EFD wall clock** even
+fully parallel across interactive shards, plus the ConsDB state builds. It also re-exposes
+every FAM-derived product to expected difference 8 on a **second** axis.
+
+**Recommend A.** Item 8's scope is the rows that depend on the rebuilt FAM/MIW products;
+`visit_telemetry` and `m1m3_thermal_r2` have no upstream in 3c and rebuilding them buys
+nothing but risk and 5 hours. A full rebuild is section 6's "occasional full rebuild in
+`_work/`, compared with `live`, then swapped in" — a later, separate exercise.
+
+### c. What changes in the rows
+
+1. **`fam_dz` rebuilt** from the new `fam_tables`/`miw` fits. **Trap:**
+   `build_fam_dz.resolve_paths` prefers the **old tree** under
+   `aos/output/fam_processing/<dir_name>/` when its files are there, and they **are** —
+   `danish_1_2/fits.parquet` and `visits.parquet` both still exist. Left alone the rebuild
+   silently reads the old tree. The run must force the catalog build.
+2. **The MIW-route `optical_state` variant** rebuilt against **`miw`
+   `d12-A_50_34_i_5rot@20261014`** (`current -> 20261014`). **Blocker:**
+   `build_optical_state.py` builds its MIW intrinsic as
+   `MiwCornerLookup(mi_name=intrinsic_ref, param_set=...)`, and the CLI exposes only
+   `--miw-param-set` / `--miw-ccd-height` — there is **no flag to pass a resolved
+   `decomp_path`**, which `MiwCornerLookup`'s own docstring calls the preferred route.
+   The catalog build's `intrinsic_split_decomp.parquet` is present. So item 8 needs a
+   small code change: add a `--miw-decomp-path` (or resolve the `miw` build through
+   `catalog.path` from `intrinsic_ref`) before any MIW rebuild runs. This is the concrete
+   form of the plan's "`build_optical_state --intrinsic miw` raises `KeyError`" defect.
+3. **Registry rows move to catalog names.** `fam_variant.fits_path` currently holds an
+   absolute old-tree path (`/sdf/home/r/roodman/notebooks/rubin-work/aos/output/fam_...`)
+   and `fam_variant.param_set` the long key
+   `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`; `state_variant.intrinsic_ref` holds the
+   joined name `danish_1_2_A_50_34_i_5rot`. All three become catalog names of the form
+   `miw:d12-A_50_34_i_5rot@20261014` / `fam_tables:danish_1_2@20261014`. This is the fix
+   for the silent join breakage `value_added/docs/schema.md` warns about.
+4. **`fetch_log` provenance.** Section 6 asks for the code git commit and the build time.
+   `fetch_log` today has **6 columns** (`day_obs`, `group_name`, `status`, `n_rows`,
+   `error`, `attempted_at`) and **no commit column**, so this is a schema addition, not a
+   value change. Note `attempted_at` is already in `compare_builds.EXPECTED_DIFF`.
+5. **The two backfills become build steps** (route 1, 2026-10-12):
+   `backfill_commanded_vmodes.py` (fills `v_modes_lut` / `v_modes_trim`, which a sharded
+   run cannot compute because each shard's `visit_telemetry` is empty) and
+   `backfill_optical_state_pointing.py` (fills `elevation_deg`, `rotator_angle_deg` from
+   ConsDB). Both must run **after** the merge, as they do today.
+6. **`optical_state.rotator_angle_deg` stays on ConsDB** (decision, 2026-10-11), so it
+   does **not** pick up difference 1. A FAM visit's two rotator angles legitimately differ
+   by up to about **0.30 deg of camera rotator angle**.
+
+### d. Expected differences against the current live database — WRITTEN BEFORE ANY BUILD
+
+Comparison-plan style. Per plan section 12 any difference **not** on this list is a stop.
+
+| # | difference | which tables it reaches | predicted size |
+|---|---|---|---|
+| 1 | `rotator_angle` on every FAM visit | `fam_dz` only, through the FAM `fits.parquet` it reads | median **0.129 deg**, max **0.456 deg** of camera rotator angle; shifts `dz_coeff`, `v_modes` and `dof` by the amount difference 2 bounds. **Does not reach `optical_state`** (ConsDB route) |
+| 2 | the CCS-map rotation | `fam_dz` (via the MIW fits), and the MIW-route `optical_state` rows (via the corner intrinsic) | per-bin theta moves by median **0.3387 deg**; CCS wavefront RMS change **7.8e-5 to 9.2e-4 µm of wavefront**, OCS at most **7e-6 µm of wavefront**. No visit changes MIW rotator bin |
+| 7 | the MIW field-edge rim fill | the MIW-route `optical_state` rows, through the corner intrinsic evaluated at the 4 corner field points | the corner field points are at **r well inside 1.729 deg of field angle**, so predicted **zero effect**; any non-zero change here is a **stop**, not this difference |
+| — | `computed_at` on every rebuilt row | `fam_dz`, `optical_state` | already in `compare_builds.EXPECTED_DIFF`; ignored by construction |
+| — | registry text (item c3) | `fam_variant.{param_set,fits_path}`, `state_variant.intrinsic_ref` | **3 string fields on 2 rows** change by design; values not numerically comparable |
+| — | `fetch_log` schema addition (item c4) | `fetch_log` | **+1 or +2 columns**, 3,293 rows; no existing value changes |
+
+Differences **3, 4, 5, 6 and 8 are predicted NOT to reach this product.** 3, 4 and 5 are
+`fits.parquet` / `visits.parquet` column-set changes that `build_fam_dz` does not read;
+6 (gradients, `lut_dof5..9`) and 8 (the ESS window) live in `visit_telemetry`, which
+option A does not rebuild — `visit_telemetry` must come out **bit-identical, column for
+column**, since `compare_builds` gives it no `EXPECTED_DIFF` entry at all. **If
+`visit_telemetry`, `m1m3_thermal_r2`, `column_coverage` or the three batoid
+`optical_state` variants differ by even one row under option A, that is a stop** — it
+means the rebuild wrote somewhere it should not have.
+
+**Method.** `rubinwork/products/value_added/compare_builds.py`, zero tolerance, which
+aligns every table on `TABLE_KEYS` — never positionally:
+
+- `visit_telemetry` (`visit_id`), `m1m3_thermal_r2` (`visit_id`),
+  `optical_state` (`visit_id`, `variant_id`), `fam_dz` (`visit_id`, `fam_variant_id`),
+  `fetch_log` (`day_obs`, `group_name`), `column_coverage` (`column_name`),
+  `state_variant` (`variant_id`), `fam_variant` (`fam_variant_id`).
+
+Run it **a = the current live database (read-only), b = `v1/live`**, and report
+`keys_only_a` / `keys_only_b` per table as well as the per-column differences. Expect
+`keys_only_*` of **0 on every table** under option A; a non-zero count on
+`optical_state` means the MIW variant's night coverage moved and needs explaining before
+promotion.
+
+### e. Cutover
+
+- **Readers move to `current@`** through `rubinwork.products.value_added.reader`, whose
+  `default_db_path()` resolves **old tree first, then the catalog** — so the single
+  switch is to flip that precedence (or set `AOS_EFD_DB`, which already wins over both)
+  once `v1/current` exists. No reader's own code needs editing for the product code and
+  notebooks that already go through the reader. The one exception is
+  `thermal_focus/code/thermal_focus_lib.py`, which reaches the shim by
+  `sys.path.insert` of `value_added/code`; it keeps working through the shim but should
+  move to the installed package.
+- **What stays on the old path, and for how long.** `value_added/output/aos_efd.duckdb`
+  stays exactly where it is, untouched and read-only, as the comparison reference and the
+  rollback — **through phase 5**, when the shims come out. The two sidecar files
+  (`aos_efd_archive_*`, `.prev`) are **not copied** into the new tree, per plan section 9.
+  **No file is deleted at any point in item 8.**
+- **Rollback:** the old path is unmodified, so rollback is reverting the
+  `default_db_path()` precedence (or unsetting `AOS_EFD_DB`). If a bad snapshot is already
+  `current`, move `current@` back to the previous snapshot — snapshots are immutable
+  copies, so this costs nothing. No `set-current` is performed in item 8 regardless.
+
+### f. Decision 10 as a later phase — SCOPE ONLY, NOT PART OF ITEM 8
+
+The products and topic code that re-derive per-exposure telemetry today, and the
+value-added table that would replace each read:
+
+| re-derives telemetry today | what it fetches | would read instead |
+|---|---|---|
+| `rubinwork/products/fam_tables/builders/run_attach_telemetry.py` | the 8 `attach_telemetry` groups, ~405 columns, incl. the 7 ESS temperature columns of difference 8 | `visit_telemetry` (already does so for the 4 M1M3 gradients, commit `bef17ba` — this is the proven pattern) |
+| `rubinwork/products/fam_tables/builders/run_blitz_mktable.py` | the blitz-path telemetry attach | `visit_telemetry` |
+| `aos/code/coadd/recompute_coadd_metrics.py` | the ESS temperatures and M1M3 gradients that are differences 6 and 8 in `coadd_metrics.parquet` | `visit_telemetry` |
+| `blocks/code/telemetry_pipeline.py`, `blocks/code/build_t539_table.py` | its own EFD/ConsDB per-visit pull | `visit_telemetry`, `m1m3_thermal_r2` |
+| `olr/code/telemetry.py`, `olr/code/nightly_table.py`, `olr/code/aos_dof_audit.py` | hexapod/DOF telemetry per visit | `visit_telemetry`, `optical_state` |
+| `thermal_focus/code/run_thermal_focus.py` | ESS temperatures and M1M3 thermal | `visit_telemetry`, `m1m3_thermal_r2` |
+| `guider/code/guider_utils.py` | per-visit telemetry for the guider moments | `visit_telemetry` |
+| `rubinwork/common/{ess_telemetry,consdb_efd,visit_telemetry,telemetry_clients}.py` | the shared fetch layer every caller above goes through | stays, but becomes the **builder's** fetch layer only, not a per-product one |
+
+The payoff is that differences 6 and 8 are **both** artifacts of this re-derivation, so a
+single read removes the class rather than fixing two instances. Sizing is for after
+phase 3, per decision 10.
+
+### g. Open questions for Aaron (5)
+
+1. **Option A or B** for how `v1/live` gets its first contents? The plan recommends **A**
+   (copy the 2.80 GB file, rebuild only `fam_dz` and the MIW `optical_state` rows); B is
+   roughly **5 hours of EFD wall clock** and cannot be batched.
+2. **The `--miw-decomp-path` code change** (item c2) is needed before any MIW
+   `optical_state` rebuild. OK to add it as part of item 8, or is that a separate item?
+3. **The MIW `optical_state` rebuild of 98,831 rows over ~366 nights** is the only part
+   large enough to want batch (ConsDB-bound, so batch works). Interactive overnight, or
+   do you want to see the `sbatch` command for an ask?
+4. **There is no scheduling mechanism on this cluster** — `crontab` is forbidden for this
+   account and `scrontab` is disabled cluster-wide. Section 6's nightly job therefore has
+   nowhere to run. Drop the nightly job from the plan, or is there another host?
+5. **`fetch_log` provenance** (item c4) is a schema addition. Add the commit/build-time
+   columns in item 8, or defer so item 8 changes no schema at all?
+
 ## Next concrete action
 
-**Items 5, 6 and 7 are ALL DONE, compared clean and promoted on `w_2026_42`. 3c is at 8 of
-8 comparison-plan items bar item 8, which is the agreed stop. The next action is item 8
-(`value_added`) in a fresh session, with Aaron's go.**
+**Waiting on Aaron's OK for the item 8 plan.** Items 5, 6 and 7 are ALL DONE, compared
+clean and promoted on `w_2026_42`. The **item 8 (`value_added`) plan is WRITTEN** — see
+"Item 8 plan" above — and **nothing is built, copied or written to any database**. It
+carries five open questions, and questions 1 (copy versus full rebuild), 2 (the
+`--miw-decomp-path` code change, which blocks any MIW rebuild) and 3 (batch or
+interactive for the 98,831-row MIW `optical_state` rebuild) must be answered before any
+build starts.
 
 1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
    compared clean against the **i-band archive** and `set-current`. Every difference on
@@ -1007,9 +1264,10 @@ item sections):
 
 Two things need Aaron, neither blocking items 5 to 7:
 
-- **The `ts_intrinsic_wavefront` draft PR is not open and is Aaron's to open** (`gh`
-  unauthenticated on S3DF). Base is **`develop`, not `main`** — see the step 1 section for
-  the ready-to-run command and the body file.
+- **`ts_intrinsic_wavefront` PR #1 already exists, is OPEN on base `develop`, and is not a
+  draft.** Nothing to open. Outstanding, both Aaron's call: pushing the updated body to the
+  PR (`gh pr edit 1 --body-file ...`) and retitling it, since the title names only the
+  first of the branch's 16 commits. See the step 1 section.
 - **v4 Butler ingest** — still deferred, Aaron's call.
 
 Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
@@ -1121,25 +1379,50 @@ Four commits on the branch are what rubin-work depends on, all confirmed contain
 OCS/CCS rim fill, arriving via the `00d0920` merge of `develop`), `f45bfbf` (the ESS
 temperature / TMA truss ConsDB source) and `529713b` (this plot fix).
 
-### The draft PR is NOT open: `gh` has no credentials on S3DF
+### The PR already exists: #1, OPEN, base `develop`, and NOT a draft
 
-`gh` 2.101.0 is installed but unauthenticated — no `~/.config/gh`, no `GH_TOKEN` or
-`GITHUB_TOKEN` — and `gh auth login` is interactive, so Claude could not open it. Git over
-SSH works, which is why the branch and tag pushes succeeded. **The body is written and
-ready** at `notes/status/pr_bodies/ts_intrinsic_wavefront_RSO-809.md`; Aaron runs, after a
-one-time `gh auth login`:
+**Resolved 2026-10-15.** `gh` is authenticated on S3DF (account `aaronroodman`, token
+scopes `gist`, `read:org`, `repo`), so `gh pr list --head tickets/RSO-809 --state all`
+could run for the first time. It returns **one PR**:
+
+| field | value |
+|---|---|
+| number | **1** |
+| url | `https://github.com/lsst-ts/ts_intrinsic_wavefront/pull/1` |
+| title | "RSO-809: Add per-donut measured-intrinsic sidecar (Phase 2 step 3)" |
+| base | **`develop`** — already correct |
+| state | OPEN |
+| draft | **false** |
+
+**So no PR was opened**, and the earlier plan to open a `--draft` one is void: a second PR
+from the same branch into the same base is what the old note warned against. Two
+consequences the next session should not relearn:
+
+- **The title names only the first commit.** The branch is now **16 ahead / 0 behind
+  `origin/develop`** and holds 16 commits; the PR title still describes `923adb3` alone.
+  Retitling is Aaron's call.
+- **PR #1's description on GitHub was NOT edited.** Editing a non-draft PR on a shared
+  `lsst-ts` repo is outward-facing and was not authorized, so only the local body file was
+  updated. To push the body to the PR, Aaron (or a session with his OK) runs:
 
 ```bash
 cd /sdf/home/r/roodman/u/LSST/packages/ts_intrinsic_wavefront && \
-gh pr create --draft \
-  --base develop \
-  --head tickets/RSO-809 \
-  --title "RSO-809: MIW build support for the rubin-work AOS products" \
+gh pr edit 1 \
   --body-file /sdf/home/r/roodman/notebooks/rubin-work/notes/status/pr_bodies/ts_intrinsic_wavefront_RSO-809.md
 ```
 
-No PR list could be checked for an existing PR on this branch, for the same auth reason —
-if one already exists, update its description from that file instead of opening a second.
+**The body file is true at the branch head `4c77b90`** as of 2026-10-15: it lists the two
+lint commits `f9bafa2` and `4c77b90`, records `flake8 .` over the whole repo at **0
+findings**, records the tests, and states that the tag **`rubinwork-2026-10-15` marks
+`529713b`** — the tree the 3c MIW builds used — **not** the branch head (`git describe` on
+the head reads `rubinwork-2026-10-15-2-g4c77b90`). The tag is deliberately not moved:
+moving it would misstate which tree produced those builds.
+
+**Tests at the head, on `w_2026_42`:** `python -m pytest tests` in the package gives
+**10 passed, 0 failed** in **1.5 s of wall clock** (eups tag `g00e868bf88+ec6e0cf799`,
+conda env `lsst-scipipe-14.0.0-exact`, Python 3.13.16). The earlier `w_2026_39` runs at
+`529713b` also gave 10 passed, 0 failed, so the suite passes across both the lint commits
+and the stack move.
 
 ## Upgrade step 2: the manifest records the stack, 2026-10-15 — DONE, `020fb55`
 
