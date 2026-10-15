@@ -1100,15 +1100,53 @@ nothing but risk and 5 hours. A full rebuild is section 6's "occasional full reb
    `danish_1_2/fits.parquet` and `visits.parquet` both still exist. Left alone the rebuild
    silently reads the old tree. The run must force the catalog build.
 2. **The MIW-route `optical_state` variant** rebuilt against **`miw`
-   `d12-A_50_34_i_5rot@20261014`** (`current -> 20261014`). **Blocker:**
-   `build_optical_state.py` builds its MIW intrinsic as
-   `MiwCornerLookup(mi_name=intrinsic_ref, param_set=...)`, and the CLI exposes only
-   `--miw-param-set` / `--miw-ccd-height` — there is **no flag to pass a resolved
-   `decomp_path`**, which `MiwCornerLookup`'s own docstring calls the preferred route.
-   The catalog build's `intrinsic_split_decomp.parquet` is present. So item 8 needs a
-   small code change: add a `--miw-decomp-path` (or resolve the `miw` build through
-   `catalog.path` from `intrinsic_ref`) before any MIW rebuild runs. This is the concrete
-   form of the plan's "`build_optical_state --intrinsic miw` raises `KeyError`" defect.
+   `d12-A_50_34_i_5rot@20261014`** (`current -> 20261014`).
+
+   **CORRECTION, measured 2026-10-15: this is a SILENT-WRONG-INPUT trap, not a
+   `KeyError`.** An earlier draft of this plan called it a crash that blocks the rebuild.
+   It is the opposite, and worse: the builder **runs and succeeds**, reading the **old
+   tree**. Measured, not inferred:
+
+   ```python
+   miw_corner.decomp_path(mi_name='danish_1_2_A_50_34_i_5rot')
+   # -> aos/output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_decomp.parquet   exists
+   catalog.path('miw','d12-A_50_34_i_5rot') / DECOMP_FILE
+   # -> products/miw/d12-A_50_34_i_5rot/20261014/intrinsic_split_decomp.parquet   exists
+   ```
+
+   `build_optical_state.py` passes `state_variant.intrinsic_ref`, whose live value is the
+   joined name **`danish_1_2_A_50_34_i_5rot`**, as `MiwCornerLookup(mi_name=...)`.
+   `decomp_path` tests `aos/output/miw/<mi_name>/` first and **that directory exists**, so
+   it returns the old-tree file and the long-key `KeyError` branch is never reached. The
+   plan's recorded `KeyError` was for a param_set-keyed `mi_name`; the joined name
+   short-circuits it.
+
+   **The two files are NOT the same build.** Comparing all 10 columns of the 21-row
+   decomposition (`O_re`, `O_im`, `C_re`, `C_im` are array-valued object columns, so a
+   naive numeric loop silently skips them — compare element-wise):
+
+   | column | max abs difference | rows differing |
+   |---|---|---|
+   | `O_re` | **0.6966 µm of wavefront** | 21 of 21 |
+   | `O_im` | **0.8687 µm of wavefront** | 21 of 21 |
+   | `C_re` | 1.508e-03 µm of wavefront | 1 of 21 |
+   | `C_im` | 2.680e-16 µm of wavefront | 1 of 21 |
+
+   The six index columns (`j`, `n_spin`, `s`, `part`, `n_r`, `n_az`) are identical. So the
+   O (theta-independent) part carries a **sub-µm but far-from-negligible** change — three
+   orders of magnitude above difference 2's own CCS bound of 9.2e-04 µm of wavefront — and
+   an unforced rebuild would quietly use the stale intrinsic and produce `optical_state`
+   rows that look fine and are wrong.
+
+   **What item 8 needs**, therefore, is not a crash fix but an explicit override:
+   add a `--miw-decomp-path` to `build_optical_state.py` (or resolve `intrinsic_ref`
+   through `catalog.path`, which `decomp_path`'s own docstring recommends) and **pass the
+   catalog path**. Until then **no MIW `optical_state` rebuild may run.** Belt and braces:
+   assert the resolved path is under `catalog.products_root()` before building.
+
+   This is the **same class of defect as item c1** (`build_fam_dz.resolve_paths` also
+   prefers the old tree). Two of the product's inputs resolve old-tree-first, and both
+   old trees are still on disk.
 3. **Registry rows move to catalog names.** `fam_variant.fits_path` currently holds an
    absolute old-tree path (`/sdf/home/r/roodman/notebooks/rubin-work/aos/output/fam_...`)
    and `fam_variant.param_set` the long key
@@ -1141,6 +1179,7 @@ Comparison-plan style. Per plan section 12 any difference **not** on this list i
 | — | `computed_at` on every rebuilt row | `fam_dz`, `optical_state` | already in `compare_builds.EXPECTED_DIFF`; ignored by construction |
 | — | registry text (item c3) | `fam_variant.{param_set,fits_path}`, `state_variant.intrinsic_ref` | **3 string fields on 2 rows** change by design; values not numerically comparable |
 | — | `fetch_log` schema addition (item c4) | `fetch_log` | **+1 or +2 columns**, 3,293 rows; no existing value changes |
+| **2b** | **the old-tree vs catalog MIW intrinsic itself** (item c2, measured 2026-10-15) | the MIW-route `optical_state` rows only | the 20261014 catalog decomposition differs from the old-tree one by **0.6966 µm of wavefront** (`O_re`) and **0.8687 µm of wavefront** (`O_im`), 21 of 21 rows. This is **not** difference 2 — it is three orders of magnitude larger than difference 2's 9.2e-04 µm bound, and it is the *intended* change (the new build is the right one). It is listed so the `optical_state` v-mode and DOF shift it causes is explained in advance rather than read as a regression |
 
 Differences **3, 4, 5, 6 and 8 are predicted NOT to reach this product.** 3, 4 and 5 are
 `fits.parquet` / `visits.parquet` column-set changes that `build_fam_dz` does not read;
@@ -1210,8 +1249,13 @@ phase 3, per decision 10.
 1. **Option A or B** for how `v1/live` gets its first contents? The plan recommends **A**
    (copy the 2.80 GB file, rebuild only `fam_dz` and the MIW `optical_state` rows); B is
    roughly **5 hours of EFD wall clock** and cannot be batched.
-2. **The `--miw-decomp-path` code change** (item c2) is needed before any MIW
-   `optical_state` rebuild. OK to add it as part of item 8, or is that a separate item?
+2. **The `--miw-decomp-path` override** (item c2) is needed before any MIW
+   `optical_state` rebuild — not because the builder crashes, but because it silently
+   reads the **old-tree** MIW, which differs from the 20261014 catalog build by up to
+   **0.697 µm of wavefront** in `O_re`. OK to add it as part of item 8, or a separate
+   item? Related: do you want the same explicit-catalog-path treatment applied to
+   `build_fam_dz.resolve_paths` (item c1), which has the identical old-tree-first
+   preference?
 3. **The MIW `optical_state` rebuild of 98,831 rows over ~366 nights** is the only part
    large enough to want batch (ConsDB-bound, so batch works). Interactive overnight, or
    do you want to see the `sbatch` command for an ask?
@@ -1227,7 +1271,8 @@ phase 3, per decision 10.
 clean and promoted on `w_2026_42`. The **item 8 (`value_added`) plan is WRITTEN** — see
 "Item 8 plan" above — and **nothing is built, copied or written to any database**. It
 carries five open questions, and questions 1 (copy versus full rebuild), 2 (the
-`--miw-decomp-path` code change, which blocks any MIW rebuild) and 3 (batch or
+`--miw-decomp-path` override, without which a MIW rebuild silently uses the stale
+old-tree intrinsic) and 3 (batch or
 interactive for the 98,831-row MIW `optical_state` rebuild) must be answered before any
 build starts.
 
