@@ -1,39 +1,18 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a and 3b complete; **3c IN PROGRESS**, 3 of 8 comparison-plan items done.
-> **`fam_tables` is DONE**: `danish_1_2@20261014` (3,385 visits over 106 nights, the same
-> as the old tree) and `danish_1_3_{test,v1000}@20261013` (966 visits each) are all
-> `current`, each confirmed through `catalog.load()`. The **M1M3 gradient defect is FIXED
-> and the fix is promoted** (commit `bef17ba`, build `20261014`): the four gradients now
-> equal the value-added database at **max abs difference 0.000e+00 degC/m** on all 3,006
-> visits that have them, with every other column identical to `20261013` at zero
-> tolerance. **`cwfs_tables` is DONE**: all four variants compared clean and promoted to
-> `current@20261013`; the only differences are `rotator_angle` (max abs 0.4446 deg of
-> camera rotator angle on all four) and, on `d12-refitWcs`, the 2025 fold (+2,168 visit
-> and +62,554 donut rows, every old row kept). **`miw` (item 4) now WAITS ON AARON'S
-> REVIEW**: the comparison difference that stopped it is **explained and measured** — it is
-> the field edge (`ts_intrinsic_wavefront` commit `3f66904`), the interior agrees to
-> 7.2e-04 µm of wavefront, and `vmode_13` is a degenerate-subspace rotation. Validation
-> PDFs and `summary.md` for both `danish_1_2` variants are in
-> `$RUBINWORK_DATA/studies/phase3c_validation/miw/`. **`d12-A_50_34_i@20261014` is COMPLETE
-> at 18 of 18 and its `fits.parquet` is COMPARED** (960 shared visits of 3,385 new against
-> 960 old, every difference on the expected list, the DZ coefficients at max abs
-> **1.757e-03 µm of wavefront**); `d12-A_50_34_i_5rot@20261014` holds `intrinsic_split` and
-> needs 7 more jobs. **Superseded 2026-10-14: `_5rot` is now BUILT and COMPARED.** Job
-> **40830071** (00:38:38, 8 CPUs) ran all 7 jobs; `fits.parquet` is 3,385 rows x 830 columns
-> and **both `d12` variants now read `complete`** in the catalog. Its comparison is clean —
-> every difference on the expected list. **A1, A2 and A3 are DONE; A4 (`set-current`) and A5
-> (items 5-7) remain**, both needing Aaron. `d12-A_50_34_i` IS `current@20261014`; `_5rot`
-> has no `current` symlink. A new **expected difference 8, the ESS telemetry window**, is
-> confirmed on both variants. **The MIW calibration `intrinsic_zernikes` v4 is BUILT** and
-> Butler-ready at `$RUBINWORK_DATA/calibration/intrinsic_zernikes/v4/` (207 files + QA PDF),
-> **not ingested** — `/repo/main` is a hard stop.
-> Questions 6 and 7 are both answered (2026-10-14) — `d12-tarts` is excluded from the
-> corner-sidecar set, and the ring continuation / NaN-rim fill is **accepted new
-> behaviour**, now expected difference 7. Items 5 to 7 are blocked behind `_5rot`'s
-> `refit_mi` and `set-current`: their Snakefiles cannot build a DAG without it.
+> **Status:** 3a and 3b complete; **3c IN PROGRESS**, 5 of 8 comparison-plan items done.
+> `fam_tables`, `cwfs_tables` and `miw` are all DONE, compared clean against the old tree
+> and `current`: `fam_tables` at `danish_1_2@20261014` and `danish_1_3_{test,v1000}@20261013`,
+> all four `cwfs_tables` variants at `20261013`, and both `miw` `d12` variants at
+> `20261014` — `d12-A_50_34_i_5rot` promoted 2026-10-15, which is the variant items 5 to 7
+> read. Every difference found is on the expected-difference list (now 8 entries); the
+> M1M3 gradient defect is fixed and promoted. The MIW calibration `intrinsic_zernikes`
+> **v4** is BUILT and Butler-ready at `$RUBINWORK_DATA/calibration/intrinsic_zernikes/v4/`
+> (207 files + QA PDF), deliberately **not ingested** and **not staged into git**. What
+> remains is items 5 to 7 — `coadds`, `dof_lut`, `bounce_tables` — which wait on the stack
+> and package upgrade, not on any 3c question.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
-> · **Last updated:** 2026-10-14 · **Kind:** working state (handoff)
+> · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -135,6 +114,29 @@ the step. Answered items move to "Decisions taken".
    pushed.
 
 ## Decisions taken
+
+Answered 2026-10-15, closing out `miw` and setting up the stack upgrade:
+
+- **No Butler ingest of `intrinsic_zernikes` v4 for now.** Aaron may do it separately
+  soon. v4 stays in the data tree only and is **not staged into git**. The dry-run
+  `ingest` command is kept in the v4 section below for whenever that happens; nothing has
+  touched `/repo/main`.
+- **`miw/d12-A_50_34_i_5rot` is the variant for downstream work** and was promoted to
+  `current@20261014` on 2026-10-15 (A4 done). Confirmed through `catalog.load()`:
+  `fits.parquet` reads 3,385 rows (visits) x 830 columns through `current`, and
+  `catalog.list_products('miw')` shows both `d12` variants `current` and `complete` at 6
+  files each. `dof_lut`'s Snakefile now builds a DAG — `snakemake -n` plans 3 jobs
+  (`build_lut`, `manifest`, `all`); it previously failed at `Snakefile:95`.
+- **Items 5 to 7 rebuild after the package and stack update, not before**, so all three
+  run on one environment. See "The package and stack inventory" and the upgrade plan
+  below.
+- **Two variants registered from the old tree instead of rebuilt** (A5's recommendation):
+  `coadds/d12-A_50_34_i_5rot_v2@old-tree-20260903` and
+  `bounce_tables/d12-A_50_34_i_5rot_july@old-tree-20261001`. Each manifest carries a
+  `location` pointing into `aos/output/` and a `config.description` recording why it was
+  registered rather than rebuilt. **No file was copied or moved, and neither is
+  `current`.**
+
 
 Answered 2026-10-14, both on `miw` item 4:
 
@@ -879,41 +881,20 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**Three decisions for Aaron, all hard stops; A1, A2 and A3 are done.**
+**Waiting on Aaron's OK for the package and stack upgrade plan below. Then items 5 to 7
+(`coadds`, `dof_lut`, `bounce_tables`) on the new stack.** Nothing else in 3c is blocked:
+`fam_tables`, `cwfs_tables` and `miw` are all done, compared and `current`, and the two
+old-tree variants are registered.
 
-1. **The Butler collection name for the v4 ingest.** The dry-run command is in the v4
-   section above. `u/roodman/calib/intrinsicZernikes.v4` is a guess; Guillem's v3 sits at
-   `u/gmegias/calib/DM-55048/intrinsicZernikes.v3`, so the DM-55048 ticket collection may
-   be the right home. Nothing has touched `/repo/main` — not even the dry run.
-2. **`set-current` for `miw/d12-A_50_34_i_5rot@20261014`.** This is A4, and it is what
-   unblocks items 5 to 7 — their Snakefiles cannot build a DAG without it (`dof_lut`'s
-   fails at `Snakefile:95`). `d12-A_50_34_i` is already `current`.
-3. **Whether to stage v4 into git** under `aos/calibration/`, and whether to commit and tag
-   `ts_intrinsic_wavefront` first so the calibration's `git_sha` is not `-dirty`.
+Pointers, so nothing above is re-asked or re-measured:
 
-After 2, items 5 to 7 (`coadds`, `dof_lut`, `bounce_tables`) are the remaining 3c work —
-see A5 in the review below, including the two variants that are better registered from the
-old tree than rebuilt.
-3 `wfs_intrinsic_sidecar` (`d12-tarts` correctly skipped), `refit_mi`, `manifest`, `all`.
-
-```bash
-cd ~/notebooks/rubin-work && \
-mkdir -p logs && \
-sbatch --partition=milano \
-       --account=rubin:developers@milano \
-       --qos=normal \
-       --cpus-per-task=8 \
-       --mem=96G \
-       --time=04:00:00 \
-       --job-name=miw_refit_d12_5rot \
-       --output=$HOME/notebooks/rubin-work/logs/miw_refit_d12_5rot_%j.out \
-       --wrap='cd $HOME/notebooks/rubin-work && env -u DISPLAY MPLBACKEND=Agg snakemake -s rubinwork/products/miw/Snakefile -j 1 --resources mem_mb=90000 --config variant=d12-A_50_34_i_5rot build=20261014 fam_build=20261014'
-```
-
-After it lands, compare its `fits.parquet` against
-`aos/output/miw/danish_1_2_A_50_34_i_5rot/fits.parquet` on the shared
-(`day_obs`, `seq_num`) key, the same way `d12-A_50_34_i` was compared below. Note that old
-tree also holds a `fits_july.parquet`; the comparison target is `fits.parquet`.
+- **v4 Butler ingest** — deferred, Aaron's call; the dry-run command is in the v4 section.
+- **`set-current` for `_5rot`** — done 2026-10-15, see "Decisions taken".
+- **Staging v4 into git** — decided against for now, see "Decisions taken".
+- **Expected difference 8 (the ESS telemetry window)** — mechanism found and measured, see
+  "Expected difference 8" below. Deliberate change, recoverable without an EFD re-fetch.
+- **The `d12-A_50_34_i` `fits.parquet` comparison** and the `_5rot` comparison — both done
+  and clean; the tables are below.
 
 **`d12-A_50_34_i@20261014` is COMPLETE at 18 of 18 and COMPARED, 2026-10-14.** A
 correction to this handoff's earlier state: the build was **already finished** before the
@@ -964,16 +945,11 @@ comparison** — the recovered DOF and `vmode_*` live in `build/rot_*/dz_fits.pa
 the earlier `miw` item 4 section already compared (DOF agreeing to 4.2e-11 µm of wavefront,
 `vmode_13` the degenerate-subspace rotation).
 
-**Every difference is on the expected-difference list and nothing is off it.** No
-`set-current` has run; `miw` promotion still waits on Aaron's review of these numbers and
-on the `_5rot` comparison.
+**Every difference is on the expected-difference list and nothing is off it.**
+`miw` was validated by Aaron and both `d12` variants are now `current@20261014` —
+`d12-A_50_34_i_5rot` promoted 2026-10-15.
 
-**Then:** items 5 to 7 (`coadds`, `dof_lut`, `bounce_tables`) unblock once `miw` is
-`current`.
-
-### Superseded by the above, kept so the next session does not re-ask
-
-**Questions 6 and 7 are answered and `miw` item 4 waits on nothing** — `d12-tarts` is excluded from the corner-sidecar set and the ring continuation is accepted new behaviour (expected difference 7); the measurements are in the validation sections above, so do not re-ask or re-measure them.
+### Standing warnings, kept so the next session does not relearn them
 
 **Do not run this build under a forwarded X display.** The first attempt lost 8 of 9
 `build_intrinsic` jobs to `X connection to localhost:10.0 broken` plus a pybind11 GIL
