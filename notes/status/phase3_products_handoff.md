@@ -964,20 +964,14 @@ are the only thing that fails.
 
 ## Next concrete action
 
-**The upgrade is DONE (stack `w_2026_42`, decision 9) and item 5 is RUNNING: `coadds`
-job 40920839, submitted on Aaron's OK. The next action is to check that job, compare it,
-then do items 6 and 7:**
+**The upgrade is DONE (stack `w_2026_42`, decision 9) and item 5 `coadds` is DONE,
+compared clean and promoted to `current`. The next action is item 6, then item 7:**
 
-1. **Item 5 — `coadds` `d12-A_50_34_i_5rot`: job 40920839 SUBMITTED and running**, build
-   `20261015`, log `aos/logs/coadd_blocks_40920839.log`, ~66 min expected. **The
-   comparison is NOT done.** When it lands, compare against
-   `aos/output/coadd/danish_1_2/50_34/` (2 tables + 2 npz) with
-   `rubinwork.products.coadds.compare_builds` at zero tolerance. Expected difference:
-   **2 only** (the theta rotation, through the MIW maps it coadds). `_v2` is **not**
-   rebuilt — registered old-tree variant with only an `archive/`.
-   **This is the first product where scipy 1.18.1 or the `ts_wep` pull could actually
-   show** — `dof_lut` cannot, since it reads already-built parquet.
-   Full submit command, resources and the two submission traps: see "Item 5 `coadds`".
+1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
+   compared clean against the **i-band archive** and `set-current`. Every difference on
+   the expected list; the maps agree to **1.4e-13 µm of wavefront**, so **no scipy 1.18.1
+   or `ts_wep` effect**. See "Item 5 `coadds`: BUILT and COMPARED CLEAN" — and note the
+   reference trap recorded there before comparing any other `coadds` build.
 2. **Item 6 — `dof_lut`, both `d12` variants.** A **shape** check by design, not a
    zero-tolerance comparison: the old tree is absolute DOF, the new is post-MIW
    (`733c01d`). Check 50 DOF rows, 126 (k, j) rows, 5 populated rotator bins, the 8
@@ -1420,7 +1414,84 @@ session should not redo it. This does *not* prove the donut-fitting path is unaf
 `danish` or `ts_wep`'s FAM estimator. **Items 5 to 7 are where a scipy or `ts_wep`
 difference would actually show up**, item 5 (`coadds`) first.
 
-## Item 5 `coadds`: SUBMITTED on `w_2026_42`, job 40920839, 2026-10-15
+## Item 5 `coadds`: BUILT and COMPARED CLEAN, 2026-10-15
+
+Job **40920839 COMPLETED** in **00:39:42**, peak RSS **16.9 GB** of the 128 GB requested
+(the Snakefile's header predicted 23.9 GB, so the request has ample headroom and could be
+trimmed). All 6 outputs plus `manifest.json`, `status: complete`, recording
+`w_2026_42` / `lsst-scipipe-14.0.0-exact` and both upstreams
+(`fam_tables danish_1_2@20261014`, `miw d12-A_50_34_i_5rot@20261014`).
+
+### READ THIS FIRST: the comparison reference is the ARCHIVE, not the top level
+
+The plan says "compare against `aos/output/coadd/<dir_name>/`". **Taken literally that is
+the wrong reference and manufactures a 40% block loss that is not real.** The top level of
+`aos/output/coadd/danish_1_2/50_34/` is an **all-bands** run; the variant is **i-band
+only** (`bands: null` -> the `mi_config` `filter: i`). The like-for-like reference is
+`archive/20260903_iband/`.
+
+| build | detected blocks | nights | built blocks | bands |
+|---|---|---|---|---|
+| old **top level** | 698 | 106 | 216 | all bands |
+| old **`archive/20260903_iband/`** | 274 | 61 | 130 | **i only** |
+| **new `20261015`** | **274** | **61** | **130** | **i only** |
+
+The new build reproduces the i-band archive **exactly** on all three counts. The 45 nights
+"missing" against the top level are 2025 nights that are r-band dominated (1,229 r-band
+against 689 i-band visits in 2025), so an i-band selection legitimately drops them —
+`archive/20260903_iband/README.md` documents this and states 2025 blocks fall 117 -> 40
+while 2026 is nearly unchanged at 99 -> 90. The upstream `visits.parquet` has all 106
+nights and 3,385 visits, so **nothing was lost upstream**; this was purely the reference
+choice. **Fix the plan's item-5 row to name the archive.**
+
+Also note **`blocks_summary` and `coadd_metrics` count different things** and both are
+right: `blocks_summary` is every *detected* block (274) and `coadd_metrics` is only those
+*built*, i.e. `n_visits >= min_visits` of 6 (130). The `plotted` column carries the flag.
+The `>= 6` filter behaves identically on both sides (216 of 698 old top level, 130 of 274
+new and archive).
+
+### The comparison: every difference on the expected list
+
+`python -m rubinwork.products.coadds.compare_builds aos/output/coadd/danish_1_2/50_34/archive/20260903_iband <build>`
+— 274 vs 274 rows, 130 vs 130 blocks, **same blocks in the same order**.
+
+| group | count | max abs difference | expected difference |
+|---|---|---|---|
+| ESS + dome/M2 air temperatures, degC | 7 | **0.0743 degC** (`dome_delta_t`) | **8** |
+| M1M3 bulk thermal gradients, degC/m | 4 | **0.000384 degC/m** (`z_gradient`) | **6** |
+| `rot`, camera rotator angle, deg | 1 | **0.858 deg** | **1** |
+| `resid_rms_*`, `corr_*`, `cwfs_*`, `umode_1..34` (µm of wavefront; `corr_*` dimensionless) | 54 | **4.5e-14** (`umode_18`) | **2**, at float round-off |
+| `block_grids.npz` maps (`grids`, `miw`, `raw_dz`, `resid_dz`, `U_all`, `U_disc`, `U_eff`, `V`, `umodes`, `sigma`) | 10 | **1.4e-13 µm of wavefront** (`grids`) | **2**, at float round-off |
+
+**The scientific content reproduces to float round-off** — 1.4e-13 µm of wavefront against
+difference 2's own bound of 9.2e-04 µm, nine orders of magnitude inside it. Only the
+telemetry columns and `rot` move at physically meaningful levels, and all three are on the
+expected list. The telemetry ones are expected **by decision 10**, Aaron 2026-10-15.
+
+**The headline result: no scipy 1.18.1 and no `ts_wep` effect.** This was the first
+product where either could reach the numbers (`dof_lut` reads built parquet and never
+calls `danish` or the FAM estimator). The maps agree to 1e-13, so the stack move is
+numerically transparent here too.
+
+### Two archive artifacts that are NOT findings
+
+1. **`block_grids_ext.npz` differs at 8.75e-08**, far above the 1e-13 elsewhere. Cause:
+   **the archive stored it `float64`, the new build stores `float32`** — 8.75e-08 is
+   **2.97e-08 relative** to the 2.94 µm map scale, right at float32 eps (1.19e-07). The
+   cast is deliberate and commented in `run_coadd_blocks_miw.py:935` ("Memory-lean: stack
+   into float32 -- these are diagnostic maps"); the archive predates it. **Not** an
+   `ext_terms` difference: both sides carry the identical 11 terms
+   `[12 13 16 17 18 19 22 23 24 25 26]`, which was the first guess and was wrong.
+2. **The PDF size and `MISSING` lines.** The archive's `perblock.pdf` is the 2026-09-03
+   i-band render, its `timeseries.pdf` is the **2026-08-24 all-bands** one, and
+   `coadd_timeseries_rebin3.pdf` is a `recompute_coadd_metrics.py` product the Snakefile
+   does not build at all. All three are described in the archive README. PDFs are
+   size-checked only, by design.
+
+So `compare_builds` printing `RESULT: DIFFERENCES FOUND` is expected here; the verdict is
+a per-difference judgement, not that line.
+
+## Item 5 `coadds`: the submission record, job 40920839, 2026-10-15
 
 First of the three remaining comparison-plan items, and the first product rebuilt on
 `w_2026_42`. **Aaron OK'd the exact submit command**; the job is running, the comparison
