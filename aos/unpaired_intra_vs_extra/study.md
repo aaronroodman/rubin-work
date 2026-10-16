@@ -98,6 +98,21 @@ largest change is Z22 at +0.0081 µm of wavefront, nine times smaller; Z14 moves
 its 29 per cent reduction here is consistent in direction with the 8 mm giant-donut
 result (0.81 → 0.37 µm of wavefront, 54 per cent) at a different defocus and sample.
 
+**The intra-before-extra time ordering does not explain dZ4.** A FAM triplet is taken
+intra, extra, in-focus, so the intra-focal exposure always precedes the extra-focal one —
+by a median **46.4 s** (10th–90th percentile 46.3–46.6 s). The two-side mean Z4 does drift
+within a night, by a median |rate| of **0.0977 µm of wavefront per hour** across the 14
+nights with at least 5 visits (range −0.5169 to +0.2697 µm wf/hour, the largest being
+20260619). But 0.0977 µm wf/hour over 46.4 s is only **0.0013 µm of wavefront**, 1.4 per
+cent of the measured dZ4 median and 0.7 per cent of its nMAD.
+
+Tested directly: interpolating the intra-focal Z4 series within each night onto each
+pair's extra-focal epoch and recomputing the difference gives median **+0.0907** against
++0.0900 µm of wavefront raw, and nMAD **0.1714** against 0.1710 — a change of **+0.25 per
+cent** (dimensionless). The shift applied per visit has a median of −0.0012 µm of
+wavefront. **So dZ4 is a genuine difference between the two sides of focus, not an
+artifact of when each was measured** (Aaron's hypothesis, 2026-10-16; tested and negative).
+
 **Thermal correction narrows every difference, but the blur most.** Greedy forward
 selection on incremental gain, 22 candidate thermal quantities, Huber fits, 854 visits
 with complete telemetry. All 12 follow-up terms plus the blur, ordered by the fractional
@@ -123,7 +138,9 @@ candidate adds less than 1 per cent of the current scatter:
 **Four distinct thermal channels lead across the 12 terms**: camera-body-minus-M1M3-air
 (Δblur, ΔZ14, ΔZ26), the M1M3 z gradient (ΔZ22, ΔZ7, ΔZ5), the M1M3 r² coefficient (ΔZ11)
 and camera-air-minus-outside (ΔZ4). Z5, Z8, Z9, Z10 and Z15 have large raw scatter but are
-barely thermal at all (≤ 4.4 per cent reduction) — so large scatter alone does not imply a
+barely thermal at all (≤ 4.4 per cent reduction; their selection stops after 1–2
+predictors because the next candidate adds under 1 per cent of the current scatter, which
+is `min_gain_frac`) — so large scatter alone does not imply a
 thermal origin, and those five are the ones whose scatter still needs an explanation.
 
 **The blur and Z11 have different leading thermal channels.** Δblur's is the camera body
@@ -263,13 +280,17 @@ there is no per-side thermal difference to find.
 6. Pair level, if wanted later: the within-visit slope of ΔZ11 on Δblur bounds the Danish
    fit degeneracy, since within one visit the wavefront is common and only the blur varies
    donut to donut.
-7. Move `select_predictors` into `rubinwork` once a second study uses it.
+7. Z4's remaining scatter. The time ordering is ruled out and thermal takes 25.3 per
+   cent, so about three quarters of a 0.1710 µm of wavefront robust scatter is still
+   unexplained.
+8. Move `select_predictors` into `rubinwork` once a second study uses it.
 
 ## Files
 
 | file | role |
 |---|---|
 | `extract_visit_medians.py` | the one pass over the 13 GB donut table; writes per-visit per-side medians |
+| `fetch_exposure_times.py` | per-exposure midpoint times from ConsDB `cdb_lsstcam.exposure`, for the Z4 time-ordering test |
 | `thermal_selection.py` | greedy forward selection on incremental gain, Huber throughout |
 | `notebooks/unpaired_intra_vs_extra.ipynb` | every figure and table, into one PDF |
 | `notebooks/_build_nb.py` | assembles the notebook from cell sources |

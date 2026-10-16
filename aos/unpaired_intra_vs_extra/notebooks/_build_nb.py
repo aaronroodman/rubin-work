@@ -535,6 +535,143 @@ for start in range(0, len(FOLLOW_UP), PER_ROW):
     save(figure)
 ''')
 
+md("""
+## 3b. Z4 and the intra-before-extra time ordering
+
+A FAM triplet is taken in a fixed order - intra, extra, in-focus - so the intra-focal
+exposure always precedes the extra-focal one, here by a median **46.4 s**. On many nights
+the two-side mean Z4 drifts steadily, which is truss thermal expansion. A fixed time
+ordering against a drifting Z4 would produce a dZ4 that is partly an artifact of *when*
+each side was measured rather than a difference between the two sides.
+
+The test: fit the intra-focal Z4 as a function of time within each night, interpolate it
+onto each pair's **extra-focal** epoch, and recompute dZ4 from the interpolated value. If
+the time ordering drives dZ4, the corrected difference shrinks.
+
+Only Z4 gets this treatment (Aaron, 2026-10-16); it is the term whose nightly drift is
+large compared with its own difference.
+""")
+
+code("""
+times = pd.read_parquet(RUN / 'exposure_times.parquet')
+midpoint = times.set_index('exposure_id')['exp_midpt_mjd']
+
+visits['t_intra'] = visits['intra_visit'].map(midpoint)
+visits['t_extra'] = visits['extra_visit'].map(midpoint)
+gap_seconds = (visits['t_extra'] - visits['t_intra']) * 86400.0
+
+print(f'exposure times: {times.shape[0]} exposures over {times.day_obs.nunique()} nights')
+print(f'missing: {visits.t_intra.isna().sum()} intra, {visits.t_extra.isna().sum()} extra')
+print(f'intra to extra gap [s]: median {gap_seconds.median():.1f}, '
+      f'10th pct {gap_seconds.quantile(0.1):.1f}, '
+      f'90th pct {gap_seconds.quantile(0.9):.1f}')
+""")
+
+code("""
+def interpolate_intra_to_extra(table, noll):
+    \"\"\"Interpolate one side's per-visit Zernike median onto the other side's epoch.
+
+    Within each night the intra-focal series ``z{noll}_intra`` against its own exposure
+    time is interpolated onto each pair's extra-focal exposure time, so the recomputed
+    difference compares the two sides at the *same* epoch.
+
+    Parameters
+    ----------
+    table : `pandas.DataFrame`
+        Visit table carrying ``day_obs``, ``t_intra``, ``t_extra`` [days] and the
+        per-side Zernike medians [micrometres of wavefront].
+    noll : `int`
+        Noll index to interpolate.
+
+    Returns
+    -------
+    interpolated : `pandas.Series`
+        The intra-focal coefficient evaluated at the extra-focal epoch, in micrometres
+        of wavefront, on `table`'s index.
+    \"\"\"
+    result = pd.Series(np.nan, index=table.index)
+    for _, night in table.groupby('day_obs'):
+        night = night.sort_values('t_intra')
+        finite = night[['t_intra', f'z{noll}_intra']].notna().all(axis=1)
+        if finite.sum() < 2:
+            continue
+        result.loc[night.index] = np.interp(
+            night['t_extra'], night.loc[finite, 't_intra'],
+            night.loc[finite, f'z{noll}_intra'])
+    return result
+
+
+TIME_ORDER_NOLL = 4
+
+visits[f'z{TIME_ORDER_NOLL}_intra_interp'] = interpolate_intra_to_extra(
+    visits, TIME_ORDER_NOLL)
+visits[f'dz{TIME_ORDER_NOLL}_interp'] = (visits[f'z{TIME_ORDER_NOLL}_intra_interp']
+                                         - visits[f'z{TIME_ORDER_NOLL}_extra'])
+
+raw = visits[f'z{TIME_ORDER_NOLL}_intra'] - visits[f'z{TIME_ORDER_NOLL}_extra']
+corrected = visits[f'dz{TIME_ORDER_NOLL}_interp']
+shift = visits[f'z{TIME_ORDER_NOLL}_intra_interp'] - visits[f'z{TIME_ORDER_NOLL}_intra']
+
+# Per-night drift rate of the two-side mean, for scale.
+rates = []
+for day_obs, night in visits.groupby('day_obs'):
+    night = night.sort_values('t_extra')
+    if len(night) < 5:
+        continue
+    hours = (night['t_extra'] - night['t_extra'].min()) * 24.0
+    mean_z4 = 0.5 * (night[f'z{TIME_ORDER_NOLL}_intra']
+                     + night[f'z{TIME_ORDER_NOLL}_extra'])
+    rates.append({'day_obs': day_obs, 'n_visits': len(night),
+                  'drift_um_per_hour': float(np.polyfit(hours, mean_z4, 1)[0])})
+drift = pd.DataFrame(rates)
+
+print(f'Z{TIME_ORDER_NOLL} two-side mean drift per night [um of wavefront per hour]:')
+print(drift.to_string(index=False, float_format=lambda v: f'{v:+.4f}'))
+print()
+print(f'dZ{TIME_ORDER_NOLL} raw          : median {np.median(raw):+.4f} um wf, '
+      f'nMAD {nmad(raw):.4f} um wf')
+print(f'dZ{TIME_ORDER_NOLL} interpolated : median {np.median(corrected.dropna()):+.4f} '
+      f'um wf, nMAD {nmad(corrected):.4f} um wf')
+print(f'change in nMAD: {100 * (nmad(corrected) / nmad(raw) - 1):+.2f} per cent '
+      f'(dimensionless)')
+print(f'shift applied: median {np.median(shift.dropna()):+.5f} um wf, '
+      f'nMAD {nmad(shift):.5f} um wf')
+print(f'drift x gap, order of magnitude: '
+      f'{np.median(np.abs(drift.drift_um_per_hour)) * gap_seconds.median() / 3600:.5f} '
+      f'um wf')
+""")
+
+code("""
+figure, axes = plt.subplots(3, 1, figsize=(9.0, 7.6), sharex=True, layout='constrained')
+
+draw_nights(axes[0], EDGES)
+axes[0].plot(visits['ordinal'], 0.5 * (visits[f'z{TIME_ORDER_NOLL}_intra']
+                                       + visits[f'z{TIME_ORDER_NOLL}_extra']),
+             '.', ms=2.0, color='tab:brown')
+axes[0].set_ylabel(f'two-side mean Z{TIME_ORDER_NOLL} [um wf]')
+axes[0].set_title(f'The drifting quantity: two-side mean Z{TIME_ORDER_NOLL}, '
+                  f'{np.median(np.abs(drift.drift_um_per_hour)):.3f} um wf/hour '
+                  f'median |drift| per night', fontsize=8)
+
+for axis, values, label in [(axes[1], raw, 'raw'),
+                            (axes[2], corrected, 'interpolated to the extra epoch')]:
+    draw_nights(axis, EDGES)
+    axis.plot(visits['ordinal'], values, '.', ms=2.0, color='tab:purple')
+    axis.axhline(0.0, color='k', lw=0.5, ls=':')
+    median = np.median(values.dropna()) if hasattr(values, 'dropna') else np.median(values)
+    scatter = nmad(values)
+    axis.axhline(median, color='tab:green', lw=0.8)
+    axis.axhspan(median - scatter, median + scatter, color='tab:green', alpha=0.13)
+    axis.set_ylabel(f'dZ{TIME_ORDER_NOLL} {label} [um wf]')
+    axis.set_title(f'{label}: median {median:+.4f}, nMAD {scatter:.4f} um wf',
+                   fontsize=8)
+
+axes[2].set_xlabel('FAM visit ordinal (dimensionless)')
+figure.suptitle(f'Does the intra-before-extra ordering explain dZ{TIME_ORDER_NOLL}? '
+                f'Gap is {gap_seconds.median():.1f} s', fontsize=9)
+save(figure)
+""")
+
 md('''
 ## 4. Thermal predictor selection
 
@@ -651,6 +788,80 @@ for label in selections:
                     f'{PRIMARY}', fontsize=9)
     save(figure)
 ''')
+
+md("""
+### Each difference against its leading thermal variable, and against the full model
+
+Two views per target. First the difference against the single leading thermal variable,
+which is the one-variable picture the selection starts from. Then the difference against
+the **fitted combination** of all selected variables - the model prediction on the x axis,
+so a perfect model would put the points on the 1:1 line.
+""")
+
+code("""
+def model_prediction(label):
+    \"\"\"Fitted thermal model values for one target, on the visit index.
+
+    Parameters
+    ----------
+    label : `str`
+        Target key in `selections`.
+
+    Returns
+    -------
+    prediction : `pandas.Series`
+        The Huber fit's prediction, in the target's unit, NaN where telemetry is
+        incomplete.
+    \"\"\"
+    entry = selections[label]
+    used = pd.concat([entry['target'].rename('_t'), candidates], axis=1).dropna().index
+    prediction = pd.Series(np.nan, index=joined.index)
+    prediction.loc[used] = entry['fit'].fittedvalues
+    return prediction
+
+
+PER_ROW_THERMAL = 3
+target_labels = list(selections)
+
+for start in range(0, len(target_labels), PER_ROW_THERMAL):
+    block = target_labels[start:start + PER_ROW_THERMAL]
+    figure, axes = plt.subplots(2, len(block), figsize=(3.6 * len(block), 6.2),
+                                squeeze=False, layout='constrained')
+    for column, label in enumerate(block):
+        entry = selections[label]
+        target, unit, steps = entry['target'], entry['unit'], entry['steps']
+        leading = steps['variable'].iloc[0]
+
+        # Top row: against the leading thermal variable alone.
+        axis = axes[0][column]
+        scatter_by_night(axis, joined, candidates[leading], target,
+                         f'{leading}', f'{label} [{unit}]')
+        own = steps['rho_own'].iloc[0]
+        axis.set_title(f'{label} vs {leading}\\nrho {own:+.3f}, '
+                       f'step 1 cuts nMAD by {100 * steps.gain_frac.iloc[0]:.1f} pct',
+                       fontsize=7)
+
+        # Bottom row: against the full fitted combination, with the 1:1 line.
+        axis = axes[1][column]
+        prediction = model_prediction(label)
+        scatter_by_night(axis, joined, prediction, target,
+                         f'model of {len(steps)} thermal variables [{unit}]',
+                         f'{label} [{unit}]')
+        finite = np.isfinite(prediction) & np.isfinite(target)
+        limits = [float(np.nanmin(prediction[finite])),
+                  float(np.nanmax(prediction[finite]))]
+        axis.plot(limits, limits, '--', color='k', lw=0.8, label='1:1')
+        axis.legend(fontsize=6)
+        rho = spearmanr(prediction[finite], target[finite]).statistic
+        residual_scatter = nmad(target - prediction)
+        axis.set_title(f'{label} vs the full thermal model\\n'
+                       f'rho {rho:+.3f}, residual nMAD {residual_scatter:.4f} {unit}',
+                       fontsize=7)
+
+    figure.suptitle('Each difference against its leading thermal variable (top) and '
+                    'against the full fitted model (bottom)', fontsize=9)
+    save(figure)
+""")
 
 md('''
 ## 5. After the Huber thermal correction
