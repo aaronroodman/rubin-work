@@ -464,12 +464,13 @@ def set_current(product, variant, build):
     variant : `str`
         Variant name.
     build : `str`
-        Build to make current. Must be a complete build.
+        Build to make current. Must be a complete build. May be nested, such as
+        ``snapshots/20261016`` for ``value_added``.
 
     Returns
     -------
     link : `pathlib.Path`
-        The ``current`` symlink.
+        The ``current`` symlink, always ``<variant>/current``.
 
     Raises
     ------
@@ -480,7 +481,12 @@ def set_current(product, variant, build):
     build_dir = _resolve_build(product, variant, build)
     import importlib
     manifest_module = importlib.import_module("rubinwork.products.manifest")
-    return manifest_module.set_current_build(build_dir.parent, build_dir.name)
+    # Relative to the variant directory, not the build's parent: an incremental product's
+    # build is nested (``snapshots/<YYYYMMDD>``) and ``current`` still belongs at
+    # ``<variant>/current``.
+    variant_dir = products_root() / product / variant
+    return manifest_module.set_current_build(
+        variant_dir, build_dir.relative_to(variant_dir).as_posix())
 
 
 def register(product, variant, build, location=None, config=None, inputs=None,

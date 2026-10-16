@@ -656,3 +656,16 @@ def test_compare_table_handles_pandas_na_and_reports_max_abs():
     rep = compare_builds.compare_table(a, b, ("k",))
     assert dict(rep["differing"]) == {"x": 1, "v": 1}
     assert rep["max_abs"] == {"x": 1.0, "v": 0.5}
+
+
+def test_set_current_on_a_nested_snapshot_links_at_the_variant(data_root):
+    """``current`` for a ``snapshots/<date>`` build is ``v1/current``, not
+    ``v1/snapshots/current``, and resolves to the snapshot's database."""
+    snap = value_added.build_dir("v1", "snapshots/20261016")
+    db = _write_db(snap / va_reader.DB_FILE)
+    write_manifest.write("v1", build_dir=snap, build="20261016")
+    link = catalog.set_current("value_added", "v1", "snapshots/20261016")
+    variant_dir = value_added.build_dir("v1")
+    assert link == variant_dir / "current"
+    assert not (variant_dir / "snapshots" / "current").exists()
+    assert va_reader.catalog_db_path("v1").resolve() == db.resolve()
