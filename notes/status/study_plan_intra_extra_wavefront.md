@@ -2,22 +2,55 @@
 
 > **Status:** proposal, awaiting Aaron · **Last updated:** 2026-10-15 · **Kind:** status (plan)
 
-Aaron, 2026-10-15: compare the wavefront measured from the intra-focal and the
-extra-focal donut of each FAM intra/extra pair, then correlate the intra − extra Zernike
-differences with the intra − extra blur differences. Extends the earlier blur study
-(`aos/docs/status/blur_intra_extra_handoff.md`).
+Aaron, 2026-10-15: extend the earlier per-visit blur study to the Zernikes. For each FAM
+intra/extra pair, compare the wavefront measured from the intra-focal donut against the
+extra-focal donut, and carry the blur study's thermal argument over to the Zernikes —
+Z11 expected to be the interesting one.
 
-Nothing below has been created. The only read-only checks already run are reported inline,
-each marked **checked**.
+**Scope: the one prior study incorporated here is aos `blur_intra_extra`**
+(`aos/output/fam_processing/blur_intra_extra/`). `wfs/giant_donuts`,
+`optics/intra_extra_phase_strip` and aos `cwfs` stay exactly as they are and none of
+their work is included (Aaron, 2026-10-15). Triage question 6 is **not** answered here.
+
+Nothing below has been created. Read-only checks already run are marked **checked**.
 
 ---
 
-## 1. Placement
+## 1. What the earlier blur study established
 
-**Proposed study: `aos/unpaired_intra_vs_extra/`**, per section 7 of
-`notes/status/organization_plan.md`. This is the first study created in the new layout.
+`aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`, output in
+`aos/output/fam_processing/blur_intra_extra/`, handoff
+`aos/docs/status/blur_intra_extra_handoff.md`. Its argument, which this study repeats on
+the Zernikes:
 
-Front matter for `aos/unpaired_intra_vs_extra/study.md`:
+1. Median donut blur per visit per side of focus; difference intra − extra per FAM
+   triplet. Median +0.3440 arcsec over 873 quality triplets, intra blurrier in 0.9954 of
+   them (dimensionless).
+2. **The difference is not constant.** A Huber fit of (intra − extra) blur on extra blur
+   gives slope −0.5764 ± 0.0344 (dimensionless), 17σ from zero — the quadrature
+   signature, q = +0.5614 arcsec².
+3. Correlated against thermal telemetry: camera body minus M1M3 air is the strongest
+   single quantity, Spearman rho = −0.7828 full sample, −0.2934 within night.
+4. A linear Huber model on the thermal variables, subtracted, **narrowed the spread and
+   removed the residual correlation against the extra-focal blur** — the Huber slope
+   flattened from −0.5788 ± 0.0344 to −0.0868 ± 0.0171 arcsec per arcsec.
+5. Conclusion: **thermal effects drive the intra − extra difference, not the overall
+   seeing.**
+
+Two corrections to carry forward, both checked:
+
+- **That notebook ran on `danish_1_3_test`**, not v1000 — `PARAM_SET = 'danish_1_3_test'`
+  at its top. Its +0.3440 arcsec reproduces on `test`; v1000 gives +0.3445 arcsec.
+- Its thermal-variable selection added variables in order of their own correlation with
+  the target, which double-counts because the thermal variables are themselves highly
+  correlated. Item 4 below replaces that algorithm.
+
+---
+
+## 2. Placement
+
+**Study: `aos/unpaired_intra_vs_extra/`**, per section 7 of
+`notes/status/organization_plan.md`. First study created in the new layout.
 
 ```yaml
 ---
@@ -25,345 +58,239 @@ study: unpaired_intra_vs_extra
 topic: aos
 status: active
 question: Does the wavefront measured from the intra-focal donut differ from the
-  extra-focal donut of the same FAM pair, and is the difference the same thing as the
-  intra/extra blur difference?
-answer: (open; the first entry is the blur result)
+  extra-focal donut of the same FAM pair, and is that difference thermally driven as the
+  blur difference is?
+answer: (open)
 uses:
-  fam_tables: danish_1_3_test@20261013, danish_1_3_v1000@20261013
+  fam_tables: danish_1_3_v1000@20261013, danish_1_3_test@20261013
 started: 2026-10-15
 ---
 ```
 
-Directory, per section 3: `study.md`, `code/`, `notebooks/`, `figures/`, and
+Directory: `study.md`, `notebooks/`, `figures/`, and
 `output@ -> /sdf/group/rubin/u/roodman/LSST/rubin-work/studies/aos/unpaired_intra_vs_extra`
-(gitignored symlink; run directories `<YYYYMMDD>_<label>/` under it).
+(gitignored symlink). Per item 6 below: **one notebook, one PDF, one `study.md`** — no
+`code/` unless something outgrows the notebook.
 
-### The four prior studies triage question 6 names
-
-Question 6 of `notes/status/phase5_study_triage.md:210-212` names these four. Inventory
-checked on disk, 2026-10-15:
-
-| # | study | docs | code | notebooks | output on disk | state |
-|---|---|---|---|---|---|---|
-| 1 | aos `blur_intra_extra` | `aos/docs/status/blur_intra_extra_handoff.md` (455 lines); the notebook row and per-side paragraph in `aos/docs/studies/fam_processing.md` | none of its own — reads `fam_tables` | `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb` | `aos/output/fam_processing/blur_intra_extra/` → `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/fam_processing/blur_intra_extra/`: 10 PDFs + 3 parquet caches, **3 PDFs and 1 parquet orphaned** by the 2026-10-04/06 rewrites | active |
-| 2 | wfs `giant_donuts` (todo item 7) | `wfs/docs/giant_donuts_pupil_findings.md` (401 lines); `notes/status/item7_giant_donuts_handoff.md` | `wfs/code/giant_donuts/` — 7 modules + 1 test (`fit_giant_donut.py`, `radial_profile.py`, `spider_trajectory.py`, `donut_images.py`, `gen_mask_params.py`, `select_exposures.py`) | `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb` (**modified, uncommitted**) | `wfs/output/giant_donuts/` — 10 PDFs, R22_S10, *in the repo tree*, not the data root; plus 3 loose `wfs_giant_donut_*.pdf` in `wfs/output/` | active, own open next steps |
-| 3 | optics `intra_extra_phase_strip` | `optics/docs/studies/intra_extra_phase_strip.md` only | **none** | **none** | **none** — `optics/output/` holds only `.gitkeep` | writeup only: a hypothesis plus a symmetry argument. Its status line says "not yet simulated"; the triage says it was, on 2026-10-09, but no code or output for that simulation is in `optics/` |
-| 4 | the Z11/Z14 part of aos `cwfs` | the "State and open questions" section of `aos/docs/studies/cwfs.md`; `aos/docs/ts_wep_zernike_intrinsics.md` for the CCD-height argument | `aos/code/cwfs/` — but shared with the optical-state comparison, which is a *different* question | `aos/notebooks/cwfs/` (4, shared the same way) | `aos/output/wfs_corner_compare/danish_1_2/`, `aos/output/danish_tarts_compare_20260713/` (6 PDFs) — again shared with the other track | parked; only the Z11/Z14 *finding* is in scope, not the study |
-
-What each contributes to the one question:
-
-- **1** is the only one with ensemble statistics: 873 quality FAM triplets, 15 nights. It
-  measures the blur asymmetry (+0.3440 arcsec) and says nothing yet about the Zernikes.
-- **2** is the one deep dive: 6 giant donuts at 8 mm hexapod defocus, 3 pupil models, and
-  the Z11 split 0.81 → 0.37 µm of wavefront under `v1000`. One detector, 2 exposures.
-- **3** is the only candidate *mechanism* with the right sign: a 50 nm, 5 cm turned-down
-  M1 inner edge giving +0.82 / −0.34 arcsec intra / extra in quadrature.
-- **4** is the independent instrument check: the same Z11/Z14 split appears in the corner
-  sensors, so it is not special to FAM.
-
-The new study adds the fifth leg, and the one none of them has: the **per-side Zernikes
-over the whole FAM ensemble**.
-
-**Recommendation on triage question 6: merge, and put it in `aos`.** One question — why
-the two sides of focus disagree — asked of four data sets. Making it one study is what
-lets the giant-donut Z11 split, the M1-edge-strip mechanism, the CWFS Z11/Z14 offset and
-the FAM blur asymmetry be checked against each other instead of each being re-explained.
-`aos` because the FAM ensemble (873 visits, 3.16 M donut rows) is the only sample with
-statistical power, and it lives in `aos`.
-
-How each one moves, concretely:
-
-- **1 `blur_intra_extra` → merged in**, as the first log entry (below). It has no code of
-  its own, so only the notebook moves to `aos/unpaired_intra_vs_extra/notebooks/`.
-- **3 `intra_extra_phase_strip` → merged in** as a derivation beside `study.md`
-  (`m1_edge_strip.md`). It is a writeup with no code or output, so this is a file move and
-  a status-line fix. Lowest-risk of the four.
-- **2 `giant_donuts` → Aaron's call.** It is *active*, has 7 code modules and its own open
-  next steps. Merging it means moving `wfs/code/giant_donuts/` into the new study and
-  carrying the item-7 next steps into the log verbatim. Keeping it separate and
-  cross-linking costs nothing now. **My recommendation: keep `wfs/giant_donuts` as its own
-  study and cross-link it**, changing what I proposed earlier in this file — its code and
-  its 8 mm single-detector question are distinct enough from the 1.5 mm FAM ensemble that
-  merging buys a shared `study.md` and little else, and it is the one merge that could
-  lose live work.
-- **4 `cwfs` → cross-link only.** The Z11/Z14 finding is cited in the new study's log; the
-  study itself stays, since its code, notebooks and output are shared with the
-  optical-state comparison and cannot be split cleanly.
-
-So: merge 1 and 3 into `aos/unpaired_intra_vs_extra`, cross-link 2 and 4.
-
-**The earlier blur study's handoff becomes the first log entry** of
-`aos/unpaired_intra_vs_extra/study.md`, dated 2026-10-06, per section 7 ("Handoffs become log
-entries"). It is 455 lines and much of it is thermal-regression detail, so: the result
-tables, the per-side negative test and the whole "Tried and rejected" section go into the
-log entry; the thermal model derivation moves beside `study.md` as
-`aos/unpaired_intra_vs_extra/blur_thermal.md`. Nothing is deleted without Aaron's say-so — the old
-`aos/docs/status/blur_intra_extra_handoff.md` stays until he confirms.
+The earlier blur study's handoff becomes the **first log entry** of `study.md`, per
+section 7 ("Handoffs become log entries"). Its thermal derivation moves beside `study.md`
+as `blur_thermal.md`. The old `aos/docs/status/blur_intra_extra_handoff.md` and the old
+notebook stay on disk until Aaron says otherwise — no deletions.
 
 ---
 
-## 2. What the per-side Zernikes are — **checked, and this is the key result of the session**
+## 3. Data
 
-**Each side is an independent single-donut Danish fit.** The blitz product
-(`donutBlitzFamResults`) is *unpaired*: one row per donut per exposure, each fitted on its
-own. There is no joint pair fit to take parts of.
-`rubinwork/products/fam_tables/builders/blitz_reader.py:5-10` (module docstring) and
-`pair_sides` at `:317-408`, which joins the two sides on `(det_name, donut_id)` *after*
-each has been fitted. The paired row's wavefront is then the arithmetic mean of the two
-(`:24-36`, verified below).
+**Primary: `danish_1_3_v1000@20261013`.** The pupil model Aaron wants going forward
+(as-built + M1M3 + M1 baffles) and the sample he expects to update as Danish and the
+pupil model advance. `danish_1_3_test@20261013` is kept as a second column, for the
++0.3440 arcsec reproduction check and to see which Zernike differences the pupil model
+moves.
 
-So `intra − extra` is a difference of two independent measurements of the same star, not a
-decomposition of one fit.
+Both builds already exist — no reprocessing needed. **Checked:**
 
-**Where each side's intrinsic comes from.** The blitz product supplies
-`zk_deviation_*` and `zk_intrinsic_*` per donut and no total; the total is reconstructed as
-`zk = zk_deviation + zk_intrinsic` (`blitz_reader.py:56-59`). The intrinsic is evaluated at
-**each side's own field angle**, which differ because the two exposures point slightly
-differently.
-
-Checked on `danish_1_3_test@20261013`, row group 0 (`day_obs` 20260315 `seq_num` 73,
-3,381 paired donuts):
-
-| quantity | value |
-|---|---|
-| per-side field-angle offset, OCS | median 4.36 arcsec, max 7.74 arcsec |
-| intrinsic Z4, median(intra − extra) | −0.00007 µm of wavefront |
-| intrinsic, max abs(intra − extra) over 21 Noll terms, all donuts | 0.0256 µm of wavefront |
-| `zk_OCS` − 0.5·(`zk_OCS_intra` + `zk_OCS_extra`), max abs | 1.8e-15 µm of wavefront |
-
-**The side-dependent intrinsic cancels.** The intrinsic difference is 4 orders of
-magnitude below the signal, so total and deviation give the *same* intra − extra to 4
-decimal places:
-
-| Noll | median(intra − extra), total [µm wf] | same, deviation [µm wf] | same, intrinsic [µm wf] |
-|---|---|---|---|
-| Z4 | −0.0303 | −0.0303 | −0.00007 |
-| Z11 | +0.2691 | +0.2692 | −0.00008 |
-| Z14 | −0.3877 | −0.3877 | −0.00000 |
-| Z22 | −0.0318 | −0.0319 | +0.00001 |
-
-**So intra − extra is a measurement, not a model artifact.** This is the question that
-decided whether the study is worth running, and the answer is yes.
-
-**The CCD-height term does not enter the difference.** `aos/docs/ts_wep_zernike_intrinsics.md`
-records `zkStart[Z4] += Z4_height` with sign "extra +, intra −"
-(`HEIGHT_TO_Z4_UM_PER_MM = 15`), which *would* put 2·15.8 nm of Z4 per µm of height into
-the difference — but the same document's batoid check (2026-10-11) finds a height h adds
-+15.8·h nm of Z4 on **both** sides, so it cancels, leaving only the height difference
-between the two donut positions, below 0.25 nm of Z4 for the same star. In FAM both sides
-of a pair are the *same* sensor and the same star, so the corner-pair case (about −72 nm)
-does not apply. **The two conventions are not reconciled in that document and this study
-should settle it**: if ts_wep's "extra +, intra −" were what the data saw, Z4_intra −
-Z4_extra would carry −2·15.8 nm/µm × the per-detector height, giving a per-detector
-pattern in ΔZ4 of RMS about 0.10 µm of wavefront (from the 3.1 µm RMS per-CCD piston). The
-measured median ΔZ4 is −0.0303 µm of wavefront with a per-detector map available — so
-analysis (b) below tests this directly, and that is the open check closed.
-
-**Primary quantity: the total wavefront, `zk_OCS_intra − zk_OCS_extra`, in µm of
-wavefront.** Reason: for the difference it is numerically identical to the deviation
-(table above), and the total needs no statement about which MIW build the intrinsic came
-from. The deviation is reported alongside for Z4 only, where the intrinsic is largest, as
-a consistency line.
-
----
-
-## 3. Data and selection
-
-Both builds exist and carry every per-side column — **checked**:
-
-| | `danish_1_3_test@20261013` | `danish_1_3_v1000@20261013` |
+| | `danish_1_3_v1000@20261013` | `danish_1_3_test@20261013` |
 |---|---|---|
-| `donuts.parquet` rows | 3,155,734 | 3,155,836 |
+| Butler collection | `u/jmeyers3/t614_fam_unpaired_v1000` | `u/jmeyers3/t614_fam_unpaired` |
+| pupil model | v1000: as-built + M1M3 + M1 baffles | blitz default |
+| `donuts.parquet` rows | 3,155,836 | 3,155,734 |
 | columns / row groups | 66 / 966 | 66 / 966 |
 | size | 13.296 GB | 13.296 GB |
-| `visits.parquet` rows / cols | 966 / 24 | 966 / 24 |
-| `fits.parquet` rows / cols | 873 / 449 | 873 / 449 |
 | visits, nights | 966, 15 | 966, 15 |
-| `visit_quality_pass` visits, nights | 873, 15 | 873, 15 |
+| `visit_quality_pass` | 873 visits, 15 nights | 873 visits, 15 nights |
 | `day_obs` range | 20260315–20260619 | 20260315–20260619 |
-| median(intra − extra) visit blur [arcsec] | +0.3440 | +0.3445 |
+| median(intra − extra) visit blur | +0.3445 arcsec | +0.3440 arcsec |
 
-All 18 `SIDE_COLUMNS` present in both. Noll indices in `visits.nollIndices`: **[4..19,
-22..26], 21 terms** in both. The variant contrast is the **pupil model** (`v3_14`-era
-default against `v1000`); the blur reproduces the handoff's +0.3440 arcsec exactly on
-`test`, so the two builds differ in the fit, not the sample.
+**v1000 full-scan completeness, checked:** all 966 row groups read, 3,155,836 rows, 966
+distinct `(day_obs, seq_num)`, **zero** rows with a non-finite per-side blur or per-side
+Zernike. 21 Noll indices, [4..19, 22..26], both builds. All 18 `SIDE_COLUMNS` present.
 
-Selection:
-- `visit_quality_pass` on `visits.parquet`, as the blur study (873 of 966 visits). Per
-  memory, `median_blur_arcsec <= 1.2 arcsec` is usually the cut that bites.
-- field radius `<= 1.725 deg` in OCS, computed from `thx_OCS`/`thy_OCS` (radians in the
-  parquet). **Checked:** max field radius on the sample row group is 1.7240 deg, so this
-  limit removes nothing there and is a guard, not a cut.
-- paired rows only (`matched_intra_extra`), and finite per-side Zernikes on both sides.
+Selection: `visit_quality_pass` (873 of 966 visits, as the blur study); paired rows
+(`matched_intra_extra`); field radius ≤ 1.725 deg in OCS as a guard (checked: max on the
+sampled visit is 1.7240 deg, so it removes nothing).
 
-Pair counts per variant are reported in the first run, not guessed here; the paired donut
-count over the 873 quality visits is roughly 2.85 M rows if the sample row group
-(3,381 pairs per visit) is typical.
+**The per-side Zernikes are independent single-donut Danish fits** — the blitz product is
+unpaired, one row per donut per exposure, and `pair_sides`
+(`rubinwork/products/fam_tables/builders/blitz_reader.py:317-408`) joins the two sides on
+`(det_name, donut_id)` *after* each is fitted. So intra − extra is a difference of two
+independent measurements of the same star.
 
-Column projection only — the donut table is 13.3 GB and has one row group per visit, so
-every pass reads the ~25 needed columns visit by visit.
+**The intrinsic cancels in the difference, so this is a measurement and not a model
+artifact.** Each side's intrinsic is evaluated at its own field angle (median 4.36 arcsec
+apart between sides). Checked on one visit, median(intra − extra): intrinsic Z11
+−0.00008 µm of wavefront against a total of +0.2691 µm of wavefront. Total and deviation
+therefore give the same difference to 4 decimals, and **the primary quantity is the
+total, `zk_OCS_intra − zk_OCS_extra`, in µm of wavefront** — no dependence on which MIW
+build supplied the intrinsic. Also checked: `zk_OCS` = 0.5·(intra + extra) to
+1.8e-15 µm of wavefront, so the paired wavefront is exactly the two-side mean.
 
----
-
-## 4. Analyses
-
-Pair level = one paired donut. Visit level = median over the donuts of one visit.
-`ΔZ_k ≡ Z_k,intra − Z_k,extra` in µm of wavefront; `Δblur ≡ blur_intra − blur_extra` in
-arcsec.
-
-**(a) Per Noll index, the difference.** For each of the 21 Noll indices: median and nMAD of
-`ΔZ_k` over pairs, per visit (873 values) and pooled, in µm of wavefront. Plus the
-wavefront RMS of the difference vector, `sqrt(sum_k ΔZ_k²)` in µm of wavefront (amplitude,
-not power), per pair and its median over the sample.
-
-Already visible on the one sampled visit (20260315 seq 73, 3,381 pairs, `test`), median and
-nMAD over pairs in µm of wavefront: **Z11 +0.2691 (nMAD 0.0167)**, **Z14 −0.3877
-(nMAD 0.0759)**, Z6 −0.2095 (0.2171), Z7 +0.1186 (0.1274), Z9 −0.1083 (0.0980),
-Z15 −0.1000 (0.0743), Z26 +0.0975 (0.0165), Z4 −0.0303 (0.1564). Z11's nMAD is 1/16 of its
-median — this is a precise, systematic offset, not noise.
-
-**(b) Field dependence.** Focal-plane maps of median `ΔZ_k` per detector (189 science
-CCDs) for the terms that survive (a), in **OCS and in CCS**, pooled over the sample. A
-pattern fixed in OCS is telescope-fixed (optics, M1 edge); fixed in CCS is camera-fixed
-(detector heights, pupil model, camera optics). The rotator spans enough angle over 15
-nights to separate them; `rotator_angle` (= `rotTelPos`, phase 3b) and
-`rotator_angle_source` are in `visits.parquet`. Also the ΔZ4-against-per-detector-height
-regression named in section 2, in nm of wavefront per µm of detector height, against the
-predicted 0 nm/µm (batoid: the term cancels) and −31.6 nm/µm (= −2 × 15.8, my arithmetic
-from the ts_wep `zkStart` "extra +, intra −" convention, not a number either document
-states).
-
-**(c) ΔZ_k against Δblur.** At pair level (`blur_intra`/`blur_extra` per donut) and visit
-level (`median_blur_intra_arcsec`/`median_blur_extra_arcsec`), for each Noll index:
-Spearman rho with n, Pearson r with n, and a **Huber RLM slope with its standard error**
-in µm of wavefront per arcsec (`statsmodels RLM(y, X, M=HuberT())`, as `dz_fitting.py`).
-Each reported twice: full sample and **within-night de-meaned** (subtract the per-night
-median of both variables) — the blur study found roughly half the full-sample signal is
-night-level covariance with the seeing, so the full-sample number alone overstates it.
-
-**(d) `test` against `v1000`.** The same table of per-Noll median `ΔZ_k` for both builds,
-and the difference between them in µm of wavefront, over the identical 873 visits. Z11 is
-expected to move. **Already checked on the one sampled visit**, median(intra − extra) in µm
-of wavefront: Z11 **+0.2691 → +0.1916** (−29%), Z14 −0.3877 → −0.3855 (unchanged),
-Z4 −0.0303 → −0.0279, Z22 −0.0318 → −0.0238. So the pupil model moves Z11 and leaves Z14
-alone, which is the giant-donut result appearing in the FAM ensemble.
-
-**(e) The fit-degeneracy null test.** Danish fits blur jointly with the Zernikes, so the
-+0.344 arcsec blur asymmetry could leak into Z4, Z11 or Z22 through fit covariance rather
-than being a wavefront difference.
-
-**No stored covariance exists** — **checked**: `donuts.parquet` carries only
-`lstsq_cost_{intra,extra}` and `lstsq_optimality_{intra,extra}` per side, no per-donut
-parameter covariance or Jacobian; `fits.parquet`'s 449 columns are DZ-fit coefficients and
-their errors, a later stage. So the test must be a forward simulation:
-
-1. Take a handful of real donuts spanning field radius. Simulate with `danish` at known
-   Zernikes (the measured paired mean) and a known blur, once per side with the matching
-   defocal sign.
-2. Refit with the same configuration and free blur, and record the recovered Zernikes —
-   the zero-asymmetry baseline.
-3. Re-simulate with a blur difference imposed between the sides matching the data
-   (`b_intra² = b_extra² + 0.5614 arcsec²`, the blur study's quadrature model), refit, and
-   measure how much ΔZ4, ΔZ11 and ΔZ22 the fit invents from blur alone, in µm of
-   wavefront.
-4. Compare against the measured ΔZ_k. The item-7 handoff already has a strong prior that
-   this leak is small: the giant-donut Z11 split moves by 0.0001 to 0.007 µm of wavefront
-   between free blur and blur fixed at the measured 0.7 arcsec seeing, against a 0.25 µm
-   of wavefront unexplained residual. The simulation turns that into a number for the FAM
-   geometry.
-
-A cheap data-side proxy first, because it costs one pass: the Huber slope of `ΔZ11` on
-`Δblur` *within* a visit (where the wavefront is common and only the blur varies donut to
-donut) bounds the leak without any simulation.
+Per-donut Danish fit covariance is **not stored** (only `lstsq_cost_{intra,extra}` and
+`lstsq_optimality_{intra,extra}`), so no fit-covariance diagnostic is available from the
+tables.
 
 ---
 
-## 5. Existing results to reproduce as checks
+## 4. The plots, in Aaron's order
 
-| check | target | source |
+Everything is **per FAM visit**: the median over that visit's donuts, per side, as the
+blur study did. `ΔZ_k ≡ median(Z_k,intra) − median(Z_k,extra)` in µm of wavefront;
+`mean_k ≡ (median(Z_k,intra) + median(Z_k,extra))/2`; `Δblur` in arcsec. n = 873 visits.
+
+### Plot 1 — per-side medians and the difference, for all 21 Zernikes
+
+Two panels per Noll index, matching the blur study's layout:
+
+- **(a)** median intra and median extra against **visit ordinal**, two markers/colours,
+  night boundaries marked so within-night drift is separable by eye.
+- **(b)** median(intra − extra) per FAM visit against visit ordinal, same night
+  boundaries.
+
+21 Noll indices × 2 panels. Laid out as a grid over several PDF pages (one page per 3–4
+Noll indices keeps the ordinal axis readable), all in the single study PDF.
+
+### Plot 2 — which Zernikes have a substantial difference
+
+Ranking figure plus a table: for each Noll index, `median(ΔZ_k)` in µm of wavefront
+against `median(|mean_k|)` in µm of wavefront, and the **ratio
+`median(ΔZ_k) / median(|mean_k|)` (dimensionless, difference over two-side mean)** — the
+"substantial compared to the size of the mean" test. The nMAD of `ΔZ_k` over visits is
+reported with each, so a large ratio that is pure scatter is distinguishable from a real
+offset.
+
+Expectation is Z11 only. Early evidence says more may qualify: on one visit of `test`,
+median(intra − extra) over 3,381 donuts in µm of wavefront was **Z11 +0.2691 (nMAD 0.0167
+over donuts)**, **Z14 −0.3877 (0.0759)**, Z6 −0.2095 (0.2171), Z7 +0.1186 (0.1274),
+Z9 −0.1083 (0.0980), Z15 −0.1000 (0.0743), Z26 +0.0975 (0.0165), Z4 −0.0303 (0.1564).
+Z11's nMAD is 1/16 of its median. Whether these survive at visit level over 873 visits,
+and how they compare against their own means, is what the plot decides — **I am not
+assuming Z11 is the only one.**
+
+### Plot 3 — Δblur against ΔZ11
+
+Scatter of `Δblur` in arcsec against `ΔZ11` in µm of wavefront, one point per FAM visit,
+n = 873. With Spearman rho and Pearson r (both, with n) and a Huber RLM slope ± its
+standard error in µm of wavefront per arcsec. Points coloured by night, since the blur
+study found roughly half the full-sample signal is night-level covariance — so the same
+numbers are also reported **within-night de-meaned**. Repeated for any other Noll index
+plot 2 flags.
+
+### Plot 4 — the thermal selection, generalised
+
+A general routine, developed in this notebook and later moved into `rubinwork`:
+
+```
+select_thermal_predictors(target, predictors, n_max, ...) -> ordered list, signs, fit
+```
+
+Given a target time series (per visit) and a set of telemetry time series on the matching
+index, pick predictors by **greedy forward selection on the incremental gain**, which is
+the fix to the earlier ordering:
+
+- **a.** Rank all candidates by their own correlation with the target. Record each one's
+  **sign** from this first round, so the signs are fixed before any orthogonalisation.
+- **b.** Take the leading variable. Then **re-rank every remaining candidate by how much
+  it adds given variable 1** — not by its own correlation with the target — and take the
+  biggest addition. "Addition" measured as the reduction in residual nMAD of the Huber
+  fit, reported in the target's units, with partial correlation alongside.
+- **c.** Continue to **`n` predictors, `n` settable**.
+
+Reported per step: the variable, its sign from step (a), the incremental reduction in
+residual nMAD (target units), the partial correlation, and a collinearity guard (VIF,
+dimensionless) so a step that is nearly a repeat of an earlier variable is visible rather
+than silent. Fit is Huber RLM throughout (`statsmodels RLM(y, X, M=HuberT())`), per the
+repo default.
+
+Run on **`Δblur` in arcsec first**, to reproduce the earlier study's conclusion under the
+better algorithm, then on **`ΔZ11` in µm of wavefront**, and on any other Noll index plot
+2 flags. The thermal variables and the per-exposure join already exist, cached at
+`aos/output/fam_processing/blur_intra_extra/thermal_join_per_side_cam.parquet` (966 rows);
+the earlier notebook ranked 22 thermal quantities, which is the candidate set.
+
+### Plot 5 — after the correction
+
+For each target (`Δblur`, `ΔZ11`, plus any others): the Huber-corrected residual
+`Δ − model(thermal)` against **the two-side mean** and against **the extra-focal value**,
+before and after, with the Huber slope ± error on each. This is the step that carried the
+blur study's conclusion — the earlier flattening was −0.5788 ± 0.0344 to
+−0.0868 ± 0.0171 arcsec per arcsec. If `ΔZ11`'s residual correlation flattens the same
+way, thermal drive extends to the wavefront; if it does not, the blur and the Z11
+asymmetries are different effects, which is equally worth knowing.
+
+---
+
+## 5. Output layout (item 6)
+
+**One notebook, one PDF, one Markdown file.** Proposed as the standing rule for studies:
+
+- `aos/unpaired_intra_vs_extra/notebooks/unpaired_intra_vs_extra.ipynb` — the analysis.
+- `output@/<YYYYMMDD>_<label>/unpaired_intra_vs_extra.pdf` — **one** multi-page PDF
+  carrying every figure above, via `matplotlib.backends.backend_pdf.PdfPages`.
+- `aos/unpaired_intra_vs_extra/study.md` — front matter, Question, Current answer, Log.
+- `figures/` holds at most two PNGs pulled from the PDF for the log entry.
+
+This is a change to the conventions, so it needs writing into the rules rather than just
+followed here: section 7 of `notes/status/organization_plan.md` and the `/start-study`
+skill that replaces `rubin-new-study`. Both are **phase 5 work owned by another session**,
+so this plan records the rule and does not edit those files. Suggested wording:
+
+> A study's default output is one notebook, one multi-page PDF and one `study.md`. Reach
+> for a second notebook or a `code/` directory only when something genuinely outgrows the
+> first, and say why in the log.
+
+---
+
+## 6. Checks to reproduce
+
+| check | target | status |
 |---|---|---|
-| quality sample | 873 triplets, 15 nights, 20260315–20260619 | blur handoff — **already reproduced** |
-| median(intra − extra) visit blur | +0.3440 arcsec | blur handoff — **already reproduced**, 0.3440 on `test` |
-| fraction with intra > extra | 0.9954 (dimensionless, of 873) | blur handoff |
-| quadrature parameter | q = +0.5614 arcsec² | blur handoff |
-| Huber slope, (intra − extra) blur on extra blur | −0.5764 ± 0.0344 (dimensionless) | blur handoff |
-| paired wavefront = mean of sides | max abs deviation 1.8e-15 µm of wavefront | **already reproduced** |
-| Z11 split, pupil model | 0.81 → 0.37 µm of wavefront (giant donuts, 8 mm, R22_S10) | item-7 handoff |
-| Z11/Z14 sign | Z11 positive intra, negative extra; Z14 splits the same way | `aos/docs/studies/cwfs.md` |
-| Z22 splits opposite in sign to Z11 and far less | −0.074 (v3.14), −0.015 (v1000) µm of wavefront | item-7 handoff |
+| quality sample | 873 visits, 15 nights, 20260315–20260619 | **reproduced** |
+| median(intra − extra) visit blur, `test` | +0.3440 arcsec | **reproduced** |
+| paired wavefront = two-side mean | to 1.8e-15 µm of wavefront | **reproduced** |
+| per-side intrinsic cancels in the difference | ≤ 0.0001 µm of wavefront in the median | **reproduced** |
+| fraction with intra > extra | 0.9954 (dimensionless, of 873) | to do |
+| quadrature parameter | q = +0.5614 arcsec² | to do |
+| Huber slope, Δblur on extra blur | −0.5764 ± 0.0344 (dimensionless) | to do |
+| thermal correction flattens the blur slope | −0.5788 ± 0.0344 → −0.0868 ± 0.0171 arcsec/arcsec | to do, under the new selection algorithm |
 
-The giant-donut numbers are 8 mm hexapod defocus on one detector and will not reproduce
-numerically against 1.5 mm FAM over 189 detectors — they are **sign and ordering** checks
-(Z11 positive intra, v1000 roughly halving it, Z22 opposite and small). Reproducing the
-0.80/0.37 µm of wavefront magnitude is not expected and its absence is not a failure.
+The last one will not reproduce exactly — the selection algorithm is deliberately
+different — so the check is that the *conclusion* survives, not the coefficients.
 
 ---
 
-## 6. Cost
+## 7. Cost
 
-All interactive on an s3df node. No batch job. One pass over `donuts.parquet` with ~25 of
-66 columns projected, 966 row groups, is the unit of cost.
+Interactive on an s3df node. No batch job. **Calibrated, checked:** a full pass over all
+966 row groups of `donuts.parquet` with 6 columns projected took about 3 minutes, so the
+~25-column passes below are 10–15 minutes, not the 25 estimated earlier.
 
-| analysis | passes | wall clock | memory |
+| step | passes over the 13 GB table | wall clock | memory |
 |---|---|---|---|
-| (a) per-Noll difference | 1 per variant | 15–25 min each | < 8 GB (one row group at a time) |
-| (b) field maps, OCS and CCS | reuses (a)'s per-detector accumulation | + 5 min | < 8 GB |
-| (c) ΔZ vs Δblur, pair and visit | reuses (a) if the pair-level arrays are cached | + 10 min | < 16 GB for the cached pair table |
-| (d) test vs v1000 | the two (a) passes | — | — |
-| (e) null test, data proxy | within (a) | + 5 min | < 8 GB |
-| (e) null test, danish simulation | none over the table | 1–2 h, a few donuts × 3 configs × 2 sides | < 4 GB |
+| per-visit per-side medians, 21 Noll + blur, v1000 | 1 | 10–15 min | < 8 GB, one row group at a time |
+| same for `test` | 1 | 10–15 min | < 8 GB |
+| plots 1, 2, 3 | none — read the cached per-visit table | 5 min | < 1 GB |
+| plot 4, thermal selection | none — the 966-row thermal cache exists | 5 min per target | < 1 GB |
+| plot 5 | none | 2 min | < 1 GB |
 
-Total about 1.5 h of table passes plus 1–2 h of simulation. The per-pair reduced table
-(873 visits × ~3,400 pairs × 21 Noll × 2 sides) is cached once under the study's run
-directory as parquet (roughly 1–2 GB) so (c) and (e) need no second pass.
-
----
-
-## 7. Figures and the first answer
-
-Planned, to `figures/` (a few committed PNGs) with the PDFs under `output@`:
-
-1. `delta_zk_per_noll.png` — median ± nMAD of `ΔZ_k` over 21 Noll indices, µm of
-   wavefront, both variants on one panel.
-2. `delta_zk_field_maps.png` — focal-plane maps of `ΔZ4`, `ΔZ11`, `ΔZ14` in OCS and CCS,
-   µm of wavefront.
-3. `delta_zk_vs_delta_blur.png` — `ΔZ11` and `ΔZ4` against `Δblur`, visit level, full
-   sample and within-night de-meaned, with the Huber lines.
-4. `delta_z4_vs_detector_height.png` — `ΔZ4` in nm of wavefront against per-detector
-   height in µm, with the batoid (0 nm/µm) and ts_wep-convention (−31.6 nm/µm, derived) predictions drawn.
-5. `blur_quadrature.png` — the blur result, carried from the earlier study as the first
-   log entry's figure.
-
-`study.md`'s first **Current answer**, as it stands today from the checks above:
-
-> The intra-focal and extra-focal donuts of the same FAM pair give different wavefronts,
-> and the difference is a measurement rather than a model artifact: the side-dependent
-> intrinsic cancels to below 0.0001 µm of wavefront in the median, so the total and the
-> deviation give the same difference. On one visit of `danish_1_3_test@20261013`
-> (`day_obs` 20260315 `seq_num` 73, 3,381 paired donuts) the median intra − extra is
-> +0.2691 µm of wavefront in Z11 (nMAD 0.0167 over pairs) and −0.3877 µm of wavefront in
-> Z14 (nMAD 0.0759). The `v1000` pupil model cuts the Z11 difference to +0.1916 µm of
-> wavefront, 29 per cent, and leaves Z14 unchanged — the same pupil-model dependence the
-> 8 mm giant donuts show. The intra side is also blurrier by a median +0.3440 arcsec over
-> 873 quality visits, a quadrature term q = +0.5614 arcsec²; whether the two asymmetries
-> are the same effect is the open question.
+The reduced per-visit table is 873 visits × 21 Noll × 2 sides plus blur — a few hundred
+kB — cached once under the run directory, so only the two initial passes touch the big
+file. **Total about 45 min**, which fits "results tonight".
 
 ---
 
 ## 8. Questions for Aaron
 
-1. **Triage question 6**, now that the four are inventoried in section 1 — merge
-   `blur_intra_extra` (1) and `intra_extra_phase_strip` (3) into
-   `aos/unpaired_intra_vs_extra` and cross-link `giant_donuts` (2) and `cwfs` (4), as
-   recommended? Or merge all four, which means moving `wfs/code/giant_donuts/`'s 7 modules
-   and folding an active study with its own open next steps?
-2. **Robust method** — Huber RLM for every ΔZ-against-Δblur slope, per the default? Or a
-   different robust method for the pair-level fits, where n is ~3 M and the leverage of a
-   few bad donuts is different from the visit-level n = 873?
-3. **Primary quantity** — total wavefront for the difference, as recommended (identical to
-   the deviation for ΔZ, and no MIW-build dependence)? Or report both throughout?
-4. **The null test** — is the `danish` forward simulation in scope now, or do the cheap
-   within-visit proxy and the item-7 blur-robustness result settle it well enough to defer?
-5. **The handoff** — does `aos/docs/status/blur_intra_extra_handoff.md` get superseded in
-   place (left on disk, marked superseded, pointing at the new log entry), and the thermal
-   derivation moved to `aos/unpaired_intra_vs_extra/blur_thermal.md`?
+1. **Visit-level median only, or also pair level?** The plots above are all per-visit
+   medians (n = 873), matching the blur study. The per-donut pair level (n ≈ 2.8 M) would
+   give the within-visit slope of ΔZ11 on Δblur — a useful bound on fit degeneracy, since
+   within one visit the wavefront is common and only the blur varies donut to donut. Worth
+   adding as one extra panel, or keep this study purely visit-level?
+2. **"Substantial" in plot 2** — is `median(ΔZ_k) / median(|mean_k|)` (dimensionless) the
+   right test, and is there a threshold you want drawn on the figure, or just the ranking?
+3. **`n` for the thermal selection** — default to 5, as the earlier study's 5-channel
+   thermal_focus model? And keep the VIF < 10 collinearity guard as a reported diagnostic
+   rather than a hard gate?
+4. **Does the de-meaning stay within-night?** The blur study de-meaned by night and found
+   half the full-sample signal was night-level. Same for the Zernikes, or do you want the
+   full-sample numbers primary with within-night alongside?
+5. **v1000 primary with `test` as a second column**, as proposed — or v1000 only, with
+   `test` used solely for the +0.3440 arcsec reproduction check?
