@@ -646,11 +646,18 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
                 n_opd=n_opd)
 
 
-def resolve_miw_decomp(a):
+CATALOG_MIW_PREFIX = 'miw:'
+"""Prefix of a catalog-form ``state_variant.intrinsic_ref``, e.g.
+``'miw:d12-A_50_34_i_5rot@20261014'``."""
+
+
+def resolve_miw_decomp(a, intrinsic_ref=None):
     """The ``intrinsic_split_decomp.parquet`` to use, or `None` to let the old tree decide.
 
     Resolution order: ``--miw-decomp-path``, then ``--miw-build`` through the product
-    catalog, then `None`.
+    catalog, then a catalog-form `intrinsic_ref` (``miw:<variant>@<build>``) through the
+    catalog, then `None`. The third keeps a registered variant on the build its registry
+    row names once that row holds a catalog name, with no flag needed.
 
     A `None` return leaves `rubinwork.miw_corner.MiwCornerLookup` to call
     ``decomp_path``, which tries ``aos/output/miw/<mi_name>/`` **first**. That directory
@@ -667,6 +674,8 @@ def resolve_miw_decomp(a):
     ----------
     a : `argparse.Namespace`
         Parsed arguments, read for ``miw_decomp_path`` and ``miw_build``.
+    intrinsic_ref : `str`, optional
+        The variant's ``state_variant.intrinsic_ref``. Used only in catalog form.
 
     Returns
     -------
@@ -685,14 +694,17 @@ def resolve_miw_decomp(a):
         if not decomp.exists():
             raise FileNotFoundError(f'no MIW decomposition at {decomp}')
         return decomp
-    if a.miw_build:
+    ref = a.miw_build
+    if not ref and str(intrinsic_ref or '').startswith(CATALOG_MIW_PREFIX):
+        ref = intrinsic_ref[len(CATALOG_MIW_PREFIX):]
+    if ref:
         from rubinwork.products import catalog
 
-        variant, _, build = a.miw_build.partition('@')
+        variant, _, build = ref.partition('@')
         decomp = catalog.path('miw', variant, build or catalog.CURRENT) / DECOMP_FILE
         if not decomp.exists():
             raise FileNotFoundError(
-                f'catalog build {a.miw_build!r} of miw holds no {DECOMP_FILE}: {decomp}')
+                f'catalog build {ref!r} of miw holds no {DECOMP_FILE}: {decomp}')
         return decomp
     return None
 
@@ -829,9 +841,12 @@ def main(argv=None):
     miw_lookup = None
     if route == 'miw':
         from rubinwork.miw_corner import DEFAULT_PARAM_SET, MiwCornerLookup
+        decomp = resolve_miw_decomp(a, intrinsic_ref)
+        if decomp is None and intrinsic_ref.startswith(CATALOG_MIW_PREFIX):
+            raise FileNotFoundError(f'cannot resolve {intrinsic_ref!r} in the catalog')
         miw_lookup = MiwCornerLookup(mi_name=intrinsic_ref,
                                      param_set=a.miw_param_set or DEFAULT_PARAM_SET,
-                                     path=resolve_miw_decomp(a),
+                                     path=decomp,
                                      add_ccd_height=a.miw_ccd_height)
         print(f'  MIW intrinsic from {miw_lookup.path}')
         print(f'  corner field points [deg, OCS]: '

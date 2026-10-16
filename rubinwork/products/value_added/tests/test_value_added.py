@@ -502,6 +502,28 @@ def test_resolve_miw_decomp_rejects_a_missing_path(tmp_path):
         bos.resolve_miw_decomp(a)
 
 
+def test_resolve_miw_decomp_follows_a_catalog_intrinsic_ref(tmp_path, monkeypatch):
+    """Once the registry row holds ``miw:<variant>@<build>``, no flag is needed; a
+    joined old-tree name still resolves to `None`, as before."""
+    import argparse
+
+    from rubinwork.products.value_added.builders import build_optical_state as bos
+
+    seen = []
+
+    def fake_path(product, variant, build):
+        seen.append((product, variant, build))
+        return tmp_path
+
+    monkeypatch.setattr(catalog, "path", fake_path)
+    (tmp_path / "intrinsic_split_decomp.parquet").write_bytes(b"")
+    a = argparse.Namespace(miw_decomp_path=None, miw_build=None)
+    got = bos.resolve_miw_decomp(a, "miw:d12-A_50_34_i_5rot@20261014")
+    assert got == tmp_path / "intrinsic_split_decomp.parquet"
+    assert seen == [("miw", "d12-A_50_34_i_5rot", "20261014")]
+    assert bos.resolve_miw_decomp(a, "danish_1_2_A_50_34_i_5rot") is None
+
+
 def test_resolve_paths_prefers_the_catalog_when_asked(tmp_path, monkeypatch):
     """With both trees populated, prefer='catalog' must not return the old tree.
 
@@ -601,3 +623,23 @@ def test_registry_migration_is_idempotent(tmp_path):
         assert mig.plan_updates(con, fam_ref="fam_tables:danish_1_2@20261014") == []
     finally:
         con.close()
+
+
+# ---- fetch_log provenance ------------------------------------------------------
+
+def test_fetch_log_gains_git_commit_on_an_old_schema(tmp_path):
+    """An existing database without the column is migrated, old rows kept as NULL."""
+    import duckdb
+
+    db = tmp_path / va_reader.DB_FILE
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE fetch_log (day_obs INTEGER, group_name VARCHAR, "
+                "status VARCHAR, n_rows INTEGER, error VARCHAR, attempted_at TIMESTAMP, "
+                "PRIMARY KEY (day_obs, group_name))")
+    con.execute("INSERT INTO fetch_log VALUES (20251116, 'm1m3', 'ok', 3, NULL, NULL)")
+    va_reader.create_schema(con)
+    va_reader.log_fetch(con, 20251117, "m1m3", "ok", n_rows=4)
+    rows = dict(con.execute("SELECT day_obs, git_commit FROM fetch_log").fetchall())
+    con.close()
+    assert rows[20251116] is None
+    assert rows[20251117]

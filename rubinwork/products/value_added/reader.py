@@ -48,6 +48,7 @@ one failure mode this shape introduces.
 
 Sonic-anemometer and turbulence sensor locations are recorded in ``ts_config_ocs``.
 """
+import functools
 import os
 import pathlib
 from datetime import datetime, timezone
@@ -566,8 +567,16 @@ def create_schema(con):
           n_rows       INTEGER,
           error        VARCHAR,
           attempted_at TIMESTAMP,
+          git_commit   VARCHAR,     -- rubin-work commit of the fetch; '+dirty' if modified
           PRIMARY KEY (day_obs, group_name)
         )""")
+    # Additive: provenance added in phase 3c. Rows fetched before it stay NULL, since
+    # their commit was never recorded.
+    have_fl = {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'fetch_log'").fetchall()}
+    if 'git_commit' not in have_fl:
+        con.execute('ALTER TABLE fetch_log ADD COLUMN git_commit VARCHAR')
     # Additive migration for m1m3_thermal_r2, as for visit_telemetry: the bulk glass
     # temperature columns were added after the table was first built.
     have_r2 = {r[0] for r in con.execute(
@@ -634,15 +643,31 @@ def upsert_visits(con, df, group=None):
     return len(out)
 
 
+@functools.lru_cache(maxsize=1)
+def _code_commit():
+    """The rubin-work commit, with ``+dirty`` when tracked files are modified, or `None`."""
+    from ..manifest import git_state
+
+    commit, dirty = git_state()
+    if commit is None:
+        return None
+    return commit + ('+dirty' if dirty else '')
+
+
 def log_fetch(con, day_obs, group, status, n_rows=0, error=None):
-    """Record the outcome of one ``(day_obs, group)`` fetch in `fetch_log`."""
+    """Record the outcome of one ``(day_obs, group)`` fetch in `fetch_log`.
+
+    The row carries the fetch time (``attempted_at``, UTC) and the code commit
+    (``git_commit``), the provenance plan section 6 asks for.
+    """
     con.execute(
-        'INSERT INTO fetch_log (day_obs, group_name, status, n_rows, error, attempted_at) '
-        'VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (day_obs, group_name) DO UPDATE SET '
-        'status = excluded.status, n_rows = excluded.n_rows, error = excluded.error, '
-        'attempted_at = excluded.attempted_at',
+        'INSERT INTO fetch_log (day_obs, group_name, status, n_rows, error, attempted_at, '
+        'git_commit) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (day_obs, group_name) '
+        'DO UPDATE SET status = excluded.status, n_rows = excluded.n_rows, '
+        'error = excluded.error, attempted_at = excluded.attempted_at, '
+        'git_commit = excluded.git_commit',
         [int(day_obs), group, status, int(n_rows), error,
-         datetime.now(timezone.utc)])
+         datetime.now(timezone.utc), _code_commit()])
 
 
 def done_pairs(con, status=('ok', 'empty')):
