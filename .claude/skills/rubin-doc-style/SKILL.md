@@ -38,11 +38,32 @@ Follow that register throughout. Specifically:
 
 Status headers, units, and the file-location rules below still apply.
 
+## `study.md`
+Every study has one, made by `/start-study` and extended by `/wrap`. Front matter
+(`study`, `topic`, `status`, `question`, `answer`, `uses`, `started`), then:
+
+- **Question** — what is asked, with the acronyms defined;
+- **Current answer** — kept true, with numbers and units; rewritten, not appended to;
+- **Log** — dated `### YYYY-MM-DD — title` entries, newest first: what was done,
+  results with units, links to `figures/` and to dated run directories, the commits.
+  Handoffs become Log entries.
+
+`status` is `active | answered | parked | done | dropped`. The front-matter `answer` is
+the one- or two-sentence form of Current answer. Quote a front-matter value containing
+`: ` or ` #`, or let `/wrap` do it. Longer derivations go in their own `.md` beside
+`study.md`, linked from it. `study.md` takes no separate status line: its front matter
+is the status.
+
+`STUDIES.md` and `PRODUCTS.md` at the repo root are generated; never edit them by hand.
+
 ## Markdown docs
 Every `.md` file has exactly one home, by kind:
 
 | kind | location | example |
 |---|---|---|
+| a study: question, answer, log | `<topic>/<study>/study.md` | `aos/miw_hull/study.md` |
+| a study's derivation or method | `<topic>/<study>/<name>.md` | `camera/itl_dip/method.md` |
+| a product: schema, versions | `rubinwork/products/<name>/README.md` (none written yet; the package docstring holds it today) | `rubinwork/products/fam_tables/__init__.py` |
 | topic scope + index | `<topic>/README.md` | `aos/README.md` |
 | Claude scoping rules | `<topic>/CLAUDE.md` | `aos/CLAUDE.md` |
 | durable reference, conventions, investigation writeups | `<topic>/docs/` | `smatrix/docs/conventions.md` |
@@ -53,7 +74,8 @@ Every `.md` file has exactly one home, by kind:
 Rules:
 - **Filenames are snake_case**, like notebooks and Python modules. `README.md` and
   `CLAUDE.md` are the only uppercase names.
-- **Nothing loose in a topic root** except `README.md` and `CLAUDE.md`.
+- **Nothing loose in a topic root** except `README.md`, `CLAUDE.md` and study
+  directories.
 - **Every doc opens with a status line** directly under its H1, so a reader knows
   immediately whether to trust it:
   `> **Status:** current · **Last updated:** YYYY-MM-DD · **Kind:** reference (conventions)`
@@ -62,5 +84,6 @@ Rules:
 - **The `docs/` vs `docs/status/` split is the point**: a stale handoff must never be
   mistaken for a live convention. If a doc records *where the work is*, it is status; if
   it records *how something is defined or what was concluded*, it is reference.
-- **Index every doc in the topic's `README.md`** — a doc nothing links to is a doc
+- **Index every doc in the topic's `README.md`**, except studies, which `STUDIES.md`
+  indexes — a doc nothing links to is a doc
   nobody finds.
