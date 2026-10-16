@@ -222,8 +222,9 @@ def corner_field_points(ofc_version=None):
     These are `ts_ofc`'s ``sample_points``, the same interface the batoid route uses, so both
     intrinsic routes are evaluated at identical field positions.
     """
-    import aos_state
     from lsst.ts.ofc import OFCData
+
+    from rubinwork import aos_state
 
     ofcd = OFCData('lsst')
     return np.array([np.asarray(ofcd.sample_points[s], dtype=float)
@@ -288,7 +289,7 @@ def corner_z4_height_um(ofc_version=None, height_map_dir=None):
     them. It is useful for checking that the two routes to the same physical quantity are of
     comparable size.
     """
-    import aos_state
+    from rubinwork import aos_state
 
     try:
         import pandas as pd

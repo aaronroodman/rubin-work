@@ -646,6 +646,57 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
                 n_opd=n_opd)
 
 
+def resolve_miw_decomp(a):
+    """The ``intrinsic_split_decomp.parquet`` to use, or `None` to let the old tree decide.
+
+    Resolution order: ``--miw-decomp-path``, then ``--miw-build`` through the product
+    catalog, then `None`.
+
+    A `None` return leaves `rubinwork.miw_corner.MiwCornerLookup` to call
+    ``decomp_path``, which tries ``aos/output/miw/<mi_name>/`` **first**. That directory
+    is usually still on disk, so the old-tree build wins silently and the catalog build is
+    never read. The two are not the same: for ``d12-A_50_34_i_5rot`` they differ on the
+    outermost radial ring of the field grid, by up to 0.6966 µm of wavefront in ``O_re``
+    (ring 79 of 80, r = 1.7500 deg of field angle), which is the convex-hull and NaN-rim
+    fix. At the four corner field points (r = 1.6833 deg) the two agree to 1.1244e-03 µm
+    of wavefront, so the effect on this product is small -- but it is not nothing, and
+    which build produced a row should not depend on what happens to be left in the old
+    tree. Pass ``--miw-build``.
+
+    Parameters
+    ----------
+    a : `argparse.Namespace`
+        Parsed arguments, read for ``miw_decomp_path`` and ``miw_build``.
+
+    Returns
+    -------
+    decomp : `pathlib.Path` or `None`
+        The decomposition to read, or `None` for the `MiwCornerLookup` default.
+
+    Raises
+    ------
+    `FileNotFoundError`
+        If an explicit path or a resolved catalog build has no decomposition file.
+    """
+    from rubinwork.miw_corner import DECOMP_FILE
+
+    if a.miw_decomp_path:
+        decomp = pathlib.Path(a.miw_decomp_path)
+        if not decomp.exists():
+            raise FileNotFoundError(f'no MIW decomposition at {decomp}')
+        return decomp
+    if a.miw_build:
+        from rubinwork.products import catalog
+
+        variant, _, build = a.miw_build.partition('@')
+        decomp = catalog.path('miw', variant, build or catalog.CURRENT) / DECOMP_FILE
+        if not decomp.exists():
+            raise FileNotFoundError(
+                f'catalog build {a.miw_build!r} of miw holds no {DECOMP_FILE}: {decomp}')
+        return decomp
+    return None
+
+
 def main(argv=None):
     """Command-line entry point."""
     p = argparse.ArgumentParser(
@@ -665,6 +716,15 @@ def main(argv=None):
     p.add_argument('--miw-param-set', default=None,
                    help='param_set holding the MIW build named by --intrinsic-ref; '
                         'defaults to the one in rubinwork/miw_corner.py')
+    p.add_argument('--miw-build', default=None, metavar='VARIANT[@BUILD]',
+                   help='resolve the MIW intrinsic from the product catalog instead of the '
+                        'old aos/output tree, e.g. d12-A_50_34_i_5rot@20261014 (omit @BUILD '
+                        'for that variant\'s current). PREFER THIS: --intrinsic-ref alone '
+                        'resolves old-tree-first and silently reads a stale build if one is '
+                        'still on disk')
+    p.add_argument('--miw-decomp-path', default=None,
+                   help='explicit intrinsic_split_decomp.parquet, overriding --miw-build, '
+                        '--intrinsic-ref and --miw-param-set')
     p.add_argument('--miw-ccd-height', action='store_true',
                    help='add a standalone per-sensor height-equivalent defocus to the MIW '
                         'Zernike 4. Normally leave this off: the detector heights are '
@@ -771,6 +831,7 @@ def main(argv=None):
         from rubinwork.miw_corner import DEFAULT_PARAM_SET, MiwCornerLookup
         miw_lookup = MiwCornerLookup(mi_name=intrinsic_ref,
                                      param_set=a.miw_param_set or DEFAULT_PARAM_SET,
+                                     path=resolve_miw_decomp(a),
                                      add_ccd_height=a.miw_ccd_height)
         print(f'  MIW intrinsic from {miw_lookup.path}')
         print(f'  corner field points [deg, OCS]: '

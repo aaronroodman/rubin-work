@@ -80,12 +80,14 @@ SCHEMES = {'50_34': (50, 34), '22_12': (22, 12)}
 DEFAULT_AOS_OUTPUT = 'aos/output/fam_processing'
 
 
-def resolve_paths(aos_output, param_set, mi=None):
+def resolve_paths(aos_output, param_set, mi=None, prefer='old'):
     """Locate the ``fits.parquet`` and ``visits.parquet`` for a param_set.
 
-    Resolves in the same order as the ``aos/Snakefile``: the **old tree** under
+    By default resolves in the same order as the ``aos/Snakefile``: the **old tree** under
     `aos_output` if its files are there, else the **catalog's** ``current`` build of the
-    matching `fam_tables` variant.
+    matching `fam_tables` variant. Pass ``prefer='catalog'`` to reverse that, which is
+    what a build against the catalog wants -- the old tree is usually still on disk and
+    would otherwise win without saying so.
 
     The old-tree directory is the variant's short ``dir_name``, which for `fam_tables`
     **is** the variant name — ``danish_1_2``, not the long param_set key
@@ -104,6 +106,12 @@ def resolve_paths(aos_output, param_set, mi=None):
         ``<dir_name>/<mi>/fits.parquet`` — the refit against the MIW — while the visits
         sidecar stays at the param_set level, since the pupil Noll set is a property of the
         donut extraction rather than of the intrinsic.
+    prefer : {'old', 'catalog'}, optional
+        Which tree to try first. ``'old'`` (default) keeps the historical
+        ``aos/Snakefile`` order. ``'catalog'`` looks in the catalog build first and uses
+        the old tree only as a fallback; pass it when the point of the run is to build
+        against the catalog, since the old tree is usually still on disk and would
+        otherwise win silently.
 
     Returns
     -------
@@ -129,22 +137,36 @@ def resolve_paths(aos_output, param_set, mi=None):
         return ((base / mi / 'fits.parquet') if mi else (base / 'fits.parquet'),
                 base / 'visits.parquet')
 
+    if prefer not in ('old', 'catalog'):
+        raise ValueError(f"prefer must be 'old' or 'catalog', not {prefer!r}")
+
     looked = []
     old_base = pathlib.Path(aos_output) / variant
     fits_path, visits_path = _pair(old_base)
-    looked.append(str(old_base))
-    if fits_path.exists() and visits_path.exists():
-        return fits_path, visits_path
 
-    try:
-        cat_base = pathlib.Path(catalog.path('fam_tables', variant))
-    except Exception as exc:
-        looked.append(f'catalog fam_tables/{variant} ({type(exc).__name__})')
-    else:
+    def _try_old():
+        looked.append(str(old_base))
+        if fits_path.exists() and visits_path.exists():
+            return fits_path, visits_path
+        return None
+
+    def _try_catalog():
+        try:
+            cat_base = pathlib.Path(catalog.path('fam_tables', variant))
+        except Exception as exc:
+            looked.append(f'catalog fam_tables/{variant} ({type(exc).__name__})')
+            return None
         looked.append(str(cat_base))
         cfits, cvisits = _pair(cat_base)
         if cfits.exists() and cvisits.exists():
             return cfits, cvisits
+        return None
+
+    order = (_try_old, _try_catalog) if prefer == 'old' else (_try_catalog, _try_old)
+    for attempt in order:
+        hit = attempt()
+        if hit is not None:
+            return hit
 
     missing = ('DZ fits' if not fits_path.exists() else 'visits sidecar')
     raise FileNotFoundError(
@@ -306,6 +328,11 @@ def main():
     ap.add_argument('--mi', default=None,
                     help='Measured Intrinsic Wavefront build name; omit for the batoid '
                          'design intrinsic')
+    ap.add_argument('--prefer', choices=('old', 'catalog'), default='old',
+                    help="which tree to resolve the FAM tables from first. 'catalog' "
+                         'builds against the product catalog; the default keeps the '
+                         'old-tree-first order, which silently wins while the old tree '
+                         'is still on disk')
     ap.add_argument('--prefix', default='z1toz6', choices=sorted(PREFIX_K_RANGE),
                     help='DZ-fit column prefix (default z1toz6, focal orders k=1..6)')
     ap.add_argument('--scheme', default='50_34', choices=sorted(SCHEMES),
@@ -341,7 +368,8 @@ def main():
         parts = args.day_obs.split('-')
         day_obs_range = (int(parts[0]), int(parts[-1]))
 
-    fits_path, visits_path = resolve_paths(aos_output, args.param_set, args.mi)
+    fits_path, visits_path = resolve_paths(aos_output, args.param_set, args.mi,
+                                           prefer=args.prefer)
     pupil_j = read_pupil_j(visits_path)
     print(f'param_set {args.param_set}  intrinsic {route}'
           + (f' ({args.mi})' if args.mi else '')
