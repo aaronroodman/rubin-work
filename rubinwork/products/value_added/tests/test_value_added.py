@@ -200,6 +200,52 @@ def test_finish_build_writes_nothing_for_a_scratch_database(data_root, tmp_path)
     assert not (db.parent / "manifest.json").exists()
 
 
+def test_a_shard_under_the_variant_work_dir_is_not_a_catalog_build(data_root):
+    """The defect of 2026-10-15: 11 shards raced on one ``manifest.json``."""
+    shard = (value_added.build_dir("v1") / va_reader.WORK_DIR / "shards"
+             / "state_20261015_221551_03.duckdb")
+    assert not write_manifest.is_catalog_build(shard)
+
+
+def test_concurrent_finish_build_calls_on_one_directory_all_succeed(data_root,
+                                                                    monkeypatch):
+    """Two writers in one directory must not delete each other's temp file.
+
+    A shard directory no longer reaches `write`, but `merge_db_shards` and a per-table
+    builder can finish together in one build directory, and the fixed temp name made
+    that a `FileNotFoundError` for the loser.
+
+    The interleaving is forced rather than raced: each writer waits on a barrier between
+    creating its temp file and renaming it, which is exactly the window a shared temp
+    name loses. Left to chance the two threads almost never overlap there, so the test
+    would pass against the defect.
+    """
+    import concurrent.futures
+    import threading
+
+    from rubinwork.products import manifest as manifest_mod
+
+    build = value_added.build_dir("v1", "20261013")
+    db = _write_db(build / va_reader.DB_FILE)
+
+    barrier = threading.Barrier(2, timeout=30)
+    real_replace = manifest_mod.os.replace
+
+    def replace_after_both_temps_exist(src, dst):
+        barrier.wait()
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(manifest_mod.os, "replace", replace_after_both_temps_exist)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(write_manifest.finish_build, db,
+                               build_options={"writer": str(i)})
+                   for i in range(2)]
+        paths = [f.result() for f in futures]
+    assert all(p is not None and p.exists() for p in paths)
+    assert not list(build.glob(".manifest.json.*"))
+
+
 def test_finish_build_writes_a_manifest_for_a_catalog_build(data_root):
     build = value_added.build_dir("v1", "20261013")
     db = _write_db(build / va_reader.DB_FILE)

@@ -34,6 +34,7 @@ import os
 import pathlib
 import re
 import subprocess
+import tempfile
 
 __all__ = ["write", "git_state", "stack_state", "file_stats",
            "set_current_build"]
@@ -291,10 +292,19 @@ def write(build_dir, product, variant, build, config=None, inputs=None,
         man.update(extra)
 
     manifest_path = build_dir / MANIFEST_NAME
-    tmp = manifest_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
-    # Rename, so a reader never sees a half-written manifest.
-    os.replace(tmp, manifest_path)
+    text = json.dumps(man, indent=1, sort_keys=True) + "\n"
+    # Unique temp name in the same directory: a fixed one lets two concurrent writers
+    # each delete the other's temp file, and both lose the rename. Same directory, so
+    # the rename stays atomic.
+    fd, tmp = tempfile.mkstemp(dir=build_dir, prefix=f".{MANIFEST_NAME}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        # Rename, so a reader never sees a half-written manifest.
+        os.replace(tmp, manifest_path)
+    except BaseException:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
     return manifest_path
 
 

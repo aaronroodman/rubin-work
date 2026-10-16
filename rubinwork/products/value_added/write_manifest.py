@@ -57,13 +57,20 @@ def is_catalog_build(db_path, variant=reader.PRODUCT_VARIANT):
     -----
     Decided by the path alone, not by a flag, so there is no way to register a scratch
     build by passing the wrong argument.
+
+    The variant's ``_work`` subtree is excluded even though it lies inside the variant
+    directory: it holds shards and other intermediates, and a shard is scratch. Without
+    this, every shard of one sharded run wrote the same ``manifest.json`` in the shared
+    shard directory and raced.
     """
     db_path = pathlib.Path(db_path).resolve()
     try:
         root = reader.build_dir(variant).resolve()
     except Exception:
         return False
-    return root == db_path.parent or root in db_path.parents
+    if not (root == db_path.parent or root in db_path.parents):
+        return False
+    return reader.WORK_DIR not in db_path.relative_to(root).parts
 
 
 def build_config(variant, con=None, extra=None):

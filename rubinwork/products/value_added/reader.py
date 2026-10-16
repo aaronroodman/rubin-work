@@ -63,6 +63,14 @@ PRODUCT = 'value_added'
 DB_FILE = 'aos_efd.duckdb'
 """The database file name inside a catalog build directory."""
 
+WORK_DIR = '_work'
+"""Scratch subdirectory of a variant, for shards and other intermediates.
+
+Inside the variant directory but **not** a build: nothing under it is registered, so a
+shard written here is scratch however deep it sits. `write_manifest.is_catalog_build`
+is what enforces that.
+"""
+
 PRODUCT_VARIANT = 'v1'
 """The only variant today.
 
