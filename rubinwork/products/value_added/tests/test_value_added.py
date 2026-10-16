@@ -412,3 +412,146 @@ def test_compare_treats_nan_as_equal_to_nan():
     difference between two identical builds."""
     assert compare_builds._values_equal(float("nan"), float("nan"))
     assert compare_builds._values_equal([float("nan"), 1.0], [float("nan"), 1.0])
+
+
+# ---------------------------------------------------------------------------
+# Resolving the FAM and MIW inputs: old tree versus product catalog
+# ---------------------------------------------------------------------------
+# Both builders resolved their input old-tree-first, so a rebuild meant to run against the
+# catalog silently read whatever was left in aos/output. For the MIW the two are not the
+# same build -- they differ on the outermost radial ring of the field grid, the convex-hull
+# and NaN-rim fix -- so the override has to be explicit and has to be tested.
+
+
+def test_resolve_miw_decomp_returns_none_without_an_override():
+    """No override means the historical MiwCornerLookup behaviour, unchanged."""
+    import argparse
+
+    from rubinwork.products.value_added.builders import build_optical_state as bos
+
+    a = argparse.Namespace(miw_decomp_path=None, miw_build=None)
+    assert bos.resolve_miw_decomp(a) is None
+
+
+def test_resolve_miw_decomp_prefers_an_explicit_path(tmp_path):
+    """--miw-decomp-path wins over --miw-build, so a hand-staged build can be used."""
+    import argparse
+
+    from rubinwork.products.value_added.builders import build_optical_state as bos
+
+    decomp = tmp_path / "intrinsic_split_decomp.parquet"
+    decomp.write_bytes(b"")
+    a = argparse.Namespace(miw_decomp_path=str(decomp), miw_build="d12-whatever@20260101")
+    assert bos.resolve_miw_decomp(a) == decomp
+
+
+def test_resolve_miw_decomp_rejects_a_missing_path(tmp_path):
+    """Fail naming the path, rather than later inside pandas."""
+    import argparse
+
+    from rubinwork.products.value_added.builders import build_optical_state as bos
+
+    a = argparse.Namespace(miw_decomp_path=str(tmp_path / "nope.parquet"), miw_build=None)
+    with pytest.raises(FileNotFoundError):
+        bos.resolve_miw_decomp(a)
+
+
+def test_resolve_paths_prefers_the_catalog_when_asked(tmp_path, monkeypatch):
+    """With both trees populated, prefer='catalog' must not return the old tree.
+
+    This is the regression that matters: the old tree is still on disk, so the default
+    'old' order wins silently and a build meant to read the catalog does not.
+    """
+    from rubinwork.products.value_added.builders import build_fam_dz
+
+    old = tmp_path / "aos_output" / "danish_x"
+    old.mkdir(parents=True)
+    cat = tmp_path / "catalog" / "danish_x"
+    cat.mkdir(parents=True)
+    for base in (old, cat):
+        (base / "fits.parquet").write_bytes(b"")
+        (base / "visits.parquet").write_bytes(b"")
+
+    monkeypatch.setattr(catalog, "path", lambda product, variant, *a, **k: cat)
+
+    fits_old, _ = build_fam_dz.resolve_paths(old.parent, "danish_x", None, prefer="old")
+    fits_cat, _ = build_fam_dz.resolve_paths(old.parent, "danish_x", None,
+                                             prefer="catalog")
+    assert fits_old == old / "fits.parquet"
+    assert fits_cat == cat / "fits.parquet"
+
+
+def test_resolve_paths_rejects_an_unknown_prefer():
+    """A typo must not quietly fall back to the old tree."""
+    from rubinwork.products.value_added.builders import build_fam_dz
+
+    with pytest.raises(ValueError):
+        build_fam_dz.resolve_paths(pathlib.Path("/nonexistent"), "x", None, prefer="catalogue")
+
+
+# ---------------------------------------------------------------------------
+# Registry rows move to catalog names (plan section 6, item c3)
+# ---------------------------------------------------------------------------
+
+
+def test_registry_migration_leaves_param_set_alone(tmp_path):
+    """``param_set`` derives the primary key, so migrating it would break the join.
+
+    ``fam_variant_id`` is ``fam__<param_set>__<route>__<prefix>__<scheme>`` and
+    ``register_fam_variant`` writes ``param_set`` back from its CLI argument on conflict,
+    so a catalog reference stored there would be inconsistent with the id and then
+    silently reverted.
+    """
+    import duckdb
+
+    from rubinwork.products.value_added.builders import migrate_registry_to_catalog as mig
+
+    db = tmp_path / "reg.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE fam_variant (fam_variant_id VARCHAR, param_set VARCHAR, "
+                "fits_path VARCHAR)")
+    con.execute("INSERT INTO fam_variant VALUES ('fam__ps__batoid__z1toz6__50_34', "
+                "'ps', '/old/tree/ps/fits.parquet')")
+    con.execute("CREATE TABLE state_variant (variant_id VARCHAR, intrinsic_route VARCHAR, "
+                "intrinsic_ref VARCHAR)")
+    con.execute("INSERT INTO state_variant VALUES ('v__miw', 'miw', 'joined_build_name')")
+    con.close()
+
+    con = duckdb.connect(str(db))
+    try:
+        updates = mig.plan_updates(con, fam_ref="fam_tables:danish_1_2@20261014",
+                                   miw_ref="miw:d12-A@20261014")
+        cols = {(t, c) for t, _k, c, _o, _n in updates}
+        assert ("fam_variant", "fits_path") in cols
+        assert ("state_variant", "intrinsic_ref") in cols
+        assert ("fam_variant", "param_set") not in cols
+
+        mig.apply_updates(con, updates)
+        assert con.execute("SELECT param_set FROM fam_variant").fetchone()[0] == "ps"
+        assert (con.execute("SELECT fits_path FROM fam_variant").fetchone()[0]
+                == "fam_tables:danish_1_2@20261014")
+    finally:
+        con.close()
+
+
+def test_registry_migration_is_idempotent(tmp_path):
+    """Re-running after a successful pass must be a no-op, not a double rewrite."""
+    import duckdb
+
+    from rubinwork.products.value_added.builders import migrate_registry_to_catalog as mig
+
+    db = tmp_path / "reg.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE fam_variant (fam_variant_id VARCHAR, param_set VARCHAR, "
+                "fits_path VARCHAR)")
+    con.execute("INSERT INTO fam_variant VALUES ('fam__ps', 'ps', "
+                "'fam_tables:danish_1_2@20261014')")
+    con.execute("CREATE TABLE state_variant (variant_id VARCHAR, intrinsic_route VARCHAR, "
+                "intrinsic_ref VARCHAR)")
+    con.close()
+
+    con = duckdb.connect(str(db))
+    try:
+        assert mig.plan_updates(con, fam_ref="fam_tables:danish_1_2@20261014") == []
+    finally:
+        con.close()
