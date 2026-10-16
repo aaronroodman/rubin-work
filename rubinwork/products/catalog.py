@@ -37,8 +37,9 @@ Pin a build, for a result that must not move under you::
 """
 
 import json
-import os
 import pathlib
+
+from rubinwork.common.runs import DATA_ROOT_DEFAULT, data_root, record_read
 
 __all__ = [
     "DATA_ROOT_DEFAULT", "data_root", "products_root", "studies_root",
@@ -46,9 +47,6 @@ __all__ = [
     "set_current", "is_complete", "ProductNotFound", "products_markdown",
     "write_index",
 ]
-
-DATA_ROOT_DEFAULT = "/sdf/group/rubin/u/roodman/LSST/rubin-work"
-"""Default data root on S3DF, overridden by ``$RUBINWORK_DATA``."""
 
 CURRENT = "current"
 """Name of the symlink in a variant directory naming its default build."""
@@ -62,18 +60,6 @@ COMPLETE = "complete"
 
 class ProductNotFound(FileNotFoundError):
     """A requested product, variant or build is not in the catalog."""
-
-
-def data_root():
-    """Root of the data tree, from ``$RUBINWORK_DATA`` or the S3DF default.
-
-    Returns
-    -------
-    root : `pathlib.Path`
-        The data root. Not required to exist, so a caller can report a clear
-        error rather than this function raising during import.
-    """
-    return pathlib.Path(os.environ.get("RUBINWORK_DATA", DATA_ROOT_DEFAULT))
 
 
 def products_root():
@@ -227,6 +213,13 @@ def _resolve_build(product, variant, build):
         named = build if build != CURRENT else f"{CURRENT} -> {build_dir.resolve().name}"
         raise ProductNotFound(
             f"{product}/{variant}/{named} is not in the catalog: {reason}")
+    # So a study run's run.json names every build it read; see rubinwork.common.runs.
+    try:
+        resolved = build_dir.resolve().relative_to(variant_dir.resolve()).as_posix()
+    except ValueError:
+        # A build directory symlinked from outside the variant: keep its own name.
+        resolved = build
+    record_read(product, variant, resolved)
     return build_dir
 
 

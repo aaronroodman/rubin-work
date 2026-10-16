@@ -1,5 +1,6 @@
-# common — Shared utilities for rubin-work notebooks
-#
-# Usage from any notebook:
-#   import sys; sys.path.insert(0, '..')  # or appropriate path to repo root
-#   from common import utils
+"""Shared utilities for rubin-work: a library, writing no data of its own.
+
+``study_run`` makes a study's dated run directory; see `rubinwork.common.runs`.
+"""
+
+from .runs import study_run  # noqa: F401
