@@ -1,12 +1,11 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
 > **Status:** 3a and 3b complete; **3c at 7 of 8 comparison-plan items** — only item 8
-> (`value_added`) remains. **Item 8 is PART BUILT** (2026-10-15, "Item 8 build"): blockers
-> cleared, `v1/live` copied and md5-verified, `fam_dz` rebuilt and comparing at
-> floating-point noise. **The 11-shard `optical_state` job RAN** (Aaron, 2026-10-15
-> 22:16-22:24) and **all 11 shards are verified complete: 98,019 rows**, exactly the
-> remaining old-tree set. Shard 03's exit 1 was the **manifest race**, after its rows were
-> committed — fixed in `81aeec4`, no rerun needed. The old database
+> (`value_added`) remains, and it is **BUILT, COMPARED CLEAN and SNAPSHOTTED** (2026-10-16):
+> `v1/live` holds the full 214-night MIW `optical_state` rebuild, every difference against
+> the live database is on the expected list, and `v1/snapshots/20261016/` is complete.
+> **`current@` is not moved and readers are not cut over: Aaron's call**, commands in
+> "Next concrete action". The old database
 > was never opened for writing. Items 5 (`coadds`), 6 (`dof_lut`) and
 > 7 (`bounce_tables`) were all built on `w_2026_42`, compared clean and promoted to
 > `current` on 2026-10-15; every difference found is on the expected list. **The stack and
@@ -40,7 +39,7 @@
 > authenticated on S3DF (account `aaronroodman`), so this was checkable for the first time;
 > **no second PR was opened**. The body file
 > `notes/status/pr_bodies/ts_intrinsic_wavefront_RSO-809.md` is updated to be true at the
-> branch head `4c77b90`, but **PR #1's description on GitHub has NOT been edited** — see
+> branch head `4c77b90`, and **was pushed to PR #1 on 2026-10-16, with the title retitled** — see
 > the step 1 section.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
 > · **Last updated:** 2026-10-16 · **Kind:** working state (handoff)
@@ -1305,6 +1304,65 @@ again. **Not deleted** (no deletions this session) — the merge must not read i
   with the upstreams in `config.build_options`. (The merge also wrote one on its way out,
   since `live` is a catalog build; the final write replaced it.)
 
+### Step 4: full comparison against the live database — CLEAN, every difference on the list
+
+a = `value_added/output/aos_efd.duckdb` (read-only, md5 `8d841009...` unchanged), b =
+`v1/live`. Log `value_added/logs/compare_item8_20261016_012922.log`. `compare_builds`
+exits 1 because it treats any non-timestamp difference as "found"; each one is below and
+each is on part d's list. **`keys_only_a` = `keys_only_b` = 0 on all 8 tables; row counts
+equal on all 8.**
+
+| table | rows (count, dimensionless) | result |
+|---|---|---|
+| `visit_telemetry` | 213,704 | **identical**, 196 columns |
+| `m1m3_thermal_r2` | 211,922 | **identical**, 27 columns |
+| `optical_state`, 3 batoid variants | 102,463 each | **identical** (checked per variant with `EXCEPT`) |
+| `optical_state`, MIW variant | 98,831 | differences 2 and 7, below |
+| `fam_dz` | 2,528 | floating-point noise, as in c1 |
+| `column_coverage` | 196 | identical apart from `updated_at` |
+| `state_variant` | 4 | `intrinsic_ref` on 1 row (c3), `created_at` on 1 row |
+| `fam_variant` | 1 | `fits_path` on 1 row (c3) |
+| `fetch_log` | 3,293 | identical; `git_commit` column only in b (c4) |
+
+MIW `optical_state`, 98,831 aligned rows: **0 `ok`-flag changes**; `n_modes`,
+`v_modes_lut`, `v_modes_trim`, `elevation_deg`, `rotator_angle_deg` identical. 96,282 rows
+differ — every `ok=True` row; the 2,549 `ok=False` rows are identical.
+
+| column | max abs difference | median of per-row max |
+|---|---|---|
+| `dof`, `dof_olr` | **0.2889 µm of hexapod decenter** (`dof02`; then `dof07` 0.2232, `dof06` 0.1221 µm) | 0.1196 µm |
+| `v_modes`, `v_modes_olr` | **0.01347** (dimensionless v-mode amplitude; v-mode index 31) | 0.005123 |
+| `resid_rms_um` | **1.35e-04 µm of wavefront** | 5.06e-06 µm |
+| `fwhm_cwfs_arcsec` | **5.48e-04 arcsec** of FWHM | 2.64e-05 arcsec |
+
+Against the revised prediction ("Item 8 build: the `dof` amplification"): `dof` up to
+about 0.3 µm in the hexapod decenters — **met**, 0.2889 µm, the same three DOF; no row
+above 1 µm. `v_modes` up to about 0.015 — **met**, 0.01347. 0 `ok` changes — **met**.
+`resid_rms_um` "at the 1e-05 µm level": the median is 5.1e-06 µm and the 99th percentile
+4.6e-05 µm, but the tail reaches **1.35e-04 µm of wavefront**, 4.3x the one-night maximum
+of 3.14e-05 µm. **Judged not a stop**: it is the same input change over 121x more rows,
+the change is at most 0.25% of the row's own `resid_rms_um`, and 1.35e-04 µm is two orders
+of magnitude below the 1e-02 µm stop scale. `fwhm_cwfs_arcsec` was not predicted
+separately; it is computed from the same residual, and 5.5e-04 arcsec is negligible. One
+row has a `dof` difference with an identical `dof_olr`; not chased.
+
+`fam_dz` max abs difference: `dz_coeff` 1.46e-13 µm of wavefront, `dz_coeff_err`
+8.98e-16 µm, `v_modes` 1.12e-12 (dimensionless), `dof` 3.69e-10 µm — identical to c1.
+
+`compare_builds` gained two things for this run (`186287b`): a nullable cell
+(`pandas.NA`) no longer raises, and each differing column reports its max abs difference.
+
+### Step 5: first snapshot — BUILT, `current@` NOT moved
+
+`v1/snapshots/20261016/aos_efd.duckdb`, a copy of `v1/live` taken after the comparison,
+**md5 `fe201f0bbf85431bc594856bd9386ea5` both sides**, 3,099,865,088 bytes, file made
+read-only. Its `manifest.json` is `status: complete`, `git_commit` `186287b`;
+`catalog.is_complete` is True. No `current` link exists under `v1/`.
+
+**A defect fixed on the way (`a394293`):** `catalog.set_current` linked `current` in the
+build's parent directory. For `snapshots/20261016` that is `v1/snapshots/current`, where no
+reader looks. It now always links `v1/current`, with a relative target. 374 tests pass.
+
 ## Item 8 plan (`value_added`) — WRITTEN 2026-10-15, NOTHING BUILT
 
 Plan only, as instructed: nothing is built, copied, or written to any database. Every
@@ -1634,27 +1692,73 @@ phase 3, per decision 10.
 
 ## Next concrete action
 
-### Morning summary, overnight session of 2026-10-16 — IN PROGRESS
+### Morning summary, overnight session of 2026-10-16 — ITEM 8 BUILT AND COMPARED CLEAN
 
-Being written as the session runs; the final state is at the end of this section.
+**Ran:** the manifest-race fix, the shard check, the merge, both backfills, the registry
+migration, `fetch_log` provenance, the full comparison, the first snapshot and the PR #1
+edit. **Passed:** all of it; 374 tests pass. **Stopped:** nothing. **Waiting on you:** the
+cutover, below. The old live database was opened read-only only; md5 `8d841009...`
+unchanged.
 
-- **Step 1, manifest race: DONE,** `81aeec4`, pushed. Two defects (a shard counted as a
-  catalog build; a fixed temp name), 370 tests pass, the new concurrency test reproduces
-  the shard-03 failure against the old code.
-- **Step 2, shard 03: VERIFIED COMPLETE, no rerun.** All 11 shards check out against
-  their logs, 98,019 rows total — exactly the remaining old-tree set. See "Item 8
-  continued, 2026-10-16".
-- **Step 3, merge and build steps: DONE.** Merge clean, both backfills changed nothing
-  (plan correction: `--main-db` already gave the shards their commanded v-modes),
-  `intrinsic_ref` on catalog names, `fetch_log.git_commit` added, manifest written.
-- Steps 4-6: see below.
+1. **Manifest race: FIXED,** `81aeec4`. A shard under `v1/_work/` counted as a catalog
+   build, and `manifest.write` used a fixed temp name. The new test forces the
+   interleaving and reproduces shard 03's `FileNotFoundError` against the old code.
+2. **Shard 03: COMPLETE as is, no rerun.** All 11 shards match their logs night by night;
+   98,019 rows in total, exactly the rows still on the old-tree MIW.
+3. **Merge and build steps: DONE.** Both backfills wrote nothing new: `--main-db` had
+   already given the shards their commanded v-modes (a plan correction), and the pointing
+   values equal ConsDB. `intrinsic_ref` is now `miw:d12-A_50_34_i_5rot@20261014`, and the
+   builder resolves that form (`2e2acfa`). `fetch_log.git_commit` was added. The manifest
+   was written once.
+4. **Comparison: CLEAN.** 0 keys on one side only and equal row counts on all 8 tables.
+   `visit_telemetry`, `m1m3_thermal_r2` and the 3 batoid variants are identical. The MIW
+   variant has 0 `ok` changes; `dof` max abs difference is 0.2889 µm of hexapod decenter
+   and `v_modes` 0.01347 (dimensionless), both within the revised prediction. One
+   judgement call: the `resid_rms_um` tail reaches 1.35e-04 µm of wavefront, against
+   "1e-05 µm level" predicted. The median is 5.1e-06 µm, and the change is at most 0.25% of
+   the row's own value, so I did not treat it as a stop. Full tables in "Step 4".
+5. **Snapshot: BUILT,** `v1/snapshots/20261016/`, md5 `fe201f0b...` equal to `live`,
+   manifest complete. `current@` NOT moved. `set_current` linked nested builds in the
+   wrong directory; fixed in `a394293`.
+6. **PR #1: body pushed and retitled.** OPEN, ready (not a draft), base `develop`:
+   https://github.com/lsst-ts/ts_intrinsic_wavefront/pull/1 — title "RSO-809: MIW builds
+   for rubin-work: per-donut sidecar, rotTelPos, rim fill, ConsDB ESS, RBR, lint".
 
-The 11-shard submit itself is no longer blocked: **Aaron ran it himself on 2026-10-15**,
-22:16-22:24. Everything before it stands: blockers cleared (`3525b07`), `v1/live` a
-md5-verified copy, `fam_dz` rebuilt and comparing at floating-point noise, and
-`fam_variant.fits_path` moved to a catalog name (`b7e68dc`). The old database was never
-opened for writing. Remaining: merge, the two backfills, `intrinsic_ref`, `fetch_log`
-provenance, then the full comparison.
+### The cutover — your call
+
+Two moves. Making the snapshot current affects no reader, because `default_db_path()`
+picks the old tree first whenever it exists. Readers move only with the second change.
+
+Make the snapshot current:
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work && \
+python -m rubinwork.products.catalog set-current value_added v1 snapshots/20261016 && \
+ls -l /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/current
+```
+
+Move readers: in `rubinwork/products/value_added/reader.py`, `default_db_path()`, change
+the order to `AOS_EFD_DB`, then `catalog_db_path()`, then the old tree. That is a code
+change for a session to make, test and commit when you say go. To try it first in one
+shell, with no code change:
+
+```bash
+export AOS_EFD_DB=/sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/current/aos_efd.duckdb
+```
+
+Rollback. The old database is untouched, so it is enough to revert the precedence commit
+(or `unset AOS_EFD_DB`). To remove `current` as well, ask a session: removing the
+symlink is a deletion, so it needs your OK.
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work && git revert --no-edit <the precedence commit> && git push
+```
+
+Then `thermal_focus/code/thermal_focus_lib.py` still reaches the shim by `sys.path`
+(part e). Phase 3c is finished once the cutover is done.
+
+**Left on disk, not deleted:** `v1/_work/shards/manifest.json`, left by the race, and the
+11 shard files. Both can go once you OK the deletion.
 
 1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
    compared clean against the **i-band archive** and `set-current`. Every difference on
@@ -1689,10 +1793,8 @@ item sections):
 
 Two things need Aaron, neither blocking items 5 to 7:
 
-- **`ts_intrinsic_wavefront` PR #1 already exists, is OPEN on base `develop`, and is not a
-  draft.** Nothing to open. Outstanding, both Aaron's call: pushing the updated body to the
-  PR (`gh pr edit 1 --body-file ...`) and retitling it, since the title names only the
-  first of the branch's 16 commits. See the step 1 section.
+- ~~`ts_intrinsic_wavefront` PR #1 body and title~~ **DONE 2026-10-16**: body pushed,
+  retitled to cover all 16 commits, still OPEN and ready on base `develop`.
 - **v4 Butler ingest** — still deferred, Aaron's call.
 
 Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
