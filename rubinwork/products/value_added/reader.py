@@ -322,36 +322,29 @@ def catalog_db_path(variant=PRODUCT_VARIANT, build=None):
 
 
 def default_db_path():
-    """Absolute path to the default database file: old tree first, then the catalog.
+    """Absolute path to the default database file: the catalog first, then the old tree.
 
     Returns
     -------
     path : `pathlib.Path`
-        ``AOS_EFD_DB`` when set; else the old-tree
-        ``<repo_root>/value_added/output/aos_efd.duckdb`` if it exists; else the
-        catalog's ``current`` build of the ``v1`` variant; else the old-tree path again,
-        so a caller that opens a missing database gets the familiar error naming the
-        familiar location.
+        ``AOS_EFD_DB`` when set; else the catalog's ``current`` build of the ``v1``
+        variant; else the old-tree ``<repo_root>/value_added/output/aos_efd.duckdb``,
+        whether or not it exists, so a caller that opens a missing database gets an
+        error naming a familiar location.
 
     Notes
     -----
-    **Same precedence as the ``aos/Snakefile`` resolver**, so a study and a builder read
-    the same database. Until phase 3c rebuilds this product into the new tree the old
-    tree is the only place the real 2.80 GB database exists, so in practice this returns
-    the old-tree path today; the catalog branch is what makes a rebuilt product visible
-    without another code change.
+    ``AOS_EFD_DB`` wins over both. It is how a scratch build stays off the catalog
+    database, and how a notebook points at an archive copy or back at the old tree.
 
-    ``AOS_EFD_DB`` wins over both. It is how a scratch build stays off the live database
-    — the phase 3a reference and moved builds both set it — and how a notebook points at
-    an archive copy.
+    The ``current`` build is a snapshot, and its database file is read-only, so a
+    builder run with no ``--db`` fails rather than writing into it. Builders write to
+    ``v1/live`` through ``--db`` or ``AOS_EFD_DB``.
     """
     env = os.environ.get('AOS_EFD_DB')
     if env:
         return pathlib.Path(env)
-    old = old_tree_db_path()
-    if old.exists():
-        return old
-    return catalog_db_path() or old
+    return catalog_db_path() or old_tree_db_path()
 
 
 def open_db(path=None, readonly=True, create=False):
@@ -1824,10 +1817,8 @@ def connect(variant=PRODUCT_VARIANT, build=None, readonly=True):
 
     Notes
     -----
-    This is the **catalog** route, which until phase 3c has nothing to find: the real
-    database still lives in the old tree. `open_db` with no argument is the route that
-    works today, and `default_db_path` resolves old tree then catalog so it keeps working
-    after the rebuild.
+    This is the **catalog** route. `open_db` with no argument opens the same ``current``
+    build, through `default_db_path`, unless ``AOS_EFD_DB`` is set.
 
     Examples
     --------

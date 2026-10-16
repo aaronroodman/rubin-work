@@ -47,12 +47,9 @@ Read it as the product reader::
     df = efd_db.join_consdb(df)            # band, pointing, temperatures from ConsDB
     st = efd_db.optical_state('v50_34__miw__consdb_v1')
 
-``default_db_path`` resolves **old tree first, then the catalog**, the same precedence the
-``aos/Snakefile`` resolver uses, with ``AOS_EFD_DB`` overriding both. Until phase 3c
-rebuilds this product into the new tree the old
-``value_added/output/aos_efd.duckdb`` is the only place the real database exists, so that
-is what a plain `open_db` opens today; `connect` is the catalog route and will find a
-rebuilt build with no further code change.
+``default_db_path`` resolves **the catalog's current build first, then the old tree**
+``value_added/output/aos_efd.duckdb``, with ``AOS_EFD_DB`` overriding both. So a plain
+`open_db` and `connect` both open the current build.
 
 Build it with the builders under `builders`, driven by ``builders/run_build.sh``, which
 shards a long backfill because DuckDB's file lock is process-wide and excludes readers as

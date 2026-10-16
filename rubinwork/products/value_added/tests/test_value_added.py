@@ -100,25 +100,26 @@ def test_aos_efd_db_overrides_everything(monkeypatch, tmp_path):
     assert va_reader.default_db_path() == scratch
 
 
-def test_default_path_prefers_the_old_tree_when_it_exists(monkeypatch):
-    """Old tree first, then the catalog -- the aos/Snakefile resolver's precedence."""
+def test_default_path_prefers_the_catalog_over_the_old_tree(monkeypatch, data_root):
+    """Catalog first: an existing old-tree database does not shadow a current build."""
     monkeypatch.delenv("AOS_EFD_DB", raising=False)
-    old = va_reader.old_tree_db_path()
-    if not old.exists():
-        pytest.skip("no old-tree database in this checkout")
-    assert va_reader.default_db_path() == old
-
-
-def test_default_path_falls_back_to_the_catalog(monkeypatch, data_root):
-    """With no old-tree database, a registered catalog build is used."""
-    monkeypatch.delenv("AOS_EFD_DB", raising=False)
-    monkeypatch.setattr(va_reader, "old_tree_db_path",
-                        lambda: data_root / "no_such_tree" / "aos_efd.duckdb")
+    old = data_root / "old_tree" / "aos_efd.duckdb"
+    _write_db(old)
+    monkeypatch.setattr(va_reader, "old_tree_db_path", lambda: old)
     build = data_root / "products" / "value_added" / "v1" / "20261013"
     _write_db(build / va_reader.DB_FILE)
     write_manifest.write("v1", build="20261013", build_dir=build)
     catalog.set_current("value_added", "v1", "20261013")
     assert va_reader.default_db_path() == build / va_reader.DB_FILE
+
+
+def test_default_path_falls_back_to_the_old_tree_without_a_build(monkeypatch, data_root):
+    """With no catalog build, an existing old-tree database is used."""
+    monkeypatch.delenv("AOS_EFD_DB", raising=False)
+    old = data_root / "old_tree" / "aos_efd.duckdb"
+    _write_db(old)
+    monkeypatch.setattr(va_reader, "old_tree_db_path", lambda: old)
+    assert va_reader.default_db_path() == old
 
 
 def test_default_path_falls_back_to_the_old_tree_path_when_nothing_exists(
