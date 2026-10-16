@@ -154,3 +154,25 @@ def test_find_studies_skips_hidden_and_filters_topic(tmp_path):
     found = studies.find_studies(tmp_path)
     assert [p.parent.name for p in found] == ["demo", "dip"]
     assert [p.parent.name for p in studies.find_studies(tmp_path, "camera")] == ["dip"]
+
+
+def test_studies_index(tmp_path):
+    from rubinwork.studies import index
+    write_study(tmp_path, "aos", "demo")
+    write_study(tmp_path, "camera", "dip", GOOD.replace("demo", "dip")
+                .replace("answer: Yes, about 3% of sky.", "answer: a | b"))
+    text = index.studies_markdown(tmp_path)
+    rows = [line for line in text.splitlines() if line.startswith("| [")]
+    assert [r.split("]")[0] for r in rows] == ["| [aos/demo", "| [camera/dip"]
+    assert "a \\| b" in rows[1]
+    assert "fam_tables: danish_1_2@20261005; miw: d12-a@20261007, d12-b" in rows[0]
+    assert "Last updated:** 2026-10-02" in text
+
+
+def test_studies_index_is_deterministic(tmp_path):
+    from rubinwork.studies import index
+    write_study(tmp_path, "aos", "demo")
+    assert index.write_index(tmp_path) is True
+    first = (tmp_path / "STUDIES.md").read_text()
+    assert index.write_index(tmp_path) is False
+    assert (tmp_path / "STUDIES.md").read_text() == first

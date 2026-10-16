@@ -465,3 +465,52 @@ def test_write_records_the_stack(data_root, monkeypatch):
     path = manifest.write(build_dir, product="dof_lut", variant="v",
                           build="20261015", extra={"stack": {"eups_tag": "w_2026_39"}})
     assert json.loads(path.read_text())["stack"] == {"eups_tag": "w_2026_39"}
+
+
+def test_manifest_records_total_bytes(data_root):
+    build_dir = make_build(data_root, "miw", "v1", "20261007")
+    man = catalog.manifest("miw", "v1")
+    assert man["bytes"] == (build_dir / "table.parquet").stat().st_size
+    assert catalog.list_products()[0]["bytes"] == man["bytes"]
+
+
+def test_list_products_sums_file_bytes_of_an_old_manifest(data_root):
+    build_dir = data_root / "products" / "miw" / "old" / "20261001"
+    build_dir.mkdir(parents=True)
+    (build_dir / "manifest.json").write_text(json.dumps(
+        {"status": "complete", "files": {"a.parquet": {"bytes": 10},
+                                         "b.parquet": {"bytes": 5}}}))
+    assert catalog.list_products()[0]["bytes"] == 15
+
+
+def test_external_build_has_no_size(data_root):
+    catalog.register("miw", "official-x", "external", location="/elsewhere")
+    assert catalog.list_products()[0]["bytes"] is None
+
+
+def test_products_markdown(data_root):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
+    make_build(data_root, "fam_tables", "danish_1_2", "20261006", current=False)
+    catalog.register("miw", "official-x", "external", location="/elsewhere")
+    text = catalog.products_markdown()
+    rows = [line for line in text.splitlines() if line.startswith("| fam_tables")
+            or line.startswith("| miw")]
+    assert len(rows) == 2
+    cells = [c.strip() for c in rows[0].split("|")[1:-1]]
+    assert cells[:4] == ["fam_tables", "`danish_1_2`", "20261005", "20261006"]
+    assert cells[5] == "2"
+    assert rows[1].rstrip().endswith("|  |")
+    assert "| product | variant | current build |" in text
+
+
+def test_products_index_is_deterministic(data_root, tmp_path):
+    make_build(data_root, "fam_tables", "danish_1_2", "20261005")
+    target = tmp_path / "PRODUCTS.md"
+    assert catalog.write_index(target) is True
+    first = target.read_text()
+    assert catalog.write_index(target) is False
+    assert target.read_text() == first
+
+
+def test_products_markdown_empty(data_root):
+    assert "Last updated:** never" in catalog.products_markdown()

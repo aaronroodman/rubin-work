@@ -283,11 +283,15 @@ def write(build_dir, product, variant, build, config=None, inputs=None,
         "config": config or {},
         "inputs": inputs or {},
         "files": {} if location else file_stats(build_dir, files),
+        # Total over `files`, so PRODUCTS.md can show a size without walking the tree.
+        "bytes": None,
         # Deep copy: `stack_state` is cached and hands back one shared dict.
         "stack": copy.deepcopy(stack_state()),
     }
     if location:
         man["location"] = str(location)
+    else:
+        man["bytes"] = sum(f["bytes"] for f in man["files"].values())
     if extra:
         man.update(extra)
 
