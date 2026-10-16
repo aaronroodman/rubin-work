@@ -61,6 +61,15 @@ md('''
 The per-visit medians are precomputed by `extract_visit_medians.py`, which is the only
 code that touches the 13 GB donut table. The thermal telemetry is the cache the blur
 study already built.
+
+One FAM visit is dropped as a clear outlier: `day_obs` 20260327 `seq_num` 228, whose
+two-side mean sits at Z4 = +4.4153 um of wavefront - a robust z of +11.8 (dimensionless)
+against the sample, with Z6 at -11.7 and Z5 at -6.1. The next largest |mean Z4| in the
+sample is +1.089 um of wavefront, so it is isolated by a factor of 4 rather than being the
+tail of a distribution.
+
+Robust scatter throughout is `scipy.stats.median_abs_deviation(..., scale='normal')`,
+wrapped as `nmad` in `thermal_selection.py`.
 ''')
 
 code('''
@@ -89,26 +98,47 @@ SECONDARY = 'danish_1_3_test'
 # The 21 Noll indices the Danish 1.2 schema carries, from the table metadata.
 NOLL = list(range(4, 20)) + list(range(22, 27))
 
+# One FAM visit is a clear outlier and is dropped: its two-side mean sits at
+# Z4 = +4.4153 um of wavefront, a robust z of +11.8 (dimensionless) against the sample,
+# with Z6 at -11.7 and Z5 at -6.1 as well. The next largest |mean Z4| in the sample is
+# +1.089 um of wavefront, so the gap is a factor of 4 and the visit is isolated rather
+# than the tail of a distribution.
+EXCLUDED_VISITS = [(20260327, 228)]
+
 plt.rcParams.update({'figure.dpi': 110, 'font.size': 8, 'figure.autolayout': False})
 ''')
 
 code('''
-def load_medians(variant):
+def load_medians(variant, excluded=EXCLUDED_VISITS):
     """Per-visit per-side medians for one `fam_tables` variant, quality visits only.
 
     Parameters
     ----------
     variant : `str`
         Variant name, e.g. ``'danish_1_3_v1000'``.
+    excluded : `list` [`tuple`], optional
+        ``(day_obs, seq_num)`` pairs to drop as outliers.
 
     Returns
     -------
     table : `pandas.DataFrame`
-        One row per visit passing ``visit_quality_pass``, ordered by night and sequence
-        number, with a 0-based ``ordinal`` column (dimensionless) over the kept visits.
+        One row per visit passing ``visit_quality_pass`` and not excluded, ordered by
+        night and sequence number, with a 0-based ``ordinal`` column (dimensionless)
+        over the kept visits.
     """
     table = pd.read_parquet(RUN / f'visit_medians_{variant}.parquet')
     table = table[table['visit_quality_pass'].fillna(False)].copy()
+
+    keys = list(zip(table['day_obs'], table['seq_num']))
+    drop = np.array([key in set(excluded) for key in keys])
+    if drop.any():
+        for day_obs, seq_num in sorted(set(excluded) & set(keys)):
+            row = table[(table.day_obs == day_obs) & (table.seq_num == seq_num)].iloc[0]
+            mean_z4 = 0.5 * (row['z4_intra'] + row['z4_extra'])
+            print(f'{variant}: dropping day_obs {day_obs} seq_num {seq_num}, '
+                  f'two-side mean Z4 {mean_z4:+.4f} um of wavefront')
+    table = table[~drop]
+
     table = table.sort_values(['day_obs', 'seq_num']).reset_index(drop=True)
     table['ordinal'] = np.arange(len(table))
     return table
@@ -117,9 +147,9 @@ def load_medians(variant):
 visits = load_medians(PRIMARY)
 visits_secondary = load_medians(SECONDARY)
 
-print(f'{PRIMARY}: {len(visits)} quality visits, {visits.day_obs.nunique()} nights, '
+print(f'{PRIMARY}: {len(visits)} visits kept, {visits.day_obs.nunique()} nights, '
       f'day_obs {visits.day_obs.min()}-{visits.day_obs.max()}')
-print(f'{SECONDARY}: {len(visits_secondary)} quality visits')
+print(f'{SECONDARY}: {len(visits_secondary)} visits kept')
 print(f'donuts per visit: median {visits.n_donuts.median():.0f}, '
       f'min {visits.n_donuts.min()}, max {visits.n_donuts.max()} (dimensionless)')
 ''')
@@ -188,13 +218,19 @@ def panel_pair(axis_sides, axis_diff, table, label, unit, intra, extra):
     axis_sides.legend(loc='upper right', fontsize=6, markerscale=3, framealpha=0.9)
 
     difference = intra - extra
+    median = np.median(difference)
+    scatter = nmad(difference)
     draw_nights(axis_diff, edges)
     axis_diff.plot(table['ordinal'], difference, '.', ms=2.0, color='tab:purple')
     axis_diff.axhline(0.0, color='k', lw=0.5, ls=':')
-    axis_diff.axhline(np.median(difference), color='tab:green', lw=0.8,
-                      label=f'median {np.median(difference):+.4f} {unit}')
+    axis_diff.axhline(median, color='tab:green', lw=0.8,
+                      label=f'median {median:+.4f} {unit}')
+    # Robust RMS of the difference over visit pairs, as a +/- 1 nMAD band.
+    axis_diff.axhspan(median - scatter, median + scatter, color='tab:green', alpha=0.13,
+                      label=f'nMAD {scatter:.4f} {unit}')
     axis_diff.set_ylabel(f'intra - extra [{unit}]')
     axis_diff.legend(loc='upper right', fontsize=6, framealpha=0.9)
+    return median, scatter
 ''')
 
 code('''
@@ -207,42 +243,60 @@ def save(figure):
 
 
 # The blur, as the blur study plotted it, for continuity.
-figure, axes = plt.subplots(2, 1, figsize=(9.0, 5.0), sharex=True)
+figure, axes = plt.subplots(2, 1, figsize=(9.0, 5.0), sharex=True,
+                            layout='constrained')
 panel_pair(axes[0], axes[1], visits, 'median donut blur', 'arcsec',
            visits['blur_intra'], visits['blur_extra'])
 axes[0].set_title(f'Blur per side of focus and its difference - {PRIMARY}, '
-                  f'{len(visits)} quality visits, {visits.day_obs.nunique()} nights')
+                  f'{len(visits)} visits, {visits.day_obs.nunique()} nights')
 axes[1].set_xlabel('FAM visit ordinal (dimensionless)')
 save(figure)
 
-# Then the 21 Zernikes, three per page.
+# Then the 21 Zernikes, three per page. `layout='constrained'` and the explicit
+# per-axis y-labels keep each column's label off its left neighbour's panel; the
+# default tight layout let them overlap.
 PER_PAGE = 3
+ordinal_scatter = {}
 for start in range(0, len(NOLL), PER_PAGE):
     block = NOLL[start:start + PER_PAGE]
-    figure, axes = plt.subplots(2, len(block), figsize=(3.4 * len(block), 4.6),
-                                sharex=True, squeeze=False)
+    figure, axes = plt.subplots(2, len(block), figsize=(4.1 * len(block), 4.9),
+                                sharex=True, squeeze=False, layout='constrained')
     for column, noll in enumerate(block):
-        panel_pair(axes[0][column], axes[1][column], visits, f'median Z{noll}',
-                   'um wf', visits[f'z{noll}_intra'], visits[f'z{noll}_extra'])
-        axes[0][column].set_title(f'Z{noll}', fontsize=9)
+        median, scatter = panel_pair(
+            axes[0][column], axes[1][column], visits, f'median Z{noll}', 'um wf',
+            visits[f'z{noll}_intra'], visits[f'z{noll}_extra'])
+        ordinal_scatter[noll] = (median, scatter)
+        axes[0][column].set_title(
+            f'Z{noll}: intra - extra median {median:+.4f}, nMAD {scatter:.4f} um wf',
+            fontsize=7)
         axes[1][column].set_xlabel('FAM visit ordinal')
     figure.suptitle(f'Per-side Zernike medians and intra - extra, {PRIMARY} '
-                    f'(Noll {block[0]}-{block[-1]})', fontsize=9)
+                    f'(Noll {block[0]}-{block[-1]}), {len(visits)} visits', fontsize=9)
     save(figure)
 
 print(f'pages so far: {pdf.get_pagecount()}')
+print('intra - extra median and robust RMS (nMAD) over visit pairs, um of wavefront:')
+for noll, (median, scatter) in ordinal_scatter.items():
+    print(f'  Z{noll:<3d} {median:+.4f}  nMAD {scatter:.4f}')
 ''')
 
 md('''
 ## 2. Which Zernikes have a substantial difference
 
-For each Noll index: the median difference over visits, its robust scatter (nMAD), the
-median absolute two-side mean, and the ratio
+For each Noll index: the median difference over visits, its robust scatter (nMAD, the
+robust RMS of the difference over visit pairs), the median absolute two-side mean, and the
+ratio
 
     |median(intra - extra)| / median(|(intra + extra)/2|)   (dimensionless)
 
 which is the "substantial compared with the size of the mean" test. The nMAD is shown
 beside it so a large ratio that is pure scatter is distinguishable from a real offset.
+
+The follow-up set carried into sections 3-5 is then chosen **from this table**, not fixed
+in advance: a Noll index qualifies on either a ratio at or above 1 (the difference is as
+large as its own mean) or a robust scatter in the top 8. The second test is what brings in
+Z4, whose median difference is modest but whose excursions over visits are among the
+largest in the sample.
 ''')
 
 code('''
@@ -297,7 +351,7 @@ code('''
 order = summary['noll'].to_numpy()
 position = np.arange(len(order))
 
-figure, axes = plt.subplots(1, 2, figsize=(9.5, 4.2),
+figure, axes = plt.subplots(1, 2, figsize=(10.0, 4.6), layout='constrained',
                             gridspec_kw={'width_ratios': [1.0, 1.3]})
 
 axes[0].barh(position, summary['ratio'], color='tab:purple', alpha=0.8)
@@ -336,7 +390,7 @@ print('Pupil model contrast. median(intra - extra) per variant, um of wavefront;
 print(f'delta_um = {PRIMARY} minus {SECONDARY}.')
 print(contrast.to_string(index=False, float_format=lambda v: f'{v:+.4f}'))
 
-figure, axis = plt.subplots(figsize=(7.5, 4.0))
+figure, axis = plt.subplots(figsize=(7.8, 4.4), layout='constrained')
 width = 0.4
 position = np.arange(len(contrast))
 axis.barh(position - width / 2, contrast[f'median_diff_um_{PRIMARY}'], width,
@@ -415,8 +469,22 @@ def scatter_by_night(axis, table, x_values, y_values, x_label, y_label):
 ''')
 
 code('''
-# Z11 is the expected term; the summary above decides whether others qualify.
-FOLLOW_UP = [11, 14, 26, 6]
+# The follow-up set is chosen from the data, not fixed in advance: a Noll index
+# qualifies on EITHER a difference substantial against its own two-side mean (ratio >= 1)
+# OR a large robust scatter of that difference over visit pairs (nMAD in the top 8).
+# Z4 qualifies on the second test - its median difference is modest but its excursions
+# over visits are among the largest in the sample, which the ordinal plots show plainly.
+RATIO_THRESHOLD = 1.0
+N_BY_SCATTER = 8
+
+by_ratio = set(summary.loc[summary['ratio'] >= RATIO_THRESHOLD, 'noll'])
+by_scatter = set(summary.nlargest(N_BY_SCATTER, 'nmad_diff_um')['noll'])
+FOLLOW_UP = sorted(by_ratio | by_scatter)
+
+print(f'follow-up set, {len(FOLLOW_UP)} Noll indices: {FOLLOW_UP}')
+print(f'  qualified by ratio >= {RATIO_THRESHOLD}: {sorted(by_ratio)}')
+print(f'  qualified by nMAD in the top {N_BY_SCATTER}: {sorted(by_scatter)}')
+print(f'  on both counts: {sorted(by_ratio & by_scatter)}')
 
 visits['dblur'] = visits['blur_intra'] - visits['blur_extra']
 for noll in NOLL:
@@ -436,29 +504,35 @@ print(correlations.to_string(index=False, float_format=lambda v: f'{v:+.4f}'))
 ''')
 
 code('''
-figure, axes = plt.subplots(2, len(FOLLOW_UP), figsize=(3.1 * len(FOLLOW_UP), 5.6))
-for column, noll in enumerate(FOLLOW_UP):
-    row = correlations[(correlations.y == f'dZ{noll}')].iloc[0]
-    scatter_by_night(axes[0][column], visits, visits['dblur'], visits[f'dz{noll}'],
-                     'intra - extra blur [arcsec]', f'intra - extra Z{noll} [um wf]')
-    axes[0][column].set_title(
-        f'Z{noll}: rho {row.spearman_rho:+.3f}, r {row.pearson_r:+.3f}\\n'
-        f'slope {row.huber_slope:+.4f} +/- {row.huber_slope_err:.4f} um wf/arcsec, '
-        f'n = {row.n}', fontsize=7)
+PER_ROW = 4
+for start in range(0, len(FOLLOW_UP), PER_ROW):
+    block = FOLLOW_UP[start:start + PER_ROW]
+    figure, axes = plt.subplots(2, len(block), figsize=(3.5 * len(block), 6.0),
+                                squeeze=False, layout='constrained')
+    for column, noll in enumerate(block):
+        row = correlations[(correlations.y == f'dZ{noll}')].iloc[0]
+        scatter_by_night(axes[0][column], visits, visits['dblur'], visits[f'dz{noll}'],
+                         'intra - extra blur [arcsec]',
+                         f'intra - extra Z{noll} [um wf]')
+        axes[0][column].set_title(
+            f'Z{noll}: rho {row.spearman_rho:+.3f}, r {row.pearson_r:+.3f}\\n'
+            f'slope {row.huber_slope:+.4f} +/- {row.huber_slope_err:.4f} um wf/arcsec, '
+            f'n = {row.n}', fontsize=7)
 
-    row_wn = correlations[(correlations.y == f'dZ{noll} (within night)')].iloc[0]
-    scatter_by_night(axes[1][column], visits, within_night(visits, visits['dblur']),
-                     within_night(visits, visits[f'dz{noll}']),
-                     'intra - extra blur, within night [arcsec]',
-                     f'intra - extra Z{noll}, within night [um wf]')
-    axes[1][column].set_title(
-        f'within night: rho {row_wn.spearman_rho:+.3f}\\n'
-        f'slope {row_wn.huber_slope:+.4f} +/- {row_wn.huber_slope_err:.4f} um wf/arcsec',
-        fontsize=7)
+        row_wn = correlations[(correlations.y == f'dZ{noll} (within night)')].iloc[0]
+        scatter_by_night(axes[1][column], visits, within_night(visits, visits['dblur']),
+                         within_night(visits, visits[f'dz{noll}']),
+                         'intra - extra blur, within night [arcsec]',
+                         f'intra - extra Z{noll}, within night [um wf]')
+        axes[1][column].set_title(
+            f'within night: rho {row_wn.spearman_rho:+.3f}\\n'
+            f'slope {row_wn.huber_slope:+.4f} +/- {row_wn.huber_slope_err:.4f} '
+            f'um wf/arcsec', fontsize=7)
 
-figure.suptitle(f'Blur difference against Zernike difference, {PRIMARY}, '
-                f'{len(visits)} quality visits, colour is night', fontsize=9)
-save(figure)
+    figure.suptitle(f'Blur difference against Zernike difference, {PRIMARY}, '
+                    f'{len(visits)} visits, colour is night '
+                    f'(Z{block[0]}-Z{block[-1]})', fontsize=9)
+    save(figure)
 ''')
 
 md('''
@@ -478,8 +552,15 @@ that order double-counts.
 - **(c)** continues to `n_max`, which is settable.
 
 Each step reports the incremental reduction in the target's unit, the partial correlation
-against the current residual, and a variance inflation factor (dimensionless) so a step
-that nearly repeats an earlier variable is visible rather than silent.
+against the current residual, and a **variance inflation factor (VIF)** so a step that
+nearly repeats an earlier variable is visible rather than silent.
+
+VIF is `1 / (1 - R^2)` (dimensionless), where `R^2` comes from regressing the newly added
+predictor on those already chosen. It is the factor by which collinearity inflates the
+variance of that predictor's fitted coefficient. VIF = 1 means orthogonal to the others;
+VIF = 10 is the conventional warning line; VIF = 80 means the variable is 98.75 per cent
+predictable from the others, so its coefficient is barely identified even though adding it
+still reduced the residual scatter. It is reported as a diagnostic, not used as a gate.
 ''')
 
 code('''
@@ -540,7 +621,7 @@ for label in selections:
     entry = selections[label]
     steps, ranking, unit = entry['steps'], entry['ranking'], entry['unit']
 
-    figure, axes = plt.subplots(1, 2, figsize=(10.0, 4.4),
+    figure, axes = plt.subplots(1, 2, figsize=(10.4, 4.8), layout='constrained',
                                 gridspec_kw={'width_ratios': [1.3, 1.0]})
 
     top = ranking.head(12)
@@ -639,7 +720,9 @@ for label in selections:
     entry = selections[label]
     unit, reference_unit = entry['unit'], entry['reference_unit']
 
-    figure, axes = plt.subplots(2, 2, figsize=(8.4, 6.2))
+    # `layout='constrained'` with a taller figure: the default layout let the lower
+    # row's x-axis labels run into the upper row's titles.
+    figure, axes = plt.subplots(2, 2, figsize=(8.8, 7.4), layout='constrained')
     for row, (reference_label, reference) in enumerate(
             [('extra-focal', entry['reference_extra']),
              ('two-side mean', entry['reference_mean'])]):

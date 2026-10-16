@@ -17,25 +17,28 @@ it has been used on more than one target.
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import spearmanr
+from scipy.stats import median_abs_deviation, spearmanr
 
 
 def nmad(values):
     """Normalized median absolute deviation, the robust scatter.
 
+    Thin wrapper on `scipy.stats.median_abs_deviation` with ``scale='normal'``, which is
+    the 1.4826 factor making this a consistent estimator of the standard deviation for
+    Gaussian data.
+
     Parameters
     ----------
     values : `array_like`
-        Values whose scatter is wanted, in any unit.
+        Values whose scatter is wanted, in any unit. Non-finite entries are dropped.
 
     Returns
     -------
     scatter : `float`
-        1.4826 times the median absolute deviation about the median, in the unit of
-        `values`.
+        Robust scatter, in the unit of `values`.
     """
     values = np.asarray(values, dtype=float)
-    return 1.4826 * np.median(np.abs(values - np.median(values)))
+    return float(median_abs_deviation(values[np.isfinite(values)], scale='normal'))
 
 
 def huber_fit(target, design):
@@ -71,8 +74,13 @@ def variance_inflation(design, column):
     Returns
     -------
     vif : `float`
-        Variance inflation factor, dimensionless. Large values mean the predictor is
-        nearly a linear combination of the others. Infinite when it is exactly so.
+        Variance inflation factor (VIF), dimensionless: ``1 / (1 - R^2)`` where ``R^2``
+        is from regressing this predictor on the others. It is the factor by which
+        collinearity inflates the variance of this predictor's fitted coefficient.
+        VIF = 1 means orthogonal to the others; VIF = 80 means the predictor is 98.75 per
+        cent predictable from them, so its coefficient is barely identified even if
+        including it still reduces the residual scatter. Infinite when it is an exact
+        linear combination.
     """
     design = np.asarray(design, dtype=float)
     if design.shape[1] < 2:
