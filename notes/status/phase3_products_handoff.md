@@ -1,11 +1,9 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
-> **Status:** 3a and 3b complete; **3c at 7 of 8 comparison-plan items** — only item 8
-> (`value_added`) remains, and it is **BUILT, COMPARED CLEAN and SNAPSHOTTED** (2026-10-16):
-> `v1/live` holds the full 214-night MIW `optical_state` rebuild, every difference against
-> the live database is on the expected list, and `v1/snapshots/20261016/` is complete.
-> **`current@` is not moved and readers are not cut over: Aaron's call**, commands in
-> "Next concrete action". The old database
+> **Status:** **Phase 3 COMPLETE, 2026-10-16** — 3a, 3b and 3c all done. Item 8
+> (`value_added`) is cut over: `v1/current` -> `snapshots/20261016`, and readers default to
+> it (`0ad5820`, the rollback target). What stays open is listed in "Next concrete
+> action". The old database
 > was never opened for writing. Items 5 (`coadds`), 6 (`dof_lut`) and
 > 7 (`bounce_tables`) were all built on `w_2026_42`, compared clean and promoted to
 > `current` on 2026-10-15; every difference found is on the expected list. **The stack and
@@ -1692,137 +1690,43 @@ phase 3, per decision 10.
 
 ## Next concrete action
 
-### Morning summary, overnight session of 2026-10-16 — ITEM 8 BUILT AND COMPARED CLEAN
+Phase 3 is closed. Phase 4 is planned in `notes/status/phase4_skills_handoff.md`.
 
-**Ran:** the manifest-race fix, the shard check, the merge, both backfills, the registry
-migration, `fetch_log` provenance, the full comparison, the first snapshot and the PR #1
-edit. **Passed:** all of it; 374 tests pass. **Stopped:** nothing. **Waiting on you:** the
-cutover, below. The old live database was opened read-only only; md5 `8d841009...`
-unchanged.
+### Closing record, 2026-10-16
 
-1. **Manifest race: FIXED,** `81aeec4`. A shard under `v1/_work/` counted as a catalog
-   build, and `manifest.write` used a fixed temp name. The new test forces the
-   interleaving and reproduces shard 03's `FileNotFoundError` against the old code.
-2. **Shard 03: COMPLETE as is, no rerun.** All 11 shards match their logs night by night;
-   98,019 rows in total, exactly the rows still on the old-tree MIW.
-3. **Merge and build steps: DONE.** Both backfills wrote nothing new: `--main-db` had
-   already given the shards their commanded v-modes (a plan correction), and the pointing
-   values equal ConsDB. `intrinsic_ref` is now `miw:d12-A_50_34_i_5rot@20261014`, and the
-   builder resolves that form (`2e2acfa`). `fetch_log.git_commit` was added. The manifest
-   was written once.
-4. **Comparison: CLEAN.** 0 keys on one side only and equal row counts on all 8 tables.
-   `visit_telemetry`, `m1m3_thermal_r2` and the 3 batoid variants are identical. The MIW
-   variant has 0 `ok` changes; `dof` max abs difference is 0.2889 µm of hexapod decenter
-   and `v_modes` 0.01347 (dimensionless), both within the revised prediction. One
-   judgement call: the `resid_rms_um` tail reaches 1.35e-04 µm of wavefront, against
-   "1e-05 µm level" predicted. The median is 5.1e-06 µm, and the change is at most 0.25% of
-   the row's own value, so I did not treat it as a stop. Full tables in "Step 4".
-5. **Snapshot: BUILT,** `v1/snapshots/20261016/`, md5 `fe201f0b...` equal to `live`,
-   manifest complete. `current@` NOT moved. `set_current` linked nested builds in the
-   wrong directory; fixed in `a394293`.
-6. **PR #1: body pushed and retitled.** OPEN, ready (not a draft), base `develop`:
-   https://github.com/lsst-ts/ts_intrinsic_wavefront/pull/1 — title "RSO-809: MIW builds
-   for rubin-work: per-donut sidecar, rotTelPos, rim fill, ConsDB ESS, RBR, lint".
+- **`current@` moved:** `value_added/v1/current` -> `snapshots/20261016`; md5 of
+  `aos_efd.duckdb` `fe201f0bbf85431bc594856bd9386ea5`, equal to `live`.
+- **Readers cut over, `0ad5820`** — the rollback target. `default_db_path()` now resolves
+  `AOS_EFD_DB`, then the catalog `current`, then the old tree. Checked: with `AOS_EFD_DB`
+  unset it returns the snapshot path; on visit 2025112000051 the three batoid variants are
+  identical to the old database, and `v50_34__miw__consdb_v1` differs by at most
+  0.2232 µm of hexapod decenter in `dof` and 0.01071 (dimensionless) in `v_modes`, inside
+  the step 4 bounds. `pytest rubinwork`: 374 passed.
+- **Part e, `56a2ef6`:** `thermal_focus_lib.py` no longer puts the shim directory on
+  `sys.path` (it never imported `efd_db` itself); `run_thermal_focus.py`, the module that
+  does read the database, now imports `rubinwork.products.value_added`. Checked with
+  `load_science` over 20251101-20251130: 3,991 visits.
+- **Rollback:** `git revert --no-edit 0ad5820 && git push`, or set `AOS_EFD_DB` to the old
+  path. The old database is untouched. Moving `current@` back needs Aaron's OK, since it
+  removes a symlink.
+- **Shards NOT deleted.** Aaron approved deleting `v1/_work/shards/` (11 shard files, 380 MB
+  on disk, plus `manifest.json`), but the session's permission settings refused the `rm`.
+  Aaron runs it himself:
+  `rm -r /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/_work/shards`.
+  Nothing else is in `v1/_work/`.
 
-### The cutover — your call
+### Still open, deliberately deferred
 
-Two moves. Making the snapshot current affects no reader, because `default_db_path()`
-picks the old tree first whenever it exists. Readers move only with the second change.
-
-Make the snapshot current:
-
-```bash
-cd /sdf/home/r/roodman/notebooks/rubin-work && \
-python -m rubinwork.products.catalog set-current value_added v1 snapshots/20261016 && \
-ls -l /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/current
-```
-
-Move readers: in `rubinwork/products/value_added/reader.py`, `default_db_path()`, change
-the order to `AOS_EFD_DB`, then `catalog_db_path()`, then the old tree. That is a code
-change for a session to make, test and commit when you say go. To try it first in one
-shell, with no code change:
-
-```bash
-export AOS_EFD_DB=/sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/current/aos_efd.duckdb
-```
-
-Rollback. The old database is untouched, so it is enough to revert the precedence commit
-(or `unset AOS_EFD_DB`). To remove `current` as well, ask a session: removing the
-symlink is a deletion, so it needs your OK.
-
-```bash
-cd /sdf/home/r/roodman/notebooks/rubin-work && git revert --no-edit <the precedence commit> && git push
-```
-
-Then `thermal_focus/code/thermal_focus_lib.py` still reaches the shim by `sys.path`
-(part e). Phase 3c is finished once the cutover is done.
-
-**Left on disk, not deleted:** `v1/_work/shards/manifest.json`, left by the race, and the
-11 shard files. Both can go once you OK the deletion.
-
-1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
-   compared clean against the **i-band archive** and `set-current`. Every difference on
-   the expected list; the maps agree to **1.4e-13 µm of wavefront**, so **no scipy 1.18.1
-   or `ts_wep` effect**. See "Item 5 `coadds`: BUILT and COMPARED CLEAN" — and note the
-   reference trap recorded there before comparing any other `coadds` build.
-2. ~~Item 6 — `dof_lut`~~ **DONE 2026-10-15.** Both `d12` variants built locally (no batch),
-   shape check passes, both `set-current`. Note the plan's "5 populated rotator bins" is
-   **stale: it is 9**, confirmed against the `w_2026_39` reference. See "Item 6 `dof_lut`".
-3. ~~Item 7 — `bounce_tables`~~ **DONE 2026-10-15.** Both buildable variants built locally,
-   both `set-current`. A **real numerical comparison was possible** against the old-tree
-   `_july` build, which the plan did not expect, and **difference 1 accounts for all of
-   it**. `_july` stays registered-not-rebuilt; `d13t` cannot build (no `miw` build). See
-   "Item 7 `bounce_tables`".
-
-**Item 8 (`value_added`) is the stop for this session, as instructed.** When it is picked
-up: it writes to **`v1/live` only, never to the current live database in place**, the live
-database is read-only, and its rows are `fam_dz` plus the MIW-route `optical_state`
-variants. `optical_state.rotator_angle_deg` **stays on ConsDB** (decision, 2026-10-11), so
-it does **not** pick up difference 1. Also in item 8: the two backfill scripts become build
-steps, and the registry rows move to catalog names.
-
-Section 12 permits `set-current` when a comparison is clean; **any difference not on the
-expected list is a stop.** Show Aaron the exact command for any batch job and wait for his
-OK.
-
-**Two plan corrections to fold in** (both found by doing the items, both recorded in the
-item sections):
-- **Item 5's comparison reference** must be `aos/output/coadd/danish_1_2/50_34/archive/20260903_iband/`,
-  not the top level — the top level is an all-bands run and the variant is i-band only.
-- **Item 6's "5 populated rotator bins" is 9.**
-
-Two things need Aaron, neither blocking items 5 to 7:
-
-- ~~`ts_intrinsic_wavefront` PR #1 body and title~~ **DONE 2026-10-16**: body pushed,
-  retitled to cover all 16 commits, still OPEN and ready on base `develop`.
-- **v4 Butler ingest** — still deferred, Aaron's call.
-
-Do **not** redo the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical, so
-there is no difference to separate.
-
-Nothing else in 3c is blocked:
-`fam_tables`, `cwfs_tables` and `miw` are all done, compared and `current`, and the two
-old-tree variants are registered.
-
-Pointers, so nothing above is re-asked or re-measured:
-
-- **v4 Butler ingest** — deferred, Aaron's call; the dry-run command is in the v4 section.
-- **`set-current` for `_5rot`** — done 2026-10-15, see "Decisions taken".
-- **Staging v4 into git** — decided against for now, see "Decisions taken".
-- **Expected difference 8 (the ESS telemetry window)** — mechanism found and measured, see
-  "Expected difference 8" below. Deliberate change, recoverable without an EFD re-fetch.
-- **The `d12-A_50_34_i` `fits.parquet` comparison** and the `_5rot` comparison — both done
-  and clean; the tables are below.
-
-**`d12-A_50_34_i@20261014` is COMPLETE at 18 of 18 and COMPARED, 2026-10-14.** A
-correction to this handoff's earlier state: the build was **already finished** before the
-2026-10-14 afternoon session. `refit_mi` and `manifest` landed at 10:02 that day
-(`fits.parquet` 3,385 rows x 830 columns, `manifest.json` present,
-`_work/logs/refit_mi.log` ending "Saved: ... 3385 rows x 830 columns"), so the handoff's
-"16 of 18" was stale. The resubmitted job **40807575** found "Nothing to be done (all
-requested files are present and up to date)" and exited without recomputing or writing
-anything. **Lesson:** check the build directory for the output file before resubmitting on
-a handoff's word.
+- **v4 `intrinsic_zernikes` Butler ingest** — Aaron's call; the dry-run command is in the v4
+  section.
+- **`summit_utils` and `ts_ofc` PRs** — later.
+- **ESS per-visit fallback.** `get_thermal_data` falls back to the raw EFD only when the
+  ConsDB transform returns nothing at all, so a visit with a NULL transform cell gets NaN.
+  That loses the ESS temperatures on 89 of 960 visits (9.3%) in the blitz build. Expected
+  difference 8 has the fix options.
+- **Telemetry move to the value-added database** — decision 10, a later phase; scope in
+  item 8 section f.
+- **Do not redo** the `ts_wep` rollback to `1ea1ae1d`: the smoke test was bit-identical.
 
 ### The `d12-A_50_34_i` `fits.parquet` comparison, 2026-10-14
 

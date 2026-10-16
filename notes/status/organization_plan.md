@@ -1,6 +1,6 @@
 # rubin-work organization plan: products, libraries and studies
 
-> **Status:** current · **Last updated:** 2026-10-09 · **Kind:** working state (plan)
+> **Status:** current; phases 0-3 and 6 done · **Last updated:** 2026-10-16 · **Kind:** working state (plan)
 
 The plan for reorganizing `rubin-work` around **products** (data that other work reads),
 **libraries** (code that other work imports) and **studies** (work that asks a question,
@@ -796,6 +796,10 @@ tail and stops before `set-current`. **One defect to fix before submitting:** ni
 20260713 is planned **twice**, once under the broad `[20260514, 20260731]` chunk and once
 under its own embargo chunk, and both target the same output directory — `night_plan`
 must prefer the narrowest matching chunk, giving 137 jobs.
+
+**Phase 3 — done 2026-10-16.** 3c ended with the `value_added` cutover: `v1/current` ->
+`snapshots/20261016`, readers moved by `0ad5820`. State and deferred items in
+`notes/status/phase3_products_handoff.md`.
 
 **Phase 4 — skills and generators.** `/start-study`, `/wrap`, `/review`, the `STUDIES.md`
 and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`.
