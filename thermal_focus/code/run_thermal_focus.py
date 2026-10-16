@@ -56,11 +56,10 @@ _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_focus_lib
 _ROOT = _HERE.parents[1]
 sys.path.insert(0, str(_ROOT))                                   # repo root -> common/
-sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))           # -> efd_db
 
-import efd_db                                                    # noqa: E402
 import thermal_focus_lib as L                                    # noqa: E402
 from common.utils import nmad                                    # noqa: E402
+from rubinwork.products import value_added as efd_db             # noqa: E402
 
 #: Image types kept as "science visits". The focus model is fitted on ordinary survey exposures.
 SCIENCE_IMG_TYPES = ('science',)

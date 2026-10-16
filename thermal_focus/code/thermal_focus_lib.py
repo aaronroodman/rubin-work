@@ -42,7 +42,6 @@ import numpy as np
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))                       # repo root -> common/
 sys.path.insert(0, str(_ROOT / 'aos' / 'code'))      # -> aos_state, the v-mode engine
-sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))  # -> efd_db
 
 #: Sign with which a surviving measured v-mode-1 residual enters the response
 #: [dimensionless]. Fixed by observation, not by any fit: on the ``BLOCK-T539``

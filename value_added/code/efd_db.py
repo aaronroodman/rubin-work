@@ -7,14 +7,12 @@ database, which several topics consume, so it is a product reader.
 The shim binds the real module's namespace here and registers the real module under this
 path's name, so a bare-name ``import efd_db`` after a ``sys.path`` insert of
 ``value_added/code`` gives the **same objects, not copies**. That matters more here than
-for any other shim in the reorganization: five scripts and three notebooks import it this
+for any other shim in the reorganization: three scripts and three notebooks import it this
 way, and two of them pass the connection it opens to each other, which copies would
 break.
 
 Callers kept working by this shim:
 
-* ``thermal_focus/code/run_thermal_focus.py``
-* ``thermal_focus/code/thermal_focus_lib.py``
 * ``wfs/code/giant_donuts/select_exposures.py``
 * ``aos/code/cwfs_lut/cwfs_lut_lib.py``
 * ``aos/code/cwfs_lut/run_cwfs_lut.py``
