@@ -1,4 +1,4 @@
-# Plan: the intra/extra wavefront study (Danish 1.3 blitz FAM)
+# Plan: the `unpaired_intra_vs_extra` study (Danish 1.3 blitz FAM)
 
 > **Status:** proposal, awaiting Aaron · **Last updated:** 2026-10-15 · **Kind:** status (plan)
 
@@ -14,14 +14,14 @@ each marked **checked**.
 
 ## 1. Placement
 
-**Proposed study: `aos/intra_extra/`**, per section 7 of
+**Proposed study: `aos/unpaired_intra_vs_extra/`**, per section 7 of
 `notes/status/organization_plan.md`. This is the first study created in the new layout.
 
-Front matter for `aos/intra_extra/study.md`:
+Front matter for `aos/unpaired_intra_vs_extra/study.md`:
 
 ```yaml
 ---
-study: intra_extra
+study: unpaired_intra_vs_extra
 topic: aos
 status: active
 question: Does the wavefront measured from the intra-focal donut differ from the
@@ -35,32 +35,69 @@ started: 2026-10-15
 ```
 
 Directory, per section 3: `study.md`, `code/`, `notebooks/`, `figures/`, and
-`output@ -> /sdf/group/rubin/u/roodman/LSST/rubin-work/studies/aos/intra_extra`
+`output@ -> /sdf/group/rubin/u/roodman/LSST/rubin-work/studies/aos/unpaired_intra_vs_extra`
 (gitignored symlink; run directories `<YYYYMMDD>_<label>/` under it).
 
-**Recommendation on triage question 6: yes, merge, and put it in `aos`.** One question —
-why the two sides of focus disagree — asked of four data sets. Making it one study is what
-lets the giant-donut Z11 split, the simulated M1 edge strip, the CWFS Z11/Z14 offset and
-the FAM blur asymmetry be checked against each other instead of each being re-explained.
-`aos` because the FAM ensemble (873 pairs, 3.16 M donut rows) is the only sample with
-statistical power, and it lives in `aos`; `wfs/giant_donuts` and
-`optics/intra_extra_phase_strip` become log entries and `figures/` of this study, and the
-Z11/Z14 part of `aos/cwfs` is cross-linked rather than moved (the rest of `cwfs` — the
-optical-state comparison — is a different question and stays).
+### The four prior studies triage question 6 names
 
-A caveat worth Aaron's call: `wfs/giant_donuts` is an *active* study with its own open
-next steps (`notes/status/item7_giant_donuts_handoff.md`). Folding an active study into a
-new one risks losing its next steps. The alternative is `aos/intra_extra` as a separate
-study that links the other three; that is cheaper now and loses the cross-checking.
-Recommendation stands on merge, with the giant-donut next steps carried verbatim into the
-new log entry.
+Question 6 of `notes/status/phase5_study_triage.md:210-212` names these four. Inventory
+checked on disk, 2026-10-15:
+
+| # | study | docs | code | notebooks | output on disk | state |
+|---|---|---|---|---|---|---|
+| 1 | aos `blur_intra_extra` | `aos/docs/status/blur_intra_extra_handoff.md` (455 lines); the notebook row and per-side paragraph in `aos/docs/studies/fam_processing.md` | none of its own — reads `fam_tables` | `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb` | `aos/output/fam_processing/blur_intra_extra/` → `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/aos/output/fam_processing/blur_intra_extra/`: 10 PDFs + 3 parquet caches, **3 PDFs and 1 parquet orphaned** by the 2026-10-04/06 rewrites | active |
+| 2 | wfs `giant_donuts` (todo item 7) | `wfs/docs/giant_donuts_pupil_findings.md` (401 lines); `notes/status/item7_giant_donuts_handoff.md` | `wfs/code/giant_donuts/` — 7 modules + 1 test (`fit_giant_donut.py`, `radial_profile.py`, `spider_trajectory.py`, `donut_images.py`, `gen_mask_params.py`, `select_exposures.py`) | `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb` (**modified, uncommitted**) | `wfs/output/giant_donuts/` — 10 PDFs, R22_S10, *in the repo tree*, not the data root; plus 3 loose `wfs_giant_donut_*.pdf` in `wfs/output/` | active, own open next steps |
+| 3 | optics `intra_extra_phase_strip` | `optics/docs/studies/intra_extra_phase_strip.md` only | **none** | **none** | **none** — `optics/output/` holds only `.gitkeep` | writeup only: a hypothesis plus a symmetry argument. Its status line says "not yet simulated"; the triage says it was, on 2026-10-09, but no code or output for that simulation is in `optics/` |
+| 4 | the Z11/Z14 part of aos `cwfs` | the "State and open questions" section of `aos/docs/studies/cwfs.md`; `aos/docs/ts_wep_zernike_intrinsics.md` for the CCD-height argument | `aos/code/cwfs/` — but shared with the optical-state comparison, which is a *different* question | `aos/notebooks/cwfs/` (4, shared the same way) | `aos/output/wfs_corner_compare/danish_1_2/`, `aos/output/danish_tarts_compare_20260713/` (6 PDFs) — again shared with the other track | parked; only the Z11/Z14 *finding* is in scope, not the study |
+
+What each contributes to the one question:
+
+- **1** is the only one with ensemble statistics: 873 quality FAM triplets, 15 nights. It
+  measures the blur asymmetry (+0.3440 arcsec) and says nothing yet about the Zernikes.
+- **2** is the one deep dive: 6 giant donuts at 8 mm hexapod defocus, 3 pupil models, and
+  the Z11 split 0.81 → 0.37 µm of wavefront under `v1000`. One detector, 2 exposures.
+- **3** is the only candidate *mechanism* with the right sign: a 50 nm, 5 cm turned-down
+  M1 inner edge giving +0.82 / −0.34 arcsec intra / extra in quadrature.
+- **4** is the independent instrument check: the same Z11/Z14 split appears in the corner
+  sensors, so it is not special to FAM.
+
+The new study adds the fifth leg, and the one none of them has: the **per-side Zernikes
+over the whole FAM ensemble**.
+
+**Recommendation on triage question 6: merge, and put it in `aos`.** One question — why
+the two sides of focus disagree — asked of four data sets. Making it one study is what
+lets the giant-donut Z11 split, the M1-edge-strip mechanism, the CWFS Z11/Z14 offset and
+the FAM blur asymmetry be checked against each other instead of each being re-explained.
+`aos` because the FAM ensemble (873 visits, 3.16 M donut rows) is the only sample with
+statistical power, and it lives in `aos`.
+
+How each one moves, concretely:
+
+- **1 `blur_intra_extra` → merged in**, as the first log entry (below). It has no code of
+  its own, so only the notebook moves to `aos/unpaired_intra_vs_extra/notebooks/`.
+- **3 `intra_extra_phase_strip` → merged in** as a derivation beside `study.md`
+  (`m1_edge_strip.md`). It is a writeup with no code or output, so this is a file move and
+  a status-line fix. Lowest-risk of the four.
+- **2 `giant_donuts` → Aaron's call.** It is *active*, has 7 code modules and its own open
+  next steps. Merging it means moving `wfs/code/giant_donuts/` into the new study and
+  carrying the item-7 next steps into the log verbatim. Keeping it separate and
+  cross-linking costs nothing now. **My recommendation: keep `wfs/giant_donuts` as its own
+  study and cross-link it**, changing what I proposed earlier in this file — its code and
+  its 8 mm single-detector question are distinct enough from the 1.5 mm FAM ensemble that
+  merging buys a shared `study.md` and little else, and it is the one merge that could
+  lose live work.
+- **4 `cwfs` → cross-link only.** The Z11/Z14 finding is cited in the new study's log; the
+  study itself stays, since its code, notebooks and output are shared with the
+  optical-state comparison and cannot be split cleanly.
+
+So: merge 1 and 3 into `aos/unpaired_intra_vs_extra`, cross-link 2 and 4.
 
 **The earlier blur study's handoff becomes the first log entry** of
-`aos/intra_extra/study.md`, dated 2026-10-06, per section 7 ("Handoffs become log
+`aos/unpaired_intra_vs_extra/study.md`, dated 2026-10-06, per section 7 ("Handoffs become log
 entries"). It is 455 lines and much of it is thermal-regression detail, so: the result
 tables, the per-side negative test and the whole "Tried and rejected" section go into the
 log entry; the thermal model derivation moves beside `study.md` as
-`aos/intra_extra/blur_thermal.md`. Nothing is deleted without Aaron's say-so — the old
+`aos/unpaired_intra_vs_extra/blur_thermal.md`. Nothing is deleted without Aaron's say-so — the old
 `aos/docs/status/blur_intra_extra_handoff.md` stays until he confirms.
 
 ---
@@ -315,9 +352,11 @@ Planned, to `figures/` (a few committed PNGs) with the PDFs under `output@`:
 
 ## 8. Questions for Aaron
 
-1. **Triage question 6** — merge the four intra/extra studies into `aos/intra_extra` as
-   recommended, or keep `aos/intra_extra` separate and only cross-link the other three?
-   Merging folds an *active* study (`wfs/giant_donuts`) into a new one.
+1. **Triage question 6**, now that the four are inventoried in section 1 — merge
+   `blur_intra_extra` (1) and `intra_extra_phase_strip` (3) into
+   `aos/unpaired_intra_vs_extra` and cross-link `giant_donuts` (2) and `cwfs` (4), as
+   recommended? Or merge all four, which means moving `wfs/code/giant_donuts/`'s 7 modules
+   and folding an active study with its own open next steps?
 2. **Robust method** — Huber RLM for every ΔZ-against-Δblur slope, per the default? Or a
    different robust method for the pair-level fits, where n is ~3 M and the leverage of a
    few bad donuts is different from the visit-level n = 873?
@@ -327,4 +366,4 @@ Planned, to `figures/` (a few committed PNGs) with the PDFs under `output@`:
    within-visit proxy and the item-7 blur-robustness result settle it well enough to defer?
 5. **The handoff** — does `aos/docs/status/blur_intra_extra_handoff.md` get superseded in
    place (left on disk, marked superseded, pointing at the new log entry), and the thermal
-   derivation moved to `aos/intra_extra/blur_thermal.md`?
+   derivation moved to `aos/unpaired_intra_vs_extra/blur_thermal.md`?
