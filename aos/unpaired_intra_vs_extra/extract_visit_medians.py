@@ -15,6 +15,7 @@ import pathlib
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+from scipy.stats import median_abs_deviation
 
 from rubinwork.products import catalog
 
@@ -44,9 +45,12 @@ def visit_medians(variant, build, field_radius_limit_deg=FIELD_RADIUS_LIMIT_DEG)
     Returns
     -------
     table : `pandas.DataFrame`
-        One row per visit. ``blur_{intra,extra}`` [arcsec], ``z{j}_{intra,extra}``
-        [micrometres of wavefront] for each Noll index ``j``, and ``n_donuts``
-        (dimensionless) counting the paired donuts the medians were taken over.
+        One row per visit. ``blur_{intra,extra}`` [arcsec] and
+        ``z{j}_{intra,extra}`` [micrometres of wavefront] are the per-side medians over
+        the visit's donuts. ``dz{j}_donut_median`` and ``dz{j}_donut_nmad`` [micrometres
+        of wavefront], with ``dblur_donut_*`` [arcsec], are the median and robust scatter
+        of the **per-donut** intra minus extra difference, each donut being an
+        already-matched pair. ``n_donuts`` (dimensionless) counts the pairs used.
     noll : `list` [`int`]
         The Noll indices, in the column order of the stored Zernike vectors.
     """
@@ -74,16 +78,34 @@ def visit_medians(variant, build, field_radius_limit_deg=FIELD_RADIUS_LIMIT_DEG)
         if not keep.any():
             continue
 
+        kept = keep.to_numpy()
         record = {
             'day_obs': int(chunk['day_obs'].iloc[0]),
             'seq_num': int(chunk['seq_num'].iloc[0]),
-            'n_donuts': int(keep.sum()),
+            'n_donuts': int(kept.sum()),
             'blur_intra': float(np.median(chunk.loc[keep, 'blur_intra'])),
             'blur_extra': float(np.median(chunk.loc[keep, 'blur_extra'])),
         }
+
+        # Per-donut difference statistics. Each row of the donut table is already a
+        # matched pair -- `pair_sides` joins the two sides on (det_name, donut_id), the
+        # Gaia source identifier -- so no positional matching is involved.
+        blur_difference = (chunk.loc[keep, 'blur_intra']
+                           - chunk.loc[keep, 'blur_extra']).to_numpy()
+        record['dblur_donut_median'] = float(np.median(blur_difference))
+        record['dblur_donut_nmad'] = float(
+            median_abs_deviation(blur_difference, scale='normal'))
+
         for column, noll_index in enumerate(noll):
-            record[f'z{noll_index}_intra'] = float(np.median(intra[keep.to_numpy(), column]))
-            record[f'z{noll_index}_extra'] = float(np.median(extra[keep.to_numpy(), column]))
+            side_intra = intra[kept, column]
+            side_extra = extra[kept, column]
+            record[f'z{noll_index}_intra'] = float(np.median(side_intra))
+            record[f'z{noll_index}_extra'] = float(np.median(side_extra))
+
+            difference = side_intra - side_extra
+            record[f'dz{noll_index}_donut_median'] = float(np.median(difference))
+            record[f'dz{noll_index}_donut_nmad'] = float(
+                median_abs_deviation(difference, scale='normal'))
         rows.append(record)
 
     return pd.DataFrame(rows), noll

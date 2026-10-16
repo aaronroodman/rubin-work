@@ -98,6 +98,38 @@ largest change is Z22 at +0.0081 µm of wavefront, nine times smaller; Z14 moves
 its 29 per cent reduction here is consistent in direction with the 8 mm giant-donut
 result (0.81 → 0.37 µm of wavefront, 54 per cent) at a different defocus and sample.
 
+**Per-donut differences add a second scatter, and it separates the terms.** Each row of
+`donuts.parquet` is already a matched pair — `pair_sides` joins the two sides on
+`(det_name, donut_id)`, the Gaia source identifier, which is exact and keeps about
+**96.8 per cent** of the per-side fitted rows. No positional matching is used or needed:
+the same star lands up to **34.7 pixels** apart on the two sides because the exposures
+point slightly differently, so a tight pixel tolerance would reject real pairs
+(`aos/docs/studies/fam_processing.md`).
+
+Forming the difference per donut and summarizing over the visit gives the **spread across
+the focal plane within one visit**, which per-visit medians cannot. The medians agree with
+the difference-of-medians to ≤0.002 µm of wavefront throughout, as they must. The ratio of
+within-visit to between-visit robust scatter sorts the terms into two kinds:
+
+| Noll | within-visit nMAD [µm wf] | between-visit nMAD [µm wf] | ratio (dimensionless) |
+|---|---|---|---|
+| Z11 | 0.0125 | 0.0231 | **0.54** |
+| Z26 | 0.0158 | 0.0226 | 0.70 |
+| Z22 | 0.0062 | 0.0087 | 0.71 |
+| Z4 | 0.1425 | 0.1710 | 0.83 |
+| Z14 | 0.0701 | 0.0758 | 0.93 |
+| Z6 | 0.2469 | 0.2201 | 1.12 |
+| Z7 | 0.1741 | 0.0962 | 1.81 |
+| Z8 | 0.1510 | 0.0700 | **2.16** |
+
+**Z11, Z26 and Z22 are uniform across the focal plane but vary visit to visit**
+(ratio ≤ 0.71) — the signature of a single global effect changing with time, which is
+consistent with their being the terms the thermal model and the pupil model act on. **Z7,
+Z8 and Z13 are the opposite** (ratio 1.8–2.2): their difference varies more from donut to
+donut within one visit than it does between visits, so for those the per-visit median is
+averaging over a field pattern and the field-dependence check in `Next` is the relevant
+test, not a thermal one.
+
 **The intra-before-extra time ordering does not explain dZ4.** A FAM triplet is taken
 intra, extra, in-focus, so the intra-focal exposure always precedes the extra-focal one —
 by a median **46.4 s** (10th–90th percentile 46.3–46.6 s). The two-side mean Z4 does drift
@@ -274,7 +306,10 @@ there is no per-side thermal difference to find.
 4. Read the ΔZ14 / ΔZ26 "after" panels against the extra-focal value — their slopes grow
    under the correction while flattening against the two-side mean. Decide which
    reference is the right one before quoting either.
-5. Field dependence, not started: per-detector maps of each difference in OCS and in CCS
+5. Field dependence, now motivated rather than speculative: Z7, Z8 and Z13 have
+   within-visit scatter 1.8-2.2x their between-visit scatter, so their difference has
+   structure across the focal plane. Per-detector maps in OCS and CCS would show it.
+   Not started: per-detector maps of each difference in OCS and in CCS
    would separate a telescope-fixed from a camera-fixed pattern. The rotator spans enough
    angle over 15 nights.
 6. Pair level, if wanted later: the within-visit slope of ΔZ11 on Δblur bounds the Danish
@@ -289,7 +324,7 @@ there is no per-side thermal difference to find.
 
 | file | role |
 |---|---|
-| `extract_visit_medians.py` | the one pass over the 13 GB donut table; writes per-visit per-side medians |
+| `extract_visit_medians.py` | the one pass over the 13 GB donut table; writes per-visit per-side medians and the per-donut difference median and nMAD |
 | `fetch_exposure_times.py` | per-exposure midpoint times from ConsDB `cdb_lsstcam.exposure`, for the Z4 time-ordering test |
 | `thermal_selection.py` | greedy forward selection on incremental gain, Huber throughout |
 | `notebooks/unpaired_intra_vs_extra.ipynb` | every figure and table, into one PDF |

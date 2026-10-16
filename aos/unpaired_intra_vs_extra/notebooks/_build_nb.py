@@ -672,6 +672,125 @@ figure.suptitle(f'Does the intra-before-extra ordering explain dZ{TIME_ORDER_NOL
 save(figure)
 """)
 
+md("""
+## 3c. Per-donut differences
+
+So far every difference has been taken between the two sides' per-visit medians. The
+difference can instead be formed **per donut** and then summarized over the visit, which
+gives a second quantity the visit medians cannot: the **spread of the difference across
+the focal plane within a single visit**.
+
+No positional matching is needed. Each row of `donuts.parquet` is already a matched pair:
+`pair_sides` joins the two sides of focus on `(det_name, donut_id)`, where `donut_id` is
+the Gaia source identifier. That key is exact - a paired star carries identical
+`coord_ra` / `coord_dec` on both sides - and it keeps the stars fitted successfully on
+both sides, about **96.8 per cent** of the per-side fitted rows. Pixel-position matching
+is deliberately *not* used: the same star lands up to **34.7 pixels** apart on the two
+sides because the two exposures point slightly differently, so any tolerance tight enough
+to be safe would reject real pairs (`aos/docs/studies/fam_processing.md`).
+
+`extract_visit_medians.py` computes `dz{j}_donut_median` and `dz{j}_donut_nmad` per visit
+from the per-donut differences, so these plots need no extra pass over the 13 GB table.
+""")
+
+code("""
+# Consistency check: the median of the per-donut differences must match the difference of
+# the per-side medians, up to the difference between a median of differences and a
+# difference of medians.
+check = []
+for noll in NOLL:
+    per_donut = visits[f'dz{noll}_donut_median']
+    of_medians = visits[f'z{noll}_intra'] - visits[f'z{noll}_extra']
+    check.append({'noll': noll,
+                  'median_per_donut_um': float(np.median(per_donut)),
+                  'median_of_medians_um': float(np.median(of_medians)),
+                  'max_abs_diff_um': float(np.max(np.abs(per_donut - of_medians))),
+                  'median_within_visit_nmad_um':
+                      float(np.median(visits[f'dz{noll}_donut_nmad']))})
+per_donut_summary = pd.DataFrame(check)
+
+print('Per-donut differences against the difference of per-side medians, '
+      'um of wavefront.')
+print('within-visit nMAD is the spread of the per-donut difference across the focal '
+      'plane.')
+print(per_donut_summary.to_string(index=False, float_format=lambda v: f'{v:+.4f}'))
+print()
+print(f'blur: per-donut median {np.median(visits.dblur_donut_median):+.4f} arcsec, '
+      f'within-visit nMAD {np.median(visits.dblur_donut_nmad):.4f} arcsec')
+""")
+
+code("""
+# Median and nMAD of the per-donut difference against FAM visit ordinal, two panels per
+# Noll index, for the follow-up set.
+for start in range(0, len(FOLLOW_UP), PER_PAGE):
+    block = FOLLOW_UP[start:start + PER_PAGE]
+    figure, axes = plt.subplots(2, len(block), figsize=(4.1 * len(block), 4.9),
+                                sharex=True, squeeze=False, layout='constrained')
+    for column, noll in enumerate(block):
+        median_series = visits[f'dz{noll}_donut_median']
+        scatter_series = visits[f'dz{noll}_donut_nmad']
+
+        axis = axes[0][column]
+        draw_nights(axis, EDGES)
+        axis.plot(visits['ordinal'], median_series, '.', ms=2.0, color='tab:purple')
+        axis.axhline(0.0, color='k', lw=0.5, ls=':')
+        axis.axhline(np.median(median_series), color='tab:green', lw=0.8,
+                     label=f'median {np.median(median_series):+.4f} um wf')
+        axis.set_ylabel(f'median per-donut dZ{noll} [um wf]')
+        axis.legend(loc='upper right', fontsize=6, framealpha=0.9)
+        axis.set_title(f'Z{noll}', fontsize=9)
+
+        axis = axes[1][column]
+        draw_nights(axis, EDGES)
+        axis.plot(visits['ordinal'], scatter_series, '.', ms=2.0, color='tab:orange')
+        axis.axhline(np.median(scatter_series), color='tab:green', lw=0.8,
+                     label=f'median {np.median(scatter_series):.4f} um wf')
+        axis.set_ylabel(f'within-visit nMAD of dZ{noll} [um wf]')
+        axis.legend(loc='upper right', fontsize=6, framealpha=0.9)
+        axis.set_xlabel('FAM visit ordinal')
+
+    figure.suptitle(f'Per-donut intra - extra: median (top) and within-visit robust '
+                    f'scatter (bottom), {PRIMARY} (Z{block[0]}-Z{block[-1]})',
+                    fontsize=9)
+    save(figure)
+""")
+
+code("""
+# The two scatters side by side: within a visit (across the focal plane) against
+# between visits. They answer different questions, so the ratio is worth seeing.
+comparison = []
+for noll in NOLL:
+    between = nmad(visits[f'z{noll}_intra'] - visits[f'z{noll}_extra'])
+    within = float(np.median(visits[f'dz{noll}_donut_nmad']))
+    comparison.append({'noll': noll, 'within_visit_um': within,
+                       'between_visit_um': between,
+                       'ratio': within / between if between else np.nan})
+scatter_comparison = pd.DataFrame(comparison).sort_values('within_visit_um',
+                                                          ascending=False)
+
+print('Robust scatter of the intra - extra difference, um of wavefront.')
+print('within_visit: across the focal plane in one visit (per-donut).')
+print('between_visit: visit to visit (per-visit medians).')
+print(scatter_comparison.to_string(index=False, float_format=lambda v: f'{v:+.4f}'))
+
+figure, axis = plt.subplots(figsize=(6.4, 5.6), layout='constrained')
+axis.plot(scatter_comparison['between_visit_um'], scatter_comparison['within_visit_um'],
+          'o', ms=4, color='tab:blue')
+for _, row in scatter_comparison.iterrows():
+    axis.annotate(f'Z{int(row.noll)}',
+                  (row['between_visit_um'], row['within_visit_um']),
+                  fontsize=6, xytext=(3, 3), textcoords='offset points')
+limits = [0, max(scatter_comparison['between_visit_um'].max(),
+                 scatter_comparison['within_visit_um'].max()) * 1.1]
+axis.plot(limits, limits, '--', color='k', lw=0.8, label='1:1')
+axis.set_xlabel('between-visit nMAD of the difference [um wf]')
+axis.set_ylabel('within-visit nMAD of the difference [um wf]')
+axis.set_title('Where the scatter lives: across the focal plane vs visit to visit',
+               fontsize=9)
+axis.legend(fontsize=7)
+save(figure)
+""")
+
 md('''
 ## 4. Thermal predictor selection
 
