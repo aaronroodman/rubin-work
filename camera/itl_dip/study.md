@@ -1,6 +1,26 @@
-# The ITL dip along columns of saturated stars
+# Study: `itl_dip` — the sky deficit in columns of saturated stars on ITL CCDs
 
-> **Status:** current · **Last updated:** 2026-10-15 · **Kind:** reference (how to look at the feature)
+> **Status:** current · **Last updated:** 2026-10-15 · **Kind:** reference (study)
+
+> **Notebooks:** `notebooks/itl_column_dip_v1.ipynb`
+> **Output:** `output/itl_dip_<day_obs>_<seq_num>.pdf` (all figures, one multi-page PDF)
+> **Code:** none — the study is notebook-only, with no scripts and no data products
+
+## Question
+
+How deep is the ITL dip, how wide, and how far along the column does it reach, measured
+against the sky level on real on-sky images?
+
+## Current answer
+
+On R02_S12 of exposure 2026070800022 (a `lowdust` field, i band, 30 s) three dips with
+partially filled bleed trails give depths of **72.3, 68.8 and 67.6 counts** against a sky
+of **1733 counts** — about **4% of sky**, agreeing among themselves to 3%. The same
+measurement on an e2v CCD in the same exposure gives **1.3 counts**, a factor of 53
+smaller.
+
+Measured on one detector in one exposure, so the depth is indicative rather than
+characterised. Stacking many dips across the 25 affected detectors is the next step.
 
 ## What the feature is
 
@@ -198,10 +218,9 @@ consistency between stars — the confusion noise, not the dip.
 3. **Check the amp dependence.** ITL amps are 509 pixels wide in x; whether depth
    depends on where in the amp the star sits is unanswered.
 
-## Notebook
+## Running it
 
-`camera/notebooks/itl_dip/itl_column_dip_v1.ipynb` carries all of the above as runnable
-code. It imports only the LSST Science Pipelines (`lsst_distrib`) and standard
+`notebooks/itl_column_dip_v1.ipynb` carries all of the above as runnable code. It imports only the LSST Science Pipelines (`lsst_distrib`) and standard
 scientific Python (`numpy`, `pandas`, `matplotlib`, `astropy`, `requests`), so it runs
 anywhere the stack is set up.
 
