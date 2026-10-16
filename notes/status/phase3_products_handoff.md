@@ -3,8 +3,10 @@
 > **Status:** 3a and 3b complete; **3c at 7 of 8 comparison-plan items** — only item 8
 > (`value_added`) remains. **Item 8 is PART BUILT** (2026-10-15, "Item 8 build"): blockers
 > cleared, `v1/live` copied and md5-verified, `fam_dz` rebuilt and comparing at
-> floating-point noise, **1 of 214 nights** of the MIW `optical_state` rebuilt. **The
-> remaining 213 nights are an 11-shard batch job waiting on Aaron's OK.** The old database
+> floating-point noise. **The 11-shard `optical_state` job RAN** (Aaron, 2026-10-15
+> 22:16-22:24) and **all 11 shards are verified complete: 98,019 rows**, exactly the
+> remaining old-tree set. Shard 03's exit 1 was the **manifest race**, after its rows were
+> committed — fixed in `81aeec4`, no rerun needed. The old database
 > was never opened for writing. Items 5 (`coadds`), 6 (`dof_lut`) and
 > 7 (`bounce_tables`) were all built on `w_2026_42`, compared clean and promoted to
 > `current` on 2026-10-15; every difference found is on the expected list. **The stack and
@@ -41,7 +43,7 @@
 > branch head `4c77b90`, but **PR #1's description on GitHub has NOT been edited** — see
 > the step 1 section.
 > This file was pruned 2026-10-14; the 3a/3b narratives are in commit `ebbc426`.
-> · **Last updated:** 2026-10-15 · **Kind:** working state (handoff)
+> · **Last updated:** 2026-10-16 · **Kind:** working state (handoff)
 
 Phase 3 of `notes/status/organization_plan.md`: move every remaining product's code (3a),
 apply the intended fixes (3b), then rebuild every product fresh into the new tree (3c).
@@ -1202,6 +1204,81 @@ new, covering `resolve_miw_decomp` (no override, explicit path wins, missing pat
 `prefer='catalog'` must not return the old tree; and a typo must raise rather than fall
 back), and the registry migration (`param_set` untouched, idempotent).
 
+## Item 8 continued, 2026-10-16: the 11 shards RAN, the manifest race is FIXED
+
+Aaron ran the 11-shard submit himself on 2026-10-15, 22:16-22:24 (jobs 40988996-41006).
+
+### The manifest race: fixed, `81aeec4`
+
+Shard 03 (job 40988998) exited 1 **after its rows were committed**, in
+`write_manifest.finish_build`: `FileNotFoundError` on
+`os.replace(_work/shards/manifest.json.tmp, manifest.json)`.
+
+Two defects, both fixed:
+
+1. **A shard was classified as a catalog build.** `is_catalog_build` tested only
+   "under `<products>/value_added/<variant>/`", and the shard directory
+   `v1/_work/shards/` is under it — so all 11 shards tried to write one
+   `manifest.json` in the shared directory, against this module's own stated rule that a
+   shard writes no manifest. `reader.WORK_DIR = '_work'` is now a named convention and
+   the `_work` subtree is excluded. **A shard now writes no manifest at all**, which is
+   the real fix: the build manifest is written once, by the merge.
+2. **`manifest.write` used a fixed temp name.** Two concurrent writers in one directory
+   each delete the other's `manifest.json.tmp` and the loser's rename fails. Now
+   `tempfile.mkstemp` in the target directory, so the rename stays atomic and both
+   succeed. The `.`-prefixed name is already excluded from `file_stats`.
+
+**`python -m pytest rubinwork`: 370 passed, 0 failed** (158 s) — the 368 baseline plus 2:
+a shard under `_work` is not a catalog build, and two concurrent `finish_build` calls on
+one directory both succeed. The concurrency test **forces** the interleaving with a
+`threading.Barrier` between temp-file creation and the rename; left to chance the threads
+almost never overlap in that window and the test passed against the defect. Verified both
+ways: it reproduces the shard-03 `FileNotFoundError` with `manifest.py` stashed, and
+passes with the fix.
+
+### All 11 shards are COMPLETE; shard 03 needs NO rerun
+
+Every shard's `optical_state` row count equals its log's "N rows for variant" line
+exactly, and every per-night row count equals that night's exposure count in the log:
+
+| shard | nights with rows | rows (count, dimensionless) | `ok=True` (count, dimensionless) |
+|---|---|---|---|
+| 01 | 14 | 4,710 | 4,548 |
+| 02 | 21 | 5,016 | 4,829 |
+| 03 | 23 | 6,857 | 6,741 |
+| 04 | 21 | 6,212 | 5,927 |
+| 05 | 19 | 6,093 | 5,979 |
+| 06 | 18 | 7,663 | 7,127 |
+| 07 | 24 | 14,394 | 14,153 |
+| 08 | 24 | 14,519 | 14,336 |
+| 09 | 14 | 8,698 | 8,642 |
+| 10 | 18 | 11,593 | 11,256 |
+| 11 | 17 | 12,264 | 12,028 |
+| **total** | | **98,019** | |
+
+**98,019 rows is exactly the number of rows the variant still carried from the old-tree
+MIW** (`computed_at` 2026-10-06, recorded in "c2" above), so the shards rebuilt the whole
+remaining set and nothing is missing.
+
+Shard 03 specifically: 23 nights 20251027 to 20251119 (24 planned, 20251106 has no
+`science,acq` exposure), 6,857 rows, 6,741 `ok=True` matching the log's "6741 recovered",
+the last night 20251119 at its full 260 rows so **there is no partial last night**, and
+its one `state_variant` row written. **Used as is; no rerun.** The crash was strictly
+after the data was committed.
+
+13 nights across the shards carry log exposures but 0 rows. All 13 read
+"none with complete corner OPD; no optical state for this night" — correctly empty, not a
+defect: 20250828, 20250829, 20250901, 20250902, 20251020, 20251205, 20251207, 20260215,
+20260428, 20260429, 20260430, 20260501, 20260527.
+
+A shard holds **only** `optical_state` plus its one `state_variant` row; its
+`visit_telemetry` is 0 rows, which is why `v_modes_lut` and `v_modes_trim` need the
+backfills after the merge.
+
+**One stray file to note:** `v1/_work/shards/manifest.json` (2026-10-15 22:24), written by
+whichever shard won the race. It is meaningless and the fixed code will never write it
+again. **Not deleted** (no deletions this session) — the merge must not read it.
+
 ## Item 8 plan (`value_added`) — WRITTEN 2026-10-15, NOTHING BUILT
 
 Plan only, as instructed: nothing is built, copied, or written to any database. Every
@@ -1531,15 +1608,24 @@ phase 3, per decision 10.
 
 ## Next concrete action
 
-**The 11-shard batch submit is BLOCKED BY THE SANDBOX** (denied as a *Shared Cluster
-Mutation*), not by the ask — Aaron already OK'd it. The exact command is in "Item 8 build"
-under "THE STOP"; Aaron runs it himself, or adds a `Bash` permission rule and a session
-re-submits. Everything that does not need the cluster is done: blockers cleared
-(`3525b07`), `v1/live` a md5-verified copy, `fam_dz` rebuilt and comparing at
-floating-point noise, **1 of 214 nights** of the MIW `optical_state` rebuilt as a wiring
-test, and `fam_variant.fits_path` moved to a catalog name (`b7e68dc`). **213 nights
-remain.** The old database was never opened for writing. After the shards: merge, the two
-backfills, `intrinsic_ref`, then the full comparison.
+### Morning summary, overnight session of 2026-10-16 — IN PROGRESS
+
+Being written as the session runs; the final state is at the end of this section.
+
+- **Step 1, manifest race: DONE,** `81aeec4`, pushed. Two defects (a shard counted as a
+  catalog build; a fixed temp name), 370 tests pass, the new concurrency test reproduces
+  the shard-03 failure against the old code.
+- **Step 2, shard 03: VERIFIED COMPLETE, no rerun.** All 11 shards check out against
+  their logs, 98,019 rows total — exactly the remaining old-tree set. See "Item 8
+  continued, 2026-10-16".
+- Steps 3-6: see below.
+
+The 11-shard submit itself is no longer blocked: **Aaron ran it himself on 2026-10-15**,
+22:16-22:24. Everything before it stands: blockers cleared (`3525b07`), `v1/live` a
+md5-verified copy, `fam_dz` rebuilt and comparing at floating-point noise, and
+`fam_variant.fits_path` moved to a catalog name (`b7e68dc`). The old database was never
+opened for writing. Remaining: merge, the two backfills, `intrinsic_ref`, `fetch_log`
+provenance, then the full comparison.
 
 1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
    compared clean against the **i-band archive** and `set-current`. Every difference on
