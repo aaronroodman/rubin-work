@@ -27,6 +27,7 @@ import pathlib
 import sys
 
 import numpy as np
+import pandas as pd
 
 TABLE_KEYS = {
     "visit_telemetry": ("visit_id",),
@@ -91,6 +92,36 @@ def _load(db_path, table):
         con.close()
 
 
+def _is_missing(x):
+    """`True` for `None` and `pandas.NA`, the two forms a NULL cell arrives in."""
+    return x is None or x is pd.NA
+
+
+def _max_abs_diff(xs, ys):
+    """Largest absolute numeric difference over paired cells, or `None` if not numeric.
+
+    List cells are compared elementwise; a pair where either side is missing or NaN, or
+    where the shapes disagree, is skipped (those already count in ``differing``).
+    """
+    best = None
+    for x, y in zip(xs, ys):
+        if _is_missing(x) or _is_missing(y):
+            continue
+        try:
+            fx = np.asarray(x, dtype=float)
+            fy = np.asarray(y, dtype=float)
+        except (TypeError, ValueError):
+            return None
+        if fx.shape != fy.shape:
+            continue
+        d = np.abs(fx - fy)
+        d = d[~np.isnan(d)]
+        if d.size:
+            m = float(d.max())
+            best = m if best is None else max(best, m)
+    return best
+
+
 def _values_equal(a, b):
     """Whether two column values are equal, handling list-valued cells.
 
@@ -118,8 +149,9 @@ def _values_equal(a, b):
             return bool(np.array_equal(af, bf, equal_nan=True))
         except (TypeError, ValueError):
             return bool(np.array_equal(av, bv))
-    if a is None or b is None:
-        return a is None and b is None
+    a_na, b_na = _is_missing(a), _is_missing(b)
+    if a_na or b_na:
+        return a_na and b_na
     try:
         if isinstance(a, float) and isinstance(b, float):
             return bool(np.array_equal(a, b, equal_nan=True))
@@ -143,7 +175,8 @@ def compare_table(da, db, key):
     -------
     report : `dict`
         ``rows_a``, ``rows_b``, ``only_a`` and ``only_b`` (column names), ``differing``
-        as a list of ``(column, n_differing_rows)``, ``compared`` (count of columns
+        as a list of ``(column, n_differing_rows)``, ``max_abs`` as ``{column: largest
+        absolute difference in the column's own units, or None if not numeric}``, ``compared`` (count of columns
         compared, dimensionless), ``keys_only_a`` and ``keys_only_b`` (counts of key
         tuples present on one side only), and ``unique_a`` / ``unique_b``.
     """
@@ -164,12 +197,14 @@ def compare_table(da, db, key):
     rep["keys_only_a"] = len(ia.index.difference(ib.index))
     rep["keys_only_b"] = len(ib.index.difference(ia.index))
     ia, ib = ia.loc[shared_keys], ib.loc[shared_keys]
+    rep["n_shared"] = len(shared_keys)
     for col in sorted(set(ia.columns) & set(ib.columns)):
         rep["compared"] += 1
-        n_bad = sum(1 for x, y in zip(ia[col].to_numpy(), ib[col].to_numpy())
-                    if not _values_equal(x, y))
-        if n_bad:
-            rep["differing"].append((col, n_bad))
+        xa, xb = ia[col].to_numpy(), ib[col].to_numpy()
+        bad = [i for i, (x, y) in enumerate(zip(xa, xb)) if not _values_equal(x, y)]
+        if bad:
+            rep["differing"].append((col, len(bad)))
+            rep.setdefault("max_abs", {})[col] = _max_abs_diff(xa[bad], xb[bad])
     return rep
 
 
@@ -237,7 +272,10 @@ def main(argv=None):
         if unexpected:
             print(f"    UNEXPECTED differences: {len(unexpected)} column(s)")
             for col, n in unexpected:
-                print(f"      {col}: {n:,} of {rep['compared'] and len(da):,} rows differ")
+                m = rep.get("max_abs", {}).get(col)
+                print(f"      {col}: {n:,} of {rep.get('n_shared', 0):,} rows differ"
+                      + ("" if m is None else f", max abs difference {m:.6g}"
+                         " (in the column's units, see docs/schema.md)"))
             failed = True
         elif not rep["differing"]:
             print("    values: identical")

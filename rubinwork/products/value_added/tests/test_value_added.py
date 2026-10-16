@@ -643,3 +643,16 @@ def test_fetch_log_gains_git_commit_on_an_old_schema(tmp_path):
     con.close()
     assert rows[20251116] is None
     assert rows[20251117]
+
+
+def test_compare_table_handles_pandas_na_and_reports_max_abs():
+    """A nullable column's pd.NA must not raise; differences report their size."""
+    import pandas as pd
+
+    a = pd.DataFrame({"k": [1, 2, 3], "x": pd.array([1, None, 3], dtype="Int64"),
+                      "v": [[1.0, 2.0], [0.0, 0.0], [5.0, 5.0]]})
+    b = pd.DataFrame({"k": [1, 2, 3], "x": pd.array([1, None, 4], dtype="Int64"),
+                      "v": [[1.0, 2.5], [0.0, 0.0], [5.0, 5.0]]})
+    rep = compare_builds.compare_table(a, b, ("k",))
+    assert dict(rep["differing"]) == {"x": 1, "v": 1}
+    assert rep["max_abs"] == {"x": 1.0, "v": 0.5}
