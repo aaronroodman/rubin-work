@@ -3,7 +3,7 @@ study: miw_hull
 topic: aos
 status: answered
 question: Are MIW values inside the settled 1.725 deg of field angle donut-selection limit affected by the radial continuation of under-covered rim rings, and does the continued rim ring itself carry signal or artifact?
-answer: No MIW value inside the 1.725 deg of field angle selection limit depends on a continued ring — the builder continues exactly ONE ring, at r = 1.7500 deg, the last fitted ring is r = 1.7286 deg, and 0 of the 3,833 map cells at r <= 1.725 deg lie outside it by either consumer route. Whether that one rim ring carries signal or artifact was NOT pursued: no consumer inside 1.725 deg depends on it, and both builds continue the same ring so analysis 3's two-build contrast is empty.
+answer: 'No MIW value inside the 1.725 deg of field angle selection limit depends on a continued ring — the builder continues exactly ONE ring, at r = 1.7500 deg, the last fitted ring is r = 1.7286 deg, and 0 of the 3,833 map cells at r <= 1.725 deg lie outside it by either consumer route. Whether that one rim ring carries signal or artifact was NOT pursued: no consumer inside 1.725 deg depends on it, and both builds continue the same ring so analysis 3''s two-build contrast is empty.'
 uses:
   fam_tables: danish_1_2@20261014
   miw: d12-A_50_34_i@20261014, d12-A_50_34_i_5rot@20261014
