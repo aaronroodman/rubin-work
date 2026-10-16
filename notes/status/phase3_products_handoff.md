@@ -1279,6 +1279,32 @@ backfills after the merge.
 whichever shard won the race. It is meaningless and the fixed code will never write it
 again. **Not deleted** (no deletions this session) — the merge must not read it.
 
+### Step 3: merge, backfills, registry, `fetch_log` — DONE, 2026-10-16
+
+- **Merge** (log `value_added/logs/merge_shards_20261016_010848.log`): 98,019
+  `optical_state` rows offered, 0 `visit_telemetry`, 0 `fetch_log`. Row counts after:
+  `optical_state` 406,220 and `visit_telemetry` 213,704, both unchanged (upsert onto
+  existing keys); `state_variant` 4. All 98,831 MIW rows now `computed_at` 2026-10-15.
+  No shard manifest was written.
+- **`backfill_commanded_vmodes`: filled 0 rows. Plan correction:** a sharded run does
+  *not* leave `v_modes_lut`/`v_modes_trim` NaN when the shards get `--main-db`; they read
+  Trim and LUT from it ("Trim and hexapod LUT read from ... v1/live", in every shard log).
+  0 NULL or NaN in either column over the 98,831 MIW rows.
+- **`backfill_optical_state_pointing`**: 51 nights, 18,947 visits, all values written
+  equal to what was stored (checked read-only against ConsDB first: 0 visits differ in
+  elevation or rotator angle, max abs difference 0.0 deg). The 932 MIW rows (3,684 per
+  batoid variant) with NULL `rotator_angle_deg` are NULL in ConsDB too and stay NULL.
+- **`intrinsic_ref`** → `miw:d12-A_50_34_i_5rot@20261014`. Re-run reports nothing to do.
+  `build_optical_state` now resolves a catalog-form `intrinsic_ref` through the catalog
+  (`2e2acfa`); before, a migrated row would have reached `MiwCornerLookup` as an unknown
+  name.
+- **`fetch_log.git_commit`** added (`2e2acfa`), additive; the 3,293 existing rows are NULL,
+  since their commit was never recorded. New fetches carry the commit, `+dirty` if
+  tracked files were modified. `attempted_at` was already the fetch time.
+- **Manifest** written once at the end, `v1/live/manifest.json`, `git_commit` `2e2acfa`,
+  with the upstreams in `config.build_options`. (The merge also wrote one on its way out,
+  since `live` is a catalog build; the final write replaced it.)
+
 ## Item 8 plan (`value_added`) — WRITTEN 2026-10-15, NOTHING BUILT
 
 Plan only, as instructed: nothing is built, copied, or written to any database. Every
@@ -1618,7 +1644,10 @@ Being written as the session runs; the final state is at the end of this section
 - **Step 2, shard 03: VERIFIED COMPLETE, no rerun.** All 11 shards check out against
   their logs, 98,019 rows total — exactly the remaining old-tree set. See "Item 8
   continued, 2026-10-16".
-- Steps 3-6: see below.
+- **Step 3, merge and build steps: DONE.** Merge clean, both backfills changed nothing
+  (plan correction: `--main-db` already gave the shards their commanded v-modes),
+  `intrinsic_ref` on catalog names, `fetch_log.git_commit` added, manifest written.
+- Steps 4-6: see below.
 
 The 11-shard submit itself is no longer blocked: **Aaron ran it himself on 2026-10-15**,
 22:16-22:24. Everything before it stands: blockers cleared (`3525b07`), `v1/live` a
