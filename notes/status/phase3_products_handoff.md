@@ -1111,11 +1111,21 @@ is **conditioning of the inversion, not a defect**:
 **1e-05 µm of wavefront** level; **0 `ok`-flag changes**. A changed `ok` flag, or a `dof`
 difference above about 1 µm, is a stop.
 
-### THE STOP: the batch submission needs Aaron's OK
+### THE STOP: the batch submit is BLOCKED BY THE SANDBOX, not by the ask
+
+**Aaron OK'd the submit (2026-10-15, "please proceed with the optical_state entry into the
+value_added catalog"). The submit was attempted and the harness refused it**: the sandbox
+classifier denied the `run_build.sh --mode batch` call as a *Shared Cluster Mutation*. No
+workaround was attempted, and **nothing was submitted**. The pre-flight was clean:
+`sdfiana035`, `sbatch` present at `/opt/slurm/slurm-curr/bin/sbatch`, `squeue -u roodman`
+empty, shard directory empty, no process holding the database.
+
+**To unblock, Aaron either runs the command below himself, or adds a `Bash` permission
+rule allowing it and asks a session to re-submit.**
 
 The remaining 213 nights are the only large piece. `--what state` is ConsDB-bound, so
 batch is allowed (unlike `--what telemetry`). The dry run plans **11 shards of up to 24
-nights** and propagates `--miw-build` to every one. **Nothing has been submitted.**
+nights** and propagates `--miw-build` to every one.
 
 ```bash
 cd /sdf/home/r/roodman/notebooks/rubin-work/value_added && \
@@ -1142,18 +1152,55 @@ rows to catalog names); then the full `compare_builds.py` run; then the manifest
 `--day-obs 20250728-20260712` expands through ConsDB to **264 nights**, of which 213 carry
 rows for this variant.
 
+### c3. Registry rows to catalog names: HALF APPLIED, and `param_set` is NOT one of them
+
+New builder `migrate_registry_to_catalog.py` (`--dry-run` by default safe, idempotent).
+
+**Applied:** `fam_variant.fits_path` is now **`fam_tables:danish_1_2@20261014`**. All
+**2,528 `fam_dz` rows still join** to the variant afterwards (checked). Re-running reports
+"nothing to do", so the pass is idempotent.
+
+**Deliberately NOT applied, against plan section 6: `fam_variant.param_set`.** Section 6
+lists it, but it is **not** a descriptive column. `reader.fam_variant_id` *derives* the
+primary key from it as `fam__<param_set>__<route>__<prefix>__<scheme>`, and
+`register_fam_variant`'s `ON CONFLICT (fam_variant_id) DO UPDATE SET param_set =
+excluded.param_set` writes it back from the **CLI argument**. Storing a catalog reference
+there would leave it inconsistent with the id computed from it, and the next
+`build_fam_dz --param-set <long key>` would silently restore the old value. **Treat
+section 6's `param_set` bullet as withdrawn** — the path and the build reference are what
+a reader needs; the `param_set` is the variant's identity. This is a plan correction, not
+an omission.
+
+**Deferred until after the 213-night build: `state_variant.intrinsic_ref`.** The dry run
+has it ready (`danish_1_2_A_50_34_i_5rot` -> `miw:d12-A_50_34_i_5rot@20261014`), but the 11
+shards pass `--intrinsic-ref danish_1_2_A_50_34_i_5rot` explicitly, so rewriting the stored
+value mid-build would make the registry disagree with what the shards pass. Apply it with:
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work && \
+python -m rubinwork.products.value_added.builders.migrate_registry_to_catalog \
+  --db /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/live/aos_efd.duckdb \
+  --miw-build d12-A_50_34_i_5rot@20261014
+```
+
 ### Still untouched, by design
 
-Items **c3** (registry rows to catalog names), **c4** (`fetch_log` provenance) and **c5**
-(the backfills as build steps) are **not started**. The registry still reads
-`fam_variant.param_set` = `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`,
-`fam_variant.fits_path` = the dead
-`aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/fits.parquet` (the long-key layout
-that has named nothing on disk since `dir_name` arrived -- now confirmed in the live
-registry, not just predicted), and `state_variant.intrinsic_ref` =
-`danish_1_2_A_50_34_i_5rot`. `visit_telemetry`, `m1m3_thermal_r2`, `column_coverage` and
-the three batoid `optical_state` variants were **not rebuilt** and must compare
-bit-identical.
+Items **c4** (`fetch_log` provenance) and **c5** (the backfills as build steps) are **not
+started**. `visit_telemetry`, `m1m3_thermal_r2`, `column_coverage` and the three batoid
+`optical_state` variants were **not rebuilt** and must compare bit-identical.
+
+**One cosmetic defect to fix before promotion:** the one-night wiring test wrote
+`v1/live/manifest.json` with **`status: complete`** on a database that is 1 of 214 nights
+rebuilt. It is inside the new tree and will be rewritten by the real build's manifest step,
+but **do not read that `status` as meaning the build finished.**
+
+### Tests
+
+**`python -m pytest rubinwork`: 368 passed, 0 failed** (145 s) — the 361 baseline plus 7
+new, covering `resolve_miw_decomp` (no override, explicit path wins, missing path raises),
+`resolve_paths(prefer=...)` (**the regression that matters**: with both trees populated,
+`prefer='catalog'` must not return the old tree; and a typo must raise rather than fall
+back), and the registry migration (`param_set` untouched, idempotent).
 
 ## Item 8 plan (`value_added`) — WRITTEN 2026-10-15, NOTHING BUILT
 
@@ -1484,12 +1531,15 @@ phase 3, per decision 10.
 
 ## Next concrete action
 
-**Waiting on Aaron's OK to submit the 11-shard batch job** — the exact command is in
-"Item 8 build", under "THE STOP". Item 8 is **part built**: the blockers are cleared
-(`3525b07`), `v1/live` exists as a verified copy, `fam_dz` is rebuilt and compares at
-floating-point noise, and **1 of 214 nights** of the MIW `optical_state` is rebuilt as a
-wiring test. **213 nights remain and need the batch ask.** Nothing was written to the old
-database. Items c3, c4 and c5 are not started.
+**The 11-shard batch submit is BLOCKED BY THE SANDBOX** (denied as a *Shared Cluster
+Mutation*), not by the ask — Aaron already OK'd it. The exact command is in "Item 8 build"
+under "THE STOP"; Aaron runs it himself, or adds a `Bash` permission rule and a session
+re-submits. Everything that does not need the cluster is done: blockers cleared
+(`3525b07`), `v1/live` a md5-verified copy, `fam_dz` rebuilt and comparing at
+floating-point noise, **1 of 214 nights** of the MIW `optical_state` rebuilt as a wiring
+test, and `fam_variant.fits_path` moved to a catalog name (`b7e68dc`). **213 nights
+remain.** The old database was never opened for writing. After the shards: merge, the two
+backfills, `intrinsic_ref`, then the full comparison.
 
 1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
    compared clean against the **i-band archive** and `set-current`. Every difference on
