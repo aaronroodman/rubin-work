@@ -801,8 +801,9 @@ must prefer the narrowest matching chunk, giving 137 jobs.
 `snapshots/20261016`, readers moved by `0ad5820`. State and deferred items in
 `notes/status/phase3_products_handoff.md`.
 
-**Phase 4 — skills and generators.** `/start-study`, `/wrap`, `/review`, the `STUDIES.md`
-and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`.
+**Phase 4 — skills and generators. Done 2026-10-16** (`f516212`..`9fa422a`). `/start-study`, `/wrap`, `/review`, the `STUDIES.md`
+and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`. State in
+`notes/status/phase4_skills_handoff.md`.
 
 **Phase 5 — studies, topic by topic.** Convert each study to `<topic>/<study>/` with
 `study.md` (from `docs/studies/*.md`, handoffs in `docs/status/` and `notes/status/item*`
