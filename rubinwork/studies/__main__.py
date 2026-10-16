@@ -1,9 +1,12 @@
-"""Command line for `rubinwork.studies`: ``index``, ``check``, ``new`` and ``variants``."""
+"""Command line for `rubinwork.studies`: ``index``, ``check``, ``new``, ``variants``,
+``wrap-gather`` and ``wrap-apply``."""
 
 import argparse
+import json
+import pathlib
 import sys
 
-from . import core, index, new
+from . import core, index, new, wrap
 
 
 def main(argv=None):
@@ -35,7 +38,32 @@ def main(argv=None):
                       metavar="PRODUCT=VARIANT[@BUILD]")
     make.add_argument("--new-topic", action="store_true")
     sub.add_parser("variants", help="each product's variants.yaml and its variants")
+    gather = sub.add_parser("wrap-gather", help="what /wrap writes the entry from")
+    gather.add_argument("study", help="<topic>/<study>")
+    put = sub.add_parser("wrap-apply", help="insert the Log entry, update, commit")
+    put.add_argument("study", help="<topic>/<study>")
+    put.add_argument("--title", default=None, help="Log entry title; none if omitted")
+    put.add_argument("--body-file", default=None, help="Markdown file with the entry")
+    put.add_argument("--date", default=None)
+    put.add_argument("--status", default=None, choices=core.STATUSES)
+    put.add_argument("--answer", default=None)
+    put.add_argument("--uses", action="append", default=[],
+                     metavar="PRODUCT=VARIANT[@BUILD]")
+    put.add_argument("--figure", action="append", default=[])
+    put.add_argument("--no-commit", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.command == "wrap-gather":
+        print(json.dumps(wrap.gather(args.study).as_dict(), indent=1))
+        return 0
+    if args.command == "wrap-apply":
+        uses = core.format_uses(new.parse_uses_arg(u) for u in args.uses)
+        body = pathlib.Path(args.body_file).read_text() if args.body_file else None
+        sha = wrap.apply(args.study, args.title, body, date=args.date,
+                         status=args.status, answer=args.answer, uses=uses,
+                         figures=args.figure, commit=not args.no_commit)
+        print(f"committed {sha}, not pushed" if sha else "no commit")
+        return 0
 
     if args.command == "new":
         try:
