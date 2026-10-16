@@ -1,9 +1,11 @@
 # Phase 3 handoff: the other products — move, fix, rebuild
 
 > **Status:** 3a and 3b complete; **3c at 7 of 8 comparison-plan items** — only item 8
-> (`value_added`) remains, which is the agreed stop. **Item 8 is PLANNED, NOT BUILT**
-> (plan written 2026-10-15, "Item 8 plan"): nothing built, copied or written to any
-> database, and it is **waiting on Aaron's OK** and on five open questions. Items 5 (`coadds`), 6 (`dof_lut`) and
+> (`value_added`) remains. **Item 8 is PART BUILT** (2026-10-15, "Item 8 build"): blockers
+> cleared, `v1/live` copied and md5-verified, `fam_dz` rebuilt and comparing at
+> floating-point noise, **1 of 214 nights** of the MIW `optical_state` rebuilt. **The
+> remaining 213 nights are an 11-shard batch job waiting on Aaron's OK.** The old database
+> was never opened for writing. Items 5 (`coadds`), 6 (`dof_lut`) and
 > 7 (`bounce_tables`) were all built on `w_2026_42`, compared clean and promoted to
 > `current` on 2026-10-15; every difference found is on the expected list. **The stack and
 > package upgrade is COMPLETE** and numerically transparent: the `coadds` maps agree with
@@ -993,6 +995,166 @@ are the only thing that fails.
   honest option. The remaining 7 variants either have no old-tree output (so there is
   nothing to register) or are the real rebuild targets.
 
+## Item 8 build: STARTED 2026-10-15, STOPPED at the batch ask
+
+Aaron's go, 2026-10-15: "once the blockers are unblocked please proceed with the
+value_added plan." Option A (copy, then rebuild only the dependent rows). The old
+database at `value_added/output/aos_efd.duckdb` was **never opened for writing** and is
+byte-for-byte unchanged.
+
+### Blockers: both cleared, commit `3525b07`
+
+| blocker | fix |
+|---|---|
+| `build_optical_state.py` resolved the MIW old-tree-first | new `--miw-build VARIANT[@BUILD]` and `--miw-decomp-path`, via `resolve_miw_decomp`, passed to `MiwCornerLookup`'s existing `path=` kwarg |
+| `build_fam_dz.resolve_paths` resolved the FAM tables old-tree-first | new `prefer={'old','catalog'}` parameter and `--prefer` flag |
+| `run_build.sh` demanded `--miw-param-set` and knew nothing of the catalog | accepts `--miw-build` (and `--main-db`); the miw route now needs one of the two, and `--miw-build` propagates to every shard |
+| two bare `import aos_state` in `rubinwork/miw_corner.py` | now `from rubinwork import aos_state`; they only worked when a caller had already put `aos/code` on `sys.path` |
+
+Defaults are unchanged everywhere, so no existing invocation changes behaviour.
+**`python -m pytest rubinwork`: 361 passed, 0 failed** (144 s), the same count as the
+pre-change baseline.
+
+### b. `v1/live` created and populated by copy
+
+```
+products/value_added/v1/{live,snapshots,_work/shards}/
+```
+
+`cp` of the 2.80 GB database took **8.4 s of wall clock**, interactive. **md5 verified
+identical** to the source (`8d841009a278cdfa3d8087827ac26636` both sides). No
+`snapshots/<YYYYMMDD>`, no `current@` yet — those come after the comparison, and
+`set-current` is out of scope here.
+
+### c1. `fam_dz` REBUILT from the catalog FAM tables — 2,528 rows
+
+```bash
+python rubinwork/products/value_added/builders/build_fam_dz.py \
+  --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --prefer catalog \
+  --db-path <v1>/live/aos_efd.duckdb
+```
+
+Read `fam_tables/danish_1_2/20261014/fits.parquet`, 2,528 FAM pairs, 0 rows with any NaN
+DZ coefficient, pupil Noll set the canonical 21 indices. Local, under a minute.
+
+**Compared against the live database, keyed on (`visit_id`, `fam_variant_id`): 0 keys
+only-old, 0 only-new, and every difference at floating-point noise.**
+
+| column | max abs difference | rows differing |
+|---|---|---|
+| `dz_coeff` | **1.46e-13 µm of wavefront** | 2528 of 2528 |
+| `dz_coeff_err` | 8.98e-16 µm of wavefront | 2528 of 2528 |
+| `v_modes` | 1.12e-12 (dimensionless v-mode amplitude) | 2528 of 2528 |
+| `dof` | 3.69e-10 µm of hexapod/bending motion | 2528 of 2528 |
+
+`day_obs`, `seq_num`, `intra_seq_num`, `acq_seq_num`, `acq_visit_id`, `n_modes`,
+`n_donuts`, `bad_fit` and `quality_pass` are all **identical**.
+
+**PREDICTION WRONG, in the harmless direction: difference 1 does NOT reach `fam_dz`.**
+Part d predicted a difference-1 shift of median 0.129 deg / max 0.456 deg of camera
+rotator angle propagating into `dz_coeff`. It does not. The two FAM `fits.parquet` files
+*do* differ in `rotator_angle` by up to **0.858 deg of camera rotator angle**, but
+`build_fam_dz` reads that column as **metadata only** — it is not among the 147
+`z1toz6_z*_c*` coefficient columns, and `fam_dz` has no rotator column in its schema. The
+DZ coefficients were fit upstream against the already-corrected angle, so at the source
+the 147 DZ coefficient columns of the two trees agree to **1.46e-13 µm of wavefront**,
+exactly what `fam_dz` reproduces. Difference 1 is absorbed by `fam_tables`, not passed on.
+
+### c2. MIW `optical_state`: ONE NIGHT DONE, 213 NIGHTS NOT STARTED
+
+`20260713` only, as a wiring test, into `v1/live`:
+
+```bash
+python rubinwork/products/value_added/builders/build_optical_state.py \
+  --variant v50_34__miw__consdb_v1 --miw-build d12-A_50_34_i_5rot@20261014 \
+  --day-obs 20260713 --img-type science,acq --db <v1>/live/aos_efd.duckdb
+```
+
+Log confirms the override worked — `MIW intrinsic from
+products/miw/d12-A_50_34_i_5rot/20261014/intrinsic_split_decomp.parquet`, the catalog, not
+`aos/output`. 812 exposures, 717 with complete corner OPD, **716 recovered**, 716
+open-loop, 812 with commanded v-modes; median CWFS FWHM contribution 0.3224 arcsec over
+716 visits. About **1 minute of wall clock** for the night.
+
+The variant now holds **812 rows rebuilt (`computed_at` 2026-10-15) and 98,019 rows still
+carrying the old-tree MIW** (`computed_at` 2026-10-06), over **214 nights** total
+(20250728 to 20260713). **213 nights remain.**
+
+#### Item 8 build: the `dof` amplification — explained, NOT a stop
+
+The one-night comparison against the live database, 812 aligned rows, 0 `ok`-flag changes:
+
+| quantity | max abs difference | median |
+|---|---|---|
+| `v_modes` (dimensionless amplitude) | 0.01347 | 0.004118 |
+| `dof` (µm of hexapod / bending motion) | **0.2889** | 0.1065 |
+| `resid_rms_um` | 3.14e-05 µm of wavefront | — |
+
+This **exceeds the part-d prediction** of "shifts at the 1e-03 µm scale; anything at the
+0.1 µm scale is a stop", so it was treated as a stop and traced before going further. It
+is **conditioning of the inversion, not a defect**:
+
+- The **input** change is only **1.29e-03 µm of wavefront** (corner intrinsic,
+  worst of 37 rotator angles from -90 to +90 deg), exactly as predicted.
+- Relative to the state's own size the **output** change is tiny:
+  `v_modes` change/own RMS = **1.48e-03 (dimensionless)**, `dof` change/own RMS =
+  **6.06e-05 (dimensionless)** against a median own `dof` RMS of **308.7 µm**.
+- The movers are **`dof02`, `dof07`, `dof06`** (0.2889, 0.2232, 0.1221 µm) — M2 and camera
+  hexapod decenters, the DOF with the weakest wavefront signature, so they absorb a small
+  wavefront change as a comparatively large physical motion. An amplification of about
+  **200x (dimensionless)**, µm of DOF per µm of wavefront.
+- 0.289 µm of hexapod decenter is far below actuator resolution.
+
+**Revised prediction for the remaining 213 nights:** `dof` differences up to about
+**0.3 µm of hexapod motion** concentrated in `dof00`, `dof01`, `dof02`, `dof05`, `dof06`,
+`dof07`; `v_modes` up to about **0.015 (dimensionless)**; `resid_rms_um` at the
+**1e-05 µm of wavefront** level; **0 `ok`-flag changes**. A changed `ok` flag, or a `dof`
+difference above about 1 µm, is a stop.
+
+### THE STOP: the batch submission needs Aaron's OK
+
+The remaining 213 nights are the only large piece. `--what state` is ConsDB-bound, so
+batch is allowed (unlike `--what telemetry`). The dry run plans **11 shards of up to 24
+nights** and propagates `--miw-build` to every one. **Nothing has been submitted.**
+
+```bash
+cd /sdf/home/r/roodman/notebooks/rubin-work/value_added && \
+./code/run_build.sh --what state \
+  --variant v50_34__miw__consdb_v1 \
+  --miw-build d12-A_50_34_i_5rot@20261014 \
+  --main-db /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/live/aos_efd.duckdb \
+  --shard-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/_work/shards \
+  --day-obs 20250728-20260712 --chunk 24 --img-type science,acq --mode batch
+```
+
+Monitor:
+
+```bash
+squeue -u roodman
+tail -f "$(ls -t /sdf/home/r/roodman/notebooks/rubin-work/value_added/logs/build_state_*.log | head -1)"
+```
+
+**After the shards finish, and not before**, in order: `merge_db_shards.py` into
+`v1/live`; then the two backfills (`backfill_commanded_vmodes.py`, then
+`backfill_optical_state_pointing.py`) — a sharded run leaves `v_modes_lut` and
+`v_modes_trim` NaN because each shard's `visit_telemetry` is empty; then item c3 (registry
+rows to catalog names); then the full `compare_builds.py` run; then the manifest. Note
+`--day-obs 20250728-20260712` expands through ConsDB to **264 nights**, of which 213 carry
+rows for this variant.
+
+### Still untouched, by design
+
+Items **c3** (registry rows to catalog names), **c4** (`fetch_log` provenance) and **c5**
+(the backfills as build steps) are **not started**. The registry still reads
+`fam_variant.param_set` = `fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x`,
+`fam_variant.fits_path` = the dead
+`aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/fits.parquet` (the long-key layout
+that has named nothing on disk since `dir_name` arrived -- now confirmed in the live
+registry, not just predicted), and `state_variant.intrinsic_ref` =
+`danish_1_2_A_50_34_i_5rot`. `visit_telemetry`, `m1m3_thermal_r2`, `column_coverage` and
+the three batoid `optical_state` variants were **not rebuilt** and must compare
+bit-identical.
+
 ## Item 8 plan (`value_added`) — WRITTEN 2026-10-15, NOTHING BUILT
 
 Plan only, as instructed: nothing is built, copied, or written to any database. Every
@@ -1184,10 +1346,17 @@ nothing but risk and 5 hours. A full rebuild is section 6's "occasional full reb
    | max abs difference at the 4 corners, worst rotator angle | **1.1244e-03 µm of wavefront** |
    | range over the 8 angles tested | 5.05e-04 to 1.12e-03 µm of wavefront |
 
-   So the switch moves the MIW-route `optical_state` rows by **about 1e-03 µm of
-   wavefront**, not 0.697 µm — the edge ring is three orders of magnitude away from
-   anything this product reads. Predict `v_modes`, `dof` and `resid_rms_um` shifts at that
-   scale; **anything at the 0.1 µm scale is a stop.**
+   So the switch moves the **corner intrinsic input** by about **1e-03 µm of wavefront**,
+   not 0.697 µm — the edge ring is three orders of magnitude away from anything this
+   product reads.
+
+   **The prediction made from that was WRONG about the OUTPUT, and the measured values
+   stand — see "Item 8 build: the `dof` amplification".** Predicting `dof` shifts "at that
+   scale; anything at the 0.1 µm scale is a stop" ignored the conditioning of the
+   inversion: a 1.3e-03 µm of wavefront change in the corner intrinsic comes out as up to
+   **0.289 µm of hexapod motion** in `dof`, an amplification of about **200x
+   (dimensionless)**. That is a property of the inverse problem, not a defect. Do not
+   re-raise it as a stop.
 
    **What item 8 needs** is therefore not a crash fix and not a validation exercise, but an
    explicit override so the rebuild reads the **catalog**: add a `--miw-decomp-path` to
@@ -1315,14 +1484,12 @@ phase 3, per decision 10.
 
 ## Next concrete action
 
-**Waiting on Aaron's OK for the item 8 plan.** Items 5, 6 and 7 are ALL DONE, compared
-clean and promoted on `w_2026_42`. The **item 8 (`value_added`) plan is WRITTEN** — see
-"Item 8 plan" above — and **nothing is built, copied or written to any database**. It
-carries five open questions, and questions 1 (copy versus full rebuild), 2 (the
-`--miw-decomp-path` override, without which a MIW rebuild silently uses the stale
-old-tree intrinsic) and 3 (batch or
-interactive for the 98,831-row MIW `optical_state` rebuild) must be answered before any
-build starts.
+**Waiting on Aaron's OK to submit the 11-shard batch job** — the exact command is in
+"Item 8 build", under "THE STOP". Item 8 is **part built**: the blockers are cleared
+(`3525b07`), `v1/live` exists as a verified copy, `fam_dz` is rebuilt and compares at
+floating-point noise, and **1 of 214 nights** of the MIW `optical_state` is rebuilt as a
+wiring test. **213 nights remain and need the batch ask.** Nothing was written to the old
+database. Items c3, c4 and c5 are not started.
 
 1. ~~Item 5 — `coadds`~~ **DONE 2026-10-15.** Job 40920839, 39:42, build `20261015`,
    compared clean against the **i-band archive** and `set-current`. Every difference on

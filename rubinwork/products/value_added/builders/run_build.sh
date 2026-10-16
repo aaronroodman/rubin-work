@@ -36,12 +36,18 @@
 #   --chunk N                nights per shard (default 24, about 20 min for telemetry)
 #   --mode local|batch       default local; 'batch' is rejected for --what telemetry
 #   --variant ID             registered variant id, for --what state
-#   --miw-param-set NAME     param_set dir under aos/output holding the MIW build;
+#   --miw-build VAR[@BUILD]  resolve the MIW intrinsic from the product catalog, e.g.
+#                            d12-A_50_34_i_5rot@20261014.  PREFER THIS for the miw route
+#   --miw-param-set NAME     param_set dir under aos/output holding the MIW build; the
+#                            old-tree alternative to --miw-build.  One of the two is
 #                            required when the variant's intrinsic_route is miw
 #   --img-type LIST          ConsDB img_types, comma separated, for --what state
 #   --groups LIST            EFD/value-added groups, for --what telemetry (default all)
 #   --resume                 pass --resume to the builder (skip what is already done)
 #   --shard-dir DIR          where shard databases go (default output/shards)
+#   --main-db PATH           the merged database, and the read-only source of
+#                            visit_telemetry for every state shard.  Point this at the
+#                            catalog's v1/live when building the catalog product
 #   --dry-run                print the shard plan and the commands, launch nothing
 #
 # Batch tunables (env vars; defaults in parens), matching aos/run_snake.sh:
@@ -62,7 +68,7 @@ cd "$repo/value_added"
 topic=$PWD
 
 what=""; day_obs=""; chunk=24; mode=local; variant=""; img_type=""
-groups="all"; resume=0; shard_dir="output/shards"; dry=0; miw_param_set=""
+groups="all"; resume=0; shard_dir="output/shards"; dry=0; miw_param_set=""; miw_build=""
 # The merged database, and the source of visit_telemetry for every state shard. Absolute,
 # because a batch shard cds into $topic but the builder may resolve relative paths itself.
 main_db="$topic/output/aos_efd.duckdb"
@@ -80,6 +86,10 @@ while [ $# -gt 0 ]; do
         --variant=*)  variant="${1#*=}"; shift;;
         --miw-param-set)   miw_param_set="$2"; shift 2;;
         --miw-param-set=*) miw_param_set="${1#*=}"; shift;;
+        --miw-build)       miw_build="$2"; shift 2;;
+        --miw-build=*)     miw_build="${1#*=}"; shift;;
+        --main-db)         main_db="$2"; shift 2;;
+        --main-db=*)       main_db="${1#*=}"; shift;;
         --img-type)   img_type="$2"; shift 2;;
         --img-type=*) img_type="${1#*=}"; shift;;
         --groups)     groups="$2"; shift 2;;
@@ -150,9 +160,14 @@ PY
     # exist on disk, so the miw route needs this passed explicitly or every shard dies on
     # FileNotFoundError.
     [ -n "$miw_param_set" ] && variant_flags+=(--miw-param-set "$miw_param_set")
-    if [ "${vrow[1]}" = miw ] && [ -z "$miw_param_set" ]; then
-        echo "error: --intrinsic miw needs --miw-param-set (the directory under" >&2
-        echo "       aos/output holding the build named by intrinsic_ref)" >&2
+    # --miw-build resolves the intrinsic through the product catalog instead, which is what
+    # a build against the catalog needs: --miw-param-set alone resolves old-tree-first and
+    # every shard would silently read whatever is left in aos/output.
+    [ -n "$miw_build" ] && variant_flags+=(--miw-build "$miw_build")
+    if [ "${vrow[1]}" = miw ] && [ -z "$miw_param_set" ] && [ -z "$miw_build" ]; then
+        echo "error: --intrinsic miw needs --miw-build (a catalog build, preferred) or" >&2
+        echo "       --miw-param-set (the old aos/output directory holding the build" >&2
+        echo "       named by intrinsic_ref)" >&2
         exit 2
     fi
     echo "variant $variant -> ${variant_flags[*]}"
