@@ -156,6 +156,25 @@ the step. Answered items move to "Decisions taken".
 
 ## Decisions taken
 
+**Decision 11 (Aaron, 2026-10-15) — the new MIW is VALIDATED, and products read it through
+the product catalog.** Aaron had already checked the new MIW visually: the only difference
+from the old one is **at the very edge of the field of view**, where the new build fixes the
+convex-hull and NaN issues of the old. That check stands as the validation; **a session must
+not re-litigate it.** Two consequences:
+
+1. **The new MIW is validated.** An edge-of-field difference between the old and new builds
+   is the fix working, not a finding. This session re-measured it and briefly reported the
+   flattened `O_re` maximum of 0.6966 µm of wavefront as a new numerical defect; that was
+   **wrong** — resolved radially it is **100.00% on the outermost ring** (ring 79 of 80,
+   r = 1.7500 deg of field angle) with rings 0 to 78 agreeing to **1.2e-15 µm of
+   wavefront**. Difference 7's own text already warned that a flattened whole-map
+   comparison is a mask-alignment artifact. **Resolve by radial ring before reporting any
+   MIW map or decomposition difference.**
+2. **Switch to the product catalog.** Every product that resolves a MIW (or FAM) input
+   old-tree-first is to read the catalog build explicitly instead. In item 8 that is
+   `build_optical_state.py` (via `MiwCornerLookup(path=...)`) and
+   `build_fam_dz.resolve_paths`.
+
 **Decision 10 (Aaron, 2026-10-15) — telemetry comes from the value-added catalog, and
 per-product re-derivation is the thing to get away from.** Two parts:
 
@@ -1102,10 +1121,9 @@ nothing but risk and 5 hours. A full rebuild is section 6's "occasional full reb
 2. **The MIW-route `optical_state` variant** rebuilt against **`miw`
    `d12-A_50_34_i_5rot@20261014`** (`current -> 20261014`).
 
-   **CORRECTION, measured 2026-10-15: this is a SILENT-WRONG-INPUT trap, not a
-   `KeyError`.** An earlier draft of this plan called it a crash that blocks the rebuild.
-   It is the opposite, and worse: the builder **runs and succeeds**, reading the **old
-   tree**. Measured, not inferred:
+   **This is a stale-input trap, not a `KeyError`.** An earlier draft of this plan called
+   it a crash that blocks the rebuild. It is the opposite: the builder **runs and
+   succeeds**, reading the **old tree**. Measured, not inferred:
 
    ```python
    miw_corner.decomp_path(mi_name='danish_1_2_A_50_34_i_5rot')
@@ -1121,28 +1139,62 @@ nothing but risk and 5 hours. A full rebuild is section 6's "occasional full reb
    plan's recorded `KeyError` was for a param_set-keyed `mi_name`; the joined name
    short-circuits it.
 
-   **The two files are NOT the same build.** Comparing all 10 columns of the 21-row
-   decomposition (`O_re`, `O_im`, `C_re`, `C_im` are array-valued object columns, so a
-   naive numeric loop silently skips them — compare element-wise):
+   **The difference between the two files is expected difference 7 and nothing else, and
+   the new build is VALIDATED (Aaron, 2026-10-15).** Aaron had already checked the new MIW
+   visually and found the only change at the very edge of the field of view, the new build
+   fixing the convex-hull and NaN issues of the old one. A flattened whole-array comparison
+   of the decomposition reproduces that and nothing more. **Resolved radially** — each row
+   is a polar field grid of `n_r` = 80 by `n_az` = 180, so 14,400 cells:
 
-   | column | max abs difference | rows differing |
-   |---|---|---|
-   | `O_re` | **0.6966 µm of wavefront** | 21 of 21 |
-   | `O_im` | **0.8687 µm of wavefront** | 21 of 21 |
-   | `C_re` | 1.508e-03 µm of wavefront | 1 of 21 |
-   | `C_im` | 2.680e-16 µm of wavefront | 1 of 21 |
+   | region | max abs difference, all 21 rows and all 4 coefficient columns |
+   |---|---|
+   | **radial rings 0 to 78** (the interior) | **1.2e-15 µm of wavefront** — bit-level identical |
+   | **radial ring 79** (the outermost) | 0.6966 µm of wavefront (`O_re`), 0.8687 µm (`O_im`) |
 
-   The six index columns (`j`, `n_spin`, `s`, `part`, `n_r`, `n_az`) are identical. So the
-   O (theta-independent) part carries a **sub-µm but far-from-negligible** change — three
-   orders of magnitude above difference 2's own CCS bound of 9.2e-04 µm of wavefront — and
-   an unforced rebuild would quietly use the stale intrinsic and produce `optical_state`
-   rows that look fine and are wrong.
+   Ring 79 carries **100.00% of the summed absolute difference**; rings 0 to 69 carry
+   **0.00%**. The only row with any interior change at all is **`j` = 4**, which is the NaN
+   fix itself: **180 NaN cells in the old build, 0 in the new** (exactly one full azimuth
+   ring), and the refit that enables moves the interior by at most **4.3e-04 µm of
+   wavefront** (`O_re`) and **1.5e-03 µm** (`C_re`). The six index columns (`j`, `n_spin`,
+   `s`, `part`, `n_r`, `n_az`) are identical.
 
-   **What item 8 needs**, therefore, is not a crash fix but an explicit override:
-   add a `--miw-decomp-path` to `build_optical_state.py` (or resolve `intrinsic_ref`
-   through `catalog.path`, which `decomp_path`'s own docstring recommends) and **pass the
-   catalog path**. Until then **no MIW `optical_state` rebuild may run.** Belt and braces:
-   assert the resolved path is under `catalog.products_root()` before building.
+   **A LESSON, NOT A FINDING — do not re-raise this.** An earlier pass in this session read
+   the flattened `O_re` maximum of 0.6966 µm of wavefront as a new numerical defect in the
+   MIW. It is not: it is difference 7 reaching `intrinsic_split_decomp.parquet`, and
+   difference 7's own text in the comparison plan already warns that "a flattened whole-map
+   comparison is a mask-alignment artifact, not a result." **Always resolve by radial ring
+   before reporting a MIW map or decomposition difference.** Two further traps in the same
+   file: `O_re`, `O_im`, `C_re`, `C_im` are **array-valued object columns**, so a per-column
+   numeric comparison silently skips all four and reports "no differences"; and the md5
+   checksums of the two files differ from parquet metadata alone, which is not evidence of
+   a value change.
+
+   **MEASURED AT THE CORNERS, which is all `optical_state` reads.** The four corner field
+   points are `ts_ofc`'s `sample_points`, all four at **r = 1.6833 deg of field angle**
+   (field (±1.1903, ±1.1903) deg OCS). The decomposition's radial rings run 0.0600 deg
+   (ring 0) to **1.7500 deg (ring 79)**, with ring 75 at 1.6644 deg and ring 76 at 1.6858
+   deg. **The corners therefore sit between rings 75 and 76, far inside ring 79** — the
+   only ring that changed. The corner interpolation never touches it.
+
+   Evaluating `MiwCornerLookup.field_at` on **both** decompositions over rotator angles
+   0, ±15, +30, +45, +60, ±89 deg, with identical 21-element Noll sets:
+
+   | quantity | value |
+   |---|---|
+   | max abs difference at the 4 corners, worst rotator angle | **1.1244e-03 µm of wavefront** |
+   | range over the 8 angles tested | 5.05e-04 to 1.12e-03 µm of wavefront |
+
+   So the switch moves the MIW-route `optical_state` rows by **about 1e-03 µm of
+   wavefront**, not 0.697 µm — the edge ring is three orders of magnitude away from
+   anything this product reads. Predict `v_modes`, `dof` and `resid_rms_um` shifts at that
+   scale; **anything at the 0.1 µm scale is a stop.**
+
+   **What item 8 needs** is therefore not a crash fix and not a validation exercise, but an
+   explicit override so the rebuild reads the **catalog**: add a `--miw-decomp-path` to
+   `build_optical_state.py` and pass it to `MiwCornerLookup`'s existing **`path=`** kwarg,
+   which already overrides `mi_name` / `param_set` / `output_root` and which its docstring
+   calls the preferred route. **Aaron, 2026-10-15: switch to the product catalog.** Belt
+   and braces: assert the resolved path is under `catalog.products_root()` before building.
 
    This is the **same class of defect as item c1** (`build_fam_dz.resolve_paths` also
    prefers the old tree). Two of the product's inputs resolve old-tree-first, and both
@@ -1179,7 +1231,7 @@ Comparison-plan style. Per plan section 12 any difference **not** on this list i
 | — | `computed_at` on every rebuilt row | `fam_dz`, `optical_state` | already in `compare_builds.EXPECTED_DIFF`; ignored by construction |
 | — | registry text (item c3) | `fam_variant.{param_set,fits_path}`, `state_variant.intrinsic_ref` | **3 string fields on 2 rows** change by design; values not numerically comparable |
 | — | `fetch_log` schema addition (item c4) | `fetch_log` | **+1 or +2 columns**, 3,293 rows; no existing value changes |
-| **2b** | **the old-tree vs catalog MIW intrinsic itself** (item c2, measured 2026-10-15) | the MIW-route `optical_state` rows only | the 20261014 catalog decomposition differs from the old-tree one by **0.6966 µm of wavefront** (`O_re`) and **0.8687 µm of wavefront** (`O_im`), 21 of 21 rows. This is **not** difference 2 — it is three orders of magnitude larger than difference 2's 9.2e-04 µm bound, and it is the *intended* change (the new build is the right one). It is listed so the `optical_state` v-mode and DOF shift it causes is explained in advance rather than read as a regression |
+| **7** | **the MIW convex-hull / NaN-rim fix reaching the corner intrinsic** (item c2, measured 2026-10-15) | the MIW-route `optical_state` rows only | switching from the old-tree to the catalog MIW changes the decomposition **only on the outermost radial ring** (ring 79 of 80, r = 1.7500 deg: 0.6966 µm of wavefront in `O_re`, **100.00%** of the summed difference); rings 0 to 78 agree to **1.2e-15 µm of wavefront**. The 4 corner field points are at **r = 1.6833 deg**, between rings 75 and 76, so **at the corners the two builds differ by at most 1.1244e-03 µm of wavefront** (measured over 8 rotator angles). Predict `v_modes` / `dof` / `resid_rms_um` shifts at the **1e-03 µm of wavefront** scale; **anything at 0.1 µm is a stop** |
 
 Differences **3, 4, 5, 6 and 8 are predicted NOT to reach this product.** 3, 4 and 5 are
 `fits.parquet` / `visits.parquet` column-set changes that `build_fam_dz` does not read;
@@ -1249,13 +1301,9 @@ phase 3, per decision 10.
 1. **Option A or B** for how `v1/live` gets its first contents? The plan recommends **A**
    (copy the 2.80 GB file, rebuild only `fam_dz` and the MIW `optical_state` rows); B is
    roughly **5 hours of EFD wall clock** and cannot be batched.
-2. **The `--miw-decomp-path` override** (item c2) is needed before any MIW
-   `optical_state` rebuild — not because the builder crashes, but because it silently
-   reads the **old-tree** MIW, which differs from the 20261014 catalog build by up to
-   **0.697 µm of wavefront** in `O_re`. OK to add it as part of item 8, or a separate
-   item? Related: do you want the same explicit-catalog-path treatment applied to
-   `build_fam_dz.resolve_paths` (item c1), which has the identical old-tree-first
-   preference?
+2. ~~The `--miw-decomp-path` override~~ **ANSWERED (Aaron, 2026-10-15): switch to the
+   product catalog, and the new MIW is validated.** Being done inside item 8, for both
+   `build_optical_state.py` (item c2) and `build_fam_dz.resolve_paths` (item c1).
 3. **The MIW `optical_state` rebuild of 98,831 rows over ~366 nights** is the only part
    large enough to want batch (ConsDB-bound, so batch works). Interactive overnight, or
    do you want to see the `sbatch` command for an ask?
