@@ -261,24 +261,50 @@ on every later call. Keep it small:
 
 ## Conventions
 
-Detailed conventions are project skills in `.claude/skills/`, loaded only when the task
-needs them:
+### Studies, libraries and products
+Three kinds of code (`notes/status/organization_plan.md` section 2):
+
+- **study** — answers one question, usually by plotting product data. A directory
+  `<topic>/<study>/` with `study.md` (front matter, Question, Current answer, Log),
+  `code/`, `notebooks/`, `figures/` (the few committed PNGs the Log cites) and `output`,
+  a gitignored symlink to `<data root>/studies/<topic>/<study>/`. Nothing imports a
+  study, and a study never reads another study's output.
+- **library** — `rubinwork/`, imported, writes no data. Never imports a product.
+- **product** — `rubinwork/products/<name>/`, writes data in variants and dated builds
+  with a manifest. Read only through `rubinwork.products.catalog`, never by building a
+  path. A configuration change is a new variant in its `variants.yaml`.
+
+Each study run writes into a dated directory made by
+`rubinwork.common.study_run("<topic>/<study>", "<label>")`, whose `run.json` records the
+git commit, the command and the product builds read.
+
+`STUDIES.md` and `PRODUCTS.md` at the repo root are generated
+(`python -m rubinwork.studies index`, `python -m rubinwork.products.catalog index`);
+never edit them by hand.
+
+Most topics are not yet in this layout: their code is still in `<topic>/code/<study>/`,
+notebooks in `<topic>/notebooks/<study>/`, docs in `<topic>/docs/studies/` and output in
+`<topic>/output/<study>/`. Work there keeps the old layout until phase 5 converts the
+topic; new work starts a study.
+
+### Skills
+Project skills in `.claude/skills/`:
 
 | skill | use when |
 |---|---|
-| `rubin-new-study` | adding new code; deciding study vs topic-common vs `common/` |
-| `rubin-output-layout` | choosing an output path or filename |
-| `rubin-doc-style` | writing a README or any `.md`; where each kind of doc lives |
+| `/start-study` | before writing new analysis code: a new study, a library or a product change |
+| `/wrap` | ending work on a study: Log entry, answer, status, `uses:`, commit (no push) |
+| `/review` | regenerating the indexes and reporting stale studies and rule violations |
+| `rubin-doc-style` | writing a README, `study.md` or any `.md`; where each kind of doc lives |
 | `rubin-docstrings` | writing docstrings (Rubin DM numpydoc, units, frames) |
 | `rubin-notebooks` | creating, naming or moving a notebook |
 
 The short forms: before writing new code, **agree which study it belongs to** (ask
-rather than guess); output goes under `<topic>/output/<study>/...`, never in git;
-notebooks live in `<topic>/notebooks/<study>/`; docs describe content, define acronyms,
+rather than guess; `/start-study` proposes); docs describe content, define acronyms,
 and carry a status line.
 
-### Imports and `sys.path`
-**New code imports the installed package directly, with no `sys.path` work:**
+### Imports
+**Code imports the installed package directly, with no `sys.path` work:**
 
 ```python
 from rubinwork.common.utils import nmad
@@ -286,27 +312,25 @@ from rubinwork.products import catalog
 ```
 
 This works in a script, a notebook and a batch job alike, as long as
-`pip install --user -e .` has been run from the repo root once per environment.
+`pip install --user -e .` has been run from the repo root once per environment. A
+study's script reaching its own `code/` modules runs from that directory, or adds
+only that directory to `sys.path`.
 
-The topic directories are **not** a package, and their scripts are run as
-`python code/x.py` (script mode), so relative imports (`from ..other import x`) do not
-work there — Python leaves `__package__` unset and raises `ImportError`. Code that still
-needs to reach a sibling module inside the same topic uses one idiom, at the top of the
-file:
+**Old topic code, until the phase 5 shims go.** Topic directories are not a package,
+and their scripts run as `python code/x.py`, so relative imports fail. Code there that
+reaches a sibling module in the same topic uses, at the top of the file:
 
 ```python
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[N]))  # repo root
 ```
 
-`N` counts directories up to the repo root: **2** for `<topic>/code/x.py`, **3** for
-`<topic>/code/<study>/x.py`. In a **notebook** there is no `__file__` — use
-`rubinwork.common.utils.repo_root()`, which walks up from the working directory instead.
+`N` is **2** for `<topic>/code/x.py`, **3** for `<topic>/code/<study>/x.py`. In a
+notebook use `rubinwork.common.utils.repo_root()`. Do not add this idiom to new code.
 
 Rules:
 - **Never hardcode `/home/r/roodman/...` or `/sdf/...` in import bootstrapping.** The
-  `/home/...` form is RSP-only and fails silently in a Slurm job;
-  `parents[N]` is correct in every environment.
+  `/home/...` form is RSP-only and fails silently in a Slurm job.
 - Genuinely shared helpers belong in `rubinwork/common/`, not copied between topics.
 - Reaching into a sibling topic's `code/` is a real dependency — see
   Topic independence above before adding one.
@@ -314,7 +338,7 @@ Rules:
 ### Code style
 - Python code should follow PEP 8
 - Use descriptive variable names
-- Shared utility functions go in `common/utils.py` or `common/` submodules
+- Shared utility functions go in `rubinwork/common/`
 - Docstrings: Rubin DM numpydoc with units on physical quantities (`rubin-docstrings` skill)
 - Prefer `lsst.daf.butler` for data access on RSP
 - Prefer `astropy` units and coordinates
