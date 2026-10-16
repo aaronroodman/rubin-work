@@ -1,9 +1,9 @@
-"""Command line for `rubinwork.studies`: ``index`` and ``check``."""
+"""Command line for `rubinwork.studies`: ``index``, ``check``, ``new`` and ``variants``."""
 
 import argparse
 import sys
 
-from . import core, index
+from . import core, index, new
 
 
 def main(argv=None):
@@ -26,7 +26,34 @@ def main(argv=None):
     check.add_argument("topic", nargs="?", default=None)
     check.add_argument("--no-catalog", action="store_true",
                        help="do not resolve uses: entries through the catalog")
+    make = sub.add_parser("new", help="create <topic>/<study>/ (the /start-study skill)")
+    make.add_argument("topic")
+    make.add_argument("study")
+    make.add_argument("--question", required=True)
+    make.add_argument("--title", default=None)
+    make.add_argument("--uses", action="append", default=[],
+                      metavar="PRODUCT=VARIANT[@BUILD]")
+    make.add_argument("--new-topic", action="store_true")
+    sub.add_parser("variants", help="each product's variants.yaml and its variants")
     args = parser.parse_args(argv)
+
+    if args.command == "new":
+        try:
+            uses = [new.parse_uses_arg(u) for u in args.uses]
+            directory = new.create_study(args.topic, args.study, args.question, uses,
+                                         title=args.title, new_topic=args.new_topic)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"not created: {exc}", file=sys.stderr)
+            return 1
+        print(f"created {directory}")
+        print(f"output -> {(directory / 'output').readlink()}")
+        return 0
+    if args.command == "variants":
+        for product, (path, names) in new.product_variants().items():
+            print(f"{product}: {path.relative_to(core.repo_root())}")
+            for name in names:
+                print(f"  {name}")
+        return 0
 
     if args.command == "index":
         changed = index.write_index()
