@@ -1,12 +1,12 @@
 """Command line for `rubinwork.studies`: ``index``, ``check``, ``new``, ``variants``,
-``wrap-gather`` and ``wrap-apply``."""
+``wrap-gather``, ``wrap-apply`` and ``review``."""
 
 import argparse
 import json
 import pathlib
 import sys
 
-from . import core, index, new, wrap
+from . import core, index, new, review, wrap
 
 
 def main(argv=None):
@@ -51,7 +51,13 @@ def main(argv=None):
                      metavar="PRODUCT=VARIANT[@BUILD]")
     put.add_argument("--figure", action="append", default=[])
     put.add_argument("--no-commit", action="store_true")
+    rev = sub.add_parser("review", help="regenerate the indexes and report (/review)")
+    rev.add_argument("topic", nargs="?", default=None)
     args = parser.parse_args(argv)
+
+    if args.command == "review":
+        print(review.report_markdown(review.review(args.topic), args.topic), end="")
+        return 0
 
     if args.command == "wrap-gather":
         print(json.dumps(wrap.gather(args.study).as_dict(), indent=1))
