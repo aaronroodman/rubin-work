@@ -130,6 +130,41 @@ donut within one visit than it does between visits, so for those the per-visit m
 averaging over a field pattern and the field-dependence check in `Next` is the relevant
 test, not a thermal one.
 
+**The within-visit nMAD excursions are one common per-visit factor, and they look like
+measurement noise.** Aaron's observation (2026-10-16): the within-visit nMAD of dZ5 and
+dZ6 sits at a typical 0.2625 and 0.2469 µm of wavefront — about what ordinary
+donut-to-donut fit covariance gives — but both reach **0.61 µm of wavefront** on some
+visits, **and they excur on the same visits**. Spearman rho between the two series is
+**+0.5694** (n = 872 visits), and other terms behave the same way: the median rho over all
+210 term pairs is **+0.4725**.
+
+It is a single effect, not a per-term quirk. Normalizing each term by its own median and
+taking logs so a multiplicative factor becomes additive, the leading principal component
+of the 21 series carries **54.1 per cent** of the variance (PC2 10.4, PC3 7.5) **with every
+loading the same sign** — one common per-visit scale factor inflating all 21 terms
+together.
+
+What it tracks, both independently (the two are nearly uncorrelated with each other,
+rho = −0.1549):
+
+| against | Spearman rho | partial, controlling the other |
+|---|---|---|
+| intra-focal blur [arcsec] | +0.5732 | **+0.5708** |
+| surviving donut pairs [dimensionless] | −0.5177 | **−0.4765** |
+| extra-focal blur [arcsec] | +0.1078 | — |
+
+Blurrier intra-focal donuts fit less precisely, and a visit with fewer surviving pairs is
+less well determined — both are **measurement noise in the per-donut fits**, not wavefront
+structure. The intra-focal blur matters and the extra-focal blur essentially does not
+(+0.5732 against +0.1078), which fits the intra side being the degraded one throughout
+this study. Ratios of max to median within-visit nMAD run 1.6 (Z4) to 3.2 (Z8), so the
+excursions are a factor of 2–3, not outliers.
+
+Consequence for reading the per-donut plots: a visit with a large within-visit nMAD is
+usually a noisier visit, not a visit with more field structure. The field-dependence check
+should use the *median* difference per detector pooled over many visits rather than any
+single visit's spread.
+
 **The intra-before-extra time ordering does not explain dZ4.** A FAM triplet is taken
 intra, extra, in-focus, so the intra-focal exposure always precedes the extra-focal one —
 by a median **46.4 s** (10th–90th percentile 46.3–46.6 s). The two-side mean Z4 does drift

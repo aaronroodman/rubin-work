@@ -79,6 +79,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.stats import pearsonr, spearmanr
 
@@ -788,6 +789,150 @@ axis.set_ylabel('within-visit nMAD of the difference [um wf]')
 axis.set_title('Where the scatter lives: across the focal plane vs visit to visit',
                fontsize=9)
 axis.legend(fontsize=7)
+save(figure)
+""")
+
+md("""
+### 3d. The within-visit nMAD excursions are a single common effect
+
+The within-visit nMAD of dZ5 and dZ6 sit at a typical **0.26 and 0.25 um of wavefront** -
+about what normal donut-to-donut fit covariance would give - but both excur to
+**0.61 um of wavefront** on some visits, and **they excur on the same visits**
+(Aaron, 2026-10-16). Other terms do the same.
+
+Quantified below: this is not a per-term quirk but **one common per-visit scale factor**
+that inflates every term's within-visit scatter together. It tracks the intra-focal blur
+and the number of surviving donuts, both independently, which is what measurement noise
+rather than wavefront structure would do.
+""")
+
+code("""
+nmad_by_noll = pd.DataFrame(
+    {noll: visits[f'dz{noll}_donut_nmad'].to_numpy() for noll in NOLL},
+    index=visits.index)
+
+print('within-visit nMAD of the per-donut difference [um of wavefront]:')
+print(f'{"noll":>5} {"median":>8} {"95th pct":>9} {"max":>8} {"max/median":>11}')
+for noll in NOLL:
+    column = nmad_by_noll[noll]
+    print(f'{noll:>5} {column.median():>8.4f} {column.quantile(0.95):>9.4f} '
+          f'{column.max():>8.4f} {column.max() / column.median():>11.2f}')
+
+# Pairwise correlation of the excursions, Aaron's observation first.
+pairs = [(5, 6), (6, 11), (5, 11), (6, 7), (5, 8), (5, 7), (5, 4), (4, 7)]
+print()
+print('Spearman rho between the within-visit nMAD series, '
+      f'n = {len(nmad_by_noll)} visits:')
+for first, second in pairs:
+    rho = spearmanr(nmad_by_noll[first], nmad_by_noll[second]).statistic
+    print(f'  Z{first} vs Z{second}: {rho:+.4f}')
+
+all_pairs = [spearmanr(nmad_by_noll[a], nmad_by_noll[b]).statistic
+             for i, a in enumerate(NOLL) for b in NOLL[i + 1:]]
+print(f'median over all {len(all_pairs)} term pairs: {np.median(all_pairs):+.4f}')
+""")
+
+code("""
+# One common scale factor? Normalize each term by its own median, take logs so a
+# multiplicative factor becomes additive, and look at the leading principal component.
+normalized = nmad_by_noll / nmad_by_noll.median()
+log_normalized = np.log(normalized.to_numpy())
+centred = log_normalized - log_normalized.mean(axis=0)
+
+_, singular_values, components = np.linalg.svd(centred, full_matrices=False)
+variance_fraction = singular_values ** 2 / np.sum(singular_values ** 2)
+scores = centred @ components[0] * np.sign(np.median(components[0]))
+visits['nmad_common_factor'] = scores
+
+print('variance fraction of the log within-visit nMAD principal components '
+      '(dimensionless):')
+for index in range(4):
+    print(f'  PC{index + 1}: {variance_fraction[index]:.3f}')
+same_sign = bool(np.all(components[0] > 0) or np.all(components[0] < 0))
+print(f'PC1 loadings all the same sign: {same_sign}')
+print()
+print('what the common factor tracks (Spearman rho, '
+      f'n = {len(visits)} visits):')
+for column, label, unit in [('blur_intra', 'intra-focal blur', 'arcsec'),
+                            ('blur_extra', 'extra-focal blur', 'arcsec'),
+                            ('n_donuts', 'surviving donut pairs', 'dimensionless')]:
+    rho = spearmanr(visits['nmad_common_factor'], visits[column]).statistic
+    print(f'  {label} [{unit}]: {rho:+.4f}')
+
+
+def partial_spearman(target, predictor, controls):
+    \"\"\"Spearman rho of two variables after regressing both on the controls.\"\"\"
+    design = sm.add_constant(np.asarray(controls, dtype=float))
+    target_residual = (np.asarray(target, dtype=float)
+                       - sm.OLS(np.asarray(target, dtype=float), design)
+                       .fit().fittedvalues)
+    predictor_residual = (np.asarray(predictor, dtype=float)
+                          - sm.OLS(np.asarray(predictor, dtype=float), design)
+                          .fit().fittedvalues)
+    return spearmanr(target_residual, predictor_residual).statistic
+
+
+print()
+print('the two are nearly independent of each other '
+      f'(blur_intra vs n_donuts rho '
+      f'{spearmanr(visits.blur_intra, visits.n_donuts).statistic:+.4f}), and both '
+      'survive controlling for the other:')
+print('  common vs intra-focal blur, given n_donuts:   '
+      f'{partial_spearman(visits.nmad_common_factor, visits.blur_intra, visits[["n_donuts"]]):+.4f}')
+print('  common vs surviving pairs, given intra blur:  '
+      f'{partial_spearman(visits.nmad_common_factor, visits.n_donuts, visits[["blur_intra"]]):+.4f}')
+""")
+
+code("""
+figure, axes = plt.subplots(2, 2, figsize=(9.0, 7.0), layout='constrained')
+
+# Aaron's observation, drawn: Z5 and Z6 excurse together.
+axis = axes[0][0]
+draw_nights(axis, EDGES)
+axis.plot(visits['ordinal'], nmad_by_noll[5], '.', ms=2.0, color='tab:blue',
+          label='Z5')
+axis.plot(visits['ordinal'], nmad_by_noll[6], '.', ms=2.0, color='tab:red',
+          label='Z6')
+axis.set_xlabel('FAM visit ordinal')
+axis.set_ylabel('within-visit nMAD [um wf]')
+axis.set_title(f'Z5 and Z6 excurse on the same visits: rho '
+               f'{spearmanr(nmad_by_noll[5], nmad_by_noll[6]).statistic:+.3f}',
+               fontsize=8)
+axis.legend(fontsize=6, markerscale=3)
+
+axis = axes[0][1]
+axis.plot(nmad_by_noll[5], nmad_by_noll[6], '.', ms=2.5, color='tab:purple')
+axis.set_xlabel('within-visit nMAD of dZ5 [um wf]')
+axis.set_ylabel('within-visit nMAD of dZ6 [um wf]')
+axis.set_title(f'medians {nmad_by_noll[5].median():.3f} and '
+               f'{nmad_by_noll[6].median():.3f}, maxima '
+               f'{nmad_by_noll[5].max():.3f} and {nmad_by_noll[6].max():.3f} um wf',
+               fontsize=8)
+
+# The common factor and its two drivers.
+axis = axes[1][0]
+axis.bar(np.arange(len(NOLL)), components[0] * np.sign(np.median(components[0])),
+         color='tab:green', alpha=0.85)
+axis.set_xticks(np.arange(len(NOLL)))
+axis.set_xticklabels([f'{n}' for n in NOLL], fontsize=5, rotation=90)
+axis.set_xlabel('Noll index')
+axis.set_ylabel('PC1 loading (dimensionless)')
+axis.set_title(f'One common factor: PC1 of the log nMAD carries '
+               f'{variance_fraction[0]:.1%} of the variance,\\nall loadings the same '
+               f'sign', fontsize=8)
+
+axis = axes[1][1]
+scatter_by_night(axis, visits, visits['blur_intra'], visits['nmad_common_factor'],
+                 'intra-focal blur [arcsec]',
+                 'common nMAD factor (dimensionless, log scale)')
+axis.set_title(f'the factor tracks the intra-focal blur: rho '
+               f'{spearmanr(visits.nmad_common_factor, visits.blur_intra).statistic:+.3f}'
+               f'\\nand anti-tracks surviving pairs: rho '
+               f'{spearmanr(visits.nmad_common_factor, visits.n_donuts).statistic:+.3f}',
+               fontsize=8)
+
+figure.suptitle('Within-visit nMAD excursions: one common per-visit scale factor',
+                fontsize=9)
 save(figure)
 """)
 
