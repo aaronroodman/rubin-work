@@ -64,15 +64,54 @@ Topics with no study in the triage stay as they are, with no `study.md` and no m
 
 ## Done
 
-| topic | commit | studies |
+| topic | commit | studies (status) |
 |---|---|---|
+| astrometry | `05d617e` | astrometry_residual_field (parked) |
+| psf | `bc9f306` | zernike_psf_moments (done), psf_moments_scatter (dropped), wavefront_to_psf (dropped) |
+| nightlyiq | `adad476` | guider_iq (parked), nightly_aos_tables (dropped), aos_openloop (dropped) |
+| filters | `1de4060`, `86ccc53` | interference_filter_design (answered) |
+| optics | `3f7b116` | fresnel_donuts (done), telecentricity (done); intra_extra_phase_strip waits for `aos/intra_extra` |
+| wfs | `ce85767` | cwfs_sky_foreground (done); giant_donuts and the archived pupil/diffraction notebooks wait for `aos/intra_extra` |
+| blocks | `7ffb552`, `86ccc53` | t539_closedloop (parked), camera_rotator_survey (done), m1m3_zgradient_survey (dropped), image_quality_trending (active), fbs_stability_runs (parked) |
+| optatmo | `da76e7b` | momfit_accuracy (done), psf_vs_cwfs (parked), miw_radial_correlations (done) |
+| guider | `1522ea3` | guider_vs_ccd_moments, guider_ellipticity_ensemble, guider_atmo_sim, roi_quality (active); centroid_timescale, summit_utils_branch (done); bias_streak, guide_star_saturation (parked) |
+
+Left in place, as tooling or library (triage): `blocks` `locate_test_blocks`,
+`find_long_exposures`, `querying_efd_consdb`, `ImageCount`, `stack_probe.sh`; `wfs`
+`cwfs_donut_selection` notebook and `ts_wep_cwfs_dataflow.md`; `optics/code/fresnel/`
+(shared by `fresnel_donuts` and the intra/extra notebooks); `optatmo/code/` (the JAX
+library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakefile`,
+`code/`, RubinTV plots and movies, the 2026-09 handoff).
 
 ## Tried and rejected, and non-obvious findings
 
 - `wrap-gather` on a directory with no `study.md` finds commits only under that
   directory, so before the move it finds none. Read `git log --follow` on the old paths
   instead.
+- The conversions are scripted: a JSON spec per study and `/tmp/p5/convert.py` (session
+  scratch, not in the repo) wrote `study.md` and ran the `git mv`s. Notebooks moved one
+  or two levels deeper had their `sys.path` (`Path.cwd().parent` to `parents[2]`) and
+  bare `'output'` paths rewritten to `../output`, the study's `output@`.
+- **The conversion commits reset the 14-day staleness clock** (decision 8 of phase 4
+  counts the last commit). `guider/roi_quality` (untouched since 2026-03-24) and
+  `guider/guider_atmo_sim` (since 2026-08-18) were flagged before the commit and are not
+  now. They come back on 2026-11-01.
+- Topic READMEs are not touched (step 3), so their file tables point at old paths. Only
+  links that would otherwise break were repointed: `optatmo/README.md`,
+  `guider/README.md`, `guider/CLAUDE.md`.
+- `blocks` Snakefile's `../common/*.py` inputs were stale since phase 1; now
+  `rubinwork/common/`. A dry run plans 4 jobs (count) because the old outputs stay in
+  `blocks/output/`.
+- `blocks/fbs_stability_runs` reads `image_quality_trending`'s `visits_summary` by a
+  relative glob, a rule 3 case the checker does not see.
+- New allow-list entry: `optics/fresnel_donuts/notebooks/` imports `optics/code/fresnel/`
+  (rule 2), until that code becomes a library.
+- `guider_atmo_compare.py` and `guider_star_ellipticity.ipynb` now import
+  `rubinwork.products.guider_moments.guiderMoments` and `rubinwork.guider_edge_recovery`
+  directly instead of through the `guider/code` shims; same objects.
+- `rubinwork/common/tests_placeholder` (approved for deletion) is still on disk: the
+  session's `rm` was blocked by the permission settings.
 
 ## Next
 
-Start with `astrometry`.
+Convert `smatrix`, then `thermal_focus` and `olr`, then `aos`.
