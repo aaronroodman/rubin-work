@@ -36,7 +36,7 @@ import pandas as pd
 from astropy.table import Table
 
 # Shared helpers: common/ (DOF, ConsDB EFD, ESS telemetry) + aos/code (v-modes, Zernikes).
-REPO = Path(__file__).resolve().parents[2]          # -> rubin-work/
+REPO = Path(__file__).resolve().parents[3]          # -> rubin-work/
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "aos" / "code"))
 import aos_state        # noqa: E402

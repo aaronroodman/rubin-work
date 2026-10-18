@@ -45,6 +45,8 @@ env/
 # As with output/ above, the pattern needs a directory component before logs/, so a
 # REPO-ROOT logs/ would otherwise slip through untracked.
 /logs/
+# A study's own logs/, one level deeper (phase 5 layout).
+*/*/logs/
 
 # ===== Large data files =====
 *.fits
