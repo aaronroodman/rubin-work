@@ -40,7 +40,12 @@ ALLOWED = (
     ("aos/code/closed_loop/", "no-study-import"),
     ("aos/code/psf/", "no-study-import"),
     ("optatmo/", "no-foreign-output"),
-    ("blocks/", "no-foreign-output"),
+    # Found by the phase 4 dry-run /review; fix in phase 5.
+    ("aos/code/coadd/recompute_coadd_metrics.py", "hand-built-product-path"),
+    ("aos/notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb", "no-study-import"),
+    ("aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb",
+     "no-study-import"),
+    ("psf/wavefront_to_psf.ipynb", "no-foreign-output"),
 )
 """Known violations: reported, but as known rather than new."""
 
@@ -90,6 +95,16 @@ def _tracked(root, *patterns):
     return [p for p in _git(root, "ls-files", "--", *patterns).splitlines() if p]
 
 
+def _parses(src):
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            ast.parse(src)
+        return True
+    except SyntaxError:
+        return False
+
+
 def _source(root, rel):
     """Python source of a tracked file; a notebook's code cells, magics dropped."""
     path = root / rel
@@ -101,8 +116,12 @@ def _source(root, rel):
                 if cell.get("cell_type") == "code":
                     src = cell.get("source", "")
                     src = "".join(src) if isinstance(src, list) else src
-                    lines += [ln for ln in src.splitlines()
-                              if not ln.lstrip().startswith(("%", "!"))]
+                    if _parses(src):
+                        # A line starting with % may be a continuation, not a magic.
+                        lines += src.splitlines()
+                    else:
+                        lines += [ln for ln in src.splitlines()
+                                  if not ln.lstrip().startswith(("%", "!"))]
             return "\n".join(lines)
         return path.read_text()
     except (OSError, ValueError, UnicodeDecodeError):

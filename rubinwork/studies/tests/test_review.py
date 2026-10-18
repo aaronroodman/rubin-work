@@ -88,3 +88,12 @@ def test_answered_without_answer_flagged(repo):
     path.write_text(path.read_text().replace("status: active", "status: answered"))
     result = review.review(root=repo, regenerate=False)
     assert result["no_answer"] == ["aos/pinned"]
+
+
+def test_notebook_percent_continuation(tmp_path):
+    src = ["print('a %d'\n", "      % 1)\n"]
+    nb = {"cells": [{"cell_type": "code", "source": src},
+                    {"cell_type": "code", "source": ["%matplotlib inline\n", "x = 1\n"]}]}
+    (tmp_path / "n.ipynb").write_text(json.dumps(nb))
+    source = review._source(tmp_path, "n.ipynb")
+    assert "% 1)" in source and "%matplotlib" not in source

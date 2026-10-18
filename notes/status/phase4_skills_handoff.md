@@ -1,7 +1,7 @@
 # Phase 4 handoff: skills and generators
 
-> **Status:** steps 1 to 9 done, pending Aaron's review of the dry-run `/wrap` commit ·
-> **Last updated:** 2026-10-16 · **Kind:** working state (handoff)
+> **Status:** done; open items answered 2026-10-18 ·
+> **Last updated:** 2026-10-18 · **Kind:** working state (handoff)
 
 Phase 4 of `notes/status/organization_plan.md` (section 8): the `/start-study`, `/wrap` and
 `/review` skills, the `STUDIES.md` and `PRODUCTS.md` generators, the updated style skills
@@ -31,6 +31,24 @@ Aaron, 2026-10-16:
 
 Deletion approved: `.claude/skills/rubin-new-study/` and `.claude/skills/rubin-output-layout/`,
 once replaced (done in step 7). Nothing else.
+
+Aaron, 2026-10-18, on the open items:
+
+9. The local `/wrap aos/miw_hull` commit is pushed (`8c9b798`).
+10. The 5 new rule violations of the dry-run `/review` go into `ALLOWED`, each to be fixed
+    in phase 5.
+11. The `blocks/` allow-list entry is removed. The `blocks` Snakefile's reference to
+    `../aos/code/aos_state.py` is a known dependency; the checker does not scan
+    Snakefiles.
+12. Deletion approved: `rubinwork/common/tests_placeholder` and
+    `rubinwork/studies/tests/__init__.py`. Nothing else. pytest collects the studies
+    tests without the `__init__.py` (431 tests passed either way), so it is removed.
+    `tests_placeholder` is untracked; the session's `rm` was blocked by the permission
+    settings, so it is still on disk for Aaron to remove.
+13. `blitz_cwfs_vs_danish12_20260315.ipynb`: repair only if mechanical. The JSON was
+    valid; the failure was in `/review`, which dropped every line starting with `%` as
+    a magic, including a `% (...)` string-format continuation. Fixed in `review.py`
+    (a cell that parses whole keeps its `%` lines); the notebook is unchanged.
 
 ## Step list
 
@@ -150,13 +168,7 @@ unpushed for Aaron's review. `/wrap camera/itl_dip`: nothing new, no commit.
 
 ## Open, for Aaron
 
-- Review and push (or drop) the local `/wrap aos/miw_hull` commit.
-- The 5 new rule violations in the `/review` report: add to `ALLOWED`, or fix in phase 5.
-- Remove the `blocks/` allow-list entry if the plan's section 2 row is stale.
-- `rubinwork/common/tests_placeholder` and `rubinwork/studies/tests/__init__.py`: empty
-  files made by mistake; untracked and tracked respectively. Deleting needs Aaron's OK.
-- `aos/notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb` does not parse,
-  so `/review` cannot check it.
+All answered 2026-10-18 (decisions 9 to 13).
 
 ## Next
 
