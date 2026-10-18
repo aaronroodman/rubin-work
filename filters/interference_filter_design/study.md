@@ -1,7 +1,7 @@
 ---
 study: interference_filter_design
 topic: filters
-status: active
+status: answered
 question: "How narrow can a multilayer dielectric interference filter be in the Rubin f/1.23 annular beam while keeping throughput and OD4 out-of-band blocking?"
 answer: "The beam-averaged FWHM floors at about 9.4 nm (cone smear over 14 to 23 deg incidence); the practical narrow-band limit is about 25 to 30 nm FWHM. A 25 nm band at 410 nm keeps about 92% in-band throughput with OD4 blocking except within 15 to 25 nm of the band."
 uses: {}  # no rubin-work products; thin-film simulation

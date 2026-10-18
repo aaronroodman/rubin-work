@@ -1,7 +1,7 @@
 ---
 study: image_quality_trending
 topic: blocks
-status: parked
+status: active
 question: "How does delivered image quality (PSF FWHM, ellipticity, AOS contributions) trend night by night across LSSTCam survey visits?"
 answer: ''
 uses: {}  # no rubin-work products; ConsDB
@@ -24,4 +24,4 @@ None written: recurring monitoring plots (old tree `blocks/output/iq_plots_*`, `
 
 ### 2026-07-28 — backfilled from docs and history
 
-Backfilled 2026-10-18 from the notebook change log and `blocks/README.md`. Based on Keith Bechtol's notebook; from 2026-05-04 a chunked ConsDB fetch with per-chunk caching, a combined per-visit IQ score (percentile average of `aos_cam_fwhm`, `psf_fwhm_95_05`, `psf_e_50`, `psf_e_95_05` and the shapelets score; 99 = best), and per-night violins. Last run for day_obs 20251026 to 20260730. Parked in the phase 5 triage (monitoring, no question). The notebook and `consdb_fetch.py` moved here; the notebook writes to this study's `output/`.
+Backfilled 2026-10-18 from the notebook change log and `blocks/README.md`. Based on Keith Bechtol's notebook; from 2026-05-04 a chunked ConsDB fetch with per-chunk caching, a combined per-visit IQ score (percentile average of `aos_cam_fwhm`, `psf_fwhm_95_05`, `psf_e_50`, `psf_e_95_05` and the shapelets score; 99 = best), and per-night violins. Last run for day_obs 20251026 to 20260730. Converted in the phase 5 triage as active (Aaron, 2026-10-18; the recommendation was parked, as monitoring with no question). The notebook and `consdb_fetch.py` moved here; the notebook writes to this study's `output/`.
