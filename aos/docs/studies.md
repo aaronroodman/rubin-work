@@ -132,7 +132,7 @@ different MIW build is chosen, it lives under `<mi_name>/`; otherwise under
 on the MIW-subtracted fits, while `dzfit`'s validation is under `<param_set>/` because
 it precedes any MIW. The OFC sensitivity matrix's own mode structure has no `param_set`
 dependence at all and is not an `aos` study — it is `vmode` in the `smatrix` topic
-([`../../smatrix/docs/studies/vmode.md`](../../smatrix/docs/studies/vmode.md)), writing to
+([`../../smatrix/vmode/vmode.md`](../../smatrix/vmode/vmode.md)), writing to
 `smatrix/output/vmode/`.
 
 `psf/` and `closed_loop/` are under `<mi_name>/`: both read the MIW split maps and the

@@ -170,7 +170,7 @@ FWHM per DOF unit, back-derived as `f_j = r_j / w_j^2` from the shipped weights;
 it reconstructs `w_j = sqrt(r_j / f_j)` to a maximum relative error of 2.2e-16
 (dimensionless). `smatrix/code/normalization_weights.py:compute_f_quadrature`
 computes the field-averaged `f_j` (arcsec of PSF width per DOF unit) directly,
-and is the function `smatrix/code/vmode/plot_vmode_dof_matrix.py` uses for its
+and is the function `smatrix/vmode/code/plot_vmode_dof_matrix.py` uses for its
 page-5 table.
 
 | DOF | r_j | f_j | geom sqrt(r/f) | default |

@@ -55,7 +55,7 @@ from outside it: ``value_added/code/build_optical_state.py``,
 ``rubinwork/bounce/legs.py`` (through ``rbr_module``) and
 ``aos/code/miw/check_dof_ranges.py`` all import it. The runners that exercise and
 validate these solvers stay in the study, at
-``smatrix/code/regularized_inversion/``.
+``smatrix/regularized_inversion/code/``.
 """
 import numpy as np
 

@@ -87,7 +87,7 @@ DEFAULT = dict(
     # `motion_penalty`, dimensionless.  ts_ofc ships 0.0, i.e. the penalty is
     # inactive as delivered, so a value must be chosen; this one is *consumed*,
     # and the scan it comes from is in
-    # smatrix/docs/studies/regularized_inversion.md.  Do not re-derive it here.
+    # smatrix/regularized_inversion/regularized_inversion.md.  Do not re-derive it here.
     oic_enable=True, oic_rho=1.0e-3)
 
 RBR_METHOD_NAME = 'Range-Bounded Recovery (RBR)'

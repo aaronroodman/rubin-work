@@ -64,7 +64,7 @@ whose rule is not removed — so the job count is unchanged at 34; only the file
 names changed, from `bounce_kj_stats.parquet` to `bounce_summary.pdf`. The study runs the
 analysis a second time (about 170 s of wall clock) rather than reading the tables back,
 because three of its pages plot per-visit arrays no table carries (Aaron, 2026-10-12).
-The four `smatrix/code/regularized_inversion/` imports now reach `rubinwork.bounce`, and
+The four `smatrix/regularized_inversion/code/` imports now reach `rubinwork.bounce`, and
 `code/cwfs_lut/bounce_compare.py`, the one reader outside the study, resolves old tree
 then catalog.
 

@@ -109,7 +109,7 @@ specialized. Each has a detailed document under `docs/studies/`;
 outputs and current state of every one. Several of these studies project onto the Optical
 Feedback Control (OFC) sensitivity matrix; its singular value decomposition and v-mode
 structure are the `vmode` study in the `smatrix` topic
-([`../smatrix/docs/studies/vmode.md`](../smatrix/docs/studies/vmode.md)).
+([`../smatrix/vmode/vmode.md`](../smatrix/vmode/vmode.md)).
 
 Prediction of the uniform-defocus error from thermal telemetry — the focus look-up table from
 science exposures, and focus drift within a FAM block — is the `thermal_focus` topic

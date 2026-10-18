@@ -299,7 +299,7 @@ The OIC penalty weight is `oic_rho = 1e-3`, dimensionless, read from `analysis_c
 `ts_ofc` ships `motion_penalty = 0.0`, so the penalty is inactive as delivered and a value has to
 be chosen; this study **consumes** the value and does not derive it. The scan over rho that
 produced it — feasibility, image quality *and* amplitude retention — is in the
-[`regularized_inversion`](../../../smatrix/docs/studies/regularized_inversion.md) study, and the
+[`regularized_inversion`](../../../smatrix/regularized_inversion/regularized_inversion.md) study, and the
 criterion was to match RBR's feasibility while accepting a few legs slightly over range.
 
 **The OIC arm's rigid-body amplitudes are suppressed and are not measurements.** That scan shows
@@ -337,7 +337,7 @@ wavefront in µm of wavefront, RBR minimizes
 
 Two knobs, both dimensionless. `kappa` is the amplitude-over-range ratio at which the penalty
 reaches unit weight, and `p` sets how fast it climbs. The bounce runs use `kappa = 4`,
-`p = 3` — the setting the [`regularized_inversion`](../../../smatrix/docs/studies/regularized_inversion.md)
+`p = 3` — the setting the [`regularized_inversion`](../../../smatrix/regularized_inversion/regularized_inversion.md)
 study found best or near-best on five of the six legs. `kappa` is deliberately well above 1:
 the penalty only has to bound the largest amplitude, and putting the knee at the range itself
 taxes the other 49 DOF for no gain.
@@ -565,8 +565,8 @@ not resolve.
 ## See also
 
 - [`../miw_pipeline.md`](../miw_pipeline.md) — the `bounce` rule in context
-- [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — where the v-modes and DOF come from
-- [`../../../smatrix/docs/studies/regularized_inversion.md`](../../../smatrix/docs/studies/regularized_inversion.md) — the shared solver module, the `(p, kappa)` sweep behind the RBR setting used here, the damped-SVD alternative it was chosen over, and the scan over the OIC `rho` that fixed the `oic_rho = 1e-3` dimensionless value this study consumes
+- [`../../../smatrix/vmode/vmode.md`](../../../smatrix/vmode/vmode.md) — where the v-modes and DOF come from
+- [`../../../smatrix/regularized_inversion/regularized_inversion.md`](../../../smatrix/regularized_inversion/regularized_inversion.md) — the shared solver module, the `(p, kappa)` sweep behind the RBR setting used here, the damped-SVD alternative it was chosen over, and the scan over the OIC `rho` that fixed the `oic_rho = 1e-3` dimensionless value this study consumes
 - [`../../../smatrix/docs/vmode_normalization.md`](../../../smatrix/docs/vmode_normalization.md) — where the allowed range `r_j` and the FWHM response `f_j` come from
 - [`../../../notes/aos-bounce-test-summary/note.md`](../../../notes/aos-bounce-test-summary/note.md) — results summary: elevation sweep 30–75 deg and rotator 0→60 deg
 - `../../../notes/claude-memory/apr-2026-50dof-lut.md` — the fixed 50-DOF LUT on sky Apr 24–28 2026, which explains the 20260424/28 anomaly

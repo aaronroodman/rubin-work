@@ -396,7 +396,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
                           f'{_auth_parts["motion_penalty"]:g}, so the penalty is '
                           f'inactive as delivered). Value consumed from config; '
                           f'its derivation is in '
-                          f'smatrix/docs/studies/regularized_inversion.md')
+                          f'smatrix/regularized_inversion/regularized_inversion.md')
                 except Exception as e:
                     print(f'  (OIC authority unavailable [{type(e).__name__}: '
                           f'{e}]; OIC scheme skipped)')

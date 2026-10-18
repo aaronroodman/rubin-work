@@ -1,6 +1,6 @@
 # smatrix — plots & outputs index
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (output index)
+> **Status:** current · **Last updated:** 2026-10-18 · **Kind:** reference (output index)
 
 All outputs live in `output/` (gitignored; rsync-synced). Regenerate from `code/`,
 except the `vmode` study in [section 10](#10-vmode-study--svd-mode-structure-and-the-sparse-fit-question),
@@ -126,8 +126,8 @@ spherical; **TrGrad→Z4+Z11+Z22** (0.0185µm Z22 per C/m, so ~1.1 C/m gives the
 observed 0.02µm Z22). That 0.02µm Z22 would need **~700 N** via bending (≈5× the
 ~134N AOS budget) — thermal produces it force-free. Coma at MIW scale (0.05µm)
 needs ~0.3 C/m x/y gradient; axisymmetric gradients make astig/coma only with
-huge accompanying defocus. Supports thermal gradients as the MIW Z5-Z8/Z11/Z22
-source that force-limited bending can't reach.
+huge accompanying defocus. This first pass suggested thermal gradients as the MIW
+Z5-Z8 source; `miw_astig_coma_investigation.md` later ruled thermal out for Z5-Z8.
 
 ## 8. Pupil-Zernike slice: which modes drive astigmatism/coma (Z5-Z8)
 `pupil_zernike_study.py` — for each pupil Noll j, the per-mode peak |Zj| over

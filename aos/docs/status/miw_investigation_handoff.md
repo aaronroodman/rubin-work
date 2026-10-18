@@ -276,7 +276,7 @@ while astigmatism's sits at k=15,22,23,25.
 9. **"Production ts_ofc zeroes the coma2/tref2/astig3/tet2 sensitivities."** That is the
    `new_measured_lsst_sensitivity_*` file, which the OFC does not load. The loaded
    `lsst_sensitivity_dz_31_29_50.yaml` has every radial order populated. See
-   `../../../smatrix/docs/studies/vmode.md`.
+   `../../../smatrix/vmode/vmode.md`.
 10. **`build_used` = in-family rotator and `day_obs >= 20260101`** (81 blocks). It ignored
     band, program and elevation; the build set is the 16 blocks of §8.
 
@@ -295,7 +295,7 @@ Local (laptop, no LSST stack unless noted):
 | `code/coadd/recompute_coadd_metrics.py` | **the single** coadd time-series renderer; `--rebin 1 3` (one page per factor), u-mode pages, ML |
 | `code/coadd/check_k_truncation.py` | §4.7 checks (a) and (b) |
 | `code/coadd/analyze_miw_field_order.py` | is the MIW the un-subtracted k>6 term? (§4.7 shape test) |
-| `../smatrix/code/vmode/analyze_sparse_fit.py` | sparse-fit study: which DOF drive secondary/tertiary aberrations (`--part sensitivity`) and sparse-mode DOF observability, both samplings (`--part observability`) |
+| `../smatrix/sparse_fit/code/analyze_sparse_fit.py` | sparse-fit study: which DOF drive secondary/tertiary aberrations (`--part sensitivity`) and sparse-mode DOF observability, both samplings (`--part observability`) |
 
 RSP-only: `code/coadd/run_coadd_blocks_miw.py` (+ `run_coadd_blocks_miw.sbatch` — roma,
 128 GB, 12 h; it OOMs a notebook pod). `--param-set` is **required**.

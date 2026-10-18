@@ -272,7 +272,7 @@ The build recovers a 50-DOF optical state per visit with a truncated SVD keeping
 v-modes, and truncation is that recovery's only regularizer — nothing holds a recovered
 amplitude inside the stroke the mirror or hexapod can reach. `check_dof_ranges.py`
 compares those states against the allowed range `r_j` that the
-[`regularized_inversion`](../../../smatrix/docs/studies/regularized_inversion.md) study
+[`regularized_inversion`](../../../smatrix/regularized_inversion/regularized_inversion.md) study
 defines, reading the build's own per-visit DOF from `build/rot_*/dz_fits.parquet` and
 back-deriving `r_j` from the same SVD normalization weights the recovery already uses, so
 no new input enters.

@@ -406,7 +406,7 @@ leg taken alone.
 | OFC subspace | 50 DOF, 34 v-modes kept; sensitivity matrix evaluated at camera rotator angle 0.0 deg |
 | quality cut | at least 160 CCDs with enough donuts per visit, and `median_blur_arcsec` at most 1.2 arcsec |
 | thresholds | significance 3.5 (dimensionless) with 0.1 µm of wavefront, or significance 5.0 alone |
-| Range-Bounded Recovery | `kappa = 4.0`, `power = 3`, both dimensionless; solver in `smatrix/code/regularized_inversion/`, allowed range `r_j` back-derived from the shipped OFC normalization weights |
+| Range-Bounded Recovery | `kappa = 4.0`, `power = 3`, both dimensionless; solver in `smatrix/regularized_inversion/code/`, allowed range `r_j` back-derived from the shipped OFC normalization weights |
 | code | `aos/code/bounce/run_bounce.py`, `aos/code/bounce/bounce_lib.py`; config in `aos/analysis_config.yaml` under `bounce` |
 
 Two earlier bounce output directories are superseded and were moved to
@@ -417,7 +417,7 @@ table this note's lead result reads.
 
 See [`../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md) for the study
 reference, and
-[`../../smatrix/docs/studies/regularized_inversion.md`](../../smatrix/docs/studies/regularized_inversion.md)
+[`../../smatrix/regularized_inversion/regularized_inversion.md`](../../smatrix/regularized_inversion/regularized_inversion.md)
 for the derivation and validation of Range-Bounded Recovery. The tables behind these numbers are
 `bounce_kj_stats.parquet` (per-(k, j) Δ), `bounce_dof_stats.parquet` (per-DOF and per-v-mode Δ in
 all four schemes, with the RBR Δ, the allowed range and the ratios beside the default recovery),

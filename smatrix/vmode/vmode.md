@@ -1,0 +1,383 @@
+# Study: `vmode` — sensitivity matrix and mode structure
+
+> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
+
+> **Code:** `code/vmode/` · **Notebooks:** `notebooks/vmode/`
+> **Output:** `output/vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
+
+Analysis of the Optical Feedback Control (OFC) sensitivity matrix and its mode
+structure: the singular value decomposition, v-mode composition, and which degrees of
+freedom (DOF) are observable.
+
+The sensitivity matrix maps 50 degrees of freedom to a double-Zernike wavefront. Its SVD
+gives **v-modes** (DOF-space directions) and **u-modes** (wavefront-space directions).
+Which modes are observable — and how badly they mix — sets the ceiling on everything the
+AOS can do. This study is the linear algebra behind the other studies' interpretation.
+
+The matrix *construction* is documented in [`../conventions.md`](../docs/conventions.md); this
+study is about using and diagnosing the matrix that construction produces.
+
+## Code
+
+| file | role |
+|---|---|
+| `plot_vmode_dof_matrix.py` | six-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/vmode/vmode_dof_matrix_<scheme>.pdf` |
+| `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/vmode/sparse_fit_study.pdf` |
+
+This study is diagnostics of the matrix itself. The consumer that *builds a product* from
+the same SVD is [`lut`](../../aos/docs/studies/lut.md), which projects the FAM Double Zernike fits onto it to
+recover degrees of freedom.
+
+### `plot_vmode_dof_matrix.py` — the six pages
+
+1. **V matrix**, the dimensionless per-DOF composition of each v-mode, drawn with square
+   cells. All v-modes are shown with a line marking the `n_keep` truncation, so the
+   discarded modes are visible rather than cropped away.
+2. **Singular values**, the spectrum with the truncation marked.
+3. **Double Zernike per unit v-mode** — µm of wavefront that a unit-amplitude v-mode
+   produces (`sigma_m * u_m = S v_m`), rows being the (focal `k`, pupil `Zj`) terms.
+   Retained v-modes only.
+4. **Reachability and residual per DZ term** — the fraction of each elementary DZ term
+   the retained v-modes can produce, and the irreducible remainder. The derivation is in
+   `notebooks/vmode/jk_coverage_plots.ipynb`; the short version is that the
+   $(k,j)$ axes are an arbitrary coordinate choice, whereas the columns of $U$ are the
+   intrinsic orthonormal basis of $\mathrm{col}(S)$, so the meaningful quantity is
+   $f_{k,j} = \|U^\top \mathbf{e}_{k,j}\|^2$ — the squared row-sum of $U$.
+5. **Normalization weights** — the per-DOF weight `w_i` applied, decomposed into its
+   range factor `r_i` (DOF-units of stroke) and FWHM factor `f_i` (arcsec of PSF width
+   per DOF-unit), since `w_i = r_i^0.5 * f_i^-0.5`.
+6. **DOF-per-v-mode conversion against the allowed range** — `N.V = w_i * V[i,m]`, the
+   same composition as page 1 but in the DOF's own physical unit (µm of translation or
+   bending-mode amplitude, arcsec of hexapod rotation), so it is the conversion constant
+   from v-mode amplitude to physical DOF and can be drawn against the `+r_i` / `-r_i`
+   envelope. Page 1 is dimensionless and cannot be compared to a stroke limit.
+
+   A unit v-mode amplitude is a yardstick, not an expected value — real v-mode amplitudes
+   are far from 1 — so the page carries the *shape* of the conversion. The lower panel
+   summarizes it as `min_m r_i / |N.V|_im` (dimensionless), the v-mode amplitude that
+   would exhaust each DOF's range through its steepest retained mode, which ranks the DOF
+   by how weakly the fit constrains them.
+
+   The ranking is the useful output. Under 50 DOF / 34 v-modes the six most weakly
+   constrained are B1_19 at 0.044, B1_15 at 0.061, B2_16 at 0.063, B1_16 at 0.067, B1_20
+   at 0.071 and B2_17 at 0.122 (all dimensionless v-mode amplitude), against 22 DOF /
+   12 v-modes where the weakest is B2_4 at 0.418 — about a factor of 9.5 (dimensionless,
+   the 22/12 weakest over the 50/34 weakest) better conditioned. The high-order mirror
+   bending modes that the `aos` `bounce` study recovers past their range — B1_20, B2_17,
+   B2_12 — are all in the 50/34 top eight here, which is what connects the two.
+
+`--check` runs a regression test instead of plotting: it asserts `build_ofc_svd`
+reproduces ts_ofc's `StateEstimator.get_dofs_from_vmodes` (DOF-per-v-mode = `N.V`) on
+identical inputs, and exits 0=PASS / 1=FAIL.
+
+### `analyze_sparse_fit.py` — the two parts
+
+`--part sensitivity` asks which DOF drive the secondary and tertiary aberrations of an
+azimuthal family, and whether those same DOF also drive a field-*correlated* primary of
+that family. Those are the DOF whose mis-separation would push real secondary/tertiary
+content into the primary, manufacturing exactly the radial-order correlations the MIW
+shows — astig Z5/6 ↔ Z12/13 ↔ Z23/24, coma Z7/8 ↔ Z16/17.
+
+`--part observability` re-forms the sensitivity matrix using only the primary pupil-Noll
+rows and compares the singular-value spectrum, per-v-mode observability and per-DOF
+observability ratio against the full matrix, for both the 50-DOF/34-v-mode and
+22-DOF/12-v-mode schemes.
+
+`--part both` (the default) does both, and is the study — it writes
+`sparse_fit_study.pdf`. A single `--part` is for a quick look and must be given its own
+`--out`, so a partial run cannot overwrite the full PDF. Neither part needs FAM data: both work
+directly on the ts_ofc DoubleZernike sensitivity matrix `S[k, j, d]` (31 field-Zernike
+`k`, 29 pupil-Noll `j`, 50 DOF `d`). Because the field basis is orthonormal, the
+field-map correlation of two pupil Zernikes' responses to a DOF is just the correlation
+of their field-coefficient vectors, so no simulation is required.
+
+## Notebooks
+
+| notebook | content |
+|---|---|
+| `notebooks/vmode/jk_coverage_plots.ipynb` | **derivation behind page 4**: why reachability is the right quantity, and the algebra for $f_{k,j}$ and the u-mode residual |
+| `notebooks/vmode/vmode_dof_ts_ofc.ipynb` | v-mode/DOF normalization through the `ts_ofc` `StateEstimator`, deliberately independent of `rubin-work` code so it can be shared outside this repository |
+| `notebooks/vmode/vmode_svd_engine_validation.ipynb` | **the engine-equivalence record**: `StateEstimator` against `build_ofc_svd` on a matched slab, both schemes, plus what the obsolete normalization costs |
+| `notebooks/vmode/smatrix_vmode_info.ipynb` | early exploratory treatment: SVD with `StateEstimator` plus custom-SVD validation, v-mode composition, wavefront signatures, control equations, noise/gain, a normalization-scheme unit-invariance study, and DZ field patterns |
+
+`smatrix_vmode_info.ipynb` predates the decision to use `StateEstimator` everywhere and
+is the one place that still carries the alternative normalizations, kept deliberately as
+the record of that comparison.
+
+`ofc_svd` is the external `lsst.ts.intrinsic.wavefront.ofc_svd`, not a module in this
+repository, and every notebook here imports it by that full path.
+
+The reachability derivation stays a notebook rather than becoming PDF text pages because
+its equations use `\underbrace` to label the reachable and residual parts of a
+decomposition, which matplotlib's mathtext cannot render, and no system LaTeX is
+available here for `usetex`. The script owns the figures; the notebook owns the algebra.
+Its plotting sections 1 and 2 were dropped when it moved, since pages 1 and 3 of the PDF
+supersede them.
+
+## Output sits outside any `param_set`
+
+Both scripts write to **`output/vmode/`** in this topic, at the top level, not under a
+`param_set`. The v-mode/DOF structure is a property of the OFC sensitivity matrix and the
+DOF scheme alone — no FAM data enters it. The one data-derived input is the pupil-Zernike
+set, which is identical in every `param_set` built to date (Z4–Z26 omitting Z20 and Z21,
+21 terms), so it defaults in code as `ZK_NOLL_DEFAULT`. Passing `--param-set` to
+`plot_vmode_dof_matrix.py` reads it from that `param_set`'s `visits.parquet` instead and
+warns if it differs from the default.
+
+## Two sanctioned engines, and their measured equivalence
+
+There are exactly **two** sanctioned ways to get v-modes, and given the same matrix they
+are the same engine:
+
+| engine | what it is for |
+|---|---|
+| `lsst.ts.ofc.state_estimator.StateEstimator`, reached **only** through `aos_state.make_state_estimator` | the online control basis — what the Main Telescope AOS runs on the summit; the basis `optical_state` v-modes use |
+| `lsst.ts.intrinsic.wavefront.ofc_svd.build_ofc_svd` | Double Zernike focal-order slices, `k_min=1, k_max=6`, for the FAM/MIW studies |
+
+A third decomposition exists but is **not** a v-mode engine: `aos_state.corner_recovery_basis`
+is the SVD of the corner-evaluated, Zernike-selected matrix, used only to *invert* a measured
+corner wavefront. `StateEstimator.Vh` cannot do that job — built from the unselected 899-row
+slab, it does not span the 84-row corner problem and leaves an irreducible
+2.3e-02 µm wavefront-residual floor even on noiseless data, where the corner-evaluated SVD
+closes to 2.1e-14 µm. `recover_optical_state` therefore inverts in that basis and reports
+v-modes through `get_vmodes_from_dofs`, so no v-mode ever leaves the sanctioned basis. See
+[`../../../aos/docs/status/corner_recovery_route_comparison.md`](../../aos/docs/status/corner_recovery_route_comparison.md).
+
+Handed the matched full slab — all focal orders `k = 0..30`, all 29 pupil Zernikes, the
+same DOF subset and the same normalization yaml — they agree **exactly**, for both the
+22-DOF/12-v-mode and the 50-DOF/34-v-mode schemes:
+
+| quantity | agreement |
+|---|---|
+| normalization weights | `max\|Δw\| = 0.000e+00` (per-DOF weight units) |
+| singular values | `max\|ΔS\| = 0.000e+00` (DZ sensitivity units) |
+| DOF per unit v-mode (`N·V`) | `max\|Δ\| = 0.000e+00` (µm or arcsec of DOF; scale 645.7) |
+| per-mode alignment | `\|cos\| = 1.0000000000` (dimensionless) for every mode, zero sign flips |
+
+That is expected rather than surprising — it is the identical matrix through the identical
+LAPACK call — but it is now pinned by
+`notebooks/vmode/vmode_svd_engine_validation.ipynb`, so the question does not have
+to be reopened. The remaining difference between them is the `k` range, which is the
+deliberate difference of purpose in the section above and not a defect.
+
+### The normalization is the trap
+
+Only `range0.5_fwhm-0.15.yaml` is acceptable. The bare `OFCData('lsst')` default resolves
+`range-fwhm.yaml`, the obsolete normalization whose sensitivity matrix retains a dependence
+on physical units. It is **not** a rescaling — the per-DOF weight ratios of required over
+obsolete are 10.452 (M2Hex dz), 948.79 (dx, dy) and 0.0057914 (rx, ry), all dimensionless
+— so it rotates the basis. Measured for `standard_22`,
+`|cos(v1_obsolete, v1_required)| = 0.000012` (dimensionless): v1 per µm of camera-hexapod
+dz collapses from -8.9153336e-04 to -1.2933321e-09 (dimensionless amplitude per µm), and v1
+becomes the M2-tilt mode instead of the focus-like combination.
+
+The config *directory* does not settle it. Inside the v13 directory, `init.yaml` selects the
+required yaml, while `dz_controller.yaml` and `oic_controller.yaml` select the obsolete one
+and `pid_controller.yaml` selects `default.yaml`. So `make_state_estimator` asserts the
+resolved `ofc.controller['normalization_weights_filename']` and raises on mismatch — never
+silently corrects it. That single interface is what makes the obsolete normalization
+unreachable rather than merely discouraged.
+
+There is a genuine degeneracy caveat: consecutive singular values come in near-degenerate
+pairs (visible as steps at m = 2/3, 4/5, 6/7, 8/9, 10/11 in the spectrum), so individual
+v-mode *vectors* within a pair are basis-dependent — only v1 and the pair magnitudes are
+unique. That is the second reason all code must share one `Vh`. Read
+`../../../notes/claude-memory/aos-vmode-normalization.md` and
+[`../vmode_normalization.md`](../docs/vmode_normalization.md)
+before comparing v-modes computed two ways.
+
+The scripts here take the normalization weights from a ts_config_mttcs yaml rather than
+defining their own. `plot_vmode_dof_matrix.py` reads the name from the OFC controller
+config at runtime (`ofc.controller['normalization_weights_filename']`), so it uses whatever
+the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` names `range0.5_fwhm-0.15.yaml`.
+`--check` verifies the result against `StateEstimator`.
+
+`--check` takes its estimator from `aos_state.make_state_estimator`, so it validates the
+equivalence under the required normalization and honours `--scheme`. Both schemes pass with
+`norm = range0.5_fwhm-0.15.yaml`: normalization arrays match, `max|ΔS| = 0.00e+00` (DZ
+sensitivity units), and DOF-per-v-mode `max|Δ| = 0.000e+00` (µm or arcsec of DOF, on scales
+of 6.30e+03 for 22/12 and 6.02e+03 for 50/34).
+
+**The `-0.15` and `-0.5` filenames hold the same weights.** An older
+`range0.5_fwhm-0.5.yaml` exists on the `ts_ofc` branch `tickets/DM-54762` (commit
+`76764fe`) and is not in any checked-out `normalization_weights/` directory here. Its 50
+weights are numerically identical to `range0.5_fwhm-0.15.yaml` — verified with
+`np.allclose`, ratio exactly 1.0, both spanning 0.02701 to 6869 in per-DOF weight units.
+So the exponent in the filename does not describe the file's contents, and seeing the
+other name in an old notebook does not mean a different normalization was used.
+
+Sign and unit conventions (ZCS, bending-mode flips, degree angle units, the y-sign patch)
+are settled in [`../conventions.md`](../docs/conventions.md).
+
+## The 22-DOF reduced set is not the first 22 indices
+
+`22_12` means 10 rigid-body + 7 M1M3 bending + 5 M2 bending DOF, which is indices 0–16
+plus 30–34, **not** 0–21. Pass the explicit index list `aos_state.DOF22` to
+`build_ofc_svd(..., n_dof=...)`; passing the scalar `22` silently selects the wrong set.
+`analyze_sparse_fit.py` takes the equivalent route through ts_ofc's own
+`comp_dof_idx` with `(7, 5)` bending modes per mirror.
+
+## Two `k` regimes — the `k=1..6` convention and where it does not apply
+
+The focal (field) Noll index `k` can be truncated in one regime and not the other, and
+conflating them is the easy mistake:
+
+| regime | how the matrix is formed | `k` truncation |
+|---|---|---|
+| **DZ-space** — `build_ofc_svd(iZs, k_min, k_max, ...)` | slices the slab, `S_full[k_min:k_max+1, iZs, :]` | **`k=1..6` throughout `aos/`** — `bounce/`, `coadd/`, `cwfs/`, `static_optics/`, `lut/`, `correlations/`, `psf_maps_lib.py` |
+| **field-evaluated** — `StateEstimator` | `Vh` from the whole slab flattened to 899 rows (31 focal × 29 pupil); `get_sensitivity_matrix` evaluates the DZ polynomial at the corner field angles | **none possible** — evaluating at a field point sums every `k` from 0 to 30, leaving no `k` axis |
+
+Both are legitimate bases for different questions. `optical_state` v-modes use the
+**full-`k` `StateEstimator` basis**, because that is what MTAOS runs on the summit; the
+`k=1..6` basis is what the DZ correlation work uses, and the two are not interchangeable.
+
+## Open question for the OFC maintainers: `Vh` ignores `zn_selected`
+
+`StateEstimator._update_from_ofc_data` (`state_estimator.py:93-96`) builds the v-mode basis
+from the **full** slab, applying no pupil-Zernike selection:
+
+```python
+dz_sens_matrix = ofc_data.sensitivity_matrix.reshape(-1, ofc_data.ndofs)[:, ofc_data.dof_idx]
+self.U, self.S, self.Vh = np.linalg.svd(dz_sens_matrix @ self.normalization_matrix, ...)
+```
+
+`get_sensitivity_matrix` **does** apply it (`[:, self.ofc_data.zn_idx, :]`, line 312) and
+then projects the result onto that same `Vh` (`sensitivity_matrix @ self.Vh.T`, line 316).
+So the Zernike-selected corner matrix is truncated in a basis built from the unselected
+slab. Setting `ofc_data.zn_selected` therefore leaves `Vh` bit-identical; setting it before
+`configure_controller` is additionally reverted, since that re-reads the key from the
+controller yaml (`ofc_data.py:714`).
+
+Measured, for the 21-term set (Z4–Z26 omitting Z20, Z21), comparing the current `Vh`
+against one rebuilt from the `zn_idx`-selected slab (651 rows rather than 899):
+
+| DOF set | `n_keep` | `\|cos\|` per mode (dimensionless) | `\|ΔS\|/S` (dimensionless) |
+|---|---|---|---|
+| `all_50` | 34 | min 1.04e-05 at v27; median 0.99808 | max 0.2838 at v31; median 0.00287 |
+| `standard_22` | 12 | min 0.99999392 at v11; median 1.00000000 | max 0.00127 at v12; median 2.10e-05 |
+
+Principal angles between the top-`n_keep` DOF subspaces, and the largest fraction of a
+retained mode's power (dimensionless, power not amplitude) falling outside the other
+convention's retained block:
+
+| `n_keep` | max principal angle [deg] | max power leaking outside |
+|---|---|---|
+| 6 | 0.0042 | 5.5e-09 |
+| 12 | 0.3795 | 4.4e-05 |
+| 18 | 8.5154 | 2.19e-02 |
+| 24 | 55.19 | 0.672 |
+| 34 | 89.68 | 0.626 |
+| 50 | 0.0000 | 2.3e-15 |
+
+Three qualifications keep this short of "the basis is wrong":
+
+- **It is not mode reordering.** All-slab mode `v_m` inside the top-`m` selected subspace
+  gives 0.0036 at v23, 0.374 at v29, 0.627 at v30 (fractions of power) — modes genuinely
+  rotate and re-rank rather than swapping.
+- **It is a truncation-boundary effect in near-degenerate singular values.** The affected
+  modes sit where consecutive singular values are close (v29→v30 fractional gap 0.78%,
+  v33→v34 1.75%), where individual singular vectors are ill-defined. At `n_keep=50` the
+  subspaces agree exactly (max angle 0.0000 deg), so both decompositions span the same
+  space and differ only in ordering and mixing of the weak modes.
+- **The solve does not degrade.** On the corner-evaluated matrices (84×50 and 84×22) over
+  200 unit-scale random DOF probes, median DOF recovery RMS is 8.8635e+02 (current) vs
+  9.1488e+02 (Zernike-consistent) for 50/34 — ratio 0.969 dimensionless — and 4.2908e+01 vs
+  4.7976e+01 for 22/12, ratio 0.894. Conditioning is comparable: `cond(A_v)` = 3.4846e+05
+  vs 2.9376e+05 for 50/34, identical to five figures for 22/12. Units of the RMS are mixed
+  (µm for translations and bending, arcsec for tilts), so only the ratio is meaningful.
+
+Using the full slab makes `Vh` independent of controller configuration, which may well be
+deliberate. What is not defensible is applying `zn_idx` on one side of the projection and
+not the other: at `n_keep` between 18 and 34 that makes "the retained v-modes" ambiguous at
+the level of a 89.7 deg subspace rotation. **For the 22-DOF/12-v-mode scheme the effect is
+negligible** and no result here depends on the resolution.
+
+## Sparse-fit findings (2026-09-01)
+
+The Measured Intrinsic Wavefront (MIW) shows correlations between radial orders of the
+same azimuthal family: astigmatism Z5/6 ↔ Z12/13, coma Z7/8 ↔ Z16/17, tetrafoil
+(`optatmo/output/miw_radial_correlations.pdf`). Aaron's sparse proposal: fit only the
+primary aberrations in the donut fit and fix secondary and tertiary at the batoid
+intrinsic. Real secondary/tertiary content then lands in the primary, so using it needs
+(a) a sparse sensitivity matrix and (b) a model of that leakage.
+
+**Which matrix the OFC loads.** `OFCData("lsst", config_dir=$TS_CONFIG_MTTCS_DIR/MTAOS/v13/ofc)`
+globs `lsst_sensitivity*.yaml`, which resolves to `lsst_sensitivity_dz_31_29_50.yaml`.
+That file has every radial order populated (coma2, tref2, astig3, tet2; no NaN).
+`new_measured_lsst_sensitivity_dz_31_29_50.yaml`, which zeroes those orders, does not match
+the glob and is not loaded. `analyze_sparse_fit.py` loads through `OFCData`, as in
+`notebooks/vmode/vmode_dof_ts_ofc.ipynb`. Shape `S[k, j, d]`: 31 field Noll `k` (k=1
+field-constant), 29 pupil Noll `j`, 50 DOF in `state0_in_dof.yaml` order (0–4 M2 hexapod
+dZ, dX, dY, rX, rY; 5–9 camera hexapod; 10–29 M1M3 bending 1–20; 30–49 M2 bending 1–20).
+
+**Zernike packing.** The OFC measures 21 packed Zernikes, Z4–Z26 without Z20, Z21
+(`rubinwork.aos_state.ZK_NOLL`), set by `ofc.zn_selected = zn`, after which
+`ofc.zn_idx = zn − 4`. Without that assignment `zn_idx` defaults to `[0..18]`, which is
+wrong. The raw `ofc.sensitivity_matrix` pupil axis is Noll `j` (M2 tilt → Noll 7, coma);
+`SensitivityMatrix.evaluate(...)[:, zn_idx, :]` returns pupil index Noll − 4.
+
+**Results** (`sparse_fit_study.pdf`):
+1. Nearly every DOF, bending modes and hexapod tilts especially, drives the primary and
+   secondary of a family with field correlation ≈ ±1 (dimensionless): per DOF, the
+   secondary is a fixed multiple of the primary's field pattern. Primary and secondary
+   are therefore near-degenerate per DOF, their separation in the donut fit is
+   ill-conditioned, and a small fit bias can move power between orders — one route to
+   the MIW radial-order correlations. Astigmatism first↔second-order correlation from
+   the tilts is −0.44 to −0.95 (cos term) and −0.40 to −0.87 (sin term), bracketing the
+   MIW's −0.28 (cos) and −0.62 (sin); all Pearson r, dimensionless.
+2. Primary-only observability, with v-modes recomputed on the 21-packed set
+   (observability = primary-only over full-matrix, dimensionless; the primary-only fit
+   drops Z12, 13, 16, 17, 18, 19, 22–26):
+   - 22 DOF / 12 v-modes: all 12 controlled v-modes keep median 1.00, min 0.99, with
+     both the four corner wavefront sensors (R00/R04/R40/R44 SW0) and field-complete
+     sampling. The sparse fit loses nothing.
+   - 50 DOF / 34 v-modes: median 0.97 / min 0.36 field-complete, median 0.96 / min 0.44
+     at the corner sensors. The degraded DOF are the high-order M2 bending modes b10,
+     b11, b14, b15, b19, b20 (0.37–0.63), whose signal is in the dropped orders. This is
+     the no-leakage upper bound; real leakage returns some of it.
+
+**Outstanding.** Piece 2 is the leakage matrix `L[j_prim, j_sec]`, how a fixed secondary
+in the donut image projects onto the fitted primary; it needs the Danish donut forward
+model and injected-secondary simulations. Piece 3 is `A_sparse = A_prim + L @ A_sec`
+and a rebuilt sparse MIW.
+
+**Retracted claims.**
+- "Production zeroes coma2/tref2/astig3/tet2." That was the non-loaded `new_measured`
+  file.
+- An early observability run used the default `zn_idx` and the raw pupil axis including
+  piston and tilt (Noll 1–3), which produced a spurious degradation of the top modes.
+  Fixed by the packing above.
+
+## State and open questions
+
+- The sparse-fit study found that **nearly every DOF couples primary↔secondary at field
+  correlation ≈ ±1**; findings below.
+- `svd._keep()` is used here and in `cwfs`. Its leading underscore is mislabelling
+  rather than a stability boundary — it is `ts_intrinsic_wavefront`'s own function, used
+  as public API in four call sites across two repositories. Left as-is deliberately; see
+  [`../../../aos/docs/status/code_review_backlog.md`](../../aos/docs/status/code_review_backlog.md).
+
+## Running
+
+```bash
+cd ~/notebooks/rubin-work/smatrix
+python code/vmode/plot_vmode_dof_matrix.py --scheme 22_12
+python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34
+python code/vmode/plot_vmode_dof_matrix.py --check
+python code/vmode/analyze_sparse_fit.py
+```
+
+`plot_vmode_dof_matrix.py --param-set <name>` reads the pupil-Zernike set from that
+`param_set`'s `visits.parquet`, which lives under the `aos` topic rather than this one, so
+that lookup is rooted at `--param-set-root` (default `aos/output`) while the plot still
+goes to this topic's `--output-root`. Building a `param_set` in the first place is
+`cd ~/notebooks/rubin-work/aos && ./run_snake.sh --until build_lut`.
+
+All of these need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR`; note `ts_ofc` is **not** in
+`lsst_distrib`, so they need the AOS/CWFS environment.
+
+## See also
+
+- [`../../README.md`](../README.md) — matrix construction
+- [`../../../aos/docs/studies/correlations.md`](../../aos/docs/studies/correlations.md) — the v-mode correlation consumer
+- [`../../../aos/docs/studies/cwfs.md`](../../aos/docs/studies/cwfs.md) — the corner OFC inverse uses the same SVD

@@ -154,6 +154,6 @@ separately.
 ## See also
 
 - [`../../../thermal_focus/docs/thermal_focus.md`](../../../thermal_focus/docs/thermal_focus.md) — prediction of the uniform-defocus error from thermal telemetry
-- [`../../../smatrix/docs/studies/vmode.md`](../../../smatrix/docs/studies/vmode.md) — where the v-modes come from
+- [`../../../smatrix/vmode/vmode.md`](../../../smatrix/vmode/vmode.md) — where the v-modes come from
 - [`telemetry.md`](../telemetry.md) — where the temperature columns come from
 - [`../miw_pipeline.md`](../miw_pipeline.md#phase-3--analyses-on-the-mi-refit-fits-per-param_set--mi_name)

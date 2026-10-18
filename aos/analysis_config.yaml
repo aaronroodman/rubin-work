@@ -72,7 +72,7 @@ defaults:
     # ts_ofc ships 0.0, so the penalty is inactive as delivered and a value must
     # be chosen; this one is *consumed* here.  Its derivation -- the scan over rho
     # on every bounce leg of feasibility, image quality and amplitude retention --
-    # is in smatrix/docs/studies/regularized_inversion.md.  Do not re-derive it
+    # is in smatrix/regularized_inversion/regularized_inversion.md.  Do not re-derive it
     # here.
     #
     # Read the OIC arm for feasibility and FWHM only.  At this rho the recovered

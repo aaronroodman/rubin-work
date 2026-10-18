@@ -314,7 +314,7 @@ def test_the_library_imports_nothing_from_a_topic():
 def test_the_four_smatrix_imports_no_longer_reach_into_aos_bounce():
     """The wrong-way imports the plan's section 2 lists as needing removal."""
     for name in ("run_oic_compare.py", "run_regularized_compare.py"):
-        text = (REPO_ROOT / "smatrix" / "code" / "regularized_inversion"
+        text = (REPO_ROOT / "smatrix" / "regularized_inversion" / "code"
                 / name).read_text()
         assert "import bounce_lib" not in text, f"{name} still imports bounce_lib"
         assert "import run_bounce" not in text, f"{name} still imports run_bounce"
