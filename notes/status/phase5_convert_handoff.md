@@ -23,26 +23,35 @@ Aaron, 2026-10-18 (full text in the triage, "Decisions taken"):
    `cwfs`); `aos/unpaired_intra_vs_extra` links to it.
 7. The RBR studies stay separate.
 
+Aaron, 2026-10-18, on the three items formerly under "Decisions for Aaron":
+
+8. `olr/open_loop_analysis_20251026.ipynb` becomes the parked study
+   `olr/open_loop_stability_20251026`, converted by the usual backfill recipe.
+9. Deletion approved for `smatrix/code/vmode/__init__.py` and
+   `rubinwork/common/tests_placeholder`. The session's `rm` was blocked again; see "For
+   Aaron to delete by hand".
+10. `thermal_focus/code/` becomes a shared module in the section 2 step; then
+    `trim_calculator` moves into its study.
+
+The `aos` conversion waits for the giant-donut work (`aos/giant_donut_pupil`), because
+the `aos` step moves `wfs/giant_donuts`.
+
+## For Aaron to delete by hand
+
+```bash
+cd ~/notebooks/rubin-work && git rm smatrix/code/vmode/__init__.py \
+    rubinwork/common/tests_placeholder
+```
+
 Delete no file without asking, of any kind. Leave Aaron's uncommitted notebooks alone:
 `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb` and
 `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb`.
 
 ## Decisions for Aaron
 
-Provisional choices, taken so the work continues; each is easy to reverse.
-
-1. **`olr/open_loop_analysis_20251026.ipynb` is not in the triage.** It studies M1M3
-   thermals in the 20251026 open-loop stability runs. Left in place, no `study.md`.
-   Options: a parked `olr` study, a `thermal_focus` study, or tooling. Recommendation:
-   parked study `olr/open_loop_stability_20251026`. Nothing waits on it.
-2. **Deletion candidates, not deleted:** `smatrix/code/vmode/__init__.py` (its directory
-   now holds nothing else); `rubinwork/common/tests_placeholder` (approved, but the
-   session's `rm` was blocked).
-3. **thermal_focus code stays in `thermal_focus/code/`**, shared by its three studies
-   (`thermal_vmodes` imports `thermal_focus_lib` and `thermal_focus_fit`; the analysis
-   imports `trim_calculator` to check it). Splitting it by study would create
-   cross-study imports. Recommendation: make the shared modules a library in the
-   section 2 step, then move `trim_calculator` into its study.
+None open. Why `thermal_focus/code/` is shared: `thermal_vmodes` imports
+`thermal_focus_lib` and `thermal_focus_fit`, and the analysis imports `trim_calculator`
+to check it, so splitting it by study would create cross-study imports.
 
 ## Step list
 
