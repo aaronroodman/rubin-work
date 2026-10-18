@@ -45,7 +45,7 @@ ALLOWED = (
     ("aos/notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb", "no-study-import"),
     ("aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb",
      "no-study-import"),
-    ("psf/wavefront_to_psf.ipynb", "no-foreign-output"),
+    ("psf/wavefront_to_psf/", "no-foreign-output"),
 )
 """Known violations: reported, but as known rather than new."""
 
