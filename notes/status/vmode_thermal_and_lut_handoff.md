@@ -540,7 +540,7 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
 
 - `value_added/docs/schema.md` — `optical_state` columns, the two sign conventions, the DOF
   unit section and the pointing section.
-- `olr/docs/scheme_comparison.md` — the three correction schemes on 96,278 paired visits.
+- `olr/scheme_comparison/scheme_comparison.md` — the three correction schemes on 96,278 paired visits.
 - `notes/aos-bounce-test-summary/note.md` — the bounce-test comparison target. Physical-DOF
   table under "Physical degrees of freedom"; its tilts are **arcsec**.
 - `thermal_focus/thermal_focus/thermal_focus.md` — part 1's template: the five thermal features, the

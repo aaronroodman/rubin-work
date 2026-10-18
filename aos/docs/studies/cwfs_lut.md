@@ -64,7 +64,7 @@ the resulting open-loop M2 hexapod dx median moves from +251.04 µm (batoid) to 
 The intrinsic comparison uses the first two, which hold the solver fixed; there is no RBR arm
 on the MIW route. The RBR variant is reported alongside because a LUT must command a
 physically reachable state, and the unconstrained 50/34 recovery asks a median 33x the
-available actuator stroke on every visit (`olr/docs/scheme_comparison.md`).
+available actuator stroke on every visit (`olr/scheme_comparison/scheme_comparison.md`).
 
 ## DOF units: the four hexapod tilts are deg on both sides
 
@@ -315,7 +315,7 @@ comparison page is where the two are put on a common footing.
 - [`lut`](lut.md) — the earlier FAM-averaged DOF table, with no pointing dependence.
 - `value_added/docs/schema.md` — `optical_state` columns, the two sign conventions, the DOF
   unit section and the pointing section.
-- `olr/docs/scheme_comparison.md` — the three solvers on 96,278 paired visits, and why the
+- `olr/scheme_comparison/scheme_comparison.md` — the three solvers on 96,278 paired visits, and why the
   unconstrained 50/34 state is not realizable.
 - `notes/status/vmode_thermal_and_lut_handoff.md` — working state for this study and the
   all-v-mode thermal study it was specified with.

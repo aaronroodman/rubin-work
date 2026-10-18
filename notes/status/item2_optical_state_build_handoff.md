@@ -4,7 +4,7 @@
 
 **The work this handoff was written for is done.** All three variants are built over the full
 span; the results are in
-[`olr/docs/scheme_comparison.md`](../../olr/docs/scheme_comparison.md) and the build log in
+[`olr/scheme_comparison/scheme_comparison.md`](../../olr/scheme_comparison/scheme_comparison.md) and the build log in
 [`value_added/docs/status/build_progress.md`](../../value_added/docs/status/build_progress.md),
 and the item is now
 [completed item 7](../todos/completed-todos.md#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes).
@@ -36,7 +36,7 @@ and they need Aaron to submit them.
 | `ce6b5b6` | the builder: `50_34_rbr` with its guard, the `_olr` and `fwhm_cwfs_arcsec` columns, `--telemetry-db` |
 | `a0096de` | archived the superseded `olr/code/olr.py`, left a guard module in its place |
 | `eef744a` | same-file `--telemetry-db` fix; `schema.md` and `build_progress.md` |
-| `c426a8f` | `olr/docs/scheme_comparison.md`; fixed the sign in `olr/README.md` |
+| `c426a8f` | `olr/scheme_comparison/scheme_comparison.md`; fixed the sign in `olr/README.md` |
 
 ## In progress
 
@@ -49,7 +49,7 @@ Two things sit in the data area, outside git:
   90,695 pre-item-2 rows, count-verified, 95 MB. **Delete when this work closes.**
 - `value_added/output/scratch/item2_cost_{22_12,50_34,50_34_rbr}.duckdb` and
   `item2_5034.duckdb` — the costing databases behind every number in
-  `olr/docs/scheme_comparison.md`. Disposable once the full-span build lands.
+  `olr/scheme_comparison/scheme_comparison.md`. Disposable once the full-span build lands.
 
 `v50_34_rbr__batoid__consdb_v1` is registered in the **main** database and holds one real
 night (20260318, 916 rows) from the costing run. The full-span rerun will overwrite it.
@@ -59,7 +59,7 @@ night (20260318, 916 rows) from the costing run. The full-span rerun will overwr
 **Hand Aaron the three batch submissions** (commands are in the session summary; regenerate
 with `--dry-run` if lost). Before the `50_34` one, get his go-ahead to delete the 90,695
 archived rows. Then merge the shards, refresh `build_progress.md` with realized counts, and
-redo `olr/docs/scheme_comparison.md` on the full sample — it is one night today.
+redo `olr/scheme_comparison/scheme_comparison.md` on the full sample — it is one night today.
 
 Order matters only for `50_34`: the other two variants are empty, so they can go first or in
 parallel.
@@ -232,7 +232,7 @@ instead, so the import succeeds and the error arrives at the call site where it 
 ## Results so far, one night
 
 `day_obs` 20260318, 915 of 916 visits recovered in all three schemes. Full tables in
-[`olr/docs/scheme_comparison.md`](../../olr/docs/scheme_comparison.md).
+[`olr/scheme_comparison/scheme_comparison.md`](../../olr/scheme_comparison/scheme_comparison.md).
 
 | scheme | CWFS-median FWHM [arcsec] | median max `\|d_j\|/r_j` (dimensionless) | s/night (916 exp) |
 | --- | --- | --- | --- |

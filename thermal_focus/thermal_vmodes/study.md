@@ -5,7 +5,7 @@ status: done
 question: "Which v-modes other than v1 carry a component predictable from telescope thermal telemetry?"
 answer: "None: only v1 passes the false-discovery-rate cut at q = 0.05 (1 of 34 modes) over 72,835 science visits and 175 nights, with skill +0.808 against +0.243 for the next mode, v10 (dimensionless, fractional reduction in out-of-fold residual nMAD)."
 uses: {}  # reads the value-added DuckDB optical_state, variant v50_34_rbr__batoid__consdb_v1
-started: 2026-09-30
+started: 2026-10-06
 ---
 
 # `thermal_vmodes`: thermal response of all 34 v-modes

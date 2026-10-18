@@ -4,7 +4,7 @@
 > The open-loop state for every science and acquisition visit is now built into the
 > value-added database by `value_added/code/build_optical_state.py`, with the calculation in
 > `aos/code/open_loop.py`. This topic is being repurposed for **analysis of that stored
-> OLR** — see [`docs/scheme_comparison.md`](docs/scheme_comparison.md). `code/olr.py` is now
+> OLR** — see [`scheme_comparison/scheme_comparison.md`](scheme_comparison/scheme_comparison.md). `olr_pipeline/code/olr.py` is now
 > a guard that raises with the replacement named; the original is archived at
 > `scratch/archive/item2/olr_superseded.py`.
 
@@ -36,6 +36,11 @@ into the replacement as a basis and corner-ordering check only.
 | `combine` | `output/olr_combined.parquet` | all nights concatenated |
 
 ## Running on the Summit RSP
+
+> **Do not run this pipeline.** `olr_pipeline/code/olr.py` is a guard that raises, so the
+> `olr` rule fails by design; the stages below are kept as a record. The pipeline files
+> (`Snakefile`, `run_snake.sh`, `config.yaml`, `code/`) are now in `olr_pipeline/`, a
+> dropped study.
 
 The `nightly_table` stage must run on the **Summit RSP** (USDF software is
 behind, and the embargo Butler / EFD / ConsDB are summit-side). There is no
@@ -157,5 +162,5 @@ of scope here; this pipeline emits the open-loop reproduction only.
 
 | doc | what it holds |
 |---|---|
-| [`docs/zernike_opd_vs_consdb.md`](docs/zernike_opd_vs_consdb.md) | ConsDB vs Butler Zernikes: the OPD identity and a ~0.1° rotation offset |
+| [`zernike_opd_vs_consdb/zernike_opd_vs_consdb.md`](zernike_opd_vs_consdb/zernike_opd_vs_consdb.md) | ConsDB vs Butler Zernikes: the OPD identity and a ~0.1° rotation offset |
 | [`../smatrix/docs/vmode_normalization.md`](../smatrix/docs/vmode_normalization.md) | v-mode normalization, default vs `geom_mean`, and why v1 differs — the weights the `vmodes` column here depends on |

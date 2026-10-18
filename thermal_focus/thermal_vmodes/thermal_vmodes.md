@@ -81,7 +81,7 @@ Huber linear fit; see [`thermal_focus.md`](../thermal_focus/thermal_focus.md).
 
 The primary result uses the range-bounded recovery because the unconstrained 50/34 solution
 asks a median 33x the available actuator stroke on every visit, so its high-mode amplitudes
-are partly fitting an unreachable state (`olr/docs/scheme_comparison.md`).
+are partly fitting an unreachable state (`olr/scheme_comparison/scheme_comparison.md`).
 
 The intrinsic check holds the solver fixed and varies only the intrinsic — there is no
 range-bounded arm on the measured intrinsic wavefront (MIW) route. **The expectation is that
@@ -383,7 +383,7 @@ response does. V-mode 1 shows the first, v-modes 10 and 18 the second.
 
 - [`thermal_focus.md`](../thermal_focus/thermal_focus.md) — the v-mode-1 deliverable: the five features, the
   Huber pipeline, the night-grouped evaluation and the physical conversion.
-- `olr/docs/scheme_comparison.md` — the three solvers on 96,278 paired visits.
+- `olr/scheme_comparison/scheme_comparison.md` — the three solvers on 96,278 paired visits.
 - `value_added/docs/schema.md` — `optical_state` columns and the two sign conventions.
 - `aos/docs/studies/cwfs_lut.md` — the pointing-dependence study specified alongside this one.
 - `notes/status/vmode_thermal_and_lut_handoff.md` — working state for both studies.

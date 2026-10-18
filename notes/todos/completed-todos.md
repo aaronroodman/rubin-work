@@ -834,7 +834,7 @@ Delivered:
   cross-scheme comparison is paired.
 - `aos/code/open_loop.py` and the RBR corner-basis shim (`9d8e39d`), then the open-loop and
   RBR arms inside `value_added/code/build_optical_state.py` (`ce6b5b6`).
-- The write-up, [`olr/docs/scheme_comparison.md`](../../olr/docs/scheme_comparison.md), and
+- The write-up, [`olr/scheme_comparison/scheme_comparison.md`](../../olr/scheme_comparison/scheme_comparison.md), and
   the build log in
   [`value_added/docs/status/build_progress.md`](../../value_added/docs/status/build_progress.md).
 - `value_added/code/test_build_optical_state.py`, 4 tests, covering nights with no corner

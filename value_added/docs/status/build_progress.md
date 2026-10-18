@@ -132,7 +132,7 @@ Two things about it that still hold, and one that broke and was fixed:
 
 Three batoid variants built over the full span, 16 shards each at 24 nights per shard, 48
 jobs. All three come from identical code against identical inputs. The results are in
-[`../../../olr/docs/scheme_comparison.md`](../../../olr/docs/scheme_comparison.md); measured
+[`../../../olr/scheme_comparison/scheme_comparison.md`](../../../olr/scheme_comparison/scheme_comparison.md); measured
 wall clock on `day_obs` 20260318 (916 exposures, near the busiest night; the mean is 584)
 was 39.8 / 39.1 / 59.0 s per night for `22_12` / `50_34` / `50_34_rbr`.
 

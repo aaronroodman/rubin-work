@@ -135,7 +135,7 @@ class AosDofAudit:
         # makeEfdClient() was broken on an older stack; make_efd_client falls back to
         # EfdClient itself, so go through the shared helper.
         import pathlib, sys
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
         from common.telemetry_clients import make_efd_client
         self.efd = make_efd_client(efd_name)
 
@@ -244,7 +244,7 @@ def add_consdb(df, url="auto", instrument="lsstcam"):
     try:
         import pathlib
         import sys
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
         from common.telemetry_clients import make_consdb_client
         cdb = make_consdb_client(url)      # sets no_proxy and resolves the endpoint
     except Exception as e:

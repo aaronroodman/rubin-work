@@ -53,7 +53,7 @@ from common.utils import nmad                                    # noqa: E402
 #: Variant carrying the primary result: range-bounded recovery (RBR), which is physically
 #: realizable on 99.5% of visits. The unconstrained ``v50_34__batoid__consdb_v1`` asks a median
 #: 33x the available actuator stroke on every visit, so its high-mode amplitudes are partly
-#: fitting an unreachable state. See ``olr/docs/scheme_comparison.md``.
+#: fitting an unreachable state. See ``olr/scheme_comparison/scheme_comparison.md``.
 PRIMARY_VARIANT = 'v50_34_rbr__batoid__consdb_v1'
 
 #: The two variants compared to separate an intrinsic-route effect from a thermal one. Both are
