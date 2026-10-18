@@ -20,14 +20,14 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/moment_weighting_analysis.md`](docs/moment_weighting_analysis.md) | weighted vs unweighted moments in the guider ellipticity decomposition — the analytic justification behind `guiderMoments.py` |
-| [`docs/deploy_summit_merge_note.md`](docs/deploy_summit_merge_note.md) | why the summit's guider star detection is more robust than the weeklies: `deploy-summit` carries guider commits never merged to `main` |
-| [`docs/centroid_motion_timescale.md`](docs/centroid_motion_timescale.md) | guide-star centroid motion is scale-free; the fixed 1.6 s slow/fast split and the schema v6 `cen_var_*` columns |
-| [`docs/guider_vs_ccd_moments.md`](docs/guider_vs_ccd_moments.md) | guider vs adjacent science-CCD second moments: matched Hirata–Seljak–Mandelbaum (HSM) estimator, data sources, frames (T is 1:1; Q1, Q2 need a rotation to the Optical Coordinate System, OCS) |
+| [`guider_ellipticity_ensemble/moment_weighting_analysis.md`](guider_ellipticity_ensemble/moment_weighting_analysis.md) | weighted vs unweighted moments in the guider ellipticity decomposition — the analytic justification behind `guiderMoments.py` |
+| [`summit_utils_branch/deploy_summit_merge_note.md`](summit_utils_branch/deploy_summit_merge_note.md) | why the summit's guider star detection is more robust than the weeklies: `deploy-summit` carries guider commits never merged to `main` |
+| [`centroid_timescale/centroid_motion_timescale.md`](centroid_timescale/centroid_motion_timescale.md) | guide-star centroid motion is scale-free; the fixed 1.6 s slow/fast split and the schema v6 `cen_var_*` columns |
+| [`guider_vs_ccd_moments/guider_vs_ccd_moments.md`](guider_vs_ccd_moments/guider_vs_ccd_moments.md) | guider vs adjacent science-CCD second moments: matched Hirata–Seljak–Mandelbaum (HSM) estimator, data sources, frames (T is 1:1; Q1, Q2 need a rotation to the Optical Coordinate System, OCS) |
 | [`docs/mosaic_layout.md`](docs/mosaic_layout.md) | geometry of the `summit_utils` guider mosaics and movies: corner pairing, star vs full-frame parameters, circular pixel mask |
 | [`docs/pipeline_runbook.md`](docs/pipeline_runbook.md) | commands for the Snakemake pipeline (whole night, single visit), per-visit plot and movie scripts, saturation study, config values |
-| [`docs/status/summit_utils_branch_state.md`](docs/status/summit_utils_branch_state.md) | git-verified state of `summit_utils` `u/aaronroodman/guider-fixes` against `main` and `deploy-summit` |
-| [`docs/status/bias_streak_plan.md`](docs/status/bias_streak_plan.md) | planned blank-2-stamp column bias and streak correction keyed on the ROI (region of interest) start row `ROIROW`, with what is and is not validated |
+| [`summit_utils_branch/summit_utils_branch_state.md`](summit_utils_branch/summit_utils_branch_state.md) | git-verified state of `summit_utils` `u/aaronroodman/guider-fixes` against `main` and `deploy-summit` |
+| [`bias_streak/bias_streak_plan.md`](bias_streak/bias_streak_plan.md) | planned blank-2-stamp column bias and streak correction keyed on the ROI (region of interest) start row `ROIROW`, with what is and is not validated |
 | [`docs/status/handoff_guider_session_2026-09.md`](docs/status/handoff_guider_session_2026-09.md) | consolidated state of the guider + `summit_utils` work: branch state, bias/streak plan, centroid timescale, mosaic geometry, open follow-ups |
 
 See also `CLAUDE.md` in this directory for the traps (frames, cross-topic imports,

@@ -51,7 +51,7 @@ the full-frame and star movies.
 ## Saturation study
 
 ```bash
-python code/run_guider_saturation.py --day-obs 20260706
+python guide_star_saturation/code/run_guider_saturation.py --day-obs 20260706
 ```
 
 Writes `output/guider_saturation_<dayObs>.parquet`, one row per (`expId`, detector),

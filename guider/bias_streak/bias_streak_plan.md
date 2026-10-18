@@ -26,7 +26,7 @@ trails and then subtracts a dark dip through them. It still leaves two residuals
 - Bias per column = median down each column of stamps 0 and 1 concatenated along rows.
   The structure is columnar, so this is a column median, not a pixel-by-pixel average of
   the 2 stamps.
-- `guider/code/run_guider_saturation.py` already uses this bias (`--nblank 2`).
+- `guider/guide_star_saturation/code/run_guider_saturation.py` already uses this bias (`--nblank 2`).
 
 ## Planned streak model
 

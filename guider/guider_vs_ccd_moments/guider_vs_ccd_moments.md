@@ -4,17 +4,17 @@
 
 Definition of the comparison between guide-star second moments and the point spread
 function (PSF) second moments on the adjacent science CCD, in
-`guider/guider_moments_ensemble.ipynb` ("Guider vs adjacent-CCD 2nd moments (Q1, Q2, T)
+`guider/guider_ellipticity_ensemble/notebooks/guider_moments_ensemble.ipynb` ("Guider vs adjacent-CCD 2nd moments (Q1, Q2, T)
 -- matched HSM"). The trace `T` is a 1:1 comparison; `Q1` and `Q2` are not, because
 neither side is rotated to the Optical Coordinate System (OCS).
 
 ## Estimator
 
 Both sides use the same estimator: the galsim Hirata–Seljak–Mandelbaum (HSM) adaptive
-moments in `optatmo/code/moments_hsm.py` (`measure_hsm_moments`), with PIFF naming
+moments in `rubinwork.hsm_moments` (`measure_hsm_moments`), with PIFF naming
 e0 = `T`, e1 = `Q1`, e2 = `Q2`. Units: arcsec² at 0.2 arcsec/pixel. Using the same
 estimator on both sides removes any weighted-vs-unweighted difference; a change to
-`moments_hsm.py` changes both sides.
+`rubinwork/hsm_moments.py` changes both sides.
 
 ## Inputs
 

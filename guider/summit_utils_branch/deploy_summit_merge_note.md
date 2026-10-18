@@ -16,7 +16,8 @@ silently loses good guide stars that RubinTV finds. Request: merge the
   `main` (`0959ea2`, 2026-06-10) **+ 9 commits**.
 - `main` HEAD is `0959ea2`, and weekly tags `w.2026.27/28/29` all point to that
   same commit — so **no weekly contains these fixes**.
-- The 9 deploy-summit commits are almost entirely guider robustness work:
+- The 9 deploy-summit commits are almost entirely guider robustness work; 8 of them touch
+  `guiders/` (the count used in `summit_utils_branch_state.md`):
   - `6aaffe7` / `279f707` — `isBlankImage` uses a MAD-based peak-SNR test
     (`peakSnr > 5` OR `peakFlux > 300`) instead of an absolute 300-ADU cut.
   - `ead1d37` — single-stamp fallback when coadd detection fails.

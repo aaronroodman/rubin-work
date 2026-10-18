@@ -38,6 +38,6 @@ fixed choice, not a measured break.
   per-stamp centroid errors `xerr`, `yerr`) and `cen_smooth_sec` (s), computed from the
   (`dalt`, `daz`) series by `centroidVarianceSplit`. Nights processed before v6 have
   these columns empty until the moments are rerun.
-- `guider/guider_moments_ensemble.ipynb`, section "Centroid motion: slow wander vs fast
+- `guider/guider_ellipticity_ensemble/notebooks/guider_moments_ensemble.ipynb`, section "Centroid motion: slow wander vs fast
   jitter (1.6 s split)": distributions, slow fraction, dependence on seeing, and
   same-corner vs cross-corner correlations (via `_corner_pairs`).

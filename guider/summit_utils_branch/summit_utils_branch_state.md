@@ -41,7 +41,7 @@ commits by Johnny Esteves (2–4 Mar 2026) in `reading.py`, `detection.py`, `tra
 The other 7 commits on `deploy-summit` not on `guider-fixes` are not guider code
 (Consolidated Database (ConsDB) client methods `c04ec66`, patch-equivalent to `ac8fc39`
 on `guider-fixes`, and six non-guider commits: package-version data model, typing and
-tests). `docs/deploy_summit_merge_note.md` quotes the `guider-fixes`
+tests). `guider/summit_utils_branch/deploy_summit_merge_note.md` quotes the `guider-fixes`
 hashes, which were the `deploy-summit` hashes before the rebase.
 
 Correction to the 2026-09 notes: `0a211d2` (STDEVCLIP with sigma68 fallback for source
@@ -64,11 +64,11 @@ All committed and pushed:
   `MosaicLayout`, labels outside the circles, circular pixel mask, independent star and
   full-frame geometry (`docs/mosaic_layout.md`).
 - `16a9a54`, `9f44cd9` `plotting.py`: `stripPlot` Gaussian slow-curve overlay,
-  `smoothFwhmSec = 1.6` s (`docs/centroid_motion_timescale.md`).
+  `smoothFwhmSec = 1.6` s (`guider/centroid_timescale/centroid_motion_timescale.md`).
 
 ## Not done
 
 - `processStamps` still uses the 10th-percentile column bias; the blank-2-stamp bias and
-  streak correction are not folded in (`docs/status/bias_streak_plan.md`).
+  streak correction are not folded in (`guider/bias_streak/bias_streak_plan.md`).
 - A pull request `guider-fixes` → `main` had not been opened as of 2026-09. One would bring `main` up to
   the summit's guider code plus these changes.

@@ -7,10 +7,10 @@ Where the facts live (grep the doc the task needs rather than reading it whole):
 
 | doc | holds |
 |---|---|
-| `docs/status/summit_utils_branch_state.md` | `summit_utils` `guider-fixes` vs `main` vs `deploy-summit`, git-verified |
-| `docs/status/bias_streak_plan.md` | blank-2-stamp bias + ROIROW streak plan, what is validated |
-| `docs/centroid_motion_timescale.md` | scale-free centroid motion, the 1.6 s split, schema v6 |
-| `docs/guider_vs_ccd_moments.md` | matched-HSM guider vs adjacent-CCD moments, frames |
+| `summit_utils_branch/summit_utils_branch_state.md` | `summit_utils` `guider-fixes` vs `main` vs `deploy-summit`, git-verified |
+| `bias_streak/bias_streak_plan.md` | blank-2-stamp bias + ROIROW streak plan, what is validated |
+| `centroid_timescale/centroid_motion_timescale.md` | scale-free centroid motion, the 1.6 s split, schema v6 |
+| `guider_vs_ccd_moments/guider_vs_ccd_moments.md` | matched-HSM guider vs adjacent-CCD moments, frames |
 | `docs/mosaic_layout.md` | `MosaicLayout` geometry numbers |
 | `docs/pipeline_runbook.md` | full command forms |
 | `docs/status/handoff_guider_session_2026-09.md` | 2026-09 snapshot of all of the above + open follow-ups |
@@ -43,7 +43,7 @@ Facts that matter before touching it:
 ROIROW streak rework is **deliberately not folded in** — Aaron's call was "too soon to
 modify processStamps", pending multi-night validation and a read-noise evaluation. Do not
 implement it into `processStamps` without asking. Plan and validation status:
-`docs/status/bias_streak_plan.md`.
+`bias_streak/bias_streak_plan.md`.
 
 ## The HSM estimator is now a library, not a cross-topic reach
 
