@@ -144,7 +144,7 @@ the directions are Snell-refracted first: the 14–24° air incidence angles bec
 - The origin of the observed intra/extra difference in fitted donut blur, which is
   seen consistently in both CWFS and FAM data and is not reproduced here by scalar
   diffraction or by errors in the reference TA. A symmetry constraint and a static
-  phase-strip hypothesis are in [intra_extra_phase_strip.md](intra_extra_phase_strip.md).
+  phase-strip hypothesis are in [intra_extra_phase_strip.md](../docs/studies/intra_extra_phase_strip.md).
 - Broadband (r-band) images, to see which fringes survive bandwidth averaging.
 - The bias that a geometric forward model (as in Danish or ts_wep) produces in fitted
   Zernikes when applied to diffraction-limited donuts.

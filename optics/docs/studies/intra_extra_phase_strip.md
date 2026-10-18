@@ -1,6 +1,6 @@
 # Static phase strips and the intra/extra difference in donut blur
 
-> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** reference (investigation writeup; hypothesis, not yet simulated or tested on data)
+> **Status:** current · **Last updated:** 2026-10-18 · **Kind:** reference (investigation writeup; the turned-down-edge case was simulated on 2026-10-09, not yet tested on data)
 
 The Danish donut model fits a smearing kernel (the Danish `fwhm`) to each defocused star
 image (donut). In Rubin data the fitted kernel is consistently larger for intra-focal
@@ -114,8 +114,13 @@ other.
   expected.
 
 **Sign.** By the geometric argument, extra-focal vanes being sharper requires a
-converging strip: higher refractive index at the vane, so colder air. This sign is still
-to be confirmed by simulation.
+converging strip: higher refractive index at the vane, so colder air.
+
+The edge version of this sign was simulated on 2026-10-09
+(`optics/notebooks/optics_fresnel_hexapods_4mm_tde_v1.ipynb`): a turned-down M1 inner
+edge 50 nm deep over 5 cm gives +0.82″ of extra blur intra-focal and −0.34″ extra-focal
+(quadrature difference from the design, inner-edge width), the observed sign, and
+stronger than the about 0.41″ observed.
 
 **Edges.** The Danish kernel is set mainly by the donut edges, which are the outer and
 inner edges of M1 (r = 4.18 m and 2.558 m). The same mechanism at these edges would

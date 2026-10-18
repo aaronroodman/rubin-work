@@ -46,6 +46,9 @@ ALLOWED = (
     ("aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb",
      "no-study-import"),
     ("psf/wavefront_to_psf/", "no-foreign-output"),
+    # Phase 5 conversion: optics/code/fresnel/ is shared by optics/fresnel_donuts and the
+    # intra/extra notebooks; it becomes a library in the section 2 step.
+    ("optics/fresnel_donuts/notebooks/", "no-study-import"),
 )
 """Known violations: reported, but as known rather than new."""
 
