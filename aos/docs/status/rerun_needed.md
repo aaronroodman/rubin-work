@@ -139,7 +139,7 @@ half is **open**. Read this before touching anything that reports a v-mode ampli
 
 The deliverable is a thermal estimate of v-mode 1 for use at Rubin, to set the camera- and
 M2-hexapod dz Trim to an optimal start-of-night value, and it now lives in the
-[`thermal_focus`](../../../thermal_focus/docs/thermal_focus.md) topic. A sign error
+[`thermal_focus`](../../../thermal_focus/thermal_focus/thermal_focus.md) topic. A sign error
 there drives focus the wrong way, so the open problem below must be asserted against before
 any number is delivered. Note the convention: **DZ** is the Double Zernike basis, **dz** is
 hexapod delta-z travel.
@@ -271,7 +271,7 @@ Aaron's intent is that **every** visit of `img_type` science, `acq` or cwfs carr
 so the backfill covers all three.
 
 The current Full Array Mode focus-drift sample in
-[`thermal_focus`](../../../thermal_focus/docs/thermal_focus.md) is unaffected — it
+[`thermal_focus`](../../../thermal_focus/thermal_focus/thermal_focus.md) is unaffected — it
 starts at `day_obs` 20251104, inside the covered range, and all five thermal model features are
 finite on all 984 visits. Filling the gap extends the FAM DZ sample from 62 complete sets
 toward the full 2025 range.
@@ -285,7 +285,7 @@ and the Engineering Facility Database (EFD), so RSP or USDF only. The nights are
 
 ## Carried over from earlier sessions
 
-- **`../../../thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb`**
+- **`../../../thermal_focus/thermal_focus/notebooks/corner_z4_vs_temperature_science.ipynb`**
   has three uncommitted cells that are Aaron's own work, deliberately left for him to decide
   on.
 - **Two untracked scratch notebooks**: `notebooks/correlations/querying_efd_consdb.ipynb` and

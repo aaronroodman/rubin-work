@@ -4,7 +4,7 @@
 
 Covers the session of 2026-10-08. Everything described here is committed and pushed; the
 working tree was clean at `9914a06`. For the study itself read
-[`../thermal_focus.md`](../thermal_focus.md) — this file records only decisions and state.
+[`../thermal_focus.md`](thermal_focus.md) — this file records only decisions and state.
 
 ## Done and committed
 
@@ -56,7 +56,7 @@ Nothing is blocked. Two optional items, in priority order:
    night with an unusual thermal history. **Adding either changes `DELIVERABLE_GROUPS` and the
    online calculator's channel count, so it is Aaron's call, not a fit-quality question.**
 2. **Rebuild the `vt_day_obs` index** when the database is free. Command in
-   [`../../../value_added/docs/status/build_progress.md`](../../../value_added/docs/status/build_progress.md).
+   [`../../../value_added/docs/status/build_progress.md`](../../value_added/docs/status/build_progress.md).
    Low priority — see below.
 
 ## Tried and rejected, and why

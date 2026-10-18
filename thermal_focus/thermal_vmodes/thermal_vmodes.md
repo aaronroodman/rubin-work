@@ -9,7 +9,7 @@
 > **Output:** `output/thermal_vmodes/`
 > **Notebooks:** `notebooks/`
 
-Extends the [thermal-focus](thermal_focus.md) deliverable from v-mode 1 to every v-mode the
+Extends the [thermal-focus](../thermal_focus/thermal_focus.md) deliverable from v-mode 1 to every v-mode the
 50-degree-of-freedom (DOF) recovery retains, asking **which other v-modes carry a component
 predictable from telescope thermal telemetry**.
 
@@ -70,7 +70,7 @@ Only 2.7% of the Telescope Mount Assembly truss temperature's variance is within
 feature space and a visit-level split leaks. Every fit here uses
 `thermal_focus_fit.evaluate`, which is `GroupKFold` on `day_obs`. The measured optimism of a
 visit-level split is a factor of 3.1 (dimensionless) for boosted trees and about 1.04 for the
-Huber linear fit; see [`thermal_focus.md`](thermal_focus.md).
+Huber linear fit; see [`thermal_focus.md`](../thermal_focus/thermal_focus.md).
 
 ## Variants
 
@@ -381,7 +381,7 @@ response does. V-mode 1 shows the first, v-modes 10 and 18 the second.
 
 ## Reference
 
-- [`thermal_focus.md`](thermal_focus.md) — the v-mode-1 deliverable: the five features, the
+- [`thermal_focus.md`](../thermal_focus/thermal_focus.md) — the v-mode-1 deliverable: the five features, the
   Huber pipeline, the night-grouped evaluation and the physical conversion.
 - `olr/docs/scheme_comparison.md` — the three solvers on 96,278 paired visits.
 - `value_added/docs/schema.md` — `optical_state` columns and the two sign conventions.

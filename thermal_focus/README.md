@@ -23,21 +23,21 @@ most of it, at +125.09 µm of equivalent hexapod dz per °C.
 
 Two limits on where that correction applies are part of the result. It is fitted and scored
 **between whole nights**, holding nights out, because within a night the thermal telemetry barely
-moves and a visit-level split lets a model recall the night instead of predicting it. And it does
-**not** work inside a single Full Array Mode (FAM) observing block. The focus error being modelled
-is the difference between what the AOS has commanded and what the wavefront sensors measure, and
-between nights the commanded part dominates it; inside a block the AOS does not re-command, so the
-part the model predicts is frozen and only the measured part is left, with the opposite sign.
-Applying the correction there makes within-block scatter worse rather than better.
+moves and a visit-level split lets a model recall the night instead of predicting it. Inside a single Full
+Array Mode (FAM) observing block the AOS does not re-command, so the Trim is frozen there; the
+within-block comparison that once argued the correction fails inside a block measured that frozen
+Trim rather than a focus prediction, and was dropped from the study (2026-10-08). Applied to the
+FAM in-focus acquisition visits as an independent sample, the same coefficients cut the scatter
+by 3.39 times (dimensionless; see `thermal_focus/thermal_focus.md`).
 
 ## Studies
 
-- [`thermal_focus`](docs/thermal_focus.md) — the response definition, the fitted thermal
-  model and its night-grouped evaluation, the elevation null result, the FAM within-block drift,
+- [`thermal_focus`](thermal_focus/thermal_focus.md) — the response definition, the fitted thermal
+  model and its night-grouped evaluation, the FAM blocks as an independent sample,
   the Double Zernike (DZ) cross-check, the v-mode-1 conversion across projection schemes, the
   correction expressed as degrees of freedom (DOF), and the comparison against the Trim the
   observatory's initial alignment block settles on at the start of each night.
-- [`thermal_vmodes`](docs/thermal_vmodes.md) — the same question asked of all 34 v-modes
+- [`thermal_vmodes`](thermal_vmodes/thermal_vmodes.md) — the same question asked of all 34 v-modes
   rather than v-mode 1 alone: per-mode skill against an intercept-only null, a
   false-discovery-rate cut over the 34 simultaneous tests, where the four-corner measurement
   noise floor sits, and whether the two intrinsic routes agree on which modes are thermal.

@@ -11,7 +11,7 @@ Two studies off the stored open-loop reconstruction (OLR) columns of `optical_st
    test, on **both** the batoid and Measured Intrinsic Wavefront (MIW) intrinsic routes.
 
 Both have run over the full sample and their results are written up in their own study docs —
-`thermal_focus/docs/thermal_vmodes.md` and `aos/docs/studies/cwfs_lut.md`. This file holds the
+`thermal_focus/thermal_vmodes/thermal_vmodes.md` and `aos/docs/studies/cwfs_lut.md`. This file holds the
 decisions, the database work underneath them, and what was ruled out. One piece of the original
 specification is outstanding: the overlay against the measured bounce-test slopes.
 
@@ -162,7 +162,7 @@ mimic it.
 
 | study | code | doc | tests |
 |---|---|---|---|
-| `thermal_vmodes` | `thermal_focus/code/thermal_vmodes.py` | `thermal_focus/docs/thermal_vmodes.md` | 8 |
+| `thermal_vmodes` | `thermal_focus/code/thermal_vmodes.py` | `thermal_focus/thermal_vmodes/thermal_vmodes.md` | 8 |
 | `cwfs_lut` | `aos/code/cwfs_lut/cwfs_lut_lib.py` | `aos/docs/studies/cwfs_lut.md` | 18 |
 
 29 tests pass across both topics, including Aaron's 3 pre-existing `test_trim_calculator.py`.
@@ -543,5 +543,5 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
 - `olr/docs/scheme_comparison.md` — the three correction schemes on 96,278 paired visits.
 - `notes/aos-bounce-test-summary/note.md` — the bounce-test comparison target. Physical-DOF
   table under "Physical degrees of freedom"; its tilts are **arcsec**.
-- `thermal_focus/docs/thermal_focus.md` — part 1's template: the five thermal features, the
+- `thermal_focus/thermal_focus/thermal_focus.md` — part 1's template: the five thermal features, the
   Huber pipeline, the night-grouped evaluation and the v-mode-1 conversion.

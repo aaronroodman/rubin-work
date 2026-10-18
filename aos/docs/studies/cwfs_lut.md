@@ -45,7 +45,7 @@ rotator −79.43 to +78.52 deg — so pairing would discard most of the availabl
 more than the bounce test's paired ±3 deg legs provide. The cost: an absolute elevation trend
 **confounds gravity-driven flexure with thermal drift** that tracks elevation through the
 observing pattern. That is a caveat on every elevation number here, not something the fit
-removes. The [`thermal_focus`](../../../thermal_focus/docs/thermal_focus.md) topic models the
+removes. The [`thermal_focus`](../../../thermal_focus/thermal_focus/thermal_focus.md) topic models the
 thermal part of v-mode 1 directly and is the route to separating them.
 
 **Both intrinsic routes, neither as the reference.** The Deviation is `OPD − intrinsic`, so

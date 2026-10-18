@@ -33,7 +33,7 @@ It streams the donut table by row group.
 
 The focal-plane-uniform defocus DZ(k=1, j=4) against Telescope Mount Assembly (TMA) truss
 temperature is **not** part of this study: it lives in the top-level `thermal_focus/` topic
-(`../../../thermal_focus/docs/thermal_focus.md`), which reads the value-added database rather
+(`../../../thermal_focus/thermal_focus/thermal_focus.md`), which reads the value-added database rather
 than `aos/` output. The LUT ↔ Trim anti-correlation it established — a Huber slope of
 −1.089 ± 0.014 (dimensionless, v1 from the hexapod look-up table per unit v1 from the Trim)
 on the camera-hexapod dz axis — is recorded there. See
@@ -153,7 +153,7 @@ separately.
 
 ## See also
 
-- [`../../../thermal_focus/docs/thermal_focus.md`](../../../thermal_focus/docs/thermal_focus.md) — prediction of the uniform-defocus error from thermal telemetry
+- [`../../../thermal_focus/thermal_focus/thermal_focus.md`](../../../thermal_focus/thermal_focus/thermal_focus.md) — prediction of the uniform-defocus error from thermal telemetry
 - [`../../../smatrix/vmode/vmode.md`](../../../smatrix/vmode/vmode.md) — where the v-modes come from
 - [`telemetry.md`](../telemetry.md) — where the temperature columns come from
 - [`../miw_pipeline.md`](../miw_pipeline.md#phase-3--analyses-on-the-mi-refit-fits-per-param_set--mi_name)

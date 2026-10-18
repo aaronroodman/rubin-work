@@ -1123,8 +1123,8 @@ the EFD, so it runs on the Rubin Science Platform or USDF.
 
 | study | measurement | timescale | sample |
 |---|---|---|---|
-| [`lut`](../../../aos/docs/studies/lut.md) | FAM DZ fits over 189 detectors, collapsed to one static DOF vector | static | dedicated FAM visits |
-| [`correlations`](../../../aos/docs/studies/correlations.md) | DZ and v-mode correlations against telemetry on the MI-refit residual | per visit | FAM visits |
+| [`lut`](../../aos/docs/studies/lut.md) | FAM DZ fits over 189 detectors, collapsed to one static DOF vector | static | dedicated FAM visits |
+| [`correlations`](../../aos/docs/studies/correlations.md) | DZ and v-mode correlations against telemetry on the MI-refit residual | per visit | FAM visits |
 | `thermal_focus` | the temperature-dependent focus surface from the CWFS optical state | night to night | all science visits, and FAM `acq` visits |
 
 The `lut` study produces one static vector; this study produces a dependence on temperature. They

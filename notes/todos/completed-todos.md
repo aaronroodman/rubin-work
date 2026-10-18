@@ -370,7 +370,7 @@ So this was not a FAM ingest job — the work was to carry the **MIW refit** for
 
 Delivered as the top-level topic
 [thermal_focus/](../../thermal_focus/), with
-[docs/thermal_focus.md](../../thermal_focus/docs/thermal_focus.md) as
+[docs/thermal_focus.md](../../thermal_focus/thermal_focus/thermal_focus.md) as
 the single study doc. All three scope items are in, and the two follow-ups that were
 explicitly not first-pass have since been closed as well.
 
@@ -1343,7 +1343,7 @@ Delivered:
   gradients, as the scope expected.
 - "Open-loop focus" throughout, replacing "uncorrected response"; both Pearson r and
   Spearman rho at every display site.
-- `thermal_focus/docs/thermal_focus.md` updated to match.
+- `thermal_focus/thermal_focus/thermal_focus.md` updated to match.
 
 **Four scope bullets were deliberately not met** — the analyses were dropped, not just their
 pages, on review during `96f6817`:
@@ -1408,7 +1408,7 @@ terms the deliverable model carries.
 | the feature groups and `resolve_features` | [thermal_focus/code/thermal_focus_lib.py](../../thermal_focus/code/thermal_focus_lib.py), `FEATURE_GROUPS`, `DELIVERABLE_GROUPS` |
 | the standalone online calculator | [thermal_focus/code/trim_calculator.py](../../thermal_focus/code/trim_calculator.py) |
 | the network and DuckDB stage | [thermal_focus/code/run_thermal_focus.py](../../thermal_focus/code/run_thermal_focus.py) |
-| the study doc | [thermal_focus/docs/thermal_focus.md](../../thermal_focus/docs/thermal_focus.md) |
+| the study doc | [thermal_focus/thermal_focus/thermal_focus.md](../../thermal_focus/thermal_focus/thermal_focus.md) |
 
 The report is 18 pages, built in `main()` inside `with PdfPages(pdf_path)`, currently ordered
 as three parts: before the correction, training, then all the data. The pages to keep, and
@@ -1506,7 +1506,7 @@ p = 0.084 dimensionless, so keeping it retains a null result rather than a posit
   distribution, and the predicted against applied correction including its outliers.
 - Identify the day_obs of the large outliers on the applied-correction axis of the final
   comparison.
-- Update `thermal_focus/docs/thermal_focus.md` to match the new report order and the settled
+- Update `thermal_focus/thermal_focus/thermal_focus.md` to match the new report order and the settled
   feature set.
 
 ### Open questions

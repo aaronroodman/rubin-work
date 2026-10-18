@@ -67,7 +67,7 @@ LUT_EPOCH_OFFSET_NIGHTS = (20251102, 20251210, 20251211, 20251212,
 TRUSS_TEMP_MAX_C = 20.0
 
 #: Equivalent hexapod dz per µm of wavefront defocus [µm of equivalent hexapod dz per µm of
-#: wavefront]. Derived in ``smatrix/notebooks/vmode/ofc_conversion_constants.ipynb`` by the
+#: wavefront]. Derived in ``smatrix/vmode/notebooks/ofc_conversion_constants.ipynb`` by the
 #: full 50-DOF pseudo-inverse. Negative: positive hexapod dz produces negative defocus. The
 #: camera-only inverse gives −62.8389 and the singular-value-decomposition minimum-norm solution
 #: −63.2195, so the three routes agree to 1.2% (dimensionless, spread over mean).

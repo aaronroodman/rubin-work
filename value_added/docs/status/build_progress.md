@@ -195,7 +195,7 @@ per-mode sign convention on the other route comes out opposite. Do not compare o
 v-mode 1 across the two tables without resolving the sign first. The diagnosis is in
 [`../../aos/docs/status/rerun_needed.md`](../../aos/docs/status/rerun_needed.md) under "The
 two v-mode engines disagree on the sign of v1";
-[`../../thermal_focus/docs/thermal_focus.md`](../../thermal_focus/docs/thermal_focus.md)
+[`../../thermal_focus/thermal_focus/thermal_focus.md`](../../thermal_focus/thermal_focus/thermal_focus.md)
 carries the resolved half of this history.
 
 A separate, earlier change to the v-mode basis also flips v1 for **every stored** `v1`,
