@@ -1,7 +1,8 @@
 # Phase 5 study triage
 
-> **Status:** draft for Aaron's review; `miw_hull` is the first row converted and closed
-> (2026-10-14) · **Last updated:** 2026-10-14 · **Kind:** working state (triage)
+> **Status:** answered by Aaron 2026-10-18; phase 5 conversion in progress
+> (`notes/status/phase5_convert_handoff.md`) · **Last updated:** 2026-10-18 · **Kind:**
+> working state (triage)
 
 One list per topic of every study, with a recommended status, for Aaron to approve before
 phase 5 converts anything (`organization_plan.md` sections 7 and 12). Statuses:
@@ -116,7 +117,8 @@ visits) and stays with the aos MIW studies.
 | nightly_tablemaker, aos_nightly_plots | dropped                |                                | superseded by the value-added DB      | dropped   |
 | aos_openloop                          | dropped                |                                | superseded by`rubinwork/open_loop.py` | dropped   |
 
-`nightlyiq/` then holds nothing active: **retire the topic** after moving `guider_iq`.
+~~Retire the topic after moving `guider_iq`~~ — no (Aaron, 2026-10-18): `nightlyiq/`
+stays, and `guider_iq` stays in it.
 
 ## guider
 
@@ -163,7 +165,8 @@ visits) and stays with the aos MIW studies.
 | psf / wavefront_to_psf                 | dropped        | "In Progress"                                                                | superseded by the aos`psf` study | dropped   |
 | astrometry / astrometry_residual_field | parked         | tooling built, no conclusion                                                 | idle 2 months                    | parked    |
 
-**Retire `psf/` as a topic**, keeping `zernike_psf_moments` as a done note under `aos/psf`.
+~~Retire `psf/` as a topic~~ — no (Aaron, 2026-10-18): `psf/` stays, and
+`zernike_psf_moments` stays in it.
 
 ## Near-empty topics
 
@@ -194,7 +197,27 @@ deleting tracked files, so each needs your OK. History stays at tag
 | todo 6, guider moments into the value-added DB | product change (`guider_moments` + a `value_added` table)                  |
 | todo 7, giant donuts                           | existing study; its "not started" status is stale                          |
 
-## Questions for Aaron
+## Decisions taken
+
+Aaron, 2026-10-18:
+
+1. The **your call** column is the answer per row and is applied as written.
+2. **No topic is retired.** `camera`, `des`, `starcolor`, `survey`, `wcs`, `alerts`,
+   `scratch`, `nightlyiq` and `psf` all stay, since Aaron may come back to any of them.
+   `guider_iq` and `zernike_psf_moments` are not moved. This overrides the "retire" calls
+   in the near-empty topics table, including `scratch`; `olr_superseded.py` is not
+   deleted.
+3. The smatrix mode datasets (`bend_zemax/`, `bend_full/`,
+   `smatrix_dz_31_29_{232,238}`) stay smatrix-internal data, not a product.
+4. Yes: one MIW-origin study under `aos`, parked: `coadd`, `static_optics`, the MIW
+   handoff, and smatrix `miw_astig_coma` with its 3 sub-tests.
+5. `trim_calculator` is not a product; it is converted as a study.
+6. Yes: one intra/extra study, `aos/intra_extra`: `wfs/giant_donuts`,
+   `optics/intra_extra_phase_strip`, aos `blur_intra_extra` and the Z11/Z14 part of aos
+   `cwfs`. `aos/unpaired_intra_vs_extra` stays its own study and links to it in its Log.
+7. The RBR studies stay separate.
+
+## Questions for Aaron (answered 2026-10-18, above)
 
 1. **Accept the per-topic lists**, marking changes in "your call".
 2. **Retire topics** `camera`, `des`, `starcolor`, `survey`, `wcs`, `alerts`, `scratch`,

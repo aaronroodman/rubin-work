@@ -808,8 +808,10 @@ and `PRODUCTS.md` generators, updated style skills, and an updated `CLAUDE.md`. 
 **Phase 5 — studies, topic by topic.** Convert each study to `<topic>/<study>/` with
 `study.md` (from `docs/studies/*.md`, handoffs in `docs/status/` and `notes/status/item*`
 files, and `/wrap` backfill). Fix the wrong-way imports in section 2. Remove the shims.
-Retire or document the empty topics (`camera`, `des`, `starcolor`, `survey`, `wcs`,
-`alerts`, `scratch`).
+No topic is retired (Aaron, 2026-10-18): `camera`, `des`, `starcolor`, `survey`, `wcs`,
+`alerts`, `scratch`, `nightlyiq` and `psf` stay as they are, since he may come back to
+any of them. The triage answers are in `notes/status/phase5_study_triage.md`, "Decisions
+taken"; the conversion state is in `notes/status/phase5_convert_handoff.md`.
 
 **Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. Two items from it need a check: the CCD-height sign in `aos/docs/ts_wep_zernike_intrinsics.md` (ts_wep "extra +, intra −" against batoid's same sign on both sides, not reconciled), and the summit_utils branch state in `guider/docs/status/summit_utils_branch_state.md` (as of the clone's last fetch, 2026-09-03). Move the science facts in the laptop Claude memory
 (MIW, guider, Z11 intra/extra, CCD height map, frame conventions) into the matching study
@@ -856,7 +858,7 @@ From the removed `todo.md` and `reorg_review_plan_2026-09.md`:
 | outputs that predate a code change and need regenerating | `aos/docs/status/rerun_needed.md`; fold into the phase 2–3 rebuilds |
 | `blocks/` rerun (rules `build_table`, `night_table`, `plots`) after the ESS and DOF telemetry moves | phase 5, `blocks` |
 | `FocalPlaneInterpolator.py`: delete, or keep | kept in `rubinwork.common`, fixed for numpy 2 (`0aea305`) |
-| empty topics: retire or document | phase 5 |
+| empty topics: retire or document | phase 5: none retired (Aaron, 2026-10-18) |
 | output provenance helper (old A1) | replaced by `manifest.py` and `run.json` |
 | per-study logbook (old B5) | replaced by `study.md` and `/wrap` |
 | systematic code review (old Part C1–C4) | phase 8 |
