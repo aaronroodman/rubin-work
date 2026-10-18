@@ -31,7 +31,18 @@ Delete no file without asking, of any kind. Leave Aaron's uncommitted notebooks 
 
 Provisional choices, taken so the work continues; each is easy to reverse.
 
-- (none yet)
+1. **`olr/open_loop_analysis_20251026.ipynb` is not in the triage.** It studies M1M3
+   thermals in the 20251026 open-loop stability runs. Left in place, no `study.md`.
+   Options: a parked `olr` study, a `thermal_focus` study, or tooling. Recommendation:
+   parked study `olr/open_loop_stability_20251026`. Nothing waits on it.
+2. **Deletion candidates, not deleted:** `smatrix/code/vmode/__init__.py` (its directory
+   now holds nothing else); `rubinwork/common/tests_placeholder` (approved, but the
+   session's `rm` was blocked).
+3. **thermal_focus code stays in `thermal_focus/code/`**, shared by its three studies
+   (`thermal_vmodes` imports `thermal_focus_lib` and `thermal_focus_fit`; the analysis
+   imports `trim_calculator` to check it). Splitting it by study would create
+   cross-study imports. Recommendation: make the shared modules a library in the
+   section 2 step, then move `trim_calculator` into its study.
 
 ## Step list
 
@@ -74,6 +85,9 @@ Topics with no study in the triage stay as they are, with no `study.md` and no m
 | wfs | `ce85767` | cwfs_sky_foreground (done); giant_donuts and the archived pupil/diffraction notebooks wait for `aos/intra_extra` |
 | blocks | `7ffb552`, `86ccc53` | t539_closedloop (parked), camera_rotator_survey (done), m1m3_zgradient_survey (dropped), image_quality_trending (active), fbs_stability_runs (parked) |
 | optatmo | `da76e7b` | momfit_accuracy (done), psf_vs_cwfs (parked), miw_radial_correlations (done) |
+| smatrix | `623c031` | ofc_reproduction, full_modes, normalization, vmode (done); sparse_fit, regularized_inversion (active). zemax_build is tooling; miw_astig_coma waits for the aos MIW-origin study |
+| thermal_focus | `6b30829` | thermal_focus, trim_calculator (active); thermal_vmodes (done) |
+| olr | `3137e05` | scheme_comparison, zernike_opd_vs_consdb (done); aos_dof_audit (parked); olr_pipeline (dropped) |
 | guider | `1522ea3` | guider_vs_ccd_moments, guider_ellipticity_ensemble, guider_atmo_sim, roi_quality (active); centroid_timescale, summit_utils_branch (done); bias_streak, guide_star_saturation (parked) |
 
 Left in place, as tooling or library (triage): `blocks` `locate_test_blocks`,
@@ -111,7 +125,36 @@ library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakef
   directly instead of through the `guider/code` shims; same objects.
 - `rubinwork/common/tests_placeholder` (approved for deletion) is still on disk: the
   session's `rm` was blocked by the permission settings.
+- smatrix studies keep writing to `smatrix/output/`, the topic's data directory (triage
+  decision 3), not to their own `output@`. The scripts moved one level deeper, so
+  `Path(__file__).parent.parent / "output"` became `parents[2]`. Moved study scripts now
+  import `rubinwork.smatrix.*` and `rubinwork.aos_state` directly, not via shims.
+- The vmode notebooks found the topic as the first parent holding `code/`; after the
+  move that is the study directory. They now look for a parent named `smatrix`. The
+  thermal notebook looks for `code/thermal_focus_lib.py`.
+- `rubinwork/products/bounce_tables/tests/test_bounce_tables.py` hardcoded
+  `smatrix/code/regularized_inversion/`; updated to the runners' new path. Full pytest
+  432 passed (count) after each of smatrix, thermal_focus and olr.
+- Links to moved study docs were repointed repo-wide by exact path (comments and
+  docstrings included; no code change). Two links in `thermal_focus.md` and one in
+  `regularized_inversion.md` were already broken before the move and were fixed.
+- `olr/code/telemetry.py` stays: a compatibility alias for
+  `rubinwork.common.ess_telemetry`, removed with the shims.
 
 ## Next
 
-Convert `smatrix`, then `thermal_focus` and `olr`, then `aos`.
+Stopped before `aos`, as instructed. The `aos` step, in order:
+
+1. Read `aos/CLAUDE.md`, `aos/docs/studies.md` and the triage's aos rows.
+2. Build `aos/intra_extra` first (decision 6): `wfs/giant_donuts` (code, notebooks except
+   Aaron's uncommitted `giant_donut_radial_profiles.ipynb`, `docs/giant_donuts_pupil_findings.md`,
+   the archived pupil/diffraction notebooks, `notes/status/item7_giant_donuts_handoff.md`
+   as its Log), `optics/intra_extra_phase_strip` (doc and the two `hexapods_4mm`
+   notebooks), aos `blur_intra_extra` (leave `blur_intra_extra_offset.ipynb` untouched),
+   and the Z11/Z14 part of aos `cwfs`. Add the Log link from `aos/unpaired_intra_vs_extra`.
+3. Build the parked MIW-origin study (decision 4): aos `coadd`, `static_optics`,
+   `aos/docs/status/miw_investigation_handoff.md`, smatrix `miw_astig_coma` with
+   `pupil_zernike_study.py`, `thermal_study.py`, `thermal_sensitivity.py`,
+   `demo_field_order.py`, `miw_ocs_analysis.py`.
+4. The remaining aos rows, then its doc defects (triage list).
+5. Allow-list entries under `aos/` will need their paths updated as files move.
