@@ -18,7 +18,7 @@ rotational symmetry) and prints the combined Pearson r and best-fit slope.
 
 Output: 5 pages (Astig has 3 order-pairs on one page; the rest one panel each).
 
-  python optatmo/code/plot_miw_radial_correlations.py            # default 5rot i-band MIW
+  python optatmo/miw_radial_correlations/code/plot_miw_radial_correlations.py            # default 5rot i-band MIW
 """
 import argparse
 import os
@@ -67,7 +67,7 @@ def scatter_one(ax, df, ja, jb, la, lb, color):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--miw", default=DEFAULT_MIW)
-    ap.add_argument("--out", default="optatmo/output/miw_radial_correlations.pdf")
+    ap.add_argument("--out", default="optatmo/miw_radial_correlations/output/miw_radial_correlations.pdf")
     args = ap.parse_args()
 
     df = pd.read_parquet(args.miw)

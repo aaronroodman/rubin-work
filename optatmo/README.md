@@ -13,7 +13,7 @@ Zanmar Sanchez et al.): *complete*. Verdict: the analytic (geometric,
 phase-gradient) moments are adequate only for 2nd-order size/ellipticity (with
 a calibration slope); 3rd/4th-order moments are dominated by diffraction
 (trefoil skew is 100% diffractive) and cannot be reproduced by any geometric
-model. See [docs/findings.md](docs/findings.md).
+model. See [momfit_accuracy/findings.md](momfit_accuracy/findings.md).
 
 **Phase 2 — differentiable JAX forward model**: *complete & validated*. A
 standalone `Fraunhofer × atmosphere × HSM-adaptive-moment` model in JAX with
@@ -28,7 +28,7 @@ term, YAML config, and an SVD-degeneracy-controlled fit driver. On simulated
 stars it recovers injected coma/trefoil/field-variation and atmospheric size to
 noise-limited precision; the SVD exposes the expected degeneracies (defocus↔
 size, astigmatism-at-focus, shear↔moment-offset) and fits only the identifiable
-subspace. Next: run on real DM star catalogs.
+subspace. Run on real data (campaign `famcwfs_prod`, about 924 FAM in-focus visits over 17 nights): see `psf_vs_cwfs/study.md`.
 
 ## Modules
 
@@ -109,4 +109,4 @@ J = jax.jacobian(lambda z: m.moments_adaptive(z, atm))(z)   # d(moments)/d(zerni
 
 | doc | what it holds |
 |---|---|
-| [`docs/findings.md`](docs/findings.md) | whether momfit analytic moments can replace GalSim/HSM weighted moments inside the Optics+Atmosphere PSF fit, including the 3rd/4th-order moments needed to break degeneracies |
+| [`momfit_accuracy/findings.md`](momfit_accuracy/findings.md) | whether momfit analytic moments can replace GalSim/HSM weighted moments inside the Optics+Atmosphere PSF fit, including the 3rd/4th-order moments needed to break degeneracies |
