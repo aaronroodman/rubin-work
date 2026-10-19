@@ -135,7 +135,7 @@ def make_consdb_client(url='auto', token_file=None):
     Notes
     -----
     The token needs the ``read:tap`` scope. Create one at
-    https://usdf-rsp.slac.stanford.edu/auth/tokens (see
+    https://usdf-rsp.slac.stanford.edu/settings/tokens (see
     https://rsp.lsst.io/guides/auth/creating-user-tokens.html) and save it to
     ``~/.lsst/consdb_token``.
 
