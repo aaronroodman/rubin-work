@@ -116,3 +116,60 @@ Candidate counts:
 - 8 corner WFS donuts, 2 per raft. Only G0618 (R40_SW0) and G0663 (R44_SW1) are isolated
   on both visits. G0643 and G0676 are on silicon in one visit only. G0592, G0606 and
   G0678 are marginal, and G0635 is isolated on intra only. The corner fields are crowded.
+
+### 2026-10-18 — Aaron's picks; the v4.02 obscuration file
+
+**Picks.** Aaron took all 20 proposed donuts (12 science, 8 corner WFS). The selection is
+good enough for a first pass and is not re-tuned. Each donut is fitted on every visit
+where it is on silicon. Two flags go on every table and plot:
+- `beyond_fov`: field radius > 1.725 deg.
+- `corner_not_isolated`: a corner donut with iso_class != isolated, overlap_frac > 0.02 or
+  annulus_ratio > 0.05 on that visit.
+
+The clean subset is the rows with neither flag.
+
+**v4.02 file** (`code/obscuration_v402.py`, run `output/20261018_obscuration_v402/`,
+`RubinObsc_v4.02_r_rtpp0_pp0d0.yaml`; not committed to rubin-optical-model).
+- Circles from ts_wep `fitMaskModel` on a copy of v4.02 cut to M1 and its baffles, M2,
+  M3, the lenses, the filter and the detector. ts_wep's `_fitCircle` fails under numpy 2
+  (a 1-element array goes to `np.arange`). The study carries a fixed copy; ts_wep is
+  not edited.
+- In-camera openings dropped. Rays they alone block, over transmitted rays
+  (dimensionless): 0 at 1.5–1.98 deg for every offset tried.
+- Camera silhouette: one circle per field angle on the stop plane, then a cubic. It is
+  centred at 0 m with radius 2.078 m at 0 deg, and at −0.795 m with radius 2.130 m at
+  1.75 deg. Outside the M1 inner edge the shadow departs from the circle by up to 0.062 m
+  (1.75 deg) and 0.081 m (2.0 deg).
+- Not represented: the TMA sections. Rays they alone block, over transmitted rays
+  (dimensionless): 0.0010 at 1.75 deg and 0.0046 at 1.98 deg.
+- `Spider_3D`: the 48 CAD member edges (rubin-optical-model `spider_tilted`) as 50 mm
+  vanes, heights from the stop plane. Against the batoid spider planes, the rays they
+  classify differently, over transmitted rays (dimensionless), are below 0.0001 at 0 and
+  1.75 deg.
+
+**Validation against batoid.** Rays are traced on the stop plane out to 4.3 m. Each
+file is compared with its own batoid model (v1000 with `Rubin_v1000_r.yaml`, v4.02 with
+`LSST_r_v4.02.yaml`), both without the spider. The table gives the agreement fraction
+(dimensionless): rays where danish and batoid agree on transmission, over all rays.
+Offsets are (camera, M2) in mm, detector 0. The corner configurations add ±1.5 mm on the
+detector, which changes no number in the table. At 1.65 deg the agreement fraction is
+0.9988 for v1000 and 0.9963 for v4.02, with any corner offset.
+
+| field radius (deg) | offsets (mm) | v1000 | v4.02 | v4.02 with spider |
+|---|---|---|---|---|
+| 0 | 0, 0 | 1.0000 | 1.0000 | 1.0000 |
+| 0 | ±4, ±4 | 1.0000 | 1.0000 | 1.0000 |
+| 1.0 | 0, 0 | 1.0000 | 1.0000 | 1.0000 |
+| 1.0 | ±4, ±4 | 0.9998 | 0.9998 | 0.9998 |
+| 1.5 | 0, 0 | 0.9999 | 0.9990 | 0.9990 |
+| 1.5 | +4, +4 | 0.9990 | 0.9981 | 0.9981 |
+| 1.5 | −4, −4 | 0.9992 | 0.9984 | 0.9984 |
+| 1.75 | 0, 0 | 0.9990 | 0.9966 | 0.9967 |
+| 1.75 | +4, +4 | 0.9848 | 0.9909 | 0.9911 |
+| 1.75 | −4, −4 | 0.9838 | 0.9835 | 0.9837 |
+
+The plan's stop rule was "stop if v4.02 agrees with its batoid model worse than v1000
+does with its own". That rule tripped. Aaron's call: **continue**. The rule was too
+strict. v4.02 is within 0.0025 (agreement fraction, dimensionless) of v1000 everywhere,
+and better at 1.75 deg with +4/+4 mm. Both lose about 1.6% at 1.75 deg with −4/−4 mm.
+That is the limit of the circle model, and it is the same for both files.
