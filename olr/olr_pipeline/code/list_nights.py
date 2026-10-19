@@ -19,7 +19,6 @@ breakdown from step 1 to pick the right --fbs-substr.
 """
 
 import argparse
-import os
 
 import pandas as pd
 
@@ -27,12 +26,6 @@ import pathlib
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from common.telemetry_clients import make_consdb_client  # noqa: E402
-
-# ConsDB lives on an internal host; bypass any HTTP proxy for it.
-if "no_proxy" in os.environ:
-    os.environ["no_proxy"] += ",.consdb"
-else:
-    os.environ["no_proxy"] = ".consdb"
 
 
 def main():
@@ -43,7 +36,7 @@ def main():
     ap.add_argument("--before", type=int, default=None,
                     help="optional upper day_obs cutoff, inclusive")
     ap.add_argument("--consdb-url", default="auto",
-                    help="ConsDB endpoint; 'auto' picks in-pod vs external by environment")
+                    help="ConsDB endpoint; 'auto' is the USDF RSP ingress")
     ap.add_argument("--fbs-substr", default=None,
                     help="science_program substring identifying FBS/survey; "
                          "if set, emit a config nights: YAML block")

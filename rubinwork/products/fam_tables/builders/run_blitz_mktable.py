@@ -76,7 +76,6 @@ is skipped with a message and counted; it does not abort the run.
 
 import argparse
 import datetime
-import os
 import sys
 from pathlib import Path
 
@@ -288,8 +287,7 @@ def query_consdb(day_obs_values, consdb_url):
     day_obs_values : `iterable` of `int`
         Nights to query, as ``YYYYMMDD``.
     consdb_url : `str`
-        ConsDB base URL. A token from ``~/.lsst/consdb_token`` is embedded when the URL
-        carries no credentials.
+        ConsDB base URL, passed to `make_consdb_client`.
 
     Returns
     -------
@@ -311,16 +309,7 @@ def query_consdb(day_obs_values, consdb_url):
     ``physical_rotator_angle`` used only where it does not; never ``boresightRotAngle``.
     `resolve_rotator_angle` applies that order.
     """
-    os.environ.setdefault('no_proxy', '')
-    if '.consdb' not in os.environ['no_proxy']:
-        os.environ['no_proxy'] += ',.consdb'
-    from lsst.summit.utils import ConsDbClient
-
-    url = consdb_url
-    if '@' not in url and 'consdb-pq.consdb' not in url:
-        token_file = Path.home() / '.lsst' / 'consdb_token'
-        if token_file.exists():
-            url = url.replace('://', f'://user:{token_file.read_text().strip()}@', 1)
+    from rubinwork.common.telemetry_clients import make_consdb_client
 
     nights = sorted({int(d) for d in day_obs_values})
     day_list = ', '.join(str(d) for d in nights)
@@ -331,7 +320,7 @@ def query_consdb(day_obs_values, consdb_url):
         LEFT JOIN cdb_lsstcam.visit1_quicklook ql ON v1.visit_id = ql.visit_id
         WHERE v1.day_obs IN ({day_list})
     '''
-    frame = ConsDbClient(url).query(query).to_pandas()
+    frame = make_consdb_client(consdb_url).query(query).to_pandas()
     print(f'  ConsDB returned {len(frame)} visit rows over {len(nights)} nights')
 
     records = {}

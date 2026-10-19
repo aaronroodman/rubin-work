@@ -39,7 +39,6 @@ pd.set_option("future.no_silent_downcasting", True)
 from astropy.time import Time, TimeDelta
 from lsst.obs.lsst import LsstCam
 from lsst.summit.utils import (
-    ConsDbClient,
     getAirmassSeeingCorrection,
     getBandpassSeeingCorrection,
 )
@@ -56,12 +55,7 @@ from tqdm import tqdm
 # Shared thermal/wind telemetry helpers (single source of truth).
 # get_m1m3_gradients is re-exported here for backwards compatibility.
 from common.ess_telemetry import fetch_thermal_telemetry, get_m1m3_gradients  # noqa: F401
-
-# ConsDB lives on an internal host; bypass any HTTP proxy for it.
-if "no_proxy" in os.environ:
-    os.environ["no_proxy"] += ",.consdb"
-else:
-    os.environ["no_proxy"] = ".consdb"
+from common.telemetry_clients import EXTERNAL_CONSDB_URL, make_consdb_client
 
 # OFC config dir (v13 = telescope AOS). Its stored normalization_weights ARE the
 # official geom_mean (r^0.5 f^-0.5, field-averaged FWHM) used for the v-modes.
@@ -164,7 +158,7 @@ class AOSDatabase:
         day_obs: int = 20250415,
         seq_min: int = 1,
         seq_max: int = 9999,
-        consdb_url: str = "http://consdb-pq.consdb:8080/consdb",
+        consdb_url: str = EXTERNAL_CONSDB_URL,
     ) -> None:
         """Create fetcher.
 
@@ -173,13 +167,13 @@ class AOSDatabase:
         seq_max : int, optional
             Maximum sequence number to fetch. Default is 9999.
         consdb_url : str, optional
-            URL to create ConsDB client.
-            The default is "http://consdb-pq.consdb:8080/consdb".
+            ConsDB URL, passed to `make_consdb_client` (token from
+            ``~/.lsst/consdb_token``). Default is the USDF RSP ingress.
         """
         self.log = logging.getLogger(__name__)
 
         self.efd_client = makeEfdClient()
-        self.cdb_client = ConsDbClient(consdb_url)
+        self.cdb_client = make_consdb_client(consdb_url)
 
         self.det_order = list([191, 195, 199, 203])
         camera = LsstCam().getCamera()

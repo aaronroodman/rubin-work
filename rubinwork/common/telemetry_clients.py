@@ -13,9 +13,10 @@ Import it as::
 
 Notes
 -----
-The two ConsDB endpoints are not interchangeable. ``consdb-pq.consdb`` resolves **only**
-inside the Rubin Science Platform (RSP) Nublado pod; from an S3DF login or batch node it
-fails with a DNS error. Use ``url='auto'`` unless there is a reason not to.
+ConsDB is reached only through the Gafaelfawr ingress,
+``https://usdf-rsp.slac.stanford.edu/consdb``, with an RSP user token carrying the
+``read:tap`` scope. The internal host ``consdb-pq.consdb`` was retired in October 2026;
+any URL naming it is remapped to the ingress.
 
 Two ConsDB server bugs to route around, both returning HTTP 500:
 
@@ -26,11 +27,12 @@ Two ConsDB server bugs to route around, both returning HTTP 500:
 import os
 from pathlib import Path
 
-# In-pod host (resolves only inside the RSP Nublado pod) versus the public RSP endpoint
-# (token-injected, works from S3DF/sdfiana too).
+# The retired internal host is kept as a name so old imports and configs still work;
+# make_consdb_client remaps it to the ingress.
 IN_POD_CONSDB_URL = 'http://consdb-pq.consdb:8080/consdb'
 EXTERNAL_CONSDB_URL = 'https://usdf-rsp.slac.stanford.edu/consdb'
-DEFAULT_CONSDB_URL = IN_POD_CONSDB_URL      # kept for back-compat with existing callers
+DEFAULT_CONSDB_URL = EXTERNAL_CONSDB_URL
+DEFAULT_TOKEN_FILE = Path.home() / '.lsst' / 'consdb_token'
 DEFAULT_EXPOSURE_TABLE = 'cdb_lsstcam.exposure'
 DEFAULT_EFD_NAME = 'usdf_efd'
 
@@ -57,7 +59,7 @@ PAD_SEC = {
 
 __all__ = [
     'IN_POD_CONSDB_URL', 'EXTERNAL_CONSDB_URL', 'DEFAULT_CONSDB_URL',
-    'DEFAULT_EXPOSURE_TABLE', 'DEFAULT_EFD_NAME', 'PAD_SEC',
+    'DEFAULT_EXPOSURE_TABLE', 'DEFAULT_EFD_NAME', 'DEFAULT_TOKEN_FILE', 'PAD_SEC',
     'in_rsp', 'make_efd_client', 'make_consdb_client', 'efd_window',
 ]
 
@@ -109,50 +111,59 @@ def make_efd_client(efd_name=DEFAULT_EFD_NAME):
 
 
 def make_consdb_client(url='auto', token_file=None):
-    """Return a ConsDB client, with the endpoint and token resolved for this environment.
+    """Return a ConsDB client for the Gafaelfawr ingress, with an RSP token attached.
 
     Parameters
     ----------
     url : `str`, optional
-        ``'auto'`` (the default) picks the in-pod host inside the RSP and the external
-        token-injected endpoint elsewhere, via `in_rsp`. Pass an explicit URL to force
-        one.
+        ``'auto'`` (the default) or `None` uses `EXTERNAL_CONSDB_URL`. A URL naming the
+        retired internal host ``consdb-pq.consdb`` is remapped to it. A token embedded
+        as ``https://user:<token>@host/...`` is stripped and used as the token.
     token_file : `str` or `pathlib.Path`, optional
         Override the token path, default ``~/.lsst/consdb_token``.
 
     Returns
     -------
     client : `lsst.summit.utils.ConsDbClient`
-        A client for the resolved endpoint.
+        A client sending the token as ``Authorization: Bearer``.
+
+    Raises
+    ------
+    RuntimeError
+        If no token is found.
 
     Notes
     -----
-    The two access modes:
-
-    * **In-pod** — ``consdb-pq.consdb`` resolves only inside the RSP JupyterLab (Nublado)
-      pod, and must bypass the RSP HTTP proxy or it returns ``502 Bad Gateway``;
-      ``.consdb`` is appended to ``$no_proxy`` here. No token needed.
-    * **External / S3DF** — the internal host does not resolve from an S3DF login or
-      batch node, so the public endpoint is used with an RSP access token injected as
-      ``https://user:<token>@host/consdb``.
+    The token needs the ``read:tap`` scope. Create one at
+    https://usdf-rsp.slac.stanford.edu/auth/tokens (see
+    https://rsp.lsst.io/guides/auth/creating-user-tokens.html) and save it to
+    ``~/.lsst/consdb_token``.
 
     The token **file** is preferred over the ``ACCESS_TOKEN`` environment variable: it is
     read at call time, so a long-queued batch job still picks up a current token, whereas
     a value frozen into the job environment by ``--export=ALL`` may have expired by the
-    time the job runs (401 Unauthorized).
+    time the job runs (401 Unauthorized). Inside the RSP pod ``ACCESS_TOKEN`` is the
+    notebook token, which works only if it was issued with ``read:tap``.
     """
-    if url == 'auto':
-        url = IN_POD_CONSDB_URL if in_rsp() else EXTERNAL_CONSDB_URL
-    no_proxy = os.environ.get('no_proxy', '')
-    if '.consdb' not in no_proxy:
-        os.environ['no_proxy'] = (no_proxy + ',.consdb') if no_proxy else '.consdb'
-    if '@' not in url and 'consdb-pq.consdb' not in url:
-        tf = Path(token_file) if token_file else Path.home() / '.lsst' / 'consdb_token'
+    from urllib.parse import urlsplit, urlunsplit
+
+    if url in ('auto', None) or 'consdb-pq.consdb' in url:
+        url = EXTERNAL_CONSDB_URL
+    token = None
+    parts = urlsplit(url)
+    if parts.password or parts.username:
+        token = parts.password or parts.username
+        url = urlunsplit(parts._replace(netloc=parts.hostname
+                                        + (f':{parts.port}' if parts.port else '')))
+    tf = Path(token_file) if token_file else DEFAULT_TOKEN_FILE
+    if token is None:
         token = tf.read_text().strip() if tf.exists() else os.environ.get('ACCESS_TOKEN')
-        if token:
-            url = url.replace('://', f'://user:{token}@', 1)
+    if not token:
+        raise RuntimeError(
+            f'No ConsDB token: write an RSP token with read:tap scope to {tf}'
+            ' or set $ACCESS_TOKEN')
     from lsst.summit.utils import ConsDbClient
-    return ConsDbClient(url)
+    return ConsDbClient(url, token=token)
 
 
 def efd_window(obs_start, obs_end=None, kind='ess_temperature',

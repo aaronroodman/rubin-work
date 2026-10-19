@@ -221,7 +221,7 @@ async def check_chunk_data(butler_repo, fam_collections, day_obs_min,
     if consdb_url is None:
         consdb_url = DEFAULT_CONSDB_URL
 
-    # no_proxy, endpoint selection and token injection are all handled centrally.
+    # Endpoint and token are handled centrally.
     consdb_client = make_consdb_client(consdb_url)
 
     if verbose:

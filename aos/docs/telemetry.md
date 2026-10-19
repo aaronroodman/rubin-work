@@ -473,8 +473,10 @@ mention EFD or ConsDB, and 16 of them construct their own client.** Duplicated c
 (`http://consdb-pq.consdb:8080/consdb` ×7, `https://usdf-rsp.slac.stanford.edu/consdb` ×5)
 and token-file handling reimplemented in 5 files.
 
-The in-pod URL does not resolve outside the RSP, which is a live failure mode, not a
-hypothetical.
+The in-pod URL has since been retired (October 2026): ConsDB is reachable only through
+the Gafaelfawr ingress `https://usdf-rsp.slac.stanford.edu/consdb`, with an RSP token
+carrying the `read:tap` scope, kept in `~/.lsst/consdb_token`. `make_consdb_client`
+remaps any old in-pod URL to the ingress.
 
 | module | role |
 |---|---|

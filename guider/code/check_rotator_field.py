@@ -42,7 +42,7 @@ def main():
                     help="a science detector present in the visits (default 94)")
     ap.add_argument("--repo", default="/repo/main")
     ap.add_argument("--consdb-url", default="auto",
-                    help="ConsDB URL ('auto' picks in-pod vs external; see "
+                    help="ConsDB URL ('auto' is the USDF RSP ingress; see "
                          "common/telemetry_clients.py)")
     args = ap.parse_args()
 

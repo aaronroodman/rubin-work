@@ -23,8 +23,6 @@ from common.telemetry_clients import make_consdb_client        # noqa: E402
 
 
 def build(args):
-    os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",.consdb"
-
     # 1. Select converged closed-loop images from ConsDB ----------------------
     client = make_consdb_client(args.consdb_url)
     q = f"""

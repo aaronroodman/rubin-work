@@ -10,9 +10,8 @@ This queries cdb_<instrument>.visit1 directly for the exposure-time column
     python code/find_long_exposures.py --min-exptime 120 --day-min 20260409 --day-max 20260409
     python code/find_long_exposures.py --min-exptime 120 --out ../blocks/output/long_exposures.csv
 
-Runs on the RSP (in-pod ConsDB) or S3DF slaciana (external endpoint +
-~/.lsst/consdb_token); --consdb-url defaults to 'auto' (see
-common/telemetry_clients.py).
+Runs on the RSP or S3DF; ConsDB is reached through the USDF RSP ingress with the
+token in ~/.lsst/consdb_token (see common/telemetry_clients.py).
 """
 import argparse
 import os

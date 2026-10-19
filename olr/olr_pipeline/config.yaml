@@ -19,8 +19,8 @@ nights:
 seq_min: 0
 seq_max: 9999
 
-# ConsDB endpoint (internal summit host).
-consdb_url: "http://consdb-pq.consdb:8080/consdb"
+# ConsDB endpoint: the USDF RSP ingress (token from ~/.lsst/consdb_token, scope read:tap).
+consdb_url: "https://usdf-rsp.slac.stanford.edu/consdb"
 
 # --- OFC / AOS model parameters (the OLR "model"; revise downstream here) ---
 # Path to a checkout of ts_config_mttcs.  The sensitivity matrix is versioned by

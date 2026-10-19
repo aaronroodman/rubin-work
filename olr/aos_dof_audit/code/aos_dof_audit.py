@@ -31,17 +31,12 @@ Emits one row per visit: output/<day_obs>/dof_audit.parquet.
 """
 import argparse
 import asyncio
-import os
 import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from astropy.time import Time, TimeDelta
-
-# ConsDB lives on an internal host; bypass any HTTP proxy for it -- must be set
-# at import time, before ConsDbClient/requests initializes (as in nightly_table).
-os.environ["no_proxy"] = (os.environ["no_proxy"] + ",.consdb") if "no_proxy" in os.environ else ".consdb"
 
 HEX_AXES = ["x", "y", "z", "u", "v", "w"]      # hexapod: x,y,z µm ; u,v,w deg
 N_DOF = 50
@@ -246,7 +241,7 @@ def add_consdb(df, url="auto", instrument="lsstcam"):
         import sys
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
         from common.telemetry_clients import make_consdb_client
-        cdb = make_consdb_client(url)      # sets no_proxy and resolves the endpoint
+        cdb = make_consdb_client(url)
     except Exception as e:
         print(f"[dof_audit] ConsDB client unavailable: {type(e).__name__}: {e}")
         return df

@@ -3,10 +3,8 @@ day_obs_min: 20260420
 day_obs_max: 20260708          # bump to today when re-running
 
 instrument: lsstcam
-# 'auto' picks by environment (in_rsp() via /etc/nublado): in-pod host inside the
-# RSP, external token-injected endpoint (https://usdf-rsp.slac.stanford.edu/consdb,
-# token from $ACCESS_TOKEN / ~/.lsst/consdb_token) on S3DF/sdfiana/slacrd.
-# Override with an explicit URL if needed.
+# 'auto' is https://usdf-rsp.slac.stanford.edu/consdb, with an RSP token (scope
+# read:tap) from ~/.lsst/consdb_token or $ACCESS_TOKEN. Override with an explicit URL.
 consdb_url: "auto"
 efd: usdf_efd                  # summit_efd when running on the Summit RSP
 

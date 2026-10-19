@@ -119,19 +119,12 @@ print(fam_tables.build_dir('$VARIANT', '$FAM_BUILD'))"
 
 night_plan() {
     python - "$REPO" <<'PYEOF'
-import os, sys, yaml
+import sys, yaml
 from pathlib import Path
-os.environ.setdefault('no_proxy', '')
-if '.consdb' not in os.environ['no_proxy']:
-    os.environ['no_proxy'] += ',.consdb'
-from lsst.summit.utils import ConsDbClient
+from rubinwork.common.telemetry_clients import make_consdb_client
 
 repo = Path(sys.argv[1])
-url = 'https://usdf-rsp.slac.stanford.edu/consdb'
-token = Path.home() / '.lsst' / 'consdb_token'
-if token.exists():
-    url = url.replace('://', f'://user:{token.read_text().strip()}@', 1)
-client = ConsDbClient(url)
+client = make_consdb_client()
 
 doc = yaml.safe_load(open(repo / 'rubinwork/products/fam_tables/variants.yaml'))
 

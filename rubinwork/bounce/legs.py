@@ -68,7 +68,7 @@ DEFAULT = dict(
     ab_elev_halfwidth_deg=2.0, ab_rot_halfwidth_deg=2.0,
     vmode_ncols=5, vmode_rows_per_page=7, dof_ncols=2, dof_rows_per_page=5,
     add_dof_trim=False, trim_efd_topic='lsst.sal.MTAOS.logevent_degreeOfFreedom',
-    trim_consdb_url='http://consdb-pq.consdb:8080/consdb',
+    trim_consdb_url='https://usdf-rsp.slac.stanford.edu/consdb',
     trim_time_col='mjd', trim_mjd_scale='tai',
     # Range-Bounded Recovery (RBR): the range-penalized alternative to the
     # truncated recovery, reported alongside it.  kappa is the ratio

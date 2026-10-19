@@ -15,9 +15,9 @@ pulled per image from the ConsDB (`visit1_quicklook`) at USDF.
 
 ## Conventions
 
-- ConsDB access uses the **USDF** endpoint
-  `https://user:{token}@usdf-rsp.slac.stanford.edu/consdb` with the RSP
-  `ACCESS_TOKEN` (auto-set in the USDF notebook environment).
+- ConsDB access goes through `make_consdb_client` (USDF endpoint
+  `https://usdf-rsp.slac.stanford.edu/consdb`), with an RSP token (scope
+  `read:tap`) from `~/.lsst/consdb_token`, else `$ACCESS_TOKEN`.
 - Science FWHM is derived from `psf_sigma_median` as
   `psf_sigma_median * 2*sqrt(2*ln2) * 0.2` (arcsec); ConsDB has no direct
   `psf_fwhm_median` column.

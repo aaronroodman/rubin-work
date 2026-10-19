@@ -143,9 +143,8 @@ def main():
     ap.add_argument('--out-dir', default='data')
     ap.add_argument('--sign', type=int, default=1, help='CCS->OCS rotation sign')
     ap.add_argument('--consdb-url', default='auto',
-                    help="ConsDB endpoint; 'auto' picks the in-pod host inside "
-                         "the RSP and the external tokened endpoint on S3DF "
-                         "(sdfiana/slacrd batch). Default 'auto'.")
+                    help="ConsDB endpoint; 'auto' (default) is the USDF RSP "
+                         "ingress, with the token from ~/.lsst/consdb_token.")
     ap.add_argument('--token-file', default=None,
                     help='RSP access-token file for the external endpoint '
                          '(default ~/.lsst/consdb_token, else $ACCESS_TOKEN)')

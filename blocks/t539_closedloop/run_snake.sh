@@ -5,20 +5,17 @@
 #
 #   local  — run snakemake on THIS node, detached via nohup so a dropped
 #            SSH/network connection won't kill it.  Use this from the USDF
-#            JupyterLab RSP (Nublado) pod (which cannot submit to Slurm).  The
-#            default ConsDB URL 'consdb-pq.consdb' only resolves inside that pod.
+#            JupyterLab RSP (Nublado) pod (which cannot submit to Slurm).
 #
 #   batch  — submit ONE sbatch job to the s3df cluster that runs snakemake on an
 #            allocated compute node.  Submit from an s3df interactive node (e.g.
 #            via the `slacrd` ssh alias) where sbatch + the LSST stack live; the
 #            job inherits the submitting shell's env (--export=ALL), so
-#            snakemake/python resolve to the same stack, and $ACCESS_TOKEN is
-#            carried through for the ConsDB token.
+#            snakemake/python resolve to the same stack.
 #
-# REQUIREMENTS off-pod (batch / any s3df node): set config.yaml consdb_url to
-#   https://usdf-rsp.slac.stanford.edu/consdb   (make_consdb_client injects the
-#   RSP token from $ACCESS_TOKEN, else ~/.lsst/consdb_token).  The EFD (usdf_efd)
-#   is reachable from sdfiana as-is.
+# ConsDB is reached in both modes through https://usdf-rsp.slac.stanford.edu/consdb
+# with an RSP token (scope read:tap) read from ~/.lsst/consdb_token, else
+# $ACCESS_TOKEN.  The EFD (usdf_efd) is reachable from sdfiana as-is.
 #
 # Usage:
 #   ./run_snake.sh                                   # local, build everything

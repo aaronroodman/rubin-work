@@ -1,4 +1,3 @@
-import os
 
 import numpy as np
 import pandas as pd
@@ -38,18 +37,10 @@ class PSFMomentsTable:
         seq_max: int = 9999,
         consdb_url: str = "auto",
     ) -> None:
-        if "no_proxy" in os.environ:
-            if ".consdb" not in os.environ["no_proxy"]:
-                os.environ["no_proxy"] += ",.consdb"
-        else:
-            os.environ["no_proxy"] = ".consdb"
-
         self.day_obs = day_obs
         self.detectors = detectors if detectors is not None else [191, 195, 199, 203]
         self.seq_min = seq_min
         self.seq_max = seq_max
-        # 'auto' resolves the in-pod host inside the RSP and the tokened external
-        # endpoint on S3DF; the in-pod host does not resolve off the RSP.
         self.client = make_consdb_client(consdb_url)
 
     def fetch(self) -> Table:
