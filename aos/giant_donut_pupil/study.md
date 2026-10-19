@@ -1,9 +1,9 @@
 ---
 study: giant_donut_pupil
 topic: aos
-status: answered
+status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'v4.02 fits better: lower residual RMS on 16 of 16 clean donut sides (Z4+Z11+Z22) and 12 of 16 (blitz set), median v4.02/v1000 residual RMS 0.94-0.95 (dimensionless); v1000''s vanes sit 50 mm off the CAD shadow. Clean Z5-Z8 deviations are within 3 um of wavefront with no field-radius trend.'
+answer: 'v4.02 fits better than v1000 (Z4-only fits: 15 of 16 clean donut sides, median residual RMS ratio 0.94, dimensionless). The v4.02 danish edges match full Batoid v4.02 to 0.2-1.6 pixels RMS inside 1.725 deg, but the data''s inner edge is decentred by about 2.5 pixels (25 um) from both.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -38,7 +38,104 @@ dimensionless. Most of the gain is the spider: the v1000 vanes sit 50 mm (one va
 off the CAD shadow. Inside 1.725 deg the fitted Z5–Z8 deviations stay within ±3 µm of
 wavefront and show no trend with field radius. Beyond 1.9 deg the fits break down.
 
+Fitted with Z4 only (other Zernikes fixed at the batoid intrinsic, blur fixed at 1.0
+arcsec), v4.02 still wins: 35 of 38 donut sides, 15 of 16 clean, median ratio 0.944
+(dimensionless). Inside 1.725 deg the v4.02 danish edges match a Batoid ray trace of the
+full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean donuts
+the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
+1 pixel over 225–315 deg, on both sides of focus.
+
 ## Log
+
+### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
+
+Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
+Run `20261018_pupil`: tables `z4_fits`, `batoid_images`, `edges_bins`, `edge_stats`,
+`unmodelled_surfaces` (parquet and csv). The PDF is `giant_donut_pupil_model.pdf`, 119
+pages: three per donut side (step 1, 2, 3), then 5 summary pages.
+
+**Aaron's read of the fits PDF.** v4.02 places the spider correctly; v1000's vanes are
+one vane width (50 mm) off. On the intra-focal side, v4.02's vane widths fit the data.
+The free fits push the blur FWHM to the 1.5 arcsec bound on 20 of 38 donut sides,
+because the model has no thermal effects. Beyond 1.9 deg the fitted wavefront (20–44 µm)
+is unphysical and is very likely pupil-model mismatch. The goal now is the pupil model.
+
+Same 38 donut sides, flags, neighbour masks and full-resolution ISR stamps as
+`20261018_fits` (read from its `images/`).
+
+**Step 1, Z4-only danish fits.** Z4, flux and centre float. Noll 5–28 are fixed at each
+pupil's own batoid intrinsic, at the donut field with the side's offsets. Blur is fixed
+at 1.0 arcsec FWHM, with no background term. 76 of 76 fits converged.
+- v4.02 has the lower residual RMS (inside 1.1 r_out, unmasked pixels) on 35 of 38 sides
+  and 15 of 16 clean. Median v4.02/v1000 residual RMS (dimensionless): 0.944 all, 0.942
+  clean.
+- Z4 − intrinsic, v4.02 (µm of wavefront): +0.17 to +1.26 clean, −1.48 to +1.39 all.
+  v1000: +0.19 to +1.23 clean.
+- chi2/dof spans 1.16–199 (v4.02). It scales with brightness, as before.
+
+**Step 2, Batoid images, v4.02.**
+- Reduced model per side: the optical surfaces plus the 24–231 obscurations that
+  vignette first at least one ray of a 500 × 500 traceFull grid. Agreement with the full
+  model (dimensionless fraction of rays): 0.99996–1.00000. The reduced model passed on
+  all 38 sides; the full model was not needed.
+- Spider: the telescope (not the camera) is rotated by −rtp. Checked against the danish
+  mask at a 10 deg test angle: agreement 0.99997 with that sign, 0.972 with the other.
+- Camera piston that matches Batoid Z4 to the step 1 fit: −3 to +75 µm extra-focal
+  (median +25 µm), −95 to +89 µm intra-focal (median +58 µm).
+- 25–30 million rays per side at 620 nm; 103–116 rays per illuminated pixel (median per
+  side). Kolmogorov blur, 1.0 arcsec FWHM, drawn as danish does.
+- Cross-correlation shift after centring on the step 1 model (pixels): magnitude
+  0.0–2.4 on clean sides, up to 18 on flagged sides (G0732 extra, G0714 extra).
+- Batoid/danish residual RMS (dimensionless): median 0.977 all, 0.982 clean. Batoid is
+  lower on 30 of 38 sides.
+
+**Step 3, edges against azimuth.** 50 % of the flat top, 2 deg bins. Spider bins,
+Batoid-vignetted bins and neighbour-masked crossings are marked and excluded.
+Per-side RMS of the edge differences (pixels):
+
+| field radius (deg) | subset | data − Batoid, outer | data − Batoid, inner | v4.02 model − Batoid, outer | v4.02 model − Batoid, inner |
+|---|---|---|---|---|---|
+| 0–1.0 | clean (4) | 1.2–1.5 | 2.6–4.8 | 0.19–0.65 | 0.17–0.29 |
+| 1.0–1.6 | clean (8) | 1.2–2.2 | 2.8–4.3 | 0.19–0.81 | 0.22–1.09 |
+| 1.6–1.725 | clean (4) | 1.3–2.1 | 2.6–12.4 | 0.66–0.79 | 0.83–1.57 |
+| 1.6–1.725 | flagged (5) | 3.2–29 | 2.8–82 | 0.41–2.3 | 0.89–3.0 |
+| 1.725–1.9 | flagged (13) | 1.2–8.8 | 2.1–41 | 0.47–7.2 | 1.2–4.1 |
+| 1.9–2.0 | flagged (4) | 1.4–6.3 | 2.2–3.5 | 1.3–12.1 | 2.7–5.8 |
+
+The danish v4.02 model tracks the full Batoid model to about 1 pixel inside 1.725 deg.
+It departs beyond that, up to 12 pixels RMS at 1.9–2.0 deg. The data depart from both.
+On clean sides, the median data − Batoid inner-edge offset per 45 deg OCS sector is
++3.5 to +5.7 pixels over 0–135 deg and −0.9 to +1.3 pixels over 225–315 deg (extra and
+intra alike). The outer-edge offset is −0.4 to −1.7 pixels. Read plainly, the inner
+shadow is decentred by about 2.5 pixels (25 µm in the focal plane) relative to the
+model, the same way on both sides of focus. The cause is not established.
+
+Unmodelled surfaces: 234 runs of 3 or more bins with |data − Batoid| > 3 pixels, 79 of
+them on clean sides. By the first clipping surface just outside the Batoid edge:
+
+| surface | edge | runs | bins | median offset (pixels) |
+|---|---|---|---|---|
+| M1 (inner hole) | inner | 101 | 964 | +3.7 |
+| M2 | inner | 39 | 505 | +4.0 |
+| M1Baffle1 | outer | 53 | 300 | −3.9 |
+| M3 | outer | 13 | 109 | −3.5 |
+| Filter entrance | outer | 11 | 108 | +12.5 |
+| CameraSilhouette | inner | 8 | 53 | +3.7 |
+
+The largest single runs are inner-edge runs at OCS 54–126 deg on clean donuts (G0005
+extra, G0329, G0491, G0515 extra, G0160), each 30–37 bins at +4 to +6 pixels. Those are
+the decentre above, not a missing surface. The Filter-entrance runs are all on corner or
+edge-of-field sides at 1.74–1.86 deg (G0663, G0664, G0678, G0681, G0684 intra). There
+the data edge lies 7–19 pixels outside Batoid's, so v4.02 clips at the filter where the
+sky does not.
+
+![Batoid comparison, G0515 extra](figures/batoid_G0515_extra.png)
+![edges against azimuth, G0515 extra](figures/edges_G0515_extra.png)
+
+Next:
+- Fit the inner-obscuration decentre (M2 or M1 inner-hole shift) in Batoid against the
+  clean inner edges.
+- Check the filter aperture at 1.74–1.86 deg against the CAD.
 
 ### 2026-10-18 — spider check and fits: v4.02 against v1000
 
