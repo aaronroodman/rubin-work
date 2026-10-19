@@ -1,9 +1,9 @@
 ---
 study: giant_donut_pupil
 topic: aos
-status: active
+status: answered
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: ''
+answer: 'v4.02 fits better: lower residual RMS on 16 of 16 clean donut sides (Z4+Z11+Z22) and 12 of 16 (blitz set), median v4.02/v1000 residual RMS 0.94-0.95 (dimensionless); v1000''s vanes sit 50 mm off the CAD shadow. Clean Z5-Z8 deviations are within 3 um of wavefront with no field-radius trend.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -31,9 +31,87 @@ Optical models: `~/notebooks/rubin-optical-model` at commit `e2a1e54` (read only
 
 ## Current answer
 
-None yet. Step 2 (candidate selection) is done; the fits are not run.
+v4.02 fits the giant donuts better than v1000. With Z4 + Z11 + Z22, its residual RMS is
+lower on 16 of 16 clean donut sides; with the blitz set, on 12 of 16. The median ratio,
+v4.02 over v1000 residual RMS, is 0.94 (Z4 + Z11 + Z22) and 0.95 (blitz set), both
+dimensionless. Most of the gain is the spider: the v1000 vanes sit 50 mm (one vane width)
+off the CAD shadow. Inside 1.725 deg the fitted Z5–Z8 deviations stay within ±3 µm of
+wavefront and show no trend with field radius. Beyond 1.9 deg the fits break down.
 
 ## Log
+
+### 2026-10-18 — spider check and fits: v4.02 against v1000
+
+Code `1f09446`: `code/spider_validation.py`, `code/fit_donuts.py`, `code/plot_results.py`.
+Runs: `20261018_spider_validation`, `20261018_fits`. The results PDF is
+`output/20261018_fits/giant_donut_pupil_results.pdf`, 46 pages.
+
+**Spider check** (`20261018_spider_validation`). Each file's `Spider_3D` shadow on the stop
+plane is compared with the batoid-traced v4.02 CAD spider planes, rotator 0 deg, offsets
+(0, 0), (+4, +4) and (−4, −4) mm. The plan called for each file against its own model,
+but `Rubin_v1000_r.yaml` has no spider, so v1000 is checked against the CAD too. The
+offset is the vane-shadow position, danish minus batoid, perpendicular to the arm. Strip
+agreement is the fraction of rays within one vane width of the batoid shadow on which
+the two agree (dimensionless).
+
+| field radius (deg) | v4.02 max offset (mm) | v4.02 strip agreement | v1000 max offset (mm; vane widths) | v1000 strip agreement |
+|---|---|---|---|---|
+| 0 | 0.0 | 1.0000 | 50.0; 1.00 | 0.25 |
+| 1.0 | 0.0 | 1.0000 | 55.6; 1.11 | 0.30 |
+| 1.75 | 0.0 | 0.9995 | 59.9; 1.20 | 0.34 |
+
+The defocus offsets change no number. v1000 places its vanes 0.40 m from the axis, the
+CAD places them at 0.35 m, so every v1000 shadow sits about one vane width (50 mm) off.
+The v4.02 stop rule (offset > 0.050 m) did not trip.
+
+**Fits** (`20261018_fits`, table `fits.parquet`/`fits.csv`):
+- 20 donuts on 38 donut sides: 18 on both visits, G0643 intra only, G0676 extra only.
+- 4 fits per side, 152 fits in all. 152 of 152 converged, with no failures.
+- Settings: full-resolution ISR on the 18 picked detectors; binning 1; spider on, with
+  `spider_angle` = rtp (−0.199 deg and −0.046 deg); blur FWHM bounded to 0.1–1.5 arcsec;
+  tolerance 1e-3.
+- Coefficients are stored in CCS and in OCS (rotated by rtp).
+- The neighbour mask (variance 1e20 electrons² within 1.05 r_out of a neighbour) was
+  applied on 9 donut sides. It masked part of the target's ring on 4 of them. Fraction
+  of the target's ring masked (dimensionless): G0592 extra 0.230, G0606 extra 0.487,
+  G0606 intra 0.119, G0635 extra 0.344.
+- Blur FWHM at the 1.5 arcsec bound on 20 of 38 donut sides in the blitz set, for both
+  pupils, mostly intra-focal.
+
+**Residuals.** Residual RMS is taken inside 1.1 r_out, over unmasked pixels, in
+electrons per pixel. "v4.02 better" means lower residual RMS.
+
+| Zernike set | v4.02 better, all | v4.02 better, clean | median v4.02/v1000 residual RMS, all | clean |
+|---|---|---|---|---|
+| Z4 + Z11 + Z22 | 35 of 38 | 16 of 16 | 0.939 | 0.938 |
+| blitz (Noll 4–19, 22–26) | 28 of 38 | 12 of 16 | 0.948 | 0.948 |
+
+The ratios are dimensionless. The per-donut residual images show the v1000 vane shadows
+offset from the data, and the v4.02 shadows on it.
+
+Residual RMS scales with brightness. The r = 8.9–10.3 mag donuts reach 540–2900
+electrons per pixel, but as a fraction of the ring level (residual RMS over mean ring
+level, dimensionless) they sit at 0.10–0.17, like the rest. The one fit that failed in
+substance is G0592 intra (marginal, flagged): 1.92 of the ring level.
+
+**Z5–Z8.** For the clean subset with the blitz set:
+- The fitted deviations from the batoid reference are within ±3 µm of wavefront.
+- No trend with field radius: |Pearson r| ≤ 0.29 and |Spearman rho| ≤ 0.35, against
+  field radius (deg), n = 16 per pupil and term.
+- Median |v4.02 − v1000| (µm of wavefront): Z5 0.61, Z6 0.19, Z7 0.20, Z8 0.10.
+- Median |intra − extra| on the 7 clean donuts seen on both visits (µm of wavefront):
+  0.30–0.70 for v1000 and 0.33–1.38 for v4.02.
+
+Beyond 1.9 deg (G0732, G0737) the deviations reach 20–44 µm, with opposite signs intra
+and extra. The model does not describe those donuts.
+
+![residual RMS, v1000 against v4.02](figures/resid_rms_v1000_v402.png)
+![spider overlay](figures/spider_overlay.png)
+
+Next:
+- A fixed-blur pass. The intra-focal blur sits at the 1.5 arcsec bound on most donuts.
+- The TMA sections and the silhouette-circle error at > 1.75 deg are the known gaps of
+  the v4.02 file.
 
 ### 2026-10-18 — plan
 
