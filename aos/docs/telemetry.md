@@ -1,6 +1,6 @@
 # Telemetry inventory — what exists, where it comes from, and what reaches the tables
 
-> **Status:** current · **Last updated:** 2026-10-19 · **Kind:** reference (telemetry inventory)
+> **Status:** current · **Last updated:** 2026-10-20 · **Kind:** reference (telemetry inventory)
 
 Every per-visit telemetry quantity used in the AOS work: its name in the Consolidated
 Database (ConsDB) transformed Engineering Facility Database (EFD) or in the raw EFD,
@@ -572,9 +572,43 @@ What is correct today:
 - **The value-added Trim (`dof*`) is correct.** It comes from
   `getMostRecentRowWithDataBefore` anchored on `obs_start` → UTC.
 - **The ConsDB transformed EFD is correct.** It windows on `start_time.utc`.
-- **Not yet checked:** `dof_telemetry._asof_rows_by_night`, which feeds the hexapod LUT
-  `lut_dof*`, and `common/ess_telemetry.py` both pass `convert_influx_index=True`. Their
-  as-of matches may effectively use `obs_start` + 37 s.
+### Audit of every value-added DB column read from the EFD (2026-10-20)
+
+Method: rebuild each column from the raw EFD on 20250701, 20251120 and 20260421, under
+the correct rule and under the suspected wrong one, and compare with
+`value_added=v1@snapshots/20261016`. The "as built" column says which rule the DB matches
+(exposure counts).
+
+| DB column group | code | as built | correct | effect |
+|---|---|---|---|---|
+| `dof*` Trim, `tweak_dof*` | `getMostRecentRowWithDataBefore` on `obs_start` → UTC | last event ≤ `obs_start` | same | **correct** (213,680 of 213,680) |
+| `lut_dof0..9` hexapod LUT | `dof_telemetry._asof_rows_by_night`, `convert_influx_index=True` | last `compensationOffset` ≤ `obs_start` + 37 s (729/729, 126/126, 845/845) | last ≤ `obs_start` | **wrong** on 52–89% of exposures |
+| `hexhist` | derived from `lut` + `trim` | inherits the LUT error | — | **wrong** where the LUT is |
+| `turb<idx>_*` (ESS.airTurbulence) | `build_efd_db.fetch_turbulence`: TAI `obs_start_mjd` used as UTC, plus `convert_influx_index=True` | ±15 s window centred `obs_start` + 74 s (845/845 on 20260421) | centred `obs_start` | **wrong**; median 0.10 m/s on speed0 |
+| `cam_*` (MTCamera.utiltrunk_body) | `visit_telemetry.fetch_camera`: TAI `obs_start_mjd` used as UTC | ±120 s window centred `obs_start` + 37 s (729/729, 134/134) | centred `obs_start` | wrong but negligible: ≤ 0.011 °C |
+| M1M3 gradients, `m1m3_thermal_r2` | `ThermocoupleAnalysis` (raw index), `obs_start` → UTC | — | — | correct by inspection |
+| `twilight` | TAI `mjd` | — | — | 37 s left in by design; minutes |
+
+The LUT error is not small. The extra 37 s reaches past `obs_end` (31 s after `obs_start`
+for a 30 s exposure), so the stored LUT is the one published at or after the
+end-of-exposure hexapod move or the slew to the next field. That is the case for **every**
+science exposure on 20250701 (596) and 20260421 (727). Of the exposures where the stored
+and correct LUT differ:
+
+| night | camera dz, median / max (µm) | camera dx, median / max (µm) | camera dy, median / max (µm) |
+|---|---|---|---|
+| 20250701 | 14.5 / 102 | 18 / 858 | 214 / 1547 |
+| 20260421 | 14.5 / 130 | 35 / 682 | 39 / 344 |
+
+The camera hexapod also had LUT (`compensationOffset`) updates *during* the exposure on all
+596 science exposures of 20250701, against 20 of 727 on 20260421. The LUT tracked the
+pointing through the exposure in mid-2025, and mostly no longer does.
+
+Consumers of the wrong LUT: `optical_state.v_modes_lut` (`build_optical_state`), the
+`fam_tables` `visits.parquet` `lut_dof*` (`run_attach_telemetry`), `thermal_focus`, and
+`blocks/t539_closedloop`. `common/ess_telemetry.py` also passes `convert_influx_index=True`
+for the ESS temperatures and wind it serves to `olr`; those 0.2 s windows sit 37 s early.
+None of these are fixed yet.
 
 ## See also
 

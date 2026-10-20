@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-10-04 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-10-20 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Row counts and spans read from the live database's `fetch_log` and `column_coverage` on
@@ -336,6 +336,21 @@ exposure at all, and calibration is about 32 per cent of the table (flat 36,364,
 bias 13,081, cbp 2,248 over the span). Those rows also carry real telemetry — the truss has a
 temperature whether or not the shutter is open on sky, and 20260620 sits at 6.68 to 8.65 °C —
 which is what the database-wide truss page of the `thermal_focus` report plots.
+
+## Time-anchor errors in `lut`, `hexhist`, `turbulence`, `camera` — open
+
+Found 2026-10-20; details and numbers in `aos/docs/telemetry.md` §7.
+
+- `lut_dof0..9`: the last `compensationOffset` event ≤ `obs_start` + 37 s, not
+  ≤ `obs_start`. It differs on 52–89% of exposures; camera dz by a median 14.5 µm. `hexhist`
+  inherits the error.
+- `turb*`: averaged ±15 s about `obs_start` + 74 s, not about `obs_start`.
+- `cam_*`: averaged ±120 s about `obs_start` + 37 s; at most 0.011 °C, negligible.
+- `dof*` / `tweak_dof*` (Trim) are correct.
+
+Fixing these needs code changes in `rubinwork/common/dof_telemetry.py`,
+`rubinwork/common/visit_telemetry.py` and `build_efd_db.fetch_turbulence`, then a rebuild of
+those groups as a new build.
 
 ## Rebuilding
 
