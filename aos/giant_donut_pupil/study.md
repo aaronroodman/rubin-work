@@ -123,6 +123,27 @@ Z7, Z8 with that side's sensitivity (or the 8-side median). Clean sides, median 
   danish or the state can see. Step 5's element tolerance and step 3b test what else
   could do it.
 
+**Element tolerance** (`geom_edges.py`, `element_tolerance`). Geometric edges (no blur)
+from a dense Batoid trace of v4.02 at both giant configurations and 4 fields (0, 0),
+(0, 1.5), (1.2, 1.2), (1.5, 0) deg. Each non-optical group is moved 10 mm in x, y and
+z (editing its yaml coordinates, optics untouched); the M2 and camera hexapods 100 µm.
+Recorded: the edge change and the inner-minus-outer centre shift (pixels), and for the
+hexapods the Batoid coma. To give the measured +3.3 pixels of shift along +y CCS, the
+same sign on both sides of focus:
+- the M1 inner hole, M1Baffle1, M2 and M3 apertures and the camera silhouette give
+  0.3–0.9 pixels per 10 mm, but **their sign flips between intra and extra**, as any
+  pupil-plane obscuration's does, so none of them can give the measured shift;
+- the filter gives −0.35 pixels and L3 −5.7 to −6.3 pixels per 10 mm of dy, the same
+  sign on both sides. L3 would need about 5 mm in −y, and that would move the outer
+  edge by about 15 pixels RMS, which is not seen. The filter would need about 100 mm;
+- the hexapods' 100 µm decentres give under 0.2 pixels and under 0.07 µm of coma;
+- the M2 baffle, M2 cell and mid-level baffle never set an edge (0.00 pixels at 10
+  mm): their lips sit inside the M1 hole on the incoming beam.
+
+So no single plausible element shift produces the inner-edge offset. Of everything
+tested, only something in the converging beam near focus (L3, the filter) has a
+same-sign signature, and they would need implausible moves.
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
