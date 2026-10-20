@@ -195,6 +195,28 @@ model − data, clean sides), so on inner edges the choice of model hardly matte
 No dependence on field radius or on azimuth from the radial direction stands out
 (Batoid v4.02 closest in 31–44 % of bins in every band).
 
+**Step 6, robust edges** (`robust_edges.py` through `pass2_report.py --steps edges`:
+`edges_bins_pass2`, `robust_kept`, `edge_stats_robust`, `unmodelled_surfaces_robust`).
+Every image type gets both the pass 1 50 % crossing and the robust edge; model images
+use the data's noise for the thresholds.
+- Kept fraction of usable bins (not spider, vignetted or masked), data, median over
+  sides (dimensionless): clean 0.90 inner, 0.89 outer; flagged 0.89 inner, 0.85
+  outer. Range 0.84–0.91 on clean sides. Lowest: G0592 extra outer 0.60, G0606 extra
+  outer 0.60, G0635 extra outer 0.65 (neighbour-crowded corner sides). Model images:
+  0.81–0.85 inner, 0.83–0.86 outer, lower than the data because their flat top has
+  structure near the spider.
+- The pass 1 crossing exists in 100 % of usable bins on most sides, so robust edges
+  do not add bins; they remove wrong ones. The gain is in the RMS against Batoid v4.02
+  (pixels, pass 1 → robust): G0592 extra inner 82.1 → 2.8 and outer 29.4 → 3.7;
+  G0592 intra inner 26.1 → 1.5; G0606 extra inner 24.1 → 2.9; G0732 extra outer
+  6.3 → 3.4; G0737 intra outer 4.1 → 2.6. Clean sides change by under 0.2.
+- Unmodelled surfaces with robust edges: 188 runs (71 on clean sides), against 234
+  (79) in pass 1. By surface: M1 hole, inner, 84 runs, 841 bins, median +3.9 pixels;
+  M2 inner, 33 runs, 503 bins, +4.2; M1Baffle1, outer, 41 runs, 269 bins, −4.2;
+  Filter entrance, outer, 9 runs, 82 bins, +11.0; M3, outer, 8 runs, 58 bins, −4.3.
+  Same ranking as pass 1. The M1 and M2 inner runs are the inner-edge offset, now
+  free of the bad crossings.
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
