@@ -67,6 +67,124 @@ Pupil pass 2 (2026-10-20) settles what that offset is not:
 
 ## Log
 
+### 2026-10-20 — selection plan v2
+
+**Decision (Aaron, 2026-10-20).** The pupil analysis is paused. Pass 2 (run
+`20261019_pupil2`) became too convoluted to follow or to draw conclusions from. Its
+results stand as recorded, but nothing new builds on them. The next goal is a larger,
+higher-fidelity sample of giant donuts. The pupil analysis will then be redesigned on
+that sample.
+
+**Plan.** This is not built yet. It waits for Aaron's review. There are three new runs:
+`<date>_selection_diag` (A to C, plus `hand_labels.csv`), `<date>_isr_bin4_v2` (the
+338 and 341 cache) and `<date>_candidates_v2` (D to F). Run `20261018_candidates` is
+not touched.
+
+Code changes, used by every step:
+- `candidates.py`:
+  - `load_refcat` keeps stars with no r flux and returns every the_monster band.
+  - `blind_detect` returns the score map and takes a threshold mode, `rel` (0.3) or
+    `sigma` (5 × nMAD of the score map).
+  - New: `blitz_neighbours`, which reimplements blitz's rule so the rejecting
+    neighbour's id and distance are known. It is checked against blitz's
+    `selected`, and must give 0 mismatches.
+  - New: `relevant_neighbour`, `annulus_model_residual` and `saturation_bleed`.
+- `select_candidates.py`:
+  - Takes several caches and up to four visits.
+  - Loads the refcat to 18.5 mag.
+  - Keeps one row per catalog star at 7–14.5 mag, every star on silicon, with a
+    `reason` code.
+  - Writes a peaks table.
+- New: `selection_pages.py` (PDF pages and tally pages), `score_selection.py` (step D)
+  and `find_giant_nights.py` (step E).
+- New notebook: `notebooks/hand_label_giant_donuts.ipynb`, from the template.
+
+**A. Diagnostics.**
+- On the mosaic, raft and CCD pages, CCD edges drawn:
+  - every the_monster star at 7–14.5 mag, one marker per bin (7–9, 9–11, 11–13,
+    13–14.5) with the count per bin in the legend;
+  - every peak that passed the cuts, with peaks that have no star within 0.5 r_out
+    after the affine drawn differently;
+  - the quality circles, as now.
+- Per catalog star:
+  - a `reason` code, taken as the first cut that fails, in this order: edge,
+    no_r_flux, out_of_mag, blitz_neighbour (with `blitz_nbr_id` and
+    `blitz_nbr_dist_rout`), annulus, overlap. A star that passes every cut is `kept`,
+    with its `iso_class`.
+  - the nearest relevant neighbour: a catalog star with mag_nbr < mag + 4, refcat to
+    18.5 mag. Columns `nbr_dist_rout` (dimensionless), `nbr_mag` (AB mag) and
+    `nbr_dmag` (mag).
+- A tally page per visit and sensor class (science, SW0, SW1):
+  - catalog at 7–14.5 mag → on silicon → with an r mag → matched to a peak;
+  - isolated / marginal / blended / saturated;
+  - unmatched peaks.
+- Outputs: `diag_<visit>_<side>.pdf` (mosaic, tally, rafts, CCDs), `stars.parquet`
+  and `peaks.parquet`.
+- Run time: about 15 min for two visits. Run in the background.
+
+**B. Checks on the current methods.** Written as a page in the diag PDF and as
+`checks.json`, from the A tables:
+- Peak threshold: counts at threshold_rel 0.3 against 5 sigma, per sensor class, and
+  the peaks only one of them finds, with their magnitude and position.
+- Blitz separation (818 pixels, about 2.4 r_out): the count of stars it rejects that
+  have no relevant neighbour within 2.0 r_out.
+- no_r_flux: how many have a flux in another the_monster band. The band order is
+  chosen after looking at which bands exist.
+- R31 intra (2025102300340): a zoom page per CCD with every visible good donut that
+  has no circle, and its reason code.
+
+**C. Hand scan (the truth set).**
+- Rafts: R22 (centre), R31 (mid-field, required), R13 (mid-field, opposite side),
+  R10 (field edge), R40 and R04 (corner WFS). Both visits: 12 pages, about 400 donuts.
+- The notebook (ipympl) shows one raft from the 4×4 cache, background subtracted,
+  with an asinh stretch tuned so the rings show, and the star and peak markers.
+- Clicking near a marker cycles its label: good / marginal / blended / not a donut.
+  Clicking elsewhere adds a missed donut (`added=True`).
+- Each click writes to `hand_labels.csv` in the diag run. The columns are visit,
+  detector, x_pix, y_pix, refcat_id, peak_id, label and added.
+- Aaron's time: about 1–2 hours.
+- Run time to build: none.
+- **STOP** here for the labelling.
+
+**D. Improve and score.**
+- `score_selection.py` matches the labels to the table rows by refcat_id or peak_id,
+  or by position for added donuts.
+- It reports completeness, purity and the 4×4 confusion matrix per sensor class.
+- Six changes, each tested alone against the baseline:
+  - the Δmag 4 neighbour rule;
+  - the 5-sigma peak threshold;
+  - a separation cut in r_out;
+  - other-band magnitudes;
+  - the annulus-model residual (residual RMS over ring level, dimensionless);
+  - the saturation and bleed check, which looks for column streaks in the binned
+    image.
+- The changes that raise completeness without losing purity are kept, and combined.
+- Most variants only reclassify. The 5-sigma variant reruns detection.
+- Outputs: `score_summary.csv` and `score_summary.pdf`, with the before and after
+  numbers.
+- Run time: about 10 min, in the foreground.
+
+**E. Larger sample.**
+- `isr_cache.py` runs on 2025102300338 (extra) and 2025102300341 (intra), about
+  10 min, in the background. Stars are paired across the four visits by refcat_id.
+- `find_giant_nights.py` queries ConsDB for exposures with both hexapods at
+  ±4000 µm from the bracketing in-focus Trim (the hexapod LUT comes from EFD
+  `logevent_compensationOffset`), and checks BLOCK-T389.
+  - Output: `giant_nights.csv` (day_obs, block, exposure count, band, exposure time
+    in s).
+  - Run time: about 15 min, in the background. Nothing is processed until Aaron picks.
+- The field (RA 34.03 deg, Dec −28.37 deg, b = −71.3 deg) is already near the south
+  galactic pole. A lower-density field won't gain much, because most of the crowding
+  comes from the 68 arcsec donut radius.
+
+**F. Output.** In `<date>_candidates_v2`:
+- `candidates_v2.parquet` and `candidates_v2.csv` for all four exposures, with the
+  reason codes, isolation metrics, fit quality and hand labels;
+- `candidates_<visit>_<side>.pdf` ×4;
+- `tally.pdf`;
+- `score_summary.pdf`.
+- Run time: about 25 min, in the background.
+
 ### 2026-10-20 — pupil pass 2
 
 Run `20261019_pupil2`. Already there at the start of the day (code committed with this
