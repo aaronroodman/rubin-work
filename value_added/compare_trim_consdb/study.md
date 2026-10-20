@@ -3,7 +3,7 @@ study: compare_trim_consdb
 topic: value_added
 status: active
 question: Where and why does the ConsDB transformed-EFD Trim (mt_logevent_aggregated_dof) differ from the value-added database Trim, now that ConsDB is backfilled for all nights?
-answer: 'Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; the other 47,514 each had an MTAOS degreeOfFreedom event during the exposure, which ConsDB reports and the value-added database (as of obs_start) does not. That is 85.4% of science exposures with both before 2026-04 and 21.8% from 2026-04. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025).'
+answer: 'Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025).'
 uses:
   value_added: v1@snapshots/20261016
 started: 2026-10-19
@@ -64,9 +64,13 @@ Outcomes over 213,704 exposures, `day_obs` 20250415 to 20260714 (counts):
   including 2,961 `cwfs` and 18,404 `acq`. The science-only gate from the 2026-09
   20260513 notebook is gone: `cwfs` and `acq` now have rows.
 
-Which value to use depends on the question. The DB value is the Trim in effect when the
-shutter opened. The ConsDB value is the last Trim commanded before readout ended, which is
-the Trim for the next exposure if the event came mid-exposure.
+**The DB value is the one that was physically applied.** MTAOS publishes the new Trim
+during the exposure, but the hexapods are not commanded until after the shutter closes.
+`MTHexapod.logevent_uncompensatedPosition` follows 0.09 to 1.82 s after `obs_end`, and
+the measured `MTHexapod.application.position` follows 0.5 to 0.8 s after that. This held
+on all 12 hexapod DOF checked, over 4 science exposures (see the 2026-10-19 hexapod log
+entry). The ConsDB value is therefore the Trim for the *next* exposure whenever the event
+came mid-exposure.
 
 The time history on report page 9 is science exposure 2026042100703 (30 s): one event 28 s into the
 exposure moves camera hexapod dx by about −65 µm and dy by about −67 µm. The DB keeps the
@@ -130,6 +134,37 @@ There is no break at 2025-11/12. These are MTAOS Trim events, not hexapod LUT up
 LUT update during an exposure would appear in `MTHexapod.compensationOffset`, which this
 study does not read. The event's own `visitId` (the visit the correction was derived from)
 would give the latency directly; not yet used.
+
+### 2026-10-19 — does the hexapod move when the Trim changes mid-exposure?
+
+`code/hexapod_response.py` (run `20261019_hexapod`, `hexapod_response.pdf`, 13 pages)
+takes the four science mismatches of the report and the three hexapod DOFs per exposure
+with the largest Trim step at the in-exposure event. Steps under 1 µm or 5e-5 deg are
+skipped. Each DOF gets one page, with two panels:
+
+- **top:** `MTAOS.logevent_degreeOfFreedom.aggregatedDoF<i>` with
+  `MTHexapod.logevent_uncompensatedPosition.<axis>`;
+- **bottom:** measured `MTHexapod.application.position<k>`, commanded `demand<k>`,
+  `MTHexapod.logevent_compensatedPosition.<axis>`, and `inPosition` state changes.
+
+Times in s; "moves" is the first sample half way to the new value:
+
+| exposure | Trim event after obs_start | hexapod commanded after obs_end | position moves after Trim event |
+|---|---|---|---|
+| 2025092100134 | 0.65 | 0.26 | 31.04 to 31.31 |
+| 2026022700235 | 8.64 | 0.09 | 22.89 to 23.04 |
+| 2026042100703 | 28.52 | 0.09 | 3.07 to 3.20 |
+| 2026071100146 | 7.20 | 1.82 | 26.31 to 26.38 |
+
+In every case the hexapod holds its pre-exposure position through the exposure. It moves
+only after `obs_end`, however early in the exposure MTAOS published the new Trim. The AOS
+update is recorded at once but applied later, so the value-added DB Trim (as of
+`obs_start`) describes the exposure, and the ConsDB Trim does not when the two differ.
+
+On 2025092100134 (2025-09) `compensatedPosition` also publishes repeatedly during the
+exposure, while the measured position stays flat. Those are LUT re-evaluations at an
+unchanged value, not moves. Four exposures are a sample, not a census; a census would
+use every `differ` exposure.
 
 Next: confirm the 37 s index issue on the LUT and ESS readers; rerun once ConsDB reports
 the backfill is done.
