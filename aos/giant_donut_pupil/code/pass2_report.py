@@ -502,6 +502,9 @@ COLORS = {'data': '#000000', 'Batoid v4.02': '#2a78d6', 'Batoid v4.02 state': '#
 
 
 def text_page(pdf, title, lines, size=8):
+    # Fit the monospace block to the page: about 0.6 em per character, 1.2 em per line.
+    width = max((len(x) for x in lines), default=1)
+    size = min(12.0, 17 * 72 * 0.95 / (0.6 * width), 11 * 72 * 0.88 / (1.25 * max(len(lines), 1)))
     fig = plt.figure(figsize=(17, 11))
     fig.text(0.02, 0.97, title, fontsize=14, va='top', weight='bold')
     fig.text(0.02, 0.93, '\n'.join(lines), family='monospace', fontsize=size, va='top')

@@ -3,7 +3,7 @@ study: giant_donut_pupil
 topic: aos
 status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'v4.02 fits better than v1000 (Z4-only fits: 15 of 16 clean donut sides, median residual RMS ratio 0.94, dimensionless). The v4.02 danish edges match full Batoid v4.02 to 0.2-1.6 pixels RMS inside 1.725 deg, but the data''s inner edge is decentred by about 2.5 pixels (25 um) from both.'
+answer: 'v4.02 fits better than v1000 (Z4-only: 15 of 16 clean sides, median residual RMS ratio 0.94, dimensionless). The data inner shadow is shifted the same way on both sides of focus, a coma-like +3.3 pixels along +y CCS (+0.75 um of Z7 equivalent), and is about 2 % larger than every model (r_inner/r_outer 0.629 against 0.616-0.618); the danish Z7 fits, the seq 324 state and single element shifts do not explain it.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -44,6 +44,26 @@ arcsec), v4.02 still wins: 35 of 38 donut sides, 15 of 16 clean, median ratio 0.
 full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean donuts
 the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
 1 pixel over 225–315 deg, on both sides of focus.
+
+Pupil pass 2 (2026-10-20) settles what that offset is not:
+- **It has the signature of coma, but is not wavefront coma.** The inner-minus-outer
+  edge-centre shift is +3.3 pixels along +y CCS on both sides of focus and at every
+  field radius 0.17–1.70 deg. In Batoid, 1 µm of Z7 gives +4.45 pixels, so it reads as
+  Z7 +0.71 µm (extra) and +0.81 µm (intra) of wavefront. But danish fits with Z7 and
+  Z8 free find Z7 +0.02 and +0.19 µm, and the seq 324 state gives +0.02 µm.
+- **The inner shadow is also larger.** r_inner / r_outer is 0.628 (extra) and 0.631
+  (intra) in the data, and 0.616–0.618 in Batoid and danish, v4.02 and v1000 alike
+  (dimensionless). Coma does not change the radii.
+- **Not the telescope state.** The seq 324 optical state moves the sector offsets by
+  under 1 pixel. Adding the 337/340 Trim tilts makes every fit worse (38 of 38 sides),
+  so v4.02's as-built alignment already holds them.
+- **Not one element shift.** A decentred pupil obscuration flips sign with focus.
+  Only L3 and the filter give a same-sign shift, and they would need about 5 mm and
+  100 mm moves.
+- **danish v4.02g** (masks fitted at the giant configuration) fixes the outer edges
+  that danish v4.02 missed at 1.73–1.75 deg (M3, filter). There Batoid itself clips at
+  the filter 7–21 pixels inside the data edge. Dropping the in-camera openings costs
+  nothing: they uniquely block no ray.
 
 ## Log
 
@@ -143,6 +163,32 @@ same sign on both sides of focus:
 So no single plausible element shift produces the inner-edge offset. Of everything
 tested, only something in the converging beam near focus (L3, the filter) has a
 same-sign signature, and they would need implausible moves.
+
+**Step 3b, the state applied** (`state_pass.py`: `z4_fits_state`, `batoid_images_state`;
+edges in `edges_bins_pass2`, `sector_offsets`). Z4-only danish fits (v4.02g mask,
+intrinsic from the perturbed optic) and Batoid images for both variants, 76 of 76.
+- Z4-only fit residual RMS, variant over nominal v4.02g (dimensionless, median):
+  `v4.02s` (state + Trim tilts) 1.19 all, 1.24 clean, worse on 38 of 38 sides;
+  `v4.02s0` (state only) 1.001 all, 0.990 clean, lower on 18 of 38. Batoid residual
+  RMS, state over nominal: 1.21 (`v4.02s`), 1.004 (`v4.02s0`).
+- Median inner-edge data − model per 45 deg OCS sector, clean sides, robust edges
+  (pixels), sectors 0, 45, ..., 315 deg:
+
+  | model | side | 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | Batoid v4.02 (before) | extra | +3.2 | +5.8 | +5.8 | +3.1 | +1.8 | +0.5 | +0.2 | +1.4 |
+  | | intra | +2.9 | +4.2 | +4.3 | +2.7 | +1.4 | −0.8 | −0.8 | +1.6 |
+  | state + Trim tilts | extra | +5.9 | +6.6 | +5.4 | +0.9 | −0.6 | −0.1 | +0.4 | +3.7 |
+  | | intra | +5.6 | +4.1 | +2.8 | −2.0 | −3.5 | −2.8 | −0.4 | +4.7 |
+  | state, no Trim | extra | +3.9 | +6.5 | +6.4 | +3.4 | +2.0 | +1.0 | +0.7 | +2.1 |
+  | | intra | +2.8 | +3.7 | +3.6 | +1.9 | +0.6 | −1.3 | −1.1 | +1.3 |
+
+- With the Trim tilts the outer edge goes from −0.1 to −1.8 pixels to −8.1 to +3.2
+  pixels: the M2 ry of −85 arcsec decentres the beam on M1Baffle1 and M3. With them
+  the inner offset rotates rather than shrinks. So the Trim is already in v4.02's
+  as-built alignment, and adding it counts it twice. Without the Trim, the state
+  changes the sector offsets by under 1 pixel. **The seq 324 state does not explain
+  the inner-edge offset.**
 
 **Step 4, radius ratio** (`radius_ratio`): r_inner / r_outer (dimensionless) per bin
 from the robust edges, bins usable on both edges. Per side: the median and the spread
