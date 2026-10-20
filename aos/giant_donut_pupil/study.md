@@ -144,6 +144,29 @@ So no single plausible element shift produces the inner-edge offset. Of everythi
 tested, only something in the converging beam near focus (L3, the filter) has a
 same-sign signature, and they would need implausible moves.
 
+**Step 4, radius ratio** (`radius_ratio`): r_inner / r_outer (dimensionless) per bin
+from the robust edges, bins usable on both edges. Per side: the median and the spread
+over azimuth (nMAD, and 95th minus 5th percentile). Medians over the clean sides:
+
+| image | extra: median | nMAD | p95 − p5 | intra: median | nMAD | p95 − p5 |
+|---|---|---|---|---|---|---|
+| data | 0.6279 | 0.0175 | 0.043 | 0.6306 | 0.0296 | 0.088 |
+| Batoid v4.02 | 0.6159 | 0.0135 | 0.053 | 0.6173 | 0.0164 | 0.077 |
+| danish v4.02 | 0.6158 | 0.0124 | 0.050 | 0.6156 | 0.0153 | 0.071 |
+| danish v4.02g | 0.6160 | 0.0126 | 0.051 | 0.6163 | 0.0162 | 0.070 |
+| danish v1000 | 0.6156 | 0.0128 | 0.050 | 0.6168 | 0.0163 | 0.079 |
+| Batoid v1000 | 0.6158 | 0.0139 | 0.051 | 0.6176 | 0.0165 | 0.078 |
+
+All five models agree to 0.002. The data ratio is 0.012–0.013 higher (2 %), on both
+sides of focus: the inner shadow is larger relative to the outer edge than any model
+has it. At r_outer ≈ 340 pixels, 0.012 is 4 pixels of inner radius. So the inner
+shadow is both larger and shifted. Coma barely changes the radii (Z7 changes r_inner
+by under 0.1 pixel per µm in `coma_sensitivity`), so coma cannot give the ratio
+excess; a central obscuration about 1 % larger in radius than v4.02's could. The outer-edge
+offset of pass 1 (−0.4 to −1.7 pixels) is a fraction −0.0033 extra and −0.0017 intra
+of r_outer (median, clean sides). The spread over azimuth is set by field vignetting
+and is the same in data and models.
+
 **Step 5, Batoid against danish** (`pass2_report.py --steps cases`: `cases`,
 `pattern_bins`, `pattern_table`). G0429 and G0492 are not among the 38 fitted sides:
 both are `blended` candidates, never fitted. The table uses G0249 and G0592, the
