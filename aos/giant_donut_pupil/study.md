@@ -95,6 +95,34 @@ wavefront), so 324 replaces 336. `giant_state.py --seq 324` writes `state324*`,
   holds an as-built alignment, so adding the Trim may count it twice; 3b runs both
   (`v4.02s` with the Trim tilts, `v4.02s0` without).
 
+**Step 2, coma.** `pass2_report.py --steps coma` writes `coma_conversion` (per side) and
+`coma_summary.csv`. Sensitivity (`coma_sensitivity`, 8 sides): +1 µm Z7 gives +4.45
+pixels of inner-minus-outer centre shift along +y CCS, +1 µm Z8 gives +4.45 pixels
+along +x CCS, the same sign intra and extra. Each side's pass-1 data − Batoid edges
+are fitted with a circle per edge; the inner-minus-outer centre shift is solved for
+Z7, Z8 with that side's sensitivity (or the 8-side median). Clean sides, median (nMAD),
+µm of wavefront:
+
+| side | n | Z7 from edges | Z8 from edges | Z7, danish Z4+Z7+Z8 fit | Z8, fit | Z7, 324 state | Z8, 324 state | Z7, 324 state + Trim tilts | Z8, same |
+|---|---|---|---|---|---|---|---|---|---|
+| extra | 7 | +0.71 (0.12) | −0.01 (0.07) | +0.02 (0.20) | +0.14 (0.22) | +0.02 (0.03) | −0.15 (0.03) | −0.21 (0.02) | −1.84 (0.03) |
+| intra | 9 | +0.81 (0.17) | +0.05 (0.26) | +0.19 (0.08) | +0.07 (0.28) | +0.02 (0.03) | −0.15 (0.04) | −0.20 (0.03) | −1.83 (0.03) |
+
+- The edges give one common coma, Z7 +0.7 to +0.8 µm, Z8 ≈ 0, on both sides of focus
+  and at all field radii 0.17–1.70 deg (side range +0.63 to +1.03 µm; one exception,
+  G0618 extra, −0.20 µm). That is what coma does and what a decentred obscuration does
+  not, so the geometry supports the coma hypothesis.
+- But the danish fits with Z7 and Z8 free do not find it: median Z7 +0.02 µm extra
+  and +0.19 µm intra. Per side, edge-Z7 against fit-Z7: Pearson r +0.71 extra and
+  −0.43 intra, Spearman rho +0.32 and −0.50 (n 7 and 9). The fit is driven by the
+  whole flat-top pattern, not the edges, so a real 0.75 µm Z7 would show up there.
+- The 324 state has no such coma: its Batoid Z7 at the donut fields is +0.02 µm. With
+  the Trim tilts added it is −0.21 µm of Z7 and −1.84 µm of Z8, which the edges rule
+  out (they give Z8 ≈ 0).
+- So the inner-edge shift has the signature of coma but is not wavefront coma that
+  danish or the state can see. Step 5's element tolerance and step 3b test what else
+  could do it.
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
