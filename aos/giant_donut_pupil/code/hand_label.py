@@ -253,6 +253,8 @@ class Labeller:
 def make_widget(labeller, figsize=(10, 10)):
     """The ipywidgets/ipympl labelling interface. Needs ``%matplotlib widget``."""
     import ipywidgets as w
+    # select_candidates and selection_pages set Agg on import, which undoes %matplotlib widget.
+    plt.switch_backend('module://ipympl.backend_nbagg')
     names = [f'{v} {r}' for v, r in PAGES]
     page_box = w.Dropdown(options=list(range(len(PAGES))), value=0,
                           description='page')
