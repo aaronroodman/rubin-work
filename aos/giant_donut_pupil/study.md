@@ -190,6 +190,92 @@ Code changes, used by every step:
 - `score_summary.pdf`.
 - Run time: about 25 min, in the background.
 
+### 2026-10-20 — selection v2: diagnostics (A, B), night search (E); waiting on hand labels
+
+Aaron approved the plan, with three answers: the six rafts as proposed; label every
+donut on a page, not only the marked ones; for stars with no r flux, use another band,
+including Gaia G.
+
+Code: `candidates.py` (new functions), `selection_v2.py`, `selection_pages.py`,
+`hand_label.py`, `score_selection.py`, `final_candidates.py`, `find_giant_nights.py`.
+
+**A. Run `20261020_selection_diag`**, all four exposures, about 12 min.
+- Outputs: `stars.parquet`, `peaks.parquet`, `tally.csv`, `checks.json`, and
+  `diag_2025102300337_extra.pdf` and `diag_2025102300340_intra.pdf` (mosaic, tally,
+  checks, 21 raft pages, 197 CCD pages).
+- The baseline matches `20261018_candidates`: the same radii, and the same affine
+  (273 matches, 0.076 mm scatter on 337).
+- Every 20261018 class is reproduced except about 10 stars per visit, which move from
+  marginal to blended or from isolated to marginal. Those stars are now overlap-tested
+  against neighbours on adjacent detectors as well.
+- Tally for 337 science CCDs, in star counts:
+  - catalog stars at 7–14.5 mag (best r): 1402;
+  - centre on a CCD: 1224;
+  - whole donut on the CCD: 797;
+  - with ComCam r: 733;
+  - matched to a peak: 580;
+  - classes: isolated 158, marginal 81, blended 493, saturated 1.
+- The corners are thin. Each SW sensor has 5–13 whole donuts and 1–5 isolated ones
+  per visit.
+- No r flux: 255 star rows over the four visits (about 64 per visit), 8.1–14.4 mag.
+  DES r covers 116 of them and Gaia G with a colour term covers 127.
+  - The colour term: r − G = 0.298 c² − 0.493 c + 0.045, with c = BP − RP. It is fitted
+    on 6518 stars, residual nMAD 0.011 mag. The 12 stars without BP/RP get the median,
+    r − G = −0.130 mag.
+
+**B. Checks** (`checks.json`; a page in each diag PDF).
+- **Peak threshold.** On a science CCD, 5 sigma of the score map keeps only 237–261
+  peaks per visit, against 1701–1731 at threshold_rel 0.3. On the corner sensors it
+  keeps 0–1, against 14–27.
+  - Every 5-sigma peak also passes 0.3. The peaks found only at 0.3 number 6029 over
+    the four visits; 629 of them have no star within 0.5 r_out.
+  - The score map after histogram equalisation is not Gaussian: crowded donuts raise
+    its nMAD. As defined, 5 sigma is not a usable threshold. Step D still tests it, as
+    the overlap neighbour list.
+- **Blitz separation** (818 pixels, 2.4 r_out, on science CCDs).
+  - It rejects 1910 star rows over the four visits.
+  - 90 of them have no relevant neighbour (Δmag < 4) within 2.0 r_out. 336 have no
+    neighbour within Δmag 2 inside 2.0 r_out.
+  - 47 rejected rows are image-clean (annulus_ratio < 0.05, overlap_frac < 0.02). 24 of
+    those also have no relevant neighbour within 2.0 r_out. Those are the clearest
+    losses.
+  - My neighbour reimplementation matches blitz on all 3006 eligible star rows. One
+    star differs at the edge cut, 0.1 pixel inside blitz's eroded box.
+- **R31 intra (2025102300340).** 59 star rows: 21 blitz_neighbour, 19 edge, 7 kept,
+  4 no_r_flux, 4 annulus, 2 overlap.
+  - One image-clean donut is dropped: R31_S00, refcat 5116686181442752256, 12.55 mag.
+    Blitz's rejecting neighbour sits at 2.23 r_out. The nearest relevant neighbour is
+    3.3 mag fainter, at 1.05 r_out.
+  - The other visibly good donuts with no circle are mostly edge cuts and no_r_flux
+    stars. The hand labels in step C will count them.
+
+**C. Hand scan, ready for Aaron.**
+- Notebook: `notebooks/hand_label_giant_donuts_v1.ipynb`. The code is in
+  `code/hand_label.py`.
+- The labels go to `output/20261020_selection_diag/hand_labels.csv`, and the done
+  pages to `hand_labels_pages.json`.
+- Tested headless: drawing, cycling a marker's label, adding a missed donut.
+
+**E. Night search** (`find_giant_nights.py`, DuckDB Trim; run `20261020_giant_nights`).
+- It finds 20251023 seq 337–341 and a second set, seq 349–352. That set was taken
+  after M1M3 bending mode 4 was stepped by +1.0 at seq 344, so it is not a clean
+  repeat.
+- Other nights with both hexapod z Trims stepped by ±4000 µm, in r or i, 60 s:
+  - BLOCK-T621: 20250920 (z band), 20250921, 20251027 and 20251119; 7–8 exposures
+    each;
+  - BLOCK-T666: 20251216–20260119, 2–8 exposures per band per night, at Dec 0 or
+    −25 deg;
+  - BLOCK-T680 (20260127, r band, 11 exposures) and BLOCK-T708 (20260327).
+  - The full list is in `giant_nights.csv`.
+- BLOCK-T389 (20250520, seq 384–391) is not a giant-donut set. It moves the camera
+  hexapod alone, by ±6000 µm, and M2 not at all: a CWFS sequence. It is left for
+  later anyway.
+- Nothing is processed: the sample stays on 20251023.
+
+**Next:** Aaron labels the 12 pages, then says go. Then `score_selection.py --diag
+20261020_selection_diag` (D), then `final_candidates.py --diag
+20261020_selection_diag` (F, about 15 min in the background).
+
 ### 2026-10-20 — pupil pass 2
 
 Run `20261019_pupil2`. Already there at the start of the day (code committed with this
