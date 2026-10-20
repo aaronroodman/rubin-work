@@ -1,6 +1,6 @@
 # Telemetry inventory — what exists, where it comes from, and what reaches the tables
 
-> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (telemetry inventory)
+> **Status:** current · **Last updated:** 2026-10-19 · **Kind:** reference (telemetry inventory)
 
 Every per-visit telemetry quantity used in the AOS work: its name in the Consolidated
 Database (ConsDB) transformed Engineering Facility Database (EFD) or in the raw EFD,
@@ -52,7 +52,7 @@ LUT axial forces and 110 the commanded degrees of freedom. Measured finite fract
 | donut counts | `n_donuts`, `n_detectors`, `median_blur_arcsec`, `visit_quality_pass` | — | arcsec for the blur |
 | hexapod LUT | 10 `lut_dof0..9` | 100.0% camera, 98.5% M2 | µm (z, x, y), **deg** (u, v); see §4 |
 | mirror LUT | 156 `m1m3elev_*`, 72 `m2grav_*` | 400/400 sampled | N, axial force |
-| Trim | 50 `dof0..49` | 100.0% | µm, arcsec; see §4 |
+| Trim | 50 `dof0..49` | 100.0% | µm, deg (hexapod tilts); see §7 |
 | Tweak | 50 `tweak_dof0..49`, `dof_event_id` | 99.7%, 77.1% | derived from Trim; see §4 |
 | wind / airflow | 8 `wind_*`, `sonic_temperature` | 88.6% | m/s, deg, deg C |
 
@@ -180,7 +180,7 @@ hexapod position is **LUT + Trim**; neither term alone is the position.
 |---|---|---|---|---|
 | **LUT**, hexapods | `lut_dof0..lut_dof9` | EFD `lsst.sal.MTHexapod.logevent_compensationOffset` | µm (z, x, y), deg (u, v) | 100.0% camera, 98.5% M2 |
 | **LUT**, mirrors | `m1m3elev_0..155`, `m2grav_0..71` | ConsDB `mt_m1m3_applied_elevation_forces_mean`, `mt_m2_axial_force_lut_gravity_mean` | N (axial force) | 400/400 sampled |
-| **Trim**, all 50 DOF | `dof0..dof49` | EFD `lsst.sal.MTAOS.logevent_degreeOfFreedom`, `aggregatedDoF0..49` | µm (positions, bending), arcsec (hexapod u, v) | 100.0% |
+| **Trim**, all 50 DOF | `dof0..dof49` | EFD `lsst.sal.MTAOS.logevent_degreeOfFreedom`, `aggregatedDoF0..49` | µm (positions, bending), **deg** (hexapod u, v) | 100.0% |
 | **Tweak**, all 50 DOF | `tweak_dof0..tweak_dof49` | derived, `Trim_i - Trim_(i-1)` | same as Trim | 99.7% |
 | Trim source event | `dof_event_id` | the `visitId` of the source `degreeOfFreedom` event | — | 77.1% |
 
@@ -188,10 +188,9 @@ hexapod position is **LUT + Trim**; neither term alone is the position.
 are M2 hexapod (z, x, y, u, v) and `lut_dof5..9` the camera hexapod — so `lut_dof5` pairs
 with Trim `dof5`, both camera-hexapod dz in µm.
 
-**The angular axes do not share units.** `lut_dof3`, `lut_dof4`, `lut_dof8` and `lut_dof9`
-are in **deg**, as MTHexapod reports them, while the corresponding Trim `dof3`, `dof4`,
-`dof8`, `dof9` are in **arcsec** in the OFC convention. Adding them requires a conversion;
-the four dz/dx/dy axes per hexapod are directly additive.
+**LUT and Trim share units, so they add directly.** The hexapod tilts, `lut_dof3,4,8,9`
+and Trim `dof3,4,8,9`, are both in **deg**. This corrects an earlier version of this page,
+which said the Trim tilts were arcsec. Section 7 gives the evidence.
 
 The mirror LUT is in axial **force** (N), not bending amplitude — `dof_telemetry.fetch_mirror_lut_for_visits`
 converts. It has never been changed from the mirror-lab values, so for v-mode work
@@ -505,6 +504,77 @@ not resolve. That database supersedes the earlier plan
 for a private per-visit cache of EFD-only AOS quantities. The M1M3 gradients are expected in
 the official ConsDB transform eventually, but the stated plan as of 2026-08 was not to
 backfill earlier visits, so the value-added copy remains the only source for those.
+
+## 7. Units and time scales — the verified record
+
+Checked 2026-10-19 against the EFD, ts_xml, ts_ofc and sdm_schemas, in study
+[`value_added/compare_trim_consdb`](../../value_added/compare_trim_consdb/study.md).
+**Trust the measurements here over any single document: the documents disagree.**
+
+### Hexapod tilts (DOF 3, 4, 8, 9) are deg
+
+| source | what it says about the Trim tilts |
+|---|---|
+| ts_xml `MTAOS.logevent_degreeOfFreedom.aggregatedDoF` | units `micron`; "angle-related elements is arcsec" |
+| ts_xml `MTAOS.logevent_{camera,m2}HexapodCorrection.u/v` | `degree` |
+| ts_xml `MTHexapod.logevent_{compensationOffset,uncompensatedPosition}.u/v` | `deg` |
+| ts_ofc `doc/user-guide` (sensitivity-matrix section) | rx, ry in arcsec |
+| ts_ofc `doc/version_history`, v4.0.0 | "convert to degrees instead of arcsec for hexapod motions"; sensitivity matrix "in degrees instead of arcseconds" |
+| ConsDB `config_lsstcam.yaml`, `mt_logevent_aggregated_dof` | arcsec (copies the ts_xml text) |
+| `lsst.ts.intrinsic.wavefront.ofc_svd.DOF_UNITS_50` | arcsec |
+
+The ts_xml `aggregatedDoF` text, the ts_ofc user guide, the ConsDB description and
+`DOF_UNITS_50` all predate the ts_ofc v4.0.0 change, or never caught up with it.
+
+**The measurement settles it.** On each MTAOS event, `aggregatedDoF8/9` equals
+`cameraHexapodCorrection.u/v`, and also equals the camera hexapod's own
+`MTHexapod.uncompensatedPosition.u/v` (salIndex 1). Both of those are documented in deg.
+The median ratio is 1 (dimensionless; aggregatedDoF over hexapod field) on all four nights
+checked:
+
+| night (UTC) | events matched, `cameraHexapodCorrection` (count) | events matched, `uncompensatedPosition` (count) |
+|---|---|---|
+| 2025-04-19 | 250 | 140 |
+| 2025-11-20 | 173 | 71 |
+| 2026-04-22 | 336 | 333 |
+| 2026-07-11 | 115 | 91 |
+
+`aggregatedDoF3/4` equals `m2HexapodCorrection.u/v` the same way (ratio 1; 250 events on
+2025-04-19, 336 on 2026-04-22). Median camera-tilt Trim magnitudes are 0.0006 to 0.013 deg per night.
+That is 2 to 45 arcsec, a sensible hexapod tilt. The same numbers read as arcsec would
+be negligible.
+
+So everything in rubin-work that reads the EFD stores hexapod tilts in **deg**: the
+value-added DB `dof*`, `tweak_dof*`, `lut_dof*` and `optical_state.dof`. Only a comparison
+with `DOF_UNITS_50`-convention numbers, such as bounce-test results, needs 3600 arcsec/deg
+on those four entries. The translations and bending modes are µm everywhere.
+
+### Time scales
+
+| quantity | time scale | evidence |
+|---|---|---|
+| ConsDB `exposure.obs_start`, `obs_end` (and `visit1`) | **TAI** | sdm_schemas `cdb_lsstcam.yaml`: "TAI, accurate to 10ms" |
+| EFD influx index (the `time` column) | **UTC** | equals `private_efdStamp` (unix UTC) and `private_sndStamp` (unix TAI) − 37 s, `MTAOS.logevent_degreeOfFreedom`, 2025-04-19 |
+| EFD `private_sndStamp`, `private_rcvStamp` | TAI, unix seconds | SAL convention; converted with `Time(..., format='unix_tai')` |
+| EFD `private_efdStamp` | UTC, unix seconds | as above |
+
+The rule: convert `obs_start` TAI → UTC (`Time(obs_start, scale='tai').utc`) and compare it
+with the **raw** EFD index.
+
+**Do not pass `convert_influx_index=True`** to `select_time_series`. `lsst_efd_client`
+documents it as a "Legacy flag to convert time index from TAI to UTC". On the current EFD
+it shifts every timestamp 37 s early. With it, an as-of match on `obs_start` reproduced
+only 143,767 of 213,680 value-added Trim rows; with the raw index it reproduced all of
+them, and all 121,515 ConsDB Trim rows (counts).
+
+What is correct today:
+
+- **The value-added Trim (`dof*`) is correct.** It comes from
+  `getMostRecentRowWithDataBefore` anchored on `obs_start` → UTC.
+- **The ConsDB transformed EFD is correct.** It windows on `start_time.utc`.
+- **Not yet checked:** `dof_telemetry._asof_rows_by_night`, which feeds the hexapod LUT
+  `lut_dof*`, and `common/ess_telemetry.py` both pass `convert_influx_index=True`. Their
+  as-of matches may effectively use `obs_start` + 37 s.
 
 ## See also
 

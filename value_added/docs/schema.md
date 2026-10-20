@@ -65,7 +65,7 @@ from the same per-night fetch, and none has variants.
 
 | group | columns | kind | source |
 |---|---|---|---|
-| `trim` | 50 | EFD | `MTAOS.logevent_degreeOfFreedom`, as of `obs_start` [µm, arcsec] |
+| `trim` | 50 | EFD | `MTAOS.logevent_degreeOfFreedom`, as of `obs_start` [µm, deg] |
 | `lut` | 10 | EFD | `MTHexapod.logevent_compensationOffset` [µm, deg] |
 | `camera` | 25 | EFD | camera body, housing and lens temperatures [°C] |
 | `turbulence` | 44 | EFD | sonic anemometer speeds [m/s] and temperature [°C] |
@@ -196,8 +196,8 @@ Measured on the `danish_1_2` reference chunk `20251116_20251130`, 53 visits: no 
 has another FAM visit as its immediate database predecessor, so there is not even a subset
 of visits where the two agree. **A study must not join them as one column**, and must say
 which definition it means. Units are per-DOF, the row's own `dof_unit` (µm of hexapod
-motion or arcsec of hexapod tilt for the ten rigid-body DOF, dimensionless bending-mode
-amplitude for the forty others).
+motion or deg of hexapod tilt for the ten rigid-body DOF, µm of bending-mode amplitude
+for the forty others; see `aos/docs/telemetry.md` §7).
 
 ### `fwhm_cwfs_arcsec` is a corner median, not a focal-plane median
 
@@ -460,8 +460,8 @@ a value is either given a physical unit or explicitly marked dimensionless with 
 named. The cases worth knowing:
 
 - **DOF columns** (`trim`, `tweak`) are mixed-unit by nature: µm for the z/x/y displacements
-  and bending modes, deg or arcsec for the u/v rotations. One column, one unit; the group is
-  mixed.
+  and bending modes, **deg** for the u/v rotations (measured; `aos/docs/telemetry.md` §7).
+  One column, one unit; the group is mixed.
 - **Temperatures** are °C throughout; the M1M3 spatial gradients are °C/m.
 - **`day_obs`** is dimensionless, formatted YYYYMMDD; `seq_num` is a dimensionless sequence
   number; `obs_start` is a TAI ISO-8601 timestamp, not a float.

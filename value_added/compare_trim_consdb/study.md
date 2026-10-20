@@ -108,5 +108,28 @@ time-frame note).
 Rerun with the label `report`: one PDF in place of the scattered PNGs, per the
 one-PDF-per-study rule. `20261019_compare` holds the earlier PNG output.
 
+### 2026-10-19 — units, time scales, and when the in-exposure events land
+
+**Hexapod tilt units are deg.** `aggregatedDoF3,4,8,9` equal
+`MTAOS.{m2,camera}HexapodCorrection.u/v` and `MTHexapod.uncompensatedPosition.u/v`, both
+documented in deg. The median ratio is 1 (dimensionless) on 2025-04-19, 2025-11-20,
+2026-04-22 and 2026-07-11, which settles the conflicting documents. Recorded with the
+sources in `aos/docs/telemetry.md` §7; `value_added/docs/schema.md` and the
+`dof_telemetry` docstrings are corrected.
+
+**Time scales.** ConsDB `obs_start`/`obs_end` are TAI (sdm_schemas). The EFD influx index
+is UTC. Both databases compare `obs_start` → UTC with the raw index, which is correct.
+
+**When the events land, science exposures by month.** The fraction of science exposures
+with a `degreeOfFreedom` event between `obs_start` and `obs_end` (dimensionless) is 0.44
+to 0.53 in 2025-04 to 2025-07, 0.66 to 0.90 in 2025-08 to 2026-03, and 0.19 to 0.30 from
+2026-04. The median time from `obs_end` to the next event is 10 to 25 s in 2025-06 to
+2026-03 and 42 to 45 s from 2026-04. It is 38 s in 2025-04 and 2025-05.
+
+There is no break at 2025-11/12. These are MTAOS Trim events, not hexapod LUT updates. A
+LUT update during an exposure would appear in `MTHexapod.compensationOffset`, which this
+study does not read. The event's own `visitId` (the visit the correction was derived from)
+would give the latency directly; not yet used.
+
 Next: confirm the 37 s index issue on the LUT and ESS readers; rerun once ConsDB reports
 the backfill is done.

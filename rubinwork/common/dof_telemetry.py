@@ -15,10 +15,10 @@ Trim            ``dof0..49``         ``MTAOS.logevent_degreeOfFreedom.aggregated
 Tweak           ``tweak_dof0..49``   **derived**: ``Trim_i - Trim_(i-1)``
 =============== ==================== ==================================================
 
-The ordering and units of all three match the OFC DOF state (see
-:data:`ofc_svd.LABELS_50DOF` / :data:`ofc_svd.DOF_UNITS_50`) -- µm for hexapod
-translations, arcsec for rotations, dimensionless amplitude for bending modes --
-so they can be compared with / added to FAM-recovered DOF directly.
+The ordering matches the OFC DOF state (:data:`ofc_svd.LABELS_50DOF`). Units are µm
+for hexapod translations and bending modes and **deg** for the hexapod rotations, as
+measured against ``MTHexapod`` (``aos/docs/telemetry.md`` section 7);
+:data:`ofc_svd.DOF_UNITS_50` labels the rotations arcsec, which is out of date.
 
 **Trim** is the amount the MTAOS closed loop has moved each degree of freedom
 away from the LUT baseline through closed-loop alignment.  Per-visit lookup
@@ -539,8 +539,8 @@ def derive_tweak(trim, event_ids):
     Parameters
     ----------
     trim : `numpy.ndarray`
-        Shape ``(n_visits, n_dof)`` Trim values, in the OFC DOF units (µm for hexapod
-        translations, arcsec for rotations, dimensionless for bending amplitudes).
+        Shape ``(n_visits, n_dof)`` Trim values: µm for hexapod translations and
+        bending modes, deg for hexapod rotations.
     event_ids : `numpy.ndarray`
         Shape ``(n_visits,)`` ``visitId`` of the source ``degreeOfFreedom`` event, NaN
         where none resolved. A change between consecutive visits marks a re-alignment.
