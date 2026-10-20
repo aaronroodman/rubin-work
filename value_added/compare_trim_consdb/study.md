@@ -123,7 +123,7 @@ is UTC. Both databases compare `obs_start` → UTC with the raw index, which is 
 **When the events land, science exposures by month.** The fraction of science exposures
 with a `degreeOfFreedom` event between `obs_start` and `obs_end` (dimensionless) is 0.44
 to 0.53 in 2025-04 to 2025-07, 0.66 to 0.90 in 2025-08 to 2026-03, and 0.19 to 0.30 from
-2026-04. The median time from `obs_end` to the next event is 10 to 25 s in 2025-06 to
+2026-04. The median time from `obs_end` to the next event is 10 to 34 s in 2025-06 to
 2026-03 and 42 to 45 s from 2026-04. It is 38 s in 2025-04 and 2025-05.
 
 There is no break at 2025-11/12. These are MTAOS Trim events, not hexapod LUT updates. A
