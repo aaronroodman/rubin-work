@@ -593,3 +593,91 @@ python run_oic_compare.py --rho-scan \
 - [`../vmode_normalization.md`](../docs/vmode_normalization.md) — where `r_j` and `f_j` come from
 - [`../../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md) — the bounce
   data inverted here, and the over-range finding that motivated the study
+
+## RBR against a conventional penalty matrix, and why 50/34 RBR pins the hexapods
+
+Runner: `code/run_penalty_matrix_compare.py` (numpy only, local). Inputs: the ts_ofc
+`lsst_sensitivity_dz_31_29_50` matrix at k = 1–6, j = 4–19 and 22–26 (126 values); the
+deployed weights `range0.5_fwhm-0.15.yaml` from `ts_config_mttcs` (the `init.yaml`
+choice the bounce and MIW builds use); physical ranges `r_j` from
+`smatrix/output/normalization_50dof.npz`; the two locally cached bounce legs
+(`Elev=70 → 40`, `Rot=0 → 60`, all nights). Truncated 50/34 reproduces the elevation
+40 deg DOF quoted above (M2_dx 112.5 µm, Cam_dx −436.9 µm), so the setup matches.
+
+### The penalty matrix that truncation implies
+
+RSO-217 section 3.5 shows truncation at k is the penalized solve
+`min ||y − A d||² + ρ dᵀ H d` with `Γ = Nᵀ H N = V diag(0…0, ∞…∞) Vᵀ`. That `H` is
+dense in the DOF basis. With the deployed weights, the discarded-mode projector
+`V_d V_dᵀ` has Frobenius norm 0.725 (dimensionless) in its hexapod–bending block, and the
+principal angles between the 10-D hexapod subspace and span(V_34) reach 6.5, 6.6, 19.7,
+31.5 and 31.8 deg. So **a pure hexapod move is not in the 50/34 solution space**. Its
+nearest point in span(V_34) carries bending.
+
+A noise-free pure-hexapod truth, one DOF at a time, shows the consequence. Retention is
+recovered over true hexapod amplitude (dimensionless); bend max is max over bending
+`|d_j| / r_j` (dimensionless); residual is the L2 norm over the 126 DZ values, µm of
+wavefront.
+
+| truth | T34 retention [bend max] | R34 retention [bend max] | R34 residual | R50 retention | Q50 retention |
+|---|---|---|---|---|---|
+| M2 dz = 0.05 r (295 µm) | 0.925 [0.94] | 0.897 [0.84] | 0.0027 | 1.000 | 1.000 |
+| M2 dz = 0.10 r | 0.925 [1.88] | 0.799 [1.36] | 0.0227 | 1.000 | 1.000 |
+| M2 dz = 0.20 r | 0.925 [3.76] | 0.656 [1.82] | 0.0956 | 1.000 | 1.000 |
+| M2 dz = 0.40 r | 0.925 [7.53] | 0.554 [2.23] | 0.2705 | 0.999 | 1.000 |
+| Cam dz = 0.20 r (1740 µm) | 0.961 [3.82] | 0.752 [1.59] | 0.1129 | 1.000 | 1.000 |
+| M2 dx = 0.40 r (2680 µm) | 0.829 [2.04] | 0.626 [1.15] | 0.0348 | 0.998 | 0.997 |
+| Cam dx = 0.40 r | 0.958 [0.30] | 0.958 [0.30] | 0.0015 | 0.996 | 0.999 |
+
+Truncation alone loses 4% to 17% of a hexapod move and invents bending at about 19
+times the bending range per unit of hexapod range fraction for M2 dz and Cam dz
+(dimensionless). RBR on 34 modes can only remove that bending by shrinking the whole
+v-mode combination, hexapod included. This is the effect seen on the MIW builds. Both
+full-rank solvers recover the hexapod to better than 0.5% with no bending.
+
+### Measured legs
+
+All scored with the full-rank operator. `ρ*` is the smallest quadratic penalty with
+max `|d_j| / r_j` ≤ 1 on that leg. Residual norm in µm of wavefront; max ratio
+dimensionless; σ(Cam dx) is the Monte Carlo scatter from the per-coefficient `delta_err`,
+300 draws, µm.
+
+| method | Elev=40 residual | Elev=40 max ratio | Rot=60 residual | Rot=60 max ratio | σ(Cam dx) Elev=40 / Rot=60 |
+|---|---|---|---|---|---|
+| T34, truncated 50/34 | 0.0440 | 8.58 | 0.0524 | 2.94 | 56.0 / 24.1 |
+| T50, truncated 50/50 | 0.0301 | 32.52 | 0.0483 | 5.68 | 155.0 / 114.3 |
+| R34, RBR on 34 modes | 0.0586 | 0.93 | 0.0583 | 0.92 | 55.8 / 24.1 |
+| **R50, RBR on 50 modes** | **0.0530** | 0.98 | **0.0553** | 0.89 | 66.3 / 35.5 |
+| Q50, `H = diag(1/r²)`, ρ = 0.01 µm | 0.0508 | 1.63 | 0.0552 | 1.21 | 57.7 / 24.7 |
+| Q50 at ρ* (0.0153 / 0.012 µm) | 0.0583 | 1.00 | 0.0564 | 1.00 | 58.4 / 24.6 |
+| Q34x, rank-34 model, 50-DOF solve, ρ* | 0.0595 | 1.00 | 0.0574 | 1.00 | 59.4 / 25.4 |
+
+- **At equal feasibility R50 is best.** Q50 costs 10% more residual on Elev=40 and 2% on
+  Rot=60 (dimensionless, Q50 at ρ* over R50). R34 costs 11% and 5%.
+- **Q50 is the conventional alternative and it works.** One linear solve, analytic noise
+  propagation, hexapod noise equal to the truncated scheme. Its cost is the quadratic
+  form: it taxes in-range DOF, and ρ* differs between legs by a factor of 1.28
+  (dimensionless, 0.0153 µm over 0.012 µm), so a fixed ρ lands at 1.0 to 1.6 times range.
+- **R50 pays in hexapod noise.** Its Cam dx scatter is 1.14 and 1.44 times Q50's
+  (dimensionless, R50 over Q50 at ρ*). The p = 3 penalty is nearly flat below the knee, so
+  the near-null hexapod–bending directions are bounded only by the range itself.
+- **Unregularized 50/50 is not an option.** T50 is 32.5 times over range with 2.8 times
+  the Cam dx noise of T34.
+- **Full-rank solves do not depend on the normalization.** With an explicit penalty and
+  no truncation, `N` cancels. R50 and Q50 give identical numbers under `range-fwhm.yaml`
+  and `range0.5_fwhm-0.15.yaml`; T34 and R34 do not (R34 Elev=40 residual 0.0849 µm,
+  max ratio 1.36, and zero Cam dx under `range-fwhm.yaml`).
+
+### Answer
+
+50/50 is not the only way, but dropping the hard truncation is. The 34-mode cut forbids
+pure hexapod motion, so any range constraint applied inside it trades hexapod for
+bending. Either regularizer works once all 50 directions are open, because the penalty
+then does the job truncation did. R50 gives the lowest residual at feasibility. Q50
+(`H = diag(1/r_j²)`, full rank) is within 2% to 10%, is linear and normalization-free,
+and has lower hexapod noise; it needs ρ set per regime. A quadratic floor plus the RBR
+term (`lam0` in a range metric) would combine the two and is the obvious next test.
+
+Caveats: two legs only, both paired differences rather than full states; `r_j` from
+`normalization_50dof.npz`, not the `OFCData.dof_ranges` of the unpushed ts_ofc branch;
+residuals in µm of wavefront, not FWHM (no ts_wep locally).
