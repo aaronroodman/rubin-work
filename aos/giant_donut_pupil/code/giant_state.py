@@ -1,25 +1,26 @@
 """Telescope state for the giant donuts (step 1 of pupil pass 2), and model checksums.
 
-Reference visit: day_obs 20251023 seq 336, the in-focus FAM reference
-(BLOCK-T626) taken just before the giant pair 337 (extra) and 340 (intra).
+Reference visit (``--seq``): day_obs 20251023 seq 324, the last visit of
+infocus_initial_alignment (BLOCK-T539), or seq 336, the in-focus FAM
+reference (BLOCK-T626) taken just before the giant pair 337 (extra) and 340
+(intra).
 
 * Optical state: value_added ``optical_state``, variant
   ``v22_12__batoid__consdb_v1`` (22 DOF, 12 v-modes, batoid intrinsic, as run
   online), current catalog build. The corner Zernike deviation (ConsDB OPD
   minus the batoid intrinsic) is recomputed with the builder's own
-  `measured_deviation`. This is a reference only: none of it enters the
-  Batoid or danish models.
+  `measured_deviation`. `state_pass.py` applies it in Batoid.
 * Trim: ``visit_telemetry`` ``dof0..9`` (``MTAOS.logevent_degreeOfFreedom``) at
-  337 and 340 against 336.
+  337 and 340 against the reference visit.
 * Hexapod: EFD ``MTHexapod.application`` actual position minus demand over
-  each exposure, and the demand change from 336 split into the elevation LUT
+  each exposure, and the demand change from the reference split into the elevation LUT
   change (``logevent_compensationOffset``) and the rest.
 
 Hexapod tilts are reported in arcsec; the DOF tables store them in deg.
 
 Run, from ``code/``::
 
-    python giant_state.py --run ../output/20261019_pupil2
+    python giant_state.py --run ../output/20261019_pupil2 --seq 324
 """
 import argparse
 import hashlib
@@ -30,10 +31,10 @@ import numpy as np
 import pandas as pd
 
 DAY_OBS = 20251023
-REF_SEQ = 336
+REF_SEQ = 336  # replaced by --seq
 GIANT_SEQ = {'extra': 337, 'intra': 340}
 VARIANT = 'v22_12__batoid__consdb_v1'
-EXP_TIME_S = {336: 30.0, 337: 60.0, 340: 60.0}
+EXP_TIME_S = {324: 30.0, 336: 30.0, 337: 60.0, 340: 60.0}
 HEX = {1: 'camera', 2: 'M2'}
 AXES = ('x', 'y', 'z', 'u', 'v', 'w')
 TRIM_NAMES = ('M2 z', 'M2 x', 'M2 y', 'M2 rx', 'M2 ry', 'camera z', 'camera x', 'camera y',
@@ -85,12 +86,12 @@ def optical_state():
 
 
 def trim_check():
-    """Trim at 337 and 340 minus Trim at 336, µm and arcsec."""
+    """Trim at 337 and 340 minus Trim at the reference visit, µm and arcsec."""
     from rubinwork.products.value_added import reader
     con = reader.connect()
     cols = ','.join(f'dof{i}' for i in range(10))
     df = con.execute(f'SELECT seq_num, obs_start, {cols} FROM visit_telemetry WHERE day_obs = ? '
-                     f'AND seq_num IN (336, 337, 340)', [DAY_OBS]).df().set_index('seq_num')
+                     f'AND seq_num IN ({REF_SEQ}, 337, 340)', [DAY_OBS]).df().set_index('seq_num')
     rows = []
     for side, seq in GIANT_SEQ.items():
         for i, name in enumerate(TRIM_NAMES):
@@ -103,7 +104,7 @@ def trim_check():
 
 
 def hexapod_check(obs_start):
-    """EFD actual minus demand per exposure, and the demand change from 336 less the LUT change."""
+    """EFD actual minus demand per exposure, and the demand change from the reference less the LUT."""
     from astropy.time import Time
     from rubinwork.common.dof_telemetry import _run_coro
     from rubinwork.common.telemetry_clients import make_efd_client
@@ -141,6 +142,47 @@ def hexapod_check(obs_start):
     return act, pd.DataFrame(rows)
 
 
+def state_dof(run, seq=324, trim_tilts=True):
+    """50-DOF vector for the Batoid model: the visit's optical_state plus the Trim tilts.
+
+    Parameters
+    ----------
+    run : `pathlib.Path`
+        Run directory holding ``state<seq>_dof.parquet`` and ``trim_check_<seq>.parquet``.
+    trim_tilts : `bool`, optional
+        Add the 337/340 Trim of M2 rx, ry and camera rx, ry (deg).
+
+    Returns
+    -------
+    dof : `numpy.ndarray`
+        µm, and deg for indices 3, 4, 8, 9 (ts_ofc ordering).
+    """
+    dof = pd.read_parquet(run / f'state{seq}_dof.parquet').value.to_numpy(float).copy()
+    if trim_tilts:
+        trim = pd.read_parquet(run / f'trim_check_{seq}.parquet')
+        trim = trim[trim.side == 'extra'].set_index('dof')
+        for i, name in zip(TILT_DOF, ('M2 rx', 'M2 ry', 'camera rx', 'camera ry')):
+            dof[i] += (trim.loc[name, 'trim_ref'] + trim.loc[name, 'trim_minus_ref']) / 3600.0
+    return dof
+
+
+def apply_dof(optic, dof):
+    """`optic` with 50 AOS DOF applied by batoid_rubin, in the sensitivity-matrix convention.
+
+    Same `LSSTBuilder` settings as `rubinwork.smatrix.compute_smatrix` (ZCS,
+    both bending flips, degree), including its y-sign flip of M2 and camera dy
+    and Ry, so a DOF vector from the state estimator means what it meant there.
+    """
+    import os
+    from rubinwork.smatrix import compute_smatrix as cs
+    os.environ.setdefault('BATOID_RUBIN_DATA_DIR', cs.DEFAULT_DATA_DIR)
+    from batoid_rubin import LSSTBuilder
+    d = np.asarray(dof, float).copy()
+    d[cs.OFC_Y_SIGN_FLIP] *= -1.0
+    kw = cs._builder_kwargs(cs.DEFAULT_DATA_DIR, 'bend')
+    return LSSTBuilder(optic, **kw).with_aos_dof(d.tolist()).build()
+
+
 def checksums():
     """md5 of the Batoid model files the pass reads."""
     import batoid
@@ -152,17 +194,22 @@ def checksums():
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--run', required=True)
+    ap.add_argument('--seq', type=int, default=324, help='reference visit seq_num')
     args = ap.parse_args()
+    global REF_SEQ
+    REF_SEQ = args.seq
     run = pathlib.Path(args.run).resolve()
     dof, zk, meta = optical_state()
     trim, obs_start = trim_check()
     act, demand = hexapod_check(obs_start)
     meta['models'] = checksums()
-    for name, df in (('state336_dof', dof), ('state336_zk', zk), ('trim_check', trim),
-                     ('hexapod_actual', act), ('hexapod_demand', demand)):
+    tag = '' if REF_SEQ == 336 else f'_{REF_SEQ}'
+    for name, df in ((f'state{REF_SEQ}_dof', dof), (f'state{REF_SEQ}_zk', zk),
+                     (f'trim_check{tag}', trim), (f'hexapod_actual{tag}', act),
+                     (f'hexapod_demand{tag}', demand)):
         df.to_parquet(run / f'{name}.parquet')
         df.to_csv(run / f'{name}.csv', index=False, float_format='%.6g')
-    (run / 'state336.json').write_text(json.dumps(meta, indent=1))
+    (run / f'state{REF_SEQ}.json').write_text(json.dumps(meta, indent=1))
     pd.set_option('display.width', 200)
     print(json.dumps(meta['models'], indent=1))
     print(zk[zk.noll.isin([5, 6, 7, 8])].pivot(index='corner', columns='noll',

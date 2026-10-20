@@ -72,7 +72,7 @@ def zk_intrinsic(optic, thx, thy, offsets, r_outer, r_inner, extra_camera_dz=0.0
 
 
 def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_out_pix,
-           noll=(4,), mask_params=None):
+           noll=(4,), mask_params=None, optic=None):
     """Flux + centre + `noll` danish fit with the other Zernikes and the blur fixed.
 
     Parameters
@@ -82,6 +82,8 @@ def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_o
     mask_params : `dict`, optional
         danish mask replacing the pupil's own (a v4.02g file); the batoid
         optic for the intrinsic stays the pupil's.
+    optic : `batoid.Optic`, optional
+        Optic for the intrinsic, replacing the pupil's (a perturbed v4.02).
 
     Returns
     -------
@@ -95,7 +97,8 @@ def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_o
     from scipy.stats import median_abs_deviation
     blitz_utils, wf_task = fit_giant_donut._import_blitz()
     instrument = blitz_utils._INSTRUMENT
-    params, r_outer, r_inner, optic = fd.pupil(pupil_name, mask_v402)
+    params, r_outer, r_inner, pupil_optic = fd.pupil(pupil_name, mask_v402)
+    optic = pupil_optic if optic is None else optic
     if mask_params is not None:
         params = mask_params
         r_outer, r_inner = fd.ob._annulus(params)

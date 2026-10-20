@@ -27,6 +27,9 @@ Run, from ``code/``::
 
     python batoid_images.py --run ../output/20261018_pupil --workers 32
 
+With a ``dof`` entry in the task (`state_pass.py`), the 50 AOS DOF are applied
+to every optic (`giant_state.apply_dof`) before the rotation and the offsets.
+
 The v1000 control (no spider planes in that model; its own Z4 fit sets the
 piston and centre), written to another run::
 
@@ -45,6 +48,7 @@ import pandas as pd
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import fit_donuts as fd  # noqa: E402  (puts the blitz checkout first on sys.path)
+import giant_state as gs  # noqa: E402
 import obscuration_v402 as ob  # noqa: E402
 import z4_fits  # noqa: E402
 
@@ -60,7 +64,8 @@ OPTICAL = ('M1', 'M2', 'M3', 'L1', 'L2', 'Filter', 'L3', 'Detector')
 CHUNK = 1_000_000
 TRACEFULL_CHUNK = 20_000
 PISTON_STEP_M = 20e-6
-BATOID_TAG = {'v4.02': 'batoid', 'v1000': 'batoid_v1000'}
+BATOID_TAG = {'v4.02': 'batoid', 'v1000': 'batoid_v1000', 'v4.02s': 'batoid_state',
+              'v4.02s0': 'batoid_state0'}
 
 
 def _rebuild(optic, items):
@@ -167,20 +172,29 @@ def side_image(task):
     t0 = time.time()
     run_dir = pathlib.Path(run_dir)
     out_dir = pathlib.Path(row.pop('out_dir', run_dir))
+    dof = row.pop('dof', None)
+    z4_image = row.pop('z4_image', None)
+    perturb = (lambda o: o) if dof is None else (lambda o: gs.apply_dof(o, dof))
+    tag = model
+    model = 'v4.02' if model.startswith('v4.02') else model
     thx, thy = np.radians(row['field_x_ccs_deg']), np.radians(row['field_y_ccs_deg'])
     offsets = (row['det_offset_mm'] * 1e-3, row['cam_offset_mm'] * 1e-3, row['m2_offset_mm'] * 1e-3)
     rtp = row['rtp_deg']
     params, r_outer, r_inner, nospider = fd.pupil(model, mask_v402)
+    if 'r_outer_m' in row:  # the mask the Z4 fit used (v4.02g) sets the intrinsic's annulus
+        r_outer, r_inner = row.pop('r_outer_m'), row.pop('r_inner_m')
+    nospider = perturb(nospider)
     piston, z4_got = camera_piston(nospider, thx, thy, offsets, r_outer, r_inner,
                                    row['z4_um'] * 1e-6)
 
-    full = configure(ob.v402_optic() if model == 'v4.02' else nospider, rtp, offsets, piston)
+    full = configure(perturb(ob.v402_optic()) if model == 'v4.02' else nospider, rtp, offsets,
+                     piston)
     cx, cy = pupil_grid(2 * PUPIL_OUTER_M / CLIP_GRID)
     first, names, tf_x, tf_y = first_clip(full, cx, cy, thx, thy)
     clippers = sorted({names[k] for k in np.unique(first[first >= 0])})
     leaf = tuple(n.split('.')[-1] for n in clippers)
-    reduced = (configure(ob.reduced_v402(keep=tuple(set(leaf) | set(OPTICAL))), rtp, offsets, piston)
-               if model == 'v4.02' else full)
+    reduced = (configure(perturb(ob.reduced_v402(keep=tuple(set(leaf) | set(OPTICAL)))), rtp,
+                         offsets, piston) if model == 'v4.02' else full)
     kx, ky = pupil_grid(2 * PUPIL_OUTER_M / CHECK_GRID, offset=0.21)
     t_full, _, _ = transmitted(full, kx, ky, thx, thy)
     t_red, _, _ = transmitted(reduced, kx, ky, thx, thy)
@@ -203,7 +217,7 @@ def side_image(task):
     x0, y0 = x.mean(), y.mean()
     u, v = (x - x0) / PIXEL_M, (y - y0) / PIXEL_M
 
-    model_img = np.load(run_dir / 'images' / f'{key[0]}_{key[1]}_{model}_z4.npz')['model']
+    model_img = np.load(z4_image or run_dir / 'images' / f'{key[0]}_{key[1]}_{model}_z4.npz')['model']
     yy, xx = np.mgrid[:npix, :npix]
     mc = (np.sum(model_img * xx) / model_img.sum(), np.sum(model_img * yy) / model_img.sum())
     sky_scale = 3600 * np.rad2deg(PIXEL_M / 10.312)
@@ -223,11 +237,11 @@ def side_image(task):
     lit = hist[hist > 0.5 * np.percentile(hist[hist > 0], 90)]
     resid = (img - bat)[inside]
     np.savez_compressed(
-        out_dir / 'images' / f'{key[0]}_{key[1]}_{BATOID_TAG[model]}.npz', batoid=bat.astype(np.float32),
+        out_dir / 'images' / f'{key[0]}_{key[1]}_{BATOID_TAG[tag]}.npz', batoid=bat.astype(np.float32),
         tf_px=((tf_x - x0) / PIXEL_M + mc[0] + shift[0]).astype(np.float32),
         tf_py=((tf_y - y0) / PIXEL_M + mc[1] + shift[1]).astype(np.float32),
         tf_first=first.astype(np.int16), tf_names=np.array(names))
-    out = dict(cand_id=key[0], side=key[1], model=model, piston_um=piston * 1e6, z4_target_um=row['z4_um'],
+    out = dict(cand_id=key[0], side=key[1], model=tag, piston_um=piston * 1e6, z4_target_um=row['z4_um'],
                z4_batoid_um=z4_got * 1e6, n_clippers=len(clippers), clippers=';'.join(leaf),
                agreement=agreement, xor_over_T=float(np.sum(t_full != t_red) / t_full.sum()),
                used_full=bool(use_full), n_rays=int(len(gx)), n_transmitted=int(len(x)),

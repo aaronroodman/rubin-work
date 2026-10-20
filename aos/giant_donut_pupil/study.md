@@ -59,6 +59,42 @@ sides (`coma_sensitivity.py`); `element_tolerance` and `geom_coma_check.json`
 (`geom_edges.py`); `images/` (38 each of `v4.02g_z4`, `v4.02g_z478`, `batoid_v1000`).
 `robust_edges.py` is written but not yet run.
 
+Found before today, against seq 336: Trim at 337 and 340 minus Trim at 336 is exactly
+±4000 µm in M2 z and camera z and 0 elsewhere. EFD actual minus demand during 337 and
+340 is at most 1.40 µm and 0.12 arcsec.
+
+**Step 1, the state: seq 324.** value_added `optical_state`, variant
+`v22_12__batoid__consdb_v1`, snapshot 20261016, has seq 324 (resid RMS 0.148 µm of
+wavefront), so 324 replaces 336. `giant_state.py --seq 324` writes `state324*`,
+`trim_check_324`, `hexapod_*_324`.
+- Corner deviation from the batoid intrinsic (µm of wavefront, OCS):
+
+  | corner | Z5 | Z6 | Z7 | Z8 |
+  |---|---|---|---|---|
+  | R00_SW0 | −0.57 | +0.24 | −0.09 | −0.10 |
+  | R04_SW0 | +0.49 | +0.19 | +0.27 | −0.26 |
+  | R40_SW0 | +0.24 | −0.07 | −0.26 | −0.12 |
+  | R44_SW0 | −0.25 | −0.04 | +0.17 | −0.15 |
+- DOF (optical_state; µm, arcsec): M2 dz +175.7, dx −22.7, dy −7.8, rx −0.05, ry
+  −1.56; camera dz −172.4, dx +578.0, dy −160.7, rx 0.00, ry −3.63; bending modes
+  within ±0.03 µm.
+- Trim at 324 (µm, arcsec): M2 z −1230.19, rx +10.45, ry −86.58; camera z −1250.63,
+  rx −27.44, ry +4.89; x, y within 0.07 µm. **The Trim at 324 does not equal that at
+  337 and 340**: 337 and 340 carry the Trim of seq 328 (M2 rx +10.10, ry −84.97;
+  camera rx −26.55, ry +6.89 arcsec), after a Tweak at 326 and one at 328 (M2 dz −53.5
+  µm, camera dz +74.5 µm). Trim(337) − Trim(324): M2 z +3941.57 µm, rx −0.34, ry
+  +1.61 arcsec; camera z +4081.76 µm, rx +0.89, ry +2.00 arcsec; x, y within 0.002
+  µm. 340 is the same with z −4058.43 and −3918.24 µm. The EFD demand change from 324,
+  less the elevation LUT change, matches these to 0.4 µm and 0.01 arcsec.
+- EFD actual minus demand at 324: at most 1.73 µm and 0.05 arcsec.
+- Batoid DOF for step 3b: the 324 optical_state plus the 337/340 Trim tilts (M2 rx
+  +10.10, ry −84.97; camera rx −26.55, ry +6.89 arcsec), applied with batoid_rubin in
+  the sensitivity-matrix convention (`giant_state.apply_dof`). In Batoid v4.02 the
+  Trim tilts alone give Z8 −1.71 µm and Z7 −0.23 µm of wavefront on axis, nearly all
+  from M2 ry; the 324 optical_state alone gives under 0.15 µm. The v4.02 file already
+  holds an as-built alignment, so adding the Trim may count it twice; 3b runs both
+  (`v4.02s` with the Trim tilts, `v4.02s0` without).
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
