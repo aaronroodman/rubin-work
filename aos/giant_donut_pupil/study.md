@@ -286,6 +286,21 @@ use the data's noise for the thresholds.
   Same ranking as pass 1. The M1 and M2 inner runs are the inner-edge offset, now
   free of the bad crossings.
 
+Code `f41ca31`, `21c7cc8`, `e41f1b2`, `a0340c4`, `842a5a2`, `d177ce5`, `294fa36`,
+`4d904e5` (`giant_state.py --seq`, `state_pass.py`, `pass2_report.py`). The PDF is
+`20261019_pupil2/giant_donut_pupil_pass2.pdf`, 53 pages: summary, sections 1–6, then
+one robust-edge page per side; the summary text is `summary.txt`.
+
+![coma from the edges against the fits and the state](figures/pass2_coma.png)
+![robust edges, G0592 extra](figures/pass2_edges_G0592_extra.png)
+
+Next:
+- Aaron to confirm G0249 and G0592 for the listed G0429 and G0492.
+- Fit a central-obscuration scale and decentre in Batoid against the clean inner edges:
+  the ratio excess and the +y shift together, both sides of focus.
+- Check the filter clear aperture at 1.74–1.86 deg against the CAD: the data edge lies
+  7–21 pixels outside Batoid's there.
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
