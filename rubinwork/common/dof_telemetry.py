@@ -351,6 +351,12 @@ def _asof_rows_by_night(efd_client, topic, columns, times, day_obs,
     ruinous for high-rate telemetry like MTM2.axialForce).  ``buffer_hours``
     should be a few hours for sparse logevents and small for high-rate topics.
     Returns a list (len n visits) of pandas Series or None.
+
+    ``times`` must be UTC. The EFD index is read raw, which is already UTC: it equals
+    ``private_efdStamp`` and ``private_sndStamp`` (TAI) - 37 s.
+    ``convert_influx_index=True`` is a legacy TAI -> UTC flag that would shift the index
+    37 s early, so a visit would pick up events up to 37 s after its ``obs_start``. See
+    ``aos/docs/telemetry.md`` section 7.
     """
     import pandas as pd
     from astropy.time import TimeDelta
@@ -368,7 +374,7 @@ def _asof_rows_by_night(efd_client, topic, columns, times, day_obs,
         try:
             kw = {} if index is None else {'index': index}
             df = _run_coro(efd_client.select_time_series(
-                topic, columns, t0, t1, convert_influx_index=True, **kw))
+                topic, columns, t0, t1, convert_influx_index=False, **kw))
         except Exception as e:
             print(f'({topic} night {d} query failed [{type(e).__name__}: {e}])')
             continue

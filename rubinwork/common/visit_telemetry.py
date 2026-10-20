@@ -97,13 +97,14 @@ def fetch_wind(cdb, visit_ids):
     return df.rename(columns={'exposure_id': 'visit'})
 
 
-def fetch_camera(keys, pad_sec=None, require_state=False, verbose=True):
+def fetch_camera(keys, pad_sec=None, require_state=False, verbose=True, mjd_scale='tai'):
     """Camera-body temperatures per visit, averaged over a window around each visit.
 
     Parameters
     ----------
     keys : `pandas.DataFrame`
-        Must carry ``day_obs``, ``seq_num`` and ``mjd``.
+        Must carry ``day_obs``, ``seq_num`` and ``mjd``, a time in the exposure (start or
+        midpoint) that the averaging window is centred on.
     pad_sec : `float`, optional
         Half-width of the averaging window in seconds; defaults to
         ``PAD_SEC['camera_body']``.
@@ -113,6 +114,9 @@ def fetch_camera(keys, pad_sec=None, require_state=False, verbose=True):
         (2026-07), so requiring them discards every sample.
     verbose : `bool`, optional
         Print a per-night row count.
+    mjd_scale : `str`, optional
+        Time scale of ``keys['mjd']``. ConsDB ``obs_start_mjd`` is TAI, the default; it is
+        converted to UTC before matching, since the EFD index is UTC.
 
     Returns
     -------
@@ -135,6 +139,9 @@ def fetch_camera(keys, pad_sec=None, require_state=False, verbose=True):
     pad = (PAD_SEC['camera_body'] if pad_sec is None else pad_sec) / 86400.0
     tmin, tmax = CAM_T_RANGE
     v = keys.dropna(subset=['mjd']).copy()
+    # Match in UTC: the raw EFD index is UTC (aos/docs/telemetry.md section 7), and a TAI
+    # MJD read as UTC centres the window 37 s late.
+    v['mjd'] = Time(v['mjd'].to_numpy(float), format='mjd', scale=mjd_scale).utc.mjd
     v['day_obs'] = v['day_obs'].astype(int)
     v['seq_num'] = v['seq_num'].astype(int)
     cols = CAM_FIELDS + ([f + '_state' for f in CAM_FIELDS] if require_state else [])

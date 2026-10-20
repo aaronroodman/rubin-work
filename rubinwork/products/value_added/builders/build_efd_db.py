@@ -302,6 +302,12 @@ def fetch_turbulence(spine, ctx):
     why they are fetched here; salIndex 110 *is* in the transformed EFD and is read live
     instead.
 
+    The window is centred on ``obs_start`` in UTC. The spine's ``mjd`` is ConsDB
+    ``obs_start_mjd``, which is TAI, and the raw EFD index is UTC
+    (``aos/docs/telemetry.md`` section 7). Reading the TAI MJD as UTC and also passing
+    ``convert_influx_index=True`` put the window 74 s late in builds up to
+    ``snapshots/20261016``.
+
     Averaged over ``PAD_SEC['air_turbulence']`` = 15 s either side of each exposure, not
     the 0.2 s used for the ConsDB-transformed wind: the raw topic publishes at a measured
     5.00 s cadence, so a 0.2 s window lands a sample on only about 4% of exposures.
@@ -313,7 +319,9 @@ def fetch_turbulence(spine, ctx):
     pad = PAD_SEC.get('air_turbulence', 15.0) / 86400.0
     fields = list(efd_db.TURB_FIELDS)
     out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
-    mjd = spine['mjd'].to_numpy(float)
+    mjd = spine['mjd'].to_numpy(float).copy()
+    finite = np.isfinite(mjd)
+    mjd[finite] = Time(mjd[finite], format='mjd', scale='tai').utc.mjd
 
     async def _go():
         client = make_efd_client()
@@ -322,7 +330,7 @@ def fetch_turbulence(spine, ctx):
         try:
             df = await client.select_time_series(
                 'lsst.sal.ESS.airTurbulence', ['salIndex'] + fields, t0, t1,
-                convert_influx_index=True)
+                convert_influx_index=False)
         except Exception as e:
             print(f'    turbulence: EFD query failed ({type(e).__name__}: {e}); '
                   f'NaN for {len(spine)} visits')

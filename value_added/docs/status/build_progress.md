@@ -348,9 +348,12 @@ Found 2026-10-20; details and numbers in `aos/docs/telemetry.md` §7.
 - `cam_*`: averaged ±120 s about `obs_start` + 37 s; at most 0.011 °C, negligible.
 - `dof*` / `tweak_dof*` (Trim) are correct.
 
-Fixing these needs code changes in `rubinwork/common/dof_telemetry.py`,
-`rubinwork/common/visit_telemetry.py` and `build_efd_db.fetch_turbulence`, then a rebuild of
-those groups as a new build.
+The code is fixed (2026-10-20) in `rubinwork/common/dof_telemetry.py`,
+`rubinwork/common/visit_telemetry.py` and `build_efd_db.fetch_turbulence`, with tests in
+`rubinwork/common/tests/test_time_anchors.py`. Still to do: rebuild the `lut`, `hexhist`,
+`turbulence` and `camera` groups as a new build, then rerun `build_optical_state` for
+`v_modes_lut`. The telemetry builder needs an EFD client, so it runs on the RSP:
+`makeEfdClient` refuses s3df nodes.
 
 ## Rebuilding
 

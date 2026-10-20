@@ -608,7 +608,21 @@ Consumers of the wrong LUT: `optical_state.v_modes_lut` (`build_optical_state`),
 `fam_tables` `visits.parquet` `lut_dof*` (`run_attach_telemetry`), `thermal_focus`, and
 `blocks/t539_closedloop`. `common/ess_telemetry.py` also passes `convert_influx_index=True`
 for the ESS temperatures and wind it serves to `olr`; those 0.2 s windows sit 37 s early.
-None of these are fixed yet.
+**Code fixed 2026-10-20; the database is not rebuilt.** `dof_telemetry._asof_rows_by_night`
+reads the raw index. `visit_telemetry.fetch_camera` takes `mjd_scale='tai'` and converts to
+UTC. `build_efd_db.fetch_turbulence` converts `obs_start_mjd` to UTC and reads the raw
+index. `rubinwork/common/tests/test_time_anchors.py` covers all three; it fails on the old
+code. A live rerun reproduces the correct-rule values on every exposure:
+
+| fetcher | 20250701 | 20260421 |
+|---|---|---|
+| LUT, M2 and camera | 729 of 729 | 845 of 845 |
+| turbulence, salIndex 123 | no telemetry | 845 of 845 |
+| camera `AverageTemp` | 729 of 729 | no telemetry |
+
+`snapshots/20261016` and the `fam_tables` `visits.parquet` still carry the old values until
+they are rebuilt. `common/ess_telemetry.py` (used by `olr`) still passes
+`convert_influx_index=True`; it is not fixed.
 
 ## See also
 
