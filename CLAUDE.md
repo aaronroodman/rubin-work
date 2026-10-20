@@ -192,6 +192,35 @@ Also useful alongside the tail: `squeue -u roodman` for queue state. For a local
 (non-batch) detached run, the log is `logs/run_<timestamp>.log` (`aos/`) or
 `logs/run_<tag>_<timestamp>.log` (`guider/`, which prints it).
 
+### Running a study to completion
+When Aaron asks for a study pass to run "to the end", do every step in the prompt before
+ending your turn.
+
+1. Don't end your turn to report intermediate results, to ask a question the prompt
+   already answers, or to wait for a job. A short progress line is fine; then keep going.
+2. Long jobs (over about 5 minutes):
+   - run them with the Bash tool's `run_in_background`, so the harness notifies you when
+     they finish;
+   - never use a shell `&` or `nohup` alone: you are not notified when those finish;
+   - one notification per step, not per chunk: launch a single driver script
+     (`run_in_background`) that splits the step into chunks (per donut side, per
+     detector), runs them in parallel internally, and exits when all are done. Don't
+     launch one background task per chunk;
+   - never poll in the conversation (sleep, check, repeat). If you must wait on
+     something the harness can't track, use one Monitor until-loop.
+3. Commit after each step (code plus a short Log line), so a stop loses nothing. Push at
+   the end, and at least every couple of hours.
+4. If a step fails, fix it if you can. If you can't, record why in the Log, skip it, and
+   continue with the steps that don't depend on it.
+5. Stop early only for: a deletion that isn't pre-approved, a batch submission that
+   isn't pre-approved, a result that contradicts the premise of the remaining steps, or a
+   question the prompt really can't answer. Even then, first finish every independent
+   step.
+6. If the context window gets tight, write the state to the study Log (done, running,
+   next) and commit, then continue.
+7. End with the full report the prompt asks for, and only once every step is done or
+   recorded as skipped with a reason.
+
 ### Commands handed to Aaron
 Give the **full copy-paste-ready command — no `...`, no `<placeholder>`, no
 abbreviation**. Spell out the entire seq_num list, the full collection name, every
