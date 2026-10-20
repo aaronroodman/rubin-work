@@ -3,7 +3,7 @@ study: compare_trim_consdb
 topic: value_added
 status: active
 question: Where and why does the ConsDB transformed-EFD Trim (mt_logevent_aggregated_dof) differ from the value-added database Trim, now that ConsDB is backfilled for all nights?
-answer: 'Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025).'
+answer: 'Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied; Tiago confirmed this design (2026-10-20). The ConsDB rule needs fixing. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025).'
 uses:
   value_added: v1@snapshots/20261016
 started: 2026-10-19
@@ -71,6 +71,12 @@ the measured `MTHexapod.application.position` follows 0.5 to 0.8 s after that. T
 on all 12 hexapod DOF checked, over 4 science exposures (see the 2026-10-19 hexapod log
 entry). The ConsDB value is therefore the Trim for the *next* exposure whenever the event
 came mid-exposure.
+
+Tiago confirmed this is the design (2026-10-20): the EFD records the Trim when MTAOS
+delivers it, not when it is applied. A Trim that arrives mid-exposure is applied after
+the exposure ends, for the next visit. **The ConsDB transformed-EFD rule
+(`most_recent_value` over `[obs_start - 1 h, obs_end]`) is wrong for the Trim and needs
+fixing.** Its window should end at `obs_start`.
 
 The time history on report page 9 is science exposure 2026042100703 (30 s): one event 28 s into the
 exposure moves camera hexapod dx by about −65 µm and dy by about −67 µm. The DB keeps the
@@ -181,8 +187,8 @@ Both hexapods were commanded 0.05 to 0.32 s after `obs_end` (median 0.08 s). On 
 exposure-hexapod pairs `uncompensatedPosition` equals the in-exposure Trim exactly. No
 hexapod moved during an exposure (0 of 133). Run time 35 s per night.
 
-The full census (about 300 nights, 2 to 3 h) is on hold until the intended
-MTAOS–MTHexapod interaction is confirmed with Tiago or Sandrine.
+The full census is not needed: Tiago confirmed the intended behaviour (Current answer).
+
 
 Next: confirm the 37 s index issue on the LUT and ESS readers; rerun once ConsDB reports
 the backfill is done.
