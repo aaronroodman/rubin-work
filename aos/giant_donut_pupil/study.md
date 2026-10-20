@@ -144,6 +144,57 @@ So no single plausible element shift produces the inner-edge offset. Of everythi
 tested, only something in the converging beam near focus (L3, the filter) has a
 same-sign signature, and they would need implausible moves.
 
+**Step 5, Batoid against danish** (`pass2_report.py --steps cases`: `cases`,
+`pattern_bins`, `pattern_table`). G0429 and G0492 are not among the 38 fitted sides:
+both are `blended` candidates, never fitted. The table uses G0249 and G0592, the
+fitted sides with the same digits; Aaron should confirm that is what he meant. Per case,
+the surface is the Batoid v4.02 first blocker of the traced rays within 3 pixels
+outside the Batoid edge; the offsets are medians over the range of raw 50 % crossings,
+model minus Batoid v4.02 (pixels):
+
+| case | surface | danish v4.02 | danish v4.02g | danish v1000 | Batoid v1000 | verdict |
+|---|---|---|---|---|---|---|
+| G0429→G0249 extra, outer 80–200 | M1Baffle1 | +0.25 | +0.22 | +0.24 | +0.22 | agree within 0.3 |
+| G0249 intra | M1Baffle1 | +1.06 | +1.06 | +1.17 | +0.28 | danish +1 pixel: the outer circle is a polynomial fit; v4.02g no change |
+| G0492→G0592 extra, inner 330–350 | M1 hole | +2.01 | +1.89 | +1.34 | +0.24 | danish 2 pixels off at 1.65 deg; v4.02g no fix |
+| G0592 intra | M2 inner | −3.07 | −3.42 | −2.31 | −0.26 | as above |
+| G0491 extra, inner 150–280 | M1 hole | +0.32 | +0.22 | +0.23 | +0.42 | agree; the "cut" is the M2 baffle CAD lip and spider |
+| G0491 intra | M2 inner (0.51), M1 | +0.05 | +0.09 | +0.20 | +0.14 | agree |
+| G0515 extra, inner 30–50 | M1 hole | +0.31 | +0.17 | +0.58 | — | agree |
+| G0515 intra | M2 inner | −1.83 | −2.07 | +0.57 | — | danish v4.02 2 pixels inside; v4.02g no fix |
+| G0618 extra, inner 125–145 | TopEndCentre plane | −0.42 | −0.64 | +0.24 | — | a top-end plane danish lacks; small |
+| G0618 intra | inclined spider top | −3.48 | −3.88 | +0.70 | — | spider vane near the inner edge; danish's vane projection differs |
+| G0663 extra, outer 220–240 | M3 outer | −0.14 | +0.18 | −10.43 | +0.65 | v1000 lacks the v4.02 M3; v4.02 and v4.02g fine |
+| G0663 intra, outer 35–50 | Filter entrance | +24.4 | +3.8 | +5.3 | — | **v4.02g fixes it**: the filter circle's thetaMin moved |
+| G0664 intra, outer 170–190 | Filter entrance | +8.0 | −8.4 | −7.2 | −14.4 | v4.02g overshoots |
+| G0676 extra, outer 40–60 | M3 outer | −8.3 | −0.5 | −20.2 | +2.3 | **v4.02g fixes it**: M3 outer circle refitted at +4 mm |
+| G0678 intra, outer 310–330 | Filter entrance | +17.4 | −2.5 | −1.9 | −18.9 | **v4.02g fixes it** |
+
+- **Hypothesis (i), the mask fitted at nominal, holds** for the outer edges at
+  1.73–1.75 deg set by M3 and the filter: v4.02g moves danish onto Batoid. But Batoid
+  itself then misses the data there by 7–21 pixels: the data edge lies outside the
+  filter cut Batoid applies (G0663, G0664, G0678 intra), as pass 1 found.
+- **Hypothesis (ii), the dropped in-camera openings, is ruled out**: over the full
+  field and all azimuths at the giant configurations, `CamAperture` is the unique
+  blocker of no ray (fraction 0.000), so dropping it costs nothing. The camera
+  silhouette uniquely blocks 0.2–2.5 % of rays at 1.5–1.95 deg and the filter 2–6 % at
+  1.75–1.85 deg.
+- The remaining danish v4.02 differences of 2–4 pixels (G0592, G0515 intra, G0618
+  intra) are inner edges near 1.5–1.7 deg where the M2 inner circle, the spider and
+  the top-end planes meet. That is the limit of a one-circle-per-edge fit, and v4.02g
+  does not change it.
+
+**Pattern over all bins** (8373 usable bins with all three models): Batoid v4.02 is
+closest to the data in 37 % of bins, danish v1000 in 34 %, danish v4.02g in 29 %.
+Median |model − data|: Batoid v4.02 1.63, danish v1000 1.70, danish v4.02g 1.75 pixels.
+Batoid v4.02 wins on outer edges (50 % of bins), on intra-focal sides (47 %), and where
+the camera silhouette (61 %), the filter (77 %) or M1Baffle1 (51 %) sets the edge.
+danish v1000 and v4.02g win on inner edges set by the M1 hole (41–43 % each against
+16 %). The inner edge is offset the same way in all three (median −2.3 pixels,
+model − data, clean sides), so on inner edges the choice of model hardly matters.
+No dependence on field radius or on azimuth from the radial direction stands out
+(Batoid v4.02 closest in 31–44 % of bins in every band).
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.

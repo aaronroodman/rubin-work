@@ -420,10 +420,13 @@ def cases(run):
                        field_r_deg=r4.field_r_deg, clean=bool(r4.clean),
                        usable=usable(g, edge).to_numpy(), surface=surf)
             data = edge_col(g, edge, 'data').to_numpy()
+            data_raw = g[f'rr_{edge}_data_raw_pix'].to_numpy()
             for m in COMPARE[1:]:
                 t = tag(m)
                 if f'rr_{edge}_{t}_raw_pix' in g:
                     row[f'd_{t}_pix'] = g[f'rr_{edge}_{t}_raw_pix'].to_numpy() - data
+                    # Unfiltered: raw crossings of both, for the narrow case ranges.
+                    row[f'draw_{t}_pix'] = g[f'rr_{edge}_{t}_raw_pix'].to_numpy() - data_raw
             surf_rows.append(pd.DataFrame(row))
     per_bin = pd.concat(surf_rows, ignore_index=True)
     per_bin['surface_group'] = per_bin.surface.map(_group)
@@ -475,16 +478,20 @@ def cases(run):
                        camaperture_unique_max=float(c.unique_CamAperture.max()),
                        silhouette_unique_max=float(c.unique_CameraSilhouette.max()),
                        filter_unique_max=float(c.unique_Filter_entrance.max()))
+            # Raw crossings over every bin of the range: the robust cut and the
+            # spider flag leave too few bins in 10-20 deg ranges.
+            row['n_raw'] = int(w['draw_Batoid_v402_pix'].notna().sum())
             for m in COMPARE[1:]:
-                col = f'd_{tag(m)}_pix'
+                col = f'draw_{tag(m)}_pix'
                 if col in w:
-                    row[f'{tag(m)}_minus_data_pix'] = float(w[col][w.usable].median())
+                    row[f'{tag(m)}_minus_data_pix'] = float(w[col].median())
                     row[f'{tag(m)}_minus_batoid_pix'] = float(
-                        (w[col] - w['d_Batoid_v402_pix'])[w.usable].median())
+                        (w[col] - w['draw_Batoid_v402_pix']).median())
             rows.append(row)
     cs = pd.DataFrame(rows)
     write(run, 'cases', cs)
-    print(cs.drop(columns=['note', 'v402g_active', 'other_surfaces']).round(2).to_string())
+    print(cs[['case', 'side', 'edge', 'surface', 'n_raw'] + [c for c in cs if c.endswith('_pix')]]
+          .round(2).to_string())
     return cs, pattern
 
 
