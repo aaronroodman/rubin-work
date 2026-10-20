@@ -165,14 +165,19 @@ Code changes, used by every step:
 - Run time: about 10 min, in the foreground.
 
 **E. Larger sample.**
-- `isr_cache.py` runs on 2025102300338 (extra) and 2025102300341 (intra), about
-  10 min, in the background. Stars are paired across the four visits by refcat_id.
-- `find_giant_nights.py` queries ConsDB for exposures with both hexapods at
-  ±4000 µm from the bracketing in-focus Trim (the hexapod LUT comes from EFD
-  `logevent_compensationOffset`), and checks BLOCK-T389.
-  - Output: `giant_nights.csv` (day_obs, block, exposure count, band, exposure time
-    in s).
-  - Run time: about 15 min, in the background. Nothing is processed until Aaron picks.
+- `isr_cache.py` on 2025102300338 (extra) and 2025102300341 (intra): done, run
+  `20261020_isr_bin4`. Stars are paired across the four visits by refcat_id.
+- Giant donuts are made by a Trim change, not the LUT. On 20251023 the Trim moves
+  exactly ±4000.0 µm on both hexapods from the in-focus Trim at seq 336 (M2 z
+  −1288.6 µm, camera z −1168.9 µm). The LUT drifts by 17–18 µm over seq 336–341.
+  Seq 335 is a FAM image (camera Trim +1500 µm from 336).
+- **Seq 336 is the in-focus reference for the optical state** (Aaron, 2026-10-20),
+  not seq 324, which pass 2 used.
+- `find_giant_nights.py` reads the DuckDB `visit_telemetry` Trim (`dof0`, `dof5`),
+  finds exposures with both hexapod z Trims ±4000 µm from the bracketing in-focus
+  Trim, and joins ConsDB for band, exposure time and block. Output
+  `giant_nights.csv`, under 1 min. A list only: the sample stays on 20251023, and
+  20250520 (BLOCK-T389, 8 exposures) is left for later.
 - The field (RA 34.03 deg, Dec −28.37 deg, b = −71.3 deg) is already near the south
   galactic pole. A lower-density field won't gain much, because most of the crowding
   comes from the 68 arcsec donut radius.
