@@ -326,8 +326,21 @@ def show_mosaic(ax, mosaic, geometry, stretch_e):
     x1, y1 = geometry.to_mm(nx - 0.5, ny - 0.5)
     ax.imshow(np.arcsinh(mosaic / stretch_e), origin='lower', cmap='gray',
               extent=(x0, x1, y0, y1), vmin=-0.5, vmax=np.arcsinh(20.0), interpolation='none')
-    ax.set_xlabel('focal-plane x, CCS [mm]')
-    ax.set_ylabel('focal-plane y, CCS [mm]')
+    # cameraGeom FOCAL_PLANE is the DM view (DVCS): CCS x and y are swapped.
+    ax.set_xlabel('focal-plane x, DVCS (DM view) [mm] = CCS y')
+    ax.set_ylabel('focal-plane y, DVCS (DM view) [mm] = CCS x')
+    axis_key(ax, (0.06, 0.06), ccs_x=(0.0, 1.0), ccs_y=(1.0, 0.0), frame='DVCS page')
+
+
+def axis_key(ax, xy, ccs_x, ccs_y, frame, length=0.07):
+    """Arrows at axes position `xy` showing where +x and +y of CCS point on the page."""
+    for vec, label in ((ccs_x, '+x CCS'), (ccs_y, '+y CCS')):
+        end = (xy[0] + length * vec[0], xy[1] + length * vec[1])
+        ax.annotate('', xy=end, xytext=xy, xycoords='axes fraction',
+                    arrowprops=dict(arrowstyle='->', color='orange', lw=1.5))
+        ax.text(end[0] + 0.01 * vec[0], end[1] + 0.01 * vec[1], label, color='orange',
+                fontsize=8, transform=ax.transAxes, ha='center', va='center')
+    ax.text(xy[0], xy[1] - 0.025, frame, color='orange', fontsize=7, transform=ax.transAxes)
 
 
 def legend(ax):

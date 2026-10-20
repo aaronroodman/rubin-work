@@ -283,6 +283,17 @@ def edge_stats(bins):
     return pd.DataFrame(rows)
 
 
+def stamp_key(ax, rtp_deg):
+    """CCS axes and the OCS azimuth-0 direction on a CCS stamp (column = +x, row = +y)."""
+    from select_candidates import axis_key
+    axis_key(ax, (0.08, 0.08), ccs_x=(1.0, 0.0), ccs_y=(0.0, 1.0), frame='CCS stamp')
+    a = np.deg2rad(-rtp_deg)
+    ax.annotate('', xy=(0.86 + 0.06 * np.cos(a), 0.08 + 0.06 * np.sin(a)),
+                xytext=(0.86, 0.08), xycoords='axes fraction',
+                arrowprops=dict(arrowstyle='->', color='cyan', lw=1.2))
+    ax.text(0.86, 0.04, 'OCS az 0', color='cyan', fontsize=7, transform=ax.transAxes)
+
+
 def _scales(img, resid_list):
     vmax = np.nanpercentile(img, 99.5)
     rl = max(np.nanpercentile(np.abs(r), 99) for r in resid_list)
@@ -303,6 +314,7 @@ def page_z4(pdf, run, cand, side, g):
                 (res[p], 'data - model', dict(vmin=-rl, vmax=rl, cmap='RdBu_r')))):
             im = axes[i, k].imshow(a, origin='lower', **kw)
             axes[i, k].set_title(f'{p} {title}')
+            stamp_key(axes[i, k], g.iloc[0].rtp_deg)
             fig.colorbar(im, ax=axes[i, k], shrink=0.75, label='electrons per pixel')
         rr = g.loc[p]
         axes[0, 3].text(0, 1.0 - 0.5 * i,
@@ -339,6 +351,7 @@ def page_batoid(pdf, run, cand, side, b, vmax, rl, save=None):
             (np.where(msk, np.nan, img - bat), 'data - Batoid', dict(vmin=-rl, vmax=rl, cmap='RdBu_r')))):
         im = ax.imshow(a, origin='lower', **kw)
         ax.set_title(title)
+        stamp_key(ax, b.get('rtp_deg', 0.0) if hasattr(b, 'get') else 0.0)
         fig.colorbar(im, ax=ax, shrink=0.8, label='electrons per pixel')
     fig.suptitle(
         f'Step 2, Batoid image: {cand} {side}; camera piston {b.piston_um:+.1f} µm '

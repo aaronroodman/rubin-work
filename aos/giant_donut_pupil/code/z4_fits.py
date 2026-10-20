@@ -71,13 +71,24 @@ def zk_intrinsic(optic, thx, thy, offsets, r_outer, r_inner, extra_camera_dz=0.0
     return np.asarray(zk)
 
 
-def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_out_pix):
-    """Z4 + flux + centre danish fit with the other Zernikes and the blur fixed.
+def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_out_pix,
+           noll=(4,), mask_params=None):
+    """Flux + centre + `noll` danish fit with the other Zernikes and the blur fixed.
+
+    Parameters
+    ----------
+    noll : `tuple` [`int`], optional
+        Noll terms floated about the intrinsic; Z4 only by default.
+    mask_params : `dict`, optional
+        danish mask replacing the pupil's own (a v4.02g file); the batoid
+        optic for the intrinsic stays the pupil's.
 
     Returns
     -------
     result : `dict`
         Fit summary, plus ``img``, ``model_img`` and ``masked`` arrays.
+        ``z{j}_dev_um`` is each floated term's deviation from the intrinsic,
+        µm of wavefront.
     """
     import danish
     from scipy.optimize import least_squares
@@ -85,6 +96,9 @@ def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_o
     blitz_utils, wf_task = fit_giant_donut._import_blitz()
     instrument = blitz_utils._INSTRUMENT
     params, r_outer, r_inner, optic = fd.pupil(pupil_name, mask_v402)
+    if mask_params is not None:
+        params = mask_params
+        r_outer, r_inner = fd.ob._annulus(params)
 
     img = np.asarray(stamp, float)
     msk = masked.astype(bool)
@@ -97,10 +111,10 @@ def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_o
                                   focal_length=instrument.focalLength,
                                   pixel_scale=instrument.pixelSize, spider_angle=rtp_deg)
     model = danish.DZMultiDonutModel(
-        factory, z_refs=[zk_ref], dz_terms=[(1, 4)],
+        factory, z_refs=[zk_ref], dz_terms=[(1, j) for j in noll],
         field_radius=wf_task._DANISH_FIELD_RADIUS_RAD, thxs=[thx], thys=[thy],
         npix=img.shape[0], bkg_order=-1)
-    # Full danish vector is (flux, dx, dy, fwhm, z4); fwhm is held out of the solve.
+    # Full danish vector is (flux, dx, dy, fwhm, z...); fwhm is held out of the solve.
     i_fwhm = 3
 
     def full(x):
@@ -113,8 +127,9 @@ def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_o
         return np.delete(model.jac(full(x), [img], [var]), i_fwhm, axis=1)
 
     flux0 = float(np.clip(np.sum(img[~msk]), 1e3, 1e9))
-    x0 = np.array([flux0, 0.0, 0.0, 0.0])
-    bounds = ([0.0, -np.inf, -np.inf, -np.inf], [np.inf] * 4)
+    nz = len(noll)
+    x0 = np.array([flux0, 0.0, 0.0] + [0.0] * nz)
+    bounds = ([0.0] + [-np.inf] * (2 + nz), [np.inf] * (3 + nz))
     t0 = time.time()
     fit = least_squares(chi, x0=x0, jac=jac, bounds=bounds, xtol=fd.TOL, ftol=fd.TOL,
                         gtol=fd.TOL, x_scale='jac', tr_solver='lsmr', max_nfev=fd.MAX_NFEV)
@@ -127,8 +142,9 @@ def fit_z4(stamp, masked, thx, thy, offsets, pupil_name, mask_v402, rtp_deg, r_o
     inside = (np.hypot(xx, yy) < 1.1 * r_out_pix) & ~msk
     resid = (img - model_img)[inside]
     n_good = int((~msk).sum())
-    dz4 = float(p['wavefront_params'][0])
-    return dict(
+    devs = {f'z{j}_dev_um': float(v) * 1e6 for j, v in zip(noll, p['wavefront_params']) if j != 4}
+    dz4 = float(p['wavefront_params'][list(noll).index(4)])
+    return dict(**devs, **{f'z{j}_ref_um': float(zk_ref[j]) * 1e6 for j in noll if j != 4},
         img=img, model_img=model_img, masked=msk,
         z4_um=(zk_ref[4] + dz4) * 1e6, z4_ref_um=zk_ref[4] * 1e6, z4_dev_um=dz4 * 1e6,
         chi2_per_dof=float(2 * fit.cost / max(n_good - len(x0), 1)),

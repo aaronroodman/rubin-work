@@ -26,6 +26,12 @@ equals a batoid rotation of the telescope (everything but the camera) by
 Run, from ``code/``::
 
     python batoid_images.py --run ../output/20261018_pupil --workers 32
+
+The v1000 control (no spider planes in that model; its own Z4 fit sets the
+piston and centre), written to another run::
+
+    python batoid_images.py --run ../output/20261018_pupil --model v1000 \
+        --out ../output/20261019_pupil2
 """
 import argparse
 import json
@@ -54,6 +60,7 @@ OPTICAL = ('M1', 'M2', 'M3', 'L1', 'L2', 'Filter', 'L3', 'Detector')
 CHUNK = 1_000_000
 TRACEFULL_CHUNK = 20_000
 PISTON_STEP_M = 20e-6
+BATOID_TAG = {'v4.02': 'batoid', 'v1000': 'batoid_v1000'}
 
 
 def _rebuild(optic, items):
@@ -156,22 +163,24 @@ def side_image(task):
     """Steps 1-4 for one donut side; writes ``images/<cand>_<side>_batoid.npz``."""
     import batoid  # noqa: F401
     from skimage.registration import phase_cross_correlation
-    key, row, mask_v402, run_dir = task
+    key, row, mask_v402, run_dir, model = task
     t0 = time.time()
     run_dir = pathlib.Path(run_dir)
+    out_dir = pathlib.Path(row.pop('out_dir', run_dir))
     thx, thy = np.radians(row['field_x_ccs_deg']), np.radians(row['field_y_ccs_deg'])
     offsets = (row['det_offset_mm'] * 1e-3, row['cam_offset_mm'] * 1e-3, row['m2_offset_mm'] * 1e-3)
     rtp = row['rtp_deg']
-    params, r_outer, r_inner, nospider = fd.pupil('v4.02', mask_v402)
+    params, r_outer, r_inner, nospider = fd.pupil(model, mask_v402)
     piston, z4_got = camera_piston(nospider, thx, thy, offsets, r_outer, r_inner,
                                    row['z4_um'] * 1e-6)
 
-    full = configure(ob.v402_optic(), rtp, offsets, piston)
+    full = configure(ob.v402_optic() if model == 'v4.02' else nospider, rtp, offsets, piston)
     cx, cy = pupil_grid(2 * PUPIL_OUTER_M / CLIP_GRID)
     first, names, tf_x, tf_y = first_clip(full, cx, cy, thx, thy)
     clippers = sorted({names[k] for k in np.unique(first[first >= 0])})
     leaf = tuple(n.split('.')[-1] for n in clippers)
-    reduced = configure(ob.reduced_v402(keep=tuple(set(leaf) | set(OPTICAL))), rtp, offsets, piston)
+    reduced = (configure(ob.reduced_v402(keep=tuple(set(leaf) | set(OPTICAL))), rtp, offsets, piston)
+               if model == 'v4.02' else full)
     kx, ky = pupil_grid(2 * PUPIL_OUTER_M / CHECK_GRID, offset=0.21)
     t_full, _, _ = transmitted(full, kx, ky, thx, thy)
     t_red, _, _ = transmitted(reduced, kx, ky, thx, thy)
@@ -194,9 +203,9 @@ def side_image(task):
     x0, y0 = x.mean(), y.mean()
     u, v = (x - x0) / PIXEL_M, (y - y0) / PIXEL_M
 
-    model = np.load(run_dir / 'images' / f'{key[0]}_{key[1]}_v4.02_z4.npz')['model']
+    model_img = np.load(run_dir / 'images' / f'{key[0]}_{key[1]}_{model}_z4.npz')['model']
     yy, xx = np.mgrid[:npix, :npix]
-    mc = (np.sum(model * xx) / model.sum(), np.sum(model * yy) / model.sum())
+    mc = (np.sum(model_img * xx) / model_img.sum(), np.sum(model_img * yy) / model_img.sum())
     sky_scale = 3600 * np.rad2deg(PIXEL_M / 10.312)
     kernel = atm_kernel(npix, FWHM_ARCSEC, sky_scale)
     n = npix // 2
@@ -214,11 +223,11 @@ def side_image(task):
     lit = hist[hist > 0.5 * np.percentile(hist[hist > 0], 90)]
     resid = (img - bat)[inside]
     np.savez_compressed(
-        run_dir / 'images' / f'{key[0]}_{key[1]}_batoid.npz', batoid=bat.astype(np.float32),
+        out_dir / 'images' / f'{key[0]}_{key[1]}_{BATOID_TAG[model]}.npz', batoid=bat.astype(np.float32),
         tf_px=((tf_x - x0) / PIXEL_M + mc[0] + shift[0]).astype(np.float32),
         tf_py=((tf_y - y0) / PIXEL_M + mc[1] + shift[1]).astype(np.float32),
         tf_first=first.astype(np.int16), tf_names=np.array(names))
-    out = dict(cand_id=key[0], side=key[1], piston_um=piston * 1e6, z4_target_um=row['z4_um'],
+    out = dict(cand_id=key[0], side=key[1], model=model, piston_um=piston * 1e6, z4_target_um=row['z4_um'],
                z4_batoid_um=z4_got * 1e6, n_clippers=len(clippers), clippers=';'.join(leaf),
                agreement=agreement, xor_over_T=float(np.sum(t_full != t_red) / t_full.sum()),
                used_full=bool(use_full), n_rays=int(len(gx)), n_transmitted=int(len(x)),
@@ -239,23 +248,29 @@ def main():
                     'RubinObsc_v4.02_r_rtpp0_pp0d0.yaml')
     ap.add_argument('--workers', type=int, default=32)
     ap.add_argument('--only', default=None, help='one donut side, e.g. G0515_extra')
+    ap.add_argument('--model', default='v4.02', choices=tuple(BATOID_TAG),
+                    help='Batoid model; its Z4 fit (z4_fits.py) sets the piston and centre')
+    ap.add_argument('--out', default=None, help='output run directory (default --run)')
     args = ap.parse_args()
     import multiprocessing as mp
     run_dir = pathlib.Path(args.run).resolve()
     z4 = pd.read_parquet(run_dir / 'z4_fits.parquet')
-    z4 = z4[z4.pupil == 'v4.02']
+    z4 = z4[z4.pupil == args.model]
     if args.only:
         z4 = z4[z4.cand_id + '_' + z4.side == args.only]
-    fd.pupil('v4.02', args.mask_v402)
-    tasks = [((r.cand_id, r.side), r._asdict(), args.mask_v402, str(run_dir))
-             for r in z4.itertuples(index=False)]
+    out_dir = pathlib.Path(args.out).resolve() if args.out else run_dir
+    (out_dir / 'images').mkdir(exist_ok=True)
+    fd.pupil(args.model, args.mask_v402)
+    tasks = [((r.cand_id, r.side), dict(r._asdict(), out_dir=str(out_dir)), args.mask_v402,
+              str(run_dir), args.model) for r in z4.itertuples(index=False)]
     with mp.get_context('fork').Pool(min(args.workers, len(tasks))) as pool:
         rows = pool.map(side_image, tasks, chunksize=1)
     df = pd.DataFrame(rows)
-    name = 'batoid_images' + (f'_{args.only}' if args.only else '')
-    df.to_parquet(run_dir / f'{name}.parquet')
-    df.to_csv(run_dir / f'{name}.csv', index=False, float_format='%.6g')
-    print('done', run_dir)
+    name = ('batoid_images' + ('' if args.model == 'v4.02' else '_v1000')
+            + (f'_{args.only}' if args.only else ''))
+    df.to_parquet(out_dir / f'{name}.parquet')
+    df.to_csv(out_dir / f'{name}.csv', index=False, float_format='%.6g')
+    print('done', out_dir)
 
 
 if __name__ == '__main__':

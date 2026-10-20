@@ -47,6 +47,18 @@ the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg
 
 ## Log
 
+### 2026-10-20 — pupil pass 2
+
+Run `20261019_pupil2`. Already there at the start of the day (code committed with this
+line): `state336` (json, `_dof`, `_zk`), `trim_check`, `hexapod_actual`,
+`hexapod_demand` (`giant_state.py`); `masks/` (6 v4.02g files), `v402g_validation`,
+`v402g_edge_shift`, `v402g_silhouette`, `camaperture_cuts` (`obscuration_v402g.py`);
+`batoid_images_v1000` and its G0515 extra test (`batoid_images.py --model v1000`);
+`fits_v402g`, Z4 and Z4 + Z7 + Z8, 76 fits (`fits_pass2.py`); `coma_sensitivity`, 8
+sides (`coma_sensitivity.py`); `element_tolerance` and `geom_coma_check.json`
+(`geom_edges.py`); `images/` (38 each of `v4.02g_z4`, `v4.02g_z478`, `batoid_v1000`).
+`robust_edges.py` is written but not yet run.
+
 ### 2026-10-19 — pupil model: Z4-only fits, Batoid images and edges
 
 Code `93994b8`: `code/z4_fits.py`, `code/batoid_images.py`, `code/pupil_edges.py`.
