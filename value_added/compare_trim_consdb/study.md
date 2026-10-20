@@ -11,7 +11,7 @@ started: 2026-10-19
 
 # `compare_trim_consdb`
 
-> **Status:** active · **Last updated:** 2026-10-19 · **Kind:** study
+> **Status:** active · **Last updated:** 2026-10-20 · **Kind:** study
 
 ## Question
 
@@ -165,6 +165,24 @@ On 2025092100134 (2025-09) `compensatedPosition` also publishes repeatedly durin
 exposure, while the measured position stays flat. Those are LUT re-evaluations at an
 unchanged value, not moves. Four exposures are a sample, not a census; a census would
 use every `differ` exposure.
+
+### 2026-10-20 — census mode, tested on one night
+
+`hexapod_response.py --census` covers every `differ` exposure of `comparison.parquet`, one
+EFD query per night and hexapod. It records the delay from `obs_end` to the first
+`MTHexapod.logevent_uncompensatedPosition` after the in-exposure Trim event, and the
+change in measured `application.position` (1 s server-side means, last minus first full
+bin inside the exposure). An axis "moved" if that change exceeds 5 × its census nMAD and
+1 µm or 5e-5 deg. The EFD allows at most 20,000 buckets per query, so `application` is
+read in 5 h chunks.
+
+Test, `day_obs` 20260421 (run `20261020_hexapod_census_test`): 133 `differ` exposures.
+Both hexapods were commanded 0.05 to 0.32 s after `obs_end` (median 0.08 s). On all 266
+exposure-hexapod pairs `uncompensatedPosition` equals the in-exposure Trim exactly. No
+hexapod moved during an exposure (0 of 133). Run time 35 s per night.
+
+The full census (about 300 nights, 2 to 3 h) is on hold until the intended
+MTAOS–MTHexapod interaction is confirmed with Tiago or Sandrine.
 
 Next: confirm the 37 s index issue on the LUT and ESS readers; rerun once ConsDB reports
 the backfill is done.
