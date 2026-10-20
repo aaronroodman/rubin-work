@@ -42,14 +42,20 @@ import lsst.sphgeom as sphgeom  # noqa: E402
 from lsst.afw.cameraGeom import FIELD_ANGLE, FOCAL_PLANE, PIXELS, DetectorType  # noqa: E402
 
 __all__ = ['CACHE_BIN', 'REFCAT', 'FLUX_FIELD', 'sensor_class', 'import_blitz',
-           'measure_radius', 'background_map', 'blind_detect', 'load_refcat',
-           'project_refcat', 'fit_affine', 'apply_affine', 'blitz_select',
-           'ring_metrics']
+           'measure_radius', 'background_map', 'blind_detect', 'blind_detect_scored',
+           'load_refcat', 'load_refcat_bands', 'fill_r_magnitude', 'project_refcat',
+           'fit_affine', 'apply_affine', 'blitz_select', 'blitz_neighbours',
+           'nearest_relevant', 'ring_metrics', 'overlap_fraction',
+           'annulus_model_residual', 'bleed_ratio']
 
 CACHE_BIN = 4
 REFCAT = 'the_monster_20250219'
 # blitz's photoRefFilterPrefix default plus the band.
 FLUX_FIELD = 'monster_ComCam_r_flux'
+# Bands read for stars with no ComCam r flux, in the order they fill r.
+BAND_FIELDS = {'mag_r': 'monster_ComCam_r_flux', 'mag_des_r': 'monster_DES_r_flux',
+               'mag_G': 'phot_g_mean_flux', 'mag_bp': 'phot_bp_mean_flux',
+               'mag_rp': 'phot_rp_mean_flux'}
 
 # blitz's selector defaults (pixels) and the nominal FAM donut radius they were
 # tuned for (`_INSTRUMENT.donutRadius`, pixels). Both separations scale with radius.
@@ -219,6 +225,46 @@ def blind_detect(image, background, r_out_bin, inner_frac, build_template,
     return peaks[:, ::-1].astype(float)
 
 
+def blind_detect_scored(image, background, r_out_bin, inner_frac, build_template,
+                        min_distance_factor=1.6, border_factor=0.5, rel=0.3, n_sigma=5.0):
+    """`blind_detect` with both peak thresholds evaluated on one peak list.
+
+    Peaks are found at the lower of the two thresholds. Non-maximum suppression in
+    `peak_local_max` only lets a stronger peak remove a weaker one, so each
+    threshold's peak list is exactly the subset passing it.
+
+    Parameters
+    ----------
+    rel : `float`, optional
+        Threshold relative to the brightest score on the detector (dimensionless).
+    n_sigma : `float`, optional
+        Threshold in units of the score map's robust noise: median plus
+        ``n_sigma`` nMAD.
+
+    Returns
+    -------
+    xy : `numpy.ndarray`
+        Peak positions, binned pixels, shape ``(n, 2)``.
+    snr : `numpy.ndarray`
+        Peak score minus the map median, over the map nMAD (dimensionless).
+    pass_rel, pass_sigma : `numpy.ndarray`
+        Whether each peak passes the relative or the n-sigma threshold.
+    """
+    arr = np.nan_to_num(image - background)
+    heq = np.digitize(arr, np.quantile(arr, np.linspace(0, 1, 256)))
+    template = build_template(r_out_bin, innerFrac=inner_frac)
+    score = correlate(heq.astype(float), template, mode='same', method='fft')
+    med = np.median(score)
+    noise = 1.4826 * np.median(np.abs(score - med))
+    thr_rel, thr_sigma = rel * score.max(), med + n_sigma * noise
+    peaks = peak_local_max(score, min_distance=int(min_distance_factor * r_out_bin),
+                           exclude_border=int(border_factor * r_out_bin),
+                           threshold_abs=min(thr_rel, thr_sigma))
+    values = score[peaks[:, 0], peaks[:, 1]]
+    return (peaks[:, ::-1].astype(float), (values - med) / noise,
+            values >= thr_rel, values >= thr_sigma)
+
+
 def load_refcat(butler, ra_deg, dec_deg, radius_deg=2.3, mag_max=19.0):
     """Monster refcat stars around a pointing.
 
@@ -246,6 +292,84 @@ def load_refcat(butler, ra_deg, dec_deg, radius_deg=2.3, mag_max=19.0):
         mag = (flux * u.nJy).to_value(u.ABmag)
     keep = np.isfinite(mag) & (mag < mag_max)
     return ids[keep], ra[keep], dec[keep], mag[keep]
+
+
+def load_refcat_bands(butler, ra_deg, dec_deg, radius_deg=2.3):
+    """Monster refcat stars around a pointing, with every band in `BAND_FIELDS`.
+
+    Unlike `load_refcat`, stars with no ComCam r flux are kept.
+
+    Returns
+    -------
+    stars : `pandas.DataFrame`
+        Columns ``id``, ``ra``, ``dec`` (rad) and one AB magnitude per
+        `BAND_FIELDS` key, NaN where the flux is missing or not positive.
+    """
+    import pandas as pd
+    circle = sphgeom.Circle(sphgeom.UnitVector3d(sphgeom.LonLat.fromDegrees(ra_deg, dec_deg)),
+                            sphgeom.Angle.fromDegrees(radius_deg))
+    shards = [i for lo, hi in sphgeom.HtmPixelization(7).envelope(circle) for i in range(lo, hi)]
+    refs = butler.query_datasets(REFCAT, collections='refcats',
+                                 where=f"htm7 IN ({','.join(map(str, shards))})", limit=None)
+    parts = []
+    for ref in refs:
+        cat = butler.get(ref)
+        part = {'id': cat['id'], 'ra': cat['coord_ra'], 'dec': cat['coord_dec']}
+        with np.errstate(invalid='ignore', divide='ignore'):
+            for key, field in BAND_FIELDS.items():
+                part[key] = (np.asarray(cat[field]) * u.nJy).to_value(u.ABmag)
+        parts.append(pd.DataFrame(part))
+    stars = pd.concat(parts, ignore_index=True)
+    ra0, dec0 = np.radians(ra_deg), np.radians(dec_deg)
+    cos_sep = (np.sin(dec0) * np.sin(stars.dec) + np.cos(dec0) * np.cos(stars.dec)
+               * np.cos(stars.ra - ra0))
+    return stars[cos_sep > np.cos(np.radians(radius_deg))].reset_index(drop=True)
+
+
+def fill_r_magnitude(stars, mag_limit=17.0):
+    """Best r magnitude: ComCam r, else DES r, else Gaia G with a colour term.
+
+    The colour term is a quadratic in BP - RP fitted to ``r - G`` on stars that have
+    both, with 3-sigma clipping; stars without BP/RP get the median ``r - G``.
+
+    Parameters
+    ----------
+    stars : `pandas.DataFrame`
+        From `load_refcat_bands`.
+    mag_limit : `float`, optional
+        Only stars with G brighter than this enter the colour fit, AB mag.
+
+    Returns
+    -------
+    mag_best : `numpy.ndarray`
+        AB magnitude.
+    source : `numpy.ndarray`
+        ``'r'``, ``'des_r'``, ``'G_colour'``, ``'G_median'`` or ``'none'``.
+    info : `dict`
+        Colour-term coefficients, median and nMAD of the fit residual (mag), and
+        the number of fit stars.
+    """
+    r, des, g = stars.mag_r.to_numpy(), stars.mag_des_r.to_numpy(), stars.mag_G.to_numpy()
+    colour = (stars.mag_bp - stars.mag_rp).to_numpy()
+    fit = np.isfinite(r) & np.isfinite(g) & np.isfinite(colour) & (g < mag_limit)
+    keep = fit.copy()
+    for _ in range(5):
+        coeffs = np.polyfit(colour[keep], (r - g)[keep], 2)
+        resid = (r - g) - np.polyval(coeffs, colour)
+        scale = 1.4826 * np.median(np.abs(resid[keep]))
+        keep = fit & (np.abs(resid) < 3 * scale)
+    offset = float(np.median((r - g)[fit]))
+    best = r.copy()
+    source = np.where(np.isfinite(r), 'r', 'none').astype(object)
+    use = ~np.isfinite(best) & np.isfinite(des)
+    best[use], source[use] = des[use], 'des_r'
+    use = ~np.isfinite(best) & np.isfinite(g) & np.isfinite(colour)
+    best[use], source[use] = g[use] + np.polyval(coeffs, colour[use]), 'G_colour'
+    use = ~np.isfinite(best) & np.isfinite(g)
+    best[use], source[use] = g[use] + offset, 'G_median'
+    info = dict(colour_coeffs=coeffs.tolist(), median_r_minus_G=offset,
+                resid_nmad_mag=float(scale), n_fit=int(keep.sum()))
+    return best, source, info
 
 
 def project_refcat(wcs, detector, ra, dec, margin_pix=0):
@@ -389,6 +513,107 @@ def blitz_select(selector_classes, detector, x_pix, y_pix, flux_njy, r_out_pix,
     return result.selected, config.unblendedSeparation, config.minBlendedSeparation
 
 
+def blitz_neighbours(x_pix, y_pix, mag, unblended_pix, min_blended_pix, mag_max,
+                     isolated_mag_diff=2.0):
+    """The neighbour that makes blitz's selector reject each star.
+
+    Re-implements the flux branch of `DonutSourceSelectorTask.selectSources` with
+    ``maxBlended = 0``, recording which neighbour fails the star. The edge, field and
+    magnitude cuts are left to the caller; compare with `blitz_select` to check.
+
+    Parameters
+    ----------
+    x_pix, y_pix : `numpy.ndarray`
+        Star positions, full-resolution pixels.
+    mag : `numpy.ndarray`
+        Star magnitudes, AB mag.
+    unblended_pix, min_blended_pix : `float`
+        The scaled separations, full-resolution pixels.
+    mag_max : `float`
+        Faint limit of selectable stars, AB mag; neighbours count to
+        ``mag_max + isolated_mag_diff``.
+    isolated_mag_diff : `float`, optional
+        blitz's ``isolatedMagDiff``, mag.
+
+    Returns
+    -------
+    isolated : `numpy.ndarray`
+        True where no neighbour rejects the star.
+    nbr : `numpy.ndarray`
+        Index of the rejecting neighbour, -1 if none.
+    nbr_dist_pix : `numpy.ndarray`
+        Its distance, full-resolution pixels; NaN if none.
+    """
+    n = len(x_pix)
+    isolated = np.ones(n, bool)
+    nbr = np.full(n, -1)
+    nbr_dist = np.full(n, np.nan)
+    use = np.where(np.asarray(mag) < mag_max + isolated_mag_diff)[0]
+    if len(use) == 0:
+        return isolated, nbr, nbr_dist
+    # Stable magnitude order, as blitz uses to break ties.
+    order = use[np.argsort(np.asarray(mag)[use], kind='stable')]
+    xy = np.column_stack([np.asarray(x_pix)[order], np.asarray(y_pix)[order]])
+    m = np.asarray(mag)[order]
+    tree = cKDTree(xy)
+    for s, idx in enumerate(tree.query_ball_point(xy, r=unblended_pix)):
+        others = np.array([j for j in idx if j != s], int)
+        if len(others) == 0:
+            continue
+        dist = np.hypot(*(xy[others] - xy[s]).T)
+        dmag = m[others] - m[s]
+        brighter = others < s
+        if brighter.any():
+            fail = brighter
+        elif dmag.min() >= isolated_mag_diff:
+            continue
+        elif np.any((dist < min_blended_pix) & (dmag < isolated_mag_diff)):
+            fail = (dist < min_blended_pix) & (dmag < isolated_mag_diff)
+        else:
+            fail = dmag < isolated_mag_diff
+        k = np.argmin(np.where(fail, dist, np.inf))
+        isolated[order[s]] = False
+        nbr[order[s]] = order[others[k]]
+        nbr_dist[order[s]] = dist[k]
+    return isolated, nbr, nbr_dist
+
+
+def nearest_relevant(target_xy, target_mag, all_xy, all_mag, dmag_max=4.0, self_tol=1e-6):
+    """Nearest neighbour that can matter: any brighter star, or one under ``dmag_max`` fainter.
+
+    Parameters
+    ----------
+    target_xy : `numpy.ndarray`
+        Target positions, shape ``(n, 2)``, any length unit.
+    target_mag : `numpy.ndarray`
+        Target magnitudes, AB mag.
+    all_xy, all_mag : `numpy.ndarray`
+        Every catalog star, same units; may include the targets.
+    dmag_max : `float`, optional
+        A neighbour counts if ``mag_nbr < mag_target + dmag_max``, mag.
+
+    Returns
+    -------
+    index : `numpy.ndarray`
+        Into ``all_xy``; -1 if none counts.
+    dist : `numpy.ndarray`
+        Distance in the units of the inputs; inf if none.
+    """
+    tree = cKDTree(all_xy)
+    n = len(target_xy)
+    index, dist = np.full(n, -1), np.full(n, np.inf)
+    k = min(64, len(all_xy))
+    d, j = tree.query(target_xy, k=k)
+    d, j = np.atleast_2d(d), np.atleast_2d(j)
+    for i in range(n):
+        ok = (d[i] > self_tol) & np.isfinite(d[i])
+        ok[ok] &= all_mag[j[i][ok]] < target_mag[i] + dmag_max
+        if ok.any():
+            first = np.argmax(ok)
+            index[i], dist[i] = j[i][first], d[i][first]
+    return index, dist
+
+
 def ring_metrics(image, background, x_bin, y_bin, r_out_bin, r_in_bin, others):
     """Image isolation metrics for one donut.
 
@@ -435,3 +660,88 @@ def ring_metrics(image, background, x_bin, y_bin, r_out_bin, r_in_bin, others):
         covered |= np.hypot(xs - xo, ys - yo) <= ro
     overlap_frac = float((covered & ring).sum() / max(ring.sum(), 1))
     return annulus_ratio, overlap_frac, ring_level, float(np.nanpercentile(cut[ring], 99))
+
+
+def _cutout(image, x_bin, y_bin, half):
+    """Sub-image and its pixel grids about a centre, clipped to the image."""
+    x0, y0 = int(round(x_bin)), int(round(y_bin))
+    ny, nx = image.shape
+    ylo, yhi = max(0, y0 - half), min(ny, y0 + half + 1)
+    xlo, xhi = max(0, x0 - half), min(nx, x0 + half + 1)
+    ys, xs = np.mgrid[ylo:yhi, xlo:xhi]
+    return image[ylo:yhi, xlo:xhi], xs, ys
+
+
+def overlap_fraction(shape, x_bin, y_bin, r_out_bin, r_in_bin, others):
+    """Fraction of a donut's ring inside other donuts' outer disks (dimensionless).
+
+    The same quantity as ``overlap_frac`` from `ring_metrics`, for another
+    neighbour list. ``others`` rows are ``(x_bin, y_bin, r_out_bin)``.
+    """
+    if len(others) == 0:
+        return 0.0
+    half = int(np.ceil(1.05 * r_out_bin))
+    _, xs, ys = _cutout(np.empty(shape, bool), x_bin, y_bin, half)
+    r = np.hypot(xs - x_bin, ys - y_bin)
+    ring = (r >= r_in_bin) & (r <= r_out_bin)
+    near = others[np.hypot(others[:, 0] - x_bin, others[:, 1] - y_bin)
+                  < r_out_bin + others[:, 2]]
+    covered = np.zeros_like(ring)
+    for xo, yo, ro in near:
+        covered |= np.hypot(xs - xo, ys - yo) <= ro
+    return float((covered & ring).sum() / max(ring.sum(), 1))
+
+
+def annulus_model_residual(image, background, x_bin, y_bin, r_out_bin, r_in_bin):
+    """Residual of an ideal uniform annulus fitted to one donut.
+
+    The model is ``A`` inside ``r_in <= r <= r_out`` plus a constant, fitted by
+    least squares over ``r <= 1.15 r_out``. The spider and vignetting are not in
+    the model, so even a clean donut has a residual; the value ranks donuts.
+
+    Returns
+    -------
+    resid_ratio : `float`
+        RMS of the fit residual over ``A`` (dimensionless).
+    level : `float`
+        Fitted ring level ``A``, electrons per full-resolution pixel.
+    """
+    half = int(np.ceil(1.15 * r_out_bin))
+    cut, xs, ys = _cutout(image - background, x_bin, y_bin, half)
+    r = np.hypot(xs - x_bin, ys - y_bin)
+    use = (r <= 1.15 * r_out_bin) & np.isfinite(cut)
+    ring = ((r >= r_in_bin) & (r <= r_out_bin))[use].astype(float)
+    design = np.column_stack([ring, np.ones_like(ring)])
+    coeffs, *_ = np.linalg.lstsq(design, cut[use], rcond=None)
+    if coeffs[0] <= 0:
+        return np.nan, float(coeffs[0])
+    resid = cut[use] - design @ coeffs
+    return float(np.sqrt(np.mean(resid ** 2)) / coeffs[0]), float(coeffs[0])
+
+
+def bleed_ratio(image, background, x_bin, y_bin, r_out_bin, ring_level):
+    """Excess flux along the columns through a donut, over its ring level.
+
+    Bleed trails run along detector columns (y) and are narrower than a binned
+    pixel. Over the rows ``1.05 r_out < |y - y0| < 1.6 r_out`` above and below the
+    donut, each column's median level is taken. The ratio is the largest column
+    median within ``r_out`` of ``x0`` minus the median over all those columns, over
+    ``ring_level``; about 0 without a trail.
+
+    Returns
+    -------
+    ratio : `float`
+        Dimensionless; NaN if the rows leave the image.
+    column_max : `float`
+        That largest column median, electrons per full-resolution pixel.
+    """
+    half = int(np.ceil(1.6 * r_out_bin))
+    cut, xs, ys = _cutout(image - background, x_bin, y_bin, half)
+    dy = np.abs(ys[:, 0] - y_bin)
+    rows = (dy > 1.05 * r_out_bin) & (dy < 1.6 * r_out_bin)
+    cols = np.abs(xs[0] - x_bin) < r_out_bin
+    if rows.sum() < 5 or cols.sum() < 5 or not ring_level > 0:
+        return np.nan, np.nan
+    profile = np.nanmedian(cut[rows][:, cols], axis=0)
+    top = float(np.nanmax(profile))
+    return float((top - np.nanmedian(profile)) / ring_level), top
