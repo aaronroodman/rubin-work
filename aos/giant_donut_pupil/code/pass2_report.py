@@ -495,6 +495,259 @@ def cases(run):
     return cs, pattern
 
 
+# Fixed categorical order (validated default palette); each image type keeps its colour.
+COLORS = {'data': '#000000', 'Batoid v4.02': '#2a78d6', 'Batoid v4.02 state': '#eb6834',
+          'danish v4.02': '#1baf7a', 'danish v4.02g': '#eda100', 'danish v1000': '#e87ba4',
+          'Batoid v1000': '#008300', 'Batoid v4.02 state, no Trim': '#7a5195'}
+
+
+def text_page(pdf, title, lines, size=8):
+    fig = plt.figure(figsize=(17, 11))
+    fig.text(0.02, 0.97, title, fontsize=14, va='top', weight='bold')
+    fig.text(0.02, 0.93, '\n'.join(lines), family='monospace', fontsize=size, va='top')
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def table_lines(df, fmt='%.3g'):
+    return df.to_string(float_format=lambda v: fmt % v).split('\n')
+
+
+def page_state(pdf, run):
+    import json
+    meta = json.loads((run / f'state{STATE_SEQ}.json').read_text())
+    zk = pd.read_parquet(run / f'state{STATE_SEQ}_zk.parquet')
+    dof = pd.read_parquet(run / f'state{STATE_SEQ}_dof.parquet').value.to_numpy().copy()
+    dof[[3, 4, 8, 9]] *= 3600
+    trim = pd.read_parquet(run / f'trim_check_{STATE_SEQ}.parquet')
+    act = pd.read_parquet(run / f'hexapod_actual_{STATE_SEQ}.parquet')
+    names = ['M2 dz', 'M2 dx', 'M2 dy', 'M2 rx', 'M2 ry', 'cam dz', 'cam dx', 'cam dy',
+             'cam rx', 'cam ry']
+    lines = [f'Visit {meta["visit_id"]} (seq {STATE_SEQ}, last visit of infocus_initial_alignment); '
+             f'value_added optical_state {meta["variant"]}', f'db {meta["db"]}',
+             f'corner residual RMS {meta["resid_rms_um"]:.3f} µm of wavefront; rotator '
+             f'{meta["rotator_angle_deg"]:.3f} deg; elevation {meta["elevation_deg"]:.2f} deg', '',
+             'Corner deviation from the batoid intrinsic, µm of wavefront (OCS):']
+    lines += table_lines(zk[zk.noll.isin([5, 6, 7, 8])].pivot(index='corner', columns='noll',
+                                                              values='deviation_um'), '%+.3f')
+    lines += ['', 'optical_state rigid-body DOF (µm; arcsec for rx, ry):']
+    lines += ['  ' + '  '.join(f'{n} {v:+.2f}' for n, v in zip(names, dof[:10]))]
+    lines += ['', 'Trim at 337/340 minus Trim at 324 (µm; arcsec):']
+    lines += table_lines(trim[['side', 'seq', 'dof', 'unit', 'trim_ref', 'trim_minus_ref']], '%+.3f')
+    lines += ['', 'EFD actual minus demand, max |.| per visit:']
+    lines += table_lines(act.groupby(['seq', 'unit']).actual_minus_demand_maxabs.max().unstack(),
+                         '%.3f')
+    lines += ['', 'Batoid DOF of step 3b: v4.02s = this optical_state + the 337/340 Trim tilts '
+              '(M2 rx +10.10, ry -84.97; camera rx -26.55, ry +6.89 arcsec); v4.02s0 = '
+              'optical_state only.']
+    text_page(pdf, 'Section 1: the telescope state, seq 324', lines)
+
+
+def page_coma(pdf, run):
+    df = pd.read_parquet(run / 'coma_conversion.parquet')
+    summ = pd.read_csv(run / 'coma_summary.csv')
+    fig, axes = plt.subplots(1, 2, figsize=(17, 7.5))
+    for ax, j in zip(axes, (7, 8)):
+        for side, mk in (('extra', 'o'), ('intra', 's')):
+            g = df[df.clean & (df.side == side)]
+            ax.plot(g.field_r_deg, g[f'z{j}_edges_um'], mk, color='#2a78d6', ms=8,
+                    label=f'from edges, {side}')
+            ax.plot(g.field_r_deg, g[f'z{j}_fit_um'], mk, color='#eb6834', ms=8, mfc='none',
+                    label=f'danish Z4+Z7+Z8 fit, {side}')
+            ax.plot(g.field_r_deg, g[f'state_z{j}_um'], mk, color='#1baf7a', ms=6,
+                    label=f'324 state, {side}')
+            ax.plot(g.field_r_deg, g[f'state_trim_z{j}_um'], mk, color='#eda100', ms=6,
+                    label=f'324 state + Trim tilts, {side}')
+        ax.axhline(0, color='0.7', lw=0.8)
+        ax.set_xlabel('field radius (deg)')
+        ax.set_ylabel(f'Z{j} (µm of wavefront)')
+        ax.set_title(f'Z{j}, clean sides')
+        ax.legend(fontsize=7, ncol=2)
+    fig.suptitle('Section 2: coma from the inner-minus-outer edge-centre shift (data − Batoid v4.02, '
+                 'pass 1 edges); +1 µm Z7 = +4.45 pixels along +y CCS, +1 µm Z8 = +4.45 pixels '
+                 'along +x CCS', fontsize=10)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+    s = summ[summ.clean].pivot(index='quantity', columns='side', values=['median', 'nmad'])
+    lines = ['Clean sides: median and nMAD; Z in µm of wavefront, shifts in pixels (CCS)'] + \
+        table_lines(s, '%+.3f') + ['', 'Per side:'] + table_lines(
+            df[['cand_id', 'side', 'field_r_deg', 'clean', 'rel_dx_pix', 'rel_dy_pix', 'z7_edges_um',
+                'z8_edges_um', 'z7_fit_um', 'z8_fit_um', 'state_z7_um', 'state_z8_um',
+                'state_trim_z7_um', 'state_trim_z8_um']], '%+.2f')
+    text_page(pdf, 'Section 2: coma table', lines, size=7)
+
+
+def page_sectors(pdf, run):
+    sec = pd.read_parquet(run / 'sector_offsets.parquet')
+    fig, axes = plt.subplots(1, 2, figsize=(17, 7), sharey=True)
+    for ax, side in zip(axes, ('extra', 'intra')):
+        for (model, robust), g in sec[(sec.edge == 'inner') & (sec.side == side)].groupby(
+                ['model', 'robust']):
+            g = g.sort_values('sector_deg')
+            ax.plot(g.sector_deg + 22.5, g.median_pix, 'o-' if robust else 'o--',
+                    color=COLORS.get(model, '0.5'), label=f'{model}, {"robust" if robust else "50 %"}')
+        ax.axhline(0, color='0.7', lw=0.8)
+        ax.set_xlabel('OCS azimuth, sector centre (deg)')
+        ax.set_title(f'inner edge, data − model, clean sides, {side}')
+        ax.legend(fontsize=7)
+    axes[0].set_ylabel('median data − model (pixels)')
+    fig.suptitle('Section 3: 45 deg sector inner-edge offsets before (Batoid v4.02) and after '
+                 '(with the 324 state) step 3b', fontsize=11)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+    p = sec.pivot_table(index=['edge', 'model', 'robust', 'side'], columns='sector_deg',
+                        values='median_pix')
+    text_page(pdf, 'Section 3: sector offsets, median data − model, pixels', table_lines(p, '%+.2f'))
+    zs = run / 'z4_fits_state.parquet'
+    if zs.exists():
+        z = pd.read_parquet(zs)
+        g = pd.read_parquet(run / 'fits_v402g.parquet')
+        g = g[g.fit == 'z4'].assign(pupil='v4.02g')
+        both = pd.concat([z, g]).pivot_table(index=['cand_id', 'side'], columns='pupil',
+                                             values=['resid_rms_e', 'z4_dev_um'])
+        lines = ['Z4-only fits, v4.02g mask: residual RMS (electrons per pixel) and Z4 − intrinsic '
+                 '(µm of wavefront), nominal v4.02 intrinsic against the 324-state intrinsics'] + \
+            table_lines(both, '%.2f')
+        text_page(pdf, 'Section 3: Z4-only fits with the state', lines, size=7)
+
+
+def page_ratio(pdf, run):
+    rr = pd.read_parquet(run / 'radius_ratio.parquet')
+    bins = pd.read_parquet(run / 'edges_bins_pass2.parquet')
+    fig, axes = plt.subplots(1, 2, figsize=(17, 7))
+    ax = axes[0]
+    for m in RATIO_MODELS:
+        g = rr[rr.clean & (rr.model == m)].sort_values('field_r_deg')
+        if len(g):
+            ax.plot(g.field_r_deg, g['median'], 'o', color=COLORS.get(m, '0.5'), label=m, ms=6)
+    ax.set_xlabel('field radius (deg)')
+    ax.set_ylabel('median r_inner / r_outer (dimensionless)')
+    ax.legend(fontsize=7)
+    ax.set_title('per side, clean sides')
+    ax = axes[1]
+    g = bins[(bins.cand_id == 'G0515') & (bins.side == 'extra')].sort_values('az_ocs_deg')
+    use = usable(g, 'inner') & usable(g, 'outer')
+    for m in RATIO_MODELS:
+        if f'rr_inner_{tag(m)}_pix' in g:
+            q = (edge_col(g, 'inner', m) / edge_col(g, 'outer', m)).where(use)
+            ax.plot(g.az_ocs_deg, q, '-', color=COLORS.get(m, '0.5'), lw=1.5, label=m)
+    ax.set_xlabel('OCS azimuth (deg)')
+    ax.set_ylabel('r_inner / r_outer (dimensionless)')
+    ax.set_title('G0515 extra, against azimuth (robust edges)')
+    ax.legend(fontsize=7)
+    fig.suptitle('Section 4: the radius ratio r_inner / r_outer', fontsize=11)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+    t = rr[rr.clean].groupby('model')[['median', 'nmad', 'p95_minus_p5']].median()
+    text_page(pdf, 'Section 4: radius ratio, median over clean sides of the per-side statistic '
+              '(dimensionless)', table_lines(t, '%.4f'))
+
+
+def page_cases(pdf, run):
+    cs = pd.read_parquet(run / 'cases.parquet')
+    pat = pd.read_parquet(run / 'pattern_table.parquet')
+    cols = ['case', 'cand_id', 'side', 'edge', 'az_from_deg', 'az_to_deg', 'field_r_deg',
+            'surface', 'danish_representation'] + [c for c in cs if c.endswith('minus_batoid_pix')]
+    lines = ['Model minus Batoid v4.02, median of raw 50 % crossings over the range, pixels. '
+             'G0429 -> G0249 and G0492 -> G0592 (G0429, G0492 were never fitted).'] + \
+        table_lines(cs[cols].rename(columns=lambda c: c.replace('_minus_batoid_pix', '')), '%+.2f')
+    text_page(pdf, 'Section 5: the 10 cases', lines, size=6.5)
+    lines = ['Fraction of usable bins where each model is closest to the data (robust data edge); '
+             'median |model − data|, pixels'] + table_lines(pat.set_index(['by', 'value']), '%.3f')
+    text_page(pdf, 'Section 5: pattern table', lines, size=7)
+    fig, axes = plt.subplots(1, 3, figsize=(17, 6.5), sharey=True)
+    for ax, by in zip(axes, ('field_band', 'radial_band', 'surface_group')):
+        g = pat[pat.by == by]
+        x = np.arange(len(g))
+        for k, m in enumerate(CLOSEST):
+            ax.bar(x + (k - 1) * 0.27, g[f'closest_frac_{tag(m)}'], 0.25, color=COLORS[m], label=m)
+        ax.set_xticks(x)
+        ax.set_xticklabels(g.value, rotation=45, ha='right', fontsize=8)
+        ax.set_title(by.replace('_', ' '))
+    axes[0].set_ylabel('fraction of bins closest to the data (dimensionless)')
+    axes[0].legend(fontsize=8)
+    fig.suptitle('Section 5: which model is closest to the data', fontsize=11)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def page_side_edges(pdf, bins, cand, side):
+    g = bins[(bins.cand_id == cand) & (bins.side == side)].sort_values('az_ocs_deg')
+    fig, axes = plt.subplots(2, 1, figsize=(17, 10), sharex=True)
+    for ax, edge in zip(axes, ('outer', 'inner')):
+        for m in ('data', 'Batoid v4.02', 'Batoid v4.02 state', 'danish v4.02g', 'danish v1000',
+                  'Batoid v1000'):
+            t = tag(m)
+            if f'rr_{edge}_{t}_raw_pix' not in g:
+                continue
+            q = g[f'q_{edge}_{t}']
+            keep = np.isin(q, ('ok', 'multi'))
+            raw = g[f'rr_{edge}_{t}_raw_pix']
+            ax.plot(g.az_ocs_deg[keep], raw[keep], 'o', ms=3, color=COLORS[m], label=m)
+            ax.plot(g.az_ocs_deg[~keep], raw[~keep], 'o', ms=3, mfc='none', color=COLORS[m])
+            ax.plot(g.az_ocs_deg, g[f'fit_{edge}_{t}_pix'], '-', lw=0.8, color=COLORS[m])
+        for x in g.az_ocs_deg[g.spider]:
+            ax.axvspan(x - 1, x + 1, color='gold', alpha=0.25, lw=0)
+        ax.set_ylabel(f'r_{edge} (pixels)')
+        ax.legend(fontsize=7, ncol=6)
+    axes[1].set_xlabel('OCS azimuth (deg)')
+    f0 = g.iloc[0]
+    fig.suptitle(f'Section 6, robust edges: {cand} {side}, field radius {f0.field_r_deg:.3f} deg, '
+                 f'{"clean" if f0.clean else "flagged"}; filled = kept, hollow = rejected; line = '
+                 'circle + harmonics to m = 4 (Huber); gold = spider', fontsize=10)
+    fig.tight_layout()
+    pdf.savefig(fig, dpi=80)
+    plt.close(fig)
+
+
+def page_robust(pdf, run):
+    kept = pd.read_parquet(run / 'robust_kept.parquet')
+    st = pd.read_parquet(run / 'edge_stats_robust.parquet')
+    old = pd.read_parquet(run.parent / PASS1 / 'edge_stats.parquet')
+    um = pd.read_parquet(run / 'unmodelled_surfaces_robust.parquet')
+    k = kept[kept.image == 'data'].pivot_table(index=['cand_id', 'side', 'clean'], columns='edge',
+                                               values=['kept_of_usable', 'pass1_of_usable'])
+    text_page(pdf, 'Section 6: robust edges, fraction of usable bins with an edge (data)',
+              table_lines(k, '%.3f'), size=7)
+    m = st.merge(old[['cand_id', 'side', 'inner_data_rms_pix', 'outer_data_rms_pix']],
+                 on=['cand_id', 'side'], suffixes=('', '_pass1'))
+    cols = ['cand_id', 'side', 'field_r_deg', 'clean', 'inner_data_rms_pix', 'inner_data_rms_pix_pass1',
+            'outer_data_rms_pix', 'outer_data_rms_pix_pass1', 'inner_v402g_rms_pix', 'outer_v402g_rms_pix']
+    text_page(pdf, 'Section 6: edge statistics, RMS against Batoid v4.02, robust vs pass 1, pixels',
+              table_lines(m[cols], '%.2f'), size=7)
+    t = um.groupby(['clipping_surface', 'edge']).agg(runs=('n_bins', 'size'), bins=('n_bins', 'sum'),
+                                                     median_offset_pix=('median_offset_pix',
+                                                                        'median'))
+    text_page(pdf, 'Section 6: unmodelled surfaces with robust edges (runs of 3+ bins, '
+              '|data − Batoid| > 3 pixels)', table_lines(t.sort_values('bins', ascending=False),
+                                                         '%+.2f'))
+
+
+def page_summary(pdf, lines):
+    text_page(pdf, 'Pupil pass 2: summary', lines, size=9)
+
+
+def make_pdf(run, summary_lines):
+    from matplotlib.backends.backend_pdf import PdfPages
+    bins = pd.read_parquet(run / 'edges_bins_pass2.parquet')
+    out = run / 'giant_donut_pupil_pass2.pdf'
+    with PdfPages(out) as pdf:
+        page_summary(pdf, summary_lines)
+        page_state(pdf, run)
+        page_coma(pdf, run)
+        page_sectors(pdf, run)
+        page_ratio(pdf, run)
+        page_cases(pdf, run)
+        page_robust(pdf, run)
+        for (cand, side), _ in bins.groupby(['cand_id', 'side']):
+            page_side_edges(pdf, bins, cand, side)
+    print('wrote', out)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--run', required=True)
@@ -512,6 +765,9 @@ def main():
         analyse_edges(run)
     if 'cases' in steps:
         cases(run)
+    if 'pdf' in steps:
+        summary = run / 'summary.txt'
+        make_pdf(run, summary.read_text().split('\n') if summary.exists() else [])
 
 
 if __name__ == '__main__':
