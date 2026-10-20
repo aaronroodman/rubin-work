@@ -47,7 +47,7 @@ Outcomes over 213,704 exposures, `day_obs` 20250415 to 20260714 (counts):
 - **Differences are a science-exposure effect.** 47,322 of the 47,514 `differ` exposures
   are `science`; `acq` has 178, the others 14 together. The AOS publishes a new Trim during
   the exposure. The event falls either in the first 10 s or near the end of a 30 s exposure
-  (`event_time_in_exposure.png`). Only 4 exposures had more than one event.
+  (report page 6). Only 4 exposures had more than one event.
 - **It changed in 2026-04.** Of science exposures with a value in both, 85.4% differ before
   2026-04 (37,990 of 44,465) and 21.8% from 2026-04 (9,332 of 42,800); the AOS event moved
   to before most exposures.
@@ -68,9 +68,7 @@ Which value to use depends on the question. The DB value is the Trim in effect w
 shutter opened. The ConsDB value is the last Trim commanded before readout ended, which is
 the Trim for the next exposure if the event came mid-exposure.
 
-![example](figures/history_late_2026042100703.png)
-
-The example above is science exposure 2026042100703 (30 s): one event 28 s into the
+The time history on report page 9 is science exposure 2026042100703 (30 s): one event 28 s into the
 exposure moves camera hexapod dx by about −65 µm and dy by about −67 µm. The DB keeps the
 pre-exposure value and ConsDB the new one.
 
@@ -89,13 +87,26 @@ be reproduced (143,767 and 61,630 rows matched); without it both match exactly.
 `value_added=v1@snapshots/20261016`, the ConsDB exposure table and unpivoted Trim month by
 month, and all 100,289 `degreeOfFreedom` events. `code/compare.py` (run `20261019_compare`)
 classifies each exposure and explains it from the rebuilt rules. It writes
-`comparison.parquet`, the CSV tables, the summary plots and EFD time histories for two
-science mismatches before and two after 2026-04. Both ran on sdfiana from a copy of `code/`
+`comparison.parquet` and the CSV tables. Since the rerun below, it writes every figure
+into one 10-page report, `20261019_report/compare_trim_consdb.pdf`:
+
+| page | content |
+|---|---|
+| 1 | rules, reproduction counts, status and cause tables by img_type |
+| 2 | status fraction by img_type |
+| 3 | mismatch causes by img_type |
+| 4 | science status fraction by month |
+| 5 | DB vs ConsDB scatter and log10 abs(ConsDB − DB) for dof5, dof0, dof8, dof10 |
+| 6 | when the ConsDB-chosen event fell within the exposure |
+| 7–10 | EFD time histories: two science mismatches before 2026-04, two after | Both ran on sdfiana from a copy of `code/`
 at commit `c00870c`.
 
 The first pass used `convert_influx_index=True` and left 47k "unexplained" mismatches. A
 −37 s shift made both rules match 100%, which traced to the index conversion (see the
 time-frame note).
+
+Rerun with the label `report`: one PDF in place of the scattered PNGs, per the
+one-PDF-per-study rule. `20261019_compare` holds the earlier PNG output.
 
 Next: confirm the 37 s index issue on the LUT and ESS readers; rerun once ConsDB reports
 the backfill is done.

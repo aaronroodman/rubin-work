@@ -2,7 +2,8 @@
 
 Reads the newest ``*_inputs`` run of this study, classifies every exposure, explains each
 mismatch by rebuilding both selection rules from the raw ``degreeOfFreedom`` events, and
-writes summary tables, plots and EFD time histories for a few science mismatches.
+writes one multi-page PDF (``compare_trim_consdb.pdf``) with every figure, summary
+tables as CSV, and PNG copies of the two figures ``study.md`` cites.
 
 The two rules:
 
@@ -20,6 +21,7 @@ import argparse
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from astropy.time import Time  # noqa: E402
@@ -50,6 +52,44 @@ def dof_name(i):
 def dof_unit(i):
     """Stored unit of DOF i: µm, except the four hexapod tilts (see study.md)."""
     return 'deg or arcsec' if i in (3, 4, 8, 9) else 'µm'
+
+
+class Output:
+    """Every figure goes to one multi-page PDF; a few are also kept as PNG.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        The study's report.
+    png_dir : `pathlib.Path`
+        Where the PNG copies go.
+    """
+
+    def __init__(self, pdf, png_dir):
+        self.pdf = pdf
+        self.png_dir = png_dir
+        self.png_name = None
+
+    def png(self, name):
+        """Also write the next figure to ``<png_dir>/<name>.png``."""
+        self.png_name = name
+        return self
+
+    def save(self, fig):
+        self.pdf.savefig(fig)
+        if self.png_name:
+            fig.savefig(self.png_dir / f'{self.png_name}.png', dpi=130)
+            self.png_name = None
+        plt.close(fig)
+
+
+def text_page(out, title, blocks):
+    """A page of monospaced tables and notes."""
+    fig = plt.figure(figsize=(11, 8.5))
+    fig.text(0.04, 0.96, title, fontsize=14, weight='bold', va='top')
+    fig.text(0.04, 0.91, '\n\n'.join(blocks), family='monospace', fontsize=7.5,
+             va='top')
+    out.save(fig)
 
 
 def latest_inputs():
@@ -126,7 +166,7 @@ def rule_match(values, ev_vals, idx):
     return out
 
 
-def bar_by_img_type(df, path):
+def bar_by_img_type(df, out):
     tab = pd.crosstab(df['img_type'], df['status']).reindex(columns=STATUS_ORDER,
                                                              fill_value=0)
     tab = tab.reindex([t for t in IMG_ORDER if t in tab.index]
@@ -145,12 +185,11 @@ def bar_by_img_type(df, path):
     ax.set_title('Trim: value-added DB vs ConsDB, by img_type')
     ax.legend(ncol=5, fontsize=8, loc='lower center', bbox_to_anchor=(0.5, 1.07))
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    out.save(fig)
     return tab
 
 
-def bar_causes(df, path):
+def bar_causes(df, out):
     bad = df[df['status'].isin(['differ', 'db_only', 'consdb_only'])]
     tab = pd.crosstab([bad['img_type']], [bad['status'], bad['cause']])
     tab = tab.reindex([t for t in IMG_ORDER if t in tab.index]
@@ -168,12 +207,11 @@ def bar_causes(df, path):
     ax.set_title('Trim mismatches by img_type and cause')
     ax.legend(fontsize=8, loc='lower right')
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    out.save(fig)
     return tab
 
 
-def status_by_month(df, path, img_type='science'):
+def status_by_month(df, out, img_type='science'):
     d = df[df['img_type'] == img_type].copy()
     d['month'] = (d['day_obs'] // 100).astype(str)
     tab = pd.crosstab(d['month'], d['status']).reindex(columns=STATUS_ORDER,
@@ -191,12 +229,11 @@ def status_by_month(df, path, img_type='science'):
     ax.set_title(f'Trim comparison by month, img_type = {img_type}')
     ax.legend(ncol=5, fontsize=8, loc='lower center', bbox_to_anchor=(0.5, 1.08))
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    out.save(fig)
     return tab
 
 
-def scatter_dofs(df, path, dofs=(5, 0, 8, 10)):
+def scatter_dofs(df, out, dofs=(5, 0, 8, 10)):
     both = df[df['status'].isin(['agree', 'differ'])]
     fig, axes = plt.subplots(2, len(dofs), figsize=(4 * len(dofs), 7.5))
     for k, i in enumerate(dofs):
@@ -222,11 +259,10 @@ def scatter_dofs(df, path, dofs=(5, 0, 8, 10)):
         ax.set_title(f'{len(d):,} nonzero of {len(x):,} with both', fontsize=9)
     fig.suptitle('Trim per DOF: exposures with a value in both databases')
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    out.save(fig)
 
 
-def lateness_hist(df, ev, path):
+def lateness_hist(df, ev, out):
     """When the in-exposure event fell, relative to obs_start, for 'differ' exposures."""
     d = df[(df['status'] == 'differ') & (df['cause'] == 'event during exposure')]
     et = ev['time_utc'].to_numpy(dtype='datetime64[ns]')
@@ -241,11 +277,10 @@ def lateness_hist(df, ev, path):
     axes[1].set_xlabel('(event time - obs_start) / exp_time (dimensionless)')
     fig.suptitle(f'Where in the exposure the ConsDB-chosen event fell, n = {len(d):,}')
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    out.save(fig)
 
 
-def history(row, ev, step_scale, path, n_top=2,
+def history(row, ev, step_scale, out, n_top=2,
             pad_before=pd.Timedelta(minutes=6), pad_after=pd.Timedelta(minutes=3)):
     """EFD Trim events around one exposure: camera and M2 dz, plus the DOFs whose
     ConsDB-minus-DB difference is largest relative to their typical per-event step."""
@@ -278,8 +313,7 @@ def history(row, ev, step_scale, path, n_top=2,
                  f'{int(row["n_events_during"])} event(s) during the exposure',
                  fontsize=10)
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    out.save(fig)
 
 
 def main():
@@ -290,7 +324,7 @@ def main():
     args = parser.parse_args()
 
     inp = latest_inputs()
-    run = study_run('value_added/compare_trim_consdb', 'compare')
+    run = study_run('value_added/compare_trim_consdb', 'report')
     print(f'inputs: {inp}\noutput: {run.path}')
 
     exposure = pd.read_parquet(inp / 'consdb_exposure.parquet')
@@ -325,45 +359,57 @@ def main():
             'cdb_matches_rule']
     df[keep].to_parquet(run.path / 'comparison.parquet')
 
-    tab_img = bar_by_img_type(df, run.path / 'status_by_img_type.png')
-    tab_cause = bar_causes(df, run.path / 'mismatch_causes_by_img_type.png')
-    tab_month = status_by_month(df, run.path / 'status_by_month_science.png')
-    scatter_dofs(df, run.path / 'scatter_dof.png')
-    if (df['cause'] == 'event during exposure').any():
-        lateness_hist(df, ev, run.path / 'event_time_in_exposure.png')
-    for name, tab in [('status_by_img_type', tab_img), ('causes', tab_cause),
-                      ('status_by_month_science', tab_month)]:
-        tab.to_csv(run.path / f'{name}.csv')
-
-    both = df['status'].isin(['agree', 'differ', 'db_only', 'consdb_only'])
-    print(f'\nexposures in ConsDB with times: {len(df):,}; not in the DB: {n_not_in_db:,}')
-    print('\nstatus by img_type (count):\n', tab_img.to_string())
-    print('\ncauses (count):\n', tab_cause.T.to_string())
-    print('\nrule reconstruction: DB value equals last event <= obs_start on '
-          f'{df.loc[df["db_matches_rule"]].shape[0]:,} of '
-          f'{np.isfinite(df["db_dof5"]).sum():,} DB rows; ConsDB value equals last event '
-          f'in [start-1h, end] on {df["cdb_matches_rule"].sum():,} of '
-          f'{np.isfinite(df["cdb_dof5"]).sum():,} ConsDB rows (counts)')
-    print(f'exposures with any Trim value: {both.sum():,} (count)')
-
     # Typical per-event Trim step (= Tweak) per DOF, nMAD over all events.
     steps = np.diff(ev_vals, axis=0)
     step_scale = 1.4826 * np.nanmedian(np.abs(steps - np.nanmedian(steps, axis=0)), axis=0)
     step_scale = np.where(step_scale > 0, step_scale, np.nanstd(steps, axis=0))
 
-    sci = df[(df['img_type'] == 'science') & (df['status'] == 'differ')]
-    # One example per epoch: before and after the 2026-04 drop in the differ fraction.
-    for label, sel in [('early', sci['day_obs'] < 20260401),
-                       ('late', sci['day_obs'] >= 20260401)]:
-        pick = sci[sel]
-        if not len(pick):
-            continue
-        pick = pick.sample(min(args.n_history, len(pick)), random_state=args.seed)
-        for _, row in pick.iterrows():
-            history(row, ev, step_scale,
-                    run.path / f'history_{label}_{row["exposure_id"]}.png')
-            print(f'history ({label}): {row["exposure_id"]} n_events_during = '
-                  f'{row["n_events_during"]}, cause = {row["cause"]}')
+    pdf_path = run.path / 'compare_trim_consdb.pdf'
+    with PdfPages(pdf_path) as pdf:
+        out = Output(pdf, run.path)
+        tab_img = pd.crosstab(df['img_type'], df['status']).reindex(
+            columns=STATUS_ORDER, fill_value=0)
+        bad = df[df['status'] != 'agree']
+        tab_cause = pd.crosstab([bad['status'], bad['cause']], bad['img_type'])
+        text_page(out, 'Trim: value-added DB vs ConsDB transformed EFD', [
+            f'inputs: {inp}',
+            'DB rule: last MTAOS degreeOfFreedom event at or before obs_start.\n'
+            'ConsDB rule: most_recent_value over [obs_start - 1 h, obs_end].',
+            f'exposures: {len(df):,} (count)\n'
+            f'DB rows reproduced by the DB rule: {int(df["db_matches_rule"].sum()):,} of '
+            f'{int(np.isfinite(df["db_dof5"]).sum()):,}\n'
+            f'ConsDB rows reproduced by the ConsDB rule: '
+            f'{int(df["cdb_matches_rule"].sum()):,} of '
+            f'{int(np.isfinite(df["cdb_dof5"]).sum()):,}',
+            'status by img_type (count):\n' + tab_img.to_string(),
+            'cause by img_type (count):\n' + tab_cause.to_string()])
+        bar_by_img_type(df, out.png('status_by_img_type'))
+        bar_causes(df, out)
+        status_by_month(df, out.png('status_by_month_science'))
+        scatter_dofs(df, out)
+        if (df['cause'] == 'event during exposure').any():
+            lateness_hist(df, ev, out)
+
+        sci = df[(df['img_type'] == 'science') & (df['status'] == 'differ')]
+        # Examples before and after the 2026-04 drop in the differ fraction.
+        for label, sel in [('early', sci['day_obs'] < 20260401),
+                           ('late', sci['day_obs'] >= 20260401)]:
+            pick = sci[sel]
+            if not len(pick):
+                continue
+            pick = pick.sample(min(args.n_history, len(pick)), random_state=args.seed)
+            for _, row in pick.iterrows():
+                history(row, ev, step_scale, out)
+                print(f'history ({label}): {row["exposure_id"]} n_events_during = '
+                      f'{row["n_events_during"]}, cause = {row["cause"]}')
+    print(f'wrote {pdf_path}')
+
+    tab_month = pd.crosstab((df.loc[df['img_type'] == 'science', 'day_obs'] // 100),
+                            df.loc[df['img_type'] == 'science', 'status'])
+    for name, tab in [('status_by_img_type', tab_img), ('causes', tab_cause),
+                      ('status_by_month_science', tab_month)]:
+        tab.to_csv(run.path / f'{name}.csv')
+    print('\nstatus by img_type (count):\n', tab_img.to_string())
     unexplained = df[df['cause'] == 'unexplained']
     print(f'unexplained exposures: {len(unexplained):,} (count)')
 

@@ -71,6 +71,10 @@ git with their first file).
   `run = rubinwork.common.study_run("<topic>/<study>", "<label>")`; save to
   `run.path`. Its `run.json` records the git commit, the command and the product builds
   read, which `/wrap` copies into `uses:`.
-- `figures/` holds the one or two committed PNGs the Log cites; everything else stays
-  under `output/`.
+- **One multi-page PDF per study.** Every figure a run makes goes into a single PDF in
+  its run directory (`matplotlib.backends.backend_pdf.PdfPages`), with a summary page
+  first — not a directory of PNGs. A study's default output is one notebook (or script),
+  one PDF and one `study.md`.
+- `figures/` holds at most two PNGs, copies of PDF pages the Log cites; everything else
+  stays under `output/`.
 - Longer derivations go in their own `.md` beside `study.md`.
