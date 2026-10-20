@@ -22,7 +22,7 @@ What image quality does a feasible recovered optical state cost, one in which ev
 - **The range penalty B (RBR, `p = 3`, `kappa = 4`) buys feasibility for 0.0012 to 0.0052 arcsec of FWHM on five of six legs**, 3% to 9% of the truncated residual (fraction of FWHM). Elevation 30 deg is the exception at 0.0185 arcsec.
 - **The ts_ofc OIC motion penalty is worse:** median residual inflation over truncated is 2.77 for the OIC against 1.31 for RBR (dimensionless), so the OIC gives up about 2.24 times more wavefront for the same nominal compliance. Its implied bending range is 132 to 280 times ours for M1M3, and a single `rho` cannot adapt per leg.
 
-- **50/34 RBR pins the hexapods because truncation forbids pure hexapod motion** (principal angles to 31.8 deg between hexapod subspace and span(V_34)). Opening all 50 modes fixes it with either regularizer: at max `|d_j|/r_j` = 1, RBR-50 residual 0.0530 / 0.0553 µm of wavefront (Elev=40 / Rot=60) against 0.0583 / 0.0564 µm for a full-rank quadratic `H = diag(1/r_j²)`.
+- **50/34 RBR pins the hexapods because truncation forbids pure hexapod motion** (principal angles to 31.8 deg between hexapod subspace and span(V_34)). Opening all 50 modes fixes it with either regularizer: at max `|d_j|/r_j` = 1, RBR-50 residual 0.0530 / 0.0553 µm of wavefront (Elev=40 / Rot=60) against 0.0583 / 0.0564 µm for a full-rank quadratic `H = diag(1/r_j²)`. Preliminary (laptop inputs); S3DF rerun in [`handoff_penalty_matrix_s3df.md`](handoff_penalty_matrix_s3df.md).
 
 Details, tables and the rigid-body degeneracy caveat in [`regularized_inversion.md`](regularized_inversion.md).
 
@@ -35,4 +35,8 @@ Backfilled 2026-10-18 from [`regularized_inversion.md`](regularized_inversion.md
 ### 2026-10-19 — RBR against a conventional penalty matrix
 
 `code/run_penalty_matrix_compare.py`, local, two cached bounce legs. Truncation's implied `H` (RSO-217 sec. 3.5) couples hexapod and bending; a pure M2 dz move at 0.2 of range is retained at 0.656 (dimensionless) by RBR-34 and at 1.000 by RBR-50 and full-rank quadratic. RBR-50 has the lowest residual at feasibility; the quadratic is 2% to 10% worse, linear, normalization-independent, and has 12% to 31% lower Cam dx noise. Write-up section "RBR against a conventional penalty matrix".
+
+### 2026-10-19 — handoff to S3DF
+
+The laptop run used substitute normalization, ranges and two median legs. [`handoff_penalty_matrix_s3df.md`](handoff_penalty_matrix_s3df.md) lists the S3DF inputs (sqrt normalization through `build_ofc_svd`, matched `dof_range_vector` ranges, all six legs per pair, FWHM), the code changes, and the next steps.
 

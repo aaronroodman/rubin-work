@@ -596,6 +596,9 @@ python run_oic_compare.py --rho-scan \
 
 ## RBR against a conventional penalty matrix, and why 50/34 RBR pins the hexapods
 
+> **Preliminary.** Laptop run with substitute normalization, ranges and data. To be redone
+> on S3DF: see [`handoff_penalty_matrix_s3df.md`](handoff_penalty_matrix_s3df.md).
+
 Runner: `code/run_penalty_matrix_compare.py` (numpy only, local). Inputs: the ts_ofc
 `lsst_sensitivity_dz_31_29_50` matrix at k = 1–6, j = 4–19 and 22–26 (126 values); the
 deployed weights `range0.5_fwhm-0.15.yaml` from `ts_config_mttcs` (the `init.yaml`
