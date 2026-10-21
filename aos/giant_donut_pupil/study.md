@@ -3,7 +3,7 @@ study: giant_donut_pupil
 topic: aos
 status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'v4.02 fits better than v1000 (Z4-only: 15 of 16 clean sides, median residual RMS ratio 0.94, dimensionless). The data inner shadow is shifted the same way on both sides of focus, a coma-like +3.3 pixels along +y CCS (+0.75 um of Z7 equivalent), and is about 2 % larger than every model (r_inner/r_outer 0.629 against 0.616-0.618); the danish Z7 fits, the seq 324 state and single element shifts do not explain it.'
+answer: With intrinsicTA references and v4.02g masks, the data r_inner/r_outer is 0.0104 (dimensionless) above v4.02 on science donuts at every field radius; adding Z11 and Z22 matches the edges by absorbing it (Z11 -0.15 / +0.15 um extra / intra), and an edge-only fit needs Z7 +0.76 um that the whole-donut fits (+0.14 to +0.24 um) do not see. The M1 inner and outer clear radii need measuring.
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -45,6 +45,20 @@ full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean
 the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
 1 pixel over 225–315 deg, on both sides of focus.
 
+Pupil pass 3 (2026-10-21; 30 donuts, 49 sides, intrinsicTA reference, v4.02g masks):
+- With Z4 alone, the data's r_inner / r_outer is 0.0104 higher than the model on science
+  donuts (median, nMAD 0.0048, dimensionless), with no trend in field radius (Pearson r
+  −0.15, Spearman rho −0.21, n 34). The inner edge sits +2.1 pixels outside the model
+  and the outer edge −1.25 pixels inside it.
+- Freeing Z11 and Z22 removes most of that (excess 0.003) and cuts the inner-edge RMS
+  from 3.3–3.6 to 2.2–2.3 pixels, but chi2/dof only by 6 %. Z11 comes out −0.15 µm
+  extra and +0.15 µm intra: a sign that flips with focus is the pupil, not the wavefront.
+- Fitting only the edges (fit d) gives Z7 +0.76 µm on both sides and at every field
+  radius, the pass 2 edge coma. The whole-donut fits find Z7 +0.14 to +0.24 µm, and fit
+  d's whole-donut chi2/dof is 1.36 times fit a's. So the coma fits the edges, not the
+  donut.
+- What most needs measuring: the M1 central-obscuration and outer clear-aperture radii.
+
 Pupil pass 2 (2026-10-20) settles what that offset is not:
 - **It has the signature of coma, but is not wavefront coma.** The inner-minus-outer
   edge-centre shift is +3.3 pixels along +y CCS on both sides of focus and at every
@@ -66,6 +80,195 @@ Pupil pass 2 (2026-10-20) settles what that offset is not:
   nothing: they uniquely block no ray.
 
 ## Log
+
+### 2026-10-21 — pupil pass 3: four fits and robust edges, v4.02g, intrinsicTA
+
+Code `a4530c0`: `pupil_sample.py`, `pupil_pass3.py` (fit and edge driver),
+`pupil_pass3_report.py`. Run `20261020_pupil3`: `sample.parquet`, `fits.parquet` and
+`.csv`, `edges_bins.parquet`, `summary_by_fit.csv`, `summary_ratio_correlation.csv`,
+`timing.json`, and `pupil_pass3.pdf` (113 pages: map, 2 pages per side ordered by field
+radius, then summaries 8a–8e). Setup: `method.md`, "Pupil fit setup". Pass 2 is not
+built on; `robust_edges.py` is reused as it was.
+
+**Sample** (4): 30 donuts, 49 sides, all within 1.75 deg. The 17 science donuts have
+both sides; the 13 corner donuts have the sides that pass (SW0 extra-focal donuts are
+404 pixels in radius, so mostly blended). Of the 12 earlier science donuts, 6 still pass
+(G0005, G0160, G0329, G0491, G0515, G0664). G0249 was labelled bad on 337 and is
+replaced by P1064. G0681, G0684, G0714, G0732 and G0737 lie beyond 1.75 deg and are
+replaced by the nearest-radius passing donuts inside it. Five donuts were added, four
+at 0–0.8 deg. Each band has donuts in all four OCS azimuth quadrants: 0–0.8 deg, 1/1/2/1;
+0.8–1.3 deg, 1/1/1/1; 1.3–1.75 deg, 4/5/8/4 (donuts in quadrants 0/1/2/3).
+
+| id | detector | sides | mag (AB) | field radius (deg) | OCS azimuth (deg) |
+|---|---|---|---|---|---|
+| G0005 | R22_S10 | extra+intra | 12.74 | 0.170 | 241.1 |
+| P0255 | R22_S12 | extra+intra | 12.22 | 0.256 | 80.5 |
+| P0361 | R22_S20 | extra+intra | 13.24 | 0.361 | 297.3 |
+| P0482 | R12_S20 | extra+intra | 11.11 | 0.483 | 217.3 |
+| P0659 | R13_S20 | extra+intra | 8.72 | 0.660 | 131.6 |
+| G0160 | R33_S01 | extra+intra | 12.54 | 0.873 | 50.1 |
+| P1064 | R13_S00 | extra+intra | 10.58 | 1.066 | 148.9 |
+| P1149 | R31_S22 | extra+intra | 10.99 | 1.150 | 330.8 |
+| G0329 | R20_S02 | extra+intra | 9.82 | 1.190 | 261.9 |
+| G0491 | R42_S10 | extra+intra | 10.26 | 1.497 | 350.0 |
+| G0515 | R01_S11 | extra+intra | 8.90 | 1.534 | 207.5 |
+| CR00SW0_2 | R00_SW0 | intra | 13.14 | 1.589 | 223.6 |
+| CR40SW0_2 | R40_SW0 | intra | 14.61 | 1.604 | 316.3 |
+| CR00SW0_4 | R00_SW0 | intra | 15.04 | 1.617 | 226.1 |
+| CR04SW0_1 | R04_SW0 | intra | 14.30 | 1.653 | 137.0 |
+| CR00SW0_3 | R00_SW0 | intra | 12.27 | 1.653 | 227.1 |
+| P1656 | R43_S20 | extra+intra | 12.19 | 1.658 | 19.2 |
+| CR04SW0_0 | R04_SW0 | intra | 13.29 | 1.668 | 138.3 |
+| P1676 | R30_S00 | extra+intra | 11.97 | 1.678 | 284.8 |
+| CR40SW0_0 | R40_SW0 | extra+intra | 12.74 | 1.680 | 316.9 |
+| P1693 | R34_S02 | extra+intra | 9.24 | 1.695 | 73.9 |
+| CR44SW0_0 | R44_SW0 | intra | 13.55 | 1.698 | 48.3 |
+| CR00SW0_1 | R00_SW0 | intra | 12.28 | 1.704 | 228.9 |
+| CR00SW0_0 | R00_SW0 | intra | 10.00 | 1.705 | 226.9 |
+| P1727 | R14_S22 | extra+intra | 11.24 | 1.729 | 102.6 |
+| CR44SW1_0 | R44_SW1 | extra+intra | 12.24 | 1.737 | 43.8 |
+| G0664 | R02_S02 | extra+intra | 12.43 | 1.738 | 173.0 |
+| P1742 | R10_S10 | extra+intra | 11.32 | 1.744 | 243.6 |
+| CR04SW1_0 | R04_SW1 | extra | 14.61 | 1.749 | 134.5 |
+| CR00SW1_0 | R00_SW1 | extra | 12.10 | 1.750 | 222.4 |
+
+![sample map, OCS](figures/pass3_sample_map.png)
+
+**Reference** (5). ts_wep `Instrument.getOffAxisCoeff(..., nollIndicesModel=0–66,
+nollIndicesIntr=4–66)` plus `Instrument.getIntrinsicZernikes(..., defocalType=None)`,
+on v4.02 with `batoidOffsetOptic = [Detector, LSSTCamera, M2]`. This is the batoid
+zernikeTA at the defocused configuration (equal to 3e-17 µm). At G0515 extra-focal
+(CCS field (−1.356, −0.711) deg), Z4–Z11 in µm of wavefront:
+- intrinsicTA: +121.75, +0.53, +0.49, −0.82, −1.56, −0.12, −0.01, +0.14;
+- in-focus intrinsic: 0.00, +0.02, +0.14, −0.01, −0.01, −0.11, −0.01, −0.03.
+
+The difference is the defocus plus the coma and astigmatism of the ±4 mm
+configuration, as expected. At CR40SW0_0 intra-focal (detector +1.5 mm), Z4 is −98.64
+µm against −0.01 µm.
+
+**Fits** (6). All 49 sides fitted, none failed to run. Four fits are left out of the
+summaries because their fitted flux is about 5 times the stamp sum (dimensionless):
+CR00SW0_4 intra, fits a–c (15.04 AB mag, the faintest), and CR04SW0_1 intra, fit d.
+
+Medians over sides (extra / intra; chi2/dof on the whole donut; edges data − model,
+pixels; ratio r_inner / r_outer, dimensionless):
+
+| fit | chi2/dof | inner edge RMS | outer edge RMS | inner offset | outer offset | ratio excess |
+|---|---|---|---|---|---|---|
+| a: Z4 | 7.35 / 4.79 | 3.57 / 3.31 | 1.60 / 1.64 | +2.28 / +1.72 | −1.29 / −1.06 | +0.0101 / +0.0072 |
+| b: Z4, Z11, Z22 | 6.88 / 4.49 | 2.31 / 2.24 | 1.29 / 1.31 | +0.68 / +0.22 | −0.56 / −0.43 | +0.0032 / +0.0019 |
+| c: sparse set | 6.56 / 4.25 | 2.09 / 2.33 | 1.15 / 1.09 | +0.77 / +0.25 | −0.50 / −0.51 | +0.0032 / +0.0017 |
+| d: annulus | 9.31 / 6.28 | 1.08 / 1.61 | 1.15 / 1.22 | +0.07 / +1.16 | +0.37 / −0.80 | −0.0038 / +0.0051 |
+
+Fit d's chi2/dof on its fitted pixels is 18.2 / 11.4. Per side, chi2/dof over fit a's is
+0.943 (b), 0.915 (c) and 1.358 (d, whole donut), median, dimensionless, n 48.
+
+**8a. Ratio against field radius.** On science donuts with fit a, the data ratio is
+0.0104 above the model (median, nMAD 0.0048, dimensionless). It has no trend with field
+radius: Pearson r −0.15, Spearman rho −0.21 between excess and field radius (deg), n 34.
+- The excess is 0.008 at 0–0.8 deg and 0.013 at 0.8–1.3 deg.
+- At 1.3–1.75 deg it is 0.0035 extra-focal and 0.0112 intra-focal on science donuts,
+  and about 0 on the corner sensors (−0.0014, n 14).
+- The data ratio rises from 0.623 at the centre to 0.64–0.66 beyond 1.5 deg, from
+  vignetting; every model follows it.
+
+A constant excess at all field radii on the science sensors supports a pupil-geometry
+cause: the M1 central obscuration about 1 % larger in radius than v4.02 has it (inner
+edge +2.1 pixels, 0.6 % of r_out), and the outer clear edge about 0.4 % smaller (−1.25
+pixels). A field-dependent cause would grow with field, and it does not. It cannot be
+told from the edge positions alone whether it is a true radius or a slope effect at the
+mirror edges (thermally driven refraction, M1's turned-down edge). Both scale with
+defocus, so the fractional ratio is the same at every defocus. Three measurements would
+tell them apart:
+- the M1 clear-aperture inner and outer radii, as built: the inner baffle and the
+  M1Baffle1 lip;
+- the edge profile itself. A slope error spreads or piles light within a few pixels of
+  the edge, and a radius error only moves a sharp edge;
+- the same fit on another giant-donut night (20251027 BLOCK-T621). A thermal effect
+  would change with the dome and mirror temperatures.
+
+The corners show no excess, but at 1.6–1.75 deg the edges there are set by vignetting,
+not M1, so they do not test it.
+
+![ratio against field radius](figures/pass3_ratio_vs_field.png)
+
+**8b. Zernikes against field radius.**
+- Fit a gives Z4 +0.33 µm extra-focal and +0.85 µm intra-focal (median). Intra-focal Z4
+  is above 1 µm on 37 % of intra sides, and +1.2 to +1.35 µm inside 0.8 deg. With Z11
+  and Z22 free (fit b), both sides give +0.26 µm. So fit a's intra-focal Z4 is pulled by
+  the pupil size.
+- Z11 in fit b is −0.15 µm extra and +0.15 µm intra. Wavefront Z11 would have one sign
+  on both sides of focus; a sign that flips with focus is the ratio excess being
+  absorbed.
+- Fit c: Z7 +0.14 / +0.24 µm and Z8 +0.02 / +0.08 µm (extra / intra). Every term except
+  Z5, Z6 and Z10 stays within ±1 µm on every side. Z5 is past 1 µm on 37 % of
+  intra-focal sides, at most 3.87 µm, all beyond 1.5 deg.
+- Fit d: Z7 +0.76 µm on both sides, +0.66 to +0.85 µm in every band and sensor class;
+  Z8 within ±0.1 µm. Z4 is −1.2 µm on extra-focal sides inside 1.3 deg.
+- The 1–3 µm deviations of the earlier passes do not appear inside 1.5 deg. Beyond it
+  they are in Z5 and Z6 on intra-focal sides, a pupil bias (8e).
+
+**8c. chi2/dof** grows with brightness, not field radius. Stars of 12–13 AB mag give
+1.3–5; stars of 8.7–9.8 AB mag give 40–240, in all four fits. The shot-noise-limited
+residual of a bright donut is set by the pupil model.
+
+**8d. Edge RMS.**
+- Inner edge: fit a 2.3–4.4 pixels at every field radius; b and c 1.3–3.3; d 0.9–1.6
+  inside 1.3 deg and 1.0–2.9 beyond.
+- Outer edge: 1.0–2.0 pixels for every fit inside 1.6 deg. Beyond 1.65 deg it is 3–7
+  pixels on intra-focal sides (G0664, P1742, P1727, CR44SW1_0, CR04SW0_1), where the
+  filter and M3 set the edge (pass 2), whatever the Zernikes.
+
+![edge RMS](figures/pass3_edge_rms.png)
+
+**8e. Against OCS azimuth, 1.3–1.75 deg.**
+- On intra-focal sides fit c's astigmatism follows the focal-plane azimuth φ:
+  - Z5 against sin 2φ: Pearson r −0.82, Spearman rho −0.87, amplitude −1.5 µm, n 18;
+  - Z6 against cos 2φ: −0.73 and −0.85, amplitude −1.1 µm.
+- On extra-focal sides there is no such pattern: |r| ≤ 0.50, amplitude ≤ 0.21 µm, n 12.
+- A wavefront pattern would be there on both sides of focus. An intra-focal-only one
+  points to the vignetting edges at the intra configuration, which the v4.02g masks
+  miss.
+- The ratio excess does not follow azimuth: Pearson r −0.19, Spearman rho −0.18,
+  n 48.
+
+**Answers.**
+- *Do more Zernikes improve the edges, or only chi2/dof?* Both, and the edges more.
+  - From a to b, the inner-edge RMS falls by a third: 3.3–3.6 to 2.2–2.3 pixels. The
+    outer falls from 1.6 to 1.3 pixels, and the inner offset from +2 to +0.2–0.7 pixels.
+    chi2/dof falls by 6 %.
+  - From b to c adds little: inner 2.1–2.3, outer 1.1–1.2 pixels, chi2/dof −3 % more.
+  - The edge gain comes from Z11 and Z22 absorbing the pupil-size mismatch, with
+    signs that flip with focus. It is the pupil, not better wavefront.
+- *Does the annulus fit match the edges better with plausible coma?* It matches them
+  best: inner 1.1 / 1.6 pixels, outer 1.15 / 1.2 pixels. It needs Z7 +0.76 µm on every
+  donut and both sides. That size is plausible, but the coma is not real wavefront:
+  - the whole-donut fits find +0.14 to +0.24 µm;
+  - the seq 324 state gives +0.02 µm (pass 2);
+  - fit d's coma raises the whole-donut chi2/dof by 36 %.
+  It is the pass 2 inner-shadow shift (+0.71 to +0.81 µm equivalent) seen again: the
+  pupil has an offset, not the wavefront.
+- *What in the pupil model most needs measuring:* the M1 central-obscuration radius
+  and centre (inner edge +2.1 pixels out, shifted along +y CCS), and the M1 outer clear
+  aperture (−1.25 pixels). Next, the filter and M3 vignetting at 1.65–1.75 deg
+  intra-focal.
+
+**Scaling** (10). `pupil_pass3.py --candidates all --pages none|sample|all` fits every
+selected, not-bad donut side on 337 and 340 within 1.75 deg. That is 335 sides on 223
+detectors: science 160 + 160, SW0 1 + 10, SW1 3 + 1.
+- Measured on this run: 49 sides in 400 s wall at 48 workers.
+- Per side, 204 s median at 48 in parallel (257 s at most), and 55 s with 3 in
+  parallel. The ISR is 5 s per detector. The four fits are 3–5 s (a), 7 s (b), 21 s (c)
+  and 10–14 s (d), unloaded; the edges take the rest.
+- For the full set at 48 workers: about 335 × 8.2 s, 46 min wall, plus the report.
+
+Next:
+- Fit a central-obscuration radius scale and centre, and an outer-edge radius, in the
+  danish mask against the science-donut edges, both sides of focus.
+- Measure the edge profile width (10–90 %) against the model, to tell a slope effect
+  from a radius error.
+- Run `--candidates all --pages none` (about 46 min, in the background) when Aaron
+  wants the full set.
 
 ### 2026-10-21 — selection v2 scored and final
 
