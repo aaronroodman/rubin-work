@@ -3,7 +3,7 @@ study: giant_donut_pupil
 topic: aos
 status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'Pass 4: the central edge mismatch and the spider shadows are offset in the OCS image frame on both sides of focus (inner edge +y 1.7-2.0 pixels, extra-against-intra Pearson r +0.76 image, -0.95 pupil; spiders -y about 1.8 pixels, per-vane residual at most 0.11 deg, no field trend), so not a pupil element out of place. Outer-band Z5-Z7 of 1-3.9 um are pupil bias: central medians cost 6 % in chi2/dof.'
+answer: 'Pass 5: the spider offset is a translation of the shadows (dy -1.7 / -2.1 pixels OCS image, extra / intra), which removes the m = 1 term (0.36 / 0.43 deg to 0.003 deg). A rotator offset (delta +0.13 / +0.23 deg, near the EFD-minus-rtp +0.2 deg) removes none of it. The outer-band inner-edge miss sits where the camera silhouette sets the edge, and there the v4.02g mask is 3-4 pixels inside Batoid. Free blur does not explain the 1.7x shadow width.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -44,6 +44,27 @@ arcsec), v4.02 still wins: 35 of 38 donut sides, 15 of 16 clean, median ratio 0.
 full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean donuts
 the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
 1 pixel over 225–315 deg, on both sides of focus.
+
+Pupil pass 5 (2026-10-22; 188 sides, validation):
+- **The spider offset is a translation of the shadows, not a rotator offset.** Fitting
+  only the model spider angle gives δ = +0.13 deg (extra) and +0.23 deg (intra), nMAD
+  0.06–0.07 deg. That leaves the m = 1 term of the data − model shadow azimuth unchanged,
+  at 0.35 deg (extra) and 0.43 deg (intra). A per-side translation of the shadow pattern
+  of dy −1.7 pixels (extra) and −2.1 pixels (intra), OCS image, removes it, to 0.003 deg.
+  The EFD rotator position sits +0.19 to +0.21 deg from the visitInfo rtp the fits use,
+  which is close to δ, but δ differs between the sides of focus by 0.10 deg.
+- **The centre choice changes the size of the translation, not its sign.** About the
+  outer-edge centre the m = 1 term drops to 0.28 deg (extra) and 0.36 deg (intra); the
+  inner edge still sits +2.1 to +2.5 pixels toward +y.
+- **The shadow width is not blur.** With the blur free the extra-focal fit stays at 1.00
+  arcsec FWHM, and the data/model width ratio stays 1.74. Intra fits 1.60 arcsec, which
+  brings that ratio to 1.12, but the model shadows are then too shallow (0.44 against the
+  data's 0.53).
+- **Where the outer-band inner edge misses:** at ψ 330–30 deg intra and 160–200 deg extra
+  the v4.02 inner edge is set by the camera silhouette (intra also M2 at 25–30 and
+  330–335 deg). There the danish v4.02g mask sits 3.3–3.9 pixels inside Batoid, and the
+  data sit 3–5 pixels outside fit c. The outer edge there is M1Baffle1, with the
+  TMASection over the central 6 deg; the mask and Batoid agree there.
 
 Pupil pass 4 (2026-10-21; 180 sides at 0–0.8 and 1.4–1.75 deg):
 - **The central edge mismatch is in the image frame, not the pupil.** Data − fit c
@@ -101,6 +122,191 @@ Pupil pass 2 (2026-10-20) settles what that offset is not:
   nothing: they uniquely block no ray.
 
 ## Log
+
+### 2026-10-21 — pupil pass 5: edge and spider validation, vignetting surfaces, rotator test, free blur
+
+Code: `pass5_common.py` (side list, fit c re-rendering, guided spider tracer),
+`pass5_edges_gallery.py`, `pass5_vignetting.py`, `pass5_spiders.py`, `pass5_blur.py`,
+`pass5_analysis.py` and `pass5_report.py`; fix in `pupil_pass4_report.py` (`0fdb84b`). Run
+`20261022_pupil5`: `pupil_pass5.pdf` (58 pages), `gallery_edges.pdf` (16 pages),
+`gallery_spiders.pdf` (64 pages), and tables as parquet and csv. Setup as pass 4. The
+188 sides are the 180 pass 4 band sides plus 8 pass 3 sample sides at 0.87–1.19 deg. Fit c
+is re-rendered from the fit table; it reproduces the stored model images to 0.002
+electrons per pixel at most.
+
+**1. Edge gallery.** 188 sides, 12 per page, science then corner sensors, ordered by
+field radius.
+- About 54 of the 180 bins per side are excluded before any edge is measured: 39 spider
+  bins plus their neighbours. The kept fraction is therefore counted over the eligible
+  bins. Its median is 0.99 (inner) and 0.98 (outer), with a minimum of 0.87 and 0.84
+  (dimensionless).
+- Kept-bin RMS about each edge's own harmonic fit: median 0.72 pixels (inner) and 0.86
+  pixels (outer).
+- One side is flagged: S5117463914120775040 intra, at 1.451 deg. It has RMS 2.20 pixels on
+  both edges, kept fraction 0.96. It is a 15.3 mag donut that fit c already marks as
+  failed (`fit_ok` false). The edge finder holds up by eye on every other side.
+
+**2. Vignetting surface, v4.02 full model.**
+- Setup: field 1.7 deg at azimuth 45 deg, rotator 0. Full Batoid traceFull of 1.26 million
+  stop-plane rays per side.
+- Per 1 deg ψ bin, the edge's surface is the commonest first clipper of the blocked rays
+  within 3 pixels outside the edge, with a 7 deg running mode.
+- Spider bins are marked. At this field, vanes sit at ψ about 0 and 180 deg, so 20 of
+  the 60 bins in each of Aaron's ranges are spider bins.
+
+| side, ψ range | inner edge | outer edge | danish − Batoid, inner (pixels) | pass 4 data − fit c, inner (pixels) |
+|---|---|---|---|---|
+| intra, 330–30 deg | CameraSilhouette 30 deg, M2 10 deg (25–30, 330–335) | M1Baffle1 34 deg, TMASection 6 deg (357–3) | −3.3 median, −5.2 at most | +5.1 |
+| extra, 160–200 deg | CameraSilhouette 20 deg | M1Baffle1 14 deg, TMASection 6 deg (177–183) | −3.9, −5.1 | +3.2 |
+
+- The outer-edge mask matches Batoid there (0.0 pixels). The pass 4 outer-edge data − fit c
+  is −1.0 pixels.
+- So in exactly the ranges where data − model is positive, the inner edge is the camera
+  silhouette shadow, and the danish v4.02g silhouette circle sits 3–5 pixels inside the
+  Batoid edge. That is the same sign and size as the data − fit c miss.
+- Elsewhere the inner edge is M1 (most of the ring) and M2 (25–56 and 304–335 deg intra;
+  123–154 and 206–237 deg extra). The outer edge is M1Baffle1, plus M3 at 134–226 deg
+  intra and 315–45 deg extra. Full table: `vignetting_ranges`.
+
+![vignetting, intra](figures/pass5_vignetting_intra.png)
+
+**3. The empty step 3 pages.** 15 of the 31 pages had panels collapsed to zero width:
+6 SW0, 4 SW1 and 5 science.
+- Of the listed causes: no stamp was missing, all were finite, no exception was dropped
+  and no colour scale collapsed. Corner orientation was not the cause either; science
+  pages were hit too.
+- The fit text sat as axes text under panel (0, 0), about 970 pixels wide, wider than the
+  axes. `tight_layout` then shrank every panel to zero. Which pages tipped over depends on
+  that text width to within a few pixels.
+- Fix: the text goes in reserved figure space. The 15 pages are regenerated in
+  `pupil_pass5.pdf`.
+- New rule: an empty panel prints `EMPTY: <reason>` (`report_utils.empty_panel`). It is
+  used in the step 3, 6c and gallery pages.
+
+**4. The missing spider profiles.** Pass 4 sample set, 392 shadows on 49 sides. 117
+panels were missing, on 21 of 30 6c pages:
+- "no data shadow within 5 deg": 94 shadows, 20 pages, model profile only. A tracing bug,
+  not missing data. The blind tracer takes the eight deepest dips at 0.68 r_out as the
+  shadows. Where that radius cuts the vignetted inner edge (G0664 intra: dips at 8, 15,
+  336–359 deg), it locks onto dark-ring dips, and the real shadows never match.
+- "model shadow not traced": 21 shadows, 12 pages. Blank and untitled, because psi_num
+  was −1, so the panel was not drawn.
+- "data chord rms over 2 pixels": 2 shadows, drawn.
+- The profiles were saved correctly; the 6c plotting code was right.
+
+Fix: a guided tracer (`pass5_common.guided_shadows`).
+- The fit c vane deficit (with / without vanes) locates each model shadow.
+- The data shadow is then the dip within 4 deg of the model shadow, per radius.
+- Dark bins (running median under 0.3 of the profile median) are dropped.
+
+Result: 390 of 392 sample shadows found, 1500 of 1504 over all 188 sides (pass 4: 1189
+of 1440 band shadows). Where both tracers found a shadow, the data azimuth agrees to 0.02
+deg nMAD. The 4 left are 2 shadows on CR04SW0_0 intra (model vane lit at only 1–2 of 7
+radii) and 2 on S5068629139532819456 extra (data chord rms over 2 pixels).
+
+**5. Spider gallery.** 64 pages: the 58 donuts with a missing shadow in pass 4 or 5, plus 6
+with all 8 found in both. The 6 are central at 0.17 deg and at the band median, outer at
+the band's minimum, median and maximum, and one SW0; no SW1 side qualifies. Each page
+draws the data and fit c stamps with both chords, the traced centres at 7 radii and the
+r_half circle, and labels ψ number and vane id.
+
+**6. Rotator hypothesis.** 183 sides with 5 or more shadows.
+
+*(a) Rotation only.* The fit c model is re-rendered at rtp + δ, for δ from −1.0 to +1.0 deg
+in 0.05 deg steps (model azimuth response −1.00 deg per deg).
+- δ median +0.132 deg (extra, nMAD 0.060, n 90) and +0.230 deg (intra, nMAD 0.069,
+  n 93). Both are +0.180 deg (nMAD 0.077).
+- The per-side curvature error is 0.10–0.12 deg; the error on the median is 0.008 deg.
+- δ is significant against the pass 4 floor (0.2–0.4 deg rotation bias in the method, which
+  cancels in data − model). It is not one value: the sides of focus differ by 0.10 deg,
+  about 13 times the error of the median.
+- Field dependence of δ is weak: against field radius, Pearson r −0.18 and Spearman rho
+  −0.15 (extra); r −0.26, rho −0.26 (intra). Against sin(field azimuth), intra has r −0.43
+  and rho −0.44 (n 93).
+- It removes only the common term. The m = 1 amplitude is 0.355 deg before and 0.354 deg
+  after (extra), and 0.431 and 0.430 deg (intra). The m = 1 phase is 184 deg OCS image
+  azimuth.
+- Per-vane residual after the best δ: −0.40 to +0.43 deg, still the m = 1 pattern. After
+  rotation plus translation: 0.11 deg at most (`vane_residuals`).
+
+*(b) Rotation plus translation, per side (Huber).*
+- dx +0.14 pixels (nMAD 0.37), dy −1.69 pixels (nMAD 0.42), rotation −0.140 deg (extra).
+- dx +0.12 pixels (nMAD 0.43), dy −2.12 pixels (nMAD 0.68), rotation −0.231 deg (intra).
+- Translations are OCS image pixels. The residual RMS is 0.09 deg on both sides.
+- The translation is what makes the m = 1 term: after it the amplitude is 0.001 deg
+  (extra) and 0.003 deg (intra), with scatter nMAD 0.09 deg.
+
+*(c) Centre test.* Data and model are each traced about their own edge-circle centre.
+
+| centre | m = 1, extra (deg) | m = 1, intra (deg) | translation dy, extra / intra (pixels) | inner-edge circle dy, data − model, extra / intra (pixels) |
+|---|---|---|---|---|
+| fit a | 0.355 | 0.431 | −1.69 / −2.12 | +2.13 / +1.71 |
+| outer-edge circle | 0.279 | 0.363 | −1.40 / −1.83 | +2.45 / +2.10 |
+| inner-edge circle | 0.785 | 0.823 | −3.86 / −3.83 | 0 by construction |
+
+The outer-edge centre takes up about 0.3 pixels of the translation. The inner edge's +y
+shift and the spiders' −y shift both stay. So the centre choice does not explain the
+translation. About the inner-edge centre, the spiders' offset doubles: their shift is
+measured against the outer ring, and the inner shadow moves the other way.
+
+*(d) rtp convention.*
+- Every fit takes rtp = boresightParAngle − boresightRotAngle − 90 deg, wrapped, from the
+  raw visitInfo (`fit_donuts.rtp_rad`), as blitz and ts_wep do.
+- That gives −0.1989 deg (337, extra) and −0.0392 deg (340, intra). boresightRotAngle is
+  ROTPA, 11.280 deg on both; the parallactic angle is 101.081 and 101.241 deg.
+- How rtp is applied: danish `spider_angle = rtp` (degrees, added to each vane angle).
+  Batoid rotates everything but the camera by −rtp. Zernikes OCS = R(−rtp) CCS, and edge
+  azimuth OCS = CCS + rtp.
+- obs_lsst and ts_wep define no CCS-to-rotator offset constant. The only constant is the
+  −90 deg in the formula; obs_lsst's ROTPA patches apply only before 20250422.
+- The EFD MTRotator.rotation actualPosition during the exposures is +0.012 deg (337) and
+  +0.149 deg (340): +0.211 and +0.189 deg from the visitInfo rtp.
+- That gap matches the fitted δ in sign and size (+0.13, +0.23 deg), but not the
+  0.10 deg difference between the sides of focus.
+- ConsDB returned HTTP 500 errors, so `physical_rotator_angle` was not checked.
+
+**Verdict.** δ = +0.18 deg (nMAD 0.08 deg) is significant. It is about the EFD-minus-rtp
+gap of +0.19 to +0.21 deg, so the visitInfo rtp may sit about 0.2 deg off the true
+rotator angle. But a rotation removes none of the m = 1 term: 0.355 / 0.431 deg before,
+0.354 / 0.430 deg after. The m = 1 term is a translation of the shadow pattern of about
+−1.7 (extra) and −2.1 (intra) pixels in OCS image y, relative to the donut centre, and the
+centre choice does not explain it.
+
+![spider m = 1](figures/pass5_spider_m1.png)
+
+**7. Free blur.** Fit c refit on the 53 central-band science sides, blur FWHM free
+(0.5–2.5 arcsec), starting from fit c.
+- FWHM 1.000 arcsec (nMAD 0.014, extra, 26 sides): chi2/dof 4.29 → 4.29 (dof about 745 000).
+- FWHM 1.604 arcsec (nMAD 0.038, intra, 27 sides): chi2/dof 3.83 → 3.70 (dof about 728 000).
+- A chi2 scan on one side of each confirms both minima. They are separate exposures, so
+  the seeing can differ.
+
+Shadow width (FWHM, pixels) and depth (dimensionless), medians:
+
+| side | model | data width | model width | data/model width | data depth | model depth |
+|---|---|---|---|---|---|---|
+| extra | blur 1.0 | 11.5 | 6.5 | 1.76 | 0.87 | 0.63 |
+| extra | blur free (1.00) | 11.5 | 6.6 | 1.74 | 0.87 | 0.63 |
+| intra | blur 1.0 | 10.0 | 6.4 | 1.56 | 0.53 | 0.62 |
+| intra | blur free (1.60) | 10.0 | 9.0 | 1.12 | 0.53 | 0.44 |
+
+- The extra width excess does not go away with blur. On intra the fitted blur widens the
+  model shadows close to the data's, but makes them shallower than the data (0.44 against
+  0.53).
+- The intra/extra depth difference in the data (0.87 extra against 0.53 intra) stays; the
+  model does not make it at any blur.
+- So the data vanes cast wider shadows than the v4.02 vanes at both foci. The depth
+  difference between foci is not a blur effect.
+
+Next:
+- The camera silhouette: fit its circle to the data inner edge at ψ 330–30 deg (intra) and
+  160–200 deg (extra), in place of the v4.02g fit that sits 3–5 pixels inside Batoid.
+- The −y shadow translation and the +y inner-edge shift: test an image-frame shift of the
+  whole pupil pattern against the donut centre in Batoid, e.g. a lateral detector or L3
+  offset, which moves the obscurations relative to the ring.
+- The rotator: check ConsDB `physical_rotator_angle` for 337 and 340 when the service is
+  back, against the EFD +0.19 to +0.21 deg.
+- The shadow widths: free the vane width in the danish Spider_3D, as blur cannot do it.
 
 ### 2026-10-21 — pupil pass 4: flip test, relative azimuth, central-Zernike fit, spiders
 
