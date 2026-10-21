@@ -3,7 +3,7 @@ study: giant_donut_pupil
 topic: aos
 status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: With intrinsicTA references and v4.02g masks, the data r_inner/r_outer is 0.0104 (dimensionless) above v4.02 on science donuts at every field radius; adding Z11 and Z22 matches the edges by absorbing it (Z11 -0.15 / +0.15 um extra / intra), and an edge-only fit needs Z7 +0.76 um that the whole-donut fits (+0.14 to +0.24 um) do not see. The M1 inner and outer clear radii need measuring.
+answer: 'Pass 4: the central edge mismatch and the spider shadows are offset in the OCS image frame on both sides of focus (inner edge +y 1.7-2.0 pixels, extra-against-intra Pearson r +0.76 image, -0.95 pupil; spiders -y about 1.8 pixels, per-vane residual at most 0.11 deg, no field trend), so not a pupil element out of place. Outer-band Z5-Z7 of 1-3.9 um are pupil bias: central medians cost 6 % in chi2/dof.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -45,6 +45,27 @@ full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean
 the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
 1 pixel over 225–315 deg, on both sides of focus.
 
+Pupil pass 4 (2026-10-21; 180 sides at 0–0.8 and 1.4–1.75 deg):
+- **The central edge mismatch is in the image frame, not the pupil.** Data − fit c
+  agrees between extra and intra in OCS image azimuth: Pearson r +0.76 for the inner
+  edge and +0.77 for the ratio. Turned into the pupil frame it is −0.95 and −0.91. It is
+  an inner-edge shift of 1.7–2.0 pixels toward +y on both sides, so it is not an M1
+  aperture effect.
+- **Relative azimuth ψ stacks the outer band.** The outer-edge scatter between donuts is
+  1.2–1.4 pixels in ψ, against 7.1–7.5 in OCS. The model misses most on the inner edge on
+  the vignetted side (ψ 0 deg intra, 180 deg extra), by +3.5 to +5.5 pixels.
+- **The large outer-band aberrations are pupil bias.** The central-band medians (Z5
+  −0.22, Z6 −0.13, Z7 +0.22, Z9 −0.30 µm OCS) cost 6 % in chi2/dof against fit c's 1–3.9
+  µm of Z5–Z7 on intra sides beyond 1.5 deg. Fit c's per-side Z11 and Z15 flip sign
+  with focus and carry most of its edge gain.
+- **The spider shadows are shifted, not misplaced per vane.**
+  - Against fit c, the data shadows sit about 1.8 pixels toward −y OCS image on both
+    sides of focus: an m = 1 term of 0.36–0.41 deg in azimuth at r_half.
+  - A common rotation of −0.14 / −0.24 deg (extra / intra) sits inside the method's
+    0.4 deg bias.
+  - Per-vane residuals are 0.11 deg at most, with no field dependence.
+  - The data shadows are 10–12 pixels wide against the model's 7.
+
 Pupil pass 3 (2026-10-21; 30 donuts, 49 sides, intrinsicTA reference, v4.02g masks):
 - With Z4 alone, the data's r_inner / r_outer is 0.0104 higher than the model on science
   donuts (median, nMAD 0.0048, dimensionless), with no trend in field radius (Pearson r
@@ -80,6 +101,210 @@ Pupil pass 2 (2026-10-20) settles what that offset is not:
   nothing: they uniquely block no ray.
 
 ## Log
+
+### 2026-10-21 — pupil pass 4: flip test, relative azimuth, central-Zernike fit, spiders
+
+Code: `pupil_pass4.py` (fits), `pupil_pass4_report.py`, `spider_pass4.py` and
+`spider_pass4_report.py` (step 6). Run `20261021_pupil4`: `sample`, `fits`,
+`edges_bins`, `central_medians`, `central_stack`, `counts`, `flip_correlation`,
+`psi_check`, `psi_scatter`, `psi_miss`, `c0_vs_c`, `c0_vs_c_sides`, `spiders`,
+`spider_found`, `spider_by_vane`, `spider_vane_fits` (parquet and csv);
+`pupil_pass4.pdf` (80 pages) and `pupil_pass4_spiders.pdf` (38 pages). Setup as pass 3
+(`method.md`, "Pupil fit setup"), fit c only, plus fit c0.
+
+Aaron's read of pass 3:
+- Even with fit c, the data's inner/outer ratio is well off the model inside 0.8 deg.
+- Fit c's aberrations vary widely beyond 1.5 deg but are stable below it. That points to
+  pupil-model bias, not wavefront. The robust edges show clear pupil mismatches.
+
+**0. Sample.** Every selected, not-bad side on 337 and 340, 180 sides, all fitted, none
+failed to run. Five sides (three donuts) are left out of the summaries for a fitted flux
+1.8–5.4 times the stamp sum (dimensionless).
+
+| band | sensor | extra sides | intra sides |
+|---|---|---|---|
+| central, 0–0.8 deg | science | 26 | 27 |
+| outer, 1.4–1.75 deg | science | 57 | 55 |
+| outer | SW0 | 1 | 10 |
+| outer | SW1 | 3 | 1 |
+
+**1. Central band: the edge mismatch does not flip with focus.** Median over 27 donuts
+per 2 deg bin, edges as fractions of each donut's median r_outer. Data − fit c is the
+same in the OCS image frame on both sides of focus, and opposite in the pupil frame
+(extra-focal turned 180 deg). Pearson r between extra and intra data − model (n 133–135
+bins):
+
+| quantity | image frame | pupil frame |
+|---|---|---|
+| inner edge | +0.76 | −0.95 |
+| outer edge | +0.39 | −0.55 |
+| ratio | +0.77 | −0.91 |
+
+The pattern is an m = 1 term at OCS azimuth 88–94 deg on both sides: the inner edge sits
+outside the model toward +y, amplitude 0.0050 (intra) and 0.0060 (extra) of r_out, about
+1.7–2.0 pixels. A feature fixed in the pupil, such as an M1 aperture offset, would line
+up in the pupil frame; this one lines up in the image. It is the pass 2 inner-shadow
+shift (+3.3 pixels inner minus outer along +y CCS), seen again with free coma. The
+constant part, the ratio excess, is +0.0036 (extra) and +0.0016 (intra), dimensionless.
+With c0 (step 4) the correlations are +0.81 / −0.96 (inner) and +0.79 / −0.94 (ratio).
+
+![central band, image frame](figures/pass4_central_image.png)
+
+**2. Relative azimuth ψ lines up the outer band.** ψ = (OCS image azimuth − (φ + 180
+deg)) mod 360. Check: the outer edge's vignetted minimum (m = 1, 2 Huber fit) sits at ψ
+0–3 deg on 9 of 10 SW0 intra sides, whose φ spans 48–317 deg; in OCS those minima spread
+over 44–229 deg. On extra-focal sides the minimum is at ψ 176–186 deg: the image of the
+pupil turns over through focus. Scatter between donuts per bin (nMAD across donuts, each
+donut's median edge removed, median over bins, pixels):
+
+| group | inner, ψ | inner, OCS | outer, ψ | outer, OCS |
+|---|---|---|---|---|
+| science intra, 1.6–1.725 deg, 16 sides | 2.90 | 5.16 | 1.43 | 7.12 |
+| science extra, 1.6–1.725 deg, 16 sides | 2.27 | 2.82 | 1.21 | 7.48 |
+| SW0 intra, 9 sides | 1.71 | 1.69 | 1.33 | 3.15 |
+| SW1 extra, 3 sides | 1.46 | 2.18 | 0.75 | 3.76 |
+
+Where fit c misses most, median data − model in ψ (20 deg running median): the **inner
+edge on the vignetted side**, where the field-dependent inner edge cuts into the ring. It
+is +5.5 pixels at ψ 359 deg on science intra, +4.7 at ψ 9 deg on SW0 intra, and +3.8 at ψ
+179 deg on science extra (+3.5 on SW1 extra). That is one place in the pupil on both
+sides. The data's inner edge there sits outside the v4.02g model. The outer edge misses
+by −1.3 pixels at most, at ψ 130–170 deg.
+
+![psi stacking, science intra](figures/pass4_psi_science_intra.png)
+
+**3. Central-Zernike model, fit c0.** Median fit c deviations over the 53 central-band
+science sides (OCS, µm of wavefront; median with nMAD in brackets):
+
+| term | both sides | extra | intra |
+|---|---|---|---|
+| Z5 | −0.22 (0.17) | −0.28 (0.11) | −0.17 (0.17) |
+| Z6 | −0.13 (0.22) | −0.26 (0.06) | +0.03 (0.07) |
+| Z7 | +0.22 (0.11) | +0.14 (0.05) | +0.27 (0.10) |
+| Z8 | +0.02 (0.07) | +0.00 (0.06) | +0.07 (0.08) |
+| Z9 | −0.30 (0.10) | −0.36 (0.08) | −0.26 (0.06) |
+| Z10 | −0.07 (0.04) | −0.08 (0.04) | −0.07 (0.06) |
+| Z11 | +0.08 (0.13) | −0.18 (0.01) | +0.14 (0.01) |
+| Z14 | +0.04 (0.04) | +0.06 (0.04) | +0.04 (0.04) |
+| Z15 | −0.06 (0.28) | +0.18 (0.06) | −0.20 (0.06) |
+| Z20 | +0.02 (0.04) | +0.03 (0.02) | −0.01 (0.02) |
+| Z21 | −0.01 (0.05) | −0.05 (0.02) | +0.03 (0.02) |
+| Z22 | +0.03 (0.03) | +0.06 (0.01) | +0.02 (0.01) |
+
+Z11 and Z15 flip sign with focus, which wavefront cannot do: they are the pupil-size
+mismatch again. Fit c0 fixes the both-sides medians and frees Z4, flux and centre.
+
+Outer band, 122 sides, c0 against c (medians):
+- chi2/dof c0 over c: 1.08 (all), 1.12 (science extra), 1.06 (science intra), dimensionless;
+- inner edge RMS: 2.29 pixels (c), 3.43 pixels (c0); outer: 1.21 and 1.86 pixels;
+- c0 within 0.3 pixels of c on both edges: 12 % of sides (0 % science extra, 19 % science
+  intra, 44 % SW0 intra).
+
+Fit c's Z5, Z6 or Z7 pass 1 µm on 18 sides, all intra-focal (40 % of intra sides beyond
+1.5 deg), up to Z5 −3.9 µm on SW1 intra. On those 18, c0 costs 6 % in chi2/dof, 0.44
+pixels inner and 0.21 pixels outer edge RMS (medians), and matches both edges on 33 %.
+On extra-focal sides c0's loss is the Z11 and Z15 that c fits per side: c0's inner edge
+sits +2.9 pixels out on science extra.
+
+![c0 against c](figures/pass4_c0_vs_c.png)
+
+**6. Spider shadows, data against fit c.** Method: `spider_trajectory` (`wfs/code/giant_donuts`).
+- Shadow centres are found at 7 radii, 0.68–0.92 of r_out, and fitted with a straight
+  chord, φ(r) = φ_0 + arcsin(b / r).
+- The flux profile is taken across each chord, and `vane_depth` gives the depth and FWHM.
+- Data and model are traced about the same centre (fit a, as the edges) and at the
+  same radii.
+- The azimuth is read at r_half = (r_inner + r_outer) / 2 from the data's robust
+  harmonic edges.
+- The floor is 1.6 pixels in b, plus a common rotation bias of 0.2–0.4 deg that cancels
+  in data − model.
+- A chord with rms over 2 pixels drops its worst point, down to 4 points.
+
+Numbering:
+- **ψ number** 0–7: by ψ at r_half, counted anticlockwise from the shadow nearest ψ = 0.
+- **vane id** 0–7, pupil frame: OCS azimuth (intra) or OCS azimuth + 180 deg (extra),
+  counted anticlockwise from 0 deg. Shadows sit at pupil azimuth 39, 51, 129, 141, 219,
+  231, 309 and 321 deg, ids 0–7, on both sides.
+- Check against the v4.02 Spider_3D on G0005: the six pieces of the +x+y vane alone
+  shadow OCS azimuth 50.9 deg intra (rtp −0.039 deg) and 230.9 deg extra (rtp −0.199
+  deg). That is pupil azimuth 50.9 deg on both sides, vane id 1.
+
+Found: 1189 of 1440 shadows on the 180 band sides; 275 of 392 on the 49 pass 3 sample
+sides. Missing, by reason (band sides): no data shadow within 5 deg of the model, 210;
+model shadow not traced, 36; data chord rms over 2 pixels, 5. Most are on the corner
+sensors: SW0 intra 31 of 80 found, SW1 extra 7 of 24.
+
+Data − model azimuth at r_half, per vane id (deg; median with nMAD in brackets; n 83–101
+shadows each, all distinct sides):
+
+| vane id | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| extra | +0.18 (0.14) | +0.07 (0.13) | −0.31 (0.12) | −0.47 (0.15) | −0.54 (0.09) | −0.24 (0.10) | +0.01 (0.10) | +0.19 (0.07) |
+| intra | −0.58 (0.20) | −0.46 (0.21) | −0.06 (0.16) | +0.09 (0.19) | +0.16 (0.16) | −0.02 (0.15) | −0.50 (0.17) | −0.65 (0.13) |
+
+Fitted as a common term plus m = 1 in OCS image azimuth (Huber):
+- common: −0.14 deg (extra), −0.24 deg (intra);
+- m = 1 amplitude: 0.36 deg (extra) and 0.41 deg (intra), at phase 184 and 183 deg OCS
+  image azimuth on both sides;
+- residual per vane: 0.11 deg at most; scatter nMAD 0.14 (extra) and 0.18 deg (intra).
+
+So the data shadows sit shifted along −y OCS relative to the donut centre, in the image
+frame on both sides: about 1.7 (extra) and 1.9 (intra) pixels at r_half (Huber fit of the
+arc displacement), 2.3–2.6 pixels at 0.70 r_out and 1.2 pixels at 0.92 r_out. In the pupil
+frame that is the opposite direction on the two sides, so it is not a spider misplaced
+in the telescope.
+
+Other differences, data − model (medians over vanes and sides):
+- b: alternates ±2 to ±8 pixels between the two shadows of each vane pair, as a
+  translation gives (nMAD 1.6–5.1 pixels per vane).
+- Depth: +0.16 to +0.19 (extra), −0.12 to −0.16 (intra), dimensionless. The data are
+  0.86–0.89 deep (extra) and 0.54–0.57 deep (intra), the model 0.67–0.73 on both.
+- Width (FWHM): +4.0 to +5.4 pixels (extra), +3.1 to +3.6 pixels (intra). The data are
+  10.8–12.3 and 9.9–10.5 pixels wide, the model 6.7–7.2 pixels.
+- Field dependence: none. Slope 0.03 ± 0.02 (extra) and 0.04 ± 0.03 (intra) deg per deg
+  of field radius. Against field radius, each side's median residual has Pearson r +0.19
+  and +0.17, Spearman rho +0.15 and +0.27 (n 108 and 121 sides).
+
+Pass 3 sample sides alone give the same: common −0.11 / −0.22 deg, per-vane spread
+0.75 / 0.90 deg (extra / intra).
+
+![spider data − model per donut](figures/pass4_spider_dmm_per_donut.png)
+![spider profiles, G0005](figures/pass4_spider_profiles_G0005.png)
+
+**Answers.**
+- *(i) Does the central-band edge mismatch flip with focus?* No. It agrees in the OCS
+  image frame: Pearson r +0.76 (inner edge) and +0.77 (ratio), extra against intra.
+  In the pupil frame it is −0.95 and −0.91. It is an m = 1 inner-edge shift toward +y
+  of 1.7–2.0 pixels on both sides, plus the 0.002–0.004 ratio excess. A pupil-fixed
+  M1 aperture effect would flip; this does not.
+- *(ii) Does ψ stacking line up the outer band, and where does the model miss?* Yes. The
+  outer-edge scatter between donuts drops from 7.1–7.5 pixels in OCS to 1.2–1.4 pixels
+  in ψ on science sides. The model misses most on the inner edge on the vignetted side
+  (ψ ≈ 0 deg intra, ψ ≈ 180 deg extra), by +3.5 to +5.5 pixels, where the
+  field-dependent inner edge enters the ring.
+- *(iii) Are the outer-band aberrations pupil bias?* The large ones are. They are
+  intra-only, beyond 1.5 deg. There the central wavefront costs 6 % in chi2/dof and
+  0.2–0.4 pixels of edge RMS, against c's 1–3.9 µm of Z5–Z7. But c0 matches c's
+  edges on only 12 % of outer sides. Most of c's edge gain is Z11 and Z15 fitted per
+  side, and those flip sign with focus: pupil size again, not wavefront.
+- *Spider placement:* a translation, plus a small common rotation. It is not per vane
+  (residual ≤ 0.11 deg) and not field dependent.
+  - The translation is about 1.8 pixels along −y OCS image, in the same image direction
+    on both sides of focus.
+  - The common rotation is −0.14 / −0.24 deg, below the 0.4 deg band.
+  - The earlier check put the v4.02 danish vanes 0.0 mm off the batoid CAD shadow, so
+    danish follows v4.02; the data differ from both.
+  - The data shadows are 1.5–1.8 times wider than the model, and deeper extra and
+    shallower intra.
+  - An image-frame shift of the spiders and of the inner shadow, of opposite sign (+y
+    inner edge, −y spiders), on both sides of focus is not a pupil element out of place.
+
+Next:
+- The common image-frame offsets (inner edge +y, spiders −y, relative to the donut
+  centre): test whether the centre is what moves, by fitting the outer-edge centre
+  separately from the fit-a centre.
+- The shadow widths: fit the vane width and blur together on the bright central donuts.
+- The field-dependent inner edge at ψ ≈ 0 / 180 deg in v4.02g: which element sets it.
 
 ### 2026-10-21 — pupil pass 3: four fits and robust edges, v4.02g, intrinsicTA
 
