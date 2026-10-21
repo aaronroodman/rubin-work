@@ -31,6 +31,8 @@ from scipy.stats import pearsonr, spearmanr  # noqa: E402
 
 from rubinwork.common.utils import nmad  # noqa: E402
 
+from report_utils import empty_panel  # noqa: E402
+
 NBIN = 180
 BIN_DEG = 360 / NBIN
 SIDE_COLOURS = {'extra': 'tab:blue', 'intra': 'tab:red'}
@@ -445,36 +447,53 @@ def _ztext(r):
     return '  '.join(f'{c[:-7].upper()} {r[c]:+.2f}' for c in zs)
 
 
+def _image_panel(fig, ax, a, title, **kw):
+    """imshow with a colour bar, or the reason the panel is empty printed on it."""
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(title, fontsize=9)
+    if a is None or a.size == 0 or not np.isfinite(a).any():
+        return empty_panel(ax, 'no finite pixels')
+    lo, hi = kw.get('vmin'), kw.get('vmax')
+    if lo is not None and hi is not None and not (np.isfinite(lo) and np.isfinite(hi) and hi > lo):
+        return empty_panel(ax, f'colour scale collapsed ({lo}, {hi})')
+    im = ax.imshow(a, origin='lower', **kw)
+    fig.colorbar(im, ax=ax, shrink=0.7, label='electrons per pixel')
+
+
 def page_donut_images(pdf, run, g):
     r0 = g.loc['c']
-    d = np.load(run / 'images' / f'{r0.sample_id}_{r0.side}.npz')
-    d0 = np.load(run / 'images' / f'{r0.sample_id}_{r0.side}_c0.npz')
-    img, msk = d['img'].astype(float), d['masked'].astype(bool)
-    data = np.where(msk, np.nan, img)
-    vmax = np.nanpercentile(data, 99.5)
-    models = {'c': d['model_c'], 'c0': d0['model_c0']}
-    res = {k: np.where(msk, np.nan, img - m) for k, m in models.items()}
-    rl = max(np.nanpercentile(np.abs(r), 99) for r in res.values())
     fig, axes = plt.subplots(2, 3, figsize=(14, 10))
-    for i, k in enumerate(('c', 'c0')):
-        r = g.loc[k]
-        for j, (a, title, kw) in enumerate((
-                (data, 'data', dict(vmin=0, vmax=vmax, cmap='gray')),
-                (models[k], f'fit {k} model', dict(vmin=0, vmax=vmax, cmap='gray')),
-                (res[k], 'data − model', dict(vmin=-rl, vmax=rl, cmap='RdBu_r')))):
-            ax = axes[i, j]
-            im = ax.imshow(a, origin='lower', **kw)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            fig.colorbar(im, ax=ax, shrink=0.7, label='electrons per pixel')
-            ax.set_title(title, fontsize=9)
-        axes[i, 0].text(0.0, -0.06, f'{FIT_LABELS[k]}: chi2/dof {r.chi2_dof:.3f} (dof {int(r.dof)})'
-                        '\ndeviation, µm of wavefront, OCS: ' + _ztext(r),
-                        transform=axes[i, 0].transAxes, fontsize=8, va='top')
+    paths = [run / 'images' / f'{r0.sample_id}_{r0.side}{s}.npz' for s in ('', '_c0')]
+    missing = [p.name for p in paths if not p.exists()]
+    if missing:
+        for ax in axes.flat:
+            empty_panel(ax, 'stamp not found: ' + ', '.join(missing))
+    else:
+        d, d0 = (np.load(p) for p in paths)
+        img, msk = d['img'].astype(float), d['masked'].astype(bool)
+        data = np.where(msk, np.nan, img)
+        vmax = np.nanpercentile(data, 99.5)
+        models = {'c': d['model_c'], 'c0': d0['model_c0']}
+        res = {k: np.where(msk, np.nan, img - m) for k, m in models.items()}
+        rl = max(np.nanpercentile(np.abs(r), 99) for r in res.values())
+        for i, k in enumerate(('c', 'c0')):
+            for j, (a, title, kw) in enumerate((
+                    (data, 'data', dict(vmin=0, vmax=vmax, cmap='gray')),
+                    (models[k], f'fit {k} model', dict(vmin=0, vmax=vmax, cmap='gray')),
+                    (res[k], 'data − model', dict(vmin=-rl, vmax=rl, cmap='RdBu_r')))):
+                _image_panel(fig, axes[i, j], a, title, **kw)
     fig.suptitle(f'Step 3: {r0.pass3_id} ({r0.sample_id}) {r0.side}-focal {r0.detector}, {r0.mag:.2f} '
                  f'AB mag; field radius {r0.field_r_deg:.3f} deg, OCS azimuth '
                  f'{r0.field_az_ocs_deg:.1f} deg. CCS stamp', fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=4.0)
+    # The fit text sits in reserved figure space: as an axes text it is wider than the
+    # axes, and tight_layout then shrinks every panel to zero width.
+    fig.tight_layout(rect=(0, 0.04, 1, 0.95), h_pad=6.0)
+    for i, k in enumerate(('c', 'c0')):
+        r = g.loc[k]
+        y = axes[i, 0].get_position().y0 - 0.01
+        fig.text(0.02, y, f'{FIT_LABELS[k]}: chi2/dof {r.chi2_dof:.3f} (dof {int(r.dof)})'
+                 '\ndeviation, µm of wavefront, OCS: ' + _ztext(r), fontsize=8, va='top')
     pdf.savefig(fig, dpi=80)
     plt.close(fig)
 
