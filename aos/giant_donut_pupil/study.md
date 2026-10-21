@@ -67,6 +67,88 @@ Pupil pass 2 (2026-10-20) settles what that offset is not:
 
 ## Log
 
+### 2026-10-21 — selection v2 scored and final
+
+Aaron's labels (`hand_labels_v2.csv`, 12 pages done) confirm his counts. Science
+rafts: 83 good, 4 bad, 3 missed. Corner rafts: 2 good, 1 bad, 6 missed. All 4 bad
+science donuts carry only a ^; every v and both-marker donut is good. Code:
+`peak_refine.py` (run `20261020_peak_refine`), `score_selection.py` rewritten for the v2
+labels (run `20261020_selection_score`), `final_candidates.py` rewritten (run
+`20261020_candidates_v2`). The rule is in `method.md` section 9.
+
+Scores (purity: kept good over kept labelled; completeness: kept good over good plus
+missed; both dimensionless):
+
+| rule | science kept good / bad / missed | science purity | science completeness | corner kept good / bad / missed | corner purity | corner completeness |
+|---|---|---|---|---|---|---|
+| baseline | 83 / 4 / 3 | 0.954 | 0.965 | 2 / 1 / 6 | 0.667 | 0.250 |
+| fix a | 83 / 2 / 3 | 0.976 | 0.965 | 2 / 1 / 6 | 0.667 | 0.250 |
+| fix b | 83 / 4 / 3 | 0.954 | 0.965 | 7 / 0 / 1 | 1.000 | 0.875 |
+| final (a + b) | 83 / 2 / 3 | 0.976 | 0.965 | 7 / 0 / 1 | 1.000 | 0.875 |
+
+By marker, science, final: ^ only 28 good / 2 bad (purity 0.933), v only 15 / 0, both
+40 / 0. The final rule marks 2 corner donuts that carry no label; no new science ones.
+
+**(a) The bad donuts.** Two kinds:
+- R31_S10, refcat 5116758886649137664 (12.75 AB mag), bad on both visits. Its
+  neighbour at 1.29 r_out has no ComCam r (`mag_best` 14.94), so cut 6 ignored it.
+  `overlap_frac_best` (neighbours by `mag_best`) is 0.27–0.28 against 0.00. Fix a
+  (`overlap_frac_best < 0.02`) removes both and no good donut: only 4 of 319 isolated
+  stars on 337 and 340 change.
+- R13_S11 9.23 mag (bad on 337, good on 340) and R10_S02 11.49 mag (bad on 340, good on
+  337). The same star got opposite labels on the two visits, and its metrics barely
+  differ between them. The flux-weighted overlap is 0.010–0.013 against a good median
+  near 0.002. No cut tested removes them without losing good donuts:
+  - flux-weighted overlap (`overlap_w_sep`, neighbour ring inside the target's ring,
+    times the flux ratio): < 0.01 gives purity 1.000 and completeness 0.779; < 0.015
+    gives 0.974 and 0.860; < 0.02 gives 0.976 and 0.942;
+  - `overlap_frac_d4` < 0.1, 0.2, 0.3: completeness 0.686–0.779;
+  - no brighter neighbour within 2 r_out: no change.
+  None keeps completeness at or above 0.95, so none is used. Many good donuts have
+  a fainter neighbour's ring on them at this level.
+
+**(b) The corners.** Per missed donut, reason code and metrics (ann: annulus_ratio;
+ovl: overlap_frac; sky ann: sky-corrected annulus ratio; w: flux-weighted overlap;
+S/N: ring level over pixel noise; all dimensionless):
+
+| visit | sensor | mag (AB) | reason | ann | ovl | sky ann | w | S/N | final |
+|---|---|---|---|---|---|---|---|---|---|
+| 337 | R40_SW1 | 12.92 | annulus | 0.050 | 0.00 | 0.023 | 0.000 | 55 | kept |
+| 340 | R40_SW1 | 12.92 | annulus | 0.084 | 0.00 | 0.026 | 0.001 | 23 | kept |
+| 340 | R04_SW0 | 14.30 | annulus | 0.073 | 0.21 | −0.015 | 0.011 | 14 | kept |
+| 337 | R04_SW1 | 14.61 | blended peak | 0.156 | 0.73 | 0.044 | 0.025 | 12 | kept |
+| 340 | R40_SW0 | 14.61 | blended peak | 0.121 | 0.67 | 0.003 | 0.029 | 11 | kept |
+| 337 | R40_SW0 | 14.61 | blended peak | 0.265 | 0.82 | 0.057 | 0.059 | 4.6 | missed |
+
+- **The cause is the background, not the edge, the radius or the threshold.** All six
+  are detected peaks, all whole on silicon, at the right radius (SW0 404 pixels extra
+  and 272 intra; SW1 268 and 400, the swap is right). The 10th-percentile background
+  map sits 14–24 e per binned pixel below the sky (median 19 e). On a corner ring of
+  80–800 e that offset alone gives an annulus ratio of 0.03–0.25.
+- The second cause is the binary overlap: neighbours 3.0–3.4 mag fainter count as
+  full overlaps (0.21–0.82). Weighted by flux, they are 0.01–0.03.
+- The one corner bad donut (340 R40_SW0, ring-level magnitude 17.3 AB mag) is a noise
+  peak, ring S/N 0.26. The S/N > 3 cut removes it.
+- The last miss (337 R40_SW0) has a ring S/N of 4.6 and a flux-weighted overlap of
+  0.059, so it fails too. It is the same star as the 340 donut that is kept.
+- Fix b applies only to the corner sensors. On the science sensors the same rule
+  adds 11 unlabelled donuts and gains 1 good one, so they keep `good_peak`.
+
+**Final candidates** (run `20261020_candidates_v2`; donut counts, selected / within
+1.75 deg):
+
+| exposure | side | science | SW0 | SW1 |
+|---|---|---|---|---|
+| 2025102300337 | extra | 178 / 161 | 1 / 1 | 6 / 3 |
+| 2025102300338 | extra | 177 / 161 | 1 / 1 | 5 / 3 |
+| 2025102300340 | intra | 176 / 161 | 10 / 10 | 2 / 1 |
+| 2025102300341 | intra | 178 / 164 | 10 / 10 | 2 / 1 |
+
+The extra-focal SW0 donuts are 404 pixels in radius, so most overlap; hence 1 against
+10. Outputs: `candidates_v2.parquet` and `.csv`, `tally.csv` and `.pdf`,
+`score_summary.csv` and `.pdf`, and `candidates_<visit>_<side>.pdf` ×4 (mosaic, tally,
+scores, one page per raft, ^ and v coloured by hand label).
+
 ### 2026-10-20 — selection plan v2
 
 **Decision (Aaron, 2026-10-20).** The pupil analysis is paused. Pass 2 (run

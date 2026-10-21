@@ -1,8 +1,8 @@
 # Giant-donut selection: method
 
-> **Status:** current for runs `20261020_selection_diag` and `20261020_peak_metrics`
-> (2026-10-20). The selection rule is the 20261018 baseline; step D of `study.md` may
-> replace it.
+> **Status:** current for runs `20261020_selection_diag`, `20261020_peak_metrics`,
+> `20261020_peak_refine` and `20261020_candidates_v2` (2026-10-21). Section 9 is the
+> final selection rule.
 
 ## How the giant-donut selection works
 
@@ -150,3 +150,34 @@ neighbour limit.
     zero point per visit and sensor class taken as the median over matched peaks.
 - A star and a good peak within 0.3 r_out (`MATCH_ROUT`) are one donut: both markers,
   offset 0.15 r_out vertically.
+
+### 9. The final rule (`score_selection.py`, `final_candidates.py`)
+
+A donut is selected if it carries a ^ or a v (section 8), with two changes, scored
+against Aaron's hand labels (`study.md`, 2026-10-21):
+
+- **^ (fix a):** also `overlap_frac_best < 0.02`. This is cut 6 with every catalog
+  neighbour brighter than the star's magnitude plus 2.5, using `mag_best` (DES r or Gaia
+  G where ComCam r is missing). Cut 6 alone uses only stars with ComCam r, so it missed
+  neighbours without it.
+- **v on the corner sensors (fix b):** `corner_good_peak`, with three metrics from
+  `peak_refine.py`:
+  - the sky-corrected annulus ratio, `annulus_ratio_sky < 0.05`. The 10th-percentile
+    background map sits below the sky by its offset: the mode of the
+    background-subtracted detector, 14–24 e per binned pixel on the corner sensors.
+    The offset is added to the background before the ratio is taken. On a faint
+    corner ring (80–800 e) it is a large part of the ratio;
+  - the flux-weighted overlap, `overlap_w_sep < 0.03`: per neighbour, the fraction of
+    the target's ring (widened by 0.05 r_out on each edge) inside the neighbour's ring,
+    times the flux ratio `10**(-0.4 (m_nbr - m))`, summed over neighbours more than
+    0.25 r_out away. Neighbours are every the_monster star to 18.5 AB mag within 3 r_out
+    and every orphan peak (dimensionless);
+  - the ring S/N, `ring_snr > 3`: the sky-corrected ring level over the binned-pixel
+    noise (dimensionless);
+  - plus whole on silicon and not saturated, as before.
+- Science-sensor v is unchanged (`good_peak`).
+
+A star and a peak within 0.3 r_out are one donut (`hand_label.match_marked`).
+`candidates_v2.parquet` holds one row per selected donut, with its marker (`^`, `v`,
+`both`), positions, field angle, magnitude, metrics and hand label. It also holds the
+hand-added missed donuts that the rule does not select, with `selected` False.

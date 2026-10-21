@@ -1,24 +1,32 @@
-"""Score giant-donut selection variants against the hand labels.
+"""Score giant-donut selection rules against the v2 hand labels.
 
-Truth comes from the pages marked done in ``hand_labels_pages.json``. Every
-labelled item on those pages is a truth donut: catalog stars by refcat_id,
-unexplained peaks by peak_id, and added donuts matched to the nearest catalog star
-(to 18.5 AB mag) within 0.3 r_out, if any.
+The v2 labels (``hand_labels_v2.csv``, `hand_label.py`) are on the marked donuts
+of 12 raft pages: ``good`` or ``bad`` for a marked donut, ``missed`` for a good
+donut the markers left out. A rule marks donuts with ``^`` (a star row it keeps)
+and ``v`` (a peak it keeps); a star and a peak within 0.3 r_out are one donut.
+Per rule, sensor class and marker type:
 
-Each variant classes every star row isolated / marginal / blended / saturated (or
-leaves it unscored) and keeps the isolated ones. Per sensor class and overall:
+- completeness: good or missed donuts that the rule marks, over all good or
+  missed donuts;
+- purity: marked donuts labelled good, over marked donuts labelled good or bad;
+- ``new_unlabelled``: marked donuts on a done page with no label within 0.3 r_out.
+  Aaron added every good donut he saw, so these are most likely not good.
 
-- completeness: good-labelled donuts kept, over all good-labelled donuts;
-- purity: kept donuts labelled good, over kept donuts that carry a label;
-- the confusion matrix, hand label against the variant's class.
+Rules:
 
-The variants change one thing each from the 20261018 baseline; ``combined`` takes
-every change that raises completeness without lowering purity, and every image
-check (fit residual, bleed) that raises purity without lowering completeness.
+- ``baseline``: ^ on ``iso_class == 'isolated'``, v on ``good_peak``.
+- ``fix_a``: ^ also needs ``overlap_frac_best < 0.02``: the overlap neighbours
+  include stars with no ComCam r flux (``mag_best``).
+- ``fix_b``: on the corner sensors, v is `corner_good_peak`.
+- ``final``: ``fix_a`` and ``fix_b``.
+
+``tests`` scores the other changes tried for the bad donuts (a flux-weighted
+overlap at several limits, a cut on a brighter neighbour).
 
 Usage, from the repo root::
 
-    python aos/giant_donut_pupil/code/score_selection.py --diag 20261020_selection_diag
+    python aos/giant_donut_pupil/code/score_selection.py --diag 20261020_selection_diag \\
+        --refine 20261020_peak_refine
 """
 import argparse
 import json
@@ -29,179 +37,190 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import hand_label as hl  # noqa: E402
 import select_candidates as sc  # noqa: E402
+import selection_v2 as sv  # noqa: E402
 
-TRUTH_LABELS = ('good', 'marginal', 'blended', 'not_donut')
-CLASSES = ('isolated', 'marginal', 'blended', 'saturated', 'unscored')
+from rubinwork.common import study_run  # noqa: E402
+
 MATCH_ROUT = 0.3
-# Variant parameters.
-SEPARATION_ROUT = 2.0
-NBR_ROUT_D4 = 2.0
-BLEED_MAX = 0.5
-# The residual cut sits at this quantile of the good-labelled donuts' residuals.
-RESID_QUANTILE = 0.98
-PROMOTERS = ('dmag4', 'sigma5', 'sep_rout', 'best_mag')
-DEMOTERS = ('fit_resid', 'saturation_bleed')
+# Corner good peak: sky-corrected annulus ratio, flux-weighted overlap and ring S/N.
+CORNER_ANNULUS = 0.05
+CORNER_OVERLAP_W = 0.03
+CORNER_RING_SNR = 3.0
+GROUPS = ('science', 'SW0', 'SW1', 'corner')
 
 
-def classify(t, catalog_ok, annulus, overlap, saturated, scored):
-    """Class per row from a catalog verdict and the image metrics."""
-    clean = (annulus < sc.ANNULUS_CLEAN) & (overlap < sc.OVERLAP_CLEAN)
-    marg = (annulus < sc.ANNULUS_MARGINAL) & (overlap < sc.OVERLAP_MARGINAL)
-    image = np.where(clean, 'clean', np.where(marg, 'marginal', 'contaminated'))
-    cls = np.full(len(t), 'blended', dtype=object)
-    cls[catalog_ok & (image == 'clean')] = 'isolated'
-    cls[(catalog_ok & (image == 'marginal')) | (~catalog_ok & (image == 'clean'))] = 'marginal'
-    cls[saturated] = 'saturated'
-    cls[~scored] = 'unscored'
-    return cls
+def corner_good_peak(p):
+    """The corner-sensor v rule (fix b)."""
+    return (p.full_on_silicon & ~(p.ring_p99_e > sc.SATURATION_E)
+            & (p.annulus_ratio_sky < CORNER_ANNULUS) & (p.overlap_w_sep < CORNER_OVERLAP_W)
+            & (p.ring_snr > CORNER_RING_SNR))
 
 
-def variants(t, resid_max):
-    """Every variant's class column."""
-    in_r = t.full_on_silicon & np.isfinite(t.mag_r) & t.mag_r.between(sc.MAG_MIN, sc.MAG_MAX)
-    in_best = t.full_on_silicon & t.mag_best.between(sc.MAG_MIN, sc.MAG_MAX)
-    blitz = t.blitz_isolated.to_numpy(bool)
-    ann, ovl = t.annulus_ratio.to_numpy(), t.overlap_frac.to_numpy()
-    sat = (t.ring_p99_e > sc.SATURATION_E).to_numpy()
-    out = {'baseline': classify(t, blitz, ann, ovl, sat, in_r)}
-    out['dmag4'] = classify(t, (t.nbr_dist_rout >= NBR_ROUT_D4).to_numpy(), ann,
-                            t.overlap_frac_d4.to_numpy(), sat, in_r)
-    out['sigma5'] = classify(t, blitz, ann, t.overlap_frac_sigma.to_numpy(), sat, in_r)
-    out['sep_rout'] = classify(t, (t.nbr2r_dist_rout >= SEPARATION_ROUT).to_numpy(), ann, ovl,
-                               sat, in_r)
-    out['best_mag'] = classify(t, t.blitz_isolated_best.to_numpy(bool), ann,
-                               t.overlap_frac_best.to_numpy(), sat, in_best)
-    fit_bad = ~(t.annulus_resid < resid_max).to_numpy()
-    base = out['baseline'].copy()
-    base[(base == 'isolated') & fit_bad] = 'marginal'
-    out['fit_resid'] = base
-    bleed = sat | (t.bleed_ratio > BLEED_MAX).to_numpy()
-    out['saturation_bleed'] = classify(t, blitz, ann, ovl, bleed, in_r)
-    return out
+def is_corner(t):
+    return (t.sensor_class != 'science').to_numpy()
 
 
-def truth_table(stars, labels, pages_done):
-    """One row per truth donut, with the star row it matches (``row``, -1 if none)."""
-    done = {k for k, v in pages_done.items() if v}
-    lab = labels[[f'{v}_{r}' in done for v, r in zip(labels.visit, labels.raft)]].copy()
-    lab['row'] = -1
-    idx = {(v, rid): i for i, (v, rid) in enumerate(zip(stars.visit, stars.refcat_id))}
-    for i, r in lab.iterrows():
-        if r['item'] == 'star':
-            lab.at[i, 'row'] = idx.get((r.visit, int(r.refcat_id)), -1)
-            continue
-        # Peaks and added donuts: nearest star row within MATCH_ROUT r_out.
-        s = stars[(stars.visit == r.visit) & (stars.detector == r.detector)]
-        if len(s):
-            d = np.hypot(s.fp_x_mm - r.fp_x_mm, s.fp_y_mm - r.fp_y_mm) / (s.r_out_pix * 0.01)
-            j = int(np.argmin(d.to_numpy()))
-            if d.iloc[j] < MATCH_ROUT:
-                lab.at[i, 'row'] = s.index[j]
-    lab['sensor_class'] = [stars.sensor_class.loc[row] if row >= 0 else
-                           ('science' if 'SW' not in det else det[-3:])
-                           for row, det in zip(lab.row, lab.detector)]
+def star_rule(stars, name):
+    keep = (stars.iso_class == 'isolated').to_numpy()
+    if name in ('fix_a', 'final'):
+        keep &= (stars.overlap_frac_best < sc.OVERLAP_CLEAN).to_numpy()
+    return keep
+
+
+def peak_rule(peaks, name):
+    keep = peaks.good_peak.to_numpy(bool).copy()
+    if name in ('fix_b', 'final'):
+        c = is_corner(peaks)
+        keep[c] = corner_good_peak(peaks[c]).to_numpy()
+    return keep
+
+
+RULES = ('baseline', 'fix_a', 'fix_b', 'final')
+
+
+def load(diag_dir, refine_dir):
+    stars = pd.read_parquet(diag_dir / 'stars.parquet')
+    peaks = pd.read_parquet(refine_dir / 'peak_metrics.parquet')
+    stars = stars.merge(peaks[['visit', 'peak_id', 'overlap_w', 'overlap_w_sep',
+                               'annulus_ratio_sky', 'ring_snr']], on=['visit', 'peak_id'],
+                        how='left')
+    labels = pd.read_csv(diag_dir / 'hand_labels_v2.csv')
+    done = json.loads((diag_dir / 'hand_labels_v2_pages.json').read_text())
+    return stars, peaks, labels, {k for k, v in done.items() if v}
+
+
+def marked_donuts(stars, peaks, star_keep, peak_keep):
+    """One row per marked donut over all visits (`hand_label.match_marked`)."""
+    out = []
+    for visit in sorted(stars.visit.unique()):
+        s = stars[star_keep & (stars.visit == visit).to_numpy()]
+        p = peaks[peak_keep & (peaks.visit == visit).to_numpy()]
+        for det in sorted(set(s.detector) | set(p.detector)):
+            m = hl.match_marked(s[s.detector == det], p[p.detector == det])
+            out.append(m.assign(visit=visit))
+    m = pd.concat(out, ignore_index=True)
+    m['marker'] = np.where(m.star_isolated & m.good_peak, 'both',
+                           np.where(m.star_isolated, '^', 'v'))
+    m['sensor_class'] = ['science' if 'SW' not in d else d[-3:] for d in m.detector]
+    return m
+
+
+def _nearest(xy, x, y, r_mm):
+    if len(xy) == 0:
+        return -1
+    d = np.hypot(xy[:, 0] - x, xy[:, 1] - y) / r_mm
+    j = int(np.argmin(d))
+    return j if d[j] < MATCH_ROUT else -1
+
+
+def match_labels(labels, marked):
+    """Per label, the marked donut it falls on (``mark``, -1 if none) and its marker."""
+    lab = labels.copy()
+    lab['sensor_class'] = ['science' if 'SW' not in d else d[-3:] for d in lab.detector]
+    lab['mark'] = -1
+    lab['marker'] = ''
+    for (visit, det), g in lab.groupby(['visit', 'detector']):
+        m = marked[(marked.visit == visit) & (marked.detector == det)]
+        xy = m[['fp_x_mm', 'fp_y_mm']].to_numpy()
+        for i, r in g.iterrows():
+            j = _nearest(xy, r.fp_x_mm, r.fp_y_mm, m.r_out_mm.median() if len(m) else 3.4)
+            if j >= 0:
+                lab.at[i, 'mark'] = m.index[j]
+                lab.at[i, 'marker'] = m.marker.iloc[j]
     return lab
 
 
-def score(truth, cls):
-    """Completeness, purity and the confusion matrix for one class column."""
-    got = np.array([cls[row] if row >= 0 else 'unscored' for row in truth.row])
-    out = {}
-    for group, mask in [('all', np.ones(len(truth), bool))] + [
-            (c, (truth.sensor_class == c).to_numpy()) for c in ('science', 'SW0', 'SW1')]:
-        lab, g = truth.label.to_numpy()[mask], got[mask]
-        good = lab == 'good'
-        kept = g == 'isolated'
-        out[group] = dict(
-            n_truth=int(mask.sum()), n_good=int(good.sum()), n_kept=int(kept.sum()),
-            n_kept_good=int((good & kept).sum()),
-            completeness=float((good & kept).sum() / good.sum()) if good.sum() else np.nan,
-            purity=float((good & kept).sum() / kept.sum()) if kept.sum() else np.nan,
-            confusion={t: {c: int(((lab == t) & (g == c)).sum()) for c in CLASSES}
-                       for t in TRUTH_LABELS})
-    return out
-
-
-def run(diag_dir):
-    stars = pd.read_parquet(diag_dir / 'stars.parquet')
-    labels = pd.read_csv(diag_dir / 'hand_labels.csv')
-    pages_done = json.loads((diag_dir / 'hand_labels_pages.json').read_text())
-    truth = truth_table(stars, labels, pages_done)
-    good_rows = truth.row[(truth.label == 'good') & (truth.row >= 0)]
-    resid_max = float(np.nanquantile(stars.annulus_resid.loc[good_rows], RESID_QUANTILE)) \
-        if len(good_rows) else np.inf
-    classes = variants(stars, resid_max)
-    scores = {name: score(truth, cls) for name, cls in classes.items()}
-    base = scores['baseline']['all']
-    chosen = []
-    for name, s in scores.items():
-        c, p = s['all']['completeness'], s['all']['purity']
-        if name in PROMOTERS and c > base['completeness'] and p >= base['purity']:
-            chosen.append(name)
-        # The two image checks only demote, so they cannot raise completeness;
-        # they are kept if they raise purity at no cost in completeness.
-        if name in DEMOTERS and p > base['purity'] and c >= base['completeness']:
-            chosen.append(name)
-    classes['combined'] = combine(stars, chosen, resid_max)
-    scores['combined'] = score(truth, classes['combined'])
-    return stars, truth, classes, scores, chosen, resid_max
-
-
-def combine(t, chosen, resid_max):
-    """The baseline with every chosen change applied together."""
-    use_best = 'best_mag' in chosen
-    scored = t.full_on_silicon & (t.mag_best.between(sc.MAG_MIN, sc.MAG_MAX) if use_best else
-                                  (np.isfinite(t.mag_r) & t.mag_r.between(sc.MAG_MIN, sc.MAG_MAX)))
-    if 'dmag4' in chosen:
-        catalog_ok = (t.nbr_dist_rout >= NBR_ROUT_D4).to_numpy()
-    elif 'sep_rout' in chosen:
-        catalog_ok = ((t.nbr2b_dist_rout if use_best else t.nbr2r_dist_rout)
-                      >= SEPARATION_ROUT).to_numpy()
-    else:
-        catalog_ok = (t.blitz_isolated_best if use_best else t.blitz_isolated).to_numpy(bool)
-    if 'dmag4' in chosen:
-        overlap = t.overlap_frac_d4
-    elif 'sigma5' in chosen:
-        overlap = t.overlap_frac_sigma
-    elif use_best:
-        overlap = t.overlap_frac_best
-    else:
-        overlap = t.overlap_frac
-    sat = (t.ring_p99_e > sc.SATURATION_E).to_numpy()
-    if 'saturation_bleed' in chosen:
-        sat = sat | (t.bleed_ratio > BLEED_MAX).to_numpy()
-    cls = classify(t, catalog_ok, t.annulus_ratio.to_numpy(), overlap.to_numpy(), sat,
-                   scored.to_numpy())
-    if 'fit_resid' in chosen:
-        cls[(cls == 'isolated') & ~(t.annulus_resid < resid_max).to_numpy()] = 'marginal'
-    return cls
-
-
-def summary_frame(scores):
+def new_unlabelled(labels, marked, pages_done):
+    """Marked donuts on done pages with no label within 0.3 r_out."""
+    on_page = np.array([f'{v}_{d[:3]}' in pages_done for v, d in zip(marked.visit, marked.detector)])
     rows = []
-    for name, s in scores.items():
-        for group, v in s.items():
-            rows.append(dict(variant=name, group=group, n_truth=v['n_truth'], n_good=v['n_good'],
-                             n_kept=v['n_kept'], n_kept_good=v['n_kept_good'],
-                             completeness=v['completeness'], purity=v['purity']))
+    for i, r in marked[on_page].iterrows():
+        lab = labels[(labels.visit == r.visit) & (labels.detector == r.detector)]
+        if _nearest(lab[['fp_x_mm', 'fp_y_mm']].to_numpy(), r.fp_x_mm, r.fp_y_mm, r.r_out_mm) < 0:
+            rows.append(i)
+    return marked.loc[rows]
+
+
+def score(lab, new):
+    """Counts, purity and completeness per sensor group and per marker type."""
+    rows = []
+    good = (lab.label != 'bad').to_numpy()
+    kept = (lab.mark >= 0).to_numpy()
+    for group in GROUPS:
+        sel = (lab.sensor_class != 'science').to_numpy() if group == 'corner' else \
+            (lab.sensor_class == group).to_numpy()
+        n_new = int(((new.sensor_class != 'science') if group == 'corner'
+                     else (new.sensor_class == group)).sum())
+        for marker in ('all', '^', 'v', 'both'):
+            m = sel & ((lab.marker == marker).to_numpy() if marker != 'all' else True)
+            kg, kb = int((m & good & kept).sum()), int((m & ~good & kept).sum())
+            row = dict(group=group, marker=marker, kept_good=kg, kept_bad=kb,
+                       purity=kg / (kg + kb) if kg + kb else np.nan)
+            if marker == 'all':
+                miss = int((sel & good & ~kept).sum())
+                row.update(missed=miss, completeness=kg / (kg + miss) if kg + miss else np.nan,
+                           new_unlabelled=n_new)
+            rows.append(row)
     return pd.DataFrame(rows)
+
+
+def run_rule(stars, peaks, labels, pages_done, star_keep, peak_keep):
+    marked = marked_donuts(stars, peaks, star_keep, peak_keep)
+    lab = match_labels(labels, marked)
+    new = new_unlabelled(labels, marked, pages_done)
+    return marked, lab, score(lab, new), new
+
+
+def tests(stars, peaks, labels, pages_done):
+    """The other fixes tried for the bad donuts (science rows only)."""
+    out = []
+    base_p = peak_rule(peaks, 'baseline')
+    iso = (stars.iso_class == 'isolated').to_numpy()
+    variants = {f'overlap_w_sep < {w:g}': iso & ~(stars.overlap_w_sep >= w).to_numpy()
+                for w in (0.01, 0.015, 0.02, 0.03)}
+    variants['no brighter neighbour within 2 r_out'] = iso & ~(
+        (stars.nbr_dmag < 0) & (stars.nbr_dist_rout < 2.0)).to_numpy()
+    variants.update({f'overlap_frac_d4 < {w:g}': iso & (stars.overlap_frac_d4 < w).to_numpy()
+                     for w in (0.1, 0.2, 0.3)})
+    for name, keep in variants.items():
+        _, _, s, _ = run_rule(stars, peaks, labels, pages_done, keep, base_p)
+        out.append(s[(s.group == 'science') & (s.marker == 'all')].assign(variant=name))
+    return pd.concat(out, ignore_index=True)
+
+
+def score_all(diag_dir, refine_dir):
+    stars, peaks, labels, pages_done = load(diag_dir, refine_dir)
+    res = {}
+    for name in RULES:
+        res[name] = run_rule(stars, peaks, labels, pages_done, star_rule(stars, name),
+                             peak_rule(peaks, name))
+    summary = pd.concat([r[2].assign(rule=name) for name, r in res.items()], ignore_index=True)
+    return stars, peaks, labels, res, summary
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--diag', required=True, help='selection_diag run under output/')
+    parser.add_argument('--refine', required=True, help='peak_refine run under output/')
     args = parser.parse_args()
     study_dir = pathlib.Path(__file__).resolve().parents[1]
-    diag_dir = study_dir / 'output' / args.diag
-    stars, truth, classes, scores, chosen, resid_max = run(diag_dir)
-    table = summary_frame(scores)
-    table.to_csv(diag_dir / 'score_summary.csv', index=False, float_format='%.3f')
-    (diag_dir / 'score_detail.json').write_text(json.dumps(dict(
-        chosen=chosen, resid_max=resid_max, scores=scores), indent=1, default=str))
-    truth.to_csv(diag_dir / 'truth_matched.csv', index=False, float_format='%.3f')
-    print(table[table.group == 'all'].round(3).to_string(index=False))
-    print('chosen', chosen, 'annulus_resid max', round(resid_max, 3))
+    diag_dir, refine_dir = study_dir / 'output' / args.diag, study_dir / 'output' / args.refine
+    stars, peaks, labels, res, summary = score_all(diag_dir, refine_dir)
+    run = study_run(sv.STUDY, 'selection_score')
+    summary.to_csv(run.path / 'score_summary.csv', index=False, float_format='%.3f')
+    t = tests(stars, peaks, labels, json.loads(
+        (diag_dir / 'hand_labels_v2_pages.json').read_text()).keys())
+    t.to_csv(run.path / 'score_tests.csv', index=False, float_format='%.3f')
+    for name, (_, lab, _, new) in res.items():
+        lab.to_csv(run.path / f'labels_{name}.csv', index=False, float_format='%.3f')
+        new.to_csv(run.path / f'new_unlabelled_{name}.csv', index=False, float_format='%.3f')
+    (run.path / 'source.json').write_text(json.dumps(vars(args), indent=1))
+    pd.set_option('display.width', 200)
+    print(summary.round(3).to_string(index=False))
+    print(t.round(3).to_string(index=False))
+    print('done', run.path)
 
 
 if __name__ == '__main__':
