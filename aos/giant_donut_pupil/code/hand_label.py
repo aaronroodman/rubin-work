@@ -266,7 +266,9 @@ class Labeller:
     def draw(self, ax, visit, raft, mosaic=None, geometry=None):
         """Draw one page on ``ax``; the overlay is redrawn on every call."""
         if mosaic is not None:
+            # clear() already removes the old overlay; removing it again raises.
             ax.clear()
+            self._overlay = []
             ny, nx = mosaic.shape
             x0, y0 = geometry.to_mm(-0.5, -0.5)
             x1, y1 = geometry.to_mm(nx - 0.5, ny - 0.5)

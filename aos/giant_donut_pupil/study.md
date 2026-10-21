@@ -203,6 +203,8 @@ shows only what the algorithm calls good, and Aaron clicks the bad and the misse
   `20261020_selection_diag`. The v1 `hand_labels.csv` is kept as it is.
 - `code/test_hand_label.py`: headless test of drawing, toggle, add, page button,
   legend placement and the CSV round trip; it passes.
+- 2026-10-21 fix: changing page lost the legend and every later click. `ax.clear()`
+  had already removed the overlay, and removing it again raised. The test now changes page.
 - `method.md`: how the selection works, step by step.
 
 **Next:** Aaron reviews the 12 pages and says go. Then step D against
@@ -268,7 +270,7 @@ Code: `candidates.py` (new functions), `selection_v2.py`, `selection_pages.py`,
     stars. The hand labels in step C will count them.
 
 **C. Hand scan, ready for Aaron.**
-- Notebook: `notebooks/hand_label_giant_donuts_v1.ipynb`. The code is in
+- Notebook: `notebooks/hand_label_giant_donuts_v1.ipynb` (since removed; v2 replaces it). The code is in
   `code/hand_label.py`.
 - The labels go to `output/20261020_selection_diag/hand_labels.csv`, and the done
   pages to `hand_labels_pages.json`.

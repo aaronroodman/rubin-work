@@ -96,6 +96,21 @@ def main():
     assert leg.x0 > axbox.x1 and leg.x1 <= figbox.x1
     fig.savefig(out / 'test_page.png', dpi=80)
 
+    # Next page and back, then a click on each: the overlay must redraw after clear().
+    for v2, r2 in (hl.PAGES[1], hl.PAGES[0]):
+        m2, g2 = lab.raft_image(v2, r2)
+        lab.draw(ax, v2, r2, m2, g2)
+        assert ax.get_legend() is not None, (v2, r2)
+        lab.draw(ax, v2, r2)
+    m1 = lab.marked(*hl.PAGES[1])
+    it1 = m1.iloc[0]
+    print(lab.click(*hl.PAGES[1], it1.fp_x_mm, it1.fp_y_mm))
+    lab.draw(ax, *hl.PAGES[1], *lab.raft_image(*hl.PAGES[1]))
+    lab.draw(ax, *hl.PAGES[1])
+    assert lab.label_of(*hl.PAGES[1], it1.key) == 'bad'
+    lab.click(*hl.PAGES[1], it1.fp_x_mm, it1.fp_y_mm)
+    lab.draw(ax, visit, raft, mosaic, geometry)
+
     # CSV round trip.
     on_disk = pd.read_csv(out / 'hand_labels_v2.csv')
     assert list(on_disk.columns) == hl.COLUMNS, list(on_disk.columns)
