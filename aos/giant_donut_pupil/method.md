@@ -181,3 +181,56 @@ A star and a peak within 0.3 r_out are one donut (`hand_label.match_marked`).
 `candidates_v2.parquet` holds one row per selected donut, with its marker (`^`, `v`,
 `both`), positions, field angle, magnitude, metrics and hand label. It also holds the
 hand-added missed donuts that the rule does not select, with `selected` False.
+
+## Pupil fit setup (pass 3, `pupil_pass3.py`)
+
+Run `20261020_pupil3`. v4.02 only.
+
+- **Pupil.** The batoid model is `LSST_r_v4.02.yaml` from `~/notebooks/rubin-optical-model`
+  (commit `e2a1e54`), without its spider planes (`obscuration_v402.v402_optic(spider=False)`):
+  the spider is in the danish mask. Its `pupilObscuration` is set to danish's
+  `R_inner / R_outer` = 0.6205 (dimensionless), so the reference is on danish's annulus.
+- **Obscuration.** The danish mask is the v4.02g file for the side's (detector, camera,
+  M2) z offsets (run `20261019_pupil2/masks`, `obscuration_v402g.mask_path`):
+  - science donuts: (0, +4, +4) mm extra-focal, (0, −4, −4) mm intra-focal;
+  - SW0: detector +1.5 mm, SW1: detector −1.5 mm, on both sides of focus, plus the
+    ±4 mm camera and M2 offsets.
+  `R_outer` 4.1633 m and `R_inner` 2.5833 m, from `M1Baffle1` and the M2 inner edge
+  (`obscuration_v402._annulus`).
+- **Reference wavefront ("intrinsicTA").** ts_wep's danish path
+  (`DanishAlgorithm._prepDanish`, `lsst/ts/wep/estimation/danish.py`):
+  - `Instrument(configFile='policy:instruments/LsstCam.yaml',
+    batoidOffsetOptic=['Detector', 'LSSTCamera', 'M2'],
+    batoidOffsetValue=[s·det, s·4 mm, s·4 mm])`, s = +1 extra-focal and −1 intra-focal,
+    with `getBatoidModel` returning the v4.02 optic above. The corner detector offset
+    is passed as s·det, so the shifted detector sits at det on both sides of focus.
+  - `off = Instrument.getOffAxisCoeff(thx, thy, defocalType, BandLabel.R,
+    nollIndicesModel=arange(0, 67), nollIndicesIntr=arange(4, 67))`. This is
+    `batoid.zernikeTA` (jmax 66, nrad 10, naz 62, `eps = pupilObscuration`) of the model
+    shifted by `Instrument._applyBatoidOffsets` (`withLocallyShiftedOptic`), minus the
+    in-focus intrinsic.
+  - `focus = Instrument.getIntrinsicZernikes(thx, thy, defocalType=None, band=BandLabel.R,
+    nollIndices=arange(4, 67))`: `batoid.zernikeGQ`, rings 12, no shift.
+  - reference `zk_ref = off`, with `zk_ref[4:67] += focus`; so `zk_ref` is the zernikeTA
+    itself (checked: equal to 3e-17 µm).
+  - Field angle in degrees, CCS: `(FIELD_ANGLE y, FIELD_ANGLE x)` of the donut centre,
+    as blitz uses. Wavelength 619.4 nm (ts_wep r band).
+- **Reported Zernikes** are the fitted perturbations, µm of wavefront. The reference
+  minus the in-focus intrinsic is held fixed, so a perturbation is the Zernike minus the
+  in-focus intrinsic: ts_wep's `returnWfDev` deviation. They are given in CCS and in
+  OCS (`blitz.utils._rotate_zk(dev, -rtp)`).
+- **Every fit**: danish `SingleDonutModel`, `bkg_order=-1` (the stamp is sky-subtracted);
+  free flux, dx, dy and the fit's Zernikes; blur fixed at 1.0 arcsec FWHM (Kolmogorov);
+  spider on, `spider_angle` = the rotator angle rtp (−0.199 deg on 337, −0.039 deg on
+  340); every other Zernike at the reference (deviation 0). `least_squares`,
+  tolerances 1e-3, at most 200 evaluations. Masked pixels (neighbours within 1.05
+  r_out) get variance 1e20 e².
+- **The fits**: (a) Z4; (b) Z4, Z11, Z22; (c) Z4–Z11, Z14, Z15, Z20, Z21, Z22; (d) Z4,
+  Z7, Z8, Z11, Z22, on the pixels within ±8 pixels of the data's robust inner and outer
+  edge fits (`robust_edges` harmonic fit, about the fit-a centre), with the spider bins
+  left out. chi2/dof for (d) is given on its fitted pixels and on the whole unmasked
+  stamp, the second with the same pixels as (a)–(c).
+- **Edges**: `robust_edges.robust_edges` on the data and each model image, about the
+  fit-a centre, with the data's noise; spider bins from danish images with and without
+  the vanes (`pupil_edges.spider_bins` logic); vignetted bins where the no-vane model's
+  flat top is under 0.3 of its maximum.
