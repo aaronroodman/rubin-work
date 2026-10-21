@@ -190,6 +190,24 @@ Code changes, used by every step:
 - `score_summary.pdf`.
 - Run time: about 25 min, in the background.
 
+### 2026-10-20 — hand review v2: confirm and add; waiting on labels
+
+Aaron's review of the v1 labeller: labelling every donut is too much work. The tool now
+shows only what the algorithm calls good, and Aaron clicks the bad and the missed ones.
+- `code/peak_quality.py` (run `20261020_peak_metrics`, about 15 min): ring metrics at
+  every peak, against every other peak and every Δmag 4 catalog star. Good peaks per
+  visit: 103–112 on the science CCDs, 0–4 per CWFS class.
+- `code/hand_label.py` rewritten; notebook `notebooks/hand_label_giant_donuts_v2.ipynb`.
+  ^ marks a star classed isolated, v a good peak. 90 marked donuts over the 12 pages.
+- Labels go to `hand_labels_v2.csv` and `hand_labels_v2_pages.json` in
+  `20261020_selection_diag`. The v1 `hand_labels.csv` is kept as it is.
+- `code/test_hand_label.py`: headless test of drawing, toggle, add, page button,
+  legend placement and the CSV round trip; it passes.
+- `method.md`: how the selection works, step by step.
+
+**Next:** Aaron reviews the 12 pages and says go. Then step D against
+`hand_labels_v2.csv`.
+
 ### 2026-10-20 — selection v2: diagnostics (A, B), night search (E); waiting on hand labels
 
 Aaron approved the plan, with three answers: the six rafts as proposed; label every
