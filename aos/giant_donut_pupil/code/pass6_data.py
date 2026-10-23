@@ -4,7 +4,7 @@ Configurations (one subdirectory of the run each, holding tables named as pass 5
 `pass5_analysis.run_all` reads them unchanged):
 
 - ``isr_visitinfo``: ISR stamps, visitInfo rtp, v4.02g, blur 1.0 arcsec (step 1: only the
-  ISR differs from pass 5);
+  ISR differs from pass 5); no δ grid, so translation and centre test only;
 - ``isr_phys``: as above with rtp = physical_rotator_angle (step 2; the pass 6 baseline);
 - ``isr_phys_v402s``: as ``isr_phys`` with the v4.02s masks (step 4b).
 
@@ -28,9 +28,9 @@ import pass6_common as p6  # noqa: E402
 import pass6_pipeline as pp  # noqa: E402
 import pass5_analysis as pa  # noqa: E402
 
-CONFIGS = {'isr_visitinfo': dict(rtp='visitinfo', mask='v4.02g'),
-           'isr_phys': dict(rtp='phys', mask='v4.02g'),
-           'isr_phys_v402s': dict(rtp='phys', mask='v4.02s')}
+CONFIGS = {'isr_visitinfo': dict(rtp='visitinfo', mask='v4.02g', delta=False),
+           'isr_phys': dict(rtp='phys', mask='v4.02g', delta=True),
+           'isr_phys_v402s': dict(rtp='phys', mask='v4.02s', delta=False)}
 FWHM_ARCSEC = 1.0
 
 
@@ -39,7 +39,8 @@ def work(task):
     cfg = CONFIGS[name]
     d = np.load(p6.RUN / 'isr_stamps' / f'{row.sample_id}_{row.side}.npz')
     try:
-        out = pp.measure(row, d['img'], d['masked'], FWHM_ARCSEC, mask=cfg['mask'])
+        out = pp.measure(row, d['img'], d['masked'], FWHM_ARCSEC, mask=cfg['mask'],
+                         delta=cfg['delta'])
     except Exception as err:  # a failed side is a row, not a crashed run
         print('error', name, row.key, repr(err), flush=True)
         return name, None
@@ -76,10 +77,19 @@ def main():
         tabs = pp.tables(res[name], sides[name])
         out_dir = p6.RUN / name
         pp.save(tabs, out_dir)
-        a = pa.run_all(out_dir)
-        print(name, 'sides', len(tabs['fits']))
-        print(a['ts'].round(3).to_string(index=False))
-        print(a['rs'].round(3).to_string(index=False))
+        print(name, 'sides', len(tabs['fits']), flush=True)
+        if CONFIGS[name]['delta']:
+            a = pa.run_all(out_dir)
+            print(a['ts'].round(3).to_string(index=False))
+            print(a['rs'].round(3).to_string(index=False))
+        else:
+            tf = pa.translation_fit(tabs['spiders'])
+            pa._save(tf, out_dir, 'translation_fit')
+            pa._save(pa.summarize(tf, ('rot_deg', 'dx_pix', 'dy_pix', 'resid_rms_deg')), out_dir,
+                     'translation_summary')
+            ct, eo = pa.centre_test(tabs['spiders'], tabs['centres'], tabs['sides'])
+            pa._save(ct, out_dir, 'centre_test')
+            print(ct.round(3).to_string(index=False))
     print(f'wall {time.time() - t0:.0f} s', flush=True)
 
 
