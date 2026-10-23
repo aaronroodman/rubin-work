@@ -23,6 +23,7 @@ from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import pass6_common as p6  # noqa: E402
 import pass5_common as pc  # noqa: E402
+import pass6_pipeline as pp  # noqa: E402
 import pass5_analysis as pa  # noqa: E402
 import pupil_pass4_report as rep4  # noqa: E402
 from pass5_report import _chord_xy  # noqa: E402
@@ -255,56 +256,95 @@ def page_delta(pdf, rf, rs, corr):
     plt.close(fig)
 
 
-def page_sim_side(pdf, row, fit, sp, cfg='nominal_v402g'):
+def page_sim_side(pdf, row, fits, sps):
+    """One sim side: the sim, its danish fit c with v4.02g and with v4.02s, both residuals
+    on one color scale, and the data stamp of the same side (not fitted here)."""
     key = row.key
-    mask = {'v402g': 'v4.02g', 'v402s': 'v4.02s'}[cfg.split('_')[1]]
-    z = SIM / 'stamps' / f'{row.sample_id}_{row.side}_nominal_{mask}_model.npz'
-    fig, axes = plt.subplots(2, 2, figsize=(13, 13))
-    if not z.exists():
+    zs = {m: SIM / 'stamps' / f'{row.sample_id}_{row.side}_nominal_{m}_model.npz'
+          for m in ('v4.02g', 'v4.02s')}
+    fig, axes = plt.subplots(2, 3, figsize=(19, 15.5))
+    if not all(z.exists() for z in zs.values()):
         for ax in axes.ravel():
             empty_panel(ax, f'no model arrays for {key}')
         pdf.savefig(fig, dpi=70)
         plt.close(fig)
         return
-    d = dict(np.load(z))
+    d = {m: dict(np.load(z)) for m, z in zs.items()}
     data = np.load(RUN / 'isr_stamps' / f'{row.sample_id}_{row.side}.npz')
     msk = data['masked'].astype(bool)
-    cx, cy = d['center']
-    r_edge = float(d['r_edge'])
-    top = np.nanpercentile(np.where(msk, np.nan, d['img']), 95)
-    resid = d['img'] - d['model']
-    rs = nmad(resid[~msk & (d['model'] > 0.1 * top)])
-    panels = ((axes[0, 0], d['img'], 'simulation (Batoid v4.02, design)', True),
-              (axes[0, 1], d['model'], 'fit c model (danish v4.02g)', True),
-              (axes[1, 0], resid, f'simulation − fit c model; nMAD on the ring {rs:.0f} e', False),
-              (axes[1, 1], data['img'], 'data stamp (ISR), for comparison', False))
-    sh = sp[(sp.key == key) & (sp.centre == 'fit_a')].set_index('model_idx')
-    for ax, im, name, chords in panels:
-        if name.startswith('simulation −'):
-            ax.imshow(np.where(msk, 0, im), origin='lower', cmap='RdBu_r', vmin=-5 * rs, vmax=5 * rs)
-        else:
-            ax.imshow(np.where(msk, 0, im), origin='lower', cmap='gray', vmin=0, vmax=1.2 * top)
-        if chords:
-            for k in range(pc.N_SHADOW):
-                for who, col in (('data', 'tab:red'), ('model', 'cyan')):
-                    xy = _chord_xy(d[f'line_{who}_{k}'], r_edge, cx, cy)
-                    if xy is not None:
-                        ax.plot(*xy, '-', color=col, lw=0.8)
+    sim = d['v4.02g']['img']
+    top = np.nanpercentile(np.where(msk, np.nan, sim), 95)
+    ring = ~msk & (d['v4.02g']['model'] > 0.1 * top)
+    noise = pp.noise_of(sim, msk)
+    res = {m: sim - d[m]['model'] for m in d}
+    lim = 5 * noise
+
+    def gray(ax, im):
+        ax.imshow(np.where(msk, 0, im), origin='lower', cmap='gray', vmin=0, vmax=1.2 * top)
+
+    def chords(ax, m, who_list):
+        cx, cy = d[m]['center']
+        r_edge = float(d[m]['r_edge'])
+        for k in range(pc.N_SHADOW):
+            for who, col in who_list:
+                xy = _chord_xy(d[m][f'line_{who}_{k}'], r_edge, cx, cy)
+                if xy is not None:
+                    ax.plot(*xy, '-', color=col, lw=0.8)
+
+    gray(axes[0, 0], sim)
+    chords(axes[0, 0], 'v4.02g', (('data', 'tab:red'),))
+    axes[0, 0].set_title('Batoid v4.02 design simulation (Poisson noise); red: traced shadows',
+                         fontsize=9)
+    for col, m in ((1, 'v4.02g'), (2, 'v4.02s')):
+        f = fits[m].loc[key]
+        sh = sps[m][(sps[m].key == key) & (sps[m].centre == 'fit_a')]
+        dmm = sh.az_half_ocs_deg_dmm.dropna()
+        gray(axes[0, col], d[m]['model'])
+        chords(axes[0, col], m, (('model', 'cyan'),))
+        axes[0, col].set_title(f'danish fit c to the simulation, mask {m}\nchi2/dof {f.chi2_dof:.3f} '
+                               f'(dof {int(f.dof)}); cyan: model shadows', fontsize=9)
+        r = res[m]
+        axes[1, col - 1].imshow(np.where(msk, 0, r), origin='lower', cmap='RdBu_r', vmin=-lim,
+                                vmax=lim)
+        axes[1, col - 1].set_title(
+            f'simulation − its danish fit ({m}); color ±5 noise sigma (±{lim:.0f} e)\nRMS on the '
+            f'ring {np.sqrt(np.mean(r[ring] ** 2)):.0f} e (noise {noise:.0f} e); shadow azimuth '
+            f'sim − model median {np.median(dmm):+.3f} deg', fontsize=9)
+    gray(axes[1, 2], data['img'])
+    axes[1, 2].set_title('data stamp of the same side (ISR); not fitted on this page', fontsize=9)
+    for ax in axes.ravel():
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.set_title(name, fontsize=9)
-    nf = int((sh.missing == '').sum()) if len(sh) else 0
-    dmm = sh.az_half_ocs_deg_dmm.dropna()
     fig.suptitle(f'Step 3f: sim {row.label} {row.side}-focal {row.detector}, field r '
                  f'{row.field_r_deg:.3f} deg, az OCS {row.field_az_ocs_deg:.0f} deg; blur '
-                 f'{p6.SIM_FWHM_ARCSEC[row.side]:.2f} arcsec. {nf} of 8 shadows found\n'
-                 f'sim − model shadow azimuth at r_half: median {np.median(dmm):+.3f} deg, '
-                 f'max |{np.max(np.abs(dmm)) if len(dmm) else np.nan:.3f}| deg; fit c chi2/dof '
-                 f'{fit.chi2_dof:.3f} (dof {int(fit.dof)})\nChords: red sim, cyan fit c model',
-                 fontsize=9)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+                 f'{p6.SIM_FWHM_ARCSEC[row.side]:.2f} arcsec (drawn and fitted). The sim has the '
+                 'design wavefront only; danish fits it against the intrinsicTA reference.\n'
+                 'Red in a residual: the sim has light the danish model lacks; blue: the model has '
+                 'light the sim lacks', fontsize=10)
+    fig.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.90, wspace=0.03, hspace=0.16)
     pdf.savefig(fig, dpi=70)
     plt.close(fig)
+
+
+def sim_chi2_table(F, S):
+    t = S[['key', 'label', 'side', 'detector', 'field_r_deg']].copy()
+    for m in F:
+        t[f'chi2_dof_{m}'] = t.key.map(F[m].chi2_dof)
+    t['dof'] = t.key.map(F['v4.02g'].dof)
+    big = t.field_r_deg > 1.4
+    head = ''.join(f'field {lab}: n {int(g.shape[0])}, median chi2/dof v4.02g '
+                   f'{g["chi2_dof_v4.02g"].median():.3f}, v4.02s {g["chi2_dof_v4.02s"].median():.3f}\n'
+                   for lab, g in (('<= 1.4 deg', t[~big]), ('> 1.4 deg', t[big])))
+    return (head + '\nThe sims are Batoid v4.02 design images: chi2/dof near 1 means danish '
+            'reproduces Batoid to the noise.\n\n'
+            'What is left with v4.02s at large field (P1693, CR00SW0_0): stop-plane rays under the '
+            'residual blobs, first clipper in the full Batoid v4.02 trace.\n'
+            '  blue (model has light the sim lacks): TMASection (TMA truss sections), with M2, '
+            'CameraSilhouette and a vane;\n'
+            '  red (sim has light the model lacks): mostly M1Baffle1, with TopEndRing and '
+            'MidLevelBaffle on the corner side.\n'
+            'The danish mask has no TMASection circle and models each edge as a circle whose center '
+            'moves only along the field direction.\n\n' + t.drop(columns='key').round(3).to_string(index=False))
 
 
 def page_vanes_compare(pdf, vd, vs, vm):
@@ -626,10 +666,13 @@ def main():
                   'moves with the vanes, so the fit-a center moves too; the shadow shift in the '
                   'image is the sum (tea_dy_image_pix). CCS y is OCS y to 0.01 deg here.', 8)
         page_checks(pdf, T, chk)
-        F = T['nominal_v402g']['fits'].set_index('key')
+        F = {m: T[f'nominal_v402{m[-1]}']['fits'].set_index('key') for m in ('v4.02g', 'v4.02s')}
+        SP = {m: T[f'nominal_v402{m[-1]}']['spiders'] for m in ('v4.02g', 'v4.02s')}
         S = T['nominal_v402g']['sides'].sort_values(['field_r_deg', 'side'])
+        text_page(pdf, 'Section 3f: sim pages, fit c chi2/dof of the danish fit to each sim, '
+                  'v4.02g and v4.02s masks', sim_chi2_table(F, S), 8)
         for _, row in S.iterrows():
-            page_sim_side(pdf, row, F.loc[row.key], T['nominal_v402g']['spiders'])
+            page_sim_side(pdf, row, F, SP)
         text_page(pdf, 'Section 4: camera silhouette. 4a: v4.02g and v4.02s against Batoid, '
                   'silhouette-set bins (pixels)', fmt(ss) + '\n\n4b: data − model inner edge in '
                   'the silhouette ranges, science 1.6-1.725 deg (pixels):\n' + fmt(r4)
