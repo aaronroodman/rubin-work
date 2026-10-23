@@ -1268,4 +1268,6 @@ P6-pupil_pass6-40,6,20261023_pupil6,pupil_pass6.pdf,40,"Step 4a: the CameraSilho
 P6-pupil_pass6-41,6,20261023_pupil6,pupil_pass6.pdf,41,"Step 4b: psi-stacked data model edges, science sides at 1.6-1.725 deg, non-spider, non-vignetted bins",context
 P6-pupil_pass6-42,6,20261023_pupil6,pupil_pass6.pdf,42,"Section 5: free vane width (mm in the pupil; CAD 50 mm). Depths dimensionless (fraction of the ring level), FWHM pixels",yes
 P6-pupil_pass6-43,6,20261023_pupil6,pupil_pass6.pdf,43,"Step 5: one free vane width (all 4 vanes) per side, central-band science sides, blur fixed; sims as the control (drawn with the CAD 50 mm vanes)",yes
-P6-pupil_pass6-44,6,20261023_pupil6,pupil_pass6.pdf,44,Summary: open causes of the remaining data  model mismatch,yes
+P6-pupil_pass6-44,6,20261023_pupil6,pupil_pass6.pdf,44,"Section 6: Huygens giant donuts (Batoid v4.02 rays, NUFFT Huygens sum, unit weights), fitted with danish v4.02s at the sim blur. Pixels; ew = depth x FWHM; ratio_exc",yes
+P6-pupil_pass6-45,6,20261023_pupil6,pupil_pass6.pdf,45,"Huygens (wave-optics) giant donuts, 5 wavelengths 570-670 nm, 26 sim sides: diffraction and vane phase strips (OPD in um; _yp/_ym: strip offset along stop y in mm; _s: Gaussian sigma in mm). Dashed: d",yes
+P6-pupil_pass6-46,6,20261023_pupil6,pupil_pass6.pdf,46,Summary: open causes of the remaining data  model mismatch,context

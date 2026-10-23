@@ -546,8 +546,10 @@ def huygens_tables():
     return pd.concat(out, ignore_index=True) if out else None
 
 
-def data_shadow_shape(T, keys):
-    a = T['spiders']
+def data_shadow_shape(keys):
+    """Data shadow shape on the sim sides, from pass 5 (the pass 6 data runs kept no profiles,
+    so their depth and FWHM columns are empty; the ISR does not change the shape)."""
+    a = pd.read_parquet(p6.PASS5_RUN / 'spiders.parquet')
     a = a[(a.centre == 'fit_a') & (a.missing == '') & a.key.isin(keys)].copy()
     a['ew_pix'] = a.depth_data * a.fwhm_pix_data
     return a.groupby('side').agg(depth=('depth_data', 'median'), fwhm_pix=('fwhm_pix_data', 'median'),
@@ -787,7 +789,7 @@ def main():
         H = huygens_tables()
         if H is not None:
             sim_keys_all = T['nominal_v402g']['fits'].key.unique()
-            dshape = data_shadow_shape(T[DATA_CFG], sim_keys_all)
+            dshape = data_shadow_shape(sim_keys_all)
             dprof = _median_profiles(p6.PASS5_RUN / 'spider_profiles.npz',
                                      p6.PASS5_RUN / 'spiders.parquet', 'data')
             pa._save(H, RUN, 'huygens_summary_all')
@@ -795,7 +797,7 @@ def main():
                       'unit weights), fitted with danish v4.02s at the sim blur. Pixels; '
                       'ew = depth x FWHM; ratio_excess dimensionless',
                       H.drop(columns='run').round(3).to_string(index=False)
-                      + '\n\nData on the same 26 sides (central and outer band):\n'
+                      + '\n\nData on the same 26 sides (pass 5 shadows, central and outer band):\n'
                       + dshape.round(3).to_string(), 7)
             page_huygens(pdf, H, dshape, dprof)
         text_page(pdf, 'Summary: open causes of the remaining data − model mismatch',
@@ -848,32 +850,28 @@ def summary_text(e1, rs, corr, chk, e3, r4, dfit, w):
     return '\n'.join(lines)
 
 
-OPEN_TEXT = """Neither danish nor the Batoid sims contain the effects below, which is why the sims are clean.
+OPEN_TEXT = """Neither danish nor the geometric Batoid sims contain the effects below.
 
-1. Fresnel diffraction. The detector is 8.4 mm from focus: the equivalent propagation distance
-   F^2 / dz = 12.7 km, so the Fresnel scale sqrt(lambda z) is 89 mm in the pupil, 7.2 pixels.
-   A 1D Fresnel model (560-690 nm, Kolmogorov blur) moves the half-level of an edge into the
-   lit ring by +1.23 pixels at 1.0 arcsec and +0.89 pixels at 1.6 arcsec. Measured away from
-   the silhouette (v4.02s): inner +0.8 / +0.45 pixels, outer -0.5 / -0.5 pixels (extra / intra),
-   flat in field. Predicted ratio excess about +0.003 against +0.0036 / +0.0017 measured.
-   A 50 mm vane is diffraction dominated (Fresnel number 0.32): the shadow FWHM grows
-   (6.2 -> 9.5 pixels at 1.0 arcsec) but its equivalent width (depth x FWHM) does not.
-   Test: Batoid Huygens (Debye) donut images through the same pipeline.
+1. Fresnel diffraction (section 6, Batoid Huygens sums, 570-670 nm, 26 sides). The detector
+   is 8.4 mm from focus: equivalent propagation distance F^2 / dz = 12.7 km, Fresnel scale
+   89 mm in the pupil, 7.2 pixels. Diffraction moves the edges +0.31 / +0.26 pixels inner and
+   -0.37 / -0.28 outer (extra / intra) and gives ratio excess +0.002 / +0.001: about half of
+   the data's (+0.75 / +0.42, -0.51 / -0.46 pixels; +0.004 / +0.002), same signs and order.
+   It widens the vane shadows equally on both sides of focus.
 
-2. Refraction by thermal plumes at the vanes and camera. The shadow equivalent width is
-   10.0 pixels extra and 5.4 pixels intra (model 4.1 on both); an opaque vane gives the same
-   on both sides of focus, as the sims do. Deflected light keeps its image direction while the
-   pupil image flips through focus, so it widens the shadow on one side and fills it on the
-   other. A same-sign deflection also gives the same-sign spider translation (-1.65 / -2.07
-   pixels in OCS y) and inner-edge shift. 0.36 arcsec needs about 0.1 K over a 50 mm plume and
-   1 m of path. Both visits are at rtp near 0, where gravity is along OCS y (to check).
-   Tests: a giant pair at rtp +-90 deg (a gravity-fixed effect turns with the rotator);
-   shadows against vane - air temperature; per vane, shift and widening against the vane's
-   angle to the elevation direction.
+2. A phase strip along the vanes. Shadow equivalent width (depth x FWHM) in the data is
+   10.0 pixels extra and 5.7 intra on the sim sides; an opaque vane gives the same on both
+   sides (sims 5.1 / 4.9). A strip of +0.10 to +0.15 um of extra optical path (colder or
+   denser air than ambient), Gaussian sigma 40-90 mm on the stop plane, gives 8.8-9.6 / 3.6-4.5
+   pixels. The negative sign gives the reverse. About 0.1 K over 1 m of path.
+   Tests: shadows against vane - air temperature; a giant pair at rtp +-90 deg.
 
-Ruled out: CCD readout direction or CTI (the translation is the same in both amplifier halves
-and both vendors: extra dy -1.70 / -1.64 E2V and -1.75 / -1.57 ITL bottom / top, pixels);
-brighter-fatter (it would fill the shadows; the data shadows are deeper than the model).
+3. Still open: the common translation of the shadows (dy -1.65 / -2.07 pixels OCS image) and
+   the inner-edge shift (+2.1 / +1.8 pixels). Offset phase strips move the pattern only
+   0.13-0.27 pixels. Not danish, TEA, coma, rotator, ISR or the detector: CCD readout and CTI
+   are ruled out (translation the same in both amplifier halves and both vendors: extra dy
+   -1.70 / -1.64 E2V and -1.75 / -1.57 ITL bottom / top, pixels); brighter-fatter would fill
+   the shadows, and the data shadows are deeper than the model.
 """
 
 

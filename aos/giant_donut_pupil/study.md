@@ -60,9 +60,11 @@ Pupil pass 6 (2026-10-23; 188 sides, ISR stamps, rtp = physical_rotator_angle):
   extra-focal inner-edge miss (+3.1 → −0.3 pixels) and cuts the intra one to +1.9 pixels.
 - **Vane shadows:** a free vane width fits 103 mm extra and 61 mm intra (CAD 50 mm; sims give
   50 mm). Their equivalent width differs between sides of focus (10.0 against 5.4 pixels),
-  which an opaque vane cannot do. Open: Fresnel diffraction (explains the ±1 pixel edge miss
-  and the intra shadow in 1D) and a phase strip along the vanes (fits both sides in 1D at
-  about 0.1 µm of optical path). Wave-optics sims are running.
+  which an opaque vane cannot do. Batoid Huygens sims: diffraction gives about half the
+  ±0.5–0.8 pixel edge miss and the ratio excess; a phase strip of +0.10 to +0.15 µm of
+  optical path along the vanes gives the extra/intra shadow difference (equivalent width
+  8.8–9.6 / 3.6–4.5 against 10.0 / 5.7 pixels). Neither gives the 1.7–2.1 pixel
+  translation, which stays open.
 
 Pupil pass 5 (2026-10-22; 188 sides, validation):
 - **The spider offset is a translation of the shadows, not a rotator offset.** Fitting
@@ -280,17 +282,39 @@ single-side numbers). Shadow equivalent width (depth × FWHM, pixels) and fit c 
 - A strip offset 40 mm along stop-plane y translates the shadow pattern by about ±0.2 pixels,
   the **same sign on both sides** (+0.23 / +0.17 for +40 mm), as the data's translation is.
 
-**Running (2026-10-23 03:10):** job 41678069 (`huygens/`, all 26 sides, 5 wavelengths
-570–670 nm, the base set: geometric, diffraction, strips −0.1, +0.1, −0.2 µm and −0.1 µm
-offset ±40 mm), log `logs/batch_huygens_20261023_023138.out`; job 41681217
-(`huygens_plume2/`, the positive-sign set: +0.1 µm offset ±40 and −120 mm, +0.15 and
-+0.2 µm, +0.15 µm with sigma 40 and 90 mm), log `logs/batch_huygens_plume2_20261023_030846.out`.
-Each writes `huygens_summary.csv` and per-variant pass 5 tables. Next: compare the
-variants with the data (equivalent width per side, edge medians, ratio excess,
-translation), then add a section to `pupil_pass6.pdf`.
+**Huygens results** (jobs 41678069, 41681217, 3.5–3.9 h each; `huygens/`, `huygens_plume2/`,
+`huygens_summary_all.csv`, `pupil_pass6.pdf` section 6). 26 sim sides, 5 wavelengths
+570–670 nm, danish v4.02s fit at the sim blur; medians over 13 sides per side of focus.
+Data on the same sides: shadow equivalent width 10.0 / 5.7 pixels (pass 5 shadows), edge
+median data − model +0.75 / +0.42 pixels inner and −0.51 / −0.46 outer, ratio excess
++0.004 / +0.002 (dimensionless), translation dy −1.65 / −2.07 pixels.
 
-Step 7 done: `findings.md` (38 rows: 27 settled, 5 open, 6 superseded), `figure_index.csv`
-(1 270 pages in 19 PDFs: 320 relevant, 2 superseded, 948 context), `method.md` "Conventions
+| variant | EW extra / intra (pixels) | inner edge (pixels) | outer edge (pixels) | dy (pixels) | sim fit chi2/dof |
+|---|---|---|---|---|---|
+| geometric | 5.1 / 4.9 | −0.01 / −0.02 | +0.00 / +0.02 | −0.01 / −0.01 | 0.88 / 0.89 |
+| diffraction | 6.8 / 6.0 | +0.31 / +0.26 | −0.37 / −0.28 | −0.03 / −0.00 | 1.45 / 1.01 |
+| strip +0.10 µm | 8.8 / 4.5 | +0.30 / +0.28 | −0.38 / −0.28 | +0.01 / −0.02 | 2.34 / 0.96 |
+| strip +0.15 µm | 9.6 / 3.6 | +0.30 / +0.27 | −0.37 / −0.27 | −0.06 / −0.01 | 3.03 / 1.08 |
+| strip −0.10 µm | 4.9 / 7.7 | +0.33 / +0.26 | −0.36 / −0.29 | −0.03 / −0.01 | 1.33 / 1.39 |
+| strip +0.10 µm, −120 mm in y | 7.2 / 5.5 | +0.32 / +0.27 | −0.39 / −0.28 | +0.21 / +0.14 | 1.62 / 1.06 |
+
+- **Diffraction gives part of the edge miss and the ratio excess:** +0.31 / +0.26 pixels
+  inner and −0.37 / −0.28 outer, about half of the data's, with the right signs, the
+  extra > intra order, and ratio excess +0.002 / +0.001 (half the data's). It widens the
+  shadows equally on both sides of focus.
+- **A phase strip along the vanes of +0.10 to +0.15 µm of optical path (positive: extra
+  path, so colder or denser air than ambient) reproduces the extra/intra shadow
+  difference:** EW 8.8–9.6 extra and 3.6–4.5 intra, against 10.0 / 5.7. No single strip
+  matches both; intra is 1.2–2.1 pixels short. The negative sign gives the reverse.
+- **No strip gives the translation.** Strips offset 40–120 mm along stop-plane y move the
+  pattern by 0.13–0.27 pixels, the same sign on both sides of focus, against the data's
+  1.65–2.07 pixels. The translation and the inner-edge shift (+2.1 / +1.8 pixels) stay
+  unexplained.
+- The danish fit to the strip sims rises to chi2/dof 2.3–3.0 extra: danish cannot model the
+  strip, as with the data.
+
+Step 7 done: `findings.md` (40 rows: 29 settled, 5 open, 6 superseded), `figure_index.csv`
+(1 272 pages in 19 PDFs: 321 relevant, 2 superseded, 949 context), `method.md` "Conventions
 in force", "Code map" and the run-directory check (passes 2–5 need their `images/` arrays,
 pass 5 also the pass 4 run; pass 1's `20261018_fits` image pages need a refit), and the two
 CLAUDE.md rules.
