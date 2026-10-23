@@ -24,8 +24,8 @@ Steps (``--steps``, in order):
   (1.4–1.75 deg) bands, ``sides.parquet``;
 - ``stamps``: full ISR (`pass6_isr.isr_config`) of every detector with a side, stamps cut as
   passes 3–6, one FITS file per side (``stamps/<key>.fits``: IMAGE and MASK HDUs, CCS);
-- ``fit``: `pass6_pipeline.measure` with the v4.02s masks (with the δ grid) and the v4.02g
-  masks (without), into ``v402s/`` and ``v402g/``; then the pattern fits
+- ``fit``: `pass6_pipeline.measure` with the v4.02g masks (with the δ grid, as the night 1
+  baseline) and the v4.02s masks (without), into ``v402g/`` and ``v402s/``; then the pattern fits
   (`pass5_analysis`);
 - ``vanes``: on the central-band science sides, fit c with the blur free (0.5–2.5 arcsec),
   then one free vane width (`pass6_vanes.one`, v4.02g);
@@ -74,7 +74,9 @@ CENTRAL_BAND = (0.0, 0.8)
 OUTER_BAND = (1.4, 1.75)
 FWHM_ARCSEC = 1.0
 FREE_FWHM_BOUNDS = (0.5, 2.5)
-CONFIGS = {'v402s': dict(mask='v4.02s', delta=True), 'v402g': dict(mask='v4.02g', delta=False)}
+# v4.02g carries the δ grid, as the night 1 baseline (pass 6 ``isr_phys``) does; v4.02s is
+# for the silhouette check.
+CONFIGS = {'v402g': dict(mask='v4.02g', delta=True), 'v402s': dict(mask='v4.02s', delta=False)}
 CORNER_SCALE = 1.19
 R_GUESS_PIX = 344.0
 
@@ -209,6 +211,7 @@ def step_masks(run, night, workers):
                 shutil.copy(PASS2_MASKS / og.mask_name(off), m / og.mask_name(off))
                 shutil.copy(PASS6_RUN / 'masks' / p6.mask_name_s(off), m / p6.mask_name_s(off))
     new = [offsets_mm(st) for st in steps if abs(st) != 4.0]
+    new = [off for off in new if not (m / p6.mask_name_s(off)).exists()]
     for off in new:
         t0 = time.time()
         params, table = og.fit_config(off)
@@ -509,7 +512,7 @@ def fit_task(task):
     return name, out
 
 
-def step_fit(run, night, workers, configs=('v402s', 'v402g')):
+def step_fit(run, night, workers, configs=('v402g', 'v402s')):
     import pass6_pipeline as pp
     import pass5_analysis as pa
     _init(run, NIGHTS[night]['band'])
