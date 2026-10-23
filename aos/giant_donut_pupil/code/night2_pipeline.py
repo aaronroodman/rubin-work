@@ -115,8 +115,9 @@ def _set_step(step_mm):
 def _pool(workers, n, run, band):
     import multiprocessing as mp
     # spawn: a fork after the parent opened Butler or database clients can deadlock.
+    # maxtasksperchild: the danish factories and mask caches grow per side.
     return mp.get_context('spawn').Pool(max(1, min(workers, n)), initializer=_init,
-                                        initargs=(str(run), band))
+                                        initargs=(str(run), band), maxtasksperchild=8)
 
 
 # ---------------------------------------------------------------- meta (interactive)
@@ -495,9 +496,18 @@ def step_stamps(run, night, workers):
 
 # ---------------------------------------------------------------- fit
 
+def _part(run, name, key):
+    return pathlib.Path(run) / 'fit_parts' / name / f'{key.replace(":", "_")}.pkl'
+
+
 def fit_task(task):
+    """One side and configuration; the result is kept in ``fit_parts/`` so a rerun resumes."""
+    import pickle
     name, row, run = task
     import pass6_pipeline as pp
+    part = _part(run, name, row.key)
+    if part.exists():
+        return name, row.key
     _set_step(row.step_mm)
     cfg = CONFIGS[name]
     img, msk = read_stamp(pathlib.Path(run) / 'stamps' / f'{row.key.replace(":", "_")}.fits')
@@ -508,8 +518,12 @@ def fit_task(task):
         return name, None
     out['fit']['step_mm'] = row.step_mm
     out['fit']['visit'] = int(row.visit)
+    part.parent.mkdir(parents=True, exist_ok=True)
+    tmp = part.with_suffix('.tmp')
+    tmp.write_bytes(pickle.dumps(out))
+    tmp.rename(part)
     print(name, row.key, f'{out["fit"]["seconds"]:.0f} s', 'found', out['fit']['n_found'], flush=True)
-    return name, out
+    return name, row.key
 
 
 def step_fit(run, night, workers, configs=('v402g', 'v402s')):
@@ -521,12 +535,13 @@ def step_fit(run, night, workers, configs=('v402g', 'v402s')):
     tasks = [(n, r, str(run)) for n in configs for _, r in S.iterrows()]
     # largest stamps (8 mm) and the δ-grid configuration first
     tasks.sort(key=lambda t: (-abs(t[1].step_mm), not CONFIGS[t[0]]['delta']))
-    res = {n: [] for n in configs}
+    import pickle
     t0 = time.time()
     with _pool(workers, len(tasks), run, NIGHTS[night]['band']) as pool:
-        for name, out in pool.imap_unordered(fit_task, tasks):
-            if out is not None:
-                res[name].append(out)
+        for _ in pool.imap_unordered(fit_task, tasks):
+            pass
+    res = {n: [pickle.loads(p.read_bytes()) for p in sorted((run / 'fit_parts' / n).glob('*.pkl'))]
+           for n in configs}
     for name in configs:
         tabs = pp.tables(res[name], S)
         tabs['fits']['step_mm'] = tabs['fits'].key.map(S.set_index('key').step_mm)
