@@ -12,6 +12,7 @@ plain* (see Conventions).
 |------|------|--------|-------|------------------|
 | [aos-measured-intrinsics](aos-measured-intrinsics/) | 2026-06 | draft | — | [SOTN-006](https://github.com/lsst-so/sotn-006) (Measured Intrinsic Wavefront) |
 | [aos-bounce-test-summary](aos-bounce-test-summary/) | 2026-09 | draft | — | — (elevation and rotator bounce tests) |
+| [ts-ofc-rso-1007](ts-ofc-rso-1007/) | 2026-10 | draft | — | — (ts_ofc PR #124: DZ state estimator, RBR) |
 
 *Status:* draft → posted (Slack) → in-technote. Fill the Slack column with the message
 permalink once posted.
