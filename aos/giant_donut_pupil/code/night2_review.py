@@ -358,7 +358,8 @@ def step_images(run, workers):
     pos = e.set_index('visit_id')[['s_ra', 's_dec']]
     tasks = [(r.set_id, pick[r.set_id], r.side, r.step_mm, float(pos.s_ra[pick[r.set_id]]),
               float(pos.s_dec[pick[r.set_id]]), str(run)) for r in s.itertuples()]
-    with mp.get_context('fork').Pool(min(workers, len(tasks))) as pool:
+    # spawn: the parent has open database clients and threads, which a fork can deadlock.
+    with mp.get_context('spawn').Pool(min(workers, len(tasks))) as pool:
         rows = list(pool.imap_unordered(image_task, tasks))
     pd.DataFrame(rows).to_parquet(run / 'images.parquet')
     print('done', run, flush=True)
