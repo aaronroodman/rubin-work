@@ -313,7 +313,8 @@ def step_images(run, workers):
 # ---------------------------------------------------------------- report
 
 def classify(sets):
-    """Set class: not giant, perturbed, or unperturbed (then usable / extra-only / intra-only)."""
+    """Set class: not giant, other defocus, perturbed (any exposure steps a DOF beyond the
+    focus), else usable (both sides that night) / extra-only / intra-only."""
     cls = []
     for r in sets.itertuples():
         if r.day_obs == NIGHT1:
@@ -322,7 +323,7 @@ def classify(sets):
             cls.append('not giant')
         elif abs(r.r_out_science_pix - NIGHT1_R_OUT_PIX) > DEFOCUS_TOL_PIX:
             cls.append('other defocus')
-        elif r.n_unperturbed == 0:
+        elif r.n_unperturbed < r.n_exposures:
             cls.append('perturbed')
         else:
             other = sets[(sets.day_obs == r.day_obs) & (sets.side != r.side) & sets.giant
@@ -334,6 +335,7 @@ def classify(sets):
 def build_report_tables(run):
     s, e = sets_table()
     deltas = trim_deltas(e)
+    pick = pick_exposures(e, deltas)
     e = e.join(deltas)
     meta, refs = consdb_meta(e)
     e['ref_visit'] = refs.to_numpy()
@@ -341,7 +343,6 @@ def build_report_tables(run):
         e[c] = e.visit_id.map(meta[c])
     st = state_of(e.ref_visit.unique())
     im = pd.read_parquet(run / 'images.parquet').set_index('set_id')
-    pick = pick_exposures(e, deltas)
     pos = e.set_index('visit_id')[['s_ra', 's_dec']]
     rows = []
     for r in s.itertuples():
@@ -352,7 +353,8 @@ def build_report_tables(run):
                    seq_first=r.seq_first, seq_last=r.seq_last, ref_seq=r.ref_seq,
                    reasons=', '.join(sorted(set(g.observation_reason.fillna('')))),
                    d_cam_z_um=float(g.d_cam_z_um.median()), d_m2_z_um=float(g.d_m2_z_um.median()),
-                   n_unperturbed=int((~g.perturbed & (g.exp_time >= r.exp_time_s)).sum()),
+                   n_unperturbed=int((~g.perturbed).sum()),
+                   n_unperturbed_full_exp=int((~g.perturbed & (g.exp_time >= r.exp_time_s)).sum()),
                    stepped=' | '.join(sorted({x for x in g.stepped if x}))[:400],
                    rtp_deg=float(g.physical_rotator_angle.median()),
                    rtp_range_deg=float(g.physical_rotator_angle.max() - g.physical_rotator_angle.min()),
@@ -395,7 +397,7 @@ def pick_second_night(sets):
     final-rule donuts over the focal plane.
     """
     ok = sets[sets['class'].isin(['usable', 'extra-only', 'intra-only'])].copy()
-    ok['sides_est'] = ok.n_unperturbed * ok.selected_fp_est
+    ok['sides_est'] = ok.n_unperturbed_full_exp * ok.selected_fp_est
     good = ok[ok.band.isin(['r', 'i']) & (ok.exp_time_s >= 60) & (ok.gal_b_deg.abs() > 40)]
     nights = good.groupby('day_obs').side.nunique()
     nights = nights[nights == 2]
@@ -413,7 +415,7 @@ def pick_intra(sets):
     """Intra-focal candidates (giant, unperturbed, r or i), best first by expected sides."""
     n = sets[(sets.day_obs != NIGHT1) & (sets.side == 'intra')
              & sets['class'].isin(['usable', 'intra-only']) & sets.band.isin(['r', 'i'])].copy()
-    n['sides_est'] = n.n_unperturbed * n.selected_fp_est
+    n['sides_est'] = n.n_unperturbed_full_exp * n.selected_fp_est
     return n.sort_values('sides_est', ascending=False)
 
 

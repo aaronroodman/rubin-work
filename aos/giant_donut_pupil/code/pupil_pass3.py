@@ -71,6 +71,8 @@ FIT_LABELS = {'a': 'a: Z4', 'b': 'b: Z4, Z11, Z22', 'c': 'c: Z4-Z11, Z14, Z15, Z
 ANNULUS_PIX = 8.0
 NOLL_REPORT = (4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 22)
 VIGNETTED_FRAC = 0.3
+# Filter band of the reference wavefront; the night 2 drivers set it per night.
+REF_BAND = 'r'
 
 _OPTIC = {}
 _BUTLER = {}
@@ -133,7 +135,7 @@ def reference_zk(thx_deg, thy_deg, offsets_m, side, eps):
     optic = optic_v402(eps)
     inst.getBatoidModel = lambda band=BandLabel.REF: optic
     dtype = DefocalType.Extra if side == 'extra' else DefocalType.Intra
-    band = BandLabel('r')
+    band = BandLabel(REF_BAND)
     off = inst.getOffAxisCoeff(thx_deg, thy_deg, dtype, band, nollIndicesModel=NOLL_MODEL,
                                nollIndicesIntr=NOLL_INTR)
     focus = np.zeros(len(NOLL_MODEL))
