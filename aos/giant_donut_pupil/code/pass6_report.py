@@ -536,6 +536,105 @@ def page_vane_width(pdf, wd, ws, cd, cs):
 
 # ---------------------------------------------------------------- driver
 
+HUYGENS_DIRS = ('huygens', 'huygens_plume2')
+
+
+def huygens_tables():
+    """Per-variant summaries of the Huygens runs that exist, plus the data on the same sides."""
+    out = [pd.read_parquet(RUN / d / 'huygens_summary.parquet').assign(run=d)
+           for d in HUYGENS_DIRS if (RUN / d / 'huygens_summary.parquet').exists()]
+    return pd.concat(out, ignore_index=True) if out else None
+
+
+def data_shadow_shape(T, keys):
+    a = T['spiders']
+    a = a[(a.centre == 'fit_a') & (a.missing == '') & a.key.isin(keys)].copy()
+    a['ew_pix'] = a.depth_data * a.fwhm_pix_data
+    return a.groupby('side').agg(depth=('depth_data', 'median'), fwhm_pix=('fwhm_pix_data', 'median'),
+                                 ew_pix=('ew_pix', 'median'))
+
+
+def huygens_profiles(run_dir, variant):
+    """Median shadow profile per side over the central band (|offset| <= 18 pixels)."""
+    f = RUN / run_dir / variant / 'spider_profiles.npz'
+    sp = RUN / run_dir / variant / 'spiders.parquet'
+    return _median_profiles(f, sp, 'data')
+
+
+def _median_profiles(npz, spiders, who):
+    grid = np.arange(-18, 18.01, 0.5)
+    if not npz.exists():
+        return grid, {}
+    p = np.load(npz)
+    t = pd.read_parquet(spiders)
+    t = t[(t.centre == 'fit_a') & (t.missing == '') & (t.sensor_class == 'science')]
+    acc = {}
+    for r in t.itertuples():
+        k = f'{r.key}:{r.model_idx}'
+        if f'{k}:{who}_off' not in p:
+            continue
+        o, fl = p[f'{k}:{who}_off'].astype(float), p[f'{k}:{who}_flux'].astype(float)
+        ok = np.isfinite(fl)
+        if ok.sum() < 40:
+            continue
+        prof = np.interp(grid, o[ok], fl[ok], left=np.nan, right=np.nan)
+        acc.setdefault(r.side, []).append(prof / np.nanmedian(prof[np.abs(grid) > 15]))
+    return grid, {s: np.nanmedian(v, axis=0) for s, v in acc.items()}
+
+
+def page_huygens(pdf, H, dshape, dprof):
+    fig, axes = plt.subplots(2, 3, figsize=(20, 11))
+    H = H.copy()
+    names = list(dict.fromkeys(H.variant))
+    x = np.arange(len(names))
+    for ax, (q, lab, dq) in zip(axes[0], (
+            ('ew_pix', 'shadow equivalent width, depth x FWHM (pixels)', 'ew_pix'),
+            ('edge_inner_pix', 'inner edge, sim − danish model, median (pixels)', None),
+            ('dy_pix', 'shadow translation dy, OCS image (pixels)', None))):
+        for k, side in enumerate(('extra', 'intra')):
+            g = H[H.side == side].drop_duplicates('variant').set_index('variant').reindex(names)
+            ax.bar(x + 0.4 * k - 0.2, g[q], 0.4, color=SIDE_COLOURS[side], label=side)
+            if dq is not None and side in dshape.index:
+                ax.axhline(dshape.loc[side, dq], color=SIDE_COLOURS[side], ls='--', lw=1,
+                           label=f'data, {side}')
+        ax.axhline(0, color='0.5', lw=0.5)
+        if dq is not None and len(dshape):
+            lo, hi = ax.get_ylim()
+            ax.set_ylim(lo, max(hi, 1.1 * float(dshape[dq].max())))
+        ax.set_xticks(x)
+        ax.set_xticklabels(names, rotation=40, ha='right', fontsize=7)
+        ax.set_title(lab, fontsize=9)
+        ax.legend(fontsize=7)
+    show = [v for v in ('geometric', 'diffraction', 'plume_p0p1', 'plume_p0p15', 'plume_m0p1')
+            if v in names]
+    for ax, side in zip(axes[1, :2], ('extra', 'intra')):
+        if side in dprof[1]:
+            ax.plot(dprof[0], dprof[1][side], 'k-', lw=2, label='data (central band)')
+        for v in show:
+            rd = H[H.variant == v].run.iloc[0]
+            grid, pr = huygens_profiles(rd, v)
+            if side in pr:
+                ax.plot(grid, pr[side], '-', lw=1, label=v)
+        ax.set_xlabel('offset across the shadow (pixels)')
+        ax.set_ylabel('flux / ring level (dimensionless)')
+        ax.set_title(f'{side}-focal: median shadow profile, science sides', fontsize=9)
+        ax.legend(fontsize=7)
+    ax = axes[1, 2]
+    for side, col in SIDE_COLOURS.items():
+        g = H[H.side == side].drop_duplicates('variant').set_index('variant').reindex(names)
+        ax.plot(x, g.chi2_dof, 'o-', color=col, label=side)
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, rotation=40, ha='right', fontsize=7)
+    ax.set_ylabel('fit c chi2/dof of danish (v4.02s) to the sim, median (dof 3.8e5-7.4e5)')
+    ax.legend(fontsize=7)
+    fig.suptitle('Huygens (wave-optics) giant donuts, 5 wavelengths 570-670 nm, 26 sim sides: '
+                 'diffraction and vane phase strips (OPD in um; _yp/_ym: strip offset along stop y '
+                 'in mm; _s: Gaussian sigma in mm). Dashed: data', fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    pdf.savefig(fig, dpi=85)
+    plt.close(fig)
+
+
 def silhouette_data_fit(stack_s):
     import pass6_silhouette as psil
     rows = []
@@ -685,6 +784,20 @@ def main():
                   'dimensionless (fraction of the ring level), FWHM pixels', fmt(w.T.reset_index()),
                   8)
         page_vane_width(pdf, wd, ws, cd, cs)
+        H = huygens_tables()
+        if H is not None:
+            sim_keys_all = T['nominal_v402g']['fits'].key.unique()
+            dshape = data_shadow_shape(T[DATA_CFG], sim_keys_all)
+            dprof = _median_profiles(p6.PASS5_RUN / 'spider_profiles.npz',
+                                     p6.PASS5_RUN / 'spiders.parquet', 'data')
+            pa._save(H, RUN, 'huygens_summary_all')
+            text_page(pdf, 'Section 6: Huygens giant donuts (Batoid v4.02 rays, NUFFT Huygens sum, '
+                      'unit weights), fitted with danish v4.02s at the sim blur. Pixels; '
+                      'ew = depth x FWHM; ratio_excess dimensionless',
+                      H.drop(columns='run').round(3).to_string(index=False)
+                      + '\n\nData on the same 26 sides (central and outer band):\n'
+                      + dshape.round(3).to_string(), 7)
+            page_huygens(pdf, H, dshape, dprof)
         text_page(pdf, 'Summary: open causes of the remaining data − model mismatch',
                   OPEN_TEXT, 8)
     print('wrote', RUN / 'pupil_pass6.pdf', flush=True)
