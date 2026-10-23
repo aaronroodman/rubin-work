@@ -313,6 +313,15 @@ median data − model +0.75 / +0.42 pixels inner and −0.51 / −0.46 outer, ra
 - The danish fit to the strip sims rises to chi2/dof 2.3–3.0 extra: danish cannot model the
   strip, as with the data.
 
+![Huygens sims against data](figures/pass6_huygens.png)
+![Sim page, CR00SW0_0 intra, v4.02g and v4.02s](figures/pass6_sim_CR00SW0_intra.png)
+
+Next:
+- the translation (dy −1.65 / −2.07 pixels) and inner-edge shift are still unexplained;
+- a giant pair at rtp ±90 deg, to tell gravity-fixed from camera-fixed;
+- the vane shadows against vane − air temperature (the thermal study Aaron flagged);
+- a TMASection edge in the danish mask for 1.69–1.75 deg.
+
 Step 7 done: `findings.md` (40 rows: 29 settled, 5 open, 6 superseded), `figure_index.csv`
 (1 272 pages in 19 PDFs: 321 relevant, 2 superseded, 949 context), `method.md` "Conventions
 in force", "Code map" and the run-directory check (passes 2–5 need their `images/` arrays,
