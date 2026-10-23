@@ -55,6 +55,9 @@ NIGHT1_R_OUT_PIX = 338.0
 DEFOCUS_TOL_PIX = 8.0
 AFFINE_MAG_MAX = 15.0
 FIELD_SPLIT_DEG = 2.0
+STEPS_UM = (4000.0, 8000.0)
+STEP_TOL_UM = 300.0
+REF_JUMP_UM = 2000.0
 # An intra set is added only if it is expected to give this many donut sides.
 MIN_INTRA_SIDES = 20
 # Perturbation thresholds against the reference, per DOF group: hexapod dz difference
@@ -65,13 +68,61 @@ DOF_GROUPS = {'m2_xy_um': (1, 2), 'm2_tilt_deg': (3, 4), 'cam_xy_um': (6, 7),
               'm2_bend_um': tuple(range(30, 50))}
 
 
+def recount(nights_e):
+    """Every exposure on the giant nights whose camera and M2 z Trims both sit 4 or 8 mm
+    (± `STEP_TOL_UM`) from the in-focus reference, with the same sign."""
+    sys.path.insert(0, str(STUDY_DIR.parents[1] / 'value_added' / 'code'))
+    import efd_db
+    con = efd_db.connect()
+    days = sorted(nights_e.day_obs.unique())
+    t = con.execute('select visit_id, day_obs, seq_num, dof0, dof5 from visit_telemetry where '
+                    f'day_obs in ({",".join(map(str, days))}) order by day_obs, seq_num').fetchdf()
+    rows = []
+    for d, g in t.groupby('day_obs'):
+        g = g.set_index('seq_num')
+        refs = []
+        for r in sorted(nights_e[nights_e.day_obs == d].ref_seq.unique()):
+            if r not in g.index:
+                continue
+            if refs and (abs(g.dof0[r] - g.dof0[refs[-1]]) > REF_JUMP_UM
+                         or abs(g.dof5[r] - g.dof5[refs[-1]]) > REF_JUMP_UM):
+                continue
+            refs.append(int(r))
+        for seq, x in g.iterrows():
+            prev = [r for r in refs if r < seq]
+            if not prev:
+                continue
+            r = prev[-1]
+            d0, d5 = x.dof0 - g.dof0[r], x.dof5 - g.dof5[r]
+            for step in STEPS_UM:
+                if (abs(abs(d0) - step) < STEP_TOL_UM and abs(abs(d5) - step) < STEP_TOL_UM
+                        and np.sign(d0) == np.sign(d5)):
+                    rows.append(dict(visit_id=int(x.visit_id), day_obs=int(d), seq_num=int(seq),
+                                     dof0=x.dof0, dof5=x.dof5, ref_seq=r, d_m2_z_um=d0,
+                                     d_cam_z_um=d5, step_mm=float(np.sign(d5) * step / 1e3)))
+    h = pd.DataFrame(rows)
+    h['side'] = np.where(h.d_cam_z_um > 0, 'extra', 'intra')
+    from rubinwork.common.telemetry_clients import make_consdb_client
+    ids = ','.join(map(str, h.visit_id))
+    meta = make_consdb_client().query(
+        'select exposure_id as visit_id, band, exp_time, science_program, img_type, '
+        'observation_reason, s_ra, s_dec from cdb_lsstcam.exposure '
+        f'where exposure_id in ({ids})').to_pandas()
+    h = h.merge(meta, on='visit_id', how='left')
+    return h[h.img_type.isin(['acq', 'science', 'engtest', 'cwfs'])
+             & (h.exp_time > 0)].reset_index(drop=True)
+
+
 def sets_table():
-    """Sets as `find_giant_nights.py` groups them, split by field: (night, block, band, side,
-    pointings within `FIELD_SPLIT_DEG`). Returns the sets and the exposures, each with ``set_id``."""
-    e = pd.read_csv(NIGHTS_RUN / 'giant_exposures.csv')
+    """Sets: (night, block, band, side, defocus, pointings within `FIELD_SPLIT_DEG`).
+
+    Exposures are recounted (`recount`) over the nights of run ``20261020_giant_nights``.
+    Returns the sets and the exposures, each with ``set_id``.
+    """
+    e = recount(pd.read_csv(NIGHTS_RUN / 'giant_exposures.csv'))
     e['science_program'] = e.science_program.fillna('unknown')
     e['field'] = ''
-    for _, g in e.groupby(['day_obs', 'science_program', 'band', 'side']):
+    for _, g in e.groupby(['day_obs', 'science_program', 'band', 'side', 'step_mm']):
         centers = []
         for i, r in g.sort_values('seq_num').iterrows():
             sep = [np.hypot((r.s_ra - c[0]) * np.cos(np.radians(r.s_dec)), r.s_dec - c[1])
@@ -83,10 +134,11 @@ def sets_table():
                 j = int(np.argmin(sep))
             e.at[i, 'field'] = f'ra{centers[j][0]:.0f}'
     e['set_id'] = (e.day_obs.astype(str) + '_' + e.science_program + '_' + e.band + '_'
-                   + e.side + '_' + e.field)
+                   + e.side + '_' + e.step_mm.abs().map(lambda v: f'{v:.0f}mm') + '_' + e.field)
     s = (e.groupby('set_id').agg(day_obs=('day_obs', 'first'),
                                  science_program=('science_program', 'first'),
                                  band=('band', 'first'), side=('side', 'first'),
+                                 step_mm=('step_mm', 'first'),
                                  n_exposures=('visit_id', 'size'),
                                  exp_time_s=('exp_time', 'max'), seq_first=('seq_num', 'min'),
                                  seq_last=('seq_num', 'max'), ref_seq=('ref_seq', 'first'),
@@ -211,7 +263,7 @@ _CTX = {}
 
 def image_task(task):
     """ISR, radii, crowding and the final-rule count on the four detectors of one exposure."""
-    set_id, visit, side, ra, dec, run = task
+    set_id, visit, side, step_mm, ra, dec, run = task
     import lsst.daf.butler as dafButler
     from lsst.obs.lsst import LsstCam
     import isr_cache
@@ -239,11 +291,13 @@ def image_task(task):
             (inside & refcat.mag_r.between(sv.MAG_MIN, sv.MAG_MAX)).sum() / (np.pi * FIELD_DEG ** 2))
         build_template, config_class, task_class = cd.import_blitz()
         bkg = {n: cd.background_map(im, block=128, percentile=10.0) for n, im in images.items()}
-        radii = measure_radii(images, bkg, camera, build_template)
+        radii = measure_radii(images, bkg, camera, build_template,
+                              r_guess_pix=344.0 * abs(step_mm) / 4.0)
         for cls, (ro, ri) in radii.items():
             out[f'r_out_{cls}_pix'], out[f'r_in_{cls}_pix'] = ro, ri
         r_sci = radii['science'][0]
-        out['giant'] = bool(GIANT_R_OUT_PIX[0] < r_sci < GIANT_R_OUT_PIX[1])
+        scale = abs(step_mm) / 4.0
+        out['giant'] = bool(GIANT_R_OUT_PIX[0] * scale < r_sci < GIANT_R_OUT_PIX[1] * scale)
         if not out['giant']:
             return out
         # A corner class with no measured radius takes the science one, scaled as on 20251023.
@@ -302,7 +356,7 @@ def step_images(run, workers):
     pick = pick_exposures(e, deltas)
     # The exposure's own pointing: some sets cover two fields, so the set median is wrong.
     pos = e.set_index('visit_id')[['s_ra', 's_dec']]
-    tasks = [(r.set_id, pick[r.set_id], r.side, float(pos.s_ra[pick[r.set_id]]),
+    tasks = [(r.set_id, pick[r.set_id], r.side, r.step_mm, float(pos.s_ra[pick[r.set_id]]),
               float(pos.s_dec[pick[r.set_id]]), str(run)) for r in s.itertuples()]
     with mp.get_context('fork').Pool(min(workers, len(tasks))) as pool:
         rows = list(pool.imap_unordered(image_task, tasks))
@@ -321,7 +375,7 @@ def classify(sets):
             cls.append('night 1')
         elif not r.giant:
             cls.append('not giant')
-        elif abs(r.r_out_science_pix - NIGHT1_R_OUT_PIX) > DEFOCUS_TOL_PIX:
+        elif abs(r.r_out_science_pix - NIGHT1_R_OUT_PIX * abs(r.step_mm) / 4.0) > DEFOCUS_TOL_PIX * abs(r.step_mm) / 4.0:
             cls.append('other defocus')
         elif r.n_unperturbed < r.n_exposures:
             cls.append('perturbed')
@@ -349,7 +403,7 @@ def build_report_tables(run):
         g = e[e.set_id == r.set_id]
         ref = int(g.ref_visit.iloc[0])
         row = dict(set_id=r.set_id, day_obs=r.day_obs, block=r.science_program, band=r.band,
-                   side=r.side, n_exposures=r.n_exposures, exp_time_s=r.exp_time_s,
+                   side=r.side, step_mm=r.step_mm, n_exposures=r.n_exposures, exp_time_s=r.exp_time_s,
                    seq_first=r.seq_first, seq_last=r.seq_last, ref_seq=r.ref_seq,
                    reasons=', '.join(sorted(set(g.observation_reason.fillna('')))),
                    d_cam_z_um=float(g.d_cam_z_um.median()), d_m2_z_um=float(g.d_m2_z_um.median()),

@@ -151,7 +151,7 @@ def v402s(params_g, centre_poly, radius_poly):
     return p
 
 
-def data_fit(miss, side, field_deg=1.65, d_m=0.01):
+def data_fit(miss, side, field_deg=1.65, d_m=0.01, cfg=None):
     """Silhouette radius and center change (mm, stop plane) that removes a data − model miss.
 
     Parameters
@@ -160,6 +160,9 @@ def data_fit(miss, side, field_deg=1.65, d_m=0.01):
         ``psi_deg`` and ``inner_dmm`` (data − model inner edge, pixels), the stacked bins.
     side : `str`
         ``'intra'`` or ``'extra'``.
+    cfg : `tuple` [`float`], optional
+        (detector, camera, M2) z offsets, mm; the 4 mm giant configuration of `side` by
+        default.
 
     Returns
     -------
@@ -167,7 +170,8 @@ def data_fit(miss, side, field_deg=1.65, d_m=0.01):
         ``d_radius_mm``, ``d_center_mm`` (stop plane, center along the field direction),
         their errors, the bins used and the rms before and after (pixels).
     """
-    cfg = (0.0, 4.0, 4.0) if side == 'extra' else (0.0, -4.0, -4.0)
+    if cfg is None:
+        cfg = (0.0, 4.0, 4.0) if side == 'extra' else (0.0, -4.0, -4.0)
     _, _, t = trace((cfg, field_deg))
     bins, geom = bins_of(t, field_deg)
     p0 = p6.mask_params('v4.02s', tuple(c * 1e-3 for c in cfg))
@@ -195,15 +199,20 @@ def data_fit(miss, side, field_deg=1.65, d_m=0.01):
 
 
 def main():
-    import multiprocessing as mp
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--workers', type=int, default=24)
     args = ap.parse_args()
-    run = p6.run_dir()
+    refit(p6.run_dir(), og.CONFIGS_MM, p6.pc.p3.MASK_RUN, args.workers)
+
+
+def refit(run, configs, mask_run, workers):
+    """v4.02s masks for `configs` ((det, cam, M2) mm), from the v4.02g masks in `mask_run`."""
+    import multiprocessing as mp
+    run = pathlib.Path(run)
     (run / 'masks').mkdir(exist_ok=True)
-    tasks = [(cfg, th) for cfg in og.CONFIGS_MM for th in FIELD_DEG]
+    tasks = [(cfg, th) for cfg in configs for th in FIELD_DEG]
     t0 = time.time()
-    with mp.get_context('fork').Pool(min(args.workers, len(tasks))) as pool:
+    with mp.get_context('fork').Pool(min(workers, len(tasks))) as pool:
         traced = pool.map(trace, tasks, chunksize=1)
     print(f'traced {len(traced)} in {time.time() - t0:.0f} s', flush=True)
     circ, allbins, cache = [], [], {}
@@ -219,10 +228,9 @@ def main():
     circ = pd.DataFrame(circ)
     pd.set_option('display.width', 200)
     print(circ.round(5).to_string(index=False), flush=True)
-    for cfg in og.CONFIGS_MM:
+    for cfg in configs:
         g = circ[(circ.det_mm == cfg[0]) & (circ.cam_mm == cfg[1]) & circ.center_m.notna()]
-        params_g = yaml.safe_load(og.mask_path(p6.pc.p3.MASK_RUN,
-                                               tuple(c * 1e-3 for c in cfg)).read_text())
+        params_g = yaml.safe_load(og.mask_path(mask_run, tuple(c * 1e-3 for c in cfg)).read_text())
         deg = 3 if len(g) >= 6 else max(len(g) - 1, 0)
         cp = np.polyfit(g.field_deg, g.center_m, deg)
         rp = np.polyfit(g.field_deg, g.radius_m, deg)
