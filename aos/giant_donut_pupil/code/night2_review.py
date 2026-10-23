@@ -159,6 +159,29 @@ def pick_exposures(e, deltas):
 
 # ---------------------------------------------------------------- images (batch)
 
+def measure_radii(images, backgrounds, camera, build_template, r_guess_pix=344.0):
+    """`select_candidates.measure_radii` on the classes present, keeping the last finite value.
+
+    On a few detectors an iteration can find no donut away from the edges; the radius then
+    stays at the previous iteration's value, or NaN if the first one fails.
+    """
+    radii = {}
+    for cls in ('science', 'SW0', 'SW1'):
+        names = sorted(n for n in images if cd.sensor_class(camera[n]) == cls)
+        if not names:
+            continue
+        r_out, r_in = r_guess_pix, 0.62 * r_guess_pix
+        found = (np.nan, np.nan)
+        for _ in range(3):
+            dets = {n: cd.blind_detect(images[n], backgrounds[n], r_out / cd.CACHE_BIN,
+                                       r_in / r_out, build_template)[:3] for n in names}
+            ro, ri = cd.measure_radius(images, backgrounds, dets, names, r_out / cd.CACHE_BIN)
+            if not (np.isfinite(ro) and np.isfinite(ri)):
+                break
+            r_out, r_in = found = (ro, ri)
+        radii[cls] = found
+    return radii
+
 _CTX = {}
 
 
@@ -192,13 +215,17 @@ def image_task(task):
             (inside & refcat.mag_r.between(sv.MAG_MIN, sv.MAG_MAX)).sum() / (np.pi * FIELD_DEG ** 2))
         build_template, config_class, task_class = cd.import_blitz()
         bkg = {n: cd.background_map(im, block=128, percentile=10.0) for n, im in images.items()}
-        radii = sc.measure_radii(images, bkg, camera, build_template)
+        radii = measure_radii(images, bkg, camera, build_template)
         for cls, (ro, ri) in radii.items():
             out[f'r_out_{cls}_pix'], out[f'r_in_{cls}_pix'] = ro, ri
         r_sci = radii['science'][0]
         out['giant'] = bool(GIANT_R_OUT_PIX[0] < r_sci < GIANT_R_OUT_PIX[1])
         if not out['giant']:
             return out
+        # A corner class with no measured radius takes the science one, scaled as on 20251023.
+        for cls, scale in (('SW0', 1.19), ('SW1', 1.19)):
+            if cls in radii and not np.isfinite(radii[cls][0]):
+                radii[cls] = (radii['science'][0] * scale, radii['science'][1] * scale)
         sv.VISITS[visit] = side
         # Radii are already measured; on four detectors the affine needs stars to 15 AB mag,
         # not 13, to find enough matches at high galactic latitude.
@@ -246,8 +273,10 @@ def step_images(run, workers):
     s, e = sets_table()
     deltas = trim_deltas(e)
     pick = pick_exposures(e, deltas)
-    tasks = [(r.set_id, pick[r.set_id], r.side, float(r.ra_deg), float(r.dec_deg), str(run))
-             for r in s.itertuples()]
+    # The exposure's own pointing: some sets cover two fields, so the set median is wrong.
+    pos = e.set_index('visit_id')[['s_ra', 's_dec']]
+    tasks = [(r.set_id, pick[r.set_id], r.side, float(pos.s_ra[pick[r.set_id]]),
+              float(pos.s_dec[pick[r.set_id]]), str(run)) for r in s.itertuples()]
     with mp.get_context('fork').Pool(min(workers, len(tasks))) as pool:
         rows = list(pool.imap_unordered(image_task, tasks))
     pd.DataFrame(rows).to_parquet(run / 'images.parquet')
@@ -284,6 +313,7 @@ def build_report_tables(run):
     st = state_of(e.ref_visit.unique())
     im = pd.read_parquet(run / 'images.parquet').set_index('set_id')
     pick = pick_exposures(e, deltas)
+    pos = e.set_index('visit_id')[['s_ra', 's_dec']]
     rows = []
     for r in s.itertuples():
         g = e[e.set_id == r.set_id]
@@ -297,9 +327,12 @@ def build_report_tables(run):
                    stepped=' | '.join(sorted({x for x in g.stepped if x}))[:400],
                    rtp_deg=float(g.physical_rotator_angle.median()),
                    rtp_range_deg=float(g.physical_rotator_angle.max() - g.physical_rotator_angle.min()),
-                   ra_deg=r.ra_deg, dec_deg=r.dec_deg, alt_deg=float(g.altitude.median()),
+                   ra_deg=float(pos.s_ra[pick[r.set_id]]), dec_deg=float(pos.s_dec[pick[r.set_id]]),
+                   n_fields=int(g[['s_ra', 's_dec']].round(1).drop_duplicates().shape[0]),
+                   alt_deg=float(g.altitude.median()),
                    az_deg=float(g.azimuth.median()),
-                   gal_b_deg=float(galactic_b(r.ra_deg, r.dec_deg)),
+                   gal_b_deg=float(galactic_b(pos.s_ra[pick[r.set_id]], pos.s_dec[pick[r.set_id]])),
+                   gal_b_min_deg=float(np.min(np.abs(galactic_b(g.s_ra.to_numpy(), g.s_dec.to_numpy())))),
                    dimm_seeing_arcsec=float(g.dimm_seeing.median()),
                    ref_psf_fwhm_arcsec=float(meta.psf_fwhm_arcsec.get(ref, np.nan)),
                    ref_donut_blur_arcsec=float(meta.donut_blur_fwhm.get(ref, np.nan)),
