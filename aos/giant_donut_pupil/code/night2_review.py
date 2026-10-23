@@ -50,7 +50,11 @@ PIXEL_ARCSEC = 0.2
 FIELD_DEG = 1.75
 # A giant donut on a science CCD: outer half-maximum radius 336-340 pixels on 20251023.
 GIANT_R_OUT_PIX = (300.0, 380.0)
+# The 4 mm defocus of 20251023: science outer radius 336-340 pixels.
+NIGHT1_R_OUT_PIX = 338.0
+DEFOCUS_TOL_PIX = 8.0
 AFFINE_MAG_MAX = 15.0
+FIELD_SPLIT_DEG = 2.0
 # An intra set is added only if it is expected to give this many donut sides.
 MIN_INTRA_SIDES = 20
 # Perturbation thresholds against the reference, per DOF group: hexapod dz difference
@@ -62,12 +66,32 @@ DOF_GROUPS = {'m2_xy_um': (1, 2), 'm2_tilt_deg': (3, 4), 'cam_xy_um': (6, 7),
 
 
 def sets_table():
-    s = pd.read_csv(NIGHTS_RUN / 'giant_nights.csv')
+    """Sets as `find_giant_nights.py` groups them, split by field: (night, block, band, side,
+    pointings within `FIELD_SPLIT_DEG`). Returns the sets and the exposures, each with ``set_id``."""
     e = pd.read_csv(NIGHTS_RUN / 'giant_exposures.csv')
-    s['set_id'] = (s.day_obs.astype(str) + '_' + s.science_program + '_' + s.band + '_'
-                   + s.side)
-    e['set_id'] = (e.day_obs.astype(str) + '_' + e.science_program.fillna('unknown') + '_'
-                   + e.band + '_' + e.side)
+    e['science_program'] = e.science_program.fillna('unknown')
+    e['field'] = ''
+    for _, g in e.groupby(['day_obs', 'science_program', 'band', 'side']):
+        centers = []
+        for i, r in g.sort_values('seq_num').iterrows():
+            sep = [np.hypot((r.s_ra - c[0]) * np.cos(np.radians(r.s_dec)), r.s_dec - c[1])
+                   for c in centers]
+            if not sep or min(sep) > FIELD_SPLIT_DEG:
+                centers.append((r.s_ra, r.s_dec))
+                j = len(centers) - 1
+            else:
+                j = int(np.argmin(sep))
+            e.at[i, 'field'] = f'ra{centers[j][0]:.0f}'
+    e['set_id'] = (e.day_obs.astype(str) + '_' + e.science_program + '_' + e.band + '_'
+                   + e.side + '_' + e.field)
+    s = (e.groupby('set_id').agg(day_obs=('day_obs', 'first'),
+                                 science_program=('science_program', 'first'),
+                                 band=('band', 'first'), side=('side', 'first'),
+                                 n_exposures=('visit_id', 'size'),
+                                 exp_time_s=('exp_time', 'max'), seq_first=('seq_num', 'min'),
+                                 seq_last=('seq_num', 'max'), ref_seq=('ref_seq', 'first'),
+                                 ra_deg=('s_ra', 'median'), dec_deg=('s_dec', 'median'))
+         .reset_index())
     return s, e
 
 
@@ -250,7 +274,10 @@ def image_task(task):
         pt = pr.refine_visit(visit, images, camera, pt, cat)
         star_keep = ss.star_rule(stars, 'final')
         peak_keep = ss.peak_rule(pt, 'final')
-        m = ss.marked_donuts(stars, pt, star_keep, peak_keep)
+        if star_keep.any() or peak_keep.any():
+            m = ss.marked_donuts(stars, pt, star_keep, peak_keep)
+        else:
+            m = pd.DataFrame(dict(detector=pd.Series(dtype=str)))
         for det in DETECTORS:
             out[f'selected_{det}'] = int((m.detector == det).sum())
         sci = [d for d in DETECTORS if 'SW' not in d]
@@ -293,6 +320,8 @@ def classify(sets):
             cls.append('night 1')
         elif not r.giant:
             cls.append('not giant')
+        elif abs(r.r_out_science_pix - NIGHT1_R_OUT_PIX) > DEFOCUS_TOL_PIX:
+            cls.append('other defocus')
         elif r.n_unperturbed == 0:
             cls.append('perturbed')
         else:
@@ -323,16 +352,14 @@ def build_report_tables(run):
                    seq_first=r.seq_first, seq_last=r.seq_last, ref_seq=r.ref_seq,
                    reasons=', '.join(sorted(set(g.observation_reason.fillna('')))),
                    d_cam_z_um=float(g.d_cam_z_um.median()), d_m2_z_um=float(g.d_m2_z_um.median()),
-                   n_unperturbed=int((~g.perturbed).sum()),
+                   n_unperturbed=int((~g.perturbed & (g.exp_time >= r.exp_time_s)).sum()),
                    stepped=' | '.join(sorted({x for x in g.stepped if x}))[:400],
                    rtp_deg=float(g.physical_rotator_angle.median()),
                    rtp_range_deg=float(g.physical_rotator_angle.max() - g.physical_rotator_angle.min()),
                    ra_deg=float(pos.s_ra[pick[r.set_id]]), dec_deg=float(pos.s_dec[pick[r.set_id]]),
-                   n_fields=int(g[['s_ra', 's_dec']].round(1).drop_duplicates().shape[0]),
                    alt_deg=float(g.altitude.median()),
                    az_deg=float(g.azimuth.median()),
                    gal_b_deg=float(galactic_b(pos.s_ra[pick[r.set_id]], pos.s_dec[pick[r.set_id]])),
-                   gal_b_min_deg=float(np.min(np.abs(galactic_b(g.s_ra.to_numpy(), g.s_dec.to_numpy())))),
                    dimm_seeing_arcsec=float(g.dimm_seeing.median()),
                    ref_psf_fwhm_arcsec=float(meta.psf_fwhm_arcsec.get(ref, np.nan)),
                    ref_donut_blur_arcsec=float(meta.donut_blur_fwhm.get(ref, np.nan)),
@@ -425,9 +452,11 @@ def write_pdf(run, sets, choice, intra_add):
         txt += '\nStepped DOF per perturbed set (relative to the in-focus reference):\n'
         for r in n[n.stepped != ''].itertuples():
             txt += f'  {r.set_id}: {r.stepped[:150]}\n'
-        txt += '\nNot giant (science-CCD outer radius outside 300-380 pixels):\n'
-        for r in n[n['class'] == 'not giant'].itertuples():
-            txt += f'  {r.set_id}: r_out {r.r_out_science_pix:.0f} pixels; {r.reasons}\n'
+        txt += '\nNot giant (science-CCD outer radius outside 300-380 pixels), or another defocus\n'
+        txt += f'(outside {NIGHT1_R_OUT_PIX:g} +- {DEFOCUS_TOL_PIX:g} pixels, the 4 mm radius of {NIGHT1}):\n'
+        for _, r in n[n['class'].isin(['not giant', 'other defocus'])].iterrows():
+            txt += (f'  {r.set_id}: {r["class"]}, r_out {r.r_out_science_pix:.0f} pixels; '
+                    f'{r.reasons}\n')
         fig, ax = plt.subplots(figsize=(11, 8.5))
         ax.axis('off')
         ax.text(0, 1, 'Night 2 review: giant-donut sets\n\n' + txt, family='monospace',
