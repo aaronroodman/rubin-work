@@ -54,8 +54,8 @@ def bin_mean(image, factor):
         ny, factor, nx, factor).mean(axis=(1, 3))
 
 
-def cache_visit(butler, camera, exposure, out_dir):
-    """ISR, bin and save every science and corner-WFS detector of one exposure.
+def cache_visit(butler, camera, exposure, out_dir, names=None):
+    """ISR, bin and save the science and corner-WFS detectors of one exposure.
 
     Parameters
     ----------
@@ -67,12 +67,15 @@ def cache_visit(butler, camera, exposure, out_dir):
         Exposure id.
     out_dir : `pathlib.Path`
         Directory for ``<detector>.npy`` and ``wcs.json``.
+    names : `list` [`str`], optional
+        Detectors to cache; every science and corner-WFS detector by default.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     wcs_file = out_dir / 'wcs.json'
     headers = json.loads(wcs_file.read_text()) if wcs_file.exists() else {}
-    names = [d.getName() for d in camera
-             if d.getType() in (DetectorType.SCIENCE, DetectorType.WAVEFRONT)]
+    if names is None:
+        names = [d.getName() for d in camera
+                 if d.getType() in (DetectorType.SCIENCE, DetectorType.WAVEFRONT)]
     for i, name in enumerate(names):
         path = out_dir / f'{name}.npy'
         if path.exists() and name in headers:
