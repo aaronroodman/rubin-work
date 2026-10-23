@@ -1,0 +1,367 @@
+<title>Giant-Donut Pupil Masks</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a working bench. Controls on one strip; the slice and the edge chart side by side; the 3D stack below. */
+:root {
+  --bg: #f3f5f6;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5a6672;
+  --rule: #d5dbe0;
+  --lit: #cfd8df;
+  --dark: #f3f5f6;
+  --ver-g: #c27410;
+  --ver-s: #6a4fd6;
+  --block: #d2443a;
+  --leak: #1f7fc4;
+  --m1: #2a3440;
+  --font-head: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171c; --panel: #1a2128; --ink: #e4e9ee; --muted: #9aa6b2; --rule: #2d3742;
+    --lit: #3b4855; --dark: #12171c; --ver-g: #f0a23a; --ver-s: #a691ff; --block: #ff6b5e;
+    --leak: #4fb0f2; --m1: #d9e1e8; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171c; --panel: #1a2128; --ink: #e4e9ee; --muted: #9aa6b2; --rule: #2d3742;
+  --lit: #3b4855; --dark: #12171c; --ver-g: #f0a23a; --ver-s: #a691ff; --block: #ff6b5e;
+  --leak: #4fb0f2; --m1: #d9e1e8; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 24px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 20px; }
+header { display: grid; gap: 6px; }
+h1 { font-family: var(--font-head); font-weight: 600; font-size: 1.9rem; line-height: 1.15; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-head); font-weight: 600; font-size: 1.15rem; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { color: var(--muted); }
+.ver-g { color: var(--ver-g); font-weight: 600; }
+.ver-s { color: var(--ver-s); font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: end; background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; }
+.ctl { display: grid; gap: 4px; min-width: 0; }
+.ctl label, .label { font-family: var(--font-head); font-weight: 500; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; }
+input[type=range] { padding: 0; width: min(320px, 70vw); accent-color: var(--ver-s); }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.seg button { font: inherit; font-size: 0.9rem; background: var(--bg); color: var(--ink); border: 0; padding: 5px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--ver-s); outline-offset: 2px; }
+.theta-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+canvas { width: 100%; max-width: 100%; aspect-ratio: 1 / 1; border: 1px solid var(--rule); border-radius: 3px; background: var(--dark); display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.86rem; color: var(--muted); }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; border: 1px solid var(--rule); }
+.stats { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 0.86rem; display: grid; gap: 2px; }
+.note { font-size: 0.86rem; color: var(--muted); }
+.plot { width: 100%; min-height: 380px; }
+#plot3d { min-height: 560px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; font-size: 0.9rem; }
+.facts div { min-width: 0; }
+.facts b { font-family: var(--font-head); font-weight: 600; display: block; letter-spacing: 0.02em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Giant-donut pupil masks: <span class="ver-g">v4.02g</span> and <span class="ver-s">v4.02s</span></h1>
+    <p class="lede">The danish obscuration masks for the 20251023 giant donuts, drawn in the stop plane (z = 0.4765 m) with the field along +x, against a Batoid ray trace of LSST_r_v4.02 at the same configuration (spider removed from both). The two masks differ only in CameraSilhouette: v4.02s replaces its circle above 1.4 deg with a refit to Batoid's inner edge where the silhouette sets it.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="View controls">
+    <div class="ctl">
+      <label for="cfg">Configuration</label>
+      <select id="cfg"></select>
+    </div>
+    <div class="ctl">
+      <label for="theta">Field angle</label>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="theta" type="range" min="0" max="12" step="1" value="11">
+        <span class="theta-val" id="thetaVal">1.70 deg</span>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="label" id="cmpLabel">Compare with Batoid</span>
+      <div class="seg" role="group" aria-labelledby="cmpLabel">
+        <button id="cmpG" type="button" aria-pressed="false">v4.02g</button>
+        <button id="cmpS" type="button" aria-pressed="true">v4.02s</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="label" id="viewLabel">Slice view</span>
+      <div class="seg" role="group" aria-labelledby="viewLabel">
+        <button id="viewArc" type="button" aria-pressed="true">Silhouette arc</button>
+        <button id="viewFull" type="button" aria-pressed="false">Whole pupil</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <section class="card" aria-labelledby="sliceH">
+      <h2 id="sliceH">Pupil slice at the chosen field angle</h2>
+      <canvas id="slice" width="720" height="720" aria-label="Stop-plane map of lit and blocked pupil"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--lit)"></span>lit in both</span>
+        <span><span class="sw" style="background:var(--block)"></span>mask blocks, Batoid lit</span>
+        <span><span class="sw" style="background:var(--leak)"></span>mask lit, Batoid blocks</span>
+        <span><span class="sw" style="background:transparent;border-color:var(--ver-g);border-width:2px;border-style:dashed"></span>v4.02g silhouette circle</span>
+        <span><span class="sw" style="background:transparent;border-color:var(--ver-s);border-width:2px"></span>v4.02s silhouette circle</span>
+        <span><span class="sw" style="background:transparent;border-color:var(--m1);border-width:1px"></span>M1 inner hole</span>
+      </div>
+      <div class="stats" id="stats"></div>
+      <p class="note" id="sliceNote"></p>
+    </section>
+
+    <section class="card" aria-labelledby="edgeH">
+      <h2 id="edgeH">Where the inner edge sits on the silhouette side</h2>
+      <div id="plotEdge" class="plot"></div>
+      <p class="note">The inner edge along −x in the stop plane: the first lit point going outward from the pupil center, for each mask and for the Batoid trace (fine 5 mm map). Dotted lines are the silhouette circle's outermost point alone. In the donut image, 12.3 mm in the stop plane is about one 10 µm pixel; the step in v4.02s at 1.40 deg is where its second circle takes over.</p>
+    </section>
+  </div>
+
+  <section class="card" aria-labelledby="h3d">
+    <h2 id="h3d">The masks in 3D: stop plane against field angle</h2>
+    <div id="plot3d" class="plot"></div>
+    <p class="note">Each surface is one danish circle swept over the field angles where it applies (center along the field direction, both as cubics in field angle). Gray: elements both masks share. Amber: the v4.02g silhouette. Violet: v4.02s, whose second circle starts at 1.4 deg. Points: Batoid's inner edge along −x at each traced field angle. Drag to rotate; click a legend entry to hide it.</p>
+  </section>
+
+  <section class="card" aria-labelledby="whatH">
+    <h2 id="whatH">What changed, in numbers</h2>
+    <div class="facts">
+      <div><b>Only the silhouette changes</b>M1, M1Baffle1, M2, M3, the filter, L3 and the spider are identical in all six configuration files.</div>
+      <div><b>v4.02g</b>One circle per field angle fitted to the whole traced silhouette outline, then a cubic over 0–2 deg. The outline is 165 polygons at z 3.48–5.12 m, not a circle, so the one arc that matters sat 1.8–5.3 pixels inside Batoid at 1.45–1.75 deg.</div>
+      <div><b>v4.02s</b>Below 1.4 deg, the v4.02g circle. From 1.4 deg, a second circle fitted to Batoid's inner edge only where the silhouette sets it: center 130–200 mm further off-axis, radius 70–130 mm smaller, outermost point 52–69 mm (4.3–5.6 pixels) further into the ring.</div>
+      <div><b>Caveats</b>A 4.3–4.6 pixel jump at 1.40 deg, so donuts at 1.3–1.4 deg still use the old circle. The second circle is fitted only to 1.75 deg but runs to 2.0 deg.</div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<script>
+const D = __DATA__;
+const CFG_LABEL = {
+  'det+0.0_cam+4.0_m2+4.0': 'Science, extra-focal (camera, M2 +4 mm)',
+  'det+0.0_cam-4.0_m2-4.0': 'Science, intra-focal (camera, M2 −4 mm)',
+  'det+1.5_cam+4.0_m2+4.0': 'Corner SW0 (+1.5 mm), extra-focal',
+  'det+1.5_cam-4.0_m2-4.0': 'Corner SW0 (+1.5 mm), intra-focal',
+  'det-1.5_cam+4.0_m2+4.0': 'Corner SW1 (−1.5 mm), extra-focal',
+  'det-1.5_cam-4.0_m2-4.0': 'Corner SW1 (−1.5 mm), intra-focal',
+};
+const state = { cfg: 'det+0.0_cam+4.0_m2+4.0', ti: 11, cmp: 'v4.02s', view: 'arc' };
+const $ = (id) => document.getElementById(id);
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function polyval(c, x) { let v = 0; for (const a of c) v = v * x + a; return v; }
+function active(els, th) { return els.filter((e) => th >= e.tmin - 1e-9 && th <= e.tmax + 1e-9); }
+function circlesAt(els, th) { return active(els, th).map((e) => ({ ...e, cx: polyval(e.c, th), rr: polyval(e.r, th) })); }
+function litAt(circ, x, y) {
+  for (const e of circ) {
+    const inside = (x - e.cx) * (x - e.cx) + y * y < e.rr * e.rr;
+    if (e.clear ? !inside : inside) return false;
+  }
+  return true;
+}
+function decode(b64, n) {
+  const s = atob(b64); const out = new Uint8Array(n);
+  for (let k = 0; k < n; k++) out[k] = (s.charCodeAt(k >> 3) >> (7 - (k & 7))) & 1;
+  return out;
+}
+const cache = new Map();
+function batoidMap(kind, cfg, th) {
+  const list = kind === 'coarse' ? D.batoid : (D.patch || []);
+  const m = list.find((q) => q.cfg === cfg && Math.abs(q.theta - th) < 1e-6);
+  if (!m) return null;
+  const key = kind + cfg + th;
+  if (!cache.has(key)) {
+    const nx = m.nx, ny = kind === 'coarse' ? m.nx : m.ny;
+    cache.set(key, { ...m, ny, lit: decode(m.bits, nx * ny) });
+  }
+  return cache.get(key);
+}
+function masks(ver, cfg) { return D.masks[ver + '|' + cfg]; }
+function silhouette(circ) { return circ.filter((e) => e.name === 'CameraSilhouette'); }
+
+function drawSlice() {
+  const cv = $('slice'), ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const th = D.thetas[state.ti];
+  const circ = circlesAt(masks(state.cmp, state.cfg), th);
+  const useArc = state.view === 'arc';
+  const fine = useArc ? batoidMap('fine', state.cfg, th) : null;
+  const coarse = batoidMap('coarse', state.cfg, th);
+  let xmin, xmax, ymin, ymax;
+  if (useArc) { xmin = -3.45; xmax = -2.25; ymin = -0.9; ymax = 0.3; }
+  else { xmin = -4.4; xmax = 4.4; ymin = -4.4; ymax = 4.4; }
+  // keep the arc view square: 1.2 m by 1.2 m centred on the -x axis
+  if (useArc) { ymin = -0.6; ymax = 0.6; }
+  const img = ctx.createImageData(W, H);
+  const hex = (h) => { const v = h.replace('#', ''); return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)]; };
+  const C = { lit: hex(css('--lit')), dark: hex(css('--dark')), block: hex(css('--block')), leak: hex(css('--leak')) };
+  const src = fine || coarse;
+  let nBlock = 0, nLeak = 0, nLit = 0;
+  for (let py = 0; py < H; py++) {
+    const y = ymax - (py + 0.5) * (ymax - ymin) / H;
+    for (let px = 0; px < W; px++) {
+      const x = xmin + (px + 0.5) * (xmax - xmin) / W;
+      const m = litAt(circ, x, y);
+      let b = null;
+      if (src) {
+        const step = src.step || src.dx, sy = src.step || src.dy;
+        const ix = Math.round((x - src.x0) / step), iy = Math.round((y - src.y0) / sy);
+        if (ix >= 0 && ix < src.nx && iy >= 0 && iy < src.ny) b = src.lit[iy * src.nx + ix] === 1;
+      }
+      let col;
+      if (b === null) col = m ? C.lit : C.dark;
+      else if (m && b) { col = C.lit; nLit++; }
+      else if (!m && b) { col = C.block; nBlock++; nLit++; }
+      else if (m && !b) { col = C.leak; nLeak++; }
+      else col = C.dark;
+      const o = (py * W + px) * 4;
+      img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const toPx = (x, y) => [(x - xmin) / (xmax - xmin) * W, (ymax - y) / (ymax - ymin) * H];
+  const ring = (cx, r, color, dash, lw) => {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.setLineDash(dash);
+    ctx.beginPath();
+    const [px, py] = toPx(cx, 0); const rp = r / (xmax - xmin) * W;
+    ctx.arc(px, py, rp, 0, 2 * Math.PI); ctx.stroke(); ctx.restore();
+  };
+  const m1 = circ.find((e) => e.name === 'M1' && e.edge === 'inner');
+  if (m1) ring(m1.cx, m1.rr, css('--m1'), [], 1);
+  for (const e of silhouette(circlesAt(masks('v4.02g', state.cfg), th))) ring(e.cx, e.rr, css('--ver-g'), [10, 7], 2.5);
+  for (const e of silhouette(circlesAt(masks('v4.02s', state.cfg), th))) ring(e.cx, e.rr, css('--ver-s'), [], 2.5);
+  // axis ticks for the arc view
+  ctx.save(); ctx.fillStyle = css('--muted'); ctx.font = '22px ' + css('--font-mono');
+  const lab = useArc ? 'x −3.45 … −2.25 m, y −0.6 … +0.6 m' : 'x, y −4.4 … +4.4 m';
+  ctx.fillText(lab, 12, H - 14); ctx.restore();
+
+  const both = ['v4.02g', 'v4.02s'].map((v) => {
+    const cc = circlesAt(masks(v, state.cfg), th);
+    if (!coarse) return null;
+    let bad = 0, lit = 0;
+    for (let iy = 0; iy < coarse.ny; iy++) for (let ix = 0; ix < coarse.nx; ix++) {
+      const x = coarse.x0 + ix * coarse.dx, y = coarse.y0 + iy * coarse.dy;
+      const b = coarse.lit[iy * coarse.nx + ix] === 1, m = litAt(cc, x, y);
+      if (b) lit++; if (b !== m) bad++;
+    }
+    return bad / lit;
+  });
+  const fmt = (v) => v === null ? 'no Batoid trace' : (100 * v).toFixed(2) + ' % of the lit pupil';
+  $('stats').innerHTML = `θ ${th.toFixed(2)} deg, ${CFG_LABEL[state.cfg]}<br>` +
+    `<span class="ver-g">v4.02g</span> disagrees with Batoid on ${fmt(both[0])}<br>` +
+    `<span class="ver-s">v4.02s</span> disagrees with Batoid on ${fmt(both[1])}` +
+    (src ? `<br>this view (${state.cmp}): ${nBlock} cells mask-blocks, ${nLeak} cells mask-lit` : '');
+  $('sliceNote').textContent = !coarse
+    ? 'Batoid was traced for the science configurations only; for the corner sensors the slice shows the mask alone.'
+    : (useArc && !fine ? 'The fine silhouette-arc trace covers 1.2–1.75 deg; below that the coarse 24.6 mm map is shown.' :
+      (useArc ? 'Silhouette-arc view on the fine 5 mm Batoid trace (0.4 donut pixels).' : 'Whole pupil on the coarse 24.6 mm Batoid trace (2 donut pixels).'));
+}
+
+function edgeAlongMinusX(circ) {
+  for (let r = 2.2; r <= 3.6; r += 0.001) if (litAt(circ, -r, 0)) return r;
+  return null;
+}
+function drawEdge() {
+  const ths = []; for (let t = 1.0; t <= 1.8501; t += 0.005) ths.push(+t.toFixed(3));
+  const tr = [];
+  for (const v of ['v4.02g', 'v4.02s']) {
+    const col = css(v === 'v4.02g' ? '--ver-g' : '--ver-s');
+    tr.push({ x: ths, y: ths.map((t) => 1e3 * edgeAlongMinusX(circlesAt(masks(v, state.cfg), t))), name: v + ' mask inner edge',
+      mode: 'lines', line: { color: col, width: 2.5, dash: v === 'v4.02g' ? 'dash' : 'solid' } });
+    tr.push({ x: ths, y: ths.map((t) => { const s = silhouette(circlesAt(masks(v, state.cfg), t)); return s.length ? 1e3 * Math.max(...s.map((e) => -(e.cx - e.rr))) : null; }),
+      name: v + ' silhouette circle alone', mode: 'lines', line: { color: col, width: 1.2, dash: 'dot' } });
+  }
+  const bx = [], by = [];
+  for (const t of D.thetas) {
+    const f = batoidMap('fine', state.cfg, t); if (!f) continue;
+    const iy = Math.round((0 - f.y0) / f.step);
+    let e = null;
+    for (let ix = f.nx - 1; ix >= 0; ix--) if (f.lit[iy * f.nx + ix] === 1) { e = -(f.x0 + ix * f.step); break; }
+    if (e !== null) { bx.push(t); by.push(1e3 * e); }
+  }
+  tr.push({ x: bx, y: by, name: 'Batoid v4.02 inner edge', mode: 'markers', marker: { color: css('--ink'), size: 8, symbol: 'circle-open', line: { width: 2 } } });
+  const th = D.thetas[state.ti];
+  Plotly.react('plotEdge', tr, {
+    paper_bgcolor: css('--panel'), plot_bgcolor: css('--panel'), font: { family: css('--font-body'), color: css('--ink'), size: 12 },
+    margin: { l: 64, r: 12, t: 8, b: 48 }, height: 430,
+    xaxis: { title: 'field angle (deg)', gridcolor: css('--rule'), zeroline: false, range: [1.0, 1.85] },
+    yaxis: { title: 'inner edge along −x (mm, stop plane)', gridcolor: css('--rule'), zeroline: false, range: [2560, 3100] },
+    shapes: [{ type: 'line', x0: th, x1: th, yref: 'paper', y0: 0, y1: 1, line: { color: css('--muted'), width: 1, dash: 'dot' } },
+             { type: 'line', x0: 1.0, x1: 1.85, y0: 2583.3, y1: 2583.3, line: { color: css('--m1'), width: 1 } }],
+    annotations: [{ x: 1.02, y: 2583.3, text: 'M1 inner hole 2583 mm', showarrow: false, yanchor: 'bottom', xanchor: 'left', font: { size: 11, color: css('--muted') } }],
+    legend: { orientation: 'h', y: -0.22, font: { size: 11 } },
+  }, { displaylogo: false, responsive: true });
+}
+
+function surf(e, color, opacity, name, showlegend) {
+  const t0 = Math.max(e.tmin, 0), t1 = Math.min(e.tmax, 1.8);
+  if (t1 <= t0) return null;
+  const nt = 40, nphi = 73, X = [], Y = [], Z = [];
+  for (let i = 0; i < nt; i++) {
+    const t = t0 + (t1 - t0) * i / (nt - 1), c = polyval(e.c, t), r = polyval(e.r, t);
+    const xr = [], yr = [], zr = [];
+    for (let j = 0; j < nphi; j++) { const p = 2 * Math.PI * j / (nphi - 1); xr.push(c + r * Math.cos(p)); yr.push(r * Math.sin(p)); zr.push(t); }
+    X.push(xr); Y.push(yr); Z.push(zr);
+  }
+  return { type: 'surface', x: X, y: Y, z: Z, opacity, colorscale: [[0, color], [1, color]], showscale: false,
+    name, showlegend, legendgroup: name, hovertemplate: name + '<br>x %{x:.3f} m<br>y %{y:.3f} m<br>θ %{z:.2f} deg<extra></extra>' };
+}
+function draw3d() {
+  const tr = [];
+  const g = masks('v4.02g', state.cfg), s = masks('v4.02s', state.cfg);
+  const grey = css('--muted');
+  for (const e of g) {
+    if (e.name === 'CameraSilhouette') continue;
+    const t = surf(e, grey, 0.13, `${e.name} ${e.edge}`, true); if (t) tr.push(t);
+  }
+  for (const e of g.filter((q) => q.name === 'CameraSilhouette')) { const t = surf(e, css('--ver-g'), 0.55, 'v4.02g silhouette', true); if (t) tr.push(t); }
+  s.filter((q) => q.name === 'CameraSilhouette').forEach((e, k) => { const t = surf(e, css('--ver-s'), 0.6, 'v4.02s silhouette', k === 0); if (t) tr.push(t); });
+  const bx = [], by = [], bz = [];
+  for (const t of D.thetas) {
+    const f = batoidMap('fine', state.cfg, t); if (!f) continue;
+    const iy = Math.round((0 - f.y0) / f.step);
+    for (let ix = f.nx - 1; ix >= 0; ix--) if (f.lit[iy * f.nx + ix] === 1) { bx.push(f.x0 + ix * f.step); by.push(0); bz.push(t); break; }
+  }
+  tr.push({ type: 'scatter3d', mode: 'markers', x: bx, y: by, z: bz, name: 'Batoid inner edge (−x)', marker: { size: 4, color: css('--ink') } });
+  const th = D.thetas[state.ti];
+  tr.push({ type: 'scatter3d', mode: 'lines', x: [-4.4, 4.4, 4.4, -4.4, -4.4], y: [-4.4, -4.4, 4.4, 4.4, -4.4], z: Array(5).fill(th),
+    name: 'chosen field angle', line: { color: css('--muted'), width: 2, dash: 'dot' } });
+  const ax = (t) => ({ title: t, gridcolor: css('--rule'), backgroundcolor: css('--panel'), showbackground: true, color: css('--ink') });
+  Plotly.react('plot3d', tr, {
+    paper_bgcolor: css('--panel'), font: { family: css('--font-body'), color: css('--ink'), size: 12 },
+    margin: { l: 0, r: 0, t: 0, b: 0 }, height: 600, legend: { font: { size: 11 }, x: 0, y: 1 },
+    scene: { xaxis: ax('stop x (m), field along +x'), yaxis: ax('stop y (m)'), zaxis: ax('field angle (deg)'),
+      aspectmode: 'manual', aspectratio: { x: 1, y: 1, z: 0.8 }, camera: { eye: { x: -1.6, y: -1.4, z: 0.9 } } },
+  }, { displaylogo: false, responsive: true });
+}
+
+function renderAll() { $('thetaVal').textContent = D.thetas[state.ti].toFixed(2) + ' deg'; drawSlice(); drawEdge(); draw3d(); }
+function setPressed(a, b, on) { $(a).setAttribute('aria-pressed', on ? 'true' : 'false'); $(b).setAttribute('aria-pressed', on ? 'false' : 'true'); }
+
+const sel = $('cfg');
+Object.entries(CFG_LABEL).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v; sel.appendChild(o); });
+sel.value = state.cfg;
+$('theta').max = D.thetas.length - 1; $('theta').value = state.ti;
+sel.addEventListener('change', () => { state.cfg = sel.value; renderAll(); });
+$('theta').addEventListener('input', (e) => { state.ti = +e.target.value; $('thetaVal').textContent = D.thetas[state.ti].toFixed(2) + ' deg'; drawSlice(); drawEdge(); });
+$('theta').addEventListener('change', () => draw3d());
+$('cmpG').addEventListener('click', () => { state.cmp = 'v4.02g'; setPressed('cmpG', 'cmpS', true); drawSlice(); });
+$('cmpS').addEventListener('click', () => { state.cmp = 'v4.02s'; setPressed('cmpS', 'cmpG', true); drawSlice(); });
+$('viewArc').addEventListener('click', () => { state.view = 'arc'; setPressed('viewArc', 'viewFull', true); drawSlice(); });
+$('viewFull').addEventListener('click', () => { state.view = 'full'; setPressed('viewFull', 'viewArc', true); drawSlice(); });
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll); } catch (e) {}
+new MutationObserver(renderAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+renderAll();
+</script>

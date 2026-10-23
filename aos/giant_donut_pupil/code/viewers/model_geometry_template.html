@@ -1,0 +1,230 @@
+<title>Rubin Model Geometry</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a model bench. Element checklists in a side rail, the 3D scene beside them, the explanation underneath. */
+:root {
+  --bg: #f2f4f5;
+  --panel: #ffffff;
+  --ink: #16202a;
+  --muted: #5b6773;
+  --rule: #d4dadf;
+  --v402: #5a46c8;
+  --v1000: #0f8a7a;
+  --sil: #c27410;
+  --ray: #2f6fb3;
+  --blocked: #d2443a;
+  --font-head: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161b; --panel: #192027; --ink: #e3e8ed; --muted: #9ba7b3; --rule: #2c3640;
+    --v402: #a593ff; --v1000: #39c9b4; --sil: #f0a23a; --ray: #6cb1f5; --blocked: #ff6b5e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161b; --panel: #192027; --ink: #e3e8ed; --muted: #9ba7b3; --rule: #2c3640;
+  --v402: #a593ff; --v1000: #39c9b4; --sil: #f0a23a; --ray: #6cb1f5; --blocked: #ff6b5e; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 24px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 18px; }
+h1 { font-family: var(--font-head); font-weight: 600; font-size: 1.9rem; line-height: 1.15; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-head); font-weight: 600; font-size: 1.12rem; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--font-head); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin: 0; }
+p { margin: 0; max-width: 74ch; }
+.lede { color: var(--muted); }
+.bench { display: grid; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.rail { display: grid; gap: 14px; }
+.model { display: grid; gap: 4px; }
+.model h3 { display: flex; align-items: center; gap: 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+label.row { display: flex; gap: 8px; align-items: baseline; font-size: 0.9rem; cursor: pointer; }
+label.row .n { margin-left: auto; font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+input[type=checkbox] { accent-color: var(--v402); }
+.views { display: flex; flex-wrap: wrap; gap: 6px; }
+.views button { font: inherit; font-size: 0.86rem; background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+.views button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--v402); outline-offset: 2px; }
+#scene { width: 100%; height: 72vh; min-height: 520px; }
+.note { font-size: 0.86rem; color: var(--muted); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 0.88rem; width: 100%; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { font-family: var(--font-head); font-weight: 600; color: var(--muted); }
+td { font-family: var(--font-mono); }
+.key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.84rem; color: var(--muted); }
+.sw { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:6px">
+    <h1>Rubin model geometry: Rubin_v1000_r against LSST_r_v4.02</h1>
+    <p class="lede">Every surface and obscuration in the two Batoid models, in the telescope frame (meters, M1 vertex at the origin, +z toward the sky). Optical surfaces are drawn as meshes over their clear apertures; obscurations as outlines in their planes. Rays are traced through the nominal model at field 0 and 1.7 deg along +x.</p>
+  </header>
+
+  <div class="bench">
+    <aside class="rail" aria-label="Elements">
+      <div class="card">
+        <h3>View</h3>
+        <div class="views" role="group" aria-label="Camera preset">
+          <button type="button" id="vCam" aria-pressed="true">Camera body</button>
+          <button type="button" id="vAll" aria-pressed="false">Whole telescope</button>
+          <button type="button" id="vSide" aria-pressed="false">Side, x–z</button>
+          <button type="button" id="vTop" aria-pressed="false">From the sky</button>
+        </div>
+      </div>
+      <div class="card" id="models"></div>
+      <div class="card">
+        <h3>Rays, nominal configuration</h3>
+        <div id="rays"></div>
+        <div class="key">
+          <span><span class="sw" style="background:var(--ray)"></span>reaches the detector</span>
+          <span><span class="sw" style="background:var(--blocked)"></span>stopped by the camera body</span>
+          <span><span class="sw" style="background:var(--muted)"></span>stopped elsewhere</span>
+        </div>
+      </div>
+    </aside>
+    <section class="card" aria-label="3D scene">
+      <div id="scene"></div>
+      <p class="note">Drag to rotate, scroll to zoom, hover for names. The camera-silhouette slices are colored by height: amber at the lens end (z 3.48 m), fading to the text color at the back of the camera (z 5.12 m).</p>
+    </section>
+  </div>
+
+  <div class="cols">
+    <section class="card">
+      <h2>What the camera silhouette is</h2>
+      <p>LSST_r_v4.02 replaces v1000's single <b>CameraBody</b> disk with <b>CameraSilhouette</b>: 165 flat polygon slices, one every 10 mm in height from z 3.481 to 5.121 m. Each slice is the outer boundary of all camera parts at its height, taken from the camera CAD; their radii are 796–825 mm. v1000's CameraBody is one disk of radius 0.80469 m (the camera's 1.609 m outer diameter) at z 3.500 m, attached to the camera.</p>
+      <p>Both are items between M2 and M3 in the trace, so they catch light on its way down from M2 to M3 as it passes the camera. That beam is an annulus converging on M3; at large field it shifts sideways, and its inner part runs into the camera body. The rays at 1.7 deg show it: stop-plane x −2.95 and −2.90 m are stopped by slices at z 4.05 and 4.46 m in v4.02, and by CameraBody in v1000; the next rays in are stopped by M2's central hole.</p>
+    </section>
+    <section class="card">
+      <h2>The camera body in danish's obscuration files</h2>
+      <p>danish v1000 and v3.14 (<span style="font-family:var(--font-mono)">RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml</span>, <span style="font-family:var(--font-mono)">…v3.14…</span>) both carry a <b>CameraBody</b> circle: radius 1.960 m in the stop plane, its center moving 0.589 m per deg of field, fitted at the nominal configuration. Batoid v3.14 itself has no camera body. The study's masks call it CameraSilhouette. Outermost point along −x in the stop plane:</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>field (deg)</th><th>v1000 CameraBody (m)</th><th>v4.02g (m)</th><th>v4.02s (m)</th><th>v1000 − v4.02s (mm)</th></tr></thead>
+          <tbody id="cbTable"></tbody>
+        </table>
+      </div>
+      <p class="note">v4.02g and v4.02s at the extra-focal giant configuration. 12.3 mm in the stop plane is about one donut pixel. v1000's simple disk lands within 2–14 mm (0.2–1.1 pixels) of v4.02s above 1.4 deg, where v4.02g was 43–66 mm short.</p>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<script>
+const D = __DATA__;
+const CB = __CBTABLE__;
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = (id) => document.getElementById(id);
+const GROUP_ORDER = ['Mirrors', 'Camera optics', 'Camera silhouette (165 slices)', 'Camera body disk', 'In-camera openings',
+  'M1 baffles', 'Spider vanes', 'Top End Assembly', 'M2 cell', 'M2 baffle', 'Mid-level baffle', 'TMA structure baffle'];
+const DEFAULT_ON = { 'v4.02': ['Mirrors', 'Camera optics', 'Camera silhouette (165 slices)'], 'v1000': ['Camera body disk'] };
+const vis = {};
+let view = 'cam';
+
+function groupColor(tag, g) {
+  if (g === 'Camera silhouette (165 slices)') return css('--sil');
+  return css(tag === 'v1000' ? '--v1000' : '--v402');
+}
+function buildRail() {
+  const host = $('models'); host.innerHTML = '';
+  for (const tag of ['v4.02', 'v1000']) {
+    const box = document.createElement('div'); box.className = 'model';
+    const fname = tag === 'v1000' ? 'Rubin_v1000_r.yaml' : 'LSST_r_v4.02.yaml';
+    box.innerHTML = `<h3><span class="dot" style="background:${css(tag === 'v1000' ? '--v1000' : '--v402')}"></span>${fname}</h3>`;
+    for (const g of GROUP_ORDER) {
+      const gr = D[tag].groups[g];
+      if (!gr) continue;
+      const id = `${tag}|${g}`;
+      if (!(id in vis)) vis[id] = (DEFAULT_ON[tag] || []).includes(g);
+      const lab = document.createElement('label'); lab.className = 'row';
+      const safe = 'cb-' + id.replace(/[^a-z0-9]/gi, '-');
+      lab.innerHTML = `<input type="checkbox" id="${safe}" ${vis[id] ? 'checked' : ''}> ${g}<span class="n">${gr.names.length}</span>`;
+      lab.querySelector('input').addEventListener('change', (e) => { vis[id] = e.target.checked; draw(); });
+      box.appendChild(lab);
+    }
+    host.appendChild(box);
+  }
+  const rh = $('rays'); rh.innerHTML = '';
+  for (const key of Object.keys(D.rays)) {
+    const id = 'rays|' + key;
+    if (!(id in vis)) vis[id] = key === 'v4.02|1.7';
+    const [tag, f] = key.split('|');
+    const lab = document.createElement('label'); lab.className = 'row';
+    const safe = 'cb-' + id.replace(/[^a-z0-9]/gi, '-');
+    lab.innerHTML = `<input type="checkbox" id="${safe}" ${vis[id] ? 'checked' : ''}> ${tag}, field ${(+f).toFixed(1)} deg<span class="n">${D.rays[key].length}</span>`;
+    lab.querySelector('input').addEventListener('change', (e) => { vis[id] = e.target.checked; draw(); });
+    rh.appendChild(lab);
+  }
+}
+function traces() {
+  const out = [];
+  for (const tag of ['v4.02', 'v1000']) {
+    for (const m of D[tag].meshes) {
+      if (!vis[`${tag}|${m.group}`]) continue;
+      out.push({ type: 'mesh3d', x: m.x, y: m.y, z: m.z, i: m.i, j: m.j, k: m.k, color: groupColor(tag, m.group),
+        opacity: m.group === 'Mirrors' ? 0.35 : 0.28, name: `${tag} ${m.name}`, hovertemplate: `${tag} ${m.name}<extra></extra>`, showlegend: false, flatshading: true });
+    }
+    for (const g of GROUP_ORDER) {
+      const gr = D[tag].groups[g];
+      if (!gr || !vis[`${tag}|${g}`]) continue;
+      const line = { color: groupColor(tag, g), width: g.startsWith('Camera') ? 3 : 2 };
+      if (g === 'Camera silhouette (165 slices)') {
+        line.color = gr.z.map((z) => (z === null ? 3.5 : z));
+        line.colorscale = [[0, css('--sil')], [1, css('--ink')]]; line.cmin = 3.48; line.cmax = 5.12;
+      }
+      out.push({ type: 'scatter3d', mode: 'lines', x: gr.x, y: gr.y, z: gr.z, line, name: `${tag} ${g}`,
+        hovertemplate: `${tag} ${g}<br>x %{x:.3f}  y %{y:.3f}  z %{z:.3f} m<extra></extra>`, showlegend: false, connectgaps: false });
+    }
+  }
+  for (const key of Object.keys(D.rays)) {
+    if (!vis['rays|' + key]) continue;
+    for (const r of D.rays[key]) {
+      const cam = r.blocker && (r.blocker.startsWith('CameraSilhouette') || r.blocker === 'CameraBody');
+      const color = !r.blocker ? css('--ray') : cam ? css('--blocked') : css('--muted');
+      out.push({ type: 'scatter3d', mode: 'lines', x: r.pts.map((p) => p[0]), y: r.pts.map((p) => p[1]), z: r.pts.map((p) => p[2]),
+        line: { color, width: cam ? 5 : 2 }, opacity: r.blocker && !cam ? 0.45 : 1, showlegend: false,
+        hovertemplate: `${key.replace('|', ', field ')} deg; stop x ${r.stop_x.toFixed(2)} m<br>${r.blocker ? 'stopped by ' + r.blocker : 'reaches the detector'}<extra></extra>` });
+    }
+  }
+  return out;
+}
+function layout() {
+  const ax = (title, range) => ({ title, range, gridcolor: css('--rule'), zerolinecolor: css('--rule'), backgroundcolor: css('--panel'), showbackground: true, color: css('--ink') });
+  let scene;
+  if (view === 'cam') scene = { xaxis: ax('x (m)', [-1.6, 1.6]), yaxis: ax('y (m)', [-1.6, 1.6]), zaxis: ax('z (m)', [2.9, 6.3]),
+    aspectmode: 'manual', aspectratio: { x: 1, y: 1, z: 1.06 }, camera: { eye: { x: 1.5, y: -1.5, z: 0.5 } } };
+  else if (view === 'side') scene = { xaxis: ax('x (m)', [-4.6, 4.6]), yaxis: ax('y (m)', [-4.6, 4.6]), zaxis: ax('z (m)', [-0.5, 10.2]),
+    aspectmode: 'manual', aspectratio: { x: 0.86, y: 0.86, z: 1 }, camera: { eye: { x: 0, y: -2.2, z: 0.05 }, projection: { type: 'orthographic' } } };
+  else if (view === 'top') scene = { xaxis: ax('x (m)', [-4.6, 4.6]), yaxis: ax('y (m)', [-4.6, 4.6]), zaxis: ax('z (m)', [-0.5, 10.2]),
+    aspectmode: 'manual', aspectratio: { x: 1, y: 1, z: 1.16 }, camera: { eye: { x: 0, y: 0.001, z: 2.4 }, up: { x: 0, y: 1, z: 0 }, projection: { type: 'orthographic' } } };
+  else scene = { xaxis: ax('x (m)', [-4.6, 4.6]), yaxis: ax('y (m)', [-4.6, 4.6]), zaxis: ax('z (m)', [-0.5, 10.2]),
+    aspectmode: 'manual', aspectratio: { x: 0.86, y: 0.86, z: 1 }, camera: { eye: { x: 1.4, y: -1.4, z: 0.7 } } };
+  return { paper_bgcolor: css('--panel'), font: { family: css('--font-body'), color: css('--ink'), size: 12 }, margin: { l: 0, r: 0, t: 0, b: 0 }, scene, uirevision: view };
+}
+function draw() { Plotly.react('scene', traces(), layout(), { displaylogo: false, responsive: true }); }
+function setView(v) {
+  view = v;
+  for (const [id, k] of [['vCam', 'cam'], ['vAll', 'all'], ['vSide', 'side'], ['vTop', 'top']]) $(id).setAttribute('aria-pressed', k === v ? 'true' : 'false');
+  draw();
+}
+$('vCam').addEventListener('click', () => setView('cam'));
+$('vAll').addEventListener('click', () => setView('all'));
+$('vSide').addEventListener('click', () => setView('side'));
+$('vTop').addEventListener('click', () => setView('top'));
+$('cbTable').innerHTML = CB.map((r) => `<tr><td>${r[0].toFixed(2)}</td><td>${r[1].toFixed(4)}</td><td>${r[2].toFixed(4)}</td><td>${r[3].toFixed(4)}</td><td>${(1e3 * (r[1] - r[3])).toFixed(1)}</td></tr>`).join('');
+function themeRedraw() { buildRail(); draw(); }
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeRedraw); } catch (e) {}
+new MutationObserver(themeRedraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+buildRail(); draw();
+</script>
