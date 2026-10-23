@@ -33,6 +33,8 @@ PASS_OF_RUN = {
     '20261018_spider_validation': '1', '20261019_pupil2': '2', '20261020_candidates_v2': 'S',
     '20261020_selection_diag': 'S', '20261020_test_v2': 'S', '20261020_pupil3': '3',
     '20261021_pupil4': '4', '20261022_pupil5': '5', '20261023_pupil6': '6',
+    '20261023_night2_review': 'N2', '20261023_night2_20260127': 'N2',
+    '20261023_night2_20250920': 'N2', '20261023_night2_20251027': 'N2',
 }
 _NUMBER = re.compile(r'^[\s\d.,+\-−eE%()]*$')
 
