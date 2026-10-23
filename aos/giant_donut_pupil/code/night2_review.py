@@ -60,6 +60,9 @@ STEP_TOL_UM = 300.0
 REF_JUMP_UM = 2000.0
 # An intra set is added only if it is expected to give this many donut sides.
 MIN_INTRA_SIDES = 20
+NIGHT2 = 20260127
+AARON_SETS = ('20260127_BLOCK-T680_r_extra_4mm_ra185', '20260127_BLOCK-T680_r_extra_8mm_ra146',
+              '20250920_BLOCK-T621_z_extra_8mm_ra38')
 # Perturbation thresholds against the reference, per DOF group: hexapod dz difference
 # (camera minus M2, µm), hexapod decenter (µm), hexapod tilt (deg), bending modes (µm).
 PERTURB = dict(dz_mismatch_um=30.0, decenter_um=20.0, tilt_deg=0.002, bending_um=0.1)
@@ -376,7 +379,10 @@ def classify(sets):
             cls.append('night 1')
         elif not r.giant:
             cls.append('not giant')
-        elif abs(r.r_out_science_pix - NIGHT1_R_OUT_PIX * abs(r.step_mm) / 4.0) > DEFOCUS_TOL_PIX * abs(r.step_mm) / 4.0:
+        elif abs(r.step_mm) == 8.0:
+            cls.append('8 mm, perturbed' if r.n_unperturbed < r.n_exposures else '8 mm')
+            continue
+        elif abs(r.r_out_science_pix - NIGHT1_R_OUT_PIX) > DEFOCUS_TOL_PIX:
             cls.append('other defocus')
         elif r.n_unperturbed < r.n_exposures:
             cls.append('perturbed')
@@ -554,7 +560,12 @@ def page_thumbnails(pdf, run, sets):
 
 def step_report(run):
     sets, exps = build_report_tables(run)
-    choice = pick_second_night(sets)
+    rule = pick_second_night(sets)
+    # Aaron, 2026-10-23: T680 at RA 185 deg (the prompt's expected choice), plus the 8 mm
+    # sets 20260127 seq 220-222 and 20250920 seq 274. The rule's ranking counts donuts on
+    # three detectors only (0-3 each), too few to order the sets.
+    chosen = sets[sets.set_id.isin(AARON_SETS)]
+    choice = (NIGHT2, chosen, f'Aaron 2026-10-23 (rule alone would pick {rule[0]}: {rule[2]})')
     intra_all = pick_intra(sets)
     intra_add = intra_all[intra_all.sides_est >= MIN_INTRA_SIDES].iloc[:1]
     for name, df in (('sets', sets), ('exposures', exps)):
