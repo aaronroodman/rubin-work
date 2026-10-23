@@ -260,15 +260,40 @@ about 7.4e5) 3.28 → 2.91 extra, 1.93 → 1.92 intra. Sims return 49.7 / 49.9 m
 - Ruled out: CCD readout or CTI (translation dy −1.70 / −1.64 E2V and −1.75 / −1.57 ITL,
   bottom / top amplifier halves, extra); brighter-fatter (it would fill the shadows).
 
-**Running (2026-10-23, 02:31):** `pass6_huygens.py`, Batoid Huygens donuts (NUFFT sum, method
-of `optics/fresnel_donuts` and batoid PR #127) on the 26 sim sides, 5 wavelengths 570–670 nm,
-0.5 mm stop grid, variants geometric, diffraction, vane phase strips of −0.1, +0.1, −0.2 µm and
-−0.1 µm offset ±40 mm in stop-plane y; fitted with v4.02s. Jobs 41678068 (validation, 2 sides,
-620 nm, `huygens_validate/`) then 41678069 (full, `huygens/`), logs
-`logs/batch_huygens_validate_20261023_023138.out` and `logs/batch_huygens_20261023_023138.out`.
+**Huygens validation** (job 41678068, `huygens_validate/`; 620 nm only, 1 side each, so
+single-side numbers). Shadow equivalent width (depth × FWHM, pixels) and fit c chi2/dof
+(v4.02s, dof 7.4e5 S51162258 extra at 0.569 deg; 3.8e5 CR00SW0_0 intra at 1.705 deg):
 
-**Not yet done:** step 7 (findings.md, figure_index.csv, method.md conventions and code map,
-the run-directory check, the CLAUDE.md additions) and /wrap.
+| variant | EW extra | EW intra | chi2/dof extra | chi2/dof intra |
+|---|---|---|---|---|
+| geometric | 4.2 | 5.0 | 0.91 | 2.60 |
+| diffraction | 6.0 | 6.0 | 0.98 | 5.20 |
+| phase strip −0.1 µm | 4.2 | 7.4 | 0.96 | 12.0 |
+| phase strip +0.1 µm | 8.0 | 4.7 | 1.08 | 4.42 |
+| data (central band, all sides) | 10.0 | 5.4 | | |
+
+- Diffraction widens the shadows equally on both sides (EW 4.2 → 6.0 pixels) and moves the
+  edges the way the data do (edge median +0.31 inner, −0.36 outer extra).
+- The phase strip makes the two sides differ, and only the **positive** sign (+0.1 µm of
+  extra optical path along the vane, i.e. colder or denser air) gives the data's
+  extra > intra (8.0 / 4.7 against 10.0 / 5.4). The 1D fit had picked the other sign.
+- A strip offset 40 mm along stop-plane y translates the shadow pattern by about ±0.2 pixels,
+  the **same sign on both sides** (+0.23 / +0.17 for +40 mm), as the data's translation is.
+
+**Running (2026-10-23 03:10):** job 41678069 (`huygens/`, all 26 sides, 5 wavelengths
+570–670 nm, the base set: geometric, diffraction, strips −0.1, +0.1, −0.2 µm and −0.1 µm
+offset ±40 mm), log `logs/batch_huygens_20261023_023138.out`; job 41681217
+(`huygens_plume2/`, the positive-sign set: +0.1 µm offset ±40 and −120 mm, +0.15 and
++0.2 µm, +0.15 µm with sigma 40 and 90 mm), log `logs/batch_huygens_plume2_20261023_030846.out`.
+Each writes `huygens_summary.csv` and per-variant pass 5 tables. Next: compare the
+variants with the data (equivalent width per side, edge medians, ratio excess,
+translation), then add a section to `pupil_pass6.pdf`.
+
+Step 7 done: `findings.md` (38 rows: 27 settled, 5 open, 6 superseded), `figure_index.csv`
+(1 270 pages in 19 PDFs: 320 relevant, 2 superseded, 948 context), `method.md` "Conventions
+in force", "Code map" and the run-directory check (passes 2–5 need their `images/` arrays,
+pass 5 also the pass 4 run; pass 1's `20261018_fits` image pages need a refit), and the two
+CLAUDE.md rules.
 
 ### 2026-10-21 — pupil pass 5: edge and spider validation, vignetting surfaces, rotator test, free blur
 
