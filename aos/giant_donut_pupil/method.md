@@ -234,3 +234,97 @@ Run `20261020_pupil3`. v4.02 only.
   fit-a centre, with the data's noise; spider bins from danish images with and without
   the vanes (`pupil_edges.spider_bins` logic); vignetted bins where the no-vane model's
   flat top is under 0.3 of its maximum.
+
+## Conventions in force (pupil pass 6)
+
+Each line gives the convention, then when and why it last changed.
+
+- **In-focus reference: seq 336** (20251023), the in-focus image just before the giant pair
+  (camera and M2 Trim ±4000.0 µm from it). Was seq 324 until pass 5; changed by Aaron
+  2026-10-20, because 336 is the state the giant pair was stepped from.
+- **Reference wavefront: intrinsicTA** (`pupil_pass3.reference_zk`), the ts_wep danish
+  reference at the defocused configuration; reported Zernikes are deviations from the
+  in-focus intrinsic (ts_wep `returnWfDev`), µm of wavefront, CCS and OCS. Since pass 3,
+  replacing the batoid zernikeGQ reference, to match ts_wep.
+- **Rotator angle: rtp = physical_rotator_angle** from ConsDB `cdb_lsstcam.visit1_quicklook`
+  (`pass6_common.rotator_table`, via `rubinwork.common.telemetry_clients.make_consdb_client`):
+  +0.0120 deg (337), +0.1495 deg (340). It sets danish `spider_angle` and the Batoid
+  rotation (telescope rotated by −rtp, camera fixed). The visitInfo rtp is kept as
+  `rtp_visitinfo_deg`. Pass 6; visitInfo sits +0.211 / +0.189 deg off, and the EFD agrees
+  with ConsDB. The rotator turns +0.019 / +0.025 deg during the 60 s exposures: negligible.
+- **Relative azimuth ψ** = (az − (field_az_ocs + 180)) mod 360, deg, az the OCS image
+  azimuth about the fit-a center: ψ = 0 points away from the field center. **ψ number** counts
+  shadows in ψ from the one nearest ψ = 0. **Vane id** sorts the 8 shadows by pupil azimuth
+  (fixed to the telescope, the same vane on both sides of focus). Since pass 4, so the outer
+  band stacks across donuts (`pass5_spiders.number`).
+- **Mask: v4.02s** for the corrected inner edge above 1.4 deg (`pass6_silhouette.v402s`,
+  `20261023_pupil6/masks`); **v4.02g** stays the baseline of the pass 6 data fits so they
+  compare with passes 3–5. v4.02g since pass 2 (fitted at the giant configurations);
+  v4.02s since pass 6, because the v4.02g silhouette circle sat 2–5 pixels inside Batoid
+  where it sets the edge.
+- **Stamps: ISR with flat and CTI** (`pass6_isr.py`, `IsrTaskLSST` with the obs_lsst
+  `isrLSST` overrides; brighter-fatter and gain correction off), one sky constant per stamp.
+  Since pass 6; before, overscan, assembly and nominal gains only. No result moved.
+- **Edges: robust edges** (`robust_edges.robust_edges`, harmonic fit about the fit-a center,
+  with the data noise), spider and vignetted bins dropped. Since pass 2 (pass 1 used the 50 %
+  of flat-top crossing).
+- **Spider tracer: guided** (`pass5_common.guided_shadows`): the model shadow, found near
+  the no-vane-minus-vane guide, guides the data search within a window; chords at 7 radii,
+  fit-a center. Since pass 5, because the pass 4 tracer locked onto dark-ring dips.
+- **Spider pattern fit:** per side a Huber fit of rotation + translation (dx, dy) to the
+  data − model azimuth at r_half (`pass5_analysis.translation_fit`); δ from the grid
+  −1 to +1 deg in 0.05 deg steps (`rotation_fit`). Since pass 5. The rot20 sims show δ
+  recovers 0.76 (extra) and 0.86 (intra) of a real rotation (pass 6).
+- **Blur:** danish Kolmogorov, fixed at 1.0 arcsec FWHM on the data fits; the sims are
+  drawn and fitted at 1.00 (extra) and 1.60 (intra) arcsec, the pass 5 free-blur values.
+- **Fits:** a (Z4), c (Z4–Z11, Z14, Z15, Z20–Z22) as in pass 3; `fit_ok` from the pass 3
+  flux-ratio test (factor 1.5).
+
+## Code map
+
+Current (pass 6, all in `code/`):
+
+| module | what |
+|---|---|
+| `pass6_common.py` | run paths, sides table (pass 5 sides plus rtp columns), ConsDB rotator angles, mask variants (`mask_params`) |
+| `pass6_isr.py` | ISR stamps with flat and CTI; `isr_stamps/`, calibration and config records |
+| `pass6_pipeline.py` | one side end to end: fits a and c, edges, guided shadows, δ grid, edge centers (`measure`); tables |
+| `pass6_data.py` | the data configurations (`isr_visitinfo`, `isr_phys`, `isr_phys_v402s`) |
+| `pass6_sims.py` | Batoid design sims of 26 sides, variants nominal, rot20 and tea_y10, and their fits |
+| `pass6_silhouette.py` | the v4.02s CameraSilhouette refit and the data silhouette fit |
+| `pass6_vanes.py` | one free vane width per side, data and sims |
+| `pass6_huygens.py` | Huygens (NUFFT) giant donuts with and without vane phase strips, and their fits |
+| `pass6_report.py` | `pupil_pass6.pdf` and the summary tables, from the run's tables only |
+| `submit_pass6.sh` | Slurm submit wrapper (milano) for the pass 6 drivers |
+| `figure_index.py` | `figure_index.csv`, one row per PDF page, relevance from `findings.md` |
+| `pass5_common.py`, `pass5_analysis.py`, `pass5_spiders.py` | the guided tracer, the pattern fits and the shadow numbering, used by pass 6 |
+| `pupil_pass3.py`, `robust_edges.py`, `pupil_edges.py`, `fit_donuts.py` | reference wavefront, fit sets, edges, stamp cutting and the danish setup |
+| `batoid_images.py`, `obscuration_v402.py`, `obscuration_v402g.py` | Batoid v4.02 images and optics, the v4.02 and v4.02g mask fits |
+
+Kept to reproduce earlier passes: `pass5_blur.py`, `pass5_vignetting.py`,
+`pass5_edges_gallery.py`, `pass5_report.py` (pass 5); `pupil_pass4.py`, `spider_pass4.py`,
+`pupil_pass4_report.py`, `spider_pass4_report.py` (pass 4); `pupil_pass3_report.py` (pass 3);
+`fits_pass2.py`, `pass2_report.py`, `state_pass.py`, `giant_state.py`, `coma_sensitivity.py`,
+`geom_edges.py` (pass 2); `z4_fits.py`, `spider_validation.py`, `plot_results.py` (pass 1);
+`isr_cache.py`, `candidates.py`, `select_candidates.py`, `selection_v2.py`, `peak_quality.py`,
+`peak_refine.py`, `score_selection.py`, `final_candidates.py`, `hand_label.py`,
+`selection_pages.py`, `pupil_sample.py`, `find_giant_nights.py`, `fp_mosaic.py` (selection).
+
+## Run directories: can the summary pages be regenerated without refitting?
+
+Pass 6 (`20261023_pupil6`) can: `pass6_report.py` reads only tables, `isr_stamps/` and the
+small sim model arrays (`sims/stamps/*_model.npz`), and reruns in a few minutes.
+
+Earlier passes whose summary pages need more than tables and small arrays:
+- **pass 1** (`20261018_fits`, `20261018_pupil`): the image pages read `images/*.npz`
+  (170 MB in `20261018_pupil`); `20261018_fits` has no image arrays, so its image pages need
+  a refit.
+- **pass 2** (`20261019_pupil2`): `pass2_report.py` reads `images/` (468 MB), present.
+- **pass 3** (`20261020_pupil3`): `pupil_pass3_report.py` reads `images/` (522 MB), present.
+- **pass 4** (`20261021_pupil4`): reads `images/` (1.1 GB, including the `_c0` arrays),
+  present.
+- **pass 5** (`20261022_pupil5`): `pass5_report.py` reads pass 4's `images/` and tables for
+  its step 3 and step 4 pages, so it depends on another run.
+
+All of passes 2–5 regenerate from their run directories as long as the `images/` arrays
+(and, for pass 5, the pass 4 run) are kept; none store their summary tables alone.

@@ -220,6 +220,10 @@ ending your turn.
    next) and commit, then continue.
 7. End with the full report the prompt asks for, and only once every step is done or
    recorded as skipped with a reason.
+8. Where a study keeps them, a pass updates `findings.md`, `figure_index.csv` and the
+   conventions in `method.md` before it finishes.
+9. Report-back copy commands for study output are one `rsync` mirroring the study's
+   `output/` tree, excluding `images/` and `*_isr_bin4/`, not per-file copies.
 
 ### Commands handed to Aaron
 Give the **full copy-paste-ready command — no `...`, no `<placeholder>`, no
