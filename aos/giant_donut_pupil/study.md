@@ -3,7 +3,7 @@ study: giant_donut_pupil
 topic: aos
 status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'Pass 5: the spider offset is a translation of the shadows (dy -1.7 / -2.1 pixels OCS image, extra / intra), which removes the m = 1 term (0.36 / 0.43 deg to 0.003 deg). A rotator offset (delta +0.13 / +0.23 deg, near the EFD-minus-rtp +0.2 deg) removes none of it. The outer-band inner-edge miss sits where the camera silhouette sets the edge, and there the v4.02g mask is 3-4 pixels inside Batoid. Free blur does not explain the 1.7x shadow width.'
+answer: 'Pass 6: Batoid design sims show danish has no spider or edge bias, so the data shadow translation (dy -1.65 / -2.07 pixels OCS image, extra / intra) and inner-edge shift are real; full ISR changes nothing. With physical_rotator_angle the rotation is -0.026 / +0.087 deg after the sim-measured recovery. The v4.02s silhouette removes the extra inner-edge miss and leaves +1.9 pixels intra. The vane shadows differ between sides of focus (fitted widths 103 / 61 mm against CAD 50 mm), which an opaque vane cannot do; diffraction and a vane phase strip are being tested.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -44,6 +44,25 @@ arcsec), v4.02 still wins: 35 of 38 donut sides, 15 of 16 clean, median ratio 0.
 full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean donuts
 the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
 1 pixel over 225–315 deg, on both sides of focus.
+
+Pupil pass 6 (2026-10-23; 188 sides, ISR stamps, rtp = physical_rotator_angle):
+- **The spider translation and edge shifts are real pupil effects, not danish modeling bias.**
+  Batoid design sims through the same pipeline give m = 1 0.001 / 0.006 deg, translation dy
+  −0.01 / −0.05 pixels and no edge-circle shift. The data keep dy −1.65 / −2.07 pixels, m = 1
+  0.35 / 0.42 deg and inner-edge dy +2.1 / +1.8 pixels (extra / intra, OCS image). Full ISR
+  (flat, CTI, PTC gains) changes none of them beyond the errors.
+- **Rotator:** with physical_rotator_angle, δ = −0.020 deg extra and +0.075 deg intra. The
+  rotation check shows δ recovers 0.76 / 0.86 of a real rotation, so the rotation is −0.026 /
+  +0.087 deg (dimensionless recovery from sims drawn at rtp + 0.20 deg).
+- **TEA check:** a 10 mm TEA shift moves the sim shadows −0.83 / +0.83 pixels (expected
+  ∓0.88), opposite signs; the data's translation has the same sign on both sides.
+- **Silhouette:** refitting the CameraSilhouette circle above 1.4 deg (v4.02s) removes the
+  extra-focal inner-edge miss (+3.1 → −0.3 pixels) and cuts the intra one to +1.9 pixels.
+- **Vane shadows:** a free vane width fits 103 mm extra and 61 mm intra (CAD 50 mm; sims give
+  50 mm). Their equivalent width differs between sides of focus (10.0 against 5.4 pixels),
+  which an opaque vane cannot do. Open: Fresnel diffraction (explains the ±1 pixel edge miss
+  and the intra shadow in 1D) and a phase strip along the vanes (fits both sides in 1D at
+  about 0.1 µm of optical path). Wave-optics sims are running.
 
 Pupil pass 5 (2026-10-22; 188 sides, validation):
 - **The spider offset is a translation of the shadows, not a rotator offset.** Fitting
@@ -122,6 +141,134 @@ Pupil pass 2 (2026-10-20) settles what that offset is not:
   nothing: they uniquely block no ray.
 
 ## Log
+
+### 2026-10-22/23 — pupil pass 6: ISR, physical rotator angle, simulations, silhouette, vane width
+
+Run `output/20261023_pupil6`, report `pupil_pass6.pdf` (44 pages). Setup as pass 5: v4.02,
+intrinsicTA reference, fit c, guided spider tracer, robust edges, 188 sides. Heavy steps ran
+as Slurm jobs (`code/submit_pass6.sh`) after a login-node reboot on 2026-10-22.
+
+Recorded from Aaron (2026-10-22):
+- **TEA study** (rubin-optical-model `studies/tea_decenter`, commits ba1a4c1, eb2bf79). A TEA
+  decenter or tilt moves the spider shadows with a sign that flips between intra and extra
+  (Batoid: 0.88 pixels per 10 mm on axis). In the pupil-frame vane id the data's m = 1 term
+  has opposite signs (+0.4 deg extra, −0.4 deg intra at id 0); in OCS image azimuth it has
+  the same sign. The flipping part of the translation is −0.13 ± 0.03 pixels (y), so the TEA
+  is centered to about 1.5–2 mm, and the common −1.9 pixel translation is not a TEA effect.
+- **Not coma.** Coma shifts the inner edge and the spiders the same way relative to the
+  outer edge (center shift ∝ 6(ρ² − 1) for Z7); the data shift them in opposite directions.
+  It would also need about 0.7 µm of Z7, against 0.14–0.24 µm in the whole-donut fits.
+- **ConsDB** works with the RSP token. physical_rotator_angle is in
+  `cdb_lsstcam.visit1_quicklook` (not `exposure`): 337 +0.0120, 340 +0.1495, 336 −0.0300,
+  324 −0.0429 deg. That matches the EFD and sits +0.211 / +0.189 deg from the visitInfo rtp.
+- **Future study:** the vane shadows (width, depth, their intra/extra difference) may depend
+  on thermal effects.
+
+Checked assumption, the rotator during the exposure: the parallactic angle changes +0.019 deg
+(337) and +0.025 deg (340) over the 60 s. That is about 0.1 pixels of arc at r_half against a
+10–12 pixel shadow, and at most 0.01 deg of δ bias. Negligible.
+
+**Step 1, ISR.** `IsrTaskLSST` with the obs_lsst `isrLSST` overrides (`isr_config.py`):
+bias, dark, flat, defects, linearity, crosstalk, CTI (`deferredChargeCalib` ← cti), PTC
+gains. Off: brighter-fatter, gain correction (no `gain_correction` calibration). One sky
+constant per stamp, as before. Calibrations (`isr_calibs.csv`), all under `LSSTCam/calib`:
+bias and dark DM-53620/3s_v1_dp2_v2 (biasGen.20251215c, darkGen.20251215a), flat
+DM-53668/3s_v1_oct_2025/flatAnaglyphGen-r.20251218a, defects defectGen.20251215a,
+linearizer linearizerGen.20251215c, crosstalk DM-51599/cbp_crosstalk/crosstalkGen.20251121a,
+cti ctiGen.20251215c, ptc ptcGen.20251215c. The ISR changes nothing beyond the errors
+(fit-a center, OCS image, median ± error on the median, visitInfo rtp as pass 5):
+
+| quantity | pass 5 extra | ISR extra | pass 5 intra | ISR intra |
+|---|---|---|---|---|
+| translation dx (pixels) | +0.137 ± 0.049 | +0.124 ± 0.049 | +0.115 ± 0.056 | +0.102 ± 0.056 |
+| translation dy (pixels) | −1.694 ± 0.056 | −1.684 ± 0.047 | −2.118 ± 0.089 | −2.150 ± 0.079 |
+| m = 1 amplitude (deg) | 0.355 | 0.355 | 0.431 | 0.425 |
+| inner-edge circle dy, data − model (pixels) | +2.132 | +2.150 | +1.710 | +1.741 |
+
+fit_ok rises from 183 to 188 of 188 sides; the ring flux is 5–9 % higher (PTC gains, flat).
+
+**Step 2, rtp = physical_rotator_angle** (`rotator.parquet`; visitInfo kept as a column).
+δ (danish spider_angle = rtp + δ): −0.020 deg extra (nMAD 0.050, error on the median 0.007,
+n 91), +0.075 deg intra (nMAD 0.066, error 0.008, n 97). The rot20 check (step 3e) shows δ
+recovers 0.76 (extra) and 0.86 (intra) of a real rotation (dimensionless; fitted over
+drawn), so the corrected δ is −0.026 deg extra and +0.087 deg intra. The expected −0.08 /
++0.04 deg is missed by about +0.05 deg on both sides; intra − extra is 0.11 deg. The
+translation and m = 1 do not change: dy −1.653 ± 0.045 / −2.071 ± 0.081 pixels, m = 1 0.353 /
+0.415 deg.
+
+**Step 3, simulations** (`sims/`; `pass6_sims.py`). 12 science donuts on both sides (per OCS
+quadrant one near 0.5 deg and two near 1.50 and 1.68 deg, r < 14, all 8 shadows found in
+pass 5) and 2 corner sides (SW1 extra, SW0 intra): 26 sides. Batoid v4.02 (reduced model,
+30 million rays, 620 nm), design state, the side's field, giant offsets and physical rtp;
+danish Kolmogorov blur 1.00 / 1.60 arcsec; data flux, data sky, Poisson; the data pipeline at
+the sim blur. The sims have the design wavefront only.
+- **danish has no spider or edge bias on the design pupil.** Sims (v4.02g fit): m = 1 0.001 /
+  0.006 deg, translation dy −0.007 / −0.052 pixels, inner-edge circle dy −0.028 / −0.004
+  pixels, ratio excess −0.0004 / −0.0005 (dimensionless). Per vane id the sims are within
+  0.021 deg of zero. Subtracting them leaves the data whole: data − sim m = 1 0.345 / 0.385
+  deg, dy −1.59 / −2.00 pixels, inner dy +2.11 / +1.78 pixels (the 13 sim donuts).
+- **Rotation check** (drawn at rtp + 0.20 deg, fitted at rtp): δ 0.152 / 0.173 deg (error
+  0.002 / 0.003). The sim shadows moved −0.202 / −0.204 deg, but fit c, run with the spider
+  at rtp, moves its own model shadows −0.051 / −0.029 deg toward them, so δ sees the rest.
+- **TEA +10 mm in y check:** the shadows move −0.825 / +0.829 pixels in the image (expected
+  ∓0.88), opposite signs as expected. About the fit-a center only −0.56 / +0.65 pixels: the
+  TEA central shade moves the fit-a center by −0.25 / +0.17 pixels too.
+- **Sim fits at large field.** Danish fitted to its own Batoid sim: chi2/dof 0.87 median at
+  field ≤ 1.4 deg (8 sides) with either mask; above 1.4 deg (18 sides) 1.30 with v4.02g (worst
+  11.85, P1693 extra) and 0.90 with v4.02s (worst 2.80). The leftover at 1.69–1.70 deg (P1693,
+  CR00SW0_0) sits on rays first clipped by TMASection (model has light the sim lacks) and
+  M1Baffle1 (the reverse); the mask has no TMASection circle.
+
+**Step 4, silhouette (v4.02s).** CameraSilhouette refitted to Batoid's inner edge where the
+silhouette sets it (`pass6_silhouette.py`), split at 1.4 deg (the cubic extrapolated below
+cuts up to 4.2 pixels into other bins at 1.30 deg with a 1.3 deg split). danish − Batoid in
+silhouette-set bins at 1.45–1.75 deg: v4.02g −1.76 to −5.26 pixels (median per field and
+config), v4.02s 0.0 median, worst −0.52. Data (science, 1.6–1.725 deg, 17 sides each):
+
+| inner-edge miss, data − model (pixels) | v4.02g | v4.02s |
+|---|---|---|
+| extra, ψ 160–200 deg | +3.05 ± 0.67 | −0.28 ± 0.57 |
+| intra, ψ 330–30 deg | +5.51 ± 0.44 | +1.93 ± 0.39 |
+
+The intra miss that remains fits a silhouette radius change of +14.3 ± 4.4 mm and a center
+change of −10.7 ± 4.6 mm (stop plane; RMS 1.92 → 0.45 pixels); extra +8.7 ± 7.4 mm and
++14.5 ± 7.8 mm (RMS 0.74 → 0.62 pixels), consistent with zero.
+
+**Step 5, vane width** (`pass6_vanes.py`; one width for all vanes, blur fixed at the pass 5
+free-fit value, 53 central-band science sides). Data: 102.8 mm extra (nMAD 3.6, n 26), 61.3 mm
+intra (nMAD 2.0, n 27), against CAD 50 mm. Shadow depth data / model: 0.87 / 0.64 at CAD and
+0.87 / 0.89 at the best width (extra), 0.53 / 0.44 and 0.53 / 0.51 (intra). chi2/dof (dof
+about 7.4e5) 3.28 → 2.91 extra, 1.93 → 1.92 intra. Sims return 49.7 / 49.9 mm (nMAD 0.4 / 0.3).
+
+**Shadow profiles and two candidate causes** (not in danish or the Batoid sims):
+- Median central-band profile, ring level 1: extra depth 0.14 at the center with side lobes
+  1.22 at ±10 pixels; intra 0.49, no lobes. Equivalent width (depth × FWHM) 10.0 pixels extra,
+  5.4 intra, model 4.1 on both. An opaque vane gives the same on both sides of focus.
+- **Fresnel diffraction:** the giant defocus puts the detector at an equivalent 12.7 km from
+  the pupil; the Fresnel scale is 89 mm, 7.2 pixels. In 1D (560–690 nm, Kolmogorov blur) an
+  edge's half level moves +1.23 pixels (1.0 arcsec) and +0.89 pixels (1.6 arcsec) into the
+  lit ring. Away from the silhouette the data − v4.02s model is +0.8 / +0.45 pixels inner and
+  −0.5 / −0.5 pixels outer (extra / intra), flat in field, and the predicted ratio excess
+  (+0.003) is close to the measured +0.0036 / +0.0017. Diffraction alone fits the intra
+  shadow (profile RMS 0.028 of the ring level) but not the extra one (0.18).
+- **A phase strip along the vanes** (warm air): in 1D a 70 mm vane plus −1 rad at 620 nm
+  (0.1 µm of optical path, Gaussian sigma 60 mm) fits both sides at once (RMS 0.060 extra,
+  0.035 intra). That is about 0.1 K over 1 m of path, and is the static phase strip of
+  `optics/docs/studies/intra_extra_phase_strip.md`. Camera telemetry at seq 335 and 341: body
+  +0.6 to +0.8 K, L1 +0.7 to +1.6 K, shutter electronics return air +7.2 K above the ambient
+  8.6 °C. Pointing: altitude 67.4 / 65.7 deg, azimuth 268.5 / 267.7 deg.
+- Ruled out: CCD readout or CTI (translation dy −1.70 / −1.64 E2V and −1.75 / −1.57 ITL,
+  bottom / top amplifier halves, extra); brighter-fatter (it would fill the shadows).
+
+**Running (2026-10-23, 02:31):** `pass6_huygens.py`, Batoid Huygens donuts (NUFFT sum, method
+of `optics/fresnel_donuts` and batoid PR #127) on the 26 sim sides, 5 wavelengths 570–670 nm,
+0.5 mm stop grid, variants geometric, diffraction, vane phase strips of −0.1, +0.1, −0.2 µm and
+−0.1 µm offset ±40 mm in stop-plane y; fitted with v4.02s. Jobs 41678068 (validation, 2 sides,
+620 nm, `huygens_validate/`) then 41678069 (full, `huygens/`), logs
+`logs/batch_huygens_validate_20261023_023138.out` and `logs/batch_huygens_20261023_023138.out`.
+
+**Not yet done:** step 7 (findings.md, figure_index.csv, method.md conventions and code map,
+the run-directory check, the CLAUDE.md additions) and /wrap.
 
 ### 2026-10-21 — pupil pass 5: edge and spider validation, vignetting surfaces, rotator test, free blur
 
