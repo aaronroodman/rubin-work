@@ -69,6 +69,15 @@ FIT_MASK = 'v4.02s'
 PHASE_VARIANTS = {'plume_m0p1': (-0.10, 0.060, 0.0), 'plume_p0p1': (+0.10, 0.060, 0.0),
                   'plume_m0p2': (-0.20, 0.045, 0.0), 'plume_m0p1_yp40': (-0.10, 0.060, +0.040),
                   'plume_m0p1_ym40': (-0.10, 0.060, -0.040)}
+# second set: the +OPD sign, which the validation run showed gives the data's extra > intra
+# shadow equivalent width; offsets along stop-plane y give a same-sign translation
+PHASE_SETS = {'base': PHASE_VARIANTS,
+              'plume2': {'plume_p0p1_yp40': (+0.10, 0.060, +0.040),
+                         'plume_p0p1_ym40': (+0.10, 0.060, -0.040),
+                         'plume_p0p1_ym120': (+0.10, 0.060, -0.120),
+                         'plume_p0p15': (+0.15, 0.060, 0.0), 'plume_p0p2': (+0.20, 0.060, 0.0),
+                         'plume_p0p15_s40': (+0.15, 0.040, 0.0),
+                         'plume_p0p15_s90': (+0.15, 0.090, 0.0)}}
 VARIANTS = ('geometric', 'diffraction') + tuple(PHASE_VARIANTS)
 
 
@@ -306,8 +315,14 @@ def main():
     ap.add_argument('--validate', action='store_true',
                     help='1 science and 1 corner side, 620 nm, full grid, to huygens_validate/')
     ap.add_argument('--blocks', type=int, default=N_BLOCKS)
+    ap.add_argument('--set', default='base', choices=tuple(PHASE_SETS),
+                    help='phase variants; plume2 writes to huygens_plume2/')
     args = ap.parse_args()
-    global OUT
+    global OUT, PHASE_VARIANTS, VARIANTS
+    PHASE_VARIANTS = PHASE_SETS[args.set]
+    VARIANTS = ('geometric', 'diffraction') + tuple(PHASE_VARIANTS)
+    if args.set != 'base':
+        OUT = p6.RUN / f'huygens_{args.set}'
     C = pd.read_parquet(psim.SIM_DIR / 'sim_sides.parquet')
     wls, spacing = WAVELENGTHS_M, STOP_SPACING_M
     if args.test:
