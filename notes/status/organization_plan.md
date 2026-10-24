@@ -813,22 +813,25 @@ No topic is retired (Aaron, 2026-10-18): `camera`, `des`, `starcolor`, `survey`,
 any of them. The triage answers are in `notes/status/phase5_study_triage.md`, "Decisions
 taken"; the conversion state is in `notes/status/phase5_convert_handoff.md`.
 
-Status 2026-10-24: every topic is converted (64 studies, count); the section 2 fixes are
-done except three allow-listed cases that need Aaron's decision; topic READMEs carry a
-generated Studies block; no tracked code imports a shim. Open: deleting 41 shim files
-(count; one `git rm` in the handoff), six shims kept for untracked notebooks, and the
-decisions listed in the handoff.
+Status 2026-10-24: every topic is converted (64 studies, count). Done 2026-10-24, from
+Aaron's answers in `notes/status/phase5_convert_handoff.md`: the 41 shim files (count)
+removed (`d5dc3ef`); `rubinwork` reinstalled from `/sdf/home/...` and the repo-root
+`sys.path` inserts dropped (`9096408`); `load_science` to `rubinwork.thermal_focus.sample`
+(`79ec197`); `psf/wavefront_to_psf` and `optatmo` read the products (`00da2f5`, `b0617e6`).
+`ALLOWED` holds one entry, `optatmo/code/extract_cwfs_sigma.py` (it reads the `aos/cwfs`
+study's `wfs_corner_compare.parquet`; no product). Open: six shims kept for untracked
+notebooks, and the `wfs_corner_compare` choice (both in the handoff).
 
-**Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. Two items from it need a check: the CCD-height sign in `aos/docs/ts_wep_zernike_intrinsics.md` (ts_wep "extra +, intra −" against batoid's same sign on both sides, not reconciled), and the summit_utils branch state in `guider/docs/status/summit_utils_branch_state.md` (as of the clone's last fetch, 2026-09-03). Move the science facts in the laptop Claude memory
-(MIW, guider, Z11 intra/extra, CCD height map, frame conventions) into the matching study
-or product docs, so S3DF sessions see them.
+**Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. The two checks, 2026-10-24: the summit_utils branch state is refetched and updated (`d58ca7f`, `guider/summit_utils_branch/summit_utils_branch_state.md`). The CCD-height sign is checked (`07dd4d4`, `notes/status/phase6_ccd_height_sign.md`): both sides add the height term with the same sign on intra and extra, so the doc's "extra +, intra −" is wrong. **The doc fix awaits Aaron's sign-off**; nothing else in phase 6 is open.
 
 **Phase 7 — cleanup, Aaron's call.** The old output trees are whole copies of the
 pre-reorg state; Aaron zips them for temporary backup and removes them when satisfied.
-The laptop's synced output copies (about 60 GB) can go.
+The laptop's synced output copies (about 60 GB) can go. Prepared 2026-10-24 (inventory, readers, zip and removal
+commands): `notes/status/phase7_cleanup_plan.md`. Nothing zipped or removed.
 
 **Phase 8 — code review.** Part C of the old plan (C1–C4, at the tag), applied to the new
-layout. The reference runs from phases 2–3 are its first regression tests.
+layout. The reference runs from phases 2–3 are its first regression tests. Planned 2026-10-24 (scope, references, order):
+`notes/status/phase8_code_review_plan.md`. Not started.
 
 ## 9. Output mapping, first draft
 

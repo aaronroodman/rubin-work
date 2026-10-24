@@ -1,6 +1,6 @@
 # Phase 5 handoff: converting the studies
 
-> **Status:** studies converted; deletions and three decisions open · **Last updated:** 2026-10-24 · **Kind:** working state
+> **Status:** phase 5 done except two items for Aaron · **Last updated:** 2026-10-24 · **Kind:** working state
 > (handoff)
 
 Phase 5 of `notes/status/organization_plan.md` (section 8): each study becomes
@@ -33,84 +33,128 @@ Aaron, 2026-10-18, on the three items formerly under "Decisions for Aaron":
 10. `thermal_focus/code/` becomes a shared module in the section 2 step; then
     `trim_calculator` moves into its study.
 
+Aaron, 2026-10-24, on the four items then under "Decisions for Aaron":
+
+11. `psf/wavefront_to_psf` and `optatmo`: repoint both to the products. For most purposes
+    the camera rotator angle need only be known to about 1 deg (giant donuts excepted), so
+    the `fam_tables` `rotator_angle` change (up to 0.858 deg) and the MIW map change are
+    acceptable. No rerun or comparison of the optatmo results.
+12. `thermal_focus`: fix as proposed. `load_science` into `rubinwork.thermal_focus`; the
+    section 11 calculator check into the `trim_calculator` study.
+13. Reinstall `rubinwork` from the s3df path.
+14. The 41-file `git rm`, exactly as listed.
+
 The `aos` conversion waits for the giant-donut work (`aos/giant_donut_pupil`), because
 the `aos` step moves `wfs/giant_donuts`.
 
-## For Aaron to delete by hand
+## Done 2026-10-24, from decisions 11–14
 
-Decision 9's two files are gone. Ready now: 41 files (count) with no tracked importer.
-`pytest rubinwork` passes on a copy of the tree without them, apart from 3 tests that
-need a `.git` directory, which the copy did not have.
+| item | commit | result |
+|---|---|---|
+| the 41-file `git rm` (decision 14) | `d5dc3ef` | `pytest rubinwork` 430 passed, 10 skipped (count) |
+| reinstall, repo-root inserts removed (13) | `9096408` | see below |
+| `thermal_focus` (12) | `79ec197` | `rubinwork.thermal_focus.sample` with `tests/test_sample.py`; `trim_calculator/code/check_against_fit.py` |
+| `psf/wavefront_to_psf` (11) | `00da2f5` | reads `fam_tables` `danish_1_2`; run on one visit |
+| `optatmo` (11) | `b0617e6` | five files read `fam_tables` `danish_1_2`; `plot_miw_radial_correlations.py` reads `miw` `d12-A_50_34_i_5rot` |
+
+**The reinstall.** `pip install --user -e .` from `/sdf/home/r/roodman/notebooks/rubin-work`;
+the editable finder in `~/.local/lib/python3.13/site-packages` now maps `rubinwork` to
+`/sdf/home/r/roodman/notebooks/rubin-work/rubinwork`. `import rubinwork` works with no repo
+path on `sys.path` from a clean login shell on sdfiana029 and inside an interactive `srun` on
+sdfmilan267 (milano). The RSP shares this `~/.local` but mounts the home at
+`/home/r/roodman`, where `/sdf/home/...` may not exist, so after this install the RSP's
+`import rubinwork` likely fails until Aaron runs, in an RSP terminal (it adds a second
+editable path; the sdfiana mapping stays the first one tried):
 
 ```bash
-cd ~/notebooks/rubin-work && git rm \
-    aos/code/aos_consdb_efd.py aos/code/open_loop.py \
-    aos/code/miw_io.py aos/code/miw_corner_intrinsic.py \
-    aos/code/cwfs/run_wfs_mktable.py aos/code/lut/run_build_lut.py \
-    aos/code/fam_processing/backfill_visit_sides.py \
-    aos/code/fam_processing/blitz_reader.py \
-    aos/code/fam_processing/run_attach_telemetry.py \
-    aos/code/fam_processing/run_blitz_mktable.py \
-    aos/code/bounce/__init__.py aos/code/closed_loop/__init__.py \
-    aos/code/coadd/__init__.py aos/code/correlations/__init__.py \
-    aos/code/cwfs/__init__.py aos/code/dzfit/__init__.py \
-    aos/code/fam_processing/__init__.py aos/code/infra/__init__.py \
-    aos/code/lut/__init__.py aos/code/miw/__init__.py \
-    aos/code/processing_compare/__init__.py aos/code/psf/__init__.py \
-    aos/code/static_optics/__init__.py \
-    guider/code/combine_moments.py guider/code/guiderMoments.py \
-    guider/code/list_guider_exposures.py guider/code/run_guider_moments.py \
-    olr/code/telemetry.py optatmo/code/moments_hsm.py \
-    smatrix/code/compute_smatrix.py smatrix/code/normalization_weights.py \
-    smatrix/code/regularized_inversion.py \
-    value_added/code/backfill_commanded_vmodes.py \
-    value_added/code/backfill_optical_state_pointing.py \
-    value_added/code/build_efd_db.py value_added/code/build_fam_dz.py \
-    value_added/code/build_m1m3_thermal_r2.py \
-    value_added/code/build_optical_state.py \
-    value_added/code/m1m3_thermal_r2.py value_added/code/merge_db_shards.py \
-    value_added/code/run_build.sh
+echo /home/r/roodman/notebooks/rubin-work > \
+    ~/.local/lib/python3.13/site-packages/rubinwork_rsp.pth
 ```
 
-Keep for now: six shims with an untracked notebook caller. The shim tests cover each.
+Then `python -c "import rubinwork; print(rubinwork.__file__)"` in a fresh RSP kernel.
+Writing that file from here was blocked by the permission settings.
 
-| shim | untracked caller |
-|---|---|
-| `aos/code/aos_state.py` | `aos/snippets.ipynb` |
-| `aos/code/aos_trim.py` | `aos/snippets.ipynb`; it imports `common/` |
-| `common/__init__.py` | `aos/notebooks/bounce/_exectest.ipynb` (gitignored) |
-| `value_added/code/efd_db.py` | `aos/notebooks/bounce/_exectest.ipynb` |
-| `aos/code/coadd/run_coadd_blocks_miw.py` | `aos/moresnippets.ipynb` |
-| `guider/code/guiderEdgeRecovery.py` | `guider/Untitled.ipynb` |
+**Repo-root inserts removed** (one line each, plus the `sys`, `pathlib` or `os` import
+left unused), 75 files (count), all in studies or `rubinwork/`. The old-layout
+`<topic>/code/` inserts that CLAUDE.md still allows are kept (2 in `aos/code/`).
+- `aos/bounce/`: `bounce_lib.py`, `run_bounce.py`
+- `aos/closed_loop/`: `run_closed_loop.py`
+- `aos/correlations/`: `run_dz_explained.py`, `run_vmode_correlations.py`
+- `aos/cwfs_lut/`: `bounce_compare.py`, `cwfs_lut_figures.py`, `cwfs_lut_lib.py`, `run_cwfs_lut.py`, `test_bounce_compare.py`, `test_cwfs_lut_lib.py`
+- `aos/cwfs/`: `run_wfs_corner_compare.py`, `run_wfs_dof_compare.py`, `run_wfs_fam_compare.py`
+- `aos/dzfit/`: `run_dz_fit_check.py`
+- `aos/giant_donut_pupil/`: `candidates.py`, `isr_cache.py`, `obscuration_v402.py`
+- `aos/miw_hull/`: `azimuth_probe.py`, `continued_rings.py`, `ring_coverage.py`
+- `aos/miw_origin/`: `analyze_miw_bias_regression.py`, `analyze_miw_field_order.py`, `analyze_umode_null_coupling.py`, `camera_gravity.py`, `camera_gravity_maps.py`, `camera_gravity_validation.py`, `run_m3_backprojection_miw.py`, `run_m3_backprojection_validation.py`, `run_miw_backprojection_surfaces.py`, `run_miw_joint_fit.py`, `thermal_sensitivity.py`
+- `aos/miw_recovery_constraint/`: `check_dof_ranges.py`, `compare_build_dof.py`, `compare_rbr_arms.py`, `compare_schemes.py`, `test_rbr_against_prototype.py`
+- `aos/miw_version_comparisons/`: `compare_miw_versions.py`, `compare_pupil_models.py`
+- `aos/processing_compare/`: `compare_fam_processings.py`
+- `aos/psf_fp_maps/`: `run_psf_fp_maps.py`
+- `aos/wfs_mimic/`: `run_wfs_mimic.py`
+- `blocks/t539_closedloop/`: `telemetry_pipeline.py`
+- `olr/aos_dof_audit/`: `aos_dof_audit.py`
+- `olr/olr_pipeline/`: `list_nights.py`, `nightly_table.py`
+- `rubinwork/products/bounce_tables/`: `test_bounce_tables.py`
+- `rubinwork/products/coadds/`: `test_coadds.py`
+- `rubinwork/products/cwfs_tables/`: `test_cwfs_tables.py`
+- `rubinwork/products/dof_lut/`: `test_dof_lut.py`
+- `rubinwork/products/fam_tables/`: `test_fam_tables.py`
+- `rubinwork/products/guider_moments/`: `test_guider_moments.py`
+- `rubinwork/products/miw/`: `test_miw.py`
+- `rubinwork/products/tests/`: `test_catalog.py`
+- `rubinwork/products/value_added/`: `backfill_commanded_vmodes.py`, `backfill_optical_state_pointing.py`, `build_efd_db.py`, `build_fam_dz.py`, `build_m1m3_thermal_r2.py`, `build_optical_state.py`, `m1m3_thermal_r2.py`, `merge_db_shards.py`, `test_build_optical_state.py`, `test_value_added.py`
+- `smatrix/regularized_inversion/`: `run_oic_compare.py`, `run_regularized_compare.py`
+- `thermal_focus/thermal_focus/`: `run_thermal_focus.py`, `run_thermal_focus_analysis.py`
+- `thermal_focus/thermal_vmodes/`: `run_thermal_vmodes.py`, `test_thermal_vmodes.py`, `test_thermal_vmodes_channels.py`, `thermal_vmodes.py`, `thermal_vmodes_channel_figures.py`, `thermal_vmodes_channels.py`, `thermal_vmodes_figures.py`
 
-`aos/danish_snippets.ipynb` (untracked) imports `run_wfs_refit_ensemble` from
-`aos/code/cwfs/`, now `aos/cwfs/code/`; no shim was added. `aos/code/` also holds real
-modules, not shims: `aos_fwhm.py`, `dz_plotting.py`, `psf_maps_lib.py`, `test_m1m3.py`,
-`test_open_loop.py`.
+Script-mode import check (`sys.path[0]` set to the script's directory, as `python x.py`
+does): 56 of 57 study scripts (count) import. `aos/miw_origin/code/analyze_miw_field_order.py`
+gets past its imports and fails on a module-level read of
+`aos/output/coadd/danish_1_2/50_34/coadd_metrics_rebin3.parquet`, which no longer exists;
+that read predates this change. `pytest` on `rubinwork` plus the touched study tests:
+493 passed, 10 skipped (count).
 
-Delete no file without asking, of any kind. Leave Aaron's uncommitted
-`aos/giant_donut_pupil/notebooks/hand_label_giant_donuts_v2.ipynb` alone.
+**`optatmo` variants.** `aos/output/fam_processing/danish_1_2/` is `fam_tables`
+`danish_1_2`; `aos/output/miw/danish_1_2_A_50_34_i_5rot/` is `miw` `d12-A_50_34_i_5rot`.
+Data loads checked: `campaign.fam_visits()` 3385 visits (count), `rot_for`, `danish_blur`,
+`visit_info`, `cwfs_dz` on 20260513; the MIW script ran to `/tmp`. Against the old
+`visits.parquet`, `rotator_angle` differs by up to 0.858 deg on 3017 of 3385 visits (count);
+on 20260513, the night the optatmo fits use, by at most 0.110 deg. (Differing here means
+by more than 1e-6 deg; the earlier "2879 of 3385" used a threshold not recorded.) Log lines added in `momfit_accuracy`,
+`psf_vs_cwfs` and `miw_radial_correlations`.
 
-## Decisions for Aaron
+## For Aaron
 
-1. **optatmo and `psf/wavefront_to_psf` read old aos output** (rule 3, allow-listed).
-   Five `optatmo/code/` files read `aos/output` `fam_processing/danish_1_2` and
-   `wfs_corner_compare`; `plot_miw_radial_correlations.py` reads the old MIW maps.
-   Repointing to the products changes results: the `fam_tables` `danish_1_2`
-   `rotator_angle` differs by up to 0.858 deg on 2879 of 3385 visits (count), and the MIW
-   product's Z7_OCS map differs from the old one by 0.0316 µm RMS of wavefront against a
-   map RMS of 0.118 µm. `wfs_corner_compare` has no product. `wavefront_to_psf` (dropped)
-   reads `fam_zernikes` files that no longer exist. Repoint, or keep allow-listed?
-2. **Two thermal_focus cross-study imports** (rule 2, allow-listed).
-   `run_thermal_focus_analysis.py` section 11 imports `trim_calculator` and its tests to
-   check the calculator; `run_thermal_vmodes.py` imports `run_thermal_focus.load_science`.
-   Proposed: move `load_science` into `rubinwork.thermal_focus`, and the section 11
-   check into the `trim_calculator` study.
-3. **The editable install points at `/home/r/roodman/...`**, which does not exist on
-   sdfiana, so `import rubinwork` works only with the repo root on `sys.path`. Study
-   scripts carry a repo-root insert for that reason. Rerun `pip install --user -e .` from
-   `/sdf/home/r/roodman/notebooks/rubin-work` on s3df; the inserts can then go.
-4. **The deletions above.**
+1. **Six shims kept, each with an untracked notebook caller.** The shim tests cover each.
+   They go once the callers import `rubinwork` directly, or are deleted:
+
+   | shim | untracked caller |
+   |---|---|
+   | `aos/code/aos_state.py` | `aos/snippets.ipynb` |
+   | `aos/code/aos_trim.py` | `aos/snippets.ipynb`; it imports `common/` |
+   | `common/__init__.py` | `aos/notebooks/bounce/_exectest.ipynb` (gitignored) |
+   | `value_added/code/efd_db.py` | `aos/notebooks/bounce/_exectest.ipynb` |
+   | `aos/code/coadd/run_coadd_blocks_miw.py` | `aos/moresnippets.ipynb` |
+   | `guider/code/guiderEdgeRecovery.py` | `guider/Untitled.ipynb` |
+
+   `aos/danish_snippets.ipynb` (untracked) imports `run_wfs_refit_ensemble` from
+   `aos/code/cwfs/`, now `aos/cwfs/code/`; no shim was added.
+2. **`wfs_corner_compare` has no product.** `optatmo/code/extract_cwfs_sigma.py` reads
+   `aos/output/wfs_corner_compare/danish_1_2/refitWcs/wfs_corner_compare.parquet`
+   (2.0 MB, dated 2026-07-07), the only entry left in `ALLOWED`. It is written by
+   `aos/cwfs/code/run_wfs_corner_compare.py` (study `aos/cwfs`, parked) through
+   `rule wfs_corner_compare` in `aos/Snakefile`. Options:
+   - **make it a product** (`rubinwork/products/wfs_corner_compare/`, or a table in
+     `cwfs_tables`): the honest fix if `psf_vs_cwfs` keeps using the CWFS scatter; one
+     rebuild from `fam_tables` and `cwfs_tables`;
+   - **read it as `aos/cwfs` study output**: move the file into that study's `output@` and
+     keep the `ALLOWED` entry; cheapest, but it stays a rule 3 violation;
+   - **rerun it in `optatmo`**: compute the CWFS-against-FAM scatter inside
+     `psf_vs_cwfs` from the two products; no cross-study read, at the cost of duplicating
+     part of `run_wfs_corner_compare.py`.
+   Until then the read must survive phase 7: zipping `aos/output` breaks it.
+3. **The CCD-height sign doc fix** (phase 6): `notes/status/phase6_ccd_height_sign.md`.
+4. **Phase 7 removal** is Aaron's to run: `notes/status/phase7_cleanup_plan.md`.
 
 ## Step list
 
@@ -125,7 +169,7 @@ Delete no file without asking, of any kind. Leave Aaron's uncommitted
 4. **Shims**: update the four callers of the `smatrix` shims (triage, last paragraph),
    then remove every shim.
 
-Steps 2 to 4 are not started; step 1 does not touch them.
+All four steps are done; step 4 leaves the six shims under "For Aaron".
 
 ## Topic order
 
@@ -230,17 +274,25 @@ library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakef
 - The optatmo repointing was tried and stopped: both comparisons above show the products
   differ from the old trees, so it is Aaron's call, not a mechanical fix.
 
+- **2026-10-24.** The script-mode import check must not run Python with `-I`: that
+  drops the user site-packages, where the editable `rubinwork` lives, and every script
+  then fails on `import rubinwork` for a reason unrelated to the code.
+- **2026-10-24.** Writing an RSP fallback `.pth` into `~/.local` from this session was
+  blocked as persistence; it is a command for Aaron above.
+- **2026-10-24.** `thermal_focus` `load_science` takes the `value_added` module as an
+  argument rather than importing it: a library may not import a product (rule 2), and
+  the `/review` checker enforces that on `rubinwork/thermal_focus/`.
+
 ## Next
 
-All topics are converted; `/review` reports no new violation. In order:
-
-1. Aaron runs the `git rm` above, then `pytest rubinwork`: expect no failures, with the
-   shim tests skipped (440 passed, count, before the deletion).
-2. The three decisions above.
-3. Code not covered by a study (`/review`: 122 files, count), mostly tooling and
-   libraries in `optatmo/code`, `guider/code`, `aos/code`, `smatrix/code` and
-   `value_added/code`.
-4. `aos/giant_donut_pupil` night 2 Part B runs after the Batoid rebuild. Slurm job
+1. Aaron's items above: the RSP `.pth` command, the six shims, `wfs_corner_compare`, the
+   CCD-height doc fix, and phase 7.
+2. Code not covered by a study (`/review`: 82 files, count), mostly tooling and libraries
+   in `optatmo/code`, `guider/code`, `aos/code`, `smatrix/code` and `value_added/code`;
+   phase 8 (`notes/status/phase8_code_review_plan.md`) takes them as they are next used.
+3. `aos/giant_donut_pupil` night 2 Part B runs after the Batoid rebuild. Slurm job
    41759352 (20260127) hit its 8 h limit; its per-side fits are saved in `fit_parts`.
-5. `olr/olr_pipeline/code/run_olr.py` cannot import `DEFAULT_DOF_INDICES` from `olr`.
+4. `olr/olr_pipeline/code/run_olr.py` cannot import `DEFAULT_DOF_INDICES` from `olr`.
    That was broken before phase 5; `olr_pipeline` is dropped.
+5. `aos/miw_origin/code/analyze_miw_field_order.py` reads a coadd metrics file from the
+   old `aos/output/coadd/` that no longer exists (parked study; found by the import check).
