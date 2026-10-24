@@ -22,7 +22,8 @@ from lsst.daf.butler import Butler
 from lsst.obs.lsst import LsstCam
 from lsst.afw.cameraGeom import DetectorType
 
-from rubinwork.common import study_run
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
+from rubinwork.common import study_run  # noqa: E402
 
 from rubinwork.giant_donuts import donut_images  # noqa: E402
 

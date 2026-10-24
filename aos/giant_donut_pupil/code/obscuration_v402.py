@@ -33,6 +33,7 @@ import sys
 import numpy as np
 import yaml
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 # fit_giant_donut puts the blitz checkout first on sys.path.
 from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 
