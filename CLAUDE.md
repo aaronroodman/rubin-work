@@ -43,7 +43,7 @@ Support:
 - `value_added/` — the value-added DuckDB database of per-exposure engineering telemetry,
   derived quantities and recovered optical state, plus the builders that maintain it. A
   **service topic**: it maintains a product other topics consume, read through
-  `value_added/code/efd_db.py` (`docs/schema.md`, `docs/status/build_progress.md`)
+  `rubinwork.products.value_added` (`docs/schema.md`, `docs/status/build_progress.md`)
 - `rubinwork/` — the installable package: `common/` (shared utilities), the libraries
   moved out of the topics (`aos_state`, `open_loop`, `smatrix`), and `products/` (the
   catalog and manifest writer). A shim remains at the old `common/` path
@@ -84,10 +84,10 @@ reorganization — `rubinwork.aos_state`, `rubinwork.open_loop` and
 `regularized_inversion`) — and `rubinwork.products` (`catalog`, `manifest`), the only
 sanctioned way to reach product data.
 
-Compatibility shims remain at every old path (`common/`, `aos/code/aos_state.py`,
-`aos/code/open_loop.py`, and the three in `smatrix/code/`), so existing
-`sys.path.insert` + bare-name imports keep working. They are removed in phase 5
-(`notes/status/organization_plan.md`); do not add new imports through them.
+Compatibility shims remain at the old paths (`common/`, `aos/code/aos_state.py`,
+`aos/code/open_loop.py`, the three in `smatrix/code/`, and others listed in
+`notes/status/phase5_convert_handoff.md`). No tracked code imports them now; they wait
+for Aaron's deletion. Do not add imports through them.
 
 One coupling is real and intentional — know it before refactoring:
 

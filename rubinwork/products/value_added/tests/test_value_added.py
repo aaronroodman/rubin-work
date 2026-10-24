@@ -294,7 +294,7 @@ def test_the_efd_db_shim_gives_the_same_module_object():
     assert efd_db is va_reader
 
 
-@pytest.mark.skipif(not ((REPO_ROOT / "value_added/code/efd_db.py").exists()), reason='shims removed')
+@pytest.mark.skipif(not ((REPO_ROOT / "value_added/code/build_efd_db.py").exists()), reason='shims removed')
 def test_every_builder_shim_gives_the_same_module_object():
     """Checked in a **fresh interpreter** per shim.
 
@@ -317,20 +317,19 @@ def test_every_builder_shim_gives_the_same_module_object():
         assert f"{name} ok" in out.stdout
 
 
-@pytest.mark.skipif(not ((REPO_ROOT / "value_added/code/efd_db.py").exists()), reason='shims removed')
+@pytest.mark.skipif(not ((REPO_ROOT / "value_added/code/build_efd_db.py").exists()), reason='shims removed')
 def test_a_shim_exists_for_every_moved_file():
     code = REPO_ROOT / "value_added" / "code"
     for name in SHIMMED_BUILDERS:
         assert (code / f"{name}.py").exists(), name
-    assert (code / "efd_db.py").exists()
     assert (code / "run_build.sh").exists()
 
 
-@pytest.mark.skipif(not ((REPO_ROOT / "value_added/code/efd_db.py").exists()), reason='shims removed')
+@pytest.mark.skipif(not ((REPO_ROOT / "value_added/code/build_efd_db.py").exists()), reason='shims removed')
 def test_the_shims_are_shims_and_not_copies():
     """A shim is short and re-exports; a leftover copy would be hundreds of lines."""
     code = REPO_ROOT / "value_added" / "code"
-    for name in SHIMMED_BUILDERS + ("efd_db",):
+    for name in SHIMMED_BUILDERS + (("efd_db",) if (code / "efd_db.py").exists() else ()):
         text = (code / f"{name}.py").read_text()
         n_lines = len(text.splitlines())
         assert n_lines < 60, f"{name}.py is {n_lines} lines; a shim should be short"

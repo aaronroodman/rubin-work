@@ -58,7 +58,7 @@ python "$WF_BIN/combine_parquets.py" "$CDIR/visits.parquet" --output "$PSDIR/vis
 
 echo "=== [6/6] attach_telemetry"
 # --all-chunks walks <out-dir>/chunks/*, so only the one chunk above is fetched.
-python code/fam_processing/run_attach_telemetry.py \
+python -m rubinwork.products.fam_tables.builders.run_attach_telemetry \
     --param-set "$PS" --out-dir "$PSDIR" --all-chunks --merge
 date -u +'%Y-%m-%dT%H:%M:%SZ attached' > "$PSDIR/telemetry_attached.txt"
 

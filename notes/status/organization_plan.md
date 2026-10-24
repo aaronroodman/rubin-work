@@ -813,6 +813,12 @@ No topic is retired (Aaron, 2026-10-18): `camera`, `des`, `starcolor`, `survey`,
 any of them. The triage answers are in `notes/status/phase5_study_triage.md`, "Decisions
 taken"; the conversion state is in `notes/status/phase5_convert_handoff.md`.
 
+Status 2026-10-24: every topic is converted (64 studies, count); the section 2 fixes are
+done except three allow-listed cases that need Aaron's decision; topic READMEs carry a
+generated Studies block; no tracked code imports a shim. Open: deleting 41 shim files
+(count; one `git rm` in the handoff), six shims kept for untracked notebooks, and the
+decisions listed in the handoff.
+
 **Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. Two items from it need a check: the CCD-height sign in `aos/docs/ts_wep_zernike_intrinsics.md` (ts_wep "extra +, intra −" against batoid's same sign on both sides, not reconciled), and the summit_utils branch state in `guider/docs/status/summit_utils_branch_state.md` (as of the clone's last fetch, 2026-09-03). Move the science facts in the laptop Claude memory
 (MIW, guider, Z11 intra/extra, CCD height map, frame conventions) into the matching study
 or product docs, so S3DF sessions see them.
