@@ -101,7 +101,7 @@ Topics with no study in the triage stay as they are, with no `study.md` and no m
 
 Left in place, as tooling or library (triage): `blocks` `locate_test_blocks`,
 `find_long_exposures`, `querying_efd_consdb`, `ImageCount`, `stack_probe.sh`; `wfs`
-`cwfs_donut_selection` notebook and `ts_wep_cwfs_dataflow.md`; `optics/code/fresnel/`
+`cwfs_donut_selection` notebook and `ts_wep_cwfs_dataflow.md`; `rubinwork/fresnel/`
 (shared by `fresnel_donuts` and the intra/extra notebooks); `optatmo/code/` (the JAX
 library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakefile`,
 `code/`, RubinTV plots and movies, the 2026-09 handoff).
@@ -127,7 +127,7 @@ library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakef
   `blocks/output/`.
 - `blocks/fbs_stability_runs` reads `image_quality_trending`'s `visits_summary` by a
   relative glob, a rule 3 case the checker does not see.
-- New allow-list entry: `optics/fresnel_donuts/notebooks/` imports `optics/code/fresnel/`
+- New allow-list entry: `optics/fresnel_donuts/notebooks/` imports `rubinwork/fresnel/`
   (rule 2), until that code becomes a library.
 - `guider_atmo_compare.py` and `guider_star_ellipticity.ipynb` now import
   `rubinwork.products.guider_moments.guiderMoments` and `rubinwork.guider_edge_recovery`

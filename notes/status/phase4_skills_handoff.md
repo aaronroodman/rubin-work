@@ -157,7 +157,7 @@ unpushed for Aaron's review. `/wrap camera/itl_dip`: nothing new, no commit.
   `@current`.
 - **Rule checks parse the code with `ast`**, notebooks included; a grep hit every
   docstring that names a path. A loose notebook in a flat `<topic>/notebooks/` is not
-  treated as a study, so the `optics/` fresnel notebooks importing `optics/code/fresnel/`
+  treated as a study, so the `optics/` fresnel notebooks importing `rubinwork/fresnel/`
   are not flagged.
 - **`blocks/` allow-list entry matched nothing.** `blocks` reads its own
   `output/t539_closedloop_aos_*.parquet`; the section 2 row may be stale. Its Snakefile

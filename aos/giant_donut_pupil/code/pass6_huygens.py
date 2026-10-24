@@ -13,7 +13,7 @@ Per sim side of step 3 (`pass6_sims.choose`, 26 sides) and wavelength (``WAVELEN
 2. the Huygens sum U(x) = sum_j exp(i [k_j . (x - x_j) + k0 (t_j - t_ref)]) over the
    transmitted rays (batoid ``RayVector.amplitude`` convention, unit weights: Rubin obeys
    the sine condition to 4e-6, `optics/fresnel_donuts`), evaluated on a lattice of 4 x 4
-   points per 10 um pixel with a type-1 NUFFT (FINUFFT, as `optics/code/fresnel`), summed
+   points per 10 um pixel with a type-1 NUFFT (FINUFFT, as `rubinwork/fresnel`), summed
    over ray chunks; |U|^2 binned to the stamp pixels, then summed over wavelengths;
 3. variants: the plain sum (``diffraction``), and the same rays with an extra phase
    2 pi OPD / lambda * exp(-d^2 / 2 sigma^2), d the stop-plane distance to the nearest
@@ -47,7 +47,7 @@ os.environ.setdefault('OMP_NUM_THREADS', '1')
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-import finufft  # noqa: E402,F401  (before batoid; see optics/code/fresnel/fresnel_donut.py)
+import finufft  # noqa: E402,F401  (before batoid; see rubinwork/fresnel/fresnel_donut.py)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import pass6_common as p6  # noqa: E402
 import pass6_pipeline as pp  # noqa: E402

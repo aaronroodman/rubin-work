@@ -17,7 +17,7 @@ Every model starts from the same batoid ray trace:
   U(x) = Σ_j f_j exp{i[k_j·(x − r_j) + k₀ t_j]} over the traced rays, one output pixel at
   a time in a Python loop. Here f_j is `RayVector.flux`, which is 1 by default. On a
   uniform output lattice this sum is exactly a type-1 non-uniform FFT (NUFFT). The
-  module `code/fresnel/fresnel_donut.py` evaluates it with FINUFFT, which agrees with
+  module `rubinwork/fresnel/fresnel_donut.py` evaluates it with FINUFFT, which agrees with
   batoid's own `sumAmplitude` to 2.6×10⁻¹² in relative amplitude (dimensionless) and is
   ~10⁶ times faster (dimensionless ratio of wall-clock times).
 - **Debye-Wolf weights.** For rays sampled uniformly over the entrance pupil, the
@@ -69,7 +69,7 @@ Conclusions:
 
 ## Timing
 
-`code/fresnel/time_fftpsf_vs_debye.py` times `fftPSF` and the Debye-weighted Huygens
+`fresnel_donuts/code/time_fftpsf_vs_debye.py` times `fftPSF` and the Debye-weighted Huygens
 sum on the same pupil grid and output lattice (Rubin r band, on axis, Apple M3 Max,
 best of three runs):
 
@@ -156,15 +156,15 @@ the directions are Snell-refracted first: the 14–24° air incidence angles bec
 - `notebooks/optics_fresnel_rubin_onaxis_v1.ipynb`: Rubin on axis, camera pistoned ±1.5 mm.
 - `notebooks/optics_fresnel_rubin_seeing_v1.ipynb`: the same donuts with von Kármán seeing,
   the separability tests, and Danish fits of apparent Zernikes and FWHM.
-- `code/fresnel/donut_seeing.py`: von Kármán kernel, plate scale, per-ray kicks,
+- `rubinwork/fresnel/donut_seeing.py`: von Kármán kernel, plate scale, per-ray kicks,
   Danish fit wrapper, TA ray-residual check, edge widths.
 - `notebooks/optics_fresnel_sensor_iband_v1.ipynb`: i-band silicon-sensor effects on intra- and
   extra-focal donuts with GalSim `SiliconSensor`.
-- `code/fresnel/donut_sensor.py`: bandpass photon tracing, Snell refraction into
+- `rubinwork/fresnel/donut_sensor.py`: bandpass photon tracing, Snell refraction into
   silicon, sensor accumulation.
-- `code/fresnel/fresnel_donut.py`: NUFFT Huygens sum, Debye weights, `fftPSF` and
+- `rubinwork/fresnel/fresnel_donut.py`: NUFFT Huygens sum, Debye weights, `fftPSF` and
   geometric wrappers, semi-analytic references.
-- `code/fresnel/time_fftpsf_vs_debye.py`: wall-clock comparison of `fftPSF` and the
+- `fresnel_donuts/code/time_fftpsf_vs_debye.py`: wall-clock comparison of `fftPSF` and the
   Debye-weighted Huygens sum.
 - Figures: `output/fresnel/optics_fresnel_*_<date>.png`.
 

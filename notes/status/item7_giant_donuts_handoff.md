@@ -5,7 +5,8 @@
 > **Last updated:** 2026-10-06 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
-lives in `rubinwork/giant_donuts/` (Aaron's choice, 2026-10-05).
+code lived in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05); it is now the library
+`rubinwork/giant_donuts/`.
 
 ## Done and committed
 

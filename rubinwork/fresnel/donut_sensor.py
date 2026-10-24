@@ -18,8 +18,8 @@ tangents (``dxdz``) or radians.
 
 import numpy as np
 
-import fresnel_donut as fd     # imports finufft before batoid (OpenMP order)
-import donut_seeing as ds
+from rubinwork.fresnel import fresnel_donut as fd  # imports finufft before batoid (OpenMP order)
+from rubinwork.fresnel import donut_seeing as ds
 import batoid
 import galsim
 

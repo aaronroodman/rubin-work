@@ -10,7 +10,7 @@ started: 2026-09-30
 
 # `fresnel_donuts`: diffraction models of defocused Rubin donuts
 
-> **Write-up:** [`fresnel_donuts.md`](fresnel_donuts.md) · **Notebooks:** `notebooks/optics_fresnel_*_v1.ipynb` · **Code:** `optics/code/fresnel/` (shared with the intra/extra notebooks) · **batoid PR text:** [`batoid_pr_debye_huygens.md`](batoid_pr_debye_huygens.md)
+> **Write-up:** [`fresnel_donuts.md`](fresnel_donuts.md) · **Notebooks:** `notebooks/optics_fresnel_*_v1.ipynb` · **Code:** `rubinwork.fresnel` (library, shared with the intra/extra notebooks) · **batoid PR text:** [`batoid_pr_debye_huygens.md`](batoid_pr_debye_huygens.md)
 
 ## Question
 
@@ -32,6 +32,6 @@ Details and tables in [`fresnel_donuts.md`](fresnel_donuts.md).
 
 Backfilled 2026-10-18 from `fresnel_donuts.md` (formerly `optics/docs/studies/`) and the commits `52a21b2` (notebooks) and `da1a127` (Huygens-minus-geometric Danish offsets). Done in the phase 5 triage. The batoid pull request is open as jmeyers314/batoid#127.
 
-The four notebooks moved here; they now write to this study's `output/`. The library `optics/code/fresnel/` stays in place because the intra/extra notebooks also import it.
+The four notebooks moved here; they now write to this study's `output/`. They import the library `rubinwork.fresnel`, which the intra/extra notebooks also use.
 
 Outstanding, if resumed: off-axis positions, especially the corner wavefront sensors, where vignetting edges are not conjugate to the pupil; broadband r-band images.

@@ -46,9 +46,6 @@ ALLOWED = (
     ("aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb",
      "no-study-import"),
     ("psf/wavefront_to_psf/", "no-foreign-output"),
-    # Phase 5 conversion: optics/code/fresnel/ is shared by optics/fresnel_donuts and the
-    # intra/extra notebooks; it becomes a library in the section 2 step.
-    ("optics/fresnel_donuts/notebooks/", "no-study-import"),
 )
 """Known violations: reported, but as known rather than new."""
 
@@ -157,14 +154,22 @@ def _imports(tree):
             yield node.lineno, node.module
 
 
-def _module_homes(root, files):
-    """Map a bare module name to the ``<topic>/code/<sub>`` directories defining it."""
+def _module_homes(root, files, study_dirs=()):
+    """Map a bare module name to the ``<topic>/code/<sub>`` or ``<topic>/<study>``
+    directories defining it."""
     homes = {}
+    studies = set(study_dirs)
     for rel in files:
         parts = pathlib.PurePosixPath(rel).parts
-        if rel.endswith(".py") and len(parts) == 4 and parts[1] == "code":
-            homes.setdefault(pathlib.PurePosixPath(rel).stem, set()).add(
-                "/".join(parts[:3]))
+        if not rel.endswith(".py") or len(parts) != 4:
+            continue
+        if parts[1] == "code":
+            home = "/".join(parts[:3])
+        elif parts[2] == "code" and "/".join(parts[:2]) in studies:
+            home = "/".join(parts[:2])
+        else:
+            continue
+        homes.setdefault(pathlib.PurePosixPath(rel).stem, set()).add(home)
     return homes
 
 
@@ -198,7 +203,7 @@ def rule_violations(root=None):
     files = _tracked(root, "*.py", "*.ipynb")
     topic_names = set(topics(root))
     study_dirs = [p.parent.relative_to(root).as_posix() for p in find_studies(root)]
-    homes = _module_homes(root, files)
+    homes = _module_homes(root, files, study_dirs)
     found, unparsed = [], []
 
     def add(rel, line, rule, detail):

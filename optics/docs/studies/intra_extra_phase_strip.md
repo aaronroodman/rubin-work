@@ -159,7 +159,7 @@ exclude them:
 ## Outstanding work
 
 - **Simulation.** Add vane obscurations and a per-ray phase e^{iφ(**u**)} to the NUFFT
-  Huygens sum in `code/fresnel/fresnel_donut.py`. Sweep OPD over ±30 nm and the strip
+  Huygens sum in `rubinwork/fresnel/fresnel_donut.py`. Sweep OPD over ±30 nm and the strip
   width over 2–20 cm, at ±1.5 mm defocus, with and without 0.7″ seeing. Measure the
   vane contrast and profiles and the Danish kernel on each side. Repeat with phase strips
   at the M1 edges.

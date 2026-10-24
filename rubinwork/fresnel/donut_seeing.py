@@ -21,7 +21,7 @@ import numpy as np
 from scipy.optimize import brentq, least_squares
 from scipy.signal import fftconvolve
 
-import fresnel_donut as fd     # imports finufft before batoid (OpenMP order)
+from rubinwork.fresnel import fresnel_donut as fd  # imports finufft before batoid (OpenMP order)
 import batoid
 import galsim
 

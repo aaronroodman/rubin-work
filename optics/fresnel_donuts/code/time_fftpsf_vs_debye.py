@@ -12,15 +12,15 @@ two type-1 non-uniform FFTs (field and energy flux). Each step is the best of
 three runs. The agreement of the two images, sum |difference| as a fraction of
 total flux, is printed as a check.
 
-Run with ``/opt/local/bin/python3 code/fresnel/time_fftpsf_vs_debye.py`` from
-``optics/``. Prints only; writes no files.
+Run with ``/opt/local/bin/python3 optics/fresnel_donuts/code/time_fftpsf_vs_debye.py`` from
+the repo root. Prints only; writes no files.
 """
 
 import time
 
 import numpy as np
 
-import fresnel_donut as fd     # imports finufft before batoid (OpenMP order)
+from rubinwork.fresnel import fresnel_donut as fd  # imports finufft before batoid (OpenMP order)
 import batoid
 
 WAVELENGTH = 622e-9    # m
