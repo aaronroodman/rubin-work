@@ -20,13 +20,10 @@ Run it directly:
     python miw_recovery_constraint/code/test_rbr_against_prototype.py
 """
 
-import pathlib
-import sys
 import unittest
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 
 from rubinwork.smatrix import regularized_inversion as ri  # noqa: E402
 

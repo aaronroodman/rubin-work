@@ -7,12 +7,10 @@ or writes the real data root on S3DF.
 import json
 import pathlib
 import subprocess
-import sys
 
 import pandas as pd
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 from rubinwork.products import catalog, manifest  # noqa: E402
 

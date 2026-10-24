@@ -27,8 +27,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-import sys  # noqa: E402
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.common.utils import nmad  # noqa: E402
 
 CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']

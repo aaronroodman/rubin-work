@@ -38,7 +38,6 @@ import pandas as pd
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_vmodes
 _ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_ROOT))                                   # repo root -> common/
 # The science sample is the thermal_focus study's load_science, so the funnel is the same.
 sys.path.insert(0, str(_ROOT / 'thermal_focus' / 'thermal_focus' / 'code'))
 

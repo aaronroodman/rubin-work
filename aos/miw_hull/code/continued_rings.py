@@ -62,7 +62,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))      # analysis 1
 
 from lsst.ts.intrinsic.wavefront import intrinsic_split as isp

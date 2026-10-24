@@ -10,13 +10,11 @@ which phase 3a requires to be byte-identical.
 
 import json
 import pathlib
-import sys
 
 import pandas as pd
 import pytest
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.products import catalog, cwfs_tables, fam_tables  # noqa: E402
 from rubinwork.products.cwfs_tables import reader as cw_reader  # noqa: E402

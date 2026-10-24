@@ -19,7 +19,6 @@ import pytest
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE.parents[2]))
 
 import cwfs_lut_lib as C
 

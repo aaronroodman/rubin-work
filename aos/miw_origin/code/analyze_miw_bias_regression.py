@@ -49,7 +49,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_HERE))))  # repo root
 from recompute_coadd_metrics import (          # noqa: E402
     coarsen, coarsen_centers, umode_reference, umode_features, _block_programs,
     is_catalog_build, resolve_coadd_dir)

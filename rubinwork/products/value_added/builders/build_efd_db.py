@@ -71,7 +71,6 @@ import numpy as np
 import pandas as pd
 
 _ROOT = pathlib.Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))     # sibling builders
 
 from rubinwork.products.value_added import reader as efd_db

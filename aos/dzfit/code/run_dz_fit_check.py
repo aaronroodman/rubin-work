@@ -32,14 +32,12 @@ rather than by the full 9-million-donut table.
 """
 import argparse
 import pathlib
-import sys
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))   # repo root
 from rubinwork.common.utils import nmad                                          # noqa: E402
 
 from lsst.ts.intrinsic.wavefront.dz_fitting import (                   # noqa: E402

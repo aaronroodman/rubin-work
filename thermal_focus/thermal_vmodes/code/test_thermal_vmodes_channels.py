@@ -16,7 +16,6 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE.parents[2]))
 
 import thermal_vmodes_channels as TVC                            # noqa: E402
 

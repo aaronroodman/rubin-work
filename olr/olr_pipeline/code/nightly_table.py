@@ -31,7 +31,6 @@ import pandas as pd
 # aos/code/aos_state.py; add it to the path (olr/code -> ../../aos/code).
 _CODE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_CODE_DIR, "..", "..", "..", "aos", "code"))
-sys.path.insert(0, os.path.join(_CODE_DIR, "..", "..", ".."))  # repo root -> common/
 from rubinwork import aos_state
 
 pd.set_option("future.no_silent_downcasting", True)

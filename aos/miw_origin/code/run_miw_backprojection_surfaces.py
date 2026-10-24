@@ -55,7 +55,6 @@ import galsim.zernike as gz
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_HERE))))  # repo root
 from rubinwork.products.miw import load_miw  # noqa: E402
 import m3_backprojection as bp
 

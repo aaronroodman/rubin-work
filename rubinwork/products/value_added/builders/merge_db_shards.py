@@ -37,7 +37,6 @@ import pathlib
 import sys
 
 _ROOT = pathlib.Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(_ROOT))
 
 from rubinwork.products.value_added import reader as efd_db
 from rubinwork.products.value_added import write_manifest

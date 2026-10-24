@@ -8,13 +8,11 @@ files, to check that the variant definitions still agree with ``aos/param_sets.y
 
 import json
 import pathlib
-import sys
 
 import pandas as pd
 import pytest
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.products import catalog, manifest  # noqa: E402
 from rubinwork.products import fam_tables  # noqa: E402

@@ -30,7 +30,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'code'))      # aos/code (flat shared modules)
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root
 from fam_selection import dz_coeff_columns, fam_quality_selection  # noqa: E402
 
 import numpy as np

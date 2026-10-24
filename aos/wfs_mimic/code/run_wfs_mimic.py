@@ -41,7 +41,6 @@ from astropy.table import Table
 
 from lsst.ts.intrinsic.wavefront import mi_config as mc
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.wfs_mimic import (  # noqa: E402
     CORNER_OFFSETS, DEFAULT, N_CORNERS, in_ranges as _in_ranges,
     wedge_medians as _wedge_medians)

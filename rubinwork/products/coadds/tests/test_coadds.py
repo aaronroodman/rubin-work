@@ -15,7 +15,6 @@ import pandas as pd
 import pytest
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.products import catalog, coadds, miw  # noqa: E402
 from rubinwork.products.coadds import compare_builds, reader as co_reader  # noqa: E402

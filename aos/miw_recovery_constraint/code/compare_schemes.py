@@ -60,7 +60,6 @@ matplotlib.use("Agg")   # headless: this runs over ssh
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # same-study siblings
 
 from rubinwork import aos_state  # noqa: E402

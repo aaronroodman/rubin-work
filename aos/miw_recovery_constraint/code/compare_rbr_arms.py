@@ -65,7 +65,6 @@ matplotlib.use("Agg")   # headless: this runs under Snakemake and over ssh
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'code'))  # aos/code (flat shared modules)
 
 from rubinwork.products.miw import JS_DEFAULT  # noqa: E402

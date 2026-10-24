@@ -55,7 +55,6 @@ import pandas as pd
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_focus_lib
 _ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_ROOT))                                   # repo root -> common/
 
 from rubinwork.thermal_focus import lib as L                                    # noqa: E402
 from rubinwork.common.utils import nmad                          # noqa: E402
@@ -446,7 +445,6 @@ def _exposure_inventory(day_obs_range, cdb=None, instrument='lsstcam'):
     ``SELECT DISTINCT`` combined with a ``LIKE`` filter, so the program filter is applied here in
     pandas rather than in SQL.
     """
-    sys.path.insert(0, str(_ROOT))
     from rubinwork.common.telemetry_clients import make_consdb_client       # noqa: E402
     cdb = cdb or make_consdb_client()
 

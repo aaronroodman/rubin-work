@@ -22,9 +22,6 @@ import argparse
 
 import pandas as pd
 
-import pathlib
-import sys
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from rubinwork.common.telemetry_clients import make_consdb_client  # noqa: E402
 
 

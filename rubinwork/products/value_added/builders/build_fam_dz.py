@@ -58,13 +58,11 @@ Butler and no Consolidated Database: ``fits.parquet`` and ``visits.parquet`` are
 """
 import argparse
 import pathlib
-import sys
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))  # repo root
 from rubinwork.products.value_added import reader as efd_db
 from rubinwork.products.value_added import write_manifest
 

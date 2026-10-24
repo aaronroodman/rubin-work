@@ -40,7 +40,6 @@ from scipy.stats import pearsonr
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_HERE))))  # repo root
 from analyze_dz_goodness_of_fit import (        # noqa: E402
     load_bases, read_dz, assign_blocks, within_block_covariance)
 

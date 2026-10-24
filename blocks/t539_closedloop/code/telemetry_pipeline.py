@@ -28,7 +28,6 @@ Used by ``build_t539_table.py`` and ``build_night_table.py``.  ConsDB + EFD
 only (no Butler).
 """
 import os
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +36,6 @@ from astropy.table import Table
 
 # Shared helpers: rubinwork.common (DOF, ConsDB EFD, ESS telemetry) and rubinwork.aos_state.
 REPO = Path(__file__).resolve().parents[3]          # -> rubin-work/
-sys.path.insert(0, str(REPO))
 from rubinwork import aos_state        # noqa: E402
 from rubinwork.common import dof_telemetry as aos_trim                                # noqa: E402
 from rubinwork.common import consdb_efd as aos_consdb_efd                             # noqa: E402

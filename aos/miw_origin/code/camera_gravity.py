@@ -40,14 +40,12 @@ Runs on the laptop (batoid_rubin) for the gravity model; the 50/34 correction
 """
 from pathlib import Path
 import os
-import sys
 
 import numpy as np
 import galsim
 import batoid
 
 # reuse the exact OFC/smatrix DZ convention (field sampling, eps, nx, jmax, kmax)
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.smatrix import compute_smatrix as C  # noqa: E402
 
 FIELD_RAD = np.deg2rad(C.FIELD_RADIUS_DEG)

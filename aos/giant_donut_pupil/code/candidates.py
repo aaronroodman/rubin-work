@@ -22,12 +22,9 @@ Pixel positions are full-resolution assembled-detector pixels; focal-plane
 positions are CCS mm. Field angles are CCS deg; at rotator 0.012 and 0.149 deg CCS
 and OCS agree to that angle.
 """
-import pathlib
-import sys
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 # fit_giant_donut puts the blitz checkout first on sys.path.
 from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 

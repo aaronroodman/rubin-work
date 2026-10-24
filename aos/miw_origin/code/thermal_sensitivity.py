@@ -16,13 +16,11 @@ natural source of the MIW Z5-Z8/Z11/Z22 excess that force-limited bending modes
 cannot reach.
 """
 import os
-import sys
 from pathlib import Path
 import numpy as np
 import batoid
 from batoid_rubin import LSSTBuilder
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.smatrix import compute_smatrix as C  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[1] / "output"

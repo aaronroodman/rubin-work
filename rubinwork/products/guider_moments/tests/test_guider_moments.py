@@ -20,7 +20,6 @@ import sys
 import pandas as pd
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.products import catalog, guider_moments  # noqa: E402
 from rubinwork.products.guider_moments import compare_builds  # noqa: E402

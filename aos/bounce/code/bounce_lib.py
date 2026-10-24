@@ -8,13 +8,11 @@ night-scatter / per-DOF-panel plotters; the reduction they draw is in
 `rubinwork.bounce.legs`, which this module re-exports so a caller can use one
 import for both.  Driven by `run_bounce.py`.  RSP-only for the marker scheme and
 DOF recovery (lsst.ts.ofc via ofc_svd)."""
-import sys
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 
 # The reduction, now a library so `rubinwork.products.bounce_tables` can call it

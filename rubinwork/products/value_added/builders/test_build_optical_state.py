@@ -12,7 +12,6 @@ import sys
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[0]))
 
 import build_optical_state as bos

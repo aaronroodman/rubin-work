@@ -23,13 +23,11 @@ lsst.ts.wep — RSP only.  Use --max-visits to cap the number of triplets.
 Writes output/wfs_fam_compare/<P>/fam_wfs_triplet_compare.pdf .
 """
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 from astropy.table import QTable
 from matplotlib.colors import LinearSegmentedColormap

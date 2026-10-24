@@ -27,7 +27,6 @@ Provided:
 Import from the repo root::
 
     import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
     from value_added.code.m1m3_thermal_r2 import fit_r2_terms
 
 Notes

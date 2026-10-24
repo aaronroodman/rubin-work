@@ -59,7 +59,6 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'code'))      # aos/code (flat shared modules)
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root (common/)
 
 import bounce_lib as bl
 from lsst.ts.intrinsic.wavefront.ofc_svd import LABELS_50DOF, DOF_UNITS_50

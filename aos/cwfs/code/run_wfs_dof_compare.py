@@ -40,7 +40,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
 from rubinwork.common.utils import nmad, robust_fit  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings

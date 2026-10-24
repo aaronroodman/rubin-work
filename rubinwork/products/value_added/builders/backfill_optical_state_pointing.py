@@ -21,7 +21,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[0]))
 
 from rubinwork.common.telemetry_clients import make_consdb_client

@@ -15,7 +15,6 @@ import pytest
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE.parents[2]))
 
 from rubinwork.thermal_focus import lib as L
 import thermal_vmodes as TV

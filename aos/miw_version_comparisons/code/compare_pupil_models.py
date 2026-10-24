@@ -50,7 +50,6 @@ import sys
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'code'))  # aos/code (flat shared modules)
 
 from rubinwork.common.utils import nmad  # noqa: E402

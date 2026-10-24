@@ -20,7 +20,6 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.products import catalog, value_added  # noqa: E402
 from rubinwork.products.value_added import compare_builds  # noqa: E402

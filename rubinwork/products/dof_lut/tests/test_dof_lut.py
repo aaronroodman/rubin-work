@@ -13,7 +13,6 @@ has no rotator-angle column.
 """
 
 import pathlib
-import sys
 
 import pandas as pd
 import pyarrow as pa
@@ -21,7 +20,6 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.products import catalog, dof_lut, fam_tables, miw  # noqa: E402
 from rubinwork.products.dof_lut import compare_builds  # noqa: E402

@@ -56,14 +56,12 @@ test retrieves a full-focal-plane Double Zernike field; this study has four corn
 which cannot constrain mirror figure the same way.
 """
 import pathlib
-import sys
 
 import numpy as np
 import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 _ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_ROOT))
 
 from rubinwork.common.utils import nmad                                    # noqa: E402
 

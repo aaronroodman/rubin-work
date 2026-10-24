@@ -52,7 +52,6 @@ import pandas as pd
 import statsmodels.api as sm
 from matplotlib.backends.backend_pdf import PdfPages
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 
 from lsst.ts.intrinsic.wavefront import intrinsic_split as isp
 

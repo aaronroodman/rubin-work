@@ -52,7 +52,6 @@ from astropy.table import QTable
 
 _HERE = Path(__file__).resolve()
 sys.path.insert(0, str(_HERE.parent))                 # same-study siblings
-sys.path.insert(0, str(_HERE.parents[3]))             # repo root (common/)
 # aos_fwhm is still a flat module in the aos topic.
 _AOS = _HERE.parents[3] / 'aos' / 'code'
 sys.path.insert(0, str(_AOS))

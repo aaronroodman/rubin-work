@@ -55,7 +55,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))   # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))       # this study
 _AOS = pathlib.Path(__file__).resolve().parents[3] / 'aos' / 'code'
 sys.path.insert(0, str(_AOS))              # aos_fwhm

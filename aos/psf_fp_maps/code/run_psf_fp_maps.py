@@ -29,7 +29,6 @@ os.environ.setdefault('NUMEXPR_MAX_THREADS', '8')   # silence galsim/numexpr thr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'code'))      # aos/code (flat shared modules)
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root -> common/
 from rubinwork.common.psf_render import (   # noqa: E402  GalSim render + HSM
     LAM_NM, build_psf_tools, render_measure, optics_fwhm)
 from psf_maps_lib import (   # noqa: E402  shared with the closed_loop study

@@ -82,7 +82,6 @@ from matplotlib.backends.backend_pdf import PdfPages              # noqa: E402
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 _ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_ROOT))
 # Section 11 checks the trim_calculator study's calculator against this fit.
 sys.path.insert(0, str(_ROOT / 'thermal_focus' / 'trim_calculator' / 'code'))
 

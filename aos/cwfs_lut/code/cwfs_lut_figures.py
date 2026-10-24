@@ -25,7 +25,6 @@ import numpy as np
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 _ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_ROOT))
 
 import cwfs_lut_lib as C                                         # noqa: E402
 

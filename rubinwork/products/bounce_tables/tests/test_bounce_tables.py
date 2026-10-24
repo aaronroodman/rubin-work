@@ -25,7 +25,6 @@ import pandas as pd
 import pytest
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
 
 from rubinwork.bounce import legs as bl  # noqa: E402
 from rubinwork.products import bounce_tables, catalog, miw  # noqa: E402

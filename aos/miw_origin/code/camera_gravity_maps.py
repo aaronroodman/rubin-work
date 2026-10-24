@@ -34,7 +34,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 import camera_gravity as cg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))          # repo root
 from rubinwork.products.miw import load_miw  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"

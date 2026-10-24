@@ -44,7 +44,6 @@ import pandas as pd
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 _ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_ROOT))
 
 from rubinwork.thermal_focus import fit as F                                    # noqa: E402
 from rubinwork.thermal_focus import lib as L                                    # noqa: E402
