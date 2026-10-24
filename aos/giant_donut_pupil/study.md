@@ -1,9 +1,9 @@
 ---
 study: giant_donut_pupil
 topic: aos
-status: active
+status: parked
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'Pass 6: Batoid design sims show danish has no spider or edge bias, so the data shadow translation (dy -1.65 / -2.07 pixels OCS image, extra / intra) and inner-edge shift are real; full ISR changes nothing. With physical_rotator_angle the rotation is -0.026 / +0.087 deg after the sim-measured recovery. The v4.02s silhouette removes the extra inner-edge miss and leaves +1.9 pixels intra. The vane shadows differ between sides of focus (fitted widths 103 / 61 mm against CAD 50 mm), which an opaque vane cannot do; diffraction and a vane phase strip are being tested.'
+answer: 'v4.02 fits giant donuts better than v1000 (median residual RMS ratio 0.94, dimensionless), and the outer-band Z5-Z7 is pupil bias, not wavefront; the camera silhouette and vane shadows are measured against the model. Open: a common image-frame translation of the spider shadows (dy -1.65 / -2.07 pixels OCS image, extra / intra) and the vane shadow widths (102.8 / 61.3 mm against CAD 50 mm); parked for the CAD review and a Batoid rebuild.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -31,118 +31,105 @@ Optical models: `~/notebooks/rubin-optical-model` at commit `e2a1e54` (read only
 
 ## Current answer
 
-v4.02 fits the giant donuts better than v1000. With Z4 + Z11 + Z22, its residual RMS is
-lower on 16 of 16 clean donut sides; with the blitz set, on 12 of 16. The median ratio,
-v4.02 over v1000 residual RMS, is 0.94 (Z4 + Z11 + Z22) and 0.95 (blitz set), both
-dimensionless. Most of the gain is the spider: the v1000 vanes sit 50 mm (one vane width)
-off the CAD shadow. Inside 1.725 deg the fitted Z5–Z8 deviations stay within ±3 µm of
-wavefront and show no trend with field radius. Beyond 1.9 deg the fits break down.
+Parked 2026-10-23, pending the CAD review and a Batoid rebuild from CAD and Zemax. The
+readable version is `summary.md`; the rows are in `findings.md`.
 
-Fitted with Z4 only (other Zernikes fixed at the batoid intrinsic, blur fixed at 1.0
-arcsec), v4.02 still wins: 35 of 38 donut sides, 15 of 16 clean, median ratio 0.944
-(dimensionless). Inside 1.725 deg the v4.02 danish edges match a Batoid ray trace of the
-full v4.02 model to 0.2–1.6 pixels RMS. The data do not match either: on clean donuts
-the inner edge sits 3.5–5.7 pixels outside Batoid over OCS azimuth 0–135 deg and within
-1 pixel over 225–315 deg, on both sides of focus.
+Settled:
+- v4.02 fits better than v1000: residual RMS lower on 16 of 16 clean sides, median ratio
+  0.94 (dimensionless). Most of the gain is the spider, 50 mm off in v1000.
+- Inside 1.725 deg the fitted Z5–Z8 stay within ±3 µm of wavefront with no field trend; the
+  1–3.9 µm outer-band Z5–Z7 is pupil bias, not wavefront.
+- The +3.3 pixel edge offset looks like coma (Z7 +0.7–0.8 µm) but the whole-donut fits find
+  +0.02 to +0.24 µm: it is not wavefront coma.
+- r_inner / r_outer is 0.0104 above the model (dimensionless), flat in field; diffraction
+  gives about half of the edge miss.
+- The camera silhouette sets the vignetted inner edge at 1.45–1.75 deg. v4.02s matches
+  Batoid to 0.0 pixels median; v1000's single CameraBody disk is within 0.2–1.1 pixels of
+  it, and v4.02g's circle was 43–66 mm short.
+- The spider offset is a translation, dy −1.65 / −2.07 pixels OCS image (extra / intra),
+  not a rotation. It is not danish bias, the TEA (centered to 1.5–2 mm), the detector, ISR
+  or the rotator.
+- The vane shadows are not opaque strips: free widths 102.8 / 61.3 mm against CAD 50 mm.
 
-Pupil pass 6 (2026-10-23; 188 sides, ISR stamps, rtp = physical_rotator_angle):
-- **The spider translation and edge shifts are real pupil effects, not danish modeling bias.**
-  Batoid design sims through the same pipeline give m = 1 0.001 / 0.006 deg, translation dy
-  −0.01 / −0.05 pixels and no edge-circle shift. The data keep dy −1.65 / −2.07 pixels, m = 1
-  0.35 / 0.42 deg and inner-edge dy +2.1 / +1.8 pixels (extra / intra, OCS image). Full ISR
-  (flat, CTI, PTC gains) changes none of them beyond the errors.
-- **Rotator:** with physical_rotator_angle, δ = −0.020 deg extra and +0.075 deg intra. The
-  rotation check shows δ recovers 0.76 / 0.86 of a real rotation, so the rotation is −0.026 /
-  +0.087 deg (dimensionless recovery from sims drawn at rtp + 0.20 deg).
-- **TEA check:** a 10 mm TEA shift moves the sim shadows −0.83 / +0.83 pixels (expected
-  ∓0.88), opposite signs; the data's translation has the same sign on both sides.
-- **Silhouette:** refitting the CameraSilhouette circle above 1.4 deg (v4.02s) removes the
-  extra-focal inner-edge miss (+3.1 → −0.3 pixels) and cuts the intra one to +1.9 pixels.
-- **Vane shadows:** a free vane width fits 103 mm extra and 61 mm intra (CAD 50 mm; sims give
-  50 mm). Their equivalent width differs between sides of focus (10.0 against 5.4 pixels),
-  which an opaque vane cannot do. Batoid Huygens sims: diffraction gives about half the
-  ±0.5–0.8 pixel edge miss and the ratio excess; a phase strip of +0.10 to +0.15 µm of
-  optical path along the vanes gives the extra/intra shadow difference (equivalent width
-  8.8–9.6 / 3.6–4.5 against 10.0 / 5.7 pixels). Neither gives the 1.7–2.1 pixel
-  translation, which stays open.
-
-Pupil pass 5 (2026-10-22; 188 sides, validation):
-- **The spider offset is a translation of the shadows, not a rotator offset.** Fitting
-  only the model spider angle gives δ = +0.13 deg (extra) and +0.23 deg (intra), nMAD
-  0.06–0.07 deg. That leaves the m = 1 term of the data − model shadow azimuth unchanged,
-  at 0.35 deg (extra) and 0.43 deg (intra). A per-side translation of the shadow pattern
-  of dy −1.7 pixels (extra) and −2.1 pixels (intra), OCS image, removes it, to 0.003 deg.
-  The EFD rotator position sits +0.19 to +0.21 deg from the visitInfo rtp the fits use,
-  which is close to δ, but δ differs between the sides of focus by 0.10 deg.
-- **The centre choice changes the size of the translation, not its sign.** About the
-  outer-edge centre the m = 1 term drops to 0.28 deg (extra) and 0.36 deg (intra); the
-  inner edge still sits +2.1 to +2.5 pixels toward +y.
-- **The shadow width is not blur.** With the blur free the extra-focal fit stays at 1.00
-  arcsec FWHM, and the data/model width ratio stays 1.74. Intra fits 1.60 arcsec, which
-  brings that ratio to 1.12, but the model shadows are then too shallow (0.44 against the
-  data's 0.53).
-- **Where the outer-band inner edge misses:** at ψ 330–30 deg intra and 160–200 deg extra
-  the v4.02 inner edge is set by the camera silhouette (intra also M2 at 25–30 and
-  330–335 deg). There the danish v4.02g mask sits 3.3–3.9 pixels inside Batoid, and the
-  data sit 3–5 pixels outside fit c. The outer edge there is M1Baffle1, with the
-  TMASection over the central 6 deg; the mask and Batoid agree there.
-
-Pupil pass 4 (2026-10-21; 180 sides at 0–0.8 and 1.4–1.75 deg):
-- **The central edge mismatch is in the image frame, not the pupil.** Data − fit c
-  agrees between extra and intra in OCS image azimuth: Pearson r +0.76 for the inner
-  edge and +0.77 for the ratio. Turned into the pupil frame it is −0.95 and −0.91. It is
-  an inner-edge shift of 1.7–2.0 pixels toward +y on both sides, so it is not an M1
-  aperture effect.
-- **Relative azimuth ψ stacks the outer band.** The outer-edge scatter between donuts is
-  1.2–1.4 pixels in ψ, against 7.1–7.5 in OCS. The model misses most on the inner edge on
-  the vignetted side (ψ 0 deg intra, 180 deg extra), by +3.5 to +5.5 pixels.
-- **The large outer-band aberrations are pupil bias.** The central-band medians (Z5
-  −0.22, Z6 −0.13, Z7 +0.22, Z9 −0.30 µm OCS) cost 6 % in chi2/dof against fit c's 1–3.9
-  µm of Z5–Z7 on intra sides beyond 1.5 deg. Fit c's per-side Z11 and Z15 flip sign
-  with focus and carry most of its edge gain.
-- **The spider shadows are shifted, not misplaced per vane.**
-  - Against fit c, the data shadows sit about 1.8 pixels toward −y OCS image on both
-    sides of focus: an m = 1 term of 0.36–0.41 deg in azimuth at r_half.
-  - A common rotation of −0.14 / −0.24 deg (extra / intra) sits inside the method's
-    0.4 deg bias.
-  - Per-vane residuals are 0.11 deg at most, with no field dependence.
-  - The data shadows are 10–12 pixels wide against the model's 7.
-
-Pupil pass 3 (2026-10-21; 30 donuts, 49 sides, intrinsicTA reference, v4.02g masks):
-- With Z4 alone, the data's r_inner / r_outer is 0.0104 higher than the model on science
-  donuts (median, nMAD 0.0048, dimensionless), with no trend in field radius (Pearson r
-  −0.15, Spearman rho −0.21, n 34). The inner edge sits +2.1 pixels outside the model
-  and the outer edge −1.25 pixels inside it.
-- Freeing Z11 and Z22 removes most of that (excess 0.003) and cuts the inner-edge RMS
-  from 3.3–3.6 to 2.2–2.3 pixels, but chi2/dof only by 6 %. Z11 comes out −0.15 µm
-  extra and +0.15 µm intra: a sign that flips with focus is the pupil, not the wavefront.
-- Fitting only the edges (fit d) gives Z7 +0.76 µm on both sides and at every field
-  radius, the pass 2 edge coma. The whole-donut fits find Z7 +0.14 to +0.24 µm, and fit
-  d's whole-donut chi2/dof is 1.36 times fit a's. So the coma fits the edges, not the
-  donut.
-- What most needs measuring: the M1 central-obscuration and outer clear-aperture radii.
-
-Pupil pass 2 (2026-10-20) settles what that offset is not:
-- **It has the signature of coma, but is not wavefront coma.** The inner-minus-outer
-  edge-centre shift is +3.3 pixels along +y CCS on both sides of focus and at every
-  field radius 0.17–1.70 deg. In Batoid, 1 µm of Z7 gives +4.45 pixels, so it reads as
-  Z7 +0.71 µm (extra) and +0.81 µm (intra) of wavefront. But danish fits with Z7 and
-  Z8 free find Z7 +0.02 and +0.19 µm, and the seq 324 state gives +0.02 µm.
-- **The inner shadow is also larger.** r_inner / r_outer is 0.628 (extra) and 0.631
-  (intra) in the data, and 0.616–0.618 in Batoid and danish, v4.02 and v1000 alike
-  (dimensionless). Coma does not change the radii.
-- **Not the telescope state.** The seq 324 optical state moves the sector offsets by
-  under 1 pixel. Adding the 337/340 Trim tilts makes every fit worse (38 of 38 sides),
-  so v4.02's as-built alignment already holds them.
-- **Not one element shift.** A decentred pupil obscuration flips sign with focus.
-  Only L3 and the filter give a same-sign shift, and they would need about 5 mm and
-  100 mm moves.
-- **danish v4.02g** (masks fitted at the giant configuration) fixes the outer edges
-  that danish v4.02 missed at 1.73–1.75 deg (M3, filter). There Batoid itself clips at
-  the filter 7–21 pixels inside the data edge. Dropping the in-camera openings costs
-  nothing: they uniquely block no ray.
+Open:
+- The cause of the common image-frame translation (spider dy above, inner-edge dy +2.1 /
+  +1.8 pixels).
+- The intra silhouette miss, +1.93 ± 0.39 pixels with v4.02s.
+- The TMASection and M1Baffle1 edges the mask lacks (chi2/dof 2.1–2.8 at 1.69–1.70 deg).
+- The vane shadow difference: a +0.10 to +0.15 µm phase strip matches it; the cause is
+  not measured.
+- The residual rotation, −0.026 / +0.087 deg.
+- Night 2: no other night has a usable intra-focal set. 20251027 (extra, i band) repeats
+  the translation (−1.69 to −1.80 pixels); 20260127 is not yet fitted.
 
 ## Log
+
+### 2026-10-23 — parked
+
+Aaron, 2026-10-23: a good stopping place. Waiting on two things: the CAD review with Josh
+and Hannah (week of 2026-10-26, questions in `cad_review_summary.md`) and a rebuild of the
+Batoid model from CAD and Zemax. Further passes on v4.02 would fit a model about to change.
+
+Written: `summary.md` (the readable summary: 11 settled findings, 6 open, the ruled-out
+list), `findings.md` rows M1 (camera body, `camera_body_review.md`), M2 (the two viewers,
+commit `9b554e0`), N1 and N2 (night 2); `figure_index.csv` rerun. The Current answer is now
+the short form of `summary.md`; the per-pass blocks are in the entries below.
+
+Left running: Slurm job 41759352, the 20260127 fits of run `20261023_night2_20260127`.
+Its output is preliminary (old masks) and need not be reported.
+
+Next, in order:
+1. The CAD review; record its answers against the five questions in
+   `cad_review_summary.md`.
+2. Rebuild the Batoid model and refit the danish masks from it (camera envelope at
+   z 4.0–4.5 m, vane cross-section, TMA, mid-level and top-end baffles, r-band filter
+   frame, M1 clear aperture). Check the new silhouette against Batoid at 1.1–1.4 deg,
+   where v4.02s still uses v4.02g's circle.
+3. Rerun pass 6 on night 1 with the rebuilt masks.
+4. Night 2 Part B on the rebuilt model: 20260127 T680 seq 393–408 and 220–222, 20250920
+   seq 274 (`night2_pipeline.py`, `night2_report.py`).
+5. A separate thermal vane study (vane and air temperature against the shadow width), and
+   a request for a giant pair at rtp ±90 deg.
+
+### 2026-10-23 — night 2 review: which other nights have usable giant donuts
+
+Run `output/20261023_night2_review` (`code/night2_review.py`, `submit_night2.sh`; commits
+`d7e29d9`, `216d6b4`, `71bfa2d`, `1edd82c`, `df50f0a`), report `night2_review.pdf`
+(8 pages), tables `sets`, `exposures`, `choice.json`. One check exposure per set: minimal
+4×4-binned ISR on R22_S11, R12_S11, R03_S11 and R00_SW0, the donut radii, the star density
+and the final selection rule; per exposure the Trim of all 50 DOF against its in-focus
+reference.
+
+Sets classified, 38 on 15 nights other than 20251023 (`night2_review.classify`):
+
+| class | sets |
+|---|---|
+| extra-only (giant, unperturbed, no intra set that night) | 22 |
+| perturbed (another DOF stepped beyond the focus) | 8 |
+| other defocus (science outer radius more than 8 pixels from 338) | 3 |
+| not giant | 3 |
+| 8 mm (one perturbed) | 2 |
+
+No night has a usable intra-focal set; the one intra set (20260705 T746) has outer radius
+316 pixels against 338 on 20251023. The rule (both sides, r or i, 60 s, |galactic
+latitude| > 40 deg) found no night and fell back to 20251212 T663 i band (5 exposures).
+Its ranking counts donuts on three detectors only (0–3 each), too few to order the sets.
+
+**Chosen (Aaron, 2026-10-23):** 20260127, T680 r band at RA 185 deg (seq 393–408, 16
+exposures, galactic latitude +61.8 deg, physical_rotator_angle −47.9 to +59.0 deg in three
+groups), plus its 8 mm seq 220–222 (RA 146 deg) and 20250920 T621 z 8 mm seq 274. Why: r
+band as night 1, the highest latitude, and a rotator spread that tests whether the
+translation is fixed to the image or the telescope.
+
+Part B (`night2_pipeline.py`, `night2_report.py`) started the same day on the old v4.02
+masks: runs `20261023_night2_20250920` (7 sides), `20261023_night2_20251027` (301 sides; an
+i-band M2 dx ladder added to the list) and `20261023_night2_20260127` (1436 sides, fit
+still running at parking, Slurm job 41759352). On 20251027, extra-focal, M2 dx 0 and
+±1000 µm groups (59–79 sides each): spider dy −1.69 to −1.80 pixels and inner-edge dy +1.81
+to +2.05 pixels OCS image, against night 1's −1.65 and +2.10; free vane width 76–92 mm
+against 103 mm. Preliminary; not reported further.
+
+Next: rerun Part B on the rebuilt model (see the "parked" entry), not before.
 
 ### 2026-10-22/23 — pupil pass 6: ISR, physical rotator angle, simulations, silhouette, vane width
 
