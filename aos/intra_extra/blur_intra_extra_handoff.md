@@ -14,7 +14,7 @@ Commit `3f600c9` "Keep per-side blur and Zernikes in the blitz recast":
   mean), so a Danish 1.2 reader is unaffected.
 - `aos/code/fam_processing/run_blitz_mktable.py` — the two per-side visit medians appended
   to `VISITS_COLUMNS`.
-- `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb` — the plot and the
+- `aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb` — the plot and the
   offset-model test, executed with outputs.
 - `aos/docs/studies/fam_processing.md` — notebook row plus a paragraph on the per-side
   columns.

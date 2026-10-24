@@ -13,15 +13,13 @@ pupil geometry, and other prescription-level questions that do not need data.
 | `notebooks/optics_fresnel_analytic_benchmark_v1.ipynb` | diffraction models of a defocused annular paraboloid against the semi-analytic Debye integral and HCIPy |
 | `notebooks/optics_fresnel_rubin_onaxis_v1.ipynb` | Rubin on-axis donuts with the camera pistoned ±1.5 mm: geometric, `fftPSF`, and Huygens/Debye diffraction |
 | `notebooks/optics_fresnel_rubin_seeing_v1.ipynb` | the same donuts with 0.7″ von Kármán seeing: separable versus ray-kick seeing, intra/extra comparison, Danish apparent Zernikes and FWHM |
-| `notebooks/optics_fresnel_hexapods_4mm_v1.ipynb` | on-axis geometric donuts with camera and M2 both pistoned ∓4 mm (about 8 mm equivalent defocus), with and without 0.7″ Kolmogorov seeing |
-| `notebooks/optics_fresnel_hexapods_4mm_tde_v1.ipynb` | the same donuts with a turned-down M1 inner edge (50 nm, 5 cm): intra/extra overlay and each side with and without the edge |
 | `notebooks/optics_fresnel_sensor_iband_v1.ipynb` | i-band silicon-sensor effects (conversion depth, diffusion) on intra- and extra-focal donuts, via GalSim `SiliconSensor` |
 | `rubinwork/fresnel/donut_sensor.py` | library — bandpass photon tracing, Snell refraction into silicon, sensor accumulation |
 | `fresnel_donuts/code/time_fftpsf_vs_debye.py` | driver — wall-clock times of `fftPSF` and the Debye-weighted Huygens sum, in focus and for a 1.5 mm donut |
 | `rubinwork/fresnel/donut_seeing.py` | library — von Kármán kernel, defocused plate scale, per-ray atmospheric kicks, Danish fit wrapper |
 | `docs/studies/fresnel_donuts.md` | study writeup for the Fresnel, seeing and sensor notebooks |
 | `docs/status/batoid_pr_debye_huygens.md` | draft text of a batoid pull request adding NUFFT evaluation and Debye weights to `huygensPSF` |
-| `docs/studies/intra_extra_phase_strip.md` | symmetry constraint on intra/extra donut differences, and the static phase-strip hypothesis for the larger intra-focal Danish kernel |
+| [`../aos/intra_extra/`](../aos/intra_extra/study.md) | the 4 mm hexapod donut notebooks and the intra/extra phase-strip writeup, moved to the `aos/intra_extra` study |
 
 ## Diffraction of defocused donuts
 
@@ -31,7 +29,7 @@ wavefront sensing. The comparison tests batoid's Huygens algorithm against a
 semi-analytic reference and measures how large diffraction is at the 10 µm pixel
 scale. A seeing extension tests separable versus per-ray atmospheric blurring, and
 compares the apparent seeing and Zernike coefficients of intra- and extra-focal
-donuts; a sensor extension does the same for i-band CCD effects. See [docs/studies/fresnel_donuts.md](docs/studies/fresnel_donuts.md). The larger Danish kernel fitted to intra-focal donuts in data is analysed in [docs/studies/intra_extra_phase_strip.md](docs/studies/intra_extra_phase_strip.md).
+donuts; a sensor extension does the same for i-band CCD effects. See [docs/studies/fresnel_donuts.md](docs/studies/fresnel_donuts.md). The larger Danish kernel fitted to intra-focal donuts in data is analysed in [../aos/intra_extra/intra_extra_phase_strip.md](../aos/intra_extra/intra_extra_phase_strip.md).
 
 Run it with:
 

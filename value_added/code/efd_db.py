@@ -17,7 +17,7 @@ Callers kept working by this shim:
 * ``aos/code/cwfs_lut/run_cwfs_lut.py``
 * ``aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb``
 * ``aos/notebooks/bounce/_exectest.ipynb``
-* ``aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb``
+* ``aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb``
 
 New code imports ``rubinwork.products.value_added`` and calls ``visits``,
 ``optical_state``, ``fam_dz``, ``m1m3_thermal_r2`` or ``join_consdb`` on it, or opens a

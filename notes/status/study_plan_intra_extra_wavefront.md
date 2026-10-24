@@ -18,9 +18,9 @@ Nothing below has been created. Read-only checks already run are marked **checke
 
 ## 1. What the earlier blur study established
 
-`aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`, output in
+`aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb`, output in
 `aos/output/fam_processing/blur_intra_extra/`, handoff
-`aos/docs/status/blur_intra_extra_handoff.md`. Its argument, which this study repeats on
+`aos/intra_extra/blur_intra_extra_handoff.md`. Its argument, which this study repeats on
 the Zernikes:
 
 1. Median donut blur per visit per side of focus; difference intra − extra per FAM
@@ -74,7 +74,7 @@ Directory: `study.md`, `notebooks/`, `figures/`, and
 
 The earlier blur study's handoff becomes the **first log entry** of `study.md`, per
 section 7 ("Handoffs become log entries"). Its thermal derivation moves beside `study.md`
-as `blur_thermal.md`. The old `aos/docs/status/blur_intra_extra_handoff.md` and the old
+as `blur_thermal.md`. The old `aos/intra_extra/blur_intra_extra_handoff.md` and the old
 notebook stay on disk until Aaron says otherwise — no deletions.
 
 ---

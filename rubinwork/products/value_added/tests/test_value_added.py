@@ -38,7 +38,7 @@ EFD_DB_IMPORTERS = (
 EFD_DB_NOTEBOOKS = (
     "aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb",
     "aos/notebooks/bounce/_exectest.ipynb",
-    "aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb",
+    "aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb",
 )
 """Notebooks that import ``efd_db`` the same way."""
 

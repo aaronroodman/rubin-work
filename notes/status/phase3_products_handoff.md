@@ -1421,7 +1421,7 @@ defaults to `readonly=True`) or the `value_added/code/efd_db.py` shim:
   `aos/miw_hull/code/azimuth_probe.py`, `rubinwork/common/dof_telemetry.py`.
 - *Notebooks (4):* `value_added/notebooks/value_added_db_validation.ipynb`,
   `aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb`,
-  `aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`, and
+  `aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb`, and
   `aos/notebooks/bounce/_exectest.ipynb`.
 - `aos/Snakefile` references the database rows in its provenance comments.
 

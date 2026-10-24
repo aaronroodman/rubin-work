@@ -21,7 +21,7 @@ that the cause is a static phase strip along the spider vanes and the pupil edge
   50.0 µm/″ plate scale that is about 21 µm FWHM on the detector, or about 2 pixels of
   10 µm.
 
-The diffraction study ([fresnel_donuts.md](fresnel_donuts.md)) does not reproduce the
+The diffraction study ([fresnel_donuts.md](../../optics/fresnel_donuts/fresnel_donuts.md)) does not reproduce the
 difference. Scalar diffraction, errors in the reference Zernikes, and i-band silicon
 effects give at most 0.002″ between intra and extra.
 
@@ -117,7 +117,7 @@ other.
 converging strip: higher refractive index at the vane, so colder air.
 
 The edge version of this sign was simulated on 2026-10-09
-(`optics/notebooks/optics_fresnel_hexapods_4mm_tde_v1.ipynb`): a turned-down M1 inner
+(`aos/intra_extra/notebooks/optics_fresnel_hexapods_4mm_tde_v1.ipynb`): a turned-down M1 inner
 edge 50 nm deep over 5 cm gives +0.82″ of extra blur intra-focal and −0.34″ extra-focal
 (quadrature difference from the design, inner-edge width), the observed sign, and
 stronger than the about 0.41″ observed.

@@ -24,8 +24,8 @@ CAD location) fit better than v1000?
 Data: day_obs 20251023, BLOCK-T626, r band, 60 s; exposure 2025102300337 (extra-focal)
 and 2025102300340 (intra-focal). Both sit at ±4000 µm on the camera hexapod and ±4000 µm
 on M2, a 4 + 4 mm split, about 7.6 mm effective defocus. Rotator angle 0.012 deg and
-0.149 deg. Background: `notes/status/item7_giant_donuts_handoff.md`,
-`wfs/docs/giant_donuts_pupil_findings.md`.
+0.149 deg. Background: `aos/intra_extra/item7_giant_donuts_handoff.md`,
+`aos/intra_extra/giant_donuts_pupil_findings.md`.
 
 Optical models: `~/notebooks/rubin-optical-model` at commit `e2a1e54` (read only).
 
@@ -243,7 +243,7 @@ about 7.4e5) 3.28 → 2.91 extra, 1.93 → 1.92 intra. Sims return 49.7 / 49.9 m
 - **A phase strip along the vanes** (warm air): in 1D a 70 mm vane plus −1 rad at 620 nm
   (0.1 µm of optical path, Gaussian sigma 60 mm) fits both sides at once (RMS 0.060 extra,
   0.035 intra). That is about 0.1 K over 1 m of path, and is the static phase strip of
-  `optics/docs/studies/intra_extra_phase_strip.md`. Camera telemetry at seq 335 and 341: body
+  `aos/intra_extra/intra_extra_phase_strip.md`. Camera telemetry at seq 335 and 341: body
   +0.6 to +0.8 K, L1 +0.7 to +1.6 K, shutter electronics return air +7.2 K above the ambient
   8.6 °C. Pointing: altitude 67.4 / 65.7 deg, azimuth 268.5 / 267.7 deg.
 - Ruled out: CCD readout or CTI (translation dy −1.70 / −1.64 E2V and −1.75 / −1.57 ITL,

@@ -4,7 +4,7 @@
 > projection chain traced and an intra/extra lip asymmetry found in the data; no blocker ·
 > **Last updated:** 2026-10-06 · **Kind:** handoff
 
-Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
+Specification is item 7 of [`notes/todos/todo-ideas.md`](../../notes/todos/todo-ideas.md). Study
 code lived in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05); it is now the library
 `rubinwork/giant_donuts/`.
 
@@ -12,9 +12,9 @@ code lived in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05); it is now t
 
 - `850c87d` — saved the uncommitted `wfs_giant_donut_fit.ipynb` work before archiving it.
 - File moves (Q4, authorized 2026-10-05), staged not yet committed:
-  `wfs/docs/danish_pupil_mask_findings.md` → `wfs/docs/giant_donuts_pupil_findings.md`;
+  `wfs/docs/danish_pupil_mask_findings.md` → `aos/intra_extra/giant_donuts_pupil_findings.md`;
   `wfs_giant_donut_fit.ipynb`, `wfs_batoid_pupil_compare.ipynb`, `wfs_diffraction.ipynb`
-  → `wfs/notebooks/archive/`. Nothing deleted.
+  → `aos/intra_extra/notebooks/archive/`. Nothing deleted.
 
 ## Settled facts
 
@@ -404,7 +404,7 @@ Two things to know about it:
 1, so the fitted stamps and model images share the data stamp's native 10 µm detector
 pixel. The spider section skips `spiders = False` fits. Every fit number in this handoff
 and in the notebook's interpretation has been regenerated; the figures and PDFs are rerun.
-Modified: `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb`,
+Modified: `aos/intra_extra/notebooks/giant_donut_radial_profiles.ipynb`,
 `rubinwork/giant_donuts/fit_giant_donut.py` (docstring only), this file.
 
 Nothing uncommitted in this repo. Commits in order: `fe9fa1a` (selection module, file
@@ -415,7 +415,7 @@ and image helpers), `6369dc9` (the four fits and azimuthal profiles in the noteb
 ε-basis fix and the fixed-blur fits). In the blitz checkout, `ab85fc3d` on branch
 `giant-donuts-study`.
 
-`wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb` is complete and fully
+`aos/intra_extra/notebooks/giant_donut_radial_profiles.ipynb` is complete and fully
 executed: 0 unexecuted code cells, 0 error outputs, 13 embedded figures, a 13-entry table
 of contents with every anchor resolving. Twelve PDFs in `wfs/output/giant_donuts/`
 (gitignored): `radial_profiles_`, `azimuthal_profiles_`, the blur-suffixed

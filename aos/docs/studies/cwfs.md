@@ -66,7 +66,7 @@ All four live in `notebooks/cwfs/`:
   and −0.10 µm extra, and Z14 splits the same way. Unpaired results are stable; the
   paired-mode Z11 is negative and noisier. The 8 mm giant donuts show the same split, plus
   a field-dependent Z4 split
-  ([`../../../wfs/docs/giant_donuts_pupil_findings.md`](../../../wfs/docs/giant_donuts_pupil_findings.md#intraextra-split-in-fitted-giant-donuts-2026-09-16)).
+  ([`../../intra_extra/giant_donuts_pupil_findings.md`](../../intra_extra/giant_donuts_pupil_findings.md#intraextra-split-in-fitted-giant-donuts-2026-09-16)).
 - **A static aberration or a CCD height cannot explain an extra − intra difference.** Any
   static field-dependent wavefront (any Double Zernike term) is common to both sides of
   focus and cancels exactly in extra − intra; so does the detector height, except for the
@@ -74,7 +74,7 @@ All four live in `notebooks/cwfs/`:
   ([`../ts_wep_zernike_intrinsics.md`](../ts_wep_zernike_intrinsics.md#the-batoid_rubin-ccd-height-map-2026-10-11)).
   The split is therefore a model or algorithm asymmetry, or a static phase that changes
   sign between the two sides
-  ([`../../../optics/docs/studies/intra_extra_phase_strip.md`](../../../optics/docs/studies/intra_extra_phase_strip.md)).
+  ([`../../intra_extra/intra_extra_phase_strip.md`](../../intra_extra/intra_extra_phase_strip.md)).
   Diffraction accounts for about one third of it (`notes/todos/todo-ideas.md`, item 7).
 - Per-Zernike CWFS↔FAM offsets (Z11 spherical, Z14 tetrafoil, Z7 coma) **persist** under
   a radius-matched comparison — a real disagreement, not a field-mean artifact.

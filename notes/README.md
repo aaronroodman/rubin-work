@@ -46,7 +46,7 @@ and working state that span the whole repo — and so belong to no single topic 
 | [`status/parallel_claude_sessions.md`](status/parallel_claude_sessions.md) | running several Claude Code sessions on one working tree: what collides, git worktrees, subagents |
 | [`status/item2_optical_state_build_handoff.md`](status/item2_optical_state_build_handoff.md) | the handoff that drove the three-scheme optical-state build, now [completed item 7](todos/completed-todos.md#7-open-loop-and-deviation-recovered-optical-state-for-science-visits-three-schemes): the three code findings behind its decisions, and what was rejected |
 | [`status/item5_miw_pupil_model_handoff.md`](status/item5_miw_pupil_model_handoff.md) | [item 5](todos/todo-ideas.md) step A, the MIW on the v1000 pupil model: complete — the build, why the difference has no pupil-rim signature, what step B should expect, and why the `_legacy` baseline was proposed and declined |
-| [`status/item7_giant_donuts_handoff.md`](status/item7_giant_donuts_handoff.md) | [item 7](todos/todo-ideas.md), giant donuts and the pupil models: state of the single-donut intra/extra Z11 test |
+| [`../aos/intra_extra/item7_giant_donuts_handoff.md`](../aos/intra_extra/item7_giant_donuts_handoff.md) | [item 7](todos/todo-ideas.md), giant donuts and the pupil models: state of the single-donut intra/extra Z11 test |
 
 Topic-specific docs stay in their topic (`<topic>/docs/`), not here.
 

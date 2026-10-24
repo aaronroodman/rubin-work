@@ -5,11 +5,7 @@ status: active
 question: Does the wavefront measured from the intra-focal donut differ from the
   extra-focal donut of the same FAM pair, and is that difference thermally driven as the
   blur difference is?
-answer: Yes to both, with a split. Z14 carries the largest difference
-  (-0.5221 um of wavefront, 8.6x its own two-side mean) but only Z11 tracks the blur
-  difference within a night and only Z11 responds to the pupil model. Z4 is the surprise:
-  a modest median difference with the second-largest robust scatter over visit pairs
-  (0.1710 um of wavefront), 25.3 per cent of which the thermal model removes.
+answer: 'Yes to both, with a split. Z14 carries the largest difference (-0.5221 um of wavefront, 8.6x its own two-side mean) but only Z11 tracks the blur difference within a night and only Z11 responds to the pupil model. Z4 is the surprise: a modest median difference with the second-largest robust scatter over visit pairs (0.1710 um of wavefront), 25.3 per cent of which the thermal model removes.'
 uses:
   fam_tables: danish_1_3_v1000@20261013, danish_1_3_test@20261013
 started: 2026-10-15
@@ -243,6 +239,14 @@ pupil model and does not track the blur within a night. It is not explained here
 
 ## Log
 
+### 2026-10-23 — linked to the intra/extra study
+
+The giant-donut, phase-strip and blur-offset work this study left out (2026-10-15 scope)
+is now one study, [`../intra_extra`](../intra_extra/study.md) (phase 5 decision 6). This
+study stays separate and keeps its own question. The blur thermal cache it reads moved
+with that study to `aos/intra_extra/output/blur_intra_extra/`; the copy in the old aos tree
+is still there and is what the notebook reads.
+
 ### 2026-10-15 — the Zernike extension, first pass
 
 One notebook, one PDF (21 pages), four parquet summaries. Run directory
@@ -304,9 +308,9 @@ done.
 ### 2026-10-06 — the blur study (carried over)
 
 Predecessor, run on `danish_1_3_test`:
-`aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb`, output
+`aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb`, output
 `aos/output/fam_processing/blur_intra_extra/`, handoff
-`aos/docs/status/blur_intra_extra_handoff.md` (not yet folded in here; still the full
+`aos/intra_extra/blur_intra_extra_handoff.md` (not yet folded in here; still the full
 record of the thermal-regression detail and the "tried and rejected" list).
 
 873 quality triplets, 15 nights: median intra blur 1.0526 arcsec, extra 0.6636 arcsec,

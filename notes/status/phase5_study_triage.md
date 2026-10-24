@@ -188,7 +188,7 @@ deleting tracked files, so each needs your OK. History stays at tag
 | ---------------------------------------------- | -------------------------------------------------------------------------- |
 | `notes/aos-measured-intrinsics/`               | deliverable of`aos/miw`; its provenance points at the retired `danish_1_0` |
 | `notes/aos-bounce-test-summary/`               | deliverable of`aos/bounce`; reads `bounce_tables`                          |
-| `notes/status/item7_giant_donuts_handoff.md`   | becomes the giant_donuts study log                                         |
+| `aos/intra_extra/item7_giant_donuts_handoff.md`   | becomes the giant_donuts study log                                         |
 | todo 1, retrieval methods across nights        | new aos study, blocked on CWFS processing                                  |
 | todo 2, MIW grid hull                          | `ts_intrinsic_wavefront` change, not a study                               |
 | todo 3, Confluence page on production runs     | documentation,`fam_tables`/`cwfs_tables` product docs                      |
@@ -244,7 +244,7 @@ Aaron, 2026-10-18:
 - `thermal_focus/README.md` says the correction fails inside a FAM block;
   `docs/thermal_focus.md` (2026-10-08) says that argument was dropped.
 - `wfs/README.md` says the Z11 split's "cause is diffraction"; the studies say about 1/3.
-- `optics/docs/studies/intra_extra_phase_strip.md` says "not yet simulated"; it was, on
+- `aos/intra_extra/intra_extra_phase_strip.md` says "not yet simulated"; it was, on
   2026-10-09.
 - `guider/docs/deploy_summit_merge_note.md` says about 9 commits; elsewhere 8.
 - `guider/docs/guider_vs_ccd_moments.md` names `optatmo/code/moments_hsm.py`; it is now

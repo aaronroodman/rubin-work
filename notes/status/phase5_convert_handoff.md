@@ -44,8 +44,8 @@ cd ~/notebooks/rubin-work && git rm smatrix/code/vmode/__init__.py \
 ```
 
 Delete no file without asking, of any kind. Leave Aaron's uncommitted notebooks alone:
-`aos/notebooks/fam_processing/blur_intra_extra_offset.ipynb` and
-`wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb`.
+`aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb` and
+`aos/intra_extra/notebooks/giant_donut_radial_profiles.ipynb`.
 
 ## Decisions for Aaron
 
@@ -157,7 +157,7 @@ Stopped before `aos`, as instructed. The `aos` step, in order:
 1. Read `aos/CLAUDE.md`, `aos/docs/studies.md` and the triage's aos rows.
 2. Build `aos/intra_extra` first (decision 6): `wfs/giant_donuts` (code, notebooks except
    Aaron's uncommitted `giant_donut_radial_profiles.ipynb`, `docs/giant_donuts_pupil_findings.md`,
-   the archived pupil/diffraction notebooks, `notes/status/item7_giant_donuts_handoff.md`
+   the archived pupil/diffraction notebooks, `aos/intra_extra/item7_giant_donuts_handoff.md`
    as its Log), `optics/intra_extra_phase_strip` (doc and the two `hexapods_4mm`
    notebooks), aos `blur_intra_extra` (leave `blur_intra_extra_offset.ipynb` untouched),
    and the Z11/Z14 part of aos `cwfs`. Add the Log link from `aos/unpaired_intra_vs_extra`.
