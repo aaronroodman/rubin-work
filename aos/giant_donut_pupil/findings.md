@@ -1,7 +1,7 @@
 # Giant-donut pupil: findings ledger
 
-> **Status:** current through pupil pass 6 (2026-10-23). One row per finding, from the
-> selection work and pupil passes 1–6. Superseded findings stay, with what replaced them.
+> **Status:** current through pupil pass 6 and the night 2 review (2026-10-23); study parked.
+> One row per finding, from the selection work, pupil passes 1–6, the model reviews and night 2. Superseded findings stay, with what replaced them.
 
 Data: 20251023 seq 337 (extra-focal) and 340 (intra-focal), ±4 mm camera and M2. "Extra /
 intra" pairs give the extra-focal value first. Pixels are 10 µm detector pixels; OCS image
@@ -66,3 +66,17 @@ or size not pinned), **superseded** (replaced; the row names by what).
 | V15 | A phase strip along the vanes of +0.10 to +0.15 µm of optical path (colder or denser air) gives the extra/intra shadow difference: equivalent width 8.8–9.6 / 3.6–4.5 pixels against the data's 10.0 / 5.7. Its physical cause (temperature of the vanes or the air) is not measured | open | 20261023_pupil6/pupil_pass6.pdf p44-45 | stop-plane Gaussian sigma 40–90 mm |
 | V16 | Offset phase strips move the shadow pattern by 0.13–0.27 pixels, same sign on both sides, so they cannot give the data's 1.65–2.07 pixel translation | settled | 20261023_pupil6/pupil_pass6.pdf p44-45 | |
 | V14 | Cause of the common translation (dy −1.65 / −2.07 pixels) and the inner-edge shift (+2.1 / +1.8 pixels) | open | 20261023_pupil6/pupil_pass6.pdf p7 p44 | not danish, TEA, coma, rotator, detector or ISR |
+
+## Models and viewers
+
+| # | claim | status | evidence | conventions |
+|---|---|---|---|---|
+| M1 | danish v1000's single `CameraBody` disk (Batoid radius 0.80469 m at z 3.500 m) is within 0.2–1.1 pixels of v4.02s at 1.4–1.75 deg (outermost stop-plane point −13.7 to −1.9 mm off); v4.02g's circle was 43–66 mm (3.5–5.4 pixels) short there. The 165 v4.02 slices add little over one disk for this edge | settled | camera_body_review.md section 3 | stop-plane mm along −x, extra-focal giant configuration; 12.3 mm is about 1 pixel |
+| M2 | Two 3D viewers: `figures/pupil_mask_viewer.html` (the danish masks) and `figures/rubin_model_geometry.html` (every v1000 and v4.02 surface and obscuration, ray fans at 0 and 1.7 deg); build scripts in `code/viewers/` | settled | commit 9b554e0; camera_body_review.md section 2 | telescope frame |
+
+## Night 2
+
+| # | claim | status | evidence | conventions |
+|---|---|---|---|---|
+| N1 | Of 38 giant-donut sets on 15 nights other than 20251023: 22 extra-only, 8 perturbed, 3 other defocus, 3 not giant, 2 at 8 mm. No night has a usable intra-focal set. Chosen (Aaron 2026-10-23): 20260127 T680 r, 4 mm, RA 185 deg (16 exposures, galactic latitude +61.8 deg, rotator −47.9 to +59.0 deg), its 8 mm seq 220–222, and 20250920 z 8 mm seq 274 | settled | 20261023_night2_review/night2_review.pdf p1-4; choice.json | sets as `night2_review.classify` |
+| N2 | Pass 6 analysis on other nights, extra-focal only: 20251027 i band (M2 dx 0 and ±1000 µm, 59–79 sides per group) gives spider dy −1.69 to −1.80 pixels and inner-edge dy +1.81 to +2.05 pixels OCS image, against night 1's −1.65 and +2.10; the free vane width is 76–92 mm against night 1's 103 mm. 20260127 is not yet fitted | open | 20261023_night2_20251027/night2_20251027.pdf p2-9; 20261023_night2_20250920/night2_20250920.pdf p2 | as pass 6; preliminary, run before the model rebuild |
