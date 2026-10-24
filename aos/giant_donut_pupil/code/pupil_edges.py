@@ -123,7 +123,7 @@ def spider_bins(params, rtp_deg, thx, thy, offsets, npix, r_out_pix):
     pixel in it; the neighbouring bins are added for the blur.
     """
     import danish
-    import fit_giant_donut
+    from rubinwork.giant_donuts import fit_giant_donut
     import obscuration_v402 as ob
     import z4_fits
     blitz_utils, _ = fit_giant_donut._import_blitz()

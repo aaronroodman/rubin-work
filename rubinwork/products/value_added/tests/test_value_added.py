@@ -30,7 +30,6 @@ from rubinwork.products.value_added import write_manifest  # noqa: E402
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
 EFD_DB_IMPORTERS = (
-    "wfs/code/giant_donuts/select_exposures.py",
     "aos/code/cwfs_lut/cwfs_lut_lib.py",
     "aos/code/cwfs_lut/run_cwfs_lut.py",
 )

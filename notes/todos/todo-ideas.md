@@ -1403,7 +1403,7 @@ label-first:
 
 The same night also carries ordinary FAM at camera-only ±1500 µm (`seq_num` 334/335 and
 346/347), giving a built-in camera-only against 4+4 split contrast. Selection is implemented
-in `wfs/code/giant_donuts/select_exposures.py`. The observation reason is free text and was
+in `rubinwork/giant_donuts/select_exposures.py`. The observation reason is free text and was
 wrong in both directions here, so it is not a reliable filter on its own.
 
 **Q3. Paired or unpaired fits?** The intra/extra Z11 split is only visible in **separate

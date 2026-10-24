@@ -5,7 +5,7 @@
 > **Last updated:** 2026-10-06 · **Kind:** handoff
 
 Specification is item 7 of [`notes/todos/todo-ideas.md`](../todos/todo-ideas.md). Study
-lives in `wfs/code/giant_donuts/` (Aaron's choice, 2026-10-05).
+lives in `rubinwork/giant_donuts/` (Aaron's choice, 2026-10-05).
 
 ## Done and committed
 
@@ -194,7 +194,7 @@ flat middle (about 0.12), so the forward model fails hardest at the edges.
 
 ## The fit result: v1000 halves the Z11 split
 
-Committed in `449d928`. `wfs/code/giant_donuts/fit_giant_donut.py` drives blitz's own
+Committed in `449d928`. `rubinwork/giant_donuts/fit_giant_donut.py` drives blitz's own
 factory and danish model directly on stamps cut from the raws, rather than running the
 butler pipeline — this engineering night has no reference catalog or matched calibs, and
 the question is about the forward model. The blitz checkout is
@@ -315,7 +315,7 @@ vane across its own drift and cannot resolve it at *any* azimuthal bin size. The
 fitted impact parameters run **19.2–33.2 pixel**, confirming offset chords rather than
 spokes, with the two vane families at line directions near 44.9/135.0 deg extra-focally.
 
-`wfs/code/giant_donuts/spider_trajectory.py` replaces the projection: trace each shadow's
+`rubinwork/giant_donuts/spider_trajectory.py` replaces the projection: trace each shadow's
 centre at seven narrow radii, fit a total-least-squares line, then profile perpendicular to
 that line. Validated by `test_spider_trajectory.py` on a synthetic pupil with known vane
 geometry — depth recovered as 1.0000 (dimensionless) exactly, impact parameter to 0.9 pixel
@@ -404,7 +404,7 @@ Two things to know about it:
 pixel. The spider section skips `spiders = False` fits. Every fit number in this handoff
 and in the notebook's interpretation has been regenerated; the figures and PDFs are rerun.
 Modified: `wfs/notebooks/giant_donuts/giant_donut_radial_profiles.ipynb`,
-`wfs/code/giant_donuts/fit_giant_donut.py` (docstring only), this file.
+`rubinwork/giant_donuts/fit_giant_donut.py` (docstring only), this file.
 
 Nothing uncommitted in this repo. Commits in order: `fe9fa1a` (selection module, file
 moves, todo edits), `1f37ac1` (maskParams generator, radial profiles), `8f79f50` (the
@@ -422,7 +422,7 @@ of contents with every anchor resolving. Twelve PDFs in `wfs/output/giant_donuts
 the spider set `spider_trajectories_data_`, `spider_placement_`,
 `spider_cross_profiles_{extra,intra}_`, all suffixed `R22_S10`.
 
-The study's code is `wfs/code/giant_donuts/`: `donut_images.py` (ISR, donut finding,
+The study's code is `rubinwork/giant_donuts/`: `donut_images.py` (ISR, donut finding,
 stamps), `radial_profile.py` (radial and azimuthal projections, bin convergence),
 `fit_giant_donut.py` (the blitz/danish driver and pupil override), `spider_trajectory.py`
 (shadow tracing and cross-vane profiles) with `test_spider_trajectory.py`, and

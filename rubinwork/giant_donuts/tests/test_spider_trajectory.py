@@ -6,17 +6,12 @@ suffers. That claim is only worth anything if the method returns the truth when
 the truth is known, so this builds an annular pupil with four opaque vanes at a
 chosen impact parameter and width and checks what comes back.
 
-Run as ``python test_spider_trajectory.py``; no stack or Butler needed.
+No stack or Butler needed.
 """
-import pathlib
-import sys
-
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import radial_profile as rp
-import spider_trajectory as st
+from rubinwork.giant_donuts import radial_profile as rp
+from rubinwork.giant_donuts import spider_trajectory as st
 
 # Synthetic pupil matching the real giant donuts: 341.5 pixel outer edge and a
 # 0.612 inner obscuration, which is the v3.14 value.
@@ -73,7 +68,7 @@ def synthetic_pupil():
     return image, center
 
 
-def main():
+def test_recovers_spider_geometry():
     image, _ = synthetic_pupil()
     center = rp.donut_centroid(image)
     centres, azimuth, _ = st.trace_shadow_centres(image, center, OUTER_PIX)
@@ -132,4 +127,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    test_recovers_spider_geometry()

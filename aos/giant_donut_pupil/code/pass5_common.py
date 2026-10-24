@@ -36,8 +36,7 @@ import obscuration_v402g as og  # noqa: E402
 import pupil_pass3 as p3  # noqa: E402
 import spider_pass4 as sp4  # noqa: E402
 
-sys.path.insert(0, str(cd._GIANT_CODE))
-import spider_trajectory as stj  # noqa: E402
+from rubinwork.giant_donuts import spider_trajectory as stj  # noqa: E402
 
 STUDY = 'aos/giant_donut_pupil'
 RUN_LABEL = 'pupil5'

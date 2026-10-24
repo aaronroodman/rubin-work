@@ -27,7 +27,7 @@ import pandas as pd
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import fit_donuts as fd  # noqa: E402  (puts the blitz checkout first on sys.path)
-import fit_giant_donut  # noqa: E402
+from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 
 from rubinwork.common import study_run  # noqa: E402
 

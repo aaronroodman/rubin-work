@@ -232,8 +232,7 @@ def cache_task(task):
     import lsst.daf.butler as dafButler
     from lsst.obs.lsst import LsstCam
     import isr_cache
-    sys.path.insert(0, str(cd._GIANT_CODE))
-    import donut_images
+    from rubinwork.giant_donuts import donut_images
     butler = dafButler.Butler('/repo/main')
     camera = LsstCam.getCamera()
     out = pathlib.Path(run) / 'isr_bin4' / str(visit)

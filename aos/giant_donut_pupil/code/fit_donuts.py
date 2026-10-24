@@ -40,7 +40,7 @@ import pandas as pd
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import candidates as cd  # noqa: E402  (must precede the lsst imports: blitz path)
 import obscuration_v402 as ob  # noqa: E402
-import fit_giant_donut  # noqa: E402
+from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 
 from rubinwork.common import study_run  # noqa: E402
 
@@ -311,8 +311,7 @@ def main():
     from lsst.afw.cameraGeom import FIELD_ANGLE, PIXELS
     import lsst.geom
     from lsst.obs.lsst import LsstCam
-    sys.path.insert(0, str(cd._GIANT_CODE))
-    import donut_images as di
+    from rubinwork.giant_donuts import donut_images as di
     blitz_utils, _ = fit_giant_donut._import_blitz()
 
     study_dir = pathlib.Path(__file__).resolve().parents[1]

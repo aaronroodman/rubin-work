@@ -42,7 +42,7 @@ extra-focal, so the pair is ``(0, +4e-3, +4e-3)`` and ``(0, -4e-3, -4e-3)``.
 
 Run as a script::
 
-    python wfs/code/giant_donuts/fit_giant_donut.py \\
+    python -m rubinwork.giant_donuts.fit_giant_donut \\
         --detector R22_S10 --pupil-model v3.14 --fwhm-max 1.5
 """
 import argparse
@@ -52,8 +52,6 @@ import sys
 import numpy as np
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 # Default location of the blitz checkout. The shared ts_wep is on `develop`, which
 # does not carry the blitz prototype, so the path is explicit rather than relying
@@ -437,7 +435,7 @@ def main():
     from lsst.obs.lsst import LsstCam
 
     blitz_utils, wf_task = _import_blitz(args.blitz_python)
-    import donut_images as di
+    from rubinwork.giant_donuts import donut_images as di
 
     installed = pupil_override(
         blitz_utils, args.pupil_model,

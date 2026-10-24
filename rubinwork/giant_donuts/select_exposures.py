@@ -13,20 +13,18 @@ all, and ``seq_num`` 339 sits at the giant intra Trim state while belonging to n
 BLOCK-T626 sequence.  Selection is therefore Trim-first, with the exposure metadata
 used only to reject exposures that the Trim alone would wrongly admit.
 
-Import by putting the repository root on the path::
+The library reads no product itself: `select_giant_donuts` takes the night's value-added
+visits table, and the ConsDB join, from the caller::
 
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
+    from rubinwork.giant_donuts import select_exposures
+    from rubinwork.products import value_added
+
+    df = value_added.visits(day_obs_range=(20251023, 20251023))
+    sel = select_exposures.select_giant_donuts(df, join_consdb=value_added.join_consdb)
 """
-import pathlib
-import sys
-
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / 'value_added' / 'code'))
-import efd_db  # noqa: E402
 
 # Index of the hexapod dz degrees of freedom within the 50-DOF Trim vector.
 DOF_M2_DZ = 0
@@ -126,15 +124,16 @@ def classify_defocus(df, baseline=None, n_dof=50, dz_min_um=GIANT_DZ_MIN_UM,
     return out
 
 
-def select_giant_donuts(day_obs, require_dz_only=True, require_both_sides=True,
+def select_giant_donuts(df, require_dz_only=True, require_both_sides=True,
                         exp_time_min_sec=None, science_program=None,
-                        dz_min_um=GIANT_DZ_MIN_UM, con=None, db_path=None):
+                        dz_min_um=GIANT_DZ_MIN_UM, join_consdb=None):
     """Select a night's clean giant-donut exposures, label-independently.
 
     Parameters
     ----------
-    day_obs : `int`
-        Observing night, as ``YYYYMMDD``.
+    df : `pandas.DataFrame`
+        One night's value-added visits table (``value_added.visits``), with the
+        ``dof0``..``dof49`` Trim columns, in µm or arcsec.
     require_dz_only : `bool`, optional
         Keep only exposures whose non-dz DOF are all at the night's baseline.
         Rejects Hartmann and bending-mode tests taken at the same defocus.
@@ -151,8 +150,10 @@ def select_giant_donuts(day_obs, require_dz_only=True, require_both_sides=True,
         cut as a rejection filter only.
     dz_min_um : `float`, optional
         Minimum magnitude of the total dz excursion, in µm.
-    con, db_path : optional
-        Passed to `efd_db.visits`.
+    join_consdb : callable, optional
+        Attaches the ConsDB columns (band, rotator angle, exposure time, program) to
+        the selected rows; pass ``value_added.join_consdb``. Without it the
+        `exp_time_min_sec` and `science_program` cuts are skipped.
 
     Returns
     -------
@@ -165,9 +166,9 @@ def select_giant_donuts(day_obs, require_dz_only=True, require_both_sides=True,
     ValueError
         If `require_both_sides` and only one side of focus survives.
     """
-    df = efd_db.visits(day_obs_range=(day_obs, day_obs), con=con, db_path=db_path)
     if df.empty:
-        raise ValueError(f'no visits in the value-added database for day_obs {day_obs}')
+        raise ValueError('no visits in the value-added table')
+    day_obs = int(df.day_obs.iloc[0])
 
     cls = classify_defocus(df, dz_min_um=dz_min_um)
     sel = cls[cls.side != 'focus'].copy()
@@ -177,7 +178,8 @@ def select_giant_donuts(day_obs, require_dz_only=True, require_both_sides=True,
 
     # ConsDB carries band, rotator angle, exposure time and the program label;
     # the rotator angle is needed for the spider model, so join before filtering.
-    sel = efd_db.join_consdb(sel)
+    if join_consdb is not None:
+        sel = join_consdb(sel)
 
     if exp_time_min_sec is not None and 'exp_time_sec' in sel.columns:
         sel = sel[sel.exp_time_sec >= exp_time_min_sec]

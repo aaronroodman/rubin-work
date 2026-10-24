@@ -27,17 +27,13 @@ is M1's inner radius in both. The inner edge is therefore at a normalised pupil
 radius of about 0.612 (v3.14) or 0.620 (v1000), which is where a turned-down M1
 inner edge would put its ring.
 
-Import by putting this study's ``code/`` on the path, or the repository root::
-
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path.cwd().parents[1] / 'wfs' / 'code' / 'giant_donuts'))
+Import as ``from rubinwork.giant_donuts import radial_profile``.
 """
 import pathlib
 import sys
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 # Normalised pupil radius of the inner obscuration edge, per pupil model, taken
 # from a full-system on-axis batoid trace rather than from the nominal

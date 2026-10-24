@@ -12,7 +12,7 @@ started: 2026-10-18
 
 > **Code:** `code/isr_cache.py` (binned ISR cache), `code/fp_mosaic.py` (focal-plane
 > mosaic), `code/candidates.py` and `code/select_candidates.py` (candidate selection).
-> Imports `wfs/code/giant_donuts/` (shared in the section 2 step).
+> Imports `rubinwork.giant_donuts` (the giant-donut library).
 
 ## Question
 

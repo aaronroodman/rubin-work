@@ -1,6 +1,6 @@
 """ISR every detector of a giant-donut visit and cache it binned.
 
-Runs the minimal ISR of ``wfs/code/giant_donuts/donut_images.py`` (overscan,
+Runs the minimal ISR of `rubinwork.giant_donuts.donut_images` (overscan,
 assembly, gains) on all 189 science and 8 corner wavefront-sensor detectors, bins
 each image 4x4 (mean), and saves it as float32 ``.npy`` with the raw WCS header.
 A binned pixel is 40 um; an 8 mm giant donut is about 174 binned pixels across,
@@ -24,9 +24,7 @@ from lsst.afw.cameraGeom import DetectorType
 
 from rubinwork.common import study_run
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]
-                       / 'wfs' / 'code' / 'giant_donuts'))
-import donut_images  # noqa: E402
+from rubinwork.giant_donuts import donut_images  # noqa: E402
 
 STUDY = 'aos/giant_donut_pupil'
 REPO = '/repo/main'

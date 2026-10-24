@@ -47,7 +47,7 @@ did not have to change.
 
 Run as a script::
 
-    python wfs/code/giant_donuts/gen_mask_params.py \\
+    python -m rubinwork.giant_donuts.gen_mask_params \\
         --output wfs/output/giant_donuts/maskParams_v1000.yaml
 """
 import argparse
@@ -59,7 +59,6 @@ import batoid
 import numpy as np
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 # Field angles, in degrees, on which the per-element circles are fitted.  The
 # science array reaches about 1.75 deg, the corner wavefront sensors about 1.85.

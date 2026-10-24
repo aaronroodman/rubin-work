@@ -33,9 +33,8 @@ import sys
 import numpy as np
 import yaml
 
-_GIANT_CODE = pathlib.Path(__file__).resolve().parents[3] / 'wfs' / 'code' / 'giant_donuts'
-sys.path.insert(0, str(_GIANT_CODE))
-import fit_giant_donut  # noqa: E402  (puts the blitz checkout first on sys.path)
+# fit_giant_donut puts the blitz checkout first on sys.path.
+from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 
 import batoid  # noqa: E402
 

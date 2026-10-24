@@ -49,9 +49,6 @@ ALLOWED = (
     # Phase 5 conversion: optics/code/fresnel/ is shared by optics/fresnel_donuts and the
     # intra/extra notebooks; it becomes a library in the section 2 step.
     ("optics/fresnel_donuts/notebooks/", "no-study-import"),
-    # aos/giant_donut_pupil imports wfs/code/giant_donuts/; it becomes shared in the
-    # section 2 step.
-    ("aos/giant_donut_pupil/code/", "no-study-import"),
 )
 """Known violations: reported, but as known rather than new."""
 

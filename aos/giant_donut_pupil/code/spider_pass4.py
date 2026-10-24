@@ -1,7 +1,7 @@
 """Pupil pass 4, step 6: spider shadows in the data against the fit c model.
 
 Per donut side, the eight spider shadows are traced in the data stamp and in the fit c
-model image with `spider_trajectory` (``wfs/code/giant_donuts``): shadow centres at seven
+model image with `spider_trajectory` (`rubinwork.giant_donuts`): shadow centres at seven
 narrow radii (`trace_shadow_centres`), a straight chord through them
 (`fit_trajectories`), the flux profile across the chord (`trajectory_profile`) and its
 depth and width (`vane_depth`). Both images are traced about the same point, the fit-a
@@ -48,8 +48,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import candidates as cd  # noqa: E402  (blitz path first)
 import pupil_pass3 as p3  # noqa: E402
 
-sys.path.insert(0, str(cd._GIANT_CODE))
-import spider_trajectory as stj  # noqa: E402
+from rubinwork.giant_donuts import spider_trajectory as stj  # noqa: E402
 
 PASS3_RUN = p3.STUDY_DIR / 'output' / '20261020_pupil3'
 PASS4_RUN = p3.STUDY_DIR / 'output' / '20261021_pupil4'

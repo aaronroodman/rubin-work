@@ -28,17 +28,13 @@ truth, and the width to about 7 per cent. The small impact bias comes from
 centroiding dips at trace radii near the annulus edges and sets the floor on
 what a data-minus-model placement difference can be believed at.
 
-Import by putting this study's ``code/`` on the path::
-
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path.cwd().parents[1] / 'wfs' / 'code' / 'giant_donuts'))
+Import as ``from rubinwork.giant_donuts import spider_trajectory``.
 """
 import pathlib
 import sys
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 # LSSTCam has four vanes, and each one crosses the pupil, so eight shadows
 # appear in the donut -- the count the detector logic expects to find.

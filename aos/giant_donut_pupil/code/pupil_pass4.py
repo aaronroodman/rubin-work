@@ -34,7 +34,7 @@ import pandas as pd  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import pupil_pass3 as p3  # noqa: E402  (blitz path first)
 import fit_donuts as fd  # noqa: E402
-import fit_giant_donut  # noqa: E402
+from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 import obscuration_v402 as ob  # noqa: E402
 import obscuration_v402g as og  # noqa: E402
 import pupil_edges as pe  # noqa: E402
@@ -177,8 +177,7 @@ def chunk_c(task):
     (visit, det_name), sides, out_dir = task
     import lsst.daf.butler as dafButler
     import candidates as cd
-    sys.path.insert(0, str(cd._GIANT_CODE))
-    import donut_images as di
+    from rubinwork.giant_donuts import donut_images as di
     if 'butler' not in p3._BUTLER:
         p3._BUTLER['butler'] = dafButler.Butler('/repo/main')
     camera = p3._CTX['camera']
