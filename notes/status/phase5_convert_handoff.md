@@ -154,7 +154,13 @@ by more than 1e-6 deg; the earlier "2879 of 3385" used a threshold not recorded.
      part of `run_wfs_corner_compare.py`.
    Until then the read must survive phase 7: zipping `aos/output` breaks it.
 3. **The CCD-height sign doc fix** (phase 6): `notes/status/phase6_ccd_height_sign.md`.
-4. **Phase 7 removal** is Aaron's to run: `notes/status/phase7_cleanup_plan.md`.
+4. **Phase 7 removal** is Aaron's to run: `notes/status/phase7_cleanup_plan.md`. Only
+   three trees can go now (47.4 GB). `aos/output`, `guider/output` and `optatmo/output`
+   are still read or written by tracked code beyond `wfs_corner_compare`: the
+   `aos/Snakefile` and `guider/Snakefile` resolvers prefer the old tree over the catalog,
+   `build_fam_dz.py` defaults to `--prefer old`, `miw_corner.decomp_path` roots at
+   `aos/output`, the optatmo campaigns write to `optatmo/output/runs`, and the catalog has
+   no `guider_moments` build at all. The plan lists the code changes needed first.
 
 ## Step list
 

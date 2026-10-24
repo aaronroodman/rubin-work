@@ -42,7 +42,7 @@ def repo(tmp_path, monkeypatch):
         "aos/code/alpha/a.py": "import b\n",
         "aos/code/beta/b.py": '"""See ../aos/output/x in docs."""\nX = 1\n',
         "aos/code/flat.py": "import b\n",
-        "optatmo/code/o.py": "P = '../aos/output/wfs/x.parquet'\n",
+        "optatmo/code/extract_cwfs_sigma.py": "P = '../aos/output/wfs/x.parquet'\n",
         "aos/code/alpha/p.py": "P = '/data/products/miw/d12-a/current/x.parquet'\n",
         "rubinwork/common/lib.py": "from rubinwork.products import catalog\n",
         "aos/pinned/code/s.py": "from rubinwork.products import catalog\n",
@@ -59,7 +59,7 @@ def test_rule_violations(repo):
     got = {(v.path, v.rule, v.allowed) for v in found}
     assert ("aos/code/alpha/a.py", "no-study-import", False) in got
     assert ("aos/code/flat.py", "no-study-import", False) in got
-    assert ("optatmo/code/o.py", "no-foreign-output", True) in got
+    assert ("optatmo/code/extract_cwfs_sigma.py", "no-foreign-output", True) in got
     assert ("aos/code/alpha/p.py", "hand-built-product-path", False) in got
     assert ("rubinwork/common/lib.py", "library-imports-product", False) in got
     # A docstring is not a read; a study may import a product.
