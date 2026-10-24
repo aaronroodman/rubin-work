@@ -149,7 +149,7 @@ the `mi_config.yaml` `defaults: filter: [i]`, and FAM data from 2025 is mostly r
 visits) rather than i-band (689), so an i-band run builds 130 blocks against an all-band
 run's 216. Both counts are reproducible from the current chunk tables. Superseded products
 now sit under `output/coadd/<P>/50_34/archive/` with their band selection recorded; see
-[`../studies/coadd.md`](../studies/coadd.md).
+[`../../miw_origin/coadd.md`](../../miw_origin/coadd.md).
 
 **The code fix still wanted:** assert `len(mt) == len(Um)` with a message naming both files,
 both counts, and the likely band-selection cause.

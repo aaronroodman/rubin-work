@@ -318,7 +318,7 @@ files and counts — is still wanted.
 The mismatch cause is no longer open: it is band selection, since `--bands` inherits
 `mi_config.yaml` `defaults: filter: [i]` when omitted and 2025 Full Array Mode data is
 mostly r-band. See [`code_review_backlog.md`](code_review_backlog.md) and
-[`../studies/coadd.md`](../studies/coadd.md).
+[`../../miw_origin/coadd.md`](../../miw_origin/coadd.md).
 
 ### Open — laptop paths across other topics
 A repo-wide sweep found **17 more tracked files** with hardcoded

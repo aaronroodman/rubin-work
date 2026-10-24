@@ -322,7 +322,7 @@ study imports, and that are import-safe (constants and functions, work behind
 
 | module | imported by |
 |---|---|
-| `compute_smatrix.py` | `aos/code/static_optics/camera_gravity.py`, `smatrix/code/thermal_sensitivity.py`, three smatrix plot scripts (for `CONFIG_TAG`) |
+| `compute_smatrix.py` | `aos/miw_origin/code/camera_gravity.py`, `aos/miw_origin/code/thermal_sensitivity.py`, three smatrix plot scripts (for `CONFIG_TAG`) |
 | `normalization_weights.py` | `regularized_inversion.py`, `make_normalization.py`, `full_normalization.py`, `validate_normalization.py`, `vmode/plot_vmode_dof_matrix.py` |
 | `regularized_inversion.py` | `value_added/code/build_optical_state.py` (and its test), `aos/code/test_open_loop.py`, `aos/code/bounce/bounce_lib.py`, `aos/code/miw/{check_dof_ranges,test_rbr_against_prototype}.py` |
 
@@ -884,7 +884,7 @@ What that means for the two build halves:
 
   **Surveyed 2026-10-12, and the answer is "most of them", so no group was dropped in
   3b** (full table in the phase 3 handoff, "Item 2"). Three groups are read as real
-  input and must stay: `camera`, because `aos/code/coadd/recompute_coadd_metrics.py`
+  input and must stay: `camera`, because `aos/miw_origin/code/recompute_coadd_metrics.py`
   discovers `cam_*` **by prefix** and makes each a per-block ML feature; `thermal` and
   `gradients`, because `run_coadd_blocks_miw.py` — a **product builder**, not a study —
   reads them per chunk. The other five (`wind`, `lut`, `hexlut`, `trim`, `tweak`) are

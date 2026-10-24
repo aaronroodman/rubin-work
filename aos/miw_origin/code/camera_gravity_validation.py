@@ -26,9 +26,9 @@ from astropy.io import fits
 import camera_gravity as cg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))          # repo root
 
-OUT = Path(__file__).resolve().parents[2] / "output" / "camera_gravity"
+OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # Andy->Noll remap used by batoid_rubin for the zer/camera surface files

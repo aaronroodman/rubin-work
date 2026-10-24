@@ -17,7 +17,7 @@ import galsim
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
-OUT = Path(__file__).resolve().parent.parent / "output"
+OUT = Path(__file__).resolve().parents[1] / "output"
 WL = 754e-9
 FR = 1.75
 ZFOCUS = 4.4287

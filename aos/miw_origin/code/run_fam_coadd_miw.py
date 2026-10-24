@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.stats import binned_statistic_2d
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # aos/code
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # same-study siblings
 
 # donuts/sidecar zk vectors are Noll [4,5,6,7,8,...]; Z5-Z8 = columns 1..4
 Z_COLS = {5: 1, 6: 2, 7: 3, 8: 4}

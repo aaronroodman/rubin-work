@@ -5,7 +5,7 @@ Builds the batoid_rubin telescope with gravitational flexure of the camera and
 computes the induced double-Zernike (DZ) wavefront and per-Zernike focal-plane
 maps, to compare against the measured intrinsic wavefront (MIW) OCS maps.
 
-Two gravity ingredients (see smatrix/docs/miw_astig_coma_investigation.md and
+Two gravity ingredients (see aos/miw_origin/miw_astig_coma_investigation.md and
 smatrix/docs/status/future_issues.md #4):
 
 1. LENS SURFACE FIGURE (what batoid_rubin ships) -- ``with_camera_gravity``
@@ -47,9 +47,8 @@ import galsim
 import batoid
 
 # reuse the exact OFC/smatrix DZ convention (field sampling, eps, nx, jmax, kmax)
-_SMATRIX_CODE = Path(__file__).resolve().parents[3] / "smatrix" / "code"
-sys.path.insert(0, str(_SMATRIX_CODE))
-import compute_smatrix as C  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
+from rubinwork.smatrix import compute_smatrix as C  # noqa: E402
 
 FIELD_RAD = np.deg2rad(C.FIELD_RADIUS_DEG)
 WL = {"u": 365, "g": 480, "r": 622, "i": 754, "z": 869, "y": 971}

@@ -2,7 +2,7 @@
 
 Builds the **`bend_zemax/`** mirror bending modes used by the ZEMAX-basis S-matrix
 work (`smatrix/code/compute_smatrix.py --bend-dir bend_zemax`,
-`smatrix/code/thermal_sensitivity.py`) and documented in
+`aos/miw_origin/code/thermal_sensitivity.py`) and documented in
 [`../../docs/plots.md`](../../docs/plots.md) and [`../../docs/status/future_issues.md`](../../docs/status/future_issues.md).
 
 **Provenance.** These are Josh Meyers' scripts. They are not shipped in the installed

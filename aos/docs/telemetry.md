@@ -96,7 +96,7 @@ useful single value. `rubinwork/common/visit_telemetry.py` fetches them (`CAM_TO
 The camera-body sensors are strongly collinear with `AverageTemp`, so machine-learning
 permutation importance splits the credit and each one looks weak; per-sensor Spearman
 correlations rank them more cleanly. The result against the agreement of the FAM coadds with the Measured Intrinsic Wavefront (MIW) is in
-[`studies/coadd.md`](studies/coadd.md#camera-temperature-and-miw-agreement-2026-08-25).
+[`../miw_origin/coadd.md`](../miw_origin/coadd.md#camera-temperature-and-miw-agreement-2026-08-25).
 
 ## 2. ConsDB structure — pivoted versus unpivoted
 

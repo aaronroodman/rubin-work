@@ -98,7 +98,7 @@ and `LSSTBuilder` defaults to the bare string `"bend"`.
 
 ### `camera_gravity.py` now picks a different bending basis
 
-`aos/code/static_optics/camera_gravity.py:95` searches for a bend directory in the order
+`aos/miw_origin/code/camera_gravity.py:95` searches for a bend directory in the order
 **`bend_zemax` → `bend_full` → `bend`**, taking the first that exists. Before 2026-09-07
 only `bend` existed on S3DF, so it used that. Now that `bend_full` has been regenerated
 here, the same code silently selects `bend_full` instead — a different basis (156 M1M3 +

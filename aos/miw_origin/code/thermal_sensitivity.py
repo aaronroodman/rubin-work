@@ -16,14 +16,16 @@ natural source of the MIW Z5-Z8/Z11/Z22 excess that force-limited bending modes
 cannot reach.
 """
 import os
+import sys
 from pathlib import Path
 import numpy as np
 import batoid
 from batoid_rubin import LSSTBuilder
 
-import compute_smatrix as C
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
+from rubinwork.smatrix import compute_smatrix as C  # noqa: E402
 
-OUT = Path(__file__).resolve().parent.parent / "output"
+OUT = Path(__file__).resolve().parents[1] / "output"
 # batoid_rubin data. $BATOID_RUBIN_DATA_DIR is exported by the stack setup on the RSP and
 # the sdfiana nodes; the fallback is the /sdf/group form, which resolves identically there
 # and on slaciana batch nodes. fea_legacy/ and bend/ come from Zenodo (DOIs 8384326 and

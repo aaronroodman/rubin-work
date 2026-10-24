@@ -120,7 +120,7 @@ science exposures, and focus drift within a FAM block — is the `thermal_focus`
 | [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
 | [`fam_processing`](docs/studies/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
 | [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
-| [`coadd`](docs/studies/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
+| [`coadd`](miw_origin/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
 | [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry; and where the ConsDB copy of the AOS degree-of-freedom values agrees with the EFD |
 | [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
 | [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
@@ -128,7 +128,7 @@ science exposures, and focus drift within a FAM block — is the `thermal_focus`
 | [`cwfs_lut`](docs/studies/cwfs_lut.md) | Dependence of the open-loop optical state on TMA elevation and camera rotator angle, measured from the corner sensors over the science survey on both the batoid and MIW intrinsic routes, compared against the bounce tests |
 | [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
 | [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
-| [`static_optics`](docs/studies/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
+| [`static_optics`](miw_origin/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
 | [`closed_loop`](docs/studies/closed_loop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
 | [`infra`](docs/studies/infra.md) | Node CPU and memory capability, for sizing pipeline concurrency |
 
@@ -227,10 +227,10 @@ status + last-updated line under its title.
 | [`docs/frame_conventions.md`](docs/frame_conventions.md) | the CCS, OCS and DVCS frames, which camera rotator angle to read (`rotTelPos`, not ConsDB alone, never `boresightRotAngle`), and why static optics follow OCS |
 | [`docs/telemetry.md`](docs/telemetry.md) | **telemetry inventory** — every quantity, its ConsDB/EFD name, measured coverage on FAM exposures, units, and which source to prefer |
 | [`docs/miw_coadd_equations.md`](docs/miw_coadd_equations.md) | MIW notation and the coadd-vs-MIW residual, derived at equation level |
-| [`docs/camera_gravity.md`](docs/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |
+| [`miw_origin/camera_gravity.md`](miw_origin/camera_gravity.md) | whether camera-lens gravitational flexure can produce the MIW astig/coma excess |
 | [`docs/ts_wep_zernike_intrinsics.md`](docs/ts_wep_zernike_intrinsics.md) | how ts_wep + Danish compute the off-axis intrinsic; what the `zk_*` columns mean |
 | [`docs/double_zernike_convention_validation.md`](docs/double_zernike_convention_validation.md) | validation of the DZ index/normalization conventions, vs GalSim and `ts_ofc` |
-| [`docs/status/miw_investigation_handoff.md`](docs/status/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
+| [`miw_origin/miw_investigation_handoff.md`](miw_origin/miw_investigation_handoff.md) | portable state of the MIW investigation, with an explicit list of retracted claims |
 | [`docs/status/miw_danish_1_3_proposal.md`](docs/status/miw_danish_1_3_proposal.md) | what the Danish 1.3 MIW build needs, which columns its narrow visits table does and does not carry, and the rotator-bin visit counts against Danish 1.2 |
 | [`docs/status/rerun_needed.md`](docs/status/rerun_needed.md) | outputs that predate a code change and need regenerating |
 | [`docs/status/corner_recovery_route_comparison.md`](docs/status/corner_recovery_route_comparison.md) | the three routes from measured corner Zernikes to DOF, the measurements between them, and the hybrid that was adopted |
@@ -240,4 +240,4 @@ status + last-updated line under its title.
 
 Related, in sibling topics: [`../smatrix/docs/conventions.md`](../smatrix/docs/conventions.md)
 (DZ sensitivity-matrix sign/unit conventions) and
-[`../smatrix/docs/miw_astig_coma_investigation.md`](../smatrix/docs/miw_astig_coma_investigation.md).
+[`miw_origin/miw_astig_coma_investigation.md`](miw_origin/miw_astig_coma_investigation.md).

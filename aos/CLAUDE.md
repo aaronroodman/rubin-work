@@ -108,8 +108,8 @@ duplicate them into new files:
 | doc | what it settles |
 |---|---|
 | `docs/miw_coadd_equations.md` | the coadd/MIW derivations — the reference for the equations |
-| `docs/status/miw_investigation_handoff.md` | portable state of the MIW investigation, written for an outside reader, with an explicit list of **retracted claims** |
-| `docs/camera_gravity.md` | camera-gravity model and validation |
+| `miw_origin/miw_investigation_handoff.md` | portable state of the MIW investigation, written for an outside reader, with an explicit list of **retracted claims** |
+| `miw_origin/camera_gravity.md` | camera-gravity model and validation |
 | `docs/double_zernike_convention_validation.md` | DZ index and normalization conventions used throughout |
 | `../smatrix/docs/conventions.md` | sign and unit conventions for the DZ sensitivity matrix |
 

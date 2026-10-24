@@ -1660,7 +1660,7 @@ value-added table that would replace each read:
 |---|---|---|
 | `rubinwork/products/fam_tables/builders/run_attach_telemetry.py` | the 8 `attach_telemetry` groups, ~405 columns, incl. the 7 ESS temperature columns of difference 8 | `visit_telemetry` (already does so for the 4 M1M3 gradients, commit `bef17ba` — this is the proven pattern) |
 | `rubinwork/products/fam_tables/builders/run_blitz_mktable.py` | the blitz-path telemetry attach | `visit_telemetry` |
-| `aos/code/coadd/recompute_coadd_metrics.py` | the ESS temperatures and M1M3 gradients that are differences 6 and 8 in `coadd_metrics.parquet` | `visit_telemetry` |
+| `aos/miw_origin/code/recompute_coadd_metrics.py` | the ESS temperatures and M1M3 gradients that are differences 6 and 8 in `coadd_metrics.parquet` | `visit_telemetry` |
 | `blocks/code/telemetry_pipeline.py`, `blocks/code/build_t539_table.py` | its own EFD/ConsDB per-visit pull | `visit_telemetry`, `m1m3_thermal_r2` |
 | `olr/code/telemetry.py`, `olr/code/nightly_table.py`, `olr/code/aos_dof_audit.py` | hexapod/DOF telemetry per visit | `visit_telemetry`, `optical_state` |
 | `thermal_focus/code/run_thermal_focus.py` | ESS temperatures and M1M3 thermal | `visit_telemetry`, `m1m3_thermal_r2` |

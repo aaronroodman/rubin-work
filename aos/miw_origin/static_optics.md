@@ -2,7 +2,7 @@
 
 > **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
-> **Code:** `code/static_optics/`
+> **Code:** `code/` of the `miw_origin` study (formerly `aos/code/static_optics/`)
 > **Output:** `output/camera_gravity/` (`camera_gravity_maps_{raw,corr}_{rb,surf}.pdf`, `camera_gravity_validation.pdf`)
 
 Tests of whether a static optical figure — a mirror surface, the camera lenses, or
@@ -35,7 +35,7 @@ files as a **surface-figure** perturbation on the **6 lens optical surfaces**. G
 splits into an **axial** term ∝ (cos z − 1), which is rotation-independent and therefore
 **OCS**, and a **lateral** term ∝ sin z projected onto the rotating camera by the rotator
 angle. What is included is per-surface *figure* deformation — see
-[`../camera_gravity.md`](../camera_gravity.md) for what is **not**.
+[`camera_gravity.md`](camera_gravity.md) for what is **not**.
 
 ## State and findings
 
@@ -46,7 +46,7 @@ angle. What is included is per-surface *figure* deformation — see
 - The joint M3+L1+L2+Filter fit quantifies how much variance the last static-optics
   loophole could absorb.
 - Camera gravity is a real effect but the wrong magnitude/geometry to be the whole story;
-  detail in [`../camera_gravity.md`](../camera_gravity.md).
+  detail in [`camera_gravity.md`](camera_gravity.md).
 
 ### Findings (2026-08-25): per-surface back-projection and the joint fit
 
@@ -129,9 +129,9 @@ are excluded (near-pupil, field-common, removed by the 50-degree-of-freedom (DOF
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/static_optics/run_m3_backprojection_miw.py --miw <path> --stride 8 --nx 48
-python code/static_optics/run_miw_joint_fit.py --help
-python code/static_optics/camera_gravity_maps.py --help
+python miw_origin/code/run_m3_backprojection_miw.py --miw <path> --stride 8 --nx 48
+python miw_origin/code/run_miw_joint_fit.py --help
+python miw_origin/code/camera_gravity_maps.py --help
 ```
 
 Needs `batoid` + `batoid_rubin` and the MIW product (the `_5rot` `intrinsic_split_maps`,
@@ -143,7 +143,7 @@ None. All eight scripts are run directly.
 
 ## See also
 
-- [`../camera_gravity.md`](../camera_gravity.md) — the gravity model write-up
-- [`../../../smatrix/docs/miw_astig_coma_investigation.md`](../../../smatrix/docs/miw_astig_coma_investigation.md) — what can produce the observed Z5–Z8
-- [`../../../smatrix/docs/status/future_issues.md`](../../../smatrix/docs/status/future_issues.md) — item #4 is this thread
+- [`camera_gravity.md`](camera_gravity.md) — the gravity model write-up
+- [`miw_astig_coma_investigation.md`](miw_astig_coma_investigation.md) — what can produce the observed Z5–Z8
+- [`../../smatrix/docs/status/future_issues.md`](../../smatrix/docs/status/future_issues.md) — item #4 is this thread
 - [`coadd.md`](coadd.md) — the competing (retrieval-bias) explanation

@@ -141,7 +141,7 @@ Start with the two biggest:
 
 - `aos/CLAUDE.md` — MIW, FAM coadds, DZ fitting, sensitivity/v-modes. Existing docs
   to reference rather than duplicate: `aos/docs/miw_coadd_equations.md`,
-  `aos/docs/status/miw_investigation_handoff.md`, `aos/docs/camera_gravity.md`
+  `aos/miw_origin/miw_investigation_handoff.md`, `aos/miw_origin/camera_gravity.md`
 - `guider/CLAUDE.md` — pipeline commands, `summit_utils` fork state, bias/streak work
 
 The root `CLAUDE.md` should name which subprojects are independent and where the

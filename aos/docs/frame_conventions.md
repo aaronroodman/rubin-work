@@ -29,7 +29,7 @@ The Measured Intrinsic Wavefront (MIW) shows the static focal-plane variation mo
 the mirrors (OCS) as the rotator turns. A static-versus-dynamic separation must therefore
 reference OCS; assuming the optics are camera-fixed is wrong. Gravity-induced camera-lens
 deformation also follows OCS, because the gravity vector is fixed relative to the mirrors
-([`../../smatrix/docs/miw_astig_coma_investigation.md`](../../smatrix/docs/miw_astig_coma_investigation.md)).
+([`../miw_origin/miw_astig_coma_investigation.md`](../miw_origin/miw_astig_coma_investigation.md)).
 What is genuinely camera-fixed (CCS) is anything bolted to the camera body: lens figure,
 mount stress, and the detector heights.
 

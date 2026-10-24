@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import m3_backprojection as bp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))          # repo root
 
 warnings.filterwarnings("ignore")
 

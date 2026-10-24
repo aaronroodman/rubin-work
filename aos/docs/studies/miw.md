@@ -442,11 +442,11 @@ re-triggered by code edits.
 - **83 % of MIW power sits above the `k<=6` focal orders the build actually fits.** This
   reframes every DZ-subspace analysis: the fit constrains 34 v-modes from k≤6, then
   subtracts only the k≤6 part of that state's wavefront. Quantified in
-  `../../code/coadd/analyze_miw_dz_full_k.py` and `analyze_miw_field_order.py` (`coadd` study).
+  `../../miw_origin/code/analyze_miw_dz_full_k.py` and `analyze_miw_field_order.py` (`miw_origin` study).
 - The MIW's high-field-order astigmatism/coma excess (Z5–Z8, OCS, ~0.1 µm) is **not**
   predicted by the batoid design model. Whether static optics can explain it is the
-  [`static_optics`](static_optics.md) study; the write-up is
-  [`../../../smatrix/docs/miw_astig_coma_investigation.md`](../../../smatrix/docs/miw_astig_coma_investigation.md).
+  [`static_optics`](../../miw_origin/static_optics.md) study; the write-up is
+  [`../../miw_origin/miw_astig_coma_investigation.md`](../../miw_origin/miw_astig_coma_investigation.md).
 
 ## Notebooks
 
@@ -457,6 +457,6 @@ re-triggered by code edits.
 
 - [`../miw_pipeline.md`](../miw_pipeline.md) — every rule, config file, output path
 - [`../miw_coadd_equations.md`](../miw_coadd_equations.md) — the notation and derivations
-- [`../status/miw_investigation_handoff.md`](../status/miw_investigation_handoff.md) —
+- [`../../miw_origin/miw_investigation_handoff.md`](../../miw_origin/miw_investigation_handoff.md) —
   portable state, **with an explicit list of retracted claims**
 - [`../double_zernike_convention_validation.md`](../double_zernike_convention_validation.md)

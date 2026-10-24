@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm, SymLogNorm
 from matplotlib.backends.backend_pdf import PdfPages
 
-OUT = Path(__file__).resolve().parent.parent / "output"
+OUT = Path(__file__).resolve().parents[1] / "output"
 FR = 1.75
 MIW = 0.05    # µm, representative MIW-scale contribution
 

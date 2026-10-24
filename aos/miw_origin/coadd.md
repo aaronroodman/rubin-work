@@ -2,7 +2,7 @@
 
 > **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
-> **Code:** `code/coadd/` (study); the builder is `rubinwork.products.coadds`
+> **Code:** `code/` of the `miw_origin` study (formerly `aos/code/coadd/`); the builder is `rubinwork.products.coadds`
 > **Output:** the `coadds` **product** — `<products>/coadds/<variant>/<build>/`, variants `d12-A_50_34_i_5rot` and `d12-A_50_34_i_5rot_v2`; the old tree is `output/coadd/<P>/{50_34,50_34_v2}/`
 
 Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias
@@ -14,7 +14,7 @@ does not match the pooled MIW. The live explanation is **retrieval bias**: a sma
 `B` in the Danish donut fit redistributes power among primary/secondary/tertiary radial
 orders, so what the build recovers depends on the visit mix.
 
-The derivations are in [`../miw_coadd_equations.md`](../miw_coadd_equations.md), which is
+The derivations are in [`../docs/miw_coadd_equations.md`](../docs/miw_coadd_equations.md), which is
 the reference for the notation and the algebra. The handoff document lists claims from
 earlier stages of this investigation that were subsequently retracted.
 
@@ -172,7 +172,7 @@ the 16 blocks described above.
 ### Camera temperature and MIW agreement (2026-08-25)
 
 Camera-body temperatures come from the raw Engineering Facility Database (EFD) topic
-`lsst.MTCamera.utiltrunk_body` ([`../telemetry.md`](../telemetry.md#where-camera-temperatures-come-from)).
+`lsst.MTCamera.utiltrunk_body` ([`../docs/telemetry.md`](../docs/telemetry.md#where-camera-temperatures-come-from)).
 `recompute_coadd_metrics.py` averages them per block from the merged visits table.
 
 - **Absolute camera temperatures barely correlate with the coadd-vs-MIW Pearson r.** The
@@ -211,8 +211,8 @@ The metrics recompute and the analyses need no batch job and no LSST stack:
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/coadd/recompute_coadd_metrics.py --rebin 1 3
-python code/coadd/analyze_dz_goodness_of_fit.py --help
+python miw_origin/code/recompute_coadd_metrics.py --rebin 1 3
+python miw_origin/code/analyze_dz_goodness_of_fit.py --help
 ```
 
 ## Notebooks
@@ -221,6 +221,6 @@ None. This study is entirely scripted.
 
 ## See also
 
-- [`../miw_coadd_equations.md`](../miw_coadd_equations.md) — **the** reference for the equations
-- [`../status/miw_investigation_handoff.md`](../status/miw_investigation_handoff.md) — retracted claims
-- [`miw.md`](miw.md), [`static_optics.md`](static_optics.md)
+- [`../docs/miw_coadd_equations.md`](../docs/miw_coadd_equations.md) — **the** reference for the equations
+- [`miw_investigation_handoff.md`](miw_investigation_handoff.md) — retracted claims
+- [`../docs/studies/miw.md`](../docs/studies/miw.md), [`static_optics.md`](static_optics.md)

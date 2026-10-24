@@ -321,7 +321,7 @@ selection and block count.
 **Rerunning over all bands** rebuilds both `coadd_50_34/` products from one run: 216 blocks
 (117 from 2025, 99 from 2026) spanning `day_obs` 20250417 to 20260713, of which 16 remain
 flagged `build_used`. Selection details are in
-[`../studies/coadd.md`](../studies/coadd.md).
+[`../../miw_origin/coadd.md`](../../miw_origin/coadd.md).
 
 Batch submission is **MUST-ASK**. The producer runs first, then the metrics recompute reads
 its `block_grids.npz`:
@@ -333,5 +333,5 @@ sbatch run_coadd_blocks_miw.sbatch --bands g r i z u y
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/coadd/recompute_coadd_metrics.py --rebin 1 3
+python miw_origin/code/recompute_coadd_metrics.py --rebin 1 3
 ```

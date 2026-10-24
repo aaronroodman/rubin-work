@@ -41,7 +41,7 @@ ALLOWED = (
     ("aos/code/psf/", "no-study-import"),
     ("optatmo/", "no-foreign-output"),
     # Found by the phase 4 dry-run /review; fix in phase 5.
-    ("aos/code/coadd/recompute_coadd_metrics.py", "hand-built-product-path"),
+    ("aos/miw_origin/code/recompute_coadd_metrics.py", "hand-built-product-path"),
     ("aos/notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb", "no-study-import"),
     ("aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb",
      "no-study-import"),

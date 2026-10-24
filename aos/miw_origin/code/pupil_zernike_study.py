@@ -35,7 +35,10 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.backends.backend_pdf import PdfPages
 
-OUT = Path(__file__).resolve().parent.parent / "output"
+# The full-mode sensitivity and normalization are smatrix-internal datasets (triage
+# decision 3), read in place; the PDF goes to this study's output.
+SMATRIX_DATA = Path(__file__).resolve().parents[3] / "smatrix" / "output"
+OUT = Path(__file__).resolve().parents[1] / "output"
 FR = 1.75
 N_RIGID, N_M1M3, N_M2 = 10, 153, 69
 AOS_M1M3 = set(range(19)) | {26}
@@ -61,9 +64,9 @@ def main():
     ap.add_argument("--n-maps", type=int, default=18, help="# top maps to show")
     args = ap.parse_args()
 
-    sens = np.load(OUT / "smatrix_dz_31_29_232_r_bend_zemax.npy")
+    sens = np.load(SMATRIX_DATA / "smatrix_dz_31_29_232_r_bend_zemax.npy")
     # per-mode force-limited range (ZEMAX force), bending DOF only
-    r_all = np.load(OUT / "normalization_all.npz")["full_zemax_r"]   # (232,)
+    r_all = np.load(SMATRIX_DATA / "normalization_all.npz")["full_zemax_r"]   # (232,)
     r_bend = r_all[N_RIGID:] * args.range_fraction                    # (222,)
     t = np.linspace(-FR, FR, 120); X, Y = np.meshgrid(t, t)
     inside = np.hypot(X, Y) <= FR

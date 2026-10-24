@@ -921,7 +921,7 @@ rule fam_coadd_miw:
         donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
         visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
         sidecar = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
-        script  = "code/coadd/run_fam_coadd_miw.py",
+        script  = "miw_origin/code/run_fam_coadd_miw.py",
     output: "output/coadd/{d}/fam_coadd_miw_maps.pdf"
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
@@ -935,7 +935,7 @@ rule fam_coadd_miw:
     resources: mem_mb=12000
     log: "logs/{d}.fam_coadd_miw.log"
     shell:
-        "python code/coadd/run_fam_coadd_miw.py --param-set {params.real_ps} "
+        "python miw_origin/code/run_fam_coadd_miw.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --bin-deg {params.bin_deg} "
         "--min-triplets {params.mint} --grid-n {params.grid} --pct {params.pct} "
         "--tables-dir {params.tdir} --miw-dir {params.mdir} "

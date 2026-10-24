@@ -40,7 +40,7 @@ from matplotlib.colors import TwoSlopeNorm
 from common.utils import nmad
 from miw_io import JS_DEFAULT
 
-# Field-map rendering, matching code/static_optics/camera_gravity_maps.py so MIW maps
+# Field-map rendering, matching miw_origin/code/camera_gravity_maps.py so MIW maps
 # look the same wherever they are drawn.
 CMAP = "RdBu_r"
 MARKER_SIZE = 6

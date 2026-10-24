@@ -162,7 +162,7 @@ Stopped before `aos`, as instructed. The `aos` step, in order:
    notebooks), aos `blur_intra_extra` (leave `blur_intra_extra_offset.ipynb` untouched),
    and the Z11/Z14 part of aos `cwfs`. Add the Log link from `aos/unpaired_intra_vs_extra`.
 3. Build the parked MIW-origin study (decision 4): aos `coadd`, `static_optics`,
-   `aos/docs/status/miw_investigation_handoff.md`, smatrix `miw_astig_coma` with
+   `aos/miw_origin/miw_investigation_handoff.md`, smatrix `miw_astig_coma` with
    `pupil_zernike_study.py`, `thermal_study.py`, `thermal_sensitivity.py`,
    `demo_field_order.py`, `miw_ocs_analysis.py`.
 4. The remaining aos rows, then its doc defects (triage list).

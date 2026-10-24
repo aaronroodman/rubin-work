@@ -34,10 +34,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 import camera_gravity as cg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # aos/code (shared + other studies)
-from miw_io import load_miw  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))          # repo root
+from rubinwork.products.miw import load_miw  # noqa: E402
 
-OUT = Path(__file__).resolve().parents[2] / "output" / "camera_gravity"
+OUT = Path(__file__).resolve().parents[1] / "output" / "camera_gravity"
 OUT.mkdir(parents=True, exist_ok=True)
 DEFAULT_MIW = (Path(__file__).resolve().parents[2] / "output" /
                "fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x" /
