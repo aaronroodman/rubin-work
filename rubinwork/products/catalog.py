@@ -42,7 +42,7 @@ import pathlib
 from rubinwork.common.runs import DATA_ROOT_DEFAULT, data_root, record_read
 
 __all__ = [
-    "DATA_ROOT_DEFAULT", "data_root", "products_root", "studies_root",
+    "DATA_ROOT_DEFAULT", "data_root", "products_root", "studies_root", "is_in_products",
     "path", "manifest", "load", "list_products", "list", "register",
     "set_current", "is_complete", "ProductNotFound", "products_markdown",
     "write_index",
@@ -82,6 +82,29 @@ def studies_root():
         The studies directory.
     """
     return data_root() / "studies"
+
+
+def is_in_products(path):
+    """Whether a path lies inside the products tree.
+
+    For a study that must refuse to write into a product build (rule 5 of
+    ``organization_plan.md`` section 2) without building a product path itself.
+
+    Parameters
+    ----------
+    path : `str` or `pathlib.Path`
+        Any path.
+
+    Returns
+    -------
+    inside : `bool`
+        True when `path` resolves to `products_root` or below it.
+    """
+    try:
+        pathlib.Path(path).resolve().relative_to(products_root().resolve())
+    except (ValueError, OSError):
+        return False
+    return True
 
 
 def _read_manifest(build_dir):

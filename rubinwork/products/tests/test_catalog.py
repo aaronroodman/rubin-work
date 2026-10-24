@@ -86,6 +86,13 @@ def test_data_root_from_env(data_root):
     assert catalog.studies_root() == data_root / "studies"
 
 
+def test_is_in_products(data_root):
+    inside = data_root / "products" / "miw" / "v" / "20261014"
+    inside.mkdir(parents=True)
+    assert catalog.is_in_products(inside)
+    assert not catalog.is_in_products(data_root / "studies")
+
+
 def test_data_root_default(monkeypatch):
     monkeypatch.delenv("RUBINWORK_DATA", raising=False)
     assert str(catalog.data_root()) == catalog.DATA_ROOT_DEFAULT

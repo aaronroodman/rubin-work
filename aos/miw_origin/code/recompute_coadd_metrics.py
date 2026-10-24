@@ -413,11 +413,7 @@ def is_catalog_build(coadd_dir):
         True for a directory under `rubinwork.products.catalog.products_root`.
     """
     from rubinwork.products import catalog
-    try:
-        pathlib.Path(coadd_dir).resolve().relative_to(catalog.products_root().resolve())
-    except (ValueError, OSError):
-        return False
-    return True
+    return catalog.is_in_products(coadd_dir)
 
 
 def resolve_visits_path(args, coadd_dir):

@@ -37,8 +37,6 @@ ALLOWED = (
     # The wrong-way imports and reads listed in organization_plan.md section 2, fixed
     # in phase 5. (path prefix, rule).
     ("optatmo/", "no-foreign-output"),
-    # Found by the phase 4 dry-run /review; fix in phase 5.
-    ("aos/miw_origin/code/recompute_coadd_metrics.py", "hand-built-product-path"),
     ("psf/wavefront_to_psf/", "no-foreign-output"),
 )
 """Known violations: reported, but as known rather than new."""
