@@ -26,6 +26,12 @@ Details in [`findings.md`](findings.md).
 
 ## Log
 
+### 2026-10-24 — inputs moved to the products
+
+The shared `optatmo/code/` modules now read FAM data through the catalog (`fam_tables`
+`danish_1_2`) instead of `aos/output/fam_processing/danish_1_2/`; the rotator angle changes
+by up to 0.858 deg. Recorded results were not rerun: for most purposes the camera rotator angle only needs to be known to about 1 deg (giant donuts excepted), so Aaron accepted the change (2026-10-24).
+
 ### 2026-07-09 — backfilled from docs and history
 
 Backfilled 2026-10-18 from `findings.md` (formerly `optatmo/docs/findings.md`) and `optatmo/README.md`, phase 1. Done in the phase 5 triage. The simulation scripts named in `findings.md` (`moments_analytic.py`, `evaluate.py`, `render_geometric.py`, `decompose_modes.py`, `psf_model.py`) are not tracked in this repository.

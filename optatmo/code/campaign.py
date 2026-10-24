@@ -43,6 +43,17 @@ def visitmeta_path(visit):
     return f'{DATA}/visitmeta_{visit}.parquet'
 
 
+#: fam_tables variant for the Danish visits and fits tables; it replaces
+#: aos/output/fam_processing/danish_1_2/.
+FAM_VARIANT = 'danish_1_2'
+
+
+def fam_visits():
+    """The fam_tables ``danish_1_2`` visits table."""
+    from rubinwork.products import fam_tables
+    return fam_tables.load_table('visits', FAM_VARIANT)
+
+
 class Campaign:
     """Paths for one campaign/day_obs.  `label` names the campaign."""
 

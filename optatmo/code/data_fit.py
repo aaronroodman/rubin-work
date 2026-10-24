@@ -17,8 +17,6 @@ from jax_optatmo import MOMENT_LABELS
 import frames
 import fit as fitmod
 
-CWFS_FITS = ('../aos/output/fam_processing/danish_1_2/fits.parquet')
-
 
 def load_and_prep(parquet, sign=1, rot_deg=None, clip_thr=5.0):
     """Load catalog, rotate CCS->OCS. Returns dict of arrays (OCS frame).
@@ -115,7 +113,9 @@ def to_catalog(binned):
 
 def cwfs_dz(day_obs, infocus_seq):
     """CWFS Double-Zernike coeffs for the FAM key (= in-focus seq - 1)."""
-    f = pd.read_parquet(CWFS_FITS)
+    from rubinwork.products import fam_tables
+    # Variant danish_1_2 replaces aos/output/fam_processing/danish_1_2/fits.parquet.
+    f = fam_tables.load_table('fits', 'danish_1_2')
     row = f[(f.day_obs == day_obs) & (f.seq_num == infocus_seq - 1)]
     if len(row) == 0:
         return None

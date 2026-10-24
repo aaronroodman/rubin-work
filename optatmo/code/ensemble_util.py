@@ -11,7 +11,6 @@ import pandas as pd
 
 import campaign as camp
 
-VISITS = '../aos/output/fam_processing/danish_1_2/visits.parquet'
 
 
 def robust_fit(x, y):
@@ -36,9 +35,7 @@ def robust_fit(x, y):
 
 def danish_blur(day):
     """{our-seq: median_blur_arcsec} from the danish visits table (fallback)."""
-    if not os.path.exists(VISITS):
-        return {}
-    v = pd.read_parquet(VISITS)
+    v = camp.fam_visits()
     v = v[v.day_obs == day]
     if 'median_blur_arcsec' not in v.columns:
         return {}

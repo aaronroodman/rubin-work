@@ -30,8 +30,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-DEFAULT_MIW = ("aos/output/miw/danish_1_2_A_50_34_i_5rot/"
-               "intrinsic_split_maps.parquet")
+# miw variant d12-A_50_34_i_5rot replaces
+# aos/output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_maps.parquet.
+MIW_VARIANT = "d12-A_50_34_i_5rot"
+MIW_FILE = "intrinsic_split_maps.parquet"
 
 # family -> {order: (cos_noll, sin_noll)}; sin=None for m=0 (spherical)
 FAMILIES = [
@@ -66,11 +68,16 @@ def scatter_one(ax, df, ja, jb, la, lb, color):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--miw", default=DEFAULT_MIW)
+    ap.add_argument("--miw", default=None, help="parquet path; the miw product by default")
     ap.add_argument("--out", default="optatmo/miw_radial_correlations/output/miw_radial_correlations.pdf")
     args = ap.parse_args()
 
-    df = pd.read_parquet(args.miw)
+    if args.miw:
+        df = pd.read_parquet(args.miw)
+    else:
+        from rubinwork.products import catalog
+        df = catalog.load("miw", MIW_VARIANT, file=MIW_FILE)
+        args.miw = f"miw/{MIW_VARIANT}/{MIW_FILE}"
     n = int(np.isfinite(col(df, 6)).sum())
     print(f"MIW: {args.miw}\n  {len(df)} field bins ({n} finite); native binning, no interpolation")
 

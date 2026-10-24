@@ -48,7 +48,6 @@ from vmode_fit import build_vmode_design, cwfs_vmode_amps
 from miw import MIWCalib
 from fit_monitor import FitMonitor
 
-VISITS = '../aos/output/fam_processing/danish_1_2/visits.parquet'
 
 Stage = namedtuple('Stage', 'name free_vmodes free_atm')   # free_vmodes: 'all' | [ints]
 PLANS = {
@@ -116,11 +115,10 @@ def rot_for(seq, day):
     mp = camp.visitmeta_path(visit)
     if os.path.exists(mp):
         return float(pd.read_parquet(mp).iloc[0]['rot_deg'])
-    if os.path.exists(VISITS):
-        v = pd.read_parquet(VISITS)
-        r = v[(v.day_obs == day) & (v.seq_num == seq - 1)]
-        if len(r):
-            return float(r.rotator_angle.iloc[0])
+    v = camp.fam_visits()
+    r = v[(v.day_obs == day) & (v.seq_num == seq - 1)]
+    if len(r):
+        return float(r.rotator_angle.iloc[0])
     return 0.0
 
 

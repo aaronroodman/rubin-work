@@ -22,6 +22,14 @@ Only focus agrees. Over campaign `famcwfs_prod` — about 924 FAM in-focus visit
 
 ## Log
 
+### 2026-10-24 — inputs moved to the products
+
+`optatmo/code/` now reads the FAM visits and fits through the catalog, `fam_tables`
+variant `danish_1_2`, instead of `aos/output/fam_processing/danish_1_2/`. The product's
+`rotator_angle` differs from the old table by up to 0.858 deg (3017 of 3385 visits, count;
+at most 0.110 deg on 20260513). Recorded results were not rerun: for most purposes the camera rotator angle only needs to be known to about 1 deg (giant donuts excepted), so Aaron accepted the change (2026-10-24). `extract_cwfs_sigma.py` still reads the `aos/cwfs`
+study's `wfs_corner_compare.parquet`, allow-listed; there is no product for it.
+
 ### 2026-08-21 — backfilled from docs and history
 
 Backfilled 2026-10-18 from the archived note `notes/claude-memory/optatmo-moments-project.md` (the answer lived only there), `optatmo/README.md` phase 3, and the commits to `f16d1ae`. Parked in the phase 5 triage.
