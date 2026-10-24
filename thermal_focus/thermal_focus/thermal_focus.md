@@ -993,13 +993,13 @@ standard error of unity.
 
 | file | role |
 |---|---|
-| `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
-| `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing four cached tables |
-| `code/thermal_focus_fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
-| `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one 26-page document, no network |
-| `code/trim_calculator.py` | the standalone online calculator: numpy and pyyaml only, no repository imports |
-| `code/trim_coefficients.yaml` | the fitted coefficients the calculator reads, with units and provenance |
-| `code/test_trim_calculator.py` | the calculator's tests, data in `code/trim_test_cases.yaml` |
+| `rubinwork/thermal_focus/lib.py` | the response definition, the conversions and the feature groups — one definition, so nothing can drift |
+| `thermal_focus/code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing four cached tables |
+| `rubinwork/thermal_focus/fit.py` | the fitting core: the models, night-grouped evaluation, the block assignment and the diagnostics |
+| `thermal_focus/code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one 26-page document, no network |
+| `trim_calculator/code/trim_calculator.py` | the standalone online calculator: numpy and pyyaml only, no repository imports |
+| `trim_calculator/code/trim_coefficients.yaml` | the fitted coefficients the calculator reads, with units and provenance |
+| `trim_calculator/code/test_trim_calculator.py` | the calculator's tests, data in `trim_calculator/code/trim_test_cases.yaml` |
 
 ### The network seam
 
@@ -1067,9 +1067,9 @@ dof_dict['B1_3'], dof_dict['B2_5']                               # um
 accept a scalar or an array; scalars come back as floats, arrays as `numpy.ndarray` of the same
 length, which is how section 11 checks the whole sample in one call.
 
-The tests are separate, in `code/test_trim_calculator.py` with their data in
-`code/trim_test_cases.yaml`, so the calculator itself carries only the prediction. Run them with
-`python code/test_trim_calculator.py` or under pytest.
+The tests are separate, in `trim_calculator/code/test_trim_calculator.py` with their data in
+`trim_calculator/code/trim_test_cases.yaml`, so the calculator itself carries only the prediction. Run them with
+`python trim_calculator/code/test_trim_calculator.py` or under pytest.
 
 A telemetry value outside `SAMPLE_FEATURE_RANGE` raises a `UserWarning` and the prediction is
 returned regardless — the caller decides whether an extrapolation is acceptable.

@@ -12,19 +12,13 @@ default of convenience: the response has a one-sided positive tail in every band
 visits beyond +3 normalized median absolute deviations (nMAD) against 0.3% beyond −3, versus a
 Gaussian's 0.135% on each side, so least squares would be pulled by the tail.
 """
-import pathlib
-import sys
 
 import numpy as np
 import pandas as pd
 
-_HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[1]
-sys.path.insert(0, str(_ROOT))
 
-import thermal_focus_lib as L                                    # noqa: E402
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.thermal_focus import lib as L
+from rubinwork.common.utils import nmad
 
 #: Models available to the comparison table. ``huber`` is the deliverable.
 MODEL_NAMES = ('huber', 'ridge', 'histgb', 'rf')

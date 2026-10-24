@@ -46,30 +46,30 @@ by 3.39 times (dimensionless; see `thermal_focus/thermal_focus.md`).
 
 | file | role |
 |---|---|
-| `code/thermal_focus_lib.py` | the response definition, the conversions and the feature groups |
-| `code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
-| `code/thermal_focus_fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
-| `code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
-| `code/thermal_vmodes.py` | the all-34-v-mode study: per-mode fits, the null, the FDR cut, the noise floor |
-| `code/run_thermal_vmodes.py` | the all-34-v-mode run: the per-mode table, the noise floor, both intrinsic routes, the figures |
-| `code/thermal_vmodes_figures.py` | the all-34-v-mode figures: five pages, one function each |
-| `code/thermal_vmodes_channels.py` | the per-channel thermal screen: every v-mode against every telemetry line, and the v-mode Zernike content |
-| `code/thermal_vmodes_channel_figures.py` | the screen's figures: the correlation heatmaps and one page per responding mode |
-| `code/trim_calculator.py` | the standalone online calculator: numpy and pyyaml only, no repository imports |
-| `code/trim_coefficients.yaml` | the fitted coefficients the calculator reads, with units and provenance |
-| `code/test_trim_calculator.py` | the calculator's tests, data in `code/trim_test_cases.yaml` |
+| `rubinwork/thermal_focus/lib.py` | the response definition, the conversions and the feature groups |
+| `thermal_focus/code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
+| `rubinwork/thermal_focus/fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
+| `thermal_focus/code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
+| `thermal_vmodes/code/thermal_vmodes.py` | the all-34-v-mode study: per-mode fits, the null, the FDR cut, the noise floor |
+| `thermal_vmodes/code/run_thermal_vmodes.py` | the all-34-v-mode run: the per-mode table, the noise floor, both intrinsic routes, the figures |
+| `thermal_vmodes/code/thermal_vmodes_figures.py` | the all-34-v-mode figures: five pages, one function each |
+| `thermal_vmodes/code/thermal_vmodes_channels.py` | the per-channel thermal screen: every v-mode against every telemetry line, and the v-mode Zernike content |
+| `thermal_vmodes/code/thermal_vmodes_channel_figures.py` | the screen's figures: the correlation heatmaps and one page per responding mode |
+| `trim_calculator/code/trim_calculator.py` | the standalone online calculator: numpy and pyyaml only, no repository imports |
+| `trim_calculator/code/trim_coefficients.yaml` | the fitted coefficients the calculator reads, with units and provenance |
+| `trim_calculator/code/test_trim_calculator.py` | the calculator's tests, data in `trim_calculator/code/trim_test_cases.yaml` |
 
 The build stage is the only one that needs the network, because the mean TMA truss temperature is
 derived on a ConsDB join rather than stored. It caches to parquet, so the analysis runs offline:
 
 ```bash
-python code/run_thermal_focus.py
-python code/run_thermal_focus_analysis.py
-python code/test_trim_calculator.py
+python thermal_focus/code/run_thermal_focus.py
+python thermal_focus/code/run_thermal_focus_analysis.py
+python trim_calculator/code/test_trim_calculator.py
 ```
 
 The calculator imports numpy, pyyaml and argparse and nothing else, so it can be copied to a summit
-machine and run there; every coefficient lives in `code/trim_coefficients.yaml` with its units and
+machine and run there; every coefficient lives in `trim_calculator/code/trim_coefficients.yaml` with its units and
 provenance, so copy both files together. The analysis checks the calculator against the pipeline it
 fitted.
 

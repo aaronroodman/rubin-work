@@ -28,12 +28,12 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))
 
-import thermal_focus_fit as F                                    # noqa: E402
+from rubinwork.thermal_focus import fit as F                                    # noqa: E402
 import thermal_vmodes as TV                                      # noqa: E402
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.common.utils import nmad                          # noqa: E402
 
 #: Spearman rho magnitude (dimensionless) at which a (v-mode, channel) pair is followed up with
 #: a combined fit. Aaron's threshold.
@@ -144,8 +144,7 @@ def vmode_zernike_content(n_modes=TV.N_MODES, dof_set='all_50'):
     v16, with Z22 in v14 and v31. Reading the thermal grid against the prediction requires this
     mapping rather than mode index.
     """
-    sys.path.insert(0, str(_ROOT / 'aos' / 'code'))
-    import aos_state
+    from rubinwork import aos_state
 
     se = aos_state.make_state_estimator(dof_set=dof_set)
     basis = aos_state.corner_recovery_basis(se)

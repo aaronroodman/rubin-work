@@ -10,7 +10,7 @@ started: 2026-10-06
 
 # `thermal_vmodes`: thermal response of all 34 v-modes
 
-> **Write-up:** [`thermal_vmodes.md`](thermal_vmodes.md) · **Code:** `thermal_focus/code/thermal_vmodes*.py`, `run_thermal_vmodes.py` · **Output:** `thermal_focus/output/thermal_vmodes/`
+> **Write-up:** [`thermal_vmodes.md`](thermal_vmodes.md) · **Code:** `code/thermal_vmodes*.py`, `run_thermal_vmodes.py` · **Output:** `thermal_focus/output/thermal_vmodes/`
 
 ## Question
 

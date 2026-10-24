@@ -1414,7 +1414,7 @@ defaults to `readonly=True`) or the `value_added/code/efd_db.py` shim:
 - *Products:* `fam_tables` — `builders/run_attach_telemetry.py` reads the four M1M3 bulk
   thermal gradients from `visit_telemetry` (commit `bef17ba`, expected difference 6), and
   `refbuild/check_gradient_rebuild.py` checks them.
-- *Studies / topic code:* `thermal_focus/code/thermal_focus_lib.py` (still reaches the
+- *Studies / topic code:* `rubinwork/thermal_focus/lib.py` (still reaches the
   shim by `sys.path.insert` of `value_added/code`, not the installed package),
   `olr/code/olr.py`, `aos/code/cwfs_lut/{cwfs_lut_lib,run_cwfs_lut}.py`,
   `aos/code/miw_corner_intrinsic.py`, `rubinwork/miw_corner.py`,
@@ -1638,7 +1638,7 @@ promotion.
   switch is to flip that precedence (or set `AOS_EFD_DB`, which already wins over both)
   once `v1/current` exists. No reader's own code needs editing for the product code and
   notebooks that already go through the reader. The one exception is
-  `thermal_focus/code/thermal_focus_lib.py`, which reaches the shim by
+  `rubinwork/thermal_focus/lib.py`, which reaches the shim by
   `sys.path.insert` of `value_added/code`; it keeps working through the shim but should
   move to the installed package.
 - **What stays on the old path, and for how long.** `value_added/output/aos_efd.duckdb`
@@ -1663,7 +1663,7 @@ value-added table that would replace each read:
 | `aos/miw_origin/code/recompute_coadd_metrics.py` | the ESS temperatures and M1M3 gradients that are differences 6 and 8 in `coadd_metrics.parquet` | `visit_telemetry` |
 | `blocks/code/telemetry_pipeline.py`, `blocks/code/build_t539_table.py` | its own EFD/ConsDB per-visit pull | `visit_telemetry`, `m1m3_thermal_r2` |
 | `olr/code/telemetry.py`, `olr/code/nightly_table.py`, `olr/code/aos_dof_audit.py` | hexapod/DOF telemetry per visit | `visit_telemetry`, `optical_state` |
-| `thermal_focus/code/run_thermal_focus.py` | ESS temperatures and M1M3 thermal | `visit_telemetry`, `m1m3_thermal_r2` |
+| `thermal_focus/thermal_focus/code/run_thermal_focus.py` | ESS temperatures and M1M3 thermal | `visit_telemetry`, `m1m3_thermal_r2` |
 | `guider/code/guider_utils.py` | per-visit telemetry for the guider moments | `visit_telemetry` |
 | `rubinwork/common/{ess_telemetry,consdb_efd,visit_telemetry,telemetry_clients}.py` | the shared fetch layer every caller above goes through | stays, but becomes the **builder's** fetch layer only, not a per-product one |
 

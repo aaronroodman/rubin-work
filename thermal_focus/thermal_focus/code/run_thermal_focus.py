@@ -25,12 +25,12 @@ Four tables are written:
 
 Invocation::
 
-    python code/run_thermal_focus.py
-    python code/run_thermal_focus.py --day-obs-range 20251103 20260713
-    python code/run_thermal_focus.py --no-fam
-    python code/run_thermal_focus.py --no-truss-all
-    python code/run_thermal_focus.py --only-truss-all
-    python code/run_thermal_focus.py --only-t539
+    python thermal_focus/code/run_thermal_focus.py
+    python thermal_focus/code/run_thermal_focus.py --day-obs-range 20251103 20260713
+    python thermal_focus/code/run_thermal_focus.py --no-fam
+    python thermal_focus/code/run_thermal_focus.py --no-truss-all
+    python thermal_focus/code/run_thermal_focus.py --only-truss-all
+    python thermal_focus/code/run_thermal_focus.py --only-t539
 
 Notes
 -----
@@ -54,11 +54,11 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_focus_lib
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))                                   # repo root -> common/
 
-import thermal_focus_lib as L                                    # noqa: E402
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.thermal_focus import lib as L                                    # noqa: E402
+from rubinwork.common.utils import nmad                          # noqa: E402
 from rubinwork.products import value_added as efd_db             # noqa: E402
 
 #: Image types kept as "science visits". The focus model is fitted on ordinary survey exposures.

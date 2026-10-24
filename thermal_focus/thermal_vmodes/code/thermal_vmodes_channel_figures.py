@@ -17,12 +17,12 @@ import numpy as np
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))
 
 import thermal_vmodes as TV                                      # noqa: E402
 import thermal_vmodes_channels as TVC                            # noqa: E402
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.common.utils import nmad                          # noqa: E402
 
 _STRONG_COLOR = '#d62728'
 _NULL_COLOR = '#7f7f7f'

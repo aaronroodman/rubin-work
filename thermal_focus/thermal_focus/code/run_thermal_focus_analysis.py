@@ -58,9 +58,9 @@ nothing the one retained optimism check does not state in a single line; see `se
 
 Invocation::
 
-    python code/run_thermal_focus_analysis.py
-    python code/run_thermal_focus_analysis.py --day-obs-range 20251103 20260713
-    python code/run_thermal_focus_analysis.py --no-pdf
+    python thermal_focus/code/run_thermal_focus_analysis.py
+    python thermal_focus/code/run_thermal_focus_analysis.py --day-obs-range 20251103 20260713
+    python thermal_focus/code/run_thermal_focus_analysis.py --no-pdf
 
 Notes
 -----
@@ -81,11 +81,13 @@ from matplotlib.backends.backend_pdf import PdfPages              # noqa: E402
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))
+# Section 11 checks the trim_calculator study's calculator against this fit.
+sys.path.insert(0, str(_ROOT / 'thermal_focus' / 'trim_calculator' / 'code'))
 
-import thermal_focus_fit as F                                     # noqa: E402
-import thermal_focus_lib as L                                     # noqa: E402
+from rubinwork.thermal_focus import fit as F                                     # noqa: E402
+from rubinwork.thermal_focus import lib as L                                     # noqa: E402
 import trim_calculator as T                                       # noqa: E402
 import test_trim_calculator as TT                                 # noqa: E402
 import common.utils as U                                          # noqa: E402
@@ -214,7 +216,7 @@ def load(out_dir, fam_dir_name, day_obs_range=None, verbose=True):
     sci_path = out_dir / 'thermal_focus.parquet'
     if not sci_path.exists():
         raise SystemExit(f'{sci_path} is absent; build it with\n  python '
-                         f'code/run_thermal_focus.py')
+                         f'thermal_focus/code/run_thermal_focus.py')
     sci = pd.read_parquet(sci_path)
     features = L.resolve_features(L.DELIVERABLE_GROUPS)
 
@@ -3491,7 +3493,7 @@ def main():
     print('\n=== 14. against the Trim the initial alignment block settled on ===')
     if t539 is None or not len(t539):
         print('  thermal_focus_t539.parquet is absent; build it with\n'
-              '    python code/run_thermal_focus.py')
+              '    python thermal_focus/code/run_thermal_focus.py')
         t539res = {}
     else:
         t539res = section_t539(t539, full, features)
@@ -3538,7 +3540,7 @@ def main():
             figure_truss_all(pdf, truss_all, sci)
         else:
             print('  thermal_focus_truss_all.parquet is absent; the database-wide truss page is '
-                  'skipped. Build it with\n    python code/run_thermal_focus.py --only-truss-all')
+                  'skipped. Build it with\n    python thermal_focus/code/run_thermal_focus.py --only-truss-all')
         figure_sample(pdf, sci, samp)
         figure_visits_per_night(pdf, sci, samp)
 

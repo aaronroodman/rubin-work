@@ -19,10 +19,10 @@ is v-mode 1 in physical units and is overwritten per mode by
 
 Invocation::
 
-    python code/run_thermal_vmodes.py
-    python code/run_thermal_vmodes.py --no-intrinsic
-    python code/run_thermal_vmodes.py --no-figures
-    python code/run_thermal_vmodes.py --day-obs-range 20251103 20260713
+    python thermal_vmodes/code/run_thermal_vmodes.py
+    python thermal_vmodes/code/run_thermal_vmodes.py --no-intrinsic
+    python thermal_vmodes/code/run_thermal_vmodes.py --no-figures
+    python thermal_vmodes/code/run_thermal_vmodes.py --day-obs-range 20251103 20260713
 
 This stage needs the network: the truss temperature is derived on a ConsDB join rather than
 stored, so each variant costs one round trip per night. ``--no-intrinsic`` skips the two extra
@@ -37,11 +37,13 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_vmodes
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))                                   # repo root -> common/
+# The science sample is the thermal_focus study's load_science, so the funnel is the same.
+sys.path.insert(0, str(_ROOT / 'thermal_focus' / 'thermal_focus' / 'code'))
 
 import run_thermal_focus as RTF                                  # noqa: E402
-import thermal_focus_lib as L                                    # noqa: E402
+from rubinwork.thermal_focus import lib as L                                    # noqa: E402
 import thermal_vmodes as TV                                      # noqa: E402
 import thermal_vmodes_channel_figures as TVCF                    # noqa: E402
 import thermal_vmodes_channels as TVC                            # noqa: E402

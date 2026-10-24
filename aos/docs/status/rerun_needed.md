@@ -159,7 +159,7 @@ the magnitude is the intended return: `thermal_focus_lib` carries the sign separ
 `MEASURED_SIGN = -1.0` (dimensionless), and `|c5 + c0| / mean = 2.00000` exactly, which is
 what makes the unit *total* dz travel — 0.5 µm on each hexapod — rather than one axis. The
 response definition and both conversions are stated once, in
-`thermal_focus/code/thermal_focus_lib.py`.
+`rubinwork/thermal_focus/lib.py`.
 
 **Open — the two v-mode engines disagree on the sign of v1.** `optical_state` and
 `fam_dz` are built by different engines and are therefore **not in the same basis** despite

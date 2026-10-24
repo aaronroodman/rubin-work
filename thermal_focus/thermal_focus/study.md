@@ -10,7 +10,7 @@ started: 2026-09-09
 
 # `thermal_focus`: the focus error as a function of temperature
 
-> **Write-up:** [`thermal_focus.md`](thermal_focus.md) · **Code:** `thermal_focus/code/` (shared with `thermal_vmodes` and `trim_calculator`) · **Notebook:** `notebooks/corner_z4_vs_temperature_science.ipynb` · **Output:** `thermal_focus/output/`
+> **Write-up:** [`thermal_focus.md`](thermal_focus.md) · **Code:** `code/` (build and analysis); the shared modules are the library `rubinwork.thermal_focus` · **Notebook:** `notebooks/corner_z4_vs_temperature_science.ipynb` · **Output:** `thermal_focus/output/`
 
 ## Question
 
@@ -30,6 +30,15 @@ Yes, between whole nights. Five thermal channels — the TMA truss temperature a
 The elevation-hysteresis test and the within-FAM-block argument were dropped from the study (2026-10-08). Details in [`thermal_focus.md`](thermal_focus.md).
 
 ## Log
+
+### 2026-10-24 — code split by study
+
+`thermal_focus/code/` is gone (phase 5 decision 10). `thermal_focus_lib` and
+`thermal_focus_fit` are the library `rubinwork.thermal_focus` (`lib`, `fit`); the build and
+analysis are in this study's `code/`, the v-mode scripts in `thermal_vmodes`, the calculator in
+`trim_calculator`. Two cross-study imports remain, allow-listed: the analysis's section 11
+check of the calculator, and `thermal_vmodes` taking its sample from `load_science` here.
+Default output stays `thermal_focus/output/`.
 
 ### 2026-10-08 — backfilled from docs and history
 

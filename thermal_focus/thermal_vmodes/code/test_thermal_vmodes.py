@@ -1,6 +1,6 @@
 """Tests for the all-v-mode thermal study.
 
-Run with ``pytest thermal_focus/code/test_thermal_vmodes.py``.
+Run with ``pytest thermal_focus/thermal_vmodes/code/test_thermal_vmodes.py``.
 
 The two that matter are `test_sign_matches_v1_convention`, which pins the response against the
 published v-mode-1 convention, and `test_only_the_planted_mode_is_called_thermal`, which checks
@@ -15,9 +15,9 @@ import pytest
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE.parents[1]))
+sys.path.insert(0, str(_HERE.parents[2]))
 
-import thermal_focus_lib as L
+from rubinwork.thermal_focus import lib as L
 import thermal_vmodes as TV
 
 FEATURES = ['truss_temp_mean_c', 'm1m3_z_gradient_c_per_m', 'm1m3_y_gradient_c_per_m',

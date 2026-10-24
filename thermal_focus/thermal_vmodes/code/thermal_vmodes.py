@@ -43,12 +43,12 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))
 
-import thermal_focus_fit as F                                    # noqa: E402
-import thermal_focus_lib as L                                    # noqa: E402
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.thermal_focus import fit as F                                    # noqa: E402
+from rubinwork.thermal_focus import lib as L                                    # noqa: E402
+from rubinwork.common.utils import nmad                          # noqa: E402
 
 #: Variant carrying the primary result: range-bounded recovery (RBR), which is physically
 #: realizable on 99.5% of visits. The unconstrained ``v50_34__batoid__consdb_v1`` asks a median

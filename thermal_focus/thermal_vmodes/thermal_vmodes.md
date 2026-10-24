@@ -2,10 +2,10 @@
 
 > **Status:** current · **Last updated:** 2026-10-06 · **Kind:** reference (study)
 
-> **Code:** `code/thermal_vmodes.py`, `code/run_thermal_vmodes.py`,
-> `code/thermal_vmodes_figures.py`, `code/thermal_vmodes_channels.py`,
-> `code/thermal_vmodes_channel_figures.py`, `code/test_thermal_vmodes.py`,
-> `code/test_thermal_vmodes_channels.py`
+> **Code:** `thermal_vmodes/code/thermal_vmodes.py`, `thermal_vmodes/code/run_thermal_vmodes.py`,
+> `thermal_vmodes/code/thermal_vmodes_figures.py`, `thermal_vmodes/code/thermal_vmodes_channels.py`,
+> `thermal_vmodes/code/thermal_vmodes_channel_figures.py`, `thermal_vmodes/code/test_thermal_vmodes.py`,
+> `thermal_vmodes/code/test_thermal_vmodes_channels.py`
 > **Output:** `output/thermal_vmodes/`
 > **Notebooks:** `notebooks/`
 
@@ -116,7 +116,7 @@ its default behaviour is unchanged.
 | `noise_floor_table` | per-mode within-night against between-night scatter |
 | `intrinsic_comparison` | per-mode skill on the two intrinsic routes, side by side |
 
-`code/test_thermal_vmodes.py` has 8 tests. Two matter: the response sign is pinned against
+`thermal_vmodes/code/test_thermal_vmodes.py` has 8 tests. Two matter: the response sign is pinned against
 `thermal_focus_lib.MEASURED_SIGN`, and the screening rule is checked on a synthetic frame
 where one planted thermal mode must be the only one called — and on a pure-noise frame where
 nothing must be.
@@ -337,8 +337,8 @@ term the loop removes well would be absent here whatever the mirror does.
 Reproduce with:
 
 ```bash
-python code/run_thermal_vmodes.py
-python code/run_thermal_vmodes.py --no-channels      # the first-pass products alone
+python thermal_vmodes/code/run_thermal_vmodes.py
+python thermal_vmodes/code/run_thermal_vmodes.py --no-channels      # the first-pass products alone
 ```
 
 Products in `output/thermal_vmodes/`: `mode_table_<variant>.parquet`, `noise_floor.parquet`,

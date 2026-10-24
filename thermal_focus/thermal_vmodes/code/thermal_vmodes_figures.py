@@ -23,11 +23,11 @@ import numpy as np
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-_ROOT = _HERE.parents[1]
+_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))
 
 import thermal_vmodes as TV                                      # noqa: E402
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.common.utils import nmad                          # noqa: E402
 
 #: Mode drawn beside v-mode 1 on `figure_response_scatter`: the highest-skill mode that the
 #: false-discovery-rate cut rejects, so the comparison is signal against best-non-signal.

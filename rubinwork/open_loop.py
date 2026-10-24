@@ -18,7 +18,7 @@ optical state        ``Trim - Deviation`` the DOF defining the visit's optical s
 A measured deviation is equivalent to some DOF vector, and the Trim is applied with the
 **opposite** sign in order to drive that deviation toward zero. So ``Trim - Deviation`` is
 the optical state, and the open-loop reconstruction is its negative. The optical-state form
-is what ``thermal_focus/code/thermal_focus_lib.py`` computes for v-mode 1 alone, as
+is what ``rubinwork/thermal_focus/lib.py`` computes for v-mode 1 alone, as
 ``v1_trim + MEASURED_SIGN * v1`` with ``MEASURED_SIGN = -1.0``; this module generalizes it
 to every v-mode and to the Zernikes.
 
@@ -192,7 +192,7 @@ def optical_state_dofs(dof_recovered, dof_trim):
     -----
     This is the optical state, **not** the OLR output — the two differ by an overall sign,
     and `open_loop_state` returns the other one. Generalizes the v-mode-1 form in
-    ``thermal_focus/code/thermal_focus_lib.py`` (``v1_trim + MEASURED_SIGN * v1`` with
+    ``rubinwork/thermal_focus/lib.py`` (``v1_trim + MEASURED_SIGN * v1`` with
     ``MEASURED_SIGN = -1.0``) to all 50 DOF.
     """
     return (np.asarray(dof_trim, dtype=float)

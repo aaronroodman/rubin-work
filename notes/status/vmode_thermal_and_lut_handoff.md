@@ -162,7 +162,7 @@ mimic it.
 
 | study | code | doc | tests |
 |---|---|---|---|
-| `thermal_vmodes` | `thermal_focus/code/thermal_vmodes.py` | `thermal_focus/thermal_vmodes/thermal_vmodes.md` | 8 |
+| `thermal_vmodes` | `thermal_focus/thermal_vmodes/code/thermal_vmodes.py` | `thermal_focus/thermal_vmodes/thermal_vmodes.md` | 8 |
 | `cwfs_lut` | `aos/cwfs_lut/code/cwfs_lut_lib.py` | `aos/cwfs_lut/cwfs_lut.md` | 18 |
 
 29 tests pass across both topics, including Aaron's 3 pre-existing `test_trim_calculator.py`.
@@ -195,7 +195,7 @@ Verified on real data, not just synthetically:
 
 ## Both studies have run over the full sample
 
-`e32e839`. Drivers are `thermal_focus/code/run_thermal_vmodes.py` and
+`e32e839`. Drivers are `thermal_focus/thermal_vmodes/code/run_thermal_vmodes.py` and
 `aos/cwfs_lut/code/run_cwfs_lut.py`; both take `--day-obs-range` and `--output-dir`. Results
 are written up in the two study docs, which are now **current** rather than in progress.
 
@@ -262,7 +262,7 @@ the same statement as this ratio; the table reports both and the doc says so.
 
 `e7bfe51`. Five pages each, written by the same drivers into
 `thermal_focus/output/thermal_vmodes/thermal_vmodes.pdf` and `aos/output/cwfs_lut/cwfs_lut.pdf`.
-Figure code is `thermal_focus/code/thermal_vmodes_figures.py` and
+Figure code is `thermal_focus/thermal_vmodes/code/thermal_vmodes_figures.py` and
 `aos/cwfs_lut/code/cwfs_lut_figures.py`, one function per page, assembled with `PdfPages` as
 `run_thermal_focus_analysis.py` does. `--no-figures` restores the table-only behaviour. Per-visit
 points are **hexbin, not scatter** — 96,278 visits over ten axes and two angles.
@@ -366,7 +366,7 @@ survey), so dy may be the common thread.
 `e0b6e91`. Every v-mode against every thermal telemetry channel: 28 channels × 34 modes = 952
 single-channel Huber fits, with a Spearman colour map, and for any mode reaching |rho| >= 0.4 a
 combined fit on its leading 4 distinct channels. Code is
-`thermal_focus/code/thermal_vmodes_channels.py` and `thermal_vmodes_channel_figures.py` (11
+`thermal_focus/thermal_vmodes/code/thermal_vmodes_channels.py` and `thermal_vmodes_channel_figures.py` (11
 pages); 12 tests in `test_thermal_vmodes_channels.py`.
 
 **Seven modes reach |rho| >= 0.4**, against the one the five-channel joint screen found:

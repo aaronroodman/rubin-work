@@ -34,14 +34,9 @@ comparison against results built on that convention needs 3600 arcsec/deg. The h
 covers only the 10 hexapod DOF, so the mirror-bending entries must be set to zero rather than
 left NaN, or `aos_state.vmodes_from_dofs` rejects every row on the inactive indices.
 """
-import pathlib
-import sys
 
 import numpy as np
 
-_ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_ROOT))                       # repo root -> common/
-sys.path.insert(0, str(_ROOT / 'aos' / 'code'))      # -> aos_state, the v-mode engine
 
 #: Sign with which a surviving measured v-mode-1 residual enters the response
 #: [dimensionless]. Fixed by observation, not by any fit: on the ``BLOCK-T539``
@@ -172,7 +167,7 @@ def v1_per_um_dz_value(dof_set='all_50', n_modes=34, verbose=True):
     10-DOF/1-mode projection the online system would use, where the two routes differ; see
     `v1_per_um_dz_table`.
     """
-    import aos_state
+    from rubinwork import aos_state
     se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
     c = {}
     for k in (0, 5):
@@ -221,7 +216,7 @@ def v1_per_um_dz_table(schemes=(('all_50', 34), ('standard_22', 12), ('hexapod_1
     inherited. A scheme whose DOF set omits an axis returns NaN for that axis rather than
     raising, since the mode is then not the same physical combination.
     """
-    import aos_state
+    from rubinwork import aos_state
     rows = []
     for dof_set, n_modes in schemes:
         se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)

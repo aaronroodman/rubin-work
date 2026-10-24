@@ -38,6 +38,12 @@ ALLOWED = (
     # in phase 5. (path prefix, rule).
     ("optatmo/", "no-foreign-output"),
     ("psf/wavefront_to_psf/", "no-foreign-output"),
+    # Section 11 of the thermal_focus analysis checks the trim_calculator study's
+    # calculator against the fit; where that check lives is Aaron's call.
+    ("thermal_focus/thermal_focus/code/run_thermal_focus_analysis.py", "no-study-import"),
+    # thermal_vmodes takes its sample from the thermal_focus study's load_science, which
+    # reads the value_added product, so it cannot move into the library.
+    ("thermal_focus/thermal_vmodes/code/run_thermal_vmodes.py", "no-study-import"),
 )
 """Known violations: reported, but as known rather than new."""
 

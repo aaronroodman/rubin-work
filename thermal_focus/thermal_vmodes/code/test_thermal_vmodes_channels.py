@@ -1,6 +1,6 @@
 """Tests for the per-channel thermal screen.
 
-Run with ``pytest thermal_focus/code/test_thermal_vmodes_channels.py``.
+Run with ``pytest thermal_focus/thermal_vmodes/code/test_thermal_vmodes_channels.py``.
 
 The two that matter are `test_planted_channel_is_the_leading_one`, which checks the screen
 recovers which channel a mode was built to respond to, and
@@ -16,7 +16,7 @@ import pandas as pd
 
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE.parents[1]))
+sys.path.insert(0, str(_HERE.parents[2]))
 
 import thermal_vmodes_channels as TVC                            # noqa: E402
 

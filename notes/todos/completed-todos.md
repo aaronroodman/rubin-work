@@ -1385,7 +1385,7 @@ for:
 
 **Later work on this topic is uncommitted and is not part of this item.** The working tree
 carries a refactor moving the calculator's coefficients out to
-`thermal_focus/code/trim_coefficients.yaml` with `test_trim_calculator.py` and
+`thermal_focus/trim_calculator/code/trim_coefficients.yaml` with `test_trim_calculator.py` and
 `trim_test_cases.yaml` alongside. That is a separate change, begun after this item closed.
 
 Restructure the `thermal_focus` PDF so it opens with the study description and the summary
@@ -1403,11 +1403,11 @@ terms the deliverable model carries.
 
 | piece | path |
 | --- | --- |
-| the report builder, one page per `figure_*` or `_text_page` call | [thermal_focus/code/run_thermal_focus_analysis.py](../../thermal_focus/code/run_thermal_focus_analysis.py), `main()` |
-| the fitting engine, `huber_line`, `evaluate`, `model_comparison`, `nested_comparison`, `per_band_fit` | [thermal_focus/code/thermal_focus_fit.py](../../thermal_focus/code/thermal_focus_fit.py) |
-| the feature groups and `resolve_features` | [thermal_focus/code/thermal_focus_lib.py](../../thermal_focus/code/thermal_focus_lib.py), `FEATURE_GROUPS`, `DELIVERABLE_GROUPS` |
-| the standalone online calculator | [thermal_focus/code/trim_calculator.py](../../thermal_focus/code/trim_calculator.py) |
-| the network and DuckDB stage | [thermal_focus/code/run_thermal_focus.py](../../thermal_focus/code/run_thermal_focus.py) |
+| the report builder, one page per `figure_*` or `_text_page` call | [thermal_focus/thermal_focus/code/run_thermal_focus_analysis.py](../../thermal_focus/thermal_focus/code/run_thermal_focus_analysis.py), `main()` |
+| the fitting engine, `huber_line`, `evaluate`, `model_comparison`, `nested_comparison`, `per_band_fit` | [rubinwork/thermal_focus/fit.py](../../rubinwork/thermal_focus/fit.py) |
+| the feature groups and `resolve_features` | [rubinwork/thermal_focus/lib.py](../../rubinwork/thermal_focus/lib.py), `FEATURE_GROUPS`, `DELIVERABLE_GROUPS` |
+| the standalone online calculator | [thermal_focus/trim_calculator/code/trim_calculator.py](../../thermal_focus/trim_calculator/code/trim_calculator.py) |
+| the network and DuckDB stage | [thermal_focus/thermal_focus/code/run_thermal_focus.py](../../thermal_focus/thermal_focus/code/run_thermal_focus.py) |
 | the study doc | [thermal_focus/thermal_focus/thermal_focus.md](../../thermal_focus/thermal_focus/thermal_focus.md) |
 
 The report is 18 pages, built in `main()` inside `with PdfPages(pdf_path)`, currently ordered
