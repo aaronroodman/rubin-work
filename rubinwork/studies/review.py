@@ -37,7 +37,6 @@ ALLOWED = (
     # The wrong-way imports and reads listed in organization_plan.md section 2, fixed
     # in phase 5. (path prefix, rule).
     ("optatmo/", "no-foreign-output"),
-    ("psf/wavefront_to_psf/", "no-foreign-output"),
 )
 """Known violations: reported, but as known rather than new."""
 
