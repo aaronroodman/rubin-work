@@ -1042,7 +1042,7 @@ This topic imports `aos_state` from `aos/code` for the v-modes and the DOF sets,
 
 `trim_calculator.py` imports numpy, pyyaml and argparse and nothing else, so it can be copied to a
 summit machine and run there. Every coefficient lives in `trim_coefficients.yaml` beside it, with
-units and provenance, so **copy both files together**. A copied coefficient file can drift from the fit silently, so section 11 of the analysis checks the
+units and provenance, so **copy both files together**. A copied coefficient file can drift from the fit silently, so `trim_calculator`'s `check_against_fit.py` checks the
 calculator against the pipeline it fitted: **max |difference| 0.0034 µm of equivalent hexapod dz**
 over 68,079 visits, which is the two-decimal rounding of the stored coefficients.
 
@@ -1065,7 +1065,7 @@ dof_dict['B1_3'], dof_dict['B2_5']                               # um
 
 `--coefficients` selects a refitted file from the command line. The five telemetry arguments each
 accept a scalar or an array; scalars come back as floats, arrays as `numpy.ndarray` of the same
-length, which is how section 11 checks the whole sample in one call.
+length, which is how `check_against_fit.py` checks the whole sample in one call.
 
 The tests are separate, in `trim_calculator/code/test_trim_calculator.py` with their data in
 `trim_calculator/code/trim_test_cases.yaml`, so the calculator itself carries only the prediction. Run them with

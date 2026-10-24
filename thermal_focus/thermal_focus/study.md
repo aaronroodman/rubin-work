@@ -31,6 +31,13 @@ The elevation-hysteresis test and the within-FAM-block argument were dropped fro
 
 ## Log
 
+### 2026-10-24 — sample to the library, calculator check out
+
+`load_science` and its telemetry readers moved to `rubinwork.thermal_focus.sample`, shared
+with `thermal_vmodes`; they take the `value_added` reader as an argument, since a library
+may not import a product. Section 11 (the calculator check) moved to the `trim_calculator`
+study. No result changed; the analysis runs without it.
+
 ### 2026-10-24 — code split by study
 
 `thermal_focus/code/` is gone (phase 5 decision 10). `thermal_focus_lib` and

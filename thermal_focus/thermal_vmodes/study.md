@@ -24,6 +24,11 @@ A per-channel screen finds seven modes with |Spearman rho| ≥ 0.4 (dimensionles
 
 ## Log
 
+### 2026-10-24 — sample from the library
+
+The science sample now comes from `rubinwork.thermal_focus.sample.load_science`, the same
+function `thermal_focus` uses, rather than by importing that study's script.
+
 ### 2026-10-06 — backfilled from docs and history
 
 Backfilled 2026-10-18 from [`thermal_vmodes.md`](thermal_vmodes.md) (formerly `thermal_focus/docs/`) and `notes/status/vmode_thermal_and_lut_handoff.md`. Done in the phase 5 triage: a clear negative. Code stays in `thermal_focus/code/` with the shared thermal-focus modules.

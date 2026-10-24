@@ -33,9 +33,8 @@ Computed sections, in the order they are printed:
    test the science-visit pages make, on an independent sample and an independent retrieval.
 10. The conversion table — the v-mode-1 to hexapod dz factor across projection schemes,
     including the 10-degree-of-freedom/1-mode case the online system would use.
-11. The standalone calculator — ``trim_calculator.py``, which reads the fitted coefficients from
-    ``trim_coefficients.yaml``, checked against the pipeline fitted here so the two cannot drift
-    apart unnoticed.
+11. The standalone calculator — checked against this fit by the ``trim_calculator`` study,
+    ``check_against_fit.py``.
 12. The truss temperature alone — the one-thermometer correction the five-channel model must beat.
 13. The focus correction as degrees of freedom — each visit's measured v-mode 1 back-projected into
     the camera and M2 hexapod dz it is built from, over all visits and at the start of each night.
@@ -82,13 +81,9 @@ from matplotlib.backends.backend_pdf import PdfPages              # noqa: E402
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 _ROOT = _HERE.parents[2]
-# Section 11 checks the trim_calculator study's calculator against this fit.
-sys.path.insert(0, str(_ROOT / 'thermal_focus' / 'trim_calculator' / 'code'))
 
 from rubinwork.thermal_focus import fit as F                                     # noqa: E402
 from rubinwork.thermal_focus import lib as L                                     # noqa: E402
-import trim_calculator as T                                       # noqa: E402
-import test_trim_calculator as TT                                 # noqa: E402
 import rubinwork.common.utils as U                                          # noqa: E402
 from rubinwork.common.utils import nmad                                     # noqa: E402
 
@@ -1204,65 +1199,6 @@ def section_fam(fam, full, features, verbose=True):
               f'{ln["slope_err"]:.4f} (dimensionless, predicted per measured),')
         print(f'      Pearson r {ln["pearson_r"]:+.4f}, Spearman rho '
               f'{ln["spearman_rho"]:+.4f}, n {ln["n"]}')
-    return out
-
-
-def section_calculator(sci, features, full, verbose=True):
-    """Check the standalone calculator against the fitted pipeline.
-
-    Parameters
-    ----------
-    sci : `pandas.DataFrame`
-        Science table, as loaded.
-    features : `list` [`str`]
-        Deliverable feature columns, in fitted order.
-    full : `dict`
-        Result of `thermal_focus_fit.fit_full`, carrying the fitted pipeline under ``model``.
-    verbose : `bool`, optional
-        Print the comparison.
-
-    Returns
-    -------
-    out : `dict`
-        ``max_abs_diff_um`` and ``median_diff_um`` over the sample, ``worked_max_abs_diff_um``
-        over the worked cases in ``trim_test_cases.yaml``, and ``n`` — all µm of equivalent
-        hexapod dz — plus ``n_worked_cases``.
-
-    Notes
-    -----
-    `trim_calculator` is a standalone copy that reads its coefficients, rounded to two decimals,
-    from ``trim_coefficients.yaml``. That copy can drift from the fit silently, which is exactly
-    what this section exists to catch: if a coefficient here is re-fitted and the calculator's
-    file is not updated, ``max_abs_diff_um`` grows from rounding noise to something that matters.
-    """
-    cols = ['truss_temp_mean_c', 'm1m3_z_gradient_c_per_m', 'm1m3_y_gradient_c_per_m',
-            'm1m3_radial_gradient_c_per_m', 'm1m3_x_gradient_c_per_m']
-    if any(c not in sci.columns for c in cols) or list(features) != cols:
-        if verbose:
-            print('  the fitted feature set is not the calculator\'s five channels, so the '
-                  'calculator is not comparable here; skipped')
-        return {}
-    calculator = T.TrimCalculator()
-    _, pred_um, _ = calculator.predict_trim(*[sci[c].to_numpy(float) for c in cols],
-                                            warn_extrapolation=False)
-    diff = pred_um - np.asarray(full['pred'], float)
-    _, test_cases = TT.load_test_cases()
-    worked = max(abs(calculator.predict_trim(**inp, warn_extrapolation=False)[1] - exp)
-                 for _, inp, exp in test_cases)
-    out = {'n': int(len(sci)),
-           'max_abs_diff_um': float(np.nanmax(np.abs(diff))),
-           'median_diff_um': float(np.nanmedian(diff)),
-           'worked_max_abs_diff_um': float(worked),
-           'n_worked_cases': len(test_cases)}
-    if verbose:
-        print(f'  calculator against the fitted pipeline over {out["n"]} visits: '
-              f'max |difference| {out["max_abs_diff_um"]:.4f}, median '
-              f'{out["median_diff_um"]:+.4f} um of equivalent hexapod dz')
-        print(f'  its {len(test_cases)} worked cases agree with their stated values to '
-              f'{out["worked_max_abs_diff_um"]:.4f} um of equivalent hexapod dz')
-        print(f'  coefficients from {calculator.path.name}: intercept '
-              f'{calculator.intercept_um:+.2f} um, truss {calculator.truss_um_per_c:+.2f} um '
-              f'per deg C')
     return out
 
 
@@ -3480,9 +3416,6 @@ def main():
     print('\n=== 10. the v1 to hexapod dz conversion, per projection scheme ===')
     conv = L.v1_per_um_dz_table()
 
-    print('\n=== 11. the standalone calculator against this fit ===')
-    calc = section_calculator(sci, features, full)
-
     print('\n=== 12. the truss temperature alone, as the correction to beat ===')
     trussonly = section_trussonly(sci, model=args.model)
 
@@ -3603,14 +3536,6 @@ def main():
             *[f'    {c:+10.2f} * {f:32s} [per {F.FEATURE_UNITS.get(f, "?")}]'
               for f, c in zip(full['features'], full['coef'])],
             '',
-            *(['The standalone calculator trim_calculator.py stores these coefficients to two',
-               'decimals in trim_coefficients.yaml, so it can be copied to a summit machine and',
-               'read by eye. Against this',
-               f'fit over {calc["n"]} visits: max |difference| '
-               f'{calc["max_abs_diff_um"]:.4f} um of equivalent hexapod dz,',
-               f'and its {calc["n_worked_cases"]} worked test cases agree with their stated '
-               f'values to {calc["worked_max_abs_diff_um"]:.4f} um.']
-              if calc else []),
         ])
         figure_model(pdf, sci, full)
 

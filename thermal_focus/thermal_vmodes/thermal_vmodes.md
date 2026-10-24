@@ -95,7 +95,7 @@ pattern, and so with temperature — or is marginal on both routes.
 
 The five thermal channels of the thermal-focus deliverable, `DELIVERABLE_GROUPS`: the TMA
 truss temperature and the four M1M3 bulk thermal gradients. The whole selection funnel is
-reused from `run_thermal_focus.load_science`, including the LUT-epoch night exclusion and the
+reused from `rubinwork.thermal_focus.sample.load_science`, including the LUT-epoch night exclusion and the
 20 °C truss-temperature cut, so the sample is the one the published v-mode-1 result is fitted
 on. `load_science` gained a `keep_extra` argument to carry the 34 `v*_olr` columns through;
 its default behaviour is unchanged.

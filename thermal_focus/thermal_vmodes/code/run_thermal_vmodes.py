@@ -11,8 +11,9 @@ Three products, written to ``thermal_focus/output/thermal_vmodes/``:
   batoid against the measured intrinsic wavefront (MIW), with the solver held fixed.
 * ``thermal_vmodes.pdf`` -- the figures, one page per `thermal_vmodes_figures` function.
 
-The sample is `run_thermal_focus.load_science`, so the selection funnel is the published one --
-LUT-epoch night exclusion, 20 degC truss cut, science exposures in the fitted bands.
+The sample is `rubinwork.thermal_focus.sample.load_science`, shared with ``thermal_focus``, so the
+selection funnel is the published one -- LUT-epoch night exclusion, 20 degC truss cut, science
+exposures in the fitted bands.
 ``load_science`` carries the 34 ``v*_olr`` columns through via ``keep_extra``; the ``y`` it sets
 is v-mode 1 in physical units and is overwritten per mode by
 `thermal_vmodes.attach_mode_response`.
@@ -38,10 +39,9 @@ import pandas as pd
 _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> thermal_vmodes
 _ROOT = _HERE.parents[2]
-# The science sample is the thermal_focus study's load_science, so the funnel is the same.
-sys.path.insert(0, str(_ROOT / 'thermal_focus' / 'thermal_focus' / 'code'))
 
-import run_thermal_focus as RTF                                  # noqa: E402
+from rubinwork.products import value_added                       # noqa: E402
+from rubinwork.thermal_focus import sample as S                  # noqa: E402
 from rubinwork.thermal_focus import lib as L                                    # noqa: E402
 import thermal_vmodes as TV                                      # noqa: E402
 import thermal_vmodes_channel_figures as TVCF                    # noqa: E402
@@ -70,8 +70,8 @@ def load(variant, day_obs_range, verbose=True):
         One row per science visit, carrying the 34 ``v*_olr`` columns and the thermal features.
     """
     v1_per_um_dz = L.v1_per_um_dz_value()
-    df = RTF.load_science(variant, day_obs_range, v1_per_um_dz, verbose=verbose,
-                          keep_extra=TV.response_columns())
+    df = S.load_science(value_added, variant, day_obs_range, v1_per_um_dz, verbose=verbose,
+                        keep_extra=TV.response_columns())
     have = [c for c in TV.response_columns() if c in df.columns]
     if len(have) < TV.N_MODES:
         raise KeyError(f'{variant} carries {len(have)} of {TV.N_MODES} v*_olr columns; the '
