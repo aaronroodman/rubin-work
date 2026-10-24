@@ -22,6 +22,14 @@ Yes: guider-fixes holds all 8 deploy-summit guider commits by patch-equivalence,
 
 ## Log
 
+### 2026-10-24 — fork state refetched
+
+`git fetch` in the S3DF clone (`/sdf/group/rubin/u/roodman/LSST/packages/summit_utils`).
+`guider-fixes` is unchanged at `e57e0f4`: 21 commits (count) ahead of and 32 behind
+`origin/main`. `main` merged the 8 `deploy-summit` guider commits (PR #188, `DM-54305`)
+plus `a676c71`, a sign fix in the column-bias re-centering in `reading.py` that
+`guider-fixes` and `deploy-summit` lack. Details in `summit_utils_branch_state.md`.
+
 ### 2026-10-11 — backfilled from docs and history
 
 Backfilled 2026-10-18 from the two reference docs (formerly `guider/docs/status/` and `guider/docs/`). Done in the phase 5 triage; the branch-state doc stays as reference. Verified with `git cherry` on 2026-10-11, remote refs as of the 2026-09-03 fetch.
