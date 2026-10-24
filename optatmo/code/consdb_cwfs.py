@@ -33,8 +33,8 @@ import pandas as pd
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, '..', '..'))                    # repo root
 sys.path.insert(0, os.path.join(_HERE, '..', '..', 'aos', 'code'))
-from common.telemetry_clients import make_consdb_client       # noqa: E402
-from aos_state import fetch_corner_zernikes_consdb, ZK_NOLL   # noqa: E402
+from rubinwork.common.telemetry_clients import make_consdb_client       # noqa: E402
+from rubinwork.aos_state import fetch_corner_zernikes_consdb, ZK_NOLL   # noqa: E402
 import frames                                                 # noqa: E402
 
 # corner wavefront-sensor SW0 detector ids ONLY; names come from LsstCam so we

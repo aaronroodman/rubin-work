@@ -72,7 +72,6 @@ import pandas as pd
 
 _ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_ROOT))
-sys.path.insert(0, str(_ROOT / 'aos' / 'code'))
 
 from rubinwork.products.value_added import reader as efd_db
 from rubinwork.products.value_added import write_manifest
@@ -128,7 +127,7 @@ def build_state_estimator(scheme, ofc_version=DEFAULT_OFC_VERSION):
     n_modes : `int`
         Modes retained — 12 or 34.
     """
-    import aos_state
+    from rubinwork import aos_state
     dof_set, _n_dof, n_modes = SCHEMES[scheme]
     se = aos_state.make_state_estimator(dof_set=dof_set, version=ofc_version,
                                         n_modes=n_modes)
@@ -191,7 +190,7 @@ def resolve_solver(scheme, state_estimator, n_modes):
     it is independent of the recovered amplitudes, so for a regularized solve it would
     report the truncated arm's number.
     """
-    import aos_state
+    from rubinwork import aos_state
 
     if scheme not in RBR_SCHEMES:
         def recover(z_dev):
@@ -204,8 +203,7 @@ def resolve_solver(scheme, state_estimator, n_modes):
 
     params = RBR_SCHEMES[scheme]
     try:
-        sys.path.insert(0, str(_ROOT / 'smatrix' / 'code'))
-        import regularized_inversion as RI
+        from rubinwork.smatrix import regularized_inversion as RI
         shim = aos_state.CornerSvdShim(state_estimator, n_keep=n_modes)
         ranges = RI.dof_range_vector(shim)
     except Exception as exc:
@@ -302,7 +300,7 @@ def intrinsic_batoid(bands, rot_angles, zk_noll, ofc_version=DEFAULT_OFC_VERSION
     slowly with rotator angle, so that quantization is far below the measurement scatter,
     and it turns tens of thousands of evaluations into a few hundred.
     """
-    import aos_state
+    from rubinwork import aos_state
     from lsst.ts.ofc import OFCData
     from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
 
@@ -374,7 +372,7 @@ def measured_deviation(cdb, visit_ids, bands, rot_angles, intrinsic_route,
     defines the optical state — which is why the intrinsic route is a variant axis rather
     than an implementation detail.
     """
-    import aos_state
+    from rubinwork import aos_state
     z_opd = aos_state.fetch_corner_zernikes_consdb(cdb, list(visit_ids),
                                                    instrument=INSTRUMENT,
                                                    zk_noll=zk_noll)
@@ -455,7 +453,7 @@ def make_commanded_projector(state_estimator, n_modes):
     rather than a limit; `aos_state.make_state_estimator` sets it from ``n_modes``, so 34
     modes are returned for the 50/34 scheme.
     """
-    import aos_state
+    from rubinwork import aos_state
     lut_cols = [f'lut_dof{k}' for k in range(10)]
     trim_cols = [f'dof{k}' for k in range(50)]
 
@@ -546,8 +544,8 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
     focal plane, and describes the deviation-recovered arm. See `open_loop.cwfs_fwhm` for
     why, and note it is not interchangeable with `aos_fwhm.fp_fwhm`.
     """
-    import aos_state
-    import open_loop
+    from rubinwork import aos_state
+    from rubinwork import open_loop
     meta = visit_metadata(cdb, day_obs)
     if meta.empty:
         return _empty_night(n_modes)
@@ -802,8 +800,8 @@ def main(argv=None):
             p.error('--intrinsic miw needs --intrinsic-ref naming the MIW build')
         vid = None      # registered below, once the solver notes are known
 
-    import aos_state
-    import open_loop
+    from rubinwork import aos_state
+    from rubinwork import open_loop
     zk_noll = aos_state.ZK_NOLL
     se, n_modes = build_state_estimator(scheme, ofc_version)
 

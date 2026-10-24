@@ -44,7 +44,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo roo
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'code'))  # aos/code (flat shared modules)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))      # this study
 
-from common.utils import nmad  # noqa: E402
+from rubinwork.common.utils import nmad  # noqa: E402
 from check_dof_ranges import ROT_5, load_build_dof, load_ranges  # noqa: E402
 
 # Number of v-modes the 50/34 build keeps, so the vmode_<i> columns run 1..34.

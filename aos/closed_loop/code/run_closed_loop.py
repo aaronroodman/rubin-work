@@ -42,7 +42,7 @@ os.environ.setdefault('NUMEXPR_MAX_THREADS', '8')
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'code'))      # aos/code (flat shared modules)
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))      # repo root -> common/
-from common.psf_render import (   # noqa: E402
+from rubinwork.common.psf_render import (   # noqa: E402
     LAM_NM, build_psf_tools, render_measure)
 from rubinwork.aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 from psf_maps_lib import (   # noqa: E402

@@ -51,7 +51,7 @@ def main():
 
     # ---- ConsDB: physical_rotator_angle for the night (canonical) -----------
     sys.path.insert(0, os.path.join(_HERE, "..", ".."))          # repo root
-    from common.telemetry_clients import make_consdb_client
+    from rubinwork.common.telemetry_clients import make_consdb_client
     cdb = make_consdb_client(args.consdb_url)
     q = f"""
         SELECT v1.visit_id, ql.physical_rotator_angle

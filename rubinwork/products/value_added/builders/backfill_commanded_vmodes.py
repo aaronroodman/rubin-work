@@ -32,7 +32,6 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))  # repo root
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / 'aos' / 'code'))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from rubinwork.products.value_added import reader as efd_db

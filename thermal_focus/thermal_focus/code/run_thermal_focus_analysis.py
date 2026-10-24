@@ -90,8 +90,8 @@ from rubinwork.thermal_focus import fit as F                                    
 from rubinwork.thermal_focus import lib as L                                     # noqa: E402
 import trim_calculator as T                                       # noqa: E402
 import test_trim_calculator as TT                                 # noqa: E402
-import common.utils as U                                          # noqa: E402
-from common.utils import nmad                                     # noqa: E402
+import rubinwork.common.utils as U                                          # noqa: E402
+from rubinwork.common.utils import nmad                                     # noqa: E402
 
 #: Bands in plotting order, bluest first, with a colour each.
 BAND_COLOUR = {'u': '#3b4cc0', 'g': '#4fa845', 'r': '#d62728',
@@ -1383,7 +1383,7 @@ def section_dof(sci, pred, v1_per_um_dz, dof_set='all_50', n_modes=34, verbose=T
     coefficients, because each is a fixed multiple of the one v-mode-1 amplitude. That is a
     property of the projection, not four independent measurements.
     """
-    import aos_state
+    from rubinwork import aos_state
     se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
     v = np.zeros(se.truncate_index)
     v[0] = 1.0
@@ -1705,7 +1705,7 @@ def section_t539(t539, full, features, dof_set='all_50', n_modes=34, verbose=Tru
     least-squares view of it. That is also why every fit is Huber rather than ordinary least
     squares.
     """
-    import aos_state
+    from rubinwork import aos_state
     se = aos_state.make_state_estimator(dof_set=dof_set, n_modes=n_modes)
     v = np.zeros(se.truncate_index)
     v[0] = 1.0

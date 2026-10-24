@@ -30,10 +30,10 @@ from rubinwork.products.value_added import write_manifest  # noqa: E402
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
 EFD_DB_IMPORTERS = (
-    "aos/cwfs_lut/code/cwfs_lut_lib.py",
     "aos/cwfs_lut/code/run_cwfs_lut.py",
+    "aos/giant_donut_pupil/code/find_giant_nights.py",
 )
-"""Every code file that reaches ``efd_db`` by bare name after a ``sys.path`` insert."""
+"""Code files that used the ``efd_db`` shim and now import the package."""
 
 EFD_DB_NOTEBOOKS = (
     "aos/bending_mode_test/notebooks/bending_mode_test_lut_trim.ipynb",
@@ -333,13 +333,11 @@ def test_the_shims_are_shims_and_not_copies():
         assert "sys.modules[__name__] = _real" in text, name
 
 
-def test_every_bare_name_importer_still_names_the_shim_path():
-    """The five importers are unchanged by this move, so their sys.path insert of
-    value_added/code must still be there for the shim to be found."""
+def test_former_shim_importers_import_the_package():
     for rel in EFD_DB_IMPORTERS:
         text = (REPO_ROOT / rel).read_text()
-        assert "value_added" in text, rel
-        assert "efd_db" in text, rel
+        assert "from rubinwork.products import value_added as efd_db" in text, rel
+        assert "'value_added' / 'code'" not in text, rel
 
 
 def test_the_notebooks_still_import_efd_db_by_bare_name():

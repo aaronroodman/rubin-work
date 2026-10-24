@@ -35,15 +35,14 @@ import numpy as np
 import pandas as pd
 from astropy.table import Table
 
-# Shared helpers: common/ (DOF, ConsDB EFD, ESS telemetry) + aos/code (v-modes, Zernikes).
+# Shared helpers: rubinwork.common (DOF, ConsDB EFD, ESS telemetry) and rubinwork.aos_state.
 REPO = Path(__file__).resolve().parents[3]          # -> rubin-work/
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "aos" / "code"))
-import aos_state        # noqa: E402
-from common import dof_telemetry as aos_trim                                # noqa: E402
-from common import consdb_efd as aos_consdb_efd                             # noqa: E402
-from common import ess_telemetry as telemetry                              # noqa: E402
-from common.ess_telemetry import GRAD_COLS, get_m1m3_gradients_sync        # noqa: E402
+from rubinwork import aos_state        # noqa: E402
+from rubinwork.common import dof_telemetry as aos_trim                                # noqa: E402
+from rubinwork.common import consdb_efd as aos_consdb_efd                             # noqa: E402
+from rubinwork.common import ess_telemetry as telemetry                              # noqa: E402
+from rubinwork.common.ess_telemetry import GRAD_COLS, get_m1m3_gradients_sync        # noqa: E402
 
 CORNERS = {191: "R00_SW0", 195: "R04_SW0", 199: "R40_SW0", 203: "R44_SW0"}
 ZK_NOLL = [z for z in range(4, 27) if z not in (20, 21)]

@@ -32,7 +32,7 @@ import pandas as pd
 _CODE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_CODE_DIR, "..", "..", "..", "aos", "code"))
 sys.path.insert(0, os.path.join(_CODE_DIR, "..", "..", ".."))  # repo root -> common/
-import aos_state
+from rubinwork import aos_state
 
 pd.set_option("future.no_silent_downcasting", True)
 
@@ -54,8 +54,8 @@ from tqdm import tqdm
 
 # Shared thermal/wind telemetry helpers (single source of truth).
 # get_m1m3_gradients is re-exported here for backwards compatibility.
-from common.ess_telemetry import fetch_thermal_telemetry, get_m1m3_gradients  # noqa: F401
-from common.telemetry_clients import EXTERNAL_CONSDB_URL, make_consdb_client
+from rubinwork.common.ess_telemetry import fetch_thermal_telemetry, get_m1m3_gradients  # noqa: F401
+from rubinwork.common.telemetry_clients import EXTERNAL_CONSDB_URL, make_consdb_client
 
 # OFC config dir (v13 = telescope AOS). Its stored normalization_weights ARE the
 # official geom_mean (r^0.5 f^-0.5, field-averaged FWHM) used for the v-modes.

@@ -87,7 +87,7 @@ def _robust_ylim(y, pad=0.12, k=8.0):
     exists to make. Trimming the *view* is not trimming the fit: `cwfs_lut_lib.huber_trend` has
     already seen every point, and the slope in the title is fitted on all of them.
     """
-    from common.utils import nmad
+    from rubinwork.common.utils import nmad
 
     a = np.asarray(y, float)
     a = a[np.isfinite(a)]

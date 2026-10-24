@@ -153,8 +153,7 @@ def step_meta(run, night):
 
 def thermal(run, e):
     """Camera, M1M3 and dome temperatures (°C) of the exposures and their references."""
-    sys.path.insert(0, str(STUDY_DIR.parents[1] / 'value_added' / 'code'))
-    import efd_db
+    from rubinwork.products import value_added as efd_db
     con = efd_db.connect()
     ids = sorted(set(e.visit_id) | set(e.ref_visit))
     cols = ['cam_AverageTemp', 'cam_CamBodyXPlusTemp', 'cam_CamBodyYPlusTemp',

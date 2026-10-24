@@ -447,7 +447,7 @@ def _exposure_inventory(day_obs_range, cdb=None, instrument='lsstcam'):
     pandas rather than in SQL.
     """
     sys.path.insert(0, str(_ROOT))
-    from common.telemetry_clients import make_consdb_client       # noqa: E402
+    from rubinwork.common.telemetry_clients import make_consdb_client       # noqa: E402
     cdb = cdb or make_consdb_client()
 
     lo, hi = int(day_obs_range[0]), int(day_obs_range[1])

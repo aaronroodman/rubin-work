@@ -17,11 +17,10 @@ import numpy as np
 _HERE = pathlib.Path(__file__).resolve().parent
 _ROOT = _HERE.parents[1]
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_ROOT / 'smatrix' / 'code'))
 
-import aos_state          # noqa: E402
-import open_loop          # noqa: E402
-import regularized_inversion as RI   # noqa: E402
+from rubinwork import aos_state          # noqa: E402
+from rubinwork import open_loop          # noqa: E402
+from rubinwork.smatrix import regularized_inversion as RI   # noqa: E402
 
 _CACHE = {}
 

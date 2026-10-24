@@ -22,7 +22,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import telemetry_pipeline    # noqa: E402  (adds the repo root + aos/code to sys.path)
-from common.telemetry_clients import make_consdb_client        # noqa: E402
+from rubinwork.common.telemetry_clients import make_consdb_client        # noqa: E402
 
 
 def build(args):

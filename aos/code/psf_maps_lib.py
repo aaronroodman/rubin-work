@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # aos/code
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # repo root -> common/
-from common.psf_render import (   # noqa: E402
+from rubinwork.common.psf_render import (   # noqa: E402
     PIXSCALE, DIAM, OBSC, ATM_FWHM, STAMP, LAM_NM, LN256,
     build_psf_tools, render_measure, optics_fwhm)
 

@@ -53,7 +53,7 @@ import pandas as pd
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'code'))  # aos/code (flat shared modules)
 
-from common.utils import nmad  # noqa: E402
+from rubinwork.common.utils import nmad  # noqa: E402
 from rubinwork.products.miw import JS_DEFAULT  # noqa: E402
 
 # Field radius in deg at which the convex-hull edge ring begins.  Inside this the MIW

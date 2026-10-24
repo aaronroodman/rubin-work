@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import TwoSlopeNorm
 
-from common.utils import nmad
+from rubinwork.common.utils import nmad
 from rubinwork.products.miw import JS_DEFAULT
 
 # Field-map rendering, matching miw_origin/code/camera_gravity_maps.py so MIW maps

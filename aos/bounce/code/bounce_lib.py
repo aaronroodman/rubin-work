@@ -15,7 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root
-from common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
+from rubinwork.common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 
 # The reduction, now a library so `rubinwork.products.bounce_tables` can call it
 # without importing a study.  Re-exported under the names the plotters and

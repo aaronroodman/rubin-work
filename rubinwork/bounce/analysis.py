@@ -427,7 +427,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
     DOFSUM_all = TRIM_segment = None
     if cfg['add_dof_trim'] and _svd_ok and DOF_all is not None:
         try:
-            from common.dof_telemetry import fetch_aggregated_dof_for_visits
+            from rubinwork.common.dof_telemetry import fetch_aggregated_dof_for_visits
             TRIM_all, info = fetch_aggregated_dof_for_visits(
                 fit_table, consdb_url=cfg['trim_consdb_url'],
                 topic=cfg['trim_efd_topic'], n_dof=DOF_all.shape[1],

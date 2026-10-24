@@ -21,7 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from guiderEdgeRecovery import makeTrackerConfig  # noqa: E402
+from rubinwork.guider_edge_recovery import makeTrackerConfig  # noqa: E402
 
 # RubinTV makeAnimation parameters (rubintv_production/guiders.py).
 RTV = {

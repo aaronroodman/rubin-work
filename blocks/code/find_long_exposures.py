@@ -23,7 +23,7 @@ import pandas as pd
 # reuse the shared ConsDB client, same as build_night_table
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-from common.telemetry_clients import make_consdb_client        # noqa: E402
+from rubinwork.common.telemetry_clients import make_consdb_client        # noqa: E402
 
 
 def find_exp_column(client, instrument):

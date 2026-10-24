@@ -115,11 +115,8 @@ def test_hexapod_tilt_range_is_deg_not_arcsec():
     0.12 arcsec. Anything compared against the bounce-test tables, which follow the
     arcsec convention, needs these four entries scaled by 3600 arcsec/deg.
     """
-    root = pathlib.Path(__file__).resolve().parents[4]
-    sys.path.insert(0, str(root / 'aos' / 'code'))
-    sys.path.insert(0, str(root / 'smatrix' / 'code'))
-    import aos_state
-    import regularized_inversion as RI
+    from rubinwork import aos_state
+    from rubinwork.smatrix import regularized_inversion as RI
 
     se = aos_state.make_state_estimator(dof_set='all_50', n_modes=34)
     r = np.asarray(RI.dof_range_vector(aos_state.CornerSvdShim(se)), float)
@@ -141,9 +138,7 @@ def test_commanded_projector_leaves_lut_tilts_in_deg():
     projected ``v_modes_lut`` norm by about 1082x. v1 hid the bug, moving only 1.9%, since
     v1 is almost pure defocus.
     """
-    root = pathlib.Path(__file__).resolve().parents[4]
-    sys.path.insert(0, str(root / 'aos' / 'code'))
-    import aos_state
+    from rubinwork import aos_state
 
     se = aos_state.make_state_estimator(dof_set='all_50', n_modes=34)
     n_modes = 34

@@ -48,12 +48,11 @@ _HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))                                   # -> cwfs_lut_lib
 _ROOT = _HERE.parents[2]                                         # repo root
 sys.path.insert(0, str(_ROOT))
-sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))           # -> efd_db
 
 import bounce_compare as B                                       # noqa: E402
 import cwfs_lut_figures as CF                                    # noqa: E402
 import cwfs_lut_lib as C                                         # noqa: E402
-import efd_db                                                    # noqa: E402
+from rubinwork.products import value_added as efd_db                                                    # noqa: E402
 
 # optical_state(wide=True) inserts one column at a time, so pandas warns once per expanded
 # column -- hundreds of lines that bury the result.

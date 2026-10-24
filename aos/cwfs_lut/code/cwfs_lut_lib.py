@@ -64,9 +64,8 @@ import pandas as pd
 _HERE = pathlib.Path(__file__).resolve().parent
 _ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT))
-sys.path.insert(0, str(_ROOT / 'value_added' / 'code'))
 
-from common.utils import nmad                                    # noqa: E402
+from rubinwork.common.utils import nmad                                    # noqa: E402
 
 #: Tilt entries of the 50-element DOF vector: M2 hexapod rx/ry then camera hexapod rx/ry. Kept
 #: as a group because they need their own plot panel -- a tilt slope in deg per deg and a

@@ -309,8 +309,7 @@ def project(coeff, pupil_j, k_min, k_max, n_dof, n_modes):
     from lsst.ts.intrinsic.wavefront import ofc_svd as osv
     dof_spec = n_dof
     if n_dof == 22:
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / 'aos' / 'code'))
-        import aos_state
+        from rubinwork import aos_state
         dof_spec = aos_state.DOF22
     svd = osv.build_ofc_svd(pupil_j, k_min, k_max, n_modes, n_dof=dof_spec)
     print(f'  SVD: U_eff={svd.U_eff.shape}, n_dof={svd.n_dof}, '

@@ -25,8 +25,7 @@ import pandas as pd
 from rubinwork.common import study_run
 from rubinwork.common.telemetry_clients import make_consdb_client
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / 'value_added' / 'code'))
-import efd_db  # noqa: E402
+from rubinwork.products import value_added as efd_db  # noqa: E402
 
 STUDY = 'aos/giant_donut_pupil'
 

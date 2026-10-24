@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # repo root
 
-from common.ess_telemetry import (  # noqa: E402,F401
+from rubinwork.common.ess_telemetry import (  # noqa: E402,F401
     DEFAULT_TEMP_WINDOW,
     ESS_TEMP_INDEX,
     GRAD_COLS,

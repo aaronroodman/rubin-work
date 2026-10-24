@@ -74,8 +74,7 @@ DOF_GROUPS = {'m2_xy_um': (1, 2), 'm2_tilt_deg': (3, 4), 'cam_xy_um': (6, 7),
 def recount(nights_e):
     """Every exposure on the giant nights whose camera and M2 z Trims both sit 4 or 8 mm
     (± `STEP_TOL_UM`) from the in-focus reference, with the same sign."""
-    sys.path.insert(0, str(STUDY_DIR.parents[1] / 'value_added' / 'code'))
-    import efd_db
+    from rubinwork.products import value_added as efd_db
     con = efd_db.connect()
     days = sorted(nights_e.day_obs.unique())
     t = con.execute('select visit_id, day_obs, seq_num, dof0, dof5 from visit_telemetry where '
@@ -152,8 +151,7 @@ def sets_table():
 
 def trim_deltas(e):
     """Per exposure, every DOF's Trim minus its reference's (µm or deg), and group maxima."""
-    sys.path.insert(0, str(STUDY_DIR.parents[1] / 'value_added' / 'code'))
-    import efd_db
+    from rubinwork.products import value_added as efd_db
     con = efd_db.connect()
     dof = ', '.join(f'dof{i}' for i in range(50))
     keys = pd.concat([e[['day_obs', 'seq_num']],
@@ -206,8 +204,7 @@ def consdb_meta(e):
 
 
 def state_of(refs):
-    sys.path.insert(0, str(STUDY_DIR.parents[1] / 'value_added' / 'code'))
-    import efd_db
+    from rubinwork.products import value_added as efd_db
     days = sorted({int(str(v)[:8]) for v in refs})
     s = efd_db.optical_state(STATE_VARIANT, day_obs_range=(days[0], days[-1]), wide=False)
     return s.set_index('visit_id')[['resid_rms_um', 'fwhm_cwfs_arcsec']]
