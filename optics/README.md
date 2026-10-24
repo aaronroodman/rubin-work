@@ -3,23 +3,27 @@
 Batoid ray-trace studies of the Rubin/LSST optical system: telecentricity,
 pupil geometry, and other prescription-level questions that do not need data.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [fresnel_donuts](fresnel_donuts/study.md) | done | 2026-10-04 | batoid huygensPSF is correct, and a NUFFT evaluation makes it about 1e6 times faster (dimensionless, wall-clock ratio). Diffraction moves about 13% of donut flux (fraction of total flux) against geometric optics, but gives at most 0.002 arcsec intra/extra difference in fitted blur. |
+| [telecentricity](telecentricity/study.md) | done | 2026-09-04 | Rubin is non-telecentric: the chief-ray angle grows linearly at 76.45 arcsec/mm of focal-plane radius, to 6.71 deg at r = 315 mm. As-built v3.14 equals the design to < 4.5 arcsec once the telecentricity null is moved 0.66 mm off centre. |
+
+<!-- END generated -->
+
 ## Contents
 
-| file | what it does |
+| path | what it is |
 |---|---|
-| `code/telecentricity.py` | library — chief-ray and flux-weighted-cone tracing, radial/tangential tilt decomposition |
-| `code/run_telecentricity.py` | driver — makes the figures and the `.npz` in `output/` |
-| `rubinwork/fresnel/fresnel_donut.py` | library — NUFFT Huygens/Debye donut images, Debye ray weights, `fftPSF` and geometric wrappers, semi-analytic references |
-| `notebooks/optics_fresnel_analytic_benchmark_v1.ipynb` | diffraction models of a defocused annular paraboloid against the semi-analytic Debye integral and HCIPy |
-| `notebooks/optics_fresnel_rubin_onaxis_v1.ipynb` | Rubin on-axis donuts with the camera pistoned ±1.5 mm: geometric, `fftPSF`, and Huygens/Debye diffraction |
-| `notebooks/optics_fresnel_rubin_seeing_v1.ipynb` | the same donuts with 0.7″ von Kármán seeing: separable versus ray-kick seeing, intra/extra comparison, Danish apparent Zernikes and FWHM |
-| `notebooks/optics_fresnel_sensor_iband_v1.ipynb` | i-band silicon-sensor effects (conversion depth, diffusion) on intra- and extra-focal donuts, via GalSim `SiliconSensor` |
-| `rubinwork/fresnel/donut_sensor.py` | library — bandpass photon tracing, Snell refraction into silicon, sensor accumulation |
-| `fresnel_donuts/code/time_fftpsf_vs_debye.py` | driver — wall-clock times of `fftPSF` and the Debye-weighted Huygens sum, in focus and for a 1.5 mm donut |
-| `rubinwork/fresnel/donut_seeing.py` | library — von Kármán kernel, defocused plate scale, per-ray atmospheric kicks, Danish fit wrapper |
-| `docs/studies/fresnel_donuts.md` | study writeup for the Fresnel, seeing and sensor notebooks |
-| `docs/status/batoid_pr_debye_huygens.md` | draft text of a batoid pull request adding NUFFT evaluation and Debye weights to `huygensPSF` |
-| [`../aos/intra_extra/`](../aos/intra_extra/study.md) | the 4 mm hexapod donut notebooks and the intra/extra phase-strip writeup, moved to the `aos/intra_extra` study |
+| `telecentricity/code/` | chief-ray and flux-weighted-cone tracing (`telecentricity.py`) and the figure driver (`run_telecentricity.py`) |
+| `fresnel_donuts/` | the Fresnel, seeing and sensor notebooks, `fresnel_donuts.md`, the timing script and `batoid_pr_debye_huygens.md` (draft batoid pull request text) |
+| `rubinwork/fresnel/` | library: NUFFT Huygens/Debye donuts (`fresnel_donut.py`), seeing kicks (`donut_seeing.py`), silicon-sensor tracing (`donut_sensor.py`) |
+| [`../aos/intra_extra/`](../aos/intra_extra/study.md) | the 4 mm hexapod donut notebooks and the intra/extra phase-strip write-up |
 
 ## Diffraction of defocused donuts
 
@@ -29,12 +33,12 @@ wavefront sensing. The comparison tests batoid's Huygens algorithm against a
 semi-analytic reference and measures how large diffraction is at the 10 µm pixel
 scale. A seeing extension tests separable versus per-ray atmospheric blurring, and
 compares the apparent seeing and Zernike coefficients of intra- and extra-focal
-donuts; a sensor extension does the same for i-band CCD effects. See [docs/studies/fresnel_donuts.md](docs/studies/fresnel_donuts.md). The larger Danish kernel fitted to intra-focal donuts in data is analysed in [../aos/intra_extra/intra_extra_phase_strip.md](../aos/intra_extra/intra_extra_phase_strip.md).
+donuts; a sensor extension does the same for i-band CCD effects. See [fresnel_donuts/fresnel_donuts.md](fresnel_donuts/fresnel_donuts.md). The larger Danish kernel fitted to intra-focal donuts in data is analysed in [../aos/intra_extra/intra_extra_phase_strip.md](../aos/intra_extra/intra_extra_phase_strip.md).
 
 Run it with:
 
 ```bash
-python code/run_telecentricity.py
+python optics/telecentricity/code/run_telecentricity.py
 ```
 
 Outputs land in `optics/output/` (gitignored).

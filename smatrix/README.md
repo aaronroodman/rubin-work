@@ -3,6 +3,23 @@
 Compute the Rubin AOS **double-Zernike (DZ) sensitivity matrix** with
 `batoid_rubin`, and compare it to the matrix shipped in `ts_ofc`.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [full_modes](full_modes/study.md) | done | 2026-09-07 | M1M3 modes stay active well past 20: cumulative wavefront variance reaches 90% (dimensionless) only by mode about 99; M2 reaches it by about 36. B52 is 96% m=0 (dimensionless, power fraction) and drives Z4, Z11 and Z22, and is not in the AOS set. |
+| [normalization](normalization/study.md) | done | 2026-09-07 | Yes: rebuilt weights match v13 to < 0.1% (relative), but only with f_j computed over Noll Z4 to Z22. The canonical weights are the ones stored in the v13 OFC config; read them, do not recompute. |
+| [ofc_reproduction](ofc_reproduction/study.md) | done | 2026-09-07 | Yes: 50 of 50 DOF agree with \|corr\| > 0.999 (dimensionless), RMS ratio 1.000 and the same sign; max residual 0.11 µm of wavefront, relative residual < 0.2% for every DOF. It needs ZCS, both bending-mode flips, degree angle units and a sign patch on dy and Ry. |
+| [regularized_inversion](regularized_inversion/study.md) | active | 2026-10-19 | The range penalty B makes the recovery feasible for 0.0012 to 0.0052 arcsec of FWHM on 5 of 6 bounce legs (3% to 9% of the truncated residual); the OIC needs about 2.24 times more wavefront residual (dimensionless, OIC over RBR; median inflation 2.77 against 1.31) for the same range compliance. |
+| [sparse_fit](sparse_fit/study.md) | active | 2026-09-01 | Piece 1 answered: nearly every DOF drives primary and secondary of a family with field correlation about ±1 (dimensionless). Primary-only observability loses nothing for 22 DOF / 12 v-modes (min 0.99, dimensionless) and degrades only high-order M2 bending modes for 50/34 (min 0.36). Pieces 2 (the leakage matrix) and 3 (the sparse MIW) are open. |
+| [vmode](vmode/study.md) | done | 2026-10-11 | Reference diagnostics: StateEstimator and build_ofc_svd agree exactly on the matched full slab (max \|delta\| 0 for weights, singular values and N·V; \|cos\| = 1.0000000000 per mode, dimensionless) for both the 22/12 and 50/34 schemes. |
+
+<!-- END generated -->
+
 ## Matrix definition
 Shape `(31, 29, 50)` = (field-Zernike k, pupil-Zernike j, DOF), units
 **µm wavefront per µm/arcsec of DOF**. Field radius 1.75°, pupil ε=0.61,

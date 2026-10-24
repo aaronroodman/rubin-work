@@ -2,6 +2,20 @@
 
 PSF simulation, measurement, and analysis for the Rubin Observatory.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [psf_moments_scatter](psf_moments_scatter/study.md) | dropped | 2026-03-24 | Dropped: a one-off draft plot, idle since March 2026. |
+| [wavefront_to_psf](wavefront_to_psf/study.md) | dropped | 2026-03-19 | Dropped: superseded by the aos psf study, which draws the forward PSF from the wavefront. |
+| [zernike_psf_moments](zernike_psf_moments/study.md) | done | 2026-03-19 | A finished interactive tool: GalSim draws the optical plus atmospheric PSF from Z4 to Z22 and HSM adaptive moments give FWHM, e1, e2 and centroid. |
+
+<!-- END generated -->
+
 ## Notebooks
 
 | Notebook | Description | Created | Last Modified |

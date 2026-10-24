@@ -6,6 +6,18 @@ differentiation. Covers: reproducing a Rubin broadband (g) filter, deep
 (OD4) out-of-band blocking across the silicon range, and — the main question —
 how the fast Rubin beam (f/1.23 annular cone) limits **narrow** bands.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [interference_filter_design](interference_filter_design/study.md) | answered | 2026-09-04 | The beam-averaged FWHM floors at about 9.4 nm (cone smear over 14 to 23 deg incidence); the practical narrow-band limit is about 25 to 30 nm FWHM. A 25 nm band at 410 nm keeps about 92% in-band throughput with OD4 blocking except within 15 to 25 nm of the band. |
+
+<!-- END generated -->
+
 All designs are optimized with **[tmm_fast](https://github.com/MLResearchAtOSRAM/tmm_fast)**
 (PyTorch transfer-matrix method, autograd on layer thicknesses).
 

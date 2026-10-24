@@ -2,6 +2,20 @@
 
 > **Status:** current · **Last updated:** 2026-09-23 · **Kind:** topic scope and index
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [thermal_focus](thermal_focus/study.md) | active | 2026-10-24 | Yes, between nights: 5 thermal channels in one band-independent Huber fit cut the focus error from 336.8 to 58.2 µm of equivalent hexapod dz nMAD (in sample; 59.9 µm night-grouped) over 68,079 science visits and 147 nights; the truss carries +125.09 µm per deg C. The start of the night is worse: 84.9 against 54.9 µm nMAD before and after 3 h past sunset. |
+| [thermal_vmodes](thermal_vmodes/study.md) | done | 2026-10-06 | None: only v1 passes the false-discovery-rate cut at q = 0.05 (1 of 34 modes) over 72,835 science visits and 175 nights, with skill +0.808 against +0.243 for the next mode, v10 (dimensionless, fractional reduction in out-of-fold residual nMAD). |
+| [trim_calculator](trim_calculator/study.md) | active | 2026-10-24 | Yes: trim_calculator.py imports only numpy, pyyaml and argparse and reads every fitted coefficient, with units and provenance, from trim_coefficients.yaml; the thermal_focus analysis checks it against the pipeline it was fitted with. |
+
+<!-- END generated -->
+
 Prediction of the Rubin Observatory telescope's uniform-defocus error from thermal telemetry, so
 that focus can be set open-loop from a table rather than being driven by the wavefront sensors.
 
@@ -47,9 +61,9 @@ by 3.39 times (dimensionless; see `thermal_focus/thermal_focus.md`).
 | file | role |
 |---|---|
 | `rubinwork/thermal_focus/lib.py` | the response definition, the conversions and the feature groups |
-| `thermal_focus/code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
+| `thermal_focus/thermal_focus/code/run_thermal_focus.py` | build: the value-added database plus live ConsDB, writing the cached tables |
 | `rubinwork/thermal_focus/fit.py` | the fitting core: models, night-grouped evaluation, FAM block assignment |
-| `thermal_focus/code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
+| `thermal_focus/thermal_focus/code/run_thermal_focus_analysis.py` | the analysis: sixteen sections and one document, no network |
 | `thermal_vmodes/code/thermal_vmodes.py` | the all-34-v-mode study: per-mode fits, the null, the FDR cut, the noise floor |
 | `thermal_vmodes/code/run_thermal_vmodes.py` | the all-34-v-mode run: the per-mode table, the noise floor, both intrinsic routes, the figures |
 | `thermal_vmodes/code/thermal_vmodes_figures.py` | the all-34-v-mode figures: five pages, one function each |
@@ -63,9 +77,9 @@ The build stage is the only one that needs the network, because the mean TMA tru
 derived on a ConsDB join rather than stored. It caches to parquet, so the analysis runs offline:
 
 ```bash
-python thermal_focus/code/run_thermal_focus.py
-python thermal_focus/code/run_thermal_focus_analysis.py
-python trim_calculator/code/test_trim_calculator.py
+python thermal_focus/thermal_focus/code/run_thermal_focus.py
+python thermal_focus/thermal_focus/code/run_thermal_focus_analysis.py
+python thermal_focus/trim_calculator/code/test_trim_calculator.py
 ```
 
 The calculator imports numpy, pyyaml and argparse and nothing else, so it can be copied to a summit
@@ -73,9 +87,8 @@ machine and run there; every coefficient lives in `trim_calculator/code/trim_coe
 provenance, so copy both files together. The analysis checks the calculator against the pipeline it
 fitted.
 
-This topic imports `aos_state` from `aos/code` for the v-modes and the degree-of-freedom sets,
-through `sys.path.insert`, as `blocks/`, `olr/`, `optatmo/`, `smatrix/` and `value_added/` do. It
-reads the value-added DuckDB through `value_added/code/efd_db.py`.
+This topic imports the library `rubinwork.aos_state` for the v-modes and the degree-of-freedom
+sets, and reads the value-added DuckDB through the `rubinwork.products.value_added` reader.
 
 ## Notebooks
 

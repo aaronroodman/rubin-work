@@ -2,6 +2,22 @@
 
 Tools for identifying and tabulating Rubin Observatory observing blocks and test programs, and for trending image-quality metrics across them.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [camera_rotator_survey](camera_rotator_survey/study.md) | done | 2026-09-02 | Use ConsDB physical_rotator_angle, not visitInfo boresightRotAngle, which is the sky position angle of the boresight. Refined in aos/docs/frame_conventions.md. |
+| [fbs_stability_runs](fbs_stability_runs/study.md) | parked | 2026-08-12 | Which visits make up each FBS-driven AOS stability run, and what was the PSF FWHM of each run? |
+| [image_quality_trending](image_quality_trending/study.md) | active | 2026-07-28 | How does delivered image quality (PSF FWHM, ellipticity, AOS contributions) trend night by night across LSSTCam survey visits? |
+| [m1m3_zgradient_survey](m1m3_zgradient_survey/study.md) | dropped | 2026-07-08 | Dropped: a plot only, superseded by the per-visit telemetry in the value-added database. |
+| [t539_closedloop](t539_closedloop/study.md) | parked | 2026-09-22 | What AOS state (DOF, v-modes, per-corner Zernikes) and telemetry go with the converged closed-loop BLOCK-T539 in-focus alignment images? |
+
+<!-- END generated -->
+
 ## Notebooks
 
 | Notebook | Description | Created | Last Modified |

@@ -54,7 +54,7 @@ Consolidated Database (ConsDB): air and structural temperatures, wind and airflo
 commanded degrees of freedom (DOF), and hexapod and mirror look-up-table (LUT) values.
 
 `mktable` merges the thermal columns as it builds a chunk.
-`code/fam_processing/run_attach_telemetry.py` attaches the full set in one pass, reading
+`rubinwork.products.fam_tables.builders.run_attach_telemetry` attaches the full set in one pass, reading
 ConsDB where it carries a quantity for Full Array Mode (FAM) exposures and the EFD
 otherwise:
 
@@ -72,11 +72,11 @@ otherwise:
 Each chunk gets a `telemetry.parquet` holding every fetched column; `--merge` joins it
 into the per-chunk and combined `visits.parquet`.
 
-Supporting module at `code/`: `aos_state.py` (per-visit optical-state helpers). The
-telemetry fetchers are shared across topics and live in `common/` —
-[`../common/dof_telemetry.py`](../common/dof_telemetry.py) for Trim and the LUT,
-[`../common/consdb_efd.py`](../common/consdb_efd.py) for the bulk ConsDB path, and
-[`../common/visit_telemetry.py`](../common/visit_telemetry.py) for wind and camera-body
+The optical-state helpers are the library `rubinwork.aos_state`. The telemetry fetchers
+are shared across topics and live in `rubinwork/common/` —
+[`dof_telemetry.py`](../rubinwork/common/dof_telemetry.py) for Trim and the LUT,
+[`consdb_efd.py`](../rubinwork/common/consdb_efd.py) for the bulk ConsDB path, and
+[`visit_telemetry.py`](../rubinwork/common/visit_telemetry.py) for wind and camera-body
 temperatures. EFD and ConsDB clients come from
 [`../common/telemetry_clients.py`](../common/telemetry_clients.py).
 
@@ -101,36 +101,45 @@ the per-iteration correction, and `Trim` is the accumulated offset the EFD repor
 `aggregatedDoF0..49`. See `../notes/claude-memory/aos-dof-terminology.md`. The 22-DOF
 reduced set has **specific indices** and is not the first 22 — use `aos_state.DOF22`.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
 ## Studies
 
-The work divides into thirteen studies, ordered here from the most general to the most
-specialized. Each has a detailed document under `docs/studies/`;
-[`docs/studies.md`](docs/studies.md) is the combined inventory, listing the code, inputs,
-outputs and current state of every one. Several of these studies project onto the Optical
-Feedback Control (OFC) sensitivity matrix; its singular value decomposition and v-mode
-structure are the `vmode` study in the `smatrix` topic
-([`../smatrix/vmode/vmode.md`](../smatrix/vmode/vmode.md)).
+Generated from each `<study>/study.md`; edit those, not this table.
 
-Prediction of the uniform-defocus error from thermal telemetry — the focus look-up table from
-science exposures, and focus drift within a FAM block — is the `thermal_focus` topic
-([`../thermal_focus/thermal_focus/thermal_focus.md`](../thermal_focus/thermal_focus/thermal_focus.md)).
+| study | status | last log | answer |
+|---|---|---|---|
+| [bending_mode_test](bending_mode_test/study.md) | parked | 2026-09-18 | In the bending-mode test blocks T377-T380, which hexapod LUT and Trim values were commanded at each corner-sensor exposure? |
+| [blitz_vs_danish12](blitz_vs_danish12/study.md) | done | 2026-09-22 | Same convention; the DZ offsets Z7 +0.1388 and Z6 -0.1116 um of wavefront (mean offsets) come from unpairing, not from the code version. |
+| [bounce](bounce/study.md) | done | 2026-10-12 | Yes, and the default recovery puts DOF out of range: 106 of 450 per-(leg, night) rows exceed their range, against 7 under Range-Bounded Recovery, at a median cost of +0.0027 arcsec FWHM. |
+| [closed_loop](closed_loop/study.md) | parked | 2026-09-07 | What delivered PSF does AOS closed-loop control give over a FAM visit sequence, given the corner-sensor recovery and a proportional controller? |
+| [correlations](correlations/study.md) | parked | 2026-09-23 | What do the residual Double Zernike coefficients left after the MIW is subtracted correlate with: each other, the OFC v-modes, or telescope telemetry? |
+| [cwfs](cwfs/study.md) | parked | 2026-10-08 | Not fully: per-Zernike CWFS-FAM offsets in Z11, Z14 and Z7 persist under a radius-matched comparison. The Z11/Z14 intra/extra split is unexplained and is now part of aos/intra_extra. |
+| [cwfs_lut](cwfs_lut/study.md) | active | 2026-10-12 | One term dominates: M2 hexapod dx against rotator angle, +20.39 um/deg (Pearson r = +0.718, Spearman rho = +0.759, n = 96,278 visits). Agreement with the bounce tests is cosine +0.829 (dimensionless) on the six hexapod translations. |
+| [dzfit](dzfit/study.md) | done | 2026-09-22 | Yes: the recomputed residual nMAD matches the stored Huber scale, Pearson r = +0.999665 and median ratio 0.9974 (both dimensionless), n = 1050 visits. |
+| [giant_donut_pupil](giant_donut_pupil/study.md) | parked | 2026-10-23 | v4.02 fits giant donuts better than v1000 (median residual RMS ratio 0.94, dimensionless), and the outer-band Z5-Z7 is pupil bias, not wavefront; the camera silhouette and vane shadows are measured against the model. Open: a common image-frame translation of the spider shadows (dy -1.65 / -2.07 pixels OCS image, extra / intra) and the vane shadow widths (102.8 / 61.3 mm against CAD 50 mm); parked for the CAD review and a Batoid rebuild. |
+| [infra](infra/study.md) | dropped | 2026-10-10 | Dropped: tooling, not a study. The scripts moved to rubinwork/common/scripts/. |
+| [intra_extra](intra_extra/study.md) | active | 2026-10-23 | Not a static pupil or model mismatch: the blur difference (median +0.3440 arcsec, n 873 FAM triplets) tracks camera-body minus M1M3 air temperature (Spearman rho -0.7828), v1000 cuts the giant-donut Z11 split from 0.81 to 0.37 um of wavefront, and diffraction gives about one third of it. A phase that flips sign with focus (a thermal strip or a turned-down M1 edge) is the open candidate. |
+| [lut](lut/study.md) | dropped | 2026-10-13 | Dropped as a study: the LUT is the dof_lut product. The open question, plain against post-MIW input, stays with the product; the switch to post-MIW did not make the recovered DOF plausible. |
+| [miw_hull](miw_hull/study.md) | answered | 2026-10-14 | No MIW value inside the 1.725 deg of field angle selection limit depends on a continued ring — the builder continues exactly ONE ring, at r = 1.7500 deg, the last fitted ring is r = 1.7286 deg, and 0 of the 3,833 map cells at r <= 1.725 deg lie outside it by either consumer route. Whether that one rim ring carries signal or artifact was NOT pursued: no consumer inside 1.725 deg depends on it, and both builds continue the same ring so analysis 3's two-build contrast is empty. |
+| [miw_origin](miw_origin/study.md) | parked | 2026-10-11 | Retrieval bias leads: the per-visit L test gives leave-night-out CV R2 = +0.408 (dimensionless) against a null of +0.014, n = 1126 visits. No physically plausible static figure explains more than about 0.11 of the MIW (dimensionless, explained variance), and 83 % of MIW power sits at focal orders above the k <= 6 the fit uses. |
+| [miw_recovery_constraint](miw_recovery_constraint/study.md) | active | 2026-10-08 | No: unconstrained 50/34 puts 33 of 50 DOF out of range on at least 5 % of visits. RBR brings the worst range ratio from 60.25 to 1.713 (dimensionless) but grows the MIW by 0.2764 um RMS of wavefront. |
+| [miw_version_comparisons](miw_version_comparisons/study.md) | done | 2026-10-05 | Danish 1.2 and 1.3 builds agree in Z5-Z8 to about 9 % of amplitude RMS. v1000 moves the MIW by 0.1027 of amplitude (dimensionless, difference RMS over build-A RMS) with no pupil-rim signature. |
+| [processing_compare](processing_compare/study.md) | dropped | 2026-10-12 | Dropped as a study: it is a regression harness. compare_donuts.py became the library rubinwork.compare_donuts; the TARTS notebook belongs to todo item 1. |
+| [psf_fp_maps](psf_fp_maps/study.md) | parked | 2026-09-20 | What focal-plane PSF FWHM, ellipticity and shape does a given optical wavefront deliver, measured the way the survey measures them? |
+| [unpaired_intra_vs_extra](unpaired_intra_vs_extra/study.md) | active | 2026-10-23 | Yes to both, with a split. Z14 carries the largest difference (-0.5221 um of wavefront, 8.6x its own two-side mean) but only Z11 tracks the blur difference within a night and only Z11 responds to the pupil model. Z4 is the surprise: a modest median difference with the second-largest robust scatter over visit pairs (0.1710 um of wavefront), 25.3 per cent of which the thermal model removes. |
+| [wavefront_outliers](wavefront_outliers/study.md) | parked | 2026-09-22 | A robust z-score above 20 (dimensionless) against the per-CCD median flags 1.535e-02 of donuts on danish_1_3_test; which threshold to adopt, and whether it belongs in the fam_tables build, is a product decision. |
+| [wfs_mimic](wfs_mimic/study.md) | parked | 2026-09-20 | A covariance product only (84 by 84 cross-corner, 21 by 21 single-corner); no conclusion of its own. |
 
-| study | content |
-|---|---|
-| [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
-| [`fam_processing`](../rubinwork/products/fam_tables/qa/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
-| [`dzfit`](dzfit/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
-| [`coadd`](miw_origin/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
-| [`correlations`](correlations/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry; and where the ConsDB copy of the AOS degree-of-freedom values agrees with the EFD |
-| [`cwfs`](cwfs/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
-| [`bounce`](bounce/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
-| [`lut`](lut/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
-| [`cwfs_lut`](cwfs_lut/cwfs_lut.md) | Dependence of the open-loop optical state on TMA elevation and camera rotator angle, measured from the corner sensors over the science survey on both the batoid and MIW intrinsic routes, compared against the bounce tests |
-| [`psf`](psf_fp_maps/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
-| [`processing_compare`](processing_compare/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
-| [`static_optics`](miw_origin/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
-| [`closed_loop`](closed_loop/closed_loop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
-| [`infra`](infra/infra.md) | Node CPU and memory capability, for sizing pipeline concurrency |
+<!-- END generated -->
+
+Several studies project onto the Optical Feedback Control (OFC) sensitivity matrix; its
+singular value decomposition and v-mode structure are the `vmode` study in `smatrix`
+([`../smatrix/vmode/vmode.md`](../smatrix/vmode/vmode.md)). The focus prediction from
+thermal telemetry is the `thermal_focus` topic. The MIW build is the `miw` product; its
+write-up is [`docs/studies/miw.md`](docs/studies/miw.md). The FAM chunk QA is with the
+`fam_tables` product
+([`../rubinwork/products/fam_tables/qa/fam_processing.md`](../rubinwork/products/fam_tables/qa/fam_processing.md)).
 
 ## Pipeline
 
@@ -210,8 +219,7 @@ Outputs are gitignored, and symlinked to
 
 ## Notebooks
 
-Each notebook belongs to a study; the mapping is in
-[`docs/studies.md`](docs/studies.md#notebook--study).
+Each notebook is in its study's `notebooks/`.
 
 Closed-loop AOS performance notebooks live in the `nightlyiq/` topic, not here.
 
@@ -222,7 +230,6 @@ status + last-updated line under its title.
 
 | doc | what it holds |
 |---|---|
-| [`docs/studies.md`](docs/studies.md) | **inventory of the analysis studies** — the map for this topic |
 | [`docs/miw_pipeline.md`](docs/miw_pipeline.md) | Snakemake pipeline reference: every rule, config, output path |
 | [`docs/frame_conventions.md`](docs/frame_conventions.md) | the CCS, OCS and DVCS frames, which camera rotator angle to read (`rotTelPos`, not ConsDB alone, never `boresightRotAngle`), and why static optics follow OCS |
 | [`docs/telemetry.md`](docs/telemetry.md) | **telemetry inventory** — every quantity, its ConsDB/EFD name, measured coverage on FAM exposures, units, and which source to prefer |

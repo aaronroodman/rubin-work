@@ -5,31 +5,31 @@ root `CLAUDE.md` (read that first — the "Working with Aaron" rules apply here)
 
 **This file is not a description of the pipeline.** `README.md` indexes the topic and
 `docs/miw_pipeline.md` is the reference for what every Snakemake step does, the config
-files, and the output layout. `docs/studies.md` maps the fifteen studies to their code.
+files, and the output layout. The Studies table in `README.md` lists the studies.
 What follows is only the things that are easy to get wrong.
 
 ## Code layout
 
-`code/` is organized by **study** — `code/dzfit/`, `code/miw/`, `code/coadd/`, `code/cwfs/`,
-`code/static_optics/`, `code/correlations/`, `code/bounce/`,
-`code/processing_compare/`, `code/psf/`, `code/closed_loop/`, `code/lut/`,
-`code/smatrix_vmode/`, `code/fam_processing/`, `code/infra/`.
-See `docs/studies.md`.
+Each study is a directory `aos/<study>/` with `study.md`, `code/` and `notebooks/`; the
+Studies table in `README.md` is generated from the `study.md` files. What remains in `code/`
+is the shared modules below and the shims at moved paths.
 
 The focus-from-temperature work is **not here**: it lives in the top-level `thermal_focus/`
 topic, which reads the value-added database rather than `aos/` output.
 
-Seven modules stay **flat at `code/`** on purpose:
+Four modules stay **flat at `code/`**, used by more than one study:
 
 | module | why |
 |---|---|
-| `aos_state.py` | imported **by bare module name from `blocks/` and `optatmo/`** via a hardcoded `sys.path.insert(.../aos/code)`. Moving it breaks those topics with no static-import warning. |
-| `aos_fwhm.py`, `fam_selection.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
-| `output_paths.py` | resolves `output/<study>/<P>[_<M>]/` from the long `param_set` and `mi_name` keys through their `dir_name` entries. For the **hand-run** scripts only — the Snakefile owns the layout for every rule it runs and passes `--out-dir`. |
+| `aos_fwhm.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
 | `test_m1m3.py` | manual EFD probe, no study of its own |
 
-Two of those modules left in phase 3a and only **shims** remain at their old paths, so
-the bare-name imports above keep resolving:
+The rest of `code/` is shims. `aos_state.py` and `open_loop.py` re-export
+`rubinwork.aos_state` and `rubinwork.open_loop`; new code imports those directly.
+`output_paths.py` is now `rubinwork.common.output_paths`, and `fam_selection.py` lives in
+`correlations/code/`.
+
+Two more modules left in phase 3a and only **shims** remain at their old paths:
 
 | old path | now | why it moved |
 |---|---|---|
@@ -70,8 +70,8 @@ then catalog.
 
 `code/coadd/run_coadd_blocks_miw.py` is a **shim** for the same reason — it moved to
 `rubinwork.products.coadds.builders` in phase 3a, because the per-block grids and
-summaries it writes are a product. The other eight scripts in `code/coadd/` are the
-coadd-against-MIW study and stayed. The same stale-path bug was in three of them
+summaries it writes are a product. The other eight scripts from `code/coadd/` are the
+coadd-against-MIW work, now in `miw_origin/code/`. The same stale-path bug was in three of them
 (`recompute_coadd_metrics`, `analyze_miw_bias_regression`, `analyze_miw_field_order`
 built `output/<long param_set>/coadd_50_34/`, which names nothing on disk). Each now
 resolves its build in the **same order as the `aos/Snakefile` resolver** — an explicit
@@ -85,19 +85,16 @@ parser. `recompute_coadd_metrics` and `analyze_miw_bias_regression` require `--o
 written into, while writing beside the data in the old tree is what a hand run always
 did.
 
-Do not "finish the job" by moving `aos_state.py` into `code/telemetry/`.
-
-The engineering telemetry that used to sit beside it lives in `common/` — the degree-of-freedom
+The engineering telemetry that used to sit beside it lives in `rubinwork/common/` — the degree-of-freedom
 (DOF) look-up table (LUT), Trim and Tweak in `common/dof_telemetry.py`, the bulk Consolidated
 Database (ConsDB) transformed-Engineering-Facility-Database (EFD) path in
 `common/consdb_efd.py`, and the per-visit wind and camera-body temperatures in
 `common/visit_telemetry.py`. Re-export shims remain at `code/aos_trim.py` and
 `code/aos_consdb_efd.py` for untracked notebooks; new code imports from `common/` directly.
 
-Scripts run in **script mode** (`python code/<study>/x.py`), so relative imports do not
-work. Each moved file puts its own study dir and `code/` on `sys.path`, so bare-name
-sibling imports resolve wherever the sibling lives. The repo root is `parents[3]` from a
-study subdirectory (`parents[2]` from `code/` itself).
+Scripts run in **script mode** (`python <study>/code/x.py`), so relative imports do not
+work. A study script puts its own `code/` on `sys.path` for sibling imports. The repo root
+is `parents[3]` from `aos/<study>/code/x.py`.
 
 ## Read these before working on the physics
 
@@ -137,9 +134,7 @@ In `aos/code/`, `common` almost always means the **external package's** submodul
 from lsst.ts.intrinsic.wavefront.common.zernike_names import NOLL_NAMES
 ```
 
-That is not this repo's `common/`. Only `code/fam_processing/` imports the repo's own
-`common/` (`plot_visits_summary.py` and `run_chunk_status.py`, via a `sys.path.insert` of
-the repo root). Do not "consolidate" the two — they are unrelated.
+That is not this repo's `rubinwork.common`, which code here imports by its full name. Do not "consolidate" the two — they are unrelated.
 
 ## Frames, units, and numbers
 

@@ -4,6 +4,20 @@ Study image quality **image-by-image for a given night** (`day_obs`), combining
 science-image PSF metrics with guider, AOS, and pointing diagnostics. Data is
 pulled per image from the ConsDB (`visit1_quicklook`) at USDF.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [aos_openloop](aos_openloop/study.md) | dropped | 2026-07-27 | Dropped: superseded by rubinwork.open_loop. |
+| [guider_iq](guider_iq/study.md) | parked | 2026-07-14 | How much of the science-image PSF width do the guider seeing and the pointing jitter explain, image by image? |
+| [nightly_aos_tables](nightly_aos_tables/study.md) | dropped | 2026-07-13 | Dropped: superseded by the value-added database. |
+
+<!-- END generated -->
+
 ## Notebooks
 
 | Notebook | Description | Created | Last Modified |

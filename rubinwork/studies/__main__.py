@@ -24,7 +24,7 @@ def main(argv=None):
     """
     parser = argparse.ArgumentParser(prog="python -m rubinwork.studies")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("index", help="write STUDIES.md at the repo root")
+    sub.add_parser("index", help="write STUDIES.md and the topic README tables")
     check = sub.add_parser("check", help="validate every study.md")
     check.add_argument("topic", nargs="?", default=None)
     check.add_argument("--no-catalog", action="store_true",
@@ -92,6 +92,8 @@ def main(argv=None):
     if args.command == "index":
         changed = index.write_index()
         print(f"{core.repo_root() / 'STUDIES.md'}: {'written' if changed else 'unchanged'}")
+        for topic in index.write_topic_readmes():
+            print(f"{topic}/README.md: written")
         return 0
 
     n_errors = 0

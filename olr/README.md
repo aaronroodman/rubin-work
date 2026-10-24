@@ -8,6 +8,22 @@
 > a guard that raises with the replacement named; the original is archived at
 > `scratch/archive/item2/olr_superseded.py`.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [aos_dof_audit](aos_dof_audit/study.md) | parked | 2026-07-17 | Are the commanded AOS DOF (LUT, Trim, Tweak, applied) recorded in the EFD self-consistent visit by visit? |
+| [olr_pipeline](olr_pipeline/study.md) | dropped | 2026-09-29 | Dropped: broken by design, since olr.py is a guard that raises; its sign was wrong (it added the Trim contribution). Superseded by rubinwork.open_loop and the value-added optical_state OLR columns. |
+| [open_loop_stability_20251026](open_loop_stability_20251026/study.md) | parked | 2026-09-04 | Do M1M3 thermal gradients explain the Zernike drift in the 20251026 open-loop stability runs? |
+| [scheme_comparison](scheme_comparison/study.md) | done | 2026-10-04 | Median CWFS FWHM contribution 0.4050, 0.2673 and 0.2905 arcsec for 22/12, 50/34 and 50/34+RBR over 96,278 paired visits; 50/34 improves on 22/12 by a median 0.1270 arcsec on 96.6% of visits, and RBR gives back 0.0245 arcsec of that. |
+| [zernike_opd_vs_consdb](zernike_opd_vs_consdb/study.md) | done | 2026-07-08 | They are the total OPD: ConsDB and Butler zk_opd agree to a median 0.16 nm of wavefront over 2,651 (seq, corner) pairs on day_obs 20260420. They differ only in non-axisymmetric terms, by a pupil rotation of about 0.1 deg. |
+
+<!-- END generated -->
+
 During the night the Active Optics System (AOS) runs closed-loop: it measures
 corner-WFS Zernikes and applies a correction (the *trim*, an aggregated 50-DOF
 offset) to the mirrors/hexapods. The OLR removes that correction from the measured

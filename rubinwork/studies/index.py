@@ -1,10 +1,19 @@
-"""Write ``STUDIES.md``: every study, its status, answer and products used."""
+"""Write ``STUDIES.md`` and the generated block of each topic ``README.md``.
+
+``STUDIES.md`` lists every study, its status, answer and products used. A topic README
+keeps its hand-written text; only the lines between `BEGIN` and `END` are rewritten, with
+the table of that topic's studies.
+"""
 
 import pathlib
 
 from .core import find_studies, load_study, repo_root
 
-__all__ = ["studies_markdown", "write_index"]
+__all__ = ["studies_markdown", "write_index", "topic_block", "write_topic_readme",
+           "write_topic_readmes", "BEGIN", "END"]
+
+BEGIN = "<!-- BEGIN generated: python -m rubinwork.studies index -->"
+END = "<!-- END generated -->"
 
 
 def _cell(text):
@@ -79,3 +88,87 @@ def write_index(root=None, target=None):
         return False
     target.write_text(text)
     return True
+
+
+def topic_block(topic, root=None):
+    """The generated block of one topic README: a table of its studies.
+
+    Parameters
+    ----------
+    topic : `str`
+        Topic name.
+    root : `str` or `pathlib.Path`, optional
+        Repository root, `repo_root` by default.
+
+    Returns
+    -------
+    text : `str`
+        Markdown from `BEGIN` to `END` inclusive, or an empty string if the topic has
+        no study.
+    """
+    root = pathlib.Path(root) if root else repo_root()
+    studies = [load_study(p) for p in find_studies(root, topic=topic)]
+    if not studies:
+        return ""
+    lines = [BEGIN, "", "## Studies", "",
+             "Generated from each `<study>/study.md`; edit those, not this table.", "",
+             "| study | status | last log | answer |", "|---|---|---|---|"]
+    for s in studies:
+        answer = s.meta.get("answer") or s.meta.get("question")
+        lines.append(f"| [{s.name}]({s.name}/study.md) | {_cell(s.status)} "
+                     f"| {_cell(s.last_log_date())} | {_cell(answer)} |")
+    lines += ["", END]
+    return "\n".join(lines) + "\n"
+
+
+def write_topic_readme(topic, root=None):
+    """Rewrite the generated block of ``<topic>/README.md``, keeping the rest.
+
+    A README with no block gets one after its first paragraph; a topic with no README
+    gets one holding a heading and the block.
+
+    Parameters
+    ----------
+    topic : `str`
+        Topic name.
+    root : `str` or `pathlib.Path`, optional
+        Repository root, `repo_root` by default.
+
+    Returns
+    -------
+    changed : `bool`
+        Whether the file was written.
+    """
+    root = pathlib.Path(root) if root else repo_root()
+    block = topic_block(topic, root)
+    if not block:
+        return False
+    path = root / topic / "README.md"
+    old = path.read_text() if path.is_file() else f"# {topic}\n"
+    if BEGIN in old and END in old:
+        head, rest = old.split(BEGIN, 1)
+        tail = rest.split(END, 1)[1].lstrip("\n")
+        new = head + block + ("\n" + tail if tail else "")
+    else:
+        parts = old.split("\n\n", 2)
+        if len(parts) == 3:
+            new = parts[0] + "\n\n" + parts[1] + "\n\n" + block + "\n" + parts[2]
+        else:
+            new = old.rstrip("\n") + "\n\n" + block
+    if new == old:
+        return False
+    path.write_text(new)
+    return True
+
+
+def write_topic_readmes(root=None):
+    """`write_topic_readme` for every topic that has a study.
+
+    Returns
+    -------
+    changed : `list` [`str`]
+        Topics whose README was written.
+    """
+    root = pathlib.Path(root) if root else repo_root()
+    topics = sorted({p.parent.parent.name for p in find_studies(root)})
+    return [t for t in topics if write_topic_readme(t, root)]

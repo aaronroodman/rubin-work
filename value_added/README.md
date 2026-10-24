@@ -4,6 +4,18 @@ A curated database of per-exposure quantities for Vera C. Rubin Observatory anal
 the builders that maintain it. It assembles telemetry that is slow to fetch or expensive to
 compute into one DuckDB file that any topic can read quickly.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [compare_trim_consdb](compare_trim_consdb/study.md) | active | 2026-10-20 | Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied; Tiago confirmed this design (2026-10-20). The ConsDB rule needs fixing. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025). |
+
+<!-- END generated -->
+
 Three kinds of quantity are held. The first is **engineering telemetry** from the
 Engineering Facility Database (EFD) that is slow to query per visit: the commanded Trim and
 Tweak degrees of freedom (DOF), the hexapod Look-Up-Table (LUT) compensation offsets,

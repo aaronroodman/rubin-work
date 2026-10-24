@@ -3,6 +3,18 @@
 Studies of the Rubin LSST Camera corner wavefront sensors (CWFS): sky-foreground
 shape, ISR-processed image inspection, and related AOS diagnostics.
 
+<!-- BEGIN generated: python -m rubinwork.studies index -->
+
+## Studies
+
+Generated from each `<study>/study.md`; edit those, not this table.
+
+| study | status | last log | answer |
+|---|---|---|---|
+| [cwfs_sky_foreground](cwfs_sky_foreground/study.md) | done | 2026-06-12 | Closed with no written result: the notebooks make per-visit PDFs of the sky level against focal-plane radius on the eight corner-sensor half-chips, but no conclusion was recorded. |
+
+<!-- END generated -->
+
 ## Notebooks
 
 In `notebooks/`.
