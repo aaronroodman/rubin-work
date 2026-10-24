@@ -113,7 +113,7 @@ the step. Answered items move to "Decisions taken".
    - **plain FAM DZ** (today's behaviour): upstream stays `fam_tables`, nothing changes.
    - **post-MIW (`refit_mi`) DZ**: the upstream becomes `miw`, which is a
      variant-definition change, not just a builder change.
-   Nothing is waiting on it now; no code changed. See `aos/docs/studies/lut.md`.
+   Nothing is waiting on it now; no code changed. See `aos/lut/lut.md`.
 
 3. ~~**The five audit-only telemetry groups stay in `visits.parquet`**~~ **Answered
    2026-10-12: keep them, no longer provisional**, and repoint the two readers at the
@@ -1420,7 +1420,7 @@ defaults to `readonly=True`) or the `value_added/code/efd_db.py` shim:
   `aos/code/miw_corner_intrinsic.py`, `rubinwork/miw_corner.py`,
   `aos/miw_hull/code/azimuth_probe.py`, `rubinwork/common/dof_telemetry.py`.
 - *Notebooks (4):* `value_added/notebooks/value_added_db_validation.ipynb`,
-  `aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb`,
+  `aos/bending_mode_test/notebooks/bending_mode_test_lut_trim.ipynb`,
   `aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb`, and
   `aos/notebooks/bounce/_exectest.ipynb`.
 - `aos/Snakefile` references the database rows in its provenance comments.
@@ -2946,7 +2946,7 @@ one more visit survives (169 against 168).
 inverts a DZ signal of only **0.037 µm of wavefront RMS** into thousands of µm of hexapod
 motion, and the robust scatter is as large as the value: `|median|/scatter_mad` is
 **2.40** for `M2_dy` and between **0.37 and 2.06** for the other nine rigid-body DOF
-(dimensionless, both in the row's `dof_unit`). Recorded in `aos/docs/studies/lut.md`.
+(dimensionless, both in the row's `dof_unit`). Recorded in `aos/lut/lut.md`.
 **For Aaron:** the input change is committed as instructed, but if the goal was physically
 meaningful hexapod numbers, the next thing to look at is the regularization (`n_keep`, or
 the normalization weights), not the input table.
@@ -3344,7 +3344,7 @@ lists in the product Snakefiles.
   - `_scratch_3a/` the scratch data root, now holding placeholder `fam_tables`,
     `cwfs_tables`, `miw` and `coadds` manifests used only to plan the product Snakefiles
     and to show the `aos/Snakefile` resolver picking up a new-tree build. Written by
-    `aos/code/infra/stage_scratch_product.py`, which refuses any root not under a
+    `rubinwork/products/stage_scratch_product.py`, which refuses any root not under a
     `_scratch_3a` directory.
 - `rubinwork/products/miw/tests/__init__.py` was added, which
   `rubinwork/products/{cwfs_tables,coadds}/tests/` do not have. Harmless — pytest collects
@@ -3360,7 +3360,7 @@ lists in the product Snakefiles.
   that he may want to switch to the post-MIW DZ later; recorded, not changed. The
   `dof_lut` move encodes it: `fam_variant` is the manifest's upstream, the `miw` entry is
   settings only and sits under `config`, and switching would make `miw` the upstream — a
-  variant-definition change. See `aos/docs/studies/lut.md` and the product's `__init__`.
+  variant-definition change. See `aos/lut/lut.md` and the product's `__init__`.
 - **The coadd variants' `_v2` suffix is carried by `ext_terms` alone.** If
   `block_grids_ext.npz` is ever dropped the two variants become identical and should
   collapse into one.

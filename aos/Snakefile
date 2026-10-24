@@ -565,7 +565,7 @@ rule plots:
     input:
         donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
         fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
-        script = "code/dzfit/run_dz_plots.py",
+        script = "dzfit/code/run_dz_plots.py",
     output: "output/dzfit/{ps}/trio_comparison_all.pdf"
     params: coord = lambda w: coord(PS_BY_DIR[w.ps])
     # run_dz_plots loads the full combined donut table; astropy materializes the
@@ -575,7 +575,7 @@ rule plots:
     resources: mem_mb=12000
     log: "logs/{ps}.plots.log"
     shell:
-        "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
+        "python dzfit/code/run_dz_plots.py {input.donuts} {input.fits} "
         "--coord-sys {params.coord} --output-dir output/dzfit/{wildcards.ps} "
         "--no-single-image > {log} 2>&1"
 
@@ -588,7 +588,7 @@ rule residual_movie_chunk:
     input:
         donuts = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/donuts.parquet",
         fits   = "output/fam_processing/{ps}/chunks/{dmin}_{dmax}/fits.parquet",
-        script = "code/dzfit/run_dz_plots.py",
+        script = "dzfit/code/run_dz_plots.py",
     # Each chunk renders into its own subdirectory: the intermediate JPEG frames and the
     # ffmpeg `frame_list.txt` are fixed names, so a shared directory would race when the
     # chunks run concurrently.
@@ -597,7 +597,7 @@ rule residual_movie_chunk:
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.residual_movie.log"
     shell:
-        "python code/dzfit/run_dz_plots.py {input.donuts} {input.fits} "
+        "python dzfit/code/run_dz_plots.py {input.donuts} {input.fits} "
         "--coord-sys {params.coord} --movie-prefix z1toz6 "
         "--movie-name residuals_z1toz6_{wildcards.dmin}_{wildcards.dmax}.mp4 "
         "--output-dir output/dzfit/{wildcards.ps}/movies/{wildcards.dmin}_{wildcards.dmax} "
@@ -616,7 +616,7 @@ rule dz_fit_check:
         donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
         fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
         visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
-        script = "code/dzfit/run_dz_fit_check.py",
+        script = "dzfit/code/run_dz_fit_check.py",
     output:
         pdf     = "output/dzfit/{ps}/dz_fit_check.pdf",
         metrics = "output/dzfit/{ps}/dz_fit_check.parquet",
@@ -627,7 +627,7 @@ rule dz_fit_check:
     resources: mem_mb=6000
     log: "logs/{ps}.dz_fit_check.log"
     shell:
-        "python code/dzfit/run_dz_fit_check.py --param-set {params.real_ps} "
+        "python dzfit/code/run_dz_fit_check.py --param-set {params.real_ps} "
         "--coord-sys {params.coord} "
         "--tables-dir {params.tdir} "
         "--output-dir output/dzfit/{wildcards.ps} > {log} 2>&1"
@@ -638,7 +638,7 @@ rule aberration_pairs:
         donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
         visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
         fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
-        script = "code/correlations/run_aberration_pairs.py",
+        script = "correlations/code/run_aberration_pairs.py",
     output: "output/correlations/{ps}/aberration_pairs.pdf"
     params:
         real_ps = lambda w: PS_BY_DIR[w.ps],
@@ -649,7 +649,7 @@ rule aberration_pairs:
     resources: mem_mb=8000
     log: "logs/{ps}.aberration_pairs.log"
     shell:
-        "python code/correlations/run_aberration_pairs.py {input.donuts} "
+        "python correlations/code/run_aberration_pairs.py {input.donuts} "
         "--visits {input.visits} --fits {input.fits} --coord-sys {params.coord} "
         "--param-set {params.real_ps} --label {wildcards.ps} "
         "--output-dir output/correlations/{wildcards.ps} > {log} 2>&1"
@@ -684,7 +684,7 @@ rule aberration_pairs:
 rule study_radialbins:
     input:
         grids  = lambda w: mi_bin_grids(w.d),
-        script = "code/miw/run_study_radialbins.py",
+        script = "../rubinwork/products/miw/qa/run_study_radialbins.py",
         lib    = f"{WF_LIB}/ccd_height.py",          # wfs_field_radius_range (inner edge)
     output: "output/miw/{d}/study_radialbins.pdf"
     params:
@@ -696,7 +696,7 @@ rule study_radialbins:
     resources: mem_mb=4000
     log: "logs/{d}.study_radialbins.log"
     shell:
-        "python code/miw/run_study_radialbins.py --param-set {params.real_ps} "
+        "python ../rubinwork/products/miw/qa/run_study_radialbins.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --out-dir output/miw/{wildcards.d} "
         "--src-dir {params.sdir} > {log} 2>&1"
 
@@ -706,7 +706,7 @@ rule wfs_corner_compare:
         wfs    = lambda w: f"{cwfs_dir(w.ps, w.cwfs)}/donuts.parquet",
         fam    = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
         visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
-        script = "code/cwfs/run_wfs_corner_compare.py",
+        script = "cwfs/code/run_wfs_corner_compare.py",
     output:
         pdf     = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.pdf",
         parquet = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.parquet",
@@ -718,7 +718,7 @@ rule wfs_corner_compare:
     resources: mem_mb=8000
     log: "logs/{ps}.{cwfs}.wfs_corner_compare.log"
     shell:
-        "python code/cwfs/run_wfs_corner_compare.py --param-set {params.real_ps} "
+        "python cwfs/code/run_wfs_corner_compare.py --param-set {params.real_ps} "
         "--wfs-name {wildcards.cwfs} --coord {params.coord} "
         "--tables-dir {params.tdir} "
         "--wfs-dir {params.wdir} "
@@ -740,7 +740,7 @@ rule wfs_dof_compare:
         # FAM per-donut MIW (baseline FWHM)
         fam_side = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
         visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script   = "code/cwfs/run_wfs_dof_compare.py",
+        script   = "cwfs/code/run_wfs_dof_compare.py",
         lib      = f"{WF_LIB}/ofc_svd.py",
     output: "output/wfs_dof_compare/{d}/{cwfs}/wfs_dof_compare_offsets.pdf"
     params:
@@ -753,7 +753,7 @@ rule wfs_dof_compare:
     resources: mem_mb=8000
     log: "logs/{d}.{cwfs}.wfs_dof_compare.log"
     shell:
-        "python code/cwfs/run_wfs_dof_compare.py --param-set {params.real_ps} "
+        "python cwfs/code/run_wfs_dof_compare.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --wfs-name {wildcards.cwfs} --coord {params.coord} "
         "--tables-dir {params.tdir} --miw-dir {params.mdir} "
         "--wfs-dir {params.wdir} "
@@ -767,7 +767,7 @@ rule wfs_mimic:
         sidecar = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
         donuts  = lambda w: f"{d_tables(w.d)}/donuts.parquet",
         visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script  = "code/cwfs/run_wfs_mimic.py",
+        script  = "wfs_mimic/code/run_wfs_mimic.py",
         lib     = f"{WF_LIB}/mi_config.py",
     output:
         cov84 = "output/wfs_mimic/{d}/wfs_mimic_cov84.parquet",
@@ -785,7 +785,7 @@ rule wfs_mimic:
     resources: mem_mb=4000
     log: "logs/{d}.wfs_mimic.log"
     shell:
-        "python code/cwfs/run_wfs_mimic.py --param-set {params.real_ps} "
+        "python wfs_mimic/code/run_wfs_mimic.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --coord-sys {params.coord} "
         "--tables-dir {params.tdir} --miw-dir {params.mdir} "
         "--out-dir output/wfs_mimic/{wildcards.d} > {log} 2>&1"
@@ -809,7 +809,7 @@ rule wfs_mimic:
 rule dz_correlations:
     input:
         fits   = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
-        script = "code/correlations/run_dz_correlations.py",
+        script = "correlations/code/run_dz_correlations.py",
         lib    = "code/dz_plotting.py",
         ofc    = f"{WF_LIB}/ofc_svd.py",
     output:
@@ -826,7 +826,7 @@ rule dz_correlations:
     resources: mem_mb=4000
     log: "logs/{d}.dz_correlations.log"
     shell:
-        "python code/correlations/run_dz_correlations.py --param-set {params.real_ps} "
+        "python correlations/code/run_dz_correlations.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} "
         "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
 
@@ -836,7 +836,7 @@ rule thermal_correlations:
         fits     = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # nollIndices for the OFC SVD
         visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script   = "code/correlations/run_thermal_correlations.py",
+        script   = "correlations/code/run_thermal_correlations.py",
         lib      = f"{WF_LIB}/ofc_svd.py",               # DOF / v-mode projection
     output:
         pdf     = "output/correlations/{d}/thermal_correlations.pdf",
@@ -850,7 +850,7 @@ rule thermal_correlations:
     resources: mem_mb=4000
     log: "logs/{d}.thermal_correlations.log"
     shell:
-        "python code/correlations/run_thermal_correlations.py --param-set {params.real_ps} "
+        "python correlations/code/run_thermal_correlations.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
         "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
 
@@ -876,8 +876,8 @@ rule thermal_correlations:
 rule bounce:
     input:
         fits     = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
-        script   = "code/bounce/run_bounce.py",
-        lib      = "code/bounce/bounce_lib.py",
+        script   = "bounce/code/run_bounce.py",
+        lib      = "bounce/code/bounce_lib.py",
         ofc      = f"{WF_LIB}/ofc_svd.py",
     output:
         summary    = "output/bounce/{d}/bounce_summary.pdf",
@@ -889,7 +889,7 @@ rule bounce:
     resources: mem_mb=4000
     log: "logs/{d}.bounce.log"
     shell:
-        "python code/bounce/run_bounce.py --param-set {params.real_ps} "
+        "python bounce/code/run_bounce.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} "
         "--out-dir output/bounce/{wildcards.d} --min-detectors 160 > {log} 2>&1"
 
@@ -949,7 +949,7 @@ rule vmode_correlations:
         fits   = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # nollIndices for the OFC SVD
         visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script = "code/correlations/run_vmode_correlations.py",
+        script = "correlations/code/run_vmode_correlations.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
         pdf_50   = "output/correlations/{d}/vmode_correlations_50_34.pdf",
@@ -965,7 +965,7 @@ rule vmode_correlations:
     resources: mem_mb=4000
     log: "logs/{d}.vmode_correlations.log"
     shell:
-        "python code/correlations/run_vmode_correlations.py --param-set {params.real_ps} "
+        "python correlations/code/run_vmode_correlations.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
         "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
 
@@ -976,7 +976,7 @@ rule dz_explained:
         fits   = lambda w: f"{miw_dir_for(w.d)}/fits.parquet",
         # nollIndices for the OFC SVD
         visits = lambda w: f"{d_tables(w.d)}/visits.parquet",
-        script = "code/correlations/run_dz_explained.py",
+        script = "correlations/code/run_dz_explained.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
         pdf     = "output/correlations/{d}/dz_explained.pdf",
@@ -990,6 +990,6 @@ rule dz_explained:
     resources: mem_mb=4000
     log: "logs/{d}.dz_explained.log"
     shell:
-        "python code/correlations/run_dz_explained.py --param-set {params.real_ps} "
+        "python correlations/code/run_dz_explained.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
         "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"

@@ -324,7 +324,7 @@ study imports, and that are import-safe (constants and functions, work behind
 |---|---|
 | `compute_smatrix.py` | `aos/miw_origin/code/camera_gravity.py`, `aos/miw_origin/code/thermal_sensitivity.py`, three smatrix plot scripts (for `CONFIG_TAG`) |
 | `normalization_weights.py` | `regularized_inversion.py`, `make_normalization.py`, `full_normalization.py`, `validate_normalization.py`, `vmode/plot_vmode_dof_matrix.py` |
-| `regularized_inversion.py` | `value_added/code/build_optical_state.py` (and its test), `aos/code/test_open_loop.py`, `aos/code/bounce/bounce_lib.py`, `aos/code/miw/{check_dof_ranges,test_rbr_against_prototype}.py` |
+| `regularized_inversion.py` | `value_added/code/build_optical_state.py` (and its test), `aos/code/test_open_loop.py`, `aos/bounce/code/bounce_lib.py`, `aos/code/miw/{check_dof_ranges,test_rbr_against_prototype}.py` |
 
 Everything else in `smatrix/code/` is a study script and stayed: the `plot_*` and
 `mode_gallery*` scripts, `compare_ofc.py`, `detailed_comparison.py`,
@@ -535,7 +535,7 @@ at 34 jobs** rather than the predicted 31. Only the file `rule all` names change
 (a), confirmed by Aaron 2026-10-12, because three of the nine pages plot per-visit arrays
 no table carries; it costs a second 170 s run of the analysis when both halves are built,
 and writing those arrays as a fifth table is the recorded later option.
-`aos/code/bounce/bounce_lib.py` keeps the ~20 plotters and re-exports every moved name, so
+`aos/bounce/code/bounce_lib.py` keeps the ~20 plotters and re-exports every moved name, so
 the four `smatrix/code/regularized_inversion/` imports — the last of the five wrong-way
 imports in section 2's table — now reach the library, and `rbr_module()`'s `sys.path`
 insert is gone. Four variants keyed on **(`miw_variant`, `fits`)**: `_july` is its own

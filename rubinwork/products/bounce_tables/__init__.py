@@ -14,7 +14,7 @@ motion penalty, and the 5/5 camera-hexapod-only recovery on the rotator bounce.
 
 **The product is the four tables; the nine PDFs are the study.** Both halves call
 `rubinwork.bounce.analysis.run_analysis` for the same reduction -- the builder writes the
-tables, and ``aos/code/bounce/run_bounce.py`` renders the figures. That is route (a) of
+tables, and ``aos/bounce/code/run_bounce.py`` renders the figures. That is route (a) of
 the phase 3a split, Aaron's call 2026-10-12: three of the nine pages plot the
 **per-visit** arrays ``C_all``, ``DOF_all`` and ``DOF5_all``, which no table carries, so
 the study cannot be served by reading the product back. The cost is one extra run of the
@@ -22,7 +22,7 @@ analysis (about 170 s of wall clock) when both halves are built. A later option 
 write the per-visit arrays as a fifth table, after which the study would read only the
 product.
 
-Why a product at all: ``aos/code/cwfs_lut/bounce_compare.py`` is a **different study**
+Why a product at all: ``aos/cwfs_lut/code/bounce_compare.py`` is a **different study**
 that reads ``bounce_dof_stats.parquet``, which rule 3 of the plan's section 2 forbids
 between studies.
 

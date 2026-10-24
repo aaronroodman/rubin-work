@@ -11,7 +11,7 @@ Two studies off the stored open-loop reconstruction (OLR) columns of `optical_st
    test, on **both** the batoid and Measured Intrinsic Wavefront (MIW) intrinsic routes.
 
 Both have run over the full sample and their results are written up in their own study docs —
-`thermal_focus/thermal_vmodes/thermal_vmodes.md` and `aos/docs/studies/cwfs_lut.md`. This file holds the
+`thermal_focus/thermal_vmodes/thermal_vmodes.md` and `aos/cwfs_lut/cwfs_lut.md`. This file holds the
 decisions, the database work underneath them, and what was ruled out. One piece of the original
 specification is outstanding: the overlay against the measured bounce-test slopes.
 
@@ -163,7 +163,7 @@ mimic it.
 | study | code | doc | tests |
 |---|---|---|---|
 | `thermal_vmodes` | `thermal_focus/code/thermal_vmodes.py` | `thermal_focus/thermal_vmodes/thermal_vmodes.md` | 8 |
-| `cwfs_lut` | `aos/code/cwfs_lut/cwfs_lut_lib.py` | `aos/docs/studies/cwfs_lut.md` | 18 |
+| `cwfs_lut` | `aos/cwfs_lut/code/cwfs_lut_lib.py` | `aos/cwfs_lut/cwfs_lut.md` | 18 |
 
 29 tests pass across both topics, including Aaron's 3 pre-existing `test_trim_calculator.py`.
 
@@ -196,7 +196,7 @@ Verified on real data, not just synthetically:
 ## Both studies have run over the full sample
 
 `e32e839`. Drivers are `thermal_focus/code/run_thermal_vmodes.py` and
-`aos/code/cwfs_lut/run_cwfs_lut.py`; both take `--day-obs-range` and `--output-dir`. Results
+`aos/cwfs_lut/code/run_cwfs_lut.py`; both take `--day-obs-range` and `--output-dir`. Results
 are written up in the two study docs, which are now **current** rather than in progress.
 
 **Part 1: v-mode 1 is the only thermal mode.** 72,835 visits, 175 nights, one of 34 modes
@@ -263,7 +263,7 @@ the same statement as this ratio; the table reports both and the doc says so.
 `e7bfe51`. Five pages each, written by the same drivers into
 `thermal_focus/output/thermal_vmodes/thermal_vmodes.pdf` and `aos/output/cwfs_lut/cwfs_lut.pdf`.
 Figure code is `thermal_focus/code/thermal_vmodes_figures.py` and
-`aos/code/cwfs_lut/cwfs_lut_figures.py`, one function per page, assembled with `PdfPages` as
+`aos/cwfs_lut/code/cwfs_lut_figures.py`, one function per page, assembled with `PdfPages` as
 `run_thermal_focus_analysis.py` does. `--no-figures` restores the table-only behaviour. Per-visit
 points are **hexbin, not scatter** — 96,278 visits over ten axes and two angles.
 
@@ -289,7 +289,7 @@ eight modes is **0.063 to 0.516**. And the solver scatter claim, above.
 
 ## The bounce comparison is done, and it found a units defect
 
-Code is `aos/code/cwfs_lut/bounce_compare.py`, four new figure pages in `cwfs_lut_figures.py`,
+Code is `aos/cwfs_lut/code/bounce_compare.py`, four new figure pages in `cwfs_lut_figures.py`,
 21 tests in `test_bounce_compare.py`. Products are five `bounce_compare_*.parquet` under
 `aos/output/cwfs_lut/`, and `cwfs_lut.pdf` is now ten pages. `--no-bounce` skips it; it also
 skips itself with a message when the bounce run is absent, since that is another study's output.
@@ -513,7 +513,7 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
   correlate negatively with truss temperature. Check the sign of Pearson r before calling
   anything thermal; the per-mode table does not carry it, the figures do.
 - **`ofc_svd.DOF_UNITS_50` is wrong about the four hexapod tilts** and so is anything that
-  copies it, including the bounce `unit` column and `aos/docs/studies/bounce.md`. They are
+  copies it, including the bounce `unit` column and `aos/bounce/bounce.md`. They are
   **deg** everywhere. Do not "fix" a comparison by applying 3600 arcsec/deg; that was tried and
   removed. `cwfs_lut_lib.HEX_TILT_UNIT` is the greppable statement.
 - **The v-mode index is not the aberration.** v12 is Z15, not spherical. Get the mapping from

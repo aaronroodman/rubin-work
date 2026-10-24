@@ -2,10 +2,10 @@
 
 Calls `rubinwork.bounce.analysis.run_analysis` for the whole reduction and writes
 its four tables.  The nine PDFs are the `bounce` study's half of the same
-analysis and stay in ``aos/code/bounce/run_bounce.py``, which calls the same
+analysis and stay in ``aos/bounce/code/run_bounce.py``, which calls the same
 function; see `rubinwork.products.bounce_tables` for why both halves run it.
 
-Moved out of ``aos/code/bounce/run_bounce.py`` in phase 3a of
+Moved out of ``aos/bounce/code/run_bounce.py`` in phase 3a of
 ``notes/status/organization_plan.md``.  The table-writing code moved verbatim, so
 a build reproduces the old script's tables exactly.
 

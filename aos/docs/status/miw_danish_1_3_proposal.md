@@ -1,6 +1,6 @@
 # Proposal — a Danish 1.3 MIW comparable to `danish_1_2_A_50_34_i_5rot`
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** status (accepted; build not yet run)
+> **Status:** done; the build ran and its results are in [`../studies/miw.md`](../studies/miw.md) and the [`miw_version_comparisons`](../../miw_version_comparisons/study.md) study · **Last updated:** 2026-10-24 · **Kind:** status (accepted proposal)
 
 Plan for building a Measured Intrinsic Wavefront (MIW) from the Danish 1.3 "blitz"
 unpaired wavefronts, named `danish_1_3_test_A_50_34_i_5rot`, over the same five camera
@@ -201,7 +201,7 @@ falls back to `OCS`.
 - Every visits-column access in `run_build_intrinsic.py`, `measured_intrinsic.py`,
   `run_intrinsic_split.py`, `intrinsic_split.py`, `run_make_intrinsic_sidecar.py`,
   `run_dz_fit.py`, `dz_fitting.py`, `intrinsic_build_plots.py` and
-  `code/miw/run_study_radialbins.py`, checked for guards.
+  `rubinwork/products/miw/qa/run_study_radialbins.py`, checked for guards.
 - The selection cuts reproduced independently on both tables, giving the rotator-bin table
   above and the 182-visit overlap.
 - `lsst.ts.ofc` and `lsst.ts.wep` import; `$TS_CONFIG_MTTCS_DIR` resolves;

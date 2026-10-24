@@ -11,7 +11,7 @@ Three things here that no earlier product's tests cover:
 - The **live ``bounce:`` override** in ``aos/analysis_config.yaml`` still resolves to the
   five-point BLOCK-T720 elevation sweep. A build that silently fell back to
   ``DEFAULT_BOUNCES`` would measure one leg instead of five and still look healthy.
-- The **library split**: ``aos/code/bounce/bounce_lib.py`` re-exports every name the
+- The **library split**: ``aos/bounce/code/bounce_lib.py`` re-exports every name the
   reduction moved out under, and `rubinwork.bounce` imports nothing from `aos/`.
 - The ``bounce_kj_stats`` key needs ``night``: without it only 756 of 1,890 rows are
   distinct, so a key-less comparison would align the wrong rows.
@@ -275,9 +275,9 @@ def test_default_bounces_is_only_the_fallback():
 # ---- the library split ---------------------------------------------------------
 
 def test_bounce_lib_reexports_every_moved_name():
-    """aos/code/bounce/bounce_lib.py keeps working for its existing callers."""
+    """aos/bounce/code/bounce_lib.py keeps working for its existing callers."""
     sys.path.insert(0, str(REPO_ROOT / "aos" / "code"))
-    sys.path.insert(0, str(REPO_ROOT / "aos" / "code" / "bounce"))
+    sys.path.insert(0, str(REPO_ROOT / "aos" / "bounce" / "code"))
     import bounce_lib
 
     for name in ("run_bounce", "form_pairs", "paired_delta", "paired_deltas_kj",
@@ -293,7 +293,7 @@ def test_the_library_imports_nothing_from_a_topic():
     """A library never reaches into a study (rule 2 of the plan's section 2).
 
     Checked on the IMPORT statements, not on the prose: the docstrings name
-    ``aos/code/bounce/bounce_lib.py`` deliberately, to say where the plotters went.
+    ``aos/bounce/code/bounce_lib.py`` deliberately, to say where the plotters went.
     `aos_fwhm` is reached lazily inside `rubinwork.bounce.analysis`, by path insert, and
     is a library itself.
     """
@@ -517,12 +517,12 @@ def test_compare_catches_a_pdf_on_only_one_side(data_root):
 # ---- the study readers ---------------------------------------------------------
 
 def test_the_cross_study_reader_resolves_old_tree_then_catalog(data_root):
-    """aos/code/cwfs_lut/bounce_compare.py is the one reader outside the bounce study.
+    """aos/cwfs_lut/code/bounce_compare.py is the one reader outside the bounce study.
 
     It hardwired aos/output/bounce/<run>/ and now resolves the same way the aos/Snakefile
     resolver does.
     """
-    sys.path.insert(0, str(REPO_ROOT / "aos" / "code" / "cwfs_lut"))
+    sys.path.insert(0, str(REPO_ROOT / "aos" / "cwfs_lut" / "code"))
     import bounce_compare
 
     _write_build(data_root)
@@ -534,7 +534,7 @@ def test_the_cross_study_reader_resolves_old_tree_then_catalog(data_root):
 
 
 def test_the_cross_study_reader_maps_a_run_to_its_variant():
-    sys.path.insert(0, str(REPO_ROOT / "aos" / "code" / "cwfs_lut"))
+    sys.path.insert(0, str(REPO_ROOT / "aos" / "cwfs_lut" / "code"))
     import bounce_compare
 
     assert (bounce_compare._bounce_variant("danish_1_2_A_50_34_i_5rot_july")

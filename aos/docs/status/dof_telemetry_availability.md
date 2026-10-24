@@ -23,7 +23,7 @@ Name searches for `dof`, `trim`, `tweak`, `lut`, `hex`, `bend` and `offset` retu
 temperatures, not degrees of freedom.
 
 The retrieval code exists in `common/dof_telemetry.py` and `common/consdb_efd.py`, but
-`mktable` never calls it. Its only callers are `code/bounce/run_bounce.py` and the sibling
+`mktable` never calls it. Its only callers are `bounce/code/run_bounce.py` and the sibling
 topic `blocks/code/telemetry_pipeline.py`, so every study needing commanded state re-fetches
 it itself.
 

@@ -72,7 +72,7 @@ HEADER = """\
 # the external package lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets() opens
 # Path('param_sets.yaml') relative to the current working directory, and
 # aos/code/cwfs/run_wfs_mktable.py, run_wfs_fam_compare.py, run_wfs_refit_ensemble.py and
-# aos/code/fam_processing/check_chunk.py all call it. Editing this file instead of
+# rubinwork/products/fam_tables/qa/check_chunk.py all call it. Editing this file instead of
 # variants.yaml means the next regeneration silently discards the change.
 #
 # The key is the long param_set name, which stays the identity for everything that

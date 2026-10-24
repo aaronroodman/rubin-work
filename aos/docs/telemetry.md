@@ -628,6 +628,6 @@ they are rebuilt. `common/ess_telemetry.py` (used by `olr`) still passes
 
 - [Processing](../README.md#processing) — the chunk build these quantities attach to
 - [`status/dof_telemetry_availability.md`](status/dof_telemetry_availability.md) — the DOF survey in detail
-- [`studies/fam_processing.md`](studies/fam_processing.md) — the chunk-status review tooling
+- [`../../rubinwork/products/fam_tables/qa/fam_processing.md`](../../rubinwork/products/fam_tables/qa/fam_processing.md) — the chunk-status review tooling
 - [`efd_lsstcam` schema](https://sdm-schemas.lsst.io/efd_lsstcam.html) · [`cdb_lsstcam` schema](https://sdm-schemas.lsst.io/cdb_lsstcam.html)
 - `../../notes/claude-memory/aos-dof-terminology.md` — optical_state vs Tweak vs Trim

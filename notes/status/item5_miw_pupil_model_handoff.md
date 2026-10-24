@@ -23,12 +23,12 @@ Commit `7e82312`.
   `pathA_50_34_i` and `pathA_50_34_i_5rot`, knob-for-knob identical to `danish_1_3_test`
   (checked programmatically, zero differing keys). A **fresh build, not a `build_from`**:
   the wavefronts differ, so the per-rotator-bin grids must be rebuilt.
-- **`aos/code/miw/compare_pupil_models.py`** (new, 338 lines) — the image-quality and
+- **`aos/miw_version_comparisons/code/compare_pupil_models.py`** (new, 338 lines) — the image-quality and
   localization half of the comparison, which `compare_miw_versions.py` does not do:
   inferred full width at half maximum (FWHM) in arcsec via ts_wep
   `convertZernikesToPsfWidth`, the difference by field annulus, and each pupil Zernike
   term's share of the difference **power**.
-- **`aos/code/miw/compare_build_dof.py`** (new, 251 lines) — the two builds' recovered
+- **`aos/miw_recovery_constraint/code/compare_build_dof.py`** (new, 251 lines) — the two builds' recovered
   degrees of freedom (DOF) and v-modes, differenced **per visit on the common
   `(day_obs, seq_num)` set**, with each DOF difference scaled against its allowed range
   `r_j`.
@@ -105,7 +105,7 @@ quadratic `motion_penalty`. Two branches, both committed locally, **neither push
 | `ts_intrinsic_wavefront` | `tickets/RSO-809` | `957a54f` | `build_ofc_svd` delegates its SVD to `ts_ofc` |
 
 `smatrix/code/regularized_inversion.py` stays as the derivation and cross-check reference,
-**not** the implementation. `aos/code/miw/test_rbr_against_prototype.py` is the bridge
+**not** the implementation. `aos/miw_recovery_constraint/code/test_rbr_against_prototype.py` is the bridge
 test — the one place that may import both.
 
 Verified: the `ts_ofc` estimator reproduces `build_ofc_svd` bit for bit across the 50-DOF,
@@ -294,7 +294,7 @@ actually turns on the attribution.
 ## Step B: wired, measured on one bin, full build outstanding
 
 The RBR code is written, committed and verified (branches above). The build can now
-request it, and it has been run on one rotator bin. `aos/code/miw/check_dof_ranges.py`
+request it, and it has been run on one rotator bin. `aos/miw_recovery_constraint/code/check_dof_ranges.py`
 measures how far a build's states fall outside `r_j` and changes nothing; it is the
 before-picture.
 
@@ -329,7 +329,7 @@ A's attribution caveat is not the limiting uncertainty for step B. Mechanism: RB
 the smallest-sigma retained v-modes (v33 at sigma 0.0231 by a median 3.85), subtracts
 0.8784 of the amplitude the unconstrained arm removed, and leaves the rest in the MIW.
 
-New code: `aos/code/miw/compare_rbr_arms.py`, the arm comparison — DOF against `r_j`,
+New code: `aos/miw_recovery_constraint/code/compare_rbr_arms.py`, the arm comparison — DOF against `r_j`,
 achieved residual, MIW as inferred FWHM, and the change per DOF and per v-mode.
 
 ### Carried commits for step B

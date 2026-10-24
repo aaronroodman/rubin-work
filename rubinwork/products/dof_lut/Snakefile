@@ -27,7 +27,7 @@
 # variant-definition change, not a builder knob.  It does NOT fix the implausible DOF
 # magnitudes: the plain FAM fit already subtracts the tabulated batoid design intrinsic
 # and refit_mi only substitutes the measured one, so M2_dy moves from -2407.11 to
-# -2407.34 µm of M2 hexapod decentre.  See aos/docs/studies/lut.md.
+# -2407.34 µm of M2 hexapod decentre.  See aos/lut/lut.md.
 #
 # Output, under the product catalog's data root:
 #   <products>/dof_lut/<variant>/<build>/{lut,lut_dz,lut_by_rotbin}.parquet

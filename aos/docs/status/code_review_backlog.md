@@ -31,7 +31,7 @@ two excluded. `bad_fit` marks visits with too few donuts to constrain the k=1..6
 focal-plane terms, and it is nearly independent of the large-coefficient cut, so those
 visits survived it.
 
-Replaced by `fam_quality_selection` in `aos/code/fam_selection.py` (renamed from
+Replaced by `fam_quality_selection` in `aos/correlations/code/fam_selection.py` (renamed from
 `dz_columns.py`, which now also holds `dz_coeff_columns`). It is the single place that
 decides which FAM visits are usable:
 
@@ -242,7 +242,7 @@ Acted on:
   per-visit FAM fits. `pathA_50_34_i` is a superseded first-pass MIW, so every output was
   partly stale. One `--mi` now supplies both, defaulting to `_5rot`, which also carries the
   larger sample (1126 versus 960 visits).
-- **Closed-loop split into its own [`closed_loop`](../studies/closed_loop.md) study.** 8 of
+- **Closed-loop split into its own [`closed_loop`](../../closed_loop/closed_loop.md) study.** 8 of
   the 14 cases were control simulations — how the loop *evolves* the state over a visit
   sequence, with its own gain/latency/intrinsic/order knobs — which is a different question
   from the single-shot forward calculation.

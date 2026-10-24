@@ -26,7 +26,7 @@ The MIW also exists in a Butler as an `lsst.ip.isr.IntrinsicZernikes` calibratio
 positions. Those are registered here as **external** variants (``official-*``) carrying a
 ``location`` and no files, and are deliberately not wrapped: their only in-repo consumers
 call ``getIntrinsicZernikes`` directly, which is what
-``aos/notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb`` exists to verify.
+``aos/cwfs/notebooks/aos_miw_cwfs_intrinsic_check.ipynb`` exists to verify.
 """
 
 import functools

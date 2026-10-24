@@ -16,7 +16,7 @@ Commit `3f600c9` "Keep per-side blur and Zernikes in the blitz recast":
   to `VISITS_COLUMNS`.
 - `aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb` — the plot and the
   offset-model test, executed with outputs.
-- `aos/docs/studies/fam_processing.md` — notebook row plus a paragraph on the per-side
+- `rubinwork/products/fam_tables/qa/fam_processing.md` — notebook row plus a paragraph on the per-side
   columns.
 
 Tables rebuilt at `aos/output/fam_processing/danish_1_3_test/` (966 visits, 3,155,734

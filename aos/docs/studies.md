@@ -27,21 +27,21 @@ shared modules that stay flat there.
 | study | files | lines | pipeline rules | content |
 |---|---|---|---|---|
 | [`miw`](studies/miw.md) | 7 | 2355 | 2 | Construction of the Measured Intrinsic Wavefront (MIW) from FAM donut data, built separately from the paired Danish 1.2 and the unpaired Danish 1.3 wavefronts and from the legacy and v1000 pupil models, compared term by term, as inferred FWHM and by field annulus, and in the recovered optical state; plus whether the state the build subtracts is physically reachable, and the build under the Range-Bounded Recovery constraint that enforces it. The build itself is in the external `ts_intrinsic_wavefront` package |
-| [`fam_processing`](studies/fam_processing.md) | 9 | 3389 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, an all-chunks status roll-up, and the recast of Danish 1.3 unpaired output into the paired Danish 1.2 table schema |
-| [`dzfit`](studies/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
+| [`fam_processing`](../../rubinwork/products/fam_tables/qa/fam_processing.md) | 9 | 3389 | 0 | Auditing the FAM chunk build: pre-flight checks, Butler provenance, coverage maps, an all-chunks status roll-up, and the recast of Danish 1.3 unpaired output into the paired Danish 1.2 table schema |
+| [`dzfit`](../dzfit/dzfit.md) | 2 | 604 | 2 | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](../miw_origin/coadd.md) | 9 | 3493 | 1 | Per-block FAM wavefront coadds compared against the MIW, and the retrieval-bias model for their disagreement |
-| [`correlations`](studies/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
-| [`cwfs`](studies/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
-| [`bounce`](studies/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
-| [`lut`](studies/lut.md) | 1 | 308 | 1 | Averaged DOF look-up table from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
-| [`cwfs_lut`](studies/cwfs_lut.md) | 4 | 2062 | 0 | Elevation and rotator-angle dependence of the open-loop optical state measured from the corner sensors over the science survey, on both intrinsic routes, and its comparison against the measured bounce test |
+| [`correlations`](../correlations/correlations.md) | 4 | 1466 | 4 | Correlations of the residual Double Zernikes (DZ) with each other, with v-modes, and with telemetry |
+| [`cwfs`](../cwfs/cwfs.md) | 9 | 2824 | 4 | Optical state recovered from the Corner Wavefront Sensors (CWFS) compared with the FAM full-focal-plane measurement |
+| [`bounce`](../bounce/bounce.md) | 2 | 1393 | 2 | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
+| [`lut`](../lut/lut.md) | 1 | 308 | 1 | Averaged DOF look-up table from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
+| [`cwfs_lut`](../cwfs_lut/cwfs_lut.md) | 4 | 2062 | 0 | Elevation and rotator-angle dependence of the open-loop optical state measured from the corner sensors over the science survey, on both intrinsic routes, and its comparison against the measured bounce test |
 | [`science_lut`](studies/science_lut.md) | 2 (+4) | 4459 | 0 | Focus look-up table from science exposures: the uniform-defocus error of the CWFS optical state predicted from thermal telemetry alone, its per-band calibration, and the absence of any remaining elevation dependence |
 | [`fam_focus`](studies/fam_focus.md) | 1 | 1353 | 0 | Focus drift — v-mode 1 — against exposure sequence number within contiguous FAM blocks at fixed pointing, raw and corrected by the `science_lut` thermal model, and against the DZ defocus term of each triplet's own FAM pair |
-| [`psf`](studies/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
-| [`processing_compare`](studies/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`psf`](../psf_fp_maps/psf.md) | 2 | 560 | 0 | Expected PSF from the optical contribution: focal-plane FWHM, ellipticity and shape maps rendered from a given wavefront |
+| [`processing_compare`](../processing_compare/processing_compare.md) | 2 | 914 | 0 | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](../miw_origin/static_optics.md) | 8 | 1881 | 0 | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
-| [`closed_loop`](studies/closed_loop.md) | 1 | 237 | 0 | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
-| [`infra`](studies/infra.md) | 1 | 126 | 0 | Node CPU and memory capability, for sizing pipeline concurrency |
+| [`closed_loop`](../closed_loop/closed_loop.md) | 1 | 237 | 0 | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
+| [`infra`](../infra/infra.md) | 1 | 126 | 0 | Node CPU and memory capability, for sizing pipeline concurrency |
 
 Every file in `aos/code/` belongs to exactly one study.
 
@@ -77,17 +77,17 @@ Notebooks live in `notebooks/<study>/`, mirroring `code/<study>/`.
 
 | notebook | content |
 |---|---|
-| `notebooks/miw/aos_miw_ocs_ccs_maps.ipynb` | reads the OCS and CCS MIW split maps |
-| `notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb` | verifies the Butler-ingested `intrinsicZernikes` calibration against what ts_wep computes per detector |
-| `notebooks/cwfs/wfs_corner_compare_correlations.ipynb` | corner comparison, 8 half-sensors, TARTS |
-| `notebooks/cwfs/wfs_corner_compare_correlations-aidonut.ipynb` | corner comparison, 4 corners, ai_donut |
-| `notebooks/cwfs/wfs_mimic_covariance.ipynb` | reads the mimic covariance product |
-| `notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb` | Danish versus TARTS on one day_obs |
-| `notebooks/processing_compare/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
+| `miw_version_comparisons/notebooks/aos_miw_ocs_ccs_maps.ipynb` | reads the OCS and CCS MIW split maps |
+| `cwfs/notebooks/aos_miw_cwfs_intrinsic_check.ipynb` | verifies the Butler-ingested `intrinsicZernikes` calibration against what ts_wep computes per detector |
+| `cwfs/notebooks/wfs_corner_compare_correlations.ipynb` | corner comparison, 8 half-sensors, TARTS |
+| `cwfs/notebooks/wfs_corner_compare_correlations-aidonut.ipynb` | corner comparison, 4 corners, ai_donut |
+| `wfs_mimic/notebooks/wfs_mimic_covariance.ipynb` | reads the mimic covariance product |
+| `processing_compare/notebooks/aos_danish_tarts_compare_20260713.ipynb` | Danish versus TARTS on one day_obs |
+| `processing_compare/notebooks/study_compare_donuts.ipynb` | cross-param_set donut comparison — **TODO: port to a pipeline script** |
 | `notebooks/fam_processing/fam_telemetry_history.ipynb` | per-visit telemetry time histories and distributions, one quantity per group |
-| `notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb` | Danish 1.3 blitz unpaired output against Danish 1.2 on one FAM triplet: column census, table metadata and Butler input provenance, Noll basis, matched-donut Zernike and blur comparison per side of focus and averaged over the two sides |
-| `notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb` | the same comparison on the corner wavefront sensors, where Danish 1.2 pairs two different stars across the SW0 and SW1 half-sensors and Danish 1.3 fits each side separately: one reference visit in detail, then all 62 visits of the night pooled for the per-Noll Zernike statistics |
-| `notebooks/fam_processing/wavefront_outliers.ipynb` | a cut for catastrophically bad individual donut fits: the median and normalized median absolute deviation (nMAD) of the per-donut wavefront deviation within each science CCD of each visit, the nMAD distribution per Noll term, and two candidate per-donut flags — a robust z-score against the CCD median, and a fixed threshold in micrometres of wavefront |
+| `blitz_vs_danish12/notebooks/blitz_vs_danish12_20260315.ipynb` | Danish 1.3 blitz unpaired output against Danish 1.2 on one FAM triplet: column census, table metadata and Butler input provenance, Noll basis, matched-donut Zernike and blur comparison per side of focus and averaged over the two sides |
+| `blitz_vs_danish12/notebooks/blitz_cwfs_vs_danish12_20260315.ipynb` | the same comparison on the corner wavefront sensors, where Danish 1.2 pairs two different stars across the SW0 and SW1 half-sensors and Danish 1.3 fits each side separately: one reference visit in detail, then all 62 visits of the night pooled for the per-Noll Zernike statistics |
+| `wavefront_outliers/notebooks/wavefront_outliers.ipynb` | a cut for catastrophically bad individual donut fits: the median and normalized median absolute deviation (nMAD) of the per-donut wavefront deviation within each science CCD of each visit, the nMAD distribution per Noll term, and two candidate per-donut flags — a robust z-score against the CCD median, and a fixed threshold in micrometres of wavefront |
 
 `snippets.ipynb`, `moresnippets.ipynb` and `danish_snippets.ipynb` in the topic root are
 untracked scratch, gitignored, and belong to no study.
@@ -170,7 +170,7 @@ Carried here so they are visible in one place; detail in each study doc.
   known instrumental effect. It appears in the Danish 1.3 unpaired corner output too: over
   `day_obs` 20260315 the two half-sensors straddle the Danish 1.2 joint fit on 14 of 21 Noll
   terms, most strongly on Z11 and Z14. That the two sides differ this much is also what makes
-  a paired fit biased — see [`fam_processing`](studies/fam_processing.md) — so the size of the
+  a paired fit biased — see [`fam_processing`](../../rubinwork/products/fam_tables/qa/fam_processing.md) — so the size of the
   split explains the paired-versus-unpaired offset, while the **origin** of the split stays
   open.
 - **`fam_processing`** — the Danish 1.3 blitz Double Zernike fits carry a real per-Noll mean
@@ -222,7 +222,7 @@ Carried here so they are visible in one place; detail in each study doc.
   over-range part of the state carries 0.0315 µm of wavefront against the full state's
   0.0587 µm (median over visits of the RMS over the DZ `(k, j)` grid), a ratio of 0.4753
   of amplitude. Whether and how to add a penalty term to the MIW optical state fitting is
-  open; the measurement is `code/miw/check_dof_ranges.py` and
+  open; the measurement is `miw_recovery_constraint/code/check_dof_ranges.py` and
   [`studies/miw.md`](studies/miw.md).
 - **`processing_compare`** — `study_compare_donuts.ipynb` is still a notebook; porting
   it to a pipeline script is a standing TODO.
@@ -235,8 +235,8 @@ Helpers used by more than one study live in one place rather than being copied:
 |---|---|---|
 | `nmad(x)` — normalized median absolute deviation, robust sigma | `common/utils.py` | `cwfs`, `processing_compare` |
 | `alt_to_deg(alt)` — altitude in degrees, auto-detecting radian input | `common/utils.py` | `bounce`, `cwfs` |
-| `dz_coeff_columns(df, prefix)` — DZ coefficient column names | `aos/code/fam_selection.py` | all four `correlations` scripts |
-| `fam_quality_selection(df, ...)` — which FAM visits are usable | `aos/code/fam_selection.py` | all four `correlations` scripts |
+| `dz_coeff_columns(df, prefix)` — DZ coefficient column names | `aos/correlations/code/fam_selection.py` | all four `correlations` scripts |
+| `fam_quality_selection(df, ...)` — which FAM visits are usable | `aos/correlations/code/fam_selection.py` | all four `correlations` scripts |
 | `repo_root(start)` — repo root for notebooks | `common/utils.py` | notebooks |
 
 `alt_to_deg` detects radians by magnitude: if the largest absolute value is below 2*pi it

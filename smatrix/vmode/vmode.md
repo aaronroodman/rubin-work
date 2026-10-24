@@ -25,7 +25,7 @@ study is about using and diagnosing the matrix that construction produces.
 | `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/vmode/sparse_fit_study.pdf` |
 
 This study is diagnostics of the matrix itself. The consumer that *builds a product* from
-the same SVD is [`lut`](../../aos/docs/studies/lut.md), which projects the FAM Double Zernike fits onto it to
+the same SVD is [`lut`](../../aos/lut/lut.md), which projects the FAM Double Zernike fits onto it to
 recover degrees of freedom.
 
 ### `plot_vmode_dof_matrix.py` — the six pages
@@ -379,5 +379,5 @@ All of these need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR`; note `ts_ofc` is **n
 ## See also
 
 - [`../../README.md`](../README.md) — matrix construction
-- [`../../../aos/docs/studies/correlations.md`](../../aos/docs/studies/correlations.md) — the v-mode correlation consumer
-- [`../../../aos/docs/studies/cwfs.md`](../../aos/docs/studies/cwfs.md) — the corner OFC inverse uses the same SVD
+- [`../../../aos/docs/studies/correlations.md`](../../aos/correlations/correlations.md) — the v-mode correlation consumer
+- [`../../../aos/docs/studies/cwfs.md`](../../aos/cwfs/cwfs.md) — the corner OFC inverse uses the same SVD

@@ -169,6 +169,38 @@ def nmad(x, min_n=3):
     return 1.4826 * np.median(np.abs(x - np.median(x)))
 
 
+def robust_fit(x, y, K):
+    """OLS line after dropping points beyond K nMAD of either median.
+
+    Parameters
+    ----------
+    x, y : array-like
+        Paired samples; non-finite pairs are dropped first.
+    K : `float`
+        Rejection threshold, in units of the nMAD of x and of y.
+
+    Returns
+    -------
+    keep : `numpy.ndarray` [`bool`]
+        Mask over the finite pairs of those kept.
+    stats : `dict`
+        ``n``, ``ndrop``, Pearson ``r``, ``slope``, offset ``off`` and robust residual
+        ``rms`` (nMAD), in the units of y.
+    """
+    m = np.isfinite(x) & np.isfinite(y)
+    x, y = np.asarray(x)[m], np.asarray(y)[m]
+    if len(x) < 3:                                    # keep-mask is over the finite subset (len == len(x))
+        return np.zeros(len(x), bool), dict(n=len(x), ndrop=0, r=np.nan, slope=np.nan, off=np.nan, rms=np.nan)
+    keep = ((np.abs(x - np.median(x)) <= K * nmad(x) + 1e-12)
+            & (np.abs(y - np.median(y)) <= K * nmad(y) + 1e-12))
+    xk, yk = x[keep], y[keep]
+    if keep.sum() < 3:
+        return keep, dict(n=len(x), ndrop=int((~keep).sum()), r=np.nan, slope=np.nan, off=np.nan, rms=np.nan)
+    s, b = np.polyfit(xk, yk, 1); res = yk - (s * xk + b)
+    return keep, dict(n=len(x), ndrop=int((~keep).sum()), r=float(np.corrcoef(xk, yk)[0, 1]),
+                      slope=float(s), off=float(b), rms=float(nmad(res)))
+
+
 def alt_to_deg(alt):
     """Express an altitude/elevation array in degrees, auto-detecting radian input.
 

@@ -53,7 +53,7 @@ an unbiased measurement of mirror figure. The same caveat applies to the OIC pen
 This module is a library, not part of the smatrix study, because it is consumed
 from outside it: ``value_added/code/build_optical_state.py``,
 ``rubinwork/bounce/legs.py`` (through ``rbr_module``) and
-``aos/code/miw/check_dof_ranges.py`` all import it. The runners that exercise and
+``aos/miw_recovery_constraint/code/check_dof_ranges.py`` all import it. The runners that exercise and
 validate these solvers stay in the study, at
 ``smatrix/regularized_inversion/code/``.
 """

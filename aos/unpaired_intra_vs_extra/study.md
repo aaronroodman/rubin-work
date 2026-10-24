@@ -100,7 +100,7 @@ result (0.81 → 0.37 µm of wavefront, 54 per cent) at a different defocus and 
 **96.8 per cent** of the per-side fitted rows. No positional matching is used or needed:
 the same star lands up to **34.7 pixels** apart on the two sides because the exposures
 point slightly differently, so a tight pixel tolerance would reject real pairs
-(`aos/docs/studies/fam_processing.md`).
+(`rubinwork/products/fam_tables/qa/fam_processing.md`).
 
 Forming the difference per donut and summarizing over the visit gives the **spread across
 the focal plane within one visit**, which per-visit medians cannot. The medians agree with

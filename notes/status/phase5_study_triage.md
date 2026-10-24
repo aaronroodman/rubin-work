@@ -83,7 +83,7 @@ the survey proposes.
 | old OLR pipeline (`Snakefile`, `run_olr`, `nightly_table`, quicklook) | dropped        | broken by design:`olr.py` is a guard that raises                                                             | superseded by`rubinwork/open_loop.py` and the value-added `optical_state` OLR columns | dropped   |
 
 `olr/` becomes a **study topic** for analyses of the stored OLR (not a product).
-`aos/code/miw/compare_schemes.py` is a different comparison (inside the MIW build, on FAM
+`aos/miw_recovery_constraint/code/compare_schemes.py` is a different comparison (inside the MIW build, on FAM
 visits) and stays with the aos MIW studies.
 
 ## optatmo
@@ -249,7 +249,7 @@ Aaron, 2026-10-18:
 - `guider/docs/deploy_summit_merge_note.md` says about 9 commits; elsewhere 8.
 - `guider/docs/guider_vs_ccd_moments.md` names `optatmo/code/moments_hsm.py`; it is now
   `rubinwork.hsm_moments`.
-- `aos/docs/studies/cwfs.md:90` links the renamed `danish_pupil_mask_findings.md`.
+- `aos/cwfs/cwfs.md:90` links the renamed `danish_pupil_mask_findings.md`.
 - `olr/README.md` documents the broken pipeline as runnable.
 - `optatmo/README.md` says "Next: run on real DM star catalogs"; that run was done.
 - `notes/todos/todo-ideas.md` item 7 says "not started".
@@ -260,8 +260,8 @@ Aaron, 2026-10-18:
   `fam_processing/`).
 - `aos/docs/status/miw_danish_1_3_proposal.md` says the build is not yet run; its results
   are reported elsewhere.
-- `aos/docs/studies/fam_processing.md` describes moved builders as code here.
-- `aos/docs/studies/psf.md` and `closed_loop.md` say "current"; their outputs are stale.
+- `rubinwork/products/fam_tables/qa/fam_processing.md` describes moved builders as code here.
+- `aos/psf_fp_maps/psf.md` and `closed_loop.md` say "current"; their outputs are stale.
 
 Before the phase 5 shim removal, update the four callers still importing the `smatrix`
 shims: `rubinwork/products/value_added/builders/build_optical_state.py:207`,

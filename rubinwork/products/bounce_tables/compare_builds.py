@@ -22,7 +22,7 @@ rows are distinct, because each leg carries a per-night row per (k, j) plus a po
 ``'all'``, and an **int64** on ``bounce_fwhm_vs_bvalue``, which has per-night rows only.
 
 **The nine PDFs are the study's half**, and after the split they are written by
-``aos/code/bounce/run_bounce.py`` into a different directory from the tables. Pass
+``aos/bounce/code/run_bounce.py`` into a different directory from the tables. Pass
 ``--plots-a`` / ``--plots-b`` to size-check them; with neither, only the tables are
 compared. They are never byte-compared: matplotlib embeds a creation timestamp, so two
 runs of identical code produce different bytes.

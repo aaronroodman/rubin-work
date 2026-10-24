@@ -36,15 +36,9 @@ STALE_DAYS = 14
 ALLOWED = (
     # The wrong-way imports and reads listed in organization_plan.md section 2, fixed
     # in phase 5. (path prefix, rule).
-    ("aos/code/psf_maps_lib.py", "no-study-import"),
-    ("aos/code/closed_loop/", "no-study-import"),
-    ("aos/code/psf/", "no-study-import"),
     ("optatmo/", "no-foreign-output"),
     # Found by the phase 4 dry-run /review; fix in phase 5.
     ("aos/miw_origin/code/recompute_coadd_metrics.py", "hand-built-product-path"),
-    ("aos/notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb", "no-study-import"),
-    ("aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb",
-     "no-study-import"),
     ("psf/wavefront_to_psf/", "no-foreign-output"),
 )
 """Known violations: reported, but as known rather than new."""

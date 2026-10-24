@@ -36,10 +36,10 @@ Delivered:
 | the recast itself | [aos/code/fam_processing/blitz_reader.py](../../aos/code/fam_processing/blitz_reader.py) |
 | runnable wrapper | [aos/code/fam_processing/run_blitz_mktable.py](../../aos/code/fam_processing/run_blitz_mktable.py) |
 | param set | `danish_1_3_test` in [aos/param_sets.yaml](../../aos/param_sets.yaml) |
-| FAM format review | [aos/notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb](../../aos/notebooks/fam_processing/blitz_vs_danish12_20260315.ipynb) |
-| CWFS format review | [aos/notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb](../../aos/notebooks/fam_processing/blitz_cwfs_vs_danish12_20260315.ipynb) |
+| FAM format review | [aos/blitz_vs_danish12/notebooks/blitz_vs_danish12_20260315.ipynb](../../aos/blitz_vs_danish12/notebooks/blitz_vs_danish12_20260315.ipynb) |
+| CWFS format review | [aos/blitz_vs_danish12/notebooks/blitz_cwfs_vs_danish12_20260315.ipynb](../../aos/blitz_vs_danish12/notebooks/blitz_cwfs_vs_danish12_20260315.ipynb) |
 | tables | `aos/output/fam_processing/danish_1_3_test/{donuts,visits,fits}.parquet`, `provenance.yaml` |
-| study doc | [aos/docs/studies/fam_processing.md](../../aos/docs/studies/fam_processing.md) |
+| study doc | [rubinwork/products/fam_tables/qa/fam_processing.md](../../rubinwork/products/fam_tables/qa/fam_processing.md) |
 | run log | `aos/logs/blitz_mktable_all966.log` |
 
 The decision recorded in the original scope — extend the external
@@ -252,7 +252,7 @@ Delivered:
 | MIW refit feeding it | `aos/output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet`, 3385 visits, 20250415–20260713 |
 | note for Guillem | [notes/aos-bounce-test-summary/note.md](../../notes/aos-bounce-test-summary/note.md) |
 | provenance | [notes/aos-bounce-test-summary/provenance.md](../../notes/aos-bounce-test-summary/provenance.md) |
-| study doc | [aos/docs/studies/bounce.md](../../aos/docs/studies/bounce.md) |
+| study doc | [aos/bounce/bounce.md](../../aos/bounce/bounce.md) |
 
 `bounce_kj_stats.parquet` now covers nights 20260418, 20260419, 20260420, 20260513,
 20260709, 20260711, 20260713 plus the combined `all`, for both `T720_elevation` and
@@ -278,8 +278,8 @@ leg.
 
 | piece | path |
 | --- | --- |
-| driver | [aos/code/bounce/run_bounce.py](../../aos/code/bounce/run_bounce.py) |
-| analysis/plot logic | [aos/code/bounce/bounce_lib.py](../../aos/code/bounce/bounce_lib.py) |
+| driver | [aos/bounce/code/run_bounce.py](../../aos/bounce/code/run_bounce.py) |
+| analysis/plot logic | [aos/bounce/code/bounce_lib.py](../../aos/bounce/code/bounce_lib.py) |
 | Snakemake rule | `bounce` in [aos/Snakefile](../../aos/Snakefile) |
 | knobs | `bounce:` in [aos/analysis_config.yaml](../../aos/analysis_config.yaml) |
 | input | `output/miw/<P>_<M>/fits.parquet` (measured-intrinsic refit) |
@@ -613,7 +613,7 @@ bit-identically (max abs diff 0.000e+00 on every column).
 **One scope bullet was deliberately not met.** "Give `bounce_lib.py` and `check_dof_ranges.py`
 one shared accessor instead of two duplicated path-insert bootstraps" was dropped on review
 (2026-10-02): `bounce_lib.rbr_module()` is the considered accessor, but having
-`aos/code/miw/check_dof_ranges.py` import it would make the MIW study depend on the bounce
+`aos/miw_recovery_constraint/code/check_dof_ranges.py` import it would make the MIW study depend on the bounce
 study, a worse coupling than a three-line path insert. Both bootstraps now carry a comment
 saying the solvers are shared code in `smatrix/` and deliberately not copied, so the
 duplication is documented rather than accidental. Nothing is left open.
@@ -637,8 +637,8 @@ study that validated it.
 | the solvers | [smatrix/code/regularized_inversion.py](../../smatrix/code/regularized_inversion.py) — `forward_operator`, `invert_truncated`, `invert_damped`, `invert_range_penalty`, `invert_oic`, `oic_authority`, `achieved_residual`, `dof_range_vector` (shared code since item 8; this row described the pre-move path) |
 | the OIC-style penalty, reimplemented for comparison | [smatrix/code/regularized_inversion/run_oic_compare.py](../../smatrix/code/regularized_inversion/run_oic_compare.py) — `oic_authority`, `invert_oic` |
 | the derivation and validation | `smatrix/docs/studies/regularized_inversion.md` |
-| the shared accessor the bounce study uses | `aos/code/bounce/bounce_lib.py`, `rbr_module` |
-| a second, duplicated bootstrap | `aos/code/miw/check_dof_ranges.py` |
+| the shared accessor the bounce study uses | `aos/bounce/code/bounce_lib.py`, `rbr_module` |
+| a second, duplicated bootstrap | `aos/miw_recovery_constraint/code/check_dof_ranges.py` |
 
 The module already has two callers outside its own study and in a different topic,
 `aos/code/bounce/` and `aos/code/miw/`, each reaching across the topic boundary by a
@@ -664,7 +664,7 @@ that topic.
 - Promote the OIC-style quadratic penalty out of `run_oic_compare.py` into the same module as
   a first-class solver alongside `invert_range_penalty`, mirroring `OICController` rather than
   importing `ts_ofc`.
-- Give `aos/code/bounce/bounce_lib.py` and `aos/code/miw/check_dof_ranges.py` one shared
+- Give `aos/bounce/code/bounce_lib.py` and `aos/miw_recovery_constraint/code/check_dof_ranges.py` one shared
   accessor instead of two duplicated path-insert bootstraps.
 - Keep `smatrix/docs/studies/regularized_inversion.md` as the derivation, and index the
   promoted OIC solver there.
@@ -712,7 +712,7 @@ Every FWHM series is the achieved residual `dW − S·(d/w)` in its own scheme's
 comparable; that changed no existing number, since the achieved residual and the subspace
 projection agree for a truncated solution to 1.7e-16 arcsec FWHM. The per-DOF panels paginate at 2
 columns × 5 rows. Results, including the per-leg tables and the FWHM cost of each scheme, are in
-`aos/docs/studies/bounce.md`. The headline: the 22/12 reduced set is feasible with no penalty at
+`aos/bounce/bounce.md`. The headline: the 22/12 reduced set is feasible with no penalty at
 all (0 of 198 DOF rows over range, worst `max |Δ_j|/r_j = 0.367` dimensionless) but costs +0.042
 arcsec FWHM median, about sixteen times RBR's +0.0027 arcsec; the OIC at the rho matching RBR's
 feasibility costs +0.095 arcsec FWHM median, 36 times RBR, because a quadratic penalty taxes all
@@ -733,9 +733,9 @@ image quality differ between the four schemes, across the bounce legs.
 
 | piece | path |
 | --- | --- |
-| the bounce driver | [aos/code/bounce/run_bounce.py](../../aos/code/bounce/run_bounce.py) |
-| its plotting library | [aos/code/bounce/bounce_lib.py](../../aos/code/bounce/bounce_lib.py) |
-| the study doc and the July results | `aos/docs/studies/bounce.md`, `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` |
+| the bounce driver | [aos/bounce/code/run_bounce.py](../../aos/bounce/code/run_bounce.py) |
+| its plotting library | [aos/bounce/code/bounce_lib.py](../../aos/bounce/code/bounce_lib.py) |
+| the study doc and the July results | `aos/bounce/bounce.md`, `aos/output/bounce/danish_1_2_A_50_34_i_5rot_july/` |
 | the solvers | `smatrix/code/regularized_inversion.py`, shared code since item 8 |
 | the OIC-style penalty | `smatrix/code/regularized_inversion/run_oic_compare.py`, `invert_oic` |
 
@@ -783,7 +783,7 @@ The per-DOF panel figure `plot_dof_vs_b_value_panels` currently computes
   with panels enlarged to suit.
 - Fix the per-bounce bar chart to use the achieved residual for every series rather than
   mixing it with the subspace projection.
-- Update `aos/docs/studies/bounce.md` with the four-scheme comparison.
+- Update `aos/bounce/bounce.md` with the four-scheme comparison.
 
 ### Open questions
 

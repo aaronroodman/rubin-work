@@ -39,7 +39,7 @@ no visits table of its own.
 
 --mi-name supplies SETTINGS as well (the mode counts, k range, coordinate system,
 band/program cuts, rotator bin edges).  See the product's __init__ and
-aos/docs/studies/lut.md.
+aos/lut/lut.md.
 
 Moved out of aos/code/lut/ in phase 3a of notes/status/organization_plan.md.  Run
 as a module, from the repository root:

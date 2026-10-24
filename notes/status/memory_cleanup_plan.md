@@ -171,7 +171,7 @@ factor shared helpers into `common/`, resolve the duplicated angle-unit heuristi
 ("fix once at source"), retire dead code, settle path conventions.
 
 **Terminology settled:** these are **studies**, not "threads" —
-`aos/code/infra/check_threads.py` is genuinely about CPU threads, and the repo already uses
+`rubinwork/common/scripts/check_threads.py` is genuinely about CPU threads, and the repo already uses
 "study" (`study_compare_donuts.ipynb`, `run_study_radialbins.py`).
 
 **Key constraints found (see `aos/docs/studies.md`):** scripts run in *script mode*

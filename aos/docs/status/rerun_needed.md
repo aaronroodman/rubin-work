@@ -89,7 +89,7 @@ take a single `--mi`, defaulting to `pathA_50_34_i_5rot`, which also carries the
 sample (1126 versus 960 visits in `fits.parquet`).
 
 The closed-loop cases also moved into their own
-[`closed_loop`](../studies/closed_loop.md) study, and output moved from `<ps>/psf/` to what is now
+[`closed_loop`](../../closed_loop/closed_loop.md) study, and output moved from `<ps>/psf/` to what is now
 `output/{psf,closed_loop}/<P>_<M>/`.
 
 **Affected files:** the 6 PDFs now in `output/psf/<P>_<M>/` and the 8 in
@@ -97,10 +97,10 @@ The closed-loop cases also moved into their own
 names; a rerun writes `closed_loop_*` instead.
 
 ```bash
-python code/psf/run_psf_fp_maps.py --case all
-python code/psf/run_psf_fp_maps.py --case mimic
-python code/psf/run_psf_fp_maps.py --case validate
-python code/closed_loop/run_closed_loop.py --case loop
+python psf_fp_maps/code/run_psf_fp_maps.py --case all
+python psf_fp_maps/code/run_psf_fp_maps.py --case mimic
+python psf_fp_maps/code/run_psf_fp_maps.py --case validate
+python closed_loop/code/run_closed_loop.py --case loop
 ```
 
 ### Everything storing v-modes — the v-mode basis changed, and v1 flips sign
@@ -125,7 +125,7 @@ table are in
 `v50_34__miw__consdb_v1`, `v22_12__batoid__consdb_v1`); the `thermal_focus` tables and
 document; `olr/` nightly tables carrying
 `vmodes_optical_state`; and
-`notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb`, whose stored v-mode
+`processing_compare/notebooks/aos_danish_tarts_compare_20260713.ipynb`, whose stored v-mode
 cells and PDFs predate the basis change — it now calls `make_state_estimator` and runs, but
 needs re-executing.
 
@@ -225,11 +225,11 @@ reports a v-mode **amplitude**, whose sign moves:
 | `fam_dz.v_modes` (all rows) | `value_added/code/build_fam_dz.py` |
 | all three `optical_state` variants' `v_modes`, `v1_lut`, `v1_trim` | `value_added/code/build_optical_state.py` |
 | `thermal_focus.{parquet,pdf}`, `thermal_focus_fam.parquet` | `../../../thermal_focus/code/` — refitted from the current basis; the truss coefficient is +125.09 µm of equivalent hexapod dz per °C |
-| `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `code/correlations/run_vmode_correlations.py:71` |
-| `dz_correlations` v-mode outputs | `code/correlations/run_dz_correlations.py:220` |
-| `thermal_correlations` v-mode outputs | `code/correlations/run_thermal_correlations.py:183` |
-| `bounce_*` v-mode panels and `bounce_kj_stats.parquet` | `code/bounce/run_bounce.py:158` — paired Δ, so a global flip cancels in the difference, but the plotted sign and any single-visit v-mode reverse |
-| `wfs_dof_compare` v-mode comparison | `code/cwfs/run_wfs_dof_compare.py:509` |
+| `vmode_correlations_{50_34,22_12}.{pdf,parquet}` | `correlations/code/run_vmode_correlations.py:71` |
+| `dz_correlations` v-mode outputs | `correlations/code/run_dz_correlations.py:220` |
+| `thermal_correlations` v-mode outputs | `correlations/code/run_thermal_correlations.py:183` |
+| `bounce_*` v-mode panels and `bounce_kj_stats.parquet` | `bounce/code/run_bounce.py:158` — paired Δ, so a global flip cancels in the difference, but the plotted sign and any single-visit v-mode reverse |
+| `wfs_dof_compare` v-mode comparison | `cwfs/code/run_wfs_dof_compare.py:509` |
 | `lut` products | `code/lut/run_build_lut.py:162` — takes `dof` from `project_dz_table` and discards `_vmodes`, so **likely unaffected**; verify before rerunning |
 | `olr/` nightly tables carrying `vmodes_optical_state` | `olr/` pipeline |
 

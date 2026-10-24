@@ -98,7 +98,7 @@ the one place new code is genuinely required. The archived
 
 This also bears on **item 5**, which tests the same v3.14/v1000 question through the MIW:
 if item 5 goes through ts_wep rather than danish directly, it faces the same missing
-`maskParams`. Worth noting there. (Another session has `aos/code/miw/compare_pupil_models.py`
+`maskParams`. Worth noting there. (Another session has `aos/miw_version_comparisons/code/compare_pupil_models.py`
 in progress, untouched here.)
 
 ## The physics result so far

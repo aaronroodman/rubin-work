@@ -32,4 +32,4 @@ Paired: 50/34 minus 22/12 is −0.1270 arcsec, better on 96.6% of visits (fracti
 
 ### 2026-10-04 — backfilled from docs and history
 
-Backfilled 2026-10-18 from [`scheme_comparison.md`](scheme_comparison.md) (formerly `olr/docs/`). Done in the phase 5 triage. `olr/` is now a study topic for analyses of the stored OLR, not a product (triage). `aos/code/miw/compare_schemes.py` is a different comparison, inside the MIW build on FAM visits, and stays with the aos MIW studies.
+Backfilled 2026-10-18 from [`scheme_comparison.md`](scheme_comparison.md) (formerly `olr/docs/`). Done in the phase 5 triage. `olr/` is now a study topic for analyses of the stored OLR, not a product (triage). `aos/miw_recovery_constraint/code/compare_schemes.py` is a different comparison, inside the MIW build on FAM visits, and stays with the aos MIW studies.

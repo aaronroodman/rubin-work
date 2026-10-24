@@ -81,12 +81,12 @@ inventory.
 
 | piece | path |
 | --- | --- |
-| per-donut A/B comparison | [aos/code/processing_compare/compare_donuts.py](../../aos/code/processing_compare/compare_donuts.py) |
-| FAM-processing comparison | [aos/code/processing_compare/compare_fam_processings.py](../../aos/code/processing_compare/compare_fam_processings.py) |
-| the single-night precedent | [aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb](../../aos/notebooks/processing_compare/aos_danish_tarts_compare_20260713.ipynb) |
+| per-donut A/B comparison | [rubinwork/compare_donuts.py](../../rubinwork/compare_donuts.py) |
+| FAM-processing comparison | [aos/processing_compare/code/compare_fam_processings.py](../../aos/processing_compare/code/compare_fam_processings.py) |
+| the single-night precedent | [aos/processing_compare/notebooks/aos_danish_tarts_compare_20260713.ipynb](../../aos/processing_compare/notebooks/aos_danish_tarts_compare_20260713.ipynb) |
 | its output | `aos/output/danish_tarts_compare_20260713/` (13 PDFs) |
-| notebook front-end | [aos/notebooks/processing_compare/study_compare_donuts.ipynb](../../aos/notebooks/processing_compare/study_compare_donuts.ipynb) |
-| study doc | [aos/docs/studies/processing_compare.md](../../aos/docs/studies/processing_compare.md) |
+| notebook front-end | [aos/processing_compare/notebooks/study_compare_donuts.ipynb](../../aos/processing_compare/notebooks/study_compare_donuts.ipynb) |
+| study doc | [aos/processing_compare/processing_compare.md](../../aos/processing_compare/processing_compare.md) |
 
 `compare_donuts.py` matches donuts **positionally per CCD** — intra-focal centroids
 within `tol_pix` on the same detector, via KDTree — and is written for exactly
@@ -185,7 +185,7 @@ the edge of the field of view.
 
 ### Prior work to start from
 
-[aos/notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb](../../aos/notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb)
+[aos/cwfs/notebooks/aos_miw_cwfs_intrinsic_check.ipynb](../../aos/cwfs/notebooks/aos_miw_cwfs_intrinsic_check.ipynb)
 carries the diagnosis, in two sections.
 
 - **Section 8, "NaN diagnosis — OCS hull vs CCS footprint"** attributes each donut's NaN
@@ -762,10 +762,10 @@ comparison, legacy against v1000, with the scheme held fixed.
 | --- | --- |
 | the MIW build chain | `aos/Snakefile`, `rule build_intrinsic` through `rule refit_mi`, calling `run_build_intrinsic.py`, `run_intrinsic_split.py`, `run_dz_fit.py` in the installed `ts_intrinsic_wavefront` |
 | the MIW build entries | `aos/mi_config.yaml`, `measured_intrinsics:` keyed by param set |
-| two-build term-by-term comparison | [aos/code/miw/compare_miw_versions.py](../../aos/code/miw/compare_miw_versions.py) |
-| how far the current build's states sit outside the allowed range | [aos/code/miw/check_dof_ranges.py](../../aos/code/miw/check_dof_ranges.py) |
+| two-build term-by-term comparison | [aos/miw_version_comparisons/code/compare_miw_versions.py](../../aos/miw_version_comparisons/code/compare_miw_versions.py) |
+| how far the current build's states sit outside the allowed range | [aos/miw_recovery_constraint/code/check_dof_ranges.py](../../aos/miw_recovery_constraint/code/check_dof_ranges.py) |
 | the RBR solver | [smatrix/code/regularized_inversion.py](../../smatrix/code/regularized_inversion.py), `dof_range_vector` and `invert_range_penalty` |
-| the AOS-side RBR wrappers | `aos/code/bounce/bounce_lib.py`, `rbr_module`, `rbr_dof_per_pair`, `rbr_deltas` |
+| the AOS-side RBR wrappers | `aos/bounce/code/bounce_lib.py`, `rbr_module`, `rbr_dof_per_pair`, `rbr_deltas` |
 | residual wavefront to FWHM | [aos/code/aos_fwhm.py](../../aos/code/aos_fwhm.py), `residual_dW`, `zj_to_fwhm`, `fp_fwhm` |
 | v-mode engine and DOF sets | `aos/code/aos_state.py`, `make_state_estimator`, `vmodes_from_dofs`, `recover_optical_state`, `DOF_SETS`, `N_MODES` |
 | the equation-level residual derivation | `aos/docs/miw_coadd_equations.md`, section 4 |
@@ -823,7 +823,7 @@ that item are reusable — see
 - Report how many visits the two builds have in common, and do every comparison on that
   common set rather than on each build's own sample.
 - Compare the two MIW term by term and as field maps, with
-  [aos/code/miw/compare_miw_versions.py](../../aos/code/miw/compare_miw_versions.py).
+  [aos/miw_version_comparisons/code/compare_miw_versions.py](../../aos/miw_version_comparisons/code/compare_miw_versions.py).
 - Convert each MIW to an inferred full width at half maximum (FWHM) in arcsec over the focal
   plane and report both, so the pupil-model change is also stated as image quality.
 - Report whether the difference concentrates at the field edge and at the pupil edge, which

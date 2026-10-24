@@ -89,7 +89,7 @@ holds that measurement.
 
 ### Reviewing the processed chunks
 
-The [`fam_processing`](docs/studies/fam_processing.md) study holds the tools for checking a
+The [`fam_processing`](../rubinwork/products/fam_tables/qa/fam_processing.md) study holds the tools for checking a
 chunk before and after it is built — pre-flight surveys, Butler provenance consistency,
 coverage maps, and an all-chunks status roll-up.
 
@@ -118,19 +118,19 @@ science exposures, and focus drift within a FAM block — is the `thermal_focus`
 | study | content |
 |---|---|
 | [`miw`](docs/studies/miw.md) | Construction of the Measured Intrinsic Wavefront (MIW) from Full Array Mode (FAM) donut data |
-| [`fam_processing`](docs/studies/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
-| [`dzfit`](docs/studies/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
+| [`fam_processing`](../rubinwork/products/fam_tables/qa/fam_processing.md) | Auditing the FAM chunk build: pre-flight checks, Butler provenance consistency, coverage, and an all-chunks status roll-up |
+| [`dzfit`](dzfit/dzfit.md) | Validation of the per-visit Double Zernike (DZ) fit against the batoid design intrinsic |
 | [`coadd`](miw_origin/coadd.md) | Comparison of per-block FAM wavefront coadds against the MIW, and the retrieval-bias model for their disagreement |
-| [`correlations`](docs/studies/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry; and where the ConsDB copy of the AOS degree-of-freedom values agrees with the EFD |
-| [`cwfs`](docs/studies/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
-| [`bounce`](docs/studies/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
-| [`lut`](docs/studies/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
-| [`cwfs_lut`](docs/studies/cwfs_lut.md) | Dependence of the open-loop optical state on TMA elevation and camera rotator angle, measured from the corner sensors over the science survey on both the batoid and MIW intrinsic routes, compared against the bounce tests |
-| [`psf`](docs/studies/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
-| [`processing_compare`](docs/studies/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
+| [`correlations`](correlations/correlations.md) | Correlations of the residual Double Zernikes with each other, with v-modes, and with telemetry; and where the ConsDB copy of the AOS degree-of-freedom values agrees with the EFD |
+| [`cwfs`](cwfs/cwfs.md) | Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS) with the FAM full-focal-plane measurement |
+| [`bounce`](bounce/bounce.md) | Elevation and rotator bounce test data, for Look-Up-Table (LUT) development |
+| [`lut`](lut/lut.md) | Averaged degree-of-freedom (DOF) look-up table built from the FAM Double Zernike fits, collapsed over all elevation and rotator angles |
+| [`cwfs_lut`](cwfs_lut/cwfs_lut.md) | Dependence of the open-loop optical state on TMA elevation and camera rotator angle, measured from the corner sensors over the science survey on both the batoid and MIW intrinsic routes, compared against the bounce tests |
+| [`psf`](psf_fp_maps/psf.md) | Expected Point Spread Function (PSF) from the optical contribution: focal-plane full width at half maximum (FWHM), ellipticity and shape maps |
+| [`processing_compare`](processing_compare/processing_compare.md) | Agreement between two reductions of the same donut data across code versions, binnings and fitting algorithms |
 | [`static_optics`](miw_origin/static_optics.md) | Whether a static optical figure — mirror surface, camera lenses, or gravitational flexure — reproduces the MIW |
-| [`closed_loop`](docs/studies/closed_loop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
-| [`infra`](docs/studies/infra.md) | Node CPU and memory capability, for sizing pipeline concurrency |
+| [`closed_loop`](closed_loop/closed_loop.md) | AOS closed-loop control simulated over a FAM visit sequence, and the delivered PSF that results |
+| [`infra`](infra/infra.md) | Node CPU and memory capability, for sizing pipeline concurrency |
 
 ## Pipeline
 

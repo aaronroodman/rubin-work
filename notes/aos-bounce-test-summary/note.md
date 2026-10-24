@@ -74,7 +74,7 @@ evaluated as `fwhm_after_5_5`.
 numbers are the AOS wavefront term only, and add in quadrature on top of the delivered image
 quality. Full definition, including why the "after" series use the achieved residual
 `dW − S·(d/w)` rather than the subspace projection, in
-`aos/docs/studies/bounce.md`, section "How the correctable FWHM is computed, and what zero
+`aos/bounce/bounce.md`, section "How the correctable FWHM is computed, and what zero
 means".
 
 ## The data
@@ -162,7 +162,7 @@ camera-hexapod-only 5-DOF / 5-v-mode scheme on the rotator bounce:
 The ordering is the same on every leg: the unconstrained 50/34 recovery is best, RBR costs
 almost nothing over it, and both restricting the DOF set (22/12) and the quadratic penalty
 (OIC) cost substantially more. What each scheme costs and why is in
-`aos/docs/studies/bounce.md`, section "Four recovery schemes at every bounce point".
+`aos/bounce/bounce.md`, section "Four recovery schemes at every bounce point".
 
 ### Significance and the largest coefficients
 
@@ -271,7 +271,7 @@ To settle whether those amplitudes carry any wavefront, the same Δ is inverted 
 penalty that is negligible inside the allowed range and climbs steeply as an amplitude
 approaches and passes it, with two dimensionless knobs set to `kappa = 4` and `p = 3`. The
 penalty form, the choice of knobs and why RBR is applied per pair rather than to the median are
-in `aos/docs/studies/bounce.md`, section "What RBR does".
+in `aos/bounce/bounce.md`, section "What RBR does".
 
 The comparison is scored on the residual the correction **achieves**, `dW − S·(d/w)`, rather than
 on the correctable-subspace projection used for `fwhm_after_50_34` in the table above — the
@@ -407,7 +407,7 @@ leg taken alone.
 | quality cut | at least 160 CCDs with enough donuts per visit, and `median_blur_arcsec` at most 1.2 arcsec |
 | thresholds | significance 3.5 (dimensionless) with 0.1 µm of wavefront, or significance 5.0 alone |
 | Range-Bounded Recovery | `kappa = 4.0`, `power = 3`, both dimensionless; solver in `smatrix/regularized_inversion/code/`, allowed range `r_j` back-derived from the shipped OFC normalization weights |
-| code | `aos/code/bounce/run_bounce.py`, `aos/code/bounce/bounce_lib.py`; config in `aos/analysis_config.yaml` under `bounce` |
+| code | `aos/bounce/code/run_bounce.py`, `aos/bounce/code/bounce_lib.py`; config in `aos/analysis_config.yaml` under `bounce` |
 
 Two earlier bounce output directories are superseded and were moved to
 `aos/output/archive/bounce/` on 2026-09-23: `danish_1_2_A_50_34_i_5rot` (the same MIW build over
@@ -415,7 +415,7 @@ April/May nights only) and `danish_1_2_A_50_34_i` (the earlier non-rotated MIW b
 `aos/output/miw/danish_1_2_A_50_34_i_5rot/` is a different path and is current — it is the MIW fit
 table this note's lead result reads.
 
-See [`../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md) for the study
+See [`../../aos/bounce/bounce.md`](../../aos/bounce/bounce.md) for the study
 reference, and
 [`../../smatrix/regularized_inversion/regularized_inversion.md`](../../smatrix/regularized_inversion/regularized_inversion.md)
 for the derivation and validation of Range-Bounded Recovery. The tables behind these numbers are

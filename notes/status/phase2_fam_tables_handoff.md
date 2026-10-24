@@ -12,7 +12,7 @@ cleared. A fresh session re-reads this file and the plan's sections 2–5, not a
 
 | commit | what |
 |---|---|
-| `58a6606` | `aos/code/infra/phase2_reference_build.sh`; the sidecar/EFD review item in the plan |
+| `58a6606` | `rubinwork/common/scripts/phase2_reference_build.sh`; the sidecar/EFD review item in the plan |
 | `b355446` | Step 1 reference build recorded; `rubinwork/products/fam_tables/` with `variants.yaml`, `reader.py`, `compare_builds.py`, 18 tests |
 | `d3f44a5` | This handoff, after step 1 |
 | `cbe3b12` | **A1**: `rotator_angle` resolved; `rotTelPos` identified as the right source |
@@ -38,7 +38,7 @@ Baseline for the code move, built with the **unmoved** code at commit `cc500dc`.
 - Variant `danish_1_2`, one chunk `20251116_20251130`: 6 nights (20251116, 17, 26, 27, 28,
   29), chosen because it is small and exercises the 2025 per-chunk overrides (own
   collection, `programs: [BLOCK, CWFS, AOSSEQUENCE]`).
-- Command: `aos/code/infra/phase2_reference_build.sh <output-root>`, which pins the exact
+- Command: `rubinwork/common/scripts/phase2_reference_build.sh <output-root>`, which pins the exact
   `mktable` / `fit` / `combine_*` / `attach_telemetry` commands from the Snakefile rules so
   the rerun cannot drift.
 - Output: `/sdf/group/rubin/u/roodman/LSST/rubin-work/_phase2_refbuild/danish_1_2/`
@@ -306,7 +306,7 @@ deleted — file deletion needs Aaron's OK.
   lived. Not caused by anything in this phase.
 - **`DatasetNotFoundError` for `day_obs=20251117, seq_num=39`** during `mktable` is
   expected and non-fatal: a visit in ConsDB but absent from the Butler collection, which
-  is what `aos/code/fam_processing/check_chunk.py` exists to find.
+  is what `rubinwork/products/fam_tables/qa/check_chunk.py` exists to find.
 
 ### A1 — `rotator_angle`: resolved, and the right source is `rotTelPos` (2026-10-10)
 
@@ -487,7 +487,7 @@ Why `param_sets.yaml` must keep existing rather than be deleted, now or in phase
   `lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets()` resolves
   `Path('param_sets.yaml')` relative to the cwd (its only candidate path). Called by
   `aos/code/cwfs/run_wfs_mktable.py`, `run_wfs_fam_compare.py`,
-  `run_wfs_refit_ensemble.py` and `aos/code/fam_processing/check_chunk.py`. We do not
+  `run_wfs_refit_ensemble.py` and `rubinwork/products/fam_tables/qa/check_chunk.py`. We do not
   modify that package for this.
 
 What the Snakefile actually takes from it — smaller than it looks. All four uses of

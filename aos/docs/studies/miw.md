@@ -34,7 +34,7 @@ The build itself is in the external `ts_intrinsic_wavefront` package
 `build_intrinsic` and `intrinsic_split` rules), not here.
 
 Validation of the per-visit DZ fit that feeds the build, and quality checks on the donut
-data, are the [`dzfit`](dzfit.md) study.
+data, are the [`dzfit`](../../dzfit/dzfit.md) study.
 
 ## Inputs and outputs
 
@@ -104,7 +104,7 @@ rather than interpolating.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/miw/compare_miw_versions.py \
+python miw_version_comparisons/code/compare_miw_versions.py \
   --miw-a output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_maps.parquet \
   --miw-b output/miw/danish_1_3_test_A_50_34_i_5rot/intrinsic_split_maps.parquet \
   --label-a "Danish 1.2 (paired)" \
@@ -197,14 +197,14 @@ fit.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/miw/compare_pupil_models.py \
+python miw_version_comparisons/code/compare_pupil_models.py \
   --miw-a output/miw/danish_1_3_test_A_50_34_i_5rot/intrinsic_split_maps.parquet \
   --miw-b output/miw/danish_1_3_v1000_A_50_34_i_5rot/intrinsic_split_maps.parquet \
   --label-a "legacy pupil" \
   --label-b "v1000 pupil" \
   --out-dir output/miw/danish_1_3_legacy_vs_v1000
 
-python code/miw/compare_build_dof.py \
+python miw_recovery_constraint/code/compare_build_dof.py \
   --build-a output/miw/danish_1_3_test_A_50_34_i/build \
   --build-b output/miw/danish_1_3_v1000_A_50_34_i/build \
   --label-a "legacy pupil" \
@@ -279,7 +279,7 @@ no new input enters.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python code/miw/check_dof_ranges.py \
+python miw_recovery_constraint/code/check_dof_ranges.py \
   --build-dir output/miw/danish_1_3_test_A_50_34_i/build \
   --label "Danish 1.3 blitz (unpaired)" \
   --build-dir output/miw/danish_1_2_A_50_34_i/build \
@@ -419,10 +419,18 @@ numbers above are an iterate, not a settled value.
 
 The change decays as `n_iter` to the power −1.066 (fitted over 8 iterations), so
 it crosses the 1.0e-03 µm tolerance near `n_iter` 10. The RBR `mi_name` entries
-therefore set **`n_iter: 15`** (predicted 6.2e-04 µm), while the unconstrained
+then set **`n_iter: 15`** (predicted 6.2e-04 µm), while the unconstrained
 arm keeps 3 — it already converged there, and changing it would invalidate its
 cached grids. Expect the nine-bin RBR numbers to differ from the one-bin figures
 above for that reason as well as the extra bins.
+
+Commit `b64da2d` (2026-10-08) set `n_iter` back to 3 on the 50/50 RBR arms
+(`pathA_50_50_i_rbr` and its `_5rot` split), where the per-Noll comparison pages showed the
+maps settled by iteration 3. The superseded 50/34 RBR entries keep 15. The arms now in
+`rubinwork/products/miw/variants.yaml` are 50/34 unconstrained, 50/50 with RBR and 22/12
+(the canonical 22-DOF set with 12 v-modes, no RBR), each with a five-rotator-bin split;
+`compare_schemes.py` in the [`miw_recovery_constraint`](../../miw_recovery_constraint/study.md)
+study compares the three.
 
 ## Running
 
@@ -430,7 +438,7 @@ above for that reason as well as the extra bins.
 cd ~/notebooks/rubin-work/aos
 ./run_snake.sh -n                                    # what is stale
 ./run_snake.sh --until plots
-python code/miw/check_chunk.py --help                    # pre-flight, before mktable
+python -m rubinwork.products.fam_tables.qa.check_chunk --help   # pre-flight, before mktable
 ```
 
 Phase 2 needs `lsst.ts.ofc`/`lsst.ts.wep`, `$TS_CONFIG_MTTCS_DIR`, and batoid height
@@ -450,7 +458,7 @@ re-triggered by code edits.
 
 ## Notebooks
 
-`notebooks/miw/aos_miw_ocs_ccs_maps.ipynb` reads the MIW OCS/CCS split maps — a viewer for
+`miw_version_comparisons/notebooks/aos_miw_ocs_ccs_maps.ipynb` reads the MIW OCS/CCS split maps — a viewer for
 `<mi>/intrinsic_split_maps.parquet`, no repo-module imports.
 
 ## See also

@@ -17,7 +17,7 @@ All on `main`, pushed to `origin/main`.
 | `41ce749` | calculator coefficients to `trim_coefficients.yaml`, tests to `test_trim_calculator.py` (predated this session) |
 | `b64da2d` | `aos/` 22/12 MIW arm, `n_iter` 15 -> 3 (predated this session) |
 | `a90497b` | EFD/ConsDB notebook (predated this session) |
-| `aa921be` | recovered 9 stranded cells into `aos/notebooks/cwfs/aos_miw_cwfs_intrinsic_check.ipynb` |
+| `aa921be` | recovered 9 stranded cells into `aos/cwfs/notebooks/aos_miw_cwfs_intrinsic_check.ipynb` |
 | `9914a06` | downgraded the `vt_day_obs` index issue to low priority |
 
 Three findings, all written up in `../thermal_focus.md`:

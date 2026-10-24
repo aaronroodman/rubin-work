@@ -15,7 +15,7 @@
 # refit_mi only substitutes the measured one for it, so on the miw 3a reference M2_dy
 # moves from -2407.11 to -2407.34 µm.  What it buys is fit quality -- the averaged DZ
 # residual falls by a factor of 6, to 0.00172 µm of wavefront RMS.  The magnitudes are an
-# ill-conditioned inversion and stay open.  See aos/docs/studies/lut.md.
+# ill-conditioned inversion and stay open.  See aos/lut/lut.md.
 #
 # This is a variant-definition change, not a builder knob: the old plain-FAM LUT stays
 # only in the old aos/output/lut/ tree and is not rebuilt.

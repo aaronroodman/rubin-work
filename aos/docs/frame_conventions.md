@@ -51,7 +51,7 @@ angle nor the rotator angle and was never read; phase 3b replaced that column wi
 wrapped to (−180, 180] deg. In code: `vi.boresightParAngle.asDegrees() −
 vi.boresightRotAngle.asDegrees() − 90`, or from stamp metadata
 `BORESIGHT_PAR_ANGLE_RAD − BORESIGHT_ROT_ANGLE_RAD − π/2` (rad), as in
-`code/cwfs/run_wfs_refit_ensemble.py` and `code/cwfs/run_wfs_fam_compare.py`. The identity
+`cwfs/code/run_wfs_refit_ensemble.py` and `cwfs/code/run_wfs_fam_compare.py`. The identity
 holds exactly against the `rotTelPos` stored in the AOS tables. Against the Consolidated Database (ConsDB)
 `physical_rotator_angle` it agrees to a mean of 0.2 deg (angle) with 0.26 deg (angle) scatter
 over a ~90 deg rotator sweep on day_obs 20260709.

@@ -1,0 +1,58 @@
+# Study: `processing_compare` — do two reductions agree?
+
+> **Status:** current · **Last updated:** 2026-09-05 · **Kind:** reference (study)
+
+> **Code:** `code/processing_compare/` · **Notebooks:** `notebooks/processing_compare/`
+> **Output:** `output/processing_compare/<P>/compare_vs_*.pdf`
+
+Comparison of two reductions of the same donut data, across code versions, binnings and
+fitting algorithms. This distinguishes a genuine change in a wavefront result from a
+processing artifact.
+
+This is the regression harness for the whole topic. Every time `ts_wep`, Danish, or the
+binning changes, a result that shifted might be a real improvement or might be a
+processing artifact. This study tells them apart.
+
+**Standalone** — no Snakefile rules.
+
+## Code
+
+| file | role |
+|---|---|
+| `compare_donuts.py` | library: per-CCD positional donut matching between two runs, then coverage maps, per-visit large-\|Δ\|, density over the focal plane and an edge annulus, difference histograms, focal-plane Δ maps (OCS+CCS) |
+| `compare_fam_processings.py` | compare two FAM reductions of the same data, page by page (`--comparison all` by default) |
+
+## Notebooks
+
+- `study_compare_donuts.ipynb` — the interactive front end for `compare_donuts.py`.
+  Consolidates the former `study_danish_v0p6_vs_v1`, `study_binning`, and
+  `donutalgo_comparison`. **Standing TODO: port to a pipeline script.**
+- `aos_danish_tarts_compare_20260713.ipynb` — Danish vs TARTS wavefront retrieval,
+  for `day_obs` 20260713.
+
+## Inputs
+
+Two runs' `output/fam_processing/<P>/{donuts,visits}.parquet`, plus `fits.parquet` for the
+optional per-visit DZ-fit comparison. **numpy/scipy/pyarrow only** — no LSST stack
+needed, so this is one of the few studies that runs anywhere the parquets exist.
+
+## Method note — matching, not indexing
+
+Donuts are matched **positionally per CCD**, not by row index. Two reductions of the same
+exposure do not produce the same row order or even the same donut count (detection
+differs), so any comparison that assumed row alignment would be silently wrong. The
+review backlog flags this class of defect elsewhere in `aos/code/`: a count mismatch is
+caught, an order mismatch is not.
+
+## Running
+
+```bash
+cd ~/notebooks/rubin-work/aos
+python processing_compare/code/compare_fam_processings.py --help
+python -c 'import rubinwork.compare_donuts'   # a library; no command line
+```
+
+## See also
+
+- [`../docs/ts_wep_zernike_intrinsics.md`](../docs/ts_wep_zernike_intrinsics.md) — what changes between ts_wep versions
+- [`../../wfs/docs/danish_pupil_mask_findings.md`](../../wfs/docs/danish_pupil_mask_findings.md) — a Danish-side difference that shows up in these comparisons

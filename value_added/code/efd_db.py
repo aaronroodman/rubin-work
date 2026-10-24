@@ -13,9 +13,9 @@ break.
 
 Callers kept working by this shim:
 
-* ``aos/code/cwfs_lut/cwfs_lut_lib.py``
-* ``aos/code/cwfs_lut/run_cwfs_lut.py``
-* ``aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb``
+* ``aos/cwfs_lut/code/cwfs_lut_lib.py``
+* ``aos/cwfs_lut/code/run_cwfs_lut.py``
+* ``aos/bending_mode_test/notebooks/bending_mode_test_lut_trim.ipynb``
 * ``aos/notebooks/bounce/_exectest.ipynb``
 * ``aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb``
 

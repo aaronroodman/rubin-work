@@ -11,7 +11,7 @@ errors, and the regularized-recovery solvers' Δ — for both
 study in `aos/` (which renders the PDFs).
 
 The ~20 plotters that used to sit beside these functions stay with the study, in
-`aos/code/bounce/bounce_lib.py`, which re-exports everything here so its own
+`aos/bounce/code/bounce_lib.py`, which re-exports everything here so its own
 callers are unaffected.
 
 Notes

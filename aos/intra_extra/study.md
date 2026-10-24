@@ -55,7 +55,7 @@ asymmetry in the analysis.
 
 The unpaired FAM Zernike version of this question is the separate study
 [`../unpaired_intra_vs_extra`](../unpaired_intra_vs_extra/study.md). The Z11/Z14 split in the
-corner sensors is recorded in [`../docs/studies/cwfs.md`](../docs/studies/cwfs.md).
+corner sensors is recorded in [`../cwfs/cwfs.md`](../cwfs/cwfs.md).
 
 ## Log
 

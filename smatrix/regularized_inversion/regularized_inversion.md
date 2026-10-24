@@ -167,7 +167,7 @@ and what it would achieve.
 ## Definition note: which over-range count
 
 The `truncated max ratio` column above maximizes `|d_j| / r_j` over **all 50 DOF**. The
-table in [`../../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md)
+table in [`../../../aos/docs/studies/bounce.md`](../../aos/bounce/bounce.md)
 counts only DOF significant at over 3σ, which is a different and smaller set — hence 7.3
 there against 8.59 here on the elevation 40 deg leg. Both are correct under their own
 definition; neither is a correction of the other.
@@ -368,7 +368,7 @@ one-line change to `authority()` and removes the 28–280× inconsistency betwee
 
 The **solvers are shared code at `smatrix/code/regularized_inversion.py`**, one level above
 this study's directory, because they are consumed from outside it: `aos/code/bounce/` draws
-all four inversions for its four-scheme comparison, and `aos/code/miw/check_dof_ranges.py`
+all four inversions for its four-scheme comparison, and `aos/miw_recovery_constraint/code/check_dof_ranges.py`
 uses the allowed-range vector. They sit beside `normalization_weights.py`, which
 `dof_range_vector` imports by bare module name, so a caller needs a single `sys.path` insert
 of `smatrix/code`. The runners that exercise and validate them stay here.
@@ -591,7 +591,7 @@ python run_oic_compare.py --rho-scan \
 - [`vmode.md`](../vmode/vmode.md) — the SVD whose truncation this study softens, and the
   conditioning ranking that predicts which DOF go over range
 - [`../vmode_normalization.md`](../docs/vmode_normalization.md) — where `r_j` and `f_j` come from
-- [`../../../aos/docs/studies/bounce.md`](../../aos/docs/studies/bounce.md) — the bounce
+- [`../../../aos/docs/studies/bounce.md`](../../aos/bounce/bounce.md) — the bounce
   data inverted here, and the over-range finding that motivated the study
 
 ## RBR against a conventional penalty matrix, and why 50/34 RBR pins the hexapods

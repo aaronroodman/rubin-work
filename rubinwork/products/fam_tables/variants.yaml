@@ -36,8 +36,8 @@
 # aos/param_sets.yaml cannot simply be deleted, now or in phase 5: the EXTERNAL package
 # lsst.ts.intrinsic.wavefront.intrinsics_lib.load_param_sets() opens
 # Path('param_sets.yaml') relative to the current working directory, and
-# run_wfs_mktable.py (now in cwfs_tables), aos/code/cwfs/run_wfs_fam_compare.py,
-# run_wfs_refit_ensemble.py and aos/code/fam_processing/check_chunk.py all call it.
+# run_wfs_mktable.py (now in cwfs_tables), aos/cwfs/code/run_wfs_fam_compare.py,
+# run_wfs_refit_ensemble.py and rubinwork/products/fam_tables/qa/check_chunk.py all call it.
 # ---------------------------------------------------------------------------
 
 variants:

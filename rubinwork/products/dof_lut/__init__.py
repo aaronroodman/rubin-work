@@ -23,7 +23,7 @@ substitutes the measured one for it, so ``M2_dy`` moves from -2407.11 to -2407.3
 M2 hexapod decentre on the ``miw`` 3a reference. What the switch buys is fit quality: the
 averaged DZ residual falls by a factor of 6, to 0.00172 µm of wavefront RMS. The
 magnitudes are an ill-conditioned inversion and remain open -- see
-``aos/docs/studies/lut.md``.
+``aos/lut/lut.md``.
 
 The same ``miw`` entry also supplies the *settings* -- the mode counts, the focal order
 range ``k_min`` to ``k_max``, the coordinate system, the band and program cuts, and the

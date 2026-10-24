@@ -385,5 +385,5 @@ response does. V-mode 1 shows the first, v-modes 10 and 18 the second.
   Huber pipeline, the night-grouped evaluation and the physical conversion.
 - `olr/scheme_comparison/scheme_comparison.md` — the three solvers on 96,278 paired visits.
 - `value_added/docs/schema.md` — `optical_state` columns and the two sign conventions.
-- `aos/docs/studies/cwfs_lut.md` — the pointing-dependence study specified alongside this one.
+- `aos/cwfs_lut/cwfs_lut.md` — the pointing-dependence study specified alongside this one.
 - `notes/status/vmode_thermal_and_lut_handoff.md` — working state for both studies.

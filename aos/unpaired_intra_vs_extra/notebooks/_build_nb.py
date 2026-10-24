@@ -688,7 +688,7 @@ the Gaia source identifier. That key is exact - a paired star carries identical
 both sides, about **96.8 per cent** of the per-side fitted rows. Pixel-position matching
 is deliberately *not* used: the same star lands up to **34.7 pixels** apart on the two
 sides because the two exposures point slightly differently, so any tolerance tight enough
-to be safe would reject real pairs (`aos/docs/studies/fam_processing.md`).
+to be safe would reject real pairs (`rubinwork/products/fam_tables/qa/fam_processing.md`).
 
 `extract_visit_medians.py` computes `dz{j}_donut_median` and `dz{j}_donut_nmad` per visit
 from the per-donut differences, so these plots need no extra pass over the 13 GB table.

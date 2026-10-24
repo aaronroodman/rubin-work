@@ -30,13 +30,13 @@ from rubinwork.products.value_added import write_manifest  # noqa: E402
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
 EFD_DB_IMPORTERS = (
-    "aos/code/cwfs_lut/cwfs_lut_lib.py",
-    "aos/code/cwfs_lut/run_cwfs_lut.py",
+    "aos/cwfs_lut/code/cwfs_lut_lib.py",
+    "aos/cwfs_lut/code/run_cwfs_lut.py",
 )
 """Every code file that reaches ``efd_db`` by bare name after a ``sys.path`` insert."""
 
 EFD_DB_NOTEBOOKS = (
-    "aos/notebooks/bounce/bending_mode_test_lut_trim.ipynb",
+    "aos/bending_mode_test/notebooks/bending_mode_test_lut_trim.ipynb",
     "aos/notebooks/bounce/_exectest.ipynb",
     "aos/intra_extra/notebooks/blur_intra_extra_offset.ipynb",
 )

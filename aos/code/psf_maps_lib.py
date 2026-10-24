@@ -243,7 +243,7 @@ def mimic_measurements(base_ps, fam_mi_dir, coord, noll, sec, visits):
     """Per-visit 4-corner wedge-median of the REAL per-donut MI deviations (the
     run_wfs_mimic measurement).  Returns {(day,seq): (4, nZk) in `noll` order or None}."""
     import pyarrow.parquet as _pq
-    from run_wfs_mimic import _wedge_medians
+    from rubinwork.wfs_mimic import wedge_medians as _wedge_medians
     dd = _pq.read_table(str(base_ps / 'donuts.parquet'),
                         columns=['day_obs', 'seq_num', f'thx_{coord}', f'thy_{coord}',
                                  f'zk_{coord}']).to_pandas()

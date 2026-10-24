@@ -46,9 +46,9 @@ always right. New code passes `path=` resolved through the catalog.
 outside the study, so it moved to `rubinwork.products.dof_lut.builders` in phase 3a and
 `rule build_lut` left `aos/Snakefile`. The LUT fits the **plain FAM DZ** and subtracts no
 intrinsic — `--mi-name` supplies SVD and selection settings only — which is recorded, not
-changed (Aaron, 2026-10-11); see `docs/studies/lut.md`. Its mode counts live only in the
+changed (Aaron, 2026-10-11); see `lut/lut.md`. Its mode counts live only in the
 parquet **schema metadata**, so read them with `dof_lut.build_metadata`.
-`code/processing_compare/compare_fam_processings.py`'s DOF page had the same stale-path
+`processing_compare/code/compare_fam_processings.py`'s DOF page had the same stale-path
 bug as the coadd scripts (it built `output/<long param_set>/<mi>/lut/`) and now resolves
 through the old tree then the catalog, skipping the page when a reduction has no LUT
 variant — which the script's own default baseline, `danish_1_0`, does not.
@@ -65,7 +65,7 @@ names changed, from `bounce_kj_stats.parquet` to `bounce_summary.pdf`. The study
 analysis a second time (about 170 s of wall clock) rather than reading the tables back,
 because three of its pages plot per-visit arrays no table carries (Aaron, 2026-10-12).
 The four `smatrix/regularized_inversion/code/` imports now reach `rubinwork.bounce`, and
-`code/cwfs_lut/bounce_compare.py`, the one reader outside the study, resolves old tree
+`cwfs_lut/code/bounce_compare.py`, the one reader outside the study, resolves old tree
 then catalog.
 
 `code/coadd/run_coadd_blocks_miw.py` is a **shim** for the same reason — it moved to
@@ -177,8 +177,8 @@ Robust by default, and **ask which robust method** before implementing — see t
 | pattern | location |
 |---|---|
 | Huber `RLM(y, X, M=HuberT())` — the DZ fit itself | `dz_fitting.py` in the **external package**, not `aos/code/` |
-| Huber RLM + HuberT with OLS fallback | `code/cwfs/run_wfs_corner_compare.py` |
-| drop > K·nMAD then OLS (`robust_fit`) | `code/cwfs/run_wfs_dof_compare.py` |
+| Huber RLM + HuberT with OLS fallback | `cwfs/code/run_wfs_corner_compare.py` |
+| drop > K·nMAD then OLS (`robust_fit`) | `cwfs/code/run_wfs_dof_compare.py` |
 | `nmad(residuals)` for robust scatter RMS | `common/utils.py` — shared, import it |
 
 Report both Pearson r and Spearman rho for correlations.
