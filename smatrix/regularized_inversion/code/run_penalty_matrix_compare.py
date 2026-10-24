@@ -42,8 +42,8 @@ import yaml
 from rubinwork.smatrix import regularized_inversion as ri
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-BOUNCE = (REPO / 'aos/output/fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x/'
-          'pathA_50_34_i_5rot/bounce_kj_stats.parquet')
+# The bounce legs: the bounce_tables product, variant of the 50/34 five-rotator-bin MIW.
+BOUNCE_VARIANT = 'd12-A_50_34_i_5rot'
 K_LIST = list(range(1, 7))
 J_LIST = list(range(4, 20)) + list(range(22, 27))
 KAPPA, POWER = 4.0, 3
@@ -73,7 +73,8 @@ def load_inputs(ts_ofc, norm_yaml, cache):
 
 def load_legs():
     """Measured (k, j) deltas and their errors per bounce leg, µm of wavefront."""
-    d = pd.read_parquet(BOUNCE)
+    from rubinwork.products import catalog
+    d = catalog.load('bounce_tables', BOUNCE_VARIANT, file='bounce_kj_stats.parquet')
     d = d[d.night == 'all']
     legs = {}
     for comp, g in d.groupby('comparison'):
