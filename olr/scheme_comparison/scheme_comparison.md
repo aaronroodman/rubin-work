@@ -8,7 +8,7 @@ with v-modes reported for continuity with what the summit reports rather than as
 of record.
 
 Specification: item 2 of [`notes/todos/todo-ideas.md`](../../notes/todos/todo-ideas.md).
-Build code: `value_added/code/build_optical_state.py`; the calculation
+Build code: `rubinwork/products/value_added/builders/build_optical_state.py`; the calculation
 `aos/code/open_loop.py` and `aos/code/aos_state.py`.
 
 **Sample:** `day_obs` 20250724 to 20260714, 231 nights, 102,463 science and acquisition

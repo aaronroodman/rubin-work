@@ -2,7 +2,7 @@
 
 > **The Zernike-space pipeline described below is superseded, and its sign was wrong.**
 > The open-loop state for every science and acquisition visit is now built into the
-> value-added database by `value_added/code/build_optical_state.py`, with the calculation in
+> value-added database by `rubinwork/products/value_added/builders/build_optical_state.py`, with the calculation in
 > `aos/code/open_loop.py`. This topic is being repurposed for **analysis of that stored
 > OLR** — see [`scheme_comparison/scheme_comparison.md`](scheme_comparison/scheme_comparison.md). `olr_pipeline/code/olr.py` is now
 > a guard that raises with the replacement named; the original is archived at

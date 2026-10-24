@@ -381,6 +381,7 @@ def test_block_key_is_the_comparison_key():
 
 # ---- the shim at the old path ---------------------------------------------------
 
+@pytest.mark.skipif(not ((REPO_ROOT / "aos/code/coadd/run_coadd_blocks_miw.py").exists()), reason='shim removed')
 def test_the_old_path_shim_gives_the_same_module():
     """aos/moresnippets.ipynb and two study scripts import the builder by bare name."""
     sys.path.insert(0, str(REPO_ROOT / "aos" / "code" / "coadd"))

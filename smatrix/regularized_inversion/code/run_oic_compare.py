@@ -41,7 +41,7 @@ The retention columns are what make the scan a validation rather than a feasibil
 check: the rigid-body degrees of freedom sit far inside their ranges, so a penalty that
 suppresses them twentyfold does not move `max_j |d_j| / r_j` at all.
 
-The solvers themselves live in `smatrix/code/regularized_inversion.py`, shared with the
+The solvers themselves live in `rubinwork.smatrix.regularized_inversion`, shared with the
 `aos` bounce study; this script only exercises and reports on them.
 
 Key arguments: `--kappa` and `--power` set the RBR penalty shape (defaults 4.0 and 3, the

@@ -10,7 +10,7 @@ started: 2026-10-03
 
 # `scheme_comparison`: the three correction schemes on the stored OLR
 
-> **Write-up:** [`scheme_comparison.md`](scheme_comparison.md) · **Data:** the value-added `optical_state` columns, built by `value_added/code/build_optical_state.py`
+> **Write-up:** [`scheme_comparison.md`](scheme_comparison.md) · **Data:** the value-added `optical_state` columns, built by `rubinwork/products/value_added/builders/build_optical_state.py`
 
 ## Question
 

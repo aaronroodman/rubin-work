@@ -429,7 +429,7 @@ def plot_night_cross_scatter(deltas_by_night, passing_kj, title_root='',
 # approaches and passes it, so the recovered state stays inside the
 # allowed range at a small cost in corrected image quality.
 #
-# The solver lives in smatrix/code/regularized_inversion.py, shared code beside
+# The solver lives in rubinwork/smatrix/regularized_inversion.py, shared code beside
 # the `regularized_inversion` study that derives the method and measures its
 # FWHM cost; this module only applies it to the bounce paired Δ.
 #

@@ -15,7 +15,7 @@
 #
 # Config: config.yaml (day_obs range, `nights`, ConsDB/EFD, OFC, selection).
 # Both tables share code/telemetry_pipeline.collect_telemetry, which reuses
-# rubinwork/common (DOF/LUT, ConsDB transformed EFD, thermal/wind) + aos/code/aos_state.py
+# rubinwork/common (DOF/LUT, ConsDB transformed EFD, thermal/wind) + rubinwork/aos_state.py
 # (v-modes, per-corner Zernikes).
 # ----------------------------------------------------------------------
 import os
@@ -47,7 +47,7 @@ rule build_table:
         lib_pipe  = "code/telemetry_pipeline.py",
         lib_dof   = "../../rubinwork/common/dof_telemetry.py",
         lib_cdb   = "../../rubinwork/common/consdb_efd.py",
-        lib_state = "../../aos/code/aos_state.py",
+        lib_state = "../../rubinwork/aos_state.py",
         lib_tele  = "../../rubinwork/common/ess_telemetry.py",
     params:
         dmin = CFG["day_obs_min"],
@@ -105,7 +105,7 @@ rule night_table:
         lib_pipe  = "code/telemetry_pipeline.py",
         lib_dof   = "../../rubinwork/common/dof_telemetry.py",
         lib_cdb   = "../../rubinwork/common/consdb_efd.py",
-        lib_state = "../../aos/code/aos_state.py",
+        lib_state = "../../rubinwork/aos_state.py",
         lib_tele  = "../../rubinwork/common/ess_telemetry.py",
     params:
         instrument = CFG["instrument"],

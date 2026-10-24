@@ -616,7 +616,7 @@ def section_r2grads(sci, features, model='huber', verbose=True):
     if not cols:
         if verbose:
             print('  no quadratic radial columns in the table; run '
-                  'value_added/code/build_m1m3_thermal_r2.py, then rebuild the cached table')
+                  'rubinwork/products/value_added/builders/build_m1m3_thermal_r2.py, then rebuild the cached table')
         return out
     for c in cols:
         out['coverage'][c] = 100.0 * float(sci[c].notna().mean())
