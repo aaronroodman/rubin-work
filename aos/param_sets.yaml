@@ -78,6 +78,30 @@ fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x:
   day_obs_min: 20260315
   day_obs_max: 20260531
 
+danish_1_3:
+  dir_name: danish_1_3
+  description: Apr 2025-Jun 2026, /repo/main, Danish 1.3 blitz bin x2 UNPAIRED, v3.14 pupil model; T614
+    and sensitivity blocks (Josh Meyers); default Batoid intrinsics from the dataset type
+  butler_repo: /repo/main
+  fam_programs:
+  - T614
+  - sensitivity
+  fam_collections:
+  - u/jmeyers3/t614_fam_unpaired_v3.14
+  - u/jmeyers3/sensitivity_fam_unpaired_v3.14
+  wfs_collections:
+    blitz_unpaired:
+      collections:
+      - LSSTCam/runs/aos/cwfs/danish_1_3_0/wep_blitz_rso1071/dv_blitz_rso1071/bin_x2/unpaired/donutBlitz
+      - u/jmeyers3/t614_corner_unpaired_v3.14
+      - u/jmeyers3/sensitivity_corner_unpaired_v3.14
+      - u/jmeyers3/bounce_corner_unpaired_v3.14
+      reader: blitz_corner
+      dataset_type: donutBlitzCornerResults
+  collection_phrase: aos_fam_danish_1_3_blitz_unpaired_v3p14
+  day_obs_min: 20250417
+  day_obs_max: 20260619
+
 danish_1_3_test:
   dir_name: danish_1_3_test
   description: Mar-Jun 2026, /repo/main, Danish 1.3 blitz wep 16.6.0 danish 1.2.1 bin x2 UNPAIRED; default

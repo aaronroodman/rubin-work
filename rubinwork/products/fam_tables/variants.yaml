@@ -212,3 +212,31 @@ variants:
     collection_phrase: aos_fam_danish_1_3_blitz_unpaired_v1000
     day_obs_min: 20260315
     day_obs_max: 20260619
+
+  # ---------------------------------------------------------------------------
+  # Danish 1.3 blitz UNPAIRED FAM on the v3.14 pupil model, the model the science CWFS
+  # run (RSO-1071) used: Josh Meyers' production, T614 and the sensitivity blocks in one
+  # variant (Aaron, 2026-10-24, "one data set even though the versions were slightly
+  # different").  No FAM bounce run exists: Josh held it back over corner-bounce WCS
+  # failures.  Coverage from the Butler 2026-10-24 (counts): t614 966 visits over 15
+  # nights 20260315-20260619, sensitivity 912 over 31 nights 20250417-20260522.
+  # mask_model RubinObsc_v3.14_r_rtpp0_azp45_pp0d0.yaml, danish 1.3.0, batoid 0.9.0.
+  # The paired corner member is cwfs_tables d13-blitz_unpaired.
+  # ---------------------------------------------------------------------------
+  danish_1_3:
+    param_set: danish_1_3
+    short_code: d13
+    builder: blitz
+    description: >-
+      Apr 2025-Jun 2026, /repo/main, Danish 1.3 blitz bin x2 UNPAIRED, v3.14 pupil model;
+      T614 and sensitivity blocks (Josh Meyers); default Batoid intrinsics from the dataset
+      type
+    butler_repo: /repo/main
+    coord_sys: OCS
+    fam_programs: [T614, sensitivity]
+    fam_collections:
+      - u/jmeyers3/t614_fam_unpaired_v3.14
+      - u/jmeyers3/sensitivity_fam_unpaired_v3.14
+    collection_phrase: aos_fam_danish_1_3_blitz_unpaired_v3p14
+    day_obs_min: 20250417
+    day_obs_max: 20260619

@@ -22,7 +22,8 @@ from rubinwork.products.cwfs_tables import write_manifest  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
-EXPECTED_VARIANTS = {"d12-refitWcs", "d12-paired_3mm", "d12-ai_donut", "d12-tarts"}
+EXPECTED_VARIANTS = {"d12-refitWcs", "d12-paired_3mm", "d12-ai_donut", "d12-tarts",
+                     "d13-blitz_unpaired"}
 """The registered variants: the four that pair with the ``danish_1_2`` FAM build.
 
 ``d12-refitWcs_2025`` was folded into ``d12-refitWcs`` as a date-keyed collection list in
@@ -80,7 +81,7 @@ def test_variant_names_follow_the_rules():
     """Lowercase-ish, at most 24 characters, and prefixed with the upstream short code."""
     for name in cw_reader.variants(registered_only=False):
         assert len(name) <= 24, f"{name} is {len(name)} characters"
-        assert name.startswith(("d12-", "d10-")), name
+        assert name.startswith(("d12-", "d13-", "d10-")), name
         assert " " not in name
 
 

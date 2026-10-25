@@ -186,6 +186,80 @@ def get_unpaired_zernikes(butler, day_obs, seq_num, coord, defocused_only=False,
     return agg, dict(band=meta.get('band', ''), nollIndices=noll)
 
 
+BLITZ_CORNER_COLUMNS = ('det_name', 'band', 'defocal_offsets', 'group_fit_success',
+                        'thx_ocs', 'thy_ocs', 'thx_ccs', 'thy_ccs',
+                        'zk_deviation_ocs', 'zk_intrinsic_ocs')
+"""The ``donutBlitzCornerResults`` columns read; the per-donut images are left out."""
+
+
+def get_blitz_corner_zernikes(butler, day_obs, seq_num, coord,
+                              dataset_type='donutBlitzCornerResults'):
+    """Danish 1.3 blitz unpaired corner reader: one ``donutBlitzCornerResults`` per visit.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        Butler whose default collections hold the blitz corner runs; several are
+        searched in order, so a science reprocessing can come before a smaller run.
+    day_obs, seq_num : `int`
+        The in-focus exposure.
+    coord : {'OCS', 'CCS'}
+        Frame of the Zernikes and field angles written.
+    dataset_type : `str`, optional
+        Blitz corner dataset type.
+
+    Returns
+    -------
+    table : `astropy.table.Table` or `None`
+        One row per donut whose group fit succeeded: ``detector``, ``zk_<coord>``
+        (deviation plus intrinsic) and ``zk_intrinsic_<coord>`` in µm of wavefront, on
+        the table's ``noll_indices``; ``thx/thy_<coord>`` and ``thx/thy_CCS`` in rad; and
+        ``wfs_offset``, -1 intra-focal and 0 extra-focal, from the sign of the varying
+        ``defocal_offsets`` element. `None` if the visit has no table or no good donut.
+    meta : `dict` or `None`
+        ``band`` and ``nollIndices``.
+
+    Notes
+    -----
+    Donuts whose group fit failed carry deviations of hundreds of µm and are dropped.
+    The Zernike vectors are 0-indexed on Noll, so ``noll_indices`` selects their columns
+    directly, as in `rubinwork.products.fam_tables.builders.blitz_reader`.
+    """
+    from astropy.table import Table
+
+    try:
+        tab = butler.get(dataset_type, instrument='LSSTCam',
+                         visit=int(day_obs) * 100000 + int(seq_num),
+                         parameters={'columns': list(BLITZ_CORNER_COLUMNS),
+                                     'strip_astropy_meta_yaml': False})
+    except Exception:
+        return None, None
+    meta = dict(tab.meta)
+    tab = tab[np.asarray(tab['group_fit_success'], bool)]
+    if len(tab) == 0:
+        return None, None
+    noll = [int(j) for j in meta['noll_indices']]
+    c = coord.lower()
+
+    def bare(col):
+        return np.asarray(getattr(tab[col], 'value', tab[col]), float)
+
+    dev, intr = bare(f'zk_deviation_{c}')[:, noll], bare(f'zk_intrinsic_{c}')[:, noll]
+    off = bare('defocal_offsets')
+    k = int(np.argmax(np.ptp(off, axis=0))) if len(off) > 1 else 0
+    if len(off) > 1 and np.ptp(off[:, k]) == 0:
+        k = 0                       # one side only: the corner product varies element 0
+    out = Table()
+    out['detector'] = np.asarray(tab['det_name']).astype(str)
+    out[f'zk_{coord}'] = dev + intr
+    out[f'zk_intrinsic_{coord}'] = intr
+    out[f'thx_{coord}'], out[f'thy_{coord}'] = bare(f'thx_{c}'), bare(f'thy_{c}')
+    if coord != 'CCS':
+        out['thx_CCS'], out['thy_CCS'] = bare('thx_ccs'), bare('thy_ccs')
+    out['wfs_offset'] = np.where(off[:, k] < 0, -1, 0)
+    return out, dict(band=str(tab['band'][0]), nollIndices=noll)
+
+
 def _fam_noll(tables, prefix):
     """FAM Zernike (Noll) order taken from the fits.parquet field-mean column
     names {prefix}_z{j}_c1 -- the target order the CWFS zk are remapped onto so
@@ -338,9 +412,15 @@ def main():
     # seconds and the walk is per visit.
     coll_ranges = parse_collection_ranges(wfs_coll)
     butlers = {}
+    # The blitz corner variant lists several undated collections, searched in order.
+    blitz_colls = ([c for _, _, c in coll_ranges] if reader == 'blitz_corner' else None)
 
     def butler_for(day_obs):
         """The Butler whose collection covers `day_obs`, or None if none does."""
+        if blitz_colls:
+            if 'blitz' not in butlers:
+                butlers['blitz'] = Butler(repo, collections=blitz_colls)
+            return butlers['blitz']
         coll = collection_for_day_obs(coll_ranges, day_obs)
         if coll is None:
             return None
@@ -376,7 +456,10 @@ def main():
         butler = butler_for(d)
         if butler is None:          # no reprocessing covers this night
             n_no_coll += 1; n_miss += 1; continue
-        if reader == 'unpaired':                            # TARTS etc.: singular-position AOS table
+        if reader == 'blitz_corner':                        # Danish 1.3 blitz unpaired
+            tbl, meta = get_blitz_corner_zernikes(butler, d, infocus, coord,
+                                                  dataset_type=dataset_type)
+        elif reader == 'unpaired':                          # TARTS etc.: singular-position AOS table
             offs = combine if combine else [seq_offset]     # concat intra+extra to cover all corners
             parts, meta = [], None
             for off in offs:
