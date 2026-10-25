@@ -1,6 +1,6 @@
 # Phase 6 check: the CCD-height sign in the intrinsic Zernikes
 
-> **Status:** checked; doc fix proposed, awaiting Aaron's sign-off · **Last updated:** 2026-10-24 · **Kind:** working state
+> **Status:** checked against metrology, batoid and FAM data; doc fix proposed, awaiting Aaron's sign-off · **Last updated:** 2026-10-24 · **Kind:** working state
 
 Runnable check: [`phase6_ccd_height_sign/ccd_height_sign_v1.ipynb`](phase6_ccd_height_sign/ccd_height_sign_v1.ipynb).
 
@@ -93,6 +93,18 @@ Checked against the fact that on the corner sensors SW1 is high (intra-focal) an
 - The batoid_rubin map carries the metrology sign once the ±1.5 mm piston is removed: slope
   +0.949 (dimensionless, batoid over metrology) over 17,391 points (count), RMS difference
   0.95 µm, against 8.37 µm if the sign is flipped.
+- The FAM wavefronts agree without batoid. In `fam_tables` `danish_1_2` build `20261014`
+  (nights 20251109–20251112), measured Z4 minus the per-visit k≤6 double-Zernike fit,
+  against h at each donut: Pearson r = +0.744, Spearman rho = +0.737 (dimensionless;
+  n = 258,098 donuts, count). The Huber slope is +13.8 nm of Z4 per µm of height. With the
+  metrology X and Y swapped as a control, r = +0.102. A positive Z4 change is extra-ward, so
+  positive h is low here too. The batoid intrinsic Z4 gives +15.8 nm/µm at the same donuts,
+  so it slightly overcorrects the measured term.
+- Andy Rasmussen's `fp_metro_arasmus_210211` says the "focal plane image height" runs
+  opposite to Z_CCS, and LCA-13381 puts +Z_CCS away from L3. So his image height is
+  positive toward L3 (high, intra). The FITS columns are not that image height: they are
+  `Z_CCS_MEASURED`/`Z_CCS_MODEL` and follow Z_CCS, with SW1 at −1.5 mm. Image height =
+  −Z_CCS.
 - So a high point has h < 0 and should add negative Z4. `Z4_height = +15 µm/mm × h` does
   that. **`ts_intrinsic_wavefront` has the right sign**, but with "positive is low", not
   "positive is high". If positive meant high, its sign would be wrong.
