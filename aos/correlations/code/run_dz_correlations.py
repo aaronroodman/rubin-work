@@ -57,7 +57,7 @@ try:
 except Exception:                                         # pragma: no cover
     FOCAL_NAMES, PUPIL_NAMES = {}, {}
 
-DEFAULT = dict(dz_prefix='z1toz6', max_coeff_um=2.0, corr_threshold=0.6,
+DEFAULT = dict(dz_prefix='z1toz6', max_coeff_um=None, corr_threshold=0.6,
                top_n=20, pairwise_scan=False,
                sig_threshold=5.0,       # Fisher-z significance (σ) gate for groups
                group_min_r=0.5,         # |r| floor to seed a conjugate group

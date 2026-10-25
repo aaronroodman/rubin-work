@@ -49,7 +49,7 @@ DEFAULT_THERMAL_VARS = [
 ]
 
 DEFAULT = dict(
-    dz_prefix='z1toz6', max_coeff_um=2.0,
+    dz_prefix='z1toz6', max_coeff_um=None,
     thermal_vars=list(DEFAULT_THERMAL_VARS),
     scatter_ncols=7,        # pupil-j per page (DZ) / v-modes per row
     annot_r=0.4)            # |r| above which a heatmap cell is annotated

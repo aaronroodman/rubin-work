@@ -51,7 +51,7 @@ DEFAULT_THERMAL_VARS = [
     "x_gradient", "y_gradient", "z_gradient", "radial_gradient",
     "tma_truss_temp_pxpy", "tma_truss_temp_mxmy",
 ]
-DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=2.0,
+DEFAULT = dict(dz_prefix="z1toz6", max_coeff_um=None,
                thermal_vars=list(DEFAULT_THERMAL_VARS), alpha=0.05,
                corner_block=6,       # v_i-v_j corner: corner_block^2 panels/page
                top_pairs=16,         # strongest |rho| v-mode pairs as scatters

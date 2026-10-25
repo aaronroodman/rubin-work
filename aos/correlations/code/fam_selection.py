@@ -37,8 +37,8 @@ def fam_quality_selection(df, prefix='z1toz6', max_coeff_um=None,
     Applies up to three cuts, in this order:
 
     1. **Fit failure** — always applied. Any visit with a true value in *any*
-       ``*bad_fit`` column is dropped. These are usually visits with too few donuts to
-       constrain the k=1..6 focal-plane terms.
+       ``*bad_fit`` column is dropped: more than 5 coefficients with |DZ| > 2.0 µm,
+       or too few donuts.
     2. **Maximum DZ coefficient** — optional. Drops a visit if any of its DZ
        coefficients exceeds `max_coeff_um` in absolute value.
     3. **Maximum median donut blur** — optional. Drops a visit whose
