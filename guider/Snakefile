@@ -28,8 +28,11 @@
 #   guider_rtvplots_<dayObs>.txt        rtvplot manifest
 #
 # The product's own outputs (the three per-night tables and the per-exposure files) are
-# NOT written here; they are read through the resolver below, old tree first and then the
-# catalog, the same way aos/Snakefile reads its three moved products.
+# NOT written here; they are read through the resolver below, catalog first.
+#
+# The adjacent-CCD PSF moments are the science half of the guider_vs_ccd_moments study,
+# so `psfmoments` writes into that study's output (PSF_ROOT). The QA PDF, movies and
+# rtvplots stay under output/night_<dayObs>/; no study owns them yet.
 # ----------------------------------------------------------------------
 import os
 import yaml
@@ -53,6 +56,7 @@ SCIENCE_REPO = CFG.get("science_repo", "/repo/main")
 LIMIT = int(config.get("limit", 0))   # CLI: --config limit=N (smoke test)
 
 CODE = "code"
+PSF_ROOT = "guider_vs_ccd_moments/output"   # study output@, night_<dayObs>/ beneath
 
 
 MOVIE_STRIDE = int(config.get("movie_stride", 50))  # movie for every Nth visit (0=off)
@@ -60,41 +64,40 @@ RESIDUAL_SCALE = float(TRACKER.get("residual_scale", 5.0))  # trend outlier band
 
 
 # ======================================================================
-# ---- the product-data resolver: old tree first, then the catalog -----
+# ---- the product-data resolver: catalog first, then the old tree -----
 # ======================================================================
-# Phase 3a moved the guider_moments build rules out of this Snakefile. The study rules
-# below read that product, and until phase 5 they read it from the OLD tree
-# (output/night_<dayObs>/), which is where every existing night was built. A night
-# rebuilt into the new data root would otherwise be invisible here.
+# Each night's guider_moments directory resolves in this order:
 #
-# So each night's product directory resolves in this order:
-#
-#   1. the old-tree path, if its required files are all there -- unchanged behaviour;
-#   2. the catalog's partition for that night;
-#   3. the old-tree path again, so a rule's own gate reports a missing file exactly as it
-#      did before the resolver existed.
-_RESOLVED = {}        # dayObs -> "old tree ..." | "catalog ..." | "UNRESOLVED ..."
+#   1. the catalog partition of the current schema variant (v6), then of v4, which holds
+#      the nights built before the reorganization;
+#   2. the old-tree path output/night_<dayObs>/, if its required files are there;
+#   3. the old-tree path again, so a rule's own gate reports a missing file.
+_RESOLVED = {}        # dayObs -> "catalog ..." | "old tree ..." | "UNRESOLVED ..."
 
 MOMENTS_REQUIRED = ("guider_moments_{d}.parquet",)
 """What makes a night a usable build, from the study rules' point of view."""
 
+MOMENTS_VARIANTS = (_guider_moments.PRODUCT_VARIANT, "v4")
+"""Variants searched for a night, newest schema first."""
+
 
 def momentsDir(dayObs):
-    """The guider_moments directory for one night: old tree, else the catalog."""
+    """The guider_moments directory for one night: the catalog, else the old tree."""
     d = int(dayObs)
     required = [f.format(d=d) for f in MOMENTS_REQUIRED]
+    for variant in MOMENTS_VARIANTS:
+        try:
+            cat = str(_catalog.path(_guider_moments.PRODUCT, variant,
+                                    f"{_guider_moments.NIGHTS_DIR}/{d}"))
+        except Exception:
+            continue
+        if all(os.path.exists(f"{cat}/{f}") for f in required):
+            _RESOLVED[d] = f"catalog {variant}/nights/{d} -> {cat}"
+            return cat
     old = f"output/night_{d}"
     if all(os.path.exists(f"{old}/{f}") for f in required):
         _RESOLVED[d] = f"old tree {old}"
         return old
-    try:
-        cat = str(_catalog.path(_guider_moments.PRODUCT, _guider_moments.PRODUCT_VARIANT,
-                                f"{_guider_moments.NIGHTS_DIR}/{d}"))
-    except Exception:
-        cat = None
-    if cat and all(os.path.exists(f"{cat}/{f}") for f in required):
-        _RESOLVED[d] = f"catalog {_guider_moments.PRODUCT_VARIANT}/nights/{d} -> {cat}"
-        return cat
     _RESOLVED[d] = f"UNRESOLVED, falling back to the old tree {old}"
     return old
 
@@ -145,7 +148,7 @@ wildcard_constraints:
 rule all:
     input:
         [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
-        + [f"output/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS]
+        + [f"{PSF_ROOT}/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS]
         + [f"output/night_{d}/guider_movies_{d}.txt" for d in NIGHTS]
         + [f"output/night_{d}/guider_rtvplots_{d}.txt" for d in NIGHTS],
 
@@ -153,7 +156,7 @@ rule all:
 # ---- adjacent-CCD PSF star moments (science side; independent of guider) ----
 rule psfmoments:
     output:
-        "output/night_{dayObs}/guider_psfmoments_{dayObs}.parquet",
+        PSF_ROOT + "/night_{dayObs}/guider_psfmoments_{dayObs}.parquet",
     resources:
         mem_mb=6000,
     log:
@@ -161,7 +164,7 @@ rule psfmoments:
     shell:
         f"""
         python {CODE}/extract_adjacent_psf_moments.py --day-obs {{wildcards.dayObs}} \
-            --out output/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} \
+            --out {PSF_ROOT}/night_{{wildcards.dayObs}} --repo {SCIENCE_REPO} \
             --image-types {IMAGE_TYPES} --limit {LIMIT} > {{log}} 2>&1
         """
 

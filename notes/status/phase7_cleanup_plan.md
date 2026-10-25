@@ -17,7 +17,7 @@ removing these trees does not touch them.
 | `T/aos/output` | 72.7 | 1073 | `fam_processing` 56.6, `archive` 9.9, `miw` 3.8, `coadd` 0.8, `wfs_fam_compare` 0.7, `dzfit` 0.7 | yes, below | **no** |
 | `T/aos/output-archive-2026-06-11` | 35.9 | 2233 | old FAM table formats | only `fam_tables/qa/compare_to_archive.py`, by argument | yes |
 | `T/blocks/output` | 2.5 | 94 | `ccdvisits_20251026-20260513.pq` 1.1 | no | yes |
-| `T/guider/output` | 4.5 | 23354 | `night_*` (per-night moments), `old` 0.7 | yes, below | **no** |
+| `T/guider/output` | 4.5 | 23354 | `night_*` (moments copied to the product 2026-10-24; QA plots, movies), `old` 0.7 | QA rules only, below | **no** |
 | `T/optatmo/output` | 2.2 | 5242 | `runs` 2.1 | yes, below | **no** |
 | `T/value_added/output` | 6.0 | 57 | `aos_efd.duckdb` 2.8, `shards` 2.7, `aos_efd_archive_20260916_pre_vmode_rebuild.duckdb` 0.5 | fallback only | yes |
 
@@ -54,12 +54,20 @@ The resolvers fall back to the catalog, so most reads would survive removal, but
 `wfs_corner_compare` read would not. More important: while the tree exists, these readers
 **prefer it over the catalog**, so a study can silently use the old build.
 
-**`guider/output`: the only copy of the per-night moments.** `guider/Snakefile:82`
-`momentsDir()` reads `output/night_<d>` first, then the `guider_moments` catalog build,
-and the rules write per-night output there. The catalog has **no `guider_moments` build** (variant `v6`)
-(`products/` holds `bounce_tables`, `coadds`, `cwfs_tables`, `dof_lut`, `fam_tables`,
-`miw`, `value_added`), so this tree is not a copy of anything. The
-`guider_ellipticity_ensemble` notebook (active) globs `../../output/night_*`.
+**`guider/output`: the moments are now a product; the rest is study output.** On
+2026-10-24 the nine nights (count) 20260512-20260712 were copied, md5-checked, to
+`products/guider_moments/v4/nights/<d>/` and registered there. They are schema v4, not v6,
+so they are a variant of their own; the builders write only v6. `guider/Snakefile`
+`momentsDir()` now reads the catalog first (v6, then v4), and `psfmoments` writes to the
+`guider_vs_ccd_moments` study's `output@`, where the nine nights' `guider_psfmoments`
+files were copied too. The `guider_ellipticity_ensemble` notebook reads the product
+through the reader and the PSF moments from that study.
+
+Still in this tree: the per-night QA PDFs, movies and rtvplots, which the Snakefile still
+writes under `output/night_<d>/` because no study owns them; and the top-level saturation,
+streak and `atmo_sim` files of the parked `guide_star_saturation`, `bias_streak` and
+`guider_atmo_sim` studies, plus `old/` (0.7 GB) and `review_748/`. None is read by tracked
+code except through those studies' own scripts, run by hand.
 
 **`optatmo/output`: the live campaign root.** `optatmo/code/campaign.py:30`
 `RUNS_ROOT = 'output/runs'`, relative to `optatmo/`; `fit_optatmo.py` and
@@ -77,9 +85,8 @@ if none exists. `compare_to_archive.py` takes the archive path as an argument.
    default `build_fam_dz.py` to `--prefer catalog`, root `miw_corner.decomp_path` at the
    catalog; move the study rules' outputs to the studies' `output@`; settle
    `wfs_corner_compare`. Then rerun `/review` and a `snakemake -n` from `aos/`.
-2. `guider/output`: register the per-night moments as a `guider_moments` build (the
-   phase 3 product exists in code, with no build on disk), point the Snakefile writes
-   at the study outputs, and repoint the notebook glob.
+2. `guider/output`: done for the moments and PSF moments (2026-10-24). Left: give the QA
+   PDFs, movies and rtvplots an owner (a study `output@`) and repoint those three rules.
 3. `optatmo/output`: move `RUNS_ROOT` to the `psf_vs_cwfs` study's `output@`, or leave
    `optatmo/output` as that study's data and drop it from this phase.
 
@@ -144,8 +151,8 @@ rm -rf $T/aos/output $T/guider/output $T/optatmo/output
 
 What breaks if run today: `build_fam_dz.py` with its default `--prefer old`; the
 `aos/Snakefile` and `guider/Snakefile` write rules; `extract_cwfs_sigma.py` (and
-`build_fam_manifest.py` as documented); the optatmo campaigns; the guider ensemble notebook; and the
-guider per-night moments are lost except in the backup.
+`build_fam_manifest.py` as documented); the optatmo campaigns; and
+the guider QA, movie and rtvplot rules, until they get a study output.
 
 The laptop's synced output copies (about 60 GB) are not on s3df; remove them on the laptop
 when the s3df trees are settled.

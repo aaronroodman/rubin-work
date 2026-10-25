@@ -22,7 +22,9 @@ and the combine step concatenates a night's per-exposure files into
 ``v6``, taken from `guiderMoments.SCHEMA_VERSION`, and nights are **partitions** under
 ``products/guider_moments/v6/nights/<YYYYMMDD>/``, each with its own ``manifest.json``.
 There is no dated build and no single ``current``: a night is built once and appended, and
-an incompatible schema change starts ``v7``.
+an incompatible schema change starts ``v7``. ``v4`` holds the nights built before the
+reorganization (20260512-20260712), copied from the old tree rather than rebuilt; the
+builders write only ``v6``.
 
 Import the reader -- no ``sys.path`` work::
 

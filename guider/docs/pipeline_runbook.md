@@ -1,6 +1,6 @@
 # Guider pipeline runbook
 
-> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (runbook)
+> **Status:** current · **Last updated:** 2026-10-24 · **Kind:** reference (runbook)
 
 Commands for the guider moments pipeline (Snakemake: `guider/Snakefile`,
 `guider/snake_config.yaml`, launcher `guider/run_snake.sh`) and the per-visit review
@@ -21,9 +21,14 @@ Before running, sync both `rubin-work` and the `summit_utils` clone on branch
 ```
 
 `--day-obs` takes one day_obs or a comma list. It discovers all science guider
-exposures and builds `output/night_<dayObs>/`. The per-night targets are files:
-`output/night_<dayObs>/guider_{moments,psfmoments}_<dayObs>.parquet`,
-`guider_plots_<dayObs>.pdf`, `guider_{movies,rtvplots}_<dayObs>.txt`. `--mode batch`
+exposures and builds the study outputs for that night. The moment tables themselves are
+the `guider_moments` product, built per night by
+`snakemake -s ../rubinwork/products/guider_moments/Snakefile --config night=<dayObs>`
+into `products/guider_moments/v6/nights/<dayObs>/`. This Snakefile reads them through the
+catalog (v6, then the v4 nights copied from the old tree). The per-night targets are files:
+`guider_vs_ccd_moments/output/night_<dayObs>/guider_psfmoments_<dayObs>.parquet`, and
+`output/night_<dayObs>/guider_plots_<dayObs>.pdf` and
+`output/night_<dayObs>/guider_{movies,rtvplots}_<dayObs>.txt`. `--mode batch`
 runs only from an S3DF node (`slacrd`).
 
 ## Single visit

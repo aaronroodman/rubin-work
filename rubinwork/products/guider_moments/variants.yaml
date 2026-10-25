@@ -54,3 +54,34 @@ variants:
     moments:
       ap_nsigma: 4.0                # dimensionless, aperture in units of sigma
       cen_niter: 3                  # count, dimensionless
+
+  # The nights built before the reorganization, 20260512-20260712, at schema v4, the
+  # pipeline version of 2026-08-20 (a66dd60, 3902710).  Copied from the old tree
+  # guider/output/night_<d>/ on 2026-10-24, not rebuilt.  v4 lacks v5's tracker flux and
+  # SNR columns and v6's centroid variance split, and its moments and metrics tables carry
+  # per-sensor columns for R40_SG0 and R40_SG1 that v6 does not.  A rebuild at v6 needs
+  # one guider_moments batch run per night.  residual_scale is absent: it was added after
+  # v4 and does not change the moments.
+  v4:
+    schema_version: 4
+    description: >-
+      Schema v4: adds hsm_* (HSM-weighted coadd second and third moments) for the matched
+      guider-against-CCD comparison.  The pre-reorganization nights, copied, not rebuilt.
+    butler:
+      repo: main
+      collections:
+        - LSSTCam/raw/guider
+        - LSSTCam/raw/all
+      view: dvcs
+      image_types:
+        - science
+    guider_hz: 5.0          # guider readout rate, Hz
+    tracker:
+      min_snr: 10.0                 # dimensionless
+      max_ellipticity: 0.7          # dimensionless
+      edge_margin: 3                # pix
+      min_finite_fraction: 0.5      # dimensionless; <1 enables edge-star recovery
+      recover_edge_stars: true
+    moments:
+      ap_nsigma: 4.0                # dimensionless, aperture in units of sigma
+      cen_niter: 3                  # count, dimensionless

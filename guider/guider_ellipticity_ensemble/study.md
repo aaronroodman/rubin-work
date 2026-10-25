@@ -4,13 +4,13 @@ topic: guider
 status: active
 question: "What do the guide-star moments show across many exposures: how are static (optics) and dynamic (image-motion) ellipticity split, and how do they correlate between guider sensors?"
 answer: "Dynamic ellipticity is strongly correlated between the two guider sensors of one corner raft and nearly uncorrelated across corners, so turbulence decorrelates on raft scales; it is not tracking error or wind shake."
-uses: {}  # guider moments from the old guider/output tree; guider_moments product not yet pinned
+uses: {}  # guider_moments, every night in v6 then v4 (incremental, no single build to pin)
 started: 2026-07-16
 ---
 
 # `guider_ellipticity_ensemble`: guide-star ellipticity and centroid motion over many exposures
 
-> **Notebooks:** `notebooks/guider_moments_ensemble.ipynb` (ensemble), `notebooks/guider_star_ellipticity.ipynb` (per exposure) · **Derivation:** [`moment_weighting_analysis.md`](moment_weighting_analysis.md) · **Input:** guider moments per night, old tree `guider/output/night_*/`
+> **Notebooks:** `notebooks/guider_moments_ensemble.ipynb` (ensemble), `notebooks/guider_star_ellipticity.ipynb` (per exposure) · **Derivation:** [`moment_weighting_analysis.md`](moment_weighting_analysis.md) · **Input:** the `guider_moments` product, every night (v6, then v4); the adjacent-CCD moments from `../guider_vs_ccd_moments/output/`
 
 ## Question
 

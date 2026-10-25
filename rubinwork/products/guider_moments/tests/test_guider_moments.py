@@ -385,7 +385,13 @@ def test_guider_snakefile_no_longer_has_the_product_rules():
                         "plots"}
 
 
-def test_guider_snakefile_resolves_the_product_old_tree_then_catalog():
+def test_guider_snakefile_resolves_the_catalog_before_the_old_tree():
     text = (REPO_ROOT / "guider" / "Snakefile").read_text()
-    assert "def momentsDir" in text
-    assert "_catalog.path" in text
+    body = text[text.index("def momentsDir"):text.index("def momentsTable")]
+    assert body.index("_catalog.path") < body.index('old = f"output/night_')
+
+
+def test_v4_holds_the_pre_reorganization_nights():
+    """The copied nights keep their own schema; the builders still write only v6."""
+    assert gm_reader.schema_version("v4") == 4
+    assert gm_reader.PRODUCT_VARIANT == "v6"

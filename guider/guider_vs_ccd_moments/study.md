@@ -4,7 +4,7 @@ topic: guider
 status: active
 question: "Do guide-star second moments, measured with the same galsim-HSM estimator, match the PSF second moments on the adjacent science CCD?"
 answer: ''
-uses: {}  # guider moments per night and guider_psfmoments from the old guider/output tree; guider_moments product not yet pinned
+uses: {}  # guider_moments v4 nights (incremental, no single build to pin); guider_psfmoments in this study's output/night_<d>/
 started: 2026-08-20
 ---
 
