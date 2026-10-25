@@ -21,8 +21,8 @@ Usage:
   python closed_loop/code/run_closed_loop.py --case loop50
   python closed_loop/code/run_closed_loop.py --case loop --gain 0.5 --latency nplusone
 
-Writes closed_loop_<case>_<band><suffix>.pdf into the directory given by --out-dir
-(the pipeline passes output/closed_loop/<P>_<M>/), where the
+Writes closed_loop_<case>_<band><suffix>.pdf into --out-dir, by default a dated run
+directory of the aos/closed_loop study, where the
 suffix records the intrinsic, order, latency and gain, so runs with different control
 settings sit side by side.
 
@@ -45,9 +45,10 @@ from rubinwork.common.psf_render import (   # noqa: E402
     LAM_NM, build_psf_tools, render_measure)
 from rubinwork.aos_state import DOF22  # noqa: E402  canonical 22-DOF index list
 from psf_maps_lib import (   # noqa: E402
-    FP_RADIUS, sample_science_stars, measure_zk,
+    FP_RADIUS, MIMIC_OFFSETS, sample_science_stars, miw_zernikes, measure_zk,
     psf_page, build_svd, eval_dz_field,
     corner_matrix_at, _design_intrinsic_at)
+from rubinwork.common import study_run  # noqa: E402
 
 
 
@@ -162,11 +163,32 @@ def run_closed_loop(case, base, args, svd, noll, stars, atm, aper, lam_nm, fwhm_
     for st in sorted(sample):
         psf_page(stars, sample[st], f'Closed loop step {st} — {tag} ({args.band})', fwhm_atm, pdf)
 
+def resolve_builds(miw_variant, miw_build='current'):
+    """The ``fam_tables`` and ``miw`` build directories of one MIW product variant.
+
+    Returns
+    -------
+    fam_dir, miw_dir : `pathlib.Path`
+        The FAM tables the MIW was built from (its manifest's ``inputs``), and the MIW
+        build, which holds the split maps, the refit ``fits.parquet`` and the per-donut
+        ``zk_intrinsic.parquet``.
+    """
+    from rubinwork.products import catalog
+    miw_dir = catalog.path('miw', miw_variant, miw_build)
+    ref = catalog.manifest('miw', miw_variant, miw_dir.name)['inputs']['fam_tables']
+    fam_variant, _, fam_build = ref.partition('@')
+    return catalog.path('fam_tables', fam_variant, fam_build or 'current'), miw_dir
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--ps', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
-    ap.add_argument('--mi', default='pathA_50_34_i_5rot',
+    ap.add_argument('--miw-variant', default='d12-A_50_34_i_5rot',
+                    help='miw product variant; its FAM tables come from its manifest')
+    ap.add_argument('--miw-build', default='current')
+    ap.add_argument('--out-dir', default=None,
+                    help='default: a dated run directory of the study')
+    ap.add_argument('--mi', default=None,
                     help='measured-intrinsic build supplying both the MIW split maps and '
                          'the per-visit FAM fits')
     ap.add_argument('--case', default='loop50', choices=['loop50', 'loop22', 'loop'],
@@ -194,14 +216,15 @@ def main():
     ap.add_argument('--max-visits', type=int, default=24)
     ap.add_argument('--dz-prefix', default='z1toz6')
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
-    ap.add_argument('--output-root', default='output')
     ap.add_argument('--height-map-dir',
                     default='~/u/LSST/packages/batoid_rubin_data')
     args = ap.parse_args()
 
     from lsst.obs.lsst import LsstCam
     camera = LsstCam.getCamera()
-    base = Path(args.output_root) / args.ps
+    base, miw_dir = resolve_builds(args.miw_variant, args.miw_build)
+    args.ps = f'{args.miw_variant}@{miw_dir.name}'    # the label on every page
+    args.mi = miw_dir
     lam_nm = LAM_NM[args.band]
     cases = ['loop50', 'loop22'] if args.case == 'loop' else [args.case]
 
@@ -220,7 +243,8 @@ def main():
     fwhm_atm = render_measure(None, noll, lam_nm, atm, aper,
                               with_optics=False)['fwhm']
 
-    out_dir = base / args.mi / 'closed_loop'
+    out_dir = (Path(args.out_dir) if args.out_dir
+               else study_run('aos/closed_loop', 'closed_loop').path)
     out_dir.mkdir(parents=True, exist_ok=True)
     for case in cases:
         n_keep = 34 if case.endswith('50') else 12

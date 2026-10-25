@@ -14,13 +14,15 @@ a chosen rotator angle and elevation; default rotator 0 deg, elevation 70 deg):
   The danish model is re-rendered from the fitted Zernikes (the model is not
   persisted) following lsst-ts/donut_viz PlotDonutFitsTask.getModel.
 
-Reads parquets for the comparison:
-    output/fam_processing/<P>/{donuts,visits}.parquet
-    output/wfs_ingest/<P>/<cwfs>/donuts.parquet
-The gallery additionally needs the butler (corner-WFS collection), danish, and
-lsst.ts.wep — RSP only.  Use --max-visits to cap the number of triplets.
+Reads, through the catalog, the ``cwfs_tables`` variant's donuts and the ``fam_tables``
+build it was matched to (its manifest's ``inputs``). The gallery additionally needs the
+butler (the variant's corner-WFS collection), danish, and lsst.ts.wep.  Use --max-visits to
+cap the number of triplets.
 
-Writes output/wfs_fam_compare/<P>/fam_wfs_triplet_compare.pdf .
+Writes ``fam_wfs_triplet_compare.pdf`` into a dated run directory of the ``aos/cwfs`` study
+(``--out-dir`` overrides).
+
+    python code/run_wfs_fam_compare.py --cwfs-variant d12-refitWcs --max-visits 5
 """
 import argparse
 from pathlib import Path
@@ -28,6 +30,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+
+from rubinwork.common import study_run
+from rubinwork.products import catalog, cwfs_tables, fam_tables
 from rubinwork.common.utils import alt_to_deg as _alt_to_deg  # noqa: E402
 from astropy.table import QTable
 from matplotlib.colors import LinearSegmentedColormap
@@ -258,16 +263,20 @@ def _resolve_butler(args):
         from lsst.ts.intrinsic.wavefront.intrinsics_lib import load_param_sets
         ps = load_param_sets()[args.param_set]
         repo = repo or ps.get('butler_repo', '/repo/main')
-        coll = coll or ps.get('wfs_collection')
+        cfg = cwfs_tables.variant_config(args.cwfs_variant)
+        coll = coll or cfg.get('collection') or [c if isinstance(c, str) else c['collection']
+                                                  for c in cfg.get('collections', [])]
     return repo, coll
 
 
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--param-set', required=True)
+    ap.add_argument('--cwfs-variant', required=True, help='cwfs_tables variant')
+    ap.add_argument('--cwfs-build', default='current')
     ap.add_argument('--coord-sys', default='OCS', choices=['OCS', 'CCS'])
-    ap.add_argument('--output-root', default='output')
+    ap.add_argument('--out-dir', default=None,
+                    help='default: a dated run directory of the aos/cwfs study')
     ap.add_argument('--r-min', type=float, default=1.5178)
     ap.add_argument('--r-max', type=float, default=1.725)
     ap.add_argument('--rot-center', type=float, default=0.0)
@@ -293,25 +302,35 @@ def main():
     args = ap.parse_args()
     coord = args.coord_sys
     zks = [int(x) for x in args.zernikes.split(',')]
-    base = Path(args.output_root) / args.param_set
+    cwfs_dir = catalog.path('cwfs_tables', args.cwfs_variant, args.cwfs_build)
+    fam_ref = catalog.manifest('cwfs_tables', args.cwfs_variant, cwfs_dir.name)['inputs']['fam_tables']
+    fam_variant, _, fam_build = fam_ref.partition('@')
+    fam_dir = catalog.path('fam_tables', fam_variant, fam_build or 'current')
+    args.param_set = fam_tables.variant_config(fam_variant)['param_set']
+    print(f'[wfs_fam_compare] cwfs_tables {args.cwfs_variant}@{cwfs_dir.name}, '
+          f'fam_tables {fam_variant}@{fam_dir.name}')
 
     # ---- FAM per-donut measured wavefront ----
-    dd = pq.read_table(str(base / 'donuts.parquet')).to_pandas()
+    dd = pq.read_table(str(fam_dir / 'donuts.parquet'),
+                       columns=['day_obs', 'seq_num', f'zk_{coord}', f'thx_{coord}',
+                                f'thy_{coord}']).to_pandas()
     fam = dict(zk=np.stack(dd[f'zk_{coord}'].values).astype(float),
                thx=np.rad2deg(np.asarray(dd[f'thx_{coord}'], float)),
                thy=np.rad2deg(np.asarray(dd[f'thy_{coord}'], float)))
     fam_day = np.asarray(dd['day_obs']).astype(int)
     fam_seq = np.asarray(dd['seq_num']).astype(int)
 
-    vt = pq.read_table(str(base / 'visits.parquet')).to_pandas()
+    vt = pq.read_table(str(fam_dir / 'visits.parquet')).to_pandas()
     noll_fam = ([int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
                 if 'nollIndices' in vt.columns else list(range(4, 4 + fam['zk'].shape[1])))
     vt = vt.copy()
     vt['alt_deg'] = _alt_to_deg(vt['alt']) if 'alt' in vt.columns else np.nan
 
     # ---- corner-WFS measured wavefront (+ in-focus seq map) ----
-    wd = QTable.read(str(base / 'wfs' / 'donuts.parquet'))
-    noll_wfs = [int(x) for x in wd.meta.get('nollIndices')]
+    wd = QTable.read(str(cwfs_dir / 'donuts.parquet'))
+    noll_wfs = [int(x) for x in (wd.meta.get('nollIndices')
+                                 or pq.read_table(str(cwfs_dir / 'visits.parquet'))
+                                 .to_pandas()['nollIndices'].iloc[0])]
     wfs = dict(zk=np.array(wd[f'zk_{coord}'], dtype=float),
                thx=np.rad2deg(np.asarray(wd[f'thx_{coord}'], float)),
                thy=np.rad2deg(np.asarray(wd[f'thy_{coord}'], float)))
@@ -335,8 +354,10 @@ def main():
 
     azedges = np.arange(0.0, 360.0 + 1e-6, args.az_bin_deg)
     azc = 0.5 * (azedges[:-1] + azedges[1:])
-    out = base / 'wfs' / 'fam_wfs_triplet_compare.pdf'
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out_dir = (Path(args.out_dir) if args.out_dir
+               else study_run('aos/cwfs', 'wfs_fam_compare').path / args.cwfs_variant)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / 'fam_wfs_triplet_compare.pdf'
 
     # ---- gallery setup (butler + danish) ----
     butler = modeler = None
@@ -379,7 +400,7 @@ def main():
                 except Exception as e:
                     print(f'  gallery skipped for seq {s} (in-focus {infocus}): '
                           f'{type(e).__name__}: {e}')
-    print(f'  wrote wfs/fam_wfs_triplet_compare.pdf ({n_cmp} comparison + {n_gal} gallery pages)')
+    print(f'  wrote {out} ({n_cmp} comparison + {n_gal} gallery pages)')
 
 
 if __name__ == '__main__':

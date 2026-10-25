@@ -40,9 +40,10 @@ These are what the study exists to vary; each appears in the output filename.
 ## Inputs and outputs
 
 Reads `intrinsic_split_maps.parquet` (the MIW, which fixes the Noll index set) and
-`fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state), all from a single
-`<mi>` build. Writes
-`output/closed_loop/<P>_<M>/closed_loop_<case>_<band>_<intrinsic>_<order>_<latency>_g<gain>.pdf`,
+`fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state), all from one `miw`
+product build (`--miw-variant`, default `d12-A_50_34_i_5rot`). Writes
+`closed_loop_<case>_<band>_<intrinsic>_<order>_<latency>_g<gain>.pdf` into a dated run
+directory of the study, or `--out-dir`,
 so runs with different control settings sit side by side.
 
 ## Running

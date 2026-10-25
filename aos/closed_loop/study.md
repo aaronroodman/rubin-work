@@ -10,7 +10,7 @@ started: 2026-09-07
 
 # `closed_loop`
 
-> **Code:** `code/run_closed_loop.py` (with `aos/code/psf_maps_lib.py`) · **Write-up:** [`closed_loop.md`](closed_loop.md) · **Output:** `aos/output/closed_loop/<P>_<M>/`
+> **Code:** `code/run_closed_loop.py` (with `aos/code/psf_maps_lib.py`) · **Write-up:** [`closed_loop.md`](closed_loop.md) · **Output:** `output/` (the study `output@`)
 
 ## Question
 

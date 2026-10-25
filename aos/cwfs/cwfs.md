@@ -26,7 +26,7 @@ Two distinct tracks, easy to confuse:
 | `run_wfs_corner_compare.py` | the PDF for one `wfs_corner_compare` product build — corner-by-corner CWFS vs FAM measured-OPD vs azimuth (GP interpolation by default) |
 | `run_wfs_dof_compare.py` | pipeline `wfs_dof_compare` — the optical state both ways (FAM via full-field DZ→SVD, CWFS via the corner OFC inverse), plus **AOS-FWHM** contributions |
 | `run_wfs_mimic.py` | pipeline `wfs_mimic` — FAM-mimicked 4-corner deviation covariance (84×84 and 21×21) |
-| `run_wfs_fam_compare.py` | per-image FAM ↔ CWFS wavefront vs azimuth, with a per-corner donut-fit gallery. Foundational visual check; **predates** `wfs_corner_compare` and reads the flat pre-multi-collection `wfs/donuts.parquet` |
+| `run_wfs_fam_compare.py` | per-image FAM ↔ CWFS wavefront vs azimuth, with a per-corner donut-fit gallery, for one `cwfs_tables` variant (`--cwfs-variant`). Foundational visual check; **predates** `wfs_corner_compare` |
 | `run_wfs_refit_ensemble.py` | Danish-1.2 refit-ensemble tuning (sweep `systematicLossAlpha`) — **parked** |
 | `run_wfs_fam_refit_compare.py` | score the refit ensemble vs FAM + v-mode scatter — **parked** |
 | `determine_wfs_field_frame.py` | one-off: how per-detector `zernikes` field angles map to the aggregate `thx/thy_{OCS,CCS,NW}`. Fixed the `ai_donut` field→OCS transform without guessing |

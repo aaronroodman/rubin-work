@@ -3,7 +3,7 @@
 > **Status:** parked; the outputs predate the 2026-09-07 split and are stale (`../docs/status/rerun_needed.md`) · **Last updated:** 2026-10-24 · **Kind:** reference (study)
 
 > **Code:** `code/psf/`
-> **Output:** `output/psf/<P>_<M>/`
+> **Output:** `psf_fp_maps/output/<date>_psf_fp_maps/` (the study `output@`)
 
 The expected Point Spread Function (PSF) due to the optical contribution, under given
 conditions. Focal-plane maps of full width at half maximum (FWHM), ellipticity and
@@ -35,11 +35,13 @@ Each `--case` renders the PSF from a different wavefront, and names its output f
 
 ## Inputs and outputs
 
-A single measured-intrinsic build supplies everything: `intrinsic_split_maps.parquet`
-(the MIW) and `fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state).
-`--mi` defaults to `pathA_50_34_i_5rot`, the current build.
+A single `miw` product build supplies everything: `intrinsic_split_maps.parquet` (the
+MIW) and `fits.parquet` plus `zk_intrinsic.parquet` (the per-visit FAM state); the FAM
+donut and visit tables are the `fam_tables` build named in its manifest.
+`--miw-variant` defaults to `d12-A_50_34_i_5rot`, at its `current` build.
 
-Writes `output/psf/<P>_<M>/psf_fp_maps_<case>_<band>.pdf`.
+Writes `psf_fp_maps_<case>_<band>.pdf` into a dated run directory of the study, or
+`--out-dir`.
 
 ## Running
 

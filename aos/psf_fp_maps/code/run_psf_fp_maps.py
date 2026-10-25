@@ -29,8 +29,9 @@ os.environ.setdefault('NUMEXPR_MAX_THREADS', '8')   # silence galsim/numexpr thr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # same-study siblings
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'code'))      # aos/code (flat shared modules)
+from rubinwork.common import study_run  # noqa: E402
 from rubinwork.common.psf_render import (   # noqa: E402  GalSim render + HSM
-    LAM_NM, build_psf_tools, render_measure, optics_fwhm)
+    ATM_FWHM, LAM_NM, build_psf_tools, render_measure, optics_fwhm)
 from psf_maps_lib import (   # noqa: E402  shared with the closed_loop study
     FP_RADIUS, sample_science_stars, miw_zernikes, measure_zk, psf_page,
     fwhm_optics_hist, build_svd, residual_W, eval_dz_field,
@@ -127,10 +128,31 @@ def validate_formula_page(miw_zk, noll, lam_nm, atm, aper, pdf, n_scatter=300, s
     print(f'[validate] per-Noll sweep written ({len(noll)} Zernikes, amps 0-0.8 µm)')
 
 
+def resolve_builds(miw_variant, miw_build='current'):
+    """The ``fam_tables`` and ``miw`` build directories of one MIW product variant.
+
+    Returns
+    -------
+    fam_dir, miw_dir : `pathlib.Path`
+        The FAM tables the MIW was built from (its manifest's ``inputs``), and the MIW
+        build, which holds the split maps, the refit ``fits.parquet`` and the per-donut
+        ``zk_intrinsic.parquet``.
+    """
+    from rubinwork.products import catalog
+    miw_dir = catalog.path('miw', miw_variant, miw_build)
+    ref = catalog.manifest('miw', miw_variant, miw_dir.name)['inputs']['fam_tables']
+    fam_variant, _, fam_build = ref.partition('@')
+    return catalog.path('fam_tables', fam_variant, fam_build or 'current'), miw_dir
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--ps', default='fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x')
-    ap.add_argument('--mi', default='pathA_50_34_i_5rot',
+    ap.add_argument('--miw-variant', default='d12-A_50_34_i_5rot',
+                    help='miw product variant; its FAM tables come from its manifest')
+    ap.add_argument('--miw-build', default='current')
+    ap.add_argument('--out-dir', default=None,
+                    help='default: a dated run directory of the study')
+    ap.add_argument('--mi', default=None,
                     help='measured-intrinsic build supplying both the MIW split maps and '
                          'the per-visit FAM fits')
     ap.add_argument('--case', default='miw',
@@ -148,13 +170,17 @@ def main():
     ap.add_argument('--dz-prefix', default='z1toz6')
     ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'],
                     help='donut frame for the WFS-mimic per-donut deviations')
-    ap.add_argument('--output-root', default='output')
     ap.add_argument('--height-map-dir', default='~/u/LSST/packages/batoid_rubin_data')
     args = ap.parse_args()
     from lsst.obs.lsst import LsstCam
     camera = LsstCam.getCamera()
-    base = Path(args.output_root) / args.ps
+    base, miw_dir = resolve_builds(args.miw_variant, args.miw_build)
+    args.ps = f'{args.miw_variant}@{miw_dir.name}'    # the label on every page
+    args.mi = miw_dir
     hmap = os.path.expanduser(args.height_map_dir); lam_nm = LAM_NM[args.band]
+    out_dir = (Path(args.out_dir) if args.out_dir
+               else study_run('aos/psf_fp_maps', 'psf_fp_maps').path)
+    out_dir.mkdir(parents=True, exist_ok=True)
     cases = {'all': ['miw', 'fam50', 'fam22'],
              'mimic': ['mimic50', 'mimic22']}.get(args.case, [args.case])
     # 'validate' checks the convertZernikesToPsfWidth formula vs GalSim+HSM truth.
@@ -178,7 +204,7 @@ def main():
         Zc = mimic_measurements(base, base / args.mi, args.coord, noll, sec, mvis)
 
     for case in cases:
-        out = base / args.mi / 'psf' / f'psf_fp_maps_{case}_{args.band}.pdf'
+        out = out_dir / f'psf_fp_maps_{case}_{args.band}.pdf'
         out.parent.mkdir(parents=True, exist_ok=True)
         with PdfPages(str(out)) as pdf:
             if case == 'validate':

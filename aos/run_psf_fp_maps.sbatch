@@ -44,8 +44,8 @@ if not os.environ.get("TS_CONFIG_MTTCS_DIR"):
           "(setup ts_config_mttcs).")
 PY
 
-# Baked defaults: the new collection, full visit set, 1000 stars.  ANY option on the
-# sbatch line overrides (argparse last occurrence wins).
-DEFAULTS=(--ps fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x --band i --max-visits 0 --n-stars 1000)
+# Baked defaults: the d12 5rot MIW build (its FAM tables come from its manifest), full
+# visit set, 1000 stars.  ANY option on the sbatch line overrides (last occurrence wins).
+DEFAULTS=(--miw-variant d12-A_50_34_i_5rot --band i --max-visits 0 --n-stars 1000)
 echo "running: psf_fp_maps/code/run_psf_fp_maps.py ${DEFAULTS[*]} $*"
 python psf_fp_maps/code/run_psf_fp_maps.py "${DEFAULTS[@]}" "$@"
