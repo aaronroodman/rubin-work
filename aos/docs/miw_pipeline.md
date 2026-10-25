@@ -1,6 +1,6 @@
 # MIW pipeline — step-by-step reference
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (pipeline)
+> **Status:** current · **Last updated:** 2026-10-24 · **Kind:** reference (pipeline)
 
 The Snakemake pipeline that produces the FAM donut tables, the Double-Zernike (DZ)
 fits, and the Measured Intrinsic Wavefront (MIW), plus the analyses that hang off it.
@@ -77,7 +77,7 @@ param_sets and MIW builds whose product output is on disk, and reports every one
 | 3 | `thermal_correlations` | per (ps, mi) | DZ↔EFD-temperature correlations on the MI-refit residuals |
 | 3 | `bounce` | per (ps, mi) | FAM bounce-test paired Δ (DZ / v-mode / DOF) with significance maps |
 | cwfs | `wfs_mktable` | per (ps, cwfs) | Butler → in-focus corner-WFS per-donut table (`wfs/<cwfs>/donuts.parquet`); multi-collection |
-| cwfs | `wfs_corner_compare` | per (ps, cwfs) | Corner-by-corner CWFS vs FAM measured-OPD vs azimuth (GP interpolation) |
+| cwfs | `wfs_corner_compare` | per cwfs variant | A product since 2026-10-24 (`rubinwork/products/wfs_corner_compare/Snakefile`): corner-by-corner CWFS vs FAM measured-OPD vs azimuth (GP interpolation) |
 | cwfs | `wfs_intrinsic_sidecar` | per (ps, mi, cwfs) | CWFS measured-intrinsic at the corner donuts (reconstruct_at + SW1/SW0 half-sensor Z4 height) |
 | cwfs | `wfs_dof_compare` | per (ps, mi, cwfs) | CWFS-vs-FAM optical state (v-modes + DoF) per image, + AOS-FWHM contributions |
 
@@ -117,18 +117,18 @@ downstream automatically.
 
 **`plots`** — `code/miw/run_dz_plots.py` (library: `dz_plotting.py`). Validation
 trio plots (data / DZ model / residual across the focal plane) on the combined
-tables → `output/dzfit/<P>/trio_comparison_all.pdf`. Memory-heavy (loads the
+tables → `dzfit/output/<P>/trio_comparison_all.pdf`. Memory-heavy (loads the
 full donut table); the Snakefile's `mem_mb` throttle serializes it.
 
 **`dz_fit_check`** — `dzfit/code/run_dz_fit_check.py`. Recomputes the residual of the
 stored k<=3 and k<=6 DZ fits, writing robust residual metrics per (visit, prefix, pupil
 Zernike) plus coefficient and residual-map pages →
-`output/dzfit/<P>/dz_fit_check.{pdf,parquet}`. Streams the donut table by row group.
+`dzfit/output/<P>/dz_fit_check.{pdf,parquet}`. Streams the donut table by row group.
 
 **`residual_movie_chunk`** — `dzfit/code/run_dz_plots.py` with `--no-fit-params
 --no-trio --movie-prefix z1toz6`. One residual-map frame per visit of the k<=6 fit
 residual, rendered by ffmpeg →
-`output/dzfit/<P>/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4`,
+`dzfit/output/<P>/movies/<dmin>_<dmax>/residuals_z1toz6_<dmin>_<dmax>.mp4`,
 one movie per date chunk, each in its own subdirectory so the concurrent jobs do not race
 on the intermediate frame files. Reads the per-chunk `chunks/<dmin>_<dmax>/{donuts,fits}.parquet`
 rather than the combined tables, which bounds the memory and lets the ten chunks render in
@@ -138,7 +138,7 @@ parallel. **`residual_movies`** is the aggregate target for all of them. Neither
 **`aberration_pairs`** — `correlations/code/run_aberration_pairs.py`. Per-donut
 primary→secondary aberration-pair analysis (e.g. defocus→spherical, astig→2nd-astig):
 quartile-of-primary OLS slope/r plus density pages →
-`output/correlations/<P>/aberration_pairs.pdf` + `aberration_pairs_summary.parquet`.
+`correlations/output/<P>/aberration_pairs.pdf` + `aberration_pairs_summary.parquet`.
 Knobs in `analysis_config.yaml`.
 
 ### Phase 2 — measured intrinsic (per `param_set` × `mi_name`)
@@ -228,25 +228,25 @@ pair scatters, astigmatism-symmetry pairs, per-correlation **conjugate-orbit
 scatter grids** (rows/cols = independent focal-k / pupil-j doublet-flips of each
 endpoint, up to 4×4), and **significance** (Fisher-z σ, with `n`/`se_r`) in the
 pairs parquet; optional exhaustive (k1, j1)×(k2, j2) scan →
-`output/correlations/<P>_<M>/dz_correlations.pdf` + `_pairs.parquet`.
+`correlations/output/<P>_<M>/dz_correlations.pdf` + `_pairs.parquet`.
 
 **`dz_correlations_optcorr`** — same analysis on the DZ that *remains after the
 n_dof/n_keep OFC correction* (`W_resid = (I − U_eff U_effᵀ)·W`, SVD from the
-mi_config entry) → `output/correlations/<P>_<M>/dz_correlations_optcorr.pdf` +
+mi_config entry) → `correlations/output/<P>_<M>/dz_correlations_optcorr.pdf` +
 `_pairs.parquet`. Sits beside the raw analysis for before/after comparison.
 RSP-only (builds the OFC SVD via `lsst.ts.ofc`).
 
 **`thermal_correlations`** — `correlations/code/run_thermal_correlations.py` (port of
 `intrinsics_thermal_correlations.ipynb`). DZ_kj × EFD temperature-variable
 Pearson heatmap plus per-term scatter pages →
-`output/correlations/<P>_<M>/thermal_correlations.pdf` + `_summary.parquet`.
+`correlations/output/<P>_<M>/thermal_correlations.pdf` + `_summary.parquet`.
 
 **`bounce`** — `bounce/code/run_bounce.py` + `bounce_lib.py` (port of
 `study_bounce.ipynb`). FAM bounce-test paired Δ (BLOCK-T720 elevation 40↔70°,
 BLOCK-T724 rotator 0↔60°): time-ordered within-night comp−ref pairs for DZ
 coefficients, OFC v-modes, and physical DOF, with significance/pass heatmaps,
 vs-ordinal pages, and night cross-scatter; optional EFD MTAOS Trim overlay
-(`add_dof_trim`) → `output/bounce/<P>_<M>/bounce_*.pdf` +
+(`add_dof_trim`) → `bounce/output/<P>_<M>/bounce_*.pdf` +
 `bounce_kj_stats.parquet`.
 
 ### Corner-WFS (cwfs) track
@@ -257,7 +257,7 @@ FAM "truth". A `param_set` may carry several CWFS reductions, listed under
 `wfs_collections` in `param_sets.yaml`; each is a named **variant** `<cwfs>`
 (e.g. `refitWcs`, `paired_3mm`, `ai_donut`). The variant is the innermost directory of
 each of the studies this track writes — `wfs_ingest/<P>/<cwfs>/` for the ingested tables,
-`wfs_corner_compare/<P>/<cwfs>/` for the comparison against FAM, and
+the `wfs_corner_compare` product for the comparison against FAM, and
 `wfs_dof_compare/<P>_<M>/<cwfs>/` for the recovered optical state, which also depends on
 the MIW build — so variants sit side by side within each study. RSP-only (Butler). Each `wfs_collections` entry is either a bare
 collection string or a dict `{collection, seq_offset, dataset_type}`:
@@ -278,12 +278,14 @@ per-detector `zernikes` tables (positions) and rotates the field angles to OCS
 (x↔y swap + deg→rad → CCS, then `R(rotTelPos)` → OCS; convention fixed by
 `determine_wfs_field_frame.py`).
 
-**`wfs_corner_compare`** — `cwfs/code/run_wfs_corner_compare.py` (`--wfs-name`).
-Corner-by-corner CWFS vs FAM measured-OPD: per corner, the CWFS Zernikes against
-the FAM wavefront interpolated to that corner (`--interp gp` Gaussian-process
-azimuth fit by default; `fourier` / `wedge-median` alternatives), with per-corner
-scatter, time-history, summary, and azimuth-validation pages →
-`wfs/<cwfs>/wfs_corner_compare.pdf`.
+**`wfs_corner_compare`** — a product, `rubinwork/products/wfs_corner_compare/`, with
+the computation in `rubinwork.corner_compare`. Corner-by-corner CWFS vs FAM
+measured-OPD: per corner, the CWFS Zernikes against the FAM wavefront interpolated to
+that corner (Gaussian-process azimuth fit by default; `fourier` / `wedge-median`
+alternatives, set per variant). A build holds the matched table and the per-(corner, j)
+stats. The plots (per-corner scatter, time history, summary, azimuth validation) are
+`cwfs/code/run_wfs_corner_compare.py --variant <v>`, written to the `aos/cwfs` study
+output.
 
 **`wfs_intrinsic_sidecar`** — `code/run_make_intrinsic_sidecar.py
 --wfs-corner-height`. The same measured-intrinsic reconstruction as

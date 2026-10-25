@@ -502,7 +502,8 @@ def test_resolve_miw_decomp_rejects_a_missing_path(tmp_path):
 
 def test_resolve_miw_decomp_follows_a_catalog_intrinsic_ref(tmp_path, monkeypatch):
     """Once the registry row holds ``miw:<variant>@<build>``, no flag is needed; a
-    joined old-tree name still resolves to `None`, as before."""
+    joined old-tree name resolves to its variant's current build; an unknown name to
+    `None`."""
     import argparse
 
     from rubinwork.products.value_added.builders import build_optical_state as bos
@@ -519,7 +520,9 @@ def test_resolve_miw_decomp_follows_a_catalog_intrinsic_ref(tmp_path, monkeypatc
     got = bos.resolve_miw_decomp(a, "miw:d12-A_50_34_i_5rot@20261014")
     assert got == tmp_path / "intrinsic_split_decomp.parquet"
     assert seen == [("miw", "d12-A_50_34_i_5rot", "20261014")]
-    assert bos.resolve_miw_decomp(a, "danish_1_2_A_50_34_i_5rot") is None
+    assert bos.resolve_miw_decomp(a, "danish_1_2_A_50_34_i_5rot") == got
+    assert seen[-1] == ("miw", "d12-A_50_34_i_5rot", catalog.CURRENT)
+    assert bos.resolve_miw_decomp(a, "not_a_miw_build") is None
 
 
 def test_resolve_paths_prefers_the_catalog_when_asked(tmp_path, monkeypatch):

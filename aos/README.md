@@ -192,7 +192,7 @@ output/
   bounce/<P>_<M>/  lut/<P>_<M>/  psf/<P>_<M>/  closed_loop/<P>_<M>/
   wfs_mimic/<P>_<M>/
   wfs_ingest/<P>/<cwfs>/            # CWFS tables, one directory per variant
-  wfs_corner_compare/<P>/<cwfs>/    # CWFS against FAM, same donuts
+  wfs_corner_compare/<P>/<cwfs>/    # CWFS against FAM; now the wfs_corner_compare product
   wfs_fam_compare/<P>/
   wfs_dof_compare/<P>_<M>/<cwfs>/   # recovered optical state, needs the MIW
   camera_gravity/                   # static_optics, no data dependence

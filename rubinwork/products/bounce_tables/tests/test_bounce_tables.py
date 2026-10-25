@@ -557,7 +557,7 @@ def test_the_aos_rule_survives_as_the_plotting_half():
     """The first moved product whose aos/ rule is not removed."""
     text = (REPO_ROOT / "aos" / "Snakefile").read_text()
     assert "rule bounce:" in text
-    assert "output/bounce/{d}/bounce_summary.pdf" in text
+    assert "bounce/output/{d}/bounce_summary.pdf" in text
     # No bounce TABLE is an input, output or `rule all` target any more; the comment
     # explaining the move still names bounce_kj_stats.parquet, so check code lines only.
     code = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]

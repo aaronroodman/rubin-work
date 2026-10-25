@@ -10,7 +10,7 @@ started: 2026-09-06
 
 # `bounce`
 
-> **Code:** `code/` (`run_bounce.py`, `bounce_lib.py`; the `bounce` rule); the reduction is `rubinwork.bounce`, the tables the `bounce_tables` product · **Write-up:** [`bounce.md`](bounce.md) · **Output:** `aos/output/bounce/<P>_<M>/` · **Note:** `notes/aos-bounce-test-summary/`
+> **Code:** `code/` (`run_bounce.py`, `bounce_lib.py`; the `bounce` rule); the reduction is `rubinwork.bounce`, the tables the `bounce_tables` product · **Write-up:** [`bounce.md`](bounce.md) · **Output:** `output/<P>_<M>/` (the study `output@`) · **Note:** `notes/aos-bounce-test-summary/`
 
 ## Question
 

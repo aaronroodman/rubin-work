@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (study)
 
 > **Code:** `code/correlations/` · **Notebooks:** `notebooks/correlations/`
-> **Output:** `output/correlations/<P>_<M>/`, `output/correlations/<P>/aberration_pairs.*`
+> **Output:** `correlations/output/<P>_<M>/`, `correlations/output/<P>/aberration_pairs.*`
 
 
 Correlation analysis of the per-visit Double Zernike (DZ) coefficients remaining after
@@ -28,7 +28,7 @@ intrinsic build.
 | `run_aberration_pairs.py` | per-donut primary→secondary aberration pairs (defocus→spherical, astigmatism→2nd astigmatism, and so on), split into quartiles of the primary |
 
 `run_aberration_pairs.py` works on the **Phase-1** per-donut `zk_<coord>` values in
-`donuts.parquet`, so it needs no `mi_name` and writes to `output/correlations/<P>/`.
+`donuts.parquet`, so it needs no `mi_name` and writes to `correlations/output/<P>/`.
 It streams the donut table by row group.
 
 The focal-plane-uniform defocus DZ(k=1, j=4) against Telescope Mount Assembly (TMA) truss

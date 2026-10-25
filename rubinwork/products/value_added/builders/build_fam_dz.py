@@ -78,14 +78,12 @@ SCHEMES = {'50_34': (50, 34), '22_12': (22, 12)}
 DEFAULT_AOS_OUTPUT = 'aos/output/fam_processing'
 
 
-def resolve_paths(aos_output, param_set, mi=None, prefer='old'):
+def resolve_paths(aos_output, param_set, mi=None, prefer='catalog'):
     """Locate the ``fits.parquet`` and ``visits.parquet`` for a param_set.
 
-    By default resolves in the same order as the ``aos/Snakefile``: the **old tree** under
-    `aos_output` if its files are there, else the **catalog's** ``current`` build of the
-    matching `fam_tables` variant. Pass ``prefer='catalog'`` to reverse that, which is
-    what a build against the catalog wants -- the old tree is usually still on disk and
-    would otherwise win without saying so.
+    By default resolves in the same order as the ``aos/Snakefile``: the **catalog's**
+    ``current`` build of the matching `fam_tables` variant, else the **old tree** under
+    `aos_output`. ``prefer='old'`` reverses that, for reproducing a pre-catalog build.
 
     The old-tree directory is the variant's short ``dir_name``, which for `fam_tables`
     **is** the variant name — ``danish_1_2``, not the long param_set key
@@ -105,11 +103,8 @@ def resolve_paths(aos_output, param_set, mi=None, prefer='old'):
         sidecar stays at the param_set level, since the pupil Noll set is a property of the
         donut extraction rather than of the intrinsic.
     prefer : {'old', 'catalog'}, optional
-        Which tree to try first. ``'old'`` (default) keeps the historical
-        ``aos/Snakefile`` order. ``'catalog'`` looks in the catalog build first and uses
-        the old tree only as a fallback; pass it when the point of the run is to build
-        against the catalog, since the old tree is usually still on disk and would
-        otherwise win silently.
+        Which tree to try first. ``'catalog'`` (default) uses the old tree only as a
+        fallback; ``'old'`` tries it first.
 
     Returns
     -------
@@ -325,11 +320,9 @@ def main():
     ap.add_argument('--mi', default=None,
                     help='Measured Intrinsic Wavefront build name; omit for the batoid '
                          'design intrinsic')
-    ap.add_argument('--prefer', choices=('old', 'catalog'), default='old',
-                    help="which tree to resolve the FAM tables from first. 'catalog' "
-                         'builds against the product catalog; the default keeps the '
-                         'old-tree-first order, which silently wins while the old tree '
-                         'is still on disk')
+    ap.add_argument('--prefer', choices=('old', 'catalog'), default='catalog',
+                    help="which tree to resolve the FAM tables from first (default "
+                         "catalog; 'old' tries aos/output/fam_processing first)")
     ap.add_argument('--prefix', default='z1toz6', choices=sorted(PREFIX_K_RANGE),
                     help='DZ-fit column prefix (default z1toz6, focal orders k=1..6)')
     ap.add_argument('--scheme', default='50_34', choices=sorted(SCHEMES),

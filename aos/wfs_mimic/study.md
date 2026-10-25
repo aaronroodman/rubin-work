@@ -10,7 +10,7 @@ started: 2026-06-24
 
 # `wfs_mimic`
 
-> **Code:** `code/run_wfs_mimic.py` (the `wfs_mimic` rule); the wedge geometry is the library `rubinwork.wfs_mimic` · **Notebook:** `notebooks/wfs_mimic_covariance.ipynb` · **Output:** `aos/output/wfs_mimic/<P>_<M>/`
+> **Code:** `code/run_wfs_mimic.py` (the `wfs_mimic` rule); the wedge geometry is the library `rubinwork.wfs_mimic` · **Notebook:** `notebooks/wfs_mimic_covariance.ipynb` · **Output:** `output/<P>_<M>/` (the study `output@`)
 
 ## Question
 

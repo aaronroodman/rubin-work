@@ -10,7 +10,7 @@ started: 2026-09-06
 
 # `dzfit`
 
-> **Code:** `code/` (`run_dz_plots.py`, `run_dz_fit_check.py`; the `plots`, `dz_fit_check` and `residual_movie_chunk` rules) · **Write-up:** [`dzfit.md`](dzfit.md) · **Output:** `aos/output/dzfit/<P>/`
+> **Code:** `code/` (`run_dz_plots.py`, `run_dz_fit_check.py`; the `plots`, `dz_fit_check` and `residual_movie_chunk` rules) · **Write-up:** [`dzfit.md`](dzfit.md) · **Output:** `output/<P>/` (the study `output@`)
 
 ## Question
 

@@ -10,7 +10,7 @@ started: 2026-09-06
 
 # `correlations`
 
-> **Code:** `code/` (five `run_*` scripts, all Snakemake rules; `fam_selection.py`, their shared visit selection) · **Write-up:** [`correlations.md`](correlations.md) · **Output:** `aos/output/correlations/<P>_<M>/`
+> **Code:** `code/` (five `run_*` scripts, all Snakemake rules; `fam_selection.py`, their shared visit selection) · **Write-up:** [`correlations.md`](correlations.md) · **Output:** `output/<P>_<M>/`, `output/<P>/` (the study `output@`)
 
 ## Question
 

@@ -160,27 +160,22 @@ def mi_build_src(ps, mi):
     return _mc.build_source(_mc.load_mi_config(ps, mi, doc=MI_DOC), mi)
 
 # ======================================================================
-# ---- the product-data resolver: old tree first, then the catalog -----
+# ---- the product-data resolver: catalog first, then the old tree -----
 # ======================================================================
-# Phases 2 and 3a moved the fam_tables, cwfs_tables and miw BUILD rules out of this
-# Snakefile.  The study rules below still read those three products, and until phase 5
-# they read them from the OLD tree (aos/output/...).  A product rebuilt into the new data
-# root is therefore invisible here -- which matters now, because 9 of the 12 MIW variants
-# have no complete old-tree build and so lose every study job.
+# The fam_tables, cwfs_tables and miw builds are products, built by their own
+# Snakefiles.  Every study-rule input that reads product data goes through one of the
+# resolvers below.  Each returns a DIRECTORY and resolves in this order:
 #
-# So every study-rule input that reads product data goes through one of the resolvers
-# below.  Each returns a DIRECTORY and resolves in this order:
-#
-#   1. the old-tree path, if its required files are all there -- unchanged behaviour, and
-#      what every existing output was built from;
-#   2. else the catalog's `current` build of the matching product variant, if that build
+#   1. the catalog's `current` build of the matching product variant, if that build
 #      exists and is complete;
-#   3. else the old-tree path anyway, so the existing filter-and-report gates
+#   2. else the old-tree path (aos/output/...), if its required files are all there --
+#      for variants never registered in the catalog;
+#   3. else the old-tree path anyway, so the filter-and-report gates
 #      (_mi_complete, wfs_variants, _has_corner_sidecar) see a missing file and skip the
-#      variant with a reported reason, exactly as today.
+#      variant with a reported reason.
 #
-# No study OUTPUT path changes: the outputs stay keyed on the old-tree dir names ({ps},
-# {d}, {cwfs}), so nothing already built is invalidated or relocated.
+# Study outputs go to each study's output@ (<study>/output/...), keyed on the old-tree
+# dir names ({ps}, {d}, {cwfs}).
 #
 # The variant names are recovered from the products' own index fields, not guessed from
 # the directory names: a fam_tables variant IS its param_sets.yaml dir_name, a
@@ -209,17 +204,15 @@ _MIW_VARIANT_BY_DIR = {
 _RESOLVED = {}       # (product, variant, required) -> "old tree ..." | "catalog ..."
 
 def _resolve(product, variant, old_dir, required):
-    """Old-tree directory if complete, else the catalog's `current` build, else old tree.
+    """The catalog's `current` build if complete, else the old-tree directory.
 
     `required` are the file names (relative to the directory) that make the directory
-    usable; a directory missing any of them is not a build. Falling back to the old-tree
-    path on failure is deliberate: the caller's gate then sees a missing file and skips
-    the variant with a reported reason, as it did before the resolver existed.
+    usable; a directory missing any of them is not a build. The old tree is the fallback
+    for variants with no catalog build; returning it when that is incomplete too is
+    deliberate: the caller's gate then sees a missing file and skips the variant with a
+    reported reason.
     """
     key = (product, variant, tuple(required))
-    if all(os.path.exists(f"{old_dir}/{f}") for f in required):
-        _RESOLVED[key] = f"old tree {old_dir}"
-        return old_dir
     if variant is not None:
         try:
             cat_dir = str(_catalog.path(product, variant, build=_catalog.CURRENT))
@@ -229,6 +222,9 @@ def _resolve(product, variant, old_dir, required):
             build = os.path.basename(os.path.realpath(cat_dir))
             _RESOLVED[key] = f"catalog {variant}@{build} -> {cat_dir}"
             return cat_dir
+    if all(os.path.exists(f"{old_dir}/{f}") for f in required):
+        _RESOLVED[key] = f"old tree {old_dir}"
+        return old_dir
     _RESOLVED[key] = f"UNRESOLVED, falling back to the old tree {old_dir}"
     return old_dir
 
@@ -256,14 +252,12 @@ def miw_dir_for(d):
 def miw_corner_sidecar(d, cw):
     """The CWFS MIW corner sidecar for (joined dir name, cwfs variant name).
 
-    The old tree writes it under the CONSUMER's study directory,
-    ``output/wfs_dof_compare/<d>/<cwfs>/zk_intrinsic.parquet``; the product writes it
-    inside its own build, as ``wfs/<cwfs variant>/zk_intrinsic.parquet``, keyed on the
-    full cwfs_tables variant name rather than the bare wfs_name.
+    The product writes it inside its own build, as
+    ``wfs/<cwfs variant>/zk_intrinsic.parquet``, keyed on the full cwfs_tables variant
+    name rather than the bare wfs_name. The old tree wrote it under the consumer's study
+    directory, ``output/wfs_dof_compare/<d>/<cwfs>/zk_intrinsic.parquet``, the fallback.
     """
     old = f"output/wfs_dof_compare/{d}/{cw}/zk_intrinsic.parquet"
-    if os.path.exists(old):
-        return old
     miw_variant = _MIW_VARIANT_BY_DIR.get(d)
     if miw_variant is None:
         return old
@@ -372,7 +366,7 @@ def _report_wfs_skips():
     n = len(_WFS_SKIPPED)
     print(f"[Snakefile] skipping {n} CWFS variant(s) with no donuts.parquet in either the "
           "old tree or the catalog; "
-          "their wfs_corner_compare and wfs_dof_compare jobs are NOT planned. Build each "
+          "their wfs_dof_compare jobs are NOT planned. Build each "
           "with `snakemake -s rubinwork/products/cwfs_tables/Snakefile "
           "--config variant=<v> build=<YYYYMMDD>` from the repository root.",
           file=sys.stderr)
@@ -407,7 +401,8 @@ def d_tables(d):                       # phase-1 tables dir for a joined dtag
 def d_wfs(d, cwfs):                    # ingested CWFS dir for a joined dtag
     return cwfs_dir(d_ps_dir(d), cwfs)
 
-WFS_DVARIANTS    = [(ps_dir(ps), cw) for ps in WFS_PSETS for cw in wfs_variants(ps)]
+for _ps in WFS_PSETS:
+    wfs_variants(_ps)
 _report_wfs_skips()          # after the last wfs_variants() call, so the list is complete
 
 # wfs_dof_compare reads the CWFS MIW corner sidecar, whose producer
@@ -517,21 +512,18 @@ rule all:
         # The FAM tables themselves are the fam_tables PRODUCT and are built by
         # rubinwork/products/fam_tables/Snakefile, not here, so they are not
         # targets of this Snakefile.  The study rules below read them.
-        expand("output/dzfit/{ps}/trio_comparison_all.pdf", ps=PS_DIRS),
+        expand("dzfit/output/{ps}/trio_comparison_all.pdf", ps=PS_DIRS),
         # k<=3 vs k<=6 DZ fit check: residual metrics + plots
-        expand("output/dzfit/{ps}/dz_fit_check.pdf", ps=PS_DIRS),
+        expand("dzfit/output/{ps}/dz_fit_check.pdf", ps=PS_DIRS),
         # per-donut aberration-pair (primary->secondary) analysis
-        expand("output/correlations/{ps}/aberration_pairs.pdf", ps=PS_DIRS),
+        expand("correlations/output/{ps}/aberration_pairs.pdf", ps=PS_DIRS),
         # measured-intrinsic at the WFS radius, per rotator bin (pre-split)
-        expand("output/miw/{d}/study_radialbins.pdf", d=MI_DTAGS),
-        # corner-by-corner CWFS vs FAM measured-OPD comparison (per ps, cwfs)
-        [f"output/wfs_corner_compare/{p}/{cw}/wfs_corner_compare.pdf"
-         for p, cw in WFS_DVARIANTS],
+        expand("miw_origin/output/study_radialbins/{d}/study_radialbins.pdf", d=MI_DTAGS),
         # CWFS vs FAM optical state (v-modes + DoF) per image (per ps+mi, cwfs)
-        [f"output/wfs_dof_compare/{d}/{cw}/wfs_dof_compare_offsets.pdf"
+        [f"cwfs/output/wfs_dof_compare/{d}/{cw}/wfs_dof_compare_offsets.pdf"
          for d, cw in WFS_MI_DVARIANTS],
         # FAM-derived corner-WFS deviation covariance (84x84 + 21x21) per ps+mi
-        expand("output/wfs_mimic/{d}/wfs_mimic_cov84.parquet", d=MI_DTAGS),
+        expand("wfs_mimic/output/{d}/wfs_mimic_cov84.parquet", d=MI_DTAGS),
         # Phase 2: measured-intrinsic refit per (param_set, mi_name).  Built by the miw
         # product since phase 3a, so this is an input `rule all` requires rather than a
         # target it builds; MI_DTAGS already holds only the pairs whose MIW resolved.
@@ -539,17 +531,17 @@ rule all:
         # (the averaged-DOF LUT moved to the dof_lut product in phase 3a -- it is no
         # longer a target here; see rubinwork/products/dof_lut/Snakefile)
         # MI-refit analyses: DZ-DZ + DZ-temperature correlations, bounce tests
-        expand("output/correlations/{d}/dz_correlations.pdf", d=MI_DTAGS),
-        expand("output/correlations/{d}/dz_correlations_optcorr.pdf", d=MI_DTAGS),
-        expand("output/correlations/{d}/thermal_correlations.pdf", d=MI_DTAGS),
-        expand("output/correlations/{d}/vmode_correlations_50_34.pdf", d=MI_DTAGS),
-        expand("output/correlations/{d}/vmode_correlations_22_12.pdf", d=MI_DTAGS),
-        expand("output/correlations/{d}/dz_explained.pdf", d=MI_DTAGS),
+        expand("correlations/output/{d}/dz_correlations.pdf", d=MI_DTAGS),
+        expand("correlations/output/{d}/dz_correlations_optcorr.pdf", d=MI_DTAGS),
+        expand("correlations/output/{d}/thermal_correlations.pdf", d=MI_DTAGS),
+        expand("correlations/output/{d}/vmode_correlations_50_34.pdf", d=MI_DTAGS),
+        expand("correlations/output/{d}/vmode_correlations_22_12.pdf", d=MI_DTAGS),
+        expand("correlations/output/{d}/dz_explained.pdf", d=MI_DTAGS),
         # The four bounce TABLES moved to the bounce_tables product in phase 3a; the
         # nine PDFs are this study's half, so the rule survives and `rule all` now
         # targets its summary figure instead of bounce_kj_stats.parquet.  See
         # rubinwork/products/bounce_tables/Snakefile.
-        expand("output/bounce/{d}/bounce_summary.pdf", d=MI_DTAGS),
+        expand("bounce/output/{d}/bounce_summary.pdf", d=MI_DTAGS),
 
 # ---- FAM tables: mktable / fit / combine_* / attach_telemetry moved out ----
 # Phase 2 of notes/status/organization_plan.md moved these six rules into the
@@ -566,7 +558,7 @@ rule plots:
         donuts = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
         fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
         script = "dzfit/code/run_dz_plots.py",
-    output: "output/dzfit/{ps}/trio_comparison_all.pdf"
+    output: "dzfit/output/{ps}/trio_comparison_all.pdf"
     params: coord = lambda w: coord(PS_BY_DIR[w.ps])
     # run_dz_plots loads the full combined donut table; astropy materializes the
     # zk_* list columns as Python objects, so a single job can use ~10 GiB for a
@@ -576,7 +568,7 @@ rule plots:
     log: "logs/{ps}.plots.log"
     shell:
         "python dzfit/code/run_dz_plots.py {input.donuts} {input.fits} "
-        "--coord-sys {params.coord} --output-dir output/dzfit/{wildcards.ps} "
+        "--coord-sys {params.coord} --output-dir dzfit/output/{wildcards.ps} "
         "--no-single-image > {log} 2>&1"
 
 # ---- per-visit residual-map movie, one movie per chunk ----
@@ -592,7 +584,7 @@ rule residual_movie_chunk:
     # Each chunk renders into its own subdirectory: the intermediate JPEG frames and the
     # ffmpeg `frame_list.txt` are fixed names, so a shared directory would race when the
     # chunks run concurrently.
-    output: "output/dzfit/{ps}/movies/{dmin}_{dmax}/residuals_z1toz6_{dmin}_{dmax}.mp4"
+    output: "dzfit/output/{ps}/movies/{dmin}_{dmax}/residuals_z1toz6_{dmin}_{dmax}.mp4"
     params: coord = lambda w: coord(PS_BY_DIR[w.ps])
     resources: mem_mb=4000
     log: "logs/{ps}.{dmin}_{dmax}.residual_movie.log"
@@ -600,14 +592,14 @@ rule residual_movie_chunk:
         "python dzfit/code/run_dz_plots.py {input.donuts} {input.fits} "
         "--coord-sys {params.coord} --movie-prefix z1toz6 "
         "--movie-name residuals_z1toz6_{wildcards.dmin}_{wildcards.dmax}.mp4 "
-        "--output-dir output/dzfit/{wildcards.ps}/movies/{wildcards.dmin}_{wildcards.dmax} "
+        "--output-dir dzfit/output/{wildcards.ps}/movies/{wildcards.dmin}_{wildcards.dmax} "
         "--no-fit-params --no-trio > {log} 2>&1"
 
 rule residual_movies:
     input:
-        lambda w: [f"output/dzfit/{w.ps}/movies/{a}_{b}/residuals_z1toz6_{a}_{b}.mp4"
+        lambda w: [f"dzfit/output/{w.ps}/movies/{a}_{b}/residuals_z1toz6_{a}_{b}.mp4"
                    for a, b in chunks(PS_BY_DIR[w.ps])]
-    output: touch("output/dzfit/{ps}/movies/all_movies.done")
+    output: touch("dzfit/output/{ps}/movies/all_movies.done")
 
 # ---- k<=3 vs k<=6 DZ fit check ----
 # Streams donuts.parquet by row group, so it needs far less memory than `plots`.
@@ -618,8 +610,8 @@ rule dz_fit_check:
         visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
         script = "dzfit/code/run_dz_fit_check.py",
     output:
-        pdf     = "output/dzfit/{ps}/dz_fit_check.pdf",
-        metrics = "output/dzfit/{ps}/dz_fit_check.parquet",
+        pdf     = "dzfit/output/{ps}/dz_fit_check.pdf",
+        metrics = "dzfit/output/{ps}/dz_fit_check.parquet",
     params:
         real_ps = lambda w: PS_BY_DIR[w.ps],
         coord   = lambda w: coord(PS_BY_DIR[w.ps]),
@@ -630,7 +622,7 @@ rule dz_fit_check:
         "python dzfit/code/run_dz_fit_check.py --param-set {params.real_ps} "
         "--coord-sys {params.coord} "
         "--tables-dir {params.tdir} "
-        "--output-dir output/dzfit/{wildcards.ps} > {log} 2>&1"
+        "--output-dir dzfit/output/{wildcards.ps} > {log} 2>&1"
 
 # ---- per-donut primary->secondary aberration-pair analysis ----
 rule aberration_pairs:
@@ -639,7 +631,7 @@ rule aberration_pairs:
         visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
         fits   = lambda w: f"{fam_dir(w.ps)}/fits.parquet",
         script = "correlations/code/run_aberration_pairs.py",
-    output: "output/correlations/{ps}/aberration_pairs.pdf"
+    output: "correlations/output/{ps}/aberration_pairs.pdf"
     params:
         real_ps = lambda w: PS_BY_DIR[w.ps],
         coord = lambda w: coord(PS_BY_DIR[w.ps]),
@@ -652,7 +644,7 @@ rule aberration_pairs:
         "python correlations/code/run_aberration_pairs.py {input.donuts} "
         "--visits {input.visits} --fits {input.fits} --coord-sys {params.coord} "
         "--param-set {params.real_ps} --label {wildcards.ps} "
-        "--output-dir output/correlations/{wildcards.ps} > {log} 2>&1"
+        "--output-dir correlations/output/{wildcards.ps} > {log} 2>&1"
 
 # ======================================================================
 # Phase 2 — measured intrinsic, per (param_set, mi_name) from mi_config.yaml
@@ -686,7 +678,7 @@ rule study_radialbins:
         grids  = lambda w: mi_bin_grids(w.d),
         script = "../rubinwork/products/miw/qa/run_study_radialbins.py",
         lib    = f"{WF_LIB}/ccd_height.py",          # wfs_field_radius_range (inner edge)
-    output: "output/miw/{d}/study_radialbins.pdf"
+    output: "miw_origin/output/study_radialbins/{d}/study_radialbins.pdf"
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -697,33 +689,11 @@ rule study_radialbins:
     log: "logs/{d}.study_radialbins.log"
     shell:
         "python ../rubinwork/products/miw/qa/run_study_radialbins.py --param-set {params.real_ps} "
-        "--mi-name {params.real_mi} --out-dir output/miw/{wildcards.d} "
+        "--mi-name {params.real_mi} --out-dir miw_origin/output/study_radialbins/{wildcards.d} "
         "--src-dir {params.sdir} > {log} 2>&1"
 
-# ---- corner-by-corner CWFS vs FAM measured-OPD comparison (per ps) ----
-rule wfs_corner_compare:
-    input:
-        wfs    = lambda w: f"{cwfs_dir(w.ps, w.cwfs)}/donuts.parquet",
-        fam    = lambda w: f"{fam_dir(w.ps)}/donuts.parquet",
-        visits = lambda w: f"{fam_dir(w.ps)}/visits.parquet",
-        script = "cwfs/code/run_wfs_corner_compare.py",
-    output:
-        pdf     = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.pdf",
-        parquet = "output/wfs_corner_compare/{ps}/{cwfs}/wfs_corner_compare.parquet",
-    params:
-        real_ps = lambda w: PS_BY_DIR[w.ps],
-        coord   = lambda w: coord(PS_BY_DIR[w.ps]),
-        tdir    = lambda w: fam_dir(w.ps),
-        wdir    = lambda w: cwfs_dir(w.ps, w.cwfs),
-    resources: mem_mb=8000
-    log: "logs/{ps}.{cwfs}.wfs_corner_compare.log"
-    shell:
-        "python cwfs/code/run_wfs_corner_compare.py --param-set {params.real_ps} "
-        "--wfs-name {wildcards.cwfs} --coord {params.coord} "
-        "--tables-dir {params.tdir} "
-        "--wfs-dir {params.wdir} "
-        "--out-dir output/wfs_corner_compare/{wildcards.ps}/{wildcards.cwfs} "
-        "> {log} 2>&1"
+# (rule wfs_corner_compare moved to rubinwork/products/wfs_corner_compare/Snakefile; the
+# plots are aos/cwfs/code/run_wfs_corner_compare.py, run by hand against a build)
 
 # ---- CWFS vs FAM optical state (v-modes + DoF) per image (per ps, mi) ----
 # (rule wfs_intrinsic_sidecar moved to rubinwork/products/miw/Snakefile -- see above)
@@ -742,7 +712,7 @@ rule wfs_dof_compare:
         visits   = lambda w: f"{d_tables(w.d)}/visits.parquet",
         script   = "cwfs/code/run_wfs_dof_compare.py",
         lib      = f"{WF_LIB}/ofc_svd.py",
-    output: "output/wfs_dof_compare/{d}/{cwfs}/wfs_dof_compare_offsets.pdf"
+    output: "cwfs/output/wfs_dof_compare/{d}/{cwfs}/wfs_dof_compare_offsets.pdf"
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -757,7 +727,7 @@ rule wfs_dof_compare:
         "--mi-name {params.real_mi} --wfs-name {wildcards.cwfs} --coord {params.coord} "
         "--tables-dir {params.tdir} --miw-dir {params.mdir} "
         "--wfs-dir {params.wdir} "
-        "--out-dir output/wfs_dof_compare/{wildcards.d}/{wildcards.cwfs} > {log} 2>&1"
+        "--out-dir cwfs/output/wfs_dof_compare/{wildcards.d}/{wildcards.cwfs} > {log} 2>&1"
 
 # (rule intrinsic_sidecar moved to rubinwork/products/miw/Snakefile -- see above)
 
@@ -770,10 +740,10 @@ rule wfs_mimic:
         script  = "wfs_mimic/code/run_wfs_mimic.py",
         lib     = f"{WF_LIB}/mi_config.py",
     output:
-        cov84 = "output/wfs_mimic/{d}/wfs_mimic_cov84.parquet",
-        cov21 = "output/wfs_mimic/{d}/wfs_mimic_cov21.parquet",
-        bins  = "output/wfs_mimic/{d}/wfs_mimic_cov_bins.parquet",
-        pdf   = "output/wfs_mimic/{d}/wfs_mimic.pdf",
+        cov84 = "wfs_mimic/output/{d}/wfs_mimic_cov84.parquet",
+        cov21 = "wfs_mimic/output/{d}/wfs_mimic_cov21.parquet",
+        bins  = "wfs_mimic/output/{d}/wfs_mimic_cov_bins.parquet",
+        pdf   = "wfs_mimic/output/{d}/wfs_mimic.pdf",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -788,7 +758,7 @@ rule wfs_mimic:
         "python wfs_mimic/code/run_wfs_mimic.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --coord-sys {params.coord} "
         "--tables-dir {params.tdir} --miw-dir {params.mdir} "
-        "--out-dir output/wfs_mimic/{wildcards.d} > {log} 2>&1"
+        "--out-dir wfs_mimic/output/{wildcards.d} > {log} 2>&1"
 
 # (rule refit_mi moved to rubinwork/products/miw/Snakefile -- see above)
 
@@ -813,10 +783,10 @@ rule dz_correlations:
         lib    = "code/dz_plotting.py",
         ofc    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf    = "output/correlations/{d}/dz_correlations.pdf",
-        pairs  = "output/correlations/{d}/dz_correlations_pairs.parquet",
-        opdf   = "output/correlations/{d}/dz_correlations_optcorr.pdf",
-        opairs = "output/correlations/{d}/dz_correlations_optcorr_pairs.parquet",
+        pdf    = "correlations/output/{d}/dz_correlations.pdf",
+        pairs  = "correlations/output/{d}/dz_correlations_pairs.parquet",
+        opdf   = "correlations/output/{d}/dz_correlations_optcorr.pdf",
+        opairs = "correlations/output/{d}/dz_correlations_optcorr_pairs.parquet",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -828,7 +798,7 @@ rule dz_correlations:
     shell:
         "python correlations/code/run_dz_correlations.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} "
-        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
+        "--out-dir correlations/output/{wildcards.d} > {log} 2>&1"
 
 # ---- DZ-to-temperature correlations on the MI-refit fits ----
 rule thermal_correlations:
@@ -839,8 +809,8 @@ rule thermal_correlations:
         script   = "correlations/code/run_thermal_correlations.py",
         lib      = f"{WF_LIB}/ofc_svd.py",               # DOF / v-mode projection
     output:
-        pdf     = "output/correlations/{d}/thermal_correlations.pdf",
-        summary = "output/correlations/{d}/thermal_correlations_summary.parquet",
+        pdf     = "correlations/output/{d}/thermal_correlations.pdf",
+        summary = "correlations/output/{d}/thermal_correlations_summary.parquet",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -852,7 +822,7 @@ rule thermal_correlations:
     shell:
         "python correlations/code/run_thermal_correlations.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
-        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
+        "--out-dir correlations/output/{wildcards.d} > {log} 2>&1"
 
 # ---- FAM bounce-test paired Δ (DZ / v-mode / DOF) on the MI-refit fits ----
 # fits.parquet now holds ALL visits (--no-quality-cut); the bounce applies a
@@ -880,8 +850,8 @@ rule bounce:
         lib      = "bounce/code/bounce_lib.py",
         ofc      = f"{WF_LIB}/ofc_svd.py",
     output:
-        summary    = "output/bounce/{d}/bounce_summary.pdf",
-        dz_ordinal = "output/bounce/{d}/bounce_dz_vs_ordinal.pdf",
+        summary    = "bounce/output/{d}/bounce_summary.pdf",
+        dz_ordinal = "bounce/output/{d}/bounce_dz_vs_ordinal.pdf",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -891,7 +861,7 @@ rule bounce:
     shell:
         "python bounce/code/run_bounce.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} "
-        "--out-dir output/bounce/{wildcards.d} --min-detectors 160 > {log} 2>&1"
+        "--out-dir bounce/output/{wildcards.d} --min-detectors 160 > {log} 2>&1"
 
 # ======================================================================
 # In-focus corner-WFS (cwfs) track — paired to the FAM triplets.
@@ -922,7 +892,7 @@ rule fam_coadd_miw:
         visits  = lambda w: f"{d_tables(w.d)}/visits.parquet",
         sidecar = lambda w: f"{miw_dir_for(w.d)}/zk_intrinsic.parquet",
         script  = "miw_origin/code/run_fam_coadd_miw.py",
-    output: "output/coadd/{d}/fam_coadd_miw_maps.pdf"
+    output: "miw_origin/output/fam_coadd_miw/{d}/fam_coadd_miw_maps.pdf"
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -939,7 +909,7 @@ rule fam_coadd_miw:
         "--mi-name {params.real_mi} --bin-deg {params.bin_deg} "
         "--min-triplets {params.mint} --grid-n {params.grid} --pct {params.pct} "
         "--tables-dir {params.tdir} --miw-dir {params.mdir} "
-        "--out-dir output/coadd/{wildcards.d} > {log} 2>&1"
+        "--out-dir miw_origin/output/fam_coadd_miw/{wildcards.d} > {log} 2>&1"
 
 
 # ---- v-mode <-> temperature correlations + v-mode autocorrelation (robust
@@ -952,10 +922,10 @@ rule vmode_correlations:
         script = "correlations/code/run_vmode_correlations.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf_50   = "output/correlations/{d}/vmode_correlations_50_34.pdf",
-        pdf_22   = "output/correlations/{d}/vmode_correlations_22_12.pdf",
-        summ_50  = "output/correlations/{d}/vmode_correlations_summary_50_34.parquet",
-        summ_22  = "output/correlations/{d}/vmode_correlations_summary_22_12.parquet",
+        pdf_50   = "correlations/output/{d}/vmode_correlations_50_34.pdf",
+        pdf_22   = "correlations/output/{d}/vmode_correlations_22_12.pdf",
+        summ_50  = "correlations/output/{d}/vmode_correlations_summary_50_34.parquet",
+        summ_22  = "correlations/output/{d}/vmode_correlations_summary_22_12.parquet",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -967,7 +937,7 @@ rule vmode_correlations:
     shell:
         "python correlations/code/run_vmode_correlations.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
-        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
+        "--out-dir correlations/output/{wildcards.d} > {log} 2>&1"
 
 
 # ---- per-visit fraction of the DZ explained by the 22/12 vs 50/34 subspace ----
@@ -979,8 +949,8 @@ rule dz_explained:
         script = "correlations/code/run_dz_explained.py",
         lib    = f"{WF_LIB}/ofc_svd.py",
     output:
-        pdf     = "output/correlations/{d}/dz_explained.pdf",
-        table   = "output/correlations/{d}/dz_explained.parquet",
+        pdf     = "correlations/output/{d}/dz_explained.pdf",
+        table   = "correlations/output/{d}/dz_explained.parquet",
     params:
         real_ps = lambda w: MI_BY_DTAG[w.d][0],
         real_mi = lambda w: MI_BY_DTAG[w.d][1],
@@ -992,4 +962,4 @@ rule dz_explained:
     shell:
         "python correlations/code/run_dz_explained.py --param-set {params.real_ps} "
         "--mi-name {params.real_mi} --fits {input.fits} --tables-dir {params.tdir} "
-        "--out-dir output/correlations/{wildcards.d} > {log} 2>&1"
+        "--out-dir correlations/output/{wildcards.d} > {log} 2>&1"

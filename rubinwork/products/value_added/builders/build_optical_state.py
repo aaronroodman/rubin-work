@@ -652,27 +652,25 @@ def resolve_miw_decomp(a, intrinsic_ref=None):
     """The ``intrinsic_split_decomp.parquet`` to use, or `None` to let the old tree decide.
 
     Resolution order: ``--miw-decomp-path``, then ``--miw-build`` through the product
-    catalog, then a catalog-form `intrinsic_ref` (``miw:<variant>@<build>``) through the
-    catalog, then `None`. The third keeps a registered variant on the build its registry
-    row names once that row holds a catalog name, with no flag needed.
+    catalog, then `intrinsic_ref` through the catalog -- in catalog form
+    (``miw:<variant>@<build>``) or as an old-tree build directory name
+    (``danish_1_2_A_50_34_i_5rot``), mapped to its ``miw`` variant's ``current`` build --
+    then `None`.
 
     A `None` return leaves `rubinwork.miw_corner.MiwCornerLookup` to call
-    ``decomp_path``, which tries ``aos/output/miw/<mi_name>/`` **first**. That directory
-    is usually still on disk, so the old-tree build wins silently and the catalog build is
-    never read. The two are not the same: for ``d12-A_50_34_i_5rot`` they differ on the
-    outermost radial ring of the field grid, by up to 0.6966 µm of wavefront in ``O_re``
-    (ring 79 of 80, r = 1.7500 deg of field angle), which is the convex-hull and NaN-rim
-    fix. At the four corner field points (r = 1.6833 deg) the two agree to 1.1244e-03 µm
-    of wavefront, so the effect on this product is small -- but it is not nothing, and
-    which build produced a row should not depend on what happens to be left in the old
-    tree. Pass ``--miw-build``.
+    ``decomp_path``, which reads ``aos/output/miw/``. That happens only for a name no
+    ``miw`` variant claims or a variant with no catalog build. The two trees are not the
+    same: for ``d12-A_50_34_i_5rot`` they differ on the outermost radial ring of the field
+    grid, by up to 0.6966 µm of wavefront in ``O_re`` (ring 79 of 80, r = 1.7500 deg of
+    field angle), which is the convex-hull and NaN-rim fix. At the four corner field points
+    (r = 1.6833 deg) they agree to 1.1244e-03 µm of wavefront.
 
     Parameters
     ----------
     a : `argparse.Namespace`
         Parsed arguments, read for ``miw_decomp_path`` and ``miw_build``.
     intrinsic_ref : `str`, optional
-        The variant's ``state_variant.intrinsic_ref``. Used only in catalog form.
+        The variant's ``state_variant.intrinsic_ref``.
 
     Returns
     -------
@@ -685,6 +683,7 @@ def resolve_miw_decomp(a, intrinsic_ref=None):
         If an explicit path or a resolved catalog build has no decomposition file.
     """
     from rubinwork.miw_corner import DECOMP_FILE
+    from rubinwork.products import catalog
 
     if a.miw_decomp_path:
         decomp = pathlib.Path(a.miw_decomp_path)
@@ -694,9 +693,19 @@ def resolve_miw_decomp(a, intrinsic_ref=None):
     ref = a.miw_build
     if not ref and str(intrinsic_ref or '').startswith(CATALOG_MIW_PREFIX):
         ref = intrinsic_ref[len(CATALOG_MIW_PREFIX):]
-    if ref:
-        from rubinwork.products import catalog
+    if not ref and intrinsic_ref:
+        from rubinwork.products import miw
 
+        by_dir = {f'{miw.fam_variant(v)}_{miw.dir_name(v)}': v
+                  for v in miw.variants(registered_only=False)}
+        variant = by_dir.get(str(intrinsic_ref))
+        if variant is not None:
+            try:
+                decomp = catalog.path('miw', variant, catalog.CURRENT) / DECOMP_FILE
+            except catalog.ProductNotFound:
+                return None
+            return decomp if decomp.exists() else None
+    if ref:
         variant, _, build = ref.partition('@')
         decomp = catalog.path('miw', variant, build or catalog.CURRENT) / DECOMP_FILE
         if not decomp.exists():
