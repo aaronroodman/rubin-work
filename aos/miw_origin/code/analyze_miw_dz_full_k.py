@@ -36,6 +36,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+from rubinwork.products import catalog
+
 ZK = [z for z in range(4, 27) if z not in (20, 21)]      # 21 pupil Noll indices
 K_FIT = 6        # what the per-visit build fits
 K_OFC = 30       # highest focal order in the ts_ofc DZ sensitivity
@@ -52,8 +54,7 @@ def noll_radial_order(k):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--miw", default="output/miw/danish_1_2_A_50_34_i_5rot/"
-                    "intrinsic_split_maps.parquet")
+    ap.add_argument("--miw", default=str(catalog.path("miw", "d12-A_50_34_i_5rot") / "intrinsic_split_maps.parquet"))
     ap.add_argument("--kmax", type=int, default=45,
                     help="highest focal Noll index to fit (45 completes radial order n=8)")
     ap.add_argument("--fp-radius", type=float, default=1.8,

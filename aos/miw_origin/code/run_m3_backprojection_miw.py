@@ -39,14 +39,14 @@ import galsim.zernike as gz
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
+from rubinwork.products import catalog  # noqa: E402
 from rubinwork.products.miw import load_miw  # noqa: E402
 import m3_backprojection as bp
 
 warnings.filterwarnings("ignore")
 
 JS = [j for j in range(4, 27) if j not in (20, 21)]   # FAM Noll set
-DEFAULT_MIW = ("output/miw/danish_1_2_A_50_34_i_5rot/"
-               "intrinsic_split_maps.parquet")
+DEFAULT_MIW = str(catalog.path("miw", "d12-A_50_34_i_5rot") / "intrinsic_split_maps.parquet")
 
 
 def mean_cos(tel, s):
