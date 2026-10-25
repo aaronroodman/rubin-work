@@ -3,7 +3,7 @@
 > **Status:** parked; the outputs predate the 2026-09-07 split and are stale (`../docs/status/rerun_needed.md`) · **Last updated:** 2026-10-24 · **Kind:** reference (study)
 
 > **Code:** `code/closed_loop/`
-> **Output:** `output/closed_loop/<P>_<M>/`
+> **Output:** `closed_loop/output/<P>_<M>/` (the study `output@`)
 
 Simulation of Active Optics System (AOS) closed-loop control over a sequence of Full
 Array Mode (FAM) visits, measuring the delivered Point Spread Function (PSF) that results.
@@ -58,7 +58,7 @@ Needs `lsst.ts.ofc` (the sensitivity-matrix SVD), `lsst.obs.lsst` (camera geomet
 
 ## State
 
-The 8 PDFs currently in `output/closed_loop/<P>_<M>/` were produced by the former
+The 8 PDFs currently in `closed_loop/output/<P>_<M>/` were produced by the former
 `run_psf_fp_maps.py --case loop*` and are named `psf_fp_maps_loop*`. They predate this
 split and the move to a single `<mi>`; see
 [`../docs/status/rerun_needed.md`](../docs/status/rerun_needed.md).

@@ -48,22 +48,25 @@ count).
 - `wfs_corner_compare` is a product; `extract_cwfs_sigma.py` reads it through the catalog,
   and `ALLOWED` is empty.
 
-**What is still only in `aos/output`** (counts are directories):
-- **9 of the 12 MIW builds**: every Danish 1.3 one (`danish_1_3_test_*`,
-  `danish_1_3_v1000_*`, 0.9 GB together). The catalog has `d12-A_50_34_i` and
-  `d12-A_50_34_i_5rot` only. `miw_recovery_constraint/code/compare_schemes.py` reads three
-  of them through `--miw-root output/miw`. These need registering, as was done for the
-  guider moments, before the tree can go.
-- `fits_july.parquet` in `miw/danish_1_2_A_50_34_i_5rot/`, the input of the
-  `bounce_tables` `_july` variant.
-- `archive/` (9.2 GB), frozen provenance; `wfs_fam_compare/` (0.7 GB, parked
-  `run_wfs_fam_compare.py`); the `miw/` comparison directories (`danish_1_2_vs_1_3`,
-  `danish_1_3_legacy_vs_v1000`, `danish_1_3_v1000_rbr_arms`, `danish_1_3_v1000_schemes`,
-  `dof_ranges`); `processing_compare`, `psf`, `closed_loop`, `camera_gravity`, `lut`,
-  `danish_tarts_compare_20260713` (together under 0.1 GB).
-- The FAM tables (`fam_processing/`, 55 GB) are in the catalog: `danish_1_2`,
-  `danish_1_3_test` and `danish_1_3_v1000` match in size, the donut tables to the byte or
-  within 115 bytes. `_timing_probe` and `blur_intra_extra` are not.
+**What is still only in `aos/output`** (2026-10-24, after the copies below): nothing read
+by tracked code. Copied, sizes checked file by file, old tree untouched:
+- the 10 Danish 1.3 MIW builds (counts) into the `miw` product as `old-tree-<date>` builds,
+  set `current`; `fits_july.parquet` as `miw/d12-A_50_34_i_5rot/old-tree-fits-july`; the
+  location-only `bounce_tables` `_july` and `coadds` `_v2` registrations now hold their files;
+- `wfs_fam_compare` and `miw_cwfs_intrinsic_check.parquet` to `cwfs/output`;
+  `processing_compare` and `danish_tarts_compare_20260713` to `processing_compare/output`;
+  `psf` to `psf_fp_maps/output`; `closed_loop`, `camera_gravity` (to `miw_origin/output`),
+  `lut`; `bending_mode_test_meta.parquet` and `dof_normalization_split.parquet`; the two
+  sparse-fit PDFs to `smatrix/sparse_fit/output`; the four `miw/` comparison directories to
+  `miw_recovery_constraint/output` and `miw_version_comparisons/output`.
+
+Left in the tree, and not needed elsewhere: `fam_processing/` (55 GB; the three variants
+are in the catalog, the donut tables equal in size), `wfs_ingest/` (the four `d12` CWFS
+variants are in the catalog), `coadd/` and `bounce/` (in the catalog), the other old-tree
+`miw/` builds (in the catalog), and `archive/` (9.2 GB, frozen provenance, kept in the
+backup). `run_wfs_fam_compare.py`, `run_closed_loop.py` and `run_psf_fp_maps.py` (parked)
+still default to `--output-root output` and read a pre-September layout that no longer
+exists; fix them when they are next run.
 
 **`guider/output`: the moments are now a product; the rest is study output.** On
 2026-10-24 the nine nights (count) 20260512-20260712 were copied, md5-checked, to
@@ -92,9 +95,7 @@ if none exists. `compare_to_archive.py` takes the archive path as an argument.
 
 ## What has to happen before the other three can go
 
-1. `aos/output`: done for the readers and writers (2026-10-24). Left: register the 9 Danish
-   1.3 MIW builds and `fits_july.parquet` in the catalog, and give the parked
-   `wfs_fam_compare` and the `miw/` comparison directories an owner (study `output@`).
+1. `aos/output`: done (2026-10-24). It can go once backed up.
 2. `guider/output`: done for the moments and PSF moments (2026-10-24). Left: give the QA
    PDFs, movies and rtvplots an owner (a study `output@`) and repoint those three rules.
 3. `optatmo/output`: kept as the `psf_vs_cwfs` study's data (Aaron, 2026-10-24); a product
@@ -158,10 +159,8 @@ T=/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work
 rm -rf $T/aos/output $T/guider/output
 ```
 
-What breaks if run today: the 9 Danish 1.3 MIW builds and `fits_july.parquet` exist
-nowhere else (`compare_schemes.py`, the `_july` bounce variant, and the Snakefile's
-Danish 1.3 MIW study jobs); the guider QA, movie and rtvplot rules, until they get a study
-output; and `build_fam_manifest.py` as documented.
+What breaks if run today: the guider QA, movie and rtvplot rules, until they get a study
+output; `build_fam_manifest.py` as documented; and the three parked scripts above.
 
 The laptop's synced output copies (about 60 GB) are not on s3df; remove them on the laptop
 when the s3df trees are settled.

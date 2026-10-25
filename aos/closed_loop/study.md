@@ -18,7 +18,7 @@ What delivered PSF does AOS closed-loop control give over a FAM visit sequence, 
 
 ## Current answer
 
-None current: the eight PDFs in `output/closed_loop/` predate the split from `psf` and the single-`<mi>` change.
+None current: the eight PDFs in `output/` predate the split from `psf` and the single-`<mi>` change.
 
 ## Log
 

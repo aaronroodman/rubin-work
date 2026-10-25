@@ -10,7 +10,7 @@ started: 2026-09-06
 
 # `psf_fp_maps`
 
-> **Code:** `code/run_psf_fp_maps.py` (with `aos/code/psf_maps_lib.py`; Slurm `aos/run_psf_fp_maps.sbatch`) · **Write-up:** [`psf.md`](psf.md) · **Output:** `aos/output/psf/<P>_<M>/`
+> **Code:** `code/run_psf_fp_maps.py` (with `aos/code/psf_maps_lib.py`; Slurm `aos/run_psf_fp_maps.sbatch`) · **Write-up:** [`psf.md`](psf.md) · **Output:** `output/<P>_<M>/` (the study `output@`)
 
 ## Question
 

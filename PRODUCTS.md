@@ -10,9 +10,9 @@ Size is the total of the current build's files, or of the latest build when none
 |---|---|---|---|---|---|---|
 | bounce_tables | `d12-A_50_34_i` | 20261015 | 20261015 | 2026-10-15 | 1 | 0.2 |
 | bounce_tables | `d12-A_50_34_i_5rot` | 20261015 | 20261015 | 2026-10-15 | 1 | 0.2 |
-| bounce_tables | `d12-A_50_34_i_5rot_july` |  | old-tree-20261001 | 2026-10-15 | 1 |  |
+| bounce_tables | `d12-A_50_34_i_5rot_july` |  | old-tree-20261001 | 2026-10-24 | 1 | 8.6 |
 | coadds | `d12-A_50_34_i_5rot` | 20261015 | 20261015 | 2026-10-15 | 1 | 235.5 |
-| coadds | `d12-A_50_34_i_5rot_v2` |  | old-tree-20260903 | 2026-10-15 | 1 |  |
+| coadds | `d12-A_50_34_i_5rot_v2` |  | old-tree-20260903 | 2026-10-24 | 1 | 235.5 |
 | cwfs_tables | `d12-ai_donut` | 20261013 | 20261013 | 2026-10-13 | 1 | 17.9 |
 | cwfs_tables | `d12-paired_3mm` | 20261013 | 20261013 | 2026-10-13 | 1 | 1.0 |
 | cwfs_tables | `d12-refitWcs` | 20261013 | 20261013 | 2026-10-13 | 1 | 48.4 |
@@ -20,11 +20,22 @@ Size is the total of the current build's files, or of the latest build when none
 | dof_lut | `d12-A_50_34_i` | 20261015 | 20261015 | 2026-10-15 | 1 | 0.1 |
 | dof_lut | `d12-A_50_34_i_5rot` | 20261015w42 | 20261015lint | 2026-10-15 | 3 | 0.1 |
 | fam_tables | `danish_1_2` | 20261014 | 20261014 | 2026-10-14 | 2 | 12,383.8 |
+| fam_tables | `danish_1_3` | 20261024 | 20261024 | 2026-10-24 | 1 | 25,410.9 |
 | fam_tables | `danish_1_3_test` | 20261013 | 20261013 | 2026-10-13 | 1 | 13,299.6 |
 | fam_tables | `danish_1_3_v1000` | 20261013 | 20261013 | 2026-10-13 | 1 | 13,299.8 |
 | guider_moments | `v4` |  | nights/20260712 | 2026-10-24 | 9 | 127.4 |
 | miw | `d12-A_50_34_i` | 20261014 | 20261014 | 2026-10-14 | 1 | 1,877.3 |
-| miw | `d12-A_50_34_i_5rot` | 20261014 | 20261014 | 2026-10-14 | 1 | 1,869.6 |
+| miw | `d12-A_50_34_i_5rot` | 20261014 | old-tree-fits-july | 2026-10-24 | 2 | 1,869.6 |
+| miw | `d13t-A_50_34_i` | old-tree-20260928 | old-tree-20260928 | 2026-10-24 | 1 | 0.0 |
+| miw | `d13t-A_50_34_i_5rot` | old-tree-20260928 | old-tree-20260928 | 2026-10-24 | 1 | 517.5 |
+| miw | `d13v1000-A_22_12_i` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 19.9 |
+| miw | `d13v1000-A_22_12_i_5rot` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 13.2 |
+| miw | `d13v1000-A_50_34_i` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 0.0 |
+| miw | `d13v1000-A_50_34_i_5rot` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 14.5 |
+| miw | `d13v1000-A_50_34_i_rbr` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 0.0 |
+| miw | `d13v1000-A_50_34_i_rbr_5rot` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 13.5 |
+| miw | `d13v1000-A_50_50_i_rbr` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 19.9 |
+| miw | `d13v1000-A_50_50_i_rbr_5rot` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 13.2 |
 | miw | `official-20260528a` |  | external | 2026-10-10 | 1 |  |
 | miw | `official-gmegias-v3` |  | external | 2026-10-10 | 1 |  |
 | miw | `staged-v1` |  | external | 2026-10-10 | 1 |  |

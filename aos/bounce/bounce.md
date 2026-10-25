@@ -234,7 +234,7 @@ them per study is outstanding work.
 The S-matrix SVD normalization weight is `w_j = r_j^0.5 * f_j^-0.5`, with `r_j` the allowed
 range of degree of freedom `j` — µm for translations and bending-mode amplitudes, arcsec for
 hexapod rotations — and `f_j` the FWHM response in arcsec per DOF unit. The shipped
-`range0.5_fwhm-0.15.yaml` stores only the product, so `output/bounce/dof_normalization_split.parquet`
+`range0.5_fwhm-0.15.yaml` stores only the product, so `bounce/output/dof_normalization_split.parquet`
 records the split: `range`, `fwhm_per_unit_arcsec` back-derived as `r_j / w_j^2`, and `weight`.
 The hexapod ranges are the `rb_stroke` literals (M2 5900/6700/6700 µm and 0.12 arcsec, camera
 8700/7600/7600 µm and 0.24 arcsec); the 40 bending-mode ranges are

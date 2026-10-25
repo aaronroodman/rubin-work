@@ -4,8 +4,8 @@
 
 > **Code:** `rubinwork/products/dof_lut/` (a product since phase 3a; a shim remains at
 > `code/lut/run_build_lut.py`)
-> **Output:** `<products>/dof_lut/<variant>/<build>/`, and the old
-> `output/lut/<P>_<M>/` until phase 3c rebuilds it
+> **Output:** `<products>/dof_lut/<variant>/<build>/`; the old plain-FAM LUT in
+> `lut/output/<P>_<M>/`
 
 Construction of a Look-Up Table (LUT) of telescope degrees of freedom (DOF) from Full
 Array Mode (FAM) wavefront measurements. The per-visit Double Zernike (DZ) fits are
@@ -89,7 +89,7 @@ because that build also supplies the fit table.
 - **The input switched to the post-MIW DZ on 2026-10-13** (Aaron), so the variant keys on
   `miw` rather than `fam_tables` and both are recorded under the manifest's `inputs`. The
   builder itself still subtracts nothing: what changed is which fit table it reads.
-  The old plain-FAM LUT stays only in the old `aos/output/lut/` tree.
+  The old plain-FAM LUT is in the study `output@`, `lut/output/`, copied from the old tree 2026-10-24.
 
 - **The switch did not make the recovered DOF physically plausible, which was its stated
   motivation.** Measured on the `miw` 3a reference (nights 20260315/16/17, 169 visits,

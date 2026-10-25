@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
 
 > **Code:** `code/` of the `miw_origin` study (formerly `aos/code/static_optics/`)
-> **Output:** `output/camera_gravity/` (`camera_gravity_maps_{raw,corr}_{rb,surf}.pdf`, `camera_gravity_validation.pdf`)
+> **Output:** `miw_origin/output/camera_gravity/` (`camera_gravity_maps_{raw,corr}_{rb,surf}.pdf`, `camera_gravity_validation.pdf`)
 
 Tests of whether a static optical figure — a mirror surface, the camera lenses, or
 gravitational flexure of the camera — reproduces the Measured Intrinsic Wavefront (MIW).
@@ -135,7 +135,7 @@ python miw_origin/code/camera_gravity_maps.py --help
 ```
 
 Needs `batoid` + `batoid_rubin` and the MIW product (the `_5rot` `intrinsic_split_maps`,
-OCS columns). Output goes to `output/camera_gravity/` and per-script directories.
+OCS columns). Output goes to `miw_origin/output/camera_gravity/` and per-script directories.
 
 ## Notebooks
 

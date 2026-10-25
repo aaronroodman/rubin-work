@@ -6,7 +6,7 @@ Tests whether **camera-lens gravitational flexure** can produce the measured
 intrinsic-wavefront (MIW) astigmatism/coma excess (OCS, high field order,
 ~0.1 µm) documented in `../../smatrix/docs/miw_astig_coma_investigation.md`.
 
-Code: `code/camera_gravity*.py`. Output: `output/camera_gravity/`.
+Code: `code/camera_gravity*.py`. Output: `miw_origin/output/camera_gravity/`.
 
 ## What the batoid_rubin gravity model actually does
 
