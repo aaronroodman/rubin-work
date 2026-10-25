@@ -4,7 +4,8 @@ topic: aos
 status: done
 question: "How much do MIW builds differ between Danish 1.2 and 1.3 wavefronts and between the legacy and v1000 pupil models, term by term and as image quality?"
 answer: "Danish 1.2 and 1.3 builds agree in Z5-Z8 to about 9 % of amplitude RMS. v1000 moves the MIW by 0.1027 of amplitude (dimensionless, difference RMS over build-A RMS) with no pupil-rim signature."
-uses: {}  # old aos/output tree
+uses:  # its Danish 1.2 side was the old-tree d12-A_50_34_i_5rot build of 2026-07-30, not 20261014
+  miw: d13t-A_50_34_i_5rot@old-tree-20260928
 started: 2026-09-28
 ---
 

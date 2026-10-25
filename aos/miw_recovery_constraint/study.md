@@ -4,7 +4,8 @@ topic: aos
 status: active
 question: "Is the optical state the MIW build subtracts physically reachable, and what does Range-Bounded Recovery do to the MIW when it enforces the allowed DOF ranges?"
 answer: "No: unconstrained 50/34 puts 33 of 50 DOF out of range on at least 5 % of visits. RBR brings the worst range ratio from 60.25 to 1.713 (dimensionless) but grows the MIW by 0.2764 um RMS of wavefront."
-uses: {}  # old aos/output tree
+uses:
+  miw: d13t-A_50_34_i@old-tree-20260928, d13v1000-A_50_34_i@old-tree-20261006, d13v1000-A_50_34_i_rbr@old-tree-20261006, d13v1000-A_22_12_i@old-tree-20261007, d13v1000-A_50_50_i_rbr@old-tree-20261007
 started: 2026-09-28
 ---
 

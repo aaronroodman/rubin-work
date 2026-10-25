@@ -12,10 +12,10 @@ rather than interpolating.
 Usage
 -----
     python miw_version_comparisons/code/compare_miw_versions.py \
-        --miw-a output/miw/danish_1_2_A_50_34_i_5rot/intrinsic_split_maps.parquet \
-        --miw-b output/miw/danish_1_3_test_A_50_34_i_5rot/intrinsic_split_maps.parquet \
+        --miw-a /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d12-A_50_34_i_5rot/current/intrinsic_split_maps.parquet \
+        --miw-b /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d13t-A_50_34_i_5rot/current/intrinsic_split_maps.parquet \
         --label-a "Danish 1.2 (paired)" --label-b "Danish 1.3 blitz (unpaired)" \
-        --out-dir output/miw/danish_1_2_vs_1_3
+        --out-dir miw_version_comparisons/output/danish_1_2_vs_1_3
 
 Key arguments: `--coord` selects the OCS (telescope-fixed, default) or CCS
 (camera-fixed) component; `--js` overrides the Noll terms plotted.

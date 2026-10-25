@@ -44,7 +44,7 @@ residual and the per-v-mode shift.
 Usage
 -----
     python miw_recovery_constraint/code/compare_schemes.py \
-        --out-dir output/miw/danish_1_3_v1000_schemes \
+        --out-dir miw_recovery_constraint/output/danish_1_3_v1000_schemes \
         --label "Danish 1.3 blitz, v1000 pupil model"
 """
 
@@ -64,17 +64,29 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # same-study s
 
 from rubinwork import aos_state  # noqa: E402
 from compare_rbr_arms import build_estimator, load_arm  # noqa: E402
+from rubinwork.products import catalog  # noqa: E402
 
 # The five in-family rotator bins, matching the 5rot split entries.
 ROT_5 = ("rot_-65_-55", "rot_-20_-10", "rot_-3_3", "rot_10_20", "rot_55_65")
 
-# One entry per scheme: the key, the directory under output/miw/, the DOF index
-# set and the retained v-mode count.  Order is the plotting order.
+# One entry per scheme: the key, the miw product variant, the DOF index set and the
+# retained v-mode count.  Order is the plotting order.
 SCHEMES = (
-    ("22/12", "danish_1_3_v1000_A_22_12_i", aos_state.DOF22, 12),
-    ("50/34 no RBR", "danish_1_3_v1000_A_50_34_i", 50, 34),
-    ("50/50 RBR", "danish_1_3_v1000_A_50_50_i_rbr", 50, 50),
+    ("22/12", "d13v1000-A_22_12_i", aos_state.DOF22, 12),
+    ("50/34 no RBR", "d13v1000-A_50_34_i", 50, 34),
+    ("50/50 RBR", "d13v1000-A_50_50_i_rbr", 50, 50),
 )
+
+
+def _build_dir(miw_root, variant):
+    """The per-rotator-bin ``build/`` directory of a scheme's MIW build.
+
+    Through the catalog's ``current`` build unless `miw_root` names a directory holding
+    one subdirectory per variant.
+    """
+    if miw_root:
+        return pathlib.Path(miw_root) / variant / "build"
+    return catalog.path("miw", variant) / "build"
 
 COLORS = {"22/12": "#2ca02c", "50/34 no RBR": "#1f77b4", "50/50 RBR": "#d62728"}
 
@@ -89,8 +101,8 @@ def load_all(miw_root, rotator_select, ofc_normalization_yaml=None):
         returns it.
     """
     arms = {}
-    for key, dirname, n_dof, n_keep in SCHEMES:
-        build_dir = pathlib.Path(miw_root) / dirname / "build"
+    for key, variant, n_dof, n_keep in SCHEMES:
+        build_dir = _build_dir(miw_root, variant)
         if not build_dir.is_dir():
             raise RuntimeError(f"{key}: no build directory at {build_dir}")
         estimator = build_estimator(
@@ -214,8 +226,8 @@ def miw_grids(miw_root, rotator_select):
         ``(n_field_points, n_noll)`` in um of wavefront.
     """
     grids = {}
-    for key, dirname, _, _ in SCHEMES:
-        build_dir = pathlib.Path(miw_root) / dirname / "build"
+    for key, variant, _, _ in SCHEMES:
+        build_dir = _build_dir(miw_root, variant)
         per_bin, noll = {}, None
         for sub in sorted(build_dir.glob("rot_*")):
             if rotator_select and sub.name not in rotator_select:
@@ -476,8 +488,9 @@ def report(label, visits, dof_summary, resid_total, grids):
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--miw-root", default="output/miw",
-                    help="directory holding the per-scheme MIW directories")
+    ap.add_argument("--miw-root", default=None,
+                    help="a directory holding one MIW build per variant; default: the "
+                         "catalog's current builds")
     ap.add_argument("--out-dir", required=True,
                     help="where the PDF and the tables are written")
     ap.add_argument("--label", default="MIW scheme comparison",

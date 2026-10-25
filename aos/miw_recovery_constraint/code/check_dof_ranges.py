@@ -21,9 +21,9 @@ already uses, so no new input enters the comparison.
 Usage
 -----
     python miw_recovery_constraint/code/check_dof_ranges.py \
-        --build-dir output/miw/danish_1_3_test_A_50_34_i/build \
+        --build-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d13t-A_50_34_i/current/build \
         --label "Danish 1.3 blitz (unpaired)" \
-        --out-dir output/miw/dof_ranges
+        --out-dir miw_recovery_constraint/output/dof_ranges
 
 Key arguments: `--rotator-select` restricts to the five in-family rotator bins the
 `_5rot` split decomposes (default is every bin present); `--frac-threshold` sets what
