@@ -86,14 +86,13 @@ from astropy.table import QTable
 
 from rubinwork.products import fam_tables
 
+from rubinwork.products.fam_tables import quality
+
 from . import blitz_reader as br
 
-# Per-visit quality-cut thresholds, matching the run_mktable defaults so that a blitz
-# table and a Danish 1.2 table are cut the same way.
-DEFAULT_MIN_DONUTS_PER_VISIT = 500
+# The floor that defines a covered detector in n_detectors_with_min_donuts, matching
+# run_mktable.  The visit cut itself is `quality.visit_quality_pass`.
 DEFAULT_MIN_DONUTS_PER_DETECTOR = 3
-DEFAULT_MIN_DETECTORS_PER_VISIT = 170
-DEFAULT_MAX_MEDIAN_BLUR_ARCSEC = 1.2
 
 # Flag a visit whose camera rotator angle exceeds this, in deg, as run_mktable does.
 DEFAULT_ROTATOR_THRESHOLD_DEG = 90.0
@@ -101,7 +100,7 @@ DEFAULT_ROTATOR_THRESHOLD_DEG = 90.0
 # Values of the rotator_angle_source column.  Kept in step with
 # `lsst.ts.intrinsic.wavefront.intrinsics_lib.ROTATOR_SOURCE_*`, which the Danish 1.2
 # path writes, rather than imported, so this module stays independent of that package
-# (the same reason `quality_mask` is duplicated below).
+# (the same reason `quality.visit_quality_pass` is its own module).
 ROTATOR_SOURCE_ROTTELPOS = 'rotTelPos'
 ROTATOR_SOURCE_CONSDB = 'consdb'
 ROTATOR_SOURCE_MISSING = 'missing'
@@ -173,22 +172,10 @@ def parse_args(argv=None):
     parser.add_argument('--consdb-url', default=DEFAULT_CONSDB_URL,
                         help=f'ConsDB URL (default: {DEFAULT_CONSDB_URL}; token read '
                              'from ~/.lsst/consdb_token)')
-    parser.add_argument('--min-donuts-per-visit', type=int,
-                        default=DEFAULT_MIN_DONUTS_PER_VISIT,
-                        help=f'Minimum donuts per visit, dimensionless (default '
-                             f'{DEFAULT_MIN_DONUTS_PER_VISIT}; 0 disables)')
     parser.add_argument('--min-donuts-per-detector', type=int,
                         default=DEFAULT_MIN_DONUTS_PER_DETECTOR,
                         help=f'Per-detector donut floor used to count covered detectors, '
                              f'dimensionless (default {DEFAULT_MIN_DONUTS_PER_DETECTOR})')
-    parser.add_argument('--min-detectors-per-visit', type=int,
-                        default=DEFAULT_MIN_DETECTORS_PER_VISIT,
-                        help=f'Minimum covered detectors per visit, dimensionless '
-                             f'(default {DEFAULT_MIN_DETECTORS_PER_VISIT}; 0 disables)')
-    parser.add_argument('--max-median-blur-arcsec', type=float,
-                        default=DEFAULT_MAX_MEDIAN_BLUR_ARCSEC,
-                        help=f'Maximum per-visit median donut blur in arcsec (default '
-                             f'{DEFAULT_MAX_MEDIAN_BLUR_ARCSEC}; 0 disables)')
     parser.add_argument('--rotator-threshold-deg', type=float,
                         default=DEFAULT_ROTATOR_THRESHOLD_DEG,
                         help=f'Flag visits whose rotator angle exceeds this, in deg '
@@ -393,58 +380,24 @@ def resolve_rotator_angle(records):
               f'rot_tel_pos nor ConsDB available: {missing}')
 
 
-def quality_mask(records, min_donuts_per_visit, min_detectors_per_visit,
-                 max_median_blur_arcsec):
-    """Standard per-visit quality cuts, as `run_mktable` applies them.
+def quality_mask(records):
+    """The ``visit_quality_pass`` flag of each visit record.
 
     Parameters
     ----------
     records : `list` of `dict`
         Per-visit records carrying ``n_donuts``, ``n_detectors_with_min_donuts`` and
         ``median_blur_arcsec``.
-    min_donuts_per_visit : `int` or `None`
-        Minimum donuts per visit, dimensionless. `None` disables the cut.
-    min_detectors_per_visit : `int` or `None`
-        Minimum covered detectors per visit, dimensionless. `None` disables the cut.
-    max_median_blur_arcsec : `float` or `None`
-        Maximum per-visit median donut blur, in arcsec. `None` disables the cut.
 
     Returns
     -------
     mask : `numpy.ndarray`
-        Boolean, True where the visit passes every enabled cut.
-
-    Notes
-    -----
-    Duplicates ``lsst.ts.intrinsic.wavefront.intrinsics_lib.quality_visit_mask`` rather
-    than calling it, because that function takes an `astropy.table.QTable` and is applied
-    here to plain records before the table is built. The three thresholds and their
-    comparison directions are kept identical so that a blitz visit and a Danish 1.2 visit
-    are cut the same way; the recorded ``visit_quality_pass`` column is what the DZ fitter
-    reads.
+        Boolean, True where the visit passes `quality.visit_quality_pass`.
     """
-    n_donuts = np.array([r['n_donuts'] for r in records], dtype=float)
-    n_detectors = np.array([r['n_detectors_with_min_donuts'] for r in records],
-                           dtype=float)
-    blur = np.array([r['median_blur_arcsec'] for r in records], dtype=float)
-    mask = np.ones(len(records), dtype=bool)
-    if min_donuts_per_visit:
-        cut = n_donuts >= min_donuts_per_visit
-        print(f'  n_donuts >= {min_donuts_per_visit} (dimensionless): drops '
-              f'{int((~cut).sum())} visits')
-        mask &= cut
-    if min_detectors_per_visit:
-        cut = n_detectors >= min_detectors_per_visit
-        print(f'  n_detectors_with_min_donuts >= {min_detectors_per_visit} '
-              f'(dimensionless): drops {int((~cut).sum())} visits')
-        mask &= cut
-    if max_median_blur_arcsec and max_median_blur_arcsec > 0:
-        with np.errstate(invalid='ignore'):
-            cut = blur <= max_median_blur_arcsec
-        print(f'  median_blur_arcsec <= {max_median_blur_arcsec} arcsec: drops '
-              f'{int((~cut).sum())} visits')
-        mask &= cut
-    print(f'  {int(mask.sum())} of {len(records)} visits pass every enabled cut')
+    mask = quality.visit_quality_pass([r['n_donuts'] for r in records],
+                                      [r['n_detectors_with_min_donuts'] for r in records],
+                                      [r['median_blur_arcsec'] for r in records])
+    print(f'  {quality.CUT_DESCRIPTION}: {int(mask.sum())} of {len(records)} visits pass')
     return mask
 
 
@@ -607,20 +560,15 @@ def build_tables(args):
           f'{int(flagged.sum())} of {len(records)} visits')
 
     print('\n--- Per-visit quality cuts ---')
-    passes = quality_mask(records,
-                          args.min_donuts_per_visit or None,
-                          args.min_detectors_per_visit or None,
-                          args.max_median_blur_arcsec)
+    passes = quality_mask(records)
     for record, flag in zip(records, passes):
         record['visit_quality_pass'] = bool(flag)
 
     visit_table = QTable()
     for column in VISITS_COLUMNS:
         visit_table[column] = [r[column] for r in records]
-    visit_table.meta['min_donuts_per_visit'] = int(args.min_donuts_per_visit)
     visit_table.meta['min_donuts_per_detector'] = int(args.min_donuts_per_detector)
-    visit_table.meta['min_detectors_per_visit'] = int(args.min_detectors_per_visit)
-    visit_table.meta['max_median_blur_arcsec'] = float(args.max_median_blur_arcsec)
+    visit_table.meta['visit_quality_cut'] = quality.CUT_DESCRIPTION
     visit_table.write(str(visits_file), format='parquet', overwrite=True)
     print(f'\nWrote {len(visit_table)} visit rows, {len(visit_table.colnames)} columns '
           f'to {visits_file}')
@@ -740,10 +688,8 @@ def write_build_manifest(args, result):
         'dataset_type': args.dataset_type,
         'fit': args.fit,
         'no_consdb': args.no_consdb,
-        'min_donuts_per_visit': args.min_donuts_per_visit,
         'min_donuts_per_detector': args.min_donuts_per_detector,
-        'min_detectors_per_visit': args.min_detectors_per_visit,
-        'max_median_blur_arcsec': args.max_median_blur_arcsec,
+        'visit_quality_cut': quality.CUT_DESCRIPTION,
         'rotator_threshold_deg': args.rotator_threshold_deg,
         'day_obs': args.day_obs,
         'visits': args.visits,

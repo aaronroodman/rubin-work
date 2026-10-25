@@ -258,7 +258,9 @@ MKTABLE_CMD = (
     'mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}.parquet'
     ' {output.donuts}\n'
     'mv {params.cdir}/{params.ph}_{wildcards.dmin}_{wildcards.dmax}_visits.parquet'
-    ' {output.visits}\n')
+    ' {output.visits}\n'
+    # run_mktable's own cut is replaced by the product's (fam_tables/quality.py).
+    'python -m rubinwork.products.fam_tables.quality {output.visits} >> {log} 2>&1\n')
 
 
 wildcard_constraints:
