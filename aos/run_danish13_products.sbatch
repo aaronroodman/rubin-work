@@ -26,7 +26,7 @@ source "$HOME/u/LSST/setup.sh"
 set -e
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 N=${SLURM_CPUS_PER_TASK:-16}
-B=${BUILD:-20261024}
+B=${D13_BUILD:-20261024}
 P=/sdf/group/rubin/u/roodman/LSST/rubin-work/products
 REPO=$(cd .. && pwd)
 
