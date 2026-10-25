@@ -96,13 +96,13 @@ def scan_lambda(X, Y, groups, lams):
 # ---------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
-    # See resolve_coadd_dir: --variant's build is found in the old aos/output tree first
-    # and in the catalog second.  The --output-root/--param-set/--out-name triple this
+    # See resolve_coadd_dir: --variant's build is found in the catalog first and in the
+    # old aos/output tree second.  The --output-root/--param-set/--out-name triple this
     # script used to default to built a stale path that named nothing on disk.  This
     # script only READS the build.
     ap.add_argument("--variant", default=None,
                     help="coadds variant (e.g. d12-A_50_34_i_5rot); its build is found "
-                         "in the old aos/output tree, else through the catalog")
+                         "through the catalog, else in the old aos/output tree")
     ap.add_argument("--build", default=None,
                     help="coadds build to read with --variant (default: current)")
     ap.add_argument("--coadd-dir", default=None,

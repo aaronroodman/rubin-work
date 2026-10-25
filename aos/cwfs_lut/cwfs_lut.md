@@ -3,7 +3,7 @@
 > **Status:** current · **Last updated:** 2026-10-07 · **Kind:** reference (study)
 
 > **Code:** `code/cwfs_lut/` · **Notebooks:** `notebooks/cwfs_lut/`
-> **Output:** `output/cwfs_lut/`
+> **Output:** `cwfs_lut/output/` (the study `output@`)
 
 Dependence of the open-loop optical state on Telescope Mount Assembly (TMA) elevation and
 camera rotator angle, measured from the corner wavefront sensors (CWFS) over the whole
@@ -274,7 +274,7 @@ Reproduce with:
 python cwfs_lut/code/run_cwfs_lut.py
 ```
 
-Products in `aos/output/cwfs_lut/`: `trend_<variant>_<angle>.parquet` for three variants and two
+Products in `aos/cwfs_lut/output/`: `trend_<variant>_<angle>.parquet` for three variants and two
 angles, `intrinsic_spread_<angle>.parquet`, `bounce_comparable_<angle>.parquet` — the ten
 rigid-body axes with a `comparable` flag marking the six decentres — the five
 `bounce_compare_*.parquet` tables, and `cwfs_lut.pdf`.

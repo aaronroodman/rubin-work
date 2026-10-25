@@ -10,7 +10,7 @@ started: 2026-10-06
 
 # `cwfs_lut`
 
-> **Code:** `code/` (`cwfs_lut_lib.py`, `run_cwfs_lut.py`, `bounce_compare.py`, figures, tests) · **Write-up:** [`cwfs_lut.md`](cwfs_lut.md) · **Output:** `aos/output/cwfs_lut/`
+> **Code:** `code/` (`cwfs_lut_lib.py`, `run_cwfs_lut.py`, `bounce_compare.py`, figures, tests) · **Write-up:** [`cwfs_lut.md`](cwfs_lut.md) · **Output:** `output/` (the study `output@`)
 
 ## Question
 

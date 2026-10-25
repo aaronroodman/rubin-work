@@ -35,8 +35,8 @@ Z_SHOW = [5, 6, 7, 8]
 # reads are named by environment variable, defaulting to the production pair.  Before
 # phase 3a both were `<aos/output>/<long param_set>/...` paths built from the long key, a
 # layout the tree lost when dir_name arrived, so neither resolved.  Each is now resolved
-# in the aos/Snakefile order: the old aos/output tree if its files are complete, else the
-# catalog's build, else a named error.  COADD_DIR and MIW_DIR override a resolution
+# in the aos/Snakefile order: the catalog's build if complete, else the old aos/output
+# tree, else a named error.  COADD_DIR and MIW_DIR override a resolution
 # outright, the equivalent of the sibling scripts' --coadd-dir.
 MIW_VARIANT = os.environ.get("COADD_MIW_VARIANT", "d12-A_50_34_i_5rot")
 COADD_VARIANT = os.environ.get("COADD_VARIANT", "d12-A_50_34_i_5rot")
@@ -55,10 +55,10 @@ CO = os.environ.get("COADD_DIR") or resolve_product_dir(
 # coadd build, so they are not in CO.  COADD_STUDY_DIR says where that script wrote them.
 STUDY = os.environ.get("COADD_STUDY_DIR", CO)
 
-# Where this script's own plot goes: aos/output, relative to this file, which works on the
-# RSP, on an s3df batch node and on the laptop alike.
+# Where this script's own plot goes: the study output@, relative to this file, which works
+# on the RSP, on an s3df batch node and on the laptop alike.
 _OUT = os.environ.get(
-    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[2] / "output"))
+    "AOS_OUTPUT", str(pathlib.Path(__file__).resolve().parents[1] / "output"))
 
 S = np.nan_to_num(np.asarray(OFCData("lsst").sensitivity_matrix, float))[:, ZK, :]
 svd = osv.build_ofc_svd(ZK, K_MIN, K_MAX, N_KEEP)
@@ -132,4 +132,4 @@ with PdfPages(f"{_OUT}/miw_k_gt6_leakage.pdf") as pdf:
                  "recovered DOF, never subtracted by the k<=6 build.  bottom: "
                  "difference", fontsize=12)
     fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-print("\nwrote aos/output/miw_k_gt6_leakage.pdf")
+print(f"\nwrote {_OUT}/miw_k_gt6_leakage.pdf")

@@ -312,7 +312,7 @@ def old_tree_miw_dir(variant):
 
 
 def resolve_product_dir(product, variant, old_dir, required, build=None):
-    """A product build directory, old tree first, then the catalog.
+    """A product build directory, catalog first, then the old tree.
 
     Parameters
     ----------
@@ -340,15 +340,10 @@ def resolve_product_dir(product, variant, old_dir, required, build=None):
     Notes
     -----
     Same precedence as ``aos/Snakefile``'s resolver, so a study script and a study rule
-    read the same build. Until phase 3c rebuilds the products, the old tree is the only
-    place a complete build exists -- resolving the catalog first would make these scripts
-    unable to read it. Unlike the Snakefile, which falls back to the old-tree path so a
+    read the same build. Unlike the Snakefile, which falls back to the old-tree path so a
     downstream gate can skip the variant, a study script has no gate and raises instead.
     """
     tried = []
-    if all(os.path.exists(os.path.join(old_dir, f)) for f in required):
-        return old_dir
-    tried.append(f"old tree {old_dir} (incomplete or absent)")
     from rubinwork.products import catalog
     build = build or catalog.CURRENT
     try:
@@ -359,6 +354,9 @@ def resolve_product_dir(product, variant, old_dir, required, build=None):
         if all(os.path.exists(os.path.join(cat_dir, f)) for f in required):
             return cat_dir
         tried.append(f"catalog {cat_dir} (incomplete)")
+    if all(os.path.exists(os.path.join(old_dir, f)) for f in required):
+        return old_dir
+    tried.append(f"old tree {old_dir} (incomplete or absent)")
     raise RuntimeError(f"no complete {product} build of variant {variant!r} holding "
                        f"{', '.join(required)}; tried: " + "; ".join(tried))
 
@@ -384,8 +382,8 @@ def resolve_coadd_dir(args):
 
     Notes
     -----
-    An explicit ``--coadd-dir`` wins; otherwise `resolve_product_dir` takes the old tree
-    before the catalog.
+    An explicit ``--coadd-dir`` wins; otherwise `resolve_product_dir` takes the catalog
+    before the old tree.
     """
     if getattr(args, "coadd_dir", None):
         return args.coadd_dir
@@ -434,10 +432,9 @@ def resolve_visits_path(args, coadd_dir):
 
     Notes
     -----
-    Resolved in the same order as `resolve_coadd_dir`: ``--visits``, else the old
-    ``aos/output/fam_processing/<P>/`` tree, else the coadd manifest's ``inputs``, which
-    name the exact ``fam_tables`` build the coadd was made from rather than a guessed
-    path -- the point of recording both upstreams. The last step is skipped silently when
+    Resolved as ``--visits``, else the coadd manifest's ``inputs``, which name the exact
+    ``fam_tables`` build the coadd was made from, else the old
+    ``aos/output/fam_processing/<P>/`` tree. The manifest step is skipped silently when
     the coadd has no catalog manifest, since the caller only warns on a missing file.
     """
     if getattr(args, "visits", None):
@@ -449,8 +446,6 @@ def resolve_visits_path(args, coadd_dir):
     from rubinwork.products import coadds as _coadds
     aos_output = pathlib.Path(__file__).resolve().parents[2] / "output"
     old = aos_output / "fam_processing" / _coadds.fam_variant(variant) / "visits.parquet"
-    if old.exists():
-        return str(old)
     try:
         inputs = (catalog.manifest("coadds", variant,
                                    build=getattr(args, "build", None) or catalog.CURRENT)
@@ -720,14 +715,14 @@ def render_ml(pdf, Fdf, r, groups, build_used, f, env_cols, sn_cols, umode_cols=
 
 def main():
     ap = argparse.ArgumentParser()
-    # --variant names the coadd build; resolve_coadd_dir finds it in the old aos/output
-    # tree first and in the catalog second, the same order as aos/Snakefile.  The
+    # --variant names the coadd build; resolve_coadd_dir finds it in the catalog first
+    # and in the old aos/output tree second, the same order as aos/Snakefile.  The
     # --output-root/--param-set/--out-name triple this script used to default to built
     # output/<long param_set>/coadd_50_34/, a layout the tree lost when dir_name arrived,
     # so it named nothing on disk; --coadd-dir replaces it for a hand run.
     ap.add_argument("--variant", default=None,
                     help="coadds variant (e.g. d12-A_50_34_i_5rot); its build is found "
-                         "in the old aos/output tree, else through the catalog")
+                         "through the catalog, else in the old aos/output tree")
     ap.add_argument("--build", default=None,
                     help="coadds build to read with --variant (default: current)")
     ap.add_argument("--coadd-dir", default=None,
@@ -760,7 +755,7 @@ def main():
     ap.add_argument("--visits", default=None,
                     help="combined visits.parquet carrying camera-body cam_<field> "
                     "columns (from run_attach_telemetry --groups camera --merge); "
-                    "default: the variant's FAM tables, old aos/output tree first")
+                    "default: the FAM tables named in the coadd manifest, else the old aos/output tree")
     ap.add_argument("--camera-ref", default="cam_AmbAirtemp",
                     help="camera ambient reference for the temperature-gradient "
                     "features cam_<field>_dAmb (default: cam_AmbAirtemp)")

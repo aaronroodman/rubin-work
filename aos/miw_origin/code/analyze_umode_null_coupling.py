@@ -29,6 +29,7 @@ All amplitudes are in µm of wavefront.  Correlations and R^2 are dimensionless.
 """
 import argparse
 import os
+import pathlib
 import sys
 
 import numpy as np
@@ -42,6 +43,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
 from analyze_dz_goodness_of_fit import (        # noqa: E402
     load_bases, read_dz, assign_blocks, within_block_covariance)
+
+from rubinwork.products import catalog  # noqa: E402
+
+STUDY_OUTPUT = pathlib.Path(__file__).resolve().parents[1] / "output"
 
 
 def cv_r2_multi(X, Y, groups, lam, n_splits=5):
@@ -61,14 +66,14 @@ def cv_r2_multi(X, Y, groups, lam, n_splits=5):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fits", default="output/miw/danish_1_2_A_50_34_i_5rot/"
-                    "fits.parquet")
+    ap.add_argument("--fits", default=str(catalog.path("miw", "d12-A_50_34_i_5rot")
+                                         / "fits.parquet"))
     ap.add_argument("--blocks-summary",
-                    default="output/coadd/danish_1_2/50_34/"
-                    "blocks_summary.parquet")
+                    default=str(catalog.path("coadds", "d12-A_50_34_i_5rot")
+                                / "blocks_summary.parquet"))
     ap.add_argument("--stable-programs", nargs="+", default=["T614_triplets"])
     ap.add_argument("--n-sim", type=int, default=100)
-    ap.add_argument("--out", default="output/umode_null_coupling.pdf")
+    ap.add_argument("--out", default=str(STUDY_OUTPUT / "umode_null_coupling.pdf"))
     args = ap.parse_args()
 
     U_eff, U_all, kj = load_bases()

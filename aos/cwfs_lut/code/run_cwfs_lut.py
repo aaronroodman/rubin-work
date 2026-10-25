@@ -1,6 +1,6 @@
 """Run the pointing-dependence study: open-loop DOF against elevation and rotator angle.
 
-Products, written to ``aos/output/cwfs_lut/``:
+Products, written to the study's ``output/`` (``aos/cwfs_lut/output``):
 
 * ``trend_<variant>_<angle>.parquet`` -- one row per degree of freedom (DOF): the Huber robust
   slope against one pointing angle, its formal error, the robust residual scatter, and both
@@ -212,13 +212,13 @@ def main():
                     help='bounce |delta|/error floor for the subspace statistics')
     ap.add_argument('--pdf-name', default='cwfs_lut.pdf', help='PDF filename')
     ap.add_argument('--output-dir', default=None,
-                    help='where to write; default aos/output/cwfs_lut')
+                    help='where to write; default the study output, aos/cwfs_lut/output')
     args = ap.parse_args()
 
     variants = args.variants or [C.RBR_VARIANT, C.INTRINSIC_VARIANTS['batoid'],
                                  C.INTRINSIC_VARIANTS['miw']]
     out_dir = (pathlib.Path(args.output_dir) if args.output_dir
-               else _ROOT / 'aos' / 'output' / 'cwfs_lut')
+               else _ROOT / 'aos' / 'cwfs_lut' / 'output')
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = tuple(args.day_obs_range) if args.day_obs_range else None
 

@@ -134,25 +134,22 @@ def _bounce_stats_path(run, root=None):
     Notes
     -----
     Same precedence as ``aos/Snakefile``'s resolver, so this study and a product rule read
-    the same build: the old ``aos/output/bounce/<run>/`` tree, then the catalog's
-    ``current`` build of the matching variant. Until phase 3c rebuilds the products the
-    old tree is the only place a complete build exists -- and the only variant with one
-    there is ``d12-A_50_34_i_5rot_july``, which is `DEFAULT_BOUNCE_RUN`.
+    the same build: the catalog's ``current`` build of the matching variant, then the old
+    ``aos/output/bounce/<run>/`` tree.
     """
     root = pathlib.Path(root) if root else _ROOT
     old = root / 'aos' / 'output' / 'bounce' / run / 'bounce_dof_stats.parquet'
-    if old.exists():
-        return old
     variant = _bounce_variant(run)
-    if variant is None:
-        return None
-    from rubinwork.products import catalog
-    try:
-        cat = catalog.path('bounce_tables', variant,
-                           build=catalog.CURRENT) / 'bounce_dof_stats.parquet'
-    except Exception:
-        return None
-    return cat if cat.exists() else None
+    if variant is not None:
+        from rubinwork.products import catalog
+        try:
+            cat = catalog.path('bounce_tables', variant,
+                               build=catalog.CURRENT) / 'bounce_dof_stats.parquet'
+        except catalog.ProductNotFound:
+            cat = None
+        if cat is not None and cat.exists():
+            return cat
+    return old if old.exists() else None
 
 
 def load_bounce_stats(run=DEFAULT_BOUNCE_RUN, root=None):

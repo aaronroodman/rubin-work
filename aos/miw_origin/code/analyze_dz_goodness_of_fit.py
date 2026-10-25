@@ -43,6 +43,7 @@ splits them.
 """
 import argparse
 import os
+import pathlib
 import sys
 
 import numpy as np
@@ -51,6 +52,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+
+from rubinwork.products import catalog
+
+STUDY_OUTPUT = pathlib.Path(__file__).resolve().parents[1] / "output"
 
 K_MIN, K_MAX, N_KEEP = 1, 6, 34
 ZK = [z for z in range(4, 27) if z not in (20, 21)]
@@ -283,16 +288,16 @@ def slope_test(a, chi2, dof):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fits", default="output/miw/danish_1_2_A_50_34_i_5rot/"
-                    "fits.parquet",
+    ap.add_argument("--fits", default=str(catalog.path("miw", "d12-A_50_34_i_5rot")
+                                         / "fits.parquet"),
                     help="build fits.parquet -- the MIW-referenced per-visit DZ fit")
     ap.add_argument("--fits-biw", default=None,
                     help="second fits.parquet fit against the BATOID intrinsic "
                     "(produce it by rerunning the build with --n-iter 1)")
     ap.add_argument("--instrument", default="lsst")
     ap.add_argument("--blocks-summary",
-                    default="output/coadd/danish_1_2/50_34/"
-                    "blocks_summary.parquet",
+                    default=str(catalog.path("coadds", "d12-A_50_34_i_5rot")
+                                / "blocks_summary.parquet"),
                     help="block table used to build the EMPIRICAL within-block "
                     "coefficient covariance (the turbulence-aware error model)")
     ap.add_argument("--min-visits", type=int, default=3,
@@ -302,7 +307,7 @@ def main():
                     "The S-matrix test programs (T377/T378/T379/T380/T381) step the "
                     "optical state WITHIN a block, so their scatter is real DOF motion "
                     "and would inflate the error estimate. T614_triplets are stable.")
-    ap.add_argument("--out", default="output/dz_goodness_of_fit.pdf")
+    ap.add_argument("--out", default=str(STUDY_OUTPUT / "dz_goodness_of_fit.pdf"))
     args = ap.parse_args()
 
     U_eff, U_all, kj = load_bases(args.instrument)
