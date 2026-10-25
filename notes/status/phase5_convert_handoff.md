@@ -1,6 +1,6 @@
 # Phase 5 handoff: converting the studies
 
-> **Status:** phase 5 done; the shim deletion is a command for Aaron · **Last updated:** 2026-10-24 · **Kind:** working state
+> **Status:** phase 5 done · **Last updated:** 2026-10-24 · **Kind:** working state
 > (handoff)
 
 Phase 5 of `notes/status/organization_plan.md` (section 8): each study becomes
@@ -127,19 +127,10 @@ by more than 1e-6 deg; the earlier "2879 of 3385" used a threshold not recorded.
 
 Done 2026-10-24, from Aaron's answers (items 1, 2 and 4 of the earlier list):
 
-1. **Shims.** Aaron: the `snippets`, `moresnippets` and `Untitled` notebooks are throwaway,
-   and `aos/notebooks/bounce/_exectest.ipynb` was a Claude test copy of
-   `aos/bending_mode_test/notebooks/bending_mode_test_lut_trim.ipynb`. OK given to delete
-   the six shims and `_exectest`. **Not yet deleted**: the permission system refused the
-   `git rm` in this session. Run:
-   ```bash
-   cd ~/notebooks/rubin-work
-   git rm aos/code/aos_state.py aos/code/aos_trim.py common/__init__.py \
-       value_added/code/efd_db.py aos/code/coadd/run_coadd_blocks_miw.py \
-       guider/code/guiderEdgeRecovery.py
-   rm aos/notebooks/bounce/_exectest.ipynb
-   ```
-   The shim tests skip once the files are gone.
+1. **Shims removed** (Aaron ran the `git rm`, 2026-10-24): the six shims and
+   `aos/notebooks/bounce/_exectest.ipynb`, a Claude test copy of
+   `bending_mode_test_lut_trim.ipynb`. The `snippets`, `moresnippets` and `Untitled`
+   notebooks that used them are throwaway. pytest: 477 passed, 14 skipped (count).
 2. **`wfs_corner_compare` is a product** (`rubinwork/products/wfs_corner_compare/`), with
    the computation in the library `rubinwork.corner_compare` and the plots in the
    `aos/cwfs` study, which is active again. `extract_cwfs_sigma.py` reads it through the
@@ -278,7 +269,7 @@ library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakef
 
 ## Next
 
-1. Run the shim deletion above. Register the 9 Danish 1.3 MIW builds in the catalog.
+1. Register the 9 old-tree Danish 1.3 MIW builds and `fits_july.parquet` in the catalog.
 2. Code not covered by a study (`/review`: 82 files, count), mostly tooling and libraries
    in `optatmo/code`, `guider/code`, `aos/code`, `smatrix/code` and `value_added/code`;
    phase 8 (`notes/status/phase8_code_review_plan.md`) takes them as they are next used.

@@ -12,7 +12,8 @@ What follows is only the things that are easy to get wrong.
 
 Each study is a directory `aos/<study>/` with `study.md`, `code/` and `notebooks/`; the
 Studies table in `README.md` is generated from the `study.md` files. What remains in `code/`
-is the shared modules below and the shims at moved paths.
+is the shared modules below. The shims at moved paths were removed on 2026-10-24; import
+from `rubinwork` only.
 
 The focus-from-temperature work is **not here**: it lives in the top-level `thermal_focus/`
 topic, which reads the value-added database rather than `aos/` output.
@@ -24,73 +25,43 @@ Four modules stay **flat at `code/`**, used by more than one study:
 | `aos_fwhm.py`, `dz_plotting.py`, `psf_maps_lib.py` | used by more than one study |
 | `test_m1m3.py` | manual EFD probe, no study of its own |
 
-The rest of `code/` is shims. `aos_state.py` and `open_loop.py` re-export
-`rubinwork.aos_state` and `rubinwork.open_loop`; new code imports those directly.
-`output_paths.py` is now `rubinwork.common.output_paths`, and `fam_selection.py` lives in
-`correlations/code/`.
+Where moved code went, for reading old notes:
 
-Two more modules left in phase 3a and only **shims** remain at their old paths:
+| old path | now |
+|---|---|
+| `code/aos_state.py`, `code/open_loop.py` | `rubinwork.aos_state`, `rubinwork.open_loop` |
+| `code/output_paths.py` | `rubinwork.common.output_paths` |
+| `code/fam_selection.py` | `correlations/code/` |
+| `code/miw_io.py` | `rubinwork.products.miw` (`reader.py`); `load_miw` is an alias of `load_maps` |
+| `code/miw_corner_intrinsic.py` | `rubinwork.miw_corner`, a library that evaluates a MIW decomposition it is handed at the corner points |
+| `code/lut/run_build_lut.py` | `rubinwork.products.dof_lut.builders` |
+| `code/coadd/run_coadd_blocks_miw.py` | `rubinwork.products.coadds.builders`; the other coadd scripts are in `miw_origin/code/` |
+| `code/aos_trim.py`, `code/aos_consdb_efd.py` | `rubinwork.common.dof_telemetry`, `rubinwork.common.consdb_efd` |
 
-| old path | now | why it moved |
-|---|---|---|
-| `miw_io.py` | `rubinwork.products.miw` (`reader.py`) | a pure reader of the MIW field maps, so it belongs to the product that writes them. `load_miw` is kept as an alias of `load_maps`. |
-| `miw_corner_intrinsic.py` | `rubinwork.miw_corner` | a **library**: it evaluates a MIW decomposition it is handed at the corner sample points and writes nothing. Still supplies the `miw_lookup` callable `value_added/code/build_optical_state.py` takes for `--intrinsic miw`. |
+Things about the moved code that are easy to get wrong:
 
-`miw_corner.decomp_path` was **broken** before the move and is fixed: it joined the two
-long keys as `output/<param_set>/<mi_name>/`, a layout the tree has not had since
-`dir_name` was introduced, so every default lookup missed. The handoff note calling
-`DEFAULT_PARAM_SET` and `DEFAULT_MI_NAME` stale was reading that symptom — the keys were
-always right. New code passes `path=` resolved through the catalog.
-
-`code/lut/run_build_lut.py` is a **shim** too: the averaged-DOF LUT it writes is read
-outside the study, so it moved to `rubinwork.products.dof_lut.builders` in phase 3a and
-`rule build_lut` left `aos/Snakefile`. The LUT fits the **plain FAM DZ** and subtracts no
-intrinsic — `--mi-name` supplies SVD and selection settings only — which is recorded, not
-changed (Aaron, 2026-10-11); see `lut/lut.md`. Its mode counts live only in the
-parquet **schema metadata**, so read them with `dof_lut.build_metadata`.
-`processing_compare/code/compare_fam_processings.py`'s DOF page had the same stale-path
-bug as the coadd scripts (it built `output/<long param_set>/<mi>/lut/`) and now resolves
-through the old tree then the catalog, skipping the page when a reduction has no LUT
-variant — which the script's own default baseline, `danish_1_0`, does not.
-
-`code/bounce/` was **split**, not moved, in phase 3a. The four tables are the
-`bounce_tables` product (`rubinwork.products.bounce_tables`); `run_bounce.py` keeps the
-nine PDFs and `bounce_lib.py` keeps the ~20 plotters. The reduction is now
-`rubinwork.bounce` — `legs` (leg selection, A/B pairing, the paired Δ and the
-regularized-recovery solvers' Δ) and `analysis.run_analysis`, which both halves call.
-`bounce_lib` re-exports every moved name, so its existing callers are unaffected.
-**`rule bounce` survives in `Snakefile`** as the plotting half — the first moved product
-whose rule is not removed — so the job count is unchanged at 34; only the file `rule all`
-names changed, from `bounce_kj_stats.parquet` to `bounce_summary.pdf`. The study runs the
-analysis a second time (about 170 s of wall clock) rather than reading the tables back,
-because three of its pages plot per-visit arrays no table carries (Aaron, 2026-10-12).
-The four `smatrix/regularized_inversion/code/` imports now reach `rubinwork.bounce`, and
-`cwfs_lut/code/bounce_compare.py`, the one reader outside the study, resolves old tree
-then catalog.
-
-`code/coadd/run_coadd_blocks_miw.py` is a **shim** for the same reason — it moved to
-`rubinwork.products.coadds.builders` in phase 3a, because the per-block grids and
-summaries it writes are a product. The other eight scripts from `code/coadd/` are the
-coadd-against-MIW work, now in `miw_origin/code/`. The same stale-path bug was in three of them
-(`recompute_coadd_metrics`, `analyze_miw_bias_regression`, `analyze_miw_field_order`
-built `output/<long param_set>/coadd_50_34/`, which names nothing on disk). Each now
-resolves its build in the **same order as the `aos/Snakefile` resolver** — an explicit
-`--coadd-dir` (or `COADD_DIR`/`MIW_DIR` in the parser-less one), else the old
-`aos/output` directory from the variant's `dir_name` if its files are complete, else the
-catalog's `current` build, else a named error — so they still read the one complete
-coadd build, which until phase 3c exists only in the old tree. The variant comes from
-`--variant`, or from `COADD_VARIANT`/`COADD_MIW_VARIANT` where there is no argument
-parser. `recompute_coadd_metrics` and `analyze_miw_bias_regression` require `--out-dir` /
-`--out` only when the build resolves **into the products tree**: a product build is never
-written into, while writing beside the data in the old tree is what a hand run always
-did.
-
-The engineering telemetry that used to sit beside it lives in `rubinwork/common/` — the degree-of-freedom
-(DOF) look-up table (LUT), Trim and Tweak in `common/dof_telemetry.py`, the bulk Consolidated
-Database (ConsDB) transformed-Engineering-Facility-Database (EFD) path in
-`common/consdb_efd.py`, and the per-visit wind and camera-body temperatures in
-`common/visit_telemetry.py`. Re-export shims remain at `code/aos_trim.py` and
-`code/aos_consdb_efd.py` for untracked notebooks; new code imports from `common/` directly.
+- **Product reads go catalog first.** `aos/Snakefile`'s `_resolve()`, `build_fam_dz.py`,
+  `cwfs_lut` and the `miw_origin` scripts take the catalog's `current` build and use the old
+  `aos/output` tree only for a variant with no catalog build. The study rules write to each
+  study's `output@`.
+- `miw_corner.decomp_path` builds an old-tree path; new code passes `path=` resolved
+  through the catalog. `build_optical_state.resolve_miw_decomp` maps an old-tree MIW name
+  in `intrinsic_ref` to its catalog build.
+- The averaged-DOF LUT fits the **plain FAM DZ** and subtracts no intrinsic — `--mi-name`
+  supplies SVD and selection settings only (Aaron, 2026-10-11); see `lut/lut.md`. Its mode
+  counts live only in the parquet **schema metadata**; read them with
+  `dof_lut.build_metadata`.
+- `code/bounce/` was **split**: the four tables are the `bounce_tables` product, the
+  reduction is `rubinwork.bounce`, and `bounce/code/run_bounce.py` keeps the nine PDFs.
+  **`rule bounce` survives in `Snakefile`** as the plotting half. The study runs the
+  analysis a second time (about 170 s of wall clock) rather than reading the tables back,
+  because three of its pages plot per-visit arrays no table carries (Aaron, 2026-10-12).
+- `wfs_corner_compare` is a **product** (`rubinwork/products/wfs_corner_compare/`, the
+  computation in `rubinwork.corner_compare`); `cwfs/code/run_wfs_corner_compare.py` plots
+  one build.
+- `recompute_coadd_metrics` and `analyze_miw_bias_regression` require `--out-dir` /
+  `--out` when the build resolves into the products tree: a product build is never written
+  into.
 
 Scripts run in **script mode** (`python <study>/code/x.py`), so relative imports do not
 work. A study script puts its own `code/` on `sys.path` for sibling imports. The repo root

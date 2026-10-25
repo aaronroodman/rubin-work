@@ -46,7 +46,7 @@ Support:
   `rubinwork.products.value_added` (`docs/schema.md`, `docs/status/build_progress.md`)
 - `rubinwork/` — the installable package: `common/` (shared utilities), the libraries
   moved out of the topics (`aos_state`, `open_loop`, `smatrix`), and `products/` (the
-  catalog and manifest writer). A shim remains at the old `common/` path
+  catalog and manifest writer)
 - `notes/` — working notes for Slack posts and Summit-Operations tech notes; each
   note is a self-contained dated directory, drafted in plain Markdown.
   `notes/claude-memory/` is an **archive** of old Claude notes-to-self. The rules in
@@ -84,10 +84,8 @@ reorganization — `rubinwork.aos_state`, `rubinwork.open_loop` and
 `regularized_inversion`) — and `rubinwork.products` (`catalog`, `manifest`), the only
 sanctioned way to reach product data.
 
-Compatibility shims remain at the old paths (`common/`, `aos/code/aos_state.py`,
-`aos/code/open_loop.py`, the three in `smatrix/code/`, and others listed in
-`notes/status/phase5_convert_handoff.md`). No tracked code imports them now; they wait
-for Aaron's deletion. Do not add imports through them.
+The compatibility shims at the old paths were removed on 2026-10-24; import from
+`rubinwork` only.
 
 One coupling is real and intentional — know it before refactoring:
 

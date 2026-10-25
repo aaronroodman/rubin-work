@@ -819,7 +819,7 @@ removed (`d5dc3ef`); `rubinwork` reinstalled from `/sdf/home/...` and the repo-r
 `sys.path` inserts dropped (`9096408`); `load_science` to `rubinwork.thermal_focus.sample`
 (`79ec197`); `psf/wavefront_to_psf` and `optatmo` read the products (`00da2f5`, `b0617e6`).
 Later the same day: `wfs_corner_compare` became a product and `ALLOWED` is empty; the six
-shims and `_exectest.ipynb` are approved for deletion, a command for Aaron in the handoff.
+shims and `_exectest.ipynb` are deleted. Phase 5 is done.
 
 **Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. The two checks, 2026-10-24: the summit_utils branch state is refetched and updated (`d58ca7f`, `guider/summit_utils_branch/summit_utils_branch_state.md`). The CCD-height sign is checked (`07dd4d4`, `notes/status/phase6_ccd_height_sign.md`): both sides add the height term with the same sign on intra and extra, so the doc's "extra +, intra −" is wrong. The doc fix is applied (`79fda9b`); phase 6 is done.
 
