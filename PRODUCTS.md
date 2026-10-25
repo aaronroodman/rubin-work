@@ -17,6 +17,7 @@ Size is the total of the current build's files, or of the latest build when none
 | cwfs_tables | `d12-paired_3mm` | 20261013 | 20261013 | 2026-10-13 | 1 | 1.0 |
 | cwfs_tables | `d12-refitWcs` | 20261013 | 20261013 | 2026-10-13 | 1 | 48.4 |
 | cwfs_tables | `d12-tarts` | 20261013 | 20261013 | 2026-10-13 | 1 | 5.0 |
+| cwfs_tables | `d13-blitz_unpaired` | 20261024 | 20261024 | 2026-10-24 | 1 | 39.7 |
 | dof_lut | `d12-A_50_34_i` | 20261015 | 20261015 | 2026-10-15 | 1 | 0.1 |
 | dof_lut | `d12-A_50_34_i_5rot` | 20261015w42 | 20261015lint | 2026-10-15 | 3 | 0.1 |
 | fam_tables | `danish_1_2` | 20261014 | 20261014 | 2026-10-14 | 2 | 12,383.8 |
@@ -42,5 +43,6 @@ Size is the total of the current build's files, or of the latest build when none
 | value_added | `v1` | snapshots/20261016 | snapshots/20261016 | 2026-10-16 | 2 | 3,099.9 |
 | wfs_corner_compare | `d12-ai_donut` |  | 20261024 | 2026-10-24 | 2 | 2.0 |
 | wfs_corner_compare | `d12-paired_3mm` |  | 20260707 | 2026-10-24 | 2 | 0.2 |
-| wfs_corner_compare | `d12-refitWcs` |  | 20260707 | 2026-10-24 | 1 | 2.0 |
+| wfs_corner_compare | `d12-refitWcs` | 20261024 | 20261024 | 2026-10-24 | 2 | 5.3 |
 | wfs_corner_compare | `d12-tarts` |  | 20261024 | 2026-10-24 | 2 | 3.3 |
+| wfs_corner_compare | `d13-blitz_unpaired` | 20261024 | 20261024 | 2026-10-24 | 1 | 5.8 |

@@ -62,7 +62,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--variant', default=DEFAULT_VARIANT,
                     help='wfs_corner_compare variant')
-    ap.add_argument('--build', default='current')
+    ap.add_argument('--build', default='20260707',
+                    help='the July 2026 table the psf_vs_cwfs prior was taken from; '
+                         '20261024 adds the 2025 nights')
     ap.add_argument('--yaml', action='store_true', help='print only the yaml block')
     args = ap.parse_args()
 
