@@ -14,7 +14,7 @@ fixed choice, not a measured break.
   break frequency.
 - Data: Gaussian smoothing FWHM scan of 2, 4, 8 and 16 stamps at the 5 Hz guider rate
   (0.4, 0.8, 1.6 and 3.2 s), day_obs 20260706, seqNum 734–794. Plots:
-  `output/guider_centroid_smooth_20260706_734_794.pdf`.
+  `centroid_timescale/output/guider_centroid_smooth_20260706_734_794.pdf`.
 - Chosen split: Gaussian FWHM = 1.6 s (8 stamps at 5 Hz). At this timescale the fast
   fraction (variance below 1.6 s divided by total variance, dimensionless) is about
   0.20–0.33; the motion is dominated by slow wander.
