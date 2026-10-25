@@ -30,3 +30,8 @@ variants:
   d12-tarts:
     cwfs_variant: d12-tarts
     dir_name: "tarts"
+
+  # Danish 1.3 blitz unpaired, v3.14 pupil model: SW0 and SW1 compared separately.
+  d13-blitz_unpaired:
+    cwfs_variant: d13-blitz_unpaired
+    dir_name: "blitz_unpaired"

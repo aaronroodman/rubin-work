@@ -43,7 +43,7 @@ def resolve_inputs(variant, cwfs_build=catalog.CURRENT, fam_build=None):
                                "fam_tables": f"{fv}@{fam_dir.name}"}
 
 
-def build(variant, out_dir, cwfs_dir, fam_dir):
+def build(variant, out_dir, cwfs_dir, fam_dir, workers=1):
     """Write both tables of one build into `out_dir`."""
     s = reader.settings(variant)
     zc, txc, tyc = f"zk_{s['coord']}", f"thx_{s['coord']}", f"thy_{s['coord']}"
@@ -59,7 +59,7 @@ def build(variant, out_dir, cwfs_dir, fam_dir):
         filter=pads.field("day_obs").isin(nights)).to_pandas()
     print(f"{variant}: {len(cwfs)} CWFS donuts, {len(fam)} FAM donuts (counts) over "
           f"{len(nights)} nights")
-    table = cc.match_corners(fam, cwfs, visits, noll, settings=s)
+    table = cc.match_corners(fam, cwfs, visits, noll, settings=s, workers=workers)
     stats = cc.corner_stats(table)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -76,10 +76,12 @@ def main(argv=None):
     ap.add_argument("--cwfs-build", default=catalog.CURRENT)
     ap.add_argument("--fam-build", default=None,
                     help="default: the fam_tables build the CWFS build was made from")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="processes for the interpolation (the result does not depend on it)")
     a = ap.parse_args(argv)
     cwfs_dir, fam_dir, inputs = resolve_inputs(a.variant, a.cwfs_build, a.fam_build)
     print(f"inputs: {inputs}")
-    build(a.variant, a.out_dir, cwfs_dir, fam_dir)
+    build(a.variant, a.out_dir, cwfs_dir, fam_dir, workers=a.workers)
     return 0
 
 

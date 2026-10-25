@@ -15,6 +15,7 @@ BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime(
 CWFS_DIR, FAM_DIR, INPUTS = resolve_inputs(
     VARIANT, str(config.get('cwfs_build', 'current')), config.get('fam_build'))
 BUILD_DIR = wcc.build_dir(VARIANT, BUILD)
+WORKERS = int(config.get('workers', 1))
 LOGS = BUILD_DIR / '_work' / 'logs'
 INPUT_FLAGS = ' '.join(f'--input {p}={ref}' for p, ref in INPUTS.items())
 
@@ -31,12 +32,14 @@ rule build:
     output:
         table = str(BUILD_DIR / 'wfs_corner_compare.parquet'),
         stats = str(BUILD_DIR / 'corner_stats.parquet'),
+    threads: WORKERS
     resources: mem_mb=16000
     log: str(LOGS / 'build.log')
     shell:
         'python -m rubinwork.products.wfs_corner_compare.builders.build_wfs_corner_compare'
         f' --variant {VARIANT} --out-dir {BUILD_DIR}'
-        f' --cwfs-build {CWFS_DIR.name} --fam-build {FAM_DIR.name} > {{log}} 2>&1'
+        f' --cwfs-build {CWFS_DIR.name} --fam-build {FAM_DIR.name} --workers {WORKERS}'
+        ' > {log} 2>&1'
 
 
 rule manifest:

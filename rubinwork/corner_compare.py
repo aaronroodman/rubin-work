@@ -159,7 +159,21 @@ def _corner_azimuth(az_deg):
     return np.degrees(np.arctan2(np.nanmedian(np.sin(a)), np.nanmedian(np.cos(a)))) % 360.0
 
 
-def match_corners(fam, cwfs, visits, noll, settings=None, log=print):
+def _interp_triplet(faz, fzk, caz, ikw):
+    """FAM interpolation of every Zernike at the corner azimuths `caz` of one triplet."""
+    out = np.full((len(caz), fzk.shape[1]), np.nan)
+    ok = np.isfinite(caz)
+    if ok.any():
+        for jp in range(fzk.shape[1]):
+            out[ok, jp] = azimuth_interp(faz, fzk[:, jp], caz[ok], **ikw)[0]
+    return out
+
+
+def _interp_star(args):
+    return _interp_triplet(*args)
+
+
+def match_corners(fam, cwfs, visits, noll, settings=None, log=print, workers=1):
     """The matched CWFS-against-FAM table, one row per (triplet, corner, Zernike).
 
     Parameters
@@ -179,6 +193,9 @@ def match_corners(fam, cwfs, visits, noll, settings=None, log=print):
         Overrides of `DEFAULTS`.
     log : callable, optional
         Progress printer.
+    workers : `int`, optional
+        Processes for the per-triplet interpolation. The GP fits are seeded, so the
+        result does not depend on it.
 
     Returns
     -------
@@ -218,8 +235,8 @@ def match_corners(fam, cwfs, visits, noll, settings=None, log=print):
     side = visits.set_index(["day_obs", "seq_num"])[side_cols]
     side = side[~side.index.duplicated()]
 
-    rows = []
-    for t, key in enumerate(triplets):
+    cazs, cmeds, tasks = [], [], []
+    for key in triplets:
         ci = np.asarray(cw_grp[key], int)
         fi = np.asarray(fam_grp[key], int)
         caz = np.full(len(corners), np.nan)
@@ -229,12 +246,22 @@ def match_corners(fam, cwfs, visits, noll, settings=None, log=print):
             if len(cc):
                 cmed[c] = np.nanmedian(cw_zk[cc], axis=0)
                 caz[c] = _corner_azimuth(cw_az[cc])
-        finterp = np.full((len(corners), len(noll)), np.nan)
-        ok = np.isfinite(caz)
-        if ok.any():
-            for jp in range(len(noll)):
-                finterp[ok, jp] = azimuth_interp(fam_az[fi], fam_zk[fi, jp], caz[ok],
-                                                 **ikw)[0]
+        cazs.append(caz)
+        cmeds.append(cmed)
+        tasks.append((fam_az[fi], fam_zk[fi], caz, ikw))
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(workers) as pool:
+            finterps = list(pool.map(_interp_star, tasks, chunksize=8))
+    else:
+        finterps = []
+        for t, task in enumerate(tasks):
+            finterps.append(_interp_triplet(*task))
+            if (t + 1) % 100 == 0:
+                log(f"  {t + 1} of {len(triplets)} triplets")
+
+    rows = []
+    for key, caz, cmed, finterp in zip(triplets, cazs, cmeds, finterps):
         sc = side.loc[key] if key in side.index else None
 
         def get(name):
@@ -256,8 +283,6 @@ def match_corners(fam, cwfs, visits, noll, settings=None, log=print):
                                      fam_interp=float(finterp[c, jp]),
                                      cwfs_median=float(cmed[c, jp]),
                                      corner_az_deg=float(caz[c]), **meta))
-        if (t + 1) % 100 == 0:
-            log(f"  {t + 1} of {len(triplets)} triplets")
     return pd.DataFrame(rows, columns=list(TABLE_COLUMNS))
 
 

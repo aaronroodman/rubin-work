@@ -147,6 +147,8 @@ def parse_args(argv=None):
     parser.add_argument('--max-visits', type=int, default=None,
                         help='Process at most this many visits (dimensionless), for a '
                              'quick check')
+    parser.add_argument('--workers', type=int, default=1,
+                        help='threads reading the Butler in parallel (dimensionless)')
     parser.add_argument('--mode', default='mean', choices=['mean', 'intra', 'extra'],
                         help="Pairing mode: 'mean' of the two sides of focus (default), "
                              "or a single unpaired side")
@@ -497,18 +499,33 @@ def build_tables(args):
 
     records, provenance_seen = [], {}
     n_skipped, n_failed = 0, 0
+    # Butler reads are I/O bound, so threads overlap them; the writer stays in visit order.
+    # A Butler is not thread-safe (its registry connection is shared), so each thread
+    # opens its own.
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    local = threading.local()
+
+    def read(visit):
+        day_obs, seq_num = divmod(int(visit), 100000)
+        if not hasattr(local, 'butler'):
+            local.butler = butler if args.workers <= 1 else Butler(entry['butler_repo'])
+        try:
+            table = br.read_blitz_visit(local.butler, visit, collections,
+                                        dataset_type=args.dataset_type)
+            meta = dict(table.meta)
+            return meta, *br.donut_table(table, meta, day_obs, seq_num, mode=args.mode)
+        except Exception as exc:
+            return exc, None, None
+
+    pool = ThreadPoolExecutor(max(1, args.workers))
     with br.BlitzDonutWriter(donuts_file) as writer:
-        for n_done, visit in enumerate(visits, start=1):
+        for n_done, (visit, (meta, arrow_table, stats)) in enumerate(
+                zip(visits, pool.map(read, visits)), start=1):
             day_obs, seq_num = divmod(int(visit), 100000)
-            try:
-                table = br.read_blitz_visit(butler, visit, collections,
-                                            dataset_type=args.dataset_type)
-                meta = dict(table.meta)
-                arrow_table, stats = br.donut_table(table, meta, day_obs, seq_num,
-                                                    mode=args.mode)
-            except Exception as exc:
+            if isinstance(meta, Exception):
                 print(f'  [{n_done}/{len(visits)}] visit {visit}: FAILED — '
-                      f'{type(exc).__name__}: {exc}')
+                      f'{type(meta).__name__}: {meta}')
                 n_failed += 1
                 continue
             if arrow_table.num_rows == 0:
@@ -532,6 +549,7 @@ def build_tables(args):
                       f'intra and {stats["n_extra_ok"]} extra fitted rows '
                       f'(dimensionless counts), {record["n_detectors"]} detectors')
 
+    pool.shutdown()
     print(f'\nWrote {writer.n_visits} visits, {writer.n_rows} donut rows '
           f'(dimensionless counts) to {donuts_file}')
     if n_skipped or n_failed:
