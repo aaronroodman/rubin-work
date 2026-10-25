@@ -1,0 +1,48 @@
+# Build one wfs_corner_compare variant into the product tree.
+#
+#   snakemake -s rubinwork/products/wfs_corner_compare/Snakefile \
+#       --config variant=d12-refitWcs [build=YYYYMMDD] [cwfs_build=...] [fam_build=...]
+#
+# Run from the repository root. The plots are the aos/cwfs study's, not this product's.
+import datetime
+
+from rubinwork.products import wfs_corner_compare as wcc
+from rubinwork.products.wfs_corner_compare.builders.build_wfs_corner_compare import (
+    resolve_inputs)
+
+VARIANT = config.get('variant', 'd12-refitWcs')
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+CWFS_DIR, FAM_DIR, INPUTS = resolve_inputs(
+    VARIANT, str(config.get('cwfs_build', 'current')), config.get('fam_build'))
+BUILD_DIR = wcc.build_dir(VARIANT, BUILD)
+LOGS = BUILD_DIR / '_work' / 'logs'
+INPUT_FLAGS = ' '.join(f'--input {p}={ref}' for p, ref in INPUTS.items())
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+rule build:
+    input:
+        cwfs = str(CWFS_DIR / 'donuts.parquet'),
+        fam  = str(FAM_DIR / 'donuts.parquet'),
+    output:
+        table = str(BUILD_DIR / 'wfs_corner_compare.parquet'),
+        stats = str(BUILD_DIR / 'corner_stats.parquet'),
+    resources: mem_mb=16000
+    log: str(LOGS / 'build.log')
+    shell:
+        'python -m rubinwork.products.wfs_corner_compare.builders.build_wfs_corner_compare'
+        f' --variant {VARIANT} --out-dir {BUILD_DIR}'
+        f' --cwfs-build {CWFS_DIR.name} --fam-build {FAM_DIR.name} > {{log}} 2>&1'
+
+
+rule manifest:
+    input: rules.build.output
+    output: str(BUILD_DIR / 'manifest.json')
+    log: str(LOGS / 'manifest.log')
+    shell:
+        'python -m rubinwork.products.wfs_corner_compare.write_manifest'
+        f' --variant {VARIANT} --build {BUILD} {INPUT_FLAGS} > {{log}} 2>&1'

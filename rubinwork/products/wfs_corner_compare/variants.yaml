@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------
+# wfs_corner_compare variants: one per pairing of a cwfs_tables variant with the
+# fam_tables variant it is matched to.  The variant name is the cwfs_tables variant name;
+# its fam_variant comes from cwfs_tables/variants.yaml, so it is not restated here.
+#
+# Per-entry fields:
+#   cwfs_variant  the cwfs_tables variant (required)
+#   settings      overrides of rubinwork.corner_compare.DEFAULTS (optional)
+#   dir_name      the old-tree directory, aos/output/wfs_corner_compare/<fam>/<dir_name>/
+#
+# A Danish 1.3 or blitz unpaired comparison needs its cwfs_tables variant first.
+# ---------------------------------------------------------------------------
+variants:
+
+  # Danish 1.2 paired CWFS, refit WCS, 2026 nights.  optatmo's psf_vs_cwfs reads its
+  # robust RMS as the CWFS noise prior.
+  d12-refitWcs:
+    cwfs_variant: d12-refitWcs
+    dir_name: "refitWcs"
+
+  d12-ai_donut:
+    cwfs_variant: d12-ai_donut
+    dir_name: "ai_donut"
+
+  d12-paired_3mm:
+    cwfs_variant: d12-paired_3mm
+    dir_name: "paired_3mm"
+
+  # TARTS unpaired: SW0 and SW1 compared separately (8 corner sensors).
+  d12-tarts:
+    cwfs_variant: d12-tarts
+    dir_name: "tarts"

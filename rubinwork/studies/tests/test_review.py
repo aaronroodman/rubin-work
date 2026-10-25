@@ -54,7 +54,9 @@ def repo(tmp_path, monkeypatch):
     return root
 
 
-def test_rule_violations(repo):
+def test_rule_violations(repo, monkeypatch):
+    monkeypatch.setattr(review, "ALLOWED",
+                        (("optatmo/code/extract_cwfs_sigma.py", "no-foreign-output"),))
     found, unparsed = review.rule_violations(repo)
     got = {(v.path, v.rule, v.allowed) for v in found}
     assert ("aos/code/alpha/a.py", "no-study-import", False) in got

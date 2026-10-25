@@ -2,9 +2,9 @@
 wavefront-space regularization, from the CWFS-vs-FAM corner comparison.
 
 PROVENANCE
-  Source : aos/output/wfs_corner_compare/danish_1_2/refitWcs/
-           wfs_corner_compare.parquet  (raw fam_interp vs cwfs_median pairs; the
-           'robust RMS' panel of the companion wfs_corner_compare.pdf, page 9).
+  Source : the wfs_corner_compare product, variant d12-refitWcs (raw fam_interp vs
+           cwfs_median pairs; the 'robust RMS' panel of the aos/cwfs study's
+           wfs_corner_compare.pdf).
   Metric : sigma_j = robust RMS = nMAD of residuals about a Huber CWFS(y)-vs-
            FAM(x) fit (OLS fallback), recomputed exactly as run_wfs_corner_
            compare.fit_metrics, then AVERAGED OVER THE 4 CORNER RAFTS.
@@ -18,10 +18,10 @@ PROVENANCE
 import argparse
 
 import numpy as np
-import pandas as pd
 
-DEFAULT_PARQUET = ('../aos/output/wfs_corner_compare/danish_1_2/refitWcs/'
-                   'wfs_corner_compare.parquet')
+from rubinwork.products import wfs_corner_compare
+
+DEFAULT_VARIANT = 'd12-refitWcs'
 
 # Noll azimuthal doublets (cos/sin pairs) in the AOS set Z4..Z26 (Z20,Z21 omit).
 # Both members get the mean sigma; the m=0 singles (4, 11, 22) are unpaired.
@@ -60,11 +60,13 @@ def robust_rms(x, y):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--parquet', default=DEFAULT_PARQUET)
+    ap.add_argument('--variant', default=DEFAULT_VARIANT,
+                    help='wfs_corner_compare variant')
+    ap.add_argument('--build', default='current')
     ap.add_argument('--yaml', action='store_true', help='print only the yaml block')
     args = ap.parse_args()
 
-    df = pd.read_parquet(args.parquet)
+    df = wfs_corner_compare.load_table('wfs_corner_compare', args.variant, args.build)
     corners = sorted(df.corner.unique())
     js = sorted(int(j) for j in df.j.unique())
     sigma = {}
@@ -78,7 +80,7 @@ def main():
     paired = symmetrize(sigma)
 
     if not args.yaml:
-        print(f'{args.parquet}\ncorners: {corners}\n')
+        print(f'wfs_corner_compare {args.variant}@{args.build}\ncorners: {corners}\n')
         print('  j   raw_mean   paired   ' + ' '.join(f'{c[:3]:>6}' for c in corners))
         for j in js:
             pr = '(pair)' if any(j in p for p in PAIRS) else 'single'

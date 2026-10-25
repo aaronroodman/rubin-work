@@ -1,9 +1,9 @@
 # Study: `cwfs` — FAM vs the corner wavefront sensors
 
-> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-24 · **Kind:** reference (study)
 
 > **Code:** `code/cwfs/` · **Notebooks:** `notebooks/cwfs/`
-> **Output:** `output/wfs_ingest/<P>/<cwfs>/` (`donuts.parquet`, `visits.parquet`), `output/wfs_corner_compare/<P>/<cwfs>/`, `output/wfs_dof_compare/<P>_<M>/<cwfs>/`, `output/wfs_mimic/<P>_<M>/`
+> **Output:** `output/wfs_ingest/<P>/<cwfs>/` (`donuts.parquet`, `visits.parquet`), the `wfs_corner_compare` product, `cwfs/output/wfs_dof_compare/<P>_<M>/<cwfs>/`, `wfs_mimic/output/<P>_<M>/`
 
 Comparison of the optical state recovered from the Corner Wavefront Sensors (CWFS)
 against the Full Array Mode (FAM) full-focal-plane measurement.
@@ -23,7 +23,7 @@ Two distinct tracks, easy to confuse:
 | file | role |
 |---|---|
 | `run_wfs_mktable.py` | pipeline `wfs_mktable` — Butler → per-donut corner-WFS table, paired to FAM triplets; handles the `ai_donut` product's separate reader |
-| `run_wfs_corner_compare.py` | pipeline `wfs_corner_compare` — corner-by-corner CWFS vs FAM measured-OPD vs azimuth (GP interpolation by default) |
+| `run_wfs_corner_compare.py` | the PDF for one `wfs_corner_compare` product build — corner-by-corner CWFS vs FAM measured-OPD vs azimuth (GP interpolation by default) |
 | `run_wfs_dof_compare.py` | pipeline `wfs_dof_compare` — the optical state both ways (FAM via full-field DZ→SVD, CWFS via the corner OFC inverse), plus **AOS-FWHM** contributions |
 | `run_wfs_mimic.py` | pipeline `wfs_mimic` — FAM-mimicked 4-corner deviation covariance (84×84 and 21×21) |
 | `run_wfs_fam_compare.py` | per-image FAM ↔ CWFS wavefront vs azimuth, with a per-corner donut-fit gallery. Foundational visual check; **predates** `wfs_corner_compare` and reads the flat pre-multi-collection `wfs/donuts.parquet` |
@@ -43,7 +43,7 @@ per collection by Butler introspection, and a `dataset_type`.
 ## Inputs and outputs
 
 Butler corner-WFS collections (RSP only) plus FAM `fits.parquet` and the MI sidecar.
-Writes `wfs/<cwfs>/{donuts,visits}.parquet`, `wfs_corner_compare.{pdf,parquet}`,
+Writes `wfs/<cwfs>/{donuts,visits}.parquet`, `wfs_corner_compare.pdf` (the table is the `wfs_corner_compare` product),
 `<mi>/wfs/<cwfs>/wfs_dof_compare_offsets.pdf` (or `_nooffset.pdf`), and the
 `wfs_mimic/` covariance products.
 

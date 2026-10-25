@@ -36,8 +36,6 @@ STALE_DAYS = 14
 ALLOWED = (
     # The wrong-way imports and reads listed in organization_plan.md section 2, fixed
     # in phase 5. (path prefix, rule).
-    # optatmo reads the aos/cwfs study's wfs_corner_compare.parquet; no product holds it.
-    ("optatmo/code/extract_cwfs_sigma.py", "no-foreign-output"),
 )
 """Known violations: reported, but as known rather than new."""
 

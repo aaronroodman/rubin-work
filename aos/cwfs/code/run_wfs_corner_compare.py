@@ -1,275 +1,92 @@
 #!/usr/bin/env python3
-"""wfs_corner_compare — corner-by-corner CWFS vs FAM measured-OPD comparison.
+"""wfs_corner_compare plots: corner-by-corner CWFS against FAM measured wavefront.
 
-For each corner raft (R00/R04/R40/R44) and each FAM triplet, compare the median
-in-focus corner-WFS Zernike (zk_<coord>, y-axis) against the FAM measured OPD
-interpolated to that corner (x-axis).  The interpolation is a plain azimuthal-wedge
-median: FAM donuts in the outer annulus r in [r_min, r_max] within +/- wedge_half deg
-of the corner azimuth (>= min_fam donuts).  Both are raw OPD in <coord> (default OCS),
-from the same triplet (matched CWFS fam_seq_num <-> FAM seq_num).
+Reads one ``wfs_corner_compare`` product build (the matched table and the per-corner
+stats, `rubinwork.corner_compare`) and writes ``wfs_corner_compare.pdf``:
 
-Pages (<out-dir>/wfs_corner_compare.pdf; the pipeline passes
-output/wfs_corner_compare/<P>/<cwfs>/):
-  - per corner: FAM-vs-CWFS scatter, all Zj (Pearson r + Spearman rho, Huber
-    robust slope/offset, nMAD RMS of residuals about the robust fit);
-  - per corner: time history (FAM-interp + CWFS-median vs image ordinal), all Zj;
-  - summary: Pearson r / Spearman rho / Huber slope / offset / robust-RMS vs Zj,
-    all 4 corners;
-  - validation: every val_stride-th triplet, Z5-Z8 vs focal-plane azimuth showing the
-    individual FAM (annulus) and CWFS donuts plus the FAM interpolation and CWFS median.
+  - per corner: FAM-against-CWFS scatter, all Zj (Pearson r, Spearman rho, Huber
+    slope and offset, nMAD of the residuals about the Huber fit);
+  - per corner: time history (FAM interpolation and CWFS median against image ordinal);
+  - summary: Pearson r, Spearman rho, Huber slope, offset and robust RMS against Zj,
+    all corners;
+  - validation: every val_stride-th triplet, Z5-Z8 against focal-plane azimuth, showing
+    the FAM annulus donuts and CWFS donuts with the FAM ring fit, the interpolation and
+    the CWFS median (reads those triplets' donuts from the product's two upstreams).
 
-Pure parquet (CWFS wfs/donuts.parquet + FAM donuts.parquet) — runs anywhere.
-Replaces the old wfs_build / study_wfs_radial continuity plots.
+Usage::
+
+    python code/run_wfs_corner_compare.py --variant d12-refitWcs
 """
 import argparse
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+import pyarrow.dataset as pads
 import pyarrow.parquet as pq
-from rubinwork.common.utils import nmad  # noqa: E402
 
-CORNERS = ['R00_SW0', 'R04_SW0', 'R40_SW0', 'R44_SW0']
-
-
-def ang_dist(a, b):
-    """Smallest |a-b| on the circle (deg)."""
-    return np.abs((np.asarray(a) - b + 180.0) % 360.0 - 180.0)
+from rubinwork import corner_compare as cc
+from rubinwork.common import study_run
+from rubinwork.products import catalog, wfs_corner_compare as wcc
 
 
-def _fourier_curve(az, z, M):
-    """Least-squares truncated Fourier series Z(az) with M harmonics -> callable."""
-    def design(a):
-        a = np.atleast_1d(np.asarray(a, float)); cols = [np.ones_like(a)]
-        for m in range(1, M + 1):
-            cols += [np.cos(m * np.radians(a)), np.sin(m * np.radians(a))]
-        return np.column_stack(cols)
-    coef = np.linalg.lstsq(design(az), z, rcond=None)[0]
-    return lambda a: design(a) @ coef
-
-
-def _gp_curve(az, z, bin_deg):
-    """GP on the cos/sin azimuth circle, fit to bin_deg-binned medians -> callable.
-
-    Kernel bounds are wide: many Zernikes are azimuthally smooth (length_scale
-    wants to be large -> nearly constant around the ring) or near-noiseless
-    (noise_level -> ~0), which used to spam sklearn ConvergenceWarnings as the
-    optimizer parked at the old (0.05,3.0)/(1e-4,0.2) bounds.  Widening the
-    bounds and suppressing the (benign) warning keeps those fits well-posed."""
-    import warnings
-    from sklearn.exceptions import ConvergenceWarning
-    from sklearn.gaussian_process import GaussianProcessRegressor
-    from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
-    bc, bm = [], []
-    for lo in np.arange(0, 360, bin_deg):
-        m = (az >= lo) & (az < lo + bin_deg)
-        if m.any():
-            bc.append(lo + bin_deg / 2); bm.append(np.nanmedian(z[m]))
-    bc, bm = np.array(bc), np.array(bm)
-    circ = lambda a: np.c_[np.cos(np.radians(np.atleast_1d(a))), np.sin(np.radians(np.atleast_1d(a)))]
-    # chord length_scale on the unit circle spans ~0..2; give generous headroom.
-    k = (ConstantKernel(1.0, (1e-3, 1e3)) * RBF(0.5, (0.02, 10.0))
-         + WhiteKernel(0.01, (1e-8, 1.0)))
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', ConvergenceWarning)
-        gp = GaussianProcessRegressor(k, normalize_y=True,
-                                      n_restarts_optimizer=2).fit(circ(bc), bm)
-    return lambda a: gp.predict(circ(a))
-
-
-def azimuth_interp(az, z, corner_az, method, fourier_m, gp_bin, wedge_half, min_fam):
-    """FAM Zj interpolated to the corner azimuths. Returns (values[len(corner_az)], curve|None).
-    'wedge-median' = local median (curve=None); 'fourier'/'gp' = smooth ring fit + curve callable."""
-    ca = np.atleast_1d(np.asarray(corner_az, float))
-    fin = np.isfinite(z)
-    if method == 'wedge-median':
-        vals = np.array([np.nanmedian(z[ang_dist(az, c) <= wedge_half])
-                         if (ang_dist(az, c) <= wedge_half).sum() >= min_fam else np.nan for c in ca])
-        return vals, None
-    if fin.sum() < max(min_fam, fourier_m * 2 + 2):
-        return np.full(len(ca), np.nan), None
-    try:
-        curve = (_gp_curve(az[fin], z[fin], gp_bin) if method == 'gp'
-                 else _fourier_curve(az[fin], z[fin], fourier_m))
-    except Exception:                              # e.g. sklearn missing -> fall back to fourier
-        curve = _fourier_curve(az[fin], z[fin], fourier_m)
-    return np.asarray(curve(ca), float).ravel(), curve
-
-
-def fit_metrics(x, y):
-    """Robust CWFS(y)-vs-FAM(x) fit metrics (finite pairs only).
-
-    Line: Huber robust regression (statsmodels RLM + HuberT), falling back to OLS
-    if statsmodels is unavailable or the robust fit fails to converge.
-    Correlation: BOTH Pearson r (linear) and Spearman rho (rank, robust to
-    outliers + monotonic nonlinearity).  ``rms`` = nMAD of the (robust) residuals."""
-    m = np.isfinite(x) & np.isfinite(y)
-    if m.sum() < 3:
-        return dict(n=int(m.sum()), r=np.nan, rho=np.nan, slope=np.nan,
-                    off=np.nan, rms=np.nan)
-    x, y = np.asarray(x)[m], np.asarray(y)[m]
-    try:
-        import statsmodels.api as sm
-        rlm = sm.RLM(y, sm.add_constant(x), M=sm.robust.norms.HuberT()).fit()
-        b, s = float(rlm.params[0]), float(rlm.params[1])   # const, slope
-    except Exception:
-        s, b = (float(v) for v in np.polyfit(x, y, 1))
-    res = y - (s * x + b)
-    from scipy.stats import spearmanr
-    rho = float(spearmanr(x, y).statistic)
-    return dict(n=len(x), r=float(np.corrcoef(x, y)[0, 1]), rho=rho,
-                slope=s, off=b, rms=float(nmad(res)))
+def validation_donuts(variant, build_dir, keys, coord, r_min, r_max):
+    """FAM annulus and CWFS donuts of the validation triplets, from the build's inputs."""
+    inputs = catalog.manifest('wfs_corner_compare', variant, build_dir.name)['inputs']
+    cv, cb = inputs['cwfs_tables'].split('@')
+    fv, fb = inputs['fam_tables'].split('@')
+    zc, txc, tyc = f'zk_{coord}', f'thx_{coord}', f'thy_{coord}'
+    nights = sorted({k[0] for k in keys})
+    fam = pads.dataset(catalog.path('fam_tables', fv, fb) / 'donuts.parquet').to_table(
+        columns=['day_obs', 'seq_num', zc, txc, tyc],
+        filter=pads.field('day_obs').isin(nights)).to_pandas()
+    cw = pq.read_table(catalog.path('cwfs_tables', cv, cb) / 'donuts.parquet',
+                       columns=['detector', 'day_obs', 'fam_seq_num', zc, txc, tyc]).to_pandas()
+    fr = np.degrees(np.hypot(fam[txc], fam[tyc]))
+    fam = fam[(fr >= r_min) & (fr <= r_max)]
+    out = {}
+    for k in keys:
+        f = fam[(fam.day_obs == k[0]) & (fam.seq_num == k[1])]
+        c = cw[(cw.day_obs == k[0]) & (cw.fam_seq_num == k[1])]
+        out[k] = (np.degrees(np.arctan2(f[tyc], f[txc])) % 360, np.stack(f[zc].values),
+                  np.degrees(np.arctan2(c[tyc], c[txc])) % 360, np.stack(c[zc].values))
+    return out
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--param-set', required=True)
-    ap.add_argument('--wfs-name', required=True, help='CWFS variant key')
-    ap.add_argument('--output-root', default='output')
-    # The caller (the Snakefile) owns the output layout and may name directories
-    # differently from the param_set / wfs_name keys, so each path this script
-    # needs can be supplied directly rather than derived from those keys.
-    ap.add_argument('--tables-dir', default=None,
-                    help='dir holding the phase-1 donuts/visits.parquet '
-                         '(default: output/<ps>)')
-    ap.add_argument('--wfs-dir', default=None,
-                    help='dir holding the ingested CWFS donuts.parquet '
-                         '(default: output/<ps>/wfs/<wfs-name>)')
+    ap = argparse.ArgumentParser(description=__doc__.split('\n')[1],
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--variant', required=True, help='wfs_corner_compare variant')
+    ap.add_argument('--build', default=catalog.CURRENT)
     ap.add_argument('--out-dir', default=None,
-                    help='directory to write into '
-                         '(default: output/<ps>/wfs/<wfs-name>)')
-    ap.add_argument('--coord', default='OCS', choices=['OCS', 'CCS'])
-    ap.add_argument('--r-min', type=float, default=1.5178)
-    ap.add_argument('--r-max', type=float, default=1.725)
-    ap.add_argument('--interp', default='gp', choices=['gp', 'fourier', 'wedge-median'],
-                    help='FAM azimuth interpolation to the corner: gp (smooth ring fit, default), '
-                         'fourier (truncated harmonics), wedge-median (local flat median)')
-    ap.add_argument('--fourier-m', type=int, default=4, help='harmonics for --interp fourier')
-    ap.add_argument('--gp-bin-deg', type=float, default=15.0, help='azimuth bin (deg) for the GP medians')
-    ap.add_argument('--wedge-half', type=float, default=30.0, help='FAM azimuth half-width (deg), --interp wedge-median')
-    ap.add_argument('--min-fam', type=int, default=3, help='min FAM donuts (wedge) / ring donuts (gp,fourier)')
+                    help='default: a dated run directory in the study output')
     ap.add_argument('--val-stride', type=int, default=20, help='validation page every Nth triplet')
     ap.add_argument('--val-zernikes', default='5,6,7,8')
     args = ap.parse_args()
-    coord = args.coord
-    ps_base = Path(args.output_root) / args.param_set
-    _wfs_default = ps_base / 'wfs' / args.wfs_name
-    tables = Path(args.tables_dir) if args.tables_dir else ps_base
-    wfs_dir = Path(args.wfs_dir) if args.wfs_dir else _wfs_default
-    outdir = Path(args.out_dir) if args.out_dir else _wfs_default
-    zc, txc, tyc = f'zk_{coord}', f'thx_{coord}', f'thy_{coord}'
 
-    vt = pq.read_table(str(tables / 'visits.parquet')).to_pandas()
-    noll = [int(x) for x in np.asarray(vt['nollIndices'].iloc[0])]
-    nZk = len(noll)
-    vjs = [int(j) for j in args.val_zernikes.split(',') if int(j) in noll]
-    # per-triplet sidecar (rotator/elevation/mjd) keyed by (day_obs, seq_num) —
-    # the triplet key's seq_num is the FAM extra seq == visits.parquet seq_num.
-    _side_cols = [c for c in ('rotator_angle', 'alt', 'az', 'mjd', 'science_program')
-                  if c in vt.columns]
-    sidecar = {(int(r.day_obs), int(r.seq_num)): r
-               for r in vt[['day_obs', 'seq_num', *_side_cols]].itertuples(index=False)}
-
-    # ---- CWFS (in-focus corner donuts) ----
-    cw_path = wfs_dir / 'donuts.parquet'
-    _rc = ['detector', 'day_obs', 'seq_num', 'fam_seq_num', zc, txc, tyc]
-    if 'wfs_offset' in pq.ParquetFile(str(cw_path)).schema.names:
-        _rc.append('wfs_offset')                 # intra(-1)/extra(0) tag (unpaired CWFS)
-    cw = pq.read_table(str(cw_path), columns=_rc).to_pandas()
-    cw_zk = np.stack(cw[zc].values).astype(float)
-    cw_az = np.degrees(np.arctan2(cw[tyc].astype(float), cw[txc].astype(float))) % 360.0
-    cw_det = cw.detector.astype(str).values
-    # Data-driven corner list: the corner sensors actually present -- 4 for the
-    # paired SW0-only CWFS, 8 for an unpaired set (SW0 intra + SW1 extra).
-    # Grouping by exact detector name keeps intra and extra separate (not averaged).
-    _CR = ('R00', 'R04', 'R40', 'R44')
-    CORNERS = sorted(dd for dd in set(cw_det) if dd[:3] in _CR and dd[-3:] in ('SW0', 'SW1'))
-    if 'wfs_offset' in cw.columns:               # per-corner intra/extra label for the parquet
-        cw['_detstr'] = cw_det
-        _koff = cw.groupby('_detstr')['wfs_offset'].median()
-        defocus_of = {dd: ('intra' if float(_koff.get(dd, 0)) < 0 else 'extra') for dd in CORNERS}
+    build_dir = catalog.path('wfs_corner_compare', args.variant, args.build)
+    table, stats = wcc.load(args.variant, build_dir.name)
+    s = catalog.manifest('wfs_corner_compare', args.variant, build_dir.name)['config']['settings']
+    coord = s['coord']
+    label = f'{args.variant} @ {build_dir.name}'
+    if args.out_dir:
+        outdir = Path(args.out_dir)
+        outdir.mkdir(parents=True, exist_ok=True)
     else:
-        defocus_of = {dd: '' for dd in CORNERS}
-    print(f'[wfs_corner_compare] corners: {CORNERS}')
+        outdir = study_run('aos/cwfs', 'wfs_corner_compare').path / args.variant
+        outdir.mkdir(parents=True, exist_ok=True)
 
-    # ---- FAM (science array), outer annulus only ----
-    fam = pq.read_table(str(tables / 'donuts.parquet'), columns=['day_obs', 'seq_num', zc, txc, tyc]).to_pandas()
-    fr = np.degrees(np.hypot(fam[txc].astype(float), fam[tyc].astype(float)))
-    ann = (fr >= args.r_min) & (fr <= args.r_max)
-    fam = fam[ann].reset_index(drop=True)
-    fam_zk = np.stack(fam[zc].values).astype(float)
-    fam_az = np.degrees(np.arctan2(fam[tyc].astype(float), fam[txc].astype(float))) % 360.0
-    fam_grp = fam.groupby(['day_obs', 'seq_num']).indices            # (day,seq) -> row positions
-    cw_grp = cw.groupby(['day_obs', 'fam_seq_num']).indices          # (day,fam_seq) -> row positions
-    triplets = sorted(set(cw_grp.keys()) & set(fam_grp.keys()))
-    print(f'[wfs_corner_compare] {args.param_set}: {len(triplets)} matched triplets, '
-          f'{nZk} Zernikes, coord={coord}, wedge=±{args.wedge_half}°')
-    nT = len(triplets); nC = len(CORNERS)
-    FAMI = np.full((nT, nC, nZk), np.nan)       # FAM interp at each corner
-    CWM = np.full((nT, nC, nZk), np.nan)        # CWFS median at each corner
-    AZC = np.full((nT, nC), np.nan)             # corner azimuth (deg)
-    val_idx = set(range(0, nT, args.val_stride))
-    val = {}
-    print(f'  FAM->corner interpolation: {args.interp}'
-          + (f' (M={args.fourier_m})' if args.interp == 'fourier' else
-             f' (bin={args.gp_bin_deg}°)' if args.interp == 'gp' else f' (±{args.wedge_half}°)'))
-    ikw = dict(method=args.interp, fourier_m=args.fourier_m, gp_bin=args.gp_bin_deg,
-               wedge_half=args.wedge_half, min_fam=args.min_fam)
-    for t, key in enumerate(triplets):
-        ci = np.asarray(cw_grp[key], int)
-        fi = np.asarray(fam_grp[key], int)
-        faz_t, fzk_t = fam_az[fi], fam_zk[fi]
-        for c, det in enumerate(CORNERS):       # CWFS median + corner azimuth
-            cc = ci[cw_det[ci] == det]
-            if len(cc) == 0:
-                continue
-            CWM[t, c] = np.nanmedian(cw_zk[cc], axis=0)
-            AZC[t, c] = np.degrees(np.arctan2(np.nanmedian(np.sin(np.radians(cw_az[cc]))),
-                                              np.nanmedian(np.cos(np.radians(cw_az[cc]))))) % 360.0
-        cok = np.isfinite(AZC[t])               # FAM interp to those corner azimuths, per Zj
-        if cok.any():
-            for jp in range(nZk):
-                FAMI[t, cok, jp] = azimuth_interp(faz_t, fzk_t[:, jp], AZC[t, cok], **ikw)[0]
-        if t in val_idx:
-            val[t] = (key, faz_t, fzk_t, cw_az[ci], cw_zk[ci], cw_det[ci])
-
-    # ---- tidy parquet: one row per (triplet, corner, Zj) with FAM interp +
-    #      CWFS median + azimuth + sidecar (rotator/elevation/mjd/program).
-    #      For downstream FAM-vs-CWFS correlation analysis per Zj/corner. ----
-    outdir.mkdir(parents=True, exist_ok=True)
-    rows = {k: [] for k in ('day_obs', 'seq_num', 'corner', 'defocus', 'j', 'fam_interp',
-                            'cwfs_median', 'corner_az_deg', 'rotator_angle',
-                            'alt_deg', 'az_deg', 'mjd', 'science_program')}
-    for t, key in enumerate(triplets):
-        d, s = int(key[0]), int(key[1])
-        sc = sidecar.get((d, s))
-        rot = float(getattr(sc, 'rotator_angle', np.nan)) if sc is not None else np.nan
-        # visits.parquet alt/az are in RADIANS; convert to degrees (elevation).
-        _alt = float(getattr(sc, 'alt', np.nan)) if sc is not None else np.nan
-        _az = float(getattr(sc, 'az', np.nan)) if sc is not None else np.nan
-        alt = np.degrees(_alt) if np.isfinite(_alt) and abs(_alt) <= 2 * np.pi else _alt
-        azv = np.degrees(_az) if np.isfinite(_az) and abs(_az) <= 2 * np.pi else _az
-        mjd = float(getattr(sc, 'mjd', np.nan)) if sc is not None else np.nan
-        prog = str(getattr(sc, 'science_program', '')) if sc is not None else ''
-        for c, det in enumerate(CORNERS):
-            for jp, j in enumerate(noll):
-                fam_i, cw_m = FAMI[t, c, jp], CWM[t, c, jp]
-                if not (np.isfinite(fam_i) or np.isfinite(cw_m)):
-                    continue                      # skip fully-empty (corner,Zj)
-                rows['day_obs'].append(d); rows['seq_num'].append(s)
-                rows['corner'].append(det); rows['defocus'].append(defocus_of.get(det, ''))
-                rows['j'].append(int(j))
-                rows['fam_interp'].append(float(fam_i))
-                rows['cwfs_median'].append(float(cw_m))
-                rows['corner_az_deg'].append(float(AZC[t, c]))
-                rows['rotator_angle'].append(rot); rows['alt_deg'].append(alt)
-                rows['az_deg'].append(azv); rows['mjd'].append(mjd)
-                rows['science_program'].append(prog)
-    cmp_df = pd.DataFrame(rows)
-    cmp_df.attrs['wfs_name'] = args.wfs_name
-    cmp_df.to_parquet(outdir / 'wfs_corner_compare.parquet')
-    print(f'  wrote wfs_corner_compare.parquet ({len(cmp_df)} rows: '
-          f'{len(triplets)} triplets x 4 corners x {nZk} Zj, finite only)')
+    FAMI, triplets, CORNERS, noll = cc.pivot(table, 'fam_interp')
+    CWM = cc.pivot(table, 'cwfs_median')[0]
+    AZC = np.nanmedian(cc.pivot(table, 'corner_az_deg')[0], axis=2)
+    defocus_of = dict(zip(table.corner, table.defocus.fillna('')))
+    metrics = {(r.corner, int(r.j)): r._asdict() for r in stats.itertuples(index=False)}
+    nZk, nT = len(noll), len(triplets)
+    vjs = [int(j) for j in args.val_zernikes.split(',') if int(j) in noll]
+    val_keys = [triplets[t] for t in range(0, nT, args.val_stride)]
+    val = validation_donuts(args.variant, build_dir, val_keys, coord, s['r_min_deg'], s['r_max_deg'])
+    ikw = {k: s[k] for k in ('interp', 'fourier_m', 'gp_bin_deg', 'gp_restarts',
+                             'wedge_half_deg', 'min_fam') if k in s}
+    print(f'[wfs_corner_compare] {label}: {nT} triplets, corners {CORNERS}')
 
     out = outdir / 'wfs_corner_compare.pdf'
     import matplotlib
@@ -281,7 +98,6 @@ def main():
     except Exception:
         NOLL_NAMES = {}
     nr = int(np.ceil(np.sqrt(nZk))); ncpanel = int(np.ceil(nZk / nr))
-    metrics = {}        # (corner, j) -> fit dict
 
     with PdfPages(str(out)) as pdf:
         # ---- per-corner scatter (all Zj) ----
@@ -291,7 +107,7 @@ def main():
             for p, j in enumerate(noll):
                 ax = axes.ravel()[p]
                 x, y = FAMI[:, c, p], CWM[:, c, p]
-                m = fit_metrics(x, y); metrics[(det, j)] = m
+                m = metrics[(det, j)]
                 ax.scatter(x, y, s=8, alpha=0.4)
                 fin = np.isfinite(x) & np.isfinite(y)
                 if fin.sum() >= 3:
@@ -305,7 +121,7 @@ def main():
             for ax in axes.ravel()[nZk:]:
                 ax.axis('off')
             _dl = f' [{defocus_of.get(det, "")}]' if defocus_of.get(det) else ''
-            fig.suptitle(f'{det}{_dl}: CWFS median (y) vs FAM-interp (x) [{coord}, µm] — {args.param_set}', fontsize=11)
+            fig.suptitle(f'{det}{_dl}: CWFS median (y) vs FAM-interp (x) [{coord}, µm] — {label}', fontsize=11)
             pdf.savefig(fig); plt.close(fig)
 
         # ---- per-corner time history (all Zj) ----
@@ -322,7 +138,7 @@ def main():
                 ax.axis('off')
             axes.ravel()[0].legend(fontsize=6)
             _dl = f' [{defocus_of.get(det, "")}]' if defocus_of.get(det) else ''
-            fig.suptitle(f'{det}{_dl}: time history vs image ordinal [{coord}, µm] — {args.param_set}', fontsize=11)
+            fig.suptitle(f'{det}{_dl}: time history vs image ordinal [{coord}, µm] — {label}', fontsize=11)
             pdf.savefig(fig); plt.close(fig)
 
         # ---- summary: metric vs Zj, all corners ----
@@ -339,32 +155,33 @@ def main():
                 ax.axhline(0, color='k', lw=0.5)
         axes.ravel()[len(panels)].axis('off')       # 2x3 grid, 5 panels
         axes.ravel()[0].legend(fontsize=8)
-        fig.suptitle(f'CWFS vs FAM-interp summary — {args.param_set} ({coord})', fontsize=12)
+        fig.suptitle(f'CWFS vs FAM-interp summary — {label} ({coord})', fontsize=12)
         pdf.savefig(fig); plt.close(fig)
 
         # ---- validation: Z5-Z8 vs azimuth, every val_stride-th triplet ----
-        for t in sorted(val):
-            key, faz, fzk, caz, czk, cdet = val[t]
+        for key in val_keys:
+            t = triplets.index(key)
+            faz, fzk, caz, czk = val[key]
             fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
             agrid = np.arange(0, 360.5, 2.0)
             for ax, j in zip(axes.ravel(), vjs):
                 jp = noll.index(j)
                 ax.scatter(faz, fzk[:, jp], s=8, alpha=0.25, color='steelblue', label='FAM donuts')
                 ax.scatter(caz, czk[:, jp], s=18, alpha=0.6, color='crimson', marker='s', label='CWFS donuts')
-                _, curve = azimuth_interp(faz, fzk[:, jp], [0.0], **ikw)
+                _, curve = cc.azimuth_interp(faz.values, fzk[:, jp], [0.0], **ikw)
                 if curve is not None:
                     ax.plot(agrid, np.asarray(curve(agrid), float).ravel(), '-', color='navy', lw=1,
-                            alpha=0.7, label=f'FAM {args.interp} fit')
+                            alpha=0.7, label=f'FAM {s["interp"]} fit')
                 ax.scatter(AZC[t], FAMI[t, :, jp], s=80, color='navy', marker='P',
                            edgecolors='w', zorder=5, label='FAM interp')
                 ax.scatter(AZC[t], CWM[t, :, jp], s=80, color='darkred', marker='X',
                            edgecolors='w', zorder=5, label='CWFS median')
                 ax.set_title(f'Z{j} {NOLL_NAMES.get(j, "")}', fontsize=9)
-                ax.set_xlabel('focal-plane azimuth [deg]'); ax.set_ylabel(f'Z{j} [µm]')
+                ax.set_xlabel(f'focal-plane azimuth [deg, {coord}]'); ax.set_ylabel(f'Z{j} [µm]')
                 ax.set_xlim(0, 360); ax.set_xticks(range(0, 361, 90)); ax.grid(alpha=0.3)
             axes.ravel()[0].legend(fontsize=7, loc='best')
             fig.suptitle(f'Validation triplet #{t} day {key[0]} fam_seq {key[1]} '
-                         f'(annulus {args.r_min}-{args.r_max}°) — {args.param_set}', fontsize=11)
+                         f'(annulus {s["r_min_deg"]}-{s["r_max_deg"]}°) — {label}', fontsize=11)
             pdf.savefig(fig); plt.close(fig)
 
     # stdout summary

@@ -10,7 +10,7 @@ started: 2026-09-06
 
 # `cwfs`
 
-> **Code:** `code/` (corner and DOF comparisons, the parked refit ensemble) · **Notebooks:** `notebooks/` · **Write-up:** [`cwfs.md`](cwfs.md) · **Output:** `aos/output/wfs_*`
+> **Code:** `code/` (corner and DOF comparisons, the parked refit ensemble) · **Notebooks:** `notebooks/` · **Write-up:** [`cwfs.md`](cwfs.md) · **Output:** `output/` (the study `output@`: `wfs_dof_compare/`, dated `wfs_corner_compare` runs); tables in the `wfs_corner_compare` and `cwfs_tables` products
 
 ## Question
 
