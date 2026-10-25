@@ -1,6 +1,6 @@
 # rubin-work organization plan: products, libraries and studies
 
-> **Status:** current; phases 0-3 and 6 done · **Last updated:** 2026-10-16 · **Kind:** working state (plan)
+> **Status:** current; phases 0-6 done · **Last updated:** 2026-10-24 · **Kind:** working state (plan)
 
 The plan for reorganizing `rubin-work` around **products** (data that other work reads),
 **libraries** (code that other work imports) and **studies** (work that asks a question,
@@ -818,16 +818,19 @@ Aaron's answers in `notes/status/phase5_convert_handoff.md`: the 41 shim files (
 removed (`d5dc3ef`); `rubinwork` reinstalled from `/sdf/home/...` and the repo-root
 `sys.path` inserts dropped (`9096408`); `load_science` to `rubinwork.thermal_focus.sample`
 (`79ec197`); `psf/wavefront_to_psf` and `optatmo` read the products (`00da2f5`, `b0617e6`).
-`ALLOWED` holds one entry, `optatmo/code/extract_cwfs_sigma.py` (it reads the `aos/cwfs`
-study's `wfs_corner_compare.parquet`; no product). Open: six shims kept for untracked
-notebooks, and the `wfs_corner_compare` choice (both in the handoff).
+Later the same day: `wfs_corner_compare` became a product and `ALLOWED` is empty; the six
+shims and `_exectest.ipynb` are approved for deletion, a command for Aaron in the handoff.
 
-**Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. The two checks, 2026-10-24: the summit_utils branch state is refetched and updated (`d58ca7f`, `guider/summit_utils_branch/summit_utils_branch_state.md`). The CCD-height sign is checked (`07dd4d4`, `notes/status/phase6_ccd_height_sign.md`): both sides add the height term with the same sign on intra and extra, so the doc's "extra +, intra −" is wrong. **The doc fix awaits Aaron's sign-off**; nothing else in phase 6 is open.
+**Phase 6 — memory into the repo. Done 2026-10-11** (`7cbb76c`): 17 laptop memory notes moved into their study and reference docs, the memory files cut to pointers. The two checks, 2026-10-24: the summit_utils branch state is refetched and updated (`d58ca7f`, `guider/summit_utils_branch/summit_utils_branch_state.md`). The CCD-height sign is checked (`07dd4d4`, `notes/status/phase6_ccd_height_sign.md`): both sides add the height term with the same sign on intra and extra, so the doc's "extra +, intra −" is wrong. The doc fix is applied (`79fda9b`); phase 6 is done.
 
 **Phase 7 — cleanup, Aaron's call.** The old output trees are whole copies of the
 pre-reorg state; Aaron zips them for temporary backup and removes them when satisfied.
 The laptop's synced output copies (about 60 GB) can go. Prepared 2026-10-24 (inventory, readers, zip and removal
-commands): `notes/status/phase7_cleanup_plan.md`. Nothing zipped or removed.
+commands): `notes/status/phase7_cleanup_plan.md`. Nothing zipped or removed. Later on 2026-10-24
+the `aos/` and `guider/` readers were moved to the catalog first, the study rules to their
+`output@`, and the guider moments registered as `guider_moments/v4`; `optatmo/output` stays
+as study data. What still blocks `aos/output` is the 9 Danish 1.3 MIW builds, which exist
+only there.
 
 **Phase 8 — code review.** Part C of the old plan (C1–C4, at the tag), applied to the new
 layout. The reference runs from phases 2–3 are its first regression tests. Planned 2026-10-24 (scope, references, order):

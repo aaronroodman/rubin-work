@@ -1,6 +1,6 @@
 # Phase 5 handoff: converting the studies
 
-> **Status:** phase 5 done except two items for Aaron · **Last updated:** 2026-10-24 · **Kind:** working state
+> **Status:** phase 5 done; the shim deletion is a command for Aaron · **Last updated:** 2026-10-24 · **Kind:** working state
 > (handoff)
 
 Phase 5 of `notes/status/organization_plan.md` (section 8): each study becomes
@@ -125,42 +125,29 @@ by more than 1e-6 deg; the earlier "2879 of 3385" used a threshold not recorded.
 
 ## For Aaron
 
-1. **Six shims kept, each with an untracked notebook caller.** The shim tests cover each.
-   They go once the callers import `rubinwork` directly, or are deleted:
+Done 2026-10-24, from Aaron's answers (items 1, 2 and 4 of the earlier list):
 
-   | shim | untracked caller |
-   |---|---|
-   | `aos/code/aos_state.py` | `aos/snippets.ipynb` |
-   | `aos/code/aos_trim.py` | `aos/snippets.ipynb`; it imports `common/` |
-   | `common/__init__.py` | `aos/notebooks/bounce/_exectest.ipynb` (gitignored) |
-   | `value_added/code/efd_db.py` | `aos/notebooks/bounce/_exectest.ipynb` |
-   | `aos/code/coadd/run_coadd_blocks_miw.py` | `aos/moresnippets.ipynb` |
-   | `guider/code/guiderEdgeRecovery.py` | `guider/Untitled.ipynb` |
-
-   `aos/danish_snippets.ipynb` (untracked) imports `run_wfs_refit_ensemble` from
-   `aos/code/cwfs/`, now `aos/cwfs/code/`; no shim was added.
-2. **`wfs_corner_compare` has no product.** `optatmo/code/extract_cwfs_sigma.py` reads
-   `aos/output/wfs_corner_compare/danish_1_2/refitWcs/wfs_corner_compare.parquet`
-   (2.0 MB, dated 2026-07-07), the only entry left in `ALLOWED`. It is written by
-   `aos/cwfs/code/run_wfs_corner_compare.py` (study `aos/cwfs`, parked) through
-   `rule wfs_corner_compare` in `aos/Snakefile`. Options:
-   - **make it a product** (`rubinwork/products/wfs_corner_compare/`, or a table in
-     `cwfs_tables`): the honest fix if `psf_vs_cwfs` keeps using the CWFS scatter; one
-     rebuild from `fam_tables` and `cwfs_tables`;
-   - **read it as `aos/cwfs` study output**: move the file into that study's `output@` and
-     keep the `ALLOWED` entry; cheapest, but it stays a rule 3 violation;
-   - **rerun it in `optatmo`**: compute the CWFS-against-FAM scatter inside
-     `psf_vs_cwfs` from the two products; no cross-study read, at the cost of duplicating
-     part of `run_wfs_corner_compare.py`.
-   Until then the read must survive phase 7: zipping `aos/output` breaks it.
-3. **The CCD-height sign doc fix** (phase 6): `notes/status/phase6_ccd_height_sign.md`.
-4. **Phase 7 removal** is Aaron's to run: `notes/status/phase7_cleanup_plan.md`. Only
-   three trees can go now (47.4 GB). `aos/output`, `guider/output` and `optatmo/output`
-   are still read or written by tracked code beyond `wfs_corner_compare`: the
-   `aos/Snakefile` and `guider/Snakefile` resolvers prefer the old tree over the catalog,
-   `build_fam_dz.py` defaults to `--prefer old`, `miw_corner.decomp_path` roots at
-   `aos/output`, the optatmo campaigns write to `optatmo/output/runs`, and the catalog has
-   no `guider_moments` build at all. The plan lists the code changes needed first.
+1. **Shims.** Aaron: the `snippets`, `moresnippets` and `Untitled` notebooks are throwaway,
+   and `aos/notebooks/bounce/_exectest.ipynb` was a Claude test copy of
+   `aos/bending_mode_test/notebooks/bending_mode_test_lut_trim.ipynb`. OK given to delete
+   the six shims and `_exectest`. **Not yet deleted**: the permission system refused the
+   `git rm` in this session. Run:
+   ```bash
+   cd ~/notebooks/rubin-work
+   git rm aos/code/aos_state.py aos/code/aos_trim.py common/__init__.py \
+       value_added/code/efd_db.py aos/code/coadd/run_coadd_blocks_miw.py \
+       guider/code/guiderEdgeRecovery.py
+   rm aos/notebooks/bounce/_exectest.ipynb
+   ```
+   The shim tests skip once the files are gone.
+2. **`wfs_corner_compare` is a product** (`rubinwork/products/wfs_corner_compare/`), with
+   the computation in the library `rubinwork.corner_compare` and the plots in the
+   `aos/cwfs` study, which is active again. `extract_cwfs_sigma.py` reads it through the
+   catalog; `ALLOWED` is empty.
+3. **CCD-height doc fix** applied (`79fda9b`).
+4. **Phase 7 prerequisites**: see `notes/status/phase7_cleanup_plan.md`. `optatmo/output`
+   stays as the `psf_vs_cwfs` study's data. `aos/output` still holds the only copy of the
+   9 Danish 1.3 MIW builds.
 
 ## Step list
 
@@ -291,8 +278,7 @@ library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakef
 
 ## Next
 
-1. Aaron's items above: the RSP `.pth` command, the six shims, `wfs_corner_compare`, the
-   CCD-height doc fix, and phase 7.
+1. Run the shim deletion above. Register the 9 Danish 1.3 MIW builds in the catalog.
 2. Code not covered by a study (`/review`: 82 files, count), mostly tooling and libraries
    in `optatmo/code`, `guider/code`, `aos/code`, `smatrix/code` and `value_added/code`;
    phase 8 (`notes/status/phase8_code_review_plan.md`) takes them as they are next used.
@@ -300,5 +286,6 @@ library and the `psf_vs_cwfs` fit code, split later); `guider` pipeline (`Snakef
    41759352 (20260127) hit its 8 h limit; its per-side fits are saved in `fit_parts`.
 4. `olr/olr_pipeline/code/run_olr.py` cannot import `DEFAULT_DOF_INDICES` from `olr`.
    That was broken before phase 5; `olr_pipeline` is dropped.
-5. `aos/miw_origin/code/analyze_miw_field_order.py` reads a coadd metrics file from the
-   old `aos/output/coadd/` that no longer exists (parked study; found by the import check).
+5. `aos/miw_origin/code/analyze_miw_field_order.py` reads `coadd_metrics_rebin3.parquet`,
+   which no coadd build holds; it is `recompute_coadd_metrics.py`'s study output (parked
+   study; found by the import check).

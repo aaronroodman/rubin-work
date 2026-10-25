@@ -1,6 +1,6 @@
 # Phase 7 plan: back up and remove the old output trees
 
-> **Status:** prepared, nothing zipped or removed; Aaron runs it · **Last updated:** 2026-10-24 · **Kind:** plan
+> **Status:** readers moved to the catalog; nothing zipped or removed; Aaron runs it · **Last updated:** 2026-10-24 · **Kind:** plan
 
 The old output trees are the pre-reorg `<topic>/output` directories. The repo's
 `<topic>/output` symlinks point at them, through `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/`,
@@ -32,27 +32,38 @@ Checked by scanning tracked code for each tree's path, then reading each hit. Do
 help text, provenance YAML and test fixtures with fake paths are left out (about 30 files,
 count).
 
-**`aos/output`: still read and written.**
-- `aos/Snakefile:211` `_resolve()` uses the old tree **first** if it holds a complete build,
-  then the catalog, then the old tree again. The study rules also write there by default.
-- `rubinwork/products/value_added/builders/build_fam_dz.py:78`, `:328`: default
-  `--prefer old`, reading `aos/output/fam_processing`.
-- `rubinwork/miw_corner.py:139` `decomp_path()` roots at `aos/output/miw/` and is the
-  fallback of `build_optical_state.py` `resolve_miw_decomp` (line 660) when no catalog form
-  is given. Its own docstring says the old build "wins silently".
-- `aos/cwfs_lut/code/run_cwfs_lut.py`, `bounce_compare.py` (active study): old tree first,
-  then catalog, for `aos/output/bounce` and `cwfs_lut`.
-- `aos/miw_origin/code/recompute_coadd_metrics.py`, `analyze_miw_bias_regression.py`,
-  `analyze_miw_field_order.py` (parked): old tree first.
-- `optatmo/code/extract_cwfs_sigma.py:23`: reads `aos/output/wfs_corner_compare/` by
-  default, the allow-listed read (phase 5 handoff, "For Aaron" 2).
-  `optatmo/code/build_fam_manifest.py` takes `aos/output/fam_processing/*/visits.parquet`
-  as an argument in its usage example; the production manifest was built that way.
+**`aos/output`: no longer preferred over the catalog (2026-10-24).**
+- `aos/Snakefile` `_resolve()` takes the catalog's `current` build first and the old tree
+  only for a variant with no catalog build. The study rules write to each study's
+  `output@` (`dzfit`, `correlations`, `bounce`, `wfs_mimic`, `cwfs/output/wfs_dof_compare`,
+  `miw_origin/output/{fam_coadd_miw,study_radialbins}`); their existing outputs were copied
+  there. `snakemake -n` plans 31 jobs (count), the 35 before less the 4
+  `wfs_corner_compare` jobs, which left with the product.
+- `build_fam_dz.py` defaults to `--prefer catalog`. `build_optical_state.resolve_miw_decomp`
+  maps an old-tree name in `intrinsic_ref` to its `miw` variant's catalog build, so
+  `miw_corner.decomp_path` (a library, which may not import the catalog) is reached only for
+  a name no `miw` variant claims.
+- `cwfs_lut` and the `miw_origin` scripts try the catalog first; `cwfs_lut` and
+  `analyze_miw_field_order` write to their study `output@`.
+- `wfs_corner_compare` is a product; `extract_cwfs_sigma.py` reads it through the catalog,
+  and `ALLOWED` is empty.
 
-The resolvers fall back to the catalog, so most reads would survive removal, but
-`build_fam_dz.py --prefer old` with no old tree, the Snakefile's write rules, and the
-`wfs_corner_compare` read would not. More important: while the tree exists, these readers
-**prefer it over the catalog**, so a study can silently use the old build.
+**What is still only in `aos/output`** (counts are directories):
+- **9 of the 12 MIW builds**: every Danish 1.3 one (`danish_1_3_test_*`,
+  `danish_1_3_v1000_*`, 0.9 GB together). The catalog has `d12-A_50_34_i` and
+  `d12-A_50_34_i_5rot` only. `miw_recovery_constraint/code/compare_schemes.py` reads three
+  of them through `--miw-root output/miw`. These need registering, as was done for the
+  guider moments, before the tree can go.
+- `fits_july.parquet` in `miw/danish_1_2_A_50_34_i_5rot/`, the input of the
+  `bounce_tables` `_july` variant.
+- `archive/` (9.2 GB), frozen provenance; `wfs_fam_compare/` (0.7 GB, parked
+  `run_wfs_fam_compare.py`); the `miw/` comparison directories (`danish_1_2_vs_1_3`,
+  `danish_1_3_legacy_vs_v1000`, `danish_1_3_v1000_rbr_arms`, `danish_1_3_v1000_schemes`,
+  `dof_ranges`); `processing_compare`, `psf`, `closed_loop`, `camera_gravity`, `lut`,
+  `danish_tarts_compare_20260713` (together under 0.1 GB).
+- The FAM tables (`fam_processing/`, 55 GB) are in the catalog: `danish_1_2`,
+  `danish_1_3_test` and `danish_1_3_v1000` match in size, the donut tables to the byte or
+  within 115 bytes. `_timing_probe` and `blur_intra_extra` are not.
 
 **`guider/output`: the moments are now a product; the rest is study output.** On
 2026-10-24 the nine nights (count) 20260512-20260712 were copied, md5-checked, to
@@ -81,14 +92,13 @@ if none exists. `compare_to_archive.py` takes the archive path as an argument.
 
 ## What has to happen before the other three can go
 
-1. `aos/output`: make the catalog the first choice: reverse `_resolve()` in `aos/Snakefile`,
-   default `build_fam_dz.py` to `--prefer catalog`, root `miw_corner.decomp_path` at the
-   catalog; move the study rules' outputs to the studies' `output@`; settle
-   `wfs_corner_compare`. Then rerun `/review` and a `snakemake -n` from `aos/`.
+1. `aos/output`: done for the readers and writers (2026-10-24). Left: register the 9 Danish
+   1.3 MIW builds and `fits_july.parquet` in the catalog, and give the parked
+   `wfs_fam_compare` and the `miw/` comparison directories an owner (study `output@`).
 2. `guider/output`: done for the moments and PSF moments (2026-10-24). Left: give the QA
    PDFs, movies and rtvplots an owner (a study `output@`) and repoint those three rules.
-3. `optatmo/output`: move `RUNS_ROOT` to the `psf_vs_cwfs` study's `output@`, or leave
-   `optatmo/output` as that study's data and drop it from this phase.
+3. `optatmo/output`: kept as the `psf_vs_cwfs` study's data (Aaron, 2026-10-24); a product
+   later. Dropped from this phase.
 
 ## Commands (Aaron runs these; nothing here has been run)
 
@@ -129,30 +139,29 @@ symlinks in the repo; `blocks/code/find_long_exposures.py --out blocks/output/x.
 fail until the directory is recreated. `value_added_db_validation.ipynb` hardcodes the old
 duckdb path and would need repointing if rerun.
 
-**After the steps above, not before:**
+**After the steps above, not before** (`optatmo/output` stays; it is study data):
 
 ```bash
 B=/sdf/data/rubin/user/roodman/LSST/backup/pre_reorg_outputs_20261024
 T=/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work
 tar -C $T -cf - aos/output | zstd -T8 -o $B/aos_output.tar.zst
 tar -C $T -cf - guider/output | zstd -T8 -o $B/guider_output.tar.zst
-tar -C $T -cf - optatmo/output | zstd -T8 -o $B/optatmo_output.tar.zst
 zstd -dc $B/aos_output.tar.zst | tar -tf - | grep -vc '/$'
 zstd -dc $B/guider_output.tar.zst | tar -tf - | grep -vc '/$'
-zstd -dc $B/optatmo_output.tar.zst | tar -tf - | grep -vc '/$'
 ```
 
-Expect 1073, 23354 and 5242 files (count). Then:
+Recount the files first (`find $T/aos/output $T/guider/output -type f | wc -l`); the 1073
+and 23354 above (count) were taken before 2026-10-24's copies. Then:
 
 ```bash
 T=/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work
-rm -rf $T/aos/output $T/guider/output $T/optatmo/output
+rm -rf $T/aos/output $T/guider/output
 ```
 
-What breaks if run today: `build_fam_dz.py` with its default `--prefer old`; the
-`aos/Snakefile` and `guider/Snakefile` write rules; `extract_cwfs_sigma.py` (and
-`build_fam_manifest.py` as documented); the optatmo campaigns; and
-the guider QA, movie and rtvplot rules, until they get a study output.
+What breaks if run today: the 9 Danish 1.3 MIW builds and `fits_july.parquet` exist
+nowhere else (`compare_schemes.py`, the `_july` bounce variant, and the Snakefile's
+Danish 1.3 MIW study jobs); the guider QA, movie and rtvplot rules, until they get a study
+output; and `build_fam_manifest.py` as documented.
 
 The laptop's synced output copies (about 60 GB) are not on s3df; remove them on the laptop
 when the s3df trees are settled.
