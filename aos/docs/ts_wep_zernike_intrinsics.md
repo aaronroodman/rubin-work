@@ -1,6 +1,6 @@
 # ts_wep / Danish wavefront conventions: intrinsics, zernikeGQ vs zernikeTA, and the AOS visit table
 
-> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (external conventions)
+> **Status:** current · **Last updated:** 2026-10-24 · **Kind:** reference (external conventions)
 
 Reference notes on how `ts_wep` + Danish compute the off-axis intrinsic wavefront, how
 `batoid.zernikeGQ` and `batoid.zernikeTA` are used, and exactly what the
@@ -98,9 +98,18 @@ zkRef[nollIndices] += zkStart            # zkStart = the intrinsic/deviation you
   per-CCD, **not** from the height map.
 - **CCD height map** = per-detector physical z-deviation of the CCD from the nominal focal
   surface (microns), a small additive correction (`HEIGHT_TO_Z4_UM_PER_MM = 15`) injected as
-  `zkStart[Z4] += Z4_height` (extra +, intra −). Captures that the true intra↔extra ΔZ ≠
-  exactly 2×1.5 mm. ≈0 at field center (R22_S11), significant toward the corners (the
-  corner-sensor diagnostic is `rubinwork/miw_corner.py`, `corner_z4_height_um`).
+  `zkStart[Z4] += Z4_height`, with the **same sign on both donuts**: `Z4_height` = 15 µm/mm ×
+  the height of that donut's sensor (`ts_intrinsic_wavefront` `ccd_height.py:345`). Only the
+  1.5 mm design defocus changes sign between intra and extra. ts_wep itself has no height
+  code; it adds `zkStart` to `zkRef` as given (`danish.py:261`). ≈0 at field center
+  (R22_S11), significant toward the corners (the corner-sensor diagnostic is
+  `rubinwork/miw_corner.py`, `corner_z4_height_um`).
+- **Sign of h.** The metrology file (`LSST_FP_cold_b_measurement_4col_bysurface.fits`) and
+  the batoid_rubin map store Z_CCS, positive away from L3: **positive h is low
+  (extra-ward), negative h high (intra-ward)**. The corner pistons show it: SW0
+  (extra-focal) at +1.5 mm, SW1 (intra-focal) at −1.5 mm. A positive h gives positive Z4.
+  This is opposite to the "focal plane image height" in Andy Rasmussen's
+  `fp_metro_arasmus_210211`, which he describes as running opposite to Z_CCS.
 
 ### The batoid_rubin CCD height map (2026-10-11)
 
@@ -123,8 +132,14 @@ zkRef[nollIndices] += zkStart            # zkStart = the intrinsic/deviation you
   wavefront on *both* sides of focus, so Z4_extra − Z4_intra keeps only the height
   *difference* between the two donut positions: below 0.25 nm of Z4 for the same star, but
   about −72 nm for a corner pair whose halves are different sensors (e.g. R40_SW0 against
-  R00_SW1). The `zkStart` sign convention above (extra +, intra −) is a different
-  bookkeeping and is not reconciled with this batoid result here.
+  R00_SW1). The `zkStart` term above uses the same sign, so the two agree: batoid traced
+  with the height map gives 1.05–1.06 times the 15 µm/mm term, with the same sign, on all
+  eight corner sensors.
+- **The FAM data confirm it.** Measured Z4 minus the per-visit k≤6 double-Zernike fit
+  rises with h at +13.8 nm of Z4 per µm of height (Huber; Pearson r = +0.744, Spearman
+  rho = +0.737, dimensionless; n = 258,098 donuts, count; `fam_tables` `danish_1_2`,
+  nights 20251109–20251112). Checks: `notes/status/phase6_ccd_height_sign.md` and its
+  notebook.
 
 ---
 

@@ -1,6 +1,6 @@
 # Phase 6 check: the CCD-height sign in the intrinsic Zernikes
 
-> **Status:** checked against metrology, batoid and FAM data; doc fix proposed, awaiting Aaron's sign-off · **Last updated:** 2026-10-24 · **Kind:** working state
+> **Status:** checked against metrology, batoid and FAM data; doc fix applied 2026-10-24 · **Last updated:** 2026-10-24 · **Kind:** working state
 
 Runnable check: [`phase6_ccd_height_sign/ccd_height_sign_v1.ipynb`](phase6_ccd_height_sign/ccd_height_sign_v1.ipynb).
 
@@ -109,7 +109,7 @@ Checked against the fact that on the corner sensors SW1 is high (intra-focal) an
   that. **`ts_intrinsic_wavefront` has the right sign**, but with "positive is low", not
   "positive is high". If positive meant high, its sign would be wrong.
 
-## Proposed doc fix (not applied)
+## Doc fix (applied 2026-10-24, Aaron's OK)
 
 In `aos/docs/ts_wep_zernike_intrinsics.md`, replace lines 101–103:
 
