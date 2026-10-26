@@ -1,6 +1,7 @@
 """Review the repository's studies and dependency rules: the ``/review`` skill.
 
-Rewrites ``STUDIES.md``, ``PRODUCTS.md`` and ``PRODUCT_MAP.md``, then reports:
+Rewrites ``STUDIES.md``, ``PRODUCTS.md`` and ``PRODUCT_MAP.md`` and the HTML site
+(`rubinwork.studies.site`), then reports:
 
 - studies whose front matter breaks the schema;
 - active studies untouched for more than `STALE_DAYS` days, counting from the later of
@@ -299,6 +300,11 @@ def review(topic=None, root=None, today=None, regenerate=True):
         result["regenerated"]["PRODUCTS.md"] = catalog.write_index(root / "PRODUCTS.md")
         from .product_map import write_map
         result["regenerated"]["PRODUCT_MAP.md"] = write_map(root)
+        try:
+            from .site import build_site
+            result["site"] = str(build_site(root))
+        except Exception as exc:   # the site is a convenience; never fail the review
+            result["site"] = f"not built: {type(exc).__name__}: {exc}"
 
     schema, stale, no_answer, superseded = [], [], [], []
     paths = find_studies(root, topic)
@@ -361,6 +367,8 @@ def report_markdown(result, topic=None):
     if regen:
         out.append("Generated: " + ", ".join(
             f"{k} {'rewritten' if v else 'unchanged'}" for k, v in regen.items()) + ".")
+    if result.get("site"):
+        out.append(f"HTML site: {result['site']}.")
     out.append(f"Studies checked: {result['n_studies']} (count).")
     out.append("")
 

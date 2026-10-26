@@ -312,7 +312,8 @@ git commit, the command and the product builds read.
 `STUDIES.md`, `PRODUCTS.md` and `PRODUCT_MAP.md` at the repo root are generated
 (`python -m rubinwork.studies index`, `python -m rubinwork.products.catalog index`,
 `python -m rubinwork.studies map`; `/review` runs all three); never edit them by hand.
-What each product is: `rubinwork/products/README.md`.
+What each product is: `rubinwork/products/README.md`. `/review` also rebuilds the HTML site,
+`<data root>/site/index.html` (`python -m rubinwork.studies site`), outside the repo.
 
 Most topics are not yet in this layout: their code is still in `<topic>/code/<study>/`,
 notebooks in `<topic>/notebooks/<study>/`, docs in `<topic>/docs/studies/` and output in

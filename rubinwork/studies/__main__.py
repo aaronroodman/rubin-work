@@ -1,4 +1,4 @@
-"""Command line for `rubinwork.studies`: ``index``, ``map``, ``check``, ``new``,
+"""Command line for `rubinwork.studies`: ``index``, ``map``, ``site``, ``check``, ``new``,
 ``variants``, ``wrap-gather``, ``wrap-apply`` and ``review``."""
 
 import argparse
@@ -6,7 +6,7 @@ import json
 import pathlib
 import sys
 
-from . import core, index, new, product_map, review, wrap
+from . import core, index, new, product_map, review, site, wrap
 
 
 def main(argv=None):
@@ -26,6 +26,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("index", help="write STUDIES.md and the topic README tables")
     sub.add_parser("map", help="write PRODUCT_MAP.md")
+    web = sub.add_parser("site", help="write the HTML site (default <data root>/site)")
+    web.add_argument("--out", default=None)
     check = sub.add_parser("check", help="validate every study.md")
     check.add_argument("topic", nargs="?", default=None)
     check.add_argument("--no-catalog", action="store_true",
@@ -59,6 +61,9 @@ def main(argv=None):
     if args.command == "map":
         changed = product_map.write_map()
         print(f"PRODUCT_MAP.md {'written' if changed else 'unchanged'}")
+        return 0
+    if args.command == "site":
+        print(f"wrote {site.build_site(out=args.out)}")
         return 0
     if args.command == "review":
         print(review.report_markdown(review.review(args.topic), args.topic), end="")

@@ -8,6 +8,9 @@ package docstring (`rubinwork/products/<name>/__init__.py`). Generated companion
 - [`PRODUCTS.md`](../../PRODUCTS.md): every variant and build, with current build and size.
 - [`PRODUCT_MAP.md`](../../PRODUCT_MAP.md): the product graph, each variant's recorded
   inputs, and every study and piece of code that reads each product.
+- The HTML site, `/sdf/group/rubin/u/roodman/LSST/rubin-work/site/index.html`: the same
+  material cross-linked, with every doc and code file, built by
+  `python -m rubinwork.studies site` and by `/review`.
 
 A **product** writes data in variants and dated builds, each closed by a `manifest.json`.
 Read one only through `rubinwork.products.catalog` or the product's own reader, never by
