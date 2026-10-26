@@ -1,23 +1,54 @@
 # AOS code review — open backlog
 
-> **Status:** current · **Last updated:** 2026-09-14 · **Kind:** working state (review backlog)
+> **Status:** current; the one review backlog · **Last updated:** 2026-10-25 · **Kind:** working state (review backlog)
 
-Items deferred during the study reorganization, each because fixing it would change
-results or behaviour rather than structure. Kept separate from
-[`code_review_findings.md`](code_review_findings.md), which is the older
-severity-ordered review whose line anchors are stale.
+The single list of known code defects in `aos/`, the `rubinwork` products it uses and the
+`ts_intrinsic_wavefront` package (`W` below is `python/lsst/ts/intrinsic/wavefront/` in that
+package, `WB` its `bin.src/`). On 2026-10-25 every item of the 2026-06-27 review
+(`code_review_findings.md`, ids A1–D21) was re-located in the current source; the ones
+still real are below with current anchors, and the rest are listed as closed. Outputs
+needing regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
 
-**Still open:** the missing row-count guard in `analyze_miw_field_order.py`. Everything
-else here is resolved, with the reasoning kept so a later pass does not re-litigate it.
-Outputs needing regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
+## Open
 
-No `/Users/roodman` data path remains in any tracked code file — the only occurrences left
-in the repository are in this document and
-[`code_review_findings.md`](code_review_findings.md), describing the problem.
+| id | defect | where (2026-10-25) | needs |
+|---|---|---|---|
+| A2 | A non-finite DZ coefficient is zero-filled before the SVD projection, biasing that visit's u-mode amplitudes toward 0. `run_dz_correlations` now logs the zero-filled fraction; the others do not | `W/ofc_svd.py:180` (`project_amplitudes`), `aos/correlations/code/run_dz_correlations.py:231`, `aos/correlations/code/run_dz_explained.py:54`, `rubinwork/products/coadds/builders/run_coadd_blocks_miw.py:381`, `aos/closed_loop/code/run_closed_loop.py:127` | Aaron: drop the visit, NaN-mask, or keep with a logged count |
+| B1 | Thermal correlations have no detrending and no caveat that slowly drifting quantities correlate through time alone | `aos/correlations/code/run_thermal_correlations.py` | Aaron: partial out a per-night time term, or annotate |
+| B8 | `degen_assignment` is one value for every Zernike, so Z4, Z11 and Z22 all follow it | `W/intrinsic_split.py:101` and the `decompose_*` functions; `WB/run_intrinsic_split.py:197` | Aaron: allow a per-Noll-j dict |
+| D4 | `filter_visits` prints a warning and skips the program filter when `science_program` is missing, rather than failing | `rubinwork/bounce/legs.py:145-150` | raise instead; behaviour change |
+| D13 | An unpaired doublet member in `noll_list` is skipped with only a print, so a misconfigured list silently loses a Zernike | `WB/run_intrinsic_split.py:224` | raise, or record in `intrinsic_split_rms.parquet` |
+| D19 | Two near-duplicate rotator merges | `W/intrinsics_lib.py:2047` (`merge_rotator_to_visit_info`) and `:2282` (`merge_rotator_to_tables`) | unify; structure only |
+| — | NaN error bars drawn as zero (plot-only; a missing error looks like an exact point) | `aos/bounce/code/bounce_lib.py:405, 700-701, 890, 900` | mask the point's error bar instead |
 
-Aaron is reviewing `aos/code/` file by file, assessing (a) whether code belongs in
-`common/` and (b) readability, including bringing docstrings up to the Rubin DM
-standard. These are the known items to fold into that pass.
+## Closed from the 2026-06-27 review
+
+Fixed in the source, verified 2026-10-25: A1 (`rubinwork/bounce/legs.py:600, 715` use the
+1.2533 median factor), A3 (`W/intrinsics_lib.py:1929` raises for CCS), A4
+(`W/measured_intrinsic.py:1056`, exclusive upper edge), A5 (`W/intrinsic_split.py:640-645`),
+B2 and B3 (`run_dz_correlations.py:292, 294`, per-pair n and a `near_unit` flag), B4
+(`:357-363`, Bonferroni threshold printed), B5 (`decompose_auto_sign` removed,
+`W/intrinsic_split.py:563`; the FFT path warns it is not hole-aware), B6
+(`W/measured_intrinsic.py:508`, convergence report), B7 (`lut_by_rotbin.parquet`), C1
+(`aos/code/dz_plotting.py:787`), C3 (`dz_plotting.py:12`), D1, D3, D16, D17
+(`W/dz_fitting.py:214, 332, 241, 789`), D2 (no `arange(4, 29)` left), D5 and D21
+(`WB/run_make_intrinsic_sidecar.py`), D6 (`aos/correlations/code/run_aberration_pairs.py:93-97`),
+D7 (`rubinwork/products/fam_tables/qa/plot_visits_summary.py:40`), D8, D9, D18
+(`W/intrinsics_lib.py:1368, 845, 676-678`), D10 (`rubinwork/compare_donuts.py:73-76`), D11
+(with B3), D12 (`dz_plotting.py:1114`), D15 (`WB/combine_parquets.py:44-48`), D20
+(`W/measured_intrinsic.py:419`).
+
+Gone with the code: C2 (`run_wfs_build.py` no longer exists) and D14
+(`_detect_fp_orientation` replaced by the fixed `BATOID_FP_ORIENTATION`,
+`W/ccd_height.py:45`).
+
+The `analyze_miw_field_order.py` row-count guard, open in the earlier version of this file,
+is in place: `aos/miw_origin/code/analyze_miw_field_order.py:78-84` exits naming both files,
+both counts and the band-selection cause.
+
+## Resolved during the 2026-09 study reorganization
+
+Kept so a later pass does not re-litigate them.
 
 ## Duplicated helpers that are not equivalent
 
@@ -134,7 +165,7 @@ Replaced with an explicit `np.isfinite` check that still catches zero:
 | all-zero | 0.0 | 0.01 | 0.01 |
 | normal | 2.96 | 2.96 | 2.96 |
 
-### `analyze_miw_field_order.py` — missing row-count guard (OPEN)
+### `analyze_miw_field_order.py` — missing row-count guard (FIXED by 2026-10-25)
 The script masks `coadd_metrics_rebin3.parquet` with a boolean array sized from
 `block_grids.npz`, with no check that the two agree, so mismatched products raise a bare
 `IndexError` instead of naming the problem:
@@ -151,8 +182,8 @@ run's 216. Both counts are reproducible from the current chunk tables. Supersede
 now sit under `output/coadd/<P>/50_34/archive/` with their band selection recorded; see
 [`../../miw_origin/coadd.md`](../../miw_origin/coadd.md).
 
-**The code fix still wanted:** assert `len(mt) == len(Um)` with a message naming both files,
-both counts, and the likely band-selection cause.
+**Fixed:** the script now exits when `len(mt) != len(Um)`, naming both files, both counts
+and the band-selection cause.
 
 This is the row-count/row-order invariant defect from the original review, occurring for
 real. The general lesson for the review pass: **a count mismatch is caught, an order
@@ -223,7 +254,7 @@ Left as-is deliberately. Do not re-flag.
 - **Docstrings:** numpydoc with backticked types, per the root `CLAUDE.md`. Only a
   handful of files currently comply. Units and frame (OCS/CCS) belong in the parameter
   and return descriptions.
-- **`aos/code/` has no test suite.** The one `test_*.py` file, `test_m1m3.py`, is a
+- **`aos/code/` has no test suite** (true of `aos/code/`; `rubinwork/` has one, run by `pytest rubinwork`). The one `test_*.py` file, `test_m1m3.py`, is a
   manual command-line probe of M1M3 thermal-gradient retrieval, not a unit test, and it
   needs live EFD access. Each behaviour decision above (the quality cut, the MIW reader,
   the parquet combiner) is a natural place for the first real tests, since each is a pure

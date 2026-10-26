@@ -59,12 +59,11 @@ These are correlation studies, so the reporting rules matter more than usual:
 - Every number needs its quantity name and units, or an explicit "dimensionless" with
   numerator and denominator named. `chi2` always as `chi2/dof` with dof stated.
   Correlations need the statistic, both variables with units, and `n`.
-- The review backlog flags real issues here that may still be live: significance computed
-  with a global complete-case `n` rather than per-pair `n`; an `r` clamp near ±1 that
-  manufactures huge significances on the `_optcorr` run; and no detrending in the thermal
-  correlations, where both temperature and AOS state drift through the night. See
-  [`../docs/status/code_review_findings.md`](../docs/status/code_review_findings.md) — verify
-  against current source, the line anchors are stale.
+- Per-pair `n` and the near-unit `r` flag are fixed. Still open (see
+  [`../docs/status/code_review_backlog.md`](../docs/status/code_review_backlog.md), A2 and
+  B1): zero-filling of a non-finite DZ coefficient before the SVD projection, and no
+  detrending in the thermal correlations, where both temperature and AOS state drift
+  through the night.
 
 ## Running
 

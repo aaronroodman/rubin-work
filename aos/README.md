@@ -241,8 +241,8 @@ status + last-updated line under its title.
 | [`docs/status/miw_danish_1_3_proposal.md`](docs/status/miw_danish_1_3_proposal.md) | what the Danish 1.3 MIW build needs, which columns its narrow visits table does and does not carry, and the rotator-bin visit counts against Danish 1.2 |
 | [`docs/status/rerun_needed.md`](docs/status/rerun_needed.md) | outputs that predate a code change and need regenerating |
 | [`docs/status/corner_recovery_route_comparison.md`](docs/status/corner_recovery_route_comparison.md) | the three routes from measured corner Zernikes to DOF, the measurements between them, and the hybrid that was adopted |
-| [`docs/status/code_review_backlog.md`](docs/status/code_review_backlog.md) | open review items: non-equivalent duplicate helpers, confirmed live defects, `common/` candidates |
-| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | the earlier full review — **stale line anchors**, verify before acting |
+| [`docs/status/code_review_backlog.md`](docs/status/code_review_backlog.md) | the one review backlog: open defects with current anchors, closed items, resolved helpers |
+| [`docs/status/code_review_findings.md`](docs/status/code_review_findings.md) | the 2026-06-27 review, superseded by `code_review_backlog.md` |
 | [`CLAUDE.md`](CLAUDE.md) | conventions and known pitfalls for this directory: frames, units, and which code lives in the external `ts_intrinsic_wavefront` package |
 
 Related, in sibling topics: [`../smatrix/docs/conventions.md`](../smatrix/docs/conventions.md)

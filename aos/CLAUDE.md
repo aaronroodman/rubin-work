@@ -218,8 +218,8 @@ In the ts_ofc 50-DOF ordering (0–4 M2 rigid, 5–9 camera rigid, 10–29 M1M3 
 
 ## Code review state
 
-`docs/status/code_review_backlog.md` holds the open items: duplicated helpers that are
-**not** equivalent (`load_miw`; `quality_cut` is resolved), confirmed live defects, and `common/`
-candidates. `docs/status/code_review_findings.md` is the earlier full review — its
-`file:line` anchors predate the study reorganization and cannot be trusted, though the
-defects it names may still be real.
+`docs/status/code_review_backlog.md` is the one review backlog: the open defects with
+current `file:line` anchors (re-located 2026-10-25), the items closed since the 2026-06-27
+review, and the helpers resolved during the 2026-09 reorganization.
+`docs/status/code_review_findings.md` is that 2026-06-27 review, kept for its reasoning;
+its anchors are stale.

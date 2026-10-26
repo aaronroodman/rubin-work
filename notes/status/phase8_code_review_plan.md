@@ -1,6 +1,6 @@
 # Phase 8 plan: code review in the new layout
 
-> **Status:** plan only, nothing started · **Last updated:** 2026-10-24 · **Kind:** plan
+> **Status:** C1 done 2026-10-25; Tier 1 next · **Last updated:** 2026-10-24 · **Kind:** plan
 
 Part C of the old plan (`notes/status/reorg_review_plan_2026-09.md` at tag
 `pre-products-reorg-2026-10-09`, sections C1–C4) applied to the products, libraries and
@@ -58,7 +58,7 @@ For studies, the regression check is the study's own printed numbers: the
 
 Order by risk times rate of change, as in C2. Run C1 first.
 
-**C1. One review backlog.** `aos/docs/status/code_review_findings.md` (2026-06-27, stale
+**C1. One review backlog. Done 2026-10-25:** `code_review_backlog.md` is the one backlog, every 2026-06-27 item re-located; 7 open (A2, B1, B8, D4, D13, D19, the bounce NaN error bars). Original text: `aos/docs/status/code_review_findings.md` (2026-06-27, stale
 anchors) and `code_review_backlog.md` (2026-09-14) still both exist. Re-anchor the
 still-real findings into one backlog, retire the stale file. Known still-real items: the
 silent `np.nan_to_num` in `aos/bounce/code/bounce_lib.py` (lines 405, 700–701, 890, 900)

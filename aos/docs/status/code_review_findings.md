@@ -1,6 +1,6 @@
 # AOS code review — action handoff
 
-> **Status:** stale — verify before acting · **Last updated:** 2026-06-27 · **Kind:** working state (review backlog)
+> **Status:** superseded 2026-10-25 by [`code_review_backlog.md`](code_review_backlog.md), which re-locates every item below; do not act on this file · **Last updated:** 2026-10-25 · **Kind:** working state (review backlog)
 > The `file:line` anchors below predate later edits to `aos/code/` and cannot be trusted.
 > `aos/code/` is also slated for reorganization (Phase 5 of
 > [`../../../notes/status/memory_cleanup_plan.md`](../../../notes/status/memory_cleanup_plan.md)),
