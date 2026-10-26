@@ -17,7 +17,6 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 from lsst.utils.plotting import get_multiband_plot_colors
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy import stats
@@ -34,6 +33,10 @@ VARIANT = "d13-blitz_rso1071"
 MIN_DONUTS = 3
 MIN_RAFTS = 2
 MIN_NIGHT_VISITS = 20
+N_SELECT = 3
+# The truss reads about 24 deg C on these nights, about 10 deg C above the M1M3 air and
+# the nights either side; treated as a sensor fault.
+BAD_TRUSS_NIGHTS = (20251118, 20251119)
 
 THERMAL_FEATURES = {
     "m1m3_glass_minus_air_c": "M1M3 glass - M1M3 air (deg C)",
@@ -47,6 +50,7 @@ THERMAL_FEATURES = {
     "cam_minus_m1m3_air_c": "camera air - M1M3 air (deg C)",
     "cam_AverageTemp": "camera body average temperature (deg C)",
     "cam_body_minus_m1m3_air_c": "camera body - M1M3 air (deg C)",
+    "cam_body_minus_truss_c": "camera body - mean truss (deg C)",
     "m2_air_minus_outside_c": "M2 air - outside (deg C)",
     "m1m3_x_gradient_c_per_m": "M1M3 x gradient (deg C/m)",
     "m1m3_y_gradient_c_per_m": "M1M3 y gradient (deg C/m)",
@@ -101,6 +105,7 @@ def per_visit():
 def add_thermal(v):
     t = pd.read_parquet(CACHE).drop(columns=["day_obs", "seq_num"])
     d = v.merge(t, on="visit", how="left")
+    d.loc[d["day_obs"].isin(BAD_TRUSS_NIGHTS), "truss_temp_mean_c"] = np.nan
     d["truss_minus_m1m3_air_c"] = d["truss_temp_mean_c"] - d["m1m3_air_temp"]
     d["truss_minus_m2_air_c"] = d["truss_temp_mean_c"] - d["m2_air_temp"]
     d["m2_minus_m1m3_air_c"] = d["m2_air_temp"] - d["m1m3_air_temp"]
@@ -111,6 +116,7 @@ def add_thermal(v):
     d["m3_glass_minus_air_c"] = d["m3_mean_temp_c"] - d["m1m3_air_temp"]
     d["m1_minus_m3_glass_c"] = d["m1_mean_temp_c"] - d["m3_mean_temp_c"]
     d["cam_body_minus_m1m3_air_c"] = d["cam_AverageTemp"] - d["m1m3_air_temp"]
+    d["cam_body_minus_truss_c"] = d["cam_AverageTemp"] - d["truss_temp_mean_c"]
     return d
 
 
@@ -198,13 +204,16 @@ def page_nightly(pdf, v):
     return fig, night
 
 
-def pages_scatter(pdf, d, features, title, per_page=12):
+def pages_scatter(pdf, d, features, title, per_page=12, sort=False):
     rows = []
     names = list(features)
     for c in names:
         s = line_stats(d[c].to_numpy(float), d[TARGET].to_numpy(float))
         s["rho_within_night"], s["n_nights"] = within_night_rho(d, c)
         rows.append(dict(column=c, feature=features[c], **s))
+    if sort:
+        rows.sort(key=lambda r: -abs(r["rho"]))
+        names = [r["column"] for r in rows]
     for start in range(0, len(names), per_page):
         chunk = names[start:start + per_page]
         fig, axes = plt.subplots(3, 4, figsize=(17, 12))
@@ -213,7 +222,8 @@ def pages_scatter(pdf, d, features, title, per_page=12):
                           features[c], s)
         for ax in axes.flat[len(chunk):]:
             ax.set_visible(False)
-        fig.suptitle(f"{title} ({start // per_page + 1}); r Pearson, rho Spearman "
+        order = "; panels in order of |rho|" if sort else ""
+        fig.suptitle(f"{title} ({start // per_page + 1}){order}; r Pearson, rho Spearman "
                      "(dimensionless); colour log count per hexagon; red Huber line")
         pdf.savefig(fig, dpi=120)
         plt.close(fig)
@@ -281,6 +291,32 @@ def page_selection(pdf, d, steps, fit, frame):
     plt.close(fig)
 
 
+def page_histograms(pdf, d, frame, fit, out_dir):
+    """Blur difference over all visits, over those with every thermal quantity, and
+    after subtracting the selected thermal model."""
+    y = frame[TARGET].to_numpy()
+    corrected = y - fit.fittedvalues + np.median(y)
+    sets = [("all visits", d[TARGET].dropna().to_numpy()),
+            ("visits with every thermal quantity", y),
+            (f"same visits, thermal model ({N_SELECT} quantities) subtracted,\n"
+             "median added back", corrected)]
+    lo, hi = np.percentile(d[TARGET].dropna(), [0.2, 99.8])
+    bins = np.linspace(lo, hi, 121)
+    fig, axes = plt.subplots(3, 1, figsize=(11, 11), sharex=True)
+    for ax, (label, x) in zip(axes, sets):
+        ax.hist(x, bins=bins, color="C0", alpha=0.8)
+        ax.axvline(np.median(x), color="k", lw=1)
+        ax.axvline(0, color="gray", lw=0.8, ls="--")
+        ax.set_ylabel("visits per bin")
+        ax.set_title(f"{label}: n={len(x)} visits, median {np.median(x):+.4f} arcsec, "
+                     f"robust RMS (nMAD) {nmad(x):.4f} arcsec", fontsize=11)
+    axes[-1].set_xlabel(TARGET_LABEL)
+    fig.suptitle("Intra - extra blur, before and after the thermal correction")
+    pdf.savefig(fig)
+    fig.savefig(out_dir / "blur_diff_histograms.png", dpi=110)
+    plt.close(fig)
+
+
 def main():
     setup_plotting()
     run = study_run("aos/cwfs_blur_intra_extra", "blur_thermal")
@@ -299,16 +335,18 @@ def main():
         plt.close(fig)
         night.to_csv(run.path / "blur_diff_nightly.csv")
 
-        thermal = pages_scatter(pdf, d, THERMAL_FEATURES, "Intra - extra blur vs thermal")
+        thermal = pages_scatter(pdf, d, THERMAL_FEATURES, "Intra - extra blur vs thermal",
+                                sort=True)
         thermal = thermal.reindex(thermal["rho"].abs().sort_values(ascending=False).index)
         thermal.to_csv(run.path / "thermal_correlations.csv", index=False)
         page_ranking(pdf, thermal)
 
         steps, ranking, fit = select_predictors(d[TARGET], d[list(THERMAL_FEATURES)],
-                                                n_max=6, min_gain_frac=0.01)
+                                                n_max=N_SELECT, min_gain_frac=0.01)
         frame = pd.concat([d[TARGET], d[list(THERMAL_FEATURES)]], axis=1).dropna()
         steps.to_csv(run.path / "forward_selection_steps.csv", index=False)
         page_selection(pdf, d, steps, fit, frame)
+        page_histograms(pdf, d, frame, fit, run.path)
 
         other = pages_scatter(pdf, d, OTHER_FEATURES,
                               "Intra - extra blur vs mean blur, pointing, Zernikes")

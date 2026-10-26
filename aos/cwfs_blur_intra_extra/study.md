@@ -25,3 +25,21 @@ None yet.
 ### 2026-10-26 — started
 
 Study created.
+
+### 2026-10-26 — blur difference against time and thermal telemetry
+
+`code/fetch_thermal.py` caches the thermal telemetry per visit; `code/blur_thermal.py`
+writes `output/20261026_blur_thermal/blur_diff_science.pdf` (8 pages).
+
+- Per visit: median over corner rafts of intra (SW1) − extra (SW0) blur, each half's median
+  over quality-cut donuts (≥ 3 per half, ≥ 2 rafts). 84,301 visits, median +0.2602 arcsec,
+  nMAD 0.2000 arcsec.
+- Strongest single quantity: camera body − M1M3 air, Spearman rho −0.657 (dimensionless,
+  n 80,654 visits), Huber slope −0.2246 arcsec/°C. Same leader as the FAM study.
+- Forward selection stopped at 3 quantities: camera body − M1M3 air, M1M3
+  quadratic-in-radius, camera air − M1M3 air. Robust scatter 0.1964 → 0.0871 arcsec
+  (n 77,375 visits). Further steps each gained < 0.03 of the nMAD.
+- Mean blur, TMA elevation and azimuth, and the corner-mean Z4, Z11, Z22 all have
+  |rho| ≤ 0.150 (dimensionless, n 84,301 visits).
+- The truss reads about 24 °C on 20251118 and 20251119, about 10 °C above the M1M3 air;
+  masked as a sensor fault (`BAD_TRUSS_NIGHTS`).
