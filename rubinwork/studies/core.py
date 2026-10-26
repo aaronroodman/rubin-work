@@ -358,6 +358,12 @@ def _check_entry(entry):
     try:
         catalog.path(entry.product, entry.variant, entry.build)
     except catalog.ProductNotFound as exc:
+        # An incremental product (guider_moments) has partitions and no `current`; a
+        # study that reads every partition names the variant alone.
+        if entry.build == "current" and any(
+                r["variant"] == entry.variant and "/" in r["build"]
+                for r in catalog.list_products(entry.product)):
+            return None
         return str(exc)
     return None
 

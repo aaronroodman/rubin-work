@@ -4,7 +4,9 @@ topic: aos
 status: active
 question: "How does the open-loop optical state from the corner sensors depend on elevation and rotator angle over the science survey, and does it agree with the bounce tests?"
 answer: "One term dominates: M2 hexapod dx against rotator angle, +20.39 um/deg (Pearson r = +0.718, Spearman rho = +0.759, n = 96,278 visits). Agreement with the bounce tests is cosine +0.829 (dimensionless) on the six hexapod translations."
-uses: {}  # value_added (efd_db) and bounce_tables, resolved old tree then catalog
+uses:  # bounce_compare.py defaults to the _july bounce run (--bounce-run)
+  value_added: v1
+  bounce_tables: d12-A_50_34_i_5rot_july@old-tree-20261001
 started: 2026-10-06
 ---
 

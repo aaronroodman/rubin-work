@@ -4,7 +4,8 @@ topic: guider
 status: active
 question: "What do the guide-star moments show across many exposures: how are static (optics) and dynamic (image-motion) ellipticity split, and how do they correlate between guider sensors?"
 answer: "Dynamic ellipticity is strongly correlated between the two guider sensors of one corner raft and nearly uncorrelated across corners, so turbulence decorrelates on raft scales; it is not tracking error or wind shake."
-uses: {}  # guider_moments, every night in v6 then v4 (incremental, no single build to pin)
+uses:  # every night of each variant (incremental, no single build); v6 when built
+  guider_moments: v4
 started: 2026-07-16
 ---
 

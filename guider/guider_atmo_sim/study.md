@@ -4,7 +4,8 @@ topic: guider
 status: active
 question: "Does a phase-screen atmosphere simulation reproduce the guide-star size and centroid motion measured on the guiders?"
 answer: "Partly: static T_stamp matches the data to 0.5% (relative), but the centroid-motion second moments are over-predicted 1.5 to 1.6 times (dimensionless, sim over data; T_motion 0.0078 against 0.0050 arcsec^2) on day_obs 20260706 seq 688. The night batch was never run."
-uses: {}  # guider moments from the old guider/output tree, for the data side
+uses:  # imports guiderMoments only; its data side still reads guider moments from the old guider/output tree
+  guider_moments: v4
 started: 2026-08-06
 ---
 

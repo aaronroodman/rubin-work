@@ -8,6 +8,7 @@ uses:
   wfs_corner_compare: d12-refitWcs@20261024, d13-blitz_unpaired@20261024
   cwfs_tables: d12-refitWcs@20261013, d13-blitz_unpaired@20261024
   fam_tables: danish_1_2@20261013, danish_1_3@20261024
+  miw: d12-A_50_34_i, d12-A_50_34_i_5rot  # wfs_dof_compare, through aos/Snakefile
 started: 2026-09-06
 ---
 

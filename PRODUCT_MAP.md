@@ -77,6 +77,8 @@ flowchart LR
 
 ### bounce_tables
 
+Declared by studies (`uses:`): [aos/cwfs_lut](aos/cwfs_lut/study.md) d12-A_50_34_i_5rot_july@old-tree-20261001; [smatrix/regularized_inversion](smatrix/regularized_inversion/study.md) d12-A_50_34_i_5rot@current.
+
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
 | [aos/cwfs_lut](aos/cwfs_lut/study.md) | study | 1: `aos/cwfs_lut/code/bounce_compare.py` |  |
@@ -138,6 +140,8 @@ Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) danish_1_2@20261013
 
 ### guider_moments
 
+Declared by studies (`uses:`): [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) v4@current; [guider/guider_ellipticity_ensemble](guider/guider_ellipticity_ensemble/study.md) v4@current.
+
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
 | [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) | study | 1: `guider/guider_atmo_sim/code/guider_atmo_compare.py` |  |
@@ -147,7 +151,7 @@ Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) danish_1_2@20261013
 
 Built into (manifest): `bounce_tables`, `coadds`, `dof_lut`, `miw`.
 
-Declared by studies (`uses:`): [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34_i@20261014; [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34_i_5rot@20261014; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13t-A_50_34_i@old-tree-20260928; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_22_12_i@old-tree-20261007; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_50_34_i@old-tree-20261006; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_50_34_i_rbr@old-tree-20261006; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_50_50_i_rbr@old-tree-20261007; [aos/miw_version_comparisons](aos/miw_version_comparisons/study.md) d13t-A_50_34_i_5rot@old-tree-20260928.
+Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) d12-A_50_34_i@current; [aos/cwfs](aos/cwfs/study.md) d12-A_50_34_i_5rot@current; [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34_i@20261014; [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34_i_5rot@20261014; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13t-A_50_34_i@old-tree-20260928; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_22_12_i@old-tree-20261007; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_50_34_i@old-tree-20261006; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_50_34_i_rbr@old-tree-20261006; [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) d13v1000-A_50_50_i_rbr@old-tree-20261007; [aos/miw_version_comparisons](aos/miw_version_comparisons/study.md) d13t-A_50_34_i_5rot@old-tree-20260928.
 
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
@@ -171,7 +175,7 @@ Declared by studies (`uses:`): [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34
 
 ### value_added
 
-Declared by studies (`uses:`): [value_added/compare_trim_consdb](value_added/compare_trim_consdb/study.md) v1@snapshots/20261016.
+Declared by studies (`uses:`): [aos/cwfs_lut](aos/cwfs_lut/study.md) v1@current; [aos/intra_extra](aos/intra_extra/study.md) v1@current; [thermal_focus/thermal_focus](thermal_focus/thermal_focus/study.md) v1@current; [thermal_focus/trim_calculator](thermal_focus/trim_calculator/study.md) v1@current; [value_added/compare_trim_consdb](value_added/compare_trim_consdb/study.md) v1@snapshots/20261016.
 
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
@@ -204,11 +208,11 @@ A study listed here reads at least one product. **undeclared** marks a product i
 | [aos/bounce](aos/bounce/study.md) | done |  | miw | miw |
 | [aos/closed_loop](aos/closed_loop/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
 | [aos/correlations](aos/correlations/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
-| [aos/cwfs](aos/cwfs/study.md) | active | cwfs_tables, fam_tables, wfs_corner_compare | cwfs_tables, fam_tables, miw, wfs_corner_compare | miw |
-| [aos/cwfs_lut](aos/cwfs_lut/study.md) | active |  | bounce_tables, value_added | bounce_tables, value_added |
+| [aos/cwfs](aos/cwfs/study.md) | active | cwfs_tables, fam_tables, miw, wfs_corner_compare | cwfs_tables, fam_tables, miw, wfs_corner_compare |  |
+| [aos/cwfs_lut](aos/cwfs_lut/study.md) | active | bounce_tables, value_added | bounce_tables, value_added |  |
 | [aos/dzfit](aos/dzfit/study.md) | done |  | fam_tables | fam_tables |
 | [aos/giant_donut_pupil](aos/giant_donut_pupil/study.md) | parked |  | value_added | value_added |
-| [aos/intra_extra](aos/intra_extra/study.md) | active |  | value_added | value_added |
+| [aos/intra_extra](aos/intra_extra/study.md) | active | value_added | value_added |  |
 | [aos/miw_hull](aos/miw_hull/study.md) | answered | fam_tables, miw | miw |  |
 | [aos/miw_origin](aos/miw_origin/study.md) | parked |  | coadds, fam_tables, miw | coadds, fam_tables, miw |
 | [aos/miw_recovery_constraint](aos/miw_recovery_constraint/study.md) | active | miw | miw |  |
@@ -217,12 +221,12 @@ A study listed here reads at least one product. **undeclared** marks a product i
 | [aos/psf_fp_maps](aos/psf_fp_maps/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
 | [aos/unpaired_intra_vs_extra](aos/unpaired_intra_vs_extra/study.md) | active | fam_tables | fam_tables |  |
 | [aos/wfs_mimic](aos/wfs_mimic/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
-| [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) | active |  | guider_moments | guider_moments |
-| [guider/guider_ellipticity_ensemble](guider/guider_ellipticity_ensemble/study.md) | active |  | guider_moments | guider_moments |
+| [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) | active | guider_moments | guider_moments |  |
+| [guider/guider_ellipticity_ensemble](guider/guider_ellipticity_ensemble/study.md) | active | guider_moments | guider_moments |  |
 | [optatmo/miw_radial_correlations](optatmo/miw_radial_correlations/study.md) | done |  | miw | miw |
 | [psf/wavefront_to_psf](psf/wavefront_to_psf/study.md) | dropped |  | fam_tables | fam_tables |
-| [smatrix/regularized_inversion](smatrix/regularized_inversion/study.md) | active |  | bounce_tables | bounce_tables |
-| [thermal_focus/thermal_focus](thermal_focus/thermal_focus/study.md) | active |  | value_added | value_added |
+| [smatrix/regularized_inversion](smatrix/regularized_inversion/study.md) | active | bounce_tables | bounce_tables |  |
+| [thermal_focus/thermal_focus](thermal_focus/thermal_focus/study.md) | active | value_added | value_added |  |
 | [thermal_focus/thermal_vmodes](thermal_focus/thermal_vmodes/study.md) | done |  | value_added | value_added |
-| [thermal_focus/trim_calculator](thermal_focus/trim_calculator/study.md) | active |  | value_added | value_added |
+| [thermal_focus/trim_calculator](thermal_focus/trim_calculator/study.md) | active | value_added | value_added |  |
 | [value_added/compare_trim_consdb](value_added/compare_trim_consdb/study.md) | active | value_added | value_added |  |

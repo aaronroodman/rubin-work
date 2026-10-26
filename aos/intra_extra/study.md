@@ -4,7 +4,8 @@ topic: aos
 status: active
 question: "Why do intra- and extra-focal donuts differ, in Danish blur (intra larger by about 0.34 arcsec), in Z11 and Z14, and in the spider and pupil-edge shadows, when a static pupil would make them mirror images?"
 answer: "Not a static pupil or model mismatch: the blur difference (median +0.3440 arcsec, n 873 FAM triplets) tracks camera-body minus M1M3 air temperature (Spearman rho -0.7828), v1000 cuts the giant-donut Z11 split from 0.81 to 0.37 um of wavefront, and diffraction gives about one third of it. A phase that flips sign with focus (a thermal strip or a turned-down M1 edge) is the open candidate."
-uses: {}  # fam_tables danish_1_3_test through the old aos/output tree; raws for the giant donuts
+uses:  # the blur notebook reads value_added; its FAM blur comes from blitz_reader on danish_1_3_test raws, not a product build
+  value_added: v1
 started: 2026-06-12
 ---
 

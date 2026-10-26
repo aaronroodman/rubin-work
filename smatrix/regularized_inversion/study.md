@@ -4,7 +4,8 @@ topic: smatrix
 status: active
 question: "What image quality does a feasible recovered optical state cost, one in which every DOF sits inside its allowed range, and how do the damped SVD, the range penalty and the ts_ofc OIC motion penalty compare?"
 answer: "The range penalty B makes the recovery feasible for 0.0012 to 0.0052 arcsec of FWHM on 5 of 6 bounce legs (3% to 9% of the truncated residual); the OIC needs about 2.24 times more wavefront residual (dimensionless, OIC over RBR; median inflation 2.77 against 1.31) for the same range compliance."
-uses: {}  # reads the bounce legs through rubinwork.bounce (the bounce_tables product); the --fits input is the old aos/output MIW fits
+uses:  # run_penalty_matrix_compare reads bounce_kj_stats; the --fits input of the others is the old aos/output MIW fits
+  bounce_tables: d12-A_50_34_i_5rot
 started: 2026-09-23
 ---
 

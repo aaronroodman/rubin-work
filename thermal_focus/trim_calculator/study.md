@@ -4,7 +4,8 @@ topic: thermal_focus
 status: active
 question: "Can the thermal-focus correction be computed on a summit machine with no repository code, as the camera hexapod Trim to command?"
 answer: "Yes: trim_calculator.py imports only numpy, pyyaml and argparse and reads every fitted coefficient, with units and provenance, from trim_coefficients.yaml; check_against_fit.py checks it against the pipeline it was fitted with."
-uses: {}  # none; its version is trim_coefficients.yaml
+uses:  # check_against_fit.py reads value_added; the calculator itself is versioned by trim_coefficients.yaml
+  value_added: v1
 started: 2026-09-23
 ---
 

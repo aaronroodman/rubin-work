@@ -4,7 +4,8 @@ topic: thermal_focus
 status: active
 question: "Can the uniform-defocus error of the telescope be predicted from thermal telemetry alone, so focus can be set open-loop?"
 answer: "Yes, between nights: 5 thermal channels in one band-independent Huber fit cut the focus error from 336.8 to 58.2 µm of equivalent hexapod dz nMAD (in sample; 59.9 µm night-grouped) over 68,079 science visits and 147 nights; the truss carries +125.09 µm per deg C. The start of the night is worse: 84.9 against 54.9 µm nMAD before and after 3 h past sunset."
-uses: {}  # reads the value-added DuckDB through value_added/code/efd_db.py plus live ConsDB; value_added not yet pinned
+uses:  # fam_dz and optical_state through rubinwork.products.value_added, plus live ConsDB
+  value_added: v1
 started: 2026-09-09
 ---
 
