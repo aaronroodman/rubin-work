@@ -278,8 +278,9 @@ def _product_pages(s, builds):
         downs = sorted(d for u, d in edges if u == p)
         graph = "\n".join([f"    {u} --> {p}" for u in ups] + [f"    {p} --> {d}"
                                                                for d in downs])
+        src = s.link(here, s.repo_page(f"rubinwork/products/{p}/__init__.py"))
         out = [f"<h1>{p}</h1>",
-               f"<p class='muted'>Source: <a href='{s.link(here, s.repo_page(f'rubinwork/products/{p}/__init__.py'))}'>"
+               f"<p class='muted'>Source: <a href='{src}'>"
                f"rubinwork/products/{p}/</a>. Upstream: {s.product_tags(here, ups) or 'none'}"
                f" · Downstream: {s.product_tags(here, downs) or 'none'}</p>"]
         if graph:
@@ -341,7 +342,8 @@ def _doc_pages(s):
                            if f.startswith(st.key + "/") and f != rel)
             head = (f"<div class='meta'><b>{_esc(st.key)}</b> · status <b>{_esc(st.status)}"
                     f"</b> · started {_esc(st.meta.get('started'))} · last log "
-                    f"{_esc(st.last_log_date())}<br><b>Question:</b> {_esc(st.meta.get('question'))}"
+                    f"{_esc(st.last_log_date())}<br><b>Question:</b> "
+                    f"{_esc(st.meta.get('question'))}"
                     f"<br><b>Answer:</b> {_esc(st.meta.get('answer')) or '<i>none yet</i>'}"
                     f"<br><b>Products declared:</b> {uses}<br><b>Products its code reaches:</b> "
                     f"{s.product_tags(here, scanned) or 'none'}<br><b>Files:</b> " + ", ".join(
