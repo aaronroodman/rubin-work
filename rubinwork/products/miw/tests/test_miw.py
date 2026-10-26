@@ -34,6 +34,7 @@ EXPECTED_VARIANTS = [
     "d13v1000-A_50_34_i", "d13v1000-A_50_34_i_rbr", "d13v1000-A_50_50_i_rbr",
     "d13v1000-A_50_34_i_5rot", "d13v1000-A_50_50_i_rbr_5rot",
     "d13v1000-A_22_12_i", "d13v1000-A_22_12_i_5rot", "d13v1000-A_50_34_i_rbr_5rot",
+    "d13-A_50_34_i", "d13-A_50_34_i_5rot",
 ]
 """Every variant, in ``variants.yaml`` order, which is generated-file order."""
 
@@ -79,7 +80,7 @@ def _write_build(root, variant="d12-A_50_34_i", build="20261010", rows=4,
 
 # ---- variants ------------------------------------------------------------------
 
-def test_variants_are_the_twelve_in_file_order():
+def test_variants_are_the_fourteen_in_file_order():
     assert miw.variants() == EXPECTED_VARIANTS
 
 
@@ -179,12 +180,13 @@ def test_mi_config_body_is_byte_identical_to_the_premove_file():
 
     The body -- everything from ``defaults:`` on -- is what the external package parses.
     The header above it is replaced by the DO-NOT-EDIT notice, whose content moved into
-    ``variants.yaml``, so only the body is compared.
+    ``variants.yaml``, so only the body is compared. Variants added since are appended,
+    so the pre-move body must be its unchanged start.
     """
     text = gen_mi_config.render()
     lines = text.split("\n")
     body = "\n".join(lines[lines.index("defaults:"):])
-    assert body == PREMOVE_BODY.read_text()
+    assert body.startswith(PREMOVE_BODY.read_text())
 
 
 def test_mi_config_md5_is_recorded():

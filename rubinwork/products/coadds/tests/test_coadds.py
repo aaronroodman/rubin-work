@@ -22,8 +22,9 @@ from rubinwork.products.coadds import write_manifest  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
-EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot", "d12-A_50_34_i_5rot_v2"}
-"""The two registered variants: the production run and its all-extra-Zernikes sibling."""
+EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot", "d12-A_50_34_i_5rot_v2", "d13-A_50_34_i_5rot"}
+"""The registered variants: the production run, its all-extra-Zernikes sibling, and the
+production selection against the Danish 1.3 MIW."""
 
 
 @pytest.fixture
@@ -79,7 +80,7 @@ def _write_build(root, variant="d12-A_50_34_i_5rot", build="20261010", n_blocks=
 
 # ---- variants ------------------------------------------------------------------
 
-def test_variants_are_the_registered_two():
+def test_variants_are_the_registered_three():
     assert set(coadds.variants()) == EXPECTED_VARIANTS
 
 
@@ -87,7 +88,7 @@ def test_variant_names_follow_the_rules():
     """Lowercase-ish, at most 32 characters, prefixed with the upstream short code."""
     for name in co_reader.variants(registered_only=False):
         assert len(name) <= 32, f"{name} is {len(name)} characters"
-        assert name.startswith("d12-"), name
+        assert name.startswith(("d12-", "d13-")), name
         assert " " not in name
 
 
