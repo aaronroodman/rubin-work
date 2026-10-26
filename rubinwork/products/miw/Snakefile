@@ -114,36 +114,24 @@ SPLIT_BINS = miw.split_rotator_bins(VARIANT)
 GRIDS = [str(SRC_DIR / 'build' / f'rot_{lo:g}_{hi:g}' / 'intrinsic_grid.parquet')
          for lo, hi in SPLIT_BINS]
 
-# ---- the paired CWFS variants this build makes a corner sidecar for --------------
+# ---- the CWFS variants this build makes a corner sidecar for ----------------------
 # One per cwfs_tables variant of the same FAM variant that has a build to read.  A variant
 # with no build is skipped and reported, so a missing CWFS table never silently drops a
 # sidecar (the lesson of the cwfs_tables move).
 #
-# `reader: unpaired` variants are skipped by design (Aaron, 2026-10-14).  They are
-# IN-FOCUS analyses -- one row per corner half-sensor from a single exposure -- so they
-# have no intra/extra-focal pair and no `centroid_*_intra` columns, and
-# run_make_intrinsic_sidecar.py requests those unconditionally.  The centroids are only
-# part of its row key, never of the reconstruction, and an unpaired table's
-# (day_obs, seq_num, detector) is already unique, so the key they exist to rescue is not
-# needed here.  Nothing reads a sidecar for one: `d12-tarts` carries its own
-# `zk_intrinsic_OCS`, and neither the old tree nor the 3a reference ever built one.
+# Unpaired (in-focus) tables are included: they have no pixel centroids, and
+# run_make_intrinsic_sidecar.py then takes each donut's CCD height at the pixel its field
+# angle maps to on its own half-sensor, and keys the sidecar on thx_OCS, thy_OCS.
 CWFS_VARIANTS = {}
 _cwfs_skipped = {}
-_cwfs_unpaired = []
 for _cv in cwfs_tables.variants():
     if cwfs_tables.fam_variant(_cv) != FAM_VARIANT:
-        continue
-    if cwfs_tables.variant_config(_cv).get('reader') == 'unpaired':
-        _cwfs_unpaired.append(_cv)
         continue
     _cbuild = str(config.get('cwfs_build') or catalog.CURRENT)
     try:
         CWFS_VARIANTS[_cv] = catalog.path('cwfs_tables', _cv, build=_cbuild)
     except Exception as exc:
         _cwfs_skipped[_cv] = str(exc)
-if _cwfs_unpaired:
-    print('[miw] no corner sidecar for ' + ', '.join(sorted(_cwfs_unpaired))
-          + ': `reader: unpaired` (in-focus, no intra-focal centroids) -- by design')
 if _cwfs_skipped:
     print(f'[miw] skipping {len(_cwfs_skipped)} CWFS sidecar(s) with no cwfs_tables '
           'build to read; build each with '
