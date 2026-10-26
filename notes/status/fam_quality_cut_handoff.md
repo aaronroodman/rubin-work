@@ -1,6 +1,6 @@
 # FAM visit quality cut: regularized, refit, current
 
-> **Status:** fam_tables `20261025b` current, `fam_dz` rebuilt in `v1/live`; d12 downstream batch job awaiting OK · **Last updated:** 2026-10-25 · **Kind:** handoff
+> **Status:** d12 chain rebuilt and current; Danish 1.3 MIW builds not rebuilt · **Last updated:** 2026-10-25 · **Kind:** handoff
 
 ## Done
 
@@ -26,13 +26,18 @@
   20250707 seq 507 and 510 in `danish_1_2`, nothing in the 1.3 variants. Set current.
 - `max_coeff_um` set to null in `aos/analysis_config.yaml` and the correlations defaults
   (`3def770`).
-- `fam_dz` rewritten in `value_added/v1/live` from `danish_1_2@20261025b`: 3268 rows, 2
-  `bad_fit`. Not yet snapshotted; `current` is still `snapshots/20261016` (2528 rows).
+- `fam_dz` rewritten from `danish_1_2@20261025b` (3268 rows, 2 `bad_fit`); snapshot
+  `value_added/v1/snapshots/20261025` is current.
+- `aos/run_d12_downstream.sbatch` (job 41942117, 50 min) built `20261025` of miw, dof_lut
+  and bounce_tables for `d12-A_50_34_i` and `_5rot`, and coadds `d12-A_50_34_i_5rot`. All
+  set current. MIW split maps differ from `20261014` by at most 0.001 µm (from the rotator
+  bin mean angles); the LUT uses 970 visits instead of 969, largest change M2 dz 5 µm,
+  0.013 of its MAD scatter. Coadds and bounce tables have the same rows.
 
 ## Next
 
-1. Submit `aos/run_d12_downstream.sbatch` (MIW, LUT, bounce tables, coadds for d12),
-   then set those builds current and snapshot `value_added` live.
+1. Danish 1.3 MIW builds are still old-tree builds from `fam_tables` `20261013`; rebuild
+   if wanted (batch, ask first).
 2. Rerun downstream with the prior cuts otherwise unchanged: MIW, LUT, coadds, value_added
    `fam_dz`, bounce. Batch submits need Aaron's OK. The MIW split reads the FAM
    `fits.parquet` for each rotator bin's mean angle, so the larger visit set shifts those
