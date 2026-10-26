@@ -11,7 +11,7 @@ python -m rubinwork.studies review aos      # study checks for one topic
 ```
 
 It rewrites `STUDIES.md`, `PRODUCTS.md` and `PRODUCT_MAP.md` (a file is touched only if its text changes)
-and rebuilds the HTML site at `<data root>/site/` (outside the repo, nothing to commit),
+and rebuilds the HTML site at `site/` in the repo root (gitignored, nothing to commit),
 then prints a Markdown report:
 
 - **Schema** — `study.md` front matter that breaks the schema (errors) or needs care

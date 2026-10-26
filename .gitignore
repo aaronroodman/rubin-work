@@ -118,3 +118,6 @@ optatmo/pipelines/prod_famcwfs.txt
 _exectest.ipynb
 *-exectest.ipynb
 Untitled*.ipynb
+
+# Generated HTML site (python -m rubinwork.studies site)
+/site/

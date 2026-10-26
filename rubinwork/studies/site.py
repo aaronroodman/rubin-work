@@ -1,7 +1,7 @@
 """Build a static HTML site for leafing through the repository: products, studies, docs,
 code, and the links between them.
 
-Written outside the repository, to ``<data root>/site/`` (`write_site`), and opened in a
+Written to ``site/`` at the repository root (gitignored, `write_site`), and opened in a
 browser from ``index.html``. Every link is relative, so the tree works from ``file://``
 and can be copied anywhere. The product graphs load Mermaid from a CDN; everything else is
 self-contained.
@@ -77,9 +77,8 @@ img { max-width: 100%; }
 
 
 def site_root():
-    """Default output directory, ``<data root>/site``."""
-    from rubinwork.products import catalog
-    return catalog.data_root() / "site"
+    """Default output directory, ``<repo root>/site`` (gitignored)."""
+    return repo_root() / "site"
 
 
 def _esc(text):
@@ -499,7 +498,7 @@ def build_site(root=None, out=None, builds=None):
     root : `str` or `pathlib.Path`, optional
         Repository root, `repo_root` by default.
     out : `str` or `pathlib.Path`, optional
-        Output directory, `site_root` by default. Replaced as a whole.
+        Output directory, ``<root>/site`` by default. Replaced as a whole.
     builds : `list` [`dict`], optional
         As from `rubinwork.products.catalog.list_products`; read by default.
 
@@ -511,7 +510,7 @@ def build_site(root=None, out=None, builds=None):
     from rubinwork.products import catalog
 
     root = pathlib.Path(root) if root else repo_root()
-    out = pathlib.Path(out) if out else site_root()
+    out = pathlib.Path(out) if out else root / "site"
     tmp = out.with_name(out.name + ".tmp")
     if tmp.exists():
         shutil.rmtree(tmp)

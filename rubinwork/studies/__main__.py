@@ -26,7 +26,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("index", help="write STUDIES.md and the topic README tables")
     sub.add_parser("map", help="write PRODUCT_MAP.md")
-    web = sub.add_parser("site", help="write the HTML site (default <data root>/site)")
+    web = sub.add_parser("site", help="write the HTML site (default <repo root>/site)")
     web.add_argument("--out", default=None)
     check = sub.add_parser("check", help="validate every study.md")
     check.add_argument("topic", nargs="?", default=None)
