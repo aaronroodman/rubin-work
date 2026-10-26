@@ -1,6 +1,6 @@
 # FAM visit quality cut: regularized, refit, current
 
-> **Status:** builds `20261025` current; consumer cuts not yet changed · **Last updated:** 2026-10-25 · **Kind:** handoff
+> **Status:** fam_tables `20261025b` current, `fam_dz` rebuilt in `v1/live`; d12 downstream batch job awaiting OK · **Last updated:** 2026-10-25 · **Kind:** handoff
 
 ## Done
 
@@ -19,9 +19,20 @@
 - Replace it with a fixed-level flag: a fit is bad if more than 10 coefficients (count) have
   |DZ| > 2.0 µm. Not an nMAD test: that depends on the ensemble.
 
+- `bad_fit` is now "more than 5 coefficients with |DZ| > 2.0 µm, or n_donuts < 200"
+  (`ts_intrinsic_wavefront` `0f0a2ad` on `tickets/RSO-809`: `flag_bad_fits`,
+  `_flag_bad_visits`, `run_dz_fit --max-large-coeffs`, MIW build). Builds `20261025b` keep
+  the `20261025` fits and recompute only `bad_fit` (`refit_build --reflag`); they flag
+  20250707 seq 507 and 510 in `danish_1_2`, nothing in the 1.3 variants. Set current.
+- `max_coeff_um` set to null in `aos/analysis_config.yaml` and the correlations defaults
+  (`3def770`).
+- `fam_dz` rewritten in `value_added/v1/live` from `danish_1_2@20261025b`: 3268 rows, 2
+  `bad_fit`. Not yet snapshotted; `current` is still `snapshots/20261016` (2528 rows).
+
 ## Next
 
-1. Confirm the flag definition (below), then implement it and change the consumers.
+1. Submit `aos/run_d12_downstream.sbatch` (MIW, LUT, bounce tables, coadds for d12),
+   then set those builds current and snapshot `value_added` live.
 2. Rerun downstream with the prior cuts otherwise unchanged: MIW, LUT, coadds, value_added
    `fam_dz`, bounce. Batch submits need Aaron's OK. The MIW split reads the FAM
    `fits.parquet` for each rotator bin's mean angle, so the larger visit set shifts those
