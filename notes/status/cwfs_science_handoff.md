@@ -21,25 +21,28 @@
     fast-forwarded;
   - `~/.local/bin/snakemake` was reinstalled (9.22.0) so it runs on the w_2026_43 Python.
 
-## In progress
+## Done since: the full build
 
-- Slurm job 42019444 is the full `cwfs_science` build: 191 nights, build `20261026`, an
-  estimated 1 hour. Log: `aos/logs/cwfs_science_42019444.log`. It does not set `current`.
+- Build `20261026` is current (Slurm job 42019444, 17 min):
+  - 92,388 visits over 191 nights;
+  - 738,154 CCD rows and 367,255 raft rows;
+  - 4 visits unreadable (20251120 seq 17-20, corrupt parquet);
+  - 247 visits have no `zernikes` table.
+- The MTAOS match is exact:
+  - 0 unmatched rows;
+  - largest `mtaos_check_um` 6.7e-4 µm of wavefront.
+- First look, from raft-visits with at least 3 quality-cut donuts on each half:
+  - median intra − extra blur is +0.2604 arcsec (n 298,003 raft-visits);
+  - intra is larger in 0.9231 of them (fraction of raft-visits).
+- The study's `uses:` now pins `cwfs_science=d13-blitz_rso1071@20261026`.
 
 ## Next
 
-1. When the job ends, check it:
-   - `grep cwfs_science <build>/_work/logs/night_*.log` for unreadable visits and visits
-     with no `zernikes` table;
-   - `raft_visits.n_mtaos_unmatched` should total 0;
-   - `mtaos_check_um` should be about 1e-5 µm.
-2. Make it current:
-   `python -m rubinwork.products.catalog set-current cwfs_science d13-blitz_rso1071 20261026`.
-3. Update the study's `uses:` to the new build, then start the blur analysis: intra
-   (SW1) against extra (SW0) blur per visit, joined to the `value_added` thermal columns.
-   The FAM baseline is `aos/intra_extra` (+0.344 arcsec median).
-4. Later: compare `raft_visits` with the ConsDB per-corner values, joined on `visit`
-   and `raft`.
+1. Blur analysis in `aos/cwfs_blur_intra_extra`: intra (SW1) against extra (SW0) blur
+   per visit, joined to the `value_added` thermal columns. The FAM baseline is
+   `aos/intra_extra` (+0.344 arcsec median).
+2. Later: compare `raft_visits` with the ConsDB per-corner values, joined on `visit` and
+   `raft`.
 
 ## Tried and rejected
 
