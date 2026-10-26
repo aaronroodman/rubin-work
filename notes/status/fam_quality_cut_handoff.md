@@ -1,6 +1,6 @@
 # FAM visit quality cut: regularized, refit, current
 
-> **Status:** d12 chain rebuilt and current; Danish 1.3 MIW builds not rebuilt · **Last updated:** 2026-10-25 · **Kind:** handoff
+> **Status:** d12 and d13 chains rebuilt and current · **Last updated:** 2026-10-25 · **Kind:** handoff
 
 ## Done
 
@@ -34,10 +34,22 @@
   bin mean angles); the LUT uses 970 visits instead of 969, largest change M2 dz 5 µm,
   0.013 of its MAD scatter. Coadds and bounce tables have the same rows.
 
+- MIW corner sidecar now handles unpaired CWFS tables (`ts_intrinsic_wavefront`
+  `f2e63da`; Snakefile `f5673a0`): height at the field-angle pixel on the donut's own
+  half-sensor, keyed on thx_OCS, thy_OCS. Paired output unchanged (max difference
+  1.1e-16 µm of wavefront on `d12-refitWcs`).
+- New `d13-A_50_34_i`, `_5rot` (danish_1_3, v3.14 pupil) and coadds `d13-A_50_34_i_5rot`,
+  build `20261025` (job 41953506, 35 min), current. Corner sidecar for
+  `d13-blitz_unpaired`: 105,640 of 105,640 donuts finite. Coadds: 141 blocks, 105 plotted.
+- The other ten Danish 1.3 MIW variants stay on their old-tree builds (Aaron, 2026-10-25).
+- `fam_dz` adds Batoid variants for `danish_1_3`, `_test`, `_v1000` and the d13 MIW
+  variant (1,854 rows, 11 `bad_fit`); `build_fam_dz --mi` now reads the refit from the
+  `miw` catalog. Snapshot `value_added/v1/snapshots/20261025b` is current.
+
 ## Next
 
-1. Danish 1.3 MIW builds are still old-tree builds from `fam_tables` `20261013`; rebuild
-   if wanted (batch, ask first).
+1. The Danish 1.2 MIW `fam_dz` variant (`--mi pathA_50_34_i_5rot`) is not in the
+   database; add it if wanted.
 2. Rerun downstream with the prior cuts otherwise unchanged: MIW, LUT, coadds, value_added
    `fam_dz`, bounce. Batch submits need Aaron's OK. The MIW split reads the FAM
    `fits.parquet` for each rotator bin's mean angle, so the larger visit set shifts those

@@ -13,6 +13,7 @@ Size is the total of the current build's files, or of the latest build when none
 | bounce_tables | `d12-A_50_34_i_5rot_july` |  | old-tree-20261001 | 2026-10-24 | 1 | 8.6 |
 | coadds | `d12-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 2 | 235.5 |
 | coadds | `d12-A_50_34_i_5rot_v2` |  | old-tree-20260903 | 2026-10-24 | 1 | 235.5 |
+| coadds | `d13-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 1 | 189.0 |
 | cwfs_tables | `d12-ai_donut` | 20261013 | 20261013 | 2026-10-13 | 1 | 17.9 |
 | cwfs_tables | `d12-paired_3mm` | 20261013 | 20261013 | 2026-10-13 | 1 | 1.0 |
 | cwfs_tables | `d12-refitWcs` | 20261013 | 20261013 | 2026-10-13 | 1 | 48.4 |
@@ -27,6 +28,8 @@ Size is the total of the current build's files, or of the latest build when none
 | guider_moments | `v4` |  | nights/20260712 | 2026-10-24 | 9 | 127.4 |
 | miw | `d12-A_50_34_i` | 20261025 | 20261025 | 2026-10-25 | 2 | 1,877.3 |
 | miw | `d12-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 3 | 1,869.6 |
+| miw | `d13-A_50_34_i` | 20261025 | 20261025 | 2026-10-25 | 1 | 1,245.0 |
+| miw | `d13-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 1 | 1,237.5 |
 | miw | `d13t-A_50_34_i` | old-tree-20260928 | old-tree-20260928 | 2026-10-24 | 1 | 0.0 |
 | miw | `d13t-A_50_34_i_5rot` | old-tree-20260928 | old-tree-20260928 | 2026-10-24 | 1 | 517.5 |
 | miw | `d13v1000-A_22_12_i` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 19.9 |
@@ -40,7 +43,7 @@ Size is the total of the current build's files, or of the latest build when none
 | miw | `official-20260528a` |  | external | 2026-10-10 | 1 |  |
 | miw | `official-gmegias-v3` |  | external | 2026-10-10 | 1 |  |
 | miw | `staged-v1` |  | external | 2026-10-10 | 1 |  |
-| value_added | `v1` | snapshots/20261025 | snapshots/20261025 | 2026-10-25 | 3 | 3,099.9 |
+| value_added | `v1` | snapshots/20261025b | snapshots/20261025b | 2026-10-25 | 4 | 3,099.9 |
 | wfs_corner_compare | `d12-ai_donut` |  | 20261024 | 2026-10-24 | 2 | 2.0 |
 | wfs_corner_compare | `d12-paired_3mm` |  | 20260707 | 2026-10-24 | 2 | 0.2 |
 | wfs_corner_compare | `d12-refitWcs` | 20261024 | 20261024 | 2026-10-24 | 2 | 5.3 |

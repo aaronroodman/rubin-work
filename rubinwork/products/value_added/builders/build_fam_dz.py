@@ -78,6 +78,15 @@ SCHEMES = {'50_34': (50, 34), '22_12': (22, 12)}
 DEFAULT_AOS_OUTPUT = 'aos/output/fam_processing'
 
 
+def _miw_variant(fam_variant, mi_name):
+    """The ``miw`` variant built from `fam_variant` under `mi_name`, or `None`."""
+    from rubinwork.products import miw
+    for v in miw.variants():
+        if miw.fam_variant(v) == fam_variant and miw.mi_keys(v)[1] == mi_name:
+            return v
+    return None
+
+
 def resolve_paths(aos_output, param_set, mi=None, prefer='catalog'):
     """Locate the ``fits.parquet`` and ``visits.parquet`` for a param_set.
 
@@ -98,8 +107,9 @@ def resolve_paths(aos_output, param_set, mi=None, prefer='catalog'):
     param_set : `str`
         A long ``param_set`` key or a `fam_tables` variant name; both resolve.
     mi : `str`, optional
-        Measured Intrinsic Wavefront build name. When given, the DZ fits come from
-        ``<dir_name>/<mi>/fits.parquet`` — the refit against the MIW — while the visits
+        Measured Intrinsic Wavefront build name. When given, the DZ fits are the refit
+        against the MIW: the current build of the matching ``miw`` variant in the catalog,
+        or ``<dir_name>/<mi>/fits.parquet`` in the old tree — while the visits
         sidecar stays at the param_set level, since the pupil Noll set is a property of the
         donut extraction rather than of the intrinsic.
     prefer : {'old', 'catalog'}, optional
@@ -151,6 +161,14 @@ def resolve_paths(aos_output, param_set, mi=None, prefer='catalog'):
             return None
         looked.append(str(cat_base))
         cfits, cvisits = _pair(cat_base)
+        if mi:
+            # The MIW refit lives in the miw product, not under the fam_tables build.
+            mv = _miw_variant(variant, mi)
+            if mv is None:
+                looked.append(f'catalog miw (no variant for {variant}/{mi})')
+                return None
+            cfits = pathlib.Path(catalog.path('miw', mv)) / 'fits.parquet'
+            looked.append(str(cfits.parent))
         if cfits.exists() and cvisits.exists():
             return cfits, cvisits
         return None
