@@ -56,3 +56,20 @@ transformed EFD; 123–126 report from 2026-02-16). The PDF grows to 15 pages.
 - Pointing into the wind matters little: cos(wind_dir − az) rho +0.068 (n 84,301 visits).
 - In the forward selection over thermal and wind, tower wind speed enters at step 4 with
   gain 0.017 of the nMAD (dimensionless); residual nMAD 0.0873 → 0.0858 arcsec.
+
+### 2026-10-26 — boosted trees, scored on held-out nights
+
+`code/blur_gbt.py` writes `output/20261026_blur_gbt/blur_gbt.pdf`. sklearn
+`HistGradientBoostingRegressor` (absolute-error loss), 5 folds by whole night
+(`GroupKFold` on `day_obs`), on the 76,963 visits with every thermal and wind-select input.
+Held-out residual nMAD (arcsec): Huber 3-quantity 0.0875; trees on the same 3 inputs
+0.0939; trees on all thermal 0.0813; trees on thermal, wind and pointing 0.0759 (0.0775
+on all 84,301 visits, missing inputs allowed).
+
+- Raft-scatter floor (nMAD of the visit median from raft-to-raft scatter alone) 0.0328
+  arcsec, so about 0.07 arcsec of the residual is still unexplained.
+- Permutation importance: camera body − M1M3 air dominates (0.066 arcsec rise in nMAD),
+  then M1M3 quadratic-in-radius, M1M3 glass temperature, M1M3 y gradient, truss − M1M3
+  air (each 0.012–0.016 arcsec).
+- Nightly medians of the residual: nMAD 0.0632 (Huber) → 0.0460 arcsec (trees, all
+  inputs). Most of what is left is a per-night offset.
