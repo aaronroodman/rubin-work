@@ -1,6 +1,6 @@
 ---
 name: review
-description: Reviewing the state of rubin-work's studies and products — regenerate STUDIES.md and PRODUCTS.md and report stale studies, missing answers, superseded builds, code no study covers and dependency-rule violations. Use when Aaron says /review, optionally with a topic.
+description: Reviewing the state of rubin-work's studies and products — regenerate STUDIES.md, PRODUCTS.md and PRODUCT_MAP.md and report stale studies, missing answers, superseded builds, code no study covers and dependency-rule violations. Use when Aaron says /review, optionally with a topic.
 ---
 
 # /review [topic] — regenerate the indexes and report
@@ -10,7 +10,7 @@ python -m rubinwork.studies review          # whole repo
 python -m rubinwork.studies review aos      # study checks for one topic
 ```
 
-It rewrites `STUDIES.md` and `PRODUCTS.md` (a file is touched only if its text changes),
+It rewrites `STUDIES.md`, `PRODUCTS.md` and `PRODUCT_MAP.md` (a file is touched only if its text changes),
 then prints a Markdown report:
 
 - **Schema** — `study.md` front matter that breaks the schema (errors) or needs care
@@ -31,7 +31,7 @@ then prints a Markdown report:
 Report only: nothing fails. Show Aaron the report as printed, or its non-empty sections
 if it is long, and then:
 
-- commit `STUDIES.md` and `PRODUCTS.md` if they changed (`/review: regenerate
+- commit `STUDIES.md`, `PRODUCTS.md` and `PRODUCT_MAP.md` if they changed (`/review: regenerate
   indexes`); do not push;
 - for a stale study, ask whether to `/wrap` it, park it or leave it;
 - for a new rule violation, say which rule and the fix the plan's section 2 implies;

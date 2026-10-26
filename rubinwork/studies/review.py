@@ -1,6 +1,6 @@
 """Review the repository's studies and dependency rules: the ``/review`` skill.
 
-Rewrites ``STUDIES.md`` and ``PRODUCTS.md``, then reports:
+Rewrites ``STUDIES.md``, ``PRODUCTS.md`` and ``PRODUCT_MAP.md``, then reports:
 
 - studies whose front matter breaks the schema;
 - active studies untouched for more than `STALE_DAYS` days, counting from the later of
@@ -297,6 +297,8 @@ def review(topic=None, root=None, today=None, regenerate=True):
         from rubinwork.products import catalog
         result["regenerated"]["STUDIES.md"] = write_studies_index(root)
         result["regenerated"]["PRODUCTS.md"] = catalog.write_index(root / "PRODUCTS.md")
+        from .product_map import write_map
+        result["regenerated"]["PRODUCT_MAP.md"] = write_map(root)
 
     schema, stale, no_answer, superseded = [], [], [], []
     paths = find_studies(root, topic)

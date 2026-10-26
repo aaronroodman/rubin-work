@@ -309,9 +309,10 @@ Each study run writes into a dated directory made by
 `rubinwork.common.study_run("<topic>/<study>", "<label>")`, whose `run.json` records the
 git commit, the command and the product builds read.
 
-`STUDIES.md` and `PRODUCTS.md` at the repo root are generated
-(`python -m rubinwork.studies index`, `python -m rubinwork.products.catalog index`);
-never edit them by hand.
+`STUDIES.md`, `PRODUCTS.md` and `PRODUCT_MAP.md` at the repo root are generated
+(`python -m rubinwork.studies index`, `python -m rubinwork.products.catalog index`,
+`python -m rubinwork.studies map`; `/review` runs all three); never edit them by hand.
+What each product is: `rubinwork/products/README.md`.
 
 Most topics are not yet in this layout: their code is still in `<topic>/code/<study>/`,
 notebooks in `<topic>/notebooks/<study>/`, docs in `<topic>/docs/studies/` and output in

@@ -54,7 +54,7 @@ the one- or two-sentence form of Current answer. Quote a front-matter value cont
 `study.md`, linked from it. `study.md` takes no separate status line: its front matter
 is the status.
 
-`STUDIES.md` and `PRODUCTS.md` at the repo root are generated; never edit them by hand.
+`STUDIES.md`, `PRODUCTS.md` and `PRODUCT_MAP.md` at the repo root are generated; never edit them by hand.
 
 ## Markdown docs
 Every `.md` file has exactly one home, by kind:
@@ -63,7 +63,7 @@ Every `.md` file has exactly one home, by kind:
 |---|---|---|
 | a study: question, answer, log | `<topic>/<study>/study.md` | `aos/miw_hull/study.md` |
 | a study's derivation or method | `<topic>/<study>/<name>.md` | `camera/itl_dip/method.md` |
-| a product: schema, versions | `rubinwork/products/<name>/README.md` (none written yet; the package docstring holds it today) | `rubinwork/products/fam_tables/__init__.py` |
+| a product: schema, versions | the package docstring; the catalog of all products is `rubinwork/products/README.md` | `rubinwork/products/fam_tables/__init__.py` |
 | topic scope + index | `<topic>/README.md` | `aos/README.md` |
 | Claude scoping rules | `<topic>/CLAUDE.md` | `aos/CLAUDE.md` |
 | durable reference, conventions, investigation writeups | `<topic>/docs/` | `smatrix/docs/conventions.md` |

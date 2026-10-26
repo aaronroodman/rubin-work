@@ -78,6 +78,7 @@ def test_review(repo, monkeypatch):
     assert result["superseded"] == [("aos/pinned", "miw: d12-a@20261001", "20261010")]
     assert result["uncovered"] == {"aos": 4, "optatmo": 1}
     assert (repo / "STUDIES.md").is_file() and (repo / "PRODUCTS.md").is_file()
+    assert (repo / "PRODUCT_MAP.md").is_file()
     text = review.report_markdown(result)
     assert "## Rule violations, new" in text and "aos/code/alpha/a.py" in text
     fresh = review.review(root=repo, today=commit_date)
