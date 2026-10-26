@@ -1,0 +1,75 @@
+# ----------------------------------------------------------------------
+# cwfs_science product build (Snakemake): one job per night, then one table.
+#
+#   snakemake -s rubinwork/products/cwfs_science/Snakefile -n \
+#       --config variant=d13-blitz_rso1071 build=20261026
+#   snakemake -s rubinwork/products/cwfs_science/Snakefile -c16 \
+#       --config variant=d13-blitz_rso1071 build=20261026 nights=20260315,20260316
+#
+# Run from the REPOSITORY ROOT.  `nights` limits the build to a comma list (a test);
+# by default every night with a corner table in the variant's collections.
+#
+# Output, under the product catalog's data root:
+#   <products>/cwfs_science/<variant>/<build>/{ccd,raft}_visits.parquet
+#   <products>/cwfs_science/<variant>/<build>/_work/nights/{ccd,raft}_<night>.parquet
+#   <products>/cwfs_science/<variant>/<build>/manifest.json   written last
+# ----------------------------------------------------------------------
+import datetime
+import os
+
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+from rubinwork.products.cwfs_science import reader
+from rubinwork.products.cwfs_science.builders import build_night
+
+VARIANT = config.get('variant', 'd13-blitz_rso1071')
+BUILD = str(config.get('build') or datetime.datetime.now(datetime.UTC).strftime('%Y%m%d'))
+BUILD_DIR = reader.build_dir(VARIANT, BUILD)
+WORK = BUILD_DIR / '_work'
+LOGS = WORK / 'logs'
+
+_nights = str(config.get('nights', '')).strip()
+NIGHTS = ([int(n) for n in _nights.split(',') if n] if _nights
+          else build_night.nights(VARIANT))
+OPTIONS = f'--option nights={_nights}' if _nights else ''
+
+
+rule all:
+    input:
+        str(BUILD_DIR / 'manifest.json'),
+
+
+rule night:
+    output:
+        ccd  = str(WORK / 'nights' / 'ccd_{night}.parquet'),
+        raft = str(WORK / 'nights' / 'raft_{night}.parquet'),
+    resources: mem_mb=4000
+    log: str(LOGS / 'night_{night}.log')
+    shell:
+        'python -m rubinwork.products.cwfs_science.builders.build_night'
+        f' --variant {VARIANT} --night {{wildcards.night}}'
+        ' --out-ccd {output.ccd} --out-raft {output.raft} > {log} 2>&1'
+
+
+rule combine:
+    input: expand(str(WORK / 'nights' / '{{kind}}_{night}.parquet'), night=NIGHTS)
+    output: str(BUILD_DIR / '{kind}_visits.parquet')
+    wildcard_constraints: kind='ccd|raft'
+    resources: mem_mb=16000
+    log: str(LOGS / 'combine_{kind}.log')
+    shell:
+        'python -m rubinwork.products.cwfs_science.builders.combine'
+        ' --table {wildcards.kind}_visits --out {output} {input} > {log} 2>&1'
+
+
+rule manifest:
+    input: expand(str(BUILD_DIR / '{kind}_visits.parquet'), kind=['ccd', 'raft'])
+    output: str(BUILD_DIR / 'manifest.json')
+    log: str(LOGS / 'manifest.log')
+    shell:
+        'python -m rubinwork.products.cwfs_science.write_manifest'
+        f' --variant {VARIANT} --build {BUILD} {OPTIONS} > {{log}} 2>&1'

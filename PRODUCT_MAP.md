@@ -94,7 +94,7 @@ Declared by studies (`uses:`): [aos/cwfs_lut](aos/cwfs_lut/study.md) d12-A_50_34
 
 Built into (manifest): `wfs_corner_compare`.
 
-Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) d12-refitWcs@20261013; [aos/cwfs](aos/cwfs/study.md) d13-blitz_unpaired@20261024.
+Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) d12-refitWcs@20261013; [aos/cwfs](aos/cwfs/study.md) d13-blitz_unpaired@20261024; [aos/cwfs_blur_intra_extra](aos/cwfs_blur_intra_extra/study.md) d13-blitz_unpaired@20261024.
 
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
@@ -175,7 +175,7 @@ Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) d12-A_50_34_i@curre
 
 ### value_added
 
-Declared by studies (`uses:`): [aos/cwfs_lut](aos/cwfs_lut/study.md) v1@current; [aos/intra_extra](aos/intra_extra/study.md) v1@current; [thermal_focus/thermal_focus](thermal_focus/thermal_focus/study.md) v1@current; [thermal_focus/trim_calculator](thermal_focus/trim_calculator/study.md) v1@current; [value_added/compare_trim_consdb](value_added/compare_trim_consdb/study.md) v1@snapshots/20261016.
+Declared by studies (`uses:`): [aos/cwfs_blur_intra_extra](aos/cwfs_blur_intra_extra/study.md) v1@20261025b; [aos/cwfs_lut](aos/cwfs_lut/study.md) v1@current; [aos/intra_extra](aos/intra_extra/study.md) v1@current; [thermal_focus/thermal_focus](thermal_focus/thermal_focus/study.md) v1@current; [thermal_focus/trim_calculator](thermal_focus/trim_calculator/study.md) v1@current; [value_added/compare_trim_consdb](value_added/compare_trim_consdb/study.md) v1@snapshots/20261016.
 
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
@@ -209,6 +209,7 @@ A study listed here reads at least one product. **undeclared** marks a product i
 | [aos/closed_loop](aos/closed_loop/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
 | [aos/correlations](aos/correlations/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
 | [aos/cwfs](aos/cwfs/study.md) | active | cwfs_tables, fam_tables, miw, wfs_corner_compare | cwfs_tables, fam_tables, miw, wfs_corner_compare |  |
+| [aos/cwfs_blur_intra_extra](aos/cwfs_blur_intra_extra/study.md) | active | cwfs_tables, value_added |  |  |
 | [aos/cwfs_lut](aos/cwfs_lut/study.md) | active | bounce_tables, value_added | bounce_tables, value_added |  |
 | [aos/dzfit](aos/dzfit/study.md) | done |  | fam_tables | fam_tables |
 | [aos/giant_donut_pupil](aos/giant_donut_pupil/study.md) | parked |  | value_added | value_added |

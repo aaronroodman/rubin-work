@@ -39,6 +39,7 @@ flowchart LR
     fam_tables --> value_added
     miw --> value_added
     efd --> fam_tables
+    butler --> cwfs_science
     guider[(Butler: guider stamps)] --> guider_moments
 ```
 
@@ -53,6 +54,7 @@ the M1M3 gradients it attaches to `visits.parquet`.
 |---|---|---|---|---|
 | `fam_tables` | Full Array Mode (FAM) per-donut, per-visit and Double Zernike (DZ) fit tables: `donuts`, `visits`, `fits.parquet` | `fam_tables/Snakefile` (Butler mktable, fit, attach telemetry); `builders/refit_build.py` for a cut-only rebuild | one per processing: `danish_1_2`, `danish_1_3`, `danish_1_3_test`, `danish_1_3_v1000` | `fam_tables.load(variant)` |
 | `cwfs_tables` | Corner wavefront sensor (CWFS) donuts from each FAM triplet's in-focus exposure, tagged with the paired FAM visit | `cwfs_tables/Snakefile` (`run_wfs_mktable`) | one per CWFS processing: `d12-refitWcs`, `d12-ai_donut`, `d12-paired_3mm`, `d12-tarts`, `d13-blitz_unpaired` | `cwfs_tables.load(variant)` |
+| `cwfs_science` | Per-CCD and per-raft summaries of the corner wavefront sensor (CWFS) donuts in every science visit, not tied to FAM: total and intrinsic Zernikes in OCS and CCS, blur and counts, under our flag cut and under the MTAOS selection read from the online `zernikes` table | `cwfs_science/Snakefile`, one job per night (`run_build.sbatch`) | one per CWFS processing: `d13-blitz_rso1071` | `cwfs_science.load(variant)` returns `ccd_visits`, `raft_visits` |
 | `miw` | Measured Intrinsic Wavefront: per-rotator-bin grids, OCS/CCS split, per-donut sidecars (FAM and CWFS) and the MIW-subtracted DZ refit | `miw/Snakefile`, running `ts_intrinsic_wavefront`'s `bin/` runners | `<fam short code>-<scheme>`: `d12-A_50_34_i`, `d12-A_50_34_i_5rot`, `d13-A_50_34_i(_5rot)`, and the old-tree `d13t-*`, `d13v1000-*` arms; external `official-*`, `staged-v1` | `miw.load(variant)`, `miw.load_maps(...)` |
 | `dof_lut` | The averaged degree-of-freedom look-up table, from the MIW refit DZ through the sensitivity-matrix SVD | `dof_lut/Snakefile` (`run_build_lut`) | one per MIW variant: `d12-A_50_34_i`, `d12-A_50_34_i_5rot` | `dof_lut.load(variant)`; mode counts with `dof_lut.build_metadata` |
 | `bounce_tables` | Paired optical-state change across the T720 and T724 bounces, per DZ term, v-mode and DOF, under five recovery schemes | `bounce_tables/Snakefile` (`rubinwork.bounce.analysis`) | one per MIW variant: `d12-A_50_34_i`, `d12-A_50_34_i_5rot` (`_july` old tree) | `bounce_tables.load(variant)` |
