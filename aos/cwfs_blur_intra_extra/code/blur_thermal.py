@@ -5,7 +5,8 @@ Per visit, each corner raft whose two halves both have at least `MIN_DONUTS` qua
 donuts gives ``blur_median(SW1) - blur_median(SW0)``; the visit value is the median over
 those rafts, kept if at least `MIN_RAFTS` contribute.
 
-Run from this study's directory, after ``code/fetch_thermal.py``::
+Run from this study's directory, after ``code/fetch_thermal.py`` and
+``code/fetch_wind.py``::
 
     python code/blur_thermal.py
 """
@@ -28,12 +29,15 @@ from rubinwork.products import cwfs_science
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from fetch_thermal import CACHE  # noqa: E402
+from fetch_wind import CACHE as WIND_CACHE  # noqa: E402
 
 VARIANT = "d13-blitz_rso1071"
 MIN_DONUTS = 3
 MIN_RAFTS = 2
 MIN_NIGHT_VISITS = 20
 N_SELECT = 3
+# Two steps past N_SELECT, to see whether a wind quantity enters once thermal is in.
+N_SELECT_WIND = 5
 # The truss reads about 24 deg C on these nights, about 10 deg C above the M1M3 air and
 # the nights either side; treated as a sensor fault.
 BAD_TRUSS_NIGHTS = (20251118, 20251119)
@@ -63,6 +67,32 @@ THERMAL_FEATURES = {
     "m1m3_air_temp": "M1M3 air temperature (deg C)",
     "outside_temp": "outside air temperature (deg C)",
 }
+
+TMA_SONIC = (123, 124, 125, 126)
+SONIC_LABEL = {110: "platform sonic (110)", **{i: f"TMA top-ring sonic ({i})" for i in TMA_SONIC}}
+# Sonic axes 0-2 are in each anemometer's own frame, which is not recorded here.
+WIND_FEATURES = {
+    "wind_speed": "weather tower wind speed (m/s)",
+    "cos_into_wind": "cos(tower wind_dir - TMA azimuth) (dimensionless, +1 into wind)",
+    "head_wind_ms": "tower wind speed x cos(wind_dir - az) (m/s)",
+    "abs_into_wind_deg": "|tower wind_dir - TMA azimuth| (deg, 0 into wind)",
+    "salindex301_airflow_speed_mean": "outside airflow speed, ESS 301 (m/s)",
+    "salindex301_airflow_stddev_mean": "outside airflow 30 s std, ESS 301 (m/s)",
+    "salindex110_wind_speed_magnitude_mean": "platform sonic (110) speed magnitude (m/s)",
+    **{f"salindex110_wind_speed_{k}_mean": f"platform sonic (110) axis {k} speed (m/s)"
+       for k in range(3)},
+    "sonic110_std_ms": "platform sonic (110) 30 s std, quadrature sum of axes (m/s)",
+    "salindex110_sonic_temperature_stddev_mean": "platform sonic (110) 30 s temp std (deg C)",
+    "sonic110_minus_m1m3_air_c": "platform sonic (110) temp - M1M3 air (deg C)",
+    "tma_sonic_speed_mean_ms": "TMA top-ring sonics (123-126) mean speed magnitude (m/s)",
+    "tma_sonic_std_mean_ms": "TMA top-ring sonics (123-126) mean 30 s std (m/s)",
+    "tma_sonic_temp_std_mean_c": "TMA top-ring sonics (123-126) mean 30 s temp std (deg C)",
+    **{f"salindex{i}_wind_speed_magnitude_mean": f"{SONIC_LABEL[i]} speed magnitude (m/s)"
+       for i in TMA_SONIC},
+}
+# Wind quantities offered to the forward selection: those reporting on about 88% or more
+# of visits. The TMA top-ring sonics start on 2026-02-16, so they would cut the sample.
+WIND_SELECT = [c for c in WIND_FEATURES if not c.startswith(("salindex12", "tma_sonic"))]
 
 OTHER_FEATURES = {
     "blur_mean": "mean of intra and extra blur (arcsec)",
@@ -120,6 +150,30 @@ def add_thermal(v):
     return d
 
 
+def add_wind(d):
+    """Join the wind cache and derive pointing-relative and turbulence quantities."""
+    d = d.merge(pd.read_parquet(WIND_CACHE), on="visit", how="left")
+    # wind_dir is where the wind comes from, so wind_dir - az = 0 is pointing into it.
+    into = np.radians(d["wind_dir"] - d["az"])
+    d["cos_into_wind"] = np.cos(into)
+    d["head_wind_ms"] = d["wind_speed"] * np.cos(into)
+    d["abs_into_wind_deg"] = np.abs((d["wind_dir"] - d["az"] + 180) % 360 - 180)
+
+    def std_quad(i):
+        return np.sqrt(sum(d[f"salindex{i}_wind_speed_stddev_{k}_mean"] ** 2
+                           for k in range(3)))
+
+    d["sonic110_std_ms"] = std_quad(110)
+    d["sonic110_minus_m1m3_air_c"] = d["salindex110_sonic_temperature_mean"] - d["m1m3_air_temp"]
+    d["tma_sonic_speed_mean_ms"] = d[[f"salindex{i}_wind_speed_magnitude_mean"
+                                      for i in TMA_SONIC]].mean(axis=1, skipna=False)
+    d["tma_sonic_std_mean_ms"] = pd.concat([std_quad(i) for i in TMA_SONIC],
+                                           axis=1).mean(axis=1, skipna=False)
+    d["tma_sonic_temp_std_mean_c"] = d[[f"salindex{i}_sonic_temperature_stddev_mean"
+                                        for i in TMA_SONIC]].mean(axis=1, skipna=False)
+    return d
+
+
 def line_stats(x, y):
     """Huber slope and intercept, Pearson r, Spearman rho and n, on finite pairs."""
     ok = np.isfinite(x) & np.isfinite(y)
@@ -130,11 +184,11 @@ def line_stats(x, y):
                 rho=float(stats.spearmanr(x, y)[0]))
 
 
-def within_night_rho(d, col):
-    sub = d[np.isfinite(d[col]) & np.isfinite(d[TARGET])]
+def within_night_rho(d, col, target=TARGET):
+    sub = d[np.isfinite(d[col]) & np.isfinite(d[target])]
     sub = sub[sub.groupby("day_obs")[col].transform("size") >= MIN_NIGHT_VISITS]
     x = sub[col] - sub.groupby("day_obs")[col].transform("mean")
-    y = sub[TARGET] - sub.groupby("day_obs")[TARGET].transform("mean")
+    y = sub[target] - sub.groupby("day_obs")[target].transform("mean")
     return float(stats.spearmanr(x, y)[0]), int(sub["day_obs"].nunique())
 
 
@@ -204,12 +258,13 @@ def page_nightly(pdf, v):
     return fig, night
 
 
-def pages_scatter(pdf, d, features, title, per_page=12, sort=False):
+def pages_scatter(pdf, d, features, title, per_page=12, sort=False, target=TARGET,
+                  ylabel=TARGET_LABEL):
     rows = []
     names = list(features)
     for c in names:
-        s = line_stats(d[c].to_numpy(float), d[TARGET].to_numpy(float))
-        s["rho_within_night"], s["n_nights"] = within_night_rho(d, c)
+        s = line_stats(d[c].to_numpy(float), d[target].to_numpy(float))
+        s["rho_within_night"], s["n_nights"] = within_night_rho(d, c, target)
         rows.append(dict(column=c, feature=features[c], **s))
     if sort:
         rows.sort(key=lambda r: -abs(r["rho"]))
@@ -218,8 +273,8 @@ def pages_scatter(pdf, d, features, title, per_page=12, sort=False):
         chunk = names[start:start + per_page]
         fig, axes = plt.subplots(3, 4, figsize=(17, 12))
         for ax, c, s in zip(axes.flat, chunk, rows[start:start + per_page]):
-            scatter_panel(ax, d[c].to_numpy(float), d[TARGET].to_numpy(float),
-                          features[c], s)
+            scatter_panel(ax, d[c].to_numpy(float), d[target].to_numpy(float),
+                          features[c], s, ylabel)
         for ax in axes.flat[len(chunk):]:
             ax.set_visible(False)
         order = "; panels in order of |rho|" if sort else ""
@@ -230,7 +285,7 @@ def pages_scatter(pdf, d, features, title, per_page=12, sort=False):
     return pd.DataFrame(rows)
 
 
-def page_ranking(pdf, table):
+def page_ranking(pdf, table, what="Thermal quantities", target_label=TARGET_LABEL):
     t = table.reindex(table["rho"].abs().sort_values().index)
     fig, ax = plt.subplots(figsize=(12, 9))
     y = np.arange(len(t))
@@ -239,15 +294,16 @@ def page_ranking(pdf, table):
             label="Spearman rho, each night's mean removed")
     ax.set_yticks(y, t["feature"], fontsize=9)
     ax.axvline(0, color="k", lw=0.8)
-    ax.set_xlabel("Spearman rho with intra - extra blur (dimensionless)")
-    ax.set_title(f"Thermal quantities ranked by |rho| (n up to {t['n'].max()} visits; "
+    ax.set_xlabel(f"Spearman rho with {target_label} (dimensionless)")
+    ax.set_title(f"{what} ranked by |rho| (n up to {t['n'].max()} visits; "
                  f"within-night over nights with >= {MIN_NIGHT_VISITS} visits)")
     ax.legend(loc="lower right")
     pdf.savefig(fig)
     plt.close(fig)
 
 
-def page_selection(pdf, d, steps, fit, frame):
+def page_selection(pdf, d, steps, fit, frame, labels=THERMAL_FEATURES,
+                   title="Forward selection of thermal predictors of intra - extra blur"):
     fig, axes = plt.subplots(2, 4, figsize=(18, 10))
     axes = axes.flat
     y = frame[TARGET].to_numpy()
@@ -264,7 +320,7 @@ def page_selection(pdf, d, steps, fit, frame):
         ax.set_ylim(lim)
         ax.set_xlabel("predicted (arcsec)", fontsize=9)
         ax.set_ylabel("observed (arcsec)", fontsize=9)
-        ax.set_title(f"step {i + 1}: + {THERMAL_FEATURES[row['variable']]}\n"
+        ax.set_title(f"step {i + 1}: + {labels[row['variable']]}\n"
                      f"residual nMAD {row['nmad_after']:.4f} arcsec, gain "
                      f"{row['gain_frac']:.3f}, VIF {row['vif']:.2f}", fontsize=8.5)
     for ax in axes[len(steps):]:
@@ -274,7 +330,7 @@ def page_selection(pdf, d, steps, fit, frame):
              f"start nMAD {nmad(y - np.median(y)):.4f} arcsec", ""]
     for i, row in steps.iterrows():
         j = i + 1
-        lines.append(f"{j}. {THERMAL_FEATURES[row['variable']]}")
+        lines.append(f"{j}. {labels[row['variable']]}")
         lines.append(f"   slope {fit.params[j]:+.4g} +- {fit.bse[j]:.2g} arcsec/unit")
         lines.append(f"   rho own {row['rho_own']:+.3f}, rho vs residual "
                      f"{row['rho_partial']:+.3f}")
@@ -286,7 +342,7 @@ def page_selection(pdf, d, steps, fit, frame):
               "VIF: variance inflation factor", "(dimensionless)"]
     ax.text(0, 1, "\n".join(lines), va="top", family="monospace", fontsize=9,
             transform=ax.transAxes)
-    fig.suptitle("Forward selection of thermal predictors of intra - extra blur")
+    fig.suptitle(title)
     pdf.savefig(fig, dpi=120)
     plt.close(fig)
 
@@ -321,7 +377,7 @@ def main():
     setup_plotting()
     run = study_run("aos/cwfs_blur_intra_extra", "blur_thermal")
     v = per_visit()
-    d = add_thermal(v)
+    d = add_wind(add_thermal(v))
     d.to_parquet(run.path / "blur_diff_per_visit.parquet", index=False)
     print(f"{len(d)} visits, median {TARGET_LABEL} {d[TARGET].median():+.4f}, "
           f"nMAD {nmad(d[TARGET]):.4f} arcsec")
@@ -348,6 +404,30 @@ def main():
         page_selection(pdf, d, steps, fit, frame)
         page_histograms(pdf, d, frame, fit, run.path)
 
+        # Wind against the blur difference, then against what the thermal model leaves.
+        d["thermal_resid"] = np.nan
+        d.loc[frame.index, "thermal_resid"] = frame[TARGET] - fit.fittedvalues
+        wind = pages_scatter(pdf, d, WIND_FEATURES, "Intra - extra blur vs wind", sort=True)
+        wind = wind.reindex(wind["rho"].abs().sort_values(ascending=False).index)
+        wind.to_csv(run.path / "wind_correlations.csv", index=False)
+        page_ranking(pdf, wind, "Wind quantities")
+        resid_label = f"blur residual after {N_SELECT}-quantity thermal model (arcsec)"
+        wind_res = pages_scatter(pdf, d, WIND_FEATURES, "Thermal-model residual vs wind",
+                                 sort=True, target="thermal_resid", ylabel=resid_label)
+        wind_res = wind_res.reindex(wind_res["rho"].abs().sort_values(ascending=False).index)
+        wind_res.to_csv(run.path / "wind_vs_thermal_residual.csv", index=False)
+        page_ranking(pdf, wind_res, "Wind quantities against the thermal residual",
+                     resid_label)
+
+        both = {**THERMAL_FEATURES, **{c: WIND_FEATURES[c] for c in WIND_SELECT}}
+        steps_tw, _, fit_tw = select_predictors(d[TARGET], d[list(both)],
+                                                n_max=N_SELECT_WIND, min_gain_frac=0.01)
+        frame_tw = pd.concat([d[TARGET], d[list(both)]], axis=1).dropna()
+        steps_tw.to_csv(run.path / "forward_selection_thermal_wind_steps.csv", index=False)
+        page_selection(pdf, d, steps_tw, fit_tw, frame_tw, both,
+                       "Forward selection over thermal and wind predictors "
+                       f"(wind: the {len(WIND_SELECT)} with about 88% coverage)")
+
         other = pages_scatter(pdf, d, OTHER_FEATURES,
                               "Intra - extra blur vs mean blur, pointing, Zernikes")
         other.to_csv(run.path / "other_correlations.csv", index=False)
@@ -358,6 +438,10 @@ def main():
     print(steps.to_string(index=False, float_format=lambda x: f"{x:+.4g}"))
     print("final fit params", fit.params, "bse", fit.bse)
     print(other[cols].to_string(index=False, float_format=lambda x: f"{x:+.4g}"))
+    print(wind[cols].to_string(index=False, float_format=lambda x: f"{x:+.4g}"))
+    print(wind_res[cols].to_string(index=False, float_format=lambda x: f"{x:+.4g}"))
+    print(steps_tw.to_string(index=False, float_format=lambda x: f"{x:+.4g}"))
+    print("thermal+wind fit params", fit_tw.params, "bse", fit_tw.bse)
     print(f"written to {run.path}")
 
 
