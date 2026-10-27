@@ -97,3 +97,18 @@ writes `output/20261026_blur_history/blur_history.pdf` (13 pages).
   The other two slopes do not change. The cover may have changed how the camera
   temperature couples to the blur, but a 0.04 arcsec/°C change is small next to the
   season-to-season changes, so this is not settled.
+
+### 2026-10-27 — selected 3 quantities against a hand-picked 3
+
+`code/blur_hand3.py` compares the forward-selected set (camera body − M1M3 air, M1M3
+quadratic-in-radius, camera air − M1M3 air) with Aaron's hand-picked set (truss − M1M3
+air, M1M3 radial gradient, M2 air − outside), and the hand set with the quadratic term
+in place of the radial gradient. Writes `output/20261027_blur_hand3/blur_hand3.pdf`.
+
+- Held-out residual nMAD (arcsec, Huber, 5 folds by night, n 76,963 visits): selected
+  0.0875 ± 0.0037, hand 0.1256 ± 0.0092, hand with the quadratic term 0.1159 ± 0.0095.
+  Boosted trees on each set give the same ordering.
+- The hand set leaves a step at the cover date: held-out residual median +0.033 arcsec
+  before, −0.030 arcsec after. The selected set leaves +0.001 and −0.002 arcsec.
+- Truss − M1M3 air tracks camera body − M1M3 air closely (Spearman rho +0.83), but the
+  camera body is the better predictor and carries the cover change.
