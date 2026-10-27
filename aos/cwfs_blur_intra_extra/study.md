@@ -1,9 +1,9 @@
 ---
 study: cwfs_blur_intra_extra
 topic: aos
-status: active
+status: done
 question: Does the intra - extra donut blur difference in the corner wavefront sensors, over the science visits, match the FAM difference, and which thermal telemetry drives it?
-answer: ''
+answer: 'Thermal telemetry drives the intra - extra blur difference: a 3-quantity Huber fit led by camera body - M1M3 air cuts the held-out nMAD from 0.196 to 0.0875 arcsec, and boosted trees reach 0.0759 arcsec. The 2026-04-06 cover drop of 0.126 arcsec is explained by the telemetry.'
 uses:
   cwfs_science: d13-blitz_rso1071@20261026
   value_added: v1@20261025b
@@ -127,3 +127,23 @@ in place of the radial gradient. Writes `output/20261027_blur_hand3/blur_hand3.p
   before, −0.030 arcsec after. The selected set leaves +0.001 and −0.002 arcsec.
 - Truss − M1M3 air tracks camera body − M1M3 air closely (Spearman rho +0.83), but the
   camera body is the better predictor and carries the cover change.
+
+### 2026-10-27 — key figures and wrap-up
+
+`code/key_figures.py` writes PNGs of the key PDF pages into `output/20261027_key_figures`,
+plus a table of medians before and after the 2026-04-06 cover. Commits `63fc545`
+(hand-picked set), `e1d8b86` (figures, Current answer).
+
+- Per visit and nightly: [blur_diff_per_visit](figures/blur_diff_per_visit.png),
+  [blur_diff_nightly](figures/blur_diff_nightly.png),
+  [blur_diff_histograms_all](figures/blur_diff_histograms_all.png).
+- Thermal quantities: [blur_vs_thermal](figures/blur_vs_thermal.png),
+  [forward_selection](figures/forward_selection.png).
+- Cover: [cover_blur_histogram](figures/cover_blur_histogram.png),
+  [cover_table](figures/cover_table.png). Medians, before → after (error from the
+  night-to-night scatter; 40,733 visits / 113 nights → 36,230 visits / 60 nights):
+  - blur difference +0.320 ± 0.023 → +0.194 ± 0.023 arcsec;
+  - Huber 3-quantity held-out residual +0.000 ± 0.008 → −0.002 ± 0.011 arcsec;
+  - camera body − M1M3 air −1.481 ± 0.066 → −1.062 ± 0.072 deg C. The camera body
+    cooled by 1.74 deg C while the M1M3 air cooled by 2.09 deg C.
+- Not done: a direct comparison of the science-visit blur difference with the FAM one.
