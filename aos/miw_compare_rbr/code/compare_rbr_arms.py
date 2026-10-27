@@ -333,12 +333,13 @@ def _field_map(ax, thx, thy, values, title, clabel, cmap="RdBu_r",
     cb.ax.tick_params(labelsize=6)
 
 
-def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label, n_terms=6):
+def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label):
     """MIW field maps for both arms and their difference.
 
-    One page of inferred FWHM, then one page per pupil Noll term carrying the
-    most difference power: unconstrained, RBR, and RBR minus unconstrained on a
-    shared symmetric colour scale so the difference is read against the signal.
+    One page of inferred FWHM, one page of the RMS over the field per pupil Noll
+    term in each arm, then one page per Noll term in Noll order: unconstrained,
+    RBR, and RBR minus unconstrained on a shared symmetric colour scale so the
+    difference is read against the signal.
 
     Parameters
     ----------
@@ -347,11 +348,10 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label, n_terms=6):
     grid_a, grid_b : `str` or `pathlib.Path`
         ``intrinsic_grid.parquet`` for the unconstrained and RBR arms.
     miw_terms : `pandas.DataFrame`
-        Per-term table from `miw_table`, used to order the term pages.
+        Per-term table from `miw_table`, for each term's share of the
+        difference power.
     label : `str`
         Build label for the page titles.
-    n_terms : `int`
-        How many pupil terms to draw, highest difference power first.
     """
     from lsst.ts.wep.utils import convertZernikesToPsfWidth
 
@@ -399,10 +399,11 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label, n_terms=6):
     pdf.savefig(fig)
     plt.close(fig)
 
-    order = [int(j) for j in miw_terms["noll"].head(n_terms)]
-    for j in order:
-        col = int(np.where(noll == j)[0][0])
+    plot_term_rms(pdf, noll, zk_a, zk_b, label)
+
+    for col, j in enumerate(noll):
         a, b = zk_a[:, col], zk_b[:, col]
+        d = b - a
         # Shared scale across all three panels: the difference has to be read
         # against the size of the signal, not auto-scaled to fill its own panel.
         vlim = float(np.nanpercentile(np.abs(np.r_[a, b]), 99.0)) or 1.0
@@ -415,15 +416,60 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label, n_terms=6):
         _field_map(axes[1], thx, thy, b,
                    f"Z{j} RBR\nRMS {np.sqrt((b ** 2).mean()):.4f} um",
                    "Zernike coefficient (um of wavefront)", vlim=vlim)
-        _field_map(axes[2], thx, thy, b - a,
-                   f"Z{j} RBR minus unconstrained\nRMS "
-                   f"{np.sqrt(((b - a) ** 2).mean()):.4f} um",
+        # The median separates a field-constant shift (Z11, say) from a pattern.
+        _field_map(axes[2], thx, thy, d,
+                   f"Z{j} RBR minus unconstrained\nmedian {np.median(d):+.4f} um, "
+                   f"RMS {np.sqrt((d ** 2).mean()):.4f} um",
                    "Zernike difference (um of wavefront)", vlim=vlim)
         fig.suptitle(f"MIW pupil Noll Z{j} — {share:.4f} of the difference "
                      f"power (dimensionless) — {label}", fontsize=10)
         fig.tight_layout()
         pdf.savefig(fig)
         plt.close(fig)
+
+
+def plot_term_rms(pdf, noll, zk_a, zk_b, label):
+    """RMS over the field per pupil Noll term, both arms overlaid.
+
+    Parameters
+    ----------
+    pdf : `matplotlib.backends.backend_pdf.PdfPages`
+        Open PDF to append the page to.
+    noll : `numpy.ndarray`
+        Noll indices of the columns of `zk_a` and `zk_b`.
+    zk_a, zk_b : `numpy.ndarray`
+        MIW Zernike coefficients per field point, unconstrained and RBR, in um
+        of wavefront, shape ``(n_points, n_terms)``.
+    label : `str`
+        Build label for the page title.
+    """
+    rms_a = np.sqrt((zk_a ** 2).mean(axis=0))
+    rms_b = np.sqrt((zk_b ** 2).mean(axis=0))
+    d = zk_b - zk_a
+    rms_d = np.sqrt((d ** 2).mean(axis=0))
+    med_d = np.median(d, axis=0)
+    x = np.arange(len(noll))
+    w = 0.38
+    fig, ax = plt.subplots(figsize=(13, 5.0))
+    ax.bar(x - w / 2, rms_a, w, color="tab:red", label="50/34 unconstrained")
+    ax.bar(x + w / 2, rms_b, w, color="tab:blue", label="50/50 RBR")
+    ax.plot(x, rms_d, "k_", ms=14, mew=2, label="RBR minus unconstrained: RMS")
+    ax.plot(x, np.abs(med_d), "o", mfc="none", mec="k", ms=5,
+            label="RBR minus unconstrained: |median|")
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"Z{j}" for j in noll], fontsize=8)
+    ax.set_xlabel("pupil Noll term")
+    ax.set_ylabel("RMS over the field (um of wavefront)")
+    ax.set_title(f"MIW RMS over the field per Noll term, n={len(zk_a)} field points; "
+                 f"total {np.sqrt((zk_a ** 2).sum(axis=1).mean()):.4f} um "
+                 f"unconstrained, {np.sqrt((zk_b ** 2).sum(axis=1).mean()):.4f} um RBR",
+                 fontsize=9)
+    ax.grid(alpha=0.3, axis="y")
+    ax.legend(fontsize=8)
+    fig.suptitle(f"MIW wavefront per Noll term, both arms — {label}", fontsize=10)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
 
 
 def plot_dof_ranges(pdf, dof_df, label):
