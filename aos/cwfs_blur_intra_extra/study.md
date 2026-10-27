@@ -6,7 +6,7 @@ question: Does the intra - extra donut blur difference in the corner wavefront s
 answer: 'Thermal telemetry drives the intra - extra blur difference: a 3-quantity Huber fit led by camera body - M1M3 air cuts the held-out nMAD from 0.196 to 0.0875 arcsec, and boosted trees reach 0.0759 arcsec. The 2026-04-06 cover drop of 0.126 arcsec is explained by the telemetry.'
 uses:
   cwfs_science: d13-blitz_rso1071@20261026
-  value_added: v1@20261025b
+  value_added: v1@snapshots/20261025b
 started: 2026-10-26
 ---
 

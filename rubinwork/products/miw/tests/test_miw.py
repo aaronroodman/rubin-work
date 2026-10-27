@@ -30,11 +30,7 @@ PREMOVE_BODY = pathlib.Path(__file__).with_name("mi_config_premove_body.yaml")
 
 EXPECTED_VARIANTS = [
     "d12-A_50_34_i", "d12-A_50_34_i_5rot",
-    "d13t-A_50_34_i", "d13t-A_50_34_i_5rot",
-    "d13v1000-A_50_34_i", "d13v1000-A_50_34_i_rbr", "d13v1000-A_50_50_i_rbr",
-    "d13v1000-A_50_34_i_5rot", "d13v1000-A_50_50_i_rbr_5rot",
-    "d13v1000-A_22_12_i", "d13v1000-A_22_12_i_5rot", "d13v1000-A_50_34_i_rbr_5rot",
-    "d13-A_50_34_i", "d13-A_50_34_i_5rot",
+    "d13-A_50_34_i", "d13-A_50_34_i_5rot", "d13-A_50_50_i_rbr", "d13-A_50_50_i_rbr_5rot",
 ]
 """Every variant, in ``variants.yaml`` order, which is generated-file order."""
 
@@ -141,7 +137,7 @@ def test_every_external_variant_has_a_location():
 
 def test_build_source_resolves_build_from_to_a_product_variant():
     assert miw.build_source("d12-A_50_34_i_5rot") == "d12-A_50_34_i"
-    assert miw.build_source("d13v1000-A_50_50_i_rbr_5rot") == "d13v1000-A_50_50_i_rbr"
+    assert miw.build_source("d13-A_50_50_i_rbr_5rot") == "d13-A_50_50_i_rbr"
 
 
 def test_build_source_of_a_self_building_variant_is_itself():

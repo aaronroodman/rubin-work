@@ -829,8 +829,8 @@ The laptop's synced output copies (about 60 GB) can go. Prepared 2026-10-24 (inv
 commands): `notes/status/phase7_cleanup_plan.md`. Nothing zipped or removed. Later on 2026-10-24
 the `aos/` and `guider/` readers were moved to the catalog first, the study rules to their
 `output@`, and the guider moments registered as `guider_moments/v4`; `optatmo/output` stays
-as study data. What still blocks `aos/output` is the 9 Danish 1.3 MIW builds, which exist
-only there.
+as study data. 2026-10-27: `aos/output` is backed up and removed, and the 10 Danish 1.3 test/v1000 MIW
+builds are deleted from the `miw` product; see `notes/status/phase7_cleanup_plan.md`.
 
 **Phase 8 — code review.** Part C of the old plan (C1–C4, at the tag), applied to the new
 layout. The reference runs from phases 2–3 are its first regression tests. Planned 2026-10-24 (scope, references, order):

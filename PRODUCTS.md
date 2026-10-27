@@ -31,16 +31,6 @@ Size is the total of the current build's files, or of the latest build when none
 | miw | `d12-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 3 | 1,869.6 |
 | miw | `d13-A_50_34_i` | 20261025 | 20261025 | 2026-10-25 | 1 | 1,245.0 |
 | miw | `d13-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 1 | 1,237.5 |
-| miw | `d13t-A_50_34_i` | old-tree-20260928 | old-tree-20260928 | 2026-10-24 | 1 | 0.0 |
-| miw | `d13t-A_50_34_i_5rot` | old-tree-20260928 | old-tree-20260928 | 2026-10-24 | 1 | 517.5 |
-| miw | `d13v1000-A_22_12_i` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 19.9 |
-| miw | `d13v1000-A_22_12_i_5rot` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 13.2 |
-| miw | `d13v1000-A_50_34_i` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 0.0 |
-| miw | `d13v1000-A_50_34_i_5rot` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 14.5 |
-| miw | `d13v1000-A_50_34_i_rbr` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 0.0 |
-| miw | `d13v1000-A_50_34_i_rbr_5rot` | old-tree-20261006 | old-tree-20261006 | 2026-10-24 | 1 | 13.5 |
-| miw | `d13v1000-A_50_50_i_rbr` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 19.9 |
-| miw | `d13v1000-A_50_50_i_rbr_5rot` | old-tree-20261007 | old-tree-20261007 | 2026-10-24 | 1 | 13.2 |
 | miw | `official-20260528a` |  | external | 2026-10-10 | 1 |  |
 | miw | `official-gmegias-v3` |  | external | 2026-10-10 | 1 |  |
 | miw | `staged-v1` |  | external | 2026-10-10 | 1 |  |

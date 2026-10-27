@@ -4,8 +4,7 @@ topic: aos
 status: done
 question: "How much do MIW builds differ between Danish 1.2 and 1.3 wavefronts and between the legacy and v1000 pupil models, term by term and as image quality?"
 answer: "Danish 1.2 and 1.3 builds agree in Z5-Z8 to about 9 % of amplitude RMS. v1000 moves the MIW by 0.1027 of amplitude (dimensionless, difference RMS over build-A RMS) with no pupil-rim signature."
-uses:  # its Danish 1.2 side was the old-tree d12-A_50_34_i_5rot build of 2026-07-30, not 20261014
-  miw: d13t-A_50_34_i_5rot@old-tree-20260928
+uses: {}
 started: 2026-09-28
 ---
 
@@ -27,3 +26,11 @@ How much do MIW builds differ between Danish 1.2 and 1.3 wavefronts and between 
 ### 2026-10-05 — backfilled from docs and history
 
 Split from aos `miw`. The three comparison scripts and the OCS/CCS map viewer moved from `aos/code/miw/` and `aos/notebooks/miw/` and import `rubinwork.products.miw` in place of the `miw_io` shim. Converted 2026-10-23 in phase 5.
+
+### 2026-10-27 — Danish 1.3 test and v1000 MIW builds removed
+
+The `miw` builds this study used, `d13t-A_50_34_i_5rot@old-tree-20260928` (its Danish 1.2 side was the old-tree
+`d12-A_50_34_i_5rot` build of 2026-07-30), were deleted on 2026-10-27 in the phase 7
+cleanup, and dropped from `uses:`, with their variants dropped from `rubinwork/products/miw/variants.yaml`.
+The originals are in `/sdf/data/rubin/user/roodman/LSST/backup/pre_reorg_outputs_20261024/aos_output.tar.zst`,
+under `aos/output/miw/`. The results above stand; rerunning the scripts needs a new build.

@@ -40,7 +40,7 @@ from .reader import groups, variants
 
 __all__ = ["CONFIG_MD5", "render", "default_path", "main"]
 
-CONFIG_MD5 = "f37ac7ffc0f31e724c59d37027fb0e4e"
+CONFIG_MD5 = "230a82f3f0484f2e12f71ba6b47a55de"
 """md5 of the generated ``aos/mi_config.yaml``.
 
 A change here means the generated file changed, which is only ever intentional.

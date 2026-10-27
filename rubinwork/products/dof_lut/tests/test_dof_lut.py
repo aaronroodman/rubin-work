@@ -28,8 +28,8 @@ from rubinwork.products.dof_lut import write_manifest  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
-EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot", "d12-A_50_34_i", "d13t-A_50_34_i_5rot"}
-"""The three registered variants: the three jobs aos/Snakefile planned before the move."""
+EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot", "d12-A_50_34_i"}
+"""The two registered variants."""
 
 SAMPLE_METADATA = {
     "param_set": "fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x",
@@ -125,7 +125,7 @@ def test_variant_names_follow_the_rules():
     """At most 32 characters, prefixed with the upstream MIW short code, no spaces."""
     for name in dl_reader.variants(registered_only=False):
         assert len(name) <= 32, f"{name} is {len(name)} characters"
-        assert name.split("-")[0] in {"d12", "d13t"}, name
+        assert name.split("-")[0] in {"d12"}, name
         assert " " not in name
 
 

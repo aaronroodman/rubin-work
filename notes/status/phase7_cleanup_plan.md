@@ -1,12 +1,26 @@
 # Phase 7 plan: back up and remove the old output trees
 
-> **Status:** readers moved to the catalog; nothing zipped or removed; Aaron runs it · **Last updated:** 2026-10-24 · **Kind:** plan
+> **Status:** `aos/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; the rest not yet · **Last updated:** 2026-10-27 · **Kind:** plan
 
 The old output trees are the pre-reorg `<topic>/output` directories. The repo's
 `<topic>/output` symlinks point at them, through `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/`,
 which resolves to `/sdf/data/rubin/user/roodman/LSST/notebooks/rubin-work/`. The products
 and study outputs live elsewhere (`.../LSST/rubin-work/products/` and `.../studies/`), so
 removing these trees does not touch them.
+
+## Done (2026-10-27)
+
+- `aos/output` is backed up as
+  `/sdf/data/rubin/user/roodman/LSST/backup/pre_reorg_outputs_20261024/aos_output.tar.zst`
+  (57 GB) and removed. The repo's `aos/output` symlink now dangles.
+- The 10 Danish 1.3 MIW builds copied into the `miw` product from `aos/output`
+  (`d13t-*`, 2 variants; `d13v1000-*`, 8 variants; 0.9 GB) are deleted, and their
+  variants dropped from `rubinwork/products/miw/variants.yaml`, with the unbuilt
+  `d13t-A_50_34_i_5rot` entries of `dof_lut` and `bounce_tables`. The originals are in the
+  tar under `aos/output/miw/`. The `danish_1_3_test` and `danish_1_3_v1000` FAM tables
+  stay (Aaron, 2026-10-27).
+- The 50/50 RBR arm is redefined on `danish_1_3` as `d13-A_50_50_i_rbr` and
+  `d13-A_50_50_i_rbr_5rot`, not yet built.
 
 ## Inventory (2026-10-24)
 

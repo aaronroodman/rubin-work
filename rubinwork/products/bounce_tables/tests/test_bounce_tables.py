@@ -34,9 +34,8 @@ from rubinwork.products.bounce_tables import write_manifest  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
-EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot_july", "d12-A_50_34_i_5rot",
-                     "d12-A_50_34_i", "d13t-A_50_34_i_5rot"}
-"""The four registered variants: the three jobs aos/Snakefile plans, plus `_july`.
+EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot_july", "d12-A_50_34_i_5rot", "d12-A_50_34_i"}
+"""The three registered variants: the two jobs aos/Snakefile plans, plus `_july`.
 
 `_july` is the only one with output in the old tree (13 files) and is its own variant
 rather than a build of the plain one, Aaron's call 2026-10-11, because its input is a

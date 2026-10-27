@@ -124,28 +124,13 @@ measured_intrinsics:
           - [55.0, 65.0]
         split_js: [4]
 
-  # Danish 1.3 "blitz" UNPAIRED wavefronts, built with the same knobs as the
-  # danish_1_2 pair above so the two MIW versions differ only in the wavefronts
-  # and can be compared directly.  Every other setting comes from `defaults:`.
-  # The default cuts select 275 visits over the same five nights as danish_1_2
-  # (20260315/16/17/24 and 20260409), 197 of them in the 5 rotator bins below
-  # against danish_1_2's 189, with 182 (day_obs, seq_num) visits common to both.
-  # Requested by explicit target path, NOT via `rule all`: this param_set's
-  # visits.parquet carries no engineering telemetry, so the correlations and
-  # bounce targets that `rule all` expands over every (param_set, mi_name) pair
-  # have no thermal or Trim columns to read.  The MIW chain itself needs none of
-  # them.
-  danish_1_3_test:
+  # Danish 1.3 v3.14 pupil model (T614 and sensitivity blocks).  The default cuts
+  # select 301 visits on five nights; the 2025 visits are other programs.
+  danish_1_3:
     - name: pathA_50_34_i
       dir_name: A_50_34_i
       n_dof: 50
       n_keep: 34
-      # No day_obs_max: unlike danish_1_2 this param_set is a single collection
-      # with no later reprocessing to exclude, so there is nothing to freeze out.
-    # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
-    # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
-    # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
-    # Z9+ approximated as OCS-only.
     - name: pathA_50_34_i_5rot
       dir_name: A_50_34_i_5rot
       n_dof: 50
@@ -160,77 +145,9 @@ measured_intrinsics:
           - [55.0, 65.0]
         split_js: [4]
 
-  # The v1000 PUPIL MODEL arm, knobs copied from danish_1_3_test above so the two
-  # MIW differ only in the wavefronts they were built from — and those differ by
-  # the pupil model (see param_sets.yaml for the code versions that also differ,
-  # and why that is accepted).  The scheme is held fixed at 50/34; this is a
-  # pupil-model comparison, not a scheme comparison.
-  #
-  # A FRESH build, deliberately NOT a build_from on danish_1_3_test: build_from
-  # reuses the parent's per-rotator-bin grids and re-runs only the split, but
-  # here the wavefronts themselves differ, so the grids must be rebuilt.
-  #
-  # Requested by explicit target path, NOT via `rule all`, for the same reason as
-  # danish_1_3_test: this param_set's visits.parquet carries no engineering
-  # telemetry, so the correlations and bounce targets that `rule all` expands
-  # over every (param_set, mi_name) pair have no thermal or Trim columns to read.
-  # The MIW chain itself needs none of them.
-  danish_1_3_v1000:
-    - name: pathA_50_34_i
-      dir_name: A_50_34_i
-      n_dof: 50
-      n_keep: 34
-      # No day_obs_max, matching danish_1_3_test.
-
-    # SUPERSEDED by pathA_50_50_i_rbr below -- kept because its outputs are on
-    # disk and the arm comparison documents why it fails.  Confining the
-    # barrier to the 34 retained modes couples the DOF, so this entry destroys
-    # the Z11 correction it was meant to preserve.  Do not build new work from
-    # it; see the 50/50 RBR entry for the numbers.
-    #
-    # Range-Bounded Recovery (RBR) arm, a SEPARATE mi_name so the unconstrained
-    # build's outputs above stay on disk for the arm comparison.  Knobs
-    # identical to pathA_50_34_i except for the recovery: the subtracted
-    # optical state is the one RBR recovers, which keeps every degree of
-    # freedom (DOF) near its allowed range r_j, instead of the unconstrained
-    # truncated-SVD state.  The unconstrained build leaves bending modes far
-    # outside range (B1_20 at a median |d_j|/r_j of 41.55), which is what this
-    # tests.  Implementation in lsst.ts.ofc.range_bounded_recovery.
-    - name: pathA_50_34_i_rbr
-      dir_name: A_50_34_i_rbr
-      n_dof: 50
-      n_keep: 34
-      build:
-        range_bounded_recovery: true
-        rbr_kappa: 4.0    # knee at |d_j| = kappa * r_j
-        rbr_power: 3      # penalty grows as |d_j|**(2*power)
-        # RBR converges much more slowly than the truncated recovery: the
-        # between-iteration change decays as n_iter**-1.066 (measured on
-        # rot_-3_3 over 8 iterations), crossing the 1.0e-03 um of wavefront
-        # tolerance near n_iter 10 where the unconstrained arm clears it at 3.
-        # 15 reaches 6.2e-04 um with margin.
-        n_iter: 15
-    # 50/50 RBR: every mode retained, with the Range-Bounded Recovery barrier
-    # as the ONLY regularizer.  This supersedes the 50/34 RBR entry above,
-    # which does not work: confining the barrier to the 34 retained modes
-    # couples the degrees of freedom (DOF), so bounding the bending modes that
-    # sit tens of times outside their range also crushes the camera and M2
-    # piston that correct Z11 -- Cam_dz fell from -930.67 to -6.67 um while
-    # sitting at only 0.107 of its own allowed range, and the corrected
-    # DZ(k=1, j=11) collapsed from 0.18896 to 0.00075 um of wavefront.
-    #
-    # Solving over all 50 DOF instead leaves each one free: on rot_-3_3 the
-    # largest |d_j|/r_j is 1.43 (dimensionless, against 47.28 for 50/34
-    # unconstrained) while the corrected DZ(1,11) holds at 0.11307 um of
-    # wavefront, 0.60 of what 50/34 reaches with a physically unreachable
-    # state.  Hexapods stay free at a largest ratio of 0.53.
-    #
-    # rbr_penalty_weight is the barrier weight lambda in um^2 of wavefront,
-    # which is what makes the dimensionless barrier commensurate with the
-    # data term.  It had been implicitly 1.0 and unnamed.  lambda is a weak
-    # knob here: over 0.01 to 100 the corrected DZ(1,11) moves only 0.1296 to
-    # 0.1061 um of wavefront while the largest ratio moves 3.16 to 0.65, so it
-    # sets how strictly in-range the state is rather than trading away physics.
+    # Range-Bounded Recovery over all 50 DOF and 50 v-modes.  rbr_penalty_weight
+    # is the barrier weight lambda in um^2 of wavefront.  n_iter is the outer MIW
+    # iteration; the maps settle by iteration 3.
     - name: pathA_50_50_i_rbr
       dir_name: A_50_50_i_rbr
       n_dof: 50
@@ -241,31 +158,9 @@ measured_intrinsics:
         rbr_kappa: 4.0
         rbr_power: 3
         rbr_penalty_weight: 1.0
-        # n_iter is the OUTER MIW iteration (the inner IRLS solve converges in
-        # about 14 steps per visit, separately).  3 matches the 50/34 arm and is
-        # what the per-Noll pages of measured_intrinsic_*_comparison.pdf show:
-        # the maps are indistinguishable from iteration 3 on.
         n_iter: 3
 
-    # March-only (drop out-of-family April-9): reuse pathA_50_34_i's build grids
-    # and decompose only the 5 in-family rotator bins (April-9 sits solely in the
-    # +-30/+-45 bins, so this excludes it by angle).  OCS/CCS split for Z4-Z8;
-    # Z9+ approximated as OCS-only.
-    - name: pathA_50_34_i_5rot
-      dir_name: A_50_34_i_5rot
-      n_dof: 50
-      n_keep: 34
-      build_from: pathA_50_34_i
-      split:
-        rotator_select:
-          - [-65.0, -55.0]
-          - [-20.0, -10.0]
-          - [-3.0, 3.0]
-          - [10.0, 20.0]
-          - [55.0, 65.0]
-        split_js: [4]
-
-    # The 50/50 RBR arm's split, on the same five in-family rotator bins.
+    # The 50/50 RBR split, on the same five rotator bins as pathA_50_34_i_5rot.
     - name: pathA_50_50_i_rbr_5rot
       dir_name: A_50_50_i_rbr_5rot
       n_dof: 50
@@ -278,83 +173,6 @@ measured_intrinsics:
         rbr_power: 3
         rbr_penalty_weight: 1.0
         n_iter: 3
-      split:
-        rotator_select:
-          - [-65.0, -55.0]
-          - [-20.0, -10.0]
-          - [-3.0, 3.0]
-          - [10.0, 20.0]
-          - [55.0, 65.0]
-        split_js: [4]
-
-    # The canonical reduced scheme: the 22-DOF set (10 rigid body + M1M3
-    # bending 1-7 + M2 bending 1-5) with 12 v-modes.  The DOF indices are
-    # given explicitly because the 22-DOF set is NOT the first 22 contiguous
-    # indices -- in the ts_ofc 50-DOF ordering the M2 bending modes start at
-    # 30, so a scalar 22 would silently take M1M3 bending 1-12 and no M2
-    # bending at all.  Matches aos_state.DOF22 and the 22/12 scheme already
-    # used by the v-mode correlation and bounce studies.
-    #
-    # No Range-Bounded Recovery: with only the first 7 M1M3 and first 5 M2
-    # bending modes available, the recovered state is expected to stay inside
-    # the allowed ranges r_j, so the barrier has nothing to do.  That
-    # expectation is checked against the built DOF rather than assumed.
-    - name: pathA_22_12_i
-      dir_name: A_22_12_i
-      n_dof: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-              30, 31, 32, 33, 34]
-      n_keep: 12
-
-    # The 22/12 arm's split, on the same five in-family rotator bins.
-    - name: pathA_22_12_i_5rot
-      dir_name: A_22_12_i_5rot
-      n_dof: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-              30, 31, 32, 33, 34]
-      n_keep: 12
-      build_from: pathA_22_12_i
-      split:
-        rotator_select:
-          - [-65.0, -55.0]
-          - [-20.0, -10.0]
-          - [-3.0, 3.0]
-          - [10.0, 20.0]
-          - [55.0, 65.0]
-        split_js: [4]
-
-    # The RBR arm's split, on the same five in-family rotator bins so the two
-    # arms' split products compare term by term.
-    - name: pathA_50_34_i_rbr_5rot
-      dir_name: A_50_34_i_rbr_5rot
-      n_dof: 50
-      n_keep: 34
-      build_from: pathA_50_34_i_rbr
-      build:
-        range_bounded_recovery: true
-        rbr_kappa: 4.0
-        rbr_power: 3
-        n_iter: 15
-      split:
-        rotator_select:
-          - [-65.0, -55.0]
-          - [-20.0, -10.0]
-          - [-3.0, 3.0]
-          - [10.0, 20.0]
-          - [55.0, 65.0]
-        split_js: [4]
-
-  # Danish 1.3 v3.14 pupil model (T614 and sensitivity blocks), the same knobs as
-  # danish_1_3_test.  The default cuts select the same 301 visits on the same five
-  # nights as danish_1_3_test; the 2025 visits are other programs.
-  danish_1_3:
-    - name: pathA_50_34_i
-      dir_name: A_50_34_i
-      n_dof: 50
-      n_keep: 34
-    - name: pathA_50_34_i_5rot
-      dir_name: A_50_34_i_5rot
-      n_dof: 50
-      n_keep: 34
-      build_from: pathA_50_34_i
       split:
         rotator_select:
           - [-65.0, -55.0]
