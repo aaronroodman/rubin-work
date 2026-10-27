@@ -1,6 +1,6 @@
 # Phase 7 plan: back up and remove the old output trees
 
-> **Status:** `aos/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; the rest not yet · **Last updated:** 2026-10-27 · **Kind:** plan
+> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; `guider/output` and the laptop copies remain · **Last updated:** 2026-10-27 · **Kind:** plan
 
 The old output trees are the pre-reorg `<topic>/output` directories. The repo's
 `<topic>/output` symlinks point at them, through `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/`,
@@ -20,7 +20,12 @@ removing these trees does not touch them.
   tar under `aos/output/miw/`. The `danish_1_3_test` and `danish_1_3_v1000` FAM tables
   stay (Aaron, 2026-10-27).
 - The 50/50 RBR arm is redefined on `danish_1_3` as `d13-A_50_50_i_rbr` and
-  `d13-A_50_50_i_rbr_5rot`, not yet built.
+  `d13-A_50_50_i_rbr_5rot`, built `20261027` and current.
+- `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` are backed up
+  in the same directory (`aos_output-archive-2026-06-11.tar.zst` 28 GB,
+  `blocks_output.tar.zst` 2.1 GB, `value_added_output.tar.zst` 2.2 GB; tar entries match
+  the files on disk: 2233, 94, 57) and removed. `blocks/output` and `value_added/output`
+  now dangle in the repo.
 
 ## Inventory (2026-10-24)
 
@@ -72,7 +77,7 @@ by tracked code. Copied, sizes checked file by file, old tree untouched:
   `psf` to `psf_fp_maps/output`; `closed_loop`, `camera_gravity` (to `miw_origin/output`),
   `lut`; `bending_mode_test_meta.parquet` and `dof_normalization_split.parquet`; the two
   sparse-fit PDFs to `smatrix/sparse_fit/output`; the four `miw/` comparison directories to
-  `miw_recovery_constraint/output` and `miw_version_comparisons/output`.
+  `miw_compare_rbr/output` and `miw_version_comparisons/output`.
 
 Left in the tree, and not needed elsewhere: `fam_processing/` (55 GB; the three variants
 are in the catalog, the donut tables equal in size), `wfs_ingest/` (the four `d12` CWFS
