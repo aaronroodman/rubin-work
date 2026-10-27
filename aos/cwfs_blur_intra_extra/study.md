@@ -18,7 +18,22 @@ Does the intra - extra donut blur difference in the corner wavefront sensors, ov
 
 ## Current answer
 
-None yet.
+The intra − extra blur difference over 84,301 science visits has median +0.260 arcsec and
+nMAD 0.200 arcsec. Thermal telemetry drives most of it. Three quantities in a Huber fit
+(camera body − M1M3 air, M1M3 quadratic-in-radius, camera air − M1M3 air) cut the
+held-out residual nMAD to 0.0875 arcsec (5 folds by whole night, n 76,963 visits).
+Boosted trees on thermal, wind and pointing reach 0.0759 arcsec. Thermal history adds
+nothing more. The raft-scatter floor is 0.033 arcsec.
+
+- The leading quantity, camera body − M1M3 air, is the same as in the FAM study. A direct
+  comparison of the science-visit and FAM blur differences was not made.
+- Camera body − M1M3 air beats truss − M1M3 air. Aaron's hand-picked set (truss − M1M3
+  air, M1M3 radial gradient, M2 air − outside) scores 0.1256 arcsec and leaves a step at
+  the cover date.
+- After the 2026-04-06 neoprene cover, the raw median falls by 0.126 arcsec and camera
+  body − M1M3 air rises by 0.42 deg C. The 3-quantity model explains the drop: the
+  residual medians before and after differ by 0.003 arcsec.
+- Wind speed is mostly seasonal; it adds 0.0015 arcsec of nMAD reduction.
 
 ## Log
 
