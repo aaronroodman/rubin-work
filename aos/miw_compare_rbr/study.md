@@ -2,7 +2,7 @@
 study: miw_compare_rbr
 topic: aos
 status: active
-question: "How do the MIW and its recovered optical state compare between 50/34 without RBR, 50/50 without RBR and 50/50 with Range-Bounded Recovery (RBR), and which keeps every DOF inside its allowed range?"
+question: "How do the MIW and its recovered optical state compare between 50/34 without RBR and 50/50 with Range-Bounded Recovery (RBR), and which keeps every DOF inside its allowed range?"
 answer: "On Danish 1.3, RBR cuts the fraction of (visit, DOF) pairs out of range from 0.4625 to 0.0800 (dimensionless) but grows the MIW RMS from 0.2594 to 0.3148 um of wavefront."
 uses:
   miw: d13-A_50_34_i@20261025, d13-A_50_50_i_rbr@20261027
@@ -15,7 +15,7 @@ started: 2026-09-28
 
 ## Question
 
-How do the MIW and its recovered optical state compare between 50/34 without RBR, 50/50 without RBR and 50/50 with Range-Bounded Recovery (RBR), and which keeps every DOF inside its allowed range?
+How do the MIW and its recovered optical state compare between 50/34 without RBR and 50/50 with Range-Bounded Recovery (RBR), and which keeps every DOF inside its allowed range?
 
 ## Current answer
 
@@ -26,7 +26,6 @@ On Danish 1.3 (`danish_1_3` FAM tables, 9 rotator bins, 301 visits):
   (visit, DOF) pairs out of range from 0.4625 to 0.0800 (dimensionless).
 - RBR grows the MIW: on `rot_-3_3`, RMS over the field 0.2594 → 0.3148 µm of wavefront,
   inferred FWHM 0.1748 → 0.2097 arcsec.
-- The 50/50 arm without RBR is not built yet.
 
 ## Log
 
@@ -47,8 +46,8 @@ The 50/50 RBR arm is redefined on the `danish_1_3` FAM tables as `d13-A_50_50_i_
 
 ### 2026-10-27 — renamed; Danish 1.3 50/34 against 50/50 RBR
 
-Renamed from `miw_recovery_constraint`; the question now names the three arms: 50/34
-without RBR, 50/50 without RBR and 50/50 with RBR. Built `d13-A_50_50_i_rbr@20261027`
+Renamed from `miw_recovery_constraint`; the question now names the two arms: 50/34
+without RBR and 50/50 with RBR. A 50/50 arm without RBR is not wanted (Aaron). Built `d13-A_50_50_i_rbr@20261027`
 and `_5rot` (job 42123807, `n_iter` 3, RBR kappa 4.0, power 3), set current. Ran
 `check_dof_ranges.py` and `compare_rbr_arms.py` against `d13-A_50_34_i@20261025`, all 9
 rotator bins, 301 visits common to both. Output `output/20261027_d13_rbr_arms/`.
@@ -69,6 +68,4 @@ rotator bins, 301 visits common to both. Output `output/20261027_d13_rbr_arms/`.
   more iterations did not converge before.
 
 Next:
-- a 50/50 build without RBR, the third arm (new variant and batch job);
-- `compare_schemes.py` over the three arms;
 - Aaron to review `rbr_arms/rbr_arms_plots.pdf` and iterate on the plots.
