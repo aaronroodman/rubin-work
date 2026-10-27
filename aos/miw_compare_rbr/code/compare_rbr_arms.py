@@ -261,6 +261,33 @@ def vmode_table(arm_a, arm_b, estimator):
     })
 
 
+def _read_grid(path):
+    """MIW field grid from either an ``intrinsic_grid`` or an ``intrinsic_split_maps``.
+
+    A per-bin build writes ``intrinsic_grid.parquet``, with the Zernikes as one
+    array column; a ``_5rot`` split writes ``intrinsic_split_maps.parquet``, whose
+    MIW is the telescope-fixed (OCS) component, one ``Z<j>_OCS`` column per term.
+
+    Returns
+    -------
+    noll : `numpy.ndarray`
+        Noll indices of the columns of `zk`.
+    zk : `numpy.ndarray`
+        Zernike coefficients per field point, um of wavefront.
+    thx, thy : `numpy.ndarray`
+        Field angle, deg, OCS.
+    """
+    df = pd.read_parquet(path)
+    if "zk" in df.columns:
+        noll = np.asarray(df["nollIndices"].iloc[0], dtype=int)
+        zk = np.stack(df["zk"].values)
+    else:
+        noll = np.asarray(JS_DEFAULT, dtype=int)
+        zk = df[[f"Z{j}_OCS" for j in noll]].to_numpy()
+    return (noll, zk, np.asarray(df["thx_deg"], dtype=float),
+            np.asarray(df["thy_deg"], dtype=float))
+
+
 def miw_table(grid_a, grid_b):
     """The two arms' MIW grids as inferred FWHM, and the difference per term.
 
@@ -279,12 +306,9 @@ def miw_table(grid_a, grid_b):
     """
     from lsst.ts.wep.utils import convertZernikesToPsfWidth
 
-    df_a = pd.read_parquet(grid_a)
-    df_b = pd.read_parquet(grid_b)
-    noll = np.asarray(df_a["nollIndices"].iloc[0], dtype=int)
-    zk_a = np.stack(df_a["zk"].values)
-    zk_b = np.stack(df_b["zk"].values)
-    if not np.array_equal(np.asarray(df_a["thx_deg"]), np.asarray(df_b["thx_deg"])):
+    noll, zk_a, thx_a, _ = _read_grid(grid_a)
+    _, zk_b, thx_b, _ = _read_grid(grid_b)
+    if not np.array_equal(thx_a, thx_b):
         raise RuntimeError("The two arms' field grids differ; cannot difference.")
 
     good = np.isfinite(zk_a).all(axis=1) & np.isfinite(zk_b).all(axis=1)
@@ -355,13 +379,8 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label):
     """
     from lsst.ts.wep.utils import convertZernikesToPsfWidth
 
-    df_a = pd.read_parquet(grid_a)
-    df_b = pd.read_parquet(grid_b)
-    noll = np.asarray(df_a["nollIndices"].iloc[0], dtype=int)
-    zk_a = np.stack(df_a["zk"].values)
-    zk_b = np.stack(df_b["zk"].values)
-    thx = np.asarray(df_a["thx_deg"], dtype=float)
-    thy = np.asarray(df_a["thy_deg"], dtype=float)
+    noll, zk_a, thx, thy = _read_grid(grid_a)
+    _, zk_b, _, _ = _read_grid(grid_b)
 
     good = np.isfinite(zk_a).all(axis=1) & np.isfinite(zk_b).all(axis=1)
     zk_a, zk_b, thx, thy = zk_a[good], zk_b[good], thx[good], thy[good]
@@ -680,10 +699,11 @@ def main():
                     choices=("all", "5rot"),
                     help="'5rot' restricts to the five in-family rotator bins")
     ap.add_argument("--grid-unconstrained", default=None,
-                    help="intrinsic_grid.parquet of the unconstrained arm, for "
-                         "the MIW comparison (default: skip it)")
+                    help="intrinsic_grid.parquet, or a _5rot "
+                         "intrinsic_split_maps.parquet, of the unconstrained arm, "
+                         "for the MIW comparison (default: skip it)")
     ap.add_argument("--grid-rbr", default=None,
-                    help="intrinsic_grid.parquet of the RBR arm")
+                    help="the same for the RBR arm")
     ap.add_argument("--ofc-normalization-yaml", default=None,
                     help="override the build's normalization weights file")
     ap.add_argument("--plots", action="store_true",
