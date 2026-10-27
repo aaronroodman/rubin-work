@@ -613,7 +613,7 @@ bit-identically (max abs diff 0.000e+00 on every column).
 **One scope bullet was deliberately not met.** "Give `bounce_lib.py` and `check_dof_ranges.py`
 one shared accessor instead of two duplicated path-insert bootstraps" was dropped on review
 (2026-10-02): `bounce_lib.rbr_module()` is the considered accessor, but having
-`aos/miw_recovery_constraint/code/check_dof_ranges.py` import it would make the MIW study depend on the bounce
+`aos/miw_compare_rbr/code/check_dof_ranges.py` import it would make the MIW study depend on the bounce
 study, a worse coupling than a three-line path insert. Both bootstraps now carry a comment
 saying the solvers are shared code in `smatrix/` and deliberately not copied, so the
 duplication is documented rather than accidental. Nothing is left open.
@@ -638,7 +638,7 @@ study that validated it.
 | the OIC-style penalty, reimplemented for comparison | [smatrix/code/regularized_inversion/run_oic_compare.py](../../smatrix/code/regularized_inversion/run_oic_compare.py) — `oic_authority`, `invert_oic` |
 | the derivation and validation | `smatrix/docs/studies/regularized_inversion.md` |
 | the shared accessor the bounce study uses | `aos/bounce/code/bounce_lib.py`, `rbr_module` |
-| a second, duplicated bootstrap | `aos/miw_recovery_constraint/code/check_dof_ranges.py` |
+| a second, duplicated bootstrap | `aos/miw_compare_rbr/code/check_dof_ranges.py` |
 
 The module already has two callers outside its own study and in a different topic,
 `aos/code/bounce/` and `aos/code/miw/`, each reaching across the topic boundary by a
@@ -664,7 +664,7 @@ that topic.
 - Promote the OIC-style quadratic penalty out of `run_oic_compare.py` into the same module as
   a first-class solver alongside `invert_range_penalty`, mirroring `OICController` rather than
   importing `ts_ofc`.
-- Give `aos/bounce/code/bounce_lib.py` and `aos/miw_recovery_constraint/code/check_dof_ranges.py` one shared
+- Give `aos/bounce/code/bounce_lib.py` and `aos/miw_compare_rbr/code/check_dof_ranges.py` one shared
   accessor instead of two duplicated path-insert bootstraps.
 - Keep `smatrix/docs/studies/regularized_inversion.md` as the derivation, and index the
   promoted OIC solver there.

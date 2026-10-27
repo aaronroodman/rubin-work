@@ -368,7 +368,7 @@ one-line change to `authority()` and removes the 28–280× inconsistency betwee
 
 The **solvers are shared code at `smatrix/code/regularized_inversion.py`**, one level above
 this study's directory, because they are consumed from outside it: `aos/code/bounce/` draws
-all four inversions for its four-scheme comparison, and `aos/miw_recovery_constraint/code/check_dof_ranges.py`
+all four inversions for its four-scheme comparison, and `aos/miw_compare_rbr/code/check_dof_ranges.py`
 uses the allowed-range vector. They sit beside `normalization_weights.py`, which
 `dof_range_vector` imports by bare module name, so a caller needs a single `sys.path` insert
 of `smatrix/code`. The runners that exercise and validate them stay here.

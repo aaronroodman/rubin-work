@@ -99,7 +99,7 @@ are the safest to refactor.
     `rubinwork/studies/tests`, and `/review` output unchanged.
 
 **Tier 3, active studies.** Each in its own sitting, folded into the next real work on
-it, not reviewed cold: `aos/intra_extra`, `aos/cwfs_lut`, `aos/miw_recovery_constraint`,
+it, not reviewed cold: `aos/intra_extra`, `aos/cwfs_lut`, `aos/miw_compare_rbr`,
 `guider/*` (four active), `smatrix/sparse_fit`, `smatrix/regularized_inversion`,
 `blocks/image_quality_trending`. The C2 warm-up item belongs here:
 `aos/cwfs/code/run_wfs_dof_compare.py` reimplements `zj_to_fwhm` and `fp_grid`

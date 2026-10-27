@@ -45,11 +45,11 @@ on its own; these show the two against each other.
 
 Usage
 -----
-    python miw_recovery_constraint/code/compare_rbr_arms.py \
+    python miw_compare_rbr/code/compare_rbr_arms.py \
         --unconstrained /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d13v1000-A_50_34_i/current/build \
         --rbr /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d13v1000-A_50_34_i_rbr/current/build \
         --label "Danish 1.3 blitz, v1000 pupil model" \
-        --out-dir miw_recovery_constraint/output/danish_1_3_v1000_rbr_arms \
+        --out-dir miw_compare_rbr/output/danish_1_3_v1000_rbr_arms \
         --plots
 """
 

@@ -43,8 +43,8 @@ residual and the per-v-mode shift.
 
 Usage
 -----
-    python miw_recovery_constraint/code/compare_schemes.py \
-        --out-dir miw_recovery_constraint/output/danish_1_3_v1000_schemes \
+    python miw_compare_rbr/code/compare_schemes.py \
+        --out-dir miw_compare_rbr/output/danish_1_3_v1000_schemes \
         --label "Danish 1.3 blitz, v1000 pupil model"
 """
 

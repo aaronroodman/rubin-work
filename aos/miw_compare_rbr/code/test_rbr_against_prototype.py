@@ -17,7 +17,7 @@ doubles as a check on that convention -- which the shipped weights file names
 
 Run it directly:
 
-    python miw_recovery_constraint/code/test_rbr_against_prototype.py
+    python miw_compare_rbr/code/test_rbr_against_prototype.py
 """
 
 import unittest

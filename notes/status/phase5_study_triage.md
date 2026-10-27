@@ -26,7 +26,7 @@ the survey proposes.
 
 | study                                                                                 | recommendation                               | state or answer                                                                                                                                                                                             | reason                                                                                 | your call                                                 |
 | ------------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| miw_recovery_constraint (RBR, 22/12, 50/50 arms,`compare_schemes`)                    | convert                                      | unconstrained 50/34 puts 33 of 50 DOF out of range on ≥ 5% of visits; RBR on 1 of 9 bins brings the worst range ratio from 60.25 to 1.713 (dimensionless) but grows the MIW by 0.2764 µm RMS of wavefront | the newest science; depends on unpushed`ts_ofc` and `ts_intrinsic_wavefront` branches  | convert                                                   |
+| miw_compare_rbr (RBR, 22/12, 50/50 arms,`compare_schemes`)                    | convert                                      | unconstrained 50/34 puts 33 of 50 DOF out of range on ≥ 5% of visits; RBR on 1 of 9 bins brings the worst range ratio from 60.25 to 1.713 (dimensionless) but grows the MIW by 0.2764 µm RMS of wavefront | the newest science; depends on unpushed`ts_ofc` and `ts_intrinsic_wavefront` branches  | convert                                                   |
 | miw_version_comparisons (Danish 1.2 vs 1.3, legacy vs v1000 pupil)                    | done                                         | Z5–Z8 agree to about 9% of amplitude RMS; v1000 moves the MIW by 0.1027 of amplitude with no pupil-rim signature                                                                                           | answered                                                                               | convert                                                   |
 | miw_origin (`coadd`, `static_optics`, the MIW handoff, plus smatrix `miw_astig_coma`) | parked, as one study                         | retrieval bias leads: per-visit L test CV R² = +0.408 (dimensionless) vs null +0.014, n = 1126 visits; no physical static figure explains more than about 0.11 (dimensionless, explained variance)         | one investigation split over 4 places; no science for about 4 weeks; next steps listed | parked                                                    |
 | blur_intra_extra                                                                      | convert, as part of intra/extra (question 6) | median intra − extra blur +0.3440 arcsec, intra > extra in 0.9954 of 873 triplets; camera body − M1M3 air is the strongest driver (Spearman −0.7828)                                                     | active                                                                                 | convert                                                   |
@@ -83,7 +83,7 @@ the survey proposes.
 | old OLR pipeline (`Snakefile`, `run_olr`, `nightly_table`, quicklook) | dropped        | broken by design:`olr.py` is a guard that raises                                                             | superseded by`rubinwork/open_loop.py` and the value-added `optical_state` OLR columns | dropped   |
 
 `olr/` becomes a **study topic** for analyses of the stored OLR (not a product).
-`aos/miw_recovery_constraint/code/compare_schemes.py` is a different comparison (inside the MIW build, on FAM
+`aos/miw_compare_rbr/code/compare_schemes.py` is a different comparison (inside the MIW build, on FAM
 visits) and stays with the aos MIW studies.
 
 ## optatmo
@@ -233,7 +233,7 @@ Aaron, 2026-10-18:
 6. **One intra/extra study**: merge `wfs/giant_donuts`, `optics/intra_extra_phase_strip`,
    aos `blur_intra_extra` and the Z11/Z14 part of aos `cwfs` (data and simulation of one
    question)? If yes, which topic holds it (aos, wfs or optics)?
-7. **RBR** appears in aos `miw_recovery_constraint`, `bounce`, `cwfs_lut` and smatrix
+7. **RBR** appears in aos `miw_compare_rbr`, `bounce`, `cwfs_lut` and smatrix
    `regularized_inversion`. Keep them separate (each asks its own question, sharing the
    `rubinwork.smatrix` solvers), or merge?
 

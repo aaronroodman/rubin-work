@@ -763,7 +763,7 @@ comparison, legacy against v1000, with the scheme held fixed.
 | the MIW build chain | `aos/Snakefile`, `rule build_intrinsic` through `rule refit_mi`, calling `run_build_intrinsic.py`, `run_intrinsic_split.py`, `run_dz_fit.py` in the installed `ts_intrinsic_wavefront` |
 | the MIW build entries | `aos/mi_config.yaml`, `measured_intrinsics:` keyed by param set |
 | two-build term-by-term comparison | [aos/miw_version_comparisons/code/compare_miw_versions.py](../../aos/miw_version_comparisons/code/compare_miw_versions.py) |
-| how far the current build's states sit outside the allowed range | [aos/miw_recovery_constraint/code/check_dof_ranges.py](../../aos/miw_recovery_constraint/code/check_dof_ranges.py) |
+| how far the current build's states sit outside the allowed range | [aos/miw_compare_rbr/code/check_dof_ranges.py](../../aos/miw_compare_rbr/code/check_dof_ranges.py) |
 | the RBR solver | [smatrix/code/regularized_inversion.py](../../smatrix/code/regularized_inversion.py), `dof_range_vector` and `invert_range_penalty` |
 | the AOS-side RBR wrappers | `aos/bounce/code/bounce_lib.py`, `rbr_module`, `rbr_dof_per_pair`, `rbr_deltas` |
 | residual wavefront to FWHM | [aos/code/aos_fwhm.py](../../aos/code/aos_fwhm.py), `residual_dW`, `zj_to_fwhm`, `fp_fwhm` |

@@ -17,12 +17,12 @@ from the final iteration's `svd.dof(A_last)` — the exact states the builds sub
 
 Usage
 -----
-    python miw_recovery_constraint/code/compare_build_dof.py \
+    python miw_compare_rbr/code/compare_build_dof.py \
         --build-a /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d13t-A_50_34_i/current/build \
         --build-b /sdf/group/rubin/u/roodman/LSST/rubin-work/products/miw/d13v1000-A_50_34_i/current/build \
         --label-a "legacy pupil" \
         --label-b "v1000 pupil" \
-        --out-dir miw_recovery_constraint/output/danish_1_3_legacy_vs_v1000
+        --out-dir miw_compare_rbr/output/danish_1_3_legacy_vs_v1000
 
 Key arguments: `--rotator-select` restricts to the five in-family rotator bins the
 `_5rot` split decomposes (the default, matching the canonical product).

@@ -204,7 +204,7 @@ python miw_version_comparisons/code/compare_pupil_models.py \
   --label-b "v1000 pupil" \
   --out-dir output/miw/danish_1_3_legacy_vs_v1000
 
-python miw_recovery_constraint/code/compare_build_dof.py \
+python miw_compare_rbr/code/compare_build_dof.py \
   --build-a output/miw/danish_1_3_test_A_50_34_i/build \
   --build-b output/miw/danish_1_3_v1000_A_50_34_i/build \
   --label-a "legacy pupil" \
@@ -279,7 +279,7 @@ no new input enters.
 
 ```bash
 cd ~/notebooks/rubin-work/aos
-python miw_recovery_constraint/code/check_dof_ranges.py \
+python miw_compare_rbr/code/check_dof_ranges.py \
   --build-dir output/miw/danish_1_3_test_A_50_34_i/build \
   --label "Danish 1.3 blitz (unpaired)" \
   --build-dir output/miw/danish_1_2_A_50_34_i/build \
@@ -429,7 +429,7 @@ Commit `b64da2d` (2026-10-08) set `n_iter` back to 3 on the 50/50 RBR arms
 maps settled by iteration 3. The superseded 50/34 RBR entries keep 15. The arms now in
 `rubinwork/products/miw/variants.yaml` are 50/34 unconstrained, 50/50 with RBR and 22/12
 (the canonical 22-DOF set with 12 v-modes, no RBR), each with a five-rotator-bin split;
-`compare_schemes.py` in the [`miw_recovery_constraint`](../../miw_recovery_constraint/study.md)
+`compare_schemes.py` in the [`miw_compare_rbr`](../../miw_compare_rbr/study.md)
 study compares the three.
 
 ## Running

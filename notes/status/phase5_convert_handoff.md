@@ -86,7 +86,7 @@ left unused), 75 files (count), all in studies or `rubinwork/`. The old-layout
 - `aos/giant_donut_pupil/`: `candidates.py`, `isr_cache.py`, `obscuration_v402.py`
 - `aos/miw_hull/`: `azimuth_probe.py`, `continued_rings.py`, `ring_coverage.py`
 - `aos/miw_origin/`: `analyze_miw_bias_regression.py`, `analyze_miw_field_order.py`, `analyze_umode_null_coupling.py`, `camera_gravity.py`, `camera_gravity_maps.py`, `camera_gravity_validation.py`, `run_m3_backprojection_miw.py`, `run_m3_backprojection_validation.py`, `run_miw_backprojection_surfaces.py`, `run_miw_joint_fit.py`, `thermal_sensitivity.py`
-- `aos/miw_recovery_constraint/`: `check_dof_ranges.py`, `compare_build_dof.py`, `compare_rbr_arms.py`, `compare_schemes.py`, `test_rbr_against_prototype.py`
+- `aos/miw_compare_rbr/`: `check_dof_ranges.py`, `compare_build_dof.py`, `compare_rbr_arms.py`, `compare_schemes.py`, `test_rbr_against_prototype.py`
 - `aos/miw_version_comparisons/`: `compare_miw_versions.py`, `compare_pupil_models.py`
 - `aos/processing_compare/`: `compare_fam_processings.py`
 - `aos/psf_fp_maps/`: `run_psf_fp_maps.py`
@@ -185,7 +185,7 @@ Topics with no study in the triage stay as they are, with no `study.md` and no m
 | thermal_focus | `6b30829` | thermal_focus, trim_calculator (active); thermal_vmodes (done) |
 | olr | `3137e05` | scheme_comparison, zernike_opd_vs_consdb (done); aos_dof_audit (parked); olr_pipeline (dropped) |
 | guider | `1522ea3` | guider_vs_ccd_moments, guider_ellipticity_ensemble, guider_atmo_sim, roi_quality (active); centroid_timescale, summit_utils_branch (done); bias_streak, guide_star_saturation (parked) |
-| aos | `27ba376`, `3ff55d5`, `9e5f7e7` | intra_extra, cwfs_lut, miw_recovery_constraint (active); dzfit, bounce, miw_version_comparisons, blitz_vs_danish12 (done); miw_origin, correlations, cwfs, wfs_mimic, bending_mode_test, psf_fp_maps, closed_loop, wavefront_outliers (parked); lut, processing_compare, infra (dropped). giant_donut_pupil parked in `a609662` |
+| aos | `27ba376`, `3ff55d5`, `9e5f7e7` | intra_extra, cwfs_lut, miw_compare_rbr (active); dzfit, bounce, miw_version_comparisons, blitz_vs_danish12 (done); miw_origin, correlations, cwfs, wfs_mimic, bending_mode_test, psf_fp_maps, closed_loop, wavefront_outliers (parked); lut, processing_compare, infra (dropped). giant_donut_pupil parked in `a609662` |
 | section 2 fixes | `c7f1325`, `08f7479`, `ce7d12b`, `70f3407`, `c8cf0ea` | libraries `rubinwork.giant_donuts`, `rubinwork.fresnel`, `rubinwork.thermal_focus`; `catalog.is_in_products`; `trim_calculator` moved into its study |
 | topic READMEs | `438e0f9` | `python -m rubinwork.studies index` writes a generated Studies block into each topic README between markers; the rest is kept |
 | shim callers | `7289448`, `69eee4f` | 51 files (count) import `rubinwork` directly; shim tests skip once their shim is gone |

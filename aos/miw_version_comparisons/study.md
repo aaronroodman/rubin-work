@@ -10,7 +10,7 @@ started: 2026-09-28
 
 # `miw_version_comparisons`
 
-> **Code:** `code/` (`compare_miw_versions.py`, `compare_pupil_models.py`; `compare_build_dof.py` is in `miw_recovery_constraint`, beside the `check_dof_ranges` it imports) · **Notebook:** `notebooks/aos_miw_ocs_ccs_maps.ipynb` · **Write-up:** [`../docs/studies/miw.md`](../docs/studies/miw.md), "Comparing two builds" and "The pupil model"
+> **Code:** `code/` (`compare_miw_versions.py`, `compare_pupil_models.py`; `compare_build_dof.py` is in `miw_compare_rbr`, beside the `check_dof_ranges` it imports) · **Notebook:** `notebooks/aos_miw_ocs_ccs_maps.ipynb` · **Write-up:** [`../docs/studies/miw.md`](../docs/studies/miw.md), "Comparing two builds" and "The pupil model"
 
 ## Question
 
