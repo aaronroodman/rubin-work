@@ -26,7 +26,60 @@ Partly, on one visit (day_obs 20260706, seq 688):
 
 The night batch (`guider_atmo_night.py`) was never run.
 
+## Method
+
+[`method.md`](method.md): what the simulation does (turbulence profile, seeing match,
+phase screens, rendering, guide and science-CCD stars, geometry, what is left out).
+
 ## Log
+
+### 2026-10-27 — review and restructure plan
+
+Reviewed the August state. Problems with the seq 688 result:
+- the run used `camRotAngle` 0 deg against the real −13.09 deg;
+- `--data-summary output/night_<D>/moments/...` no longer exists (data is in the
+  `guider_moments` product, `v4/nights/20260706`);
+- the stamps are `.npy`;
+- the three output directories carry no `run.json`.
+
+On s3df, GalSim 2.8.5, psfws, imSim 2.0, xarray, cfgrib, cdsapi and summit_utils
+import; `lsst.summit.extras` does not. Aaron has the CDS token and the July 2026 ECMWF
+file and will copy them here.
+
+Agreed layout:
+- **product `atmo_sim`**: the simulated pixels.
+  - Guide stamps are written as `guider_raw` `Stamps` to a RUN collection
+    `u/roodman/atmo_sim/...` in `/repo/main`, read through a chain with
+    `LSSTCam/raw/all`. They copy the real visit's headers (ROI, `STMPTMJD`, pointing,
+    `ROTPA`), so `GuiderReader.get` and the `guider_moments` builder run unchanged.
+  - One star per science CCD (189), at the CCD centre in its pixel frame, goes to one
+    multi-HDU FITS per visit.
+  - It uses the same atmosphere as the guiders.
+- **product `atmo_sim_moments`**: the `guider_moments` builder run on the sim collection,
+  and a per-CCD PSF table in the ConsDB `ccdvisit1_quicklook` columns (`psf_sigma`,
+  `psf_ixx`, `psf_iyy`, `psf_ixy`, CCD pixel frame).
+- **this study**: sim against data on (1) FWHM and ellipticity amount and pattern across
+  the science CCDs, against ConsDB, and (2) guider centroid-motion second moments,
+  against `guider_moments`. The ellipticity frame rotation is done here.
+
+The inverse of the `summit_utils` amplifier-to-DVCS chain is the library
+`rubinwork.guider_roi`: `raw = ampToCcdView(rot90(dvcs, +nQuarter))`. Its tests
+(`rubinwork/tests/test_guider_roi.py`, 3 passed) run on the real 20260706/688
+`guider_raw` for all 8 guiders:
+- `dvcs_to_amp` inverts `roiImageToDvcs` bit for bit;
+- an L-shaped marker written through `ccd_to_amp` and read back by `summit_utils`
+  `convertRawStampsToView` lands at the CCD pixel it was drawn at, with DVCS axes along
+  the FOCAL_PLANE images of CCD +x and +y (no sign flip);
+- the local Jacobian gives 0.2 arcsec/pix within 2% (relative).
+
+Next:
+1. Write the `atmo_sim` product skeleton (variants, writer to the Butler and FITS,
+   manifest).
+2. Rerun 688 with the real `ROTPA` and time.
+3. Then 5 visits, then the night as a batch job (needs Aaron's OK).
+
+The old `atmo_sim/` and `atmo_sim_20260705_688/` output directories are to be deleted
+once Aaron agrees.
 
 ### 2026-08-18 — backfilled from docs and history
 
