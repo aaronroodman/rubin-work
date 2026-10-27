@@ -73,3 +73,27 @@ on all 84,301 visits, missing inputs allowed).
   air (each 0.012–0.016 arcsec).
 - Nightly medians of the residual: nMAD 0.0632 (Huber) → 0.0460 arcsec (trees, all
   inputs). Most of what is left is a per-night offset.
+
+### 2026-10-26 — thermal history and the 2026-04-06 camera-region cover
+
+`code/fetch_history.py` reads EFD time series per night (ESS air 111/112/113/301, truss
+ESS 122 items 6–7, camera body `AverageTemp`). It gives, per visit, the 30 and 60 min
+rates, the value at 0 deg twilight, the change since twilight, and the hours after
+twilight. Kept in this study's cache only, not in value_added. `code/blur_history.py`
+writes `output/20261026_blur_history/blur_history.pdf` (13 pages).
+
+- History adds little. Held-out residual nMAD (arcsec, 5 folds by night, n 76,963
+  visits): trees on thermal, wind and pointing 0.0759; plus 28 history inputs 0.0753
+  (std over folds 0.003). No history input raises the shuffled nMAD by more than 0.0016
+  arcsec. The 60 min rates correlate with the Huber residual within a night (Spearman
+  rho −0.14 to −0.21), but the trees gain little from them.
+- Cover: the raw blur difference falls from +0.320 to +0.194 arcsec (median; ±0.023
+  arcsec from night-to-night scatter; 113 nights before, 60 after). The telemetry
+  models explain the drop: the held-out residual medians differ by ≤ 0.005 arcsec
+  across the date, and a cover flag adds nothing. The camera body − M1M3 air median
+  goes from about −1.5 to −1.0 deg C over the same months.
+- Huber slope of camera body − M1M3 air: −0.262 ± 0.001 arcsec/°C before, −0.307 ± 0.001
+  arcsec/°C after (n 42,834 and 37,820 visits). The intercept moves by −0.059 arcsec.
+  The other two slopes do not change. The cover may have changed how the camera
+  temperature couples to the blur, but a 0.04 arcsec/°C change is small next to the
+  season-to-season changes, so this is not settled.

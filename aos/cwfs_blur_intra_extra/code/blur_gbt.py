@@ -100,7 +100,7 @@ def oof_predictions(d, folds):
     return pred
 
 
-def permutation_nmad(d, folds, cols, rng):
+def permutation_nmad(d, folds, cols, rng, labels=ALL_FEATURES):
     """Rise in held-out residual nMAD when each input is shuffled, in arcsec."""
     y = d[TARGET].to_numpy()
     X = d[cols].to_numpy()
@@ -116,7 +116,7 @@ def permutation_nmad(d, folds, cols, rng):
                 Xp[:, j] = rng.permutation(Xp[:, j])
                 vals.append(nmad(y[te] - model.predict(Xp)))
             rise[k, j] = np.mean(vals) - base
-    return pd.DataFrame({"column": cols, "feature": [ALL_FEATURES[c] for c in cols],
+    return pd.DataFrame({"column": cols, "feature": [labels[c] for c in cols],
                          "rise_mean": rise.mean(0), "rise_std": rise.std(0)}
                         ).sort_values("rise_mean", ascending=False).reset_index(drop=True)
 
