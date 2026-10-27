@@ -36,7 +36,7 @@ Medium-Range Weather Forecasts (ECMWF) ERA5 reanalysis winds and temperatures:
 
 For a given visit we fetch ERA5 for the night (`code/fetch_cp_weather.py`, latitude
 −30.25 deg, longitude −70.75 deg). We then take the ERA5 time step nearest the visit;
-ERA5 has 00, 06, 12 and 18 UTC. psfws gives the layer altitudes, the turbulence weights
+The fetched file has 00, 06 and 18 UTC. psfws gives the layer altitudes, the turbulence weights
 and the winds. With `skycoord=True` and the telescope altitude and azimuth, it rotates
 the winds into the frame of the sky as the telescope sees it.
 
@@ -178,7 +178,7 @@ The output is being changed so the simulation feeds the same code that runs on d
   so sim and data are read the same way.
 - The pointing, rotator angle and time come from the real visit. The first comparison
   (seq 688) used a rotator angle of 0 deg against the real −13.1 deg. Its ERA5 time step,
-  06:00 UTC, was the nearest to the 07:41 UTC visit; ERA5 time steps are 6 hours apart.
+  06:00 UTC, was the nearest to the 07:41 UTC visit; the next step is 18:00 UTC.
 
 ## 9. Not included
 
