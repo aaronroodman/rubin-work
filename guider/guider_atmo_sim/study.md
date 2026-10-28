@@ -3,11 +3,11 @@ study: guider_atmo_sim
 topic: guider
 status: active
 question: "Does a phase-screen atmosphere simulation reproduce the guide-star size and centroid motion measured on the guiders?"
-answer: "Not yet: on day_obs 20260706 seq 688, with the real rotator angle and geometry, the sim over-predicts guider centroid motion 2.3 times (dimensionless, median T_motion sim over data) and science-CCD FWHM 0.761 against 0.653 arcsec (ConsDB). One visit, one psfws draw with 0.93 of Cn2 in the ground layer."
+answer: "Partly: over 6 visits of 20260706 the guider centroid-motion size matches on average (median T_motion sim over data 1.28, dimensionless) but per visit ranges 0.36 to 2.29 and follows psfws's random ground-layer weight; the motion direction does not match (median angle difference 42 to 69 deg, against 45 deg for no relation)."
 uses:
   guider_moments: v4@nights/20260706
-  atmo_sim: v1@visits/2026070600688
-  atmo_sim_moments: v1@visits/2026070600688
+  atmo_sim: v1@visits/20260706{00195,00372,00603,00688,00726,00908}
+  atmo_sim_moments: v1@visits/20260706{00195,00372,00603,00688,00726,00908}
 started: 2026-08-06
 ---
 
@@ -21,18 +21,22 @@ Does a GalSim phase-screen atmosphere (imSim Ellerbroek profile, or psf-weather-
 
 ## Current answer
 
-Not yet, on one visit (day_obs 20260706, seq 688), rerun with the real rotator angle,
-ROIs, stamp times, star positions and fluxes:
+Partly, over 6 visits of day_obs 20260706 (seq 195, 372, 603, 688, 726, 908), with the
+real geometry, ERA5 winds and a seeing match to the guider FWHM:
 
-- **Centroid motion is over-predicted** 2.3 times (dimensionless, median over 8 sensors of
-  `T_motion` sim over data): 0.0096 to 0.0165 arcsec² (sim) against 0.0037 to 0.0076
-  arcsec² (data). `Mxx_motion` is 2.95 times, `Myy_motion` 1.83 times.
-- **Static size** `T_stamp` is 6% high (median sim over data 1.06, dimensionless).
-- **Science CCDs**: median FWHM 0.761 arcsec (sim, atmosphere only) against 0.653 arcsec
-  (ConsDB, with optics); median ellipticity e 0.033 (sim) against 0.063 (ConsDB).
-- The psfws draw put 0.93 of Cn² in the ground layer; psfws's random split over 9 seeds
-  ranges 0.05 to 0.93 for this ERA5 step. The August run had 0.66 and a 1.5 to 1.6
-  times motion excess. The turbulence split is the first suspect.
+- **Motion size matches on average, not per visit.** Median over 48 sensor-visits of
+  `T_motion` sim over data is 1.28 (dimensionless); per visit 0.36 to 2.29. The per-visit
+  ratio follows the ground-layer weight that psfws draws at random (0.30 to 0.93,
+  fraction of Cn²): Pearson r 0.63, Spearman rho 0.54, n 6 visits.
+- **Motion direction does not match.** Median |PA sim − PA data| per visit is 42 to 69
+  deg; 45 deg is what no relation gives. Motion ellipticity |Q|/T: median 0.09 to 0.40
+  (sim) against 0.23 to 0.43 (data), dimensionless.
+- **Static size** `T_stamp`: median sim over data 0.97.
+- **Science CCDs**: median FWHM 0.915 arcsec (sim, atmosphere only) against 0.880 arcsec
+  (ConsDB); median ellipticity e 0.024 (sim) against 0.060 (ConsDB). The atmosphere gives
+  a third to half of the measured ellipticity amplitude.
+- 5 of the 6 visits use one ERA5 step (06:00 UTC), and every ERA5 ground wind is about
+  3.5 m/s, so the sim winds barely change through the night.
 
 ## Method
 
@@ -40,6 +44,21 @@ ROIs, stamp times, star positions and fluxes:
 phase screens, rendering, guide and science-CCD stars, geometry, what is left out).
 
 ## Log
+
+### 2026-10-28 — six visits; guider motion ellipticity
+
+Simulated seq 195, 372, 603, 726 and 908 (spread through the night, all r band, 30 s, all
+8 guiders), about 11 min each (`code/run_visits.sh`). Added the guider motion ellipticity
+|Q|/T and its position angle to `compare_visit.py`: DVCS +x lies along FOCAL_PLANE +x for
+all 8 guiders, so the angle is in the FOCAL_PLANE frame. Run
+`output/20261028_visits_20260706_six/`. Results in Current answer.
+
+The ERA5 ground wind (3.5 m/s from 319 deg for 06:00) disagrees with the summit weather
+station (seq 688 header: 6.9 m/s from 18.9 deg). With the ground layer at 0.3 to 0.93 of
+Cn², it sets most of the motion and its direction.
+
+Candidate changes for Aaron to choose: fix the ground-layer weight rather than draw it;
+take the ground-layer wind from the site weather; interpolate ERA5 in time.
 
 ### 2026-10-28 — products `atmo_sim` and `atmo_sim_moments`; seq 688 rerun
 
