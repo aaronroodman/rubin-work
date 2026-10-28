@@ -352,20 +352,27 @@ def pair_sides(table, meta, mode='mean'):
     -----
     ``group_fit_success`` is the selection flag; it is exactly the set of rows with a
     finite deviation vector on all 21 fitted Noll indices, which `donut_table` asserts.
+    Rows whose intrinsic is not finite on those indices are also dropped and counted in
+    ``n_fit_ok_intrinsic_nan``.
     """
     if mode not in ('mean', 'intra', 'extra'):
         raise ValueError(f"mode must be 'mean', 'intra' or 'extra', got {mode!r}")
 
     is_intra, is_extra = focus_side(table, meta)
     fit_ok = np.asarray(table['group_fit_success'], dtype=bool)
+    # The DM-55333 v2 intrinsic calibration is NaN at the field edge (about 1.72 deg)
+    # while the fitted deviation there is finite, so the total wavefront would be NaN.
+    _, select = noll_selection(meta)
+    intrinsic_ok = np.isfinite(_bare(table['zk_intrinsic_ocs'])[:, select]).all(axis=1)
     det = np.asarray(table['det_name'], dtype=str)
     donut_id = np.asarray(table['donut_id'], dtype=np.int64)
 
-    rows_intra = np.where(is_intra & fit_ok)[0]
-    rows_extra = np.where(is_extra & fit_ok)[0]
+    rows_intra = np.where(is_intra & fit_ok & intrinsic_ok)[0]
+    rows_extra = np.where(is_extra & fit_ok & intrinsic_ok)[0]
     stats = {
         'n_rows': int(len(table)),
         'n_fit_ok': int(fit_ok.sum()),
+        'n_fit_ok_intrinsic_nan': int((fit_ok & ~intrinsic_ok).sum()),
         'n_intra_ok': int(len(rows_intra)),
         'n_extra_ok': int(len(rows_extra)),
     }
