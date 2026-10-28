@@ -6,7 +6,10 @@ Sim: `atmo_sim_moments` (guider tables and ``ccd_psf``) and `atmo_sim` (truth).
 Data: `guider_moments` (guider tables) and ConsDB ``ccdvisit1_quicklook`` (science CCDs).
 
 The simulated guide stamps are drawn in each sensor's real ROI and frame, so sim and
-data guider moments are in the same DVCS frame and compare 1:1, Q1 and Q2 included. The
+data guider moments are in the same DVCS frame and compare 1:1, Q1 and Q2 included.
+DVCS axes lie along the cameraGeom FOCAL_PLANE axes for all 8 guiders, so the motion
+ellipticity e_motion = |Q| / T and its position angle are in the FOCAL_PLANE frame and
+can be drawn as whiskers at the guider positions. The
 science-CCD moments are in each CCD's pixel frame on both sides; for the focal-plane
 maps they are rotated into the cameraGeom FOCAL_PLANE frame with each CCD's
 PIXELS-to-FOCAL_PLANE Jacobian.
@@ -37,7 +40,11 @@ def guider_table(day_obs, seq_num, gm_variant):
     data = guider_moments.load_table("moments", day_obs, variant=gm_variant)
     data = data[data.seqNum == seq_num]
     cols = ["detector", "T_stamp", *MOTION]
-    out = sim[cols].merge(data[cols], on="detector", suffixes=("_sim", "_data"))
+    out = sim[cols + ["xfp", "yfp"]].merge(data[cols], on="detector", suffixes=("_sim", "_data"))
+    for side in ("sim", "data"):
+        q1, q2 = out[f"Q1_motion_{side}"], out[f"Q2_motion_{side}"]
+        out[f"e_motion_{side}"] = np.hypot(q1, q2) / out[f"T_motion_{side}"]
+        out[f"pa_motion_{side}"] = 0.5 * np.degrees(np.arctan2(q2, q1))
     out.insert(0, "seq_num", seq_num)
     return out
 
@@ -114,6 +121,12 @@ def plot_visit(pdf, g, c, atm, day_obs, seq_num):
     for k in ("T_stamp", "T_motion", "Mxx_motion", "Myy_motion"):
         s, d = g[f"{k}_sim"].median(), g[f"{k}_data"].median()
         lines.append(f"  {k}: sim {s:.4f}, data {d:.4f}, sim/data {s / d:.2f}")
+    lines += ["", "Guider motion ellipticity |Q|/T (dimensionless), position angle (deg,",
+              "FOCAL_PLANE frame, from +x toward +y):",
+              "  sensor     e sim  e data   PA sim  PA data"]
+    for r in g.itertuples():
+        lines.append(f"  {r.detector}  {r.e_motion_sim:6.3f}  {r.e_motion_data:6.3f}  "
+                     f"{r.pa_motion_sim:7.1f}  {r.pa_motion_data:7.1f}")
     lines += ["", "Science CCDs, median over CCDs:"]
     for k, u in (("fwhm", "arcsec"), ("e", "dimensionless")):
         s = c[f"{k}_sim"].median()
@@ -134,7 +147,29 @@ def plot_visit(pdf, g, c, atm, day_obs, seq_num):
         ax.grid(axis="y", color="0.9")
     axs[0, 0].legend(frameon=False)
     fig.suptitle(f"{day_obs} seq {seq_num}: guider centroid-motion second moments, "
-                 "each sensor's DVCS frame")
+                 "DVCS frame (= FOCAL_PLANE axes)")
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+    fig, axs = plt.subplots(1, 2, figsize=(11, 5.8))
+    for ax, side, col in zip(axs, ("sim", "data"), (SIM_COLOR, DATA_COLOR)):
+        e, phi = g[f"e_motion_{side}"], np.radians(g[f"pa_motion_{side}"])
+        ax.quiver(g.xfp, g.yfp, e * np.cos(phi) * 200, e * np.sin(phi) * 200, color=col,
+                  angles="xy", scale_units="xy", scale=1, headwidth=0, headlength=0,
+                  headaxislength=0, pivot="middle", width=0.006)
+        for r in g.itertuples():
+            ax.annotate(f"{getattr(r, f'e_motion_{side}'):.2f}", (r.xfp, r.yfp),
+                        textcoords="offset points", xytext=(0, -16), ha="center",
+                        fontsize=8, color="0.3")
+        ax.set_xlim(-330, 330)
+        ax.set_ylim(-330, 330)
+        ax.set_aspect("equal")
+        ax.set_xlabel("focal plane x (mm)")
+        ax.set_ylabel("focal plane y (mm)")
+        ax.set_title(f"motion ellipticity |Q|/T, {side} (0.5 = 100 mm)")
+    fig.suptitle(f"{day_obs} seq {seq_num}: guider centroid-motion ellipticity, "
+                 "FOCAL_PLANE frame")
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close(fig)
@@ -182,7 +217,8 @@ def main(argv=None):
     c.to_csv(run.path / "ccd_psf.csv", index=False)
     pd.set_option("display.width", 160)
     print(g[["seq_num", "detector", "T_stamp_sim", "T_stamp_data", "T_motion_sim",
-             "T_motion_data"]].round(4).to_string(index=False))
+             "T_motion_data", "e_motion_sim", "e_motion_data", "pa_motion_sim",
+             "pa_motion_data"]].round(3).to_string(index=False))
     for k in ("T_stamp", "T_motion", "Mxx_motion", "Myy_motion"):
         print(f"{k}: median sim/data {np.median(g[f'{k}_sim'] / g[f'{k}_data']):.2f} "
               "(dimensionless)")
