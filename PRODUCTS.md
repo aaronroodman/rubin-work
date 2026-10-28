@@ -8,6 +8,8 @@ Size is the total of the current build's files, or of the latest build when none
 
 | product | variant | current build | latest build | latest created | builds (count) | size (MB) |
 |---|---|---|---|---|---|---|
+| atmo_sim | `v1` |  | visits/2026070600688 | 2026-10-27 | 1 | 40.5 |
+| atmo_sim_moments | `v1` |  | visits/2026070600688 | 2026-10-27 | 1 | 0.5 |
 | bounce_tables | `d12-A_50_34_i` | 20261025 | 20261025 | 2026-10-25 | 2 | 0.2 |
 | bounce_tables | `d12-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 2 | 0.2 |
 | bounce_tables | `d12-A_50_34_i_5rot_july` |  | old-tree-20261001 | 2026-10-24 | 1 | 8.6 |

@@ -1,6 +1,6 @@
 # Atmospheric PSF simulation for the Rubin guide sensors and science CCDs
 
-> **Status:** current · **Last updated:** 2026-10-27 · **Kind:** reference (method)
+> **Status:** current · **Last updated:** 2026-10-28 · **Kind:** reference (method)
 
 The simulation draws stars through a model atmosphere for one Rubin visit. It covers two
 sets of detectors with the same atmosphere:
@@ -16,8 +16,9 @@ purpose is to predict two things for comparison with data:
    at half maximum (FWHM) and ellipticity that turbulence alone produces;
 2. the size of the second moments of the guide-star centroid motion.
 
-The code is `code/guider_atmo_sim.py`. It is built on GalSim (version 2.8)
-phase-screen PSFs.
+The code is the `atmo_sim` product (`rubinwork/products/atmo_sim/`, `atmosphere.py` and
+`simulate.py`). It is built on GalSim (version 2.8) phase-screen PSFs. The August version,
+`code/guider_atmo_sim.py`, also has the imSim profile and an FFT render.
 
 ## 1. Turbulence profile
 
@@ -36,9 +37,14 @@ Medium-Range Weather Forecasts (ECMWF) ERA5 reanalysis winds and temperatures:
 
 For a given visit we fetch ERA5 for the night (`code/fetch_cp_weather.py`, latitude
 −30.25 deg, longitude −70.75 deg). We then take the ERA5 time step nearest the visit;
-The fetched file has 00, 06 and 18 UTC. psfws gives the layer altitudes, the turbulence weights
-and the winds. With `skycoord=True` and the telescope altitude and azimuth, it rotates
-the winds into the frame of the sky as the telescope sees it.
+the fetched file has 00, 06 and 18 UTC. psfws gives the layer altitudes, the turbulence
+weights and the winds. With `skycoord=True` and the telescope altitude and azimuth, it
+rotates the winds into the sky frame (East, North) as the telescope sees it. Layer
+distances are line of sight, above the site, with the ground layer raised to 0.2 km.
+
+psfws draws the split of turbulence between the ground layer and the free atmosphere at
+random, so the seed matters. For 20260706 seq 688 the ground-layer weight ranges from
+0.05 to 0.93 (fraction of total Cn²) over 9 seeds; v1 drew 0.93.
 
 **imSim profile.** This is the alternative: the Ellerbroek six-layer profile used in
 imSim production.
@@ -70,8 +76,9 @@ final build. The full-size atmosphere is then built once.
 
 ## 3. Phase screens
 
-Each layer is a periodic phase screen with 0.1 m sampling, well below r0/2. The screen
-size is chosen so that no star's pupil footprint wraps around the screen during the
+Each layer is a periodic phase screen with 0.2 m sampling. Photon shooting puts only
+spatial frequencies below k_crit = 0.2/r0 (about 2 rad/m) in the screens, so 0.2 m is
+ample. The screen size is chosen so that no star's pupil footprint wraps around the screen during the
 exposure:
 
     size >= 2 * theta_max * h_top + v_max * t_exp + D
@@ -82,10 +89,10 @@ exposure:
 - `t_exp` is the exposure time.
 - `D` = 8.36 m is the telescope diameter.
 
-This is rounded up to a power of two in pixels and capped at 1638.4 m (16384 pixels,
-about 13 GB for 6 layers). A fast jet-stream layer can still exceed the cap. The run then
-reports the wrap. The imSim default of 819.2 m is too small when all guiders and the full
-field share one atmosphere over a 30 s visit.
+This is rounded up to a power of two in pixels and capped at 3276.8 m (16384 pixels,
+26 GB of memory for 6 layers). For seq 688, 2144 m is needed and 3276.8 m is built, so
+no layer wraps. The imSim default of 819.2 m is too small when all guiders and the full
+field share one atmosphere over a 30 s visit. One visit takes about 11 min on one core.
 
 Stars at different field angles look through different but overlapping parts of each
 screen. So the field pattern and the correlation between guiders are both physical.
@@ -105,27 +112,35 @@ The standard render is **photon shooting**, split in GalSim's usual way:
 An FFT render of the full screen spectrum is also available, with no noise, as a check
 on that split.
 
-Each star is drawn at its field angle. The time window [t0, t0 + exposure] walks along
-the frozen screens as the winds carry them past.
+Each star is drawn at its field angle: the tangent-plane offset from the boresight,
+in arcsec East and North, from the visit's initial `SkyWcs` (the one `summit_utils`
+builds from the boresight and rotator angle). The image WCS is the local Jacobian of
+that `SkyWcs` at the star, so a stamp comes out directly in the CCD pixel frame. The
+time window [t0, t0 + exposure] walks along the frozen screens as the winds carry them
+past.
 
 **Noise (guide stamps).**
 - Photon shooting gives Poisson shot noise in electrons, with gain 1.6 e-/ADU.
-- Gaussian read noise of 6 e- rms is added.
-- The image is converted to ADU.
-- Sky is negligible in 50 ms and is set to zero by default.
-
-The total star flux per stamp can be set per guider from the observed flux.
+- Gaussian read noise is added at each sensor's measured level, the robust rms of
+  stamp-to-stamp differences over √2: 4.2 to 7.3 ADU for seq 688.
+- The image is converted to ADU and the sensor's real median pedestal is added
+  (13378 to 15443 ADU). Pixels are rounded and clipped at 65535 ADU.
+- Sky is negligible in 50 ms and is left out.
 
 ## 5. Guide sensors
 
-Each guide sensor sees one star. The stamp train runs t0 = 0, 0.2, 0.4 s and so on, with
-a 50 ms exposure per stamp, for the length of the visit. All stamps and all 8 sensors
+Each guide sensor sees one star, at the median CCD position and flux of the star that
+`guider_moments` tracked in the real visit. Each stamp is drawn in the sensor's real
+ROI, ending at that stamp's real `STMPTMJD` and lasting `ROIMILLI` (50 ms); seq 688 has
+135 stamps at 0.222 s cadence. All stamps and all 8 sensors
 share one atmosphere, so the centroid motion between stamps and the correlation between
 sensors come only from the screens moving.
 
-From each stamp we measure an adaptive-moment centroid and second moments, using GalSim
-HSM (`FindAdaptiveMom`). The visit is then split, as in the data pipeline
-(`rubinwork.products.guider_moments`), into:
+Each stamp is converted from the CCD frame to the amplifier readout frame
+(`rubinwork.guider_roi.ccd_to_amp`). The 8 files are written in the real `guider_raw`
+layout, with the real primary header and per-stamp time keys, and ingested into the
+Butler. The `guider_moments` builder then runs on them unchanged (product
+`atmo_sim_moments`) and splits the visit, as for data, into:
 
 - **static** moments: the flux-weighted mean of the per-stamp moments;
 - **motion** moments: the flux-weighted covariance of the centroids over the visit, with
@@ -160,25 +175,17 @@ Field angles and pixel scales come from the LSSTCam camera geometry in the Rubin
 Science Pipelines, through the cameraGeom `PIXELS` and `FIELD_ANGLE` transforms. They
 include the optical distortion. The pixel scale is about 0.2 arcsec/pix.
 
-In the current code the guide stamps are drawn in the Data Visualization Coordinate
-System (DVCS) orientation, the focal-plane view that the guider display tools use.
+Both the guide stamps and the science stamps are drawn in their CCD pixel frame. The
+guider code turns the guide stamps into the Data Visualization Coordinate System (DVCS)
+view, as for data, so sim and data guider moments share a frame, Q1 and Q2 included.
 
-## 8. Planned changes to the output
+## 8. Taken from the real visit
 
-The output is being changed so the simulation feeds the same code that runs on data:
-
-- **Guide stamps as real `guider_raw` data.** Each stamp is drawn in the ROI the real
-  visit read out (from its headers) and converted to the amplifier readout frame. The
-  real headers are copied: ROI position, per-stamp times, pointing, rotator angle.
-  The stamps are then written to a Butler collection. The guider moment pipeline,
-  movies and star tracker then run on the simulation unchanged.
-- **Science-CCD stars** go to one multi-HDU FITS file per visit. Their moments are
-  measured in each CCD's pixel frame, with the same columns as the Rubin Consolidated
-  Database (ConsDB) per-CCD PSF summary (`psf_sigma`, `psf_ixx`, `psf_iyy`, `psf_ixy`),
-  so sim and data are read the same way.
-- The pointing, rotator angle and time come from the real visit. The first comparison
-  (seq 688) used a rotator angle of 0 deg against the real −13.1 deg. Its ERA5 time step,
-  06:00 UTC, was the nearest to the 07:41 UTC visit; the next step is 18:00 UTC.
+- Boresight, rotator angle, altitude, azimuth, time and exposure time: `raw.visitInfo`.
+- Band: the exposure's `physical_filter`.
+- Guider ROIs, stamp count, stamp times, pedestals and read noise: the real `guider_raw`.
+- Guide-star positions and fluxes, and the target FWHM (median tracked FWHM over
+  sensors): `guider_moments` v4.
 
 ## 9. Not included
 
@@ -188,3 +195,4 @@ The output is being changed so the simulation feeds the same code that runs on d
   the band.
 - Detector effects beyond shot and read noise. The real guider bias structure is
   replaced by a flat pedestal.
+- Other stars in the guider ROIs; only the tracked star is drawn.

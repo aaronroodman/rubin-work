@@ -41,6 +41,8 @@ flowchart LR
     efd --> fam_tables
     butler --> cwfs_science
     guider[(Butler: guider stamps)] --> guider_moments
+    guider_moments --> atmo_sim
+    atmo_sim --> atmo_sim_moments
 ```
 
 `miw` reads `cwfs_tables` only to write its corner sidecar
@@ -62,6 +64,8 @@ the M1M3 gradients it attaches to `visits.parquet`.
 | `wfs_corner_compare` | CWFS against FAM wavefront at each corner, with per-corner Huber fits and correlations | `wfs_corner_compare/Snakefile` (`rubinwork.corner_compare`) | one per CWFS variant: `d12-refitWcs`, `d13-blitz_unpaired` current | `wfs_corner_compare.load(variant)` |
 | `value_added` | DuckDB database of per-visit EFD telemetry, recovered optical state and FAM DZ projections (`visit_telemetry`, `optical_state`, `fam_dz`, `m1m3_thermal_r2`) | builders in `value_added/builders/` write `v1/live`; a snapshot is copied to `v1/snapshots/<date>` and set current | `v1` | `rubinwork.products.value_added.reader` (`load`, `visits`, `fam_dz`, `optical_state`) |
 | `guider_moments` | Per-night guider-sensor second and third moments, star tables and metrics | `guider_moments/Snakefile`, one night at a time | schema versions: `v6` (built), `v4` (copied, 20260512–20260712); nights are partitions, no `current` | `guider_moments.load_night(night)`, `guider_moments.nights()` |
+| `atmo_sim` | Simulated atmospheric-PSF pixels for real visits: 8 guide-sensor `guider_raw` files (also ingested into the Butler chain `u/roodman/atmo_sim/v1`) and one star per science CCD | `python -m rubinwork.products.atmo_sim.simulate`, then `.write_manifest`, one visit at a time | `v1`; visits are partitions, no `current` | `atmo_sim.load_truth(day_obs, seq_num)`, `atmo_sim.science_stars(...)`, `atmo_sim.collection()` |
+| `atmo_sim_moments` | The `guider_moments` tables measured on `atmo_sim` visits, and a per-CCD PSF table in the ConsDB `ccdvisit1_quicklook` columns | `python -m rubinwork.products.atmo_sim_moments.build`, one visit at a time | `v1`; visits are partitions | `atmo_sim_moments.load_table(table, day_obs, seq_num)` |
 
 ## Where to start
 

@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# atmo_sim_moments variants: moments measured on atmo_sim visits.
+#
+# An INCREMENTAL product partitioned by visit, like its input:
+#
+#     products/atmo_sim_moments/<variant>/visits/<expId>/
+#         <seqNum>_{moments,stars,metrics}.parquet   the guider_moments builder's tables,
+#                                                    read from the atmo_sim Butler chain
+#         ccd_psf.parquet                            one row per science CCD, ConsDB
+#                                                    ccdvisit1_quicklook columns
+#         manifest.json
+#
+# The guider side runs the guider_moments builder unchanged, with the same tracker and
+# moment settings as the data, so sim and data differ only in the pixels.
+# ---------------------------------------------------------------------------
+
+variants:
+
+  v1:
+    description: >-
+      guider_moments schema v6 builder on atmo_sim v1, with the guider_moments v6
+      tracker and moment settings; science-CCD stars measured with GalSim HSM adaptive
+      moments in the CCD pixel frame.
+    atmo_sim_variant: v1
+    guider_moments_variant: v6       # tracker and moment settings taken from here

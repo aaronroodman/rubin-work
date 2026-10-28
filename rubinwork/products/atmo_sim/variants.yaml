@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# atmo_sim variants: simulated atmospheric-PSF pixels for real Rubin visits.
+#
+# An INCREMENTAL product partitioned by visit:
+#
+#     products/atmo_sim/<variant>/visits/<expId>/
+#         guider_raw/MC_O_<day_obs>_<seq>_<det>_guider.fits   8 files, real guider_raw layout
+#         science_stars.fits    one image HDU per science CCD (189)
+#         truth.parquet         per star: CCD position, field angle, flux, noise
+#         atmosphere.json       layers, r0, L0, FWHM calibration, screen size
+#         manifest.json         written last
+#
+# The guider files are also ingested ("direct", in place) as guider_raw into the Butler
+# RUN collection <run_prefix>/<day_obs>, and the CHAINED collection <chain> puts every
+# such run ahead of chain_tail, which holds raw.visitInfo but no guider_raw.  GuiderReader
+# pointed at <chain> reads the simulation exactly as it reads data.
+# ---------------------------------------------------------------------------
+
+variants:
+
+  v1:
+    description: >-
+      psfws (ERA5) six-layer frozen-flow atmosphere, seeing matched to the median
+      tracked guider FWHM of the real visit; photon shooting with a second kick; real
+      boresight, rotator angle, ROIs, stamp times, star positions and fluxes; no optics.
+    data:
+      repo: /repo/main
+      collections:
+        - LSSTCam/raw/guider
+        - LSSTCam/raw/all
+      guider_moments_variant: v4     # star positions, fluxes and target FWHM
+    butler:
+      repo: /repo/main
+      run_prefix: u/roodman/atmo_sim/v1
+      chain: u/roodman/atmo_sim/v1
+      chain_tail:
+        - LSSTCam/raw/all
+    band: null                        # null: from the exposure's physical_filter
+    atmosphere:
+      source: psfws
+      forecast_file: ecmwf_-30.25_-70.75_20260701_20260713.p
+      data_dir: /sdf/group/rubin/u/roodman/LSST/rubin-work/calibration/psfws
+      nlayers: 6                      # count, dimensionless
+      kcrit: 0.2                      # dimensionless, in units of 1/r0
+      # Photon shooting puts only k < kcrit/r0 (about 1 rad/m) in the screens, so a
+      # 0.2 m grid is ample; 16384 pix then spans 3276.8 m, enough not to wrap.
+      screen_scale_m: 0.2             # m
+      screen_size_max_m: 3276.8       # m
+      seed: 57721
+    guider:
+      gain: 1.6                       # e-/ADU
+      calibration_stamps: 6           # count, dimensionless
+    science:
+      stamp_pix: 64                   # pix, square stamp side
+      flux_adu: 1.0e+6                # ADU
+      gain: 1.6                       # e-/ADU
+      read_noise_adu: 0.0             # ADU rms

@@ -3,9 +3,11 @@ study: guider_atmo_sim
 topic: guider
 status: active
 question: "Does a phase-screen atmosphere simulation reproduce the guide-star size and centroid motion measured on the guiders?"
-answer: "Partly: static T_stamp matches the data to 0.5% (relative), but the centroid-motion second moments are over-predicted 1.5 to 1.6 times (dimensionless, sim over data; T_motion 0.0078 against 0.0050 arcsec^2) on day_obs 20260706 seq 688. The night batch was never run."
-uses:  # imports guiderMoments only; its data side still reads guider moments from the old guider/output tree
-  guider_moments: v4
+answer: "Not yet: on day_obs 20260706 seq 688, with the real rotator angle and geometry, the sim over-predicts guider centroid motion 2.3 times (dimensionless, median T_motion sim over data) and science-CCD FWHM 0.761 against 0.653 arcsec (ConsDB). One visit, one psfws draw with 0.93 of Cn2 in the ground layer."
+uses:
+  guider_moments: v4@nights/20260706
+  atmo_sim: v1@visits/2026070600688
+  atmo_sim_moments: v1@visits/2026070600688
 started: 2026-08-06
 ---
 
@@ -19,12 +21,18 @@ Does a GalSim phase-screen atmosphere (imSim Ellerbroek profile, or psf-weather-
 
 ## Current answer
 
-Partly, on one visit (day_obs 20260706, seq 688):
+Not yet, on one visit (day_obs 20260706, seq 688), rerun with the real rotator angle,
+ROIs, stamp times, star positions and fluxes:
 
-- **Static size matches:** `T_stamp` agrees with the data to 0.5% (relative), so the FWHM calibration works. Static ellipticity is optics-dominated and the sim has no optics, so it is for reference only.
-- **Centroid motion is over-predicted** 1.5 to 1.6 times (dimensionless, sim over data): `T_motion` 0.0078 against 0.0050 arcsec², `Ixx` worst at 1.6 times. Centre jitter per axis 0.09 arcsec (sim) against 0.07 arcsec (data). Likely too much ground-layer or wind motion in psfws, or the placeholder date.
-
-The night batch (`guider_atmo_night.py`) was never run.
+- **Centroid motion is over-predicted** 2.3 times (dimensionless, median over 8 sensors of
+  `T_motion` sim over data): 0.0096 to 0.0165 arcsec² (sim) against 0.0037 to 0.0076
+  arcsec² (data). `Mxx_motion` is 2.95 times, `Myy_motion` 1.83 times.
+- **Static size** `T_stamp` is 6% high (median sim over data 1.06, dimensionless).
+- **Science CCDs**: median FWHM 0.761 arcsec (sim, atmosphere only) against 0.653 arcsec
+  (ConsDB, with optics); median ellipticity e 0.033 (sim) against 0.063 (ConsDB).
+- The psfws draw put 0.93 of Cn² in the ground layer; psfws's random split over 9 seeds
+  ranges 0.05 to 0.93 for this ERA5 step. The August run had 0.66 and a 1.5 to 1.6
+  times motion excess. The turbulence split is the first suspect.
 
 ## Method
 
@@ -32,6 +40,32 @@ The night batch (`guider_atmo_night.py`) was never run.
 phase screens, rendering, guide and science-CCD stars, geometry, what is left out).
 
 ## Log
+
+### 2026-10-28 — products `atmo_sim` and `atmo_sim_moments`; seq 688 rerun
+
+Built the two products (`rubinwork/products/atmo_sim/`, `rubinwork/products/atmo_sim_moments/`):
+- `atmo_sim` v1 draws the guide stars in the real ROIs at the tracked positions and
+  fluxes, with the real stamp times, pedestals and read noise. The rotator angle enters
+  through the initial `SkyWcs`. The stamps are written in the real `guider_raw` file
+  layout and ingested in place into `u/roodman/atmo_sim/v1/20260706`, chained with
+  `LSSTCam/raw/all` as `u/roodman/atmo_sim/v1`. One star per science CCD goes to
+  `science_stars.fits`. Method changes are in [`method.md`](method.md).
+- `atmo_sim_moments` v1 runs the `guider_moments` builder unchanged on that chain, and
+  measures the science stars in the ConsDB `ccdvisit1_quicklook` columns.
+- Tests: `rubinwork/products/atmo_sim/tests` checks the simulated files against the
+  real headers and the star position after the amplifier inverse; 54 passed with the
+  `guider_roi` and catalog tests.
+
+Seq 688 (rotator 32.03 deg, ERA5 step 06:00 UTC, r0_500 0.109 m, L0 48.1 m, screens
+3276.8 m built against 2144 m needed, 11 min and 26 GB on one core). Run
+`output/20261027_visits_20260706_688/` (`compare_visit.py`): numbers in Current answer.
+The rotator angle is `boresightRotAngle` 32.03 deg; the −13.09 deg in the August log is
+the summit_utils `camRotAngle`, a different angle.
+
+Next: rerun 688 over a few psfws seeds (ground-layer weight 0.05 to 0.93) to see how much
+of the motion excess is the turbulence split; then 5 visits.
+
+### 2026-10-27 — review and restructure plan
 
 ### 2026-10-27 — review and restructure plan
 

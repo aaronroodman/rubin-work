@@ -12,6 +12,7 @@ Arrows point from an input product to the product built from it; the number is t
 
 ```mermaid
 flowchart LR
+    atmo_sim -->|1| atmo_sim_moments
     cwfs_tables -->|4| wfs_corner_compare
     fam_tables -->|3| coadds
     fam_tables -->|5| cwfs_tables
@@ -19,12 +20,12 @@ flowchart LR
     fam_tables -->|4| fam_tables
     fam_tables -->|6| miw
     fam_tables -->|4| wfs_corner_compare
+    guider_moments -->|1| atmo_sim
     miw -->|3| bounce_tables
     miw -->|3| coadds
     miw -->|2| dof_lut
     miw -->|3| miw
     cwfs_science
-    guider_moments
     value_added
 ```
 
@@ -32,6 +33,8 @@ flowchart LR
 
 | product | variant | build shown | current | inputs |
 |---|---|---|---|---|
+| atmo_sim | `v1` | visits/2026070600688 | no | guider_moments: v4@nights/20260706 |
+| atmo_sim_moments | `v1` | visits/2026070600688 | no | atmo_sim: v1@visits/2026070600688 |
 | bounce_tables | `d12-A_50_34_i` | 20261025 | yes | miw: d12-A_50_34_i@20261025 |
 | bounce_tables | `d12-A_50_34_i_5rot` | 20261025 | yes | miw: d12-A_50_34_i_5rot@20261025 |
 | bounce_tables | `d12-A_50_34_i_5rot_july` | old-tree-20261001 | no | miw: d12-A_50_34_i_5rot@20261014 (fits_july.parquet, hand-made, old tree) |
@@ -68,6 +71,16 @@ flowchart LR
 | wfs_corner_compare | `d13-blitz_unpaired` | 20261024 | yes | cwfs_tables: d13-blitz_unpaired@20261024; fam_tables: danish_1_3@20261024 |
 
 ## Readers by product
+
+### atmo_sim
+
+Built into (manifest): `atmo_sim_moments`.
+
+Declared by studies (`uses:`): [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) v1@visits/2026070600688.
+
+### atmo_sim_moments
+
+Declared by studies (`uses:`): [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) v1@visits/2026070600688.
 
 ### bounce_tables
 
@@ -142,7 +155,9 @@ Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) danish_1_2@20261013
 
 ### guider_moments
 
-Declared by studies (`uses:`): [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) v4@current; [guider/guider_ellipticity_ensemble](guider/guider_ellipticity_ensemble/study.md) v4@current.
+Built into (manifest): `atmo_sim`.
+
+Declared by studies (`uses:`): [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) v4@nights/20260706; [guider/guider_ellipticity_ensemble](guider/guider_ellipticity_ensemble/study.md) v4@current.
 
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
@@ -225,7 +240,7 @@ A study listed here reads at least one product. **undeclared** marks a product i
 | [aos/psf_fp_maps](aos/psf_fp_maps/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
 | [aos/unpaired_intra_vs_extra](aos/unpaired_intra_vs_extra/study.md) | active | fam_tables | fam_tables |  |
 | [aos/wfs_mimic](aos/wfs_mimic/study.md) | parked |  | fam_tables, miw | fam_tables, miw |
-| [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) | active | guider_moments | guider_moments |  |
+| [guider/guider_atmo_sim](guider/guider_atmo_sim/study.md) | active | atmo_sim, atmo_sim_moments, guider_moments | guider_moments |  |
 | [guider/guider_ellipticity_ensemble](guider/guider_ellipticity_ensemble/study.md) | active | guider_moments | guider_moments |  |
 | [optatmo/miw_radial_correlations](optatmo/miw_radial_correlations/study.md) | done |  | miw | miw |
 | [psf/wavefront_to_psf](psf/wavefront_to_psf/study.md) | dropped |  | fam_tables | fam_tables |
