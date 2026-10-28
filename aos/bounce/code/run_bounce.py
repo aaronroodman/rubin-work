@@ -47,6 +47,10 @@ bounce/output/<P>_<M>/) :
                                    Δ, the kept coefficients, and the FWHM left
                                    by no / per-point / LUT correction
     bounce_lut_coefficients.csv, bounce_lut_fwhm.csv   the same numbers
+    bounce_trends.pdf              paired Δ DZ_kj, Δ v-mode and Δ DOF vs B-set
+                                   position, nights colored, with the chi2/dof
+                                   of repeated-position nights and of the fit
+    bounce_trends_chi2.csv         those chi2/dof per quantity
 
 Each bounce is read in one recovery scheme, named on the first page of the DOF
 PDFs: RBR 50/50 for the elevation sweep, 5/5 camera hexapod for the rotator.
@@ -617,6 +621,123 @@ def main():
                 crow.append(r)
         pd.DataFrame(crow).to_csv(out_dir / 'bounce_lut_coefficients.csv', index=False)
         print('  wrote bounce_lut.pdf')
+
+    # ---- Δ DZ_kj, Δ v-mode and Δ DOF vs B-set position ----
+    # The same per-(night, leg) paired Δ as the LUT pages, in three views, to see
+    # which is smoothest in B and most repeatable across nights at one position.
+    # The v-modes are those of the bounce's scheme (RBR 50/50 decomposition, or
+    # 5/5); they are a linear projection, so unlike the DOF their Δ is the plain
+    # median over pairs.  Each panel carries the LUT-form fit and the chi2/dof
+    # of the nights that share a B position about their weighted mean.
+    if lut_entries:
+        trend_rows = []
+        night_colors = {n: plt.get_cmap('tab10')(i % 10) for i, n in enumerate(
+            sorted({int(d) for br in bounce_results.values()
+                    for cb in br['comparisons'].values()
+                    for d in (cb.get('pairs_by_night') or {})}))}
+        C_by = {'rbr': (result.CRBR_all, vmode_labels if result.svd_rbr is None
+                        else result.svd_rbr.vmode_labels),
+                '50_34': (C_all, vmode_labels), '5_5': (C5_all, vmode5_labels)}
+        with PdfPages(str(out_dir / 'bounce_trends.pdf')) as pdf:
+            f = scheme_page('Paired Δ DZ_kj, Δ v-mode and Δ DOF vs B-set position, '
+                            'nights colored; v-modes and DOF in the scheme listed')
+            pdf.savefig(f, bbox_inches='tight'); plt.close(f)
+            for b in bounces:
+                name = b['name']
+                br = bounce_results.get(name)
+                if br is None:
+                    continue
+                sk = schemes[name]
+                axis = bl.leg_axis_name(b)
+                tag = 'rotator' if axis.lower().startswith('rot') else 'elevation'
+                kw = dict(x_ref=float(cfg[f'lut_ref_{tag}_deg']),
+                          x_range=[float(v) for v in cfg[f'lut_range_{tag}_deg']],
+                          axis=axis, order=int(cfg[f'lut_order_{tag}']),
+                          night_colors=night_colors)
+                fit_txt = (f'fit (gray): Huber, sum_p c_p (B − {kw["x_ref"]:g} deg)^p, '
+                           f'p = 1..{kw["order"]}, over {kw["x_range"][0]:g}–'
+                           f'{kw["x_range"][1]:g} deg')
+                views = []
+                dz = {}
+                for k in k_list:
+                    for j in iZs:
+                        pts = []
+                        for clabel, cb in br['comparisons'].items():
+                            bval = bl.leg_b_value(clabel)
+                            for d, dd in (cb.get('deltas_by_night') or {}).items():
+                                v = dd.get((int(k), int(j)))
+                                if v is not None:
+                                    pts.append((int(d), bval, v['delta'], v['err']))
+                        if pts:
+                            dz[f'DZ({k},{j})'] = pts
+                views.append(('Δ DZ_kj', dz, 'um of wavefront'))
+                C_sk, vlab = C_by.get(sk, (None, []))
+                vm = {}
+                if C_sk is not None:
+                    for clabel, cb in br['comparisons'].items():
+                        bval = bl.leg_b_value(clabel)
+                        for d, prs in (cb.get('pairs_by_night') or {}).items():
+                            pdm = bl.paired_deltas_matrix(C_sk, prs)
+                            for i, v in pdm.items():
+                                vm.setdefault(vlab[i] if i < len(vlab) else f'v{i + 1}',
+                                              []).append(
+                                    (int(d), bval, v['delta'], v['err']))
+                views.append(('Δ v-mode', vm, 'dimensionless'))
+                dof = {}
+                for e in lut_entries.get(name) or []:
+                    for q, v in sorted((e.get('dof_deltas') or {}).items()):
+                        dof.setdefault(int(q), []).append(
+                            (int(e['night']), e['b_value'], v['delta'], v['err']))
+                dofv = {f'DOF {q} {LABELS_50DOF[q]} [{DOF_UNITS_50[q]}]': dof[q]
+                        for q in sorted(dof)}
+                views.append(('Δ DOF', dofv, 'DOF unit (um or arcsec)'))
+                for vname, ser, unit in views:
+                    if not ser:
+                        continue
+                    for fig in lf.plot_trend_panels(
+                            ser, unit=unit, ncols=3, rows_per_page=3,
+                            title=f'{name}: {vname} vs B-set {axis.lower()} '
+                                  f'({scheme_label(sk, cfg)} for v-mode and DOF)\n'
+                                  f'{fit_txt}; error bars are the median-SEM over '
+                                  f'pairs; nights at one position spread by 1 deg',
+                            **kw):
+                        pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+                    for key, pts in ser.items():
+                        by_b = {}
+                        for pt in pts:
+                            by_b.setdefault(pt[1], []).append(pt)
+                        c2 = nd = 0
+                        for grp in by_b.values():
+                            a, n_ = lf.leg_spread(grp)
+                            if n_:
+                                c2 += a; nd += n_
+                        sel = [pt for pt in pts
+                               if kw['x_range'][0] <= pt[1] <= kw['x_range'][1]]
+                        ft = lf.huber_poly_fit([pt[1] - kw['x_ref'] for pt in sel],
+                                               [pt[2] for pt in sel],
+                                               [pt[3] for pt in sel], kw['order'])
+                        trend_rows.append({
+                            'bounce': name, 'view': vname, 'name': key,
+                            'spread_chi2': c2, 'spread_dof': nd,
+                            'fit_chi2': np.nan if ft is None else ft['chi2'],
+                            'fit_dof': 0 if ft is None else ft['dof']})
+                rows_b = [r for r in trend_rows if r['bounce'] == name]
+                if rows_b:
+                    fig = lf.plot_spread_summary(
+                        [dict(r, view=f'{name} {r["view"]}') for r in rows_b],
+                        title=f'{name}: chi2/dof of nights at one B position about '
+                              f'their weighted mean (blue) and of the LUT-form fit '
+                              f'(red), per quantity')
+                    pdf.savefig(fig, bbox_inches='tight'); plt.close(fig)
+        tdf = pd.DataFrame(trend_rows)
+        tdf.to_csv(out_dir / 'bounce_trends_chi2.csv', index=False)
+        for (bn, vn), g in tdf.groupby(['bounce', 'view'], sort=False):
+            sp = (g['spread_chi2'] / g['spread_dof'].replace(0, np.nan))
+            ft = (g['fit_chi2'] / g['fit_dof'].replace(0, np.nan))
+            print(f'  trends {bn} {vn}: median chi2/dof nights-at-one-position = '
+                  f'{np.nanmedian(sp):.2f}, LUT-form fit = {np.nanmedian(ft):.2f} '
+                  f'({len(g)} quantities)')
+        print('  wrote bounce_trends.pdf')
 
     print('[bounce] done.')
 

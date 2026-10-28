@@ -42,3 +42,14 @@ The input is the `miw` build `d13-A_50_50_i_rbr_5rot@20261028b`. Its `fits.parqu
   - Cause: the per-DOF medians are not a consistent state, because the RBR DOF are strongly correlated. The per-DOF median DOF alone leaves 0.041–0.103 arcsec. Fitting each DOF with its own weights, then cutting DOF one at a time, breaks the cancellations further.
   - Rotator LUT: 0.054 and 0.036 arcsec, against 0.045 and 0.033 arcsec per point.
   - Open: fit the LUT in a space where the errors are independent (v-modes, or the wavefront, then solve).
+
+### 2026-10-28 — Δ DZ, Δ v-mode and Δ DOF vs elevation
+
+- New `bounce_trends.pdf`: paired Δ vs B-set position in three views, nights colored, with the LUT-form fit and the chi2/dof of the nights sharing a B position. Run `20261028_d13_miw_rbr5050_trends`.
+- T720 elevation, median over quantities of chi2/dof (dimensionless), nights at one position about their weighted mean, then the LUT-form fit:
+  - Δ DZ_kj (126): 3.96, 3.86.
+  - Δ v-mode, RBR 50/50 decomposition (50): 4.98, 4.35.
+  - Δ DOF, RBR 50/50 (50): 7.23, 10.07.
+- T724 rotator, the same: DZ 0.59, 0.59; v-mode 2.20, 2.20; DOF 2.09, 2.09.
+- The three 40 deg nights disagree beyond their errors in every view. DOF are the worst view; DZ and v-modes are comparable.
+- Worst repeated-position spread: DZ(1,4) 131, DZ(2,5) 64; v4 299, v1 128; DOF 28 (B1_19) 830 (chi2/dof, dimensionless, 2 dof).

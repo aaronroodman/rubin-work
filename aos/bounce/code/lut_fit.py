@@ -309,3 +309,159 @@ def plot_lut_table(fits_by_bounce, dof_labels, dof_units, title=''):
     fig.text(0.01, 0.98, title + '\n\n' + '\n'.join(lines), va='top', ha='left',
              family='monospace', fontsize=8)
     return fig
+
+
+def leg_spread(points):
+    """chi2/dof of the nights at one B position about their weighted mean.
+
+    Parameters
+    ----------
+    points : `list` [`tuple`]
+        ``(night, b_value, delta, err)`` at one B position.
+
+    Returns
+    -------
+    chi2, dof : `float`, `int`
+        dof is the number of finite points minus one; ``(nan, 0)`` with fewer
+        than two.
+    """
+    y = np.array([p[2] for p in points], float)
+    e = np.array([p[3] for p in points], float)
+    ok = np.isfinite(y) & np.isfinite(e) & (e > 0)
+    y, e = y[ok], e[ok]
+    if len(y) < 2:
+        return np.nan, 0
+    w = 1.0 / e ** 2
+    m = np.sum(w * y) / np.sum(w)
+    return float(np.sum(w * (y - m) ** 2)), int(len(y) - 1)
+
+
+def plot_trend_panels(series, *, x_ref, x_range, axis, order, title, unit,
+                      ncols=3, rows_per_page=2, panel_size=(4.6, 3.3),
+                      night_colors=None):
+    """Paired Δ of many quantities vs B-set position, one panel each, nights
+    colored, with the LUT-form Huber fit and its chi2/dof for scale.
+
+    Parameters
+    ----------
+    series : `dict`
+        ``{panel title: [(night, b_value, delta, err), ...]}``, delta and err
+        in `unit`.  Panels are drawn in dict order.
+    x_ref : `float`
+        Reference B position, deg; drawn as an x at zero.
+    x_range : `list` [`float`]
+        Fit range, deg.  Points outside are drawn but not fitted.
+    axis : `str`
+        Axis name for the x label.
+    order : `int`
+        Polynomial order of the fit, no constant term in (x - x_ref).
+    unit : `str`
+        Unit of delta, for the y label.
+    night_colors : `dict`, optional
+        ``{night: color}``; one per night if omitted.
+
+    Returns
+    -------
+    figs : `list` [`matplotlib.figure.Figure`]
+    """
+    keys = list(series)
+    nights = sorted({p[0] for v in series.values() for p in v})
+    if night_colors is None:
+        cmap = plt.get_cmap('tab10')
+        night_colors = {n: cmap(i % 10) for i, n in enumerate(nights)}
+    xg = np.linspace(x_range[0], x_range[1], 200)
+    per_page = ncols * rows_per_page
+    figs = []
+    for pg0 in range(0, len(keys), per_page):
+        page = keys[pg0:pg0 + per_page]
+        nrows = int(np.ceil(len(page) / ncols))
+        fig, axes = plt.subplots(nrows, ncols, layout='constrained', squeeze=False,
+                                 figsize=(panel_size[0] * ncols + 0.8,
+                                          panel_size[1] * nrows + 1.4))
+        for pi, key in enumerate(page):
+            ax = axes[pi // ncols][pi % ncols]
+            pts = series[key]
+            by_b = {}
+            for p in pts:
+                by_b.setdefault(p[1], []).append(p)
+            # Nights sharing a B position are spread by 1 deg so their error
+            # bars do not overlap.
+            for bv, grp in by_b.items():
+                grp = sorted(grp, key=lambda p: p[0])
+                off = (np.arange(len(grp)) - (len(grp) - 1) / 2) * 1.0
+                for (nt, _b, y, e), dx in zip(grp, off):
+                    ax.errorbar(bv + dx, y, yerr=e, fmt='o', ms=4.5,
+                                color=night_colors[nt], mec='black', mew=0.4,
+                                elinewidth=0.9, capsize=2, zorder=3)
+            sel = [p for p in pts if x_range[0] <= p[1] <= x_range[1]]
+            txt = []
+            f = huber_poly_fit([p[1] - x_ref for p in sel], [p[2] for p in sel],
+                               [p[3] for p in sel], order)
+            if f is not None:
+                ax.plot(xg, poly_eval(f['coef'], xg - x_ref), color='gray', lw=1.0)
+                txt.append(f"fit chi2/dof = {f['chi2']:.1f}/{f['dof']}")
+            for bv, grp in sorted(by_b.items()):
+                c2, nd = leg_spread(grp)
+                if nd > 0:
+                    txt.append(f'{bv:g} deg nights: chi2/dof = {c2:.1f}/{nd}')
+            ax.axhline(0, color='gray', lw=0.5)
+            ax.plot([x_ref], [0], marker='x', color='black', ms=6, zorder=4)
+            if txt:
+                ax.text(0.02, 0.97, '\n'.join(txt), transform=ax.transAxes,
+                        va='top', fontsize=6.5,
+                        bbox=dict(boxstyle='round', fc='white', alpha=0.8, lw=0.3))
+            ax.set_xlim(x_range[0] - 3, max(x_range[1], x_ref) + 3)
+            ax.set_title(key, fontsize=10)
+            ax.set_ylabel(f'Δ [{unit}]', fontsize=8)
+            ax.tick_params(labelsize=8); ax.grid(alpha=0.3)
+            if pi // ncols == nrows - 1:
+                ax.set_xlabel(f'B set {axis} [deg]', fontsize=8)
+        for pi in range(len(page), nrows * ncols):
+            axes[pi // ncols][pi % ncols].axis('off')
+        handles = [plt.Line2D([], [], marker='o', ls='', color=night_colors[n],
+                              mec='black', mew=0.4, label=str(n)) for n in nights]
+        fig.legend(handles=handles, loc='outside lower center', ncols=len(nights),
+                   fontsize=8, title='day_obs', title_fontsize=8)
+        fig.suptitle(title, fontsize=11)
+        figs.append(fig)
+    return figs
+
+
+def plot_spread_summary(rows, title):
+    """Bar page: chi2/dof of the repeated-position nights and of the LUT-form
+    fit, per quantity, so the DZ, v-mode and DOF views can be compared.
+
+    Parameters
+    ----------
+    rows : `list` [`dict`]
+        ``view``, ``name``, ``spread_chi2``, ``spread_dof``, ``fit_chi2``,
+        ``fit_dof``.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure`
+    """
+    views = list(dict.fromkeys(r['view'] for r in rows))
+    fig, axes = plt.subplots(len(views), 1, figsize=(16, 3.4 * len(views) + 1),
+                             layout='constrained', squeeze=False)
+    for vi, v in enumerate(views):
+        ax = axes[vi][0]
+        rs = [r for r in rows if r['view'] == v]
+        xi = np.arange(len(rs))
+        sp = [r['spread_chi2'] / r['spread_dof'] if r['spread_dof'] else np.nan
+              for r in rs]
+        ft = [r['fit_chi2'] / r['fit_dof'] if r['fit_dof'] else np.nan for r in rs]
+        ax.bar(xi - 0.2, sp, 0.4, color='#1f77b4', label='repeated-position nights')
+        ax.bar(xi + 0.2, ft, 0.4, color='#d62728', label='LUT-form fit')
+        ax.axhline(1, color='black', lw=0.7)
+        ax.set_yscale('log')
+        ax.set_xticks(xi)
+        ax.set_xticklabels([r['name'] for r in rs], rotation=90,
+                           fontsize=6 if len(rs) > 60 else 7)
+        ax.set_ylabel('chi2/dof (dimensionless)', fontsize=9)
+        msp, mft = np.nanmedian(sp), np.nanmedian(ft)
+        ax.set_title(f'{v}: median chi2/dof = {msp:.2f} (nights at one position), '
+                     f'{mft:.2f} (fit)', fontsize=10)
+        ax.legend(fontsize=8); ax.grid(alpha=0.3, axis='y')
+    fig.suptitle(title, fontsize=12)
+    return fig

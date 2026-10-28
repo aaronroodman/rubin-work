@@ -60,6 +60,9 @@ class BounceAnalysis:
         The same for the 5/5 and 22/12 schemes.
     DOFRBR_all : `numpy.ndarray` or `None`
         Per-visit DOF under RBR, µm or arcsec, solved visit by visit.
+    CRBR_all : `numpy.ndarray` or `None`
+        Per-visit v-mode amplitudes in the RBR decomposition (dimensionless),
+        the plain projection with no range barrier.
     night_dW : `dict`
         Per ``(bounce, leg, day_obs)``: the median paired Δ DZ wavefront, µm of
         wavefront on ``svd.kj_grid``.  What a LUT correction is scored against.
@@ -95,6 +98,7 @@ class BounceAnalysis:
     DOF5_all: Any = None
     C22_all: Any = None
     DOFRBR_all: Any = None
+    CRBR_all: Any = None
     night_dW: dict = field(default_factory=dict)
     fwhm_tools: Any = None
     DOFSUM_all: Any = None
@@ -302,7 +306,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
     C_all = DOF_all = None
     svd = svd5 = C5_all = DOF5_all = None
     svd22 = C22_all = None
-    svd_rbr = DOFRBR_all = None
+    svd_rbr = DOFRBR_all = CRBR_all = None
     vmode_labels = vmode5_labels = vmode22_labels = []
     try:
         from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, project_dz_table
@@ -324,6 +328,9 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
                 ofc_normalization_yaml=cfg['ofc_normalization_yaml'])
             print(f'  RBR SVD: n_keep={svd_rbr.n_keep_eff}, n_dof={svd_rbr.n_dof}, '
                   f'full_dof={bool(cfg.get("rbr_full_dof", False))}')
+            # Per-visit v-modes in the RBR decomposition: a linear projection,
+            # so their paired Δ is the median over pairs like the DZ.
+            CRBR_all = svd_rbr.vmodes(svd_rbr.project_amplitudes(_W))
         # 5/5 Camera-hexapod-only SVD (shares kj_grid) for the rotator bounce.
         svd5 = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
                              5, n_dof=CAM_HEX_DOF,
@@ -597,6 +604,9 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
                 # rotator angle of each leg, per night, rather than the nominal
                 # window from the config.
                 'comp_mask': cblock['comp_mask'],
+                'pairs_by_night': {
+                    int(d): nights[d]['comparisons'][label]['pairs']
+                    for d in leg_nights},
                 'n_pairs_by_night': {
                     str(d): len(nights[d]['comparisons'][label]['pairs'])
                     for d in leg_nights},
@@ -717,7 +727,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
         iZs=iZs, k_list=k_list,
         svd=svd, svd5=svd5, svd22=svd22, svd_rbr=svd_rbr,
         C_all=C_all, DOF_all=DOF_all, C5_all=C5_all, DOF5_all=DOF5_all,
-        C22_all=C22_all, DOFRBR_all=DOFRBR_all, night_dW=night_dW,
+        C22_all=C22_all, DOFRBR_all=DOFRBR_all, CRBR_all=CRBR_all, night_dW=night_dW,
         fwhm_tools=(None if fwhm_conv is None else (_afw, fwhm_grid, fwhm_conv)),
         DOFSUM_all=DOFSUM_all,
         dof_ranges=dof_ranges, oic_authority=oic_authority,
