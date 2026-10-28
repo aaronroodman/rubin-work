@@ -34,8 +34,10 @@ from rubinwork.products.bounce_tables import write_manifest  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 
-EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot_july", "d12-A_50_34_i_5rot", "d12-A_50_34_i"}
-"""The three registered variants: the two jobs aos/Snakefile plans, plus `_july`.
+EXPECTED_VARIANTS = {"d12-A_50_34_i_5rot_july", "d12-A_50_34_i_5rot", "d12-A_50_34_i",
+                     "d13-A_50_50_i_rbr_5rot"}
+"""The registered variants: the two d12 jobs aos/Snakefile plans, `_july`, and the
+Danish 1.3 v3.14 one.
 
 `_july` is the only one with output in the old tree (13 files) and is its own variant
 rather than a build of the plain one, Aaron's call 2026-10-11, because its input is a
@@ -239,7 +241,8 @@ def test_unknown_variant_raises_and_lists_the_defined_ones():
 
 # ---- the live analysis_config override -----------------------------------------
 
-def test_the_live_bounce_override_still_resolves_the_five_point_sweep():
+@pytest.mark.parametrize("variant", ["d12-A_50_34_i_5rot_july", "d13-A_50_50_i_rbr_5rot"])
+def test_the_live_bounce_override_still_resolves_the_five_point_sweep(variant):
     """The BLOCK-T720 legs come from analysis_config.yaml, not from DEFAULT_BOUNCES.
 
     The override at aos/analysis_config.yaml redefines T720 as a five-point elevation
@@ -247,7 +250,7 @@ def test_the_live_bounce_override_still_resolves_the_five_point_sweep():
     produce a short but healthy-looking table, so this is checked against the file rather
     than against the code default.
     """
-    param_set, mi_name = bounce_tables.mi_keys("d12-A_50_34_i_5rot_july")
+    param_set, mi_name = bounce_tables.mi_keys(variant)
     cfg = bl.resolve_config(
         param_set, mi_name,
         analysis_config=REPO_ROOT / "aos" / "analysis_config.yaml")

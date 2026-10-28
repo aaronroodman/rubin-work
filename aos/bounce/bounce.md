@@ -2,8 +2,8 @@
 
 > **Status:** current · **Last updated:** 2026-10-02 · **Kind:** reference (study)
 
-> **Code:** `code/bounce/` · **Notebooks:** `notebooks/bounce/`
-> **Output:** `output/bounce/<P>_<M>/bounce_*.pdf`, `output/bounce/<P>_<M>/bounce_kj_stats.parquet`, `output/bounce/<P>_<M>/bounce_dof_stats.parquet`, `output/bounce/<P>_<M>/bounce_fwhm_metric.parquet`, `output/bounce/bending_mode_test_meta.parquet`
+> **Code:** `code/` (`run_bounce.py`, `bounce_lib.py`); the reduction is `rubinwork.bounce`
+> **Output:** tables in the `bounce_tables` product (`bounce_kj_stats`, `bounce_dof_stats`, `bounce_fwhm_metric`, `bounce_fwhm_vs_bvalue`); PDFs in `output/<P>_<M>/bounce_*.pdf`
 
 Analysis of elevation and rotator bounce test data, for Look-Up-Table (LUT)
 development. A bounce test moves the telescope to a position and back; a repeatable
@@ -552,13 +552,13 @@ cd ~/notebooks/rubin-work/aos
 python bounce/code/run_bounce.py \
   --param-set fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x \
   --mi-name pathA_50_34_i_5rot \
-  --fits output/miw/danish_1_2_A_50_34_i_5rot/fits_july.parquet \
-  --out-dir output/bounce/danish_1_2_A_50_34_i_5rot_july \
+  --fits /sdf/data/rubin/user/roodman/LSST/rubin-work/products/miw/d12-A_50_34_i_5rot/old-tree-fits-july/fits_july.parquet \
+  --out-dir bounce/output/danish_1_2_A_50_34_i_5rot_july \
   --min-detectors 160
 ```
 
 Add `--no-rbr` to skip the range-bounded arm, or `--rbr-kappa 5 --rbr-power 2` to change the
-penalty shape. Every penalized scheme needs `smatrix/code/regularized_inversion.py` on disk; the
+penalty shape. Every penalized scheme needs `rubinwork.smatrix.regularized_inversion`; the
 run prints `(RBR unavailable [...])` and drops those arms rather than failing if the import does
 not resolve.
 

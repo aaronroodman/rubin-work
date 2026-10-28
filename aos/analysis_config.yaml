@@ -177,7 +177,7 @@ overrides:
     # The `bounces` list REPLACES the script default wholesale (mi_config
     # _deep_merge replaces lists rather than merging them), so BLOCK-T724 is
     # repeated here unchanged, including camera_hexapod_only.
-    bounce:
+    bounce: &bounce_sweep
       # The phase-1 fits.parquet carries no `nollIndices` column, so the pupil-j
       # list is stated explicitly.  These are the 21 Noll indices the measured-
       # intrinsic refit table carries, so both tables are fit on one grid.
@@ -215,3 +215,8 @@ overrides:
           - [-3.0, 3.0]
           - [10.0, 20.0]
           - [55.0, 65.0]
+
+  danish_1_3:
+    # The same bounce legs as danish_1_2, so the two Danish versions are compared on
+    # identical definitions.  The Danish 1.3 bounce nights are the Danish 1.2 ones.
+    bounce: *bounce_sweep

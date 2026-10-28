@@ -29,7 +29,7 @@ FWHM.  The method is derived in the smatrix `regularized_inversion` study and
 imported from there.
 
 Writes, under the directory given by --out-dir (the pipeline passes
-output/bounce/<P>_<M>/) :
+bounce/output/<P>_<M>/) :
     bounce_summary.pdf             Δ / significance / pass heatmaps + cross-scatter
     bounce_dz_vs_ordinal.pdf       DZ_kj vs ordinal image (per bounce)
     bounce_vmode_vs_ordinal.pdf    v-mode amplitude vs ordinal

@@ -95,8 +95,8 @@ variants:
   # first, then Josh Meyers' T614, sensitivity and bounce corner runs, searched in that
   # order.  The T614 and bounce visits are all in the science run; 914 of the 989
   # sensitivity visits (count) are only in Josh's.  Each visit's table holds both corner
-  # halves, SW1 intra and SW0 extra, tagged by wfs_offset.  Josh's bounce corner visits
-  # have no FAM triplet (no FAM bounce run), so the walk over FAM visits skips them.
+  # halves, SW1 intra and SW0 extra, tagged by wfs_offset.  The bounce corner visits pair
+  # with the bounce FAM run (2026-10-28); FAM 2026071100064 has no corner partner.
   d13-blitz_unpaired:
     fam_variant: danish_1_3
     upstream_name: blitz_unpaired
