@@ -54,8 +54,7 @@
    `fam_dz`, bounce. Batch submits need Aaron's OK. The MIW split reads the FAM
    `fits.parquet` for each rotator bin's mean angle, so the larger visit set shifts those
    means unless pinned.
-3. Scratch dirs to remove, with Aaron's OK: `/sdf/data/rubin/user/roodman/LSST/scratch_refit_test`,
-   `/tmp/qcut`.
+3. Scratch dirs `scratch_refit_test` and `/tmp/qcut`: removed (2026-10-28).
 
 ## Tried and rejected
 

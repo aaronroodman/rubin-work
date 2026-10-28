@@ -1,6 +1,6 @@
 # Phase 7 plan: back up and remove the old output trees
 
-> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; `guider/output` and the laptop copies remain · **Last updated:** 2026-10-27 · **Kind:** plan
+> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; laptop copies, dangling repo symlinks, the old data-root site and `/tmp/qcut` removed; `guider/output` remains · **Last updated:** 2026-10-28 · **Kind:** plan
 
 The old output trees are the pre-reorg `<topic>/output` directories. The repo's
 `<topic>/output` symlinks point at them, through `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/`,
@@ -26,6 +26,15 @@ removing these trees does not touch them.
   `blocks_output.tar.zst` 2.1 GB, `value_added_output.tar.zst` 2.2 GB; tar entries match
   the files on disk: 2233, 94, 57) and removed. `blocks/output` and `value_added/output`
   now dangle in the repo.
+
+## Done (2026-10-28)
+
+- The laptop's synced output copies (about 60 GB) are removed.
+- The dangling repo symlinks `aos/output`, `blocks/output` and `value_added/output` are
+  removed.
+- The old site copy `/sdf/data/rubin/user/roodman/LSST/rubin-work/site` (50 MB, from
+  before `73447d5` moved the site into the repo) and `/tmp/qcut` on `sdfiana029` are
+  removed. `scratch_refit_test` was already gone.
 
 ## Inventory (2026-10-24)
 
@@ -181,5 +190,4 @@ rm -rf $T/aos/output $T/guider/output
 What breaks if run today: the guider QA, movie and rtvplot rules, until they get a study
 output; `build_fam_manifest.py` as documented; and the three parked scripts above.
 
-The laptop's synced output copies (about 60 GB) are not on s3df; remove them on the laptop
-when the s3df trees are settled.
+The laptop's synced output copies are removed (2026-10-28).
