@@ -71,6 +71,9 @@ from rubinwork.products.miw import JS_DEFAULT  # noqa: E402
 
 # The five in-family rotator bins the `_5rot` entries decompose, in the
 # `rot_<lo>_<hi>` directory-name form the build writes.
+# Arm names on the plots; set from --name-a / --name-b.
+ARM = {"a": "unconstrained", "b": "RBR"}
+
 ROT_5 = ("rot_-65_-55", "rot_-20_-10", "rot_-3_3", "rot_10_20", "rot_55_65")
 
 # The MIW build's own SVD configuration, from mi_config.yaml.
@@ -396,8 +399,8 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label):
     # diverging one the signed Zernike maps use.
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.0))
     fwhm_hi = float(np.nanpercentile(np.r_[fwhm_a, fwhm_b], 99.0))
-    for ax, vals, name in ((axes[0], fwhm_a, "unconstrained"),
-                           (axes[1], fwhm_b, "RBR")):
+    for ax, vals, name in ((axes[0], fwhm_a, ARM["a"]),
+                           (axes[1], fwhm_b, ARM["b"])):
         im = ax.scatter(thx, thy, c=vals, s=7, cmap="viridis",
                         vmin=0.0, vmax=fwhm_hi, linewidths=0)
         ax.set_aspect("equal")
@@ -410,7 +413,7 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label):
         cb.set_label("inferred FWHM (arcsec)", fontsize=7)
         cb.ax.tick_params(labelsize=6)
     _field_map(axes[2], thx, thy, fwhm_b - fwhm_a,
-               "RBR minus unconstrained\nmedian "
+               f"{ARM['b']} minus {ARM['a']}\nmedian "
                f"{np.median(fwhm_b - fwhm_a):+.4f} arcsec",
                "d(inferred FWHM) (arcsec)")
     fig.suptitle(f"MIW inferred FWHM, both arms — {label}", fontsize=10)
@@ -430,14 +433,14 @@ def plot_miw_arms(pdf, grid_a, grid_b, miw_terms, label):
                                     "share_of_difference_power"].iloc[0])
         fig, axes = plt.subplots(1, 3, figsize=(13, 4.0))
         _field_map(axes[0], thx, thy, a,
-                   f"Z{j} unconstrained\nRMS {np.sqrt((a ** 2).mean()):.4f} um",
+                   f"Z{j} {ARM['a']}\nRMS {np.sqrt((a ** 2).mean()):.4f} um",
                    "Zernike coefficient (um of wavefront)", vlim=vlim)
         _field_map(axes[1], thx, thy, b,
-                   f"Z{j} RBR\nRMS {np.sqrt((b ** 2).mean()):.4f} um",
+                   f"Z{j} {ARM['b']}\nRMS {np.sqrt((b ** 2).mean()):.4f} um",
                    "Zernike coefficient (um of wavefront)", vlim=vlim)
         # The median separates a field-constant shift (Z11, say) from a pattern.
         _field_map(axes[2], thx, thy, d,
-                   f"Z{j} RBR minus unconstrained\nmedian {np.median(d):+.4f} um, "
+                   f"Z{j} {ARM['b']} minus {ARM['a']}\nmedian {np.median(d):+.4f} um, "
                    f"RMS {np.sqrt((d ** 2).mean()):.4f} um",
                    "Zernike difference (um of wavefront)", vlim=vlim)
         fig.suptitle(f"MIW pupil Noll Z{j} — {share:.4f} of the difference "
@@ -470,18 +473,18 @@ def plot_term_rms(pdf, noll, zk_a, zk_b, label):
     x = np.arange(len(noll))
     w = 0.38
     fig, ax = plt.subplots(figsize=(13, 5.0))
-    ax.bar(x - w / 2, rms_a, w, color="tab:red", label="50/34 unconstrained")
-    ax.bar(x + w / 2, rms_b, w, color="tab:blue", label="50/50 RBR")
-    ax.plot(x, rms_d, "k_", ms=14, mew=2, label="RBR minus unconstrained: RMS")
+    ax.bar(x - w / 2, rms_a, w, color="tab:red", label=ARM["a"])
+    ax.bar(x + w / 2, rms_b, w, color="tab:blue", label=ARM["b"])
+    ax.plot(x, rms_d, "k_", ms=14, mew=2, label=f"{ARM['b']} minus {ARM['a']}: RMS")
     ax.plot(x, np.abs(med_d), "o", mfc="none", mec="k", ms=5,
-            label="RBR minus unconstrained: |median|")
+            label=f"{ARM['b']} minus {ARM['a']}: |median|")
     ax.set_xticks(x)
     ax.set_xticklabels([f"Z{j}" for j in noll], fontsize=8)
     ax.set_xlabel("pupil Noll term")
     ax.set_ylabel("RMS over the field (um of wavefront)")
     ax.set_title(f"MIW RMS over the field per Noll term, n={len(zk_a)} field points; "
                  f"total {np.sqrt((zk_a ** 2).sum(axis=1).mean()):.4f} um "
-                 f"unconstrained, {np.sqrt((zk_b ** 2).sum(axis=1).mean()):.4f} um RBR",
+                 f"{ARM['a']}, {np.sqrt((zk_b ** 2).sum(axis=1).mean()):.4f} um {ARM['b']}",
                  fontsize=9)
     ax.grid(alpha=0.3, axis="y")
     ax.legend(fontsize=8)
@@ -510,9 +513,9 @@ def plot_dof_ranges(pdf, dof_df, label):
     fig, axes = plt.subplots(2, 1, figsize=(13, 7.5))
     ax = axes[0]
     ax.semilogy(x, np.maximum(df[med_a], 1e-6), "o-", ms=3, lw=0.8,
-                color="tab:red", label="unconstrained")
+                color="tab:red", label=ARM["a"])
     ax.semilogy(x, np.maximum(df[med_b], 1e-6), "s-", ms=3, lw=0.8,
-                color="tab:blue", label="RBR")
+                color="tab:blue", label=ARM["b"])
     ax.axhline(1.0, color="k", ls="--", lw=0.8,
                label="allowed range r_j (|d_j|/r_j = 1)")
     ax.set_ylabel("median |d_j| / r_j\n(dimensionless)", fontsize=8)
@@ -525,9 +528,9 @@ def plot_dof_ranges(pdf, dof_df, label):
     ratio = np.asarray(df[med_b]) / np.maximum(np.asarray(df[med_a]), 1e-12)
     ax.semilogy(x, np.maximum(ratio, 1e-4), "o-", ms=3, lw=0.8, color="k")
     ax.axhline(1.0, color="tab:gray", ls="--", lw=0.8)
-    ax.set_ylabel("RBR / unconstrained\n(dimensionless)", fontsize=8)
+    ax.set_ylabel(f"{ARM['b']} /\n{ARM['a']}\n(dimensionless)", fontsize=8)
     ax.set_xlabel("degree of freedom", fontsize=8)
-    ax.set_title("Factor by which RBR pulls each DOF in "
+    ax.set_title(f"Ratio of median |d_j| / r_j, {ARM['b']} over {ARM['a']} "
                  "(below 1 means pulled in)", fontsize=9)
     ax.grid(alpha=0.3, which="both")
 
@@ -566,9 +569,9 @@ def plot_vmode_shift(pdf, vmode_df, label):
     ax.semilogy(x, np.maximum(np.abs(df[shift_col]), 1e-6), "o-", ms=3,
                 lw=0.8, color="tab:purple")
     ax.set_xlabel("retained v-mode index", fontsize=8)
-    ax.set_ylabel("median |RBR - unconstrained|\n(v-mode coefficient, "
+    ax.set_ylabel(f"median |{ARM['b']} - {ARM['a']}|\n(v-mode coefficient, "
                   "normalized DOF units)", fontsize=8)
-    ax.set_title("v-mode coefficient shift, RBR minus unconstrained",
+    ax.set_title(f"v-mode coefficient shift, {ARM['b']} minus {ARM['a']}",
                  fontsize=9)
     ax.grid(alpha=0.3, which="both")
     ax.tick_params(labelsize=6)
@@ -579,14 +582,14 @@ def plot_vmode_shift(pdf, vmode_df, label):
               color="tab:purple")
     ax.set_xlabel("singular value sigma (um of wavefront per DOF unit)",
                   fontsize=8)
-    ax.set_ylabel("median |RBR - unconstrained|\n(v-mode coefficient, "
+    ax.set_ylabel(f"median |{ARM['b']} - {ARM['a']}|\n(v-mode coefficient, "
                   "normalized DOF units)", fontsize=8)
     ax.set_title("The shift concentrates at small sigma:\nthe "
                  "poorly-conditioned directions", fontsize=9)
     ax.grid(alpha=0.3, which="both")
     ax.tick_params(labelsize=6)
 
-    fig.suptitle(f"Where RBR moves the recovery — {label}", fontsize=10)
+    fig.suptitle(f"Where {ARM['b']} moves the recovery from {ARM['a']} — {label}", fontsize=10)
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close(fig)
@@ -706,12 +709,17 @@ def main():
                     help="the same for the RBR arm")
     ap.add_argument("--ofc-normalization-yaml", default=None,
                     help="override the build's normalization weights file")
+    ap.add_argument("--name-a", default="unconstrained",
+                    help="name of the --unconstrained arm on the plots")
+    ap.add_argument("--name-b", default="RBR",
+                    help="name of the --rbr arm on the plots")
     ap.add_argument("--plots", action="store_true",
                     help="also write rbr_arms_plots.pdf under --out-dir")
     args = ap.parse_args()
     if args.plots and not args.out_dir:
         ap.error("--plots needs --out-dir to write the PDF into")
 
+    ARM.update(a=args.name_a, b=args.name_b)
     rot = ROT_5 if args.rotator_select == "5rot" else None
     estimator = build_estimator(ofc_normalization_yaml=args.ofc_normalization_yaml)
 

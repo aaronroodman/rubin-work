@@ -5,7 +5,7 @@ status: active
 question: "How do the MIW and its recovered optical state compare between 50/34 without RBR and 50/50 with Range-Bounded Recovery (RBR), and which keeps every DOF inside its allowed range?"
 answer: "On Danish 1.3, RBR cuts the fraction of (visit, DOF) pairs out of range from 0.4625 to 0.0800 (dimensionless) but grows the MIW RMS from 0.2594 to 0.3148 um of wavefront."
 uses:
-  miw: d13-A_50_34_i@20261025, d13-A_50_50_i_rbr@20261027
+  miw: d13-A_50_34_i@20261025, d13-A_50_50_i_rbr@20261027, d12-A_50_50_i_rbr@20261028
 started: 2026-09-28
 ---
 
@@ -69,3 +69,22 @@ rotator bins, 301 visits common to both. Output `output/20261027_d13_rbr_arms/`.
 
 Next:
 - Aaron to review `rbr_arms/rbr_arms_plots.pdf` and iterate on the plots.
+
+### 2026-10-28 — `_5rot` comparisons; Danish 1.2 against Danish 1.3, both RBR
+
+`compare_rbr_arms.py` now reads `_5rot` split maps (OCS part) as the MIW grid (`51bf91e`)
+and takes the arm names from `--name-a` / `--name-b`. New MIW builds
+`d12-A_50_50_i_rbr@20261028` and `d12-A_50_50_i_rbr_5rot@20261028` (variants `87a20a0`,
+`day_obs_max` 20260513 as for Danish 1.2 50/34; Slurm job 42249535, 33 min), set current.
+
+- 50/34 against 50/50 RBR, Danish 1.3 `_5rot` (`20261027_d13_rbr_arms/rbr_arms_5rot/`,
+  205 visits): MIW RMS over the field 0.2426 against 0.2780 µm of wavefront, difference
+  RMS 0.1550 µm; inferred FWHM, median over field, 0.1734 against 0.1930 arcsec. Noll 6,
+  12 and 5 each carry about 0.2 of the difference power.
+- Danish 1.2 RBR against Danish 1.3 RBR, `_5rot` (`20261028_d12_vs_d13_rbr_5rot/`, 193
+  common visits, 3985 field points): MIW RMS 0.2791 against 0.2780 µm of wavefront,
+  difference RMS 0.0869 µm; inferred FWHM 0.2143 against 0.1930 arcsec. Noll 5 and 6
+  carry 0.373 and 0.260 of the difference power. Fraction of (visit, DOF) pairs outside
+  range 0.0774 against 0.0780 (dimensionless).
+- Danish 1.2 RBR convergence: the last of 3 iterations moves 2.8e-03 to 3.9e-03 µm RMS
+  of wavefront per bin.
