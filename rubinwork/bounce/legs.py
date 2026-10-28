@@ -121,11 +121,9 @@ def filter_visits(fit_table, *, alt_range=None, rotator_range=None,
 
     `program` matches the `science_program` column (case-sensitive
     exact match).  Pass a single string or a list/tuple of strings;
-    the result is the union of all matches.  The fits parquet only
-    started carrying `science_program` after the upstream
-    `intrinsics_lib.merge_program_reason_to_visit_info` change — when
-    the column is missing the program filter is silently skipped and a
-    one-time warning is printed.
+    the result is the union of all matches.  A visit with no program
+    (missing or empty) never matches.  Raises `KeyError` if the table
+    has no `science_program` column.
     """
     n = len(fit_table)
     keep = np.ones(n, dtype=bool)
@@ -143,18 +141,14 @@ def filter_visits(fit_table, *, alt_range=None, rotator_range=None,
         keep &= (s >= int(seq_num_range[0])) & (s <= int(seq_num_range[1]))
     if program is not None:
         if 'science_program' not in fit_table.colnames:
-            if not getattr(filter_visits, '_warned_missing_program', False):
-                print("  WARNING: 'science_program' not in fit_table — "
-                      "the program filter is being ignored.  Re-run mktable "
-                      "with the updated intrinsics_lib to populate it.")
-                filter_visits._warned_missing_program = True
+            raise KeyError("program filter requested but fit_table has no "
+                           "'science_program' column")
+        sp = np.asarray(fit_table['science_program']).astype(str)
+        if isinstance(program, (list, tuple, set)):
+            prog_set = {str(p) for p in program}
+            keep &= np.array([s in prog_set for s in sp])
         else:
-            sp = np.asarray(fit_table['science_program']).astype(str)
-            if isinstance(program, (list, tuple, set)):
-                prog_set = {str(p) for p in program}
-                keep &= np.array([s in prog_set for s in sp])
-            else:
-                keep &= (sp == str(program))
+            keep &= (sp == str(program))
     if mask is not None:
         keep &= np.asarray(mask, dtype=bool)
     return keep

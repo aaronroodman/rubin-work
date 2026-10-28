@@ -113,6 +113,14 @@ def main():
                                 n_dof=n_dof,
                                 ofc_normalization_yaml=b.get("ofc_normalization_yaml"))
         W = _pack_W(df, prefix, svd.kj_grid)
+        # A non-finite DZ means bad data; it is zero-filled below, so name the visits.
+        bad = ~np.isfinite(W).all(axis=1)
+        if bad.any():
+            ids = [f"{d}/{q}" for d, q in zip(df.loc[bad, "day_obs"], df.loc[bad, "seq_num"])]
+            print(f"  WARNING {name}: {int(bad.sum())} visits (count) with a non-finite "
+                  f"DZ coefficient, {int((~np.isfinite(W)).sum())} cells (count), "
+                  f"zero-filled: {', '.join(ids[:20])}{' ...' if len(ids) > 20 else ''}",
+                  flush=True)
         out[f"frac_{name}"] = _fraction_explained(W, svd)
         print(f"  {name}: n_dof={svd.n_dof} n_keep_eff={svd.n_keep_eff}  "
               f"median frac = {np.nanmedian(out[f'frac_{name}']):.3f}", flush=True)

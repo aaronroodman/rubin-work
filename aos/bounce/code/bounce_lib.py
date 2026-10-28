@@ -368,8 +368,9 @@ def plot_night_cross_scatter(deltas_by_night, passing_kj, title_root='',
             ax.annotate(l, (x, y), textcoords='offset points',
                         xytext=(5, 5), fontsize=8, color='black')
         if lim is None:
-            lo = float(min((xs - xe).min(), (ys - ye).min()))
-            hi = float(max((xs + xe).max(), (ys + ye).max()))
+            xe0, ye0 = np.nan_to_num(xe), np.nan_to_num(ye)   # limits only
+            lo = float(min((xs - xe0).min(), (ys - ye0).min()))
+            hi = float(max((xs + xe0).max(), (ys + ye0).max()))
             pad = 0.10 * max(hi - lo, 1e-3)
             lo -= pad; hi += pad
             ztag = ''
@@ -402,7 +403,8 @@ def plot_night_cross_scatter(deltas_by_night, passing_kj, title_root='',
         if not xs:
             continue
         xs = np.array(xs); ys = np.array(ys)
-        xe = np.nan_to_num(np.array(xe)); ye = np.nan_to_num(np.array(ye))
+        # NaN errors stay NaN: errorbar draws no bar for them.
+        xe = np.array(xe, float); ye = np.array(ye, float)
         figs.append(_make(A, B, xs, ys, xe, ye, labs, None))
         if zoom_lim_um is not None:
             figs.append(_make(A, B, xs, ys, xe, ye, labs, zoom_lim_um))
@@ -697,16 +699,16 @@ def plot_dof_night_scatter(dof_deltas_by_night, labels, units=None,
                     labs.append(labels[q])
             if xs:
                 xs = np.array(xs); ys = np.array(ys)
-                xe = np.nan_to_num(np.array(xe))
-                ye = np.nan_to_num(np.array(ye))
+                xe = np.array(xe, float); ye = np.array(ye, float)
                 ax.errorbar(xs, ys, xerr=xe, yerr=ye, fmt='o', ms=5,
                             color='steelblue', ecolor='gray',
                             elinewidth=0.8, capsize=2, alpha=0.85, zorder=3)
                 for x, y, l in zip(xs, ys, labs):
                     ax.annotate(l, (x, y), textcoords='offset points',
                                 xytext=(4, 4), fontsize=6, color='black')
-                lo = float(min((xs - xe).min(), (ys - ye).min()))
-                hi = float(max((xs + xe).max(), (ys + ye).max()))
+                xe0, ye0 = np.nan_to_num(xe), np.nan_to_num(ye)   # limits only
+                lo = float(min((xs - xe0).min(), (ys - ye0).min()))
+                hi = float(max((xs + xe0).max(), (ys + ye0).max()))
                 pad = 0.10 * max(hi - lo, 1e-6)
                 lo -= pad; hi += pad
                 ax.plot([lo, hi], [lo, hi], 'k--', lw=0.8, alpha=0.6,
@@ -887,7 +889,7 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
                     continue
                 oxs, oys, oes, _ = map(list, zip(*pts))
                 ax.errorbar(oxs, oys,
-                            yerr=np.nan_to_num(np.asarray(oes, float)),
+                            yerr=np.asarray(oes, float),
                             fmt='none', ecolor=ocol, elinewidth=0.8, alpha=0.6,
                             capsize=2, zorder=4)
                 ax.scatter(oxs, oys, s=44, facecolors='none', edgecolors=ocol,
@@ -897,7 +899,7 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
             if pts:
                 xs, ys, es, nts = map(list, zip(*pts))
                 xs = np.asarray(xs, float); ys = np.asarray(ys, float)
-                es = np.nan_to_num(np.asarray(es, float))
+                es = np.asarray(es, float)
                 labs = [f"{nt % 10000}/{x:g}" for nt, x in zip(nts, xs)]
                 ax.errorbar(xs, ys, yerr=es, fmt='none', ecolor=BASE_STYLE[0],
                             elinewidth=0.8, alpha=0.6, capsize=2, zorder=2)

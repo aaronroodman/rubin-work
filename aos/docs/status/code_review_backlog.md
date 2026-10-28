@@ -1,6 +1,6 @@
 # AOS code review — open backlog
 
-> **Status:** current; the one review backlog · **Last updated:** 2026-10-25 · **Kind:** working state (review backlog)
+> **Status:** current; the one review backlog · **Last updated:** 2026-10-28 · **Kind:** working state (review backlog)
 
 The single list of known code defects in `aos/`, the `rubinwork` products it uses and the
 `ts_intrinsic_wavefront` package (`W` below is `python/lsst/ts/intrinsic/wavefront/` in that
@@ -13,13 +13,16 @@ needing regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
 
 | id | defect | where (2026-10-25) | needs |
 |---|---|---|---|
-| A2 | A non-finite DZ coefficient is zero-filled before the SVD projection, biasing that visit's u-mode amplitudes toward 0. `run_dz_correlations` now logs the zero-filled fraction; the others do not | `W/ofc_svd.py:180` (`project_amplitudes`), `aos/correlations/code/run_dz_correlations.py:231`, `aos/correlations/code/run_dz_explained.py:54`, `rubinwork/products/coadds/builders/run_coadd_blocks_miw.py:381`, `aos/closed_loop/code/run_closed_loop.py:127` | Aaron: drop the visit, NaN-mask, or keep with a logged count |
-| B1 | Thermal correlations have no detrending and no caveat that slowly drifting quantities correlate through time alone | `aos/correlations/code/run_thermal_correlations.py` | Aaron: partial out a per-night time term, or annotate |
+| A2 | A non-finite DZ coefficient is zero-filled before the SVD projection, biasing that visit's u-mode amplitudes toward 0. `run_dz_correlations` now logs the zero-filled fraction; the others do not | `W/ofc_svd.py:180` (`project_amplitudes`), `aos/correlations/code/run_dz_correlations.py:231`, `aos/correlations/code/run_dz_explained.py:54`, `rubinwork/products/coadds/builders/run_coadd_blocks_miw.py:381`, `aos/closed_loop/code/run_closed_loop.py:127` | Aaron 2026-10-28: a non-finite DZ means bad data. `run_dz_explained` now names the visits; no change to the package while its PR is open |
+| B1 | Thermal correlations have no detrending and no caveat that slowly drifting quantities correlate through time alone | `aos/correlations/code/run_thermal_correlations.py` | deferred (Aaron 2026-10-28): revisit with the whole correlations analysis, rerun on the Danish 1.3 unpaired FAM |
 | B8 | `degen_assignment` is one value for every Zernike, so Z4, Z11 and Z22 all follow it | `W/intrinsic_split.py:101` and the `decompose_*` functions; `WB/run_intrinsic_split.py:197` | Aaron: allow a per-Noll-j dict |
-| D4 | `filter_visits` prints a warning and skips the program filter when `science_program` is missing, rather than failing | `rubinwork/bounce/legs.py:145-150` | raise instead; behaviour change |
-| D13 | An unpaired doublet member in `noll_list` is skipped with only a print, so a misconfigured list silently loses a Zernike | `WB/run_intrinsic_split.py:224` | raise, or record in `intrinsic_split_rms.parquet` |
-| D19 | Two near-duplicate rotator merges | `W/intrinsics_lib.py:2047` (`merge_rotator_to_visit_info`) and `:2282` (`merge_rotator_to_tables`) | unify; structure only |
-| — | NaN error bars drawn as zero (plot-only; a missing error looks like an exact point) | `aos/bounce/code/bounce_lib.py:405, 700-701, 890, 900` | mask the point's error bar instead |
+| D19 | `merge_rotator_to_tables` has no callers; `merge_rotator_to_visit_info` is the live one | `W/intrinsics_lib.py:2282` | Aaron 2026-10-28: delete it, once the open ts_intrinsic_wavefront PR is merged |
+
+Closed 2026-10-28: D4 (`rubinwork/bounce/legs.py` `filter_visits` raises `KeyError` when a
+program filter is asked for and `science_program` is missing); the bounce NaN error bars
+(`aos/bounce/code/bounce_lib.py` keeps NaN errors, so no bar is drawn; the axis limits
+treat them as 0). D13 won't fix (Aaron): an unpaired doublet member happens when data
+taking is interrupted, and the printed skip is enough.
 
 ## Closed from the 2026-06-27 review
 
