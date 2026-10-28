@@ -33,14 +33,14 @@ from rubinwork.common.utils import alt_to_deg as _alt_to_deg
 # these are the fallback rather than what a configured build uses.
 DEFAULT_BOUNCES = [
     {'name': 'T720_elevation', 'description': 'Elevation 40 - 70 deg, rotator ~ 0',
-     'program': 'BLOCK-T720',
+     'program': 'BLOCK-T720', 'default_scheme': 'rbr',
      'reference': {'label': 'Elev=70', 'alt_range': [67.0, 73.0], 'rotator_range': [-3.0, 3.0]},
      'comparisons': [{'label': 'Elev=40', 'alt_range': [37.0, 43.0], 'rotator_range': [-3.0, 3.0]}]},
     {'name': 'T724_rotator', 'description': 'Rotator 60 - 0 deg, elevation ~ 70',
      'program': 'BLOCK-T724',
      # rotator bounce: only the camera hexapod moves, so also evaluate a 5-DOF /
      # 5-v-mode (Camera-hexapod-only) correction alongside the full 50/34.
-     'camera_hexapod_only': True,
+     'camera_hexapod_only': True, 'default_scheme': '5_5',
      'reference': {'label': 'Rot=0', 'rotator_range': [-3.0, 3.0], 'alt_range': [67.0, 73.0]},
      'comparisons': [{'label': 'Rot=60', 'rotator_range': [57.0, 63.0], 'alt_range': [67.0, 73.0]}]},
 ]
@@ -78,6 +78,10 @@ DEFAULT = dict(
     # smatrix `regularized_inversion` study found best or near-best on five of
     # the six bounce legs.
     rbr_enable=True, rbr_kappa=4.0, rbr_power=3,
+    # The RBR scheme's own mode count, barrier weight (µm^2 of wavefront) and
+    # whether it solves over every DOF with the barrier as the only regularizer.
+    # 50 / 1.0 / True is the 50/50 RBR the measured intrinsic is built with.
+    rbr_n_keep=50, rbr_penalty_weight=1.0, rbr_full_dof=True,
     # The 22-DOF / 12-v-mode reduced scheme the AOS is expected to operate in.
     # Only the mode count is configurable: the 22 DOF are an *index set*, fixed in
     # code as `DOF22`, not a count that could be read from here.
@@ -88,9 +92,63 @@ DEFAULT = dict(
     # inactive as delivered, so a value must be chosen; this one is *consumed*,
     # and the scan it comes from is in
     # smatrix/regularized_inversion/regularized_inversion.md.  Do not re-derive it here.
-    oic_enable=True, oic_rho=1.0e-3)
+    oic_enable=True, oic_rho=1.0e-3,
+    # LUT fits of the default scheme's paired-Δ DOF against the B-set position:
+    # a polynomial with no constant term in (x - reference), so the correction is
+    # zero at the reference (elevation 70 deg, camera rotator angle 0 deg).
+    lut_order_elevation=2, lut_order_rotator=1,
+    lut_ref_elevation_deg=70.0, lut_ref_rotator_deg=0.0,
+    lut_range_elevation_deg=[30.0, 75.0], lut_range_rotator_deg=[0.0, 60.0],
+    lut_nsigma=3.0)
+
+# Recovery schemes by `default_scheme` key: the per-leg Δ key in the analysis
+# result and the per-(night, leg) FWHM column.
+SCHEME_KEYS = {
+    '50_34': ('dof_deltas', 'fwhm_after_default'),
+    'rbr': ('rbr_deltas', 'fwhm_after_rbr'),
+    '22_12': ('dof22_deltas', 'fwhm_after_22_12'),
+    'oic': ('dof_oic_deltas', 'fwhm_after_oic'),
+    '5_5': ('dof5_deltas', 'fwhm_after_5_5'),
+}
 
 RBR_METHOD_NAME = 'Range-Bounded Recovery (RBR)'
+
+
+def scheme_label(key, cfg):
+    """Legend name of a recovery scheme, with its mode counts and knobs.
+
+    Parameters
+    ----------
+    key : `str`
+        A `SCHEME_KEYS` key.
+    cfg : `dict`
+        The resolved bounce configuration.
+
+    Returns
+    -------
+    label : `str`
+    """
+    if key == 'rbr':
+        return (f'RBR {cfg["n_dof"]}/{cfg["rbr_n_keep"]} '
+                f'(kappa={cfg["rbr_kappa"]:g}, power={cfg["rbr_power"]}, '
+                f'both dimensionless)')
+    if key == '22_12':
+        return f'{len(DOF22)}/{cfg["n_keep_reduced"]} reduced DOF set'
+    if key == 'oic':
+        return f'OIC {cfg["n_dof"]}/{cfg["n_keep"]} (rho={cfg["oic_rho"]:g} dimensionless)'
+    if key == '5_5':
+        return '5/5 camera hexapod'
+    return f'{cfg["n_dof"]}/{cfg["n_keep"]} truncated'
+
+
+def default_scheme(bounce):
+    """The `SCHEME_KEYS` key a bounce is read in: 5/5 if camera-hexapod-only, else RBR."""
+    key = str(bounce.get('default_scheme')
+              or ('5_5' if bounce.get('camera_hexapod_only') else 'rbr'))
+    if key not in SCHEME_KEYS:
+        raise ValueError(f'{bounce.get("name")}: unknown default_scheme {key!r}; '
+                         f'known: {sorted(SCHEME_KEYS)}')
+    return key
 RBR_DEFAULTS = {'kappa': 4.0, 'power': 3}
 
 

@@ -115,8 +115,7 @@ def write_tables(result, cfg, out_dir):
         # Image-quality cost of each scheme relative to the unregularized 50/34
         # recovery, as the difference of two achieved-residual FWHM in arcsec.
         for _col, _tag in (('fwhm_after_rbr',
-                            f'RBR 50/34 (kappa={cfg["rbr_kappa"]:g}, '
-                            f'power={cfg["rbr_power"]}; both dimensionless)'),
+                            bl.scheme_label('rbr', cfg)),
                            ('fwhm_after_22_12',
                             f'{len(DOF22)}/{cfg["n_keep_reduced"]} reduced'),
                            ('fwhm_after_oic',
@@ -263,8 +262,7 @@ def write_tables(result, cfg, out_dir):
                 print('    DOF rows over the allowed range (|Δ|/r_j > 1, '
                       'dimensionless), per scheme:')
                 _schemes = [('50/34 truncated', 'dof', 'ratio_to_range'),
-                            (f'RBR 50/34 (kappa={cfg["rbr_kappa"]:g}, '
-                             f'power={cfg["rbr_power"]}; both dimensionless)',
+                            (bl.scheme_label('rbr', cfg),
                              'dof', 'ratio_to_range_rbr'),
                             (f'{len(DOF22)}/{cfg["n_keep_reduced"]} reduced',
                              'dof22', 'ratio_to_range'),

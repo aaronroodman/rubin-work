@@ -61,6 +61,11 @@ defaults:
     rbr_enable: true
     rbr_kappa: 4.0
     rbr_power: 3
+    # RBR's own mode count, barrier weight (um^2 of wavefront) and full-DOF solve:
+    # the 50/50 RBR the measured intrinsic is built with (Aaron, 2026-10-28).
+    rbr_n_keep: 50
+    rbr_penalty_weight: 1.0
+    rbr_full_dof: true
     # The 22-DOF / 12-v-mode reduced scheme the AOS is expected to operate in.
     # Only the mode count lives here: the 22 DOF are an *index set* (10 rigid
     # body, M1M3 bending 1-7, M2 bending 1-5) fixed in run_bounce.py as DOF22,
@@ -82,6 +87,17 @@ defaults:
     # worse, not better: at rho = 1.0 the solve returns d = 0 and corrects nothing.
     oic_enable: true
     oic_rho: 1.0e-3
+    # LUT fits (bounce_lut.pdf) of each bounce's default-scheme paired-Δ DOF:
+    # sum_p c_p (x - ref)^p, p = 1..order, so zero at the reference.  The default
+    # scheme is RBR 50/50 for elevation, 5/5 camera hexapod for a
+    # camera_hexapod_only bounce (rubinwork.bounce.legs.default_scheme).
+    lut_order_elevation: 2
+    lut_order_rotator: 1
+    lut_ref_elevation_deg: 70.0
+    lut_ref_rotator_deg: 0.0
+    lut_range_elevation_deg: [30.0, 75.0]
+    lut_range_rotator_deg: [0.0, 60.0]
+    lut_nsigma: 3.0           # kept when the coefficients are >= this many sigma from zero
     # Per-DOF panel layout of bounce_dof_night_values.pdf, paginated across
     # pages: enlarged panels so the overlaid schemes stay readable.
     dof_ncols: 2

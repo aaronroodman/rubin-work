@@ -50,13 +50,21 @@ class BounceAnalysis:
         Pupil Noll indices of the DZ grid.
     k_list : `list` [`int`]
         Focal Zernike orders fitted.
-    svd, svd5, svd22 : `OFCSvd` or `None`
-        The 50/34, 5/5 camera-hexapod-only and 22/12 reduced decompositions.
+    svd, svd5, svd22, svd_rbr : `OFCSvd` or `None`
+        The 50/34, 5/5 camera-hexapod-only, 22/12 reduced and RBR (50 DOF /
+        ``rbr_n_keep`` modes) decompositions.
     C_all, DOF_all : `numpy.ndarray` or `None`
         Per-visit v-mode amplitudes (dimensionless) and DOF (µm or arcsec),
         50/34.  The per-ordinal PDF pages need these.
     C5_all, DOF5_all, C22_all : `numpy.ndarray` or `None`
         The same for the 5/5 and 22/12 schemes.
+    DOFRBR_all : `numpy.ndarray` or `None`
+        Per-visit DOF under RBR, µm or arcsec, solved visit by visit.
+    night_dW : `dict`
+        Per ``(bounce, leg, day_obs)``: the median paired Δ DZ wavefront, µm of
+        wavefront on ``svd.kj_grid``.  What a LUT correction is scored against.
+    fwhm_tools : `tuple` or `None`
+        ``(aos_fwhm, grid, convertZernikesToPsfWidth)`` for `achieved_fwhm`.
     DOFSUM_all : `numpy.ndarray` or `None`
         Per-visit DOF plus the AOS Trim, µm or arcsec, when `add_dof_trim` is on.
     dof_ranges : `numpy.ndarray` or `None`
@@ -80,11 +88,15 @@ class BounceAnalysis:
     svd: Any = None
     svd5: Any = None
     svd22: Any = None
+    svd_rbr: Any = None
     C_all: Any = None
     DOF_all: Any = None
     C5_all: Any = None
     DOF5_all: Any = None
     C22_all: Any = None
+    DOFRBR_all: Any = None
+    night_dW: dict = field(default_factory=dict)
+    fwhm_tools: Any = None
     DOFSUM_all: Any = None
     dof_ranges: Any = None
     oic_authority: Any = None
@@ -158,24 +170,6 @@ def _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw):
     return afw.fp_fwhm(svd, iZs, ri.achieved_residual(dW, d, svd), grid, conv)
 
 
-def _rbr_fwhm(dW, svd, ranges, cfg, iZs, grid, conv, afw):
-    """Correctable FWHM in arcsec left after Range-Bounded Recovery.
-
-    Notes
-    -----
-    Returns NaN rather than raising if the RBR solve fails, so one bad leg
-    cannot take down the whole run.
-    """
-    ri = bl.rbr_module()
-    try:
-        d = ri.invert_range_penalty(dW, svd, ranges, kappa=cfg['rbr_kappa'],
-                                    power=cfg['rbr_power'])
-    except Exception as e:
-        print(f'        (RBR FWHM failed [{type(e).__name__}: {e}])')
-        return float('nan')
-    return _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw)
-
-
 def _scheme_fwhm(dW, svd, solver, iZs, grid, conv, afw, tag):
     """Correctable FWHM in arcsec left after one recovery scheme.
 
@@ -217,6 +211,29 @@ def _scheme_fwhm(dW, svd, solver, iZs, grid, conv, afw, tag):
         print(f'        ({tag} FWHM failed [{type(e).__name__}: {e}])')
         return float('nan')
     return _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw)
+
+
+def achieved_fwhm(result, dW, d, svd):
+    """Correctable FWHM in arcsec left by applying DOF `d` to wavefront `dW`.
+
+    Parameters
+    ----------
+    result : `BounceAnalysis`
+        Supplies the FWHM tooling and the pupil Noll indices.
+    dW : `numpy.ndarray`
+        DZ wavefront, µm of wavefront, on `svd.kj_grid`.
+    d : `numpy.ndarray`
+        DOF over `svd.dof_idx`, each in its own unit (µm or arcsec).
+    svd : `OFCSvd`
+        Decomposition whose forward operator maps `d` to a wavefront.
+
+    Returns
+    -------
+    fwhm : `float`
+        Median correctable FWHM over the focal plane, arcsec.
+    """
+    afw, grid, conv = result.fwhm_tools
+    return _achieved_fwhm(dW, d, svd, result.iZs, grid, conv, afw)
 
 
 def run_analysis(fits_path, cfg, *, min_detectors=None):
@@ -285,6 +302,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
     C_all = DOF_all = None
     svd = svd5 = C5_all = DOF5_all = None
     svd22 = C22_all = None
+    svd_rbr = DOFRBR_all = None
     vmode_labels = vmode5_labels = vmode22_labels = []
     try:
         from lsst.ts.intrinsic.wavefront.ofc_svd import build_ofc_svd, project_dz_table
@@ -296,6 +314,16 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
         C_all, DOF_all, _A, _W = project_dz_table(fit_table, prefix, svd)
         print(f'  OFC SVD: n_keep={svd.n_keep_eff}, n_dof={svd.n_dof}; '
               f'projected C_all{C_all.shape}, DOF_all{DOF_all.shape}')
+        # RBR decomposition: 50/50 by default, the scheme the measured intrinsic
+        # is built with, so every mode is available and the range barrier is the
+        # only regularizer.
+        if cfg['rbr_enable']:
+            _nk = int(cfg.get('rbr_n_keep') or cfg['n_keep'])
+            svd_rbr = svd if _nk == svd.n_keep_eff else build_ofc_svd(
+                iZs, int(min(k_list)), int(max(k_list)), _nk, n_dof=cfg['n_dof'],
+                ofc_normalization_yaml=cfg['ofc_normalization_yaml'])
+            print(f'  RBR SVD: n_keep={svd_rbr.n_keep_eff}, n_dof={svd_rbr.n_dof}, '
+                  f'full_dof={bool(cfg.get("rbr_full_dof", False))}')
         # 5/5 Camera-hexapod-only SVD (shares kj_grid) for the rotator bounce.
         svd5 = build_ofc_svd(iZs, int(min(k_list)), int(max(k_list)),
                              5, n_dof=CAM_HEX_DOF,
@@ -344,10 +372,10 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
     # the per-night DOF Δ appears; if the solver or the range vector is
     # unavailable the default products are unaffected.
     dof_ranges = None
-    if cfg['rbr_enable'] and _svd_ok and svd is not None:
+    if cfg['rbr_enable'] and _svd_ok and svd_rbr is not None:
         try:
             _ri = bl.rbr_module()
-            dof_ranges = _ri.dof_range_vector(svd)
+            dof_ranges = _ri.dof_range_vector(svd_rbr)
             print(f'  RBR: {bl.RBR_METHOD_NAME}, kappa='
                   f'{cfg["rbr_kappa"]} (dimensionless, |d_j|/r_j at unit '
                   f'penalty weight), power={cfg["rbr_power"]}; '
@@ -421,7 +449,31 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
         a = np.asarray(oic_authority, float)[np.asarray(s.dof_idx, int)]
         return bl.rbr_module().invert_oic(dW, s, a, float(cfg['oic_rho']))
 
+    def _solve_rbr(dW, s):
+        """DOF from Range-Bounded Recovery in `s`, own units.
+
+        Notes
+        -----
+        The ts_ofc solver the measured-intrinsic build calls, with the same
+        knobs, so the bounce reads the optical state the way the MIW was built.
+        """
+        return s.estimator.dof_range_bounded(
+            dW, kappa=float(cfg['rbr_kappa']), power=int(cfg['rbr_power']),
+            penalty_weight=float(cfg.get('rbr_penalty_weight', 1.0)),
+            full_dof=bool(cfg.get('rbr_full_dof', False)))
+
     oic_ok = bool(cfg['oic_enable']) and oic_authority is not None
+
+    # Per-visit RBR DOF, for the DOF-vs-ordinal pages of an RBR-read bounce.
+    # Solved visit by visit: the inversion is nonlinear.
+    if dof_ranges is not None and _W is not None:
+        DOFRBR_all = np.full((_W.shape[0], svd_rbr.n_dof), np.nan)
+        for i in range(_W.shape[0]):
+            if np.all(np.isfinite(_W[i])):
+                try:
+                    DOFRBR_all[i] = _solve_rbr(_W[i], svd_rbr)
+                except Exception:
+                    pass
 
     # ---- optional AOS Trim (aggregatedDoF) (cell 14) ----
     DOFSUM_all = TRIM_segment = None
@@ -440,6 +492,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
 
     # ---- bounce analysis (cell 16) ----
     bounce_results, long_dfs = {}, []
+    night_dW = {}
     for b in bounces:
         name = b['name']
         combined = bl.run_bounce(fit_table, b, prefix, k_list, iZs,
@@ -504,14 +557,11 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
             # (the inversion is nonlinear, so it does not commute with the
             # median) on the paired Δ wavefront.
             if dof_ranges is not None and _W is not None:
-                rbr_deltas = bl.rbr_deltas(
-                    _W, pairs_all, svd, dof_ranges,
-                    kappa=cfg['rbr_kappa'], power=cfg['rbr_power'])
+                rbr_deltas = bl.solver_deltas(_W, pairs_all, svd_rbr, _solve_rbr)
                 rbr_deltas_by_night = {
-                    d: bl.rbr_deltas(
-                        _W, nights[d]['comparisons'][label]['pairs'], svd,
-                        dof_ranges, kappa=cfg['rbr_kappa'],
-                        power=cfg['rbr_power'])
+                    d: bl.solver_deltas(
+                        _W, nights[d]['comparisons'][label]['pairs'], svd_rbr,
+                        _solve_rbr)
                     for d in leg_nights}
             # 22/12 and OIC Δ, the same way: one solve per pair, then the same
             # median / median-SEM reduction.  The 22/12 result is keyed by its
@@ -585,9 +635,9 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
                            med_dW, svd, _solve_trunc, iZs, fwhm_grid, fwhm_conv,
                            _afw, '50/34')}
                 if dof_ranges is not None:
-                    row['fwhm_after_rbr'] = _rbr_fwhm(
-                        med_dW, svd, dof_ranges, cfg, iZs, fwhm_grid, fwhm_conv,
-                        _afw)
+                    row['fwhm_after_rbr'] = _scheme_fwhm(
+                        med_dW, svd_rbr, _solve_rbr, iZs, fwhm_grid, fwhm_conv,
+                        _afw, 'RBR')
                 if svd22 is not None:
                     row['fwhm_after_22_12'] = _scheme_fwhm(
                         med_dW, svd22, _solve_trunc, iZs, fwhm_grid, fwhm_conv,
@@ -632,10 +682,11 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
                             'fwhm_after_default': _scheme_fwhm(
                                 _dW, svd, _solve_trunc, iZs, fwhm_grid,
                                 fwhm_conv, _afw, '50/34')}
+                    night_dW[(name, label, int(d))] = _dW
                     if dof_ranges is not None:
-                        frow['fwhm_after_rbr'] = _rbr_fwhm(
-                            _dW, svd, dof_ranges, cfg, iZs, fwhm_grid,
-                            fwhm_conv, _afw)
+                        frow['fwhm_after_rbr'] = _scheme_fwhm(
+                            _dW, svd_rbr, _solve_rbr, iZs, fwhm_grid,
+                            fwhm_conv, _afw, 'RBR')
                     if svd22 is not None:
                         frow['fwhm_after_22_12'] = _scheme_fwhm(
                             _dW, svd22, _solve_trunc, iZs, fwhm_grid,
@@ -664,9 +715,11 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
         fit_table=fit_table, bounce_results=bounce_results, df_kj=df_kj,
         fwhm_rows=fwhm_rows, fwhm_bvalue_rows=fwhm_bvalue_rows,
         iZs=iZs, k_list=k_list,
-        svd=svd, svd5=svd5, svd22=svd22,
+        svd=svd, svd5=svd5, svd22=svd22, svd_rbr=svd_rbr,
         C_all=C_all, DOF_all=DOF_all, C5_all=C5_all, DOF5_all=DOF5_all,
-        C22_all=C22_all, DOFSUM_all=DOFSUM_all,
+        C22_all=C22_all, DOFRBR_all=DOFRBR_all, night_dW=night_dW,
+        fwhm_tools=(None if fwhm_conv is None else (_afw, fwhm_grid, fwhm_conv)),
+        DOFSUM_all=DOFSUM_all,
         dof_ranges=dof_ranges, oic_authority=oic_authority,
         svd_ok=_svd_ok, oic_ok=oic_ok,
         vmode_labels=vmode_labels, vmode5_labels=vmode5_labels,
