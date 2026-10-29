@@ -3,7 +3,7 @@ study: elevation_pairs
 topic: aos
 status: active
 question: How many same-night science visit pairs change elevation by at least 10 deg with azimuth and camera rotator angle each within 5 deg and the band unchanged, and do they give an elevation LUT sample to compare with the bounce tests?
-answer: "85 consecutive science visit pairs over 52 nights within 2 min (|dEl| >= 10 deg, |dAz| and |dRot| < 5 deg, same band); 63 carry a recovered state. Relaxing to any pair within 60 min gives 58,740 pairs."
+answer: "Within 5 min (4,291 pairs, 130 nights, Danish 1.3, 22/12), the optical-state v-mode 1 changes by -2.47e-4 +- 0.28e-4 per deg of elevation (Pearson r = -0.132, Spearman rho = -0.126), about +0.27 um of equivalent hexapod dz per deg; v5, v3 and v8 carry stronger trends."
 uses:
   value_added: v1@20261025b
   cwfs_science: d13-blitz_rso1071@20261026
@@ -18,7 +18,7 @@ How many same-night science visit pairs change elevation by at least 10 deg with
 
 ## Current answer
 
-85 consecutive science visit pairs over 52 nights within 2 min (|dEl| >= 10 deg, |dAz| and |dRot| < 5 deg, same band); 63 carry a recovered state. Relaxing to any pair within 60 min gives 58,740 pairs. The per-pair open-loop hexapod change per degree of elevation is noisy: robust scatter (nMAD) 19 to 39 um/deg against medians of 3 to 22 um/deg.
+Within 5 min (4,291 pairs, 130 nights, Danish 1.3, 22/12), the optical-state v-mode 1 changes by -2.47e-4 +- 0.28e-4 per deg of elevation (Pearson r = -0.132, Spearman rho = -0.126), about +0.27 um of equivalent hexapod dz per deg; v5, v3 and v8 carry stronger trends. Search alone: 85 consecutive pairs within 2 min, 5,812 pairs within 5 min.
 
 ## Log
 
@@ -57,3 +57,13 @@ Notebook `notebooks/elevation_pairs_state_v2.ipynb`, code `code/pairs_lib.py`, r
 - At -9.0e-4 v1 per um of hexapod dz, the slope is about +0.36 um of equivalent dz per deg of elevation, 3.6 um over a 10 deg pair.
 - Stronger slopes per deg of elevation: v5 +1.67e-3 (6.2 sigma), v8 -2.21e-3 (4.3 sigma), v3 -0.90e-3 (3.9 sigma); camera rx -1.1e-4 deg/deg (6.7 sigma), M2 dy +2.2 um/deg (5.4 sigma), M2 rx -4e-5 deg/deg (5.3 sigma).
 - In 22/12 the recovered M2 dz and camera dz anticorrelate pair by pair, about +-100 um. Camera dx and dy changes reach 1000-2000 um. Both are weakly constrained combinations in 22/12, so read v-modes rather than single hexapod DOF.
+
+### 2026-10-29 — widened to dt <= 5 min, non-consecutive pairs
+
+Same notebook, now defaulting to `MAX_DT_MIN = 5.0` and `CONSECUTIVE_ONLY = False`. Run `output/20261029_state_d13_22_12_dt5min_all/`.
+
+- 5,812 pairs over 175 nights; 4,291 pairs over 130 nights have a Danish 1.3 state at both visits. They use 5,394 distinct visits, so few pairs share a visit and the formal errors are only mildly optimistic.
+- State v1 against elevation change, Huber fit: slope -2.47e-4 +- 0.28e-4 per deg (dimensionless v1 per deg; 8.8 sigma), Pearson r = -0.132, Spearman rho = -0.126, n = 4,291. nMAD residual 0.0213 (dimensionless v1). This agrees with the 2 min sample (-3.2e-4 +- 1.7e-4 per deg).
+- In hexapod dz, at -9.0e-4 v1 per um, that is about +0.27 um of equivalent dz per deg of elevation.
+- Within 5 min the Trim sometimes changes (nMAD of its v1 change 0.0075, dimensionless), but its slope against elevation is consistent with zero (+1.7e-5 +- 1.0e-5 per deg). The v1 trend stays in the deviation.
+- Largest state slopes per deg of elevation: v5 +1.35e-3 (31 sigma), v3 -0.68e-3 (17 sigma), v8 -1.33e-3 (11 sigma), v11 +1.75e-3 (10 sigma); camera rx -8e-5 deg/deg (35 sigma), M2 dy +1.6 um/deg (29 sigma), M2 rx -3e-5 deg/deg (24 sigma).
