@@ -6,6 +6,7 @@ question: How many same-night science visit pairs change elevation by at least 1
 answer: "85 consecutive science visit pairs over 52 nights within 2 min (|dEl| >= 10 deg, |dAz| and |dRot| < 5 deg, same band); 63 carry a recovered state. Relaxing to any pair within 60 min gives 58,740 pairs."
 uses:
   value_added: v1@20261025b
+  cwfs_science: d13-blitz_rso1071@20261026
 started: 2026-10-29
 ---
 
@@ -44,3 +45,15 @@ Notebook `notebooks/elevation_pairs_v1.ipynb`, run `output/20261029_pairs_dt2min
 - Default sample, consecutive and dt <= 2 min: 85 pairs, 52 nights. Bands z 26, i 25, r 21, y 9, g 3, u 1. |dEl| is mostly 10–15 deg (74 pairs); only 3 exceed 20 deg.
 - 63 of 85 pairs have a `v50_34__miw__consdb_v1` state on both visits. The 18 earliest pairs (before 20250724) have none.
 - Open-loop hexapod change per degree of elevation (median over 63 pairs, nMAD in brackets, um/deg): M2 dy -21.7 (29.2), Cam dx +13.6 (39.1), Cam dy +14.6 (36.3). The scatter exceeds the median on every DOF, so a single pair says little; a fit over pairs is the next step.
+
+### 2026-10-29 — 22/12 optical state from Danish 1.3
+
+Notebook `notebooks/elevation_pairs_state_v2.ipynb`, code `code/pairs_lib.py`, run `output/20261029_state_d13_22_12/` (`pairs_state.parquet`, `pairs_state.csv`, `slopes.csv`, `elevation_pairs_state.pdf`).
+
+- Same 85 pairs (consecutive, dt <= 2 min). 62 pairs over 42 nights have Danish 1.3 Zernikes (`cwfs_science` `d13-blitz_rso1071`) on all four corners at both visits. That product starts on 20251021.
+- Per-raft deviation: the mean of the SW0 and SW1 quality-cut medians, total minus intrinsic, in OCS. The per-raft MTAOS mean was not used: it is NaN on 0.449 of raft rows (fraction of all raft rows) in build 20261026, although `n_mtaos` > 0 there. That is a product bug to look at.
+- 22/12 recovery with `aos_state.recover_optical_state`, then state = Trim - deviation. The hexapod LUT is not in the state, so its change is what the LUT leaves.
+- Huber fit of the change in state v1 against the change in elevation: slope -3.2e-4 +- 1.7e-4 per deg (dimensionless v1 per deg; 1.9 sigma), Pearson r = -0.247, Spearman rho = -0.125, n = 62. Robust residual scatter nMAD 0.0158 (dimensionless v1). The Trim v1 hardly changes across a pair, so the signal is all in the deviation.
+- At -9.0e-4 v1 per um of hexapod dz, the slope is about +0.36 um of equivalent dz per deg of elevation, 3.6 um over a 10 deg pair.
+- Stronger slopes per deg of elevation: v5 +1.67e-3 (6.2 sigma), v8 -2.21e-3 (4.3 sigma), v3 -0.90e-3 (3.9 sigma); camera rx -1.1e-4 deg/deg (6.7 sigma), M2 dy +2.2 um/deg (5.4 sigma), M2 rx -4e-5 deg/deg (5.3 sigma).
+- In 22/12 the recovered M2 dz and camera dz anticorrelate pair by pair, about +-100 um. Camera dx and dy changes reach 1000-2000 um. Both are weakly constrained combinations in 22/12, so read v-modes rather than single hexapod DOF.
