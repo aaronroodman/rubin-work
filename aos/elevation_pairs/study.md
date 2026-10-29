@@ -87,3 +87,12 @@ The bounce test reports the optical state as deviation - Trim, the negative of T
 | deviation - Trim | +4.31e-3 +- 0.49e-3 | +2.34e-3 +- 0.36e-3 | -0.129 +- 0.015 | -0.070 +- 0.011 |
 
 The 2 min sample (n = 62) gives deviation - Trim -0.170 +- 0.091 (v1) and -0.134 +- 0.066 (22 DOF) um over dEl = -30 deg.
+
+### 2026-10-29: hexbin plots of deviation - Trim
+
+`elevation_pairs_state_v2.ipynb` now plots deviation - Trim, the bounce-test sign, as
+hexbin heatmaps with medians per 2 deg bin and the Huber line, four panels per page. The x
+range is |dEl| <= 30 deg, and the y range spans the 0.1% to 99.9% quantiles. The
+`dmt_*` rows of `slopes.csv` hold these fits. The v1 slope is +2.47e-4 +- 0.28e-4 per deg
+of elevation (dimensionless v1), as before. Run `output/20261029_state_d13_22_12_dt5min_all/`,
+rewritten.
