@@ -72,3 +72,13 @@ New notebook `notebooks/bounce_delta_derivation_v2.ipynb`, run `20261029_delta_d
 - Model errors on the paired median are 0.021–0.030 µm, against the data errors of 0.007–0.025 µm.
 - With model errors, chi2/dof of the three 40 deg nights (2 dof) is 33 for the paired median, 60 for the step fit, 13 for step + drift and 16 for A–B–A.
 - The extra error per night that brings chi2/dof to 1 is 0.090 µm for the paired median, 0.047 µm for step + drift and 0.061 µm for A–B–A.
+
+### 2026-10-29 — DZ(1,4) red-noise error model; 40 deg significance
+
+New notebook `notebooks/bounce_delta_derivation_v3.ipynb`, run `20261029_delta_derivation_v3_dz1_4`. A variogram fit to same-setting differences and the B−A pairs gives D(tau) = 2 SIGMA_W² + SIGMA_R² (tau / 10 min)^ALPHA. The four estimators are propagated through that covariance by Monte Carlo.
+
+- The v2 floor of 0.022 µm was low. It was the nmad of the pooled B−A pairs, which is biased low at 4–10 pairs per sample and drops the tails. The dof-corrected rms gives 0.044 µm per visit.
+- The fit (mean square per lag bin) gives SIGMA_W = 0.036 ± 0.008 µm, SIGMA_R = 0.104 ± 0.011 µm over 10 min and ALPHA = 1.62 ± 0.18 (dimensionless); chi2/dof = 0.1/3. Leaving out one night moves SIGMA_W between 0.010 and 0.042 µm.
+- A–B–A errors under the red-noise model are 0.021–0.032 µm. Within each night the A–B–A differences have chi2/dof 0.08–1.29 (dof 2–8), so the model describes the scatter within a night.
+- The 40 deg nights still disagree: A–B–A chi2/dof = 16.5/2. That needs 0.061 µm of extra error per night, a night-to-night term the within-night model does not contain.
+- The A–B–A 40 deg mean is −0.066 ± 0.039 µm, with the error scaled by sqrt(chi2/dof). A quadratic in (elev − 70 deg) through the 30, 50, 60 and 75 deg points gives +0.251 ± 0.019 µm at 40 deg, a gap of 7.3 sigma. The other estimators give 3.8–9.1 sigma.
