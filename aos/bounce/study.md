@@ -61,3 +61,14 @@ The input is the `miw` build `d13-A_50_50_i_rbr_5rot@20261028b`. Its `fits.parqu
 - DZ(1,4) drift, Huber fit of A and B visits, um of wavefront per hr: 0418 −0.83 ± 0.14, 0419 −0.51 ± 0.03, 0513 +0.48 ± 0.05. Lag bias: −0.039, −0.024, +0.023 um. The 0418 − 0513 Δ difference is 0.14 um; drift explains about 0.06 um of it.
 - 40 deg nights, chi2/dof about their weighted mean (dimensionless, 2 dof): paired median 262; A–B–A interpolation 28; Huber step + linear drift 6.4. The Huber step with no drift term gives 2.3, but only because its errors (0.09–0.11 um) absorb the drift.
 - 0419 also has a jump of about −0.4 um at 30–50 min, with residual structure of about 0.2 um before it, so a linear drift does not describe it.
+
+### 2026-10-29 — DZ(1,4) error model: fit error plus coherent turbulence
+
+New notebook `notebooks/bounce_delta_derivation_v2.ipynb`, run `20261029_delta_derivation_v2_dz1_4`. The per-visit error is the DZ fit error plus SIGMA_TURB_UM = 0.04 µm of wavefront in quadrature. The notebook propagates it through the four estimators by Monte Carlo (1000 realisations, white noise only).
+
+- DZ(1,4) fit error: median 0.00044 µm (Huber RLM, 3300 donuts per visit), so 0.011 of SIGMA_TURB_UM (dimensionless). Turbulence sets the error.
+- CWFS minus FAM Z4 at the corners (`d13-blitz_unpaired`): median robust covariance between sensors 0.0106 µm², which gives 0.073 µm per exposure if the CWFS and FAM terms are independent.
+- Per-visit scatter from same-setting differences grows with time lag: 0.048 µm at 6 min, 0.17 µm at 22 min and 0.33 µm at 45 min of lag. This is red noise, not white. The B−A pairs (2.8 min lag) scatter by 0.022 µm per visit.
+- Model errors on the paired median are 0.021–0.030 µm, against the data errors of 0.007–0.025 µm.
+- With model errors, chi2/dof of the three 40 deg nights (2 dof) is 33 for the paired median, 60 for the step fit, 13 for step + drift and 16 for A–B–A.
+- The extra error per night that brings chi2/dof to 1 is 0.090 µm for the paired median, 0.047 µm for step + drift and 0.061 µm for A–B–A.
