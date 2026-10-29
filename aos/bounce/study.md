@@ -82,3 +82,12 @@ New notebook `notebooks/bounce_delta_derivation_v3.ipynb`, run `20261029_delta_d
 - A–B–A errors under the red-noise model are 0.021–0.032 µm. Within each night the A–B–A differences have chi2/dof 0.08–1.29 (dof 2–8), so the model describes the scatter within a night.
 - The 40 deg nights still disagree: A–B–A chi2/dof = 16.5/2. That needs 0.061 µm of extra error per night, a night-to-night term the within-night model does not contain.
 - The A–B–A 40 deg mean is −0.066 ± 0.039 µm, with the error scaled by sqrt(chi2/dof). A quadratic in (elev − 70 deg) through the 30, 50, 60 and 75 deg points gives +0.251 ± 0.019 µm at 40 deg, a gap of 7.3 sigma. The other estimators give 3.8–9.1 sigma.
+
+### 2026-10-29 — v-mode v1 beside DZ(1,4)
+
+New notebook `notebooks/bounce_delta_derivation_v4.ipynb`, run `20261029_delta_derivation_v4_dz1_4`. Per visit, RBR 50/50 recovers the 50 DOF, and `aos_state.make_state_estimator` (50 DOF, 50 modes) casts them into v-modes. v1 then goes through the same four estimators, variogram fit and significance test as DZ(1,4).
+
+- v1 against DZ(1,4) per visit: Pearson r = 0.955, Spearman rho = 0.933, n = 95 visits. Huber slope 0.065 per µm of DZ(1,4). The part of v1 that DZ(1,4) does not explain has nmad 0.0062 (dimensionless), 0.094 µm of DZ(1,4) equivalent. RBR splits focus between the two hexapods (camera dz against M2 dz: r = −0.992), and the other DZ terms feed v1 too.
+- v1 variogram: SIGMA_W = 0.0019 ± 0.0007, SIGMA_R = 0.0064 ± 0.0007 over 10 min, ALPHA = 1.33 ± 0.18 (all dimensionless); chi2/dof = 0.4/3.
+- v1 shows the same 40 deg reversal. A–B–A: the 40 deg mean is −0.0072 ± 0.0021 (error scaled by sqrt(chi2/dof), 40 deg chi2/dof = 13.9/2), against +0.0160 ± 0.0011 from the quadratic through the other points, a gap of 9.8 sigma. The other estimators give 4.9–11.4 sigma. The quadratic fits the other v1 points less well than it fits DZ(1,4) (chi2/dof = 10.5/2 against 3.9/2).
+- 20260513 differs between the two: A–B–A Δ DZ(1,4) = +0.009 ± 0.024 µm, but Δ v1 = −0.0030 ± 0.0014. So at 40 deg v1 is negative on all three nights.
