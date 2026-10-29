@@ -67,3 +67,11 @@ Same notebook, now defaulting to `MAX_DT_MIN = 5.0` and `CONSECUTIVE_ONLY = Fals
 - In hexapod dz, at -9.0e-4 v1 per um, that is about +0.27 um of equivalent dz per deg of elevation.
 - Within 5 min the Trim sometimes changes (nMAD of its v1 change 0.0075, dimensionless), but its slope against elevation is consistent with zero (+1.7e-5 +- 1.0e-5 per deg). The v1 trend stays in the deviation.
 - Largest state slopes per deg of elevation: v5 +1.35e-3 (31 sigma), v3 -0.68e-3 (17 sigma), v8 -1.33e-3 (11 sigma), v11 +1.75e-3 (10 sigma); camera rx -8e-5 deg/deg (35 sigma), M2 dy +1.6 um/deg (29 sigma), M2 rx -3e-5 deg/deg (24 sigma).
+
+### 2026-10-29 — v1 as DZ(1,4)
+
+Converted with the ts_ofc v13 `lsst_sensitivity_dz_31_29_50.yaml`, which is `(k, j, DOF)`. In 22/12, v1 = 1 back-projects (`get_dofs_from_vmodes`) to M2 dz -463.94 um and camera dz -645.72 um, with every other DOF below 0.009 um. That gives DZ(1,4) = +17.418 um of wavefront per unit v1. The forward entries are -1.534e-2 (M2 dz) and -1.591e-2 (camera dz) um of wavefront per um.
+
+- Optical state (Trim - deviation), 5 min sample: dDZ(1,4)/dEl = -4.31e-3 +- 0.49e-3 um of wavefront per deg of elevation, -0.043 um over a 10 deg pair. The 2 min sample gives -5.7e-3 +- 3.0e-3 um/deg.
+- The measured deviation has the opposite sign, +4.64e-3 um/deg (deviation v1 slope +2.664e-4 per deg), since the Trim term is flat.
+- DZ(1,4) computed from all 22 state DOF rather than from v1 alone: -2.34e-3 +- 0.36e-3 um/deg (Pearson r = -0.087, Spearman rho = -0.086, n = 4,291). The other v-modes add some DZ(1,4) of their own; that per-pair value correlates with the v1-only value at Pearson r = 0.884.
