@@ -75,3 +75,15 @@ Converted with the ts_ofc v13 `lsst_sensitivity_dz_31_29_50.yaml`, which is `(k,
 - Optical state (Trim - deviation), 5 min sample: dDZ(1,4)/dEl = -4.31e-3 +- 0.49e-3 um of wavefront per deg of elevation, -0.043 um over a 10 deg pair. The 2 min sample gives -5.7e-3 +- 3.0e-3 um/deg.
 - The measured deviation has the opposite sign, +4.64e-3 um/deg (deviation v1 slope +2.664e-4 per deg), since the Trim term is flat.
 - DZ(1,4) computed from all 22 state DOF rather than from v1 alone: -2.34e-3 +- 0.36e-3 um/deg (Pearson r = -0.087, Spearman rho = -0.086, n = 4,291). The other v-modes add some DZ(1,4) of their own; that per-pair value correlates with the v1-only value at Pearson r = 0.884.
+
+### 2026-10-29 — deviation - Trim, the bounce-test sign
+
+The bounce test reports the optical state as deviation - Trim, the negative of Trim - deviation used above. Huber fits of DZ(1,4) against elevation change, in um of wavefront per deg of elevation, 5 min sample (n = 4,291). "v1" uses +17.418 um per unit v1; "22 DOF" is the 22 DOF through the ts_ofc v13 DZ row (k=1, j=4).
+
+| quantity | v1 slope | 22 DOF slope | v1, dEl = -30 deg | 22 DOF, dEl = -30 deg |
+|---|---|---|---|---|
+| deviation | +4.64e-3 +- 0.38e-3 | +3.01e-3 +- 0.29e-3 | -0.139 +- 0.011 | -0.090 +- 0.009 |
+| Trim | +0.30e-3 +- 0.17e-3 | +0.54e-3 +- 0.14e-3 | -0.009 +- 0.005 | -0.016 +- 0.004 |
+| deviation - Trim | +4.31e-3 +- 0.49e-3 | +2.34e-3 +- 0.36e-3 | -0.129 +- 0.015 | -0.070 +- 0.011 |
+
+The 2 min sample (n = 62) gives deviation - Trim -0.170 +- 0.091 (v1) and -0.134 +- 0.066 (22 DOF) um over dEl = -30 deg.
