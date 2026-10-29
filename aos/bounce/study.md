@@ -53,3 +53,11 @@ The input is the `miw` build `d13-A_50_50_i_rbr_5rot@20261028b`. Its `fits.parqu
 - T724 rotator, the same: DZ 0.59, 0.59; v-mode 2.20, 2.20; DOF 2.09, 2.09.
 - The three 40 deg nights disagree beyond their errors in every view. DOF are the worst view; DZ and v-modes are comparable.
 - Worst repeated-position spread: DZ(1,4) 131, DZ(2,5) 64; v4 299, v1 128; DOF 28 (B1_19) 830 (chi2/dof, dimensionless, 2 dof).
+
+### 2026-10-28 — how the paired Δ is derived, DZ(1,4) test case
+
+- New notebook `notebooks/bounce_delta_derivation_v1.ipynb`, parameters K, J and DAY_OBS. It rebuilds the per-night pairs with the library calls and checks that it reproduces the pipeline Δ and error. Run `20261028_delta_derivation_dz1_4`.
+- Pairs: each B is paired with the A just before it. Mean B − A lag = 2.6–2.9 min (all 7 samples), always positive. So a drift biases Δ by drift × lag, with a sign that changes from night to night.
+- DZ(1,4) drift, Huber fit of A and B visits, um of wavefront per hr: 0418 −0.83 ± 0.14, 0419 −0.51 ± 0.03, 0513 +0.48 ± 0.05. Lag bias: −0.039, −0.024, +0.023 um. The 0418 − 0513 Δ difference is 0.14 um; drift explains about 0.06 um of it.
+- 40 deg nights, chi2/dof about their weighted mean (dimensionless, 2 dof): paired median 262; A–B–A interpolation 28; Huber step + linear drift 6.4. The Huber step with no drift term gives 2.3, but only because its errors (0.09–0.11 um) absorb the drift.
+- 0419 also has a jump of about −0.4 um at 30–50 min, with residual structure of about 0.2 um before it, so a linear drift does not describe it.

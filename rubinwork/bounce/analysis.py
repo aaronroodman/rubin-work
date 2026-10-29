@@ -240,32 +240,27 @@ def achieved_fwhm(result, dW, d, svd):
     return _achieved_fwhm(dW, d, svd, result.iZs, grid, conv, afw)
 
 
-def run_analysis(fits_path, cfg, *, min_detectors=None):
-    """Run the whole bounce reduction once.
+def load_fit_table(fits_path, cfg, *, min_detectors=None):
+    """Read the per-visit DZ fit table and apply the bounce visit selection.
+
+    Drops bad-flagged fits, then applies the quality cut: with
+    `min_detectors`, `quality_visit_mask` at that CCD count (blur cut kept);
+    without it, the precomputed ``visit_quality_pass`` column.
 
     Parameters
     ----------
     fits_path : `str` or `pathlib.Path`
-        The per-visit Double-Zernike fit table to read.
+        The per-visit Double-Zernike fit table.
     cfg : `dict`
-        The resolved bounce configuration: `rubinwork.bounce.legs.DEFAULT`
-        overlaid with `analysis_config.yaml`'s `bounce:` section.
+        The resolved bounce configuration; only ``fit_prefix`` is read.
     min_detectors : `int`, optional
-        Per-visit quality cut: keep visits with
-        ``n_detectors_with_min_donuts >= min_detectors``.  Relaxes ONLY the
-        CCD-count cut; the blur cut is kept.  `None` falls back to the
-        precomputed ``visit_quality_pass`` column (nd >= 170), which preserves
-        the selection the study originally ran.
+        Minimum ``n_detectors_with_min_donuts`` per visit.
 
     Returns
     -------
-    result : `BounceAnalysis`
-        Every quantity the tables and the PDFs are built from.
+    fit_table : `astropy.table.QTable`
     """
     prefix = cfg['fit_prefix']
-    bounces = cfg['bounces']
-    print(f'[bounce] {fits_path}')
-    # ---- load + drop bad fits + resolve j/k lists (cell 10) ----
     fit_table = QTable.read(str(fits_path))
     for bf in (f'{prefix}_bad_fit', 'bad_fit'):
         if bf in fit_table.colnames:
@@ -293,6 +288,35 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
         print(f'  quality cut (visit_quality_pass): '
               f'{int(keep.sum())}/{len(fit_table)} visits kept')
         fit_table = fit_table[keep]
+    return fit_table
+
+
+def run_analysis(fits_path, cfg, *, min_detectors=None):
+    """Run the whole bounce reduction once.
+
+    Parameters
+    ----------
+    fits_path : `str` or `pathlib.Path`
+        The per-visit Double-Zernike fit table to read.
+    cfg : `dict`
+        The resolved bounce configuration: `rubinwork.bounce.legs.DEFAULT`
+        overlaid with `analysis_config.yaml`'s `bounce:` section.
+    min_detectors : `int`, optional
+        Per-visit quality cut: keep visits with
+        ``n_detectors_with_min_donuts >= min_detectors``.  Relaxes ONLY the
+        CCD-count cut; the blur cut is kept.  `None` falls back to the
+        precomputed ``visit_quality_pass`` column (nd >= 170), which preserves
+        the selection the study originally ran.
+
+    Returns
+    -------
+    result : `BounceAnalysis`
+        Every quantity the tables and the PDFs are built from.
+    """
+    prefix = cfg['fit_prefix']
+    bounces = cfg['bounces']
+    print(f'[bounce] {fits_path}')
+    fit_table = load_fit_table(fits_path, cfg, min_detectors=min_detectors)
     if cfg['pupil_j_range'] is None:
         if 'nollIndices' not in fit_table.colnames:
             raise ValueError('no nollIndices column; set pupil_j_range in config')
