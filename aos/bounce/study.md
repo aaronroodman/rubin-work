@@ -91,3 +91,16 @@ New notebook `notebooks/bounce_delta_derivation_v4.ipynb`, run `20261029_delta_d
 - v1 variogram: SIGMA_W = 0.0019 ± 0.0007, SIGMA_R = 0.0064 ± 0.0007 over 10 min, ALPHA = 1.33 ± 0.18 (all dimensionless); chi2/dof = 0.4/3.
 - v1 shows the same 40 deg reversal. A–B–A: the 40 deg mean is −0.0072 ± 0.0021 (error scaled by sqrt(chi2/dof), 40 deg chi2/dof = 13.9/2), against +0.0160 ± 0.0011 from the quadratic through the other points, a gap of 9.8 sigma. The other estimators give 4.9–11.4 sigma. The quadratic fits the other v1 points less well than it fits DZ(1,4) (chi2/dof = 10.5/2 against 3.9/2).
 - 20260513 differs between the two: A–B–A Δ DZ(1,4) = +0.009 ± 0.024 µm, but Δ v1 = −0.0030 ± 0.0014. So at 40 deg v1 is negative on all three nights.
+
+### 2026-10-29 — A–B–A optical state: all DZ, v-modes and DOF
+
+New notebook `notebooks/bounce_aba_optical_state_v1.ipynb`, run `20261029_aba_optical_state`. One PDF, `bounce_aba_optical_state.pdf`, holds the A–B–A Δ of all 126 DZ_kj (6 pages), v1–v34 (3 pages) and the 50 DOF (5 pages). Each (night, leg) gives one point.
+
+- The DOF come from RBR 50/50 of the A–B–A ΔDZ vector, and the v-modes are those DOF in `aos_state` v-modes.
+- Errors come from a 126-term red-noise model: D(tau) = 2 Σ_W + Σ_R (tau / 10 min)^ALPHA, with one ALPHA = 1.1 (dimensionless) fit to the multivariate variogram; summed diagonal chi2/dof = 1469/503.
+- Each of 1000 draws per leg goes through A–B–A, then RBR at the measured ΔDZ, then the v-mode map. The errors therefore carry the DZ covariance and the RBR nonlinearity.
+- DZ(1,4) values match v4 exactly, and the errors agree to within 2%.
+- The 40 deg DOF do not follow v1 because v1 = 1 is M2_dz = −464 µm with Cam_dz = −646 µm. The RBR Δ of the two hexapod dz are anticorrelated (MC r = −0.99 per leg), with errors of 17–36 µm each.
+  - Their opposed parts of Δ v1 are ±0.03–0.08 (dimensionless), and they cancel to a Δ v1 measured to ±0.0014–0.0022.
+  - The points scatter along the line of constant v1. So a single hexapod DOF cannot show the v1 pattern.
+- The three 40 deg nights disagree beyond their errors in many quantities. Over the 3 nights (dof = 2), median chi2/dof is 3.1/2 for DZ, 5.3/2 for v1–v34 and 4.8/2 for the DOF. chi2/dof > 9.2/2 (p < 0.01) holds for 10% of the DZ terms, 18% of the v-modes and 14% of the DOF.
