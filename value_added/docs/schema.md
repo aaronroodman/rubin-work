@@ -360,12 +360,17 @@ uniformly warm or cold mirror. The fit carries a constant term, so adding the sa
 temperature to every thermocouple leaves every gradient and the quadratic coefficient exactly
 unchanged — a bulk offset is invisible in the shape terms by construction. For the
 glass-minus-air difference that drives how fast the mirror exchanges heat with the dome air,
-subtract the M1M3 air temperature from ConsDB, `efd_lsstcam.exposure_efd`
-`mt_salindex113_temperature_0_mean` (ESS 113, °C); this database does not copy it. From
-20260101 to 20260714 the glass minus ESS 113 air has median −0.81 °C and nMAD 0.57 °C
-(n = 85,425 exposures). The M1M3TS `glycolLoopTemperature.aboveMirrorTemperature` sensor
-(ConsDB `mt_m1m3_glycol_loop_temperature_above_mirror_temp`) reads about 1.4 °C colder than
-ESS 113.
+subtract an air temperature from ConsDB `efd_lsstcam.exposure_efd`; this database does not copy
+either one. From 20260101 to 20260714:
+
+| air sensor | ConsDB column | location | glass minus air [°C], median / nMAD | n exposures |
+|---|---|---|---|---|
+| M1M3TS TS1-A | `mt_m1m3_glycol_loop_temperature_above_mirror_temp` | above mirror level | +0.60 / 0.55 | 85,941 |
+| ESS 113 | `mt_salindex113_temperature_0_mean` | TMA central section, not close to M1M3 | −0.81 / 0.57 | 85,425 |
+
+TS1-A is EFD `MTM1M3TS.glycolLoopTemperature.aboveMirrorTemperature`; ts_xml describes it as
+air temperature above mirror level. It is the nearer probe to the glass. ESS 113 reads about
+1.4 °C warmer.
 
 The three bulk columns are **not** gated by the fit's minimum sensor count: a mean over a
 handful of thermocouples is still a mean, whereas a 4-parameter fit over the same handful is
