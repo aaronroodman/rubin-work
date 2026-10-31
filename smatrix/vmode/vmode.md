@@ -1,9 +1,9 @@
 # Study: `vmode` — sensitivity matrix and mode structure
 
-> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-10-30 · **Kind:** reference (study)
 
-> **Code:** `code/vmode/` · **Notebooks:** `notebooks/vmode/`
-> **Output:** `output/vmode/` (`vmode_dof_matrix_{50_34,22_12}.pdf`, `sparse_fit_study.pdf`)
+> **Code:** `code/` · **Notebooks:** `notebooks/`
+> **Output:** `output/<date>_svd_<scheme>/vmode_dof_matrix_<scheme>.pdf`, schemes `22_12`, `50_34`, `50_50`
 
 Analysis of the Optical Feedback Control (OFC) sensitivity matrix and its mode
 structure: the singular value decomposition, v-mode composition, and which degrees of
@@ -21,14 +21,14 @@ study is about using and diagnosing the matrix that construction produces.
 
 | file | role |
 |---|---|
-| `plot_vmode_dof_matrix.py` | six-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/vmode/vmode_dof_matrix_<scheme>.pdf` |
+| `plot_vmode_dof_matrix.py` | seven-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/<date>_svd_<scheme>/vmode_dof_matrix_<scheme>.pdf` |
 | `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/vmode/sparse_fit_study.pdf` |
 
 This study is diagnostics of the matrix itself. The consumer that *builds a product* from
 the same SVD is [`lut`](../../aos/lut/lut.md), which projects the FAM Double Zernike fits onto it to
 recover degrees of freedom.
 
-### `plot_vmode_dof_matrix.py` — the six pages
+### `plot_vmode_dof_matrix.py` — the seven pages
 
 1. **V matrix**, the dimensionless per-DOF composition of each v-mode, drawn with square
    cells. All v-modes are shown with a line marking the `n_keep` truncation, so the
@@ -37,16 +37,20 @@ recover degrees of freedom.
 3. **Double Zernike per unit v-mode** — µm of wavefront that a unit-amplitude v-mode
    produces (`sigma_m * u_m = S v_m`), rows being the (focal `k`, pupil `Zj`) terms.
    Retained v-modes only.
-4. **Reachability and residual per DZ term** — the fraction of each elementary DZ term
+4. **DZ vs DOF** — the normalized sensitivity $\tilde A = S\,\mathrm{diag}(w)$, µm of
+   wavefront per normalized DOF unit, at full rank and at the `n_keep` reconstruction
+   $U\Sigma V^\top$ truncated, side by side. The title gives the Frobenius norm of the
+   difference over the full matrix (dimensionless).
+5. **Reachability and residual per DZ term** — the fraction of each elementary DZ term
    the retained v-modes can produce, and the irreducible remainder. The derivation is in
    `notebooks/vmode/jk_coverage_plots.ipynb`; the short version is that the
    $(k,j)$ axes are an arbitrary coordinate choice, whereas the columns of $U$ are the
    intrinsic orthonormal basis of $\mathrm{col}(S)$, so the meaningful quantity is
    $f_{k,j} = \|U^\top \mathbf{e}_{k,j}\|^2$ — the squared row-sum of $U$.
-5. **Normalization weights** — the per-DOF weight `w_i` applied, decomposed into its
+6. **Normalization weights** — the per-DOF weight `w_i` applied, decomposed into its
    range factor `r_i` (DOF-units of stroke) and FWHM factor `f_i` (arcsec of PSF width
    per DOF-unit), since `w_i = r_i^0.5 * f_i^-0.5`.
-6. **DOF-per-v-mode conversion against the allowed range** — `N.V = w_i * V[i,m]`, the
+7. **DOF-per-v-mode conversion against the allowed range** — `N.V = w_i * V[i,m]`, the
    same composition as page 1 but in the DOF's own physical unit (µm of translation or
    bending-mode amplitude, arcsec of hexapod rotation), so it is the conversion constant
    from v-mode amplitude to physical DOF and can be drawn against the `+r_i` / `-r_i`
@@ -360,17 +364,18 @@ and a rebuilt sparse MIW.
 ## Running
 
 ```bash
-cd ~/notebooks/rubin-work/smatrix
-python code/vmode/plot_vmode_dof_matrix.py --scheme 22_12
-python code/vmode/plot_vmode_dof_matrix.py --scheme 50_34
-python code/vmode/plot_vmode_dof_matrix.py --check
+cd ~/notebooks/rubin-work/smatrix/vmode
+python code/plot_vmode_dof_matrix.py --scheme 22_12
+python code/plot_vmode_dof_matrix.py --scheme 50_34
+python code/plot_vmode_dof_matrix.py --scheme 50_50
+python code/plot_vmode_dof_matrix.py --check
 python code/vmode/analyze_sparse_fit.py
 ```
 
 `plot_vmode_dof_matrix.py --param-set <name>` reads the pupil-Zernike set from that
 `param_set`'s `visits.parquet`, which lives under the `aos` topic rather than this one, so
 that lookup is rooted at `--param-set-root` (default `aos/output`) while the plot still
-goes to this topic's `--output-root`. Building a `param_set` in the first place is
+goes to this study's dated run directory. Building a `param_set` in the first place is
 `cd ~/notebooks/rubin-work/aos && ./run_snake.sh --until build_lut`.
 
 All of these need `lsst.ts.ofc` and `$TS_CONFIG_MTTCS_DIR`; note `ts_ofc` is **not** in

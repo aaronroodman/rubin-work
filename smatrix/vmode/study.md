@@ -10,7 +10,7 @@ started: 2026-09-01
 
 # `vmode`: SVD diagnostics of the sensitivity matrix
 
-> **Write-up:** [`vmode.md`](vmode.md) · **Code:** `code/plot_vmode_dof_matrix.py` · **Notebooks:** `notebooks/` · **Output:** `smatrix/output/vmode/` (topic data)
+> **Write-up:** [`vmode.md`](vmode.md) · **Code:** `code/plot_vmode_dof_matrix.py` · **Notebooks:** `notebooks/` · **Output:** `output/<date>_svd_<scheme>/`
 
 ## Question
 
@@ -25,3 +25,8 @@ Reference diagnostics: StateEstimator and build_ofc_svd agree exactly on the mat
 ### 2026-10-11 — backfilled from docs and history
 
 Backfilled 2026-10-18 from [`vmode.md`](vmode.md) (formerly `smatrix/docs/studies/`). The triage split the old study in two: this reference half is done; the sparse-fit half is the study `sparse_fit`. The script and the five notebooks moved here. The script now imports `rubinwork.aos_state` and `rubinwork.smatrix.normalization_weights` directly; the notebooks find the topic by name (`smatrix`) rather than by the first parent holding `code/`, which is now the study directory. Outputs stay in `smatrix/output/vmode/`.
+
+### 2026-10-30 — 50/50 scheme, DZ-vs-DOF page, dated run output
+
+`plot_vmode_dof_matrix.py` gained the `50_50` scheme (50 DOF, no truncation) and a page 4: the normalized sensitivity $\tilde A = S\,\mathrm{diag}(w)$ (µm of DZ per normalized DOF unit) at full rank beside its rank-`n_keep` reconstruction. Output now goes to `output/20261030_svd_<scheme>/` via `study_run`. All three schemes rerun; `--check` passes for each. Frobenius norm of (full - truncated) / full $\tilde A$ = 0.003 for 50/34 (dimensionless).
+

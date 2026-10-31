@@ -53,7 +53,7 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from rubinwork.aos_state import DOF22  # canonical 22-DOF index list
-SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34)}
+SCHEMES = {'22_12': (DOF22, 12), '50_34': (None, 34), '50_50': (None, 50)}
 
 # Pupil (annular) Zernike Noll indices carried by the FAM donut tables: Z4-Z26 with
 # Z20 and Z21 omitted, 21 terms. Identical in every param_set built to date, so it is
@@ -118,8 +118,6 @@ def main():
                          'visits.parquet instead of using ZK_NOLL_DEFAULT')
     ap.add_argument('--scheme', default='22_12', choices=list(SCHEMES))
     ap.add_argument('--instrument', default='lsst')
-    ap.add_argument('--output-root', default='output',
-                    help='where the plot is written; relative to the smatrix topic')
     ap.add_argument('--param-set-root',
                     default=str(Path(__file__).resolve().parents[3] / 'aos' / 'output'),
                     help='where --param-set is looked up; the param_sets and their '
@@ -135,7 +133,8 @@ def main():
     if args.check:
         # The scheme selects the DOF set and mode count, so --check tests the same
         # configuration the plot would be made for.
-        _dof_set = {'22_12': 'standard_22', '50_34': 'all_50'}[args.scheme]
+        _dof_set = {'22_12': 'standard_22', '50_34': 'all_50',
+                    '50_50': 'all_50'}[args.scheme]
         _n_keep = SCHEMES[args.scheme][1]
         sys.exit(0 if run_ofc_check(dof_set=_dof_set, n_modes=_n_keep) else 1)
 
@@ -146,7 +145,6 @@ def main():
     # scheme alone -- no FAM data enters it. The pupil-Zernike set is the only
     # data-derived input, and it is the same in every param_set built to date, so it
     # defaults to the standard set and the output is not keyed by param_set.
-    out_dir = Path(args.output_root) / 'vmode'
     if args.param_set:
         vis = Path(args.param_set_root) / args.param_set / 'visits.parquet'
         noll = [int(x) for x in np.asarray(
@@ -191,8 +189,9 @@ def main():
               ' showing the combined weight only, and omitting the range lines')
 
     scheme_txt = args.scheme.replace('_', ' DoF / ') + ' v-modes'
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f'vmode_dof_matrix_{args.scheme}.pdf'
+    from rubinwork.common import study_run
+    out = study_run('smatrix/vmode', f'svd_{args.scheme}').path / \
+        f'vmode_dof_matrix_{args.scheme}.pdf'
     with PdfPages(str(out)) as pdf:
 
         # ---- Page 1: V matrix, square cells, all v-modes, truncation marked ----
@@ -276,7 +275,39 @@ def main():
                             right=0.99, top=0.95, bottom=0.06)
         pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 4: reachability / residual per DZ term ----
+        # ---- Page 4: DZ per normalized DOF, full rank and truncated ----
+        # The normalized sensitivity A~ = S diag(w) = U Sigma V^T that the SVD
+        # decomposes, in µm of DZ per normalized DOF unit, so DOF are comparable. The
+        # right panel is its rank-n_keep reconstruction: what the OFC can see.
+        svd_all = build_ofc_svd(list(noll), k_min=1, k_max=6, n_keep=n_all, n_dof=n_dof)
+        A_full = np.asarray(svd_all.U_eff) * np.asarray(svd_all.Sigma)[None, :n_all] \
+            @ svd_all.V.T
+        A_trunc = DZ @ V_all[:, svd._keep()].T
+        fig, axes = plt.subplots(1, 2, figsize=(max(12, 0.50 * n_d + 6),
+                                                max(8, 0.11 * n_kj + 2)),
+                                 dpi=150, sharey=True)
+        vmax = float(np.nanpercentile(np.abs(A_full), 99)) or 1.0
+        for ax, A, ttl in ((axes[0], A_full, f'full rank ({n_all} v-modes)'),
+                           (axes[1], A_trunc, f'truncated to n_keep = {n_kept}')):
+            im = ax.imshow(A, cmap='seismic', vmin=-vmax, vmax=vmax, aspect='auto')
+            ax.set_xticks(range(n_d))
+            ax.set_xticklabels(labels, fontsize=5, rotation=90)
+            for b in np.where(karr[1:] != karr[:-1])[0]:
+                ax.axhline(b + 0.5, color='k', lw=0.8)
+            ax.set_title(ttl, fontsize=9)
+        axes[0].set_yticks(range(n_kj))
+        axes[0].set_yticklabels([f'k={k} Z{j}' for k, j in kj], fontsize=4)
+        axes[0].set_ylabel('Double-Zernike term (focal k, pupil Zj)')
+        fig.colorbar(im, ax=axes, shrink=0.8,
+                     label='µm of DZ per normalized DOF unit')
+        rel = np.linalg.norm(A_full - A_trunc) / np.linalg.norm(A_full)
+        fig.suptitle(rf'Normalized sensitivity $\tilde A = S\,\mathrm{{diag}}(w)$, '
+                     f'DZ vs DOF ({scheme_txt})\n'
+                     f'Frobenius norm of (full - truncated) / full = {rel:.3f} '
+                     '(dimensionless)', fontsize=10)
+        pdf.savefig(fig); plt.close(fig)
+
+        # ---- Page 5: reachability / residual per DZ term ----
         # From the former jk_coverage_plots.ipynb: how much of each elementary DZ term
         # the retained v-modes can produce, and the irreducible remainder.
         U_eff = np.asarray(svd.U_eff)
@@ -301,7 +332,7 @@ def main():
                      fontsize=11)
         fig.tight_layout(rect=[0, 0, 1, 0.93]); pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 5: normalization weights table (range and FWHM) ----
+        # ---- Page 6: normalization weights table (range and FWHM) ----
         print(f'\nOFC per-DOF normalization weights ({args.scheme}, '
               f'{DEFAULT_NORM_YAML}):')
         hdr = f'  {"DOF":22s} {"w_i":>13s}'
@@ -339,7 +370,7 @@ def main():
                      fontsize=10)
         fig.tight_layout(rect=[0, 0, 1, 0.93]); pdf.savefig(fig); plt.close(fig)
 
-        # ---- Page 6: DOF-per-v-mode conversion, scaled by the allowed range ----
+        # ---- Page 7: DOF-per-v-mode conversion, scaled by the allowed range ----
         # The V matrix of page 1 is dimensionless, so it cannot be compared to a
         # stroke limit. N.V = w_i * V[i, m] is the same composition in the DOF's own
         # physical unit -- µm of hexapod translation or mirror bending-mode amplitude,
@@ -417,10 +448,10 @@ def main():
                       f'(max|N.V|/r_i = {worst[i]:7.2f} dimensionless, '
                       f'r_i = {r_i[i]:.5g})')
 
-    n_pages = 6 if r_i is not None else 5
+    n_pages = 7 if r_i is not None else 6
     print(f'\nwrote {out}  ({n_pages} pages: V {n_d}x{n_all} with {n_kept} kept; '
           f'singular values; DZ-per-v-mode {n_kj}x{n_kept} µm; '
-          f'reachability; {len(nw)} DOF normalization table'
+          f'DZ-vs-DOF; reachability; {len(nw)} DOF normalization table'
           + ('; DOF-per-v-mode vs allowed range)' if r_i is not None else ')'))
 
 
