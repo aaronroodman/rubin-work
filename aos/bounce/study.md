@@ -104,3 +104,10 @@ New notebook `notebooks/bounce_aba_optical_state_v1.ipynb`, run `20261029_aba_op
   - Their opposed parts of Δ v1 are ±0.03–0.08 (dimensionless), and they cancel to a Δ v1 measured to ±0.0014–0.0022.
   - The points scatter along the line of constant v1. So a single hexapod DOF cannot show the v1 pattern.
 - The three 40 deg nights disagree beyond their errors in many quantities. Over the 3 nights (dof = 2), median chi2/dof is 3.1/2 for DZ, 5.3/2 for v1–v34 and 4.8/2 for the DOF. chi2/dof > 9.2/2 (p < 0.01) holds for 10% of the DZ terms, 18% of the v-modes and 14% of the DOF.
+
+### 2026-11-02 — White noise per DZ term from B−A pairs
+
+`bounce_white_noise_pairs_v1`: histograms of the 45 B−A pair differences (lag 2.6–3.1 min), (night, leg) median subtracted, for all 126 DZ_kj; run `20261102_white_noise_pairs`.
+- DZ(1,4) per visit: sigma_rms = 0.044 ± 0.005 µm, sigma_nmad = 0.022 µm. The expected atmospheric Z4 floor is 0.040 µm.
+- The largest are DZ(1,5) at 0.129 µm and DZ(1,6) at 0.077 µm (sigma_rms per visit). Every k ≥ 2 term is below 0.025 µm.
+- The shared-ALPHA red-noise model of `bounce_aba_optical_state_v1` puts the Z4 floor near zero (0.019 µm after PSD clipping), so that model needs a per-term white floor.
