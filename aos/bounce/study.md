@@ -111,3 +111,19 @@ New notebook `notebooks/bounce_aba_optical_state_v1.ipynb`, run `20261029_aba_op
 - DZ(1,4) per visit: sigma_rms = 0.044 ± 0.005 µm, sigma_nmad = 0.022 µm. The expected atmospheric Z4 floor is 0.040 µm.
 - The largest are DZ(1,5) at 0.129 µm and DZ(1,6) at 0.077 µm (sigma_rms per visit). Every k ≥ 2 term is below 0.025 µm.
 - The shared-ALPHA red-noise model of `bounce_aba_optical_state_v1` puts the Z4 floor near zero (0.019 µm after PSD clipping), so that model needs a per-term white floor.
+
+### 2026-11-02 — A–B–A optical state v2: pair-RMS white noise, Z4-only red noise
+
+`bounce_aba_optical_state_v2`, run `20261102_aba_optical_state`. Noise model:
+- White noise for all 126 terms, at the per-visit RMS of the B−A pairs. The correlations come from the same pairs (Ledoit–Wolf shrinkage = 0.66, dimensionless).
+- Red noise for DZ(1,4) only, with the floor fixed at 0.044 µm per visit. The fit is sigma_R = 0.088 ± 0.007 µm over 10 min and ALPHA = 1.93 ± 0.14 (dimensionless), with chi2/dof = 0.6/3.
+- Same-setting B visits are now grouped per leg. v1 mixed the 30 and 75 deg legs of 20260713.
+
+The first PDF page motivates the model. At 30–60 min lag, D / (2 sigma_W²) is 39 (dimensionless) for DZ(1,4) and 15 for DZ(1,7). The median over the 126 terms is 1.3, so most terms are close to white.
+
+Errors against v1 (median err_v2 / err_v1, dimensionless): 0.89 for DZ, 0.91 for the v-modes, 0.94 for the DOF. The DZ(1,4) error rises by 10–20% (0.023–0.040 µm per leg).
+
+40 deg, chi2/dof over the 3 nights (dof = 2):
+- DZ(1,4): 13.3/2.
+- v1: 12.4/2.
+- Fraction above 9.2/2: 15% of the DZ terms, 29% of v1–v34 and 18% of the DOF.
