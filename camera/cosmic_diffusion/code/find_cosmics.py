@@ -258,10 +258,18 @@ def main():
         seqs += [int(x) for x in open(args.seq_file).read().split()]
     if args.chunk:
         seqs = seqs[args.chunk[0]::args.chunk[1]]
-    run = study_run("camera/cosmic_diffusion", args.label or f"find_{args.day_obs}",
-                    date=args.run_date)
-    outdir = run.path / "visits"
-    outdir.mkdir(exist_ok=True)
+    label = args.label or f"find_{args.day_obs}"
+    if args.chunk and args.chunk[0] != 0:
+        # Array tasks share one run directory; only task 0 writes run.json, as
+        # concurrent writers collide on its temporary file.
+        import datetime
+        from rubinwork.common.runs import data_root
+        date = args.run_date or datetime.date.today().strftime("%Y%m%d")
+        run_path = data_root() / "studies" / "camera" / "cosmic_diffusion" / f"{date}_{label}"
+    else:
+        run_path = study_run("camera/cosmic_diffusion", label, date=args.run_date).path
+    outdir = run_path / "visits"
+    outdir.mkdir(parents=True, exist_ok=True)
     butler = Butler("/repo/main", collections=["LSSTCam/raw/all", "LSSTCam/calib"])
     cfg = isr_config()
 
