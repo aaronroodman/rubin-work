@@ -79,7 +79,8 @@ def hot_columns(img, det, src_mask, nsig=5.0, floor_e=1.0):
     return hot
 
 
-def measure(k, lbl_slice, lab, img, noise_img, gain_img, det_shape, amp_index):
+def measure(k, lbl_slice, lab, img, noise_img, gain_img, det_shape, amp_index,
+            high_sigma, bad_dist):
     """Measurements for one labelled source.
 
     Returns
@@ -104,7 +105,8 @@ def measure(k, lbl_slice, lab, img, noise_img, gain_img, det_shape, amp_index):
     ny, nx = det_shape
     amps = np.unique(amp_index[yy, xx])
     return dict(
-        npix=int(xx.size), xc=fit["xc"], yc=fit["yc"], ux=fit["ux"], uy=fit["uy"],
+        npix=int(xx.size), n_hi=int((v > high_sigma * noise_img[yy, xx]).sum()),
+        xc=fit["xc"], yc=fit["yc"], ux=fit["ux"], uy=fit["uy"],
         tmin=float(t.min()), tmax=float(t.max()), length_px=length,
         perp_rms_px=float(np.sqrt(fit["lam2"])),
         elong=float(1 - fit["lam2"] / fit["lam1"]) if fit["lam1"] > 0 else 0.0,
@@ -113,8 +115,8 @@ def measure(k, lbl_slice, lab, img, noise_img, gain_img, det_shape, amp_index):
         peak_e=peak_e, gain=gain, peak_adu=peak_e / gain, sum_e=float(v.sum()),
         dedx_e_per_um=float(v.sum() / path_um),
         noise_e=float(noise_img[yy[ipk], xx[ipk]]),
-        edge=bool(xx.min() <= 1 or yy.min() <= 1 or xx.max() >= nx - 2
-                  or yy.max() >= ny - 2),
+        end_dist=float(min(bad_dist[yy[t <= t.min() + 1], xx[t <= t.min() + 1]].min(),
+                           bad_dist[yy[t >= t.max() - 1], xx[t >= t.max() - 1]].min())),
         cross_amp=bool(amps.size > 1),
     ), (xx, yy)
 
@@ -144,6 +146,9 @@ def process_detector(butler, exposure, det_name, args, cfg):
     img[bad] = np.nan
 
     noise_img, noise_amp = amp_noise(img, det)
+    # A track ending at the detector edge or a defect has an unknown exit depth.
+    bad_dist = ndimage.distance_transform_edt(
+        np.pad(~bad, 1, constant_values=False))[1:-1, 1:-1]
     gain_img = np.zeros_like(img)
     amp_index = np.zeros(img.shape, int)
     for i, amp in enumerate(det):
@@ -169,7 +174,7 @@ def process_detector(butler, exposure, det_name, args, cfg):
     rows, hdus = [], []
     for k in keep:
         row, (xx, yy) = measure(k, slices[k - 1], lab, img, noise_img, gain_img,
-                                img.shape, amp_index)
+                                img.shape, amp_index, args.high_sigma, bad_dist)
         if row["npix"] < args.min_npix:
             continue
         row["hot_col"] = bool(hot[yy, xx].any())
@@ -215,7 +220,7 @@ def process_detector(butler, exposure, det_name, args, cfg):
                 ("DEDX", "dedx_e_per_um", "charge per um of path in Si, e/um"),
                 ("GAIN", "gain", "PTC gain at peak, e/ADU"),
                 ("NOISE_E", "noise_e", "amp nMAD noise, electrons"),
-                ("EDGE", "edge", "touches detector edge"),
+                ("ENDDIST", "end_dist", "track end to nearest edge or defect, pixels"),
                 ("CROSSAMP", "cross_amp", "spans more than one amp")]:
             val = row[col]
             hdr[key] = (bool(val) if isinstance(val, (bool, np.bool_)) else val, com)
@@ -238,10 +243,12 @@ def main():
     p.add_argument("--high-sigma", type=float, default=8.0)
     p.add_argument("--min-npix", type=int, default=5)
     p.add_argument("--min-length", type=float, default=10.0, help="pixels")
-    p.add_argument("--max-perp-rms", type=float, default=0.8, help="pixels")
+    p.add_argument("--max-perp-rms", type=float, default=2.0,
+                   help="pixels; loose, to drop blobs. Diffusion widens tracks, "
+                        "so straightness proper is tested in the analysis")
     p.add_argument("--max-peak-adu", type=float, default=50000.0,
                    help="half of the ~100k ADU full well")
-    p.add_argument("--margin", type=int, default=4, help="stamp margin, pixels")
+    p.add_argument("--margin", type=int, default=6, help="stamp margin, pixels")
     args = p.parse_args()
 
     from lsst.daf.butler import Butler

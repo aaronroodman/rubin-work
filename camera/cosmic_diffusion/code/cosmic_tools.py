@@ -141,8 +141,8 @@ def track_sections(img, mask_pix, fit, t_min, t_max, noise_e, sec_len=3.0,
     -------
     sections : `list` [`dict`]
         Per section: ``frac`` (section centre as a fraction of the track
-        length, dimensionless, 0 at ``t_min``), the `fit_profile` result and
-        ``npix``.
+        length, dimensionless, 0 at ``t_min``), the `fit_profile` result,
+        ``npix`` and ``charge_per_px`` (electrons per pixel of length).
     """
     ny, nx = img.shape
     yy, xx = np.mgrid[0:ny, 0:nx]
@@ -160,8 +160,63 @@ def track_sections(img, mask_pix, fit, t_min, t_max, noise_e, sec_len=3.0,
             continue
         res["frac"] = (0.5 * (lo + hi) - t_min) / (t_max - t_min)
         res["npix"] = int(sel.sum())
+        res["charge_per_px"] = float(v[sel].sum() / (hi - lo))
         out.append(res)
     return out
+
+
+def find_ends(img, fit, t_lo, t_hi, window=3.0, level_frac=0.5, pad=4.0):
+    """Track ends at half the median charge per unit length.
+
+    A uniform line segment blurred by any symmetric spread falls to half its
+    linear charge density at its true end, so the half-level points recover the
+    end even where the charge per pixel is spread thin, as at the back surface.
+
+    Parameters
+    ----------
+    img : `numpy.ndarray`
+        Stamp image, electrons; NaN marks masked pixels.
+    fit : `dict`
+        Line from `line_fit`.
+    t_lo, t_hi : `float`
+        First-guess ends along the line, pixels.
+    window : `float`, optional
+        Half width across the track of the pixels summed, pixels.
+    level_frac : `float`, optional
+        Fraction of the median linear density defining an end, dimensionless.
+    pad : `float`, optional
+        Distance searched beyond the first-guess ends, pixels.
+
+    Returns
+    -------
+    t_a, t_b : `float`
+        Ends along the line, pixels.
+    """
+    ny, nx = img.shape
+    yy, xx = np.mgrid[0:ny, 0:nx]
+    t, d = project(xx.ravel(), yy.ravel(), fit)
+    v = img.ravel()
+    ok = np.isfinite(v) & (np.abs(d) <= window)
+    edges = np.arange(t_lo - pad, t_hi + pad + 1.0, 1.0)
+    prof, _ = np.histogram(t[ok], bins=edges, weights=v[ok])
+    cen = 0.5 * (edges[1:] + edges[:-1])
+    inner = (cen > t_lo + 2) & (cen < t_hi - 2)
+    if inner.sum() < 3:
+        inner = (cen >= t_lo) & (cen <= t_hi)
+    level = level_frac * np.median(prof[inner])
+    above = np.where(prof >= level)[0]
+    if above.size < 2 or level <= 0:
+        return t_lo, t_hi
+    i, j = above[0], above[-1]
+
+    def cross(k0, k1):
+        y0, y1 = prof[k0], prof[k1]
+        if y1 == y0:
+            return cen[k1]
+        return cen[k0] + (level - y0) / (y1 - y0) * (cen[k1] - cen[k0])
+    t_a = cross(i - 1, i) if i > 0 else cen[i]
+    t_b = cross(j + 1, j) if j < cen.size - 1 else cen[j]
+    return float(t_a), float(t_b)
 
 
 def theory_k(volts, temp_k):

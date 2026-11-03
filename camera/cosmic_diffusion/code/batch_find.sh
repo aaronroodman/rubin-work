@@ -15,4 +15,4 @@ cd /sdf/home/r/roodman/notebooks/rubin-work
 python camera/cosmic_diffusion/code/find_cosmics.py --day-obs 20261102 \
     --seq-file camera/cosmic_diffusion/code/darks_20261102.txt \
     --chunk "$SLURM_ARRAY_TASK_ID" "$NTASK" \
-    --label find_20261102_all --run-date 20261103
+    --label find_20261102_v2 --run-date 20261103
