@@ -698,21 +698,26 @@ def analysis_pages(pdf, tracks, secs, args):
     plt.close(fig)
 
 
-def page_gallery(pdf, tracks, secs, per_page=6, seed=3):
-    """Longest ok tracks and a random sample of each rejection, per REB."""
+def page_gallery(pdf, tracks, secs, per_page=6, ok_pages=2, seed=3):
+    """Gallery: the longest ok tracks, ``ok_pages`` pages per CCD, then a random
+    sample of each rejection class per REB."""
     rng = np.random.default_rng(seed)
-    pick = []
+    chunks = []
+    for n in CCDS[0] + CCDS[1]:
+        g = tracks[(tracks.DETNAME == n) & (tracks.status == "ok")]
+        g = g.sort_values("length_half", ascending=False).head(per_page * ok_pages)
+        chunks += [g.iloc[i:i + per_page] for i in range(0, len(g), per_page)]
     for reb in (0, 1):
         g = tracks[tracks.REB == reb]
-        pick.append(g[g.status == "ok"].sort_values("length_half",
-                                                    ascending=False).head(12))
+        pick = []
         for st in STATUS_ORDER[:-1]:
             h = g[g.status == st]
             if len(h):
                 pick.append(h.iloc[rng.choice(len(h), min(3, len(h)), replace=False)])
-    order = pd.concat(pick)
-    for start in range(0, len(order), per_page):
-        chunk = order.iloc[start:start + per_page]
+        if pick:
+            rej = pd.concat(pick)
+            chunks += [rej.iloc[i:i + per_page] for i in range(0, len(rej), per_page)]
+    for chunk in chunks:
         fig, axes = plt.subplots(per_page, 2, figsize=(8.5, 11),
                                  gridspec_kw=dict(width_ratios=[1.3, 1]))
         for (ax_im, ax_w), (_, r) in zip(axes, chunk.iterrows()):
@@ -722,8 +727,13 @@ def page_gallery(pdf, tracks, secs, per_page=6, seed=3):
                               vmax=np.nanpercentile(img, 99.5),
                               interpolation="nearest")
             fig.colorbar(im, ax=ax_im, fraction=0.04, label="electrons")
-            for tt in (r.t_a, r.t_b):
-                ax_im.plot(r.xc + tt * r.ux, r.yc + tt * r.uy, "c+", ms=8)
+            # Front (gates, dz = 0) is the narrow end; flip means it is t_b.
+            flip = bool(r.flip) if pd.notna(r.get("flip", np.nan)) else False
+            t_front, t_back = (r.t_b, r.t_a) if flip else (r.t_a, r.t_b)
+            ax_im.plot(r.xc + t_front * r.ux, r.yc + t_front * r.uy, "o", ms=7,
+                       mfc="none", mec="lime", mew=1.5, label="front, dz = 0")
+            ax_im.plot(r.xc + t_back * r.ux, r.yc + t_back * r.uy, "s", ms=7,
+                       mfc="none", mec="cyan", mew=1.5, label="back, dz = 100 um")
             ax_im.set_title(f"{r.exposure} {r.extname} {r.BSSVBS:.1f} V "
                             f"L = {r.length_half:.0f} px [{r.status}]", fontsize=7)
             ax_im.tick_params(labelsize=6)
@@ -747,7 +757,10 @@ def page_gallery(pdf, tracks, secs, per_page=6, seed=3):
         for ax_im, ax_w in axes[len(chunk):]:
             ax_im.axis("off")
             ax_w.axis("off")
-        fig.tight_layout()
+        h, lab = axes[0][0].get_legend_handles_labels()
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
+        fig.legend(h, lab, loc="upper center", ncol=2, fontsize=8,
+                   title="track ends at half charge per length; image markers:")
         pdf.savefig(fig)
         plt.close(fig)
 
