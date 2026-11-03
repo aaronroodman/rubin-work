@@ -226,7 +226,11 @@ def process_detector(butler, exposure, det_name, args, cfg):
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--day-obs", type=int, required=True)
-    p.add_argument("--seq-num", type=int, nargs="+", required=True)
+    p.add_argument("--seq-num", type=int, nargs="+")
+    p.add_argument("--seq-file", help="text file of seq_num, one per line")
+    p.add_argument("--chunk", type=int, nargs=2, metavar=("I", "N"),
+                   help="process only the I-th of N interleaved slices (0-based)")
+    p.add_argument("--run-date", help="YYYYMMDD of the run directory; default today")
     p.add_argument("--detectors", nargs="+", default=R21,
                    help="detector names, or 'science' for all 189 science CCDs")
     p.add_argument("--label", default=None, help="run label; default find_<day_obs>")
@@ -249,13 +253,19 @@ def main():
         from lsst.afw.cameraGeom import DetectorType
         dets = [d.getName() for d in LsstCam.getCamera()
                 if d.getType() == DetectorType.SCIENCE]
-    run = study_run("camera/cosmic_diffusion", args.label or f"find_{args.day_obs}")
+    seqs = list(args.seq_num or [])
+    if args.seq_file:
+        seqs += [int(x) for x in open(args.seq_file).read().split()]
+    if args.chunk:
+        seqs = seqs[args.chunk[0]::args.chunk[1]]
+    run = study_run("camera/cosmic_diffusion", args.label or f"find_{args.day_obs}",
+                    date=args.run_date)
     outdir = run.path / "visits"
     outdir.mkdir(exist_ok=True)
     butler = Butler("/repo/main", collections=["LSSTCam/raw/all", "LSSTCam/calib"])
     cfg = isr_config()
 
-    for seq in args.seq_num:
+    for seq in seqs:
         exposure = args.day_obs * 100000 + seq
         rec = list(butler.query_dimension_records(
             "exposure", instrument="LSSTCam", exposure=exposure))[0]
