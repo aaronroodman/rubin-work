@@ -172,16 +172,18 @@ def page_summary(pdf, tracks, pooled, nvis, find_runs):
              "", "Pooled Huber fit, sigma^2 = sigma0^2 + k^2 D dz, D = 100 um,"
              " T = 173.15 K:", ""]
     hdr = f"{'group':<14}{'V (V)':>8}{'n_trk':>7}{'n_sec':>7}{'sigma0 (um)':>13}" \
-          f"{'k (dimensionless)':>19}{'k_theory':>10}{'k/k_th':>8}"
+          f"{'k (dimensionless)':>19}{'k_boot':>8}{'k_theory':>10}{'k/k_th':>8}"
     lines.append(hdr)
     for _, r in pooled.iterrows():
         lines.append(f"{r.group:<14}{r.volts:>8.2f}{r.n_trk:>7d}{r.n_sec:>7d}"
                      f"{r.sigma0:>8.2f}+-{r.sigma0_err:<4.2f}"
-                     f"{r.k:>11.4f}+-{r.k_err:<6.4f}{r.k_th:>10.4f}"
+                     f"{r.k:>11.4f}+-{r.k_err:<6.4f}{r.k_boot:>8.4f}{r.k_th:>10.4f}"
                      f"{r.k / r.k_th:>8.2f}")
     lines += ["", "k_theory = sqrt(2 kT/(e V)), Fisher-Levine eq. 3.3, uniform field.",
               "sigma0 expected = pitch/sqrt(12) = 2.89 um.",
-              "k/k_th is dimensionless: measured k over the uniform-field value."]
+              "k/k_th is dimensionless: measured k over the uniform-field value.",
+              "k_boot: bootstrap error on k over whole tracks; the formal error "
+              "ignores correlation within a track."]
     fig.text(0.05, 0.92, "\n".join(lines), family="monospace", fontsize=7.5, va="top")
     pdf.savefig(fig)
     plt.close(fig)
@@ -244,7 +246,8 @@ def pooled_fits(tracks, secs):
                          sigma0=np.sqrt(max(a, 0)),
                          sigma0_err=ae / (2 * np.sqrt(a)) if a > 0 else np.nan,
                          k=k, k_err=be / (2 * THICKNESS_UM * k) if k > 0 else np.nan,
-                         k_th=theory_k(volts, 173.15)))
+                         k_th=theory_k(volts, 173.15),
+                         k_boot=bootstrap_k(g)))
     return pd.DataFrame(rows)
 
 
@@ -284,6 +287,80 @@ def page_pooled(pdf, secs, pooled):
         ax.legend(fontsize=7)
         ax.set_xlim(0, 100)
         ax.set_ylim(0, None)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def bootstrap_k(g, n_boot=200, seed=2):
+    """Bootstrap error on k, resampling whole tracks, dimensionless."""
+    rng = np.random.default_rng(seed)
+    keys = g.exposure.astype(str) + g.extname
+    ids = keys.unique()
+    if ids.size < 5:
+        return np.nan
+    groups = {i: g[keys == i] for i in ids}
+    ks = []
+    for _ in range(n_boot):
+        sample = pd.concat([groups[i] for i in rng.choice(ids, ids.size)])
+        _, b, _, _, _ = huber(sample.dz_um.values, sample.sigma_um.values ** 2)
+        ks.append(np.sqrt(b / THICKNESS_UM) if b > 0 else np.nan)
+    return np.nanstd(ks)
+
+
+def page_per_ccd(pdf, secs, pooled):
+    """Width against drift distance for each sensor, and k per sensor."""
+    s = secs[(secs.status == "ok") & secs.good]
+    names = sorted(s.DETNAME.unique())
+    fig = plt.figure(figsize=(8.5, 11))
+    gs = fig.add_gridspec(4, 3)
+    dzb = np.linspace(0, 100, 11)
+    cen = 0.5 * (dzb[1:] + dzb[:-1])
+    zz = np.linspace(0, 100, 200)
+    for i, name in enumerate(names[:6]):
+        ax = fig.add_subplot(gs[i // 3, i % 3])
+        g = s[s.DETNAME == name]
+        p = pooled[pooled.group == name]
+        ax.plot(g.dz_um, g.sigma_um, ".", color="0.6", ms=2)
+        idx = np.digitize(g.dz_um, dzb) - 1
+        med = [np.median(g.sigma_um[idx == j]) if (idx == j).sum() >= 3 else np.nan
+               for j in range(10)]
+        ax.plot(cen, med, "o", color="C3" if g.REB.iloc[0] == 0 else "C0", mec="k",
+                ms=4)
+        if not p.empty:
+            p = p.iloc[0]
+            ax.plot(zz, np.sqrt(np.clip(p.sig0sq + p.k2D * zz, 0, None)), "k-", lw=1)
+            ax.set_title(f"{name}, {p.volts:.1f} V\nk = {p.k:.4f} +- {p.k_boot:.4f}, "
+                         f"n_trk = {p.n_trk}", fontsize=7)
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, 12)
+        ax.tick_params(labelsize=6)
+        ax.set_xlabel("dz (um)", fontsize=7)
+        ax.set_ylabel("sigma (um)", fontsize=7)
+    ax = fig.add_subplot(gs[2:, :])
+    p = pooled[pooled.group.str.startswith("R21")].reset_index(drop=True)
+    for reb, col in [(0, "C3"), (1, "C0")]:
+        q = p[p.group.str[5] == str(reb)]
+        ax.errorbar(q.index, q.k, q.k_boot, fmt="o", color=col, capsize=3,
+                    label=f"REB{reb} ({q.volts.median():.1f} V), bootstrap over tracks")
+        r = pooled[pooled.group == f"REB{reb}"]
+        if not r.empty:
+            ax.axhline(r.k.iloc[0], color=col, ls=":", lw=1)
+            ax.axhline(r.k_th.iloc[0], color=col, ls="--", lw=1)
+        q = q[np.isfinite(q.k_boot)]
+        if len(q) > 1:
+            w = 1 / q.k_boot ** 2
+            mean = (w * q.k).sum() / w.sum()
+            chi2 = (((q.k - mean) / q.k_boot) ** 2).sum()
+            ax.text(0.02, 0.95 - 0.06 * reb, f"REB{reb}: chi2/dof = {chi2:.1f}/"
+                    f"{len(q) - 1} for one common k", transform=ax.transAxes,
+                    color=col, fontsize=8, va="top")
+    ax.set_xticks(p.index)
+    ax.set_xticklabels(p.group, fontsize=8)
+    ax.set_ylabel("k = sigma_diff / sqrt(D dz) (dimensionless)")
+    ax.set_title("k per sensor; dotted: per-REB pooled fit, dashed: sqrt(2kT/eV)")
+    ax.legend(fontsize=8, loc="lower right")
+    ax.set_ylim(0, None)
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close(fig)
@@ -411,6 +488,7 @@ def main():
         page_summary(pdf, tracks, pooled, nvis, args.find_run)
         page_dedx(pdf, all_src)
         page_pooled(pdf, secs, pooled)
+        page_per_ccd(pdf, secs, pooled)
         page_k(pdf, tracks, pooled)
         gal = tracks.sort_values("LENGTH", ascending=False).head(args.max_gallery)
         page_gallery(pdf, stamps, gal, secs)
