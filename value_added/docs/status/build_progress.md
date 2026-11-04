@@ -221,7 +221,14 @@ The raw EFD gives 110 on nearly every exposure; ConsDB's transformed EFD has it 
 20260714. On 20261103, 123–126 often report `speedStdDev` of exactly 0 m/s and repeat
 `speed1` values, so treat the October and November RMS with care.
 
-`psf_shape` is in the code but not yet built.
+`psf_shape` ([schema](../schema.md)) is built into `v1/live` for **290 nights, 131,510
+exposures** (16 batch shards, `logs/batch_telemetry_20261104_090107_*.out`, 3 to 8 min
+each). 72 nights return no rows because ConsDB has no `ccdvisit1` rows for them, among them
+20250626, 20260429, 20260620, 20261026 and 20261028 to 20261103; rerun those once ConsDB
+fills them. 20250705 hit a ConsDB 504 in batch and returned 0 rows on a local rerun.
+
+Snapshot `snapshots/20261104` (md5 `8ddc62a4a7ee62d3c7fb3552c05f3680`) holds both groups,
+and `current` points to it.
 
 ## Mirror LUT zero-fill on a dropped actuator
 
@@ -396,6 +403,9 @@ python -m rubinwork.products.value_added.builders.merge_db_shards \
     --db /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/live/aos_efd.duckdb \
     --shards '/sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/_work/shards/telemetry_<timestamp>_*.duckdb'
 ```
+
+**Always pass `--db` to the merge.** Without it the merge opens the catalog default,
+`current`, which is a read-only snapshot, and fails with "Permission denied".
 
 **Both builders run in batch.** The USDF EFD answers from milano batch nodes (tested
 2026-11-04 on sdfmilan191, and by the 16-shard `sonic` build that day). There
