@@ -30,7 +30,7 @@ VARIANTS_FILE = pathlib.Path(__file__).with_name("variants.yaml")
 
 PRODUCT = "atmo_sim"
 
-PRODUCT_VARIANT = "v1"
+PRODUCT_VARIANT = "v2"
 
 VISITS_DIR = "visits"
 """The subdirectory of a variant that holds the per-visit partitions."""

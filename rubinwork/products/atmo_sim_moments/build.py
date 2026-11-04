@@ -39,6 +39,12 @@ def ccd_psf_table(hdus, scale_asec):
         img = galsim.ImageF(np.ascontiguousarray(hdu.data, dtype=np.float32),
                             xmin=int(h["X0"]) + 1, ymin=int(h["Y0"]) + 1)
         row = dict(detector=int(h["DETECTOR"]), det_name=h["EXTNAME"])
+        # Unweighted first moment: the mean photon deflection, the astrometric shift.
+        arr = np.asarray(hdu.data, dtype=float)
+        yy, xx = np.indices(arr.shape)
+        flux = arr.sum()
+        row.update(xc_mean=int(h["X0"]) + (arr * xx).sum() / flux,
+                   yc_mean=int(h["Y0"]) + (arr * yy).sum() / flux)
         try:
             m = galsim.hsm.FindAdaptiveMom(img)
             ok = m.moments_status == 0

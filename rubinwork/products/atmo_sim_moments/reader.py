@@ -21,7 +21,7 @@ VARIANTS_FILE = pathlib.Path(__file__).with_name("variants.yaml")
 
 PRODUCT = "atmo_sim_moments"
 
-PRODUCT_VARIANT = "v1"
+PRODUCT_VARIANT = "v2"
 
 VISITS_DIR = "visits"
 
@@ -74,7 +74,8 @@ def load_table(table, day_obs, seq_num, variant=PRODUCT_VARIANT):
         ``det(M)**0.25``), ``psf_ixx``, ``psf_iyy``, ``psf_ixy`` (pix**2, CCD pixel
         frame, HSM adaptive moments, as ConsDB ``ccdvisit1_quicklook``), ``fwhm_asec``
         (arcsec), ``e1``, ``e2`` (dimensionless, ``(Ixx - Iyy) / T``, ``2 Ixy / T``),
-        ``xc``, ``yc`` (CCD pix) and ``ok``.
+        ``xc``, ``yc`` (CCD pix, HSM weighted centroid), ``xc_mean``, ``yc_mean`` (CCD
+        pix, unweighted centroid; from v2) and ``ok``.
     """
     directory = catalog.path(PRODUCT, variant, f"{VISITS_DIR}/{_exp_id(day_obs, seq_num)}")
     return pd.read_parquet(directory / table_file(table, seq_num))

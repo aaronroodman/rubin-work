@@ -14,6 +14,11 @@ science-CCD moments are in each CCD's pixel frame on both sides; for the focal-p
 maps they are rotated into the cameraGeom FOCAL_PLANE frame with each CCD's
 PIXELS-to-FOCAL_PLANE Jacobian.
 
+The astrometric shift of each science-CCD star is its centroid less its true position,
+from the simulation only; there is no data counterpart yet. It is shown as is, with the
+mean removed, and with a six-parameter affine fit across the focal plane removed, which
+is roughly what a per-visit astrometric fit absorbs.
+
     python guider/guider_atmo_sim/code/compare_visit.py --day-obs 20260706 --seq-num 688
 """
 import argparse
@@ -34,9 +39,9 @@ FWHM_PER_SIGMA = 2.3548
 MOTION = ("Mxx_motion", "Myy_motion", "Mxy_motion", "T_motion", "Q1_motion", "Q2_motion")
 
 
-def guider_table(day_obs, seq_num, gm_variant):
+def guider_table(day_obs, seq_num, gm_variant, variant):
     """Sim and data guider moments side by side, one row per guide sensor."""
-    sim = atmo_sim_moments.load_table("moments", day_obs, seq_num)
+    sim = atmo_sim_moments.load_table("moments", day_obs, seq_num, variant)
     data = guider_moments.load_table("moments", day_obs, variant=gm_variant)
     data = data[data.seqNum == seq_num]
     cols = ["detector", "T_stamp", *MOTION]
@@ -49,15 +54,17 @@ def guider_table(day_obs, seq_num, gm_variant):
     return out
 
 
-def ccd_table(day_obs, seq_num):
-    """Sim and ConsDB science-CCD moments, one row per CCD, CCD pixel frame (pix**2)."""
+def ccd_table(day_obs, seq_num, variant):
+    """Sim and ConsDB science-CCD moments, one row per CCD, CCD pixel frame (pix**2),
+    and the simulated astrometric shift (mas, FOCAL_PLANE frame)."""
     from lsst.afw.cameraGeom import FOCAL_PLANE, PIXELS
     from lsst.obs.lsst import LsstCam
 
     from rubinwork.common.psf_moments_consdb import PSFMomentsTable
 
-    sim = atmo_sim_moments.load_table("ccd_psf", day_obs, seq_num)
-    truth = atmo_sim.load_truth(day_obs, seq_num)
+    sim = atmo_sim_moments.load_table("ccd_psf", day_obs, seq_num, variant)
+    sim_variant = atmo_sim_moments.variant_config(variant)["atmo_sim_variant"]
+    truth = atmo_sim.load_truth(day_obs, seq_num, sim_variant)
     truth = truth[truth.kind == "science"].set_index("detector")
     dets = sorted(sim.detector)
     cdb = PSFMomentsTable(day_obs, detectors=dets, seq_min=seq_num, seq_max=seq_num).fetch()
@@ -73,6 +80,9 @@ def ccd_table(day_obs, seq_num):
         jac = np.column_stack([fp[:, 1] - fp[:, 0], fp[:, 2] - fp[:, 0]])
         jac /= np.sqrt(abs(np.linalg.det(jac)))
         row = dict(seq_num=seq_num, detector=d, x_fp=fp[0, 0], y_fp=fp[1, 0], scale=scale)
+        xc, yc = (r.xc_mean, r.yc_mean) if hasattr(r, "xc_mean") else (r.xc, r.yc)
+        shift = jac @ np.array([xc - truth.loc[d, "xccd"], yc - truth.loc[d, "yccd"]])
+        row["dx_mas"], row["dy_mas"] = shift * scale * 1000.0
         sides = {"sim": (r.psf_ixx, r.psf_iyy, r.psf_ixy)}
         key = f"psf_ixx_{d}"
         if len(cdb) and key in cdb.colnames:
@@ -103,18 +113,107 @@ def _whiskers(ax, df, side, color, scale_mm):
     ax.set_ylabel("focal plane y (mm)")
 
 
-def plot_visit(pdf, g, c, atm, day_obs, seq_num):
+def shift_residuals(c):
+    """Shifts with the mean removed and with an affine fit in focal-plane x, y removed.
+
+    Returns
+    -------
+    shifts : `dict` [`str`, `numpy.ndarray`]
+        ``total``, ``mean_removed``, ``affine_removed``; each an (n, 2) array (mas).
+    """
+    d = c[["dx_mas", "dy_mas"]].to_numpy()
+    A = np.column_stack([np.ones(len(c)), c.x_fp, c.y_fp])
+    coef, *_ = np.linalg.lstsq(A, d, rcond=None)
+    return dict(total=d, mean_removed=d - d.mean(axis=0), affine_removed=d - A @ coef)
+
+
+def xi_plus(c, d, edges_mm):
+    """Shift correlation xi_+(r) = <d_i . d_j> over CCD pairs in separation bins.
+
+    Returns
+    -------
+    r_mm : `numpy.ndarray`
+        Bin centres (mm, focal plane).
+    xi : `numpy.ndarray`
+        xi_+ (mas**2).
+    """
+    xy = c[["x_fp", "y_fp"]].to_numpy()
+    i, j = np.triu_indices(len(c), k=1)
+    sep = np.hypot(*(xy[i] - xy[j]).T)
+    prod = (d[i] * d[j]).sum(axis=1)
+    k = np.digitize(sep, edges_mm) - 1
+    xi = np.array([prod[k == b].mean() if np.any(k == b) else np.nan
+                   for b in range(len(edges_mm) - 1)])
+    return 0.5 * (edges_mm[1:] + edges_mm[:-1]), xi
+
+
+def _rms(d):
+    return float(np.sqrt((d**2).sum(axis=1).mean()))
+
+
+def plot_astrometry(pdf, c, day_obs, seq_num, label):
+    """One page: simulated science-CCD astrometric shifts across the focal plane."""
+    res = shift_residuals(c)
+    fig, axs = plt.subplots(2, 2, figsize=(11, 10))
+    titles = dict(total="total", mean_removed="mean removed",
+                  affine_removed="affine (6-parameter) fit removed")
+    for ax, (key, d) in zip(axs.flat, res.items()):
+        mag = np.hypot(*d.T)
+        ref = max(float(np.percentile(mag, 90)), 1e-3)
+        scale_mm = 40.0 / ref
+        ax.quiver(c.x_fp, c.y_fp, d[:, 0] * scale_mm, d[:, 1] * scale_mm, color=SIM_COLOR,
+                  angles="xy", scale_units="xy", scale=1, width=0.004)
+        ax.set_xlim(-330, 330)
+        ax.set_ylim(-330, 330)
+        ax.set_aspect("equal")
+        ax.set_xlabel("focal plane x (mm)")
+        ax.set_ylabel("focal plane y (mm)")
+        ax.set_title(f"{titles[key]}: rms {_rms(d):.1f} mas (arrow 40 mm = {ref:.1f} mas)",
+                     fontsize=10)
+    ax = axs[1, 1]
+    edges = np.linspace(0, 640, 17)
+    for key, col in (("mean_removed", SIM_COLOR), ("affine_removed", DATA_COLOR)):
+        r, xi = xi_plus(c, res[key], edges)
+        ax.plot(r, xi, "o-", color=col, lw=2, ms=5, label=titles[key])
+    ax.axhline(0, color="0.6", lw=0.8)
+    ax.set_xlabel("CCD separation (mm, focal plane; 1 mm = 20 arcsec)")
+    ax.set_ylabel(r"$\xi_+$ of shifts (mas$^2$)")
+    ax.set_title("shift correlation over CCD pairs", fontsize=10)
+    ax.legend(frameon=False)
+    ax.grid(color="0.9")
+    mean = res["total"].mean(axis=0)
+    fig.suptitle(f"{day_obs} seq {seq_num}: simulated astrometric shift of one star per "
+                 f"science CCD ({label}), FOCAL_PLANE frame\nmean shift ({mean[0]:.1f}, "
+                 f"{mean[1]:.1f}) mas; no data counterpart yet")
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def plot_visit(pdf, g, c, atm, day_obs, seq_num, label):
     """Pages for one visit: summary, guider motion, science-CCD maps."""
     fig = plt.figure(figsize=(8.5, 11))
-    lines = [f"day_obs {day_obs} seq {seq_num}: atmo_sim v1 against data",
+    lines = [f"day_obs {day_obs} seq {seq_num}: {label} against data",
              "",
              f"band {atm['band']}, alt {atm['alt_deg']:.1f} deg, rotator {atm['rot_deg']:.2f} deg,"
              f" ERA5 step {atm['era5_time'][:16]} UTC",
              f"r0_500 {atm['r0_500_m']:.3f} m, L0 {atm['L0_m']:.1f} m, target guider FWHM "
              f"{atm['target_fwhm_asec']:.3f} arcsec",
-             f"layer distance (km): {', '.join(f'{h:.1f}' for h in atm['altitude_km'])}",
-             f"layer weight (fraction of Cn2): {', '.join(f'{w:.3f}' for w in atm['weights'])}",
-             f"layer wind (m/s): {', '.join(f'{v:.1f}' for v in atm['speed_mps'])}",
+             f"ground-layer wind from {atm.get('ground_wind_source', 'ERA5')}; weather "
+             f"station {atm.get('station_wind_mps', np.nan):.1f} m/s from "
+             f"{atm.get('station_from_deg', np.nan):.0f} deg",
+             "",
+             "layer  distance  weight   wind   from     sky speed  sky toward",
+             "       (km)      (Cn2)    (m/s)  (deg)    (m/s)      (deg)",
+             *[f"{k:5d}  {h:8.2f}  {w:6.3f}  {ls:5.1f}  {lf:5.0f}    {v:9.1f}  {d:10.0f}"
+               for k, (h, w, ls, lf, v, d) in enumerate(zip(
+                   atm["altitude_km"], atm["weights"],
+                   atm.get("local_speed_mps", [np.nan] * len(atm["weights"])),
+                   atm.get("local_from_deg", [np.nan] * len(atm["weights"])),
+                   atm["speed_mps"], np.mod(atm["direction_deg"], 360.0)))],
+             "  from: local compass direction the wind blows from, deg East of North;",
+             "  sky toward: position angle the screen moves toward, deg East of North.",
+             "",
              f"screens {atm['screen_size_m']:.0f} m built, {atm['screen_need_m']:.0f} m needed",
              "",
              "Guider, median over sensors (arcsec^2):"]
@@ -132,6 +231,9 @@ def plot_visit(pdf, g, c, atm, day_obs, seq_num):
         s = c[f"{k}_sim"].median()
         d = c[f"{k}_data"].median() if f"{k}_data" in c else np.nan
         lines.append(f"  {k} ({u}): sim {s:.3f}, ConsDB {d:.3f}")
+    res = shift_residuals(c)
+    lines += ["", "Simulated science-CCD astrometric shift, rms over CCDs (mas):",
+              *[f"  {k.replace('_', ' ')}: {_rms(d):.1f}" for k, d in res.items()]]
     fig.text(0.07, 0.95, "\n".join(lines), va="top", family="monospace", fontsize=9)
     pdf.savefig(fig)
     plt.close(fig)
@@ -174,6 +276,7 @@ def plot_visit(pdf, g, c, atm, day_obs, seq_num):
     pdf.savefig(fig)
     plt.close(fig)
 
+    plot_astrometry(pdf, c, day_obs, seq_num, label)
     if "fwhm_data" not in c:
         return
     fig, axs = plt.subplots(2, 2, figsize=(11, 10))
@@ -199,17 +302,22 @@ def main(argv=None):
     p.add_argument("--day-obs", type=int, required=True)
     p.add_argument("--seq-num", type=int, nargs="+", required=True)
     p.add_argument("--guider-moments-variant", default="v4")
+    p.add_argument("--variant", default=atmo_sim_moments.PRODUCT_VARIANT,
+                   help="atmo_sim_moments variant")
     p.add_argument("--label", default=None)
     args = p.parse_args(argv)
-    label = args.label or f"visits_{args.day_obs}_" + "_".join(map(str, args.seq_num))
+    sim_variant = atmo_sim_moments.variant_config(args.variant)["atmo_sim_variant"]
+    sim_label = f"atmo_sim {sim_variant}"
+    label = args.label or (f"{sim_variant}_visits_{args.day_obs}_"
+                           + "_".join(map(str, args.seq_num)))
     run = study_run("guider/guider_atmo_sim", label)
     gs, cs = [], []
     with PdfPages(run.path / f"{label}.pdf") as pdf:
         for seq in args.seq_num:
-            g = guider_table(args.day_obs, seq, args.guider_moments_variant)
-            c = ccd_table(args.day_obs, seq)
-            plot_visit(pdf, g, c, atmo_sim.load_atmosphere(args.day_obs, seq),
-                       args.day_obs, seq)
+            g = guider_table(args.day_obs, seq, args.guider_moments_variant, args.variant)
+            c = ccd_table(args.day_obs, seq, args.variant)
+            plot_visit(pdf, g, c, atmo_sim.load_atmosphere(args.day_obs, seq, sim_variant),
+                       args.day_obs, seq, sim_label)
             gs.append(g)
             cs.append(c)
     g, c = pd.concat(gs), pd.concat(cs)
@@ -225,6 +333,9 @@ def main(argv=None):
     print(f"science CCDs: median FWHM sim {c.fwhm_sim.median():.3f} arcsec, ConsDB "
           f"{c.fwhm_data.median():.3f} arcsec; median e sim {c.e_sim.median():.3f}, "
           f"ConsDB {c.e_data.median():.3f}")
+    for seq, cc in c.groupby("seq_num"):
+        print(f"seq {seq}: astrometric shift rms (mas): " + ", ".join(
+            f"{k} {_rms(d):.1f}" for k, d in shift_residuals(cc).items()))
     print(f"wrote {run.path}")
 
 

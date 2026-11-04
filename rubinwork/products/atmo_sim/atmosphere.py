@@ -34,6 +34,9 @@ OBSC = 0.61
 WLEN_EFF = dict(u=365.49, g=480.03, r=622.20, i=754.06, z=868.21, y=991.66)
 """Band effective wavelength (nm)."""
 
+SITE_LAT_DEG, SITE_LON_DEG = -30.2446, -70.7494
+"""Rubin site latitude and longitude (deg)."""
+
 GROUND_LAYER_MIN_KM = 0.2
 """Lowest layer distance (km): the ground layer is raised to it, as in imSim."""
 
@@ -61,8 +64,9 @@ def draw_L0(rng, median=25.0, lo=10.0, hi=100.0):
     return L0
 
 
-def psfws_layers(forecast_file, data_dir, when, alt_deg, az_deg, nlayers, seed):
-    """Layer altitudes, weights and winds from psfws for one ERA5 time step.
+def psfws_layers(forecast_file, data_dir, when, alt_deg, az_deg, nlayers, seed,
+                 ground_wind=None, lat_deg=SITE_LAT_DEG):
+    """Layer altitudes, weights and winds from psfws for the nearest ERA5 time step.
 
     Parameters
     ----------
@@ -78,17 +82,26 @@ def psfws_layers(forecast_file, data_dir, when, alt_deg, az_deg, nlayers, seed):
         Number of layers.
     seed : `int`
         psfws random seed.
+    ground_wind : `tuple` [`float`, `float`], optional
+        Ground-layer wind speed (m/s) and the local compass direction it blows from
+        (deg, East of North), replacing the ERA5 ground wind.
+    lat_deg : `float`, optional
+        Latitude (deg) used to rotate the local winds to the sky.
 
     Returns
     -------
     layers : `dict`
         ``altitude`` (km, line-of-sight distance from the telescope), ``weights``
-        (dimensionless, fraction of total Cn**2), ``speed`` (m/s), ``direction``
-        (`galsim.Angle`, East of North, toward which the wind blows), ``era5_time``.
+        (dimensionless, fraction of total Cn**2), ``speed`` (m/s, sky-projected),
+        ``direction`` (`galsim.Angle`, sky position angle East of North toward which
+        the screen moves), ``local_speed`` (m/s) and ``local_from_deg`` (deg, compass
+        direction the wind blows from, East of North), ``ground_source`` and
+        ``era5_time``.
     """
     import pathlib
 
     import psfws
+    import psfws.utils
 
     pg = psfws.ParameterGenerator(forecast_file=forecast_file, telemetry_file=None,
                                   data_dir=pathlib.Path(data_dir), seed=seed)
@@ -99,9 +112,15 @@ def psfws_layers(forecast_file, data_dir, when, alt_deg, az_deg, nlayers, seed):
         pg.N = len(pg.data_fa)
     idx = pg.data_fa.index
     pt = idx[int(np.argmin(np.abs(idx - when)))]
-    p = pg.get_parameters(pt, nl=nlayers, skycoord=True, alt=alt_deg, az=az_deg,
-                          location="com")
-    # skycoord=True gives h * sec(z) of the height above sea level; take the
+    p = pg.get_parameters(pt, nl=nlayers, location="com")
+    if ground_wind is not None:
+        speed, from_deg = ground_wind
+        toward = np.radians(from_deg + 180.0)
+        p["u"][0], p["v"][0] = speed * np.sin(toward), speed * np.cos(toward)
+    local_u, local_v = np.array(p["u"], float), np.array(p["v"], float)
+    # psfws defaults to latitude +30.2446 deg, the wrong hemisphere.
+    p = psfws.utils.convert_to_galsim(p, alt_deg, az_deg, lat=lat_deg, lon=SITE_LON_DEG)
+    # convert_to_galsim gives h * sec(z) of the height above sea level; take the
     # line-of-sight distance above the site instead.
     sec_z = 1.0 / np.sin(np.radians(alt_deg))
     dist = [max((h / sec_z - pg.h0) * sec_z, GROUND_LAYER_MIN_KM) for h in p["h"]]
@@ -111,6 +130,9 @@ def psfws_layers(forecast_file, data_dir, when, alt_deg, az_deg, nlayers, seed):
     return dict(altitude=dist, weights=list(weights / weights.sum()),
                 speed=list(np.hypot(u, v)),
                 direction=[float(a) * galsim.radians for a in np.arctan2(u, v)],
+                local_speed=list(np.hypot(local_u, local_v)),
+                local_from_deg=list(np.degrees(np.arctan2(-local_u, -local_v)) % 360.0),
+                ground_source="ERA5" if ground_wind is None else "weather station",
                 era5_time=str(pt))
 
 

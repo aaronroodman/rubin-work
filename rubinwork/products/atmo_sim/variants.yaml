@@ -38,6 +38,49 @@ variants:
     band: null                        # null: from the exposure's physical_filter
     atmosphere:
       source: psfws
+      ground_wind: era5
+      wind_lat_deg: 30.2446           # deg; psfws's default, as v1 was built
+      forecast_file: ecmwf_-30.25_-70.75_20260701_20260713.p
+      data_dir: /sdf/group/rubin/u/roodman/LSST/rubin-work/calibration/psfws
+      nlayers: 6                      # count, dimensionless
+      kcrit: 0.2                      # dimensionless, in units of 1/r0
+      # Photon shooting puts only k < kcrit/r0 (about 1 rad/m) in the screens, so a
+      # 0.2 m grid is ample; 16384 pix then spans 3276.8 m, enough not to wrap.
+      screen_scale_m: 0.2             # m
+      screen_size_max_m: 3276.8       # m
+      seed: 57721
+    guider:
+      gain: 1.6                       # e-/ADU
+      calibration_stamps: 6           # count, dimensionless
+    science:
+      stamp_pix: 64                   # pix, square stamp side
+      flux_adu: 1.0e+6                # ADU
+      gain: 1.6                       # e-/ADU
+      read_noise_adu: 0.0             # ADU rms
+
+  v2:
+    description: >-
+      As v1, but the ground-layer wind is the site weather station's (header WINDSPD,
+      WINDDIR) instead of ERA5's, and the local winds are rotated to the sky at the
+      site's latitude, -30.2446 deg (v1 used psfws's default, +30.2446 deg). The
+      ground-layer weight still comes from psfws.
+    data:
+      repo: /repo/main
+      collections:
+        - LSSTCam/raw/guider
+        - LSSTCam/raw/all
+      guider_moments_variant: v4     # star positions, fluxes and target FWHM
+    butler:
+      repo: /repo/main
+      run_prefix: u/roodman/atmo_sim/v2
+      chain: u/roodman/atmo_sim/v2
+      chain_tail:
+        - LSSTCam/raw/all
+    band: null                        # null: from the exposure's physical_filter
+    atmosphere:
+      source: psfws
+      ground_wind: weather_station   # era5 | weather_station
+      wind_lat_deg: -30.2446          # deg, Rubin site
       forecast_file: ecmwf_-30.25_-70.75_20260701_20260713.p
       data_dir: /sdf/group/rubin/u/roodman/LSST/rubin-work/calibration/psfws
       nlayers: 6                      # count, dimensionless

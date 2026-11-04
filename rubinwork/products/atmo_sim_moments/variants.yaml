@@ -23,3 +23,10 @@ variants:
       moments in the CCD pixel frame.
     atmo_sim_variant: v1
     guider_moments_variant: v6       # tracker and moment settings taken from here
+
+  v2:
+    description: >-
+      As v1, on atmo_sim v2 (weather-station ground wind, site latitude for the wind
+      rotation).
+    atmo_sim_variant: v2
+    guider_moments_variant: v6

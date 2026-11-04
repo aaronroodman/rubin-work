@@ -1,6 +1,6 @@
 # Atmospheric PSF simulation for the Rubin guide sensors and science CCDs
 
-> **Status:** current · **Last updated:** 2026-10-28 · **Kind:** reference (method)
+> **Status:** current · **Last updated:** 2026-11-04 · **Kind:** reference (method)
 
 The simulation draws stars through a model atmosphere for one Rubin visit. It covers two
 sets of detectors with the same atmosphere:
@@ -37,10 +37,33 @@ Medium-Range Weather Forecasts (ECMWF) ERA5 reanalysis winds and temperatures:
 
 For a given visit we fetch ERA5 for the night (`code/fetch_cp_weather.py`, latitude
 −30.25 deg, longitude −70.75 deg). We then take the ERA5 time step nearest the visit;
-the fetched file has 00, 06 and 18 UTC. psfws gives the layer altitudes, the turbulence
-weights and the winds. With `skycoord=True` and the telescope altitude and azimuth, it
-rotates the winds into the sky frame (East, North) as the telescope sees it. Layer
-distances are line of sight, above the site, with the ground layer raised to 0.2 km.
+the fetched file has 00, 06 and 18 UTC. The winds aloft change slowly enough that the
+nearest step is used, not an interpolation. psfws gives the layer altitudes, the turbulence
+weights and the winds. The local winds are then rotated into the sky frame (East,
+North) as the telescope sees it, with `psfws.utils.convert_to_galsim`, the telescope
+altitude and azimuth and the site latitude. Layer distances are line of sight, above the
+site, with the ground layer raised to 0.2 km.
+
+The ground-layer wind is a variant choice (`atmosphere.ground_wind`):
+
+- `era5` (v1): the ERA5 wind interpolated to 50 m above the site;
+- `weather_station` (v2): the site weather station, the raw header `WINDSPD` (m/s) and
+  `WINDDIR` (deg East of North, the direction the wind blows from). Over 44 science
+  exposures of 20260705 and 20260706 the station wind came from 357 to 36 deg, while the
+  nearest ERA5 ground wind came from 234 to 319 deg; the mean cosine of the difference
+  is 0.13 (dimensionless).
+
+The ground-layer weight comes from psfws in both.
+
+v1 rotated the winds at latitude +30.2446 deg, psfws's default, which is the wrong
+hemisphere. That turns each wind direction on the sky by 14 to 29 deg against the
+correct rotation at the 6 visits of 20260706; v2 uses −30.2446 deg (`wind_lat_deg`),
+which agrees with an astropy AltAz-to-ICRS rotation to 0.2 deg.
+
+`atmosphere.json` records, per layer, the local speed and the direction the wind blows
+from (`local_speed_mps`, `local_from_deg`, deg East of North) and the sky-projected
+speed and the position angle the screen moves toward (`speed_mps`, `direction_deg`, deg
+East of North), plus the weather-station wind.
 
 psfws draws the split of turbulence between the ground layer and the free atmosphere at
 random, so the seed matters. For 20260706 seq 688 the ground-layer weight ranges from
@@ -187,7 +210,18 @@ view, as for data, so sim and data guider moments share a frame, Q1 and Q2 inclu
 - Guide-star positions and fluxes, and the target FWHM (median tracked FWHM over
   sensors): `guider_moments` v4.
 
-## 9. Not included
+## 9. Astrometric shift
+
+Each science-CCD star's astrometric shift is its unweighted centroid (the mean photon
+deflection over the exposure) less its true CCD position, rotated to the FOCAL_PLANE
+frame (mas). The comparison plots it as is, with the mean over CCDs removed, and with a
+6-parameter affine fit in focal-plane x and y removed, roughly what a per-visit
+astrometric solution absorbs, and gives the shift correlation xi_+ over CCD pairs
+against separation. There is one star per CCD, so this samples the shift field on a
+grid of about 40 mm (800 arcsec). The data counterpart, residuals of the per-visit
+astrometric fit, is not in place yet.
+
+## 10. Not included
 
 - Telescope optics: an imSim mock optical screen exists (`--doOpt`), but it does not
   represent the real telescope.

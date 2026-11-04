@@ -78,7 +78,9 @@ def visit_inputs(day_obs, seq_num, config):
         ``visit_info``, ``guiders`` (one `dict` per guide sensor with its template
         ``Stamps``, ROI box, amplifier, star position, flux, pedestal, read noise and
         stamp times), ``science`` (detector list), ``target_fwhm`` (arcsec), ``t_open``
-        (shutter-open MJD, TAI) and ``guider_moments_build``.
+        (shutter-open MJD, TAI), ``station_wind`` (site weather-station speed, m/s, and
+        direction the wind blows from, deg East of North; header ``WINDSPD``,
+        ``WINDDIR``) and ``guider_moments_build``.
     """
     from astropy.stats import mad_std
     from lsst.afw.cameraGeom import DetectorType
@@ -95,6 +97,9 @@ def visit_inputs(day_obs, seq_num, config):
     vi = butler.get("raw.visitInfo", instrument="LSSTCam", day_obs=day_obs,
                     seq_num=seq_num, detector=94)
     boresight, rot = vi.getBoresightRaDec(), vi.getBoresightRotAngle()
+    md94 = butler.get("raw.metadata", instrument="LSSTCam", day_obs=day_obs,
+                      seq_num=seq_num, detector=94)
+    station_wind = (float(md94["WINDSPD"]), float(md94["WINDDIR"]))
 
     gm_variant = data["guider_moments_variant"]
     stars = guider_moments.load_table("stars", day_obs, variant=gm_variant)
@@ -138,6 +143,7 @@ def visit_inputs(day_obs, seq_num, config):
                             yccd=c.getY(), theta=theta, jac=jac))
 
     return dict(visit_info=vi, guiders=guiders, science=science, t_open=t_open,
+                station_wind=station_wind,
                 target_fwhm=float(np.median(per_det.fwhm)),
                 guider_moments_build=f"{gm_variant}@nights/{int(day_obs)}")
 
@@ -224,12 +230,24 @@ def simulate_visit(day_obs, seq_num, config, outdir, log=print, max_stamps=None)
 
     atm_cfg = config["atmosphere"]
     seed = int(atm_cfg["seed"]) + int(day_obs) % 10000 * 10000 + int(seq_num)
+    ground = atm_cfg.get("ground_wind", "era5")
+    if ground not in ("era5", "weather_station"):
+        raise ValueError(f"ground_wind must be era5 or weather_station, not {ground!r}")
     layers = atmosphere.psfws_layers(
         atm_cfg["forecast_file"], atm_cfg["data_dir"], when, alt, az,
-        atm_cfg["nlayers"], seed)
+        atm_cfg["nlayers"], seed,
+        ground_wind=inp["station_wind"] if ground == "weather_station" else None,
+        lat_deg=float(atm_cfg.get("wind_lat_deg", atmosphere.SITE_LAT_DEG)))
     L0 = atmosphere.draw_L0(galsim.BaseDeviate(seed))
     log(f"{day_obs} seq {seq_num}: band {band}, alt {alt:.2f} deg, az {az:.2f} deg, "
-        f"rotator {vi.getBoresightRotAngle().asDegrees():.2f} deg, ERA5 {layers['era5_time']}")
+        f"rotator {vi.getBoresightRotAngle().asDegrees():.2f} deg, ERA5 {layers['era5_time']}, "
+        f"ground wind from {layers['ground_source']}")
+    log("  layer  distance (km)  weight  wind (m/s)  from (deg E of N)  "
+        "sky speed (m/s)  sky toward (deg E of N)")
+    for k in range(len(layers["speed"])):
+        log(f"  {k:5d}  {layers['altitude'][k]:13.2f}  {layers['weights'][k]:6.3f}  "
+            f"{layers['local_speed'][k]:10.1f}  {layers['local_from_deg'][k]:17.0f}  "
+            f"{layers['speed'][k]:15.1f}  {layers['direction'][k] / galsim.degrees % 360:23.0f}")
 
     gcfg = config["guider"]
     g0 = inp["guiders"][0]
@@ -313,7 +331,10 @@ def simulate_visit(day_obs, seq_num, config, outdir, log=print, max_stamps=None)
         date=str(when), era5_time=layers["era5_time"], seed=seed,
         altitude_km=layers["altitude"], weights=layers["weights"],
         speed_mps=layers["speed"],
-        direction_deg=[d / galsim.degrees for d in layers["direction"]],
+        direction_deg=[d / galsim.degrees % 360.0 for d in layers["direction"]],
+        local_speed_mps=layers["local_speed"], local_from_deg=layers["local_from_deg"],
+        ground_wind_source=layers["ground_source"],
+        station_wind_mps=inp["station_wind"][0], station_from_deg=inp["station_wind"][1],
         L0_m=L0, r0_500_m=atmo.r0_500, target_fwhm_asec=inp["target_fwhm"],
         atm_fwhm_asec=atm_fwhm, calibration=calib, screen_size_m=size_m,
         screen_need_m=need_m, science_exptime_s=exptime_sci, runtime_s=time.time() - t_start,
