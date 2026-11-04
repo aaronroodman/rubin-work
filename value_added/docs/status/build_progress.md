@@ -12,9 +12,10 @@ Row counts and spans read from the live database's `fetch_log` and `column_cover
 - [What the 2025 nights do and do not carry](#what-the-2025-nights-do-and-do-not-carry)
 - [Sparse columns to check before using](#sparse-columns-to-check-before-using)
 - [`optical_state` and `fam_dz`](#optical_state-and-fam_dz)
+- [`sonic` and `psf_shape`, added 2026-11-04](#sonic-and-psf_shape-added-2026-11-04)
 - [Mirror LUT zero-fill on a dropped actuator](#mirror-lut-zero-fill-on-a-dropped-actuator)
 - [`m1m3_thermal_r2` coverage](#m1m3_thermal_r2-coverage)
-- [Corrupt `vt_day_obs` index, open](#corrupt-vt_day_obs-index-open)
+- [Corrupt `vt_day_obs` index — fixed in `v1/live`](#corrupt-vt_day_obs-index--fixed-in-v1live-2026-11-04)
 - [Rebuilding](#rebuilding)
 
 ## `visit_telemetry` coverage
@@ -202,6 +203,26 @@ A separate, earlier change to the v-mode basis also flips v1 for **every stored*
 `v1_lut` and `v1_trim` — see `rerun_needed.md`. Stored v-mode values therefore need
 regenerating, not just reinterpreting.
 
+## `sonic` and `psf_shape`, added 2026-11-04
+
+`sonic` (salIndex 110 and 123–126 over each exposure, [schema](../schema.md)) is built into
+`v1/live` for **375 nights, 20250415 to 20261103, 221,215 exposures**, by 16 batch shards
+(`logs/batch_telemetry_20261104_031722_*.out`, about 5 min each). Exposures with a value,
+by sensor:
+
+| span | exposures | 110 | 123 | 126 |
+|---|---|---|---|---|
+| 2025-04 to 2026-01 | 110,423 | 110,347 | 6 | 6 |
+| 2026-02 to 2026-07 | 91,281 | 91,281 | 90,812 | 91,279 |
+| 2026-10 to 2026-11 | 7,511 | 0 | 7,511 | 7,511 |
+
+The raw EFD gives 110 on nearly every exposure; ConsDB's transformed EFD has it on about half.
+**The 7,511 October and November rows carry `sonic` only**: no other group has been run past
+20260714. On 20261103, 123–126 often report `speedStdDev` of exactly 0 m/s and repeat
+`speed1` values, so treat the October and November RMS with care.
+
+`psf_shape` is in the code but not yet built.
+
 ## Mirror LUT zero-fill on a dropped actuator
 
 The forty mirror look-up-table (LUT) degrees of freedom `lut_dof10` to `lut_dof49` have no
@@ -259,7 +280,12 @@ python -u value_added/code/build_m1m3_thermal_r2.py --day-obs 20260424 --refetch
 Redirect the output and Python buffers it, so use `python -u` or the per-night progress lines
 do not appear until the run ends.
 
-## Corrupt `vt_day_obs` index, open
+## Corrupt `vt_day_obs` index — fixed in `v1/live` 2026-11-04
+
+**Fixed 2026-11-04 in `v1/live`** (the index was dropped and rebuilt, and the equality count
+for 20260620 is now 1,782). The merge of the `sonic` build hit it on shard 15. Snapshots up
+to `20261025b` still carry the bad index. The `twilight` columns for 20260620 are still to
+fill. History below.
 
 **Status as of 2026-10-08: open, one night affected, no data lost, low priority.** The equality
 index on `visit_telemetry(day_obs)` is corrupt for `day_obs` 20260620. The symptom is that the
