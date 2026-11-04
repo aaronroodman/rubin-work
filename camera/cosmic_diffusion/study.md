@@ -3,7 +3,7 @@ study: cosmic_diffusion
 topic: camera
 status: active
 question: What diffusion coefficient, sigma_diff over sqrt(delta z) in um per sqrt(um), do long cosmic-ray muon tracks in 20261102 darks give for R21 REB0 (about 10 V back bias) compared with R21 REB1 (nominal 50 V)?
-answer: 'Full night 20261102 (406 darks): median per-track k = 0.0708 and 0.0706 on R21_S01 and S02 at 8.8 V, 0.0437 to 0.0441 on REB1 at 50 V (dimensionless); R21_S00 is the outlier at 0.0968 with a near-linear width growth. All exceed the uniform-field sqrt(2kT/eV), by 1.2x at 8.8 V and 1.8x at 50 V.'
+answer: 'Full night 20261102 (406 darks), sigma0 prior 2.89 +- 0.5 um: median per-track k = 0.0692 and 0.0686 on R21_S01 and S02 at 8.8 V, 0.0415 to 0.0420 on REB1 at 50 V (dimensionless); R21_S00 is the outlier at 0.0885. All exceed the uniform-field sqrt(2kT/eV), by 1.2x at 8.8 V and 1.7x at 50 V.'
 uses: {}
 started: 2026-11-03
 ---
@@ -20,30 +20,34 @@ What diffusion coefficient, sigma_diff over sqrt(delta z) in um per sqrt(um), do
 
 ## Current answer
 
-All 406 darks of 20261102, R21 only, 8,463 ok tracks. Per-track Huber fit
-sigma^2 = sigma0^2 + k^2 D dz, D = 100 um; table gives the median over tracks with
-error 1.2533 nMAD / sqrt(n). k is dimensionless.
+All 406 darks of 20261102, R21 only, 7,942 ok tracks. Per-track Huber fit
+sigma^2 = sigma0^2 + k^2 D dz, D = 100 um, with sigma0 under a Gaussian prior
+2.89 +- 0.5 um (10 um / sqrt(12)); section widths from a pixel-integrated Gaussian.
+Table gives medians over tracks; error on k 1.2533 nMAD / sqrt(n) is <= 0.0002
+(dimensionless) in every row. k is dimensionless.
 
-| CCD | BSSVBS (V) | ok tracks | median k | k theory | k / k theory | median sigma0 (um) |
-|---|---|---|---|---|---|---|
-| R21_S00 | 8.825 | 1405 | 0.0968 +- 0.0002 | 0.0582 | 1.66 | -2.24 +- 0.03 |
-| R21_S01 | 8.825 | 1429 | 0.0708 +- 0.0001 | 0.0582 | 1.22 | 1.73 +- 0.02 |
-| R21_S02 | 8.825 | 1460 | 0.0706 +- 0.0001 | 0.0582 | 1.21 | 1.70 +- 0.02 |
-| R21_S10 | 50.0 | 1410 | 0.0439 +- 0.0001 | 0.0244 | 1.80 | 2.48 +- 0.01 |
-| R21_S11 | 49.975 | 1371 | 0.0441 +- 0.0001 | 0.0244 | 1.81 | 2.45 +- 0.01 |
-| R21_S12 | 50.0 | 1388 | 0.0437 +- 0.0001 | 0.0244 | 1.79 | 2.45 +- 0.01 |
+| CCD | BSSVBS (V) | ok tracks | k, sigma0 prior | k, sigma0 free | k, sigma0 fixed | k theory | k prior / k theory | sigma0 prior fit (um) |
+|---|---|---|---|---|---|---|---|---|
+| R21_S00 | 8.825 | 1339 | 0.0885 | 0.0973 | 0.0865 | 0.0582 | 1.52 | 2.14 |
+| R21_S01 | 8.825 | 1333 | 0.0692 | 0.0705 | 0.0659 | 0.0582 | 1.19 | 2.34 |
+| R21_S02 | 8.825 | 1374 | 0.0686 | 0.0700 | 0.0654 | 0.0582 | 1.18 | 2.34 |
+| R21_S10 | 50.0 | 1313 | 0.0419 | 0.0420 | 0.0411 | 0.0244 | 1.72 | 2.82 |
+| R21_S11 | 49.975 | 1279 | 0.0420 | 0.0421 | 0.0410 | 0.0244 | 1.72 | 2.79 |
+| R21_S12 | 49.975 | 1304 | 0.0415 | 0.0417 | 0.0407 | 0.0244 | 1.70 | 2.80 |
 
-k theory is sqrt(2kT/(eV)) at T = 173.15 K (Fisher-Levine eq. 3.3); k / k theory is
-dimensionless. Figure: `figures/sigma_vs_dz_per_ccd.png`.
+k theory is sqrt(2kT/(eV)) at T = 173.15 K (Fisher-Levine eq. 3.3). Figure:
+`figures/sigma_vs_dz_per_ccd.png`.
 
-- S01 and S02 agree; S00 is 1.37 times higher (dimensionless, S00 over the S01/S02
-  mean) and its width grows near-linearly with dz, so its sigma0 fit is negative.
-  It is also the CCD whose `CCDTEMP` reads -86.7 C against about -101 C elsewhere.
-- REB1's three CCDs agree to 0.0004 in k.
-- S01/S02 over REB1 is 1.61 (dimensionless), against sqrt(50/8.825) = 2.38 for
-  k proportional to 1/sqrt(V): part of the width does not scale with back bias.
-- The per-track sigma0 against k scatter shows a second population at negative
-  sigma0 in both REBs, not yet explained.
+- On REB1 the free fit gives sigma0 = 2.78-2.81 um, at the 2.89 um pixel term, so
+  the prior barely matters there. At 8.8 V the free sigma0 is low (2.07 um on
+  S01/S02) and the constraint lowers k by 2% (prior) to 7% (fixed).
+- S01 and S02 agree; S00 is 1.28 times higher (dimensionless, S00 over the S01/S02
+  mean, prior fit). Its width grows faster than sqrt(dz) beyond 60 um and its free
+  sigma0 is negative on 88% of tracks. Its `CCDTEMP` reads -86.7 C against about
+  -101 C elsewhere.
+- S01/S02 over REB1 is 1.65 (dimensionless, prior fit), against sqrt(50/8.825) =
+  2.38 for k proportional to 1/sqrt(V): part of the width does not scale with back
+  bias.
 
 ## Log
 
@@ -51,7 +55,8 @@ dimensionless. Figure: `figures/sigma_vs_dz_per_ccd.png`.
 
 Study created; finder and analysis scripts written and run on seq 533 (six R21
 sensors, 47 tracks pass the finder). Output: `output/20261103_find_20261102/visits/`
-(per-visit FITS and parquet) and `output/20261103_diffusion/cosmic_diffusion.pdf`.
+(per-visit FITS and parquet; since archived) and `output/20261103_diffusion/`
+(archived).
 
 Decisions:
 
@@ -80,8 +85,8 @@ theory comes from the front-side clock voltages adding to the field.
 
 Commits `ce6bdb5` (half-charge ends, centre straightness, width-scaled delta-ray
 cut, validation pages), `37e9305` (gallery). Finder rerun on all 406 darks as Slurm
-array 42969223; output `output/20261103_find_20261102_v2/visits/`. Analysis:
-`output/20261103_diffusion/cosmic_diffusion.pdf`, results as in Current answer.
+array 42969223; output `output/20261103_find_20261102_v2/visits/`. Analysis
+run `20261103_diffusion`, since superseded and archived.
 
 Decisions:
 
@@ -107,3 +112,29 @@ Decisions:
 **Next:** explain the negative-sigma0 population in the sigma0 against k scatter;
 check S00 (field profile, real temperature); model the part of the width that
 does not scale with back bias.
+
+### 2026-11-03 — pixel-integrated widths, sigma0 prior, cleanup
+
+Commit `9107d93`. Remeasured all tracks; output
+`output/20261103_diffusion_pixint/cosmic_diffusion.pdf`. Results as in Current
+answer.
+
+- Section profile is now a Gaussian averaged over each pixel's area (4 x 4 points),
+  with per-pixel errors from the model, refit 3 times. Reported sigma adds the
+  pixel term 1/12 px^2 back in quadrature. On synthetic tracks of 0.2-0.7 px width
+  it recovers the total width within 0.005 px, chi2/dof 0.9-1.1. The old fit
+  sampled the Gaussian at pixel centres and took errors from the data.
+- Per-track and pooled fits run three ways: sigma0 free, fixed at 2.89 um, and with
+  a Gaussian prior 2.89 +- 0.5 um (`--sig0-prior`). The prior is a fixed-weight
+  row in a Huber IRLS fit, so the robust weights cannot discount it.
+- Negative free sigma0^2 per track: S00 88%, S01/S02 5% (was 13-14%), REB1 0%
+  (was 2-3%). The negative-sigma0 population was mostly the old fit.
+- chi2/dof cut kept at 5 with the 10% model term. Failure rate on ok-track
+  sections rises with amplitude: 2% below 300 e-, 12% at 300-1000 e-, 29% at
+  1000-3000 e-, 46% above. Taken as Landau fluctuations with knock-on electrons
+  (Aaron); the cut may be too tight. Median chi2/dof without the model term 8.0.
+- New pages: amplitude against sigma heat maps per CCD; chi2/dof against amplitude.
+- Old and test runs moved to `output/_archive_delete_me/` for deletion by hand.
+
+**Next:** decide the chi2/dof cut; check S00 (field profile, real temperature);
+model the width that does not scale with back bias.
