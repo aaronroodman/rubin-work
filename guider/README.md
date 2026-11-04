@@ -14,11 +14,11 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | [bias_streak](bias_streak/study.md) | parked | 2026-10-11 | The blank-2-stamp bias adds negligible read noise against the 10th-percentile bias; the streak model is not validated over several nights, so nothing is folded into processStamps. |
 | [centroid_timescale](centroid_timescale/study.md) | done | 2026-10-11 | No: the motion is scale-free, with no knee in the variance against smoothing timescale and a featureless PSD. The split is fixed at a 1.6 s FWHM Gaussian (8 stamps at 5 Hz); the fast fraction is 0.20 to 0.33 (dimensionless, of variance). |
 | [guide_star_saturation](guide_star_saturation/study.md) | parked | 2026-09-01 | The working saturation level is about 40000 ADU (peak after the blank-stamp column bias). A per-CCD saturation flag is not implemented. |
-| [guider_atmo_sim](guider_atmo_sim/study.md) | active | 2026-08-18 | Partly: static T_stamp matches the data to 0.5% (relative), but the centroid-motion second moments are over-predicted 1.5 to 1.6 times (dimensionless, sim over data; T_motion 0.0078 against 0.0050 arcsec^2) on day_obs 20260706 seq 688. The night batch was never run. |
+| [guider_atmo_sim](guider_atmo_sim/study.md) | active | 2026-10-28 | Partly: over 6 visits of 20260706 the guider centroid-motion size matches on average (median T_motion sim over data 1.28, dimensionless) but per visit ranges 0.36 to 2.29 and follows psfws's random ground-layer weight; the motion direction does not match (median angle difference 42 to 69 deg, against 45 deg for no relation). |
 | [guider_ellipticity_ensemble](guider_ellipticity_ensemble/study.md) | active | 2026-09-01 | Dynamic ellipticity is strongly correlated between the two guider sensors of one corner raft and nearly uncorrelated across corners, so turbulence decorrelates on raft scales; it is not tracking error or wind shake. |
 | [guider_vs_ccd_moments](guider_vs_ccd_moments/study.md) | active | 2026-10-11 | Do guide-star second moments, measured with the same galsim-HSM estimator, match the PSF second moments on the adjacent science CCD? |
 | [roi_quality](roi_quality/study.md) | active | 2026-03-24 | Was each guider ROI placed on the expected guide star, judged by matching found stars to the guide-star catalog? |
-| [summit_utils_branch](summit_utils_branch/study.md) | done | 2026-10-11 | Yes: guider-fixes holds all 8 deploy-summit guider commits by patch-equivalence, so no cherry-pick is needed; origin/main has none of them. |
+| [summit_utils_branch](summit_utils_branch/study.md) | done | 2026-10-24 | Yes: guider-fixes holds all 8 deploy-summit guider commits by patch-equivalence, so no cherry-pick is needed; origin/main has none of them. |
 
 <!-- END generated -->
 
