@@ -140,11 +140,11 @@ CAM_FIELDS = [
 ]
 
 #: 3D sonic anemometer ESS ``salIndex`` values on the ``lsst.sal.ESS.airTurbulence``
-#: topic. 110 is the deployable platform at the top of the stairs and *is* in the
-#: transformed EFD of the ConsDB (as ``mt_salindex110_*``, a fast live read); 123–126 are
-#: the Telescope Mount Assembly (TMA) top-ring quadrants (-x-y / +x-y / +x+y / -x+y) and
-#: are **not**, which is why they are fetched here. Locations are recorded in
-#: ``ts_config_ocs`` ``ESS/v8/_init.yaml``.
+#: topic. 110 is the deployable platform at the top of the stairs; 123–126 are the
+#: Telescope Mount Assembly (TMA) top-ring quadrants (-x-y / +x-y / +x+y / -x+y). All five
+#: are in the ConsDB transformed EFD as ``mt_salindex<idx>_*``, 123–126 only from
+#: 2026-02-16. Locations are recorded in ``ts_config_ocs`` ``ESS/v8/_init.yaml``.
+#: The ``sonic`` group (`SONIC_SALINDEX`) supersedes ``turbulence``.
 #:
 #: Two epochs bound what these columns can contain, both measured against the EFD:
 #:
@@ -152,8 +152,8 @@ CAM_FIELDS = [
 #:   nights are legitimately NULL, and `column_coverage` reports that as their true
 #:   ``first_day_obs``.
 #: * **The whole topic goes silent between 2026-07-20 and 2026-07-22**, salIndex 110
-#:   included, having reported continuously since April 2025. Nights after that carry no
-#:   ``turb*`` values from any sensor.
+#:   included, having reported continuously since April 2025. 123–126 report again by
+#:   2026-10-27; 110 had not returned by 2026-11-03.
 #:
 #: salIndex 201 also appears on this topic from about 2026-01-10; it is ``AuxTel-ESS04``,
 #: not a TMA sensor, and is deliberately excluded.
@@ -173,6 +173,38 @@ TURB_FIELDS = {
     'sonicTemperature': ('sonic_temp_c', 'deg C'),
     'sonicTemperatureStdDev': ('sonic_temp_std_c', 'deg C'),
 }
+
+#: ESS ``salIndex`` values read by the ``sonic`` group: the deployable-platform sensor 110
+#: and the four TMA top-ring sensors 123-126. Unlike `TURB_SALINDEX` this includes 110, so
+#: the raw EFD can be compared with the ConsDB transformed-EFD values for it.
+SONIC_SALINDEX = (110, 123, 124, 125, 126)
+
+#: Statistics of the ``sonic`` group per sensor, over the exposure window: column suffix
+#: -> units.
+SONIC_STATS = {
+    **{f'mean_{a}_ms': 'm/s (mean wind velocity component, sensor axis)'
+       for a in range(3)},
+    **{f'rms_{a}_ms': 'm/s (RMS about the mean, sqrt(mean sigma^2 + var of 5 s means))'
+       for a in range(3)},
+    'mag_mean_ms': 'm/s (mean of the 5 s speed magnitudes)',
+    'sonic_temp_c': 'deg C (mean sonic temperature)',
+    'n_samp': 'dimensionless (5 s samples averaged)',
+}
+
+#: Statistics of the ``psf_shape`` group: per-CCD PSF ellipticity from ConsDB, rotated to
+#: the RubinTV Az/El frame (`rubinwork.psf_shape`). Column -> units.
+PSF_SHAPE_COLS = (
+    [('psf_n_ccd', 'INTEGER', 'dimensionless (CCDs with finite moments)'),
+     ('psf_rot_deg', 'DOUBLE', 'deg (ConsDB physical_rotator_angle used for Az/El)')]
+    + [(f'psf_{q}_azel_{s}', 'DOUBLE',
+        f'dimensionless ({q} over CCDs, Az/El frame{"" if q != "e" else ", |e|"})')
+       for q in ('e', 'e1', 'e2')
+       for s in ('mean', 'p10', 'p25', 'p50', 'p75', 'p90')]
+    + [(f'psf_xi_{c}_r{k}', 'DOUBLE',
+        f'dimensionless (raw mean {c[:2]}*{c[2:]} over CCD pairs {k}+/-0.5 CCD apart)')
+       for k in (2, 6) for c in ('e1e1', 'e1e2', 'e2e2')]
+    + [(f'psf_xi_npair_r{k}', 'INTEGER', f'dimensionless (CCD pairs {k}+/-0.5 CCD apart)')
+       for k in (2, 6)])
 
 GROUPS = {
     # --- raw EFD -----------------------------------------------------------
@@ -197,6 +229,10 @@ GROUPS = {
          for idx in TURB_SALINDEX for suffix, units in TURB_FIELDS.values()]
         + [(f'turb{idx}_n_samp', 'INTEGER', 'dimensionless (samples averaged)',
             f'efd_ESS_airTurbulence_idx{idx}') for idx in TURB_SALINDEX]),
+    'sonic': (
+        [(f'sonic{idx}_{suffix}', 'INTEGER' if suffix == 'n_samp' else 'DOUBLE', units,
+          f'efd_ESS_airTurbulence_idx{idx}')
+         for idx in SONIC_SALINDEX for suffix, units in SONIC_STATS.items()]),
     # --- value-added -------------------------------------------------------
     'gradients': (
         [(f'm1m3_{n}_gradient_c_per_m', 'DOUBLE', 'deg C/m',
@@ -230,12 +266,14 @@ GROUPS = {
         ('sun_alt_deg', 'DOUBLE', 'deg (apparent solar altitude at exposure start)',
          'derived_solar_ephemeris'),
     ],
+    'psf_shape': [(n, t, u, 'derived_from_consdb_ccdvisit1_quicklook')
+                  for n, t, u in PSF_SHAPE_COLS],
 }
 
 #: Groups whose columns live in ``visit_telemetry``, in build order. ``hexhist``
 #: depends on ``lut``/``trim`` already being present, so it is last.
 GROUP_ORDER = ('trim', 'lut', 'camera', 'turbulence', 'gradients', 'tweak',
-               'wind_derived', 'hexhist', 'twilight')
+               'wind_derived', 'hexhist', 'twilight', 'sonic', 'psf_shape')
 
 
 def group_columns(group):

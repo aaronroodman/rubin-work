@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-10-20 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-11-04 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Row counts and spans read from the live database's `fetch_log` and `column_coverage` on
@@ -352,8 +352,8 @@ The code is fixed (2026-10-20) in `rubinwork/common/dof_telemetry.py`,
 `rubinwork/common/visit_telemetry.py` and `build_efd_db.fetch_turbulence`, with tests in
 `rubinwork/common/tests/test_time_anchors.py`. Still to do: rebuild the `lut`, `hexhist`,
 `turbulence` and `camera` groups as a new build, then rerun `build_optical_state` for
-`v_modes_lut`. The telemetry builder needs an EFD client, so it runs on the RSP:
-`makeEfdClient` refuses s3df nodes.
+`v_modes_lut`. The telemetry builder now runs on s3df interactive and batch nodes (see
+Rebuilding).
 
 ## Rebuilding
 
@@ -361,14 +361,22 @@ Shards are written per night-range and merged, because DuckDB's file lock is pro
 and excludes readers as well as writers — several processes cannot write one database file.
 
 ```bash
+cd ~/notebooks/rubin-work/rubinwork/products/value_added/builders
+./run_build.sh --what telemetry --groups sonic --day-obs 20250415-20261103 --chunk 24 \
+    --mode batch \
+    --shard-dir /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/_work/shards
 cd ~/notebooks/rubin-work/value_added
-./code/run_build.sh --what telemetry --day-obs 20251103-20260418 --chunk 24
-python code/merge_db_shards.py --shards 'output/shards/telemetry_*.duckdb'
+python -m rubinwork.products.value_added.builders.merge_db_shards \
+    --db /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/live/aos_efd.duckdb \
+    --shards '/sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/_work/shards/telemetry_<timestamp>_*.duckdb'
 ```
 
-`--what telemetry` is EFD-bound and runs `--mode local` only: the EFD resolves from the RSP
-and from s3df **interactive** nodes (`slacrd`, `sdfiana*`) but not from batch compute nodes,
-so a batch job would fetch nothing. `--what state` is ConsDB-bound and does work in batch.
+**Both builders run in batch.** The USDF EFD answers from milano batch nodes (tested
+2026-11-04 on sdfmilan191, and by the 16-shard `sonic` build that day). There
+`lsst.summit.utils.getSite` finds no site and `makeEfdClient` refuses, so
+`telemetry_clients.make_efd_client` then sets `EXTERNAL_INSTANCE_URL` to the USDF RSP and
+retries. Earlier docs said the EFD did not resolve from batch; the failure was this site
+check, not the network.
 
 Wall time per night is dominated by the `trim` group, and it is wildly uneven — most nights
 finish in tens of seconds while the worst take close to an hour, scaling with the number of

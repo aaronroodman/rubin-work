@@ -9,12 +9,10 @@
 #
 # WHICH MODE EACH BUILDER NEEDS
 #
-#   --what telemetry   Engineering Facility Database (EFD) bound.  The EFD resolves from
-#                      the Rubin Science Platform (RSP) and from s3df INTERACTIVE nodes
-#                      (slacrd / sdfiana*), but NOT from milano/torino/roma batch compute
-#                      nodes.  So this runs in --mode local only; batch would fetch
-#                      nothing.  Local shards are ordinary background processes, so no
-#                      Slurm submission is involved.
+#   --what telemetry   Engineering Facility Database (EFD) bound.  The USDF EFD answers
+#                      from s3df interactive nodes and, since 2026-11-04, from milano batch
+#                      nodes too: telemetry_clients.make_efd_client sets the site there,
+#                      where lsst.summit.utils.getSite finds none.  Both modes work.
 #
 #   --what state       Consolidated Database (ConsDB) bound, through the public
 #                      token-injected endpoint, which does resolve on a batch node.  It
@@ -34,7 +32,7 @@
 #   --what telemetry|state   which builder (required)
 #   --day-obs SPEC           a night, an inclusive RANGE, or a comma list (required)
 #   --chunk N                nights per shard (default 24, about 20 min for telemetry)
-#   --mode local|batch       default local; 'batch' is rejected for --what telemetry
+#   --mode local|batch       default local
 #   --variant ID             registered variant id, for --what state
 #   --miw-build VAR[@BUILD]  resolve the MIW intrinsic from the product catalog, e.g.
 #                            d12-A_50_34_i_5rot@20261014.  PREFER THIS for the miw route
@@ -112,12 +110,6 @@ esac
 case "$mode" in
     local) ;;
     batch)
-        if [ "$what" = telemetry ]; then
-            echo "error: --what telemetry cannot run in batch — the EFD does not resolve" \
-                 "from a Slurm compute node, so the fetch would return nothing." \
-                 "Use --mode local on an s3df interactive node (slacrd) or the RSP." >&2
-            exit 2
-        fi
         command -v sbatch >/dev/null || {
             echo "error: sbatch not found — submit batch mode from an s3df interactive" \
                  "node (e.g. slacrd), not an RSP pod, which has no Slurm." >&2

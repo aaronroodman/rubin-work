@@ -77,6 +77,11 @@ def in_rsp():
     return os.path.isdir('/etc/nublado')
 
 
+def _on_s3df():
+    """True on an s3df interactive or batch node (the ``/sdf`` filesystem is mounted)."""
+    return os.path.isdir('/sdf/group/rubin')
+
+
 def make_efd_client(efd_name=DEFAULT_EFD_NAME):
     """Return an EFD client.
 
@@ -95,10 +100,21 @@ def make_efd_client(efd_name=DEFAULT_EFD_NAME):
     ``makeEfdClient`` lives in `lsst.summit.utils.efdUtils` in current summit_utils; it
     used to be re-exported at the package top level. Both spellings are tried before
     falling back to constructing `lsst_efd_client.EfdClient` directly.
+
+    On an s3df batch node (``sdfmilan*`` and similar) `lsst.summit.utils.getSite` finds no
+    known site and ``makeEfdClient`` refuses. The USDF EFD does answer from those nodes
+    (tested 2026-11-04 on sdfmilan191), so on that refusal, with ``/sdf`` mounted,
+    ``EXTERNAL_INSTANCE_URL`` is set to the USDF RSP and the call retried.
     """
     try:
         from lsst.summit.utils.efdUtils import makeEfdClient
-        return makeEfdClient()
+        try:
+            return makeEfdClient()
+        except RuntimeError as e:
+            if 'local' not in str(e) or not _on_s3df():
+                raise
+            os.environ['EXTERNAL_INSTANCE_URL'] = 'https://usdf-rsp.slac.stanford.edu'
+            return makeEfdClient()
     except (ImportError, AttributeError):
         pass
     try:

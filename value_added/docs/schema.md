@@ -1,6 +1,6 @@
 # Value-added database schema
 
-> **Status:** current · **Last updated:** 2026-09-24 · **Kind:** reference (schema)
+> **Status:** current · **Last updated:** 2026-11-04 · **Kind:** reference (schema)
 
 The eight tables of the value-added database, what each holds, and where every column comes
 from. Row counts were read from the live database on 2026-09-24 and are indicative of scale,
@@ -59,7 +59,7 @@ telemetry does not exist at all, plus 20250610 (9 exposures) and 20250713 (839 e
 
 ## Two schema idioms
 
-**`visit_telemetry` is wide** — one row per exposure, keyed `visit_id`, 197 columns. The EFD
+**`visit_telemetry` is wide** — one row per exposure, keyed `visit_id`, 270 columns. The EFD
 groups genuinely are fixed: each is one value per visit per quantity, they arrive together
 from the same per-night fetch, and none has variants.
 
@@ -68,12 +68,48 @@ from the same per-night fetch, and none has variants.
 | `trim` | 50 | EFD | `MTAOS.logevent_degreeOfFreedom`, as of `obs_start` [µm, deg] |
 | `lut` | 10 | EFD | `MTHexapod.logevent_compensationOffset` [µm, deg] |
 | `camera` | 25 | EFD | camera body, housing and lens temperatures [°C] |
-| `turbulence` | 44 | EFD | sonic anemometer speeds [m/s] and temperature [°C] |
+| `turbulence` | 44 | EFD | sonic anemometers 123–126, ±15 s mean about `obs_start` [m/s, °C]; superseded by `sonic` |
+| `sonic` | 45 | EFD | sonic anemometers 110 and 123–126 over the exposure: per-axis mean and RMS wind velocity [m/s], speed, temperature |
 | `gradients` | 4 | value-added | M1M3 spatial thermal gradients [°C/m] |
 | `tweak` | 50 | value-added | per-iteration DOF correction, differenced from `trim` |
 | `wind_derived` | 4 | value-added | `into_wind_deg` [deg] and its inputs, kept for provenance |
 | `hexhist` | 3 | value-added | hexapod motion history [µm, count] |
 | `twilight` | 3 | value-added | time after evening twilight [min] and solar altitude [deg] |
+| `psf_shape` | 28 | value-added | PSF ellipticity over CCDs from ConsDB, Az/El frame: \|e\|, e1, e2 mean and percentiles, raw two-point functions [dimensionless] |
+
+### `sonic`: wind during the exposure
+
+`sonic<idx>_*` for salIndex 110 (deployable platform) and 123–126 (TMA top ring), from the
+raw 5 s `ESS.airTurbulence` samples whose time stamps fall between `obs_start` and
+`obs_end`. When a short exposure holds no sample, the nearest within 5 s of its centre is
+used. Axes 0, 1 and 2 are the sensor's own axes.
+
+- `mean_<a>_ms` [m/s]: mean of the 5 s means. Equal to ConsDB
+  `mt_salindex<idx>_wind_speed_<a>_mean` (median difference 0.0000 m/s on 2 test nights).
+- `rms_<a>_ms` [m/s]: RMS about that mean, `sqrt(mean(speedStdDev^2) + var(speed))`. It
+  adds the spread of the 5 s means to the within-sample spread. ConsDB
+  `wind_speed_stddev_<a>_mean` is the within-sample part only.
+- `mag_mean_ms` [m/s], `sonic_temp_c` [°C], `n_samp` (5 s samples used).
+
+### `psf_shape`: ellipticity in the RubinTV Az/El frame
+
+From ConsDB `ccdvisit1_quicklook.psf_ixx/iyy/ixy`, one tensor per science CCD, rotated by
+`rubinwork.psf_shape.azel_rotation(physical_rotator_angle)`. +x is increasing azimuth, +y
+increasing elevation, as on the RubinTV `psf_shape_azel` plots. Each CCD counts once,
+whatever its star count. Checked against four RubinTV plots in
+[`psf_shape_frame`](../psf_shape_frame/study.md).
+
+**Not the AOS OCS.** In the OCS of SITCOMTN-003, +x_OCS = +Az but +y_OCS = −El, so
+`e1_ocs = e1_azel` and `e2_ocs = −e2_azel`.
+
+- `psf_{e,e1,e2}_azel_{mean,p10,p25,p50,p75,p90}`: distribution over CCDs; `e` is
+  `sqrt(e1² + e2²)` per CCD.
+- `psf_xi_{e1e1,e1e2,e2e2}_r{2,6}`: **raw** mean of `e_i(a) e_j(b)` over CCD pairs whose
+  centre separation is 2 or 6 CCD pitches ±0.5 pitch (pitch 0.2345 deg; bins
+  0.352–0.586 deg and 1.290–1.524 deg). Not mean-subtracted, so a field-coherent
+  ellipticity gives a large value at both scales. `e1e2` is symmetrized over pair order.
+- `psf_xi_npair_r{2,6}`: pairs in the bin, about 908 and 1918 with all 189 CCDs.
+- `psf_n_ccd`, `psf_rot_deg` [deg].
 
 ### `twilight`: time referenced to sunset, not to the first exposure
 

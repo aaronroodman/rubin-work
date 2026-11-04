@@ -39,7 +39,7 @@ Groups
     camera's own InfluxDB database and in no ConsDB table.
 ``turbulence``
     3D sonic anemometers on ``ESS.airTurbulence`` at salIndex 123–126, the TMA top-ring
-    quadrants, which are absent from the transformed EFD.
+    quadrants, as a ±15 s mean about ``obs_start``. Superseded by ``sonic``.
 ``wind_derived``
     Value-added: ``into_wind_deg = wrap180(wind_dir - azimuth)`` [deg], 0 deg being into
     the wind. Its two ConsDB inputs are stored alongside it, because the wrap convention
@@ -51,6 +51,17 @@ Groups
     Value-added: minutes after evening twilight at 0 deg and at -18 deg solar altitude, and
     the solar altitude at the exposure [deg]. Needs no query of its own — it is a function of
     ``day_obs`` and the exposure time — but is stored so consumers do not each re-solve it.
+``sonic``
+    3D sonic anemometers on ``ESS.airTurbulence`` at salIndex 110 and 123–126, over the
+    exposure itself (``obs_start`` to ``obs_end``): per-axis mean and RMS wind velocity
+    [m/s], mean speed magnitude [m/s], sonic temperature [°C]. 110 and 123–126 are also in
+    the ConsDB transformed EFD, which agreed to 0.0000 m/s median on two test nights; this
+    group keeps the full span and the RMS, which ConsDB does not form.
+``psf_shape``
+    Value-added from ConsDB per-CCD PSF moments, rotated to the RubinTV Az/El frame: the
+    mean and 10/25/50/75/90% points of ``|e|``, ``e1``, ``e2`` over CCDs, and raw
+    two-point functions of ``e1e1``, ``e1e2``, ``e2e2`` at 2 and 6 CCD separations
+    (`rubinwork.psf_shape`). Reads ConsDB only.
 
 Notes
 -----
@@ -143,7 +154,8 @@ def visit_spine(cdb, day_obs):
     -------
     df : `pandas.DataFrame`
         One row per exposure: ``visit_id``, ``day_obs``, ``seq_num``, ``obs_start`` (TAI
-        ISO-8601), ``mjd`` [days, TAI], ``azimuth_deg`` and ``wind_dir_deg`` /
+        ISO-8601), ``mjd`` and ``mjd_end`` [days, TAI, exposure start and end],
+        ``azimuth_deg`` and ``wind_dir_deg`` /
         ``wind_speed_ms`` [deg, m/s] from the ConsDB weather station. Ordered by
         ``seq_num``, which the Tweak and hexapod-history derivations rely on.
 
@@ -153,15 +165,16 @@ def visit_spine(cdb, day_obs):
     lookups regardless, so the spine is re-read per night rather than stored.
     """
     q = (f'SELECT exposure_id AS visit_id, day_obs, seq_num, obs_start, obs_start_mjd, '
-         f'azimuth, wind_dir, wind_speed '
+         f'obs_end_mjd, azimuth, wind_dir, wind_speed '
          f'FROM cdb_{INSTRUMENT}.exposure WHERE day_obs = {int(day_obs)} '
          f'ORDER BY seq_num')
     df = cdb.query(q).to_pandas()
     if df.empty:
         return df
-    df = df.rename(columns={'obs_start_mjd': 'mjd', 'azimuth': 'azimuth_deg',
+    df = df.rename(columns={'obs_start_mjd': 'mjd', 'obs_end_mjd': 'mjd_end',
+                            'azimuth': 'azimuth_deg',
                             'wind_dir': 'wind_dir_deg', 'wind_speed': 'wind_speed_ms'})
-    for c in ('mjd', 'azimuth_deg', 'wind_dir_deg', 'wind_speed_ms'):
+    for c in ('mjd', 'mjd_end', 'azimuth_deg', 'wind_dir_deg', 'wind_speed_ms'):
         df[c] = pd.to_numeric(df[c], errors='coerce')
     df['obs_start'] = df['obs_start'].astype(str)
     # The dof_telemetry fetchers take an astropy-Table-like object keyed on day_obs/seq_num.
@@ -297,9 +310,8 @@ def fetch_turbulence(spine, ctx):
 
     Notes
     -----
-    These TMA top-ring sensors are absent from the transformed EFD of the ConsDB, which is
-    why they are fetched here; salIndex 110 *is* in the transformed EFD and is read live
-    instead.
+    The ConsDB transformed EFD now carries these sensors too, from 2026-02-16; when this
+    group was written it did not. The ``sonic`` group supersedes this one.
 
     The window is centred on ``obs_start`` in UTC. The spine's ``mjd`` is ConsDB
     ``obs_start_mjd``, which is TAI, and the raw EFD index is UTC
@@ -363,6 +375,183 @@ def fetch_turbulence(spine, ctx):
             out[f'turb{idx}_{suffix}'] = vals
         out[f'turb{idx}_n_samp'] = nsamp
     return out
+
+
+def _close_efd_sessions(client):
+    """Close the aiohttp sessions an EFD client holds; it has no close() of its own."""
+    async def _close():
+        for holder in list(vars(client).values()):
+            sess = getattr(holder, '_session', None)
+            if sess is not None and not getattr(sess, 'closed', True):
+                await sess.close()
+    return _close()
+
+
+def sonic_window_stats(sub, t0, t1):
+    """Wind statistics of one sensor's 5 s ``airTurbulence`` samples over a window.
+
+    Parameters
+    ----------
+    sub : `pandas.DataFrame`
+        One salIndex's samples, with ``mjd`` [days, UTC] and the raw fields.
+    t0, t1 : `float`
+        Window start and end [MJD, UTC].
+
+    Returns
+    -------
+    out : `dict` [`str`, `float`]
+        Keyed by the `efd_db.SONIC_STATS` suffixes.
+
+    Notes
+    -----
+    Each sample is a 5 s mean (``speed<a>``) with its own standard deviation
+    (``speedStdDev<a>``). The RMS about the window mean combines both:
+    ``sqrt(mean(sigma^2) + var(means))``. That is the full variance of the velocity over
+    the window when every sample covers the same length of time.
+
+    A sample counts when its time stamp is within the window. A window shorter than the
+    5 s cadence (a short exposure) can therefore hold no sample, and then the nearest one
+    within 5 s of the window centre is used instead.
+    """
+    out = {k: np.nan for k in efd_db.SONIC_STATS}
+    out['n_samp'] = 0
+    if not len(sub) or not (np.isfinite(t0) and np.isfinite(t1)):
+        return out
+    m = sub['mjd'].to_numpy()
+    sel = (m >= t0) & (m <= t1)
+    if not sel.any():
+        mid = 0.5 * (t0 + t1)
+        j = int(np.argmin(np.abs(m - mid)))
+        if abs(m[j] - mid) * 86400.0 > 5.0:
+            return out
+        sel = np.zeros(len(m), bool)
+        sel[j] = True
+    sl = sub[sel]
+    out['n_samp'] = int(sel.sum())
+
+    def col(name):
+        return pd.to_numeric(sl[name], errors='coerce').to_numpy(float) \
+            if name in sl else np.full(len(sl), np.nan)
+
+    for a in range(3):
+        mu, sd = col(f'speed{a}'), col(f'speedStdDev{a}')
+        if np.isfinite(mu).any():
+            out[f'mean_{a}_ms'] = float(np.nanmean(mu))
+            var = np.nanvar(mu) + (np.nanmean(sd ** 2) if np.isfinite(sd).any() else 0.0)
+            out[f'rms_{a}_ms'] = float(np.sqrt(var))
+    for field, key in (('speedMagnitude', 'mag_mean_ms'),
+                       ('sonicTemperature', 'sonic_temp_c')):
+        v = col(field)
+        if np.isfinite(v).any():
+            out[key] = float(np.nanmean(v))
+    return out
+
+
+def fetch_sonic(spine, ctx):
+    """Sonic-anemometer wind per visit over the exposure itself, salIndex 110 and 123-126.
+
+    Returns ``sonic<idx>_<stat>`` for every `efd_db.SONIC_SALINDEX` and
+    `efd_db.SONIC_STATS`: per-axis mean and RMS wind velocity [m/s], mean speed magnitude
+    [m/s], sonic temperature [deg C] and the sample count.
+
+    Notes
+    -----
+    The window is ``obs_start`` to ``obs_end`` converted from TAI to UTC, the time base
+    of the raw EFD index. The ``turbulence`` group's ±15 s mean is kept alongside for
+    continuity; this group is the one to use for wind during the exposure.
+    """
+    import asyncio
+    from astropy.time import Time
+
+    fields = (['salIndex'] + [f'speed{a}' for a in range(3)]
+              + [f'speedStdDev{a}' for a in range(3)]
+              + ['speedMagnitude', 'sonicTemperature'])
+    out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
+    t0 = spine['mjd'].to_numpy(float).copy()
+    t1 = spine['mjd_end'].to_numpy(float).copy()
+    for t in (t0, t1):
+        f = np.isfinite(t)
+        t[f] = Time(t[f], format='mjd', scale='tai').utc.mjd
+    pad = 10.0 / 86400.0
+
+    async def _go():
+        client = make_efd_client()
+        try:
+            df = await client.select_time_series(
+                'lsst.sal.ESS.airTurbulence', fields,
+                Time(np.nanmin(t0) - pad, format='mjd', scale='utc'),
+                Time(np.nanmax(t1) + pad, format='mjd', scale='utc'),
+                convert_influx_index=False)
+        finally:
+            await _close_efd_sessions(client)
+        if len(df):
+            df = df.copy()
+            df['mjd'] = Time(df.index).utc.mjd
+        return df
+
+    df = asyncio.run(_go())
+    sal = pd.to_numeric(df['salIndex'], errors='coerce') if len(df) else None
+    for idx in efd_db.SONIC_SALINDEX:
+        sub = df[sal == idx].sort_values('mjd') if len(df) else pd.DataFrame()
+        rows = [sonic_window_stats(sub, a, b) for a, b in zip(t0, t1)]
+        for k in efd_db.SONIC_STATS:
+            out[f'sonic{idx}_{k}'] = [r[k] for r in rows]
+    return out
+
+
+def fetch_psf_shape(spine, ctx):
+    """Per-visit PSF ellipticity statistics from the ConsDB per-CCD moments, Az/El frame.
+
+    See `rubinwork.psf_shape` for the frame and `rubinwork.psf_shape.visit_summary` for
+    the statistics. Visits with no per-CCD moments are returned with NaN.
+    """
+    from rubinwork import psf_shape
+
+    cdb = ctx['cdb']
+    day = int(spine['day_obs'].iloc[0])
+    q = (f'SELECT c.visit_id, c.detector, q.psf_ixx, q.psf_iyy, q.psf_ixy '
+         f'FROM cdb_{INSTRUMENT}.ccdvisit1 c '
+         f'JOIN cdb_{INSTRUMENT}.ccdvisit1_quicklook q ON q.ccdvisit_id = c.ccdvisit_id '
+         f'JOIN cdb_{INSTRUMENT}.visit1 v ON v.visit_id = c.visit_id '
+         f'WHERE v.day_obs = {day}')
+    ccd = cdb.query(q).to_pandas()
+    rot = cdb.query(
+        f'SELECT q.visit_id, q.physical_rotator_angle '
+        f'FROM cdb_{INSTRUMENT}.visit1_quicklook q '
+        f'JOIN cdb_{INSTRUMENT}.visit1 v ON v.visit_id = q.visit_id '
+        f'WHERE v.day_obs = {day}').to_pandas()
+    rot = dict(zip(rot['visit_id'].astype('int64'),
+                   pd.to_numeric(rot['physical_rotator_angle'], errors='coerce')))
+    if 'pos' not in ctx:
+        ctx['pos'] = psf_shape.detector_field_angles()
+    pos = ctx['pos']
+    for c in ('psf_ixx', 'psf_iyy', 'psf_ixy'):
+        ccd[c] = pd.to_numeric(ccd[c], errors='coerce')
+    ccd = ccd[ccd['detector'].astype(int).isin(pos.keys())]
+    ccd['visit_id'] = ccd['visit_id'].astype('int64')
+    rows = []
+    for vid, g in ccd.groupby('visit_id'):
+        r = rot.get(vid, np.nan)
+        if not np.isfinite(r):
+            continue
+        e1, e2 = psf_shape.moments_to_azel(g['psf_ixx'].to_numpy(), g['psf_iyy'].to_numpy(),
+                                           g['psf_ixy'].to_numpy(), r)
+        xy = np.array([pos[int(d)] for d in g['detector']])
+        s = psf_shape.visit_summary(e1, e2, xy[:, 0], xy[:, 1])
+        row = {'visit_id': vid, 'psf_n_ccd': s['n_ccd'], 'psf_rot_deg': r}
+        for qn in ('e', 'e1', 'e2'):
+            for st in ('mean', 'p10', 'p25', 'p50', 'p75', 'p90'):
+                row[f'psf_{qn}_azel_{st}'] = s[f'{qn}_{st}']
+        for k in psf_shape.XI_SCALES_CCD:
+            for c in ('e1e1', 'e1e2', 'e2e2'):
+                row[f'psf_xi_{c}_r{k}'] = s[f'xi_{c}_r{k}']
+            row[f'psf_xi_npair_r{k}'] = s[f'xi_npair_r{k}']
+        rows.append(row)
+    res = pd.DataFrame(rows)
+    out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']]
+    if res.empty:
+        return None
+    return out.merge(res, on='visit_id', how='left')
 
 
 def derive_wind(spine, ctx):
@@ -466,6 +655,8 @@ FETCHERS = {
     'wind_derived': (derive_wind, False),
     'hexhist': (derive_hexhist, False),
     'twilight': (derive_twilight, False),
+    'sonic': (fetch_sonic, False),
+    'psf_shape': (fetch_psf_shape, False),
 }
 
 

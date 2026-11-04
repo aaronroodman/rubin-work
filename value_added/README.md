@@ -13,6 +13,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | study | status | last log | answer |
 |---|---|---|---|
 | [compare_trim_consdb](compare_trim_consdb/study.md) | active | 2026-10-20 | Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied; Tiago confirmed this design (2026-10-20). The ConsDB rule needs fixing. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025). |
+| [psf_shape_frame](psf_shape_frame/study.md) | active | 2026-11-04 | Yes to both. ConsDB per-CCD moments rotated to Az/El match the RubinTV whiskers on 4 visits (rotator -45.7 to +50.9 deg), with \|e\| quartiles within 0.004 of RubinTV and a WCS check within 0.0038. The AOS OCS is Az/El mirrored in elevation (e2_ocs = -e2_azel). Raw-EFD sonic means equal ConsDB to 0.0000 m/s (median, 2 nights). |
 
 <!-- END generated -->
 
@@ -66,10 +67,9 @@ The builders are per-night and independent, so a long backfill is split into sha
 each write their own database file and are merged afterwards. `code/run_build.sh` plans the
 shards and launches them; `code/merge_db_shards.py` combines the results.
 
-The telemetry builder is EFD-bound, and the EFD resolves from the Rubin Science Platform
-(RSP) and from s3df interactive nodes but not from batch compute nodes, so it runs locally
-only — the script rejects batch mode for it. The optical-state builder is ConsDB-bound and
-does run in batch. **Submitting a batch job is a must-ask** — see the root `CLAUDE.md`.
+The telemetry builder reads the EFD and the optical-state builder reads ConsDB. Both run
+on the Rubin Science Platform (RSP), on s3df interactive nodes and in Slurm batch.
+**Submitting a batch job is a must-ask** — see the root `CLAUDE.md`.
 
 ## Contents
 
