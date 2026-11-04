@@ -127,3 +127,12 @@ Errors against v1 (median err_v2 / err_v1, dimensionless): 0.89 for DZ, 0.91 for
 - DZ(1,4): 13.3/2.
 - v1: 12.4/2.
 - Fraction above 9.2/2: 15% of the DZ terms, 29% of v1–v34 and 18% of the DOF.
+
+### 2026-11-04 — DZ after the RBR correction; DZ(1,4) split by DOF
+
+`bounce_aba_optical_state_v3`, run `20261104_aba_dz_residual`. The residual is ΔDZ − S·ΔDOF, with S from `estimator.forward_operator()` and the same MC draws as v2.
+- DZ(1,4) is fit almost exactly. The residual is below 0.0003 µm on every leg, and the residual power fraction is 0.000 (dimensionless; residual² over ΔDZ², summed over legs).
+- The fitted ΔDZ(1,4) is a small difference of large parts. M2_dz gives +0.47 to +1.30 µm (and −0.93 µm at 60 deg); Cam_dz gives about the opposite, −0.01 to −1.15 µm. B1_3 and B2_5 add −0.15 to +0.10 µm each. The other 46 DOF add less than 0.007 µm.
+- So no single DOF follows the DZ(1,4) pattern. The M2_dz/Cam_dz split is the poorly constrained direction (MC r = −0.99), and the B1_3 and B2_5 terms shift to absorb it.
+- By v-mode: at 40 deg the v1 part of DZ(1,4) is −0.130, −0.197 and −0.052 µm (20260418, 20260419, 20260513). v2–v50 add a near-constant +0.061 to +0.075 µm. The 40 deg spread is in v1.
+- Other terms: 91 of 126 keep more than half their ΔDZ power after the fit. The largest are DZ(5,5) at 0.034 µm RMS over legs, DZ(3,14) at 0.021 µm and DZ(6,6) at 0.015 µm. These are k ≥ 3 terms that the 50 DOF do not reach, or that the RBR barrier holds back.
