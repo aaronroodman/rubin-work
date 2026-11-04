@@ -138,3 +138,29 @@ answer.
 
 **Next:** decide the chi2/dof cut; check S00 (field profile, real temperature);
 model the width that does not scale with back bias.
+
+### 2026-11-04 — night 20261103, REB0 at 11.3 V
+
+104 darks of 20261103 (seq 1-104), REB0 `BSSVBS` 11.325 V, REB1 50.0 V. Finder run
+`output/20261104_find_20261103/`, analysis `output/20261104_diffusion_20261103/cosmic_diffusion.pdf`,
+same code and cuts as the 20261102 pass. 1,584 ok tracks (REB0 806, REB1 778). k is
+dimensionless; sigma0 prior 2.89 +- 0.5 um; errors on k <= 0.0003.
+
+| CCD | k prior, 11.3 V night | k prior, 8.8 V night | k theory at 11.3 V | sigma0 prior fit (um) |
+|---|---|---|---|---|
+| R21_S00 | 0.0889 | 0.0885 | 0.0513 | 2.15 |
+| R21_S01 | 0.0664 | 0.0692 | 0.0513 | 2.39 |
+| R21_S02 | 0.0657 | 0.0686 | 0.0513 | 2.44 |
+| R21_S10 | 0.0421 | 0.0419 | 0.0244 | 2.81 |
+| R21_S11 | 0.0418 | 0.0420 | 0.0244 | 2.83 |
+| R21_S12 | 0.0416 | 0.0415 | 0.0244 | 2.81 |
+
+- REB1 repeats the 20261102 night within 0.0002, so night-to-night drift is small.
+- S01/S02 k drops 4.2% from 8.8 V to 11.3 V (k at 8.8 V over k at 11.3 V = 1.043,
+  dimensionless), against 1.133 for k proportional to 1/sqrt(V).
+- S00 does not change with back bias (0.0885 to 0.0889); its free sigma0 is again
+  negative on 89% of tracks.
+- `code/batch_find.sh` now takes `DAY_OBS` and `RUN_DATE` from the environment.
+
+**Next:** same as above; S00 not responding to the back bias points at a different
+field or a defect on that sensor.
