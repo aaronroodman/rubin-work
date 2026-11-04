@@ -227,8 +227,8 @@ each). 72 nights return no rows because ConsDB has no `ccdvisit1` rows for them,
 20250626, 20260429, 20260620, 20261026 and 20261028 to 20261103; rerun those once ConsDB
 fills them. 20250705 hit a ConsDB 504 in batch and returned 0 rows on a local rerun.
 
-Snapshot `snapshots/20261104` (md5 `8ddc62a4a7ee62d3c7fb3552c05f3680`) holds both groups,
-and `current` points to it.
+Snapshot `snapshots/20261104` (md5 `8ddc62a4a7ee62d3c7fb3552c05f3680`) holds both groups.
+It is superseded by `snapshots/20261104b` (below).
 
 ## Mirror LUT zero-fill on a dropped actuator
 
@@ -370,7 +370,7 @@ bias 13,081, cbp 2,248 over the span). Those rows also carry real telemetry — 
 temperature whether or not the shutter is open on sky, and 20260620 sits at 6.68 to 8.65 °C —
 which is what the database-wide truss page of the `thermal_focus` report plots.
 
-## Time-anchor errors in `lut`, `hexhist`, `turbulence`, `camera` — open
+## Time-anchor errors in `lut`, `hexhist`, `turbulence`, `camera` — `lut` and `hexhist` fixed
 
 Found 2026-10-20; details and numbers in `aos/docs/telemetry.md` §7.
 
@@ -383,10 +383,19 @@ Found 2026-10-20; details and numbers in `aos/docs/telemetry.md` §7.
 
 The code is fixed (2026-10-20) in `rubinwork/common/dof_telemetry.py`,
 `rubinwork/common/visit_telemetry.py` and `build_efd_db.fetch_turbulence`, with tests in
-`rubinwork/common/tests/test_time_anchors.py`. Still to do: rebuild the `lut`, `hexhist`,
-`turbulence` and `camera` groups as a new build, then rerun `build_optical_state` for
-`v_modes_lut`. The telemetry builder now runs on s3df interactive and batch nodes (see
-Rebuilding).
+`rubinwork/common/tests/test_time_anchors.py`.
+
+**`trim`, `lut` and `hexhist` rebuilt 2026-11-04** for 375 nights, 20250415 to 20261103
+(47 batch shards, `logs/batch_telemetry_20261104_093426_*.out`, up to 5 h 14 min each,
+merged into `v1/live`). The commanded `v_modes_lut` and `v_modes_trim` were then
+re-projected for all four state variants with
+`builders/backfill_commanded_vmodes.py --force` (405,796 `optical_state` rows; about 1 min).
+That is all a LUT change needs: the measured state does not depend on the LUT. Snapshot
+`snapshots/20261104b` (md5 `2a7397b48fab5786bd719f7147cc59f8`, 4,677,709,824 B) is
+`current`. On 20260711 the rebuilt values match Rodrigo's fixed ConsDB extract
+exactly (`compare_trim_consdb`, 2026-11-04 Log).
+
+Still open: rebuild `turbulence` and `camera` with the fixed anchor.
 
 ## Rebuilding
 

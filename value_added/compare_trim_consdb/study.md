@@ -3,15 +3,15 @@ study: compare_trim_consdb
 topic: value_added
 status: active
 question: Where and why does the ConsDB transformed-EFD Trim (mt_logevent_aggregated_dof) differ from the value-added database Trim, now that ConsDB is backfilled for all nights?
-answer: 'Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied; Tiago confirmed this design (2026-10-20). The ConsDB rule needs fixing. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025).'
+answer: 'ConsDB with the off-by-one fix (Rodrigo dev extract, 20260711) matches the value-added DB exactly: Trim 994 of 994 exposures, hexapod LUT 929 of 929 on all 10 axes. Current ConsDB prod still differs on the Trim (749 of 994 agree; median |diff| 22.7 µm in M2 dz where they differ) and slightly on the LUT (907 to 929 of 929). Earlier: Every difference is explained by the two selection rules. Where both have a value they agree on 74,000 of 121,514 exposures; on the other 47,514 MTAOS published a new Trim during the exposure, which ConsDB reports. The hexapods are commanded only after obs_end (0.09 to 1.82 s, 4 exposures checked), so the value-added DB Trim, as of obs_start, is the Trim actually applied; Tiago confirmed this design (2026-10-20). The ConsDB rule needs fixing. ConsDB still lacks a row on 38,845 exposures that have an event in its window (backfill incomplete, mostly 2025).'
 uses:
-  value_added: v1@snapshots/20261016
+  value_added: v1@snapshots/20261104b
 started: 2026-10-19
 ---
 
 # `compare_trim_consdb`
 
-> **Status:** active · **Last updated:** 2026-10-20 · **Kind:** study
+> **Status:** active · **Last updated:** 2026-11-04 · **Kind:** study
 
 ## Question
 
@@ -192,3 +192,29 @@ The full census is not needed: Tiago confirmed the intended behaviour (Current a
 
 Next: confirm the 37 s index issue on the LUT and ESS readers; rerun once ConsDB reports
 the backfill is done.
+
+### 2026-11-04 — ConsDB off-by-one fix, checked on 20260711
+
+The value-added `lut` still had the 37 s error, and that made the earlier ConsDB LUT spot
+checks meaningless. So `trim`, `lut` and `hexhist` were rebuilt for every night, and
+snapshot `v1@snapshots/20261104b` holds the result. Rodrigo sent
+`aos_trim_lut.zip` with the current ConsDB (`prod`) and his rebuild with the fix (`dev`)
+for `day_obs` 20260711. Notebook `notebooks/trim_lut_fix_check_v1.ipynb`, PDF
+`output/20261104_fix_check_20260711/trim_lut_fix_check.pdf`. Agreement is at a tolerance of
+1e-6 µm or deg, and a Trim exposure counts only when all 50 DOF agree:
+
+| quantity | dev agree / n (exposures) | prod agree / n (exposures) |
+|---|---|---|
+| Trim, all 50 DOF | 994 / 994 | 749 / 994 |
+| LUT, M2 z, x, y, u, v | 929 / 929 each | 927 to 929 / 929 |
+| LUT, camera z, x, y, u, v | 929 / 929 each | 907 to 915 / 929 |
+
+Where prod differs, the Trim M2 dz (`dof0`) is off by a median 22.7 µm (max 144 µm). The
+LUT camera dz (`lut_dof5`) is off by a median 0.03 µm (max 0.14 µm). ConsDB has no LUT on
+the last 99 exposures (seq_num 930 to 1028). The value-added DB carries the last
+`compensationOffset` event forward on those, so they are left out of the counts.
+Summary page: `figures/fix_check_20260711_summary.png`.
+
+Next: once the fix is in ConsDB prod, rerun this check on more nights against the live
+ConsDB.
+
