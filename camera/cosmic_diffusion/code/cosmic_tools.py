@@ -6,9 +6,9 @@ electrons after ISR.
 
 The width method follows Fisher-Levine & Nomerotski 2015, JINST 10 C08006: fit a
 straight line to the track, cut it into sections along its length, and fit a
-Gaussian to each section's pixel values against perpendicular distance from the
-line. The fitted width is the total sigma, diffusion plus the pixel term
-``pitch / sqrt(12)``.
+pixel-integrated Gaussian to each section's pixel values against perpendicular
+distance from the line. The reported width is the total sigma, the fitted
+Gaussian plus the pixel term ``pitch / sqrt(12)`` in quadrature.
 """
 
 import numpy as np
@@ -65,12 +65,31 @@ def project(x, y, fit):
     return t, d
 
 
-def _gauss(d, amp, d0, sig):
-    return amp * np.exp(-0.5 * ((d - d0) / sig) ** 2)
+def _pixel_offsets(ux, uy, n_sub=4):
+    """Perpendicular offsets of an n_sub x n_sub grid of points within a pixel.
+
+    Averaging a profile over these offsets integrates it over the pixel area, for
+    a track with unit vector (ux, uy). Pixels.
+    """
+    g = (np.arange(n_sub) + 0.5) / n_sub - 0.5
+    sx, sy = np.meshgrid(g, g)
+    return (-sx * uy + sy * ux).ravel()
 
 
-def fit_profile(d, v, noise_e, sig0=0.4, frac_err=0.1):
-    """Fit a zero-background Gaussian to pixel values against distance.
+def _gauss_pix(d, amp, d0, sig, offsets):
+    z = (d[:, None] + offsets[None, :] - d0) / sig
+    return amp * np.exp(-0.5 * z * z).mean(axis=1)
+
+
+def fit_profile(d, v, noise_e, offsets, sig0=0.4, frac_err=0.1, n_iter=3):
+    """Fit a zero-background, pixel-integrated Gaussian to a track's cross-section.
+
+    The Gaussian is integrated over each pixel's area, so its width ``sigma_int``
+    excludes the pixel term. ``sigma`` adds that term back in quadrature: the
+    variance of a 1-pixel square projected on any direction is 1/12 pixel^2, so
+    ``sigma = sqrt(sigma_int^2 + 1/12)`` is the total width, comparable to
+    sigma0 = pitch / sqrt(12) at zero drift. Per-pixel errors are computed from
+    the model, not the data, and refit ``n_iter`` times.
 
     Parameters
     ----------
@@ -80,40 +99,56 @@ def fit_profile(d, v, noise_e, sig0=0.4, frac_err=0.1):
         Pixel values, electrons.
     noise_e : `float`
         Read noise per pixel, electrons.
+    offsets : `numpy.ndarray`
+        Sub-pixel perpendicular offsets from `_pixel_offsets`, pixels.
     sig0 : `float`, optional
-        Starting width, pixels.
+        Starting value of ``sigma_int``, pixels.
     frac_err : `float`, optional
         Fractional model error per pixel, dimensionless; covers the charge
         varying along the track within one section.
+    n_iter : `int`, optional
+        Fits with errors from the previous fit's model.
 
     Returns
     -------
     result : `dict` or `None`
-        ``sigma`` and ``sigma_err`` (pixels), ``d0`` (pixels), ``amp``
-        (electrons), ``chi2_dof`` and ``ndof``; `None` if the fit fails.
+        ``sigma``, ``sigma_int`` and ``sigma_err`` (pixels), ``d0`` (pixels),
+        ``amp`` (electrons, peak of the unintegrated Gaussian), ``chi2_dof`` with
+        and ``chi2_dof_nomod`` without the fractional model error, and ``ndof``;
+        `None` if the fit fails.
     """
     if d.size < 5 or np.nansum(v) <= 0:
         return None
-    vp = np.clip(v, 0, None)
-    err = np.sqrt(noise_e ** 2 + vp + (frac_err * vp) ** 2)
-    p0 = [max(v.max(), 1.0), 0.0, sig0]
+
+    def model(dd, amp, d0, sig):
+        return _gauss_pix(dd, amp, d0, sig, offsets)
+
+    p = [max(v.max(), 1.0), 0.0, sig0]
+    mu = np.clip(v, 0, None)
     try:
-        popt, pcov = curve_fit(_gauss, d, v, p0=p0, sigma=err, absolute_sigma=True,
-                               bounds=([0, -1.5, 0.05], [np.inf, 1.5, 3.0]),
-                               maxfev=5000)
+        for _ in range(n_iter):
+            err = np.sqrt(noise_e ** 2 + mu + (frac_err * mu) ** 2)
+            p, pcov = curve_fit(model, d, v, p0=p, sigma=err, absolute_sigma=True,
+                                bounds=([0, -1.5, 0.05], [np.inf, 1.5, 3.0]),
+                                maxfev=5000)
+            mu = np.clip(model(d, *p), 0, None)
     except (RuntimeError, ValueError):
         return None
-    resid = (v - _gauss(d, *popt)) / err
-    ndof = d.size - 3
     perr = np.sqrt(np.diag(pcov))
     if not np.isfinite(perr[2]):
         return None
-    return dict(amp=popt[0], d0=popt[1], sigma=popt[2], sigma_err=perr[2],
-                chi2_dof=(resid ** 2).sum() / ndof, ndof=ndof)
+    ndof = d.size - 3
+    r = v - mu
+    chi2 = (r ** 2 / (noise_e ** 2 + mu + (frac_err * mu) ** 2)).sum() / ndof
+    chi2_nomod = (r ** 2 / (noise_e ** 2 + mu)).sum() / ndof
+    sig_tot = np.sqrt(p[2] ** 2 + 1 / 12)
+    return dict(amp=p[0], d0=p[1], sigma=sig_tot, sigma_int=p[2],
+                sigma_err=perr[2] * p[2] / sig_tot, chi2_dof=chi2,
+                chi2_dof_nomod=chi2_nomod, ndof=ndof)
 
 
 def track_sections(img, mask_pix, fit, t_min, t_max, noise_e, sec_len=3.0,
-                   window=3.5, trim=0.5, max_sections=10):
+                   window=3.5, trim=0.5, max_sections=10, n_iter=3):
     """Width of a track in sections along its length.
 
     Parameters
@@ -136,6 +171,8 @@ def track_sections(img, mask_pix, fit, t_min, t_max, noise_e, sec_len=3.0,
         Length dropped at each end before sectioning, pixels.
     max_sections : `int`, optional
         Upper limit on the number of sections.
+    n_iter : `int`, optional
+        Passed to `fit_profile`.
 
     Returns
     -------
@@ -152,10 +189,11 @@ def track_sections(img, mask_pix, fit, t_min, t_max, noise_e, sec_len=3.0,
     a, b = t_min + trim, t_max - trim
     nsec = int(np.clip(np.floor((b - a) / sec_len), 3, max_sections))
     edges = np.linspace(a, b, nsec + 1)
+    offsets = _pixel_offsets(fit["ux"], fit["uy"])
     out = []
     for lo, hi in zip(edges[:-1], edges[1:]):
         sel = good & (t >= lo) & (t < hi)
-        res = fit_profile(d[sel], v[sel], noise_e)
+        res = fit_profile(d[sel], v[sel], noise_e, offsets, n_iter=n_iter)
         if res is None:
             continue
         res["frac"] = (0.5 * (lo + hi) - t_min) / (t_max - t_min)

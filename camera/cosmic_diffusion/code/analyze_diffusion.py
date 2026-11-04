@@ -68,6 +68,57 @@ def huber(x, y):
     return (*res.params, *res.bse)
 
 
+def huber_sig0(dz, s2, sig0_um, prior_um):
+    """Huber fit of s2 = sigma0^2 + k^2 D dz with sigma0 constrained.
+
+    Parameters
+    ----------
+    dz : `numpy.ndarray`
+        Drift distance, um.
+    s2 : `numpy.ndarray`
+        Squared section width, um^2.
+    sig0_um : `float`
+        Expected sigma0, um.
+    prior_um : `float`
+        Gaussian prior width on sigma0, um; 0 fixes sigma0.
+
+    Returns
+    -------
+    a, b, b_err : `float`
+        Fitted sigma0^2 (um^2), k^2 D (um) and its error (um).
+    """
+    a0 = sig0_um ** 2
+    if prior_um <= 0:
+        res = sm.RLM(s2 - a0, dz[:, None], M=sm.robust.norms.HuberT()).fit()
+        return a0, res.params[0], res.bse[0]
+    # Iteratively reweighted least squares: Huber weights on the data rows, a fixed
+    # Gaussian weight on the one prior row, so the prior is not itself downweighted.
+    xmat = sm.add_constant(dz)
+    w_prior = 1.0 / (2 * sig0_um * prior_um) ** 2
+    beta = np.linalg.lstsq(xmat, s2, rcond=None)[0]
+    huber_norm = sm.robust.norms.HuberT()
+    for _ in range(50):
+        r = s2 - xmat @ beta
+        scale = max(1.4826 * np.median(np.abs(r - np.median(r))), 1e-6)
+        w = huber_norm.weights(r / scale) / scale ** 2
+        amat = (xmat * w[:, None]).T @ xmat
+        amat[0, 0] += w_prior
+        rhs = (xmat * w[:, None]).T @ s2
+        rhs[0] += w_prior * a0
+        new = np.linalg.solve(amat, rhs)
+        if np.allclose(new, beta, rtol=1e-6, atol=1e-8):
+            beta = new
+            break
+        beta = new
+    cov = np.linalg.inv(amat)
+    return beta[0], beta[1], np.sqrt(cov[1, 1])
+
+
+def signed_k(b):
+    """k = sign(b) sqrt(|b| / D) from b = k^2 D in um; dimensionless."""
+    return np.sign(b) * np.sqrt(np.abs(b) / THICKNESS_UM)
+
+
 # ---------------------------------------------------------------- measurement
 
 def refine_line(stamp, fit, tmin, tmax, noise):
@@ -82,7 +133,7 @@ def refine_line(stamp, fit, tmin, tmax, noise):
         refined line, pixels; the straightness measures.
     """
     secs = track_sections(stamp, np.zeros(stamp.shape, bool), fit, tmin, tmax, noise,
-                          sec_len=2.0, max_sections=25)
+                          sec_len=2.0, max_sections=25, n_iter=1)
     if len(secs) < 4:
         return fit, np.nan, np.nan
     t = np.array([tmin + s["frac"] * (tmax - tmin) for s in secs])
@@ -185,6 +236,8 @@ def select(tracks, secs, args):
             flip = b < 0
             dz = (1 - f if flip else f) * THICKNESS_UM
             a2, b2, a2e, b2e = huber(dz, s ** 2)
+            _, bf, bfe = huber_sig0(dz, s ** 2, SIGMA0_UM, 0.0)
+            ap, bp, bpe = huber_sig0(dz, s ** 2, SIGMA0_UM, args.sig0_prior)
         except (ValueError, np.linalg.LinAlgError):
             continue
         n3 = max(len(g) // 3, 1)
@@ -192,13 +245,17 @@ def select(tracks, secs, args):
         fits_out[(exp, ext)] = dict(
             slope_um=abs(b), slope_z=abs(b) / be if be > 0 else np.inf, flip=flip,
             sig_front_um=np.median(s[order[:n3]]), sig_back_um=np.median(s[order[-n3:]]),
-            sig0sq_um2=a2, sig0sq_err_um2=a2e, k2D_um=b2, k2D_err_um=b2e)
+            sig0sq_um2=a2, sig0sq_err_um2=a2e, k2D_um=b2, k2D_err_um=b2e,
+            k2D_fix_um=bf, k2D_prior_um=bp, sig0sq_prior_um2=ap)
     fdf = pd.DataFrame.from_dict(fits_out, orient="index")
     fdf.index.names = key
     tracks = tracks.drop(columns=[c for c in fdf.columns if c in tracks]).merge(
         fdf, left_on=key, right_index=True, how="left")
-    tracks["k_signed"] = np.sign(tracks.k2D_um) * np.sqrt(
-        np.abs(tracks.k2D_um) / THICKNESS_UM)
+    tracks["k_signed"] = signed_k(tracks.k2D_um)
+    tracks["k_fix"] = signed_k(tracks.k2D_fix_um)
+    tracks["k_prior"] = signed_k(tracks.k2D_prior_um)
+    tracks["sig0_prior_um"] = np.sign(tracks.sig0sq_prior_um2) * np.sqrt(
+        np.abs(tracks.sig0sq_prior_um2))
     tracks["sig0_signed_um"] = np.sign(tracks.sig0sq_um2) * np.sqrt(
         np.abs(tracks.sig0sq_um2))
 
@@ -222,8 +279,13 @@ def select(tracks, secs, args):
     return tracks, secs
 
 
-def summarize(tracks, secs):
-    """Per CCD and per REB: median per-track k and sigma0, and a pooled fit."""
+def summarize(tracks, secs, args):
+    """Per CCD and per REB: median per-track k and sigma0, and pooled fits.
+
+    Three fits of sigma^2 = sigma0^2 + k^2 D dz: sigma0 free, sigma0 fixed at
+    pitch / sqrt(12), and sigma0 with a Gaussian prior of width
+    ``args.sig0_prior`` um about that value.
+    """
     rows = []
     ok = tracks[tracks.status == "ok"]
     s_ok = secs[(secs.status == "ok") & secs.good]
@@ -240,10 +302,19 @@ def summarize(tracks, secs):
                    k_nmad=nmad(g.k_signed),
                    sig0_med=np.median(g.sig0_signed_um),
                    sig0_med_err=1.2533 * nmad(g.sig0_signed_um) / np.sqrt(n),
+                   k_fix_med=np.median(g.k_fix),
+                   k_fix_err=1.2533 * nmad(g.k_fix) / np.sqrt(n),
+                   k_prior_med=np.median(g.k_prior),
+                   k_prior_err=1.2533 * nmad(g.k_prior) / np.sqrt(n),
+                   sig0_prior_med=np.median(g.sig0_prior_um),
                    k_th=theory_k(g.BSSVBS.median(), T_K))
-        a, b, ae, be = huber(s.dz_um.values, s.sigma_um.values ** 2)
-        row.update(k_pool=np.sqrt(b / THICKNESS_UM) if b > 0 else np.nan,
-                   sig0_pool=np.sign(a) * np.sqrt(abs(a)))
+        dz, s2 = s.dz_um.values, s.sigma_um.values ** 2
+        a, b, ae, be = huber(dz, s2)
+        _, bf, _ = huber_sig0(dz, s2, SIGMA0_UM, 0.0)
+        ap, bp, _ = huber_sig0(dz, s2, SIGMA0_UM, args.sig0_prior)
+        row.update(k_pool=signed_k(b), sig0_pool=np.sign(a) * np.sqrt(abs(a)),
+                   k_pool_fix=signed_k(bf), k_pool_prior=signed_k(bp),
+                   sig0_pool_prior=np.sign(ap) * np.sqrt(abs(ap)))
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -311,24 +382,34 @@ def page_summary(pdf, tracks, summ, nvis, args):
              f"{'status':<14}{'REB0':>8}{'REB1':>8}"]
     for st, r in counts.iterrows():
         lines.append(f"{st:<14}{r.get(0, 0):>8}{r.get(1, 0):>8}")
-    lines += ["", "Cuts: length_half >= {0} px; end-to-edge/defect >= {1} px; "
-              "d0 rms <= {2} px;".format(args.min_length, args.min_end_dist,
-                                          args.max_d0_rms),
+    lines += ["", f"Cuts: length_half >= {args.min_length} px; end-to-edge/defect "
+              f">= {args.min_end_dist} px; d0 rms <= {args.max_d0_rms} px;",
               "  off-line charge fraction <= {0}; good sections >= {1} "
               "(chi2/dof < {2}, sigma err < {3} px);".format(
                   args.max_halo, args.min_good_sec, args.max_chi2, args.max_sig_err),
               f"  orientation |slope| / err >= {args.min_slope_z}.", "",
-              "Per-track Huber fit sigma^2 = sigma0^2 + k^2 D dz, D = 100 um. "
-              "Median over ok tracks;",
-              "error = 1.2533 nMAD / sqrt(n). Pooled: one Huber fit to all good "
-              "sections.", "",
-              f"{'group':<9}{'V':>7}{'n_trk':>7}{'k median':>17}{'k nMAD':>8}"
-              f"{'k pooled':>9}{'k theory':>9}{'sig0 med (um)':>16}"]
+              "Per-track Huber fit sigma^2 = sigma0^2 + k^2 D dz, D = 100 um, with "
+              "sigma0 free, with a",
+              f"Gaussian prior sigma0 = {SIGMA0_UM:.2f} +- {args.sig0_prior:.2f} um, "
+              f"and with sigma0 fixed at {SIGMA0_UM:.2f} um.",
+              "Columns are medians over ok tracks; error = 1.2533 nMAD / sqrt(n).",
+              "Pooled: one Huber fit to all good sections of the group.", "",
+              "k (dimensionless):",
+              f"{'group':<9}{'V':>7}{'n_trk':>7}{'free':>17}{'prior':>17}"
+              f"{'fixed':>8}{'pool free':>10}{'pool prior':>11}{'theory':>8}"]
     for _, r in summ.iterrows():
         lines.append(f"{r.group:<9}{r.volts:>7.2f}{r.n_trk:>7d}"
-                     f"{r.k_med:>9.4f}+-{r.k_med_err:<6.4f}{r.k_nmad:>8.4f}"
-                     f"{r.k_pool:>9.4f}{r.k_th:>9.4f}"
-                     f"{r.sig0_med:>9.2f}+-{r.sig0_med_err:<5.2f}")
+                     f"{r.k_med:>9.4f}+-{r.k_med_err:<6.4f}"
+                     f"{r.k_prior_med:>9.4f}+-{r.k_prior_err:<6.4f}"
+                     f"{r.k_fix_med:>8.4f}{r.k_pool:>10.4f}{r.k_pool_prior:>11.4f}"
+                     f"{r.k_th:>8.4f}")
+    lines += ["", "sigma0 (um):",
+              f"{'group':<9}{'free median':>17}{'prior median':>14}{'pool free':>11}"
+              f"{'pool prior':>11}"]
+    for _, r in summ.iterrows():
+        lines.append(f"{r.group:<9}{r.sig0_med:>9.2f}+-{r.sig0_med_err:<6.2f}"
+                     f"{r.sig0_prior_med:>14.2f}{r.sig0_pool:>11.2f}"
+                     f"{r.sig0_pool_prior:>11.2f}")
     lines += ["", "k is dimensionless; k theory = sqrt(2kT/(eV)) at T = 173.15 K "
               "(Fisher-Levine eq. 3.3).", "V is BSSVBS, the back-bias voltage from "
               "the raw header, in volts.",
@@ -346,7 +427,8 @@ def page_sigma_dz(pdf, secs, summ):
     s = secs[(secs.status == "ok") & secs.good]
     fig, axes = plt.subplots(2, 3, figsize=(11, 8.5), sharey=True)
     fig.suptitle("Section width against inferred drift distance, ok tracks "
-                 "(cf. Fisher-Levine fig. 5)", fontsize=11)
+                 "(cf. Fisher-Levine fig. 5); curves from median per-track fits",
+                 fontsize=11)
     dzb = np.linspace(0, 100, 21)
     cen = 0.5 * (dzb[1:] + dzb[:-1])
     zz = np.linspace(0, 100, 200)
@@ -372,13 +454,23 @@ def page_sigma_dz(pdf, secs, summ):
                 ax.plot(zz, np.sqrt(np.clip(np.sign(r.sig0_med) * r.sig0_med ** 2
                                             + r.k_med ** 2 * THICKNESS_UM * zz, 0,
                                             None)),
-                        "-", color=CCD_COLOR[n], label=f"median fit, k = {r.k_med:.4f}")
+                        ":", color=CCD_COLOR[n],
+                        label=f"sigma0 free: k = {r.k_med:.4f}, "
+                              f"sigma0 = {r.sig0_med:.2f} um")
+                ax.plot(zz, np.sqrt(np.clip(np.sign(r.sig0_prior_med)
+                                            * r.sig0_prior_med ** 2
+                                            + r.k_prior_med ** 2 * THICKNESS_UM * zz,
+                                            0, None)),
+                        "-", color=CCD_COLOR[n],
+                        label=f"sigma0 prior: k = {r.k_prior_med:.4f}, "
+                              f"sigma0 = {r.sig0_prior_med:.2f} um")
                 ax.plot(zz, np.sqrt(SIGMA0_UM ** 2 + r.k_th ** 2 * THICKNESS_UM * zz),
-                        "k--", lw=1, label=f"uniform field, k = {r.k_th:.4f}")
+                        "k--", lw=1, label=f"uniform field: k = {r.k_th:.4f}, "
+                                           f"sigma0 = {SIGMA0_UM:.2f} um")
                 ax.set_title(f"{n}, {r.volts:.1f} V, {r.n_trk} tracks", fontsize=9)
             ax.set_xlim(0, 100)
             ax.set_ylim(0, 14)
-            ax.legend(fontsize=6.5, loc="upper left")
+            ax.legend(fontsize=6, loc="upper left")
             ax.set_xlabel("drift distance dz (um), 0 = gates, 100 = back", fontsize=8)
             if j == 0:
                 ax.set_ylabel("section width sigma (um)", fontsize=8)
@@ -387,9 +479,9 @@ def page_sigma_dz(pdf, secs, summ):
     plt.close(fig)
 
 
-def page_k_sig0(pdf, tracks, summ):
+def page_k_sig0(pdf, tracks, summ, sig0_prior):
     ok = tracks[tracks.status == "ok"]
-    fig, axes = two_panels("Per-track fit: sigma0 against k, ok tracks", nrows=2)
+    fig, axes = two_panels("Per-track fit: sigma0 against k, ok tracks", nrows=3)
     for reb in (0, 1):
         ax = axes[0, reb]
         for n in CCDS[reb]:
@@ -415,7 +507,14 @@ def page_k_sig0(pdf, tracks, summ):
         hist_ccd(ax, ok, reb, "k_signed", np.linspace(-0.05, 0.2, 51),
                  extra=lambda v: f", median {np.median(v):.4f}" if len(v) else "")
         ax.axvline(kth, color="k", ls="--", lw=1)
-        ax.set_xlabel("per-track k (dimensionless)", fontsize=8)
+        ax.set_xlabel("per-track k, sigma0 free (dimensionless)", fontsize=8)
+        ax.set_ylabel("tracks per bin", fontsize=8)
+        ax = axes[2, reb]
+        hist_ccd(ax, ok, reb, "k_prior", np.linspace(-0.05, 0.2, 51),
+                 extra=lambda v: f", median {np.median(v):.4f}" if len(v) else "")
+        ax.axvline(kth, color="k", ls="--", lw=1)
+        ax.set_xlabel(f"per-track k, sigma0 prior {SIGMA0_UM:.2f} +- "
+                      f"{sig0_prior:.2f} um (dimensionless)", fontsize=8)
         ax.set_ylabel("tracks per bin", fontsize=8)
     label_cols(axes, ok)
     fig.tight_layout()
@@ -423,32 +522,63 @@ def page_k_sig0(pdf, tracks, summ):
     plt.close(fig)
 
 
-def page_k_summary(pdf, summ):
+def page_k_summary(pdf, summ, sig0_prior):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
     p = summ[summ.group.str.startswith("R21")].reset_index(drop=True)
     ax = axes[0]
     for i, r in p.iterrows():
-        ax.errorbar(i, r.k_med, r.k_med_err, fmt="o", color=CCD_COLOR[r.group],
-                    capsize=3)
-        ax.plot(i, r.k_pool, "x", color=CCD_COLOR[r.group])
+        ax.errorbar(i - 0.12, r.k_med, r.k_med_err, fmt="o", mfc="none",
+                    color=CCD_COLOR[r.group], capsize=3)
+        ax.errorbar(i + 0.12, r.k_prior_med, r.k_prior_err, fmt="o",
+                    color=CCD_COLOR[r.group], capsize=3)
+        ax.plot(i + 0.24, r.k_fix_med, "s", ms=4, color=CCD_COLOR[r.group])
         ax.plot([i - 0.3, i + 0.3], [r.k_th] * 2, "k--", lw=1)
     ax.set_xticks(p.index)
     ax.set_xticklabels([f"{g}\n{v:.1f} V" for g, v in zip(p.group, p.volts)],
                        fontsize=7)
     ax.set_ylabel("k (dimensionless)")
-    ax.set_title("k per CCD: o median per track, x pooled fit, -- uniform field",
-                 fontsize=9)
+    ax.set_title("median per-track k: open o sigma0 free, filled o sigma0 prior "
+                 f"{SIGMA0_UM:.2f} +- {sig0_prior:.2f} um,\nsquare sigma0 fixed at "
+                 f"{SIGMA0_UM:.2f} um; -- uniform field", fontsize=8)
     ax.set_ylim(0, None)
     ax = axes[1]
     vv = np.linspace(5, 60, 200)
     ax.plot(vv, theory_k(vv, T_K), "k--", label="sqrt(2kT/eV), T = 173.15 K")
     for _, r in p.iterrows():
-        ax.errorbar(r.volts, r.k_med, r.k_med_err, fmt="o", color=CCD_COLOR[r.group],
-                    label=r.group)
+        ax.errorbar(r.volts, r.k_prior_med, r.k_prior_err, fmt="o",
+                    color=CCD_COLOR[r.group], label=r.group)
     ax.set_xlabel("back-bias voltage BSSVBS (V)")
-    ax.set_ylabel("median per-track k (dimensionless)")
+    ax.set_ylabel("median per-track k, sigma0 prior (dimensionless)")
     ax.legend(fontsize=7)
     ax.set_ylim(0, None)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def page_amp_sigma_ccd(pdf, secs, summ):
+    """Gaussian amplitude against sigma per CCD, good sections of ok tracks."""
+    s = secs[(secs.status == "ok") & secs.good]
+    fig, axes = plt.subplots(2, 3, figsize=(11, 8.5), sharex=True, sharey=True)
+    fig.suptitle("Section Gaussian amplitude against sigma, good sections of ok "
+                 "tracks", fontsize=11)
+    xb = np.logspace(np.log10(50), np.log10(2e4), 80)
+    yb = np.linspace(0, 1.6, 81)
+    for reb in (0, 1):
+        for j, n in enumerate(CCDS[reb]):
+            ax = axes[reb, j]
+            g = s[s.DETNAME == n]
+            h = ax.hist2d(g.amp, g.sigma, bins=[xb, yb], cmap="viridis", cmin=1,
+                          norm=matplotlib.colors.LogNorm())
+            fig.colorbar(h[3], ax=ax, label="sections per bin")
+            ax.set_xscale("log")
+            r = summ[summ.group == n]
+            v = r.volts.iloc[0] if len(r) else np.nan
+            ax.set_title(f"{n}, {v:.1f} V, {len(g)} sections", fontsize=9)
+            if reb == 1:
+                ax.set_xlabel("Gaussian amplitude (electrons)", fontsize=8)
+            if j == 0:
+                ax.set_ylabel("Gaussian sigma (pixels)", fontsize=8)
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close(fig)
@@ -608,7 +738,7 @@ def analysis_pages(pdf, tracks, secs, args):
         t, "Analysis validation: sections per track")
 
     fig, axes = two_panels("Analysis validation: section Gaussian fits, all "
-                           "sections", nrows=3)
+                           "sections", nrows=4)
     for reb in (0, 1):
         s = secs[secs.REB == reb]
         ax = axes[0, reb]
@@ -628,8 +758,19 @@ def analysis_pages(pdf, tracks, secs, args):
         hist_ccd(ax, s, reb, "chi2_dof", np.logspace(-1.5, 2, 60), logy=True)
         ax.set_xscale("log")
         cut_line(ax, args.max_chi2, "max")
-        ax.set_xlabel("section fit chi2/dof (dof = pixels - 3)", fontsize=8)
+        ax.set_xlabel("section fit chi2/dof, 10% model error included "
+                      "(dof = pixels - 3)", fontsize=8)
         ax = axes[2, reb]
+        if "chi2_dof_nomod" in s:
+            ax.hist2d(s.amp, np.clip(s.chi2_dof, 0.03, 99),
+                      bins=[np.logspace(1.5, 4.5, 60), np.logspace(-1.5, 2, 60)],
+                      cmap="Greys", cmin=1, norm=matplotlib.colors.LogNorm())
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.axhline(args.max_chi2, color="r", ls="--", lw=1)
+            ax.set_xlabel("Gaussian amplitude (electrons)", fontsize=8)
+            ax.set_ylabel("chi2/dof, model error included", fontsize=8)
+        ax = axes[3, reb]
         hist_ccd(ax, s, reb, "sigma_err", np.logspace(-3, 0.5, 60), logy=True)
         ax.set_xscale("log")
         cut_line(ax, args.max_sig_err, "max")
@@ -740,13 +881,20 @@ def page_gallery(pdf, tracks, secs, per_page=6, ok_pages=2, seed=3):
             g = secs[(secs.extname == r.extname) & (secs.exposure == r.exposure)]
             if not g.empty:
                 ax_w.errorbar(g.dz_um[g.good], g.sigma_um[g.good],
-                              g.sigma_err_um[g.good], fmt="o", ms=3)
-                ax_w.plot(g.dz_um[~g.good], g.sigma_um[~g.good], "x", color="0.5")
+                              g.sigma_err_um[g.good], fmt="o", ms=3,
+                              label="section used in fit")
+                ax_w.plot(g.dz_um[~g.good], g.sigma_um[~g.good], "x", color="0.5",
+                          label="section failed chi2/dof or sigma error cut")
                 if np.isfinite(r.get("k2D_um", np.nan)):
                     zz = np.linspace(0, 100, 100)
                     ax_w.plot(zz, np.sqrt(np.clip(r.sig0sq_um2 + r.k2D_um * zz, 0,
-                                                  None)), "r-", lw=1)
-                    ax_w.text(0.03, 0.85, f"k = {r.k_signed:.3f}, "
+                                                  None)), "r:", lw=1,
+                              label="fit, sigma0 free")
+                    ax_w.plot(zz, np.sqrt(np.clip(r.sig0sq_prior_um2
+                                                  + r.k2D_prior_um * zz, 0, None)),
+                              "r-", lw=1, label="fit, sigma0 prior")
+                    ax_w.text(0.03, 0.85, f"k free = {r.k_signed:.3f}, "
+                              f"k prior = {r.k_prior:.3f}, "
                               f"d0 rms = {r.d0_rms:.2f} px, halo = {r.halo_frac:.3f}",
                               transform=ax_w.transAxes, fontsize=6.5)
             ax_w.set_ylim(0, 14)
@@ -758,8 +906,13 @@ def page_gallery(pdf, tracks, secs, per_page=6, ok_pages=2, seed=3):
             ax_im.axis("off")
             ax_w.axis("off")
         h, lab = axes[0][0].get_legend_handles_labels()
+        for ax_w in axes[:, 1]:
+            hw, lw_ = ax_w.get_legend_handles_labels()
+            if len(hw) == 4:
+                h, lab = h + hw, lab + lw_
+                break
         fig.tight_layout(rect=(0, 0, 1, 0.97))
-        fig.legend(h, lab, loc="upper center", ncol=2, fontsize=8,
+        fig.legend(h, lab, loc="upper center", ncol=3, fontsize=7,
                    title="track ends at half charge per length; image markers:")
         pdf.savefig(fig)
         plt.close(fig)
@@ -784,6 +937,8 @@ def main():
     p.add_argument("--min-good-sec", type=int, default=4)
     p.add_argument("--min-slope-z", type=float, default=1.0,
                    help="|width slope| / error, dimensionless")
+    p.add_argument("--sig0-prior", type=float, default=0.5,
+                   help="Gaussian prior width on sigma0 about 10 um / sqrt(12), um")
     # Finder cuts, drawn on the finder validation pages only.
     p.add_argument("--f-min-npix", type=float, default=5)
     p.add_argument("--f-min-length", type=float, default=10)
@@ -810,7 +965,7 @@ def main():
     secs.to_parquet(run.path / "measured_sections.parquet")
 
     tracks, secs = select(tracks, secs, args)
-    summ = summarize(tracks, secs)
+    summ = summarize(tracks, secs, args)
     tracks.to_parquet(run.path / "tracks.parquet")
     summ.to_csv(run.path / "summary.csv", index=False)
     print(tracks.groupby(["status", "REB"]).size().unstack().to_string())
@@ -819,8 +974,9 @@ def main():
     with PdfPages(run.path / "cosmic_diffusion.pdf") as pdf:
         page_summary(pdf, tracks, summ, len(files), args)
         page_sigma_dz(pdf, secs, summ)
-        page_k_sig0(pdf, tracks, summ)
-        page_k_summary(pdf, summ)
+        page_k_sig0(pdf, tracks, summ, args.sig0_prior)
+        page_k_summary(pdf, summ, args.sig0_prior)
+        page_amp_sigma_ccd(pdf, secs, summ)
         page_dedx(pdf, tracks)
         finder_pages(pdf, src, args)
         analysis_pages(pdf, tracks, secs, args)

@@ -121,7 +121,6 @@ def measure(k, lbl_slice, lab, img, noise_img, gain_img, det_shape, amp_index,
     ), (xx, yy)
 
 
-
 def process_detector(butler, exposure, det_name, args, cfg):
     """ISR plus source finding for one detector.
 
