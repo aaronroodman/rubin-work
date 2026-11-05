@@ -59,7 +59,7 @@ telemetry does not exist at all, plus 20250610 (9 exposures) and 20250713 (839 e
 
 ## Two schema idioms
 
-**`visit_telemetry` is wide** — one row per exposure, keyed `visit_id`, 270 columns. The EFD
+**`visit_telemetry` is wide** — one row per exposure, keyed `visit_id`, 274 columns. The EFD
 groups genuinely are fixed: each is one value per visit per quantity, they arrive together
 from the same per-night fetch, and none has variants.
 
@@ -76,6 +76,7 @@ from the same per-night fetch, and none has variants.
 | `hexhist` | 3 | value-added | hexapod motion history [µm, count] |
 | `twilight` | 3 | value-added | time after evening twilight [min] and solar altitude [deg] |
 | `psf_shape` | 28 | value-added | PSF ellipticity over CCDs from ConsDB, Az/El frame: \|e\|, e1, e2 mean and percentiles, raw two-point functions [dimensionless] |
+| `louvers` | 4 | EFD | dome louver opening over the exposure, `MTDome.louvers`: count > 50 % open, equivalent fully open, open names, samples [dimensionless] |
 
 ### `sonic`: wind during the exposure
 
@@ -90,6 +91,23 @@ used. Axes 0, 1 and 2 are the sensor's own axes.
   adds the spread of the 5 s means to the within-sample spread. ConsDB
   `wind_speed_stddev_<a>_mean` is the within-sample part only.
 - `mag_mean_ms` [m/s], `sonic_temp_c` [°C], `n_samp` (5 s samples used).
+
+### `louvers`: dome louver opening
+
+From `MTDome.louvers` `positionActual0..33` [percent open], about 1.3 s cadence, samples
+between `obs_start` and `obs_end`; with none inside, the last sample within 60 s before.
+
+- `louvers_n_open`: mean count of louvers more than 50 % open (fractional while one moves).
+- `louvers_open_sum`: sum of positions / 100, the equivalent number of fully open louvers.
+- `louvers_open_names`: louvers more than 50 % open at the window centre, comma list.
+- `louvers_n_samp`: samples used.
+
+There are 34 louvers in telemetry order A1, A2, B1, B2, B3, ... M3, N1, N2 (ts_xml
+`MTDome.Louvers`; `reader.LOUVER_NAMES`). The letter is the column around the dome: seen
+from inside, A is on the right of the slit and the letters run clockwise to N (no J or K).
+The digit is the ring: 1 lowest, 3 highest; A and N have no ring 3. Only 12 louvers had
+working actuators as of 2026-11. Layout:
+<https://github.com/lsst-ts/ts_mtdomecom/blob/develop/doc/images/louvers.png>.
 
 ### `psf_shape`: ellipticity in the RubinTV Az/El frame
 

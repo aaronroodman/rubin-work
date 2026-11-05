@@ -191,6 +191,17 @@ SONIC_STATS = {
     'n_samp': 'dimensionless (5 s samples averaged)',
 }
 
+#: Dome louver names in the ``MTDome.louvers`` telemetry order (``positionActual0`` to
+#: ``positionActual33``), from the ts_xml ``MTDome.Louvers`` enum. Letter is the column
+#: around the dome, clockwise seen from inside starting at A on the right of the slit;
+#: digit is the ring, 1 lowest and 3 highest. A and N have no ring 3.
+LOUVER_NAMES = ('A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3', 'D1', 'D2', 'D3',
+                'E1', 'E2', 'E3', 'F1', 'F2', 'F3', 'G1', 'G2', 'G3', 'H1', 'H2', 'H3',
+                'I1', 'I2', 'I3', 'L1', 'L2', 'L3', 'M1', 'M2', 'M3', 'N1', 'N2')
+
+#: A louver counts as open in ``louvers_n_open`` above this position [percent open].
+LOUVER_OPEN_PCT = 50.0
+
 #: Statistics of the ``psf_shape`` group: per-CCD PSF ellipticity from ConsDB, rotated to
 #: the RubinTV Az/El frame (`rubinwork.psf_shape`). Column -> units.
 PSF_SHAPE_COLS = (
@@ -268,12 +279,25 @@ GROUPS = {
     ],
     'psf_shape': [(n, t, u, 'derived_from_consdb_ccdvisit1_quicklook')
                   for n, t, u in PSF_SHAPE_COLS],
+    'louvers': [
+        ('louvers_n_open', 'DOUBLE',
+         'dimensionless (mean count of the 34 louvers > 50 percent open)',
+         'efd_MTDome_louvers'),
+        ('louvers_open_sum', 'DOUBLE',
+         'dimensionless (sum of positions / 100: equivalent fully open louvers)',
+         'efd_MTDome_louvers'),
+        ('louvers_open_names', 'VARCHAR',
+         'louver names > 50 percent open at the window centre, comma list',
+         'efd_MTDome_louvers'),
+        ('louvers_n_samp', 'INTEGER', 'dimensionless (samples averaged)',
+         'efd_MTDome_louvers'),
+    ],
 }
 
 #: Groups whose columns live in ``visit_telemetry``, in build order. ``hexhist``
 #: depends on ``lut``/``trim`` already being present, so it is last.
 GROUP_ORDER = ('trim', 'lut', 'camera', 'turbulence', 'gradients', 'tweak',
-               'wind_derived', 'hexhist', 'twilight', 'sonic', 'psf_shape')
+               'wind_derived', 'hexhist', 'twilight', 'sonic', 'psf_shape', 'louvers')
 
 
 def group_columns(group):

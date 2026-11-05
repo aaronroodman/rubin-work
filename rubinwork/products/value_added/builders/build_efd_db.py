@@ -62,6 +62,10 @@ Groups
     mean and 10/25/50/75/90% points of ``|e|``, ``e1``, ``e2`` over CCDs, and raw
     two-point functions of ``e1e1``, ``e1e2``, ``e2e2`` at 2 and 6 CCD separations
     (`rubinwork.psf_shape`). Reads ConsDB only.
+``louvers``
+    Dome louver opening over the exposure, ``MTDome.louvers`` ``positionActual0..33``
+    [percent open]: louvers more than 50 percent open, the sum of positions / 100, and the
+    names of the open louvers (A..N around the dome, rings 1 to 3).
 
 Notes
 -----
@@ -499,6 +503,112 @@ def fetch_sonic(spine, ctx):
     return out
 
 
+def louver_window_stats(pos, m, t0, t1, max_gap_s=60.0):
+    """Louver opening over one window from the ``MTDome.louvers`` samples.
+
+    Parameters
+    ----------
+    pos : `numpy.ndarray`
+        Shape ``(n_samp, 34)``, louver positions [percent open], telemetry order.
+    m : `numpy.ndarray`
+        Sample times [MJD, UTC], sorted.
+    t0, t1 : `float`
+        Window start and end [MJD, UTC].
+    max_gap_s : `float`, optional
+        With no sample inside the window, the last sample before it is used if it is
+        within this many seconds of ``t0``.
+
+    Returns
+    -------
+    out : `dict`
+        ``louvers_n_open``, ``louvers_open_sum``, ``louvers_open_names``,
+        ``louvers_n_samp``.
+
+    Notes
+    -----
+    The telemetry arrives about every 1.5 s and the louvers take 30 s to travel fully, so a
+    louver moving during the exposure gives a fractional ``louvers_n_open``.
+    """
+    out = {'louvers_n_open': np.nan, 'louvers_open_sum': np.nan,
+           'louvers_open_names': None, 'louvers_n_samp': 0}
+    if not len(m) or not (np.isfinite(t0) and np.isfinite(t1)):
+        return out
+    sel = (m >= t0) & (m <= t1)
+    if not sel.any():
+        j = int(np.searchsorted(m, t0, side='right')) - 1
+        if j < 0 or (t0 - m[j]) * 86400.0 > max_gap_s:
+            return out
+        sel = np.zeros(len(m), bool)
+        sel[j] = True
+    p = pos[sel]
+    ok = np.isfinite(p).all(axis=1)
+    if not ok.any():
+        return out
+    p = p[ok]
+    opened = p > efd_db.LOUVER_OPEN_PCT
+    out['louvers_n_open'] = float(opened.sum(axis=1).mean())
+    out['louvers_open_sum'] = float((p.sum(axis=1) / 100.0).mean())
+    mid = opened[len(p) // 2]
+    out['louvers_open_names'] = ','.join(n for n, o in zip(efd_db.LOUVER_NAMES, mid) if o)
+    out['louvers_n_samp'] = int(len(p))
+    return out
+
+
+def fetch_louvers(spine, ctx):
+    """Dome louver opening per visit over the exposure, ``MTDome.louvers``.
+
+    Returns ``louvers_n_open`` (louvers more than `efd_db.LOUVER_OPEN_PCT` open),
+    ``louvers_open_sum`` (sum of positions / 100, the equivalent number of fully open
+    louvers), ``louvers_open_names`` and the sample count. Positions are
+    ``positionActual0..33`` [percent open], named by `efd_db.LOUVER_NAMES`.
+
+    Notes
+    -----
+    The window is ``obs_start`` to ``obs_end`` converted from TAI to UTC. NULL where the
+    dome CSC published nothing within 60 s before the exposure.
+    """
+    import asyncio
+    from astropy.time import Time
+
+    n = len(efd_db.LOUVER_NAMES)
+    fields = [f'positionActual{i}' for i in range(n)]
+    out = spine[['visit_id', 'day_obs', 'seq_num', 'obs_start']].copy()
+    t0 = spine['mjd'].to_numpy(float).copy()
+    t1 = spine['mjd_end'].to_numpy(float).copy()
+    for t in (t0, t1):
+        f = np.isfinite(t)
+        t[f] = Time(t[f], format='mjd', scale='tai').utc.mjd
+    pad = 120.0 / 86400.0
+
+    async def _go():
+        client = make_efd_client()
+        try:
+            df = await client.select_time_series(
+                'lsst.sal.MTDome.louvers', fields,
+                Time(np.nanmin(t0) - pad, format='mjd', scale='utc'),
+                Time(np.nanmax(t1) + pad, format='mjd', scale='utc'),
+                convert_influx_index=False)
+        finally:
+            await _close_efd_sessions(client)
+        if len(df):
+            df = df.copy()
+            df['mjd'] = Time(df.index).utc.mjd
+            df = df.sort_values('mjd')
+        return df
+
+    df = asyncio.run(_go())
+    if len(df):
+        pos = df[fields].apply(pd.to_numeric, errors='coerce').to_numpy(float)
+        m = df['mjd'].to_numpy(float)
+    else:
+        pos, m = np.empty((0, n)), np.empty(0)
+    rows = [louver_window_stats(pos, m, a, b) for a, b in zip(t0, t1)]
+    for k in ('louvers_n_open', 'louvers_open_sum', 'louvers_open_names',
+              'louvers_n_samp'):
+        out[k] = [r[k] for r in rows]
+    return out
+
+
 def fetch_psf_shape(spine, ctx):
     """Per-visit PSF ellipticity statistics from the ConsDB per-CCD moments, Az/El frame.
 
@@ -657,6 +767,7 @@ FETCHERS = {
     'twilight': (derive_twilight, False),
     'sonic': (fetch_sonic, False),
     'psf_shape': (fetch_psf_shape, False),
+    'louvers': (fetch_louvers, False),
 }
 
 
