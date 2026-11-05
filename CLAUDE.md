@@ -36,6 +36,10 @@ Optical design / prescription (no data needed):
   imaging (multilayer dielectric stacks via `tmm_fast`, autograd on layer
   thicknesses); the f/1.23 beam is what limits narrow bands
 
+Environment:
+- `airflow/` — dome and telescope airflow: outside wind against the TMA top-ring sonic
+  anemometers and other air-flow telemetry
+
 Survey / astrometry / other:
 - `survey/`, `wcs/`, `astrometry/`, `starcolor/`, `des/`, `alerts/`
 
