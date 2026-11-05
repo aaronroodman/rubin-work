@@ -2,11 +2,11 @@ import nbformat as nbf
 nb = nbf.v4.new_notebook()
 md, code = nbf.v4.new_markdown_cell, nbf.v4.new_code_cell
 C = []
-C.append(md("""# Outside wind versus top-ring sonic anemometers (v1)
+C.append(md("""# Outside wind versus top-ring sonic anemometers (v2)
 
 **Author:** Aaron Roodman (with Claude)  
 **Date Created:** 2026-11-04  
-**Last Modified:** 2026-11-04  
+**Last Modified:** 2026-11-05  
 **Status:** In Progress  
 **Keywords:** wind, sonic anemometer, ESS airTurbulence, dome, TMA top ring, into-the-wind  
 
@@ -24,18 +24,21 @@ on the Telescope Mount Assembly (TMA) top ring (Environmental Sensor Suite (ESS)
 - Sonic: per-axis mean over the exposure [m/s]. **Axis 2 is the TMA optical axis**; the
   directions of axes 0 and 1 are not yet known (Karla is checking). Sign convention of axis
   2 (toward or away from M1) is also not yet confirmed.
+- Louvers: `louvers_n_open` [count of the 34 louvers more than 50 % open, averaged over the
+  exposure] from the value-added `louvers` group (MTDome.louvers).
 
 On-sky exposures only (`img_type` science, acq, cwfs), 20260120 onward, where the sonic
 data start.
 
 **Output:** one PDF, `wind_vs_sonic.pdf`, in the study run directory.  
-**References:** `value_added/docs/schema.md` (`sonic`, `wind_derived` groups).
+**References:** `value_added/docs/schema.md` (`sonic`, `wind_derived`, `louvers` groups).
 """))
 C.append(md("""## Change Log
 
 | Date | Author | Description |
 |------|--------|-------------|
-| 2026-11-04 | Aaron Roodman | Initial version |"""))
+| 2026-11-04 | Aaron Roodman | Initial version |
+| 2026-11-05 | Aaron Roodman | v2: split by louver state (pages 6 and 7, louver table) |"""))
 C.append(md("""## Table of Contents
 
 1. [Parameters](#params)
@@ -53,9 +56,10 @@ SONICS = (123, 124, 125, 126)     # TMA top ring
 WIND_BINS = [0, 3, 6, 9, 30]      # outside wind speed bins [m/s]
 ANGLE_STEP = 15                   # into_wind_deg bin width [deg]
 ALT_BINS = [15, 45, 60, 70, 90]   # altitude bins [deg]
-WIND_MIN_ALT = 6.0                # outside wind cut for the altitude page [m/s]
+WIND_MIN_ALT = 6.0                # outside wind cut for the altitude and louver pages [m/s]
+LOUVER_BINS = [(0, 0.5, 'all closed'), (0.5, 3.5, '1-3 open'), (3.5, 35, '4 or more open')]
 
-run = study_run('airflow/airflow_correlations', 'wind_vs_sonic')
+run = study_run('airflow/airflow_correlations', 'wind_vs_sonic_louvers')
 PDF = run.path / 'wind_vs_sonic.pdf'"""))
 C.append(md("<a id='setup'></a>\n## Setup & Imports"))
 C.append(code("""import numpy as np
@@ -91,7 +95,7 @@ def huber_fit(x, y):
 C.append(md("<a id='data'></a>\n## Data Access"))
 C.append(code("""con = reader.open_db()
 cols = ['visit_id', 'day_obs', 'seq_num', 'wind_speed_ms', 'wind_dir_deg', 'azimuth_deg',
-        'into_wind_deg']
+        'into_wind_deg', 'louvers_n_open', 'louvers_open_names']
 for i in SONICS:
     cols += [f'sonic{i}_mean_{a}_ms' for a in range(3)] + [f'sonic{i}_rms_2_ms']
 vt = con.sql(f\"select {', '.join(cols)} from visit_telemetry \"
@@ -123,7 +127,31 @@ for i in SONICS:
                      median_ax2_ms=np.median(y[ok])))
 summary = pd.DataFrame(rows).set_index('sonic')
 print('axis-2 mean [m/s] vs u_par [m/s]; slope dimensionless (axis-2 m/s per outside m/s)')
-summary.round(3)"""))
+display(summary.round(3))
+
+d['louver_state'] = None
+for lo, hi, lab in LOUVER_BINS:
+    d.loc[(d.louvers_n_open >= lo) & (d.louvers_n_open < hi), 'louver_state'] = lab
+print('exposures by louver state:', d.louver_state.value_counts(dropna=False).to_dict())
+print('most common open sets:', d.louvers_open_names[d.louvers_n_open >= 0.5]
+      .value_counts().head(5).to_dict())
+lrows = []
+for i in SONICS:
+    for lo, hi, lab in LOUVER_BINS:
+        s_ = d[d.louver_state == lab]
+        x, y = s_.u_par.to_numpy(), s_[f'sonic{i}_mean_2_ms'].to_numpy()
+        ok = np.isfinite(x) & np.isfinite(y)
+        if ok.sum() < 100:
+            continue
+        (a, b), (ea, eb), sc, n = huber_fit(x, y)
+        lrows.append(dict(sonic=i, louvers=lab, n=n, nights=s_.day_obs[ok].nunique(),
+                          pearson_r=stats.pearsonr(x[ok], y[ok])[0],
+                          spearman_rho=stats.spearmanr(x[ok], y[ok])[0],
+                          slope=b, slope_err=eb, resid_nmad_ms=sc,
+                          median_wind_ms=np.median(s_.wind_speed_ms[ok])))
+lsummary = pd.DataFrame(lrows).set_index(['sonic', 'louvers'])
+print('axis-2 mean [m/s] vs u_par [m/s] by louver state; slope dimensionless')
+lsummary.round(3)"""))
 C.append(md("<a id='results'></a>\n## Results & Plots"))
 C.append(code("""edges = np.arange(-180, 181, ANGLE_STEP)
 wcol = plt.cm.viridis(np.linspace(0.1, 0.9, len(WIND_BINS) - 1))
@@ -231,8 +259,33 @@ for ax in axs[:, 0]:
 axs[0, 0].legend(fontsize=8)
 fig.suptitle('Sonic axis-2 turbulence vs pointing relative to the wind')
 fig.tight_layout(); pdf.savefig(fig); plt.show()
+# Page 6: axis 2 / wind vs into_wind_deg, by louver state
+lcol = ['tab:blue', 'tab:orange', 'tab:red']
+base = d.wind_speed_ms >= WIND_MIN_ALT
+for qty, ylab, title in (
+        ('mean_2', 'axis-2 mean / outside wind (dimensionless)', 'axis-2 mean'),
+        ('rms_2', 'axis-2 RMS / outside wind (dimensionless)', 'axis-2 RMS')):
+    fig, axs = plt.subplots(2, 2, figsize=(11, 8.5), sharex=True, sharey=True)
+    for ax, i in zip(axs.flat, SONICS):
+        for k, (lo, hi, lab) in enumerate(LOUVER_BINS):
+            sel = base & (d.louver_state == lab)
+            c, m, n = binned_median(d.into_wind_deg[sel].to_numpy(),
+                                    (d[f'sonic{i}_{qty}_ms'] / d.wind_speed_ms)[sel].to_numpy(),
+                                    edges)
+            ax.plot(c, m, 'o-', ms=3, color=lcol[k],
+                    label=f'louvers {lab} (n = {sel.sum()}, {d.day_obs[sel].nunique()} nights)')
+        ax.axhline(0, color='k', lw=0.5); ax.axvline(0, color='k', lw=0.5)
+        ax.set_title(f'sonic{i}', fontsize=9); ax.set_xticks(np.arange(-180, 181, 60))
+        ax.legend(fontsize=7)
+    for ax in axs[1]:
+        ax.set_xlabel('into_wind_deg [deg] (0 = into the wind)')
+    for ax in axs[:, 0]:
+        ax.set_ylabel(ylab)
+    fig.suptitle(f'Sonic {title} normalized by outside wind, by louver state; '
+                 f'wind >= {WIND_MIN_ALT} m/s')
+    fig.tight_layout(); pdf.savefig(fig); plt.show()
 pdf.close()
 print(PDF)"""))
 nb['cells'] = C
 nb.metadata['kernelspec'] = {'name': 'python3', 'display_name': 'Python 3', 'language': 'python'}
-nbf.write(nb, '/sdf/home/r/roodman/notebooks/rubin-work/airflow/airflow_correlations/notebooks/wind_vs_sonic_v1.ipynb')
+nbf.write(nb, '/sdf/home/r/roodman/notebooks/rubin-work/airflow/airflow_correlations/notebooks/wind_vs_sonic_v2.ipynb')
