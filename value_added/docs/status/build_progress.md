@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-11-04 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-11-05 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Row counts and spans read from the live database's `fetch_log` and `column_coverage` on
@@ -13,6 +13,7 @@ Row counts and spans read from the live database's `fetch_log` and `column_cover
 - [Sparse columns to check before using](#sparse-columns-to-check-before-using)
 - [`optical_state` and `fam_dz`](#optical_state-and-fam_dz)
 - [`sonic` and `psf_shape`, added 2026-11-04](#sonic-and-psf_shape-added-2026-11-04)
+- [`louvers`, added 2026-11-05](#louvers-added-2026-11-05)
 - [Mirror LUT zero-fill on a dropped actuator](#mirror-lut-zero-fill-on-a-dropped-actuator)
 - [`m1m3_thermal_r2` coverage](#m1m3_thermal_r2-coverage)
 - [Corrupt `vt_day_obs` index — fixed in `v1/live`](#corrupt-vt_day_obs-index--fixed-in-v1live-2026-11-04)
@@ -230,6 +231,18 @@ fills them. 20250705 hit a ConsDB 504 in batch and returned 0 rows on a local re
 Snapshot `snapshots/20261104` (md5 `8ddc62a4a7ee62d3c7fb3552c05f3680`) holds both groups.
 It is superseded by `snapshots/20261104b` (below).
 
+## `louvers`, added 2026-11-05
+
+Built for 375 nights, 20250415 to 20261103 (16 batch shards,
+`logs/batch_telemetry_20261105_095603_*.out`, 3 to 4 min each), merged into `v1/live`.
+141,872 of 221,215 exposures carry `louvers_n_open`. The EFD has no `MTDome.louvers` data
+before 20250911, so earlier nights are NULL. 104,059 exposures on 204 nights have at least
+one louver open; the most common set is B1,E1,E2,H1,H2,M1 (85,601 exposures, 156 nights).
+None is open after 20261030.
+
+Snapshot `snapshots/20261105` (md5 `87c8bd37d3ce2f315fc4c8723187bbcf`, 4,871,958,528 B) is
+`current`.
+
 ## Mirror LUT zero-fill on a dropped actuator
 
 The forty mirror look-up-table (LUT) degrees of freedom `lut_dof10` to `lut_dof49` have no
@@ -392,7 +405,7 @@ re-projected for all four state variants with
 `builders/backfill_commanded_vmodes.py --force` (405,796 `optical_state` rows; about 1 min).
 That is all a LUT change needs: the measured state does not depend on the LUT. Snapshot
 `snapshots/20261104b` (md5 `2a7397b48fab5786bd719f7147cc59f8`, 4,677,709,824 B) is
-`current`. On 20260711 the rebuilt values match Rodrigo's fixed ConsDB extract
+superseded by `snapshots/20261105`. On 20260711 the rebuilt values match Rodrigo's fixed ConsDB extract
 exactly (`compare_trim_consdb`, 2026-11-04 Log).
 
 Still open: rebuild `turbulence` and `camera` with the fixed anchor.
