@@ -81,7 +81,7 @@ Huber slope of axis-2 mean [m/s] on u_par [m/s] (dimensionless), and Pearson r:
 n = 1,536 closed and about 67,600 open. The closed sample is too small and too narrow in
 pointing to separate a louver effect from the pointing pattern. Over into_wind 20 to 60 deg
 closed and open agree within about 0.03 (axis-2 mean over outside speed, dimensionless) for
-sonic123 and 126; from 60 to 120 deg closed is lower by up to 0.08 for sonic123 and 124.
+sonic123 and 126; from 60 to 120 deg closed is lower by up to about 0.12 for sonic123 and 0.07 for sonic124.
 Two nights cannot tell louvers from night-to-night differences. Louvers were all closed from 20261031 on, but outside wind is not yet
 filled for October and November.
 
