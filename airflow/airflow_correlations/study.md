@@ -87,3 +87,37 @@ filled for October and November.
 
 Next: fill `wind_derived` for 20261001 onward, then compare the closed nights there.
 
+
+### 2026-11-05 — where air moves toward M1M3 (v3)
+
+Run `output/20261105_wind_vs_sonic_v3/`, notebook `notebooks/wind_vs_sonic_v3.ipynb`
+(generator `code/make_wind_vs_sonic_v3_nb.py`), 70,454 on-sky exposures, 20260127 to
+20260714; 25,741 with outside wind U >= 6 m/s on 82 nights. Axis 2 positive is away from
+M1M3 (Elana); "toward" is axis-2 mean < -0.3 m/s. New regressor
+u_ax = -U cos(into_wind) cos(alt) [m/s], the horizontal outside wind projected on the
+optical axis, same sign as axis 2.
+
+- **Toward M1M3 is confined to two narrow pointing wedges** (PDF page 5). At U >= 6 m/s,
+  0.8 to 1.0 of exposures (fraction, dimensionless) are toward M1M3 for sonic125 at
+  into_wind +15 to +45 deg and sonic126 at -45 to -15 deg, altitude 40 to 80 deg. sonic124
+  shows a weaker wedge at +15 to +45 deg (up to about 0.8), sonic123 at -30 to -15 deg (up
+  to about 0.6). Overall fraction toward: 0.03 (123), 0.11 (124), 0.23 (125), 0.07 (126).
+- **sonic125 and sonic126 are mirror images** (page 13): sonic125 at +into_wind and
+  sonic126 at -into_wind agree within about 0.03 (axis-2 mean over U, dimensionless) at
+  all three altitude bands. The dip at about 20 deg is -0.22 at altitude 15-45 deg, -0.13
+  at 45-65 deg and -0.07 at 65-90 deg. sonic123 and sonic124 mirror less well.
+- u_ax barely beats u_par: sonic125 Pearson r 0.57 against u_ax, -0.54 against u_par
+  (U >= 6 m/s, n = 25,740). The flow is set by the wedge, not by a projection law.
+- Slopes differ by half (page 8, Huber, dimensionless): sonic125 0.163 for u_ax < 0 and
+  0.128 for u_ax > 0; sonic123 -0.121 and -0.017; sonic126 -0.057 and 0.040.
+- Per-night slopes and the near-zero fraction (|axis 2| < 0.1 m/s among |u_ax| > 3 m/s,
+  0 to 0.6 per night) scatter from night to night on 62 nights (page 11). Nearly all of those nights have 6 louvers
+  open, so louvers do not explain it.
+- Louvers 0, 5 and 6 open agree within about 0.03 where they overlap (page 12), but 0 and 5
+  open are only 2 and 4 nights at U >= 6 m/s. No exposure in this period has more than 6
+  louvers more than 50 % open, so a 6-against-12 comparison is not possible here.
+- In the inflow wedge sonic125 also has axis-0 and axis-1 means of about 1 m/s each
+  (page 14), so the inflow is not along the optical axis alone.
+
+Next: dome azimuth from the EFD, to test whether the wedges and the per-night spread
+follow the slit rather than the TMA.
