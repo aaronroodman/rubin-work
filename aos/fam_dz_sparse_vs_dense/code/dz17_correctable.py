@@ -11,8 +11,13 @@ except Z17 (truncated SVD of the normalized S, 20, 30 or 50 modes) and predict D
 from that state. If the measured DZ(1,17) follows, it is the optical state seen in the
 other terms (DZ(1,7), DZ(4,7), DZ(2,5), ...), not a fitting artifact.
 
-Writes ``dz17_correctable.pdf``, ``correctable_fraction.csv``, ``s_row_1_17.csv`` and
-``loo_1_17.csv``.
+The same prediction is then run on every visit of the build's ``fits`` table (the FAM
+DZ refitted with this MIW subtracted, all nights and programs), grouped as: MIW sample in
+the five rotator bins the ``_5rot`` variants keep, MIW sample in the other four bins,
+T614 i-band visits outside the MIW sample, and other programs or bands.
+
+Writes ``dz17_correctable.pdf``, ``correctable_fraction.csv``, ``s_row_1_17.csv``,
+``loo_1_17.csv``, ``loo_all_visits.csv`` (per visit) and ``loo_by_group.csv``.
 
 Usage::
 
@@ -33,6 +38,7 @@ from lsst.ts.intrinsic.wavefront import ofc_svd  # noqa: E402
 from rubinwork.common import study_run  # noqa: E402
 from rubinwork.common.utils import nmad  # noqa: E402
 from rubinwork.products import catalog  # noqa: E402
+from rubinwork.products.miw import reader as miw_reader  # noqa: E402
 
 IZS = list(range(4, 20)) + list(range(22, 27))
 # Fitted sparse term -> its omitted dense partners.
@@ -81,6 +87,45 @@ def predict_left_out(S, N, kj, W, drop, n_keep, target=(1, 17)):
     U, sv, Vt = np.linalg.svd(Sn[keep], full_matrices=False)
     x = (np.nan_to_num(W[:, keep]) @ U[:, :n_keep]) / sv[:n_keep] @ Vt[:n_keep]
     return x @ Sn[kj.index(target)]
+
+
+# Rotator bins (deg) the _5rot variants keep, as build directory names.
+ROT5 = {"rot_-65_-55", "rot_-20_-10", "rot_-3_3", "rot_10_20", "rot_55_65"}
+GROUPS = ["MIW sample, 5rot bins", "MIW sample, other 4 bins",
+          "T614 i, not in MIW sample", "other programs or bands"]
+
+
+def all_visits_prediction(S, N, kj, d, variant, build, n_keep=30):
+    """Leave-Z17-out DZ(1,17) prediction for every good visit of the build's fits."""
+    f = miw_reader.load_table("fits", variant, build)
+    f = f[~f.z1toz6_bad_fit.astype(bool) & f.visit_quality_pass.astype(bool)].copy()
+    W = np.column_stack([f[f"z1toz6_z{j}_c{k}"].to_numpy(float) for k, j in kj])
+    ok = np.isfinite(W).all(axis=1)
+    f, W = f[ok].copy(), W[ok]
+    f["meas_1_17_um"] = W[:, kj.index((1, 17))]
+    f["pred_1_17_um"] = predict_left_out(S, N, kj, W, [(k, 17) for k in range(1, 7)],
+                                         n_keep)
+    rb = d.set_index(["day_obs", "seq_num"]).rot_bin
+    f["rot_bin"] = [rb.get((a, b)) for a, b in zip(f.day_obs, f.seq_num)]
+    t614i = (f.science_program == "BLOCK-T614_triplets") & (f.band == "i")
+    f["group"] = np.select([f.rot_bin.isin(ROT5), f.rot_bin.notna(), t614i],
+                           GROUPS[:3], GROUPS[3])
+    return f
+
+
+def group_stats(f, by):
+    """Measured against predicted DZ(1,17), per group."""
+    rows = []
+    for key, g in f.groupby(by):
+        y, p = g.meas_1_17_um.to_numpy(), g.pred_1_17_um.to_numpy()
+        r = (stats.pearsonr(p, y)[0], stats.spearmanr(p, y)[0]) if len(g) > 4 else (np.nan,) * 2
+        rows.append(dict(zip(by if isinstance(by, list) else [by],
+                             key if isinstance(key, tuple) else (key,)),
+                         n=len(g), mean_meas_um=y.mean(), mean_pred_um=p.mean(),
+                         std_meas_um=y.std(), std_pred_um=p.std(),
+                         std_resid_um=(y - p).std(), nmad_resid_um=nmad(y - p),
+                         pearson_r=r[0], spearman_rho=r[1]))
+    return pd.DataFrame(rows)
 
 
 def main():
@@ -132,6 +177,15 @@ def main():
                      pearson_r=stats.pearsonr(p, y17)[0],
                      spearman_rho=stats.spearmanr(p, y17)[0]) for nk, p in loo.items()]
     pd.DataFrame(loo_rows).to_csv(run.path / "loo_1_17.csv", index=False)
+
+    fa = all_visits_prediction(S, svd.normalization_weights, kj, d, mv, mb)
+    fa[["day_obs", "seq_num", "science_program", "band", "rotator_angle", "group",
+        "rot_bin", "meas_1_17_um", "pred_1_17_um"]].to_csv(
+        run.path / "loo_all_visits.csv", index=False)
+    gs = pd.concat([group_stats(fa, "group").assign(level="group"),
+                    group_stats(fa, ["day_obs", "group"]).assign(level="night"),
+                    group_stats(fa, ["science_program", "band"]).assign(level="program")])
+    gs.to_csv(run.path / "loo_by_group.csv", index=False)
 
     pdf_path = run.path / "dz17_correctable.pdf"
     with PdfPages(pdf_path) as pdf:
@@ -194,7 +248,46 @@ def main():
         pdf.savefig(fig)
         plt.close(fig)
 
-        # Page 3: S row (1,17) and (1,7), per unit DoF range.
+        # Page 3: the prediction over all visits, by group and by night.
+        fig, axes = plt.subplots(1, 2, figsize=(20, 8),
+                                 gridspec_kw=dict(width_ratios=[1, 1.6]))
+        ax = axes[0]
+        for gi, g in enumerate(GROUPS):
+            sub = fa[fa.group == g]
+            st = gs[(gs.level == "group") & (gs.group == g)].iloc[0]
+            ax.scatter(sub.pred_1_17_um, sub.meas_1_17_um, s=5, alpha=0.5, color=f"C{gi}",
+                       label=f"{g}: n={st.n}, r={st.pearson_r:.3f}, "
+                             f"rho={st.spearman_rho:.3f}, resid std "
+                             f"{st.std_resid_um:.4f} µm")
+        lim = np.nanpercentile(np.r_[fa.pred_1_17_um, fa.meas_1_17_um], [0.2, 99.8])
+        ax.plot(lim, lim, "k:")
+        ax.set_xlim(lim)
+        ax.set_ylim(lim)
+        ax.set_xlabel("DZ(1,17) predicted from DoF fitted without Z17, 30 modes [µm]")
+        ax.set_ylabel("measured dense DZ(1,17), MIW subtracted [µm]")
+        ax.legend(fontsize=7, loc="upper left")
+        ax.grid(alpha=0.3)
+        ax = axes[1]
+        nt = gs[gs.level == "night"].sort_values("day_obs").reset_index(drop=True)
+        for gi, g in enumerate(GROUPS):
+            sub = nt[nt.group == g]
+            ax.scatter(sub.index, sub.pearson_r, color=f"C{gi}", s=20 + sub.n / 2)
+            ax.scatter(sub.index, sub.std_resid_um / sub.std_meas_um, color=f"C{gi}",
+                       marker="x", s=25)
+        ax.set_xticks(nt.index, [f"{a} n={n}" for a, n in zip(nt.day_obs, nt.n)],
+                      rotation=90, fontsize=6)
+        ax.set_ylabel("o: Pearson r (meas, pred); x: std(resid)/std(meas) (dimensionless)")
+        ax.set_title("Per night and group (color as left; marker size grows with n)",
+                     fontsize=10)
+        ax.axhline(0, color="k", lw=0.5)
+        ax.grid(alpha=0.3)
+        fig.suptitle(f"Leave-Z17-out DZ(1,17) prediction on every good visit of miw "
+                     f"{args.miw} fits (MIW subtracted), k=1, OCS", fontsize=12)
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Page 4: S row (1,17) and (1,7), per unit DoF range.
         fig, axes = plt.subplots(2, 1, figsize=(17, 10), sharex=True)
         xs = np.arange(len(labels))
         for ax, col, lab in [(axes[0], "dz_1_17_at_range_um", "DZ(1,17)"),
@@ -213,7 +306,7 @@ def main():
         pdf.savefig(fig)
         plt.close(fig)
 
-        # Page 4: correctable variance fraction for every (k, j).
+        # Page 5: correctable variance fraction for every (k, j).
         fig, ax = plt.subplots(figsize=(17, 7))
         piv = ct.pivot(index="k", columns="j", values="corr_var_frac")
         im = ax.imshow(piv.to_numpy(), vmin=0, vmax=1, cmap="viridis", aspect="auto")
@@ -229,6 +322,8 @@ def main():
         plt.close(fig)
 
     print(pd.DataFrame(loo_rows).round(4).to_string(index=False))
+    pd.set_option("display.width", 250)
+    print(gs.round(4).to_string(index=False))
     print(pure)
     print(srow.reindex(srow.dz_1_17_at_range_um.abs().sort_values(ascending=False)
                        .index).head(10).round(4).to_string(index=False))

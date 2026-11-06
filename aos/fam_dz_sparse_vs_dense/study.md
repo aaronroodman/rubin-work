@@ -114,3 +114,35 @@ used. µm of wavefront, OCS, k=1.
   -0.162 (dimensionless) over these visits, sparse DZ(1,7) would respond to this state
   with 1.025 - 4.86 x 0.162 = 0.24 of the dense coma (dimensionless). Inferred, not
   measured directly.
+
+### 2026-11-06 — DZ(1,17) state coverage beyond the MIW sample
+
+`code/dz17_correctable.py` now also predicts DZ(1,17) from the DoF fitted without Z17
+(30 modes) on every good visit of the `miw` d13-A_50_50_i_rbr@20261027 `fits` table: the
+danish_1_3 dense DZ refitted with this MIW subtracted, 1821 visits on 45 nights. That
+table agrees with the build's own per-visit DZ(1,17) to Pearson r 0.992 (dimensionless,
+n=301). µm of wavefront, OCS, k=1. Statistics are measured against predicted.
+
+The `_5rot` variants drop rotator bins, not nights. In this sample the four dropped bins
+(-50..-40, -35..-25, 25..35, 40..50 deg) are exactly the night 20260409. The five kept
+bins are the other four nights.
+
+| group | visits | std measured | std residual | Pearson r | Spearman rho |
+|---|---|---|---|---|---|
+| MIW sample, 5rot bins (20260315-0324) | 205 | 0.031 | 0.020 | 0.826 | 0.804 |
+| MIW sample, other 4 bins (20260409) | 96 | 0.013 | 0.018 | 0.181 | 0.218 |
+| T614 i, outside the MIW sample (8 nights) | 605 | 0.031 | 0.034 | 0.532 | 0.356 |
+| other programs or bands (2025-2026) | 915 | 0.084 | 0.034 | 0.920 | 0.934 |
+
+- The residual has a floor of about 0.015-0.035 µm (std over visits) in every group and
+  on most nights.
+- Where the state moves DZ(1,17) by more than that floor, the prediction holds. Over the
+  other programs it gives Pearson r 0.92: T606 r band 0.93 (n=158), the M1M3 bending
+  tests T378_M1M3B12 and B20 in i 0.95 and 0.98, and T598 r band 0.95.
+- 20260409 spans only 0.013 µm, under the floor, so it gives no test. Its mean agrees:
+  predicted +0.135 µm, measured +0.158 µm.
+- T614 i outside the MIW sample is mixed. Pearson r is 0.78 on 20260327 (n=121). It is
+  about 0 or negative on 20260325 and 20260331. On 20260331 the measured value is 0.060 µm
+  below the prediction.
+- The median of measured minus predicted is +0.02 to +0.03 µm in three of the four
+  groups. So part of the mean DZ(1,17) is not explained by the state.
