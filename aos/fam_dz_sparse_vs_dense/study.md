@@ -61,3 +61,24 @@ Added pages comparing each sparse DZ(k,j) with dense terms of the same m and par
   weights of 2-5 are not a pupil projection; they come from the image fit.
 - Dense Z_j and its partner are anticorrelated over visits (Pearson r -0.23 to -0.93),
   which is why the unit sum partly cancels.
+
+### 2026-11-06 — optimal linear combination of the dense family
+
+Each family page now has a bottom row: sparse DZ(k,j) against the Huber multi-regression
+combination offset + sum c_t Z_t of its dense family, with the coefficients and formal
+errors. A new page plots the coefficients against k for every family. Coefficients are
+dimensionless (sparse over dense term); `dz_family_fit.csv` has them per (j, k).
+k=1..6 fit, 1041 visits, µm of wavefront OCS.
+
+- The weight on the fitted term is 0.5-1.1 and falls with k. At k=1 it is 0.90-1.03 for
+  every family.
+- The weight on the omitted second term is 2-5 for most (j, k): Z7/Z17 at k=1 is
+  1.025 ± 0.003 on Z7 and 4.864 ± 0.013 on Z17; Z5, Z6 and Z8 are 4.1-4.8 at k=1.
+  Exceptions: Z11/Z22 (-0.27 to 0.65), Z7/Z17 at k=3 (0.80), Z8/Z16 at k=2 (0.40),
+  Z6/Z12 at k=6 (-0.13), Z5/Z13 at k=5 (1.2). Those are also the cases with the lowest
+  rho.
+- Third terms (Z23, Z24) take weights of about 3-4, except Z5 k=5 (-2.7) and Z6 k=6
+  (-5.1).
+- With the fitted combination, Spearman rho (sparse against combination,
+  dimensionless) is 0.99-0.998 at k=1 for Z5-Z11, and the residual nMAD at k=1 is
+  0.001-0.030 µm, against 0.020-0.148 µm for the unit-weight sum.
