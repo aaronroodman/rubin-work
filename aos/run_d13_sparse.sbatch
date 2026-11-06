@@ -49,6 +49,6 @@ python dzfit/code/run_dz_plots.py "$P/donuts.parquet" "$P/fits.parquet" \
     --output-dir "$O/movies/z1toz3" > "logs/d13_sparse_plots_z1toz3.log" 2>&1 &
 pid3=$!
 wait $pid6; wait $pid3
-tail -3 logs/d13_sparse_plots_z1toz6.log logs/d13_sparse_plots_z1toz3.log
+tail -n 3 logs/d13_sparse_plots_z1toz6.log logs/d13_sparse_plots_z1toz3.log
 ls -la "$O"/movies/*
 echo "== $(date)  done"
