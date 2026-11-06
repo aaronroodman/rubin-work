@@ -5,8 +5,11 @@ every pupil Noll index j fitted in both and every focal order k of the k=1..6 an
 k=1..3 fits, compares the coefficients visit by visit. Coefficients are in µm of
 wavefront, OCS.
 
-Writes one PDF (summary pages, then one page per j) and ``dz_stats.csv`` into the run
-directory.
+Also compares each sparse DZ(k,j) with the sum of the dense terms of the same
+azimuthal order and parity (``FAMILIES``), e.g. sparse Z7 against dense Z7 + Z17.
+
+Writes one PDF (summary pages, one page per j, one page per family) and
+``dz_stats.csv`` and ``dz_family_stats.csv`` into the run directory.
 
 Usage::
 
@@ -31,6 +34,17 @@ from rubinwork.products.fam_tables import reader  # noqa: E402
 
 FITS = {"z1toz6": 6, "z1toz3": 3}
 KEYS = ["day_obs", "seq_num"]
+
+# Sparse term -> dense terms of the same azimuthal order m and sin/cos parity, in
+# increasing radial order n: the higher-n terms the sparse fit omits, which it is
+# expected to fold into the lower-n term it does fit.
+FAMILIES = {
+    5: [5, 13, 23], 6: [6, 12, 24],
+    7: [7, 17], 8: [8, 16],
+    9: [9, 19], 10: [10, 18],
+    11: [11, 22],
+    14: [14, 26], 15: [15, 25],
+}
 
 
 def noll_set(fits):
@@ -137,6 +151,101 @@ def j_page(pdf, sparse, dense, st, j):
     plt.close(fig)
 
 
+def family_compare(sparse, dense, fit="z1toz6"):
+    """Sparse DZ(k,j) against partial sums of its dense family, plus a Huber
+    regression on the family terms, one row per (j, k, number of terms summed)."""
+    good = ~(sparse[f"{fit}_bad_fit"].to_numpy(bool)
+             | dense[f"{fit}_bad_fit"].to_numpy(bool))
+    rows = []
+    for j, fam in FAMILIES.items():
+        for k in range(1, FITS[fit] + 1):
+            y = sparse[f"{fit}_z{j}_c{k}"].to_numpy(float)
+            X = np.column_stack([dense[f"{fit}_z{t}_c{k}"].to_numpy(float) for t in fam])
+            m = good & np.isfinite(y) & np.isfinite(X).all(axis=1)
+            reg = sm.RLM(y[m], sm.add_constant(X[m]), M=sm.robust.norms.HuberT()).fit()
+            for nt in range(1, len(fam) + 1):
+                x = X[m, :nt].sum(axis=1)
+                d = y[m] - x
+                a, b = huber_line(x, y[m])
+                rows.append(dict(
+                    fit=fit, j=j, k=k, terms="+".join(f"Z{t}" for t in fam[:nt]),
+                    n_terms=nt, n=int(m.sum()),
+                    median_diff_um=np.median(d), nmad_diff_um=nmad(d),
+                    huber_offset_um=a, huber_slope=b,
+                    pearson_r=stats.pearsonr(x, y[m])[0],
+                    spearman_rho=stats.spearmanr(x, y[m])[0],
+                    regression=" ".join(f"Z{t}:{c:.3f}" for t, c in
+                                        zip(fam, reg.params[1:])),
+                    regression_offset_um=reg.params[0]))
+    return pd.DataFrame(rows)
+
+
+def family_summary_page(pdf, fs, title):
+    """Per (j, k): nMAD of sparse minus the dense sum, against the number of terms."""
+    fig, axes = plt.subplots(1, 2, figsize=(17, 7))
+    labels = [f"Z{j} {NOLL_NAMES[j]}" for j in FAMILIES]
+    for ax, col, lab in [(axes[0], "nmad_diff_um", "nMAD(sparse - dense sum) [µm]"),
+                         (axes[1], "spearman_rho", "Spearman rho (dimensionless)")]:
+        for nt, mk in [(1, "o"), (2, "s"), (3, "^")]:
+            s = fs[fs.n_terms == nt]
+            for k in range(1, 7):
+                sk = s[s.k == k].set_index("j").reindex(list(FAMILIES))
+                ax.scatter(np.arange(len(FAMILIES)) + (k - 3.5) * 0.1, sk[col],
+                           marker=mk, color=f"C{k - 1}", s=25,
+                           label=f"k={k}" if nt == 1 else None)
+        ax.set_xticks(range(len(FAMILIES)), labels, rotation=45, ha="right")
+        ax.set_ylabel(lab)
+        if col == "nmad_diff_um":
+            ax.set_yscale("log")
+        ax.grid(alpha=0.3)
+    axes[0].legend(fontsize=8, title="color: focal k; marker: o lowest-n term only, "
+                   "s +2nd, ^ +3rd", title_fontsize=8)
+    fig.suptitle(title, fontsize=12)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def family_page(pdf, sparse, dense, fs, j, fit="z1toz6"):
+    """Rows: sparse DZ(k,j) against dense Z_j, Z_j + 2nd, (+ 3rd); columns: k."""
+    fam = FAMILIES[j]
+    bad = (sparse[f"{fit}_bad_fit"].to_numpy(bool)
+           | dense[f"{fit}_bad_fit"].to_numpy(bool))
+    fig, axes = plt.subplots(len(fam), 6, figsize=(24, 4.3 * len(fam)), squeeze=False)
+    for k in range(1, 7):
+        y = sparse[f"{fit}_z{j}_c{k}"].to_numpy(float)
+        for nt in range(1, len(fam) + 1):
+            ax = axes[nt - 1, k - 1]
+            x = sum(dense[f"{fit}_z{t}_c{k}"].to_numpy(float) for t in fam[:nt])
+            r = fs[(fs.j == j) & (fs.k == k) & (fs.n_terms == nt)].iloc[0]
+            ax.scatter(x[~bad], y[~bad], s=4, alpha=0.5, color="C0")
+            if bad.any():
+                ax.scatter(x[bad], y[bad], s=12, facecolors="none", edgecolors="C3")
+            lo, hi = np.nanpercentile(np.r_[x[~bad], y[~bad]], [0.5, 99.5])
+            lim = (lo - 0.1 * (hi - lo), hi + 0.1 * (hi - lo))
+            ax.plot(lim, lim, "k:", lw=1)
+            ax.plot(lim, r.huber_offset_um + r.huber_slope * np.array(lim), "C1", lw=1)
+            ax.set_xlim(lim)
+            ax.set_ylim(lim)
+            ax.set_title(f"DZ(k={k}): sparse Z{j} vs dense {r.terms}", fontsize=9)
+            ax.set_xlabel(f"dense {r.terms} [µm]", fontsize=8)
+            ax.set_ylabel(f"sparse Z{j} [µm]", fontsize=8)
+            txt = (f"n={r.n}\nslope={r.huber_slope:.3f}, offset={r.huber_offset_um:+.4f} µm"
+                   f"\nr={r.pearson_r:.3f}, rho={r.spearman_rho:.3f}"
+                   f"\nmed diff={r.median_diff_um:+.4f} µm\nnMAD diff={r.nmad_diff_um:.4f} µm")
+            if nt == len(fam):
+                txt += f"\nHuber regression coeffs:\n{r.regression}"
+            ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", fontsize=7,
+                    bbox=dict(fc="w", alpha=0.8, lw=0))
+    fig.suptitle(f"Sparse Z{j} {NOLL_NAMES[j]} against its dense family "
+                 f"{' + '.join(f'Z{t} {NOLL_NAMES[t]}' for t in fam)}, {fit} fit, per visit, "
+                 "OCS, µm of wavefront. Orange: Huber line; dotted: equality. Regression "
+                 "coefficients are dimensionless (sparse over dense term).", fontsize=11)
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--sparse", default="d13-sparse@20261106")
@@ -149,7 +258,8 @@ def main():
     dv, db = args.dense.split("@")
     fs, fd = reader.load_table("fits", sv, sb), reader.load_table("fits", dv, db)
     nolls = sorted(set(noll_set(fs)) & set(noll_set(fd)))
-    both = fs.merge(fd, on=KEYS, suffixes=("", "__dense"))
+    both = fs.merge(fd.rename(columns={c: c + "__dense" for c in fd.columns
+                                       if c not in KEYS}), on=KEYS)
     sparse = both[[c for c in both.columns if not c.endswith("__dense")]]
     dense = both[KEYS + [c for c in both.columns if c.endswith("__dense")]]
     dense.columns = [c.removesuffix("__dense") for c in dense.columns]
@@ -158,6 +268,8 @@ def main():
 
     st = compare(sparse, dense, nolls)
     st.to_csv(run.path / "dz_stats.csv", index=False)
+    fs = family_compare(sparse, dense)
+    fs.to_csv(run.path / "dz_family_stats.csv", index=False)
     pdf_path = run.path / "dz_sparse_vs_dense.pdf"
     with PdfPages(pdf_path) as pdf:
         for fit in FITS:
@@ -165,8 +277,12 @@ def main():
                          f"{args.sparse} (sparse) minus {args.dense} (dense), {fit} fit, "
                          f"OCS; {len(both)} common visits, n >= "
                          f"{int(st[st.fit == fit].n.min())} good in both")
+        family_summary_page(pdf, fs, f"Sparse Z_j against the sum of its dense family "
+                            f"(same m, higher n), z1toz6 fit, OCS; n = {fs.n.min()} visits")
         for j in nolls:
             j_page(pdf, sparse, dense, st, j)
+        for j in FAMILIES:
+            family_page(pdf, sparse, dense, fs, j)
     print(f"Saved {pdf_path}")
 
 
