@@ -161,3 +161,14 @@ only, since the platform does not follow elevation. Run `20261106_platform_sonic
   sin(into_wind): axis 1 c_fwd = -0.50, c_side = -0.38 (dimensionless, n = 27,764).
 
 Open: what changed on 20260423 (platform deployed position, sensor moved, or a door).
+
+### 2026-11-06 — combined report for sharing
+
+Notebook `notebooks/airflow_report_v1.ipynb` (generator `code/make_airflow_report_nb.py`)
+merges `wind_vs_sonic_v3` and `platform_sonic_v1` into one PDF,
+`output/20261106_airflow_report/airflow_report.pdf`, 36 pages, value_added snapshot
+20261105. Same data and plots, plus a summary page, a contents page, a definitions page
+(sources, per-exposure averaging, axis signs, wind components, statistics), a geometry
+sketch, a figure ID and caption on every figure (A1 to A19 top ring, B1 to B9 platform)
+and tables T1 to T3. It is written for Karla and Elana. Platform median |vector| / U by
+epoch is 0.14, 0.60 and 0.67 (dimensionless; U floored at 0.5 m/s).
