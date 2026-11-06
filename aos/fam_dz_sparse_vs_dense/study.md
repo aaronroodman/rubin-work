@@ -6,6 +6,7 @@ question: Do the per-visit FAM double-Zernike coefficients DZ(k,j) from the Dani
 answer: ''
 uses:
   fam_tables: d13-sparse@20261106, danish_1_3@20261028b
+  miw: d13-A_50_50_i_rbr@20261027
 started: 2026-11-06
 ---
 
@@ -82,3 +83,34 @@ k=1..6 fit, 1041 visits, µm of wavefront OCS.
 - With the fitted combination, Spearman rho (sparse against combination,
   dimensionless) is 0.99-0.998 at k=1 for Z5-Z11, and the residual nMAD at k=1 is
   0.001-0.030 µm, against 0.020-0.148 µm for the unit-weight sum.
+
+### 2026-11-06 — is dense DZ(1,17) a physical optical state?
+
+`code/dz17_correctable.py`, on the 301 visits (5 nights, T614, 9 rotator bins) of
+`miw` d13-A_50_50_i_rbr@20261027, built from the danish_1_3 dense fits: per-visit DZ with
+the build's 50-DoF state (S·DoF) and residual, and the sensitivity matrix S the build
+used. µm of wavefront, OCS, k=1.
+
+- Yes, mostly. With DoF recovered from every DZ term except Z17 (truncated SVD of the
+  normalized S, 30 modes), the predicted DZ(1,17) follows the measured one: Pearson
+  r 0.873, Spearman rho 0.812 (dimensionless, n=301); mean predicted +0.103 against
+  measured +0.124 µm; std over visits 0.0383 µm measured, 0.0189 µm residual, so about
+  75% of the variance (residual over measured, squared). 20 modes gives the same; 50
+  modes is worse (r 0.632), from the near-degenerate modes.
+- Measured DZ(1,17) correlates with DZ(1,7) (r -0.827), DZ(4,7) (r +0.758), DZ(2,5)
+  (r -0.713) and DZ(3,6) (r +0.679), the pattern of the state the other terms give.
+- The build's full 50-DoF state reproduces 95% of the DZ(1,17) variance over visits
+  (1 - var(resid)/var(raw), dimensionless).
+- What makes it: M2 decenter with compensating M2 tilt. Per-visit std of the S·DoF
+  contribution to DZ(1,17): M2_dy 0.051, M2_rx 0.011, Cam_dy 0.005 µm; bending modes
+  under 0.004 µm. Mean contributions: M2_dy +0.143, M2_rx -0.029 µm. For DZ(1,7) the
+  same two cancel (-2.06 and +1.95 µm): this is the coma-free M2 decenter-plus-tilt
+  combination, and DZ(1,17) is the term that breaks the degeneracy. Recovered M2_dy is
+  -3245 ± 1154 µm (mean ± std over visits).
+- A pure DZ(1,17), with nothing else, is not reachable: by least squares it needs B1_16
+  at 250 times its range.
+- So the sparse fit folding 4.9 x DZ(1,17) into DZ(1,7) mixes a real secondary-coma
+  signal of coma-free M2 motion into coma. With dense DZ(1,17)/DZ(1,7) Huber slope
+  -0.162 (dimensionless) over these visits, sparse DZ(1,7) would respond to this state
+  with 1.025 - 4.86 x 0.162 = 0.24 of the dense coma (dimensionless). Inferred, not
+  measured directly.
