@@ -138,3 +138,26 @@ Revised the same day (same run directory, now 21 pages):
 
 Next: dome azimuth from the EFD, to test whether the wedges and the per-night spread
 follow the slit rather than the TMA.
+
+## 2026-11-06 — deployable-platform sonic (salIndex 110)
+
+The fifth TMA sonic is ESS airTurbulence salIndex 110 (`TMA-GillLabJack01`), on the
+deployable-platform railing, +X side, about 2 m above the optical axis. Its EFD location
+reads "TMA deployable platform" from 20260226; it is absent after the July shutdown.
+Notebook `platform_sonic_v1.ipynb` plots it against outside wind U and `into_wind_deg`
+only, since the platform does not follow elevation. Run `20261106_platform_sonic`,
+10 pages, 65,788 on-sky exposures, 20260226 to 20260714.
+
+- The response steps up twice (page 2). Nightly mean |vector of axis means| / U is about
+  0.15 (dimensionless) to 20260422, then 0.6 to 1.0 from 20260423 and after 20260512.
+  The top-ring ratio stays at about 0.15 throughout. So something at the platform changed
+  on 20260423; the epochs are split there and at 20260512.
+- From 20260423 on, at U >= 6 m/s, the flow peaks at into_wind +30 to +45 deg: |vector| /
+  U = 1.8 (dimensionless), mostly along -axis 1 (page 3). That is wind from the +X side
+  of the pointing, where the platform sits, hitting the sensor nearly undisturbed.
+- Behind the telescope (into_wind -180 to -120 deg) |vector| / U is 0.8 to 0.9, mostly
+  +axis 2 and +axis 1; facing the wind (-15 to +15 deg) it drops to 0.2 to 0.3.
+- Huber fit, last epoch, axis mean = const + c_fwd U cos(into_wind) + c_side U
+  sin(into_wind): axis 1 c_fwd = -0.50, c_side = -0.38 (dimensionless, n = 27,764).
+
+Open: what changed on 20260423 (platform deployed position, sensor moved, or a door).
