@@ -65,10 +65,10 @@ def make_fam_build(data_root, variant="danish_1_2", build="20261009", n_rows=4,
 
 # ---- variants.yaml -------------------------------------------------------------
 
-def test_variants_are_the_in_use_four():
-    """The registered variants are the four in-use ones, and not the obsolete names."""
-    assert fam_tables.variants() == ["danish_1_2", "danish_1_3", "danish_1_3_test",
-                                     "danish_1_3_v1000"]
+def test_variants_are_the_in_use_five():
+    """The registered variants are the five in-use ones, and not the obsolete names."""
+    assert fam_tables.variants() == ["d13-sparse", "danish_1_2", "danish_1_3",
+                                     "danish_1_3_test", "danish_1_3_v1000"]
 
 
 def test_obsolete_variants_absent():

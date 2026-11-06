@@ -421,6 +421,7 @@ def build_tables(args):
 
     entry = load_param_set(args.param_set)
     collections = list(entry['fam_collections'])
+    expected_noll = tuple(entry.get('noll_indices', br.EXPECTED_NOLL_INDICES))
     if args.out_dir:
         out_dir = Path(args.out_dir)
     else:
@@ -467,7 +468,8 @@ def build_tables(args):
             table = br.read_blitz_visit(local.butler, visit, collections,
                                         dataset_type=args.dataset_type)
             meta = dict(table.meta)
-            return meta, *br.donut_table(table, meta, day_obs, seq_num, mode=args.mode)
+            return meta, *br.donut_table(table, meta, day_obs, seq_num, mode=args.mode,
+                                           expected_noll=expected_noll)
         except Exception as exc:
             return exc, None, None
 
@@ -490,7 +492,8 @@ def build_tables(args):
                 n_skipped += 1
                 continue
 
-            record = br.visit_meta_record(meta, day_obs, seq_num, visit)
+            record = br.visit_meta_record(meta, day_obs, seq_num, visit,
+                                          expected_noll=expected_noll)
             record.update(br.visit_metrics(
                 arrow_table, min_donuts_per_detector=args.min_donuts_per_detector))
             records.append(record)

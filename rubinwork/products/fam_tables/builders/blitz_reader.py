@@ -210,13 +210,16 @@ def read_blitz_visit(butler, visit, collections, dataset_type=BLITZ_FAM_DATASET)
                       parameters={'strip_astropy_meta_yaml': False})
 
 
-def noll_selection(meta):
+def noll_selection(meta, expected=EXPECTED_NOLL_INDICES):
     """Column indices into a blitz Zernike vector for the fitted Noll indices.
 
     Parameters
     ----------
     meta : `dict`
         The blitz table's ``.meta``, which must carry ``noll_indices``.
+    expected : sequence of `int`, optional
+        The Noll indices the variant was fitted with, dimensionless. Defaults to the 21
+        of the Danish 1.2 schema; a sparse blitz run passes its own set.
 
     Returns
     -------
@@ -235,20 +238,19 @@ def noll_selection(meta):
         If ``noll_indices`` is absent, which means the table was read without
         ``strip_astropy_meta_yaml=False``.
     ValueError
-        If the metadata's index set differs from the 21 the Danish 1.2 schema carries, in
-        which case the output would not be schema-compatible.
+        If the metadata's index set differs from `expected`, in which case the output
+        would not match what the variant declares.
     """
     if 'noll_indices' not in meta:
         raise KeyError(
             "blitz metadata has no 'noll_indices' — the table was read without "
             "parameters={'strip_astropy_meta_yaml': False}, so .meta is empty")
     noll = np.asarray([int(j) for j in meta['noll_indices']], dtype=int)
-    if tuple(noll.tolist()) != EXPECTED_NOLL_INDICES:
+    expected = tuple(int(j) for j in expected)
+    if tuple(noll.tolist()) != expected:
         raise ValueError(
-            f'blitz noll_indices {noll.tolist()} differs from the '
-            f'{len(EXPECTED_NOLL_INDICES)} indices the Danish 1.2 schema carries, '
-            f'{list(EXPECTED_NOLL_INDICES)}; the '
-            'output would not be schema-compatible')
+            f'blitz noll_indices {noll.tolist()} differs from the {len(expected)} '
+            f'indices the variant declares, {list(expected)}')
     return noll, noll.copy()
 
 
@@ -314,7 +316,7 @@ def focus_side(table, meta):
     return is_intra, is_extra
 
 
-def pair_sides(table, meta, mode='mean'):
+def pair_sides(table, meta, mode='mean', expected_noll=EXPECTED_NOLL_INDICES):
     """Join the two sides of focus of one unpaired blitz table.
 
     Parameters
@@ -362,7 +364,7 @@ def pair_sides(table, meta, mode='mean'):
     fit_ok = np.asarray(table['group_fit_success'], dtype=bool)
     # The DM-55333 v2 intrinsic calibration is NaN at the field edge (about 1.72 deg)
     # while the fitted deviation there is finite, so the total wavefront would be NaN.
-    _, select = noll_selection(meta)
+    _, select = noll_selection(meta, expected_noll)
     intrinsic_ok = np.isfinite(_bare(table['zk_intrinsic_ocs'])[:, select]).all(axis=1)
     det = np.asarray(table['det_name'], dtype=str)
     donut_id = np.asarray(table['donut_id'], dtype=np.int64)
@@ -415,7 +417,8 @@ def pair_sides(table, meta, mode='mean'):
     return idx_intra, idx_extra, stats
 
 
-def donut_table(table, meta, day_obs, seq_num, mode='mean'):
+def donut_table(table, meta, day_obs, seq_num, mode='mean',
+                expected_noll=EXPECTED_NOLL_INDICES):
     """Build one visit's paired donut rows in the Danish 1.2 schema.
 
     Parameters
@@ -470,8 +473,8 @@ def donut_table(table, meta, day_obs, seq_num, mode='mean'):
             f'per-donut image columns {present} are present in the source table and must '
             'not be written to the donut parquet; drop them before calling donut_table')
 
-    noll, select = noll_selection(meta)
-    idx_i, idx_e, stats = pair_sides(table, meta, mode=mode)
+    noll, select = noll_selection(meta, expected_noll)
+    idx_i, idx_e, stats = pair_sides(table, meta, mode=mode, expected_noll=expected_noll)
 
     # Zernikes.  Both blitz vectors are 0-indexed on Noll, so `select` picks the fitted
     # terms out of either the 27-long deviation or the 67-long intrinsic.
@@ -674,7 +677,8 @@ def visit_metrics(arrow_table, min_donuts_per_detector=3):
     }
 
 
-def visit_meta_record(meta, day_obs, seq_num, visit):
+def visit_meta_record(meta, day_obs, seq_num, visit,
+                      expected_noll=EXPECTED_NOLL_INDICES):
     """Per-visit fields the blitz table metadata can supply on its own.
 
     Parameters
@@ -732,7 +736,7 @@ def visit_meta_record(meta, day_obs, seq_num, visit):
 
     date = meta.get('date')
     mjd = float(getattr(date, 'mjd', np.nan)) if date is not None else float('nan')
-    noll, _ = noll_selection(meta)
+    noll, _ = noll_selection(meta, expected_noll)
     return {
         'day_obs': int(day_obs),
         'seq_num': int(seq_num),

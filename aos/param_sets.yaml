@@ -16,6 +16,19 @@
 # recorded it: the value-added DB rows, the frozen provenance files, and --param-set on
 # the command line. `dir_name` is the short output-directory name.
 
+danish_1_3_sparse:
+  dir_name: d13-sparse
+  description: Mar-Apr 2026, /repo/main, Danish 1.3.0 blitz bin x2 UNPAIRED, sparse Zernike fit (Noll
+    4-11, 14, 15, 20, 21, 27, 28); default Batoid intrinsics from the dataset type
+  butler_repo: /repo/main
+  fam_programs:
+  - T614
+  fam_collections:
+  - LSSTCam/runs/aos/fam/danish_1_3_0/wep_blitz_rso1186/dv_blitz_rso1186/bin_x2/unpaired/sparse/donutBlitz
+  collection_phrase: aos_fam_danish_1_3_blitz_unpaired_sparse
+  day_obs_min: 20260315
+  day_obs_max: 20260430
+
 fam_danish_1_0_wep17_3_0_bin2x:
   dir_name: danish_1_0
   description: Mar-May 2026, /repo/main, Danish 1.0 wep 17.3.0 dv 4.2.0 bin x2 paired
