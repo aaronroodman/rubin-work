@@ -119,5 +119,22 @@ optical axis, same sign as axis 2.
 - In the inflow wedge sonic125 also has axis-0 and axis-1 means of about 1 m/s each
   (page 14), so the inflow is not along the optical axis alone.
 
+Revised the same day (same run directory, now 21 pages):
+
+- Low-wind maps, 1 <= U < 6 m/s, n = 39,107 (pages 5 to 7). The axis-2 / U pattern is
+  the same as above 6 m/s, so the inflow wedges scale with U down to low wind.
+- Axes 0 and 1 against u_el = U cos(into_wind) sin(alt) [m/s] (pages 12 and 13, all
+  exposures, n about 69,300 to 69,700). Strongest: sonic125 axis 1, Pearson r = 0.66 and
+  Spearman rho = 0.66; sonic124 axis 1, 0.54 and 0.52; sonic125 axis 0, 0.53 and 0.43.
+  The response is one-sided: axis 0 of sonic125 and sonic126 rises only for u_el > 0
+  (wind into the slit) and stays near zero for u_el < 0.
+- Per-night means, averaged over the four sonics, 103 nights (page 16). Over 108 nights,
+  the nightly mean axis 2 tracks the nightly mean U (Pearson r = 0.77, Spearman rho =
+  0.80); the |(axis 0, axis 1)| average less so (0.51 and 0.63).
+- Histograms (page 21): outside wind median 4.8 m/s (n = 70,454). Median |(axis 0,
+  axis 1)| is 0.26 (123), 0.37 (124), 0.39 (125), 0.28 (126) m/s; median axis 2 is 0.26,
+  0.05, -0.03, 0.12 m/s. All have long tails out to 3 to 4 m/s.
+- Dropped: fit lines on the axis-2 vs u_ax page, and the per-night slope page.
+
 Next: dome azimuth from the EFD, to test whether the wedges and the per-night spread
 follow the slit rather than the TMA.

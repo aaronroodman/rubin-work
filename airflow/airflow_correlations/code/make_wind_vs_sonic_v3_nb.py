@@ -41,7 +41,8 @@ C.append(md("""## Change Log
 
 | Date | Author | Description |
 |------|--------|-------------|
-| 2026-11-05 | Aaron Roodman | Initial version: heat maps, toward-M1M3 probability, bimodality, mirror test, 3x3 coefficients |"""))
+| 2026-11-05 | Aaron Roodman | Initial version: heat maps, toward-M1M3 probability, bimodality, mirror test, 3x3 coefficients |
+| 2026-11-05 | Aaron Roodman | Low-wind maps, axes 0/1 vs u_el, per-night sensor averages, low-wind flow vectors, histograms; fit lines and per-night slopes dropped |"""))
 C.append(md("""## Table of Contents
 
 1. [Parameters](#params)
@@ -58,13 +59,15 @@ IMG_TYPES = ('science', 'acq', 'cwfs')
 SONICS = (123, 124, 125, 126)          # TMA top ring
 TOWARD_CUT = -0.3                      # axis-2 mean below this = toward M1M3 [m/s]
 WIND_MIN = 6.0                         # outside wind cut for the maps [m/s]
+WIND_LOW = (1.0, 6.0)                  # low-wind range for the normalized maps [m/s]
+WIND_QUIVER_LOW = (2.0, 6.0)           # low-wind range for the flow-vector page [m/s]
 ANGLE_STEP = 15                        # into_wind_deg bin width [deg]
 ALT_STEP = 5                           # altitude bin width for heat maps [deg]
 U_EDGES = [0, 1.5, 3, 4.5, 6, 7.5, 9, 10.5, 12, 15]   # outside wind bins [m/s]
 ALT_SPLIT = 50                         # low/high altitude split for the onset maps [deg]
 ALT_BANDS = [(15, 45), (45, 65), (65, 90)]            # bands for the bimodality pages [deg]
 MIN_CELL = 20                          # minimum exposures per heat-map cell
-NIGHT_MIN = 50                         # minimum windy exposures for a per-night fit
+NIGHT_MIN = 50                         # minimum exposures for a per-night point
 LOUVER_STATES = [(-0.5, 0.5, '0 open'), (4.5, 5.5, '5 open'), (5.5, 6.5, '6 open')]
 
 run = study_run('airflow/airflow_correlations', 'wind_vs_sonic_v3')
@@ -181,24 +184,21 @@ for i in SONICS:
 asym = pd.DataFrame(arows)
 display(asym.pivot_table(index=['sonic', 'alt'], columns='half', values='slope').round(3))
 
-# Per-night fits and the near-zero population
-nrows = []
-for (night, g) in w.groupby('day_obs'):
-    if len(g) < NIGHT_MIN:
-        continue
-    r = dict(day_obs=night, n=len(g), louvers=g.louvers_n_open.median(),
-             wind=g.wind_speed_ms.median())
-    strong = g[np.abs(g.u_ax) > 3]
-    for i in SONICS:
-        y = g[f'sonic{i}_mean_2_ms'].to_numpy()
-        f = huber(g.u_ax.to_numpy(), y)
-        r[f'slope{i}'] = f.params[1] if f is not None else np.nan
-        r[f'err{i}'] = f.bse[1] if f is not None else np.nan
-        ys = strong[f'sonic{i}_mean_2_ms'].dropna()
-        r[f'zero{i}'] = np.mean(np.abs(ys) < 0.1) if len(ys) >= 10 else np.nan
-    nrows.append(r)
-nights = pd.DataFrame(nrows)
-print(f'{len(nights)} nights with >= {NIGHT_MIN} exposures at wind >= {WIND_MIN} m/s')
+# Per exposure, averaged over the four sonics: axis-2 mean, and |(axis 0, axis 1)| [m/s]
+for i in SONICS:
+    d[f'sonic{i}_perp_ms'] = np.hypot(d[f'sonic{i}_mean_0_ms'], d[f'sonic{i}_mean_1_ms'])
+d['ax2_avg_ms'] = d[[f'sonic{i}_mean_2_ms' for i in SONICS]].mean(axis=1, skipna=False)
+d['perp_avg_ms'] = d[[f'sonic{i}_perp_ms' for i in SONICS]].mean(axis=1, skipna=False)
+w = d[d.wind_speed_ms >= WIND_MIN]
+q25, q75 = (lambda x: x.quantile(0.25)), (lambda x: x.quantile(0.75))
+nights = (d.dropna(subset=['ax2_avg_ms', 'perp_avg_ms']).groupby('day_obs')
+          .agg(n=('visit_id', 'size'), louvers=('louvers_n_open', 'median'),
+               U_mean=('wind_speed_ms', 'mean'), U_q25=('wind_speed_ms', q25), U_q75=('wind_speed_ms', q75),
+               ax2_mean=('ax2_avg_ms', 'mean'), ax2_q25=('ax2_avg_ms', q25), ax2_q75=('ax2_avg_ms', q75),
+               perp_mean=('perp_avg_ms', 'mean'), perp_q25=('perp_avg_ms', q25), perp_q75=('perp_avg_ms', q75))
+          .reset_index())
+nights = nights[nights.n >= NIGHT_MIN]
+print(f'{len(nights)} nights with >= {NIGHT_MIN} exposures with all four sonics')
 
 # 3x3 coefficients: each sensor axis on (u_ax, u_el, u_az), all exposures
 crows = []
@@ -233,13 +233,15 @@ body = (f'{len(d)} on-sky exposures, {d.day_obs.nunique()} nights, {d.day_obs.mi
           .round(3).to_string())
 text_page(pdf, 'wind_vs_sonic v3: summary', body)
 
-# Pages 2-4: heat maps of sensor mean / U, altitude vs into_wind
-for a in range(3):
-    zs = [map2d(w.into_wind_deg.to_numpy(), w.altitude.to_numpy(),
-                (w[f'sonic{i}_mean_{a}_ms'] / w.wind_speed_ms).to_numpy(), te, ae)[0] for i in SONICS]
+# Pages 2-7: heat maps of sensor mean / U, altitude vs into_wind; high wind, then low wind
+wlow = d[(d.wind_speed_ms >= WIND_LOW[0]) & (d.wind_speed_ms < WIND_LOW[1])]
+for ws, wlab in ((w, f'U >= {WIND_MIN} m/s'), (wlow, f'{WIND_LOW[0]} <= U < {WIND_LOW[1]} m/s')):
+  for a in range(3):
+    zs = [map2d(ws.into_wind_deg.to_numpy(), ws.altitude.to_numpy(),
+                (ws[f'sonic{i}_mean_{a}_ms'] / ws.wind_speed_ms).to_numpy(), te, ae)[0] for i in SONICS]
     vm = np.nanpercentile(np.abs(np.concatenate([z.ravel() for z in zs])), 98)
     fig, axs = four_panel(f'Sonic axis {a}' + (' (optical, + = away from M1M3)' if a == 2 else '')
-                          + f' mean / outside wind, median per cell; U >= {WIND_MIN} m/s, '
+                          + f' mean / outside wind, median per cell; {wlab} (n = {len(ws)}), '
                           f'cells with >= {MIN_CELL} exposures')
     for ax, i, z in zip(axs.flat, SONICS, zs):
         pc = ax.pcolormesh(te, ae, z, cmap='RdBu_r', vmin=-vm, vmax=vm)
@@ -280,20 +282,22 @@ for lo, hi in ((15, ALT_SPLIT), (ALT_SPLIT, 90)):
     for ax in axs[:, 0]: ax.set_ylabel('outside wind speed [m/s]')
     pdf.savefig(fig); plt.show()
 
-# Page 8: axis 2 vs u_ax with the two half-fits
-fig, axs = four_panel('Axis-2 mean vs u_ax, all exposures; red/blue: Huber fits for u_ax > 0 / u_ax < 0')
-for ax, i in zip(axs.flat, SONICS):
-    y = d[f'sonic{i}_mean_2_ms']; ok = y.notna()
-    ax.hexbin(d.u_ax[ok], y[ok], gridsize=80, bins='log', extent=(-12, 12, -3, 3), mincnt=1)
-    for half, col, xx in (('u_ax>0', 'r', np.array([0, 12])), ('u_ax<0', 'b', np.array([-12, 0]))):
-        r = asym[(asym.sonic == i) & (asym.alt == '15-90') & (asym.half == half)].iloc[0]
-        ax.plot(xx, r.intercept_ms + r.slope * xx, col + '-', lw=1.5,
-                label=f'{half}: slope {r.slope:.3f} ± {r.slope_err:.3f} (dimensionless), n = {r.n}')
-    ax.axhline(TOWARD_CUT, color='k', ls=':', lw=0.8)
-    ax.set_title(f'sonic{i}', fontsize=9); ax.legend(fontsize=7, loc='upper left')
-for ax in axs[1]: ax.set_xlabel('u_ax = -U cos(into_wind) cos(alt) [m/s] (+ = away from M1M3)', fontsize=8)
-for ax in axs[:, 0]: ax.set_ylabel('axis-2 mean [m/s]')
-pdf.savefig(fig); plt.show()
+# Axis 2 vs u_ax, then axes 0 and 1 vs u_el
+for a, xn, xlab in ((2, 'u_ax', 'u_ax = -U cos(into_wind) cos(alt) [m/s] (+ = away from M1M3)'),
+                    (0, 'u_el', 'u_el = U cos(into_wind) sin(alt) [m/s]'),
+                    (1, 'u_el', 'u_el = U cos(into_wind) sin(alt) [m/s]')):
+    fig, axs = four_panel(f'Sonic axis-{a} mean vs {xn}, all exposures')
+    for ax, i in zip(axs.flat, SONICS):
+        x, y = d[xn], d[f'sonic{i}_mean_{a}_ms']; ok = x.notna() & y.notna()
+        ax.hexbin(x[ok], y[ok], gridsize=80, bins='log', extent=(-12, 12, -3, 3), mincnt=1)
+        ax.axhline(0, color='k', lw=0.4); ax.axvline(0, color='k', lw=0.4)
+        if a == 2:
+            ax.axhline(TOWARD_CUT, color='k', ls=':', lw=0.8)
+        ax.set_title(f'sonic{i}: Pearson r = {stats.pearsonr(x[ok], y[ok])[0]:.2f}, Spearman rho = '
+                     f'{stats.spearmanr(x[ok], y[ok])[0]:.2f}, n = {ok.sum()}', fontsize=9)
+    for ax in axs[1]: ax.set_xlabel(xlab, fontsize=8)
+    for ax in axs[:, 0]: ax.set_ylabel(f'axis-{a} mean [m/s]')
+    pdf.savefig(fig); plt.show()
 
 # Page 9: asymmetric slopes by altitude band
 body = ('Huber slope of axis-2 mean [m/s] on u_ax [m/s] (dimensionless), fitted separately for u_ax > 0 '
@@ -314,20 +318,20 @@ for ax in axs[-1]: ax.set_xlabel('u_ax [m/s] (+ = away from M1M3)')
 for ax in axs[:, 0]: ax.set_ylabel('axis-2 mean [m/s]')
 fig.suptitle('Axis-2 mean vs u_ax by altitude band'); fig.tight_layout(); pdf.savefig(fig); plt.show()
 
-# Page 11: per-night slope and near-zero fraction vs day_obs
+# Per night: outside wind, sensor-averaged axis 2 and |(axis 0, axis 1)|; bars = 25 to 75 %
 dt = pd.to_datetime(nights.day_obs.astype(str))
-fig, axs = plt.subplots(4, 2, figsize=(11, 11), sharex=True)
-for r_, i in enumerate(SONICS):
-    sc = axs[r_, 0].scatter(dt, nights[f'slope{i}'], c=nights.louvers, cmap='viridis', vmin=0, vmax=6, s=12)
-    axs[r_, 0].errorbar(dt, nights[f'slope{i}'], nights[f'err{i}'], fmt='none', ecolor='0.7', lw=0.5, zorder=0)
-    axs[r_, 0].axhline(0, color='k', lw=0.5)
-    axs[r_, 0].set_ylabel(f'sonic{i} slope\\n(dimensionless)', fontsize=8)
-    axs[r_, 1].scatter(dt, nights[f'zero{i}'], c=nights.louvers, cmap='viridis', vmin=0, vmax=6, s=12)
-    axs[r_, 1].set_ylabel(f'sonic{i} fraction\\n|axis 2| < 0.1 m/s', fontsize=8); axs[r_, 1].set_ylim(-0.02, 1.02)
-axs[0, 0].set_title('per-night Huber slope, axis-2 mean on u_ax', fontsize=9)
-axs[0, 1].set_title('per-night fraction near zero, among exposures with |u_ax| > 3 m/s', fontsize=9)
-fig.colorbar(sc, ax=axs, label='median louvers open (count)', shrink=0.6)
-fig.suptitle(f'Per night, nights with >= {NIGHT_MIN} exposures at U >= {WIND_MIN} m/s ({len(nights)} nights)')
+fig, axs = plt.subplots(3, 1, figsize=(11, 10), sharex=True)
+for ax, k, lab in ((axs[0], 'U', 'outside wind U [m/s]'),
+                   (axs[1], 'ax2', 'axis-2 mean, average of 4 sonics [m/s]\\n(+ = away from M1M3)'),
+                   (axs[2], 'perp', '|(axis 0, axis 1)| mean,\\naverage of 4 sonics [m/s]')):
+    m = nights[f'{k}_mean']
+    ax.vlines(dt, nights[f'{k}_q25'], nights[f'{k}_q75'], color='0.6', lw=0.8, zorder=0)
+    sc = ax.scatter(dt, m, c=nights.louvers, cmap='viridis', vmin=0, vmax=6, s=14)
+    ax.axhline(0, color='k', lw=0.5); ax.set_ylabel(lab, fontsize=9)
+fig.subplots_adjust(right=0.86)
+fig.colorbar(sc, cax=fig.add_axes([0.89, 0.3, 0.015, 0.4]), label='median louvers open (count)')
+fig.suptitle(f'Per night: mean (points) and 25 to 75 percentile (bars) over exposures; '
+             f'{len(nights)} nights with >= {NIGHT_MIN} exposures')
 fig.autofmt_xdate(); pdf.savefig(fig); plt.show()
 
 # Page 12: louver state
@@ -370,21 +374,37 @@ for row, (i, j) in enumerate(((125, 126), (123, 124))):
     ax.set_xlabel(f'sonic{i} axis-2 mean [m/s]'); ax.set_ylabel(f'sonic{j} axis-2 mean [m/s]')
 fig.tight_layout(); pdf.savefig(fig); plt.show()
 
-# Page 14: flow direction in the sensor frame
+# Flow direction in the sensor frame, high and low wind
 qt, qa = np.arange(-180, 181, 30), np.arange(15, 91, 15)
-fig, axs = four_panel(f'Median flow per cell in the sensor frame: arrow = (axis 0, axis 1), color = axis 2 '
-                      f'[m/s]; U >= {WIND_MIN} m/s')
-for ax, i in zip(axs.flat, SONICS):
-    zz = [map2d(w.into_wind_deg.to_numpy(), w.altitude.to_numpy(), w[f'sonic{i}_mean_{a}_ms'].to_numpy(),
+wq = d[(d.wind_speed_ms >= WIND_QUIVER_LOW[0]) & (d.wind_speed_ms < WIND_QUIVER_LOW[1])]
+for ws, wlab in ((w, f'U >= {WIND_MIN} m/s'), (wq, f'{WIND_QUIVER_LOW[0]} <= U < {WIND_QUIVER_LOW[1]} m/s')):
+  fig, axs = four_panel(f'Median flow per cell in the sensor frame: arrow = (axis 0, axis 1), color = axis 2 '
+                        f'[m/s]; {wlab}')
+  for ax, i in zip(axs.flat, SONICS):
+    zz = [map2d(ws.into_wind_deg.to_numpy(), ws.altitude.to_numpy(), ws[f'sonic{i}_mean_{a}_ms'].to_numpy(),
                 qt, qa)[0] for a in range(3)]
     X, Y = np.meshgrid(0.5 * (qt[1:] + qt[:-1]), 0.5 * (qa[1:] + qa[:-1]))
     q = ax.quiver(X, Y, zz[0], zz[1], zz[2], cmap='RdBu_r', clim=(-1.5, 1.5), scale=15, width=0.006)
     ax.quiverkey(q, 0.85, 1.03, 1, '1 m/s', labelpos='E', fontproperties={'size': 7})
     ax.set_title(f'sonic{i}', fontsize=9); ax.set_xticks(xt); ax.set_xlim(-180, 180); ax.set_ylim(15, 90)
-fig.colorbar(q, ax=axs, label='axis-2 mean [m/s] (+ = away from M1M3)', shrink=0.8)
-for ax in axs[1]: ax.set_xlabel(XL, fontsize=8)
-for ax in axs[:, 0]: ax.set_ylabel('altitude [deg]')
-pdf.savefig(fig); plt.show()
+  fig.colorbar(q, ax=axs, label='axis-2 mean [m/s] (+ = away from M1M3)', shrink=0.8)
+  for ax in axs[1]: ax.set_xlabel(XL, fontsize=8)
+  for ax in axs[:, 0]: ax.set_ylabel('altitude [deg]')
+  pdf.savefig(fig); plt.show()
+
+# Histograms: outside wind, and |(axis 0, axis 1)| and axis 2 per sonic
+fig, axs = plt.subplots(1, 3, figsize=(11, 4.5))
+axs[0].hist(d.wind_speed_ms, bins=np.arange(0, 20.5, 0.5), histtype='step', color='k')
+axs[0].set_xlabel('outside wind U [m/s]'); axs[0].set_ylabel('exposures per 0.5 m/s bin')
+axs[0].set_title(f'median {d.wind_speed_ms.median():.1f} m/s, n = {len(d)}', fontsize=9)
+for i in SONICS:
+    p = d[f'sonic{i}_perp_ms'].dropna(); y = d[f'sonic{i}_mean_2_ms'].dropna()
+    axs[1].hist(p, bins=np.arange(0, 4.05, 0.05), histtype='step', label=f'sonic{i}: median {p.median():.2f} m/s')
+    axs[2].hist(y, bins=np.arange(-3, 3.05, 0.05), histtype='step', label=f'sonic{i}: median {y.median():.2f} m/s')
+axs[1].set_xlabel('|(axis 0, axis 1)| of exposure means [m/s]'); axs[1].set_ylabel('exposures per 0.05 m/s bin')
+axs[2].set_xlabel('axis-2 mean [m/s] (+ = away from M1M3)'); axs[2].set_ylabel('exposures per 0.05 m/s bin')
+for ax in axs[1:]: ax.legend(fontsize=7); ax.set_yscale('log')
+fig.suptitle('Distributions over all on-sky exposures'); fig.tight_layout(); pdf.savefig(fig); plt.show()
 pdf.close()
 print(PDF)"""))
 nb['cells'] = C
