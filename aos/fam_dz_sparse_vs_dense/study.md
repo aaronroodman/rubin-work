@@ -146,3 +146,16 @@ bins are the other four nights.
   below the prediction.
 - The median of measured minus predicted is +0.02 to +0.03 µm in three of the four
   groups. So part of the mean DZ(1,17) is not explained by the state.
+
+### 2026-11-06 — sparse residual median closer to Batoid (Aaron's observation)
+
+Aaron's observation: after the k=1..6 fit, the median over FAM visits of the Z5-Z8
+residual wavefront across the focal plane agrees much better with the Batoid intrinsic
+for d13-sparse than for dense danish_1_3. That suggests sparse may give a more physical
+MIW, and he will pursue it. This is not yet quantified here; the dense trio PDF comes from
+job 43538638.
+
+This does not conflict with the DZ(1,17) result above. That result is about the
+per-visit variation, which follows the optical state. The median is the intrinsic part.
+The +0.02 to +0.03 µm median of DZ(1,17) that the state does not explain is the kind of
+term the two modes would put into the MIW differently.
