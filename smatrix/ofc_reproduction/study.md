@@ -57,3 +57,7 @@ Effect on the estimator, if batoid's `bend` surface per newton is the right one.
 - **M2:** no gain error after the lbf-to-N fix. Open: the normalization (ts_ofc aa0ce96) landed the same day as that fix (a900fa1, 2024-10-04). If the shipped M2 ranges came from the lbf table, they are 4.45 times too large, which is 2.1 times in the weight. Not yet checked against the shipped weights.
 
 Which surface per newton is physical, `bend` or `bend_legacy`, the force tables alone cannot say.
+
+### 2026-11-09 — full DZ rebuild (job 44033444, run `20261109_dense_build`)
+
+At band `ref`, the rigid-body and M2 bending columns are bit-identical to the ts_ofc matrix: relative RMS difference (dimensionless, over pupil Noll 4–28) about 1e-12. The one exception is M2 Rx at 1.3e-4. The M1M3 bending modes differ by scale 0.99980 to 1.00053 (ours over OFC, dimensionless) and relative RMS 1.0e-4 median, 6.1e-4 max (B20). So the M1M3 bending data differ slightly from what built the matrix; M2 bending does not. One candidate is a different download of the M1M3 grid (the `bend` and `bend_ptt` M1M3 files differ), but it is not checked. At band `r`, the residuals rise to 3.1e-3 max (camera dx).

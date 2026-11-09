@@ -43,3 +43,18 @@ The fit set is Noll 4 to 11, 14, 15, 20, 21, 22 and 27, 28, the `fam_tables` `d1
 
 Smoke test at (0.75, 0) deg extra-focal: the leakage pairs each secondary term with the primary term of the same symmetry, Z12/13 to Z6/5 and Z16/17 to Z8/7 at about 4.8 (dimensionless, µm fitted per µm injected), Z23/24 to Z5/6 at about 8. For M2 Rx the dense rows miss the direct result by 7.3% (relative norm); adding `L` brings that to 2.0%.
 
+
+### 2026-11-09 — first full leakage run (job 44033445, run `20261109_donut_leakage`)
+
+All 26 configurations and 50 DOF finished in 3 min. The nominal fit returns the intrinsic to < 4e-8 µm. Residual |A_direct − model| / |A_direct| (dimensionless, per DOF), median over configurations, fit set `prod_z22`:
+
+| DOF group | model A_dense[fit] | model A_dense[fit] + L @ A_dense[other] |
+|---|---|---|
+| M2 hexapod | 0.072 | 0.020 |
+| camera hexapod | 0.042 | 0.006 |
+| M1M3 B1–B10 | 0.49 | 0.12 |
+| M1M3 B11–B20 | 1.51 | 0.67 |
+| M2 B1–B10 | 0.57 | 0.16 |
+| M2 B11–B20 | 0.95 | 0.57 |
+
+`prod` gives nearly the same numbers. The rigid-body DOF close with L; the bending modes do not. The likely cause is that the bending modes change Noll terms above 28, which leak into the fit and which L (injections in Noll 4–28 only) does not cover. Next: extend A_dense and L to Noll 78, the reference model's jmax.
