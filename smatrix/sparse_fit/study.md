@@ -58,3 +58,18 @@ All 26 configurations and 50 DOF finished in 3 min. The nominal fit returns the 
 | M2 B11–B20 | 0.95 | 0.57 |
 
 `prod` gives nearly the same numbers. The rigid-body DOF close with L; the bending modes do not. The likely cause is that the bending modes change Noll terms above 28, which leak into the fit and which L (injections in Noll 4–28 only) does not cover. Next: extend A_dense and L to Noll 78, the reference model's jmax.
+
+### 2026-11-09 — leakage with dense rows and L to Noll 78 (job 44041372, run `20261109_donut_leakage_j78`)
+
+Same residual as above, median over the 26 configurations, fit set `prod_z22` (`prod` within 0.01):
+
+| DOF group | A_dense[fit] alone | with L, Noll 4–28 | with L, Noll 4–78 | with L, Noll 4–78, 90th percentile |
+|---|---|---|---|---|
+| M2 hexapod | 0.066 | 0.020 | 0.015 | 0.025 |
+| camera hexapod | 0.042 | 0.006 | 0.006 | 0.023 |
+| M1M3 B1–B10 | 0.49 | 0.12 | 0.030 | 0.31 |
+| M1M3 B11–B20 | 1.51 | 0.67 | 0.18 | 0.44 |
+| M2 B1–B10 | 0.56 | 0.16 | 0.054 | 0.64 |
+| M2 B11–B20 | 0.95 | 0.57 | 0.19 | 0.58 |
+
+Leakage from Noll 29–78 explains most of the bending-mode mismatch. The tails are not small-denominator cases: the worst are corner half-chips (R40_SW1 M1M3 B15, residual 5.0 against |A_direct| 2.9, µm per µm). Intra-focal configurations are worse than extra-focal (median per configuration 0.07–0.15 against 0.05–0.08). A likely cause is that the model uses in-focus Zernike changes while the donut sees the defocused (TA) wavefront; not yet tested. A_direct itself is the sparse sensitivity at these points and does not depend on the model.
