@@ -37,3 +37,15 @@ Reopened to reproduce the dense matrix again as the baseline for `sparse_fit` an
 - Ruled out as causes: finite-difference step (central, 1 arcsec, 1e-2 deg), ray grid (nx 511), `batoid.zernike` projection and reference, the 2024-11 batoid_rubin builder, batoid 0.6.3, the v3.12, v3.14 and v1000 optics, and the bare `LSSTBuilder` defaults.
 - The per-point probe cannot resolve the bending modes: its own DZ-truncation floor is 6e-3 relative for M2 B14 against 7e-5 for M2 Rx. The bending-mode comparison waits for the full DZ build.
 
+
+### 2026-11-09 — bending-mode definitions in the git history
+
+The matrix and our build use the same mode surfaces. batoid_rubin's `bend` dataset (Zenodo 8384775) has not changed since 2023-09-27, before the 2024-03 matrix. The `bend.yaml` mode set is unchanged in every batoid_rubin commit since. The upstream commits not in our checkout (2026-04/05: `load_bend` caching, a piston DOF, `cs_sign`) do not change the modes.
+
+ts_ofc's DOF-to-force tables do not match those surfaces in amplitude:
+
+- **M2** `M2_1um_72_force.yaml`, ts_ofc a900fa1 (2024-10-04): every entry was multiplied by 4.44822, the lbf-to-N conversion. It now equals batoid's `M2_bend_forces` for all 20 modes.
+- **M1M3** `M1M3_1um_156_force.yaml` is unchanged since 2020. Each column has the same shape as batoid's force mode (residual < 2e-7 relative). Its amplitude is that of batoid's older `bend_legacy` dataset (Zenodo 8383823), within 0.94 to 1.05. Against the current `bend`, ts_ofc force over batoid force ranges from 0.94 to 1.75 per mode (dimensionless): B3 1.75, B6 and B7 1.58 and 1.60, B15 and B16 1.32 and 1.30, B20 1.51.
+- Between `bend_legacy` and `bend` the force shapes are identical. For B1, B2, B4, B5, B8, B9, B13, B14 and B19, the M1 surface changes by the same factor as the force (within 0.8%), so only the per-µm normalization changed. For B3, B6, B7, B10 to B12 and B15 to B18, the M1 surface shape itself changed (16% to 66% RMS of the legacy surface, after removing piston, tip and tilt). Legacy used one Zernike surface for both M1 and M3, and `bend` fits them separately.
+
+So the 1e-3 bending residuals are not a definition change. The force tables do imply a per-mode gain error: one unit of M1M3 bending DOF commands 0.94 to 1.75 times the forces that batoid says make that unit. This needs confirming with Guillem; it is outside this study's question.
