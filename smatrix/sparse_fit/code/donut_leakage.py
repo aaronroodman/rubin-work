@@ -8,12 +8,12 @@ estimator fits a sparse set: the listed Noll terms free, every other term held
 at the nominal defocused Batoid model, so the unfitted terms sit at the Batoid
 intrinsic. Three things come out per point:
 
-- ``A_dense``: in-focus pupil Zernike change per unit DOF (Noll 4..28, µm of
+- ``A_dense``: in-focus pupil Zernike change per unit DOF (Noll 4..78, µm of
   wavefront per µm or degree), from ``batoid.zernikeGQ``;
 - ``A_direct``: the change in the sparse fit per unit DOF, from donuts of the
   perturbed telescope;
 - ``L``: the change in the sparse fit per µm injected into one unfitted term
-  (Noll 4..28 outside the fit set), dimensionless.
+  (Noll 4..78 outside the fit set), dimensionless.
 
 The check is ``A_direct = A_dense[fit] + L @ A_dense[other]``.
 
@@ -40,7 +40,7 @@ warnings.simplefilter("ignore")
 
 BAND = "r"
 JMAX_MODEL = 78                  # ts_wep nollIndicesModel = 0..78
-NOLL_A = np.arange(4, 29)        # in-focus terms in the dense matrix
+NOLL_A = np.arange(4, JMAX_MODEL + 1)  # bending modes reach above Noll 28; their leakage counts
 FIT_SETS = {
     "prod": [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 27, 28],      # fam_tables d13-sparse
     "prod_z22": [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 22, 27, 28],
@@ -49,7 +49,7 @@ BINNING = 2                      # d13-sparse runs bin x2
 NPIX = 81                        # binned stamp; 1.5 mm defocus donut is ~61 px across
 FWHM_TRUE = 1.0                  # arcsec
 FLUX = 1e5
-DZ_TARGET_UM = 0.05              # RMS in-focus Noll 4..28 change per DOF step or injection
+DZ_TARGET_UM = 0.05              # RMS in-focus Noll 4..78 change per DOF step or injection
 
 # Corner half-chips: cameraGeom FIELD_ANGLE centres (deg), SW0 extra, SW1 intra.
 CORNERS = {
@@ -103,8 +103,8 @@ def _optic(idof, step):
 
 
 def zk_infocus(optic, th, wl):
-    """In-focus pupil Zernikes (m), Noll 0..28, as ts_wep computes the intrinsic."""
-    return batoid.zernikeGQ(optic, *th, wl, jmax=28, eps=optic.pupilObscuration,
+    """In-focus pupil Zernikes (m), Noll 0..JMAX_MODEL; ts_wep's intrinsic is the same to 28."""
+    return batoid.zernikeGQ(optic, *th, wl, jmax=JMAX_MODEL, eps=optic.pupilObscuration,
                             rings=12) * wl
 
 
