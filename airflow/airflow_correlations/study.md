@@ -172,3 +172,9 @@ merges `wind_vs_sonic_v3` and `platform_sonic_v1` into one PDF,
 sketch, a figure ID and caption on every figure (A1 to A19 top ring, B1 to B9 platform)
 and tables T1 to T3. It is written for Karla and Elana. Platform median |vector| / U by
 epoch is 0.14, 0.60 and 0.67 (dimensionless; U floored at 0.5 m/s).
+
+### 2026-11-09 — removed superseded notebooks
+
+Removed `wind_vs_sonic_v1`–`v3`, `platform_sonic_v1` and their generators, and their
+output runs. `airflow_report_v1.ipynb` and `20261106_airflow_report` replace them; the
+old files remain in git history.
