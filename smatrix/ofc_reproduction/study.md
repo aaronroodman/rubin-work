@@ -49,3 +49,11 @@ ts_ofc's DOF-to-force tables do not match those surfaces in amplitude:
 - Between `bend_legacy` and `bend` the force shapes are identical. For B1, B2, B4, B5, B8, B9, B13, B14 and B19, the M1 surface changes by the same factor as the force (within 0.8%), so only the per-µm normalization changed. For B3, B6, B7, B10 to B12 and B15 to B18, the M1 surface shape itself changed (16% to 66% RMS of the legacy surface, after removing piston, tip and tilt). Legacy used one Zernike surface for both M1 and M3, and `bend` fits them separately.
 
 So the 1e-3 bending residuals are not a definition change. The force tables do imply a per-mode gain error: one unit of M1M3 bending DOF commands 0.94 to 1.75 times the forces that batoid says make that unit. This needs confirming with Guillem; it is outside this study's question.
+
+Effect on the estimator, if batoid's `bend` surface per newton is the right one. Call g_k the ts_ofc force over batoid force for M1M3 mode k (dimensionless, 0.94 to 1.75):
+
+- **Sensitivity matrix:** one hardware unit of mode k is g_k batoid units, so its true column is g_k times the matrix column. This is a per-mode gain error.
+- **Normalization weights** (`rubinwork/smatrix/normalization_weights.py`, as ts_ofc): w_i = r_i^0.5 · f_i^-0.5. The range r_i, (force range / 20) / max|force per µm| from ts_ofc's table, is in hardware units and self-consistent. The PSF-width term f_i comes from the matrix and should be g_k · f_i. Each M1M3 bending weight is therefore off by 1/sqrt(g_k), between 1.03 and 0.76 (B3).
+- **M2:** no gain error after the lbf-to-N fix. Open: the normalization (ts_ofc aa0ce96) landed the same day as that fix (a900fa1, 2024-10-04). If the shipped M2 ranges came from the lbf table, they are 4.45 times too large, which is 2.1 times in the weight. Not yet checked against the shipped weights.
+
+Which surface per newton is physical, `bend` or `bend_legacy`, the force tables alone cannot say.
