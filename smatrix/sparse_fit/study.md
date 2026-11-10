@@ -137,3 +137,26 @@ With dTA + L the decomposition closes to 3–8% everywhere. That floor is the Da
 - Smoke, R44_SW0, residual / |A_direct_rt| (dimensionless), fit set prod:
   M2 dz 0.022, M2 Rx 0.017, M1M3 B6 0.061; with Danish-drawn L 0.040, 0.042, 0.211.
   max |G_rt[:, fit] − I| = 0.046 (prod), 0.20 (prod_z22). 794 s on 1 CPU for 3 DOF.
+
+### 2026-11-10 — full run with ray-traced L (job 44167231, run `20261110_donut_leakage_rt_l`)
+
+26 configurations, 31 min on 26 CPUs. Truth is the spider-masked ray-traced fit. Median
+residual / |A_direct_rt| (dimensionless), corners (n=8) | science (n=18), fit set prod
+(`code/analyze_rt_l.py`):
+
+| DOF group | G_rt @ dTA | dTA + Danish-drawn L | dense rows only |
+|---|---|---|---|
+| M2 hexapod | 0.027 \| 0.051 | 0.037 \| 0.034 | 0.082 \| 0.080 |
+| camera hexapod | 0.021 \| 0.030 | 0.041 \| 0.036 | 0.060 \| 0.121 |
+| M1M3 B1–B10 | 0.027 \| 0.026 | 0.029 \| 0.030 | 0.48 \| 0.54 |
+| M1M3 B11–B20 | 0.036 \| 0.049 | 0.052 \| 0.071 | 1.51 \| 1.52 |
+| M2 B1–B10 | 0.033 \| 0.034 | 0.027 \| 0.031 | 0.56 \| 0.57 |
+| M2 B11–B20 | 0.043 \| 0.054 | 0.056 \| 0.057 | 0.95 \| 0.98 |
+
+- Worst DOF with G_rt (median over 26): M2 B7 0.215, M2 B6 0.198, M1M3 B6 0.154, M1M3 B7 0.141.
+- Ray-traced L helps by about 1 point on most groups, not more. A 2–5% floor remains that a
+  linear response to TA Noll 4..78 does not capture; not yet identified.
+- G_rt on the fitted terms: diagonal 0.98–1.00 median (range 0.97–1.09 over 26); largest
+  off-diagonal 0.08 (Z5 row, prod), 0.14 (Z4 row, prod_z22: Z4–Z22 mixing).
+- G_rt field symmetry: rotated into the field-on-+x frame, equal-radius points agree to
+  0.2–1.1% (RMS deviation over RMS mean, n = 4 per group); raw spread 6–76%.
