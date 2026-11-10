@@ -11,8 +11,8 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | study | status | last log | answer |
 |---|---|---|---|
 | [thermal_focus](thermal_focus/study.md) | active | 2026-10-24 | Yes, between nights: 5 thermal channels in one band-independent Huber fit cut the focus error from 336.8 to 58.2 µm of equivalent hexapod dz nMAD (in sample; 59.9 µm night-grouped) over 68,079 science visits and 147 nights; the truss carries +125.09 µm per deg C. The start of the night is worse: 84.9 against 54.9 µm nMAD before and after 3 h past sunset. |
-| [thermal_vmodes](thermal_vmodes/study.md) | done | 2026-10-06 | None: only v1 passes the false-discovery-rate cut at q = 0.05 (1 of 34 modes) over 72,835 science visits and 175 nights, with skill +0.808 against +0.243 for the next mode, v10 (dimensionless, fractional reduction in out-of-fold residual nMAD). |
-| [trim_calculator](trim_calculator/study.md) | active | 2026-10-24 | Yes: trim_calculator.py imports only numpy, pyyaml and argparse and reads every fitted coefficient, with units and provenance, from trim_coefficients.yaml; the thermal_focus analysis checks it against the pipeline it was fitted with. |
+| [thermal_vmodes](thermal_vmodes/study.md) | done | 2026-10-24 | None: only v1 passes the false-discovery-rate cut at q = 0.05 (1 of 34 modes) over 72,835 science visits and 175 nights, with skill +0.808 against +0.243 for the next mode, v10 (dimensionless, fractional reduction in out-of-fold residual nMAD). |
+| [trim_calculator](trim_calculator/study.md) | active | 2026-10-24 | Yes: trim_calculator.py imports only numpy, pyyaml and argparse and reads every fitted coefficient, with units and provenance, from trim_coefficients.yaml; check_against_fit.py checks it against the pipeline it was fitted with. |
 
 <!-- END generated -->
 

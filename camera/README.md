@@ -13,6 +13,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 
 | study | status | last log | answer |
 |---|---|---|---|
+| [cosmic_diffusion](cosmic_diffusion/study.md) | active | 2026-11-04 | Full night 20261102 (406 darks), sigma0 prior 2.89 +- 0.5 um: median per-track k = 0.0692 and 0.0686 on R21_S01 and S02 at 8.8 V, 0.0415 to 0.0420 on REB1 at 50 V (dimensionless); R21_S00 is the outlier at 0.0885. All exceed the uniform-field sqrt(2kT/eV), by 1.2x at 8.8 V and 1.7x at 50 V. |
 | [itl_dip](itl_dip/study.md) | active | 2026-10-16 | About 3 to 4% of sky deep (50 to 72 counts against 1630 to 1735 counts, i band, 30 s) and 10 to 19 pixels wide on ITL detectors; an e2v control shows 1.3 counts. Measured on one exposure only. |
 
 <!-- END generated -->

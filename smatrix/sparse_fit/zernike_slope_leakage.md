@@ -69,8 +69,8 @@ artefact of the image model.
 ## Impact
 
 The AOS treats the Danish Zernikes as if they were the Smatrix quantity.
-- **Rigid body, B1–B5, B8–B9:** estimated DOFs carry gain errors of 5–14%.
-- **B6, B7, B10–B20:** the Smatrix columns do not describe the measured response, so the
+- **Rigid body, B1–B5, B8–B9 and M1M3 B12:** estimated DOFs carry gain errors of 5–14%.
+- **B6, B7, B10, B11, B13–B20 and M2 B12:** the Smatrix columns do not describe the measured response, so the
   estimates for those modes, and their mixing with others, are wrong.
 
 How much reaches the correction depends on which modes the state estimator keeps after
