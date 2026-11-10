@@ -10,8 +10,10 @@ intrinsic. Per point:
 
 - ``A_dense``: in-focus pupil Zernike change per unit DOF (Noll 4..78, µm of
   wavefront per µm or degree), from ``batoid.zernikeGQ``;
-- ``A_direct``: the change in the sparse fit per unit DOF, from donuts of the
-  perturbed telescope;
+- ``A_direct``, ``A_direct_opd``, ``A_direct_rt``: the change in the sparse fit
+  per unit DOF, from donuts of the perturbed telescope drawn by Danish from the
+  defocused TA fit, drawn by Danish from the defocused OPD, and ray-traced by
+  batoid with a Kolmogorov blur;
 - ``L``: the change in the sparse fit per µm injected into one unfitted term
   (Noll 4..78 outside the fit set), dimensionless;
 - ``dTA``, ``dOPD``: change per unit DOF of the defocused ``zernikeTA`` fit and of
@@ -34,6 +36,8 @@ import numpy as np
 import batoid
 import danish
 from scipy.optimize import least_squares
+from scipy.signal import fftconvolve
+import galsim
 
 from rubinwork.common import study_run
 import rubinwork.smatrix.compute_smatrix as cs
@@ -133,6 +137,45 @@ def factory_for(instr):
         pixel_scale=instr.pixelSize * BINNING, spider_angle=0.0)
 
 
+RT_NX = 1024                     # pupil ray grid; ~0.47M unvignetted rays
+RT_OS = 5                        # deposit oversampling per binned pixel
+
+
+def raytrace(instr, optic, th, wl, sign):
+    """Noise-free ray-traced donut, centred on its own chief ray (relative flux).
+
+    A fixed pupil grid (not random photons), so 0.01 µm steps give smooth
+    differences. Rays are deposited with linear (cloud-in-cell) weights on an
+    ``RT_OS``-times oversampled grid, convolved with a Kolmogorov FWHM_TRUE
+    profile and summed to binned pixels. Batoid focal-plane x, y map to
+    Danish image columns, rows with no flip (checked on difference images).
+    """
+    shifted = instr._applyBatoidOffsets(optic, sign)
+    rv = shifted.trace(batoid.RayVector.asGrid(optic=shifted, wavelength=wl, theta_x=th[0],
+                                               theta_y=th[1], nx=RT_NX))
+    chief = shifted.trace(batoid.RayVector.fromStop(0.0, 0.0, optic=shifted, wavelength=wl,
+                                                    theta_x=th[0], theta_y=th[1]))
+    ok = ~rv.vignetted
+    fpix = instr.pixelSize * BINNING / RT_OS
+    nf = NPIX * RT_OS
+    u = (rv.x[ok] - chief.x[0]) / fpix + nf / 2 - 0.5
+    v = (rv.y[ok] - chief.y[0]) / fpix + nf / 2 - 0.5
+    i0, j0 = np.floor(u).astype(int), np.floor(v).astype(int)
+    fu, fv = u - i0, v - j0
+    fine = np.zeros((nf, nf))
+    for di, wu in ((0, 1 - fu), (1, fu)):
+        for dj, wv in ((0, 1 - fv), (1, fv)):
+            ii, jj = i0 + di, j0 + dj
+            m = (ii >= 0) & (ii < nf) & (jj >= 0) & (jj < nf)
+            np.add.at(fine, (jj[m], ii[m]), (wu * wv)[m])
+    if "kolm" not in _W:
+        scale = 3600 * np.rad2deg(fpix / instr.focalLength)      # arcsec per fine pixel
+        _W["kolm"] = galsim.Kolmogorov(fwhm=FWHM_TRUE).drawImage(
+            nx=121, ny=121, scale=scale, method="no_pixel").array
+    fine = fftconvolve(fine, _W["kolm"], mode="same")
+    return fine.reshape(NPIX, RT_OS, NPIX, RT_OS).sum((1, 3))
+
+
 def draw(factory, z_ref, th):
     m = danish.SingleDonutModel(factory, z_ref=z_ref, z_terms=(), thx=th[0], thy=th[1],
                                 npix=NPIX)
@@ -169,16 +212,30 @@ def run_config(cfg):
         zr = ta0.copy()
         zr[idx] -= zf0[idx]           # ts_wep getOffAxisCoeff(nollIndicesIntr=idx)
         refs[fs] = zr
-    img0 = draw(fac, ta0, th)
-    fit0 = {fs: fit(fac, refs[fs], idx, th, img0) for fs, idx in FIT_SETS.items()}
+    # Test donuts: Danish drawn from the defocused TA fit, Danish drawn from the
+    # defocused OPD, and batoid ray-traced (the ground truth).
+    img_ta0 = draw(fac, ta0, th)
+    rt_scale = img_ta0.sum() / raytrace(instr, fid, th, wl, sign).sum()
+    truths = {
+        "ta": lambda opt: draw(fac, zk_ta(instr, opt, th, wl, sign), th),
+        "opd": lambda opt: draw(fac, zk_defocus_opd(instr, opt, th, wl, sign), th),
+        "rt": lambda opt: rt_scale * raytrace(instr, opt, th, wl, sign),
+    }
+    fit0_truth = {}
+    for tr, mk in truths.items():
+        img = img_ta0 if tr == "ta" else mk(fid)
+        fit0_truth[tr] = {fs: fit(fac, refs[fs], idx, th, img) for fs, idx in FIT_SETS.items()}
 
     out = dict(name=name, thx_deg=thx, thy_deg=thy, side=side, instrument=iname,
                wavelength_m=wl, fit_sets=FIT_SETS,
                nominal_fit_minus_intrinsic_um={
-                   fs: ((fit0[fs] - zf0[idx]) * 1e6).tolist()
-                   for fs, idx in FIT_SETS.items()},
+                   tr: {fs: ((f0[fs] - zf0[idx]) * 1e6).tolist()
+                        for fs, idx in FIT_SETS.items()}
+                   for tr, f0 in fit0_truth.items()},
                dofs=_W["dofs"], steps=[], A_dense=[], dTA=[], dOPD=[],
                A_direct={fs: [] for fs in FIT_SETS},
+               A_direct_opd={fs: [] for fs in FIT_SETS},
+               A_direct_rt={fs: [] for fs in FIT_SETS},
                L={fs: [] for fs in FIT_SETS}, L_cols={})
 
     def central(f, h):
@@ -190,16 +247,18 @@ def run_config(cfg):
         s1 = (zk_infocus(_optic(d, unit), th, wl) - zf0)[NOLL_A] / unit
         step = unit * DZ_TARGET_UM * 1e-6 / max(np.sqrt(np.mean(s1 ** 2)) * unit, 1e-15)
         tas = {h: zk_ta(instr, _optic(d, h), th, wl, sign) for h in (step, -step)}
-        imgs = {h: draw(fac, tas[h], th) for h in tas}
+        imgs = {tr: {h: (draw(fac, tas[h], th) if tr == "ta" else mk(_optic(d, h)))
+                     for h in (step, -step)} for tr, mk in truths.items()}
         out["steps"].append(step)
         out["A_dense"].append((central(lambda h: zk_infocus(_optic(d, h), th, wl), step)
                                [NOLL_A] * 1e6).tolist())
         out["dTA"].append((central(lambda h: tas[h], step)[NOLL_A] * 1e6).tolist())
         out["dOPD"].append((central(lambda h: zk_defocus_opd(instr, _optic(d, h), th, wl,
                                                              sign), step)[NOLL_A] * 1e6).tolist())
-        for fs, idx in FIT_SETS.items():
-            out["A_direct"][fs].append((central(
-                lambda h: fit(fac, refs[fs], idx, th, imgs[h]), step) * 1e6).tolist())
+        for tr, key in (("ta", "A_direct"), ("opd", "A_direct_opd"), ("rt", "A_direct_rt")):
+            for fs, idx in FIT_SETS.items():
+                out[key][fs].append((central(
+                    lambda h: fit(fac, refs[fs], idx, th, imgs[tr][h]), step) * 1e6).tolist())
         for h in (step, -step):
             _W["optics"].pop((d, h), None)
 

@@ -87,3 +87,17 @@ Residual / |A_direct| (dimensionless) at R40_SW1, fit set `prod_z22`:
 | defocused dTA | 0.015 | 0.053 | 0.18 |
 
 Caveat: the test donuts are drawn by Danish from TA coefficients, so closure with dTA is partly by construction. The real test is a donut ray-traced by batoid, or drawn from the defocused OPD.
+
+### 2026-11-09 — ray-traced and OPD-drawn test donuts
+
+`donut_leakage.py` now fits three kinds of test donut: Danish drawn from the defocused TA fit (`A_direct`), Danish drawn from the defocused OPD (`A_direct_opd`), and batoid ray-traced (`A_direct_rt`). The ray-traced donut uses a fixed 1024² pupil grid (0.47M unvignetted rays, no photon noise), cloud-in-cell deposit on a 5× oversampled grid, a Kolmogorov 1.0 arcsec blur and 2× binning, centred on its own chief ray. Batoid focal-plane x, y map to Danish columns, rows with no flip: on difference images for M2 dx, dy and Rx at (0.9, 0.35) deg and R40_SW1, identity gives |ΔR − ΔD| / |ΔD| = 0.22–0.31 against ≥ 0.35 for any other orientation.
+
+Smoke test (R40_SW1 and sci_p0_extra, M2 Rx, M1M3 B15, M2 B7), residual / |A_direct_rt| with L:
+
+| model input | R40_SW1 | sci_p0_extra |
+|---|---|---|
+| in-focus A_dense | 0.033, 0.26, 0.85 | 0.053, 0.11, 0.42 |
+| defocused dOPD | 0.034, 0.25, 0.85 | 0.053, 0.11, 0.42 |
+| defocused dTA | 0.036, 0.040, 0.21 | 0.053, 0.10, 0.40 |
+
+dTA is the right input for the ray-traced truth too, as ts_wep's choice of a TA reference implies. The ray-traced and TA-drawn A_direct differ by 3.9–7% for M2 Rx and B15 and by 29–37% for M2 B7 (|A| 0.2–0.4 µm per µm). For M2 Rx the ray-traced response is 2.3% (R40_SW1) and 3.7% (sci_p0_extra) smaller in norm.
