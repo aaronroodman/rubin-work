@@ -101,3 +101,20 @@ Smoke test (R40_SW1 and sci_p0_extra, M2 Rx, M1M3 B15, M2 B7), residual / |A_dir
 | defocused dTA | 0.036, 0.040, 0.21 | 0.053, 0.10, 0.40 |
 
 dTA is the right input for the ray-traced truth too, as ts_wep's choice of a TA reference implies. The ray-traced and TA-drawn A_direct differ by 3.9–7% for M2 Rx and B15 and by 29–37% for M2 B7 (|A| 0.2–0.4 µm per µm). For M2 Rx the ray-traced response is 2.3% (R40_SW1) and 3.7% (sci_p0_extra) smaller in norm.
+
+### 2026-11-09 — full run with ray-traced truth (job 44049602, run `20261109_donut_leakage_rt`)
+
+All 26 configurations, 50 DOF, 21 min. Residual / |A_direct_rt| (dimensionless), median over corners | science points, fit set `prod_z22`:
+
+| DOF group | dTA[fit] alone | A_dense + L | dTA + L | TA-drawn vs ray-traced |
+|---|---|---|---|---|
+| M2 hexapod | 0.098, 0.093 | 0.049, 0.044 | 0.048, 0.044 | 0.059, 0.052 |
+| camera hexapod | 0.066, 0.104 | 0.059, 0.045 | 0.059, 0.045 | 0.062, 0.046 |
+| M1M3 B1–B10 | 0.48, 0.55 | 0.035, 0.039 | 0.033, 0.041 | 0.033, 0.038 |
+| M1M3 B11–B20 | 1.59, 1.49 | 0.115, 0.085 | 0.065, 0.082 | 0.053, 0.062 |
+| M2 B1–B10 | 0.57, 0.59 | 0.061, 0.039 | 0.033, 0.040 | 0.032, 0.039 |
+| M2 B11–B20 | 0.94, 0.96 | 0.210, 0.075 | 0.071, 0.076 | 0.048, 0.048 |
+
+With dTA + L the decomposition closes to 3–8% everywhere. That floor is the Danish-drawn against ray-traced difference, because L is measured with Danish-drawn injections. The worst single DOF are B6 and B7 of both mirrors (median 0.23–0.30), whose sparse response is small (|A_direct_rt| about 0.3 µm per µm).
+
+**L depends only on field radius and defocus side.** Raw L differs by 35–85% (Frobenius, relative to the group mean) between points at the same radius. Rotated into a frame with the field point on +x, it agrees to 0.2–1.2%. The radial dependence is strong: 54% from 0 to 0.75 deg, 73% from 0.75 to 1.06 deg, 80% from 1.06 to 1.64 deg (extra-focal). So a full-field sparse matrix needs L on a radial grid per defocus side (L costs an estimated 2–4 min of one CPU per point, not yet timed) and dTA at every field point, which batoid gives quickly.
