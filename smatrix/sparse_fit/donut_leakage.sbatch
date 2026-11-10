@@ -25,4 +25,4 @@ set -e
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 export BATOID_RUBIN_DATA_DIR=/sdf/group/rubin/u/roodman/LSST/packages/batoid_rubin_data
 cd code
-python donut_leakage.py --jobs "${SLURM_CPUS_PER_TASK:-26}" --label "${LABEL:-donut_leakage}"
+python donut_leakage.py --jobs "${SLURM_CPUS_PER_TASK:-26}" --label "${LABEL:-donut_leakage}" ${EXTRA_ARGS:-}

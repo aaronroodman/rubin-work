@@ -56,6 +56,7 @@ NOLL_A = np.arange(4, JMAX_MODEL + 1)  # bending modes reach above Noll 28; thei
 FIT_SETS = {
     "prod": [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 27, 28],      # fam_tables d13-sparse
     "prod_z22": [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 22, 27, 28],
+    "dense21": [j for j in range(4, 27) if j not in (20, 21)],      # standard dense fit
 }
 BINNING = 2                      # d13-sparse runs bin x2
 NPIX = 81                        # binned stamp; 1.5 mm defocus donut is ~61 px across
@@ -92,7 +93,12 @@ def configs():
 _W = {}
 
 
-def _init(dofs):
+def _init(dofs, opts=None):
+    global FIT_SETS
+    opts = opts or {}
+    if opts.get("fit_sets"):
+        FIT_SETS = {k: FIT_SETS[k] for k in opts["fit_sets"]}
+    _W["opts"] = opts
     from lsst.ts.wep.instrument import Instrument
     os.environ.setdefault("BATOID_RUBIN_DATA_DIR", cs.DEFAULT_DATA_DIR)
     cs._init_worker(BAND, cs.DEFAULT_DATA_DIR, "bend", 50)
@@ -244,6 +250,7 @@ def run_config(cfg):
         "opd": lambda opt: draw(fac, zk_defocus_opd(instr, opt, th, wl, sign), th),
         "rt": lambda opt: rt_scale * raytrace(instr, opt, th, wl, sign),
     }
+    truths = {k: v for k, v in truths.items() if k in _W["opts"].get("truths", truths)}
     fit0_truth = {}
     for tr, mk in truths.items():
         img = img_ta0 if tr == "ta" else mk(fid)
@@ -259,6 +266,7 @@ def run_config(cfg):
                A_direct={fs: [] for fs in FIT_SETS},
                A_direct_opd={fs: [] for fs in FIT_SETS},
                A_direct_rt={fs: [] for fs in FIT_SETS},
+               A_direct_rt_2x={fs: [] for fs in FIT_SETS},
                L={fs: [] for fs in FIT_SETS}, L_cols={})
 
     def central(f, h):
@@ -279,11 +287,24 @@ def run_config(cfg):
         out["dOPD"].append((central(lambda h: zk_defocus_opd(instr, _optic(d, h), th, wl,
                                                              sign), step)[NOLL_A] * 1e6).tolist())
         for tr, key in (("ta", "A_direct"), ("opd", "A_direct_opd"), ("rt", "A_direct_rt")):
+            if tr not in truths:
+                continue
             for fs, idx in FIT_SETS.items():
                 out[key][fs].append((central(
                     lambda h: fit(fac, refs[fs], idx, th, imgs[tr][h]), step) * 1e6).tolist())
+        if _W["opts"].get("step_check") and "rt" in truths:
+            # Same response at twice the step: separates fit noise from nonlinearity.
+            im2 = {h: truths["rt"](_optic(d, h)) for h in (2 * step, -2 * step)}
+            for fs, idx in FIT_SETS.items():
+                out["A_direct_rt_2x"][fs].append((central(
+                    lambda h: fit(fac, refs[fs], idx, th, im2[h]), 2 * step) * 1e6).tolist())
+            for h in (2 * step, -2 * step):
+                _W["optics"].pop((d, h), None)
         for h in (step, -step):
             _W["optics"].pop((d, h), None)
+    if not _W["opts"].get("leakage", True):
+        out["seconds"] = time.time() - t0
+        return out
 
     delta = DZ_TARGET_UM * 1e-6
     for fs, idx in FIT_SETS.items():
@@ -327,16 +348,24 @@ def main():
     p.add_argument("--configs", nargs="*", default=None, help="config names; default all")
     p.add_argument("--dofs", type=int, nargs="*", default=list(range(50)))
     p.add_argument("--label", default="donut_leakage")
+    p.add_argument("--fit-sets", nargs="*", default=None, help="default all")
+    p.add_argument("--truths", nargs="*", default=None, help="ta opd rt; default all")
+    p.add_argument("--no-leakage", action="store_true", help="skip L and G_rt")
+    p.add_argument("--step-check", action="store_true", help="also rt fits at 2x step")
     args = p.parse_args()
+    opts = dict(fit_sets=args.fit_sets, leakage=not args.no_leakage,
+                step_check=args.step_check)
+    if args.truths:
+        opts["truths"] = args.truths
 
     cfgs = [c for c in configs() if args.configs is None or c[0] in args.configs]
     run = study_run("smatrix/sparse_fit", args.label)
     if args.jobs > 1:
         import multiprocessing as mp
-        with mp.Pool(args.jobs, initializer=_init, initargs=(args.dofs,)) as pool:
+        with mp.Pool(args.jobs, initializer=_init, initargs=(args.dofs, opts)) as pool:
             results = list(pool.imap_unordered(run_config, cfgs))
     else:
-        _init(args.dofs)
+        _init(args.dofs, opts)
         results = [run_config(c) for c in cfgs]
     for r in results:
         (run.path / f"leak_{r['name']}.json").write_text(json.dumps(r))
