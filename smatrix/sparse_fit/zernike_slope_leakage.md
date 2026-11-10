@@ -35,11 +35,18 @@ All columns are dimensionless:
 Values are medians over the configurations. The relative differences are medians over
 the DOFs in each group; magnitude ratio and cosine are medians over all 26.
 
-- **Rigid body and B1–B9:** the fit measures the Smatrix direction, but its size is off
-  by 5–14%.
-- **B10–B20:** the fit measures a different vector. The worst DOFs (median relative
-  difference over 26) are M1M3 B10 1.90, B18 1.87, B17 1.84, B11 1.83 and B19 1.37,
-  and M2 B15 1.17.
+Group medians hide the spread. Median relative difference over the 26 configurations
+(dimensionless), per bending mode:
+
+| mode | B1–B5 | B6, B7 | B8, B9 | B10, B11 | B12, B13 | B14–B20 |
+|---|---|---|---|---|---|---|
+| M1M3 | 0.04–0.10 | 0.49, 0.50 | 0.08 | 1.90, 1.83 | 0.14, 1.01 | 0.94–1.87 |
+| M2 | 0.04–0.12 | 0.78, 0.79 | 0.11 | 1.06, 1.07 | 0.56, 0.51 | 0.44–1.17 |
+
+- **Good (5–14%):** rigid body, B1–B5 and B8–B9 of both mirrors, and M1M3 B12. The fit
+  measures the Smatrix direction, but its size is off by up to 14%.
+- **Bad (0.4–1.9):** B6, B7, B10, B11, B13–B20 of both mirrors, and M2 B12. The fit
+  measures a substantially different vector.
 
 ## Mechanism, with M1M3 B11 on axis
 
@@ -62,8 +69,8 @@ artefact of the image model.
 ## Impact
 
 The AOS treats the Danish Zernikes as if they were the Smatrix quantity.
-- **Rigid body and low-order bending:** estimated DOFs carry gain errors of 5–14%.
-- **B10–B20:** the Smatrix columns do not describe the measured response, so the
+- **Rigid body, B1–B5, B8–B9:** estimated DOFs carry gain errors of 5–14%.
+- **B6, B7, B10–B20:** the Smatrix columns do not describe the measured response, so the
   estimates for those modes, and their mixing with others, are wrong.
 
 How much reaches the correction depends on which modes the state estimator keeps after
