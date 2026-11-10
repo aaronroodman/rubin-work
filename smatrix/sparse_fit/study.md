@@ -73,3 +73,17 @@ Same residual as above, median over the 26 configurations, fit set `prod_z22` (`
 | M2 B11–B20 | 0.95 | 0.57 | 0.19 | 0.58 |
 
 Leakage from Noll 29–78 explains most of the bending-mode mismatch. The tails are not small-denominator cases: the worst are corner half-chips (R40_SW1 M1M3 B15, residual 5.0 against |A_direct| 2.9, µm per µm). Intra-focal configurations are worse than extra-focal (median per configuration 0.07–0.15 against 0.05–0.08). A likely cause is that the model uses in-focus Zernike changes while the donut sees the defocused (TA) wavefront; not yet tested. A_direct itself is the sparse sensitivity at these points and does not depend on the model.
+
+### 2026-11-09 — step size, central differences, defocused model input
+
+At the worst corner (R40_SW1) the 0.05 µm step is already nonlinear: the fit gives the same answer from different starting points, but |Δz|/step for M1M3 B15 is 1.79–1.83 µm per µm for steps up to 0.1 µm and jumps above that. `DZ_TARGET_UM` is now 0.01, and A_direct, L and the model inputs use central differences. `donut_leakage.py` also records the defocused changes per DOF: `dTA` (the `zernikeTA` fit, as the ts_wep reference) and `dOPD` (the defocused wavefront, `zernikeGQ`).
+
+Residual / |A_direct| (dimensionless) at R40_SW1, fit set `prod_z22`:
+
+| model input | M2 Rx | M1M3 B15 | M2 B7 |
+|---|---|---|---|
+| in-focus A_dense | 0.013 | 0.22 | 0.68 |
+| defocused dOPD | 0.014 | 0.21 | 0.68 |
+| defocused dTA | 0.015 | 0.053 | 0.18 |
+
+Caveat: the test donuts are drawn by Danish from TA coefficients, so closure with dTA is partly by construction. The real test is a donut ray-traced by batoid, or drawn from the defocused OPD.

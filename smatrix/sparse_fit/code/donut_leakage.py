@@ -6,16 +6,18 @@ Danish forward model from the defocused Batoid wavefront (``zernikeTA`` to Noll
 78, as ts_wep builds its reference). It is then fit as ts_wep's Danish
 estimator fits a sparse set: the listed Noll terms free, every other term held
 at the nominal defocused Batoid model, so the unfitted terms sit at the Batoid
-intrinsic. Three things come out per point:
+intrinsic. Per point:
 
 - ``A_dense``: in-focus pupil Zernike change per unit DOF (Noll 4..78, µm of
   wavefront per µm or degree), from ``batoid.zernikeGQ``;
 - ``A_direct``: the change in the sparse fit per unit DOF, from donuts of the
   perturbed telescope;
 - ``L``: the change in the sparse fit per µm injected into one unfitted term
-  (Noll 4..78 outside the fit set), dimensionless.
+  (Noll 4..78 outside the fit set), dimensionless;
+- ``dTA``, ``dOPD``: change per unit DOF of the defocused ``zernikeTA`` fit and of
+  the defocused wavefront (``zernikeGQ``), Noll 4..78, µm per µm or degree.
 
-The check is ``A_direct = A_dense[fit] + L @ A_dense[other]``.
+The check is ``A_direct = D[fit] + L @ D[other]`` with D one of A_dense, dTA, dOPD.
 
 Usage::
 
@@ -49,7 +51,8 @@ BINNING = 2                      # d13-sparse runs bin x2
 NPIX = 81                        # binned stamp; 1.5 mm defocus donut is ~61 px across
 FWHM_TRUE = 1.0                  # arcsec
 FLUX = 1e5
-DZ_TARGET_UM = 0.05              # RMS in-focus Noll 4..78 change per DOF step or injection
+DZ_TARGET_UM = 0.01              # RMS in-focus Noll 4..78 change per DOF step or injection;
+                                 # at 0.05 the corner fits are already nonlinear
 
 # Corner half-chips: cameraGeom FIELD_ANGLE centres (deg), SW0 extra, SW1 intra.
 CORNERS = {
@@ -116,6 +119,13 @@ def zk_ta(instr, optic, th, wl, sign):
                             nrad=10, naz=int(2 * np.pi * 10)) * wl
 
 
+def zk_defocus_opd(instr, optic, th, wl, sign):
+    """Defocused wavefront (OPD) Zernikes (m), Noll 0..78."""
+    shifted = instr._applyBatoidOffsets(optic, sign)
+    return batoid.zernikeGQ(shifted, *th, wl, jmax=JMAX_MODEL,
+                            eps=shifted.pupilObscuration, rings=12) * wl
+
+
 def factory_for(instr):
     return danish.DonutFactory(
         R_outer=instr.radius, R_inner=instr.radius * instr.obscuration,
@@ -153,6 +163,7 @@ def run_config(cfg):
 
     zf0 = zk_infocus(fid, th, wl)
     ta0 = zk_ta(instr, fid, th, wl, sign)
+    opd0 = zk_defocus_opd(instr, fid, th, wl, sign)
     refs = {}
     for fs, idx in FIT_SETS.items():
         zr = ta0.copy()
@@ -166,32 +177,42 @@ def run_config(cfg):
                nominal_fit_minus_intrinsic_um={
                    fs: ((fit0[fs] - zf0[idx]) * 1e6).tolist()
                    for fs, idx in FIT_SETS.items()},
-               dofs=_W["dofs"], steps=[], A_dense=[], A_direct={fs: [] for fs in FIT_SETS},
+               dofs=_W["dofs"], steps=[], A_dense=[], dTA=[], dOPD=[],
+               A_direct={fs: [] for fs in FIT_SETS},
                L={fs: [] for fs in FIT_SETS}, L_cols={})
+
+    def central(f, h):
+        """Central difference (f(+h) - f(-h)) / 2h; cancels the second-order term."""
+        return (f(+h) - f(-h)) / (2 * h)
 
     for d in _W["dofs"]:
         unit = 1e-3 if d in cs.ANGLE_DOF else 1.0
         s1 = (zk_infocus(_optic(d, unit), th, wl) - zf0)[NOLL_A] / unit
         step = unit * DZ_TARGET_UM * 1e-6 / max(np.sqrt(np.mean(s1 ** 2)) * unit, 1e-15)
-        opt = _optic(d, step)
-        a_dense = (zk_infocus(opt, th, wl) - zf0)[NOLL_A] / step * 1e6
-        img = draw(fac, zk_ta(instr, opt, th, wl, sign), th)
+        tas = {h: zk_ta(instr, _optic(d, h), th, wl, sign) for h in (step, -step)}
+        imgs = {h: draw(fac, tas[h], th) for h in tas}
         out["steps"].append(step)
-        out["A_dense"].append(a_dense.tolist())
+        out["A_dense"].append((central(lambda h: zk_infocus(_optic(d, h), th, wl), step)
+                               [NOLL_A] * 1e6).tolist())
+        out["dTA"].append((central(lambda h: tas[h], step)[NOLL_A] * 1e6).tolist())
+        out["dOPD"].append((central(lambda h: zk_defocus_opd(instr, _optic(d, h), th, wl,
+                                                             sign), step)[NOLL_A] * 1e6).tolist())
         for fs, idx in FIT_SETS.items():
-            out["A_direct"][fs].append(
-                ((fit(fac, refs[fs], idx, th, img) - fit0[fs]) / step * 1e6).tolist())
-        _W["optics"].pop((d, step), None)
+            out["A_direct"][fs].append((central(
+                lambda h: fit(fac, refs[fs], idx, th, imgs[h]), step) * 1e6).tolist())
+        for h in (step, -step):
+            _W["optics"].pop((d, h), None)
 
     delta = DZ_TARGET_UM * 1e-6
     for fs, idx in FIT_SETS.items():
         others = [j for j in NOLL_A if j not in idx]
         out["L_cols"][fs] = [int(j) for j in others]
         for j in others:
-            ta = ta0.copy()
-            ta[j] += delta
-            out["L"][fs].append(((fit(fac, refs[fs], idx, th, draw(fac, ta, th))
-                                  - fit0[fs]) / delta).tolist())
+            def fit_inj(h):
+                ta = ta0.copy()
+                ta[j] += h
+                return fit(fac, refs[fs], idx, th, draw(fac, ta, th))
+            out["L"][fs].append(central(fit_inj, delta).tolist())
     out["seconds"] = time.time() - t0
     return out
 
