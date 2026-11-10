@@ -34,6 +34,7 @@ Usage::
 import argparse
 import json
 import os
+import pathlib
 import time
 import warnings
 
@@ -76,17 +77,61 @@ SCI_GRID_DEG = (-0.75, 0.0, 0.75)
 SPIDER_ANGLE = 0.0               # deg; Danish and the ray trace both mask the Spider_3D vanes
 
 
-def configs():
-    """Field point and defocus configurations: (name, thx deg, thy deg, side, instrument)."""
+CWFS_GRID = (6, 3)               # field points per half-chip along pixel x (4072), y (2000)
+
+
+def _cwfs_grid():
+    """6 x 3 cell centres on each corner half-chip, cameraGeom FIELD_ANGLE (deg)."""
+    from lsst.obs.lsst import LsstCam
+    from lsst.afw.cameraGeom import PIXELS, FIELD_ANGLE
+    import lsst.geom as geom
+    cam = LsstCam.getCamera()
     out = []
-    for name, (x, y) in CORNERS.items():
-        side = "extra" if name.endswith("SW0") else "intra"
-        out.append((name, x, y, side, "LsstCam"))
-    tag = {-0.75: "m", 0.0: "0", 0.75: "p"}
-    for x in SCI_GRID_DEG:
-        for y in SCI_GRID_DEG:
-            for side in ("intra", "extra"):
-                out.append((f"sci_{tag[x]}{tag[y]}_{side}", x, y, side, "LsstFamCam"))
+    for name in CORNERS:
+        det = cam[name]
+        bb = det.getBBox()
+        tr = det.getTransform(PIXELS, FIELD_ANGLE)
+        nx, ny = CWFS_GRID
+        for i in range(nx):
+            for j in range(ny):
+                px = bb.getMinX() - 0.5 + (i + 0.5) * bb.getWidth() / nx
+                py = bb.getMinY() - 0.5 + (j + 0.5) * bb.getHeight() / ny
+                f = tr.applyForward(geom.Point2D(px, py))
+                out.append((f"{name}_x{i}y{j}", *np.rad2deg([f.getX(), f.getY()])))
+    return out
+
+
+def configs(which="check"):
+    """Field point and defocus configurations: (name, thx deg, thy deg, side, instrument).
+
+    ``check``: the 8 half-chip centres and 9 science points (both sides);
+    ``fam``: the dense build's Gauss-Legendre field grid (11 rings x 35 spokes to
+    1.75 deg), camera shifted, both sides; ``cwfs``: a 6 x 3 grid on each corner
+    half-chip, Detector shifted, on that half-chip's side; ``all``: all three.
+    """
+    out = []
+    if which in ("check", "all"):
+        for name, (x, y) in CORNERS.items():
+            side = "extra" if name.endswith("SW0") else "intra"
+            out.append((name, x, y, side, "LsstCam"))
+        tag = {-0.75: "m", 0.0: "0", 0.75: "p"}
+        for x in SCI_GRID_DEG:
+            for y in SCI_GRID_DEG:
+                for side in ("intra", "extra"):
+                    out.append((f"sci_{tag[x]}{tag[y]}_{side}", x, y, side, "LsstFamCam"))
+    if which in ("fam", "all"):
+        li, _ = np.polynomial.legendre.leggauss(cs.RINGS)
+        radii = np.sqrt((1 + li) / 2) * cs.FIELD_RADIUS_DEG
+        azs = np.linspace(0, 2 * np.pi, cs.SPOKES, endpoint=False)
+        for ir, r in enumerate(radii):
+            for ia, a in enumerate(azs):
+                for side in ("intra", "extra"):
+                    out.append((f"fam_r{ir:02d}_a{ia:02d}_{side}", r * np.cos(a),
+                                r * np.sin(a), side, "LsstFamCam"))
+    if which in ("cwfs", "all"):
+        for name, x, y in _cwfs_grid():
+            side = "extra" if "_SW0_" in name else "intra"
+            out.append((name, x, y, side, "LsstCam"))
     return out
 
 
@@ -222,6 +267,43 @@ def fit(factory, z_ref_fit, fit_idx, th, img):
     return np.array(m.unpack_params(r.x)["z_fit"])
 
 
+def save_images(directory, out, saved, rt_scale, instr):
+    """Ray-traced donuts of one configuration as multi-HDU FITS.
+
+    HDUs: NOMINAL (npix, npix); PLUS and MINUS (ndof, npix, npix), the donuts at
+    +step and -step of DOF ``DOFS['idof']``; DOFS table (idof, step in µm or deg).
+    Images are noise-free, in counts with total flux matching the Danish model.
+    """
+    from astropy.io import fits
+    hdr = fits.Header()
+    for key, val, com in (
+            ("CONFIG", out["name"], "configuration name"),
+            ("THX_DEG", out["thx_deg"], "field angle x, cameraGeom FIELD_ANGLE (deg)"),
+            ("THY_DEG", out["thy_deg"], "field angle y, cameraGeom FIELD_ANGLE (deg)"),
+            ("SIDE", out["side"], "defocus side"),
+            ("INSTR", out["instrument"], "ts_wep instrument"),
+            ("WL_M", out["wavelength_m"], "wavelength (m)"),
+            ("BINNING", BINNING, "pixel binning"),
+            ("PIXSCALE", instr.pixelSize * BINNING, "binned pixel size (m)"),
+            ("SPIDER", SPIDER_ANGLE, "spider angle (deg)"),
+            ("FWHM", FWHM_TRUE, "Kolmogorov FWHM (arcsec)"),
+            ("FLUX", FLUX, "Danish model flux"),
+            ("RTSCALE", rt_scale, "flux per ray"),
+            ("RT_NX", RT_NX, "pupil ray grid"),
+            ("RT_OS", RT_OS, "deposit oversampling")):
+        hdr[key] = (val, com)
+    hdus = [fits.PrimaryHDU(header=hdr),
+            fits.ImageHDU(np.asarray(saved["nominal"], np.float32), name="NOMINAL"),
+            fits.ImageHDU(np.asarray(saved["plus"], np.float32), name="PLUS"),
+            fits.ImageHDU(np.asarray(saved["minus"], np.float32), name="MINUS"),
+            fits.BinTableHDU.from_columns([
+                fits.Column(name="idof", format="J", array=np.array(out["dofs"])),
+                fits.Column(name="step", format="D", array=np.array(out["steps"]))],
+                name="DOFS")]
+    fits.HDUList(hdus).writeto(pathlib.Path(directory) / f"donuts_{out['name']}.fits",
+                               overwrite=True)
+
+
 def run_config(cfg):
     name, thx, thy, side, iname = cfg
     t0 = time.time()
@@ -252,8 +334,11 @@ def run_config(cfg):
     }
     truths = {k: v for k, v in truths.items() if k in _W["opts"].get("truths", truths)}
     fit0_truth = {}
+    saved = {"nominal": None, "plus": [], "minus": []}
     for tr, mk in truths.items():
         img = img_ta0 if tr == "ta" else mk(fid)
+        if tr == "rt":
+            saved["nominal"] = img
         fit0_truth[tr] = {fs: fit(fac, refs[fs], idx, th, img) for fs, idx in FIT_SETS.items()}
 
     out = dict(name=name, thx_deg=thx, thy_deg=thy, side=side, instrument=iname,
@@ -281,6 +366,9 @@ def run_config(cfg):
         imgs = {tr: {h: (draw(fac, tas[h], th) if tr == "ta" else mk(_optic(d, h)))
                      for h in (step, -step)} for tr, mk in truths.items()}
         out["steps"].append(step)
+        if "rt" in truths:
+            saved["plus"].append(imgs["rt"][step])
+            saved["minus"].append(imgs["rt"][-step])
         out["A_dense"].append((central(lambda h: zk_infocus(_optic(d, h), th, wl), step)
                                [NOLL_A] * 1e6).tolist())
         out["dTA"].append((central(lambda h: tas[h], step)[NOLL_A] * 1e6).tolist())
@@ -302,6 +390,8 @@ def run_config(cfg):
                 _W["optics"].pop((d, h), None)
         for h in (step, -step):
             _W["optics"].pop((d, h), None)
+    if _W["opts"].get("image_dir") and saved["nominal"] is not None:
+        save_images(_W["opts"]["image_dir"], out, saved, rt_scale, instr)
     if not _W["opts"].get("leakage", True):
         out["seconds"] = time.time() - t0
         return out
@@ -352,24 +442,31 @@ def main():
     p.add_argument("--truths", nargs="*", default=None, help="ta opd rt; default all")
     p.add_argument("--no-leakage", action="store_true", help="skip L and G_rt")
     p.add_argument("--step-check", action="store_true", help="also rt fits at 2x step")
+    p.add_argument("--config-set", default="check", choices=["check", "fam", "cwfs", "all"])
+    p.add_argument("--save-images", action="store_true", help="write ray-traced donuts")
     args = p.parse_args()
     opts = dict(fit_sets=args.fit_sets, leakage=not args.no_leakage,
                 step_check=args.step_check)
     if args.truths:
         opts["truths"] = args.truths
 
-    cfgs = [c for c in configs() if args.configs is None or c[0] in args.configs]
+    cfgs = [c for c in configs(args.config_set)
+            if args.configs is None or c[0] in args.configs]
     run = study_run("smatrix/sparse_fit", args.label)
+    if args.save_images:
+        opts["image_dir"] = str(run.path)
     if args.jobs > 1:
         import multiprocessing as mp
         with mp.Pool(args.jobs, initializer=_init, initargs=(args.dofs, opts)) as pool:
-            results = list(pool.imap_unordered(run_config, cfgs))
+            for r in pool.imap_unordered(run_config, cfgs):
+                (run.path / f"leak_{r['name']}.json").write_text(json.dumps(r))
+                print(f"{r['name']}: {r['seconds']:.0f} s", flush=True)
     else:
         _init(args.dofs, opts)
-        results = [run_config(c) for c in cfgs]
-    for r in results:
-        (run.path / f"leak_{r['name']}.json").write_text(json.dumps(r))
-        print(f"{r['name']}: {r['seconds']:.0f} s", flush=True)
+        for c in cfgs:
+            r = run_config(c)
+            (run.path / f"leak_{r['name']}.json").write_text(json.dumps(r))
+            print(f"{r['name']}: {r['seconds']:.0f} s", flush=True)
     print("wrote", run.path)
 
 
