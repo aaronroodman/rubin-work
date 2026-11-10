@@ -160,3 +160,24 @@ residual / |A_direct_rt| (dimensionless), corners (n=8) | science (n=18), fit se
   off-diagonal 0.08 (Z5 row, prod), 0.14 (Z4 row, prod_z22: Z4–Z22 mixing).
 - G_rt field symmetry: rotated into the field-on-+x frame, equal-radius points agree to
   0.2–1.1% (RMS deviation over RMS mean, n = 4 per group); raw spread 6–76%.
+
+### 2026-11-10 — the closure floor and B6/B7 (`code/diag_floor.py`, run `20261110_diag_floor_smoke`)
+
+R44_SW0, residual / |A_rt| (dimensionless). "Screen to J" is a stop-plane OPD screen tuned
+to reproduce the DOF's change in defocused TA, Noll 4..J.
+
+| | M2 Rx | M2 B7 |
+|---|---|---|
+| real DOF vs screen to 78 | 0.013 | 0.052 |
+| real DOF vs screen to 153 | 0.012 | 0.0014 |
+| screen vs G_rt @ dTA | 0.010 | 0.074–0.108 |
+
+- B7: TA above Noll 78 is 0.12% RMS of Noll 4..78 but moves the fit by 5%; to Noll 153 the
+  screen reproduces the DOF to 0.14%.
+- G_rt columns are noisy, not nonlinear: at injection amplitudes 0.0025, 0.01, 0.04 µm the
+  column changes by 1.5–7% for strong columns and 23–37% for weak ones (Noll 66, 78),
+  without growing with amplitude. Implied fit noise about 1e-4 µm per ray-traced fit.
+  Summing 75 noisy columns gives the B7 miss.
+- M2 Rx keeps 1.2% at any order: a vignetting change, which no screen represents.
+- Conclusion: the L route would need Noll 153 (150 injections), much quieter G columns,
+  and still leaves about 1% on rigid DOFs at corners. Switch to brute force.
