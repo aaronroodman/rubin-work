@@ -63,6 +63,7 @@ BINNING = 2                      # d13-sparse runs bin x2
 NPIX = 81                        # binned stamp; 1.5 mm defocus donut is ~61 px across
 FWHM_TRUE = 1.0                  # arcsec
 FLUX = 1e5
+POLISH_NFEV = 20                 # second least_squares pass, numerical Jacobian
 DZ_TARGET_UM = 0.01              # RMS in-focus Noll 4..78 change per DOF step or injection;
                                  # at 0.05 the corner fits are already nonlinear
 
@@ -264,7 +265,16 @@ def fit(factory, z_ref_fit, fit_idx, th, img):
                        bkg=[], z_fit=[0.0] * len(fit_idx))
     r = least_squares(m.chi, jac=m.jac, x0=x0, args=(img, 1.0),
                       ftol=1e-12, xtol=1e-12, gtol=1e-12)
-    return np.array(m.unpack_params(r.x)["z_fit"])
+    # Danish's analytic Jacobian is approximate (0.1-5% per parameter); with the
+    # model-mismatch residual of a noise-free donut the first pass stops where the
+    # approximate gradient vanishes, ~1e-3 µm from the minimum. A second pass with a
+    # finite-difference Jacobian and explicit scaling finishes the fit.
+    scale = np.array(m.pack_params(flux=FLUX, dx=1.0, dy=1.0, fwhm=1.0, bkg=[],
+                                   z_fit=[1e-8] * len(fit_idx)), float)
+    r = least_squares(m.chi, x0=r.x, jac="3-point", x_scale=scale, args=(img, 1.0),
+                      ftol=1e-15, xtol=1e-15, gtol=1e-15, max_nfev=POLISH_NFEV)
+    x = r.x
+    return np.array(m.unpack_params(x)["z_fit"])
 
 
 def save_images(directory, out, saved, rt_scale, instr):

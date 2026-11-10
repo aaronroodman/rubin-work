@@ -209,3 +209,28 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
   so it is the estimator, not the image model.
 - Step check, |A(step) − A(2 step)| / |A| median: 1–2% for prod and prod_z22, 3–8% for
   dense21 (worst M2 B16 0.19).
+
+### 2026-11-10 — fit convergence, linearity and step size (R44_SW0, `code/scan_test.py`)
+
+- **Danish fit stopping.** `least_squares` stops on `xtol` (status 3) after ~17 evaluations;
+  restarts land 1e-4–1e-3 µm apart at equal cost. Danish's analytic Jacobian differs from
+  finite differences of its own model by 0.1–4.7% per parameter (high-order Zernikes worst).
+  A second `least_squares` pass with a `3-point` Jacobian and explicit scaling is now in
+  `fit()`; Gauss-Newton polishing with the analytic or a numerical Jacobian did not help.
+- **Model image** is smooth in the Zernikes (second differences scale as h² down to 1e-6 µm,
+  with a small kink near 1e-3 µm). Danish 1.4.0 gives identical images; draw 5 vs 6 ms,
+  Jacobian 12 vs 13 ms (1.4 vs 1.3) for the 21-term model.
+- **Linearity**, 5 amplitudes k = −2..2 × step, quadratic fit; quadratic term and RMS scatter
+  about the quadratic, each over the linear change at the largest amplitude (dimensionless,
+  vector norms over fitted terms), ray-traced:
+
+| DOF, fit set | step ×1: quad, scatter | step ×4: quad, scatter | slope change ×1 → ×4 |
+|---|---|---|---|
+| M2 Rx, dense21 | 0.027, 0.021 | 0.026, 0.008 | 0.2% |
+| M1M3 B14, prod | 0.032, 0.004 | 0.032, 0.015 | 1% |
+| M1M3 B14, dense21 | 0.121, 0.100 | 0.276, 0.053 | 13% |
+
+- B14 with the dense fit is nonlinear and noisy at any step: most of its wavefront is above
+  Noll 26 and reaches the fitted terms through leak coefficients of 10–26. A linear Smatrix
+  column describes it poorly. Earlier per-term deviation numbers (17-point scans) were
+  normalized per term and overstated the problem; ignore them.
