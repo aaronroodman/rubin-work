@@ -3,7 +3,7 @@ study: aos_byvisit
 topic: aos
 status: active
 question: 'For one visit, what corner Zernikes (OPD and deviation), optical state (v-modes and DOF), PID input and output, and tweak and trim did MTAOS produce, and can we reproduce the tweak? First case: 20261108 seq 468, whose large tweak should have come from seq 466, which had no recovered donuts.'
-answer: 'Reproduced. The Tweak in effect during 20261108 seq 468 came from seq 466, which had Zernikes on only two corners (199, 203); MTAOS counts tables, not finite rows, so its fewer-than-3 skip did not fire, and the 2-corner solve gave camera dx -1380 um and dz -1153 um of state. With kp = 0.3 and ki = kd = 0 (dimensionless gains) the Tweak is kp times the unclipped error (camera dx -414 um); the +-100/+-500 um clip acts only on the unused integral term. The summit ts_ofc v4.8.1 and config v13 reproduce the logged PID error to 9.5e-4 relative (dimensionless).'
+answer: 'Reproduced. The Tweak in effect during 20261108 seq 468 came from seq 466, which had Zernikes on only two corners (199, 203); MTAOS logged 4/4 measurements, so its fewer-than-3 skip did not fire (that it counts tables rather than finite rows is inferred, not read from the MTAOS code), and the 2-corner solve gave camera dx -1380 um and dz -1153 um of state. With kp = 0.3 and ki = kd = 0 (dimensionless gains) the Tweak is kp times the unclipped error (camera dx -414 um); the +-100/+-500 um clip acts only on the unused integral term. The summit ts_ofc v4.8.1 and config v13 reproduce the logged PID error to 8.0e-4 relative for the seq 466 step (dimensionless; max abs difference over max abs logged).'
 uses: {}
 started: 2026-11-09
 ---
@@ -16,7 +16,9 @@ For one visit, what corner Zernikes (OPD and deviation), optical state (v-modes 
 
 ## Current answer
 
-Reproduced. The Tweak in effect during 20261108 seq 468 came from seq 466, which had Zernikes on only two corners (199, 203); MTAOS counts tables, not finite rows, so its fewer-than-3 skip did not fire, and the 2-corner solve gave camera dx -1380 um and dz -1153 um of state. With kp = 0.3 and ki = kd = 0 (dimensionless gains) the Tweak is kp times the unclipped error (camera dx -414 um); the +-100/+-500 um clip acts only on the unused integral term. The summit ts_ofc v4.8.1 and config v13 reproduce the logged PID error to 9.5e-4 relative (dimensionless).
+Reproduced. The Tweak in effect during 20261108 seq 468 came from seq 466, which had Zernikes on only two corners (199, 203); MTAOS logged 4/4 measurements, so its fewer-than-3 skip did not fire (that it counts tables rather than finite rows is inferred, not read from the MTAOS code), and the 2-corner solve gave camera dx -1380 um and dz -1153 um of state. With kp = 0.3 and ki = kd = 0 (dimensionless gains) the Tweak is kp times the unclipped error (camera dx -414 um); the +-100/+-500 um clip acts only on the unused integral term. The summit ts_ofc v4.8.1 and config v13 reproduce the logged PID error to 8.0e-4 relative for the seq 466 step (dimensionless; max abs difference over max abs logged).
+
+Visit report with the evidence for each claim: [visit_20261108_00468.md](visit_20261108_00468.md).
 
 ## Log
 
