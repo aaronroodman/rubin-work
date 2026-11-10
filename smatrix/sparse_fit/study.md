@@ -181,3 +181,31 @@ to reproduce the DOF's change in defocused TA, Noll 4..J.
 - M2 Rx keeps 1.2% at any order: a vignetting change, which no screen represents.
 - Conclusion: the L route would need Noll 153 (150 injections), much quieter G columns,
   and still leaves about 1% on rigid DOFs at corners. Switch to brute force.
+
+### 2026-11-10 — dense 21-term fit against the dense Smatrix rows (job 44171999, run `20261110_bruteforce_check`)
+
+Ray-traced donuts, no L; fit sets prod, prod_z22 and dense21 (Noll 4–19, 22–26); 25 min.
+Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science (n=18);
+`A_dense` is the in-focus change the dense Smatrix holds (`code/analyze_bruteforce.py`):
+
+| DOF group | dense21 | prod |
+|---|---|---|
+| M2 hexapod | 0.075 \| 0.050 | 0.082 \| 0.080 |
+| camera hexapod | 0.069 \| 0.051 | 0.060 \| 0.121 |
+| M1M3 B1–B10 | 0.126 \| 0.090 | 0.48 \| 0.54 |
+| M1M3 B11–B20 | 0.96 \| 1.19 | 1.51 \| 1.52 |
+| M2 B1–B10 | 0.136 \| 0.115 | 0.56 \| 0.57 |
+| M2 B11–B20 | 0.94 \| 0.98 | 0.95 \| 0.98 |
+
+- For B11–B20 the dense fit response points elsewhere: cosine(A_rt, A_dense[fit]) median
+  0.42 (M1M3), 0.30 (M2), with |A_rt| / |A_dense[fit]| 0.92 and 1.56 (dimensionless).
+- Mechanism, M1M3 B11 on axis: wavefront change per µm Z6 +2.55, Z12 −1.81, Z24 +0.45,
+  Z38 −0.091 µm. The dense21 fit returns Z6 −0.20 µm (ray-traced; −0.02 Danish-drawn).
+  A Danish-drawn Z38 injection moves the dense21 Z6 by 26 µm per µm (Z12 −5.4, Z24 +2.1).
+  Danish fits ray slopes; slopes of Zernikes with the same m and different n are not
+  orthogonal, so an unfitted high-n term leaks into fitted lower-n terms, with a
+  coefficient that grows with n. In prod, Z12, Z24, Z38 → Z6: 5.0, 8.7, 17.6 per µm.
+- Danish-drawn and ray-traced agree on this (B11 dense21 Z12 −1.29 vs −1.26 µm per µm),
+  so it is the estimator, not the image model.
+- Step check, |A(step) − A(2 step)| / |A| median: 1–2% for prod and prod_z22, 3–8% for
+  dense21 (worst M2 B16 0.19).
