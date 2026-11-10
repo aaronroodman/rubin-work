@@ -118,3 +118,22 @@ All 26 configurations, 50 DOF, 21 min. Residual / |A_direct_rt| (dimensionless),
 With dTA + L the decomposition closes to 3–8% everywhere. That floor is the Danish-drawn against ray-traced difference, because L is measured with Danish-drawn injections. The worst single DOF are B6 and B7 of both mirrors (median 0.23–0.30), whose sparse response is small (|A_direct_rt| about 0.3 µm per µm).
 
 **L depends only on field radius and defocus side.** Raw L differs by 35–85% (Frobenius, relative to the group mean) between points at the same radius. Rotated into a frame with the field point on +x, it agrees to 0.2–1.2%. The radial dependence is strong: 54% from 0 to 0.75 deg, 73% from 0.75 to 1.06 deg, 80% from 1.06 to 1.64 deg (extra-focal). So a full-field sparse matrix needs L on a radial grid per defocus side (L costs an estimated 2–4 min of one CPU per point, not yet timed) and dTA at every field point, which batoid gives quickly.
+
+### 2026-11-10 — spiders, mask consistency, ray-traced L (smoke run `20261110_smoke_rt_l`)
+
+- Danish fits already had spiders on (`spider_angle=0.0`; Danish skips them only for `None`).
+  Batoid's design `LSST_r.yaml` has no spider, so the ray-traced donuts had none. The ray
+  trace now masks the ts_wep `Spider_3D` vanes on the stop plane (z = 0.439 m) with Danish's
+  own vane projection (`code/pupil_masks.py`), at the same `SPIDER_ANGLE` = 0 deg.
+- Mask consistency: Danish's circular masks (ts_wep mask file) against batoid design
+  vignetting, at all 26 configurations: rays clear in one and blocked in the other are
+  ≤ 2e-4 of the rays inside the M1 edge (dimensionless). Both are the design, consistently.
+- Spider shadow image (spider on minus off), Danish vs ray trace, 6 configurations:
+  Pearson r = 0.93–0.96 (n = 6561 pixels); ray-traced shadow total |flux| 9–22% larger.
+- Ray-traced L: a stop-plane `batoid.OPDScreen` with one annular Noll j (4..78), ±0.01 µm.
+  It moves the defocused TA term j by −0.01 µm and every other term by < 1e-5 µm.
+  `G_rt = F M^-1` (F: fit change per injection, M: ΔTA per injection) is the fit response
+  per TA term; prediction `A_sparse = G_rt @ dTA`.
+- Smoke, R44_SW0, residual / |A_direct_rt| (dimensionless), fit set prod:
+  M2 dz 0.022, M2 Rx 0.017, M1M3 B6 0.061; with Danish-drawn L 0.040, 0.042, 0.211.
+  max |G_rt[:, fit] − I| = 0.046 (prod), 0.20 (prod_z22). 794 s on 1 CPU for 3 DOF.

@@ -16,10 +16,15 @@ intrinsic. Per point:
   batoid with a Kolmogorov blur;
 - ``L``: the change in the sparse fit per µm injected into one unfitted term
   (Noll 4..78 outside the fit set), dimensionless;
+- ``G_rt``: fit response to each defocused TA term (Noll 4..78), dimensionless,
+  from ray-traced donuts with a Zernike OPD screen on the stop plane;
+  ``G_rt[:, other]`` is the ray-traced L;
 - ``dTA``, ``dOPD``: change per unit DOF of the defocused ``zernikeTA`` fit and of
   the defocused wavefront (``zernikeGQ``), Noll 4..78, µm per µm or degree.
 
-The check is ``A_direct = D[fit] + L @ D[other]`` with D one of A_dense, dTA, dOPD.
+The check is ``A_direct = D[fit] + L @ D[other]`` with D one of A_dense, dTA, dOPD,
+and ``A_direct_rt = G_rt @ dTA``. Danish and the ray trace both mask the
+ts_wep ``Spider_3D`` vanes at SPIDER_ANGLE.
 
 Usage::
 
@@ -40,6 +45,7 @@ from scipy.signal import fftconvolve
 import galsim
 
 from rubinwork.common import study_run
+from pupil_masks import danish_clear, stop_uv
 import rubinwork.smatrix.compute_smatrix as cs
 
 warnings.simplefilter("ignore")
@@ -66,6 +72,7 @@ CORNERS = {
     "R44_SW0": (1.1897, 1.1251), "R44_SW1": (1.1897, 1.2543),
 }
 SCI_GRID_DEG = (-0.75, 0.0, 0.75)
+SPIDER_ANGLE = 0.0               # deg; Danish and the ray trace both mask the Spider_3D vanes
 
 
 def configs():
@@ -134,28 +141,33 @@ def factory_for(instr):
     return danish.DonutFactory(
         R_outer=instr.radius, R_inner=instr.radius * instr.obscuration,
         mask_params=instr.maskParams, focal_length=instr.focalLength,
-        pixel_scale=instr.pixelSize * BINNING, spider_angle=0.0)
+        pixel_scale=instr.pixelSize * BINNING, spider_angle=SPIDER_ANGLE)
 
 
 RT_NX = 1024                     # pupil ray grid; ~0.47M unvignetted rays
 RT_OS = 5                        # deposit oversampling per binned pixel
 
 
-def raytrace(instr, optic, th, wl, sign):
+def raytrace(instr, optic, th, wl, sign, spider=SPIDER_ANGLE):
     """Noise-free ray-traced donut, centred on its own chief ray (relative flux).
 
     A fixed pupil grid (not random photons), so 0.01 µm steps give smooth
     differences. Rays are deposited with linear (cloud-in-cell) weights on an
     ``RT_OS``-times oversampled grid, convolved with a Kolmogorov FWHM_TRUE
-    profile and summed to binned pixels. Batoid focal-plane x, y map to
+    profile and summed to binned pixels. Batoid has no spider, so the
+    ts_wep ``Spider_3D`` vanes are masked on the stop plane as Danish masks them.
+    Batoid focal-plane x, y map to
     Danish image columns, rows with no flip (checked on difference images).
     """
     shifted = instr._applyBatoidOffsets(optic, sign)
-    rv = shifted.trace(batoid.RayVector.asGrid(optic=shifted, wavelength=wl, theta_x=th[0],
-                                               theta_y=th[1], nx=RT_NX))
+    rv = batoid.RayVector.asGrid(optic=shifted, wavelength=wl, theta_x=th[0],
+                                 theta_y=th[1], nx=RT_NX)
+    spider_ok = danish_clear(instr, *stop_uv(shifted, rv), *th, spider_angle=spider,
+                             circles=False)
+    rv = shifted.trace(rv)
     chief = shifted.trace(batoid.RayVector.fromStop(0.0, 0.0, optic=shifted, wavelength=wl,
                                                     theta_x=th[0], theta_y=th[1]))
-    ok = ~rv.vignetted
+    ok = ~rv.vignetted & spider_ok
     fpix = instr.pixelSize * BINNING / RT_OS
     nf = NPIX * RT_OS
     u = (rv.x[ok] - chief.x[0]) / fpix + nf / 2 - 0.5
@@ -174,6 +186,17 @@ def raytrace(instr, optic, th, wl, sign):
             nx=121, ny=121, scale=scale, method="no_pixel").array
     fine = fftconvolve(fine, _W["kolm"], mode="same")
     return fine.reshape(NPIX, RT_OS, NPIX, RT_OS).sum((1, 3))
+
+
+def with_screen(optic, j, coef, instr):
+    """Optic with a stop-plane OPD screen of ``coef`` m in annular Noll ``j``."""
+    c = np.zeros(j + 1)
+    c[j] = coef
+    scr = batoid.OPDScreen(batoid.Plane(), batoid.Zernike(
+        c, R_outer=instr.radius, R_inner=instr.radius * instr.obscuration),
+        name="InjScreen", coordSys=optic.stopSurface.coordSys,
+        inMedium=optic.inMedium, outMedium=optic.inMedium)
+    return optic.withInsertedOptic(before="M1", item=scr)
 
 
 def draw(factory, z_ref, th):
@@ -272,6 +295,27 @@ def run_config(cfg):
                 ta[j] += h
                 return fit(fac, refs[fs], idx, th, draw(fac, ta, th))
             out["L"][fs].append(central(fit_inj, delta).tolist())
+
+    # Ray-traced injections: one stop-plane OPD Zernike per Noll 4..78. With
+    # M = dTA per unit injection and F = d(sparse fit) per unit injection,
+    # G = F M^-1 is the fit response to each defocused TA term; G[:, fit] ~ I and
+    # G[:, other] is the ray-traced L.
+    M = np.zeros((len(NOLL_A), len(NOLL_A)))
+    F = {fs: np.zeros((len(idx), len(NOLL_A))) for fs, idx in FIT_SETS.items()}
+    for c, j in enumerate(NOLL_A):
+        tas, fits = {}, {}
+        for h in (delta, -delta):
+            opt = with_screen(fid, j, h, instr)
+            tas[h] = zk_ta(instr, opt, th, wl, sign)[NOLL_A]
+            img = rt_scale * raytrace(instr, opt, th, wl, sign)
+            fits[h] = {fs: fit(fac, refs[fs], idx, th, img) for fs, idx in FIT_SETS.items()}
+        M[:, c] = (tas[delta] - tas[-delta]) / (2 * delta)
+        for fs in FIT_SETS:
+            F[fs][:, c] = (fits[delta][fs] - fits[-delta][fs]) / (2 * delta)
+    Minv = np.linalg.inv(M)
+    out["M_rt"] = M.tolist()
+    out["F_rt"] = {fs: F[fs].tolist() for fs in FIT_SETS}
+    out["G_rt"] = {fs: (F[fs] @ Minv).tolist() for fs in FIT_SETS}
     out["seconds"] = time.time() - t0
     return out
 
