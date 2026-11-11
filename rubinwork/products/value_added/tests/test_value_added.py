@@ -670,3 +670,8 @@ def test_set_current_on_a_nested_snapshot_links_at_the_variant(data_root):
     assert link == variant_dir / "current"
     assert not (variant_dir / "snapshots" / "current").exists()
     assert va_reader.catalog_db_path("v1").resolve() == db.resolve()
+
+
+def test_pneumatic_louvers_period_is_half_open():
+    n = va_reader.pneumatic_louvers_open([20260422, 20260423, 20260614, 20260615, 20261027])
+    assert n.tolist() == [0, 6, 6, 0, 0]

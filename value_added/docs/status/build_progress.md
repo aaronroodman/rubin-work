@@ -244,6 +244,11 @@ None is open after 20261030.
 Snapshot `snapshots/20261105` (md5 `87c8bd37d3ce2f315fc4c8723187bbcf`, 4,871,958,528 B) is
 `current`.
 
+Next build: add `louvers_pneumatic_n_open` [count] to the `louvers` group from
+`reader.pneumatic_louvers_open(day_obs)` (`dome_interventions.yaml`, added 2026-11-11:
+six pneumatic louvers open 20260423 to 20260614, no EFD record). Until then studies call
+the function directly.
+
 ## Mirror LUT zero-fill on a dropped actuator
 
 The forty mirror look-up-table (LUT) degrees of freedom `lut_dof10` to `lut_dof49` have no

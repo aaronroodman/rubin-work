@@ -109,6 +109,13 @@ The digit is the ring: 1 lowest, 3 highest; A and N have no ring 3. Only 12 louv
 working actuators as of 2026-11. Layout:
 <https://github.com/lsst-ts/ts_mtdomecom/blob/develop/doc/images/louvers.png>.
 
+**Pneumatic louvers are not in the EFD.** A separate set has pneumatic control and no
+telemetry, so `louvers_n_open` misses them. Six were open from day_obs 20260423 up to, not
+including, 20260615, giving 12 open louvers in all with the usual motorized six. The
+periods are kept by hand in `rubinwork/products/value_added/dome_interventions.yaml`;
+`reader.pneumatic_louvers_open(day_obs)` returns the count [count] per night, 0 outside
+them. It is not yet a database column.
+
 ### `psf_shape`: ellipticity in the RubinTV Az/El frame
 
 From ConsDB `ccdvisit1_quicklook.psf_ixx/iyy/ixy`, one tensor per science CCD, rotated by

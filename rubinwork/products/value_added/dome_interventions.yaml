@@ -1,0 +1,15 @@
+# Dome state the EFD does not record, kept by hand. Read with
+# reader.pneumatic_louvers_open(day_obs).
+#
+# Each period covers first_day_obs <= day_obs < end_day_obs. Outside every listed period
+# the quantity is taken as 0.
+
+pneumatic_louvers:
+  # Pneumatic louvers have no EFD telemetry. The six motorized louvers
+  # B1,E1,E2,H1,H2,M1 in MTDome.louvers stay open throughout, so the dome had 12 open
+  # louvers in this period and 6 outside it.
+  - first_day_obs: 20260423
+    end_day_obs: 20260615
+    n_open: 6
+    source: "Karla, reported by Aaron Roodman 2026-11-11: opened 2026-04-23, reverted 2026-06-15"
+    # Unconfirmed: whether day_obs 20260615 itself had them open (taken as closed here).

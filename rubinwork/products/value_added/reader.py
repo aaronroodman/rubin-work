@@ -202,6 +202,40 @@ LOUVER_NAMES = ('A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3', 'D1', 'D2', 'D3'
 #: A louver counts as open in ``louvers_n_open`` above this position [percent open].
 LOUVER_OPEN_PCT = 50.0
 
+#: Hand-kept dome state the EFD does not record (pneumatic louvers).
+DOME_INTERVENTIONS_FILE = pathlib.Path(__file__).with_name('dome_interventions.yaml')
+
+
+@functools.lru_cache(maxsize=1)
+def _dome_interventions():
+    import yaml
+
+    with open(DOME_INTERVENTIONS_FILE) as f:
+        return yaml.safe_load(f)
+
+
+def pneumatic_louvers_open(day_obs):
+    """Number of open pneumatic dome louvers, which have no EFD telemetry.
+
+    Parameters
+    ----------
+    day_obs : `int` or array-like of `int`
+        Observing night(s), ``YYYYMMDD``.
+
+    Returns
+    -------
+    n_open : `numpy.ndarray` [`int`]
+        Open pneumatic louvers per entry [count]; 0 outside the periods listed in
+        ``dome_interventions.yaml``. Add to the motorized ``louvers_n_open`` for the
+        total.
+    """
+    day = np.asarray(day_obs, dtype='int64')
+    out = np.zeros(day.shape, dtype='int64')
+    for p in _dome_interventions()['pneumatic_louvers']:
+        inside = (day >= p['first_day_obs']) & (day < p['end_day_obs'])
+        out[inside] = p['n_open']
+    return out
+
 #: Statistics of the ``psf_shape`` group: per-CCD PSF ellipticity from ConsDB, rotated to
 #: the RubinTV Az/El frame (`rubinwork.psf_shape`). Column -> units.
 PSF_SHAPE_COLS = (
