@@ -318,5 +318,24 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
   kmax 91 and 0.19 | 0.14 at kmax 30: extrapolation.
 - dense21 M1M3 and M2 B11-B20 have 0.04-0.07 errors (FAM) and 0.11-0.15 (CWFS): weak
   responses, noise dominated.
-- To predict the CWFS, the FAM grid (outer ring 1.74 deg) should reach the CWFS edge,
-  1.82 deg. Do this when the donuts are regenerated.
+- ts_wep uses CWFS donuts only to field radius 1.725 deg, inside the outermost FAM ring
+  (1.74 deg), so the grid does not need extending.
+
+### 2026-11-11 — CWFS against a single Smatrix (`code/cwfs_compare.py`, run `20261111_cwfs_compare`)
+
+- CWFS points with r <= 1.725 deg (104 of 144). References: the same-side FAM field model
+  (`own`), the side-averaged FAM model (`single`, one Smatrix), and the in-focus rows
+  `A_dense`. Relative error as in the kmax test; FAM model kmax 30.
+- prod, median by DOF group: `single` 0.021-0.035, `own` 0.021-0.037, per-corner
+  average of the SW0 and SW1 half-chips against `single` 0.015-0.032. The side-dependent
+  part at FAM points, |intra - extra| / 2, is 0.008-0.013.
+- A single side-averaged Smatrix does as well as one per side, or better. Camera dx/dy
+  are the exception that shows it: `own` 0.22, `single` 0.044 (prod). The intra and
+  extra FAM responses have field structure near the edge that kmax 30 does not hold,
+  and it cancels in the average.
+- Per-corner averages exceed white noise over about 13 points per half-chip: about
+  0.01-0.05 of the response is systematic at the corners (camera dx/dy 0.049, the rest
+  0.011-0.032 for prod).
+- In-focus rows against the fitted responses (prod): rigid body 0.068, M1M3 B1-B10 0.50,
+  B11-B20 1.8, M2 B1-B10 0.58, B11-B20 0.98. This is the sparse-fit leakage; an Smatrix
+  for sparse fits has to come from the fitted responses, not from the in-focus rows.
