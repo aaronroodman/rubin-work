@@ -108,3 +108,31 @@ check, not a candidate driver. The coherent ellipticity is fixed in Az/El, not i
 camera (mean e1_AzEl about -0.015 at every rotator angle, elongation along elevation),
 which points to image motion: mount jitter, wind shake or tracking. Next input to test:
 guider centroid motion in Az/El from `guider_moments`.
+
+### 2026-11-11 — guider shape and motion; elevation dependence of e1
+
+`code/fetch_guider.py` caches per-visit guider quantities from `guider_moments` v4
+`stars` (`output/cache/guider_per_visit.parquet`): image motion in Az/El (per stamp,
+median over >= 3 stars of `daz` x cos(alt) and `dalt`; drift kept) and the median guider
+stamp shape `e1_altaz`, `e2_altaz`. Only 7 nights have star tables, 20260705 to 20260712
+(20260512 and 20260513 are empty). `code/guider_ellipticity.py` writes
+`output/20261111_guider_ellipticity/guider_ellipticity.pdf` (6 pages); 4,441 science
+visits.
+
+- The guider stamps see the science ellipticity, visit by visit: science mean e1_AzEl
+  against guider e1_altaz Spearman rho -0.745, e2 against e2 -0.550, the same within
+  night (-0.758, -0.550); slope about -1 ([science_vs_guider_e](figures/science_vs_guider_e.png)).
+  The sign flip in both components means summit_utils `altaz` is rotated 90 deg from
+  the psf_shape Az/El frame.
+- Guided image motion does not cause it: motion RMS 0.0883 arcsec, predicted |e| 0.0055
+  against science |mean e| 0.0510 (medians, dimensionless). The ellipticity is in each
+  short guider stamp, so its source acts faster than the 5 Hz guider rate, or is not
+  motion at all.
+- Mean e1_AzEl falls with tan(zenith angle) in every band (88,348-visit sample):
+  median from +0.019 to +0.049 at tan z <= 0.2 down to -0.092 (g), -0.065 (u), -0.034
+  to -0.039 (r, i, z), -0.023 (y) at tan z 1.0 to 1.5. Elongation along elevation away
+  from zenith. g steepest fits differential chromatic refraction, but r, i and z
+  sharing one slope does not: a second, achromatic elevation-dependent term is needed.
+  The positive e1 near zenith (elongation along azimuth) may be azimuth tracking error.
+- Consequence for the driver search: band and zenith angle must be controlled before
+  thermal or airflow inputs are tested against signed ellipticity.
