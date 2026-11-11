@@ -282,3 +282,21 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
   fit (fwhm off by > 0.2 arcsec or cost > 200x nominal) is retried warm-started from the
   nominal fit; the lower cost wins. Warm alone also falls into false minima (dense21 at
   -2 steps: fwhm 2.46 arcsec), so both are needed. Batch: `refit.sbatch`.
+
+### 2026-11-11 — refit (jobs 44309417-44309429), merged responses
+
+- 10 refit jobs, 18-22 min each, 940 configurations per block. Warm retries per fit set
+  (of 188000 images): prod 12, prod_z22 17, dense21 73.
+- 46 fits stay lost after cold and warm starts (fwhm 1.2-6.5 arcsec, nominal 0.96). Not
+  false minima: the wavefront is beyond the fitted terms. Mostly M1M3 B15 (DOF 24) on FAM
+  ring 5, azimuths a14-a21, at ±2 steps (step amplitude about 20-70x the DOF range); a
+  few M1M3 B16 (DOF 25) at ring 5 and M2 B19 (DOF 48) at ring 1.
+- `code/merge_refit.py` drops lost points (fwhm off nominal by > 0.2 arcsec) and fits the
+  rest; `ndrop` records how many. The cost > 200x rule is not used here: the sci_00 B15
+  fits at ±2 steps reach 210-265x with good fwhm.
+- **If the donuts are regenerated** (new batoid model, Danish obscuration): reduce the
+  step for M1M3 B15 and B16 and M2 B19, and check the other high bending modes at FAM
+  ring 5, so the ±2-step fits stay found.
+- Merged run `20261111_responses` (`responses.npz`, all 940 x 50 scans): scans with
+  dropped points prod 4, prod_z22 6, dense21 9 of 47000; 2+ dropped prod 4, prod_z22 3,
+  dense21 4.
