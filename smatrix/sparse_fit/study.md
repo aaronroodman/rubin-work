@@ -339,3 +339,18 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
 - In-focus rows against the fitted responses (prod): rigid body 0.068, M1M3 B1-B10 0.50,
   B11-B20 1.8, M2 B1-B10 0.58, B11-B20 0.98. This is the sparse-fit leakage; an Smatrix
   for sparse fits has to come from the fitted responses, not from the in-focus rows.
+
+### 2026-11-11 — nonlinearity at the DOF range (`code/linearity_range.py`, run `20261111_linearity_range`)
+
+- Quadratic / linear change at the full ts_ofc range = curv x range / (2 step)
+  (dimensionless); scans with dropped points excluded.
+- Bending, prod, median | p99 | max: M1M3 B1-B10 0.007 | 0.053 | 0.12, B11-B20
+  0.001 | 0.003 | 0.004; M2 B1-B10 0.009 | 0.079 | 0.18, B11-B20 0.001 | 0.003 | 0.005.
+  The nonlinear ones are M1M3 B1-B2 (median 0.023, 0.030) and M2 B1-B2 (0.044, 0.035):
+  their range is 3.6-5.3x the +2 step. B3 and up are linear over their range.
+- dense21 bending is about 3x worse (p99 0.04-0.23).
+- Rigid body cannot be judged from these scans. The range is 4.5-400x the +2 step
+  (hexapod stroke, e.g. Cam dz 8700 µm), and the extrapolated fit noise, scatter x
+  range / (2 step), is as large as the extrapolated curvature (M2 dz 2.0 against 5.0,
+  Cam dz 3.2 against 7.7). Judging rigid-body linearity needs scans over the operating
+  offsets (hundreds of µm), not the full stroke.
