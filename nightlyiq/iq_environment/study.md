@@ -49,3 +49,29 @@ science-program cut yet: that needs ConsDB `observation_reason`, down on 2026-11
 - Coverage: no observing 20260715 to 20261025 (snow storm on Cerro Pachón). The build
   predates the late-October nights, so `psf_shape` is empty on 20261026, 20261028 and
   20261031 to 20261103; a later `value_added` build will fill them.
+
+### 2026-11-11 — first correlation pass
+
+`code/fetch_consdb.py` caches ConsDB metadata, temperatures and visit IQ
+(`output/cache/consdb_per_visit.parquet`); `seeing_zenith_500nm_median` is NULL on every
+visit, so `fwhm_z500` is computed here (FWHM x airmass^-0.6 x (lambda_eff / 500 nm)^0.2).
+`code/iq_correlations.py` writes `output/20261111_iq_correlations/iq_correlations.pdf`
+(6 pages) and the Spearman matrices as CSV. Sample: img_type science, the nightly IQ
+report's engineering `observation_reason` pattern excluded, 20260424 seq < 398 dropped;
+88,348 visits, 245 nights. Within night: night medians subtracted, nights with >= 20 visits.
+
+- Medians: PSF FWHM 1.0738 arcsec, AOS FWHM 0.4192 arcsec, donut blur 0.9825 arcsec,
+  |e| p50 0.0728 (dimensionless).
+- Within night every correlation is weak: no |Spearman rho| above 0.19 except elevation.
+  The airmass^-0.6 scaling overcorrects: within night, elevation against raw FWHM
+  gives rho -0.36 and against fwhm_z500 +0.13.
+- Top-ring sonic axis 2, within night, against fwhm_z500 (rho): 123 -0.18, 124 -0.04,
+  125 +0.13, 126 -0.04 (n about 49,000). More flow down the tube goes with smaller FWHM
+  at 123 ([iq_vs_sonic_axis2](figures/iq_vs_sonic_axis2.png)); the sign differs by
+  sensor, as the wind pattern in `airflow/airflow_correlations` does. The axis-2 RMS and
+  cross-axis speed at 124 give -0.17. Wind and seeing are not yet separated.
+- Intra - extra blur: within night, rho -0.12 against fwhm_z500, -0.15 against donut
+  blur and +0.07 against AOS FWHM. Over all visits it is larger (-0.42 against donut
+  blur, +0.39 against |e| p90), so most of it is between-night.
+- Ellipticity has no input above |rho| 0.13 within night; over all visits it follows
+  the temperatures (|e| p90 against outside temperature +0.37), a seasonal pattern.
