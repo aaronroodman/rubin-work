@@ -64,6 +64,7 @@ NPIX = 81                        # binned stamp; 1.5 mm defocus donut is ~61 px 
 FWHM_TRUE = 1.0                  # arcsec
 FLUX = 1e5
 POLISH_NFEV = 20                 # second least_squares pass, numerical Jacobian
+FIVE_K = (-2, -1, 1, 2)          # five-point mode: steps besides the nominal
 DZ_TARGET_UM = 0.01              # RMS in-focus Noll 4..78 change per DOF step or injection;
                                  # at 0.05 the corner fits are already nonlinear
 
@@ -140,8 +141,10 @@ _W = {}
 
 
 def _init(dofs, opts=None):
-    global FIT_SETS
+    global FIT_SETS, POLISH_NFEV
     opts = opts or {}
+    if not opts.get("polish", False):
+        POLISH_NFEV = 0
     if opts.get("fit_sets"):
         FIT_SETS = {k: FIT_SETS[k] for k in opts["fit_sets"]}
     _W["opts"] = opts
@@ -265,14 +268,14 @@ def fit(factory, z_ref_fit, fit_idx, th, img):
                        bkg=[], z_fit=[0.0] * len(fit_idx))
     r = least_squares(m.chi, jac=m.jac, x0=x0, args=(img, 1.0),
                       ftol=1e-12, xtol=1e-12, gtol=1e-12)
-    # Danish's analytic Jacobian is approximate (0.1-5% per parameter); with the
-    # model-mismatch residual of a noise-free donut the first pass stops where the
-    # approximate gradient vanishes, ~1e-3 µm from the minimum. A second pass with a
-    # finite-difference Jacobian and explicit scaling finishes the fit.
+    # Optional second pass with a finite-difference Jacobian: Danish's analytic one is
+    # approximate (0.1-5% per parameter), but on R44_SW0 the pass changed no slope,
+    # curvature or scatter at the 1e-3 level and costs 46% more time.
     scale = np.array(m.pack_params(flux=FLUX, dx=1.0, dy=1.0, fwhm=1.0, bkg=[],
                                    z_fit=[1e-8] * len(fit_idx)), float)
-    r = least_squares(m.chi, x0=r.x, jac="3-point", x_scale=scale, args=(img, 1.0),
-                      ftol=1e-15, xtol=1e-15, gtol=1e-15, max_nfev=POLISH_NFEV)
+    if POLISH_NFEV:
+        r = least_squares(m.chi, x0=r.x, jac="3-point", x_scale=scale, args=(img, 1.0),
+                          ftol=1e-15, xtol=1e-15, gtol=1e-15, max_nfev=POLISH_NFEV)
     x = r.x
     return np.array(m.unpack_params(x)["z_fit"])
 
@@ -280,8 +283,9 @@ def fit(factory, z_ref_fit, fit_idx, th, img):
 def save_images(directory, out, saved, rt_scale, instr):
     """Ray-traced donuts of one configuration as multi-HDU FITS.
 
-    HDUs: NOMINAL (npix, npix); PLUS and MINUS (ndof, npix, npix), the donuts at
-    +step and -step of DOF ``DOFS['idof']``; DOFS table (idof, step in µm or deg).
+    HDUs: NOMINAL (npix, npix); in five-point mode STEPS (ndof, 4, npix, npix), the
+    donuts at k x step for k in header STEPS_K, otherwise PLUS and MINUS (ndof, npix,
+    npix) at +step and -step; DOFS table (idof, step in µm or deg) for axis 0.
     Images are noise-free, in counts with total flux matching the Danish model.
     """
     from astropy.io import fits
@@ -302,10 +306,16 @@ def save_images(directory, out, saved, rt_scale, instr):
             ("RT_NX", RT_NX, "pupil ray grid"),
             ("RT_OS", RT_OS, "deposit oversampling")):
         hdr[key] = (val, com)
+    if saved["cube"]:
+        hdr["STEPS_K"] = (" ".join(str(k) for k in FIVE_K), "STEPS axis 1: multiples of step")
     hdus = [fits.PrimaryHDU(header=hdr),
-            fits.ImageHDU(np.asarray(saved["nominal"], np.float32), name="NOMINAL"),
-            fits.ImageHDU(np.asarray(saved["plus"], np.float32), name="PLUS"),
-            fits.ImageHDU(np.asarray(saved["minus"], np.float32), name="MINUS"),
+            fits.ImageHDU(np.asarray(saved["nominal"], np.float32), name="NOMINAL")]
+    if saved["cube"]:
+        hdus.append(fits.ImageHDU(np.asarray(saved["cube"], np.float32), name="STEPS"))
+    else:
+        hdus += [fits.ImageHDU(np.asarray(saved["plus"], np.float32), name="PLUS"),
+                 fits.ImageHDU(np.asarray(saved["minus"], np.float32), name="MINUS")]
+    hdus += [
             fits.BinTableHDU.from_columns([
                 fits.Column(name="idof", format="J", array=np.array(out["dofs"])),
                 fits.Column(name="step", format="D", array=np.array(out["steps"]))],
@@ -344,7 +354,7 @@ def run_config(cfg):
     }
     truths = {k: v for k, v in truths.items() if k in _W["opts"].get("truths", truths)}
     fit0_truth = {}
-    saved = {"nominal": None, "plus": [], "minus": []}
+    saved = {"nominal": None, "plus": [], "minus": [], "cube": []}
     for tr, mk in truths.items():
         img = img_ta0 if tr == "ta" else mk(fid)
         if tr == "rt":
@@ -362,6 +372,8 @@ def run_config(cfg):
                A_direct_opd={fs: [] for fs in FIT_SETS},
                A_direct_rt={fs: [] for fs in FIT_SETS},
                A_direct_rt_2x={fs: [] for fs in FIT_SETS},
+               rt_quad={fs: [] for fs in FIT_SETS}, rt_curv={fs: [] for fs in FIT_SETS},
+               rt_scatter={fs: [] for fs in FIT_SETS},
                L={fs: [] for fs in FIT_SETS}, L_cols={})
 
     def central(f, h):
@@ -371,12 +383,33 @@ def run_config(cfg):
     for d in _W["dofs"]:
         unit = 1e-3 if d in cs.ANGLE_DOF else 1.0
         s1 = (zk_infocus(_optic(d, unit), th, wl) - zf0)[NOLL_A] / unit
-        step = unit * DZ_TARGET_UM * 1e-6 / max(np.sqrt(np.mean(s1 ** 2)) * unit, 1e-15)
+        step = (_W["opts"].get("step_mult", 1.0) * unit * DZ_TARGET_UM * 1e-6
+                / max(np.sqrt(np.mean(s1 ** 2)) * unit, 1e-15))
         tas = {h: zk_ta(instr, _optic(d, h), th, wl, sign) for h in (step, -step)}
+        five = _W["opts"].get("five_point") and "rt" in truths
         imgs = {tr: {h: (draw(fac, tas[h], th) if tr == "ta" else mk(_optic(d, h)))
-                     for h in (step, -step)} for tr, mk in truths.items()}
+                     for h in (step, -step)}
+                for tr, mk in truths.items() if not (five and tr == "rt")}
         out["steps"].append(step)
-        if "rt" in truths:
+        if five:
+            # Ray-traced fits at k = -2..2 steps; slope and curvature from a quadratic in h.
+            rt_imgs = {k: truths["rt"](_optic(d, k * step)) for k in FIVE_K}
+            saved["cube"].append([rt_imgs[k] for k in FIVE_K])
+            hk = np.array([0.0] + [k * step for k in FIVE_K])
+            V = np.vander(hk, 3)
+            for fs, idx in FIT_SETS.items():
+                f = np.array([fit0_truth["rt"][fs]]
+                             + [fit(fac, refs[fs], idx, th, rt_imgs[k]) for k in FIVE_K]) * 1e6
+                c, *_ = np.linalg.lstsq(V, f, rcond=None)
+                lin = np.linalg.norm(c[1]) * 2 * step
+                out["A_direct_rt"][fs].append(c[1].tolist())
+                out["rt_quad"][fs].append(c[0].tolist())
+                out["rt_curv"][fs].append(float(np.linalg.norm(c[0]) * (2 * step) ** 2 / lin))
+                out["rt_scatter"][fs].append(float(
+                    np.sqrt(np.mean(np.sum((f - V @ c) ** 2, 1))) / lin))
+            for k in FIVE_K:
+                _W["optics"].pop((d, k * step), None)
+        elif "rt" in truths:
             saved["plus"].append(imgs["rt"][step])
             saved["minus"].append(imgs["rt"][-step])
         out["A_dense"].append((central(lambda h: zk_infocus(_optic(d, h), th, wl), step)
@@ -385,12 +418,12 @@ def run_config(cfg):
         out["dOPD"].append((central(lambda h: zk_defocus_opd(instr, _optic(d, h), th, wl,
                                                              sign), step)[NOLL_A] * 1e6).tolist())
         for tr, key in (("ta", "A_direct"), ("opd", "A_direct_opd"), ("rt", "A_direct_rt")):
-            if tr not in truths:
+            if tr not in imgs:
                 continue
             for fs, idx in FIT_SETS.items():
                 out[key][fs].append((central(
                     lambda h: fit(fac, refs[fs], idx, th, imgs[tr][h]), step) * 1e6).tolist())
-        if _W["opts"].get("step_check") and "rt" in truths:
+        if _W["opts"].get("step_check") and "rt" in imgs:
             # Same response at twice the step: separates fit noise from nonlinearity.
             im2 = {h: truths["rt"](_optic(d, h)) for h in (2 * step, -2 * step)}
             for fs, idx in FIT_SETS.items():
@@ -454,9 +487,15 @@ def main():
     p.add_argument("--step-check", action="store_true", help="also rt fits at 2x step")
     p.add_argument("--config-set", default="check", choices=["check", "fam", "cwfs", "all"])
     p.add_argument("--save-images", action="store_true", help="write ray-traced donuts")
+    p.add_argument("--five-point", action="store_true",
+                   help="ray-traced fits at -2..2 steps, slope from a quadratic")
+    p.add_argument("--step-mult", type=float, default=1.0, help="step multiplier")
+    p.add_argument("--polish", action="store_true",
+                   help="second fit pass with a numerical Jacobian (no measurable gain)")
     args = p.parse_args()
     opts = dict(fit_sets=args.fit_sets, leakage=not args.no_leakage,
-                step_check=args.step_check)
+                step_check=args.step_check, five_point=args.five_point,
+                step_mult=args.step_mult, polish=args.polish)
     if args.truths:
         opts["truths"] = args.truths
 
