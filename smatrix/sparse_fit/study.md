@@ -35,6 +35,25 @@ Open: piece 3, a sparse Smatrix from these responses and a rebuilt sparse MIW. W
 
 ## Log
 
+### 2026-11-11 — DOF sign fix (M2/Cam dy, Ry) and validation PDF, 50-DOF gallery
+
+**DOF sign error found and fixed.** Against the ts_ofc v13 Smatrix, M2 dy, M2 Ry, Cam dy and Cam Ry had Smatrix columns of the opposite sign and equal magnitude: cosine -1.000, magnitude ratio 0.99-1.00 (dimensionless). All other DOF had positive cosines.
+
+The cause is documented in `smatrix/docs/conventions.md`: batoid_rubin ZCS and the v13 matrix differ by a sign on those four DOF. `rubinwork.smatrix.compute_smatrix` negates them (`OFC_Y_SIGN_FLIP`). This study built its optics with the same ZCS builder in `donut_leakage._optic` but did not apply the flip.
+
+The fix (`9fcced4`) needs no regeneration, because the scans are symmetric (k = -2, -1, +1, +2):
+- `_optic` now takes amplitudes in the ts_ofc convention, and new donut files carry `DOFSIGN = 'OFC'`.
+- Readers negate the amplitudes of files without that key (`refit_images`, `merge_refit`, `dz_scan`).
+
+Rerun as `20261111_responses_ofcsign` and `20261111_dz_scan_ofcsign`. Rigid-body columns against v13 now have cosine 0.9998-0.9999 for dense21 and 0.971-1.000 for prod (dimensionless). The kmax, CWFS and linearity results use norms only and are unchanged. `20261111_responses`, `20261111_dz_scan` and `20261111_validation` are superseded.
+
+Validation PDF `20261111_validation_ofcsign/sparse_fit_validation.pdf`, 100 pages:
+- Gallery: 50 pages, one per DOF. Each shows the donut at +2 and -2 steps and their difference, and per fit set the model and data - model at both signs. The field point is the FAM ring-4 point (field radius 1.058 deg) with the largest sum of squares of image(+2) - image(-2).
+- Non-linear terms, now ranked two ways, each with the quadratic at 5 sigma:
+  - The term's own quadratic / linear change at +2 steps, with no slope cut. The earlier 0.1-of-largest slope cut is why M2 dz and Cam dz DZ(6, Z6) (slope 0.006 of the DOF's largest, quad / lin 0.48) were missed. Without it, the top terms are small DZ that respond mostly quadratically: quad / lin 2.7-5.0 (dimensionless), quadratic change 0.002-0.004 µm at +2 steps. Examples: M2 B5 and M1M3 B3 DZ(27, Z5), M2 dz and Cam dz DZ(27, Z5) and DZ(12, Z6). Their v13 slopes are near zero.
+  - Impact: the quadratic change over the DOF's total linear DZ change at the v13 range. Led by Cam dz and M2 dz DZ(12, Z6), DZ(6, Z6) and DZ(27, Z5) at 1-4.5 (dimensionless). This is extrapolated by the quadratic over 260-400x the +2 step, so it is not a measurement. Rigid-body scans at operating offsets are needed.
+- SVD: v-modes numbered from 1, with guide lines every 10 modes.
+
 ### 2026-11-11 — validation PDF revised: v13 slopes, non-linear terms, k 1-6 maps
 
 Validation PDF revised (`20261111_validation`, now 56 pages):
