@@ -46,5 +46,6 @@ science-program cut yet: that needs ConsDB `observation_reason`, down on 2026-11
   ratio carry the information.
 - Mean e1 (Az/El) sits at about −0.015 to −0.02 (dimensionless), flat against rotator
   angle, so the coherent part is telescope-fixed, not camera-fixed.
-- Coverage: `visit_telemetry` has no rows for 20260715 to 20261025, and `psf_shape` is
-  empty on 20261026, 20261028 and 20261031 to 20261103.
+- Coverage: no observing 20260715 to 20261025 (snow storm on Cerro Pachón). The build
+  predates the late-October nights, so `psf_shape` is empty on 20261026, 20261028 and
+  20261031 to 20261103; a later `value_added` build will fill them.
