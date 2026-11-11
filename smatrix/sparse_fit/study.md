@@ -35,6 +35,18 @@ Open: piece 3, a sparse Smatrix from these responses and a rebuilt sparse MIW. W
 
 ## Log
 
+### 2026-11-11 — validation PDF revised: v13 slopes, non-linear terms, k 1-6 maps
+
+Validation PDF revised (`20261111_validation`, now 56 pages):
+
+- dense21 DZ pages: added the ts_ofc v13 in-focus slope (green dotted), with the ratio Danish / v13 in each title.
+- Per fit set, two pages of the 10 most non-linear DZ terms. Each term has a quadratic significant at 5 sigma and a slope at least 0.1 of its DOF's largest. One page ranks them by quadratic / linear change at +2 steps (measured), the other at the v13 DOF range (extrapolated by the quadratic).
+  - At +2 steps the top terms are high bending modes, at 0.03-0.10 (dimensionless; prod: M1M3 B12, M2 B18; dense21: M2 B16, M1M3 B20).
+  - Their range is about 27x below the +2 step (M1M3 B12), so at range they fall to 0.001-0.003.
+  - At range only M2 dz and Cam dz DZ(1, Z4) matter: 0.12-0.19 for prod_z22 and dense21. For prod they are 0.08-0.13 at 4.2-4.4 sigma, below the cut.
+  - B1-B2 quadratics in DZ are not significant (-0.6 to 0.2 sigma; at range below 0.001). The per-point 0.02-0.04 for B1-B2 in the range-scaled linearity entry is probably noise inflating a vector norm.
+- SVD: Vh, U, S N and the v13 overlap each on their own page. U and S N show field k 1-6 only, with one row per DZ(j, k).
+
 ### 2026-11-11 — validation PDF: donut gallery, DZ vs DOF, v-mode SVD
 
 Validation PDF `20261111_validation/sparse_fit_validation.pdf`, 41 pages: process summary; six-donut gallery; DZ against DOF amplitude; v-mode SVD. Scripts `dz_scan.py` (run `20261111_dz_scan`, per-point FAM scan Zernikes, lost fits NaN) and `validation_pdf.py`.
