@@ -229,6 +229,15 @@ each). 72 nights return no rows because ConsDB has no `ccdvisit1` rows for them,
 20250626, 20260429, 20260620, 20261026 and 20261028 to 20261103; rerun those once ConsDB
 fills them. 20250705 hit a ConsDB 504 in batch and returned 0 rows on a local rerun.
 
+ConsDB schema migrations after the 2026 shutdown (RSO-860, SSW-1777, SSW-2179, SSW-3007,
+SSW-3100) need no code change here. The renamed PSF columns (`coma_1` to `psf_coma_1`
+and so on) and the dropped `ccdvisit1_quicklook.s_ra`/`s_dec` are not read. SSW-3007 limits
+the `visit1` and `ccdvisit1` views to `can_see_sky` true, and `fetch_psf_shape` joins
+both, so a rebuild loses the science visits with `can_see_sky` false or null: 211 of
+104,520 (dimensionless count) in `visit1` on 2026-11-11. The `optical_state` spine reads
+`exposure` and is unaffected. RSO-860 adds higher-order PSF moments (`psf_`-prefixed) to
+the LSSTCam quicklook tables, a possible `psf_shape` extension.
+
 Snapshot `snapshots/20261104` (md5 `8ddc62a4a7ee62d3c7fb3552c05f3680`) holds both groups.
 It is superseded by `snapshots/20261104b` (below).
 
