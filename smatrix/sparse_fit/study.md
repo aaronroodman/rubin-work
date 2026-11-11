@@ -251,3 +251,15 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
 - Cost about 28 s per DOF per configuration on one CPU: about 370 CPU-hours for 50 DOF.
   `bruteforce.sbatch`: one job per 5-DOF block, 48 CPUs, Danish 1.4.0 from
   `/sdf/group/rubin/u/roodman/LSST/packages/danish_1.4.0`.
+
+### 2026-11-10 — scan amplitude against DOF range
+
+- \|+2 step / range\| (dimensionless; batch-run +2 step over the ts_ofc v13 range: hexapod
+  stroke for rigid body, (force range / 20) / peak force per µm for bending, IM basis):
+  rigid body 0.0025–0.20 (Cam dx/dy the largest); M1M3 B1–B2 0.28, B3–B11 1.9–10.8,
+  B12–B20 16–77; M2 B1–B2 0.19, B3–B13 1.3–12.5, B14–B20 23–111.
+- The dense21 nonlinearity is at unreachable amplitudes. Curvature scales with amplitude;
+  at the range B14 is 0.016 and M2 B17 0.018 (quadratic over linear, dimensionless).
+- Steps tied to the range would leave B12+ under the 1e-3 µm fit noise. Decision: keep
+  the wavefront-based steps; report linearity scaled to the range,
+  curvature × range / (+2 step).
