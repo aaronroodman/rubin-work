@@ -170,3 +170,42 @@ Z4-Z6 deviation (OCS) and AOS FWHM.
   highest), so most of the change is visit to visit.
 - Next: does focus error explain the achromatic part of the e1 trend with zenith angle
   (gravity-driven focus the LUT misses)? Fit e1 on corner Z4 and tan z together.
+
+### 2026-11-11 — focus against zenith angle
+
+`code/focus_zenith.py` writes `output/20261111_focus_zenith/focus_zenith.pdf` and
+`focus_zenith.csv`: per band, Huber e1_AzEl ~ 1 + tan z + tan^2 z with and without the
+corner Z4 deviation, on the same 59,209 visits.
+
+- Focus does not carry the zenith-angle trend. Corner Z4 changes by -0.064 to +0.012 um
+  of wavefront from zenith to tan z = 1 in g to y (+0.215 um in u), and adding Z4 leaves
+  the modelled e1 change at tan z = 1 in place: r -0.075 to -0.078, i -0.071 to -0.078,
+  z -0.074 to -0.073 (dimensionless). Focus and zenith angle are separate contributors.
+- The achromatic part is about -0.075 in e1 at tan z = 1 (r to y); g (-0.132) and u
+  (-0.149) are steeper, as DCR would add. Its source is open.
+
+### 2026-11-11 — pointing into the wind
+
+`code/wind_pointing.py` writes `output/20261111_wind_pointing/wind_pointing.pdf`
+(6 pages) and `into_wind_fits.csv`. into = |pointing azimuth - wind direction| < 45 deg,
+cross 45-135 deg, down wind > 135 deg the baseline. Huber q ~ into + cross + wind speed +
+airmass, per weather-tower wind-speed tercile (0-3.5, 3.5-6.6, 6.6-20.6 m/s), then with
+the four sonic axis-2 and |axis-2| flows added, on the 47,385 visits with every top-ring
+sonic. Over all visits and within night.
+
+- Reproduced: pointing into the wind gives a smaller FWHM, and only in wind. Into minus
+  down wind, fwhm_z500: -0.1451 +/- 0.0047 arcsec in the top tercile and -0.0942 +/-
+  0.0025 over all speeds (n 47,385); within night -0.0914 and -0.0661 arcsec. Below
+  3.5 m/s it vanishes. In the top tercile the median is 1.00 arcsec into the wind and
+  about 1.15 arcsec from 80 deg onward ([iq_vs_pointing_into_wind](figures/iq_vs_pointing_into_wind.png)).
+- It is not optics: donut blur moves the same way (-0.1090 arcsec, all visits) and AOS
+  FWHM does not (-0.0009 +/- 0.0009 arcsec). So it is seeing in or near the dome.
+- The axis-2 flow carries only part of it. Within night, adding the sonic flows cuts
+  the into-wind FWHM term by 24 to 31 % (fwhm_z500 -0.0661 to -0.0456 arcsec); over all
+  visits the change is mixed (+16 % overall, -16 % in the top tercile). No sonic's
+  axis-2 flow peaks when pointing into the wind: sonic 123 is largest across the wind
+  (about 0.9 m/s at 100 deg in the top tercile) and sonic 125 is negative into the wind.
+- Ellipticity barely moves: into minus down wind, e2_AzEl residual -0.0102 (all visits,
+  -0.0140 in the top tercile), |e| p90 residual +0.0096, e1 residual +0.0001
+  (dimensionless). Corner Z4 shifts by +0.024 um into the wind, worth about -0.003 in e1
+  at -0.13 per um.
