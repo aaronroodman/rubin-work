@@ -300,3 +300,23 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
 - Merged run `20261111_responses` (`responses.npz`, all 940 x 50 scans): scans with
   dropped points prod 4, prod_z22 6, dense21 9 of 47000; 2+ dropped prod 4, prod_z22 3,
   dense21 4.
+
+### 2026-11-11 — field model kmax test (`code/kmax_test.py`, run `20261111_kmax_test`)
+
+- Per fit set and side, the responses are fit over the FAM points with field Zernikes
+  1..kmax (R_outer 1.75 deg) and predicted at held-out points. Relative error =
+  |pred - true| / RMS over FAM of |true| (dimensionless, norm over fitted terms).
+- prod, median over DOF groups: FAM 5-fold by spoke 0.016-0.023 at kmax 30 and
+  0.011-0.017 at kmax 91; science points 0.006-0.016. The in-sample residual, scaled by
+  sqrt(n / (n - kmax)), is about the same (0.009-0.021), so the floor is white slope
+  noise, not missing field terms. kmax above 30 gains little except for camera dx/dy
+  and M1M3 B15/B16/B20.
+- CWFS points against FAM cross-validation at the same radius (prod, kmax 91, rigid
+  body | bending): r 1.5-1.65 deg 0.030 | 0.029, r 1.65-1.75 deg 0.031 | 0.032, FAM
+  1.6-1.75 deg 0.034 | 0.028. Detector shift against camera shift adds nothing visible.
+  Beyond the outermost FAM ring (r 1.75-1.83 deg, 24 points) the error is 0.11 | 0.13 at
+  kmax 91 and 0.19 | 0.14 at kmax 30: extrapolation.
+- dense21 M1M3 and M2 B11-B20 have 0.04-0.07 errors (FAM) and 0.11-0.15 (CWFS): weak
+  responses, noise dominated.
+- To predict the CWFS, the FAM grid (outer ring 1.74 deg) should reach the CWFS edge,
+  1.82 deg. Do this when the donuts are regenerated.
