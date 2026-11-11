@@ -97,3 +97,14 @@ ignore the correlation of visits within a night, so they are too small.
   -0.2045 +/- 0.0052 arcsec per arcsec (n 55,580). The control raises it within night.
 - AOS FWHM over all visits falls with sonic 124 axis-2 RMS (partial -0.142) and 123
   axis 2 (partial -0.137); within night these are below |rho| 0.1.
+
+### 2026-11-11 — note: ellipticity is not primarily optical
+
+From `optatmo/psf_vs_cwfs` (Aaron): an S-matrix optical model fitted to the focal-plane
+moments reproduces the ellipticity, third-moment and FWHM patterns, but its wavefront
+agrees with the donut (CWFS) wavefront only in Z4. So the ellipticity likely comes from
+elsewhere. The corner Z5 and Z6 inputs in `ellipticity_drivers.py` are therefore a null
+check, not a candidate driver. The coherent ellipticity is fixed in Az/El, not in the
+camera (mean e1_AzEl about -0.015 at every rotator angle, elongation along elevation),
+which points to image motion: mount jitter, wind shake or tracking. Next input to test:
+guider centroid motion in Az/El from `guider_moments`.
