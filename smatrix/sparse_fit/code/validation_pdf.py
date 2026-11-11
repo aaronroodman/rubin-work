@@ -28,15 +28,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.colors import SymLogNorm
 
 import donut_leakage as dl
-from kmax_test import basis, predict
+from kmax_test import basis, dof_range
 from refit_images import FWHM_TOL, OUT_ROOT, _one, _setup
 from rubinwork import aos_state
 from rubinwork.common import study_run
 
 KMAX = 30
+KSHOW = 6                        # field terms shown in the SVD matrix pages
 FIT_SETS = ("prod", "prod_z22", "dense21")
 RB = ["M2 dz", "M2 dx", "M2 dy", "M2 rx", "M2 ry", "Cam dz", "Cam dx", "Cam dy",
       "Cam rx", "Cam ry"]
@@ -184,7 +184,80 @@ def dz_ratios(S, val, mstep, k, noll):
                      for i in range(50) for kf, jz in sl_t[i][1]])
 
 
-def dz_pages(pdf, S, val, err, mstep, k, noll, fs):
+def quad_fit(y, e, h):
+    """Weighted fit y = a h + b h^2 through the nominal (k = 0, exactly zero).
+
+    Returns a, b, sigma_b (µm per DOF unit, per DOF unit squared)."""
+    ok = np.isfinite(y) & (h != 0)
+    if ok.sum() < 3:
+        return np.nan, np.nan, np.nan
+    X = np.c_[h[ok], h[ok] ** 2] / e[ok, None]
+    c, *_ = np.linalg.lstsq(X, y[ok] / e[ok], rcond=None)
+    return c[0], c[1], np.sqrt(np.linalg.inv(X.T @ X)[1, 1])
+
+
+def nonlinear_terms(S, val, err, mstep, k, noll, n=10, nsig=5.0, rel=0.1, rng=None):
+    """Leading non-linear DZ terms: quadratic significant at ``nsig`` sigma, slope at
+    least ``rel`` of the DOF's largest; ranked by quadratic / linear change at +2 steps,
+    or with ``rng`` (DOF units) at the DOF range. Returns (ratio, DOF, field index,
+    pupil index) tuples."""
+    h = k[:, None] * mstep[None, :]
+    cand = []
+    for i in range(50):
+        sl = np.abs(S[1:, noll, i])
+        for kf, jz in zip(*np.nonzero(sl >= rel * sl.max())):
+            a, b, sb = quad_fit(val[:, i, kf, jz], err[:, i, kf, jz], h[:, i])
+            if np.isfinite(sb) and abs(b) > nsig * sb:
+                x = h[-1, i] if rng is None else rng[i]
+                cand.append((abs(b) * x / abs(a), i, kf, jz))
+    return sorted(cand, reverse=True)[:n]
+
+
+def _dz_panel(ax, i, kf, jz, S, val, err, h, noll, ref, rng=None):
+    sl = S[1:, noll, i]
+    y, e = val[:, i, kf, jz], err[:, i, kf, jz]
+    ax.errorbar(h[:, i], y, e, fmt="o", ms=3, c="C0")
+    hh = np.linspace(h[0, i], h[-1, i], 50)
+    ax.plot(hh, sl[kf, jz] * hh, "k-", lw=0.8)
+    q, ratio = quad_ratio(y, h[:, i])
+    ax.plot(hh, np.polyval(q, hh), "C1--", lw=0.8)
+    title = (f"{DOF_NAMES[i]}: DZ(field {kf + 1}, Z{noll[jz]})\nslope {sl[kf, jz]:.3g} "
+             f"µm / {DOF_UNIT[i]}; quad / lin {ratio:.3f}")
+    if ref is not None:
+        r = ref[kf + 1, noll[jz], i]
+        ax.plot(hh, r * hh, "C2:", lw=1.2)
+        title += f"\nv13 slope {r:.3g} (ratio Danish / v13 {sl[kf, jz] / r:.2f})"
+    if rng is not None:
+        a, b, _ = quad_fit(y, e, h[:, i])
+        title += (f"\nquad change at +2 steps {abs(b) * h[-1, i] ** 2:.2g} µm; quad / lin "
+                  f"at range {abs(b / a) * rng[i]:.3g}")
+    ax.set_title(title, fontsize=6)
+    ax.tick_params(labelsize=6)
+
+
+def nonlinear_page(pdf, S, val, err, mstep, k, noll, fs, ref, rng, at_range=False):
+    h = k[:, None] * mstep[None, :]
+    terms = nonlinear_terms(S, val, err, mstep, k, noll, rng=rng if at_range else None)
+    where = "at the ts_ofc v13 DOF range (extrapolated by the quadratic)" if at_range \
+        else "at +2 steps (measured)"
+    fig, axs = plt.subplots(5, 2, figsize=(8.5, 11))
+    for ax, (_, i, kf, jz) in zip(axs.ravel(), terms):
+        _dz_panel(ax, i, kf, jz, S, val, err, h, noll, ref, rng)
+        ax.set_xlabel(f"DOF amplitude ({DOF_UNIT[i]})", fontsize=6)
+        ax.set_ylabel("DZ change (µm)", fontsize=6)
+    fig.suptitle(textwrap.fill(
+        f"{fs}: the 10 most non-linear DZ terms, ranked by quadratic over linear change "
+        f"{where} (dimensionless). Quadratic significant at 5 sigma, slope at least 0.1 "
+        "of the DOF's largest. 'at range': the ratio at the v13 DOF range"
+        + ("; green dotted: v13 in-focus slope" if ref is not None else ""), 105),
+        fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    pdf.savefig(fig)
+    plt.close(fig)
+    return terms
+
+
+def dz_pages(pdf, S, val, err, mstep, k, noll, fs, ref=None):
     h = k[:, None] * mstep[None, :]
     for p0 in range(0, 50, 5):
         fig, axs = plt.subplots(5, 4, figsize=(10, 11))
@@ -192,24 +265,18 @@ def dz_pages(pdf, S, val, err, mstep, k, noll, fs):
             sl, top = top4(S, noll, i)
             for c, (kf, jz) in enumerate(top):
                 ax = axs[r, c]
-                y, e = val[:, i, kf, jz], err[:, i, kf, jz]
-                ax.errorbar(h[:, i], y, e, fmt="o", ms=3, c="C0")
-                hh = np.linspace(h[0, i], h[-1, i], 50)
-                ax.plot(hh, sl[kf, jz] * hh, "k-", lw=0.8)
-                q, ratio = quad_ratio(y, h[:, i])
-                ax.plot(hh, np.polyval(q, hh), "C1--", lw=0.8)
-                ax.set_title(f"{DOF_NAMES[i]}: DZ(field {kf + 1}, Z{noll[jz]})\n"
-                             f"slope {sl[kf, jz]:.3g} µm / {DOF_UNIT[i]}; quad / lin "
-                             f"{ratio:.3f}", fontsize=6.5)
-                ax.tick_params(labelsize=6)
+                _dz_panel(ax, i, kf, jz, S, val, err, h, noll, ref)
                 if r == 4 or i == 49:
                     ax.set_xlabel(f"DOF amplitude ({DOF_UNIT[i]})", fontsize=6)
                 if c == 0:
                     ax.set_ylabel("DZ change (µm)", fontsize=6)
         fig.suptitle(f"{fs}: DZ change against DOF amplitude, four largest DZ slopes per "
                      f"DOF. Points: FAM field fit (kmax {KMAX}) at k = -2..+2 steps; "
-                     "solid: Smatrix slope; dashed: quadratic.\nquad / lin: quadratic "
-                     "over linear change at +2 steps (dimensionless)", fontsize=7.5)
+                     "solid: Smatrix slope; dashed: quadratic"
+                     + (";\ngreen dotted: ts_ofc v13 in-focus (OPD) Smatrix slope" if ref
+                        is not None else "")
+                     + ".\nquad / lin: quadratic over linear change at +2 steps "
+                     "(dimensionless)", fontsize=7.5)
         fig.tight_layout(rect=(0, 0, 1, 0.96))
         pdf.savefig(fig)
         plt.close(fig)
@@ -224,9 +291,9 @@ def svd(S_full, n_modes=50):
     return se
 
 
-def _rows(noll):
-    """Flattened (31 x 29) row indices for field 1..KMAX, pupil noll; j-major order."""
-    return np.array([kf * 29 + j for j in noll for kf in range(1, KMAX + 1)])
+def _rows(noll, kmax=KMAX):
+    """Flattened (31 x 29) row indices for field 1..kmax, pupil noll; j-major order."""
+    return np.array([kf * 29 + j for j in noll for kf in range(1, kmax + 1)])
 
 
 def svd_all(mats, nolls):
@@ -258,54 +325,52 @@ def svd_pages(pdf, ses, refs, se_full, nolls):
     plt.close(fig)
     for fs in FIT_SETS:
         se, rf = ses[fs], refs[fs]
-        rows = _rows(nolls[fs])
+        rows = _rows(nolls[fs], KSHOW)
+        lab = [f"Z{j} k{kf}" for j in nolls[fs] for kf in range(1, KSHOW + 1)]
         A = (se.ofc_data.sensitivity_matrix.reshape(-1, 50) @ se.normalization_matrix)[rows]
-        fig, axs = plt.subplots(2, 2, figsize=(11, 10))
-
-        def img(ax, a, title, xl, yl, sym=True, log=None):
-            lim = np.abs(a).max()
-            if log:
-                kw = dict(norm=SymLogNorm(log * lim, vmin=-lim, vmax=lim), cmap="RdBu_r")
-                title += f"\nsymmetric log scale, linear within +-{log * lim:.2g}"
-            else:
-                kw = dict(cmap="RdBu_r" if sym else "viridis",
-                          vmin=-lim if sym else 0, vmax=lim)
-            im = ax.imshow(a, aspect="auto", origin="lower", interpolation="nearest", **kw)
-            ax.set(title=title, xlabel=xl, ylabel=yl)
-            ax.title.set_fontsize(8)
-            fig.colorbar(im, ax=ax, fraction=0.046)
-            return ax
-
-        def dofaxis(ax, which):
-            for x in (9.5, 29.5):
-                (ax.axhline if which == "y" else ax.axvline)(x, c="k", lw=0.5)
-
-        def dzaxis(ax):
-            for b in range(1, len(nolls[fs])):
-                ax.axhline(b * KMAX - 0.5, c="k", lw=0.3)
-            ax.set_yticks(np.arange(len(nolls[fs])) * KMAX + KMAX / 2)
-            ax.set_yticklabels([f"Z{j}" for j in nolls[fs]], fontsize=6)
-
-        ax = img(axs[0, 0], se.Vh.T, "Vh: DOF vs v-mode (dimensionless, unit rows)",
-                 "v-mode index", "DOF index (0-9 RB, 10-29 M1M3, 30-49 M2)")
-        dofaxis(ax, "y")
-        ax = img(axs[0, 1], se.U[rows], "U: DZ vs v-mode (dimensionless, unit columns)",
-                 "v-mode index", "DZ (pupil Zernike; field k 1-30 within)",
-                 log=1e-2)
-        dzaxis(ax)
-        ax = img(axs[1, 0], A, "S N: DZ vs DOF (µm of DZ per unit normalized DOF)",
-                 "DOF index", "DZ (pupil Zernike; field k 1-30 within)", log=1e-3)
-        dzaxis(ax)
-        dofaxis(ax, "x")
         ov = np.abs(se.Vh @ rf.Vh.T)
-        ax = img(axs[1, 1], ov, "|Vh . Vh_ref^T|: v-mode overlap with ts_ofc v13 "
-                 "in-focus,\nsame pupil terms (dimensionless)", "ts_ofc v-mode index",
-                 f"{fs} v-mode index", sym=False)
-        fig.suptitle(f"{fs}: SVD of the normalized sparse Smatrix (ts_ofc StateEstimator)",
-                     fontsize=10)
-        fig.tight_layout(rect=(0, 0, 1, 0.97))
-        pdf.savefig(fig)
-        plt.close(fig)
+        pages = [
+            (se.Vh.T, "Vh: DOF vs v-mode (dimensionless, unit rows)", "v-mode index",
+             DOF_NAMES, "sym"),
+            (se.U[rows], f"U: DZ vs v-mode, field k 1-{KSHOW} of 1-{KMAX} (dimensionless; "
+             "columns unit norm over all rows)", "v-mode index", lab, "sym"),
+            (A, f"S N: DZ vs DOF, field k 1-{KSHOW} of 1-{KMAX} (µm of DZ per unit "
+             "normalized DOF)", "DOF", lab, "sym"),
+            (ov, "|Vh . Vh_v13^T|: v-mode overlap with ts_ofc v13 in-focus, same pupil "
+             "terms (dimensionless)", "ts_ofc v13 v-mode index", None, "pos"),
+        ]
+        for a, title, xl, ylab, mode in pages:
+            fig, ax = plt.subplots(figsize=(8.5, 11))
+            lim = np.percentile(np.abs(a), 99.5) if mode == "sym" else 1.0
+            im = ax.imshow(a, aspect="auto", origin="lower", interpolation="nearest",
+                           cmap="RdBu_r" if mode == "sym" else "viridis",
+                           vmin=-lim if mode == "sym" else 0, vmax=lim)
+            fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02,
+                         extend="both" if mode == "sym" else "neither")
+            if mode == "sym":
+                title += f"\ncolour scale clipped at the 99.5th percentile of |value|, {lim:.3g}"
+            ax.set_title(f"{fs}: {title}", fontsize=8)
+            if xl == "DOF":
+                ax.set_xticks(range(50))
+                ax.set_xticklabels(DOF_NAMES, rotation=90, fontsize=5)
+                for x in (9.5, 29.5):
+                    ax.axvline(x, c="k", lw=0.6)
+            else:
+                ax.set_xlabel(xl)
+            if ylab is not None:
+                ax.set_yticks(range(len(ylab)))
+                ax.set_yticklabels(ylab, fontsize=4.5 if len(ylab) > 60 else 6)
+            else:
+                ax.set_ylabel(f"{fs} v-mode index")
+            if ylab is DOF_NAMES:
+                for y in (9.5, 29.5):
+                    ax.axhline(y, c="k", lw=0.6)
+            elif ylab is not None:
+                for y in range(1, len(nolls[fs])):
+                    ax.axhline(y * KSHOW - 0.5, c="k", lw=0.3)
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
 
 
 # ------------------------------------------------------------------------------ main
@@ -329,6 +394,15 @@ def main():
         summary.append(f"{fs}: quad / lin at +2 steps over the 200 plotted DZ: median "
                        f"{np.nanmedian(q):.4f}, max {np.nanmax(q):.3f} (dimensionless)")
     ses, refs, se_full = svd_all(mats, nolls)
+    v13 = se_full.ofc_data.sensitivity_matrix
+    rng = dof_range()
+    for fs in FIT_SETS:
+        val, err, mstep = pts[fs]
+        for label, rr in (("at +2 steps", None), ("at the v13 DOF range", rng)):
+            terms = nonlinear_terms(mats[fs], val, err, mstep, scan["k"], nolls[fs], rng=rr)
+            summary.append(f"{fs}: most non-linear DZ, quad / lin {label} (dimensionless): "
+                           + "; ".join(f"{DOF_NAMES[i]} DZ({kf + 1},Z{nolls[fs][jz]}) "
+                                       f"{r:.3g}" for r, i, kf, jz in terms[:5]))
     for fs in FIT_SETS:
         ovm = np.abs(ses[fs].Vh @ refs[fs].Vh.T)
         ov = np.array([np.linalg.norm(ovm[i, max(i - 1, 0):i + 2]) for i in range(50)])
@@ -353,7 +427,11 @@ def main():
             gallery_pages(pdf)
         for fs in FIT_SETS:
             val, err, mstep = pts[fs]
-            dz_pages(pdf, mats[fs], val, err, mstep, scan["k"], nolls[fs], fs)
+            ref = v13 if fs == "dense21" else None
+            dz_pages(pdf, mats[fs], val, err, mstep, scan["k"], nolls[fs], fs, ref)
+            for at_range in (False, True):
+                nonlinear_page(pdf, mats[fs], val, err, mstep, scan["k"], nolls[fs], fs,
+                               ref, rng, at_range)
         svd_pages(pdf, ses, refs, se_full, nolls)
     print(f"wrote {run.path}")
 
@@ -378,7 +456,10 @@ Pages
 1. this summary
 2-7. donut gallery: data, model, residual and DOF signal per fit set
 then per fit set 10 pages: DZ against DOF amplitude, four largest DZ per DOF
-then singular values, and per fit set Vh, U, S N and the overlap with ts_ofc v-modes
+  (dense21 also with the ts_ofc v13 in-focus slope), and 2 pages: the 10 most
+  non-linear DZ terms at +2 steps and at the v13 DOF range
+then singular values, and per fit set 4 pages: Vh, U and S N (field k 1-6 shown),
+  and the overlap with the ts_ofc v-modes
 
 Notes
 - v-mode signs are as the SVD returns them; compare |overlap|, not signs.
