@@ -105,9 +105,9 @@ moments reproduces the ellipticity, third-moment and FWHM patterns, but its wave
 agrees with the donut (CWFS) wavefront only in Z4. So the ellipticity likely comes from
 elsewhere. The corner Z5 and Z6 inputs in `ellipticity_drivers.py` are therefore a null
 check, not a candidate driver. The coherent ellipticity is fixed in Az/El, not in the
-camera (mean e1_AzEl about -0.015 at every rotator angle, elongation along elevation),
-which points to image motion: mount jitter, wind shake or tracking. Next input to test:
-guider centroid motion in Az/El from `guider_moments`.
+camera (mean e1_AzEl about -0.015 at every rotator angle, elongation along elevation).
+That was read as pointing to image motion; it does not, since Az/El-fixed is OCS-fixed
+and so includes the telescope optics (corrected in the ellipticity-drivers entry below).
 
 ### 2026-11-11 — guider shape and motion; elevation dependence of e1
 
@@ -136,3 +136,37 @@ visits.
   The positive e1 near zenith (elongation along azimuth) may be azimuth tracking error.
 - Consequence for the driver search: band and zenith angle must be controlled before
   thermal or airflow inputs are tested against signed ellipticity.
+
+### 2026-11-11 — ellipticity drivers, band and zenith angle fitted out
+
+`code/ellipticity_drivers.py` writes `output/20261111_ellipticity_drivers/ellipticity_drivers.pdf`
+(7 pages) with `pointing_model.csv`, `variance_budget.csv`, the Spearman matrices,
+`forward_selection.csv` and `tree_importance.csv`. Pointing model: per band, Huber
+target ~ 1 + tan z + tan^2 z; every fit uses its residuals and elevation is not an input.
+Huber forward selection (5 steps, 5 night-grouped folds, 12,000-visit subsample) and
+boosted trees on the same 40,406 visits that have every input. Inputs: the 23 thermal,
+17 airflow, intra - extra blur, louvers, time after twilight, |pointing - wind|, corner
+Z4-Z6 deviation (OCS) and AOS FWHM.
+
+- Corner focus drives the signed ellipticity. e1_AzEl residual against corner Z4
+  deviation: Spearman rho -0.568 over all visits, -0.537 within night (n 40,406); Huber
+  slope -0.1311 +/- 0.0006 per um of wavefront over all visits (n 59,209), -0.1260
+  within night, the same in every band (-0.114 u to -0.156 z, y). Corner Z4 nMAD is
+  0.179 um, so focus moves e1 by about 0.023, half its residual nMAD of 0.046. It is
+  the first input chosen for e1 and cuts the held-out nMAD from 0.0459 to 0.0393 (all
+  visits) and 0.0423 to 0.0366 (within night). e2 follows weakly (+0.032 per um).
+- Az/El-fixed is OCS-fixed, so this is consistent with static OCS astigmatism made
+  visible by a varying focus: e1 changes sign through focus, is achromatic and is in
+  every guider stamp. It also matches `optatmo/psf_vs_cwfs`, where only Z4 agrees.
+  This supersedes the image-motion reading in the 2026-11-11 note above.
+- Thermal, airflow and the blur difference add little once focus is in: no other input
+  improves any held-out nMAD by more than about 2 %, and within night every thermal or
+  airflow |Spearman rho| against an ellipticity residual is <= 0.12. The blur
+  difference is the first pick for |e| p50 and p90 over all visits (p90 0.0493 to
+  0.0449) but drops to rho 0.07 within night, so it is a between-night term.
+- AOS FWHM tracks the ellipticity magnitude within night (rho +0.21 against |e| p50,
+  +0.26 against |e| p90 residuals). Corner Z5, Z6 against e1, e2 stay below |rho| 0.17.
+- Variance budget: 18 to 45 % of each target's variance is between nights (|e| p90
+  highest), so most of the change is visit to visit.
+- Next: does focus error explain the achromatic part of the e1 trend with zenith angle
+  (gravity-driven focus the LUT misses)? Fit e1 on corner Z4 and tan z together.
