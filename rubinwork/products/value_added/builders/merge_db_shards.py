@@ -47,6 +47,7 @@ MERGE_ORDER = [
     ('state_variant', ('variant_id',)),
     ('visit_telemetry', ('visit_id',)),
     ('optical_state', ('visit_id', 'variant_id')),
+    ('m1m3_thermal_r2', ('visit_id',)),
     ('fetch_log', ('day_obs', 'group_name')),
 ]
 

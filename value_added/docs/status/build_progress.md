@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-11-05 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-11-11 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Row counts and spans read from the live database's `fetch_log` and `column_coverage` on
@@ -17,6 +17,7 @@ Row counts and spans read from the live database's `fetch_log` and `column_cover
 - [Mirror LUT zero-fill on a dropped actuator](#mirror-lut-zero-fill-on-a-dropped-actuator)
 - [`m1m3_thermal_r2` coverage](#m1m3_thermal_r2-coverage)
 - [Corrupt `vt_day_obs` index — fixed in `v1/live`](#corrupt-vt_day_obs-index--fixed-in-v1live-2026-11-04)
+- [Nightly update](#nightly-update)
 - [Rebuilding](#rebuilding)
 
 ## `visit_telemetry` coverage
@@ -410,6 +411,44 @@ exactly (`compare_trim_consdb`, 2026-11-04 Log).
 
 Still open: rebuild `turbulence` and `camera` with the fixed anchor.
 
+## Nightly update
+
+`builders/update_nightly.py` brings `v1/live` up to the last finished night and cuts a
+snapshot. `builders/update_nightly.sh --mode local|batch` runs it, logging to
+`value_added/logs/update_<timestamp>.out`. The docstring lists the steps.
+
+```bash
+cd ~/notebooks/rubin-work/rubinwork/products/value_added/builders && \
+    ./update_nightly.sh --mode batch
+```
+
+Decisions, 2026-11-11:
+
+- **Scheduling:** run by hand (or one sbatch) for now; a `scrontab` entry once a few runs
+  are clean. Batch nodes reach the EFD, so the whole update runs under Slurm.
+- **New nights** are ConsDB nights after the last night with `trim` recorded `ok`, or from
+  `--from`. More than `--max-new` (7) is refused.
+- **Redo:** the 3 nights before the first new one get `psf_shape` refetched and
+  `optical_state` rebuilt, for ConsDB PSF metrics and corner-WFS quicklook that land late.
+  EFD groups and `m1m3_thermal_r2` are not redone; EFD data does not arrive late.
+- **Snapshot:** after every fully successful run, `snapshots/<run date YYYYMMDD>`
+  (`b`, `c` ... for a second run that day), manifest, `current` moved. A failed step means
+  no snapshot and `current` unchanged. Snapshots outside retention (last 7 plus the last of
+  each month) are printed, never deleted.
+- **Scope:** `visit_telemetry` (all groups), `m1m3_thermal_r2`, `optical_state` for every
+  registered variant. `fam_dz` is not nightly; it follows a new `fam_tables` build.
+
+Tried and rejected:
+
+- **`--resume` on the telemetry step.** `tweak` and `hexhist` need `trim` fetched in the
+  same pass, so a resumed night whose `trim` is done fails both. New nights have nothing
+  to skip anyway.
+- **A sharded catch-up.** The apparent gap after 20260714 is a shutdown: ConsDB has only 9
+  nights with exposures between 20260715 and 20261103 (20261026 onward). One
+  `--from 20261026 --max-new 16` run covers it.
+- **Trusting builder exit codes alone.** A group that fails is logged `error` in
+  `fetch_log` and the builder still exits 0; the update lists those rows at the end.
+
 ## Rebuilding
 
 Shards are written per night-range and merged, because DuckDB's file lock is process-wide
@@ -425,6 +464,8 @@ python -m rubinwork.products.value_added.builders.merge_db_shards \
     --db /sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/live/aos_efd.duckdb \
     --shards '/sdf/group/rubin/u/roodman/LSST/rubin-work/products/value_added/v1/_work/shards/telemetry_<timestamp>_*.duckdb'
 ```
+
+`run_build.sh --what thermal` shards `m1m3_thermal_r2`, which the merge now carries.
 
 **Always pass `--db` to the merge.** Without it the merge opens the catalog default,
 `current`, which is a read-only snapshot, and fails with "Permission denied".

@@ -29,7 +29,8 @@
 #   ./run_build.sh --what telemetry --day-obs 20251103-20260418 --chunk 24 --dry-run
 #
 # Options:
-#   --what telemetry|state   which builder (required)
+#   --what telemetry|state|thermal   which builder (required); thermal is the
+#                            m1m3_thermal_r2 table, EFD bound like telemetry
 #   --day-obs SPEC           a night, an inclusive RANGE, or a comma list (required)
 #   --chunk N                nights per shard (default 24, about 20 min for telemetry)
 #   --mode local|batch       default local
@@ -44,8 +45,8 @@
 #   --resume                 pass --resume to the builder (skip what is already done)
 #   --shard-dir DIR          where shard databases go (default output/shards)
 #   --main-db PATH           the merged database, and the read-only source of
-#                            visit_telemetry for every state shard.  Point this at the
-#                            catalog's v1/live when building the catalog product
+#                            visit_telemetry for every state shard (default the
+#                            catalog's v1/live)
 #   --dry-run                print the shard plan and the commands, launch nothing
 #
 # Batch tunables (env vars; defaults in parens), matching aos/run_snake.sh:
@@ -69,7 +70,8 @@ what=""; day_obs=""; chunk=24; mode=local; variant=""; img_type=""
 groups="all"; resume=0; shard_dir="output/shards"; dry=0; miw_param_set=""; miw_build=""
 # The merged database, and the source of visit_telemetry for every state shard. Absolute,
 # because a batch shard cds into $topic but the builder may resolve relative paths itself.
-main_db="$topic/output/aos_efd.duckdb"
+main_db=$(python -c 'from rubinwork.products.value_added import reader
+print(reader.build_dir("v1", "live") / reader.DB_FILE)' 2>/dev/null)
 while [ $# -gt 0 ]; do
     case "$1" in
         --what)       what="$2"; shift 2;;
@@ -100,12 +102,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-[ -n "$what" ]    || { echo "error: --what telemetry|state is required" >&2; exit 2; }
+[ -n "$what" ]    || { echo "error: --what telemetry|state|thermal is required" >&2; exit 2; }
 [ -n "$day_obs" ] || { echo "error: --day-obs is required" >&2; exit 2; }
 case "$what" in
     telemetry) builder=rubinwork.products.value_added.builders.build_efd_db; tag=telemetry;;
     state)     builder=rubinwork.products.value_added.builders.build_optical_state; tag=state;;
-    *) echo "error: --what must be 'telemetry' or 'state'" >&2; exit 2;;
+    thermal)   builder=rubinwork.products.value_added.builders.build_m1m3_thermal_r2; tag=thermal;;
+    *) echo "error: --what must be 'telemetry', 'state' or 'thermal'" >&2; exit 2;;
 esac
 case "$mode" in
     local) ;;
@@ -130,10 +133,10 @@ fi
 # merge sees one row in state_variant.
 variant_flags=()
 if [ "$what" = state ]; then
-    mapfile -t vrow < <(python - "$variant" <<'PY'
+    mapfile -t vrow < <(python - "$variant" "$main_db" <<'PY'
 import sys
 from rubinwork.products.value_added import reader as efd_db
-con = efd_db.open_db('output/aos_efd.duckdb', readonly=True)
+con = efd_db.open_db(sys.argv[2], readonly=True)
 r = con.execute('SELECT scheme, intrinsic_route, opd_version, intrinsic_ref, '
                 'ofc_config_version FROM state_variant WHERE variant_id = ?',
                 [sys.argv[1]]).fetchall()
@@ -205,7 +208,7 @@ for ((s = 0; s < n_shards; s++)); do
     cmd=(python -u -m "$builder" --day-obs "$list" --db "$shard_db")
     if [ "$what" = telemetry ]; then
         cmd+=(--groups "$groups")
-    else
+    elif [ "$what" = state ]; then
         cmd+=("${variant_flags[@]}")
         # A shard writes its own database, whose visit_telemetry is empty, so the Trim and
         # hexapod LUT must be read from the main database or the commanded v-modes and the
