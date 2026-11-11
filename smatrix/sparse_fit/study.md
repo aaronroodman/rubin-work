@@ -234,3 +234,20 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
   Noll 26 and reaches the fitted terms through leak coefficients of 10–26. A linear Smatrix
   column describes it poorly. Earlier per-term deviation numbers (17-point scans) were
   normalized per term and overstated the problem; ignore them.
+
+### 2026-11-10 — brute-force design and smoke runs
+
+- Five-point mode: ray-traced fits at k = −2..2 × step (step ×2, 0.02 µm RMS in-focus Noll
+  4..78 change per step); slope, quadratic term, curvature and scatter saved per DOF,
+  configuration and fit set. Donuts saved as `donuts_<config>.fits` (NOMINAL; STEPS
+  (ndof, 4, 81, 81) at k in header STEPS_K; DOFS table).
+- The second fit pass (numerical Jacobian) changed no slope, curvature or scatter at the
+  1e-3 level on R44_SW0 (M2 Rx, M1M3 B14, M2 B17) and costs 46% more; off by default.
+- R44_SW0, step ×2, ray-traced, curvature | scatter (dimensionless, as above): prod M2 Rx
+  0.013 | 0.010, B14 0.036 | 0.003, M2 B17 0.035 | 0.010; dense21 M2 Rx 0.033 | 0.009,
+  B14 0.26 | 0.064, M2 B17 0.47 | 0.041.
+- Field sets: `check` 26, `fam` 770 (385 Gauss-Legendre points × 2 sides, camera shift),
+  `cwfs` 144 (6 × 3 per half-chip from cameraGeom, Detector shift); `all` 940.
+- Cost about 28 s per DOF per configuration on one CPU: about 370 CPU-hours for 50 DOF.
+  `bruteforce.sbatch`: one job per 5-DOF block, 48 CPUs, Danish 1.4.0 from
+  `/sdf/group/rubin/u/roodman/LSST/packages/danish_1.4.0`.
