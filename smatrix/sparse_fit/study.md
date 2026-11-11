@@ -35,6 +35,14 @@ Open: piece 3, a sparse Smatrix from these responses and a rebuilt sparse MIW. W
 
 ## Log
 
+### 2026-11-11 — validation PDF: donut gallery, DZ vs DOF, v-mode SVD
+
+Validation PDF `20261111_validation/sparse_fit_validation.pdf`, 41 pages: process summary; six-donut gallery; DZ against DOF amplitude; v-mode SVD. Scripts `dz_scan.py` (run `20261111_dz_scan`, per-point FAM scan Zernikes, lost fits NaN) and `validation_pdf.py`.
+
+- Gallery: six donuts at +2 steps, each refit with prod, prod_z22 and dense21 (FAM centre M2 dz; FAM ring 5 M1M3 B15; R04_SW0 Cam dx; R40_SW1 M1M3 B3; FAM edge M2 B4; science point M2 B16). On fam_r05_a14_extra B15, residual RMS / peak data pixel is 0.013 (prod) and 0.009 (dense21), dimensionless. The DOF signal (perturbed minus nominal) is reproduced to a few % of its peak.
+- DZ against DOF: the four largest DZ per DOF. Points are the side-averaged FAM field fit (kmax 30) at k = -2..+2 steps, rescaled to the FAM-mean step. Quadratic / linear change at +2 steps over the 200 plotted DZ: median 0.0003 (prod, prod_z22) and 0.0009 (dense21), max 0.47 (dimensionless). The max is the small third DZ of M2 dz (slope 9e-5 µm/µm against 0.015 for the largest), so it is noise.
+- SVD: our Smatrix (31 field x 29 pupil x 50 DOF, µm per DOF unit) set as `ofc_data.sensitivity_matrix` in the v13 `StateEstimator` (all 50 DOF, range0.5_fwhm-0.15). Singular value 1 is 17.40 (prod) against 17.43 for v13 with the same pupil terms, in µm per unit normalized DOF, which confirms units. Smallest over largest singular value: 6.4e-5 (prod), 8.2e-5 (prod_z22), 1.8e-4 (dense21), dimensionless. V-mode overlap with v13 modes i-1..i+1 (dimensionless): mode 1 1.00, modes 2-3 0.42, modes 4-12 0.87-1.00. Modes 2-3 differ from v13.
+
 ### 2026-11-11 — write-up of piece 2: brute-force sparse responses
 
 Write-up of piece 2. Current answer rewritten from the Log entries below. Summary PDF
