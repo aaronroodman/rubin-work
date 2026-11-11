@@ -1,7 +1,7 @@
 """Merge the per-configuration refit files into one response table per fit set.
 
 For each configuration, DOF and fit set the slope dz/dDOF (µm per DOF unit; DOF units
-µm or deg) comes from a quadratic through the nominal fit and the scan points. Points
+µm or deg, ts_ofc sign convention) comes from a quadratic through the nominal fit and the scan points. Points
 whose best fit is lost (fwhm more than ``FWHM_TOL`` from the nominal fit's) are dropped:
 there the wavefront is beyond the fitted terms and no start recovers it. With 2 points
 left the fit is linear. ``ndrop`` records how many scan points were dropped.
@@ -70,6 +70,8 @@ def main():
         d = np.load(f)
         i = index[str(d["name"])]
         ks = d["k"]
+        # Refits made before the sign fix carry no dof_sign; their donuts are batoid ZCS.
+        sgn = d["dof_sign"] if "dof_sign" in d else dl.DOF_SIGN[d["idof"]]
         for a, idof in enumerate(d["idof"]):
             step = d["step"][a]
             out["step"][i, idof] = step
@@ -78,7 +80,7 @@ def main():
                 zb = np.where(uw[:, None], d[f"{fs}__z_warm"][a], d[f"{fs}__z"][a])
                 fb = np.where(uw, d[f"{fs}__fwhm_warm"][a], d[f"{fs}__fwhm"][a])
                 good = np.abs(fb - float(d[f"{fs}__fwhm0"])) <= FWHM_TOL
-                h = np.r_[0.0, ks[good] * step]
+                h = np.r_[0.0, ks[good] * step * sgn[a]]
                 fz = np.vstack([d[f"{fs}__z0"], zb[good]])
                 s, c, sc = _fit(h, fz)
                 out[f"{fs}__z0"][i] = d[f"{fs}__z0"]

@@ -138,6 +138,18 @@ def configs(which="check"):
     return out
 
 
+# batoid_rubin ZCS and the ts_ofc v13 Smatrix differ by a sign on M2 dy, M2 Ry, Cam dy and
+# Cam Ry (smatrix/docs/conventions.md). DOF amplitudes here are in the ts_ofc convention.
+DOF_SIGN = np.ones(50)
+DOF_SIGN[cs.OFC_Y_SIGN_FLIP] = -1.0
+
+
+def stored_sign(header):
+    """Per-DOF factor from a donut file's amplitudes to the ts_ofc convention: files
+    without ``DOFSIGN = 'OFC'`` were made before the flip and hold batoid ZCS amplitudes."""
+    return np.ones(50) if header.get("DOFSIGN") == "OFC" else DOF_SIGN.copy()
+
+
 _W = {}
 
 
@@ -159,14 +171,15 @@ def _init(dofs, opts=None):
 
 
 def _optic(idof, step):
-    """Perturbed in-focus telescope; idof < 0 is the fiducial."""
+    """Perturbed in-focus telescope, ``step`` in the ts_ofc convention (µm or deg);
+    idof < 0 is the fiducial."""
     if idof < 0:
         return cs._W["fiducial"]
     key = (idof, step)
     if key not in _W["optics"]:
         from batoid_rubin import LSSTBuilder
         dof = np.zeros(50)
-        dof[idof] = step
+        dof[idof] = step * DOF_SIGN[idof]
         _W["optics"][key] = LSSTBuilder(cs._W["fiducial"], **cs._W["kwargs"]).with_aos_dof(
             dof.tolist()).build()
     return _W["optics"][key]
@@ -321,7 +334,8 @@ def save_images(directory, out, saved, rt_scale, instr):
             ("FLUX", FLUX, "Danish model flux"),
             ("RTSCALE", rt_scale, "flux per ray"),
             ("RT_NX", RT_NX, "pupil ray grid"),
-            ("RT_OS", RT_OS, "deposit oversampling")):
+            ("RT_OS", RT_OS, "deposit oversampling"),
+            ("DOFSIGN", "OFC", "DOF amplitudes in the ts_ofc convention")):
         hdr[key] = (val, com)
     if saved["cube"]:
         hdr["STEPS_K"] = (" ".join(str(k) for k in FIVE_K), "STEPS axis 1: multiples of step")

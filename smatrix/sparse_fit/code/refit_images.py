@@ -65,9 +65,10 @@ def refit(path, dofs, warm):
         cube = h["STEPS"].data.astype(float)
         tab = h["DOFS"].data
         idofs, steps = np.array(tab["idof"]), np.array(tab["step"])
+        sgn = dl.stored_sign(h[0].header)[idofs]
     sel = [i for i, d in enumerate(idofs) if dofs is None or d in dofs]
     th, fac, refs = _setup(name)
-    out = dict(name=name, idof=idofs[sel], step=steps[sel], k=ks)
+    out = dict(name=name, idof=idofs[sel], step=steps[sel], k=ks, dof_sign=sgn[sel])
     for fs, idx in dl.FIT_SETS.items():
         f0 = _one(fac, refs[fs], idx, th, nom)
         nd, nk, nz = len(sel), len(ks), len(idx)
@@ -92,7 +93,7 @@ def refit(path, dofs, warm):
         zb = np.where(use_w[..., None], res["z_warm"], res["z"])
         slope, curv, scat = [], [], []
         for a in range(len(sel)):
-            h = np.r_[0.0, ks * steps[sel][a]]
+            h = np.r_[0.0, ks * steps[sel][a] * sgn[sel][a]]
             V = np.vander(h, 3)
             f = np.vstack([f0["z"], zb[a]])
             c, *_ = np.linalg.lstsq(V, f, rcond=None)

@@ -1,9 +1,10 @@
 """Per-point fitted Zernike changes along each DOF scan, FAM points only.
 
 From the refit files, the best fit per image (cold or warm, lower cost) minus the
-nominal fit, at k = -2, -1, 0, +1, +2 steps. Points whose fit is lost (fwhm more than
-``FWHM_TOL`` from the nominal fit's) are NaN. Output ``dz_scan.npz``: ``name``, ``thx``,
-``thy`` (deg, OCS), ``side``, ``step`` (n, 50; DOF units, µm or arcsec), ``k``, and per
+nominal fit, at k = -2, -1, 0, +1, +2 steps in the ts_ofc sign convention. Points
+whose fit is lost (fwhm more than ``FWHM_TOL`` from the nominal fit's) are NaN. Output
+``dz_scan.npz``: ``name``, ``thx``, ``thy`` (deg, OCS), ``side``, ``step`` (n, 50; DOF
+units, µm or deg), ``k``, and per
 fit set ``{fs}__noll`` and ``{fs}__dz`` (n, 50, 5, n_z; µm).
 
 Usage::
@@ -41,8 +42,9 @@ def main():
         for f in glob.glob(f"{OUT_ROOT}/{r}/refit_fam_*.npz"):
             d = np.load(f)
             i = index[str(d["name"])]
-            col = [list(K).index(k) for k in d["k"]]
+            sgn = d["dof_sign"] if "dof_sign" in d else dl.DOF_SIGN[d["idof"]]
             for a, idof in enumerate(d["idof"]):
+                col = [list(K).index(int(k * sgn[a])) for k in d["k"]]
                 out["step"][i, idof] = d["step"][a]
                 for fs in dl.FIT_SETS:
                     uw = d[f"{fs}__use_warm"][a]
