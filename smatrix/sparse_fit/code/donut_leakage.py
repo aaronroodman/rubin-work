@@ -63,6 +63,7 @@ BINNING = 2                      # d13-sparse runs bin x2
 NPIX = 81                        # binned stamp; 1.5 mm defocus donut is ~61 px across
 FWHM_TRUE = 1.0                  # arcsec
 FLUX = 1e5
+FWHM_MIN = 0.2                   # arcsec; Danish fit guard, see fit()
 POLISH_NFEV = 20                 # second least_squares pass, numerical Jacobian
 FIVE_K = (-2, -1, 1, 2)          # five-point mode: steps besides the nominal
 DZ_TARGET_UM = 0.01              # RMS in-focus Noll 4..78 change per DOF step or injection;
@@ -262,11 +263,28 @@ def draw(factory, z_ref, th):
 
 def fit(factory, z_ref_fit, fit_idx, th, img):
     """Danish sparse fit as in ts_wep; returns fitted Zernikes (m) on fit_idx."""
+    m, r = fit_full(factory, z_ref_fit, fit_idx, th, img)
+    return np.array(m.unpack_params(r.x)["z_fit"])
+
+
+def fit_full(factory, z_ref_fit, fit_idx, th, img, x0=None):
+    """Danish fit from ``x0`` (default the ts_wep cold start); returns the model and
+    the `scipy.optimize.OptimizeResult` (cost is half the chi^2 sum, sigma 1 count)."""
     m = danish.SingleDonutModel(factory, z_ref=z_ref_fit, z_terms=fit_idx, thx=th[0],
                                 thy=th[1], npix=NPIX)
-    x0 = m.pack_params(flux=float(np.sum(img)), dx=0.0, dy=0.0, fwhm=1.0,
-                       bkg=[], z_fit=[0.0] * len(fit_idx))
-    r = least_squares(m.chi, jac=m.jac, x0=x0, args=(img, 1.0),
+    if x0 is None:
+        x0 = m.pack_params(flux=float(np.sum(img)), dx=0.0, dy=0.0, fwhm=1.0,
+                           bkg=[], z_fit=[0.0] * len(fit_idx))
+
+    # A trial step toward fwhm -> 0 makes galsim draw the atmosphere kernel with a
+    # tens-of-GB FFT (M1M3 B16 at fam_r05_a10_extra: OOM). A huge residual there makes
+    # least_squares reject the step; fits that never go there are unchanged.
+    def chi(x, *a):
+        if m.unpack_params(x)["fwhm"] < FWHM_MIN:
+            return np.full(img.size, 1e10)
+        return m.chi(x, *a)
+
+    r = least_squares(chi, jac=m.jac, x0=x0, args=(img, 1.0),
                       ftol=1e-12, xtol=1e-12, gtol=1e-12)
     # Optional second pass with a finite-difference Jacobian: Danish's analytic one is
     # approximate (0.1-5% per parameter), but on R44_SW0 the pass changed no slope,
@@ -274,10 +292,9 @@ def fit(factory, z_ref_fit, fit_idx, th, img):
     scale = np.array(m.pack_params(flux=FLUX, dx=1.0, dy=1.0, fwhm=1.0, bkg=[],
                                    z_fit=[1e-8] * len(fit_idx)), float)
     if POLISH_NFEV:
-        r = least_squares(m.chi, x0=r.x, jac="3-point", x_scale=scale, args=(img, 1.0),
+        r = least_squares(chi, x0=r.x, jac="3-point", x_scale=scale, args=(img, 1.0),
                           ftol=1e-15, xtol=1e-15, gtol=1e-15, max_nfev=POLISH_NFEV)
-    x = r.x
-    return np.array(m.unpack_params(x)["z_fit"])
+    return m, r
 
 
 def save_images(directory, out, saved, rt_scale, instr):

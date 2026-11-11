@@ -263,3 +263,22 @@ Median |A_rt − A_dense[fit]| / |A_rt| (dimensionless), corners (n=8) | science
 - Steps tied to the range would leave B12+ under the 1e-3 µm fit noise. Decision: keep
   the wavefront-based steps; report linearity scaled to the range,
   curvature × range / (+2 step).
+
+### 2026-11-11 — brute-force run (jobs 44234915-44234924), false minima, refit
+
+- 8 of 10 jobs completed in 51-93 min. DOF 20-24 and 25-29 hit the 4 h limit at 129 GB
+  and 97 GB: one worker each hung on FAM ring 5 extra-focal (2 and 1 configurations).
+- Cause: Danish false minima. Some cold-start fits end at fwhm 2.5-3.5 arcsec with cost
+  ~1000x the nominal fit's (good fits: fwhm 0.96 arcsec, truth 1.0). On the way, trial
+  steps toward fwhm -> 0 make galsim allocate tens of GB for the atmosphere kernel.
+  `fit()` now rejects steps with fwhm < 0.2 arcsec; unaffected fits are bit-identical.
+- The 3 missing configurations were rerun locally with the guard
+  (`20261111_bf_fill_dof20_24`, `20261111_bf_fill_dof25_29`).
+- Scatter > 0.2 (RMS about the quadratic / linear change, dimensionless): prod 3,
+  prod_z22 5, dense21 586 of 46985 scans. The worst dense21 case (M1M3 B13 at
+  fam_r00_a08_intra) is not a false minimum: the dense21 linear change is 10.7 nm at
+  +2 steps (prod 186 nm) and the response is mostly quadratic.
+- `code/refit_images.py` refits the saved donuts, logging cost and fwhm per image. A lost
+  fit (fwhm off by > 0.2 arcsec or cost > 200x nominal) is retried warm-started from the
+  nominal fit; the lower cost wins. Warm alone also falls into false minima (dense21 at
+  -2 steps: fwhm 2.46 arcsec), so both are needed. Batch: `refit.sbatch`.
