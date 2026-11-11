@@ -75,3 +75,25 @@ report's engineering `observation_reason` pattern excluded, 20260424 seq < 398 d
   blur, +0.39 against |e| p90), so most of it is between-night.
 - Ellipticity has no input above |rho| 0.13 within night; over all visits it follows
   the temperatures (|e| p90 against outside temperature +0.37), a seasonal pattern.
+
+### 2026-11-11 — wind and elevation controlled; split by pointing relative to the wind
+
+`code/iq_controls.py` writes `output/20261111_iq_controls/iq_controls.pdf` (7 pages),
+`controls.csv` and `wind_direction_split.csv`. Two controls: partial Spearman rho (ranks
+regressed on wind-speed and elevation ranks) and Huber `RLM(target ~ input + wind speed +
+airmass, HuberT)`. Each over all visits and within night. Huber errors are formal and
+ignore the correlation of visits within a night, so they are too small.
+
+- Sonic 123 axis 2 survives the controls within night: against fwhm_z500, rho -0.176,
+  partial -0.171, Huber -0.0473 +/- 0.0014 arcsec per m/s (n 47,390); |axis 2| gives
+  partial -0.182, Huber -0.0670 arcsec per m/s. It is negative in every pointing bin and
+  every wind-speed tercile, including winds below 3.5 m/s (rho about -0.16), so it is
+  not a wind-speed proxy ([sonic_axis2_wind_split_within](figures/sonic_axis2_wind_split_within.png)).
+  Sonics 124 to 126 give no consistent sign. Over all visits the 123 signal is masked
+  (raw rho -0.003, partial -0.127): nights differ in seeing more than in airflow.
+- Median axis-2 flow at 123 rises with wind speed when pointing into or across the wind
+  (0.73 and 0.87 m/s in the top tercile, 6.6 to 20.6 m/s) and is near zero down wind.
+- Intra - extra blur against donut blur: within night rho -0.151, partial -0.187, Huber
+  -0.2045 +/- 0.0052 arcsec per arcsec (n 55,580). The control raises it within night.
+- AOS FWHM over all visits falls with sonic 124 axis-2 RMS (partial -0.142) and 123
+  axis 2 (partial -0.137); within night these are below |rho| 0.1.

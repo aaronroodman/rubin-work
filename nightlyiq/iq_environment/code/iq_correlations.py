@@ -113,7 +113,7 @@ def load():
           & ~((c.day_obs == 20260424) & (c.seq_num < 398))]
     con = reader.open_db(reader.catalog_db_path("v1", VA_BUILD))
     try:
-        va_cols = (["visit_id", "cam_AverageTemp", "wind_speed_ms", "psf_n_ccd",
+        va_cols = (["visit_id", "cam_AverageTemp", "wind_speed_ms", "into_wind_deg", "psf_n_ccd",
                     "m1m3_x_gradient_c_per_m", "m1m3_y_gradient_c_per_m",
                     "m1m3_z_gradient_c_per_m", "m1m3_radial_gradient_c_per_m"]
                    + [c_ for c_ in [r[0] for r in con.execute(
