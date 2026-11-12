@@ -1,6 +1,6 @@
 # rubin-work organization plan: products, libraries and studies
 
-> **Status:** current; phases 0-6 done · **Last updated:** 2026-10-24 · **Kind:** working state (plan)
+> **Status:** current; phases 0-6 done, phase 7 all but `guider/output`, phase 8 C1 done · **Last updated:** 2026-11-12 · **Kind:** working state (plan)
 
 The plan for reorganizing `rubin-work` around **products** (data that other work reads),
 **libraries** (code that other work imports) and **studies** (work that asks a question,
@@ -836,7 +836,7 @@ builds are deleted from the `miw` product. `aos/output-archive-2026-06-11`, `blo
 
 **Phase 8 — code review.** Part C of the old plan (C1–C4, at the tag), applied to the new
 layout. The reference runs from phases 2–3 are its first regression tests. Planned 2026-10-24 (scope, references, order):
-`notes/status/phase8_code_review_plan.md`. Not started.
+`notes/status/phase8_code_review_plan.md`. C1 done 2026-10-25 (`7790da2`); 3 backlog items open on 2026-10-28 (A2, B1, D19). Tier 1 not started.
 
 ## 9. Output mapping, first draft
 
