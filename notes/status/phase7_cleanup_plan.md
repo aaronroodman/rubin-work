@@ -1,6 +1,6 @@
 # Phase 7 plan: back up and remove the old output trees
 
-> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; laptop copies, dangling repo symlinks, the old data-root site and `/tmp/qcut` removed; `guider/output` remains · **Last updated:** 2026-10-28 · **Kind:** plan
+> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; laptop copies, dangling repo symlinks, the old data-root site and `/tmp/qcut` removed; `guider/output` has no readers left (2026-11-12) and waits for Aaron's backup and removal · **Last updated:** 2026-11-12 · **Kind:** plan
 
 The old output trees are the pre-reorg `<topic>/output` directories. The repo's
 `<topic>/output` symlinks point at them, through `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/`,
@@ -124,8 +124,12 @@ if none exists. `compare_to_archive.py` takes the archive path as an argument.
 ## What has to happen before the other three can go
 
 1. `aos/output`: done (2026-10-24). It can go once backed up.
-2. `guider/output`: done for the moments and PSF moments (2026-10-24). Left: give the QA
-   PDFs, movies and rtvplots an owner (a study `output@`) and repoint those three rules.
+2. `guider/output`: done. The moments and PSF moments moved 2026-10-24. On 2026-11-12 the
+   QA PDFs, movies and rtvplots got an owner, the `guider/nightly_qa` study: the rules and
+   `run_snake.sh` write to its `output@`, and the 47 existing files (306 MB) were copied
+   there. The loose parked-study files were already in their studies' `output@` except five
+   `bias_streak` files, copied the same day. `old/` (0.7 GB) and `review_748/` have no
+   owner and survive only in the backup.
 3. `optatmo/output`: kept as the `psf_vs_cwfs` study's data (Aaron, 2026-10-24); a product
    later. Dropped from this phase.
 
@@ -187,7 +191,8 @@ T=/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work
 rm -rf $T/aos/output $T/guider/output
 ```
 
-What breaks if run today: the guider QA, movie and rtvplot rules, until they get a study
-output; `build_fam_manifest.py` as documented; and the three parked scripts above.
+What breaks for `guider/output` (2026-11-12): nothing tracked. The `momentsDir()` old-tree
+fallback finds nothing, which is fine while the catalog has every night. Parked-study
+scripts whose documented `--out output/...` is relative write wherever they are run.
 
 The laptop's synced output copies are removed (2026-10-28).

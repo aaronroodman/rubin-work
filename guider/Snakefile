@@ -16,10 +16,10 @@
 #   plots        the per-day QA/summary PDF, from the product's moments table
 #
 #   snakemake -n                                        # dry-run
-#   snakemake output/night_20260709/guider_plots_20260709.pdf
+#   snakemake nightly_qa/output/night_20260709/guider_plots_20260709.pdf
 #   ./run_snake.sh --day-obs 20260709[,20260710,...] [--mode batch] [--limit N]
 #
-# Per-day study outputs (output/night_<dayObs>/):
+# Per-day study outputs (<study>/output/night_<dayObs>/):
 #   guider_psfmoments_<dayObs>.parquet  adjacent-CCD PSF star moments
 #   guider_plots_<dayObs>.pdf           per-day QA/summary PDF
 #   movies/<seqNum>_{full,star}.mp4     RubinTV-style movies, every Nth visit
@@ -32,7 +32,7 @@
 #
 # The adjacent-CCD PSF moments are the science half of the guider_vs_ccd_moments study,
 # so `psfmoments` writes into that study's output (PSF_ROOT). The QA PDF, movies and
-# rtvplots stay under output/night_<dayObs>/; no study owns them yet.
+# rtvplots belong to the nightly_qa study (QA_ROOT).
 # ----------------------------------------------------------------------
 import os
 import yaml
@@ -57,6 +57,7 @@ LIMIT = int(config.get("limit", 0))   # CLI: --config limit=N (smoke test)
 
 CODE = "code"
 PSF_ROOT = "guider_vs_ccd_moments/output"   # study output@, night_<dayObs>/ beneath
+QA_ROOT = "nightly_qa/output"               # study output@, night_<dayObs>/ beneath
 
 
 MOVIE_STRIDE = int(config.get("movie_stride", 50))  # movie for every Nth visit (0=off)
@@ -128,7 +129,7 @@ def nightMovieFiles(wildcards):
     dayObs = int(wildcards.dayObs)
     seqs = nightSeqNums(dayObs)
     picked = seqs[::MOVIE_STRIDE] if MOVIE_STRIDE > 0 else []
-    return [f"output/night_{dayObs}/movies/{s}_{kind}.mp4"
+    return [f"{QA_ROOT}/night_{dayObs}/movies/{s}_{kind}.mp4"
             for s in picked for kind in ("full", "star")]
 
 
@@ -137,7 +138,7 @@ def nightRtvPlotFiles(wildcards):
     dayObs = int(wildcards.dayObs)
     seqs = nightSeqNums(dayObs)
     picked = seqs[::MOVIE_STRIDE] if MOVIE_STRIDE > 0 else []
-    return [f"output/night_{dayObs}/rtvplots/{s}_rtvplots.pdf" for s in picked]
+    return [f"{QA_ROOT}/night_{dayObs}/rtvplots/{s}_rtvplots.pdf" for s in picked]
 
 
 wildcard_constraints:
@@ -147,10 +148,10 @@ wildcard_constraints:
 
 rule all:
     input:
-        [f"output/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
+        [f"{QA_ROOT}/night_{d}/guider_plots_{d}.pdf" for d in NIGHTS]
         + [f"{PSF_ROOT}/night_{d}/guider_psfmoments_{d}.parquet" for d in NIGHTS]
-        + [f"output/night_{d}/guider_movies_{d}.txt" for d in NIGHTS]
-        + [f"output/night_{d}/guider_rtvplots_{d}.txt" for d in NIGHTS],
+        + [f"{QA_ROOT}/night_{d}/guider_movies_{d}.txt" for d in NIGHTS]
+        + [f"{QA_ROOT}/night_{d}/guider_rtvplots_{d}.txt" for d in NIGHTS],
 
 
 # ---- adjacent-CCD PSF star moments (science side; independent of guider) ----
@@ -172,10 +173,10 @@ rule psfmoments:
 # ---- RubinTV-style movies for a strided subset of visits ----
 rule movie:
     output:
-        full="output/night_{dayObs}/movies/{seqNum}_full.mp4",
-        star="output/night_{dayObs}/movies/{seqNum}_star.mp4",
+        full=QA_ROOT + "/night_{dayObs}/movies/{seqNum}_full.mp4",
+        star=QA_ROOT + "/night_{dayObs}/movies/{seqNum}_star.mp4",
     params:
-        moviedir="output/night_{dayObs}/movies",
+        moviedir=QA_ROOT + "/night_{dayObs}/movies",
         recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
     resources:
         mem_mb=4000,
@@ -199,20 +200,20 @@ rule movies:
     input:
         nightMovieFiles,
     output:
-        "output/night_{dayObs}/guider_movies_{dayObs}.txt",
+        QA_ROOT + "/night_{dayObs}/guider_movies_{dayObs}.txt",
     resources:
         mem_mb=1000,
     shell:
-        "ls output/night_{wildcards.dayObs}/movies > {output} 2>/dev/null || "
+        f"ls {QA_ROOT}/night_{{wildcards.dayObs}}/movies > {{output}} 2>/dev/null || "
         "echo 'no movies (movie_stride=0 or empty night)' > {output}"
 
 
 # ---- RubinTV-style review plots for a strided subset of visits ----
 rule rtvplot:
     output:
-        "output/night_{dayObs}/rtvplots/{seqNum}_rtvplots.pdf",
+        QA_ROOT + "/night_{dayObs}/rtvplots/{seqNum}_rtvplots.pdf",
     params:
-        plotdir="output/night_{dayObs}/rtvplots",
+        plotdir=QA_ROOT + "/night_{dayObs}/rtvplots",
         recover=lambda w: "" if TRACKER.get("recover_edge_stars", True) else "--no-recover-edge-stars",
     resources:
         mem_mb=4000,
@@ -237,11 +238,11 @@ rule rtvplots:
     input:
         nightRtvPlotFiles,
     output:
-        "output/night_{dayObs}/guider_rtvplots_{dayObs}.txt",
+        QA_ROOT + "/night_{dayObs}/guider_rtvplots_{dayObs}.txt",
     resources:
         mem_mb=1000,
     shell:
-        "ls output/night_{wildcards.dayObs}/rtvplots > {output} 2>/dev/null || "
+        f"ls {QA_ROOT}/night_{{wildcards.dayObs}}/rtvplots > {{output}} 2>/dev/null || "
         "echo 'no rtvplots (movie_stride=0 or empty night)' > {output}"
 
 
@@ -250,7 +251,7 @@ rule plots:
     input:
         momentsTable,
     output:
-        "output/night_{dayObs}/guider_plots_{dayObs}.pdf",
+        QA_ROOT + "/night_{dayObs}/guider_plots_{dayObs}.pdf",
     resources:
         mem_mb=2000,
     log:

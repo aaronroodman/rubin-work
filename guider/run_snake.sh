@@ -25,7 +25,7 @@
 #                       comma-separated list (YYYYMMDD[,YYYYMMDD...]).  Each
 #                       night's guider exposures are discovered from the Butler
 #                       and built into the product's night partition, then the
-#                       study outputs into output/night_<dayObs>/.
+#                       study outputs into <study>/output/night_<dayObs>/.
 #   --limit N           smoke test: keep only the first N exposures per night
 #                       (0 = all).  Run limited first, then re-run without
 #                       --limit to build (and overwrite with) the full night(s).
@@ -75,10 +75,10 @@ fi
 # they are the `guider_moments` product, built by its own Snakefile (see product_cmd).
 day_targets() {
     local d="$1"
-    echo "output/night_${d}/guider_psfmoments_${d}.parquet" \
-         "output/night_${d}/guider_plots_${d}.pdf" \
-         "output/night_${d}/guider_movies_${d}.txt" \
-         "output/night_${d}/guider_rtvplots_${d}.txt"
+    echo "guider_vs_ccd_moments/output/night_${d}/guider_psfmoments_${d}.parquet" \
+         "nightly_qa/output/night_${d}/guider_plots_${d}.pdf" \
+         "nightly_qa/output/night_${d}/guider_movies_${d}.txt" \
+         "nightly_qa/output/night_${d}/guider_rtvplots_${d}.txt"
 }
 
 # The product build for one night, run from the repository root.  Phase 3a moved

@@ -27,8 +27,8 @@ the `guider_moments` product, built per night by
 into `products/guider_moments/v6/nights/<dayObs>/`. This Snakefile reads them through the
 catalog (v6, then the v4 nights copied from the old tree). The per-night targets are files:
 `guider_vs_ccd_moments/output/night_<dayObs>/guider_psfmoments_<dayObs>.parquet`, and
-`output/night_<dayObs>/guider_plots_<dayObs>.pdf` and
-`output/night_<dayObs>/guider_{movies,rtvplots}_<dayObs>.txt`. `--mode batch`
+`nightly_qa/output/night_<dayObs>/guider_plots_<dayObs>.pdf` and
+`nightly_qa/output/night_<dayObs>/guider_{movies,rtvplots}_<dayObs>.txt`. `--mode batch`
 runs only from an S3DF node (`slacrd`).
 
 ## Single visit
@@ -37,17 +37,16 @@ runs only from an S3DF node (`slacrd`).
 
 ```bash
 snakemake -j 4 --resources mem_mb=14000 --keep-going \
-  output/night_20260706/movies/787_full.mp4 \
-  output/night_20260706/movies/787_star.mp4 \
-  output/night_20260706/rtvplots/787_rtvplots.pdf \
-  output/night_20260706/seq/787_moments.parquet
+  nightly_qa/output/night_20260706/movies/787_full.mp4 \
+  nightly_qa/output/night_20260706/movies/787_star.mp4 \
+  nightly_qa/output/night_20260706/rtvplots/787_rtvplots.pdf
 ```
 
 Or run the per-visit scripts directly, bypassing Snakemake:
 
 ```bash
-python code/run_guider_rubintv_plots.py --day-obs 20260706 --seq-num 787 --outdir output/review_787
-python code/run_guider_movie.py --day-obs 20260706 --seq-num 787 --outdir output/review_787 --which both --format mp4
+python code/run_guider_rubintv_plots.py --day-obs 20260706 --seq-num 787 --outdir nightly_qa/output/review_787
+python code/run_guider_movie.py --day-obs 20260706 --seq-num 787 --outdir nightly_qa/output/review_787 --which both --format mp4
 ```
 
 The first writes `787_rtvplots.pdf` (6 strip plots and both mosaics); the second writes

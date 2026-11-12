@@ -99,15 +99,15 @@ night end to end — it runs the product build for each night first, then the st
 ./run_snake.sh --day-obs 20260706 --limit 5 -n       # dry-run, 5-exposure smoke test
 ```
 
-`--day-obs` expands to per-night **study output files**
-(`output/night_<D>/guider_{psfmoments,plots,movies,rtvplots}_<D>.{parquet,pdf,txt}`), not
-to rule names. Ask for a target by its file path. The product's own per-night tables are
+`--day-obs` expands to per-night **study output files**, not to rule names:
+`guider_vs_ccd_moments/output/night_<D>/guider_psfmoments_<D>.parquet` and
+`nightly_qa/output/night_<D>/guider_{plots,movies,rtvplots}_<D>.{pdf,txt}`. Ask for a target by its file path. The product's own per-night tables are
 **not** targets here any more; they come from the product Snakefile.
 
-The study rules resolve the product **old tree first, then the catalog** — `output/night_<D>/`
-if `guider_moments_<D>.parquet` is there, else the catalog's `v6/nights/<D>/` partition —
-and print which source each night resolved to at DAG time, the same way `aos/Snakefile`
-does for its three moved products.
+The study rules resolve the product **catalog first** — the `v6/nights/<D>/` partition,
+then `v4/nights/<D>/` — and fall back to the old tree `output/night_<D>/` only if neither
+has `guider_moments_<D>.parquet`. They print which source each night resolved to at DAG
+time.
 
 There is no single-seq option in `run_snake.sh` — target the per-exposure product files
 directly with the product Snakefile, or use the per-visit runners
