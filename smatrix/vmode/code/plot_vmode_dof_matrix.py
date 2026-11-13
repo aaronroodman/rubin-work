@@ -13,15 +13,18 @@ figure per page:
   3  **Double Zernike per unit v-mode** — µm of DZ that a unit-amplitude v-mode
      produces (``sigma_m * u_m = S v_m``), rows being the (focal k, pupil Zj) terms.
      Only the retained v-modes are shown.
-  4  **Reachability and residual per DZ term** — the fraction of each elementary DZ
+  4  **Full vs truncated sensitivity** — the normalized sensitivity matrix
+     ``S diag(w)`` at full rank beside its ``n_keep`` reconstruction, µm of DZ per
+     normalized DOF unit, with the Frobenius residual in the title.
+  5  **Reachability and residual per DZ term** — the fraction of each elementary DZ
      term that the retained v-modes can produce, f_kj = ||U^T e_kj||^2, and the
      irreducible remainder 1 - f_kj. Derived in
      ``notebooks/vmode/jk_coverage_plots.ipynb``, which explains why this and
      not the (k,j)-isolation view is the meaningful quantity.
-  5  **Normalization weights** — a table of the per-DOF weight ``w_i`` applied,
+  6  **Normalization weights** — a table of the per-DOF weight ``w_i`` applied,
      decomposed into its range factor ``r_i`` (DOF-units of stroke) and FWHM factor
      ``f_i`` (arcsec of PSF width per DOF-unit), since ``w_i = r_i^0.5 * f_i^-0.5``.
-  6  **DOF-per-v-mode conversion against the allowed range** — ``N.V = w_i * V[i,m]``,
+  7  **DOF-per-v-mode conversion against the allowed range** — ``N.V = w_i * V[i,m]``,
      the conversion constant from v-mode amplitude to the DOF's own physical unit (µm
      of translation or bending-mode amplitude, arcsec of hexapod rotation), drawn with
      the ``+r_i`` / ``-r_i`` envelope. Page 1 is dimensionless and so cannot be
@@ -35,9 +38,11 @@ Data-independent apart from the pupil-Zernike set, which defaults to the standar
 Z4-Z26 (omitting Z20, Z21) and is identical in every param_set built to date.
 ``--param-set`` reads it from that param_set's ``visits.parquet`` instead and warns on
 a difference; the param_sets live under the ``aos`` topic, so that lookup is rooted at
-``--param-set-root`` (default ``aos/output``) rather than at ``--output-root``. Output
-goes to ``output/vmode/`` in this topic — outside any param_set, because nothing here
-depends on FAM data.
+``--param-set-root`` (default ``aos/output``). Output goes to a dated
+``study_run('smatrix/vmode', 'svd_<scheme>')`` directory, outside any param_set,
+because nothing here depends on FAM data. Besides the multi-page
+``vmode_dof_matrix_<scheme>.pdf`` it writes ``dof_normalization_<scheme>.pdf``, a
+one-page table of ``r_i``, ``f_i`` and ``w_i`` by DOF name and unit.
 
 Needs ts_ofc and $TS_CONFIG_MTTCS_DIR.
 
@@ -109,6 +114,52 @@ def run_ofc_check(dof_set='standard_22', n_modes=None):
           f'(scale ~{np.abs(M_ofc).max():.3g})\n'
           f'  -> {"PASS" if ok else "FAIL"}')
     return ok
+
+
+def write_normalization_table(path, svd, nw, r_i, f_i, scheme, norm_yaml):
+    """Write a one-page PDF table of the normalization terms by DOF.
+
+    Parameters
+    ----------
+    path : `pathlib.Path`
+        Output PDF.
+    svd : `OFCSvd`
+        Supplies the DOF indices, names and units.
+    nw : `numpy.ndarray`
+        Weight ``w_i = r_i^0.5 f_i^-0.5``, DOF-unit / arcsec^0.5.
+    r_i : `numpy.ndarray`
+        Usable range, DOF-unit.
+    f_i : `numpy.ndarray`
+        Field-averaged PSF FWHM per DOF unit, arcsec / DOF-unit.
+    scheme : `str`
+        Scheme label for the title.
+    norm_yaml : `str`
+        Name of the normalization yaml, for the title.
+    """
+    import matplotlib.pyplot as plt
+
+    names, units = svd.dof_labels()
+    idx = list(svd.dof_idx) if svd.dof_idx else list(range(len(names)))
+    head = ['DOF\nindex', 'DOF', 'unit', 'r_i\n[unit]',
+            'f_i\n[arcsec / unit]', 'w_i\n[unit / arcsec^0.5]']
+    rows = [[str(idx[i]), names[i], units[i], f'{r_i[i]:.4g}', f'{f_i[i]:.4g}',
+             f'{nw[i]:.4g}'] for i in range(len(names))]
+    fig, ax = plt.subplots(figsize=(8.5, 0.21 * len(rows) + 1.6))
+    ax.axis('off')
+    t = ax.table(cellText=rows, colLabels=head, loc='upper center', cellLoc='right')
+    t.auto_set_font_size(False); t.set_fontsize(7); t.scale(1, 1.25)
+    for (r, c), cell in t.get_celld().items():
+        if r == 0:
+            cell.set_height(cell.get_height() * 1.8)
+            cell.set_text_props(weight='bold', ha='center')
+        elif c in (1, 2):
+            cell.set_text_props(ha='left')
+    fig.suptitle(f'OFC normalization terms by DOF  [{scheme}, {norm_yaml}]\n'
+                 r'$w_i = r_i^{0.5} f_i^{-0.5}$;  $r_i$ = usable range;  '
+                 r'$f_i$ = field-averaged PSF FWHM per DOF unit', fontsize=9)
+    fig.savefig(str(path), bbox_inches='tight')
+    plt.close(fig)
+    print(f'wrote {path}')
 
 
 def main():
@@ -447,6 +498,10 @@ def main():
                 print(f'  {labels[i]:10s} amplitude {amp_to_range[i]:8.4f}  '
                       f'(max|N.V|/r_i = {worst[i]:7.2f} dimensionless, '
                       f'r_i = {r_i[i]:.5g})')
+
+    if r_i is not None:
+        write_normalization_table(out.with_name(f'dof_normalization_{args.scheme}.pdf'),
+                                  svd, nw, r_i, f_i, args.scheme, DEFAULT_NORM_YAML)
 
     n_pages = 7 if r_i is not None else 6
     print(f'\nwrote {out}  ({n_pages} pages: V {n_d}x{n_all} with {n_kept} kept; '

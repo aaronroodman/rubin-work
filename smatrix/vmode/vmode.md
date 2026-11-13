@@ -1,9 +1,9 @@
 # Study: `vmode` — sensitivity matrix and mode structure
 
-> **Status:** current · **Last updated:** 2026-10-30 · **Kind:** reference (study)
+> **Status:** current · **Last updated:** 2026-11-13 · **Kind:** reference (study)
 
 > **Code:** `code/` · **Notebooks:** `notebooks/`
-> **Output:** `output/<date>_svd_<scheme>/vmode_dof_matrix_<scheme>.pdf`, schemes `22_12`, `50_34`, `50_50`
+> **Output:** `output/<date>_svd_<scheme>/vmode_dof_matrix_<scheme>.pdf` and `dof_normalization_<scheme>.pdf`, schemes `22_12`, `50_34`, `50_50`
 
 Analysis of the Optical Feedback Control (OFC) sensitivity matrix and its mode
 structure: the singular value decomposition, v-mode composition, and which degrees of
@@ -21,7 +21,7 @@ study is about using and diagnosing the matrix that construction produces.
 
 | file | role |
 |---|---|
-| `plot_vmode_dof_matrix.py` | seven-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/<date>_svd_<scheme>/vmode_dof_matrix_<scheme>.pdf` |
+| `plot_vmode_dof_matrix.py` | seven-page SVD diagnostic for one DOF/v-mode scheme (default 22 DOF / 12 v-modes) → `output/<date>_svd_<scheme>/vmode_dof_matrix_<scheme>.pdf`, plus a one-page table of r_i, f_i and w_i by DOF name and unit, `dof_normalization_<scheme>.pdf` |
 | `analyze_sparse_fit.py` | whether a **sparse** donut fit — primaries only, secondary and tertiary terms fixed at nominal — can still constrain the optical state → `output/vmode/sparse_fit_study.pdf` |
 
 This study is diagnostics of the matrix itself. The consumer that *builds a product* from

@@ -175,6 +175,7 @@ cd ~/notebooks/rubin-work/smatrix
 | `vmode/<date>_svd_22_12/vmode_dof_matrix_22_12.pdf` | 7 pages for the 22-DOF / 12-v-mode scheme; page list in [`../vmode/vmode.md`](../vmode/vmode.md) | `cd vmode && python code/plot_vmode_dof_matrix.py --scheme 22_12` |
 | `vmode/<date>_svd_50_34/vmode_dof_matrix_50_34.pdf` | the same 7 pages for the 50-DOF / 34-v-mode scheme | `cd vmode && python code/plot_vmode_dof_matrix.py --scheme 50_34` |
 | `vmode/<date>_svd_50_50/vmode_dof_matrix_50_50.pdf` | the same 7 pages for 50 DOF with no truncation | `cd vmode && python code/plot_vmode_dof_matrix.py --scheme 50_50` |
+| `vmode/<date>_svd_<scheme>/dof_normalization_<scheme>.pdf` | one-page table by DOF: index, name, unit, range r_i [unit], f_i [arcsec of PSF FWHM / unit], weight w_i [unit / arcsec^0.5]; written by each run above | as above |
 | `vmode/sparse_fit_study.pdf` | 10 pages: sensitivity population per pupil Noll, then 1 page per azimuthal family (astigmatism m=2, coma m=1, trefoil m=3, tetrafoil m=4, spherical m=0) giving per-DOF field response by radial order and the primary↔secondary field correlation; then 4 observability pages (22/12 and 50/34 schemes × 4-corner-WFS and field-complete sampling) comparing the primary-only singular values, per-v-mode and per-DOF observability against the full matrix | `python code/vmode/analyze_sparse_fit.py` |
 
 Two predecessor PDFs sit alongside them, from before the two driver scripts were

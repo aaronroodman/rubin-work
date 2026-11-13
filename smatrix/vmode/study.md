@@ -30,3 +30,7 @@ Backfilled 2026-10-18 from [`vmode.md`](vmode.md) (formerly `smatrix/docs/studie
 
 `plot_vmode_dof_matrix.py` gained the `50_50` scheme (50 DOF, no truncation) and a page 4: the normalized sensitivity $\tilde A = S\,\mathrm{diag}(w)$ (µm of DZ per normalized DOF unit) at full rank beside its rank-`n_keep` reconstruction. Output now goes to `output/20261030_svd_<scheme>/` via `study_run`. All three schemes rerun; `--check` passes for each. Frobenius norm of (full - truncated) / full $\tilde A$ = 0.003 for 50/34 (dimensionless).
 
+
+### 2026-11-13 — normalization table as its own PDF
+
+Each run now also writes `dof_normalization_<scheme>.pdf`: one page with DOF index, name and unit, range r_i [unit], field-averaged PSF FWHM per unit f_i [arcsec / unit] and weight w_i = r_i^0.5 f_i^-0.5 [unit / arcsec^0.5]. The r_i recovered as w_i^2 f_i match the stroke limits (M2_dz 5900 µm, M2_rx 0.12 arcsec). Reran all three schemes into `output/20261113_svd_<scheme>/`. Fixed the script docstring, which had pages 4 and 5 out of order and an old output path.
