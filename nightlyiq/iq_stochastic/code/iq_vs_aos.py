@@ -3,8 +3,8 @@
 Science visits from ConsDB ``visit1_quicklook``: ``psf_sigma_median`` (pixels) and
 ``aos_fwhm`` (arcsec, the PSF FWHM the AOS wavefront residual alone would give). The
 median ellipticity is ``psf_e_azel_p50`` from value_added, the median |e| over CCDs
-(dimensionless); ConsDB ``psf_ellipticity_median`` is empty. Each band gets a
-Huber robust linear fit. The ConsDB pull is cached in ``output/cache/``; ``--refetch``
+(dimensionless); ConsDB ``psf_ellipticity_median`` is empty. Each band's 2D histogram
+carries the median and nMAD of y in AOS_FWHM bins. The ConsDB pull is cached in ``output/cache/``; ``--refetch``
 replaces it.
 
 Usage::
@@ -23,7 +23,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import LogNorm
-import statsmodels.api as sm
 from scipy import stats
 
 from rubinwork.common import study_run
@@ -40,12 +39,14 @@ MIN_CCD = 150  # partial readouts bias the ellipticity summary
 BANDS = ("u", "g", "r", "i", "z", "y")
 ENG_REASON = (r"aos|stability|focus|check|position|align|manual|dark|bias|flat|^test$"
               r"|_test|block-|filter_change_close_loop")
-# Ranges that drop failed measurements; both the fit and the histogram use them.
-CUTS = {"aos_fwhm": (0.0, 2.0), "fwhm": (0.3, 3.0), "e_med": (0.0, 0.3)}
+# Ranges that drop failed measurements; statistics and histograms both use them.
+CUTS = {"aos_fwhm": (0.0, 1.0), "fwhm": (0.3, 3.0), "e_med": (0.0, 0.3)}
 LABELS = {"aos_fwhm": "AOS_FWHM (arcsec)", "fwhm": "PSF FWHM (arcsec)",
           "e_med": "median ellipticity (dimensionless)"}
-BINS = {"aos_fwhm": np.linspace(0.0, 1.5, 76), "fwhm": np.linspace(0.4, 2.8, 97),
+BINS = {"aos_fwhm": np.linspace(0.0, 1.0, 51), "fwhm": np.linspace(0.4, 2.8, 97),
         "e_med": np.linspace(0.0, 0.25, 101)}
+MED_EDGES = np.linspace(0.0, 1.0, 21)  # arcsec of AOS_FWHM
+MIN_BIN = 250  # visits a bin needs before its median is drawn
 
 
 def fetch():
@@ -80,44 +81,42 @@ def load(refetch=False):
     return d
 
 
-def fit(x, y):
-    """Huber fit of y on x, with correlations and the robust residual scatter."""
-    rlm = sm.RLM(y, sm.add_constant(x), M=sm.robust.norms.HuberT()).fit()
-    b0, b1 = rlm.params
-    e0, e1 = rlm.bse
-    return dict(n=len(x), intercept=b0, intercept_err=e0, slope=b1, slope_err=e1,
-                pearson=stats.pearsonr(x, y)[0], spearman=stats.spearmanr(x, y)[0],
-                nmad_resid=nmad(y - (b0 + b1 * x)), nmad_y=nmad(y))
+def binned_median(x, y):
+    """Median and nMAD of y in AOS_FWHM bins holding at least MIN_BIN visits."""
+    idx = np.digitize(x, MED_EDGES) - 1
+    rows = []
+    for k in range(len(MED_EDGES) - 1):
+        yk = y[idx == k]
+        if len(yk) >= MIN_BIN:
+            rows.append(dict(x_lo=MED_EDGES[k], x_hi=MED_EDGES[k + 1], n=len(yk),
+                             median=np.median(yk), nmad=nmad(yk)))
+    return pd.DataFrame(rows)
 
 
-def band_grid(d, ycol, results):
+def band_grid(d, ycol, stats_rows, med_rows):
     fig, axes = plt.subplots(2, 3, figsize=(13, 8.5), sharex=True, sharey=True)
     xb, yb = BINS["aos_fwhm"], BINS[ycol]
+    unit = " arcsec" if ycol == "fwhm" else ""
     for ax, b in zip(axes.flat, BANDS):
         s = d[d.band == b]
-        lo_x, hi_x = CUTS["aos_fwhm"]
-        lo_y, hi_y = CUTS[ycol]
-        s = s[s.aos_fwhm.between(lo_x, hi_x) & s[ycol].between(lo_y, hi_y)]
+        s = s[s.aos_fwhm.between(*CUTS["aos_fwhm"]) & s[ycol].between(*CUTS[ycol])]
         if len(s) < 20:
             ax.text(0.5, 0.5, f"{b}: {len(s)} visits", transform=ax.transAxes, ha="center")
             continue
-        h = ax.hist2d(s.aos_fwhm, s[ycol], bins=[xb, yb], norm=LogNorm(), cmap="viridis",
-                      cmin=1)
-        r = fit(s.aos_fwhm.to_numpy(), s[ycol].to_numpy())
-        results.append(dict(band=b, y=ycol, **r))
-        xx = np.array([xb[0], xb[-1]])
-        ax.plot(xx, r["intercept"] + r["slope"] * xx, color="#D55E00", lw=1.8,
-                label="Huber fit")
-        if ycol == "fwhm":
-            ax.plot(xx, xx, color="0.4", lw=1, ls="--", label="y = x")
-        unit = "arcsec" if ycol == "fwhm" else ""
-        slope_unit = "arcsec/arcsec" if ycol == "fwhm" else "1/arcsec"
+        x, y = s.aos_fwhm.to_numpy(), s[ycol].to_numpy()
+        h = ax.hist2d(x, y, bins=[xb, yb], norm=LogNorm(), cmap="viridis", cmin=1)
+        m = binned_median(x, y)
+        med_rows.append(m.assign(band=b, y=ycol))
+        ax.errorbar(0.5 * (m.x_lo + m.x_hi), m["median"], yerr=m["nmad"], fmt="o",
+                    color="#D55E00", ms=4, capsize=2, lw=1.2,
+                    label=f"median ± nMAD, bins of >= {MIN_BIN} visits")
+        r = dict(band=b, y=ycol, n=len(s), pearson=stats.pearsonr(x, y)[0],
+                 spearman=stats.spearmanr(x, y)[0], median_y=np.median(y), nmad_y=nmad(y))
+        stats_rows.append(r)
         ax.text(0.03, 0.97,
                 f"band {b}, n = {r['n']} visits\n"
-                f"slope = {r['slope']:.3f} ± {r['slope_err']:.3f} {slope_unit}\n"
-                f"intercept = {r['intercept']:.3f} {unit}\n"
                 f"Pearson r = {r['pearson']:.2f}, Spearman rho = {r['spearman']:.2f}\n"
-                f"nMAD resid = {r['nmad_resid']:.3f} {unit}",
+                f"nMAD = {r['nmad_y']:.3f}{unit}",
                 transform=ax.transAxes, va="top", fontsize=7.5, color="black",
                 bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"))
         fig.colorbar(h[3], ax=ax, label="visits per bin")
@@ -135,7 +134,7 @@ def page_summary(pdf, d, res):
     lines = [
         "nightlyiq/iq_stochastic: PSF FWHM and median ellipticity vs AOS_FWHM",
         "",
-        f"ConsDB visit1_quicklook, LSSTCam img_type science with aos_fwhm, engineering",
+        "ConsDB visit1_quicklook, LSSTCam img_type science with aos_fwhm, engineering",
         f"observation_reason excluded: {len(d)} visits, {d.day_obs.nunique()} nights, "
         f"day_obs {d.day_obs.min()} to {d.day_obs.max()}",
         "PSF FWHM = psf_sigma_median x 2.355 x 0.2 arcsec/pixel",
@@ -143,18 +142,16 @@ def page_summary(pdf, d, res):
         f"psf_n_ccd >= {MIN_CCD}; {d.e_med.notna().sum()} visits have it",
         f"Cuts: AOS_FWHM {CUTS['aos_fwhm']} arcsec, FWHM {CUTS['fwhm']} arcsec, "
         f"ellipticity {CUTS['e_med']} (dimensionless)",
-        "Fit: Huber RLM, y = intercept + slope x AOS_FWHM. nMAD resid = robust scatter of",
-        "the fit residuals; nMAD y = robust scatter of y alone (same units as y).",
+        f"Points: median of y in {MED_EDGES[1] - MED_EDGES[0]:.2f} arcsec AOS_FWHM bins, "
+        f"error bar nMAD (1.4826 x MAD) of y; only bins with >= {MIN_BIN} visits.",
         "",
-        f"{'band':4s} {'y':6s} {'n':>6s} {'slope':>15s} {'intercept':>10s} {'Pearson r':>9s} "
-        f"{'Spearman':>9s} {'nMAD resid':>10s} {'nMAD y':>8s}",
-        "     units: FWHM slope arcsec/arcsec, intercept and nMAD arcsec; ellipticity slope "
-        "1/arcsec, intercept and nMAD dimensionless",
+        f"{'band':4s} {'y':6s} {'n':>6s} {'Pearson r':>9s} {'Spearman':>9s} {'median y':>9s} "
+        f"{'nMAD y':>8s}",
+        "     units: median and nMAD arcsec for fwhm, dimensionless for e_med",
     ]
     for r in res.itertuples():
-        lines.append(f"{r.band:4s} {r.y:6s} {r.n:6d} {r.slope:7.3f}±{r.slope_err:.3f}  "
-                     f"{r.intercept:10.3f} {r.pearson:9.2f} {r.spearman:9.2f} "
-                     f"{r.nmad_resid:10.3f} {r.nmad_y:8.3f}")
+        lines.append(f"{r.band:4s} {r.y:6s} {r.n:6d} {r.pearson:9.2f} {r.spearman:9.2f} "
+                     f"{r.median_y:9.3f} {r.nmad_y:8.3f}")
     fig = plt.figure(figsize=(13, 8.5))
     fig.text(0.04, 0.96, "\n".join(lines), va="top", family="monospace", fontsize=8.5)
     pdf.savefig(fig)
@@ -166,11 +163,12 @@ def main():
     ap.add_argument("--refetch", action="store_true")
     args = ap.parse_args()
     d = load(args.refetch)
-    run = study_run(STUDY, "iq_vs_aos")
-    results = []
-    figs = [band_grid(d, ycol, results) for ycol in ("fwhm", "e_med")]
-    res = pd.DataFrame(results)
-    res.to_csv(run.path / "huber_fits.csv", index=False)
+    run = study_run(STUDY, "binned_median")
+    stats_rows, med_rows = [], []
+    figs = [band_grid(d, ycol, stats_rows, med_rows) for ycol in ("fwhm", "e_med")]
+    res = pd.DataFrame(stats_rows)
+    res.to_csv(run.path / "band_stats.csv", index=False)
+    pd.concat(med_rows, ignore_index=True).to_csv(run.path / "binned_medians.csv", index=False)
     out = run.path / "iq_vs_aos.pdf"
     with PdfPages(out) as pdf:
         page_summary(pdf, d, res)
