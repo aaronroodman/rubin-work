@@ -1,6 +1,6 @@
 # V-mode normalization: default vs geom_mean (why v1 differs)
 
-> **Status:** current · **Last updated:** 2026-09-23 · **Kind:** reference (normalization conventions)
+> **Status:** current · **Last updated:** 2026-11-13 · **Kind:** reference (normalization conventions)
 
 **Date:** 2026-07-08
 **Author:** Aaron Roodman (analysis with Claude)
@@ -23,7 +23,7 @@ directly — do NOT recompute it. The confusing part is *how you obtain it*:
 |-------------------|--------|--------|-------|
 | `OFCData('lsst', config_dir=v13).normalization_weights` | **official geom** (`r^0.5 f^-0.5`, field-averaged FWHM) | **focus** | ✅ correct — same weights `build_ofc_svd`/bounce use via the ts yaml |
 | `OFCData()` **without** `config_dir` | old non-geom default | **M2 tilt** | ❌ wrong — this is the OLR / nightly_report bug (v1 ~1e-4 at convergence) |
-| `sqrt(compute_normalization_components r/f)` | geom but with **corner-point FWHM** | focus | ⚠️ ~√2 off from the official field-averaged geom (my earlier t539 mistake) |
+| `sqrt(r/f)` with the **corner-point** f_j of `compute_normalization_components` | geom with the wrong f_j | focus | ⚠️ corner-point f_j is about 2× the field-averaged f_j, so the weights are ~√2 too small (dimensionless ratio) |
 
 So there is really only **one** intended normalization (geom_mean); the
 apparent "conventions" are just three ways of computing it, two of which are
@@ -57,58 +57,64 @@ That is the bug to fix (pass `config_dir`), not the exponent.
 
 ## Evidence
 
-Singular-value spectra for the standard_22 / 12-mode scheme:
+Singular-value spectra for the standard_22 / 12-mode scheme, from `build_ofc_svd` on the
+DZ slab (focal k = 1..6, pupil Z4..Z26 without Z20, Z21), dimensionless:
 
 ```
-default : s[0:12] = [2161, 2161, 63.4, 63.4, 3.95, 2.67, 2.66, 0.58, 0.57, 0.11, 0.10, 0.06]
-geom    : s[0:12] = [24.66, 10.69, 10.69, 6.00, 6.00, 4.72, 4.70, 1.94, 1.94, 1.48, 1.46, 0.27]
+default : s[0:12] = [121.4, 121.4, 46.68, 46.68, 3.401, 3.400, 3.332, 3.331, 2.057, 1.712, 1.700, 0.202]
+geom    : s[0:12] = [17.43, 6.377, 6.377, 3.637, 3.637, 3.346, 3.339, 1.264, 1.262, 1.044, 1.027, 0.167]
 ```
 
-- **default:** s[0] = s[1] = 2161 is a *degenerate pair* → the top mode is the
-  M2-tilt (rx/ry) doublet, not focus. V[:,0] is dominated by M2_rx (0.66),
-  M2_ry (0.75); M2_dz and Cam_dz are ~0.
-- **geom:** s[0] = 24.66 is *non-degenerate* (focus is a single mode), followed
-  by the degenerate tilt pair s[1] = s[2] = 10.69. V[:,0] is
+`default` is `default.yaml`; `geom` is `range0.5_fwhm-0.15.yaml`, the shipped geom_mean.
+
+- **default:** s[0] = s[1] = 121.4 is a *degenerate pair* → the top mode is the
+  M2-tilt (rx/ry) doublet, not focus. V[:,0] is dominated by M2_rx (−0.959) and
+  M2_ry (−0.231); M2_dz and Cam_dz are ~0.
+- **geom:** s[0] = 17.43 is *non-degenerate* (focus is a single mode), followed
+  by the degenerate pair s[1] = s[2] = 6.377. V[:,0] is
   **M2_dz +0.628, Cam_dz +0.777** — i.e. focus.
 
-Why the default v1 is ~0 at convergence: a high-gain mode (s = 2161) produces a
-huge wavefront per unit amplitude, so the closed loop nulls its residual almost
+Why the default v1 is ~0 at convergence: a high-gain mode produces a large
+wavefront per unit amplitude, so the closed loop nulls its residual almost
 perfectly. The tilt pair is the highest-gain mode under default weights, so its
-residual (default v1) is ~1e-4. Under geom weights the gain spread is far
-smaller (24.66 → 0.27, ~90:1 vs ~36000:1), and v1 = focus carries a real ~0.1
+residual (default v1) is ~1e-4. Under geom weights the gain spread is smaller
+(s[0]/s[11] = 104 against 601, dimensionless), and v1 = focus carries a real ~0.1
 residual.
 
 ## Worked example — geom v1 for 20260420 seq 13
 
-`v1 = Σ_i V[i,0] · d_i / w_i`, with `w_j = sqrt(r_j/f_j)` (geom):
+`v1 = Σ_i V[i,0] · d_i / w_i`, with the shipped geom weights `w_j = r_j^0.5 f_j^-0.5`
+(`build_ofc_svd`, standard_22 / 12 modes; Trim `d_i` from the value-added database):
 
-| DOF | trim d_i (µm) | w_i | d/w | V[i,0] | term |
-|-----|---------------|-----|-----|--------|------|
-| M2_dz  | +429.333 | 504.522 | +0.8510 | +0.6284 | +0.5348 |
-| Cam_dz | −323.603 | 601.464 | −0.5380 | +0.7772 | −0.4182 |
-| M1M3_b3 | −0.095 | 0.202 | −0.4702 | −0.0229 | +0.0108 |
-| M2_b5   | −0.071 | 0.182 | −0.3909 | −0.0215 | +0.0084 |
+| DOF | trim d_i [µm] | w_i [µm / arcsec^0.5] | d/w [arcsec^0.5] | V[i,0] (dimensionless) | term |
+|-----|---------------|-----------------------|------------------|------------------------|------|
+| M2_dz   | +429.333 | 713.9  | +0.6014 | +0.6284 | +0.3779 |
+| Cam_dz  | −323.603 | 851.0  | −0.3802 | +0.7772 | −0.2955 |
+| M1M3_b3 | −0.0948  | 0.2831 | −0.3349 | −0.0231 | +0.0077 |
+| M2_b5   | −0.0712  | 0.2572 | −0.2768 | −0.0216 | +0.0060 |
 
-`v1 = 0.1355`. The focus part is the near-degenerate M2_dz / Cam_dz pair:
-`+0.535 (M2_dz) − 0.418 (Cam_dz) = +0.117`, i.e. the loop applies large,
+`v1 = 0.0959` (dimensionless). The focus part is the near-degenerate M2_dz / Cam_dz
+pair: `+0.378 (M2_dz) − 0.296 (Cam_dz) = +0.082`, i.e. the loop applies large,
 opposite-sign dz on M2 (+429 µm) and camera (−324 µm) — the two produce nearly
 the same focus signal — leaving a modest net focus residual. Under the default
-normalization the same trim gives v1 ≈ 0.0002 (because default v1 = tilt, ~0).
+normalization v1 is the tilt mode, ~0 at convergence.
 
 ## r_j and f_j — definitions and storage
 
-`n_j` is built from two per-DOF components returned by
-`ofc_svd.compute_normalization_components(ofc, sens, field_angles)`:
+`n_j` is built from two per-DOF components:
 
 - **r_j — range weight.** The physical range (stroke) of each DOF: hexapod
   stroke, or bending-mode force range, divided by the max element of the DOF's
   rotation matrix. Sourced from the OFC configuration
   (`ts_config_mttcs/MTAOS/v13/ofc`, referenced via `ofc_config_dir`). Unit-bearing
-  (µm for hexapod position, arcsec for tilt, N or dimensionless for bending).
-- **f_j — FWHM sensitivity weight.** How much PSF FWHM (arcsec) a unit of each
-  DOF produces, computed from the sensitivity matrix
-  (`convertZernikesToPsfWidth` applied to the DOF's Zernike response). Larger f_j
-  = the DOF has more leverage on image quality.
+  (µm for hexapod position, deg for hexapod tilt, µm for bending-mode amplitude;
+  the tilt unit is settled in `aos/docs/telemetry.md` §7).
+- **f_j — FWHM sensitivity weight.** The PSF FWHM (arcsec) a unit of each DOF
+  produces, averaged over the field: `convertZernikesToPsfWidth` applied to the
+  DOF's Zernike response (pupil Z4..Z22) on a 5-ring, 6-spoke quadrature grid out to
+  1.75 deg field radius, combined in quadrature. Larger f_j = more leverage on image
+  quality. This field-averaged f_j is the one the shipped weights were made from;
+  `rubinwork.smatrix.normalization_weights.compute_f_quadrature` computes it.
 
 Normalization modes (from `smatrix_vmode_info`, `norm_mode`):
 
@@ -129,120 +135,94 @@ root in the ratio that enters `Ã`), which is why it is the recommended scheme
 
 ```python
 import numpy as np
-from lsst.ts.intrinsic.wavefront.ofc_svd import compute_normalization_components
-from lsst.ts.ofc import OFCData, SensitivityMatrix
+from lsst.ts.intrinsic.wavefront.ofc_svd import load_normalization_weights
+from lsst.ts.ofc import OFCData
+from rubinwork.smatrix.normalization_weights import compute_f_quadrature
 
-ofc_config_dir = '/sdf/group/rubin/u/roodman/LSST/packages/ts_config_mttcs/MTAOS/v13/ofc'
-zn = np.array([4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,22,23,24,25,26])
-sensors = ['R00_SW0','R04_SW0','R40_SW0','R44_SW0']
-labels = ['M2_dz','M2_dx','M2_dy','M2_rx','M2_ry','Cam_dz','Cam_dx','Cam_dy',
-          'Cam_rx','Cam_ry'] + [f'M1M3_b{i}' for i in range(1,21)] + \
-         [f'M2_b{i}' for i in range(1,21)]
-
-ofc = OFCData('lsst', config_dir=ofc_config_dir); ofc.zn_selected = zn
-fa = [ofc.sample_points[s] for s in sensors]
-r, f = compute_normalization_components(ofc, SensitivityMatrix(ofc), fa)
-default = ofc.normalization_weights
-geom = np.sqrt(r / f)
-print(f"{'DOF':9s} {'r_j':>12s} {'f_j':>12s} {'geom sqrt(r/f)':>15s} {'default':>12s}")
-for lab, ri, fi, gi, di in zip(labels, r, f, geom, default):
-    print(f"{lab:9s} {ri:12.4g} {fi:12.4g} {gi:15.4g} {di:12.4g}")
+w = load_normalization_weights(None, 'range0.5_fwhm-0.15.yaml')     # shipped geom weights
+sens = np.asarray(OFCData('lsst').sensitivity_matrix)
+f = compute_f_quadrature(sens, rings=5, spokes=6, znmin=4, znmax=22)  # arcsec / unit
+r = w**2 * f                                                          # unit
 ```
 
-### Values (all 50 DOF, v13 config)
+`smatrix/vmode/code/plot_vmode_dof_matrix.py` writes the same table as
+`dof_normalization_<scheme>.pdf`.
 
-From the extraction snippet against `ts_config_mttcs/MTAOS/v13/ofc`. Hexapod
-positions in µm, tilts in arcsec, bending modes dimensionless; f_j in arcsec
-FWHM per DOF unit.
+### Values (all 50 DOF)
 
-**Column meaning (see corrected Summary):** the `default` column is the v13
-stored `normalization_weights` — this **is the official geom_mean** (`r^0.5
-f^-0.5`, field-averaged FWHM), the one to use. The `geom sqrt(r/f)` column is the
-hand-computed `sqrt(r_j/f_j)` using `compute_normalization_components`'
-corner-point `f_j`; it is ~√2 smaller than the official geom and should **not**
-be used. (The `f_j` column shown is therefore the corner-point FWHM; the
-field-averaged FWHM implied by the config is ≈ `f_j / 2`.) The field-averaged
-split is available machine-readable in
-`aos/output/bounce/dof_normalization_split.parquet` — 50 rows (one per DOF) with
-columns `index, label, unit, range, fwhm_per_unit_arcsec, weight, group`, where
-`fwhm_per_unit_arcsec` is the **correct field-averaged** `f_j` in arcsec of PSF
-FWHM per DOF unit, back-derived as `f_j = r_j / w_j^2` from the shipped weights;
-it reconstructs `w_j = sqrt(r_j / f_j)` to a maximum relative error of 2.2e-16
-(dimensionless). `smatrix/code/normalization_weights.py:compute_f_quadrature`
-computes the field-averaged `f_j` (arcsec of PSF width per DOF unit) directly,
-and is the function `smatrix/vmode/code/plot_vmode_dof_matrix.py` uses for its
-page-5 table.
+The recovered `r_j` reproduce the stroke limits (M2_dz 5900 µm, M2_rx 0.12 deg), which
+confirms the field-averaged `f_j`.
 
-| DOF | r_j | f_j | geom sqrt(r/f) | default |
-|-----|-----|-----|----------------|---------|
-| M2_dz  | 5900 | 0.02318 | 504.5 | 713.9 |
-| M2_dx  | 6700 | 0.001294 | 2275 | 3353 |
-| M2_dy  | 6700 | 0.001294 | 2275 | 3353 |
-| M2_rx  | 0.12 | 148.6 | 0.02842 | 0.042 |
-| M2_ry  | 0.12 | 148.6 | 0.02842 | 0.042 |
-| Cam_dz | 8700 | 0.02405 | 601.5 | 851 |
-| Cam_dx | 7600 | 0.0003458 | 4688 | 6869 |
-| Cam_dy | 7600 | 0.0003459 | 4688 | 6869 |
-| Cam_rx | 0.24 | 102.4 | 0.04842 | 0.07985 |
-| Cam_ry | 0.24 | 102.4 | 0.04842 | 0.07985 |
-| M1M3_b1  | 0.4541  | 1.491  | 0.5519  | 0.7779 |
-| M1M3_b2  | 0.4524  | 1.492  | 0.5507  | 0.7768 |
-| M1M3_b3  | 0.08771 | 2.157  | 0.2016  | 0.2831 |
-| M1M3_b4  | 0.06697 | 2.254  | 0.1724  | 0.2425 |
-| M1M3_b5  | 0.06603 | 2.286  | 0.17    | 0.2392 |
-| M1M3_b6  | 0.02352 | 2.691  | 0.09349 | 0.1303 |
-| M1M3_b7  | 0.02127 | 2.686  | 0.089   | 0.1241 |
-| M1M3_b8  | 0.02206 | 2.734  | 0.08983 | 0.1347 |
-| M1M3_b9  | 0.01947 | 2.772  | 0.08382 | 0.1264 |
-| M1M3_b10 | 0.01376 | 3.185  | 0.06574 | 0.08982 |
-| M1M3_b11 | 0.0132  | 3.824  | 0.05875 | 0.08812 |
-| M1M3_b12 | 0.009088 | 2.2   | 0.06426 | 0.1011 |
-| M1M3_b13 | 0.009297 | 0.6449 | 0.1201 | 0.08025 |
-| M1M3_b14 | 0.0093  | 0.6272 | 0.1218  | 0.08084 |
-| M1M3_b15 | 0.004087 | 2.272 | 0.04241 | 0.07099 |
-| M1M3_b16 | 0.004447 | 2.285 | 0.04411 | 0.07416 |
-| M1M3_b17 | 0.005905 | 3.967 | 0.03858 | 0.05366 |
-| M1M3_b18 | 0.00599 | 3.926  | 0.03906 | 0.05494 |
-| M1M3_b19 | 0.004873 | 0.5305 | 0.09584 | 0.1494 |
-| M1M3_b20 | 0.002206 | 3.461 | 0.02524 | 0.03962 |
-| M2_b1  | 0.9637  | 1.048 | 0.9591  | 1.355 |
-| M2_b2  | 0.968   | 1.046 | 0.9621  | 1.358 |
-| M2_b3  | 0.1369  | 1.532 | 0.2989  | 0.4235 |
-| M2_b4  | 0.1252  | 1.58  | 0.2815  | 0.3988 |
-| M2_b5  | 0.0743  | 2.241 | 0.1821  | 0.2572 |
-| M2_b6  | 0.03063 | 2.611 | 0.1083  | 0.1534 |
-| M2_b7  | 0.03103 | 2.611 | 0.109   | 0.1544 |
-| M2_b8  | 0.03596 | 2.156 | 0.1291  | 0.1948 |
-| M2_b9  | 0.03584 | 2.154 | 0.129   | 0.1945 |
-| M2_b10 | 0.01699 | 3.431 | 0.07038 | 0.11 |
-| M2_b11 | 0.01689 | 2.854 | 0.07694 | 0.1097 |
-| M2_b12 | 0.01447 | 1.199 | 0.1098  | 0.113 |
-| M2_b13 | 0.01467 | 1.201 | 0.1106  | 0.1138 |
-| M2_b14 | 0.008744 | 3.55 | 0.04963 | 0.07454 |
-| M2_b15 | 0.007361 | 3.662 | 0.04484 | 0.06797 |
-| M2_b16 | 0.00681 | 0.5553 | 0.1107 | 0.1148 |
-| M2_b17 | 0.007098 | 0.4869 | 0.1207 | 0.1167 |
-| M2_b18 | 0.002466 | 4.952 | 0.02232 | 0.03202 |
-| M2_b19 | 0.001699 | 4.923 | 0.01858 | 0.02728 |
-| M2_b20 | 0.001665 | 4.928 | 0.01838 | 0.02701 |
+| index | DOF | unit | r_j [unit] | f_j [arcsec / unit] | w_j [unit / arcsec^0.5] |
+|------:|-----|------|-----------:|--------------------:|------------------------:|
+| 0 | M2_dz | µm | 5900 | 0.01158 | 713.9 |
+| 1 | M2_dx | µm | 6700 | 0.000596 | 3353 |
+| 2 | M2_dy | µm | 6700 | 0.000596 | 3353 |
+| 3 | M2_rx | deg | 0.12 | 68.03 | 0.042 |
+| 4 | M2_ry | deg | 0.12 | 68.03 | 0.042 |
+| 5 | Cam_dz | µm | 8700 | 0.01201 | 851 |
+| 6 | Cam_dx | µm | 7600 | 0.0001611 | 6869 |
+| 7 | Cam_dy | µm | 7600 | 0.0001611 | 6869 |
+| 8 | Cam_rx | deg | 0.24 | 37.64 | 0.07985 |
+| 9 | Cam_ry | deg | 0.24 | 37.64 | 0.07985 |
+| 10 | M1M3_b1 | µm | 0.4541 | 0.7504 | 0.7779 |
+| 11 | M1M3_b2 | µm | 0.4524 | 0.7497 | 0.7768 |
+| 12 | M1M3_b3 | µm | 0.08771 | 1.094 | 0.2831 |
+| 13 | M1M3_b4 | µm | 0.06697 | 1.138 | 0.2425 |
+| 14 | M1M3_b5 | µm | 0.06603 | 1.154 | 0.2392 |
+| 15 | M1M3_b6 | µm | 0.02352 | 1.386 | 0.1303 |
+| 16 | M1M3_b7 | µm | 0.02127 | 1.382 | 0.1241 |
+| 17 | M1M3_b8 | µm | 0.02206 | 1.216 | 0.1347 |
+| 18 | M1M3_b9 | µm | 0.01947 | 1.219 | 0.1264 |
+| 19 | M1M3_b10 | µm | 0.01376 | 1.706 | 0.08982 |
+| 20 | M1M3_b11 | µm | 0.0132 | 1.7 | 0.08812 |
+| 21 | M1M3_b12 | µm | 0.009088 | 0.89 | 0.1011 |
+| 22 | M1M3_b13 | µm | 0.009297 | 1.444 | 0.08025 |
+| 23 | M1M3_b14 | µm | 0.0093 | 1.423 | 0.08084 |
+| 24 | M1M3_b15 | µm | 0.004087 | 0.8109 | 0.07099 |
+| 25 | M1M3_b16 | µm | 0.004447 | 0.8085 | 0.07416 |
+| 26 | M1M3_b17 | µm | 0.005905 | 2.051 | 0.05366 |
+| 27 | M1M3_b18 | µm | 0.00599 | 1.984 | 0.05494 |
+| 28 | M1M3_b19 | µm | 0.004873 | 0.2182 | 0.1494 |
+| 29 | M1M3_b20 | µm | 0.002206 | 1.405 | 0.03962 |
+| 30 | M2_b1 | µm | 0.9637 | 0.5252 | 1.355 |
+| 31 | M2_b2 | µm | 0.968 | 0.5252 | 1.358 |
+| 32 | M2_b3 | µm | 0.1369 | 0.7633 | 0.4235 |
+| 33 | M2_b4 | µm | 0.1252 | 0.787 | 0.3988 |
+| 34 | M2_b5 | µm | 0.0743 | 1.124 | 0.2572 |
+| 35 | M2_b6 | µm | 0.03063 | 1.301 | 0.1534 |
+| 36 | M2_b7 | µm | 0.03103 | 1.301 | 0.1544 |
+| 37 | M2_b8 | µm | 0.03596 | 0.9475 | 0.1948 |
+| 38 | M2_b9 | µm | 0.03584 | 0.9475 | 0.1945 |
+| 39 | M2_b10 | µm | 0.01699 | 1.404 | 0.11 |
+| 40 | M2_b11 | µm | 0.01689 | 1.404 | 0.1097 |
+| 41 | M2_b12 | µm | 0.01447 | 1.133 | 0.113 |
+| 42 | M2_b13 | µm | 0.01467 | 1.133 | 0.1138 |
+| 43 | M2_b14 | µm | 0.008744 | 1.574 | 0.07454 |
+| 44 | M2_b15 | µm | 0.007361 | 1.593 | 0.06797 |
+| 45 | M2_b16 | µm | 0.00681 | 0.5165 | 0.1148 |
+| 46 | M2_b17 | µm | 0.007098 | 0.5216 | 0.1167 |
+| 47 | M2_b18 | µm | 0.002466 | 2.405 | 0.03202 |
+| 48 | M2_b19 | µm | 0.001699 | 2.282 | 0.02728 |
+| 49 | M2_b20 | µm | 0.001665 | 2.282 | 0.02701 |
 
 **Reading the table — why geom reorders the modes.** The rigid-body DOFs split
 sharply:
-- **Focus (M2_dz, Cam_dz):** huge stroke `r_j` (5900, 8700 µm) but tiny FWHM
-  leverage `f_j` (~0.023 arcsec/µm) → large geom weight (504, 601).
-- **Decenter (M2_dx/dy, Cam_dx/dy):** huge stroke, even tinier `f_j`
-  (~3e-4–1.3e-3) → the largest geom weights (2275, 4688).
-- **Tilt (M2_rx/ry, Cam_rx/ry):** tiny stroke `r_j` (0.12, 0.24) but very high
-  `f_j` (148, 102 arcsec per unit) → tiny geom weight (0.028, 0.048).
+- **Focus (M2_dz, Cam_dz):** large stroke `r_j` (5900, 8700 µm) but small FWHM
+  leverage `f_j` (0.0116, 0.0120 arcsec/µm) → large weight (714, 851 µm/arcsec^0.5).
+- **Decenter (M2_dx/dy, Cam_dx/dy):** large stroke (6700, 7600 µm), even smaller
+  `f_j` (6.0e-4, 1.6e-4 arcsec/µm) → the largest weights (3353, 6869 µm/arcsec^0.5).
+- **Tilt (M2_rx/ry, Cam_rx/ry):** small stroke `r_j` (0.12, 0.24 deg) but large
+  `f_j` (68.0, 37.6 arcsec/deg) → small weight (0.042, 0.080 deg/arcsec^0.5).
 
 So geom up-weights the large-stroke / low-leverage DOFs (focus, decenter) and
 down-weights tilt. Combined with the sensitivity matrix `A`, this puts focus at
 the top of the SVD (v1) — whereas the default weights leave tilt dominant.
 
-> **Note — default weights are config-dependent.** The `default` column above is
-> the v13 config. A bare `OFCData()` (no `config_dir`, as
+> **Note — default weights are config-dependent.** The `w_j` column above is the
+> shipped geom set. A bare `OFCData()` (no `config_dir`, as
 > `StateEstimator.get_vmodes_from_dofs` uses in the olr `vmodes` path) loads a
-> different set (e.g. M2_dz ≈ 68 vs 714 here) — another reason the default
+> different set (e.g. M2_dz ≈ 68 vs 714 µm / arcsec^0.5 here) — another reason the default
 > normalization is not a stable basis for analysis. The geom weights are derived
 > from `r_j`/`f_j` and so are reproducible given the config.
 
@@ -281,7 +261,7 @@ therefore a hybrid: it inverts in the corner basis and reports v-modes through
 **Always geom_mean, and get it from the OFC config's `normalization_weights`
 (v13) via `config_dir`.** There is no reason to use the old `OFCData()`-default
 weights or a hand-rolled `sqrt(r/f)`. In code, use the shared helpers in
-`aos/code/aos_state.py` (`make_state_estimator` + `vmodes_from_dofs`), which both
+`rubinwork.aos_state` (`make_state_estimator` + `vmodes_from_dofs`), which both
 `olr/code/nightly_table.py` and `blocks/t539_closedloop_aos.ipynb` now call, so
 the normalization stays in one place — `make_state_estimator` asserts the resolved
 yaml and raises rather than silently correcting it. The `build_ofc_svd` run-scripts
