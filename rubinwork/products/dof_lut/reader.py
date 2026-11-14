@@ -328,7 +328,8 @@ def load(variant, build=catalog.CURRENT, tables=TABLES):
         One DataFrame per table present: ``(lut, lut_dz, lut_by_rotbin)`` by default, or
         ``(lut, lut_dz)`` for a build whose fit table had no rotator-angle column.
         Values in ``lut`` are DOF amplitudes in µm for translations and bending modes
-        and arcsec for hexapod tip-tilt, as its ``dof_unit`` column states per row; the
+        and deg for hexapod tip-tilt (builds to date say ``arcsec`` in ``dof_unit``, a
+        stale label copied from ``ofc_svd.DOF_UNITS_50``); the
         DZ columns of ``lut_dz`` are in µm of wavefront.
 
     Raises

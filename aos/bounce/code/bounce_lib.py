@@ -769,12 +769,12 @@ def plot_dof_vs_b_value_panels(entries, dof_labels, dof_units,
         (`int` day_obs), `b_value` (`float`, deg), `label` (`str`, the leg
         label) and `dof_deltas` — the `{dof_index: {'delta','err'}}` dict from
         `paired_deltas_matrix`, in µm for translations and bending-mode
-        amplitudes and arcsec for hexapod rotations.  Each overlay series adds
+        amplitudes and deg for hexapod rotations.  Each overlay series adds
         one further key of the same form.
     dof_labels : `list` [`str`]
         DOF names, indexed by global DOF index (`LABELS_50DOF`).
     dof_units : `list` [`str`]
-        Per-DOF units, indexed the same way (`DOF_UNITS_50`) — µm or arcsec.
+        Per-DOF units, indexed the same way (`DOF_UNITS_50`) — µm or deg.
     dof_indices : `list` [`int`], optional
         Which DOF to panel.  Defaults to every DOF that any entry populates
         with a finite Δ in the base series *or any overlay series*, so a scheme
@@ -1107,7 +1107,7 @@ def plot_dof_per_night_summary(dof_by_night, dof_labels, dof_units, title=''):
     `dof_by_night` = {night: (n_visits, n_dof)}.  Same layout as
     build_measured_intrinsic's 'DOF median per iteration' page, with the
     iteration axis replaced by night.  `dof_units` is accepted for signature
-    parity; per-panel units are fixed (μm / arcsec).
+    parity; per-panel units are fixed (μm / deg).
     """
     nights = sorted(dof_by_night.keys())
     medians = {nt: np.nanmedian(dof_by_night[nt], axis=0) for nt in nights}

@@ -494,7 +494,7 @@ def recover_optical_state(z_dev, state_estimator, n_modes=None, zk_frame=ZK_FRAM
     -------
     dof_full : `numpy.ndarray`
         Physical DOF, length 50; the used-DOF subset is filled and the rest are zero.
-        Units are µm for translations and bending modes, arcsec for tilts.
+        Units are µm for translations and bending modes, deg for tilts.
     vmode_amps : `numpy.ndarray`
         v-mode amplitudes (dimensionless) in the **`make_state_estimator` basis**,
         length `truncate_index`, from `get_vmodes_from_dofs`.

@@ -693,7 +693,7 @@ def solver_dof_per_pair(W_all, pairs, svd, solver):
         in that scheme's own DOF order.
     solver : `callable`
         Maps `(dW, svd)` to recovered DOF, each in its own unit (µm for
-        translations and bending-mode amplitudes, arcsec for rotations).
+        translations and bending-mode amplitudes, deg for rotations).
 
     Returns
     -------
@@ -747,7 +747,7 @@ def solver_deltas(W_all, pairs, svd, solver, keys=None):
     -------
     deltas : `dict`
         `{dof_index: {'delta', 'err', 'sig', 'n'}}`, `delta` in each DOF's own
-        unit (µm or arcsec), `err` the SEM of the median over pairs, `sig` the
+        unit (µm or deg), `err` the SEM of the median over pairs, `sig` the
         dimensionless ratio `delta / err`.
     """
     if not pairs:
@@ -785,7 +785,7 @@ def rbr_dof_per_pair(W_all, pairs, svd, ranges, *, kappa=None, power=None):
         The 50-DOF / 34-v-mode decomposition the default recovery uses.
     ranges : `array_like`, (n_dof,)
         Allowed range `r_j` per DOF, each in that DOF's own unit (µm for
-        translations and bending-mode amplitudes, arcsec for rotations).
+        translations and bending-mode amplitudes, deg for rotations).
     kappa : `float`, optional
         Dimensionless ratio `|d_j| / r_j` at which the penalty reaches unity
         weight.  Defaults to `RBR_DEFAULTS['kappa']`.
@@ -818,7 +818,7 @@ def rbr_deltas(W_all, pairs, svd, ranges, *, kappa=None, power=None,
     -------
     deltas : `dict`
         `{dof_index: {'delta', 'err', 'sig', 'n'}}`, `delta` in each DOF's own
-        unit (µm or arcsec), `err` the SEM of the median over pairs.
+        unit (µm or deg), `err` the SEM of the median over pairs.
     """
     ri = rbr_module()
     kap = float(RBR_DEFAULTS['kappa'] if kappa is None else kappa)

@@ -545,9 +545,10 @@ That is 2 to 45 arcsec, a sensible hexapod tilt. The same numbers read as arcsec
 be negligible.
 
 So everything in rubin-work that reads the EFD stores hexapod tilts in **deg**: the
-value-added DB `dof*`, `tweak_dof*`, `lut_dof*` and `optical_state.dof`. Only a comparison
-with `DOF_UNITS_50`-convention numbers, such as bounce-test results, needs 3600 arcsec/deg
-on those four entries. The translations and bending modes are µm everywhere.
+value-added DB `dof*`, `tweak_dof*`, `lut_dof*` and `optical_state.dof`. So does everything computed
+with ts_ofc, such as the bounce-test results: `DOF_UNITS_50` labels those tilts arcsec, but
+the numbers are deg, and no conversion is needed anywhere. The translations and bending
+modes are µm everywhere.
 
 ### Time scales
 

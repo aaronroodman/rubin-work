@@ -690,7 +690,7 @@ def main():
                             (int(e['night']), e['b_value'], v['delta'], v['err']))
                 dofv = {f'DOF {q} {LABELS_50DOF[q]} [{DOF_UNITS_50[q]}]': dof[q]
                         for q in sorted(dof)}
-                views.append(('Δ DOF', dofv, 'DOF unit (um or arcsec)'))
+                views.append(('Δ DOF', dofv, 'DOF unit (um or deg)'))
                 for vname, ser, unit in views:
                     if not ser:
                         continue

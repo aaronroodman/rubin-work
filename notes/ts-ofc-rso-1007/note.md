@@ -123,7 +123,7 @@ Other public functions in `range_bounded_recovery`:
 ## `OFCData.dof_ranges()`
 
 Returns the allowed range `r_j` over all 50 DOF. The units are µm for hexapod
-translations and bending-mode amplitudes, and arcsec for hexapod rotations. Rigid-body
+translations and bending-mode amplitudes, and deg for hexapod rotations. Rigid-body
 DOF use `rb_stroke`. For bending modes it is the force range / 20, divided by the
 largest absolute entry of that mode's force column. The 20 is there because the shipped
 bending-mode force matrices are normalized to 20 µm amplitude.

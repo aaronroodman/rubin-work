@@ -79,7 +79,7 @@ def load_ranges(js=JS_DEFAULT, n_dof=N_DOF, n_keep=N_KEEP,
     -------
     r : `numpy.ndarray`, (n_dof,)
         Allowed range per DOF, µm for translations and bending-mode amplitudes,
-        arcsec for hexapod rotations.
+        deg for hexapod rotations.
     labels : `list` [`str`]
         DOF names, e.g. `M2_dz`, `B1_1`.
     units : `list` [`str`]
@@ -340,7 +340,7 @@ def main():
                                                 n_keep=args.n_keep)
     print(f"allowed range r_j over {len(r)} DOF: "
           f"{np.nanmin(r):.4g} to {np.nanmax(r):.4g} "
-          f"(µm or arcsec, per DOF unit; smallest is "
+          f"(µm or deg, per DOF unit; smallest is "
           f"{dof_labels[int(np.nanargmin(r))]}, largest "
           f"{dof_labels[int(np.nanargmax(r))]})")
 

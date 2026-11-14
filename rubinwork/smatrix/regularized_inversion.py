@@ -11,7 +11,7 @@ exceed the actuator-force-limited range ``r_j`` that the mirror can physically r
 
 This module provides four inversions over one design matrix, all returning DOF in
 the mixed physical units of ``DOF_UNITS_50`` (µm for translations and bending-mode
-amplitudes, arcsec for hexapod rotations):
+amplitudes, deg for hexapod rotations):
 
 ``invert_truncated``
     Method 0, the current scheme. Truncated SVD at ``n_keep`` modes.
@@ -121,7 +121,7 @@ def dof_range_vector(svd, f_quadrature=None):
     -------
     r : `numpy.ndarray`
         ``(n_dof,)`` allowed range over the SVD's ``dof_idx``, µm for translations
-        and bending-mode amplitudes, arcsec for hexapod rotations.
+        and bending-mode amplitudes, deg for hexapod rotations.
 
     Notes
     -----
@@ -395,11 +395,11 @@ def oic_authority():
     -------
     authority : `numpy.ndarray`
         ``(50,)`` authority ``a_j``, in inverse DOF units — per µm for translations
-        and bending-mode amplitudes, per arcsec for hexapod rotations. The OIC's
+        and bending-mode amplitudes, per deg for hexapod rotations. The OIC's
         penalty matrix is ``H = diag(a**2)``.
     parts : `dict`
         The pieces the range comparison needs: ``rb_stroke`` (µm for translations,
-        arcsec for rotations), ``m1m3_force_per_um`` and ``m2_force_per_um`` (N per µm
+        deg for rotations), ``m1m3_force_per_um`` and ``m2_force_per_um`` (N per µm
         of mode amplitude, actuators by mode), the two actuator penalties and
         ``motion_penalty`` (all dimensionless).
 

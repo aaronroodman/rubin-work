@@ -28,7 +28,7 @@ def huber_poly_fit(x, y, err, order, t=HUBER_T, n_iter=100):
     x : `numpy.ndarray`
         Offset from the reference, deg.
     y : `numpy.ndarray`
-        Paired-Δ DOF, in the DOF's unit (µm or arcsec).
+        Paired-Δ DOF, in the DOF's unit (µm or deg).
     err : `numpy.ndarray`
         1-sigma error of `y`, same unit.
     order : `int`

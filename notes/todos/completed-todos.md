@@ -855,7 +855,7 @@ image quality of one that can. RBR at a median 2.16x range excess is still not s
 inside the range, the penalty being smooth rather than a hard bound.
 
 Verified: the rebuilt 50/34 deviation-recovered state reproduces the pre-item-2 variant to
-6.0e-14 (dimensionless v-mode amplitude) and 3.4e-11 µm/arcsec in DOF across all 915 matched
+6.0e-14 (dimensionless v-mode amplitude) and 3.4e-11 µm or deg in DOF across all 915 matched
 visits of `day_obs` 20260318, so the full rerun changed nothing but the added columns. The
 stored sign convention `v_modes_olr = v_modes − v_modes_trim` holds to 1.3e-15.
 
@@ -894,7 +894,7 @@ The measured CWFS Zernikes come from ConsDB as they are measured online in the A
 `aos_state.fetch_corner_zernikes_consdb` against `consdb_ccdvisit1_quicklook`, which is the
 `opd_source` recorded on every variant. The Trim DOF come from the database's own
 `visit_telemetry.trim` columns, 50 of them, from `MTAOS.logevent_degreeOfFreedom` as of
-`obs_start` [µm, arcsec].
+`obs_start` [µm, deg].
 
 ### Data selection
 

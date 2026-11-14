@@ -451,10 +451,10 @@ def _plot(df, ddf, out_dir, svd, r_j, labels, bdf=None):
             ax.set_yscale('symlog', linthresh=1e-4)
             ax.set_xticks(xs)
             ax.set_xticklabels(labels, rotation=90, fontsize=5)
-            ax.set_ylabel('recovered DOF  [µm or arcsec per DOF]')
+            ax.set_ylabel('recovered DOF  [µm or deg per DOF]')
             ax.set_title(f'{bname} / {lname}: recovered DOF against the allowed '
                          'range\n(µm for translations and bending amplitudes, '
-                         'arcsec for hexapod rotations)')
+                         'deg for hexapod rotations)')
             ax.grid(alpha=0.3)
             ax.legend(fontsize=6, ncol=3)
             fig.tight_layout()

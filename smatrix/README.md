@@ -22,18 +22,20 @@ Generated from each `<study>/study.md`; edit those, not this table.
 
 ## Matrix definition
 Shape `(31, 29, 50)` = (field-Zernike k, pupil-Zernike j, DOF), units
-**µm wavefront per µm/arcsec of DOF**. Field radius 1.75°, pupil ε=0.61,
-`jmax=28`, `kmax=30`. This exactly reproduces the ts_ofc generator
+**µm wavefront per µm or deg of DOF**. Field radius 1.75°, pupil ε=0.61,
+`jmax=28`, `kmax=30`. This reproduces the ts_ofc generator
 `lsst.ts.ofc.scripts.generate_sensitivity_matrix` (same `double_zernike`
-helper, sampling, and unit handling).
+helper and sampling), except for the tilt units: the ts_ofc generator leaves
+batoid_rubin's `dof_angle_units` at its arcsec default, while the shipped
+matrix, and this build, are per deg.
 
 ## DOF ordering (length 50)
 | idx | DOF | unit |
 |----|----|----|
 | 0-2 | M2 dz, dx, dy | µm |
-| 3-4 | M2 Rx, Ry | arcsec |
+| 3-4 | M2 Rx, Ry | deg |
 | 5-7 | Cam dz, dx, dy | µm |
-| 8-9 | Cam Rx, Ry | arcsec |
+| 8-9 | Cam Rx, Ry | deg |
 | 10-29 | M1M3 bending modes 0..19 | µm |
 | 30-49 | M2 bending modes 0..19 | µm |
 

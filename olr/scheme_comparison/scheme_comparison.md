@@ -179,7 +179,7 @@ to all v-modes.
 
 - The rebuilt `50_34` deviation-recovered state reproduces the pre-existing
   `v50_34__batoid__consdb_v1` rows to **6.0e-14** (dimensionless v-mode amplitude) and
-  **3.4e-11** µm/arcsec in DOF across all 915 matched visits of `day_obs` 20260318, so the
+  **3.4e-11** µm or deg in DOF across all 915 matched visits of `day_obs` 20260318, so the
   added columns are the only change.
 - Truncated recovery through `CornerSvdShim` reproduces `aos_state.recover_optical_state` to
   **0.000e+00** µm of wavefront, so the RBR and truncated DOF live in one basis.

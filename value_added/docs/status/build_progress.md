@@ -160,7 +160,7 @@ their range yields zero rows. Covered by `code/test_build_optical_state.py`.
 Three verifications:
 
 - The rebuilt `50_34` deviation-recovered state reproduces the pre-item-2 variant to
-  **6.0e-14** (dimensionless v-mode amplitude) and **3.4e-11** µm/arcsec in DOF across all
+  **6.0e-14** (dimensionless v-mode amplitude) and **3.4e-11** µm or deg in DOF across all
   915 matched visits of 20260318, so the rerun changed nothing but the added columns.
 - `v_modes_olr = v_modes − v_modes_trim` to **1.3e-15** (dimensionless), and the optical
   state `Trim − Deviation` is its exact negative, matching the `thermal_focus`

@@ -136,7 +136,7 @@ def write_tables(result, cfg, out_dir):
     # The DOF Δ was previously visible only inside the PDFs, so any number
     # quoted from it had to be read off a plot.  One row per (bounce, leg,
     # night, quantity); `unit` is µm for translations and bending-mode
-    # amplitudes, arcsec for hexapod rotations, and dimensionless for v-modes.
+    # amplitudes, deg for hexapod rotations, and dimensionless for v-modes.
     # This table is what reproduces bounce_dof_night_values.pdf, and is the
     # form shared externally, so it carries the *measured* elevation and
     # rotator angle of both legs rather than the nominal config window.

@@ -2923,13 +2923,13 @@ intrinsic. **That reading was wrong**, measured 2026-10-13 on the `miw` 3a refer
 | `M2_dz` | µm of M2 hexapod piston | 545.28 | 551.32 |
 | `M2_dx` | µm of M2 hexapod decentre | 727.23 | 719.56 |
 | `M2_dy` | µm of M2 hexapod decentre | **−2407.11** | **−2407.34** |
-| `M2_rx` | arcsec of M2 hexapod tilt | −0.02 | −0.02 |
-| `M2_ry` | arcsec of M2 hexapod tilt | −0.01 | −0.01 |
+| `M2_rx` | deg of M2 hexapod tilt | −0.02 | −0.02 |
+| `M2_ry` | deg of M2 hexapod tilt | −0.01 | −0.01 |
 | `Cam_dz` | µm of camera hexapod piston | −508.84 | −522.93 |
 | `Cam_dx` | µm of camera hexapod decentre | −285.97 | −270.17 |
 | `Cam_dy` | µm of camera hexapod decentre | −1867.15 | −1878.14 |
-| `Cam_rx` | arcsec of camera hexapod tilt | −0.00 | −0.00 |
-| `Cam_ry` | arcsec of camera hexapod tilt | 0.00 | 0.00 |
+| `Cam_rx` | deg of camera hexapod tilt | −0.00 | −0.00 |
+| `Cam_ry` | deg of camera hexapod tilt | 0.00 | 0.00 |
 
 **Why it barely moves: the plain FAM fit already subtracts an intrinsic** — the tabulated
 batoid design `zk_intrinsic` — and `refit_mi` only **substitutes the measured one for

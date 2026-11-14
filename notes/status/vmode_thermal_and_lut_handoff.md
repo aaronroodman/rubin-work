@@ -542,6 +542,6 @@ consecutive visits are near-duplicates in feature space and a visit-level split 
   unit section and the pointing section.
 - `olr/scheme_comparison/scheme_comparison.md` — the three correction schemes on 96,278 paired visits.
 - `notes/aos-bounce-test-summary/note.md` — the bounce-test comparison target. Physical-DOF
-  table under "Physical degrees of freedom"; its tilts are **arcsec**.
+  table under "Physical degrees of freedom"; its tilts are deg (the note's arcsec labels were wrong).
 - `thermal_focus/thermal_focus/thermal_focus.md` — part 1's template: the five thermal features, the
   Huber pipeline, the night-grouped evaluation and the v-mode-1 conversion.

@@ -35,7 +35,8 @@ One rule, one script. ``run_build_lut`` writes:
     one row per recovered DOF: the absolute DOF index, its label and unit, the reduced
     ``value`` (median over kept visits by default), the ``mean``, the robust
     median-absolute-deviation scatter, and the visit count. Translations and bending
-    modes are in µm and hexapod tip-tilt in arcsec, per the row's ``dof_unit``.
+    modes are in µm and hexapod tip-tilt in deg. Builds to date label the tilts
+    ``arcsec`` in ``dof_unit``, copied from ``ofc_svd.DOF_UNITS_50``; the values are deg.
 ``lut_dz.parquet``
     one row per (focal order k, pupil Noll index j): the averaged raw DZ, its
     ``n_keep``-mode SVD reconstruction and the residual, all in µm of wavefront.

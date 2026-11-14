@@ -54,12 +54,12 @@ class BounceAnalysis:
         The 50/34, 5/5 camera-hexapod-only, 22/12 reduced and RBR (50 DOF /
         ``rbr_n_keep`` modes) decompositions.
     C_all, DOF_all : `numpy.ndarray` or `None`
-        Per-visit v-mode amplitudes (dimensionless) and DOF (µm or arcsec),
+        Per-visit v-mode amplitudes (dimensionless) and DOF (µm or deg),
         50/34.  The per-ordinal PDF pages need these.
     C5_all, DOF5_all, C22_all : `numpy.ndarray` or `None`
         The same for the 5/5 and 22/12 schemes.
     DOFRBR_all : `numpy.ndarray` or `None`
-        Per-visit DOF under RBR, µm or arcsec, solved visit by visit.
+        Per-visit DOF under RBR, µm or deg, solved visit by visit.
     CRBR_all : `numpy.ndarray` or `None`
         Per-visit v-mode amplitudes in the RBR decomposition (dimensionless),
         the plain projection with no range barrier.
@@ -69,9 +69,9 @@ class BounceAnalysis:
     fwhm_tools : `tuple` or `None`
         ``(aos_fwhm, grid, convertZernikesToPsfWidth)`` for `achieved_fwhm`.
     DOFSUM_all : `numpy.ndarray` or `None`
-        Per-visit DOF plus the AOS Trim, µm or arcsec, when `add_dof_trim` is on.
+        Per-visit DOF plus the AOS Trim, µm or deg, when `add_dof_trim` is on.
     dof_ranges : `numpy.ndarray` or `None`
-        Allowed range r_j per DOF, µm or arcsec, from the SVD normalization
+        Allowed range r_j per DOF, µm or deg, from the SVD normalization
         weights.  `None` when Range-Bounded Recovery is unavailable.
     oic_authority : `numpy.ndarray` or `None`
         The OIC authority vector over all 50 DOF.
@@ -153,7 +153,7 @@ def _achieved_fwhm(dW, d, svd, iZs, grid, conv, afw):
     dW : `numpy.ndarray`
         Measured DZ wavefront, µm of wavefront, on `svd.kj_grid`.
     d : `numpy.ndarray`
-        Recovered DOF, each in its own unit (µm or arcsec).
+        Recovered DOF, each in its own unit (µm or deg).
     svd : `OFCSvd`
         The decomposition supplying the forward operator and the weights.
     iZs : `list` [`int`]
@@ -184,7 +184,7 @@ def _scheme_fwhm(dW, svd, solver, iZs, grid, conv, afw, tag):
     svd : `OFCSvd`
         The scheme's own decomposition; the residual is scored in it.
     solver : `callable`
-        Maps ``(dW, svd)`` to recovered DOF in each DOF's own unit (µm or arcsec).
+        Maps ``(dW, svd)`` to recovered DOF in each DOF's own unit (µm or deg).
     iZs : `list` [`int`]
         Pupil Noll indices of the DZ grid.
     grid : `numpy.ndarray`
@@ -227,7 +227,7 @@ def achieved_fwhm(result, dW, d, svd):
     dW : `numpy.ndarray`
         DZ wavefront, µm of wavefront, on `svd.kj_grid`.
     d : `numpy.ndarray`
-        DOF over `svd.dof_idx`, each in its own unit (µm or arcsec).
+        DOF over `svd.dof_idx`, each in its own unit (µm or deg).
     svd : `OFCSvd`
         Decomposition whose forward operator maps `d` to a wavefront.
 
@@ -412,7 +412,7 @@ def run_analysis(fits_path, cfg, *, min_detectors=None):
                   f'penalty weight), power={cfg["rbr_power"]}; '
                   f'allowed range r_j spans '
                   f'{np.nanmin(dof_ranges):.4g} to {np.nanmax(dof_ranges):.4g} '
-                  f'(µm or arcsec, per DOF unit)')
+                  f'(µm or deg, per DOF unit)')
         except Exception as e:
             print(f'  (RBR unavailable [{type(e).__name__}: {e}]; '
                   f'default recovery only)')

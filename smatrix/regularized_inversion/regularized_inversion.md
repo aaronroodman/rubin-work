@@ -213,7 +213,7 @@ bracket the low end of the `rho` scan below, where the OIC is still 4 to 11 time
 
 The rigid-body block is the *same numbers*. `rb_stroke` is
 `[5900, 6700, 6700, 0.12, 0.12, 8700, 7600, 7600, 0.24, 0.24]` (µm for translations,
-arcsec for rotations), and `dof_range_vector` back-derives exactly these ten values as
+deg for rotations), and `dof_range_vector` back-derives exactly these ten values as
 `r_j`. So `1 / a_j`, rescaled so that `M2_dz` matches, reproduces `r_j` to `ratio = 1.000`
 for all ten rigid-body DOF. The OIC authority *is* a reciprocal allowed range there.
 
@@ -319,7 +319,7 @@ def range_authority(self, dof_state, kappa=4.0, power=3):
     Parameters
     ----------
     dof_state : `numpy.ndarray`
-        Current DOF state, ``(n_dof,)``, µm and arcsec per DOF unit.
+        Current DOF state, ``(n_dof,)``, µm and deg per DOF unit.
     kappa : `float`, optional
         Dimensionless knee: the penalty reaches unit weight at
         ``|d_j| = kappa * r_j``.

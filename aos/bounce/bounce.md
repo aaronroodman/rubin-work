@@ -98,8 +98,8 @@ entries. Both order the hexapods M2 first (indices 0–4, `M2_dz/dx/dy/rx/ry`) t
 from `lsst.ts.intrinsic.wavefront.ofc_svd` (`LABELS_50DOF`, `DOF_UNITS_50`, `DOF_GROUPS`),
 and the LUT axis order is documented at `common/dof_telemetry.py:fetch_hexapod_lut_for_visits`.
 
-One unit trap: the LUT angular axes are **deg**, as the hexapod reports them, while the
-Trim rotations are **arcsec**, the OFC convention. Translations are µm in both.
+The LUT angular axes and the Trim rotations are both **deg**, as the hexapod reports them
+(`aos/docs/telemetry.md` §7); labels saying arcsec are out of date. Translations are µm in both.
 
 ## The vs-ordinal marker scheme
 
@@ -183,7 +183,7 @@ Four parquet tables and nine PDFs per run.
 | product | content |
 |---|---|
 | `bounce_kj_stats.parquet` | per-(k, j) Δ in µm of wavefront, its error and significance, per night and pooled |
-| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` naming the recovery scheme — `dof` / `vmode` for 50/34, `dof22` / `vmode22` for 22/12, `dof_oic` for the OIC solution, `dof5` / `vmode5` for the camera-hexapod-only 5/5 — and a `unit` column: µm for translations and bending-mode amplitudes, arcsec for hexapod rotations, dimensionless for v-modes. The `dof`, `dof22`, `dof_oic` and `dof5` rows are keyed by **global** DOF index, so a reduced scheme's rows sit at the indices it actually solves for and are absent elsewhere. Carries the *measured* `elevation_deg` and `rot_angle_deg` of the comparison leg and `ref_elevation_deg` / `ref_rot_angle_deg` of the reference, plus `day_obs`, `block`, `n_visits` and `n_pairs`, so it reproduces `bounce_dof_night_values.pdf` and can be shared standalone. Every DOF row carries `dof_range` (the allowed range `r_j`, same unit as the row) and the dimensionless `ratio_to_range`; `kind = dof` rows additionally carry the Range-Bounded Recovery (RBR) result as columns — `delta_rbr` and `delta_rbr_err` in the row's own unit and `ratio_to_range_rbr` dimensionless — since RBR solves the same 50 DOF the `dof` rows do |
+| `bounce_dof_stats.parquet` | per-DOF and per-v-mode Δ, per night and pooled, one row per (bounce, leg, night, quantity) with a `kind` naming the recovery scheme — `dof` / `vmode` for 50/34, `dof22` / `vmode22` for 22/12, `dof_oic` for the OIC solution, `dof5` / `vmode5` for the camera-hexapod-only 5/5 — and a `unit` column: µm for translations and bending-mode amplitudes, deg for hexapod rotations, dimensionless for v-modes. The `dof`, `dof22`, `dof_oic` and `dof5` rows are keyed by **global** DOF index, so a reduced scheme's rows sit at the indices it actually solves for and are absent elsewhere. Carries the *measured* `elevation_deg` and `rot_angle_deg` of the comparison leg and `ref_elevation_deg` / `ref_rot_angle_deg` of the reference, plus `day_obs`, `block`, `n_visits` and `n_pairs`, so it reproduces `bounce_dof_night_values.pdf` and can be shared standalone. Every DOF row carries `dof_range` (the allowed range `r_j`, same unit as the row) and the dimensionless `ratio_to_range`; `kind = dof` rows additionally carry the Range-Bounded Recovery (RBR) result as columns — `delta_rbr` and `delta_rbr_err` in the row's own unit and `ratio_to_range_rbr` dimensionless — since RBR solves the same 50 DOF the `dof` rows do |
 | `bounce_fwhm_metric.parquet` | `fwhm_before` and one achieved-residual column per recovery scheme — `fwhm_after_50_34`, `fwhm_after_rbr`, `fwhm_after_22_12`, `fwhm_after_oic`, `fwhm_after_5_5` — all arcsec FWHM, per leg, pooled over nights. `fwhm_after_5_5` is populated only on a `camera_hexapod_only` bounce |
 | `bounce_fwhm_vs_bvalue.parquet` | one row per (bounce, leg, night), with `b_value` (elevation or camera rotator angle in deg), `n_pairs`, and the achieved-residual FWHM in arcsec for every scheme: `fwhm_before`, `fwhm_after_default`, `fwhm_after_rbr`, `fwhm_after_22_12`, `fwhm_after_oic` and `fwhm_after_5_5` |
 
@@ -232,7 +232,7 @@ them per study is outstanding work.
 ## Recovered bending-mode amplitudes exceed their allowed range
 
 The S-matrix SVD normalization weight is `w_j = r_j^0.5 * f_j^-0.5`, with `r_j` the allowed
-range of degree of freedom `j` — µm for translations and bending-mode amplitudes, arcsec for
+range of degree of freedom `j` — µm for translations and bending-mode amplitudes, deg for
 hexapod rotations — and `f_j` the FWHM response in arcsec per DOF unit. The shipped
 `range0.5_fwhm-0.15.yaml` stores only the product, so `bounce/output/dof_normalization_split.parquet`
 records the split: `range`, `fwhm_per_unit_arcsec` back-derived as `r_j / w_j^2`, and `weight`.
@@ -377,10 +377,10 @@ the bounce-side reduction:
 import bounce_lib as bl
 
 ri = bl.rbr_module()                       # the shared smatrix solver module
-r_j = ri.dof_range_vector(svd)             # allowed range per DOF, µm or arcsec
+r_j = ri.dof_range_vector(svd)             # allowed range per DOF, µm or deg
 a_j = ri.oic_authority()[0]                # OIC per-DOF authority, inverse DOF units
 
-# One DOF vector from one Δ wavefront (µm of wavefront -> µm / arcsec of DOF).
+# One DOF vector from one Δ wavefront (µm of wavefront -> µm or deg of DOF).
 # Each takes the SVD of its own scheme, so `svd22` gives 22 entries and `svd5` five:
 d_default = ri.invert_truncated(dW, svd)
 d_rbr = ri.invert_range_penalty(dW, svd, r_j, kappa=4.0, power=3)

@@ -404,8 +404,8 @@ def fetch_hexapod_lut_for_visits(fit_table, efd_client=None, consdb_client=None,
         dof0-4 = M2 hexapod (z, x, y, u, v)   [salIndex 2]
         dof5-9 = camera hex (z, x, y, u, v)   [salIndex 1]
     so ``lut[:, 5]`` is the camera-hexapod dz LUT (filter-dependent focus).
-    z/x/y in micron; u/v in deg (angular axes may differ from the OFC arcsec
-    convention, but dz is directly comparable to the Trim dof5).
+    z/x/y in micron; u/v in deg, the same units as the Trim, so every axis
+    compares directly with the Trim.
     """
     if efd_client is None:
         efd_client = make_efd_client()

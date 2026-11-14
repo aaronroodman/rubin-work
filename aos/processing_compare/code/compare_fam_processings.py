@@ -6,7 +6,7 @@ Pages (default --comparison all, in order):
               Z4..Z26 four panels — OCS map B, OCS map A, difference (2–98% scale),
               histogram of differences.
   dof         Average 50-DOF LUT, A vs B, grouped into the validation-style panels
-              (hexapod translations µm / rotations arcsec / M1M3 / M2 bending).
+              (hexapod translations µm / rotations deg / M1M3 / M2 bending).
   visit-rms   Per-visit robust nMAD of zk_deviation by Zernike (summary + paired scatter);
               nMAD is over ALL used donuts in a visit (whole focal plane).
   dz-ordinal  rotator∈[-rot-lim,+rot-lim]: final DZ c_{k,j} vs ordinal image # (mjd order),

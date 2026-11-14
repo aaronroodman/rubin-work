@@ -514,7 +514,7 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
         From `resolve_solver`. Default is the plain truncated recovery, so the
         signature stays usable from a notebook.
     trim_dof : `numpy.ndarray` or `callable`, optional
-        Commanded Trim per visit, ``(n_visits_of_the_night, 50)`` [µm, arcsec], aligned to
+        Commanded Trim per visit, ``(n_visits_of_the_night, 50)`` [µm, deg], aligned to
         this night's visits in `visit_metadata` order — or a callable taking this night's
         ``visit_ids`` and returning that array, since the visit list is determined here.
         Required for the open-loop columns; omitted, they come back NaN.
@@ -528,7 +528,7 @@ def recover_night(cdb, day_obs, state_estimator, n_modes, intrinsic_route, zk_no
     -------
     out : `dict`
         ``visit_ids`` ``(n,)``; ``v_modes`` and ``v_modes_olr`` ``(n, n_modes)``
-        [dimensionless]; ``dof`` and ``dof_olr`` ``(n, 50)`` [µm, arcsec];
+        [dimensionless]; ``dof`` and ``dof_olr`` ``(n, 50)`` [µm, deg];
         ``resid_rms_um`` ``(n,)`` [µm of wavefront]; ``fwhm_cwfs_arcsec`` ``(n,)``
         [arcsec]; ``ok`` ``(n,)``; ``n_opd`` `int`.
 

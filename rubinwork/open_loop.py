@@ -88,7 +88,7 @@ def olr_sensitivity_matrix(state_estimator):
     sens_mat : `numpy.ndarray`
         Shape ``(84, n_dof)`` — ``4 corners x 21 Zernikes`` rows by the scheme's active
         DOF count (22 for ``standard_22``, 50 for ``all_50``), in µm of wavefront per DOF
-        unit (µm for translations and bending modes, arcsec for tilts). Rows are
+        unit (µm for translations and bending modes, deg for tilts). Rows are
         corner-major in `aos_state.SENSOR_NAMES` order.
 
     Notes

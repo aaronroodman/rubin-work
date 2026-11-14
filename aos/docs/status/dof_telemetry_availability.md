@@ -91,11 +91,11 @@ written the way it is, and it should not be "simplified" into a ConsDB join.
 ## Units, for whatever consumes these
 
 - Trim `aggregatedDoF0..49`: dof0–4 M2 hexapod, dof5–9 camera hexapod, dof10–29 M1M3
-  bending, dof30–49 M2 bending. Hexapod z/x/y in µm, u/v in arcsec (OFC convention);
-  bending modes dimensionless amplitude.
+  bending, dof30–49 M2 bending. Hexapod z/x/y in µm, u/v in deg (labels saying arcsec
+  are out of date; `aos/docs/telemetry.md` §7); bending modes µm.
 - Hexapod LUT (`fetch_hexapod_lut_for_visits`) returns (n_visits, 10): dof0–4 M2, dof5–9
-  camera, **z/x/y in µm but u/v in deg** — the angular axes may differ from the OFC arcsec
-  convention, so do not compare u/v against Trim without converting. `lut[:, 5]` (camera
+  camera, z/x/y in µm and u/v in deg, the same units as the Trim, so u/v compare
+  directly. `lut[:, 5]` (camera
   hexapod dz) is directly comparable to Trim dof5.
 - Mirror LUT (`fetch_mirror_lut_for_visits`) converts axial forces to bending amplitudes
   via ts_ofc `BendModeToForce.bending_mode`, mapping to dof10–29 and dof30–49, same order

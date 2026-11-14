@@ -51,7 +51,7 @@ Each holds `bounce_kj_stats.parquet`, `bounce_dof_stats.parquet`,
 `bounce_dof_stats.parquet` carries the per-DOF and per-v-mode Δ directly, so the DOF numbers in
 the note are read from it rather than recomputed. It also carries the Range-Bounded Recovery
 (RBR) columns `delta_rbr` and `delta_rbr_err` in each DOF's own unit (µm for translations and
-bending-mode amplitudes, arcsec for hexapod rotations), the allowed range `dof_range` in the same
+bending-mode amplitudes, deg for hexapod rotations), the allowed range `dof_range` in the same
 unit, and the dimensionless ratios `ratio_to_range` and `ratio_to_range_rbr`.
 
 Superseded, and moved to `aos/output/archive/bounce/` on 2026-09-23:

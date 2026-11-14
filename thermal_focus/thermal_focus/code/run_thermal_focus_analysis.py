@@ -1270,7 +1270,7 @@ def section_dof(sci, pred, v1_per_um_dz, dof_set='all_50', n_modes=34, verbose=T
     Returns
     -------
     out : `dict`
-        ``unit`` — the DOF vector for v1 = 1.0, one entry per named DOF [µm or arcsec];
+        ``unit`` — the DOF vector for v1 = 1.0, one entry per named DOF [µm or deg];
         ``dof`` — a `pandas.DataFrame` of the per-visit Trim DOF that would apply the correction,
         with the identity columns;
         ``start`` — the same restricted to the first visit of each night;

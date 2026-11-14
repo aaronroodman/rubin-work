@@ -55,7 +55,7 @@ live. Writes:
 | `lut_config.yaml` | frozen provenance |
 
 DOF values carry the unit named in the `unit` column — µm for the hexapod translations,
-arcsec for the rotations, and dimensionless amplitude for the bending modes.
+deg for the rotations, and µm for the bending modes.
 
 `lut.parquet` and `lut_dz.parquet` also carry eight fields of **parquet schema
 metadata** — `param_set`, `mi_name`, `reduce`, `n_dof`, `n_keep`, `n_visits`, `k_min`,

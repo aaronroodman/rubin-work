@@ -59,7 +59,7 @@ projecting M2-hexapod dx = 100.0 µm onto the 34 retained v-modes and back retur
 so the retained subspace holds 79.7% of that DOF (dimensionless, amplitude not power). With
 a truth vector drawn *inside* the retained subspace the round trip closes to a relative
 `max|ΔDOF|` of 7.3e-03 to 1.5e-02 (dimensionless, over a truth scale of
-max|DOF| = 645.7 µm or arcsec) at every rotator angle tested.
+max|DOF| = 645.7 µm or deg) at every rotator angle tested.
 
 `ofc_data.rotation_offset` is 0.0 deg for LSSTCam, so `OFC.calculate_corrections` passes the
 camera rotator angle through unmodified (`ofc.py:211`).
@@ -147,7 +147,7 @@ shortcut: evaluating the matrix at the observed rotator angle is formally more c
 redefines the v-modes visit by visit, making the control loop's basis a moving target and
 putting a rotator-angle confound into every v-mode time series. The fidelity given up is small
 (7.3e-03 to 1.5e-02 relative in recovered DOF, dimensionless, over a truth scale of
-max|DOF| = 645.7 µm or arcsec), and the near-degenerate singular-value pairs — consecutive
+max|DOF| = 645.7 µm or deg), and the near-degenerate singular-value pairs — consecutive
 fractional gaps of 0.78% and 1.75% — mean a small rotation can swap or arbitrarily mix two
 modes rather than rotating the basis smoothly.
 
@@ -167,7 +167,7 @@ schemes, on identical synthetic corner input:
 |---|---|
 | normalization weights | `max\|Δw\| = 0.000e+00` (per-DOF weight units) |
 | singular values | `max\|Δs\| = 0.000e+00` (DZ sensitivity units) |
-| recovered DOF | `max\|ΔDOF\| = 0.000e+00` (µm or arcsec) |
+| recovered DOF | `max\|ΔDOF\| = 0.000e+00` (µm or deg) |
 | `zk_constrained` | `max\|Δ\| = 0.000e+00` µm of wavefront |
 
 So `optical_state`'s recovered DOF and constrained wavefront do **not** change. What changes

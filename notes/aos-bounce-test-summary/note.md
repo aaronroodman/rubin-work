@@ -53,7 +53,7 @@ The same paired Δ is also formed in two derived spaces:
   normalized basis.
 - **Physical degrees of freedom (DOF)** — the 50-DOF vector of M2 hexapod, camera hexapod,
   M1M3 bending modes and M2 bending modes, in µm for translations and bending-mode
-  amplitudes and arcsec for hexapod rotations.
+  amplitudes and deg for hexapod rotations.
 
 A DZ coefficient is called **significant** (a "fail" of the null hypothesis that the bounce
 produces no change) when either `|Δ| / error > 3.5` (dimensionless) **and** `|Δ| > 0.1` µm of
@@ -195,7 +195,7 @@ change.
 follow `lsst.ts.intrinsic.wavefront.ofc_svd.LABELS_50DOF`: `M2_*` and `Cam_*` are the M2 and
 camera hexapod rigid-body axes (indices 0–9), `B1_*` are the 20 M1M3 bending modes (10–29) and
 `B2_*` the 20 M2 bending modes (30–49). Hexapod translations and bending-mode amplitudes are
-µm; hexapod rotations are arcsec.
+µm; hexapod rotations are deg.
 
 | leg | n DOF over 3σ / 50 | three largest DOF changes |
 |---|---|---|
@@ -217,13 +217,13 @@ For the rotator bounce the same Δ restricted to the 5-DOF / 5-v-mode camera-hex
 scheme — the scheme in which this result is used, since only the camera rotator moved — gives
 all five camera-hexapod axes significant:
 
-| DOF | Δ | significance |
+| DOF | Δ | significance (dimensionless, Δ over its error) |
 |---|---|---|
 | Cam_dx | +998.1 ± 31.7 µm | 31.5 |
 | Cam_dy | +648.6 ± 34.8 µm | 18.6 |
 | Cam_dz | −7.352 ± 0.603 µm | 12.2 |
-| Cam_ry | −0.003517 ± 0.000105 arcsec | 33.5 |
-| Cam_rx | +0.000389 ± 0.000098 arcsec | 4.0 |
+| Cam_ry | −0.003517 ± 0.000105 deg | 33.5 |
+| Cam_rx | +0.000389 ± 0.000098 deg | 4.0 |
 
 The lateral decentres Cam_dx and Cam_dy dominate, and the recovered values agree with the
 full 50-DOF solution to within about 5% in amplitude (+951 versus +998 µm in Cam_dx), so the
