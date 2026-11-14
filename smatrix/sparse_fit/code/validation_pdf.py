@@ -33,6 +33,7 @@ import donut_leakage as dl
 from kmax_test import basis, dof_range
 from refit_images import FWHM_TOL, OUT_ROOT, _one, _setup
 from rubinwork import aos_state
+from rubinwork.smatrix.field_fit import fam_smatrix
 from rubinwork.common import study_run
 
 KMAX = 30
@@ -171,15 +172,8 @@ def _gallery_page(pdf, idof, g):
 
 # ---------------------------------------------------------------------- Smatrix (DZ)
 def smatrix(resp, fs):
-    """Side-averaged FAM field fit of the slopes: (KMAX+1, 29, 50) µm per DOF unit."""
-    kind, side = resp["kind"], resp["side"]
-    fi, fe = (kind == "fam") & (side == "intra"), (kind == "fam") & (side == "extra")
-    s = resp[f"{fs}__slope"]
-    avg = ((s[fi] + s[fe]) / 2).reshape(fi.sum(), -1)
-    c, *_ = np.linalg.lstsq(basis(KMAX, resp["thx"][fi], resp["thy"][fi]), avg, rcond=None)
-    out = np.zeros((KMAX + 1, 29, 50))
-    out[1:, resp[f"{fs}__noll"]] = c.reshape(KMAX, 50, -1).transpose(0, 2, 1)
-    return out
+    """Side-averaged FAM field fit of the slopes: (31, 29, 50) µm per DOF unit."""
+    return fam_smatrix(resp, fs, kmax=KMAX)
 
 
 def dz_points(scan, fs):

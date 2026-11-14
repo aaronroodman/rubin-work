@@ -24,7 +24,6 @@ Usage::
 import argparse
 import os
 
-import galsim
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -34,10 +33,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from refit_images import OUT_ROOT
 from rubinwork.common import study_run
+from rubinwork.smatrix.field_fit import field_basis
 from rubinwork.smatrix import normalization_weights as NW
 
 KMAXES = (30, 45, 66, 91)
-FIELD_RADIUS_DEG = 1.75
 FIT_SETS = ("prod", "prod_z22", "dense21")
 TESTS = ("fam_in", "fam_cv", "sci", "cwfs")
 GROUPS = {"rigid body": range(0, 10), "M1M3 B1-B10": range(10, 20),
@@ -55,8 +54,7 @@ def dof_range():
     return NW.compute_range_weights(f1, f2, list(range(20)), list(range(20)))
 
 
-def basis(kmax, thx, thy):
-    return galsim.zernike.zernikeBasis(kmax, thx, thy, R_outer=FIELD_RADIUS_DEG)[1:].T
+basis = field_basis
 
 
 def predict(kmax, xf, yf, sf, xt, yt):

@@ -35,6 +35,10 @@ Open: piece 3, a sparse Smatrix from these responses and a rebuilt sparse MIW. W
 
 ## Log
 
+### 2026-11-14 — the Smatrix files are now the fitted_smatrix product
+
+The three matrices are now the `fitted_smatrix` product, variants `dense21`, `sparse_no22` and `sparse_with22`, build `20261114` (current). Read with `fitted_smatrix.load(variant)`, or `fitted_smatrix.state_estimator(variant)`, which sets `zn_selected` to the fitted Noll indices. The builds match `20261114_smatrix_files` to 0 µm per DOF unit, so that run directory and `code/write_smatrix.py` are superseded. The field fit moved to `rubinwork.smatrix.field_fit`; `validation_pdf.smatrix` and `kmax_test.basis` call it, with unchanged output (0 µm per DOF unit).
+
 ### 2026-11-14 — Smatrix files for dense21, sparse_no22 and sparse_with22
 
 `code/write_smatrix.py` writes the Danish-fit Smatrix of each fit set (side-averaged FAM field fit, kmax 30) to `20261114_smatrix_files/<name>/`. prod is renamed `sparse_no22`, prod_z22 `sparse_with22`. Each has:

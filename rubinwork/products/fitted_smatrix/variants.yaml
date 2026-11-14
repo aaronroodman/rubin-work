@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# fitted_smatrix variants: one per Danish fit set of the smatrix/sparse_fit brute-force
+# donut scan. The matrix is the field fit of the fitted pupil-Zernike slopes, not the
+# in-focus optical path difference (OPD) that ts_ofc v13 is built from.
+#
+# Per-entry fields:
+#   fit_set     the fit-set key in responses.npz (required)
+#   responses   the responses.npz the builder reads (required). It is ray-traced donuts
+#               fit with Danish, made by the sparse_fit study (donut_leakage.py,
+#               refit_images.py, merge_refit.py); the manifest records its md5.
+#   kmax        highest field Noll index fitted over the FAM grid
+#   ofc_version the ts_config_mttcs OFC config the build copies, with only the
+#               sensitivity matrix replaced
+#
+# A regenerated donut scan (new batoid model, Danish obscuration) is a new variant.
+# ---------------------------------------------------------------------------
+defaults:
+  responses: /sdf/group/rubin/u/roodman/LSST/rubin-work/studies/smatrix/sparse_fit/20261111_responses_ofcsign/responses.npz
+  kmax: 30
+  ofc_version: v13
+
+variants:
+
+  # The 21 rapid-analysis Zernikes, Noll 4-19 and 22-26: aos_state.ZK_NOLL.
+  dense21:
+    fit_set: dense21
+
+  # Production Danish fit: primaries only, Noll 4-11, 14, 15, 20, 21, 27, 28 (14).
+  # The study's "prod".
+  sparse_no22:
+    fit_set: prod
+
+  # sparse_no22 plus Noll 22 (15). The study's "prod_z22".
+  sparse_with22:
+    fit_set: prod_z22
