@@ -268,7 +268,7 @@ def plot_lut_summary(fits_by_bounce, dof_labels, dof_units, title=''):
         for ui, u in enumerate(units):
             ax = axes[ri][ui]
             qs = [q for q in sig if dof_units[q].replace('μ', 'u').replace('µ', 'u')
-                  .replace('arcsec', 'deg') == u]   # older DOF_UNITS_50 says arcsec
+                  .replace('arcsec', 'deg') == u]   # DOF_UNITS_50 labels the tilts arcsec
             if not qs:
                 ax.text(0.5, 0.5, f'no kept DOF in {u}', ha='center', va='center',
                         transform=ax.transAxes, fontsize=9, color='gray')
