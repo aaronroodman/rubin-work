@@ -35,6 +35,15 @@ Open: piece 3, a sparse Smatrix from these responses and a rebuilt sparse MIW. W
 
 ## Log
 
+### 2026-11-14 — Smatrix files for dense21, sparse_no22 and sparse_with22
+
+`code/write_smatrix.py` writes the Danish-fit Smatrix of each fit set (side-averaged FAM field fit, kmax 30) to `20261114_smatrix_files/<name>/`. prod is renamed `sparse_no22`, prod_z22 `sparse_with22`. Each has:
+- `ofc/`: the v13 OFC config directory with `lsst_sensitivity_dz_31_29_50.yaml` replaced, for `aos_state.make_state_estimator(config_dir=...)`;
+- `smatrix_dz_31_29_50_r_<name>.npy` and `.fits`, the `compute_smatrix` format;
+- `noll.txt`, the fitted pupil Noll indices (dense21 21, sparse_no22 14, sparse_with22 15). Other pupil rows are zero, so a solve must set `zn_selected` to these. dense21 equals the default `ZK_NOLL`.
+
+Reloaded through `StateEstimator`, the matrices match to 0 µm per DOF unit. Singular value 1 is 17.38-17.40 against 17.43 for v13 on the same Zernikes (µm per unit normalized DOF).
+
 ### 2026-11-11 — DOF sign fix (M2/Cam dy, Ry) and validation PDF, 50-DOF gallery
 
 **DOF sign error found and fixed.** Against the ts_ofc v13 Smatrix, M2 dy, M2 Ry, Cam dy and Cam Ry had Smatrix columns of the opposite sign and equal magnitude: cosine -1.000, magnitude ratio 0.99-1.00 (dimensionless). All other DOF had positive cosines.
