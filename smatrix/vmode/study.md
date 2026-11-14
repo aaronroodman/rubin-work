@@ -34,3 +34,5 @@ Backfilled 2026-10-18 from [`vmode.md`](vmode.md) (formerly `smatrix/docs/studie
 ### 2026-11-13 — normalization table as its own PDF
 
 Each run now also writes `dof_normalization_<scheme>.pdf`: one page with DOF index, name and unit, range r_i [unit], field-averaged PSF FWHM per unit f_i [arcsec / unit] and weight w_i = r_i^0.5 f_i^-0.5 [unit / arcsec^0.5]. The r_i recovered as w_i^2 f_i match the stroke limits (M2_dz 5900 µm, M2_rx 0.12 arcsec). Reran all three schemes into `output/20261113_svd_<scheme>/`. Fixed the script docstring, which had pages 4 and 5 out of order and an old output path.
+
+Later the same day: the hexapod tilts are labeled deg, not arcsec, in the table and on page 7. `ofc_svd.DOF_UNITS_50` still says arcsec, so the script overrides it (evidence in `aos/docs/telemetry.md` §7). Reran all three schemes.

@@ -52,7 +52,7 @@ recover degrees of freedom.
    per DOF-unit), since `w_i = r_i^0.5 * f_i^-0.5`.
 7. **DOF-per-v-mode conversion against the allowed range** — `N.V = w_i * V[i,m]`, the
    same composition as page 1 but in the DOF's own physical unit (µm of translation or
-   bending-mode amplitude, arcsec of hexapod rotation), so it is the conversion constant
+   bending-mode amplitude, deg of hexapod rotation), so it is the conversion constant
    from v-mode amplitude to physical DOF and can be drawn against the `+r_i` / `-r_i`
    envelope. Page 1 is dimensionless and cannot be compared to a stroke limit.
 
@@ -155,7 +155,7 @@ same DOF subset and the same normalization yaml — they agree **exactly**, for 
 |---|---|
 | normalization weights | `max\|Δw\| = 0.000e+00` (per-DOF weight units) |
 | singular values | `max\|ΔS\| = 0.000e+00` (DZ sensitivity units) |
-| DOF per unit v-mode (`N·V`) | `max\|Δ\| = 0.000e+00` (µm or arcsec of DOF; scale 645.7) |
+| DOF per unit v-mode (`N·V`) | `max\|Δ\| = 0.000e+00` (µm or deg of DOF; scale 645.7) |
 | per-mode alignment | `\|cos\| = 1.0000000000` (dimensionless) for every mode, zero sign flips |
 
 That is expected rather than surprising — it is the identical matrix through the identical
@@ -199,7 +199,7 @@ the configured OFC uses; `ofc_svd.DEFAULT_NORM_YAML` names `range0.5_fwhm-0.15.y
 `--check` takes its estimator from `aos_state.make_state_estimator`, so it validates the
 equivalence under the required normalization and honours `--scheme`. Both schemes pass with
 `norm = range0.5_fwhm-0.15.yaml`: normalization arrays match, `max|ΔS| = 0.00e+00` (DZ
-sensitivity units), and DOF-per-v-mode `max|Δ| = 0.000e+00` (µm or arcsec of DOF, on scales
+sensitivity units), and DOF-per-v-mode `max|Δ| = 0.000e+00` (µm or deg of DOF, on scales
 of 6.30e+03 for 22/12 and 6.02e+03 for 50/34).
 
 **The `-0.15` and `-0.5` filenames hold the same weights.** An older
@@ -288,7 +288,7 @@ Three qualifications keep this short of "the basis is wrong":
   9.1488e+02 (Zernike-consistent) for 50/34 — ratio 0.969 dimensionless — and 4.2908e+01 vs
   4.7976e+01 for 22/12, ratio 0.894. Conditioning is comparable: `cond(A_v)` = 3.4846e+05
   vs 2.9376e+05 for 50/34, identical to five figures for 22/12. Units of the RMS are mixed
-  (µm for translations and bending, arcsec for tilts), so only the ratio is meaningful.
+  (µm for translations and bending, deg for tilts), so only the ratio is meaningful.
 
 Using the full slab makes `Vh` independent of controller configuration, which may well be
 deliberate. What is not defensible is applying `zn_idx` on one side of the projection and

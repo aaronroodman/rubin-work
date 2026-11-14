@@ -26,7 +26,7 @@ figure per page:
      ``f_i`` (arcsec of PSF width per DOF-unit), since ``w_i = r_i^0.5 * f_i^-0.5``.
   7  **DOF-per-v-mode conversion against the allowed range** — ``N.V = w_i * V[i,m]``,
      the conversion constant from v-mode amplitude to the DOF's own physical unit (µm
-     of translation or bending-mode amplitude, arcsec of hexapod rotation), drawn with
+     of translation or bending-mode amplitude, deg of hexapod rotation), drawn with
      the ``+r_i`` / ``-r_i`` envelope. Page 1 is dimensionless and so cannot be
      compared to a stroke limit; this page can. A unit v-mode amplitude is only a
      yardstick — real amplitudes are far from 1 — so what the page carries is the
@@ -139,6 +139,9 @@ def write_normalization_table(path, svd, nw, r_i, f_i, scheme, norm_yaml):
     import matplotlib.pyplot as plt
 
     names, units = svd.dof_labels()
+    # DOF_UNITS_50 still says arcsec for the hexapod tilts; they are deg
+    # (ts_ofc v4.0.0; measured in aos/docs/telemetry.md section 7).
+    units = ['deg' if u == 'arcsec' else u for u in units]
     idx = list(svd.dof_idx) if svd.dof_idx else list(range(len(names)))
     head = ['DOF\nindex', 'DOF', 'unit', 'r_i\n[unit]',
             'f_i\n[arcsec / unit]', 'w_i\n[unit / arcsec^0.5]']
@@ -425,7 +428,7 @@ def main():
         # The V matrix of page 1 is dimensionless, so it cannot be compared to a
         # stroke limit. N.V = w_i * V[i, m] is the same composition in the DOF's own
         # physical unit -- µm of hexapod translation or mirror bending-mode amplitude,
-        # arcsec of hexapod rotation -- so it is the conversion constant from v-mode
+        # deg of hexapod rotation -- so it is the conversion constant from v-mode
         # amplitude to physical DOF, and is directly comparable to r_i.
         #
         # A unit v-mode amplitude is NOT a physical expectation -- real v-mode
@@ -465,7 +468,7 @@ def main():
             ax.set_yscale('symlog', linthresh=1e-3)
             ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=5, rotation=90)
             ax.set_ylabel('DOF per unit v-mode amplitude\n'
-                          '[µm, or arcsec for hexapod rotation]')
+                          '[µm, or deg for hexapod rotation]')
             ax.set_title(f'DOF-per-v-mode conversion ($N\\cdot V$) against the allowed '
                          f'range ({scheme_txt})\n'
                          f'one faint line per retained v-mode (m = 1 to {n_kept}); '
