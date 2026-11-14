@@ -51,7 +51,7 @@ def dof_name(i):
 
 def dof_unit(i):
     """Stored unit of DOF i: µm, except the four hexapod tilts (see study.md)."""
-    return 'deg or arcsec' if i in (3, 4, 8, 9) else 'µm'
+    return 'deg' if i in (3, 4, 8, 9) else 'µm'
 
 
 class Output:

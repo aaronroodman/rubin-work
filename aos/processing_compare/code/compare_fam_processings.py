@@ -34,7 +34,7 @@ NEW_DEFAULT = 'fam_danish_1_2_0_wep17_6_1_refitWCS_bin2x'
 # DOF grouping — mirrors intrinsic_build_plots.plot_dof_median_summary / ofc_svd.LABELS_50DOF
 DOF_GROUPS = [
     ('Hexapod Translations', 'µm',     [0, 1, 2, 5, 6, 7]),   # M2 dz/dx/dy, Cam dz/dx/dy
-    ('Hexapod Rotations',    'arcsec', [3, 4, 8, 9]),          # M2 rx/ry, Cam rx/ry
+    ('Hexapod Rotations',    'deg', [3, 4, 8, 9]),          # M2 rx/ry, Cam rx/ry
     ('M1M3 Bending Modes',   'µm',     list(range(10, 30))),   # B1_1..20
     ('M2 Bending Modes',     'µm',     list(range(30, 50))),   # B2_1..20
 ]

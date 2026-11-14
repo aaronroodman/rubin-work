@@ -261,13 +261,14 @@ def plot_lut_summary(fits_by_bounce, dof_labels, dof_units, title=''):
             rows.append((name, axis, p, sig, fits))
     if not rows:
         return None
-    units = ['um', 'arcsec']
+    units = ['um', 'deg']
     fig, axes = plt.subplots(len(rows), 2, figsize=(14, 3.2 * len(rows) + 1.2),
                              layout='constrained', squeeze=False)
     for ri, (name, axis, p, sig, fits) in enumerate(rows):
         for ui, u in enumerate(units):
             ax = axes[ri][ui]
-            qs = [q for q in sig if dof_units[q].replace('μ', 'u').replace('µ', 'u') == u]
+            qs = [q for q in sig if dof_units[q].replace('μ', 'u').replace('µ', 'u')
+                  .replace('arcsec', 'deg') == u]   # older DOF_UNITS_50 says arcsec
             if not qs:
                 ax.text(0.5, 0.5, f'no kept DOF in {u}', ha='center', va='center',
                         transform=ax.transAxes, fontsize=9, color='gray')

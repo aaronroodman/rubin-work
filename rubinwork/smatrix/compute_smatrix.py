@@ -7,9 +7,10 @@ This reproduces the ts_ofc generator
 handling -- so the result is directly comparable to the OFC-shipped matrix
 ``policy/sensitivity_matrix/lsst_sensitivity_dz_31_29_50.yaml``.
 
-The one deliberate difference is the LSSTBuilder configuration.  The OFC file
-was generated with bare ``LSSTBuilder(fiducial)`` defaults (ZCS, arcsec,
-flip_m2=True).  Here we instead use the convention used elsewhere in our AOS
+The one deliberate difference is the LSSTBuilder configuration.  The ts_ofc generator
+script uses bare ``LSSTBuilder(fiducial)`` defaults (ZCS, arcsec, flip_m2=True), but
+the shipped file's tilt columns are per deg, so it was not made with the arcsec
+default.  Here we instead use the convention used elsewhere in our AOS
 work (ts_intrinsic_wavefront): OCS, flip_m2=False, flip_m1m3=False.  Comparing
 the two therefore exposes exactly which DOF columns differ by convention.
 

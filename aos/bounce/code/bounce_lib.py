@@ -1140,7 +1140,7 @@ def plot_dof_per_night_summary(dof_by_night, dof_labels, dof_units, title=''):
         ax.grid(axis='y', alpha=0.3)
 
     _panel(axes[0], hex_trans_idx, 'Hexapod Translations', 'μm')
-    _panel(axes[1], hex_rot_idx,   'Hexapod Rotations',   'arcsec')
+    _panel(axes[1], hex_rot_idx,   'Hexapod Rotations',   'deg')
     _panel(axes[2], m1m3_idx,      'M1M3 Bending Modes',   'μm')
     _panel(axes[3], m2_idx,        'M2 Bending Modes',     'μm')
     axes[0].legend(loc='upper right', fontsize=9, title='night')

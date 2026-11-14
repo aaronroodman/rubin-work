@@ -327,7 +327,7 @@ def _write_lut_pdf(path, dof_idx, values, scatter, n_visits, n_dof, n_keep,
     pos = {int(d): i for i, d in enumerate(dof_idx)}     # abs DOF index -> row
     buckets = [
         ('Hexapod Translations (M2, Cam: dz/dx/dy)', [0, 1, 2, 5, 6, 7], 'μm'),
-        ('Hexapod Rotations / tip-tilt (M2, Cam: rx/ry)', [3, 4, 8, 9], 'arcsec'),
+        ('Hexapod Rotations / tip-tilt (M2, Cam: rx/ry)', [3, 4, 8, 9], 'deg'),
         ('M1M3 Bending Modes', list(range(10, 30)), 'μm'),
         ('M2 Bending Modes', list(range(30, 50)), 'μm'),
     ]

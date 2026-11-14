@@ -157,7 +157,7 @@ def invert_truncated(dW, svd, rank=None):
     Returns
     -------
     d : `numpy.ndarray`
-        Physical DOF, ``(n_dof,)``, µm and arcsec per ``DOF_UNITS_50``.
+        Physical DOF, ``(n_dof,)``, µm, or deg for the hexapod tilts.
 
     Notes
     -----
@@ -202,7 +202,7 @@ def invert_damped(dW, svd, lam, rank=None):
     Returns
     -------
     d : `numpy.ndarray`
-        Physical DOF, ``(n_dof,)``, µm and arcsec per ``DOF_UNITS_50``.
+        Physical DOF, ``(n_dof,)``, µm, or deg for the hexapod tilts.
 
     Notes
     -----
@@ -281,7 +281,7 @@ def invert_range_penalty(dW, svd, ranges, *, kappa=0.5, power=2, lam0=0.0,
     Returns
     -------
     d : `numpy.ndarray`
-        Physical DOF, ``(n_dof,)``, µm and arcsec per ``DOF_UNITS_50``.
+        Physical DOF, ``(n_dof,)``, µm, or deg for the hexapod tilts.
     info : `dict`, optional
         Present when ``return_info``. Keys ``n_iter`` (`int`, iterations used),
         ``converged`` (`bool`), ``delta`` (`float`, final relative change,
@@ -455,7 +455,7 @@ def invert_oic(dW, svd, authority, rho, rank=None):
     Returns
     -------
     d : `numpy.ndarray`
-        Physical DOF, ``(n_dof,)``, µm and arcsec per ``DOF_UNITS_50``.
+        Physical DOF, ``(n_dof,)``, µm, or deg for the hexapod tilts.
 
     Notes
     -----
@@ -485,7 +485,7 @@ def achieved_residual(dW, d, svd, rank=None):
     dW : `numpy.ndarray`
         Measured DZ wavefront, µm of wavefront, over ``svd.kj_grid``.
     d : `numpy.ndarray`
-        Physical DOF correction, ``(n_dof,)``, µm and arcsec per ``DOF_UNITS_50``.
+        Physical DOF correction, ``(n_dof,)``, µm, or deg for the hexapod tilts.
     svd : `lsst.ts.intrinsic.wavefront.ofc_svd.OFCSvd`
         The sensitivity-matrix SVD.
     rank : `int`, optional

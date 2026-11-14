@@ -136,7 +136,7 @@ def olr_zernikes(zk_deviation, dof_trim, sens_mat, state_estimator):
         wavefront, corner-major in `aos_state.SENSOR_NAMES` order, and already derotated
         into the telescope frame (`aos_state.ZK_FRAME`, OCS).
     dof_trim : `numpy.ndarray`
-        Commanded Trim, ``(50,)`` or ``(n, 50)``, µm and arcsec — the full OFC state as
+        Commanded Trim, ``(50,)`` or ``(n, 50)``, µm and deg — the full OFC state as
         stored in ``visit_telemetry.dof0..49``.
     sens_mat : `numpy.ndarray`
         From `olr_sensitivity_matrix`, built from the same `state_estimator`.
@@ -179,14 +179,14 @@ def optical_state_dofs(dof_recovered, dof_trim):
     ----------
     dof_recovered : `numpy.ndarray`
         DOF recovered from the measured deviation alone, ``(50,)`` or ``(n, 50)``, from
-        `aos_state.recover_optical_state`. µm and arcsec.
+        `aos_state.recover_optical_state`. µm and deg.
     dof_trim : `numpy.ndarray`
         Commanded Trim, same shape and units.
 
     Returns
     -------
     dof_state : `numpy.ndarray`
-        ``dof_trim - dof_recovered``, µm and arcsec.
+        ``dof_trim - dof_recovered``, µm and deg.
 
     Notes
     -----
@@ -218,7 +218,7 @@ def open_loop_state(dof_recovered, dof_trim, state_estimator, n_modes):
     Returns
     -------
     dof_olr : `numpy.ndarray`
-        ``(n, 50)`` open-loop DOF, ``dof_recovered - dof_trim``, µm and arcsec.
+        ``(n, 50)`` open-loop DOF, ``dof_recovered - dof_trim``, µm and deg.
     v_olr : `numpy.ndarray`
         ``(n, n_modes)`` open-loop v-mode amplitudes, dimensionless, projected through
         `aos_state.vmodes_from_dofs`.
