@@ -71,9 +71,9 @@ def make_model(name):
     Returns
     -------
     model : `sklearn.base.BaseEstimator`
-        Unfitted pipeline. Every pipeline imputes missing features at the training-fold median,
-        so a fold never sees a NaN and the imputation is fitted inside the fold rather than on
-        the whole sample.
+        Unfitted estimator. Every model but ``histgb`` imputes missing features at the
+        training-fold median, so the imputation is fitted inside the fold rather than on the
+        whole sample; ``histgb`` takes NaN natively.
 
     Raises
     ------
@@ -730,9 +730,7 @@ def nested_comparison(df, base_features, add_features, model='huber', n_splits=N
     res : `dict`
         ``n`` (visits), ``n_nights``, ``base`` and ``extended`` (each the `evaluate` result),
         ``nmad_base`` and ``nmad_extended`` [µm of equivalent hexapod dz], ``gain``
-        (dimensionless, baseline nMAD over extended nMAD), ``delta_r2`` (dimensionless) and
-        ``replaced`` (the `evaluate` result for the candidates substituted for `add_features`'
-        counterparts, or `None` when no substitution was requested).
+        (dimensionless, baseline nMAD over extended nMAD) and ``delta_r2`` (dimensionless).
 
     Notes
     -----
@@ -750,7 +748,7 @@ def nested_comparison(df, base_features, add_features, model='huber', n_splits=N
     res = dict(n=len(d), n_nights=int(d['day_obs'].nunique()), base=base, extended=extd,
                nmad_base=base['nmad'], nmad_extended=extd['nmad'],
                gain=base['nmad'] / extd['nmad'] if extd['nmad'] else float('nan'),
-               delta_r2=extd['r2'] - base['r2'], replaced=None)
+               delta_r2=extd['r2'] - base['r2'])
     if verbose:
         print(f'nested comparison on {res["n"]} visits over {res["n_nights"]} nights, '
               f'{model}, {n_splits}-fold night-grouped on day_obs')
@@ -1108,193 +1106,3 @@ def within_set_scatter(df, set_col, cols, verbose=True):
                 print(f'  {c:22s} within-set peak-to-peak: median {p.median():.4f} {unit}, '
                       f'n {len(p)} sets')
     return out
-
-
-# --------------------------------------------------------------------- FAM blocks and sets
-
-#: Visits per selected set: 12 triplets, one in-focus ``acq`` each.
-DEFAULT_SET_SIZE = 12
-
-#: ``seq_num`` step between consecutive ``acq`` visits of a triplet sequence, each triplet being
-#: intra-focal, extra-focal and in-focus [dimensionless, a sequence-number difference].
-DEFAULT_SEQ_STEP = 3
-
-#: Pointing tolerance within one block [deg], applied to altitude, azimuth and rotator angle.
-#: The selected sets hold pointing to about 0.01 deg, so 2.0 deg and the coadd study's 5.0 deg
-#: give the same sets.
-DEFAULT_POINTING_TOL = 2.0
-
-#: A new block starts once ``seq_num`` reaches this far past the block's first visit
-#: [dimensionless, a sequence-number difference]. A 12-triplet block spans exactly 33, so 36
-#: keeps one whole and splits a back-to-back repeat.
-DEFAULT_MAX_SEQ_SPAN = 36.0
-
-
-def _wrapdiff(a, b):
-    """Circular difference between two angles [deg].
-
-    Parameters
-    ----------
-    a, b : `float`
-        Angles in deg.
-
-    Returns
-    -------
-    d : `float`
-        Smallest absolute difference in deg, in [0, 180].
-    """
-    d = abs(a - b) % 360.0
-    return min(d, 360.0 - d)
-
-
-def assign_blocks(df, seq_col='acq_seq_num', pointing_tol=DEFAULT_POINTING_TOL,
-                  max_seq_span=DEFAULT_MAX_SEQ_SPAN):
-    """Label contiguous fixed-pointing Full Array Mode blocks.
-
-    Parameters
-    ----------
-    df : `pandas.DataFrame`
-        Must carry ``science_program``, ``day_obs``, `seq_col`, ``altitude_deg`` [deg],
-        ``azimuth_deg_consdb`` [deg] and ``rotator_angle_deg`` [deg].
-    seq_col : `str`, optional
-        Sequence-number column defining observing order.
-    pointing_tol : `float`, optional
-        Tolerance in deg, applied to all three angles.
-    max_seq_span : `float`, optional
-        Maximum sequence-number span of one block [dimensionless].
-
-    Returns
-    -------
-    df : `pandas.DataFrame`
-        A copy sorted by ``(science_program, day_obs, seq_col)`` with an integer ``block``
-        column. Rows lacking any pointing angle are dropped, since a block is defined by held
-        pointing and a row without it cannot be placed in one.
-
-    Raises
-    ------
-    KeyError
-        If a required column is absent, naming it. A block is a **derived** quantity, not a
-        stored one, so falling back to grouping by night would silently substitute a whole
-        night for a 12-triplet block and quietly change what every within-set number means.
-
-    Notes
-    -----
-    Within one ``(science_program, day_obs)`` the visits are walked in sequence order and a new
-    block starts when the sequence number reaches `max_seq_span` past the block's first visit,
-    or when altitude, azimuth or rotator angle drifts beyond `pointing_tol` from it. Missing
-    triplets inside the span are tolerated. Azimuth is compared circularly so a block spanning
-    360 deg does not split.
-    """
-    need = ('science_program', 'day_obs', seq_col, 'altitude_deg', 'azimuth_deg_consdb',
-            'rotator_angle_deg')
-    miss = [c for c in need if c not in df.columns]
-    if miss:
-        raise KeyError(f'assign_blocks needs {", ".join(miss)}, absent from the table; a FAM '
-                       f'block is derived from held pointing and cannot be substituted by a '
-                       f'coarser grouping')
-    v = df.dropna(subset=['altitude_deg', 'azimuth_deg_consdb', 'rotator_angle_deg']).copy()
-    v = v.sort_values(['science_program', 'day_obs', seq_col]).reset_index(drop=True)
-
-    block = np.full(len(v), -1, dtype=int)
-    seq = v[seq_col].to_numpy(float)
-    alt = v['altitude_deg'].to_numpy(float)
-    az = np.mod(v['azimuth_deg_consdb'].to_numpy(float), 360.0)
-    rot = v['rotator_angle_deg'].to_numpy(float)
-
-    nb = 0
-    for _, pos in v.groupby(['science_program', 'day_obs']).indices.items():
-        pos = np.sort(np.asarray(pos))
-        cur, start_seq, ref = None, None, None
-        for p in pos:
-            new = (start_seq is None
-                   or (seq[p] - start_seq) >= max_seq_span
-                   or abs(alt[p] - ref[0]) > pointing_tol
-                   or _wrapdiff(az[p], ref[1]) > pointing_tol
-                   or abs(rot[p] - ref[2]) > pointing_tol)
-            if new:
-                cur = nb
-                nb += 1
-                start_seq = seq[p]
-                ref = (alt[p], az[p], rot[p])
-            block[p] = cur
-    v['block'] = block
-    return v
-
-
-def select_sets(df, seq_col='acq_seq_num', set_size=DEFAULT_SET_SIZE,
-                seq_step=DEFAULT_SEQ_STEP, drop_lut_epoch=True, verbose=True):
-    """Keep only blocks that are a clean run of `set_size` triplets.
-
-    Parameters
-    ----------
-    df : `pandas.DataFrame`
-        An `assign_blocks` result.
-    seq_col : `str`, optional
-        Sequence-number column defining observing order.
-    set_size : `int`, optional
-        Required visits per set.
-    seq_step : `int` or `None`, optional
-        Required sequence-number step [dimensionless]. None skips the check.
-    drop_lut_epoch : `bool`, optional
-        Drop nights running a different hexapod look-up-table configuration.
-    verbose : `bool`, optional
-        Print the cut-by-cut counts.
-
-    Returns
-    -------
-    df : `pandas.DataFrame`
-        The kept visits, with ``set_id`` numbering surviving sets from 0 in
-        ``(day_obs, seq_col)`` order.
-    info : `dict`
-        Counts at each cut.
-
-    Notes
-    -----
-    Three cuts in order: exactly `set_size` visits in the block; a constant sequence step of
-    `seq_step`, which validates the intra-focal / extra-focal / in-focus triplet structure; and
-    by default no night in `thermal_focus_lib.LUT_EPOCH_OFFSET_NIGHTS`, whose different
-    commanded baseline puts it thousands of µm of equivalent hexapod dz from the rest.
-    """
-    sized = [b for b, g in df[df.block >= 0].groupby('block') if len(g) == set_size]
-    n_sized = len(sized)
-
-    kept, n_bad_step = [], 0
-    for b in sized:
-        s = np.sort(df.loc[df.block == b, seq_col].to_numpy(int))
-        if seq_step is not None and not np.all(np.diff(s) == seq_step):
-            n_bad_step += 1
-            continue
-        kept.append(b)
-
-    out = df[df.block.isin(kept)].copy()
-    n_before_epoch, nights_before = len(kept), out.day_obs.nunique()
-    dropped_nights = sorted(set(int(d) for d in out.day_obs.unique())
-                            & set(L.LUT_EPOCH_OFFSET_NIGHTS))
-    if drop_lut_epoch and dropped_nights:
-        bad = out.day_obs.isin(dropped_nights)
-        n_dropped_sets = out.loc[bad, 'block'].nunique()
-        out = out[~bad].copy()
-    else:
-        n_dropped_sets, dropped_nights = 0, []
-
-    order = (out.groupby('block')[['day_obs', seq_col]].min()
-             .sort_values(['day_obs', seq_col]).index.tolist())
-    out['set_id'] = out.block.map({b: i for i, b in enumerate(order)})
-    out = out.sort_values(['set_id', seq_col]).reset_index(drop=True)
-
-    info = dict(n_blocks=int(df[df.block >= 0].block.nunique()), n_sized=n_sized,
-                n_bad_step=n_bad_step, n_before_epoch=n_before_epoch,
-                nights_before=int(nights_before), n_dropped_sets=int(n_dropped_sets),
-                dropped_nights=dropped_nights, n_sets=int(out.set_id.nunique()),
-                n_visits=len(out), n_nights=int(out.day_obs.nunique()),
-                set_size=set_size, seq_step=seq_step)
-    if verbose:
-        print(f'  blocks {info["n_blocks"]} -> exactly {set_size} visits: {n_sized}'
-              f' -> constant step of {seq_step}: {n_before_epoch}'
-              f' (rejected {n_bad_step} for an irregular step)')
-        if n_dropped_sets:
-            print(f'  dropping {len(dropped_nights)} LUT-epoch nights removes '
-                  f'{n_dropped_sets} sets')
-        print(f'  -> {info["n_sets"]} sets, {info["n_visits"]} visits, '
-              f'{info["n_nights"]} nights')
-    return out, info

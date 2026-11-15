@@ -42,7 +42,7 @@ from scipy.stats import pearsonr
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                                  # same-study siblings
 from analyze_dz_goodness_of_fit import (        # noqa: E402
-    load_bases, read_dz, assign_blocks, within_block_covariance)
+    load_bases, read_dz, blocks_from_summary, within_block_covariance)
 
 from rubinwork.products import catalog  # noqa: E402
 
@@ -84,7 +84,7 @@ def main():
           f"U_null {U_null.shape}  (126 DZ coefficients total)")
 
     W, E, meta = read_dz(args.fits, kj)
-    blk, prog = assign_blocks(meta, args.blocks_summary)
+    blk, prog = blocks_from_summary(meta, args.blocks_summary)
     blk_cov = np.where(np.isin(prog, args.stable_programs), blk, -1)
     Sigma, cdof, nb, _ = within_block_covariance(W, blk_cov, min_visits=3)
     print(f"Sigma_emp from {cdof} within-block residual dof, {nb} stable blocks")

@@ -45,6 +45,12 @@ Parked since 2026-10-11 with its next steps listed (handoff §7).
 
 ## Log
 
+### 2026-11-15 — `assign_blocks` renamed `blocks_from_summary`
+
+In `analyze_dz_goodness_of_fit.py` and its importer `analyze_umode_null_coupling.py`. It
+looks block labels up in the coadds `blocks_summary.parquet` rather than detecting blocks,
+and shared its name with the coadds builder's detector. No behavior change.
+
 ### 2026-10-11 — backfilled from docs and history
 
 Built 2026-10-23 in the phase 5 conversion (decision 4) from four sources, dated by the

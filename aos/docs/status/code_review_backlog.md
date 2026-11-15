@@ -1,6 +1,6 @@
 # AOS code review — open backlog
 
-> **Status:** current; the one review backlog · **Last updated:** 2026-10-28 · **Kind:** working state (review backlog)
+> **Status:** current; the one review backlog · **Last updated:** 2026-11-15 · **Kind:** working state (review backlog)
 
 The single list of known code defects in `aos/`, the `rubinwork` products it uses and the
 `ts_intrinsic_wavefront` package (`W` below is `python/lsst/ts/intrinsic/wavefront/` in that
@@ -16,6 +16,7 @@ needing regeneration are tracked in [`rerun_needed.md`](rerun_needed.md).
 | A2 | A non-finite DZ coefficient is zero-filled before the SVD projection, biasing that visit's u-mode amplitudes toward 0. `run_dz_correlations` now logs the zero-filled fraction; the others do not | `W/ofc_svd.py:180` (`project_amplitudes`), `aos/correlations/code/run_dz_correlations.py:231`, `aos/correlations/code/run_dz_explained.py:54`, `rubinwork/products/coadds/builders/run_coadd_blocks_miw.py:381`, `aos/closed_loop/code/run_closed_loop.py:127` | Aaron 2026-10-28: a non-finite DZ means bad data. `run_dz_explained` now names the visits; no change to the package while its PR is open |
 | B1 | Thermal correlations have no detrending and no caveat that slowly drifting quantities correlate through time alone | `aos/correlations/code/run_thermal_correlations.py` | deferred (Aaron 2026-10-28): revisit with the whole correlations analysis, rerun on the Danish 1.3 unpaired FAM |
 | D19 | `merge_rotator_to_tables` has no callers; `merge_rotator_to_visit_info` is the live one | `W/intrinsics_lib.py:2282` | Aaron 2026-10-28: delete it, once the open ts_intrinsic_wavefront PR is merged |
+| T1 | The thermal-focus PDF's Data Sample page types the hot-truss exclusion ("217 visits on 20251118 and 20251119"), though its comment says the counts are computed. The analysis stage cannot compute it: the build stage already removed those visits, so its own funnel counts 0 | `thermal_focus/thermal_focus/code/run_thermal_focus_analysis.py:3464` | carry the build-stage hot-truss count in the cache, or drop the claim from the comment (found 2026-11-15, phase 8 Tier 1.1) |
 
 Closed 2026-10-28: D4 (`rubinwork/bounce/legs.py` `filter_visits` raises `KeyError` when a
 program filter is asked for and `science_program` is missing); the bounce NaN error bars

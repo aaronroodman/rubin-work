@@ -102,7 +102,7 @@ def read_dz(path, kj_grid, prefix="z1toz6"):
     return W, E, df[keep].copy()
 
 
-def assign_blocks(meta, blocks_summary):
+def blocks_from_summary(meta, blocks_summary):
     """(block id, program) per visit, by (day_obs, seq_min<=seq_num<=seq_max).
 
     Block id -1 / program "" = unmatched.  The program matters: the S-matrix test
@@ -338,7 +338,7 @@ def main():
               f"||a|| {np.nanmedian(g['a_norm']):.4f}")
         # ---- EMPIRICAL within-block covariance, and the calibrated chi2 ----
         if args.blocks_summary and os.path.exists(args.blocks_summary):
-            blk, prog = assign_blocks(meta, args.blocks_summary)
+            blk, prog = blocks_from_summary(meta, args.blocks_summary)
             print(f"  block assignment: {int((blk >= 0).sum())}/{len(blk)} visits "
                   f"matched, {len(set(blk[blk >= 0]))} blocks")
             # Only STABLE-program blocks may define the error: the S-matrix test

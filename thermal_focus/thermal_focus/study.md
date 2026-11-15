@@ -32,6 +32,15 @@ The elevation-hysteresis test and the within-FAM-block argument were dropped fro
 
 ## Log
 
+### 2026-11-15 — phase 8 code review of the library and the analysis
+
+Reviewed `rubinwork.thermal_focus` and `run_thermal_focus_analysis.py` in full; tag
+`pre-thermal-focus-review-2026-11-14` marks the code before it. No wrong number found. The
+dead FAM block section of `fit.py` (`assign_blocks`, `select_sets`, unused since `96f6817`)
+is deleted, and two docstrings now match the code. The `--no-pdf` output is identical to
+before, all 344 lines. The PDF's Data Sample page types the hot-truss count; that is
+backlog item T1 in `aos/docs/status/code_review_backlog.md`.
+
 ### 2026-10-24 — sample to the library, calculator check out
 
 `load_science` and its telemetry readers moved to `rubinwork.thermal_focus.sample`, shared

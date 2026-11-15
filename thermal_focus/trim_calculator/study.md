@@ -23,6 +23,12 @@ Yes: trim_calculator.py imports only numpy, pyyaml and argparse and reads every 
 
 ## Log
 
+### 2026-11-15 — `--sci-path` and `--from-product` are exclusive
+
+`check_against_fit.py` silently ignored `--sci-path` when `--from-product` was also given;
+the two are now a mutually exclusive pair. Result unchanged: largest difference 0.0034 µm
+of equivalent hexapod dz over 68,079 visits.
+
 ### 2026-10-24 — calculator check moved here
 
 The check of the calculator against the fitted pipeline, formerly section 11 of

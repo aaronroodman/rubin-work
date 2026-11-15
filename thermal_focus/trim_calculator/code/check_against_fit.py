@@ -122,11 +122,12 @@ def compare(sci, features, model='huber', verbose=True):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--sci-path', type=pathlib.Path, default=None,
-                    help='cached thermal_focus.parquet')
+    src = ap.add_mutually_exclusive_group()
+    src.add_argument('--sci-path', type=pathlib.Path, default=None,
+                     help='cached thermal_focus.parquet')
+    src.add_argument('--from-product', action='store_true',
+                     help='rebuild the sample from the value-added product')
     ap.add_argument('--day-obs-range', nargs=2, type=int, default=None, metavar=('LO', 'HI'))
-    ap.add_argument('--from-product', action='store_true',
-                    help='rebuild the sample from the value-added product')
     ap.add_argument('--model', default='huber', choices=F.MODEL_NAMES)
     args = ap.parse_args()
     day_obs_range = tuple(args.day_obs_range) if args.day_obs_range else None

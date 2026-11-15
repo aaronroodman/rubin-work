@@ -1,6 +1,6 @@
 # Phase 8 plan: code review in the new layout
 
-> **Status:** C1 done 2026-10-25; Tier 1 next · **Last updated:** 2026-11-12 · **Kind:** plan
+> **Status:** C1 done 2026-10-25; Tier 1.1 and 1.2 done 2026-11-15; 1.3 next · **Last updated:** 2026-11-15 · **Kind:** plan
 
 Part C of the old plan (`notes/status/reorg_review_plan_2026-09.md` at tag
 `pre-products-reorg-2026-10-09`, sections C1–C4) applied to the products, libraries and
@@ -74,10 +74,16 @@ every reader.
    `science_lut` hotspot. Check: `trim_calculator/code/check_against_fit.py` (max
    difference 0.0034 µm of equivalent hexapod dz, count 68,079 visits) and the analysis's
    printed sections.
+   **Done 2026-11-15:** no wrong number; dead block code deleted, two docstrings fixed,
+   `check_against_fit.py` source flags made exclusive, backlog T1 added. Both checks
+   unchanged. Tag `pre-thermal-focus-review-2026-11-14` marks the code before.
 2. **The three `assign_blocks`**, same name, three behaviors:
    `rubinwork/products/coadds/builders/run_coadd_blocks_miw.py:191`,
    `rubinwork/thermal_focus/fit.py:1150`, `aos/miw_origin/code/analyze_dz_goodness_of_fit.py:100`.
    Rename or unify. Check: the `coadds` reference.
+   **Done 2026-11-15:** the `thermal_focus` copy was dead and is deleted; the `miw_origin`
+   one is a lookup, renamed `blocks_from_summary`. The `coadds` builder keeps the only
+   `assign_blocks`, unchanged, so its reference was not rerun.
 3. `rubinwork.aos_state` and `rubinwork.smatrix` (the v-modes, DOF sets, SVD). Check: the
    `miw`, `dof_lut` and `bounce_tables` references, and the smatrix study numbers.
 4. `rubinwork.common` (`utils.py`, `FocalPlaneInterpolator.py`, `telemetry_clients.py`,
