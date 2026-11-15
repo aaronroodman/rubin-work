@@ -22,6 +22,24 @@ Only focus agrees. Over campaign `famcwfs_prod` — about 924 FAM in-focus visit
 
 ## Log
 
+### 2026-11-14 — seeing-dependence of spin-2 moments filed
+
+Filed an ad-hoc GalSim study from 2026-06-29 that bears on this question: how far e1·T and
+e2·T (T = Ixx + Iyy, arcsec²) move when only the seeing changes. PSF = Kolmogorov(FWHM
+0.6 to 1.2 arcsec) convolved with an 8.36 m, 0.61-obscuration optic, 750 nm, Z4 to Z11
+random (0.3 µm rms of wavefront), HSM adaptive moments at 0.2 arcsec/pixel. Scripts in
+`code/seeing_moments/` (they write to the current directory; not converted to
+`study_run`); figures and `seeing_moments_delta.npz` (1000 realizations) in
+`output/20260629_seeing_moments/`.
+
+- `seeing_moments_study.py`: Z4 fixed at 0.3 µm, 12 realizations.
+- `seeing_moments_varyz4.py`: Z4 to Z11 all random, 16 realizations, colored by Z4.
+- `seeing_moments_noise.py`: shot noise for a 17th-mag star with a 250 e-/pixel sky.
+- `seeing_moments_delta.py`: change in e1·T, e2·T across the FWHM range, 1000 realizations.
+
+No result was written up at the time. The seeing-driven drift is a systematic error for any
+fit of wavefront to stellar moments that does not model the atmosphere's size exactly.
+
 ### 2026-10-24 — inputs moved to the products
 
 `optatmo/code/` now reads the FAM visits and fits through the catalog, `fam_tables`

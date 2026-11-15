@@ -16,7 +16,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 |---|---|---|---|
 | [miw_radial_correlations](miw_radial_correlations/study.md) | done | 2026-10-24 | Yes: MIW radial orders of one family correlate across the field (Z5/6 with Z12/13, Z7/8 with Z16/17). This feeds the smatrix sparse_fit study. |
 | [momfit_accuracy](momfit_accuracy/study.md) | done | 2026-10-24 | Only at 2nd order, with a calibration slope (e0 slope 0.52, R^2 0.93, dimensionless). 3rd and 4th-order moments are dominated by diffraction (trefoil skew is 100% diffractive), so no geometric model reproduces them; a JAX Fraunhofer forward model was built instead. |
-| [psf_vs_cwfs](psf_vs_cwfs/study.md) | parked | 2026-10-24 | Only focus agrees: the PSF-fit v1 (Z4) against CWFS has a robust slope 0.81 (dimensionless, PSF fit per CWFS), intercept +0.074, over about 924 FAM in-focus visits; v-modes above focus sit at noise level. |
+| [psf_vs_cwfs](psf_vs_cwfs/study.md) | parked | 2026-11-14 | Only focus agrees: the PSF-fit v1 (Z4) against CWFS has a robust slope 0.81 (dimensionless, PSF fit per CWFS), intercept +0.074, over about 924 FAM in-focus visits; v-modes above focus sit at noise level. |
 
 <!-- END generated -->
 

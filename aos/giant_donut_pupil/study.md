@@ -64,6 +64,16 @@ Open:
 
 ## Log
 
+### 2026-11-14 — early ΔZ4 tables filed
+
+Filed `figures/early_dz4_tables_20260917.pdf`, from an ad-hoc session of 2026-09-17 that
+predates this study. Tables of Danish giant-donut fits for exposures 2025102300337
+(extra-focal) and 2025102300340 (intra-focal), 8 mm defocus: ΔZ4 = Z4(extra) − Z4(intra)
+and both sides of Z4, Z11 and Z22 (nm of wavefront), for three pupil models (Default /
+`wep_17_10`, v3_14, v1000). The same session found that the per-donut CCD heights in the
+`batoid_rubin_data` height map cannot explain the spread in ΔZ4; a field-dependent
+Double Zernike k = 4 term in Z4 remained the open alternative.
+
 ### 2026-10-23 — parked
 
 Aaron, 2026-10-23: a good stopping place. Waiting on two things: the CAD review with Josh

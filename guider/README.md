@@ -17,6 +17,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | [guider_atmo_sim](guider_atmo_sim/study.md) | active | 2026-10-28 | Partly: over 6 visits of 20260706 the guider centroid-motion size matches on average (median T_motion sim over data 1.28, dimensionless) but per visit ranges 0.36 to 2.29 and follows psfws's random ground-layer weight; the motion direction does not match (median angle difference 42 to 69 deg, against 45 deg for no relation). |
 | [guider_ellipticity_ensemble](guider_ellipticity_ensemble/study.md) | active | 2026-09-01 | Dynamic ellipticity is strongly correlated between the two guider sensors of one corner raft and nearly uncorrelated across corners, so turbulence decorrelates on raft scales; it is not tracking error or wind shake. |
 | [guider_vs_ccd_moments](guider_vs_ccd_moments/study.md) | active | 2026-10-11 | Do guide-star second moments, measured with the same galsim-HSM estimator, match the PSF second moments on the adjacent science CCD? |
+| [nightly_qa](nightly_qa/study.md) | active | 2026-11-12 | What does each night's guider data look like: the per-day QA PDF, the movies and the RubinTV-style review plots? |
 | [roi_quality](roi_quality/study.md) | active | 2026-03-24 | Was each guider ROI placed on the expected guide star, judged by matching found stars to the guide-star catalog? |
 | [summit_utils_branch](summit_utils_branch/study.md) | done | 2026-10-24 | Yes: guider-fixes holds all 8 deploy-summit guider commits by patch-equivalence, so no cherry-pick is needed; origin/main has none of them. |
 

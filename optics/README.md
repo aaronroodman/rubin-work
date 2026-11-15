@@ -12,6 +12,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | study | status | last log | answer |
 |---|---|---|---|
 | [fresnel_donuts](fresnel_donuts/study.md) | done | 2026-10-04 | batoid huygensPSF is correct, and a NUFFT evaluation makes it about 1e6 times faster (dimensionless, wall-clock ratio). Diffraction moves about 13% of donut flux (fraction of total flux) against geometric optics, but gives at most 0.002 arcsec intra/extra difference in fitted blur. |
+| [spot_through_focus](spot_through_focus/study.md) | done | 2026-11-14 | A batoid through-focus spot diagram in the Zemax layout: 4 field points (0 to 1.75 deg) by 5 detector shifts (-14 to +14 µm), at 552, 620 and 691 nm, in a 40 µm box. |
 | [telecentricity](telecentricity/study.md) | done | 2026-09-04 | Rubin is non-telecentric: the chief-ray angle grows linearly at 76.45 arcsec/mm of focal-plane radius, to 6.71 deg at r = 315 mm. As-built v3.14 equals the design to < 4.5 arcsec once the telecentricity null is moved 0.66 mm off centre. |
 
 <!-- END generated -->
