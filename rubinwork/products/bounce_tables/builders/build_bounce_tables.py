@@ -26,6 +26,9 @@ import pandas as pd
 
 from lsst.ts.intrinsic.wavefront.ofc_svd import LABELS_50DOF, DOF_UNITS_50
 
+# DOF_UNITS_50 calls the hexapod tilts arcsec; they are deg (aos/docs/telemetry.md §7).
+DOF_UNITS_50 = ['deg' if u == 'arcsec' else u for u in DOF_UNITS_50]
+
 from rubinwork.bounce import analysis as ba
 from rubinwork.bounce import legs as bl
 from rubinwork.bounce.legs import DOF22

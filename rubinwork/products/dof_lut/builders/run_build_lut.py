@@ -218,6 +218,8 @@ def main():
     svd = osv.build_ofc_svd(iZs, k_min, k_max, n_keep_spec, n_dof=n_dof_spec,
                             ofc_normalization_yaml=ofc_norm_yaml)
     dof_labels, dof_units = svd.dof_labels()
+    # DOF_UNITS_50 calls the hexapod tilts arcsec; they are deg (aos/docs/telemetry.md §7).
+    dof_units = ['deg' if u == 'arcsec' else u for u in dof_units]
     print(f'  SVD: U_eff={svd.U_eff.shape}, n_dof={svd.n_dof}, '
           f'n_keep_eff={svd.n_keep_eff}')
     _vmodes, dof, A, W = osv.project_dz_table(fits, prefix, svd)

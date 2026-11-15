@@ -37,7 +37,8 @@ One rule, one script. ``build_bounce_tables`` writes:
     seven ``kind`` values (``dof``, ``dof22``, ``dof5``, ``dof_oic``, ``vmode``,
     ``vmode22``, ``vmode5``). ``delta`` is in the unit the row's ``unit`` column names:
     µm for translations and bending-mode amplitudes, deg for hexapod rotations,
-    dimensionless for v-modes. The ``dof`` rows also carry RBR as ``delta_rbr`` and
+    dimensionless for v-modes. Builds before 2026-11-14 label the rotations ``arcsec``;
+    the values are deg. The ``dof`` rows also carry RBR as ``delta_rbr`` and
     ``delta_rbr_err`` in the same unit, plus the allowed range ``dof_range`` and the two
     dimensionless amplitude-over-range ratios. Carries the **measured** elevation and
     rotator angle of both legs, in deg, rather than the nominal config window.

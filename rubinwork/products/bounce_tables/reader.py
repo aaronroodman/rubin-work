@@ -267,8 +267,9 @@ def load(variant, build=catalog.CURRENT, tables=TABLES):
         ``(bounce_kj_stats, bounce_dof_stats, bounce_fwhm_metric,
         bounce_fwhm_vs_bvalue)`` by default. The Δ columns of ``bounce_kj_stats`` are in
         µm of wavefront; ``bounce_dof_stats`` ``delta`` is in the unit its own ``unit``
-        column names per row (µm for translations and bending-mode amplitudes, arcsec for
-        hexapod rotations, dimensionless for v-modes); every FWHM column of the two
+        column names per row (µm for translations and bending-mode amplitudes, deg for
+        hexapod rotations, dimensionless for v-modes; builds before 2026-11-14 label the
+        rotations ``arcsec``, a stale label, but the values are deg); every FWHM column of the two
         ``fwhm`` tables is in arcsec.
 
     Raises
