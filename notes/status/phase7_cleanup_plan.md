@@ -1,6 +1,6 @@
 # Phase 7 plan: back up and remove the old output trees
 
-> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; laptop copies, dangling repo symlinks, the old data-root site and `/tmp/qcut` removed; `guider/output` has no readers left (2026-11-12) and waits for Aaron's backup and removal · **Last updated:** 2026-11-12 · **Kind:** plan
+> **Status:** `aos/output`, `aos/output-archive-2026-06-11`, `blocks/output` and `value_added/output` backed up and removed; Danish 1.3 test/v1000 MIW builds removed; laptop copies, dangling repo symlinks, the old data-root site and `/tmp/qcut` removed; `guider/output` removed without a backup (2026-11-14); phase 7 done · **Last updated:** 2026-11-14 · **Kind:** plan
 
 The old output trees are the pre-reorg `<topic>/output` directories. The repo's
 `<topic>/output` symlinks point at them, through `/sdf/group/rubin/u/roodman/LSST/notebooks/rubin-work/`,
@@ -128,8 +128,9 @@ if none exists. `compare_to_archive.py` takes the archive path as an argument.
    QA PDFs, movies and rtvplots got an owner, the `guider/nightly_qa` study: the rules and
    `run_snake.sh` write to its `output@`, and the 47 existing files (306 MB) were copied
    there. The loose parked-study files were already in their studies' `output@` except five
-   `bias_streak` files, copied the same day. `old/` (0.7 GB) and `review_748/` have no
-   owner and survive only in the backup.
+   `bias_streak` files, copied the same day. `review_748/` was copied to `nightly_qa`'s `output@`.
+   On 2026-11-14 the tree was removed with no backup; `old/` (0.7 GB, older runs of
+   20260702-20260706, regenerable) is gone.
 3. `optatmo/output`: kept as the `psf_vs_cwfs` study's data (Aaron, 2026-10-24); a product
    later. Dropped from this phase.
 
