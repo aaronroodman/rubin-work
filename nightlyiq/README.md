@@ -15,7 +15,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | [aos_openloop](aos_openloop/study.md) | dropped | 2026-07-27 | Dropped: superseded by rubinwork.open_loop. |
 | [guider_iq](guider_iq/study.md) | parked | 2026-07-14 | How much of the science-image PSF width do the guider seeing and the pointing jitter explain, image by image? |
 | [iq_environment](iq_environment/study.md) | active | 2026-11-11 | How do science-visit FWHM, AOS_FWHM, ellipticity and donut blur correlate with airflow, thermal telemetry and the intra - extra donut blur difference? |
-| [iq_stochastic](iq_stochastic/study.md) | active | 2026-11-13 | AOS_FWHM predicts little of either. Per band, Pearson r is 0.26 to 0.44 for FWHM and 0.16 to 0.30 for median ellipticity. The Huber fit cuts the nMAD of FWHM from 0.22-0.30 arcsec to 0.20-0.28 arcsec, and leaves the ellipticity nMAD almost unchanged (0.03-0.04, dimensionless). |
+| [iq_stochastic](iq_stochastic/study.md) | active | 2026-11-13 | AOS_FWHM sets a trend but not the visit. Across AOS_FWHM 0.25 to 0.75 arcsec the per-bin median FWHM rises by 0.23 to 0.38 arcsec, depending on band, while the nMAD of FWHM within one bin is 0.16 to 0.30 arcsec. For median ellipticity the per-bin median rises by 0.013 to 0.047 against a within-bin nMAD of 0.021 to 0.054 (both dimensionless). |
 | [nightly_aos_tables](nightly_aos_tables/study.md) | dropped | 2026-07-13 | Dropped: superseded by the value-added database. |
 
 <!-- END generated -->
