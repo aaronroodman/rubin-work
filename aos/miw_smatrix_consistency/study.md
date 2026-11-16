@@ -106,3 +106,7 @@ per bin, count), into /lscratch/roodman/split_test*. RMS over the split-map poin
 
 The 9-bin variants split every j; `split_js: [4]` is set only in the `_5rot` variants,
 which this test did not cover.
+- v13 5rot (d13-A_50_34_i_5rot@20261025, split Z4 only): Z4 changes by 0.0017 µm RMS
+  (OCS) and 0.0016 µm (CCS), at most 0.031 µm, against maps of 0.030 and 0.029 µm.
+  Negligible. Z5, which is OCS-only there, changes by 0.014 µm RMS, at most 0.24 µm
+  (map 0.110 µm), at a few cells.
