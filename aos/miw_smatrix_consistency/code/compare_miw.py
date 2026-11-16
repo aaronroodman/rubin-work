@@ -34,12 +34,17 @@ from rubinwork.products.miw import reader as miw  # noqa: E402
 ROT5 = {"rot_-65_-55", "rot_-20_-10", "rot_-3_3", "rot_10_20", "rot_55_65"}
 
 
-def load_bins(variant, build):
-    """Per-bin grids as one long table: bin, cell (rounded thx, thy), j, zk, batoid."""
+def load_bins(variant, build, min_donuts=5):
+    """Per-bin grids as one long table: bin, cell (rounded thx, thy), j, zk, batoid.
+
+    Cells with fewer than ``min_donuts`` donuts are dropped: a 1-donut cell can be off by
+    over 1000 µm and dominates any RMS over cells.
+    """
     rows = []
     for p in sorted((catalog.path("miw", variant, build) / "build").glob(
             "rot_*/intrinsic_grid.parquet")):
         g = pd.read_parquet(p)
+        g = g[g.n_donuts >= min_donuts]
         js = np.asarray(g.nollIndices.iloc[0], int)
         zk, tab = np.stack(g.zk.to_numpy()), np.stack(g.zk_tabulated.to_numpy())
         for i, j in enumerate(js):
@@ -90,6 +95,8 @@ def main():
     ap.add_argument("--miw", action="append", required=True,
                     metavar="LABEL=VARIANT@BUILD")
     ap.add_argument("--label", default="smatrix_consistency")
+    ap.add_argument("--min-donuts", type=int, default=5,
+                    help="drop grid cells with fewer donuts (count)")
     args = ap.parse_args()
     run = study_run("aos/miw_smatrix_consistency", args.label)
     miws = []
@@ -106,7 +113,7 @@ def main():
     for lab, v, b in miws:
         r = pd.read_parquet(catalog.path("miw", v, b) / "intrinsic_split_rms.parquet")
         split.append(r.assign(miw=lab))
-        t = load_bins(v, b)
+        t = load_bins(v, b, args.min_donuts)
         scat.append(pd.concat([bin_scatter(t).assign(bins="all 9"),
                                bin_scatter(t, ROT5).assign(bins="5rot")]).assign(miw=lab))
         bat.append(batoid_diff(t).assign(miw=lab))

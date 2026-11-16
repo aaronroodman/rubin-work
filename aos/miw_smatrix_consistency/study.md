@@ -54,3 +54,40 @@ Metrics, once built:
 - Z5-Z8 against the Batoid intrinsic;
 - the recovered DoF amplitudes against their ranges. Large ones mean the 50/50 RBR
   scheme is worth a build.
+
+### 2026-11-16 — first comparison of the three MIWs
+
+Built `miw` d13s-A_50_34_i_fsm_sparse_no22@20261116 and d13-A_50_34_i_fsm_dense21@20261116
+(jobs 45347848 and 45347849). Their manifests record `fitted_smatrix`, and the bin logs
+show the fitted OFC config. The sparse split needed its own `noll_list` and Z27, Z28 in
+the split's Noll table (rubin-work 8eb3764, ts_intrinsic_wavefront 181a51e). The first
+job hung because `sbatch` exported an older stack; submit with `--export=NONE`.
+
+A few grid cells hold 1 or 2 donuts (median 27 donuts per cell, count). They are off by up
+to 1409 µm (sparse) and 54 µm (dense, v13 and dense21 alike) and dominate any RMS over
+cells. `compare_miw.py` now drops cells with fewer than 5 donuts. The split step has no
+such cut, so the product's split residual RMS for sparse (Z10 5.88 µm, Z14 5.37 µm) is
+driven by them; dense21 and v13 are unchanged (Z10 0.226 µm).
+
+Bin-to-bin scatter (RMS over cells of the std over bins, µm, OCS), cells >= 5 donuts:
+
+| Noll j | v13 9 bins | dense21 9 bins | sparse 9 bins | v13 5rot | dense21 5rot | sparse 5rot |
+|---|---|---|---|---|---|---|
+| 5 | 0.062 | 0.063 | 0.052 | 0.042 | 0.044 | 0.038 |
+| 6 | 0.063 | 0.066 | 0.045 | 0.041 | 0.042 | 0.039 |
+| 7 | 0.049 | 0.045 | 0.015 | 0.026 | 0.024 | 0.011 |
+| 8 | 0.066 | 0.069 | 0.019 | 0.033 | 0.034 | 0.013 |
+| 11 | 0.018 | 0.018 | 0.007 | 0.011 | 0.012 | 0.005 |
+
+- Sparse is the most consistent over the 9 bins: coma scatter is a third of the dense
+  value. Dense21 is no better than v13.
+- Bin-mean MIW minus Batoid, RMS over field (µm): Z5 0.123 / 0.136 / 0.064, Z7 0.082 /
+  0.078 / 0.033, Z8 0.071 / 0.085 / 0.023 (v13 / dense21 / sparse). Sparse is closer
+  to Batoid for Z5-Z8, as seen in the FAM fits; Z4 is worse (0.026 / 0.019 / 0.072).
+- Per-visit DoF are large in all three: p95 over visits of |DoF|/range up to 59 (v13),
+  37 (dense21), 51 (sparse) (dimensionless), on M1M3 bending modes B1_12, B1_16, B1_19,
+  B1_20; 31-34 of 50 DoF have p95 above 1. The S-matrix choice does not change this,
+  so the 50/50 RBR build is worth checking (Aaron's criterion).
+
+Next: a `min_donuts` cell cut in the split step (product change, then rebuild sparse),
+and a 50/50 RBR sparse variant.
