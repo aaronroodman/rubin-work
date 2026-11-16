@@ -131,3 +131,34 @@ Intra and extra agreement does. The cut is any Noll with
 (intra − extra) per Noll over the bin. It flags 0.59% (sparse) and 0.83% (dense) of the
 donuts. It catches every donut with |Zk| > 5 µm, and the largest |Zk| left is 1.93 µm
 (sparse) and 2.04 µm (dense).
+
+### 2026-11-16 — MIWs rebuilt on the pair-cut fam_tables builds
+
+The pair cut drops a donut when any Noll has |(intra − extra) − median| > 15 nMAD,
+per visit (`refit_build --pair-cut-nmad 15`, rubin-work 2ce3a02). New builds:
+`fam_tables` d13-sparse@20261116 (0.68% of donuts dropped) and danish_1_3@20261116
+(1.11%). The visit quality cut is unchanged: 1130 and 1988 visits pass. `miw`
+d13s-A_50_34_i_fsm_sparse_no22@20261116b and d13-A_50_34_i_fsm_dense21@20261116b are
+built on them. Run `20261116_paircut`, all cells kept (`--min-donuts 1`).
+
+The largest |bin − 5rot median| over all bins, cells and j drops from 1409 to 0.75 µm
+(sparse) and from 63 to 0.95 µm (dense21). The Z5 cell at (−0.49°, −1.33°) in
+rot_-50_-40 is empty after the cut: its one donut was dropped.
+
+| µm | v13 | dense21 | dense21 cut | sparse | sparse cut |
+|---|---|---|---|---|---|
+| split residual RMS, Z5 | 0.268 | 0.268 | 0.052 | 1.830 | 0.043 |
+| split residual RMS, Z10 | 0.226 | 0.226 | 0.020 | 5.878 | 0.012 |
+| 9-bin scatter, Z5 | 0.374 | 0.374 | 0.063 | 2.572 | 0.052 |
+| 9-bin scatter, Z8 | 0.152 | 0.153 | 0.068 | 1.759 | 0.019 |
+| 9-bin scatter, Z14 | 0.351 | 0.351 | 0.020 | 7.553 | 0.015 |
+| MIW − Batoid, Z5 | 0.166 | 0.176 | 0.135 | 0.776 | 0.064 |
+| MIW − Batoid, Z8 | 0.088 | 0.100 | 0.087 | 0.529 | 0.023 |
+
+- The 5rot scatter does not change: the bad donuts were in 20260409.
+- After the cut, sparse is still the most consistent MIW and the closest to Batoid on
+  Z5–Z8, Z11. Z4 against Batoid is worse for sparse (0.072 against 0.019 µm).
+- Large DoF are unchanged: max p95 |DoF|/range 36.6 (dense21) and 51.2 (sparse).
+- The v13 nominal MIW has the same bad donuts and needs the same rebuild.
+- Night 20250519 loses 27–37% of donuts in four visits (dense). That night is not in
+  the MIW sample; not investigated.
