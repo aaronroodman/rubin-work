@@ -203,9 +203,17 @@ def create_study(topic, name, question, uses=(), root=None, started=None, title=
     if check_catalog:
         from rubinwork.products import catalog
         # Pin: "current" moves, and a study's answer must name what it read.
-        uses = [UsesEntry(e.product, e.variant,
-                          catalog.path(e.product, e.variant, e.build).name)
-                for e in uses]
+        pinned = []
+        for e in uses:
+            build_dir = catalog.path(e.product, e.variant, e.build).resolve()
+            variant_dir = (catalog.products_root() / e.product / e.variant).resolve()
+            try:
+                # Nested builds such as snapshots/20261105 keep their full name.
+                build = build_dir.relative_to(variant_dir).as_posix()
+            except ValueError:
+                build = build_dir.name
+            pinned.append(UsesEntry(e.product, e.variant, build))
+        uses = pinned
 
     data_dir = data_root() / "studies" / topic / name
     data_dir.mkdir(parents=True, exist_ok=True)

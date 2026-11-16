@@ -115,3 +115,16 @@ def test_current_is_pinned(checkout):
     directory = new.create_study("aos", "pinned", "Q?", uses, root=checkout)
     assert studies.load_study(directory).meta["uses"] == {
         "fam_tables": "danish_1_2@20261014"}
+
+
+def test_nested_build_keeps_full_name(checkout):
+    import os
+    variant = checkout.parent / "data/products/value_added/v1"
+    (variant / "snapshots/20261105").mkdir(parents=True)
+    (variant / "snapshots/20261105/manifest.json").write_text(
+        '{"status": "complete", "files": {}}')
+    os.symlink("snapshots/20261105", variant / "current")
+    uses = [studies.UsesEntry("value_added", "v1", "current")]
+    directory = new.create_study("aos", "nested", "Q?", uses, root=checkout)
+    assert studies.load_study(directory).meta["uses"] == {
+        "value_added": "v1@snapshots/20261105"}
