@@ -91,3 +91,18 @@ Bin-to-bin scatter (RMS over cells of the std over bins, µm, OCS), cells >= 5 d
 
 Next: a `min_donuts` cell cut in the split step (product change, then rebuild sparse),
 and a 50/50 RBR sparse variant.
+
+### 2026-11-16 — do low-donut cells bias the OCS/CCS split?
+
+Yes. I reran the split with grid cells under 5 donuts removed (28-127 of about 3850 cells
+per bin, count), into /lscratch/roodman/split_test*. RMS over the split-map points of
+(all cells - cut), µm:
+
+- v13 nominal (d13-A_50_34_i@20261025): Z4 OCS 0.009 (map 0.031), Z5 OCS 0.053 (map
+  0.089), Z5 CCS 0.044 (map 0.028), Z14 CCS 0.054 (map 0.007). The split residual RMS
+  drops from 0.268 to 0.051 (Z5) and from 0.249 to 0.014 (Z14).
+- sparse: the change is larger than the maps for most j, for example Z10 OCS 1.13 (map
+  0.055) and Z4 OCS 0.062 (map 0.087). The residual RMS drops from 5.88 to 0.012 (Z10).
+
+The 9-bin variants split every j; `split_js: [4]` is set only in the `_5rot` variants,
+which this test did not cover.
