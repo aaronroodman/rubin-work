@@ -17,8 +17,7 @@ Tweak           ``tweak_dof0..49``   **derived**: ``Trim_i - Trim_(i-1)``
 
 The ordering matches the OFC DOF state (:data:`ofc_svd.LABELS_50DOF`). Units are µm
 for hexapod translations and bending modes and **deg** for the hexapod rotations, as
-measured against ``MTHexapod`` (``aos/docs/telemetry.md`` section 7);
-:data:`ofc_svd.DOF_UNITS_50` labels the rotations arcsec, which is out of date.
+measured against ``MTHexapod`` (``aos/docs/telemetry.md`` section 7).
 
 **Trim** is the amount the MTAOS closed loop has moved each degree of freedom
 away from the LUT baseline through closed-loop alignment.  Per-visit lookup
