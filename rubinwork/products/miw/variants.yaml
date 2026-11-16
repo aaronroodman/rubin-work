@@ -358,6 +358,7 @@ groups:
                 dir_name: A_50_34_i_fsm_sparse_no22
                 n_dof: 50
                 n_keep: 34
+                noll_list: [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 27, 28]
 
 # ---------------------------------------------------------------------------
 # EXTERNAL variants: registered as manifests with a `location` and no files.  NOT emitted
