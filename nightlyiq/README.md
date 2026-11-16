@@ -15,7 +15,7 @@ Generated from each `<study>/study.md`; edit those, not this table.
 | [aos_openloop](aos_openloop/study.md) | dropped | 2026-07-27 | Dropped: superseded by rubinwork.open_loop. |
 | [guider_iq](guider_iq/study.md) | parked | 2026-07-14 | How much of the science-image PSF width do the guider seeing and the pointing jitter explain, image by image? |
 | [iq_environment](iq_environment/study.md) | active | 2026-11-11 | How do science-visit FWHM, AOS_FWHM, ellipticity and donut blur correlate with airflow, thermal telemetry and the intra - extra donut blur difference? |
-| [iq_stochastic](iq_stochastic/study.md) | active | 2026-11-16 | AOS_FWHM sets a trend but not the visit. Over AOS_FWHM 0.30 to 0.60 arcsec the per-bin median FWHM rises by 0.16 (r band) to 0.29 arcsec (y band), while the FWHM nMAD within one 0.05 arcsec bin is 0.17 to 0.29 arcsec. The median ellipticity rises by 0.009 (g) to 0.032 (y) against a within-bin nMAD of 0.021 to 0.046 (both dimensionless). |
+| [iq_stochastic](iq_stochastic/study.md) | active | 2026-11-16 | Seeing, not the AOS, sets most of the per-visit FWHM. The donut blur tracks FWHM with Spearman rho 0.78 to 0.90, per band. In u through z, FWHM is close to the blur and AOS_FWHM added in quadrature: what is left has median -0.015 to +0.014 arcsec and nMAD 0.08 to 0.11 arcsec, against an FWHM nMAD of 0.21 to 0.29 arcsec. At fixed seeing, FWHM and median ellipticity both still rise with AOS_FWHM. Two open issues: FWHM minus blur drifts by about 0.2 arcsec between epochs, and the y band sits about 0.2 arcsec below the other bands. |
 | [nightly_aos_tables](nightly_aos_tables/study.md) | dropped | 2026-07-13 | Dropped: superseded by the value-added database. |
 
 <!-- END generated -->

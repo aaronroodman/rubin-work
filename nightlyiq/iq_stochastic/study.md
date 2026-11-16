@@ -3,7 +3,7 @@ study: iq_stochastic
 topic: nightlyiq
 status: active
 question: How much of the per-visit FWHM and median ellipticity does AOS_FWHM predict, band by band, and how large is the scatter it leaves?
-answer: 'AOS_FWHM sets a trend but not the visit. Over AOS_FWHM 0.30 to 0.60 arcsec the per-bin median FWHM rises by 0.16 (r band) to 0.29 arcsec (y band), while the FWHM nMAD within one 0.05 arcsec bin is 0.17 to 0.29 arcsec. The median ellipticity rises by 0.009 (g) to 0.032 (y) against a within-bin nMAD of 0.021 to 0.046 (both dimensionless).'
+answer: 'Seeing, not the AOS, sets most of the per-visit FWHM. The donut blur tracks FWHM with Spearman rho 0.78 to 0.90, per band. In u through z, FWHM is close to the blur and AOS_FWHM added in quadrature: what is left has median -0.015 to +0.014 arcsec and nMAD 0.08 to 0.11 arcsec, against an FWHM nMAD of 0.21 to 0.29 arcsec. At fixed seeing, FWHM and median ellipticity both still rise with AOS_FWHM. Two open issues: FWHM minus blur drifts by about 0.2 arcsec between epochs, and the y band sits about 0.2 arcsec below the other bands.'
 uses:
   value_added: v1@snapshots/20261105
 started: 2026-11-13
@@ -17,7 +17,7 @@ How much of the per-visit FWHM and median ellipticity does AOS_FWHM predict, ban
 
 ## Current answer
 
-AOS_FWHM sets a trend but not the visit. Over AOS_FWHM 0.30 to 0.60 arcsec the per-bin median FWHM rises by 0.16 (r band) to 0.29 arcsec (y band), while the FWHM nMAD within one 0.05 arcsec bin is 0.17 to 0.29 arcsec. The median ellipticity rises by 0.009 (g) to 0.032 (y) against a within-bin nMAD of 0.021 to 0.046 (both dimensionless).
+Seeing, not the AOS, sets most of the per-visit FWHM. The donut blur tracks FWHM with Spearman rho 0.78 to 0.90, per band. In u through z, FWHM is close to the blur and AOS_FWHM added in quadrature: what is left has median -0.015 to +0.014 arcsec and nMAD 0.08 to 0.11 arcsec, against an FWHM nMAD of 0.21 to 0.29 arcsec. At fixed seeing, FWHM and median ellipticity both still rise with AOS_FWHM. Two open issues: FWHM minus blur drifts by about 0.2 arcsec between epochs, and the y band sits about 0.2 arcsec below the other bands.
 
 ## Log
 
@@ -88,3 +88,42 @@ Correction to the 2026-11-13 entry: the median FWHM is not flat below 0.45 arcse
 in every band. From the 0.30 bin to the 0.45 bin it rises by 0.03 arcsec (r band) to
 0.11 arcsec (g band). From the 0.45 bin to the 0.60 bin it rises by 0.17 arcsec (u band) to
 0.32 arcsec (z band). The y band has no 0.60 bin, and rises 0.21 arcsec from 0.45 to 0.55.
+
+### 2026-11-16 — donut blur as the per-visit seeing
+
+`donut_blur_fwhm` (ConsDB) is the atmospheric blur fitted to the corner-sensor donuts of
+the same exposure. It is set for 92% of visits. Run `output/20261116_aos_and_blur/`
+(`iq_stochastic.pdf`, `aos_stats.csv`, `blur_stats.csv`, `binned_medians.csv`) adds pages A
+to E. The sample has AOS_FWHM, FWHM and blur (0.1 to 3.0 arcsec) all inside their cuts.
+
+| band | n (visits) | rho (blur, FWHM) | rho (AOS_FWHM, blur) | rho (AOS_FWHM, FWHM² - blur²) | FWHM - blur median / nMAD (arcsec) | leftover median / nMAD (arcsec) | FWHM nMAD (arcsec) |
+|---|---|---|---|---|---|---|---|
+| u | 4044 | 0.88 | 0.24 | 0.17 | 0.070 / 0.086 | -0.015 / 0.091 | 0.272 |
+| g | 8073 | 0.83 | 0.18 | 0.42 | 0.098 / 0.126 | +0.011 / 0.109 | 0.231 |
+| r | 15999 | 0.90 | 0.04 | 0.39 | 0.095 / 0.105 | +0.014 / 0.102 | 0.294 |
+| i | 33551 | 0.86 | 0.07 | 0.47 | 0.100 / 0.097 | +0.008 / 0.084 | 0.215 |
+| z | 19286 | 0.81 | 0.08 | 0.49 | 0.098 / 0.124 | +0.004 / 0.108 | 0.215 |
+| y | 12307 | 0.78 | 0.06 | 0.46 | -0.073 / 0.139 | -0.164 / 0.117 | 0.214 |
+
+rho is Spearman. Leftover is FWHM - sqrt(blur² + AOS_FWHM²).
+
+- A: FWHM against blur lies about 0.1 arcsec above y = x in u through z.
+- B: blur hardly depends on AOS_FWHM, so bad seeing does not inflate AOS_FWHM.
+- C: in g, r, i and z the binned medians of FWHM² - blur² follow y = AOS_FWHM²
+  (`figures/excess_vs_aos_fwhm.png`). C was first drawn as a signed root,
+  ±sqrt|FWHM² - blur²|. That root's infinite slope at zero empties the bins near zero and
+  splits the plot into two false branches, so it was replaced by the square.
+- E: with blur fixed to one tercile, FWHM still rises with AOS_FWHM by about 0.2 arcsec over
+  0.30 to 0.55 arcsec (i and z bands). The median ellipticity is highest in the low-blur
+  tercile: seeing dilutes the optical ellipticity. In u band only a few bins per tercile
+  reach 250 visits.
+
+Open issues, not yet run down:
+
+- **Epoch drift.** The median of FWHM - blur changes with time in every band. It is about
+  0.15 to 0.30 arcsec from 202508 to 202603, and 0.00 to 0.07 arcsec from 202605 on (monthly
+  medians). This looks like a change in how `donut_blur_fwhm` or the PSF FWHM is computed,
+  not in the sky. The pooled leftover nMAD therefore includes an epoch spread.
+- **y band.** FWHM - blur is about 0.2 arcsec lower in y than in the other bands, in every
+  month. The donut blur may be overestimated in y.
+- The guider PSF FWHM, a second seeing measure, waits for more processed guider stamps.
