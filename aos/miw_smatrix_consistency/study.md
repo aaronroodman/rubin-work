@@ -110,3 +110,24 @@ which this test did not cover.
   (OCS) and 0.0016 µm (CCS), at most 0.031 µm, against maps of 0.030 and 0.029 µm.
   Negligible. Z5, which is OCS-only there, changes by 0.014 µm RMS, at most 0.24 µm
   (map 0.110 µm), at a few cells.
+
+### 2026-11-16 — cause of the out-of-family Z5 region in sparse rot_-50_-40
+
+The region at thx −0.5°, thy −1.33° (OCS) is one grid cell holding one donut, Z5 438 µm
+against −0.07 to +0.01 µm in the neighbouring cells. The donut is R30_S11, 20260409 seq
+491. This unpaired processing reports `zk_OCS` = (intra + extra)/2, checked exactly. For
+this donut Z5 is 0.33 µm intra and 876 µm extra: the extra Danish fit diverged. The dense
+`danish_1_3` table has the same failure on the same donut (Z5 extra −125.7 µm).
+
+In the 24 visits of this bin (81776 donuts, count), 91 donuts have any |Zk| > 5 µm and 25
+have > 20 µm, up to 4845 µm (sparse) and 7093 µm (dense). All are `used = True`. The
+quality cut in `fam_tables` is per visit; nothing rejects single donuts.
+`lstsq_status` is −1 for every donut in both tables, so it carries no information.
+Per-side `lstsq_optimality` and blur (several bad sides at the 5.0 arcsec bound) do not
+separate the bad fits cleanly.
+
+Intra and extra agreement does. The cut is any Noll with
+|(intra − extra) − median| > 15 nMAD, where nMAD is the robust scatter of
+(intra − extra) per Noll over the bin. It flags 0.59% (sparse) and 0.83% (dense) of the
+donuts. It catches every donut with |Zk| > 5 µm, and the largest |Zk| left is 1.93 µm
+(sparse) and 2.04 µm (dense).
