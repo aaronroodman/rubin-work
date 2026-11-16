@@ -49,6 +49,10 @@
 #                                              analysis_config.yaml overrides key on
 #                                    dir_name  the entry's `dir_name`
 #                                    text      the entry's own YAML block
+#                                    fitted_smatrix  optional <variant>@<build> of the
+#                                              fitted_smatrix product whose sensitivity
+#                                              matrix the build's SVD uses; absent ->
+#                                              the ts_config_mttcs default
 #   external        variants registered as manifests with a `location` and no files; they
 #                   never reach the generated file
 #
@@ -324,6 +328,36 @@ groups:
                     - [10.0, 20.0]
                     - [55.0, 65.0]
                   split_js: [4]
+
+              # The nominal 50/34 build on the Danish-fitted dense21 sensitivity matrix,
+              # whose pupil Zernikes match this processing (Noll 4-19, 22-26).
+      - variant: d13-A_50_34_i_fsm_dense21
+        mi_name: pathA_50_34_i_fsm_dense21
+        dir_name: A_50_34_i_fsm_dense21
+        fitted_smatrix: dense21@20261114
+        text: |2
+              - name: pathA_50_34_i_fsm_dense21
+                dir_name: A_50_34_i_fsm_dense21
+                n_dof: 50
+                n_keep: 34
+
+            # Danish 1.3 unpaired, sparse fit (Noll 4-11, 14, 15, 20, 21, 27, 28; no Z22).
+            # The default cuts select the same 301 visits as danish_1_3.
+  - fam_variant: d13-sparse
+    param_set: danish_1_3_sparse
+    short_code: d13s
+    key_text: |2
+        danish_1_3_sparse:
+    entries:
+      - variant: d13s-A_50_34_i_fsm_sparse_no22
+        mi_name: pathA_50_34_i_fsm_sparse_no22
+        dir_name: A_50_34_i_fsm_sparse_no22
+        fitted_smatrix: sparse_no22@20261114
+        text: |2
+              - name: pathA_50_34_i_fsm_sparse_no22
+                dir_name: A_50_34_i_fsm_sparse_no22
+                n_dof: 50
+                n_keep: 34
 
 # ---------------------------------------------------------------------------
 # EXTERNAL variants: registered as manifests with a `location` and no files.  NOT emitted

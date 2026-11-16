@@ -246,6 +246,22 @@ def _entry_config(variant):
     return (yaml.safe_load(dedented) or [{}])[0]
 
 
+def fitted_smatrix(variant):
+    """The ``fitted_smatrix`` build whose sensitivity matrix a variant's SVD uses.
+
+    Returns
+    -------
+    smatrix : `tuple` [`str`, `str`] or `None`
+        ``(variant, build)`` of the ``fitted_smatrix`` product, or `None` for the
+        ts_config_mttcs default matrix.
+    """
+    spec = variant_config(variant).get("fitted_smatrix")
+    if not spec:
+        return None
+    name, _, build = spec.partition("@")
+    return name, build or catalog.CURRENT
+
+
 def build_source(variant):
     """The variant whose per-rotator-bin grids `variant` is split from.
 

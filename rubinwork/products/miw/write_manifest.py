@@ -117,6 +117,9 @@ def write(variant, build=None, build_dir=None, status="complete",
         # A build_from entry runs only the split, so its grids ARE the parent's: record
         # which parent, or the provenance of the maps is unrecoverable from the manifest.
         all_inputs["miw"] = source
+    smatrix = reader.fitted_smatrix(variant)
+    if smatrix:
+        all_inputs["fitted_smatrix"] = "@".join(smatrix)
     if inputs:
         all_inputs.update(inputs)
 

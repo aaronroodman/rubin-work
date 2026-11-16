@@ -46,10 +46,11 @@ Build one with the product's Snakefile, from the repository root::
 
 from .reader import (DECOMP_KEY, FIT_KEY, JS_DEFAULT, MAP_KEY, PRODUCT, RMS_KEY, TABLES,
                      build_dir, build_source, dir_name, external_variants, fam_variant,
-                     groups, load, load_maps, load_miw, load_table, mi_keys,
-                     rotator_bins, split_rotator_bins, variant_config, variants)
+                     fitted_smatrix, groups, load, load_maps, load_miw, load_table,
+                     mi_keys, rotator_bins, split_rotator_bins, variant_config, variants)
 
 __all__ = ["DECOMP_KEY", "FIT_KEY", "JS_DEFAULT", "MAP_KEY", "PRODUCT", "RMS_KEY",
            "TABLES", "build_dir", "build_source", "dir_name", "external_variants",
-           "fam_variant", "groups", "load", "load_maps", "load_miw", "load_table",
-           "mi_keys", "rotator_bins", "split_rotator_bins", "variant_config", "variants"]
+           "fam_variant", "fitted_smatrix", "groups", "load", "load_maps", "load_miw",
+           "load_table", "mi_keys", "rotator_bins", "split_rotator_bins", "variant_config",
+           "variants"]

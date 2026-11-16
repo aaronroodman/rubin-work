@@ -89,6 +89,14 @@ FAM_BUILD_NAME = FAM_DIR.name
 
 COORD = fam_tables.variant_config(FAM_VARIANT).get('coord_sys', 'OCS')
 
+# The sensitivity matrix of the build's SVD: a fitted_smatrix build's OFC config
+# directory, or the ts_config_mttcs default when the variant names none.
+_SMATRIX = miw.fitted_smatrix(VARIANT)
+OFC_FLAG = ''
+if _SMATRIX:
+    from rubinwork.products.fitted_smatrix import reader as _fsm
+    OFC_FLAG = f' --ofc-config-dir {_fsm.ofc_config_dir(*_SMATRIX)}'
+
 BUILD_DIR = miw.build_dir(VARIANT, BUILD)
 WORK = BUILD_DIR / '_work'
 LOGS = WORK / 'logs'
@@ -147,7 +155,7 @@ BUILD_CMD = (
     f'cd {RUN_CWD} && python {WF_BIN}/run_build_intrinsic.py'
     f' --param-set {PARAM_SET} --mi-name {MI_NAME}'
     ' --rot-min {wildcards.lo} --rot-max {wildcards.hi}'
-    f' --tables-dir {FAM_DIR}'
+    f' --tables-dir {FAM_DIR}{OFC_FLAG}'
     f' --out-dir {BUILD_DIR}/build/' + 'rot_{wildcards.lo}_{wildcards.hi}'
     ' > {log} 2>&1\n')
 SPLIT_CMD = (

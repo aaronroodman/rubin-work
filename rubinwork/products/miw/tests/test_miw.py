@@ -29,8 +29,9 @@ PREMOVE_BODY = pathlib.Path(__file__).with_name("mi_config_premove_body.yaml")
 """``aos/mi_config.yaml`` from ``defaults:`` on, as it stood before the phase 3a move."""
 
 EXPECTED_VARIANTS = [
-    "d12-A_50_34_i", "d12-A_50_34_i_5rot",
+    "d12-A_50_34_i", "d12-A_50_34_i_5rot", "d12-A_50_50_i_rbr", "d12-A_50_50_i_rbr_5rot",
     "d13-A_50_34_i", "d13-A_50_34_i_5rot", "d13-A_50_50_i_rbr", "d13-A_50_50_i_rbr_5rot",
+    "d13-A_50_34_i_fsm_dense21", "d13s-A_50_34_i_fsm_sparse_no22",
 ]
 """Every variant, in ``variants.yaml`` order, which is generated-file order."""
 
@@ -76,8 +77,18 @@ def _write_build(root, variant="d12-A_50_34_i", build="20261010", rows=4,
 
 # ---- variants ------------------------------------------------------------------
 
-def test_variants_are_the_fourteen_in_file_order():
+def test_variants_in_file_order():
     assert miw.variants() == EXPECTED_VARIANTS
+
+
+def test_fitted_smatrix_names_a_real_build_or_none():
+    from rubinwork.products.fitted_smatrix import reader as fsm
+    assert miw.fitted_smatrix("d13-A_50_34_i") is None
+    assert miw.fitted_smatrix("d13s-A_50_34_i_fsm_sparse_no22") == ("sparse_no22", "20261114")
+    for variant in miw.variants():
+        spec = miw.fitted_smatrix(variant)
+        if spec:
+            assert spec[0] in fsm.variants()
 
 
 def test_external_variants_are_separate_from_built_ones():
