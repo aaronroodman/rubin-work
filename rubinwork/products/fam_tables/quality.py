@@ -10,12 +10,17 @@ A visit passes when all three hold:
 - ``n_donuts`` > 500 (donuts in the visit, count);
 - ``n_detectors_with_min_donuts`` > 100 (detectors with at least 3 donuts, count);
 - ``median_blur_arcsec`` < 1.8 (median donut blur, arcsec).
+
+`pair_outliers` is the per-donut cut, for unpaired processing where each donut has its
+own intra and extra Danish fit: it flags donuts whose two fits disagree, the signature of
+one diverged fit (Zernike coefficients up to thousands of µm).
 """
 
 import numpy as np
 
 __all__ = ["MIN_DONUTS_EXCLUSIVE", "MIN_DETECTORS_EXCLUSIVE", "MAX_BLUR_ARCSEC_EXCLUSIVE",
-           "CUT_DESCRIPTION", "visit_quality_pass", "apply"]
+           "CUT_DESCRIPTION", "visit_quality_pass", "apply", "PAIR_CUT_NMAD",
+           "pair_outliers"]
 
 MIN_DONUTS_EXCLUSIVE = 500
 MIN_DETECTORS_EXCLUSIVE = 100
@@ -24,6 +29,41 @@ MAX_BLUR_ARCSEC_EXCLUSIVE = 1.8
 CUT_DESCRIPTION = (f"n_donuts > {MIN_DONUTS_EXCLUSIVE}, "
                    f"n_detectors_with_min_donuts > {MIN_DETECTORS_EXCLUSIVE}, "
                    f"median_blur_arcsec < {MAX_BLUR_ARCSEC_EXCLUSIVE}")
+
+PAIR_CUT_NMAD = 15.0
+
+
+def pair_outliers(zk_intra, zk_extra, n_nmad=PAIR_CUT_NMAD):
+    """Flag donuts of one visit whose intra and extra Zernike fits disagree.
+
+    For each Noll index, ``d = intra - extra`` is centred on its median over the visit's
+    donuts and scaled by its nMAD over the same donuts. A donut is flagged when any one
+    Noll index has ``|d - median| > n_nmad * nMAD``.
+
+    Parameters
+    ----------
+    zk_intra, zk_extra : `numpy.ndarray`, (n_donuts, n_zk)
+        Intra- and extra-focal Zernike coefficients of the visit's donuts, µm, the same
+        frame for both. Rows with any non-finite value are not flagged.
+    n_nmad : `float`, optional
+        Threshold, in units of the per-Noll nMAD (dimensionless).
+
+    Returns
+    -------
+    flagged : `numpy.ndarray` of `bool`, (n_donuts,)
+    """
+    d = np.asarray(zk_intra, float) - np.asarray(zk_extra, float)
+    finite = np.isfinite(d).all(axis=1)
+    flagged = np.zeros(len(d), bool)
+    if finite.sum() < 3:
+        return flagged
+    dev = d[finite] - np.median(d[finite], axis=0)
+    scale = 1.4826 * np.median(np.abs(dev), axis=0)
+    # A Noll with zero scatter (e.g. a fixed term) cannot flag anything.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(scale > 0, np.abs(dev) / scale, 0.0)
+    flagged[finite] = (ratio > n_nmad).any(axis=1)
+    return flagged
 
 
 def visit_quality_pass(n_donuts, n_detectors_with_min_donuts, median_blur_arcsec):

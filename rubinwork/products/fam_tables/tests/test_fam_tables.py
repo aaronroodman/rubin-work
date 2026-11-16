@@ -447,3 +447,15 @@ def test_attach_telemetry_visit_keys_are_sorted(tmp_path):
     keys = at._visit_keys(tmp_path / "visits.parquet")
     assert list(zip(keys["day_obs"], keys["seq_num"])) == [
         (20251116, 3), (20251116, 9), (20251117, 2), (20251117, 5)]
+
+
+def test_pair_outliers_flags_one_diverged_side():
+    import numpy as np
+    from rubinwork.products.fam_tables.quality import pair_outliers
+    rng = np.random.default_rng(1)
+    intra = rng.normal(0.0, 0.2, (500, 4))
+    extra = intra + rng.normal(0.3, 0.1, (500, 4))  # a common offset must not flag
+    extra[10, 1] += 900.0
+    extra[20] = np.nan
+    flagged = pair_outliers(intra, extra)
+    assert np.flatnonzero(flagged).tolist() == [10]
