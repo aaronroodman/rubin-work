@@ -185,3 +185,19 @@ New variants `d13-A_50_50_i_rbr_fsm_dense21@20261116` and
 - MIW − Batoid RMS over field, Z5: sparse 0.064 → 0.137 µm, dense21 0.135 → 0.178 µm;
   Z8: sparse 0.023 → 0.050 µm, dense21 0.087 → 0.049 µm. Z4 improves for sparse
   (0.072 → 0.038 µm).
+
+### 2026-11-17 — OCS split term beside Batoid
+
+`code/ocs_split_maps.py` puts the "O telescope (OCS)" panel of each build's
+`intrinsic_split.pdf` on one page per Zernike, with Batoid, on a shared colour scale.
+It replaces the bin-mean maps, which showed artefacts. Run `20261117_ocs_split_maps_rbr`,
+same four builds. RMS over field radius 0.1 to 1.6 deg of (OCS term − Batoid), µm:
+
+| | Z4 | Z5 | Z6 | Z7 | Z8 | Z11 |
+|---|---|---|---|---|---|---|
+| dense21 | 0.060 | 0.115 | 0.080 | 0.070 | 0.060 | 0.051 |
+| dense21-rbr | 0.059 | 0.148 | 0.113 | 0.076 | 0.049 | 0.014 |
+| sparse | 0.085 | 0.045 | 0.042 | 0.015 | 0.018 | 0.033 |
+| sparse-rbr | 0.062 | 0.089 | 0.057 | 0.037 | 0.038 | 0.037 |
+
+Sparse 50/34 is still the closest to Batoid on Z5–Z8. RMS of Batoid Z5 is 0.064 µm.
