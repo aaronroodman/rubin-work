@@ -3,7 +3,7 @@ study: sparse_fit
 topic: smatrix
 status: answered
 question: "If the donut fit fits only the primary aberrations and fixes secondary and tertiary at the design intrinsic, is the optical state still constrained, and how does the fixed content leak into the primaries?"
-answer: 'Piece 1: primary-only observability loses nothing for 22 DOF / 12 v-modes (min 0.99, dimensionless). Piece 2: the sparse Smatrix must come from Danish-fitted ray-traced donuts (in-focus rows miss by 0.07 rigid body to 1.0-1.8 for B11-B20, relative); a side-averaged field model at kmax 30 predicts held-out FAM and CWFS (r <= 1.725 deg) responses to 0.016-0.035 relative (prod), and matches v13 rigid-body columns to cosine 0.971-1.000 after the ts_ofc sign fix. The matrices are the fitted_smatrix product; piece 3 continues in aos/miw_smatrix_consistency.'
+answer: 'Piece 1: primary-only observability loses nothing for 22 DOF / 12 v-modes (min 0.99, dimensionless). Piece 2: the sparse Smatrix must come from Danish-fitted ray-traced responses (in-focus rows miss by 0.07 rigid body to 1.0-1.8 for B11-B20, relative); a side-averaged field model at kmax 30 predicts held-out FAM and CWFS responses to 0.016-0.035 relative (prod), and matches v13 rigid-body columns to cosine 0.971-1.000 after the dy/Ry sign fix. The matrices are the fitted_smatrix product; piece 3 continues in aos/miw_smatrix_consistency.'
 uses: {}  # reads no products; it is the source of fitted_smatrix
 started: 2026-09-01
 ---
@@ -38,6 +38,19 @@ The three matrices are the `fitted_smatrix` product (`dense21`, `sparse_no22`, `
 Open here: when the donuts are regenerated (new batoid model, Danish obscuration), shrink the steps for M1M3 B15/B16 and M2 B19, and scan rigid-body DOFs over operating offsets.
 
 ## Log
+
+### 2026-11-17 — study closed: sign-fixed runs, piece 3 moved to miw_smatrix_consistency
+
+Study closed at a concluding point. Status set to `answered`.
+
+- The superseded pre-sign-fix runs (`20261111_responses`, `20261111_dz_scan`, `20261111_validation`) and `20261111_validation_test` are deleted. The live runs are `20261111_responses_ofcsign`, `20261111_dz_scan_ofcsign` and `20261111_validation_ofcsign`.
+- `kmax_test.py`, `cwfs_compare.py` and `linearity_range.py` now default to `20261111_responses_ofcsign` (`ff8a0c1`). Their results use norms only, so the existing runs stand.
+- Current answer now includes the sign fix, the v13 comparison, the non-linear terms and the `fitted_smatrix` product.
+- Piece 3, the MIW on the fitted matrices, continues in `aos/miw_smatrix_consistency`.
+
+Open, for a donut regeneration (new batoid model, Danish obscuration):
+- smaller steps for M1M3 B15/B16 and M2 B19;
+- rigid-body scans over operating offsets, to measure the hexapod dz non-linearity now only extrapolated.
 
 ### 2026-11-17 — closing pass: stale runs removed, answer updated
 
