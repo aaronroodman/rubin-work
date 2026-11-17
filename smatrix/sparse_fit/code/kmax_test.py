@@ -19,7 +19,7 @@ white (slope noise), not missing field structure. Output ``kmax_test.npz`` and
 
 Usage::
 
-    python kmax_test.py --responses 20261111_responses --label kmax_test
+    python kmax_test.py --responses 20261111_responses_ofcsign --label kmax_test
 """
 import argparse
 import os
@@ -65,7 +65,7 @@ def predict(kmax, xf, yf, sf, xt, yt):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--responses", default="20261111_responses")
+    p.add_argument("--responses", default="20261111_responses_ofcsign")
     p.add_argument("--label", default="kmax_test")
     args = p.parse_args()
     d = np.load(f"{OUT_ROOT}/{args.responses}/responses.npz")

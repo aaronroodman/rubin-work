@@ -52,7 +52,7 @@ def load_dense(names):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--responses", default="20261111_responses")
+    p.add_argument("--responses", default="20261111_responses_ofcsign")
     p.add_argument("--label", default="cwfs_compare")
     args = p.parse_args()
     d = np.load(f"{OUT_ROOT}/{args.responses}/responses.npz")

@@ -25,7 +25,7 @@ FIT_SETS = ("prod", "prod_z22", "dense21")
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--responses", default="20261111_responses")
+    p.add_argument("--responses", default="20261111_responses_ofcsign")
     p.add_argument("--label", default="linearity_range")
     args = p.parse_args()
     d = np.load(f"{OUT_ROOT}/{args.responses}/responses.npz")
