@@ -1,16 +1,17 @@
 ---
 study: sparse_fit
 topic: smatrix
-status: active
+status: answered
 question: "If the donut fit fits only the primary aberrations and fixes secondary and tertiary at the design intrinsic, is the optical state still constrained, and how does the fixed content leak into the primaries?"
-answer: 'Piece 1: primary-only observability loses nothing for 22 DOF / 12 v-modes (min 0.99, dimensionless). Piece 2: the sparse Smatrix must come from the fitted responses (in-focus rows miss by 0.07 rigid body to 1.0-1.8 for B11-B20, relative); a single side-averaged field model at kmax 30 predicts held-out FAM and CWFS (r <= 1.725 deg) responses to 0.016-0.035 relative (prod). Piece 3, the sparse MIW, is open.'
-uses: {}  # no rubin-work products; ts_ofc v13 sensitivity matrix
+answer: 'Piece 1: primary-only observability loses nothing for 22 DOF / 12 v-modes (min 0.99, dimensionless). Piece 2: the sparse Smatrix must come from Danish-fitted ray-traced donuts (in-focus rows miss by 0.07 rigid body to 1.0-1.8 for B11-B20, relative); a side-averaged field model at kmax 30 predicts held-out FAM and CWFS (r <= 1.725 deg) responses to 0.016-0.035 relative (prod), and matches v13 rigid-body columns to cosine 0.971-1.000 after the ts_ofc sign fix. The matrices are the fitted_smatrix product; piece 3 continues in aos/miw_smatrix_consistency.'
+uses:
+  fitted_smatrix: dense21@20261114, sparse_no22@20261114, sparse_with22@20261114
 started: 2026-09-01
 ---
 
 # `sparse_fit`: fitting only the primary aberrations
 
-> **Code:** `code/analyze_sparse_fit.py` (piece 1); `code/donut_leakage.py`, `code/refit_images.py`, `code/merge_refit.py` (brute-force responses); `code/kmax_test.py`, `code/cwfs_compare.py`, `code/linearity_range.py`, `code/summary_pdf.py` (analysis) · **Output:** `output/20261111_responses/responses.npz`, `output/20261111_summary/sparse_fit_summary.pdf`
+> **Code:** `code/analyze_sparse_fit.py` (piece 1); `code/donut_leakage.py`, `code/refit_images.py`, `code/merge_refit.py` (brute-force responses); `code/kmax_test.py`, `code/cwfs_compare.py`, `code/linearity_range.py`, `code/summary_pdf.py`, `code/dz_scan.py`, `code/validation_pdf.py` (analysis) · **Output:** `output/20261111_responses_ofcsign/responses.npz`, `output/20261111_summary/sparse_fit_summary.pdf`, `output/20261111_validation_ofcsign/sparse_fit_validation.pdf` · **Product:** `fitted_smatrix` (dense21, sparse_no22, sparse_with22)
 
 ## Question
 
@@ -23,17 +24,31 @@ Piece 1 (2026-09-01):
 - **Primary and secondary are near-degenerate per DOF.** Nearly every DOF, bending modes and hexapod tilts especially, drives the primary and secondary of a family with field correlation about ±1 (Pearson r, dimensionless). Astigmatism first-to-second order from the tilts is −0.44 to −0.95 (cos) and −0.40 to −0.87 (sin), bracketing the MIW's −0.28 and −0.62. A small fit bias can then move power between orders, one route to the MIW radial-order correlations (`optatmo/miw_radial_correlations`).
 - **Primary-only observability** (primary-only over full matrix, dimensionless): 22 DOF / 12 v-modes, median 1.00 and min 0.99 at both corner sensors and field-complete sampling. 50 DOF / 34 v-modes, median 0.97 and min 0.36 field-complete, median 0.96 and min 0.44 at the corners; the degraded DOF are M2 bending b10, b11, b14, b15, b19, b20. This is the no-leakage upper bound.
 
-Piece 2, the sparse sensitivity (2026-11-11). Built by brute force, not from a leakage matrix: the L route left a 2–5% closure floor and needed Noll 153 (Log 2026-11-10). Ray-traced batoid donuts fit with Danish at 940 configurations × 50 DOF × 5 amplitudes, for fit sets prod, prod_z22 and dense21 (`output/20261111_responses`). Relative errors are |difference| / RMS over FAM of |response| (dimensionless, median), prod:
+Piece 2, the sparse sensitivity (2026-11-11). Built by brute force, not from a leakage matrix: the L route left a 2–5% closure floor and needed Noll 153 (Log 2026-11-10). Ray-traced batoid donuts fit with Danish at 940 configurations × 50 DOF × 5 amplitudes, for fit sets prod, prod_z22 and dense21 (`output/20261111_responses_ofcsign`, DOF amplitudes in the ts_ofc sign convention). Relative errors are |difference| / RMS over FAM of |response| (dimensionless, median), prod:
 
 - **The sparse Smatrix must come from the fitted responses.** The in-focus Smatrix rows miss them by 0.07 (rigid body), 0.5–0.6 (B1–B10) and 1.0–1.8 (B11–B20).
 - **Field model:** field Zernikes to kmax 30 over the FAM grid predict held-out points to 0.016–0.023; kmax 91 gives 0.011–0.017. The floor is slope noise.
 - **CWFS:** inside the ts_wep 1.725 deg cut, a single side-averaged Smatrix predicts the CWFS responses to 0.021–0.035, as well as one per side; per-corner averages 0.015–0.032. The CWFS detector shift against the FAM camera shift has no visible effect.
 - **Linearity at the DOF range** (quadratic / linear change): bending B3 and up ≤ 0.005; M1M3 and M2 B1–B2 median 0.023–0.044, max 0.18. Rigid body is not measurable from these steps.
 - dense21 is noisier: B11–B20 field-model errors 0.04–0.07, and M1M3 B13/B14/B19 and M2 B12/B13/B16/B17 0.2–0.5.
+- **Sign and units against v13:** after the M2/Cam dy and Ry sign fix (Log 2026-11-11), rigid-body columns have cosine 0.9998-0.9999 (dense21) and 0.971-1.000 (prod) against v13, dimensionless. Singular value 1 is 17.40 against 17.43 for v13, µm per unit normalized DOF.
+- **Non-linear terms:** the largest quadratic / linear change at +2 steps is in small DZ that respond mostly quadratically (2.7-5.0, dimensionless; 0.002-0.004 µm). Extrapolated to the v13 range, M2 dz and Cam dz DZ(12, Z6), DZ(6, Z6) and DZ(27, Z5) reach 1-4.5, but that is 260-400x past the measured step.
 
-Open: piece 3, a sparse Smatrix from these responses and a rebuilt sparse MIW. When the donuts are regenerated (new batoid model, Danish obscuration), shrink the steps for M1M3 B15/B16 and M2 B19, and scan rigid-body DOFs over operating offsets.
+The three matrices are the `fitted_smatrix` product (`dense21`, `sparse_no22`, `sparse_with22`, build 20261114). Piece 3, the MIW on these matrices, continues in [`aos/miw_smatrix_consistency`](../../aos/miw_smatrix_consistency/study.md).
+
+Open here: when the donuts are regenerated (new batoid model, Danish obscuration), shrink the steps for M1M3 B15/B16 and M2 B19, and scan rigid-body DOFs over operating offsets.
 
 ## Log
+
+### 2026-11-17 — closing pass: stale runs removed, answer updated
+
+Closing pass. The superseded runs (`20261111_responses`, `20261111_dz_scan`, `20261111_validation`, `20261111_validation_test`) are deleted. `kmax_test.py`, `cwfs_compare.py` and `linearity_range.py` now default to `20261111_responses_ofcsign` (`ff8a0c1`). Their results use response norms only, so the existing runs stand.
+
+Current answer updated with the sign fix, the v13 comparison and the non-linear terms. The matrices are the `fitted_smatrix` product (build 20261114); piece 3, the MIW on them, continues in `aos/miw_smatrix_consistency`.
+
+Next, only if the donuts are regenerated (new batoid model, Danish obscuration):
+- smaller steps for M1M3 B15/B16 and M2 B19;
+- rigid-body scans over operating offsets, to measure hexapod dz linearity at range.
 
 ### 2026-11-14 — the Smatrix files are now the fitted_smatrix product
 
