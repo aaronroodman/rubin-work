@@ -14,7 +14,10 @@ import sys
 
 import numpy as np
 
-from analyze_rt_l import GROUPS, NA
+NA = np.arange(4, 79)
+GROUPS = {"M2 hexapod": range(0, 5), "camera hexapod": range(5, 10),
+          "M1M3 B1-B10": range(10, 20), "M1M3 B11-B20": range(20, 30),
+          "M2 B1-B10": range(30, 40), "M2 B11-B20": range(40, 50)}
 
 DOF_NAMES = (["M2 dz", "M2 dx", "M2 dy", "M2 Rx", "M2 Ry",
               "Cam dz", "Cam dx", "Cam dy", "Cam Rx", "Cam Ry"]
