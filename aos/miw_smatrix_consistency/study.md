@@ -162,3 +162,11 @@ rot_-50_-40 is empty after the cut: its one donut was dropped.
 - The v13 nominal MIW has the same bad donuts and needs the same rebuild.
 - Night 20250519 loses 27–37% of donuts in four visits (dense). That night is not in
   the MIW sample; not investigated.
+
+### 2026-11-16 — bin-mean MIW maps beside Batoid
+
+`code/mean_miw_maps.py`, run `20261116_mean_miw_maps`: per Zernike, the mean over all 9
+bins, the 5rot bins and the other 4 bins for both @20261116b MIWs, beside Batoid, on the
+cells present in all 9 bins (3224 cells). RMS over field of (mean − Batoid), Z5: sparse
+0.053 / 0.072 / 0.055 µm, dense21 0.133 / 0.145 / 0.136 µm (all 9 / 5rot / other 4).
+Dense21 Z5 has out-of-family values at the field corners in all three means.
