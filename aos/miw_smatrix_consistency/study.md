@@ -170,3 +170,18 @@ bins, the 5rot bins and the other 4 bins for both @20261116b MIWs, beside Batoid
 cells present in all 9 bins (3224 cells). RMS over field of (mean − Batoid), Z5: sparse
 0.053 / 0.072 / 0.055 µm, dense21 0.133 / 0.145 / 0.136 µm (all 9 / 5rot / other 4).
 Dense21 Z5 has out-of-family values at the field corners in all three means.
+
+### 2026-11-16 — 50/50 RBR on the fitted S-matrices
+
+New variants `d13-A_50_50_i_rbr_fsm_dense21@20261116` and
+`d13s-A_50_50_i_rbr_fsm_sparse_no22@20261116`, on the pair-cut fam_tables builds
+@20261116 (4f100d0). Runs `20261116_rbr` (compare_miw, `--min-donuts 1`) and
+`20261116_mean_miw_maps_rbr`, with the two 50/34 builds @20261116b.
+
+- RBR bounds the DoF: max over DoF of p95 |DoF|/range (dimensionless) 36.6 → 1.42
+  (dense21), 51.2 → 1.08 (sparse). DoF with p95 over range: 31 → 15 (dense21, the
+  bending modes B1/B2), 34 → 2 (sparse).
+- 9-bin scatter and split residual are about the same as 50/34, slightly worse.
+- MIW − Batoid RMS over field, Z5: sparse 0.064 → 0.137 µm, dense21 0.135 → 0.178 µm;
+  Z8: sparse 0.023 → 0.050 µm, dense21 0.087 → 0.049 µm. Z4 improves for sparse
+  (0.072 → 0.038 µm).
