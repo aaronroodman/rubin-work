@@ -4,8 +4,7 @@ topic: smatrix
 status: answered
 question: "If the donut fit fits only the primary aberrations and fixes secondary and tertiary at the design intrinsic, is the optical state still constrained, and how does the fixed content leak into the primaries?"
 answer: 'Piece 1: primary-only observability loses nothing for 22 DOF / 12 v-modes (min 0.99, dimensionless). Piece 2: the sparse Smatrix must come from Danish-fitted ray-traced donuts (in-focus rows miss by 0.07 rigid body to 1.0-1.8 for B11-B20, relative); a side-averaged field model at kmax 30 predicts held-out FAM and CWFS (r <= 1.725 deg) responses to 0.016-0.035 relative (prod), and matches v13 rigid-body columns to cosine 0.971-1.000 after the ts_ofc sign fix. The matrices are the fitted_smatrix product; piece 3 continues in aos/miw_smatrix_consistency.'
-uses:
-  fitted_smatrix: dense21@20261114, sparse_no22@20261114, sparse_with22@20261114
+uses: {}  # reads no products; it is the source of fitted_smatrix
 started: 2026-09-01
 ---
 
