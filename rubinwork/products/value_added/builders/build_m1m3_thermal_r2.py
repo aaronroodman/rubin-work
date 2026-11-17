@@ -256,7 +256,10 @@ def main(argv=None):
                     total += await build_night(con, client, day_obs,
                                               time_bin=a.time_bin, verbose=verbose)
                 except Exception as exc:                       # one bad night must not stop
-                    print(f'  {day_obs}: FAILED -- {type(exc).__name__}: {exc}')
+                    # A TaskGroup failure says nothing; the cause is in its sub-exceptions.
+                    subs = getattr(exc, 'exceptions', ())
+                    why = '; '.join(f'{type(e).__name__}: {e}' for e in subs) or str(exc)
+                    print(f'  {day_obs}: FAILED -- {type(exc).__name__}: {why}')
             return total
 
         total = asyncio.run(run())
@@ -266,14 +269,15 @@ def main(argv=None):
                                 'm1m3_thermal_r2').fetchone()[0]
             print(f'wrote {total} rows; table now holds {n_tot} exposures, '
                   f'{n_fit} with a fit')
-            # Last step of a build: the manifest is what puts it in the catalog.  A SCRATCH
-        # database -- --db or AOS_EFD_DB pointing outside the catalog build directory -- gets
-        # none, so a reference build can never be mistaken for a registered build.
-        write_manifest.finish_build(
-            a.db, build_options={'what': 'm1m3_thermal_r2', 'day_obs': a.day_obs})
-        return 0
     finally:
         con.close()
+    # Last step of a build: the manifest is what puts it in the catalog.  A SCRATCH
+    # database -- --db or AOS_EFD_DB pointing outside the catalog build directory -- gets
+    # none, so a reference build can never be mistaken for a registered build.  After the
+    # close: DuckDB will not reopen a file read-only while this process holds it for write.
+    write_manifest.finish_build(
+        a.db, build_options={'what': 'm1m3_thermal_r2', 'day_obs': a.day_obs})
+    return 0
 
 
 if __name__ == '__main__':
