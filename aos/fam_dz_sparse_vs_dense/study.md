@@ -159,3 +159,10 @@ This does not conflict with the DZ(1,17) result above. That result is about the
 per-visit variation, which follows the optical state. The median is the intrinsic part.
 The +0.02 to +0.03 µm median of DZ(1,17) that the state does not explain is the kind of
 term the two modes would put into the MIW differently.
+
+### 2026-11-17 — state at pause
+
+- Done and pushed: aff137e (dense-combination fits), 09ff5bb and 6658d42 (`dz17_correctable.py`), 1ae234d (Batoid median note). Nothing uncommitted.
+- Fix next: the M2_rx and Cam_rx units in `dz17_correctable.py` output (`s_row_1_17.csv`, page 4) and in the Log above say arcsec. They are deg.
+- Next action, if pursued: compare the sparse and dense Z5–Z8 median residual after the k=1..6 fit with the Batoid intrinsic, as RMS in µm. The sparse MIW itself is studied in `aos/miw_smatrix_consistency`.
+- Ruled out: night 20260409 (the 4 non-5rot bins) cannot test the DZ(1,17) state. Its DZ(1,17) std is 0.013 µm, below the 0.015–0.035 µm residual floor. The consecutive-visit noise check found no visit pairs with a seq gap of 2 or less.
