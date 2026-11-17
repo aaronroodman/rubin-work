@@ -201,3 +201,18 @@ same four builds. RMS over field radius 0.1 to 1.6 deg of (OCS term − Batoid),
 | sparse-rbr | 0.062 | 0.089 | 0.057 | 0.037 | 0.038 | 0.037 |
 
 Sparse 50/34 is still the closest to Batoid on Z5–Z8. RMS of Batoid Z5 is 0.064 µm.
+
+### 2026-11-17 — DZ, v-modes and DoF per visit
+
+`code/state_vs_visit.py`, run `20261117_state_vs_visit_rbr`, same four builds. The x axis
+is the ordinal visit number, in rotator-bin order then time, 301 visits. Thin lines mark
+the nine bins. One page per DZ(k, j) (k 1–3 with j 4–11; k 4–6 with j 5–8), per v-mode
+1–34 and per DoF, with the DZ and v-modes before and after the optical-state correction.
+
+- After is `dz_resid` = DZ − forward map of the solved DoF. For RBR this was checked
+  against `wavefront_from_dof` of the stored range-bounded DoF (exact).
+- The v-modes are recomputed from each build's SVD and match the stored `vmode_`
+  columns to 1e-12 (normalized DoF units). For 50/34 the after v-modes 1–34 are zero by
+  construction.
+- Under RBR, B1_1 sits at its barrier, near ± the DoF range of 0.454 µm, in two groups
+  (dense21-rbr and sparse-rbr). The 50/34 builds keep it within about ±0.2 µm.
