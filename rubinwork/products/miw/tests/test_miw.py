@@ -31,7 +31,8 @@ PREMOVE_BODY = pathlib.Path(__file__).with_name("mi_config_premove_body.yaml")
 EXPECTED_VARIANTS = [
     "d12-A_50_34_i", "d12-A_50_34_i_5rot", "d12-A_50_50_i_rbr", "d12-A_50_50_i_rbr_5rot",
     "d13-A_50_34_i", "d13-A_50_34_i_5rot", "d13-A_50_50_i_rbr", "d13-A_50_50_i_rbr_5rot",
-    "d13-A_50_34_i_fsm_dense21", "d13s-A_50_34_i_fsm_sparse_no22",
+    "d13-A_50_34_i_fsm_dense21", "d13-A_50_50_i_rbr_fsm_dense21",
+    "d13s-A_50_34_i_fsm_sparse_no22", "d13s-A_50_50_i_rbr_fsm_sparse_no22",
 ]
 """Every variant, in ``variants.yaml`` order, which is generated-file order."""
 
