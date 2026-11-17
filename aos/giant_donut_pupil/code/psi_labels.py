@@ -198,20 +198,30 @@ def _load(run, fit_dir):
         c['key'] = c.sample_id
         c['step_mm'] = 4.0
         b = b.rename(columns={'sample_id': 'key'})
-        return c, b, p3.MASK_RUN
+        c['mask'] = 'v4.02g'
+        return c, b, (p3.MASK_RUN, None)
+    # night2_pipeline runs keep sides and stamps at the run level; pass 6 per fit directory
+    # and in isr_stamps.parquet.
     f = pd.read_parquet(run / fit_dir / 'fits.parquet')
     b = pd.read_parquet(run / fit_dir / 'bins.parquet')
-    s = pd.read_parquet(run / 'sides.parquet')
-    st = pd.read_parquet(run / 'stamps.parquet')[['key', 'stamp_half_pix']]
+    s = pd.read_parquet(next(q for q in (run / fit_dir / 'sides.parquet', run / 'sides.parquet')
+                             if q.exists()))
+    st = pd.read_parquet(next(q for q in (run / 'stamps.parquet', run / 'isr_stamps.parquet')
+                              if q.exists()))[['key', 'stamp_half_pix']].drop_duplicates('key')
+    if 'step_mm' not in f and 'step_mm' not in s:
+        s = s.assign(step_mm=4.0)
     geo = ['key', 'side', 'sensor_class', 'field_r_deg', 'field_az_ocs_deg', 'field_x_ccs_deg',
            'field_y_ccs_deg', 'r_out_pix', 'step_mm']
     geo = [g for g in geo if g in ('key', 'side') or g not in f.columns]
     c = f[f.fit_ok].merge(s[geo], on=['key', 'side']).merge(st, on='key')
     c['npix'] = (2 * c.stamp_half_pix + 1).astype(int)
+    if 'mask' not in c:
+        c['mask'] = 'v4.02g'
     for col in ('masked_inner', 'masked_outer'):
         if col not in b:
             b[col] = False
-    return c, b, run
+    g_masks = list((run / 'masks').glob('RubinObsc_v4.02g_*.yaml'))
+    return c, b, (run if g_masks else p3.MASK_RUN, run / 'masks')
 
 
 def select(c, all_sides=False, groups=None):
@@ -228,8 +238,12 @@ def select(c, all_sides=False, groups=None):
     return c
 
 
-def _init(mask_run):
+_S_MASKS = {}
+
+
+def _init(mask_run, s_mask_dir):
     p3.MASK_RUN = pathlib.Path(mask_run)
+    _S_MASKS['dir'] = s_mask_dir
 
 
 def _one(task):
@@ -237,8 +251,14 @@ def _one(task):
     import obscuration_v402g as og
     row, g, fwhm = task
     fd.CAMERA_OFFSET_M = abs(float(row.step_mm)) * 1e-3
-    params = yaml.safe_load(og.mask_path(p3.MASK_RUN, fd.offsets_m(row.side, row.sensor_class))
-                            .read_text())
+    offsets = fd.offsets_m(row.side, row.sensor_class)
+    if row['mask'] == 'v4.02s':
+        mm = tuple(round(o * 1e3, 1) + 0.0 for o in offsets)
+        path = (pathlib.Path(_S_MASKS['dir']) /
+                f'RubinObsc_v4.02s_r_det{mm[0]:+.1f}_cam{mm[1]:+.1f}_m2{mm[2]:+.1f}.yaml')
+    else:
+        path = og.mask_path(p3.MASK_RUN, offsets)
+    params = yaml.safe_load(path.read_text())
     g = g.sort_values('bin')
     flags = tuple(g[k].to_numpy(bool) for k in ('spider', 'vignetted', 'masked_inner',
                                                   'masked_outer'))
@@ -269,7 +289,8 @@ def run_labels(run, fit_dir=None, workers=1, fwhm=1.0, all_sides=False, groups=N
     tasks = [(pd.Series(r._asdict()), b[(b.key == r.key) & (b.side == r.side)], fwhm)
              for r in c.itertuples()]
     with mp.get_context('spawn').Pool(max(1, min(workers, len(tasks))), initializer=_init,
-                                      initargs=(str(mask_run),), maxtasksperchild=8) as pool:
+                                      initargs=(str(mask_run[0]), str(mask_run[1])),
+                                      maxtasksperchild=8) as pool:
         rows = []
         for r in pool.imap_unordered(_one, tasks):
             if r is not None:

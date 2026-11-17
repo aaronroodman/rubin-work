@@ -47,13 +47,15 @@ GROUPS = [(('science', 'intra'), 'science intra, 1.6-1.725 deg'),
           (('SW1', 'intra'), 'SW1 intra, 1.4-1.75 deg'), (('SW1', 'extra'), 'SW1 extra, 1.4-1.75 deg')]
 COLOURS = {'M1Baffle1 outer': 'tab:cyan', 'M1 inner': 'tab:blue', 'M2 outer': 'tab:green',
            'M2 inner': 'darkgreen', 'M3 outer': 'tab:olive', 'M3 inner': 'goldenrod',
-           'CameraSilhouette outer': 'tab:red', 'Filter_entrance outer': 'tab:purple',
+           'CameraSilhouette outer': 'tab:red', 'CameraSilhouette outer_s': 'salmon',
+           'Filter_entrance outer': 'tab:purple',
            'L3_entrance outer': 'tab:brown', 'L3_exit outer': 'tab:pink', pl.TIE: '0.75'}
 # Names as on the page: the mask circle, and whether it is a clear aperture or an obscuration.
 NAMES = {'M1Baffle1 outer': 'M1Baffle1 (clear)', 'M1 inner': 'M1 inner (obsc.)',
          'M2 outer': 'M2 outer (clear)', 'M2 inner': 'M2 inner (obsc.)',
          'M3 outer': 'M3 outer (clear)', 'M3 inner': 'M3 inner (obsc.)',
          'CameraSilhouette outer': 'CameraSilhouette (obsc.)',
+         'CameraSilhouette outer_s': 'CameraSilhouette, v4.02s refit (obsc.)',
          'Filter_entrance outer': 'Filter entrance (clear)',
          'L3_entrance outer': 'L3 entrance (clear)', 'L3_exit outer': 'L3 exit (clear)',
          pl.TIE: 'tie (< 0.3 pixels)'}
