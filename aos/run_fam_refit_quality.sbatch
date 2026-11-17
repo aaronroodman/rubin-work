@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=fam_refit
-#SBATCH --partition=torino
-#SBATCH --account=rubin:developers@torino
+#SBATCH --partition=milano
+#SBATCH --account=rubin:developers@milano
 #SBATCH --qos=normal
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G

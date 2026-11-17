@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=backup_aos_output
-#SBATCH --partition=torino
-#SBATCH --account=rubin:developers@torino
+#SBATCH --partition=milano
+#SBATCH --account=rubin:developers@milano
 #SBATCH --qos=normal
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=d12_downstream
-#SBATCH --partition=torino
-#SBATCH --account=rubin:developers@torino
+#SBATCH --partition=milano
+#SBATCH --account=rubin:developers@milano
 #SBATCH --qos=normal
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
