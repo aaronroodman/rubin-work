@@ -35,7 +35,7 @@ CANDIDATES = [
 
 
 def main():
-    run = study_run(STUDY, 'night3_check')
+    run = study_run(STUDY, 'night3_check').path
     rows = [nr.image_task((f'{v}', v, side, 4.0, ra, dec, str(run)))
             for v, side, _, ra, dec in CANDIDATES]
     t = pd.DataFrame(rows).merge(
