@@ -53,8 +53,10 @@ def main():
     parser.add_argument('--tol', type=float, default=300.0, help='step tolerance, µm')
     parser.add_argument('--ref-tol', type=float, default=300.0,
                         help='in-focus reference tolerance, µm')
+    parser.add_argument('--db', default=None,
+                        help='value_added database file (default: the catalog current build)')
     args = parser.parse_args()
-    con = efd_db.connect()
+    con = efd_db.open_db(args.db, readonly=True) if args.db else efd_db.connect()
     trim = con.execute('select visit_id, day_obs, seq_num, dof0, dof5 from visit_telemetry '
                        'where dof0 is not null and dof5 is not null '
                        'order by day_obs, seq_num').fetchdf()
