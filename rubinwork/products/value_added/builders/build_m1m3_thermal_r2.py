@@ -56,15 +56,19 @@ def parse_day_obs(text):
     Parameters
     ----------
     text : `str`
-        ``YYYYMMDD`` or ``YYYYMMDD-YYYYMMDD`` (inclusive).
+        ``YYYYMMDD``, ``YYYYMMDD-YYYYMMDD`` (inclusive), or a comma list of either.
 
     Returns
     -------
     nights : `list` [`int`]
-        The endpoints are calendar dates, so the range is expanded through the calendar
-        rather than numerically -- 20251130 to 20251202 is three nights, not seventy-two.
+        Sorted. The endpoints are calendar dates, so a range is expanded through the
+        calendar rather than numerically -- 20251130 to 20251202 is three nights, not
+        seventy-two.
     """
     text = str(text).strip()
+    if ',' in text:
+        return sorted({d for part in text.split(',') if part.strip()
+                       for d in parse_day_obs(part)})
     if '-' not in text:
         return [int(text)]
     first, last = (t.strip() for t in text.split('-', 1))

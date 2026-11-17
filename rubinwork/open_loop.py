@@ -294,6 +294,12 @@ def cwfs_fwhm(zk_residual, conv, reduce=np.nanmedian):
     PSF width and not the seeing floor — it is the AOS wavefront contribution alone, which
     adds in quadrature on top of the delivered image quality.
     """
+    # aos_fwhm is still a flat aos/code/ module, not part of the package.
+    import sys
+    from pathlib import Path
+    code = Path(__file__).resolve().parents[1] / 'aos' / 'code'
+    if str(code) not in sys.path:
+        sys.path.insert(0, str(code))
     import aos_fwhm
     z = np.atleast_2d(np.asarray(zk_residual, dtype=float))
     n_z = len(aos_state.ZK_NOLL)
