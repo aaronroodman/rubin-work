@@ -64,6 +64,52 @@ Open:
 
 ## Log
 
+### 2026-11-18 — rim analysis: edge rule R0, the M1 roll-off and an M3 outer rim
+
+Edge rules compared (`code/edge_rules.py`, `9dcc10c`; runs `20261118_edge_rules_<run>_<fit>`
+for night 1 pass 6 `isr_phys_v402s`, 20261107 and 20261108 `v402s`, 235 sides; per-rule
+pages for one star, `edge_rules_compare.py`, `7df7cae`): R0 50 % of the flat top, R1 50 %
+of the local plateau, R2 steepest slope, R3 a blurred step fitted to the dark flank. R2 is
+the noisiest (per-side nMAD 1.1-1.6 pixels against 0.8-1.3) and sits 1-2 pixels off the
+others; R1 tracks R0 to 0.15 pixels. **Aaron chose R0**, with the per-edge spider cut (fit c
+shadow within 6 pixels of that edge, no azimuth padding): about 155 bins per edge per side
+measured, against about 123 with the old cut.
+
+Batoid v4.02 against v4.03 (the M1 inner-edge roll-off of rubin-optical-model
+`studies/mirror_figure_errors/SUMMARY.md`; `code/edge_rules_batoid.py`, run
+`20261118_edge_rules_batoid`, 8 sides, 30 M rays each, about 75 min per side): R0 edge shift
+v4.03 − v4.02 +0.81 pixels extra inner, −0.41 pixels intra inner (nMAD over bins 0.09
+pixels), 0.00 on the outer edges.
+
+Rim analysis (`code/rim_analysis.py`, `ac1b9f0`): R0 data − fit c model and the rim
+contrast (peak within 10 pixels on the bright side over the 12-25 pixel plateau,
+dimensionless), bins grouped by the element that sets each edge; science sides at
+1.6-1.725 deg, nights 1 / 20261107 / 20261108:
+
+| edge set by | side | data − model (pixels) | v4.03 − v4.02 (pixels) | rim data | rim v4.03 | rim danish, v4.02 |
+|---|---|---|---|---|---|---|
+| M1 inner | extra | +1.40 / +1.20 / +0.89 | +0.83 | 1.48 / 1.37 / 1.36 | 1.10 | 1.00 |
+| M1 inner | intra | −0.38 / −0.43 / −0.29 | −0.44 | 0.90 / 0.95 / 0.94 | 0.95 | 0.98-1.00 |
+| M3 outer | intra | −0.33 / −1.02 / −1.07 | 0.00 | 1.33 / 1.38 / 1.35 | 0.97 | 0.97-1.00 |
+| M3 outer | extra | −0.25 / +0.41 / +0.16 | 0.00 | 1.00 / 0.98 / 1.00 | 0.98 | 0.97 |
+| M2 inner | extra | −0.61 / +0.52 / +0.16 | +0.01 | 1.13 / 1.16 / 1.16 | 0.99 | 0.99 |
+| M2 inner | intra | +1.99 / +1.38 / +1.05 | 0.00 | 1.10 / 1.07 / 1.09 | 0.98 | 0.98-0.99 |
+| M1Baffle1 outer | both | −1.31 to +0.13 | 0.00 | 1.07-1.14 | 0.98-0.99 | 0.97-1.01 |
+
+- Where M1 inner sets the inner edge, the roll-off gives the observed sign on both sides
+  (the sign convention of SUMMARY.md, item 4, holds) and all of the intra-focal offset;
+  extra-focal it gives +0.83 of +0.9 to +1.4 pixels, and a weaker rim (1.10 against
+  1.36-1.48). The roll-off in the data is deeper or narrower than the azimuthal-mean fit,
+  or the blur differs; fitting A and w to these profiles is the next step.
+- Where M3 outer sets the outer edge, a strong intra-focal rim (1.33-1.38) and none
+  extra-focal: the opposite sign to M1 inner, as a turned-up edge gives; SUMMARY.md has the
+  M3 outer edge turned up about +80 nm over its last 50 mm. Not in any model yet.
+- M2 inner intra +1 to +2 pixels and the silhouette are not the roll-off (shift 0.00).
+
+Output of `rim_analysis` is in `/tmp/rim_analysis_20261118/` (`rim_analysis.pdf`,
+`rim_elements.csv`): `mkdir` on `/sdf/data` hung (timed out after 30 s) at 12:20 while
+reads worked, a second WEKA fault; to be rerun into a study run when writes work.
+
 ### 2026-11-18 — night 3 submitted
 
 The `live` database reads cleanly after the WEKA fix; snapshot `20261118` is current.
