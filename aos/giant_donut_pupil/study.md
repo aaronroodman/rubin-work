@@ -129,8 +129,19 @@ range (pixels), every donut agreeing on the element:
 
 `figures/psi_elements_pass6_v402s_science_intra.png`, `..._extra.png`.
 
-Next: night 3 through `night2_pipeline.py` and this page (needs the value_added snapshot,
-Slurm job 45567184, a 3.75 mm step for the extra masks, and a batch OK for the fit step).
+Gallery (`code/psi_gallery.py`, commit `769d65e`): data, fit c model and (data − model) /
+noise per side, model edges coloured by mask element; `gallery.pdf` in run
+`20261117_psi_labels_20261023_pupil6_isr_phys_v402s` (34 science sides, 23 min on one CPU).
+
+Blocked: the value_added `live` database is unreadable after a WEKA fault on `/sdf/data`
+(`value_added/docs/status/build_progress.md`, 2026-11-17); no snapshot has night 3.
+
+Next, night 3 through `night2_pipeline.py`, the psi page and the gallery. Changes needed in
+`night2_pipeline.py`: `NIGHTS` entries 20261107 and 20261108 (band i); `NIGHTS_RUN` in
+`night2_review.py` to `20261117_giant_nights`; a run date other than the fixed
+`RUN_DATE`; masks for the real steps (extra +3.75 mm on both hexapods, intra −3.72 to
+−4.28 mm, varying by exposure; ask Aaron whether to fit masks per step or use the 4 mm
+ones). The fit step and the gallery go to batch, with Aaron's OK.
 
 ### 2026-11-14 — early ΔZ4 tables filed
 

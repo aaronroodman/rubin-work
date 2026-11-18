@@ -1,6 +1,6 @@
 # Build progress
 
-> **Status:** current · **Last updated:** 2026-11-11 · **Kind:** working state (build log)
+> **Status:** current · **Last updated:** 2026-11-17 · **Kind:** working state (build log)
 
 What has been built into the value-added database, what is known sparse, and what failed.
 Row counts and spans read from the live database's `fetch_log` and `column_coverage` on
@@ -426,6 +426,28 @@ exactly (`compare_trim_consdb`, 2026-11-04 Log).
 Still open: rebuild `turbulence` and `camera` with the fixed anchor.
 
 ## Nightly update
+
+### State on 2026-11-17: `live` built through 20261114, unreadable; no snapshot
+
+- The 2026-11-11 run failed after its telemetry step (20261026–20261110 in `live`) on two
+  bugs, fixed in `f314109` (thermal builder took no comma list; `open_loop.cwfs_fwhm`
+  lacked `aos/code` on its path) and `71f5848` (thermal manifest written while the build
+  held the database).
+- EFD queries off Nublado now need `EFDAUTH=$HOME/.lsst/efdauth.json`; Segwarides
+  credentials give "authorization failed". `scratch/va_catchup2_20261117.sh` exports it.
+- Job 45550188 built `optical_state` for 20261026–20261107. Job 45567184 built thermal for
+  20261026–20261110 and the nightly update for 20261111–20261114 (no `fetch_log` errors),
+  then failed copying the snapshot: `OSError: Remote I/O error` reading
+  `v1/live/aos_efd.duckdb`, repeatable at 8 MiB, about 144 MiB and about 4,012 MiB into
+  the file. A wider WEKA problem on `/sdf/data` is reported on Slack; the 20261105 snapshot
+  reads end to end. `current` is still 20261105.
+- Left: an empty `snapshots/20261117/` with a 0-byte `aos_efd.duckdb` (remove, with
+  Aaron's OK, before the next snapshot).
+
+Next, once the storage is fixed: `dd if=<live> of=/dev/null bs=64M` reads to the end, then
+cut the snapshot (`update_nightly.make_snapshot`; the run itself now finds no new nights).
+If `live` cannot be recovered: copy the 20261105 snapshot to `live` and rerun 20261026
+onward in batch.
 
 `builders/update_nightly.py` brings `v1/live` up to the last finished night and cuts a
 snapshot. `builders/update_nightly.sh --mode local|batch` runs it, logging to
