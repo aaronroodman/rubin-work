@@ -246,10 +246,13 @@ def _init(mask_run, s_mask_dir):
     _S_MASKS['dir'] = s_mask_dir
 
 
-def _one(task):
+def mask_for(row):
+    """danish mask params of a side's fit: its variant at its (detector, camera, M2) offsets.
+
+    Needs `_init` (the v4.02g mask run and the v4.02s mask directory) first.
+    """
     import yaml
     import obscuration_v402g as og
-    row, g, fwhm = task
     fd.CAMERA_OFFSET_M = abs(float(row.step_mm)) * 1e-3
     offsets = fd.offsets_m(row.side, row.sensor_class)
     if row['mask'] == 'v4.02s':
@@ -258,7 +261,25 @@ def _one(task):
                 f'RubinObsc_v4.02s_r_det{mm[0]:+.1f}_cam{mm[1]:+.1f}_m2{mm[2]:+.1f}.yaml')
     else:
         path = og.mask_path(p3.MASK_RUN, offsets)
-    params = yaml.safe_load(path.read_text())
+    return yaml.safe_load(path.read_text())
+
+
+def fit_model(row, params, fwhm, noll=None):
+    """The fit c model image of a side (electrons), with the fit's own pupil clip."""
+    noll = p3.FITS['c'] if noll is None else noll
+    r_outer, r_inner = ob._annulus(params)
+    zk_ta, _ = p3.reference_zk(row.field_x_ccs_deg, row.field_y_ccs_deg,
+                               fd.offsets_m(row.side, row.sensor_class), row.side,
+                               r_inner / r_outer)
+    return render(params, float(row.rtp_deg), (r_outer, r_inner), zk_ta,
+                  np.radians(row.field_x_ccs_deg), np.radians(row.field_y_ccs_deg),
+                  int(row.npix), fwhm, float(row.flux_e), float(row.dx_pix), float(row.dy_pix),
+                  [row[f'z{j}_ccs_um'] * 1e-6 for j in noll], noll)
+
+
+def _one(task):
+    row, g, fwhm = task
+    params = mask_for(row)
     g = g.sort_values('bin')
     flags = tuple(g[k].to_numpy(bool) for k in ('spider', 'vignetted', 'masked_inner',
                                                   'masked_outer'))
