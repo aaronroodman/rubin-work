@@ -106,9 +106,9 @@ dimensionless), bins grouped by the element that sets each edge; science sides a
   M3 outer edge turned up about +80 nm over its last 50 mm. Not in any model yet.
 - M2 inner intra +1 to +2 pixels and the silhouette are not the roll-off (shift 0.00).
 
-Output of `rim_analysis` is in `/tmp/rim_analysis_20261118/` (`rim_analysis.pdf`,
-`rim_elements.csv`): `mkdir` on `/sdf/data` hung (timed out after 30 s) from about 11:45 PT while
-reads worked, a second WEKA fault; to be rerun into a study run when writes work.
+Output: run `20261118_rim_analysis` (`rim_analysis.pdf`, `rim_elements.csv`). Writes to
+`/sdf/data` hung from about 11:45 to 12:35 PT (a second WEKA fault, on more than one
+node); the run was redone once they worked, with the same table.
 
 ### 2026-11-18 — night 3 submitted
 
