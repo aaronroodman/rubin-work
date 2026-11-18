@@ -109,28 +109,42 @@ data?
 - **A thermal vane study:** vane and air temperatures against the shadow width.
 - **A giant pair at rtp ±90 deg:** an intra and extra pair at a quarter turn separates
   an image-frame effect from one fixed to the telescope.
-- **To do: the M1 turned-down inner edge in the model** (Aaron, 2026-11-18). The data has a
-  hot rim beside the donut edges that the danish and Batoid models lack, and it moves the
-  50 % edge crossings systematically (`20261118_edge_review`, star S4848323907389759872:
-  extra inner rim up to 1.3 of the flat top; intra inner rim a soft toe rising from
-  about 10 pixels below the edge; intra outer rim up to 1.6 of the flat top with a dip
-  inside it). Plan:
-  - *Batoid:* add the turned-down edge to M1 as a sag perturbation on the asphere
-    (`batoid.Sum` with a radial `batoid.Bicubic` or spline zone), from the as-built M1
-    figure if one is available, else a fitted amplitude and width; ray-trace giant donuts
-    and check that the rim appears with the observed sign flip between intra and extra.
-  - *danish:* danish maps pupil to image by the wavefront gradient, so a narrow edge zone
-    is out of reach of the fitted Zernikes (Z ≤ 22). Options: (1) an extra radial edge
-    term in the pupil phase, for example W(ρ) = A ((ρ_in + w − ρ) / w)² for ρ < ρ_in + w,
-    with A (µm of wavefront) and w free or fixed from Batoid, added to the deflection and
-    Jacobian; this needs a danish extension (a `DonutFactory` subclass or an upstream
-    change); (2) a fixed Batoid-derived edge map in the reference wavefront (`z_ref`),
-    which needs a non-Zernike reference term in danish.
-  - *Test:* the hot rim should follow the defining element; with `psi_labels`, it should
-    appear where M1 inner sets the inner edge (psi 60–300 deg) and not where M2 inner or the
-    silhouette does.
-  - Until then, compare edges by a rule less sensitive to the rim (50 % of the local level
-    or an erf step fit per bin).
+- **To do: the M1 inner-edge roll-off in the model** (Aaron, 2026-11-18).
+  - *Done elsewhere:* `rubin-optical-model`, `studies/mirror_figure_errors/SUMMARY.md`
+    (commits `a479d15`, `c855075`). The mirror-lab M1 map has the inner edge rolled down at
+    every azimuth: h(r) = c − A exp(−(r − 2.558 m)/w), A = 76.4 ± 8.9 nm, w = 27.1 ± 2.8 mm,
+    30 nm deep at the v4.x inner clear aperture (2.5833 m); A and w each vary by a factor
+    of 3.0 (dimensionless, largest over smallest of twelve 30° sectors). `LSST_r_v4.03.yaml`
+    is v4.02 plus this roll-off on M1 (a `Bicubic` in a `Sum`); vignetting is identical to
+    v4.02, ΔW = −59 nm at 2.5833 m, and its annular Zernike terms are under 2 nm, so the
+    fitted Z ≤ 22 cannot absorb it. Predicted, if positive map values mean high glass: a hot
+    rim on the extra-focal inner edge and a softened inner edge with a skirt into the hole
+    on the intra-focal side; focal-plane throw about 23 µm (2.3 pixels) at 2.5833 m.
+  - *Seen here* (`20261118_edge_review`, star S4848323907389759872, 20261107): extra inner
+    rim up to 1.3 of the flat top; intra inner edge a soft toe rising from about 10 pixels
+    below the edge. That is the predicted sign, on one star. SUMMARY.md expects the rim to
+    fade above about 6 mm of detector defocus; a giant donut (r_out 340 pixels) is about
+    8.4 mm, yet the rim is strong, so its contrast is a quantitative test of A and w.
+  - *Not explained by it:* the outer-edge rims (intra outer up to 1.6 of the flat top with a
+    dip inside). Candidates in SUMMARY.md: M3 outer edge turned up about +80 nm over its last
+    50 mm; M1 outer edge −40 to +90 nm by sector.
+  - *Next, Batoid:* trace giant donuts (±4 mm M2 and camera z, i band, the night 3 fields and
+    rotator angles) through v4.02 and v4.03 (or v4.02 with the runtime
+    `withPerturbedSurface('M1', Bicubic)` of SUMMARY.md section 4); confirm the rim side and
+    contrast; measure the edge shift v4.03 − v4.02 under each edge rule.
+  - *Next, data:* the rim should appear only where M1 inner sets the inner edge (psi 60–300
+    deg, `psi_labels`), not where M2 inner or the silhouette does. Its strength against M1
+    azimuth tests the per-sector A and w, once the map azimuth is tied to the batoid, CCS and
+    OCS frames (open there). Fitting A and w to the giant-donut edge profiles is item 2 of
+    SUMMARY.md section 6.
+  - *Next, danish:* danish 1.4 maps pupil to focal by x = −f ∇W (`_pupil_to_focal`), with
+    Zernike-only `x_offset`/`y_offset` hooks. Its forward mesh path,
+    `DonutFactory._image_from_mesh(verts_px=...)`, takes pre-projected vertices, so the
+    roll-off deflection −f ∇ΔW(ρ), ΔW = 2 × 0.982 × dz(r) with r the M1 radius, can be added
+    to the Zernike projection there, with A and w fixed from v4.03 or fitted (degenerate
+    with the inner clear aperture radius). Two danish changes: a mesh that resolves the
+    27 mm zone at the inner edge, and keeping folded triangles: the rim is a fold, and the
+    C++ kernel skips triangles with projected area ≤ 0.
 
 ## Ruled out
 
