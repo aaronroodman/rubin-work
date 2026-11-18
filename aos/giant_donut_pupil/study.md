@@ -79,6 +79,46 @@ decenters are large against night 1 (zero): camera dx −0.54 to +1.01 mm, dy �
 runs the pipeline, the psi labels and page for v402g and v402s, and the v402s gallery.
 Jobs 45630858 (20261107) and 45630859 (20261108), runs `20261118_night2_<day_obs>`.
 
+Those first two failed in 1 s (Slurm runs a spooled copy, so `dirname $0` was `/var`;
+fixed, `0b3d2d9`). Reruns: 45631292 (20261107, 39 min) done; 45631295 (20261108) hit
+4 h in the fit, 430 GB resident of 456 GB at 110 workers, so only about 17 fits ran at
+once; resumed as 45697315 at 60 workers (19 min). `sbatch --export` splits on commas, so
+that job ran `fit` only: `vanes` and `report` are still to run on 20261108 (`653d070`
+makes the steps an argument).
+
+Median data − model per element range (pixels), science sides at 1.6–1.725 deg, psi
+pages `20261118_psi_labels_20261118_night2_<day_obs>_<fit>`; 20261107: 16 intra, 17
+extra; 20261108: 56 intra, 53 extra:
+
+| edge | element | 20261107 intra / extra | 20261108 intra / extra | night 1 intra / extra |
+|---|---|---|---|---|
+| outer | M1Baffle1 | −0.65 / −0.60 | −0.72 / −0.51 | −0.66 / −0.52 |
+| outer | M3 outer | −0.32 / −0.20 | −0.39 / −0.61 | −0.24 / −0.51 |
+| inner | M1 inner | +0.18 / +0.54 | +0.36 / +0.31 | −0.32 / +1.34 |
+| inner | M2 inner | +1.16, +1.87 / about 0 | +1.01, +1.27 / −0.09, +0.30 | +2.07, +1.78 / −0.59, −0.94 |
+| inner | silhouette v4.02s | +0.40 / +1.25 | +0.03 / +2.18 | +2.02 / −0.65 |
+| inner | silhouette v4.02g | +4.55 / +4.47 | +3.76 / +6.14 | +5.62 / +2.77 |
+
+Outer edges repeat night 1 to 0.3 pixels; M2 inner intra stays +1 to +2 pixels. The
+extra-side silhouette with v4.02s grows with the camera dy decenter (night 1 0 mm,
+−0.65; 20261107 −2.06 mm, +1.25; 20261108 −2.23 to −2.82 mm, +2.18 pixels): a hint,
+three points, not tested. On 20261107 the extra inner label alternates between M2 inner
+and M1Baffle1 at psi 120–160 and 208–238 deg (about half the donuts agree); not on
+20261108.
+
+Edge finder review (`code/edge_review.py`, `4e7c56f`; run `20261118_edge_review`, side
+388_S4848323907389759872 extra). The dots are on 50 % of the bin's flat top (median at
+0.70–0.90 r_out), but the data has bright rims inside both edges (up to 1.3 of the flat
+top) and a skirt outside the outer edge at some azimuths (about 0.25 of the flat top for
+5–15 pixels), which the model lacks; a local-level 50 % moves crossings by up to about
+1 pixel. The gallery renders the stamp at 90 dpi, nearest neighbour, about 3 stamp pixels
+per output pixel, so dots look off the rim there. The spider cut takes 55 of 180 bins:
+shadow anywhere in the ring at the reference wavefront, widened ±1 bin twice; the vane
+shadows are 2–3 deg stripes. A per-edge cut (fit c shadow within 6 pixels of that edge)
+takes 20 inner and 15 outer bins. Open, for Aaron: the spider cut and the edge definition
+(50 % of the flat top, 50 % of the local level, or an erf step fit per bin). The results
+above use the current finder.
+
 ### 2026-11-17 — night 3 found; mask element per edge on the psi page
 
 **Night 3.** `find_giant_nights.py --db` on value_added `live` (Trim through 20261110):
