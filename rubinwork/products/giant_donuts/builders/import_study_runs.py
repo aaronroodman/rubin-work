@@ -160,11 +160,20 @@ def build(variant, build_name=None):
     for name, t in (("exposures", exp), ("sides", sides), ("fits", fits)):
         t.to_parquet(out / f"{name}.parquet", index=False)
     va = catalog.manifest("value_added", "v1")["build"]
-    manifest.write(out, product=reader.PRODUCT, variant=variant, build=build_name,
-                   config={**cfg, "kind": "import", "source_study": "/".join(SOURCE_STUDY)},
-                   inputs={"value_added": f"v1@{va}"})
+    write_manifest(out, variant, build_name, cfg, f"v1@{va}")
     print(f"wrote {out}: {len(exp)} exposures, {len(sides)} sides", flush=True)
     return out
+
+
+def write_manifest(out, variant, build_name, cfg, value_added_build):
+    """The build's manifest, recording the tables, every stamp and every mask."""
+    files = ([f"{t}.parquet" for t in reader.TABLES]
+             + sorted(f"stamps/{p.name}" for p in (out / "stamps").glob("*.fits"))
+             + sorted(f"masks/{p.name}" for p in (out / "masks").glob("*.yaml")))
+    return manifest.write(out, product=reader.PRODUCT, variant=variant, build=build_name,
+                          config={**cfg, "kind": "import",
+                                  "source_study": "/".join(SOURCE_STUDY)},
+                          inputs={"value_added": value_added_build}, files=files)
 
 
 def _npix(path):
