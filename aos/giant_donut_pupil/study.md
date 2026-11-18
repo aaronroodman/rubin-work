@@ -107,7 +107,7 @@ dimensionless), bins grouped by the element that sets each edge; science sides a
 - M2 inner intra +1 to +2 pixels and the silhouette are not the roll-off (shift 0.00).
 
 Output of `rim_analysis` is in `/tmp/rim_analysis_20261118/` (`rim_analysis.pdf`,
-`rim_elements.csv`): `mkdir` on `/sdf/data` hung (timed out after 30 s) at 12:20 while
+`rim_elements.csv`): `mkdir` on `/sdf/data` hung (timed out after 30 s) from about 11:45 PT while
 reads worked, a second WEKA fault; to be rerun into a study run when writes work.
 
 ### 2026-11-18 — night 3 submitted
