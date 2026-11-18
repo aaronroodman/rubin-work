@@ -109,6 +109,28 @@ data?
 - **A thermal vane study:** vane and air temperatures against the shadow width.
 - **A giant pair at rtp ±90 deg:** an intra and extra pair at a quarter turn separates
   an image-frame effect from one fixed to the telescope.
+- **To do: the M1 turned-down inner edge in the model** (Aaron, 2026-11-18). The data has a
+  hot rim beside the donut edges that the danish and Batoid models lack, and it moves the
+  50 % edge crossings systematically (`20261118_edge_review`, star S4848323907389759872:
+  extra inner rim up to 1.3 of the flat top; intra inner rim a soft toe rising from
+  about 10 pixels below the edge; intra outer rim up to 1.6 of the flat top with a dip
+  inside it). Plan:
+  - *Batoid:* add the turned-down edge to M1 as a sag perturbation on the asphere
+    (`batoid.Sum` with a radial `batoid.Bicubic` or spline zone), from the as-built M1
+    figure if one is available, else a fitted amplitude and width; ray-trace giant donuts
+    and check that the rim appears with the observed sign flip between intra and extra.
+  - *danish:* danish maps pupil to image by the wavefront gradient, so a narrow edge zone
+    is out of reach of the fitted Zernikes (Z ≤ 22). Options: (1) an extra radial edge
+    term in the pupil phase, for example W(ρ) = A ((ρ_in + w − ρ) / w)² for ρ < ρ_in + w,
+    with A (µm of wavefront) and w free or fixed from Batoid, added to the deflection and
+    Jacobian; this needs a danish extension (a `DonutFactory` subclass or an upstream
+    change); (2) a fixed Batoid-derived edge map in the reference wavefront (`z_ref`),
+    which needs a non-Zernike reference term in danish.
+  - *Test:* the hot rim should follow the defining element; with `psi_labels`, it should
+    appear where M1 inner sets the inner edge (psi 60–300 deg) and not where M2 inner or the
+    silhouette does.
+  - Until then, compare edges by a rule less sensitive to the rim (50 % of the local level
+    or an erf step fit per bin).
 
 ## Ruled out
 
