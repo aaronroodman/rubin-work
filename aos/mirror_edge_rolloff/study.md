@@ -53,3 +53,23 @@ Plan:
    the outer edge, with the M1Baffle1 bins as a control. Robust loss; ask Aaron which.
 4. **Then:** per-sector A and w, once the map azimuth is tied to OCS. Compare with the
    mirror-lab sector table.
+
+### 2026-11-18 — input product built; fit decisions
+
+- **Input:** `giant_donuts=v402s_fitc@20261118`, an import build. It holds 10 exposures and
+  839 sides: night 1 has 173 science sides, 20261107 has 143 and 20261108 has 462, plus
+  the corner sensors. Code is in `rubinwork/products/giant_donuts/`. The edge finder (R0)
+  is now the library `rubinwork.giant_donuts.edge_profiles`, and the Batoid v4.02 helpers
+  are `rubinwork.giant_donuts.batoid_model`. The pupil study now imports both; its R0
+  edges and Batoid traces are unchanged (checked).
+- **Fit design (Aaron):** shape only. Each bin gets a free radial shift and plateau scale,
+  and the roll-off is fitted to the rim and toe shape. The implied edge shift is then
+  checked against the measured data − danish offsets. Huber loss (scipy least_squares,
+  f_scale = 2 sigma).
+- **Interferometric map:** the mirror-lab M1 test map (`m1_figure_error.h5`, 48 averages,
+  2019-02-21) is the source of the A, w fit and of v4.03. Besides the parametric fit (a),
+  fit (b) uses the map itself near the inner edge: the ray deflections come from ∇h at
+  each ray's M1 hit point. Its free parameters are an amplitude scale and the map's
+  rotation (and possible flip) against the telescope frame. That tests the map's
+  azimuthal structure (a factor 3 in depth between 30° sectors), and the donuts would fix
+  the map-to-frame tie that SUMMARY.md lists as open.

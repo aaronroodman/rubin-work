@@ -38,16 +38,15 @@ from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
 
 import batoid  # noqa: E402
 
-OPTICAL_MODEL_DIR = pathlib.Path.home() / 'notebooks' / 'rubin-optical-model'
-V402_YAML = OPTICAL_MODEL_DIR / 'LSST_r_v4.02.yaml'
+from rubinwork.giant_donuts.batoid_model import (  # noqa: E402,F401
+    OPTICAL_MODEL_DIR, V402_YAML, _optic, reduced_v402, v402_optic)
+from rubinwork.giant_donuts.batoid_model import v402_dict as _v402_dict  # noqa: E402,F401
 V1000_DANISH = 'RubinObsc_v1000_r_rtpp0_azp45_pp0d0.yaml'
 WAVELENGTH_M = 622e-9
 STUDY = 'aos/giant_donut_pupil'
 
 # Elements of v4.02 kept for `_fitEdges`: everything with a circular edge.
-CIRCLE_ELEMENTS = ('M1Baffle1', 'M1', 'M1Baffle2', 'M2', 'M3', 'L1', 'L2', 'Filter',
-                   'L3', 'Detector')
-SPIDER_PREFIXES = ('SpiderFlat', 'SpiderInclined')
+from rubinwork.giant_donuts.batoid_model import CIRCLE_ELEMENTS, SPIDER_PREFIXES  # noqa: E402,F401
 
 # Validation grid: field radius (deg, along +x) and signed offsets
 # (detector, camera, M2) in mm.
@@ -111,47 +110,6 @@ def load_danish(name=V1000_DANISH):
         import danish
         path = pathlib.Path(danish.__file__).parent / 'data' / name
     return yaml.safe_load(path.read_text())
-
-
-def _v402_dict():
-    return yaml.safe_load(V402_YAML.read_text())
-
-
-def _optic(system):
-    return batoid.parse.parse_optic(copy.deepcopy(system['opticalSystem']))
-
-
-def reduced_v402(keep=CIRCLE_ELEMENTS, keep_prefixes=()):
-    """v4.02 with only the named items (top level and inside the camera).
-
-    Parameters
-    ----------
-    keep : `tuple` [`str`]
-        Item names kept, at either level.
-    keep_prefixes : `tuple` [`str`]
-        Name prefixes also kept.
-    """
-    d = _v402_dict()
-    system = d['opticalSystem']
-
-    def wanted(item):
-        return item['name'] in keep or item['name'].startswith(tuple(keep_prefixes)) \
-            or item['name'] == 'LSSTCamera'
-    system['items'] = [it for it in system['items'] if wanted(it)]
-    for it in system['items']:
-        if it['name'] == 'LSSTCamera':
-            it['items'] = [c for c in it['items'] if wanted(c)]
-    return _optic(d)
-
-
-def v402_optic(spider=True):
-    """The full v4.02 batoid model, optionally without its spider planes."""
-    d = _v402_dict()
-    if not spider:
-        d['opticalSystem']['items'] = [
-            it for it in d['opticalSystem']['items']
-            if not it['name'].startswith(SPIDER_PREFIXES)]
-    return _optic(d)
 
 
 def planes_optic(prefixes):

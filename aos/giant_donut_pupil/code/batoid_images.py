@@ -51,6 +51,8 @@ import fit_donuts as fd  # noqa: E402  (puts the blitz checkout first on sys.pat
 import giant_state as gs  # noqa: E402
 import obscuration_v402 as ob  # noqa: E402
 import z4_fits  # noqa: E402
+from rubinwork.giant_donuts.batoid_model import (  # noqa: E402,F401
+    _rebuild, atm_kernel, configure, first_clip, pupil_grid, rays as _rays, transmitted)
 
 WAVELENGTH_M = 620e-9
 PIXEL_M = 10e-6
@@ -68,75 +70,6 @@ BATOID_TAG = {'v4.02': 'batoid', 'v1000': 'batoid_v1000', 'v4.02s': 'batoid_stat
               'v4.02s0': 'batoid_state0'}
 
 
-def _rebuild(optic, items):
-    keep = ('name', 'inMedium', 'outMedium', 'coordSys', 'skip', 'backDist', 'pupilSize',
-            'pupilObscuration', 'stopSurface', 'sphereRadius')
-    import batoid
-    return batoid.CompoundOptic(items, **{k: optic.__dict__[k] for k in keep})
-
-
-def configure(optic, rtp_deg, offsets, piston_m=0.0):
-    """Rotate the telescope (not the camera) by -rtp, then shift detector, camera, M2."""
-    import batoid
-    rot = batoid.RotZ(np.deg2rad(-rtp_deg))
-    optic = _rebuild(optic, [it if it.name == 'LSSTCamera' else
-                             it.withGlobalRotation(rot, rotCenter=[0, 0, 0],
-                                                   coordSys=batoid.CoordSys())
-                             for it in optic.items])
-    det, cam, m2 = offsets
-    for name, dz in (('Detector', det), ('LSSTCamera', cam + piston_m), ('M2', m2)):
-        if dz:
-            optic = optic.withGloballyShiftedOptic(name, [0.0, 0.0, dz])
-    return optic
-
-
-def pupil_grid(spacing, rng=None, inner=PUPIL_INNER_M, outer=PUPIL_OUTER_M, offset=0.5):
-    """Square grid on the stop plane, cut to an annulus; stratified-random if `rng`."""
-    g = (np.arange(int(np.ceil(2 * outer / spacing))) + offset) * spacing - outer
-    x, y = np.meshgrid(g, g)
-    x, y = x.ravel(), y.ravel()
-    if rng is not None:
-        x = x + rng.uniform(-0.5, 0.5, x.size) * spacing
-        y = y + rng.uniform(-0.5, 0.5, y.size) * spacing
-    r = np.hypot(x, y)
-    keep = (r >= inner) & (r <= outer)
-    return x[keep], y[keep]
-
-
-def _rays(optic, x, y, thx, thy):
-    import batoid
-    return batoid.RayVector.fromStop(x, y, optic=optic, wavelength=WAVELENGTH_M,
-                                     theta_x=thx, theta_y=thy)
-
-
-def first_clip(optic, x, y, thx, thy):
-    """Index of the first surface that vignettes each ray (-1 if none), and the names.
-
-    Also returns the detector-plane positions (m) of every ray; batoid keeps
-    tracing vignetted rays, so blocked rays have positions too.
-    """
-    first = np.full(len(x), -1, np.int32)
-    det_x, det_y = np.empty(len(x)), np.empty(len(x))
-    for i in range(0, len(x), TRACEFULL_CHUNK):  # traceFull holds every surface's rays
-        s = slice(i, i + TRACEFULL_CHUNK)
-        tf = optic.traceFull(_rays(optic, x[s], y[s], thx, thy))
-        names = list(tf)
-        f = first[s]
-        prev = np.zeros(len(f), bool)
-        for k, key in enumerate(names):
-            out = tf[key]['out']
-            stop = np.asarray(out.vignetted) | np.asarray(out.failed)
-            f[stop & ~prev & (f < 0)] = k
-            prev = stop
-        det_x[s], det_y[s] = tf[names[-1]]['out'].x, tf[names[-1]]['out'].y
-    return first, names, det_x, det_y
-
-
-def transmitted(optic, x, y, thx, thy):
-    out = optic.trace(_rays(optic, x, y, thx, thy))
-    return ~np.asarray(out.vignetted) & ~np.asarray(out.failed), np.asarray(out.x), np.asarray(out.y)
-
-
 def camera_piston(optic, thx, thy, offsets, r_outer, r_inner, z4_target_m):
     """Camera z shift (m) giving batoid Z4 = `z4_target_m`; two secant steps."""
     dz = 0.0
@@ -147,13 +80,6 @@ def camera_piston(optic, thx, thy, offsets, r_outer, r_inner, z4_target_m):
         dz += (z4_target_m - z_a) / slope
         z_a = z4_fits.zk_intrinsic(optic, thx, thy, offsets, r_outer, r_inner, dz)[4]
     return dz, z_a
-
-
-def atm_kernel(npix, fwhm_arcsec, sky_scale):
-    """danish's atmosphere: galsim Kolmogorov drawn at the pixel scale, ``npix//2`` wide."""
-    import galsim
-    no2 = (npix - 1) // 2
-    return galsim.Kolmogorov(fwhm=fwhm_arcsec).drawImage(nx=no2, ny=no2, scale=sky_scale).array
 
 
 def render(px, py, npix, kernel):
