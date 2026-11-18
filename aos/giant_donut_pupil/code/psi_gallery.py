@@ -64,7 +64,7 @@ def row_panels(axes, row, g, img, msk, model, noise):
     for ax, im, kw in ((axes[0], np.where(msk, np.nan, img), dict(cmap='gray', vmin=0, vmax=top)),
                        (axes[1], model, dict(cmap='gray', vmin=0, vmax=top)),
                        (axes[2], resid, dict(cmap='RdBu_r', vmin=-RESID_SIGMA, vmax=RESID_SIGMA))):
-        h = ax.imshow(im, origin='lower', interpolation='nearest', **kw)
+        h = ax.imshow(im, origin='lower', interpolation='none', **kw)  # embedded unresampled
         ax.set_xticks([])
         ax.set_yticks([])
     plt.colorbar(h, ax=axes[2], fraction=0.046, pad=0.02, label='(data − model) / noise')
