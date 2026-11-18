@@ -69,6 +69,12 @@ NIGHTS = {
     20250920: dict(band='z', visits=[2025092000274]),
     # T621 i band, the M2 dx steps (0, −1000, +2000, +1000, −2000, 0 µm).
     20251027: dict(band='i', visits=[2025102700000 + s for s in range(206, 212)]),
+    # Night 3, BLOCK-T746 in-focus sweeps, i band, 30 s. The steps from the previous sweep
+    # exposure are 3.72-4.28 mm, labelled ±4 mm. Found by run 20261117_giant_nights.
+    20261107: dict(band='i', visits=[2026110700366, 2026110700388], run_date='20261118',
+                   nights_run='20261117_giant_nights'),
+    20261108: dict(band='i', visits=[2026110800000 + s for s in (14, 36, 147, 152, 168, 190)],
+                   run_date='20261118', nights_run='20261117_giant_nights'),
 }
 CENTRAL_BAND = (0.0, 0.8)
 OUTER_BAND = (1.4, 1.75)
@@ -82,12 +88,13 @@ R_GUESS_PIX = 344.0
 
 
 def run_path(night):
-    return OUTPUT / f'{RUN_DATE}_night2_{night}'
+    return OUTPUT / f"{NIGHTS[night].get('run_date', RUN_DATE)}_night2_{night}"
 
 
 def make_run(night):
     from rubinwork.common import study_run
-    return study_run(STUDY, f'night2_{night}', date=RUN_DATE).path
+    return study_run(STUDY, f'night2_{night}',
+                     date=NIGHTS[night].get('run_date', RUN_DATE)).path
 
 
 def offsets_mm(step_mm, sensor_class='science'):
@@ -126,6 +133,8 @@ def step_meta(run, night):
     import night2_review as nr
     from rubinwork.common.telemetry_clients import make_consdb_client
     visits = NIGHTS[night]['visits']
+    if 'nights_run' in NIGHTS[night]:
+        nr.NIGHTS_RUN = nr.STUDY_DIR / 'output' / NIGHTS[night]['nights_run']
     _, e = nr.sets_table()
     e = e[e.visit_id.isin(visits)].copy()
     d = nr.trim_deltas(e)
