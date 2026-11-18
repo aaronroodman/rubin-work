@@ -103,13 +103,34 @@ three one-bin ties. Median data − model per range (pixels):
 The inner-edge miss sits where elements that move with the ±4 mm camera and M2 steps set
 the edge, not on M1.
 
-Running: Slurm job 45567183, labels for pass 4 (46 sides), pass 6 `isr_phys` and
-`isr_phys_v402s` (49 each), 20251027 `v402g` and `v402s` (70 each).
+All five sets, Slurm job 45567183 (284 sides, 11 min on 32 CPUs): runs
+`20261117_psi_labels_<source>`, each with `psi_edges.pdf` and `psi_elements.csv`. Pass 6
+`isr_phys_v402s` (full ISR, physical rotator angle, v4.02s), science sides 1.6–1.725 deg,
+17 intra and 17 extra; median data − model inner or outer edge over the element's psi
+range (pixels), every donut agreeing on the element:
 
-Next: the pages for those five sets (`psi_edges_report.py --run <run> [--fit-dir <dir>]
---labels <labels run>`); whether v4.02s removes the silhouette miss; then night 3 through
-`night2_pipeline.py` (needs the value_added snapshot, a 3.75 mm step for the extra masks,
-and a batch OK for the fit step).
+| edge | element | intra | extra | 20251027 extra (50 sides) |
+|---|---|---|---|---|
+| outer | M1Baffle1 (clear) | −0.66 | −0.52 | −0.63 |
+| outer | M3 outer (clear) | −0.24 | −0.51 | −0.23 |
+| inner | M1 inner (obsc.) | −0.32 | +1.34 | +0.78 |
+| inner | M2 inner (obsc.), both flanks | +2.07, +1.78 | −0.59, −0.94 | −0.37, −0.06 |
+| inner | CameraSilhouette, v4.02s | +2.02 | −0.65 | +0.23 |
+| inner | CameraSilhouette, v4.02g (pass 6 `isr_phys`) | +5.62 | +2.77 | +4.28 |
+
+- The v4.02s silhouette removes the extra-side miss and cuts the intra one from +5.62 to
+  +2.02 pixels (pass 6's +1.93 ± 0.39); its margin grows from 1.2 to 4.9 pixels and its
+  psi range from 34–36 to 54–56 deg.
+- The outer edge sits 0.2–0.7 pixels inside the model on both sides and both nights, on
+  both clear apertures; diffraction gives −0.37 / −0.28 of it (V13).
+- On the inner edge, M1 inner and M2 inner change sign between intra and extra: −0.3 and
+  +1.8 to +2.1 intra, +1.3 and −0.6 to −0.9 extra. A static pupil error would not.
+- 20251027 extra repeats night 1 extra within 0.6 pixels on every element.
+
+`figures/psi_elements_pass6_v402s_science_intra.png`, `..._extra.png`.
+
+Next: night 3 through `night2_pipeline.py` and this page (needs the value_added snapshot,
+Slurm job 45567184, a 3.75 mm step for the extra masks, and a batch OK for the fit step).
 
 ### 2026-11-14 — early ΔZ4 tables filed
 

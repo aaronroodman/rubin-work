@@ -185,9 +185,9 @@ def page_psi(pdf, g, title):
                          label=f'margin < {TIGHT_PIX:g} pixel'))
     fig.legend(handles=handles, loc='upper center', ncol=min(len(handles), 5), fontsize=7,
                bbox_to_anchor=(0.5, 0.955))
-    ax_in.set_title(f'{title}: {len(keys)} sides. Dots: data; lines: fit c model, same colour. '
+    ax_in.set_title(f'{title}: {len(keys)} sides. Dots: data; lines: fit c model, same colour.\n'
                     'Element strips: the danish mask circle that sets the model edge, commonest '
-                    'over donuts\n(opacity: fraction agreeing), from each donut\'s own field, '
+                    'over donuts (opacity: fraction agreeing),\nfrom each donut\'s own field, '
                     'rotator angle and mask. Spider bins left out.', fontsize=8)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     pdf.savefig(fig, dpi=80)
