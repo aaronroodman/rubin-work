@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# giant_donuts variants: one per pupil mask and fit configuration of the giant-donut
+# sides (4 + 4 mm Trim steps of M2 and camera z).
+#
+# Per-entry fields:
+#   mask         danish pupil-mask family. v4.02s is v4.02 fitted at the giant
+#                configuration, with the camera silhouette refitted to the data.
+#   fit_noll     Noll indices of fit c, the nominal Zernike fit
+#   fwhm_arcsec  Kolmogorov blur of the fits (arcsec FWHM)
+#   reference    the reference wavefront the fitted Zernikes are added to
+#   step_mm      M2 and camera z Trim step from the in-focus state (mm)
+#   import       for an import build: aos/giant_donut_pupil study runs and their fit
+#                directories, one per night
+#
+# A different mask, Zernike set or blur is a new variant.
+# ---------------------------------------------------------------------------
+defaults:
+  step_mm: 4.0
+  fwhm_arcsec: 1.0
+  reference: "intrinsicTA: batoid v4.02 at the side's field and Trim offsets"
+
+variants:
+
+  # The pupil study's current configuration (pass 6 v4.02s; night2_pipeline v402s).
+  v402s_fitc:
+    mask: v4.02s
+    fit_noll: [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 22]
+    import:
+      - {night: 20251023, run: 20261023_pupil6, fit_dir: isr_phys_v402s}
+      - {night: 20261107, run: 20261118_night2_20261107, fit_dir: v402s}
+      - {night: 20261108, run: 20261118_night2_20261108, fit_dir: v402s}
