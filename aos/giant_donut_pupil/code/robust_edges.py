@@ -175,7 +175,7 @@ def harmonic_fit(r, az_deg, keep):
 
 
 def robust_edges(image, valid, cx, cy, r_out, noise_e, flagged_in, flagged_out,
-                 expected_in=None, expected_out=None):
+                 expected_in=None, expected_out=None, pad_bins=1):
     """All of step 6 for one image.
 
     Parameters
@@ -185,6 +185,8 @@ def robust_edges(image, valid, cx, cy, r_out, noise_e, flagged_in, flagged_out,
     expected_in, expected_out : `numpy.ndarray`, optional
         Model edges (pixels) to centre the crossing window on; 0.62 r_out and
         r_out when absent or NaN.
+    pad_bins : `int`, optional
+        Flagged bins are widened by this many bins on each side.
 
     Returns
     -------
@@ -214,7 +216,8 @@ def robust_edges(image, valid, cx, cy, r_out, noise_e, flagged_in, flagged_out,
     e = bin_edges(prof, rad, top, top_snr, top_n, ei, eo, noise_e, cnt)
     res = dict(top=top, top_snr=top_snr, top_n=top_n)
     for edge, flag in (('inner', flagged_in), ('outer', flagged_out)):
-        flag = flag | np.roll(flag, 1) | np.roll(flag, -1)
+        for k in range(1, pad_bins + 1):
+            flag = flag | np.roll(flag, k) | np.roll(flag, -k)
         r = e[f'r_{edge}']
         q = e[f'q_{edge}'].copy()
         q[flag] = 'flagged'
