@@ -64,6 +64,21 @@ Open:
 
 ## Log
 
+### 2026-11-18 — night 3 submitted
+
+The `live` database reads cleanly after the WEKA fix; snapshot `20261118` is current.
+
+Night 3 is four intra/extra pairs (20261107 seq 366/388; 20261108 seq 14/36, 147/152,
+168/190), each ±4.000 mm in both M2 z and camera z Trim about the pair midpoint. The
+3.72–4.28 mm steps first quoted were from the previous sweep exposure, not the in-focus
+state; so the ±4 mm masks are used (Aaron). Only z differs within a pair, but the Trim
+decenters are large against night 1 (zero): camera dx −0.54 to +1.01 mm, dy −2.06 to
+−2.82 mm; M2 dx, dy up to 0.30 mm. The masks assume a centred camera.
+
+`night2_pipeline.py` has the two nights (`c68e483`); `code/night3_batch.sh` (`768a8d4`)
+runs the pipeline, the psi labels and page for v402g and v402s, and the v402s gallery.
+Jobs 45630858 (20261107) and 45630859 (20261108), runs `20261118_night2_<day_obs>`.
+
 ### 2026-11-17 — night 3 found; mask element per edge on the psi page
 
 **Night 3.** `find_giant_nights.py --db` on value_added `live` (Trim through 20261110):
@@ -133,15 +148,6 @@ Gallery (`code/psi_gallery.py`, commit `769d65e`): data, fit c model and (data �
 noise per side, model edges coloured by mask element; `gallery.pdf` in run
 `20261117_psi_labels_20261023_pupil6_isr_phys_v402s` (34 science sides, 23 min on one CPU).
 
-Blocked: the value_added `live` database is unreadable after a WEKA fault on `/sdf/data`
-(`value_added/docs/status/build_progress.md`, 2026-11-17); no snapshot has night 3.
-
-Next, night 3 through `night2_pipeline.py`, the psi page and the gallery. Changes needed in
-`night2_pipeline.py`: `NIGHTS` entries 20261107 and 20261108 (band i); `NIGHTS_RUN` in
-`night2_review.py` to `20261117_giant_nights`; a run date other than the fixed
-`RUN_DATE`; masks for the real steps (extra +3.75 mm on both hexapods, intra −3.72 to
-−4.28 mm, varying by exposure; ask Aaron whether to fit masks per step or use the 4 mm
-ones). The fit step and the gallery go to batch, with Aaron's OK.
 
 ### 2026-11-14 — early ΔZ4 tables filed
 
