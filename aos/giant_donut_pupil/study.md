@@ -1,7 +1,7 @@
 ---
 study: giant_donut_pupil
 topic: aos
-status: parked
+status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
 answer: 'v4.02 fits giant donuts better than v1000 (median residual RMS ratio 0.94, dimensionless), and the outer-band Z5-Z7 is pupil bias, not wavefront; the camera silhouette and vane shadows are measured against the model. Open: a common image-frame translation of the spider shadows (dy -1.65 / -2.07 pixels OCS image, extra / intra) and the vane shadow widths (102.8 / 61.3 mm against CAD 50 mm); parked for the CAD review and a Batoid rebuild.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
@@ -63,6 +63,53 @@ Open:
   the translation (−1.69 to −1.80 pixels); 20260127 is not yet fitted.
 
 ## Log
+
+### 2026-11-17 — night 3 found; mask element per edge on the psi page
+
+**Night 3.** `find_giant_nights.py --db` on value_added `live` (Trim through 20261110):
+BLOCK-T746 `infocus_sweep_cam_m2_dz`, i band, 30 s, both hexapods stepped together.
+20261107 seq 366 (intra), 388 (extra); 20261108 seq 14, 152, 168 (intra), 36, 147, 190
+(extra). Steps from the in-focus reference: extra +3754 µm on both, intra −3724 to −4278 µm.
+physical_rotator_angle 0.8–55.5 deg, with intra and extra pairs at about 3–6 and 36–39
+deg: the first night since 20251023 with both sides. Not yet fitted. The catalog `current`
+value_added build (20261105) lacks these nights; the nightly update failed on 2026-11-11
+and on EFD credentials (now `EFDAUTH`), rerun as Slurm job 45567184.
+
+**Mask element per edge** (`code/psi_labels.py`, `code/psi_edges_report.py`, commits
+`0aa82d9`, `69ac659`). Aaron prefers the pass 4 psi page (data dots, model lines) to the
+pass 5 one, and doubted pass 5's aperture labels. Pass 5 took them from one Batoid v4.02
+trace at 1.7 deg / 45 deg, rotator 0, by a vote of the first clipper among rays near the
+edge, and plotted Batoid edges about the ray centroid against data about the fit-a center.
+Now, per donut at its own field, rotator angle and mask: the fit c danish model is rendered
+with each active mask circle removed; the circle whose removal moves the edge most sets it,
+and the move is the margin to the next one. Per-bin 50 % crossings (`pupil_edges.edges`),
+not the robust finder, whose global harmonic fit moves the edge everywhere when M1 inner is
+removed. The pupil clip is widened (`pupil_R_outer` 1.15, `pupil_R_inner` 0.5 of the
+annulus), which otherwise coincides with M1Baffle1 and M1 inner; it moves the fit's edges
+by 0.000 pixels.
+
+First page, run `20261117_psi_labels_20261021_pupil4_science_intra` (pass 4, v4.02g, 16
+science intra sides, 1.6–1.725 deg); every donut agrees on the element in every bin but
+three one-bin ties. Median data − model per range (pixels):
+
+| edge | element | psi (deg) | data − model | margin |
+|---|---|---|---|---|
+| inner | CameraSilhouette | −18 to 18 | +5.39 | 1.18 |
+| inner | M2 inner | 18–58, 302–340 | +2.32, +1.55 | 3.5, 3.7 |
+| inner | M1 inner | 58–302 | −0.48 | ≥ 40 |
+| outer | M1Baffle1 | −132 to 130 | −0.66 | ≥ 40 |
+| outer | M3 outer | 132–226 | −0.40 | 12.6 |
+
+The inner-edge miss sits where elements that move with the ±4 mm camera and M2 steps set
+the edge, not on M1.
+
+Running: Slurm job 45567183, labels for pass 4 (46 sides), pass 6 `isr_phys` and
+`isr_phys_v402s` (49 each), 20251027 `v402g` and `v402s` (70 each).
+
+Next: the pages for those five sets (`psi_edges_report.py --run <run> [--fit-dir <dir>]
+--labels <labels run>`); whether v4.02s removes the silhouette miss; then night 3 through
+`night2_pipeline.py` (needs the value_added snapshot, a 3.75 mm step for the extra masks,
+and a batch OK for the fit step).
 
 ### 2026-11-14 — early ΔZ4 tables filed
 
