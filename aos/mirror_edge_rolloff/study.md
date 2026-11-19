@@ -91,3 +91,30 @@ Plan:
   gives 1.00 and the map roll-off (A = 76.4 nm, w = 27.1 mm) gives 1.09 (rim = peak within
   10 pixels over the 12-25 pixel plateau, dimensionless). The roll-off lowers the M1-inner
   Huber cost from 74 to 64 per bin; the inner-other control changes from 61 to 58.
+
+### 2026-11-18 — first fit, 118 of 176 sides
+
+- Model job 45765378 hit its 4 h limit with 118 sides done (60-74 min per side, not the
+  30-40 min estimated); the 58 running sides were lost. Fit job 45767271 ran on the 118
+  (64 extra, 54 intra): run `20261118_fit_rolloff`.
+- **Intra and extra disagree.** Best grid points (spline-refined; bootstrap [16, 84] is
+  under ±10 % and not the real error):
+
+  | sides | A (nm) | w (mm) | B (nm) | u (mm) |
+  |---|---|---|---|---|
+  | extra | 300 (grid edge) | 37 | 78 | 10 (grid edge) |
+  | intra | 86 | 60 (grid edge) | 283 | 22 |
+  | mirror-lab map | 76.4 | 27.1 | about 80 | about 50 |
+
+  The extra-focal M1 hot rim (data 1.33) needs the steep roll-off (model 1.25; the map
+  gives 1.09). Intra-focal, that roll-off raises the M1-inner Huber cost from 270 to 371
+  per bin and moves the edge +3.7 pixels; the intra data favour the map scale. One
+  exponential roll-off does not fit both sides. The same holds for M3 with the roles
+  swapped.
+- **Control:** M1Baffle1 outer edges match the model on both sides (rim 1.00-1.01 data,
+  0.98 model, dimensionless), with small ripples (+3 to +5 % at 5 pixels, then a dip),
+  consistent with Fresnel fringes washed out by seeing. Inner edges set by other elements
+  (M2, M2 baffle) are not a clean control: their rays also graze M1's inner edge, and
+  extra-focal they show a rim of 1.26.
+- The fits are poor everywhere (Huber cost 260-470 per bin over 76 points, dimensionless),
+  so structure beyond the model remains.
