@@ -118,3 +118,34 @@ Plan:
   extra-focal they show a rim of 1.26.
 - The fits are poor everywhere (Huber cost 260-470 per bin over 76 points, dimensionless),
   so structure beyond the model remains.
+
+### 2026-11-19 — data against candidate roll-offs (118 sides)
+
+`code/compare_profiles.py`, run `20261119_compare_profiles`. One data curve per bin set,
+against five candidates in a common frame, with residuals, by psi and by night.
+Rim = peak within 10 pixels over the 12-25 pixel plateau; cost = mean Huber cost per bin.
+Both are dimensionless.
+
+| edge, side | data rim | nominal rim (cost) | map rim (cost) | best-all rim (cost) |
+|---|---|---|---|---|
+| M1 inner, intra | 0.88 | 0.99 (270) | 0.97 (274) | 0.83 (308) |
+| M1 inner, extra | 1.31 | 0.99 (469) | 1.03 (397) | 1.25 (304) |
+| M3 outer, intra | 1.26 | 0.99 (425) | 1.11 (334) | 1.24 (293) |
+| M3 outer, extra | 0.87 | 0.98 (430) | 0.94 (385) | 0.94 (336) |
+
+Map = A 75 nm, w 27 mm; B 80 nm, u 25 mm. Best-all = A 300 nm, w 60 mm; B 80 nm, u 10 mm
+(nearest grid points).
+
+- **M3:** one turn-up fits both sides fairly well: B about 90 nm, close to the map's
+  +80 nm, but over about 10 mm rather than 50 mm.
+- **M1:** no single roll-off fits both sides. The map is a safe gain: extra-focal cost
+  falls from 469 to 397 and intra-focal is unchanged. The best joint fit matches the
+  extra-focal rim, but it tilts the intra-focal plateau (1.15 at +20 pixels).
+- **Shared ripple:** both sides of the M1 inner edge, and M3 intra, show a peak at about
+  +5 pixels and a dip at about +10 pixels. The pattern has the same sign intra and extra,
+  so it is not a surface slope (that flips sign between the sides). Fresnel fringes are
+  at about the right place: Fresnel scale sqrt(lambda d / 2) = 5.1 pixels for
+  d = 8.4 mm, so maximum near 6 pixels and minimum near 9.5 pixels. But seeing at about
+  7 pixels FWHM should damp them below 1 %. Not understood.
+- **By psi:** the extra-focal M1 rim ranges from 1.17 (psi 180-240 deg) to 1.37
+  (psi 300-360 deg).
