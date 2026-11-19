@@ -73,3 +73,21 @@ Plan:
   rotation (and possible flip) against the telescope frame. That tests the map's
   azimuthal structure (a factor 3 in depth between 30° sectors), and the donuts would fix
   the map-to-frame tie that SUMMARY.md lists as open.
+
+### 2026-11-18 — model grids in batch; fit step
+
+- **Model stage:** `code/model_profiles.py`, Slurm job 45765378, run `20261118_model_profiles`.
+  176 science sides at 1.6-1.725 deg field radius. Grids: M1 A = 0-300 nm × w = 8-60 mm
+  (48 points), M3 B = 0-320 nm × u = 10-50 mm (15 points), blur FWHM 0.8-2.0 arcsec (6).
+  The one-side test matches the full v4.03 trace: inner-edge shift +0.79 pixels (v4.03
+  +0.81), rim 1.09 (v4.03 1.10, dimensionless).
+- **Fit stage:** `code/fit_rolloff.py`. Per bin, the model is shifted (±6 pixels) and
+  scaled to the data at the data's own radii, with Huber loss at 2 sigma. A first version
+  shifted the data instead; the interpolation halves the noise between samples and pulled
+  the shifts to the 0.25-pixel midpoints, so it was dropped. The blur is free per side,
+  shared by the M1 and M3 fits. Errors come from a bootstrap over sides. Controls: M1 grid
+  on inner bins set by other elements, M3 grid on M1Baffle1 outer bins.
+- **Test side** (extra-focal, 84 M1-inner bins): the data rim is 1.43; the nominal model
+  gives 1.00 and the map roll-off (A = 76.4 nm, w = 27.1 mm) gives 1.09 (rim = peak within
+  10 pixels over the 12-25 pixel plateau, dimensionless). The roll-off lowers the M1-inner
+  Huber cost from 74 to 64 per bin; the inner-other control changes from 61 to 58.
