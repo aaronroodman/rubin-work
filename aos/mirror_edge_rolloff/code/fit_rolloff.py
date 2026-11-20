@@ -9,7 +9,8 @@ has a free radial shift (the model moved by delta, on a 0.1 pixel grid over ±6 
 refined by a parabola; the data stay at their own radii) and a free scale. The loss is Huber on residuals in units of the per-point
 sigma, threshold 2 sigma (the scipy ``least_squares`` 'huber' loss with f_scale = 2); the
 scale comes from iteratively reweighted least squares. Sigma per point is the photon plus
-read/sky noise of the data mean, plus the model's ray-sampling noise.
+read/sky noise of the data mean, plus the model's ray-sampling noise. Bins whose nominal
+model runs out of traced rays inside the fitted range (`trim_window`) are dropped.
 
 Bin sets per side, from the model run's labels and per-edge spider cut:
 
@@ -48,6 +49,7 @@ HUBER_C = 2.0
 IRLS_ITER = 4
 MAX_NAN_FRAC = 0.2
 PAD = 12  # window points dropped at each end: room for the ±6 pixel shifts
+WINDOW_FIT_PIX = 19.0  # half-width of the fitted radial range, pixels
 N_BOOT = 300
 SETS = {'m1_inner': ('inner', 'M1', True), 'inner_other': ('inner', 'M1', False),
         'm3_outer': ('outer', 'M3', True), 'baffle_outer': ('outer', 'M1Baffle1', True)}
@@ -139,6 +141,24 @@ def huber_costs(D, V, P, frac):
     return cmin.astype(np.float32), delta.astype(np.float32), s[b, j].astype(np.float32)
 
 
+def trim_window(x, y, inward):
+    """Blank a model window beyond where it runs out of traced rays.
+
+    The dense trace keeps only `model_profiles.ZONES_M` stop radii, so on some edges the
+    model falls off inside its window. Going from the edge into the flat top (``inward``
+    is +1 for an inner edge, -1 for an outer one), points past the first that drops below
+    0.6 of the 8-15 pixel median are set to NaN.
+    """
+    y = y.copy()
+    for i in range(len(y)):
+        d = inward * x[i]
+        ref = np.nanmedian(np.where((d > 8) & (d < 15), y[i], np.nan))
+        low = (d > 8) & (y[i] < 0.6 * ref)
+        if low.any():
+            y[i][d >= d[low].min()] = np.nan
+    return y
+
+
 def side_task(task):
     row, models_dir, out_dir = task
     from rubinwork.products import giant_donuts
@@ -175,6 +195,12 @@ def side_task(task):
         P = m[grid][:, :, bins]  # (K, F, B, N)
         frac = model_noise_frac(P[0, list(m['fwhm_arcsec']).index(1.0)])
         ok = np.isfinite(D).mean(-1) >= 1 - MAX_NAN_FRAC
+        # bins whose nominal model runs out of traced rays inside the fitted range
+        xw = rm - (m['e_in'] if edge == 'inner' else m['e_out'])[bins, None]
+        trimmed = trim_window(xw, P[0, list(m['fwhm_arcsec']).index(1.0)],
+                              1 if edge == 'inner' else -1)
+        lost = (np.isnan(trimmed) & np.isfinite(P[0, 0]) & (np.abs(xw) < WINDOW_FIT_PIX)).any(1)
+        ok &= ~lost
         K, F = P.shape[:2]
         cost = np.full((K, F, len(bins)), np.nan, np.float32)
         delta, scale = cost.copy(), cost.copy()
@@ -470,7 +496,7 @@ def main():
                 side_task(t)
     res = combine(out, models_dir)
     print(json.dumps({g: {k: round(v['value'], 2) for k, v in res[g].items() if isinstance(v, dict)}
-                      for g in ('all', 'extra', 'intra')}), flush=True)
+                      for g in ('all', 'extra', 'intra') if g in res}), flush=True)
     print('done', out, flush=True)
 
 
