@@ -149,3 +149,13 @@ Map = A 75 nm, w 27 mm; B 80 nm, u 25 mm. Best-all = A 300 nm, w 60 mm; B 80 nm,
   7 pixels FWHM should damp them below 1 %. Not understood.
 - **By psi:** the extra-focal M1 rim ranges from 1.17 (psi 180-240 deg) to 1.37
   (psi 300-360 deg).
+
+### 2026-11-19 — all 176 sides
+
+Fit run `20261119_fit_rolloff` (87 extra, 89 intra); comparison `20261119_compare_profiles`;
+focal-plane gallery of the sample `20261119_sample_gallery` (one page per exposure,
+stamps at true size). The 118-side picture holds: all sides A = 252 nm, w = 60 mm (grid
+edge), B = 92 nm, u = 10 mm (grid edge); extra alone A = 300 nm (grid edge), w = 37 mm;
+intra alone A = 88 nm, w = 60 mm. Rims (data; map; best all, dimensionless): M1 inner
+intra 0.88; 0.97; 0.83, extra 1.27; 1.03; 1.26; M3 outer intra 1.27; 1.12; 1.24, extra
+0.87; 0.94; 0.94. Median per-side blur 1.4 arcsec FWHM.
