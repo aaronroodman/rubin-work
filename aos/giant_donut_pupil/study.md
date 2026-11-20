@@ -3,7 +3,7 @@ study: giant_donut_pupil
 topic: aos
 status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'v4.02 fits giant donuts better than v1000 (median residual RMS ratio 0.94, dimensionless), and the outer-band Z5-Z7 is pupil bias, not wavefront; the camera silhouette and vane shadows are measured against the model. Open: a common image-frame translation of the spider shadows (dy -1.65 / -2.07 pixels OCS image, extra / intra) and the vane shadow widths (102.8 / 61.3 mm against CAD 50 mm); parked for the CAD review and a Batoid rebuild.'
+answer: 'Final on the v4.02 masks (pairs review 2026-11-20): v4.02 fits better than v1000 (median residual RMS ratio 0.94, dimensionless); the outer-band Z5-Z7 is pupil bias; the donut is thinner than the model at both edges on every pair. Open: the spider translation (dy −0.6 to −2.1 pixels, neither telescope- nor camera-fixed), the silhouette miss that follows the camera decenter, and the mask edges v4.02 lacks. Next: Josh''s CAD-based model and mask.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -31,36 +31,39 @@ Optical models: `~/notebooks/rubin-optical-model` at commit `e2a1e54` (read only
 
 ## Current answer
 
-Parked 2026-10-23, pending the CAD review and a Batoid rebuild from CAD and Zemax. The
-readable version is `summary.md`; the rows are in `findings.md`.
+Final on the v4.02 masks (pairs review, 2026-11-20): `conclusions.pdf` in run
+`20261120_pairs_review` gives each conclusion with its supporting pages; the rows are in
+`findings.md`. The work moves next to Josh's CAD-based Batoid model and danish mask.
 
 Settled:
 - v4.02 fits better than v1000: residual RMS lower on 16 of 16 clean sides, median ratio
   0.94 (dimensionless). Most of the gain is the spider, 50 mm off in v1000.
 - Inside 1.725 deg the fitted Z5–Z8 stay within ±3 µm of wavefront with no field trend; the
   1–3.9 µm outer-band Z5–Z7 is pupil bias, not wavefront.
-- The +3.3 pixel edge offset looks like coma (Z7 +0.7–0.8 µm) but the whole-donut fits find
-  +0.02 to +0.24 µm: it is not wavefront coma.
-- r_inner / r_outer is 0.0104 above the model (dimensionless), flat in field; diffraction
-  gives about half of the edge miss.
-- The camera silhouette sets the vignetted inner edge at 1.45–1.75 deg. v4.02s matches
-  Batoid to 0.0 pixels median; v1000's single CameraBody disk is within 0.2–1.1 pixels of
-  it, and v4.02g's circle was 43–66 mm short.
-- The spider offset is a translation, dy −1.65 / −2.07 pixels OCS image (extra / intra),
-  not a rotation. It is not danish bias, the TEA (centered to 1.5–2 mm), the detector, ISR
+- The +3.3 pixel edge-centre shift looks like coma (Z7 +0.7–0.8 µm) but the whole-donut fits
+  find +0.02 to +0.24 µm: it is not wavefront coma.
+- The donut is thinner than the model at both edges, on every pair and in both field bands:
+  outer edges 0.2–0.96 pixels inside, and at 0.25–0.5 deg the inner edge +0.35 to +0.77
+  outside. Diffraction gives about half.
+- The v4.02s camera silhouette matches Batoid (0.0 pixels median).
+- The spider offset is a translation, not a rotation; not danish, the TEA, the detector, ISR
   or the rotator.
-- The vane shadows are not opaque strips: free widths 102.8 / 61.3 mm against CAD 50 mm.
+- The vane shadows are wider than opaque 50 mm vanes: about 107 mm extra-focal and 61–67 mm
+  intra-focal on every pair, flat in rotator angle.
+- Where M1 inner sets the edge, the data show the M1 roll-off's signs; where M3 outer sets
+  it, an intra-focal rim (`aos/mirror_edge_rolloff` fits both).
 
 Open:
-- The cause of the common image-frame translation (spider dy above, inner-edge dy +2.1 /
-  +1.8 pixels).
-- The intra silhouette miss, +1.93 ± 0.39 pixels with v4.02s.
+- The spider translation: dy −1.64 / −2.05 pixels (extra / intra) on night 1, −0.59 to −1.61
+  on night 3; neither telescope-fixed nor camera-fixed, and two pairs with the same Trim
+  differ by 0.69 pixels.
+- The camera-silhouette miss with v4.02s follows the camera dy decenter the masks lack
+  (extra −0.65 pixels at 0 mm, +1.25 to +2.43 at −2.1 to −2.8 mm), oppositely on the two
+  sides of focus.
+- The night 1 sign flips with focus at M1 inner and M2 inner shrink on night 3; M2 inner
+  stays +0.6 to +1.9 pixels intra-focal.
 - The TMASection and M1Baffle1 edges the mask lacks (chi2/dof 2.1–2.8 at 1.69–1.70 deg).
-- The vane shadow difference: a +0.10 to +0.15 µm phase strip matches it; the cause is
-  not measured.
-- The residual rotation, −0.026 / +0.087 deg.
-- Night 2: no other night has a usable intra-focal set. 20251027 (extra, i band) repeats
-  the translation (−1.69 to −1.80 pixels); 20260127 is not yet fitted.
+- The residual spider rotation, −0.026 / +0.087 deg on night 1.
 
 ## Log
 
@@ -93,11 +96,11 @@ range:
 |---|---|---|---|
 | 1.6-1.725 | outer, M1Baffle1 | −0.7; −0.95 to −0.55 | −0.5; −0.55 to −0.3 |
 | 1.6-1.725 | outer, M3 outer | −0.25; −0.55 to −0.35 | −0.5; −0.75 to −0.2 |
-| 1.6-1.725 | inner, M1 inner | −0.55; 0.0 to +0.5 | +1.2; 0.0 to +0.55 |
-| 1.6-1.725 | inner, M2 inner | +1.9; +0.6 to +1.3 | −0.9; −0.2 to +0.4 |
-| 1.6-1.725 | inner, silhouette v4.02s | +2.0; 0.0 to +0.4 | −0.65; +1.25 to +2.45 |
-| 0.25-0.5 | outer, M1Baffle1 | −0.45; −0.85 to −0.55 | −0.55; −0.65 to −0.4 |
-| 0.25-0.5 | inner, M1 inner | +0.55; +0.35 to +0.6 | +0.65; +0.5 to +0.75 |
+| 1.6-1.725 | inner, M1 inner | −0.53 to −0.32; 0.0 to +0.48 | +1.18 to +1.34; 0.0 to +0.54 |
+| 1.6-1.725 | inner, M2 inner | +1.85 to +1.93; +0.62 to +1.50 | −0.93 to −0.76; −0.20 to +0.40 |
+| 1.6-1.725 | inner, silhouette v4.02s | +2.02; −0.02 to +0.40 | −0.65; +1.25 to +2.43 |
+| 0.25-0.5 | outer, M1Baffle1 | −0.43; −0.83 to −0.56 | −0.56; −0.67 to −0.41 |
+| 0.25-0.5 | inner, M1 inner | +0.58; +0.35 to +0.57 | +0.65; +0.51 to +0.77 |
 
 - At 0.25-0.5 deg both data edges sit inside the model on both sides of focus: the
   r_inner / r_outer excess holds near the field centre too.

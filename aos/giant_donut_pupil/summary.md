@@ -1,7 +1,6 @@
 # Giant-donut pupil: summary
 
-> **Status:** parked 2026-10-23, pending the CAD review (week of 2026-10-26) and a Batoid
-> model rebuild from CAD and Zemax · **Kind:** summary
+> **Status:** written 2026-10-23 (pass 6); the pairs review of 2026-11-20 extends it, see `findings.md` (E, R rows) and `conclusions.pdf` in run `20261120_pairs_review` · **Kind:** summary
 
 Figure references are `figure_index.csv` ids (`P6-pupil_pass6-39`: pass 6, `pupil_pass6.pdf`,
 page 39) or files in `figures/`. The row ids (P5, V3, ...) are in `findings.md`; the methods

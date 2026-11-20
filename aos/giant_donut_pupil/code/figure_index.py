@@ -35,6 +35,7 @@ PASS_OF_RUN = {
     '20261021_pupil4': '4', '20261022_pupil5': '5', '20261023_pupil6': '6',
     '20261023_night2_review': 'N2', '20261023_night2_20260127': 'N2',
     '20261023_night2_20250920': 'N2', '20261023_night2_20251027': 'N2',
+    '20261118_rim_analysis': 'N3', '20261120_pairs_review': 'R',
 }
 _NUMBER = re.compile(r'^[\s\d.,+\-−eE%()]*$')
 

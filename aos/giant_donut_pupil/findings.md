@@ -1,7 +1,7 @@
 # Giant-donut pupil: findings ledger
 
-> **Status:** current through pupil pass 6 and the night 2 review (2026-10-23); study parked.
-> One row per finding, from the selection work, pupil passes 1–6, the model reviews and night 2. Superseded findings stay, with what replaced them.
+> **Status:** current through the pairs review (2026-11-20, run `20261120_pairs_review`), the last pass on the v4.02 masks; next, Josh's CAD-based model and mask.
+> One row per finding, from the selection work, pupil passes 1–6, the model reviews, nights 2 and 3, and the pairs review. Superseded findings stay, with what replaced them.
 
 Data: 20251023 seq 337 (extra-focal) and 340 (intra-focal), ±4 mm camera and M2. "Extra /
 intra" pairs give the extra-focal value first. Pixels are 10 µm detector pixels; OCS image
@@ -65,7 +65,7 @@ or size not pinned), **superseded** (replaced; the row names by what).
 | V13 | Diffraction (Batoid Huygens, 570–670 nm) moves the edges +0.31 / +0.26 pixels inner and −0.37 / −0.28 outer and gives ratio excess +0.002 / +0.001: about half the data's edge miss and ratio excess, same signs | settled | 20261023_pupil6/pupil_pass6.pdf p44-45 | v4.02s fit to the sims; 26 sides |
 | V15 | A phase strip along the vanes of +0.10 to +0.15 µm of optical path (colder or denser air) gives the extra/intra shadow difference: equivalent width 8.8–9.6 / 3.6–4.5 pixels against the data's 10.0 / 5.7. Its physical cause (temperature of the vanes or the air) is not measured | open | 20261023_pupil6/pupil_pass6.pdf p44-45 | stop-plane Gaussian sigma 40–90 mm |
 | V16 | Offset phase strips move the shadow pattern by 0.13–0.27 pixels, same sign on both sides, so they cannot give the data's 1.65–2.07 pixel translation | settled | 20261023_pupil6/pupil_pass6.pdf p44-45 | |
-| V14 | Cause of the common translation (dy −1.65 / −2.07 pixels) and the inner-edge shift (+2.1 / +1.8 pixels) | open | 20261023_pupil6/pupil_pass6.pdf p7 p44 | not danish, TEA, coma, rotator, detector or ISR |
+| V14 | Cause of the common translation (dy −1.65 / −2.07 pixels) and the inner-edge shift (+2.1 / +1.8 pixels) | open (night 3: R5, R6) | 20261023_pupil6/pupil_pass6.pdf p7 p44 | not danish, TEA, coma, rotator, detector or ISR |
 
 ## Models and viewers
 
@@ -80,3 +80,34 @@ or size not pinned), **superseded** (replaced; the row names by what).
 |---|---|---|---|---|
 | N1 | Of 38 giant-donut sets on 15 nights other than 20251023: 22 extra-only, 8 perturbed, 3 other defocus, 3 not giant, 2 at 8 mm. No night has a usable intra-focal set. Chosen (Aaron 2026-10-23): 20260127 T680 r, 4 mm, RA 185 deg (16 exposures, galactic latitude +61.8 deg, rotator −47.9 to +59.0 deg), its 8 mm seq 220–222, and 20250920 z 8 mm seq 274 | settled | 20261023_night2_review/night2_review.pdf p1-4; choice.json | sets as `night2_review.classify` |
 | N2 | Pass 6 analysis on other nights, extra-focal only: 20251027 i band (M2 dx 0 and ±1000 µm, 59–79 sides per group) gives spider dy −1.69 to −1.80 pixels and inner-edge dy +1.81 to +2.05 pixels OCS image, against night 1's −1.65 and +2.10; the free vane width is 76–92 mm against night 1's 103 mm. 20260127 is not yet fitted | open | 20261023_night2_20251027/night2_20251027.pdf p2-9; 20261023_night2_20250920/night2_20250920.pdf p2 | as pass 6; preliminary, run before the model rebuild |
+
+## Night 3 and edge elements
+
+Night 3 is BLOCK-T746, i band, 30 s: 20261107 seq 366 / 388 and 20261108 seq 14 / 36,
+152 / 147, 168 / 190 (intra / extra), ±4 mm in camera z and M2 z, with camera dy Trim
+−2.1 to −2.8 mm. The per-element numbers are in the pairs review (R rows), which uses the
+corrected labels (R8).
+
+| # | claim | status | evidence | conventions |
+|---|---|---|---|---|
+| E1 | The mask element that sets each model edge, per donut at its own field, rotator angle and mask: the circle whose removal moves the edge most. At 1.6-1.725 deg the inner edge is set by M1 inner, M2 inner or the camera silhouette, and the outer edge by M1Baffle1 or M3 outer. The inner-edge misses sit where elements that move with the camera and M2 steps set the edge | settled | 20261117_psi_labels_20261021_pupil4_science_intra/psi_edges.pdf p1-2 | psi as in `method.md`; per-bin 50 % crossings |
+| E2 | Edge rule R0 (50 % of the bin's flat top) with the per-edge spider cut (a fit c shadow within 6 pixels of that edge) is the edge definition (Aaron, 2026-11-18). R2 (steepest slope) is the noisiest; R1 (local plateau) tracks R0 to 0.15 pixels | settled | Log 2026-11-18 | about 155 bins per edge per side |
+| E3 | Where M1 inner sets the inner edge, the data rim is 1.36-1.48 extra-focal and 0.90-0.95 intra-focal (peak over plateau, dimensionless); Batoid v4.03 (the azimuthal-mean M1 roll-off) gives the observed edge-shift signs but a rim of 1.10. Where M3 outer sets the outer edge, there is an intra-focal rim of 1.33-1.38 and none extra-focal, as a turned-up edge gives. The roll-off fits continue in `aos/mirror_edge_rolloff` | settled | 20261118_rim_analysis/rim_analysis.pdf p1-5 | rim: peak within 10 pixels over the 12-25 pixel plateau |
+| E4 | Bright rims inside both edges (up to 1.3 of the flat top) and a skirt outside the outer edge at some azimuths (about 0.25 of the flat top for 5-15 pixels) that the model lacks | settled | 20261118_edge_review; Log 2026-11-18 | |
+
+## Pairs review (night 1 and night 3)
+
+Pair 0 is night 1 (20251023 340 / 337, r band, 60 s); pairs 1-4 are night 3. Per visit,
+science sides; "night 1; night 3 range". Data − model in pixels, OCS image.
+
+| # | claim | status | evidence | conventions |
+|---|---|---|---|---|
+| R1 | Within each pair the absolute Trim differs only in dof0 and dof5 (−8000 µm intra − extra; no other DOF over 0.5 µm). Rotator angle 0.0-55.5 deg; camera dy Trim 0, −2.06, −2.23, −2.82 mm | settled | 20261120_pairs_review/summary.pdf p1 | value_added `visit_telemetry`; physical_rotator_angle |
+| R2 | The outer edge sits inside the model on every pair, both sides of focus and both field bands: M1Baffle1 −0.3 to −0.95 pixels at 1.6-1.725 deg and −0.4 to −0.85 at 0.25-0.5 deg; M3 outer −0.2 to −0.75. Diffraction gives −0.37 / −0.28 of it (V13) | settled | 20261120_pairs_review/summary.pdf p2-3 | bin-weighted median over the psi ranges the element sets |
+| R3 | Near the field centre (0.25-0.5 deg) the inner edge (M1 inner) sits +0.35 to +0.77 pixels outside the model on both sides of focus: the r_inner / r_outer excess (P11) holds there too | settled | 20261120_pairs_review/summary.pdf p3 | v4.02g |
+| R4 | The camera-silhouette inner-edge miss with v4.02s follows the camera dy decenter, which the masks do not include: extra −0.65 at 0 mm; +1.25 at −2.06 mm, +2.11 at −2.23 mm, +1.98 and +2.43 at −2.82 mm (pairs 3, 4); intra +2.02 at 0 mm, −0.02 to +0.40 on night 3. With v4.02g the extra miss grows from +2.77 to +4.4 to +6.4. Why the two sides of focus move oppositely is not explained | open | 20261120_pairs_review/summary.pdf p2 p5 | masks assume a centred camera |
+| R5 | The night 1 inner-edge sign flips with focus shrink on night 3 (v4.02g and v4.02s): M1 inner extra +1.18 to +1.34; 0.0 to +0.54, intra −0.53 to −0.32; 0.0 to +0.48; M2 inner intra +1.85 to +1.93; +0.62 to +1.50, extra −0.93 to −0.76; −0.20 to +0.40 | open | 20261120_pairs_review/summary.pdf p2 | v4.02g and v4.02s |
+| R6 | Spider translation dy −1.64 / −2.05 pixels (extra / intra) on night 1, −0.59 to −1.61 on night 3. Neither a telescope-fixed nor a camera-fixed offset fits (Huber fit [dx, dy]_OCS = a + R(rtp) b: median residual 0.3-0.4 pixels against per-visit errors 0.03-0.09), and pairs 3 and 4, with the same Trim, differ by 0.69 pixels intra. The inner-edge circle dy falls from +2.10 / +1.78 to +0.68-1.40 pixels | open | 20261120_pairs_review/summary.pdf p4 | science sides; error of the median |
+| R7 | Free vane width extra 102.8 (night 1) and 106.8-107.1 mm, with two night 3 visits at the 120 mm grid edge; intra 61.3 and 63.3-67.3 mm. Flat in rotator angle; the extra / intra difference holds on every pair | settled | 20261120_pairs_review/summary.pdf p4 | central band; CAD 50 mm; grid 30-120 mm |
+| R8 | Near the field centre, removing M1Baffle1 also loses the inner-edge crossing, so it tied M1 inner at the 50 pixel cap and won 4868 of 14760 inner-edge bins at 0.25-0.5 deg. `psi_labels.consistent_kind` takes the runner-up of the right kind (inner edges: obscurations; outer edges: clear apertures). It relabels 2-3 % of the inner-edge bins of the 1.6-1.725 deg runs, which E1 and the 2026-11-17 / 11-18 Log tables used; no outer-edge bin changes | settled | Log 2026-11-20 | |
+
