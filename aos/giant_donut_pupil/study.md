@@ -64,6 +64,53 @@ Open:
 
 ## Log
 
+### 2026-11-20 — pairs review on the v4.02 masks
+
+The final review of this study on v4.02g and v4.02s, before the move to Josh's CAD-based
+Batoid model and danish mask. Plan: `pairs_review_plan.md`; code: `code/pairs_review.py`
+(`a10381a` and this commit). Run `20261120_pairs_review`: `conclusions.pdf` (each study
+conclusion and its supporting pages), `summary.pdf`, and per pair `focal_plane.pdf`,
+`fit_gallery.pdf`, `edges.pdf`.
+
+Pairs: night 1 (20251023 340 / 337) as pair 0, and four night 3 pairs (20261107 366 / 388;
+20261108 14 / 36, 152 / 147, 168 / 190). Within each pair the absolute Trim differs only in
+dof0 and dof5 (−8000 µm intra − extra; no other DOF over 0.5 µm). Rotator angles 0.0–55.5
+deg; camera dy Trim 0, −2.06, −2.23 and −2.82 mm. No new fits: 1.6-1.725 deg with both
+masks and 0.25-0.5 deg with v4.02g, which v4.02s equals below 1.4 deg. New element labels
+at 0.25-0.5 deg (`psi_labels.py --band`), and 577 rendered models, in Slurm job 46023018.
+
+Element labels: near the field centre, removing M1Baffle1 also loses the inner-edge
+crossing, so it ties M1 inner at the 50 pixel cap and won 4868 of 14760 inner-edge bins at
+0.25-0.5 deg. `psi_labels.consistent_kind` takes the runner-up where an inner edge has a
+clear-aperture label or an outer edge an obscuration label. It also moves 2-3 % of the
+inner-edge bins of the outer-band runs (509 of 26100 on 20261108 v402g), which the element
+tables of 2026-11-17 and 11-18 included. No outer-edge labels change.
+
+Median data − model edge per visit (pixels), science sides; night 1 first, then the night 3
+range:
+
+| band (deg) | edge, element | intra | extra |
+|---|---|---|---|
+| 1.6-1.725 | outer, M1Baffle1 | −0.7; −0.95 to −0.55 | −0.5; −0.55 to −0.3 |
+| 1.6-1.725 | outer, M3 outer | −0.25; −0.55 to −0.35 | −0.5; −0.75 to −0.2 |
+| 1.6-1.725 | inner, M1 inner | −0.55; 0.0 to +0.5 | +1.2; 0.0 to +0.55 |
+| 1.6-1.725 | inner, M2 inner | +1.9; +0.6 to +1.3 | −0.9; −0.2 to +0.4 |
+| 1.6-1.725 | inner, silhouette v4.02s | +2.0; 0.0 to +0.4 | −0.65; +1.25 to +2.45 |
+| 0.25-0.5 | outer, M1Baffle1 | −0.45; −0.85 to −0.55 | −0.55; −0.65 to −0.4 |
+| 0.25-0.5 | inner, M1 inner | +0.55; +0.35 to +0.6 | +0.65; +0.5 to +0.75 |
+
+- At 0.25-0.5 deg both data edges sit inside the model on both sides of focus: the
+  r_inner / r_outer excess holds near the field centre too.
+- The night 1 sign flips with focus (M1 inner, M2 inner, silhouette) shrink or swap on
+  night 3: the silhouette miss moves from intra to extra.
+- Spider shadows, science sides, per visit: dy −1.65 / −2.05 pixels (extra / intra) on
+  night 1, −0.6 to −1.6 on night 3. Neither a telescope-fixed nor a camera-fixed offset fits
+  (Huber fit, median residual 0.3-0.4 pixels against per-visit errors about 0.05), and
+  pairs 3 and 4, with the same Trim, differ by 0.7 pixels intra. Free vane width 102-120 mm
+  extra, 61-67 mm intra on every pair, flat in rotator angle.
+
+Waiting for Aaron's review of the run before `findings.md` and the answer are updated.
+
 ### 2026-11-18 — rim analysis: edge rule R0, the M1 roll-off and an M3 outer rim
 
 Edge rules compared (`code/edge_rules.py`, `9dcc10c`; runs `20261118_edge_rules_<run>_<fit>`

@@ -45,6 +45,28 @@ MIN_MOVE_PIX = 0.3
 OPEN_OUTER, OPEN_INNER = 1.15, 0.5
 LOST_PIX = 50.0
 TIE = 'tie'
+# Mask circles that bound the light from outside; the rest (inner circles, the camera
+# silhouette) are obscurations.
+CLEAR = {'M1Baffle1 outer', 'M2 outer', 'M3 outer', 'Filter_entrance outer', 'L3_entrance outer',
+         'L3_exit outer'}
+
+
+def consistent_kind(lab):
+    """Take the runner-up where an edge's element is of the wrong kind.
+
+    An inner edge is set by an obscuration and an outer edge by a clear aperture. Near the
+    field centre, removing M1Baffle1 also loses the inner-edge crossing, so it ties M1 inner
+    at `LOST_PIX` and can win; there the runner-up of the right kind is the element.
+    """
+    lab = lab.copy()
+    for e, clear in (('inner', False), ('outer', True)):
+        el, sec = lab[f'element_{e}'], lab[f'second_{e}']
+        def kind(v):
+            return v.map(lambda x: (x in CLEAR) if isinstance(x, str) and x != TIE else None)
+        swap = (kind(el) == (not clear)) & (kind(sec) == clear)
+        lab.loc[swap, [f'element_{e}', f'second_{e}']] = lab.loc[swap, [f'second_{e}',
+                                                                       f'element_{e}']].to_numpy()
+    return lab
 
 
 def elements(params, field_r_deg):

@@ -66,6 +66,7 @@ def load(run, fit_dir, label_runs):
     c, b, _ = pl._load(run, fit_dir)
     lab = pd.concat([pd.read_parquet(pl.STUDY_OUT / r / 'labels.parquet') for r in label_runs],
                     ignore_index=True).drop_duplicates(['key', 'side', 'bin'])
+    lab = pl.consistent_kind(lab)
     keep = ['key', 'side', 'bin'] + [f'{w}_{e}' for w in ('element', 'second') for e in
                                      ('inner', 'outer')] + \
         [f'{w}margin_{e}_pix' for w in ('', 'second_') for e in ('inner', 'outer')]

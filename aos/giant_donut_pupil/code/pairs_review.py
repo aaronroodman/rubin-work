@@ -333,7 +333,8 @@ _LAB = {}
 def _labels(run, fit_dir, which):
     k = (run, fit_dir, which)
     if k not in _LAB:
-        _LAB[k] = pd.read_parquet(OUT / label_runs(run, fit_dir, which) / 'labels.parquet')
+        _LAB[k] = pl.consistent_kind(
+            pd.read_parquet(OUT / label_runs(run, fit_dir, which) / 'labels.parquet'))
     return _LAB[k]
 
 
@@ -735,6 +736,7 @@ CONCLUSIONS = [
 def conclusions_pdf(path, out):
     import fitz
     doc = fitz.open()
+    srcs = {}
     for title, text, refs in CONCLUSIONS:
         page = doc.new_page(width=792, height=612)
         src = '\n'.join(f'{f} p{",".join(map(str, pp))}' for f, pp in refs)
@@ -743,10 +745,12 @@ def conclusions_pdf(path, out):
         page.insert_textbox(fitz.Rect(54, 440, 738, 580), 'Supporting pages that follow:\n' + src,
                             fontsize=9)
         for f, pp in refs:
-            sdoc = fitz.open(out / S if f == S else OUT / f)
+            if f not in srcs:
+                srcs[f] = fitz.open(out / S if f == S else OUT / f)
             for k in pp:
-                doc.insert_pdf(sdoc, from_page=k - 1, to_page=k - 1)
-    doc.save(path)
+                doc.insert_pdf(srcs[f], from_page=k - 1, to_page=k - 1)
+    # pages copied from one source share its fonts and images: write them once
+    doc.save(path, garbage=4, deflate=True)
     print('wrote', path, flush=True)
 
 
