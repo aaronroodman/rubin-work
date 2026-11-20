@@ -224,12 +224,15 @@ def _load(run, fit_dir):
     return c, b, (run if g_masks else p3.MASK_RUN, run / 'masks')
 
 
-def select(c, all_sides=False, groups=None):
+def select(c, all_sides=False, groups=None, band=None):
     """Science sides at 1.6-1.725 deg and corner sides at 1.4-1.75 deg, as the pass 4 page.
 
-    `groups`, if given, keeps only those (sensor class, side) pairs.
+    `groups`, if given, keeps only those (sensor class, side) pairs. `band`, if given, is
+    a (low, high) field radius range in deg: science sides in it, no corner sides.
     """
-    if not all_sides:
+    if band is not None:
+        c = c[(c.sensor_class == 'science') & c.field_r_deg.between(*band)]
+    elif not all_sides:
         sci = (c.sensor_class == 'science') & c.field_r_deg.between(1.6, 1.725)
         cor = c.sensor_class.isin(['SW0', 'SW1']) & c.field_r_deg.between(1.4, 1.75)
         c = c[sci | cor]
@@ -294,13 +297,15 @@ def _one(task):
     return out
 
 
-def run_labels(run, fit_dir=None, workers=1, fwhm=1.0, all_sides=False, groups=None):
+def run_labels(run, fit_dir=None, workers=1, fwhm=1.0, all_sides=False, groups=None, band=None):
     """Labels for the selected sides of one run, into a new ``psi_labels`` study run."""
     import multiprocessing as mp
     from rubinwork.common import study_run
     c, b, mask_run = _load(run, fit_dir)
-    c = select(c, all_sides, groups)
+    c = select(c, all_sides, groups, band)
     tag = run if fit_dir is None else f'{run}_{fit_dir}'
+    if band is not None:
+        tag += '_band_' + '_'.join(f'{v:g}'.replace('.', 'p') for v in band)
     if groups:
         tag += '_' + '_'.join(f'{k}_{s}' for k, s in groups).lower()
     out_dir = study_run('aos/giant_donut_pupil', f'psi_labels_{tag}').path
@@ -336,9 +341,11 @@ def main():
     p.add_argument('--all-sides', action='store_true', help='every side, not the psi bands')
     p.add_argument('--group', action='append', default=None,
                    help='CLASS:SIDE to keep, e.g. science:intra; repeatable')
+    p.add_argument('--band', type=float, nargs=2, default=None, metavar=('LO', 'HI'),
+                   help='science sides in this field radius range (deg) instead of the psi bands')
     a = p.parse_args()
     groups = [tuple(g.split(':')) for g in a.group] if a.group else None
-    run_labels(a.run, a.fit_dir, a.workers, a.fwhm, a.all_sides, groups)
+    run_labels(a.run, a.fit_dir, a.workers, a.fwhm, a.all_sides, groups, a.band)
 
 
 if __name__ == '__main__':
