@@ -14,8 +14,8 @@ plateau level.
 The by-psi pages (30 deg steps) show whole profiles, inner edge to outer edge, over the
 flat-top median; bins crossed by a vane shadow (``spider_bins`` run) and their neighbours
 are dropped (`full_rows`), and a check
-page per side marks the kept and dropped bins on one donut. The models cover only the
-50-pixel windows of the grids, so they are drawn at the two edges.
+page per side marks the kept and dropped bins on one donut. The models are drawn over
+the fitted ±19 pixels of each edge.
 
 psi is the image azimuth about the donut center measured from the direction away from
 the field center: psi = (OCS image azimuth − (field azimuth + 180 deg)) mod 360, as in
@@ -296,7 +296,12 @@ def full_rows(fit_dir, models_dir, keys, sides_tab, cands, C, spider_flags):
 
 
 def _cat(rows, field, sel):
-    return np.concatenate([r[field][s] for r, s in zip(rows, sel)])
+    parts = [np.asarray(r[field])[s] for r, s in zip(rows, sel)]
+    if parts[0].ndim == 2:  # radial grids differ in length between sides: pad with NaN
+        n = max(p.shape[1] for p in parts)
+        parts = [np.pad(p.astype(float), ((0, 0), (0, n - p.shape[1])), constant_values=np.nan)
+                 for p in parts]
+    return np.concatenate(parts)
 
 
 def full_panel(ax, rows, lo, hi, show):
@@ -330,7 +335,10 @@ def full_panel(ax, rows, lo, hi, show):
     txt = [f'data peak / flat top: inner {pk_in:.2f}, outer {pk_out:.2f}']
     for name in show:
         for edge, off in (('in', 0.0), ('out', width)):
-            xm, ym = med(_cat(rows, f'{name}_x_{edge}', sel) + off, _cat(rows, f'{name}_{edge}', sel))
+            xw = _cat(rows, f'{name}_x_{edge}', sel)
+            # only the fitted range is a model: past it the dense trace can run out of rays
+            ym = np.where(np.abs(xw) <= fr.WINDOW_FIT_PIX, _cat(rows, f'{name}_{edge}', sel), np.nan)
+            xm, ym = med(xw + off, ym)
             ax.plot(xm, ym, '-', color=COLORS[name], lw=0.8, label=name if edge == 'in' else None)
     li, lo_ = _cat(rows, 'label_in', sel), _cat(rows, 'label_out', sel)
     for lab, arr in (('inner', li), ('outer', lo_)):
@@ -450,8 +458,8 @@ def main():
             fig.supxlabel('pixels from the data inner edge; the outer half is aligned on the data outer '
                           'edge, placed at the median width (grey lines: the two edges)', fontsize=7)
             fig.supylabel('profile / flat-top median (dimensionless)', fontsize=7)
-            fig.suptitle(f'{side}-focal, whole profiles by psi; models are drawn in the 50-pixel '
-                         'windows the grids cover', fontsize=9)
+            fig.suptitle(f'{side}-focal, whole profiles by psi; models drawn over the fitted ±19 pixels '
+                         'of each edge', fontsize=9)
             fig.tight_layout()
             pdf.savefig(fig)
             plt.close(fig)

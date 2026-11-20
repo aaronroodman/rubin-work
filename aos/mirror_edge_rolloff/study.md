@@ -159,3 +159,39 @@ edge), B = 92 nm, u = 10 mm (grid edge); extra alone A = 300 nm (grid edge), w =
 intra alone A = 88 nm, w = 60 mm. Rims (data; map; best all, dimensionless): M1 inner
 intra 0.88; 0.97; 0.83, extra 1.27; 1.03; 1.26; M3 outer intra 1.27; 1.12; 1.24, extra
 0.87; 0.94; 0.94. Median per-side blur 1.4 arcsec FWHM.
+
+### 2026-11-19 — vane flags, trimmed windows, whole profiles by psi
+
+Aaron asked for whole profiles (inner edge to outer edge) in 30 deg psi ranges, with no
+vane shadows. Code `668891a` and this commit.
+
+- **Vane flags:** `code/spider_bins.py`, run `20261119_spider_bins`. Batoid v4.02 with
+  vanes on a 400 × 400 stop grid; a bin is dropped if any vane-blocked ray lands between
+  3 pixels inside the inner edge and 3 pixels outside the outer edge, and so are its two
+  neighbours. Taking the shadows from dips in the data fails: single 2 deg bins carry
+  ±10–20 % texture across the flat top.
+- **Truncated model windows:** the dense trace keeps only stop radii 2.30–3.10 and
+  3.60–4.25 m, so in some windows the model runs out of rays. Bins where that reaches the
+  fitted ±19 pixels are now dropped from the fit (`fit_rolloff.trim_window`): 0 % of
+  m1_inner and baffle_outer, 7.4 % of m3_outer, 26.6 % of inner_other bins. Refit, Slurm
+  job 46012866, run `20261119_fit_rolloff` (it overwrote the untrimmed run of the same
+  name): the best fits do not change at the quoted precision.
+- **Whole profiles:** run `20261119b_compare_profiles`, pages 6 (intra) and 8 (extra).
+  Inner half aligned on each bin's inner edge, outer half on its outer edge placed at the
+  median width; models drawn over the fitted ±19 pixels only.
+
+Data peak over the flat top within 10 pixels of the edge (dimensionless), by 30 deg psi
+range, 0–30 first:
+
+| edge | side | psi 0–120 | 120–240 | 240–360 |
+|---|---|---|---|---|
+| inner | extra | 1.43, 1.46, 1.41, 1.38 | 1.11, 1.23, 1.24, 1.10 | 1.37, 1.43, 1.45, 1.41 |
+| outer | intra | 1.03, 1.03, 1.03, 1.00 | 1.08, 1.16, 1.19, 1.09 | 1.00, 1.02, 0.99, 1.02 |
+
+- The extra-focal inner rim is strong (1.37–1.46) wherever M1 or M2BaffleCAD sets the
+  edge, and weaker (1.10–1.24) at psi 120–240, where M2 inner sets it in 79–100 % of the
+  bins. Best all reaches about 1.3; the map and nominal about 1.15.
+- The intra-focal outer rim is only where M3 outer sets the edge (psi 150–210, 1.16–1.19);
+  no candidate reaches it.
+- The fit wants w past the grid's 60 mm and u below its 10 mm (and extra A past 300 nm);
+  a wider grid needs a new model batch run.
