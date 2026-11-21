@@ -105,7 +105,18 @@ Full set: 770 FAM, 144 CWFS, 84 giant donuts, about 100 CPU minutes.
   than `None`: first item for `v4speed_mask_vs_batoid`.
 - `flux_m2` is the stamp sum; Kolmogorov wings past the stamp edge are not in it.
 
+## v4speed_mask_vs_batoid pass 1 (2026-11-21)
+
+`sim_donuts` `v4_speed_mono@20261120` built (job 46234293, 7.5 min) and current.
+`batoid_intrinsic` build `20261121` stores Noll 1-78: ts_wep's Danish reference includes
+the TA tilts, and giant-donut z2 reaches 14 µm (3 px). Study result in
+`aos/v4speed_mask_vs_batoid/study.md`: FAM l1 0.018, CWFS 0.022-0.025, giant 0.033
+(fraction of flux, dimensionless); giant pupil edges do not match.
+
+Conventions to keep: Danish centres an odd stamp at +0.5 px in x and y; Danish `dx`, `dy`
+are arcsec; `spider_angle=0` for the v4_speed obscuration file.
+
 ## Next action
 
-Aaron's OK for the batch build, then `set-current`, then the `v4speed_mask_vs_batoid`
-study (no fits needed), then `sim_donut_fits`.
+Aaron to choose: refit the obscuration file at the giant configuration (or ask Josh)
+before the fits, or go on to `sim_donut_fits`, whose Danish fits need batch (ask first).
