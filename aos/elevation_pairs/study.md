@@ -96,3 +96,12 @@ range is |dEl| <= 30 deg, and the y range spans the 0.1% to 99.9% quantiles. The
 `dmt_*` rows of `slopes.csv` hold these fits. The v1 slope is +2.47e-4 +- 0.28e-4 per deg
 of elevation (dimensionless v1), as before. Run `output/20261029_state_d13_22_12_dt5min_all/`,
 rewritten.
+
+### 2026-11-20: midpoint-elevation bins, any dEl, night bootstrap, bounce comparison
+
+`elevation_pairs_bins_v1.ipynb`, run `output/20261120_bins_d13_22_12_dt5min_lut20251209/`. Pairs within 5 min at any dEl, day_obs >= 20251209 (the last LUT change, `thermal_focus.md`) less the `LUT_EPOCH_OFFSET_NIGHTS`: 175,399 pairs with a state, 126 nights. 87,888 of them have |dEl| < 1 deg. Bounce points are copied into `code/bounce_points_20261102.csv` by `code/extract_bounce_points.py`.
+
+- The 1000-resample night bootstrap took 1,471 s. Bootstrap errors are 3-7 times the formal Huber errors (dimensionless ratio).
+- A night-clustered sandwich error matches that bootstrap to within 5% for all 39 quantities and 4 samples, in 0.55 s. It replaces the bootstrap from the next run.
+- The LUT page shows two more nights on a different M2 LUT, about +1,300 um in M2 dz: 20251214 and 20251216 (566 visits). The camera dz branches are per-band focus offsets.
+- DZ(1,4) slope of deviation - Trim per midpoint bin [um of wavefront per deg]: 25-40 deg -0.0103 +- 0.0030, 40-55 deg +0.0032 +- 0.0010, 55-75 deg -0.0001 +- 0.0007. The signs follow the bounce points between 30, 40, 50 and 70 deg, but the slopes are 4-8 times smaller.
