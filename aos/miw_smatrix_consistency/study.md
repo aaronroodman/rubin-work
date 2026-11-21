@@ -1,13 +1,13 @@
 ---
 study: miw_smatrix_consistency
 topic: aos
-status: active
+status: answered
 question: Does a Danish-fitted sensitivity matrix (sparse_no22 for the sparse fit, dense21 for the dense fit) make the nine per-rotator-bin MIWs agree better than the v13 matrix?
-answer: ''
+answer: 'Yes for sparse_no22: on the pair-cut fam_tables, sparse 50/34 is the most consistent MIW over the nine bins (Z8 scatter 0.019 um against 0.068 um for dense21) and the closest to Batoid on Z5-Z8 (Z5 0.045 um RMS); dense21 is no better than v13, and 50/50 RBR bounds the DoF but doubles Z5 against Batoid.'
 uses:
-  fam_tables: d13-sparse@20261106, danish_1_3@20261028b
+  fam_tables: d13-sparse@20261106, d13-sparse@20261116, danish_1_3@20261028b, danish_1_3@20261116
   fitted_smatrix: dense21@20261114, sparse_no22@20261114
-  miw: d13-A_50_34_i@20261025
+  miw: d13-A_50_34_i@20261025, d13-A_50_34_i_fsm_dense21@20261116b, d13-A_50_50_i_rbr_fsm_dense21@20261116, d13s-A_50_34_i_fsm_sparse_no22@20261116b, d13s-A_50_50_i_rbr_fsm_sparse_no22@20261116
 started: 2026-11-16
 ---
 
@@ -19,9 +19,29 @@ Does a Danish-fitted sensitivity matrix (sparse_no22 for the sparse fit, dense21
 
 ## Current answer
 
-None yet.
+Yes for sparse_no22, after the pair cut on single donuts. Sparse 50/34 is the most
+consistent of the MIWs over the nine rotator bins (scatter over bins, RMS over cells:
+Z8 0.019 µm against 0.068 µm for dense21) and the closest to Batoid on Z5–Z8 (OCS term
+of the split minus Batoid, RMS over field radius 0.1–1.6 deg: Z5 0.045 µm, Z8 0.018 µm).
+Dense21 is no better than v13. 50/50 RBR bounds the DoF (p95 |DoF|/range 51 → 1.1 for
+sparse, dimensionless) but moves the MIW away from Batoid (sparse Z5 0.045 → 0.089 µm).
 
 ## Log
+
+### 2026-11-20 — answered: sparse_no22 50/34 on the pair-cut tables
+
+The study is answered: the sparse_no22 fitted S-matrix gives the most consistent MIW and
+the closest to Batoid on Z5–Z8, with the 50/34 scheme on the pair-cut `fam_tables`
+builds @20261116. The summary page of run `20261117_ocs_split_maps_rbr` is
+[figures/ocs_minus_batoid.png](figures/ocs_minus_batoid.png).
+
+- Dense21 is no better than v13. That comparison used the v13 MIW from before the pair
+  cut; a pair-cut v13 rebuild is not needed (Aaron: very unlikely to change it).
+- RBR is not the better choice for the MIW: it bounds the DoF, but B1_1 sits at its
+  range (±0.454 µm) and Z5 against Batoid doubles for sparse.
+
+Left open, not needed for the answer: dense21 Z5 values at the field corners; night
+20250519 loses 27–37% of donuts to the pair cut (not in the MIW sample).
 
 ### 2026-11-16 — started
 
