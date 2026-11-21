@@ -3,7 +3,7 @@ study: v4speed_mask_vs_batoid
 topic: aos
 status: answered
 question: With the wavefront fixed at the Batoid v4_speed TA Zernikes (no fit), how well does the Danish forward model with the v4_speed obscuration file match Batoid-traced donuts, by defocus configuration (FAM, CWFS, giant), side and field position?
-answer: Danish (v4_speed obscuration, spider_angle 0 deg) at the batoid TA wavefront misplaces a median 1.8% of the flux on FAM donuts, 2.2-2.5% on CWFS and 3.3% on giant donuts, flat to 1.4 deg and up to 6-8% at the outer CWFS corners; the giant pupil edges do not match (fitted blur 1.5 arcsec at a true 1.0 arcsec).
+answer: Danish (v4_speed obscuration, spider_angle 0 deg) at the batoid TA wavefront misplaces a median 1.8% of the flux on FAM donuts, 2.2-2.5% on CWFS and 3.3% on giant; within 1.725 deg the worst after a nuisance fit is 2.4% (FAM, CWFS) and 4.7% (giant). The giant pupil edges do not match (fitted blur 1.5 arcsec at a true 1.0 arcsec).
 uses:
   batoid_intrinsic: v4_speed@20261121
   sim_donuts: v4_speed_mono@20261120
@@ -21,10 +21,33 @@ With the wavefront fixed at the Batoid v4_speed TA Zernikes (no fit), how well d
 At the batoid TA wavefront, with no wavefront fit, Danish with the v4_speed obscuration
 file misplaces a median 1.8% of the flux on FAM donuts, 2.2-2.5% on CWFS and 3.3% on
 giant donuts (l1, dimensionless; spider_angle 0 deg). It is flat to 1.4 deg field
-radius, then rises to 6-8% at the outer CWFS corners. The giant-donut pupil edges do not
-match: a nuisance fit inflates the blur to 1.5 arcsec against a true 1.0 arcsec.
+radius, then rises; within the 1.725 deg limit the worst after a nuisance fit is 2.4%
+(FAM, CWFS) and 4.7% (giant), and the 6-8% CWFS corners all lie beyond it. The
+giant-donut pupil edges do not match: the fit inflates the blur to 1.5 arcsec against a
+true 1.0 arcsec.
 
 ## Log
+
+### 2026-11-21 — pass 1 PDF: 1.725 deg limit, metric equations, edge examples
+
+PDF of `20261121_ta_model` rewritten in place (code `30a9643`): metric equations
+on page 1, a dashed line at the 1.725 deg field-radius limit on page 2, and example
+donuts near the edge: FAM and giant 4 per side from 1.4 to 1.725 deg, CWFS 3 per side
+from its innermost point to 1.725 deg. Numbers unchanged.
+
+Within 1.725 deg, the largest l1 after the nuisance fit (fraction of flux misplaced,
+dimensionless) is 0.023 (FAM extra), 0.024 (FAM intra, CWFS intra), 0.023 (CWFS extra),
+0.045 (giant extra) and 0.047 (giant intra). The CWFS 0.060-0.078 stamps are all at
+1.77-1.82 deg, outside it.
+
+Blur and wavelength, checked in the code: both images use a galsim Kolmogorov of fixed
+FWHM with no wavelength scaling. The sims convolve it without the pixel on a 3x
+oversampled deposit and sum to 10 µm pixels; Danish draws it with galsim's default
+pixel convolution (`donut_model.py:282`). The sims trace at 619.4 nm, which enters
+through the glass indices, and the TA reference is batoid at 619.4 nm; Danish's model is
+geometric given Zernikes in m, with no wavelength of its own (`bandpass_filter` None).
+
+[Agreement against field radius](figures/field_radius.png) (replaced).
 
 ### 2026-11-21 — pass 1: Danish at the TA wavefront against the sims
 
