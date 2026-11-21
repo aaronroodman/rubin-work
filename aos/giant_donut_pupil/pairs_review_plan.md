@@ -1,6 +1,6 @@
 # Giant-donut pupil: pairs review plan
 
-> **Status:** approved and built 2026-11-20 (run `20261120_pairs_review`); waiting for review · **Kind:** plan
+> **Status:** approved and built 2026-11-20 (run `20261120_pairs_review`); reviewed and adopted 2026-11-20 · **Kind:** plan
 
 The final pass of this study on the v4.02 masks (v4.02g, v4.02s). The work then moves to
 Josh's CAD-based Batoid model and danish mask. Every output goes into one study run, so it

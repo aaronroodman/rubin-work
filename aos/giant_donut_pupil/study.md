@@ -112,7 +112,11 @@ range:
   pairs 3 and 4, with the same Trim, differ by 0.7 pixels intra. Free vane width 102-120 mm
   extra, 61-67 mm intra on every pair, flat in rotator angle.
 
-Waiting for Aaron's review of the run before `findings.md` and the answer are updated.
+Aaron reviewed the run; `findings.md` (E1–E4, R1–R8) and the answer are updated from it.
+Superseded output removed (Aaron's OK): `psi_edges.pdf`, `gallery.pdf`, `psi_elements.csv`
+and `parts/` in the pass 6 and night 3 label runs (their `labels.parquet` and `sides.csv`
+stay, as pairs-review inputs), and the night 3 `candidates_<visit>_<side>.pdf`, replaced by
+`focal_plane.pdf`.
 
 ### 2026-11-18 — rim analysis: edge rule R0, the M1 roll-off and an M3 outer rim
 
