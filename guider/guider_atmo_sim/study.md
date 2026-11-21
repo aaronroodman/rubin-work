@@ -3,11 +3,11 @@ study: guider_atmo_sim
 topic: guider
 status: active
 question: "Does a phase-screen atmosphere simulation reproduce the guide-star size and centroid motion measured on the guiders?"
-answer: "Partly: over 6 visits of 20260706 the guider centroid-motion size matches on average (median T_motion sim over data 1.28, dimensionless) but per visit ranges 0.36 to 2.29 and follows psfws's random ground-layer weight; the motion direction does not match (median angle difference 42 to 69 deg, against 45 deg for no relation)."
+answer: "Partly: over 6 visits of 20260706 the guider centroid-motion size matches on average (median T_motion sim over data 1.31, dimensionless) but per visit ranges 0.33 to 2.41; the motion direction does not match (median angle difference 48 deg over 48 sensor-visits, against 45 deg for no relation), with either ERA5 or weather-station ground wind."
 uses:
   guider_moments: v4@nights/20260706
-  atmo_sim: v1@visits/20260706{00195,00372,00603,00688,00726,00908}
-  atmo_sim_moments: v1@visits/20260706{00195,00372,00603,00688,00726,00908}
+  atmo_sim: v2@visits/20260706{00195,00372,00603,00688,00726,00908}
+  atmo_sim_moments: v2@visits/20260706{00195,00372,00603,00688,00726,00908}
 started: 2026-08-06
 ---
 
@@ -22,21 +22,24 @@ Does a GalSim phase-screen atmosphere (imSim Ellerbroek profile, or psf-weather-
 ## Current answer
 
 Partly, over 6 visits of day_obs 20260706 (seq 195, 372, 603, 688, 726, 908), with the
-real geometry, ERA5 winds and a seeing match to the guider FWHM:
+real geometry, ERA5 winds aloft, the site weather-station ground wind (`atmo_sim` v2) and
+a seeing match to the guider FWHM:
 
 - **Motion size matches on average, not per visit.** Median over 48 sensor-visits of
-  `T_motion` sim over data is 1.28 (dimensionless); per visit 0.36 to 2.29. The per-visit
-  ratio follows the ground-layer weight that psfws draws at random (0.30 to 0.93,
-  fraction of Cn²): Pearson r 0.63, Spearman rho 0.54, n 6 visits.
-- **Motion direction does not match.** Median |PA sim − PA data| per visit is 42 to 69
-  deg; 45 deg is what no relation gives. Motion ellipticity |Q|/T: median 0.09 to 0.40
-  (sim) against 0.23 to 0.43 (data), dimensionless.
-- **Static size** `T_stamp`: median sim over data 0.97.
-- **Science CCDs**: median FWHM 0.915 arcsec (sim, atmosphere only) against 0.880 arcsec
-  (ConsDB); median ellipticity e 0.024 (sim) against 0.060 (ConsDB). The atmosphere gives
-  a third to half of the measured ellipticity amplitude.
-- 5 of the 6 visits use one ERA5 step (06:00 UTC), and every ERA5 ground wind is about
-  3.5 m/s, so the sim winds barely change through the night.
+  `T_motion` sim over data is 1.31 (dimensionless); per visit 0.33 to 2.41. The per-visit
+  ratio rises with the ground-layer weight psfws draws at random (0.30 to 0.93, fraction
+  of Cn²): Pearson r 0.54, Spearman rho 0.37, n 6 visits.
+- **Motion direction does not match.** Median |PA sim − PA data| per visit is 35 to 59
+  deg, 48 deg over all 48 sensor-visits; 45 deg is what no relation gives. Neither the
+  station ground wind nor the corrected sky rotation of the winds changed this (v1: 49
+  deg). Motion ellipticity |Q|/T: median 0.11 to 0.26 (sim) against 0.23 to 0.43 (data),
+  dimensionless.
+- **Static size** `T_stamp`: median sim over data 0.91 (dimensionless).
+- **Science CCDs**: median FWHM 0.895 arcsec (sim, atmosphere only) against 0.880 arcsec
+  (ConsDB); median ellipticity e 0.018 (sim) against 0.060 (ConsDB), dimensionless.
+- **Astrometric shift** (sim only, one star per science CCD, 30 s): rms over CCDs 5.8 to
+  28.3 mas per visit; 5.6 to 20.3 mas after a 6-parameter affine fit across the focal
+  plane is removed.
 
 ## Method
 
@@ -44,6 +47,36 @@ real geometry, ERA5 winds and a seeing match to the guider FWHM:
 phase screens, rendering, guide and science-CCD stars, geometry, what is left out).
 
 ## Log
+
+### 2026-11-20 — `atmo_sim` v2: station ground wind, wind sky rotation, astrometric shifts
+
+`atmo_sim` v2 and `atmo_sim_moments` v2 for the same 6 visits (Slurm array 46210471,
+45 to 62 min per visit on roma). Changes against v1:
+
+- the ground-layer wind is the site weather station's (header `WINDSPD`, `WINDDIR`):
+  4.8 to 7.8 m/s from 5 to 32 deg, against ERA5's 3.6 m/s from 319 deg;
+- the local winds are rotated to the sky at latitude −30.2446 deg. v1 used psfws's
+  default, +30.2446 deg, which turned every sky wind direction by 14 to 29 deg;
+- the ERA5 step stays the nearest one, and the ground-layer weight stays psfws's draw
+  (same seeds, same weights as v1);
+- per-layer winds (local speed and direction from, sky speed and direction toward) are
+  in `atmosphere.json`, the simulator log and the PDF summary page;
+- the astrometric shift of each science-CCD star (unweighted centroid less true
+  position) has its own PDF page.
+
+| seq | T_motion sim/data | e_motion sim | e_motion data | median \|ΔPA\| (deg) | CCD FWHM sim (arcsec) | shift rms (mas) | shift rms, affine removed (mas) |
+|---|---|---|---|---|---|---|---|
+| 195 | 0.43 | 0.18 | 0.26 | 59 | 0.85 | 6.8 | 6.3 |
+| 372 | 1.14 | 0.16 | 0.23 | 35 | 1.15 | 18.7 | 11.3 |
+| 603 | 1.72 | 0.13 | 0.43 | 39 | 0.92 | 28.0 | 20.0 |
+| 688 | 2.41 | 0.26 | 0.28 | 54 | 0.71 | 25.3 | 6.5 |
+| 726 | 0.33 | 0.11 | 0.27 | 42 | 0.88 | 5.8 | 5.6 |
+| 908 | 1.65 | 0.22 | 0.35 | 55 | 1.37 | 28.3 | 20.3 |
+
+Ratios and ellipticities are dimensionless medians over the 8 guiders. Over all 48
+sensor-visits: T_motion sim/data 1.31 (v1 1.28), median |ΔPA| 48 deg (v1 49 deg). The
+direction mismatch is not from the ground wind or the wind rotation. Run:
+`output/20261120_v2_visits_20260706_six/` (`v2_visits_20260706_six.pdf`).
 
 ### 2026-10-28 — six visits; guider motion ellipticity
 
