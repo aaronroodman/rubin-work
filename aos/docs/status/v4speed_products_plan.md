@@ -89,9 +89,23 @@ sbatch array; ask before submitting.
   `ts_intrinsic_wavefront` `batoid_intrinsic.py` uses gnomonic. Largest difference
   0.0004 µm over Noll 4-28 at (1.2, 1.2) deg; ignore.
 
+## sim_donuts (2026-11-20)
+
+Code, tests and `run_build.sbatch` written. A smoke build (every 40th donut, status
+`partial`) sits at `sim_donuts/v4_speed_mono/20261120`; the batch run overwrites it.
+Full set: 770 FAM, 144 CWFS, 84 giant donuts, about 100 CPU minutes.
+
+- Ray spacing on the stop plane: 8.0 mm (FAM, CWFS; 0.72 M rays, 4.2 s each) and 3.5 mm
+  (giant; about 4 M rays). Giant donuts are about 690 px across, FAM 136 px.
+- Stamps are odd (181, 801 px): Danish asserts odd `npix`. The chief ray is on the centre
+  pixel.
+- Orientation checked against Danish at the TA wavefront: the stored stamp matches best
+  (half L1 difference, fraction of flux: CWFS R04_SW0 0.036 vs 0.107-0.137 transposed or
+  flipped; FAM r05_a25 0.019 vs 0.034-0.091). Danish `spider_angle=0` matches better
+  than `None`: first item for `v4speed_mask_vs_batoid`.
+- `flux_m2` is the stamp sum; Kolmogorov wings past the stamp edge are not in it.
+
 ## Next action
 
-Build `sim_donuts`: move `raytrace` from `donut_leakage.py` into
-`rubinwork.donut_sim`, trace the full v4_speed model (its own vignetting and spider)
-at rotator 0 deg, on the `batoid_intrinsic` grid points (giant: a subset of rings and
-spokes), and write multi-HDU FITS. Then the sbatch ask for the fits.
+Aaron's OK for the batch build, then `set-current`, then the `v4speed_mask_vs_batoid`
+study (no fits needed), then `sim_donut_fits`.
