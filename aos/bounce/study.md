@@ -136,3 +136,11 @@ Errors against v1 (median err_v2 / err_v1, dimensionless): 0.89 for DZ, 0.91 for
 - So no single DOF follows the DZ(1,4) pattern. The M2_dz/Cam_dz split is the poorly constrained direction (MC r = −0.99), and the B1_3 and B2_5 terms shift to absorb it.
 - By v-mode: at 40 deg the v1 part of DZ(1,4) is −0.130, −0.197 and −0.052 µm (20260418, 20260419, 20260513). v2–v50 add a near-constant +0.061 to +0.075 µm. The 40 deg spread is in v1.
 - Other terms: 91 of 126 keep more than half their ΔDZ power after the fit. The largest are DZ(5,5) at 0.034 µm RMS over legs, DZ(3,14) at 0.021 µm and DZ(6,6) at 0.015 µm. These are k ≥ 3 terms that the 50 DOF do not reach, or that the RBR barrier holds back.
+
+### 2026-11-21 — A–B–A optical state with the 22/12 recovery
+
+`bounce_aba_optical_state_v4`, run `20261121_aba_optical_state_22_12`. Same legs, ΔDZ and MC draws as v2/v3; ΔDOF from the 22-DOF, 12-mode truncated SVD (`invert_truncated`), v-modes from the `aos_state` 22-DOF StateEstimator. The PDF opens with a description page.
+- Fraction of ΔDZ power left over all terms and legs: 0.056 for 22/12 and 0.022 for RBR 50/50 (dimensionless; residual² over ΔDZ²). Per leg, 0.030–0.108 for 22/12 and 0.011–0.050 for RBR 50/50; 20260418 at 40 deg is worst in both.
+- DZ(1,4) is fit exactly by 22/12 too: residual below 0.0003 µm on every leg (u1 is pure DZ(1,4)).
+- The opposite-sign M2_dz/Cam_dz motion flips sign against RBR 50/50 at 30, 40 and 60 deg. 40 deg M2_dz: +67, +77, +57 µm (22/12) against −70, −39, −41 µm (RBR). At 50 deg the two agree (−73 and −85 µm). B1_3 and B2_5 are 10× smaller under 22/12. This is the weak hexapod-difference direction: it cancels the DZ(1,11) and field coma (DZ(2,8), DZ(3,7)) of B1_3 and B2_5, so it follows them. Only at 50 deg, where ΔDZ(1,11) = −0.024 ± 0.004 µm, does the data fix it.
+- The `aos_state` 12-mode subspace differs slightly from the DZ SVD's: ΔDOF → v → ΔDOF loses 0.013–0.028 of the normalized-DOF power (dimensionless, per leg).
