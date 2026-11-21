@@ -68,6 +68,10 @@ sbatch array; ask before submitting.
   minus ts_wep `LSST_r`: Noll 4-78 quadrature sum median 0.098 µm, maximum 0.20 µm over
   385 points, mostly z5 and z6. v4_speed carries the v3.14 decenters and tilts; `LSST_r`
   is an older prescription.
+- 2026-11-20: frames. Build `20261120` rewritten in place with CCS and OCS columns
+  (`thx_CCS_deg`, `z4_OCS`, ...) and a `rotator_angle_deg` variant field (telescope
+  rotated by minus it; 0 for `v4_speed`). Shared conversions in
+  `rubinwork.common.frames`; rule "no DVCS in AOS work" in `aos/CLAUDE.md`.
 
 ## Findings to keep
 
@@ -76,8 +80,9 @@ sbatch array; ask before submitting.
   `maskParams=None`: `LsstCam.yaml` carries inline `maskParams`, which win over the file.
 - ts_wep refuses a configuration with a 0 mm offset (`defocalOffset` derivation fails).
 - The corner grid swaps cameraGeom `FIELD_ANGLE` (DVCS) x and y to get batoid's CCS.
-  `smatrix/sparse_fit/code/donut_leakage.py` uses DVCS unswapped (not changed; other
-  topic).
+  `smatrix/sparse_fit/code/donut_leakage.py` uses DVCS unswapped; noted in that study's
+  Log, to fix before its rerun.
+- ts_wep `calcZernikesNeuralTask` rotates CCS to OCS by -rtp, opposite to donut_viz.
 
 ## Next action
 

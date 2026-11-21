@@ -112,6 +112,12 @@ That is not this repo's `rubinwork.common`, which code here imports by its full 
 - **OCS vs CCS is load-bearing.** The telescope-fixed component **O** is OCS; the
   camera-fixed component **C** is CCS and rotates with the rotator. Always state which
   frame a field angle or Zernike is in.
+- **No DVCS in AOS work (Aaron, 2026-11-20).** Products and studies store field angles
+  and Zernikes in CCS or OCS only, and every such column names its frame (`thx_CCS_deg`,
+  `z4_OCS`). batoid's frame is CCS. cameraGeom `FIELD_ANGLE` is DVCS: swap x and y the
+  moment it is read (`rubinwork.common.frames.dvcs_to_ccs_field`), which is what puts a
+  CWFS half-chip, and so its intra or extra side, in the right place. CCS → OCS is
+  `frames.ccs_to_ocs_field` / `ccs_to_ocs_zk`, OCS = R(+rotTelPos) · CCS.
 - Camera rotator angle: to combine with a table's OCS/CCS coordinates, use the
   table-metadata `rotTelPos` the pipeline rotated with. ConsDB `physical_rotator_angle`
   is NULL on some visits and sits 0.30 deg off on the blitz path. **Phase 3b landed**:

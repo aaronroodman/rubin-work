@@ -6,10 +6,10 @@ the negative. ``{"optics": ["LSSTCamera"], "offsets_mm": [1.5]}`` is the full-ar
 mode (FAM) side; ``["Detector"]`` the corner wavefront sensor (CWFS) half-chips;
 ``["M2", "LSSTCamera"]`` with 4 mm each the giant donuts.
 
-Field angles are batoid's, which is the Camera Coordinate System (CCS); at camera
-rotator angle 0 deg it is also the Optical Coordinate System (OCS). cameraGeom
-``FIELD_ANGLE`` is the Data Visualization Coordinate System (DVCS), and CCS is DVCS with
-x and y swapped (``aos/docs/frame_conventions.md``).
+Field angles are batoid's, which is the Camera Coordinate System (CCS): the camera is
+never rotated, and `rotate_telescope` turns everything else by -rotator angle. cameraGeom
+``FIELD_ANGLE`` is the Data Visualization Coordinate System (DVCS); `corner_grid` swaps
+it to CCS (``rubinwork.common.frames``, ``aos/docs/frame_conventions.md``).
 
 Zernikes are Noll-indexed from 0, in m of wavefront as batoid returns them times the
 wavelength; callers convert to µm.
@@ -19,6 +19,8 @@ import pathlib
 
 import numpy as np
 import batoid
+
+from rubinwork.common import frames
 
 OPTICAL_MODEL_DIR = pathlib.Path(os.environ.get(
     "RUBIN_OPTICAL_MODEL", pathlib.Path.home() / "notebooks" / "rubin-optical-model"))
@@ -91,6 +93,35 @@ def instrument(model_template, obscuration, config):
         maskParams=None,
         maskParamsFile=str(obscuration_path(obscuration)),
     )
+
+
+CAMERA = "LSSTCamera"
+"""The batoid element that rides the camera rotator."""
+
+
+def rotate_telescope(optic, rotator_angle_deg):
+    """`optic` with every top-level element but the camera rotated by -rotator angle.
+
+    The batoid frame stays camera-fixed (CCS); a point fixed to the telescope at OCS
+    position p appears at R(-rotator angle) p, so OCS = R(+rotator angle) CCS, the
+    donut_viz convention. 0 deg returns `optic` unchanged.
+
+    Parameters
+    ----------
+    optic : `batoid.CompoundOptic`
+        Telescope at rotator angle 0 deg.
+    rotator_angle_deg : `float`
+        Camera rotator angle ``rotTelPos``, deg.
+    """
+    if rotator_angle_deg == 0:
+        return optic
+    rot = batoid.RotZ(np.deg2rad(-rotator_angle_deg))
+    items = [it if it.name == CAMERA else
+             it.withGlobalRotation(rot, rotCenter=[0, 0, 0], coordSys=batoid.CoordSys())
+             for it in optic.items]
+    keep = ("name", "inMedium", "outMedium", "coordSys", "skip", "backDist", "pupilSize",
+            "pupilObscuration", "stopSurface", "sphereRadius")
+    return batoid.CompoundOptic(items, **{k: optic.__dict__[k] for k in keep})
 
 
 def defocused(instr, optic, side):
@@ -169,6 +200,6 @@ def corner_grid(nx, ny):
                     px = bb.getMinX() - 0.5 + (i + 0.5) * bb.getWidth() / nx
                     py = bb.getMinY() - 0.5 + (j + 0.5) * bb.getHeight() / ny
                     f = tr.applyForward(geom.Point2D(px, py))
-                    dvcs_x, dvcs_y = np.rad2deg([f.getX(), f.getY()])
-                    out.append((f"{raft}_{half}_x{i}y{j}", dvcs_y, dvcs_x, side))
+                    x, y = frames.dvcs_to_ccs_field(*np.rad2deg([f.getX(), f.getY()]))
+                    out.append((f"{raft}_{half}_x{i}y{j}", x, y, side))
     return out

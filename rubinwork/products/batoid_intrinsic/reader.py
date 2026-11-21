@@ -54,9 +54,9 @@ def build_dir(variant, build):
     return catalog.products_root() / PRODUCT / variant / build
 
 
-def noll_columns(jmax):
-    """Zernike column names ``z4`` .. ``z<jmax>``."""
-    return [f"z{j}" for j in range(4, jmax + 1)]
+def noll_columns(jmax, frame="CCS"):
+    """Zernike column names ``z4_<frame>`` .. ``z<jmax>_<frame>``; `frame` is CCS or OCS."""
+    return [f"z{j}_{frame}" for j in range(4, jmax + 1)]
 
 
 def load(variant, build=catalog.CURRENT, band=None, kind=None, config=None, side=None):
@@ -77,10 +77,11 @@ def load(variant, build=catalog.CURRENT, band=None, kind=None, config=None, side
     -------
     table : `pandas.DataFrame`
         One row per band, kind, configuration, side and field point. Columns
-        ``band``, ``kind``, ``config``, ``side``, ``grid``, ``point_id``,
-        ``thx_deg``, ``thy_deg`` (field angle, deg, CCS, equal to OCS at camera
-        rotator angle 0 deg), ``wavelength_nm`` and ``z4`` .. ``z<jmax>`` (µm of
-        wavefront, Noll).
+        ``band``, ``kind``, ``config``, ``side``, ``grid``, ``point_id``;
+        ``thx_CCS_deg``, ``thy_CCS_deg``, ``thx_OCS_deg``, ``thy_OCS_deg`` (field
+        angle, deg); ``rotator_angle_deg`` (camera rotator angle, deg; OCS =
+        R(+rotator angle) CCS); ``wavelength_nm``; ``z4_CCS`` .. ``z<jmax>_CCS`` and
+        ``z4_OCS`` .. ``z<jmax>_OCS`` (µm of wavefront, Noll). The grid is fixed in CCS.
     """
     df = pd.read_parquet(catalog.path(PRODUCT, variant, build) / TABLE)
     for col, val in (("band", band), ("kind", kind), ("config", config), ("side", side)):
@@ -97,7 +98,7 @@ def load_dz(variant, build=catalog.CURRENT):
     dz : `dict`
         ``{(band, kind, config, side): (coef, header)}``. `coef` has shape
         ``(kmax + 1, jmax + 1)``: field Noll k (row 0 unused) by pupil Noll j, µm of
-        wavefront, field unit disk of radius ``RFIELD`` deg (header).
+        wavefront, CCS, field unit disk of radius ``RFIELD`` deg (header).
     """
     out = {}
     with fits.open(catalog.path(PRODUCT, variant, build) / DZ_FILE) as hdul:
@@ -115,7 +116,7 @@ def evaluate_dz(coef, thx_deg, thy_deg, radius_deg):
     coef : `numpy.ndarray`
         ``(kmax + 1, jmax + 1)`` from `load_dz`, µm.
     thx_deg, thy_deg : `numpy.ndarray`
-        Field angles, deg, CCS.
+        CCS field angles, deg.
     radius_deg : `float`
         Field radius of the fit (``RFIELD``), deg.
 

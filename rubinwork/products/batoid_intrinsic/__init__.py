@@ -11,14 +11,17 @@ wavefront-sensor (CWFS) half-chips:
 
 The defocus configurations are ``fam`` (camera ±1.5 mm, science grid), ``cwfs``
 (detector ±1.5 mm, each corner half-chip on its own side) and ``giant`` (M2 and camera
-±4 mm, science grid). Field angles are CCS, which is OCS at camera rotator angle 0 deg.
+±4 mm, science grid). The grid is fixed in the Camera Coordinate System (CCS); the table
+carries field angles and Zernikes in CCS and in the Optical Coordinate System (OCS),
+OCS = R(+rotator angle) CCS, at the variant's ``rotator_angle_deg``.
 
 A build holds:
 
 ``zernikes.parquet``
-    one row per band, kind, configuration, side and field point; Noll 4..jmax, µm.
+    one row per band, kind, configuration, side and field point; Noll 4..jmax, µm, CCS
+    and OCS.
 ``dz.fits``
-    double-Zernike fits of each science-grid set, with their residual RMS.
+    double-Zernike fits (CCS) of each science-grid set, with their residual RMS.
 
 Read a build::
 

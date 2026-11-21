@@ -39,6 +39,18 @@ Open here: when the donuts are regenerated (new batoid model, Danish obscuration
 
 ## Log
 
+### 2026-11-20 — CWFS points are in DVCS, not CCS: fix before a rerun
+
+`code/donut_leakage.py` passes cameraGeom `FIELD_ANGLE` (DVCS) as batoid field angles,
+in `CORNERS` and in `_cwfs_grid()`. batoid's frame is CCS, which is DVCS with x and y
+swapped (`aos/docs/frame_conventions.md`). The CWFS points therefore sit at the right
+radius and defocus side but mirrored across field x = y, off their half-chips. The FAM
+grid, and so `fitted_smatrix`, is defined in batoid's frame and is unaffected. The CWFS
+check compares the field model with responses at the same points, so its conclusion
+likely stands; its per-corner labels do not. Before the next rerun, swap with
+`rubinwork.common.frames.dvcs_to_ccs_field`, as `rubinwork.donut_sim.optics.corner_grid`
+does. Not changed yet.
+
 ### 2026-11-17 — study closed: sign-fixed runs, piece 3 moved to miw_smatrix_consistency
 
 Study closed at a concluding point. Status set to `answered`.

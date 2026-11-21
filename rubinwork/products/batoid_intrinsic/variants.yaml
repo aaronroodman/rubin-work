@@ -12,6 +12,9 @@
 #   grids        science: Gauss-Legendre rings x spokes to radius_deg;
 #                corners: nx x ny cell centres on each corner half-chip
 #   dz_kmax      highest field Noll index of the double-Zernike fit on the science grid
+#   rotator_angle_deg  camera rotator angle (deg): the telescope, not the camera, is
+#                rotated by minus this. The grid stays fixed in CCS; the table carries CCS
+#                and OCS, OCS = R(+rotator angle) CCS.
 #
 # A different model, obscuration file or grid is a new variant.
 # ---------------------------------------------------------------------------
@@ -19,6 +22,7 @@ defaults:
   bands: [r]
   jmax: 78
   dz_kmax: 36
+  rotator_angle_deg: 0.0
   grids:
     science: {rings: 11, spokes: 35, radius_deg: 1.75}
     corners: {nx: 6, ny: 3}

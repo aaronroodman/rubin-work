@@ -1,6 +1,6 @@
 # Frame conventions: CCS, OCS and the camera rotator angle
 
-> **Status:** current · **Last updated:** 2026-10-11 · **Kind:** reference (conventions)
+> **Status:** current · **Last updated:** 2026-11-20 · **Kind:** reference (conventions)
 
 The coordinate frames used for field angles, Zernike coefficients and PSF moments in the
 Active Optics System (AOS) work, which angle relates them, and where to read that angle.
@@ -21,6 +21,19 @@ Active Optics System (AOS) work, which angle relates them, and where to read tha
   OCS = R(rotTelPos) · CCS (`frames.py`: `rotate_field`, `rotate_moments`). For Zernikes,
   `ts_wep` applies `galsim.zernike.zernikeRotMatrix(jmax, -rotTelPos)`
   ([`ts_wep_zernike_intrinsics.md`](ts_wep_zernike_intrinsics.md)).
+- **AOS products and studies use CCS or OCS, never DVCS** (Aaron, 2026-11-20), and every
+  field-angle or Zernike column names its frame. The shared conversions are
+  `rubinwork.common.frames`: `dvcs_to_ccs_field`, `ccs_to_ocs_field` and `ccs_to_ocs_zk`.
+  The last is donut_viz's `zk_CCS @ zernikeRotMatrix(jmax, -rotTelPos)`
+  (`aggregate_zernike_tables_task.py`), which rotates the coefficients by +rotTelPos,
+  the same sense as the field angles (`aggregate_donut_tables_task.py`).
+- **batoid's frame is CCS.** A model at rotator angle rotTelPos is the telescope, not the
+  camera, rotated by −rotTelPos (`rubinwork.donut_sim.optics.rotate_telescope`;
+  `rubinwork/tests/test_frames.py` checks the sign).
+- **One ts_wep path rotates the other way.** `calcZernikesNeuralTask` writes
+  `thx_ocs = x cos(rtp) + y sin(rtp)`, `thy_ocs = −x sin(rtp) + y cos(rtp)`, which is
+  R(−rtp) · CCS (ts_wep `develop`, checked 2026-11-20). Do not mix its `thx_ocs` with
+  donut_viz's `thx_OCS` without checking.
 
 ## Static optics move with OCS, not CCS
 
