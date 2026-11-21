@@ -54,6 +54,9 @@ DANISH_CENTRE_PX = 0.5            # Danish centres an odd stamp at +0.5 px in x 
                                   # corner of the middle pixel); the sims, on the middle
                                   # pixel's centre. Measured 2026-11-21, danish 1.4.0.
 CONFIG_ORDER = ("fam", "cwfs", "giant")
+FIELD_LIMIT_DEG = 1.725           # field radius the AOS fits are restricted to
+EXAMPLE_FROM_DEG = {"fam": 1.4, "giant": 1.4, "cwfs": None}   # None: the innermost point
+EXAMPLE_COUNT = {"fam": 4, "giant": 4, "cwfs": 3}
 
 
 def icfg_focal(icfg, config):
@@ -154,20 +157,31 @@ def run(limit=None):
 
 
 def examples(df):
-    """Per configuration and side: the points nearest the axis, mid field and the edge."""
+    """Per configuration and side: points spread in field radius up to `FIELD_LIMIT_DEG`.
+
+    FAM and giant: 4 from 1.4 deg; CWFS: 3 from its innermost point. Each target radius
+    takes the nearest unused point inside the limit.
+    """
     out = []
     for (c, s), g in df.groupby(["config", "side"]):
-        g = g.sort_values("field_r_deg")
-        for i in sorted({0, len(g) // 2, len(g) - 1}):
-            out.append((c, s, g.iloc[i].point_id))
+        g = g[g.field_r_deg <= FIELD_LIMIT_DEG]
+        lo = EXAMPLE_FROM_DEG[c] if EXAMPLE_FROM_DEG[c] is not None else g.field_r_deg.min()
+        used = []
+        for t in np.linspace(lo, FIELD_LIMIT_DEG, EXAMPLE_COUNT[c]):
+            free = g[~g.point_id.isin(used)]
+            used.append(free.iloc[int(np.argmin(np.abs(free.field_r_deg - t)))].point_id)
+        for pid in g[g.point_id.isin(used)].sort_values("field_r_deg").point_id:
+            out.append((c, s, pid))
     return out
 
 
 def summary_table(df):
+    df = df.assign(l1_fit_in=df.l1_fit.where(df.field_r_deg <= FIELD_LIMIT_DEG))
     agg = df.groupby(["config", "side"]).agg(
         n=("point_id", "size"),
         l1_nofit_spnone=("l1_nofit_spnone", "median"), l1_nofit_sp0=("l1_nofit_sp0", "median"),
         l1_fit=("l1_fit", "median"), l1_fit_max=("l1_fit", "max"),
+        l1_fit_max_in=("l1_fit_in", "max"),
         pow_fit=("pow_fit", "median"),
         dx_px=("dx_px", "median"), dy_px=("dy_px", "median"),
         fwhm_fit=("fwhm_fit_arcsec", "median"))
@@ -183,21 +197,42 @@ def plots(df, keep, path, sman):
         fig.text(0.04, 0.91, f"sim_donuts {SIM_VARIANT}@{sman['build']}; "
                  f"TA from batoid_intrinsic current; r band, rotator 0 deg, "
                  "Kolmogorov 1.0 arcsec FWHM", size=9)
-        lines = ["Medians per configuration and side. l1: fraction of flux misplaced "
-                 "(dimensionless); pow: residual power / image power (dimensionless).",
-                 "nofit: Danish at the TA wavefront, on the chief ray, fwhm 1.0 arcsec; "
-                 "fit: flux, dx, dy, fwhm free (spider_angle 0 deg).",
+        fig.text(0.04, 0.86, "Metrics, with $s_i$ the batoid stamp and $m_i$ the Danish "
+                 "model in pixel $i$, each normalised to unit sum "
+                 "($\\tilde s_i = s_i / \\sum_k s_k$, $\\tilde m_i = m_i / \\sum_k m_k$):",
+                 size=9.5)
+        fig.text(0.08, 0.80, r"$l_1 = \frac{1}{2}\sum_i |\tilde s_i - \tilde m_i|$"
+                 "    fraction of the flux in the wrong place (dimensionless, 0 to 1)",
+                 size=11)
+        fig.text(0.08, 0.745, r"$\mathrm{pow} = \sum_i (\tilde s_i - \tilde m_i)^2 "
+                 r"\, / \, \sum_i \tilde s_i^2$"
+                 "    residual power over image power (dimensionless; power, not "
+                 "amplitude)", size=11)
+        lines = ["Medians per configuration and side, all points; 'max in' is over field "
+                 f"radius <= {FIELD_LIMIT_DEG} deg.",
+                 "nofit: Danish at the TA wavefront (Noll 1-78), on the chief ray, fwhm 1.0 "
+                 "arcsec; fit: flux, dx, dy, fwhm free, wavefront fixed (spider_angle 0 deg).",
                  "dx, dy: fitted shift beyond Danish's half-pixel centring (px, CCS).", "",
                  f"{'config':6s} {'side':5s} {'n':>4s} {'l1 nofit':>9s} {'l1 nofit':>9s} "
-                 f"{'l1 fit':>7s} {'l1 fit':>7s} {'pow fit':>8s} {'dx':>6s} {'dy':>6s} "
-                 f"{'fwhm':>6s}",
+                 f"{'l1 fit':>7s} {'l1 fit':>7s} {'l1 fit':>7s} {'pow fit':>8s} {'dx':>6s} "
+                 f"{'dy':>6s} {'fwhm':>6s}",
                  f"{'':6s} {'':5s} {'':>4s} {'sp None':>9s} {'sp 0':>9s} {'median':>7s} "
-                 f"{'max':>7s} {'median':>8s} {'(px)':>6s} {'(px)':>6s} {'(as)':>6s}"]
+                 f"{'max':>7s} {'max in':>7s} {'median':>8s} {'(px)':>6s} {'(px)':>6s} "
+                 f"{'(as)':>6s}"]
         for (c, s), a in agg.iterrows():
             lines.append(f"{c:6s} {s:5s} {int(a.n):4d} {a.l1_nofit_spnone:9.4f} "
                          f"{a.l1_nofit_sp0:9.4f} {a.l1_fit:7.4f} {a.l1_fit_max:7.4f} "
-                         f"{a.pow_fit:8.5f} {a.dx_px:6.2f} {a.dy_px:6.2f} {a.fwhm_fit:6.3f}")
-        fig.text(0.04, 0.85, "\n".join(lines), family="monospace", size=8.5, va="top")
+                         f"{a.l1_fit_max_in:7.4f} {a.pow_fit:8.5f} {a.dx_px:6.2f} "
+                         f"{a.dy_px:6.2f} {a.fwhm_fit:6.3f}")
+        lines += ["", "Blur: both images use a galsim Kolmogorov of fixed FWHM, no "
+                  "wavelength scaling. The sims convolve it (no pixel) on a",
+                  "3x oversampled ray deposit and sum to 10 um pixels; Danish draws it with "
+                  "galsim's default pixel convolution.",
+                  "Wavelength: the sims trace at 619.4 nm (r), which enters through the "
+                  "glass indices; the TA reference is batoid at 619.4 nm.",
+                  "Danish's model is geometric given Zernikes in m, so it has no "
+                  "wavelength of its own (bandpass_filter None)."]
+        fig.text(0.04, 0.69, "\n".join(lines), family="monospace", size=8, va="top")
         pdf.savefig(fig)
         plt.close(fig)
 
@@ -210,9 +245,12 @@ def plots(df, keep, path, sman):
                                  "fitted FWHM (arcsec)", "fitted flux / sim flux"]):
             for (c, s), g in df.groupby(["config", "side"]):
                 ax.plot(g.field_r_deg, g[col], ".", ms=3, label=f"{c} {s}")
+            ax.axvline(FIELD_LIMIT_DEG, color="k", lw=0.8, ls="--")
             ax.set_xlabel("field radius (deg)")
             ax.set_title(lab, size=9)
         axs[0, 0].legend(fontsize=7)
+        axs[0, 0].text(FIELD_LIMIT_DEG, axs[0, 0].get_ylim()[1], f" {FIELD_LIMIT_DEG} deg",
+                       size=7, va="top", ha="right", rotation=90)
         fig.suptitle("Agreement against field radius (dimensionless unless stated)")
         fig.tight_layout()
         pdf.savefig(fig)
