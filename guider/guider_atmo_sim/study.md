@@ -1,7 +1,7 @@
 ---
 study: guider_atmo_sim
 topic: guider
-status: active
+status: parked
 question: "Does a phase-screen atmosphere simulation reproduce the guide-star size and centroid motion measured on the guiders?"
 answer: "Partly: over 6 visits of 20260706 the guider centroid-motion size matches on average (median T_motion sim over data 1.31, dimensionless) but per visit ranges 0.33 to 2.41; the motion direction does not match (median angle difference 48 deg over 48 sensor-visits, against 45 deg for no relation), with either ERA5 or weather-station ground wind."
 uses:
@@ -47,6 +47,40 @@ a seeing match to the guider FWHM:
 phase screens, rendering, guide and science-CCD stars, geometry, what is left out).
 
 ## Log
+
+### 2026-11-21 — paused: state, ruled-out causes, next steps
+
+Paused; the v2 results are in the 2026-11-20 entry below. State for resuming:
+
+- **Committed:** `33927fc` (`atmo_sim` v2 and `atmo_sim_moments` v2: weather-station
+  ground wind, site latitude for the wind sky rotation, unweighted centroids, the
+  astrometric-shift page) and `d3d6ce8` (v2 results). Builds: `atmo_sim` and
+  `atmo_sim_moments` v2 for 20260706 seq 195, 372, 603, 688, 726, 908; Butler chain
+  `u/roodman/atmo_sim/v2`. v1 builds and `u/roodman/atmo_sim/v1` are kept for comparison.
+- **Running a visit:** `code/batch_visits.sh` as a Slurm array, one visit per task;
+  45 to 62 min and 26.7 GB peak memory per visit on roma. Then
+  `code/compare_visit.py --variant v2`.
+
+Tried and ruled out as the cause of the motion-direction mismatch (median |ΔPA| 48 deg
+over 48 sensor-visits, 45 deg for no relation):
+
+- the ERA5 ground wind: replacing it with the station wind (v2) left the mismatch
+  (v1 49 deg);
+- the wind rotation to the sky: v1 used psfws's default latitude, +30.2446 deg, which
+  turned every sky wind direction by 14 to 29 deg; fixing it (v2) left the mismatch;
+- interpolating ERA5 in time: not done on purpose, the winds aloft change slowly;
+- fixing the ground-layer weight: not done on purpose, it stays psfws's draw.
+
+Next:
+
+- a one-layer simulation with a known wind, to check that the simulated guider motion
+  lines up with the wind (a sign or frame error in wind to image motion);
+- if that passes: look for non-atmospheric motion in the data (wind shake, tracking,
+  dome seeing), for example the data motion direction against the dome-relative wind;
+- a data counterpart for the astrometric shifts: residuals of the per-visit astrometric
+  fit on the same visits.
+
+![seq 688 astrometric shift](figures/astrometric_shift_688.png)
 
 ### 2026-11-20 — `atmo_sim` v2: station ground wind, wind sky rotation, astrometric shifts
 
