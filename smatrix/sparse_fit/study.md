@@ -39,6 +39,22 @@ Open here: when the donuts are regenerated (new batoid model, Danish obscuration
 
 ## Log
 
+### 2026-11-20 — CWFS points moved to CCS; leakage-route scripts removed
+
+`code/donut_leakage.py` now gives batoid CCS field angles for the CWFS points
+(`CORNERS` and `_cwfs_grid()`), by swapping cameraGeom DVCS x and y with
+`rubinwork.common.frames.dvcs_to_ccs_field`. The 8 corner centres match the means of
+the 6 x 3 CWFS grids to 0.0001 deg (field angle). The FITS header `THX_DEG`/`THY_DEG`
+comments now say CCS. FAM and science points were already in CCS and are unchanged.
+
+No rerun. Existing CWFS runs (the `bf_*` CWFS images, `cwfs_compare`) keep the
+mirrored points: right radius and defocus side, but per-corner labels swapped across
+field x = y. `fitted_smatrix` is unaffected.
+
+Also removed the rejected leakage-route scripts `analyze_rt_l.py`, `diag_floor.py` and
+`donut_leakage.sbatch` (`b4f37b6`); `analyze_bruteforce.py` now carries their `GROUPS`
+and `NA` constants. Older Log entries name them as history.
+
 ### 2026-11-20 — CWFS points are in DVCS, not CCS: fix before a rerun
 
 `code/donut_leakage.py` passes cameraGeom `FIELD_ANGLE` (DVCS) as batoid field angles,
