@@ -247,7 +247,7 @@ def cache_task(task):
     out.mkdir(parents=True, exist_ok=True)
     done = []
     for name in names:
-        path = out / f'{name}.npy'
+        path = isr_cache.cache_path(out, name)
         hdr = out / f'{name}.wcs.json'
         if path.exists() and hdr.exists():
             done.append(name)
@@ -259,7 +259,7 @@ def cache_task(task):
         except Exception as exc:
             print(visit, name, 'FAILED', repr(exc)[:200], flush=True)
             continue
-        np.save(path, isr_cache.bin_mean(image, isr_cache.CACHE_BIN).astype(np.float32))
+        isr_cache.save_binned(out, name, isr_cache.bin_mean(image, isr_cache.CACHE_BIN))
         hdr.write_text(json.dumps(wcs.getFitsMetadata().toDict()))
         done.append(name)
     return visit, done

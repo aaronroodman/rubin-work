@@ -21,6 +21,7 @@ import pandas as pd
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import candidates as cd  # noqa: E402  (must precede the lsst imports: blitz path)
 import fp_mosaic  # noqa: E402
+import isr_cache  # noqa: E402
 
 import matplotlib  # noqa: E402
 matplotlib.use('Agg')
@@ -63,7 +64,7 @@ def load_cache(cache_dir, camera):
     headers = json.loads((cache_dir / 'wcs.json').read_text())
     images, wcss = {}, {}
     for name, header in headers.items():
-        images[name] = np.load(cache_dir / f'{name}.npy').astype(float)
+        images[name] = isr_cache.load_binned(cache_dir, name)
         metadata = dafBase.PropertyList()
         for key, value in header.items():
             metadata.set(key, value)

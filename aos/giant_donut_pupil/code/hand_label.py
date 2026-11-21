@@ -28,6 +28,7 @@ import pandas as pd
 
 import candidates as cd
 import fp_mosaic
+import isr_cache
 import select_candidates as sc
 import selection_pages as pages
 
@@ -252,13 +253,13 @@ class Labeller:
     def raft_names(self, raft):
         visit = PAGES[0][0]
         cache = self.study_dir / 'output' / self.caches[visit] / str(visit)
-        return sorted(p.stem for p in cache.glob(f'{raft}_*.npy'))
+        return sorted({p.name.split('.')[0] for p in cache.glob(f'{raft}_*') if p.name.endswith(('.npy', '.fits.fz'))})
 
     def raft_image(self, visit, raft):
         cache = self.study_dir / 'output' / self.caches[visit] / str(visit)
         sub = {}
         for name in self.raft_names(raft):
-            image = np.load(cache / f'{name}.npy').astype(float)
+            image = isr_cache.load_binned(cache, name)
             sub[name] = image - cd.background_map(image, block=128, percentile=10.0)
         return fp_mosaic.make_mosaic(self.camera, sub, cd.CACHE_BIN, sc.RAFT_BIN, buffer_size=4)
 

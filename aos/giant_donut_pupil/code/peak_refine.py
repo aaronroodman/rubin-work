@@ -34,6 +34,7 @@ from scipy.spatial import cKDTree
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import candidates as cd  # noqa: E402  (blitz path first)
 import selection_v2 as sv  # noqa: E402
+import isr_cache  # noqa: E402
 
 from lsst.obs.lsst import LsstCam  # noqa: E402
 
@@ -144,7 +145,7 @@ def main():
         images = {}
         cache = study_dir / 'output' / sv.CACHES[visit] / str(visit)
         for name in table[table.visit == visit].detector.unique():
-            images[name] = np.load(cache / f'{name}.npy').astype(float)
+            images[name] = isr_cache.load_binned(cache, name)
         part = table[table.visit == visit].copy()
         parts.append(refine_visit(visit, images, camera, part, cats[cats.visit == visit]))
         print(visit, 'done', flush=True)

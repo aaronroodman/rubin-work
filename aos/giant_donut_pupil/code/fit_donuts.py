@@ -41,6 +41,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import candidates as cd  # noqa: E402  (must precede the lsst imports: blitz path)
 import obscuration_v402 as ob  # noqa: E402
 from rubinwork.giant_donuts import fit_giant_donut  # noqa: E402
+import isr_cache  # noqa: E402
 
 from rubinwork.common import study_run  # noqa: E402
 
@@ -120,7 +121,7 @@ def neighbours(study_dir, butler, camera, rows):
         sx, sy = cd.focal_to_pixels(det, fx, fy)
         stars = np.column_stack([sx, sy])
         r_out = float(grp.r_out_pix.iloc[0])
-        image = np.load(cache / f'{name}.npy').astype(float)
+        image = isr_cache.load_binned(cache, name)
         bkg = cd.background_map(image, block=128, percentile=10.0)
         blind = cd.blind_detect(image, bkg, r_out / cd.CACHE_BIN,
                                 0.62, build_template)

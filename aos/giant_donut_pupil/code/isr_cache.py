@@ -2,7 +2,8 @@
 
 Runs the minimal ISR of `rubinwork.giant_donuts.donut_images` (overscan,
 assembly, gains) on all 189 science and 8 corner wavefront-sensor detectors, bins
-each image 4x4 (mean), and saves it as float32 ``.npy`` with the raw WCS header.
+each image 4x4 (mean), and saves it as Rice-compressed FITS (``<detector>.fits.fz``, quantize
+level 16) with the raw WCS header.
 A binned pixel is 40 um; an 8 mm giant donut is about 174 binned pixels across,
 enough for the isolation metrics and the zoom pages. The donut fits re-run ISR at
 full resolution on the chosen detectors.
@@ -12,6 +13,7 @@ Usage, from the repo root::
     python aos/giant_donut_pupil/code/isr_cache.py 2025102300337 2025102300340
 """
 import json
+import pathlib
 import sys
 import time
 
@@ -51,6 +53,36 @@ def bin_mean(image, factor):
         ny, factor, nx, factor).mean(axis=(1, 3))
 
 
+QUANTIZE_LEVEL = 16  # fpack default: quantization step is the pixel noise / 16
+
+
+def cache_path(cache_dir, name):
+    """Path of one detector's binned image: ``<name>.fits.fz``, else a legacy ``.npy``."""
+    fz = pathlib.Path(cache_dir) / f'{name}.fits.fz'
+    npy = fz.with_name(f'{name}.npy')
+    return npy if npy.exists() and not fz.exists() else fz
+
+
+def save_binned(cache_dir, name, image):
+    """Write a binned image as Rice tile-compressed FITS (lossy, ``QUANTIZE_LEVEL``)."""
+    from astropy.io import fits
+    hdu = fits.CompImageHDU(np.asarray(image, np.float32), name='IMAGE', compression_type='RICE_1',
+                            quantize_level=QUANTIZE_LEVEL, dither_seed=-1)  # -1: seed from checksum
+    path = pathlib.Path(cache_dir) / f'{name}.fits.fz'
+    hdu.writeto(path, overwrite=True)
+    return path
+
+
+def load_binned(cache_dir, name):
+    """Read one detector's binned image (electrons per binned pixel) as float64."""
+    path = cache_path(cache_dir, name)
+    if path.suffix == '.npy':
+        return np.load(path).astype(float)
+    from astropy.io import fits
+    with fits.open(path) as h:
+        return h['IMAGE'].data.astype(float)
+
+
 def cache_visit(butler, camera, exposure, out_dir, names=None):
     """ISR, bin and save the science and corner-WFS detectors of one exposure.
 
@@ -63,7 +95,7 @@ def cache_visit(butler, camera, exposure, out_dir, names=None):
     exposure : `int`
         Exposure id.
     out_dir : `pathlib.Path`
-        Directory for ``<detector>.npy`` and ``wcs.json``.
+        Directory for ``<detector>.fits.fz`` and ``wcs.json``.
     names : `list` [`str`], optional
         Detectors to cache; every science and corner-WFS detector by default.
     """
@@ -74,7 +106,7 @@ def cache_visit(butler, camera, exposure, out_dir, names=None):
         names = [d.getName() for d in camera
                  if d.getType() in (DetectorType.SCIENCE, DetectorType.WAVEFRONT)]
     for i, name in enumerate(names):
-        path = out_dir / f'{name}.npy'
+        path = cache_path(out_dir, name)
         if path.exists() and name in headers:
             continue
         t0 = time.time()
@@ -85,7 +117,7 @@ def cache_visit(butler, camera, exposure, out_dir, names=None):
         except Exception as exc:
             print(f'{exposure} {name}: FAILED {type(exc).__name__}: {exc}', flush=True)
             continue
-        np.save(path, bin_mean(image, CACHE_BIN).astype(np.float32))
+        save_binned(out_dir, name, bin_mean(image, CACHE_BIN))
         headers[name] = wcs.getFitsMetadata().toDict()
         wcs_file.write_text(json.dumps(headers))
         print(f'{exposure} {i + 1}/{len(names)} {name} {time.time() - t0:.1f} s',

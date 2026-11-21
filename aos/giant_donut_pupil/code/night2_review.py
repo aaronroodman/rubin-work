@@ -35,6 +35,7 @@ import pandas as pd  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import candidates as cd  # noqa: E402  (blitz path first)
+import isr_cache  # noqa: E402
 
 from rubinwork.common import study_run  # noqa: E402
 
@@ -539,10 +540,10 @@ def page_thumbnails(pdf, run, sets):
     for i0 in range(0, len(s), 12):
         fig, axes = plt.subplots(3, 4, figsize=(11, 8.5))
         for ax, (_, r) in zip(axes.flat, s.iloc[i0:i0 + 12].iterrows()):
-            p = run / CACHE_DIR / str(int(r.check_visit)) / 'R22_S11.npy'
+            d = run / CACHE_DIR / str(int(r.check_visit))
             ax.set_xticks([]), ax.set_yticks([])
-            if p.exists():
-                im = np.load(p).astype(float)
+            if isr_cache.cache_path(d, 'R22_S11').exists():
+                im = isr_cache.load_binned(d, 'R22_S11')
                 im = im - cd.background_map(im, block=128, percentile=10.0)
                 ax.imshow(im, origin='lower', cmap='gray', vmin=-20, vmax=150)
             ax.set_title(f'{r.set_id.replace("BLOCK-", "")}\n{int(r.check_visit)} R22_S11, '
