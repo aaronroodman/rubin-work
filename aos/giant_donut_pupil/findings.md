@@ -1,6 +1,6 @@
 # Giant-donut pupil: findings ledger
 
-> **Status:** current through the pairs review (2026-11-20, run `20261120_pairs_review`), the last pass on the v4.02 masks; next, Josh's CAD-based model and mask.
+> **Status:** current through the pairs review (2026-11-20, run `20261120_pairs_review`), the last pass on the v4.02 masks; parked until Josh's v4_speed model and pupil are tested.
 > One row per finding, from the selection work, pupil passes 1–6, the model reviews, nights 2 and 3, and the pairs review. Superseded findings stay, with what replaced them.
 
 Data: 20251023 seq 337 (extra-focal) and 340 (intra-focal), ±4 mm camera and M2. "Extra /
