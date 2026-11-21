@@ -3,7 +3,7 @@ study: cosmic_diffusion
 topic: camera
 status: active
 question: What diffusion coefficient, sigma_diff over sqrt(delta z) in um per sqrt(um), do long cosmic-ray muon tracks in 20261102 darks give for R21 REB0 (about 10 V back bias) compared with R21 REB1 (nominal 50 V)?
-answer: 'Full night 20261102 (406 darks), sigma0 prior 2.89 +- 0.5 um: median per-track k = 0.0692 and 0.0686 on R21_S01 and S02 at 8.8 V, 0.0415 to 0.0420 on REB1 at 50 V (dimensionless); R21_S00 is the outlier at 0.0885. All exceed the uniform-field sqrt(2kT/eV), by 1.2x at 8.8 V and 1.7x at 50 V.'
+answer: 'Median per-track k (dimensionless, sigma0 prior 2.89 +- 0.5 um), R21: S01/S02 0.0689 at 8.8 V (20261102) and 0.0660 at 11.3 V (20261103), REB1 0.0415-0.0421 at 50 V both nights; S00 0.0885-0.0889 at both voltages. k drops 4% from 8.8 to 11.3 V against 12% for 1/sqrt(V): most of the excess over sqrt(2kT/eV) does not scale with back bias.'
 uses: {}
 started: 2026-11-03
 ---
@@ -20,34 +20,37 @@ What diffusion coefficient, sigma_diff over sqrt(delta z) in um per sqrt(um), do
 
 ## Current answer
 
-All 406 darks of 20261102, R21 only, 7,942 ok tracks. Per-track Huber fit
-sigma^2 = sigma0^2 + k^2 D dz, D = 100 um, with sigma0 under a Gaussian prior
-2.89 +- 0.5 um (10 um / sqrt(12)); section widths from a pixel-integrated Gaussian.
-Table gives medians over tracks; error on k 1.2533 nMAD / sqrt(n) is <= 0.0002
-(dimensionless) in every row. k is dimensionless.
+Two nights, R21 only: 20261102 (406 darks, REB0 at 8.8 V, 7,942 ok tracks) and
+20261103 (104 darks, REB0 at 11.3 V, 1,584 ok tracks); REB1 at 50 V both nights.
+Per-track Huber fit sigma^2 = sigma0^2 + k^2 D dz, D = 100 um, with sigma0 under a
+Gaussian prior 2.89 +- 0.5 um (10 um / sqrt(12)); section widths from a
+pixel-integrated Gaussian. Table gives medians over tracks of k with the prior; k is
+dimensionless and its error (1.2533 nMAD / sqrt(n)) is <= 0.0003 in every cell.
 
-| CCD | BSSVBS (V) | ok tracks | k, sigma0 prior | k, sigma0 free | k, sigma0 fixed | k theory | k prior / k theory | sigma0 prior fit (um) |
-|---|---|---|---|---|---|---|---|---|
-| R21_S00 | 8.825 | 1339 | 0.0885 | 0.0973 | 0.0865 | 0.0582 | 1.52 | 2.14 |
-| R21_S01 | 8.825 | 1333 | 0.0692 | 0.0705 | 0.0659 | 0.0582 | 1.19 | 2.34 |
-| R21_S02 | 8.825 | 1374 | 0.0686 | 0.0700 | 0.0654 | 0.0582 | 1.18 | 2.34 |
-| R21_S10 | 50.0 | 1313 | 0.0419 | 0.0420 | 0.0411 | 0.0244 | 1.72 | 2.82 |
-| R21_S11 | 49.975 | 1279 | 0.0420 | 0.0421 | 0.0410 | 0.0244 | 1.72 | 2.79 |
-| R21_S12 | 49.975 | 1304 | 0.0415 | 0.0417 | 0.0407 | 0.0244 | 1.70 | 2.80 |
+| CCD | k, 8.8 V (20261102) | k, 11.3 V (20261103) | k, 50 V (20261102) | k, 50 V (20261103) | k theory 8.8 / 11.3 / 50 V |
+|---|---|---|---|---|---|
+| R21_S00 | 0.0885 | 0.0889 | | | 0.0582 / 0.0513 / — |
+| R21_S01 | 0.0692 | 0.0664 | | | 0.0582 / 0.0513 / — |
+| R21_S02 | 0.0686 | 0.0657 | | | 0.0582 / 0.0513 / — |
+| R21_S10 | | | 0.0419 | 0.0421 | — / — / 0.0244 |
+| R21_S11 | | | 0.0420 | 0.0418 | — / — / 0.0244 |
+| R21_S12 | | | 0.0415 | 0.0416 | — / — / 0.0244 |
 
-k theory is sqrt(2kT/(eV)) at T = 173.15 K (Fisher-Levine eq. 3.3). Figure:
+k theory is sqrt(2kT/(eV)) at T = 173.15 K (Fisher-Levine eq. 3.3). Free and fixed
+sigma0 fits, and sigma0 from each fit, are in the Log. Figure (20261102):
 `figures/sigma_vs_dz_per_ccd.png`.
 
-- On REB1 the free fit gives sigma0 = 2.78-2.81 um, at the 2.89 um pixel term, so
-  the prior barely matters there. At 8.8 V the free sigma0 is low (2.07 um on
-  S01/S02) and the constraint lowers k by 2% (prior) to 7% (fixed).
-- S01 and S02 agree; S00 is 1.28 times higher (dimensionless, S00 over the S01/S02
-  mean, prior fit). Its width grows faster than sqrt(dz) beyond 60 um and its free
-  sigma0 is negative on 88% of tracks. Its `CCDTEMP` reads -86.7 C against about
-  -101 C elsewhere.
-- S01/S02 over REB1 is 1.65 (dimensionless, prior fit), against sqrt(50/8.825) =
-  2.38 for k proportional to 1/sqrt(V): part of the width does not scale with back
-  bias.
+- REB1 repeats between nights within 0.0002, so the nights compare cleanly.
+- S01/S02: k at 8.8 V over k at 11.3 V = 1.043 (dimensionless), against 1.133 for
+  k proportional to 1/sqrt(V). Over 8.8-50 V the S01/S02 over REB1 ratio is 1.65,
+  against 2.38. Most of the width above theory does not scale with back bias.
+- All CCDs exceed theory: k over k theory is 1.18-1.19 at 8.8 V, 1.28-1.29 at
+  11.3 V and 1.70-1.72 at 50 V (dimensionless).
+- S00 does not respond to the back bias (0.0885 at 8.8 V, 0.0889 at 11.3 V). Its
+  width grows faster than sqrt(dz) beyond 60 um and its free sigma0 is negative on
+  88-89% of tracks. Its `CCDTEMP` reads -86.7 C against about -101 C elsewhere.
+- On REB1 the free sigma0 is 2.78-2.83 um, at the pixel term, so the prior barely
+  matters there; at 8.8-11.3 V the free sigma0 is low (2.07-2.24 um on S01/S02).
 
 ## Log
 
