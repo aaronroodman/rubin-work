@@ -14,6 +14,8 @@
 #   SB_ACCOUNT (rubin:developers@milano)  SB_QOS (normal)
 # SB_TIME covers the trim tail: one night of about 1,800 exposures has taken 53 min.
 set -euo pipefail
+# Segwarides EFD credentials fail off Nublado; the EFD client reads this file instead.
+export EFDAUTH="${EFDAUTH:-$HOME/.lsst/efdauth.json}"
 repo=$(cd "$(dirname "$0")/../../../.." && pwd)
 cd "$repo/value_added"
 
