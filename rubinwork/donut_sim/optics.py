@@ -81,18 +81,25 @@ def instrument(model_template, obscuration, config):
     -------
     instrument : `lsst.ts.wep.instrument.Instrument`
     """
+    import danish
     from lsst.ts.wep.instrument import Instrument
     stem = str(model_path(model_template, "{band}"))
     if not stem.endswith(".yaml"):
         raise ValueError(f"model template {model_template!r} must end in .yaml")
-    return Instrument(
+    path = str(obscuration_path(obscuration))
+    instr = Instrument(
         BASE_INSTRUMENT,
         batoidModelName=stem[:-len(".yaml")],
         batoidOffsetOptic=list(config["optics"]),
         batoidOffsetValue=[1e-3 * v for v in config["offsets_mm"]],
-        maskParams=None,
-        maskParamsFile=str(obscuration_path(obscuration)),
+        maskParamsFile=path,
     )
+    # The constructor ignores maskParams=None (mergeConfigWithFile drops None), so the
+    # base config's inline maskParams would win over the file; the setter clears them.
+    instr.maskParams = None
+    if instr.maskParams != danish.load_mask_params(path):
+        raise RuntimeError(f"Instrument is not using the obscuration file {path}")
+    return instr
 
 
 CAMERA = "LSSTCamera"

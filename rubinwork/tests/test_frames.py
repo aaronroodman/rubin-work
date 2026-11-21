@@ -37,3 +37,13 @@ def test_rotate_telescope_sign():
     # The wrong sign fails.
     assert not np.allclose(frames.ccs_to_ocs_zk(zk_rot, -rot)[4:], zk_ref[4:],
                            atol=1e-3 * np.abs(zk_ref[4:]).max())
+
+
+def test_instrument_uses_obscuration_file():
+    import danish
+    from rubinwork.products import batoid_intrinsic
+    cfg = batoid_intrinsic.variant_config("v4_speed")
+    instr = optics.instrument(cfg["model"], cfg["obscuration"], cfg["configs"]["fam"])
+    assert instr.maskParams == danish.load_mask_params(
+        str(optics.obscuration_path(cfg["obscuration"])))
+    assert "M1Baffle1" in instr.maskParams

@@ -47,6 +47,10 @@ from rubinwork.donut_sim import optics
 from rubinwork.products import batoid_intrinsic, catalog, sim_donuts
 
 SIM_VARIANT = "v4_speed_mono"
+MASKS = ("obscuration", "lsstcam_shipped")
+"""``obscuration``: the batoid_intrinsic variant's obscuration file (v4_speed);
+``lsstcam_shipped``: the maskParams inline in ts_wep's ``LsstCam.yaml`` (v3.14), which
+runs before 2026-11-21 used by mistake."""
 SPIDER_ANGLES = (None, 0.0)       # deg; None leaves the obscuration file's spider unrotated
 FWHM_MIN = 0.2                    # arcsec; guard against the huge-kernel step (donut_leakage)
 FLUX = 1e5                        # sims are rescaled to this sum for the fit
@@ -98,9 +102,9 @@ def nuisance_fit(model, img, fwhm0, d0):
     return p, best
 
 
-def run(limit=None):
-    index = sim_donuts.load(SIM_VARIANT)
-    sman = catalog.manifest("sim_donuts", SIM_VARIANT)
+def run(limit=None, sim_variant=SIM_VARIANT, mask="obscuration"):
+    index = sim_donuts.load(sim_variant)
+    sman = catalog.manifest("sim_donuts", sim_variant)
     # The sims' intrinsic variant at its current build: the field points are the same in
     # every build, and the current one carries the TA tilts z2, z3.
     ivar = sman["inputs"]["batoid_intrinsic"].split("@")[0]
@@ -122,8 +126,11 @@ def run(limit=None):
         if key not in facs:
             instr = optics.instrument(icfg["model"], icfg["obscuration"],
                                       icfg["configs"][r.config])
+            if mask == "lsstcam_shipped":
+                from lsst.ts.wep.instrument import Instrument
+                instr.maskParams = Instrument(optics.BASE_INSTRUMENT).maskParams
             facs[key] = {sa: factory(instr, sa) for sa in SPIDER_ANGLES}
-        sim, _ = sim_donuts.stamp(SIM_VARIANT, r.band, r.config, r.side, r.point_id)
+        sim, _ = sim_donuts.stamp(sim_variant, r.band, r.config, r.side, r.point_id)
         sim = sim * FLUX / sim.sum()
         z = np.zeros(icfg["jmax"] + 1)
         z[batoid_intrinsic.reader.JMIN:] = ta.loc[(r.band, r.config, r.side, r.point_id), cols].to_numpy(float) * 1e-6
@@ -188,13 +195,14 @@ def summary_table(df):
     return agg.reindex(sorted(agg.index, key=lambda k: (CONFIG_ORDER.index(k[0]), k[1])))
 
 
-def plots(df, keep, path, sman):
+def plots(df, keep, path, sman, mask="obscuration"):
     agg = summary_table(df)
     with PdfPages(path) as pdf:
         fig = plt.figure(figsize=(11, 8.5))
-        fig.text(0.04, 0.95, "Danish v4_speed obscuration file vs batoid-traced donuts",
-                 size=14, weight="bold")
-        fig.text(0.04, 0.91, f"sim_donuts {SIM_VARIANT}@{sman['build']}; "
+        title = {"obscuration": "Danish v4_speed obscuration file",
+                 "lsstcam_shipped": "Danish ts_wep LsstCam.yaml shipped mask (v3.14)"}[mask]
+        fig.text(0.04, 0.95, f"{title} vs batoid v4_speed donuts", size=14, weight="bold")
+        fig.text(0.04, 0.91, f"sim_donuts {sman['variant']}@{sman['build']}; "
                  f"TA from batoid_intrinsic current; r band, rotator 0 deg, "
                  "Kolmogorov 1.0 arcsec FWHM", size=9)
         fig.text(0.04, 0.86, "Metrics, with $s_i$ the batoid stamp and $m_i$ the Danish "
@@ -306,11 +314,14 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, default=None, help="about this many stamps")
     ap.add_argument("--label", default="ta_model")
+    ap.add_argument("--sim-variant", default=SIM_VARIANT)
+    ap.add_argument("--mask", choices=MASKS, default="obscuration")
     a = ap.parse_args()
     run_ = study_run("aos/v4speed_mask_vs_batoid", a.label)
-    df, keep, sman = run(a.limit)
+    df, keep, sman = run(a.limit, a.sim_variant, a.mask)
+    df["mask"] = a.mask
     df.to_parquet(run_.path / "metrics.parquet", index=False)
-    plots(df, keep, run_.path / "mask_vs_batoid.pdf", sman)
+    plots(df, keep, run_.path / "mask_vs_batoid.pdf", sman, a.mask)
     print(summary_table(df).round(4).to_string())
     print(f"wrote {run_.path}")
 

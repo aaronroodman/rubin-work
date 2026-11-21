@@ -54,6 +54,7 @@ Size is the total of the current build's files, or of the latest build when none
 | miw | `official-gmegias-v3` |  | external | 2026-10-10 | 1 |  |
 | miw | `staged-v1` |  | external | 2026-10-10 | 1 |  |
 | sim_donuts | `v4_speed_mono` | 20261120 | 20261120 | 2026-11-21 | 1 | 339.9 |
+| sim_donuts | `v4_speed_mono_edge` | 20261121 | 20261121 | 2026-11-21 | 1 | 1,819.3 |
 | value_added | `v1` | snapshots/20261118 | snapshots/20261118 | 2026-11-18 | 8 | 5,217.7 |
 | wfs_corner_compare | `d12-ai_donut` |  | 20261024 | 2026-10-24 | 2 | 2.0 |
 | wfs_corner_compare | `d12-paired_3mm` |  | 20260707 | 2026-10-24 | 2 | 0.2 |

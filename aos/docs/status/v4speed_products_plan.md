@@ -77,8 +77,12 @@ sbatch array; ask before submitting.
 ## Findings to keep
 
 - ts_wep `Instrument` takes the v4_speed yaml (`batoidModelName` as a path without
-  `.yaml`) and the obscuration file (`maskParamsFile`, absolute path) directly. Pass
-  `maskParams=None`: `LsstCam.yaml` carries inline `maskParams`, which win over the file.
+  `.yaml`) and the obscuration file (`maskParamsFile`, absolute path). **Passing
+  `maskParams=None` to the constructor does nothing** (`mergeConfigWithFile` drops `None`
+  kwargs), so `LsstCam.yaml`'s inline v3.14 `maskParams` win over the file. Clear them
+  with the setter after construction, `instr.maskParams = None`, as
+  `rubinwork.donut_sim.optics.instrument` now does and checks. Before 2026-11-21 it did
+  not: every Danish model drawn until then used the shipped v3.14 mask.
 - ts_wep refuses a configuration with a 0 mm offset (`defocalOffset` derivation fails).
 - The corner grid swaps cameraGeom `FIELD_ANGLE` (DVCS) x and y to get batoid's CCS.
   `smatrix/sparse_fit/code/donut_leakage.py` uses DVCS unswapped; noted in that study's
