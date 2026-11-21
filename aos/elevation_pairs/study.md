@@ -3,9 +3,9 @@ study: elevation_pairs
 topic: aos
 status: active
 question: How many same-night science visit pairs change elevation by at least 10 deg with azimuth and camera rotator angle each within 5 deg and the band unchanged, and do they give an elevation LUT sample to compare with the bounce tests?
-answer: "Within 5 min (4,291 pairs, 130 nights, Danish 1.3, 22/12), the optical-state v-mode 1 changes by -2.47e-4 +- 0.28e-4 per deg of elevation (Pearson r = -0.132, Spearman rho = -0.126), about +0.27 um of equivalent hexapod dz per deg; v5, v3 and v8 carry stronger trends."
+answer: "After the last LUT change (174,761 pairs within 5 min at any elevation change, 124 nights, Danish 1.3, 22/12), deviation - Trim has a DZ(1,4) slope of -0.0103 +- 0.0030 um of wavefront per deg at midpoint elevations 25-40 deg, +0.0032 +- 0.0010 at 40-55 deg and -0.0001 +- 0.0007 at 55-75 deg (night-clustered errors). The bounce points between 30, 40 and 50 deg imply -0.043 and +0.024 um per deg: same signs, 4 and 7 times larger."
 uses:
-  value_added: v1@20261025b
+  value_added: v1@20261118
   cwfs_science: d13-blitz_rso1071@20261026
 started: 2026-10-29
 ---
@@ -18,7 +18,7 @@ How many same-night science visit pairs change elevation by at least 10 deg with
 
 ## Current answer
 
-Within 5 min (4,291 pairs, 130 nights, Danish 1.3, 22/12), the optical-state v-mode 1 changes by -2.47e-4 +- 0.28e-4 per deg of elevation (Pearson r = -0.132, Spearman rho = -0.126), about +0.27 um of equivalent hexapod dz per deg; v5, v3 and v8 carry stronger trends. Search alone: 85 consecutive pairs within 2 min, 5,812 pairs within 5 min.
+After the last LUT change (174,761 pairs within 5 min at any elevation change, 124 nights, Danish 1.3, 22/12), deviation - Trim has a DZ(1,4) slope of -0.0103 +- 0.0030 um of wavefront per deg at midpoint elevations 25-40 deg, +0.0032 +- 0.0010 at 40-55 deg and -0.0001 +- 0.0007 at 55-75 deg (night-clustered errors). The bounce points between 30, 40 and 50 deg imply -0.043 and +0.024 um per deg: same signs, 4 and 7 times larger. v1 per deg (dimensionless): -3.6e-4 +- 1.9e-4, +2.8e-4 +- 0.7e-4 and +0.6e-4 +- 0.5e-4 in the same bins. Earlier, with |dEl| >= 10 deg and all nights: 4,291 pairs, v1 slope +2.47e-4 +- 0.28e-4 per deg (formal error).
 
 ## Log
 
@@ -105,3 +105,14 @@ rewritten.
 - A night-clustered sandwich error matches that bootstrap to within 5% for all 39 quantities and 4 samples, in 0.55 s. It replaces the bootstrap from the next run.
 - The LUT page shows two more nights on a different M2 LUT, about +1,300 um in M2 dz: 20251214 and 20251216 (566 visits). The camera dz branches are per-band focus offsets.
 - DZ(1,4) slope of deviation - Trim per midpoint bin [um of wavefront per deg]: 25-40 deg -0.0103 +- 0.0030, 40-55 deg +0.0032 +- 0.0010, 55-75 deg -0.0001 +- 0.0007. The signs follow the bounce points between 30, 40, 50 and 70 deg, but the slopes are 4-8 times smaller.
+
+### 2026-11-21: night-clustered errors, two more LUT nights dropped
+
+Rerun of `elevation_pairs_bins_v1.ipynb`, run `output/20261121_bins_d13_22_12_dt5min_lut20251209/` (`value_added` v1@20261118), 3.6 min in all.
+
+- 20251214 and 20251216 dropped: 174,761 pairs with a state, 124 nights.
+- Errors are night-clustered sandwich errors (0.48 s). A 200-resample night bootstrap of v1 and DZ(1,4) agrees to within 10% in all four samples. Clustered errors are 3-8 times the formal Huber errors (dimensionless ratio).
+- DZ(1,4) slope of deviation - Trim [um of wavefront per deg]: 25-40 deg -0.0103 +- 0.0030, 40-55 deg +0.0032 +- 0.0010, 55-75 deg -0.0001 +- 0.0007. Between 30, 40 and 50 deg the bounce points imply -0.043 and +0.024: same signs, 4 and 7 times larger than the pair slopes.
+- Linearity, DZ(1,4) refit by |dEl| range: in each bin the 0-5, 5-10 and >= 10 deg slopes agree within 2 sigma, except 55-75 deg, where |dEl| < 5 deg gives -0.0020 +- 0.0007 against +0.0004 +- 0.0007 at 5-10 deg.
+- 109,000 of the 175,000 pairs are at 55-75 deg with |dEl| < 5 deg, so the all-pairs slope (DZ(1,4) +0.0002 +- 0.0007) mostly reflects that corner.
+- The 22 DOF disagree with the bounce DOF by up to 10 times (M2 dy +500 to +900 um at 30-50 deg in the bounce, under 50 um implied here): the bases differ, 22/12 against RBR 50/50.
