@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# batoid_intrinsic variants: one per batoid model and danish obscuration file.
+#
+# Per-entry fields:
+#   model        batoid yaml with {band}, relative to $RUBIN_OPTICAL_MODEL unless absolute
+#   obscuration  danish obscuration (mask_params) yaml, same rule. Recorded for the donut
+#                products; the Zernikes here do not use it.
+#   bands        bands built
+#   jmax         highest pupil Noll index
+#   configs      defocus configurations: the optics shifted along z and their extra-focal
+#                offsets (mm; intra is the negative), and the field grid used
+#   grids        science: Gauss-Legendre rings x spokes to radius_deg;
+#                corners: nx x ny cell centres on each corner half-chip
+#   dz_kmax      highest field Noll index of the double-Zernike fit on the science grid
+#
+# A different model, obscuration file or grid is a new variant.
+# ---------------------------------------------------------------------------
+defaults:
+  bands: [r]
+  jmax: 78
+  dz_kmax: 36
+  grids:
+    science: {rings: 11, spokes: 35, radius_deg: 1.75}
+    corners: {nx: 6, ny: 3}
+  configs:
+    fam: {optics: [LSSTCamera], offsets_mm: [1.5], grid: science}
+    cwfs: {optics: [Detector], offsets_mm: [1.5], grid: corners}
+    giant: {optics: [M2, LSSTCamera], offsets_mm: [4.0, 4.0], grid: science}
+
+variants:
+
+  # Josh Meyers' v4_speed: v3.14 optics, re-measured baffles without the 45-vane TMA
+  # baffle, CAD camera apertures. rubin-optical-model commit 7785f3c.
+  v4_speed:
+    model: Rubin_v4_speed_cadaper_{band}.yaml
+    obscuration: RubinObsc_v4_speed_cadaper_r_rtpp0_azp45_pp0d0.yaml

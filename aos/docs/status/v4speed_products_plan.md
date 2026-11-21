@@ -1,6 +1,6 @@
 # v4_speed products and studies: plan
 
-> **Status:** agreed, not started · **Last updated:** 2026-11-20 · **Kind:** plan
+> **Status:** in progress: batoid_intrinsic built · **Last updated:** 2026-11-20 · **Kind:** plan
 
 v4_speed is Josh Meyers' batoid model (v3.14 optics, re-measured baffles without the
 45-vane TMA (Telescope Mount Assembly) baffle, CAD camera apertures) and its danish
@@ -60,7 +60,28 @@ sbatch array; ask before submitting.
   wavefront. The reference is the truth, so a nonzero fitted deviation is danish
   model bias. Reads products 1–3.
 
+## Done
+
+- 2026-11-20: `batoid_intrinsic` `v4_speed` build `20261120` (current), r band, built
+  in 53 s on one CPU. TA matches ts_wep's `_getIntrinsicZernikesTACached` exactly. The
+  k <= 36 double-Zernike fits leave a largest residual of 1e-4 µm. In-focus v4_speed
+  minus ts_wep `LSST_r`: Noll 4-78 quadrature sum median 0.098 µm, maximum 0.20 µm over
+  385 points, mostly z5 and z6. v4_speed carries the v3.14 decenters and tilts; `LSST_r`
+  is an older prescription.
+
+## Findings to keep
+
+- ts_wep `Instrument` takes the v4_speed yaml (`batoidModelName` as a path without
+  `.yaml`) and the obscuration file (`maskParamsFile`, absolute path) directly. Pass
+  `maskParams=None`: `LsstCam.yaml` carries inline `maskParams`, which win over the file.
+- ts_wep refuses a configuration with a 0 mm offset (`defocalOffset` derivation fails).
+- The corner grid swaps cameraGeom `FIELD_ANGLE` (DVCS) x and y to get batoid's CCS.
+  `smatrix/sparse_fit/code/donut_leakage.py` uses DVCS unswapped (not changed; other
+  topic).
+
 ## Next action
 
-Check that ts_wep `Instrument` (or a direct batoid and danish setup) accepts the
-v4_speed yaml and obscuration file by path. Then build `batoid_intrinsic` for r band.
+Build `sim_donuts`: move `raytrace` from `donut_leakage.py` into
+`rubinwork.donut_sim`, trace the full v4_speed model (its own vignetting and spider)
+at rotator 0 deg, on the `batoid_intrinsic` grid points (giant: a subset of rings and
+spokes), and write multi-HDU FITS. Then the sbatch ask for the fits.
