@@ -116,7 +116,18 @@ the TA tilts, and giant-donut z2 reaches 14 µm (3 px). Study result in
 Conventions to keep: Danish centres an odd stamp at +0.5 px in x and y; Danish `dx`, `dy`
 are arcsec; `spider_angle=0` for the v4_speed obscuration file.
 
+## Edge grid (2026-11-21, Aaron approved)
+
+Eight obscuration-file edges switch on between 1.4 and 1.725 deg (L1 aperture ring
+1.537 to filter rear retainer 1.714 deg); giant donuts sampled only 1.394 and 1.628 deg.
+`batoid_intrinsic` build `20261121b` (current) adds an `edge` grid, 1.400-1.725 deg in
+0.025 deg steps by 24 azimuths, for `fam` and `giant`; its other rows equal `20261121`
+exactly. `sim_donuts` variant `v4_speed_mono_edge`: 1344 donuts (FAM and giant, both
+sides), about 5 CPU hours.
+
 ## Next action
 
-Aaron to choose: refit the obscuration file at the giant configuration (or ask Josh)
-before the fits, or go on to `sim_donut_fits`, whose Danish fits need batch (ask first).
+Batch build of `sim_donuts v4_speed_mono_edge` (ask first), then pass 2 of
+`v4speed_mask_vs_batoid`: l1 at 0.025 deg resolution, per-element edge offsets, and the
+giant mismatch at field centre. Then regenerate the giant-configuration obscuration
+parameters with `gen_mask_params.py` and test them on these donuts.

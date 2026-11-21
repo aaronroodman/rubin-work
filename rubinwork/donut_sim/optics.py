@@ -157,6 +157,26 @@ def zk_ta(optic, thx_deg, thy_deg, wavelength_m, jmax, focal_length_m):
                             nrad=TA_NRAD, naz=int(2 * np.pi * TA_NRAD)) * wavelength_m
 
 
+def edge_grid(r_min_deg, r_max_deg, dr_deg, n_az):
+    """Polar grid: radii `r_min_deg` to `r_max_deg` in `dr_deg` steps by `n_az` azimuths.
+
+    Returns
+    -------
+    points : `list` [`tuple`]
+        ``(point_id, thx_deg, thy_deg)``, CCS; ids ``eRR_aAA``.
+    """
+    radii = np.arange(r_min_deg, r_max_deg + 0.5 * dr_deg, dr_deg)
+    azs = np.linspace(0, 2 * np.pi, n_az, endpoint=False)
+    return [(f"e{ir:02d}_a{ia:02d}", r * np.cos(a), r * np.sin(a))
+            for ir, r in enumerate(radii) for ia, a in enumerate(azs)]
+
+
+def grid_names(conf):
+    """The grid names of a defocus configuration (``grid`` is one name or a list)."""
+    g = conf["grid"]
+    return [g] if isinstance(g, str) else list(g)
+
+
 def science_grid(rings, spokes, radius_deg):
     """Gauss-Legendre field grid: `rings` radii by `spokes` azimuths to `radius_deg`.
 

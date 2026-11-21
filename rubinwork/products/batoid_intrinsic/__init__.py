@@ -1,17 +1,18 @@
 """The ``batoid_intrinsic`` product: the wavefront of a batoid optical model, in focus and
 at the donut defocus configurations.
 
-Per band, on a Gauss-Legendre science field grid and on a grid over the corner
-wavefront-sensor (CWFS) half-chips:
+Per band, on a Gauss-Legendre science field grid, a dense polar ``edge`` grid over the
+vignetted zone (1.400 to 1.725 deg) and a grid over the corner wavefront-sensor (CWFS)
+half-chips:
 
 - ``gq_infocus``: in-focus optical path difference (OPD) Zernikes, ``batoid.zernikeGQ``;
 - ``ta``: defocused transverse-aberration Zernikes, ``batoid.zernikeTA``, the reference
   ts_wep and Danish build their donut model from;
 - ``gq_defocus``: defocused OPD Zernikes.
 
-The defocus configurations are ``fam`` (camera ±1.5 mm, science grid), ``cwfs``
-(detector ±1.5 mm, each corner half-chip on its own side) and ``giant`` (M2 and camera
-±4 mm, science grid). The grid is fixed in the Camera Coordinate System (CCS); the table
+The defocus configurations are ``fam`` (camera ±1.5 mm, science and edge grids),
+``cwfs`` (detector ±1.5 mm, each corner half-chip on its own side) and ``giant`` (M2 and
+camera ±4 mm, science and edge grids). The grid is fixed in the Camera Coordinate System (CCS); the table
 carries field angles and Zernikes in CCS and in the Optical Coordinate System (OCS),
 OCS = R(+rotator angle) CCS, at the variant's ``rotator_angle_deg``.
 

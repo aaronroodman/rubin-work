@@ -9,8 +9,9 @@
 #   oversample    fine pixels per pixel side for the ray deposit
 #   configs       per defocus configuration: stamp side (npix, odd for Danish, 10 um
 #                 pixels; the chief ray is on the centre pixel), stop-plane
-#                 ray spacing (mm), and optionally the science-grid rings and spokes kept
-#                 (default every point of the intrinsic grid)
+#                 ray spacing (mm), the intrinsic grid traced (default the configuration's
+#                 first), and for the science grid optionally the rings and spokes kept
+#                 (default every point)
 #
 # A different blur, wavelength treatment or point set is a new variant.
 # ---------------------------------------------------------------------------
@@ -29,3 +30,10 @@ variants:
 
   # Monochromatic at the ts_wep band wavelength (r: 619.4 nm), rotator angle 0 deg.
   v4_speed_mono: {}
+
+  # As v4_speed_mono, FAM and giant only, on the batoid_intrinsic edge grid: 1.400 to
+  # 1.725 deg in 0.025 deg steps by 24 azimuths, the vignetted zone.
+  v4_speed_mono_edge:
+    configs:
+      fam: {npix: 181, ray_spacing_mm: 8.0, grid: edge}
+      giant: {npix: 801, ray_spacing_mm: 3.5, grid: edge}

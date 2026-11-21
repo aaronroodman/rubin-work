@@ -12,7 +12,14 @@ def test_variants_resolve():
         assert {"model", "obscuration", "bands", "jmax", "configs", "grids"} <= set(cfg)
         for conf in cfg["configs"].values():
             assert len(conf["optics"]) == len(conf["offsets_mm"])
-            assert conf["grid"] in cfg["grids"]
+            assert set(optics.grid_names(conf)) <= set(cfg["grids"])
+
+
+def test_edge_grid():
+    pts = optics.edge_grid(1.4, 1.725, 0.025, 24)
+    assert len(pts) == 14 * 24
+    r = np.hypot([p[1] for p in pts], [p[2] for p in pts])
+    np.testing.assert_allclose([r.min(), r.max()], [1.4, 1.725])
 
 
 def test_science_grid():

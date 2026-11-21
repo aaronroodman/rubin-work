@@ -52,6 +52,8 @@ def compute(cfg):
     g = cfg["grids"]
     grids = {"science": [(*p, None) for p in optics.science_grid(**g["science"])],
              "corners": optics.corner_grid(**g["corners"])}
+    if "edge" in g:
+        grids["edge"] = [(*p, None) for p in optics.edge_grid(**g["edge"])]
     parts = []
     for band in cfg["bands"]:
         any_instr = optics.instrument(cfg["model"], cfg["obscuration"],
@@ -66,14 +68,14 @@ def compute(cfg):
             instr = optics.instrument(cfg["model"], cfg["obscuration"], conf)
             for side in optics.SIDES:
                 shifted = optics.defocused(instr, optic, side)
-                pts = [p for p in grids[conf["grid"]] if p[3] in (None, side)]
-                ta = [optics.zk_ta(shifted, p[1], p[2], wl, jmax, instr.focalLength)
-                      for p in pts]
-                gq = [optics.zk_gq(shifted, p[1], p[2], wl, jmax) for p in pts]
-                parts.append(_rows(band, "ta", name, side, conf["grid"], pts, ta, wl, jmax,
-                                    rot))
-                parts.append(_rows(band, "gq_defocus", name, side, conf["grid"], pts, gq,
-                                    wl, jmax, rot))
+                for grid in optics.grid_names(conf):
+                    pts = [p for p in grids[grid] if p[3] in (None, side)]
+                    ta = [optics.zk_ta(shifted, p[1], p[2], wl, jmax, instr.focalLength)
+                          for p in pts]
+                    gq = [optics.zk_gq(shifted, p[1], p[2], wl, jmax) for p in pts]
+                    parts.append(_rows(band, "ta", name, side, grid, pts, ta, wl, jmax, rot))
+                    parts.append(_rows(band, "gq_defocus", name, side, grid, pts, gq, wl,
+                                       jmax, rot))
             print(f"{band} {name} done", flush=True)
     return pd.concat(parts, ignore_index=True)
 

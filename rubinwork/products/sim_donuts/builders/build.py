@@ -41,10 +41,11 @@ def tasks(cfg, icfg, table):
     out = []
     for band in cfg["bands"]:
         for name, conf in cfg["configs"].items():
-            sub = table[(table.band == band) & (table.kind == "ta") & (table.config == name)]
+            grid = conf.get("grid", optics.grid_names(icfg["configs"][name])[0])
+            sub = table[(table.band == band) & (table.kind == "ta") & (table.config == name)
+                        & (table.grid == grid)]
             for _, r in sub.iterrows():
-                if icfg["configs"][name]["grid"] == "science" and not _point_kept(r.point_id,
-                                                                                  conf):
+                if grid == "science" and not _point_kept(r.point_id, conf):
                     continue
                 out.append(dict(band=band, config=name, side=r.side, point_id=r.point_id,
                                 thx_CCS_deg=r.thx_CCS_deg, thy_CCS_deg=r.thy_CCS_deg,
