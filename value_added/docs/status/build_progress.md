@@ -442,7 +442,8 @@ Still open: rebuild `turbulence` and `camera` with the fixed anchor.
 - Left: an empty `snapshots/20261117/` with a 0-byte `aos_efd.duckdb` (remove, with
   Aaron's OK).
 
-Next: run the update for 20261115 onward (`update_nightly.sh --mode batch`), then propose
+Next: run the update once ConsDB has nights after 20261114 (none through 20261119 on
+2026-11-21) with `update_nightly.sh --mode batch`, then propose
 the `scrontab` entry.
 
 After each snapshot, rerun the glass-minus-air table in `docs/schema.md` (section
