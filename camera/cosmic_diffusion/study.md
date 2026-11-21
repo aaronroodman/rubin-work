@@ -38,7 +38,7 @@ dimensionless and its error (1.2533 nMAD / sqrt(n)) is <= 0.0003 in every cell.
 
 k theory is sqrt(2kT/(eV)) at T = 173.15 K (Fisher-Levine eq. 3.3). Free and fixed
 sigma0 fits, and sigma0 from each fit, are in the Log. Figure (20261102):
-`figures/sigma_vs_dz_per_ccd.png`.
+`figures/sigma_vs_dz_per_ccd.png`; 20261103: `figures/sigma_vs_dz_per_ccd_20261103.png`.
 
 - REB1 repeats between nights within 0.0002, so the nights compare cleanly.
 - S01/S02: k at 8.8 V over k at 11.3 V = 1.043 (dimensionless), against 1.133 for
@@ -164,6 +164,7 @@ dimensionless; sigma0 prior 2.89 +- 0.5 um; errors on k <= 0.0003.
 - S00 does not change with back bias (0.0885 to 0.0889); its free sigma0 is again
   negative on 89% of tracks.
 - `code/batch_find.sh` now takes `DAY_OBS` and `RUN_DATE` from the environment.
+- Figure: `figures/sigma_vs_dz_per_ccd_20261103.png`.
 
 **Next:** same as above; S00 not responding to the back bias points at a different
 field or a defect on that sensor.
