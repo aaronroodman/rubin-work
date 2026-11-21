@@ -449,6 +449,15 @@ cut the snapshot (`update_nightly.make_snapshot`; the run itself now finds no ne
 If `live` cannot be recovered: copy the 20261105 snapshot to `live` and rerun 20261026
 onward in batch.
 
+After each snapshot, rerun the glass-minus-air table in `docs/schema.md` (section
+`m1m3_thermal_r2`) and paste in its rows and end date. It reads the current build and ConsDB,
+under a minute on an interactive node:
+
+```bash
+cd ~/notebooks/rubin-work && \
+    python -m rubinwork.products.value_added.builders.glass_minus_air --from 20260101
+```
+
 `builders/update_nightly.py` brings `v1/live` up to the last finished night and cuts a
 snapshot. `builders/update_nightly.sh --mode local|batch` runs it, logging to
 `value_added/logs/update_<timestamp>.out`. The docstring lists the steps.
