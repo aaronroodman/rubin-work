@@ -54,9 +54,14 @@ def build_dir(variant, build):
     return catalog.products_root() / PRODUCT / variant / build
 
 
+JMIN = 1
+"""Lowest stored Noll index. The tilts z2, z3 place the donut against the chief ray and
+are part of ts_wep's Danish reference (``nollIndicesModel`` 0..78); z1 is piston."""
+
+
 def noll_columns(jmax, frame="CCS"):
-    """Zernike column names ``z4_<frame>`` .. ``z<jmax>_<frame>``; `frame` is CCS or OCS."""
-    return [f"z{j}_{frame}" for j in range(4, jmax + 1)]
+    """Zernike column names ``z1_<frame>`` .. ``z<jmax>_<frame>``; `frame` is CCS or OCS."""
+    return [f"z{j}_{frame}" for j in range(JMIN, jmax + 1)]
 
 
 def load(variant, build=catalog.CURRENT, band=None, kind=None, config=None, side=None):
@@ -80,8 +85,8 @@ def load(variant, build=catalog.CURRENT, band=None, kind=None, config=None, side
         ``band``, ``kind``, ``config``, ``side``, ``grid``, ``point_id``;
         ``thx_CCS_deg``, ``thy_CCS_deg``, ``thx_OCS_deg``, ``thy_OCS_deg`` (field
         angle, deg); ``rotator_angle_deg`` (camera rotator angle, deg; OCS =
-        R(+rotator angle) CCS); ``wavelength_nm``; ``z4_CCS`` .. ``z<jmax>_CCS`` and
-        ``z4_OCS`` .. ``z<jmax>_OCS`` (µm of wavefront, Noll). The grid is fixed in CCS.
+        R(+rotator angle) CCS); ``wavelength_nm``; ``z1_CCS`` .. ``z<jmax>_CCS`` and
+        ``z1_OCS`` .. ``z<jmax>_OCS`` (µm of wavefront, Noll). The grid is fixed in CCS.
     """
     df = pd.read_parquet(catalog.path(PRODUCT, variant, build) / TABLE)
     for col, val in (("band", band), ("kind", kind), ("config", config), ("side", side)):

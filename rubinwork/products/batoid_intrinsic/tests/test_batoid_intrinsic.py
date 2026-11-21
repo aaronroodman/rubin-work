@@ -29,9 +29,9 @@ def test_dz_fit_round_trip():
     thx = np.array([p[1] for p in pts])
     thy = np.array([p[2] for p in pts])
     coef = np.zeros((kmax + 1, jmax + 1))
-    coef[1:, 4:] = rng.normal(size=(kmax, jmax - 3))
+    coef[1:, reader.JMIN:] = rng.normal(size=(kmax, jmax + 1 - reader.JMIN))
     z = reader.evaluate_dz(coef, thx, thy, radius)
-    df = pd.DataFrame(z[:, 4:], columns=reader.noll_columns(jmax, "OCS"))
+    df = pd.DataFrame(z[:, reader.JMIN:], columns=reader.noll_columns(jmax, "OCS"))
     df["thx_OCS_deg"], df["thy_OCS_deg"], df["grid"] = thx, thy, "science"
     df["band"], df["kind"], df["config"], df["side"] = "r", "ta", "fam", "extra"
     cfg = {"jmax": jmax, "dz_kmax": kmax, "grids": {"science": {"radius_deg": radius}}}

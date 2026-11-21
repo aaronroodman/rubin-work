@@ -41,8 +41,8 @@ def _rows(band, kind, config, side, grid, points, zks, wl_m, jmax, rotator_deg):
                          "rotator_angle_deg": float(rotator_deg),
                          "wavelength_nm": wl_m * 1e9})
     return pd.concat([head,
-                      pd.DataFrame(zk[:, 4:], columns=reader.noll_columns(jmax, "CCS")),
-                      pd.DataFrame(zk_ocs[:, 4:], columns=reader.noll_columns(jmax, "OCS"))],
+                      pd.DataFrame(zk[:, reader.JMIN:], columns=reader.noll_columns(jmax, "CCS")),
+                      pd.DataFrame(zk_ocs[:, reader.JMIN:], columns=reader.noll_columns(jmax, "OCS"))],
                      axis=1)
 
 
@@ -99,7 +99,7 @@ def dz_fits(df, cfg):
         c, *_ = np.linalg.lstsq(basis, z, rcond=None)
         res = z - basis @ c
         coef = np.zeros((kmax + 1, jmax + 1))
-        coef[1:, 4:] = c
+        coef[1:, reader.JMIN:] = c
         h = fits.ImageHDU(coef)
         for k, v in zip(("BAND", "KIND", "CONFIG", "SIDE"), key):
             h.header[k] = v

@@ -18,7 +18,7 @@ OCS = R(+rotator angle) CCS, at the variant's ``rotator_angle_deg``.
 A build holds:
 
 ``zernikes.parquet``
-    one row per band, kind, configuration, side and field point; Noll 4..jmax, µm, CCS
+    one row per band, kind, configuration, side and field point; Noll 1..jmax, µm, CCS
     and OCS.
 ``dz.fits``
     double-Zernike fits (OCS, as the optical-state fits) of each science-grid set, with their residual RMS.
