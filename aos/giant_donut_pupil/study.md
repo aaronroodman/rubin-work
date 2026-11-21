@@ -1,9 +1,9 @@
 ---
 study: giant_donut_pupil
 topic: aos
-status: active
+status: parked
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'Final on the v4.02 masks (pairs review 2026-11-20): v4.02 fits better than v1000 (median residual RMS ratio 0.94, dimensionless); the outer-band Z5-Z7 is pupil bias; the donut is thinner than the model at both edges on every pair. Open: the spider translation (dy −0.6 to −2.1 pixels, neither telescope- nor camera-fixed), the silhouette miss that follows the camera decenter, and the mask edges v4.02 lacks. Next: Josh''s CAD-based model and mask.'
+answer: 'Final on the v4.02 masks (pairs review 2026-11-20): v4.02 fits better than v1000 (median residual RMS ratio 0.94, dimensionless); the outer-band Z5-Z7 is pupil bias; the donut is thinner than the model at both edges on every pair. Open: the spider translation (dy −0.6 to −2.1 pixels, neither telescope- nor camera-fixed), the silhouette miss that follows the camera decenter, and the mask edges v4.02 lacks. Parked until Josh''s v4_speed model and pupil are tested.'
 uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
 started: 2026-10-18
 ---
@@ -33,7 +33,8 @@ Optical models: `~/notebooks/rubin-optical-model` at commit `e2a1e54` (read only
 
 Final on the v4.02 masks (pairs review, 2026-11-20): `conclusions.pdf` in run
 `20261120_pairs_review` gives each conclusion with its supporting pages; the rows are in
-`findings.md`. The work moves next to Josh's CAD-based Batoid model and danish mask.
+`findings.md`. Parked: Aaron will revisit the study once Josh's v4_speed Batoid model
+and pupil (danish mask) are tested.
 
 Settled:
 - v4.02 fits better than v1000: residual RMS lower on 16 of 16 clean sides, median ratio
@@ -66,6 +67,28 @@ Open:
 - The residual spider rotation, −0.026 / +0.087 deg on night 1.
 
 ## Log
+
+### 2026-11-20 — wrap on v4.02; parked for Josh's v4_speed model
+
+Wrap of the study on the v4.02 masks (v4.02g, v4.02s). The final pass is the pairs review
+(run `20261120_pairs_review`: `conclusions.pdf`, `summary.pdf`, and per pair
+`focal_plane.pdf`, `fit_gallery.pdf`, `edges.pdf`); its results are in `findings.md` (E1–E4,
+R1–R8) and the Current answer.
+
+Output cleanup (Aaron's OK; `d69f95c`, `3bb0c84`, `7415dc0`, `3e63640`): superseded label-run
+PDFs and night 3 candidate PDFs removed, pass 1–4 `images/` arrays and unread ISR caches
+removed, and the four ISR caches kept converted to Rice-compressed FITS. `output/` went from
+45 to 18 GB. Passes 1–5 can no longer redraw their image pages without a refit; their PDFs
+and tables stay.
+
+Parked. Aaron will revisit the study once Josh's v4_speed Batoid model and pupil (danish
+mask) are tested. Next, then:
+- refit the five pairs (night 1 337/340, 20261107 366/388, 20261108 14/36, 152/147,
+  168/190) with the v4_speed mask and rerun `pairs_review.py` against it;
+- check the open items against the new model: the spider translation (dy −0.6 to −2.1
+  pixels), the silhouette miss that follows the camera dy decenter, the TMASection and
+  M1Baffle1 edges, and the vane phase strip danish cannot model (pass 6 Huygens sims,
+  `20261023_pupil6/huygens*`).
 
 ### 2026-11-20 — pairs review on the v4.02 masks
 
