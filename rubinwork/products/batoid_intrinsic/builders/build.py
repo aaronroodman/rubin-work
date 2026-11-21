@@ -79,7 +79,10 @@ def compute(cfg):
 
 
 def dz_fits(df, cfg):
-    """Double-Zernike fit of each science-grid set in CCS, as FITS HDUs.
+    """Double-Zernike fit of each science-grid set in OCS, as FITS HDUs.
+
+    OCS, as the optical-state double-Zernike fits (``run_double_zernike_fits``) and
+    ``rubinwork.aos_state.ZK_FRAME``: OCS field angles and OCS pupil Zernikes.
 
     Each HDU holds ``(kmax + 1, jmax + 1)`` coefficients in µm; its header gives the
     residual RMS over points and pupil terms (``RESRMS``) and the largest absolute
@@ -87,11 +90,11 @@ def dz_fits(df, cfg):
     """
     jmax, kmax = cfg["jmax"], cfg["dz_kmax"]
     radius = cfg["grids"]["science"]["radius_deg"]
-    cols = reader.noll_columns(jmax, "CCS")
+    cols = reader.noll_columns(jmax, "OCS")
     hdus = []
     for key, sub in df[df.grid == "science"].groupby(["band", "kind", "config", "side"]):
-        basis = galsim.zernike.zernikeBasis(kmax, sub.thx_CCS_deg.to_numpy(),
-                                            sub.thy_CCS_deg.to_numpy(), R_outer=radius)[1:].T
+        basis = galsim.zernike.zernikeBasis(kmax, sub.thx_OCS_deg.to_numpy(),
+                                            sub.thy_OCS_deg.to_numpy(), R_outer=radius)[1:].T
         z = sub[cols].to_numpy()
         c, *_ = np.linalg.lstsq(basis, z, rcond=None)
         res = z - basis @ c
@@ -104,7 +107,7 @@ def dz_fits(df, cfg):
         h.header["RESRMS"] = (float(np.sqrt(np.mean(res ** 2))), "fit residual RMS, um")
         h.header["RESMAX"] = (float(np.abs(res).max()), "largest |residual|, um")
         h.header["UNITS"] = "um"
-        h.header["FRAME"] = ("CCS", "field angles and pupil Zernikes")
+        h.header["FRAME"] = ("OCS", "field angles and pupil Zernikes")
         hdus.append(h)
     return hdus
 

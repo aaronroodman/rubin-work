@@ -70,7 +70,8 @@ sbatch array; ask before submitting.
   is an older prescription.
 - 2026-11-20: frames. Build `20261120` rewritten in place with CCS and OCS columns
   (`thx_CCS_deg`, `z4_OCS`, ...) and a `rotator_angle_deg` variant field (telescope
-  rotated by minus it; 0 for `v4_speed`). Shared conversions in
+  rotated by minus it; 0 for `v4_speed`). Double-Zernike fits in OCS, as the
+  optical-state fits. Shared conversions in
   `rubinwork.common.frames`; rule "no DVCS in AOS work" in `aos/CLAUDE.md`.
 
 ## Findings to keep
@@ -82,7 +83,11 @@ sbatch array; ask before submitting.
 - The corner grid swaps cameraGeom `FIELD_ANGLE` (DVCS) x and y to get batoid's CCS.
   `smatrix/sparse_fit/code/donut_leakage.py` uses DVCS unswapped; noted in that study's
   Log, to fix before its rerun.
-- ts_wep `calcZernikesNeuralTask` rotates CCS to OCS by -rtp, opposite to donut_viz.
+- ts_wep `CalcZernikesNeuralTask` stores DVCS field angles as `thx_ccs` (no swap), so its
+  OCS and N/W columns are x/y swapped: `wfs/docs/calc_zernikes_neural_frames_bug.md`.
+- batoid projection: ts_wep and this product use the default (postel);
+  `ts_intrinsic_wavefront` `batoid_intrinsic.py` uses gnomonic. Largest difference
+  0.0004 µm over Noll 4-28 at (1.2, 1.2) deg; ignore.
 
 ## Next action
 

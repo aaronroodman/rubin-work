@@ -30,10 +30,10 @@ Active Optics System (AOS) work, which angle relates them, and where to read tha
 - **batoid's frame is CCS.** A model at rotator angle rotTelPos is the telescope, not the
   camera, rotated by −rotTelPos (`rubinwork.donut_sim.optics.rotate_telescope`;
   `rubinwork/tests/test_frames.py` checks the sign).
-- **One ts_wep path rotates the other way.** `calcZernikesNeuralTask` writes
-  `thx_ocs = x cos(rtp) + y sin(rtp)`, `thy_ocs = −x sin(rtp) + y cos(rtp)`, which is
-  R(−rtp) · CCS (ts_wep `develop`, checked 2026-11-20). Do not mix its `thx_ocs` with
-  donut_viz's `thx_OCS` without checking.
+- **ts_wep `CalcZernikesNeuralTask` labels DVCS as CCS.** It stores `calcFieldXY`
+  (DVCS) as `thx_ccs` without the swap, so its `thx_ocs`, `thy_ocs`, `th_n` and `th_w`
+  are the true values with x and y swapped. The aggregated AOS tables are unaffected.
+  See [`../../wfs/docs/calc_zernikes_neural_frames_bug.md`](../../wfs/docs/calc_zernikes_neural_frames_bug.md).
 
 ## Static optics move with OCS, not CCS
 

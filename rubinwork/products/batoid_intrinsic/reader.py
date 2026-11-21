@@ -91,14 +91,14 @@ def load(variant, build=catalog.CURRENT, band=None, kind=None, config=None, side
 
 
 def load_dz(variant, build=catalog.CURRENT):
-    """Double-Zernike fits on the science grid.
+    """Double-Zernike fits on the science grid, in OCS.
 
     Returns
     -------
     dz : `dict`
         ``{(band, kind, config, side): (coef, header)}``. `coef` has shape
         ``(kmax + 1, jmax + 1)``: field Noll k (row 0 unused) by pupil Noll j, µm of
-        wavefront, CCS, field unit disk of radius ``RFIELD`` deg (header).
+        wavefront, OCS (field and pupil), field unit disk of radius ``RFIELD`` deg (header).
     """
     out = {}
     with fits.open(catalog.path(PRODUCT, variant, build) / DZ_FILE) as hdul:
@@ -116,7 +116,7 @@ def evaluate_dz(coef, thx_deg, thy_deg, radius_deg):
     coef : `numpy.ndarray`
         ``(kmax + 1, jmax + 1)`` from `load_dz`, µm.
     thx_deg, thy_deg : `numpy.ndarray`
-        CCS field angles, deg.
+        OCS field angles, deg.
     radius_deg : `float`
         Field radius of the fit (``RFIELD``), deg.
 
