@@ -144,3 +144,9 @@ Errors against v1 (median err_v2 / err_v1, dimensionless): 0.89 for DZ, 0.91 for
 - DZ(1,4) is fit exactly by 22/12 too: residual below 0.0003 µm on every leg (u1 is pure DZ(1,4)).
 - The opposite-sign M2_dz/Cam_dz motion flips sign against RBR 50/50 at 30, 40 and 60 deg. 40 deg M2_dz: +67, +77, +57 µm (22/12) against −70, −39, −41 µm (RBR). At 50 deg the two agree (−73 and −85 µm). B1_3 and B2_5 are 10× smaller under 22/12. This is the weak hexapod-difference direction: it cancels the DZ(1,11) and field coma (DZ(2,8), DZ(3,7)) of B1_3 and B2_5, so it follows them. Only at 50 deg, where ΔDZ(1,11) = −0.024 ± 0.004 µm, does the data fix it.
 - The `aos_state` 12-mode subspace differs slightly from the DZ SVD's: ΔDOF → v → ΔDOF loses 0.013–0.028 of the normalized-DOF power (dimensionless, per leg).
+
+### 2026-11-21 — Per-visit and B − A pair pages for the 22/12 DZ terms
+
+`bounce_dz_pairs_summary_v1`, run `20261121_dz_pairs_summary`. These are the left two panels of `bounce_delta_derivation` (per-visit DZ vs time; B − A vs pair index), one page per term with a row per (night, leg).
+- Terms: all 21 k = 1 terms, plus each k > 1 term holding at least 0.01 of the power of any 22/12 u-mode. That adds DZ(2,4), DZ(2,5), DZ(2,6), DZ(2,8), DZ(3,4), DZ(3,5), DZ(3,6) and DZ(3,7), for 29 terms. The same 8 pass at 0.02 and 0.05. The selection keeps at least 0.998 of each u-mode's power (dimensionless).
+- The paired Δ and error reproduce `run_bounce` for every term and leg.
