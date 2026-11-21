@@ -116,7 +116,12 @@ Aaron reviewed the run; `findings.md` (E1–E4, R1–R8) and the answer are upda
 Superseded output removed (Aaron's OK): `psi_edges.pdf`, `gallery.pdf`, `psi_elements.csv`
 and `parts/` in the pass 6 and night 3 label runs (their `labels.parquet` and `sides.csv`
 stay, as pairs-review inputs), and the night 3 `candidates_<visit>_<side>.pdf`, replaced by
-`focal_plane.pdf`.
+`focal_plane.pdf`. A second pass (Aaron's OK, 10.4 GB; `output/` 45 → 35 GB) removed
+the pass 1–4 `images/` arrays, the ISR caches nothing reads (`20261020_isr_bin4`, and
+`isr_bin4/` in the 20251027, 20250920 and night 2 review runs; their stamps stay), the
+test runs `20261020_test_v2`, `20261020_test_v2_score`, `20261117_night3_check` and
+`20261023_pupil6/huygens_test`. Passes 1–5 can no longer redraw their image pages
+without a refit (`method.md`).
 
 ### 2026-11-18 — rim analysis: edge rule R0, the M1 roll-off and an M3 outer rim
 

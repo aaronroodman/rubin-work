@@ -315,16 +315,10 @@ Kept to reproduce earlier passes: `pass5_blur.py`, `pass5_vignetting.py`,
 Pass 6 (`20261023_pupil6`) can: `pass6_report.py` reads only tables, `isr_stamps/` and the
 small sim model arrays (`sims/stamps/*_model.npz`), and reruns in a few minutes.
 
-Earlier passes whose summary pages need more than tables and small arrays:
-- **pass 1** (`20261018_fits`, `20261018_pupil`): the image pages read `images/*.npz`
-  (170 MB in `20261018_pupil`); `20261018_fits` has no image arrays, so its image pages need
-  a refit.
-- **pass 2** (`20261019_pupil2`): `pass2_report.py` reads `images/` (468 MB), present.
-- **pass 3** (`20261020_pupil3`): `pupil_pass3_report.py` reads `images/` (522 MB), present.
-- **pass 4** (`20261021_pupil4`): reads `images/` (1.1 GB, including the `_c0` arrays),
-  present.
-- **pass 5** (`20261022_pupil5`): `pass5_report.py` reads pass 4's `images/` and tables for
-  its step 3 and step 4 pages, so it depends on another run.
+Passes 1–5 cannot: their `images/` model arrays (v1000 and early v4.02 renders, 2.66 GB)
+were deleted on 2026-11-20 (Aaron's OK), so their image pages need a refit. Pass 5 also
+read pass 4's `images/`. Their PDFs and tables stay.
 
-All of passes 2–5 regenerate from their run directories as long as the `images/` arrays
-(and, for pass 5, the pass 4 run) are kept; none store their summary tables alone.
+The pairs review (`20261120_pairs_review`) reruns from `20261023_pupil6`,
+`20261018_isr_bin4`, `20261118_night2_20261107` and `_20261108`, `20261020_candidates_v2`
+and the psi label runs; its `models/` holds the rendered gallery models.
