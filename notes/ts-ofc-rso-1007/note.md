@@ -1,6 +1,6 @@
 # ts_ofc RSO-1007: double-Zernike state estimator and Range-Bounded Recovery
 
-Status: PR open, not merged (2026-10-23).
+Status: PR open, awaiting review (2026-11-20). Handoff: `notes/status/ts_ofc_rso1007_handoff.md`.
 PR: https://github.com/lsst-ts/ts_ofc/pull/124 (`tickets/RSO-1007` into `develop`).
 Ticket: https://rubinobs.atlassian.net/browse/RSO-1007
 
