@@ -46,6 +46,7 @@ from scipy.signal import fftconvolve
 import galsim
 
 from rubinwork.common import study_run
+from rubinwork.common.frames import dvcs_to_ccs_field
 from pupil_masks import danish_clear, stop_uv
 import rubinwork.smatrix.compute_smatrix as cs
 
@@ -69,12 +70,13 @@ FIVE_K = (-2, -1, 1, 2)          # five-point mode: steps besides the nominal
 DZ_TARGET_UM = 0.01              # RMS in-focus Noll 4..78 change per DOF step or injection;
                                  # at 0.05 the corner fits are already nonlinear
 
-# Corner half-chips: cameraGeom FIELD_ANGLE centres (deg), SW0 extra, SW1 intra.
+# Corner half-chip centres, batoid (CCS) field angle (deg): cameraGeom FIELD_ANGLE (DVCS)
+# with x and y swapped. SW0 extra, SW1 intra.
 CORNERS = {
-    "R00_SW0": (-1.1897, -1.1251), "R00_SW1": (-1.1897, -1.2543),
-    "R04_SW0": (1.1251, -1.1897), "R04_SW1": (1.2543, -1.1897),
-    "R40_SW0": (-1.1251, 1.1897), "R40_SW1": (-1.2543, 1.1897),
-    "R44_SW0": (1.1897, 1.1251), "R44_SW1": (1.1897, 1.2543),
+    "R00_SW0": (-1.1251, -1.1897), "R00_SW1": (-1.2543, -1.1897),
+    "R04_SW0": (-1.1897, 1.1251), "R04_SW1": (-1.1897, 1.2543),
+    "R40_SW0": (1.1897, -1.1251), "R40_SW1": (1.1897, -1.2543),
+    "R44_SW0": (1.1251, 1.1897), "R44_SW1": (1.2543, 1.1897),
 }
 SCI_GRID_DEG = (-0.75, 0.0, 0.75)
 SPIDER_ANGLE = 0.0               # deg; Danish and the ray trace both mask the Spider_3D vanes
@@ -84,7 +86,7 @@ CWFS_GRID = (6, 3)               # field points per half-chip along pixel x (407
 
 
 def _cwfs_grid():
-    """6 x 3 cell centres on each corner half-chip, cameraGeom FIELD_ANGLE (deg)."""
+    """6 x 3 cell centres on each corner half-chip, batoid (CCS) field angle (deg)."""
     from lsst.obs.lsst import LsstCam
     from lsst.afw.cameraGeom import PIXELS, FIELD_ANGLE
     import lsst.geom as geom
@@ -100,7 +102,8 @@ def _cwfs_grid():
                 px = bb.getMinX() - 0.5 + (i + 0.5) * bb.getWidth() / nx
                 py = bb.getMinY() - 0.5 + (j + 0.5) * bb.getHeight() / ny
                 f = tr.applyForward(geom.Point2D(px, py))
-                out.append((f"{name}_x{i}y{j}", *np.rad2deg([f.getX(), f.getY()])))
+                x, y = dvcs_to_ccs_field(*np.rad2deg([f.getX(), f.getY()]))
+                out.append((f"{name}_x{i}y{j}", x, y))
     return out
 
 
@@ -322,8 +325,8 @@ def save_images(directory, out, saved, rt_scale, instr):
     hdr = fits.Header()
     for key, val, com in (
             ("CONFIG", out["name"], "configuration name"),
-            ("THX_DEG", out["thx_deg"], "field angle x, cameraGeom FIELD_ANGLE (deg)"),
-            ("THY_DEG", out["thy_deg"], "field angle y, cameraGeom FIELD_ANGLE (deg)"),
+            ("THX_DEG", out["thx_deg"], "field angle x, batoid CCS (deg)"),
+            ("THY_DEG", out["thy_deg"], "field angle y, batoid CCS (deg)"),
             ("SIDE", out["side"], "defocus side"),
             ("INSTR", out["instrument"], "ts_wep instrument"),
             ("WL_M", out["wavelength_m"], "wavelength (m)"),
