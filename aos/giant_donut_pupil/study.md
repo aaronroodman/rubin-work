@@ -123,6 +123,13 @@ test runs `20261020_test_v2`, `20261020_test_v2_score`, `20261117_night3_check` 
 `20261023_pupil6/huygens_test`. Passes 1–5 can no longer redraw their image pages
 without a refit (`method.md`).
 
+The four ISR caches left (20251023 337/340, 20260127, 20261107, 20261108) were converted from
+float32 `.npy` to Rice-compressed FITS, quantize level 16 (`compress_isr_cache.py`, job
+46217395, 2 min; Aaron's OK): 5665 files, 22.69 → 5.22 GB, `output/` 35 → 18 GB. Max
+|FITS − npy| per row is 0.04–0.10 of the row's pixel noise and rms 0.018–0.022 of the
+image noise (dimensionless). The pair 1 `focal_plane.pdf` redrawn from the FITS matches the
+original to 2 of 255 in pixel value.
+
 ### 2026-11-18 — rim analysis: edge rule R0, the M1 roll-off and an M3 outer rim
 
 Edge rules compared (`code/edge_rules.py`, `9dcc10c`; runs `20261118_edge_rules_<run>_<fit>`

@@ -2,8 +2,9 @@
 
 Each ``<visit>/<detector>.npy`` becomes ``<detector>.fits.fz`` (`isr_cache.save_binned`,
 quantize level 16). The ``.npy`` is removed only after the FITS reads back with the same
-shape and non-finite pixels, and with a residual (FITS − npy) whose maximum is below
-``MAX_FRAC`` of the pixel noise (nMAD of neighbour differences / sqrt 2). A file that fails
+shape and non-finite pixels, and with a residual (FITS − npy) whose maximum in each row is
+below ``MAX_FRAC`` of that row's pixel noise (nMAD of neighbour differences / sqrt 2): Rice
+quantizes row by row, so a row through a saturated star gets a coarser step. A file that fails
 keeps its ``.npy`` and loses the FITS. Prints one line per visit and a total.
 
 Usage, from the repo root::
@@ -22,7 +23,7 @@ import isr_cache  # noqa: E402
 from rubinwork.common.utils import nmad  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[1] / 'output'
-MAX_FRAC = 0.125  # largest allowed |FITS - npy| over the pixel noise; quantization gives ~1/32
+MAX_FRAC = 0.125  # largest allowed |FITS - npy| over the row's pixel noise; quantization gives ~1/25
 
 
 def convert(npy, dry_run=False):
@@ -35,9 +36,14 @@ def convert(npy, dry_run=False):
     dx = np.diff(a.astype(float), axis=1)
     noise = nmad(dx[np.isfinite(dx)]) / np.sqrt(2)
     ok = b.shape == a.shape and np.array_equal(fin, np.isfinite(b)) and noise > 0
-    d = (b - a)[fin] if ok else np.array([np.inf])
-    mx = float(np.abs(d).max() / noise) if ok else np.inf
-    rms = float(np.sqrt(np.mean(d ** 2)) / noise) if ok else np.inf
+    if ok:
+        d = np.where(fin, b - a, 0.0)
+        row_noise = np.array([nmad(r[np.isfinite(r)]) for r in dx]) / np.sqrt(2)
+        good = row_noise > 0
+        mx = float((np.abs(d).max(axis=1)[good] / row_noise[good]).max())
+        rms = float(np.sqrt(np.mean(d[fin] ** 2)) / noise)
+    else:
+        mx = rms = np.inf
     ok = ok and mx < MAX_FRAC
     nb, fb = npy.stat().st_size, fz.stat().st_size
     if dry_run or not ok:
