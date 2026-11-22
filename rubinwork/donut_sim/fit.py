@@ -14,7 +14,8 @@ import danish
 import numpy as np
 from scipy.optimize import least_squares
 
-__all__ = ["bin_stamp", "factory", "centre_offset_px", "fit_donut", "metrics"]
+__all__ = ["bin_stamp", "factory", "centre_offset_px", "fit_donut", "metrics",
+           "clear_danish_caches"]
 
 FWHM_START_ARCSEC = 1.0
 FWHM_BOUNDS_ARCSEC = (0.1, 5.0)
@@ -95,12 +96,23 @@ def fit_donut(fac, img, z_ref_m, thx_rad, thy_rad, noll, sky_var, lstsq_kwargs):
                       **lstsq_kwargs)
     p = m.unpack_params(r.x)
     chi = m.chi(r.x, img, sky_var)
+    model = m.model(**p)
+    # danish caches up to 1000 kernels per method on the class, across models: 5 GB per
+    # process at 801 px.
+    clear_danish_caches()
     return dict(flux=p["flux"], dx=p["dx"], dy=p["dy"], fwhm=p["fwhm"],
                 z_fit_m=np.asarray(p["z_fit"], float),
                 chi2_dof=float(np.sum(chi ** 2) / (chi.size - r.x.size)),
                 nfev=int(r.nfev), status=int(r.status), success=bool(r.success),
                 cost=float(r.cost), optimality=float(r.optimality),
-                model=m.model(**p))
+                model=model)
+
+
+def clear_danish_caches():
+    """Empty danish's class-level ``lru_cache`` of kernels and model images."""
+    from danish import donut_model
+    for name in ("_atm_kernel", "_opt_kernel", "_bkg", "_model"):
+        getattr(donut_model.BaseDonutModel, name).cache_clear()
 
 
 def metrics(sim, mod):
