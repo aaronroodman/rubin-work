@@ -13,6 +13,7 @@ Size is the total of the current build's files, or of the latest build when none
 | atmo_sim_moments | `v1` |  | visits/2026070600908 | 2026-10-28 | 6 | 0.5 |
 | atmo_sim_moments | `v2` |  | visits/2026070600688 | 2026-11-20 | 6 | 0.5 |
 | batoid_intrinsic | `v4_speed` | 20261121b | 20261121b | 2026-11-21 | 3 | 10.8 |
+| bounce_aba | `d13-batoid-22_12` | 20261121 | 20261121 | 2026-11-21 | 1 | 0.1 |
 | bounce_tables | `d12-A_50_34_i` | 20261025 | 20261025 | 2026-10-25 | 2 | 0.2 |
 | bounce_tables | `d12-A_50_34_i_5rot` | 20261025 | 20261025 | 2026-10-25 | 2 | 0.2 |
 | bounce_tables | `d12-A_50_34_i_5rot_july` |  | old-tree-20261001 | 2026-10-24 | 1 | 8.6 |

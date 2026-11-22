@@ -150,3 +150,12 @@ Errors against v1 (median err_v2 / err_v1, dimensionless): 0.89 for DZ, 0.91 for
 `bounce_dz_pairs_summary_v1`, run `20261121_dz_pairs_summary`. These are the left two panels of `bounce_delta_derivation` (per-visit DZ vs time; B − A vs pair index), one page per term with a row per (night, leg).
 - Terms: all 21 k = 1 terms, plus each k > 1 term holding at least 0.01 of the power of any 22/12 u-mode. That adds DZ(2,4), DZ(2,5), DZ(2,6), DZ(2,8), DZ(3,4), DZ(3,5), DZ(3,6) and DZ(3,7), for 29 terms. The same 8 pass at 0.02 and 0.05. The selection keeps at least 0.998 of each u-mode's power (dimensionless).
 - The paired Δ and error reproduce `run_bounce` for every term and leg.
+
+### 2026-11-21 — 22/12-only PDF, and the `bounce_aba` product
+
+`bounce_aba_optical_state_v5`, run `20261121_aba_optical_state_22_12_only`: v4 with the RBR 50/50 overlay removed. The y-ranges now follow the 22/12 points, so their MC error bars show. In v4 they were hidden under the markers, because the RBR values set the scale (for example M2_dy: 22/12 error 5 µm, RBR up to 872 µm). v4 stays as the comparison.
+
+The A–B–A reduction moved from the notebook cells into `rubinwork.bounce.aba`, and a new product `bounce_aba` now holds it. Each variant is one (scheme, intrinsic) pair. The tables are `aba_legs`, `aba_dz`, `aba_state` (DOF and v-modes) and `aba_noise`.
+- The library reproduces v4 (22/12) and v3 (RBR 50/50) on the MIW `d13-A_50_50_i_rbr_5rot@20261028b`: Δ to 1e-12 and MC errors to 5e-9 (dimensionless; relative difference).
+- Built `d13-batoid-22_12@20261121`, which reads `fam_tables danish_1_3@20261028b` (batoid intrinsic subtracted). Against the v4 MIW numbers, |batoid − MIW| / MC error is at most 0.18 for DOF, 0.13 for v-modes and 1.6 for DZ terms (median 0.07). That is expected: a static intrinsic cancels in A–B–A at a fixed rotator.
+- `d13-A_50_50_i_rbr_5rot-rbr_50_50` is defined but not built.

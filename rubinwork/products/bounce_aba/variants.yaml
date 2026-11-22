@@ -1,0 +1,28 @@
+# bounce_aba variants: one per (recovery scheme, intrinsic). The intrinsic fixes the DZ
+# fit table: `batoid` reads the fam_tables fits.parquet, whose fit subtracts the
+# tabulated batoid zk_intrinsic; `miw` reads the fits.parquet of a miw build, whose fit
+# subtracts that measured intrinsic wavefront (MIW). The bounce legs, mode counts and RBR
+# knobs come from the `bounce:` section of aos/analysis_config.yaml for the variant's
+# param_set (and mi_name, for an MIW variant).
+
+defaults:
+  bounce: T720_elevation              # BLOCK-T720 elevation sweep, A = 70 deg
+  day_obs: [20260418, 20260419, 20260513, 20260709, 20260711, 20260713]
+  min_detectors: 160                  # bounce run's --min-detectors
+  red_term: [1, 4]                    # the one DZ term with a red-noise model
+  t0_min: 10.0                        # red-noise reference lag, min
+  lag_bins_min: [0, 4, 8, 15, 30, 60, 120]
+  n_mc: 1000                          # MC draws per (night, leg)
+  seed: 20261102                      # the bounce_aba_optical_state_v2 seed
+
+variants:
+
+  d13-batoid-22_12:
+    scheme: "22_12"
+    intrinsic: batoid
+    fam_variant: danish_1_3
+
+  d13-A_50_50_i_rbr_5rot-rbr_50_50:
+    scheme: rbr_50_50
+    intrinsic: miw
+    miw_variant: d13-A_50_50_i_rbr_5rot
