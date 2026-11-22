@@ -24,6 +24,7 @@ flowchart LR
     fam_tables -->|4| wfs_corner_compare
     fitted_smatrix -->|4| miw
     guider_moments -->|2| atmo_sim
+    miw -->|1| bounce_aba
     miw -->|4| bounce_tables
     miw -->|3| coadds
     miw -->|2| dof_lut
@@ -41,6 +42,7 @@ flowchart LR
 | atmo_sim_moments | `v1` | visits/2026070600908 | no | atmo_sim: v1@visits/2026070600908 |
 | atmo_sim_moments | `v2` | visits/2026070600688 | no | atmo_sim: v2@visits/2026070600688 |
 | batoid_intrinsic | `v4_speed` | 20261121b | yes |  |
+| bounce_aba | `d13-A_50_50_i_rbr_5rot-rbr_50_50` | 20261121 | yes | miw: d13-A_50_50_i_rbr_5rot@20261028b |
 | bounce_aba | `d13-batoid-22_12` | 20261121 | yes | fam_tables: danish_1_3@20261028b |
 | bounce_tables | `d12-A_50_34_i` | 20261025 | yes | miw: d12-A_50_34_i@20261025 |
 | bounce_tables | `d12-A_50_34_i_5rot` | 20261025 | yes | miw: d12-A_50_34_i_5rot@20261025 |
@@ -121,6 +123,7 @@ Declared by studies (`uses:`): [aos/v4speed_mask_vs_batoid](aos/v4speed_mask_vs_
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
 | [aos/v4speed_mask_vs_batoid](aos/v4speed_mask_vs_batoid/study.md) | study | 3: `aos/v4speed_mask_vs_batoid/code/blur_check.py`, `aos/v4speed_mask_vs_batoid/code/mask_vs_batoid.py`, `aos/v4speed_mask_vs_batoid/code/pupil_edges.py` | `v4_speed` |
+| `sim_donut_fits` | product | 1: `rubinwork/products/sim_donut_fits/builders/build.py` |  |
 | `sim_donuts` | product | 1: `rubinwork/products/sim_donuts/builders/build.py` |  |
 
 ### bounce_aba
@@ -233,13 +236,13 @@ Declared by studies (`uses:`): [guider/guider_atmo_sim](guider/guider_atmo_sim/s
 
 ### miw
 
-Built into (manifest): `bounce_tables`, `coadds`, `dof_lut`, `miw`.
+Built into (manifest): `bounce_aba`, `bounce_tables`, `coadds`, `dof_lut`, `miw`.
 
 Declared by studies (`uses:`): [aos/cwfs](aos/cwfs/study.md) d12-A_50_34_i@current; [aos/cwfs](aos/cwfs/study.md) d12-A_50_34_i_5rot@current; [aos/fam_dz_sparse_vs_dense](aos/fam_dz_sparse_vs_dense/study.md) d13-A_50_50_i_rbr@20261027; [aos/miw_compare_rbr](aos/miw_compare_rbr/study.md) d12-A_50_50_i_rbr@20261028; [aos/miw_compare_rbr](aos/miw_compare_rbr/study.md) d13-A_50_34_i@20261025; [aos/miw_compare_rbr](aos/miw_compare_rbr/study.md) d13-A_50_50_i_rbr@20261027; [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34_i@20261014; [aos/miw_hull](aos/miw_hull/study.md) d12-A_50_34_i_5rot@20261014; [aos/miw_smatrix_consistency](aos/miw_smatrix_consistency/study.md) d13-A_50_34_i@20261025; [aos/miw_smatrix_consistency](aos/miw_smatrix_consistency/study.md) d13-A_50_34_i_fsm_dense21@20261116b; [aos/miw_smatrix_consistency](aos/miw_smatrix_consistency/study.md) d13-A_50_50_i_rbr_fsm_dense21@20261116; [aos/miw_smatrix_consistency](aos/miw_smatrix_consistency/study.md) d13s-A_50_34_i_fsm_sparse_no22@20261116b; [aos/miw_smatrix_consistency](aos/miw_smatrix_consistency/study.md) d13s-A_50_50_i_rbr_fsm_sparse_no22@20261116.
 
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
-| [aos/bounce](aos/bounce/study.md) | study | 12: `aos/bounce/code/bounce_lib.py`, `aos/bounce/code/run_bounce.py`, `aos/bounce/notebooks/bounce_aba_optical_state_v1.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v2.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v3.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v4.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v1.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v2.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v3.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v4.ipynb`, `aos/bounce/notebooks/bounce_dz_pairs_summary_v1.ipynb`, `aos/bounce/notebooks/bounce_white_noise_pairs_v1.ipynb` |  |
+| [aos/bounce](aos/bounce/study.md) | study | 13: `aos/bounce/code/bounce_lib.py`, `aos/bounce/code/run_bounce.py`, `aos/bounce/notebooks/bounce_aba_optical_state_v1.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v2.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v3.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v4.ipynb`, `aos/bounce/notebooks/bounce_aba_optical_state_v5.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v1.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v2.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v3.ipynb`, `aos/bounce/notebooks/bounce_delta_derivation_v4.ipynb`, `aos/bounce/notebooks/bounce_dz_pairs_summary_v1.ipynb`, `aos/bounce/notebooks/bounce_white_noise_pairs_v1.ipynb` |  |
 | [aos/closed_loop](aos/closed_loop/study.md) | study | 1: `aos/closed_loop/code/run_closed_loop.py` |  |
 | [aos/correlations](aos/correlations/study.md) | study | 4: `aos/correlations/code/run_dz_correlations.py`, `aos/correlations/code/run_dz_explained.py`, `aos/correlations/code/run_thermal_correlations.py`, `aos/correlations/code/run_vmode_correlations.py` |  |
 | [aos/cwfs](aos/cwfs/study.md) | study | 1: `aos/cwfs/code/run_wfs_dof_compare.py` |  |
@@ -266,6 +269,7 @@ Declared by studies (`uses:`): [aos/v4speed_mask_vs_batoid](aos/v4speed_mask_vs_
 | reader | kind | files (scanned) | literal variants |
 |---|---|---|---|
 | [aos/v4speed_mask_vs_batoid](aos/v4speed_mask_vs_batoid/study.md) | study | 2: `aos/v4speed_mask_vs_batoid/code/blur_check.py`, `aos/v4speed_mask_vs_batoid/code/mask_vs_batoid.py` |  |
+| `sim_donut_fits` | product | 1: `rubinwork/products/sim_donut_fits/builders/build.py` |  |
 
 ### value_added
 
