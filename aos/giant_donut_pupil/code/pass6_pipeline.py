@@ -36,6 +36,8 @@ import pupil_pass3 as p3  # noqa: E402
 
 DELTAS = ps5.DELTAS
 AZ = ps5.AZ
+# Mask of a `Model` or `measure` call that names none; the v4_speed driver sets it.
+DEFAULT_MASK = 'v4.02g'
 
 
 def noise_of(img, msk):
@@ -47,8 +49,9 @@ def noise_of(img, msk):
 class Model:
     """danish fit c model of one side at a set blur, mask variant, rtp and vane width."""
 
-    def __init__(self, row, fwhm, mask='v4.02g', vane_width_m=None, zk_ta=None):
+    def __init__(self, row, fwhm, mask=None, vane_width_m=None, zk_ta=None):
         import danish
+        mask = mask or DEFAULT_MASK
         self.row = row
         self.offsets = fd.offsets_m(row.side, row.sensor_class)
         self.params = p6.mask_params(mask, self.offsets, vane_width_m)
@@ -98,7 +101,7 @@ class Model:
         return img
 
 
-def measure(row, img, msk, fwhm, mask='v4.02g', vane_width_m=None, zk_ta=None, delta=True,
+def measure(row, img, msk, fwhm, mask=None, vane_width_m=None, zk_ta=None, delta=True,
             centers=True, profiles=False, keep_images=False):
     """Fits a and c, edges, shadows, δ grid and edge centers of one side.
 
@@ -117,6 +120,7 @@ def measure(row, img, msk, fwhm, mask='v4.02g', vane_width_m=None, zk_ta=None, d
     noise = noise_of(img, msk)
     var = np.where(msk, fd.MASKED_VAR, noise ** 2)
     n_good = int((~msk).sum())
+    mask = mask or DEFAULT_MASK
     M = Model(row, fwhm, mask, vane_width_m, zk_ta)
     ra = M.fit(img, var, p3.FITS['a'])
     sky_scale = ra['sky_scale']

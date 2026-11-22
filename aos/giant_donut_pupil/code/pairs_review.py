@@ -22,6 +22,9 @@ Usage, from the repo root::
 
     python aos/giant_donut_pupil/code/pairs_review.py --steps models --workers 60
     python aos/giant_donut_pupil/code/pairs_review.py --steps pdfs --out 20261120_pairs_review
+
+With ``--mask-set v4speed``: the v4_speed fits of `v4speed_fits.py`, science sides only,
+one mask, and a first summary page of the donut sample in CCS field angle.
 """
 import argparse
 import dataclasses
@@ -51,6 +54,21 @@ INNER_BAND = (0.25, 0.5)
 OUTER_BAND = (1.6, 1.725)
 CORNER_BAND = (1.4, 1.75)
 MASKS = ('v4.02g', 'v4.02s')
+BASE = 'v4.02g'  # the mask of the 0.25-0.5 deg band, the side lists and the exposure table
+CORNERS = True
+# Mask sets (``--mask-set``): the v4.02 review of 2026-11-20, and the v4_speed rerun
+# (science sides only, outer-band labels from ``psi_labels.py --band 1.6 1.725``).
+MASK_SETS = {'v402': dict(masks=('v4.02g', 'v4.02s'), corners=True, label='v4.02 masks'),
+             'v4speed': dict(masks=('v4_speed',), corners=False, label='v4_speed mask')}
+LABEL = MASK_SETS['v402']['label']
+
+
+def configure(mask_set):
+    global MASKS, BASE, CORNERS, LABEL, SIL
+    m = MASK_SETS[mask_set]
+    MASKS, BASE, CORNERS, LABEL = m['masks'], m['masks'][0], m['corners'], m['label']
+    SIL = 'Camera silhouette' if CORNERS else 'CameraBody'
+PIXEL_SCALE_ARCSEC = 0.2  # LSSTCam, 10 µm pixels
 BAND_COLOURS = {INNER: 'tab:orange', 'science outer': 'red', 'corner outer': 'magenta'}
 
 
@@ -72,24 +90,25 @@ class Pair:
 N1, N7, N8 = '20261023_pupil6', '20261118_night2_20261107', '20261118_night2_20261108'
 PAIRS = [
     Pair('pair0_20251023_340i_337e', 20251023, 2025102300340, 2025102300337, N1,
-         {'v4.02g': 'isr_phys', 'v4.02s': 'isr_phys_v402s'}, '20261018_isr_bin4',
+         {'v4.02g': 'isr_phys', 'v4.02s': 'isr_phys_v402s', 'v4_speed': 'v4speed'}, '20261018_isr_bin4',
          '20261020_candidates_v2/candidates_v2.parquet'),
     Pair('pair1_20261107_366i_388e', 20261107, 2026110700366, 2026110700388, N7,
-         {'v4.02g': 'v402g', 'v4.02s': 'v402s'}, f'{N7}/isr_bin4', f'{N7}/candidates.parquet'),
+         {'v4.02g': 'v402g', 'v4.02s': 'v402s', 'v4_speed': 'v4speed'}, f'{N7}/isr_bin4', f'{N7}/candidates.parquet'),
     Pair('pair2_20261108_014i_036e', 20261108, 2026110800014, 2026110800036, N8,
-         {'v4.02g': 'v402g', 'v4.02s': 'v402s'}, f'{N8}/isr_bin4', f'{N8}/candidates.parquet'),
+         {'v4.02g': 'v402g', 'v4.02s': 'v402s', 'v4_speed': 'v4speed'}, f'{N8}/isr_bin4', f'{N8}/candidates.parquet'),
     Pair('pair3_20261108_152i_147e', 20261108, 2026110800152, 2026110800147, N8,
-         {'v4.02g': 'v402g', 'v4.02s': 'v402s'}, f'{N8}/isr_bin4', f'{N8}/candidates.parquet'),
+         {'v4.02g': 'v402g', 'v4.02s': 'v402s', 'v4_speed': 'v4speed'}, f'{N8}/isr_bin4', f'{N8}/candidates.parquet'),
     Pair('pair4_20261108_168i_190e', 20261108, 2026110800168, 2026110800190, N8,
-         {'v4.02g': 'v402g', 'v4.02s': 'v402s'}, f'{N8}/isr_bin4', f'{N8}/candidates.parquet'),
+         {'v4.02g': 'v402g', 'v4.02s': 'v402s', 'v4_speed': 'v4speed'}, f'{N8}/isr_bin4', f'{N8}/candidates.parquet'),
 ]
 
 
 def label_runs(run, fit_dir, which):
     """Newest ``psi_labels`` run of a source: the outer bands, or the 0.25-0.5 deg band."""
     tag = f'psi_labels_{run}_{fit_dir}'
-    if which == INNER:
-        tag += '_band_' + '_'.join(f'{v:g}'.replace('.', 'p') for v in INNER_BAND)
+    band = INNER_BAND if which == INNER else None if CORNERS else OUTER_BAND
+    if band is not None:
+        tag += '_band_' + '_'.join(f'{v:g}'.replace('.', 'p') for v in band)
     found = sorted(p.name for p in OUT.glob(f'2*_{tag}') if (p / 'labels.parquet').exists())
     if not found:
         raise FileNotFoundError(f'no {tag} run with labels.parquet')
@@ -116,7 +135,7 @@ def pair_sides(p, mask, which):
     if which == INNER:
         c = c[(c.sensor_class == 'science') & c.field_r_deg.between(*INNER_BAND)]
     else:
-        c = pl.select(c)
+        c = pl.select(c, band=None if CORNERS else OUTER_BAND)
     lab = pd.read_parquet(OUT / label_runs(p.run, p.fit[mask], which) / 'labels.parquet',
                           columns=['key', 'side'])
     c = c.merge(lab.drop_duplicates())
@@ -149,7 +168,7 @@ def step_models(out, workers):
     for p in PAIRS:
         for mask in MASKS:
             for which in (OUTER, INNER):
-                if which == INNER and mask != 'v4.02g':
+                if which == INNER and mask != BASE:
                     continue
                 for r in pair_sides(p, mask, which).itertuples(index=False):
                     path = model_path(out, p.run, p.fit[mask], r.key, r.side)
@@ -186,7 +205,7 @@ def used_donuts(p, camera):
     """Every side of the pair used in a gallery or edge page, with DVCS mm and colour key."""
     rows = []
     for which in (OUTER, INNER):
-        c = pair_sides(p, 'v4.02g', which)
+        c = pair_sides(p, BASE, which)
         for r in c.itertuples(index=False):
             s = _side_row(p, r.key, r.side)
             x, y = _fp_mm(camera, s.detector, float(s.x_pix), float(s.y_pix))
@@ -203,7 +222,7 @@ _SIDES = {}
 
 def _side_row(p, key, side):
     if p.run not in _SIDES:
-        f = OUT / p.run / p.fit['v4.02g'] / 'sides.parquet'
+        f = OUT / p.run / p.fit[BASE] / 'sides.parquet'
         f = f if f.exists() else OUT / p.run / 'sides.parquet'
         _SIDES[p.run] = pd.read_parquet(f).set_index(['key', 'side'])
     return _SIDES[p.run].loc[(key, side)]
@@ -341,27 +360,29 @@ def _labels(run, fit_dir, which):
 def fit_gallery_pdf(p, path, out):
     rows_per_page = pg.ROWS_PER_PAGE
     with PdfPages(path) as pdf:
-        for which, masks in ((OUTER, MASKS), (INNER, ('v4.02g',))):
+        for which, masks in ((OUTER, MASKS), (INNER, (BASE,))):
             sides = {m: pair_sides(p, m, which).assign(mask=m).set_index(['key', 'side'])
                      for m in masks}
-            order = list(sides['v4.02g'].index)
+            order = list(sides[BASE].index)
             for side in ('intra', 'extra'):
                 keys = [k for k in order if k[1] == side and all(k in sides[m].index for m in masks)]
                 for i0 in range(0, len(keys), rows_per_page):
                     chunk = keys[i0:i0 + rows_per_page]
-                    fig, axes = plt.subplots(rows_per_page, 5, figsize=(20, 4.0 * rows_per_page),
+                    ncol = 1 + 2 * len(masks)
+                    fig, axes = plt.subplots(rows_per_page, ncol,
+                                             figsize=(4.0 * ncol, 4.0 * rows_per_page),
                                              squeeze=False)
                     used = set()
                     for k, (key, sd) in enumerate(chunk):
                         img, msk = pg.stamp(OUT / p.run, key)
-                        r0 = pd.Series(sides['v4.02g'].loc[(key, sd)]).copy()
+                        r0 = pd.Series(sides[BASE].loc[(key, sd)]).copy()
                         r0['key'], r0['side'] = key, sd
-                        g0 = _bins_with_labels(p, 'v4.02g', which, key, sd)
+                        g0 = _bins_with_labels(p, BASE, which, key, sd)
                         _data_panel(axes[k, 0], r0, g0, img, msk)
                         for j, m in enumerate(masks):
                             r = pd.Series(sides[m].loc[(key, sd)]).copy()
                             r['key'], r['side'] = key, sd
-                            g = g0 if m == 'v4.02g' else _bins_with_labels(p, m, which, key, sd)
+                            g = g0 if m == BASE else _bins_with_labels(p, m, which, key, sd)
                             used |= set(g.element_inner.dropna()) | set(g.element_outer.dropna())
                             model = load_model(out, p.run, p.fit[m], key, sd)
                             _model_panels(axes[k, 1 + 2 * j], axes[k, 2 + 2 * j], r, g, img, msk,
@@ -371,11 +392,17 @@ def fit_gallery_pdf(p, path, out):
                         ax.set_yticks([])
                         if not ax.images:
                             ax.axis('off')
-                    band = ('science 1.6-1.725 deg and corner 1.4-1.75 deg' if which == OUTER
-                            else 'science 0.25-0.5 deg (v4.02g; v4.02s is the same mask here)')
+                    if which == OUTER:
+                        band = ('science 1.6-1.725 deg and corner 1.4-1.75 deg' if CORNERS
+                                else f'science 1.6-1.725 deg, {BASE}')
+                    elif len(MASKS) > 1:
+                        band = 'science 0.25-0.5 deg (v4.02g; v4.02s is the same mask here)'
+                    else:
+                        band = f'science 0.25-0.5 deg, {BASE}'
                     handles = [Patch(color=per.COLOURS[u], label=per.NAMES.get(u, u))
                                for u in per.COLOURS if u in used]
-                    fig.legend(handles=handles, loc='upper center', ncol=min(len(handles), 6),
+                    fig.legend(handles=handles, loc='upper center',
+                               ncol=min(len(handles), 2 * ncol),
                                fontsize=7, bbox_to_anchor=(0.5, 0.955))
                     fig.suptitle(f'{p.name}, visit {p.visits()[side]} ({side}-focal), {band}. '
                                  'Fit c models; model edges coloured by mask element, data edges '
@@ -392,9 +419,10 @@ def fit_gallery_pdf(p, path, out):
 def edges_pdf(p, path, info):
     """The psi_edges_report pages for the pair, grouped by band, mask and side."""
     groups = [(OUTER, m, ('science', s), OUTER_BAND) for m in MASKS for s in ('intra', 'extra')]
-    groups += [(OUTER, m, (k, s), CORNER_BAND) for m in MASKS for k in ('SW0', 'SW1')
-               for s in ('intra', 'extra')]
-    groups += [(INNER, 'v4.02g', ('science', s), INNER_BAND) for s in ('intra', 'extra')]
+    if CORNERS:
+        groups += [(OUTER, m, (k, s), CORNER_BAND) for m in MASKS for k in ('SW0', 'SW1')
+                   for s in ('intra', 'extra')]
+    groups += [(INNER, BASE, ('science', s), INNER_BAND) for s in ('intra', 'extra')]
     tables = []
     with PdfPages(path) as pdf:
         for which, mask, (cls, side), band in groups:
@@ -429,7 +457,7 @@ def exposure_info():
     from rubinwork.products import value_added as efd_db
     rows = []
     for p in PAIRS:
-        c, _, _ = source(p.run, p.fit['v4.02g'])
+        c, _, _ = source(p.run, p.fit[BASE])
         e = (pd.read_parquet(OUT / p.run / 'exposures.parquet').set_index('visit_id')
              if (OUT / p.run / 'exposures.parquet').exists() else None)
         for side, visit in p.visits().items():
@@ -473,16 +501,27 @@ def _element_rows(el, info):
     return a.merge(info[['visit', 'rtp_deg', 'cam_dx_um', 'cam_dy_um']], on='visit')
 
 
+def _elements_for(a):
+    """(edge, element) panels: `ELEMENTS` for v4.02; for one mask, the 9 with most bins."""
+    if len(MASKS) > 1:
+        return [x for x in ELEMENTS if ((a.edge == x[0]) & (a.element == x[1])).any()]
+    t = (a[a.element != per.NAMES[pl.TIE]].groupby(['edge', 'element']).n_bins.sum()
+         .sort_values(ascending=False))
+    return sorted(t.index[:9], key=lambda x: (x[0] != 'outer', -t[x]))
+
+
 def page_elements(pdf, a, band, title):
     a = a[a.band == band]
-    els = [x for x in ELEMENTS if ((a.edge == x[0]) & (a.element == x[1])).any()]
-    fig, axes = plt.subplots(2, 3, figsize=(16, 9.5), squeeze=False)
+    els = _elements_for(a)
+    shape = (2, 3) if len(MASKS) > 1 else (3, 3)
+    fig, axes = plt.subplots(*shape, figsize=(16, 4.75 * shape[0]), squeeze=False)
     for ax, (edge, name) in zip(axes.ravel(), els):
         g = a[(a.edge == edge) & (a.element == name)]
         for (side, mask), h in g.groupby(['side', 'mask']):
-            ax.plot(h.rtp_deg, h.dmm_pix, 'o' if mask == 'v4.02g' else 's',
+            ax.plot(h.rtp_deg, h.dmm_pix, 'o' if mask == BASE else 's',
                     color='tab:blue' if side == 'intra' else 'tab:red',
-                    mfc='none' if mask == 'v4.02s' else None, ms=6, label=f'{side}, {mask}')
+                    mfc=None if mask == BASE else 'none', ms=6,
+                    label=f'{side}, {mask}, {int(h.n_bins.sum())} bins')
             for r in h.itertuples():
                 ax.annotate(r.pair[4], (r.rtp_deg, r.dmm_pix), fontsize=6, xytext=(3, 3),
                             textcoords='offset points')
@@ -503,9 +542,12 @@ def page_elements(pdf, a, band, title):
 def spider_table(info):
     """Per science side: spider translation and rotation, inner-edge dy, vane width."""
     import night2_report as nr
-    parts = [nr.night1()]
-    for run in (N7, N8):
-        parts.append(pd.read_parquet(OUT / run / 'per_side.parquet'))
+    if BASE == 'v4.02g':
+        parts = [nr.night1()]
+        parts += [pd.read_parquet(OUT / run / 'per_side.parquet') for run in (N7, N8)]
+    else:  # v4speed_fits.py per_side
+        parts = [pd.read_parquet(OUT / run / PAIRS[0].fit[BASE] / 'per_side.parquet')
+                 for run in (N1, N7, N8)]
     t = pd.concat(parts, ignore_index=True)
     t = t[(t.sensor_class == 'science') & t.visit.isin(info.visit)]
     return t.merge(info[['visit', 'pair', 'cam_dx_um', 'cam_dy_um']], on='visit')
@@ -603,6 +645,9 @@ def page_spider(pdf, t):
     return v, fits
 
 
+SIL = 'Camera silhouette'
+
+
 def page_silhouette(pdf, t):
     """Silhouette inner-edge miss with v4.02s against camera decenter and rotator angle."""
     import night2_report as nr
@@ -627,10 +672,60 @@ def page_silhouette(pdf, t):
                             textcoords='offset points')
         ax.axhline(0, color='0.6', lw=0.4)
         ax.set_xlabel(lab)
-        ax.set_ylabel('silhouette inner-edge data − model, v4.02s (pixels)')
+        ax.set_ylabel(f'{SIL} inner-edge data − model, {MASKS[-1]} (pixels)')
         ax.legend(fontsize=7)
-    fig.suptitle('Camera silhouette inner-edge miss (v4.02s), science sides 1.6-1.725 deg, one '
-                 'point per visit (median ± error); label = pair number', fontsize=10)
+    fig.suptitle(f'{SIL} inner-edge miss ({MASKS[-1]}), science sides 1.6-1.725 deg, psi '
+                 f'{nr.PSI_RANGES}, one point per visit (median ± error); label = pair number',
+                 fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def page_sample(pdf, info):
+    """Field positions (CCS) of the fitted science donuts, one panel per visit."""
+    colours = {'0.25-0.5 deg (used)': 'tab:orange', '1.6-1.725 deg (used)': 'red',
+               'other fitted': '0.6'}
+    fig, axes = plt.subplots(2, len(PAIRS), figsize=(4.2 * len(PAIRS), 9.0), squeeze=False)
+    rtp = info.set_index('visit').rtp_deg
+    for j, p in enumerate(PAIRS):
+        c, _, _ = source(p.run, p.fit[BASE])
+        c = c[c.sensor_class == 'science'].copy()
+        if 'visit' not in c:
+            c['visit'] = c.side.map(p.visits())
+        used = {w: set(zip(*pair_sides(p, BASE, w)[['key', 'side']].to_numpy().T))
+                for w in (OUTER, INNER)}
+        for i, side in enumerate(('intra', 'extra')):
+            ax = axes[i, j]
+            visit = p.visits()[side]
+            g = c[(c.visit == visit) & (c.side == side)]
+            n = {}
+            for r in g.itertuples():
+                k = (r.key, r.side)
+                kind = ('1.6-1.725 deg (used)' if k in used[OUTER] else
+                        '0.25-0.5 deg (used)' if k in used[INNER] else 'other fitted')
+                n[kind] = n.get(kind, 0) + 1
+                # donut outer radius in field angle: pixels × pixel scale
+                rad = float(r.r_out_pix) * PIXEL_SCALE_ARCSEC / 3600.0
+                ax.add_patch(Circle((r.field_x_ccs_deg, r.field_y_ccs_deg), rad,
+                                    color=colours[kind], alpha=0.8, lw=0))
+            for rr in (1.6, 1.725):
+                ax.add_patch(Circle((0, 0), rr, fill=False, lw=0.4, color='k'))
+            ax.set_xlim(-1.85, 1.85)
+            ax.set_ylim(-1.85, 1.85)
+            ax.set_aspect('equal')
+            ax.set_xlabel('thx, CCS (deg)', fontsize=8)
+            ax.set_ylabel('thy, CCS (deg)', fontsize=8)
+            ax.tick_params(labelsize=7)
+            counts = ', '.join(f'{v} {k.split(" (")[0]}' for k, v in sorted(n.items()))
+            ax.set_title(f'{p.name.split("_")[0]} visit {visit}, {side}\nrotator '
+                         f'{rtp.get(visit, np.nan):.1f} deg; {len(g)} donuts: {counts}',
+                         fontsize=7)
+    h = [Patch(color=v, label=k) for k, v in colours.items()]
+    fig.legend(handles=h, loc='upper center', ncol=3, fontsize=8, bbox_to_anchor=(0.5, 0.95))
+    fig.suptitle(f'Giant-donut sample, {BASE} fits (fit_ok), science sensors: field position in '
+                 'CCS, marker = donut outer radius; circles at 1.6 and 1.725 deg field radius',
+                 fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     pdf.savefig(fig)
     plt.close(fig)
@@ -638,6 +733,8 @@ def page_silhouette(pdf, t):
 
 def summary_pdf(path, info, elements):
     with PdfPages(path) as pdf:
+        if len(MASKS) == 1:
+            page_sample(pdf, info)
         cols = ['pair', 'side', 'visit', 'rtp_deg', 'band', 'exp_time_s', 'altitude_deg',
                 'm2_dz_um', 'cam_dz_um', 'm2_dx_um', 'm2_dy_um', 'cam_dx_um', 'cam_dy_um']
         txt = info[cols].round(1).to_string(index=False)
@@ -651,10 +748,12 @@ def summary_pdf(path, info, elements):
         plt.close(fig)
         a = _element_rows(elements, info)
         a.to_csv(path.with_name('elements_by_visit.csv'), index=False, float_format='%.4g')
+        masks = (' and '.join(f'{m} ({"filled" if m == BASE else "open"})' for m in MASKS)
+                 if len(MASKS) > 1 else BASE)
         page_elements(pdf, a, '1.6-1.725', 'Median data − model edge per mask element, science '
-                      'sides 1.6-1.725 deg, v4.02g (filled) and v4.02s (open)')
+                      f'sides 1.6-1.725 deg, {masks}')
         page_elements(pdf, a, '0.25-0.5', 'Median data − model edge per mask element, science '
-                      'sides 0.25-0.5 deg, v4.02g')
+                      f'sides 0.25-0.5 deg, {BASE}')
         t = spider_table(info)
         v, fits = page_spider(pdf, t)
         v.to_csv(path.with_name('spider_by_visit.csv'), index=False, float_format='%.4g')
@@ -733,11 +832,15 @@ CONCLUSIONS = [
 ]
 
 
+# The v4_speed rerun's conclusions, written once its pages are reviewed.
+CONCLUSIONS_V4SPEED = []
+
+
 def conclusions_pdf(path, out):
     import fitz
     doc = fitz.open()
     srcs = {}
-    for title, text, refs in CONCLUSIONS:
+    for title, text, refs in (CONCLUSIONS if len(MASKS) > 1 else CONCLUSIONS_V4SPEED):
         page = doc.new_page(width=792, height=612)
         src = '\n'.join(f'{f} p{",".join(map(str, pp))}' for f, pp in refs)
         page.insert_textbox(fitz.Rect(54, 60, 738, 160), title, fontsize=18)
@@ -754,7 +857,7 @@ def conclusions_pdf(path, out):
     print('wrote', path, flush=True)
 
 
-README = """# Pairs review, v4.02 masks
+README = """# Pairs review, {label}
 
 > **Status:** built {date} by `code/pairs_review.py` · plan: `pairs_review_plan.md`
 
@@ -765,8 +868,7 @@ README = """# Pairs review, v4.02 masks
 - `pair<N>_<day_obs>_<intra>i_<extra>e/`:
   - `focal_plane.pdf`: per visit the binned ISR mosaic, a count page, one page per raft;
     donuts used circled by band, other selected donuts grey (DVCS).
-  - `fit_gallery.pdf`: data, fit c model and residual per side; 1.6-1.725 deg (and corner
-    1.4-1.75 deg) with v4.02g and v4.02s side by side, then 0.25-0.5 deg with v4.02g.
+  - `fit_gallery.pdf`: data, fit c model and residual per side; 1.6-1.725 deg{gallery}.
   - `edges.pdf`: the psi edge pages and element tables per band, mask and side;
     `elements.csv` the tables.
 - `models/`: the rendered fit c models the galleries use.
@@ -791,8 +893,17 @@ def step_pdfs(out, pairs):
         focal_plane_pdf(p, d / 'focal_plane.pdf', camera, text)
     if not pairs:
         summary_pdf(out / 'summary.pdf', info, pd.concat(els, ignore_index=True))
-        conclusions_pdf(out / 'conclusions.pdf', out)
-        (out / 'README.md').write_text(README.format(date=datetime.date.today().isoformat()))
+        if len(MASKS) > 1 or CONCLUSIONS_V4SPEED:
+            conclusions_pdf(out / 'conclusions.pdf', out)
+        gallery = (' (and corner 1.4-1.75 deg) with v4.02g and v4.02s side by side, then '
+                   '0.25-0.5 deg with v4.02g' if CORNERS else f', then 0.25-0.5 deg, {BASE}')
+        readme = README.format(date=datetime.date.today().isoformat(), label=LABEL,
+                               gallery=gallery)
+        if len(MASKS) == 1:
+            readme = readme.replace('- `summary.pdf`: the pairs table;',
+                                    '- `summary.pdf`: the donut sample in CCS field angle; the '
+                                    'pairs table;').replace('camera\n  silhouette', 'CameraBody')
+        (out / 'README.md').write_text(readme)
 
 
 def main():
@@ -801,12 +912,15 @@ def main():
     p.add_argument('--out', default=None, help='existing pairs_review run under output/')
     p.add_argument('--workers', type=int, default=1)
     p.add_argument('--pairs', default=None, help='e.g. pair0,pair2: only these, no summaries')
+    p.add_argument('--mask-set', default='v402', choices=sorted(MASK_SETS))
     a = p.parse_args()
+    configure(a.mask_set)
     if a.out:
         out = OUT / a.out
     else:
         from rubinwork.common import study_run
-        out = study_run(STUDY, 'pairs_review').path
+        out = study_run(STUDY, 'pairs_review' + ('' if a.mask_set == 'v402' else
+                                                 f'_{a.mask_set}')).path
     out.mkdir(parents=True, exist_ok=True)
     steps = a.steps.split(',')
     if 'models' in steps:

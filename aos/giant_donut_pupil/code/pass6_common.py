@@ -10,9 +10,10 @@ from the pass 3 and pass 4 samples. Each side carries two rotator angles:
 
 `with_rtp` sets ``rtp_deg`` to one of them and recomputes the OCS field azimuth.
 
-Masks: ``v4.02g`` (pass 2, `obscuration_v402g`) and ``v4.02s`` (pass 6 step 4,
+Masks: ``v4.02g`` (pass 2, `obscuration_v402g`), ``v4.02s`` (pass 6 step 4,
 `pass6_silhouette`: v4.02g with the camera-silhouette circle refitted to the Batoid inner
-edge at 1.3–1.75 deg).
+edge at 1.3–1.75 deg) and ``v4_speed`` (Josh Meyers' obscuration file, the one recorded in
+the `V4SPEED` build of ``batoid_intrinsic``).
 """
 import pathlib
 import sys
@@ -108,7 +109,15 @@ def mask_name_s(offsets_mm):
     return f'RubinObsc_v4.02s_r_det{d:+.1f}_cam{c:+.1f}_m2{m:+.1f}.yaml'
 
 
+V4SPEED = ('v4_speed', '20261122')
+"""batoid_intrinsic (variant, build) whose obscuration file is the ``v4_speed`` mask."""
+
+
 def mask_path(variant, offsets_m):
+    if variant == 'v4_speed':  # one file for every offset
+        from rubinwork.products import catalog
+        return pathlib.Path(catalog.manifest('batoid_intrinsic', *V4SPEED)['config']
+                            ['obscuration_file'])
     if variant == 'v4.02g':
         return og.mask_path(pc.p3.MASK_RUN, offsets_m)
     mm = tuple(round(o * 1e3, 1) + 0.0 for o in offsets_m)

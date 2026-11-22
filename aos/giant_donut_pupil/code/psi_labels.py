@@ -51,6 +51,23 @@ CLEAR = {'M1Baffle1 outer', 'M2 outer', 'M3 outer', 'Filter_entrance outer', 'L3
          'L3_exit outer'}
 
 
+def v4speed_circles():
+    """{label: clear} of every circle of the v4_speed obscuration file, from its flags."""
+    import yaml
+    from rubinwork.donut_sim import optics
+    from rubinwork.products.batoid_intrinsic import reader as bi
+    path = optics.obscuration_path(bi.variant_config('v4_speed')['obscuration'])
+    params = yaml.safe_load(path.read_text())
+    return {f'{name} {part}': bool(c['clear']) for name, item in params.items()
+            if name != 'Spider_3D' for part, c in item.items()}
+
+
+_V4S = v4speed_circles()
+# No v4_speed obscuration shares a label with a v4.02 clear aperture.
+assert not {k for k, v in _V4S.items() if not v} & CLEAR
+CLEAR = CLEAR | {k for k, v in _V4S.items() if v}
+
+
 def consistent_kind(lab):
     """Take the runner-up where an edge's element is of the wrong kind.
 
@@ -280,6 +297,9 @@ def mask_for(row):
     import obscuration_v402g as og
     fd.CAMERA_OFFSET_M = abs(float(row.step_mm)) * 1e-3
     offsets = fd.offsets_m(row.side, row.sensor_class)
+    if row['mask'] == 'v4_speed':
+        import pass6_common as p6
+        return p6.mask_params('v4_speed', offsets)
     if row['mask'] == 'v4.02s':
         mm = tuple(round(o * 1e3, 1) + 0.0 for o in offsets)
         path = (pathlib.Path(_S_MASKS['dir']) /

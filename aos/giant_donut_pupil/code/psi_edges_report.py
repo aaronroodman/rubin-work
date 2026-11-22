@@ -59,6 +59,16 @@ NAMES = {'M1Baffle1 outer': 'M1Baffle1 (clear)', 'M1 inner': 'M1 inner (obsc.)',
          'Filter_entrance outer': 'Filter entrance (clear)',
          'L3_entrance outer': 'L3 entrance (clear)', 'L3_exit outer': 'L3 exit (clear)',
          pl.TIE: 'tie (< 0.3 pixels)'}
+# v4_speed circles: the v4.02 colour where the element is the same, then a cycle.
+_SAME = {'M1Baffle1 inner': 'M1Baffle1 outer', 'CameraBody outer': 'CameraSilhouette outer'}
+_CYCLE = iter(plt.get_cmap('tab20').colors[1::2] + plt.get_cmap('Dark2').colors)
+for _label, _clear in pl._V4S.items():
+    if _label in _SAME:
+        COLOURS[_label] = COLOURS[_SAME[_label]]
+        NAMES[_label] = NAMES[_SAME[_label]].replace('CameraSilhouette', 'CameraBody')
+    else:
+        COLOURS.setdefault(_label, next(_CYCLE))
+        NAMES.setdefault(_label, f'{_label} ({"clear" if _clear else "obsc."})')
 
 
 def load(run, fit_dir, label_runs):

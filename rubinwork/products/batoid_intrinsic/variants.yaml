@@ -38,6 +38,9 @@ variants:
 
   # Josh Meyers' v4_speed: v3.14 optics, re-measured baffles without the 45-vane TMA
   # baffle, CAD camera apertures. rubin-optical-model commit 7785f3c.
+  # i band from build 20261122, for the i-band giant donuts of 20261107 and 20261108;
+  # the obscuration file is r band only.
   v4_speed:
     model: Rubin_v4_speed_cadaper_{band}.yaml
     obscuration: RubinObsc_v4_speed_cadaper_r_rtpp0_azp45_pp0d0.yaml
+    bands: [r, i]

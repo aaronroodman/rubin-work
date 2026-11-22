@@ -365,8 +365,18 @@ def compare(mask_params, u, v, kept, theta_deg, spider, r_outer, r_inner):
                 danish_missing=float(np.sum(~dk & kept) / n_t))
 
 
+# danish annulus for the CAD-layout obscuration files (v4_speed), whose M1 carries an
+# outer circle: ts_wep LsstCam.yaml radius and obscuration, which equal the v4_speed batoid
+# pupilSize / 2 and pupilObscuration, so the danish Zernike annulus is the one the
+# batoid_intrinsic reference was computed on (as rubinwork.donut_sim.fit.factory).
+CAD_R_OUTER_M = 4.18
+CAD_OBSCURATION = 0.612
+
+
 def _annulus(mask_params):
     """danish R_outer and R_inner as `pupil_override` sets them, m."""
+    if 'outer' in mask_params.get('M1', {}):
+        return CAD_R_OUTER_M, CAD_R_OUTER_M * CAD_OBSCURATION
     baffle = next(k for k in ('M1Baffle1', 'M1Baffle2', 'M1') if k in mask_params
                   and 'outer' in mask_params[k])
     outer = float(np.polyval(mask_params[baffle]['outer']['radius'], 0.0))

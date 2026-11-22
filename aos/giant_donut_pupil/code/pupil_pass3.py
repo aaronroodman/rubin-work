@@ -73,6 +73,10 @@ NOLL_REPORT = (4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 22)
 VIGNETTED_FRAC = 0.3
 # Filter band of the reference wavefront; the night 2 drivers set it per night.
 REF_BAND = 'r'
+# (variant, build) of batoid_intrinsic to take the reference from; None computes the
+# v4.02 reference with ts_wep. Drivers set it.
+REFERENCE_PRODUCT = None
+_DZ = {}
 
 _OPTIC = {}
 _BUTLER = {}
@@ -125,6 +129,8 @@ def reference_zk(thx_deg, thy_deg, offsets_m, side, eps):
     zk_ta, zk_focus : `numpy.ndarray`
         Noll 0-66, m of wavefront.
     """
+    if REFERENCE_PRODUCT is not None:
+        return product_reference(thx_deg, thy_deg, offsets_m, side)
     from lsst.ts.wep.instrument import Instrument
     from lsst.ts.wep.utils import BandLabel, DefocalType
     sign = 1.0 if side == 'extra' else -1.0
@@ -144,6 +150,42 @@ def reference_zk(thx_deg, thy_deg, offsets_m, side, eps):
     zk_ta = off.copy()
     zk_ta[NOLL_INTR] += focus[NOLL_INTR]
     return zk_ta, focus
+
+
+def product_reference(thx_deg, thy_deg, offsets_m, side):
+    """intrinsicTA and the in-focus intrinsic from `REFERENCE_PRODUCT`, m, Noll 0-78.
+
+    The ``giant`` configuration's ``ta`` and the ``gq_infocus`` double-Zernike fits of
+    ``batoid_intrinsic``, evaluated at the field angle. The product is at rotator angle 0,
+    where OCS is CCS; as with the v4.02 reference, the telescope is taken unrotated, so the
+    CCS field angle gives CCS Zernikes.
+
+    Parameters
+    ----------
+    thx_deg, thy_deg : `float`
+        Field angle, CCS, deg.
+    offsets_m : `tuple` [`float`]
+        Signed (detector, camera, M2) z offsets, m: (0, ±4 mm, ±4 mm), the only
+        configuration the product holds for giant donuts.
+    side : `str`
+        ``'extra'`` or ``'intra'``.
+
+    Returns
+    -------
+    zk_ta, zk_focus : `numpy.ndarray`
+        Noll 0-78, m of wavefront.
+    """
+    from rubinwork.products.batoid_intrinsic import reader as bi
+    det, cam, m2 = offsets_m
+    if det != 0.0 or not (np.isclose(abs(cam), 4e-3) and np.isclose(abs(m2), 4e-3)):
+        raise ValueError(f'batoid_intrinsic giant is (0, ±4, ±4) mm, not {offsets_m} m')
+    if 'dz' not in _DZ:
+        _DZ['dz'] = bi.load_dz(*REFERENCE_PRODUCT)
+    out = []
+    for key in ((REF_BAND, 'ta', 'giant', side), (REF_BAND, 'gq_infocus', 'infocus', 'none')):
+        coef, h = _DZ['dz'][key]
+        out.append(bi.evaluate_dz(coef, thx_deg, thy_deg, h['RFIELD'])[0] * 1e-6)
+    return out[0], out[1]
 
 
 def _factory(params, rtp_deg, spider=True):
