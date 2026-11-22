@@ -19,7 +19,12 @@ With one of the 22 DOF set at +2 steps of the smatrix/sparse_fit scan (about 0.0
 
 ## Current answer
 
-None yet.
+At +2 sparse_fit steps (about 0.34 µm of expected Zernike deviation, quadrature sum over
+the fitted terms), sparse fits (spider, bin 2) recover rigid-body changes to 0.01-0.08 µm
+but only 27% of M1M3 B6 and B7 (error 0.25 µm on FAM): unfitted terms (Z12, Z13, Z16)
+leak into the fitted ones. Dense production fits (no spider, bin 2) recover the change to
+0.007-0.03 µm except B6 and B7 (0.12 µm), on top of a constant 0.2-0.8 µm bias from the
+missing spider.
 
 ## Log
 
