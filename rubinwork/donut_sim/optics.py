@@ -136,6 +136,32 @@ def defocused(instr, optic, side):
     return instr._applyBatoidOffsets(optic, SIDES[side])
 
 
+def perturb(optic, dof_ofc):
+    """`optic` with a 50-element AOS DOF (degree of freedom) state applied by batoid_rubin.
+
+    Parameters
+    ----------
+    optic : `batoid.Optic`
+        In-focus telescope.
+    dof_ofc : `numpy.ndarray`
+        ts_ofc ordering and sign convention: µm for decenters, piston and bending modes,
+        deg for tilts. batoid_rubin's sign differs on M2 dy, M2 Ry, Cam dy and Cam Ry
+        (``smatrix/docs/conventions.md``), flipped here.
+
+    Notes
+    -----
+    Bending modes read ``$BATOID_RUBIN_DATA_DIR``, defaulting to the shared
+    ``batoid_rubin_data`` checkout.
+    """
+    from rubinwork.smatrix import compute_smatrix as cs
+    os.environ.setdefault("BATOID_RUBIN_DATA_DIR", cs.DEFAULT_DATA_DIR)
+    from batoid_rubin import LSSTBuilder
+    dof = np.array(dof_ofc, dtype=float)
+    dof[cs.OFC_Y_SIGN_FLIP] *= -1
+    kw = cs._builder_kwargs(os.environ["BATOID_RUBIN_DATA_DIR"], "bend")
+    return LSSTBuilder(optic, **kw).with_aos_dof(dof.tolist()).build()
+
+
 def zk_gq(optic, thx_deg, thy_deg, wavelength_m, jmax):
     """Optical path difference (OPD) Zernikes of `optic` at one field angle (m).
 

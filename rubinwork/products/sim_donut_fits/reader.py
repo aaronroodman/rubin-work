@@ -48,9 +48,11 @@ def build_dir(variant, build):
     return catalog.products_root() / PRODUCT / variant / build
 
 
-def stamp_file(sim_variant, band, config, side):
-    """Name of the FITS file holding one sim variant, band, configuration and side."""
-    return f"stamps_{sim_variant}_{band}_{config}_{side}.fits"
+def stamp_file(sim_variant, band, config, side, dof=None):
+    """Name of the FITS file holding one sim variant, band, configuration and side (and
+    DOF, for sims with a DOF scan)."""
+    tail = "" if dof is None else f"_dof{int(dof):02d}"
+    return f"stamps_{sim_variant}_{band}_{config}_{side}{tail}.fits"
 
 
 def dz_columns(noll, frame):
@@ -80,11 +82,15 @@ def load(variant, build=catalog.CURRENT):
         Danish's model wavefront is the intrinsicTA with, for the fitted terms, the
         intrinsic replaced by the OPD (ts_wep ``getOffAxisCoeff`` plus ``zkStart``). The
         sims are traced through the same batoid model, so the expected deviation is zero.
+        For sims with a DOF scan: ``dof``, ``dof_amplitude`` (ts_ofc index; µm or deg)
+        and ``dz<j>_true_CCS_um``, ``dz<j>_true_OCS_um``, Noll 4-78, the expected
+        deviation, perturbed in-focus OPD minus the nominal intrinsic (µm).
     """
     return pd.read_parquet(catalog.path(PRODUCT, variant, build) / INDEX)
 
 
-def stamp(variant, sim_variant, band, config, side, point_id, build=catalog.CURRENT):
+def stamp(variant, sim_variant, band, config, side, point_id, build=catalog.CURRENT,
+          dof=None):
     """One fitted stamp and its model.
 
     Returns
@@ -94,7 +100,8 @@ def stamp(variant, sim_variant, band, config, side, point_id, build=catalog.CURR
         (block mean); row = CCS y, column = CCS x.
     header : `astropy.io.fits.Header`
     """
-    path = catalog.path(PRODUCT, variant, build) / stamp_file(sim_variant, band, config, side)
+    path = (catalog.path(PRODUCT, variant, build)
+            / stamp_file(sim_variant, band, config, side, dof))
     with fits.open(path) as hdul:
         h = hdul[point_id]
         cube = np.asarray(h.data, dtype=float)

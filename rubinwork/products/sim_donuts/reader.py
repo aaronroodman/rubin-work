@@ -48,9 +48,19 @@ def build_dir(variant, build):
     return catalog.products_root() / PRODUCT / variant / build
 
 
-def stamp_file(band, config, side):
-    """Name of the FITS file holding one band, configuration and side."""
-    return f"stamps_{band}_{config}_{side}.fits"
+def stamp_file(band, config, side, dof=None):
+    """Name of the FITS file holding one band, configuration and side (and DOF, for a
+    variant with a DOF scan)."""
+    tail = "" if dof is None else f"_dof{int(dof):02d}"
+    return f"stamps_{band}_{config}_{side}{tail}.fits"
+
+
+def dof_partitions(cfg):
+    """``[(part, dof index, amplitude), ...]`` of a variant with a ``dof`` scan, else []."""
+    d = cfg.get("dof")
+    if not d:
+        return []
+    return list(zip(range(len(d["indices"])), d["indices"], d["amplitudes"]))
 
 
 def load(variant, build=catalog.CURRENT):
@@ -68,11 +78,14 @@ def load(variant, build=catalog.CURRENT):
         dimensionless); ``n_rays``, ``n_transmitted``, ``ray_spacing_m`` (m),
         ``chief_x_m``, ``chief_y_m`` (chief-ray focal-plane position, m, CCS),
         ``stop_r_min_m``, ``stop_r_max_m`` (stop radius range of transmitted rays, m).
+        A variant with a DOF scan adds ``dof`` (ts_ofc DOF index), ``dof_amplitude``
+        (µm or deg, ts_ofc convention) and ``opd_z<j>_CCS_um``, the in-focus OPD of the
+        perturbed telescope at the field point, Noll 1-78 (µm of wavefront).
     """
     return pd.read_parquet(catalog.path(PRODUCT, variant, build) / INDEX)
 
 
-def stamp(variant, band, config, side, point_id, build=catalog.CURRENT):
+def stamp(variant, band, config, side, point_id, build=catalog.CURRENT, dof=None):
     """One noise-free stamp.
 
     Returns
@@ -82,7 +95,7 @@ def stamp(variant, band, config, side, point_id, build=catalog.CURRENT):
         column = CCS x, centred on the chief ray.
     header : `astropy.io.fits.Header`
     """
-    path = catalog.path(PRODUCT, variant, build) / stamp_file(band, config, side)
+    path = catalog.path(PRODUCT, variant, build) / stamp_file(band, config, side, dof)
     with fits.open(path) as hdul:
         h = hdul[point_id]
         return np.asarray(h.data, dtype=float), h.header.copy()

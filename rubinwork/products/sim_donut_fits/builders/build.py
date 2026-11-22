@@ -47,22 +47,47 @@ def references(intrinsic_variant):
     z[:, batoid_intrinsic.reader.JMIN:] = 1e-6 * ta[cols].to_numpy(float)
     refs = {(r.band, r.config, r.side, r.point_id): (z[i], r.thx_CCS_deg, r.thy_CCS_deg)
             for i, r in enumerate(ta.itertuples())}
-    return refs, iman["build"], icfg
+    infoc = batoid_intrinsic.load(intrinsic_variant, iman["build"], kind="gq_infocus")
+    zi = np.zeros((len(infoc), icfg["jmax"] + 1))
+    zi[:, batoid_intrinsic.reader.JMIN:] = infoc[cols].to_numpy(float)
+    intr = {(r.band, r.point_id): zi[i] for i, r in enumerate(infoc.itertuples())}
+    return refs, intr, iman["build"], icfg
 
 
-def tasks(cfg):
-    """One task per stamp of every sim variant; also the inputs and intrinsic configs."""
+def _sim(entry):
+    """``(variant, build)`` of a ``sims`` entry, ``variant`` or ``variant@build``."""
+    v, _, b = entry.partition("@")
+    return v, b or catalog.CURRENT
+
+
+def dof_partitions(cfg):
+    """The DOF-scan partitions of the variant's sims (all must share one scan)."""
+    parts = {tuple(map(tuple, sim_donuts.dof_partitions(sim_donuts.variant_config(_sim(e)[0]))))
+             for e in cfg["sims"]}
+    if len(parts) > 1:
+        raise ValueError("sims with different DOF scans in one variant")
+    return list(parts.pop()) if parts else []
+
+
+def tasks(cfg, dof=None):
+    """One task per stamp of every sim variant (of one DOF, for a DOF scan); also the
+    inputs and intrinsic configs."""
     out, inputs, icfgs = [], {}, {}
-    for sv in cfg["sims"]:
-        sman = catalog.manifest("sim_donuts", sv)
+    for entry in cfg["sims"]:
+        sv, sb = _sim(entry)
+        sman = catalog.manifest("sim_donuts", sv, sb)
         ivar = sman["inputs"]["batoid_intrinsic"].split("@")[0]
         if ivar not in icfgs:
-            refs, ibuild, icfg = references(ivar)
-            icfgs[ivar] = dict(refs=refs, build=ibuild, config=icfg)
+            refs, intr, ibuild, icfg = references(ivar)
+            icfgs[ivar] = dict(refs=refs, intr=intr, build=ibuild, config=icfg)
         inputs.setdefault("sim_donuts", []).append(f"{sv}@{sman['build']}")
         inputs.setdefault("batoid_intrinsic", set()).add(f"{ivar}@{icfgs[ivar]['build']}")
-        sdir = catalog.path("sim_donuts", sv)
-        for r in sim_donuts.load(sv).itertuples():
+        sdir = catalog.path("sim_donuts", sv, sb)
+        index = sim_donuts.load(sv, sb)
+        if dof is not None:
+            index = index[index.dof == dof]
+        opd_cols = [c for c in index.columns if c.startswith("opd_z")]
+        for r in index.itertuples():
             z, thx, thy = icfgs[ivar]["refs"][(r.band, r.config, r.side, r.point_id)]
             if abs(thx - r.thx_CCS_deg) > 1e-9 or abs(thy - r.thy_CCS_deg) > 1e-9:
                 raise RuntimeError(f"{sv} {r.config} {r.side} {r.point_id}: field angle "
@@ -73,6 +98,12 @@ def tasks(cfg):
                             thx_CCS_deg=r.thx_CCS_deg, thy_CCS_deg=r.thy_CCS_deg,
                             thx_OCS_deg=r.thx_OCS_deg, thy_OCS_deg=r.thy_OCS_deg,
                             npix=int(r.npix), z_ref_m=z))
+            if opd_cols:
+                intr = icfgs[ivar]["intr"][(r.band, r.point_id)]
+                true = np.zeros_like(intr)
+                true[1:len(opd_cols) + 1] = [getattr(r, c) for c in opd_cols]
+                out[-1].update(dof=int(r.dof), dof_amplitude=float(r.dof_amplitude),
+                               dz_true_um=true - intr)
     inputs = {k: ", ".join(sorted(v)) for k, v in inputs.items()}
     return out, inputs, {k: v["config"] for k, v in icfgs.items()}
 
@@ -129,17 +160,27 @@ def run_task(t):
     for j in noll:
         row[f"dz{j}_CCS_um"] = dz[j]
         row[f"dz{j}_OCS_um"] = dz_ocs[j]
+    if "dz_true_um" in t:
+        true_ocs = frames.ccs_to_ocs_zk(t["dz_true_um"], rot)
+        row.update(dof=t["dof"], dof_amplitude=t["dof_amplitude"])
+        for j in range(4, len(t["dz_true_um"])):
+            row[f"dz{j}_true_CCS_um"] = t["dz_true_um"][j]
+            row[f"dz{j}_true_OCS_um"] = true_ocs[j]
     return row, np.stack([img, f["model"]]).astype(np.float32)
 
 
-def _write(out, results, cfg, variant):
+def _part_index(dof):
+    return f"fits_dof{int(dof):02d}.parquet"
+
+
+def _write(out, results, cfg, variant, dof=None):
     groups = {}
     for row, cube in results:
         groups.setdefault((row["sim_variant"], row["band"], row["config"], row["side"]),
                           []).append((row, cube))
     rows = []
     for (sv, band, config, side), rs in sorted(groups.items()):
-        fname = reader.stamp_file(sv, band, config, side)
+        fname = reader.stamp_file(sv, band, config, side, dof)
         prim = fits.PrimaryHDU()
         for k, v in (("VARIANT", variant), ("SIMVAR", sv), ("BAND", band),
                      ("CONFIG", config), ("SIDE", side), ("BINNING", cfg["binning"]),
@@ -155,14 +196,15 @@ def _write(out, results, cfg, variant):
                 h.header[k] = row[c]
             hdus.append(h)
             rows.append(row | {"file": fname, "extname": row["point_id"]})
-        fits.HDUList(hdus).writeto(out / fname)
+        fits.HDUList(hdus).writeto(out / fname, overwrite=dof is not None)
     df = pd.DataFrame(rows)
-    df.drop(columns=["seconds"]).to_parquet(out / reader.INDEX, index=False)
+    index = reader.INDEX if dof is None else _part_index(dof)
+    df.drop(columns=["seconds"]).to_parquet(out / index, index=False)
     return df
 
 
-def build(variant, build_name=None, overwrite=False, jobs=1, limit=None):
-    """Write one build; returns its directory.
+def build(variant, build_name=None, overwrite=False, jobs=1, limit=None, dof_part=None):
+    """Write one build, or one DOF partition of it; returns its directory.
 
     Parameters
     ----------
@@ -173,18 +215,27 @@ def build(variant, build_name=None, overwrite=False, jobs=1, limit=None):
         status ``partial`` and stays out of the catalog.
     overwrite : `bool`, optional
         Replace an existing build of the same name. Only for a build nothing has read.
+    dof_part : `int`, optional
+        For sims with a DOF scan: the partition (position in the scan) to fit. Its
+        files go into the build directory, replacing that partition's; `finalize`
+        writes the index and manifest.
     """
     cfg = reader.variant_config(variant)
+    parts = dof_partitions(cfg)
+    if bool(parts) != (dof_part is not None):
+        raise ValueError(f"{variant}: pass --dof-part exactly when its sims have a DOF scan")
     build_name = build_name or datetime.date.today().strftime("%Y%m%d")
     out = reader.build_dir(variant, build_name)
-    if out.exists() and not overwrite:
+    if dof_part is None and out.exists() and not overwrite:
         raise FileExistsError(f"{out} exists; pass another --build or --overwrite")
-    todo, inputs, icfgs = tasks(cfg)
+    dof = parts[dof_part][1] if dof_part is not None else None
+    todo, inputs, icfgs = tasks(cfg, dof)
     if limit:
         todo = todo[::limit]
     # Giant fits take ten times longer: start them first so the pool ends together.
     todo.sort(key=lambda t: t["npix"], reverse=True)
-    print(f"{len(todo)} stamps, {jobs} jobs", flush=True)
+    print(f"{len(todo)} stamps, {jobs} jobs" + (f", DOF {dof}" if dof is not None else ""),
+          flush=True)
     t0 = time.time()
     with mp.get_context("spawn").Pool(jobs, initializer=_init, initargs=(cfg, icfgs)) as pool:
         results = []
@@ -193,24 +244,45 @@ def build(variant, build_name=None, overwrite=False, jobs=1, limit=None):
             if (i + 1) % 100 == 0 or i + 1 == len(todo):
                 print(f"  {i + 1}/{len(todo)} done, {time.time() - t0:.0f} s", flush=True)
 
-    if out.exists():
+    if dof is None and out.exists():
         shutil.rmtree(out)
-    out.mkdir(parents=True)
-    df = _write(out, results, cfg, variant)
+    out.mkdir(parents=True, exist_ok=True)
+    df = _write(out, results, cfg, variant, dof)
     bad = df[~df.success]
     if len(bad):
         print(f"WARNING: {len(bad)} fits did not converge (status 0, max_nfev)")
+    if dof is None:
+        _manifest(out, cfg, variant, build_name, icfgs, inputs, df, limit)
+    return out
+
+
+def _manifest(out, cfg, variant, build_name, icfgs, inputs, df, limit):
     config = {**cfg, "variant": variant,
               "intrinsic_configs": {k: {c: v[c] for c in ("model", "obscuration",
                                                           "rotator_angle_deg")}
                                     for k, v in icfgs.items()},
-              "reference": "batoid TA Zernikes, Noll 0-78, CCS",
+              "reference": "batoid intrinsicTA Zernikes, Noll 0-78, CCS",
               "fitter": "rubinwork.donut_sim.fit (ts_wep DanishAlgorithm single donut)",
-              "limit": limit, "cpu_seconds": float(df.seconds.sum())}
+              "limit": limit,
+              "cpu_seconds": float(df.seconds.sum()) if "seconds" in df else None}
     files = [reader.INDEX, *sorted(df.file.unique())]
     manifest.write(out, product=reader.PRODUCT, variant=variant, build=build_name,
                    config=config, files=files, inputs=inputs,
                    status="partial" if limit else "complete")
+
+
+def finalize(variant, build_name):
+    """Merge a DOF-scan build's partition tables and write its manifest."""
+    cfg = reader.variant_config(variant)
+    out = reader.build_dir(variant, build_name)
+    dofs = [d for _, d, _ in dof_partitions(cfg)]
+    missing = [d for d in dofs if not (out / _part_index(d)).exists()]
+    if missing:
+        raise FileNotFoundError(f"{out}: no partition for DOF {missing}")
+    df = pd.concat([pd.read_parquet(out / _part_index(d)) for d in dofs], ignore_index=True)
+    df.to_parquet(out / reader.INDEX, index=False)
+    _, inputs, icfgs = tasks(cfg, dofs[0])
+    _manifest(out, cfg, variant, build_name, icfgs, inputs, df, None)
     return out
 
 
@@ -224,8 +296,15 @@ def main(argv=None):
                    help="every n-th stamp only (smoke test; status partial)")
     p.add_argument("--overwrite", action="store_true",
                    help="replace an existing build of that name (only one nothing has read)")
+    p.add_argument("--dof-part", type=int, default=None,
+                   help="DOF-scan partition to fit (position in the sims' dof.indices)")
+    p.add_argument("--finalize", action="store_true",
+                   help="merge a DOF-scan build's partitions and write its manifest")
     a = p.parse_args(argv)
-    print(f"wrote {build(a.variant, a.build, a.overwrite, a.jobs, a.limit)}")
+    if a.finalize:
+        print(f"wrote {finalize(a.variant, a.build)}")
+        return 0
+    print(f"wrote {build(a.variant, a.build, a.overwrite, a.jobs, a.limit, a.dof_part)}")
     return 0
 
 

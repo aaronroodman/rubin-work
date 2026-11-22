@@ -15,6 +15,12 @@ A build holds:
 ``stamps_<band>_<config>_<side>.fits``
     one image HDU per donut, ``EXTNAME`` the ``batoid_intrinsic`` point id.
 
+A variant with a ``dof`` scan traces the same donuts once per DOF, each with that one
+DOF set (batoid_rubin, ts_ofc convention); its stamp files carry ``_dof<NN>`` and its
+index the DOF and the perturbed in-focus OPD. Each DOF is built as a partition
+(``--dof-part``, one batch array task each), then ``--finalize`` merges the index and
+writes the manifest.
+
 Read a build::
 
     from rubinwork.products import sim_donuts
@@ -26,8 +32,8 @@ Build one, in batch (``run_build.sbatch``) or from the repository root::
     python -m rubinwork.products.sim_donuts.builders.build --variant v4_speed_mono --jobs 16
 """
 
-from .reader import (INDEX, PRODUCT, build_dir, load, stamp, stamp_file, variant_config,
-                     variants)
+from .reader import (INDEX, PRODUCT, build_dir, dof_partitions, load, stamp, stamp_file,
+                     variant_config, variants)
 
-__all__ = ["INDEX", "PRODUCT", "build_dir", "load", "stamp", "stamp_file",
+__all__ = ["INDEX", "PRODUCT", "build_dir", "dof_partitions", "load", "stamp", "stamp_file",
            "variant_config", "variants"]
