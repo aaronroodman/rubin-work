@@ -194,5 +194,5 @@ A smoke partition (DOF 5, every 100th donut) sits at
 
 ## Next action
 
-When the chain ends: run `aos/v4speed_dof_fits/code/dof_fits.py`, Log entry, report.
+DOF scan built and pass 1 logged in `aos/v4speed_dof_fits` (`7d66965`). Next: leakage per Noll term against the sparse_fit L matrix; larger amplitudes.
 Then `v4speed_danish_closure` field maps of the deviation per Noll term.
