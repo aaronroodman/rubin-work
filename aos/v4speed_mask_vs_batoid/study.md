@@ -78,6 +78,11 @@ Next:
 
 ### 2026-11-21 — pass 1 PDF: 1.725 deg limit, metric equations, edge examples
 
+> **Superseded:** this pass used ts_wep's shipped v3.14 mask by mistake, not the v4_speed
+> obscuration file; see the correction entry above. Its runs (`20261121_ta_model`,
+> `20261121_smoke`) and figure were deleted on 2026-11-21. The PDF changes and the blur and
+> wavelength notes still hold.
+
 PDF of `20261121_ta_model` rewritten in place (code `30a9643`): metric equations
 on page 1, a dashed line at the 1.725 deg field-radius limit on page 2, and example
 donuts near the edge: FAM and giant 4 per side from 1.4 to 1.725 deg, CWFS 3 per side
@@ -95,9 +100,12 @@ pixel convolution (`donut_model.py:282`). The sims trace at 619.4 nm, which ente
 through the glass indices, and the TA reference is batoid at 619.4 nm; Danish's model is
 geometric given Zernikes in m, with no wavelength of its own (`bandpass_filter` None).
 
-[Agreement against field radius](figures/field_radius.png) (replaced).
-
 ### 2026-11-21 — pass 1: Danish at the TA wavefront against the sims
+
+> **Superseded:** this pass used ts_wep's shipped v3.14 mask by mistake, not the v4_speed
+> obscuration file; see the correction entry above. Its runs (`20261121_ta_model`,
+> `20261121_smoke`) and figure were deleted on 2026-11-21. The "conventions found on the way"
+> still hold.
 
 Danish, with the v4_speed obscuration file, drawn at the `batoid_intrinsic` TA wavefront
 (CCS, Noll 1-78) against all 998 `sim_donuts` stamps (`v4_speed_mono@20261120`: 770 FAM,
@@ -122,7 +130,7 @@ stays at the reference.
   area falls by 0.915 and Danish's by 0.912 (ratios, dimensionless). The edge shapes
   differ, not the amount removed.
 - **Giant edges do not match.** Residuals show a ring at both pupil edges and red/blue
-  pairs along every vane ([figure](figures/giant_intra_edge.png)). The fit covers it by
+  pairs along every vane. The fit covers it by
   inflating the blur: fitted 1.36, 1.50 and 1.77-1.81 arcsec at a true 0.5, 1.0 and
   1.5 arcsec. Consistent with the obscuration file not matching the batoid pupil at the
   M2 + camera 4 mm configuration, as v4.02 needed a refit there.
@@ -136,8 +144,6 @@ stays at the reference.
   0.009 px. Without the tilts the giant donuts sat up to 3.2 px off: TA z2 reaches 14 µm
   at the field edge. `batoid_intrinsic` now stores Noll 1-78 (build `20261121`,
   `7943b45`), as ts_wep's Danish reference does.
-
-[Agreement against field radius](figures/field_radius.png).
 
 Next:
 - refit the obscuration file at the giant configuration (`gen_mask_params.py`), or ask

@@ -109,21 +109,23 @@ Full set: 770 FAM, 144 CWFS, 84 giant donuts, about 100 CPU minutes.
   than `None`: first item for `v4speed_mask_vs_batoid`.
 - `flux_m2` is the stamp sum; Kolmogorov wings past the stamp edge are not in it.
 
-## v4speed_mask_vs_batoid pass 1 (2026-11-21)
+## sim_donuts build and TA tilts (2026-11-21)
 
 `sim_donuts` `v4_speed_mono@20261120` built (job 46234293, 7.5 min) and current.
 `batoid_intrinsic` build `20261121` stores Noll 1-78: ts_wep's Danish reference includes
-the TA tilts, and giant-donut z2 reaches 14 µm (3 px). Study result in
-`aos/v4speed_mask_vs_batoid/study.md`: FAM l1 0.018, CWFS 0.022-0.025, giant 0.033
-(fraction of flux, dimensionless); giant pupil edges do not match.
+the TA tilts, and giant-donut z2 reaches 14 µm (3 px). The first study pass ran with
+ts_wep's shipped mask by mistake; its outputs were deleted (see "Mask fix" below).
 
 Conventions to keep: Danish centres an odd stamp at +0.5 px in x and y; Danish `dx`, `dy`
-are arcsec; `spider_angle=0` for the v4_speed obscuration file.
+are arcsec; `spider_angle=0` for the v4_speed obscuration file (None leaves the vanes
+out, l1 0.018-0.026).
 
 ## Edge grid (2026-11-21, Aaron approved)
 
 Eight obscuration-file edges switch on between 1.4 and 1.725 deg (L1 aperture ring
 1.537 to filter rear retainer 1.714 deg); giant donuts sampled only 1.394 and 1.628 deg.
+(Motivated by the shipped-mask pass; with the v4_speed file the zone shows no extra
+mismatch, but the grid stays as the dense check.)
 `batoid_intrinsic` build `20261121b` (current) adds an `edge` grid, 1.400-1.725 deg in
 0.025 deg steps by 24 azimuths, for `fam` and `giant`; its other rows equal `20261121`
 exactly. `sim_donuts` variant `v4_speed_mono_edge`: 1344 donuts (FAM and giant, both
