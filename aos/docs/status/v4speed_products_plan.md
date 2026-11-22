@@ -129,9 +129,15 @@ Eight obscuration-file edges switch on between 1.4 and 1.725 deg (L1 aperture ri
 exactly. `sim_donuts` variant `v4_speed_mono_edge`: 1344 donuts (FAM and giant, both
 sides), about 5 CPU hours.
 
+## Mask fix and pass 2 (2026-11-21)
+
+`optics.instrument` had been using ts_wep's shipped v3.14 mask (fixed `90381bf`). With
+the v4_speed file Danish and batoid agree to about 0.2% of the flux (l1) for FAM, CWFS
+and giant, edge grid included; `sim_donuts v4_speed_mono_edge@20261121` built (job
+46362870) and current. Giant edges are off 3-8 mm on the stop plane from the ±4 mm M2
+and camera shift, sign reversing with side. Details in the study Log.
+
 ## Next action
 
-Batch build of `sim_donuts v4_speed_mono_edge` (ask first), then pass 2 of
-`v4speed_mask_vs_batoid`: l1 at 0.025 deg resolution, per-element edge offsets, and the
-giant mismatch at field centre. Then regenerate the giant-configuration obscuration
-parameters with `gen_mask_params.py` and test them on these donuts.
+`sim_donut_fits` (Danish fits of both `sim_donuts` variants, ask before batch), then
+`v4speed_danish_closure`.
