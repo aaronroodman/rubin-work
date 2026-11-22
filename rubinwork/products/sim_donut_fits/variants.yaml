@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# sim_donut_fits variants: Danish fits of sim_donuts stamps, one donut at a time, as
+# ts_wep's DanishAlgorithm fits an unpaired donut (rubinwork.donut_sim.fit).
+#
+# Per-entry fields:
+#   sims              sim_donuts variants fitted (their current builds); the reference
+#                     is the TA Zernikes (Noll 0-78) of each sim's batoid_intrinsic
+#                     variant at its current build
+#   noll              fitted Noll indices per defocus configuration; every other term
+#                     stays at the reference
+#   binning           stamp binning before the fit (block mean, then trimmed to odd)
+#   flux_e            donut flux the noise-free stamp is scaled to (electrons, unbinned)
+#   sky_e_per_px      sky level setting the fit variance (electrons per 10 um pixel);
+#                     the stamp itself has no noise and no sky
+#   spider_angle_deg  Danish spider_angle (deg); null leaves the vanes out, as ts_wep
+#                     does unless modelSpiderShadows is set
+#   lstsq             scipy.optimize.least_squares keyword arguments
+#
+# A different fit set, binning, noise level, spider or tolerance is a new variant.
+# ---------------------------------------------------------------------------
+defaults:
+  sims: [v4_speed_mono, v4_speed_mono_edge]
+  binning: 2
+  flux_e: 1.0e+6
+  sky_e_per_px: 1000.0
+  spider_angle_deg: 0.0
+  lstsq: {x_scale: jac, max_nfev: 200}
+  noll:
+    # fam_tables d13-sparse (Noll 4-11, 14, 15, 20, 21, 27, 28)
+    fam: [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 27, 28]
+    cwfs: [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 27, 28]
+    # giant_donuts fit c
+    giant: [4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 20, 21, 22]
+
+variants:
+
+  # Sparse sets, spider on, fit run to convergence: the model's own bias.
+  v4_speed_sparse: {}
+
+  # The production dense set (danish_1_3, Noll 4-19, 22-26) for every configuration.
+  v4_speed_dense:
+    noll:
+      fam: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
+      cwfs: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
+      giant: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
+
+  # As v4_speed_sparse with the production fit settings: no spider (ts_wep
+  # modelSpiderShadows False) and the donut_viz unpaired tolerances.
+  v4_speed_sparse_prod:
+    spider_angle_deg: null
+    lstsq: {ftol: 1.0e-3, xtol: 1.0e-3, gtol: 1.0e-3, max_nfev: 30, x_scale: jac}
+
+  # As v4_speed_sparse unbinned: separates the effect of the production x2 binning.
+  v4_speed_sparse_bin1:
+    binning: 1
