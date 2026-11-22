@@ -28,7 +28,7 @@ from rubinwork.donut_sim import fit, optics
 from rubinwork.products import batoid_intrinsic, catalog, sim_donut_fits, sim_donuts
 
 VARIANTS = ("v4_speed_sparse", "v4_speed_dense", "v4_speed_sparse_prod",
-            "v4_speed_sparse_bin1")
+            "v4_speed_dense_prod", "v4_speed_sparse_bin1")
 CONFIGS = ("fam", "cwfs", "giant")
 SIDES = ("extra", "intra")
 TARGET_R_DEG = (0.0, 0.9, 1.4, 1.725)
