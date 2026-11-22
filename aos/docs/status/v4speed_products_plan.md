@@ -139,7 +139,32 @@ and giant, edge grid included; `sim_donuts v4_speed_mono_edge@20261121` built (j
 46362870) and current. Giant edges are off 3-8 mm on the stop plane from the ±4 mm M2
 and camera shift, sign reversing with side. Details in the study Log.
 
+## sim_donut_fits (2026-11-21)
+
+Code `6d381db`: `rubinwork.donut_sim.fit` mirrors ts_wep `DanishAlgorithm._estimateSingleZk`
+(block-mean binning, start at the TA reference with fwhm 1.0 arcsec, fwhm bounds 0.1-5.0
+arcsec, sky variance over binning², model added as Poisson variance). Noise-free stamps
+scaled to 1e6 electrons, sky 1000 electrons per 10 µm pixel. Four variants: `v4_speed_sparse`
+(d13-sparse set for FAM and CWFS, fit c for giant, bin 2, spider on, run to convergence),
+`v4_speed_dense` (Noll 4-19, 22-26), `v4_speed_sparse_prod` (no spider and the donut_viz
+tolerances, as production), `v4_speed_sparse_bin1`. 2342 stamps each, both sim variants.
+
+- Danish's model centre is +0.5 px from the middle pixel only when `(n - 1) // 2` is even
+  (n the stamp side): the Kolmogorov kernel is drawn on a `(n - 1) // 2` pixel galsim
+  image. Binned giant stamps (399 px) are centred on the middle pixel; 89, 181 and 801 px
+  stamps at +0.5. `fit.centre_offset_px` handles it.
+- Smoke (every 60th stamp, `20261121_smoke`, partial): binned x2 the fitted FWHM is
+  0.96-0.97 arcsec (true 1.0) and FAM l1 0.0035-0.0042, against 0.99 arcsec and 0.0016
+  unbinned. Fitted deviations, quadrature sum over the fit set: FAM median 0.018 µm, giant
+  0.19-0.23 µm.
+
 ## Next action
 
-`sim_donut_fits` (Danish fits of both `sim_donuts` variants, ask before batch), then
+Batch builds of the four `sim_donut_fits` variants (ask first), then
 `v4speed_danish_closure`.
+
+Then (Aaron, 2026-11-21): if the fits look good, misaligned sims: `sim_donuts` variants
+with a DOF (degree of freedom) state applied to the batoid model, fit against the nominal
+reference as production does, to check fit quality for various misalignments. Motivated by
+`smatrix/sparse_fit`, where many fits with misalignments looked poor. The truth there is
+the perturbed TA minus the nominal TA, so the sim variant must store its perturbed TA.
