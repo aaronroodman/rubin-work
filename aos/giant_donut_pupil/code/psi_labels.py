@@ -260,7 +260,7 @@ def _load(run, fit_dir):
         if col not in b:
             b[col] = False
     g_masks = list((run / 'masks').glob('RubinObsc_v4.02g_*.yaml'))
-    return c, b, (run if g_masks else p3.MASK_RUN, run / 'masks')
+    return c, b, (run if g_masks else p3.MASK_RUN, run / 'masks', run / fit_dir / REFERENCE_FILE)
 
 
 def select(c, all_sides=False, groups=None, band=None):
@@ -281,11 +281,19 @@ def select(c, all_sides=False, groups=None, band=None):
 
 
 _S_MASKS = {}
+# Written by v4speed_fits.py into its fit directory: the batoid_intrinsic build and band of
+# the reference wavefront. Without it the v4.02 reference is computed.
+REFERENCE_FILE = 'reference.json'
 
 
-def _init(mask_run, s_mask_dir):
+def _init(mask_run, s_mask_dir, reference=None):
     p3.MASK_RUN = pathlib.Path(mask_run)
     _S_MASKS['dir'] = s_mask_dir
+    if reference and pathlib.Path(reference).is_file():
+        import json
+        r = json.loads(pathlib.Path(reference).read_text())
+        p3.REFERENCE_PRODUCT = (r['variant'], r['build'])
+        p3.REF_BAND = r['band']
 
 
 def mask_for(row):
@@ -357,7 +365,7 @@ def run_labels(run, fit_dir=None, workers=1, fwhm=1.0, all_sides=False, groups=N
     tasks = [(pd.Series(r._asdict()), b[(b.key == r.key) & (b.side == r.side)], fwhm)
              for r in c.itertuples()]
     with mp.get_context('spawn').Pool(max(1, min(workers, len(tasks))), initializer=_init,
-                                      initargs=(str(mask_run[0]), str(mask_run[1])),
+                                      initargs=tuple(str(m) for m in mask_run),
                                       maxtasksperchild=8) as pool:
         rows = []
         for r in pool.imap_unordered(_one, tasks):

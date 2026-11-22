@@ -271,7 +271,7 @@ def run_rules(run, fit_dir, workers, out=None, limit=None):
     tasks = [(r, b[(b.key == r.key) & (b.side == r.side)].sort_values('bin'), run)
              for r in c.itertuples(index=False)]
     tasks = [(pd.Series(r._asdict()), g, run) for r, g, run in tasks]
-    initargs = (*map(str, mask_run), part_dir)
+    initargs = (*map(str, mask_run[:2]), part_dir)
     if workers > 1:
         with mp.get_context('spawn').Pool(min(workers, len(tasks)), initializer=_init_worker,
                                           initargs=initargs, maxtasksperchild=4) as pool:

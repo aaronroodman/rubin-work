@@ -67,7 +67,8 @@ for _label, _clear in pl._V4S.items():
         COLOURS[_label] = COLOURS[_SAME[_label]]
         NAMES[_label] = NAMES[_SAME[_label]].replace('CameraSilhouette', 'CameraBody')
     else:
-        COLOURS.setdefault(_label, next(_CYCLE))
+        if _label not in COLOURS:
+            COLOURS[_label] = next(_CYCLE)
         NAMES.setdefault(_label, f'{_label} ({"clear" if _clear else "obsc."})')
 
 
