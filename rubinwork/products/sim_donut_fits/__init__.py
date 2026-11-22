@@ -3,15 +3,17 @@
 Each noise-free ``sim_donuts`` stamp is scaled to a flux in electrons, binned, and fit
 one donut at a time as ts_wep's ``DanishAlgorithm`` fits an unpaired donut
 (``rubinwork.donut_sim.fit``): flux, shift, Kolmogorov FWHM and the variant's Noll set
-free, every other term at the reference, the batoid TA (transverse-aberration)
-Zernikes, Noll 0-78, of the sim's ``batoid_intrinsic`` variant. The danish mask is that
-variant's obscuration file. The sims are drawn at the reference, so every fitted
-deviation is model error. Fit variance: the variant's sky plus the model (Poisson).
+free. Danish's model wavefront is the batoid intrinsicTA (the defocused
+transverse-aberration Zernikes, Noll 0-78) of the sim's ``batoid_intrinsic`` variant,
+with the intrinsic of each fitted term replaced by the fitted OPD, as ts_wep builds it;
+the stored quantity is the Zernike deviation, OPD minus intrinsic. The danish mask is
+that variant's obscuration file. The sims are traced through the same batoid model, so
+the expected deviation is zero. Fit variance: the variant's sky plus the model (Poisson).
 
 A build holds:
 
 ``fits.parquet``
-    one row per stamp: field angles, fitted parameters and deviations (CCS and OCS),
+    one row per stamp: field angles, fitted parameters and Zernike deviations (CCS and OCS),
     chi²/dof, ``l1`` and ``pow`` residual metrics, optimizer status.
 ``stamps_<sim variant>_<band>_<config>_<side>.fits``
     per donut an image HDU, ``EXTNAME`` the point id, shape ``(2, n, n)``: the binned

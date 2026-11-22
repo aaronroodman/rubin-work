@@ -54,7 +54,7 @@ def stamp_file(sim_variant, band, config, side):
 
 
 def dz_columns(noll, frame):
-    """Fitted-deviation column names, ``dz<j>_<frame>_um``."""
+    """Zernike-deviation (OPD - intrinsic) column names, ``dz<j>_<frame>_um``."""
     return [f"dz{j}_{frame}_um" for j in noll]
 
 
@@ -74,10 +74,12 @@ def load(variant, build=catalog.CURRENT):
         ``l1`` (fraction of the flux misplaced) and ``pow`` (residual power over sim
         power), both dimensionless; ``nfev``, ``status``, ``success``, ``cost``,
         ``optimality`` (`scipy.optimize.least_squares`); ``dz<j>_CCS_um`` and
-        ``dz<j>_OCS_um``: fitted deviation from the batoid TA reference for each
-        fitted Noll ``j`` (µm of wavefront), NaN where ``j`` was not fitted for that
-        configuration. The sims are drawn at the reference, so the true deviation is
-        zero.
+        ``dz<j>_OCS_um``: Zernike deviation, OPD (the fitted wavefront) minus the
+        batoid intrinsic (``batoid_intrinsic`` kind ``gq_infocus``), for each fitted Noll
+        ``j`` (µm of wavefront), NaN where ``j`` was not fitted for that configuration.
+        Danish's model wavefront is the intrinsicTA with, for the fitted terms, the
+        intrinsic replaced by the OPD (ts_wep ``getOffAxisCoeff`` plus ``zkStart``). The
+        sims are traced through the same batoid model, so the expected deviation is zero.
     """
     return pd.read_parquet(catalog.path(PRODUCT, variant, build) / INDEX)
 

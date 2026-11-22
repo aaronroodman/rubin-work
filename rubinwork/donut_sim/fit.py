@@ -15,7 +15,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 __all__ = ["bin_stamp", "factory", "centre_offset_px", "fit_donut", "metrics",
-           "clear_danish_caches"]
+           "clear_danish_caches", "param_errors"]
 
 FWHM_START_ARCSEC = 1.0
 FWHM_BOUNDS_ARCSEC = (0.1, 5.0)
@@ -106,6 +106,30 @@ def fit_donut(fac, img, z_ref_m, thx_rad, thy_rad, noll, sky_var, lstsq_kwargs):
                 nfev=int(r.nfev), status=int(r.status), success=bool(r.success),
                 cost=float(r.cost), optimality=float(r.optimality),
                 model=model)
+
+
+def param_errors(fac, img, z_ref_m, thx_rad, thy_rad, noll, sky_var, params):
+    """Photon-noise 1-sigma errors of a fit, from the Jacobian at the solution.
+
+    ``cov = (J^T J)^-1`` with ``J`` Danish's Jacobian of ``chi = (data - model) /
+    sqrt(model + sky_var)``: the scatter a donut of this flux and sky would show, for a
+    noise-free `img`. Arguments as `fit_donut`; `params` holds its ``flux``, ``dx``,
+    ``dy``, ``fwhm`` and ``z_fit_m``.
+
+    Returns
+    -------
+    sigma : `dict`
+        ``flux``, ``dx``, ``dy`` (arcsec), ``fwhm`` (arcsec) and ``z_fit_m`` (m), 1 sigma.
+    """
+    m = danish.SingleDonutModel(fac, z_ref=z_ref_m, z_terms=list(noll), thx=thx_rad,
+                                thy=thy_rad, npix=img.shape[0])
+    x = m.pack_params(flux=params["flux"], dx=params["dx"], dy=params["dy"],
+                      fwhm=params["fwhm"], bkg=[], z_fit=list(params["z_fit_m"]))
+    jac = m.jac(x, img, sky_var)
+    sig = m.unpack_params(np.sqrt(np.diag(np.linalg.inv(jac.T @ jac))))
+    clear_danish_caches()
+    return dict(flux=sig["flux"], dx=sig["dx"], dy=sig["dy"], fwhm=sig["fwhm"],
+                z_fit_m=np.asarray(sig["z_fit"], float))
 
 
 def clear_danish_caches():
