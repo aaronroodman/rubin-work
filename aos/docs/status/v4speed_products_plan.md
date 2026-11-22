@@ -158,13 +158,41 @@ tolerances, as production), `v4_speed_sparse_bin1`. 2342 stamps each, both sim v
   unbinned. Fitted deviations, quadrature sum over the fit set: FAM median 0.018 µm, giant
   0.19-0.23 µm.
 
+## sim_donut_fits builds (2026-11-22)
+
+All five unperturbed variants built and current (`20261121`; `v4_speed_dense_prod`
+`20261122`). The first bin1 job hung: danish caches up to 1000 kernels per method on the
+class, across models (5 GB per process at 801 px); `fit.clear_danish_caches` after each
+fit (`c70245d`). Examples PDF in `v4speed_danish_closure` (`fit_examples.py`): data,
+model, residual and OPD against the intrinsic with photon-noise 1-sigma from the Jacobian
+(`fit.param_errors`).
+
+Terminology (Aaron): OPD = the fitted wavefront; intrinsic = batoid in-focus wavefront
+(`gq_infocus`); Zernike deviation = OPD - intrinsic; intrinsicTA = the defocused TA
+Zernikes Danish's model starts from. ts_wep hands Danish intrinsicTA - intrinsic +
+zkStart (= intrinsic) for the fitted terms. The product's `dz<j>` is the deviation.
+
+## DOF scan (2026-11-22, Aaron approved all jobs in advance)
+
+`sim_donuts v4_speed_mono_dof_p2`: the v4_speed_mono points, once per DOF of the 22-DOF
+set, each DOF alone at +2 steps of the sparse_fit scan (twice the FAM-mean step of run
+`20261111_dz_scan_ofcsign`, about 0.04 µm RMS in-focus Noll 4-78 change; z4 -0.35 µm for
+Cam dz +21.85 µm). `optics.perturb` (batoid_rubin, ts_ofc sign). The index adds the
+perturbed in-focus OPD. Fit variants `v4_speed_dof_p2_sparse` and
+`v4_speed_dof_p2_dense_prod` against the nominal intrinsicTA; they store the expected
+deviation `dz<j>_true_CCS_um`. Each product builds one partition per DOF
+(`--dof-part`, an sbatch array) then `--finalize`. Jobs: sims 46442649 (array), finalize
+46442671, fits 46442672 and 46442673 (arrays), finalize 46442674 and 46442675; logs
+`aos/logs/<product>_<array>_<task>.log`. Code `dd904cf`.
+
+Study `aos/v4speed_dof_fits`, script `code/dof_fits.py` (`5f68faa`): summary PDF of
+expected deviation, fit error and error of the change (unperturbed fit removed) per DOF
+and configuration, and per variant an examples PDF, one page per DOF.
+
+A smoke partition (DOF 5, every 100th donut) sits at
+`products/sim_donuts/v4_speed_mono_dof_p2/20261122_smoke`; delete after asking.
+
 ## Next action
 
-Batch builds of the four `sim_donut_fits` variants (ask first), then
-`v4speed_danish_closure`.
-
-Then (Aaron, 2026-11-21): if the fits look good, misaligned sims: `sim_donuts` variants
-with a DOF (degree of freedom) state applied to the batoid model, fit against the nominal
-reference as production does, to check fit quality for various misalignments. Motivated by
-`smatrix/sparse_fit`, where many fits with misalignments looked poor. The truth there is
-the perturbed TA minus the nominal TA, so the sim variant must store its perturbed TA.
+When the chain ends: run `aos/v4speed_dof_fits/code/dof_fits.py`, Log entry, report.
+Then `v4speed_danish_closure` field maps of the deviation per Noll term.
