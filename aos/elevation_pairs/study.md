@@ -130,4 +130,5 @@ Rerun of `elevation_pairs_bins_v1.ipynb`, run `output/20261121_bins_d13_22_12_dt
 - Caveat: the bounce 40 deg legs are three April-May nights, the 50 and 60 deg legs single July nights, and only 20260713 has two legs (30 and 75 deg). A secant between legs mixes elevation with night-to-night differences; the zigzag at 40 deg in v1, DZ(1,4) and several DOF looks like that.
 - `code/bounce_points_20261102.csv` and `code/extract_bounce_points.py` are now unused; kept pending Aaron's call.
 - Rerun 2026-11-22 into the same run directory: bounce pages and per-quantity pages are grouped DZ, then v-modes, then DOF, each group on its own pages. Numbers unchanged.
+- Rerun 2026-11-22, same run directory: DZ(1,j) for all 21 bounce terms (j = 4..19, 22..26) and DZ(2,j), DZ(3,j) for j = 4..8, 31 DZ terms in all, each S(k,j) x 22 DOF on the pairs side and the 22/12 `fit` on the bounce side. DZ(1,j) and DZ(2,j)/DZ(3,j) are separate page groups. 87 pages.
 
