@@ -28,6 +28,28 @@ mask, used by mistake.
 
 ## Log
 
+### 2026-11-21 — pupil edges: CWFS added
+
+`pupil_edges.py` now includes CWFS (`af71f5b`): the 144 `batoid_intrinsic` corner points, 6 x 3
+per half-chip, each on its own side; run `20261121_pupil_edges` rewritten in place, with
+a dashed line at 1.725 deg on every panel. Mismatched pupil area over batoid clear area,
+stop plane, 512 x 512 rays:
+
+| config | field radius | median (%) | max (%) |
+|---|---|---|---|
+| cwfs extra (SW0) | <= 1.725 deg, 68 points | 0.036 | 0.088 |
+| cwfs intra (SW1) | <= 1.725 deg, 36 points | 0.034 | 0.073 |
+| cwfs intra (SW1) | > 1.725 deg, 36 points | 0.41 | 4.3 |
+| fam | 1.400-1.725 deg | 0.023 | 0.058 |
+| giant | 1.400-1.725 deg | 0.19-0.21 | 0.27 |
+
+Inside 1.725 deg CWFS is as clean as FAM: largest edge offset 4.1 mm (M2 outer, camera
+body). Only the detector moves for CWFS, so its pupil is the in-focus one. Beyond
+1.725 deg, 18 points on R00, R04 and R40 SW1 (1.768-1.821 deg) mismatch by 1-4.3%: the
+filter-rear-retainer edge, which starts vignetting at 1.714 deg, is off by 12 to 66 mm
+there, and M3 outer by up to 8 mm. That is a field-radius effect, not the defocus side:
+the SW1 half-chips are the outer ones. R44 SW1 does not show it.
+
 ### 2026-11-21 — correction and pass 2: the v4_speed file, edge grid, per-element edges
 
 **Correction: pass 1 did not test the v4_speed obscuration file.** `rubinwork.donut_sim.optics.instrument`
