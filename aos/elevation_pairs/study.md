@@ -32,11 +32,11 @@ Write-up as a note, `notes/20261122-aos-elevation-pairs/note.md` (`c35f266`), Ma
 - Camera dx slope +12.0 +- 3.2, +10.2 +- 2.0 and +9.9 +- 2.1 um per deg; camera rx +7.7 +- 1.4, +7.0 +- 0.7 and +8.3 +- 0.5 x 1e-5 deg per deg (25-40, 40-55, 55-75 deg).
 - Over the 12 v-modes and 22 DOF, 31 of the 38 bounce secants above 3 sigma have the pair slope's sign (36 of 43 when DZ(1,4..8) is included). Median pair/bounce slope ratio 0.14 (dimensionless).
 - Log reordered newest first, entries unchanged.
+- `code/bounce_points_20261102.csv` and `code/extract_bounce_points.py` deleted; `bounce_aba` replaces them.
 
 Next:
 - fit the bounce against elevation within 20260713 alone (30 and 75 deg legs), to separate elevation from night-to-night change;
 - look at the 55-75 deg small-|dEl| departure in DZ(1,4) and v1;
-- decide on `code/bounce_points_20261102.csv` and `code/extract_bounce_points.py`, now unused.
 
 ### 2026-11-21: 22/12 bounce points from `bounce_aba`, |dEl| >= 2.5 deg
 
