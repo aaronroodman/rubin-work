@@ -3,10 +3,11 @@ study: elevation_pairs
 topic: aos
 status: active
 question: How many same-night science visit pairs change elevation by at least 10 deg with azimuth and camera rotator angle each within 5 deg and the band unchanged, and do they give an elevation LUT sample to compare with the bounce tests?
-answer: "After the last LUT change (174,761 pairs within 5 min at any elevation change, 124 nights, Danish 1.3, 22/12), deviation - Trim has a DZ(1,4) slope of -0.0103 +- 0.0030 um of wavefront per deg at midpoint elevations 25-40 deg, +0.0032 +- 0.0010 at 40-55 deg and -0.0001 +- 0.0007 at 55-75 deg (night-clustered errors). The bounce points between 30, 40 and 50 deg imply -0.043 and +0.024 um per deg: same signs, 4 and 7 times larger."
+answer: "After the last LUT change (66,306 pairs within 5 min with |dEl| >= 2.5 deg, 107 nights, Danish 1.3, 22/12), deviation - Trim has a DZ(1,4) slope of -0.0100 +- 0.0032 um of wavefront per deg at midpoint elevations 25-40 deg, +0.0033 +- 0.0011 at 40-55 deg and -0.0002 +- 0.0007 at 55-75 deg (night-clustered errors). The 22/12 bounce points (bounce_aba d13-batoid-22_12) between 30, 40 and 50 deg imply -0.043 and +0.024 um per deg: same signs, 4 and 7 times larger. In the same 22/12 basis, 36 of the 43 bounce secants above 3 sigma have the pair slope's sign; the median pair/bounce slope ratio is 0.14 (dimensionless). Camera dx, camera rx and M2 dy match the bounce best."
 uses:
   value_added: v1@20261118
   cwfs_science: d13-blitz_rso1071@20261026
+  bounce_aba: d13-batoid-22_12@20261121
 started: 2026-10-29
 ---
 
@@ -18,7 +19,7 @@ How many same-night science visit pairs change elevation by at least 10 deg with
 
 ## Current answer
 
-After the last LUT change (174,761 pairs within 5 min at any elevation change, 124 nights, Danish 1.3, 22/12), deviation - Trim has a DZ(1,4) slope of -0.0103 +- 0.0030 um of wavefront per deg at midpoint elevations 25-40 deg, +0.0032 +- 0.0010 at 40-55 deg and -0.0001 +- 0.0007 at 55-75 deg (night-clustered errors). The bounce points between 30, 40 and 50 deg imply -0.043 and +0.024 um per deg: same signs, 4 and 7 times larger. v1 per deg (dimensionless): -3.6e-4 +- 1.9e-4, +2.8e-4 +- 0.7e-4 and +0.6e-4 +- 0.5e-4 in the same bins. Earlier, with |dEl| >= 10 deg and all nights: 4,291 pairs, v1 slope +2.47e-4 +- 0.28e-4 per deg (formal error).
+After the last LUT change (66,306 pairs within 5 min with |dEl| >= 2.5 deg, 107 nights, Danish 1.3, 22/12), deviation - Trim has a DZ(1,4) slope of -0.0100 +- 0.0032 um of wavefront per deg at midpoint elevations 25-40 deg, +0.0033 +- 0.0011 at 40-55 deg and -0.0002 +- 0.0007 at 55-75 deg (night-clustered errors). The 22/12 bounce points (bounce_aba d13-batoid-22_12) between 30, 40 and 50 deg imply -0.043 and +0.024 um per deg: same signs, 4 and 7 times larger. In the same 22/12 basis, 36 of the 43 bounce secants above 3 sigma have the pair slope's sign; the median pair/bounce slope ratio is 0.14 (dimensionless). Camera dx, camera rx and M2 dy match the bounce best. v1 per deg (dimensionless): -3.4e-4 +- 2.0e-4, +2.9e-4 +- 0.7e-4 and +0.4e-4 +- 0.5e-4 in the same bins.
 
 ## Log
 
@@ -117,3 +118,15 @@ Rerun of `elevation_pairs_bins_v1.ipynb`, run `output/20261121_bins_d13_22_12_dt
 - 109,000 of the 175,000 pairs are at 55-75 deg with |dEl| < 5 deg, so the all-pairs slope (DZ(1,4) +0.0002 +- 0.0007) mostly reflects that corner.
 - The 22 DOF disagree with the bounce DOF by up to 10 times (M2 dy +500 to +900 um at 30-50 deg in the bounce, under 50 um implied here): the bases differ, 22/12 against RBR 50/50.
 - Camera dx and rx agree with the bounce. Camera dx slopes are +9.7 to +12.2 um per deg in all three bins, against bounce secants of +9.7 to +13.8 um per deg. Chained from 0 at 70 deg, the pairs give camera dx -420 +- 53 um at 30 deg; the bounce gives -586 +- 110 um. Camera rx chained gives -0.0031 +- 0.0002 deg, against bounce -0.0040 +- 0.0003 deg. Camera ry has the right sign at 40% of the bounce (+0.0010 against +0.0025 deg). Camera dy and DZ(1,4) disagree; DZ(1,4) at 30 deg is +0.06 +- 0.04 um against bounce +0.37 +- 0.03 um.
+
+### 2026-11-21: 22/12 bounce points from `bounce_aba`, |dEl| >= 2.5 deg
+
+Rerun of `elevation_pairs_bins_v1.ipynb`, run `output/20261121_bins_d13_22_12_dt5min_del2p5_lut20251209/`. The bounce points now come from `bounce_aba` variant `d13-batoid-22_12` (22/12, batoid intrinsic, as the pairs), not from `code/bounce_points_20261102.csv` (RBR 50/50). Bounce DZ(1,j) is the 22/12 subspace `fit`, to match the pairs' S(1,j) x DOF; it differs from the raw delta by under 0.001 um of wavefront. v2..v12 now have bounce pages. Figures: `figures/bounce22_12_v1_dz14_dz15_dz16.png`, `figures/bounce22_12_v12_m2dz_m2dx_m2dy.png`.
+
+- Cut |dEl| >= 2.5 deg: 66,306 pairs with a state (of 174,761), 107 nights. Clustered slope errors barely change, so the dropped pairs carried almost no slope information. At 55-75 deg, DZ(1,4) is still -0.0020 +- 0.0007 um per deg at |dEl| 2.5-5 deg against +0.0004 +- 0.0007 at 5-10 deg, so the cut does not remove the small-dEl anomaly there.
+- DZ(1,4) slope [um of wavefront per deg]: 25-40 deg -0.0100 +- 0.0032, 40-55 deg +0.0033 +- 0.0011, 55-75 deg -0.0002 +- 0.0007. v1 and DZ(1,4) bounce points are within 0.0004 of the RBR ones (v1 dimensionless, DZ in um), so the v1 and DZ(1,4) comparison is unchanged: same signs, pair slopes 4-7 times smaller.
+- Same-basis DOF: 36 of the 43 bounce secants above 3 sigma (30-40, 40-50, 60-70 deg) have the pair slope's sign. Median pair/bounce slope ratio 0.14 (dimensionless).
+- Chained from 0 at 70 deg to 30 deg, pairs against bounce: camera dx -421 +- 54 against -525 +- 110 um; camera rx -0.0031 +- 0.0002 against -0.0044 +- 0.0002 deg; M2 dy +32 +- 5 against +58 +- 5 um; camera ry +0.0010 +- 0.0002 against +0.0023 +- 0.0002 deg. M2 dy, which disagreed by up to 10 times against RBR 50/50, now agrees in sign and to a factor 2. Camera dy (-194 +- 64 against -900 +- 99 um), v1 (-0.002 +- 0.002 against +0.019 +- 0.002, dimensionless) and DZ(1,4) (+0.05 +- 0.04 against +0.37 +- 0.03 um) disagree.
+- Caveat: the bounce 40 deg legs are three April-May nights, the 50 and 60 deg legs single July nights, and only 20260713 has two legs (30 and 75 deg). A secant between legs mixes elevation with night-to-night differences; the zigzag at 40 deg in v1, DZ(1,4) and several DOF looks like that.
+- `code/bounce_points_20261102.csv` and `code/extract_bounce_points.py` are now unused; kept pending Aaron's call.
+
