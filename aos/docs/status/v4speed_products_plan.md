@@ -189,8 +189,6 @@ Study `aos/v4speed_dof_fits`, script `code/dof_fits.py` (`5f68faa`): summary PDF
 expected deviation, fit error and error of the change (unperturbed fit removed) per DOF
 and configuration, and per variant an examples PDF, one page per DOF.
 
-A smoke partition (DOF 5, every 100th donut) sits at
-`products/sim_donuts/v4_speed_mono_dof_p2/20261122_smoke`; delete after asking.
 
 ## Next action
 
