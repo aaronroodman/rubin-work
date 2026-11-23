@@ -36,9 +36,9 @@ wavefront, CCS), corner = mean of SW0 (extra) and SW1 (intra), averaged over vis
 
 | variant | fitted FWHM extra / intra (arcsec) | corner Z5 RMS | corner Z13 RMS | 4-corner Z14 |
 |---|---|---|---|---|
-| no blur difference, noisy | 1.054 / 1.053 | 0.0067 | 0.0025 | -0.0020 |
+| no blur difference, noisy | 1.058 / 1.057 | 0.0067 | 0.0025 | -0.0020 |
 | no blur difference, noise-free | 1.054 / 1.053 | 0.0080 | 0.0029 | -0.0020 |
-| intra +0.35 arcsec injected, noisy | 1.054 / 1.29 | 0.0232 | 0.0058 | -0.0066 |
+| intra +0.35 arcsec injected, noisy | 1.058 / 1.293 | 0.0232 | 0.0058 | -0.0066 |
 | intra +0.35, noise-free | 1.054 / 1.293 | 0.0247 | 0.0063 | -0.0064 |
 | intra +0.50 (Danish difference 0.350), noise-free | 1.054 / 1.404 | 0.0315 | 0.0076 | -0.0083 |
 | intra +0.35, noise-free, spider modelled | 1.045 / 1.286 | 0.0106 | 0.0046 | -0.0006 |

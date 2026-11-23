@@ -201,15 +201,19 @@ New: `batoid_intrinsic v4_speed_cwfs8` (8 k-means points per corner half-chip in
 0.03 random angle per corner and visit, stars r 10.5-15.42 mag, sky 19.5-21.2
 mag/arcsec2, 30 s, read noise 6 e-) and `sim_donut_visit_fits` (dense 21, no spider,
 bin 2, production tolerances; noisy and noise-free planes). Code `5e49e54`. Jobs
-46618943-46618945. **Their build directories are named `x86_64-conda-linux-gnu`**: conda
-sets `BUILD`, which the first sbatch read; fixed by prefixing the variables. Rebuild
-under a date or rename, pending Aaron.
+46618943-46618945. **Rebuilt as `20261123` (jobs 46667378-46667383) after
+the first sbatch read conda's `BUILD`; the misnamed `x86_64-conda-linux-gnu` builds and
+the `20261123_smoke` builds are left for Aaron to delete (rm is blocked for Claude).
+Blur variants `v4_speed_cwfs8_vk_blur35`, `_blur50` (jobs 46667381-46667383,
+46668123-46668125). Both studies wrapped: `ed3768e`, `357700f`.
 
 Study `aos/v4speed_cwfs_visit_bias` run `20261123_visit_bias`: per-CCD Z5 +-0.25 um,
 Z14 +-0.18 um, Z7/Z8 +-0.035 um, all odd; corner means <= 0.011 um (Z5, Z13 about -0.3x
 it); 4-corner mean <= 0.0022 um. Noise-free and noisy agree; noise is zero-mean (per
-donut Z5 std 0.020 um); the e 0.03 kernel moves Z5/Z6 by < 0.001 um. Next iteration: the
-0.35 arcsec intra - extra blur difference.
+donut Z5 std 0.020 um); the e 0.03 kernel moves Z5/Z6 by < 0.001 um. With the measured intra -
+extra blur difference (blur50) the corner Z5 bias is +-0.03 um, Z13 anticorrelated
+(slope -0.24); the spider model halves it. Next: blur drawn per visit, phase screens,
+the corner Z5 pattern as a DZ field term against the MIW.
 
 Tried and rejected: fitting the smoke sims through the catalog (partial builds are not
 in it; `/tmp/smoke_vfits.py` patches catalog); a spawn Pool from a script without a
