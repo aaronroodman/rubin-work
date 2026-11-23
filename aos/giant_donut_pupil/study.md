@@ -141,6 +141,12 @@ Free vane width extra 103.1, 107.2-107.5 mm and two at the 120 mm grid edge; int
 
 v4_speed changes nothing this review measures. `findings.md` K1-K8.
 
+Figures: `figures/v4speed_sample_ccs.png` (the donut sample in CCS), `v4speed_edges_1p6_1p725.png`
+(data − model edge per element, 1.6-1.725 deg), `v4speed_spider.png` (spider offsets and
+vane widths against rotator angle).
+
+![v4_speed donut sample, CCS](figures/v4speed_sample_ccs.png)
+
 ### 2026-11-20 — wrap on v4.02; parked for Josh's v4_speed model
 
 Wrap of the study on the v4.02 masks (v4.02g, v4.02s). The final pass is the pairs review

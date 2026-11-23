@@ -952,23 +952,6 @@ PS-diag_2025102300340_intra-223,S,20261020_selection_diag,diag_2025102300340_int
 PS-diag_2025102300340_intra-224,S,20261020_selection_diag,diag_2025102300340_intra.pdf,224,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
 PS-diag_2025102300340_intra-225,S,20261020_selection_diag,diag_2025102300340_intra.pdf,225,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
 PS-diag_2025102300340_intra-226,S,20261020_selection_diag,diag_2025102300340_intra.pdf,226,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-1,S,20261020_test_v2,diag_2025102300340_intra.pdf,1,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-2,S,20261020_test_v2,diag_2025102300340_intra.pdf,2,"2025102300340 (intra-focal): tally, star and peak counts per sensor class",context
-PS-diag_2025102300340_intra-3,S,20261020_test_v2,diag_2025102300340_intra.pdf,3,2025102300340 (intra-focal): checks,context
-PS-diag_2025102300340_intra-4,S,20261020_test_v2,diag_2025102300340_intra.pdf,4,"R31 intra: image-clean donuts (annulus_ratio < 0.05, overlap_frac < 0.02) that the baseline drops, with the reason code.",context
-PS-diag_2025102300340_intra-5,S,20261020_test_v2,diag_2025102300340_intra.pdf,5,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-6,S,20261020_test_v2,diag_2025102300340_intra.pdf,6,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-7,S,20261020_test_v2,diag_2025102300340_intra.pdf,7,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-8,S,20261020_test_v2,diag_2025102300340_intra.pdf,8,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-9,S,20261020_test_v2,diag_2025102300340_intra.pdf,9,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-10,S,20261020_test_v2,diag_2025102300340_intra.pdf,10,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-11,S,20261020_test_v2,diag_2025102300340_intra.pdf,11,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-12,S,20261020_test_v2,diag_2025102300340_intra.pdf,12,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-13,S,20261020_test_v2,diag_2025102300340_intra.pdf,13,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-14,S,20261020_test_v2,diag_2025102300340_intra.pdf,14,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-15,S,20261020_test_v2,diag_2025102300340_intra.pdf,15,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-16,S,20261020_test_v2,diag_2025102300340_intra.pdf,16,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
-PS-diag_2025102300340_intra-17,S,20261020_test_v2,diag_2025102300340_intra.pdf,17,"focal-plane y, DVCS (DM view) [mm] = CCS x",context
 P4-pupil_pass4-1,4,20261021_pupil4,pupil_pass4.pdf,1,"field y, OCS (deg)",context
 P4-pupil_pass4-2,4,20261021_pupil4,pupil_pass4.pdf,2,"Sample: donut sides per band, side and sensor class",context
 P4-pupil_pass4-3,4,20261021_pupil4,pupil_pass4.pdf,3,inner edge / median r_outer (dimensionless),yes
@@ -2237,3 +2220,28 @@ PR-summary-2,R,20261120_pairs_review,summary.pdf,2,"Median data model edge per m
 PR-summary-3,R,20261120_pairs_review,summary.pdf,3,"Median data model edge per mask element, science sides 0.25-0.5 deg, v4.02g. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",yes
 PR-summary-4,R,20261120_pairs_review,summary.pdf,4,physical_rotator_angle (deg) physical_rotator_angle (deg) physical_rotator_angle (deg),yes
 PR-summary-5,R,20261120_pairs_review,summary.pdf,5,"Camera silhouette inner-edge miss (v4.02s), science sides 1.6-1.725 deg, one point per visit (median ± error); label = pair number",context
+PK-conclusions-1,K,20261122_pairs_review_v4speed,conclusions.pdf,1,"Settled: v4_speed fits as well as v4.02s, no better",context
+PK-conclusions-2,K,20261122_pairs_review_v4speed,conclusions.pdf,2,"Giant-donut sample, v4_speed fits (fit_ok), science sensors: field position in CCS, marker = donut outer radius; circles at 1.6 and 1.725 deg field radius",context
+PK-conclusions-3,K,20261122_pairs_review_v4speed,conclusions.pdf,3,Pairs: intra and extra exposures whose absolute Trim differs only in camera z and M2 z (value_added visit_telemetry). Rotator angle physical_rotator_angle (deg); Trim in µm.,context
+PK-conclusions-4,K,20261122_pairs_review_v4speed,conclusions.pdf,4,Settled: the outer edges still sit inside the model,context
+PK-conclusions-5,K,20261122_pairs_review_v4speed,conclusions.pdf,5,"Median data model edge per mask element, science sides 1.6-1.725 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",context
+PK-conclusions-6,K,20261122_pairs_review_v4speed,conclusions.pdf,6,"Median data model edge per mask element, science sides 0.25-0.5 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",context
+PK-conclusions-7,K,20261122_pairs_review_v4speed,conclusions.pdf,7,Settled: near the field centre the inner edge sits outside the model,context
+PK-conclusions-8,K,20261122_pairs_review_v4speed,conclusions.pdf,8,"Median data model edge per mask element, science sides 0.25-0.5 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",context
+PK-conclusions-9,K,20261122_pairs_review_v4speed,conclusions.pdf,9,"Open: the CameraBody miss follows the camera dy decenter, as with v4.02s",context
+PK-conclusions-10,K,20261122_pairs_review_v4speed,conclusions.pdf,10,"Median data model edge per mask element, science sides 1.6-1.725 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",context
+PK-conclusions-11,K,20261122_pairs_review_v4speed,conclusions.pdf,11,"CameraBody inner-edge miss (v4_speed), science sides 1.6-1.725 deg, psi {'intra': (330.0, 30.0), 'extra': (160.0, 200.0)}, one point per visit (median ± error); label = pair number",context
+PK-conclusions-12,K,20261122_pairs_review_v4speed,conclusions.pdf,12,Open: the M1 inner and M2 inner signs flip with focus on night 1,context
+PK-conclusions-13,K,20261122_pairs_review_v4speed,conclusions.pdf,13,"Median data model edge per mask element, science sides 1.6-1.725 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",context
+PK-conclusions-14,K,20261122_pairs_review_v4speed,conclusions.pdf,14,Open: the spider translation is unchanged,context
+PK-conclusions-15,K,20261122_pairs_review_v4speed,conclusions.pdf,15,physical_rotator_angle (deg) physical_rotator_angle (deg) physical_rotator_angle (deg),context
+PK-conclusions-16,K,20261122_pairs_review_v4speed,conclusions.pdf,16,Settled: the vane widths are unchanged,context
+PK-conclusions-17,K,20261122_pairs_review_v4speed,conclusions.pdf,17,physical_rotator_angle (deg) physical_rotator_angle (deg) physical_rotator_angle (deg),context
+PK-conclusions-18,K,20261122_pairs_review_v4speed,conclusions.pdf,18,Open: the outer-band chi2/dof excess remains,context
+PK-conclusions-19,K,20261122_pairs_review_v4speed,conclusions.pdf,19,"Median data model edge per mask element, science sides 1.6-1.725 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",context
+PK-summary-1,K,20261122_pairs_review_v4speed,summary.pdf,1,"Giant-donut sample, v4_speed fits (fit_ok), science sensors: field position in CCS, marker = donut outer radius; circles at 1.6 and 1.725 deg field radius",yes
+PK-summary-2,K,20261122_pairs_review_v4speed,summary.pdf,2,Pairs: intra and extra exposures whose absolute Trim differs only in camera z and M2 z (value_added visit_telemetry). Rotator angle physical_rotator_angle (deg); Trim in µm.,yes
+PK-summary-3,K,20261122_pairs_review_v4speed,summary.pdf,3,"Median data model edge per mask element, science sides 1.6-1.725 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",yes
+PK-summary-4,K,20261122_pairs_review_v4speed,summary.pdf,4,"Median data model edge per mask element, science sides 0.25-0.5 deg, v4_speed. One point per visit: the bin-weighted median over the psi ranges the element sets; label = pair number",yes
+PK-summary-5,K,20261122_pairs_review_v4speed,summary.pdf,5,physical_rotator_angle (deg) physical_rotator_angle (deg) physical_rotator_angle (deg),yes
+PK-summary-6,K,20261122_pairs_review_v4speed,summary.pdf,6,"CameraBody inner-edge miss (v4_speed), science sides 1.6-1.725 deg, psi {'intra': (330.0, 30.0), 'extra': (160.0, 200.0)}, one point per visit (median ± error); label = pair number",context
