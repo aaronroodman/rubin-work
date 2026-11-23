@@ -108,7 +108,15 @@ def main():
             story.draw(dev)
             writer.end_page()
         writer.close()
-    print(f'wrote {out} ({fitz.open(out).page_count} pages, {n_math} math spans)')
+    # Story stores images uncompressed: about 20 times larger than needed.
+    doc = fitz.open(out)
+    n_pages = doc.page_count
+    packed = out.with_suffix('.packed.pdf')
+    doc.save(packed, garbage=4, deflate=True, deflate_images=True)
+    doc.close()
+    packed.replace(out)
+    print(f'wrote {out} ({n_pages} pages, {n_math} math spans, '
+          f'{out.stat().st_size / 1e6:.1f} MB)')
 
 
 if __name__ == '__main__':
