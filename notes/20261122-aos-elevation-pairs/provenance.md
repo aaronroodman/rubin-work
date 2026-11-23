@@ -28,6 +28,7 @@ night-clustered sandwich errors; 200-resample night bootstrap check.
 ```bash
 cd ~/notebooks/rubin-work/notes/20261122-aos-elevation-pairs && \
     python make_figures.py
+cd .. && python md_to_pdf.py 20261122-aos-elevation-pairs/note.md
 ```
 
 `figures/numbers.json` holds every number the note quotes from the figures.
