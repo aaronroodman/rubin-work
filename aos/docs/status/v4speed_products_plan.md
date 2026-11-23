@@ -190,6 +190,31 @@ expected deviation, fit error and error of the change (unperturbed fit removed) 
 and configuration, and per variant an examples PDF, one page per DOF.
 
 
+## Spider bias and visit sims (2026-11-23)
+
+Study `aos/v4speed_spiderbias` (`20809ae`, run `20261123_spider_bias`): dense no-spider
+minus dense spider. Per side large (CWFS per CCD Z5 +-0.13-0.15 um, Z14 +-0.16 um), odd
+in defocus; corner extra/intra mean <= 0.010 um.
+
+New: `batoid_intrinsic v4_speed_cwfs8` (8 k-means points per corner half-chip inside
+1.725 deg), products `sim_donut_visits` (100 visits, von Karman 1.0 arcsec L0 20 m e
+0.03 random angle per corner and visit, stars r 10.5-15.42 mag, sky 19.5-21.2
+mag/arcsec2, 30 s, read noise 6 e-) and `sim_donut_visit_fits` (dense 21, no spider,
+bin 2, production tolerances; noisy and noise-free planes). Code `5e49e54`. Jobs
+46618943-46618945. **Their build directories are named `x86_64-conda-linux-gnu`**: conda
+sets `BUILD`, which the first sbatch read; fixed by prefixing the variables. Rebuild
+under a date or rename, pending Aaron.
+
+Study `aos/v4speed_cwfs_visit_bias` run `20261123_visit_bias`: per-CCD Z5 +-0.25 um,
+Z14 +-0.18 um, Z7/Z8 +-0.035 um, all odd; corner means <= 0.011 um (Z5, Z13 about -0.3x
+it); 4-corner mean <= 0.0022 um. Noise-free and noisy agree; noise is zero-mean (per
+donut Z5 std 0.020 um); the e 0.03 kernel moves Z5/Z6 by < 0.001 um. Next iteration: the
+0.35 arcsec intra - extra blur difference.
+
+Tried and rejected: fitting the smoke sims through the catalog (partial builds are not
+in it; `/tmp/smoke_vfits.py` patches catalog); a spawn Pool from a script without a
+`__main__` guard respawns workers forever.
+
 ## Next action
 
 DOF scan built and pass 1 logged in `aos/v4speed_dof_fits` (`7d66965`). Next: leakage per Noll term against the sparse_fit L matrix; larger amplitudes.
