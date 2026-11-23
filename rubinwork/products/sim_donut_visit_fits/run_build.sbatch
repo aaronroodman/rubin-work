@@ -5,10 +5,10 @@
 #SBATCH --qos=normal
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=48G
-#SBATCH --time=03:00:00
+#SBATCH --time=01:00:00
 #SBATCH --output=aos/logs/sim_donut_visit_fits_%j.log
 #
-# Build one sim_donut_visit_fits variant on 16 CPUs (6400 CWFS stamps).
+# Build one sim_donut_visit_fits variant on 16 CPUs (about 0.5 CPU s a CWFS stamp at production tolerances, 6400 stamps).
 #
 # Submit from an s3df login node, from the repository root:
 #   cd ~/notebooks/rubin-work && sbatch rubinwork/products/sim_donut_visit_fits/run_build.sbatch

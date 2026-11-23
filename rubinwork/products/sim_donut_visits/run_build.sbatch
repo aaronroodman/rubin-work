@@ -8,7 +8,7 @@
 #SBATCH --time=00:45:00
 #SBATCH --output=aos/logs/sim_donut_visits_%j.log
 #
-# Build one sim_donut_visits variant on 16 CPUs (about 3 CPU hours for v4_speed_cwfs8_vk).
+# Build one sim_donut_visits variant on 16 CPUs (about 2 CPU s a stamp, 4 CPU hours for v4_speed_cwfs8_vk).
 #
 # Submit from an s3df login node, from the repository root:
 #   cd ~/notebooks/rubin-work && sbatch rubinwork/products/sim_donut_visits/run_build.sbatch
