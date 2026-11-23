@@ -60,3 +60,9 @@ variants:
   # median intra - extra blur difference of aos/cwfs_blur_intra_extra.
   v4_speed_cwfs8_vk_blur35:
     side_blur_arcsec: {intra: 0.35}
+
+  # As v4_speed_cwfs8_vk_blur35 with intra 0.50 arcsec blurrier: Danish fits 0.24 arcsec
+  # of FWHM difference for the 0.35 injected (1.293 against 1.054 arcsec), so about 0.5
+  # gives the measured Danish intra - extra difference of 0.344 arcsec.
+  v4_speed_cwfs8_vk_blur50:
+    side_blur_arcsec: {intra: 0.50}

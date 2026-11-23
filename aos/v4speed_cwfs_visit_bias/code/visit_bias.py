@@ -29,7 +29,9 @@ from rubinwork.products import catalog, sim_donut_visit_fits
 
 VARIANTS = ("v4_speed_cwfs8_vk_dense_prod", "v4_speed_cwfs8_vk_dense_prod_nonoise",
             "v4_speed_cwfs8_vk_blur35_dense_prod",
-            "v4_speed_cwfs8_vk_blur35_dense_prod_nonoise")
+            "v4_speed_cwfs8_vk_blur35_dense_prod_nonoise",
+            "v4_speed_cwfs8_vk_blur35_dense_spider_nonoise",
+            "v4_speed_cwfs8_vk_blur50_dense_prod_nonoise")
 CORNERS = ("R00", "R04", "R40", "R44")
 PAIRS = [(4, 11), (5, 13), (6, 12), (7, 17), (8, 16)]
 SHOW = [4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17]
@@ -196,6 +198,37 @@ def dependence_page(pdf, v, df):
     plt.close(fig)
 
 
+def compare_page(pdf, results):
+    """Corner means and 4-corner mean of every variant on one page."""
+    fig, axs = plt.subplots(len(CORNERS) + 1, 1, figsize=(11, 8.5), sharex=True)
+    first = next(iter(results.values()))
+    noll = first[1]
+    x = np.arange(len(noll))
+    w = 0.8 / len(results)
+    for k, (v, (_, nl, pv)) in enumerate(results.items()):
+        mc, sc = mean_se(pv["corner"], "corner", nl)
+        m4, s4 = mean_se(pv["four"], "four", nl)
+        for ax, c in zip(axs, CORNERS):
+            ax.bar(x + (k - (len(results) - 1) / 2) * w, mc.loc[c], w, yerr=sc.loc[c],
+                   label=v)
+            ax.set_title(f"{c} corner mean (extra+intra)/2 of CCD medians", size=8)
+        axs[-1].bar(x + (k - (len(results) - 1) / 2) * w, m4.iloc[0], w, yerr=s4.iloc[0],
+                    label=v)
+    axs[-1].set_title("4-corner mean", size=8)
+    for ax in axs:
+        ax.axhline(0, color="k", lw=0.4)
+        ax.set_ylabel("bias (um)", size=7)
+        ax.tick_params(labelsize=6)
+    axs[0].legend(fontsize=6, ncol=2)
+    axs[-1].set_xticks(x, [str(j) for j in noll])
+    axs[-1].set_xlabel("Noll index")
+    fig.suptitle("bias (OPD - intrinsic, um of wavefront, CCS), mean over visits +- SE, "
+                 "by variant", size=9)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -211,6 +244,7 @@ def main():
         results[v] = (df, noll, per_visit(df, noll))
     with PdfPages(run.path / "visit_bias.pdf") as pdf:
         summary_page(pdf, results)
+        compare_page(pdf, results)
         for v, (df, noll, pv) in results.items():
             bias_page(pdf, v, noll, pv)
             pair_page(pdf, v, noll, pv, df)
