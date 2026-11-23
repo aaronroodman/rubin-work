@@ -54,6 +54,8 @@ def compute(cfg):
              "corners": optics.corner_grid(**g["corners"])}
     if "edge" in g:
         grids["edge"] = [(*p, None) for p in optics.edge_grid(**g["edge"])]
+    if "corners_in" in g:
+        grids["corners_in"] = optics.corner_inside_grid(**g["corners_in"])
     parts = []
     for band in cfg["bands"]:
         any_instr = optics.instrument(cfg["model"], cfg["obscuration"],

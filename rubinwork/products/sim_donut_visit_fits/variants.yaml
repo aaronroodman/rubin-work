@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# sim_donut_visit_fits variants: Danish fits of sim_donut_visits stamps.
+#
+# Each stamp is binned and fit one donut at a time as ts_wep's DanishAlgorithm fits an
+# unpaired donut (rubinwork.donut_sim.fit), against the intrinsicTA of the sims'
+# batoid_intrinsic variant. Fit variance: the stamp's sky plus read noise variance,
+# divided by binning² (block mean), plus the model.
+#
+# Per-entry fields:
+#   sims        sim_donut_visits variant, or variant@build
+#   plane       observed (the noisy stamp) or expected (its noise-free expectation)
+#   binning     block-mean binning before the fit (ts_wep production: 2)
+#   spider_angle_deg  danish spider angle (deg), null for no spider (ts_wep default)
+#   noll        Noll indices fitted
+#   lstsq       scipy.optimize.least_squares keyword arguments
+#
+# Any change is a new variant.
+# ---------------------------------------------------------------------------
+defaults:
+  sims: v4_speed_cwfs8_vk
+  plane: observed
+  binning: 2
+  spider_angle_deg: null
+  noll: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26]
+  lstsq: {ftol: 1.0e-3, xtol: 1.0e-3, gtol: 1.0e-3, max_nfev: 30, x_scale: jac}
+
+variants:
+
+  # Production mock-up: dense 21 terms (Noll 4-19, 22-26), no spider, binning 2,
+  # ts_wep production tolerances, on the noisy stamps.
+  v4_speed_cwfs8_vk_dense_prod: {}
+
+  # As v4_speed_cwfs8_vk_dense_prod on the noise-free expectation of the same stamps:
+  # the bias from the seeing kernel and offsets alone.
+  v4_speed_cwfs8_vk_dense_prod_nonoise:
+    plane: expected

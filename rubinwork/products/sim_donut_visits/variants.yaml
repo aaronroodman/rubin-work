@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# sim_donut_visits variants: simulated CWFS visits, noisy donuts at fixed field points.
+#
+# Each visit puts one donut on every intrinsic point (8 per corner half-chip). The
+# noise-free optical donut is ray-traced once per point through the intrinsic's batoid
+# model, then per visit convolved with a seeing kernel, shifted by a random sub-pixel
+# offset, scaled to a star's flux and given sky, Poisson and read noise. The optics
+# are perfectly aligned.
+#
+# Per-entry fields:
+#   intrinsic        batoid_intrinsic variant: model, CWFS configuration and points
+#   band             band traced (monochromatic at the ts_wep band wavelength)
+#   npix, ray_spacing_mm, oversample   as sim_donuts
+#   n_visits, seed   visits simulated; random seed of every draw
+#   exptime_s        exposure (s)
+#   zeropoint_mag    AB magnitude giving 1 e-/s (SMTN-002 zp_t)
+#   mag_range        star magnitudes [bright, faint]; faint is ts_wep's r-band limit
+#                    (policy magLimitStar.yaml), bright keeps the peak pixel below about
+#                    1e5 e- (no saturation is simulated)
+#   mag_slope_dex    star counts dN/dm proportional to 10**(slope * m)
+#   sky_mag_arcsec2  per-visit sky, uniform in mag/arcsec² over [bright, dark]
+#   read_noise_e     Gaussian read noise (e- per pixel)
+#   offset_px        donut centre offsets, uniform in +-offset_px (pixels, x and y)
+#   seeing           von Karman kernel: fwhm_arcsec (r0 solved for it), L0_m, e
+#                    (distortion (a²-b²)/(a²+b²)); its major-axis angle is uniform in
+#                    [0, 180) deg, drawn per visit and corner, shared by the corner's two
+#                    half-chips
+#
+# Stamps are sky-subtracted electrons; each also stores its noise-free expectation.
+# Any change is a new variant.
+# ---------------------------------------------------------------------------
+defaults:
+  intrinsic: v4_speed_cwfs8
+  band: r
+  npix: 181
+  ray_spacing_mm: 8.0
+  oversample: 3
+  n_visits: 100
+  seed: 20261123
+  exptime_s: 30.0
+  zeropoint_mag: 28.36
+  mag_range: [10.5, 15.42]
+  mag_slope_dex: 0.25
+  sky_mag_arcsec2: [19.5, 21.2]
+  read_noise_e: 6.0
+  offset_px: 0.5
+  seeing: {fwhm_arcsec: 1.0, L0_m: 20.0, e: 0.03}
+
+variants:
+
+  # 100 visits, r band, von Karman 1.0 arcsec FWHM, L0 20 m, e 0.03 at random angle per
+  # corner and visit; sky 19.5-21.2 mag/arcsec², stars 10.5-15.42 mag, 30 s.
+  v4_speed_cwfs8_vk: {}

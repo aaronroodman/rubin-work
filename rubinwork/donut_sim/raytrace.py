@@ -22,7 +22,7 @@ STOP_R_OUTER_M = 4.4
 
 TRACE_CHUNK = 1_000_000
 
-__all__ = ["stop_grid", "trace", "render", "donut"]
+__all__ = ["stop_grid", "trace", "render", "deposit", "convolve", "bin_fine", "donut"]
 
 
 def stop_grid(spacing_m, r_inner=STOP_R_INNER_M, r_outer=STOP_R_OUTER_M):
@@ -106,6 +106,19 @@ def render(dx, dy, weight, npix, pixel_m, oversample, fwhm_arcsec, focal_length_
         Weight of rays that fell off the fine grid.
     """
     import galsim
+    fine, lost = deposit(dx, dy, weight, npix, pixel_m, oversample)
+    if fwhm_arcsec > 0:
+        scale = 3600 * np.rad2deg(pixel_m / oversample / focal_length_m)
+        fine = convolve(fine, galsim.Kolmogorov(fwhm=fwhm_arcsec), scale, fwhm_arcsec)
+    return bin_fine(fine, oversample), lost
+
+
+def deposit(dx, dy, weight, npix, pixel_m, oversample):
+    """Cloud-in-cell deposit of rays on the fine grid of an `npix` stamp.
+
+    Arguments as `render`. Returns the ``(npix * oversample,)``-square fine image (row =
+    y, column = x; m² of collecting area per fine pixel) and the weight lost off it.
+    """
     nf = npix * oversample
     fpix = pixel_m / oversample
     u = dx / fpix + nf / 2 - 0.5
@@ -118,14 +131,22 @@ def render(dx, dy, weight, npix, pixel_m, oversample, fwhm_arcsec, focal_length_
             ii, jj = i0 + di, j0 + dj
             m = (ii >= 0) & (ii < nf) & (jj >= 0) & (jj < nf)
             np.add.at(fine, (jj[m], ii[m]), weight * (wu * wv)[m])
-    lost = weight * len(dx) - fine.sum()
-    if fwhm_arcsec > 0:
-        scale = 3600 * np.rad2deg(fpix / focal_length_m)
-        n = int(np.ceil(16 * fwhm_arcsec / scale)) | 1   # ±8 FWHM keeps the Kolmogorov wings
-        kern = galsim.Kolmogorov(fwhm=fwhm_arcsec).drawImage(
-            nx=n, ny=n, scale=scale, method="no_pixel").array
-        fine = fftconvolve(fine, kern / kern.sum(), mode="same")
-    return fine.reshape(npix, oversample, npix, oversample).sum((1, 3)), float(lost)
+    return fine, float(weight * len(dx) - fine.sum())
+
+
+def convolve(fine, profile, scale_arcsec, fwhm_arcsec):
+    """Convolve a fine image with a galsim `profile` drawn at `scale_arcsec` per fine
+    pixel, normalised to unit sum, out to ±8 `fwhm_arcsec` (keeps the Kolmogorov wings).
+    A shift of `profile` moves the image (arcsec; +x = +column)."""
+    n = int(np.ceil(16 * fwhm_arcsec / scale_arcsec)) | 1
+    kern = profile.drawImage(nx=n, ny=n, scale=scale_arcsec, method="no_pixel").array
+    return fftconvolve(fine, kern / kern.sum(), mode="same")
+
+
+def bin_fine(fine, oversample):
+    """Sum `oversample`-square blocks of a fine image to pixels."""
+    n = fine.shape[0] // oversample
+    return fine.reshape(n, oversample, n, oversample).sum((1, 3))
 
 
 def donut(optic, thx_deg, thy_deg, wavelength_m, spacing_m, npix, pixel_m, oversample,

@@ -256,3 +256,39 @@ def corner_grid(nx, ny):
                     x, y = frames.dvcs_to_ccs_field(*np.rad2deg([f.getX(), f.getY()]))
                     out.append((f"{raft}_{half}_x{i}y{j}", x, y, side))
     return out
+
+
+def corner_inside_grid(n, r_max_deg, n_fine=(204, 100), seed=0):
+    """`n` points per corner half-chip, spread evenly over its part inside `r_max_deg`.
+
+    The points are the k-means centroids of a fine pixel grid (`n_fine` cells along
+    pixel x and y) cut to field radius ``<= r_max_deg``; the region is convex, so every
+    centroid lies in it. Ids ``<raft>_<half>_kK``, ``K`` in order of field radius.
+
+    Returns
+    -------
+    points : `list` [`tuple`]
+        ``(point_id, thx_deg, thy_deg, side)``, CCS; `side` from `CORNER_SIDES`.
+    """
+    from scipy.cluster.vq import kmeans2
+    from lsst.obs.lsst import LsstCam
+    from lsst.afw.cameraGeom import PIXELS, FIELD_ANGLE
+    import lsst.geom as geom
+    cam = LsstCam.getCamera()
+    out = []
+    for raft in CORNER_RAFTS:
+        for half, side in CORNER_SIDES.items():
+            det = cam[f"{raft}_{half}"]
+            bb = det.getBBox()
+            tr = det.getTransform(PIXELS, FIELD_ANGLE)
+            px = bb.getMinX() - 0.5 + (np.arange(n_fine[0]) + 0.5) * bb.getWidth() / n_fine[0]
+            py = bb.getMinY() - 0.5 + (np.arange(n_fine[1]) + 0.5) * bb.getHeight() / n_fine[1]
+            pts = [geom.Point2D(x, y) for x in px for y in py]
+            f = np.rad2deg([[p.getX(), p.getY()] for p in tr.applyForward(pts)])
+            xy = np.array(frames.dvcs_to_ccs_field(f[:, 0], f[:, 1])).T
+            xy = xy[np.hypot(xy[:, 0], xy[:, 1]) <= r_max_deg]
+            cen, _ = kmeans2(xy, n, seed=seed, minit="++")
+            cen = cen[np.argsort(np.hypot(cen[:, 0], cen[:, 1]))]
+            out += [(f"{raft}_{half}_k{k}", float(x), float(y), side)
+                    for k, (x, y) in enumerate(cen)]
+    return out

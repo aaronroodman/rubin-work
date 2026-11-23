@@ -11,6 +11,8 @@
 #                offsets (mm; intra is the negative), and the field grid or grids used
 #   grids        science: Gauss-Legendre rings x spokes to radius_deg;
 #                corners: nx x ny cell centres on each corner half-chip;
+#                corners_in: n k-means centroids per corner half-chip, over its part
+#                inside field radius r_max_deg;
 #                edge: radii r_min_deg to r_max_deg in dr_deg steps x n_az azimuths, the
 #                vignetted zone where eight obscuration-file edges switch on
 #   dz_kmax      highest field Noll index of the double-Zernike fit on the science grid
@@ -44,3 +46,15 @@ variants:
     model: Rubin_v4_speed_cadaper_{band}.yaml
     obscuration: RubinObsc_v4_speed_cadaper_r_rtpp0_azp45_pp0d0.yaml
     bands: [r, i]
+
+  # As v4_speed, r band, CWFS only, on 8 points per corner half-chip spread over its part
+  # inside 1.725 deg (the sim_donut_visits donuts).
+  v4_speed_cwfs8:
+    model: Rubin_v4_speed_cadaper_{band}.yaml
+    obscuration: RubinObsc_v4_speed_cadaper_r_rtpp0_azp45_pp0d0.yaml
+    grids:
+      science: {rings: 11, spokes: 35, radius_deg: 1.75}
+      corners: {nx: 6, ny: 3}
+      corners_in: {n: 8, r_max_deg: 1.725}
+    configs:
+      cwfs: {optics: [Detector], offsets_mm: [1.5], grid: corners_in}
