@@ -12,8 +12,9 @@
 #
 # Submit from an s3df login node, from the repository root:
 #   cd ~/notebooks/rubin-work && sbatch rubinwork/products/sim_donut_visits/run_build.sbatch
-# Variant and build: VARIANT (default v4_speed_cwfs8_vk), BUILD (default today);
-# OVERWRITE=1 replaces a build nothing has read; SET_CURRENT=1 moves current.
+# Variant and build: VISITS_VARIANT (default v4_speed_cwfs8_vk), VISITS_BUILD (default today;
+# not BUILD, which conda sets);
+# VISITS_OVERWRITE=1 replaces a build nothing has read; SET_CURRENT=1 moves current.
 set -eo pipefail                 # NOT -u: the lsst/conda activate scripts use unbound vars
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../../..}"
 set +e
@@ -21,9 +22,9 @@ source "$HOME/u/LSST/setup.sh"
 set -e
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 N=${SLURM_CPUS_PER_TASK:-16}
-V=${VARIANT:-v4_speed_cwfs8_vk}
-B=${BUILD:-$(date +%Y%m%d)}
-OW=""; [ "${OVERWRITE:-0}" = 1 ] && OW="--overwrite"
+V=${VISITS_VARIANT:-v4_speed_cwfs8_vk}
+B=${VISITS_BUILD:-$(date +%Y%m%d)}
+OW=""; [ "${VISITS_OVERWRITE:-0}" = 1 ] && OW="--overwrite"
 echo "== $(date)  sim_donut_visits variant=$V build=$B jobs=$N $OW"
 python -m rubinwork.products.sim_donut_visits.builders.build --variant "$V" --build "$B" --jobs "$N" $OW
 if [ "${SET_CURRENT:-0}" = 1 ]; then
