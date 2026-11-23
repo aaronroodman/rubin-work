@@ -13,6 +13,7 @@ plain* (see Conventions).
 | [aos-measured-intrinsics](aos-measured-intrinsics/) | 2026-06 | draft | — | [SOTN-006](https://github.com/lsst-so/sotn-006) (Measured Intrinsic Wavefront) |
 | [aos-bounce-test-summary](aos-bounce-test-summary/) | 2026-09 | draft | — | — (elevation and rotator bounce tests) |
 | [ts-ofc-rso-1007](ts-ofc-rso-1007/) | 2026-10 | draft | — | — (ts_ofc PR #124: DZ state estimator, RBR) |
+| [20261122-aos-bounce-aba](20261122-aos-bounce-aba/) | 2026-11 | draft | — | — (BLOCK-T720 A–B–A bounce, 22/12 recovery) |
 
 *Status:* draft → posted (Slack) → in-technote. Fill the Slack column with the message
 permalink once posted.
