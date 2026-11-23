@@ -686,7 +686,7 @@ def page_sample(pdf, info):
     """Field positions (CCS) of the fitted science donuts, one panel per visit."""
     colours = {'0.25-0.5 deg (used)': 'tab:orange', '1.6-1.725 deg (used)': 'red',
                'other fitted': '0.6'}
-    fig, axes = plt.subplots(2, len(PAIRS), figsize=(4.2 * len(PAIRS), 9.0), squeeze=False)
+    fig, axes = plt.subplots(2, len(PAIRS), figsize=(4.2 * len(PAIRS), 10.0), squeeze=False)
     rtp = info.set_index('visit').rtp_deg
     for j, p in enumerate(PAIRS):
         c, _, _ = source(p.run, p.fit[BASE])
@@ -726,7 +726,7 @@ def page_sample(pdf, info):
     fig.suptitle(f'Giant-donut sample, {BASE} fits (fit_ok), science sensors: field position in '
                  'CCS, marker = donut outer radius; circles at 1.6 and 1.725 deg field radius',
                  fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.tight_layout(rect=(0, 0, 1, 0.93), h_pad=3.0)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -832,8 +832,52 @@ CONCLUSIONS = [
 ]
 
 
-# The v4_speed rerun's conclusions, written once its pages are reviewed.
-CONCLUSIONS_V4SPEED = []
+# The v4_speed rerun (run 20261122_pairs_review_v4speed); chi2/dof numbers are from the
+# matched-side comparison in the study Log of 2026-11-22.
+CONCLUSIONS_V4SPEED = [
+    ('Settled: v4_speed fits as well as v4.02s, no better',
+     'Fit c chi2/dof, median over matched science sides, v4_speed / v4.02s: 0.9997 (night 1, '
+     '173 sides), 1.0004 (20261107, 143), 1.0008 (20261108, 461) (dimensionless; dof about '
+     '7.3e5 per side). Against v4.02g 0.996-0.999, lower on 59-71 % of sides. No field band '
+     'differs: 0.999-1.003 from 0 to 1.725 deg.',
+     [(S, [1, 2])]),
+    ('Settled: the outer edges still sit inside the model',
+     'M1Baffle1 −0.40 to −0.84 pixels at 1.6-1.725 deg and −0.42 to −0.81 at 0.25-0.5 deg; '
+     'M3 outer +0.08 to −0.62 pixels; every pair, both sides of focus. Within 0.3 pixels of '
+     'v4.02s.',
+     [(S, [3, 4])]),
+    ('Settled: near the field centre the inner edge sits outside the model',
+     'M1 inner at 0.25-0.5 deg: +0.51 to +0.81 pixels extra, +0.31 to +0.59 intra, every pair '
+     '(v4.02g +0.35 to +0.77). The r_inner / r_outer excess holds with v4_speed.',
+     [(S, [4])]),
+    ('Open: the CameraBody miss follows the camera dy decenter, as with v4.02s',
+     'Inner edge set by CameraBody, 1.6-1.725 deg: extra −0.36 pixels at camera dy 0 mm, '
+     '+1.33 at −2.06 mm, +2.32 at −2.23 mm, +2.30 and +2.72 at −2.82 mm; intra +1.52 at 0 mm, '
+     '−0.56 to 0.00 on night 3. Against v4.02s: 0.39-0.56 pixels '
+     'lower intra, 0.08-0.33 higher extra. The mask assumes a centred camera.',
+     [(S, [3, 6])]),
+    ('Open: the M1 inner and M2 inner signs flip with focus on night 1',
+     '1.6-1.725 deg, night 1; night 3 range (pixels): M1 inner extra +1.30; +0.16 to +0.46, '
+     'intra −0.25; +0.32 to +0.52. M2 inner intra +1.68; +0.71 to +1.04, extra −0.59; +0.04 '
+     'to +0.43. Same pattern as v4.02s, within 0.13 (M1) and 0.46 (M2) pixels.',
+     [(S, [3])]),
+    ('Open: the spider translation is unchanged',
+     'dy −1.76 / −1.95 pixels OCS image (extra / intra) on night 1, −0.58 to −1.67 on night 3; '
+     'within 0.12 pixels of v4.02. Huber fit [dx, dy]_OCS = a + R(rtp) b: median |residual| '
+     'telescope-fixed 0.33 / 0.36, camera-fixed 0.39 / 0.27, both 0.33 / 0.23 pixels (intra / '
+     'extra), against per-visit errors 0.03-0.07. Neither cause fits.',
+     [(S, [5])]),
+    ('Settled: the vane widths are unchanged',
+     'Free vane width, central band: extra 103.1 mm (night 1), 107.2-107.5 mm, and two night 3 '
+     'visits at the 120 mm grid edge; intra 61.2 and 63.5-67.6 mm. CAD 50 mm. Within 0.4 mm '
+     'of v4.02.',
+     [(S, [5])]),
+    ('Open: the outer-band chi2/dof excess remains',
+     'Median chi2/dof 5.9 at 1.68-1.725 deg against 3.0 at 0-0.8 deg, with v4_speed and v4.02s '
+     'alike (ratio 1.003). The v4_speed telescope elements (LowerMidLevel, LowerTopEnd, '
+     'UpperTopEnd, M1Baffle2) set no edge bin in the science sides out to 1.725 deg.',
+     [(S, [3])]),
+]
 
 
 def conclusions_pdf(path, out):
@@ -843,6 +887,9 @@ def conclusions_pdf(path, out):
     for title, text, refs in (CONCLUSIONS if len(MASKS) > 1 else CONCLUSIONS_V4SPEED):
         page = doc.new_page(width=792, height=612)
         src = '\n'.join(f'{f} p{",".join(map(str, pp))}' for f, pp in refs)
+        if len(MASKS) == 1:
+            page.insert_textbox(fitz.Rect(54, 30, 738, 56), "Draft for Aaron's review",
+                                fontsize=10, color=(0.8, 0, 0))
         page.insert_textbox(fitz.Rect(54, 60, 738, 160), title, fontsize=18)
         page.insert_textbox(fitz.Rect(54, 170, 738, 420), text, fontsize=12)
         page.insert_textbox(fitz.Rect(54, 440, 738, 580), 'Supporting pages that follow:\n' + src,

@@ -1,10 +1,11 @@
 ---
 study: giant_donut_pupil
 topic: aos
-status: parked
+status: active
 question: "With a Danish model that includes the spider, what wavefront (coma, astigmatism) do giant donuts give across the full focal plane including the corner WFS, and does the v4.02 CAD-matched pupil fit better than v1000?"
-answer: 'Final on the v4.02 masks (pairs review 2026-11-20): v4.02 fits better than v1000 (median residual RMS ratio 0.94, dimensionless); the outer-band Z5-Z7 is pupil bias; the donut is thinner than the model at both edges on every pair. Open: the spider translation (dy −0.6 to −2.1 pixels, neither telescope- nor camera-fixed), the silhouette miss that follows the camera decenter, and the mask edges v4.02 lacks. Parked until Josh''s v4_speed model and pupil are tested.'
-uses: {}  # none; raws, the_monster refcat and rubin-optical-model directly
+answer: 'v4_speed (Josh Meyers'' Batoid model and danish mask, pairs review 2026-11-22) fits the giant donuts as well as v4.02s and no better (fit c chi2/dof median ratio 0.9997-1.0008, dimensionless). Every pupil-edge result of the v4.02 pairs review holds, to 0.3 pixels on M1Baffle1, M3 outer and M1 inner and 0.6 pixels on M2 inner and CameraBody: the donut is thinner than the model at both edges on every pair; the CameraBody inner-edge miss follows the camera dy decenter; the spider translation (dy −0.6 to −2.0 pixels) and the wide vane shadows (61-120 mm) are unchanged; the outer-band chi2/dof excess (5.9 at 1.68-1.725 deg against 3.0 below 0.8 deg) remains. v4.02 also fits better than v1000 (median residual RMS ratio 0.94, dimensionless).'
+uses:  # also raws, the_monster refcat and rubin-optical-model directly
+  batoid_intrinsic: v4_speed@20261122
 started: 2026-10-18
 ---
 
@@ -67,6 +68,78 @@ Open:
 - The residual spider rotation, −0.026 / +0.087 deg on night 1.
 
 ## Log
+
+### 2026-11-22 — pairs review with the v4_speed model and mask
+
+The pairs-review donuts refit with Josh Meyers' v4_speed Batoid model: its danish
+obscuration file as the mask, and the `batoid_intrinsic` v4_speed@20261122 intrinsicTA
+(giant config, +4 mm camera and M2) as the reference wavefront. Science sides only, out to
+1.725 deg; no corners and no v4.02 pages (Aaron's choice). Code: `code/v4speed_fits.py`,
+`code/v4speed_review_batch.sh`, `code/pairs_review.py --mask-set v4speed` (`521bc9e`,
+`5dd6183` and this commit). Fits in `<run>/v4speed/` of `20261023_pupil6` (night 1) and
+`20261118_night2_<day_obs>`; review run `20261122_pairs_review_v4speed`
+(`conclusions.pdf`, draft for Aaron's review; `summary.pdf`, its first page the donut
+sample in CCS; per pair `focal_plane.pdf`, `fit_gallery.pdf`, `edges.pdf`).
+
+Choices:
+- The night 3 pairs are i band, so the v4_speed variant gained i (build 20261122, job
+  46545912; its r rows equal 20261121b to 0.0). The obscuration file is r band only and is
+  used for i, as v4.02 was.
+- danish annulus R_outer 4.18 m, eps 0.612 (the batoid pupilObscuration, as in the closure
+  study), not M1 inner 2.5833 m, which would give eps 0.618 against the TA's 0.612.
+- Element labels (`psi_labels.py`) use the v4_speed elements and the fit's own reference
+  (`v4speed/reference.json`, band i for night 3; the v4.02 night 3 labels used r).
+- Night 1 vane widths now refit the blur free, as night 3 does, rather than using the
+  pass 5 blur.
+- The CameraBody miss page keeps the v4.02 psi ranges (intra 330-30, extra 160-200 deg).
+
+Jobs: fits 46546524 (night 1, 173 sides, 27 min), 46546525 (20261107, 143 sides,
+15 min), 46546526 (20261108). The last hung at 453 of 462 sides: 120 workers at about
+3.3 GB filled the 503 GB node, a worker most likely died, and the pool waited for it.
+Resubmitted with 64 workers and 6 GB per CPU (46575063, 31 min, resumed from the saved
+sides); review 46575064 (19 min). 0 fit errors; one side, 036_K1042 extra, fails as it did
+with v4.02.
+
+Fit c chi2/dof on matched science sides (dof about 7.3e5 per side):
+
+| source | sides | v4_speed median | v4.02s median | v4_speed / v4.02s median | v4_speed / v4.02g median |
+|---|---|---|---|---|---|
+| night 1 (r) | 173 | 4.074 | 4.069 | 0.9997 | 0.9990 |
+| 20261107 (i) | 143 | 3.362 | 3.398 | 1.0004 | 0.9960 |
+| 20261108 (i) | 461 | 2.885 | 2.870 | 1.0008 | 0.9992 |
+
+By field radius, all sources (v4_speed / v4.02s chi2/dof, dimensionless): 1.000 below
+0.8 deg (306 sides, median chi2/dof 2.97), 1.000 at 1.4-1.6 (266, 2.98), 1.002 at
+1.6-1.68 (127, 3.36), 1.003 at 1.68-1.725 (49, 5.90).
+
+Median data − model edge per visit (pixels), science sides, v4_speed; night 1 first, then
+the night 3 range:
+
+| band (deg) | edge, element | intra | extra |
+|---|---|---|---|
+| 1.6-1.725 | outer, M1Baffle1 | −0.61; −0.84 to −0.44 | −0.56; −0.66 to −0.40 |
+| 1.6-1.725 | outer, M3 outer | −0.35; −0.62 to −0.40 | −0.35; −0.39 to +0.08 |
+| 1.6-1.725 | inner, M1 inner | −0.25; +0.32 to +0.52 | +1.30; +0.16 to +0.46 |
+| 1.6-1.725 | inner, M2 inner | +1.68; +0.71 to +1.04 | −0.59; +0.04 to +0.43 |
+| 1.6-1.725 | inner, CameraBody | +1.52; −0.56 to 0.00 | −0.36; +1.33 to +2.72 |
+| 0.25-0.5 | outer, M1Baffle1 | −0.43; −0.81 to −0.55 | −0.55; −0.66 to −0.42 |
+| 0.25-0.5 | inner, M1 inner | +0.59; +0.31 to +0.53 | +0.66; +0.51 to +0.81 |
+
+Against v4.02s per visit (Log 2026-11-20): M1Baffle1, M1 inner and M3 outer within
+0.3 pixels, M2 inner within 0.46. The CameraBody miss is 0.39-0.56 pixels lower than the
+v4.02s silhouette miss intra-focal and 0.08-0.33 higher extra-focal; it still follows
+camera dy extra-focal. M2 outer sets 7 bins
+and no v4_speed telescope element (LowerMidLevel, LowerTopEnd, UpperTopEnd, M1Baffle2)
+sets any.
+
+Spider, science sides, per visit: dy −1.76 / −1.95 pixels OCS image (extra / intra) on
+night 1, −0.58 to −1.67 on night 3, within 0.12 pixels of v4.02. Huber fit [dx, dy]_OCS =
+a + R(rtp) b, median |residual| telescope-fixed 0.33 / 0.36, camera-fixed 0.39 / 0.27,
+both 0.33 / 0.23 pixels (intra / extra), against per-visit errors 0.03-0.07: neither fits.
+Free vane width extra 103.1, 107.2-107.5 mm and two at the 120 mm grid edge; intra 61.2,
+63.5-67.6 mm; within 0.4 mm of v4.02.
+
+v4_speed changes nothing this review measures. `findings.md` K1-K8.
 
 ### 2026-11-20 — wrap on v4.02; parked for Josh's v4_speed model
 

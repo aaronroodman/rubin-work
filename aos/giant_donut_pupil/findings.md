@@ -1,6 +1,6 @@
 # Giant-donut pupil: findings ledger
 
-> **Status:** current through the pairs review (2026-11-20, run `20261120_pairs_review`), the last pass on the v4.02 masks; parked until Josh's v4_speed model and pupil are tested.
+> **Status:** current through the v4_speed pairs review (2026-11-22, run `20261122_pairs_review_v4speed`), which refits the pairs-review donuts with Josh Meyers' v4_speed Batoid model and danish mask.
 > One row per finding, from the selection work, pupil passes 1–6, the model reviews, nights 2 and 3, and the pairs review. Superseded findings stay, with what replaced them.
 
 Data: 20251023 seq 337 (extra-focal) and 340 (intra-focal), ±4 mm camera and M2. "Extra /
@@ -111,3 +111,19 @@ science sides; "night 1; night 3 range". Data − model in pixels, OCS image.
 | R7 | Free vane width extra 102.8 (night 1) and 106.8-107.1 mm, with two night 3 visits at the 120 mm grid edge; intra 61.3 and 63.3-67.3 mm. Flat in rotator angle; the extra / intra difference holds on every pair | settled | 20261120_pairs_review/summary.pdf p4 | central band; CAD 50 mm; grid 30-120 mm |
 | R8 | Near the field centre, removing M1Baffle1 also loses the inner-edge crossing, so it tied M1 inner at the 50 pixel cap and won 4868 of 14760 inner-edge bins at 0.25-0.5 deg. `psi_labels.consistent_kind` takes the runner-up of the right kind (inner edges: obscurations; outer edges: clear apertures). It relabels 2-3 % of the inner-edge bins of the 1.6-1.725 deg runs, which E1 and the 2026-11-17 / 11-18 Log tables used; no outer-edge bin changes | settled | Log 2026-11-20 | |
 
+## v4_speed rerun (pairs review donuts)
+
+The pairs-review donuts (night 1 and night 3, science sides) refit with the v4_speed danish
+mask and the `batoid_intrinsic` v4_speed@20261122 intrinsicTA reference, r band (night 1)
+and i band (night 3). Data − model in pixels, OCS image; "night 1; night 3 range".
+
+| # | claim | status | evidence | conventions |
+|---|---|---|---|---|
+| K1 | v4_speed fits as well as v4.02s, no better: fit c chi2/dof median ratio v4_speed / v4.02s 0.9997, 1.0004, 1.0008 (night 1, 20261107, 20261108; 173, 143, 461 matched sides), 0.999-1.003 in every field band from 0 to 1.725 deg; against v4.02g 0.996-0.999 | settled | 20261122_pairs_review_v4speed/summary.pdf p1-2; Log 2026-11-22 | dimensionless; dof about 7.3e5 per side |
+| K2 | The outer edges still sit inside the model: M1Baffle1 −0.40 to −0.84 pixels (1.6-1.725 deg) and −0.42 to −0.81 (0.25-0.5 deg), M3 outer +0.08 to −0.62; within 0.3 pixels of v4.02s (R2) | settled | 20261122_pairs_review_v4speed/summary.pdf p3-4 | bin-weighted median over the psi ranges the element sets |
+| K3 | Near the field centre M1 inner sits +0.31 to +0.81 pixels outside the model on both sides of focus (R3 holds) | settled | 20261122_pairs_review_v4speed/summary.pdf p4 | |
+| K4 | The CameraBody inner-edge miss follows the camera dy decenter as the v4.02s silhouette did (R4): extra −0.36, +1.33, +2.32, +2.30, +2.72 pixels at 0, −2.06, −2.23, −2.82, −2.82 mm; intra +1.52 at 0 mm, −0.56 to 0.00 on night 3. Against v4.02s: 0.39-0.56 pixels lower intra, 0.08-0.33 higher extra | open | 20261122_pairs_review_v4speed/summary.pdf p3 p6 | mask assumes a centred camera |
+| K5 | The M1 inner / M2 inner focus sign flips of R5 repeat (within 0.13 and 0.46 pixels of v4.02s): M1 inner extra +1.30; +0.16 to +0.46, intra −0.25; +0.32 to +0.52; M2 inner intra +1.68; +0.71 to +1.04, extra −0.59; +0.04 to +0.43 | open | 20261122_pairs_review_v4speed/summary.pdf p3 | |
+| K6 | The spider translation is unchanged (R6, within 0.12 pixels): dy −1.76 / −1.95 (extra / intra) on night 1, −0.58 to −1.67 on night 3; neither a telescope-fixed nor a camera-fixed offset fits (median residual 0.23-0.39 pixels against per-visit errors 0.03-0.07) | open | 20261122_pairs_review_v4speed/summary.pdf p5 | Huber fit [dx, dy]_OCS = a + R(rtp) b |
+| K7 | Free vane width unchanged (R7, within 0.4 mm): extra 103.1 and 107.2-107.5 mm, two visits at the 120 mm grid edge; intra 61.2 and 63.5-67.6 mm | settled | 20261122_pairs_review_v4speed/summary.pdf p5 | central band; CAD 50 mm; grid 30-120 mm |
+| K8 | The outer-band chi2/dof excess remains: median 5.9 at 1.68-1.725 deg against 3.0 at 0-0.8 deg, v4_speed and v4.02s alike. The v4_speed telescope elements (LowerMidLevel, LowerTopEnd, UpperTopEnd, M1Baffle2) set no edge bin in science sides out to 1.725 deg | open | 20261122_pairs_review_v4speed/summary.pdf p3; Log 2026-11-22 | chi2/dof, dof about 7.3e5 per side |
