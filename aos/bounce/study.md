@@ -1,16 +1,19 @@
 ---
 study: bounce
 topic: aos
-status: done
+status: parked
 question: "Do the elevation and rotator bounce tests show repeatable, gravity-driven changes in the optical state, for the look-up table?"
-answer: "Yes, and the default recovery puts DOF out of range: 106 of 450 per-(leg, night) rows exceed their range, against 7 under Range-Bounded Recovery, at a median cost of +0.0027 arcsec FWHM."
-uses: {}  # old aos/output tree
+answer: 'Yes in trend: under 22/12 the A–B–A ΔDOF follow elevation (Cam_dy −900 ± 99 µm at 30 deg against 70 deg), but the three 40 deg nights disagree beyond their errors (median chi2/dof = 5.1/2 over 22 DOF), and 50/34 puts 86 of 350 DOF values out of range against 0 for 22/12.'
+uses:
+  bounce_aba: d13-A_50_50_i_rbr_5rot-rbr_50_50@20261121, d13-batoid-22_12@20261121
+  fam_tables: danish_1_3@20261028b
+  miw: d13-A_50_50_i_rbr_5rot@20261028b
 started: 2026-09-06
 ---
 
 # `bounce`
 
-> **Code:** `code/` (`run_bounce.py`, `bounce_lib.py`; the `bounce` rule); the reduction is `rubinwork.bounce`, the tables the `bounce_tables` product · **Write-up:** [`bounce.md`](bounce.md) · **Output:** `output/<P>_<M>/` (the study `output@`) · **Note:** `notes/aos-bounce-test-summary/`
+> **Code:** `code/` (`run_bounce.py`, `bounce_lib.py`; the `bounce` rule); the reduction is `rubinwork.bounce`, the tables the `bounce_tables` and `bounce_aba` products · **Write-up:** [`bounce.md`](bounce.md) · **Output:** `output/<P>_<M>/` (the study `output@`) · **Notes:** [`notes/20261122-aos-bounce-aba/`](../../notes/20261122-aos-bounce-aba/note.md) (A–B–A, 22/12), `notes/aos-bounce-test-summary/` (Danish 1.2, 50/34)
 
 ## Question
 
@@ -18,9 +21,37 @@ Do the elevation and rotator bounce tests show repeatable, gravity-driven change
 
 ## Current answer
 
-Results note delivered (`notes/aos-bounce-test-summary/`). Counting `kind = dof` rows, 106 of 450 per-(leg, night) rows exceed their range under the default recovery against 7 under RBR, at a median cost of +0.0027 arcsec FWHM (range −0.0002 to +0.0158 arcsec over nine (leg, night) points).
+Yes in trend, not yet as a look-up table (LUT). The summary is [`notes/20261122-aos-bounce-aba/`](../../notes/20261122-aos-bounce-aba/note.md).
+
+- A–B–A differencing (each B visit minus the neighbouring A visits interpolated in time) removes the drift within a night. At 40 deg, DZ(1,4) chi2/dof between nights falls from 262/2 (paired difference) to 13.3/2.
+- Under the 22/12 recovery, the ΔDOF follow elevation. At 30 deg against the 70 deg reference: Cam_dy −900 ± 99 µm, Cam_dx −525 ± 107 µm and Cam_rx −0.0044 ± 0.0002 deg. Most terms have the opposite sign, or are about zero, at 75 deg.
+- The default 50/34 recovery puts 86 of 350 (leg, DOF) values beyond their range, against 6 under RBR 50/50 and 0 of 154 under 22/12.
+- M2_dz against Cam_dz is not measured in any scheme (MC r ≈ −0.99). A focus LUT must use the combined mode.
+- The three 40 deg nights disagree beyond their errors: median chi2/dof = 5.1/2 over the 22 DOF. An LUT from these data therefore carries about 0.06 µm of night-to-night spread in DZ(1,4).
 
 ## Log
+
+### 2026-11-22 — summary note and wrap
+
+Summary note `notes/20261122-aos-bounce-aba/` (`note.md`, figures from `make_figures.py`). It covers the inputs, processing, the A–B–A method and noise model, the three schemes and the 22/12 results. It reads `bounce_aba d13-batoid-22_12@20261121` and reruns `rubinwork.bounce.aba` for the 50/34 recovery and the MC draws; the script asserts its 22/12 ΔDOF match the product.
+
+- Inputs: 6 nights and 7 (night, leg) points. 95 of 104 BLOCK-T720 visits pass the cut (at least 500 donuts, at least 160 detectors with donuts, median blur ≤ 1.2 arcsec). The B − A lag is 2.6–3.1 min.
+- Out of range (|ΔDOF| > allowed range), counted over 7 legs: 86 of 350 values under 50/34 (largest B1_20 at 13.4 times its range), 6 of 350 under RBR 50/50 (largest 1.12 times) and 0 of 154 under 22/12 (largest 0.51 times; dimensionless).
+- ΔDZ power left over all legs (dimensionless, residual² over ΔDZ²): 0.015 for 50/34, 0.022 for RBR 50/50 and 0.056 for 22/12.
+- M2_dz against Cam_dz: MC r = −0.99 to −1.00 on every leg in every scheme. The sum is fixed to 1.5–5.7 µm; the split, up to 141 µm each, flips sign between 22/12 and the 50-DOF schemes at 30, 40 and 60 deg.
+- 22/12 trends at 30 deg:
+  - Cam_dy −900 ± 99 µm, Cam_dx −525 ± 107 µm and Cam_rx −0.0044 ± 0.0002 deg;
+  - most terms have the opposite sign, or are about zero, at 75 deg.
+- 40 deg nights, chi2/dof about their weighted mean (dof = 2): median 5.1/2 over the 22 DOF (32% above 9.21/2), 5.0/2 over the 12 v-modes and 3.9/2 over the 126 DZ terms. DZ(1,4) needs an extra 0.060 µm per night.
+- Within a night, DZ(1,4) A–B–A chi2/dof under the current noise model: 0.12/2 to 5.74/6 per leg.
+
+Parked until the bounce runs are reprocessed. Open:
+- the cause of the 40 deg disagreement between nights;
+- an LUT in v-mode or wavefront space;
+- `elevation_pairs` now reads `bounce_aba` (`4ccce0a`).
+
+![22/12 hexapod ΔDOF](figures/fig08_dof22_hexapods.png)
+![M2 dz against camera dz](figures/fig06_hexapod_dz.png)
 
 ### 2026-10-12 — backfilled from docs and history
 
