@@ -27,7 +27,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from rubinwork.common import study_run
 from rubinwork.products import catalog, sim_donut_visit_fits
 
-VARIANTS = ("v4_speed_cwfs8_vk_dense_prod", "v4_speed_cwfs8_vk_dense_prod_nonoise")
+VARIANTS = ("v4_speed_cwfs8_vk_dense_prod", "v4_speed_cwfs8_vk_dense_prod_nonoise",
+            "v4_speed_cwfs8_vk_blur35_dense_prod",
+            "v4_speed_cwfs8_vk_blur35_dense_prod_nonoise")
 CORNERS = ("R00", "R04", "R40", "R44")
 PAIRS = [(4, 11), (5, 13), (6, 12), (7, 17), (8, 16)]
 SHOW = [4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17]

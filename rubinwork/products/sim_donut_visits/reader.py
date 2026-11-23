@@ -70,6 +70,8 @@ def load(variant, build=catalog.CURRENT):
         ``sky_mag_arcsec2``; ``sky_e_per_px`` and ``read_noise_e`` (e- per 10 µm
         pixel); ``seeing_fwhm_arcsec``, ``seeing_e`` (distortion, dimensionless),
         ``seeing_beta_deg`` (major axis from CCS +x), ``r0_m``, ``L0_m``;
+        ``side_blur_arcsec`` (extra FWHM of this side, arcsec) and ``gauss_fwhm_arcsec``
+        (FWHM of the Gaussian giving it, arcsec; 0 for none);
         ``offset_x_px``, ``offset_y_px`` (donut shift from the chief ray, pixels, CCS x
         and y); ``peak_e`` (brightest pixel of the expectation, e-); ``file``,
         ``extname``.

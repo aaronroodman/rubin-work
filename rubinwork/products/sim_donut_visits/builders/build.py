@@ -56,6 +56,8 @@ def plan(cfg, pts, pixel_arcsec):
                                               cfg["exptime_s"], pixel_arcsec)
     df["read_noise_e"] = float(cfg["read_noise_e"])
     df["seeing_fwhm_arcsec"] = float(s["fwhm_arcsec"])
+    extra = cfg.get("side_blur_arcsec") or {}
+    df["side_blur_arcsec"] = df.side.map(lambda sd: float(extra.get(sd, 0.0)))
     df["seeing_e"] = float(s["e"])
     df["seeing_beta_deg"] = beta[df.visit, ci]
     df["L0_m"] = float(s["L0_m"])
@@ -90,9 +92,11 @@ def run_point(args):
     out = []
     for _, r in rows.iterrows():
         prof = observe.seeing(1e9 * wl, _W["r0_m"], r.L0_m, r.seeing_e, r.seeing_beta_deg,
-                              (r.offset_x_px * pix_arcsec, r.offset_y_px * pix_arcsec))
+                              (r.offset_x_px * pix_arcsec, r.offset_y_px * pix_arcsec),
+                              r.gauss_fwhm_arcsec)
         img = raytrace.bin_fine(raytrace.convolve(fine, prof, pix_arcsec / cfg["oversample"],
-                                                  r.seeing_fwhm_arcsec), cfg["oversample"])
+                                                  r.seeing_fwhm_arcsec + r.side_blur_arcsec),
+                                cfg["oversample"])
         exp = r.flux_e * img / img.sum()
         obs = observe.add_noise(rng, exp, r.sky_e_per_px, r.read_noise_e)
         out.append((r.visit, np.stack([obs, exp]).astype(np.float32), float(exp.max())))
@@ -155,7 +159,12 @@ def build(variant, build_name=None, overwrite=False, jobs=1, limit=None):
         df = df[df.visit < limit].reset_index(drop=True)
     s = cfg["seeing"]
     r0 = observe.von_karman_r0(s["fwhm_arcsec"], s["L0_m"], 1e9 * instr.wavelength[cfg["band"]])
+    print(f"extra blur per side: {cfg.get('side_blur_arcsec') or {}}", flush=True)
     df["r0_m"] = r0
+    wl_nm = 1e9 * instr.wavelength[cfg["band"]]
+    gauss = {b: (observe.extra_blur_fwhm(wl_nm, r0, s["L0_m"], s["fwhm_arcsec"] + b)
+                 if b > 0 else 0.0) for b in df.side_blur_arcsec.unique()}
+    df["gauss_fwhm_arcsec"] = df.side_blur_arcsec.map(gauss)
     todo = [(k, g) for k, (_, g) in enumerate(df.groupby("point_id", sort=True))]
     print(f"{len(pts)} points x {df.visit.nunique()} visits, {jobs} jobs, r0 {r0:.4f} m",
           flush=True)

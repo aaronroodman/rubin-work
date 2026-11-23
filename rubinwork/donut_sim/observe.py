@@ -5,7 +5,8 @@ Images are electrons per pixel. Import as ``from rubinwork.donut_sim import obse
 """
 import numpy as np
 
-__all__ = ["von_karman_r0", "seeing", "flux_e", "sky_e_per_px", "draw_mags", "add_noise"]
+__all__ = ["von_karman_r0", "extra_blur_fwhm", "seeing", "flux_e", "sky_e_per_px",
+           "draw_mags", "add_noise"]
 
 
 def von_karman_r0(fwhm_arcsec, L0_m, wavelength_nm):
@@ -22,14 +23,34 @@ def von_karman_r0(fwhm_arcsec, L0_m, wavelength_nm):
     return brentq(lambda r0: fwhm(r0) - fwhm_arcsec, 0.02, 1.0, xtol=1e-6)
 
 
-def seeing(wavelength_nm, r0_m, L0_m, e, beta_deg, shift_arcsec=(0.0, 0.0)):
+def extra_blur_fwhm(wavelength_nm, r0_m, L0_m, total_fwhm_arcsec):
+    """FWHM (arcsec) of the Gaussian that, convolved with the round von Kármán profile,
+    gives `total_fwhm_arcsec`."""
+    import galsim
+    from scipy.optimize import brentq
+    vk = galsim.VonKarman(lam=wavelength_nm, r0=r0_m, L0=L0_m)
+
+    def fwhm(g):
+        img = galsim.Convolve(vk, galsim.Gaussian(fwhm=g)).drawImage(
+            nx=401, ny=401, scale=total_fwhm_arcsec / 50, method="no_pixel")
+        return img.calculateFWHM()
+
+    return brentq(lambda g: fwhm(g) - total_fwhm_arcsec, 1e-3, 3 * total_fwhm_arcsec,
+                  xtol=1e-6)
+
+
+def seeing(wavelength_nm, r0_m, L0_m, e, beta_deg, shift_arcsec=(0.0, 0.0),
+           gauss_fwhm_arcsec=0.0):
     """von Kármán profile sheared to distortion `e` (second-moment ellipticity
     ``(a² - b²) / (a² + b²)``, dimensionless) with major axis at `beta_deg` from +x,
-    shifted by `shift_arcsec` (x, y)."""
+    convolved with a round Gaussian of `gauss_fwhm_arcsec` (0 for none) and shifted by
+    `shift_arcsec` (x, y)."""
     import galsim
     p = galsim.VonKarman(lam=wavelength_nm, r0=r0_m, L0=L0_m)
     if e:
         p = p.shear(e=e, beta=beta_deg * galsim.degrees)
+    if gauss_fwhm_arcsec > 0:
+        p = galsim.Convolve(p, galsim.Gaussian(fwhm=gauss_fwhm_arcsec))
     return p.shift(*shift_arcsec)
 
 

@@ -25,6 +25,9 @@
 #                    (distortion (a²-b²)/(a²+b²)); its major-axis angle is uniform in
 #                    [0, 180) deg, drawn per visit and corner, shared by the corner's two
 #                    half-chips
+#   side_blur_arcsec optional extra blur per side ({intra: 0.35}): that side's kernel is
+#                    the seeing convolved with a round Gaussian whose width is solved so
+#                    the round kernel's FWHM grows by this much (arcsec)
 #
 # Stamps are sky-subtracted electrons; each also stores its noise-free expectation.
 # Any change is a new variant.
@@ -51,3 +54,9 @@ variants:
   # 100 visits, r band, von Karman 1.0 arcsec FWHM, L0 20 m, e 0.03 at random angle per
   # corner and visit; sky 19.5-21.2 mag/arcsec², stars 10.5-15.42 mag, 30 s.
   v4_speed_cwfs8_vk: {}
+
+  # As v4_speed_cwfs8_vk (same seed, so the same stars, sky, angles and offsets), with
+  # the intra-focal side 0.35 arcsec blurrier (FWHM 1.35 against 1.0 arcsec), the
+  # median intra - extra blur difference of aos/cwfs_blur_intra_extra.
+  v4_speed_cwfs8_vk_blur35:
+    side_blur_arcsec: {intra: 0.35}

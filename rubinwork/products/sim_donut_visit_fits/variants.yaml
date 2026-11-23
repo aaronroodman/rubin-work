@@ -34,3 +34,12 @@ variants:
   # the bias from the seeing kernel and offsets alone.
   v4_speed_cwfs8_vk_dense_prod_nonoise:
     plane: expected
+
+  # The production mock-up on sim_donut_visits v4_speed_cwfs8_vk_blur35 (intra 0.35
+  # arcsec blurrier than extra), noisy and noise-free.
+  v4_speed_cwfs8_vk_blur35_dense_prod:
+    sims: v4_speed_cwfs8_vk_blur35
+
+  v4_speed_cwfs8_vk_blur35_dense_prod_nonoise:
+    sims: v4_speed_cwfs8_vk_blur35
+    plane: expected
